@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Windows.Media.Imaging;
+
 using ICSharpCode.SharpDevelop.Project;
 using Microsoft.VisualStudio.ProjectSystem;
 
@@ -47,6 +49,8 @@ internal sealed class SolutionExplorerNodeModel
     public bool IsExpanded { get; }
 
     public List<SolutionExplorerNodeModel> Children { get; } = new();
+
+    public BitmapSource Icon => SolutionExplorerIconService.GetIcon(this);
 
     public SolutionExplorerNodeContext ToContext()
     {

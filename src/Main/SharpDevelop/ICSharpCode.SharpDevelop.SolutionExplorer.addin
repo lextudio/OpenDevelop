@@ -27,6 +27,14 @@
              class="ICSharpCode.SharpDevelop.Services.SolutionExplorerController" />
   </Path>
 
+  <Path name="/SharpDevelop/Workbench/Pads">
+    <Pad id="SolutionExplorer"
+         category="Main"
+         title="Solution Explorer"
+         class="ICSharpCode.SharpDevelop.Services.SolutionExplorerPad"
+         defaultPosition="Right" />
+  </Path>
+
   <Path name="/SharpDevelop/Pads/SolutionExplorer/ContextMenu/Common/Add">
     <MenuItem id="NewProject" label="New Project..." class="ICSharpCode.SharpDevelop.Commands.NewProjectSolutionExplorerCommand" />
     <MenuItem id="NewItem" label="New Item..." class="ICSharpCode.SharpDevelop.Commands.NewItemSolutionExplorerCommand" />

@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- End-to-end integration tests that launch OpenDevelop and drive it over the DevFlow REST API
+       (port 9223 by default, overridable via DEVFLOW_AGENT_PORT).
+
+       OpenDevelop must be built in Debug before running:
+         dotnet build src/Main/SharpDevelop/SharpDevelop.csproj -c Debug
+
+       Then run the suite explicitly (slow, boots the full app):
+         dotnet test tests/OpenDevelop.IntegrationTests -->
+
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
+    <PackageReference Include="System.Net.Http.Json" Version="11.0.0-preview.5.26302.115" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

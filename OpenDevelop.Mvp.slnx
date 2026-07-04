@@ -1,0 +1,36 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Libraries/">
+    <Project Path="src/Libraries/ICSharpCode.TypeSystem.Abstractions/ICSharpCode.TypeSystem.Abstractions.csproj" />
+  </Folder>
+  <Folder Name="/src/Libraries/AvalonDock/">
+    <Project Path="src/Libraries/AvalonDock/source/Components/AvalonDock.Serializer.Xml/AvalonDock.Serializer.Xml.csproj" />
+    <Project Path="src/Libraries/AvalonDock/source/Components/AvalonDock/AvalonDock.csproj" />
+  </Folder>
+  <Folder Name="/src/Libraries/AvalonEdit/">
+    <Project Path="src/Libraries/AvalonEdit/ICSharpCode.AvalonEdit/ICSharpCode.AvalonEdit.csproj" />
+  </Folder>
+  <Folder Name="/src/Main/">
+    <Project Path="src/Main/ICSharpCode.Core.Presentation/ICSharpCode.Core.Presentation.csproj" />
+  </Folder>
+  <Folder Name="/src/Main/Core/" />
+  <Folder Name="/src/Main/Core/Project/">
+    <Project Path="src/Main/Core/Project/ICSharpCode.Core.csproj" />
+  </Folder>
+  <Folder Name="/src/Main/ICSharpCode.SharpDevelop.Widgets/" />
+  <Folder Name="/src/Main/ICSharpCode.SharpDevelop.Widgets/Project/">
+    <Project Path="src/Main/ICSharpCode.SharpDevelop.Widgets/Project/ICSharpCode.SharpDevelop.Widgets.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj" />
+  </Folder>
+  <Project Path="src/Main/Base/Project/ICSharpCode.SharpDevelop.csproj" />
+  <Project Path="src/Main/ProjectSystem/Microsoft.VisualStudio.ProjectSystem.Shim.csproj" />
+  <Project Path="src/Main/ProjectSystemManaged/Microsoft.VisualStudio.ProjectSystem.Managed.csproj" />
+  <Project Path="src/Main/SharpDevelop/SharpDevelop.csproj" />
+</Solution>

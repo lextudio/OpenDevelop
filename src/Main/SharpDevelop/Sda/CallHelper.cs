@@ -37,6 +37,7 @@ using ICSharpCode.SharpDevelop.Editor.Bookmarks;
 using ICSharpCode.SharpDevelop.Logging;
 using ICSharpCode.SharpDevelop.Parser;
 using ICSharpCode.SharpDevelop.Project;
+using ICSharpCode.SharpDevelop.Services;
 
 namespace ICSharpCode.SharpDevelop.Sda
 {
@@ -145,6 +146,9 @@ namespace ICSharpCode.SharpDevelop.Sda
 			}
 			if (SD.Services.GetService(typeof(IClipboard)) == null) {
 				SD.Services.AddService(typeof(IClipboard), new ClipboardWrapper());
+			}
+			if (SD.Services.GetService(typeof(ISolutionExplorerController)) == null) {
+				SD.Services.AddService(typeof(ISolutionExplorerController), new SolutionExplorerController());
 			}
 
 			// AssemblyParserService (real Mono.Cecil-based assembly parsing) is out of MVP scope

@@ -1,15 +1,13 @@
 [submodule "src/Libraries/AvalonEdit"]
 	path = src/Libraries/AvalonEdit
-	url = https://github.com/icsharpcode/AvalonEdit.git
-[submodule "src/Libraries/NRefactory"]
-	path = src/Libraries/NRefactory
-	url = https://github.com/icsharpcode/NRefactory.git
-[submodule "src/Libraries/cecil"]
-	path = src/Libraries/cecil
-	url = https://github.com/jbevain/cecil.git
+	url = https://github.com/lextudio/AvalonEdit.git
 [submodule "src/Libraries/WpfDesigner"]
 	path = src/Libraries/WpfDesigner
 	url = https://github.com/icsharpcode/WpfDesigner.git
 [submodule "externals/project-system"]
 	path = externals/project-system
 	url = https://github.com/dotnet/project-system.git
+[submodule "src/Libraries/AvalonDock"]
+	path = src/Libraries/AvalonDock
+	url = https://github.com/lextudio/AvalonDock.git
+	branch = master

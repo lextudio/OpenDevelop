@@ -2,12 +2,11 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:core = "http://icsharpcode.net/sharpdevelop/core"
-             xmlns:avalondock = "clr-namespace:AvalonDock;assembly=AvalonDock">
+             xmlns:avalondockControls="clr-namespace:AvalonDock.Controls;assembly=AvalonDock">
 	
 	<Application.Resources>
 		<!-- Style AvalonDock windows -->
-		<Style TargetType="{x:Type avalondock:DockableFloatingWindow}" BasedOn="{x:Static core:GlobalStyles.WindowStyle}"/>
-		<Style TargetType="{x:Type avalondock:DocumentFloatingWindow}" BasedOn="{x:Static core:GlobalStyles.WindowStyle}"/>
-		<Style TargetType="{x:Type avalondock:FlyoutPaneWindow}" BasedOn="{x:Static core:GlobalStyles.WindowStyle}"/>
+		<Style TargetType="{x:Type avalondockControls:LayoutAnchorableFloatingWindowControl}" BasedOn="{x:Static core:GlobalStyles.WindowStyle}"/>
+		<Style TargetType="{x:Type avalondockControls:LayoutDocumentFloatingWindowControl}" BasedOn="{x:Static core:GlobalStyles.WindowStyle}"/>
 	</Application.Resources>
 </Application>

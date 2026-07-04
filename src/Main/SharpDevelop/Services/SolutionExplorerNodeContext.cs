@@ -142,13 +142,13 @@ internal sealed record SolutionExplorerNodeContext(
     public string ContextMenuPath =>
         Kind switch
         {
-            SolutionExplorerNodeKind.Solution => "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/SolutionNode",
-            SolutionExplorerNodeKind.Project => "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/ProjectNode",
-            SolutionExplorerNodeKind.Folder or SolutionExplorerNodeKind.GhostFolder or SolutionExplorerNodeKind.DependenciesFolder or SolutionExplorerNodeKind.ReferencesFolder or SolutionExplorerNodeKind.PackagesFolder => "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/FolderNode",
-            SolutionExplorerNodeKind.Reference or SolutionExplorerNodeKind.ProjectReference => "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/ReferenceNode",
-            SolutionExplorerNodeKind.PackageReference => "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/PackageReferenceNode",
-            SolutionExplorerNodeKind.File or SolutionExplorerNodeKind.LinkedFile or SolutionExplorerNodeKind.MissingFile or SolutionExplorerNodeKind.GhostFile => "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/FileNode",
-            _ => "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/UnknownNode"
+            SolutionExplorerNodeKind.Solution => "/SharpDevelop/Pads/SolutionExplorer/ContextMenu/SolutionNode",
+            SolutionExplorerNodeKind.Project => "/SharpDevelop/Pads/SolutionExplorer/ContextMenu/ProjectNode",
+            SolutionExplorerNodeKind.Folder or SolutionExplorerNodeKind.GhostFolder or SolutionExplorerNodeKind.DependenciesFolder or SolutionExplorerNodeKind.ReferencesFolder or SolutionExplorerNodeKind.PackagesFolder => "/SharpDevelop/Pads/SolutionExplorer/ContextMenu/FolderNode",
+            SolutionExplorerNodeKind.Reference or SolutionExplorerNodeKind.ProjectReference => "/SharpDevelop/Pads/SolutionExplorer/ContextMenu/ReferenceNode",
+            SolutionExplorerNodeKind.PackageReference => "/SharpDevelop/Pads/SolutionExplorer/ContextMenu/PackageReferenceNode",
+            SolutionExplorerNodeKind.File or SolutionExplorerNodeKind.LinkedFile or SolutionExplorerNodeKind.MissingFile or SolutionExplorerNodeKind.GhostFile => "/SharpDevelop/Pads/SolutionExplorer/ContextMenu/FileNode",
+            _ => "/SharpDevelop/Pads/SolutionExplorer/ContextMenu/UnknownNode"
         };
 
     public override string ToString() => Name;

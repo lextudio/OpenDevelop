@@ -22,12 +22,16 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
 
 using AvalonDock;
+using AvalonDock.Controls;
+using AvalonDock.Layout;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Gui;
+using ICSharpCode.SharpDevelop.ViewModels;
 
 namespace ICSharpCode.SharpDevelop.Workbench
 {
@@ -38,6 +42,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 	{
 		WpfWorkbench workbench;
 		DockingManager dockingManager = new DockingManager();
+		DockWorkspace dockWorkspace;
 		List<IWorkbenchWindow> workbenchWindows = new List<IWorkbenchWindow>();
 		internal bool Busy;
 		
@@ -51,7 +56,10 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		public AvalonDockLayout()
 		{
-			dockingManager.PropertyChanged += dockingManager_PropertyChanged;
+			dockingManager.Theme = new AvalonDock.Themes.Vs2013BlueTheme();
+			dockWorkspace = new DockWorkspace(dockingManager);
+			ConfigureDockingManagerForWorkspace();
+			dockingManager.ActiveContentChanged += dockingManager_ActiveContentChanged;
 			dockingManager.Loaded += dockingManager_Loaded;
 		}
 		
@@ -59,7 +67,6 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		internal void WriteState(TextWriter output)
 		{
 			output.WriteLine("AvalonDock: ActiveContent = " + WpfWorkbench.GetElementName(dockingManager.ActiveContent));
-			output.WriteLine("AvalonDock: ActiveDocument = " + WpfWorkbench.GetElementName(dockingManager.ActiveDocument));
 		}
 		#endif
 		
@@ -81,27 +88,21 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			}
 		}
 		
-		void dockingManager_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
+		void dockingManager_ActiveContentChanged(object sender, EventArgs e)
 		{
-			if (e.PropertyName == "ActiveContent") {
-				WpfWorkbench.FocusDebug("AvalonDock: ActiveContent changed to {0}", WpfWorkbench.GetElementName(dockingManager.ActiveContent));
-				if (ActiveContentChanged != null)
-					ActiveContentChanged(this, e);
-				CommandManager.InvalidateRequerySuggested();
-			} else if (e.PropertyName == "ActiveDocument") {
-				WpfWorkbench.FocusDebug("AvalonDock: ActiveDocument changed to {0}", WpfWorkbench.GetElementName(dockingManager.ActiveDocument));
-				
-				if (ActiveWorkbenchWindowChanged != null)
-					ActiveWorkbenchWindowChanged(this, e);
-				CommandManager.InvalidateRequerySuggested();
-			}
+			WpfWorkbench.FocusDebug("AvalonDock: ActiveContent changed to {0}", WpfWorkbench.GetElementName(dockingManager.ActiveContent));
+			if (ActiveContentChanged != null)
+				ActiveContentChanged(this, e);
+			if (ActiveWorkbenchWindowChanged != null)
+				ActiveWorkbenchWindowChanged(this, e);
+			CommandManager.InvalidateRequerySuggested();
 		}
 		
 		public event EventHandler ActiveWorkbenchWindowChanged;
 		
 		public IWorkbenchWindow ActiveWorkbenchWindow {
 			get {
-				return dockingManager.ActiveDocument as IWorkbenchWindow;
+				return dockWorkspace.ActiveDocument;
 			}
 		}
 		
@@ -137,12 +138,15 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			Busy = true;
 			try {
 				foreach (PadDescriptor pd in workbench.PadContentCollection) {
-					ShowPad(pd);
+					if (!IsMefToolPane(pd))
+						ShowPad(pd);
 				}
 			} finally {
 				Busy = false;
 			}
+			dockWorkspace.InitializeLayout();
 			LoadConfiguration();
+			dockWorkspace.BindSources();
 			EnsureFloatingWindowsLocations();
 		}
 		
@@ -203,9 +207,12 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		public void ShowPad(PadDescriptor padDescriptor)
 		{
+			if (TryShowMefToolPane(padDescriptor))
+				return;
+
 			AvalonPadContent pad;
 			if (pads.TryGetValue(padDescriptor, out pad)) {
-				pad.Show(dockingManager);
+				pad.Show();
 			} else {
 				//LoggingService.Debug("Add pad " + padDescriptor.Class + " at " + padDescriptor.DefaultPosition);
 				
@@ -218,11 +225,14 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		public void ActivatePad(PadDescriptor padDescriptor)
 		{
+			if (TryShowMefToolPane(padDescriptor))
+				return;
+
 			AvalonPadContent p;
 			if (pads.TryGetValue(padDescriptor, out p)) {
 				if (!p.IsVisible)
 					p.Show();
-				p.Activate();
+				p.IsActive = true;
 			} else {
 				ShowPad(padDescriptor);
 			}
@@ -230,6 +240,11 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		public void HidePad(PadDescriptor padDescriptor)
 		{
+			if (IsMefToolPane(padDescriptor)) {
+				DockWorkspace.Current?.Remove(dockWorkspace.ToolPanes.First(p => p.ContentId == GetMefToolPaneContentId(padDescriptor)));
+				return;
+			}
+
 			AvalonPadContent p;
 			if (pads.TryGetValue(padDescriptor, out p))
 				p.Hide();
@@ -239,17 +254,21 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		{
 			AvalonPadContent p = pads[padDescriptor];
 			p.Hide();
-			DockablePane pane = p.Parent as DockablePane;
-			if (pane != null)
-				pane.Items.Remove(p);
+			if (p.Parent is ILayoutContainer parent)
+				parent.RemoveChild(p);
 			p.Dispose();
 		}
 		
 		public bool IsVisible(PadDescriptor padDescriptor)
 		{
+			if (IsMefToolPane(padDescriptor)) {
+				var pane = dockWorkspace.ToolPanes.FirstOrDefault(p => p.ContentId == GetMefToolPaneContentId(padDescriptor));
+				return pane != null && pane.IsVisible;
+			}
+
 			AvalonPadContent p;
 			if (pads.TryGetValue(padDescriptor, out p))
-				return p.State != DockableContentState.Hidden;
+				return p.IsVisible;
 			else
 				return false;
 		}
@@ -260,10 +279,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			workbenchWindows.Add(window);
 			window.ViewContents.Add(content);
 			window.ViewContents.AddRange(content.SecondaryViewContents);
-			window.Show(dockingManager);
-			if (switchToOpenedView) {
-				window.Activate();
-			}
+			dockWorkspace.AddDocument(window, switchToOpenedView);
 			window.Closed += window_Closed;
 			return window;
 		}
@@ -271,6 +287,11 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		void window_Closed(object sender, EventArgs e)
 		{
 			workbenchWindows.Remove((IWorkbenchWindow)sender);
+		}
+
+		internal void RemoveDocument(AvalonWorkbenchWindow window)
+		{
+			dockWorkspace.RemoveDocument(window);
 		}
 		
 		public void LoadConfiguration()
@@ -310,21 +331,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		void LoadLayout(string fileName, bool hideAllLostPads)
 		{
 			LoggingService.Info("Loading layout file: " + fileName + ", hideAllLostPads=" + hideAllLostPads);
-//			DockableContent[] oldContents = dockingManager.DockableContents;
-			dockingManager.RestoreLayout(fileName);
-//			DockableContent[] newContents = dockingManager.DockableContents;
-			// Restoring a AvalonDock layout will remove pads that are not
-			// stored in the layout file.
-			// We'll re-add those lost pads.
-//			foreach (DockableContent lostContent in oldContents.Except(newContents)) {
-//				AvalonPadContent padContent = lostContent as AvalonPadContent;
-//				LoggingService.Debug("Re-add lost pad: " + padContent);
-//				if (padContent != null && !hideAllLostPads) {
-//					padContent.ShowInDefaultPosition();
-//				} else {
-//					dockingManager.Hide(lostContent);
-//				}
-//			}
+			dockWorkspace.RestoreLayout(fileName);
 		}
 		
 		public void StoreConfiguration()
@@ -336,18 +343,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 					Directory.CreateDirectory(configPath);
 					string fileName = Path.Combine(configPath, current.FileName);
 					LoggingService.Info("Saving layout file: " + fileName);
-					// Save docking layout into memory stream first, then write the contents to file.
-					// This prevents corruption when there is an exception saving the layout.
-					var memoryStream = new MemoryStream();
-					dockingManager.SaveLayout(memoryStream);
-					memoryStream.Position = 0;
-					try {
-						using (FileStream stream = new FileStream(fileName, FileMode.Create, FileAccess.ReadWrite))
-							memoryStream.CopyTo(stream);
-					} catch (IOException ex) {
-						// ignore IO errors (maybe switching layout in two SharpDevelop instances at once?)
-						LoggingService.Warn(ex);
-					}
+					dockWorkspace.SaveLayout(fileName);
 				}
 			} catch (Exception e) {
 				MessageService.ShowException(e);
@@ -358,6 +354,71 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		{
 			StoreConfiguration();
 			LayoutConfiguration.CurrentLayoutName = layoutName;
+		}
+
+		void ConfigureDockingManagerForWorkspace()
+		{
+			dockingManager.LayoutItemContainerStyleSelector = new PaneStyleSelector {
+				ToolPaneStyle = CreateToolPaneStyle(),
+				TabPageStyle = CreateDocumentPaneStyle()
+			};
+
+			var toolPaneTemplate = new DataTemplate(typeof(ToolPaneModel));
+			var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
+			presenter.SetBinding(ContentPresenter.ContentProperty, new Binding(nameof(ToolPaneModel.Content)));
+			toolPaneTemplate.VisualTree = presenter;
+			dockingManager.Resources.Add(new DataTemplateKey(typeof(ToolPaneModel)), toolPaneTemplate);
+
+			var documentTemplate = new DataTemplate(typeof(AvalonWorkbenchWindow));
+			var documentPresenter = new FrameworkElementFactory(typeof(ContentPresenter));
+			documentPresenter.SetBinding(ContentPresenter.ContentProperty, new Binding(nameof(AvalonWorkbenchWindow.Content)));
+			documentTemplate.VisualTree = documentPresenter;
+			dockingManager.Resources.Add(new DataTemplateKey(typeof(AvalonWorkbenchWindow)), documentTemplate);
+		}
+
+		static Style CreateToolPaneStyle()
+		{
+			var style = new Style(typeof(LayoutAnchorableItem));
+			style.Setters.Add(new Setter(LayoutItem.TitleProperty, new Binding("Model.Title")));
+			style.Setters.Add(new Setter(LayoutItem.ContentIdProperty, new Binding("Model.ContentId")));
+			style.Setters.Add(new Setter(LayoutItem.IsSelectedProperty, new Binding("Model.IsSelected") { Mode = BindingMode.TwoWay }));
+			style.Setters.Add(new Setter(LayoutItem.IsActiveProperty, new Binding("Model.IsActive") { Mode = BindingMode.TwoWay }));
+			style.Setters.Add(new Setter(LayoutAnchorableItem.CanHideProperty, new Binding("Model.IsCloseable")));
+			style.Setters.Add(new Setter(LayoutAnchorableItem.HideCommandProperty, new Binding("Model.CloseCommand")));
+			style.Setters.Add(new Setter(LayoutItem.CanCloseProperty, new Binding("Model.IsCloseable")));
+			style.Setters.Add(new Setter(LayoutItem.CloseCommandProperty, new Binding("Model.CloseCommand")));
+			return style;
+		}
+
+		static Style CreateDocumentPaneStyle()
+		{
+			var style = new Style(typeof(LayoutItem));
+			style.Setters.Add(new Setter(LayoutItem.TitleProperty, new Binding("Model.Title")));
+			style.Setters.Add(new Setter(LayoutItem.ContentIdProperty, new Binding("Model.ContentId")));
+			style.Setters.Add(new Setter(LayoutItem.IsSelectedProperty, new Binding("Model.IsSelected") { Mode = BindingMode.TwoWay }));
+			style.Setters.Add(new Setter(LayoutItem.IsActiveProperty, new Binding("Model.IsActive") { Mode = BindingMode.TwoWay }));
+			style.Setters.Add(new Setter(LayoutItem.CloseCommandProperty, new Binding("Model.CloseCommand")));
+			style.Setters.Add(new Setter(LayoutItem.CanCloseProperty, new Binding("Model.IsCloseable") { Mode = BindingMode.TwoWay }));
+			return style;
+		}
+
+		bool IsMefToolPane(PadDescriptor padDescriptor)
+		{
+			var contentId = GetMefToolPaneContentId(padDescriptor);
+			return contentId != null && dockWorkspace.ContainsToolPane(contentId);
+		}
+
+		bool TryShowMefToolPane(PadDescriptor padDescriptor)
+		{
+			var contentId = GetMefToolPaneContentId(padDescriptor);
+			return contentId != null && dockWorkspace.ShowToolPane(contentId);
+		}
+
+		static string GetMefToolPaneContentId(PadDescriptor padDescriptor)
+		{
+			if (padDescriptor.Class == typeof(ICSharpCode.SharpDevelop.Services.SolutionExplorerPad).FullName)
+				return "SolutionExplorer";
+			return null;
 		}
 	}
 }
