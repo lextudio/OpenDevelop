@@ -30,8 +30,6 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 
-using WinForms = System.Windows.Forms;
-
 namespace ICSharpCode.Core.Presentation
 {
 	/// <summary>
@@ -281,73 +279,11 @@ namespace ICSharpCode.Core.Presentation
 		
 		public static string GetDisplayStringForShortcut(KeyGesture kg)
 		{
-			string old = kg.GetDisplayStringForCulture(Thread.CurrentThread.CurrentUICulture);
-			string text = KeyCodeConversion.KeyToUnicode(kg.Key.ToKeys());
-			if (text != null && !text.Any(ch => char.IsWhiteSpace(ch))) {
-				if ((kg.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt)
-					text = StringParser.Format("${res:Global.Shortcuts.Alt}+{0}", text);
-				if ((kg.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
-					text = StringParser.Format("${res:Global.Shortcuts.Shift}+{0}", text);
-				if ((kg.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
-					text = StringParser.Format("${res:Global.Shortcuts.Ctrl}+{0}", text);
-				if ((kg.Modifiers & ModifierKeys.Windows) == ModifierKeys.Windows)
-					text = StringParser.Format("${res:Global.Shortcuts.Win}+{0}", text);
-				return text;
-			}
-			return old;
-		}
-	}
-	
-	static class KeyCodeConversion
-	{
-		[DllImport("user32.dll")]
-		static extern int ToUnicodeEx(uint wVirtKey, uint wScanCode, byte []
-		                              lpKeyState, [Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pwszBuff,
-		                              int cchBuff, uint wFlags, IntPtr dwhkl);
-
-		[DllImport("user32.dll")]
-		static extern bool GetKeyboardState(byte[] pbKeyState);
-		
-		[DllImport("user32.dll")]
-		static extern uint MapVirtualKeyEx(uint uCode, uint uMapType, IntPtr dwhkl);
-
-		[DllImport("user32.dll")]
-		static extern IntPtr GetKeyboardLayout(uint idThread);
-
-		/// <remarks>Only works with Windows.Forms.Keys. The WPF Key enum seems to be horribly distorted!</remarks>
-		public static string KeyToUnicode(WinForms.Keys key)
-		{
-			StringBuilder sb = new StringBuilder(256);
-			IntPtr hkl = GetKeyboardLayout(0);
-			
-			uint scanCode = MapVirtualKeyEx((uint)key, 0, hkl);
-			if (scanCode < 1) return null;
-			
-			ClearKeyboardBuffer(hkl);
-			int len = ToUnicodeEx((uint)key, scanCode, new byte[256], sb, sb.Capacity, 0, hkl);
-			if (len > 0)
-				return sb.ToString(0, len).ToUpper();
-			
-			ClearKeyboardBuffer(hkl);
-			return null;
-		}
-		
-		static void ClearKeyboardBuffer(IntPtr hkl)
-		{
-			StringBuilder sb = new StringBuilder(10);
-			uint key = (uint)WinForms.Keys.Space;
-			int rc;
-			do {
-				rc = ToUnicodeEx(key, MapVirtualKeyEx(key, 0, hkl), new byte[256], sb, sb.Capacity, 0, hkl);
-			} while(rc < 0);
-		}
-		
-		public static WinForms.Keys ToKeys(this Key key)
-		{
-			WinForms.Keys result;
-			if (Enum.TryParse(key.ToString(), true, out result))
-				return result;
-			return WinForms.Keys.None;
+			// Note: the original implementation used Win32 P/Invoke (user32.dll ToUnicodeEx etc.)
+			// via a WinForms.Keys bridge to render localized key-cap glyphs. That is WinForms/Win32
+			// interop with no cross-platform meaning, so it has been stripped; we fall back to the
+			// standard WPF-provided display string for the culture.
+			return kg.GetDisplayStringForCulture(Thread.CurrentThread.CurrentUICulture);
 		}
 	}
 }

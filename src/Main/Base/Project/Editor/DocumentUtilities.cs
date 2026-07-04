@@ -22,7 +22,7 @@ using System.Windows.Documents;
 using ICSharpCode.AvalonEdit;
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Utils;
-using ICSharpCode.NRefactory.Editor;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Editor.AvalonEdit;
 
 namespace ICSharpCode.SharpDevelop.Editor
@@ -47,10 +47,10 @@ namespace ICSharpCode.SharpDevelop.Editor
 		/// <summary>
 		/// Creates a new read-only document from the specified text buffer.
 		/// </summary>
-		[Obsolete("Use the ReadOnlyDocument constructor instead")]
+		[Obsolete("Use the TextDocument constructor instead - AvalonEdit.Document.ReadOnlyDocument is not available in this build")]
 		public static IDocument LoadReadOnlyDocumentFromBuffer(ITextSource buffer)
 		{
-			return new ReadOnlyDocument(buffer);
+			return new TextDocument(buffer);
 		}
 		
 		public static void ClearSelection(this ITextEditor editor)

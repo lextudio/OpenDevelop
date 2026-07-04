@@ -20,7 +20,7 @@ using System;
 using System.ComponentModel;
 using System.IO;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Parser;
 using ICSharpCode.SharpDevelop.Gui;
 

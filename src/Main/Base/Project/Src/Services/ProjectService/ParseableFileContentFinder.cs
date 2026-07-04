@@ -20,9 +20,10 @@ using System;
 using System.IO;
 using System.Linq;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.Editor;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Parser;
+using ICSharpCode.AvalonEdit.Document;
 
 namespace ICSharpCode.SharpDevelop.Project
 {

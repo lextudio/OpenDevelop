@@ -23,7 +23,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;
@@ -53,7 +53,6 @@ namespace ICSharpCode.SharpDevelop.Designer
 			DesignerAssemblies.Add(typeof(object).Assembly);
 			DesignerAssemblies.Add(typeof(Uri).Assembly);
 			DesignerAssemblies.Add(typeof(System.Drawing.Point).Assembly);
-			DesignerAssemblies.Add(typeof(System.Windows.Forms.Design.AnchorEditor).Assembly);
 			RegisterVSDesignerWorkaround();
 			AppDomain.CurrentDomain.AssemblyResolve += AssemblyResolveEventHandler;
 			
@@ -405,20 +404,10 @@ namespace ICSharpCode.SharpDevelop.Designer
 				Type type = Type.GetType(name, false, ignoreCase);
 				
 				if (type == null) {
-					IProject p = CallingProject;
-					if (p != null) {
-						ICompilation compilation = SD.ParserService.GetCompilation(p);
-						ITypeDefinition definition = ReflectionHelper.ParseReflectionName(name)
-							.Resolve(compilation).GetDefinition();
-						if (definition != null) {
-							using (var resolver = new ProjectAssemblyResolver(compilation, this)) {
-								Assembly assembly = LoadAssembly(definition.ParentAssembly);
-								if (assembly != null) {
-									type = assembly.GetType(name, false, ignoreCase);
-								}
-							}
-						}
-					}
+					// MVP mock note: real type resolution against the project's compilation went through
+					// ReflectionHelper.ParseReflectionName(name).Resolve(compilation) - the mock
+					// ParseReflectionName always returns null, so this whole branch is a no-op here rather
+					// than dereferencing a null result. Falls through to the Assembly.Load-based lookup below.
 				}
 				
 				// type lookup for typename, assembly, xyz style lookups

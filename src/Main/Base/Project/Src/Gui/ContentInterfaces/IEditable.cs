@@ -16,9 +16,10 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using ICSharpCode.NRefactory.Editor;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Editor;
 using System;
+using ICSharpCode.AvalonEdit.Document;
 
 namespace ICSharpCode.SharpDevelop.Gui
 {

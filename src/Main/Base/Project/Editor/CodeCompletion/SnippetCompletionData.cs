@@ -17,9 +17,10 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using ICSharpCode.NRefactory;
-using ICSharpCode.NRefactory.Completion;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Editor.CodeCompletion;
+using ICSharpCode.AvalonEdit.Document;
+using ICSharpCode.AvalonEdit.CodeCompletion;
 
 namespace ICSharpCode.SharpDevelop.Editor.CodeCompletion
 {

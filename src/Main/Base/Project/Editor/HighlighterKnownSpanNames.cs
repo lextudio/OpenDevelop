@@ -20,7 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using ICSharpCode.AvalonEdit.Highlighting;
-using ICSharpCode.NRefactory.Editor;
+using ICSharpCode.TypeSystem;
 
 namespace ICSharpCode.SharpDevelop.Editor
 {

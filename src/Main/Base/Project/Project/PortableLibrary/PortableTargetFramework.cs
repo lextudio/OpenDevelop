@@ -23,8 +23,9 @@ using System.IO;
 using System.Linq;
 using System.Xml;
 using System.Xml.Linq;
-using ICSharpCode.NRefactory;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Parser;
+using ICSharpCode.TypeSystem.Utils;
 
 namespace ICSharpCode.SharpDevelop.Project.PortableLibrary
 {

@@ -20,7 +20,6 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Windows;
-using System.Windows.Forms;
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Gui;
@@ -33,12 +32,6 @@ namespace ICSharpCode.SharpDevelop.Workbench
 	[SDService("SD.Workbench")]
 	public interface IWorkbench
 	{
-		/// <summary>
-		/// The main window as IWin32Window.
-		/// </summary>
-		[Obsolete("Use SD.WinForms.MainWin32Window instead")]
-		IWin32Window MainWin32Window { get; }
-		
 		/// <summary>
 		/// The main window.
 		/// </summary>

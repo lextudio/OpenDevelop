@@ -73,6 +73,8 @@ namespace ICSharpCode.Core
 		{
 			if (addInDir == null)
 				throw new ArgumentNullException("addInDir");
+			if (!Directory.Exists(addInDir))
+				return;
 			addInFiles.AddRange(Directory.GetFiles(addInDir, "*.addin", SearchOption.AllDirectories));
 		}
 		

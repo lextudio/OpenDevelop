@@ -24,16 +24,14 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory;
-using ICSharpCode.NRefactory.Editor;
-using ICSharpCode.NRefactory.Semantics;
-using ICSharpCode.NRefactory.TypeSystem;
-using ICSharpCode.NRefactory.TypeSystem.Implementation;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Editor.Search;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Refactoring;
+using TextLocation = ICSharpCode.AvalonEdit.Document.TextLocation;
+using ICSharpCode.AvalonEdit.Document;
 
 namespace ICSharpCode.SharpDevelop.Parser
 {

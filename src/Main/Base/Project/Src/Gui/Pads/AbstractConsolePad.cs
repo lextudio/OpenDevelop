@@ -31,11 +31,11 @@ using ICSharpCode.AvalonEdit.Editing;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
-using ICSharpCode.NRefactory;
-using ICSharpCode.NRefactory.Editor;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Editor.AvalonEdit;
 using ICSharpCode.SharpDevelop.Workbench;
+using TextLocation = ICSharpCode.AvalonEdit.Document.TextLocation;
 
 namespace ICSharpCode.SharpDevelop.Gui
 {
@@ -148,7 +148,8 @@ namespace ICSharpCode.SharpDevelop.Gui
 		#endregion
 		
 		object IToolsHost.ToolsContent {
-			get { return TextEditorSideBar.Instance; }
+			// TextEditorSideBar (WinForms) is out of MVP scope - no tools content in this build.
+			get { return null; }
 		}
 		
 		protected virtual bool HandleInput(Key key) {

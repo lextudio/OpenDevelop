@@ -22,7 +22,6 @@ using System.Windows.Media;
 
 using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
-using ICSharpCode.SharpDevelop.WinForms;
 
 namespace ICSharpCode.SharpDevelop
 {

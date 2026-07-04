@@ -25,11 +25,11 @@ using System.Windows.Threading;
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.Semantics;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Parser;
 using ICSharpCode.SharpDevelop.Workbench;
+using TextLocation = ICSharpCode.AvalonEdit.Document.TextLocation;
 
 namespace ICSharpCode.SharpDevelop.Gui
 {
@@ -142,7 +142,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 			var fileName = new FileName(pos.FileName);
 			if (fileName != currentFileName)
 				LoadFile(fileName);
-			ctl.TextArea.Caret.Location = pos.Begin;
+			ctl.TextArea.Caret.Location = pos.Begin.ToAvalonEditLocation();
 			Rect r = ctl.TextArea.Caret.CalculateCaretRectangle();
 			if (!r.IsEmpty) {
 				ctl.ScrollToVerticalOffset(r.Top - 4);

@@ -22,8 +22,7 @@ using System.Security.Policy;
 using System.Text;
 using System.Windows.Controls;
 using ICSharpCode.Core.Presentation;
-using ICSharpCode.NRefactory.TypeSystem;
-using ICSharpCode.NRefactory.Utils;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.TreeView;
 using ICSharpCode.SharpDevelop.Dom;
 

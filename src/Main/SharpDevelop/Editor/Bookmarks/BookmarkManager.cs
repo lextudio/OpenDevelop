@@ -20,13 +20,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory;
-using ICSharpCode.NRefactory.Editor;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Debugging;
 using ICSharpCode.SharpDevelop.Dom;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Editor.Bookmarks;
+using TextLocation = ICSharpCode.AvalonEdit.Document.TextLocation;
 using ICSharpCode.SharpDevelop.Gui;
+using ICSharpCode.AvalonEdit.Document;
 
 namespace ICSharpCode.SharpDevelop.Editor.Bookmarks
 {

@@ -29,7 +29,7 @@ using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Linq;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Debugging;
 using ICSharpCode.SharpDevelop.Dom;
 using ICSharpCode.SharpDevelop.Gui;
@@ -637,7 +637,7 @@ namespace ICSharpCode.SharpDevelop.Project
 					continue;
 				if (standardNameSpace.Length > 0)
 					standardNameSpace.Append('.');
-				standardNameSpace.Append(NewFileDialog.GenerateValidClassOrNamespaceName(subdir, true));
+				standardNameSpace.Append(NamespaceNameGenerator.GenerateValidClassOrNamespaceName(subdir, true));
 			}
 			return standardNameSpace.ToString();
 		}

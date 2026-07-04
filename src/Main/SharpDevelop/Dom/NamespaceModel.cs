@@ -19,7 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Parser;
 using ICSharpCode.SharpDevelop.Project;
 namespace ICSharpCode.SharpDevelop.Dom

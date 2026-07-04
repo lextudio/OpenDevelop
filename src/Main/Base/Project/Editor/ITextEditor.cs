@@ -21,10 +21,11 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Windows.Input;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory;
-using ICSharpCode.NRefactory.Editor;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Editor.CodeCompletion;
 using ICSharpCode.SharpDevelop.Refactoring;
+using ICSharpCode.AvalonEdit.Document;
+using TextLocation = ICSharpCode.AvalonEdit.Document.TextLocation;
 
 namespace ICSharpCode.SharpDevelop.Editor
 {

@@ -22,7 +22,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-using ICSharpCode.NRefactory.Utils;
+using ICSharpCode.TypeSystem;
 
 namespace ICSharpCode.SharpDevelop.Workbench
 {

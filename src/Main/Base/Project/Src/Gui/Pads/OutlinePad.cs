@@ -61,11 +61,11 @@ namespace ICSharpCode.SharpDevelop.Gui
 			if (view != null) {
 				IOutlineContentHost content = view.GetService(typeof(IOutlineContentHost)) as IOutlineContentHost;
 				if (content != null) {
-					SD.WinForms.SetContent(contentControl, content.OutlineContent, view);
+					contentControl.Content = content.OutlineContent;
 					return;
 				}
 			}
-			SD.WinForms.SetContent(contentControl, StringParser.Parse("${res:MainWindow.Windows.OutlinePad.NoContentAvailable}"));
+			contentControl.Content = StringParser.Parse("${res:MainWindow.Windows.OutlinePad.NoContentAvailable}");
 		}
 	}
 }

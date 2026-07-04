@@ -22,10 +22,10 @@ using System.CodeDom.Compiler;
 using System.IO;
 
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.Editor;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Project;
 using Microsoft.CSharp;
+using ICSharpCode.AvalonEdit.Document;
 
 namespace ICSharpCode.SharpDevelop.Editor.Commands
 {

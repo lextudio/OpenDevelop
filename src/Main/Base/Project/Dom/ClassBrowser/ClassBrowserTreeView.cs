@@ -21,7 +21,7 @@ using System.Linq;
 using System.Collections.Generic;
 using System.Windows.Controls;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.TreeView;
 using ICSharpCode.SharpDevelop.Parser;
 using ICSharpCode.SharpDevelop.Project;

@@ -27,6 +27,7 @@ using ICSharpCode.Build.Tasks;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Parser;
 using ICSharpCode.SharpDevelop.Project;
+using ICSharpCode.AvalonEdit.Document;
 
 namespace ICSharpCode.SharpDevelop.Gui
 {

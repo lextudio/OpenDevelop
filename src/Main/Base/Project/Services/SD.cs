@@ -22,14 +22,12 @@ using System.Threading.Tasks;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Debugging;
 using ICSharpCode.SharpDevelop.Dom;
-using ICSharpCode.SharpDevelop.Dom.ClassBrowser;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Editor.Bookmarks;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Parser;
 using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Templates;
-using ICSharpCode.SharpDevelop.WinForms;
 using ICSharpCode.SharpDevelop.Workbench;
 
 namespace ICSharpCode.SharpDevelop
@@ -210,21 +208,15 @@ namespace ICSharpCode.SharpDevelop
 			get { return GetRequiredService<IShutdownService>(); }
 		}
 		
-		/// <inheritdoc see="ITreeNodeFactory"/>
-		public static ITreeNodeFactory TreeNodeFactory {
-			get { return GetRequiredService<ITreeNodeFactory>(); }
-		}
-		
 		/// <inheritdoc see="IClipboard"/>
 		public static IClipboard Clipboard {
 			get { return GetRequiredService<IClipboard>(); }
 		}
-		
-		/// <inheritdoc see="IWinFormsService"/>
-		public static IWinFormsService WinForms {
-			get { return GetRequiredService<IWinFormsService>(); }
-		}
-		
+
+		// Note: TreeNodeFactory (ITreeNodeFactory/SharpTreeView-based Class Browser) and WinForms
+		// (IWinFormsService) were removed - both are out of MVP scope per the WinForms/SharpTreeView
+		// exclusion policy; see ICSharpCode.SharpDevelop.csproj for the full rationale.
+
 		/// <inheritdoc see="IBuildService"/>
 		public static IBuildService BuildService {
 			get { return GetRequiredService<IBuildService>(); }
@@ -275,11 +267,9 @@ namespace ICSharpCode.SharpDevelop
 			get { return GetRequiredService<IOutputPad>(); }
 		}
 		
-		/// <inheritdoc see="IClassBrowser"/>
-		public static IClassBrowser ClassBrowser {
-			get { return GetRequiredService<IClassBrowser>(); }
-		}
-		
+		// Note: ClassBrowser (IClassBrowser, SharpTreeView-based) was removed - out of MVP scope,
+		// see ICSharpCode.SharpDevelop.csproj for the SharpTreeView exclusion rationale.
+
 		/// <inheritdoc see="IDebuggerService"/>
 		public static IDebuggerService Debugger {
 			get { return GetRequiredService<IDebuggerService>(); }

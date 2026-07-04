@@ -58,6 +58,10 @@ namespace ICSharpCode.Core
 				i = 2;
 				result.Append(outputSeparator);
 				isRelative = false;
+			} else if (!isWeb && Path.DirectorySeparatorChar == '/' && fileName.StartsWith("/", StringComparison.Ordinal)) {
+				i = 1;
+				result.Append(outputSeparator);
+				isRelative = false;
 			} else {
 				i = 0;
 				isRelative = !isWeb && (fileName.Length < 2 || fileName[1] != ':');

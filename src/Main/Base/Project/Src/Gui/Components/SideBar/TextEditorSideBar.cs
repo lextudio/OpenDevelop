@@ -25,6 +25,7 @@ using System.Xml;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Templates;
 using ICSharpCode.SharpDevelop.Widgets.SideBar;
+using ICSharpCode.AvalonEdit.Document;
 
 namespace ICSharpCode.SharpDevelop.Gui
 {

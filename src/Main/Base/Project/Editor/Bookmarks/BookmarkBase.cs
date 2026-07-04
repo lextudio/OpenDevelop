@@ -21,8 +21,9 @@ using System.ComponentModel;
 using System.Windows.Input;
 using System.Windows.Media;
 
-using ICSharpCode.NRefactory;
-using ICSharpCode.NRefactory.Editor;
+using ICSharpCode.TypeSystem;
+using ICSharpCode.AvalonEdit.Document;
+using TextLocation = ICSharpCode.AvalonEdit.Document.TextLocation;
 
 namespace ICSharpCode.SharpDevelop.Editor.Bookmarks
 {

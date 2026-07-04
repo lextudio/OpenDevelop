@@ -40,7 +40,8 @@ using System.Windows.Markup;
 using System.Diagnostics;
 using System.Windows.Threading;
 using System.Windows.Media.Animation;
-using System.Windows.Forms.Integration;
+// WindowsFormsHost not available on macOS
+//using System.Windows.Forms.Integration;
 using System.Runtime.InteropServices;
 using System.Windows.Interop;
 using System.Threading;
@@ -59,10 +60,8 @@ namespace AvalonDock
     [ContentPropertyAttribute("ReferencedPane")]
     public class FlyoutPaneWindow : AvalonDockWindow
     {
-        /// <summary>
-        /// Points to the internal windows forms control (if exist)
-        /// </summary>
-        WindowsFormsHost _winFormsHost = null;
+        // WindowsFormsHost not available on macOS
+        //WindowsFormsHost _winFormsHost = null;
 
         double _targetWidth;
         double _targetHeight;
@@ -116,12 +115,13 @@ namespace AvalonDock
             _refPane = new FlyoutDockablePane(content);
             _dockingManager = manager;
 
-            _winFormsHost = ReferencedPane.GetLogicalChildContained<WindowsFormsHost>();
+            // WindowsFormsHost not available on macOS
+            //_winFormsHost = ReferencedPane.GetLogicalChildContained<WindowsFormsHost>();
 
-            if (_winFormsHost != null)
-            {
-                AllowsTransparency = false;
-            }
+            //if (_winFormsHost != null)
+            //{
+            //    AllowsTransparency = false;
+            //}
 
             this.Loaded += new RoutedEventHandler(FlyoutPaneWindow_Loaded);
         }
@@ -479,7 +479,8 @@ namespace AvalonDock
             //options menu is open don't close the flyout window
             if (ReferencedPane.IsOptionsMenuOpen ||
                 IsMouseOverPane ||
-                (_winFormsHost != null && _winFormsHost.IsFocused && _refPane.Items.Count > 0 && ((ManagedContent)_refPane.Items[0]).IsActiveContent) ||
+                // WindowsFormsHost not available on macOS
+                //(_winFormsHost != null && _winFormsHost.IsFocused && _refPane.Items.Count > 0 && ((ManagedContent)_refPane.Items[0]).IsActiveContent) ||
                 IsActive ||
                 _refPane.IsKeyboardFocusWithin    ||
                 _refPane.ContainsActiveContent ||

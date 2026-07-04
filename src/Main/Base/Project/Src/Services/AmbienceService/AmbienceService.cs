@@ -19,7 +19,7 @@
 using System;
 using System.Collections.Generic;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Project;
 
 namespace ICSharpCode.SharpDevelop
@@ -83,7 +83,7 @@ namespace ICSharpCode.SharpDevelop
 			} catch (TreePathNotFoundException) {
 				ambience = null;
 			}
-			if (ambience == null && SD.WinForms.MainWin32Window != null) {
+			if (ambience == null && SD.Workbench.MainWindow != null) {
 				MessageService.ShowError("${res:ICSharpCode.SharpDevelop.Services.AmbienceService.AmbienceNotFoundError}");
 			}
 			return ambience ?? new DefaultAmbience();

@@ -18,8 +18,7 @@
 
 using System;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.Semantics;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Dom;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Editor.Commands;
@@ -34,7 +33,7 @@ namespace ICSharpCode.SharpDevelop.Internal.ConditionEvaluators
 		public bool IsValid(object parameter, Condition condition)
 		{
 			ResolveResult resolveResult = GetResolveResult(parameter);
-			if ((resolveResult != null) && !resolveResult.IsError) {
+			if ((resolveResult != null) && !resolveResult.IsError()) {
 				// Check if project-only entities should be valid
 				var defRegion = resolveResult.GetDefinitionRegion();
 				if ((condition.Properties["projectonly"] == "true") && (resolveResult.GetDefinitionRegion().IsEmpty))

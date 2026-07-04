@@ -230,31 +230,16 @@ namespace ICSharpCode.SharpDevelop.Project
 			return fileName;
 		}
 		
+		// Note: GetTypeLibNameFromFile/GetTypeLibNameFromGuid used Marshal.GetTypeLibName(ITypeLib) - Win32
+		// COM TypeLib interop with no cross-platform meaning, and not available on this SDK. Both always
+		// return null now (no COM type library name lookup in this MVP build).
 		static string GetTypeLibNameFromFile(string fileName)
 		{
-			if (fileName != null && fileName.Length > 0 && File.Exists(fileName)) {
-				ITypeLib typeLib;
-				if (LoadTypeLibEx(fileName, RegKind.None, out typeLib) == 0) {
-					try {
-						return Marshal.GetTypeLibName(typeLib);
-					} finally {
-						Marshal.ReleaseComObject(typeLib);
-					}
-				}
-			}
 			return null;
 		}
-		
+
 		static string GetTypeLibNameFromGuid(ref Guid guid, short versionMajor, short versionMinor, int lcid)
 		{
-			ITypeLib typeLib;
-			if (LoadRegTypeLib(ref guid, versionMajor, versionMinor, lcid, out typeLib) == 0) {
-				try {
-					return Marshal.GetTypeLibName(typeLib);
-				} finally {
-					Marshal.ReleaseComObject(typeLib);
-				}
-			}
 			return null;
 		}
 		

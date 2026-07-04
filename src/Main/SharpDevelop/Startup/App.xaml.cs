@@ -18,6 +18,7 @@
 
 using System;
 using System.Windows;
+using LeXtudio.DevFlow.Agent.WPF;
 
 namespace ICSharpCode.SharpDevelop.Startup
 {
@@ -29,6 +30,10 @@ namespace ICSharpCode.SharpDevelop.Startup
 		public App()
 		{
 			InitializeComponent();
+			if (Environment.GetEnvironmentVariable("DEVFLOW_DISABLE") != "1")
+			{
+				this.AddWpfDevFlowAgent();
+			}
 		}
 	}
 }

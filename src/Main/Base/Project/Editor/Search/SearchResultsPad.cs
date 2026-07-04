@@ -28,10 +28,10 @@ using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
-using ICSharpCode.NRefactory;
-using ICSharpCode.NRefactory.Editor;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Workbench;
+using TextLocation = ICSharpCode.AvalonEdit.Document.TextLocation;
 
 namespace ICSharpCode.SharpDevelop.Editor.Search
 {
@@ -99,7 +99,7 @@ namespace ICSharpCode.SharpDevelop.Editor.Search
 				activeSearchResult.OnDeactivate();
 				activeSearchResult = null;
 			}
-			SD.WinForms.SetContent(contentPlaceholder, null);
+			contentPlaceholder.Content = null;
 			// clear search pad toolbar items when ClearLastSearchesList() is called
 			toolBar.Items.Clear();
 			foreach (object toolBarItem in defaultToolbarItems) {
@@ -130,7 +130,7 @@ namespace ICSharpCode.SharpDevelop.Editor.Search
 				}
 				activeSearchResult = result;
 			}
-			SD.WinForms.SetContent(contentPlaceholder, result.GetControl());
+			contentPlaceholder.Content = result.GetControl();
 			
 			toolBar.Items.Clear();
 			foreach (object toolBarItem in defaultToolbarItems) {

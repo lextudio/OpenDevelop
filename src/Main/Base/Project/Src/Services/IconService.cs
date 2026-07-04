@@ -23,7 +23,6 @@ using System.Drawing.Imaging;
 using System.IO;
 
 using ICSharpCode.Core;
-using ICSharpCode.SharpDevelop.WinForms;
 
 namespace ICSharpCode.SharpDevelop
 {

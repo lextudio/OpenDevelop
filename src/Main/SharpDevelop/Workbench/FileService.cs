@@ -22,13 +22,13 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
-using System.Windows.Forms;
 
 using ICSharpCode.AvalonEdit.Utils;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.Editor;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Gui;
+using ICSharpCode.AvalonEdit.Document;
 
 namespace ICSharpCode.SharpDevelop.Workbench
 {
@@ -158,17 +158,17 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		#region BrowseForFolder
 		public string BrowseForFolder(string description, string selectedPath)
 		{
-			using (FolderBrowserDialog dialog = new FolderBrowserDialog()) {
-				dialog.Description = StringParser.Parse(description);
-				if (selectedPath != null && selectedPath.Length > 0 && Directory.Exists(selectedPath)) {
-					dialog.RootFolder = Environment.SpecialFolder.MyComputer;
-					dialog.SelectedPath = selectedPath;
-				}
-				if (dialog.ShowDialog() == DialogResult.OK) {
-					return dialog.SelectedPath;
-				} else {
-					return null;
-				}
+			// WinForms FolderBrowserDialog replaced with WPF's Microsoft.Win32.OpenFolderDialog.
+			var dialog = new Microsoft.Win32.OpenFolderDialog {
+				Title = StringParser.Parse(description)
+			};
+			if (selectedPath != null && selectedPath.Length > 0 && Directory.Exists(selectedPath)) {
+				dialog.InitialDirectory = selectedPath;
+			}
+			if (dialog.ShowDialog() == true) {
+				return dialog.FolderName;
+			} else {
+				return null;
 			}
 		}
 		#endregion
@@ -509,21 +509,19 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			if (codons.Count == 0)
 				return Enumerable.Empty<IViewContent>();
 			
+			// OpenWithDialog (WinForms "choose display binding" dialog) is out of MVP scope - always use
+			// the default binding rather than prompting the user to choose.
 			int defaultCodonIndex = codons.IndexOf(displayBindingService.GetDefaultCodonPerFileName(fileNamesList[0]));
 			if (defaultCodonIndex < 0)
 				defaultCodonIndex = 0;
-			using (OpenWithDialog dlg = new OpenWithDialog(codons, defaultCodonIndex, Path.GetExtension(fileNamesList[0]))) {
-				if (dlg.ShowDialog(SD.WinForms.MainWin32Window) == DialogResult.OK) {
-					var result = new List<IViewContent>();
-					foreach (var fileName in fileNamesList) {
-						IViewContent vc = OpenFileWith(fileName, dlg.SelectedBinding.Binding, switchToOpenedView);
-						if (vc != null)
-							result.Add(vc);
-					}
-					return result;
-				}
+			var chosenBinding = codons[defaultCodonIndex];
+			var result = new List<IViewContent>();
+			foreach (var fileName in fileNamesList) {
+				IViewContent vc = OpenFileWith(fileName, chosenBinding.Binding, switchToOpenedView);
+				if (vc != null)
+					result.Add(vc);
 			}
-			return Enumerable.Empty<IViewContent>();
+			return result;
 		}
 		#endregion
 		
@@ -541,10 +539,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				if (isDirectory) {
 					try {
 						if (Directory.Exists(fileName)) {
-							if (SD.FileService.DeleteToRecycleBin)
-								NativeMethods.DeleteToRecycleBin(fileName);
-							else
-								Directory.Delete(fileName, true);
+							Directory.Delete(fileName, true);
 						}
 					} catch (Exception e) {
 						MessageService.ShowHandledException(e, "Can't remove directory " + fileName);
@@ -552,10 +547,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				} else {
 					try {
 						if (File.Exists(fileName)) {
-							if (SD.FileService.DeleteToRecycleBin)
-								NativeMethods.DeleteToRecycleBin(fileName);
-							else
-								File.Delete(fileName);
+							File.Delete(fileName);
 						}
 					} catch (Exception e) {
 						MessageService.ShowHandledException(e, "Can't remove file " + fileName);

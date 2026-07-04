@@ -39,14 +39,13 @@ using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Parser;
 using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Startup;
-using ICSharpCode.SharpDevelop.WinForms;
 
 namespace ICSharpCode.SharpDevelop.Workbench
 {
 	/// <summary>
 	/// Workbench implementation using WPF and AvalonDock.
 	/// </summary>
-	sealed partial class WpfWorkbench : FullScreenEnabledWindow, IWorkbench, System.Windows.Forms.IWin32Window
+	sealed partial class WpfWorkbench : FullScreenEnabledWindow, IWorkbench
 	{
 		const string mainMenuPath    = "/SharpDevelop/Workbench/MainMenu";
 		const string viewContentPath = "/SharpDevelop/Workbench/Pads";
@@ -72,19 +71,9 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			}
 		}
 		
-		public System.Windows.Forms.IWin32Window MainWin32Window { get { return this; } }
 		public Window MainWindow { get { return this; } }
-		
-		IntPtr System.Windows.Forms.IWin32Window.Handle {
-			get {
-				var wnd = System.Windows.PresentationSource.FromVisual(this) as System.Windows.Interop.IWin32Window;
-				if (wnd != null)
-					return wnd.Handle;
-				else
-					return IntPtr.Zero;
-			}
-		}
-		
+
+
 		List<PadDescriptor> padDescriptorCollection = new List<PadDescriptor>();
 		SDStatusBar statusBar = new SDStatusBar();
 		ToolBar[] toolBars;
@@ -99,10 +88,11 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		protected override void OnSourceInitialized(EventArgs e)
 		{
 			base.OnSourceInitialized(e);
-			HwndSource.FromHwnd(this.MainWin32Window.Handle).AddHook(SingleInstanceHelper.WndProc);
+			// SingleInstanceHelper.WndProc (Win32 window-message hook) removed - single-instance
+			// forwarding is out of MVP scope.
 			// validate after PresentationSource is initialized
 			Rect bounds = new Rect(Left, Top, Width, Height);
-			bounds = FormLocationHelper.Validate(bounds.TransformToDevice(this).ToSystemDrawing()).ToWpf().TransformFromDevice(this);
+			bounds = FormLocationHelper.Validate(bounds);
 			SetBounds(bounds);
 			// Set WindowState after PresentationSource is initialized, because now bounds and location are properly set.
 			this.WindowState = lastNonMinimizedWindowState;
@@ -136,8 +126,8 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			DockPanel.SetDock(statusBar, Dock.Bottom);
 			dockPanel.Children.Insert(dockPanel.Children.Count - 2, statusBar);
 			
-			Core.WinForms.MenuService.ExecuteCommand = ExecuteCommand;
-			Core.WinForms.MenuService.CanExecuteCommand = CanExecuteCommand;
+			// Core.WinForms.MenuService.ExecuteCommand/CanExecuteCommand hooks removed - those routed
+			// commands through WinForms-hosted menu items, which no longer exist in this MVP build.
 			UpdateMenu();
 			
 			AddHandler(Hyperlink.RequestNavigateEvent, new RequestNavigateEventHandler(OnRequestNavigate));
@@ -266,7 +256,8 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		void UpdateFlowDirection()
 		{
 			UILanguage language = UILanguageService.GetLanguage(ResourceService.Language);
-			Core.WinForms.RightToLeftConverter.IsRightToLeft = language.IsRightToLeft;
+			// Core.WinForms.RightToLeftConverter.IsRightToLeft removed - that flag only affected WinForms
+			// control mirroring, which no longer exists in this MVP build.
 			this.FlowDirection = language.IsRightToLeft ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
 			App.Current.Resources[GlobalStyles.FlowDirectionKey] = this.FlowDirection;
 		}
@@ -592,9 +583,9 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		public void SetMemento(Properties memento)
 		{
-			Rect bounds = memento.Get("Bounds", new Rect(10, 10, 750, 550));
+			Rect bounds = memento.Get("Bounds", new Rect(10, 10, 1024, 768));
 			// bounds are validated after PresentationSource is initialized (see OnSourceInitialized)
-			lastNonMinimizedWindowState = memento.Get("WindowState", System.Windows.WindowState.Maximized);
+			lastNonMinimizedWindowState = memento.Get("WindowState", System.Windows.WindowState.Normal);
 			SetBounds(bounds);
 		}
 		

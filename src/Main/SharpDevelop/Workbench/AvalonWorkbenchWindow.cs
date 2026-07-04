@@ -30,7 +30,6 @@ using AvalonDock;
 using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
 using ICSharpCode.SharpDevelop.Gui;
-using ICSharpCode.SharpDevelop.WinForms;
 
 namespace ICSharpCode.SharpDevelop.Workbench
 {
@@ -143,16 +142,12 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			}
 		}
 		
-		SDWindowsFormsHost GetActiveWinFormsHost()
+		// SDWindowsFormsHost (WinForms<->WPF bridge) is out of MVP scope - no WinForms-hosted content exists.
+		IInputElement GetActiveWinFormsHost()
 		{
-			if (viewTabControl != null && viewTabControl.SelectedIndex >= 0 && viewTabControl.SelectedIndex < ViewContents.Count) {
-				TabItem page = (TabItem)viewTabControl.Items[viewTabControl.SelectedIndex];
-				return page.Content as SDWindowsFormsHost;
-			} else {
-				return this.Content as SDWindowsFormsHost;
-			}
+			return null;
 		}
-		
+
 		public event EventHandler ActiveViewContentChanged;
 		
 		IViewContent oldActiveViewContent;
@@ -199,7 +194,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				window.RegisterNewContent(item);
 				
 				if (Count == 1) {
-					SD.WinForms.SetContent(window, item.Control, item);
+					window.Content = item.Control;
 				} else {
 					if (Count == 2) {
 						window.CreateViewTabControl();
@@ -208,13 +203,13 @@ namespace ICSharpCode.SharpDevelop.Workbench
 						
 						TabItem oldPage = new TabItem();
 						oldPage.Header = StringParser.Parse(oldItem.TabPageText);
-						SD.WinForms.SetContent(oldPage, oldItem.Control, oldItem);
+						oldPage.Content = oldItem.Control;
 						window.viewTabControl.Items.Add(oldPage);
 					}
 					
 					TabItem newPage = new TabItem();
 					newPage.Header = StringParser.Parse(item.TabPageText);
-					SD.WinForms.SetContent(newPage, item.Control, item);
+					newPage.Content = item.Control;
 					
 					window.viewTabControl.Items.Insert(index, newPage);
 				}
@@ -230,7 +225,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				if (Count < 2) {
 					window.ClearContent();
 					if (Count == 1) {
-						SD.WinForms.SetContent(window, this[0].Control, this[0]);
+						window.Content = this[0].Control;
 					}
 				} else {
 					window.viewTabControl.Items.RemoveAt(index);
@@ -248,10 +243,10 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				
 				if (Count == 1) {
 					window.ClearContent();
-					SD.WinForms.SetContent(window, item.Control, item);
+					window.Content = item.Control;
 				} else {
 					TabItem page = (TabItem)window.viewTabControl.Items[index];
-					SD.WinForms.SetContent(page, item.Control, item);
+					page.Content = item.Control;
 					page.Header = StringParser.Parse(item.TabPageText);
 				}
 				window.UpdateActiveViewContent();
@@ -350,7 +345,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			if (viewTabControl == null) {
 				viewTabControl = new TabControlWithModifiedShortcuts(this);
 				viewTabControl.TabStripPlacement = Dock.Bottom;
-				SD.WinForms.SetContent(this, viewTabControl);
+				this.Content = viewTabControl;
 				
 				viewTabControl.SelectionChanged += delegate {
 					UpdateActiveViewContent();
@@ -363,7 +358,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			this.Content = null;
 			if (viewTabControl != null) {
 				foreach (TabItem page in viewTabControl.Items) {
-					SD.WinForms.SetContent(page, null);
+					page.Content = null;
 				}
 				viewTabControl = null;
 			}
@@ -481,7 +476,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 					case MessageBoxResult.Yes:
 						foreach (IViewContent vc in this.ViewContents) {
 							while (vc.IsDirty) {
-								ICSharpCode.SharpDevelop.Commands.SaveFile.Save(vc);
+								ICSharpCode.SharpDevelop.Commands.SaveFileHelper.Save(vc);
 								if (vc.IsDirty) {
 									if (MessageService.AskQuestion("${res:MainWindow.DiscardChangesMessage}")) {
 										break;

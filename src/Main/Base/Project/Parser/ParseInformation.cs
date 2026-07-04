@@ -20,9 +20,9 @@ using System;
 using System.Collections.Generic;
 using ICSharpCode.AvalonEdit.Folding;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory;
-using ICSharpCode.NRefactory.Editor;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
+using ICSharpCode.AvalonEdit.Document;
+using TextLocation = ICSharpCode.AvalonEdit.Document.TextLocation;
 
 namespace ICSharpCode.SharpDevelop.Parser
 {
@@ -150,7 +150,7 @@ namespace ICSharpCode.SharpDevelop.Parser
 				return 0;
 			if (region.EndLine > document.LineCount)
 				return document.TextLength;
-			return document.GetOffset(region.End);
+			return document.GetOffset(region.End.ToAvalonEditLocation());
 		}
 		#endregion
 	}

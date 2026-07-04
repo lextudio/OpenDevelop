@@ -32,7 +32,13 @@ namespace ICSharpCode.SharpDevelop.Logging
 		
 		public log4netLoggingService()
 		{
-			XmlConfigurator.ConfigureAndWatch(new FileInfo(AppDomain.CurrentDomain.SetupInformation.ConfigurationFile));
+			// AppDomainSetup.ConfigurationFile doesn't exist in modern .NET (that whole config-file-based
+			// AppDomain setup mechanism was removed) - use the entry assembly's own .config file path.
+			string configFile = System.Reflection.Assembly.GetEntryAssembly().Location + ".config";
+			if (File.Exists(configFile))
+				XmlConfigurator.ConfigureAndWatch(new FileInfo(configFile));
+			else
+				log4net.Config.BasicConfigurator.Configure();
 			log = LogManager.GetLogger(typeof(log4netLoggingService));
 		}
 		

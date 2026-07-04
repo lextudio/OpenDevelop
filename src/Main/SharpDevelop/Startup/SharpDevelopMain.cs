@@ -21,7 +21,6 @@ using System.Configuration;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
-using System.Windows.Forms;
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Gui;
@@ -74,22 +73,19 @@ namespace ICSharpCode.SharpDevelop.Startup
 						HandleMainException(ex);
 					} catch (Exception loadError) {
 						// HandleMainException can throw error when log4net is not found
-						MessageBox.Show(loadError.ToString(), "Critical error (Logging service defect?)");
+						System.Windows.MessageBox.Show(loadError.ToString(), "Critical error (Logging service defect?)");
 					}
 				}
 			} else {
 				Run();
 			}
 		}
-		
+
 		static void HandleMainException(Exception ex)
 		{
+			// ExceptionBox (WinForms crash dialog) is out of MVP scope - fall back to a plain WPF message box.
 			LoggingService.Fatal(ex);
-			try {
-				Application.Run(new ExceptionBox(ex, "Unhandled exception terminated SharpDevelop", true));
-			} catch {
-				MessageBox.Show(ex.ToString(), "Critical error (cannot use ExceptionBox)");
-			}
+			System.Windows.MessageBox.Show(ex.ToString(), "Unhandled exception terminated SharpDevelop");
 		}
 		
 		static void Run()
@@ -101,40 +97,30 @@ namespace ICSharpCode.SharpDevelop.Startup
 			// We want to show the SplashScreen while those libraries are loading, so
 			// don't call LoggingService.
 			
-			#if DEBUG
-			Control.CheckForIllegalCrossThreadCalls = true;
-			#endif
 			bool noLogo = false;
-			
-			Application.SetCompatibleTextRenderingDefault(false);
+
 			SplashScreenForm.SetCommandLineArgs(commandLineArgs);
-			
+
 			foreach (string parameter in SplashScreenForm.GetParameterList()) {
 				if ("nologo".Equals(parameter, StringComparison.OrdinalIgnoreCase))
 					noLogo = true;
 			}
-			
+
 			if (!CheckEnvironment())
 				return;
-			
+
 			if (!noLogo) {
 				SplashScreenForm.ShowSplashScreen();
 			}
-			try {
-				RunApplication();
-			} finally {
-				if (SplashScreenForm.SplashScreen != null) {
-					SplashScreenForm.SplashScreen.Dispose();
-				}
-			}
+			RunApplication();
 		}
-		
+
 		static bool CheckEnvironment()
 		{
 			// Safety check: our setup already checks that .NET 4 is installed, but we manually check the .NET version in case SharpDevelop is
 			// used on another machine than it was installed on (e.g. "SharpDevelop on USB stick")
 			if (!DotnetDetection.IsDotnet45Installed()) {
-				MessageBox.Show("This version of SharpDevelop requires .NET 4.5. You are using: " + Environment.Version, "SharpDevelop");
+				System.Windows.MessageBox.Show("This version of SharpDevelop requires .NET 4.5. You are using: " + Environment.Version, "SharpDevelop");
 				return false;
 			}
 			// Work around a WPF issue when %WINDIR% is set to an incorrect path
@@ -170,7 +156,7 @@ namespace ICSharpCode.SharpDevelop.Startup
 				#endif
 				
 				Assembly exe = typeof(SharpDevelopMain).Assembly;
-				startup.ApplicationRootPath = Path.Combine(Path.GetDirectoryName(exe.Location), "..");
+				startup.ApplicationRootPath = FindApplicationRootPath(Path.GetDirectoryName(exe.Location));
 				startup.AllowUserAddIns = true;
 				
 				string configDirectory = ConfigurationManager.AppSettings["settingsPath"];
@@ -210,12 +196,8 @@ namespace ICSharpCode.SharpDevelop.Startup
 					}
 				}
 				
-				host.BeforeRunWorkbench += delegate {
-					if (SplashScreenForm.SplashScreen != null) {
-						SplashScreenForm.SplashScreen.BeginInvoke(new MethodInvoker(SplashScreenForm.SplashScreen.Dispose));
-						SplashScreenForm.SplashScreen = null;
-					}
-				};
+				// SplashScreenForm.SplashScreen is always null in this MVP build (WinForms splash screen
+				// removed) - nothing to dispose here.
 				
 				WorkbenchSettings workbenchSettings = new WorkbenchSettings();
 				workbenchSettings.RunOnNewThread = false;
@@ -227,6 +209,18 @@ namespace ICSharpCode.SharpDevelop.Startup
 			} finally {
 				LoggingService.Info("Leaving RunApplication()");
 			}
+		}
+
+		static string FindApplicationRootPath(string startDirectory)
+		{
+			DirectoryInfo directory = new DirectoryInfo(startDirectory);
+			while (directory != null) {
+				string languageDefinition = Path.Combine(directory.FullName, "data", "resources", "languages", "LanguageDefinition.xml");
+				if (File.Exists(languageDefinition))
+					return directory.FullName;
+				directory = directory.Parent;
+			}
+			return Path.GetFullPath(Path.Combine(startDirectory, ".."));
 		}
 		
 		static bool LoadFilesInPreviousInstance(string[] fileList)

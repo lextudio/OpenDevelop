@@ -26,8 +26,7 @@ using System.Windows.Interop;
 using System.Windows.Threading;
 
 using ICSharpCode.Core;
-using ICSharpCode.Core.WinForms;
-using ICSharpCode.NRefactory.CSharp.Refactoring;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Parser;
 using ICSharpCode.SharpDevelop.Project;
@@ -48,7 +47,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		public void InitializeWorkbench()
 		{
 			app = new App();
-			System.Windows.Forms.Integration.WindowsFormsHost.EnableWindowsFormsInterop();
+			// WindowsFormsHost.EnableWindowsFormsInterop() removed - no WinForms interop in this MVP build.
 			ComponentDispatcher.ThreadIdle -= ComponentDispatcher_ThreadIdle; // ensure we don't register twice
 			ComponentDispatcher.ThreadIdle += ComponentDispatcher_ThreadIdle;
 			LayoutConfiguration.LoadLayoutConfiguration();
@@ -72,12 +71,9 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			// HACK: eagerly load output pad because pad services cannnot be instanciated from background threads
 			SD.Services.AddService(typeof(IOutputPad), CompilerMessageView.Instance);
 			
-			var dlgMsgService = SD.MessageService as IDialogMessageService;
-			if (dlgMsgService != null) {
-				dlgMsgService.DialogSynchronizeInvoke = SD.MainThread.SynchronizingObject;
-				dlgMsgService.DialogOwner = workbench.MainWin32Window;
-			}
-			
+			// IDialogMessageService (WinForms IDialogMessageService.DialogOwner wiring) removed -
+			// the WinForms message-service implementation is out of MVP scope.
+
 			var applicationStateInfoService = SD.GetService<ApplicationStateInfoService>();
 			if (applicationStateInfoService != null) {
 				applicationStateInfoService.RegisterStateGetter(activeContentState, delegate { return SD.Workbench.ActiveContent; });
@@ -104,7 +100,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		static void ComponentDispatcher_ThreadIdle(object sender, EventArgs e)
 		{
-			System.Windows.Forms.Application.RaiseIdle(e);
+			// Application.RaiseIdle (WinForms) removed - no WinForms message loop to pump in this MVP build.
 		}
 		
 		public void Run(IList<string> fileList)
@@ -185,10 +181,15 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		{
 			// Pre-load some stuff to make SharpDevelop more responsive once it is started.
 			LoggingService.Debug("Preload-Thread started.");
-			
-			// warm up MSBuild
-			string projectCode = @"
-<Project DefaultTargets=""Build"" xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"" ToolsVersion=""4.0"">
+
+			// Warm up MSBuild. This is a pure JIT/responsiveness optimization (not required for
+			// correctness), so failures here must never crash startup - wrapped in try/catch.
+			// ToolsVersion "4.0" (and the old 2003 xmlns) is rejected by modern MSBuild ("Available
+			// tools versions are \"Current\""), so the dummy project omits it and lets MSBuild pick
+			// its own default tools version.
+			try {
+				string projectCode = @"
+<Project DefaultTargets=""Build"">
   <PropertyGroup>
     <Configuration>Debug</Configuration>
     <Platform>AnyCPU</Platform>
@@ -198,33 +199,19 @@ namespace ICSharpCode.SharpDevelop.Workbench
   </ItemGroup>
   <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />
 </Project>";
-			var project = new Microsoft.Build.Evaluation.Project(
-				new System.Xml.XmlTextReader(new System.IO.StringReader(projectCode)), null, "4.0",
-				new Microsoft.Build.Evaluation.ProjectCollection());
-			
+				var project = new Microsoft.Build.Evaluation.Project(
+					new System.Xml.XmlTextReader(new System.IO.StringReader(projectCode)), null, null,
+					new Microsoft.Build.Evaluation.ProjectCollection());
+			} catch (Exception ex) {
+				LoggingService.Debug("Preload-Thread MSBuild warm-up failed (non-fatal): " + ex.Message);
+			}
+
 			// warm up the XSHD loader
 			ICSharpCode.AvalonEdit.Highlighting.HighlightingManager.Instance.GetDefinition("C#");
-			// warm up the C# parser
-			var parser = new ICSharpCode.NRefactory.CSharp.CSharpParser();
-			var cu = parser.Parse(new ICSharpCode.AvalonEdit.Document.TextDocument(@"using System;
-class Test {
-	int SomeMethod(string a);
-	void Main(string[] b) {
-	   SomeMethod(b[0 + 1]);
-	}
-}"), "test.cs");
-			// warm up the type system
-			var unresolvedFile = cu.ToTypeSystem();
-			var pc = new ICSharpCode.NRefactory.CSharp.CSharpProjectContent().AddOrUpdateFiles(unresolvedFile);
-			pc = pc.AddAssemblyReferences(ICSharpCode.NRefactory.TypeSystem.Implementation.MinimalCorlib.Instance);
-			var compilation = pc.CreateCompilation();
-			// warm up the resolver
-			var resolver = new ICSharpCode.NRefactory.CSharp.Resolver.CSharpAstResolver(compilation, cu, unresolvedFile);
-			foreach (var node in cu.Descendants) {
-				resolver.Resolve(node);
-			}
-			// load CSharp.Refactoring.dll
-			new RedundantUsingDirectiveIssue();
+			// Note: the real NRefactory.CSharp parser/resolver/RedundantUsingDirectiveIssue warm-up
+			// (JIT preloading for responsiveness) was removed - this is a pure performance optimization
+			// depending on the real NRefactory.CSharp parser, which is out of MVP scope
+			// (ICSharpCode.TypeSystem.Abstractions is type-system-only, no AST/parser).
 			// warm up AvalonEdit (must be done on main thread)
 			SD.MainThread.InvokeAsyncAndForget(
 				delegate {

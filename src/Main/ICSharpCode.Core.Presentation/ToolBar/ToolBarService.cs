@@ -133,7 +133,7 @@ namespace ICSharpCode.Core.Presentation
 			try {
 				treeNode = AddInTree.GetTreeNode(addInTreePath);
 			} catch (TreePathNotFoundException) {
-				return null;
+				return Array.Empty<ToolBar>();
 			}
 			List<ToolBar> toolBars = new List<ToolBar>();
 			foreach (AddInTreeNode childNode in treeNode.ChildNodes.Values) {

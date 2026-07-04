@@ -19,7 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using ICSharpCode.NRefactory.Utils;
+using ICSharpCode.TypeSystem;
 
 namespace ICSharpCode.SharpDevelop.Dom
 {

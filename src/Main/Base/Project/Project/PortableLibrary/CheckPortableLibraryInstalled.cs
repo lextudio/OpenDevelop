@@ -42,12 +42,8 @@ namespace ICSharpCode.SharpDevelop.Project.PortableLibrary
 		public override void Run()
 		{
 			if (!ProfileList.IsPortableLibraryInstalled()) {
-				using (ToolNotFoundDialog dlg = new ToolNotFoundDialog(CouldNotFindToolsDescription, DownloadUrl)) {
-					// our message is long, so make the window bigger than usual
-					dlg.Width += 70;
-					dlg.Height += 70;
-					dlg.ShowDialog();
-				}
+				// ToolNotFoundDialog (WinForms) has no WPF replacement yet - fall back to a simple message box.
+				MessageService.ShowMessage(CouldNotFindToolsDescription + Environment.NewLine + DownloadUrl);
 			}
 		}
 	}

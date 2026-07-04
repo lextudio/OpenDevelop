@@ -18,9 +18,9 @@
 
 using System;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Project;
+using ICSharpCode.AvalonEdit.Document;
 
 namespace ICSharpCode.SharpDevelop.Refactoring
 {
@@ -88,22 +88,22 @@ namespace ICSharpCode.SharpDevelop.Refactoring
 			throw new NotSupportedException("Feature not supported!");
 		}
 		
-		public virtual void AddField(ITypeDefinition declaringType, Accessibility accessibility, IType fieldType, string name)
+		public virtual void AddField(ITypeDefinition declaringType, ICSharpCode.TypeSystem.Accessibility accessibility, IType fieldType, string name)
 		{
 			throw new NotSupportedException("Feature not supported!");
 		}
 		
-		public virtual void AddFieldAtStart(ITypeDefinition typeDefinition, Accessibility accessibility, IType fieldType, string name)
+		public virtual void AddFieldAtStart(ITypeDefinition typeDefinition, ICSharpCode.TypeSystem.Accessibility accessibility, IType fieldType, string name)
 		{
 			throw new NotSupportedException("Feature not supported!");
 		}
 		
-		public virtual void AddMethodAtStart(ITypeDefinition declaringType, Accessibility accessibility, IType returnType, string name)
+		public virtual void AddMethodAtStart(ITypeDefinition declaringType, ICSharpCode.TypeSystem.Accessibility accessibility, IType returnType, string name)
 		{
 			throw new NotSupportedException("Feature not supported!");
 		}
 		
-		public virtual void ChangeAccessibility(IEntity entity, Accessibility newAccessiblity)
+		public virtual void ChangeAccessibility(IEntity entity, ICSharpCode.TypeSystem.Accessibility newAccessiblity)
 		{
 			throw new NotSupportedException("Feature not supported!");
 		}

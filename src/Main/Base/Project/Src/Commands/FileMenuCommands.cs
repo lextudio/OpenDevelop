@@ -17,7 +17,6 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Windows.Forms;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project.Dialogs;
@@ -36,14 +35,14 @@ namespace ICSharpCode.SharpDevelop.Project.Commands
 	{
 		public override void Run()
 		{
-			using (OpenFileDialog fdiag  = new OpenFileDialog()) {
-				fdiag.AddExtension    = true;
-				fdiag.Filter          = ProjectService.GetAllProjectsFilter(this, true);
-				fdiag.Multiselect     = false;
-				fdiag.CheckFileExists = true;
-				if (fdiag.ShowDialog(SD.WinForms.MainWin32Window) == DialogResult.OK) {
-					SD.ProjectService.OpenSolutionOrProject(FileName.Create(fdiag.FileName));
-				}
+			var fdiag = new Microsoft.Win32.OpenFileDialog {
+				AddExtension = true,
+				Filter = ProjectService.GetAllProjectsFilter(this, true),
+				Multiselect = false,
+				CheckFileExists = true
+			};
+			if (fdiag.ShowDialog() == true) {
+				SD.ProjectService.OpenSolutionOrProject(FileName.Create(fdiag.FileName));
 			}
 		}
 	}

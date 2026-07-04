@@ -25,6 +25,8 @@ using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Project.Converter;
 using StringPair = System.Collections.Generic.KeyValuePair<string, string>;
+using ICSharpCode.AvalonEdit.Document;
+using ICSharpCode.AvalonEdit.CodeCompletion;
 
 namespace ICSharpCode.SharpDevelop.Gui.OptionPanels
 {

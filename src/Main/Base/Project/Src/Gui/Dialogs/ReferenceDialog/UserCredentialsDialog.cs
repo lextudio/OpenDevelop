@@ -18,6 +18,7 @@
 
 using System;
 using ICSharpCode.Core;
+using ICSharpCode.AvalonEdit.Document;
 
 namespace ICSharpCode.SharpDevelop.Gui
 {

@@ -19,15 +19,12 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing.Design;
 using System.IO;
 using System.Linq;
-using System.Windows.Forms;
-using System.Windows.Forms.Design;
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Gui;
-using ICSharpCode.SharpDevelop.Widgets.DesignTimeSupport;
+using ICSharpCode.AvalonEdit.Document;
 
 namespace ICSharpCode.SharpDevelop.Project
 {
@@ -62,7 +59,6 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		[LocalizedProperty("${res:ICSharpCode.SharpDevelop.Internal.Project.ProjectFile.BuildAction}",
 		                   Description ="${res:ICSharpCode.SharpDevelop.Internal.Project.ProjectFile.BuildAction.Description}")]
-		[Editor(typeof(BuildActionEditor), typeof(UITypeEditor))]
 		public string BuildAction {
 			get {
 				return this.ItemType.ItemName;
@@ -82,24 +78,6 @@ namespace ICSharpCode.SharpDevelop.Project
 			set { base.FileName = value; }
 		}
 		
-		sealed class BuildActionEditor : DropDownEditor
-		{
-			protected override Control CreateDropDownControl(ITypeDescriptorContext context, IWindowsFormsEditorService editorService)
-			{
-				FileProjectItem item = context.Instance as FileProjectItem;
-				if (item != null && item.Project != null) {
-					return new DropDownEditorListBox(editorService, GetNames(item.Project.AvailableFileItemTypes));
-				} else {
-					return new DropDownEditorListBox(editorService, GetNames(ItemType.DefaultFileItems));
-				}
-			}
-			
-			static IEnumerable<string> GetNames(IEnumerable<ItemType> itemTypes)
-			{
-				return itemTypes.Select(it => it.ItemName);
-			}
-		}
-		
 		[LocalizedProperty("${res:ICSharpCode.SharpDevelop.Internal.Project.ProjectFile.CopyToOutputDirectory}",
 		                   Description = "${res:ICSharpCode.SharpDevelop.Internal.Project.ProjectFile.CopyToOutputDirectory.Description}")]
 		public CopyToOutputDirectory CopyToOutputDirectory {
@@ -113,7 +91,6 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		[LocalizedProperty("${res:ICSharpCode.SharpDevelop.Internal.Project.ProjectFile.CustomTool}",
 		                   Description ="${res:ICSharpCode.SharpDevelop.Internal.Project.ProjectFile.CustomTool.Description}")]
-		[Editor(typeof(CustomToolEditor), typeof(UITypeEditor))]
 		public string CustomTool {
 			get {
 				return GetEvaluatedMetadata("Generator");
@@ -121,19 +98,6 @@ namespace ICSharpCode.SharpDevelop.Project
 			set {
 				SetEvaluatedMetadata("Generator", value);
 				ReFilterProperties();
-			}
-		}
-		
-		sealed class CustomToolEditor : DropDownEditor
-		{
-			protected override Control CreateDropDownControl(ITypeDescriptorContext context, IWindowsFormsEditorService editorService)
-			{
-				FileProjectItem item = context.Instance as FileProjectItem;
-				if (item != null) {
-					return new DropDownEditorListBox(editorService, CustomToolsService.GetCompatibleCustomToolNames(item));
-				} else {
-					return new DropDownEditorListBox(editorService, CustomToolsService.GetCustomToolNames());
-				}
 			}
 		}
 

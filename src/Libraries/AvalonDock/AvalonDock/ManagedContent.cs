@@ -37,7 +37,6 @@ using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.ComponentModel;
 using System.Xml;
-using System.Windows.Forms.Integration;
 using System.Diagnostics;
 using System.Windows.Threading;
 using System.Threading;
@@ -603,7 +602,8 @@ namespace AvalonDock
             if (IsActiveContent && !IsKeyboardFocused)
             {
                 #region Focus on winforms content
-                if (this.Content is WindowsFormsHost)
+                // WindowsFormsHost not available on macOS
+                //if (this.Content is WindowsFormsHost)
                 {
                     //Use reflection in order to remove WinForms assembly reference
                     //WindowsFormsHost contentHost = this.Content as WindowsFormsHost;

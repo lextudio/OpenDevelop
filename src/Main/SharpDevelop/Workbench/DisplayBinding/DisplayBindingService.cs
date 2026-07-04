@@ -40,7 +40,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		public DisplayBindingService()
 		{
-			bindings = AddInTree.BuildItems<DisplayBindingDescriptor>(displayBindingPath, null, true);
+			bindings = AddInTree.BuildItems<DisplayBindingDescriptor>(displayBindingPath, null, false);
 			urlBasedBindings = AddInTree.BuildItems<DisplayBindingDescriptor>(urlBasedDisplayBindingPath, null, false);
 			displayBindingServiceProperties = SD.PropertyService.NestedProperties("DisplayBindingService");
 			foreach (var binding in displayBindingServiceProperties.GetList<ExternalProcessDisplayBinding>("ExternalProcesses")) {
@@ -149,7 +149,9 @@ namespace ICSharpCode.SharpDevelop.Workbench
 						return binding.Binding;
 				}
 			}
-			return new BrowserDisplayBinding.BrowserDisplayBinding();
+			// BrowserDisplayBinding (WinForms WebBrowser control) is out of MVP scope - no WPF
+			// browser-based display binding exists yet.
+			return null;
 		}
 		
 		public void SetDefaultCodon(string extension, DisplayBindingDescriptor bindingDescriptor)

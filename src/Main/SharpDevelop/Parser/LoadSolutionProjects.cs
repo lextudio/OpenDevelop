@@ -23,7 +23,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Windows.Threading;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;
 

@@ -29,12 +29,14 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
 using ICSharpCode.Core;
-using ICSharpCode.Core.WinForms;
+using ICSharpCode.Core.Implementation;
 using ICSharpCode.SharpDevelop.Commands;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Workbench;
+using ICSharpCode.SharpDevelop.Editor.Bookmarks;
 using ICSharpCode.SharpDevelop.Logging;
 using ICSharpCode.SharpDevelop.Parser;
+using ICSharpCode.SharpDevelop.Project;
 
 namespace ICSharpCode.SharpDevelop.Sda
 {
@@ -55,7 +57,7 @@ namespace ICSharpCode.SharpDevelop.Sda
 			// Initialize the most important services:
 			var container = new SharpDevelopServiceContainer();
 			container.AddFallbackProvider(ServiceSingleton.FallbackServiceProvider);
-			container.AddService(typeof(IMessageService), new SDMessageService());
+			container.AddService(typeof(IMessageService), new TextWriterMessageService(Console.Out));
 			container.AddService(typeof(ILoggingService), new log4netLoggingService());
 			ServiceSingleton.ServiceProvider = container;
 			
@@ -64,7 +66,8 @@ namespace ICSharpCode.SharpDevelop.Sda
 			CoreStartup startup = new CoreStartup(properties.ApplicationName);
 			if (properties.UseSharpDevelopErrorHandler) {
 				this.useSharpDevelopErrorHandler = true;
-				ExceptionBox.RegisterExceptionBoxForUnhandledExceptions();
+				// ExceptionBox (WinForms crash dialog) is out of MVP scope - unhandled exceptions
+				// terminating the workbench are rethrown as RunWorkbenchException below instead.
 			}
 			string configDirectory = properties.ConfigDirectory;
 			string dataDirectory = properties.DataDirectory;
@@ -116,9 +119,37 @@ namespace ICSharpCode.SharpDevelop.Sda
 			
 			LoggingService.Info("Loading AddInTree...");
 			startup.RunInitialization();
-			
-			((AssemblyParserService)SD.AssemblyParserService).DomPersistencePath = properties.DomPersistencePath;
-			
+			if (SD.Services.GetService(typeof(IParserService)) == null) {
+				SD.Services.AddService(typeof(IParserService), new ParserService());
+			}
+			if (SD.Services.GetService(typeof(IProjectService)) == null) {
+				SD.Services.AddService(typeof(IProjectService), new SDProjectService());
+			}
+			if (SD.Services.GetService(typeof(IDisplayBindingService)) == null) {
+				SD.Services.AddService(typeof(IDisplayBindingService), new DisplayBindingService());
+			}
+			if (SD.Services.GetService(typeof(IFileService)) == null) {
+				SD.Services.AddService(typeof(IFileService), new Workbench.FileService());
+			}
+			if (SD.Services.GetService(typeof(IBuildService)) == null) {
+				SD.Services.AddService(typeof(IBuildService), new BuildService());
+			}
+			if (SD.Services.GetService(typeof(IBookmarkManager)) == null) {
+				SD.Services.AddService(typeof(IBookmarkManager), new BookmarkManager());
+			}
+			if (SD.Services.GetService(typeof(IUIService)) == null) {
+				SD.Services.AddService(typeof(IUIService), new UIService());
+			}
+			if (SD.Services.GetService(typeof(IShutdownService)) == null) {
+				SD.Services.AddService(typeof(IShutdownService), new ShutdownService());
+			}
+			if (SD.Services.GetService(typeof(IClipboard)) == null) {
+				SD.Services.AddService(typeof(IClipboard), new ClipboardWrapper());
+			}
+
+			// AssemblyParserService (real Mono.Cecil-based assembly parsing) is out of MVP scope
+			// (MVP policy 1: no Mono.Cecil submodule) - DomPersistencePath is simply not configured here.
+
 			// Register events to marshal back
 			Project.ProjectService.BuildStarted   += delegate { this.callback.StartBuild(); };
 			Project.ProjectService.BuildFinished  += delegate { this.callback.EndBuild(); };
@@ -192,7 +223,7 @@ namespace ICSharpCode.SharpDevelop.Sda
 				const string errorText = "Unhandled exception terminated the workbench";
 				LoggingService.Fatal(exception);
 				if (useSharpDevelopErrorHandler) {
-					System.Windows.Forms.Application.Run(new ExceptionBox(exception, errorText, true));
+					System.Windows.MessageBox.Show(exception.ToString(), errorText);
 				} else {
 					throw new RunWorkbenchException(errorText, exception);
 				}

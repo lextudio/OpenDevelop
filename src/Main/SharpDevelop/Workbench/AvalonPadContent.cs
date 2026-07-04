@@ -92,7 +92,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				padInstance = descriptor.PadContent;
 				if (padInstance != null) {
 					bool isFocused = this.IsKeyboardFocused;
-					SD.WinForms.SetContent(this, padInstance.Control, padInstance);
+					this.Content = padInstance.Control;
 					placeholder = null;
 					
 					if (isFocused) {

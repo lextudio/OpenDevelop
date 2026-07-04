@@ -21,7 +21,6 @@ using System.ComponentModel.Design;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
-using System.Windows.Forms;
 
 using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;

@@ -21,7 +21,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-using ICSharpCode.NRefactory;
+using ICSharpCode.TypeSystem;
 
 namespace ICSharpCode.SharpDevelop.Refactoring
 {

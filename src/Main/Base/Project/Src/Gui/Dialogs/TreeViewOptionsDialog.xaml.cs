@@ -156,12 +156,8 @@ namespace ICSharpCode.SharpDevelop.Gui
 			
 			activeNode = node;
 			optionPanelTitle.Text = node.Title;
-			if (node.Content is System.Windows.Forms.Control) {
-				optionPanelScrollViewer.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
-			} else {
-				optionPanelScrollViewer.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
-			}
-			SD.WinForms.SetContent(optionPanelContent, node.Content);
+			optionPanelScrollViewer.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
+			optionPanelContent.Content = node.Content;
 			
 			node.IsExpanded = true;
 			node.IsActive = true;

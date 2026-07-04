@@ -61,7 +61,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				if (userContent != value) {
 					userContent = value;
 					if (errorList.Count == 0) {
-						SD.WinForms.SetContent(contentControl, userContent, this);
+						contentControl.Content = userContent;
 					}
 				}
 			}
@@ -102,7 +102,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				errorTextBox.Background = SystemColors.WindowBrush;
 			}
 			errorTextBox.Text = String.Concat(this.LoadErrorHeaderText, ex.ToString());
-			SD.WinForms.SetContent(contentControl, errorTextBox, this);
+			contentControl.Content = errorTextBox;
 		}
 		
 		Dictionary<OpenedFile, LoadError> errorList = new Dictionary<OpenedFile, LoadError>();
@@ -122,7 +122,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				if (errorList.Count > 0) {
 					errorList.Remove(file);
 					if (errorList.Count == 0) {
-						SD.WinForms.SetContent(contentControl, userContent, this);
+						contentControl.Content = userContent;
 					} else {
 						ShowError(errorList.Values.First().exception);
 					}

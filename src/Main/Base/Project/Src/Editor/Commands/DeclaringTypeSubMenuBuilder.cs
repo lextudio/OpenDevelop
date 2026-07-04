@@ -23,8 +23,7 @@ using System.Windows;
 using System.Windows.Controls;
 using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
-using ICSharpCode.NRefactory.Semantics;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Dom;
 
 namespace ICSharpCode.SharpDevelop.Editor.Commands
@@ -70,7 +69,7 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 			};
 			
 			var subItems = MenuService.CreateMenuItems(
-				null, new TypeResolveResult(declaringType), "/SharpDevelop/EntityContextMenu");
+				null, new TypeResolveResult(declaringType as ITypeDefinition), "/SharpDevelop/EntityContextMenu");
 			if (subItems != null) {
 				foreach (var item in subItems) {
 					declaringTypeItem.Items.Add(item);

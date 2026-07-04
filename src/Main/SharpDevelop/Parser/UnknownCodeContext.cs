@@ -19,8 +19,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using ICSharpCode.NRefactory;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
+using ICSharpCode.TypeSystem.Utils;
+using TextLocation = ICSharpCode.AvalonEdit.Document.TextLocation;
 
 namespace ICSharpCode.SharpDevelop.Parser
 {
@@ -32,19 +33,20 @@ namespace ICSharpCode.SharpDevelop.Parser
 		{
 			if (compilation == null)
 				throw new ArgumentNullException("compilation");
-			this.context = new SimpleTypeResolveContext(compilation.MainAssembly);
+			this.context = new SimpleTypeResolveContext(compilation);
 		}
 		
 		public UnknownCodeContext(ICompilation compilation, IUnresolvedFile file, TextLocation location)
 			: this(compilation)
 		{
-			var curDef = file.GetInnermostTypeDefinition (location);
+			var typeSystemLocation = new ICSharpCode.TypeSystem.TextLocation(location.Line, location.Column);
+			var curDef = file.GetInnermostTypeDefinition(typeSystemLocation);
 			if (curDef != null) {
 				var resolvedDef = curDef.Resolve (context).GetDefinition ();
 				if (resolvedDef != null) {
 					context = context.WithCurrentTypeDefinition (resolvedDef);
 					
-					var curMember = resolvedDef.Members.FirstOrDefault (m => m.Region.FileName == file.FileName && m.Region.Begin <= location && location < m.BodyRegion.End);
+					var curMember = resolvedDef.Members.FirstOrDefault(m => m.Region.FileName == file.FileName && m.Region.Begin <= typeSystemLocation && typeSystemLocation < m.BodyRegion.End);
 					if (curMember != null)
 						context = context.WithCurrentMember (curMember);
 				}
@@ -86,5 +88,4 @@ namespace ICSharpCode.SharpDevelop.Parser
 		}
 	}
 }
-
 

@@ -18,7 +18,7 @@
 
 using System;
 using System.ComponentModel;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 
 namespace ICSharpCode.SharpDevelop.Dom
 {

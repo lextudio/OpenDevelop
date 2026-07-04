@@ -23,7 +23,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using ICSharpCode.Core.Presentation;
-using ICSharpCode.NRefactory.Utils;
+using ICSharpCode.TypeSystem;
 
 namespace ICSharpCode.SharpDevelop.Project.Converter
 {

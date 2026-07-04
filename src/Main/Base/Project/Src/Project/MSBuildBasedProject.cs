@@ -29,13 +29,14 @@ using System.Xml;
 using System.Xml.Linq;
 
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Dom;
 using Microsoft.Build.Construction;
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Exceptions;
 using ICSharpCode.SharpDevelop.Project.PortableLibrary;
 using MSBuild = Microsoft.Build.Evaluation;
+using ICSharpCode.TypeSystem.Utils;
 
 namespace ICSharpCode.SharpDevelop.Project
 {

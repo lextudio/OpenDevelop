@@ -19,20 +19,19 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using ICSharpCode.NRefactory.TypeSystem;
-using ICSharpCode.NRefactory.TypeSystem.Implementation;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Project;
 
 namespace ICSharpCode.SharpDevelop.Parser
 {
-	sealed class SharpDevelopSolutionSnapshot : DefaultSolutionSnapshot, ISolutionSnapshotWithProjectMapping
+	sealed class SharpDevelopSolutionSnapshot : ISolutionSnapshotWithProjectMapping
 	{
 		Dictionary<IProject, IProjectContent> projectContentSnapshots = new Dictionary<IProject, IProjectContent>();
 		Lazy<ICompilation> dummyCompilation;
-		
+
 		public SharpDevelopSolutionSnapshot(IEnumerable<IProject> projects)
 		{
-			dummyCompilation = new Lazy<ICompilation>(() => new SimpleCompilation(this, MinimalCorlib.Instance));
+			dummyCompilation = new Lazy<ICompilation>(() => null);
 			if (projects != null) {
 				foreach (IProject project in projects) {
 					var pc = project.ProjectContent;
@@ -40,6 +39,21 @@ namespace ICSharpCode.SharpDevelop.Parser
 						projectContentSnapshots.Add(project, pc);
 				}
 			}
+		}
+
+		public IProjectContent GetProjectContent(string projectFileName)
+		{
+			foreach (var pair in projectContentSnapshots) {
+				if (pair.Value != null && string.Equals(pair.Value.ProjectFileName, projectFileName, StringComparison.OrdinalIgnoreCase))
+					return pair.Value;
+			}
+			return null;
+		}
+
+		public ICompilation GetCompilation(IProjectContent project)
+		{
+			var owner = GetProject(project);
+			return owner != null ? GetCompilation(owner) : dummyCompilation.Value;
 		}
 		
 		public IProjectContent GetProjectContent(IProject project)

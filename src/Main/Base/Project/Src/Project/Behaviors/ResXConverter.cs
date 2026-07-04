@@ -78,21 +78,11 @@ namespace ICSharpCode.SharpDevelop.Project
 		}
 		
 		/// <summary>
-		/// Update all .resx in a project.
+		/// Update all .resx in a project. MVP stub: ResXResourceReader/Writer (System.Windows.Forms-hosted
+		/// .resx XML I/O) are WinForms-only in this SDK and out of scope - .resx files are left as-is.
 		/// </summary>
 		public static void UpdateResourceFiles(CompilableProject project)
 		{
-			foreach (var resXFile in project.Items.OfType<FileProjectItem>().Where(f => ".resx".Equals(Path.GetExtension(f.FileName), StringComparison.OrdinalIgnoreCase))) {
-				using (var buffer = new MemoryStream()) {
-					using (var reader = new ResXResourceReader(resXFile.FileName) { UseResXDataNodes = true })
-					using (var writer = new ResXResourceWriter(buffer, t => ConvertTypeName(t, resXFile.FileName, project))) {
-						foreach (DictionaryEntry entry in reader) {
-							writer.AddResource(entry.Key.ToString(), entry.Value);
-						}
-					}
-					File.WriteAllBytes(resXFile.FileName, buffer.ToArray());
-				}
-			}
 		}
 	}
 }

@@ -18,10 +18,7 @@
 
 using System;
 using System.Windows;
-using System.Windows.Forms;
 using System.Windows.Interop;
-
-using ICSharpCode.SharpDevelop.WinForms;
 
 namespace ICSharpCode.SharpDevelop.Workbench
 {
@@ -57,12 +54,10 @@ namespace ICSharpCode.SharpDevelop.Workbench
 					oldWidth = this.Width;
 					oldHeight = this.Height;
 					
-					WindowInteropHelper interop = new WindowInteropHelper(this);
-					interop.EnsureHandle();
-					Screen screen = Screen.FromHandle(interop.Handle);
-					
-					Rect bounds = screen.Bounds.ToWpf().TransformFromDevice(this);
-					
+					// Screen.FromHandle (WinForms) removed - single-monitor fallback using the primary
+					// screen's full bounds (SystemParameters) rather than real multi-monitor detection.
+					Rect bounds = new Rect(0, 0, SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight);
+
 					this.ResizeMode = ResizeMode.NoResize;
 					this.Left = bounds.Left;
 					this.Top = bounds.Top;

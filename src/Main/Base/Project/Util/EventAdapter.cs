@@ -17,9 +17,9 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using ICSharpCode.NRefactory.Utils;
 
 namespace ICSharpCode.SharpDevelop.Util
 {
@@ -34,7 +34,40 @@ namespace ICSharpCode.SharpDevelop.Util
 		readonly Action<TSource, TSourceDelegate> add;
 		readonly Action<TSource, TSourceDelegate> remove;
 		readonly Func<THandlerDelegate, TSourceDelegate> adapt;
-		MultiDictionary<THandlerDelegate, TSourceDelegate> dict = new MultiDictionary<THandlerDelegate, TSourceDelegate>();
+		// Minimal stand-in for the NRefactory Utils.MultiDictionary<K,V> this originally used (not part of
+		// the ICSharpCode.TypeSystem.Abstractions replacement, which is type-system-only).
+		readonly Dictionary<THandlerDelegate, List<TSourceDelegate>> dict = new Dictionary<THandlerDelegate, List<TSourceDelegate>>();
+
+		IEnumerable<TSourceDelegate> ValuesFor(THandlerDelegate key)
+		{
+			List<TSourceDelegate> list;
+			return dict.TryGetValue(key, out list) ? list : Enumerable.Empty<TSourceDelegate>();
+		}
+
+		IEnumerable<TSourceDelegate> AllValues()
+		{
+			return dict.Values.SelectMany(v => v);
+		}
+
+		void AddToDict(THandlerDelegate key, TSourceDelegate value)
+		{
+			List<TSourceDelegate> list;
+			if (!dict.TryGetValue(key, out list)) {
+				list = new List<TSourceDelegate>();
+				dict[key] = list;
+			}
+			list.Add(value);
+		}
+
+		void RemoveFromDict(THandlerDelegate key, TSourceDelegate value)
+		{
+			List<TSourceDelegate> list;
+			if (dict.TryGetValue(key, out list)) {
+				list.Remove(value);
+				if (list.Count == 0)
+					dict.Remove(key);
+			}
+		}
 		
 		public EventAdapter(TSource source, Action<TSource, TSourceDelegate> add, Action<TSource, TSourceDelegate> remove,
 		                    Func<THandlerDelegate, TSourceDelegate> adapt)
@@ -59,22 +92,22 @@ namespace ICSharpCode.SharpDevelop.Util
 				return;
 			TSourceDelegate adapter = adapt(newHandler);
 			lock (dict) {
-				dict.Add(newHandler, adapter);
+				AddToDict(newHandler, adapter);
 				if (source != null)
 					add(source, adapter);
 			}
 		}
-		
+
 		public void Remove(THandlerDelegate oldHandler)
 		{
 			if (oldHandler == null)
 				return;
 			TSourceDelegate adapter;
 			lock (dict) {
-				adapter = dict[oldHandler].FirstOrDefault();
+				adapter = ValuesFor(oldHandler).FirstOrDefault();
 				if (adapter == null)
 					return;
-				dict.Remove(oldHandler, adapter);
+				RemoveFromDict(oldHandler, adapter);
 				if (source != null)
 					remove(source, adapter);
 			}
@@ -87,12 +120,12 @@ namespace ICSharpCode.SharpDevelop.Util
 					if (source == value)
 						return;
 					if (source != null) {
-						foreach (var adapter in dict.Values)
+						foreach (var adapter in AllValues())
 							remove(source, adapter);
 					}
 					source = value;
 					if (source != null) {
-						foreach (var adapter in dict.Values)
+						foreach (var adapter in AllValues())
 							add(source, adapter);
 					}
 				}

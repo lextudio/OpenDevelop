@@ -21,8 +21,8 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Linq;
-using ICSharpCode.NRefactory;
-using ICSharpCode.NRefactory.Utils;
+using ICSharpCode.TypeSystem;
+using ICSharpCode.TypeSystem.Utils;
 
 namespace ICSharpCode.SharpDevelop.Dom
 {

@@ -36,8 +36,8 @@ namespace ICSharpCode.SharpDevelop.Project
 		{
 			allSolutions = new NullSafeSimpleModelCollection<ISolution>();
 			allProjects = allSolutions.SelectMany(s => s.Projects);
-			projectBindings = SD.AddInTree.BuildItems<ProjectBindingDescriptor>("/SharpDevelop/Workbench/ProjectBindings", null);
-			targetFrameworks = SD.AddInTree.BuildItems<TargetFramework>("/SharpDevelop/TargetFrameworks", null);
+			projectBindings = SD.AddInTree.BuildItems<ProjectBindingDescriptor>("/SharpDevelop/Workbench/ProjectBindings", null, false);
+			targetFrameworks = SD.AddInTree.BuildItems<TargetFramework>("/SharpDevelop/TargetFrameworks", null, false);
 			
 			SD.GetFutureService<IWorkbench>().ContinueWith(t => t.Result.ActiveViewContentChanged += ActiveViewContentChanged).FireAndForget();
 			
@@ -172,7 +172,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		void OpenSolutionInternal(FileName fileName)
 		{
 			ISolution solution;
-			using (var progress = AsynchronousWaitDialog.ShowWaitDialog("Loading Solution...")) {
+			using (var progress = SD.StatusBar.CreateProgressMonitor()) {
 				
 				solution = LoadSolutionFile(fileName, progress);
 				
@@ -226,7 +226,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			// Use try-finally block to dispose the solution unless it is opened successfully. 
 			try {
 				if (SD.FileSystem.FileExists(solutionFile)) {
-					using (var progress = AsynchronousWaitDialog.ShowWaitDialog("Loading Solution...")) {
+					using (var progress = SD.StatusBar.CreateProgressMonitor()) {
 						solution = LoadSolutionFile(solutionFile, progress);
 					}
 					// If LoadSolutionFile() throws ProjectLoadException, let that be handled by the ObservedLoad.

@@ -21,7 +21,7 @@ using System.ComponentModel;
 using System.IO;
 
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Editor.Bookmarks;
 
 namespace ICSharpCode.SharpDevelop.Editor.Bookmarks

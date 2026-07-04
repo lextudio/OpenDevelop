@@ -17,6 +17,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Runtime.InteropServices;
 using Microsoft.Win32;
 
 namespace ICSharpCode.SharpDevelop
@@ -28,6 +29,8 @@ namespace ICSharpCode.SharpDevelop
 		/// </summary>
 		public static bool IsDotnet35SP1Installed()
 		{
+			if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+				return false;
 			using (var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\NET Framework Setup\NDP\v3.5")) {
 				return key != null && (key.GetValue("SP") as int?) >= 1;
 			}
@@ -46,6 +49,8 @@ namespace ICSharpCode.SharpDevelop
 		/// </summary>
 		public static bool IsDotnet45Installed()
 		{
+			if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+				return true;
 			return GetDotnet4Release() >= 378389;
 		}
 		
@@ -54,6 +59,8 @@ namespace ICSharpCode.SharpDevelop
 		/// </summary>
 		public static bool IsDotnet451Installed()
 		{
+			if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+				return true;
 			// According to: http://blogs.msdn.com/b/astebner/archive/2013/11/11/10466402.aspx
 			// 378675 is .NET 4.5.1 on Win8
 			// 378758 is .NET 4.5.1 on Win7
@@ -62,12 +69,16 @@ namespace ICSharpCode.SharpDevelop
 		
 		public static bool IsDotnet452Installed()
 		{
+			if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+				return true;
 			// 379893 is .NET 4.5.2 on my Win7 machine
 			return GetDotnet4Release() >= 379893;
 		}
 		
 		public static bool IsDotnet46Installed()
 		{
+			if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+				return true;
 			// 393273 is .NET 4.6 on my Win7 machine with VS 2015 RC installed
 			return GetDotnet4Release() >= 393273;
 		}
@@ -78,6 +89,8 @@ namespace ICSharpCode.SharpDevelop
 		/// </summary>
 		static int? GetDotnet4Release()
 		{
+			if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+				return int.MaxValue;
 			using (var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full")) {
 				if (key != null)
 					return key.GetValue("Release") as int?;
@@ -90,6 +103,8 @@ namespace ICSharpCode.SharpDevelop
 		/// </summary>
 		public static bool IsBuildTools2013Installed()
 		{
+			if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+				return false;
 			// HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\DevDiv\BuildTools\Servicing\12.0
 			using (var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\DevDiv\BuildTools\Servicing\12.0\MSBuild")) {
 				return key != null && key.GetValue("Install") as int? >= 1;
@@ -101,6 +116,8 @@ namespace ICSharpCode.SharpDevelop
 		/// </summary>
 		public static bool IsBuildTools2015Installed()
 		{
+			if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+				return false;
 			// HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\DevDiv\BuildTools\Servicing\14.0
 			using (var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\DevDiv\BuildTools\Servicing\14.0\MSBuild")) {
 				return key != null && key.GetValue("Install") as int? >= 1;

@@ -26,9 +26,10 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.Editor;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Parser;
+using ICSharpCode.AvalonEdit.Document;
 
 namespace ICSharpCode.SharpDevelop.Project
 {
@@ -511,19 +512,6 @@ namespace ICSharpCode.SharpDevelop.Project
 	}
 	#endregion
 	
-	#region ExecuteCustomToolCommand
-	public sealed class ExecuteCustomToolCommand : AbstractMenuCommand
-	{
-		public override void Run()
-		{
-			FileNode node = Owner as FileNode;
-			if (node != null) {
-				FileProjectItem item = node.ProjectItem as FileProjectItem;
-				if (item != null) {
-					CustomToolsService.RunCustomTool(item, true);
-				}
-			}
-		}
-	}
-	#endregion
+	// Note: ExecuteCustomToolCommand (WinForms ProjectBrowser FileNode "Run Custom Tool" context-menu
+	// command) was removed - it depends on the excluded ExtTreeView-based Solution Explorer FileNode type.
 }

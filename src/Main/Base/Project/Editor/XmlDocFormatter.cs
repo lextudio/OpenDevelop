@@ -18,8 +18,7 @@
 
 using System;
 using System.Windows.Documents;
-using ICSharpCode.NRefactory.TypeSystem;
-using ICSharpCode.NRefactory.Xml;
+using ICSharpCode.TypeSystem;
 
 namespace ICSharpCode.SharpDevelop.Editor
 {

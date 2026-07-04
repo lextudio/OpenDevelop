@@ -25,10 +25,11 @@ using System.Linq;
 using System.Windows.Threading;
 using System.Xml;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Dom;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Workbench;
+using ICSharpCode.TypeSystem.Utils;
 
 namespace ICSharpCode.SharpDevelop.Project
 {
@@ -523,42 +524,10 @@ namespace ICSharpCode.SharpDevelop.Project
 		}
 		#endregion
 		
-		[EditorAttribute(typeof(FormatterSettingsEditor), typeof(UITypeEditor))]
-		public object FormatterSettings
-		{
-			get {
-				// We don't need any return value etc.
-				return null;
-			}
-		}
-		
-		/// <summary>
-		/// Pseudo-editor showing a "..." for FormattingSettings option and opening the formatting editor for solution
-		/// </summary>
-		class FormatterSettingsEditor : UITypeEditor
-		{
-			public override UITypeEditorEditStyle GetEditStyle(ITypeDescriptorContext context)
-			{
-				return UITypeEditorEditStyle.Modal;
-			}
-			
-			public override object EditValue(ITypeDescriptorContext context, IServiceProvider provider, object value)
-			{
-				var treeNode = AddInTree.GetTreeNode("/SharpDevelop/Dialogs/SolutionFormattingOptionsDialog", false);
-				bool? result = ICSharpCode.SharpDevelop.Commands.OptionsCommand.ShowTreeOptions("SolutionFormattingOptionsDialog",
-					StringParser.Parse("${res:ICSharpCode.SharpDevelop.Project.SolutionFormattingOptions.Title}"),
-					treeNode);
-				if ((bool) result) {
-					// Formatting options have been changed, make solution dirty
-					var solution = context.Instance as Solution;
-					if (solution != null) {
-						solution.IsDirty = true;
-					}
-				}
-				return null;
-			}
-		}
-		
+		// Note: FormatterSettings (PropertyGrid UITypeEditor pseudo-editor for the solution formatting
+		// options dialog) was removed - System.Drawing.Design.UITypeEditor/PropertyGrid hosting is
+		// WinForms-only and out of MVP scope (PropertyPad is excluded entirely).
+
 		public override string ToString()
 		{
 			return "[Solution " + fileName + " with " + projects.Count + " projects]";

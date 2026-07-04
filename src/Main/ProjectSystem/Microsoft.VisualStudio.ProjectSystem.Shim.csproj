@@ -1,0 +1,33 @@
+<Project Sdk="ProGPU.Wpf.Sdk/11.0.0-dev">
+
+  <!--
+    Open-source, clean-room reimplementation of the CPS framework surface
+    (Microsoft.VisualStudio.ProjectSystem.*) that dotnet/project-system consumes.
+    Copied verbatim from UnoDevelop (same original SharpDevelop codebase, already
+    did this port for its Uno/WinUI target) - see
+    doc/technotes/solution-explorer.md and memory opensource-cps-shim.
+
+    LICENSING: this assembly is reconstructed ONLY from the MIT-licensed dotnet/project-system
+    sources and public Microsoft Learn API documentation. It must NOT be produced by decompiling,
+    disassembling, or redistributing the proprietary CPS SDK assemblies.
+
+    AssemblyName intentionally matches the CPS assembly so upstream `using
+    Microsoft.VisualStudio.ProjectSystem;` binds to this shim instead of the closed SDK.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net11.0-windows</TargetFramework>
+    <AssemblyName>Microsoft.VisualStudio.ProjectSystem</AssemblyName>
+    <RootNamespace>Microsoft.VisualStudio.ProjectSystem</RootNamespace>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- MIT — real MEF2 attribute types, so real VS MEF (Microsoft.VisualStudio.Composition)
+         can discover parts attributed with our Export/ImportingConstructor/ImportMany wrappers
+         via ordinary reflection subclass matching. -->
+    <PackageReference Include="System.Composition.AttributedModel" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>

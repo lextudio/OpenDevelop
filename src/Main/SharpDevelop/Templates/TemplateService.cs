@@ -22,7 +22,7 @@ using System.IO;
 using System.Linq;
 using System.Xml;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.Utils;
+using ICSharpCode.TypeSystem;
 
 namespace ICSharpCode.SharpDevelop.Templates
 {

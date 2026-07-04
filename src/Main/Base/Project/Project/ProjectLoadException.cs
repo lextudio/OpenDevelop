@@ -18,6 +18,7 @@
 
 using System;
 using System.Runtime.Serialization;
+using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Workbench;
 
@@ -105,9 +106,8 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		public override void ShowDialog()
 		{
-			using (var dlg = new ToolNotFoundDialog(this.Description, this.LinkTarget, this.Icon)) {
-				dlg.ShowDialog();
-			}
+			// ToolNotFoundDialog (WinForms) has no WPF replacement yet - fall back to a simple message box.
+			MessageService.ShowMessage(this.Description + Environment.NewLine + this.LinkTarget);
 		}
 	}
 }

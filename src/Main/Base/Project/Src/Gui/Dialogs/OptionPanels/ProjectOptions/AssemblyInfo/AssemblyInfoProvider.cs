@@ -21,10 +21,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using ICSharpCode.NRefactory;
-using ICSharpCode.NRefactory.CSharp;
+using ICSharpCode.TypeSystem;
 using Attribute = ICSharpCode.NRefactory.CSharp.Attribute;
 using CSharpParser = ICSharpCode.NRefactory.CSharp.CSharpParser;
+using ICSharpCode.AvalonEdit.Document;
+using ICSharpCode.AvalonEdit.CodeCompletion;
 
 namespace ICSharpCode.SharpDevelop.Gui.OptionPanels
 {

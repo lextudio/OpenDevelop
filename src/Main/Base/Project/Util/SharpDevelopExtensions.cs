@@ -30,12 +30,12 @@ using System.Xml;
 using System.Xml.Linq;
 using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
-using ICSharpCode.NRefactory;
-using ICSharpCode.NRefactory.Editor;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Dom;
 using ICSharpCode.SharpDevelop.Parser;
 using ICSharpCode.SharpDevelop.Project;
+using ICSharpCode.AvalonEdit.Document;
+using TextLocation = ICSharpCode.AvalonEdit.Document.TextLocation;
 
 namespace ICSharpCode.SharpDevelop
 {
@@ -245,7 +245,7 @@ namespace ICSharpCode.SharpDevelop
 		/// <returns>Iterator that enumerates the tree structure in preorder.</returns>
 		public static IEnumerable<T> Flatten<T>(this IEnumerable<T> input, Func<T, IEnumerable<T>> recursion)
 		{
-			return ICSharpCode.NRefactory.Utils.TreeTraversal.PreOrder(input, recursion);
+			return ICSharpCode.TypeSystem.Utils.TreeTraversal.PreOrder(input, recursion);
 		}
 		
 		

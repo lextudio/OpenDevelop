@@ -10,3 +10,6 @@
 [submodule "src/Libraries/WpfDesigner"]
 	path = src/Libraries/WpfDesigner
 	url = https://github.com/icsharpcode/WpfDesigner.git
+[submodule "externals/project-system"]
+	path = externals/project-system
+	url = https://github.com/dotnet/project-system.git

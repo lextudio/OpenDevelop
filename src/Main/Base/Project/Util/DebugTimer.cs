@@ -20,7 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.Utils;
+using ICSharpCode.TypeSystem;
 
 namespace ICSharpCode.SharpDevelop
 {

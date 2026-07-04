@@ -23,7 +23,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Windows.Forms;
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Gui;
@@ -151,24 +150,6 @@ namespace ICSharpCode.SharpDevelop
 		public static IViewContent JumpToFilePosition(string fileName, int line, int column)
 		{
 			return SD.FileService.JumpToFilePosition(FileName.Create(fileName), line, column);
-		}
-		
-		/// <summary>
-		/// Creates a FolderBrowserDialog that will initially select the
-		/// specified folder. If the folder does not exist then the default
-		/// behaviour of the FolderBrowserDialog is used where it selects the
-		/// desktop folder.
-		/// </summary>
-		[Obsolete("Use SD.FileService.BrowseForFolder() instead.")]
-		public static FolderBrowserDialog CreateFolderBrowserDialog(string description, string selectedPath = null)
-		{
-			FolderBrowserDialog dialog = new FolderBrowserDialog();
-			dialog.Description = StringParser.Parse(description);
-			if (selectedPath != null && selectedPath.Length > 0 && Directory.Exists(selectedPath)) {
-				dialog.RootFolder = Environment.SpecialFolder.MyComputer;
-				dialog.SelectedPath = selectedPath;
-			}
-			return dialog;
 		}
 		
 		#region Static event firing methods

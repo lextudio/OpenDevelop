@@ -28,7 +28,6 @@ using System.Windows.Media.Imaging;
 using AvalonDock;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Gui;
-using ICSharpCode.SharpDevelop.WinForms;
 
 namespace ICSharpCode.SharpDevelop.Workbench
 {
@@ -76,7 +75,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		void EnsureFloatingWindowsLocations()
 		{
 			foreach (var window in dockingManager.FloatingWindows) {
-				var newLocation = FormLocationHelper.Validate(new Rect(window.Left, window.Top, window.Width, window.Height).TransformToDevice(window).ToSystemDrawing()).ToWpf().TransformFromDevice(window);
+				var newLocation = FormLocationHelper.Validate(new Rect(window.Left, window.Top, window.Width, window.Height));
 				window.Left = newLocation.Left;
 				window.Top = newLocation.Top;
 			}

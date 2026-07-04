@@ -25,42 +25,22 @@ using System.Reflection;
 namespace ICSharpCode.SharpDevelop.Sda
 {
 	/// <summary>
-	/// This class can host an instance of SharpDevelop inside another
-	/// AppDomain.
+	/// This class hosts an instance of SharpDevelop.
 	/// </summary>
+	/// <remarks>
+	/// MVP note: originally this class could host SharpDevelop in a separate AppDomain
+	/// (AppDomain.CreateDomain/AppDomainSetup), with CallHelper/CallbackHelper marshaled across the
+	/// domain boundary via MarshalByRefObject. AppDomain.CreateDomain and AppDomainSetup's
+	/// ApplicationBase/ConfigurationFile/ApplicationName members do not exist in modern .NET (the
+	/// multi-AppDomain isolation model was removed, not just deprecated). Per the "strip, don't preserve
+	/// legacy Windows-only mechanisms" policy, this class now always runs in-process
+	/// (AppDomain.CurrentDomain) - there is exactly one process/domain in this MVP build, so
+	/// cross-domain isolation isn't needed. CallHelper/CallbackHelper still derive from
+	/// MarshalByRefObject (harmless in-process) but are now constructed and called directly rather than
+	/// through CreateInstanceAndUnwrap.
+	/// </remarks>
 	public sealed class SharpDevelopHost
 	{
-		#region CreateDomain
-		/// <summary>
-		/// Create an AppDomain capable of hosting SharpDevelop.
-		/// </summary>
-		public static AppDomain CreateDomain()
-		{
-			return AppDomain.CreateDomain("SharpDevelop.Sda", null, CreateDomainSetup());
-		}
-		
-		/// <summary>
-		/// Creates an AppDomainSetup specifying properties for an AppDomain capable of
-		/// hosting SharpDevelop.
-		/// </summary>
-		public static AppDomainSetup CreateDomainSetup()
-		{
-			AppDomainSetup s = new AppDomainSetup();
-			s.ApplicationBase = Path.GetDirectoryName(SdaAssembly.Location);
-			s.ConfigurationFile = SdaAssembly.Location + ".config";
-			s.ApplicationName = "SharpDevelop.Sda";
-			return s;
-		}
-		#endregion
-		
-		#region Static helpers
-		internal static Assembly SdaAssembly {
-			get {
-				return typeof(SharpDevelopHost).Assembly;
-			}
-		}
-		#endregion
-		
 		#region SDInitStatus enum
 		enum SDInitStatus
 		{
@@ -72,41 +52,31 @@ namespace ICSharpCode.SharpDevelop.Sda
 			AppDomainUnloaded
 		}
 		#endregion
-		
-		AppDomain appDomain;
+
 		CallHelper helper;
 		SDInitStatus initStatus;
-		
+
 		#region Constructors
 		/// <summary>
-		/// Create a new AppDomain to host SharpDevelop.
+		/// Create a SharpDevelopHost running in the current process.
 		/// </summary>
 		public SharpDevelopHost(StartupSettings startup)
 		{
 			if (startup == null) {
 				throw new ArgumentNullException("startup");
 			}
-			this.appDomain = CreateDomain();
-			helper = (CallHelper)appDomain.CreateInstanceAndUnwrap(SdaAssembly.FullName, typeof(CallHelper).FullName);
+			helper = new CallHelper();
 			helper.InitSharpDevelopCore(new CallbackHelper(this), startup);
 			initStatus = SDInitStatus.CoreInitialized;
 		}
-		
+
 		/// <summary>
-		/// Host SharpDevelop in the existing AppDomain.
+		/// Host SharpDevelop in the current process. The <paramref name="appDomain"/> parameter is
+		/// accepted for source compatibility but ignored - this MVP build always runs in-process.
 		/// </summary>
 		public SharpDevelopHost(AppDomain appDomain, StartupSettings startup)
+			: this(startup)
 		{
-			if (appDomain == null) {
-				throw new ArgumentNullException("appDomain");
-			}
-			if (startup == null) {
-				throw new ArgumentNullException("startup");
-			}
-			this.appDomain = appDomain;
-			helper = (CallHelper)appDomain.CreateInstanceAndUnwrap(SdaAssembly.FullName, typeof(CallHelper).FullName);
-			helper.InitSharpDevelopCore(new CallbackHelper(this), startup);
-			initStatus = SDInitStatus.CoreInitialized;
 		}
 		#endregion
 		
@@ -223,7 +193,7 @@ namespace ICSharpCode.SharpDevelop.Sda
 		}
 		
 		/// <summary>
-		/// Unload the SharpDevelop AppDomain. This will force SharpDevelop to close
+		/// Closes down SharpDevelop. This will force SharpDevelop to close
 		/// without saving open files or changed settings.
 		/// Call CloseWorkbench before UnloadDomain to prompt the user to save documents and settings.
 		/// </summary>
@@ -233,36 +203,29 @@ namespace ICSharpCode.SharpDevelop.Sda
 				if (initStatus == SDInitStatus.WorkbenchInitialized) {
 					helper.KillWorkbench();
 				}
-				AppDomain.Unload(appDomain);
+				// AppDomain.Unload(appDomain) removed - this MVP build always runs in-process
+				// (AppDomain.CurrentDomain), so there is no separate domain to unload.
 				initStatus = SDInitStatus.AppDomainUnloaded;
 			}
 		}
 		#endregion
-		
+
 		#region CreateInstanceInTargetDomain
 		/// <summary>
-		/// Gets the AppDomain used to host SharpDevelop.
-		/// </summary>
-		public AppDomain AppDomain {
-			get {
-				return appDomain;
-			}
-		}
-		
-		/// <summary>
-		/// Creates an instance of the specified type argument in the target AppDomain.
+		/// Creates an instance of the specified type argument. MVP note: always constructs in-process now
+		/// (no separate target AppDomain exists).
 		/// </summary>
 		/// <param name="arguments">Arguments to pass to the constructor of "T".</param>
 		/// <returns>The constructed object.</returns>
 		[SuppressMessage("Microsoft.Design", "CA1004:GenericMethodsShouldProvideTypeParameter")]
 		public T CreateInstanceInTargetDomain<T>(params object[] arguments) where T : MarshalByRefObject
 		{
-			Type type = typeof(T);
-			return (T)appDomain.CreateInstanceAndUnwrap(type.Assembly.FullName, type.FullName, arguments);
+			return (T)Activator.CreateInstance(typeof(T), arguments);
 		}
-		
+
 		/// <summary>
-		/// Creates an instance of the specified type in the target AppDomain.
+		/// Creates an instance of the specified type. MVP note: always constructs in-process now (no
+		/// separate target AppDomain exists).
 		/// </summary>
 		/// <param name="type">Type to create an instance of.</param>
 		/// <param name="arguments">Arguments to pass to the constructor of <paramref name="type"/>.</param>
@@ -274,7 +237,7 @@ namespace ICSharpCode.SharpDevelop.Sda
 				throw new ArgumentNullException("type");
 			if (typeof(MarshalByRefObject).IsAssignableFrom(type) == false)
 				throw new ArgumentException("type does not inherit from MarshalByRefObject", "type");
-			return appDomain.CreateInstanceAndUnwrap(type.Assembly.FullName, type.FullName, arguments);
+			return Activator.CreateInstance(type, arguments);
 		}
 		#endregion
 		
@@ -358,7 +321,7 @@ namespace ICSharpCode.SharpDevelop.Sda
 				}
 			}
 			
-			private void Invoke(System.Windows.Forms.MethodInvoker method)
+			private void Invoke(Action method)
 			{
 				host.invokeTarget.BeginInvoke(method, emptyObjectArray);
 			}

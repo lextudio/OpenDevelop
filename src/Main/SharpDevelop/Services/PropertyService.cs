@@ -21,7 +21,7 @@ using System.IO;
 using System.Threading;
 using System.Xml;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.Utils;
+using ICSharpCode.TypeSystem;
 
 namespace ICSharpCode.SharpDevelop
 {

@@ -18,7 +18,7 @@
 
 using System;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.Utils;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Project;
 
 namespace ICSharpCode.SharpDevelop.Project

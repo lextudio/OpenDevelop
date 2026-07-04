@@ -18,7 +18,6 @@
 
 using System;
 using System.IO;
-using System.Windows.Forms;
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Editor;
@@ -163,7 +162,7 @@ namespace ICSharpCode.SharpDevelop.Commands
 				case "SHARPDEVELOPBINPATH":
 					return Path.GetDirectoryName(typeof(SharpDevelopStringTagProvider).Assembly.Location);
 				case "STARTUPPATH":
-					return Application.StartupPath;
+					return AppContext.BaseDirectory;
 				default:
 					return null;
 			}

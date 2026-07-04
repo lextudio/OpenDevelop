@@ -21,11 +21,11 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Forms;
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Parser;
 using ICSharpCode.SharpDevelop.Workbench;
+using ICSharpCode.AvalonEdit.Document;
 
 namespace ICSharpCode.SharpDevelop.Gui
 {
@@ -35,19 +35,6 @@ namespace ICSharpCode.SharpDevelop.Gui
 	/// </summary>
 	public static class WorkbenchSingleton
 	{
-		/// <summary>
-		/// Gets the main form. Returns null in unit-testing mode.
-		/// </summary>
-		[Obsolete("Use SD.WinForms.MainWin32Window instead")]
-		public static IWin32Window MainWin32Window {
-			get {
-				if (Workbench != null) {
-					return Workbench.MainWin32Window;
-				}
-				return null;
-			}
-		}
-		
 		/// <summary>
 		/// Gets the main window. Returns null in unit-testing mode.
 		/// </summary>

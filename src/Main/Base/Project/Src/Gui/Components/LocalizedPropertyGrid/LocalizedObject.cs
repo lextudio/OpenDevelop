@@ -84,11 +84,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 		protected void ReFilterProperties()
 		{
 			globalizedProps = null;
-			if (SD.Workbench != null) {
-				SD.MainThread.InvokeAsyncAndForget(delegate {
-					PropertyPad.RefreshItem(this);
-				});
-			}
+			// PropertyPad (WinForms PropertyGrid hosting) is out of MVP scope - nothing to refresh in this build.
 		}
 		
 		protected virtual void FilterProperties(PropertyDescriptorCollection globalizedProps)

@@ -1,0 +1,199 @@
+<Project Sdk="ProGPU.Wpf.Sdk/11.0.0-dev">
+
+  <!--
+    Bridges dotnet/project-system (MIT, externals/project-system submodule) into OpenDevelop.
+    Depends on our clean-room CPS shim (Microsoft.VisualStudio.ProjectSystem.Shim).
+    Files are linked directly from externals/project-system - not copied.
+    Only link files whose transitive dependencies are already provided by the shim
+    or by permitted MIT NuGet packages. Copied verbatim from UnoDevelop (see
+    doc/technotes/solution-explorer.md) - the file list below is UI-framework-agnostic,
+    no Uno/WinUI types appear anywhere in this project.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net11.0-windows</TargetFramework>
+    <AssemblyName>Microsoft.VisualStudio.ProjectSystem.Managed</AssemblyName>
+    <RootNamespace>Microsoft.VisualStudio.ProjectSystem</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <ProjectSystemSourceRoot>$(MSBuildThisFileDirectory)..\..\..\externals\project-system</ProjectSystemSourceRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ProjectSystem\Microsoft.VisualStudio.ProjectSystem.Shim.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Lets SharpDevelop.csproj (AssemblyName=SharpDevelop) call the tree-provider bridge's
+         internal build methods directly, matching UnoDevelop's pattern (there, AssemblyName=UnoDevelop). -->
+    <InternalsVisibleTo Include="SharpDevelop" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- MIT — https://github.com/microsoft/vs-validation — provides Requires / Verify / Assumes -->
+    <PackageReference Include="Microsoft.VisualStudio.Validation" Version="17.8.8" />
+    <!-- System.Threading.Tasks.Dataflow ships in the shared framework - no PackageReference needed.
+         Dataflow/DataflowSupport.cs's IBroadcastBlock<T> wraps the in-box BroadcastBlock<T>. -->
+    <!-- [Export]/[Import]/[ImportMany] come from shim stubs (Microsoft.VisualStudio.Composition
+         namespace) subclassing the real System.Composition attributes below.
+         [ImportingConstructor] is aliased directly to the real (sealed) type in GlobalUsings.cs. -->
+    <!-- MIT — real MEF2 attributes (System.Composition) + real VS MEF composition engine
+         (Microsoft.VisualStudio.Composition - AttributedPartDiscovery/CompositionConfiguration/
+         ExportProvider). -->
+    <PackageReference Include="System.Composition.AttributedModel" Version="8.0.0" />
+    <!-- Pin patched MessagePack directly — Microsoft.VisualStudio.Composition depends on the
+         vulnerable 2.5.192 transitively, and there's no central-package-management override here. -->
+    <PackageReference Include="MessagePack" Version="2.5.302" />
+    <PackageReference Include="Microsoft.VisualStudio.Composition" Version="17.13.41" />
+  </ItemGroup>
+
+  <!--
+    Upstream MIT source files linked from externals/project-system.
+    Each file here must have zero unresolved CPS-SDK-only dependencies.
+  -->
+  <ItemGroup>
+    <!-- String comparers / comparisons — zero external deps -->
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/StringComparers.cs"
+             Link="Linked/StringComparers.cs" />
+
+    <!-- Well-known dependency-tree flags built from ProjectTreeFlags — only depends on shim -->
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/DependencyTreeFlags.cs"
+             Link="Linked/Tree/Dependencies/DependencyTreeFlags.cs" />
+
+    <!-- IProjectTreeProvider extensions — depends on shim + Requires (Validation) -->
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/ProjectTreeProviderExtensions.cs"
+             Link="Linked/ProjectTreeProviderExtensions.cs" />
+
+    <!-- Dependency model types -->
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/DiagnosticLevel.cs"
+             Link="Linked/Tree/Dependencies/DiagnosticLevel.cs" />
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/DependencyGroupType.cs"
+             Link="Linked/Tree/Dependencies/DependencyGroupType.cs" />
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/DependencyGroupTypes.cs"
+             Link="Linked/Tree/Dependencies/DependencyGroupTypes.cs" />
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/Legacy/IDependencyModel.cs"
+             Link="Linked/Tree/Dependencies/Legacy/IDependencyModel.cs" />
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/Legacy/IDependenciesChanges.cs"
+             Link="Linked/Tree/Dependencies/Legacy/IDependenciesChanges.cs" />
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/Legacy/IProjectDependenciesSubTreeProvider.cs"
+             Link="Linked/Tree/Dependencies/Legacy/IProjectDependenciesSubTreeProvider.cs" />
+
+    <!-- IDependency — zero external deps beyond shim types -->
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/Snapshot/IDependency.cs"
+             Link="Linked/Tree/Dependencies/Snapshot/IDependency.cs" />
+
+    <!-- IProjectImageProvider — zero external deps beyond shim + [ProjectSystemContract] stub -->
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Imaging/IProjectImageProvider.cs"
+             Link="Linked/Imaging/IProjectImageProvider.cs" />
+
+    <!-- AbstractSpecialFolderProjectTreePropertiesProvider — base for AppDesigner folder etc. -->
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/AbstractSpecialFolderProjectTreePropertiesProvider.cs"
+             Link="Linked/Tree/AbstractSpecialFolderProjectTreePropertiesProvider.cs" />
+
+    <!-- MetadataExtensions.cs skipped: GetProjectItemProperties needs IProjectRuleSnapshot (CPS SDK).
+         GetStringProperty / TryGetStringProperty are reimplemented in shim. -->
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/Subscriptions/ProjectItemMetadata.cs"
+             Link="Linked/Tree/Dependencies/Subscriptions/ProjectItemMetadata.cs" />
+
+    <!-- DependencyExtensions — needs ProjectItemMetadata + MetadataExtensions (above) -->
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/Snapshot/DependencyExtensions.cs"
+             Link="Linked/Tree/Dependencies/Snapshot/DependencyExtensions.cs" />
+
+    <!-- Dependency snapshot model — needs DependencyExtensions + ConfiguredProject stubs -->
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/Snapshot/Dependency.cs"
+             Link="Linked/Tree/Dependencies/Snapshot/Dependency.cs" />
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/Snapshot/DependenciesSnapshot.cs"
+             Link="Linked/Tree/Dependencies/Snapshot/DependenciesSnapshot.cs" />
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/Snapshot/DependenciesSnapshotSlice.cs"
+             Link="Linked/Tree/Dependencies/Snapshot/DependenciesSnapshotSlice.cs" />
+
+    <!-- Order — integer constants for MEF ordering; internal to project-system -->
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Order.cs"
+             Link="Linked/Order.cs" />
+
+    <!-- IProjectCapabilitiesService — zero-dep MIT interface -->
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/IProjectCapabilitiesService.cs"
+             Link="Linked/IProjectCapabilitiesService.cs" />
+
+    <!-- ProjectImageProviderAggregator — MEF composition type, depends on [Export] + IProjectImageProvider -->
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Imaging/ProjectImageProviderAggregator.cs"
+             Link="Linked/Imaging/ProjectImageProviderAggregator.cs" />
+
+    <!-- ProjectImageKey — well-known image key string constants, zero deps -->
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Imaging/ProjectImageKey.cs"
+             Link="Linked/Imaging/ProjectImageKey.cs" />
+
+    <!-- ProjectCapability — string constants built from ProjectCapabilities stub -->
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/ProjectCapability.cs"
+             Link="Linked/ProjectCapability.cs" />
+
+    <!-- Lightweight project change diff implementation used by dependency collections -->
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/ProjectChangeDiff.cs"
+             Link="Linked/ProjectChangeDiff.cs" />
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Utilities/ProjectChangeDiffExtensions.cs"
+             Link="Linked/Utilities/ProjectChangeDiffExtensions.cs" />
+
+    <!-- IProjectTreeOperations — interface over ProjectTreeProviderBase, zero CPS SDK deps -->
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/IProjectTreeOperations.cs"
+             Link="Linked/Tree/Dependencies/IProjectTreeOperations.cs" />
+
+    <!-- DependenciesTreeBuilder — builds the Dependencies node from a DependenciesSnapshot -->
+    <!-- Requires: Microsoft.VisualStudio.Composition NuGet + shim stubs for CPS SDK types -->
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/DependenciesTreeBuilder.cs"
+             Link="Linked/Tree/Dependencies/DependenciesTreeBuilder.cs" />
+
+    <!-- MSBuild dependency model core -->
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/Subscriptions/MSBuildDependencies/MSBuildDependency.cs"
+             Link="Linked/Tree/Dependencies/Subscriptions/MSBuildDependencies/MSBuildDependency.cs" />
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/Subscriptions/MSBuildDependencies/MSBuildDependencyFactoryBase.cs"
+             Link="Linked/Tree/Dependencies/Subscriptions/MSBuildDependencies/MSBuildDependencyFactoryBase.cs" />
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/Subscriptions/MSBuildDependencies/MSBuildDependencyCollection.cs"
+             Link="Linked/Tree/Dependencies/Subscriptions/MSBuildDependencies/MSBuildDependencyCollection.cs" />
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/Subscriptions/MSBuildDependencies/IMSBuildDependencyFactory.cs"
+             Link="Linked/Tree/Dependencies/Subscriptions/MSBuildDependencies/IMSBuildDependencyFactory.cs" />
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/Subscriptions/MSBuildDependencies/PackageDependencyFactory.cs"
+             Link="Linked/Tree/Dependencies/Subscriptions/MSBuildDependencies/PackageDependencyFactory.cs" />
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/Subscriptions/MSBuildDependencies/ProjectDependencyFactory.cs"
+             Link="Linked/Tree/Dependencies/Subscriptions/MSBuildDependencies/ProjectDependencyFactory.cs" />
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/Subscriptions/MSBuildDependencies/AssemblyDependencyFactory.cs"
+             Link="Linked/Tree/Dependencies/Subscriptions/MSBuildDependencies/AssemblyDependencyFactory.cs" />
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/Subscriptions/MSBuildDependencies/FrameworkDependencyFactory.cs"
+             Link="Linked/Tree/Dependencies/Subscriptions/MSBuildDependencies/FrameworkDependencyFactory.cs" />
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/Subscriptions/MSBuildDependencies/SdkDependencyFactory.cs"
+             Link="Linked/Tree/Dependencies/Subscriptions/MSBuildDependencies/SdkDependencyFactory.cs" />
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/Subscriptions/MSBuildDependencies/AnalyzerDependencyFactory.cs"
+             Link="Linked/Tree/Dependencies/Subscriptions/MSBuildDependencies/AnalyzerDependencyFactory.cs" />
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/Subscriptions/MSBuildDependencies/ComDependencyFactory.cs"
+             Link="Linked/Tree/Dependencies/Subscriptions/MSBuildDependencies/ComDependencyFactory.cs" />
+
+    <!-- Dependency subscription extension-point interfaces -->
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/Subscriptions/IDependencySubscriber.cs"
+             Link="Linked/Tree/Dependencies/Subscriptions/IDependencySubscriber.cs" />
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/Subscriptions/IDependencySliceSubscriber.cs"
+             Link="Linked/Tree/Dependencies/Subscriptions/IDependencySliceSubscriber.cs" />
+
+    <!-- AppDesignerFolderProjectTreePropertiesProvider skipped: needs IProjectTreeSettingsProvider + IProjectRuleSnapshot (CPS SDK) -->
+    <!-- ProjectRootImageProjectTreePropertiesProvider — [AppliesTo] + [Order] + IProjectCapabilitiesService -->
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/ProjectRootImageProjectTreePropertiesProvider.cs"
+             Link="Linked/Tree/ProjectRootImageProjectTreePropertiesProvider.cs" />
+
+    <!-- LegacyDependencySubscriber — bridges IProjectDependenciesSubTreeProvider C# events into
+         the dataflow-based IDependencySubscriber pipeline. -->
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/Legacy/LegacyDependencySubscriber.cs"
+             Link="Linked/Tree/Dependencies/Legacy/LegacyDependencySubscriber.cs" />
+
+    <!-- MSBuildDependencySubscriber — chains MSBuild dependency factories onto the
+         design-time-build dataflow surface reconstructed in Dataflow/ProjectSubscriptionContracts.cs
+         and ChainedProjectValueDataSourceBase<T> (ProjectDataSourceContracts.cs). -->
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/Subscriptions/MSBuildDependencySubscriber.cs"
+             Link="Linked/Tree/Dependencies/Subscriptions/MSBuildDependencySubscriber.cs" />
+
+    <!-- DependenciesSnapshotProvider — merges unconfigured + per-slice configured dependency
+         sources into one DependenciesSnapshot via the clean-room ProjectDataSources sync-link
+         framework (Dataflow/ProjectDataSources.cs) and active-configuration/threading
+         stubs (Dataflow/ActiveConfigurationServices.cs). -->
+    <Compile Include="$(ProjectSystemSourceRoot)/src/Microsoft.VisualStudio.ProjectSystem.Managed/ProjectSystem/Tree/Dependencies/Subscriptions/DependenciesSnapshotProvider.cs"
+             Link="Linked/Tree/Dependencies/Subscriptions/DependenciesSnapshotProvider.cs" />
+  </ItemGroup>
+
+</Project>

@@ -23,7 +23,6 @@ using System.Net.Mime;
 using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
-using ICSharpCode.Core.WinForms;
 
 namespace ICSharpCode.SharpDevelop.Logging
 {
@@ -32,8 +31,8 @@ namespace ICSharpCode.SharpDevelop.Logging
 		[Conditional("DEBUG")]
 		public static void Install()
 		{
-			Debug.Listeners.Clear();
-			Debug.Listeners.Add(new SDTraceListener());
+			Trace.Listeners.Clear();
+			Trace.Listeners.Add(new SDTraceListener());
 		}
 		
 		public SDTraceListener()
@@ -77,32 +76,26 @@ namespace ICSharpCode.SharpDevelop.Logging
 		
 		void ShowAssertionDialog(string message, string detailMessage, string stackTrace, ref bool debug)
 		{
+			// CustomDialog (WinForms multi-button dialog) is out of MVP scope - fall back to a plain WPF
+			// message box with Yes(=Debug)/No(=Ignore)/Cancel(=Ignore All) semantics.
 			message = message + Environment.NewLine + detailMessage + Environment.NewLine + stackTrace;
-			string[] buttonTexts = { "Show Stacktrace", "Debug", "Ignore", "Ignore All" };
-			CustomDialog inputBox = new CustomDialog("Assertion Failed", message.TakeStartEllipsis(750), -1, 2, buttonTexts);
 			try {
-				while (true) { // show the dialog repeatedly until an option other than 'Show Stacktrace' is selected
-					inputBox.ShowDialog();
-					int result = inputBox.Result;
-					switch (result) {
-						case 0:
-							ExceptionBox.ShowErrorBox(null, message);
-							break; // show the custom dialog again
-						case 1:
-							debug = true;
-							return;
-						case 2:
-							return;
-						case 3:
-							lock (ignoredStacks) {
-								ignoredStacks.Add(stackTrace);
-							}
-							return;
-					}
+				var result = System.Windows.MessageBox.Show(
+					message.TakeStartEllipsis(750) + Environment.NewLine + Environment.NewLine +
+					"Yes = Debug, No = Ignore, Cancel = Ignore All",
+					"Assertion Failed", MessageBoxButton.YesNoCancel);
+				switch (result) {
+					case MessageBoxResult.Yes:
+						debug = true;
+						break;
+					case MessageBoxResult.Cancel:
+						lock (ignoredStacks) {
+							ignoredStacks.Add(stackTrace);
+						}
+						break;
 				}
 			} finally {
 				dialogIsOpen.Reset();
-				inputBox.Dispose();
 			}
 		}
 	}
