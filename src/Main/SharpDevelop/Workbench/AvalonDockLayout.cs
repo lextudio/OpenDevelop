@@ -214,12 +214,18 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			if (pads.TryGetValue(padDescriptor, out pad)) {
 				pad.Show();
 			} else {
-				//LoggingService.Debug("Add pad " + padDescriptor.Class + " at " + padDescriptor.DefaultPosition);
-				
 				pad = new AvalonPadContent(this, padDescriptor);
 				pads.Add(padDescriptor, pad);
 				padsByClass.Add(padDescriptor.Class, pad);
 				pad.ShowInDefaultPosition();
+				if (pad.Parent is LayoutAnchorablePane pane) {
+					if ((padDescriptor.DefaultPosition & DefaultPadPositions.Left) != 0)
+						pane.DockWidth = new GridLength(250);
+					else if ((padDescriptor.DefaultPosition & DefaultPadPositions.Right) != 0)
+						pane.DockWidth = new GridLength(280);
+					else if ((padDescriptor.DefaultPosition & DefaultPadPositions.Bottom) != 0)
+						pane.DockHeight = new GridLength(188);
+				}
 			}
 		}
 		
@@ -331,7 +337,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		void LoadLayout(string fileName, bool hideAllLostPads)
 		{
 			LoggingService.Info("Loading layout file: " + fileName + ", hideAllLostPads=" + hideAllLostPads);
-			// TODO: disable saved layout loading temporarily until we can fix the AvalonDock layout serialization issues
+			// TODO: re-enable after migrating legacy pads to MEF ToolPaneModel (layout serializer only handles MEF panes)
 			// dockWorkspace.RestoreLayout(fileName);
 		}
 		

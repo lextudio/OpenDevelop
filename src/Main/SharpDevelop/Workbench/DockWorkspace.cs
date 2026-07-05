@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Windows;
 using System.Windows.Data;
 
 using AvalonDock;
@@ -146,6 +147,8 @@ internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrateg
     {
         anchorableShown.IsActive = true;
         anchorableShown.IsSelected = true;
+        if (anchorableShown.ContentId == "SolutionExplorer" && anchorableShown.Parent is LayoutAnchorablePane pane)
+            pane.DockWidth = new GridLength(280);
     }
 
     public bool BeforeInsertDocument(LayoutRoot layout, LayoutDocument anchorableToShow, ILayoutContainer destinationContainer)

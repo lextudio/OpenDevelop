@@ -25,7 +25,7 @@
 			<ConditionEvaluator name="ProjectActive" class="ICSharpCode.SharpDevelop.ProjectActiveConditionEvaluator"/>
 			<ConditionEvaluator name="TextContent" class="ICSharpCode.SharpDevelop.Editor.TextContentConditionEvaluator"/>
 			<ConditionEvaluator name="BrowserLocation" class="ICSharpCode.SharpDevelop.BrowserDisplayBinding.BrowserLocationConditionEvaluator"/>
-			<ConditionEvaluator name="RefactoringProviderSupports" class="ICSharpCode.SharpDevelop.Refactoring.RefactoringProviderSupportsConditionEvaluator"/>
+			<!-- MVP: removed ConditionEvaluator name="RefactoringProviderSupports" class="ICSharpCode.SharpDevelop.Refactoring.RefactoringProviderSupportsConditionEvaluator"/ -->
 			<ConditionEvaluator name="CanNavigateBack" class="ICSharpCode.SharpDevelop.CanNavigateBackConditionEvaluator"/>
 			<ConditionEvaluator name="CanNavigateForward" class="ICSharpCode.SharpDevelop.CanNavigateForwardConditionEvaluator"/>
 			<ConditionEvaluator name="CompareProjectProperty" class="ICSharpCode.SharpDevelop.CompareProjectPropertyConditionEvaluator"/>
@@ -34,7 +34,7 @@
 			<ConditionEvaluator name="ViewInBrowser" class="ICSharpCode.SharpDevelop.ViewInBrowserConditionEvaluator"/>
 			<ConditionEvaluator name="ProjectBehaviorSupported" class="ICSharpCode.SharpDevelop.Project.ProjectBehaviorSupportedConditionEvaluator"/>
 			<ConditionEvaluator name="SymbolTypeAtCaret" class="ICSharpCode.SharpDevelop.Internal.ConditionEvaluators.SymbolTypeAtCaretConditionEvaluator"/>
-			<ConditionEvaluator name="IsAssemblyUnpinned" class="ICSharpCode.SharpDevelop.Dom.ClassBrowser.IsAssemblyUnpinnedConditionEvaluator"/>
+			<!-- MVP: removed ConditionEvaluator name="IsAssemblyUnpinned" class="ICSharpCode.SharpDevelop.Dom.ClassBrowser.IsAssemblyUnpinnedConditionEvaluator"/ -->
 			
 			<Doozer name="CustomTool" class="ICSharpCode.SharpDevelop.Project.CustomToolDoozer"/>
 			<Doozer name="CustomProperty" class="ICSharpCode.SharpDevelop.Project.CustomPropertyDoozer"/>
@@ -70,8 +70,8 @@
 		         class="ICSharpCode.SharpDevelop.Workbench.ShutdownService"/>
 		<Service id="ICSharpCode.SharpDevelop.Workbench.IDisplayBindingService"
 		         class="ICSharpCode.SharpDevelop.Workbench.DisplayBindingService"/>
-		<Service id="ICSharpCode.SharpDevelop.Dom.ITreeNodeFactory"
-		         class="ICSharpCode.SharpDevelop.Dom.TreeNodeFactoryService"/>
+		<!-- MVP: removed Service id="ICSharpCode.SharpDevelop.Dom.ITreeNodeFactory"
+		         class="ICSharpCode.SharpDevelop.Dom.TreeNodeFactoryService"/ -->
 		<Service id="ICSharpCode.SharpDevelop.Dom.IModelFactory"
 		         class="ICSharpCode.SharpDevelop.Dom.ModelFactory"/>
 		<Service id="ICSharpCode.SharpDevelop.IClipboard"
@@ -92,14 +92,14 @@
 		         class="ICSharpCode.SharpDevelop.Editor.Bookmarks.BookmarkManager"/>
 		<Service id="ICSharpCode.SharpDevelop.IUIService"
 		         class="ICSharpCode.SharpDevelop.UIService"/>
-		<Service id="ICSharpCode.SharpDevelop.Dom.ClassBrowser.IClassBrowser"
+		<!-- MVP: removed Service id="ICSharpCode.SharpDevelop.Dom.ClassBrowser.IClassBrowser"
 		         class="ICSharpCode.SharpDevelop.Dom.ClassBrowser.ClassBrowserServiceImpl"/>
 		<Service id="ICSharpCode.SharpDevelop.WinForms.IWinFormsService"
 		         class="ICSharpCode.SharpDevelop.WinForms.WinFormsService"/>
 		<Service id="ICSharpCode.SharpDevelop.WinForms.IWinFormsMenuService"
 		         class="ICSharpCode.SharpDevelop.WinForms.WinFormsMenuService"/>
 		<Service id="ICSharpCode.SharpDevelop.WinForms.IWinFormsToolbarService"
-		         class="ICSharpCode.SharpDevelop.WinForms.WinFormsToolbarService"/>
+		         class="ICSharpCode.SharpDevelop.WinForms.WinFormsToolbarService"/ -->
 	</Path>
 	
 	<Path name = "/SharpDevelop/Workbench/Ambiences">
@@ -124,6 +124,7 @@
 	</Path>
 	
 	<Path name = "/SharpDevelop/Workbench/Pads">
+		<!-- MVP: removed
 		<Pad id       = "ProjectBrowser"
 		     category = "Main"
 		     title    = "${res:MainWindow.Windows.ProjectScoutLabel}"
@@ -137,6 +138,7 @@
 		     icon     = "PadIcons.ClassBrowser"
 		     class    = "ICSharpCode.SharpDevelop.Dom.ClassBrowser.ClassBrowserPad"
 		     defaultPosition = "Right" />
+		-->
 		
 		<Pad id       = "SideBar"
 		     category = "Main"
@@ -902,128 +904,7 @@
 		             class = "ICSharpCode.SharpDevelop.Gui.ShowMessagesToggleButton"/>
 	</Path>
 	
-	<!-- ClassBrowser -->
-	<Path name = "/SharpDevelop/Pads/ClassBrowser/Toolbar">
-		<!--<ToolbarItem id      = "Back"
-		             icon    = "Icons.16x16.BrowserBefore"
-		             tooltip = "${res:MainWindow.Windows.ClassBrowser.BackButton.ToolTip}"
-		             loadclasslazy = "false"
-		             class   = "ICSharpCode.SharpDevelop.Gui.ClassBrowser.ClassBrowserNavigateBackward"/>
-		<ToolbarItem id      = "Forward"
-		             icon    = "Icons.16x16.BrowserAfter"
-		             tooltip = "${res:MainWindow.Windows.ClassBrowser.ForwardButton.ToolTip}"
-		             loadclasslazy = "false"
-		             class   = "ICSharpCode.SharpDevelop.Gui.ClassBrowser.ClassBrowserNavigateForward"/>
-		
-		<ToolbarItem id = "NavigationSeparator" type  = "Separator"/>-->
-		<ToolbarItem id      = "OpenAssembly"
-		             type    = "DropDownButton"
-		             icon    = "Icons.16x16.Assembly"
-		             tooltip = "${res:MainWindow.Windows.ClassBrowser.OpenAssemblyButton.ToolTip}">
-			<MenuItem id    = "OpenAssemblyFromFile"
-			          icon    = "Icons.16x16.AssemblyFromFile"
-			          label = "${res:MainWindow.Windows.ClassBrowser.OpenAssemblyFromFile}"
-			          class = "ICSharpCode.SharpDevelop.Dom.ClassBrowser.OpenAssemblyFromFileCommand"/>
-			<MenuItem id    = "OpenAssemblyFromGAC"
-			          icon  = "Icons.16x16.AssemblyFromGAC"
-			          label = "${res:MainWindow.Windows.ClassBrowser.OpenAssemblyFromGAC}"
-			          class = "ICSharpCode.SharpDevelop.Dom.ClassBrowser.OpenAssemblyFromGACCommand"/>
-		</ToolbarItem>
-		<!--<ToolbarItem id      = "SelectFilter"
-		             type    = "DropDownButton"
-		             icon    = "Icons.16x16.FindInFiles"
-		             tooltip = "${res:MainWindow.Windows.ClassBrowser.ClassViewSettingsButton.ToolTip}"
-		             class   = "ICSharpCode.SharpDevelop.Gui.ClassBrowser.SelectClassBrowserFilter">
-			
-			<MenuItem id    = "ShowProjectReferences"
-			          type  = "CheckBox"
-			          label = "${res:MainWindow.Windows.ClassBrowser.ClassViewSettings.ShowProjectReferences.Label}"
-			          class = "ICSharpCode.SharpDevelop.Gui.ClassBrowser.ShowProjectReferences"/>
-			<MenuItem id = "ReferenceSeparator" type = "Separator"  />
-			<MenuItem id    = "ShowPublicMembers"
-			          type  = "CheckBox"
-			          label = "${res:MainWindow.Windows.ClassBrowser.ClassViewSettings.ShowPublicMembers.Label}"
-			          class = "ICSharpCode.SharpDevelop.Gui.ClassBrowser.ShowPublicMembers"/>
-			
-			<MenuItem id    = "ShowPrivateMembers"
-			          type  = "CheckBox"
-			          label = "${res:MainWindow.Windows.ClassBrowser.ClassViewSettings.ShowPrivateMembers.Label}"
-			          class = "ICSharpCode.SharpDevelop.Gui.ClassBrowser.ShowPrivateMembers"/>
-			
-			<MenuItem id    = "ShowProtectedMembers"
-			          type  = "CheckBox"
-			          label = "${res:MainWindow.Windows.ClassBrowser.ClassViewSettings.ShowProtectedMembers.Label}"
-			          class = "ICSharpCode.SharpDevelop.Gui.ClassBrowser.ShowProtectedMembers"/>
-			
-			<MenuItem id    = "ShowOtherMembers"
-			          type  = "CheckBox"
-			          label = "${res:MainWindow.Windows.ClassBrowser.ClassViewSettings.ShowOtherMembers.Label}"
-			          class = "ICSharpCode.SharpDevelop.Gui.ClassBrowser.ShowOtherMembers"/>
-		</ToolbarItem>
-		<ToolbarItem id = "NavigationSeparator" type  = "Separator"/>
-		<ToolbarItem id      = "Collapse"
-		             icon    = "Icons.16x16.Collection"
-		             tooltip = "${res:MainWindow.Windows.SearchResultPanel.CollapseAll.ToolTip}"
-		             class   = "ICSharpCode.SharpDevelop.Dom.ClassBrowser.ClassBrowserCollapseAll"/>-->
-	</Path>
-	
-	<Path name = "/SharpDevelop/Pads/ClassBrowser/Searchbar">
-		<ToolbarItem id      = "Search"
-		             type    = "Custom"
-		             tooltip = "${res:MainWindow.Windows.ClassBrowser.SearchButton.ToolTip}"
-		             class   = "ICSharpCode.SharpDevelop.Gui.ClassBrowser.ClassBrowserSearchTerm"/>
-		
-		<ToolbarItem id      = "CommitSearch"
-		             icon    = "Icons.16x16.FindIcon"
-		             tooltip = "${res:MainWindow.Windows.ClassBrowser.CommitSearch.ToolTip}"
-		             class   = "ICSharpCode.SharpDevelop.Gui.ClassBrowser.ClassBrowserCommitSearch"/>
-		
-		<ToolbarItem id      = "CancelSearch"
-		             icon    = "OutputPad.Toolbar.ClearOutputWindow"
-		             tooltip = "${res:MainWindow.Windows.ClassBrowser.ClearSearch.ToolTip}"
-		             class   = "ICSharpCode.SharpDevelop.Gui.ClassBrowser.ClassBrowserCancelSearch"/>
-	</Path>
-	
-	<Path name = "/SharpDevelop/Pads/ClassBrowser/AssemblyContextMenu">
-		<Condition name="IsProcessRunning" isdebugging = "False" action = "Exclude">
-			<Condition name="DebuggerSupports" debuggersupports = "Start">
-				<MenuItem id = "RunAssemblyWithDebugger"
-				          label = "${res:XML.MainMenu.RunMenu.Run}"
-				          icon = "Icons.16x16.RunProgramIcon"
-				          class = "ICSharpCode.SharpDevelop.Dom.ClassBrowser.RunAssemblyWithDebuggerCommand"/>
-				<MenuItem id = "AssemblyContextMenuSeparator" type = "Separator"/>
-			</Condition>
-		</Condition>
-		<Condition name="IsAssemblyUnpinned" action="Exclude">
-			<MenuItem id = "PermanentlyAddToWorkspace"
-			          label = "${res:MainWindow.Windows.ClassBrowser.AddToWorkspace}"
-			          icon = "Icons.16x16.AssemblyFromFile"
-			          class = "ICSharpCode.SharpDevelop.Dom.ClassBrowser.PermanentlyAddModuleToWorkspaceCommand"/>
-		</Condition>
-		<MenuItem id = "RemoveAssembly"
-		          label = "${res:Global.RemoveButtonText}"
-		          icon = "Icons.16x16.DeleteIcon"
-		          class = "ICSharpCode.SharpDevelop.Dom.ClassBrowser.RemoveAssemblyCommand"/>
-	</Path>
-	
-	<Path name = "/SharpDevelop/Pads/ClassBrowser/AssemblyReferencesContextMenu">
-		<MenuItem id    = "AddReference"
-		          label = "${res:ProjectComponent.ContextMenu.AddReference}"
-		          class = "ICSharpCode.SharpDevelop.Dom.ClassBrowser.AddProjectReferenceCommand"/>
-	</Path>
-	
-	<Path name = "/SharpDevelop/Pads/ClassBrowser/AssemblyReferenceContextMenu">
-		<MenuItem id = "PermanentlyAddToWorkspace"
-		          label = "${res:MainWindow.Windows.ClassBrowser.AddToWorkspace}"
-		          icon = "Icons.16x16.AssemblyFromFile"
-		          class = "ICSharpCode.SharpDevelop.Dom.ClassBrowser.PermanentlyAddModuleToWorkspaceCommand"/>
-		<MenuItem id    = "Remove"
-		          label = "${res:Global.RemoveButtonText}"
-		          icon  = "Icons.16x16.DeleteIcon"
-		          class = "ICSharpCode.SharpDevelop.Dom.ClassBrowser.RemoveProjectReferenceCommand"/>
-	</Path>
-	
-	<!-- end ClassBrowser -->
+	<!-- MVP: removed entire ClassBrowser section (toolbar, searchbar, context menus) -->
 	
 	<!-- toolbars -->
 	<Path name = "/SharpDevelop/Workbench/ToolBar/Standard">
@@ -1634,6 +1515,7 @@
 			          class       = "ICSharpCode.SharpDevelop.Commands.ToggleFullscreenCommand" />
 		</MenuItem> <!-- end VIEW menu -->
 		
+		<!-- MVP: removed (RefactoringProviderSupports not registered)
 		<Condition name="RefactoringProviderSupports" supports="*">
 			<MenuItem id = "Refactor" label = "${res:XML.MainMenu.RefactorMenu}" type="Menu">
 				<MenuItem id    = "Rename"
@@ -1646,7 +1528,7 @@
 					          class = "ICSharpCode.SharpDevelop.Refactoring.RemoveUnusedUsingsCommand" />
 				</Condition>
 			</MenuItem>
-		</Condition> <!-- end REFACTOR menu -->
+		</Condition> --> <!-- end REFACTOR menu -->
 		
 		<Condition name = "ProjectActive" activeproject="*">
 			<MenuItem id = "Project" label = "${res:XML.MainMenu.ProjectMenu}" type="Menu">
@@ -1999,6 +1881,7 @@
 	
 	<Path name = "/SharpDevelop/EntityContextMenu">
 		<Include id="GotoDefinition" item="/SharpDevelop/Workbench/MainMenu/Search/GotoDefinition" />
+		<!-- MVP: removed
 		<Condition name="SymbolTypeAtCaret" type="member,type" action="Exclude">
 			<MenuItem id="OpenInClassBrowser"
 			          icon="ILSpy"
@@ -2006,6 +1889,7 @@
 			          label="${res:MainWindow.Windows.ClassBrowser.OpenInClassBrowser}"
 			          class="ICSharpCode.SharpDevelop.Dom.ClassBrowser.OpenInClassBrowserCommand"/>
 		</Condition>
+		-->
 		<MenuItem id="Separator1" type="Separator" />
 		
 		<Include id="Rename" item="/SharpDevelop/Workbench/MainMenu/Search/Rename" />
@@ -2319,6 +2203,7 @@
 		       class = "ICSharpCode.SharpDevelop.Project.DefaultDotNetNodeBuilder"/>
 	</Path>
 	
+	<!-- MVP: removed
 	<Path name = "/SharpDevelop/Views/ClassBrowser/ProjectNodeBuilders">
 		<Class id = "DefaultProjectBuilder"
 		       class = "ICSharpCode.SharpDevelop.Gui.ClassBrowser.DefaultProjectNodeBuilder"/>
@@ -2332,6 +2217,7 @@
 		<Class id = "DefaultClassBuilder"
 		       class = "ICSharpCode.SharpDevelop.Gui.ClassBrowser.DefaultClassNodeBuilder"/>
 	</Path>
+	-->
 	
 	<Path name = "/SharpDevelop/Workbench/DependentFileExtensions">
 		<String id = "FormsDesignerGeneratedCode" text=".Designer${Extension}"/>
