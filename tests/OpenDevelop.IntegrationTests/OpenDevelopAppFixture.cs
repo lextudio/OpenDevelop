@@ -27,6 +27,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 
     public string OpenDevelopProjectPath { get; } = LocateOpenDevelopProject();
     public string FixtureSolutionPath { get; } = LocateFixtureProject();
+    public string SolutionExplorerFixturePath { get; } = LocateSolutionExplorerFixture();
 
     public async Task InitializeAsync()
     {
@@ -162,6 +163,19 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         }
         throw new FileNotFoundException(
             "Could not locate tests/fixtures/SampleTestProject/SampleTestProject.csproj by walking up from " + AppContext.BaseDirectory);
+    }
+
+    static string LocateSolutionExplorerFixture()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir, "tests", "fixtures", "SolutionExplorerFixture", "SolutionExplorerFixture.sln");
+            if (File.Exists(candidate)) return candidate;
+            dir = Path.GetDirectoryName(dir);
+        }
+        throw new FileNotFoundException(
+            "Could not locate tests/fixtures/SolutionExplorerFixture/SolutionExplorerFixture.sln by walking up from " + AppContext.BaseDirectory);
     }
 }
 

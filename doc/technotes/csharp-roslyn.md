@@ -217,14 +217,41 @@ NRefactory that needs replacing.
 different, much larger task (rearchitecting the bookmark/background-model/ambience/class-browser
 subsystems), out of scope for this pass.
 
-## Non-goals for now
+## Non-goals, revisited
 
-- Multi-target-framework / multi-TFM project support in the workspace bridge.
-- Incremental (event-driven) workspace updates — Phase 0's `RoslynWorkspaceHelper` rebuilds
-  greedily; fine for a first correctness pass, not for perf at scale.
-- NuGet package reference resolution for the Roslyn compilation (Phase 0 falls back to the
-  host process's trusted platform assemblies for references — resolves BCL types, not
-  project-specific NuGet dependencies). Real reference resolution should reuse whatever CPS
-  already computed for the project (`IProject.ResolveAssemblyReferences`) — already wired in
-  Phase 0, so this mostly applies to transitively-referenced project outputs, which aren't
-  handled yet.
+Session update: two of the three items below turned out to be tractable within the existing
+`RoslynWorkspaceHelper` scope and are now done; the third is a genuine architectural limitation
+of OpenDevelop's project model, not something the Roslyn bridge itself can fix. Looked at
+UnoDevelop's vendored MonoDevelop `MonoDevelopWorkspace` for how a full IDE does this - its
+incremental-update and P2P-reference handling are the same shape as what's below, just built on
+richer project-system events (`SolutionItemModifiedEventArgs`) than SD's `IProject` exposes.
+
+- **Incremental workspace updates — DONE (bounded).** `RoslynWorkspaceHelper` now tracks a
+  `dirtyProjects` set, marked via `project.Items.CollectionChanged`. `GetSolution()` only does the
+  full Compile-item rescan (`SyncDocumentList`/`SyncReferences`) for a project whose item list
+  actually changed since the last call; everything else takes the cheap `SyncOpenDocumentText`
+  path, which only pushes already-known live (unsaved) buffer text into already-known documents.
+  This isn't MonoDevelop's fully event-driven `Workspace` subclass (no per-document
+  `OnDocumentTextChanged` push from the editor; the buffer diff still happens on each
+  `GetSolution()` call) - but it does remove the "re-read and re-diff every file in every project
+  on every keystroke-triggered completion/tooltip request" cost that made this a real non-goal.
+- **Transitively-referenced project outputs — DONE.** `SyncReferences` now wires
+  `ProjectReferenceProjectItem`s to real Roslyn `ProjectReference`s (compilation-to-compilation)
+  instead of a flat DLL `MetadataReference` of the referenced project's build output, whenever the
+  referenced project is itself a loaded `.csproj` with a live Roslyn `ProjectId`. Roslyn then
+  resolves the transitive closure (P → Q → R) through Q's own `ProjectReferences` automatically,
+  matching MonoDevelop's `AddReferences`/`ProjectReference` behavior. `GetMetadataReferences` skips
+  any resolved-assembly-reference path that's covered by a `ProjectReference` instead, so a
+  project doesn't get both a live compilation reference and a stale prebuilt-DLL reference to the
+  same dependency. NuGet package assemblies and non-project references are unaffected - those
+  still flow through `IProject.ResolveAssemblyReferences` as file-backed `MetadataReference`s, same
+  as before.
+- **Multi-target-framework / multi-TFM project support — still a non-goal, and not really fixable
+  here.** MonoDevelop models this by minting one Roslyn `ProjectId` per (project, TFM) pair
+  (`DotNetProject.TargetFrameworkMonikers` × `ProjectDataMap.GetOrCreateId`). OpenDevelop's
+  `IProject`/`MSBuildBasedProject` has no equivalent concept - a loaded project is evaluated once,
+  for a single (implicit) TargetFramework, full stop; `IProject.GetItemsOfType`/
+  `ResolveAssemblyReferences` don't carry a TFM axis to iterate over. Making
+  `RoslynWorkspaceHelper` multi-TFM-aware would first require `MSBuildBasedProject` itself to
+  evaluate and expose multiple per-TFM item/reference sets, which is a project-system change, not
+  a workspace-bridge change - out of scope for this doc.

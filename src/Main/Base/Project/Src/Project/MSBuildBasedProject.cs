@@ -1115,8 +1115,12 @@ namespace ICSharpCode.SharpDevelop.Project
 				this.availableFileItemTypes = availableFileItemTypes.Distinct().OrderBy(i => i.ItemName).ToArray();
 				
 				foreach (var item in c.Project.AllEvaluatedItems) {
-					if (item.IsImported) continue;
-					
+					// Note: used to skip item.IsImported items here. That worked for legacy
+					// full-framework csproj (whose Compile items always live in the main file),
+					// but SDK-style csproj declare NO items of their own - the implicit Compile/
+					// EmbeddedResource/None globs are defined entirely inside the imported
+					// Microsoft.NET.Sdk targets, so every one of them has IsImported == true.
+					// Skipping them left SDK-style projects with zero visible files.
 					items.Add(CreateProjectItem(new MSBuildItemWrapper(this, item)));
 				}
 				

@@ -14,7 +14,7 @@ namespace CSharpBinding
 		}
 
 		public IBracketSearcher BracketSearcher {
-			get { return null; }
+			get { return DefaultBracketSearcher.DefaultInstance; }
 		}
 
 		public CodeGenerator CodeGenerator {

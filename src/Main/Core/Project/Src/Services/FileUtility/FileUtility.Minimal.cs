@@ -53,7 +53,7 @@ namespace ICSharpCode.Core
 			bool isRelative;
 			
 			StringBuilder result = new StringBuilder();
-			if (isWeb == false && fileName.StartsWith(@"\\", StringComparison.Ordinal) || fileName.StartsWith("//", StringComparison.Ordinal)) {
+			if (isWeb == false && (fileName.StartsWith(@"\\", StringComparison.Ordinal) || fileName.StartsWith("//", StringComparison.Ordinal))) {
 				// UNC path
 				i = 2;
 				result.Append(outputSeparator);
@@ -81,7 +81,7 @@ namespace ICSharpCode.Core
 						case 1:
 							// ignore /./ segment, but append other one-letter segments
 							if (fileName[segmentStartPos] != '.') {
-								if (result.Length > 0) result.Append(outputSeparator);
+								if (result.Length > 0 && result[result.Length - 1] != outputSeparator) result.Append(outputSeparator);
 								result.Append(fileName[segmentStartPos]);
 							}
 							break;
@@ -104,7 +104,7 @@ namespace ICSharpCode.Core
 								goto default;
 							}
 						default:
-							if (result.Length > 0) result.Append(outputSeparator);
+							if (result.Length > 0 && result[result.Length - 1] != outputSeparator) result.Append(outputSeparator);
 							result.Append(fileName, segmentStartPos, segmentLength);
 							break;
 					}

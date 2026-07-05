@@ -342,11 +342,22 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 		public IList<IUnresolvedTypeDefinition> NestedTypes {
 			get { return namedType.GetTypeMembers().Select(t => (IUnresolvedTypeDefinition)new RoslynUnresolvedTypeDefinitionAdapter(t, compilation)).ToList(); }
 		}
-		public IList<IUnresolvedMember> Members { get { throw new NotImplementedException(); } }
-		public IEnumerable<IUnresolvedMethod> Methods { get { throw new NotImplementedException(); } }
-		public IEnumerable<IUnresolvedProperty> Properties { get { throw new NotImplementedException(); } }
-		public IEnumerable<IUnresolvedField> Fields { get { throw new NotImplementedException(); } }
-		public IEnumerable<IUnresolvedEvent> Events { get { throw new NotImplementedException(); } }
+		IList<IUnresolvedMember> membersCache;
+		public IList<IUnresolvedMember> Members {
+			get {
+				if (membersCache == null) {
+					membersCache = namedType.GetMembers()
+						.Where(m => !m.IsImplicitlyDeclared && m.Locations.Any(l => l.IsInSource))
+						.Select(m => (IUnresolvedMember)new RoslynUnresolvedMemberAdapter(m, compilation))
+						.ToList();
+				}
+				return membersCache;
+			}
+		}
+		public IEnumerable<IUnresolvedMethod> Methods { get { return Members.OfType<IUnresolvedMethod>(); } }
+		public IEnumerable<IUnresolvedProperty> Properties { get { return Members.OfType<IUnresolvedProperty>(); } }
+		public IEnumerable<IUnresolvedField> Fields { get { return Members.OfType<IUnresolvedField>(); } }
+		public IEnumerable<IUnresolvedEvent> Events { get { return Members.OfType<IUnresolvedEvent>(); } }
 
 		public bool? HasExtensionMethods { get { return false; } }
 		public bool IsPartial { get { return namedType.DeclaringSyntaxReferences.Length > 1; } }
@@ -357,6 +368,94 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 		IType ITypeReference.Resolve(ITypeResolveContext context) { return new RoslynTypeDefinitionAdapter(namedType, compilation); }
 
 		public ISymbolReference ToReference() { throw new NotImplementedException(); }
+	}
+
+	/// <summary>IUnresolvedMember (method/field/property/event) backed by a real Microsoft.CodeAnalysis.ISymbol.
+	/// Only used for IUnresolvedFile.TopLevelTypeDefinitions/Members consumers (currently: AvalonEdit
+	/// folding via ParseInformation.GetFoldings, and IconBarManager's bookmark walk) - members outside
+	/// that scope throw NotImplementedException like the rest of this adapter layer.</summary>
+	sealed class RoslynUnresolvedMemberAdapter : RoslynSymbolAdapterBase, IUnresolvedMethod, IUnresolvedProperty, IUnresolvedField, IUnresolvedEvent
+	{
+		readonly Microsoft.CodeAnalysis.ISymbol symbol;
+
+		public RoslynUnresolvedMemberAdapter(Microsoft.CodeAnalysis.ISymbol symbol, ICompilation compilation) : base(symbol, compilation)
+		{
+			this.symbol = symbol;
+		}
+
+		public new DomRegion BodyRegion {
+			get {
+				var syntaxRef = symbol.DeclaringSyntaxReferences.FirstOrDefault();
+				if (syntaxRef == null)
+					return Region;
+				var span = syntaxRef.GetSyntax().GetLocation().GetLineSpan();
+				return new DomRegion(span.Path, span.StartLinePosition.Line + 1, span.StartLinePosition.Character + 1,
+					span.EndLinePosition.Line + 1, span.EndLinePosition.Character + 1);
+			}
+		}
+
+		public IUnresolvedTypeDefinition DeclaringTypeDefinition {
+			get { return symbol.ContainingType != null ? new RoslynUnresolvedTypeDefinitionAdapter(symbol.ContainingType, compilation) : null; }
+		}
+
+		public IUnresolvedFile UnresolvedFile { get { throw new NotImplementedException(); } }
+
+		public ITypeReference DeclaringTypeReference { get { throw new NotImplementedException(); } }
+		public new IList<IUnresolvedAttribute> Attributes { get { return new List<IUnresolvedAttribute>(); } }
+		IMember IMemberReference.Resolve(ITypeResolveContext context) { throw new NotImplementedException(); }
+		IMember IUnresolvedMember.Resolve(ITypeResolveContext context) { throw new NotImplementedException(); }
+		IMember IUnresolvedMember.CreateResolved(ITypeResolveContext context) { throw new NotImplementedException(); }
+		ICSharpCode.TypeSystem.ISymbol ISymbolReference.Resolve(ITypeResolveContext context) { throw new NotImplementedException(); }
+		public new ISymbolReference ToReference() { throw new NotImplementedException(); }
+
+		public ITypeReference ReturnType { get { throw new NotImplementedException(); } }
+		public bool IsExplicitInterfaceImplementation { get { return false; } }
+		public IList<IMemberReference> ExplicitInterfaceImplementations { get { return new List<IMemberReference>(); } }
+		public bool IsVirtual { get { return symbol.IsVirtual; } }
+		public bool IsOverride { get { return symbol.IsOverride; } }
+		public bool IsOverridable { get { return symbol.IsVirtual || symbol.IsAbstract || symbol.IsOverride; } }
+
+		// IUnresolvedMethod / IUnresolvedParameterizedMember
+		public IList<IUnresolvedParameter> Parameters { get { return new List<IUnresolvedParameter>(); } }
+		public IList<IUnresolvedAttribute> ReturnTypeAttributes { get { return new List<IUnresolvedAttribute>(); } }
+		public IList<IUnresolvedTypeParameter> TypeParameters { get { return new List<IUnresolvedTypeParameter>(); } }
+		public bool IsConstructor { get { var m = symbol as IMethodSymbol; return m != null && m.MethodKind == MethodKind.Constructor; } }
+		public bool IsDestructor { get { var m = symbol as IMethodSymbol; return m != null && m.MethodKind == MethodKind.Destructor; } }
+		public bool IsOperator { get { var m = symbol as IMethodSymbol; return m != null && m.MethodKind == MethodKind.UserDefinedOperator; } }
+		public bool IsPartial { get { return symbol.DeclaringSyntaxReferences.Length > 1; } }
+		public bool IsAsync { get { var m = symbol as IMethodSymbol; return m != null && m.IsAsync; } }
+		public bool IsExtensionMethod { get { var m = symbol as IMethodSymbol; return m != null && m.IsExtensionMethod; } }
+		public bool IsPartialMethodDeclaration { get { return false; } }
+		public bool IsPartialMethodImplementation { get { return false; } }
+		public bool HasBody { get { return true; } }
+		public IUnresolvedMember AccessorOwner { get { return null; } }
+
+		// IUnresolvedProperty
+		public bool CanGet { get { var p = symbol as IPropertySymbol; return p == null || p.GetMethod != null; } }
+		public bool CanSet { get { var p = symbol as IPropertySymbol; return p != null && p.SetMethod != null; } }
+		public IUnresolvedMethod Getter { get { return null; } }
+		public IUnresolvedMethod Setter { get { return null; } }
+		public bool IsIndexer { get { var p = symbol as IPropertySymbol; return p != null && p.IsIndexer; } }
+
+		// IUnresolvedField
+		public bool IsReadOnly { get { var f = symbol as IFieldSymbol; return f != null && f.IsReadOnly; } }
+		public bool IsVolatile { get { var f = symbol as IFieldSymbol; return f != null && f.IsVolatile; } }
+		public bool IsConst { get { var f = symbol as IFieldSymbol; return f != null && f.IsConst; } }
+		public bool IsFixed { get { return false; } }
+		public IConstantValue ConstantValue { get { throw new NotImplementedException(); } }
+
+		// IUnresolvedEvent
+		public bool CanAdd { get { return true; } }
+		public bool CanRemove { get { return true; } }
+		public bool CanInvoke { get { return false; } }
+		public IUnresolvedMethod AddAccessor { get { return null; } }
+		public IUnresolvedMethod RemoveAccessor { get { return null; } }
+		public IUnresolvedMethod InvokeAccessor { get { return null; } }
+
+		IMethod IUnresolvedMethod.Resolve(ITypeResolveContext context) { throw new NotImplementedException(); }
+		IProperty IUnresolvedProperty.Resolve(ITypeResolveContext context) { throw new NotImplementedException(); }
+		IField IUnresolvedField.Resolve(ITypeResolveContext context) { throw new NotImplementedException(); }
+		IEvent IUnresolvedEvent.Resolve(ITypeResolveContext context) { throw new NotImplementedException(); }
 	}
 
 	/// <summary>IMember (method/field/property/event) backed by a real Microsoft.CodeAnalysis.ISymbol.</summary>
