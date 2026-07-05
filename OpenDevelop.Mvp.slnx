@@ -30,7 +30,7 @@
     <Project Path="tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj" />
   </Folder>
   <Project Path="src/Main/Base/Project/ICSharpCode.SharpDevelop.csproj" />
-  <Project Path="src/Main/ProjectSystem/Microsoft.VisualStudio.ProjectSystem.Shim.csproj" />
-  <Project Path="src/Main/ProjectSystemManaged/Microsoft.VisualStudio.ProjectSystem.Managed.csproj" />
+  <Project Path="externals/cps/src/ProjectSystem/Microsoft.VisualStudio.ProjectSystem.Shim.csproj" />
+  <Project Path="externals/cps/src/ProjectSystemManaged/Microsoft.VisualStudio.ProjectSystem.Managed.csproj" />
   <Project Path="src/Main/SharpDevelop/SharpDevelop.csproj" />
 </Solution>

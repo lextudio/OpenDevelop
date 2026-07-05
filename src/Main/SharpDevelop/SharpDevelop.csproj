@@ -35,8 +35,8 @@
     <ProjectReference Include="..\ICSharpCode.SharpDevelop.Widgets\Project\ICSharpCode.SharpDevelop.Widgets.csproj" />
     <ProjectReference Include="..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.WPF\LeXtudio.DevFlow.Agent.WPF.csproj" />
     <ProjectReference Include="..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj" />
-    <ProjectReference Include="..\ProjectSystem\Microsoft.VisualStudio.ProjectSystem.Shim.csproj" />
-    <ProjectReference Include="..\ProjectSystemManaged\Microsoft.VisualStudio.ProjectSystem.Managed.csproj" />
+    <ProjectReference Include="..\..\..\externals\cps\src\ProjectSystem\Microsoft.VisualStudio.ProjectSystem.Shim.csproj" />
+    <ProjectReference Include="..\..\..\externals\cps\src\ProjectSystemManaged\Microsoft.VisualStudio.ProjectSystem.Managed.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />

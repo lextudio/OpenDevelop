@@ -11,3 +11,6 @@
 	path = src/Libraries/AvalonDock
 	url = https://github.com/lextudio/AvalonDock.git
 	branch = master
+[submodule "externals/cps"]
+	path = externals/cps
+	url = https://github.com/lextudio/cps-shims.git
