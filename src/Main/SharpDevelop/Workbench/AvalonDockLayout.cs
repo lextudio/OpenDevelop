@@ -331,7 +331,8 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		void LoadLayout(string fileName, bool hideAllLostPads)
 		{
 			LoggingService.Info("Loading layout file: " + fileName + ", hideAllLostPads=" + hideAllLostPads);
-			dockWorkspace.RestoreLayout(fileName);
+			// TODO: disable saved layout loading temporarily until we can fix the AvalonDock layout serialization issues
+			// dockWorkspace.RestoreLayout(fileName);
 		}
 		
 		public void StoreConfiguration()

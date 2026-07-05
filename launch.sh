@@ -10,7 +10,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-dotnet="/Users/lextm/uno-tools/wpf-progpu/.dotnet/dotnet"
+dotnet="/Users/lextm/uno-tools/librewpf/.dotnet/dotnet"
 sln="${repo_root}/OpenDevelop.Mvp.slnx"
 exe_project="${repo_root}/src/Main/SharpDevelop/SharpDevelop.csproj"
 
