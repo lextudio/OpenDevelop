@@ -11,8 +11,11 @@
     <AssemblyOriginatorKeyFile>..\..\ICSharpCode.SharpDevelop.snk</AssemblyOriginatorKeyFile>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.Build" Version="17.11.4" />
-    <PackageReference Include="Microsoft.Build.Framework" Version="17.11.4" />
+    <PackageReference Include="Microsoft.Build" Version="18.0.2" />
+    <PackageReference Include="Microsoft.Build.Framework" Version="18.0.2" />
+    <PackageReference Include="Microsoft.Build.Runtime" Version="18.0.2" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.3.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Features" Version="5.3.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\Libraries\AvalonEdit\ICSharpCode.AvalonEdit\ICSharpCode.AvalonEdit.csproj" />
@@ -33,8 +36,8 @@
     <!-- Out of MVP scope: deep NRefactory-era refactoring engine (find-references/rename/extract-interface/
          type-graph) whose API shape (LocalResolveResult.CallingClass/.Field, TypeGraphNode, etc.) does not
          match the minimal ICSharpCode.TypeSystem.Abstractions replacement and would need a real reimplementation,
-         not a stub. Excluded rather than hand-ported; not required for the WPF shell to boot. -->
-    <Compile Remove="Src\Services\RefactoringService\**\*.cs" />
+         not a stub. Not required for the WPF shell to boot. Src\Services\RefactoringService\ itself was
+         physically deleted (see doc/technotes/csharp-roslyn.md, Phase 3) - it had no other referrers. -->
     <Compile Remove="Src\Editor\Commands\ClassBookmarkSubmenuBuilder.cs" />
     <Compile Remove="Src\Editor\Commands\FindReferencesCommand.cs" />
     <Compile Remove="Src\Editor\Commands\ClassMemberMenuBuilder.cs" />
@@ -133,9 +136,11 @@
     <Compile Remove="Src\Gui\Dialogs\OptionPanels\ProjectOptions\AssemblyInfo\**\*.cs" />
     <Page Remove="Src\Gui\Dialogs\OptionPanels\ProjectOptions\AssemblyInfo\**\*.xaml" />
     <None Include="Src\Gui\Dialogs\OptionPanels\ProjectOptions\AssemblyInfo\**\*.xaml" />
-    <!-- Out of MVP scope: XmlDocumentationElement (NRefactory.Documentation XML-doc-comment renderer) is not
-         part of the type-system-only Abstractions replacement; no consumers outside this doc-tooltip pair. -->
-    <Compile Remove="Editor\DocumentationUIBuilder.cs" />
+    <!-- XmlDocumentationElement now lives in ICSharpCode.TypeSystem.Abstractions as a plain
+         System.Xml.Linq-backed adapter (see doc/technotes/csharp-roslyn.md); DocumentationUIBuilder
+         needs no other changes to compile against it. XmlDocFormatter.cs itself stays excluded -
+         it's IType/IEntity/ISymbol (SD mock)-shaped; AvalonEdit.AddIn's XmlDocTooltipProvider builds
+         DocumentationUIBuilder input directly from Microsoft.CodeAnalysis.ISymbol instead. -->
     <Compile Remove="Editor\XmlDocFormatter.cs" />
     <!-- Out of MVP scope: implements AvalonEdit.CodeCompletion.ICompletionData against an older interface
          shape (explicit members no longer on the current ICompletionData) - no consumers outside itself. -->

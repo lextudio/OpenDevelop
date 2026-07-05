@@ -13,6 +13,13 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 dotnet="/Users/lextm/uno-tools/librewpf/.dotnet/dotnet"
 sln="${repo_root}/OpenDevelop.Mvp.slnx"
 exe_project="${repo_root}/src/Main/SharpDevelop/SharpDevelop.csproj"
+export DOTNET_ROOT="$(dirname "${dotnet}")"
+export DOTNET_HOST_PATH="${dotnet}"
+sdk_dir="$(find "${DOTNET_ROOT}/sdk" -mindepth 1 -maxdepth 1 -type d | sort | tail -n 1)"
+export MSBuildSDKsPath="${sdk_dir}/Sdks"
+export MSBuildExtensionsPath="${sdk_dir}"
+export MSBUILDADDITIONALSDKRESOLVERSFOLDER_NET="${sdk_dir}/SdkResolvers"
+export MSBUILD_NUGET_PATH="${sdk_dir}"
 
 # Kill any previously running instance so DevFlow's port (9223) is free and we
 # don't end up staring at a stale window.

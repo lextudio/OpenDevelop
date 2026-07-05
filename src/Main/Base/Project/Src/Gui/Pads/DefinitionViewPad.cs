@@ -18,6 +18,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 
@@ -25,10 +26,11 @@ using System.Windows.Threading;
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.Core;
-using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Parser;
+using ICSharpCode.SharpDevelop.Roslyn;
 using ICSharpCode.SharpDevelop.Workbench;
+using Microsoft.CodeAnalysis;
 using TextLocation = ICSharpCode.AvalonEdit.Document.TextLocation;
 
 namespace ICSharpCode.SharpDevelop.Gui
@@ -105,44 +107,44 @@ namespace ICSharpCode.SharpDevelop.Gui
 			if (!isActive) return;
 			LoggingService.Debug("DefinitionViewPad.Update");
 			
-			ResolveResult res = await ResolveAtCaretAsync(e);
-			if (res == null) return;
-			var pos = res.GetDefinitionRegion();
-			if (pos.IsEmpty) return; // TODO : try to decompile?
-			OpenFile(pos);
+			ISymbol symbol = await ResolveAtCaretAsync(e);
+			if (symbol == null) return;
+			var location = symbol.Locations.FirstOrDefault(l => l.IsInSource);
+			if (location == null) return; // TODO : try to decompile?
+			OpenFile(location.GetLineSpan());
 		}
-		
-		Task<ResolveResult> ResolveAtCaretAsync(ParseInformationEventArgs e)
+
+		Task<ISymbol> ResolveAtCaretAsync(ParseInformationEventArgs e)
 		{
 			IWorkbenchWindow window = SD.Workbench.ActiveWorkbenchWindow;
 			if (window == null)
-				return Task.FromResult<ResolveResult>(null);
+				return Task.FromResult<ISymbol>(null);
 			IViewContent viewContent = window.ActiveViewContent;
 			if (viewContent == null)
-				return Task.FromResult<ResolveResult>(null);
+				return Task.FromResult<ISymbol>(null);
 			ITextEditor editor = viewContent.GetService<ITextEditor>();
 			if (editor == null)
-				return Task.FromResult<ResolveResult>(null);
-			
+				return Task.FromResult<ISymbol>(null);
+
 			// e might be null when this is a manually triggered update
 			// don't resolve when an unrelated file was changed
 			if (e != null && editor.FileName != e.FileName)
-				return Task.FromResult<ResolveResult>(null);
-			
-			return SD.ParserService.ResolveAsync(editor.FileName, editor.Caret.Location, editor.Document);
+				return Task.FromResult<ISymbol>(null);
+
+			return Task.Run(() => RoslynWorkspaceHelper.GetSymbolAtCaret(editor));
 		}
-		
-		DomRegion oldPosition;
+
+		FileLinePositionSpan oldPosition;
 		FileName currentFileName;
-		
-		void OpenFile(DomRegion pos)
+
+		void OpenFile(FileLinePositionSpan pos)
 		{
 			if (pos.Equals(oldPosition)) return;
 			oldPosition = pos;
-			var fileName = new FileName(pos.FileName);
+			var fileName = new FileName(pos.Path);
 			if (fileName != currentFileName)
 				LoadFile(fileName);
-			ctl.TextArea.Caret.Location = pos.Begin.ToAvalonEditLocation();
+			ctl.TextArea.Caret.Location = new TextLocation(pos.StartLinePosition.Line + 1, pos.StartLinePosition.Character + 1);
 			Rect r = ctl.TextArea.Caret.CalculateCaretRectangle();
 			if (!r.IsEmpty) {
 				ctl.ScrollToVerticalOffset(r.Top - 4);
@@ -156,7 +158,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 		void LoadFile(FileName fileName)
 		{
 			// Load the text into the definition view's text editor.
-			ctl.Document = new TextDocument(SD.FileService.GetFileContent(fileName));
+			ctl.Document = new ICSharpCode.AvalonEdit.Document.TextDocument(SD.FileService.GetFileContent(fileName));
 			ctl.Document.FileName = fileName;
 			currentFileName = fileName;
 			ctl.SyntaxHighlighting = HighlightingManager.Instance.GetDefinitionByExtension(Path.GetExtension(fileName));

@@ -40,9 +40,7 @@ using ICSharpCode.AvalonEdit.Editing;
 using ICSharpCode.AvalonEdit.Folding;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Rendering;
-using ICSharpCode.NRefactory.Editor;
-using ICSharpCode.NRefactory.Semantics;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Editor.AvalonEdit;
@@ -237,23 +235,22 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			ShowHelp();
 		}
 		
+		static readonly Microsoft.CodeAnalysis.SymbolDisplayFormat HelpNameFormat =
+			new Microsoft.CodeAnalysis.SymbolDisplayFormat(
+				typeQualificationStyle: Microsoft.CodeAnalysis.SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces);
+
 		public void ShowHelp()
 		{
 			// Resolve expression at cursor and show help
-			var compilation = SD.ParserService.GetCompilationForFile(FileName);
-			var result = SD.ParserService.Resolve(Adapter, TextArea.Caret.Location, compilation);
-			TypeResolveResult trr = result as TypeResolveResult;
-			if (trr != null && trr.Type.GetDefinition() != null) {
-				HelpProvider.ShowHelp(trr.Type.GetDefinition());
-			}
-			MemberResolveResult mrr = result as MemberResolveResult;
-			if (mrr != null) {
-				if ((mrr.Member.DeclaringType.Kind == TypeKind.Enum) &&
-				    (mrr.Member.DeclaringType.GetDefinition() != null)) {
-					HelpProvider.ShowHelp(mrr.Member.DeclaringType.GetDefinition());
-				} else {
-					HelpProvider.ShowHelp(mrr.Member);
-				}
+			var symbol = ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.GetSymbolAt(Adapter, TextArea.Caret.Location);
+			if (symbol == null)
+				return;
+			var namedType = symbol as Microsoft.CodeAnalysis.INamedTypeSymbol
+				?? (symbol as Microsoft.CodeAnalysis.IFieldSymbol)?.ContainingType;
+			if (namedType != null && namedType.TypeKind == Microsoft.CodeAnalysis.TypeKind.Enum) {
+				HelpProvider.ShowHelp(namedType.ToDisplayString(HelpNameFormat));
+			} else {
+				HelpProvider.ShowHelp(symbol.ToDisplayString(HelpNameFormat));
 			}
 		}
 		#endregion
@@ -437,9 +434,8 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				if (position == null)
 					return;
 				SD.AnalyticsMonitor.TrackFeature(typeof(GoToDefinition).FullName, "Ctrl+Click");
-				var resolveResult = SD.ParserService.Resolve(Adapter, position.Value.Location);
-				var goToDefinitionCommand = new GoToDefinition();
-				goToDefinitionCommand.Run(resolveResult);
+				var symbol = ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.GetSymbolAt(Adapter, position.Value.Location);
+				new GoToDefinition().RunOn(symbol);
 				e.Handled = true;
 				ctrlClickExecuted = true;
 			}

@@ -19,7 +19,7 @@
 using System;
 using System.Collections.Generic;
 using ICSharpCode.AvalonEdit.Highlighting;
-using ICSharpCode.NRefactory.Editor;
+using ICSharpCode.AvalonEdit.Document;
 
 namespace ICSharpCode.AvalonEdit.AddIn
 {

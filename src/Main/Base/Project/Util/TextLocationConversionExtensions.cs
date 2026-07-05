@@ -9,5 +9,10 @@ namespace ICSharpCode.TypeSystem
 		{
 			return new ICSharpCode.AvalonEdit.Document.TextLocation(location.Line, location.Column);
 		}
+
+		public static TextLocation ToTypeSystemLocation(this ICSharpCode.AvalonEdit.Document.TextLocation location)
+		{
+			return new TextLocation(location.Line, location.Column);
+		}
 	}
 }

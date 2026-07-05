@@ -21,7 +21,6 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 
-using ICSharpCode.NRefactory.TypeSystem.Implementation;
 using ICSharpCode.SharpDevelop;
 
 namespace ICSharpCode.AvalonEdit.AddIn.Snippets

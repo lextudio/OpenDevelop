@@ -144,27 +144,19 @@ namespace ICSharpCode.SharpDevelop.Refactoring
 			this.TextSource = editor.Document.CreateSnapshot();
 		}
 		
-		Task<ResolveResult> currentSymbol;
-		
+		Task<Microsoft.CodeAnalysis.ISymbol> currentSymbol;
+
 		/// <summary>
-		/// The resolved symbol at editor caret.
+		/// The resolved Roslyn symbol at editor caret (see doc/technotes/csharp-roslyn.md,
+		/// Phase 1 "option (b)" - no longer an ICSharpCode.TypeSystem.ResolveResult).
 		/// </summary>
-		public Task<ResolveResult> GetCurrentSymbolAsync()
+		public Task<Microsoft.CodeAnalysis.ISymbol> GetCurrentSymbolAsync()
 		{
 			lock (syncRoot) {
 				if (currentSymbol == null)
-					currentSymbol = ResolveCurrentSymbolAsync();
+					currentSymbol = Task.Run(() => Roslyn.RoslynWorkspaceHelper.GetSymbolAt(editor, caretLocation));
 				return currentSymbol;
 			}
-		}
-		
-		async Task<ResolveResult> ResolveCurrentSymbolAsync()
-		{
-			var parseInfo = await GetParseInformationAsync().ConfigureAwait(false);
-			if (parseInfo == null)
-				return null;
-			var compilation = await GetCompilationAsync().ConfigureAwait(false);
-			return await Task.Run(() => SD.ParserService.ResolveAsync(this.FileName, caretLocation, this.TextSource, compilation)).ConfigureAwait(false);
 		}
 		
 		/// <summary>

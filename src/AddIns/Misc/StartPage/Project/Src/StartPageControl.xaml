@@ -77,8 +77,7 @@
 				TextWrapping="WrapWithOverflow">
 				Copyright ©<Run Name="copyrightText"/>
 				<Run Text="  "/>
-				<Run
-					Text="{x:Static gui:AboutSharpDevelopTabPage.LicenseSentence}" />
+				<Run Name="licenseText" />
 			</TextBlock>
 		</Grid>
 	</ScrollViewer>

@@ -116,7 +116,10 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				ShowPad(content);
 			}
 			
-			mainMenu.ItemsSource = MenuService.CreateMenuItems(this, this, mainMenuPath, activationMethod: "MainMenu", immediatelyExpandMenuBuildersForShortcuts: true);
+			mainMenu.Items.Clear();
+			foreach (var item in MenuService.CreateMenuItems(this, this, mainMenuPath, activationMethod: "MainMenu", immediatelyExpandMenuBuildersForShortcuts: true)) {
+				mainMenu.Items.Add(item);
+			}
 			
 			toolBars = ToolBarService.CreateToolBars(this, this, "/SharpDevelop/Workbench/ToolBar");
 			foreach (ToolBar tb in toolBars) {
@@ -129,6 +132,50 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			// Core.WinForms.MenuService.ExecuteCommand/CanExecuteCommand hooks removed - those routed
 			// commands through WinForms-hosted menu items, which no longer exist in this MVP build.
 			UpdateMenu();
+			
+			this.Dispatcher.BeginInvoke((Action)(() => {
+				System.IO.File.AppendAllText("/tmp/opencode_menu.log", "WpfWorkbench: Initialize complete, checking menu items...\n");
+				try {
+					System.Windows.Controls.Menu m = this.mainMenu;
+					if (m == null) {
+						System.IO.File.AppendAllText("/tmp/opencode_menu.log", "WpfWorkbench: mainMenu is null!\n");
+					} else {
+						System.IO.File.AppendAllText("/tmp/opencode_menu.log", "WpfWorkbench: mainMenu.Items.Count=" + m.Items.Count + " ItemsSource=" + (m.ItemsSource != null ? "not null" : "null") + "\n");
+						int i = 0;
+						foreach (var item in m.Items) {
+							var mi = item as System.Windows.Controls.MenuItem;
+							if (mi != null) {
+								System.IO.File.AppendAllText("/tmp/opencode_menu.log", "  [" + i + "] Header='" + mi.Header + "' HasItems=" + mi.HasItems + " IsEnabled=" + mi.IsEnabled + " ItemsSource=" + (mi.ItemsSource != null ? "not null" : "null") + " Items.Count=" + mi.Items.Count + " Visibility=" + mi.Visibility + "\n");
+							} else {
+								System.IO.File.AppendAllText("/tmp/opencode_menu.log", "  [" + i + "] " + (item != null ? item.GetType().Name : "null") + "\n");
+							}
+							i++;
+						}
+					}
+				} catch (Exception ex) {
+					System.IO.File.AppendAllText("/tmp/opencode_menu.log", "WpfWorkbench: Error: " + ex.ToString() + "\n");
+				}
+				System.IO.File.AppendAllText("/tmp/opencode_menu.log", "WpfWorkbench: Diagnostic complete, scheduling menu open test...\n");
+			}), System.Windows.Threading.DispatcherPriority.Background);
+			
+			// Test File menu submenu after everything is set up
+			this.Dispatcher.BeginInvoke((Action)(() => {
+				try {
+					System.IO.File.AppendAllText("/tmp/opencode_menu.log", "WpfWorkbench: Delayed menu test... mainMenu.IsLoaded=" + this.mainMenu.IsLoaded + " mainMenu.IsVisible=" + this.mainMenu.IsVisible + " mainMenu.Items.Count=" + this.mainMenu.Items.Count + "\n");
+					var fileItem = this.mainMenu.Items[0] as System.Windows.Controls.MenuItem;
+					if (fileItem != null) {
+						System.IO.File.AppendAllText("/tmp/opencode_menu.log", "WpfWorkbench: File: Header=" + fileItem.Header + " Parent=" + (fileItem.Parent != null ? fileItem.Parent.GetType().Name : "null") + " IsLoaded=" + fileItem.IsLoaded + " HasItems=" + fileItem.HasItems + " Items.Count=" + fileItem.Items.Count + "\n");
+						// Try Force opening
+						fileItem.Focusable = true;
+						fileItem.Focus();
+						bool gotFocus = fileItem.IsFocused;
+						fileItem.IsSubmenuOpen = true;
+						System.IO.File.AppendAllText("/tmp/opencode_menu.log", "WpfWorkbench: After IsSubmenuOpen=" + fileItem.IsSubmenuOpen + " Focused=" + gotFocus + "\n");
+					}
+				} catch (Exception ex) {
+					System.IO.File.AppendAllText("/tmp/opencode_menu.log", "WpfWorkbench: Delayed test error: " + ex.ToString() + "\n");
+				}
+			}), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 			
 			AddHandler(Hyperlink.RequestNavigateEvent, new RequestNavigateEventHandler(OnRequestNavigate));
 			Project.ProjectService.CurrentProjectChanged += SetProjectTitle;

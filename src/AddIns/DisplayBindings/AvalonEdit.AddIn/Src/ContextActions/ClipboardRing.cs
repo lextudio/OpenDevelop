@@ -9,19 +9,18 @@ using System.Windows;
 
 using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
-using ICSharpCode.NRefactory.Semantics;
-using ICSharpCode.NRefactory.TypeSystem;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
-using ICSharpCode.SharpDevelop.Editor.Commands;
 using ICSharpCode.SharpDevelop.Editor.ContextActions;
 using ICSharpCode.SharpDevelop.Refactoring;
 
 namespace ICSharpCode.AvalonEdit.AddIn.ContextActions
 {
-	public class ClipboardRing : ResolveResultMenuCommand
+	// Never actually used its resolved symbol - just needed an editor - so this is a plain
+	// AbstractMenuCommand now instead of a ResolveResultMenuCommand (see doc/technotes/csharp-roslyn.md).
+	public class ClipboardRing : AbstractMenuCommand
 	{
-		public override void Run(ResolveResult symbol)
+		public override void Run()
 		{
 			ITextEditor editor = SD.GetActiveViewContentService<ITextEditor>();
 			if(editor == null)
@@ -47,8 +46,7 @@ namespace ICSharpCode.AvalonEdit.AddIn.ContextActions
 		
 		static ObservableCollection<ContextActionViewModel> BuildClipboardRingData(EditorRefactoringContext context)
 		{
-			var clipboardRing = ICSharpCode.SharpDevelop.Gui.TextEditorSideBar.Instance;
-			var clipboardRingItems = clipboardRing.GetClipboardRingItems();
+			var clipboardRingItems = ClipboardRingService.GetClipboardRingItems();
 			
 			var list = new ObservableCollection<ContextActionViewModel>();
 			foreach (var item in clipboardRingItems) {

@@ -1,6 +1,6 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <gui:OptionPanel
-	x:Class="ICSharpCode.AvalonEdit.AddIn.Options.GeneralEditorOptions" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:winforms="clr-namespace:System.Windows.Forms.Integration;assembly=WindowsFormsIntegration" xmlns:core="http://icsharpcode.net/sharpdevelop/core" xmlns:gui="clr-namespace:ICSharpCode.SharpDevelop.Gui;assembly=ICSharpCode.SharpDevelop" xmlns:local="clr-namespace:ICSharpCode.AvalonEdit.AddIn.Options" xmlns:widgets="http://icsharpcode.net/sharpdevelop/widgets">
+	x:Class="ICSharpCode.AvalonEdit.AddIn.Options.GeneralEditorOptions" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:core="http://icsharpcode.net/sharpdevelop/core" xmlns:gui="clr-namespace:ICSharpCode.SharpDevelop.Gui;assembly=ICSharpCode.SharpDevelop" xmlns:local="clr-namespace:ICSharpCode.AvalonEdit.AddIn.Options" xmlns:widgets="http://icsharpcode.net/sharpdevelop/widgets">
 	<StackPanel>
 		<GroupBox
 			Header="{core:Localize Dialog.Options.IDEOptions.TextEditor.General.FontGroupBox}">

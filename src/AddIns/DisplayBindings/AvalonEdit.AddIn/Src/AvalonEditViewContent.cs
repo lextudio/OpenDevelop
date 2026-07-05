@@ -28,7 +28,7 @@ using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Utils;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.Editor;
+using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor.Bookmarks;
 using ICSharpCode.SharpDevelop.Editor;
@@ -294,7 +294,8 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		#endregion
 		
 		object IToolsHost.ToolsContent {
-			get { return TextEditorSideBar.Instance; }
+			// WinForms SideBar (toolbox) is out of MVP scope; no tools content to host.
+			get { return null; }
 		}
 	}
 }

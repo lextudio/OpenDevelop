@@ -27,7 +27,7 @@ using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Editing;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Rendering;
-using ICSharpCode.NRefactory.Editor;
+using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Widgets.MyersDiff;
@@ -244,7 +244,9 @@ namespace ICSharpCode.AvalonEdit.AddIn
 					differ.copyButton.Visibility = Visibility.Collapsed;
 				} else {
 					if (differ.editor.SyntaxHighlighting != null) {
-						var baseDocument = new ReadOnlyDocument(changeWatcher.BaseDocument, TextView.Document.FileName);
+						// AvalonEdit's DocumentHighlighter only accepts a live TextDocument (it registers a WeakLineTracker),
+						// so the diff popup's read-only base version has to be materialized as one, not a ReadOnlyDocument.
+						var baseDocument = new TextDocument(changeWatcher.BaseDocument.Text) { FileName = TextView.Document.FileName };
 						var mainHighlighter = new DocumentHighlighter(baseDocument, differ.editor.SyntaxHighlighting);
 						var popupHighlighter = differ.editor.TextArea.GetService(typeof(IHighlighter)) as DocumentHighlighter;
 						

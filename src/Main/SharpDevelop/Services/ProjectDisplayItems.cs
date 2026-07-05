@@ -29,6 +29,10 @@ namespace ICSharpCode.SharpDevelop.Services
 			if (project is null) {
 				return Array.Empty<ProjectDisplayItem>();
 			}
+			
+			if (project is MSBuildBasedProject msbuildProject && msbuildProject.IsSdkStyleProject) {
+				return GetEvaluatedProjectDisplayItems(msbuildProject);
+			}
 
 			return project.Items.CreateSnapshot()
 				.OfType<FileProjectItem>()
@@ -44,10 +48,71 @@ namespace ICSharpCode.SharpDevelop.Services
 				.OrderBy(item => item.DisplayPath, StringComparer.OrdinalIgnoreCase)
 				.ToArray();
 		}
+		
+		internal static IReadOnlyList<ProjectDisplayItem> GetEvaluatedProjectDisplayItems(MSBuildBasedProject project)
+		{
+			var projectDirectory = project.Directory.ToString();
+			var projectFile = project.FileName.ToString();
+			
+			return project.GetEvaluatedProjectItems()
+				.Where(item => IsDisplayItemName(item.ItemType))
+				.Select(item => CreateEvaluatedDisplayItem(projectDirectory, projectFile, item))
+				.Where(item => item != null)
+				.Cast<ProjectDisplayItem>()
+				.GroupBy(item => item.PhysicalPath, StringComparer.OrdinalIgnoreCase)
+				.Select(group => group.First())
+				.OrderBy(item => item.DisplayPath, StringComparer.OrdinalIgnoreCase)
+				.ToArray();
+		}
+		
+		internal static IReadOnlyList<EvaluatedProjectItem> GetEvaluatedDependencyItems(MSBuildBasedProject project)
+		{
+			return project.GetEvaluatedProjectItems()
+				.Where(item => IsReferenceItemName(item.ItemType))
+				.ToArray();
+		}
+		
+		private static ProjectDisplayItem? CreateEvaluatedDisplayItem(string projectDirectory, string projectFile, EvaluatedProjectItem item)
+		{
+			var physicalPath = ResolvePhysicalPath(projectDirectory, item.EvaluatedInclude);
+			if (string.IsNullOrWhiteSpace(physicalPath)
+			    || !IsSupportedProjectItemPath(physicalPath)
+			    || string.Equals(Path.GetFullPath(physicalPath), Path.GetFullPath(projectFile), StringComparison.OrdinalIgnoreCase)) {
+				return null;
+			}
+			
+			var link = item.GetMetadata("Link");
+			var displayPath = !string.IsNullOrWhiteSpace(link)
+				? link
+				: Path.GetRelativePath(projectDirectory, physicalPath);
+			
+			return new ProjectDisplayItem(
+				physicalPath,
+				NormalizeDisplayPath(displayPath),
+				item.GetMetadata("DependentUpon"),
+				!string.IsNullOrWhiteSpace(link),
+				File.Exists(physicalPath),
+				null);
+		}
+		
+		private static string ResolvePhysicalPath(string projectDirectory, string include)
+		{
+			if (string.IsNullOrWhiteSpace(include)) {
+				return string.Empty;
+			}
+			
+			var normalizedInclude = include.Replace('\\', Path.DirectorySeparatorChar);
+			return Path.IsPathRooted(normalizedInclude)
+				? Path.GetFullPath(normalizedInclude)
+				: Path.GetFullPath(Path.Combine(projectDirectory, normalizedInclude));
+		}
 
 		private static bool IsReferenceItemName(string name) =>
 			name is "Reference" or "ProjectReference" or "PackageReference"
-				or "Analyzer" or "COMReference" or "FrameworkReference";
+				or "Analyzer" or "COMReference" or "FrameworkReference" or "SDKReference";
+		
+		private static bool IsDisplayItemName(string name) =>
+			name is "Compile" or "None" or "Content" or "EmbeddedResource" or "Resource" or "Page" or "ApplicationDefinition";
 
 		private static bool IsSupportedProjectItemPath(string path)
 		{

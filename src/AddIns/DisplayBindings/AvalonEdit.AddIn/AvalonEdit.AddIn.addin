@@ -17,6 +17,16 @@
 		</Import>
 	</Runtime>
 	
+	<Path name = "/SharpDevelop/Parser">
+		<Parser id    = "C#-Roslyn"
+		        supportedfilenamepattern="\.cs$"
+		        class = "ICSharpCode.SharpDevelop.Roslyn.RoslynParser" />
+	</Path>
+
+	<Path name = "/SharpDevelop/ViewContent/TextEditor/CodeCompletion">
+		<CodeCompletionBinding id = "C#-Roslyn" extensions = ".cs" class = "ICSharpCode.SharpDevelop.Roslyn.RoslynCodeCompletionBinding"/>
+	</Path>
+
 	<Path name = "/SharpDevelop/Workbench/DisplayBindings">
 		<DisplayBinding id = "Text"
 		                title = "${res:Gui.ProjectBrowser.OpenWith.Bindings.TextEditor}"
@@ -148,14 +158,14 @@
 		          shortcut = "F6"
 		          icon="Icons.16x16.Class"
 		          class = "ICSharpCode.AvalonEdit.AddIn.ContextActions.FindDerivedClassesOrOverrides"/>
-		
+
 		<MenuItem id = "FindBaseClassesOrMembers"
 		          label = "${res:SharpDevelop.Refactoring.FindBaseClassesOrMembersCommand}"
 		          shortcut="Control+F6"
 		          icon="Icons.16x16.Interface"
 		          class = "ICSharpCode.AvalonEdit.AddIn.ContextActions.FindBaseClassesOrMembers"/>
 	</Path>
-	
+
 	<Path name = "/SharpDevelop/EntityContextMenu">
 		<Condition name="SymbolTypeAtCaret" type="type,member" action="Exclude">
 			<Include id="FindDerivedOrOverridesClasses"
@@ -166,7 +176,7 @@
 			         item="/SharpDevelop/Workbench/MainMenu/Search/FindBaseClassesOrMembers" />
 		</Condition>
 	</Path>
-	
+
 	<Path name = "/SharpDevelop/Dialogs/OptionsDialog/CodingOptions">
 		<OptionPanel id = "CodeTemplates"
 		             label = "${res:Dialog.Options.CodeTemplatesText}"

@@ -21,7 +21,7 @@ using System.Collections.Generic;
 using System.Linq;
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Highlighting;
-using ICSharpCode.NRefactory.Editor;
+using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.SharpDevelop;
 
 namespace ICSharpCode.AvalonEdit.AddIn

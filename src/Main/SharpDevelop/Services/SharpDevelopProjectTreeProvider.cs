@@ -130,7 +130,14 @@ internal sealed class SharpDevelopProjectTreeProvider : ProjectTreeProviderBase
         var projectItemsByInclude = new Dictionary<string, ProjectItem>(StringComparer.OrdinalIgnoreCase);
         var targetFrameworks = GetTargetFrameworks(projectFile).ToImmutableArray();
 
-        if (_project is not null)
+        if (_project is MSBuildBasedProject msbuildProject && msbuildProject.IsSdkStyleProject)
+        {
+            foreach (var item in ProjectDisplayItems.GetEvaluatedDependencyItems(msbuildProject))
+            {
+                AddDependencyItem(dependencies, item.ItemType, item.EvaluatedInclude, ResolveAbsolutePath(item, projectDir), GetProjectItemMetadata(item));
+            }
+        }
+        else if (_project is not null)
         {
             foreach (var item in _project.Items.CreateSnapshot())
             {
@@ -221,6 +228,11 @@ internal sealed class SharpDevelopProjectTreeProvider : ProjectTreeProviderBase
         }
 
         return builder.ToImmutable();
+    }
+    
+    private static IImmutableDictionary<string, string> GetProjectItemMetadata(EvaluatedProjectItem item)
+    {
+        return item.Metadata.ToImmutableDictionary(StringComparer.Ordinal);
     }
 
     private static IImmutableSet<string>? GetConditionTargetFrameworks(XElement item, IReadOnlyCollection<string> allTargetFrameworks)
@@ -588,6 +600,29 @@ internal sealed class SharpDevelopProjectTreeProvider : ProjectTreeProviderBase
             var path = item.FileName?.ToString();
             if (path is null) return null;
             return Path.IsPathRooted(path) ? path : Path.GetFullPath(Path.Combine(projectDir, path));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+    
+    private static string? ResolveAbsolutePath(EvaluatedProjectItem item, string projectDir)
+    {
+        try
+        {
+            if (item.ItemType == "ProjectReference")
+            {
+                return Path.GetFullPath(Path.Combine(projectDir, item.EvaluatedInclude.Replace('\\', Path.DirectorySeparatorChar)));
+            }
+            
+            var hintPath = item.GetMetadata("HintPath");
+            if (!string.IsNullOrWhiteSpace(hintPath))
+            {
+                return Path.GetFullPath(Path.Combine(projectDir, hintPath.Replace('\\', Path.DirectorySeparatorChar)));
+            }
+            
+            return item.EvaluatedInclude;
         }
         catch
         {

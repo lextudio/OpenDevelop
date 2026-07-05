@@ -166,6 +166,17 @@ namespace ICSharpCode.SharpDevelop.Project
 			}
 		}
 		
+		[Browsable(false)]
+		public bool IsSdkStyleProject {
+			get {
+				lock (SyncRoot) {
+					if (projectFile == null)
+						throw new ObjectDisposedException("MSBuildBasedProject");
+					return !string.IsNullOrEmpty(projectFile.Sdk);
+				}
+			}
+		}
+		
 		public void PerformUpdateOnProjectFile(Action action)
 		{
 			if (action == null)
@@ -174,6 +185,18 @@ namespace ICSharpCode.SharpDevelop.Project
 				UnloadCurrentlyOpenProject();
 				action();
 				CreateItemsListFromMSBuild();
+			}
+		}
+		
+		public IReadOnlyList<EvaluatedProjectItem> GetEvaluatedProjectItems()
+		{
+			using (var c = OpenCurrentConfiguration()) {
+				return c.Project.AllEvaluatedItems
+					.Select(item => new EvaluatedProjectItem(
+						item.ItemType,
+						item.EvaluatedInclude,
+						item.DirectMetadata.ToDictionary(metadata => metadata.Name, metadata => metadata.EvaluatedValue, MSBuildInternals.PropertyNameComparer)))
+					.ToArray();
 			}
 		}
 		

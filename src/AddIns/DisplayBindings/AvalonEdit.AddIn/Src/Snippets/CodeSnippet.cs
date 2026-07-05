@@ -24,8 +24,6 @@ using System.Text.RegularExpressions;
 
 using ICSharpCode.AvalonEdit.Snippets;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.TypeSystem;
-using ICSharpCode.NRefactory.TypeSystem.Implementation;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Editor.AvalonEdit;
@@ -215,13 +213,10 @@ namespace ICSharpCode.AvalonEdit.AddIn.Snippets
 			return Core.StringParser.GetValue(propertyName);
 		}
 		
-		static IUnresolvedTypeDefinition GetCurrentClass(ITextEditor editor)
+		static Microsoft.CodeAnalysis.INamedTypeSymbol GetCurrentClass(ITextEditor editor)
 		{
-			var parseInfo = SD.ParserService.GetExistingUnresolvedFile(editor.FileName);
-			if (parseInfo != null) {
-				return parseInfo.GetInnermostTypeDefinition(editor.Caret.Location);
-			}
-			return null;
+			var symbol = ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.GetSymbolAtCaret(editor);
+			return symbol as Microsoft.CodeAnalysis.INamedTypeSymbol ?? symbol?.ContainingType;
 		}
 		
 		static Func<string, string> GetFunction(ITextEditor context, string name)

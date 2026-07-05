@@ -56,7 +56,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		public AvalonDockLayout()
 		{
-			dockingManager.Theme = new AvalonDock.Themes.Vs2013BlueTheme();
+			dockingManager.Theme = new AvalonDock.Themes.Vs2013LightTheme();
 			dockWorkspace = new DockWorkspace(dockingManager);
 			ConfigureDockingManagerForWorkspace();
 			dockingManager.ActiveContentChanged += dockingManager_ActiveContentChanged;

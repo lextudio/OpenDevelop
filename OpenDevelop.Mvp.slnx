@@ -26,6 +26,12 @@
   <Folder Name="/src/Main/ICSharpCode.SharpDevelop.Widgets/Project/">
     <Project Path="src/Main/ICSharpCode.SharpDevelop.Widgets/Project/ICSharpCode.SharpDevelop.Widgets.csproj" />
   </Folder>
+  <Folder Name="/src/AddIns/Misc/StartPage/">
+    <Project Path="src/AddIns/Misc/StartPage/Project/StartPage.csproj" />
+  </Folder>
+  <Folder Name="/src/AddIns/DisplayBindings/AvalonEdit.AddIn/">
+    <Project Path="src/AddIns/DisplayBindings/AvalonEdit.AddIn/AvalonEdit.AddIn.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj" />
   </Folder>

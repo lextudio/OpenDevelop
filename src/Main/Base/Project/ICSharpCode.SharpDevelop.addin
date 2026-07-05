@@ -215,11 +215,30 @@
 	<Path name = "/SharpDevelop/Workbench/Combine/FileFilter">
 		<FileFilter id         = "Solution"
 		            name       = "${res:SharpDevelop.FileFilter.SolutionFiles}"
-		            extensions = "*.sln"/>
+		            extensions = "*.sln;*.slnx"/>
+		
+		<FileFilter id         = "CSharpProject"
+		            insertbefore="AllFiles"
+		            name       = "C# Projects (*.csproj)"
+		            extensions = "*.csproj"/>
 		
 		<FileFilter id         = "AllFiles"
 		            name       = "${res:SharpDevelop.FileFilter.AllFiles}"
 		            extensions = "*.*"/>
+	</Path>
+	
+	<Path name = "/SharpDevelop/Workbench/LanguageBindings">
+		<LanguageBinding id    = "CSharp"
+		                 class = "CSharpBinding.CSharpLanguageBinding"
+		                 extensions = ".cs" />
+	</Path>
+	
+	<Path path = "/SharpDevelop/Workbench/ProjectBindings">
+		<ProjectBinding id                   = "C#"
+		                guid                 = "{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}"
+		                supportedextensions  = ".cs"
+		                projectfileextension = ".csproj"
+		                class                = "CSharpBinding.CSharpProjectBinding" />
 	</Path>
 	
 	<!-- Project browser Paths -->

@@ -38,7 +38,7 @@ using ICSharpCode.AvalonEdit.Search;
 using ICSharpCode.AvalonEdit.Utils;
 using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
-using ICSharpCode.NRefactory.Editor;
+using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor.Bookmarks;
 using ICSharpCode.SharpDevelop.Editor;
@@ -254,7 +254,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		
 		void textEditor_TextArea_TextCopied(object sender, TextEventArgs e)
 		{
-			ICSharpCode.SharpDevelop.Gui.TextEditorSideBar.Instance.PutInClipboardRing(e.Text);
+			ContextActions.ClipboardRingService.PutInClipboardRing(e.Text);
 		}
 
 		protected virtual void DisposeTextEditor(CodeEditorView textEditor)
@@ -683,7 +683,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 						SetRow(quickClassBrowser, 0);
 						this.Children.Add(quickClassBrowser);
 					}
-					quickClassBrowser.Update(parseInfo.UnresolvedFile);
+					quickClassBrowser.Update(this.FileName);
 					quickClassBrowser.SelectItemAtCaretPosition(this.ActiveTextEditor.TextArea.Caret.Location);
 				}
 			} else {

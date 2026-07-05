@@ -21,6 +21,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using ICSharpCode.Core;
+using ICSharpCode.SharpDevelop.Gui;
 
 namespace ICSharpCode.SharpDevelop.Workbench
 {
@@ -50,9 +51,9 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			DisplayBindingDescriptor bestMatch = null;
 			double max = double.NegativeInfinity;
 			const int BUFFER_LENGTH = 4 * 1024;
-			
+			string mime = "text/plain";
+
 			using (var stream = file.OpenRead()) {
-				string mime = "text/plain";
 				if (stream.Length > 0) {
 					stream.Position = 0;
 					mime = MimeTypeDetection.FindMimeType(new BinaryReader(stream).ReadBytes(BUFFER_LENGTH));
@@ -67,9 +68,12 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				}
 			}
 			
-			if (bestMatch == null)
-				throw new InvalidOperationException();
-			
+			if (bestMatch == null) {
+				LoggingService.Warn("AutoDetectDisplayBinding: no display binding claimed file '" + file.FileName
+				                     + "' (detected mime: " + mime + ", " + codons.Count + " candidate binding(s)). Falling back to plain text view.");
+				return new SimpleViewContent(string.Empty) { TitleName = Path.GetFileName(file.FileName) };
+			}
+
 			return bestMatch.Binding.CreateContentForFile(file);
 		}
 	}

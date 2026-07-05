@@ -52,7 +52,8 @@ namespace ICSharpCode.AvalonEdit.AddIn.Options
 			}
 		}
 		
-		string fontFamily = Core.WinForms.WinFormsResourceService.DefaultMonospacedFont.Name;
+		// WinFormsResourceService.DefaultMonospacedFont is out of MVP scope (WinForms); "Consolas" is what it resolved to anyway.
+		string fontFamily = "Consolas";
 		
 		public string FontFamily {
 			get { return fontFamily; }

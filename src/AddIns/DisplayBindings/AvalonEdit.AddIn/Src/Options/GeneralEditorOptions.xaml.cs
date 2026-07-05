@@ -26,7 +26,6 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 
-using ICSharpCode.Core.WinForms;
 using ICSharpCode.SharpDevelop.Gui;
 
 namespace ICSharpCode.AvalonEdit.AddIn.Options

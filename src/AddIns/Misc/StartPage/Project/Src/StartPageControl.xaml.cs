@@ -22,6 +22,7 @@ using System.Reflection;
 using System.Windows.Controls;
 
 using ICSharpCode.Core;
+using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
 
 namespace ICSharpCode.StartPage
@@ -39,8 +40,9 @@ namespace ICSharpCode.StartPage
 			List<BoxEntry> entries = items.ConvertAll(control => new BoxEntry { Control = control } );
 			startPageItems.ItemsSource = entries;
 			
-			var aca = (AssemblyCopyrightAttribute)typeof(CommonAboutDialog).Assembly.GetCustomAttributes(typeof(AssemblyCopyrightAttribute), false)[0];
+			var aca = (AssemblyCopyrightAttribute)typeof(SD).Assembly.GetCustomAttributes(typeof(AssemblyCopyrightAttribute), false)[0];
 			copyrightText.Text = aca.Copyright;
+			licenseText.Text = "SharpDevelop is licensed under the MIT license.";
 			
 			versionTextBlock.Text = "SharpDevelop " + RevisionClass.FullVersion;
 		}

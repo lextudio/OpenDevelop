@@ -21,8 +21,8 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 
-using ICSharpCode.NRefactory.Editor;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.AvalonEdit.Document;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Editor.Bookmarks;
 
 namespace ICSharpCode.AvalonEdit.AddIn

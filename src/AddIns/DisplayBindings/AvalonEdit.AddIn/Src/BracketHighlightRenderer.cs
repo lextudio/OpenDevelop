@@ -80,7 +80,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			BackgroundGeometryBuilder builder = new BackgroundGeometryBuilder();
 			
 			builder.CornerRadius = 1;
-			builder.AlignToMiddleOfPixels = true;
+			builder.AlignToWholePixels = true;
 			
 			builder.AddSegment(textView, new TextSegment() { StartOffset = result.OpeningBracketOffset, Length = result.OpeningBracketLength });
 			builder.CloseFigure(); // prevent connecting the two segments

@@ -16,39 +16,29 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
 using System.Collections.Generic;
-using ICSharpCode.Core;
-/*
-namespace ICSharpCode.SharpDevelop.Refactoring
+
+namespace ICSharpCode.SharpDevelop.Project
 {
-	public class FindLocalVariableReferencesCommand : AbstractMenuCommand
+	public sealed class EvaluatedProjectItem
 	{
-		public override void Run()
+		public EvaluatedProjectItem(string itemType, string evaluatedInclude, IReadOnlyDictionary<string, string> metadata)
 		{
-			RefactoringMenuContext context = (RefactoringMenuContext)Owner;
-			LocalResolveResult local = (LocalResolveResult)context.ResolveResult;
-			FindReferencesAndRenameHelper.RunFindReferences(local);
-		}
-	}
-	
-	public class RenameLocalVariableCommand : AbstractMenuCommand
-	{
-		public override void Run()
-		{
-			RefactoringMenuContext context = (RefactoringMenuContext)Owner;
-			Run((LocalResolveResult)context.ResolveResult);
+			ItemType = itemType;
+			EvaluatedInclude = evaluatedInclude;
+			Metadata = metadata;
 		}
 		
-		public static void Run(LocalResolveResult local)
+		public string ItemType { get; }
+		
+		public string EvaluatedInclude { get; }
+		
+		public IReadOnlyDictionary<string, string> Metadata { get; }
+		
+		public string GetMetadata(string name)
 		{
-			string newName = MessageService.ShowInputBox("${res:SharpDevelop.Refactoring.Rename}", "${res:SharpDevelop.Refactoring.RenameMemberText}", local.VariableName);
-			if (!FindReferencesAndRenameHelper.CheckName(newName, local.VariableName)) return;
-			
-			List<Reference> list = RefactoringService.FindReferences(local, null);
-			if (list == null) return;
-			FindReferencesAndRenameHelper.RenameReferences(list, newName);
+			string value;
+			return Metadata.TryGetValue(name, out value) ? value : string.Empty;
 		}
 	}
 }
-*/

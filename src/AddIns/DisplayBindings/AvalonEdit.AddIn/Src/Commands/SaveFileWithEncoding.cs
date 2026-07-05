@@ -41,7 +41,7 @@ namespace ICSharpCode.AvalonEdit.AddIn.Commands
 				dlg.Encoding = codeEditor.PrimaryTextEditor.Encoding;
 				if (dlg.ShowDialog() == true) {
 					codeEditor.PrimaryTextEditor.Encoding = dlg.Encoding;
-					SharpDevelop.Commands.SaveFile.Save(vc.PrimaryFile);
+					SharpDevelop.Commands.SaveFileHelper.Save(vc);
 				}
 			}
 		}

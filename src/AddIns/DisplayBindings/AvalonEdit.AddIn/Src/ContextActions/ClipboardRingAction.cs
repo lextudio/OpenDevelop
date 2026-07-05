@@ -2,7 +2,6 @@
 // This code is distributed under the GNU LGPL (for details please see \doc\license.txt)
 
 using System;
-using ICSharpCode.NRefactory.TypeSystem;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Refactoring;
 
@@ -17,9 +16,7 @@ namespace ICSharpCode.AvalonEdit.AddIn.ContextActions
 		public string Text { get; private set; }
 		
 		public string DisplayName { get; private set; }
-		
-		public IEntity Entity { get; private set; }
-		
+
 		public IContextActionProvider Provider { get { return null; } }
 		
 		public ClipboardRingAction(string text) 
@@ -44,10 +41,7 @@ namespace ICSharpCode.AvalonEdit.AddIn.ContextActions
 			editor.Document.Insert(context.CaretOffset, this.Text);
 			
 			/* update clipboard ring */
-			var clipboardRing = ICSharpCode.SharpDevelop.Gui.TextEditorSideBar.Instance;
-			if (clipboardRing != null) {
-				clipboardRing.PutInClipboardRing(this.Text);
-			}
+			ClipboardRingService.PutInClipboardRing(this.Text);
 		}
 	}
 }

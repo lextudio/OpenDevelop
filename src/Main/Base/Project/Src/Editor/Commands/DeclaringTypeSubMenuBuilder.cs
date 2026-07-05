@@ -1,14 +1,14 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
-// 
+// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -16,15 +16,21 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
-using System.Linq;
+// The live-editor-caret path is rewritten against Microsoft.CodeAnalysis directly (see
+// doc/technotes/csharp-roslyn.md, Phase 1 "option (b)"). The IMemberModel path is untouched -
+// that's SharpDevelop's separate background project-content model (bookmarks etc.), not part of
+// the ParserService/IParser resolve flow this rewrite targets.
+
 using System.Collections.Generic;
-using System.Windows;
 using System.Windows.Controls;
+
 using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
 using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Dom;
+using ICSharpCode.SharpDevelop.Roslyn;
+using Microsoft.CodeAnalysis;
+using ISymbol = Microsoft.CodeAnalysis.ISymbol;
 
 namespace ICSharpCode.SharpDevelop.Editor.Commands
 {
@@ -35,58 +41,64 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 	{
 		public IEnumerable<object> BuildItems(Codon codon, object parameter)
 		{
-			IMember member = null;
-			
 			if (parameter is IMemberModel) {
 				// Menu is directly created from a member model (e.g. bookmarks etc.)
-				member = ((IMemberModel) parameter).Resolve();
-			} else if (parameter is ResolveResult) {
-				MemberResolveResult resolveResult = parameter as MemberResolveResult;
-				if (resolveResult != null) {
-					member = resolveResult.Member;
-				}
-			} else if (parameter is ITextEditor) {
-				// Shown in context menu of a text editor
-				MemberResolveResult resolveResult = GetResolveResult((ITextEditor) parameter) as MemberResolveResult;
-				if (resolveResult != null) {
-					member = resolveResult.Member;
-				}
-			}
-			
-			if (member == null) {
-				return null;
+				return BuildItemsForEntityModelMember((IMemberModel)parameter);
 			}
 
-			IType declaringType = member.DeclaringTypeDefinition;
-			if (declaringType == null) {
-				return null;
+			ISymbol symbol = parameter as ISymbol;
+			if (symbol == null) {
+				var editor = parameter as ITextEditor ?? SD.GetActiveViewContentService<ITextEditor>();
+				symbol = editor != null ? RoslynWorkspaceHelper.GetSymbolAtCaret(editor) : null;
 			}
-			
+
+			bool isMember = symbol is IMethodSymbol || symbol is IFieldSymbol || symbol is IPropertySymbol || symbol is IEventSymbol;
+			if (!isMember)
+				return null;
+
+			INamedTypeSymbol declaringType = symbol.ContainingType;
+			if (declaringType == null)
+				return null;
+
 			var items = new List<object>();
-			var declaringTypeItem = new MenuItem() {
+			var declaringTypeItem = new MenuItem {
 				Header = SD.ResourceService.GetString("SharpDevelop.Refactoring.DeclaringType") + ": " + declaringType.Name,
-				Icon = new Image() { Source = ClassBrowserIconService.GetIcon(declaringType).ImageSource }
+				Icon = new Image { Source = RoslynSymbolIcons.GetImage(declaringType) }
 			};
-			
-			var subItems = MenuService.CreateMenuItems(
-				null, new TypeResolveResult(declaringType as ITypeDefinition), "/SharpDevelop/EntityContextMenu");
+
+			var subItems = MenuService.CreateMenuItems(null, declaringType, "/SharpDevelop/EntityContextMenu");
 			if (subItems != null) {
 				foreach (var item in subItems) {
 					declaringTypeItem.Items.Add(item);
 				}
 			}
 			items.Add(declaringTypeItem);
-			
+
 			return items;
 		}
-		
-		static ResolveResult GetResolveResult(ITextEditor currentEditor)
+
+		IEnumerable<object> BuildItemsForEntityModelMember(IMemberModel memberModel)
 		{
-			if (currentEditor != null) {
-				return SD.ParserService.Resolve(currentEditor, currentEditor.Caret.Location);
+			IMember member = memberModel.Resolve();
+			ITypeDefinition declaringType = member != null ? member.DeclaringTypeDefinition : null;
+			if (declaringType == null)
+				return null;
+
+			var items = new List<object>();
+			var declaringTypeItem = new MenuItem {
+				Header = SD.ResourceService.GetString("SharpDevelop.Refactoring.DeclaringType") + ": " + declaringType.Name,
+				Icon = new Image { Source = ClassBrowserIconService.GetIcon(declaringType).ImageSource }
+			};
+
+			var subItems = MenuService.CreateMenuItems(null, declaringType, "/SharpDevelop/EntityContextMenu");
+			if (subItems != null) {
+				foreach (var item in subItems) {
+					declaringTypeItem.Items.Add(item);
+				}
 			}
-			
-			return ErrorResolveResult.UnknownError;
+			items.Add(declaringTypeItem);
+
+			return items;
 		}
 	}
 }

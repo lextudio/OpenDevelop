@@ -17,6 +17,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel.Design;
@@ -34,7 +35,6 @@ using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Highlighting.Xshd;
 using ICSharpCode.AvalonEdit.Rendering;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.Utils;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Debugging;
 using ICSharpCode.SharpDevelop.Editor;
@@ -187,8 +187,7 @@ namespace ICSharpCode.AvalonEdit.AddIn.Options
 				var extended = ICSharpCode.Core.AddInTree.BuildItems<AddInTreeSyntaxMode>(SyntaxModeDoozer.Path, null, false)
 					.AsParallel()
 					.Select(m => m.LoadXshd());
-				allSyntaxDefinitions = extended.AsEnumerable().Concat(builtins)
-					.DistinctBy(def => def.Name)
+				allSyntaxDefinitions = SharpDevelopExtensions.DistinctBy(extended.AsEnumerable().Concat(builtins), def => def.Name)
 					.OrderBy(def => def.Name)
 					.ToList();
 			}
@@ -685,6 +684,38 @@ namespace ICSharpCode.AvalonEdit.AddIn.Options
 			return item != null;
 		}
 		
+		sealed class MultiDictionary<TKey, TValue> : IEnumerable
+		{
+			readonly Dictionary<TKey, List<TValue>> dict;
+
+			public MultiDictionary(IEqualityComparer<TKey> comparer)
+			{
+				dict = new Dictionary<TKey, List<TValue>>(comparer);
+			}
+
+			public void Add(TKey key, TValue value)
+			{
+				List<TValue> values;
+				if (!dict.TryGetValue(key, out values)) {
+					values = new List<TValue>();
+					dict[key] = values;
+				}
+				values.Add(value);
+			}
+
+			public IEnumerable<TValue> this[TKey key] {
+				get {
+					List<TValue> values;
+					return dict.TryGetValue(key, out values) ? values : Enumerable.Empty<TValue>();
+				}
+			}
+
+			IEnumerator IEnumerable.GetEnumerator()
+			{
+				return dict.GetEnumerator();
+			}
+		}
+
 		// VS => SD
 		static readonly MultiDictionary<string, string> mapping = new MultiDictionary<string, string>(StringComparer.Ordinal) {
 			{ "Brace Matching (Rectangle)", BracketHighlightRenderer.BracketHighlight },

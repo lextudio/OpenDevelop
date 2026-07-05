@@ -11,6 +11,7 @@ using System.IO;
 using System.Linq;
 
 using ICSharpCode.SharpDevelop.Project;
+using Microsoft.VisualStudio.ProjectSystem;
 
 namespace ICSharpCode.SharpDevelop.Services;
 
@@ -50,55 +51,80 @@ internal static class SolutionExplorerTreeBuilder
             projectPathHint: project.FileName.ToString(),
             isExpanded: true);
 
-        var projectDirectory = project.Directory.ToString();
-        var folders = new Dictionary<string, SolutionExplorerNodeModel>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var item in ProjectDisplayItems.GetProjectDisplayItems(project))
+        var cpsTree = new SharpDevelopProjectTreeProvider(project).BuildTree();
+        foreach (var child in cpsTree.Children)
         {
-            var segments = item.DisplayPath.Split('\\', StringSplitOptions.RemoveEmptyEntries);
-            if (segments.Length == 0)
-            {
-                continue;
-            }
-
-            var parent = projectNode;
-            var pathSoFar = string.Empty;
-            for (var i = 0; i < segments.Length - 1; i++)
-            {
-                pathSoFar = pathSoFar.Length == 0 ? segments[i] : pathSoFar + "\\" + segments[i];
-                if (!folders.TryGetValue(pathSoFar, out var folderNode))
-                {
-                    folderNode = new SolutionExplorerNodeModel(
-                        segments[i],
-                        Path.Combine(projectDirectory, pathSoFar),
-                        isDirectory: true,
-                        SolutionExplorerNodeKind.Folder,
-                        projectPathHint: project.FileName.ToString());
-                    folders.Add(pathSoFar, folderNode);
-                    parent.Children.Add(folderNode);
-                }
-
-                parent = folderNode;
-            }
-
-            var kind = !item.Exists
-                ? SolutionExplorerNodeKind.MissingFile
-                : item.IsLinked
-                    ? SolutionExplorerNodeKind.LinkedFile
-                    : SolutionExplorerNodeKind.File;
-
-            parent.Children.Add(new SolutionExplorerNodeModel(
-                segments[^1],
-                item.PhysicalPath,
-                isDirectory: false,
-                kind,
-                boundItem: null,
-                projectPathHint: project.FileName.ToString(),
-                includeHint: item.ProjectItem?.Include));
+            projectNode.Children.Add(ConvertProjectTreeNode(child, project.FileName.ToString()));
         }
 
         SortChildren(projectNode);
         return projectNode;
+    }
+    
+    private static SolutionExplorerNodeModel ConvertProjectTreeNode(IProjectTree tree, string projectPath)
+    {
+        var node = new SolutionExplorerNodeModel(
+            tree.Caption,
+            tree.FilePath ?? string.Empty,
+            tree.IsFolder,
+            GetNodeKind(tree),
+            boundItem: null,
+            boundProjectTree: tree,
+            projectPathHint: projectPath,
+            includeHint: GetIncludeHint(tree, projectPath),
+            isExpanded: IsExpandedByDefault(tree));
+        
+        foreach (var child in tree.Children)
+        {
+            node.Children.Add(ConvertProjectTreeNode(child, projectPath));
+        }
+        
+        SortChildren(node);
+        return node;
+    }
+    
+    private static SolutionExplorerNodeKind GetNodeKind(IProjectTree tree)
+    {
+        if (tree.Flags.Contains(ProjectTreeFlags.Common.DependenciesFolder))
+            return SolutionExplorerNodeKind.DependenciesFolder;
+        if (tree.Flags.Contains(ProjectTreeFlags.Common.PackagesFolder))
+            return SolutionExplorerNodeKind.PackagesFolder;
+        if (tree.Flags.Contains(ProjectTreeFlags.Common.ReferencesFolder))
+            return SolutionExplorerNodeKind.ReferencesFolder;
+        if (tree.Flags.Contains(ProjectTreeFlags.Common.PackageReference))
+            return SolutionExplorerNodeKind.PackageReference;
+        if (tree.Flags.Contains(ProjectTreeFlags.Common.ProjectReference))
+            return SolutionExplorerNodeKind.ProjectReference;
+        if (tree.Flags.Contains(ProjectTreeFlags.Common.Reference))
+            return SolutionExplorerNodeKind.Reference;
+        if (tree.Flags.Contains(ProjectTreeFlags.Common.LinkedFile))
+            return SolutionExplorerNodeKind.LinkedFile;
+        if (tree.IsFolder)
+            return tree.Flags.Contains(ProjectTreeFlags.Common.IncludeInProjectCandidate)
+                ? SolutionExplorerNodeKind.GhostFolder
+                : SolutionExplorerNodeKind.Folder;
+        if (!string.IsNullOrWhiteSpace(tree.FilePath) && !File.Exists(tree.FilePath))
+            return SolutionExplorerNodeKind.MissingFile;
+        return SolutionExplorerNodeKind.File;
+    }
+    
+    private static string? GetIncludeHint(IProjectTree tree, string projectPath)
+    {
+        if (string.IsNullOrWhiteSpace(tree.FilePath))
+            return null;
+        
+        var projectDirectory = Path.GetDirectoryName(projectPath);
+        if (string.IsNullOrWhiteSpace(projectDirectory))
+            return tree.FilePath;
+        
+        return Path.GetRelativePath(projectDirectory, tree.FilePath);
+    }
+    
+    private static bool IsExpandedByDefault(IProjectTree tree)
+    {
+        return tree.Flags.Contains(ProjectTreeFlags.Common.DependenciesFolder)
+            || tree.Flags.Contains(ProjectTreeFlags.Common.ReferencesFolder)
+            || tree.Flags.Contains(ProjectTreeFlags.Common.PackagesFolder);
     }
 
     private static void SortChildren(SolutionExplorerNodeModel node)

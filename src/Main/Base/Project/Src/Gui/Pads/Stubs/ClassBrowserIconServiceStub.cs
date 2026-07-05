@@ -18,5 +18,6 @@ namespace ICSharpCode.SharpDevelop
 		public static IImage GetIcon(IUnresolvedTypeDefinition t) => null;
 
 		public static IImage GotoArrow => null;
+		public static IImage CodeTemplate => null;
 	}
 }

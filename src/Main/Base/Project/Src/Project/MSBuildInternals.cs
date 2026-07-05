@@ -18,7 +18,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using ICSharpCode.Core;
 using Microsoft.Build.Construction;
 using Microsoft.Build.Execution;
 using MSBuild = Microsoft.Build;
@@ -41,6 +43,102 @@ namespace ICSharpCode.SharpDevelop.Project
 		// that setting until all code is ported to use PropertyNameComparer and we've verified what MSBuild is actually using.
 		public readonly static StringComparer PropertyNameComparer = StringComparer.Ordinal;
 		public readonly static StringComparer ConfigurationNameComparer = ConfigurationAndPlatform.ConfigurationNameComparer;
+		static bool msbuildEnvironmentInitialized;
+		
+		public static void InitializeMSBuildEnvironment()
+		{
+			if (msbuildEnvironmentInitialized)
+				return;
+			msbuildEnvironmentInitialized = true;
+			
+			var dotnet = GetDotnetInstallation();
+			if (dotnet == null)
+				return;
+			
+			Environment.SetEnvironmentVariable("DOTNET_ROOT", dotnet.Root);
+			Environment.SetEnvironmentVariable("DOTNET_HOST_PATH", dotnet.HostPath);
+			
+			string sdksDir = Path.Combine(dotnet.Root, "sdk");
+			if (!Directory.Exists(sdksDir))
+				return;
+			
+			string latestSdk = Directory.GetDirectories(sdksDir)
+				.Where(d => Version.TryParse(Path.GetFileName(d).Split('-')[0], out _))
+				.OrderByDescending(d => {
+					Version version;
+					Version.TryParse(Path.GetFileName(d).Split('-')[0], out version);
+					return version;
+				})
+				.FirstOrDefault();
+			
+			if (latestSdk == null)
+				return;
+			
+			Environment.SetEnvironmentVariable("MSBuildSDKsPath", Path.Combine(latestSdk, "Sdks"));
+			Environment.SetEnvironmentVariable("MSBuildExtensionsPath", latestSdk);
+			Environment.SetEnvironmentVariable("MSBUILDADDITIONALSDKRESOLVERSFOLDER_NET", Path.Combine(latestSdk, "SdkResolvers"));
+			Environment.SetEnvironmentVariable("MSBUILD_NUGET_PATH", latestSdk);
+			LoggingService.InfoFormatted("MSBuild environment initialized: DOTNET_ROOT={0}, MSBuildSDKsPath={1}, MSBUILDADDITIONALSDKRESOLVERSFOLDER_NET={2}",
+				dotnet.Root,
+				Environment.GetEnvironmentVariable("MSBuildSDKsPath"),
+				Environment.GetEnvironmentVariable("MSBUILDADDITIONALSDKRESOLVERSFOLDER_NET"));
+			
+			string binDir = Path.GetDirectoryName(typeof(MSBuildInternals).Assembly.Location);
+			if (!string.IsNullOrEmpty(binDir)) {
+				foreach (string dependency in new[] {
+					"Microsoft.Build.NuGetSdkResolver.dll",
+					"NuGet.Common.dll",
+					"NuGet.Configuration.dll",
+					"NuGet.Frameworks.dll",
+					"NuGet.Packaging.dll",
+					"NuGet.ProjectModel.dll",
+					"NuGet.Protocol.dll",
+					"NuGet.Versioning.dll"
+				}) {
+					string source = Path.Combine(latestSdk, dependency);
+					string destination = Path.Combine(binDir, dependency);
+					if (!File.Exists(destination) && File.Exists(source))
+						File.Copy(source, destination);
+				}
+			}
+		}
+		
+		sealed class DotnetInstallation
+		{
+			public string Root;
+			public string HostPath;
+		}
+		
+		static DotnetInstallation GetDotnetInstallation()
+		{
+			string hostPath = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
+			if (!string.IsNullOrEmpty(hostPath) && File.Exists(hostPath))
+				return new DotnetInstallation { Root = Path.GetDirectoryName(hostPath), HostPath = hostPath };
+			
+			string dotnetRoot = Environment.GetEnvironmentVariable("DOTNET_ROOT");
+			if (!string.IsNullOrEmpty(dotnetRoot) && Directory.Exists(dotnetRoot)) {
+				string dotnetHost = Path.Combine(dotnetRoot, "dotnet");
+				if (File.Exists(dotnetHost))
+					return new DotnetInstallation { Root = dotnetRoot, HostPath = dotnetHost };
+			}
+			
+			string processPath = Environment.ProcessPath;
+			if (!string.IsNullOrEmpty(processPath) && string.Equals(Path.GetFileName(processPath), "dotnet", StringComparison.OrdinalIgnoreCase))
+				return new DotnetInstallation { Root = Path.GetDirectoryName(processPath), HostPath = processPath };
+			
+			foreach (string candidate in new[] {
+				"/usr/local/share/dotnet",
+				"/opt/homebrew/share/dotnet",
+				"/Users/lextm/uno-tools/librewpf/.dotnet",
+				Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "dotnet")
+			}) {
+				string dotnetHost = Path.Combine(candidate, "dotnet");
+				if (Directory.Exists(candidate) && File.Exists(dotnetHost))
+					return new DotnetInstallation { Root = candidate, HostPath = dotnetHost };
+			}
+			
+			return null;
+		}
 		
 		internal static void UnloadProject(MSBuild.Evaluation.ProjectCollection projectCollection, MSBuild.Evaluation.Project project)
 		{
@@ -51,6 +149,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		internal static MSBuild.Evaluation.Project LoadProject(MSBuild.Evaluation.ProjectCollection projectCollection, ProjectRootElement rootElement, IDictionary<string, string> globalProps)
 		{
+			InitializeMSBuildEnvironment();
 			lock (SolutionProjectCollectionLock) {
 				string toolsVersion = rootElement.ToolsVersion;
 				if (string.IsNullOrEmpty(toolsVersion))
@@ -61,6 +160,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		internal static ProjectInstance LoadProjectInstance(MSBuild.Evaluation.ProjectCollection projectCollection, ProjectRootElement rootElement, IDictionary<string, string> globalProps)
 		{
+			InitializeMSBuildEnvironment();
 			lock (SolutionProjectCollectionLock) {
 				string toolsVersion = rootElement.ToolsVersion;
 				if (string.IsNullOrEmpty(toolsVersion))
@@ -72,7 +172,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		public static void AddMSBuildSolutionProperties(ISolution solution, IDictionary<string, string> propertyDict)
 		{
 			propertyDict["SolutionDir"] = solution.Directory.ToStringWithTrailingBackslash();
-			propertyDict["SolutionExt"] = ".sln";
+			propertyDict["SolutionExt"] = solution.FileName.GetExtension();
 			propertyDict["SolutionFileName"] = solution.FileName.GetFileName();
 			propertyDict["SolutionName"] = solution.Name ?? string.Empty;
 			propertyDict["SolutionPath"] = solution.FileName;

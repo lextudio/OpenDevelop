@@ -162,7 +162,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		void OpenSolutionOrProjectInternal(FileName fileName)
 		{
-			if (fileName.HasExtension(".sln")) {
+			if (fileName.HasExtension(".sln") || fileName.HasExtension(".slnx")) {
 				OpenSolutionInternal(fileName);
 			} else {
 				OpenProjectInternal(fileName);
@@ -221,6 +221,11 @@ namespace ICSharpCode.SharpDevelop.Project
 			if (!Path.IsPathRooted(fileName))
 				throw new ArgumentException("Path must be rooted!");
 			FileName solutionFile = new FileName(Path.ChangeExtension(fileName, ".sln"));
+			if (!SD.FileSystem.FileExists(solutionFile)) {
+				FileName solutionFileX = new FileName(Path.ChangeExtension(fileName, ".slnx"));
+				if (SD.FileSystem.FileExists(solutionFileX))
+					solutionFile = solutionFileX;
+			}
 			ISolution solution = null;
 			bool solutionOpened = false;
 			// Use try-finally block to dispose the solution unless it is opened successfully. 

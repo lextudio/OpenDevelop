@@ -35,6 +35,11 @@ namespace ICSharpCode.SharpDevelop.Project
 {
 	class Solution : SolutionFolder, ISolution
 	{
+		static Solution()
+		{
+			MSBuildInternals.InitializeMSBuildEnvironment();
+		}
+		
 		FileName fileName;
 		FileName sdSettingsFileName;
 		DirectoryName directory;
@@ -106,7 +111,8 @@ namespace ICSharpCode.SharpDevelop.Project
 				return base.Name;
 			}
 			set {
-				var newFileName = directory.CombineFile(value + ".sln");
+				string ext = FileName.HasExtension(".slnx") ? ".slnx" : ".sln";
+				var newFileName = directory.CombineFile(value + ext);
 				changeWatcher.Disable();
 				try {
 					if (!FileService.RenameFile(fileName, newFileName, false)) {

@@ -25,7 +25,7 @@ using ICSharpCode.AvalonEdit.AddIn.Options;
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.Editor;
+using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Editor.AvalonEdit;
@@ -58,11 +58,8 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				return new MultiHighlighter(document);
 			List<IHighlighter> highlighters = new List<IHighlighter>();
 			var textDocument = document as TextDocument;
-			var readOnlyDocument = document as ReadOnlyDocument;
 			if (textDocument != null) {
 				highlighters.Add(new DocumentHighlighter(textDocument, def));
-			} else if (readOnlyDocument != null) {
-				highlighters.Add(new DocumentHighlighter(readOnlyDocument, def));
 			}
 			// add additional highlighters
 			highlighters.AddRange(SD.AddInTree.BuildItems<IHighlighter>(HighlighterDoozer.AddInPath, document, false));

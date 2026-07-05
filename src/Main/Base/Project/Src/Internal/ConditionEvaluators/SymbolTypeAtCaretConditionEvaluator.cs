@@ -1,14 +1,14 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
-// 
+// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -16,12 +16,17 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
+// The live-editor-caret path is rewritten against Microsoft.CodeAnalysis directly (see
+// doc/technotes/csharp-roslyn.md, Phase 1 "option (b)") instead of ICSharpCode.TypeSystem.ResolveResult.
+// The IEntityModel path is untouched - IEntityModel/Dom.* is SharpDevelop's separate background
+// project-content model (used by EntityBookmark/GotoDialog), not part of the ParserService/IParser
+// resolve flow this rewrite targets.
+
 using ICSharpCode.Core;
 using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Dom;
 using ICSharpCode.SharpDevelop.Editor;
-using ICSharpCode.SharpDevelop.Editor.Commands;
+using RoslynSymbol = Microsoft.CodeAnalysis.ISymbol;
 
 namespace ICSharpCode.SharpDevelop.Internal.ConditionEvaluators
 {
@@ -32,89 +37,81 @@ namespace ICSharpCode.SharpDevelop.Internal.ConditionEvaluators
 	{
 		public bool IsValid(object parameter, Condition condition)
 		{
-			ResolveResult resolveResult = GetResolveResult(parameter);
-			if ((resolveResult != null) && !resolveResult.IsError()) {
-				// Check if project-only entities should be valid
-				var defRegion = resolveResult.GetDefinitionRegion();
-				if ((condition.Properties["projectonly"] == "true") && (resolveResult.GetDefinitionRegion().IsEmpty))
-					return false;
-				
-				// Check type of symbol
-				string typesList = condition.Properties["type"];
-				if (typesList != null) {
-					foreach (string type in typesList.Split(',')) {
-						switch (type.Trim()) {
-							case "*":
-								// Wildcard -> allow any type
-								return true;
-							case "member":
-								// Allow members
-								if (resolveResult is MemberResolveResult)
-									return true;
-								break;
-							case "type":
-								// Allow types
-								if (resolveResult is TypeResolveResult)
-									return true;
-								break;
-							case "namespace":
-								// Allow namespaces
-								if (resolveResult is NamespaceResolveResult)
-									return true;
-								break;
-							case "local":
-								// Allow locals
-								if (resolveResult is LocalResolveResult)
-									return true;
-								break;
-						}
-					}
-				}
+			if (parameter is IEntityModel) {
+				return IsValidEntityModel((IEntityModel)parameter, condition);
 			}
-			
-			return false;
+
+			var entity = parameter as IEntity;
+			if (entity != null) {
+				if (condition.Properties["projectonly"] == "true" && entity.Region.IsEmpty)
+					return false;
+				return MatchesRequestedType(condition,
+					isMember: entity is IMember, isType: entity is ITypeDefinition, isNamespace: false, isLocal: false);
+			}
+
+			RoslynSymbol symbol = GetRoslynSymbol(parameter);
+			if (symbol == null)
+				return false;
+
+			bool hasSourceLocation = !symbol.Locations.IsEmpty && symbol.Locations[0].IsInSource;
+			if (condition.Properties["projectonly"] == "true" && !hasSourceLocation)
+				return false;
+
+			return MatchesRequestedType(condition,
+				isMember: symbol is Microsoft.CodeAnalysis.IMethodSymbol || symbol is Microsoft.CodeAnalysis.IFieldSymbol
+					|| symbol is Microsoft.CodeAnalysis.IPropertySymbol || symbol is Microsoft.CodeAnalysis.IEventSymbol,
+				isType: symbol is Microsoft.CodeAnalysis.INamedTypeSymbol,
+				isNamespace: symbol is Microsoft.CodeAnalysis.INamespaceSymbol,
+				isLocal: symbol is Microsoft.CodeAnalysis.ILocalSymbol || symbol is Microsoft.CodeAnalysis.IParameterSymbol);
 		}
-		
-		static ResolveResult GetResolveResult(object parameter)
+
+		static RoslynSymbol GetRoslynSymbol(object parameter)
 		{
-			if (parameter is ITextEditor)
-				return GetResolveResultFromCurrentEditor((ITextEditor) parameter);
-			
-			if (parameter is ResolveResult)
-				return (ResolveResult) parameter;
-			
-			if (parameter is IEntityModel)
-				return GetResolveResultFromEntityModel((IEntityModel) parameter);
-			
-			return GetResolveResultFromCurrentEditor();
+			var symbol = parameter as RoslynSymbol;
+			if (symbol != null)
+				return symbol;
+			var editor = parameter as ITextEditor ?? SD.GetActiveViewContentService<ITextEditor>();
+			return editor != null ? ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.GetSymbolAtCaret(editor) : null;
 		}
-		
-		static ResolveResult GetResolveResultFromEntityModel(IEntityModel entityModel)
+
+		static bool IsValidEntityModel(IEntityModel entityModel, Condition condition)
 		{
 			IEntity entity = entityModel.Resolve();
-			if (entity is IMember)
-				return new MemberResolveResult(null, (IMember) entity);
-			if (entity is ITypeDefinition)
-				return new TypeResolveResult((ITypeDefinition) entity);
-			return ErrorResolveResult.UnknownError;
+			if (entity == null)
+				return false;
+			if (condition.Properties["projectonly"] == "true" && entity.Region.IsEmpty)
+				return false;
+			return MatchesRequestedType(condition,
+				isMember: entity is IMember,
+				isType: entity is ITypeDefinition,
+				isNamespace: false,
+				isLocal: false);
 		}
-		
-		static ResolveResult GetResolveResultFromCurrentEditor()
+
+		static bool MatchesRequestedType(Condition condition, bool isMember, bool isType, bool isNamespace, bool isLocal)
 		{
-			ITextEditor currentEditor = SD.GetActiveViewContentService<ITextEditor>();
-			if (currentEditor != null)
-				return GetResolveResultFromCurrentEditor(currentEditor);
-			
-			return null;
-		}
-		
-		static ResolveResult GetResolveResultFromCurrentEditor(ITextEditor currentEditor)
-		{
-			if (currentEditor != null) {
-				return SD.ParserService.Resolve(currentEditor, currentEditor.Caret.Location);
+			string typesList = condition.Properties["type"];
+			if (typesList == null)
+				return false;
+			foreach (string type in typesList.Split(',')) {
+				switch (type.Trim()) {
+					case "*":
+						return true;
+					case "member":
+						if (isMember) return true;
+						break;
+					case "type":
+						if (isType) return true;
+						break;
+					case "namespace":
+						if (isNamespace) return true;
+						break;
+					case "local":
+						if (isLocal) return true;
+						break;
+				}
 			}
-			
-			return ErrorResolveResult.UnknownError;
+			return false;
 		}
 	}
 }

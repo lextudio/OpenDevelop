@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Windows.Shell;
 
 using ICSharpCode.Core;
@@ -99,8 +100,20 @@ namespace ICSharpCode.SharpDevelop
 			}
 			
 			recentProjects.Insert(0, name);
-			JumpList.AddToRecentCategory(name);
+			AddToSystemRecentProjects(name);
 			properties.SetList("Projects", recentProjects);
+		}
+		
+		static void AddToSystemRecentProjects(FileName name)
+		{
+			if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+				return;
+			
+			try {
+				JumpList.AddToRecentCategory(name);
+			} catch (Exception ex) {
+				LoggingService.Warn("Could not add project to Windows JumpList.", ex);
+			}
 		}
 		
 		internal void FileRemoved(object sender, FileEventArgs e)
