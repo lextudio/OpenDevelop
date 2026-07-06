@@ -164,7 +164,9 @@ namespace ICSharpCode.SharpDevelop.Editor
 			
 			public string FontFamily {
 				get {
-					return "Consolas";
+					// "Consolas" doesn't exist outside Windows and silently produces blank AvalonEdit
+					// text there (see CodeEditorOptions.cs's identical fix for the reasoning).
+					return OperatingSystem.IsWindows() ? "Consolas" : "Menlo";
 				}
 			}
 			

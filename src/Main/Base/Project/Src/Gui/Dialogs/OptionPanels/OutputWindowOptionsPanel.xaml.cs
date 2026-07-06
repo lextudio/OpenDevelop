@@ -66,7 +66,12 @@ namespace ICSharpCode.SharpDevelop.Gui.OptionPanels
 		public static Tuple<string,int> DefaultFontDescription()
 		{
 			var properties = PropertyService.NestedProperties(OutputWindowsProperty);
-			return new Tuple<string,int>(properties.Get(FontFamilyName,"Consolas"),properties.Get(FontSizeName,13));
+			// "Consolas" doesn't exist outside Windows; librewpf's portable font loader can't
+			// resolve it, which silently degrades AvalonEdit's TextLine formatting to an empty
+			// placeholder line instead of throwing (see Editing/Caret.cs and
+			// AvalonEdit.AddIn/Options/CodeEditorOptions.cs's identical fix for the code editor).
+			string defaultFontFamily = OperatingSystem.IsWindows() ? "Consolas" : "Menlo";
+			return new Tuple<string,int>(properties.Get(FontFamilyName, defaultFontFamily),properties.Get(FontSizeName,13));
 		}
 		
 		
