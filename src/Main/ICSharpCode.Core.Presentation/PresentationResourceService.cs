@@ -68,7 +68,44 @@ namespace ICSharpCode.Core.Presentation
 			{ "Icons.16x16.OpenFolderBitmap", "Resources/VS2017/FolderOpen/FolderOpen_16x.png" },
 			{ "Icons.16x16.HelpIcon", "Resources/VS2017/HelpApplication/HelpApplication_16x.png" },
 			{ "Icons.16x16.CloseFileIcon", "Resources/VS2017/Close/Close_16x.png" },
-			{ "Icons.16x16.CloseAllDocuments", "Resources/VS2017/Close/Close_16x.png" }
+			{ "Icons.16x16.CloseAllDocuments", "Resources/VS2017/Close/Close_16x.png" },
+
+			// Solution Explorer file-type icons (SolutionExplorerIconService). Folder names here
+			// match the VS2017 Image Library / UnoDevelop's Icons/*.svg base names 1:1.
+			{ "Icons.16x16.CSFile", "Resources/VS2017/CSFile/CSFile_16x.png" },
+			{ "Icons.16x16.Control", "Resources/VS2017/Control/Control_16x.png" },
+			{ "Icons.16x16.JSONFile", "Resources/VS2017/JSONFile/JSONFile_16x.png" },
+			{ "Icons.16x16.XMLFile", "Resources/VS2017/XMLFile/XMLFile_16x.png" },
+			{ "Icons.16x16.HTMLFile", "Resources/VS2017/HTMLFile/HTMLFile_16x.png" },
+			{ "Icons.16x16.StyleSheet", "Resources/VS2017/StyleSheet/StyleSheet_16x.png" },
+			{ "Icons.16x16.JSScript", "Resources/VS2017/JSScript/JSScript_16x.png" },
+			{ "Icons.16x16.MarkdownFile", "Resources/VS2017/MarkdownFile/MarkdownFile_16x.png" },
+			{ "Icons.16x16.SQLFile", "Resources/VS2017/SQLFile/SQLFile_16x.png" },
+			{ "Icons.16x16.ResourceSymbols", "Resources/VS2017/ResourceSymbols/ResourceSymbols_16x.png" },
+			{ "Icons.16x16.SettingsFile", "Resources/VS2017/SettingsFile/SettingsFile_16x.png" },
+			{ "Icons.16x16.TextFile", "Resources/VS2017/TextFile/TextFile_16x.png" },
+			{ "Icons.16x16.Image", "Resources/VS2017/Image/Image_16x.png" },
+			{ "Icons.16x16.CSRazorFile", "Resources/VS2017/CSRazorFile/CSRazorFile_16x.png" },
+			{ "Icons.16x16.ASPXFile", "Resources/VS2017/ASPXFile/ASPXFile_16x.png" },
+			{ "Icons.16x16.MasterPage", "Resources/VS2017/MasterPage/MasterPage_16x.png" },
+			{ "Icons.16x16.SkinFile", "Resources/VS2017/SkinFile/SkinFile_16x.png" },
+			{ "Icons.16x16.Manifest", "Resources/VS2017/Manifest/Manifest_16x.png" },
+			{ "Icons.16x16.BinaryFile", "Resources/VS2017/BinaryFile/BinaryFile_16x.png" },
+			{ "Icons.16x16.VBFile", "Resources/VS2017/VBFile/VBFile_16x.png" },
+			{ "Icons.16x16.FSFile", "Resources/VS2017/FSFile/FSFile_16x.png" },
+			{ "Icons.16x16.CPPSourceFile", "Resources/VS2017/CPPSourceFile/CPPSourceFile_16x.png" },
+			{ "Icons.16x16.CPPHeaderFile", "Resources/VS2017/CPPHeaderFile/CPPHeaderFile_16x.png" },
+			{ "Icons.16x16.CSClassLibrary", "Resources/VS2017/CSClassLibrary/CSClassLibrary_16x.png" },
+			{ "Icons.16x16.SolutionFolderSwitch", "Resources/VS2017/SolutionFolderSwitch/SolutionFolderSwitch_16x.png" },
+
+			// Solution Explorer CPS/reference-tree node icons.
+			{ "Icons.16x16.Reference", "Resources/VS2017/Reference/Reference_16x.png" },
+			{ "Icons.16x16.Library", "Resources/VS2017/Library/Library_16x.png" },
+			{ "Icons.16x16.Assembly", "Resources/VS2017/Assembly/Assembly_16x.png" },
+			{ "Icons.16x16.Analyzers", "Resources/VS2017/CodeAnalysisWindow/CodeAnalysisWindow_16x.png" },
+			{ "Icons.16x16.Frameworks", "Resources/VS2017/MSNETFrameworkDependencies/MSNETFrameworkDependencies_16x.png" },
+			{ "Icons.16x16.Application", "Resources/VS2017/Application/Application_16x.png" },
+			{ "Icons.16x16.Component", "Resources/VS2017/Component/Component_16x.png" }
 		};
 		static readonly IResourceService resourceService;
 		

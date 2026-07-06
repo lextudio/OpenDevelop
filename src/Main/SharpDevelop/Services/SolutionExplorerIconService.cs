@@ -9,26 +9,43 @@ internal static class SolutionExplorerIconService
 {
     public static BitmapSource GetIcon(SolutionExplorerNodeModel node)
     {
-        return PresentationResourceService.GetBitmapSource(GetIconKey(node.Kind, node.FullPath, node.IsDirectory));
+        return PresentationResourceService.GetBitmapSource(GetIconKey(node));
     }
 
-    private static string GetIconKey(SolutionExplorerNodeKind kind, string path, bool isDirectory)
+    private static string GetIconKey(SolutionExplorerNodeModel node)
     {
-        return kind switch
+        return node.Kind switch
         {
             SolutionExplorerNodeKind.Solution => "Icons.16x16.SolutionIcon",
             SolutionExplorerNodeKind.Project or SolutionExplorerNodeKind.ProjectReference => "Icons.16x16.NewProjectIcon",
+            // Dependencies/References/Packages are all modeled as a handful of shared
+            // SolutionExplorerNodeKind values (see SharpDevelopProjectTreeProvider.
+            // GetDependencyGroupFlag), so "Assemblies"/"Analyzers"/"Frameworks"/etc. can only be
+            // told apart by their display Name, not by Kind alone.
             SolutionExplorerNodeKind.DependenciesFolder
-                or SolutionExplorerNodeKind.ReferencesFolder
-                or SolutionExplorerNodeKind.Reference => "Icons.16x16.Reference",
+                or SolutionExplorerNodeKind.ReferencesFolder => GetDependencyGroupIconKey(node.Name),
+            SolutionExplorerNodeKind.Reference => "Icons.16x16.Reference",
             SolutionExplorerNodeKind.PackagesFolder
-                or SolutionExplorerNodeKind.PackageReference => "Icons.16x16.Reference",
+                or SolutionExplorerNodeKind.PackageReference => "Icons.16x16.Library",
             SolutionExplorerNodeKind.Folder or SolutionExplorerNodeKind.GhostFolder => "Icons.16x16.ClosedFolderBitmap",
             SolutionExplorerNodeKind.File
                 or SolutionExplorerNodeKind.LinkedFile
                 or SolutionExplorerNodeKind.MissingFile
-                or SolutionExplorerNodeKind.GhostFile => GetFileIconKey(path),
-            _ => isDirectory ? "Icons.16x16.ClosedFolderBitmap" : "Icons.16x16.MiscFiles"
+                or SolutionExplorerNodeKind.GhostFile => GetFileIconKey(node.FullPath),
+            _ => node.IsDirectory ? "Icons.16x16.ClosedFolderBitmap" : "Icons.16x16.MiscFiles"
+        };
+    }
+
+    private static string GetDependencyGroupIconKey(string name)
+    {
+        return name switch
+        {
+            "Assemblies" => "Icons.16x16.Assembly",
+            "Analyzers" => "Icons.16x16.Analyzers",
+            "Frameworks" or "SDKs" => "Icons.16x16.Frameworks",
+            "Projects" => "Icons.16x16.Application",
+            "COM" => "Icons.16x16.Component",
+            _ => "Icons.16x16.Reference"
         };
     }
 
@@ -37,7 +54,30 @@ internal static class SolutionExplorerIconService
         return Path.GetExtension(path).ToLowerInvariant() switch
         {
             ".csproj" or ".vbproj" or ".fsproj" => "Icons.16x16.NewProjectIcon",
-            ".sln" or ".slnx" => "Icons.16x16.SolutionIcon",
+            ".sln" or ".slnx" => "Icons.16x16.SolutionFolderSwitch",
+            ".cs" => "Icons.16x16.CSFile",
+            ".xaml" => "Icons.16x16.Control",
+            ".json" => "Icons.16x16.JSONFile",
+            ".xml" or ".config" => "Icons.16x16.XMLFile",
+            ".htm" or ".html" => "Icons.16x16.HTMLFile",
+            ".css" => "Icons.16x16.StyleSheet",
+            ".js" => "Icons.16x16.JSScript",
+            ".md" or ".markdown" => "Icons.16x16.MarkdownFile",
+            ".sql" => "Icons.16x16.SQLFile",
+            ".resx" => "Icons.16x16.ResourceSymbols",
+            ".settings" => "Icons.16x16.SettingsFile",
+            ".txt" => "Icons.16x16.TextFile",
+            ".png" or ".jpg" or ".jpeg" or ".gif" or ".ico" or ".cur" or ".bmp" or ".svg" => "Icons.16x16.Image",
+            ".cshtml" or ".razor" => "Icons.16x16.CSRazorFile",
+            ".aspx" or ".ascx" => "Icons.16x16.ASPXFile",
+            ".master" => "Icons.16x16.MasterPage",
+            ".skin" => "Icons.16x16.SkinFile",
+            ".manifest" => "Icons.16x16.Manifest",
+            ".dll" or ".exe" => "Icons.16x16.BinaryFile",
+            ".vb" => "Icons.16x16.VBFile",
+            ".fs" => "Icons.16x16.FSFile",
+            ".cpp" or ".c" => "Icons.16x16.CPPSourceFile",
+            ".h" or ".hpp" => "Icons.16x16.CPPHeaderFile",
             _ => "Icons.16x16.MiscFiles"
         };
     }

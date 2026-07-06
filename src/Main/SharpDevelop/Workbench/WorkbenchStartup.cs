@@ -70,6 +70,12 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			
 			// HACK: eagerly load output pad because pad services cannnot be instanciated from background threads
 			SD.Services.AddService(typeof(IOutputPad), CompilerMessageView.Instance);
+
+			// The real IMSBuildEngine (Project/Build/MSBuildEngine/*.cs) drives builds through a
+			// separate out-of-process WinForms worker that's out of MVP scope (see that folder's
+			// <Compile Remove> in SharpDevelop.csproj) - MinimalMSBuildEngine gets real build/
+			// reference-resolution results without it, via Microsoft.Build.Execution directly.
+			SD.Services.AddService(typeof(IMSBuildEngine), new MinimalMSBuildEngine());
 			
 			// IDialogMessageService (WinForms IDialogMessageService.DialogOwner wiring) removed -
 			// the WinForms message-service implementation is out of MVP scope.

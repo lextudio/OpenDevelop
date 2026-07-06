@@ -6,10 +6,13 @@
 using System;
 using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Editor;
+using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;
+using ICSharpCode.SharpDevelop.Workbench;
 using LeXtudio.DevFlow.Agent.Core;
 
 namespace ICSharpCode.SharpDevelop.DevFlow
@@ -74,6 +77,57 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				fileName = viewContent.PrimaryFileName != null ? viewContent.PrimaryFileName.ToString() : null,
 				textLength = text?.Length,
 				textPreview = text != null ? text.Substring(0, Math.Min(200, text.Length)) : null
+			});
+		}
+
+		[DevFlowAction("od.build-solution", Description = "Build the current solution (or a single project by name) and return error/warning counts plus the individual diagnostics")]
+		public static async Task<string> BuildSolution(string projectName = null)
+		{
+			var solution = SD.ProjectService.CurrentSolution;
+			if (solution == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No solution is open." });
+
+			var options = new BuildOptions(BuildTarget.Build);
+
+			BuildResults results;
+			if (string.IsNullOrEmpty(projectName)) {
+				results = await SD.BuildService.BuildAsync(solution, options);
+			} else {
+				var project = solution.Projects.FirstOrDefault(p => string.Equals(p.Name, projectName, StringComparison.OrdinalIgnoreCase));
+				if (project == null)
+					return JsonSerializer.Serialize(new { success = false, error = $"No project named '{projectName}' in the current solution." });
+				results = await SD.BuildService.BuildAsync(project, options);
+			}
+
+			return JsonSerializer.Serialize(new {
+				success = true,
+				result = results.Result.ToString(),
+				errorCount = results.ErrorCount,
+				warningCount = results.WarningCount,
+				messageCount = results.MessageCount,
+				diagnostics = results.Errors.Select(e => new {
+					isWarning = e.IsWarning,
+					isMessage = e.IsMessage,
+					fileName = e.FileName,
+					line = e.Line,
+					column = e.Column,
+					errorCode = e.ErrorCode,
+					errorText = e.ErrorText
+				}).ToArray()
+			});
+		}
+
+		[DevFlowAction("od.output-text", Description = "Get the full accumulated text of an Output pad category (default: 'Build')")]
+		public static string GetOutputText(string category = "Build")
+		{
+			IOutputCategory outputCategory = string.Equals(category, "Build", StringComparison.OrdinalIgnoreCase)
+				? SD.OutputPad.BuildCategory
+				: SD.OutputPad.GetOrCreateCategory(category);
+
+			string text = (outputCategory as MessageViewCategory)?.Text;
+			return JsonSerializer.Serialize(new {
+				category,
+				text = text ?? string.Empty
 			});
 		}
 	}

@@ -53,7 +53,12 @@ namespace ICSharpCode.AvalonEdit.AddIn.Options
 		}
 		
 		// WinFormsResourceService.DefaultMonospacedFont is out of MVP scope (WinForms); "Consolas" is what it resolved to anyway.
-		string fontFamily = "Consolas";
+		// "Consolas" doesn't exist outside Windows; librewpf's portable font loader can't resolve it, which
+		// disqualifies WPF's SimpleTextLine fast path (see MS/internal/TextFormatting/SimpleTextLine.cs's
+		// CreateSimpleTextRun) and falls through to FullTextLine, which needs native Line Services
+		// (LoCreateContext/LoCreateLine) that librewpf hasn't ported to macOS/Linux yet - the result is
+		// silently blank text (no exception) instead of a crash. Menlo is preinstalled on every Mac.
+		string fontFamily = OperatingSystem.IsWindows() ? "Consolas" : "Menlo";
 		
 		public string FontFamily {
 			get { return fontFamily; }

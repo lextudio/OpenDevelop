@@ -86,8 +86,9 @@
 		         class="ICSharpCode.SharpDevelop.Project.SDProjectService"/>
 		<Service id="ICSharpCode.SharpDevelop.ILanguageService"
 		         class="ICSharpCode.SharpDevelop.SDLanguageService"/>
-		<Service id="ICSharpCode.SharpDevelop.Project.IMSBuildEngine"
-		         class="ICSharpCode.SharpDevelop.Project.MSBuildEngine"/>
+		<!-- IMSBuildEngine: the real MSBuildEngine class here is out of MVP scope (needs an
+		     out-of-process WinForms build worker) - MinimalMSBuildEngine is registered directly
+		     in WorkbenchStartup.InitializeWorkbench instead. -->
 		<Service id="ICSharpCode.SharpDevelop.Editor.Bookmarks.IBookmarkManager"
 		         class="ICSharpCode.SharpDevelop.Editor.Bookmarks.BookmarkManager"/>
 		<Service id="ICSharpCode.SharpDevelop.IUIService"

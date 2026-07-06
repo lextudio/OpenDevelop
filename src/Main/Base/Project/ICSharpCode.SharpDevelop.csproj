@@ -1,4 +1,4 @@
-<Project Sdk="ProGPU.Wpf.Sdk/11.0.0-dev">
+<Project Sdk="LibreWPF.Sdk/11.0.0-dev">
   <PropertyGroup>
     <TargetFramework>net11.0-windows</TargetFramework>
     <RootNamespace>ICSharpCode.SharpDevelop</RootNamespace>
@@ -115,7 +115,6 @@
     <Compile Remove="Src\Gui\Components\SideBar\**\*.cs" />
     <Compile Remove="Src\Gui\Pads\FileScout.cs" />
     <Compile Remove="Src\Gui\Pads\PropertyPad\**\*.cs" />
-    <Compile Remove="Src\Gui\Pads\CompilerMessageView\CompilerMessageView.cs" />
     <Compile Remove="Src\Commands\SideBarCommands.cs" />
     <Compile Remove="Editor\Bookmarks\BookmarkPadToolbarCommands.cs" />
     <!-- Out of MVP scope: WinForms Icon-based icon service (System.Drawing.Icon conversions layered on the
@@ -147,12 +146,8 @@
     <Compile Remove="Editor\CodeCompletion\SnippetCompletionData.cs" />
     <!-- Out of MVP scope: uses the excluded SharpTreeView-based IClassBrowser directly; no consumers. -->
     <Compile Remove="Parser\DefaultAssemblySearcher.cs" />
-    <!-- Out of MVP scope: WordCount is a WinForms WordCountDialog launcher and is the only class in this
-         file; CompilerMessageViewToolbarCommands only wires up toolbar buttons for the excluded
-         CompilerMessageView WinForms pad (a no-op CompilerMessageView stub keeps MessageViewCategory.Create()
-         compiling, but the toolbar command UI itself is not needed to boot). -->
+    <!-- Out of MVP scope: WordCount is a WinForms WordCountDialog launcher and is the only class in this file. -->
     <Compile Remove="Src\Commands\EditCommands.cs" />
-    <Compile Remove="Src\Gui\Pads\CompilerMessageView\CompilerMessageViewToolbarCommands.cs" />
     <!-- DebugOptions.xaml.cs is excluded above but the .xaml Page item still gets XAML-compiled and
          generates a .g.cs calling the excluded code-behind event handlers - exclude the Page item too
          (same issue as the ReferenceDialog xaml cluster above). -->
