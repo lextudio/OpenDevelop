@@ -1,0 +1,90 @@
+<Window x:Class="Plugins.RegExpTk.RegExpTkDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Regular Expression Toolkit" Height="600" Width="800"
+        WindowStartupLocation="CenterOwner"
+        Style="{x:Null}">
+  <Grid Margin="6">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+
+    <Grid Grid.Row="0" Margin="0,0,0,4">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="Auto" />
+      </Grid.ColumnDefinitions>
+      <Label Grid.Column="0" Content="Regex:" Margin="0,0,4,0" VerticalContentAlignment="Center" />
+      <TextBox Grid.Column="1" x:Name="regexTextBox" FontFamily="Consolas" />
+      <Button Grid.Column="2" x:Name="quickInsertButton" Content="..." Width="24" Margin="4,0,0,0" Click="QuickInsertButton_Click" />
+    </Grid>
+
+    <WrapPanel Grid.Row="1" Margin="0,0,0,4">
+      <CheckBox x:Name="ignoreCaseCheckBox" Content="Ignore case" Margin="0,0,12,0" />
+      <CheckBox x:Name="multilineCheckBox" Content="Multiline" Margin="0,0,12,0" />
+      <CheckBox x:Name="replaceCheckBox" Content="Replace" Checked="ReplaceCheckBox_Changed" Unchecked="ReplaceCheckBox_Changed" />
+    </WrapPanel>
+
+    <Grid Grid.Row="2" Margin="0,0,0,4">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
+      <Label Grid.Column="0" Content="Replace with:" Margin="0,0,4,0" VerticalContentAlignment="Center" />
+      <TextBox Grid.Column="1" x:Name="replacementTextBox" />
+    </Grid>
+
+    <TextBox Grid.Row="3" x:Name="inputTextBox"
+             AcceptsReturn="True" AcceptsTab="True"
+             FontFamily="Consolas" FontSize="12"
+             VerticalScrollBarVisibility="Auto"
+             Margin="0,0,0,4" />
+
+    <Grid Grid.Row="4" Margin="0,0,0,4">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="Auto" />
+      </Grid.ColumnDefinitions>
+      <Button Grid.Column="0" x:Name="findButton" Content="Find" Width="80" Height="24" IsDefault="True" Click="FindButton_Click" />
+      <Label Grid.Column="1" x:Name="statusLabel" Margin="8,0,0,0" VerticalContentAlignment="Center" />
+      <Button Grid.Column="2" Content="Close" Width="80" Height="24" Margin="0,0,4,0" Click="CloseButton_Click" />
+      <Button Grid.Column="3" Content="Show Groups..." Width="100" Height="24" Click="ShowGroupsButton_Click" />
+    </Grid>
+
+    <TextBox Grid.Row="5" x:Name="replaceResultTextBox"
+             FontFamily="Consolas" FontSize="12"
+             AcceptsReturn="True"
+             VerticalScrollBarVisibility="Auto"
+             MinHeight="40"
+             Margin="0,0,0,4" />
+
+    <ListView Grid.Row="6" x:Name="matchListView"
+              SelectionMode="Single"
+              VirtualizingStackPanel.IsVirtualizing="True"
+              Margin="0,0,0,4">
+      <ListView.View>
+        <GridView>
+          <GridViewColumn Header="Value" Width="200" DisplayMemberBinding="{Binding Value}" />
+          <GridViewColumn Header="Index" Width="80" DisplayMemberBinding="{Binding Index}" />
+          <GridViewColumn Header="End" Width="80" DisplayMemberBinding="{Binding End}" />
+          <GridViewColumn Header="Length" Width="80" DisplayMemberBinding="{Binding Length}" />
+          <GridViewColumn Header="Groups" Width="80" DisplayMemberBinding="{Binding GroupCount}" />
+        </GridView>
+      </ListView.View>
+    </ListView>
+
+    <StatusBar Grid.Row="7">
+      <StatusBarItem x:Name="statusBarItem" Content="Ready" />
+    </StatusBar>
+  </Grid>
+</Window>

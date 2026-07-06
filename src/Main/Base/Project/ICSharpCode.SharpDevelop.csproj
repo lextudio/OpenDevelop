@@ -92,7 +92,6 @@
     <Compile Remove="Src\Gui\Dialogs\WordCountDialog.cs" />
     <Compile Remove="Src\Gui\Dialogs\OptionPanels\XmlFormsOptionPanel.cs" />
     <Compile Remove="Src\Gui\Dialogs\OptionPanels\ProjectOptions\AbstractBuildOptions.cs" />
-    <Compile Remove="Src\Gui\Dialogs\OptionPanels\ProjectOptions\DebugOptions.xaml.cs" />
     <Compile Remove="Src\Gui\Dialogs\ReferenceDialog\**\*.cs" />
     <!-- The ReferenceDialog folder also has 3 .xaml Page items (ServiceReference sub-dialogs); SDK-style
          auto-includes .xaml under Page by default, and even with Compile Remove above, MSBuild still runs
@@ -107,7 +106,7 @@
     <!-- Consumers of the excluded dialogs/panels above: menu commands that only exist to launch them. -->
     <Compile Remove="Src\Commands\DebugCommands.cs" />
     <Compile Remove="Src\Commands\HelpCommands.cs" />
-    <Compile Remove="Src\Commands\ToolsCommands.cs" />
+
     <Compile Remove="Src\Editor\Commands\ShowColorDialog.cs" />
     <!-- Out of MVP scope: WinForms SideBar (ToolsPad content), FileScout, and PropertyPad WinForms PropertyGrid
          hosting - no WPF equivalent yet; consumers of SD.WinForms.SetContent()/.MenuService/.ToolbarService
@@ -147,10 +146,5 @@
     <Compile Remove="Parser\DefaultAssemblySearcher.cs" />
     <!-- Out of MVP scope: WordCount is a WinForms WordCountDialog launcher and is the only class in this file. -->
     <Compile Remove="Src\Commands\EditCommands.cs" />
-    <!-- DebugOptions.xaml.cs is excluded above but the .xaml Page item still gets XAML-compiled and
-         generates a .g.cs calling the excluded code-behind event handlers - exclude the Page item too
-         (same issue as the ReferenceDialog xaml cluster above). -->
-    <Page Remove="Src\Gui\Dialogs\OptionPanels\ProjectOptions\DebugOptions.xaml" />
-    <None Include="Src\Gui\Dialogs\OptionPanels\ProjectOptions\DebugOptions.xaml" />
   </ItemGroup>
 </Project>

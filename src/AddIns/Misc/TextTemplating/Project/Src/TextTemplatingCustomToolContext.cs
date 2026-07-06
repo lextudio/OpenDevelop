@@ -17,7 +17,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Runtime.Remoting.Messaging;
+using System.Threading;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
@@ -59,9 +59,17 @@ namespace ICSharpCode.TextTemplating
 			LoggingService.DebugFormatted("{0}\r\n{1}", message, ex.ToString());
 		}
 		
+		internal static readonly AsyncLocal<System.Collections.Generic.Dictionary<string, object>> CallContextData = new AsyncLocal<System.Collections.Generic.Dictionary<string, object>>();
+
 		public void SetLogicalCallContextData(string name, object data)
 		{
-			CallContext.LogicalSetData(name, data);
+			var dict = CallContextData.Value;
+			if (dict == null)
+			{
+				dict = new System.Collections.Generic.Dictionary<string, object>();
+				CallContextData.Value = dict;
+			}
+			dict[name] = data;
 		}
 	}
 }

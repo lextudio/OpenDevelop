@@ -17,8 +17,6 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.IO;
-using System.Reflection;
 
 namespace ICSharpCode.TextTemplating
 {
@@ -26,24 +24,20 @@ namespace ICSharpCode.TextTemplating
 	public class TextTemplatingAppDomain : ITextTemplatingAppDomain
 	{
 		AppDomain appDomain;
-		
+
 		public TextTemplatingAppDomain(string applicationBase)
 		{
-			AppDomainSetup setupInfo = new AppDomainSetup();
-			setupInfo.ApplicationBase = applicationBase;
-			this.appDomain = AppDomain.CreateDomain("TextTemplatingAppDomain", null, setupInfo);
+			// AppDomain creation is not supported in modern .NET.
+			// Templates run in-process for MVP.
+			this.appDomain = AppDomain.CurrentDomain;
 		}
-		
+
 		public AppDomain AppDomain {
 			get { return this.appDomain; }
 		}
-		
+
 		public void Dispose()
 		{
-			if (this.appDomain != null) {
-				AppDomain.Unload(this.appDomain);
-				this.appDomain = null;
-			}
 		}
 	}
 }
