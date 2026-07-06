@@ -153,6 +153,14 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 		
+		[DevFlowAction("od.debug.output", Description = "Read the Debug output category text (diagnostics)")]
+		public static string GetDebugOutput()
+		{
+			var category = ICSharpCode.SharpDevelop.Gui.CompilerMessageView.Instance.MessageCategories
+				.FirstOrDefault(c => c.Category == "Debug");
+			return JsonSerializer.Serialize(new { text = category?.Text ?? string.Empty });
+		}
+
 		[DevFlowAction("od.debug.service-info", Description = "Inspect debugger service registration and state")]
 		public static string GetDebuggerServiceInfo()
 		{

@@ -251,6 +251,14 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         psi.Environment["MSBuildExtensionsPath"] = sdkDir;
         psi.Environment["MSBUILDADDITIONALSDKRESOLVERSFOLDER_NET"] = Path.Combine(sdkDir, "SdkResolvers");
         psi.Environment["MSBUILD_NUGET_PATH"] = sdkDir;
+
+        // The bundled preview SDK's workload manifest/resolver setup only works through the
+        // `dotnet` CLI muxer (which has its own workload resolution baked in); SharpDevelop's
+        // in-process MSBuild hosting (Microsoft.Build.Execution, used to evaluate opened
+        // projects) doesn't get that and intermittently fails project loads with
+        // "ProjectLoadException: The SDK 'Microsoft.NET.SDK.WorkloadAutoImportPropsLocator'
+        // specified could not be found." Not needed for plain console/class-library projects.
+        psi.Environment["MSBuildEnableWorkloadResolver"] = "false";
 	}
 
 	void AppendAppOutput(string stream, string? line)

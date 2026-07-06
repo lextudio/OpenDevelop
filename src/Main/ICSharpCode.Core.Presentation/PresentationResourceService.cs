@@ -34,8 +34,8 @@ namespace ICSharpCode.Core.Presentation
 		static readonly Dictionary<string, BitmapSource> bitmapCache = new Dictionary<string, BitmapSource>();
 		static readonly IReadOnlyDictionary<string, string> pngResourceMap = new Dictionary<string, string> {
 			{ "Icons.16x16.NewDocumentIcon", "Resources/VS2017/NewFile/NewFile_16x.png" },
-			{ "Icons.16x16.NewProjectIcon", "Resources/VS2017/NewItem/NewItem_16x.png" },
-			{ "Icons.16x16.SolutionIcon", "Resources/VS2017/Document/Document_16x.png" },
+			{ "Icons.16x16.NewProjectIcon", "Resources/VS2017/CS/CS_ProjectSENode_16x.png" },
+			{ "Icons.16x16.SolutionIcon", "Resources/VS2017/SolutionFolderSwitch/SolutionFolderSwitch_16x.png" },
 			{ "Icons.16x16.MiscFiles", "Resources/VS2017/Document/Document_16x.png" },
 			{ "Icons.16x16.OpenFileIcon", "Resources/VS2017/OpenFile/OpenFile_16x.png" },
 			{ "Icons.16x16.OpenProjectIcon", "Resources/VS2017/ProjectFolderOpen/ProjectFolderOpen_16x.png" },

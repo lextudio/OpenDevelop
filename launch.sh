@@ -20,6 +20,12 @@ export MSBuildSDKsPath="${sdk_dir}/Sdks"
 export MSBuildExtensionsPath="${sdk_dir}"
 export MSBUILDADDITIONALSDKRESOLVERSFOLDER_NET="${sdk_dir}/SdkResolvers"
 export MSBUILD_NUGET_PATH="${sdk_dir}"
+# The bundled preview SDK's workload manifest/resolver setup only works through the `dotnet` CLI
+# muxer; SharpDevelop's in-process MSBuild hosting (used to evaluate opened projects) doesn't get
+# that and intermittently fails project loads with "ProjectLoadException: The SDK
+# 'Microsoft.NET.SDK.WorkloadAutoImportPropsLocator' specified could not be found." Not needed for
+# plain console/class-library projects.
+export MSBuildEnableWorkloadResolver=false
 
 # Kill any previously running instance so DevFlow's port (9223) is free and we
 # don't end up staring at a stale window.
