@@ -18,14 +18,7 @@
 
 using System;
 using System.Linq;
-using System.Windows;
-using System.Windows.Threading;
 using Debugger.AddIn.TreeModel;
-using ICSharpCode.NRefactory;
-using ICSharpCode.SharpDevelop.Debugging;
-using ICSharpCode.SharpDevelop.Gui.Pads;
-using ICSharpCode.SharpDevelop.Project;
-using ICSharpCode.SharpDevelop.Services;
 using ICSharpCode.TreeView;
 
 namespace Debugger.AddIn.Pads.Controls
@@ -65,8 +58,7 @@ namespace Debugger.AddIn.Pads.Controls
 		protected override void LoadChildren()
 		{
 			if (this.Node.GetChildren != null) {
-				var process = WindowsDebugger.CurrentProcess;
-				process.EnqueueWork(Dispatcher.CurrentDispatcher, () => Children.AddRange(this.Node.GetChildren().Select(node => node.ToSharpTreeNode())));
+				Children.AddRange(this.Node.GetChildren().Select(node => node.ToSharpTreeNode()));
 			}
 		}
 	}

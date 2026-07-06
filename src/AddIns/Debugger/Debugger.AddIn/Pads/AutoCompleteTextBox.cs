@@ -25,18 +25,11 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using ICSharpCode.AvalonEdit;
+using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Editing;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory;
-using ICSharpCode.NRefactory.CSharp;
-using ICSharpCode.NRefactory.CSharp.Completion;
-using ICSharpCode.NRefactory.CSharp.Refactoring;
-using ICSharpCode.NRefactory.Editor;
-using ICSharpCode.NRefactory.TypeSystem;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
-using ICSharpCode.SharpDevelop.Editor.CodeCompletion;
-using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Services;
 
 namespace Debugger.AddIn.Pads.Controls
@@ -128,28 +121,15 @@ namespace Debugger.AddIn.Pads.Controls
 		void editor_TextArea_TextEntered(object sender, TextCompositionEventArgs e)
 		{
 			if (e.Text == ".") {
-				StackFrame frame = WindowsDebugger.CurrentStackFrame;
-				if (frame != null) {
-					ContextFileName = new FileName(frame.NextStatement.Filename);
-					ContextTextLocation = new TextLocation(frame.NextStatement.StartLine, frame.NextStatement.StartColumn);
+				var frame = WindowsDebugger.CurrentStackFrame;
+				if (frame != null && !string.IsNullOrEmpty(frame.FilePath)) {
+					ContextFileName = new FileName(frame.FilePath);
+					ContextTextLocation = new TextLocation(frame.Line, frame.Column);
 				}
 				if (ContextFileName == null) return;
 				var binding = DebuggerDotCompletion.PrepareDotCompletion(editor.Text.Substring(0, editor.CaretOffset), SD.ParserService.ResolveContext(ContextFileName, ContextTextLocation));
 				if (binding == null) return;
 				binding.HandleKeyPressed(editorAdapter, '.');
-			} else {
-				// TODO : implement automated error checking CSharpParser.ParseExpression does not report useful error messages.
-//				Error[] errors;
-//				if (!DebuggerDotCompletion.CheckSyntax(Text, out errors)) {
-//					StringBuilder output = new StringBuilder();
-//					foreach (var error in errors) {
-//						output.AppendLine(error.Message + " at " + error.Region.Begin);
-//					}
-//					messageView.Content = output.ToString();
-//					messageView.IsOpen = true;
-//				} else {
-//					messageView.IsOpen = false;
-//				}
 			}
 		}
 		

@@ -25,7 +25,6 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 
-using Debugger;
 using Debugger.AddIn;
 using Debugger.AddIn.Pads.Controls;
 using Debugger.AddIn.TreeModel;
@@ -111,40 +110,29 @@ namespace ICSharpCode.SharpDevelop.Gui.Pads
 		SharpTreeNodeAdapter MakeNode(string name)
 		{
 			LoggingService.Info("Evaluating watch: " + name);
-			TreeNode node = null;
-			try {
-				node = new ValueNode(null, name,
-				                     () => {
-				                     	if (string.IsNullOrWhiteSpace(name))
-				                     		return null;
-				                     	return WindowsDebugger.Evaluate(name);
-				                     });
-			} catch (GetValueException e) {
-				node = new TreeNode(null, name, e.Message, string.Empty, null);
-			}
+			TreeNode node = new ValueNode(null, name, name);
 			node.CanDelete = true;
 			node.CanSetName = true;
 			node.PropertyChanged += (s, e) => {
-				if (e.PropertyName == "Name")
+				if (e.PropertyName == "Name") {
+					((ValueNode)node).Refresh();
 					WindowsDebugger.RefreshPads();
+				}
 			};
 			return node.ToSharpTreeNode();
 		}
-		
+
 		protected void RefreshPad()
 		{
-			Process process = WindowsDebugger.CurrentProcess;
-			if (process != null && process.IsPaused) {
+			var session = WindowsDebugger.CurrentSession;
+			if (session != null && session.IsPaused) {
 				var expressions = this.Items.OfType<SharpTreeNodeAdapter>()
 					.Select(n => n.Node.Name)
 					.ToList();
 				this.Items.Clear();
-				process.EnqueueForEach(
-					Dispatcher.CurrentDispatcher,
-					expressions,
-					expr => this.Items.Add(MakeNode(expr)),
-					expr => this.Items.Add(MakeNode(expr))
-				);
+				foreach (var expr in expressions) {
+					this.Items.Add(MakeNode(expr));
+				}
 			}
 		}
 	}

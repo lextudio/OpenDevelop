@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Windows;
+using ICSharpCode.SharpDevelop.Debugging;
 using ICSharpCode.SharpDevelop.Gui;
 
 namespace Debugger.AddIn.Options

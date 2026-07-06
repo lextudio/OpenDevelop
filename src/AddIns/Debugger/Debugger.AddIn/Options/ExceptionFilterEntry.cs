@@ -16,19 +16,63 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using ICSharpCode.SharpDevelop.Debugging;
+using System;
+using System.ComponentModel;
 
-namespace Debugger.AddIn.Visualizers
+namespace ICSharpCode.SharpDevelop.Debugging
 {
 	/// <summary>
-	/// Creates visualizer commands and decides whether a visualizer is available for a given
-	/// DAP variable. Under the old ICorDebug engine this was keyed off a resolved <c>IType</c>;
-	/// under DAP we only have the adapter-reported type name and value string, so availability
-	/// checks are necessarily string-based/heuristic now.
+	/// Formerly defined in Debugger.Core (ICorDebug engine); moved here since it is a plain DTO
+	/// with no dependency on the debugging engine itself.
 	/// </summary>
-	public interface IVisualizerDescriptor
+	[Serializable]
+	public class ExceptionFilterEntry : INotifyPropertyChanged
 	{
-		bool IsVisualizerAvailable(string typeName, string value, bool hasChildren);
-		IVisualizerCommand CreateVisualizerCommand(string valueName, string typeName, string value, System.Func<System.Collections.Generic.IEnumerable<Debugger.AddIn.Service.Dap.DapVariableInfo>> getChildren);
+		string expression;
+		bool isActive;
+
+		public ExceptionFilterEntry()
+		{
+			this.IsActive = true;
+		}
+
+		public ExceptionFilterEntry(string expression)
+		{
+			this.IsActive = true;
+			this.Expression = expression;
+		}
+
+		public event PropertyChangedEventHandler PropertyChanged;
+
+		protected virtual void OnPropertyChanged(string propertyName)
+		{
+			var propertyChanged = PropertyChanged;
+			if (propertyChanged != null)
+				propertyChanged(this, new PropertyChangedEventArgs(propertyName));
+		}
+
+		public string Expression {
+			get {
+				return expression;
+			}
+			set {
+				if (expression != value) {
+					expression = value;
+					OnPropertyChanged("Expression");
+				}
+			}
+		}
+
+		public bool IsActive {
+			get {
+				return isActive;
+			}
+			set {
+				if (isActive != value) {
+					isActive = value;
+					OnPropertyChanged("IsActive");
+				}
+			}
+		}
 	}
 }

@@ -16,19 +16,26 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using ICSharpCode.SharpDevelop.Debugging;
+using System;
 
-namespace Debugger.AddIn.Visualizers
+namespace ICSharpCode.SharpDevelop.Debugging
 {
 	/// <summary>
-	/// Creates visualizer commands and decides whether a visualizer is available for a given
-	/// DAP variable. Under the old ICorDebug engine this was keyed off a resolved <c>IType</c>;
-	/// under DAP we only have the adapter-reported type name and value string, so availability
-	/// checks are necessarily string-based/heuristic now.
+	/// Formerly defined in Debugger.Core; moved here since these are plain exception types with
+	/// no dependency on the debugging engine itself.
 	/// </summary>
-	public interface IVisualizerDescriptor
+	public class DebuggerException : Exception
 	{
-		bool IsVisualizerAvailable(string typeName, string value, bool hasChildren);
-		IVisualizerCommand CreateVisualizerCommand(string valueName, string typeName, string value, System.Func<System.Collections.Generic.IEnumerable<Debugger.AddIn.Service.Dap.DapVariableInfo>> getChildren);
+		public DebuggerException() { }
+		public DebuggerException(string message) : base(message) { }
+		public DebuggerException(string message, params object[] args) : base(string.Format(message, args)) { }
+		public DebuggerException(string message, Exception inner) : base(message, inner) { }
+	}
+
+	public class GetValueException : DebuggerException
+	{
+		public GetValueException(string error) : base(error) { }
+		public GetValueException(string errorFmt, params object[] args) : base(string.Format(errorFmt, args)) { }
+		public GetValueException(string error, Exception inner) : base(error, inner) { }
 	}
 }

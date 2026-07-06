@@ -31,17 +31,9 @@ using ICSharpCode.SharpDevelop.Services;
 
 namespace Debugger.AddIn
 {
-	public class RunToCursorCommand : AbstractMenuCommand
-	{
-		public override void Run()
-		{
-			ITextEditor editor = SD.GetActiveViewContentService<ITextEditor>();
-			if (editor == null || WindowsDebugger.CurrentProcess == null)
-				return;
-			WindowsDebugger.CurrentProcess.RunTo(editor.FileName, editor.Caret.Line, editor.Caret.Column);
-		}
-	}
-	
+	// RunToCursorCommand was removed: "run to cursor" has no standard DAP request and the bundled
+	// SharpDbg adapter does not implement a custom extension for it. Known capability gap.
+
 	public class SetCurrentStatementCommand : AbstractMenuCommand
 	{
 		public override void Run()

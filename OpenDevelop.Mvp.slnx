@@ -27,7 +27,7 @@
     <Project Path="src/AddIns/Misc/StartPage/Project/StartPage.csproj" />
   </Folder>
   <Folder Name="/src/AddIns/Debugger/">
-    <Project Path="src/AddIns/Debugger/DapDebugger.AddIn/DapDebugger.AddIn.csproj" />
+    <Project Path="src/AddIns/Debugger/Debugger.AddIn/Debugger.AddIn.csproj" />
   </Folder>
   <Folder Name="/src/AddIns/DisplayBindings/AvalonEdit.AddIn/">
     <Project Path="src/AddIns/DisplayBindings/AvalonEdit.AddIn/AvalonEdit.AddIn.csproj" />

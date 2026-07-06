@@ -1,5 +1,17 @@
 # Debugging migration plan
 
+**Status update:** the plan below originally called for a separate
+`DapDebugger.AddIn` skeleton alongside the legacy `Debugger.AddIn`. In practice
+the migration was done in place instead: `Debugger.AddIn`'s `WindowsDebugger`
+now talks DAP directly (`Service/Dap/DapSession.cs`), `Debugger.Core` (ICorDebug)
+is no longer referenced, and the standalone `DapDebugger.AddIn` project has been
+removed - `OpenDevelop.Mvp.slnx` now builds `Debugger.AddIn.csproj` directly.
+Known gaps versus the old ICorDebug engine: attach-to-process, set-next-
+statement, run-to-cursor, thread freeze/priority, per-frame module/argument
+display toggles, Class Browser integration for the debuggee's loaded modules,
+and the ObjectGraph visualizer (no live-object identity/cycle data over DAP).
+The rest of this document is kept for historical background.
+
 OpenDevelop should not port the SharpDevelop debugger engine as-is. The old
 SharpDevelop addin is useful as a workbench integration reference, but its engine
 is a Windows-era managed debugger built around CorDebug wrappers and WinForms UI.

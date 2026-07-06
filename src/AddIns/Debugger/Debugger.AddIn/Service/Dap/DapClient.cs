@@ -1,3 +1,21 @@
+// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// software and associated documentation files (the "Software"), to deal in the Software
+// without restriction, including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+// to whom the Software is furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all copies or
+// substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
+
 using System;
 using System.Collections.Concurrent;
 using System.IO;
@@ -7,8 +25,12 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace OpenDevelop.Debugger
+namespace Debugger.AddIn.Service.Dap
 {
+	/// <summary>
+	/// Minimal Debug Adapter Protocol transport: Content-Length framed JSON over a pair of streams,
+	/// with request/response correlation and an event stream.
+	/// </summary>
 	sealed class DapClient : IDisposable
 	{
 		readonly StreamWriter writer;
@@ -16,26 +38,26 @@ namespace OpenDevelop.Debugger
 		readonly ConcurrentDictionary<int, TaskCompletionSource<JsonObject>> pending = new ConcurrentDictionary<int, TaskCompletionSource<JsonObject>>();
 		readonly CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
 		int sequenceNumber;
-		
+
 		public event Action<string, JsonObject> EventReceived;
-		
+
 		public DapClient(Stream input, Stream output)
 		{
 			writer = new StreamWriter(output, new UTF8Encoding(false)) { AutoFlush = true };
 			reader = new StreamReader(input, new UTF8Encoding(false));
 		}
-		
+
 		public void Start()
 		{
 			Task.Run(ReadLoopAsync, cancellationTokenSource.Token);
 		}
-		
+
 		public async Task<JsonObject> SendRequestAsync(string command, JsonObject arguments = null, CancellationToken cancellationToken = default)
 		{
 			int sequence = Interlocked.Increment(ref sequenceNumber);
 			var completionSource = new TaskCompletionSource<JsonObject>(TaskCreationOptions.RunContinuationsAsynchronously);
 			pending[sequence] = completionSource;
-			
+
 			var message = new JsonObject {
 				["seq"] = sequence,
 				["type"] = "request",
@@ -44,9 +66,9 @@ namespace OpenDevelop.Debugger
 			if (arguments != null) {
 				message["arguments"] = arguments;
 			}
-			
+
 			await WriteMessageAsync(message).ConfigureAwait(false);
-			
+
 			using (cancellationToken.Register(() => {
 				TaskCompletionSource<JsonObject> removed;
 				pending.TryRemove(sequence, out removed);
@@ -55,7 +77,7 @@ namespace OpenDevelop.Debugger
 				return await completionSource.Task.ConfigureAwait(false);
 			}
 		}
-		
+
 		async Task WriteMessageAsync(JsonObject message)
 		{
 			string json = message.ToJsonString();
@@ -64,7 +86,7 @@ namespace OpenDevelop.Debugger
 			await writer.BaseStream.WriteAsync(body, 0, body.Length).ConfigureAwait(false);
 			await writer.BaseStream.FlushAsync().ConfigureAwait(false);
 		}
-		
+
 		async Task ReadLoopAsync()
 		{
 			try {
@@ -81,7 +103,7 @@ namespace OpenDevelop.Debugger
 							break;
 						}
 					}
-					
+
 					char[] buffer = new char[contentLength];
 					int read = 0;
 					while (read < contentLength) {
@@ -91,7 +113,7 @@ namespace OpenDevelop.Debugger
 						}
 						read += count;
 					}
-					
+
 					Dispatch(new string(buffer));
 				}
 			} catch (ObjectDisposedException) {
@@ -99,7 +121,7 @@ namespace OpenDevelop.Debugger
 			} catch (OperationCanceledException) {
 			}
 		}
-		
+
 		void Dispatch(string json)
 		{
 			JsonObject message;
@@ -111,7 +133,7 @@ namespace OpenDevelop.Debugger
 			if (message == null) {
 				return;
 			}
-			
+
 			string type = message["type"] != null ? message["type"].GetValue<string>() : null;
 			if (type == "response") {
 				int requestSequence = message["request_seq"] != null ? message["request_seq"].GetValue<int>() : 0;
@@ -124,7 +146,7 @@ namespace OpenDevelop.Debugger
 				EventReceived?.Invoke(eventName, message["body"] as JsonObject);
 			}
 		}
-		
+
 		public void Dispose()
 		{
 			cancellationTokenSource.Cancel();

@@ -20,7 +20,6 @@ using System;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
-using Debugger;
 using ICSharpCode.Core;
 using ICSharpCode.Core.WinForms;
 using ICSharpCode.SharpDevelop.Debugging;
@@ -30,57 +29,42 @@ namespace ICSharpCode.SharpDevelop.Services
 {
 	internal sealed partial class DebuggeeExceptionForm
 	{
-		Process process;
+		Action stopDebuggee;
 		string exceptionType;
-		
+
 		public bool Break { get; set; }
-		
-		DebuggeeExceptionForm(Process process, string exceptionType)
+
+		DebuggeeExceptionForm(Action stopDebuggee, string exceptionType)
 		{
 			InitializeComponent();
-			
+
 			this.Break = true;
-			
-			this.process = process;
+
+			this.stopDebuggee = stopDebuggee;
 			this.exceptionType = exceptionType;
-			
-			this.process.Exited += ProcessHandler;
-			this.process.Resumed += ProcessHandler;
-			
-			this.FormClosed += FormClosedHandler;
-			
+
 			this.WindowState = DebuggingOptions.Instance.DebuggeeExceptionWindowState;
 			FormLocationHelper.Apply(this, "DebuggeeExceptionForm", true);
-			
+
 			this.MinimizeBox = this.MaximizeBox = this.ShowIcon = false;
-			
+
 			this.exceptionView.Font = WinFormsResourceService.DefaultMonospacedFont;
 			this.exceptionView.DoubleClick += ExceptionViewDoubleClick;
 			this.exceptionView.WordWrap = false;
-			
+
 			this.btnBreak.Text = StringParser.Parse("${res:MainWindow.Windows.Debug.ExceptionForm.Break}");
 			this.btnStop.Text  = StringParser.Parse("${res:MainWindow.Windows.Debug.ExceptionForm.Terminate}");
 			this.btnContinue.Text  = StringParser.Parse("${res:MainWindow.Windows.Debug.ExceptionForm.Continue}");
-			
+
 			this.btnBreak.Image = WinFormsResourceService.GetBitmap("Icons.16x16.Debug.Break");
 			this.btnStop.Image = WinFormsResourceService.GetBitmap("Icons.16x16.StopProcess");
 			this.btnContinue.Image = WinFormsResourceService.GetBitmap("Icons.16x16.Debug.Continue");
 		}
 
-		void ProcessHandler(object sender, EventArgs e)
+		/// <param name="stopDebuggee">Invoked when the user chooses to terminate the debuggee.</param>
+		public static bool Show(Action stopDebuggee, string exceptionType, string stacktrace, bool isUnhandled)
 		{
-			this.Close();
-		}
-		
-		void FormClosedHandler(object sender, EventArgs e)
-		{
-			this.process.Exited -= ProcessHandler;
-			this.process.Resumed -= ProcessHandler;
-		}
-		
-		public static bool Show(Process process, string exceptionType, string stacktrace, bool isUnhandled)
-		{
-			DebuggeeExceptionForm form = new DebuggeeExceptionForm(process, exceptionType);
+			DebuggeeExceptionForm form = new DebuggeeExceptionForm(stopDebuggee, exceptionType);
 			string type = string.Format(StringParser.Parse("${res:MainWindow.Windows.Debug.ExceptionForm.Message}"), exceptionType);
 			Bitmap icon = WinFormsResourceService.GetBitmap(isUnhandled ? "Icons.32x32.Error" : "Icons.32x32.Warning");
 
@@ -92,26 +76,25 @@ namespace ICSharpCode.SharpDevelop.Services
 			form.chkBreakOnHandled.Visible = !isUnhandled;
 			form.chkBreakOnHandled.Text = StringParser.Parse("${res:MainWindow.Windows.Debug.ExceptionForm.BreakOnHandled}", new StringTagPair("ExceptionName", exceptionType));
 			form.chkBreakOnHandled.Checked = true;
-			
+
 			// Showing the form as dialg seems like a resonable thing in the presence of potentially multiple
 			// concurent debugger evetns
 			form.ShowDialog(SD.WinForms.MainWin32Window);
-			
+
 			return form.Break;
 		}
-		
+
 		protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
 		{
 			if (chkBreakOnHandled.Visible && !chkBreakOnHandled.Checked) {
-				var list = process.Debugger.Options.ExceptionFilterList.ToList();
+				var list = DebuggingOptions.Instance.ExceptionFilterList.ToList();
 				var entry = list.FirstOrDefault(item => item.Expression.Equals(exceptionType, StringComparison.OrdinalIgnoreCase));
 				if (entry == null) {
 					list.Add(new ExceptionFilterEntry(exceptionType) { IsActive = false });
 				} else {
 					entry.IsActive = false;
 				}
-				process.Debugger.Options.ExceptionFilterList = list;
-				process.Debugger.ReloadOptions();
+				DebuggingOptions.Instance.ExceptionFilterList = list;
 			}
 			base.OnClosing(e);
 		}
@@ -158,7 +141,7 @@ namespace ICSharpCode.SharpDevelop.Services
 		
 		void BtnStopClick(object sender, EventArgs e)
 		{
-			this.process.Terminate();
+			stopDebuggee?.Invoke();
 			Close();
 		}
 		

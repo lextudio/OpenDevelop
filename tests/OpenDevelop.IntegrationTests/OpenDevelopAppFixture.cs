@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 
 using Xunit;
@@ -22,12 +23,15 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         Environment.GetEnvironmentVariable("DEVFLOW_AGENT_PORT"), out var p) && p > 0 ? p : 9223;
     static readonly string BaseUrl = $"http://localhost:{Port}";
 
-    readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(30) };
-    Process? _app;
+	readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(30) };
+	readonly object _outputLock = new();
+	readonly StringBuilder _appOutput = new();
+	Process? _app;
 
     public string OpenDevelopProjectPath { get; } = LocateOpenDevelopProject();
     public string FixtureSolutionPath { get; } = LocateFixtureProject();
     public string SolutionExplorerFixturePath { get; } = LocateSolutionExplorerFixture();
+    public string DebugTestProjectPath { get; } = LocateDebugTestProject();
 
     public async Task InitializeAsync()
     {
@@ -45,7 +49,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 
     async Task StartAsync()
     {
-        var psi = new ProcessStartInfo("dotnet")
+        var psi = new ProcessStartInfo(ResolveDotNetHost())
         {
             WorkingDirectory = Path.GetDirectoryName(OpenDevelopProjectPath)!,
             UseShellExecute = false,
@@ -54,12 +58,13 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         };
         foreach (var a in new[] { "run", "--project", OpenDevelopProjectPath, "-f", "net11.0-windows", "--no-build" })
             psi.ArgumentList.Add(a);
+        ConfigureDotNetEnvironment(psi);
 
         _app = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start OpenDevelop");
-        _app.OutputDataReceived += (_, _) => { };
-        _app.ErrorDataReceived += (_, _) => { };
-        _app.BeginOutputReadLine();
-        _app.BeginErrorReadLine();
+		_app.OutputDataReceived += (_, e) => AppendAppOutput("stdout", e.Data);
+		_app.ErrorDataReceived += (_, e) => AppendAppOutput("stderr", e.Data);
+		_app.BeginOutputReadLine();
+		_app.BeginErrorReadLine();
 
         await WaitForAgentAsync(TimeSpan.FromSeconds(120));
     }
@@ -68,6 +73,8 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     {
         try { if (_app is { HasExited: false }) _app.Kill(entireProcessTree: true); } catch { }
         try { foreach (var proc in Process.GetProcessesByName("SharpDevelop")) { try { proc.Kill(true); } catch { } } } catch { }
+        try { foreach (var proc in Process.GetProcessesByName("SharpDbg.Cli")) { try { proc.Kill(true); } catch { } } } catch { }
+        try { foreach (var proc in Process.GetProcessesByName("DebugTestApp")) { try { proc.Kill(true); } catch { } } } catch { }
         _app = null;
     }
 
@@ -108,22 +115,33 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         catch { return false; }
     }
 
-    public async Task<JsonElement> InvokeAsync(string action, params object[] args)
-    {
-        var body = JsonSerializer.Serialize(new { args });
-        using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
-        using var resp = await _http.PostAsync($"{BaseUrl}/api/v1/invoke/actions/{action}", content);
-        if (!resp.IsSuccessStatusCode)
-        {
-            var err = await resp.Content.ReadAsStringAsync();
-            throw new InvalidOperationException($"Action '{action}' failed ({(int)resp.StatusCode}): {err}");
-        }
-        var envelope = await resp.Content.ReadFromJsonAsync<JsonElement>();
-        var raw = envelope.TryGetProperty("returnValue", out var rv) ? rv.GetString() : null;
-        if (string.IsNullOrEmpty(raw))
-            throw new InvalidOperationException($"Action '{action}' returned no value: {envelope}");
-        return JsonDocument.Parse(raw).RootElement.Clone();
-    }
+	public async Task<JsonElement> InvokeAsync(string action, params object[] args)
+	{
+		var body = JsonSerializer.Serialize(new { args });
+		using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+		HttpResponseMessage resp;
+		try
+		{
+			resp = await _http.PostAsync($"{BaseUrl}/api/v1/invoke/actions/{action}", content);
+		}
+		catch (Exception ex)
+		{
+			throw new InvalidOperationException($"Action '{action}' request failed. AppExited={_app?.HasExited}. Recent app output:\n{GetRecentAppOutput()}", ex);
+		}
+		using (resp)
+		{
+			if (!resp.IsSuccessStatusCode)
+			{
+				var err = await resp.Content.ReadAsStringAsync();
+				throw new InvalidOperationException($"Action '{action}' failed ({(int)resp.StatusCode}): {err}\nRecent app output:\n{GetRecentAppOutput()}");
+			}
+			var envelope = await resp.Content.ReadFromJsonAsync<JsonElement>();
+			var raw = envelope.TryGetProperty("returnValue", out var rv) ? rv.GetString() : null;
+			if (string.IsNullOrEmpty(raw))
+				throw new InvalidOperationException($"Action '{action}' returned no value: {envelope}\nRecent app output:\n{GetRecentAppOutput()}");
+			return JsonDocument.Parse(raw).RootElement.Clone();
+		}
+	}
 
     public async Task<JsonElement> GetStatusAsync()
     {
@@ -177,6 +195,83 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         throw new FileNotFoundException(
             "Could not locate tests/fixtures/SolutionExplorerFixture/SolutionExplorerFixture.sln by walking up from " + AppContext.BaseDirectory);
     }
+
+    static string LocateDebugTestProject()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir, "tests", "fixtures", "DebugTestApp", "DebugTestApp.csproj");
+            if (File.Exists(candidate)) return candidate;
+            dir = Path.GetDirectoryName(dir);
+        }
+        throw new FileNotFoundException(
+            "Could not locate tests/fixtures/DebugTestApp/DebugTestApp.csproj by walking up from " + AppContext.BaseDirectory);
+    }
+
+    static string ResolveDotNetHost()
+    {
+        var envHost = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
+        if (!string.IsNullOrEmpty(envHost) && File.Exists(envHost))
+            return envHost;
+
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir, "..", "librewpf", ".dotnet", "dotnet");
+            candidate = Path.GetFullPath(candidate);
+            if (File.Exists(candidate)) return candidate;
+            dir = Path.GetDirectoryName(dir);
+        }
+
+        return "dotnet";
+    }
+
+	static void ConfigureDotNetEnvironment(ProcessStartInfo psi)
+    {
+        var dotnet = ResolveDotNetHost();
+        if (!File.Exists(dotnet))
+            return;
+
+        var dotnetRoot = Path.GetDirectoryName(dotnet)!;
+        psi.Environment["DOTNET_ROOT"] = dotnetRoot;
+        psi.Environment["DOTNET_HOST_PATH"] = dotnet;
+
+        var sdkRoot = Path.Combine(dotnetRoot, "sdk");
+        if (!Directory.Exists(sdkRoot))
+            return;
+
+        var sdkDir = Directory.GetDirectories(sdkRoot)
+            .OrderBy(d => d, StringComparer.OrdinalIgnoreCase)
+            .LastOrDefault();
+        if (sdkDir == null)
+            return;
+
+        psi.Environment["MSBuildSDKsPath"] = Path.Combine(sdkDir, "Sdks");
+        psi.Environment["MSBuildExtensionsPath"] = sdkDir;
+        psi.Environment["MSBUILDADDITIONALSDKRESOLVERSFOLDER_NET"] = Path.Combine(sdkDir, "SdkResolvers");
+        psi.Environment["MSBUILD_NUGET_PATH"] = sdkDir;
+	}
+
+	void AppendAppOutput(string stream, string? line)
+	{
+		if (line == null)
+			return;
+		lock (_outputLock)
+		{
+			_appOutput.Append('[').Append(stream).Append("] ").AppendLine(line);
+			if (_appOutput.Length > 100_000)
+				_appOutput.Remove(0, _appOutput.Length - 100_000);
+		}
+	}
+
+	string GetRecentAppOutput()
+	{
+		lock (_outputLock)
+		{
+			return _appOutput.ToString();
+		}
+	}
 }
 
 [CollectionDefinition("OpenDevelop app")]

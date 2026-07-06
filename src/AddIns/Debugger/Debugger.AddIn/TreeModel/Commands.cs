@@ -40,8 +40,8 @@ namespace Debugger.AddIn.TreeModel
 		public override void Execute(object parameter)
 		{
 			var node = parameter as ValueNode;
-			if (node == null) return;
-			SD.MessageService.ShowException(node.error, null);
+			if (node == null || node.ErrorMessage == null) return;
+			SD.MessageService.ShowError(node.ErrorMessage);
 		}
 	}
 }

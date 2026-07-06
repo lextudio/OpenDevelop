@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 
+using ICSharpCode.SharpDevelop.Debugging;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Services;
 
@@ -41,8 +42,6 @@ namespace Debugger.AddIn.Options
 		public override bool SaveOptions()
 		{
 			bool result = base.SaveOptions();
-			if (WindowsDebugger.CurrentDebugger != null)
-				WindowsDebugger.CurrentDebugger.ReloadOptions();
 			DebuggingOptions.Instance.ExceptionFilterList = exceptionFilterList;
 			return result;
 		}

@@ -22,65 +22,64 @@ using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using System.Xml.Serialization;
-using Debugger;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Debugging;
 
 namespace ICSharpCode.SharpDevelop.Services
 {
 	public enum ShowIntegersAs { Decimal, Hexadecimal, Both };
-	
-	public class DebuggingOptions: Options, IDebuggerOptions
+
+	public class DebuggingOptions: IDebuggerOptions
 	{
 		public static DebuggingOptions Instance {
 			get { return new DebuggingOptions(); }
 		}
-		
+
 		public IPropertyService PS {
 			get { return SD.GetService<IPropertyService>(); }
 		}
-		
-		public override bool EnableJustMyCode {
+
+		public bool EnableJustMyCode {
 			get { return PS.Get<bool>("Debugger.EnableJustMyCode", true); }
 			set { PS.Set<bool>("Debugger.EnableJustMyCode", value); }
 		}
-		
-		public override bool SuppressJITOptimization {
+
+		public bool SuppressJITOptimization {
 			get { return PS.Get<bool>("Debugger.SuppressJITOptimization", true); }
 			set { PS.Set<bool>("Debugger.SuppressJITOptimization", value); }
 		}
-		
-		public override bool SuppressNGENOptimization {
+
+		public bool SuppressNGENOptimization {
 			get { return PS.Get<bool>("Debugger.SuppressNGENOptimization", true); }
 			set { PS.Set<bool>("Debugger.SuppressNGENOptimization", value); }
 		}
-		
-		public override bool StepOverDebuggerAttributes {
+
+		public bool StepOverDebuggerAttributes {
 			get { return PS.Get<bool>("Debugger.StepOverDebuggerAttributes", true); }
 			set { PS.Set<bool>("Debugger.StepOverDebuggerAttributes", value); }
 		}
-		
-		public override bool StepOverAllProperties {
+
+		public bool StepOverAllProperties {
 			get { return PS.Get<bool>("Debugger.StepOverAllProperties", false); }
 			set { PS.Set<bool>("Debugger.StepOverAllProperties", value); }
 		}
-		
-		public override bool StepOverFieldAccessProperties {
+
+		public bool StepOverFieldAccessProperties {
 			get { return PS.Get<bool>("Debugger.StepOverFieldAccessProperties", true); }
 			set { PS.Set<bool>("Debugger.StepOverFieldAccessProperties", value); }
 		}
-		
-		public override IEnumerable<string> SymbolsSearchPaths {
+
+		public IEnumerable<string> SymbolsSearchPaths {
 			get { return PS.GetList<string>("Debugger.SymbolsSearchPaths"); }
 			set { PS.SetList<string>("Debugger.SymbolsSearchPaths", value); }
 		}
-		
-		public override bool PauseOnHandledExceptions {
+
+		public bool PauseOnHandledExceptions {
 			get { return PS.Get<bool>("Debugger.PauseOnHandledExceptions", false); }
 			set { PS.Set<bool>("Debugger.PauseOnHandledExceptions", value); }
 		}
-		
-		public override IEnumerable<ExceptionFilterEntry> ExceptionFilterList {
+
+		public IEnumerable<ExceptionFilterEntry> ExceptionFilterList {
 			get { return PS.GetList<ExceptionFilterEntry>("Debugger.ExceptionFilterList"); }
 			set { PS.SetList<ExceptionFilterEntry>("Debugger.ExceptionFilterList", value); }
 		}
