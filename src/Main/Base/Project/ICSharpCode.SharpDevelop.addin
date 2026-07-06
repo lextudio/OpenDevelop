@@ -987,15 +987,21 @@
 		
 		<ToolbarItem id = "CompileSeparator" type = "Separator"/>
 		
-		<ToolbarItem id      = "Compile"
-		             icon    = "Icons.16x16.BuildCombine"
-		             tooltip = "${res:XML.MainMenu.RunMenu.BuildSolution.Description}"
-		             class   = "ICSharpCode.SharpDevelop.Project.Commands.Build"/>
+		<Condition name = "SolutionOpen" action = "Disable">
+			<ToolbarItem id      = "Compile"
+			             icon    = "Icons.16x16.BuildCombine"
+			             tooltip = "${res:XML.MainMenu.RunMenu.BuildSolution.Description}"
+			             class   = "ICSharpCode.SharpDevelop.Project.Commands.Build"/>
+		</Condition>
 		
-		<ToolbarItem id      = "BuildProject"
-		             icon    = "Icons.16x16.BuildCurrentSelectedProject"
-		             tooltip = "${res:XML.MainMenu.RunMenu.BuildProject.Description}"
-		             class   = "ICSharpCode.SharpDevelop.Project.Commands.BuildProject"/>
+		<Condition name = "SolutionOpen" action = "Disable">
+			<Condition name = "ProjectActive" activeproject = "*" action = "Disable">
+				<ToolbarItem id      = "BuildProject"
+				             icon    = "Icons.16x16.BuildCurrentSelectedProject"
+				             tooltip = "${res:XML.MainMenu.RunMenu.BuildProject.Description}"
+				             class   = "ICSharpCode.SharpDevelop.Project.Commands.BuildProject"/>
+			</Condition>
+		</Condition>
 		
 		<ToolbarItem id = "DebuggerSeparator" type = "Separator"  />
 		
