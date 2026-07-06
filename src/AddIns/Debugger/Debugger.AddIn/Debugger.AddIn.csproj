@@ -21,7 +21,10 @@
     <ProjectReference Include="..\..\..\Libraries\AvalonEdit\ICSharpCode.AvalonEdit\ICSharpCode.AvalonEdit.csproj" Private="false" />
     <ProjectReference Include="..\..\..\Libraries\NRefactory\ICSharpCode.NRefactory.CSharp\ICSharpCode.NRefactory.CSharp.csproj" Private="false" />
     <ProjectReference Include="..\..\..\Libraries\NRefactory\ICSharpCode.NRefactory\ICSharpCode.NRefactory.csproj" Private="false" />
-    <ProjectReference Include="..\..\..\Libraries\SharpTreeView\ICSharpCode.TreeView\ICSharpCode.TreeView.csproj" Private="false" />
+    <!-- Private (copy-local) unlike the other references here: the main app does not already load
+         ICSharpCode.TreeView.dll itself, so it must be deployed into AddIns/Debugger/ for the
+         Watch/Locals SharpTreeView-based pads to resolve it at runtime. -->
+    <ProjectReference Include="..\..\..\Libraries\SharpTreeView\ICSharpCode.TreeView\ICSharpCode.TreeView.csproj" />
     <ProjectReference Include="..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
     <ProjectReference Include="..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
     <ProjectReference Include="..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" Private="false" />

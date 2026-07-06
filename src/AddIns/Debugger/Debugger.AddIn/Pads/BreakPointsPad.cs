@@ -17,8 +17,12 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Controls;
 
+using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
 using ICSharpCode.SharpDevelop.Debugging;
 using ICSharpCode.SharpDevelop.Editor.Bookmarks;
@@ -32,18 +36,27 @@ namespace ICSharpCode.SharpDevelop.Gui.Pads
 		{
 			var res = new CommonResources();
 			res.InitializeComponent();
-			
+
 			Grid grid = (Grid)this.Control;
 			ToolBar toolbar = ToolBarService.CreateToolBar(grid, this, "/SharpDevelop/Pads/BreakpointPad/Toolbar");
 			grid.Children.Add(toolbar);
-			
+
 			this.control.listView.View = (GridView)res["breakpointsGridView"];
 			this.control.listView.SetValue(GridViewColumnAutoSize.AutoWidthProperty, "35;50%;50%");
 		}
-		
+
 		protected override bool ShowBookmarkInThisPad(SDBookmark mark)
 		{
 			return mark.ShowInPad(this) && mark is BreakpointBookmark;
+		}
+
+		/// <summary>Used by the DevFlow "od.debug.pad-snapshot" test action.</summary>
+		public Task<IEnumerable<object>> GetSnapshotAsync()
+		{
+			IEnumerable<object> items = SD.BookmarkManager.Bookmarks
+				.OfType<BreakpointBookmark>()
+				.Select(b => (object)new { File = b.FileName != null ? b.FileName.ToString() : null, Line = b.LineNumber, b.IsEnabled, b.IsHealthy, b.Condition });
+			return Task.FromResult(items);
 		}
 	}
 }

@@ -16,10 +16,13 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 
+using Debugger.AddIn.Pads.Controls;
 using Debugger.AddIn.TreeModel;
 using ICSharpCode.Core.Presentation;
 using ICSharpCode.SharpDevelop.Services;
@@ -65,6 +68,16 @@ namespace ICSharpCode.SharpDevelop.Gui.Pads
 					this.Items.Add(node.ToSharpTreeNode());
 				}
 			}
+		}
+
+		/// <summary>Used by the DevFlow "od.debug.pad-snapshot" test action.</summary>
+		public Task<IEnumerable<object>> GetSnapshotAsync()
+		{
+			RefreshPad();
+			IEnumerable<object> items = this.Items
+				.OfType<SharpTreeNodeAdapter>()
+				.Select(n => (object)new { n.Node.Name, n.Node.Value, n.Node.Type });
+			return Task.FromResult(items);
 		}
 	}
 }

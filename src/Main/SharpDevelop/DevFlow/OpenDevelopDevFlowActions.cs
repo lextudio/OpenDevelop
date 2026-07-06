@@ -28,8 +28,12 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		[DevFlowAction("od.open-solution", Description = "Open a solution or project file by path (bypasses the native Open dialog)")]
 		public static string OpenSolution(string path)
 		{
-			bool ok = SD.ProjectService.OpenSolutionOrProject(FileName.Create(path));
-			return JsonSerializer.Serialize(new { success = ok, currentSolution = SD.ProjectService.CurrentSolution?.FileName?.ToString() });
+			try {
+				bool ok = SD.ProjectService.OpenSolutionOrProject(FileName.Create(path));
+				return JsonSerializer.Serialize(new { success = ok, currentSolution = SD.ProjectService.CurrentSolution?.FileName?.ToString() });
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
+			}
 		}
 
 		[DevFlowAction("od.solution-tree", Description = "Get the current solution's project/file tree, as seen by Solution Explorer")]
@@ -165,10 +169,10 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		public static string ClearDebugBreakpoints(string filePath = null)
 		{
 			if (string.IsNullOrEmpty(filePath)) {
-				SD.BookmarkManager.RemoveAll(b => b.GetType() == typeof(Bookmark));
+				SD.BookmarkManager.RemoveAll(IsBreakpointBookmark);
 			} else {
 				var fileName = FileName.Create(filePath);
-				SD.BookmarkManager.RemoveAll(b => b.GetType() == typeof(Bookmark) && b.FileName == fileName);
+				SD.BookmarkManager.RemoveAll(b => IsBreakpointBookmark(b) && b.FileName == fileName);
 			}
 			return JsonSerializer.Serialize(new { success = true, remaining = GetAllBreakpointDtos() });
 		}
@@ -184,7 +188,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			}
 			
 			bool exists = SD.BookmarkManager.GetBookmarks(fileName)
-				.OfType<Bookmark>()
+				.Where(IsBreakpointBookmark)
 				.Any(b => b.LineNumber == line);
 			if (!exists) {
 				SD.Debugger.ToggleBreakpointAt(editor, line);
@@ -378,19 +382,30 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		static int[] GetBreakpointLines(FileName fileName)
 		{
 			return SD.BookmarkManager.GetBookmarks(fileName)
-				.OfType<Bookmark>()
+				.Where(IsBreakpointBookmark)
 				.Select(b => b.LineNumber)
 				.OrderBy(l => l)
 				.ToArray();
 		}
-		
+
 		static object[] GetAllBreakpointDtos()
 		{
 			return SD.BookmarkManager.Bookmarks
-				.OfType<Bookmark>()
+				.Where(IsBreakpointBookmark)
 				.Select(b => new { file = b.FileName?.ToString(), line = b.LineNumber })
 				.Cast<object>()
 				.ToArray();
+		}
+
+		/// <summary>
+		/// Matches breakpoints without a compile-time reference to Debugger.AddIn's
+		/// BreakpointBookmark (an addin type the main app doesn't/shouldn't reference directly -
+		/// it's a sibling of the sealed Bookmark class, not a subtype, so OfType&lt;Bookmark&gt;()
+		/// never matches real breakpoints).
+		/// </summary>
+		static bool IsBreakpointBookmark(SDBookmark bookmark)
+		{
+			return bookmark != null && bookmark.GetType().Name == "BreakpointBookmark";
 		}
 
 		static PadDescriptor FindPad(string padName)

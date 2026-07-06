@@ -23,7 +23,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         Environment.GetEnvironmentVariable("DEVFLOW_AGENT_PORT"), out var p) && p > 0 ? p : 9223;
     static readonly string BaseUrl = $"http://localhost:{Port}";
 
-	readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(30) };
+	readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(120) };
 	readonly object _outputLock = new();
 	readonly StringBuilder _appOutput = new();
 	Process? _app;

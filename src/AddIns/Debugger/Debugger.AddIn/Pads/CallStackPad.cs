@@ -17,7 +17,10 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -70,11 +73,16 @@ namespace ICSharpCode.SharpDevelop.Gui.Pads
 
 		async void RefreshPad()
 		{
+			await RefreshPadAsync().ConfigureAwait(true);
+		}
+
+		async Task<IReadOnlyList<CallStackItem>> RefreshPadAsync()
+		{
 			var session = WindowsDebugger.CurrentSession;
 			var thread = WindowsDebugger.CurrentThread;
 			if (session == null || thread == null || !session.IsPaused) {
 				listView.ItemsSource = null;
-				return;
+				return Array.Empty<CallStackItem>();
 			}
 
 			var frames = await session.GetStackFramesAsync(thread.Id).ConfigureAwait(true);
@@ -88,6 +96,14 @@ namespace ICSharpCode.SharpDevelop.Gui.Pads
 				});
 			}
 			listView.ItemsSource = items;
+			return items;
+		}
+
+		/// <summary>Used by the DevFlow "od.debug.pad-snapshot" test action.</summary>
+		public async Task<IEnumerable<object>> GetSnapshotAsync()
+		{
+			var items = await RefreshPadAsync().ConfigureAwait(true);
+			return items.Select(i => (object)new { i.Frame.Id, i.Name, i.Frame.FilePath, i.Frame.Line, i.Frame.Column });
 		}
 	}
 

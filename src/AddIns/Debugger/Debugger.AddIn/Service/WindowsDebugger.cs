@@ -46,8 +46,78 @@ namespace ICSharpCode.SharpDevelop.Services
 		public static DapSession CurrentSession { get; private set; }
 		public static DapThreadInfo CurrentThread { get; set; }
 		public static DapStackFrameInfo CurrentStackFrame { get; set; }
+		static int currentStopSequence;
 
 		public static Action RefreshingPads;
+
+		// Instance-level inspection surface used by DevFlow test actions (tests/OpenDevelop.IntegrationTests,
+		// src/Main/SharpDevelop/DevFlow/OpenDevelopDevFlowActions.cs), which drive/inspect the debugger
+		// through reflection over whatever IDebuggerService is currently registered, without depending on
+		// a concrete engine type. These simply expose the static Current* state as instance members.
+		public int CurrentThreadId {
+			get { return CurrentThread != null ? CurrentThread.Id : 0; }
+		}
+
+		public string CurrentFile {
+			get { return CurrentStackFrame != null ? CurrentStackFrame.FilePath : null; }
+		}
+
+		public int CurrentLine {
+			get { return CurrentStackFrame != null ? CurrentStackFrame.Line : 0; }
+		}
+
+		public int CurrentStopSequence {
+			get { return currentStopSequence; }
+		}
+
+		public Task<IReadOnlyList<DapStackFrameInfo>> GetStackFramesAsync(int threadId)
+		{
+			if (CurrentSession == null) {
+				return Task.FromResult<IReadOnlyList<DapStackFrameInfo>>(Array.Empty<DapStackFrameInfo>());
+			}
+			return CurrentSession.GetStackFramesAsync(threadId);
+		}
+
+		public async Task<IReadOnlyList<DapVariableInfo>> GetLocalsAsync(int frameId)
+		{
+			if (CurrentSession == null) {
+				return Array.Empty<DapVariableInfo>();
+			}
+			var scopes = await CurrentSession.GetScopesAsync(frameId).ConfigureAwait(false);
+			var result = new List<DapVariableInfo>();
+			foreach (var scope in scopes) {
+				if (scope.Expensive) {
+					continue;
+				}
+				result.AddRange(await CurrentSession.GetVariablesAsync(scope.VariablesReference).ConfigureAwait(false));
+			}
+			return result;
+		}
+
+		public async Task<object> EvaluateAsync(string expression, int frameId)
+		{
+			if (CurrentSession == null) {
+				throw new InvalidOperationException("Debugger is not running");
+			}
+			var result = await CurrentSession.EvaluateAsync(expression, frameId, "watch").ConfigureAwait(false);
+			return new { Name = expression, Value = result.Value, Type = result.Type, result.VariablesReference };
+		}
+
+		public Task<IReadOnlyList<DapThreadInfo>> GetThreadsAsync()
+		{
+			if (CurrentSession == null) {
+				return Task.FromResult<IReadOnlyList<DapThreadInfo>>(Array.Empty<DapThreadInfo>());
+			}
+			return CurrentSession.GetThreadsAsync();
+		}
+
+		public Task<IReadOnlyList<DapModuleInfo>> GetModulesAsync()
+		{
+			if (CurrentSession == null) {
+				return Task.FromResult<IReadOnlyList<DapModuleInfo>>(Array.Empty<DapModuleInfo>());
+			}
+			return CurrentSession.GetModulesAsync();
+		}
 
 		public static void RefreshPads()
 		{
@@ -167,6 +237,8 @@ namespace ICSharpCode.SharpDevelop.Services
 			DapExceptionInfo exceptionInfo = e.Reason == "exception"
 				? await CurrentSession.GetExceptionInfoAsync(e.ThreadId).ConfigureAwait(false)
 				: null;
+
+			System.Threading.Interlocked.Increment(ref currentStopSequence);
 
 			SD.MainThread.InvokeAsyncAndForget(() => {
 				OnIsProcessRunningChanged(EventArgs.Empty);

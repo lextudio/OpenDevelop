@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <!-- Explicit Compile item: this repo's MSBuildBasedProject/RoslynWorkspaceHelper reads
+       project.GetItemsOfType(ItemType.Compile) to build the Roslyn workspace, and does not expand
+       the SDK's implicit-glob Compile items - without this, ParserService.Parse() (and therefore
+       DevFlow's od.open-file/od.debug.set-breakpoint) fails with a NullReferenceException. -->
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+  </ItemGroup>
+</Project>

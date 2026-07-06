@@ -20,7 +20,7 @@ public sealed class DebuggerIntegrationTests
         var info = await _app.InvokeAsync("od.debug.service-info");
 
         Assert.True(info.GetProperty("available").GetBoolean());
-        Assert.Equal("OpenDevelop.Debugger.DapDebuggerService", info.GetProperty("typeName").GetString());
+        Assert.Equal("ICSharpCode.SharpDevelop.Services.WindowsDebugger", info.GetProperty("typeName").GetString());
         Assert.False(info.GetProperty("isDebugging").GetBoolean());
 
         var pads = await _app.InvokeAsync("od.pads");

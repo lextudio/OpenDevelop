@@ -16,7 +16,10 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Controls;
 
 using Debugger.AddIn.Service.Dap;
@@ -49,6 +52,11 @@ namespace ICSharpCode.SharpDevelop.Gui.Pads
 
 		async void RefreshPad()
 		{
+			await RefreshPadAsync().ConfigureAwait(true);
+		}
+
+		async Task<IReadOnlyList<ModuleItem>> RefreshPadAsync()
+		{
 			var session = WindowsDebugger.CurrentSession;
 			var loadedModules = new List<ModuleItem>();
 			if (session != null && session.IsPaused) {
@@ -58,6 +66,14 @@ namespace ICSharpCode.SharpDevelop.Gui.Pads
 				}
 			}
 			listView.ItemsSource = loadedModules;
+			return loadedModules;
+		}
+
+		/// <summary>Used by the DevFlow "od.debug.pad-snapshot" test action.</summary>
+		public async Task<IEnumerable<object>> GetSnapshotAsync()
+		{
+			var items = await RefreshPadAsync().ConfigureAwait(true);
+			return items.Select(i => (object)new { i.Name, i.Path });
 		}
 	}
 
