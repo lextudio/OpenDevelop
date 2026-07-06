@@ -161,7 +161,6 @@ namespace ICSharpCode.Core.Presentation
 		public static IList CreateMenuItems(UIElement inputBindingOwner, object owner, string addInTreePath, string activationMethod = null, bool immediatelyExpandMenuBuildersForShortcuts = false)
 		{
 			var descriptors = AddInTree.BuildItems<MenuItemDescriptor>(addInTreePath, owner, false);
-			System.IO.File.AppendAllText("/tmp/opencode_menu.log", "MenuService: path=" + addInTreePath + " descriptors.Count=" + (descriptors != null ? descriptors.Count.ToString() : "null") + "\n");
 			IList items = CreateUnexpandedMenuItems(
 				new MenuCreateContext {
 					InputBindingOwner = inputBindingOwner,
@@ -169,9 +168,7 @@ namespace ICSharpCode.Core.Presentation
 					ImmediatelyExpandMenuBuildersForShortcuts =immediatelyExpandMenuBuildersForShortcuts
 				},
 				descriptors);
-			var result = ExpandMenuBuilders(items, false);
-			System.IO.File.AppendAllText("/tmp/opencode_menu.log", "MenuService: result.Count=" + (result != null ? result.Count.ToString() : "null") + "\n");
-			return result;
+			return ExpandMenuBuilders(items, false);
 		}
 		
 		sealed class MenuItemBuilderPlaceholder
@@ -207,31 +204,21 @@ namespace ICSharpCode.Core.Presentation
 		static IList ExpandMenuBuilders(ICollection input, bool addDummyEntryIfMenuEmpty)
 		{
 			List<object> result = new List<object>(input.Count);
-			System.IO.File.AppendAllText("/tmp/opencode_menu.log", "ExpandMenuBuilders: input.Count=" + (input != null ? input.Count.ToString() : "null") + " addDummy=" + addDummyEntryIfMenuEmpty + "\n");
 			foreach (object o in input) {
 				MenuItemBuilderPlaceholder p = o as MenuItemBuilderPlaceholder;
 				if (p != null) {
-					try {
-						IEnumerable<object> c = p.BuildItems();
-						if (c != null)
-							result.AddRange(c);
-					} catch (Exception ex) {
-						System.IO.File.AppendAllText("/tmp/opencode_menu.log", "MenuService: ExpandMenuBuilders builder error: " + ex.ToString() + "\n");
-					}
+					IEnumerable<object> c = p.BuildItems();
+					if (c != null)
+						result.AddRange(c);
 				} else {
 					result.Add(o);
 					IStatusUpdate statusUpdate = o as IStatusUpdate;
 					if (statusUpdate != null) {
-						try {
-							statusUpdate.UpdateStatus();
-							statusUpdate.UpdateText();
-						} catch (Exception ex) {
-							System.IO.File.AppendAllText("/tmp/opencode_menu.log", "MenuService: ExpandMenuBuilders UpdateStatus error: " + ex.ToString() + "\n");
-						}
+						statusUpdate.UpdateStatus();
+						statusUpdate.UpdateText();
 					}
 				}
 			}
-			System.IO.File.AppendAllText("/tmp/opencode_menu.log", "ExpandMenuBuilders: result.Count=" + result.Count + "\n");
 			if (addDummyEntryIfMenuEmpty && result.Count == 0) {
 				result.Add(new MenuItem { Header = "(empty menu)", IsEnabled = false });
 			}
@@ -261,44 +248,13 @@ namespace ICSharpCode.Core.Presentation
 				case "Command":
 					return new MenuCommand(context.InputBindingOwner, codon, descriptor.Parameter, context.ActivationMethod, descriptor.Conditions);
 				case "Menu":
-					System.IO.File.AppendAllText("/tmp/opencode_menu.log", "MenuService: Creating Menu '" + (codon.Properties.Contains("label") ? codon.Properties["label"] : codon.Id) + "' subItems=" + (descriptor.SubItems != null ? descriptor.SubItems.OfType<object>().Count().ToString() : "null(Null)") + "\n");
 					var item = new CoreMenuItem(codon, descriptor.Parameter, descriptor.Conditions) {
 						SetEnabled = true
 					};
 					item.Items.Add(new MenuItem());
 					var subItems = CreateUnexpandedMenuItems(context, descriptor.SubItems);
-					System.IO.File.AppendAllText("/tmp/opencode_menu.log", "MenuService: subItems.Count=" + (subItems != null ? subItems.Count.ToString() : "null") + "\n");
 					item.SubmenuOpened += (sender, args) => {
-						System.IO.File.AppendAllText("/tmp/opencode_menu.log", "MenuService: SubmenuOpened for '" + (codon.Properties.Contains("label") ? codon.Properties["label"] : codon.Id) + "'\n");
-						try {
-							var expandedItems = ExpandMenuBuilders(subItems, true);
-							System.IO.File.AppendAllText("/tmp/opencode_menu.log", "MenuService: SubmenuOpened expandedItems.Count=" + (expandedItems != null ? expandedItems.Count.ToString() : "null") + "\n");
-							ReplaceMenuItems(item, expandedItems);
-							System.IO.File.AppendAllText("/tmp/opencode_menu.log", "MenuService: After ReplaceMenuItems IsSubmenuOpen=" + item.IsSubmenuOpen + " Items.Count=" + item.Items.Count + " HasItems=" + item.HasItems + "\n");
-							item.Dispatcher.BeginInvoke((Action)(() => {
-								try {
-									var popup = item.Template != null ? item.Template.FindName("PART_Popup", item) as Popup : null;
-									if (popup != null) {
-										popup.AllowsTransparency = false;
-										popup.PlacementTarget = item;
-										popup.Placement = ItemsControl.ItemsControlFromItemContainer(item) is Menu ? PlacementMode.Bottom : PlacementMode.Right;
-										popup.IsOpen = true;
-									}
-									System.IO.File.AppendAllText("/tmp/opencode_menu.log",
-										"MenuService: Deferred popup state IsSubmenuOpen=" + item.IsSubmenuOpen
-										+ " Items.Count=" + item.Items.Count
-										+ " PopupFound=" + (popup != null)
-										+ (popup != null ? " Popup.IsOpen=" + popup.IsOpen + " Popup.AllowsTransparency=" + popup.AllowsTransparency + " Popup.Placement=" + popup.Placement + " Popup.Target=" + (popup.PlacementTarget != null ? popup.PlacementTarget.GetType().Name : "null") + " Popup.Child=" + (popup.Child != null ? popup.Child.GetType().Name : "null") : "")
-										+ " Actual=" + item.ActualWidth + "x" + item.ActualHeight
-										+ "\n");
-								} catch (Exception ex) {
-									System.IO.File.AppendAllText("/tmp/opencode_menu.log", "MenuService: Deferred popup state error: " + ex + "\n");
-								}
-							}), System.Windows.Threading.DispatcherPriority.Background);
-						} catch (Exception ex) {
-							System.IO.File.AppendAllText("/tmp/opencode_menu.log", "MenuService: SubmenuOpened error: " + ex.ToString() + "\n");
-						}
-						args.Handled = true;
+						ReplaceMenuItems(item, ExpandMenuBuilders(subItems, true));
 					};
 					if (context.ImmediatelyExpandMenuBuildersForShortcuts)
 						ExpandMenuBuilders(subItems, false);
