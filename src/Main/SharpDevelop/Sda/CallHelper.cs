@@ -94,7 +94,7 @@ namespace ICSharpCode.SharpDevelop.Sda
 			startup.StartCoreServices(propertyService);
 			Assembly exe = Assembly.Load(properties.ResourceAssemblyName);
 			SD.ResourceService.RegisterNeutralStrings(new ResourceManager("ICSharpCode.SharpDevelop.Resources.StringResources", exe));
-			SD.ResourceService.RegisterNeutralImages(new ResourceManager("ICSharpCode.SharpDevelop.Resources.BitmapResources", exe));
+
 			
 			CommandWrapper.LinkCommandCreator = (link => new LinkCommand(link));
 			CommandWrapper.WellKnownCommandCreator = Core.Presentation.MenuService.GetKnownCommand;

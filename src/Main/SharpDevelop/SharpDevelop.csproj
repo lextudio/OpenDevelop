@@ -44,14 +44,9 @@
     <EmbeddedResource Include="..\..\..\data\resources\StringResources.resx">
       <Link>Resources\StringResources.resx</Link>
     </EmbeddedResource>
-    <!-- Resources\BitmapResources.resources is a pre-built binary resource blob
-         (not a .resx source), so the SDK's implicit .resx globbing never picked
-         it up. CallHelper.cs registers it under the exact name
-         "ICSharpCode.SharpDevelop.Resources.BitmapResources" (RootNamespace +
-         relative path, which is also the default LogicalName MSBuild infers for
-         an EmbeddedResource at this path) - without this, every single menu/
-         toolbar/pad icon lookup misses. -->
-    <EmbeddedResource Include="Resources\BitmapResources.resources" />
+    <!-- BitmapResources.resources was removed in favour of the pngResourceMap
+         in ICSharpCode.Core.Presentation/PresentationResourceService.cs, which
+         resolves icons via pack: URIs from Resources/VS2017/*.png -->
   </ItemGroup>
   <!-- SharpDevelopMain.FindApplicationRootPath walks UP from the exe's own output
        directory looking for data\resources\languages\LanguageDefinition.xml, and

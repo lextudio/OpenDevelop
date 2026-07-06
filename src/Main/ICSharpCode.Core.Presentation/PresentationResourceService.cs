@@ -105,7 +105,11 @@ namespace ICSharpCode.Core.Presentation
 			{ "Icons.16x16.Analyzers", "Resources/VS2017/CodeAnalysisWindow/CodeAnalysisWindow_16x.png" },
 			{ "Icons.16x16.Frameworks", "Resources/VS2017/MSNETFrameworkDependencies/MSNETFrameworkDependencies_16x.png" },
 			{ "Icons.16x16.Application", "Resources/VS2017/Application/Application_16x.png" },
-			{ "Icons.16x16.Component", "Resources/VS2017/Component/Component_16x.png" }
+			{ "Icons.16x16.Component", "Resources/VS2017/Component/Component_16x.png" },
+
+			// Output Pad toolbar icons.
+			{ "OutputPad.Toolbar.ClearOutputWindow", "Resources/VS2017/ClearWindowContent/ClearWindowContent_16x.png" },
+			{ "OutputPad.Toolbar.ToggleWordWrap", "Resources/VS2017/WordWrap/WordWrap_16x.png" }
 		};
 		static readonly IResourceService resourceService;
 		

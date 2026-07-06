@@ -106,29 +106,15 @@ internal sealed class SolutionExplorerViewModel : ToolPaneModel, ISolutionExplor
         Application.Current?.Dispatcher.Invoke(() =>
         {
             RootNodes.Clear();
-            var sol = SD.ProjectService.CurrentSolution;
-            LoggingService.Info("RefreshSolutionTree: sol=" + (sol != null ? sol.Name + " projects=" + sol.Projects.Count : "null"));
-            var root = SolutionExplorerTreeBuilder.BuildSolutionTree(sol);
-            LoggingService.Info("RefreshSolutionTree: root=" + (root != null ? root.Children.Count.ToString() : "null")
-                + ", descendants=" + (root != null ? CountDescendants(root).ToString() : "0"));
+            var root = SolutionExplorerTreeBuilder.BuildSolutionTree(SD.ProjectService.CurrentSolution);
             if (root != null) {
                 RootNodes.Add(root);
             }
         });
     }
-    
-    private static int CountDescendants(SolutionExplorerNodeModel node)
-    {
-        var count = node.Children.Count;
-        foreach (var child in node.Children) {
-            count += CountDescendants(child);
-        }
-        return count;
-    }
 
     private void ProjectServiceChanged(object sender, EventArgs e)
     {
-        LoggingService.Info("SolutionExplorerViewModel.ProjectServiceChanged: sender=" + sender?.GetType().Name + " e=" + e?.GetType().Name + " CurrentSolution=" + (SD.ProjectService.CurrentSolution != null ? "set" : "null"));
         RefreshSolutionTree();
     }
 }
