@@ -116,7 +116,6 @@
     <Compile Remove="Src\Gui\Pads\FileScout.cs" />
     <Compile Remove="Src\Gui\Pads\PropertyPad\**\*.cs" />
     <Compile Remove="Src\Commands\SideBarCommands.cs" />
-    <Compile Remove="Editor\Bookmarks\BookmarkPadToolbarCommands.cs" />
     <!-- Out of MVP scope: WinForms Icon-based icon service (System.Drawing.Icon conversions layered on the
          removed IWinFormsService.BitmapToIcon); the WPF-facing IImage/IconService surface used elsewhere is
          kept, only the WinForms-specific bits are excluded. -->
