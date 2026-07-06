@@ -59,4 +59,11 @@
 			<Class id="Default" class="MyNamespace.MyServiceProvider" />
 		-->
 	</Path>
+
+	<Path name = "/SharpDevelop/Workbench/Tools">
+		<MenuItem id = "TextTemplating"
+		          label = "Process T4 Templates..."
+		          class = "ICSharpCode.TextTemplating.GenerateT4Command"
+		/>
+	</Path>
 </AddIn>
