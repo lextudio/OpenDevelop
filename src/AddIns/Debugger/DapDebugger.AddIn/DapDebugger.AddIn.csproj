@@ -1,0 +1,50 @@
+<Project Sdk="LibreWPF.Sdk/11.0.0-dev">
+  <PropertyGroup>
+    <TargetFramework>net11.0-windows</TargetFramework>
+    <RootNamespace>OpenDevelop.Debugger</RootNamespace>
+    <AssemblyName>OpenDevelop.Debugger</AssemblyName>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <UseWPF>true</UseWPF>
+    <OutputType>Library</OutputType>
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>..\..\..\Main\ICSharpCode.SharpDevelop.snk</AssemblyOriginatorKeyFile>
+    <OutputPath>..\..\..\..\AddIns\Debugger\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
+    <None Include="DapDebugger.AddIn.addin" CopyToOutputDirectory="Always" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <SharpDbgProject>$(MSBuildThisFileDirectory)..\..\..\..\externals\sharpdbg\src\SharpDbg.Cli\SharpDbg.Cli.csproj</SharpDbgProject>
+    <SharpDbgConfiguration>$([System.String]::Copy('$(Configuration)').ToLowerInvariant())</SharpDbgConfiguration>
+    <SharpDbgBinDir>$(MSBuildThisFileDirectory)..\..\..\..\externals\sharpdbg\artifacts\bin\SharpDbg.Cli\$(SharpDbgConfiguration)\</SharpDbgBinDir>
+    <DotNetHostPath Condition="'$(DotNetHostPath)' == '' and '$(DOTNET_HOST_PATH)' != ''">$(DOTNET_HOST_PATH)</DotNetHostPath>
+    <DotNetHostPath Condition="'$(DotNetHostPath)' == ''">dotnet</DotNetHostPath>
+  </PropertyGroup>
+
+  <Target Name="BuildSharpDbg" BeforeTargets="Build"
+          Condition="Exists('$(SharpDbgProject)') and !Exists('$(SharpDbgBinDir)SharpDbg.Cli.dll')">
+    <Exec Command="&quot;$(DotNetHostPath)&quot; build &quot;$(SharpDbgProject)&quot; -c $(Configuration) -tl:off"
+          ConsoleToMSBuild="true"
+          IgnoreExitCode="false" />
+  </Target>
+
+  <Target Name="CopySharpDbgToAddInOutput" AfterTargets="Build"
+          Condition="Exists('$(SharpDbgBinDir)SharpDbg.Cli.dll')">
+    <ItemGroup>
+      <SharpDbgFiles Include="$(SharpDbgBinDir)**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(SharpDbgFiles)"
+          DestinationFolder="$(OutputPath)%(RecursiveDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
+</Project>

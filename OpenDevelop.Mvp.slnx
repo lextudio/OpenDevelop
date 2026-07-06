@@ -23,17 +23,23 @@
     <Project Path="src/Main/Core/Project/ICSharpCode.Core.csproj" />
   </Folder>
   <Folder Name="/src/Main/ICSharpCode.SharpDevelop.Widgets/" />
-  <Folder Name="/src/Main/ICSharpCode.SharpDevelop.Widgets/Project/">
-    <Project Path="src/Main/ICSharpCode.SharpDevelop.Widgets/Project/ICSharpCode.SharpDevelop.Widgets.csproj" />
+  <Folder Name="/src/Main/ICSharpCode.Core.WinForms/">
+    <Project Path="src/Main/ICSharpCode.Core.WinForms/ICSharpCode.Core.WinForms.csproj" />
   </Folder>
   <Folder Name="/src/AddIns/Misc/StartPage/">
     <Project Path="src/AddIns/Misc/StartPage/Project/StartPage.csproj" />
+  </Folder>
+  <Folder Name="/src/AddIns/Debugger/">
+    <Project Path="src/AddIns/Debugger/DapDebugger.AddIn/DapDebugger.AddIn.csproj" />
   </Folder>
   <Folder Name="/src/AddIns/DisplayBindings/AvalonEdit.AddIn/">
     <Project Path="src/AddIns/DisplayBindings/AvalonEdit.AddIn/AvalonEdit.AddIn.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj" />
+  </Folder>
+  <Folder Name="/src/AddIns/Misc/SearchAndReplace/">
+    <Project Path="src/AddIns/Misc/SearchAndReplace/Project/SearchAndReplace.csproj" />
   </Folder>
   <Project Path="src/Main/Base/Project/ICSharpCode.SharpDevelop.csproj" />
   <Project Path="externals/cps/src/ProjectSystem/Microsoft.VisualStudio.ProjectSystem.Shim.csproj" />

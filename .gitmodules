@@ -14,3 +14,6 @@
 [submodule "externals/cps"]
 	path = externals/cps
 	url = https://github.com/lextudio/cps-shims.git
+[submodule "externals/sharpdbg"]
+	path = externals/sharpdbg
+	url = https://github.com/MattParkerDev/SharpDbg.git

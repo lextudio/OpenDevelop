@@ -1,0 +1,48 @@
+<Window x:Class="SearchAndReplace.FindInFilesDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Find in Files" Height="300" Width="400"
+        WindowStartupLocation="CenterScreen"
+        Style="{x:Null}">
+  <Grid Margin="8">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="Auto" />
+      <ColumnDefinition Width="*" />
+    </Grid.ColumnDefinitions>
+
+    <Label Grid.Row="0" Grid.Column="0" Content="Find what:" Margin="0,0,8,4" />
+    <ComboBox Grid.Row="0" Grid.Column="1" x:Name="searchPatternCombo" IsEditable="True"
+              Text=""
+              Margin="0,0,0,4" />
+
+    <Label Grid.Row="1" Grid.Column="0" Content="Look in:" Margin="0,0,8,4" />
+    <ComboBox Grid.Row="1" Grid.Column="1" x:Name="lookInCombo" Margin="0,0,0,4" SelectedIndex="0">
+      <ComboBoxItem Content="Current Document" />
+      <ComboBoxItem Content="All Open Files" />
+      <ComboBoxItem Content="Current Project" />
+      <ComboBoxItem Content="Entire Solution" />
+    </ComboBox>
+
+    <Label Grid.Row="2" Grid.Column="0" Content="File types:" Margin="0,0,8,4" />
+    <TextBox Grid.Row="2" Grid.Column="1" x:Name="fileTypesTextBox" Text="*.*" Margin="0,0,0,4" />
+
+    <CheckBox Grid.Row="3" Grid.Column="1" x:Name="matchCaseCheckBox" Content="Match case" Margin="0,0,0,4" />
+    <CheckBox Grid.Row="4" Grid.Column="1" x:Name="matchWholeWordCheckBox" Content="Match whole word" Margin="0,0,0,4" />
+
+    <StackPanel Grid.Row="5" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,4">
+      <Button x:Name="findAllButton" Content="Find All" Width="90" Height="24" Margin="0,0,8,0" Click="FindAllClick" IsDefault="True" />
+      <Button x:Name="findNextButton" Content="Find Next" Width="90" Height="24" Margin="0,0,8,0" Click="FindNextClick" />
+      <Button Content="Close" Width="90" Height="24" Click="CloseClick" />
+    </StackPanel>
+  </Grid>
+</Window>
