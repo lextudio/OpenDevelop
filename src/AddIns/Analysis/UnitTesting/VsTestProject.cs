@@ -14,6 +14,8 @@ namespace ICSharpCode.UnitTesting
 
 		public override ITestRunner CreateTestRunner(TestExecutionOptions options)
 		{
+			if (options.UseDebugger)
+				return new VsTestDebugger(this, options);
 			return new VsTestRunner(this, options);
 		}
 

@@ -34,6 +34,7 @@
     <Compile Include="Resources/*.cs" />
     <Compile Include="Service/*.cs" />
     <Compile Include="TestRunner/*.cs" />
+    <Compile Include="VsTestDebugger.cs" />
     <Compile Include="VsTestFramework.cs" />
     <Compile Include="VsTestProject.cs" />
     <Compile Include="VsTestRunner.cs" />
@@ -49,8 +50,5 @@
     <None Include="UnitTesting.addin">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-  </ItemGroup>
-  <ItemGroup>
-    <Page Include="Options\UnitTestingOptionsPanel.xaml" />
   </ItemGroup>
 </Project>
