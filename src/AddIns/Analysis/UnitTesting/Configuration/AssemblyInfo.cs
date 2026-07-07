@@ -32,3 +32,4 @@ using System.Runtime.CompilerServices;
 [assembly: AssemblyCulture("")]
 
 [assembly: InternalsVisibleTo("UnitTesting.Tests")]
+[assembly: InternalsVisibleTo("UnitTesting.VsTest.Tests")]
