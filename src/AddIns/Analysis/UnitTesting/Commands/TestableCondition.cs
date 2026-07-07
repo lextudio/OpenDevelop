@@ -21,8 +21,8 @@ using System.Collections.Generic;
 using System.Linq;
 
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.TypeSystem;
 using ICSharpCode.SharpDevelop;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Editor.Commands;
 
 namespace ICSharpCode.UnitTesting

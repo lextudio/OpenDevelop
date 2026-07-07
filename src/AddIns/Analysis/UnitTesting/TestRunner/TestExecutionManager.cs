@@ -24,7 +24,6 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.Utils;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;

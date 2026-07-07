@@ -44,6 +44,9 @@
   <Folder Name="/src/AddIns/Misc/TextTemplating/">
     <Project Path="src/AddIns/Misc/TextTemplating/Project/TextTemplating.csproj" />
   </Folder>
+  <Folder Name="/src/AddIns/Analysis/UnitTesting/">
+    <Project Path="src/AddIns/Analysis/UnitTesting/UnitTesting.csproj" />
+  </Folder>
   <Project Path="src/Main/Base/Project/ICSharpCode.SharpDevelop.csproj" />
   <Project Path="externals/cps/src/ProjectSystem/Microsoft.VisualStudio.ProjectSystem.Shim.csproj" />
   <Project Path="externals/cps/src/ProjectSystemManaged/Microsoft.VisualStudio.ProjectSystem.Managed.csproj" />

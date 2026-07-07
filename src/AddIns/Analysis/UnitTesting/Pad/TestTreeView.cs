@@ -21,7 +21,6 @@ using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Linq;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.TypeSystem;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;

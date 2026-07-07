@@ -22,10 +22,8 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 
-using ICSharpCode.NRefactory.TypeSystem;
-using ICSharpCode.NRefactory.TypeSystem.Implementation;
-using ICSharpCode.NRefactory.Utils;
 using ICSharpCode.SharpDevelop;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;
 
@@ -129,10 +127,9 @@ namespace ICSharpCode.UnitTesting
 		void ProcessUpdates()
 		{
 			var compilation = SD.ParserService.GetCompilation(project);
-			var context = new SimpleTypeResolveContext(compilation.MainAssembly);
 			
 			foreach (var dirtyTypeDef in dirtyTypeDefinitions) {
-				ITypeDefinition typeDef = compilation.MainAssembly.GetTypeDefinition(dirtyTypeDef.Namespace, dirtyTypeDef.Name, dirtyTypeDef.TypeParameterCount);
+				ITypeDefinition typeDef = compilation.MainAssembly.GetTypeDefinition(dirtyTypeDef);
 				UpdateType(dirtyTypeDef, typeDef);
 			}
 			dirtyTypeDefinitions.Clear();

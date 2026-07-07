@@ -19,8 +19,8 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using ICSharpCode.NRefactory.TypeSystem;
 using ICSharpCode.SharpDevelop.Project;
+using ICSharpCode.TypeSystem;
 
 namespace ICSharpCode.UnitTesting
 {
