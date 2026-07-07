@@ -158,6 +158,31 @@ internal sealed class SolutionExplorerController : ISolutionExplorerController
                 return;
             }
 
+            // For T4 template files, automatically set the custom tool generator
+            // so the template is processed on save (like the legacy .xft system did).
+            foreach (var path in result.PrimaryOutputPaths)
+            {
+                if (!path.EndsWith(".tt", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var project = ServiceSingleton.GetRequiredService<IProjectService>()
+                    .FindProjectContainingFile(FileName.Create(path));
+                if (project is null)
+                    continue;
+
+                var item = project.Items.CreateSnapshot()
+                    .OfType<FileProjectItem>()
+                    .FirstOrDefault(i => string.Equals(
+                        Path.GetFullPath(i.FileName.ToString()),
+                        Path.GetFullPath(path),
+                        StringComparison.OrdinalIgnoreCase));
+                if (item is null)
+                    continue;
+
+                if (string.IsNullOrEmpty(item.CustomTool))
+                    item.CustomTool = "TextTemplatingFileGenerator";
+            }
+
             if (result.PrimaryOutputPaths.Count > 0)
             {
                 _host?.RefreshSolutionTree();

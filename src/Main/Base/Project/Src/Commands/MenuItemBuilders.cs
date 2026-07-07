@@ -21,6 +21,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -213,9 +214,10 @@ namespace ICSharpCode.SharpDevelop.Commands
 	{
 		public IEnumerable<object> BuildItems(Codon codon, object owner)
 		{
-			var items = new System.Windows.Controls.MenuItem[ToolLoader.Tool.Count];
-			for (int i = 0; i < ToolLoader.Tool.Count; ++i) {
-				ExternalTool tool = ToolLoader.Tool[i];
+			var visible = ToolLoader.Tool.Where(t => t.IsCurrentPlatform).ToList();
+			var items = new System.Windows.Controls.MenuItem[visible.Count];
+			for (int i = 0; i < visible.Count; ++i) {
+				ExternalTool tool = visible[i];
 				items[i] = new System.Windows.Controls.MenuItem {
 					Header = tool.ToString()
 				};
@@ -238,6 +240,13 @@ namespace ICSharpCode.SharpDevelop.Commands
 			} catch (Exception ex) {
 				MessageService.ShowError("${res:XML.MainMenu.ToolMenu.ExternalTools.ExecutionFailed} '" + ex.Message);
 				return;
+			}
+			
+			// Replace Notepad with the platform's default text editor.
+			if (string.Equals(command, "Notepad", StringComparison.OrdinalIgnoreCase))
+			{
+				command = ExternalTool.GetPlatformTextEditor();
+				args    = ExternalTool.GetPlatformTextEditorArgs(args.Trim('"'));
 			}
 			
 			if (tool.PromptForArguments) {

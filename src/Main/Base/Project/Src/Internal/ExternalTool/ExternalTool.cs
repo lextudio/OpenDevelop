@@ -17,6 +17,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Runtime.InteropServices;
 using System.Xml;
 
 namespace ICSharpCode.SharpDevelop.Internal.ExternalTool
@@ -33,6 +34,7 @@ namespace ICSharpCode.SharpDevelop.Internal.ExternalTool
 		string initialDirectory  = "";
 		bool   promptForArguments = false;
 		bool   useOutputPad       = false;
+		string platform          = "All";
 		
 		public string MenuCommand {
 			get {
@@ -92,6 +94,48 @@ namespace ICSharpCode.SharpDevelop.Internal.ExternalTool
 			}
 		}
 		
+		public string Platform {
+			get {
+				return platform;
+			}
+			set {
+				platform = value ?? "All";
+			}
+		}
+		
+		public bool IsCurrentPlatform {
+			get {
+				if (string.Equals(Platform, "All", StringComparison.OrdinalIgnoreCase))
+					return true;
+				if (string.Equals(Platform, "Windows", StringComparison.OrdinalIgnoreCase))
+					return RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+				if (string.Equals(Platform, "Mac", StringComparison.OrdinalIgnoreCase)
+				    || string.Equals(Platform, "macOS", StringComparison.OrdinalIgnoreCase))
+					return RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
+				if (string.Equals(Platform, "Linux", StringComparison.OrdinalIgnoreCase))
+					return RuntimeInformation.IsOSPlatform(OSPlatform.Linux);
+				return true;
+			}
+		}
+		
+		public static string GetPlatformTextEditor()
+		{
+			if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+				return "Notepad";
+			if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+				return "open";
+			return "gedit";
+		}
+		
+		public static string GetPlatformTextEditorArgs(string filePath)
+		{
+			if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+				return "\"" + filePath + "\"";
+			if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+				return "-e \"" + filePath + "\"";
+			return "\"" + filePath + "\"";
+		}
+		
 		public ExternalTool() 
 		{
 		}
@@ -117,9 +161,12 @@ namespace ICSharpCode.SharpDevelop.Internal.ExternalTool
 			
 			PromptForArguments = Boolean.Parse(el["PROMPTFORARGUMENTS"].InnerText);
 			
-			// option was introduced later
+			// options were introduced later
 			if(el["USEOUTPUTPAD"] != null) {
 				UseOutputPad = Boolean.Parse(el["USEOUTPUTPAD"].InnerText);
+			}
+			if(el["PLATFORM"] != null) {
+				Platform = el["PLATFORM"].InnerText;
 			}
 		}
 		
@@ -159,6 +206,12 @@ namespace ICSharpCode.SharpDevelop.Internal.ExternalTool
 			x = doc.CreateElement("USEOUTPUTPAD");
 			x.InnerText = UseOutputPad.ToString();
 			el.AppendChild(x);
+			
+			if (!string.Equals(Platform, "All", StringComparison.OrdinalIgnoreCase)) {
+				x = doc.CreateElement("PLATFORM");
+				x.InnerText = Platform;
+				el.AppendChild(x);
+			}
 			
 			return el;
 		}
