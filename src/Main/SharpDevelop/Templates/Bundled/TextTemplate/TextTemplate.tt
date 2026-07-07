@@ -1,0 +1,11 @@
+<#@ template language="C#" hostspecific="true" #>
+<#@ output extension=".generated.cs" #>
+<#@ import namespace="System" #>
+
+namespace GeneratedFromT4
+{
+    public partial class TextTemplate
+    {
+        public string BuildTimestamp => DateTime.UtcNow.ToString("O");
+    }
+}

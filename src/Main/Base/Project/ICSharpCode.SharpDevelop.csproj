@@ -16,6 +16,11 @@
     <PackageReference Include="Microsoft.Build.Runtime" Version="18.0.2" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.3.0" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Features" Version="5.3.0" />
+    <PackageReference Include="Microsoft.TemplateEngine.Abstractions" Version="10.0.301" />
+    <PackageReference Include="Microsoft.TemplateEngine.Edge" Version="10.0.301" />
+    <PackageReference Include="Microsoft.TemplateEngine.Orchestrator.RunnableProjects" Version="10.0.301" />
+    <PackageReference Include="Microsoft.TemplateEngine.Utils" Version="10.0.301" />
+    <PackageReference Include="Microsoft.TemplateEngine.IDE" Version="10.0.301" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\Libraries\AvalonEdit\ICSharpCode.AvalonEdit\ICSharpCode.AvalonEdit.csproj" />

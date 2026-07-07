@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "OpenDevelop Contributors",
+  "classifications": [
+    "Code",
+    "T4"
+  ],
+  "identity": "OpenDevelop.Templates.TextTemplate.Item",
+  "name": "Text Template (.tt)",
+  "shortName": "od-tt",
+  "sourceName": "TextTemplate",
+  "preferNameDirectory": "false",
+  "tags": {
+    "language": "C#",
+    "type": "item"
+  },
+  "primaryOutputs": [
+    {
+      "path": "TextTemplate.tt"
+    }
+  ]
+}

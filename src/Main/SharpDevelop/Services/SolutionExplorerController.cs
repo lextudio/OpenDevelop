@@ -130,22 +130,211 @@ internal sealed class SolutionExplorerController : ISolutionExplorerController
         }, "Failed to create file.");
     }
 
-    // AddNewItem/AddNewProject need a "new item"/"new project" template-picker dialog. UnoDevelop's
-    // versions (UnoDevelop.Templates.NewItemDialog/NewProjectDialog, plus its portable
-    // TemplateDiscoveryService/TemplateInstantiationResult template engine, none of which exist in
-    // OpenDevelop yet) are WinUI dialogs - out of scope for R6b (model/provider/command layer only).
-    // Stubbed pending a WPF template-picker dialog + porting TemplateDiscoveryService in R6c (see
-    // doc/technotes/solution-explorer.md).
-    public void AddNewItem(SolutionExplorerNodeContext? node = null)
+    public async void AddNewItem(SolutionExplorerNodeContext? node = null)
     {
-        ServiceSingleton.GetRequiredService<IMessageService>()
-            .ShowMessage("Add New Item is not yet implemented (pending R6c template-picker dialog).");
+        try
+        {
+            var selected = ResolveNode(node);
+            var targetDirectory = ResolveTargetDirectoryForCreate(selected);
+
+            using var service = new TemplateDiscoveryService();
+            var owner = System.Windows.Application.Current.MainWindow;
+            var dialog = await NewItemWindow.ShowAsync(service, targetDirectory, owner);
+            if (dialog is null || dialog.SelectedTemplate is null)
+                return;
+
+            var itemName = dialog.ItemName;
+            var template = dialog.SelectedTemplate;
+
+            var parameters = new Dictionary<string, string>(dialog.AdditionalParameters, StringComparer.OrdinalIgnoreCase);
+
+            var result = await service.InstantiateAsync(
+                template, itemName, targetDirectory, parameters, CancellationToken.None);
+
+            if (!result.Success)
+            {
+                ServiceSingleton.GetRequiredService<IMessageService>()
+                    .ShowError($"Failed to create '{itemName}': {result.ErrorMessage}");
+                return;
+            }
+
+            if (result.PrimaryOutputPaths.Count > 0)
+            {
+                _host?.RefreshSolutionTree();
+                _host?.OpenFileInWorkbench(result.PrimaryOutputPaths[0]);
+            }
+        }
+        catch (Exception ex)
+        {
+            ServiceSingleton.GetRequiredService<IMessageService>()
+                .ShowException(ex, "Failed to add new item.");
+        }
     }
 
-    public void AddNewProject(SolutionExplorerNodeContext? node = null)
+    public async void AddNewProject(SolutionExplorerNodeContext? node = null)
     {
-        ServiceSingleton.GetRequiredService<IMessageService>()
-            .ShowMessage("Add New Project is not yet implemented (pending R6c template-picker dialog).");
+        try
+        {
+            var selected = ResolveNode(node);
+            var defaultLocation = ResolveTargetDirectoryForCreate(selected);
+
+            using var service = new TemplateDiscoveryService();
+            var owner = System.Windows.Application.Current.MainWindow;
+            var dialog = await NewProjectWindow.ShowAsync(service, defaultLocation, owner);
+            if (dialog is null || dialog.SelectedTemplate is null)
+                return;
+
+            var projectName = dialog.ProjectName;
+            var location = dialog.Location;
+            var template = dialog.SelectedTemplate;
+
+            var projectDir = Path.Combine(location, projectName);
+            Directory.CreateDirectory(projectDir);
+
+            var result = await service.InstantiateAsync(
+                template, projectName, projectDir,
+                parameters: dialog.AdditionalParameters,
+                CancellationToken.None);
+
+            if (!result.Success)
+            {
+                ServiceSingleton.GetRequiredService<IMessageService>()
+                    .ShowError($"Failed to create project '{projectName}': {result.ErrorMessage}");
+                return;
+            }
+
+            var projectService = ServiceSingleton.GetRequiredService<IProjectService>();
+
+            var generatedSolutionFile = FindGeneratedSolutionFile(result, projectDir);
+            var generatedProjectFiles = FindGeneratedProjectFiles(result, projectDir);
+
+            var currentSolution = projectService.CurrentSolution;
+            if (currentSolution is not null)
+            {
+                if (generatedProjectFiles.Count == 0)
+                {
+                    if (generatedSolutionFile is not null)
+                    {
+                        ServiceSingleton.GetRequiredService<IMessageService>()
+                            .ShowError("The selected template created a solution file. Create it with no solution open, or use a project template when adding to an existing solution.");
+                        return;
+                    }
+
+                    ServiceSingleton.GetRequiredService<IMessageService>()
+                        .ShowError($"Template '{template.Name}' did not generate a project file.");
+                    return;
+                }
+
+                var targetFolder = ResolveTargetSolutionFolder(selected, currentSolution);
+                var existing = new HashSet<string>(
+                    currentSolution.Projects.Select(project => Path.GetFullPath(project.FileName.ToString())),
+                    StringComparer.OrdinalIgnoreCase);
+
+                foreach (var projectPath in generatedProjectFiles)
+                {
+                    var normalizedPath = Path.GetFullPath(projectPath);
+                    if (existing.Contains(normalizedPath))
+                        continue;
+
+                    targetFolder.AddExistingProject(FileName.Create(normalizedPath));
+                    existing.Add(normalizedPath);
+                }
+
+                _host?.RefreshSolutionTree();
+                if (generatedProjectFiles.Count > 0)
+                {
+                    _host?.OpenFileInWorkbench(generatedProjectFiles[0]);
+                }
+            }
+            else
+            {
+                if (generatedSolutionFile is not null)
+                {
+                    projectService.OpenSolution(FileName.Create(generatedSolutionFile));
+                    _host?.RefreshSolutionTree();
+                    return;
+                }
+
+                if (generatedProjectFiles.Count == 0)
+                {
+                    ServiceSingleton.GetRequiredService<IMessageService>()
+                        .ShowError($"Template '{template.Name}' did not generate a solution or project file.");
+                    return;
+                }
+
+                var solutionDir = Path.GetDirectoryName(generatedProjectFiles[0]) ?? location;
+                var solutionFileName = Path.Combine(solutionDir, projectName + ".slnx");
+                var newSolution = projectService.CreateEmptySolutionFile(FileName.Create(solutionFileName));
+                foreach (var projectPath in generatedProjectFiles)
+                {
+                    newSolution.AddExistingProject(FileName.Create(projectPath));
+                }
+
+                projectService.OpenSolution(newSolution);
+                _host?.RefreshSolutionTree();
+                _host?.OpenFileInWorkbench(generatedProjectFiles[0]);
+            }
+        }
+        catch (Exception ex)
+        {
+            ServiceSingleton.GetRequiredService<IMessageService>()
+                .ShowException(ex, "Failed to add new project.");
+        }
+    }
+
+    static string? FindGeneratedSolutionFile(TemplateInstantiationResult result, string fallbackRoot)
+    {
+        var fromPrimary = result.PrimaryOutputPaths
+            .FirstOrDefault(IsSolutionFilePath);
+        if (!string.IsNullOrWhiteSpace(fromPrimary) && File.Exists(fromPrimary))
+            return fromPrimary;
+
+        var root = Directory.Exists(result.OutputDirectory) ? result.OutputDirectory : fallbackRoot;
+        if (!Directory.Exists(root))
+            return null;
+
+        return Directory.EnumerateFiles(root, "*.*", SearchOption.AllDirectories)
+            .FirstOrDefault(IsSolutionFilePath);
+    }
+
+    static List<string> FindGeneratedProjectFiles(TemplateInstantiationResult result, string fallbackRoot)
+    {
+        var paths = result.PrimaryOutputPaths
+            .Where(IsProjectFilePath)
+            .Select(Path.GetFullPath)
+            .ToList();
+        if (paths.Count > 0)
+            return paths;
+
+        var root = Directory.Exists(result.OutputDirectory) ? result.OutputDirectory : fallbackRoot;
+        if (!Directory.Exists(root))
+            return new List<string>();
+
+        return Directory.EnumerateFiles(root, "*.*proj", SearchOption.AllDirectories)
+            .Where(IsProjectFilePath)
+            .Select(Path.GetFullPath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    static bool IsProjectFilePath(string path) =>
+        path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)
+        || path.EndsWith(".vbproj", StringComparison.OrdinalIgnoreCase)
+        || path.EndsWith(".fsproj", StringComparison.OrdinalIgnoreCase);
+
+    static bool IsSolutionFilePath(string path) =>
+        path.EndsWith(".sln", StringComparison.OrdinalIgnoreCase)
+        || path.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase);
+
+    static ISolutionFolder ResolveTargetSolutionFolder(SolutionExplorerNodeContext? selected, ISolution currentSolution)
+    {
+        if (selected?.BoundItem is ISolutionFolder folder)
+            return folder;
+
+        if (selected?.BoundItem is IProject project)
+            return project.ParentFolder ?? currentSolution;
+
+        return currentSolution;
     }
 
     public async void AddExistingFile(SolutionExplorerNodeContext? node = null)
