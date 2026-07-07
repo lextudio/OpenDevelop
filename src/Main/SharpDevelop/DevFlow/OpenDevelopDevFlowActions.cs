@@ -372,6 +372,114 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 		
+		// --- Unit Testing Actions ---
+		
+		static Type serviceType;
+		static Type itestInterfaceType;
+		
+		static object GetTestService()
+		{
+			if (serviceType == null)
+				serviceType = Type.GetType("ICSharpCode.UnitTesting.ITestService, UnitTesting", throwOnError: false);
+			if (serviceType == null)
+				return null;
+			return SD.Services.GetService(serviceType);
+		}
+		
+		[DevFlowAction("od.unit-test.status", Description = "Check unit testing service availability and state")]
+		public static string GetUnitTestStatus()
+		{
+			var s = GetTestService();
+			if (s == null)
+				return JsonSerializer.Serialize(new { available = false });
+			var st = s.GetType();
+			var os = st.GetProperty("OpenSolution")?.GetValue(s);
+			return JsonSerializer.Serialize(new {
+				available = true,
+				isRunningTests = (bool)(st.GetProperty("IsRunningTests")?.GetValue(s) ?? false),
+				solutionAvailable = os != null,
+				solutionDisplayName = os?.GetType().GetProperty("DisplayName")?.GetValue(os) as string
+			});
+		}
+		
+		[DevFlowAction("od.unit-test.tree", Description = "Get the unit test tree from the current solution")]
+		public static string GetUnitTestTree()
+		{
+			var s = GetTestService();
+			if (s == null)
+				return JsonSerializer.Serialize(new { available = false, tests = Array.Empty<object>() });
+			var os = s.GetType().GetProperty("OpenSolution")?.GetValue(s);
+			if (os == null)
+				return JsonSerializer.Serialize(new { available = true, tests = Array.Empty<object>() });
+			return JsonSerializer.Serialize(new { available = true, tests = new[] { WalkTestNode(os) } });
+		}
+		
+		[DevFlowAction("od.unit-test.run", Description = "Run all tests in the open solution and wait for completion")]
+		public static async Task<string> RunUnitTests(int timeoutSeconds = 120)
+		{
+			var s = GetTestService();
+			if (s == null)
+				return JsonSerializer.Serialize(new { started = false, error = "ITestService not available." });
+			var st = s.GetType();
+			var os = st.GetProperty("OpenSolution")?.GetValue(s);
+			if (os == null)
+				return JsonSerializer.Serialize(new { started = false, error = "No test solution open." });
+			
+			if (itestInterfaceType == null)
+				itestInterfaceType = Type.GetType("ICSharpCode.UnitTesting.ITest, UnitTesting", throwOnError: false);
+			var optType = Type.GetType("ICSharpCode.UnitTesting.TestExecutionOptions, UnitTesting", throwOnError: false);
+			var opts = optType != null ? Activator.CreateInstance(optType) : null;
+			
+			var arr = Array.CreateInstance(itestInterfaceType ?? typeof(object), 1);
+			arr.SetValue(os, 0);
+			
+			var run = st.GetMethods(BindingFlags.Instance | BindingFlags.Public)
+				.FirstOrDefault(m => m.Name == "RunTestsAsync" && m.GetParameters().Length == 2);
+			if (run == null)
+				return JsonSerializer.Serialize(new { started = false, error = "RunTestsAsync not found." });
+			
+			var task = (Task)run.Invoke(s, new object[] { arr, opts });
+			var done = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(timeoutSeconds)));
+			bool completed = done == task;
+			return JsonSerializer.Serialize(new {
+				started = true,
+				completed,
+				timedOut = !completed,
+				faulted = task.IsFaulted,
+				error = task.IsFaulted ? task.Exception?.InnerException?.Message : null
+			});
+		}
+		
+		[DevFlowAction("od.unit-test.output", Description = "Get the UnitTesting output pad text")]
+		public static string GetUnitTestOutput()
+		{
+			var s = GetTestService();
+			if (s == null)
+				return JsonSerializer.Serialize(new { category = "UnitTesting", text = string.Empty });
+			var mv = s.GetType().GetProperty("UnitTestMessageView")?.GetValue(s);
+			var text = mv?.GetType().GetProperty("Text")?.GetValue(mv) as string;
+			return JsonSerializer.Serialize(new { category = "UnitTesting", text = text ?? string.Empty });
+		}
+		
+		static object WalkTestNode(object test)
+		{
+			if (test == null) return null;
+			var t = test.GetType();
+			var name = t.GetProperty("DisplayName")?.GetValue(test) as string ?? "";
+			var res = t.GetProperty("Result")?.GetValue(test);
+			string typeName = "test";
+			var ifaces = t.GetInterfaces();
+			if (ifaces.Any(i => i.Name == "ITestSolution")) typeName = "solution";
+			else if (ifaces.Any(i => i.Name == "ITestProject")) typeName = "project";
+			else if (t.Name.Contains("Namespace")) typeName = "namespace";
+			else if (t.Name == "TestCollection" || t.Name.Contains("Class") || t.Name.Contains("VsTestClass")) typeName = "class";
+			else if (t.Name.Contains("Method")) typeName = "method";
+			var nested = t.GetProperty("NestedTests")?.GetValue(test) as System.Collections.IEnumerable;
+			var kids = new List<object>();
+			if (nested != null) { foreach (var c in nested) { var n = WalkTestNode(c); if (n != null) kids.Add(n); } }
+			return new { displayName = name, result = res?.ToString() ?? "None", type = typeName, nestedTests = kids };
+		}
+		
 		static IProject ResolveProject(string projectPath)
 		{
 			var solution = SD.ProjectService.CurrentSolution;

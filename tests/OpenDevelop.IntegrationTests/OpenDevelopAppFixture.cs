@@ -33,14 +33,14 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     public string SolutionExplorerFixturePath { get; } = LocateSolutionExplorerFixture();
     public string DebugTestProjectPath { get; } = LocateDebugTestProject();
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         StopApp();
         await WaitForPortFreeAsync(TimeSpan.FromSeconds(30));
         await StartAsync();
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         StopApp();
         _http.Dispose();
