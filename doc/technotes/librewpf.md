@@ -76,6 +76,36 @@ feed is not enough by itself — you must also delete the matching folder(s) und
 Cache folder names are the NuGet package ID lowercased with dots kept as-is, e.g.
 `LibreWPF.ProGPU` → `~/.nuget/packages/librewpf.progpu/`.
 
+## A second trap: stale `obj`/`bin` in OpenDevelop's own projects
+
+Clearing the NuGet cache isn't the only staleness trap — an OpenDevelop project's own `obj`/`bin`
+can also go stale and MSBuild won't notice, because incremental build only tracks source-file
+timestamps, not the *identity* of the SDK or packages a project builds against. Concretely: after
+`ICSharpCode.Core.Presentation.csproj`'s `Sdk=` attribute was switched from `ProGPU.Wpf.Sdk/11.0.0-dev`
+to `LibreWPF.Sdk/11.0.0-dev` (and a batch of `Resources/VS2017/*.png` icons were added in the same
+commit), the project kept silently reusing an `obj/.../ICSharpCode.Core.Presentation.g.resources`
+built *before* that change — no icons embedded — for who knows how many sessions afterward,
+producing a wall of `Could not load PNG icon '...' — Cannot locate resource '...'` warnings at
+startup. The WPF resource pipeline itself was never broken; a clean rebuild of that one project
+embeds all the icons correctly. Nothing in the source or SDK targets needed fixing — the stale
+`obj`/`bin` did.
+
+**Symptom:** things that "should already be fixed" (an icon, a resource, a behavior tied to a
+recent SDK/package change) still misbehave, especially after switching a project's `Sdk=`
+attribute or after a LibreWPF/ProGPU package rename — even though the relevant source/config
+looks correct on inspection.
+
+**Fix:** delete `obj`/`bin` for the affected project(s) — or, if unsure which one, nuke them all:
+
+```bash
+cd /Users/lextm/uno-tools/OpenDevelop
+find src -maxdepth 3 -type d \( -name obj -o -name bin \) -print0 | xargs -0 rm -rf
+./launch.sh
+```
+
+This is slower than an incremental `launch.sh` (everything rebuilds from scratch), so reach for it
+specifically when a fix "should have landed" and hasn't — not as routine practice.
+
 ## Full repack + relaunch workflow
 
 Run from `/Users/lextm/uno-tools/librewpf`, using its bundled preview SDK (not whatever `dotnet`
