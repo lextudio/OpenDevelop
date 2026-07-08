@@ -106,6 +106,38 @@ find src -maxdepth 3 -type d \( -name obj -o -name bin \) -print0 | xargs -0 rm 
 This is slower than an incremental `launch.sh` (everything rebuilds from scratch), so reach for it
 specifically when a fix "should have landed" and hasn't — not as routine practice.
 
+## A third trap: `dotnet pack` ships **Release**, but plain `dotnet build` builds **Debug**
+
+The `LibreWPF.*` packages are packed with `-c Release` (see the Fast path section above), so
+`dotnet pack` bundles the assemblies from `artifacts/bin/<Project>/Release/net11.0/`. A bare
+`dotnet build src/.../PresentationFramework.csproj` (no `-c`) builds the **Debug** configuration
+into `artifacts/bin/<Project>/Debug/...` and leaves the Release output **untouched**. So this
+sequence silently ships stale bits:
+
+```bash
+dotnet build .../PresentationFramework.csproj            # builds Debug — Release is now stale
+dotnet pack  .../Microsoft.DotNet.Wpf.GitHub.ArchNeutral.csproj -c Release   # packs the OLD Release dll
+```
+
+The symptom is maddening: your source change compiles fine, the package "repacks" successfully,
+the NuGet cache is cleared, OpenDevelop restores — and your change still isn't there, because the
+`.nupkg` was built from a Release assembly that predates your edit. A quick confirmation that the
+new code is actually in the packed/deployed assembly (method names are UTF-8 metadata and *do*
+show up in `strings`, unlike string *literals* which are UTF-16 and won't):
+
+```bash
+strings artifacts/bin/PresentationFramework/Release/net11.0/PresentationFramework.dll | grep -x YourNewMethodName
+strings ~/.nuget/packages/librewpf.transport/11.0.0-dev/lib/net11.0/PresentationFramework.dll | grep -x YourNewMethodName
+```
+
+**Rule:** always build the **same configuration you pack** — either build with `-c Release`
+explicitly, or skip the standalone build entirely and let `dotnet pack -c Release` do the build.
+For `LibreWPF.Transport` specifically, note it aggregates several assemblies
+(`PresentationFramework`, `PresentationCore`, `WindowsBase`, …); a change in `PresentationCore`
+(e.g. `MouseDevice.cs`) requires its Release build to be current too — building
+`PresentationFramework.csproj -c Release` pulls the whole dependency chain, so prefer that over
+building a single leaf project.
+
 ## Full repack + relaunch workflow
 
 Run from `/Users/lextm/uno-tools/librewpf`, using its bundled preview SDK (not whatever `dotnet`

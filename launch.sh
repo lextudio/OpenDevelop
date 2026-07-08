@@ -33,6 +33,19 @@ pkill -f "SharpDevelop.dll" 2>/dev/null || true
 sleep 1
 
 if [[ "${1:-}" != "--no-build" ]]; then
+  # Several AddIn projects (UnitTesting, Debugger.AddIn, ...) build directly INTO this shared
+  # repo-root AddIns/<Category>/<Name> tree via their own <OutputPath> (an old-style SharpDevelop
+  # convention, not a per-project bin folder), and SharpDevelop.csproj's DeployAddInsToRepoRoot
+  # target copies the two top-level *.addin files here too. A normal incremental build only adds/
+  # updates files - it never removes ones an addin project stopped producing (a renamed .addin
+  # fragment, a deleted helper .dll, a dropped satellite-resource culture folder) - so this
+  # directory silently accumulates leftovers from earlier revisions of whatever addin you're
+  # actively reworking, and AddInTree loads whatever it finds here at startup, indiscriminately.
+  # Wipe it before every full build so only what the CURRENT project set actually produces is
+  # ever present. Skipped under --no-build, since nothing would repopulate it there.
+  echo "==> Clearing AddIns/ to drop stale output from previous builds..."
+  rm -rf "${repo_root}/AddIns"
+
   echo "==> Building OpenDevelop.Mvp.sln..."
   "${dotnet}" build "${sln}" -v minimal
 else
