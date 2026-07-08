@@ -49,6 +49,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 		public FontSelector()
 		{
 			DataContext = Fonts.SystemFontFamilies
+				.Where(ff => ff != null && ff.Source != null)
 				.OrderBy(ff => ff.Source)
 				.Select(ff => new FontFamilyInfo(ff))
 				.ToArray();
