@@ -23,6 +23,8 @@ using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
 using ICSharpCode.TypeSystem;
 using ICSharpCode.AvalonEdit.Document;
+using ICSharpCode.SharpDevelop.Project;
+using ICSharpCode.SharpDevelop.Roslyn;
 
 namespace ICSharpCode.SharpDevelop.Editor.Bookmarks
 {
@@ -69,16 +71,40 @@ namespace ICSharpCode.SharpDevelop.Editor.Bookmarks
 		public virtual void MouseDown(MouseButtonEventArgs e)
 		{
 			if (e.ChangedButton == MouseButton.Left) {
-				var entityModel = entity.GetModel();
-				if (entityModel == null) {
-					SD.Log.Warn("Could not find model for entity");
-				} else {
-					var f = SD.AnalyticsMonitor.TrackFeature("ICSharpCode.SharpDevelop.Editor.Bookmarks.EntityBookmark.ShowContextMenu");
-					var ctx = MenuService.ShowContextMenu(e.Source as UIElement, entityModel, ContextMenuPath);
-					ctx.Closed += delegate { f.EndTracking(); };
+				if (TryShowContextMenu(e)) {
 					e.Handled = true;
 				}
 			}
+		}
+
+		bool TryShowContextMenu(MouseButtonEventArgs e)
+		{
+			var fileName = entity.Region.FileName;
+			if (fileName == null)
+				return false;
+			var document = RoslynWorkspaceHelper.FindDocument(fileName);
+			if (document == null)
+				return false;
+			var location = new ICSharpCode.AvalonEdit.Document.TextLocation(entity.Region.BeginLine, entity.Region.BeginColumn);
+			var symbol = RoslynWorkspaceHelper.GetSymbolAt(document, location);
+			if (symbol == null)
+				return false;
+			var project = SD.ProjectService.FindProjectContainingFile(FileName.Create(fileName));
+			if (project == null)
+				return false;
+			var compilation = SD.ParserService.GetCompilation(project);
+			var roslynEntity = RoslynEntityFactory.Create(symbol, compilation);
+			ResolveResult resolveResult;
+			if (roslynEntity is IMember member)
+				resolveResult = new MemberResolveResult(null, member);
+			else if (roslynEntity is ITypeDefinition typeDef)
+				resolveResult = new TypeResolveResult(typeDef);
+			else
+				resolveResult = ErrorResolveResult.UnknownError;
+			var feature = SD.AnalyticsMonitor.TrackFeature("ICSharpCode.SharpDevelop.Editor.Bookmarks.EntityBookmark.ShowContextMenu");
+			var ctx = MenuService.ShowContextMenu(e.Source as UIElement, resolveResult, ContextMenuPath);
+			ctx.Closed += delegate { feature.EndTracking(); };
+			return true;
 		}
 		
 		public virtual void MouseUp(MouseButtonEventArgs e)

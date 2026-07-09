@@ -33,6 +33,25 @@ namespace ICSharpCode.Core.Presentation
 	{
 		static readonly Dictionary<string, BitmapSource> bitmapCache = new Dictionary<string, BitmapSource>();
 		static readonly IReadOnlyDictionary<string, string> pngResourceMap = new Dictionary<string, string> {
+			// QuickClassBrowser icons (RoslynSymbolIcons).
+			{ "Icons.16x16.Class", "Resources/VS2017/Class/Class_16x.png" },
+			{ "Icons.16x16.Interface", "Resources/VS2017/Interface/Interface_16x.png" },
+			{ "Icons.16x16.Struct", "Resources/VS2017/Structure/Structure_16x.png" },
+			{ "Icons.16x16.Enum", "Resources/VS2017/Enumerator/Enumerator_16x.png" },
+			{ "Icons.16x16.Delegate", "Resources/VS2017/Delegate/Delegate_16x.png" },
+			{ "Icons.16x16.Method", "Resources/VS2017/Method/Method_16x.png" },
+			{ "Icons.16x16.ExtensionMethod", "Resources/VS2017/ExtensionMethod/ExtensionMethod_16x.png" },
+			{ "Icons.16x16.Operator", "Resources/VS2017/Operator/Operator_16x.png" },
+			{ "Icons.16x16.Property", "Resources/VS2017/Property/Property_16x.png" },
+			{ "Icons.16x16.Field", "Resources/VS2017/Field/Field_16x.png" },
+			{ "Icons.16x16.Event", "Resources/VS2017/Event/Event_16x.png" },
+			{ "Icons.16x16.Parameter", "Resources/VS2017/Parameter/Parameter_16x.png" },
+			{ "Icons.16x16.Local", "Resources/VS2017/LocalVariable/LocalVariable_16x.png" },
+			{ "Icons.16x16.NameSpace", "Resources/VS2017/Namespace/Namespace_16x.png" },
+			{ "Icons.16x16.Indexer", "Resources/VS2017/Indexer/Indexer_16x.png" },
+			{ "Icons.16x16.Literal", "Resources/VS2017/Literal/Literal_16x.png" },
+			{ "Icons.16x16.Keyword", "Resources/VS2017/IntelliSenseKeyword/IntelliSenseKeyword_16x.png" },
+
 			{ "Icons.16x16.NewDocumentIcon", "Resources/VS2017/NewFile/NewFile_16x.png" },
 			{ "Icons.16x16.NewProjectIcon", "Resources/VS2017/CS/CS_ProjectSENode_16x.png" },
 			{ "Icons.16x16.SolutionIcon", "Resources/VS2017/SolutionFolderSwitch/SolutionFolderSwitch_16x.png" },
@@ -109,7 +128,16 @@ namespace ICSharpCode.Core.Presentation
 
 			// Output Pad toolbar icons.
 			{ "OutputPad.Toolbar.ClearOutputWindow", "Resources/VS2017/ClearWindowContent/ClearWindowContent_16x.png" },
-			{ "OutputPad.Toolbar.ToggleWordWrap", "Resources/VS2017/WordWrap/WordWrap_16x.png" }
+			{ "OutputPad.Toolbar.ToggleWordWrap", "Resources/VS2017/WordWrap/WordWrap_16x.png" },
+
+			// IconBarMargin/Bookmark margin icons (breakpoints, bookmarks).
+			// Mapped via "Bookmarks.*" resource name used by BreakpointBookmark / BookmarkBase.
+			{ "Bookmarks.Breakpoint", "Resources/VS2017/Breakpoint/Breakpoint_16x.png" },
+			{ "Bookmarks.BreakpointConditional", "Resources/VS2017/Breakpoint/BreakpointConditional_16x.png" },
+			{ "Bookmarks.DisabledBreakpoint", "Resources/VS2017/Breakpoint/DisabledBreakpoint_16x.png" },
+			{ "Bookmarks.UnhealthyBreakpoint", "Resources/VS2017/Breakpoint/UnhealthyBreakpoint_16x.png" },
+			{ "Bookmarks.UnhealthyBreakpointConditional", "Resources/VS2017/Breakpoint/UnhealthyBreakpointConditional_16x.png" },
+			{ "Bookmarks.ToggleMark", "Resources/VS2017/Bookmark/ToggleMark_16x.png" }
 		};
 		static readonly IResourceService resourceService;
 		

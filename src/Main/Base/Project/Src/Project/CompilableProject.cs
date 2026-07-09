@@ -380,7 +380,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			get {
 				SD.MainThread.VerifyAccess();
 				if (assemblyModel == null) {
-					assemblyModel = SD.GetRequiredService<IModelFactory>().CreateAssemblyModel(new ProjectEntityModelContext(this, ".cs"));
+					assemblyModel = new StubUpdateableAssemblyModel();
 				}
 				return assemblyModel;
 			}
@@ -398,5 +398,22 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		public override event EventHandler<ParseInformationEventArgs> ParseInformationUpdated = delegate {};
 		#endregion
+	}
+
+	sealed class StubUpdateableAssemblyModel : IUpdateableAssemblyModel
+	{
+		public string AssemblyName { get; set; }
+		public string FullAssemblyName { get; set; }
+
+		public ITypeDefinitionModelCollection TopLevelTypeDefinitions => EmptyTypeDefinitionModelCollection.Instance;
+		public IModelCollection<INamespaceModel> Namespaces => ImmutableModelCollection<INamespaceModel>.Empty;
+		public INamespaceModel RootNamespace => EmptyNamespaceModel.Instance;
+		public IEntityModelContext Context => null;
+		public FileName Location => null;
+		public IAssemblyReferencesModel References => EmptyAssemblyReferencesModel.Instance;
+
+		public void Update(IUnresolvedFile oldFile, IUnresolvedFile newFile) {}
+		public void Update(IList<IUnresolvedTypeDefinition> oldFile, IList<IUnresolvedTypeDefinition> newFile) {}
+		public void UpdateReferences(IReadOnlyList<DomAssemblyName> references) {}
 	}
 }
