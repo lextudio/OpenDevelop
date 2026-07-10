@@ -17,3 +17,6 @@
 [submodule "externals/sharpdbg"]
 	path = externals/sharpdbg
 	url = https://github.com/MattParkerDev/SharpDbg.git
+[submodule "externals/altcover"]
+	path = externals/altcover
+	url = https://github.com/SteveGilham/altcover.git
