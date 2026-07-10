@@ -29,11 +29,32 @@
          self-testing executable runnable directly via `dotnet run`. This flag keeps
          `dotnet test` working too (it shells out to the same MTP executable). -->
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+    <!-- AltCover.targets (in the AltCover package) only imports its instrumentation logic when
+         IsTestProject is true - a property VSTest-era test SDKs set automatically but that this
+         MTP-native project (no Microsoft.NET.Test.Sdk reference) never sets on its own. See
+         AltCover.Mtp.targets for the rest of the MTP-compatibility wiring. -->
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <!-- Code coverage: run
+         dotnet build -t:Coverage -p:AltCover=true -p:AltCoverInPlace=true
+       Do NOT use "dotnet test /p:AltCover=true" - it collides with this project's own MTP test
+       target ("VSTest" is owned by two competing packages here); see AltCover.Mtp.targets for the
+       full explanation and the "Coverage" target this actually runs. Produces coverage.xml
+       (OpenCover format) and coverage.cobertura.xml in this project's directory. -->
+  <PropertyGroup Condition="'$(AltCover)' == 'true'">
+    <AltCoverReport>$(MSBuildProjectDirectory)/coverage.xml</AltCoverReport>
+    <AltCoverCobertura>$(MSBuildProjectDirectory)/coverage.cobertura.xml</AltCoverCobertura>
+    <AltCoverAssemblyExcludeFilter>xunit|AltCover\.|Microsoft\.|System\.</AltCoverAssemblyExcludeFilter>
+    <AltCoverShowSummary>Foreground</AltCoverShowSummary>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="System.Net.Http.Json" Version="11.0.0-preview.5.26302.115" />
     <PackageReference Include="xunit.v3" Version="3.2.2" />
+    <PackageReference Include="AltCover" Version="9.0.102" />
   </ItemGroup>
+
+  <Import Project="AltCover.Mtp.targets" />
 
 </Project>

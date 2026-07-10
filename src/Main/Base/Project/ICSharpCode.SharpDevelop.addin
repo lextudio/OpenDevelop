@@ -1231,7 +1231,11 @@
 			<OptionPanel id    = "ProjectAndSolutionOptions"
 			             label = "${res:Dialog.Options.IDEOptions.ProjectAndSolutionOptions.PanelName}"
 			             class = "ICSharpCode.SharpDevelop.Gui.OptionPanels.ProjectAndSolutionOptions"/>
-		
+
+			<OptionPanel id    = "DotNetSdkOptions"
+			             label = ".NET SDK"
+			             class = "ICSharpCode.SharpDevelop.Gui.OptionPanels.DotNetSdkOptions"/>
+
 		</OptionPanel>
 		
 		<OptionPanel id    = "CodingOptions"

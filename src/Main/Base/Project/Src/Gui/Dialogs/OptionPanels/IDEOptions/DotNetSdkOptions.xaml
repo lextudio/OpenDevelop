@@ -1,0 +1,29 @@
+﻿<gui:OptionPanel x:Class="ICSharpCode.SharpDevelop.Gui.OptionPanels.DotNetSdkOptions"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:gui="clr-namespace:ICSharpCode.SharpDevelop.Gui">
+	<StackPanel Margin="6">
+		<GroupBox Header=".NET SDK">
+			<StackPanel>
+				<TextBlock TextWrapping="Wrap" Margin="0,0,0,6"
+				           Text="Choose which installed .NET SDK is used to compile, debug, and run tests for project files. The default is the system-installed SDK." />
+				<ListBox Name="sdkListBox" MinHeight="90" MaxHeight="200"
+				         SelectionMode="Single">
+					<ListBox.ItemTemplate>
+						<DataTemplate>
+							<StackPanel Orientation="Vertical" Margin="2">
+								<TextBlock Text="{Binding Label}" FontWeight="Bold" />
+								<TextBlock Text="{Binding RootPath}" Foreground="Gray" FontSize="11" />
+							</StackPanel>
+						</DataTemplate>
+					</ListBox.ItemTemplate>
+				</ListBox>
+				<StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+					<Button Content="Refresh" Click="refreshButtonClick" Padding="8,2" Margin="0,0,6,0" />
+					<Button Content="Add Custom Path..." Click="addCustomPathButtonClick" Padding="8,2" />
+				</StackPanel>
+				<TextBlock Name="effectiveSdkText" Margin="0,10,0,0" FontStyle="Italic" TextWrapping="Wrap" />
+			</StackPanel>
+		</GroupBox>
+	</StackPanel>
+</gui:OptionPanel>

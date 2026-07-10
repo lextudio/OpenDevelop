@@ -1,0 +1,85 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <!--
+    Why this file exists, and why coverage is NOT wired into `dotnet test`:
+
+    AltCover's own dotnet-test integration (build/AltCover.proj in the AltCover NuGet package)
+    works by overriding the "VSTest" MSBuild target - the one `dotnet test` traditionally invokes.
+    Microsoft.Testing.Platform.MSBuild (the package backing this project's MTP-native xunit.v3
+    runner) ALSO overrides "VSTest" for single-TFM MTP projects like this one, redirecting it to
+    its own "InvokeTestingPlatform" target instead of the classic vstest.console invocation.
+
+    Both packages define `<Target Name="VSTest">` - MSBuild target names aren't merged across
+    imports, the last one imported simply replaces all earlier definitions outright. Which package
+    wins is import-order dependent and NOT something this project controls or should rely on.
+    Empirically (see PR discussion / commit that added this file): under `dotnet test /p:AltCover=true`,
+    AltCover's override wins, so it invokes real vstest.console against this project's MTP
+    self-executing exe, which vstest.console doesn't know how to run - the process launched by
+    MSBuild's build step and the process the outer `dotnet test` CLI actually executes the tests in
+    end up decoupled, so AltCover's post-run collection step runs before (or independently of) the
+    real test process, and reports "0 visits recorded" even though instrumentation itself worked.
+
+    Rather than depend on either package's ownership of "VSTest"/"InvokeTestingPlatform", this file
+    defines a self-contained "Coverage" target that never calls into either: it builds, instruments
+    in place (AltCoverInPlace=true, so the instrumented assembly replaces the built one directly in
+    $(TargetDir) - no exe-path redirection needed), directly executes the built test exe itself via
+    an <Exec> task (fully deterministic - we choose exactly when the test process runs relative to
+    prepare/collect), then runs AltCover's collection task. Usage:
+
+      dotnet build tests/OpenDevelop.IntegrationTests -t:Coverage -p:AltCover=true -p:AltCoverInPlace=true
+
+    AltCoverInPlace must be passed on the command line, not just implied - see the Error check in
+    the Coverage target below for why.
+
+    (`dotnet test` remains uninstrumented/unaffected - AltCover's package is only imported at all
+    when $(AltCover)==true, per its own AltCover.targets Import guard.)
+  -->
+
+  <PropertyGroup>
+    <!-- Args passed to the test exe when run for coverage, e.g. "-class Foo.Bar" to scope a run.
+         Empty by default: run the whole suite. -->
+    <CoverageTestArgs Condition="'$(CoverageTestArgs)' == ''"></CoverageTestArgs>
+  </PropertyGroup>
+
+  <Target Name="Coverage" DependsOnTargets="Build">
+    <Error Condition="'$(AltCover)' != 'true'"
+           Text="Run with -p:AltCover=true, e.g. `dotnet build -t:Coverage -p:AltCover=true`." />
+    <!-- AltCoverInPlace must be true for this to work (see property default below), and MUST be
+         set on the command line (-p:AltCoverInPlace=true), not here: AltCover.proj's own default
+         (Condition="'$(AltCoverInPlace)' == ''") is evaluated once at project load, before this
+         target ever runs, so a PropertyGroup task here is too late to change which branch
+         AltCoverRunPreparation's Condition-guarded ItemGroups already locked in. -->
+    <Error Condition="'$(AltCoverInPlace)' != 'true'"
+           Text="Run with -p:AltCoverInPlace=true too - required for this target to work, see comments in this file." />
+
+    <CallTarget Targets="AltCoverPreFlight" />
+    <CallTarget Targets="AltCoverRunPreparation" />
+
+    <!-- Run the (now-instrumented) test exe directly - bypassing "VSTest"/"InvokeTestingPlatform"
+         entirely, so nothing else can race with or short-circuit the prepare/run/collect sequence.
+         Run the apphost binary directly (not "dotnet exec"/"dotnet <dll>"): the apphost has this
+         project's exact net11.0 runtime resolution baked in, so it works regardless of which
+         "dotnet" happens to be first on PATH or what DOTNET_ROOT is set to in this shell - both of
+         which pointed at an unrelated, older system-wide .NET install in testing. -->
+    <Exec Command="&quot;$(TargetDir)$(TargetName)&quot; $(CoverageTestArgs)"
+          WorkingDirectory="$(TargetDir)"
+          ContinueOnError="WarnAndContinue" />
+
+    <AltCover.Collect
+      RecorderDirectory="$(TargetDir)"
+      LcovReport="$(AltCoverLcovReport)"
+      Threshold="$(AltCoverThreshold)"
+      Cobertura="$(AltCoverCobertura)"
+      Packages="$(AltCoverPackages)"
+      SummaryFormat="$(AltCoverSummaryFormat)"
+      Verbosity="$(AltCoverVerbosity)">
+      <Output TaskParameter="Summary" PropertyName="AltCoverSummary" />
+    </AltCover.Collect>
+    <AltCover.Echo Condition="'$(AltCoverShowSummary)' != '' AND '$(AltCoverSummary)' != ''"
+                   Text="$(AltCoverSummary)"
+                   Colour="Foreground"
+                   Verbosity="$(AltCoverVerbosity)" />
+    <CallTarget Targets="AltCoverTidy" />
+  </Target>
+
+</Project>

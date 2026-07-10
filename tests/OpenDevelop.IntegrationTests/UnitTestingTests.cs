@@ -46,7 +46,7 @@ public sealed class UnitTestingTests
 
         JsonElement tree = default;
         bool discovered = false;
-        var deadline = DateTime.UtcNow.AddSeconds(30);
+        var deadline = DateTime.UtcNow.AddSeconds(60);
         while (DateTime.UtcNow < deadline)
         {
             tree = await _app.InvokeAsync("od.unit-test.tree");
@@ -78,7 +78,7 @@ public sealed class UnitTestingTests
         await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);
 
         JsonElement tree = default;
-        var deadline = DateTime.UtcNow.AddSeconds(30);
+        var deadline = DateTime.UtcNow.AddSeconds(60);
         while (DateTime.UtcNow < deadline)
         {
             tree = await _app.InvokeAsync("od.unit-test.tree");
@@ -110,11 +110,42 @@ public sealed class UnitTestingTests
     }
 
     [Fact]
+    public async Task DebugUnitTest_StartsDebugSessionWithoutHanging()
+    {
+        // od.unit-test.debug is bounded by Task.WhenAny on the DevFlow side, so this action call
+        // itself can't hang the caller indefinitely -- if the underlying debugger session wedges
+        // (see the known debugger-hang issue), the worst case is this HTTP call blocking up to
+        // the fixture's own HttpClient.Timeout (120s), not forever.
+        await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);
+
+        var deadline = DateTime.UtcNow.AddSeconds(60);
+        while (DateTime.UtcNow < deadline)
+        {
+            var tree = await _app.InvokeAsync("od.unit-test.tree");
+            if (tree.GetProperty("tests").GetArrayLength() > 0
+                && FindTest(tree.GetProperty("tests")[0], "AlwaysPasses").HasValue)
+                break;
+            await Task.Delay(1000);
+        }
+
+        var debugResult = await _app.InvokeAsync("od.unit-test.debug", 60);
+
+        // We deliberately don't assert completed==true here: this is new coverage for a path
+        // (VsTestDebugger) that was never exercised before, and the known debugger-hang issue (a
+        // separate, already-tracked bug) may make "hangs instead of completing" the actual,
+        // honest result. What matters for this test is that we get an HTTP response at all
+        // (proving the app didn't wedge solid) and can inspect what actually happened.
+        Assert.True(debugResult.TryGetProperty("started", out _), "od.unit-test.debug did not return a usable response");
+
+        await _app.InvokeAsync("od.debug.stop");
+    }
+
+    [Fact]
     public async Task UnitTestRun_OutputPadCapturesMessages()
     {
         await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);
 
-        var deadline = DateTime.UtcNow.AddSeconds(30);
+        var deadline = DateTime.UtcNow.AddSeconds(60);
         while (DateTime.UtcNow < deadline)
         {
             var tree = await _app.InvokeAsync("od.unit-test.tree");

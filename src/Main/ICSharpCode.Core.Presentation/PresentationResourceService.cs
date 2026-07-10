@@ -132,15 +132,15 @@ namespace ICSharpCode.Core.Presentation
 
 			// IconBarMargin/Bookmark margin icons (breakpoints, bookmarks).
 			// Mapped via "Bookmarks.*" resource name used by BreakpointBookmark / BookmarkBase.
-			{ "Bookmarks.Breakpoint", "Resources/VS2017/Breakpoint/Breakpoint_16x.png" },
+			{ "Bookmarks.Breakpoint", "Resources/VS2017/Breakpoint/BreakpointEnable_16x.png" },
 			{ "Bookmarks.BreakpointConditional", "Resources/VS2017/Breakpoint/BreakpointConditional_16x.png" },
-			{ "Bookmarks.DisabledBreakpoint", "Resources/VS2017/Breakpoint/DisabledBreakpoint_16x.png" },
-			{ "Bookmarks.UnhealthyBreakpoint", "Resources/VS2017/Breakpoint/UnhealthyBreakpoint_16x.png" },
+			{ "Bookmarks.DisabledBreakpoint", "Resources/VS2017/Breakpoint/BreakpointDisable_16x.png" },
+			{ "Bookmarks.UnhealthyBreakpoint", "Resources/VS2017/Breakpoint/BreakpointUnbound_16x.png" },
 			{ "Bookmarks.UnhealthyBreakpointConditional", "Resources/VS2017/Breakpoint/UnhealthyBreakpointConditional_16x.png" },
-			{ "Bookmarks.ToggleMark", "Resources/VS2017/Bookmark/ToggleMark_16x.png" },
-			{ "Bookmarks.GotoPrevInFile", "Resources/VS2017/Bookmark/GotoPrevInFile_16x.png" },
-			{ "Bookmarks.GotoNextInFile", "Resources/VS2017/Bookmark/GotoNextInFile_16x.png" },
-			{ "Bookmarks.ClearAll", "Resources/VS2017/Bookmark/ClearAll_16x.png" }
+			{ "Bookmarks.ToggleMark", "Resources/VS2017/Bookmark/Bookmark_16x.png" },
+			{ "Bookmarks.GotoPrevInFile", "Resources/VS2017/Bookmark/PreviousBookmark_16x.png" },
+			{ "Bookmarks.GotoNextInFile", "Resources/VS2017/Bookmark/NextBookmark_16x.png" },
+			{ "Bookmarks.ClearAll", "Resources/VS2017/Bookmark/ClearBookmark_16x.png" }
 		};
 		static readonly IResourceService resourceService;
 		

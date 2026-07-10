@@ -194,15 +194,19 @@ namespace ICSharpCode.SharpDevelop.Services
 					throw new FileNotFoundException("Debug target not found.", targetPath);
 				}
 
-				await SyncAllBreakpointsBeforeLaunch();
-
 				bool breakAtBeginning = BreakAtBeginning;
 				BreakAtBeginning = false;
 				await CurrentSession.StartAsync(targetPath, processStartInfo.WorkingDirectory, breakAtBeginning).ConfigureAwait(false);
 
+				// Breakpoints must be sent after "launch" but before "configurationDone" -
+				// most DAP adapters (including SharpDbg) ignore breakpoints set any later.
+				await SyncAllBreakpointsBeforeLaunch();
+
+				await CurrentSession.ConfigurationDoneAsync().ConfigureAwait(false);
+
 				PrintDebugMessage("> Debugging: " + Path.GetFileName(targetPath) + "\n");
 			} catch (Exception ex) {
-				PrintDebugMessage("ERROR: " + ex.Message + "\n");
+				PrintDebugMessage("ERROR: " + ex + "\n");
 				SD.MainThread.InvokeAsyncAndForget(() => OnDebugStopped(EventArgs.Empty));
 				Stop();
 			}
@@ -355,10 +359,17 @@ namespace ICSharpCode.SharpDevelop.Services
 
 		async Task SyncAllBreakpointsBeforeLaunch()
 		{
-			var byFile = SD.BookmarkManager.Bookmarks
+			// This runs on a background thread (StartAsync's caller never touches the UI thread),
+			// but BookmarkManager.Bookmarks is UI-thread-affinitized - unlike
+			// SyncBreakpointsForFileAsync below (which already guards its own Bookmarks access
+			// the same way), this direct access threw "The calling thread cannot access this
+			// object because a different thread owns it." on every debug start that had any
+			// breakpoints set.
+			var byFile = SD.MainThread.InvokeIfRequired(() => SD.BookmarkManager.Bookmarks
 				.OfType<BreakpointBookmark>()
 				.Where(b => b.FileName != null)
-				.GroupBy(b => b.FileName.ToString(), StringComparer.OrdinalIgnoreCase);
+				.GroupBy(b => b.FileName.ToString(), StringComparer.OrdinalIgnoreCase)
+				.ToList());
 
 			foreach (var group in byFile) {
 				await SyncBreakpointsForFileAsync(group.Key).ConfigureAwait(false);
@@ -377,7 +388,13 @@ namespace ICSharpCode.SharpDevelop.Services
 					.Where(b => b.FileName != null && string.Equals(b.FileName.ToString(), fileName, StringComparison.OrdinalIgnoreCase) && b.IsEnabled)
 					.ToList());
 
-			var requested = bookmarks.Select(b => (Line: b.LineNumber, Condition: b.Condition)).ToList();
+			// b.LineNumber resolves through a TextAnchor into the (UI-thread-affinitized)
+			// TextDocument - same class of bug as the Bookmarks access above, just one property
+			// access further down: LINQ's Select/ToList here are evaluated on whatever thread
+			// calls .ToList(), not inside the InvokeIfRequired lambda that only protected the
+			// Bookmarks collection access itself.
+			var requested = SD.MainThread.InvokeIfRequired(() =>
+				bookmarks.Select(b => (Line: b.LineNumber, Condition: b.Condition, HitCondition: b.HitCondition)).ToList());
 			var verified = await CurrentSession.SetBreakpointsAsync(fileName, requested).ConfigureAwait(false);
 
 			SD.MainThread.InvokeAsyncAndForget(() => {

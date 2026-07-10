@@ -38,6 +38,7 @@ using System.Threading.Tasks;
 
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.Core;
+using ICSharpCode.SharpDevelop.Project.Sdk;
 
 namespace ICSharpCode.SharpDevelop.Project
 {
@@ -60,27 +61,11 @@ namespace ICSharpCode.SharpDevelop.Project
 			@"^(?<file>.*?)\((?<line>\d+),(?<column>\d+)\):\s*(?<severity>error|warning)\s+(?<code>[A-Za-z0-9]+)\s*:\s*(?<text>.*?)(\s*\[.*\])?$",
 			RegexOptions.Compiled);
 
-		/// <summary>
-		/// Finds a real dotnet host to run builds with. Not necessarily the same one hosting this
-		/// process itself (see the type-level comment) - just needs its own consistent SDK/MSBuild
-		/// toolset, which any ordinary installed SDK provides.
-		/// </summary>
-		static readonly string DotnetHostPath = FindDotnetHost();
-
-		static string FindDotnetHost()
-		{
-			string[] candidates = {
-				Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + "/.dotnet/dotnet",
-				"/usr/local/share/dotnet/dotnet",
-				"/opt/homebrew/opt/dotnet/libexec/dotnet",
-				"/usr/local/bin/dotnet"
-			};
-			foreach (string candidate in candidates) {
-				if (File.Exists(candidate))
-					return candidate;
-			}
-			return "dotnet"; // fall back to PATH resolution
-		}
+		// Which dotnet host/SDK to run builds with is no longer hardcoded here - it's resolved
+		// fresh on every build from DotNetSdkService (Options > .NET SDK), the single place this
+		// choice is made across build/debug/test. Not necessarily the same SDK hosting this
+		// process itself (see the type-level comment) - just needs its own consistent SDK/MSBuild
+		// toolset, which any selected installed SDK provides.
 
 		public IList<ReferenceProjectItem> ResolveAssemblyReferences(
 			MSBuildBasedProject baseProject,
@@ -95,7 +80,8 @@ namespace ICSharpCode.SharpDevelop.Project
 
 		public async Task<bool> BuildAsync(IProject project, ProjectBuildOptions options, IBuildFeedbackSink feedbackSink, CancellationToken cancellationToken, IEnumerable<string> additionalTargetFiles = null)
 		{
-			var psi = new ProcessStartInfo(DotnetHostPath) {
+			var sdk = DotNetSdkService.ResolveEffectiveSdk();
+			var psi = new ProcessStartInfo(sdk.DotnetExecutablePath) {
 				// Deliberately NOT project.Directory: dotnet's SDK resolution walks up from the
 				// current working directory looking for global.json, and OpenDevelop's own repo
 				// root pins an SDK version (librewpf's local preview install) that this build
@@ -109,10 +95,11 @@ namespace ICSharpCode.SharpDevelop.Project
 				CreateNoWindow = true
 			};
 			// This app's own process is launched with DOTNET_ROOT/DOTNET_HOST_PATH/MSBuildSDKsPath-
-			// family variables pointing at librewpf's local preview SDK (see launch.sh); a child
-			// process inherits them by default, which makes the dotnet muxer resolve right back to
-			// that SDK regardless of which dotnet binary is actually invoked here. Clear them so the
-			// child picks its own SDK normally, based purely on DotnetHostPath/its own global.json.
+			// family variables pointing at whatever SDK launch.sh pinned it to; a child process
+			// inherits them by default, which would make the dotnet muxer resolve right back to
+			// that SDK regardless of which dotnet binary is actually invoked here. Clear them, then
+			// set them explicitly to match the selected SDK - deterministic either way, instead of
+			// clearing-and-hoping the child's own global.json/PATH resolution lands on the right one.
 			foreach (string name in new[] {
 				"DOTNET_ROOT", "DOTNET_ROOT(x86)", "DOTNET_HOST_PATH", "DOTNET_MULTILEVEL_LOOKUP",
 				"MSBuildSDKsPath", "MSBuildExtensionsPath", "MSBuildExtensionsPath32", "MSBuildExtensionsPath64",
@@ -120,6 +107,8 @@ namespace ICSharpCode.SharpDevelop.Project
 			}) {
 				psi.EnvironmentVariables.Remove(name);
 			}
+			foreach (var kv in DotNetSdkService.GetEnvironmentVariablesFor(sdk))
+				psi.EnvironmentVariables[kv.Key] = kv.Value;
 			// This app's own process may be running under a non-invariant/non-English OS locale
 			// (LANG/LC_ALL inherited from the desktop session), and some MSBuild tasks parse
 			// culture-sensitive content internally; forcing invariant globalization for the build

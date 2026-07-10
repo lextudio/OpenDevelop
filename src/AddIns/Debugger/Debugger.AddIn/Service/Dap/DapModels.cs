@@ -17,9 +17,31 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System.Collections.Generic;
+using System.Text.Json.Nodes;
 
 namespace Debugger.AddIn.Service.Dap
 {
+	/// <summary>
+	/// Parsed subset of the DAP "initialize" response's capabilities body, plus the raw JSON for
+	/// callers that need a field this class doesn't model yet - future debug adapters (this
+	/// engine isn't tied to SharpDbg specifically) may support capabilities we haven't seen.
+	/// </summary>
+	public sealed class DapCapabilities
+	{
+		public bool SupportsConditionalBreakpoints { get; set; }
+		public bool SupportsHitConditionalBreakpoints { get; set; }
+		public bool SupportsFunctionBreakpoints { get; set; }
+		public bool SupportsLogPoints { get; set; }
+
+		public JsonObject Raw { get; set; }
+
+		/// <summary>Looks up an arbitrary boolean capability by its DAP name (e.g. "supportsDataBreakpoints").</summary>
+		public bool Supports(string capabilityName)
+		{
+			return Raw != null && Raw[capabilityName] != null && Raw[capabilityName].GetValue<bool>();
+		}
+	}
+
 	/// <summary>
 	/// Lightweight, DAP-shaped replacements for the old Debugger.Core (ICorDebug) object model.
 	/// Unlike Debugger.Core's Process/Thread/StackFrame/Value, these are plain snapshots fetched

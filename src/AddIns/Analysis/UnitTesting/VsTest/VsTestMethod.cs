@@ -39,5 +39,13 @@ namespace ICSharpCode.UnitTesting
 		{
 			return testCases;
 		}
+
+		// TestBase.Result's setter is `protected`, so VsTestProject (a sibling subclass, not a
+		// base/derived relation to this one) can't assign it directly -- expose a public setter
+		// for VsTestProject.UpdateTestResult to apply a completed run's outcome.
+		public void SetResult(TestResultType resultType)
+		{
+			Result = resultType;
+		}
 	}
 }

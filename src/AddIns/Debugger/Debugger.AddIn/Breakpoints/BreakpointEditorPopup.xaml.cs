@@ -49,6 +49,7 @@ namespace Debugger.AddIn.Breakpoints
 				breakAction.IsChecked = true;
 			else
 				conditionalAction.IsChecked = true;
+			hitCountCheck.IsChecked = target.HitCondition != null;
 		}
 
 		public bool CloseWhenMouseMovesAway {
@@ -61,6 +62,17 @@ namespace Debugger.AddIn.Breakpoints
 				((BreakpointBookmark)DataContext).Condition = null;
 			if (sender == conditionalAction && ((BreakpointBookmark)DataContext).Condition == null)
 				((BreakpointBookmark)DataContext).Condition = "";
+		}
+
+		void HitCountChecked(object sender, System.Windows.RoutedEventArgs e)
+		{
+			var bookmark = (BreakpointBookmark)DataContext;
+			if (hitCountCheck.IsChecked == true) {
+				if (bookmark.HitCondition == null)
+					bookmark.HitCondition = "";
+			} else {
+				bookmark.HitCondition = null;
+			}
 		}
 	}
 }

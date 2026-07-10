@@ -43,6 +43,14 @@ namespace Debugger.AddIn.Service.Dap
 		public int ActiveThreadId { get; private set; }
 		public int ActiveFrameId { get; set; }
 
+		/// <summary>
+		/// Capabilities reported by the debug adapter's "initialize" response. Defaults to all-false
+		/// until <see cref="StartAsync"/> completes. Not every adapter this engine talks to (or will
+		/// talk to in the future) supports every optional DAP feature, so callers should check this
+		/// rather than assume support.
+		/// </summary>
+		public DapCapabilities Capabilities { get; private set; } = new DapCapabilities();
+
 		public event Action Started;
 		public event Action<DapStoppedEventArgs> Stopped;
 		public event Action Continued;
@@ -63,7 +71,7 @@ namespace Debugger.AddIn.Service.Dap
 			client.Start();
 			adapterProcess.Exited += AdapterProcessExited;
 
-			await client.SendRequestAsync("initialize", new JsonObject {
+			JsonObject initializeResponse = await client.SendRequestAsync("initialize", new JsonObject {
 				["clientID"] = "OpenDevelop",
 				["clientName"] = "OpenDevelop",
 				["adapterID"] = "sharpdbg",
@@ -71,6 +79,7 @@ namespace Debugger.AddIn.Service.Dap
 				["columnsStartAt1"] = true,
 				["supportsRunInTerminalRequest"] = false
 			}, cancellationToken).ConfigureAwait(false);
+			Capabilities = ParseCapabilities(initializeResponse);
 
 			await client.SendRequestAsync("launch", new JsonObject {
 				["program"] = targetPath,
@@ -78,7 +87,17 @@ namespace Debugger.AddIn.Service.Dap
 				["stopAtEntry"] = breakAtBeginning,
 				["console"] = "internalConsole"
 			}, cancellationToken).ConfigureAwait(false);
+		}
 
+		/// <summary>
+		/// Sends the DAP "configurationDone" request, telling the adapter the IDE is done
+		/// configuring the session (setting breakpoints, exception filters, etc.) and the
+		/// debuggee may now actually start running. Must be called after <see cref="StartAsync"/>
+		/// and after any breakpoints have been sent via <see cref="SetBreakpointsAsync"/> -
+		/// most adapters (including SharpDbg) silently ignore breakpoints set afterwards.
+		/// </summary>
+		public async Task ConfigurationDoneAsync(CancellationToken cancellationToken = default)
+		{
 			await client.SendRequestAsync("configurationDone", null, cancellationToken).ConfigureAwait(false);
 
 			Started?.Invoke();
@@ -137,19 +156,32 @@ namespace Debugger.AddIn.Service.Dap
 		/// Replaces the full set of breakpoints for a single source file (DAP semantics: this is
 		/// not incremental - the whole list for the file is sent every time). Disabled breakpoints
 		/// should simply be omitted from <paramref name="breakpoints"/> by the caller. Conditions
-		/// are evaluated by the adapter itself, not by the IDE.
+		/// and hit conditions are evaluated by the adapter itself, not by the IDE - and only sent
+		/// at all if <see cref="Capabilities"/> says the connected adapter supports them.
 		/// </summary>
-		public async Task<IReadOnlyList<DapBreakpointVerification>> SetBreakpointsAsync(string fileName, IReadOnlyList<(int Line, string Condition)> breakpoints)
+		public async Task<IReadOnlyList<DapBreakpointVerification>> SetBreakpointsAsync(string fileName, IReadOnlyList<(int Line, string Condition, string HitCondition)> breakpoints)
 		{
 			if (client == null) {
 				return Array.Empty<DapBreakpointVerification>();
 			}
 
+			bool wantsCondition = breakpoints.Any(bp => !string.IsNullOrEmpty(bp.Condition));
+			bool wantsHitCondition = breakpoints.Any(bp => !string.IsNullOrEmpty(bp.HitCondition));
+			if (wantsCondition && !Capabilities.SupportsConditionalBreakpoints) {
+				OutputReceived?.Invoke("> Warning: the connected debug adapter does not support conditional breakpoints; conditions will be ignored.\n");
+			}
+			if (wantsHitCondition && !Capabilities.SupportsHitConditionalBreakpoints) {
+				OutputReceived?.Invoke("> Warning: the connected debug adapter does not support hit-count breakpoints; hit conditions will be ignored.\n");
+			}
+
 			var breakpointsArray = new JsonArray();
 			foreach (var bp in breakpoints) {
 				var entry = new JsonObject { ["line"] = bp.Line };
-				if (!string.IsNullOrEmpty(bp.Condition)) {
+				if (!string.IsNullOrEmpty(bp.Condition) && Capabilities.SupportsConditionalBreakpoints) {
 					entry["condition"] = bp.Condition;
+				}
+				if (!string.IsNullOrEmpty(bp.HitCondition) && Capabilities.SupportsHitConditionalBreakpoints) {
+					entry["hitCondition"] = bp.HitCondition;
 				}
 				breakpointsArray.Add(entry);
 			}
@@ -418,8 +450,20 @@ namespace Debugger.AddIn.Service.Dap
 
 		static string ResolveDotNetHost()
 		{
+			// DOTNET_HOST_PATH remains a supported explicit override (e.g. for scripted/CI runs
+			// that set it directly), but the primary source is now the same DotNetSdkService that
+			// MinimalMSBuildEngine and VsTestAdapter use - so build, debug, and test always agree
+			// on which SDK's dotnet host to run under, instead of the debugger silently reading a
+			// leftover process-inherited env var while the others use a different resolution.
 			string host = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
-			return !string.IsNullOrEmpty(host) ? host : "dotnet";
+			if (!string.IsNullOrEmpty(host))
+				return host;
+			// This can run on a background thread (called from WindowsDebugger's fire-and-forget
+			// StartAsync), but PropertyService (which DotNetSdkService reads through) is
+			// UI-thread-affinitized - marshal over instead of throwing
+			// "different thread owns it".
+			return SD.MainThread.InvokeIfRequired(() =>
+				ICSharpCode.SharpDevelop.Project.Sdk.DotNetSdkService.ResolveEffectiveSdk().DotnetExecutablePath);
 		}
 
 		static string ResolveAdapterDll()
@@ -448,6 +492,19 @@ namespace Debugger.AddIn.Service.Dap
 			}
 
 			return null;
+		}
+
+		static DapCapabilities ParseCapabilities(JsonObject initializeResponse)
+		{
+			JsonObject body = initializeResponse?["body"] as JsonObject;
+			var capabilities = new DapCapabilities { Raw = body };
+			if (body != null) {
+				capabilities.SupportsConditionalBreakpoints = body["supportsConditionalBreakpoints"] != null && body["supportsConditionalBreakpoints"].GetValue<bool>();
+				capabilities.SupportsHitConditionalBreakpoints = body["supportsHitConditionalBreakpoints"] != null && body["supportsHitConditionalBreakpoints"].GetValue<bool>();
+				capabilities.SupportsFunctionBreakpoints = body["supportsFunctionBreakpoints"] != null && body["supportsFunctionBreakpoints"].GetValue<bool>();
+				capabilities.SupportsLogPoints = body["supportsLogPoints"] != null && body["supportsLogPoints"].GetValue<bool>();
+			}
+			return capabilities;
 		}
 
 		static string FindRepoRoot(string startDirectory)

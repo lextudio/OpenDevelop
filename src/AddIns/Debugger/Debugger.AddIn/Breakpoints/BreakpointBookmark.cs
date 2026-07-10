@@ -37,9 +37,11 @@ namespace Debugger.AddIn.Breakpoints
 		bool isHealthy = true;
 		bool isEnabled = true;
 		string condition;
-		
+		string hitCondition;
+
 		public event EventHandler<EventArgs> ConditionChanged;
-		
+		public event EventHandler<EventArgs> HitConditionChanged;
+
 		public string Condition {
 			get { return condition; }
 			set {
@@ -47,6 +49,23 @@ namespace Debugger.AddIn.Breakpoints
 					condition = value;
 					if (ConditionChanged != null)
 						ConditionChanged(this, EventArgs.Empty);
+					Redraw();
+				}
+			}
+		}
+
+		/// <summary>
+		/// A DAP "hitCondition" expression (e.g. "5", "&gt;=5", "%3") - the adapter only stops once
+		/// the hit count satisfies this expression. Independent of <see cref="Condition"/>; a
+		/// breakpoint may have either, both, or neither set.
+		/// </summary>
+		public string HitCondition {
+			get { return hitCondition; }
+			set {
+				if (hitCondition != value) {
+					hitCondition = value;
+					if (HitConditionChanged != null)
+						HitConditionChanged(this, EventArgs.Empty);
 					Redraw();
 				}
 			}
@@ -116,12 +135,13 @@ namespace Debugger.AddIn.Breakpoints
 		
 		public override IImage Image {
 			get {
+				bool hasCondition = !string.IsNullOrEmpty(this.Condition) || !string.IsNullOrEmpty(this.HitCondition);
 				if (!this.IsEnabled)
 					return DisabledBreakpointImage;
 				else if (this.IsHealthy)
-					return string.IsNullOrEmpty(this.Condition) ? BreakpointImage : BreakpointConditionalImage;
+					return hasCondition ? BreakpointConditionalImage : BreakpointImage;
 				else
-					return string.IsNullOrEmpty(this.Condition) ? UnhealthyBreakpointImage : UnhealthyBreakpointConditionalImage;
+					return hasCondition ? UnhealthyBreakpointConditionalImage : UnhealthyBreakpointImage;
 			}
 		}
 		

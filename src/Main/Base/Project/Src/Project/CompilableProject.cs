@@ -211,10 +211,23 @@ namespace ICSharpCode.SharpDevelop.Project
 		[Browsable(false)]
 		public OutputType OutputType {
 			get {
+				// SDK-style projects conventionally omit <OutputType> entirely for libraries
+				// (e.g. test projects) -- GetEvaluatedProperty then returns "" (undefined MSBuild
+				// property, not null), so the old "?? Exe" fallback never even triggered; the
+				// empty string failed Enum.Parse and fell to the catch block's "Exe" default
+				// instead. That made OutputAssemblyFullPath compute a nonexistent
+                // "<AssemblyName>" (macOS/Linux apphost-shaped) or "<AssemblyName>.exe" path for
+				// what's actually a plain "<AssemblyName>.dll" library, breaking anything that
+				// needs the real build output (e.g. VsTestDiscoveryAdapter silently found no test
+				// assembly to discover tests from). Default to Library, matching the SDK's own
+				// implicit convention.
+				var value = GetEvaluatedProperty("OutputType");
+				if (string.IsNullOrEmpty(value))
+					return OutputType.Library;
 				try {
-					return (OutputType)Enum.Parse(typeof(OutputType), GetEvaluatedProperty("OutputType") ?? "Exe", true);
+					return (OutputType)Enum.Parse(typeof(OutputType), value, true);
 				} catch (ArgumentException) {
-					return OutputType.Exe;
+					return OutputType.Library;
 				}
 			}
 			set {

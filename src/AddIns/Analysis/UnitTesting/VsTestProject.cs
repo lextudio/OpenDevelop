@@ -96,6 +96,30 @@ namespace ICSharpCode.UnitTesting
 
 		public override void UpdateTestResult(TestResult result)
 		{
+			// This was a no-op, so completed test runs never updated the tree: od.unit-test.run
+			// would report completed=true/faulted=false (the VSTest run itself genuinely
+			// succeeded), but every test's Result stayed "None" forever, indistinguishable from
+			// "never run". Match the incoming result back to the VsTestMethod node it belongs to
+			// by display name (TestResultBuilder.Convert builds the SD TestResult's name from the
+			// same TestCase.DisplayName that VsTestMethod's own DisplayName came from at
+			// discovery time) and apply it.
+			var method = FindTestMethod(NestedTestCollection, result.Name);
+			if (method != null)
+				method.SetResult(result.ResultType);
+		}
+
+		static VsTestMethod FindTestMethod(IEnumerable<ITest> tests, string name)
+		{
+			foreach (var test in tests) {
+				if (test is VsTestMethod method && method.DisplayName == name)
+					return method;
+				if (test.NestedTests != null) {
+					var found = FindTestMethod(test.NestedTests, name);
+					if (found != null)
+						return found;
+				}
+			}
+			return null;
 		}
 
 		protected override bool IsTestClass(ITypeDefinition typeDefinition)

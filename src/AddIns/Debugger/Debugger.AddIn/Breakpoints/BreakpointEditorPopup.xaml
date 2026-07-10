@@ -20,6 +20,12 @@
 				             Content="Conditional"
 				             ToolTip="Conditional" />
 				<Separator />
+				<CheckBox x:Name="hitCountCheck"
+				          Checked="HitCountChecked"
+				          Unchecked="HitCountChecked"
+				          Content="Hit Count"
+				          ToolTip="Break only once the hit count satisfies this expression (e.g. 5, &gt;=5, %3)" />
+				<Separator />
 				<CheckBox Content="Enabled"
 				          IsChecked="{Binding IsEnabled}"
 				          ToolTip="Enabled" />
@@ -32,6 +38,16 @@
 				Visibility="{Binding IsChecked, ElementName=conditionalAction, Converter={StaticResource showWhenTrue}}"
 				BorderThickness="1">
 				<controls:AutoCompleteTextBox x:Name="condition" Text="{Binding Condition}" />
+			</Border>
+			<Border
+				Margin="2"
+				CornerRadius="2"
+				BorderBrush="DarkGray"
+				Padding="2"
+				Visibility="{Binding IsChecked, ElementName=hitCountCheck, Converter={StaticResource showWhenTrue}}"
+				BorderThickness="1">
+				<TextBox x:Name="hitCondition" Text="{Binding HitCondition}"
+				         ToolTip="Hit count expression, e.g. 5, &gt;=5, %3" />
 			</Border>
 		</StackPanel>
 	</Border>

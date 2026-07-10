@@ -41,65 +41,90 @@ namespace ICSharpCode.CodeCoverage
 	{
 		OpenCoverSettingsFactory settingsFactory = new OpenCoverSettingsFactory();
 		IFileSystem fileSystem = SD.FileSystem;
-		
+		AltCoverApplication currentApplication;
+
 		public override void Run()
 		{
 			ClearCodeCoverageResults();
-			
+
 			var coverageResultsReader = new CodeCoverageResultsReader();
 			var options = new TestExecutionOptions {
 				ModifyProcessStartInfoBeforeTestRun = (startInfo, tests) => {
-					OpenCoverApplication app = CreateOpenCoverApplication(startInfo, tests);
+					AltCoverApplication app = CreateAltCoverApplication(startInfo, tests);
 					coverageResultsReader.AddResultsFile(app.CodeCoverageResultsFileName);
-					return app.GetProcessStartInfo();
+					currentApplication = app;
+					// AltCover instruments ahead-of-time (unlike OpenCover, which wraps the test
+					// process at launch via the CLR profiler API), so the "prepare" step has to
+					// run to completion here, before the real test-runner process is launched -
+					// and the returned ProcessStartInfo is the caller's own, unwrapped: AltCover
+					// doesn't need to sit between the IDE and the test runner, it just needs the
+					// assemblies in the target directory already instrumented by the time the
+					// real test-runner process starts. See AltCoverApplication's class remarks.
+					RunToCompletion(app.GetPrepareProcessStartInfo());
+					return startInfo;
 				}
 			};
-			
+
 			ITestService testService = SD.GetRequiredService<ITestService>();
 			IEnumerable<ITest> allTests = GetTests(testService);
 			testService.RunTestsAsync(allTests, options)
 				.ContinueWith(t => AfterTestsRunTask(t, coverageResultsReader))
 				.FireAndForget();
 		}
-		
+
 		protected virtual IEnumerable<ITest> GetTests(ITestService testService)
 		{
 			return TestableCondition.GetTests(testService.OpenSolution, Owner);
 		}
-		
+
 		void ClearCodeCoverageResults()
 		{
 			SD.MainThread.InvokeIfRequired(() => CodeCoverageService.ClearResults());
 		}
-		
-		OpenCoverApplication CreateOpenCoverApplication(ProcessStartInfo startInfo, IEnumerable<ITest> tests)
+
+		AltCoverApplication CreateAltCoverApplication(ProcessStartInfo startInfo, IEnumerable<ITest> tests)
 		{
 			IProject project = tests.First().ParentProject.Project;
 			OpenCoverSettings settings = settingsFactory.CreateOpenCoverSettings(project);
-			var application = new OpenCoverApplication(startInfo, settings, project);
+			var application = new AltCoverApplication(startInfo, settings, project);
 			RemoveExistingCodeCoverageResultsFile(application.CodeCoverageResultsFileName);
 			CreateDirectoryForCodeCoverageResultsFile(application.CodeCoverageResultsFileName);
 			return application;
 		}
-		
+
 		void RemoveExistingCodeCoverageResultsFile(string fileName)
 		{
 			if (fileSystem.FileExists(FileName.Create(fileName))) {
 				fileSystem.Delete(FileName.Create(fileName));
 			}
 		}
-		
+
 		void CreateDirectoryForCodeCoverageResultsFile(string fileName)
 		{
 			string directory = Path.GetDirectoryName(fileName);
 			fileSystem.CreateDirectory(DirectoryName.Create(directory));
 		}
-		
+
+		static void RunToCompletion(ProcessStartInfo processStartInfo)
+		{
+			processStartInfo.UseShellExecute = false;
+			using (Process process = Process.Start(processStartInfo)) {
+				process.WaitForExit();
+			}
+		}
+
 		Task AfterTestsRunTask(Task task, CodeCoverageResultsReader coverageResultsReader)
 		{
 			if (task.Exception != null)
 				throw task.Exception;
-			
+
+			// Step 3 (Collect) - must run only after the test-runner process from step 2 (the
+			// unwrapped process the "Run" method above let start on its own) has fully exited,
+			// which is exactly the point AfterTestsRunTask is invoked at.
+			if (currentApplication != null) {
+				RunToCompletion(currentApplication.GetCollectProcessStartInfo());
+			}
+
 			ShowCodeCoverageResultsPadIfNoCriticalTestFailures();
 			DisplayCodeCoverageResults(coverageResultsReader);
 			return task;

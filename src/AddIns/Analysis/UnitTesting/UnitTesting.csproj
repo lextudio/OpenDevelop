@@ -10,7 +10,15 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.TestPlatform.TranslationLayer" Version="16.2.0" />
+    <!-- 16.2.0 (2019-era) predates ARM64 support in Architecture/RunConfiguration, so
+         vstest.console would misdetect the machine as X64 and fail to find a testhost on
+         Apple Silicon. -->
+    <PackageReference Include="Microsoft.TestPlatform.TranslationLayer" Version="17.12.0" />
+    <!-- TranslationLayer 17.12.0's .NETStandard2.0 dependency group (what a modern net11.0-windows
+         TFM resolves against) doesn't pull in ObjectModel transitively like the old 16.2.0's
+         net-framework-only dependency group did, so TestCase/TestResult/RunConfiguration/etc.
+         need it referenced directly. -->
+    <PackageReference Include="Microsoft.TestPlatform.ObjectModel" Version="17.12.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" />

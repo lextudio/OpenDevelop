@@ -17,6 +17,7 @@ using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Editor.Bookmarks;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;
+using ICSharpCode.SharpDevelop.Project.Sdk;
 using ICSharpCode.SharpDevelop.Workbench;
 using LeXtudio.DevFlow.Agent.Core;
 
@@ -25,6 +26,26 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 	[DevFlowUIThread]
 	public static class OpenDevelopDevFlowActions
 	{
+		[DevFlowAction("od.sdk.list", Description = "List discovered .NET SDKs and which one is currently selected/effective")]
+		public static string ListDotNetSdks()
+		{
+			var discovered = DotNetSdkService.DiscoverSdks();
+			var effective = DotNetSdkService.ResolveEffectiveSdk();
+			return JsonSerializer.Serialize(new {
+				selectedRootPath = DotNetSdkService.SelectedSdkRootPath,
+				effective = new { effective.Label, effective.RootPath, effective.HighestSdkVersion, origin = effective.Origin.ToString() },
+				sdks = discovered.Select(s => new { s.Label, s.RootPath, s.HighestSdkVersion, origin = s.Origin.ToString() }).ToArray()
+			});
+		}
+
+		[DevFlowAction("od.sdk.select", Description = "Select a .NET SDK by root path (empty string = use system default)")]
+		public static string SelectDotNetSdk(string rootPath)
+		{
+			DotNetSdkService.SelectedSdkRootPath = rootPath ?? string.Empty;
+			var effective = DotNetSdkService.ResolveEffectiveSdk();
+			return JsonSerializer.Serialize(new { success = true, effective = new { effective.Label, effective.RootPath, effective.HighestSdkVersion } });
+		}
+
 		[DevFlowAction("od.open-solution", Description = "Open a solution or project file by path (bypasses the native Open dialog)")]
 		public static string OpenSolution(string path)
 		{
@@ -450,6 +471,48 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 		
+		[DevFlowAction("od.unit-test.debug", Description = "Debug all tests in the open solution (UseDebugger=true) and wait for completion or timeout")]
+		public static async Task<string> DebugUnitTests(int timeoutSeconds = 60)
+		{
+			var s = GetTestService();
+			if (s == null)
+				return JsonSerializer.Serialize(new { started = false, error = "ITestService not available." });
+			var st = s.GetType();
+			var os = st.GetProperty("OpenSolution")?.GetValue(s);
+			if (os == null)
+				return JsonSerializer.Serialize(new { started = false, error = "No test solution open." });
+
+			if (itestInterfaceType == null)
+				itestInterfaceType = Type.GetType("ICSharpCode.UnitTesting.ITest, UnitTesting", throwOnError: false);
+			var optType = Type.GetType("ICSharpCode.UnitTesting.TestExecutionOptions, UnitTesting", throwOnError: false);
+			var opts = optType != null ? Activator.CreateInstance(optType) : null;
+			optType?.GetProperty("UseDebugger", BindingFlags.Instance | BindingFlags.Public)?.SetValue(opts, true);
+
+			var arr = Array.CreateInstance(itestInterfaceType ?? typeof(object), 1);
+			arr.SetValue(os, 0);
+
+			var run = st.GetMethods(BindingFlags.Instance | BindingFlags.Public)
+				.FirstOrDefault(m => m.Name == "RunTestsAsync" && m.GetParameters().Length == 2);
+			if (run == null)
+				return JsonSerializer.Serialize(new { started = false, error = "RunTestsAsync not found." });
+
+			// Bounded by Task.WhenAny so this action itself can never hang the DevFlow agent even
+			// if the underlying debugger session does (see the known "debugger can hang the whole
+			// app" issue) -- if it times out, the run task is left running in the background and
+			// the caller should expect to need od.debug.stop / an app restart to recover.
+			var task = (Task)run.Invoke(s, new object[] { arr, opts });
+			var done = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(timeoutSeconds)));
+			bool completed = done == task;
+			return JsonSerializer.Serialize(new {
+				started = true,
+				completed,
+				timedOut = !completed,
+				faulted = completed && task.IsFaulted,
+				error = completed && task.IsFaulted ? task.Exception?.InnerException?.Message : null,
+				isDebugging = SD.Debugger?.IsDebugging ?? false
+			});
+		}
+
 		[DevFlowAction("od.unit-test.output", Description = "Get the UnitTesting output pad text")]
 		public static string GetUnitTestOutput()
 		{
@@ -474,10 +537,23 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			else if (t.Name.Contains("Namespace")) typeName = "namespace";
 			else if (t.Name == "TestCollection" || t.Name.Contains("Class") || t.Name.Contains("VsTestClass")) typeName = "class";
 			else if (t.Name.Contains("Method")) typeName = "method";
-			var nested = t.GetProperty("NestedTests")?.GetValue(test) as System.Collections.IEnumerable;
+			var nested = GetMostDerivedProperty(t, "NestedTests")?.GetValue(test) as System.Collections.IEnumerable;
 			var kids = new List<object>();
 			if (nested != null) { foreach (var c in nested) { var n = WalkTestNode(c); if (n != null) kids.Add(n); } }
 			return new { displayName = name, result = res?.ToString() ?? "None", type = typeName, nestedTests = kids };
+		}
+
+		// Plain Type.GetProperty(name) throws AmbiguousMatchException when a subclass re-declares
+		// a property with a covariant return type (e.g. TestNamespace's "NestedTests" narrows
+		// TestCollection's) -- walk from the most-derived type down, taking the first
+		// DeclaredOnly match, instead of asking the whole hierarchy for one ambiguous "NestedTests".
+		static PropertyInfo GetMostDerivedProperty(Type type, string name)
+		{
+			for (var cur = type; cur != null; cur = cur.BaseType) {
+				var p = cur.GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+				if (p != null) return p;
+			}
+			return null;
 		}
 		
 		static IProject ResolveProject(string projectPath)
