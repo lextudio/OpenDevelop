@@ -48,6 +48,15 @@ if [[ "${1:-}" != "--no-build" ]]; then
 
   echo "==> Building OpenDevelop.Mvp.sln..."
   "${dotnet}" build "${sln}" -v minimal
+
+  # Microsoft.Build.Runtime 18.0.2 copies MSBuild .targets/.props files to every
+  # project's output directory via contentFiles/CopyToOutputDirectory=PreserveNewest.
+  # These stale copies confuse SharpDevelop's in-process MSBuild evaluation, which
+  # can load the wrong Microsoft.Common.CrossTargeting.targets and mis-resolve
+  # $(MSBuildToolsPath) to the output directory instead of the SDK directory.
+  # Remove them after build so only the SDK's own versions are visible.
+  find "${repo_root}/src" -path "*/bin/Debug/*" \( -name "*.targets" -o -name "*.props" \) \
+    ! -name "*.dll" ! -name "*.exe" -delete 2>/dev/null || true
 else
   echo "==> Skipping build (--no-build)."
 fi
