@@ -137,7 +137,10 @@ namespace ICSharpCode.Core.Presentation
 			{ "Bookmarks.DisabledBreakpoint", "Resources/VS2017/Breakpoint/DisabledBreakpoint_16x.png" },
 			{ "Bookmarks.UnhealthyBreakpoint", "Resources/VS2017/Breakpoint/UnhealthyBreakpoint_16x.png" },
 			{ "Bookmarks.UnhealthyBreakpointConditional", "Resources/VS2017/Breakpoint/UnhealthyBreakpointConditional_16x.png" },
-			{ "Bookmarks.ToggleMark", "Resources/VS2017/Bookmark/ToggleMark_16x.png" }
+			{ "Bookmarks.ToggleMark", "Resources/VS2017/Bookmark/ToggleMark_16x.png" },
+			{ "Bookmarks.GotoPrevInFile", "Resources/VS2017/Bookmark/GotoPrevInFile_16x.png" },
+			{ "Bookmarks.GotoNextInFile", "Resources/VS2017/Bookmark/GotoNextInFile_16x.png" },
+			{ "Bookmarks.ClearAll", "Resources/VS2017/Bookmark/ClearAll_16x.png" }
 		};
 		static readonly IResourceService resourceService;
 		

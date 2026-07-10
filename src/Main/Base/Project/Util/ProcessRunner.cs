@@ -82,13 +82,19 @@ namespace ICSharpCode.SharpDevelop
 	/// </summary>
 	public class ProcessRunner : IProcessRunner, IDisposable
 	{
-		public static Encoding OemEncoding {
-			get {
-				return NativeMethods.OemEncoding;
-			}
+	public static Encoding OemEncoding {
+		get {
+			if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+				return Encoding.UTF8;
+			return NativeMethods.OemEncoding;
 		}
-		
-		#region SafeProcessHandle
+	}
+
+	static bool IsWindowsPlatform {
+		get { return RuntimeInformation.IsOSPlatform(OSPlatform.Windows); }
+	}
+
+	#region SafeProcessHandle
 		[SecurityCritical]
 		sealed class SafeProcessHandle : SafeHandleZeroOrMinusOneIsInvalid
 		{
@@ -192,6 +198,10 @@ namespace ICSharpCode.SharpDevelop
 		{
 			if (string.IsNullOrEmpty(commandLine))
 				return new string[0];
+
+			if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+				return ManagedCommandLineToArgumentArray(commandLine);
+
 			int numberOfArgs;
 			char** arr = CommandLineToArgvW(commandLine, out numberOfArgs);
 			if (arr == null)
@@ -206,6 +216,69 @@ namespace ICSharpCode.SharpDevelop
 				// Free memory obtained by CommandLineToArgW.
 				LocalFree(new IntPtr(arr));
 			}
+		}
+
+		static string[] ManagedCommandLineToArgumentArray(string commandLine)
+		{
+			// Replicates CommandLineToArgvW parsing rules in managed code:
+			// - Arguments separated by whitespace
+			// - Quotes group arguments
+			// - 2n backslashes + " → n backslashes + end quote
+			// - (2n+1) backslashes + " → n backslashes + literal "
+			var args = new List<string>();
+			var sb = new System.Text.StringBuilder();
+			int i = 0;
+			while (i < commandLine.Length)
+			{
+				// Skip whitespace
+				if (char.IsWhiteSpace(commandLine[i]))
+				{
+					i++;
+					continue;
+				}
+				sb.Clear();
+				bool inQuotes = false;
+				while (i < commandLine.Length)
+				{
+					char c = commandLine[i];
+					if (c == '"')
+					{
+						int backslashCount = 0;
+						int j = i - 1;
+						while (j >= 0 && commandLine[j] == '\\')
+						{
+							backslashCount++;
+							j--;
+						}
+						// Append half the backslashes (integer division rounds down)
+						for (int k = 0; k < backslashCount / 2; k++)
+							sb.Append('\\');
+						if (backslashCount % 2 == 0)
+						{
+							// Even backslashes: quote is a delimiter
+							inQuotes = !inQuotes;
+						}
+						else
+						{
+							// Odd backslashes: quote is literal
+							sb.Append('"');
+						}
+						i++;
+					}
+					else if (!inQuotes && char.IsWhiteSpace(c))
+					{
+						break;
+					}
+					else
+					{
+						sb.Append(c);
+						i++;
+					}
+				}
+				if (sb.Length > 0)
+					args.Add(sb.ToString());
+			}
+			return args.ToArray();
 		}
 		
 		static readonly char[] charsNeedingQuoting = { ' ', '\t', '\n', '\v', '"' };
@@ -320,11 +393,12 @@ namespace ICSharpCode.SharpDevelop
 		public bool RedirectStandardOutputAndErrorToSingleStream { get; set; }
 		#endregion
 		
-		#region Start
-		bool wasStarted;
-		SafeProcessHandle safeProcessHandle;
-		
-		public void Start(string program, params string[] arguments)
+	#region Start
+	bool wasStarted;
+	SafeProcessHandle safeProcessHandle;
+	Process managedProcess;
+	
+	public void Start(string program, params string[] arguments)
 		{
 			StringBuilder commandLine = new StringBuilder();
 			AppendArgument(commandLine, program);
@@ -346,11 +420,16 @@ namespace ICSharpCode.SharpDevelop
 			}
 		}
 		
-		protected virtual void DoStart(string commandLine)
-		{
-			this.CommandLine = commandLine;
-			
-			const uint STARTF_USESTDHANDLES = 0x00000100;
+	protected virtual void DoStart(string commandLine)
+	{
+		this.CommandLine = commandLine;
+
+		if (!IsWindowsPlatform) {
+			DoStartManaged(commandLine);
+			return;
+		}
+
+		const uint STARTF_USESTDHANDLES = 0x00000100;
 			
 			const int STD_INPUT_HANDLE  = -10;
 			const int STD_OUTPUT_HANDLE = -11;
@@ -416,10 +495,40 @@ namespace ICSharpCode.SharpDevelop
 					}
 				}
 			}
-			//StartStreamCopyAfterProcessCreation();
+		//StartStreamCopyAfterProcessCreation();
+	}
+
+	void DoStartManaged(string commandLine)
+	{
+		string[] args = CommandLineToArgumentArray(commandLine);
+		if (args.Length == 0)
+			throw new InvalidOperationException("No program specified");
+
+		var psi = new ProcessStartInfo {
+			FileName = args[0],
+			UseShellExecute = false,
+			CreateNoWindow = (this.CreationFlags & ProcessCreationFlags.CreateNoWindow) == ProcessCreationFlags.CreateNoWindow,
+			WorkingDirectory = this.WorkingDirectory,
+			RedirectStandardOutput = this.RedirectStandardOutput || this.RedirectStandardOutputAndErrorToSingleStream,
+			RedirectStandardError = this.RedirectStandardError || this.RedirectStandardOutputAndErrorToSingleStream
+		};
+
+		for (int i = 1; i < args.Length; i++) {
+			psi.ArgumentList.Add(args[i]);
 		}
-		
-		static string BuildEnvironmentBlock(IEnumerable<KeyValuePair<string, string>> environment)
+
+		if (environmentVariables != null) {
+			foreach (var pair in environmentVariables) {
+				psi.Environment[pair.Key] = pair.Value;
+			}
+		}
+
+		managedProcess = new Process { StartInfo = psi };
+		managedProcess.Start();
+		wasStarted = true;
+	}
+	
+	static string BuildEnvironmentBlock(IEnumerable<KeyValuePair<string, string>> environment)
 		{
 			StringBuilder b = new StringBuilder();
 			foreach (var pair in environment.OrderBy(p => p.Key, StringComparer.OrdinalIgnoreCase)) {
@@ -450,15 +559,17 @@ namespace ICSharpCode.SharpDevelop
 		}
 		#endregion
 		
-		public void Dispose()
-		{
-			if (safeProcessHandle != null)
-				safeProcessHandle.Dispose();
-			if (standardOutput != null)
-				standardOutput.Dispose();
-			if (standardError != null)
-				standardError.Dispose();
-		}
+	public void Dispose()
+	{
+		if (safeProcessHandle != null)
+			safeProcessHandle.Dispose();
+		if (standardOutput != null)
+			standardOutput.Dispose();
+		if (standardError != null)
+			standardError.Dispose();
+		if (managedProcess != null)
+			managedProcess.Dispose();
+	}
 		
 		#region HasExited / ExitCode / Kill
 		public bool HasExited {
@@ -480,17 +591,19 @@ namespace ICSharpCode.SharpDevelop
 		/// Sends the kill signal to the process.
 		/// Does not wait for the process to complete to exit after being killed.
 		/// </summary>
-		public void Kill()
-		{
-			if (!wasStarted)
-				throw new InvalidOperationException("Process was not started");
-			if (!TerminateProcess(safeProcessHandle, -1)) {
-				int err = Marshal.GetLastWin32Error();
-				// If TerminateProcess fails, maybe it's because the process has already exited.
-				if (!WaitForExit(0))
-					throw new Win32Exception(err);
-			}
+	public void Kill()
+	{
+		if (!wasStarted)
+			throw new InvalidOperationException("Process was not started");
+		if (managedProcess != null) {
+			managedProcess.Kill();
+		} else if (!TerminateProcess(safeProcessHandle, -1)) {
+			int err = Marshal.GetLastWin32Error();
+			// If TerminateProcess fails, maybe it's because the process has already exited.
+			if (!WaitForExit(0))
+				throw new Win32Exception(err);
 		}
+	}
 		#endregion
 		
 		#region WaitForExit
@@ -515,30 +628,38 @@ namespace ICSharpCode.SharpDevelop
 			WaitForExit(Timeout.Infinite);
 		}
 		
-		public bool WaitForExit(int millisecondsTimeout)
-		{
-			if (hasExited)
-				return true;
-			if (!wasStarted)
-				throw new InvalidOperationException("Process was not yet started");
-			if (safeProcessHandle.IsClosed)
-				throw new ObjectDisposedException("ProcessRunner");
-			using (var waitHandle = new ProcessWaitHandle(safeProcessHandle)) {
-				if (waitHandle.WaitOne(millisecondsTimeout, false)) {
-					if (!GetExitCodeProcess(safeProcessHandle, out exitCode))
-						throw new Win32Exception();
-					// Wait until the output is processed
-//					if (standardOutputTask != null)
-//						standardOutputTask.Wait();
-//					if (standardErrorTask != null)
-//						standardErrorTask.Wait();
-					hasExited = true;
-				}
+	public bool WaitForExit(int millisecondsTimeout)
+	{
+		if (hasExited)
+			return true;
+		if (!wasStarted)
+			throw new InvalidOperationException("Process was not yet started");
+		if (managedProcess != null) {
+			bool exited = managedProcess.WaitForExit(millisecondsTimeout);
+			if (exited) {
+				exitCode = managedProcess.ExitCode;
+				hasExited = true;
 			}
 			return hasExited;
 		}
-		
-		readonly object lockObj = new object();
+		if (safeProcessHandle.IsClosed)
+			throw new ObjectDisposedException("ProcessRunner");
+		using (var waitHandle = new ProcessWaitHandle(safeProcessHandle)) {
+			if (waitHandle.WaitOne(millisecondsTimeout, false)) {
+				if (!GetExitCodeProcess(safeProcessHandle, out exitCode))
+					throw new Win32Exception();
+				// Wait until the output is processed
+//				if (standardOutputTask != null)
+//					standardOutputTask.Wait();
+//				if (standardErrorTask != null)
+//					standardErrorTask.Wait();
+				hasExited = true;
+			}
+		}
+		return hasExited;
+	}
+	
+	readonly object lockObj = new object();
 		TaskCompletionSource<object> waitForExitTCS;
 		ProcessWaitHandle waitForExitAsyncWaitHandle;
 		RegisteredWaitHandle waitForExitAsyncRegisteredWaitHandle;
@@ -546,23 +667,29 @@ namespace ICSharpCode.SharpDevelop
 		/// <summary>
 		/// Asynchronously waits for the process to exit.
 		/// </summary>
-		public Task WaitForExitAsync()
-		{
-			if (hasExited)
-				return Task.FromResult(true);
-			if (!wasStarted)
-				throw new InvalidOperationException("Process was not yet started");
-			if (safeProcessHandle.IsClosed)
-				throw new ObjectDisposedException("ProcessRunner");
-			lock (lockObj) {
-				if (waitForExitTCS == null) {
-					waitForExitTCS = new TaskCompletionSource<object>();
-					waitForExitAsyncWaitHandle = new ProcessWaitHandle(safeProcessHandle);
-					waitForExitAsyncRegisteredWaitHandle = ThreadPool.RegisterWaitForSingleObject(waitForExitAsyncWaitHandle, WaitForExitAsyncCallback, null, -1, true);
-				}
-				return waitForExitTCS.Task;
-			}
+	public Task WaitForExitAsync()
+	{
+		if (hasExited)
+			return Task.FromResult(true);
+		if (!wasStarted)
+			throw new InvalidOperationException("Process was not yet started");
+		if (managedProcess != null) {
+			return managedProcess.WaitForExitAsync().ContinueWith(_ => {
+				exitCode = managedProcess.ExitCode;
+				hasExited = true;
+			});
 		}
+		if (safeProcessHandle.IsClosed)
+			throw new ObjectDisposedException("ProcessRunner");
+		lock (lockObj) {
+			if (waitForExitTCS == null) {
+				waitForExitTCS = new TaskCompletionSource<object>();
+				waitForExitAsyncWaitHandle = new ProcessWaitHandle(safeProcessHandle);
+				waitForExitAsyncRegisteredWaitHandle = ThreadPool.RegisterWaitForSingleObject(waitForExitAsyncWaitHandle, WaitForExitAsyncCallback, null, -1, true);
+			}
+			return waitForExitTCS.Task;
+		}
+	}
 		
 		void WaitForExitAsyncCallback(object context, bool wasSignaled)
 		{
@@ -583,21 +710,31 @@ namespace ICSharpCode.SharpDevelop
 		AnonymousPipeServerStream standardOutput;
 		AnonymousPipeServerStream standardError;
 		
-		public Stream StandardOutput {
-			get {
-				if (standardOutput == null)
+	public Stream StandardOutput {
+		get {
+			if (managedProcess != null) {
+				if (!managedProcess.StartInfo.RedirectStandardOutput)
 					throw new InvalidOperationException(wasStarted ? "stdout was not redirected" : "Process not yet started");
-				return standardOutput;
+				return managedProcess.StandardOutput.BaseStream;
 			}
+			if (standardOutput == null)
+				throw new InvalidOperationException(wasStarted ? "stdout was not redirected" : "Process not yet started");
+			return standardOutput;
 		}
-		
-		public Stream StandardError {
-			get {
-				if (standardError == null)
+	}
+	
+	public Stream StandardError {
+		get {
+			if (managedProcess != null) {
+				if (!managedProcess.StartInfo.RedirectStandardError)
 					throw new InvalidOperationException(wasStarted ? "stderr was not redirected" : "Process not yet started");
-				return standardError;
+				return managedProcess.StandardError.BaseStream;
 			}
+			if (standardError == null)
+				throw new InvalidOperationException(wasStarted ? "stderr was not redirected" : "Process not yet started");
+			return standardError;
 		}
+	}
 		
 		/// <summary>
 		/// Opens a text reader around the standard output.

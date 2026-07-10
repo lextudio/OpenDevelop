@@ -43,19 +43,19 @@ public sealed class DevFlowAgentTests
         var tree = await _app.GetUITreeAsync();
 
         // The visual tree should have at least a root node.
-        Assert.True(tree.GetArrayLength() > 0, "UI tree is empty");
+        Assert.True(tree.GetProperty("elements").GetArrayLength() > 0, "UI tree is empty");
     }
 
     [Fact]
     public async Task InvokeActions_ListsRegisteredActions()
     {
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-        using var resp = await http.GetAsync("http://localhost:9223/api/v1/invoke/actions");
+        using var resp = await http.GetAsync($"{_app.DevFlowBaseUrl}/api/v1/invoke/actions");
         resp.EnsureSuccessStatusCode();
 
-        var actions = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var envelope = await resp.Content.ReadFromJsonAsync<JsonElement>();
 
-        // Should return a JSON array (possibly empty if no DevFlowAction methods are registered).
-        Assert.Equal(JsonValueKind.Array, actions.ValueKind);
+        // The endpoint wraps the list in {"actions": [...]}, not a bare array.
+        Assert.Equal(JsonValueKind.Array, envelope.GetProperty("actions").ValueKind);
     }
 }

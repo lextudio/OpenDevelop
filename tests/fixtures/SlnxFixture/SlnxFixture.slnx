@@ -1,0 +1,13 @@
+<Solution>
+  <Configurations>
+    <BuildType Name="Debug" />
+    <BuildType Name="Release" />
+  </Configurations>
+  <Folder Name="/docs/">
+    <File Path="readme.md" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="Lib/Lib.csproj" />
+    <Project Path="App/App.csproj" />
+  </Folder>
+</Solution>

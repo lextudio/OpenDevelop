@@ -18,10 +18,17 @@ namespace OpenDevelop.IntegrationTests;
 //        dotnet build tests/fixtures/SampleTestProject/SampleTestProject.csproj
 public sealed class OpenDevelopAppFixture : IAsyncLifetime
 {
-    // DevFlow agent default port: 9223; override via env var DEVFLOW_AGENT_PORT.
+    // SharpDevelop pins its DevFlow agent to 9299 (see DevFlowPort.cs), dedicated to this app so
+    // it doesn't collide with unrelated local services on the shared default (9223). Override via
+    // env var DEVFLOW_AGENT_PORT if needed.
     static readonly int Port = int.TryParse(
-        Environment.GetEnvironmentVariable("DEVFLOW_AGENT_PORT"), out var p) && p > 0 ? p : 9223;
+        Environment.GetEnvironmentVariable("DEVFLOW_AGENT_PORT"), out var p) && p > 0 ? p : 9299;
     static readonly string BaseUrl = $"http://localhost:{Port}";
+
+    // Exposed so tests that need a raw HttpClient (rather than InvokeAsync/GetStatusAsync) don't
+    // have to hardcode the port -- see the "InvokeActions_ListsRegisteredActions" bug where a
+    // hardcoded "localhost:9223" only worked by coincidence while the app's default matched 9223.
+    public string DevFlowBaseUrl => BaseUrl;
 
 	readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(120) };
 	readonly object _outputLock = new();
@@ -32,6 +39,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     public string FixtureSolutionPath { get; } = LocateFixtureProject();
     public string SolutionExplorerFixturePath { get; } = LocateSolutionExplorerFixture();
     public string DebugTestProjectPath { get; } = LocateDebugTestProject();
+    public string SlnxFixturePath { get; } = LocateSlnxFixture();
 
     public async ValueTask InitializeAsync()
     {
@@ -196,6 +204,19 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
             "Could not locate tests/fixtures/SolutionExplorerFixture/SolutionExplorerFixture.sln by walking up from " + AppContext.BaseDirectory);
     }
 
+    static string LocateSlnxFixture()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir, "tests", "fixtures", "SlnxFixture", "SlnxFixture.slnx");
+            if (File.Exists(candidate)) return candidate;
+            dir = Path.GetDirectoryName(dir);
+        }
+        throw new FileNotFoundException(
+            "Could not locate tests/fixtures/SlnxFixture/SlnxFixture.slnx by walking up from " + AppContext.BaseDirectory);
+    }
+
     static string LocateDebugTestProject()
     {
         var dir = AppContext.BaseDirectory;
@@ -249,6 +270,8 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 
         psi.Environment["MSBuildSDKsPath"] = Path.Combine(sdkDir, "Sdks");
         psi.Environment["MSBuildExtensionsPath"] = sdkDir;
+        psi.Environment["MSBuildToolsPath"] = sdkDir;
+        psi.Environment["MSBuildToolsVersion"] = "Current";
         psi.Environment["MSBUILDADDITIONALSDKRESOLVERSFOLDER_NET"] = Path.Combine(sdkDir, "SdkResolvers");
         psi.Environment["MSBUILD_NUGET_PATH"] = sdkDir;
 

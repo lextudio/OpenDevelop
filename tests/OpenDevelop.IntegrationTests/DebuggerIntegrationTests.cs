@@ -147,6 +147,111 @@ public sealed class DebuggerIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task ContinueDebug_HitsSecondBreakpoint()
+    {
+        var program = ProgramPath;
+        var firstLine = FindLine(program, "var message = ComputeGreeting(\"World\");");
+        var secondLine = FindLine(program, "Console.WriteLine(message);");
+
+        await _app.InvokeAsync("od.open-solution", _app.DebugTestProjectPath);
+        await _app.InvokeAsync("od.open-file", program);
+        await _app.InvokeAsync("od.debug.clear-breakpoints");
+        await _app.InvokeAsync("od.debug.set-breakpoint", program, firstLine);
+        await _app.InvokeAsync("od.debug.set-breakpoint", program, secondLine);
+
+        try
+        {
+            var start = await _app.InvokeAsync("od.debug.start", _app.DebugTestProjectPath, true, 45);
+            Assert.True(start.GetProperty("stopped").GetBoolean(), start.ToString());
+            Assert.Equal(firstLine, start.GetProperty("currentLine").GetInt32());
+
+            var cont = await _app.InvokeAsync("od.debug.continue", true, 30);
+            Assert.True(cont.GetProperty("stopped").GetBoolean(), cont.ToString());
+            Assert.Equal(secondLine, cont.GetProperty("currentLine").GetInt32());
+        }
+        finally
+        {
+            await _app.InvokeAsync("od.debug.stop");
+        }
+    }
+
+    [Fact]
+    public async Task DebugThreads_WhileStopped_ReturnsAtLeastOneThread()
+    {
+        var program = ProgramPath;
+        var breakpointLine = FindLine(program, "var message = ComputeGreeting(\"World\");");
+
+        await _app.InvokeAsync("od.open-solution", _app.DebugTestProjectPath);
+        await _app.InvokeAsync("od.open-file", program);
+        await _app.InvokeAsync("od.debug.clear-breakpoints");
+        await _app.InvokeAsync("od.debug.set-breakpoint", program, breakpointLine);
+
+        try
+        {
+            var start = await _app.InvokeAsync("od.debug.start", _app.DebugTestProjectPath, true, 45);
+            Assert.True(start.GetProperty("stopped").GetBoolean(), start.ToString());
+
+            var threads = await _app.InvokeAsync("od.debug.threads");
+            Assert.NotEmpty(threads.EnumerateArray());
+        }
+        finally
+        {
+            await _app.InvokeAsync("od.debug.stop");
+        }
+    }
+
+    [Fact]
+    public async Task DebugModules_WhileStopped_ReturnsAtLeastOneModule()
+    {
+        var program = ProgramPath;
+        var breakpointLine = FindLine(program, "var message = ComputeGreeting(\"World\");");
+
+        await _app.InvokeAsync("od.open-solution", _app.DebugTestProjectPath);
+        await _app.InvokeAsync("od.open-file", program);
+        await _app.InvokeAsync("od.debug.clear-breakpoints");
+        await _app.InvokeAsync("od.debug.set-breakpoint", program, breakpointLine);
+
+        try
+        {
+            var start = await _app.InvokeAsync("od.debug.start", _app.DebugTestProjectPath, true, 45);
+            Assert.True(start.GetProperty("stopped").GetBoolean(), start.ToString());
+
+            var modules = await _app.InvokeAsync("od.debug.modules");
+            Assert.NotEmpty(modules.EnumerateArray());
+        }
+        finally
+        {
+            await _app.InvokeAsync("od.debug.stop");
+        }
+    }
+
+    [Fact]
+    public async Task DebugOutput_AfterStart_CapturesDebuggerText()
+    {
+        var program = ProgramPath;
+        var breakpointLine = FindLine(program, "var message = ComputeGreeting(\"World\");");
+
+        await _app.InvokeAsync("od.open-solution", _app.DebugTestProjectPath);
+        await _app.InvokeAsync("od.open-file", program);
+        await _app.InvokeAsync("od.debug.clear-breakpoints");
+        await _app.InvokeAsync("od.debug.set-breakpoint", program, breakpointLine);
+
+        try
+        {
+            var start = await _app.InvokeAsync("od.debug.start", _app.DebugTestProjectPath, true, 45);
+            Assert.True(start.GetProperty("stopped").GetBoolean(), start.ToString());
+
+            var output = await _app.InvokeAsync("od.debug.output");
+            string text = output.GetProperty("text").GetString()!;
+            Assert.NotEmpty(text);
+        }
+        finally
+        {
+            await _app.InvokeAsync("od.debug.stop");
+        }
+    }
+
     string ProgramPath => Path.Combine(Path.GetDirectoryName(_app.DebugTestProjectPath)!, "Program.cs");
 
     static int FindLine(string path, string marker)

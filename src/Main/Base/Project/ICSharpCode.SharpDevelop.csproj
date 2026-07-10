@@ -43,7 +43,6 @@
          match the minimal ICSharpCode.TypeSystem.Abstractions replacement and would need a real reimplementation,
          not a stub. Not required for the WPF shell to boot. Src\Services\RefactoringService\ itself was
          physically deleted (see doc/technotes/csharp-roslyn.md, Phase 3) - it had no other referrers. -->
-    <Compile Remove="Src\Editor\Commands\ClassBookmarkSubmenuBuilder.cs" />
     <Compile Remove="Src\Editor\Commands\FindReferencesCommand.cs" />
     <Compile Remove="Src\Editor\Commands\ClassMemberMenuBuilder.cs" />
     <Compile Remove="Src\Gui\Dialogs\ExtractInterfaceDialog.cs" />

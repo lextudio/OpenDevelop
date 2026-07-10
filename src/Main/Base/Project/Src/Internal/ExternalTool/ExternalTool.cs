@@ -132,7 +132,7 @@ namespace ICSharpCode.SharpDevelop.Internal.ExternalTool
 			if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
 				return "\"" + filePath + "\"";
 			if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-				return "-e \"" + filePath + "\"";
+				return string.IsNullOrEmpty(filePath) ? "-e" : "-e \"" + filePath + "\"";
 			return "\"" + filePath + "\"";
 		}
 		

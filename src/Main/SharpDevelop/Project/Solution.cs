@@ -52,6 +52,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		public Solution(FileName fileName, IProjectChangeWatcher changeWatcher, IFileService fileService)
 		{
+			this.msBuildProjectCollection = CreateProjectCollection();
 			this.changeWatcher = changeWatcher;
 			this.fileService = fileService;
 			this.ConfigurationNames = new SolutionConfigurationOrPlatformNameCollection(this, false);
@@ -381,7 +382,21 @@ namespace ICSharpCode.SharpDevelop.Project
 		#endregion
 		
 		#region MSBuildProjectCollection
-		readonly Microsoft.Build.Evaluation.ProjectCollection msBuildProjectCollection = new Microsoft.Build.Evaluation.ProjectCollection();
+		readonly Microsoft.Build.Evaluation.ProjectCollection msBuildProjectCollection;
+		
+		Microsoft.Build.Evaluation.ProjectCollection CreateProjectCollection()
+		{
+			var collection = new Microsoft.Build.Evaluation.ProjectCollection();
+			string sdkPath = MSBuildInternals.GetLatestSdkPath();
+			if (sdkPath != null) {
+				foreach (var tv in collection.Toolsets.ToArray()) {
+					collection.RemoveToolset(tv.ToolsVersion);
+				}
+				collection.AddToolset(new Microsoft.Build.Evaluation.Toolset(
+					"Current", sdkPath, null, collection, null));
+			}
+			return collection;
+		}
 		
 		[Browsable(false)]
 		public Microsoft.Build.Evaluation.ProjectCollection MSBuildProjectCollection {

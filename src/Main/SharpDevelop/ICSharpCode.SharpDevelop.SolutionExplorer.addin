@@ -14,6 +14,17 @@
     <Identity name="ICSharpCode.SharpDevelop.SolutionExplorer" version="1.0"/>
   </Manifest>
 
+  <!-- Every class referenced below (SolutionExplorerController, SolutionExplorerPad, the
+       *SolutionExplorerCommand types) is compiled into the SharpDevelop.exe assembly itself
+       (src/Main/SharpDevelop/...), so AddIn.FindType needs a Runtime/Import pointing at the host
+       assembly to resolve them. Without this, FindType has zero runtimes to search and every
+       Service/Pad/MenuItem class attribute below silently resolves to null (logged as
+       "Cannot find class: ..." at AddInTree load time), so the service is never registered and
+       every DevFlow action depending on it (e.g. od.open-solution) 404s. -->
+  <Runtime>
+    <Import assembly=":SharpDevelop"/>
+  </Runtime>
+
   <!-- Reuses the native "SolutionOpen" condition evaluator already registered by
        ICSharpCode.SharpDevelop.addin (ICSharpCode.SharpDevelop.SolutionOpenConditionEvaluator,
        in Base/Project/Src/Internal/ConditionEvaluators/CombineOpenEvaluator.cs) - registering a

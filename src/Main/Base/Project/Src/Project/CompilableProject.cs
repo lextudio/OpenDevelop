@@ -60,7 +60,13 @@ namespace ICSharpCode.SharpDevelop.Project
 			switch (outputType) {
 				case OutputType.WinExe:
 				case OutputType.Exe:
-					return ".exe";
+					// The modern SDK's generated apphost has no extension on macOS/Linux (just
+					// AssemblyName) -- ".exe" is a Windows-only apphost naming convention. Using
+					// it unconditionally here made DotNetStartBehavior.CreateStartInfo() build a
+					// path that never exists on macOS/Linux, so "Start"/"Debug" always failed with
+					// ProjectStartException before ever launching the debugger.
+					return System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows)
+						? ".exe" : "";
 				case OutputType.Module:
 					return ".netmodule";
 				default:

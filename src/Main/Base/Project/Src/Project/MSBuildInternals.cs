@@ -74,8 +74,12 @@ namespace ICSharpCode.SharpDevelop.Project
 			if (latestSdk == null)
 				return;
 			
+			latestSdkPath = latestSdk;
+			
 			Environment.SetEnvironmentVariable("MSBuildSDKsPath", Path.Combine(latestSdk, "Sdks"));
 			Environment.SetEnvironmentVariable("MSBuildExtensionsPath", latestSdk);
+			Environment.SetEnvironmentVariable("MSBuildToolsPath", latestSdk);
+			Environment.SetEnvironmentVariable("MSBuildToolsVersion", "Current");
 			Environment.SetEnvironmentVariable("MSBUILDADDITIONALSDKRESOLVERSFOLDER_NET", Path.Combine(latestSdk, "SdkResolvers"));
 			Environment.SetEnvironmentVariable("MSBUILD_NUGET_PATH", latestSdk);
 			LoggingService.InfoFormatted("MSBuild environment initialized: DOTNET_ROOT={0}, MSBuildSDKsPath={1}, MSBUILDADDITIONALSDKRESOLVERSFOLDER_NET={2}",
@@ -126,10 +130,13 @@ namespace ICSharpCode.SharpDevelop.Project
 			if (!string.IsNullOrEmpty(processPath) && string.Equals(Path.GetFileName(processPath), "dotnet", StringComparison.OrdinalIgnoreCase))
 				return new DotnetInstallation { Root = Path.GetDirectoryName(processPath), HostPath = processPath };
 			
+			string fromPath = FindDotnetOnPath();
+			if (fromPath != null)
+				return new DotnetInstallation { Root = Path.GetDirectoryName(fromPath), HostPath = fromPath };
+			
 			foreach (string candidate in new[] {
 				"/usr/local/share/dotnet",
 				"/opt/homebrew/share/dotnet",
-				"/Users/lextm/uno-tools/librewpf/.dotnet",
 				Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "dotnet")
 			}) {
 				string dotnetHost = Path.Combine(candidate, "dotnet");
@@ -138,6 +145,31 @@ namespace ICSharpCode.SharpDevelop.Project
 			}
 			
 			return null;
+		}
+		
+		static string FindDotnetOnPath()
+		{
+			string pathEnv = Environment.GetEnvironmentVariable("PATH");
+			if (string.IsNullOrEmpty(pathEnv))
+				return null;
+			foreach (string dir in pathEnv.Split(Path.PathSeparator)) {
+				string candidate = Path.Combine(dir, "dotnet");
+				if (File.Exists(candidate))
+					return candidate;
+				if (Environment.OSVersion.Platform == PlatformID.Win32NT) {
+					string candidateExe = candidate + ".exe";
+					if (File.Exists(candidateExe))
+						return candidateExe;
+				}
+			}
+			return null;
+		}
+		
+		static string latestSdkPath;
+		
+		internal static string GetLatestSdkPath()
+		{
+			return latestSdkPath;
 		}
 		
 		internal static void UnloadProject(MSBuild.Evaluation.ProjectCollection projectCollection, MSBuild.Evaluation.Project project)

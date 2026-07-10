@@ -562,6 +562,16 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		
 		static Task InvokeTask(object target, string methodName, params object[] args)
 		{
+			// Calling an async method always returns a non-null Task immediately, even when the
+			// method-not-found case inside it resolves to a null *result* -- so callers checking
+			// "startTask != null" to decide whether the reflected method existed always saw a
+			// non-null Task and took the wrong branch (e.g. od.debug.start's StartDebug never
+			// fell through to project.Start(true), because reflection could never find
+			// "StartProjectAsync" on the debugger service, yet this always returned non-null).
+			// Do the existence check synchronously, before entering the async wrapper.
+			MethodInfo method = target?.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.Public);
+			if (method == null)
+				return null;
 			return InvokeObjectTask(target, methodName, args) as Task;
 		}
 		

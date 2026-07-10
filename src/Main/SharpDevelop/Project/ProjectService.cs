@@ -347,8 +347,14 @@ namespace ICSharpCode.SharpDevelop.Project
 			Solution solution = new Solution(fileName, new ProjectChangeWatcher(fileName), SD.FileService);
 			bool ok = false;
 			try {
-				using (var loader = new SolutionLoader(fileName)) {
-					loader.ReadSolution(solution, progress);
+				if (fileName.HasExtension(".slnx")) {
+					using (var loader = new SlnxSolutionLoader(fileName)) {
+						loader.ReadSolution(solution, progress);
+					}
+				} else {
+					using (var loader = new SolutionLoader(fileName)) {
+						loader.ReadSolution(solution, progress);
+					}
 				}
 				ok = true;
 			} finally {
