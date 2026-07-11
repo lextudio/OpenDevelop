@@ -8,7 +8,7 @@
 // That's not a shortcut - it's necessary. An earlier version of this class used
 // Microsoft.Build.Execution.BuildManager in-process, which failed with MSB4062
 // ("Could not load type 'Microsoft.Build.Framework.IMultiThreadableTask'") the moment an SDK task
-// actually ran. Root cause: this app's hosting SDK (librewpf's local net11.0 preview install)
+// actually ran. Root cause: this app's hosting SDK (librewpf's local net10.0 preview install)
 // bundles a Microsoft.NET.Build.Tasks.dll built against a newer Microsoft.Build.Framework API than
 // whatever copy of that assembly is already loaded in this process (evaluation-only MSBuild work,
 // like Solution Explorer's project-item listing, never hits this because it never executes a

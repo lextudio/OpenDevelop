@@ -194,8 +194,30 @@ namespace ICSharpCode.SharpDevelop.Debugging
 
 		public static void PrintDebugMessage(string msg)
 		{
+			// MessageViewCategory.AppendText is WPF-bound (backs an ObservableCollection the Output
+			// pad displays) and throws/no-ops off the UI thread. WindowsDebugger.StartAsync's
+			// synchronous prefix (everything before its first real await) runs on whatever thread
+			// called Start() - a DevFlow action handler thread, not necessarily the UI thread - so a
+			// cross-thread call here silently failed AND, worse, threw from inside the catch block
+			// that was supposed to clean up after a failed/aborted debug session (clearing the stale
+			// line marker, stopping the session, activating the Debug output channel), aborting that
+			// cleanup entirely and leaving the UI looking like debugging might still be active.
+			// Marshal internally so every caller, on any thread, is safe.
+			SD.MainThread.InvokeIfRequired(() => {
+				EnsureDebugCategory();
+				debugCategory.AppendText(msg);
+			});
+		}
+
+		/// <summary>
+		/// Brings the Output pad's "Debug" category to the front so the user actually sees debug
+		/// output - used when a debug session ends (especially on an adapter error / premature
+		/// debuggee exit) so the reason is visible instead of the session just silently vanishing.
+		/// </summary>
+		public static void ActivateDebugCategory()
+		{
 			EnsureDebugCategory();
-			debugCategory.AppendText(msg);
+			((ICSharpCode.SharpDevelop.Workbench.IOutputCategory)debugCategory).Activate(true);
 		}
 
 		public abstract void ToggleBreakpointAt(ITextEditor editor, int lineNumber);

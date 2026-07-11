@@ -1,6 +1,6 @@
 ﻿<Project Sdk="LibreWPF.Sdk/11.0.0-dev">
   <PropertyGroup>
-    <TargetFramework>net11.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>ICSharpCode.UnitTesting</RootNamespace>
     <AssemblyName>UnitTesting</AssemblyName>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
@@ -14,7 +14,7 @@
          vstest.console would misdetect the machine as X64 and fail to find a testhost on
          Apple Silicon. -->
     <PackageReference Include="Microsoft.TestPlatform.TranslationLayer" Version="17.12.0" />
-    <!-- TranslationLayer 17.12.0's .NETStandard2.0 dependency group (what a modern net11.0-windows
+    <!-- TranslationLayer 17.12.0's .NETStandard2.0 dependency group (what a modern net10.0-windows
          TFM resolves against) doesn't pull in ObjectModel transitively like the old 16.2.0's
          net-framework-only dependency group did, so TestCase/TestResult/RunConfiguration/etc.
          need it referenced directly. -->

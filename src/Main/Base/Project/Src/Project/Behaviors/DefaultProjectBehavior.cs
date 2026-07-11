@@ -56,7 +56,20 @@ namespace ICSharpCode.SharpDevelop.Project
 				// project behavior chain would not be processed!
 				psi = Project.CreateStartInfo();
 			} catch (ProjectStartException ex) {
-				MessageService.ShowError(ex.Message);
+				if (withDebugging) {
+					// A failure here (e.g. the build output is missing/stale) happens BEFORE
+					// SD.Debugger.Start() is ever called, so none of WindowsDebugger.StartAsync's
+					// own error handling (printing to the Debug output channel, activating it,
+					// clearing a stale paused-line marker) runs - the message box below was the
+					// ONLY feedback, and it left the Debug output channel looking untouched/empty
+					// as if nothing had even been attempted. Route through the same reporting path
+					// a debugger-level failure uses, so "debug failed" always looks the same to the
+					// user regardless of which layer the failure came from.
+					BaseDebuggerService.PrintDebugMessage("ERROR: " + ex.Message + "\n");
+					BaseDebuggerService.ActivateDebugCategory();
+				} else {
+					MessageService.ShowError(ex.Message);
+				}
 				return;
 			}
 			if (withDebugging) {

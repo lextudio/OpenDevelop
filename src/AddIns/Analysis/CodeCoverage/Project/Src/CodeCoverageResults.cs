@@ -171,7 +171,15 @@ namespace ICSharpCode.CodeCoverage
 		{
 			string id = reader.Attribute("uid").Value;
 			string fileName = reader.Attribute("fullPath").Value;
-			fileNames.Add(id, fileName);
+			// AltCover's OpenCover output lists <File> elements per <Module>, and a source file
+			// shared across assemblies (e.g. xunit's /_/src/common/*.cs, compiled into several
+			// modules) is emitted once per module that uses it - always with the SAME uid and the
+			// SAME fullPath. So the same (id -> fullPath) pair legitimately recurs across modules;
+			// the old fileNames.Add() threw "An item with the same key has already been added" on
+			// the first such recurrence, aborting the entire results parse (making every coverage
+			// run appear to produce no results). Verified against a real report: 741 distinct uids,
+			// none mapping to more than one path, so overwriting is safe.
+			fileNames[id] = fileName;
 		}
 
 		/// <summary>
@@ -181,7 +189,8 @@ namespace ICSharpCode.CodeCoverage
 		{
 			string id = reader.Attribute("hash").Value;
 			string name = reader.Element("ModuleName").Value;
-			assemblies.Add(id, name);
+			// Defensive: same reasoning as AddFileName - never let a duplicate key abort the parse.
+			assemblies[id] = name;
 		}
 	}
 }

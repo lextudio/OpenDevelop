@@ -19,10 +19,9 @@
 using System;
 using System.Collections.Generic;
 
-using ICSharpCode.NRefactory.Editor;
+using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
-using ICSharpCode.SharpDevelop.WinForms;
 
 namespace ICSharpCode.CodeCoverage
 {
@@ -55,8 +54,8 @@ namespace ICSharpCode.CodeCoverage
 				int endOffset = document.PositionToOffset(sequencePoint.EndLine, sequencePoint.EndColumn);
 				ITextMarker marker = markerService.Create(startOffset, endOffset - startOffset);
 				marker.Tag = typeof(CodeCoverageHighlighter);
-				marker.BackgroundColor = GetSequencePointBackColor(sequencePoint).ToWpf();
-				marker.ForegroundColor = GetSequencePointForeColor(sequencePoint).ToWpf();
+				marker.BackgroundColor = ToWpfColor(GetSequencePointBackColor(sequencePoint));
+				marker.ForegroundColor = ToWpfColor(GetSequencePointForeColor(sequencePoint));
 			}
 		}
 		
@@ -121,5 +120,14 @@ namespace ICSharpCode.CodeCoverage
 			return CodeCoverageOptions.NotVisitedForeColor;
 		}
 
+		/// <summary>
+		/// Replaces the old WinForms-only ICSharpCode.SharpDevelop.WinForms.WinFormsExtensions.ToWpf()
+		/// extension (that file is excluded from the build now - see ICSharpCode.SharpDevelop.csproj's
+		/// "WinForms\WinFormsExtensions.cs" Compile Remove) with an inline equivalent.
+		/// </summary>
+		static System.Windows.Media.Color ToWpfColor(System.Drawing.Color color)
+		{
+			return System.Windows.Media.Color.FromArgb(color.A, color.R, color.G, color.B);
+		}
 	}
 }

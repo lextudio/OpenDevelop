@@ -41,34 +41,41 @@ namespace ICSharpCode.CodeCoverage
 	{
 		OpenCoverSettingsFactory settingsFactory = new OpenCoverSettingsFactory();
 		IFileSystem fileSystem = SD.FileSystem;
-		AltCoverApplication currentApplication;
 
 		public override void Run()
 		{
 			ClearCodeCoverageResults();
 
 			var coverageResultsReader = new CodeCoverageResultsReader();
-			var options = new TestExecutionOptions {
-				ModifyProcessStartInfoBeforeTestRun = (startInfo, tests) => {
-					AltCoverApplication app = CreateAltCoverApplication(startInfo, tests);
-					coverageResultsReader.AddResultsFile(app.CodeCoverageResultsFileName);
-					currentApplication = app;
-					// AltCover instruments ahead-of-time (unlike OpenCover, which wraps the test
-					// process at launch via the CLR profiler API), so the "prepare" step has to
-					// run to completion here, before the real test-runner process is launched -
-					// and the returned ProcessStartInfo is the caller's own, unwrapped: AltCover
-					// doesn't need to sit between the IDE and the test runner, it just needs the
-					// assemblies in the target directory already instrumented by the time the
-					// real test-runner process starts. See AltCoverApplication's class remarks.
-					RunToCompletion(app.GetPrepareProcessStartInfo());
-					return startInfo;
-				}
-			};
 
 			ITestService testService = SD.GetRequiredService<ITestService>();
 			IEnumerable<ITest> allTests = GetTests(testService);
+
+			// AltCover instruments ahead-of-time (unlike OpenCover, which wraps the test process
+			// at launch via the CLR profiler API), so the "prepare" step just needs to run to
+			// completion before anything reads the target assemblies - it doesn't need to sit
+			// between the IDE and a specific spawned test-runner process. This used to run inside
+			// TestExecutionOptions.ModifyProcessStartInfoBeforeTestRun, a hook only ever invoked by
+			// the old process-spawning test runners (TestProcessRunnerBase) - VsTestRunner (the
+			// runner actually used for od.code-coverage.run today) executes VSTest in-process and
+			// never builds or reads a ProcessStartInfo, so that hook silently never fired: no
+			// instrumentation ever happened, no results ever appeared, and callers polling for
+			// results burned their full timeout every time. Running Prepare unconditionally here
+			// works for every runner, in-process or not.
+			AltCoverApplication app = CreateAltCoverApplication(allTests);
+			coverageResultsReader.AddResultsFile(app.CodeCoverageResultsFileName);
+			RunToCompletion(app.GetPrepareProcessStartInfo());
+
+			var options = new TestExecutionOptions();
+			// Capture `app` in the closure rather than a shared instance field: Run() can be
+			// invoked again (e.g. a second od.code-coverage.run) before this fire-and-forgotten
+			// continuation gets around to running its own Collect step - a field would have already
+			// been overwritten by the second call's own AltCoverApplication (a different working
+			// path/GUID - see that class's remarks), so the FIRST run's own Collect step ran against
+			// the SECOND run's working file, which didn't exist yet: "FileNotFoundException:
+			// coverage.<second-run-guid>.xml", and the first run's real results never got merged.
 			testService.RunTestsAsync(allTests, options)
-				.ContinueWith(t => AfterTestsRunTask(t, coverageResultsReader))
+				.ContinueWith(t => AfterTestsRunTask(t, app, coverageResultsReader))
 				.FireAndForget();
 		}
 
@@ -82,22 +89,39 @@ namespace ICSharpCode.CodeCoverage
 			SD.MainThread.InvokeIfRequired(() => CodeCoverageService.ClearResults());
 		}
 
-		AltCoverApplication CreateAltCoverApplication(ProcessStartInfo startInfo, IEnumerable<ITest> tests)
+		AltCoverApplication CreateAltCoverApplication(IEnumerable<ITest> tests)
 		{
-			IProject project = tests.First().ParentProject.Project;
+			IProject project = FindProject(tests);
 			OpenCoverSettings settings = settingsFactory.CreateOpenCoverSettings(project);
-			var application = new AltCoverApplication(startInfo, settings, project);
-			RemoveExistingCodeCoverageResultsFile(application.CodeCoverageResultsFileName);
-			CreateDirectoryForCodeCoverageResultsFile(application.CodeCoverageResultsFileName);
+			var application = new AltCoverApplication(settings, project);
+			// Each AltCoverApplication instance writes to its own unique working path (see that
+			// class's remarks) rather than the shared stable CodeCoverageResultsFileName, so there
+			// is no old file at that unique path to remove - just make sure the directory exists.
+			CreateDirectoryForCodeCoverageResultsFile(application.WorkingResultsFileName);
 			return application;
 		}
 
-		void RemoveExistingCodeCoverageResultsFile(string fileName)
+		// RunAllTestsWithCodeCoverageCommand.GetTests() passes the *solution* root node (whose
+		// ParentProject is always null - see TestSolution.ParentProject) rather than a test
+		// belonging directly to a project, so tests.First().ParentProject.Project threw a
+		// NullReferenceException the moment this method actually ran (previously masked entirely:
+		// this used to execute inside TestExecutionOptions.ModifyProcessStartInfoBeforeTestRun,
+		// a hook VsTestRunner never invokes - see the comment in Run() above). Walk down to the
+		// first node that is itself an ITestProject, or already has one as its ParentProject.
+		static IProject FindProject(IEnumerable<ITest> tests)
 		{
-			if (fileSystem.FileExists(FileName.Create(fileName))) {
-				fileSystem.Delete(FileName.Create(fileName));
+			foreach (ITest test in tests) {
+				if (test is ITestProject testProject)
+					return testProject.Project;
+				if (test.ParentProject != null)
+					return test.ParentProject.Project;
+				IProject found = FindProject(test.NestedTests);
+				if (found != null)
+					return found;
 			}
+			return null;
 		}
+
 
 		void CreateDirectoryForCodeCoverageResultsFile(string fileName)
 		{
@@ -113,7 +137,7 @@ namespace ICSharpCode.CodeCoverage
 			}
 		}
 
-		Task AfterTestsRunTask(Task task, CodeCoverageResultsReader coverageResultsReader)
+		Task AfterTestsRunTask(Task task, AltCoverApplication app, CodeCoverageResultsReader coverageResultsReader)
 		{
 			if (task.Exception != null)
 				throw task.Exception;
@@ -121,9 +145,12 @@ namespace ICSharpCode.CodeCoverage
 			// Step 3 (Collect) - must run only after the test-runner process from step 2 (the
 			// unwrapped process the "Run" method above let start on its own) has fully exited,
 			// which is exactly the point AfterTestsRunTask is invoked at.
-			if (currentApplication != null) {
-				RunToCompletion(currentApplication.GetCollectProcessStartInfo());
-			}
+			RunToCompletion(app.GetCollectProcessStartInfo());
+			// Collect wrote the merged report to this run's unique working path (see
+			// AltCoverApplication's remarks) - promote it onto the stable, well-known path
+			// coverageResultsReader (below) and SolutionCodeCoverageResults expect, now that
+			// collection has genuinely finished and there's nothing left to race with.
+			app.PromoteResultsToStableFileName();
 
 			ShowCodeCoverageResultsPadIfNoCriticalTestFailures();
 			DisplayCodeCoverageResults(coverageResultsReader);

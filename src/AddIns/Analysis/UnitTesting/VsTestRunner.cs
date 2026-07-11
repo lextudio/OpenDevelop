@@ -44,6 +44,14 @@ namespace ICSharpCode.UnitTesting
 				testCases,
 				result => {
 					var converted = resultBuilder.Convert(result);
+					// Echo each result to the run's output writer (the UnitTesting output pad).
+					// VSTest runs in-process here and never surfaces its per-test console lines to
+					// this writer, so without this the pad stayed completely empty after a run -
+					// there was no textual record of what ran or how it went. Write the
+					// fully-qualified test name and its outcome (plus any failure message).
+					output.WriteLine("{0} {1}", converted.Name, converted.ResultType);
+					if (!string.IsNullOrEmpty(converted.Message))
+						output.WriteLine(converted.Message);
 					OnTestFinished(new TestFinishedEventArgs(converted));
 				},
 				() => {

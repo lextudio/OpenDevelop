@@ -151,6 +151,20 @@ namespace ICSharpCode.UnitTesting
 		
 		protected virtual void OnNestedTestsInitialized()
 		{
+			RebindCompositeResultToNestedTests();
+		}
+
+		/// <summary>
+		/// Re-establishes the composite-result binding once the nested-test collection actually
+		/// exists. BindResultToCompositeResultOfNestedTests(), when called from a constructor
+		/// before nestedTests is initialized, only sets the intent flag and defers; this completes
+		/// the deferred binding. Exposed as protected so a subclass whose OnNestedTestsInitialized
+		/// override does NOT chain to base (e.g. VsTestProject, which replaces the base's parser-
+		/// based type discovery with VSTest discovery) can still restore the composite binding
+		/// rather than silently leaving its node's Result stuck at None.
+		/// </summary>
+		protected void RebindCompositeResultToNestedTests()
+		{
 			// If we're supposed to be bound to the composite result of the nested tests,
 			// but the nested test collection wasn't initialized yet,
 			// we will recreate the binding.

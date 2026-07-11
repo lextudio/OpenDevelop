@@ -46,6 +46,14 @@ namespace ICSharpCode.UnitTesting
 				throw new ArgumentNullException("resourceService");
 			this.testService = testService;
 			this.resourceService = resourceService;
+			// The root "All Tests" node must reflect the composite result of its projects, exactly
+			// as every other container node does (TestProjectBase, TestNamespace, VsTestClass all
+			// bind in their own constructors). Without this the top node stayed TestResultType.None
+			// (no colour) even when a test below it failed - the failure colour propagated up the
+			// class/namespace/project chain but stopped at the project level and never reached the
+			// solution root. Binding tolerates being called before any project is added (it
+			// re-subscribes via OnNestedTestsInitialized once the nested collection exists).
+			BindResultToCompositeResultOfNestedTests();
 			SD.ProjectService.AllProjects.CollectionChanged += OnProjectsCollectionChanged;
 			SD.ParserService.LoadSolutionProjectsThread.Finished += SD_ParserService_LoadSolutionProjectsThread_Finished;
 			foreach (var project in SD.ProjectService.AllProjects) {

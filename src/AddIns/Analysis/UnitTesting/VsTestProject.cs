@@ -26,6 +26,13 @@ namespace ICSharpCode.UnitTesting
 
 		protected override void OnNestedTestsInitialized()
 		{
+			// Deliberately does NOT chain to TestProjectBase.OnNestedTestsInitialized (that does
+			// the old Roslyn/parser-based type walk this class replaced with VSTest discovery),
+			// but MUST still restore the composite-result binding that TestBase sets up - without
+			// this the project node's Result stayed None forever, so a failing test coloured its
+			// class/namespace nodes but the colour never propagated up to the project node or the
+			// "All Tests" solution root above it.
+			RebindCompositeResultToNestedTests();
 			TriggerDiscovery();
 		}
 

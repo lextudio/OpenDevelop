@@ -30,30 +30,19 @@ namespace ICSharpCode.UnitTesting
 	{
 		IMessageService messageService;
 		IDebuggerService debugger;
-		ITestResultsReader testResultsReader;
-		
+
 		public TestDebuggerBase()
-			: this(SD.Debugger,
-				SD.MessageService,
-				new TestResultsReader())
+			: this(SD.Debugger, SD.MessageService)
 		{
 		}
-		
+
 		public TestDebuggerBase(IDebuggerService debuggerService,
-			IMessageService messageService,
-			ITestResultsReader testResultsReader)
+			IMessageService messageService)
 		{
 			this.debugger = debuggerService;
 			this.messageService = messageService;
-			this.testResultsReader = testResultsReader;
-			
-			testResultsReader.TestFinished += OnTestFinished;
 		}
-		
-		protected ITestResultsReader TestResultsReader {
-			get { return testResultsReader; }
-		}
-		
+
 		public override void Start(IEnumerable<ITest> selectedTests)
 		{
 			ProcessStartInfo startInfo = GetProcessStartInfo(selectedTests);
@@ -80,7 +69,6 @@ namespace ICSharpCode.UnitTesting
 		
 		void Start(ProcessStartInfo startInfo)
 		{
-			testResultsReader.Start();
 			StartDebugger(startInfo);
 		}
 		
@@ -103,7 +91,6 @@ namespace ICSharpCode.UnitTesting
 		void DebugStopped(object source, EventArgs e)
 		{
 			debugger.DebugStopped -= DebugStopped;
-			testResultsReader.Join();
 			OnAllTestsFinished();
 		}
 		
@@ -116,8 +103,6 @@ namespace ICSharpCode.UnitTesting
 		
 		public override void Dispose()
 		{
-			testResultsReader.Dispose();
-			testResultsReader.TestFinished -= OnTestFinished;
 		}
 	}
 }

@@ -202,7 +202,22 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 					return match;
 			}
 
-			var systemDefault = discovered.FirstOrDefault(s => s.Origin == DotNetSdkOrigin.System);
+			// Prefer the highest-versioned System-origin SDK, not just the first one discovered:
+			// DiscoverSdks() puts ResolvePathDotnetRoot()'s result (the literal "dotnet" on PATH)
+			// first specifically so that a plain FirstOrDefault would prefer it - but that silently
+			// breaks if PATH resolution comes back empty/differently in a given process's inherited
+			// environment (e.g. a child process launched with a trimmed/altered PATH), in which case
+			// FirstOrDefault falls through to whatever fixed candidate (like "~/.dotnet") happens to
+			// come next in the well-known-paths list, even when that's a much older SDK than another
+			// perfectly good one sitting right next to it (observed: an ancient standalone .NET 8 SDK
+			// under ~/.dotnet winning over a current Homebrew .NET 10 install, silently breaking
+			// evaluation of any net10.0+-targeted project - Microsoft.NET.Sdk from an old SDK doesn't
+			// understand newer TFMs/item-default conventions correctly). Version-sort instead so the
+			// outcome doesn't depend on PATH-resolution succeeding or on candidate enumeration order.
+			var systemDefault = discovered
+				.Where(s => s.Origin == DotNetSdkOrigin.System)
+				.OrderByDescending(s => Version.TryParse(s.HighestSdkVersion?.Split('-')[0], out var v) ? v : new Version(0, 0))
+				.FirstOrDefault();
 			if (systemDefault != null)
 				return systemDefault;
 

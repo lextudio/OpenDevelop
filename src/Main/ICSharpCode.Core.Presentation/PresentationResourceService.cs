@@ -69,9 +69,11 @@ namespace ICSharpCode.Core.Presentation
 			{ "Icons.16x16.BuildCombine", "Resources/VS2017/BuildSolution/BuildSolution_16x.png" },
 			{ "Icons.16x16.BuildCurrentSelectedProject", "Resources/VS2017/BuildSelection/BuildSelection_16x.png" },
 			{ "Icons.16x16.RunProgramIcon", "Resources/VS2017/Run/Run_16x.png" },
+			{ "Icons.16x16.RunAllIcon", "Resources/VS2017/RunTest/RunTest_16x.png" },
 			{ "Icons.16x16.Debug.StartWithoutDebugging", "Resources/VS2017/StartWithoutDebug/StartWithoutDebug_16x.png" },
 			{ "Icons.16x16.Debug.Continue", "Resources/VS2017/Run/Run_16x.png" },
 			{ "Icons.16x16.Debug.Break", "Resources/VS2017/Pause/Pause_16x.png" },
+			{ "Icons.16x16.Debug.StopProcess", "Resources/VS2017/Stop/Stop_16x.png" },
 			{ "Icons.16x16.StopProcess", "Resources/VS2017/Stop/Stop_16x.png" },
 			{ "Icons.16x16.Debug.StepOver", "Resources/VS2017/StepOver/StepOver_16x.png" },
 			{ "Icons.16x16.Debug.StepInto", "Resources/VS2017/StepIn/StepIn_16x.png" },
@@ -129,6 +131,17 @@ namespace ICSharpCode.Core.Presentation
 			// Output Pad toolbar icons.
 			{ "OutputPad.Toolbar.ClearOutputWindow", "Resources/VS2017/ClearWindowContent/ClearWindowContent_16x.png" },
 			{ "OutputPad.Toolbar.ToggleWordWrap", "Resources/VS2017/WordWrap/WordWrap_16x.png" },
+
+			// Unit Tests Pad toolbar icons.
+			{ "Icons.16x16.OpenCollection", "Resources/VS2017/ExpandAll/ExpandAll_16x.png" },
+			{ "Icons.16x16.Collection", "Resources/VS2017/CollapseAll/CollapseAll_16x.png" },
+			{ "Icons.16x16.Options", "Resources/VS2017/Settings/Settings_16x.png" },
+			{ "PadIcons.NUnitTest", "Resources/VS2017/Test/Test_16x.png" },
+
+			// Code Coverage Pad icons.
+			{ "CodeCoverage.Icons.16x16.Pad", "Resources/VS2017/CodeCoverage/CodeCoverage_16x.png" },
+			{ "CodeCoverage.Icons.16x16.File", "Resources/VS2017/CodeCoverage/CodeCoverage_16x.png" },
+			{ "CodeCoverage.Icons.16x16.Run", "Resources/VS2017/RunTest/RunTest_16x.png" },
 
 			// IconBarMargin/Bookmark margin icons (breakpoints, bookmarks).
 			// Mapped via "Bookmarks.*" resource name used by BreakpointBookmark / BookmarkBase.

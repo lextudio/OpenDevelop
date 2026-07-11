@@ -69,19 +69,19 @@ namespace ICSharpCode.CodeCoverage
 	public class AltCoverApplication
 	{
 		string fileName = String.Empty;
-		ProcessStartInfo targetProcessStartInfo;
 		OpenCoverSettings settings;
 		IProject project;
 
+		readonly string workingResultsFileName;
+
 		public AltCoverApplication(
-			ProcessStartInfo targetProcessStartInfo,
 			OpenCoverSettings settings,
 			IProject project)
 		{
-			this.targetProcessStartInfo = targetProcessStartInfo;
 			this.settings = settings;
 			this.project = project;
 			GetAltCoverApplicationFileName();
+			workingResultsFileName = MakeWorkingResultsFileName();
 		}
 
 		void GetAltCoverApplicationFileName()
@@ -89,22 +89,30 @@ namespace ICSharpCode.CodeCoverage
 			// Mirrors OpenCoverApplication's "bin\Tools\OpenCover\OpenCover.Console.exe" bundling
 			// convention, but bundles AltCover's net8.0 build (a managed dll, run via "dotnet",
 			// see ResolveDotNetHost()) rather than a native exe - see class remarks above for why.
-			fileName = Path.Combine(FileUtility.ApplicationRootPath, @"bin\Tools\AltCover\AltCover.dll");
+			// Path.Combine treats a literal "bin\Tools\..." string as a single path segment on
+			// non-Windows platforms (backslash isn't a separator there), so the previous
+			// @"bin\Tools\AltCover\AltCover.dll" never resolved to a real file on macOS/Linux -
+			// AltCover's prepare/collect steps silently no-op against a nonexistent path, so no
+			// results ever appear and od.code-coverage.run's result-polling loop burns its full
+			// timeout. Combine each segment separately so Path.Combine uses the platform separator.
+			//
+			// Also: use AppDomain.CurrentDomain.BaseDirectory, not FileUtility.ApplicationRootPath.
+			// CodeCoverage.csproj's DeployAltCoverTool target - by design (see that target's own
+			// comment) - copies AltCover's files under the exe's own output directory
+			// (bin/Debug/<tfm>/bin/Tools/AltCover), on the assumption that ApplicationRootPath
+			// "resolves to AppDomain.CurrentDomain.BaseDirectory at runtime". That assumption is
+			// wrong: ApplicationRootPath (SharpDevelopMain.FindApplicationRootPath) walks up from
+			// the exe looking for a data/resources/languages/LanguageDefinition.xml marker file,
+			// which happens to exist at this repo's root - so it resolves there instead, well
+			// above where the tool is actually deployed, and the prepare/collect processes always
+			// launched against a nonexistent path.
+			fileName = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "bin", "Tools", "AltCover", "AltCover.dll");
 			fileName = Path.GetFullPath(fileName);
 		}
 
 		public string FileName {
 			get { return fileName; }
 			set { fileName = value; }
-		}
-
-		public string Target {
-			get { return targetProcessStartInfo.FileName; }
-		}
-
-		public string GetTargetArguments()
-		{
-			return targetProcessStartInfo.Arguments;
 		}
 
 		public string GetTargetWorkingDirectory()
@@ -114,6 +122,49 @@ namespace ICSharpCode.CodeCoverage
 
 		public string CodeCoverageResultsFileName {
 			get { return new ProjectCodeCoverageResultsFileName(project).FileName; }
+		}
+
+		// Every AltCover-instrumented process (not just the actual test run - a plain VSTest
+		// *discovery* pass against the in-place-instrumented assembly counts too, and the IDE
+		// triggers those on its own) registers a process-exit handler that flushes recorded visits
+		// to the report path given to Prepare/Collect via -r. Two coverage runs (or a coverage run
+		// racing an incidental discovery pass) close enough together then throw "IOException: ...
+		// being used by another process" or "FileNotFoundException" fighting over the SAME shared
+		// CodeCoverageResultsFileName. Give every AltCoverApplication instance (one per Run()) a
+		// unique working path instead, so no two runs/processes can ever collide - then copy the
+		// finished result onto the stable CodeCoverageResultsFileName in PromoteResultsToStableFileName()
+		// once collection genuinely succeeds, since CodeCoverageService.SolutionLoaded reads that
+		// well-known per-project path (not this instance) to restore last known results when a
+		// solution is reopened.
+		public string WorkingResultsFileName {
+			get { return workingResultsFileName; }
+		}
+
+		string MakeWorkingResultsFileName()
+		{
+			string stable = CodeCoverageResultsFileName;
+			string directory = Path.GetDirectoryName(stable);
+			string extension = Path.GetExtension(stable);
+			string baseName = Path.GetFileNameWithoutExtension(stable);
+			return Path.Combine(directory ?? string.Empty, baseName + "." + Guid.NewGuid().ToString("N") + extension);
+		}
+
+		/// <summary>
+		/// Copies the just-collected report from this run's unique working path onto the stable,
+		/// well-known per-project path other code (CodeCoverageResultsReader, SolutionCodeCoverageResults)
+		/// expects, then removes the working copy. Call only after GetCollectProcessStartInfo()'s
+		/// process has exited successfully.
+		/// </summary>
+		public void PromoteResultsToStableFileName()
+		{
+			if (!File.Exists(workingResultsFileName))
+				return;
+			string stable = CodeCoverageResultsFileName;
+			string stableDirectory = Path.GetDirectoryName(stable);
+			if (!string.IsNullOrEmpty(stableDirectory))
+				Directory.CreateDirectory(stableDirectory);
+			File.Copy(workingResultsFileName, stable, overwrite: true);
+			File.Delete(workingResultsFileName);
 		}
 
 		/// <summary>
@@ -158,7 +209,7 @@ namespace ICSharpCode.CodeCoverage
 			var arguments = new StringBuilder();
 			arguments.AppendFormat("-i \"{0}\" ", targetDir);
 			arguments.Append("--inplace --save ");
-			arguments.AppendFormat("--reportFormat OpenCover -r \"{0}\" ", CodeCoverageResultsFileName);
+			arguments.AppendFormat("--reportFormat OpenCover -r \"{0}\" ", WorkingResultsFileName);
 			AppendIncludedItems(arguments);
 			AppendExcludedItems(arguments);
 			return arguments.ToString().Trim();
@@ -168,7 +219,13 @@ namespace ICSharpCode.CodeCoverage
 		{
 			string targetDir = GetTargetWorkingDirectory();
 			var arguments = new StringBuilder();
-			arguments.AppendFormat("Runner -r \"{0}\" ", targetDir);
+			// --collect is required: without it, "Runner" tries to launch a process itself (needs
+			// -x/--executable) rather than processing the already-recorded raw coverage data from
+			// the (already-completed) unwrapped test run - omitting it made AltCover reject the
+			// command entirely and print its usage/help text instead of collecting anything, so
+			// results never appeared (verified end-to-end: -r alone above shows help; with
+			// --collect it correctly reports real visited classes/methods/points).
+			arguments.AppendFormat("Runner -r \"{0}\" --collect ", targetDir);
 			return arguments.ToString().Trim();
 		}
 

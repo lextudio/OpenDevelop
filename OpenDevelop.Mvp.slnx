@@ -47,6 +47,9 @@
   <Folder Name="/src/AddIns/Analysis/UnitTesting/">
     <Project Path="src/AddIns/Analysis/UnitTesting/UnitTesting.csproj" />
   </Folder>
+  <Folder Name="/src/AddIns/Analysis/CodeCoverage/">
+    <Project Path="src/AddIns/Analysis/CodeCoverage/Project/CodeCoverage.csproj" />
+  </Folder>
   <Project Path="src/Main/Base/Project/ICSharpCode.SharpDevelop.csproj" />
   <Project Path="externals/cps/src/ProjectSystem/Microsoft.VisualStudio.ProjectSystem.Shim.csproj" />
   <Project Path="externals/cps/src/ProjectSystemManaged/Microsoft.VisualStudio.ProjectSystem.Managed.csproj" />

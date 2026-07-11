@@ -523,7 +523,122 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			var text = mv?.GetType().GetProperty("Text")?.GetValue(mv) as string;
 			return JsonSerializer.Serialize(new { category = "UnitTesting", text = text ?? string.Empty });
 		}
-		
+
+		// --- Code Coverage Actions ---
+		// Reflection-based against the CodeCoverage addin assembly, same pattern as the Unit
+		// Testing actions above - SharpDevelop.csproj doesn't (and shouldn't) hard-reference an
+		// addin assembly just to expose test-automation hooks for it.
+
+		static Type codeCoverageServiceType;
+		static Type runAllTestsWithCodeCoverageCommandType;
+
+		static Type GetCodeCoverageServiceType()
+		{
+			if (codeCoverageServiceType == null)
+				codeCoverageServiceType = Type.GetType("ICSharpCode.CodeCoverage.CodeCoverageService, CodeCoverage", throwOnError: false);
+			return codeCoverageServiceType;
+		}
+
+		static Array GetCodeCoverageResults()
+		{
+			var serviceType = GetCodeCoverageServiceType();
+			if (serviceType == null)
+				return null;
+			return serviceType.GetProperty("Results", BindingFlags.Static | BindingFlags.Public)?.GetValue(null) as Array;
+		}
+
+		[DevFlowAction("od.code-coverage.status", Description = "Check whether the CodeCoverage addin is loaded")]
+		public static string GetCodeCoverageStatus()
+		{
+			bool available = GetCodeCoverageServiceType() != null;
+			return JsonSerializer.Serialize(new { available });
+		}
+
+		[DevFlowAction("od.code-coverage.run", Description = "Run all tests in the open solution with code coverage (AltCover) and wait for results to appear")]
+		public static async Task<string> RunCodeCoverage(int timeoutSeconds = 180)
+		{
+			if (GetCodeCoverageServiceType() == null)
+				return JsonSerializer.Serialize(new { started = false, error = "CodeCoverage addin not available." });
+
+			var testService = GetTestService();
+			if (testService == null)
+				return JsonSerializer.Serialize(new { started = false, error = "ITestService not available." });
+			var openSolution = testService.GetType().GetProperty("OpenSolution")?.GetValue(testService);
+			if (openSolution == null)
+				return JsonSerializer.Serialize(new { started = false, error = "No test solution open." });
+
+			if (runAllTestsWithCodeCoverageCommandType == null)
+				runAllTestsWithCodeCoverageCommandType = Type.GetType("ICSharpCode.CodeCoverage.RunAllTestsWithCodeCoverageCommand, CodeCoverage", throwOnError: false);
+			if (runAllTestsWithCodeCoverageCommandType == null)
+				return JsonSerializer.Serialize(new { started = false, error = "RunAllTestsWithCodeCoverageCommand not found." });
+
+			int resultCountBefore = GetCodeCoverageResults()?.Length ?? 0;
+
+			var command = Activator.CreateInstance(runAllTestsWithCodeCoverageCommandType);
+			var run = runAllTestsWithCodeCoverageCommandType.GetMethod("Run", BindingFlags.Instance | BindingFlags.Public);
+			// Run() kicks off the Prepare/test-run/Collect sequence and returns immediately (it
+			// fire-and-forgets the actual test run) - poll CodeCoverageService.Results for a new
+			// entry rather than awaiting a Task, since there's nothing here to await.
+			await SD.MainThread.InvokeAsync(() => { run.Invoke(command, null); });
+
+			var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(timeoutSeconds);
+			bool completed = false;
+			while (DateTime.UtcNow < deadline) {
+				if ((GetCodeCoverageResults()?.Length ?? 0) > resultCountBefore) {
+					completed = true;
+					break;
+				}
+				await Task.Delay(200);
+			}
+
+			return JsonSerializer.Serialize(new {
+				started = true,
+				completed,
+				timedOut = !completed,
+				resultCount = GetCodeCoverageResults()?.Length ?? 0
+			});
+		}
+
+		[DevFlowAction("od.code-coverage.results", Description = "Get a summary of the current code coverage results (one entry per instrumented module)")]
+		public static string GetCodeCoverageResults_()
+		{
+			var results = GetCodeCoverageResults();
+			if (results == null)
+				return JsonSerializer.Serialize(new { available = false, modules = Array.Empty<object>() });
+
+			var modules = new List<object>();
+			foreach (var result in results) {
+				var modulesList = result.GetType().GetProperty("Modules")?.GetValue(result) as System.Collections.IEnumerable;
+				if (modulesList == null)
+					continue;
+				foreach (var module in modulesList) {
+					var mt = module.GetType();
+					int visited = (int)(mt.GetMethod("GetVisitedCodeLength")?.Invoke(module, null) ?? 0);
+					int unvisited = (int)(mt.GetMethod("GetUnvisitedCodeLength")?.Invoke(module, null) ?? 0);
+					decimal branchCoverage = (decimal)(mt.GetMethod("GetVisitedBranchCoverage")?.Invoke(module, null) ?? 0m);
+					var methods = mt.GetProperty("Methods")?.GetValue(module) as System.Collections.ICollection;
+					modules.Add(new {
+						name = mt.GetProperty("Name")?.GetValue(module) as string,
+						methodCount = methods?.Count ?? 0,
+						visitedCodeLength = visited,
+						unvisitedCodeLength = unvisited,
+						branchCoveragePercent = branchCoverage
+					});
+				}
+			}
+			return JsonSerializer.Serialize(new { available = true, modules = modules.ToArray() });
+		}
+
+		[DevFlowAction("od.code-coverage.clear", Description = "Clear the current code coverage results")]
+		public static string ClearCodeCoverageResults()
+		{
+			var serviceType = GetCodeCoverageServiceType();
+			if (serviceType == null)
+				return JsonSerializer.Serialize(new { success = false, error = "CodeCoverage addin not available." });
+			serviceType.GetMethod("ClearResults", BindingFlags.Static | BindingFlags.Public)?.Invoke(null, null);
+			return JsonSerializer.Serialize(new { success = true });
+		}
+
 		static object WalkTestNode(object test)
 		{
 			if (test == null) return null;

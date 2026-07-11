@@ -1,6 +1,6 @@
 <Project Sdk="LibreWPF.Sdk/11.0.0-dev">
   <PropertyGroup>
-    <TargetFramework>net11.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>Debugger.AddIn</RootNamespace>
     <AssemblyName>Debugger.AddIn</AssemblyName>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>

@@ -16,7 +16,9 @@ public sealed class UnitTestingTests
     static JsonElement? FindTest(JsonElement node, string displayName)
     {
         var name = node.TryGetProperty("displayName", out var n) ? n.GetString() : null;
-        if (name == displayName)
+        // Method-level nodes report the fully-qualified VSTest name (e.g.
+        // "SampleTestProject.PassTests.AlwaysPasses"), not the bare method name - match either.
+        if (name == displayName || (name != null && name.EndsWith("." + displayName, StringComparison.Ordinal)))
             return node;
         if (node.TryGetProperty("nestedTests", out var kids))
         {

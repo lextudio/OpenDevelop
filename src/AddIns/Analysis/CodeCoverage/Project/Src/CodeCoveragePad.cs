@@ -63,7 +63,8 @@ namespace ICSharpCode.CodeCoverage
 				disposed = true;
 				ProjectService.SolutionClosed -= SolutionClosed;
 				ProjectService.SolutionLoaded -= SolutionLoaded;
-				codeCoverageControl.Dispose();
+				// CodeCoverageControl is a plain WPF UserControl now (no ElementHost/WinForms
+				// child controls needing an explicit Dispose() the way the old version did).
 			}
 		}
 		

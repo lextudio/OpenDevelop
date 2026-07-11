@@ -64,7 +64,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
-        foreach (var a in new[] { "run", "--project", OpenDevelopProjectPath, "-f", "net11.0-windows", "--no-build" })
+        foreach (var a in new[] { "run", "--project", OpenDevelopProjectPath, "-f", "net10.0-windows", "--no-build" })
             psi.ArgumentList.Add(a);
         ConfigureDotNetEnvironment(psi);
 
@@ -158,11 +158,17 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         return await resp.Content.ReadFromJsonAsync<JsonElement>();
     }
 
+    // System.Text.Json's default MaxDepth (64) is too shallow for a full WPF visual tree - real
+    // windows nest well past that (panels within panels within docking containers etc.), so the
+    // default-options read threw "The maximum configured depth of 64 has been exceeded" on a real
+    // window instead of returning the tree.
+    static readonly JsonSerializerOptions DeepJsonOptions = new() { MaxDepth = 256 };
+
     public async Task<JsonElement> GetUITreeAsync()
     {
         using var resp = await _http.GetAsync($"{BaseUrl}/api/v1/ui/tree");
         resp.EnsureSuccessStatusCode();
-        return await resp.Content.ReadFromJsonAsync<JsonElement>();
+        return await resp.Content.ReadFromJsonAsync<JsonElement>(DeepJsonOptions);
     }
 
     static string LocateOpenDevelopProject()
@@ -255,10 +261,25 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
             return;
 
         var dotnetRoot = Path.GetDirectoryName(dotnet)!;
+
+        // Homebrew's formula layout splits the package: the "dotnet" binary resolves into
+        // <Cellar>/<version>/bin/dotnet, but the actual SDK/runtime tree (with "sdk/", "shared/",
+        // etc.) lives in the sibling <Cellar>/<version>/libexec. Using dotnetRoot ("bin") directly
+        // means sdkRoot below never exists, so this whole method used to silently no-op past that
+        // point - including never setting MSBuildEnableWorkloadResolver=false (see comment below),
+        // which let CodeCoverageTests/other early-run solution loads hit the exact MSB4236
+        // "WorkloadAutoImportPropsLocator SDK not found" project-load failure this env var exists
+        // to avoid. Same fix as DotNetSdkService.ResolvePathDotnetRoot() in the main app.
+        var sdkRoot = Path.Combine(dotnetRoot, "sdk");
+        if (!Directory.Exists(sdkRoot)) {
+            var siblingLibexec = Path.Combine(Path.GetDirectoryName(dotnetRoot) ?? "", "libexec");
+            if (Directory.Exists(Path.Combine(siblingLibexec, "sdk")))
+                dotnetRoot = siblingLibexec;
+        }
         psi.Environment["DOTNET_ROOT"] = dotnetRoot;
         psi.Environment["DOTNET_HOST_PATH"] = dotnet;
 
-        var sdkRoot = Path.Combine(dotnetRoot, "sdk");
+        sdkRoot = Path.Combine(dotnetRoot, "sdk");
         if (!Directory.Exists(sdkRoot))
             return;
 

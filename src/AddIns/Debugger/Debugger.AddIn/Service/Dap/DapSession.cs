@@ -38,6 +38,14 @@ namespace Debugger.AddIn.Service.Dap
 		DapClient client;
 		CancellationTokenSource cancellationTokenSource;
 
+		// SharpDbg (and DAP adapters generally) report loaded modules by pushing "module" *events*
+		// as assemblies load, and does NOT answer a "modules" *request* - issuing that request hung
+		// GetModulesAsync forever (no response ever came), freezing the Loaded Modules pad and any
+		// caller. Accumulate modules from the events instead, keyed by id, honoring the event's
+		// reason (new/changed/removed). Ordered so first-seen order is preserved for display.
+		readonly object modulesLock = new object();
+		readonly List<DapModuleInfo> modules = new List<DapModuleInfo>();
+
 		public bool IsRunning { get { return adapterProcess != null && !adapterProcess.HasExited; } }
 		public bool IsPaused { get; private set; }
 		public int ActiveThreadId { get; private set; }
@@ -66,6 +74,15 @@ namespace Debugger.AddIn.Service.Dap
 
 			cancellationTokenSource = new CancellationTokenSource();
 			adapterProcess = LaunchAdapter(adapterDll);
+			// Surface the adapter's (and, since the debuggee inherits it, the debuggee's) stderr to
+			// the caller so it can be shown in the Debug output channel. Without this an adapter
+			// crash or a debuggee launch failure (e.g. "the specified framework was not found")
+			// was completely invisible - the session just died and the UI kept stale markers.
+			adapterProcess.ErrorDataReceived += (s, e) => {
+				if (!string.IsNullOrEmpty(e.Data))
+					OutputReceived?.Invoke(e.Data + Environment.NewLine);
+			};
+			adapterProcess.BeginErrorReadLine();
 			client = new DapClient(adapterProcess.StandardOutput.BaseStream, adapterProcess.StandardInput.BaseStream);
 			client.EventReceived += OnDapEvent;
 			client.Start();
@@ -333,26 +350,44 @@ namespace Debugger.AddIn.Service.Dap
 			};
 		}
 
-		public async Task<IReadOnlyList<DapModuleInfo>> GetModulesAsync()
+		public Task<IReadOnlyList<DapModuleInfo>> GetModulesAsync()
 		{
-			if (client == null) {
-				return Array.Empty<DapModuleInfo>();
+			// Return the set accumulated from "module" events (see HandleModuleEvent) rather than
+			// issuing a "modules" request - SharpDbg never answers that request, so awaiting it hung
+			// forever. No round-trip needed, so this completes synchronously.
+			lock (modulesLock) {
+				return Task.FromResult<IReadOnlyList<DapModuleInfo>>(modules.ToList());
 			}
-			JsonObject response = await client.SendRequestAsync("modules").ConfigureAwait(false);
-			var modules = new List<DapModuleInfo>();
-			JsonArray items = response?["body"]?["modules"] as JsonArray;
-			if (items != null) {
-				foreach (var node in items) {
-					var obj = node as JsonObject;
-					if (obj == null) continue;
-					modules.Add(new DapModuleInfo {
-						Id = obj["id"]?.ToString(),
-						Name = obj["name"] != null ? obj["name"].GetValue<string>() : string.Empty,
-						Path = obj["path"] != null ? obj["path"].GetValue<string>() : null
-					});
+		}
+
+		static DapModuleInfo ParseModule(JsonObject module)
+		{
+			if (module == null)
+				return null;
+			return new DapModuleInfo {
+				Id = module["id"]?.ToString(),
+				Name = module["name"] != null ? module["name"].GetValue<string>() : string.Empty,
+				Path = module["path"] != null ? module["path"].GetValue<string>() : null
+			};
+		}
+
+		void HandleModuleEvent(JsonObject body)
+		{
+			var module = ParseModule(body?["module"] as JsonObject);
+			if (module == null)
+				return;
+			string reason = body?["reason"] != null ? body["reason"].GetValue<string>() : "new";
+			lock (modulesLock) {
+				int existing = modules.FindIndex(m => m.Id == module.Id);
+				if (reason == "removed") {
+					if (existing >= 0)
+						modules.RemoveAt(existing);
+				} else if (existing >= 0) {
+					modules[existing] = module; // "changed"
+				} else {
+					modules.Add(module); // "new"
 				}
 			}
-			return modules;
 		}
 
 		public async Task<DapExceptionInfo> GetExceptionInfoAsync(int threadId)
@@ -399,6 +434,9 @@ namespace Debugger.AddIn.Service.Dap
 					IsPaused = false;
 					Continued?.Invoke();
 					break;
+				case "module":
+					HandleModuleEvent(body);
+					break;
 				case "terminated":
 				case "exited":
 					CleanupSession();
@@ -418,6 +456,9 @@ namespace Debugger.AddIn.Service.Dap
 			IsPaused = false;
 			ActiveThreadId = 0;
 			ActiveFrameId = 0;
+			lock (modulesLock) {
+				modules.Clear();
+			}
 			if (adapterProcess != null) {
 				adapterProcess.Exited -= AdapterProcessExited;
 			}
@@ -436,7 +477,7 @@ namespace Debugger.AddIn.Service.Dap
 				Arguments = "\"" + adapterDll + "\" --interpreter=vscode",
 				RedirectStandardInput = true,
 				RedirectStandardOutput = true,
-				RedirectStandardError = false,
+				RedirectStandardError = true,
 				UseShellExecute = false,
 				CreateNoWindow = true
 			};

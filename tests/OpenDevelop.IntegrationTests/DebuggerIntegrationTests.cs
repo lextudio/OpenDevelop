@@ -252,6 +252,57 @@ public sealed class DebuggerIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task DebugStart_WhenTargetMissing_FailsCleanlyInsteadOfHanging()
+    {
+        // Regression coverage for the premature-exit/adapter-failure bug: WindowsDebugger.StartAsync
+        // used to leave the paused-line marker in place and the toolbar in a "still debugging"-looking
+        // state if the session died right after starting (e.g. SharpDbg's CommandUnknownException
+        // when handed an apphost path, or the debuggee's target framework being missing). We can't
+        // easily force those exact OS/runtime-specific failures on demand, but WindowsDebugger.StartAsync
+        // takes the same catch-block path (clear marker, print "ERROR: ...", activate the Debug output
+        // channel, stop) whenever the debug target can't be launched at all - so making the target
+        // executable briefly disappear exercises that same code path deterministically.
+        var program = ProgramPath;
+        var breakpointLine = FindLine(program, "var message = ComputeGreeting(\"World\");");
+
+        await _app.InvokeAsync("od.open-solution", _app.DebugTestProjectPath);
+        await _app.InvokeAsync("od.open-file", program);
+        await _app.InvokeAsync("od.debug.clear-breakpoints");
+        await _app.InvokeAsync("od.debug.set-breakpoint", program, breakpointLine);
+
+        string outputDir = Path.Combine(Path.GetDirectoryName(_app.DebugTestProjectPath)!, "bin", "Debug", "net10.0");
+        var moved = new List<(string From, string To)>();
+        foreach (string file in Directory.GetFiles(outputDir, "DebugTestApp.*"))
+        {
+            string away = file + ".movedfortest";
+            File.Move(file, away);
+            moved.Add((file, away));
+        }
+
+        try
+        {
+            var start = await _app.InvokeAsync("od.debug.start", _app.DebugTestProjectPath, true, 20);
+
+            // Must return promptly reporting failure - not hang, not report a phantom "still debugging".
+            Assert.False(start.GetProperty("started").GetBoolean(), start.ToString());
+            Assert.False(start.GetProperty("isDebugging").GetBoolean(), start.ToString());
+
+            var info = await _app.InvokeAsync("od.debug.service-info");
+            Assert.False(info.GetProperty("isDebugging").GetBoolean());
+            Assert.False(info.GetProperty("isProcessRunning").GetBoolean());
+
+            var output = await _app.InvokeAsync("od.debug.output");
+            Assert.Contains("ERROR", output.GetProperty("text").GetString());
+        }
+        finally
+        {
+            foreach (var (from, to) in moved)
+                File.Move(to, from);
+            await _app.InvokeAsync("od.debug.stop");
+        }
+    }
+
     string ProgramPath => Path.Combine(Path.GetDirectoryName(_app.DebugTestProjectPath)!, "Program.cs");
 
     static int FindLine(string path, string marker)

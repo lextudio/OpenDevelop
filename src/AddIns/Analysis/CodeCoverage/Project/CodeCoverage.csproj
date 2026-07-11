@@ -1,185 +1,87 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="4.0">
+<Project Sdk="LibreWPF.Sdk/11.0.0-dev">
   <PropertyGroup>
-    <OutputType>Library</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>ICSharpCode.CodeCoverage</RootNamespace>
     <AssemblyName>CodeCoverage</AssemblyName>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{08CE9972-283B-44F4-82FA-966F7DFA6B7A}</ProjectGuid>
-    <AllowUnsafeBlocks>False</AllowUnsafeBlocks>
-    <NoStdLib>False</NoStdLib>
-    <RegisterForComInterop>False</RegisterForComInterop>
-    <GenerateSerializationAssemblies>Auto</GenerateSerializationAssemblies>
-    <BaseAddress>112197632</BaseAddress>
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <FileAlignment>4096</FileAlignment>
-    <WarningLevel>4</WarningLevel>
-    <TreatWarningsAsErrors>False</TreatWarningsAsErrors>
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
-    <TargetFrameworkProfile>
-    </TargetFrameworkProfile>
-    <RunCodeAnalysis>False</RunCodeAnalysis>
-    <NoWin32Manifest>False</NoWin32Manifest>
-    <IntermediateOutputPath>obj\$(Configuration)\</IntermediateOutputPath>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <OutputPath>..\..\..\..\..\AddIns\Analysis\CodeCoverage\</OutputPath>
-    <Optimize>False</Optimize>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>Full</DebugType>
-    <CheckForOverflowUnderflow>True</CheckForOverflowUnderflow>
-    <BaseIntermediateOutputPath>obj\</BaseIntermediateOutputPath>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
-    <OutputPath>..\..\..\..\..\AddIns\Analysis\CodeCoverage\</OutputPath>
-    <Optimize>True</Optimize>
-    <DefineConstants>TRACE</DefineConstants>
-    <DebugSymbols>false</DebugSymbols>
-    <DebugType>None</DebugType>
-    <CheckForOverflowUnderflow>False</CheckForOverflowUnderflow>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Platform)' == 'AnyCPU' ">
-    <Prefer32Bit>False</Prefer32Bit>
+    <NoWarn>$(NoWarn);CA1416;WFO1000</NoWarn>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="PresentationCore">
-      <RequiredTargetFramework>3.0</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="PresentationFramework">
-      <RequiredTargetFramework>3.0</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Drawing" />
-    <Reference Include="System.Windows.Forms" />
-    <Reference Include="System.Xaml">
-      <RequiredTargetFramework>4.0</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="System.Xml" />
-    <Reference Include="System.Xml.Linq" />
-    <Reference Include="WindowsBase">
-      <RequiredTargetFramework>3.0</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="WindowsFormsIntegration">
-      <RequiredTargetFramework>3.0</RequiredTargetFramework>
-    </Reference>
+    <!-- Not referenced for its API - AltCoverApplication.cs shells out to its net8.0 build as a
+         separate process (see that file's remarks). ExcludeAssets="all" keeps this from pulling
+         AltCover's own dependencies (FSharp.Core etc.) into this project's compile/runtime closure
+         or auto-importing its AltCover.targets/.props (which - as discovered wiring up
+         tests/OpenDevelop.IntegrationTests's coverage target - fights over MSBuild target names
+         with other packages when actually imported; irrelevant here since we don't build with
+         AltCover=true, but no reason to import it at all). GeneratePathProperty gives us
+         $(PkgAltCover) below to locate the package's files without hardcoding a NuGet cache path. -->
+    <PackageReference Include="AltCover" Version="9.0.102" ExcludeAssets="all" GeneratePathProperty="true" />
+    <!-- Private=False on every one of these (matching the original, pre-SDK-style csproj, which
+         had it on all its ProjectReferences too - lost when this project was first ported and
+         restored here after an integration test caught the fallout): without it, MSBuild copies
+         each referenced project's own content items (CopyToOutputDirectory=Always) transitively
+         into THIS project's output folder too. That silently duplicated AvalonEdit.AddIn.addin
+         and UnitTesting.addin here alongside their real copies under AddIns/DisplayBindings and
+         AddIns/Analysis/UnitTesting - and since AddInTree scanning walks the whole AddIns/ tree
+         recursively, it found each addin identity registered twice and refused to start at all
+         ("Name 'ICSharpCode.AvalonEdit' is used by ... and ...", fatal, not a warning). These
+         assemblies are already loaded into the one shared SharpDevelop.exe process regardless
+         (from their own AddIns/ subfolders or the main app's own bin), so this project never
+         needed its own copies of them. -->
+    <ProjectReference Include="..\..\..\..\Libraries\AvalonEdit\ICSharpCode.AvalonEdit\ICSharpCode.AvalonEdit.csproj" Private="False" />
+    <ProjectReference Include="..\..\..\..\Libraries\NRefactory\ICSharpCode.NRefactory\ICSharpCode.NRefactory.csproj" Private="False" />
+    <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="False" />
+    <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="False" />
+    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" Private="False" />
+    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.WinForms\ICSharpCode.Core.WinForms.csproj" Private="False" />
+    <ProjectReference Include="..\..\..\DisplayBindings\AvalonEdit.AddIn\AvalonEdit.AddIn.csproj" Private="False" />
+    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.SharpDevelop.Widgets\Project\ICSharpCode.SharpDevelop.Widgets.csproj" Private="False" />
+    <ProjectReference Include="..\..\UnitTesting\UnitTesting.csproj" Private="False" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Src\CodeCoverageControl.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Include="Src\CodeCoverageMethodElement.cs" />
-    <Compile Include="Src\CodeCoverageOptionsPanel.xaml.cs">
+    <Compile Include="Src\*.cs" />
+    <Compile Update="Src\CodeCoverageOptionsPanel.xaml.cs">
       <DependentUpon>CodeCoverageOptionsPanel.xaml</DependentUpon>
-      <SubType>Code</SubType>
     </Compile>
-    <Compile Include="Src\CodeCoverageProjectOptionsPanel.xaml.cs">
+    <Compile Update="Src\CodeCoverageProjectOptionsPanel.xaml.cs">
       <DependentUpon>CodeCoverageProjectOptionsPanel.xaml</DependentUpon>
-      <SubType>Code</SubType>
     </Compile>
-    <Compile Include="Src\CodeCoveragePad.cs" />
     <Compile Include="Configuration\AssemblyInfo.cs" />
-    <Compile Include="Src\CodeCoverageModule.cs" />
-    <Compile Include="Src\CodeCoverageProperty.cs" />
-    <Compile Include="Src\CodeCoveragePropertyCollection.cs" />
-    <Compile Include="Src\CodeCoveragePropertyTreeNode.cs" />
-    <Compile Include="Src\CodeCoverageResults.cs" />
-    <Compile Include="Src\CodeCoverageMethod.cs" />
-    <Compile Include="Src\CodeCoverageResultsReader.cs" />
-    <Compile Include="Src\CodeCoverageSequencePoint.cs" />
-    <Compile Include="Src\CodeCoverageStringTextSource.cs" />
-    <Compile Include="Src\CodeCoverageTestRunner.cs" />
-    <Compile Include="Src\CodeCoverageTestRunnerContext.cs" />
-    <Compile Include="Src\CodeCoverageTestRunnerFactory.cs" />
-    <Compile Include="Src\CodeCoverageTreeView.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Include="Src\CodeCoverageModuleTreeNode.cs" />
-    <Compile Include="Src\CodeCoverageTreeNode.cs" />
-    <Compile Include="Src\CodeCoverageMethodTreeNode.cs" />
-    <Compile Include="Src\CodeCoverageClassTreeNode.cs" />
-    <Compile Include="Src\CodeCoverageNamespaceTreeNode.cs" />
-    <Compile Include="Src\ICodeCoverageWithVisits.cs" />
-    <Compile Include="Src\ICodeCoverageTestRunnerFactory.cs" />
-    <Compile Include="Src\OpenCoverApplication.cs" />
-    <Compile Include="Src\OpenCoverSettings.cs" />
-    <Compile Include="Src\OpenCoverSettingsFactory.cs" />
-    <Compile Include="Src\ProjectCodeCoverageResultsFileName.cs" />
-    <Compile Include="Src\RunAllTestsWithCodeCoverageCommand.cs" />
-    <Compile Include="Src\SequencePointListViewSorter.cs" />
-    <Compile Include="Src\SolutionCodeCoverageResults.cs" />
-    <Compile Include="Src\ToggleCodeCoverageCommand.cs" />
-    <Compile Include="Src\CodeCoverageHighlighter.cs" />
-    <Compile Include="Src\CodeCoverageOptions.cs" />
-    <Compile Include="Src\CodeCoverageDisplayItem.cs" />
-    <Compile Include="Src\ColorPickerComboBox.cs" />
-    <Compile Include="Src\CodeCoverageService.cs" />
-    <Compile Include="Src\RunTestWithCodeCoverageCommand.cs" />
+    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
+  </ItemGroup>
+  <!-- UseWPF's default item globbing already picks up **/*.xaml as Page items (that's a separate
+       default-items list from Compile, which EnableDefaultCompileItems=false above only disables) -
+       no explicit <Page Include> needed, it would just duplicate them and fail the build. -->
+  <ItemGroup>
     <None Include="CodeCoverage.addin">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <Compile Include="Src\CodeCoverageImageList.cs" />
-    <Compile Include="Src\GrayScaleBitmap.cs" />
-    <Compile Include="Src\CodeCoverageMethodsTreeNode.cs" />
-    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs">
-      <Link>Configuration\GlobalAssemblyInfo.cs</Link>
-    </Compile>
-    <Compile Include="Src\ShowVisitCountCommand.cs" />
-    <Compile Include="Src\ShowSourceCodeCommand.cs" />
-    <Compile Include="Src\ShowDisplayOptionsDropDown.cs" />
   </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\..\..\..\Libraries\AvalonEdit\ICSharpCode.AvalonEdit\ICSharpCode.AvalonEdit.csproj">
-      <Project>{6C55B776-26D4-4DB3-A6AB-87E783B2F3D1}</Project>
-      <Name>ICSharpCode.AvalonEdit</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Libraries\NRefactory\ICSharpCode.NRefactory\ICSharpCode.NRefactory.csproj">
-      <Project>{3B2A5653-EC97-4001-BB9B-D90F1AF2C371}</Project>
-      <Name>ICSharpCode.NRefactory</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj">
-      <Project>{2748AD25-9C63-4E12-877B-4DCE96FBED54}</Project>
-      <Name>ICSharpCode.SharpDevelop</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj">
-      <Project>{35CEF10F-2D4C-45F2-9DD1-161E0FEC583C}</Project>
-      <Name>ICSharpCode.Core</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj">
-      <Project>{7E4A7172-7FF5-48D0-B719-7CD959DD1AC9}</Project>
-      <Name>ICSharpCode.Core.Presentation</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.WinForms\ICSharpCode.Core.WinForms.csproj">
-      <Project>{857CA1A3-FC88-4BE0-AB6A-D1EE772AB288}</Project>
-      <Name>ICSharpCode.Core.WinForms</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\DisplayBindings\AvalonEdit.AddIn\AvalonEdit.AddIn.csproj">
-      <Project>{0162E499-42D0-409B-AA25-EED21F75336B}</Project>
-      <Name>AvalonEdit.AddIn</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.SharpDevelop.Widgets\Project\ICSharpCode.SharpDevelop.Widgets.csproj">
-      <Project>{8035765F-D51F-4A0C-A746-2FD100E19419}</Project>
-      <Name>ICSharpCode.SharpDevelop.Widgets</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\UnitTesting\UnitTesting.csproj">
-      <Project>{1F261725-6318-4434-A1B1-6C70CE4CD324}</Project>
-      <Name>UnitTesting</Name>
-      <Private>False</Private>
-    </ProjectReference>
-  </ItemGroup>
-  <ItemGroup>
-    <Page Include="Src\CodeCoverageOptionsPanel.xaml" />
-    <Page Include="Src\CodeCoverageProjectOptionsPanel.xaml" />
-  </ItemGroup>
-  <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.Targets" />
+
+  <!-- Bundles AltCover's net8.0 build into bin/Tools/AltCover, mirroring the old (installer-era)
+       "src/Tools/OpenCover -> bin/Tools/OpenCover" convention AltCoverApplication.cs's
+       GetAltCoverApplicationFileName() expects - see that method's comment. There's no equivalent
+       of the old installer step in this SDK-style build, so this project does the copy itself.
+
+       IMPORTANT: FileUtility.ApplicationRootPath resolves to AppDomain.CurrentDomain.BaseDirectory
+       at runtime - the *main SharpDevelop.exe process's* own output directory, not this addin
+       project's OutputPath (AddIns/Analysis/CodeCoverage/...). All addins load into one process,
+       so "bin/Tools/AltCover" must live under src/Main/SharpDevelop's build output, not this
+       project's - copying into $(OutputPath) here (this project's own output folder) would place
+       the files somewhere AltCoverApplication never looks. -->
+  <PropertyGroup>
+    <AltCoverToolDeployRoot>$(MSBuildThisFileDirectory)..\..\..\..\..\src\Main\SharpDevelop\bin\$(Configuration)\$(TargetFramework)\bin\Tools\AltCover\</AltCoverToolDeployRoot>
+  </PropertyGroup>
+  <Target Name="DeployAltCoverTool" AfterTargets="Build" Condition="'$(PkgAltCover)' != ''">
+    <ItemGroup>
+      <AltCoverToolFiles Include="$(PkgAltCover)/tools/net8.0/**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(AltCoverToolFiles)"
+          DestinationFolder="$(AltCoverToolDeployRoot)%(RecursiveDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
 </Project>

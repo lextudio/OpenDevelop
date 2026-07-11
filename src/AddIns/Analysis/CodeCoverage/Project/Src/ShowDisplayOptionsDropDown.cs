@@ -17,9 +17,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Windows.Forms;
 using ICSharpCode.Core;
-using ICSharpCode.Core.WinForms;
 
 namespace ICSharpCode.CodeCoverage
 {

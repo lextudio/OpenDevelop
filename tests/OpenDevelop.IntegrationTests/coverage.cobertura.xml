@@ -1,0 +1,2834 @@
+﻿<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<!DOCTYPE coverage SYSTEM "http://cobertura.sourceforge.net/xml/coverage-04.dtd">
+<coverage line-rate="0.32" branch-rate="0.28" lines-covered="262" lines-valid="828" branches-covered="39" branches-valid="140" complexity="39" version="9.0.0.0" timestamp="1783714089">
+  <sources>
+    <source>/Users/lextm/uno-tools/OpenDevelop/tests/OpenDevelop.IntegrationTests/</source>
+    <source>/_/</source>
+  </sources>
+  <packages>
+    <package name="AltCover.Monitor" line-rate="0" branch-rate="0" complexity="3.1">
+      <classes>
+        <class name="AltCover.Carrier" filename="/AltCover.Monitor/Monitor.cs" line-rate="0" branch-rate="0" complexity="2.25">
+          <methods>
+            <method name=".ctor" signature="System.Void ()" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="58" hits="0" branch="false" />
+              </lines>
+            </method>
+            <method name="Add" signature="T (T)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="68" hits="0" branch="false" />
+                <line number="69" hits="0" branch="false" />
+              </lines>
+            </method>
+            <method name="Dispose" signature="System.Void (System.Boolean)" line-rate="0" branch-rate="0" complexity="6">
+              <lines>
+                <line number="79" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="12" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="81" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="11" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="84" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="10" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="86" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="8" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="89" hits="0" branch="false" />
+                <line number="94" hits="0" branch="false" />
+                <line number="96" hits="0" branch="false" />
+              </lines>
+            </method>
+            <method name="Dispose" signature="System.Void ()" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="108" hits="0" branch="false" />
+                <line number="109" hits="0" branch="false" />
+                <line number="110" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="58" hits="0" branch="false" />
+            <line number="68" hits="0" branch="false" />
+            <line number="69" hits="0" branch="false" />
+            <line number="79" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="12" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="81" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="11" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="84" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="10" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="86" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="8" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="89" hits="0" branch="false" />
+            <line number="94" hits="0" branch="false" />
+            <line number="96" hits="0" branch="false" />
+            <line number="108" hits="0" branch="false" />
+            <line number="109" hits="0" branch="false" />
+            <line number="110" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="AltCover.Monitor" filename="/AltCover.Monitor/Monitor.cs" line-rate="0" branch-rate="0" complexity="3.25">
+          <methods>
+            <method name=".cctor" signature="System.Void ()" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="118" hits="0" branch="false" />
+              </lines>
+            </method>
+            <method name="CountVisitPoints" signature="AltCover.PointCount (System.Xml.XmlDocument)" line-rate="0" branch-rate="0" complexity="5">
+              <lines>
+                <line number="192" hits="0" branch="false" />
+                <line number="193" hits="0" branch="false" />
+                <line number="195" hits="0" branch="false" />
+                <line number="196" hits="0" branch="false" />
+                <line number="198" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="39" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="200" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="37" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="202" hits="0" branch="false" />
+                <line number="206" hits="0" branch="false" />
+                <line number="207" hits="0" branch="false" />
+                <line number="208" hits="0" branch="false" />
+                <line number="210" hits="0" branch="false" />
+              </lines>
+            </method>
+            <method name="TryGetPointTotals" signature="System.Boolean (AltCover.PointCount&amp;)" line-rate="0" branch-rate="0" complexity="4">
+              <lines>
+                <line number="156" hits="0" branch="false" />
+                <line number="157" hits="0" branch="false" />
+                <line number="158" hits="0" branch="false" />
+                <line number="159" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="27" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="161" hits="0" branch="false" />
+                <line number="162" hits="0" branch="false" />
+                <line number="164" hits="0" branch="false" />
+                <line number="165" hits="0" branch="false" />
+                <line number="166" hits="0" branch="false" />
+                <line number="167" hits="0" branch="false" />
+                <line number="168" hits="0" branch="false" />
+                <line number="171" hits="0" branch="false" />
+              </lines>
+            </method>
+            <method name="TryGetVisitTotals" signature="System.Boolean (AltCover.PointCount&amp;)" line-rate="0" branch-rate="0" complexity="3">
+              <lines>
+                <line number="220" hits="0" branch="false" />
+                <line number="221" hits="0" branch="false" />
+                <line number="222" hits="0" branch="false" />
+                <line number="223" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="52" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="225" hits="0" branch="false" />
+                <line number="229" hits="0" branch="false" />
+                <line number="231" hits="0" branch="false" />
+                <line number="235" hits="0" branch="false" />
+                <line number="237" hits="0" branch="false" />
+                <line number="240" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="118" hits="0" branch="false" />
+            <line number="156" hits="0" branch="false" />
+            <line number="157" hits="0" branch="false" />
+            <line number="158" hits="0" branch="false" />
+            <line number="159" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="27" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="161" hits="0" branch="false" />
+            <line number="162" hits="0" branch="false" />
+            <line number="164" hits="0" branch="false" />
+            <line number="165" hits="0" branch="false" />
+            <line number="166" hits="0" branch="false" />
+            <line number="167" hits="0" branch="false" />
+            <line number="168" hits="0" branch="false" />
+            <line number="171" hits="0" branch="false" />
+            <line number="192" hits="0" branch="false" />
+            <line number="193" hits="0" branch="false" />
+            <line number="195" hits="0" branch="false" />
+            <line number="196" hits="0" branch="false" />
+            <line number="198" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="39" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="200" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="37" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="202" hits="0" branch="false" />
+            <line number="206" hits="0" branch="false" />
+            <line number="207" hits="0" branch="false" />
+            <line number="208" hits="0" branch="false" />
+            <line number="210" hits="0" branch="false" />
+            <line number="220" hits="0" branch="false" />
+            <line number="221" hits="0" branch="false" />
+            <line number="222" hits="0" branch="false" />
+            <line number="223" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="52" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="225" hits="0" branch="false" />
+            <line number="229" hits="0" branch="false" />
+            <line number="231" hits="0" branch="false" />
+            <line number="235" hits="0" branch="false" />
+            <line number="237" hits="0" branch="false" />
+            <line number="240" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="AltCover.Monitor/&lt;TypeInstance&gt;d__1" filename="/AltCover.Monitor/Monitor.cs" line-rate="0" branch-rate="0" complexity="8">
+          <methods>
+            <method name="MoveNext" signature="System.Boolean ()" line-rate="0" branch-rate="0" complexity="8">
+              <lines>
+                <line number="124" hits="0" branch="false" />
+                <line number="125" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="70" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="127" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="68" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="129" hits="0" branch="false" />
+                <line number="130" hits="0" branch="false" />
+                <line number="134" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="64" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="136" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="63" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="138" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="61" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="140" hits="0" branch="false" />
+                <line number="141" hits="0" branch="false" />
+                <line number="145" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="124" hits="0" branch="false" />
+            <line number="125" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="70" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="127" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="68" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="129" hits="0" branch="false" />
+            <line number="130" hits="0" branch="false" />
+            <line number="134" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="64" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="136" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="63" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="138" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="61" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="140" hits="0" branch="false" />
+            <line number="141" hits="0" branch="false" />
+            <line number="145" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="ThisAssembly" filename="/_Intermediate/AltCover.Monitor/Release+AnyCPU/netstandard2.0/AltCover.Monitor.Version.cs" line-rate="0" branch-rate="0" complexity="1">
+          <methods>
+            <method name=".cctor" signature="System.Void ()" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="29" hits="0" branch="false" />
+                <line number="30" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="29" hits="0" branch="false" />
+            <line number="30" hits="0" branch="false" />
+          </lines>
+        </class>
+      </classes>
+    </package>
+    <package name="OpenDevelop.IntegrationTests" line-rate="0.35" branch-rate="0.34" complexity="5.19">
+      <classes>
+        <class name="OpenDevelop.IntegrationTests.AutoGenerated.XunitAutoGeneratedEntryPoint" filename="/obj/Debug/net11.0/XunitAutoGeneratedEntryPoint.cs" line-rate="0.8" branch-rate="0.4" complexity="4">
+          <methods>
+            <method name="Main" signature="System.Int32 (System.String[])" line-rate="0.8" branch-rate="0.25" complexity="4">
+              <lines>
+                <line number="9" hits="1" branch="false" />
+                <line number="10" hits="1" branch="true" condition-coverage="50% (1/2)">
+                  <conditions>
+                    <condition number="753" type="jump" coverage="50%" />
+                  </conditions>
+                </line>
+                <line number="11" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="752" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="13" hits="1" branch="false" />
+                <line number="14" hits="1" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="9" hits="1" branch="false" />
+            <line number="10" hits="1" branch="true" condition-coverage="50% (1/2)">
+              <conditions>
+                <condition number="753" type="jump" coverage="50%" />
+              </conditions>
+            </line>
+            <line number="11" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="752" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="13" hits="1" branch="false" />
+            <line number="14" hits="1" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.AutoGenerated.XunitAutoGeneratedEntryPoint/&lt;&gt;c" filename="/obj/Debug/net11.0/XunitAutoGeneratedEntryPoint.cs" line-rate="1" branch-rate="0.67" complexity="2">
+          <methods>
+            <method name="&lt;Main&gt;b__0_0" signature="System.Boolean (System.String)" line-rate="1" branch-rate="0.5" complexity="2">
+              <lines>
+                <line number="10" hits="1" branch="true" condition-coverage="50% (1/2)">
+                  <conditions>
+                    <condition number="755" type="jump" coverage="50%" />
+                  </conditions>
+                </line>
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="10" hits="1" branch="true" condition-coverage="50% (1/2)">
+              <conditions>
+                <condition number="755" type="jump" coverage="50%" />
+              </conditions>
+            </line>
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.BuildTests" filename="/BuildTests.cs" line-rate="0" branch-rate="0" complexity="1">
+          <methods>
+            <method name=".ctor" signature="System.Void (OpenDevelop.IntegrationTests.OpenDevelopAppFixture)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="17" hits="0" branch="false" />
+                <line number="18" hits="0" branch="false" />
+                <line number="19" hits="0" branch="false" />
+                <line number="20" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="17" hits="0" branch="false" />
+            <line number="18" hits="0" branch="false" />
+            <line number="19" hits="0" branch="false" />
+            <line number="20" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.BuildTests/&lt;BuildSolution_FixtureProjectBuildsSuccessfully&gt;d__2" filename="/BuildTests.cs" line-rate="0" branch-rate="0" complexity="5">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0" branch-rate="0" complexity="5">
+              <lines>
+                <line number="24" hits="0" branch="false" />
+                <line number="25" hits="0" branch="false" />
+                <line number="27" hits="0" branch="false" />
+                <line number="29" hits="0" branch="false" />
+                <line number="30" hits="0" branch="false" />
+                <line number="31" hits="0" branch="false" />
+                <line number="32" hits="0" branch="false" />
+                <line number="33" hits="0" branch="false" />
+                <line number="34" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="24" hits="0" branch="false" />
+            <line number="25" hits="0" branch="false" />
+            <line number="27" hits="0" branch="false" />
+            <line number="29" hits="0" branch="false" />
+            <line number="30" hits="0" branch="false" />
+            <line number="31" hits="0" branch="false" />
+            <line number="32" hits="0" branch="false" />
+            <line number="33" hits="0" branch="false" />
+            <line number="34" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.BuildTests/&lt;BuildSolution_OutputPadCapturesRealBuildLog&gt;d__3" filename="/BuildTests.cs" line-rate="0" branch-rate="0" complexity="8">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0" branch-rate="0" complexity="8">
+              <lines>
+                <line number="38" hits="0" branch="false" />
+                <line number="39" hits="0" branch="false" />
+                <line number="40" hits="0" branch="false" />
+                <line number="42" hits="0" branch="false" />
+                <line number="44" hits="0" branch="false" />
+                <line number="45" hits="0" branch="false" />
+                <line number="46" hits="0" branch="false" />
+                <line number="47" hits="0" branch="false" />
+                <line number="48" hits="0" branch="false" />
+                <line number="49" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="38" hits="0" branch="false" />
+            <line number="39" hits="0" branch="false" />
+            <line number="40" hits="0" branch="false" />
+            <line number="42" hits="0" branch="false" />
+            <line number="44" hits="0" branch="false" />
+            <line number="45" hits="0" branch="false" />
+            <line number="46" hits="0" branch="false" />
+            <line number="47" hits="0" branch="false" />
+            <line number="48" hits="0" branch="false" />
+            <line number="49" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.BuildTests/&lt;BuildSolution_UnknownProjectNameReturnsError&gt;d__4" filename="/BuildTests.cs" line-rate="0" branch-rate="0" complexity="5">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0" branch-rate="0" complexity="5">
+              <lines>
+                <line number="53" hits="0" branch="false" />
+                <line number="54" hits="0" branch="false" />
+                <line number="56" hits="0" branch="false" />
+                <line number="58" hits="0" branch="false" />
+                <line number="59" hits="0" branch="false" />
+                <line number="60" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="53" hits="0" branch="false" />
+            <line number="54" hits="0" branch="false" />
+            <line number="56" hits="0" branch="false" />
+            <line number="58" hits="0" branch="false" />
+            <line number="59" hits="0" branch="false" />
+            <line number="60" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.DebuggerIntegrationTests" filename="/DebuggerIntegrationTests.cs" line-rate="0.88" branch-rate="0.5" complexity="1.75">
+          <methods>
+            <method name=".ctor" signature="System.Void (OpenDevelop.IntegrationTests.OpenDevelopAppFixture)" line-rate="1" branch-rate="0" complexity="1">
+              <lines>
+                <line number="12" hits="1" branch="false" />
+                <line number="13" hits="1" branch="false" />
+                <line number="14" hits="1" branch="false" />
+                <line number="15" hits="1" branch="false" />
+              </lines>
+            </method>
+            <method name="FindLine" signature="System.Int32 (System.String,System.String)" line-rate="0.91" branch-rate="0.75" complexity="3">
+              <lines>
+                <line number="258" hits="1" branch="false" />
+                <line number="259" hits="1" branch="false" />
+                <line number="260" hits="3" branch="true" condition-coverage="50% (1/2)">
+                  <conditions>
+                    <condition number="42" type="jump" coverage="50%" />
+                  </conditions>
+                </line>
+                <line number="261" hits="1" branch="false" />
+                <line number="262" hits="1" branch="true" condition-coverage="100% (2/2)">
+                  <conditions>
+                    <condition number="40" type="jump" coverage="100%" />
+                  </conditions>
+                </line>
+                <line number="263" hits="1" branch="false" />
+                <line number="264" hits="1" branch="false" />
+                <line number="265" hits="0" branch="false" />
+                <line number="266" hits="1" branch="false" />
+              </lines>
+            </method>
+            <method name="Normalize" signature="System.String (System.String)" line-rate="0" branch-rate="0" complexity="2">
+              <lines>
+                <line number="268" hits="0" branch="false" />
+              </lines>
+            </method>
+            <method name="get_ProgramPath" signature="System.String ()" line-rate="1" branch-rate="0" complexity="1">
+              <lines>
+                <line number="255" hits="1" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="12" hits="1" branch="false" />
+            <line number="13" hits="1" branch="false" />
+            <line number="14" hits="1" branch="false" />
+            <line number="15" hits="1" branch="false" />
+            <line number="255" hits="1" branch="false" />
+            <line number="258" hits="1" branch="false" />
+            <line number="259" hits="1" branch="false" />
+            <line number="260" hits="3" branch="true" condition-coverage="50% (1/2)">
+              <conditions>
+                <condition number="42" type="jump" coverage="50%" />
+              </conditions>
+            </line>
+            <line number="261" hits="1" branch="false" />
+            <line number="262" hits="1" branch="true" condition-coverage="100% (2/2)">
+              <conditions>
+                <condition number="40" type="jump" coverage="100%" />
+              </conditions>
+            </line>
+            <line number="263" hits="1" branch="false" />
+            <line number="264" hits="1" branch="false" />
+            <line number="265" hits="0" branch="false" />
+            <line number="266" hits="1" branch="false" />
+            <line number="268" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.DebuggerIntegrationTests/&lt;&gt;c" filename="/DebuggerIntegrationTests.cs" line-rate="0" branch-rate="0" complexity="1.38">
+          <methods>
+            <method name="&lt;BreakpointHit_ExposesCallStackLocalsAndEvaluate&gt;b__3_1" signature="System.Boolean (System.Text.Json.JsonElement)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="55" hits="0" branch="false" />
+              </lines>
+            </method>
+            <method name="&lt;BreakpointHit_ExposesCallStackLocalsAndEvaluate&gt;b__3_2" signature="System.Boolean (System.Text.Json.JsonElement)" line-rate="0" branch-rate="0" complexity="2">
+              <lines>
+                <line number="59" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="52" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+              </lines>
+            </method>
+            <method name="&lt;BreakpointHit_ExposesCallStackLocalsAndEvaluate&gt;b__3_3" signature="System.Boolean (System.Text.Json.JsonElement)" line-rate="0" branch-rate="0" complexity="2">
+              <lines>
+                <line number="62" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="53" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+              </lines>
+            </method>
+            <method name="&lt;BreakpointHit_ExposesCallStackLocalsAndEvaluate&gt;b__3_5" signature="System.Boolean (System.Text.Json.JsonElement)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="78" hits="0" branch="false" />
+              </lines>
+            </method>
+            <method name="&lt;BreakpointHit_ExposesCallStackLocalsAndEvaluate&gt;b__3_6" signature="System.Boolean (System.Text.Json.JsonElement)" line-rate="0" branch-rate="0" complexity="2">
+              <lines>
+                <line number="83" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="55" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+              </lines>
+            </method>
+            <method name="&lt;DebuggerService_IsRegisteredByAddIn&gt;b__2_0" signature="System.Boolean (System.Text.Json.JsonElement)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="27" hits="0" branch="false" />
+              </lines>
+            </method>
+            <method name="&lt;DebuggerService_IsRegisteredByAddIn&gt;b__2_1" signature="System.Boolean (System.Text.Json.JsonElement)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="28" hits="0" branch="false" />
+              </lines>
+            </method>
+            <method name="&lt;DebuggerService_IsRegisteredByAddIn&gt;b__2_2" signature="System.Boolean (System.Text.Json.JsonElement)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="29" hits="0" branch="false" />
+              </lines>
+            </method>
+            <method name="&lt;DebuggerService_IsRegisteredByAddIn&gt;b__2_3" signature="System.Boolean (System.Text.Json.JsonElement)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="30" hits="0" branch="false" />
+              </lines>
+            </method>
+            <method name="&lt;DebuggerService_IsRegisteredByAddIn&gt;b__2_4" signature="System.Boolean (System.Text.Json.JsonElement)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="31" hits="0" branch="false" />
+              </lines>
+            </method>
+            <method name="&lt;StepIntoAndStepOver_UpdateCurrentFrameAndLocals&gt;b__4_0" signature="System.Boolean (System.Text.Json.JsonElement)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="123" hits="0" branch="false" />
+              </lines>
+            </method>
+            <method name="&lt;StepIntoAndStepOver_UpdateCurrentFrameAndLocals&gt;b__4_1" signature="System.Boolean (System.Text.Json.JsonElement)" line-rate="0" branch-rate="0" complexity="2">
+              <lines>
+                <line number="127" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="57" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+              </lines>
+            </method>
+            <method name="&lt;StepIntoAndStepOver_UpdateCurrentFrameAndLocals&gt;b__4_2" signature="System.Boolean (System.Text.Json.JsonElement)" line-rate="0" branch-rate="0" complexity="2">
+              <lines>
+                <line number="141" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="58" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="27" hits="0" branch="false" />
+            <line number="28" hits="0" branch="false" />
+            <line number="29" hits="0" branch="false" />
+            <line number="30" hits="0" branch="false" />
+            <line number="31" hits="0" branch="false" />
+            <line number="55" hits="0" branch="false" />
+            <line number="59" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="52" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="62" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="53" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="78" hits="0" branch="false" />
+            <line number="83" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="55" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="123" hits="0" branch="false" />
+            <line number="127" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="57" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="141" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="58" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.DebuggerIntegrationTests/&lt;&gt;c__DisplayClass3_0" filename="/DebuggerIntegrationTests.cs" line-rate="0" branch-rate="0" complexity="1.5">
+          <methods>
+            <method name="&lt;BreakpointHit_ExposesCallStackLocalsAndEvaluate&gt;b__0" signature="System.Boolean (System.Text.Json.JsonElement)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="45" hits="0" branch="false" />
+              </lines>
+            </method>
+            <method name="&lt;BreakpointHit_ExposesCallStackLocalsAndEvaluate&gt;b__4" signature="System.Boolean (System.Text.Json.JsonElement)" line-rate="0" branch-rate="0" complexity="2">
+              <lines>
+                <line number="72" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="60" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="45" hits="0" branch="false" />
+            <line number="72" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="60" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.DebuggerIntegrationTests/&lt;BreakpointHit_ExposesCallStackLocalsAndEvaluate&gt;d__3" filename="/DebuggerIntegrationTests.cs" line-rate="0.1" branch-rate="0" complexity="39">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0.1" branch-rate="0" complexity="39">
+              <lines>
+                <line number="36" hits="1" branch="false" />
+                <line number="37" hits="1" branch="false" />
+                <line number="38" hits="1" branch="false" />
+                <line number="40" hits="1" branch="false" />
+                <line number="41" hits="0" branch="false" />
+                <line number="42" hits="0" branch="false" />
+                <line number="43" hits="0" branch="false" />
+                <line number="44" hits="0" branch="false" />
+                <line number="45" hits="0" branch="false" />
+                <line number="48" hits="0" branch="false" />
+                <line number="49" hits="0" branch="false" />
+                <line number="50" hits="0" branch="false" />
+                <line number="51" hits="0" branch="false" />
+                <line number="52" hits="0" branch="false" />
+                <line number="54" hits="0" branch="false" />
+                <line number="55" hits="0" branch="false" />
+                <line number="57" hits="0" branch="false" />
+                <line number="58" hits="0" branch="false" />
+                <line number="61" hits="0" branch="false" />
+                <line number="65" hits="0" branch="false" />
+                <line number="66" hits="0" branch="false" />
+                <line number="67" hits="0" branch="false" />
+                <line number="69" hits="0" branch="false" />
+                <line number="70" hits="0" branch="false" />
+                <line number="71" hits="0" branch="false" />
+                <line number="75" hits="0" branch="false" />
+                <line number="76" hits="0" branch="false" />
+                <line number="77" hits="0" branch="false" />
+                <line number="80" hits="0" branch="false" />
+                <line number="81" hits="0" branch="false" />
+                <line number="82" hits="0" branch="false" />
+                <line number="86" hits="0" branch="false" />
+                <line number="87" hits="0" branch="false" />
+                <line number="88" hits="0" branch="false" />
+                <line number="90" hits="0" branch="false" />
+                <line number="91" hits="0" branch="false" />
+                <line number="92" hits="0" branch="false" />
+                <line number="93" hits="0" branch="false" />
+                <line number="95" hits="0" branch="false" />
+                <line number="96" hits="0" branch="false" />
+                <line number="97" hits="0" branch="false" />
+                <line number="98" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="36" hits="1" branch="false" />
+            <line number="37" hits="1" branch="false" />
+            <line number="38" hits="1" branch="false" />
+            <line number="40" hits="1" branch="false" />
+            <line number="41" hits="0" branch="false" />
+            <line number="42" hits="0" branch="false" />
+            <line number="43" hits="0" branch="false" />
+            <line number="44" hits="0" branch="false" />
+            <line number="45" hits="0" branch="false" />
+            <line number="48" hits="0" branch="false" />
+            <line number="49" hits="0" branch="false" />
+            <line number="50" hits="0" branch="false" />
+            <line number="51" hits="0" branch="false" />
+            <line number="52" hits="0" branch="false" />
+            <line number="54" hits="0" branch="false" />
+            <line number="55" hits="0" branch="false" />
+            <line number="57" hits="0" branch="false" />
+            <line number="58" hits="0" branch="false" />
+            <line number="61" hits="0" branch="false" />
+            <line number="65" hits="0" branch="false" />
+            <line number="66" hits="0" branch="false" />
+            <line number="67" hits="0" branch="false" />
+            <line number="69" hits="0" branch="false" />
+            <line number="70" hits="0" branch="false" />
+            <line number="71" hits="0" branch="false" />
+            <line number="75" hits="0" branch="false" />
+            <line number="76" hits="0" branch="false" />
+            <line number="77" hits="0" branch="false" />
+            <line number="80" hits="0" branch="false" />
+            <line number="81" hits="0" branch="false" />
+            <line number="82" hits="0" branch="false" />
+            <line number="86" hits="0" branch="false" />
+            <line number="87" hits="0" branch="false" />
+            <line number="88" hits="0" branch="false" />
+            <line number="90" hits="0" branch="false" />
+            <line number="91" hits="0" branch="false" />
+            <line number="92" hits="0" branch="false" />
+            <line number="93" hits="0" branch="false" />
+            <line number="95" hits="0" branch="false" />
+            <line number="96" hits="0" branch="false" />
+            <line number="97" hits="0" branch="false" />
+            <line number="98" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.DebuggerIntegrationTests/&lt;ContinueDebug_HitsSecondBreakpoint&gt;d__5" filename="/DebuggerIntegrationTests.cs" line-rate="0.71" branch-rate="0" complexity="21">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0.71" branch-rate="0" complexity="21">
+              <lines>
+                <line number="152" hits="1" branch="false" />
+                <line number="153" hits="1" branch="false" />
+                <line number="154" hits="1" branch="false" />
+                <line number="155" hits="1" branch="false" />
+                <line number="157" hits="1" branch="false" />
+                <line number="158" hits="1" branch="false" />
+                <line number="159" hits="1" branch="false" />
+                <line number="160" hits="1" branch="false" />
+                <line number="161" hits="1" branch="false" />
+                <line number="164" hits="1" branch="false" />
+                <line number="165" hits="1" branch="false" />
+                <line number="166" hits="1" branch="false" />
+                <line number="167" hits="0" branch="false" />
+                <line number="169" hits="0" branch="false" />
+                <line number="170" hits="0" branch="false" />
+                <line number="171" hits="0" branch="false" />
+                <line number="172" hits="0" branch="false" />
+                <line number="174" hits="1" branch="false" />
+                <line number="175" hits="1" branch="false" />
+                <line number="176" hits="1" branch="false" />
+                <line number="177" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="152" hits="1" branch="false" />
+            <line number="153" hits="1" branch="false" />
+            <line number="154" hits="1" branch="false" />
+            <line number="155" hits="1" branch="false" />
+            <line number="157" hits="1" branch="false" />
+            <line number="158" hits="1" branch="false" />
+            <line number="159" hits="1" branch="false" />
+            <line number="160" hits="1" branch="false" />
+            <line number="161" hits="1" branch="false" />
+            <line number="164" hits="1" branch="false" />
+            <line number="165" hits="1" branch="false" />
+            <line number="166" hits="1" branch="false" />
+            <line number="167" hits="0" branch="false" />
+            <line number="169" hits="0" branch="false" />
+            <line number="170" hits="0" branch="false" />
+            <line number="171" hits="0" branch="false" />
+            <line number="172" hits="0" branch="false" />
+            <line number="174" hits="1" branch="false" />
+            <line number="175" hits="1" branch="false" />
+            <line number="176" hits="1" branch="false" />
+            <line number="177" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.DebuggerIntegrationTests/&lt;DebugModules_WhileStopped_ReturnsAtLeastOneModule&gt;d__7" filename="/DebuggerIntegrationTests.cs" line-rate="0.65" branch-rate="0" complexity="19">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0.65" branch-rate="0" complexity="19">
+              <lines>
+                <line number="206" hits="1" branch="false" />
+                <line number="207" hits="1" branch="false" />
+                <line number="208" hits="1" branch="false" />
+                <line number="210" hits="1" branch="false" />
+                <line number="211" hits="1" branch="false" />
+                <line number="212" hits="1" branch="false" />
+                <line number="213" hits="1" branch="false" />
+                <line number="216" hits="1" branch="false" />
+                <line number="217" hits="1" branch="false" />
+                <line number="218" hits="0" branch="false" />
+                <line number="220" hits="0" branch="false" />
+                <line number="221" hits="0" branch="false" />
+                <line number="222" hits="0" branch="false" />
+                <line number="224" hits="1" branch="false" />
+                <line number="225" hits="1" branch="false" />
+                <line number="226" hits="0" branch="false" />
+                <line number="227" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="206" hits="1" branch="false" />
+            <line number="207" hits="1" branch="false" />
+            <line number="208" hits="1" branch="false" />
+            <line number="210" hits="1" branch="false" />
+            <line number="211" hits="1" branch="false" />
+            <line number="212" hits="1" branch="false" />
+            <line number="213" hits="1" branch="false" />
+            <line number="216" hits="1" branch="false" />
+            <line number="217" hits="1" branch="false" />
+            <line number="218" hits="0" branch="false" />
+            <line number="220" hits="0" branch="false" />
+            <line number="221" hits="0" branch="false" />
+            <line number="222" hits="0" branch="false" />
+            <line number="224" hits="1" branch="false" />
+            <line number="225" hits="1" branch="false" />
+            <line number="226" hits="0" branch="false" />
+            <line number="227" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.DebuggerIntegrationTests/&lt;DebugOutput_AfterStart_CapturesDebuggerText&gt;d__8" filename="/DebuggerIntegrationTests.cs" line-rate="0.72" branch-rate="0" complexity="19">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0.72" branch-rate="0" complexity="19">
+              <lines>
+                <line number="231" hits="1" branch="false" />
+                <line number="232" hits="1" branch="false" />
+                <line number="233" hits="1" branch="false" />
+                <line number="235" hits="1" branch="false" />
+                <line number="236" hits="1" branch="false" />
+                <line number="237" hits="1" branch="false" />
+                <line number="238" hits="1" branch="false" />
+                <line number="241" hits="1" branch="false" />
+                <line number="242" hits="1" branch="false" />
+                <line number="243" hits="1" branch="false" />
+                <line number="245" hits="0" branch="false" />
+                <line number="246" hits="0" branch="false" />
+                <line number="247" hits="0" branch="false" />
+                <line number="248" hits="0" branch="false" />
+                <line number="250" hits="1" branch="false" />
+                <line number="251" hits="1" branch="false" />
+                <line number="252" hits="1" branch="false" />
+                <line number="253" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="231" hits="1" branch="false" />
+            <line number="232" hits="1" branch="false" />
+            <line number="233" hits="1" branch="false" />
+            <line number="235" hits="1" branch="false" />
+            <line number="236" hits="1" branch="false" />
+            <line number="237" hits="1" branch="false" />
+            <line number="238" hits="1" branch="false" />
+            <line number="241" hits="1" branch="false" />
+            <line number="242" hits="1" branch="false" />
+            <line number="243" hits="1" branch="false" />
+            <line number="245" hits="0" branch="false" />
+            <line number="246" hits="0" branch="false" />
+            <line number="247" hits="0" branch="false" />
+            <line number="248" hits="0" branch="false" />
+            <line number="250" hits="1" branch="false" />
+            <line number="251" hits="1" branch="false" />
+            <line number="252" hits="1" branch="false" />
+            <line number="253" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.DebuggerIntegrationTests/&lt;DebugThreads_WhileStopped_ReturnsAtLeastOneThread&gt;d__6" filename="/DebuggerIntegrationTests.cs" line-rate="0.24" branch-rate="0" complexity="19">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0.24" branch-rate="0" complexity="19">
+              <lines>
+                <line number="181" hits="1" branch="false" />
+                <line number="182" hits="1" branch="false" />
+                <line number="183" hits="1" branch="false" />
+                <line number="185" hits="1" branch="false" />
+                <line number="186" hits="0" branch="false" />
+                <line number="187" hits="0" branch="false" />
+                <line number="188" hits="0" branch="false" />
+                <line number="191" hits="0" branch="false" />
+                <line number="192" hits="0" branch="false" />
+                <line number="193" hits="0" branch="false" />
+                <line number="195" hits="0" branch="false" />
+                <line number="196" hits="0" branch="false" />
+                <line number="197" hits="0" branch="false" />
+                <line number="199" hits="0" branch="false" />
+                <line number="200" hits="0" branch="false" />
+                <line number="201" hits="0" branch="false" />
+                <line number="202" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="181" hits="1" branch="false" />
+            <line number="182" hits="1" branch="false" />
+            <line number="183" hits="1" branch="false" />
+            <line number="185" hits="1" branch="false" />
+            <line number="186" hits="0" branch="false" />
+            <line number="187" hits="0" branch="false" />
+            <line number="188" hits="0" branch="false" />
+            <line number="191" hits="0" branch="false" />
+            <line number="192" hits="0" branch="false" />
+            <line number="193" hits="0" branch="false" />
+            <line number="195" hits="0" branch="false" />
+            <line number="196" hits="0" branch="false" />
+            <line number="197" hits="0" branch="false" />
+            <line number="199" hits="0" branch="false" />
+            <line number="200" hits="0" branch="false" />
+            <line number="201" hits="0" branch="false" />
+            <line number="202" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.DebuggerIntegrationTests/&lt;DebuggerService_IsRegisteredByAddIn&gt;d__2" filename="/DebuggerIntegrationTests.cs" line-rate="0.17" branch-rate="0" complexity="10">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0.17" branch-rate="0" complexity="10">
+              <lines>
+                <line number="19" hits="1" branch="false" />
+                <line number="20" hits="1" branch="false" />
+                <line number="22" hits="0" branch="false" />
+                <line number="23" hits="0" branch="false" />
+                <line number="24" hits="0" branch="false" />
+                <line number="26" hits="0" branch="false" />
+                <line number="27" hits="0" branch="false" />
+                <line number="28" hits="0" branch="false" />
+                <line number="29" hits="0" branch="false" />
+                <line number="30" hits="0" branch="false" />
+                <line number="31" hits="0" branch="false" />
+                <line number="32" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="19" hits="1" branch="false" />
+            <line number="20" hits="1" branch="false" />
+            <line number="22" hits="0" branch="false" />
+            <line number="23" hits="0" branch="false" />
+            <line number="24" hits="0" branch="false" />
+            <line number="26" hits="0" branch="false" />
+            <line number="27" hits="0" branch="false" />
+            <line number="28" hits="0" branch="false" />
+            <line number="29" hits="0" branch="false" />
+            <line number="30" hits="0" branch="false" />
+            <line number="31" hits="0" branch="false" />
+            <line number="32" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.DebuggerIntegrationTests/&lt;StepIntoAndStepOver_UpdateCurrentFrameAndLocals&gt;d__4" filename="/DebuggerIntegrationTests.cs" line-rate="0.15" branch-rate="0" complexity="35">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0.15" branch-rate="0" complexity="35">
+              <lines>
+                <line number="102" hits="1" branch="false" />
+                <line number="103" hits="1" branch="false" />
+                <line number="104" hits="1" branch="false" />
+                <line number="105" hits="1" branch="false" />
+                <line number="107" hits="1" branch="false" />
+                <line number="108" hits="0" branch="false" />
+                <line number="109" hits="0" branch="false" />
+                <line number="110" hits="0" branch="false" />
+                <line number="113" hits="0" branch="false" />
+                <line number="114" hits="0" branch="false" />
+                <line number="115" hits="0" branch="false" />
+                <line number="117" hits="0" branch="false" />
+                <line number="118" hits="0" branch="false" />
+                <line number="120" hits="0" branch="false" />
+                <line number="121" hits="0" branch="false" />
+                <line number="122" hits="0" branch="false" />
+                <line number="123" hits="0" branch="false" />
+                <line number="125" hits="0" branch="false" />
+                <line number="126" hits="0" branch="false" />
+                <line number="130" hits="0" branch="false" />
+                <line number="131" hits="0" branch="false" />
+                <line number="132" hits="0" branch="false" />
+                <line number="134" hits="0" branch="false" />
+                <line number="135" hits="0" branch="false" />
+                <line number="136" hits="0" branch="false" />
+                <line number="137" hits="0" branch="false" />
+                <line number="139" hits="0" branch="false" />
+                <line number="140" hits="0" branch="false" />
+                <line number="143" hits="0" branch="false" />
+                <line number="145" hits="0" branch="false" />
+                <line number="146" hits="0" branch="false" />
+                <line number="147" hits="0" branch="false" />
+                <line number="148" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="102" hits="1" branch="false" />
+            <line number="103" hits="1" branch="false" />
+            <line number="104" hits="1" branch="false" />
+            <line number="105" hits="1" branch="false" />
+            <line number="107" hits="1" branch="false" />
+            <line number="108" hits="0" branch="false" />
+            <line number="109" hits="0" branch="false" />
+            <line number="110" hits="0" branch="false" />
+            <line number="113" hits="0" branch="false" />
+            <line number="114" hits="0" branch="false" />
+            <line number="115" hits="0" branch="false" />
+            <line number="117" hits="0" branch="false" />
+            <line number="118" hits="0" branch="false" />
+            <line number="120" hits="0" branch="false" />
+            <line number="121" hits="0" branch="false" />
+            <line number="122" hits="0" branch="false" />
+            <line number="123" hits="0" branch="false" />
+            <line number="125" hits="0" branch="false" />
+            <line number="126" hits="0" branch="false" />
+            <line number="130" hits="0" branch="false" />
+            <line number="131" hits="0" branch="false" />
+            <line number="132" hits="0" branch="false" />
+            <line number="134" hits="0" branch="false" />
+            <line number="135" hits="0" branch="false" />
+            <line number="136" hits="0" branch="false" />
+            <line number="137" hits="0" branch="false" />
+            <line number="139" hits="0" branch="false" />
+            <line number="140" hits="0" branch="false" />
+            <line number="143" hits="0" branch="false" />
+            <line number="145" hits="0" branch="false" />
+            <line number="146" hits="0" branch="false" />
+            <line number="147" hits="0" branch="false" />
+            <line number="148" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.DebuggerIntegrationTests/&lt;WaitForTopFrameLineAsync&gt;d__13" filename="/DebuggerIntegrationTests.cs" line-rate="0" branch-rate="0" complexity="7">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0" branch-rate="0" complexity="7">
+              <lines>
+                <line number="271" hits="0" branch="false" />
+                <line number="272" hits="0" branch="false" />
+                <line number="273" hits="0" branch="false" />
+                <line number="274" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="223" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="275" hits="0" branch="false" />
+                <line number="276" hits="0" branch="false" />
+                <line number="277" hits="0" branch="false" />
+                <line number="278" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="227" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="279" hits="0" branch="false" />
+                <line number="280" hits="0" branch="false" />
+                <line number="281" hits="0" branch="false" />
+                <line number="282" hits="0" branch="false" />
+                <line number="283" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="271" hits="0" branch="false" />
+            <line number="272" hits="0" branch="false" />
+            <line number="273" hits="0" branch="false" />
+            <line number="274" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="223" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="275" hits="0" branch="false" />
+            <line number="276" hits="0" branch="false" />
+            <line number="277" hits="0" branch="false" />
+            <line number="278" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="227" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="279" hits="0" branch="false" />
+            <line number="280" hits="0" branch="false" />
+            <line number="281" hits="0" branch="false" />
+            <line number="282" hits="0" branch="false" />
+            <line number="283" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.DebuggerIntegrationTests/&lt;WaitForTopFrameNameAsync&gt;d__14" filename="/DebuggerIntegrationTests.cs" line-rate="0" branch-rate="0" complexity="8">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0" branch-rate="0" complexity="8">
+              <lines>
+                <line number="286" hits="0" branch="false" />
+                <line number="287" hits="0" branch="false" />
+                <line number="288" hits="0" branch="false" />
+                <line number="289" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="236" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="290" hits="0" branch="false" />
+                <line number="291" hits="0" branch="false" />
+                <line number="292" hits="0" branch="false" />
+                <line number="293" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="240" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="294" hits="0" branch="false" />
+                <line number="295" hits="0" branch="false" />
+                <line number="296" hits="0" branch="false" />
+                <line number="297" hits="0" branch="false" />
+                <line number="298" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="286" hits="0" branch="false" />
+            <line number="287" hits="0" branch="false" />
+            <line number="288" hits="0" branch="false" />
+            <line number="289" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="236" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="290" hits="0" branch="false" />
+            <line number="291" hits="0" branch="false" />
+            <line number="292" hits="0" branch="false" />
+            <line number="293" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="240" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="294" hits="0" branch="false" />
+            <line number="295" hits="0" branch="false" />
+            <line number="296" hits="0" branch="false" />
+            <line number="297" hits="0" branch="false" />
+            <line number="298" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.DevFlowAddInsTests" filename="/DevFlowAddInsTests.cs" line-rate="0" branch-rate="0" complexity="1">
+          <methods>
+            <method name=".ctor" signature="System.Void (OpenDevelop.IntegrationTests.OpenDevelopAppFixture)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="13" hits="0" branch="false" />
+                <line number="14" hits="0" branch="false" />
+                <line number="15" hits="0" branch="false" />
+                <line number="16" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="13" hits="0" branch="false" />
+            <line number="14" hits="0" branch="false" />
+            <line number="15" hits="0" branch="false" />
+            <line number="16" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.DevFlowAddInsTests/&lt;&gt;c" filename="/DevFlowAddInsTests.cs" line-rate="0" branch-rate="0" complexity="1">
+          <methods>
+            <method name="&lt;AddInsList_ContainsSharpDevelopAddIns&gt;b__2_0" signature="System.Boolean (System.Text.Json.JsonElement)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="28" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="28" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.DevFlowAddInsTests/&lt;AddInsList_ContainsSharpDevelopAddIns&gt;d__2" filename="/DevFlowAddInsTests.cs" line-rate="0" branch-rate="0" complexity="4">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0" branch-rate="0" complexity="4">
+              <lines>
+                <line number="20" hits="0" branch="false" />
+                <line number="21" hits="0" branch="false" />
+                <line number="23" hits="0" branch="false" />
+                <line number="28" hits="0" branch="false" />
+                <line number="29" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="20" hits="0" branch="false" />
+            <line number="21" hits="0" branch="false" />
+            <line number="23" hits="0" branch="false" />
+            <line number="28" hits="0" branch="false" />
+            <line number="29" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.DevFlowAgentTests" filename="/DevFlowAgentTests.cs" line-rate="0" branch-rate="0" complexity="1">
+          <methods>
+            <method name=".ctor" signature="System.Void (OpenDevelop.IntegrationTests.OpenDevelopAppFixture)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="16" hits="0" branch="false" />
+                <line number="17" hits="0" branch="false" />
+                <line number="18" hits="0" branch="false" />
+                <line number="19" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="16" hits="0" branch="false" />
+            <line number="17" hits="0" branch="false" />
+            <line number="18" hits="0" branch="false" />
+            <line number="19" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.DevFlowAgentTests/&lt;AgentStatus_FrameworkIsWpf&gt;d__3" filename="/DevFlowAgentTests.cs" line-rate="0" branch-rate="0" complexity="3">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0" branch-rate="0" complexity="3">
+              <lines>
+                <line number="33" hits="0" branch="false" />
+                <line number="34" hits="0" branch="false" />
+                <line number="36" hits="0" branch="false" />
+                <line number="37" hits="0" branch="false" />
+                <line number="38" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="33" hits="0" branch="false" />
+            <line number="34" hits="0" branch="false" />
+            <line number="36" hits="0" branch="false" />
+            <line number="37" hits="0" branch="false" />
+            <line number="38" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.DevFlowAgentTests/&lt;AgentStatus_ReturnsValidJson&gt;d__2" filename="/DevFlowAgentTests.cs" line-rate="0" branch-rate="0" complexity="3">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0" branch-rate="0" complexity="3">
+              <lines>
+                <line number="23" hits="0" branch="false" />
+                <line number="24" hits="0" branch="false" />
+                <line number="26" hits="0" branch="false" />
+                <line number="27" hits="0" branch="false" />
+                <line number="28" hits="0" branch="false" />
+                <line number="29" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="23" hits="0" branch="false" />
+            <line number="24" hits="0" branch="false" />
+            <line number="26" hits="0" branch="false" />
+            <line number="27" hits="0" branch="false" />
+            <line number="28" hits="0" branch="false" />
+            <line number="29" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.DevFlowAgentTests/&lt;InvokeActions_ListsRegisteredActions&gt;d__5" filename="/DevFlowAgentTests.cs" line-rate="0" branch-rate="0" complexity="11">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0" branch-rate="0" complexity="11">
+              <lines>
+                <line number="51" hits="0" branch="false" />
+                <line number="52" hits="0" branch="false" />
+                <line number="53" hits="0" branch="false" />
+                <line number="54" hits="0" branch="false" />
+                <line number="56" hits="0" branch="false" />
+                <line number="59" hits="0" branch="false" />
+                <line number="60" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="51" hits="0" branch="false" />
+            <line number="52" hits="0" branch="false" />
+            <line number="53" hits="0" branch="false" />
+            <line number="54" hits="0" branch="false" />
+            <line number="56" hits="0" branch="false" />
+            <line number="59" hits="0" branch="false" />
+            <line number="60" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.DevFlowAgentTests/&lt;UITree_ReturnsNonEmpty&gt;d__4" filename="/DevFlowAgentTests.cs" line-rate="0" branch-rate="0" complexity="3">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0" branch-rate="0" complexity="3">
+              <lines>
+                <line number="42" hits="0" branch="false" />
+                <line number="43" hits="0" branch="false" />
+                <line number="46" hits="0" branch="false" />
+                <line number="47" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="42" hits="0" branch="false" />
+            <line number="43" hits="0" branch="false" />
+            <line number="46" hits="0" branch="false" />
+            <line number="47" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.OpenDevelopAppFixture" filename="/OpenDevelopAppFixture.cs" line-rate="0.66" branch-rate="0.58" complexity="2.88">
+          <methods>
+            <method name=".cctor" signature="System.Void ()" line-rate="1" branch-rate="0" complexity="4">
+              <lines>
+                <line number="24" hits="1" branch="false" />
+                <line number="26" hits="1" branch="false" />
+              </lines>
+            </method>
+            <method name=".ctor" signature="System.Void ()" line-rate="1" branch-rate="0" complexity="1">
+              <lines>
+                <line number="33" hits="1" branch="false" />
+                <line number="34" hits="1" branch="false" />
+                <line number="35" hits="1" branch="false" />
+                <line number="38" hits="1" branch="false" />
+                <line number="39" hits="1" branch="false" />
+                <line number="40" hits="1" branch="false" />
+                <line number="41" hits="1" branch="false" />
+                <line number="42" hits="1" branch="false" />
+              </lines>
+            </method>
+            <method name="&lt;StartAsync&gt;b__25_0" signature="System.Void (System.Object,System.Diagnostics.DataReceivedEventArgs)" line-rate="1" branch-rate="0" complexity="1">
+              <lines>
+                <line number="72" hits="1" branch="false" />
+              </lines>
+            </method>
+            <method name="&lt;StartAsync&gt;b__25_1" signature="System.Void (System.Object,System.Diagnostics.DataReceivedEventArgs)" line-rate="1" branch-rate="0" complexity="1">
+              <lines>
+                <line number="73" hits="1" branch="false" />
+              </lines>
+            </method>
+            <method name="AppendAppOutput" signature="System.Void (System.String,System.String)" line-rate="0.9" branch-rate="0.75" complexity="4">
+              <lines>
+                <line number="288" hits="1" branch="false" />
+                <line number="289" hits="1" branch="true" condition-coverage="100% (2/2)">
+                  <conditions>
+                    <condition number="451" type="jump" coverage="100%" />
+                  </conditions>
+                </line>
+                <line number="290" hits="1" branch="false" />
+                <line number="291" hits="1" branch="false" />
+                <line number="292" hits="1" branch="false" />
+                <line number="293" hits="1" branch="false" />
+                <line number="294" hits="1" branch="true" condition-coverage="50% (1/2)">
+                  <conditions>
+                    <condition number="446" type="jump" coverage="50%" />
+                  </conditions>
+                </line>
+                <line number="295" hits="0" branch="false" />
+                <line number="296" hits="1" branch="false" />
+                <line number="297" hits="1" branch="false" />
+              </lines>
+            </method>
+            <method name="ConfigureDotNetEnvironment" signature="System.Void (System.Diagnostics.ProcessStartInfo)" line-rate="0.86" branch-rate="0.5" complexity="5">
+              <lines>
+                <line number="252" hits="1" branch="false" />
+                <line number="253" hits="1" branch="false" />
+                <line number="254" hits="1" branch="true" condition-coverage="50% (1/2)">
+                  <conditions>
+                    <condition number="440" type="jump" coverage="50%" />
+                  </conditions>
+                </line>
+                <line number="255" hits="0" branch="false" />
+                <line number="257" hits="1" branch="false" />
+                <line number="258" hits="1" branch="false" />
+                <line number="259" hits="1" branch="false" />
+                <line number="261" hits="1" branch="false" />
+                <line number="262" hits="1" branch="true" condition-coverage="50% (1/2)">
+                  <conditions>
+                    <condition number="434" type="jump" coverage="50%" />
+                  </conditions>
+                </line>
+                <line number="263" hits="0" branch="false" />
+                <line number="265" hits="1" branch="false" />
+                <line number="268" hits="1" branch="true" condition-coverage="50% (1/2)">
+                  <conditions>
+                    <condition number="431" type="jump" coverage="50%" />
+                  </conditions>
+                </line>
+                <line number="269" hits="0" branch="false" />
+                <line number="271" hits="1" branch="false" />
+                <line number="272" hits="1" branch="false" />
+                <line number="273" hits="1" branch="false" />
+                <line number="274" hits="1" branch="false" />
+                <line number="275" hits="1" branch="false" />
+                <line number="276" hits="1" branch="false" />
+                <line number="284" hits="1" branch="false" />
+                <line number="285" hits="1" branch="false" />
+              </lines>
+            </method>
+            <method name="GetRecentAppOutput" signature="System.String ()" line-rate="1" branch-rate="0" complexity="2">
+              <lines>
+                <line number="300" hits="1" branch="false" />
+                <line number="301" hits="1" branch="false" />
+                <line number="302" hits="1" branch="false" />
+                <line number="303" hits="1" branch="false" />
+                <line number="305" hits="1" branch="false" />
+              </lines>
+            </method>
+            <method name="IsPortInUse" signature="System.Boolean (System.Int32)" line-rate="0.57" branch-rate="0" complexity="1">
+              <lines>
+                <line number="117" hits="1" branch="false" />
+                <line number="119" hits="1" branch="false" />
+                <line number="120" hits="1" branch="false" />
+                <line number="123" hits="0" branch="false" />
+                <line number="124" hits="1" branch="false" />
+              </lines>
+            </method>
+            <method name="LocateDebugTestProject" signature="System.String ()" line-rate="0.91" branch-rate="0.75" complexity="3">
+              <lines>
+                <line number="221" hits="1" branch="false" />
+                <line number="222" hits="1" branch="false" />
+                <line number="223" hits="1" branch="true" condition-coverage="50% (1/2)">
+                  <conditions>
+                    <condition number="398" type="jump" coverage="50%" />
+                  </conditions>
+                </line>
+                <line number="224" hits="1" branch="false" />
+                <line number="225" hits="1" branch="false" />
+                <line number="226" hits="2" branch="true" condition-coverage="100% (2/2)">
+                  <conditions>
+                    <condition number="402" type="jump" coverage="100%" />
+                  </conditions>
+                </line>
+                <line number="227" hits="1" branch="false" />
+                <line number="228" hits="1" branch="false" />
+                <line number="229" hits="0" branch="false" />
+                <line number="231" hits="1" branch="false" />
+              </lines>
+            </method>
+            <method name="LocateFixtureProject" signature="System.String ()" line-rate="0.91" branch-rate="0.75" complexity="3">
+              <lines>
+                <line number="182" hits="1" branch="false" />
+                <line number="183" hits="1" branch="false" />
+                <line number="184" hits="1" branch="true" condition-coverage="50% (1/2)">
+                  <conditions>
+                    <condition number="365" type="jump" coverage="50%" />
+                  </conditions>
+                </line>
+                <line number="185" hits="1" branch="false" />
+                <line number="186" hits="1" branch="false" />
+                <line number="187" hits="2" branch="true" condition-coverage="100% (2/2)">
+                  <conditions>
+                    <condition number="369" type="jump" coverage="100%" />
+                  </conditions>
+                </line>
+                <line number="188" hits="1" branch="false" />
+                <line number="189" hits="1" branch="false" />
+                <line number="190" hits="0" branch="false" />
+                <line number="192" hits="1" branch="false" />
+              </lines>
+            </method>
+            <method name="LocateOpenDevelopProject" signature="System.String ()" line-rate="0.91" branch-rate="0.75" complexity="3">
+              <lines>
+                <line number="169" hits="1" branch="false" />
+                <line number="170" hits="1" branch="false" />
+                <line number="171" hits="1" branch="true" condition-coverage="50% (1/2)">
+                  <conditions>
+                    <condition number="354" type="jump" coverage="50%" />
+                  </conditions>
+                </line>
+                <line number="172" hits="1" branch="false" />
+                <line number="173" hits="1" branch="false" />
+                <line number="174" hits="2" branch="true" condition-coverage="100% (2/2)">
+                  <conditions>
+                    <condition number="358" type="jump" coverage="100%" />
+                  </conditions>
+                </line>
+                <line number="175" hits="1" branch="false" />
+                <line number="176" hits="1" branch="false" />
+                <line number="177" hits="0" branch="false" />
+                <line number="179" hits="1" branch="false" />
+              </lines>
+            </method>
+            <method name="LocateSlnxFixture" signature="System.String ()" line-rate="0.91" branch-rate="0.75" complexity="3">
+              <lines>
+                <line number="208" hits="1" branch="false" />
+                <line number="209" hits="1" branch="false" />
+                <line number="210" hits="1" branch="true" condition-coverage="50% (1/2)">
+                  <conditions>
+                    <condition number="387" type="jump" coverage="50%" />
+                  </conditions>
+                </line>
+                <line number="211" hits="1" branch="false" />
+                <line number="212" hits="1" branch="false" />
+                <line number="213" hits="2" branch="true" condition-coverage="100% (2/2)">
+                  <conditions>
+                    <condition number="391" type="jump" coverage="100%" />
+                  </conditions>
+                </line>
+                <line number="214" hits="1" branch="false" />
+                <line number="215" hits="1" branch="false" />
+                <line number="216" hits="0" branch="false" />
+                <line number="218" hits="1" branch="false" />
+              </lines>
+            </method>
+            <method name="LocateSolutionExplorerFixture" signature="System.String ()" line-rate="0.91" branch-rate="0.75" complexity="3">
+              <lines>
+                <line number="195" hits="1" branch="false" />
+                <line number="196" hits="1" branch="false" />
+                <line number="197" hits="1" branch="true" condition-coverage="50% (1/2)">
+                  <conditions>
+                    <condition number="376" type="jump" coverage="50%" />
+                  </conditions>
+                </line>
+                <line number="198" hits="1" branch="false" />
+                <line number="199" hits="1" branch="false" />
+                <line number="200" hits="2" branch="true" condition-coverage="100% (2/2)">
+                  <conditions>
+                    <condition number="380" type="jump" coverage="100%" />
+                  </conditions>
+                </line>
+                <line number="201" hits="1" branch="false" />
+                <line number="202" hits="1" branch="false" />
+                <line number="203" hits="0" branch="false" />
+                <line number="205" hits="1" branch="false" />
+              </lines>
+            </method>
+            <method name="ResolveDotNetHost" signature="System.String ()" line-rate="0.33" branch-rate="0.17" complexity="5">
+              <lines>
+                <line number="234" hits="1" branch="false" />
+                <line number="235" hits="1" branch="false" />
+                <line number="236" hits="1" branch="true" condition-coverage="50% (1/2)">
+                  <conditions>
+                    <condition number="419" type="jump" coverage="50%" />
+                  </conditions>
+                </line>
+                <line number="237" hits="1" branch="false" />
+                <line number="239" hits="0" branch="false" />
+                <line number="240" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="409" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="241" hits="0" branch="false" />
+                <line number="242" hits="0" branch="false" />
+                <line number="243" hits="0" branch="false" />
+                <line number="244" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="413" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="245" hits="0" branch="false" />
+                <line number="246" hits="0" branch="false" />
+                <line number="248" hits="0" branch="false" />
+                <line number="249" hits="1" branch="false" />
+              </lines>
+            </method>
+            <method name="StopApp" signature="System.Void ()" line-rate="0.34" branch-rate="0.5" complexity="6">
+              <lines>
+                <line number="81" hits="1" branch="false" />
+                <line number="82" hits="3" branch="true" condition-coverage="50% (1/2)">
+                  <conditions>
+                    <condition number="343" type="jump" coverage="50%" />
+                  </conditions>
+                </line>
+                <line number="83" hits="5" branch="true" condition-coverage="50% (1/2)">
+                  <conditions>
+                    <condition number="336" type="jump" coverage="50%" />
+                  </conditions>
+                </line>
+                <line number="84" hits="5" branch="true" condition-coverage="50% (1/2)">
+                  <conditions>
+                    <condition number="319" type="jump" coverage="50%" />
+                  </conditions>
+                </line>
+                <line number="85" hits="5" branch="true" condition-coverage="50% (1/2)">
+                  <conditions>
+                    <condition number="302" type="jump" coverage="50%" />
+                  </conditions>
+                </line>
+                <line number="86" hits="1" branch="false" />
+                <line number="87" hits="1" branch="false" />
+              </lines>
+            </method>
+            <method name="get_DevFlowBaseUrl" signature="System.String ()" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="31" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="24" hits="1" branch="false" />
+            <line number="26" hits="1" branch="false" />
+            <line number="31" hits="0" branch="false" />
+            <line number="33" hits="1" branch="false" />
+            <line number="34" hits="1" branch="false" />
+            <line number="35" hits="1" branch="false" />
+            <line number="38" hits="1" branch="false" />
+            <line number="39" hits="1" branch="false" />
+            <line number="40" hits="1" branch="false" />
+            <line number="41" hits="1" branch="false" />
+            <line number="42" hits="1" branch="false" />
+            <line number="72" hits="1" branch="false" />
+            <line number="73" hits="1" branch="false" />
+            <line number="81" hits="1" branch="false" />
+            <line number="82" hits="3" branch="true" condition-coverage="50% (1/2)">
+              <conditions>
+                <condition number="343" type="jump" coverage="50%" />
+              </conditions>
+            </line>
+            <line number="83" hits="5" branch="true" condition-coverage="50% (1/2)">
+              <conditions>
+                <condition number="336" type="jump" coverage="50%" />
+              </conditions>
+            </line>
+            <line number="84" hits="5" branch="true" condition-coverage="50% (1/2)">
+              <conditions>
+                <condition number="319" type="jump" coverage="50%" />
+              </conditions>
+            </line>
+            <line number="85" hits="5" branch="true" condition-coverage="50% (1/2)">
+              <conditions>
+                <condition number="302" type="jump" coverage="50%" />
+              </conditions>
+            </line>
+            <line number="86" hits="1" branch="false" />
+            <line number="87" hits="1" branch="false" />
+            <line number="117" hits="1" branch="false" />
+            <line number="119" hits="1" branch="false" />
+            <line number="120" hits="1" branch="false" />
+            <line number="123" hits="0" branch="false" />
+            <line number="124" hits="1" branch="false" />
+            <line number="169" hits="1" branch="false" />
+            <line number="170" hits="1" branch="false" />
+            <line number="171" hits="1" branch="true" condition-coverage="50% (1/2)">
+              <conditions>
+                <condition number="354" type="jump" coverage="50%" />
+              </conditions>
+            </line>
+            <line number="172" hits="1" branch="false" />
+            <line number="173" hits="1" branch="false" />
+            <line number="174" hits="2" branch="true" condition-coverage="100% (2/2)">
+              <conditions>
+                <condition number="358" type="jump" coverage="100%" />
+              </conditions>
+            </line>
+            <line number="175" hits="1" branch="false" />
+            <line number="176" hits="1" branch="false" />
+            <line number="177" hits="0" branch="false" />
+            <line number="179" hits="1" branch="false" />
+            <line number="182" hits="1" branch="false" />
+            <line number="183" hits="1" branch="false" />
+            <line number="184" hits="1" branch="true" condition-coverage="50% (1/2)">
+              <conditions>
+                <condition number="365" type="jump" coverage="50%" />
+              </conditions>
+            </line>
+            <line number="185" hits="1" branch="false" />
+            <line number="186" hits="1" branch="false" />
+            <line number="187" hits="2" branch="true" condition-coverage="100% (2/2)">
+              <conditions>
+                <condition number="369" type="jump" coverage="100%" />
+              </conditions>
+            </line>
+            <line number="188" hits="1" branch="false" />
+            <line number="189" hits="1" branch="false" />
+            <line number="190" hits="0" branch="false" />
+            <line number="192" hits="1" branch="false" />
+            <line number="195" hits="1" branch="false" />
+            <line number="196" hits="1" branch="false" />
+            <line number="197" hits="1" branch="true" condition-coverage="50% (1/2)">
+              <conditions>
+                <condition number="376" type="jump" coverage="50%" />
+              </conditions>
+            </line>
+            <line number="198" hits="1" branch="false" />
+            <line number="199" hits="1" branch="false" />
+            <line number="200" hits="2" branch="true" condition-coverage="100% (2/2)">
+              <conditions>
+                <condition number="380" type="jump" coverage="100%" />
+              </conditions>
+            </line>
+            <line number="201" hits="1" branch="false" />
+            <line number="202" hits="1" branch="false" />
+            <line number="203" hits="0" branch="false" />
+            <line number="205" hits="1" branch="false" />
+            <line number="208" hits="1" branch="false" />
+            <line number="209" hits="1" branch="false" />
+            <line number="210" hits="1" branch="true" condition-coverage="50% (1/2)">
+              <conditions>
+                <condition number="387" type="jump" coverage="50%" />
+              </conditions>
+            </line>
+            <line number="211" hits="1" branch="false" />
+            <line number="212" hits="1" branch="false" />
+            <line number="213" hits="2" branch="true" condition-coverage="100% (2/2)">
+              <conditions>
+                <condition number="391" type="jump" coverage="100%" />
+              </conditions>
+            </line>
+            <line number="214" hits="1" branch="false" />
+            <line number="215" hits="1" branch="false" />
+            <line number="216" hits="0" branch="false" />
+            <line number="218" hits="1" branch="false" />
+            <line number="221" hits="1" branch="false" />
+            <line number="222" hits="1" branch="false" />
+            <line number="223" hits="1" branch="true" condition-coverage="50% (1/2)">
+              <conditions>
+                <condition number="398" type="jump" coverage="50%" />
+              </conditions>
+            </line>
+            <line number="224" hits="1" branch="false" />
+            <line number="225" hits="1" branch="false" />
+            <line number="226" hits="2" branch="true" condition-coverage="100% (2/2)">
+              <conditions>
+                <condition number="402" type="jump" coverage="100%" />
+              </conditions>
+            </line>
+            <line number="227" hits="1" branch="false" />
+            <line number="228" hits="1" branch="false" />
+            <line number="229" hits="0" branch="false" />
+            <line number="231" hits="1" branch="false" />
+            <line number="234" hits="1" branch="false" />
+            <line number="235" hits="1" branch="false" />
+            <line number="236" hits="1" branch="true" condition-coverage="50% (1/2)">
+              <conditions>
+                <condition number="419" type="jump" coverage="50%" />
+              </conditions>
+            </line>
+            <line number="237" hits="1" branch="false" />
+            <line number="239" hits="0" branch="false" />
+            <line number="240" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="409" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="241" hits="0" branch="false" />
+            <line number="242" hits="0" branch="false" />
+            <line number="243" hits="0" branch="false" />
+            <line number="244" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="413" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="245" hits="0" branch="false" />
+            <line number="246" hits="0" branch="false" />
+            <line number="248" hits="0" branch="false" />
+            <line number="249" hits="1" branch="false" />
+            <line number="252" hits="1" branch="false" />
+            <line number="253" hits="1" branch="false" />
+            <line number="254" hits="1" branch="true" condition-coverage="50% (1/2)">
+              <conditions>
+                <condition number="440" type="jump" coverage="50%" />
+              </conditions>
+            </line>
+            <line number="255" hits="0" branch="false" />
+            <line number="257" hits="1" branch="false" />
+            <line number="258" hits="1" branch="false" />
+            <line number="259" hits="1" branch="false" />
+            <line number="261" hits="1" branch="false" />
+            <line number="262" hits="1" branch="true" condition-coverage="50% (1/2)">
+              <conditions>
+                <condition number="434" type="jump" coverage="50%" />
+              </conditions>
+            </line>
+            <line number="263" hits="0" branch="false" />
+            <line number="265" hits="1" branch="false" />
+            <line number="268" hits="1" branch="true" condition-coverage="50% (1/2)">
+              <conditions>
+                <condition number="431" type="jump" coverage="50%" />
+              </conditions>
+            </line>
+            <line number="269" hits="0" branch="false" />
+            <line number="271" hits="1" branch="false" />
+            <line number="272" hits="1" branch="false" />
+            <line number="273" hits="1" branch="false" />
+            <line number="274" hits="1" branch="false" />
+            <line number="275" hits="1" branch="false" />
+            <line number="276" hits="1" branch="false" />
+            <line number="284" hits="1" branch="false" />
+            <line number="285" hits="1" branch="false" />
+            <line number="288" hits="1" branch="false" />
+            <line number="289" hits="1" branch="true" condition-coverage="100% (2/2)">
+              <conditions>
+                <condition number="451" type="jump" coverage="100%" />
+              </conditions>
+            </line>
+            <line number="290" hits="1" branch="false" />
+            <line number="291" hits="1" branch="false" />
+            <line number="292" hits="1" branch="false" />
+            <line number="293" hits="1" branch="false" />
+            <line number="294" hits="1" branch="true" condition-coverage="50% (1/2)">
+              <conditions>
+                <condition number="446" type="jump" coverage="50%" />
+              </conditions>
+            </line>
+            <line number="295" hits="0" branch="false" />
+            <line number="296" hits="1" branch="false" />
+            <line number="297" hits="1" branch="false" />
+            <line number="300" hits="1" branch="false" />
+            <line number="301" hits="1" branch="false" />
+            <line number="302" hits="1" branch="false" />
+            <line number="303" hits="1" branch="false" />
+            <line number="305" hits="1" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.OpenDevelopAppFixture/&lt;&gt;c" filename="/OpenDevelopAppFixture.cs" line-rate="1" branch-rate="0" complexity="1">
+          <methods>
+            <method name="&lt;ConfigureDotNetEnvironment&gt;b__39_0" signature="System.String (System.String)" line-rate="1" branch-rate="0" complexity="1">
+              <lines>
+                <line number="266" hits="1" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="266" hits="1" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.OpenDevelopAppFixture/&lt;&gt;c__DisplayClass29_0" filename="/OpenDevelopAppFixture.cs" line-rate="0" branch-rate="0" complexity="1">
+          <methods>
+            <method name="&lt;IsPortInUse&gt;b__0" signature="System.Boolean (System.Net.IPEndPoint)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="121" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="121" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.OpenDevelopAppFixture/&lt;DisposeAsync&gt;d__24" filename="/OpenDevelopAppFixture.cs" line-rate="1" branch-rate="0" complexity="3">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="1" branch-rate="0" complexity="3">
+              <lines>
+                <line number="52" hits="1" branch="false" />
+                <line number="53" hits="1" branch="false" />
+                <line number="54" hits="1" branch="false" />
+                <line number="55" hits="1" branch="false" />
+                <line number="56" hits="1" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="52" hits="1" branch="false" />
+            <line number="53" hits="1" branch="false" />
+            <line number="54" hits="1" branch="false" />
+            <line number="55" hits="1" branch="false" />
+            <line number="56" hits="1" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.OpenDevelopAppFixture/&lt;GetStatusAsync&gt;d__31" filename="/OpenDevelopAppFixture.cs" line-rate="0" branch-rate="0" complexity="8">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0" branch-rate="0" complexity="8">
+              <lines>
+                <line number="155" hits="0" branch="false" />
+                <line number="156" hits="0" branch="false" />
+                <line number="157" hits="0" branch="false" />
+                <line number="158" hits="0" branch="false" />
+                <line number="159" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="155" hits="0" branch="false" />
+            <line number="156" hits="0" branch="false" />
+            <line number="157" hits="0" branch="false" />
+            <line number="158" hits="0" branch="false" />
+            <line number="159" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.OpenDevelopAppFixture/&lt;GetUITreeAsync&gt;d__32" filename="/OpenDevelopAppFixture.cs" line-rate="0" branch-rate="0" complexity="8">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0" branch-rate="0" complexity="8">
+              <lines>
+                <line number="162" hits="0" branch="false" />
+                <line number="163" hits="0" branch="false" />
+                <line number="164" hits="0" branch="false" />
+                <line number="165" hits="0" branch="false" />
+                <line number="166" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="162" hits="0" branch="false" />
+            <line number="163" hits="0" branch="false" />
+            <line number="164" hits="0" branch="false" />
+            <line number="165" hits="0" branch="false" />
+            <line number="166" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.OpenDevelopAppFixture/&lt;InitializeAsync&gt;d__23" filename="/OpenDevelopAppFixture.cs" line-rate="1" branch-rate="0" complexity="5">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="1" branch-rate="0" complexity="5">
+              <lines>
+                <line number="45" hits="1" branch="false" />
+                <line number="46" hits="1" branch="false" />
+                <line number="47" hits="1" branch="false" />
+                <line number="48" hits="1" branch="false" />
+                <line number="49" hits="1" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="45" hits="1" branch="false" />
+            <line number="46" hits="1" branch="false" />
+            <line number="47" hits="1" branch="false" />
+            <line number="48" hits="1" branch="false" />
+            <line number="49" hits="1" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.OpenDevelopAppFixture/&lt;InvokeAsync&gt;d__30" filename="/OpenDevelopAppFixture.cs" line-rate="0.81" branch-rate="0.6" complexity="20">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0.81" branch-rate="0.5" complexity="20">
+              <lines>
+                <line number="127" hits="1" branch="false" />
+                <line number="128" hits="1" branch="false" />
+                <line number="129" hits="1" branch="false" />
+                <line number="132" hits="1" branch="false" />
+                <line number="133" hits="1" branch="false" />
+                <line number="134" hits="1" branch="false" />
+                <line number="135" hits="1" branch="false" />
+                <line number="136" hits="1" branch="false" />
+                <line number="137" hits="1" branch="false" />
+                <line number="139" hits="1" branch="false" />
+                <line number="140" hits="1" branch="false" />
+                <line number="141" hits="1" branch="true" condition-coverage="50% (1/2)">
+                  <conditions>
+                    <condition number="501" type="jump" coverage="50%" />
+                  </conditions>
+                </line>
+                <line number="142" hits="0" branch="false" />
+                <line number="143" hits="0" branch="false" />
+                <line number="144" hits="0" branch="false" />
+                <line number="146" hits="1" branch="false" />
+                <line number="147" hits="1" branch="false" />
+                <line number="148" hits="1" branch="true" condition-coverage="50% (1/2)">
+                  <conditions>
+                    <condition number="495" type="jump" coverage="50%" />
+                  </conditions>
+                </line>
+                <line number="149" hits="0" branch="false" />
+                <line number="150" hits="1" branch="false" />
+                <line number="152" hits="1" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="127" hits="1" branch="false" />
+            <line number="128" hits="1" branch="false" />
+            <line number="129" hits="1" branch="false" />
+            <line number="132" hits="1" branch="false" />
+            <line number="133" hits="1" branch="false" />
+            <line number="134" hits="1" branch="false" />
+            <line number="135" hits="1" branch="false" />
+            <line number="136" hits="1" branch="false" />
+            <line number="137" hits="1" branch="false" />
+            <line number="139" hits="1" branch="false" />
+            <line number="140" hits="1" branch="false" />
+            <line number="141" hits="1" branch="true" condition-coverage="50% (1/2)">
+              <conditions>
+                <condition number="501" type="jump" coverage="50%" />
+              </conditions>
+            </line>
+            <line number="142" hits="0" branch="false" />
+            <line number="143" hits="0" branch="false" />
+            <line number="144" hits="0" branch="false" />
+            <line number="146" hits="1" branch="false" />
+            <line number="147" hits="1" branch="false" />
+            <line number="148" hits="1" branch="true" condition-coverage="50% (1/2)">
+              <conditions>
+                <condition number="495" type="jump" coverage="50%" />
+              </conditions>
+            </line>
+            <line number="149" hits="0" branch="false" />
+            <line number="150" hits="1" branch="false" />
+            <line number="152" hits="1" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.OpenDevelopAppFixture/&lt;StartAsync&gt;d__25" filename="/OpenDevelopAppFixture.cs" line-rate="1" branch-rate="1" complexity="5">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="1" branch-rate="1" complexity="5">
+              <lines>
+                <line number="59" hits="1" branch="false" />
+                <line number="60" hits="1" branch="false" />
+                <line number="67" hits="4" branch="true" condition-coverage="100% (2/2)">
+                  <conditions>
+                    <condition number="525" type="jump" coverage="100%" />
+                  </conditions>
+                </line>
+                <line number="68" hits="1" branch="false" />
+                <line number="69" hits="1" branch="false" />
+                <line number="71" hits="1" branch="false" />
+                <line number="72" hits="1" branch="false" />
+                <line number="73" hits="1" branch="false" />
+                <line number="74" hits="1" branch="false" />
+                <line number="75" hits="1" branch="false" />
+                <line number="77" hits="1" branch="false" />
+                <line number="78" hits="1" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="59" hits="1" branch="false" />
+            <line number="60" hits="1" branch="false" />
+            <line number="67" hits="4" branch="true" condition-coverage="100% (2/2)">
+              <conditions>
+                <condition number="525" type="jump" coverage="100%" />
+              </conditions>
+            </line>
+            <line number="68" hits="1" branch="false" />
+            <line number="69" hits="1" branch="false" />
+            <line number="71" hits="1" branch="false" />
+            <line number="72" hits="1" branch="false" />
+            <line number="73" hits="1" branch="false" />
+            <line number="74" hits="1" branch="false" />
+            <line number="75" hits="1" branch="false" />
+            <line number="77" hits="1" branch="false" />
+            <line number="78" hits="1" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.OpenDevelopAppFixture/&lt;WaitForAgentAsync&gt;d__27" filename="/OpenDevelopAppFixture.cs" line-rate="0.88" branch-rate="0.6" complexity="10">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0.88" branch-rate="0.5" complexity="10">
+              <lines>
+                <line number="90" hits="1" branch="false" />
+                <line number="91" hits="1" branch="false" />
+                <line number="92" hits="1" branch="true" condition-coverage="50% (1/2)">
+                  <conditions>
+                    <condition number="530" type="jump" coverage="50%" />
+                  </conditions>
+                </line>
+                <line number="93" hits="1" branch="false" />
+                <line number="95" hits="1" branch="false" />
+                <line number="96" hits="1" branch="false" />
+                <line number="97" hits="2" branch="true" condition-coverage="50% (1/2)">
+                  <conditions>
+                    <condition number="538" type="jump" coverage="50%" />
+                  </conditions>
+                </line>
+                <line number="98" hits="0" branch="false" />
+                <line number="99" hits="3" branch="false" />
+                <line number="100" hits="1" branch="false" />
+                <line number="101" hits="1" branch="false" />
+                <line number="102" hits="0" branch="false" />
+                <line number="103" hits="1" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="90" hits="1" branch="false" />
+            <line number="91" hits="1" branch="false" />
+            <line number="92" hits="1" branch="true" condition-coverage="50% (1/2)">
+              <conditions>
+                <condition number="530" type="jump" coverage="50%" />
+              </conditions>
+            </line>
+            <line number="93" hits="1" branch="false" />
+            <line number="95" hits="1" branch="false" />
+            <line number="96" hits="1" branch="false" />
+            <line number="97" hits="2" branch="true" condition-coverage="50% (1/2)">
+              <conditions>
+                <condition number="538" type="jump" coverage="50%" />
+              </conditions>
+            </line>
+            <line number="98" hits="0" branch="false" />
+            <line number="99" hits="3" branch="false" />
+            <line number="100" hits="1" branch="false" />
+            <line number="101" hits="1" branch="false" />
+            <line number="102" hits="0" branch="false" />
+            <line number="103" hits="1" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.OpenDevelopAppFixture/&lt;WaitForPortFreeAsync&gt;d__28" filename="/OpenDevelopAppFixture.cs" line-rate="0.78" branch-rate="0.6" complexity="6">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0.78" branch-rate="0.5" complexity="6">
+              <lines>
+                <line number="106" hits="1" branch="false" />
+                <line number="107" hits="1" branch="false" />
+                <line number="108" hits="1" branch="true" condition-coverage="50% (1/2)">
+                  <conditions>
+                    <condition number="545" type="jump" coverage="50%" />
+                  </conditions>
+                </line>
+                <line number="109" hits="1" branch="false" />
+                <line number="110" hits="1" branch="true" condition-coverage="50% (1/2)">
+                  <conditions>
+                    <condition number="549" type="jump" coverage="50%" />
+                  </conditions>
+                </line>
+                <line number="111" hits="1" branch="false" />
+                <line number="112" hits="0" branch="false" />
+                <line number="113" hits="0" branch="false" />
+                <line number="114" hits="1" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="106" hits="1" branch="false" />
+            <line number="107" hits="1" branch="false" />
+            <line number="108" hits="1" branch="true" condition-coverage="50% (1/2)">
+              <conditions>
+                <condition number="545" type="jump" coverage="50%" />
+              </conditions>
+            </line>
+            <line number="109" hits="1" branch="false" />
+            <line number="110" hits="1" branch="true" condition-coverage="50% (1/2)">
+              <conditions>
+                <condition number="549" type="jump" coverage="50%" />
+              </conditions>
+            </line>
+            <line number="111" hits="1" branch="false" />
+            <line number="112" hits="0" branch="false" />
+            <line number="113" hits="0" branch="false" />
+            <line number="114" hits="1" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.SelfRegisteredExtensions" filename="/obj/Debug/net11.0/SelfRegisteredExtensions.cs" line-rate="0" branch-rate="0" complexity="1">
+          <methods>
+            <method name="AddSelfRegisteredExtensions" signature="System.Void (Microsoft.Testing.Platform.Builder.ITestApplicationBuilder,System.String[])" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="13" hits="0" branch="false" />
+                <line number="14" hits="0" branch="false" />
+                <line number="15" hits="0" branch="false" />
+                <line number="16" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="13" hits="0" branch="false" />
+            <line number="14" hits="0" branch="false" />
+            <line number="15" hits="0" branch="false" />
+            <line number="16" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.SlnxLoadingTests" filename="/SlnxLoadingTests.cs" line-rate="0" branch-rate="0" complexity="1">
+          <methods>
+            <method name=".ctor" signature="System.Void (OpenDevelop.IntegrationTests.OpenDevelopAppFixture)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="13" hits="0" branch="false" />
+                <line number="14" hits="0" branch="false" />
+                <line number="15" hits="0" branch="false" />
+                <line number="16" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="13" hits="0" branch="false" />
+            <line number="14" hits="0" branch="false" />
+            <line number="15" hits="0" branch="false" />
+            <line number="16" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.SlnxLoadingTests/&lt;&gt;c" filename="/SlnxLoadingTests.cs" line-rate="0" branch-rate="0" complexity="1">
+          <methods>
+            <method name="&lt;SolutionTree_ListsAllProjects&gt;b__3_0" signature="System.Boolean (System.Text.Json.JsonElement)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="39" hits="0" branch="false" />
+              </lines>
+            </method>
+            <method name="&lt;SolutionTree_ListsAllProjects&gt;b__3_1" signature="System.Boolean (System.Text.Json.JsonElement)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="40" hits="0" branch="false" />
+              </lines>
+            </method>
+            <method name="&lt;SolutionTree_ListsAllProjects&gt;b__3_2" signature="System.String (System.Text.Json.JsonElement)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="42" hits="0" branch="false" />
+              </lines>
+            </method>
+            <method name="&lt;SolutionTree_ListsAllProjects&gt;b__3_3" signature="System.Boolean (System.String)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="43" hits="0" branch="false" />
+              </lines>
+            </method>
+            <method name="&lt;SolutionTree_ListsAllProjects&gt;b__3_4" signature="System.String (System.Text.Json.JsonElement)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="45" hits="0" branch="false" />
+              </lines>
+            </method>
+            <method name="&lt;SolutionTree_ListsAllProjects&gt;b__3_5" signature="System.Boolean (System.String)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="46" hits="0" branch="false" />
+              </lines>
+            </method>
+            <method name="&lt;SolutionTree_ListsAllProjects&gt;b__3_6" signature="System.Boolean (System.String)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="47" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="39" hits="0" branch="false" />
+            <line number="40" hits="0" branch="false" />
+            <line number="42" hits="0" branch="false" />
+            <line number="43" hits="0" branch="false" />
+            <line number="45" hits="0" branch="false" />
+            <line number="46" hits="0" branch="false" />
+            <line number="47" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.SlnxLoadingTests/&lt;OpenSlnxFile_DisplaysInAvalonEdit&gt;d__4" filename="/SlnxLoadingTests.cs" line-rate="0" branch-rate="0" complexity="8">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0" branch-rate="0" complexity="8">
+              <lines>
+                <line number="52" hits="0" branch="false" />
+                <line number="53" hits="0" branch="false" />
+                <line number="55" hits="0" branch="false" />
+                <line number="56" hits="0" branch="false" />
+                <line number="57" hits="0" branch="false" />
+                <line number="59" hits="0" branch="false" />
+                <line number="60" hits="0" branch="false" />
+                <line number="61" hits="0" branch="false" />
+                <line number="63" hits="0" branch="false" />
+                <line number="64" hits="0" branch="false" />
+                <line number="65" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="52" hits="0" branch="false" />
+            <line number="53" hits="0" branch="false" />
+            <line number="55" hits="0" branch="false" />
+            <line number="56" hits="0" branch="false" />
+            <line number="57" hits="0" branch="false" />
+            <line number="59" hits="0" branch="false" />
+            <line number="60" hits="0" branch="false" />
+            <line number="61" hits="0" branch="false" />
+            <line number="63" hits="0" branch="false" />
+            <line number="64" hits="0" branch="false" />
+            <line number="65" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.SlnxLoadingTests/&lt;OpenSlnx_LoadsSolutionExplorerFixture&gt;d__2" filename="/SlnxLoadingTests.cs" line-rate="0" branch-rate="0" complexity="3">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0" branch-rate="0" complexity="3">
+              <lines>
+                <line number="20" hits="0" branch="false" />
+                <line number="21" hits="0" branch="false" />
+                <line number="23" hits="0" branch="false" />
+                <line number="24" hits="0" branch="false" />
+                <line number="25" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="20" hits="0" branch="false" />
+            <line number="21" hits="0" branch="false" />
+            <line number="23" hits="0" branch="false" />
+            <line number="24" hits="0" branch="false" />
+            <line number="25" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.SlnxLoadingTests/&lt;SolutionTree_ListsAllProjects&gt;d__3" filename="/SlnxLoadingTests.cs" line-rate="0" branch-rate="0" complexity="12">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0" branch-rate="0" complexity="12">
+              <lines>
+                <line number="29" hits="0" branch="false" />
+                <line number="30" hits="0" branch="false" />
+                <line number="32" hits="0" branch="false" />
+                <line number="34" hits="0" branch="false" />
+                <line number="36" hits="0" branch="false" />
+                <line number="37" hits="0" branch="false" />
+                <line number="39" hits="0" branch="false" />
+                <line number="40" hits="0" branch="false" />
+                <line number="42" hits="0" branch="false" />
+                <line number="43" hits="0" branch="false" />
+                <line number="45" hits="0" branch="false" />
+                <line number="46" hits="0" branch="false" />
+                <line number="47" hits="0" branch="false" />
+                <line number="48" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="29" hits="0" branch="false" />
+            <line number="30" hits="0" branch="false" />
+            <line number="32" hits="0" branch="false" />
+            <line number="34" hits="0" branch="false" />
+            <line number="36" hits="0" branch="false" />
+            <line number="37" hits="0" branch="false" />
+            <line number="39" hits="0" branch="false" />
+            <line number="40" hits="0" branch="false" />
+            <line number="42" hits="0" branch="false" />
+            <line number="43" hits="0" branch="false" />
+            <line number="45" hits="0" branch="false" />
+            <line number="46" hits="0" branch="false" />
+            <line number="47" hits="0" branch="false" />
+            <line number="48" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.SolutionExplorerAndEditorTests" filename="/SolutionExplorerAndEditorTests.cs" line-rate="0" branch-rate="0" complexity="1">
+          <methods>
+            <method name=".ctor" signature="System.Void (OpenDevelop.IntegrationTests.OpenDevelopAppFixture)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="18" hits="0" branch="false" />
+                <line number="19" hits="0" branch="false" />
+                <line number="20" hits="0" branch="false" />
+                <line number="21" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="18" hits="0" branch="false" />
+            <line number="19" hits="0" branch="false" />
+            <line number="20" hits="0" branch="false" />
+            <line number="21" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.SolutionExplorerAndEditorTests/&lt;&gt;c" filename="/SolutionExplorerAndEditorTests.cs" line-rate="0" branch-rate="0" complexity="1">
+          <methods>
+            <method name="&lt;SolutionTree_MatchesFixtureProjectStructure&gt;b__3_0" signature="System.String (System.Text.Json.JsonElement)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="48" hits="0" branch="false" />
+              </lines>
+            </method>
+            <method name="&lt;SolutionTree_MatchesFixtureProjectStructure&gt;b__3_1" signature="System.String (System.String)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="49" hits="0" branch="false" />
+              </lines>
+            </method>
+            <method name="&lt;SolutionTree_MatchesFixtureProjectStructure&gt;b__3_2" signature="System.Boolean (System.String)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="52" hits="0" branch="false" />
+              </lines>
+            </method>
+            <method name="&lt;SolutionTree_MatchesFixtureProjectStructure&gt;b__3_3" signature="System.Boolean (System.String)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="53" hits="0" branch="false" />
+              </lines>
+            </method>
+            <method name="&lt;SolutionTree_MatchesFixtureProjectStructure&gt;b__3_4" signature="System.Boolean (System.String)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="54" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="48" hits="0" branch="false" />
+            <line number="49" hits="0" branch="false" />
+            <line number="52" hits="0" branch="false" />
+            <line number="53" hits="0" branch="false" />
+            <line number="54" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.SolutionExplorerAndEditorTests/&lt;OpenFile_DisplaysInAvalonEdit&gt;d__4" filename="/SolutionExplorerAndEditorTests.cs" line-rate="0" branch-rate="0" complexity="8">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0" branch-rate="0" complexity="8">
+              <lines>
+                <line number="59" hits="0" branch="false" />
+                <line number="60" hits="0" branch="false" />
+                <line number="61" hits="0" branch="false" />
+                <line number="63" hits="0" branch="false" />
+                <line number="64" hits="0" branch="false" />
+                <line number="66" hits="0" branch="false" />
+                <line number="68" hits="0" branch="false" />
+                <line number="69" hits="0" branch="false" />
+                <line number="72" hits="0" branch="false" />
+                <line number="73" hits="0" branch="false" />
+                <line number="78" hits="0" branch="false" />
+                <line number="79" hits="0" branch="false" />
+                <line number="80" hits="0" branch="false" />
+                <line number="81" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="59" hits="0" branch="false" />
+            <line number="60" hits="0" branch="false" />
+            <line number="61" hits="0" branch="false" />
+            <line number="63" hits="0" branch="false" />
+            <line number="64" hits="0" branch="false" />
+            <line number="66" hits="0" branch="false" />
+            <line number="68" hits="0" branch="false" />
+            <line number="69" hits="0" branch="false" />
+            <line number="72" hits="0" branch="false" />
+            <line number="73" hits="0" branch="false" />
+            <line number="78" hits="0" branch="false" />
+            <line number="79" hits="0" branch="false" />
+            <line number="80" hits="0" branch="false" />
+            <line number="81" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.SolutionExplorerAndEditorTests/&lt;OpenSolution_LoadsSolutionExplorerFixture&gt;d__2" filename="/SolutionExplorerAndEditorTests.cs" line-rate="0" branch-rate="0" complexity="3">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0" branch-rate="0" complexity="3">
+              <lines>
+                <line number="25" hits="0" branch="false" />
+                <line number="26" hits="0" branch="false" />
+                <line number="28" hits="0" branch="false" />
+                <line number="29" hits="0" branch="false" />
+                <line number="30" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="25" hits="0" branch="false" />
+            <line number="26" hits="0" branch="false" />
+            <line number="28" hits="0" branch="false" />
+            <line number="29" hits="0" branch="false" />
+            <line number="30" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.SolutionExplorerAndEditorTests/&lt;SolutionTree_MatchesFixtureProjectStructure&gt;d__3" filename="/SolutionExplorerAndEditorTests.cs" line-rate="0" branch-rate="0" complexity="10">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0" branch-rate="0" complexity="10">
+              <lines>
+                <line number="34" hits="0" branch="false" />
+                <line number="35" hits="0" branch="false" />
+                <line number="37" hits="0" branch="false" />
+                <line number="39" hits="0" branch="false" />
+                <line number="41" hits="0" branch="false" />
+                <line number="42" hits="0" branch="false" />
+                <line number="44" hits="0" branch="false" />
+                <line number="45" hits="0" branch="false" />
+                <line number="47" hits="0" branch="false" />
+                <line number="52" hits="0" branch="false" />
+                <line number="53" hits="0" branch="false" />
+                <line number="54" hits="0" branch="false" />
+                <line number="55" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="34" hits="0" branch="false" />
+            <line number="35" hits="0" branch="false" />
+            <line number="37" hits="0" branch="false" />
+            <line number="39" hits="0" branch="false" />
+            <line number="41" hits="0" branch="false" />
+            <line number="42" hits="0" branch="false" />
+            <line number="44" hits="0" branch="false" />
+            <line number="45" hits="0" branch="false" />
+            <line number="47" hits="0" branch="false" />
+            <line number="52" hits="0" branch="false" />
+            <line number="53" hits="0" branch="false" />
+            <line number="54" hits="0" branch="false" />
+            <line number="55" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.UnitTestingTests" filename="/UnitTestingTests.cs" line-rate="0" branch-rate="0" complexity="4">
+          <methods>
+            <method name=".ctor" signature="System.Void (OpenDevelop.IntegrationTests.OpenDevelopAppFixture)" line-rate="0" branch-rate="0" complexity="1">
+              <lines>
+                <line number="11" hits="0" branch="false" />
+                <line number="12" hits="0" branch="false" />
+                <line number="13" hits="0" branch="false" />
+                <line number="14" hits="0" branch="false" />
+              </lines>
+            </method>
+            <method name="FindTest" signature="System.Nullable`1&lt;System.Text.Json.JsonElement&gt; (System.Text.Json.JsonElement,System.String)" line-rate="0" branch-rate="0" complexity="7">
+              <lines>
+                <line number="17" hits="0" branch="false" />
+                <line number="18" hits="0" branch="false" />
+                <line number="19" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="654" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="20" hits="0" branch="false" />
+                <line number="21" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="652" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="22" hits="0" branch="false" />
+                <line number="23" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="650" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="24" hits="0" branch="false" />
+                <line number="25" hits="0" branch="false" />
+                <line number="26" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="645" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="27" hits="0" branch="false" />
+                <line number="28" hits="0" branch="false" />
+                <line number="29" hits="0" branch="false" />
+                <line number="30" hits="0" branch="false" />
+                <line number="31" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="11" hits="0" branch="false" />
+            <line number="12" hits="0" branch="false" />
+            <line number="13" hits="0" branch="false" />
+            <line number="14" hits="0" branch="false" />
+            <line number="17" hits="0" branch="false" />
+            <line number="18" hits="0" branch="false" />
+            <line number="19" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="654" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="20" hits="0" branch="false" />
+            <line number="21" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="652" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="22" hits="0" branch="false" />
+            <line number="23" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="650" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="24" hits="0" branch="false" />
+            <line number="25" hits="0" branch="false" />
+            <line number="26" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="645" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="27" hits="0" branch="false" />
+            <line number="28" hits="0" branch="false" />
+            <line number="29" hits="0" branch="false" />
+            <line number="30" hits="0" branch="false" />
+            <line number="31" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.UnitTestingTests/&lt;DebugUnitTest_StartsDebugSessionWithoutHanging&gt;d__6" filename="/UnitTestingTests.cs" line-rate="0" branch-rate="0" complexity="15">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0" branch-rate="0" complexity="15">
+              <lines>
+                <line number="114" hits="0" branch="false" />
+                <line number="119" hits="0" branch="false" />
+                <line number="121" hits="0" branch="false" />
+                <line number="122" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="661" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="123" hits="0" branch="false" />
+                <line number="124" hits="0" branch="false" />
+                <line number="125" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="665" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="127" hits="0" branch="false" />
+                <line number="128" hits="0" branch="false" />
+                <line number="129" hits="0" branch="false" />
+                <line number="131" hits="0" branch="false" />
+                <line number="138" hits="0" branch="false" />
+                <line number="140" hits="0" branch="false" />
+                <line number="141" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="114" hits="0" branch="false" />
+            <line number="119" hits="0" branch="false" />
+            <line number="121" hits="0" branch="false" />
+            <line number="122" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="661" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="123" hits="0" branch="false" />
+            <line number="124" hits="0" branch="false" />
+            <line number="125" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="665" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="127" hits="0" branch="false" />
+            <line number="128" hits="0" branch="false" />
+            <line number="129" hits="0" branch="false" />
+            <line number="131" hits="0" branch="false" />
+            <line number="138" hits="0" branch="false" />
+            <line number="140" hits="0" branch="false" />
+            <line number="141" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.UnitTestingTests/&lt;UnitTestRun_OutputPadCapturesMessages&gt;d__7" filename="/UnitTestingTests.cs" line-rate="0" branch-rate="0" complexity="15">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0" branch-rate="0" complexity="15">
+              <lines>
+                <line number="145" hits="0" branch="false" />
+                <line number="146" hits="0" branch="false" />
+                <line number="148" hits="0" branch="false" />
+                <line number="149" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="679" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="150" hits="0" branch="false" />
+                <line number="151" hits="0" branch="false" />
+                <line number="152" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="683" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="154" hits="0" branch="false" />
+                <line number="155" hits="0" branch="false" />
+                <line number="156" hits="0" branch="false" />
+                <line number="158" hits="0" branch="false" />
+                <line number="160" hits="0" branch="false" />
+                <line number="161" hits="0" branch="false" />
+                <line number="162" hits="0" branch="false" />
+                <line number="163" hits="0" branch="false" />
+                <line number="164" hits="0" branch="false" />
+                <line number="165" hits="0" branch="false" />
+                <line number="166" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="145" hits="0" branch="false" />
+            <line number="146" hits="0" branch="false" />
+            <line number="148" hits="0" branch="false" />
+            <line number="149" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="679" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="150" hits="0" branch="false" />
+            <line number="151" hits="0" branch="false" />
+            <line number="152" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="683" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="154" hits="0" branch="false" />
+            <line number="155" hits="0" branch="false" />
+            <line number="156" hits="0" branch="false" />
+            <line number="158" hits="0" branch="false" />
+            <line number="160" hits="0" branch="false" />
+            <line number="161" hits="0" branch="false" />
+            <line number="162" hits="0" branch="false" />
+            <line number="163" hits="0" branch="false" />
+            <line number="164" hits="0" branch="false" />
+            <line number="165" hits="0" branch="false" />
+            <line number="166" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.UnitTestingTests/&lt;UnitTestRun_ProducesExpectedResults&gt;d__5" filename="/UnitTestingTests.cs" line-rate="0" branch-rate="0" complexity="16">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0" branch-rate="0" complexity="16">
+              <lines>
+                <line number="77" hits="0" branch="false" />
+                <line number="78" hits="0" branch="false" />
+                <line number="80" hits="0" branch="false" />
+                <line number="81" hits="0" branch="false" />
+                <line number="82" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="704" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="83" hits="0" branch="false" />
+                <line number="84" hits="0" branch="false" />
+                <line number="85" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="708" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="87" hits="0" branch="false" />
+                <line number="88" hits="0" branch="false" />
+                <line number="89" hits="0" branch="false" />
+                <line number="91" hits="0" branch="false" />
+                <line number="92" hits="0" branch="false" />
+                <line number="93" hits="0" branch="false" />
+                <line number="96" hits="0" branch="false" />
+                <line number="97" hits="0" branch="false" />
+                <line number="99" hits="0" branch="false" />
+                <line number="100" hits="0" branch="false" />
+                <line number="101" hits="0" branch="false" />
+                <line number="103" hits="0" branch="false" />
+                <line number="104" hits="0" branch="false" />
+                <line number="105" hits="0" branch="false" />
+                <line number="107" hits="0" branch="false" />
+                <line number="108" hits="0" branch="false" />
+                <line number="109" hits="0" branch="false" />
+                <line number="110" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="77" hits="0" branch="false" />
+            <line number="78" hits="0" branch="false" />
+            <line number="80" hits="0" branch="false" />
+            <line number="81" hits="0" branch="false" />
+            <line number="82" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="704" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="83" hits="0" branch="false" />
+            <line number="84" hits="0" branch="false" />
+            <line number="85" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="708" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="87" hits="0" branch="false" />
+            <line number="88" hits="0" branch="false" />
+            <line number="89" hits="0" branch="false" />
+            <line number="91" hits="0" branch="false" />
+            <line number="92" hits="0" branch="false" />
+            <line number="93" hits="0" branch="false" />
+            <line number="96" hits="0" branch="false" />
+            <line number="97" hits="0" branch="false" />
+            <line number="99" hits="0" branch="false" />
+            <line number="100" hits="0" branch="false" />
+            <line number="101" hits="0" branch="false" />
+            <line number="103" hits="0" branch="false" />
+            <line number="104" hits="0" branch="false" />
+            <line number="105" hits="0" branch="false" />
+            <line number="107" hits="0" branch="false" />
+            <line number="108" hits="0" branch="false" />
+            <line number="109" hits="0" branch="false" />
+            <line number="110" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.UnitTestingTests/&lt;UnitTestingService_IsAvailable&gt;d__3" filename="/UnitTestingTests.cs" line-rate="0" branch-rate="0" complexity="3">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0" branch-rate="0" complexity="3">
+              <lines>
+                <line number="35" hits="0" branch="false" />
+                <line number="36" hits="0" branch="false" />
+                <line number="38" hits="0" branch="false" />
+                <line number="40" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="35" hits="0" branch="false" />
+            <line number="36" hits="0" branch="false" />
+            <line number="38" hits="0" branch="false" />
+            <line number="40" hits="0" branch="false" />
+          </lines>
+        </class>
+        <class name="OpenDevelop.IntegrationTests.UnitTestingTests/&lt;UnitTestingTree_ShowsTestsAfterOpeningTestProject&gt;d__4" filename="/UnitTestingTests.cs" line-rate="0" branch-rate="0" complexity="12">
+          <methods>
+            <method name="MoveNext" signature="System.Void ()" line-rate="0" branch-rate="0" complexity="12">
+              <lines>
+                <line number="44" hits="0" branch="false" />
+                <line number="45" hits="0" branch="false" />
+                <line number="47" hits="0" branch="false" />
+                <line number="48" hits="0" branch="false" />
+                <line number="49" hits="0" branch="false" />
+                <line number="50" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="728" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="51" hits="0" branch="false" />
+                <line number="52" hits="0" branch="false" />
+                <line number="53" hits="0" branch="false" />
+                <line number="54" hits="0" branch="false" />
+                <line number="55" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="736" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="56" hits="0" branch="false" />
+                <line number="57" hits="0" branch="false" />
+                <line number="59" hits="0" branch="true" condition-coverage="0% (0/2)">
+                  <conditions>
+                    <condition number="733" type="jump" coverage="0%" />
+                  </conditions>
+                </line>
+                <line number="60" hits="0" branch="false" />
+                <line number="61" hits="0" branch="false" />
+                <line number="62" hits="0" branch="false" />
+                <line number="64" hits="0" branch="false" />
+                <line number="66" hits="0" branch="false" />
+                <line number="67" hits="0" branch="false" />
+                <line number="68" hits="0" branch="false" />
+                <line number="69" hits="0" branch="false" />
+                <line number="70" hits="0" branch="false" />
+                <line number="71" hits="0" branch="false" />
+                <line number="72" hits="0" branch="false" />
+                <line number="73" hits="0" branch="false" />
+              </lines>
+            </method>
+          </methods>
+          <lines>
+            <line number="44" hits="0" branch="false" />
+            <line number="45" hits="0" branch="false" />
+            <line number="47" hits="0" branch="false" />
+            <line number="48" hits="0" branch="false" />
+            <line number="49" hits="0" branch="false" />
+            <line number="50" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="728" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="51" hits="0" branch="false" />
+            <line number="52" hits="0" branch="false" />
+            <line number="53" hits="0" branch="false" />
+            <line number="54" hits="0" branch="false" />
+            <line number="55" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="736" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="56" hits="0" branch="false" />
+            <line number="57" hits="0" branch="false" />
+            <line number="59" hits="0" branch="true" condition-coverage="0% (0/2)">
+              <conditions>
+                <condition number="733" type="jump" coverage="0%" />
+              </conditions>
+            </line>
+            <line number="60" hits="0" branch="false" />
+            <line number="61" hits="0" branch="false" />
+            <line number="62" hits="0" branch="false" />
+            <line number="64" hits="0" branch="false" />
+            <line number="66" hits="0" branch="false" />
+            <line number="67" hits="0" branch="false" />
+            <line number="68" hits="0" branch="false" />
+            <line number="69" hits="0" branch="false" />
+            <line number="70" hits="0" branch="false" />
+            <line number="71" hits="0" branch="false" />
+            <line number="72" hits="0" branch="false" />
+            <line number="73" hits="0" branch="false" />
+          </lines>
+        </class>
+      </classes>
+    </package>
+  </packages>
+</coverage>

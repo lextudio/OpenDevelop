@@ -71,7 +71,7 @@ MSB4062: The "AllowEmptyTelemetry" task could not be loaded from the assembly
 'Microsoft.Build.Framework, Version=15.1.0.0, ...'.
 ```
 
-Root cause: the SDK actually hosting this process (librewpf's local net11.0 preview install)
+Root cause: the SDK actually hosting this process (librewpf's local net10.0 preview install)
 bundles a `Microsoft.NET.Build.Tasks.dll` that needs a newer `Microsoft.Build.Framework` API than
 whatever copy of that assembly is already loaded in-process. This only surfaces when an SDK task
 *actually runs* - plain project **evaluation** (e.g. Solution Explorer's file listing, which uses

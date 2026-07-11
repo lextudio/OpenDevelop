@@ -69,14 +69,28 @@ namespace Debugger.AddIn.Service.Dap
 
 			await WriteMessageAsync(message).ConfigureAwait(false);
 
-			using (cancellationToken.Register(() => {
-				TaskCompletionSource<JsonObject> removed;
-				pending.TryRemove(sequence, out removed);
-				completionSource.TrySetCanceled();
-			})) {
-				return await completionSource.Task.ConfigureAwait(false);
+			// Defense-in-depth: a DAP request/response is meant to be prompt, but an adapter that
+			// doesn't implement a given request simply never replies - awaiting the response then
+			// hangs the IDE forever (this is exactly what "modules" did before it was rerouted to
+			// events). Cap every request so a missing/slow response surfaces as a TimeoutException
+			// instead of an unbreakable freeze.
+			using (var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)) {
+				timeoutCts.CancelAfter(RequestTimeout);
+				using (timeoutCts.Token.Register(() => {
+					TaskCompletionSource<JsonObject> removed;
+					pending.TryRemove(sequence, out removed);
+					if (cancellationToken.IsCancellationRequested)
+						completionSource.TrySetCanceled(cancellationToken);
+					else
+						completionSource.TrySetException(new TimeoutException(
+							"DAP request '" + command + "' timed out after " + RequestTimeout.TotalSeconds + "s (adapter did not respond)."));
+				})) {
+					return await completionSource.Task.ConfigureAwait(false);
+				}
 			}
 		}
+
+		static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(30);
 
 		async Task WriteMessageAsync(JsonObject message)
 		{

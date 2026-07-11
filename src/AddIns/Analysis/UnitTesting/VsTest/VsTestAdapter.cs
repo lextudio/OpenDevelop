@@ -45,7 +45,7 @@ namespace ICSharpCode.UnitTesting
 					// architecture." Set it explicitly from the current process's real arch.
 					TargetPlatform = GetCurrentArchitecture(),
 					// Left unset, this defaults to ".NETCoreApp,Version=v1.0", which never matches
-					// any real project's TFM (net11.0 here) -- vstest.console detects the mismatch
+					// any real project's TFM (net10.0 here) -- vstest.console detects the mismatch
 					// against the actual test DLL and logs a warning, so this isn't the whole story
 					// for a testhost that fails to discover anything, but it's a real, cheap-to-fix
 					// discrepancy worth removing so it can't be a contributing factor.
@@ -126,6 +126,13 @@ namespace ICSharpCode.UnitTesting
 			} catch (Exception ex) {
 				SD.Log.Warn("VSTest process dispose error.", ex);
 			}
+
+			// Without this, a subsequent Start() returned the SAME (already-completed) startTask
+			// and never actually respawned vsTestConsoleProcess - Stop() was a one-way kill switch,
+			// not something callers could use to force a fresh host. A cancelled
+			// CancellationTokenSource can't be un-cancelled, so PrivateStart() needs a new one too.
+			startTask = null;
+			restartTokenSource = new CancellationTokenSource();
 		}
 
 		async Task PrivateStart()

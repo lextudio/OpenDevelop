@@ -20,12 +20,13 @@ total for a one-project change (`ProGPU.Wpf` alone builds+packs in ~3s once its 
 already built once):
 
 ```bash
-cd /Users/lextm/uno-tools/librewpf
-dotnet="./.dotnet/dotnet"
-package_output="artifacts/packages/Release/NonShipping"
+cd /Users/lextm/uno-tools/OpenDevelop
+dotnet="$(readlink -f "$(command -v dotnet)")"
+librewpf_root="/Users/lextm/uno-tools/librewpf"
+package_output="${librewpf_root}/artifacts/packages/Release/NonShipping"
 
 rm -f "${package_output}/LibreWPF.ProGPU.11.0.0-dev.nupkg" "${package_output}/LibreWPF.ProGPU.11.0.0-dev.snupkg"
-"${dotnet}" pack "src/ProGPU.Wpf/ProGPU.Wpf.csproj" -c Release -o "${package_output}" -v:minimal
+"${dotnet}" pack "${librewpf_root}/src/ProGPU.Wpf/ProGPU.Wpf.csproj" -c Release -o "${package_output}" -v:minimal
 
 rm -rf ~/.nuget/packages/librewpf.progpu
 ```
@@ -109,7 +110,7 @@ specifically when a fix "should have landed" and hasn't — not as routine pract
 ## A third trap: `dotnet pack` ships **Release**, but plain `dotnet build` builds **Debug**
 
 The `LibreWPF.*` packages are packed with `-c Release` (see the Fast path section above), so
-`dotnet pack` bundles the assemblies from `artifacts/bin/<Project>/Release/net11.0/`. A bare
+`dotnet pack` bundles the assemblies from `artifacts/bin/<Project>/Release/net10.0/`. A bare
 `dotnet build src/.../PresentationFramework.csproj` (no `-c`) builds the **Debug** configuration
 into `artifacts/bin/<Project>/Debug/...` and leaves the Release output **untouched**. So this
 sequence silently ships stale bits:
@@ -126,8 +127,8 @@ new code is actually in the packed/deployed assembly (method names are UTF-8 met
 show up in `strings`, unlike string *literals* which are UTF-16 and won't):
 
 ```bash
-strings artifacts/bin/PresentationFramework/Release/net11.0/PresentationFramework.dll | grep -x YourNewMethodName
-strings ~/.nuget/packages/librewpf.transport/11.0.0-dev/lib/net11.0/PresentationFramework.dll | grep -x YourNewMethodName
+strings artifacts/bin/PresentationFramework/Release/net10.0/PresentationFramework.dll | grep -x YourNewMethodName
+strings ~/.nuget/packages/librewpf.transport/11.0.0-dev/lib/net10.0/PresentationFramework.dll | grep -x YourNewMethodName
 ```
 
 **Rule:** always build the **same configuration you pack** — either build with `-c Release`
@@ -140,46 +141,40 @@ building a single leaf project.
 
 ## Full repack + relaunch workflow
 
-Run from `/Users/lextm/uno-tools/librewpf`, using its bundled preview SDK (not whatever `dotnet`
-resolves to on `PATH` — OpenDevelop targets `net11.0-windows`, which the system-wide SDK doesn't
-support yet):
+Use the system-installed .NET 10 SDK. LibreWPF now supports `net10.0`, and OpenDevelop targets
+`net10.0-windows`, so there is no longer a reason to build through `librewpf/.dotnet/dotnet`.
+When running commands from `/Users/lextm/uno-tools/OpenDevelop`, its `global.json` pins SDK
+resolution to 10.x even if the LibreWPF checkout still has an older preview-oriented
+`global.json`.
 
 ```bash
-cd /Users/lextm/uno-tools/librewpf
-dotnet="./.dotnet/dotnet"
-package_output="artifacts/packages/Release/NonShipping"
+cd /Users/lextm/uno-tools/OpenDevelop
+dotnet="$(readlink -f "$(command -v dotnet)")"
+librewpf_root="/Users/lextm/uno-tools/librewpf"
+package_output="${librewpf_root}/artifacts/packages/Release/NonShipping"
 
 # 1. Build only the project(s) you changed (skip ones you didn't touch)
-"${dotnet}" build src/ProGPU.Wpf/ProGPU.Wpf.csproj -c Release -v:minimal
-"${dotnet}" build src/Microsoft.DotNet.Wpf/src/PresentationFramework/PresentationFramework.csproj -c Release -v:minimal
+"${dotnet}" build "${librewpf_root}/src/ProGPU.Wpf/ProGPU.Wpf.csproj" -c Release -v:minimal
+"${dotnet}" build "${librewpf_root}/src/Microsoft.DotNet.Wpf/src/PresentationFramework/PresentationFramework.csproj" -c Release -v:minimal
 
 # (optional but recommended) run the test suite for whatever you touched
-cd src/ProGPU.Wpf.Tests && dotnet test && cd ../..
+(cd "${librewpf_root}/src/ProGPU.Wpf.Tests" && "${dotnet}" test)
 
 # 2. Repack — delete the old nupkg first so a failed/partial pack can't leave a stale one behind
 rm -f "${package_output}/LibreWPF.ProGPU.11.0.0-dev.nupkg" "${package_output}/LibreWPF.ProGPU.11.0.0-dev.snupkg"
-"${dotnet}" pack "src/ProGPU.Wpf/ProGPU.Wpf.csproj" -c Release -o "${package_output}" -v:minimal
+"${dotnet}" pack "${librewpf_root}/src/ProGPU.Wpf/ProGPU.Wpf.csproj" -c Release -o "${package_output}" -v:minimal
 
 rm -f "${package_output}/LibreWPF.Transport.11.0.0-dev.nupkg" "${package_output}/LibreWPF.Transport.11.0.0-dev.snupkg"
-"${dotnet}" pack "packaging/Microsoft.DotNet.Wpf.GitHub/Microsoft.DotNet.Wpf.GitHub.ArchNeutral.csproj" -c Release -o "${package_output}" -v:minimal
+"${dotnet}" pack "${librewpf_root}/packaging/Microsoft.DotNet.Wpf.GitHub/Microsoft.DotNet.Wpf.GitHub.ArchNeutral.csproj" -c Release -o "${package_output}" -v:minimal
 
 # If you touched external/ProGPU/src/ProGPU.Wpf.Interop:
 rm -f "${package_output}/LibreWPF.Interop.11.0.0-dev.nupkg" "${package_output}/LibreWPF.Interop.11.0.0-dev.snupkg"
-"${dotnet}" pack "external/ProGPU/src/ProGPU.Wpf.Interop/ProGPU.Wpf.Interop.csproj" -c Release -o "${package_output}" -v:minimal
+"${dotnet}" pack "${librewpf_root}/external/ProGPU/src/ProGPU.Wpf.Interop/ProGPU.Wpf.Interop.csproj" -c Release -o "${package_output}" -v:minimal
 
 # 3. Blow away the matching global cache entries so OpenDevelop's restore can't serve stale copies
 rm -rf ~/.nuget/packages/librewpf.progpu ~/.nuget/packages/librewpf.transport ~/.nuget/packages/librewpf.interop
 
 # 4. Force OpenDevelop to re-pull from the local feed
-cd /Users/lextm/uno-tools/OpenDevelop
-export DOTNET_ROOT="$(dirname "${dotnet}")"   # dotnet var from step 1, still pointing at librewpf/.dotnet/dotnet
-export DOTNET_HOST_PATH="${dotnet}"
-sdk_dir="$(find "${DOTNET_ROOT}/sdk" -mindepth 1 -maxdepth 1 -type d | sort | tail -n 1)"
-export MSBuildSDKsPath="${sdk_dir}/Sdks"
-export MSBuildExtensionsPath="${sdk_dir}"
-export MSBUILDADDITIONALSDKRESOLVERSFOLDER_NET="${sdk_dir}/SdkResolvers"
-export MSBUILD_NUGET_PATH="${sdk_dir}"
-export MSBuildEnableWorkloadResolver=false
 "${dotnet}" restore OpenDevelop.Mvp.slnx --force --no-cache
 
 # 5. Relaunch (launch.sh kills any stale instance and frees DevFlow's port 9223 first)
@@ -187,18 +182,19 @@ pkill -f "SharpDevelop" 2>/dev/null
 ./launch.sh
 ```
 
-`launch.sh` already exports the same `DOTNET_ROOT`/`MSBuild*` environment variables internally, so
-once you've restored, you can just run `./launch.sh` (or `./launch.sh --no-build` to skip
-rebuilding OpenDevelop itself if you only changed LibreWPF and already restored).
+For the scripted version of the same flow, use `./repack-librewpf.sh` or `./rebuild-all.sh`.
+Both scripts now use the system .NET 10 SDK.
 
-## Why the bundled `.dotnet` instead of the system SDK
+## Use the system .NET 10 SDK
 
-`librewpf`'s projects (and by extension anything consuming `LibreWPF.Sdk`) target
-`net11.0-windows`/`net11.0`, a preview TFM the system-installed .NET SDK doesn't recognize. All
-`dotnet build`/`dotnet pack`/`dotnet restore` calls above must go through
-`librewpf/.dotnet/dotnet` (and the matching `DOTNET_ROOT`/`MSBuild*` env vars), not whatever
-`dotnet` resolves to on `PATH` — otherwise you'll hit `NETSDK1045: The current .NET SDK does not
-support targeting .NET 11.0`.
+The old workflow used `librewpf/.dotnet/dotnet` because LibreWPF temporarily required an
+11.0-preview SDK. That is obsolete now: use the system-installed .NET 10 SDK for LibreWPF pack,
+OpenDevelop restore, and OpenDevelop build/run.
+
+One caveat remains: .NET resolves `global.json` from the current working directory. If the
+LibreWPF checkout still has a preview-pinned `global.json`, run the commands from
+`/Users/lextm/uno-tools/OpenDevelop` and pass absolute LibreWPF project paths, or update the
+LibreWPF checkout's `global.json` to a 10.x SDK.
 
 ## Faster iteration: skip OpenDevelop entirely with a throwaway repro app
 
@@ -244,6 +240,6 @@ so it's actually visible in the capture (and so clicks land on it instead of wha
 focus):
 
 ```bash
-PID=$(pgrep -f "bin/Debug/net11.0-windows/SharpDevelop$" | head -1)
+PID=$(pgrep -f "bin/Debug/net10.0-windows/SharpDevelop$" | head -1)
 osascript -e "tell application \"System Events\" to set frontmost of first process whose unix id is $PID to true"
 ```

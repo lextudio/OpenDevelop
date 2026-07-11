@@ -193,6 +193,15 @@ namespace ICSharpCode.SharpDevelop.Services
 				if (string.IsNullOrEmpty(targetPath) || !File.Exists(targetPath)) {
 					throw new FileNotFoundException("Debug target not found.", targetPath);
 				}
+				// The DAP adapter (SharpDbg) launches the debuggee as `dotnet <program>`, which only
+				// works when <program> is a managed .dll. Project.CreateStartInfo() hands us the
+				// native apphost path instead (e.g. .../DebugTestApp with no extension, or .exe on
+				// Windows); passing that made the dotnet muxer treat the path as a command name and
+				// throw CommandUnknownException ("Could not execute because the specified command or
+				// file was not found"), so the debuggee died immediately after the first stop and
+				// every subsequent IsDebugging/call-stack query correctly reported "not debugging".
+				// Send the sibling managed .dll when the target is an apphost.
+				targetPath = ResolveManagedAssemblyPath(targetPath);
 
 				bool breakAtBeginning = BreakAtBeginning;
 				BreakAtBeginning = false;
@@ -207,9 +216,29 @@ namespace ICSharpCode.SharpDevelop.Services
 				PrintDebugMessage("> Debugging: " + Path.GetFileName(targetPath) + "\n");
 			} catch (Exception ex) {
 				PrintDebugMessage("ERROR: " + ex + "\n");
-				SD.MainThread.InvokeAsyncAndForget(() => OnDebugStopped(EventArgs.Empty));
+				SD.MainThread.InvokeAsyncAndForget(() => {
+					RemoveCurrentLineMarker();
+					OnDebugStopped(EventArgs.Empty);
+					ActivateDebugCategory();
+				});
 				Stop();
 			}
+		}
+
+		/// <summary>
+		/// Maps a project's start-target path to the managed assembly the DAP adapter should launch
+		/// via `dotnet`. A .dll is returned unchanged; a native apphost (no extension, or ".exe" on
+		/// Windows) is mapped to its sibling "&lt;name&gt;.dll" when that exists, falling back to the
+		/// original path if no such assembly is found.
+		/// </summary>
+		static string ResolveManagedAssemblyPath(string targetPath)
+		{
+			if (targetPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+				return targetPath;
+			string directory = Path.GetDirectoryName(targetPath);
+			string baseName = Path.GetFileNameWithoutExtension(targetPath);
+			string candidate = Path.Combine(directory ?? string.Empty, baseName + ".dll");
+			return File.Exists(candidate) ? candidate : targetPath;
 		}
 
 		void SessionStarted()
@@ -275,10 +304,18 @@ namespace ICSharpCode.SharpDevelop.Services
 		void SessionExited()
 		{
 			SD.MainThread.InvokeAsyncAndForget(() => {
+				// Clear the paused-line highlight: the session is over, so leaving the marker (as
+				// happened before) made a dead session look like it was still stopped at a line.
+				RemoveCurrentLineMarker();
 				OnDebugStopped(EventArgs.Empty);
 				CurrentThread = null;
 				CurrentStackFrame = null;
 				RefreshPads();
+				// Make sure the reason is visible. If the adapter/debuggee died unexpectedly its
+				// stderr was already routed here via OutputReceived; surface the channel so the
+				// user sees it instead of the session silently vanishing.
+				PrintDebugMessage("> Debugging stopped.\n");
+				ActivateDebugCategory();
 			});
 			CurrentSession = null;
 		}

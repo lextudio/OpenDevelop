@@ -1,6 +1,6 @@
 <Project Sdk="LibreWPF.Sdk/11.0.0-dev">
   <PropertyGroup>
-    <TargetFramework>net11.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>ICSharpCode.NRefactory.CSharp</RootNamespace>
     <AssemblyName>ICSharpCode.NRefactory.CSharp</AssemblyName>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>

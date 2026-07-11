@@ -1,20 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 librewpf_root="/Users/lextm/uno-tools/librewpf"
-dotnet="${librewpf_root}/.dotnet/dotnet"
+dotnet="$(readlink -f "$(command -v dotnet)")"
 package_output="${librewpf_root}/artifacts/packages/Release/NonShipping"
 dev_version="11.0.0-dev"
 
-export DOTNET_ROOT="$(dirname "${dotnet}")"
-export DOTNET_HOST_PATH="${dotnet}"
-sdk_dir="$(find "${DOTNET_ROOT}/sdk" -mindepth 1 -maxdepth 1 -type d | sort | tail -n 1)"
-export MSBuildSDKsPath="${sdk_dir}/Sdks"
-export MSBuildExtensionsPath="${sdk_dir}"
-export MSBUILDADDITIONALSDKRESOLVERSFOLDER_NET="${sdk_dir}/SdkResolvers"
-export MSBUILD_NUGET_PATH="${sdk_dir}"
-export MSBuildEnableWorkloadResolver=false
+# LibreWPF now targets net10.0/net10.0-windows, so use the system .NET 10 SDK for both packing
+# LibreWPF and restoring OpenDevelop. Run the commands from OpenDevelop's repo root so this
+# repo's global.json pins SDK resolution to 10.x even if librewpf/global.json still references
+# the old preview SDK.
+source "${repo_root}/dotnet-env.sh"
+setup_dotnet_env "${dotnet}"
+cd "${repo_root}"
 
+# ProGpuWpfTargetFramework defaults to net10.0 (Directory.Build.props); OpenDevelop now targets
+# net10.0-windows too, so no override is needed here -- keeping them in lock-step avoids the
+# net10.0-vs-net11.0 asset drift (stale cached assemblies for a TFM the script never rebuilt).
 version_props="-p:VersionPrefix=11.0.0 -p:Version=${dev_version} -p:AssemblyVersion=11.0.0.0 -p:FileVersion=11.0.0.0 -p:PackageVersion=${dev_version}"
 
 wpf_src="${librewpf_root}/src/Microsoft.DotNet.Wpf/src"
@@ -63,7 +66,35 @@ packpkg_full() {
   "${dotnet}" pack "$1" -c Release -o "${package_output}" -v:minimal ${version_props}
 }
 
+check_transport_staleness() {
+  local transport_nupkg="${package_output}/LibreWPF.Transport.${dev_version}.nupkg"
+  if [[ ! -f "${transport_nupkg}" ]]; then
+    echo "WARNING: LibreWPF.Transport.${dev_version}.nupkg has never been packed -- ProGPU.Wpf" >&2
+    echo "  compiles against the interfaces/types in wpf_src (PresentationCore etc.), but" >&2
+    echo "  those live in Transport, which --fast never builds. Run without --fast first." >&2
+    return
+  fi
+  # --fast only rebuilds ProGPU.Wpf/Interop (+ subsidiary ProGPU.* packages) against whatever
+  # Transport happens to already be packed -- if the real WPF source tree (PresentationCore's
+  # portable bridge interfaces, etc.) changed more recently than that pack, ProGPU.Wpf can compile
+  # fine against the NEW interface shape while the cached Transport package still ships the OLD
+  # PresentationCore.dll, producing a MissingMethodException at runtime that looks nothing like a
+  # build failure (the mismatch only surfaces when the two assemblies actually interact, at
+  # startup). Warn here instead of leaving it as a silent runtime surprise.
+  local newer_file
+  newer_file="$(find "${wpf_src}" -iname "*.cs" -newer "${transport_nupkg}" -print -quit 2>/dev/null)"
+  if [[ -n "${newer_file}" ]]; then
+    echo "WARNING: ${newer_file}" >&2
+    echo "  (and possibly other files under ${wpf_src}) changed after Transport was last packed." >&2
+    echo "  --fast will NOT rebuild Transport, so ProGPU.Wpf may compile against interfaces that" >&2
+    echo "  Transport's cached PresentationCore.dll doesn't implement yet -- a" >&2
+    echo "  System.MissingMethodException at app startup, not a build error. If you changed" >&2
+    echo "  anything under Microsoft.DotNet.Wpf/src, run this script without --fast instead." >&2
+  fi
+}
+
 if [[ "${1:-}" == "--fast" ]]; then
+  check_transport_staleness
   for proj in "${progpu_subsidiary_projects[@]}"; do
     dir="$(dirname "$proj")"
     rm -rf "$dir/bin/Release" "$dir/obj/Release"
@@ -128,4 +159,7 @@ else
   done
 fi
 
-"${dotnet}" restore /Users/lextm/uno-tools/OpenDevelop/OpenDevelop.Mvp.slnx --force --no-cache
+# Re-extract the freshly-packed (and just cache-cleared) LibreWPF packages into OpenDevelop's
+# restore graph. If launch.sh/rebuild-all.sh runs a build afterwards its implicit restore would
+# also re-pull, but doing it here keeps `repack-librewpf.sh` correct when run standalone.
+"${dotnet}" restore OpenDevelop.Mvp.slnx --force --no-cache

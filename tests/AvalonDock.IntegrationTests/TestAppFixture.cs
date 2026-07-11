@@ -50,7 +50,7 @@ public sealed class TestAppFixture : IAsyncLifetime
         };
         psi.Environment["DEVFLOW_AGENT_PORT"] = Port.ToString(System.Globalization.CultureInfo.InvariantCulture);
         psi.Environment["DOTNET_ROLL_FORWARD"] = "LatestMajor";
-        foreach (var a in new[] { "run", "--project", TestAppProjectPath, "-f", "net11.0-windows", "--no-build" })
+        foreach (var a in new[] { "run", "--project", TestAppProjectPath, "-f", "net10.0-windows", "--no-build" })
             psi.ArgumentList.Add(a);
 
         _app = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start TestApp");
@@ -96,7 +96,7 @@ public sealed class TestAppFixture : IAsyncLifetime
             RedirectStandardError = true,
         };
         psi.Environment["DOTNET_ROLL_FORWARD"] = "LatestMajor";
-        foreach (var a in new[] { "build", TestAppProjectPath, "-f", "net11.0-windows", "-v:minimal" })
+        foreach (var a in new[] { "build", TestAppProjectPath, "-f", "net10.0-windows", "-v:minimal" })
             psi.ArgumentList.Add(a);
 
         using var build = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start TestApp build.");

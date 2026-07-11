@@ -3,36 +3,39 @@
 # launch.sh — build the latest OpenDevelop (SharpDevelop.exe) and run it.
 #
 # Usage:
-#   ./launch.sh              build OpenDevelop.Mvp.sln, then run SharpDevelop.exe
-#   ./launch.sh --no-build   skip the build, just (re)run the last build output
+#   ./launch.sh                build OpenDevelop.Mvp.sln, then run SharpDevelop.exe
+#   ./launch.sh --no-build     skip the build, just (re)run the last build output
+#   ./launch.sh --build-only   build but do NOT launch (used by rebuild-all.sh --build-only and
+#                              by the integration tests, which start their own app instance)
 #   DEVFLOW_DISABLE=1 ./launch.sh   run without the DevFlow debugging agent
 #
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-dotnet="/Users/lextm/uno-tools/librewpf/.dotnet/dotnet"
 sln="${repo_root}/OpenDevelop.Mvp.slnx"
 exe_project="${repo_root}/src/Main/SharpDevelop/SharpDevelop.csproj"
-export DOTNET_ROOT="$(dirname "${dotnet}")"
-export DOTNET_HOST_PATH="${dotnet}"
-sdk_dir="$(find "${DOTNET_ROOT}/sdk" -mindepth 1 -maxdepth 1 -type d | sort | tail -n 1)"
-export MSBuildSDKsPath="${sdk_dir}/Sdks"
-export MSBuildExtensionsPath="${sdk_dir}"
-export MSBUILDADDITIONALSDKRESOLVERSFOLDER_NET="${sdk_dir}/SdkResolvers"
-export MSBUILD_NUGET_PATH="${sdk_dir}"
-# The bundled preview SDK's workload manifest/resolver setup only works through the `dotnet` CLI
-# muxer; SharpDevelop's in-process MSBuild hosting (used to evaluate opened projects) doesn't get
-# that and intermittently fails project loads with "ProjectLoadException: The SDK
-# 'Microsoft.NET.SDK.WorkloadAutoImportPropsLocator' specified could not be found." Not needed for
-# plain console/class-library projects.
-export MSBuildEnableWorkloadResolver=false
+
+do_build=1
+do_run=1
+case "${1:-}" in
+  --no-build)   do_build=0 ;;
+  --build-only) do_run=0 ;;
+  "")           ;;
+  *) echo "launch.sh: unknown flag '${1}'" >&2; exit 2 ;;
+esac
+
+# OpenDevelop and LibreWPF both target net10.0/net10.0-windows now, so the system .NET 10 SDK
+# builds and runs the app.
+dotnet="$(readlink -f "$(command -v dotnet)")"
+source "${repo_root}/dotnet-env.sh"
+setup_dotnet_env "${dotnet}"
 
 # Kill any previously running instance so DevFlow's port (9223) is free and we
 # don't end up staring at a stale window.
 pkill -f "SharpDevelop.dll" 2>/dev/null || true
 sleep 1
 
-if [[ "${1:-}" != "--no-build" ]]; then
+if [[ "${do_build}" -eq 1 ]]; then
   # Several AddIn projects (UnitTesting, Debugger.AddIn, ...) build directly INTO this shared
   # repo-root AddIns/<Category>/<Name> tree via their own <OutputPath> (an old-style SharpDevelop
   # convention, not a per-project bin folder), and SharpDevelop.csproj's DeployAddInsToRepoRoot
@@ -59,6 +62,11 @@ if [[ "${1:-}" != "--no-build" ]]; then
     ! -name "*.dll" ! -name "*.exe" -delete 2>/dev/null || true
 else
   echo "==> Skipping build (--no-build)."
+fi
+
+if [[ "${do_run}" -eq 0 ]]; then
+  echo "==> Build only (--build-only); not launching."
+  exit 0
 fi
 
 echo "==> Launching SharpDevelop..."

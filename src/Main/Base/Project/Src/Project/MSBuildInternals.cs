@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using ICSharpCode.Core;
+using ICSharpCode.SharpDevelop.Project.Sdk;
 using Microsoft.Build.Construction;
 using Microsoft.Build.Execution;
 using MSBuild = Microsoft.Build;
@@ -50,43 +51,37 @@ namespace ICSharpCode.SharpDevelop.Project
 			if (msbuildEnvironmentInitialized)
 				return;
 			msbuildEnvironmentInitialized = true;
-			
-			var dotnet = GetDotnetInstallation();
-			if (dotnet == null)
+
+			// Was: an independent GetDotnetInstallation()/manual "newest sdk/ subdirectory" scan
+			// that didn't know about Homebrew's split package layout (the "dotnet" binary under
+			// .../Cellar/dotnet/<version>/bin is a separate directory from the actual SDK/runtime
+			// tree under .../Cellar/dotnet/<version>/libexec/sdk) - so on a machine where
+			// DOTNET_HOST_PATH pointed at the Homebrew bin/ wrapper, "sdk" under that directory
+			// never existed and this whole method silently no-opped, leaving MSBuildToolsPath/
+			// MSBuildSDKsPath unset or stale. That broke in-process MSBuild project evaluation
+			// (Microsoft.CSharp.targets not found), which starves SD.ProjectService.AllProjects
+			// and - via RoslynWorkspaceHelper.GetSolution() - makes RoslynParser.Parse() return
+			// null for every .cs file. DotNetSdkService.ResolvePathDotnetRoot() already handles the
+			// Homebrew split correctly; route through the single shared SDK-resolution service
+			// instead of this file's own, incomplete copy of the same logic (matching
+			// MinimalMSBuildEngine, which already made this switch).
+			var sdk = DotNetSdkService.ResolveEffectiveSdk();
+			if (sdk?.RootPath == null || sdk.HighestSdkVersion == null)
 				return;
-			
-			Environment.SetEnvironmentVariable("DOTNET_ROOT", dotnet.Root);
-			Environment.SetEnvironmentVariable("DOTNET_HOST_PATH", dotnet.HostPath);
-			
-			string sdksDir = Path.Combine(dotnet.Root, "sdk");
-			if (!Directory.Exists(sdksDir))
-				return;
-			
-			string latestSdk = Directory.GetDirectories(sdksDir)
-				.Where(d => Version.TryParse(Path.GetFileName(d).Split('-')[0], out _))
-				.OrderByDescending(d => {
-					Version version;
-					Version.TryParse(Path.GetFileName(d).Split('-')[0], out version);
-					return version;
-				})
-				.FirstOrDefault();
-			
-			if (latestSdk == null)
-				return;
-			
+
+			foreach (var kv in DotNetSdkService.GetEnvironmentVariablesFor(sdk))
+				Environment.SetEnvironmentVariable(kv.Key, kv.Value);
+
+			string latestSdk = Path.Combine(sdk.RootPath, "sdk", sdk.HighestSdkVersion);
 			latestSdkPath = latestSdk;
-			
-			Environment.SetEnvironmentVariable("MSBuildSDKsPath", Path.Combine(latestSdk, "Sdks"));
-			Environment.SetEnvironmentVariable("MSBuildExtensionsPath", latestSdk);
+
 			Environment.SetEnvironmentVariable("MSBuildToolsPath", latestSdk);
 			Environment.SetEnvironmentVariable("MSBuildToolsVersion", "Current");
-			Environment.SetEnvironmentVariable("MSBUILDADDITIONALSDKRESOLVERSFOLDER_NET", Path.Combine(latestSdk, "SdkResolvers"));
-			Environment.SetEnvironmentVariable("MSBUILD_NUGET_PATH", latestSdk);
 			LoggingService.InfoFormatted("MSBuild environment initialized: DOTNET_ROOT={0}, MSBuildSDKsPath={1}, MSBUILDADDITIONALSDKRESOLVERSFOLDER_NET={2}",
-				dotnet.Root,
+				sdk.RootPath,
 				Environment.GetEnvironmentVariable("MSBuildSDKsPath"),
 				Environment.GetEnvironmentVariable("MSBUILDADDITIONALSDKRESOLVERSFOLDER_NET"));
-			
+
 			string binDir = Path.GetDirectoryName(typeof(MSBuildInternals).Assembly.Location);
 			if (!string.IsNullOrEmpty(binDir)) {
 				foreach (string dependency in new[] {
@@ -106,65 +101,7 @@ namespace ICSharpCode.SharpDevelop.Project
 				}
 			}
 		}
-		
-		sealed class DotnetInstallation
-		{
-			public string Root;
-			public string HostPath;
-		}
-		
-		static DotnetInstallation GetDotnetInstallation()
-		{
-			string hostPath = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
-			if (!string.IsNullOrEmpty(hostPath) && File.Exists(hostPath))
-				return new DotnetInstallation { Root = Path.GetDirectoryName(hostPath), HostPath = hostPath };
-			
-			string dotnetRoot = Environment.GetEnvironmentVariable("DOTNET_ROOT");
-			if (!string.IsNullOrEmpty(dotnetRoot) && Directory.Exists(dotnetRoot)) {
-				string dotnetHost = Path.Combine(dotnetRoot, "dotnet");
-				if (File.Exists(dotnetHost))
-					return new DotnetInstallation { Root = dotnetRoot, HostPath = dotnetHost };
-			}
-			
-			string processPath = Environment.ProcessPath;
-			if (!string.IsNullOrEmpty(processPath) && string.Equals(Path.GetFileName(processPath), "dotnet", StringComparison.OrdinalIgnoreCase))
-				return new DotnetInstallation { Root = Path.GetDirectoryName(processPath), HostPath = processPath };
-			
-			string fromPath = FindDotnetOnPath();
-			if (fromPath != null)
-				return new DotnetInstallation { Root = Path.GetDirectoryName(fromPath), HostPath = fromPath };
-			
-			foreach (string candidate in new[] {
-				"/usr/local/share/dotnet",
-				"/opt/homebrew/share/dotnet",
-				Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "dotnet")
-			}) {
-				string dotnetHost = Path.Combine(candidate, "dotnet");
-				if (Directory.Exists(candidate) && File.Exists(dotnetHost))
-					return new DotnetInstallation { Root = candidate, HostPath = dotnetHost };
-			}
-			
-			return null;
-		}
-		
-		static string FindDotnetOnPath()
-		{
-			string pathEnv = Environment.GetEnvironmentVariable("PATH");
-			if (string.IsNullOrEmpty(pathEnv))
-				return null;
-			foreach (string dir in pathEnv.Split(Path.PathSeparator)) {
-				string candidate = Path.Combine(dir, "dotnet");
-				if (File.Exists(candidate))
-					return candidate;
-				if (Environment.OSVersion.Platform == PlatformID.Win32NT) {
-					string candidateExe = candidate + ".exe";
-					if (File.Exists(candidateExe))
-						return candidateExe;
-				}
-			}
-			return null;
-		}
-		
+
 		static string latestSdkPath;
 		
 		internal static string GetLatestSdkPath()

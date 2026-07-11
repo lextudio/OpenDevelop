@@ -1,14 +1,14 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
-// 
+// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -16,9 +16,9 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
 using System.Collections.Generic;
-using ICSharpCode.SharpDevelop;
+using System.Linq;
+using System.Windows;
 
 namespace ICSharpCode.CodeCoverage
 {
@@ -29,25 +29,26 @@ namespace ICSharpCode.CodeCoverage
 		{
 		}
 
-		public override void ActivateItem()
+		public override void ActivateItem(RoutedEventArgs e)
 		{
-			foreach (CodeCoverageTreeNode node in Nodes) {
-				CodeCoverageMethodTreeNode methodNode = node as CodeCoverageMethodTreeNode;
-				CodeCoverageMethodsTreeNode methodsNode = node as CodeCoverageMethodsTreeNode;
-				
+			EnsureLazyChildren();
+			foreach (CodeCoverageTreeNode node in Children.OfType<CodeCoverageTreeNode>()) {
+				var methodNode = node as CodeCoverageMethodTreeNode;
+				var methodsNode = node as CodeCoverageMethodsTreeNode;
+
 				bool openedFile = false;
 				if (methodNode != null) {
 					openedFile = OpenFile(methodNode.Method.SequencePoints);
-				} else if ((methodsNode != null) && (methodsNode.Methods.Count > 0)) {
+				} else if (methodsNode != null && methodsNode.Methods.Count > 0) {
 					openedFile = OpenFile(methodsNode.Methods[0].SequencePoints);
 				}
-				
+
 				if (openedFile) {
 					break;
 				}
 			}
 		}
-		
+
 		bool OpenFile(List<CodeCoverageSequencePoint> sequencePoints)
 		{
 			foreach (CodeCoverageSequencePoint point in sequencePoints) {
@@ -58,29 +59,26 @@ namespace ICSharpCode.CodeCoverage
 			}
 			return false;
 		}
-		
-		protected override void Initialize()
-		{
-			Nodes.Clear();
 
+		protected override void LoadChildren()
+		{
 			// Add methods.
-			CodeCoveragePropertyCollection properties = new CodeCoveragePropertyCollection();
+			var properties = new CodeCoveragePropertyCollection();
 			foreach (CodeCoverageMethod method in Methods) {
 				if (method.IsProperty) {
 					properties.Add(method);
 				} else {
-					CodeCoverageMethodTreeNode node = new CodeCoverageMethodTreeNode(method);
-					node.AddTo(this);
+					var node = new CodeCoverageMethodTreeNode(method);
+					Children.Add(node);
 				}
 			}
-			
-			// Add properties.s
+
+			// Add properties.
 			foreach (CodeCoverageProperty property in properties) {
-				CodeCoveragePropertyTreeNode node = new CodeCoveragePropertyTreeNode(property);
-				node.AddTo(this);
+				var node = new CodeCoveragePropertyTreeNode(property);
+				Children.Add(node);
 			}
-			
-			// Sort nodes.
+
 			SortChildNodes();
 		}
 	}
