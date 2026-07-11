@@ -1,10 +1,8 @@
-using System;
 using ICSharpCode.SharpDevelop.Project;
-using ICSharpCode.TypeSystem;
 
 namespace ICSharpCode.UnitTesting
 {
-	public class VsTestFramework : ITestFramework
+	public class MtpTestFramework : ITestFramework
 	{
 		public bool IsTestProject(IProject project)
 		{
@@ -13,7 +11,7 @@ namespace ICSharpCode.UnitTesting
 
 		public ITestProject CreateTestProject(ITestSolution parentSolution, IProject project)
 		{
-			return new VsTestProject(project);
+			return new MtpTestProject(project);
 		}
 	}
 }

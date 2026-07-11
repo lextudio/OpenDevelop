@@ -30,7 +30,12 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     // hardcoded "localhost:9223" only worked by coincidence while the app's default matched 9223.
     public string DevFlowBaseUrl => BaseUrl;
 
-	readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(120) };
+	// Must exceed the longest per-action `timeoutSeconds` argument used anywhere in this suite
+	// (od.code-coverage.run's own 180s budget for a coverage build+instrument+run+collect cycle) -
+	// otherwise this client-side timeout can abort a request the server-side action was still
+	// legitimately allowed to keep polling for, throwing a misleading "request failed" exception
+	// instead of the actual (or timed-out) result.
+	readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(240) };
 	readonly object _outputLock = new();
 	readonly StringBuilder _appOutput = new();
 	Process? _app;

@@ -16,7 +16,7 @@ public sealed class CodeCoverageTests
     static JsonElement? FindTest(JsonElement node, string displayName)
     {
         var name = node.TryGetProperty("displayName", out var n) ? n.GetString() : null;
-        // Method-level nodes report the fully-qualified VSTest name (e.g.
+        // Method-level nodes report the fully-qualified test name (e.g.
         // "SampleTestProject.PassTests.AlwaysPasses"), not the bare method name - match either.
         if (name == displayName || (name != null && name.EndsWith("." + displayName, StringComparison.Ordinal)))
             return node;
@@ -55,7 +55,7 @@ public sealed class CodeCoverageTests
             "CodeCoverageService should be available (CodeCoverage addin loaded)");
     }
 
-    [Fact(Skip = "Known AltCover limitation: execution-phase visits are not currently recorded; see doc/technotes/altcover.md.")]
+    [Fact]
     public async Task RunWithCodeCoverage_ProducesModuleResults()
     {
         await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);
@@ -87,7 +87,7 @@ public sealed class CodeCoverageTests
         Assert.True(anyMethodVisited, "Expected at least one module to show non-zero visited code length.");
     }
 
-    [Fact(Skip = "Known AltCover limitation: coverage runs leave AltCover instrumentation state unreliable; see doc/technotes/altcover.md.")]
+    [Fact]
     public async Task ClearCodeCoverageResults_EmptiesResults()
     {
         await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);

@@ -47,7 +47,7 @@ namespace ICSharpCode.UnitTesting
 			this.testService = testService;
 			this.resourceService = resourceService;
 			// The root "All Tests" node must reflect the composite result of its projects, exactly
-			// as every other container node does (TestProjectBase, TestNamespace, VsTestClass all
+			// as every other container node does (TestProjectBase, TestNamespace, MtpTestClass all
 			// bind in their own constructors). Without this the top node stayed TestResultType.None
 			// (no colour) even when a test below it failed - the failure colour propagated up the
 			// class/namespace/project chain but stopped at the project level and never reached the

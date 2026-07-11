@@ -218,7 +218,7 @@ namespace ICSharpCode.SharpDevelop.Project
 				// instead. That made OutputAssemblyFullPath compute a nonexistent
                 // "<AssemblyName>" (macOS/Linux apphost-shaped) or "<AssemblyName>.exe" path for
 				// what's actually a plain "<AssemblyName>.dll" library, breaking anything that
-				// needs the real build output (e.g. VsTestDiscoveryAdapter silently found no test
+				// needs the real build output (e.g. MtpTestProject silently found no test
 				// assembly to discover tests from). Default to Library, matching the SDK's own
 				// implicit convention.
 				var value = GetEvaluatedProperty("OutputType");

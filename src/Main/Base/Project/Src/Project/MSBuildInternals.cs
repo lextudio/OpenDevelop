@@ -77,6 +77,25 @@ namespace ICSharpCode.SharpDevelop.Project
 
 			Environment.SetEnvironmentVariable("MSBuildToolsPath", latestSdk);
 			Environment.SetEnvironmentVariable("MSBuildToolsVersion", "Current");
+
+			// Every SDK-style project unconditionally imports Microsoft.NET.Sdk.ImportWorkloads.props
+			// (not just workload-based projects like MAUI - any plain Microsoft.NET.Sdk project pulls
+			// it in), which resolves the "Microsoft.NET.SDK.WorkloadAutoImportPropsLocator" SDK via
+			// the "Microsoft.NET.Sdk.WorkloadMSBuildSdkResolver" resolver. That resolver isn't
+			// discoverable from this embedded engine's own SdkResolvers folder at all (no manifest
+			// ships it, unlike the NuGet resolver's own), and even once manually deployed alongside
+			// its full dependency closure, it still crashed trying to parse this process's
+			// $(NetCoreTargetingPackRoot)-derived SDK version string as a workload release version -
+			// so opening ANY project in this engine threw either "SDK ... could not be found" or a
+			// deeper SDK Resolver Failure, leaving MSBuildBasedProject.GetEvaluatedProperty()
+			// (OutputAssemblyFullPath, AssemblyName, etc.) unusable for every project, which starved
+			// unit test discovery/build and made RoslynParser.Parse() return null for every .cs file.
+			// This embedded engine has no use for workload-based SDKs (MAUI/Android/iOS workloads
+			// aren't installed or relevant here) - MSBuildEnableWorkloadResolver=false is MSBuild's
+			// own documented escape hatch to skip the whole workload-resolution props/resolver chain
+			// instead of trying to make it succeed.
+			Environment.SetEnvironmentVariable("MSBuildEnableWorkloadResolver", "false");
+
 			LoggingService.InfoFormatted("MSBuild environment initialized: DOTNET_ROOT={0}, MSBuildSDKsPath={1}, MSBUILDADDITIONALSDKRESOLVERSFOLDER_NET={2}",
 				sdk.RootPath,
 				Environment.GetEnvironmentVariable("MSBuildSDKsPath"),

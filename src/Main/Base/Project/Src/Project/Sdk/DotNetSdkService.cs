@@ -11,7 +11,7 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 	/// Discovers installed .NET SDK roots (system installs, OpenDevelop's own bundled/dev SDK, and
 	/// user-added custom paths) and resolves which one the user has selected to build/debug/test
 	/// project files with. This is the single authoritative source that MinimalMSBuildEngine,
-	/// DapSession, and VsTestAdapter should all consult, instead of each independently guessing
+	/// DapSession, and MtpServerProcess should all consult, instead of each independently guessing
 	/// (which is exactly how OpenDevelop ended up with three inconsistent resolution strategies and
 	/// the NETSDK1045 confusion this replaces).
 	///

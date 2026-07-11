@@ -23,8 +23,8 @@
 	</Path>
 	
 	<Path name="/SharpDevelop/UnitTesting/TestFrameworks">
-		<TestFramework id="vsTest"
-		               class="ICSharpCode.UnitTesting.VsTestFramework"
+		<TestFramework id="mtpTest"
+		               class="ICSharpCode.UnitTesting.MtpTestFramework"
 		               supportedProjects=".csproj;.vbproj;.fsproj" />
 	</Path>
 	

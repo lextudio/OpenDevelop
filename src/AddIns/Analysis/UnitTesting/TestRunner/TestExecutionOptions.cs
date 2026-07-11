@@ -33,7 +33,7 @@ namespace ICSharpCode.UnitTesting
 		/// The default is <c>false</c>.
 		/// </summary>
 		public bool UseDebugger { get; set; }
-		
+
 		public IProcessRunner ProcessRunner { get; set; }
 		
 		/// <summary>

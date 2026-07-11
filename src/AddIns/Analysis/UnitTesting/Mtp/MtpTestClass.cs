@@ -1,15 +1,11 @@
-using System;
-using System.Collections.Generic;
-using System.Collections.ObjectModel;
-
-namespace ICSharpCode.UnitTesting
+namespace ICSharpCode.UnitTesting.Mtp
 {
-	class VsTestClass : TestBase
+	class MtpTestClass : TestBase
 	{
 		readonly ITestProject project;
 		readonly string className;
 
-		public VsTestClass(ITestProject project, string className)
+		public MtpTestClass(ITestProject project, string className)
 		{
 			this.project = project;
 			this.className = className;

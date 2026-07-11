@@ -10,15 +10,9 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
   <ItemGroup>
-    <!-- 16.2.0 (2019-era) predates ARM64 support in Architecture/RunConfiguration, so
-         vstest.console would misdetect the machine as X64 and fail to find a testhost on
-         Apple Silicon. -->
-    <PackageReference Include="Microsoft.TestPlatform.TranslationLayer" Version="17.12.0" />
-    <!-- TranslationLayer 17.12.0's .NETStandard2.0 dependency group (what a modern net10.0-windows
-         TFM resolves against) doesn't pull in ObjectModel transitively like the old 16.2.0's
-         net-framework-only dependency group did, so TestCase/TestResult/RunConfiguration/etc.
-         need it referenced directly. -->
-    <PackageReference Include="Microsoft.TestPlatform.ObjectModel" Version="17.12.0" />
+    <!-- Client for Microsoft.Testing.Platform's server-mode JSON-RPC protocol (Mtp/MtpServerProcess.cs)
+         - replaces the classic vstest.console/TranslationLayer path entirely. -->
+    <PackageReference Include="StreamJsonRpc" Version="2.21.10" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" />
@@ -33,6 +27,7 @@
     <Compile Include="ImmutableStack.cs" />
     <Compile Include="Interfaces/*.cs" />
     <Compile Include="Model/*.cs" />
+    <Compile Include="Mtp/*.cs" />
     <Compile Include="MultiDictionary.cs" />
     <Compile Include="Options/*.cs" />
     <Compile Include="Pad/ITestTreeView.cs" />
@@ -42,11 +37,10 @@
     <Compile Include="Resources/*.cs" />
     <Compile Include="Service/*.cs" />
     <Compile Include="TestRunner/*.cs" />
-    <Compile Include="VsTest/*.cs" />
-    <Compile Include="VsTestDebugger.cs" />
-    <Compile Include="VsTestFramework.cs" />
-    <Compile Include="VsTestProject.cs" />
-    <Compile Include="VsTestRunner.cs" />
+    <Compile Include="MtpTestDebugger.cs" />
+    <Compile Include="MtpTestFramework.cs" />
+    <Compile Include="MtpTestProject.cs" />
+    <Compile Include="MtpTestRunner.cs" />
     <Compile Include="..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

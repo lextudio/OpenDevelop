@@ -159,8 +159,8 @@ namespace ICSharpCode.UnitTesting
 		/// exists. BindResultToCompositeResultOfNestedTests(), when called from a constructor
 		/// before nestedTests is initialized, only sets the intent flag and defers; this completes
 		/// the deferred binding. Exposed as protected so a subclass whose OnNestedTestsInitialized
-		/// override does NOT chain to base (e.g. VsTestProject, which replaces the base's parser-
-		/// based type discovery with VSTest discovery) can still restore the composite binding
+		/// override does NOT chain to base (e.g. MtpTestProject, which replaces the base's parser-
+		/// based type discovery with MTP discovery) can still restore the composite binding
 		/// rather than silently leaving its node's Result stuck at None.
 		/// </summary>
 		protected void RebindCompositeResultToNestedTests()

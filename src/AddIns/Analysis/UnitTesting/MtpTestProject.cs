@@ -7,17 +7,17 @@ using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.TypeSystem;
-using Microsoft.VisualStudio.TestPlatform.ObjectModel;
+using ICSharpCode.UnitTesting.Mtp;
 
 namespace ICSharpCode.UnitTesting
 {
-	public class VsTestProject : TestProjectBase
+	public class MtpTestProject : TestProjectBase
 	{
-		DiscoveredTests discoveredTests = new DiscoveredTests();
+		IReadOnlyList<MtpTestNode> discoveredNodes = Array.Empty<MtpTestNode>();
 		DateTime? lastBuildTime;
 		bool discoveryInProgress;
 
-		public VsTestProject(IProject project)
+		public MtpTestProject(IProject project)
 			: base(project)
 		{
 			lastBuildTime = GetAssemblyLastWriteTime();
@@ -27,9 +27,9 @@ namespace ICSharpCode.UnitTesting
 		protected override void OnNestedTestsInitialized()
 		{
 			// Deliberately does NOT chain to TestProjectBase.OnNestedTestsInitialized (that does
-			// the old Roslyn/parser-based type walk this class replaced with VSTest discovery),
-			// but MUST still restore the composite-result binding that TestBase sets up - without
-			// this the project node's Result stayed None forever, so a failing test coloured its
+			// the old Roslyn/parser-based type walk this class replaced with MTP discovery), but
+			// MUST still restore the composite-result binding that TestBase sets up - without this
+			// the project node's Result stayed None forever, so a failing test coloured its
 			// class/namespace nodes but the colour never propagated up to the project node or the
 			// "All Tests" solution root above it.
 			RebindCompositeResultToNestedTests();
@@ -48,10 +48,16 @@ namespace ICSharpCode.UnitTesting
 		async Task DiscoverTestsAsync()
 		{
 			try {
-				discoveredTests = await VsTestDiscoveryAdapter.Instance.DiscoverTestsAsync(Project);
+				var assemblyPath = ResolveAssemblyDll(Project);
+				if (assemblyPath == null || !File.Exists(assemblyPath))
+					return;
+
+				await using var server = await MtpServerProcess.StartAsync(assemblyPath, Path.GetDirectoryName(assemblyPath), default);
+				await server.InitializeAsync(default);
+				discoveredNodes = await server.DiscoverTestsAsync(default);
 				PopulateTree();
 			} catch (Exception ex) {
-				SD.Log.Warn("VsTest discovery failed: " + ex.Message);
+				SD.Log.Warn("MTP discovery failed: " + ex.Message);
 			} finally {
 				discoveryInProgress = false;
 			}
@@ -65,7 +71,7 @@ namespace ICSharpCode.UnitTesting
 			var collection = base.NestedTestCollection;
 			collection.Clear();
 
-			VsTestTreeBuilder.BuildTree(this, collection, discoveredTests.Tests);
+			MtpTestTreeBuilder.BuildTree(this, collection, discoveredNodes);
 		}
 
 		void OnBuildFinished(object sender, BuildEventArgs args)
@@ -92,8 +98,8 @@ namespace ICSharpCode.UnitTesting
 		public override ITestRunner CreateTestRunner(TestExecutionOptions options)
 		{
 			if (options.UseDebugger)
-				return new VsTestDebugger(this, options);
-			return new VsTestRunner(this, options);
+				return new MtpTestDebugger(this, options);
+			return new MtpTestRunner(this, options);
 		}
 
 		public override IEnumerable<ITest> GetTestsForEntity(IEntity entity)
@@ -103,22 +109,18 @@ namespace ICSharpCode.UnitTesting
 
 		public override void UpdateTestResult(TestResult result)
 		{
-			// This was a no-op, so completed test runs never updated the tree: od.unit-test.run
-			// would report completed=true/faulted=false (the VSTest run itself genuinely
-			// succeeded), but every test's Result stayed "None" forever, indistinguishable from
-			// "never run". Match the incoming result back to the VsTestMethod node it belongs to
-			// by display name (TestResultBuilder.Convert builds the SD TestResult's name from the
-			// same TestCase.DisplayName that VsTestMethod's own DisplayName came from at
-			// discovery time) and apply it.
+			// Match the incoming result back to the MtpTestMethod node it belongs to by display
+			// name (MtpTestRunner builds the SD TestResult's name from the same MtpTestNode.DisplayName
+			// that MtpTestMethod's own DisplayName came from at discovery time) and apply it.
 			var method = FindTestMethod(NestedTestCollection, result.Name);
 			if (method != null)
 				method.SetResult(result.ResultType);
 		}
 
-		static VsTestMethod FindTestMethod(IEnumerable<ITest> tests, string name)
+		static MtpTestMethod FindTestMethod(IEnumerable<ITest> tests, string name)
 		{
 			foreach (var test in tests) {
-				if (test is VsTestMethod method && method.DisplayName == name)
+				if (test is MtpTestMethod method && method.DisplayName == name)
 					return method;
 				if (test.NestedTests != null) {
 					var found = FindTestMethod(test.NestedTests, name);
@@ -147,26 +149,35 @@ namespace ICSharpCode.UnitTesting
 		{
 		}
 
-		public IReadOnlyList<TestCase> GetTestCasesForSelectedTests(IEnumerable<ITest> selectedTests)
+		public IReadOnlyList<MtpTestNode> GetTestNodesForSelectedTests(IEnumerable<ITest> selectedTests)
 		{
-			var cases = new List<TestCase>();
-			CollectTestCases(selectedTests, cases);
-			return cases;
+			var nodes = new List<MtpTestNode>();
+			CollectTestNodes(selectedTests, nodes);
+			return nodes;
 		}
 
-		void CollectTestCases(IEnumerable<ITest> tests, List<TestCase> results)
+		void CollectTestNodes(IEnumerable<ITest> tests, List<MtpTestNode> results)
 		{
 			foreach (var test in tests) {
-				if (test is VsTestMethod method) {
-					results.AddRange(method.TestCases);
+				if (test is MtpTestMethod method) {
+					results.Add(method.Node);
 				} else if (test.NestedTests != null) {
-					CollectTestCases(test.NestedTests, results);
+					CollectTestNodes(test.NestedTests, results);
 				}
 			}
 		}
 
-		public void UpdateResult(TestResult result)
+		// VSTest discovery/execution always needs the managed assembly (.dll), regardless of the
+		// project's OutputType. Modern MTP test projects (xunit.v3) set OutputType=Exe so `dotnet
+		// exec`/the apphost can run them as a self-hosted test app, but don't necessarily produce a
+		// native apphost for every TFM/platform - so project.OutputAssemblyFullPath (which follows
+		// OutputType's Exe/WinExe/.exe-or-apphost naming convention) can point at a file that was
+		// never built. The managed assembly next to it is always "<AssemblyName>.dll", and that's
+		// what `dotnet exec`/MtpServerProcess.StartAsync needs.
+		public static string ResolveAssemblyDll(IProject project)
 		{
+			var dir = Path.GetDirectoryName(project.OutputAssemblyFullPath?.ToString());
+			return dir != null ? Path.Combine(dir, project.AssemblyName + ".dll") : project.OutputAssemblyFullPath;
 		}
 	}
 }

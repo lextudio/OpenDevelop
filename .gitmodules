@@ -20,3 +20,9 @@
 [submodule "externals/altcover"]
 	path = externals/altcover
 	url = https://github.com/SteveGilham/altcover.git
+[submodule "externals/vscode-wpf"]
+	path = externals/vscode-wpf
+	url = https://github.com/lextudio/vscode-wpf
+[submodule "externals/wpftoolkit"]
+	path = externals/wpftoolkit
+	url = https://github.com/xceedsoftware/wpftoolkit.git

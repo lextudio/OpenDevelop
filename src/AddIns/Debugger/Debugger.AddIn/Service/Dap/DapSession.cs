@@ -493,7 +493,7 @@ namespace Debugger.AddIn.Service.Dap
 		{
 			// DOTNET_HOST_PATH remains a supported explicit override (e.g. for scripted/CI runs
 			// that set it directly), but the primary source is now the same DotNetSdkService that
-			// MinimalMSBuildEngine and VsTestAdapter use - so build, debug, and test always agree
+			// MinimalMSBuildEngine and MtpServerProcess use - so build, debug, and test always agree
 			// on which SDK's dotnet host to run under, instead of the debugger silently reading a
 			// leftover process-inherited env var while the others use a different resolution.
 			string host = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");

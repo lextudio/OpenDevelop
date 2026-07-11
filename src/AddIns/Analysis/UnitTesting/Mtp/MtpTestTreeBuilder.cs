@@ -1,21 +1,26 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Microsoft.VisualStudio.TestPlatform.ObjectModel;
 
-namespace ICSharpCode.UnitTesting
+namespace ICSharpCode.UnitTesting.Mtp
 {
-	static class VsTestTreeBuilder
+	static class MtpTestTreeBuilder
 	{
 		public static void BuildTree(
-			VsTestProject project,
+			MtpTestProject project,
 			TestCollection rootCollection,
-			IEnumerable<TestCase> testCases)
+			IEnumerable<MtpTestNode> nodes)
 		{
 			if (project == null)
 				throw new ArgumentNullException("project");
-			var groupedByClass = testCases
-				.GroupBy(tc => GetClassName(tc))
+
+			// Only leaf ("action") nodes are actual tests - "group" nodes (assembly/namespace/class
+			// groupings the host itself may report) are ignored; the tree below is rebuilt from the
+			// leaves using each leaf's declaring-type name, same as VsTestTreeBuilder did from
+			// TestCase.FullyQualifiedName.
+			var groupedByClass = nodes
+				.Where(n => n.NodeType == "action")
+				.GroupBy(GetClassName)
 				.OrderBy(g => g.Key);
 
 			foreach (var classGroup in groupedByClass) {
@@ -25,9 +30,9 @@ namespace ICSharpCode.UnitTesting
 
 				var nsCollection = FindOrCreateNamespace(project, rootCollection, classNamespace);
 
-				var testClass = new VsTestClass(project, shortClassName);
-				foreach (var tc in classGroup.OrderBy(tc => tc.DisplayName)) {
-					var method = new VsTestMethod(project, tc);
+				var testClass = new MtpTestClass(project, shortClassName);
+				foreach (var node in classGroup.OrderBy(n => n.DisplayName)) {
+					var method = new MtpTestMethod(project, node);
 					testClass.NestedTests.Add(method);
 				}
 
@@ -35,7 +40,7 @@ namespace ICSharpCode.UnitTesting
 			}
 		}
 
-		static TestCollection FindOrCreateNamespace(VsTestProject project, TestCollection rootCollection, string ns)
+		static TestCollection FindOrCreateNamespace(MtpTestProject project, TestCollection rootCollection, string ns)
 		{
 			if (string.IsNullOrEmpty(ns))
 				return rootCollection;
@@ -55,29 +60,28 @@ namespace ICSharpCode.UnitTesting
 			return newNs.NestedTests;
 		}
 
-		static string GetClassName(TestCase tc)
+		static string GetClassName(MtpTestNode node)
 		{
-			var fqn = tc.FullyQualifiedName;
+			if (!string.IsNullOrEmpty(node.LocationType))
+				return node.LocationType!;
+
+			// Fallback for hosts that don't report location.type (e.g. NUnit's MTP/VSTest bridge):
+			// treat everything up to the last dot in the display name as the "class".
+			var fqn = node.DisplayName;
 			int lastDot = fqn.LastIndexOf('.');
-			if (lastDot < 0)
-				return fqn;
-			return fqn.Substring(0, lastDot);
+			return lastDot < 0 ? fqn : fqn.Substring(0, lastDot);
 		}
 
 		static string GetNamespace(string className)
 		{
 			int lastDot = className.LastIndexOf('.');
-			if (lastDot < 0)
-				return string.Empty;
-			return className.Substring(0, lastDot);
+			return lastDot < 0 ? string.Empty : className.Substring(0, lastDot);
 		}
 
 		static string GetShortName(string className)
 		{
 			int lastDot = className.LastIndexOf('.');
-			if (lastDot < 0)
-				return className;
-			return className.Substring(lastDot + 1);
+			return lastDot < 0 ? className : className.Substring(lastDot + 1);
 		}
 	}
 }

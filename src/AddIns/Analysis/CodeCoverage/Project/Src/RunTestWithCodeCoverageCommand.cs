@@ -44,6 +44,11 @@ namespace ICSharpCode.CodeCoverage
 
 		public override void Run()
 		{
+			RunAsync().FireAndForget();
+		}
+
+		async Task RunAsync()
+		{
 			ClearCodeCoverageResults();
 
 			var coverageResultsReader = new CodeCoverageResultsReader();
@@ -51,32 +56,66 @@ namespace ICSharpCode.CodeCoverage
 			ITestService testService = SD.GetRequiredService<ITestService>();
 			IEnumerable<ITest> allTests = GetTests(testService);
 
+			IProject project = FindProject(allTests);
+			if (project == null)
+				return;
+
+			var buildResults = await SD.BuildService.BuildAsync(project, new BuildOptions(BuildTarget.Build));
+			if (buildResults.Result != BuildResultCode.Success)
+				return;
+
 			// AltCover instruments ahead-of-time (unlike OpenCover, which wraps the test process
 			// at launch via the CLR profiler API), so the "prepare" step just needs to run to
-			// completion before anything reads the target assemblies - it doesn't need to sit
-			// between the IDE and a specific spawned test-runner process. This used to run inside
-			// TestExecutionOptions.ModifyProcessStartInfoBeforeTestRun, a hook only ever invoked by
-			// the old process-spawning test runners (TestProcessRunnerBase) - VsTestRunner (the
-			// runner actually used for od.code-coverage.run today) executes VSTest in-process and
-			// never builds or reads a ProcessStartInfo, so that hook silently never fired: no
-			// instrumentation ever happened, no results ever appeared, and callers polling for
-			// results burned their full timeout every time. Running Prepare unconditionally here
-			// works for every runner, in-process or not.
-			AltCoverApplication app = CreateAltCoverApplication(allTests);
+			// completion before anything reads the target assemblies.
+			AltCoverApplication app = CreateAltCoverApplication(project);
 			coverageResultsReader.AddResultsFile(app.CodeCoverageResultsFileName);
 			RunToCompletion(app.GetPrepareProcessStartInfo());
 
-			var options = new TestExecutionOptions();
-			// Capture `app` in the closure rather than a shared instance field: Run() can be
-			// invoked again (e.g. a second od.code-coverage.run) before this fire-and-forgotten
-			// continuation gets around to running its own Collect step - a field would have already
-			// been overwritten by the second call's own AltCoverApplication (a different working
-			// path/GUID - see that class's remarks), so the FIRST run's own Collect step ran against
-			// the SECOND run's working file, which didn't exist yet: "FileNotFoundException:
-			// coverage.<second-run-guid>.xml", and the first run's real results never got merged.
-			testService.RunTestsAsync(allTests, options)
-				.ContinueWith(t => AfterTestsRunTask(t, app, coverageResultsReader))
-				.FireAndForget();
+			// Run the (now-instrumented) test project directly as a plain one-shot process -
+			// deliberately NOT through ITestService/MtpTestRunner's server-mode JSON-RPC session.
+			// AltCover's recorder flushes recorded visits to disk on the instrumented process's own
+			// exit (see externals/altcover/AltCover.Recorder/Recorder.fs, FlushFinish/ProcessExit),
+			// so the test process needs to be a single process that runs to completion and exits
+			// normally - exactly what a bare `dotnet exec`/apphost invocation is, and exactly what
+			// the JSON-RPC server-mode session (a longer-lived host talked to over a persistent
+			// connection, matching how VsTestRunAdapter's singleton vstest.console process behaved
+			// before this addin moved off VSTest) is not. This mirrors both
+			// tests/OpenDevelop.IntegrationTests/AltCover.Mtp.targets's own "Coverage" MSBuild target
+			// (build, instrument in place, `<Exec>` the built exe directly, collect) and UnoDevelop's
+			// own CoverletCoverageRunner, which bypasses its own MTP JSON-RPC client the same way for
+			// exactly this reason. See doc/technotes/altcover.md.
+			await RunInstrumentedProcessToCompletionAsync(project);
+
+			// Step 3 (Collect) - must run only after the test process above has fully exited.
+			RunToCompletion(app.GetCollectProcessStartInfo());
+			app.PromoteResultsToStableFileName();
+
+			ShowCodeCoverageResultsPadIfNoCriticalTestFailures();
+			DisplayCodeCoverageResults(coverageResultsReader);
+		}
+
+		static async Task RunInstrumentedProcessToCompletionAsync(IProject project)
+		{
+			var assembly = project.OutputAssemblyFullPath;
+			var psi = new ProcessStartInfo { UseShellExecute = false };
+
+			if (assembly != null && File.Exists(assembly)) {
+				// MTP test projects build to a self-contained apphost exe - run it directly.
+				psi.FileName = assembly;
+				psi.WorkingDirectory = Path.GetDirectoryName(assembly);
+			} else {
+				// No apphost for this TFM/platform - fall back to running the managed dll via the
+				// dotnet host (same "<AssemblyName>.dll next to the exe" resolution MtpTestProject
+				// uses for discovery/execution).
+				var dir = Path.GetDirectoryName(assembly);
+				psi.FileName = "dotnet";
+				psi.Arguments = "exec \"" + Path.Combine(dir ?? string.Empty, project.AssemblyName + ".dll") + "\"";
+				psi.WorkingDirectory = dir;
+			}
+
+			using (Process process = Process.Start(psi)) {
+				await process.WaitForExitAsync();
+			}
 		}
 
 		protected virtual IEnumerable<ITest> GetTests(ITestService testService)
@@ -89,9 +128,8 @@ namespace ICSharpCode.CodeCoverage
 			SD.MainThread.InvokeIfRequired(() => CodeCoverageService.ClearResults());
 		}
 
-		AltCoverApplication CreateAltCoverApplication(IEnumerable<ITest> tests)
+		AltCoverApplication CreateAltCoverApplication(IProject project)
 		{
-			IProject project = FindProject(tests);
 			OpenCoverSettings settings = settingsFactory.CreateOpenCoverSettings(project);
 			var application = new AltCoverApplication(settings, project);
 			// Each AltCoverApplication instance writes to its own unique working path (see that
@@ -103,11 +141,9 @@ namespace ICSharpCode.CodeCoverage
 
 		// RunAllTestsWithCodeCoverageCommand.GetTests() passes the *solution* root node (whose
 		// ParentProject is always null - see TestSolution.ParentProject) rather than a test
-		// belonging directly to a project, so tests.First().ParentProject.Project threw a
-		// NullReferenceException the moment this method actually ran (previously masked entirely:
-		// this used to execute inside TestExecutionOptions.ModifyProcessStartInfoBeforeTestRun,
-		// a hook VsTestRunner never invokes - see the comment in Run() above). Walk down to the
-		// first node that is itself an ITestProject, or already has one as its ParentProject.
+		// belonging directly to a project, so tests.First().ParentProject.Project would throw a
+		// NullReferenceException. Walk down to the first node that is itself an ITestProject, or
+		// already has one as its ParentProject.
 		static IProject FindProject(IEnumerable<ITest> tests)
 		{
 			foreach (ITest test in tests) {
@@ -137,26 +173,6 @@ namespace ICSharpCode.CodeCoverage
 			}
 		}
 
-		Task AfterTestsRunTask(Task task, AltCoverApplication app, CodeCoverageResultsReader coverageResultsReader)
-		{
-			if (task.Exception != null)
-				throw task.Exception;
-
-			// Step 3 (Collect) - must run only after the test-runner process from step 2 (the
-			// unwrapped process the "Run" method above let start on its own) has fully exited,
-			// which is exactly the point AfterTestsRunTask is invoked at.
-			RunToCompletion(app.GetCollectProcessStartInfo());
-			// Collect wrote the merged report to this run's unique working path (see
-			// AltCoverApplication's remarks) - promote it onto the stable, well-known path
-			// coverageResultsReader (below) and SolutionCodeCoverageResults expect, now that
-			// collection has genuinely finished and there's nothing left to race with.
-			app.PromoteResultsToStableFileName();
-
-			ShowCodeCoverageResultsPadIfNoCriticalTestFailures();
-			DisplayCodeCoverageResults(coverageResultsReader);
-			return task;
-		}
-		
 		void ShowCodeCoverageResultsPadIfNoCriticalTestFailures()
 		{
 			if (TaskService.HasCriticalErrors(false)) {

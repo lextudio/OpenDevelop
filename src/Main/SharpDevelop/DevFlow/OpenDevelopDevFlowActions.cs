@@ -650,7 +650,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			if (ifaces.Any(i => i.Name == "ITestSolution")) typeName = "solution";
 			else if (ifaces.Any(i => i.Name == "ITestProject")) typeName = "project";
 			else if (t.Name.Contains("Namespace")) typeName = "namespace";
-			else if (t.Name == "TestCollection" || t.Name.Contains("Class") || t.Name.Contains("VsTestClass")) typeName = "class";
+			else if (t.Name == "TestCollection" || t.Name.Contains("Class")) typeName = "class";
 			else if (t.Name.Contains("Method")) typeName = "method";
 			var nested = GetMostDerivedProperty(t, "NestedTests")?.GetValue(test) as System.Collections.IEnumerable;
 			var kids = new List<object>();
