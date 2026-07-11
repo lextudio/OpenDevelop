@@ -3695,7 +3695,7 @@ Gå till 'Inställningar-&gt;Visuell stil' och ändra den nuvarande språkmiljö
     <value>Byggandet klart -- ${Errors} errors, ${Warnings} varningar</value>
   </data>
   <data name="MainWindow.DialogName" xml:space="preserve">
-    <value>SharpDevelop</value>
+    <value>OpenDevelop</value>
   </data>
   <data name="MainWindow.DiscardChangesMessage" xml:space="preserve">
     <value>Vill du verkligen kassera dina ändringar?</value>

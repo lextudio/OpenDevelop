@@ -5078,7 +5078,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>Omitido ${Name} (sin cambios dentro de SharpDevelop)</value>
   </data>
   <data name="MainWindow.DialogName" xml:space="preserve">
-    <value>SharpDevelop</value>
+    <value>OpenDevelop</value>
   </data>
   <data name="MainWindow.DiscardChangesMessage" xml:space="preserve">
     <value>¿Desea realmente descartar los cambios?</value>

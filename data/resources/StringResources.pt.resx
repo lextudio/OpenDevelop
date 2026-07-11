@@ -3613,7 +3613,7 @@ Vá a 'Opções -&gt; Estilo Visual' e altere o ambiente de linguagem actual.</v
     <value>Compilação completa -- ${Errors} erros, ${Warnings} avisos</value>
   </data>
   <data name="MainWindow.DialogName" xml:space="preserve">
-    <value>SharpDevelop</value>
+    <value>OpenDevelop</value>
   </data>
   <data name="MainWindow.DiscardChangesMessage" xml:space="preserve">
     <value>Tem a certeza que deseja cancelar as alterações?</value>

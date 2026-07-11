@@ -5031,7 +5031,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>Überspringe ${Name} (keine Änderungen in SharpDevelop)</value>
   </data>
   <data name="MainWindow.DialogName" xml:space="preserve">
-    <value>SharpDevelop</value>
+    <value>OpenDevelop</value>
   </data>
   <data name="MainWindow.DiscardChangesMessage" xml:space="preserve">
     <value>Wollen Sie ihre Änderungen verwerfen?</value>

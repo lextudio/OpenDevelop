@@ -2109,7 +2109,7 @@ Toate modificările se vor pierde.</value>
     <value>Build terminat -- ${Errors} erori, ${Warnings} avertismente</value>
   </data>
   <data name="MainWindow.DialogName" xml:space="preserve">
-    <value>SharpDevelop</value>
+    <value>OpenDevelop</value>
   </data>
   <data name="MainWindow.DiscardChangesMessage" xml:space="preserve">
     <value>Vreţi cu adevărat să anulaţi schimbările efectuate ?</value>

@@ -4108,7 +4108,7 @@ Například: Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNe
     <value>Sestavení dokončeno -- ${Errors} chyb, ${Warnings} varování</value>
   </data>
   <data name="MainWindow.DialogName" xml:space="preserve">
-    <value>SharpDevelop</value>
+    <value>OpenDevelop</value>
   </data>
   <data name="MainWindow.DiscardChangesMessage" xml:space="preserve">
     <value>Opravdu chcete přijít o provedené změny?</value>

@@ -4963,7 +4963,7 @@ Microsoft.Tools.WindowsInstallerXml.Extenties.NetFxCompiler, WixNetFxExtentie</v
     <value>Overgeslagen ${Name} (Ongewijzigd binnen SharpDevelop)</value>
   </data>
   <data name="MainWindow.DialogName" xml:space="preserve">
-    <value>SharpDevelop</value>
+    <value>OpenDevelop</value>
   </data>
   <data name="MainWindow.DiscardChangesMessage" xml:space="preserve">
     <value>Wilt u werkelijk uw wijzigingen laten vervallen?</value>

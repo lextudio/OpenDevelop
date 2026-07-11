@@ -3384,7 +3384,7 @@ Siirry Asetukset-&gt; UI-Kieli ja vaihda kieli ympäristöä</value>
     <value>Kehitys valmis -- ${Errors} virheet, ${Warnings} varoitukset</value>
   </data>
   <data name="MainWindow.DialogName" xml:space="preserve">
-    <value>SharpDevelop</value>
+    <value>OpenDevelop</value>
   </data>
   <data name="MainWindow.DiscardChangesMessage" xml:space="preserve">
     <value>Haluatko hylätä muutokset ?</value>

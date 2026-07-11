@@ -4525,7 +4525,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>Hoppet over ${Name} (ingen endringer i SharpDevelop)</value>
   </data>
   <data name="MainWindow.DialogName" xml:space="preserve">
-    <value>SharpDevelop</value>
+    <value>OpenDevelop</value>
   </data>
   <data name="MainWindow.DiscardChangesMessage" xml:space="preserve">
     <value>Er du sikker på at du vil forkaste endringene?</value>

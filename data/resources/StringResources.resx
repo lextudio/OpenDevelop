@@ -5239,7 +5239,7 @@ Unable to find 'WelcomeDialogId' in Dialogs.wxs</comment>
     <comment>Message when a project is not compiled because it was not modified</comment>
   </data>
   <data name="MainWindow.DialogName" xml:space="preserve">
-    <value>SharpDevelop</value>
+    <value>OpenDevelop</value>
   </data>
   <data name="MainWindow.DiscardChangesMessage" xml:space="preserve">
     <value>Do you really want to discard your changes ?</value>

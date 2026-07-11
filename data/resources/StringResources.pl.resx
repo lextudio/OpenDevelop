@@ -3464,7 +3464,7 @@ Idź do 'Opcje-&gt;Styl wizualny' i zmień atmosferę bieżącego języka.</valu
     <value>Budowanie zakończone -- błędów: ${Errors}, ostrzeżeń: ${Warnings}</value>
   </data>
   <data name="MainWindow.DialogName" xml:space="preserve">
-    <value>SharpDevelop</value>
+    <value>OpenDevelop</value>
   </data>
   <data name="MainWindow.DiscardChangesMessage" xml:space="preserve">
     <value>Czy naprawdę chcesz odrzucić twoje zmiany?</value>

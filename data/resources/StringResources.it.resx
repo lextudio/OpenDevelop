@@ -5183,7 +5183,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFxCompiler, WixNetFxExtension<
     <value>Ignoro ${Name} (nessuna modifica da SharpDevelop)</value>
   </data>
   <data name="MainWindow.DialogName" xml:space="preserve">
-    <value>SharpDevelop</value>
+    <value>OpenDevelop</value>
   </data>
   <data name="MainWindow.DiscardChangesMessage" xml:space="preserve">
     <value>Vuoi veramente annullare le modifiche?</value>

@@ -5051,7 +5051,7 @@ Microsoft.Tools.WindowsInstallerXml.Extensions.NetFXCompiler, WixNetFxExtension<
     <value>${Name} atlandı (SharpDevelop içinde değişiklik yapılmadı)</value>
   </data>
   <data name="MainWindow.DialogName" xml:space="preserve">
-    <value>SharpDevelop</value>
+    <value>OpenDevelop</value>
   </data>
   <data name="MainWindow.DiscardChangesMessage" xml:space="preserve">
     <value>Değişiklikleri iptal etmek istediğinizden emin misiniz?</value>
