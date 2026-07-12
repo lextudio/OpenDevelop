@@ -335,19 +335,19 @@ namespace ICSharpCode.SharpDevelop.Gui
 		
 		public static Font RegularMonospacedFont {
 			get {
-				return SD.WinForms.DefaultMonospacedFont;
+				return SystemFonts.MessageBoxFont;
 			}
 		}
 		public static Font BoldMonospacedFont {
 			get {
 				return boldMonospacedFont
-					?? (boldMonospacedFont = SD.WinForms.LoadDefaultMonospacedFont(FontStyle.Bold));
+					?? (boldMonospacedFont = LoadFont(RegularMonospacedFont, FontStyle.Bold));
 			}
 		}
 		public static Font ItalicMonospacedFont {
 			get {
 				return italicMonospacedFont
-					?? (italicMonospacedFont = SD.WinForms.LoadDefaultMonospacedFont(FontStyle.Italic));
+					?? (italicMonospacedFont = LoadFont(RegularMonospacedFont, FontStyle.Italic));
 			}
 		}
 		
@@ -360,35 +360,53 @@ namespace ICSharpCode.SharpDevelop.Gui
 		public static Font BoldDefaultFont {
 			get {
 				return boldDefaultFont
-					?? (boldDefaultFont = SD.WinForms.LoadFont(RegularDefaultFont, FontStyle.Bold));
+					?? (boldDefaultFont = LoadFont(RegularDefaultFont, FontStyle.Bold));
 			}
 		}
 		
 		public static Font ItalicDefaultFont {
 			get {
 				return italicDefaultFont
-					?? (italicDefaultFont = SD.WinForms.LoadFont(RegularDefaultFont, FontStyle.Italic));
+					?? (italicDefaultFont = LoadFont(RegularDefaultFont, FontStyle.Italic));
 			}
 		}
 		
 		public static Font RegularBigFont {
 			get {
 				return regularBigFont
-					?? (regularBigFont = SD.WinForms.LoadFont("Tahoma", 9));
+					?? (regularBigFont = LoadFont("Tahoma", 9));
 			}
 		}
 		
 		public static Font BoldBigFont {
 			get {
 				return boldBigFont
-					?? (boldBigFont = SD.WinForms.LoadFont("Tahoma", 9, FontStyle.Bold));
+					?? (boldBigFont = LoadFont("Tahoma", 9, FontStyle.Bold));
 			}
 		}
 		
 		public static Font ItalicBigFont {
 			get {
 				return italicBigFont
-					?? (italicBigFont = SD.WinForms.LoadFont("Tahoma", 9, FontStyle.Italic));
+					?? (italicBigFont = LoadFont("Tahoma", 9, FontStyle.Italic));
+			}
+		}
+
+		static Font LoadFont(Font baseFont, FontStyle style)
+		{
+			try {
+				return new Font(baseFont, style);
+			} catch {
+				return baseFont;
+			}
+		}
+
+		static Font LoadFont(string fontName, float size, FontStyle style = FontStyle.Regular)
+		{
+			try {
+				return new Font(fontName, size, style);
+			} catch {
+				return SystemFonts.MessageBoxFont;
 			}
 		}
 		#endregion

@@ -28,7 +28,7 @@ using System.Xml.XPath;
 using System.Xml.Xsl;
 
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.Editor;
+using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Gui;

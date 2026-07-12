@@ -18,7 +18,7 @@
 
 using System;
 using System.Linq;
-using ICSharpCode.NRefactory.Editor;
+using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Editor.CodeCompletion;
 

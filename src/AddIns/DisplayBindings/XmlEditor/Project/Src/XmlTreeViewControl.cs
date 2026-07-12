@@ -1,14 +1,14 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
-// 
+// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -18,34 +18,32 @@
 
 using System;
 using System.ComponentModel;
-using System.Windows.Forms;
+using System.Collections.ObjectModel;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using System.Xml;
 
 using ICSharpCode.Core;
-using ICSharpCode.SharpDevelop.Gui;
 
 namespace ICSharpCode.XmlEditor
 {
 	public class XmlTreeViewKeyPressedEventArgs : EventArgs
 	{
-		public XmlTreeViewKeyPressedEventArgs(Keys keyData)
+		public XmlTreeViewKeyPressedEventArgs(Key keyData)
 		{
 			KeyData = keyData;
 		}
-		
-		public Keys KeyData
-		{
-			get;
-			private set;
-		}
+
+		public Key KeyData { get; private set; }
 	}
-	
+
 	/// <summary>
 	/// Displays a tree of XML elements. This is a separate control so it can
 	/// be unit tested. It has no SharpDevelop specific parts, for example,
 	/// the context menus are defined in the XmlTreeViewContainerControl.
 	/// </summary>
-	public class XmlTreeViewControl : ExtTreeView
+	public class XmlTreeViewControl : TreeView
 	{
 		const string ViewStatePropertyName = "XmlTreeViewControl.ViewState";
 
@@ -55,37 +53,69 @@ namespace ICSharpCode.XmlEditor
 			Before = 0,
 			After = 1
 		}
-		
+
 		/// <summary>
 		/// Raised when some key in tree view is pressed.
 		/// </summary>
 		public event EventHandler<XmlTreeViewKeyPressedEventArgs> TreeViewKeyPressed;
-		
+
+		/// <summary>
+		/// The root nodes of the tree (equivalent to the WinForms TreeView.Nodes collection).
+		/// </summary>
+		public ObservableCollection<XmlTreeNode> Nodes { get; } = new ObservableCollection<XmlTreeNode>();
+
 		public XmlTreeViewControl()
 		{
+			ItemsSource = Nodes;
+
+			var itemTemplate = new HierarchicalDataTemplate(typeof(XmlTreeNode)) {
+				ItemsSource = new System.Windows.Data.Binding(nameof(XmlTreeNode.Nodes))
+			};
+			var text = new FrameworkElementFactory(typeof(TextBlock));
+			text.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding(nameof(XmlTreeNode.Text)));
+			text.SetBinding(TextBlock.OpacityProperty, new System.Windows.Data.Binding(nameof(XmlTreeNode.ShowGhostImage)) {
+				Converter = GhostOpacityConverter.Instance
+			});
+			itemTemplate.VisualTree = text;
+			ItemTemplate = itemTemplate;
+
+			var itemContainerStyle = new Style(typeof(TreeViewItem));
+			itemContainerStyle.Setters.Add(new Setter(TreeViewItem.IsExpandedProperty, new System.Windows.Data.Binding(nameof(XmlTreeNode.IsExpanded)) { Mode = System.Windows.Data.BindingMode.TwoWay }));
+			itemContainerStyle.Setters.Add(new Setter(TreeViewItem.IsSelectedProperty, new System.Windows.Data.Binding(nameof(XmlTreeNode.IsSelected)) { Mode = System.Windows.Data.BindingMode.TwoWay }));
+			ItemContainerStyle = itemContainerStyle;
+
+			PreviewKeyDown += OnPreviewKeyDown;
+			SelectedItemChanged += (s, e) => OnAfterSelect();
 		}
-		
+
+		sealed class GhostOpacityConverter : System.Windows.Data.IValueConverter
+		{
+			public static readonly GhostOpacityConverter Instance = new GhostOpacityConverter();
+			public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+				=> (value is bool b && b) ? 0.5 : 1.0;
+			public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+				=> throw new NotSupportedException();
+		}
+
 		/// <summary>
 		/// Gets or sets the xml document currently being displayed.
 		/// </summary>
 		[Browsable(false)]
 		public XmlDocument Document {
-			get {
-				return document;
-			}
+			get { return document; }
 			set {
 				document = value;
-				
-				// Update display.
-				BeginUpdate();
-				try {
-					ShowDocument();
-				} finally {
-					EndUpdate();
-				}
+				ShowDocument();
 			}
 		}
-		
+
+		/// <summary>
+		/// Gets the currently selected node (equivalent to WinForms TreeView.SelectedNode).
+		/// </summary>
+		public XmlTreeNode SelectedNode {
+			get { return SelectedItem as XmlTreeNode; }
+		}
+
 		/// <summary>
 		/// Gets the selected element in the tree.
 		/// </summary>
@@ -98,16 +128,14 @@ namespace ICSharpCode.XmlEditor
 				return null;
 			}
 		}
-		
+
 		/// <summary>
 		/// Determines whether an element is selected in the tree.
 		/// </summary>
 		public bool IsElementSelected {
-			get {
-				return SelectedElement != null;
-			}
+			get { return SelectedElement != null; }
 		}
-		
+
 		/// <summary>
 		/// Gets the selected text node in the tree.
 		/// </summary>
@@ -120,7 +148,7 @@ namespace ICSharpCode.XmlEditor
 				return null;
 			}
 		}
-		
+
 		/// <summary>
 		/// Gets the selected comment node in the tree.
 		/// </summary>
@@ -133,32 +161,31 @@ namespace ICSharpCode.XmlEditor
 				return null;
 			}
 		}
-		
+
 		/// <summary>
 		/// Determines whether a text node is selected in the tree.
 		/// </summary>
 		public bool IsTextNodeSelected {
-			get {
-				return SelectedTextNode != null;
-			}
+			get { return SelectedTextNode != null; }
 		}
-		
+
 		/// <summary>
 		/// Saves the current state of the tree.
 		/// </summary>
 		public void SaveViewState(Properties properties)
 		{
-			properties.Set(ViewStatePropertyName, TreeViewHelper.GetViewStateString(this));
+			// View-state persistence (expanded nodes) isn't ported yet - the WPF tree
+			// re-expands nothing on reload, matching a fresh TreeView rather than the
+			// WinForms TreeViewHelper's serialized expand-path string.
 		}
-		
+
 		/// <summary>
 		/// Restores the node state of the tree.
 		/// </summary>
 		public void RestoreViewState(Properties properties)
 		{
-			TreeViewHelper.ApplyViewStateString(properties.Get(ViewStatePropertyName, string.Empty), this);
 		}
-		
+
 		/// <summary>
 		/// Appends a new child element to the currently selected node.
 		/// </summary>
@@ -171,7 +198,7 @@ namespace ICSharpCode.XmlEditor
 				selectedNode.Expand();
 			}
 		}
-		
+
 		/// <summary>
 		/// Appends a new child text node to the currently selected element.
 		/// </summary>
@@ -184,25 +211,23 @@ namespace ICSharpCode.XmlEditor
 				selectedNode.Expand();
 			}
 		}
-		
+
 		/// <summary>
-		/// Inserts a new element node before the currently selected
-		/// node.
+		/// Inserts a new element node before the currently selected node.
 		/// </summary>
 		public void InsertElementBefore(XmlElement element)
 		{
 			InsertElement(element, InsertionMode.Before);
 		}
-		
+
 		/// <summary>
-		/// Inserts a new element node after the currently selected
-		/// node.
+		/// Inserts a new element node after the currently selected node.
 		/// </summary>
 		public void InsertElementAfter(XmlElement element)
 		{
 			InsertElement(element, InsertionMode.After);
 		}
-		
+
 		/// <summary>
 		/// Removes the specified element from the tree.
 		/// </summary>
@@ -213,7 +238,7 @@ namespace ICSharpCode.XmlEditor
 				node.Remove();
 			}
 		}
-		
+
 		/// <summary>
 		/// Removes the specified text node from the tree.
 		/// </summary>
@@ -224,28 +249,25 @@ namespace ICSharpCode.XmlEditor
 				node.Remove();
 			}
 		}
-		
+
 		/// <summary>
-		/// Inserts a text node before the currently selected
-		/// node.
+		/// Inserts a text node before the currently selected node.
 		/// </summary>
 		public void InsertTextNodeBefore(XmlText textNode)
 		{
 			InsertTextNode(textNode, InsertionMode.Before);
 		}
-		
+
 		/// <summary>
-		/// Inserts a text node after the currently selected
-		/// node.
+		/// Inserts a text node after the currently selected node.
 		/// </summary>
 		public void InsertTextNodeAfter(XmlText textNode)
 		{
 			InsertTextNode(textNode, InsertionMode.After);
 		}
-		
+
 		/// <summary>
-		/// Updates the corresponding tree node's text based on
-		/// the textNode's value.
+		/// Updates the corresponding tree node's text based on the textNode's value.
 		/// </summary>
 		public void UpdateTextNode(XmlText textNode)
 		{
@@ -254,10 +276,9 @@ namespace ICSharpCode.XmlEditor
 				node.Update();
 			}
 		}
-		
+
 		/// <summary>
-		/// Updates the corresponding tree node's text based on
-		/// the comment's value.
+		/// Updates the corresponding tree node's text based on the comment's value.
 		/// </summary>
 		public void UpdateComment(XmlComment comment)
 		{
@@ -266,7 +287,7 @@ namespace ICSharpCode.XmlEditor
 				node.Update();
 			}
 		}
-		
+
 		/// <summary>
 		/// Appends a new child comment node to the currently selected element.
 		/// </summary>
@@ -279,7 +300,7 @@ namespace ICSharpCode.XmlEditor
 				selectedNode.Expand();
 			}
 		}
-		
+
 		/// <summary>
 		/// Removes the specified comment from the tree.
 		/// </summary>
@@ -290,66 +311,46 @@ namespace ICSharpCode.XmlEditor
 				node.Remove();
 			}
 		}
-		
+
 		/// <summary>
-		/// Inserts a comment node before the currently selected
-		/// node.
+		/// Inserts a comment node before the currently selected node.
 		/// </summary>
 		public void InsertCommentBefore(XmlComment comment)
 		{
 			InsertComment(comment, InsertionMode.Before);
 		}
-		
+
 		/// <summary>
-		/// Inserts a comment node after the currently selected
-		/// node.
+		/// Inserts a comment node after the currently selected node.
 		/// </summary>
 		public void InsertCommentAfter(XmlComment comment)
 		{
 			InsertComment(comment, InsertionMode.After);
 		}
-		
+
 		/// <summary>
-		/// Updates the image so the corresponding tree node shows that
-		/// it is in the process of being cut.
+		/// Updates the image so the corresponding tree node shows that it is in the process of being cut.
 		/// </summary>
 		public void ShowCut(XmlNode node)
 		{
 			ShowCut(node, true);
 		}
-		
+
 		/// <summary>
-		/// Updates the image so the corresponding tree node no longer
-		/// shows it is in the process of being cut.
+		/// Updates the image so the corresponding tree node no longer shows it is in the process of being cut.
 		/// </summary>
 		public void HideCut(XmlNode node)
 		{
 			ShowCut(node, false);
 		}
-		
-		/// <summary>
-		/// If no node is selected after a mouse click then we make
-		/// sure the AfterSelect event is fired. Standard behaviour is
-		/// for the AfterSelect event not to be fired when the user
-		/// deselects all tree nodes.
-		/// </summary>
-		protected override void OnMouseDown(MouseEventArgs e)
+
+		void OnPreviewKeyDown(object sender, KeyEventArgs e)
 		{
-			base.OnMouseDown(e);
-			if (SelectedNode == null) {
-				this.OnAfterSelect(new TreeViewEventArgs(null, TreeViewAction.ByMouse));
-			}
+			TreeViewKeyPressed?.Invoke(this, new XmlTreeViewKeyPressedEventArgs(e.Key));
 		}
-		
-		/// <summary>
-		/// Raises the DeleteKeyPressed event.
-		/// </summary>
-		protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+
+		void OnAfterSelect()
 		{
-			if (/*keyData == Keys.Delete && */TreeViewKeyPressed != null) {
-				TreeViewKeyPressed(this, new XmlTreeViewKeyPressedEventArgs(keyData));
-			}
-			return base.ProcessCmdKey(ref msg, keyData);
 		}
 
 		/// <summary>
@@ -373,24 +374,21 @@ namespace ICSharpCode.XmlEditor
 				}
 			}
 		}
-		
+
 		/// <summary>
 		/// Returns the selected xml element tree node.
 		/// </summary>
 		XmlElementTreeNode SelectedElementNode {
-			get {
-				return SelectedNode as XmlElementTreeNode;
-			}
+			get { return SelectedNode as XmlElementTreeNode; }
 		}
-		
+
 		/// <summary>
-		/// Inserts a new element node either before or after the
-		/// currently selected element node.
+		/// Inserts a new element node either before or after the currently selected element node.
 		/// </summary>
 		void InsertElement(XmlElement element, InsertionMode insertionMode)
 		{
-			ExtTreeNode selectedNode = (ExtTreeNode)SelectedNode;
-			if (selectedNode != null) {
+			XmlTreeNode selectedNode = SelectedNode;
+			if (selectedNode != null && selectedNode.Parent != null) {
 				XmlElementTreeNode parentNode = (XmlElementTreeNode)selectedNode.Parent;
 				XmlElementTreeNode newNode = new XmlElementTreeNode(element);
 				int index = parentNode.Nodes.IndexOf(selectedNode);
@@ -400,15 +398,14 @@ namespace ICSharpCode.XmlEditor
 				newNode.Insert(index, parentNode);
 			}
 		}
-		
+
 		/// <summary>
-		/// Inserts a new text node either before or after the
-		/// currently selected node.
+		/// Inserts a new text node either before or after the currently selected node.
 		/// </summary>
 		void InsertTextNode(XmlText textNode, InsertionMode insertionMode)
 		{
-			ExtTreeNode selectedNode = (ExtTreeNode)SelectedNode;
-			if (selectedNode != null) {
+			XmlTreeNode selectedNode = SelectedNode;
+			if (selectedNode != null && selectedNode.Parent != null) {
 				XmlElementTreeNode parentNode = (XmlElementTreeNode)selectedNode.Parent;
 				XmlTextTreeNode newNode = new XmlTextTreeNode(textNode);
 				int index = parentNode.Nodes.IndexOf(selectedNode);
@@ -418,18 +415,17 @@ namespace ICSharpCode.XmlEditor
 				newNode.Insert(index, parentNode);
 			}
 		}
-		
+
 		/// <summary>
-		/// Inserts a new comment node either before or after the
-		/// currently selected node.
+		/// Inserts a new comment node either before or after the currently selected node.
 		/// </summary>
 		void InsertComment(XmlComment comment, InsertionMode insertionMode)
 		{
-			ExtTreeNode selectedNode = (ExtTreeNode)SelectedNode;
+			XmlTreeNode selectedNode = SelectedNode;
 			if (selectedNode != null) {
-				ExtTreeNode parentNode = (ExtTreeNode)selectedNode.Parent;
+				XmlTreeNode parentNode = selectedNode.Parent;
 				XmlCommentTreeNode newNode = new XmlCommentTreeNode(comment);
-				int index = 0;
+				int index;
 				if (parentNode != null) {
 					index = parentNode.Nodes.IndexOf(selectedNode);
 				} else {
@@ -445,21 +441,19 @@ namespace ICSharpCode.XmlEditor
 				}
 			}
 		}
-		
+
 		/// <summary>
-		/// Looks at all the nodes in the tree view and returns the
-		/// tree node that represents the specified element.
+		/// Looks at all the nodes in the tree view and returns the tree node that represents the specified element.
 		/// </summary>
-		XmlElementTreeNode FindElement(XmlElement element, TreeNodeCollection nodes)
+		XmlElementTreeNode FindElement(XmlElement element, ObservableCollection<XmlTreeNode> nodes)
 		{
-			foreach (ExtTreeNode node in nodes) {
+			foreach (XmlTreeNode node in nodes) {
 				XmlElementTreeNode elementTreeNode = node as XmlElementTreeNode;
 				if (elementTreeNode != null) {
 					if (elementTreeNode.XmlElement == element) {
 						return elementTreeNode;
 					}
-					
-					// Look for a match in the element's child nodes.
+
 					XmlElementTreeNode childElementTreeNode = FindElement(element, elementTreeNode.Nodes);
 					if (childElementTreeNode != null) {
 						return childElementTreeNode;
@@ -468,7 +462,7 @@ namespace ICSharpCode.XmlEditor
 			}
 			return null;
 		}
-		
+
 		/// <summary>
 		/// Finds the corresponding XmlElementTreeNode.
 		/// </summary>
@@ -481,21 +475,19 @@ namespace ICSharpCode.XmlEditor
 				return FindElement(element, Nodes);
 			}
 		}
-		
+
 		/// <summary>
-		/// Looks at all the nodes in the tree view and returns the
-		/// tree node that represents the specified text node.
+		/// Looks at all the nodes in the tree view and returns the tree node that represents the specified text node.
 		/// </summary>
-		XmlTextTreeNode FindTextNode(XmlText textNode, TreeNodeCollection nodes)
+		XmlTextTreeNode FindTextNode(XmlText textNode, ObservableCollection<XmlTreeNode> nodes)
 		{
-			foreach (ExtTreeNode node in nodes) {
+			foreach (XmlTreeNode node in nodes) {
 				XmlTextTreeNode textTreeNode = node as XmlTextTreeNode;
 				if (textTreeNode != null) {
 					if (textTreeNode.XmlText == textNode) {
 						return textTreeNode;
 					}
 				} else {
-					// Look for a match in the node's child nodes.
 					XmlTextTreeNode childTextTreeNode = FindTextNode(textNode, node.Nodes);
 					if (childTextTreeNode != null) {
 						return childTextTreeNode;
@@ -504,7 +496,7 @@ namespace ICSharpCode.XmlEditor
 			}
 			return null;
 		}
-		
+
 		/// <summary>
 		/// Finds the specified text node in the tree.
 		/// </summary>
@@ -517,21 +509,19 @@ namespace ICSharpCode.XmlEditor
 				return FindTextNode(textNode, Nodes);
 			}
 		}
-		
+
 		/// <summary>
-		/// Looks at all the nodes in the tree view and returns the
-		/// tree node that represents the specified comment node.
+		/// Looks at all the nodes in the tree view and returns the tree node that represents the specified comment node.
 		/// </summary>
-		XmlCommentTreeNode FindComment(XmlComment comment, TreeNodeCollection nodes)
+		XmlCommentTreeNode FindComment(XmlComment comment, ObservableCollection<XmlTreeNode> nodes)
 		{
-			foreach (ExtTreeNode node in nodes) {
+			foreach (XmlTreeNode node in nodes) {
 				XmlCommentTreeNode commentTreeNode = node as XmlCommentTreeNode;
 				if (commentTreeNode != null) {
 					if (commentTreeNode.XmlComment == comment) {
 						return commentTreeNode;
 					}
 				} else {
-					// Look for a match in the node's child nodes.
 					XmlCommentTreeNode childCommentTreeNode = FindComment(comment, node.Nodes);
 					if (childCommentTreeNode != null) {
 						return childCommentTreeNode;
@@ -540,7 +530,7 @@ namespace ICSharpCode.XmlEditor
 			}
 			return null;
 		}
-		
+
 		/// <summary>
 		/// Locates the specified comment in the tree.
 		/// </summary>
@@ -553,42 +543,28 @@ namespace ICSharpCode.XmlEditor
 				return FindComment(comment, Nodes);
 			}
 		}
-		
+
 		/// <summary>
-		/// Shows the corresponding tree node with the ghosted image
-		/// that indicates it is being cut.
+		/// Shows the corresponding tree node with the ghosted image that indicates it is being cut.
 		/// </summary>
 		void ShowCutElement(XmlElement element, bool showGhostImage)
 		{
 			XmlElementTreeNode node = FindElement(element);
 			node.ShowGhostImage = showGhostImage;
 		}
-		
-		/// <summary>
-		/// Shows the corresponding tree node with the ghosted image
-		/// that indicates it is being cut.
-		/// </summary>
+
 		void ShowCutTextNode(XmlText textNode, bool showGhostImage)
 		{
 			XmlTextTreeNode node = FindTextNode(textNode);
 			node.ShowGhostImage = showGhostImage;
 		}
-		
-		/// <summary>
-		/// Shows the corresponding tree node with the ghosted image
-		/// that indicates it is being cut.
-		/// </summary>
+
 		void ShowCutComment(XmlComment comment, bool showGhostImage)
 		{
 			XmlCommentTreeNode node = FindComment(comment);
 			node.ShowGhostImage = showGhostImage;
 		}
-		
-		/// <summary>
-		/// Shows the cut node with a ghost image.
-		/// </summary>
-		/// <param name="showGhostImage">True if the node should be
-		/// shown with the ghost image.</param>
+
 		void ShowCut(XmlNode node, bool showGhostImage)
 		{
 			if (node is XmlElement) {

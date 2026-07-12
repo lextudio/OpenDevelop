@@ -810,5 +810,12 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		{
 			return value?.GetType().GetProperty(propertyName)?.GetValue(value) as string;
 		}
+
+		// od.xaml-outline.status lives in XamlBinding's own XamlOutlineDevFlowActions.cs
+		// (ICSharpCode.XamlBinding.XamlOutlineDevFlowActions), next to the real
+		// XamlOutlineContentHost/XamlOutlineLspProvider it inspects - a stale duplicate
+		// registration here (targeting a DockPanel+SharpTreeView shape that was never actually
+		// built) used to win the action-name collision since this assembly loads before
+		// XamlBinding.dll, silently shadowing the real implementation.
 	}
 }

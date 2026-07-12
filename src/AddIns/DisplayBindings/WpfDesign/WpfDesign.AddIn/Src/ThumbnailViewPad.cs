@@ -50,9 +50,9 @@ namespace ICSharpCode.WpfDesign.AddIn
 			if (wpfView != null)
 			{
 				thumbnailView.DesignSurface = wpfView.DesignSurface;
-				SD.WinForms.SetContent(contentControl, thumbnailView);
+				contentControl.Content = thumbnailView;
 			} else {
-				SD.WinForms.SetContent(contentControl, notAvailableTextBlock);
+				contentControl.Content = notAvailableTextBlock;
 			}
 		}
 		

@@ -21,6 +21,7 @@
     <PackageReference Include="Microsoft.TemplateEngine.Orchestrator.RunnableProjects" Version="10.0.301" />
     <PackageReference Include="Microsoft.TemplateEngine.Utils" Version="10.0.301" />
     <PackageReference Include="Microsoft.TemplateEngine.IDE" Version="10.0.301" />
+    <PackageReference Include="StreamJsonRpc" Version="2.21.10" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\Libraries\AvalonEdit\ICSharpCode.AvalonEdit\ICSharpCode.AvalonEdit.csproj" />

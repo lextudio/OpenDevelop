@@ -21,7 +21,7 @@ using System.Text;
 using System.Xml;
 
 using ICSharpCode.AvalonEdit.Folding;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 
 namespace ICSharpCode.XmlEditor
 {

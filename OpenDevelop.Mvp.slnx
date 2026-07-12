@@ -32,6 +32,9 @@
   <Folder Name="/src/AddIns/DisplayBindings/AvalonEdit.AddIn/">
     <Project Path="src/AddIns/DisplayBindings/AvalonEdit.AddIn/AvalonEdit.AddIn.csproj" />
   </Folder>
+  <Folder Name="/src/AddIns/DisplayBindings/WpfDesign/">
+    <Project Path="src/AddIns/DisplayBindings/WpfDesign/WpfDesign.AddIn/WpfDesign.AddIn.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj" />
   </Folder>

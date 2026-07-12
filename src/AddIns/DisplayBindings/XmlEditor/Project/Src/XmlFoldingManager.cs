@@ -21,8 +21,8 @@ using System.Collections.Generic;
 using System.Windows.Threading;
 
 using ICSharpCode.AvalonEdit.Folding;
-using ICSharpCode.NRefactory.Editor;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.AvalonEdit.Document;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
 

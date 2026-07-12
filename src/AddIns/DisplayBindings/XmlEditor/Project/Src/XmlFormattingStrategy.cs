@@ -25,8 +25,7 @@ using System.Text;
 using System.Xml;
 
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory;
-using ICSharpCode.NRefactory.Editor;
+using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
 

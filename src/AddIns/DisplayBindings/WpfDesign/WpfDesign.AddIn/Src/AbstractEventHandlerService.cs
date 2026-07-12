@@ -22,9 +22,7 @@ using System.IO;
 using System.Linq;
 using System.Windows.Controls;
 
-using ICSharpCode.NRefactory;
-using ICSharpCode.NRefactory.TypeSystem;
-using ICSharpCode.NRefactory.TypeSystem.Implementation;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Dom;
 using ICSharpCode.SharpDevelop.Editor;
@@ -56,7 +54,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 			if (xamlContext != null) {
 				string className = xamlContext.ClassName;
 				if (!string.IsNullOrEmpty(className)) {
-					return compilation.FindType(new FullTypeName(className));
+					return FindType(compilation, className);
 				}
 			}
 			return null;
@@ -128,7 +126,18 @@ namespace ICSharpCode.WpfDesign.AddIn
 		
 		IEvent FindEventDeclaration(ICompilation compilation, Type declaringType, string name)
 		{
-			return compilation.FindType(declaringType).GetEvents(ue => ue.Name == name).FirstOrDefault();
+			return FindType(compilation, declaringType.FullName)?.GetEvents(ue => ue.Name == name).FirstOrDefault();
+		}
+
+		static IType FindType(ICompilation compilation, string reflectionName)
+		{
+			if (compilation == null || string.IsNullOrEmpty(reflectionName))
+				return null;
+
+			var fullTypeName = new FullTypeName(reflectionName);
+			return fullTypeName.IsNested
+				? compilation.MainAssembly.TopLevelTypeDefinitions.FirstOrDefault(t => t.FullTypeName == fullTypeName)
+				: compilation.MainAssembly.GetTypeDefinition(fullTypeName.TopLevelTypeName);
 		}
 	}
 }

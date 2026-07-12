@@ -1,14 +1,14 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
-// 
+// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -17,32 +17,51 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Drawing;
+using System.Windows.Media;
 using ICSharpCode.SharpDevelop;
-using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.WpfDesign.Designer.Services;
 
 namespace ICSharpCode.WpfDesign.AddIn
 {
 	/// <summary>
-	/// Description of WpfSideTabItem.
+	/// A single entry in the WPF toolbox: either the "Pointer" (selection tool) item,
+	/// or a control type that can be created on the design surface. Items are grouped
+	/// by <see cref="CategoryName"/> (the WPF popular-controls set, or a referenced
+	/// assembly's name).
 	/// </summary>
-	public class WpfSideTabItem : SharpDevelopSideTabItem
+	public sealed class WpfSideTabItem
 	{
-		public WpfSideTabItem(Type componentType) : base(componentType.Name, new CreateComponentTool(componentType))
+		public string CategoryName { get; }
+
+		public string DisplayName { get; }
+
+		public ImageSource Icon { get; }
+
+		public ITool Tool { get; }
+
+		/// <summary>Creates the default "Pointer" item (selection tool, no draggable component).</summary>
+		public WpfSideTabItem(string categoryName)
 		{
-			CanBeRenamed = false;
-//			this.Icon = tag.Bitmap;
+			CategoryName = categoryName;
+			DisplayName = "Pointer";
+			Icon = IconService.GetImageSource("Icons.16x16.FormsDesigner.PointerIcon");
+			Tool = null;
 		}
-		
-		///<summary>create a default tabitem : a pointer icon with an empty toolboxitem</summary>
-		public WpfSideTabItem() : base("Pointer")
+
+		public WpfSideTabItem(string categoryName, Type componentType)
 		{
-			CanBeRenamed = false;
-			CanBeDeleted = false;
-			Bitmap pointerBitmap = new Bitmap(IconService.GetBitmap("Icons.16x16.FormsDesigner.PointerIcon"), 16, 16);
-			this.Icon = pointerBitmap;
-			this.Tag  = null;
+			if (componentType == null)
+				throw new ArgumentNullException(nameof(componentType));
+
+			CategoryName = categoryName;
+			DisplayName = componentType.Name;
+			Icon = null;
+			Tool = new CreateComponentTool(componentType);
+		}
+
+		public override string ToString()
+		{
+			return DisplayName;
 		}
 	}
 }

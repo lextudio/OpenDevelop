@@ -41,7 +41,7 @@ namespace ICSharpCode.WpfDesign.AddIn.Commands
     {
         public override void Run()
         {
-            SD.Workbench.GetPad(typeof(PropertyPad)).BringPadToFront();
+            SD.Workbench.GetPad(typeof(WpfPropertyPad)).BringPadToFront();
         }
     }
 	

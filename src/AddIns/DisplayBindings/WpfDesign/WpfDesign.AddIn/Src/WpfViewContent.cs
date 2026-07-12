@@ -33,7 +33,7 @@ using System.Xml;
 
 using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Designer;
 using ICSharpCode.SharpDevelop.Gui;
@@ -53,7 +53,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 	/// <summary>
 	/// IViewContent implementation that hosts the WPF designer.
 	/// </summary>
-	public class WpfViewContent : AbstractViewContentHandlingLoadErrors, IHasPropertyContainer, IToolsHost, IOutlineContentHost
+	public class WpfViewContent : AbstractViewContentHandlingLoadErrors, IToolsHost, IOutlineContentHost
 	{
 		public WpfViewContent(OpenedFile file) : base(file)
 		{
@@ -65,7 +65,16 @@ namespace ICSharpCode.WpfDesign.AddIn
 			this.IsActiveViewContentChanged += OnIsActiveViewContentChanged;
 			
 			var compilation = SD.ParserService.GetCompilationForFile(file.FileName);
-			_path = Path.GetDirectoryName(compilation.MainAssembly.UnresolvedAssembly.Location);
+			string assemblyLocation = compilation?.MainAssembly?.UnresolvedAssembly?.Location;
+			// Falls back to the XAML file's own directory when the parser service has no
+			// resolvable project compilation for this file (e.g. the project hasn't been built
+			// yet, or isn't part of the currently open solution) - this path is only used to
+			// probe for referenced assemblies during designer AssemblyResolve, so an empty/best
+			// -effort guess is safe; a NullReferenceException here used to abort opening the
+			// designer entirely.
+			_path = !string.IsNullOrEmpty(assemblyLocation)
+				? Path.GetDirectoryName(assemblyLocation)
+				: Path.GetDirectoryName(file.FileName.ToString());
 			AppDomain.CurrentDomain.AssemblyResolve += CurrentDomain_AssemblyResolve;
 		}
 		
@@ -197,6 +206,9 @@ namespace ICSharpCode.WpfDesign.AddIn
 		
 		System.Reflection.Assembly CurrentDomain_AssemblyResolve(object sender, ResolveEventArgs args)
 		{
+			if (string.IsNullOrEmpty(_path))
+				return null;
+
 			var assemblyName = (new AssemblyName(args.Name));
 			string fileName = Path.Combine(_path, assemblyName.Name) + ".dll";
 			if (File.Exists(fileName))
@@ -266,7 +278,6 @@ namespace ICSharpCode.WpfDesign.AddIn
 		void InitPropertyEditor()
 		{
 			propertyGridView = new PropertyGridView();
-			propertyContainer.PropertyGridReplacementContent = propertyGridView;
 			propertyGridView.PropertyGrid.PropertyChanged += OnPropertyGridPropertyChanged;
 		}
 
@@ -291,45 +302,15 @@ namespace ICSharpCode.WpfDesign.AddIn
 		void OnPropertyGridPropertyChanged(object sender, PropertyChangedEventArgs e)
 		{
 			if (propertyGridView.PropertyGrid.ReloadActive) return;
-			if (e.PropertyName == "Name") {
-				if (!propertyGridView.PropertyGrid.IsNameCorrect) return;
-				
-				// get the XAML file
-				OpenedFile file = this.Files.FirstOrDefault(f => f.FileName.ToString().EndsWith(".xaml", StringComparison.OrdinalIgnoreCase));
-				if (file == null) return;
-				
-				// parse the XAML file
-				ParseInformation info = SD.ParserService.Parse(file.FileName);
-				if (info == null) return;
-				ICompilation compilation = SD.ParserService.GetCompilationForFile(file.FileName);
-				var designerClass = info.UnresolvedFile.TopLevelTypeDefinitions[0]
-					.Resolve(new SimpleTypeResolveContext(compilation.MainAssembly))
-					.GetDefinition();
-				if (designerClass == null) return;
-				var reparseFileNameList = designerClass.Parts.Select(p => new ICSharpCode.Core.FileName(p.UnresolvedFile.FileName)).ToArray();
-				
-				// rename the member
-				ISymbol controlSymbol = designerClass.GetFields(f => f.Name == propertyGridView.PropertyGrid.OldName, GetMemberOptions.IgnoreInheritedMembers)
-					.SingleOrDefault();
-				if (controlSymbol != null) {
-					AsynchronousWaitDialog.ShowWaitDialogForAsyncOperation(
-						"${res:SharpDevelop.Refactoring.Rename}",
-						progressMonitor =>
-						FindReferenceService.RenameSymbol(controlSymbol, propertyGridView.PropertyGrid.Name, progressMonitor)
-						.ObserveOnUIThread()
-						.Subscribe(error => SD.MessageService.ShowError(error.Message), // onNext
-						           ex => SD.MessageService.ShowException(ex), // onError
-						           // onCompleted
-						           () => {
-						           	foreach (var fileName in reparseFileNameList) {
-						           		SD.ParserService.ParseAsync(fileName).FireAndForget();
-						           	}
-						           }
-						          )
-					);
+			if (e.PropertyName != "Name") return;
+			if (!propertyGridView.PropertyGrid.IsNameCorrect) return;
 
-				}
-			}
+			OpenedFile file = this.Files.FirstOrDefault(f => f.FileName.ToString().EndsWith(".xaml", StringComparison.OrdinalIgnoreCase));
+			if (file == null) return;
+
+			string oldName = propertyGridView.PropertyGrid.OldName;
+			string newName = propertyGridView.PropertyGrid.Name;
+			WpfControlRenameSync.RenameAsync(file.FileName, oldName, newName).FireAndForget();
 		}
 		
 		static bool IsCollectionWithSameElements(ICollection<DesignItem> a, ICollection<DesignItem> b)
@@ -346,11 +327,6 @@ namespace ICSharpCode.WpfDesign.AddIn
 			return true;
 		}
 		
-		PropertyContainer propertyContainer = new PropertyContainer();
-		
-		public PropertyContainer PropertyContainer {
-			get { return propertyContainer; }
-		}
 		#endregion
 		
 		public object ToolsContent {
@@ -362,7 +338,6 @@ namespace ICSharpCode.WpfDesign.AddIn
 			AppDomain.CurrentDomain.AssemblyResolve -= CurrentDomain_AssemblyResolve;
 			SD.ProjectService.ProjectItemAdded -= OnReferenceAdded;
 
-			propertyContainer.Clear();
 			base.Dispose();
 		}
 		

@@ -21,7 +21,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.ExceptionServices;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Workbench;
 using ICSharpCode.WpfDesign.XamlDom;
 using ICSharpCode.SharpDevelop;
@@ -45,13 +45,15 @@ namespace ICSharpCode.WpfDesign.AddIn
 			// DO NOT USE Assembly.LoadFrom!
 			// use the special handling logic defined in TypeResolutionService!
 			var compilation = SD.ParserService.GetCompilationForFile(file.FileName);
-			foreach (var referencedAssembly in compilation.ReferencedAssemblies) {
-				try {
-					var assembly = f.typeResolutionService.LoadAssembly(referencedAssembly);
-					if (assembly != null)
-						f.RegisterAssembly(assembly);
-				} catch (Exception ex) {
-					ICSharpCode.Core.LoggingService.Warn("Error loading Assembly : " + referencedAssembly.FullAssemblyName, ex);
+			if (compilation != null) {
+				foreach (var referencedAssembly in compilation.ReferencedAssemblies) {
+					try {
+						var assembly = f.typeResolutionService.LoadAssembly(referencedAssembly);
+						if (assembly != null)
+							f.RegisterAssembly(assembly);
+					} catch (Exception ex) {
+						ICSharpCode.Core.LoggingService.Warn("Error loading Assembly : " + referencedAssembly.FullAssemblyName, ex);
+					}
 				}
 			}
 			return f;
@@ -79,7 +81,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 			if (!uri.IsAbsoluteUri)
 			{
 				var compilation = SD.ParserService.GetCompilationForFile(file.FileName);
-				var assembly = this.typeResolutionService.LoadAssembly(compilation.MainAssembly);
+				var assembly = compilation != null ? this.typeResolutionService.LoadAssembly(compilation.MainAssembly) : null;
 				var prj = SD.ProjectService.CurrentProject;
 
 				if (uri.OriginalString.Contains(";"))

@@ -1,239 +1,32 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project Sdk="LibreWPF.Sdk/11.0.0-dev">
   <PropertyGroup>
-    <ProjectGuid>{DCA2703D-250A-463E-A68A-07ED105AE6BD}</ProjectGuid>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <OutputType>Library</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>ICSharpCode.XmlEditor</RootNamespace>
     <AssemblyName>XmlEditor</AssemblyName>
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
-    <AllowUnsafeBlocks>False</AllowUnsafeBlocks>
-    <NoStdLib>False</NoStdLib>
-    <WarningLevel>4</WarningLevel>
-    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <UseWPF>true</UseWPF>
     <OutputPath>..\..\..\..\..\AddIns\DisplayBindings\XmlEditor\</OutputPath>
-    <TargetFrameworkProfile>
-    </TargetFrameworkProfile>
+    <NoWarn>$(NoWarn);CA1416;WFO1000</NoWarn>
   </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>Full</DebugType>
-    <Optimize>False</Optimize>
-    <CheckForOverflowUnderflow>True</CheckForOverflowUnderflow>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
-    <DebugSymbols>False</DebugSymbols>
-    <DebugType>None</DebugType>
-    <Optimize>True</Optimize>
-    <CheckForOverflowUnderflow>False</CheckForOverflowUnderflow>
-    <DefineConstants>TRACE</DefineConstants>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Platform)' == 'AnyCPU' ">
-    <RegisterForComInterop>False</RegisterForComInterop>
-    <GenerateSerializationAssemblies>Auto</GenerateSerializationAssemblies>
-    <BaseAddress>4194304</BaseAddress>
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <FileAlignment>4096</FileAlignment>
-  </PropertyGroup>
-  <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.Targets" />
+
   <ItemGroup>
-    <Reference Include="PresentationCore">
-      <RequiredTargetFramework>3.0</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="PresentationFramework">
-      <RequiredTargetFramework>3.0</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="System" />
-    <Reference Include="System.Core">
-      <RequiredTargetFramework>3.5</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="System.Data" />
-    <Reference Include="System.Data.DataSetExtensions">
-      <RequiredTargetFramework>3.5</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="System.Drawing" />
-    <Reference Include="System.Windows.Forms" />
-    <Reference Include="System.Windows.Presentation">
-      <RequiredTargetFramework>3.5</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="System.Xml" />
-    <Reference Include="System.Xaml" />
-    <Reference Include="System.Xml.Linq">
-      <RequiredTargetFramework>3.5</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="WindowsBase">
-      <RequiredTargetFramework>3.0</RequiredTargetFramework>
-    </Reference>
+    <ProjectReference Include="..\..\..\..\Libraries\AvalonEdit\ICSharpCode.AvalonEdit\ICSharpCode.AvalonEdit.csproj" Private="False" />
+    <ProjectReference Include="..\..\..\..\Libraries\ICSharpCode.TypeSystem.Abstractions\ICSharpCode.TypeSystem.Abstractions.csproj" Private="False" />
+    <ProjectReference Include="..\..\..\..\Libraries\NRefactory\ICSharpCode.NRefactory\ICSharpCode.NRefactory.csproj" Private="False" />
+    <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="False" />
+    <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="False" />
+    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" Private="False" />
+    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.SharpDevelop.Widgets\Project\ICSharpCode.SharpDevelop.Widgets.csproj" Private="False" />
+    <ProjectReference Include="..\..\AvalonEdit.AddIn\AvalonEdit.AddIn.csproj" Private="False" />
+    <ProjectReference Include="..\..\..\..\..\externals\wpftoolkit\ExtendedWPFToolkitSolution\Src\Xceed.Wpf.Toolkit\Xceed.Wpf.Toolkit.csproj" Private="False" />
   </ItemGroup>
+
   <ItemGroup>
-    <Compile Include="Src\CollapseAllCommand.cs" />
-    <Compile Include="Src\ExpandAllCommand.cs" />
-    <Compile Include="Src\XslTransformUrlResolver.cs" />
-    <None Include="XmlEditor.addin">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs">
-      <Link>Configuration\GlobalAssemblyInfo.cs</Link>
-    </Compile>
-    <Compile Include="Configuration\AssemblyInfo.cs" />
-    <Compile Include="Src\AddAttributeCommand.cs" />
-    <Compile Include="Src\AddChildCommentCommand.cs" />
-    <Compile Include="Src\AddChildElementCommand.cs" />
-    <Compile Include="Src\AddChildTextNodeCommand.cs" />
-    <Compile Include="Src\AddXmlNodeDialog.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Src\AssignStylesheetCommand.cs" />
-    <Compile Include="Src\CopyXmlTreeNode.cs" />
-    <Compile Include="Src\CreateSchemaCommand.cs" />
-    <Compile Include="Src\CutXmlTreeNode.cs" />
-    <Compile Include="Src\DefaultXmlFileExtensions.cs" />
-    <Compile Include="Src\DefaultXmlSchemaFileAssociations.cs" />
-    <Compile Include="Src\DeleteXmlTreeNode.cs" />
-    <Compile Include="Src\EncodedStringWriter.cs" />
-    <Compile Include="Src\FoldingManagerAdapter.cs" />
-    <Compile Include="Src\FoldingRegion.cs" />
-    <Compile Include="Src\FormatXmlCommand.cs" />
-    <Compile Include="Src\GoToSchemaDefinitionCommand.cs" />
-    <Compile Include="Src\GoToSchemaDefinitionEditAction.cs" />
-    <Compile Include="Src\IAddXmlNodeDialog.cs" />
-    <Compile Include="Src\IFoldingManager.cs" />
-    <Compile Include="Src\InsertCommentAfterCommand.cs" />
-    <Compile Include="Src\InsertCommentBeforeCommand.cs" />
-    <Compile Include="Src\InsertElementAfterCommand.cs" />
-    <Compile Include="Src\InsertElementBeforeCommand.cs" />
-    <Compile Include="Src\InsertTextNodeAfterCommand.cs" />
-    <Compile Include="Src\InsertTextNodeBeforeCommand.cs" />
-    <Compile Include="Src\ISelectXmlSchemaWindow.cs" />
-    <Compile Include="Src\IXmlFoldParser.cs" />
-    <Compile Include="Src\IXmlSchemaCompletionDataFactory.cs" />
-    <Compile Include="Src\IXmlSchemasPanel.cs" />
-    <Compile Include="Src\IXmlTreeView.cs" />
-    <Compile Include="Src\OpenStylesheetCommand.cs" />
-    <Compile Include="Src\PasteXmlTreeNode.cs" />
-    <Compile Include="Src\QualifiedName.cs" />
-    <Compile Include="Src\QualifiedNameCollection.cs" />
-    <Compile Include="Src\RegisteredXmlSchemaError.cs" />
-    <Compile Include="Src\RegisteredXmlSchemasEditor.cs" />
-    <Compile Include="Src\RemoveAttributeCommand.cs" />
-    <Compile Include="Src\RemoveXPathHighlightingCommand.cs" />
-    <Compile Include="Src\RunXslTransformCommand.cs" />
-    <Compile Include="Src\SchemaDocumentation.cs" />
-    <Compile Include="Src\SelectedXmlElement.cs" />
-    <Compile Include="Src\SelectXmlSchemaWindow.xaml.cs">
-      <DependentUpon>SelectXmlSchemaWindow.xaml</DependentUpon>
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Src\ValidateXmlCommand.cs" />
-    <Compile Include="Src\XmlAttributePropertyDescriptor.cs" />
-    <Compile Include="Src\XmlAttributeTypeDescriptor.cs" />
-    <Compile Include="Src\XmlCharacterDataTreeNode.cs" />
-    <Compile Include="Src\XmlCodeCompletionBinding.cs" />
-    <Compile Include="Src\XmlCommentFold.cs" />
-    <Compile Include="Src\XmlCommentTreeNode.cs" />
-    <Compile Include="Src\XmlCompletionItem.cs" />
-    <Compile Include="Src\XmlCompletionItemCollection.cs" />
-    <Compile Include="Src\XmlDisplayBinding.cs" />
-    <Compile Include="Src\XmlEditorOptions.cs" />
-    <Compile Include="Src\XmlEditorOptionsPanel.xaml.cs">
-      <DependentUpon>XmlEditorOptionsPanel.xaml</DependentUpon>
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Src\XmlEditorService.cs" />
-    <Compile Include="Src\XmlElementPath.cs" />
-    <Compile Include="Src\XmlElementPathsByNamespace.cs" />
-    <Compile Include="Src\XmlElementTreeNode.cs" />
-    <Compile Include="Src\XmlEncoder.cs" />
-    <Compile Include="Src\XmlFoldingManager.cs" />
-    <Compile Include="Src\XmlFoldParser.cs" />
-    <Compile Include="Src\XmlElementFold.cs" />
-    <Compile Include="Src\XmlFormattingStrategy.cs">
-    </Compile>
-    <Compile Include="Src\StylesheetAssignedCondition.cs" />
-    <Compile Include="Src\XmlLanguageBinding.cs" />
-    <Compile Include="Src\XmlNamespace.cs" />
-    <Compile Include="Src\XmlNamespaceCollection.cs" />
-    <Compile Include="Src\XmlParser.cs" />
-    <Compile Include="Src\XmlSchemaDefinition.cs" />
-    <Compile Include="Src\XmlSchemaFileAssociation.cs" />
-    <Compile Include="Src\XmlSchemaFileAssociationListItem.cs" />
-    <Compile Include="Src\XmlSchemaCompletion.cs" />
-    <Compile Include="Src\XmlSchemaCompletionCollection.cs" />
-    <Compile Include="Src\XmlSchemaFileAssociations.cs" />
-    <Compile Include="Src\XmlSchemaListBoxItem.cs" />
-    <Compile Include="Src\RegisteredXmlSchemas.cs" />
-    <Compile Include="Src\XmlSchemaObjectLocation.cs" />
-    <Compile Include="Src\XmlSchemaPicker.cs" />
-    <Compile Include="Src\XmlSchemasPanel.xaml.cs">
-      <DependentUpon>XmlSchemasPanel.xaml</DependentUpon>
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Src\XmlTextTreeNode.cs" />
-    <Compile Include="Src\XmlTreeEditor.cs" />
-    <Compile Include="Src\XmlTreeNodeClipboardCommand.cs" />
-    <Compile Include="Src\XmlTreeView.cs" />
-    <Compile Include="Src\XmlTreeViewContainerControl.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Include="Src\XmlTreeViewControl.cs" />
-    <Compile Include="Src\XmlView.cs" />
-    <Compile Include="Src\XPathNodeMatch.cs" />
-    <Compile Include="Src\XPathNodeTextMarker.cs" />
-    <Compile Include="Src\XPathQuery.cs" />
-    <Compile Include="Src\XPathQueryControl.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Include="Src\XPathQueryPad.cs" />
-    <Compile Include="Src\XslOutputView.cs" />
+    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
+    <None Include="XmlEditor.addin" CopyToOutputDirectory="Always" />
+    <None Include="Resources\license.txt" />
     <EmbeddedResource Include="Resources\XmlCommentTreeNodeIcon.png" />
     <EmbeddedResource Include="Resources\XmlElementTreeNodeIcon.png" />
     <EmbeddedResource Include="Resources\XmlTextTreeNodeIcon.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <Page Include="Src\SelectXmlSchemaWindow.xaml" />
-    <Page Include="Src\XmlEditorOptionsPanel.xaml" />
-    <Page Include="Src\XmlSchemasPanel.xaml" />
-    <ProjectReference Include="..\..\..\..\Libraries\AvalonEdit\ICSharpCode.AvalonEdit\ICSharpCode.AvalonEdit.csproj">
-      <Project>{6C55B776-26D4-4DB3-A6AB-87E783B2F3D1}</Project>
-      <Name>ICSharpCode.AvalonEdit</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Libraries\NRefactory\ICSharpCode.NRefactory\ICSharpCode.NRefactory.csproj">
-      <Project>{3B2A5653-EC97-4001-BB9B-D90F1AF2C371}</Project>
-      <Name>ICSharpCode.NRefactory</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj">
-      <Project>{2748AD25-9C63-4E12-877B-4DCE96FBED54}</Project>
-      <Name>ICSharpCode.SharpDevelop</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj">
-      <Project>{35CEF10F-2D4C-45F2-9DD1-161E0FEC583C}</Project>
-      <Name>ICSharpCode.Core</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj">
-      <Project>{7E4A7172-7FF5-48D0-B719-7CD959DD1AC9}</Project>
-      <Name>ICSharpCode.Core.Presentation</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.WinForms\ICSharpCode.Core.WinForms.csproj">
-      <Project>{857CA1A3-FC88-4BE0-AB6A-D1EE772AB288}</Project>
-      <Name>ICSharpCode.Core.WinForms</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.SharpDevelop.Widgets\Project\ICSharpCode.SharpDevelop.Widgets.csproj">
-      <Project>{8035765F-D51F-4A0C-A746-2FD100E19419}</Project>
-      <Name>ICSharpCode.SharpDevelop.Widgets</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\AvalonEdit.AddIn\AvalonEdit.AddIn.csproj">
-      <Project>{0162E499-42D0-409B-AA25-EED21F75336B}</Project>
-      <Name>AvalonEdit.AddIn</Name>
-      <Private>False</Private>
-    </ProjectReference>
   </ItemGroup>
 </Project>

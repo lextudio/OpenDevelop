@@ -1,156 +1,34 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="4.0">
+<Project Sdk="LibreWPF.Sdk/11.0.0-dev">
   <PropertyGroup>
-    <ProjectGuid>{9A9D6FD4-6A2E-455D-ACC3-DDA775FE9865}</ProjectGuid>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <OutputType>Library</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>ICSharpCode.WpfDesign.AddIn</RootNamespace>
     <AssemblyName>ICSharpCode.WpfDesign.AddIn</AssemblyName>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <OutputType>Library</OutputType>
     <OutputPath>..\..\..\..\..\AddIns\DisplayBindings\WpfDesign\</OutputPath>
-    <AllowUnsafeBlocks>False</AllowUnsafeBlocks>
-    <NoStdLib>False</NoStdLib>
-    <WarningLevel>4</WarningLevel>
-    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
-    <TargetFrameworkProfile>
-    </TargetFrameworkProfile>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <NoWarn>$(NoWarn);CA1416;WFO1000</NoWarn>
   </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>Full</DebugType>
-    <CheckForOverflowUnderflow>True</CheckForOverflowUnderflow>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
-    <Optimize>False</Optimize>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
-    <DebugSymbols>False</DebugSymbols>
-    <DebugType>None</DebugType>
-    <CheckForOverflowUnderflow>False</CheckForOverflowUnderflow>
-    <DefineConstants>TRACE</DefineConstants>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Platform)' == 'AnyCPU' ">
-    <RegisterForComInterop>False</RegisterForComInterop>
-    <GenerateSerializationAssemblies>Auto</GenerateSerializationAssemblies>
-    <BaseAddress>4194304</BaseAddress>
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <FileAlignment>4096</FileAlignment>
-  </PropertyGroup>
-  <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.Targets" />
+
   <ItemGroup>
-    <Reference Include="PresentationCore" />
-    <Reference Include="PresentationFramework" />
-    <Reference Include="System" />
-    <Reference Include="System.Core">
-      <RequiredTargetFramework>3.5</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="System.Data" />
-    <Reference Include="System.Drawing" />
-    <Reference Include="System.Windows.Forms" />
-    <Reference Include="System.Xaml">
-      <RequiredTargetFramework>4.0</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="System.Xml" />
-    <Reference Include="WindowsBase" />
+    <ProjectReference Include="..\..\..\..\..\externals\wpftoolkit\ExtendedWPFToolkitSolution\Src\Xceed.Wpf.Toolkit\Xceed.Wpf.Toolkit.csproj" />
+    <ProjectReference Include="..\..\..\..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign.Designer\Project\WpfDesign.Designer.csproj" />
+    <ProjectReference Include="..\..\..\..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign.XamlDom\Project\WpfDesign.XamlDom.csproj" />
+    <ProjectReference Include="..\..\..\..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign\Project\WpfDesign.csproj" />
+    <ProjectReference Include="..\..\..\..\Libraries\ICSharpCode.TypeSystem.Abstractions\ICSharpCode.TypeSystem.Abstractions.csproj" Private="False" />
+    <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="False" />
+    <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="False" />
+    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" Private="False" />
+    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.WinForms\ICSharpCode.Core.WinForms.csproj" Private="False" />
+    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.SharpDevelop.Widgets\Project\ICSharpCode.SharpDevelop.Widgets.csproj" Private="False" />
+    <ProjectReference Include="..\..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj" Private="False" />
   </ItemGroup>
+
   <ItemGroup>
-    <Compile Include="Src\Options\WpfEditorOptionPanel.xaml.cs">
-      <DependentUpon>WpfEditorOptionPanel.xaml</DependentUpon>
-      <SubType>Code</SubType>
-    </Compile>
+    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
+    <None Include="WpfDesign.addin" CopyToOutputDirectory="Always" />
     <Resource Include="Images\Icons.32x32.Error.png" />
-    <None Include="WpfDesign.addin">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs">
-      <Link>Configuration\GlobalAssemblyInfo.cs</Link>
-    </Compile>
-    <Compile Include="Configuration\AssemblyInfo.cs" />
-    <Compile Include="Src\AbstractEventHandlerService.cs" />
-    <Compile Include="Src\Commands\CutCopyPaste.cs" />
-    <Compile Include="Src\Commands\Pads.cs" />
-    <Compile Include="Src\Commands\Remove.cs" />
-    <Compile Include="Src\Commands\UndoRedo.cs" />
-    <Compile Include="Src\Commands\ViewXaml.cs" />
-    <Compile Include="Src\Options\WpfEditorOptions.cs" />
-    <Compile Include="Src\SharpDevelopTranslations.cs" />
-    <Compile Include="Src\ThumbnailViewPad.cs" />
-    <Compile Include="Src\FileUriContext.cs" />
-    <Compile Include="Src\IdeChooseClassService.cs" />
-    <Compile Include="Src\ImageSourceEditor\ChooseImageDialog.xaml.cs">
-      <DependentUpon>ChooseImageDialog.xaml</DependentUpon>
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Src\ImageSourceEditor\ImageSourceEditor.xaml.cs">
-      <DependentUpon>ImageSourceEditor.xaml</DependentUpon>
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Src\MyTypeFinder.cs" />
-    <Compile Include="Src\ObjectEditor.xaml.cs">
-      <DependentUpon>ObjectEditor.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Src\ProjectTools.cs" />
-    <Compile Include="Src\PropertyDescriptionService.cs" />
-    <Compile Include="Src\WpfAndWinFormsTopLevelWindowService.cs" />
-    <Compile Include="Src\WpfDisplayBinding.cs" />
-    <Compile Include="Src\WpfDocumentError.xaml.cs">
-      <DependentUpon>WpfDocumentError.xaml</DependentUpon>
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Src\WpfSideTabItem.cs" />
-    <Compile Include="Src\WpfToolbox.cs" />
-    <Compile Include="Src\WpfViewContent.cs" />
-  </ItemGroup>
-  <ItemGroup>
-    <Page Include="Src\Options\WpfEditorOptionPanel.xaml" />
-    <Page Include="Src\WpfDocumentError.xaml" />
-    <ProjectReference Include="..\..\..\..\Libraries\NRefactory\ICSharpCode.NRefactory\ICSharpCode.NRefactory.csproj">
-      <Project>{3B2A5653-EC97-4001-BB9B-D90F1AF2C371}</Project>
-      <Name>ICSharpCode.NRefactory</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Libraries\WpfDesigner\WpfDesign.Designer\Project\WpfDesign.Designer.csproj">
-      <Project>{78CC29AC-CC79-4355-B1F2-97936DF198AC}</Project>
-      <Name>WpfDesign.Designer</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Libraries\WpfDesigner\WpfDesign.XamlDom\Project\WpfDesign.XamlDom.csproj">
-      <Project>{88DA149F-21B2-48AB-82C4-28FB6BDFD783}</Project>
-      <Name>WpfDesign.XamlDom</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Libraries\WpfDesigner\WpfDesign\Project\WpfDesign.csproj">
-      <Project>{66A378A1-E9F4-4AD5-8946-D0EC06C2902F}</Project>
-      <Name>WpfDesign</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj">
-      <Project>{2748AD25-9C63-4E12-877B-4DCE96FBED54}</Project>
-      <Name>ICSharpCode.SharpDevelop</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj">
-      <Project>{35CEF10F-2D4C-45F2-9DD1-161E0FEC583C}</Project>
-      <Name>ICSharpCode.Core</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj">
-      <Project>{7E4A7172-7FF5-48D0-B719-7CD959DD1AC9}</Project>
-      <Name>ICSharpCode.Core.Presentation</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.WinForms\ICSharpCode.Core.WinForms.csproj">
-      <Project>{857CA1A3-FC88-4BE0-AB6A-D1EE772AB288}</Project>
-      <Name>ICSharpCode.Core.WinForms</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.SharpDevelop.Widgets\Project\ICSharpCode.SharpDevelop.Widgets.csproj">
-      <Project>{8035765F-D51F-4A0C-A746-2FD100E19419}</Project>
-      <Name>ICSharpCode.SharpDevelop.Widgets</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <Page Include="Src\ImageSourceEditor\ChooseImageDialog.xaml" />
-    <Page Include="Src\ImageSourceEditor\ImageSourceEditor.xaml" />
-    <Page Include="Src\ObjectEditor.xaml" />
-  </ItemGroup>
-  <ItemGroup>
-    <Folder Include="Src\Options" />
   </ItemGroup>
 </Project>

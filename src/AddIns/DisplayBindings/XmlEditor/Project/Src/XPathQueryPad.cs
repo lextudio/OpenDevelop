@@ -17,7 +17,6 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Windows.Forms;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
@@ -60,7 +59,6 @@ namespace ICSharpCode.XmlEditor
 				SD.Workbench.ActiveViewContentChanged -= ActiveViewContentChanged;
 				Properties properties = xpathQueryControl.CreateMemento();
 				PropertyService.SetNestedProperties(XPathQueryControlProperties, properties);
-				xpathQueryControl.Dispose();
 			}
 		}
 		

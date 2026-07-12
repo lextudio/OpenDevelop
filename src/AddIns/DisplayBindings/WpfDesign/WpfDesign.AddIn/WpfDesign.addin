@@ -36,6 +36,12 @@
 		     icon     = "PadIcons.Toolbar"
 		     class    = "ICSharpCode.WpfDesign.AddIn.ThumbnailViewPad"
 		     defaultPosition = "Right, Hidden" />
+		<Pad id       = "WpfPropertyPad"
+		     category = "Main"
+		     title    = "${res:MainWindow.Windows.PropertiesScoutLabel}"
+		     icon     = "Icons.16x16.PropertiesIcon"
+		     class    = "ICSharpCode.WpfDesign.AddIn.WpfPropertyPad"
+		     defaultPosition = "Right" />
 	</Path>
 	<!--
 	<Path name = "/SharpDevelop/Workbench/Pads">

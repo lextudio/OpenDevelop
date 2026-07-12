@@ -522,14 +522,21 @@ namespace ICSharpCode.SharpDevelop.Designer
 		{
 			if (vsDesignerIdeDir == null) {
 				vsDesignerIdeDir = "";
-				try {
-					using(RegistryKey key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\VisualStudio\8.0\Setup\VS")) {
-						if (key != null) {
-							vsDesignerIdeDir = key.GetValue("VS7CommonDir") as string ?? "";
+				// This whole workaround only matters for a VS2005-era registry key; the registry
+				// itself doesn't exist off Windows, and Microsoft.Win32.Registry's non-Windows
+				// shim throws (NullReferenceException, not SecurityException) rather than just
+				// returning null, which used to permanently poison this type's static
+				// constructor (TypeInitializationException) for the rest of the process.
+				if (OperatingSystem.IsWindows()) {
+					try {
+						using(RegistryKey key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\VisualStudio\8.0\Setup\VS")) {
+							if (key != null) {
+								vsDesignerIdeDir = key.GetValue("VS7CommonDir") as string ?? "";
+							}
 						}
+					} catch (System.Security.SecurityException) {
+						// registry access might be denied
 					}
-				} catch (System.Security.SecurityException) {
-					// registry access might be denied
 				}
 				if (vsDesignerIdeDir.Length > 0) {
 					vsDesignerIdeDir = Path.Combine(vsDesignerIdeDir, "IDE");

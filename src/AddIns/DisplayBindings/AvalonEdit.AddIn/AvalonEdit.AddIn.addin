@@ -25,6 +25,7 @@
 
 	<Path name = "/SharpDevelop/ViewContent/TextEditor/CodeCompletion">
 		<CodeCompletionBinding id = "C#-Roslyn" extensions = ".cs" class = "ICSharpCode.SharpDevelop.Roslyn.RoslynCodeCompletionBinding"/>
+		<CodeCompletionBinding id = "XAML-LSP" extensions = ".xaml" class = "ICSharpCode.SharpDevelop.LanguageServices.Lsp.LspCodeCompletionBinding"/>
 	</Path>
 
 	<Path name = "/SharpDevelop/Workbench/DisplayBindings">
