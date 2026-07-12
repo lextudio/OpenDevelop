@@ -19,4 +19,5 @@
 	url = https://github.com/lextudio/vscode-wpf
 [submodule "externals/wpftoolkit"]
 	path = externals/wpftoolkit
-	url = https://github.com/xceedsoftware/wpftoolkit.git
+	url = https://github.com/lextudio/wpftoolkit.git
+	branch = openwpf
