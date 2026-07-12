@@ -30,3 +30,5 @@ bin/
 *.DotSettings.user
 *.suo
 .DS_Store
+tests/fixtures/SampleTestProject/OpenCover/
+__Instrumented/
