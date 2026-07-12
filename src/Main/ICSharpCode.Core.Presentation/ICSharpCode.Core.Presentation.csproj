@@ -16,6 +16,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Remove="Resources\VS2017\**\*.xaml" />
+    <Page Remove="Resources\VS2017\**\*.xaml" />
     <Resource Include="Resources\VS2017\**\*.xaml" />
   </ItemGroup>
 </Project>

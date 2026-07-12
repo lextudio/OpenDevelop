@@ -61,6 +61,12 @@ namespace ICSharpCode.PackageManagement
 		void GetHasSingleProjectSelected()
 		{
 			singleMSBuildProjectSelected = Solution.GetActiveMSBuildProject();
+			if (singleMSBuildProjectSelected == null) {
+				var projects = Solution.GetMSBuildProjects().ToList();
+				if (projects.Count == 1) {
+					singleMSBuildProjectSelected = projects[0];
+				}
+			}
 			singleProjectSelected = singleMSBuildProjectSelected != null;
 		}
 		

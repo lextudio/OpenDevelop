@@ -105,17 +105,6 @@
 		</OptionPanel>
 	</Path>
 	
-	<!-- Package Management Console Pad -->
-	<Path name="/SharpDevelop/Workbench/Pads">
-		<Pad
-			id="PackageManagementConsole"
-			category="Tools"
-			title="${res:AddIns.PackageManagement.ConsolePad.Title}"
-			icon="PadIcons.Output"
-			defaultPosition="Bottom, Hidden"
-			class="ICSharpCode.PackageManagement.Scripting.PackageManagementConsolePad"/>
-	</Path>
-
 	<!-- Project template command -->
 	<Path name="/AddIns/PackageManagement/TemplateCommands">
 		<Class
@@ -127,5 +116,11 @@
 		<Class
 			id="PackageManagementServiceProvider"
 			class="ICSharpCode.PackageManagement.PackageManagementServiceProvider"/>
+	</Path>
+
+	<Path name="/SharpDevelop/Autostart">
+		<Class
+			id="PackageManagementRegisterDevFlowActionsCommand"
+			class="ICSharpCode.PackageManagement.RegisterDevFlowActionsCommand"/>
 	</Path>
 </AddIn>

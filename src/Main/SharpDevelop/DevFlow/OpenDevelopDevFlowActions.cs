@@ -402,6 +402,48 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				items = items.Select(ToPropertyDictionary).ToArray()
 			});
 		}
+
+		[DevFlowAction("od.nuget.set-local-feed", Description = "Add (and activate) a local folder as the only NuGet package source, so package search/install doesn't need network access")]
+		public static string SetNuGetLocalFeed(string path)
+		{
+			return InvokePackageManagementDevFlowAction("SetLocalFeed", path);
+		}
+
+		[DevFlowAction("od.nuget.open-dialog", Description = "Open the real Manage NuGet Packages dialog")]
+		public static string OpenNuGetDialog()
+		{
+			return InvokePackageManagementDevFlowAction("OpenDialog");
+		}
+
+		[DevFlowAction("od.nuget.close-dialog", Description = "Close the Manage NuGet Packages dialog opened by od.nuget.open-dialog")]
+		public static string CloseNuGetDialog()
+		{
+			return InvokePackageManagementDevFlowAction("CloseDialog");
+		}
+
+		[DevFlowAction("od.nuget.set-search-text", Description = "Set the search box text in the currently open Manage NuGet Packages dialog's Available tab")]
+		public static string SetNuGetSearchText(string text)
+		{
+			return InvokePackageManagementDevFlowAction("SetSearchText", text);
+		}
+
+		[DevFlowAction("od.nuget.search", Description = "Execute the real SearchCommand on the Available tab")]
+		public static string SearchNuGetPackages()
+		{
+			return InvokePackageManagementDevFlowAction("Search");
+		}
+
+		[DevFlowAction("od.nuget.status", Description = "Inspect the Available tab's current NuGet package state")]
+		public static string GetNuGetStatus()
+		{
+			return InvokePackageManagementDevFlowAction("Status");
+		}
+
+		[DevFlowAction("od.nuget.install", Description = "Execute the real per-row AddPackageCommand for the package with the given Id")]
+		public static string InstallNuGetPackage(string packageId)
+		{
+			return InvokePackageManagementDevFlowAction("Install", packageId);
+		}
 		
 		// --- Unit Testing Actions ---
 		
@@ -731,6 +773,48 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				string.Equals(p.Class, padName, StringComparison.OrdinalIgnoreCase)
 				|| string.Equals(p.Title, padName, StringComparison.OrdinalIgnoreCase)
 				|| p.Class.EndsWith("." + padName, StringComparison.OrdinalIgnoreCase));
+		}
+
+		static string InvokePackageManagementDevFlowAction(string methodName, params object[] args)
+		{
+			try {
+				LoadPackageManagementAddInRuntime();
+				Type type = Type.GetType("ICSharpCode.PackageManagement.PackageManagementDevFlowActions, PackageManagement");
+				if (type == null) {
+					return JsonSerializer.Serialize(new {
+						success = false,
+						error = "PackageManagementDevFlowActions type was not found after loading PackageManagement.addin"
+					});
+				}
+				
+				MethodInfo method = type.GetMethod(methodName, BindingFlags.Public | BindingFlags.Static);
+				if (method == null) {
+					return JsonSerializer.Serialize(new {
+						success = false,
+						error = "PackageManagementDevFlowActions." + methodName + " was not found"
+					});
+				}
+				
+				return (string)method.Invoke(null, args);
+			} catch (TargetInvocationException ex) {
+				return JsonSerializer.Serialize(new {
+					success = false,
+					error = ex.InnerException?.Message ?? ex.Message
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new {
+					success = false,
+					error = ex.Message
+				});
+			}
+		}
+
+		static void LoadPackageManagementAddInRuntime()
+		{
+			var addIn = SD.AddInTree.AddIns.FirstOrDefault(a =>
+				a.FileName != null &&
+				a.FileName.EndsWith("PackageManagement.addin", StringComparison.OrdinalIgnoreCase));
+			addIn?.LoadRuntimeAssemblies();
 		}
 		
 		static async Task<bool> WaitForStopAsync(IDebuggerService debugger, int timeoutSeconds, int previousStopSequence)

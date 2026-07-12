@@ -16,8 +16,6 @@
 		<pm:PackageManagementViewModels x:Key="ViewModels"/>
 		<BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
 		
-		<BitmapImage x:Key="ErrorIcon"
-			UriSource="pack://application:,,,/PackageManagement;component/Resources/exclamation.png"/>
 	</Window.Resources>
 	
 	<Window.DataContext>
@@ -38,10 +36,10 @@
 				<ColumnDefinition Width="Auto"/>
 			</Grid.ColumnDefinitions>
 			<StackPanel>
-				<Image
-					Margin="4, 4"
-					Visibility="{Binding Path=HasError, Converter={StaticResource BoolToVisibility}}"
-					Source="{StaticResource ErrorIcon}"/>
+					<Image
+						Margin="4, 4"
+						Visibility="{Binding Path=HasError, Converter={StaticResource BoolToVisibility}}"
+						Source="{core:GetBitmap Icons.16x16.StopProcess}"/>
 			</StackPanel>
 			<TextBlock
 				Grid.Column="1"

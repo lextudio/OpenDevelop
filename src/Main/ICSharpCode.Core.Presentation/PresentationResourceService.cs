@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Markup;
@@ -32,6 +33,75 @@ namespace ICSharpCode.Core.Presentation
 	public static class PresentationResourceService
 	{
 		static readonly Dictionary<string, ImageSource> imageCache = new Dictionary<string, ImageSource>();
+		static readonly IReadOnlyDictionary<string, string> xamlResourceAliases = new Dictionary<string, string> {
+			{ "Icons.16x16.Error", "BuildErrorList" },
+			{ "Icons.16x16.Warning", "StatusWarning" },
+			{ "Icons.16x16.Information", "StatusInformation" },
+			{ "Icons.16x16.Question", "HelpApplication" },
+			{ "Icons.16x16.Print", "Print" },
+			{ "Icons.16x16.PreView", "PrintPreview" },
+			{ "Icons.16x16.CancelIcon", "Stop" },
+			{ "Icons.16x16.FindNextIcon", "FindNext" },
+			{ "Icons.16x16.ReplaceIcon", "FindinFiles" },
+			{ "Icons.16x16.CommentRegion", "CommentCode" },
+			{ "Icons.16x16.SelectionArrow", "Run" },
+			{ "Icons.16x16.DeleteHistory", "ClearWindowContent" },
+			{ "Icons.16x16.BrowserBefore", "Backward" },
+			{ "Icons.16x16.BrowserAfter", "Forward" },
+			{ "Icons.16x16.BrowserCancel", "Stop" },
+			{ "Icons.16x16.BrowserHome", "Home" },
+			{ "Icons.16x16.BrowserWindow", "Application" },
+			{ "Icons.16x16.WebSearchIcon", "FindinFiles" },
+			{ "ProjectBrowser.Toolbar.Refresh", "Refresh" },
+			{ "ProjectBrowser.SolutionFolder.CreateNew", "NewFolder" },
+			{ "ProjectBrowser.CodeBehind", "CSFile" },
+			{ "PadIcons.ProjectBrowser", "SolutionFolderSwitch" },
+			{ "PadIcons.ClassBrowser", "Class" },
+			{ "PadIcons.Toolbar", "Settings" },
+			{ "PadIcons.ErrorList", "BuildErrorList" },
+			{ "PadIcons.TaskList", "TaskList" },
+			{ "PadIcons.Output", "Output" },
+			{ "PadIcons.FileBrowser", "FolderOpen" },
+			{ "PadIcons.FindResults", "FindinFiles" },
+			{ "PadIcons.Bookmarks", "Bookmark" },
+			{ "PadIcons.DefinitionView", "Method" },
+			{ "PadIcons.BreakPoints", "BreakpointEnable" },
+			{ "PadIcons.CallStack", "Thread" },
+			{ "PadIcons.LoadedModules", "Library" },
+			{ "PadIcons.Threads", "Thread" },
+			{ "PadIcons.LocalVariables", "LocalVariable" },
+			{ "PadIcons.Watches", "Watch" },
+			{ "Bookmarks.GotoPrev", "PreviousBookmark" },
+			{ "Bookmarks.GotoNext", "NextBookmark" },
+			{ "Bookmarks.PrevBreakpoint", "PreviousBookmark" },
+			{ "Bookmarks.NextBreakpoint", "NextBookmark" },
+			{ "Bookmarks.EnableDisableAll", "BreakpointDisable" },
+			{ "Bookmarks.DisableAllBreakpoints", "BreakpointDisable" },
+			{ "Bookmarks.DeleteMark", "ClearBookmark" },
+			{ "Bookmarks.DeleteAllMarks", "ClearBookmark" },
+			{ "Bookmarks.DeleteAllBreakpoints", "ClearBookmark" },
+			{ "Icons.16x16.TextFileIcon", "TextFile" },
+			{ "Icons.16x16.XMLFileIcon", "XMLFile" },
+			{ "Icons.16x16.HTMLIcon", "HTMLFile" },
+			{ "Icons.16x16.CSSIcon", "StyleSheet" },
+			{ "Icons.16x16.ResourceFileIcon", "ResourceSymbols" },
+			{ "Icons.16x16.StrongNameKeyFileIcon", "Key" },
+			{ "Icons.16x16.Debug.Assembly", "Assembly" },
+			{ "Icons.16x16.WatchAdd", "Watch" },
+			{ "Icons.16x16.WatchDelete", "DeleteWatch" },
+			{ "Icons.16x16.WatchesDelete", "ClearWindowContent" },
+			{ "C#.FileIcon", "CSFile" },
+			{ "C#.ProjectIcon", "CS" },
+			{ "VB.FileIcon", "VB" },
+			{ "VB.ProjectIcon", "VB" },
+			{ "F#.FileIcon", "FS" },
+			{ "F#.ProjectIcon", "FS" },
+			{ "TextTemplate.ProjectBrowser.File", "TextFile" },
+			{ "TypeScript.ProjectBrowser.File", "JSScript" },
+			{ "C#.File.MvcRazorFile.Small", "CSRazorFile" },
+			{ "VBNet.File.MvcRazorFile.Small", "CSRazorFile" },
+			{ "ILSpy", "Assembly" }
+		};
 		static readonly IReadOnlyDictionary<string, string> xamlResourceMap = new Dictionary<string, string> {
 			// QuickClassBrowser icons (RoslynSymbolIcons).
 			{ "Icons.16x16.Class", "Resources/VS2017/Class/Class_16x.xaml" },
@@ -91,6 +161,18 @@ namespace ICSharpCode.Core.Presentation
 			{ "Icons.16x16.HelpIcon", "Resources/VS2017/HelpApplication/HelpApplication_16x.xaml" },
 			{ "Icons.16x16.CloseFileIcon", "Resources/VS2017/Close/Close_16x.xaml" },
 			{ "Icons.16x16.CloseAllDocuments", "Resources/VS2017/Close/Close_16x.xaml" },
+			{ "Icons.16x16.FullScreen", "Resources/VS2017/ExtendToFullScreen/ExtendToFullScreen_16x.xaml" },
+			{ "Icons.16x16.NextWindowIcon", "Resources/VS2017/NewWindow/NewWindow_16x.xaml" },
+			{ "Icons.16x16.PrevWindowIcon", "Resources/VS2017/NewWindow/NewWindow_16x.xaml" },
+			{ "Icons.16x16.AboutIcon", "Resources/VS2017/UIAboutBox/UIAboutBox_16x.xaml" },
+			{ "Icons.16x16.LowerToUpperCase", "Resources/VS2017/TextFile/TextFile_16x.xaml" },
+			{ "Icons.16x16.UpperToLowerCase", "Resources/VS2017/TextFile/TextFile_16x.xaml" },
+			{ "Icons.16x16.ArrowUp", "Resources/VS2017/PreviousBookmark/PreviousBookmark_16x.xaml" },
+			{ "Icons.16x16.ArrowDown", "Resources/VS2017/NextBookmark/NextBookmark_16x.xaml" },
+			{ "Icons.16x16.CombineIcon", "Resources/VS2017/SolutionFolderSwitch/SolutionFolderSwitch_16x.xaml" },
+			{ "Icons.16x16.Workspace", "Resources/VS2017/SolutionFolderSwitch/SolutionFolderSwitch_16x.xaml" },
+			{ "Icons.16x16.AssemblyError", "Resources/VS2017/Assembly/Assembly_16x.xaml" },
+			{ "Icons.16x16.AssemblyUnpinned", "Resources/VS2017/Assembly/Assembly_16x.xaml" },
 
 			// Solution Explorer file-type icons (SolutionExplorerIconService). Folder names here
 			// match the VS2017 Image Library / UnoDevelop's Icons/*.svg base names 1:1.
@@ -148,12 +230,23 @@ namespace ICSharpCode.Core.Presentation
 			// IconBarMargin/Bookmark margin icons (breakpoints, bookmarks).
 			// Mapped via "Bookmarks.*" resource name used by BreakpointBookmark / BookmarkBase.
 			{ "Bookmarks.Breakpoint", "Resources/VS2017/Breakpoint/BreakpointEnable_16x.xaml" },
+			{ "Bookmarks.BreakpointConditional", "Resources/VS2017/Breakpoint/BreakpointEnable_16x.xaml" },
 			{ "Bookmarks.DisabledBreakpoint", "Resources/VS2017/Breakpoint/BreakpointDisable_16x.xaml" },
 			{ "Bookmarks.UnhealthyBreakpoint", "Resources/VS2017/BreakpointBound/BreakpointBound_16x.xaml" },
+			{ "Bookmarks.UnhealthyBreakpointConditional", "Resources/VS2017/BreakpointBound/BreakpointBound_16x.xaml" },
+			{ "Bookmarks.CurrentLine", "Resources/VS2017/NextError/NextError_16x.xaml" },
+			{ "Bookmarks.PrevBreakpoint", "Resources/VS2017/Bookmark/PreviousBookmark_16x.xaml" },
+			{ "Bookmarks.NextBreakpoint", "Resources/VS2017/Bookmark/NextBookmark_16x.xaml" },
+			{ "Bookmarks.EnableDisableAll", "Resources/VS2017/Breakpoint/BreakpointDisable_16x.xaml" },
+			{ "Bookmarks.DisableAllBreakpoints", "Resources/VS2017/Breakpoint/BreakpointDisable_16x.xaml" },
+			{ "Bookmarks.DeleteMark", "Resources/VS2017/Bookmark/ClearBookmark_16x.xaml" },
+			{ "Bookmarks.DeleteAllMarks", "Resources/VS2017/Bookmark/ClearBookmark_16x.xaml" },
+			{ "Bookmarks.DeleteAllBreakpoints", "Resources/VS2017/Bookmark/ClearBookmark_16x.xaml" },
 			{ "Bookmarks.ToggleMark", "Resources/VS2017/Bookmark/Bookmark_16x.xaml" },
 			{ "Bookmarks.GotoPrevInFile", "Resources/VS2017/Bookmark/PreviousBookmark_16x.xaml" },
 			{ "Bookmarks.GotoNextInFile", "Resources/VS2017/Bookmark/NextBookmark_16x.xaml" },
-			{ "Bookmarks.ClearAll", "Resources/VS2017/Bookmark/ClearBookmark_16x.xaml" }
+			{ "Bookmarks.ClearAll", "Resources/VS2017/Bookmark/ClearBookmark_16x.xaml" },
+			{ "PadIcons.BreakPoints", "Resources/VS2017/Breakpoint/BreakpointEnable_16x.xaml" }
 		};
 		static readonly IResourceService resourceService;
 		
@@ -219,29 +312,26 @@ namespace ICSharpCode.Core.Presentation
 		{
 			return GetImageSource(name);
 		}
-		
+
 		static bool TryGetXamlImageSource(string name, out ImageSource imageSource)
 		{
-			string resourcePath;
-			if (!xamlResourceMap.TryGetValue(name, out resourcePath)) {
+			string resourcePath = GetXamlResourcePath(name);
+			if (resourcePath == null) {
 				imageSource = null;
 				return false;
 			}
 			
 			try {
-				var resourceUri = new Uri("pack://application:,,,/ICSharpCode.Core.Presentation;component/" + resourcePath, UriKind.Absolute);
-				var resourceInfo = Application.GetResourceStream(resourceUri);
-				if (resourceInfo == null || resourceInfo.Stream == null) {
-					imageSource = null;
-					return false;
-				}
-				
-				using (resourceInfo.Stream) {
-					imageSource = LoadXamlImageSource(resourceInfo.Stream);
-					if (imageSource == null)
+				using (Stream stream = OpenXamlIconStream(resourcePath)) {
+					if (stream == null) {
+						imageSource = null;
 						return false;
-					imageSource.Freeze();
+					}
+					imageSource = LoadXamlImageSource(stream);
 				}
+				if (imageSource == null)
+					return false;
+				imageSource.Freeze();
 				return true;
 			} catch (Exception ex) {
 				LoggingService.Warn("Could not load XAML icon '" + name + "' from '" + resourcePath + "'.", ex);
@@ -250,9 +340,48 @@ namespace ICSharpCode.Core.Presentation
 			}
 		}
 
+		static Stream OpenXamlIconStream(string resourcePath)
+		{
+			var resourceUri = new Uri("pack://application:,,,/ICSharpCode.Core.Presentation;component/" + resourcePath, UriKind.Absolute);
+			var resourceInfo = Application.GetResourceStream(resourceUri);
+			return resourceInfo != null ? resourceInfo.Stream : null;
+		}
+
+		static string GetXamlResourcePath(string name)
+		{
+			string resourcePath;
+			if (xamlResourceMap.TryGetValue(name, out resourcePath))
+				return resourcePath;
+			
+			string iconName;
+			if (xamlResourceAliases.TryGetValue(name, out iconName))
+				return GetResourcePathForIconName(iconName);
+			
+			iconName = GetIconNameFromResourceName(name);
+			return string.IsNullOrWhiteSpace(iconName) ? null : GetResourcePathForIconName(iconName);
+		}
+
+		static string GetResourcePathForIconName(string iconName)
+		{
+			if (string.IsNullOrWhiteSpace(iconName))
+				return null;
+			return "Resources/VS2017/" + iconName + "/" + iconName + "_16x.xaml";
+		}
+
+		static string GetIconNameFromResourceName(string name)
+		{
+			if (string.IsNullOrWhiteSpace(name))
+				return null;
+			int lastDot = name.LastIndexOf('.');
+			string iconName = lastDot >= 0 ? name.Substring(lastDot + 1) : name;
+			return iconName.EndsWith("Icon", StringComparison.Ordinal) && iconName.Length > "Icon".Length
+				? iconName.Substring(0, iconName.Length - "Icon".Length)
+				: iconName;
+		}
+
 		static ImageSource LoadXamlImageSource(Stream stream)
 		{
-			var root = XamlReader.Load(stream);
+			var root = XamlReader.Load(CreateCleanXamlStream(stream));
 			var image = root as System.Windows.Controls.Image;
 			if (image != null)
 				return image.Source;
@@ -266,6 +395,25 @@ namespace ICSharpCode.Core.Presentation
 			if (viewbox != null)
 				return GetImageSource(viewbox.Child);
 			return GetImageSource(root as DependencyObject);
+		}
+
+		static Stream CreateCleanXamlStream(Stream stream)
+		{
+			using (var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, bufferSize: 4096, leaveOpen: true)) {
+				string xaml = reader.ReadToEnd();
+				int start = FindXamlStart(xaml);
+				if (start > 0)
+					xaml = xaml.Substring(start);
+				return new MemoryStream(Encoding.UTF8.GetBytes(xaml));
+			}
+		}
+
+		static int FindXamlStart(string xaml)
+		{
+			if (string.IsNullOrEmpty(xaml))
+				return 0;
+			int start = xaml.IndexOf('<');
+			return start >= 0 ? start : xaml.Length;
 		}
 
 		static ImageSource GetImageSource(DependencyObject element)

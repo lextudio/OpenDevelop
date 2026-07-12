@@ -34,6 +34,7 @@ namespace ICSharpCode.PackageManagement
 		IPackageManagementEvents packageManagementEvents;
 		MSBuildBasedProject msbuildProject;
 		ProjectTargetFramework targetFramework;
+		SdkStylePackageReferenceService sdkStylePackageReferenceService;
 		
 		public PackageManagementProject(
 			IPackageRepository sourceRepository,
@@ -44,6 +45,9 @@ namespace ICSharpCode.PackageManagement
 			SourceRepository = sourceRepository;
 			msbuildProject = project;
 			targetFramework = new ProjectTargetFramework(project);
+			if (project.IsSdkStyleProject) {
+				sdkStylePackageReferenceService = new SdkStylePackageReferenceService(project);
+			}
 			this.packageManagementEvents = packageManagementEvents;
 			
 			packageManager = packageManagerFactory.CreatePackageManager(sourceRepository, project);
@@ -93,11 +97,17 @@ namespace ICSharpCode.PackageManagement
 		
 		public bool IsPackageInstalled(IPackage package)
 		{
+			if (sdkStylePackageReferenceService != null) {
+				return sdkStylePackageReferenceService.IsInstalled(package.Id);
+			}
 			return projectManager.IsInstalled(package);
 		}
 		
 		public bool IsPackageInstalled(string packageId)
 		{
+			if (sdkStylePackageReferenceService != null) {
+				return sdkStylePackageReferenceService.IsInstalled(packageId);
+			}
 			return projectManager.IsInstalled(packageId);
 		}
 		
@@ -108,11 +118,18 @@ namespace ICSharpCode.PackageManagement
 		
 		public IEnumerable<PackageOperation> GetInstallPackageOperations(IPackage package, InstallPackageAction installAction)
 		{
+			if (sdkStylePackageReferenceService != null) {
+				return Enumerable.Empty<PackageOperation>();
+			}
 			return packageManager.GetInstallPackageOperations(package, installAction);
 		}
 		
 		public void InstallPackage(IPackage package, InstallPackageAction installAction)
 		{
+			if (sdkStylePackageReferenceService != null) {
+				sdkStylePackageReferenceService.InstallPackage(package, SourceRepository, Logger);
+				return;
+			}
 			packageManager.InstallPackage(package, installAction);
 		}
 		

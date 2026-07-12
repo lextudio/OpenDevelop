@@ -11,8 +11,8 @@ namespace ICSharpCode.PackageManagement
 {
 	public class SettingsProvider : ISettingsProvider
 	{
-		public static Func<IFileSystem, string, IMachineWideSettings, ISettings> LoadDefaultSettings
-			= Settings.LoadDefaultSettings;
+		public static Func<string, ISettings> LoadDefaultSettings
+			= directory => new PortableNuGetSettings(directory);
 		
 		IPackageManagementProjectService projectService;
 		
@@ -58,11 +58,7 @@ namespace ICSharpCode.PackageManagement
 		
 		ISettings LoadSettings(string directory)
 		{
-			if (directory == null) {
-				return LoadDefaultSettings(null, null, null);
-			}
-			
-			return LoadDefaultSettings(new PhysicalFileSystem(directory), null, null);
+			return LoadDefaultSettings(directory);
 		}
 	}
 }

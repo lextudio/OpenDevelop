@@ -72,7 +72,7 @@ namespace ICSharpCode.PackageManagement
 		static ISettings LoadSettings ()
 		{
 			try {
-				return Settings.LoadDefaultSettings(null, null, null);
+				return new PortableNuGetSettings(null);
 			} catch (Exception ex) {
 				LoggingService.Error("Unable to load NuGet.Config.", ex);
 			}

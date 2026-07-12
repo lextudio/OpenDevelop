@@ -35,8 +35,6 @@ namespace Microsoft.VisualStudio.Shell
 				return new SVsExtensionManager();
 			} else if (serviceType == typeof(IVsSolution)) {
 				return new VsSolution();
-			} else if (serviceType == typeof(SComponentModel)) {
-				return new ComponentModel();
 			}
 			return null;
 		}

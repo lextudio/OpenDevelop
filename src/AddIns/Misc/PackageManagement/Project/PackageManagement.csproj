@@ -14,16 +14,9 @@
     <NoWarn>$(NoWarn);CA1416;WFO1000</NoWarn>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Microsoft.Web.XmlTransform">
-      <HintPath>..\RequiredLibraries\Microsoft.Web.XmlTransform.dll</HintPath>
-    </Reference>
-    <Reference Include="NuGet.Console.Types">
-      <HintPath>..\RequiredLibraries\NuGet.Console.Types.dll</HintPath>
-    </Reference>
     <Reference Include="NuGet.Core">
       <HintPath>..\RequiredLibraries\NuGet.Core.dll</HintPath>
     </Reference>
-    <PackageReference Include="Microsoft.PowerShell.SDK" Version="7.4.0" />
     <ProjectReference Include="..\..\..\..\Libraries\ICSharpCode.TypeSystem.Abstractions\ICSharpCode.TypeSystem.Abstractions.csproj" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.3.0" />
   </ItemGroup>
@@ -34,20 +27,15 @@
     <ProjectReference Include="..\..\..\..\Libraries\AvalonEdit\ICSharpCode.AvalonEdit\ICSharpCode.AvalonEdit.csproj" Private="false" />
     <ProjectReference Include="..\..\..\BackendBindings\Scripting\Project\ICSharpCode.Scripting.csproj" Private="false" />
     <ProjectReference Include="..\..\..\DisplayBindings\AvalonEdit.AddIn\AvalonEdit.AddIn.csproj" Private="false" />
-    <ProjectReference Include="..\PowerShell\Project\PackageManagement.PowerShell.csproj" />
     <ProjectReference Include="..\SharpDevelop.EnvDTE\SharpDevelop.EnvDTE.vbproj" Private="false" />
+    <ProjectReference Include="..\..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj" Private="False" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
     <None Include="PackageManagement.addin" CopyToOutputDirectory="Always" />
-    <None Include="..\RequiredLibraries\about_NuGet.Cmdlets.help.txt" Link="about_NuGet.Cmdlets.help.txt" CopyToOutputDirectory="Always" />
     <None Include="..\RequiredLibraries\LICENSE.txt" Link="NuGet-LICENSE.txt" CopyToOutputDirectory="Always" />
-    <None Include="..\RequiredLibraries\NuGet.Cmdlets.dll-Help.xml" Link="PackageManagement.Cmdlets.dll-Help.xml" CopyToOutputDirectory="Always" />
     <None Include="Scripts\Package.Format.ps1xml" CopyToOutputDirectory="Always" />
     <Resource Include="Resources\**\*" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="..\RequiredLibraries\NuGet.exe" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <!-- MVP scope excludes the legacy WinForms/SharpTreeView ProjectBrowser. Package operations still
@@ -55,5 +43,10 @@
     <Compile Remove="Src\ProjectBrowserUpdater.cs" />
     <Compile Remove="Src\ThreadSafeProjectBrowserUpdater.cs" />
     <Compile Remove="Src\UpdateProjectBrowserFileNodesVisitor.cs" />
+    <Compile Remove="Src\Scripting\ConsoleInitializer.cs" />
+    <Compile Remove="Src\Scripting\ICmdletLogger.cs" />
+    <Compile Remove="Src\Scripting\PackageManagementConsoleHost.cs" />
+    <Compile Remove="Src\Scripting\PackageManagementConsoleHostLogger.cs" />
+    <Compile Remove="Src\VisualStudio\ComponentModel.cs" />
   </ItemGroup>
 </Project>

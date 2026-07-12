@@ -250,7 +250,7 @@ namespace ICSharpCode.PackageManagement
 		void TryAddingPackage()
 		{
 			try {
-				if (IsProjectPackage(package)) {
+				if (selectedProjects.HasSingleProjectSelected() || IsProjectPackage(package)) {
 					GetInstallOperationsForProject();
 					if (LicensesAccepted()) {
 						InstallPackageIntoProject();

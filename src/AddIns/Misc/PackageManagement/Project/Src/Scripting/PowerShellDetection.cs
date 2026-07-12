@@ -33,10 +33,7 @@ namespace ICSharpCode.PackageManagement.Scripting
 		
 		public bool IsPowerShell2Installed()
 		{
-			if (!installed.HasValue) {
-				installed = CheckIfPowerShell2IsInstalled();
-			}
-			return installed.Value;
+			return false;
 		}
 		
 		bool CheckIfPowerShell2IsInstalled()

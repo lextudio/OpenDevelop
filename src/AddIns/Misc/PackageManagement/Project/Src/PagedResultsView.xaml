@@ -1,6 +1,7 @@
 ﻿<UserControl
 	x:Class="ICSharpCode.PackageManagement.PagedResultsView"
 	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+	xmlns:core="http://icsharpcode.net/sharpdevelop/core"
 	xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
 	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
 	xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -9,10 +10,6 @@
 	mc:Ignorable="d">
 	
 	<UserControl.Resources>
-		<BitmapImage x:Key="PreviousPageIcon"
-			UriSource="pack://application:,,,/PackageManagement;component/Resources/resultset_previous.png"/>
-		<BitmapImage x:Key="NextPageIcon"
-			UriSource="pack://application:,,,/PackageManagement;component/Resources/resultset_next.png"/>
 		<BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
 		<pm:BooleanToFontWeightConverter x:Key="BoolToFontWeight"/>
 		
@@ -40,7 +37,7 @@
 				MinWidth="0"
 				Padding="0,2"
 				VerticalAlignment="Top">
-				<Image Source="{StaticResource PreviousPageIcon}"
+				<Image Source="{core:GetBitmap Icons.16x16.NavigateBack}"
 					   Height="16"
 					   Width="16"/>
 			</Button>
@@ -65,7 +62,7 @@
 				Padding="0,2"
 				VerticalAlignment="Top">
 				<Image
-					Source="{StaticResource NextPageIcon}"
+					Source="{core:GetBitmap Icons.16x16.NavigateForward}"
 					Height="16"
 					Width="16"/>
 			</Button>	

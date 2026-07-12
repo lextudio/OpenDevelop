@@ -18,7 +18,6 @@
 
 using System;
 using System.IO;
-using System.Linq;
 using System.Threading.Tasks;
 
 using ICSharpCode.Core;
@@ -70,7 +69,7 @@ namespace ICSharpCode.PackageManagement
 		void RunRestore()
 		{
 			var commandLine = new NuGetPackageRestoreCommandLine(solution);
-			commandLine.Command = NuGetExePath.GetPath();
+			commandLine.Command = "dotnet";
 			
 			var runner = new ProcessRunner();
 			runner.WorkingDirectory = Path.GetDirectoryName(solution.FileName);
@@ -83,23 +82,6 @@ namespace ICSharpCode.PackageManagement
 			if (task.Exception != null) {
 				LoggingService.Debug(task.Exception.ToString());
 				outputMessagesView.AppendLine(task.Exception.Message);
-			} else {
-				ForceGenerationOfRepositoriesConfigFile();
-			}
-		}
-		
-		/// <summary>
-		/// Create a Package Manager for each project to force a new repositories.config file
-		/// to be generated with references to all projects that have NuGet packages.
-		/// </summary>
-		void ForceGenerationOfRepositoriesConfigFile()
-		{
-			try {
-				var repository = PackageManagementServices.RegisteredPackageRepositories.CreateAggregateRepository();
-				var projects = solution.GetProjects(repository).ToList();
-			} catch (Exception ex) {
-				LoggingService.Debug(ex.ToString());
-				outputMessagesView.AppendLine(ex.Message);
 			}
 		}
 	}

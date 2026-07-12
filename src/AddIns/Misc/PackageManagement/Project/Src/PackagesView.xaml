@@ -7,6 +7,7 @@
 	xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
 	xmlns:pm="clr-namespace:ICSharpCode.PackageManagement"
 	xmlns:pmd="clr-namespace:ICSharpCode.PackageManagement.Design"
+	xmlns:automation="clr-namespace:System.Windows.Automation;assembly=PresentationCore"
 	mc:Ignorable="d"
 	d:DesignHeight="250"
 	d:DesignWidth="500">
@@ -14,12 +15,6 @@
 	<UserControl.Resources>
 		<Style TargetType="Button" BasedOn="{x:Static core:GlobalStyles.ButtonStyle}"/>
 		<pm:OpenHyperlinkCommand x:Key="OpenHyperlinkCommand"/>
-		<BitmapImage x:Key="DefaultPackageIcon"
-			UriSource="pack://application:,,,/PackageManagement;component/Resources/packageicon.png"/>
-		<BitmapImage x:Key="PackageAddedIcon"
-			UriSource="pack://application:,,,/PackageManagement;component/Resources/accept.png"/>
-		<BitmapImage x:Key="SearchIcon"
-			UriSource="pack://application:,,,/PackageManagement;component/Resources/magnifier.png"/>
 		<BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
 		
 		<DataTemplate x:Key="PackageSourceComboBoxItemTemplate">
@@ -44,10 +39,10 @@
 					<RowDefinition Height="60"/>
 				</Grid.RowDefinitions>
 				
-				<Image
-					Grid.Column="0"
-					Height="32"
-					Source="{Binding Path=IconUrl, TargetNullValue={StaticResource DefaultPackageIcon}}"/>
+					<Image
+						Grid.Column="0"
+						Height="32"
+						Source="{Binding Path=IconUrl, TargetNullValue={core:GetBitmap Icons.16x16.Library}}"/>
 				<StackPanel
 					Grid.Column="1"
 					Margin="4, 0">
@@ -61,15 +56,17 @@
 						MaxHeight="40"/>
 				</StackPanel>
 				<Image
+					automation:AutomationProperties.AutomationId="PackageAddedIcon"
 					Grid.Column="2"
 					VerticalAlignment="Top"
 					HorizontalAlignment="Right"
-					Height="16"
-					Width="16"
-					Source="{StaticResource PackageAddedIcon}"
+						Height="16"
+						Width="16"
+						Source="{core:GetBitmap Icons.16x16.RunAllIcon}"
 					Visibility="{Binding Path=IsAdded, Converter={StaticResource BoolToVisibility}}"/>
 				<Button
 					x:Name="addPackageButton"
+					automation:AutomationProperties.AutomationId="AddPackageButton"
 					Grid.Column="2"
 					Content="Add"
 					IsDefault="True"
@@ -289,12 +286,19 @@
 			</Grid.RowDefinitions>
 			<ListBox
 				x:Name="allPackagesListBox"
+				automation:AutomationProperties.AutomationId="PackageResultsListBox"
 				Grid.Row="0"
 				SelectedIndex="0"
 				ItemTemplate="{StaticResource PackageListBoxItemTemplate}"
 				ItemsSource="{Binding Path=PackageViewModels}"
 				HorizontalContentAlignment="Stretch"
-				ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+				ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+				<ListBox.ItemContainerStyle>
+					<Style TargetType="ListBoxItem">
+						<Setter Property="automation:AutomationProperties.AutomationId" Value="{Binding Path=Id, StringFormat=PackageRow_{0}}"/>
+					</Style>
+				</ListBox.ItemContainerStyle>
+			</ListBox>
 			<ProgressBar
 				Grid.Row="0"
 				Height="20"
@@ -348,6 +352,8 @@
 					ItemTemplate="{StaticResource PackageSourceComboBoxItemTemplate}"
 					Visibility="{Binding Path=ShowPackageSources, Converter={StaticResource BoolToVisibility}}"/>
 				<TextBox
+					x:Name="packageSearchTextBox"
+					automation:AutomationProperties.AutomationId="PackageSearchTextBox"
 					Grid.Row="1"
 					Grid.Column="0"
 					Visibility="{Binding Path=IsSearchable, Converter={StaticResource BoolToVisibility}}"
@@ -366,8 +372,8 @@
 					<Hyperlink 
 						TextDecorations="{x:Null}"
 						Command="{Binding Path=SearchCommand}">
-						<Image
-							Source="{StaticResource SearchIcon}"
+							<Image
+							Source="{core:GetBitmap Icons.16x16.FindIcon}"
 							Height="16"
 							Width="16"/>
 					</Hyperlink>
