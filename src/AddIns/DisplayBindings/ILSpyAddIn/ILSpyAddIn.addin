@@ -23,12 +23,6 @@
 		        class = "ICSharpCode.ILSpyAddIn.ILSpyParser" />
 	</Path>
 	
-	<!-- Text editor context menu: Launch ILSpy command -->
-	<Path name="/SharpDevelop/EntityContextMenu">
-		<MenuItem id="ILSpySeparator" type="Separator" />
-		<MenuItem id="ILSpy" icon="ILSpy" type="Item" label="${res:ILSpyAddIn.OpenILSpyCommand}" class="ICSharpCode.ILSpyAddIn.OpenInILSpyCommand"/>
-	</Path>
-
 	<Path name="/SharpDevelop/Services/DebuggerService/ModuleContextMenu">
 		<MenuItem id="OpenLoadedModuleInILSpy"
 		          label="${res:ILSpyAddIn.OpenILSpyCommand}"
@@ -48,5 +42,10 @@
 		          label = "Assembly..."
 		          insertafter = "Project"
 		          class = "ICSharpCode.ILSpyAddIn.Commands.OpenAssemblyCommand"/>
+	</Path>
+
+	<Path name="/SharpDevelop/Autostart">
+		<Class id="ICSharpCode.ILSpyAddIn.RegisterDevFlowActionsCommand"
+		       class="ICSharpCode.ILSpyAddIn.Commands.RegisterDevFlowActionsCommand"/>
 	</Path>
 </AddIn>

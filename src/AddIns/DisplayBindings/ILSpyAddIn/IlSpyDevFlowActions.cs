@@ -5,6 +5,7 @@
 // dispatched to the UI thread.
 using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 
 using LeXtudio.DevFlow.Agent.Core;
 
@@ -14,9 +15,9 @@ namespace ICSharpCode.ILSpyAddIn
 	public static class IlSpyDevFlowActions
 	{
 		[DevFlowAction("od.ilspy.open-assembly", Description = "Open an assembly (.dll/.exe) into the hosted ILSpy AssemblyTreeModel, bypassing the native file dialog")]
-		public static string OpenAssembly(string path)
+		public static async Task<string> OpenAssembly(string path)
 		{
-			IlSpyWorkspaceHost.OpenAssembly(path);
+			await IlSpyWorkspaceHost.OpenAssembly(path);
 			return JsonSerializer.Serialize(new { opened = true, path });
 		}
 

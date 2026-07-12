@@ -47,6 +47,8 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     public string SlnxFixturePath { get; } = LocateSlnxFixture();
     public string WpfSampleSolutionPath { get; } = LocateWpfSampleSolution();
     public string GitFixtureTemplatePath { get; } = LocateGitFixtureTemplate();
+    public string NuGetFixtureTemplatePath { get; } = LocateNuGetFixtureTemplate();
+    public string LocalNuGetFeedPath { get; } = LocateLocalNuGetFeed();
 
     public async ValueTask InitializeAsync()
     {
@@ -254,6 +256,32 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         }
         throw new FileNotFoundException(
             "Could not locate tests/fixtures/GitFixture/GitFixture.sln by walking up from " + AppContext.BaseDirectory);
+    }
+
+    static string LocateNuGetFixtureTemplate()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir, "tests", "fixtures", "NuGetFixture");
+            if (File.Exists(Path.Combine(candidate, "NuGetFixture.sln"))) return candidate;
+            dir = Path.GetDirectoryName(dir);
+        }
+        throw new FileNotFoundException(
+            "Could not locate tests/fixtures/NuGetFixture/NuGetFixture.sln by walking up from " + AppContext.BaseDirectory);
+    }
+
+    static string LocateLocalNuGetFeed()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir, "tests", "fixtures", "LocalNuGetFeed");
+            if (File.Exists(Path.Combine(candidate, "OpenDevelop.TestPackage.1.0.0.nupkg"))) return candidate;
+            dir = Path.GetDirectoryName(dir);
+        }
+        throw new FileNotFoundException(
+            "Could not locate tests/fixtures/LocalNuGetFeed/OpenDevelop.TestPackage.1.0.0.nupkg by walking up from " + AppContext.BaseDirectory);
     }
 
     static string LocateWpfSampleSolution()

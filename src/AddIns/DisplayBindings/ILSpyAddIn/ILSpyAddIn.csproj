@@ -5,7 +5,6 @@
     <AssemblyName>ILSpyAddIn</AssemblyName>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <UseWPF>true</UseWPF>
-    <UseWindowsForms>true</UseWindowsForms>
     <OutputType>Library</OutputType>
     <SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>..\..\..\Main\ICSharpCode.SharpDevelop.snk</AssemblyOriginatorKeyFile>
@@ -32,6 +31,12 @@
   <ItemGroup>
     <Compile Remove="DebuggerTextOutput.cs" />
     <Compile Remove="ILSpySymbolSource.cs" />
+    <!-- OpenDevelop is migrating fully to WPF (no WinForms/LibreWinForms compat layer). The
+         legacy "launch external ILSpy.exe" flow (LaunchILSpy/*) used System.Windows.Forms
+         (SetILSpyPathDialog, an OpenFileDialog-based path picker) and is superseded anyway by
+         hosting real ILSpy panes in-process (IlSpyWorkspaceHost/File > Open > Assembly) - drop it
+         instead of adding a WinForms compat dependency for it. -->
+    <Compile Remove="LaunchILSpy\**\*.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -103,6 +108,13 @@
     <Compile Include="$(ILSpySrc)\Controls\**\*.cs" Link="ILSpy\Controls\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Remove="$(ILSpySrc)\Controls\MainMenu.xaml.cs" />
     <Compile Remove="$(ILSpySrc)\Controls\MainToolBar.xaml.cs" />
+    <!-- OpenDevelop is WPF-only (no WinForms/LibreWinForms compat layer). CustomDialog is a
+         System.Windows.Forms.Form used only by ILSpyTraceListener's Fail() dialog (itself only
+         used by the excluded App.xaml.cs) - drop it rather than adding a WinForms dependency for
+         an unused Debug.Fail() corner case. ILSpyTraceListener.cs itself is excluded further below
+         (its own explicit Compile Include is removed, not repeated here, since MSBuild Compile
+         Remove/Include order matters and the explicit Include appears later in this file). -->
+    <Compile Remove="$(ILSpySrc)\Controls\CustomDialog.cs" />
     <Compile Include="$(ILSpySrc)\Docking\**\*.cs" Link="ILSpy\Docking\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="$(ILSpySrc)\Languages\**\*.cs" Link="ILSpy\Languages\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="$(ILSpySrc)\Metadata\**\*.cs" Link="ILSpy\Metadata\%(RecursiveDir)%(Filename)%(Extension)" />
@@ -121,6 +133,10 @@
     <Compile Include="$(ILSpySrc)\TextView\**\*.cs" Link="ILSpy\TextView\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="$(ILSpySrc)\Themes\**\*.cs" Link="ILSpy\Themes\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="$(ILSpySrc)\TreeNodes\**\*.cs" Link="ILSpy\TreeNodes\%(RecursiveDir)%(Filename)%(Extension)" />
+    <!-- ImageListResourceEntryNode decodes the legacy System.Windows.Forms.ImageListStreamer
+         .resx resource type - a WinForms-only corner case, unreferenced elsewhere, dropped rather
+         than adding a WinForms dependency for it (OpenDevelop is WPF-only). -->
+    <Compile Remove="$(ILSpySrc)\TreeNodes\ResourceNodes\ImageListResourceEntryNode.cs" />
     <Compile Include="$(ILSpySrc)\Updates\**\*.cs" Link="ILSpy\Updates\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="$(ILSpySrc)\Util\**\*.cs" Link="ILSpy\Util\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="$(ILSpySrc)\ViewModels\**\*.cs" Link="ILSpy\ViewModels\%(RecursiveDir)%(Filename)%(Extension)" />
@@ -137,7 +153,13 @@
     <Compile Remove="$(ILSpySrc)\Views\UpdatePanel.xaml.cs" />
 
     <Compile Include="$(ILSpySrc)\Properties\Resources.Designer.cs" Link="ILSpy\Properties\Resources.Designer.cs" />
-    <EmbeddedResource Include="$(ILSpySrc)\Properties\Resources.resx" Link="ILSpy\Properties\Resources.resx">
+    <!-- LogicalName forces the exact manifest resource name Resources.Designer.cs's generated
+         ResourceManager looks up ("ICSharpCode.ILSpy.Properties.Resources") - without it, the
+         Link path (relative to this project's RootNamespace, ICSharpCode.ILSpyAddIn) produces
+         "ICSharpCode.ILSpyAddIn.ILSpy.Properties.Resources.resources" instead, and every call
+         into Resources.* (e.g. AssemblyTreeModel's constructor) throws
+         MissingManifestResourceException. -->
+    <EmbeddedResource Include="$(ILSpySrc)\Properties\Resources.resx" Link="ILSpy\Properties\Resources.resx" LogicalName="ICSharpCode.ILSpy.Properties.Resources.resources">
       <Generator>PublicResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
@@ -150,7 +172,8 @@
     <Compile Include="$(ILSpySrc)\GlobalUsings.cs" Link="ILSpy\GlobalUsings.cs" />
     <Compile Include="$(ILSpySrc)\GuessFileType.cs" Link="ILSpy\GuessFileType.cs" />
     <Compile Include="$(ILSpySrc)\ILSpySettingsFilePathProvider.cs" Link="ILSpy\ILSpySettingsFilePathProvider.cs" />
-    <Compile Include="$(ILSpySrc)\ILSpyTraceListener.cs" Link="ILSpy\ILSpyTraceListener.cs" />
+    <!-- ILSpyTraceListener.cs excluded: only used by App.xaml.cs (excluded) and CustomDialog.cs
+         (excluded, System.Windows.Forms - see the Controls\CustomDialog.cs Remove above). -->
     <Compile Include="$(ILSpySrc)\ISmartTextOutput.cs" Link="ILSpy\ISmartTextOutput.cs" />
     <Compile Include="$(ILSpySrc)\LanguageSettings.cs" Link="ILSpy\LanguageSettings.cs" />
     <Compile Include="$(ILSpySrc)\NativeMethods.cs" Link="ILSpy\NativeMethods.cs" />
@@ -161,10 +184,17 @@
     <Compile Include="$(ILSpySrc)\SolutionWriter.cs" Link="ILSpy\SolutionWriter.cs" />
     <Compile Include="$(ILSpySrc)\TaskHelper.cs" Link="ILSpy\TaskHelper.cs" />
 
-    <!-- Images (icons + enums referenced by TreeNodes/Commands/Themes via Images.cs). -->
+    <!-- Icon enums (TypeIcon/MemberIcon/AccessOverlayIcon) are linked as usual, but Images.cs
+         itself is NOT: real ILSpy's Images.cs loads vector icons via pack URIs resolved against
+         the entry assembly (works for a standalone ILSpy.exe, not for a hosted addin - see
+         doc/technotes/ilspy.md). OpenDevelop's own Images.cs (below) reimplements the same public
+         field/method surface backed by icons embedded straight into this assembly (see Icons/). -->
     <Compile Include="$(ILSpySrc)\Images\*.cs" Link="ILSpy\Images\%(Filename)%(Extension)" />
-    <Resource Include="$(ILSpySrc)\Images\**\*.xaml" Link="Images\%(RecursiveDir)%(Filename)%(Extension)" />
-    <Resource Include="$(ILSpySrc)\Images\**\*.png" Link="Images\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Remove="$(ILSpySrc)\Images\Images.cs" />
+
+    <!-- Icons sourced from the VS2017 Image Library's own pre-converted XAML vector format
+         (Microsoft's "AiToXaml" tool output - no SVG/PNG involved), loaded by VsIconLoader.cs. -->
+    <EmbeddedResource Include="Icons\*.xaml" LogicalName="Icons.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

@@ -5,7 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Composition;
 using System.Windows.Input;
-using System.Windows.Media.Imaging;
+using System.Windows.Media;
 
 using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
@@ -64,13 +64,13 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
     
     public ICommand CollapseAllCommand { get; }
     
-    public BitmapSource PropertiesIcon { get; } = PresentationResourceService.GetBitmapSource("Icons.16x16.PropertiesIcon");
+    public ImageSource PropertiesIcon { get; } = PresentationResourceService.GetBitmapSource("Icons.16x16.PropertiesIcon");
     
-    public BitmapSource ShowAllFilesIcon { get; } = PresentationResourceService.GetBitmapSource("ProjectBrowser.Toolbar.ShowHiddenFiles");
+    public ImageSource ShowAllFilesIcon { get; } = PresentationResourceService.GetBitmapSource("ProjectBrowser.Toolbar.ShowHiddenFiles");
     
-    public BitmapSource RefreshIcon { get; } = PresentationResourceService.GetBitmapSource("Icons.16x16.BrowserRefresh");
+    public ImageSource RefreshIcon { get; } = PresentationResourceService.GetBitmapSource("Icons.16x16.BrowserRefresh");
     
-    public BitmapSource CollapseAllIcon { get; } = PresentationResourceService.GetBitmapSource("Icons.16x16.Collection");
+    public ImageSource CollapseAllIcon { get; } = PresentationResourceService.GetBitmapSource("Icons.16x16.Collection");
 
     public ProjectBrowserNodeModel SelectedNode {
         get => selectedNode;

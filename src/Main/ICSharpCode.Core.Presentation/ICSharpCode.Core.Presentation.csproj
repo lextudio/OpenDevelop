@@ -12,20 +12,10 @@
     <ProjectReference Include="..\Core\Project\ICSharpCode.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <!-- PresentationResourceService.GetBitmapSource decodes menu/toolbar icon
-         bitmaps via System.Drawing.Common. Nothing pulls it in transitively under
-         ProGPU.Wpf.Sdk (which drops the WindowsDesktop framework reference that
-         would normally provide/redirect it), so at runtime AddInTree menu
-         construction threw FileNotFoundException for
-         "System.Drawing.Common, Version=11.0.0.0" with nothing deployed to the
-         exe's output at all. Pin explicitly to the net10.0 build. -->
-    <PackageReference Include="System.Drawing.Common" Version="11.0.0-preview.5.26229.113" />
-  </ItemGroup>
-  <ItemGroup>
     <Compile Include="..\GlobalAssemblyInfo.cs" Link="Properties\GlobalAssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
-    <None Remove="Resources\VS2017\**\*.png" />
-    <Resource Include="Resources\VS2017\**\*.png" />
+    <None Remove="Resources\VS2017\**\*.xaml" />
+    <Resource Include="Resources\VS2017\**\*.xaml" />
   </ItemGroup>
 </Project>

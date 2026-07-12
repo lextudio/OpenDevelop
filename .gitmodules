@@ -24,3 +24,6 @@
 [submodule "externals/ilspy"]
 	path = externals/ilspy
 	url = https://github.com/lextudio/ILSpy.git
+[submodule "externals/monodevelop-nuget-extensions"]
+	path = externals/monodevelop-nuget-extensions
+	url = https://github.com/mrward/monodevelop-nuget-extensions

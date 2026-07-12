@@ -1,5 +1,5 @@
 using System.IO;
-using System.Windows.Media.Imaging;
+using System.Windows.Media;
 
 using ICSharpCode.Core.Presentation;
 
@@ -7,7 +7,7 @@ namespace ICSharpCode.SharpDevelop.Services;
 
 internal static class ProjectBrowserIconService
 {
-    public static BitmapSource GetIcon(ProjectBrowserNodeModel node)
+    public static ImageSource GetIcon(ProjectBrowserNodeModel node)
     {
         return PresentationResourceService.GetBitmapSource(GetIconKey(node));
     }

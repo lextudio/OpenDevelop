@@ -48,7 +48,10 @@ public sealed class IlSpyAddInTests
             .Select(p => (Title: p.GetProperty("title").GetString(), IsVisible: p.GetProperty("isVisible").GetBoolean()))
             .ToList();
 
-        foreach (var expectedTitle in new[] { "Assemblies", "Search", "Analyzer", "Decompiled Code"})
+        // "Search"/"Analyze" are ILSpy's own real pane titles (SearchPaneModel/
+        // AnalyzerTreeViewModel set them in their constructors); "Assemblies" and "Decompiled
+        // Code" are ones this addin assigns itself (see IlSpyWorkspaceHost).
+        foreach (var expectedTitle in new[] { "Assemblies", "Search", "Analyze", "Decompiled Code"})
         {
             var pane = panes.SingleOrDefault(p => p.Title == expectedTitle);
             Assert.True(pane != default, $"Expected an ILSpy pad titled '{expectedTitle}' to be registered; got: {string.Join(", ", panes.Select(p => p.Title))}");

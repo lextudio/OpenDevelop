@@ -18,7 +18,17 @@
     <ProjectReference Include="..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
     <ProjectReference Include="..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" Private="false" />
     <ProjectReference Include="..\..\..\Main\ICSharpCode.SharpDevelop.Widgets\Project\ICSharpCode.SharpDevelop.Widgets.csproj" Private="false" />
-    <ProjectReference Include="..\WpfDesign\WpfDesign.AddIn\WpfDesign.AddIn.csproj" Private="false" />
+    <!-- Private="true" (the default - not "false" like the other addin-infra references above):
+         AvalonEditViewContent.ToolsContent directly evaluates ICSharpCode.WpfDesign.AddIn.
+         WpfToolbox.Instance (a hard compile-time reference, not reflection), so this addin's own
+         output folder genuinely needs ICSharpCode.WpfDesign.AddIn.dll (and its own Designer/
+         XamlDom/core dependencies) copied locally - AssemblyLocator.cs's AppDomain.AssemblyResolve
+         hook only re-resolves assemblies already loaded once elsewhere, it doesn't search other
+         addins' folders on demand. WpfDesign.AddIn.csproj's own "WpfDesign.addin" manifest is
+         separately prevented from tagging along via CopyToOutputDirectory (see its own comment),
+         so this doesn't reintroduce the duplicate-AddInTree-identity problem in unrelated addins'
+         folders (PackageManagement, CodeCoverage, ILSpyAddIn) that never reference this project. -->
+    <ProjectReference Include="..\WpfDesign\WpfDesign.AddIn\WpfDesign.AddIn.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />

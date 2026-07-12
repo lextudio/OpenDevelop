@@ -22,6 +22,14 @@
          resolve NU1605 downgrade-treated-as-error. -->
     <PackageReference Include="System.Windows.Extensions" Version="11.0.0-preview.5.26302.115" />
     <PackageReference Include="System.IO.Packaging" Version="11.0.0-preview.5.26302.115" />
+    <!-- Without this, Microsoft.CodeAnalysis.CSharp.Features (Roslyn) only floors this app's own
+         resolution of System.Composition.AttributedModel at 9.0.0, while externals/ilspy/
+         ICSharpCode.ILSpyX (used by ILSpyAddIn, hosted in-process) pins it exactly to 10.0.8. Two
+         different versions of the same simple-named assembly loaded into one process throws
+         FileLoadException ("manifest definition does not match the assembly reference") the
+         moment ILSpyAddIn.dll loads - align this app's own resolution to the same version so only
+         one copy is ever in play. -->
+    <PackageReference Include="System.Composition.AttributedModel" Version="10.0.8" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\Libraries\AvalonDock\source\Components\AvalonDock.Core\AvalonDock.Core.csproj" />

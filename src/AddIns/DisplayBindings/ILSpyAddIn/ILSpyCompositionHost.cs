@@ -36,6 +36,7 @@ using System.Reflection;
 
 using ICSharpCode.ILSpy.AppEnv;
 using ICSharpCode.ILSpy.Docking;
+using ICSharpCode.ILSpy.Util;
 using ICSharpCode.ILSpyX.Analyzers;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -127,6 +128,12 @@ namespace ICSharpCode.ILSpy
 			// [Export]/BindExports, so DecompilerTextView's constructor (which resolves it
 			// unconditionally) needs it registered explicitly.
 			services.AddSingleton<MainWindow>();
+
+			// SettingsService isn't [Export]-attributed either (real App.xaml.cs constructs it
+			// manually and registers the instance - see App.xaml.cs's InitializeDependencyInjection).
+			// Needed transitively by [Export][Shared] parts like LanguageService/DockWorkspace/
+			// AssemblyTreeModel.
+			services.AddSingleton(new SettingsService());
 
 			var serviceProvider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = false });
 
