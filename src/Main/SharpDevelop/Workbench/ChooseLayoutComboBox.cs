@@ -35,6 +35,8 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		public ChooseLayoutComboBox()
 		{
+			MinWidth = 120;
+			Width = 150;
 			LayoutConfiguration.LayoutChanged += new EventHandler(LayoutChanged);
 			SD.ResourceService.LanguageChanged += new EventHandler(ResourceService_LanguageChanged);
 			RecreateItems();

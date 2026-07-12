@@ -84,6 +84,7 @@ namespace ICSharpCode.Core.Presentation
 			{ "Icons.16x16.FindInFiles", "Resources/VS2017/FindinFiles/FindinFiles_16x.png" },
 			{ "Icons.16x16.BrowserRefresh", "Resources/VS2017/Refresh/Refresh_16x.png" },
 			{ "Icons.16x16.PropertiesIcon", "Resources/VS2017/Property/Property_16x.png" },
+			{ "ProjectBrowser.Toolbar.ShowHiddenFiles", "Resources/VS2017/ShowAllFiles/ShowAllFiles_16x.png" },
 			{ "Icons.16x16.NewFolderIcon", "Resources/VS2017/Folder/Folder_16x.png" },
 			{ "Icons.16x16.ClosedFolderBitmap", "Resources/VS2017/Folder/Folder_16x.png" },
 			{ "Icons.16x16.OpenFolderBitmap", "Resources/VS2017/FolderOpen/FolderOpen_16x.png" },

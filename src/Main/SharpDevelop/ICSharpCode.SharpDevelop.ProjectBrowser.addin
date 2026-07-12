@@ -41,7 +41,7 @@
   <Path name="/SharpDevelop/Workbench/Pads">
     <Pad id="ProjectBrowser"
          category="Main"
-         title="Project Browser"
+         title="Projects"
          class="ICSharpCode.SharpDevelop.Services.ProjectBrowserPad"
          defaultPosition="Right" />
   </Path>

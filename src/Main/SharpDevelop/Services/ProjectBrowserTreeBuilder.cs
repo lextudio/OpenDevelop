@@ -17,7 +17,7 @@ namespace ICSharpCode.SharpDevelop.Services;
 
 internal static class ProjectBrowserTreeBuilder
 {
-    public static ProjectBrowserNodeModel? BuildSolutionTree(ISolution? solution)
+    public static ProjectBrowserNodeModel? BuildSolutionTree(ISolution? solution, bool showAllFiles)
     {
         if (solution is null)
         {
@@ -34,13 +34,13 @@ internal static class ProjectBrowserTreeBuilder
 
         foreach (var project in solution.Projects.CreateSnapshot().OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
         {
-            root.Children.Add(BuildProjectNode(project));
+            root.Children.Add(BuildProjectNode(project, showAllFiles));
         }
 
         return root;
     }
 
-    private static ProjectBrowserNodeModel BuildProjectNode(IProject project)
+    private static ProjectBrowserNodeModel BuildProjectNode(IProject project, bool showAllFiles)
     {
         var projectNode = new ProjectBrowserNodeModel(
             project.Name,
@@ -54,15 +54,22 @@ internal static class ProjectBrowserTreeBuilder
         var cpsTree = new SharpDevelopProjectTreeProvider(project).BuildTree();
         foreach (var child in cpsTree.Children)
         {
-            projectNode.Children.Add(ConvertProjectTreeNode(child, project.FileName.ToString()));
+            var childNode = ConvertProjectTreeNode(child, project.FileName.ToString(), showAllFiles);
+            if (childNode != null) {
+                projectNode.Children.Add(childNode);
+            }
         }
 
         SortChildren(projectNode);
         return projectNode;
     }
     
-    private static ProjectBrowserNodeModel ConvertProjectTreeNode(IProjectTree tree, string projectPath)
+    private static ProjectBrowserNodeModel? ConvertProjectTreeNode(IProjectTree tree, string projectPath, bool showAllFiles)
     {
+        if (!showAllFiles && tree.Flags.Contains(ProjectTreeFlags.Common.VisibleOnlyInShowAllFiles)) {
+            return null;
+        }
+        
         var node = new ProjectBrowserNodeModel(
             tree.Caption,
             tree.FilePath ?? string.Empty,
@@ -76,7 +83,10 @@ internal static class ProjectBrowserTreeBuilder
         
         foreach (var child in tree.Children)
         {
-            node.Children.Add(ConvertProjectTreeNode(child, projectPath));
+            var childNode = ConvertProjectTreeNode(child, projectPath, showAllFiles);
+            if (childNode != null) {
+                node.Children.Add(childNode);
+            }
         }
         
         SortChildren(node);

@@ -10,11 +10,31 @@ internal partial class ProjectBrowserView : UserControl
     public ProjectBrowserView()
     {
         InitializeComponent();
+        DataContextChanged += ProjectBrowserViewDataContextChanged;
     }
 
     public object InitiallyFocusedControl => treeView;
 
     private ProjectBrowserViewModel ViewModel => (ProjectBrowserViewModel)DataContext;
+    
+    private void ProjectBrowserViewDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.OldValue is ProjectBrowserViewModel oldViewModel) {
+            oldViewModel.CollapseAllRequested -= ViewModelCollapseAllRequested;
+        }
+        if (e.NewValue is ProjectBrowserViewModel newViewModel) {
+            newViewModel.CollapseAllRequested += ViewModelCollapseAllRequested;
+        }
+    }
+    
+    private void ViewModelCollapseAllRequested(object sender, System.EventArgs e)
+    {
+        foreach (var item in treeView.Items) {
+            if (treeView.ItemContainerGenerator.ContainerFromItem(item) is TreeViewItem treeViewItem) {
+                Collapse(treeViewItem);
+            }
+        }
+    }
 
     private void TreeViewOnSelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
@@ -56,5 +76,15 @@ internal partial class ProjectBrowserView : UserControl
         }
 
         return null;
+    }
+    
+    private static void Collapse(TreeViewItem item)
+    {
+        item.IsExpanded = false;
+        foreach (var child in item.Items) {
+            if (item.ItemContainerGenerator.ContainerFromItem(child) is TreeViewItem childItem) {
+                Collapse(childItem);
+            }
+        }
     }
 }
