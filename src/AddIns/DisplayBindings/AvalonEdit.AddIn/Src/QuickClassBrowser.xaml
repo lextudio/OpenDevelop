@@ -20,17 +20,23 @@
 	</UserControl.Resources>
 	<Grid Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
 		<Grid.ColumnDefinitions>
+			<ColumnDefinition Width="Auto"/>
 			<ColumnDefinition Width="0.5*"/>
 			<ColumnDefinition Width="0.5*"/>
 		</Grid.ColumnDefinitions>
-		<ComboBox Name="classComboBox"
+		<ComboBox Name="targetFrameworkComboBox"
 		          Grid.Column="0"
+		          MinWidth="110"
+		          Margin="0,0,4,1"
+		          SelectionChanged="TargetFrameworkComboBoxSelectionChanged"/>
+		<ComboBox Name="classComboBox"
+		          Grid.Column="1"
 		          Margin="0,0,4,1"
 		          ItemTemplate="{StaticResource comboBoxItemTemplate}"
 		          SelectionChanged="classComboBoxSelectionChanged"
 		          DropDownClosed="ComboBox_DropDownClosed"/>
 		<ComboBox Name="membersComboBox"
-		          Grid.Column="1"
+		          Grid.Column="2"
 		          Margin="0,0,0,1"
 		          ItemTemplate="{StaticResource comboBoxItemTemplate}"
 		          SelectionChanged="membersComboBoxSelectionChanged"

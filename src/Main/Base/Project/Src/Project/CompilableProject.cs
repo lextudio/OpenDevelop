@@ -191,9 +191,17 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// </summary>
 		public override FileName OutputAssemblyFullPath {
 			get {
-				string outputPath = GetEvaluatedProperty("OutputPath") ?? "";
+				string outputPath = GetActiveTargetFrameworkProperty("OutputPath") ?? "";
 				return Directory.CombineDirectory(outputPath).CombineFile(AssemblyName + GetExtension(OutputType));
 			}
+		}
+
+		string GetActiveTargetFrameworkProperty(string propertyName)
+		{
+			var targetFramework = ProjectTargetFrameworkService.GetActiveTargetFramework(this);
+			return string.IsNullOrEmpty(targetFramework)
+				? GetEvaluatedProperty(propertyName)
+				: GetEvaluatedProperty(propertyName, targetFramework);
 		}
 		
 		/// <summary>

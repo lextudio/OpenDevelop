@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Windows.Media;
 
 using ICSharpCode.Core;
+using ICSharpCode.Core.Presentation;
 using ICSharpCode.SharpDevelop.Project;
 using Microsoft.VisualStudio.ProjectSystem;
 
@@ -53,7 +54,11 @@ internal sealed class ProjectBrowserNodeModel
 
     public ImageSource Icon => ProjectBrowserIconService.GetIcon(this);
 
-    public ImageSource OverlayIcon => ServiceSingleton.ServiceProvider.GetService<IProjectBrowserOverlayService>()?.GetOverlay(FullPath, IsDirectory);
+    public ImageSource LinkedFileOverlayIcon => Kind == ProjectBrowserNodeKind.LinkedFile
+        ? PresentationResourceService.GetBitmapSource("ProjectBrowser.LinkedFileOverlay")
+        : null;
+
+    public ImageSource SourceControlOverlayIcon => ServiceSingleton.ServiceProvider.GetService<IProjectBrowserOverlayService>()?.GetOverlay(FullPath, IsDirectory);
 
     public string OverlayStatusKey => ServiceSingleton.ServiceProvider.GetService<IProjectBrowserOverlayService>()?.GetOverlayKey(FullPath, IsDirectory) ?? string.Empty;
 

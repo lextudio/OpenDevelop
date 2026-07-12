@@ -7,11 +7,14 @@ namespace ICSharpCode.UnitTesting.Mtp
 		readonly ITestProject project;
 		readonly MtpTestNode node;
 
-		public MtpTestMethod(ITestProject project, MtpTestNode node)
+		public MtpTestMethod(ITestProject project, MtpTestNode node, string targetFramework)
 		{
 			this.project = project;
 			this.node = node;
+			TargetFramework = targetFramework;
 		}
+
+		public string TargetFramework { get; }
 
 		public override ITestProject ParentProject {
 			get { return project; }

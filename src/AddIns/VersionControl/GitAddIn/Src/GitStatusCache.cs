@@ -186,7 +186,7 @@ namespace ICSharpCode.GitAddIn
 				return status;
 			}
 			if (entries == null)
-				entries = new Dictionary<string, GitStatusSet>();
+				entries = new Dictionary<string, GitStatusSet>(StringComparer.OrdinalIgnoreCase);
 			string entry;
 			string subpath;
 			int pos = path.IndexOf('/');

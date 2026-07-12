@@ -103,6 +103,7 @@ namespace ICSharpCode.Core.Presentation
 			{ "ILSpy", "Assembly" }
 		};
 		static readonly IReadOnlyDictionary<string, string> xamlResourceMap = new Dictionary<string, string> {
+			{ "ProjectBrowser.LinkedFileOverlay", "Resources/VS2017/Shortcut/Shortcut_cyanOverlay_16x.xaml" },
 			// QuickClassBrowser icons (RoslynSymbolIcons).
 			{ "Icons.16x16.Class", "Resources/VS2017/Class/Class_16x.xaml" },
 			{ "Icons.16x16.Interface", "Resources/VS2017/Interface/Interface_16x.xaml" },

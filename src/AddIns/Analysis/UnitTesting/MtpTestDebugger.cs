@@ -24,19 +24,18 @@ namespace ICSharpCode.UnitTesting
 
 		protected override ProcessStartInfo GetProcessStartInfo(IEnumerable<ITest> selectedTests)
 		{
-			var fullyQualifiedNames = CollectFullyQualifiedNames(selectedTests);
-			var assembly = testProject.Project.OutputAssemblyFullPath;
+			var methods = testProject.GetTestMethodsForSelectedTests(selectedTests);
+			var targetFramework = methods.Select(method => method.TargetFramework).Distinct(StringComparer.OrdinalIgnoreCase).Single();
+			var fullyQualifiedNames = methods.Select(method => method.FullyQualifiedName).ToList();
+			var assembly = MtpTestProject.ResolveAssemblyDll(testProject.Project, targetFramework);
 
 			var info = new ProcessStartInfo {
 				WorkingDirectory = testProject.Project.Directory ?? Environment.CurrentDirectory
 			};
 
 			if (assembly != null && File.Exists(assembly)) {
-				// MTP test projects build to a self-contained apphost exe - run it directly (no
-				// vstest.console wrapper) with xUnit v3's own filter switches, one --filter-method
-				// per selected test, rather than a single vstest-style "--TestCases:a,b,c" argument.
-				info.FileName = assembly;
-				info.Arguments = string.Join(" ",
+				info.FileName = "dotnet";
+				info.Arguments = "exec \"" + assembly + "\" " + string.Join(" ",
 					fullyQualifiedNames.Select(name => "--filter-method \"" + name + "\""));
 				info.WorkingDirectory = Path.GetDirectoryName(assembly);
 			} else {

@@ -13,7 +13,8 @@ namespace ICSharpCode.UnitTesting
 {
 	public class MtpTestProject : TestProjectBase
 	{
-		IReadOnlyList<MtpTestNode> discoveredNodes = Array.Empty<MtpTestNode>();
+		IReadOnlyDictionary<string, IReadOnlyList<MtpTestNode>> discoveredNodesByTargetFramework
+			= new Dictionary<string, IReadOnlyList<MtpTestNode>>(StringComparer.OrdinalIgnoreCase);
 		DateTime? lastBuildTime;
 		bool discoveryInProgress;
 
@@ -48,13 +49,17 @@ namespace ICSharpCode.UnitTesting
 		async Task DiscoverTestsAsync()
 		{
 			try {
-				var assemblyPath = ResolveAssemblyDll(Project);
-				if (assemblyPath == null || !File.Exists(assemblyPath))
-					return;
+				var discovered = new Dictionary<string, IReadOnlyList<MtpTestNode>>(StringComparer.OrdinalIgnoreCase);
+				foreach (var targetFramework in GetTargetFrameworks()) {
+					var assemblyPath = ResolveAssemblyDll(Project, targetFramework);
+					if (assemblyPath == null || !File.Exists(assemblyPath))
+						continue;
 
-				await using var server = await MtpServerProcess.StartAsync(assemblyPath, Path.GetDirectoryName(assemblyPath), default);
-				await server.InitializeAsync(default);
-				discoveredNodes = await server.DiscoverTestsAsync(default);
+					await using var server = await MtpServerProcess.StartAsync(assemblyPath, Path.GetDirectoryName(assemblyPath), default);
+					await server.InitializeAsync(default);
+					discovered[targetFramework] = await server.DiscoverTestsAsync(default);
+				}
+				discoveredNodesByTargetFramework = discovered;
 				PopulateTree();
 			} catch (Exception ex) {
 				SD.Log.Warn("MTP discovery failed: " + ex.Message);
@@ -71,7 +76,11 @@ namespace ICSharpCode.UnitTesting
 			var collection = base.NestedTestCollection;
 			collection.Clear();
 
-			MtpTestTreeBuilder.BuildTree(this, collection, discoveredNodes);
+			foreach (var pair in discoveredNodesByTargetFramework.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)) {
+				var targetFramework = new MtpTargetFramework(this, pair.Key);
+				MtpTestTreeBuilder.BuildTree(this, targetFramework.NestedTests, pair.Value, pair.Key);
+				collection.Add(targetFramework);
+			}
 		}
 
 		void OnBuildFinished(object sender, BuildEventArgs args)
@@ -89,10 +98,12 @@ namespace ICSharpCode.UnitTesting
 
 		DateTime? GetAssemblyLastWriteTime()
 		{
-			var path = Project.OutputAssemblyFullPath;
-			if (path != null && File.Exists(path))
-				return File.GetLastWriteTime(path);
-			return null;
+			return GetTargetFrameworks()
+				.Select(targetFramework => ResolveAssemblyDll(Project, targetFramework))
+				.Where(path => path != null && File.Exists(path))
+				.Select(path => (DateTime?)File.GetLastWriteTime(path))
+				.DefaultIfEmpty(null)
+				.Max();
 		}
 
 		public override ITestRunner CreateTestRunner(TestExecutionOptions options)
@@ -112,18 +123,22 @@ namespace ICSharpCode.UnitTesting
 			// Match the incoming result back to the MtpTestMethod node it belongs to by display
 			// name (MtpTestRunner builds the SD TestResult's name from the same MtpTestNode.DisplayName
 			// that MtpTestMethod's own DisplayName came from at discovery time) and apply it.
-			var method = FindTestMethod(NestedTestCollection, result.Name);
+			var separator = result.Name.IndexOf('\0');
+			var targetFramework = separator >= 0 ? result.Name.Substring(0, separator) : null;
+			var displayName = separator >= 0 ? result.Name.Substring(separator + 1) : result.Name;
+			var method = FindTestMethod(NestedTestCollection, targetFramework, displayName);
 			if (method != null)
 				method.SetResult(result.ResultType);
 		}
 
-		static MtpTestMethod FindTestMethod(IEnumerable<ITest> tests, string name)
+		static MtpTestMethod FindTestMethod(IEnumerable<ITest> tests, string targetFramework, string name)
 		{
 			foreach (var test in tests) {
-				if (test is MtpTestMethod method && method.DisplayName == name)
+				if (test is MtpTestMethod method && method.DisplayName == name
+				    && (targetFramework == null || string.Equals(method.TargetFramework, targetFramework, StringComparison.OrdinalIgnoreCase)))
 					return method;
 				if (test.NestedTests != null) {
-					var found = FindTestMethod(test.NestedTests, name);
+					var found = FindTestMethod(test.NestedTests, targetFramework, name);
 					if (found != null)
 						return found;
 				}
@@ -156,6 +171,23 @@ namespace ICSharpCode.UnitTesting
 			return nodes;
 		}
 
+		internal IReadOnlyList<MtpTestMethod> GetTestMethodsForSelectedTests(IEnumerable<ITest> selectedTests)
+		{
+			var methods = new List<MtpTestMethod>();
+			CollectTestMethods(selectedTests, methods);
+			return methods;
+		}
+
+		void CollectTestMethods(IEnumerable<ITest> tests, List<MtpTestMethod> results)
+		{
+			foreach (var test in tests) {
+				if (test is MtpTestMethod method)
+					results.Add(method);
+				else if (test.NestedTests != null)
+					CollectTestMethods(test.NestedTests, results);
+			}
+		}
+
 		void CollectTestNodes(IEnumerable<ITest> tests, List<MtpTestNode> results)
 		{
 			foreach (var test in tests) {
@@ -174,8 +206,21 @@ namespace ICSharpCode.UnitTesting
 		// OutputType's Exe/WinExe/.exe-or-apphost naming convention) can point at a file that was
 		// never built. The managed assembly next to it is always "<AssemblyName>.dll", and that's
 		// what `dotnet exec`/MtpServerProcess.StartAsync needs.
-		public static string ResolveAssemblyDll(IProject project)
+		public IReadOnlyList<string> GetTargetFrameworks()
 		{
+			var frameworks = ProjectTargetFrameworkService.GetTargetFrameworks(Project);
+			return frameworks.Count == 0 ? new[] { string.Empty } : frameworks;
+		}
+
+		public static string ResolveAssemblyDll(IProject project, string targetFramework)
+		{
+			if (project is MSBuildBasedProject msbuildProject && !string.IsNullOrEmpty(targetFramework)) {
+				var outputPath = msbuildProject.GetEvaluatedProperty("OutputPath", targetFramework);
+				var assemblyName = msbuildProject.GetEvaluatedProperty("AssemblyName", targetFramework);
+				if (!string.IsNullOrEmpty(outputPath) && !string.IsNullOrEmpty(assemblyName))
+					return Path.Combine(project.Directory.ToString(), outputPath, assemblyName + ".dll");
+			}
+
 			var dir = Path.GetDirectoryName(project.OutputAssemblyFullPath?.ToString());
 			return dir != null ? Path.Combine(dir, project.AssemblyName + ".dll") : project.OutputAssemblyFullPath;
 		}

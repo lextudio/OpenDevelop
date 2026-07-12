@@ -49,7 +49,10 @@ namespace ICSharpCode.GitAddIn
 				fileName = Path.GetDirectoryName(fileName);
 			DirectoryInfo info = new DirectoryInfo(fileName);
 			while (info != null) {
-				if (Directory.Exists(Path.Combine(info.FullName, ".git")))
+				var gitEntry = Path.Combine(info.FullName, ".git");
+				// Normal working copies use a .git directory. Submodules and linked worktrees
+				// use a .git text file that points at the real repository metadata directory.
+				if (Directory.Exists(gitEntry) || File.Exists(gitEntry))
 					return info.FullName;
 				info = info.Parent;
 			}

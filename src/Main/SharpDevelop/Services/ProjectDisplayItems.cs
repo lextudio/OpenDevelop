@@ -133,5 +133,6 @@ namespace ICSharpCode.SharpDevelop.Services
 		{
 			return path.Replace(Path.DirectorySeparatorChar, '\\').Replace('/', '\\');
 		}
+
 	}
 }

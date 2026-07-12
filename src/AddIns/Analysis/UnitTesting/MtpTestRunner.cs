@@ -26,17 +26,26 @@ namespace ICSharpCode.UnitTesting
 			TextWriter output,
 			CancellationToken cancellationToken)
 		{
-			var testNodes = testProject.GetTestNodesForSelectedTests(selectedTests);
-			if (testNodes.Count == 0) {
+			var testMethods = testProject.GetTestMethodsForSelectedTests(selectedTests);
+			if (testMethods.Count == 0) {
 				output.WriteLine("No tests to run.");
 				return;
 			}
 
-			var assemblyPath = MtpTestProject.ResolveAssemblyDll(testProject.Project);
+			foreach (var group in testMethods.GroupBy(method => method.TargetFramework, StringComparer.OrdinalIgnoreCase)) {
+				await RunTargetFrameworkAsync(group.Key, group.ToList(), output, cancellationToken);
+			}
+		}
+
+		async Task RunTargetFrameworkAsync(string targetFramework, IReadOnlyList<MtpTestMethod> testMethods, TextWriter output, CancellationToken cancellationToken)
+		{
+			var testNodes = testMethods.Select(method => method.Node).ToList();
+			var assemblyPath = MtpTestProject.ResolveAssemblyDll(testProject.Project, targetFramework);
 			if (assemblyPath == null || !File.Exists(assemblyPath)) {
 				output.WriteLine("Test assembly not found: " + assemblyPath);
 				return;
 			}
+			output.WriteLine("Target framework: " + targetFramework);
 
 			// A fresh MtpServerProcess per run (rather than a long-lived, IDE-session singleton
 			// like the old VsTestRunAdapter.Instance) - this test host process is started, run to
@@ -47,7 +56,7 @@ namespace ICSharpCode.UnitTesting
 			await server.InitializeAsync(cancellationToken);
 
 			IReadOnlyList<MtpTestNode> results;
-			var allTestsSelected = testNodes.Count == CountAllMethods(testProject.NestedTests);
+			var allTestsSelected = testNodes.Count == CountAllMethodsForTargetFramework(testProject.NestedTests, targetFramework);
 			if (allTestsSelected) {
 				results = await server.RunTestsAsync(cancellationToken);
 			} else {
@@ -63,7 +72,7 @@ namespace ICSharpCode.UnitTesting
 			}
 
 			foreach (var node in results.Where(n => n.NodeType == "action")) {
-				var converted = new TestResult(node.DisplayName) {
+				var converted = new TestResult(targetFramework + "\0" + node.DisplayName) {
 					Message = node.ErrorMessage,
 					ResultType = ToResultType(node.ExecutionState)
 				};
@@ -71,11 +80,28 @@ namespace ICSharpCode.UnitTesting
 				// Echo each result to the run's output writer (the UnitTesting output pad) - without
 				// this the pad stayed completely empty after a run, with no textual record of what
 				// ran or how it went.
-				output.WriteLine("{0} {1}", converted.Name, converted.ResultType);
+				output.WriteLine("{0} {1}", node.DisplayName, converted.ResultType);
 				if (!string.IsNullOrEmpty(converted.Message))
 					output.WriteLine(converted.Message);
 
 				OnTestFinished(new TestFinishedEventArgs(converted));
+			}
+		}
+
+		static int CountAllMethodsForTargetFramework(IEnumerable<ITest> tests, string targetFramework)
+		{
+			return tests.SelectMany(test => EnumerateMethods(new[] { test }))
+				.Count(method => string.Equals(method.TargetFramework, targetFramework, StringComparison.OrdinalIgnoreCase));
+		}
+
+		static IEnumerable<MtpTestMethod> EnumerateMethods(IEnumerable<ITest> tests)
+		{
+			foreach (var test in tests) {
+				if (test is MtpTestMethod method)
+					yield return method;
+				else if (test.NestedTests != null)
+					foreach (var nested in EnumerateMethods(test.NestedTests))
+						yield return nested;
 			}
 		}
 

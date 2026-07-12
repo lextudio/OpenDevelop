@@ -14,11 +14,16 @@
                     <Image Width="16"
                            Height="16"
                            Source="{Binding Icon}" />
-                    <Image Width="8"
-                           Height="8"
+                    <Image Width="16"
+                           Height="16"
                            HorizontalAlignment="Right"
                            VerticalAlignment="Bottom"
-                           Source="{Binding OverlayIcon}"
+                           Source="{Binding LinkedFileOverlayIcon}" />
+                    <Image Width="8"
+                           Height="8"
+                           HorizontalAlignment="Left"
+                           VerticalAlignment="Bottom"
+                           Source="{Binding SourceControlOverlayIcon}"
                            automation:AutomationProperties.AutomationId="{Binding OverlayStatusKey}" />
                 </Grid>
                 <TextBlock Text="{Binding Name}" />

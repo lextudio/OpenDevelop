@@ -9,7 +9,8 @@ namespace ICSharpCode.UnitTesting.Mtp
 		public static void BuildTree(
 			MtpTestProject project,
 			TestCollection rootCollection,
-			IEnumerable<MtpTestNode> nodes)
+			IEnumerable<MtpTestNode> nodes,
+			string targetFramework)
 		{
 			if (project == null)
 				throw new ArgumentNullException("project");
@@ -32,7 +33,7 @@ namespace ICSharpCode.UnitTesting.Mtp
 
 				var testClass = new MtpTestClass(project, shortClassName);
 				foreach (var node in classGroup.OrderBy(n => n.DisplayName)) {
-					var method = new MtpTestMethod(project, node);
+					var method = new MtpTestMethod(project, node, targetFramework);
 					testClass.NestedTests.Add(method);
 				}
 

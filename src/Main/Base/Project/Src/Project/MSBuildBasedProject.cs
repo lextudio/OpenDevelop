@@ -190,14 +190,22 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		public IReadOnlyList<EvaluatedProjectItem> GetEvaluatedProjectItems()
 		{
-			using (var c = OpenCurrentConfiguration()) {
-				return c.Project.AllEvaluatedItems
-					.Select(item => new EvaluatedProjectItem(
-						item.ItemType,
-						item.EvaluatedInclude,
-						item.DirectMetadata.ToDictionary(metadata => metadata.Name, metadata => metadata.EvaluatedValue, MSBuildInternals.PropertyNameComparer)))
-					.ToArray();
+			var targetFramework = ProjectTargetFrameworkService.GetActiveTargetFramework(this);
+			using (var c = string.IsNullOrEmpty(targetFramework)
+				? OpenCurrentConfiguration()
+				: OpenConfiguration(null, null, targetFramework)) {
+				return GetEvaluatedProjectItems(c.Project);
 			}
+		}
+
+		static EvaluatedProjectItem[] GetEvaluatedProjectItems(MSBuild.Project project)
+		{
+			return project.AllEvaluatedItems
+				.Select(item => new EvaluatedProjectItem(
+					item.ItemType,
+					item.EvaluatedInclude,
+					item.DirectMetadata.ToDictionary(metadata => metadata.Name, metadata => metadata.EvaluatedValue, MSBuildInternals.PropertyNameComparer)))
+				.ToArray();
 		}
 		
 		public override IEnumerable<ReferenceProjectItem> ResolveAssemblyReferences(CancellationToken cancellationToken)
@@ -286,6 +294,15 @@ namespace ICSharpCode.SharpDevelop.Project
 		public string GetEvaluatedProperty(string propertyName)
 		{
 			using (var c = OpenCurrentConfiguration()) {
+				return c.Project.GetPropertyValue(propertyName);
+			}
+		}
+
+		public string GetEvaluatedProperty(string propertyName, string targetFramework)
+		{
+			using (var c = string.IsNullOrEmpty(targetFramework)
+				? OpenCurrentConfiguration()
+				: OpenConfiguration(null, null, targetFramework)) {
 				return c.Project.GetPropertyValue(propertyName);
 			}
 		}
@@ -434,7 +451,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// This method is thread-safe: calling it locks the SyncRoot. You have to dispose
 		/// the ConfiguredProject instance to unlock the SyncRoot.
 		/// </summary>
-		ConfiguredProject OpenConfiguration(string configuration, string platform)
+		ConfiguredProject OpenConfiguration(string configuration, string platform, string targetFramework = null)
 		{
 			bool lockTaken = false;
 			try {
@@ -448,7 +465,8 @@ namespace ICSharpCode.SharpDevelop.Project
 				if (platform == null)
 					platform = this.ActiveConfiguration.Platform;
 				
-				bool openCurrentConfiguration = new ConfigurationAndPlatform(configuration, platform) == this.ActiveConfiguration;
+				bool openCurrentConfiguration = string.IsNullOrEmpty(targetFramework)
+					&& new ConfigurationAndPlatform(configuration, platform) == this.ActiveConfiguration;
 				
 				if (currentlyOpenProject != null && openCurrentConfiguration) {
 					// use currently open project
@@ -462,6 +480,8 @@ namespace ICSharpCode.SharpDevelop.Project
 					globalProps.AddRange(msbuildEngine.GlobalBuildProperties);
 				globalProps["Configuration"] = configuration;
 				globalProps["Platform"] = platform;
+				if (!string.IsNullOrEmpty(targetFramework))
+					globalProps["TargetFramework"] = targetFramework;
 				MSBuild.Project project = MSBuildInternals.LoadProject(MSBuildProjectCollection, projectFile, globalProps);
 				if (openCurrentConfiguration)
 					currentlyOpenProject = project;

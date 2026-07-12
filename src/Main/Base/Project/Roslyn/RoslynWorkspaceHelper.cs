@@ -15,6 +15,7 @@ using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Project;
+using ICSharpCode.SharpDevelop.LanguageServices;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
@@ -37,6 +38,12 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 		/// the buffer matches disk again (e.g. after a save) so stale overrides don't linger forever.
 		/// </summary>
 		static readonly Dictionary<string, string> liveOverrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+		public static void InvalidateProject(IProject project)
+		{
+			if (project != null)
+				dirtyProjects.Add(project);
+		}
 
 		public static Solution GetSolution()
 		{
@@ -85,8 +92,11 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 			SubscribeToItemChanges(project);
 
 			if (dirtyProjects.Remove(project)) {
-				SyncReferences(project, projectId);
-				SyncDocumentList(project, projectId);
+				var targetFramework = ProjectTargetFrameworkService.GetActiveTargetFramework(project);
+				var snapshot = LanguageServiceProjectSnapshot.FromProject(project, targetFramework);
+				SyncReferences(project, projectId, snapshot);
+				SyncCompilationOptions(projectId, snapshot);
+				SyncDocumentList(projectId, snapshot);
 			} else {
 				SyncOpenDocumentText(projectId);
 			}
@@ -94,16 +104,12 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 
 		/// <summary>Full rescan of the project's Compile items: adds new files, removes deleted
 		/// ones, and updates content for any whose disk/live-buffer text no longer matches.</summary>
-		static void SyncDocumentList(IProject project, ProjectId projectId)
+		static void SyncDocumentList(ProjectId projectId, LanguageServiceProjectSnapshot snapshot)
 		{
 			var currentProject = workspace.CurrentSolution.GetProject(projectId);
 			var existingDocsByPath = currentProject.Documents.ToDictionary(d => d.FilePath, StringComparer.OrdinalIgnoreCase);
 
-			foreach (var item in project.GetItemsOfType(ItemType.Compile)) {
-				var fileItem = item as FileProjectItem;
-				if (fileItem == null)
-					continue;
-				string path = fileItem.FileName;
+			foreach (var path in snapshot.DocumentFileNames) {
 				if (!File.Exists(path))
 					continue;
 
@@ -127,7 +133,7 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 					}
 				} else {
 					workspace.AddDocument(DocumentInfo.Create(
-						DocumentId.CreateNewId(projectId), Path.GetFileName(path),
+						Microsoft.CodeAnalysis.DocumentId.CreateNewId(projectId), Path.GetFileName(path),
 						filePath: path, loader: TextLoader.From(TextAndVersion.Create(SourceText.From(text), VersionStamp.Create()))));
 				}
 			}
@@ -170,7 +176,7 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 		/// non-.csproj/non-loaded projects) still goes through GetMetadataReferences as a file-backed
 		/// MetadataReference, same as before.
 		/// </summary>
-		static void SyncReferences(IProject project, ProjectId projectId)
+		static void SyncReferences(IProject project, ProjectId projectId, LanguageServiceProjectSnapshot snapshot)
 		{
 			var desiredProjectRefs = new HashSet<ProjectId>();
 			var referencedProjectOutputs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -198,7 +204,14 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 				workspace.TryApplyChanges(solution);
 			}
 
-			var desiredMetadataRefs = GetMetadataReferences(project, referencedProjectOutputs);
+			var desiredMetadataRefs = GetMetadataReferences(project, referencedProjectOutputs).ToList();
+			var desiredMetadataPaths = new HashSet<string>(
+				desiredMetadataRefs.OfType<PortableExecutableReference>().Select(reference => reference.FilePath),
+				StringComparer.OrdinalIgnoreCase);
+			foreach (var path in snapshot.MetadataReferenceFileNames) {
+				if (File.Exists(path) && desiredMetadataPaths.Add(path))
+					desiredMetadataRefs.Add(MetadataReference.CreateFromFile(path));
+			}
 			currentProject = workspace.CurrentSolution.GetProject(projectId);
 			var currentMetadataRefPaths = new HashSet<string>(
 				currentProject.MetadataReferences.OfType<PortableExecutableReference>().Select(r => r.FilePath),
@@ -210,6 +223,18 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 				workspace.TryApplyChanges(workspace.CurrentSolution
 					.WithProjectMetadataReferences(projectId, desiredMetadataRefs));
 			}
+		}
+
+		static void SyncCompilationOptions(ProjectId projectId, LanguageServiceProjectSnapshot snapshot)
+		{
+			var languageVersion = LanguageVersion.Default;
+			if (!string.IsNullOrWhiteSpace(snapshot.LanguageVersion))
+				LanguageVersionFacts.TryParse(snapshot.LanguageVersion, out languageVersion);
+
+			var project = workspace.CurrentSolution.GetProject(projectId);
+			var parseOptions = new CSharpParseOptions(languageVersion, preprocessorSymbols: snapshot.PreprocessorSymbols);
+			var solution = project.Solution.WithProjectParseOptions(projectId, parseOptions);
+			workspace.TryApplyChanges(solution);
 		}
 
 		static MetadataReference[] GetMetadataReferences(IProject project, ICollection<string> excludePaths)

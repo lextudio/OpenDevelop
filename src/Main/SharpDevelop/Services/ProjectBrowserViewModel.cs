@@ -45,6 +45,7 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
         SD.ProjectService.SolutionClosed += ProjectServiceChanged;
         SD.ProjectService.ProjectItemAdded += ProjectServiceChanged;
         SD.ProjectService.ProjectItemRemoved += ProjectServiceChanged;
+        ProjectTargetFrameworkService.ActiveTargetFrameworkChanged += ProjectTargetFrameworkChanged;
         if (overlayService != null) {
             overlayService.Invalidated += ProjectBrowserOverlayInvalidated;
         }
@@ -119,9 +120,15 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
         SD.ProjectService.SolutionClosed -= ProjectServiceChanged;
         SD.ProjectService.ProjectItemAdded -= ProjectServiceChanged;
         SD.ProjectService.ProjectItemRemoved -= ProjectServiceChanged;
+        ProjectTargetFrameworkService.ActiveTargetFrameworkChanged -= ProjectTargetFrameworkChanged;
         if (overlayService != null) {
             overlayService.Invalidated -= ProjectBrowserOverlayInvalidated;
         }
+    }
+
+    private void ProjectTargetFrameworkChanged(object sender, ProjectTargetFrameworkChangedEventArgs e)
+    {
+        RefreshSolutionTree();
     }
 
     void IProjectBrowserHost.RefreshSolutionTree()

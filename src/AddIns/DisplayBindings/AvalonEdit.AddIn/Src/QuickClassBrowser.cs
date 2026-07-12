@@ -26,11 +26,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows;
 
 using ICSharpCode.AvalonEdit.CodeCompletion;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Roslyn;
+using ICSharpCode.SharpDevelop.Project;
 using Microsoft.CodeAnalysis;
 using TextLocation = ICSharpCode.AvalonEdit.Document.TextLocation;
 
@@ -144,6 +146,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		/// </summary>
 		public void Update(FileName fileName)
 		{
+			currentFileName = fileName;
 			runUpdateWhenDropDownClosed = true;
 			runUpdateWhenDropDownClosedFile = fileName;
 			if (!IsDropDownOpen)
@@ -154,9 +157,13 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		// These should never be null.
 		List<EntityItem> classItems = new List<EntityItem>();
 		List<EntityItem> memberItems = new List<EntityItem>();
+		IProject currentProject;
+		FileName currentFileName;
+		bool updatingTargetFrameworks;
 
 		void DoUpdate(FileName fileName)
 		{
+			UpdateTargetFrameworks(fileName);
 			classItems = new List<EntityItem>();
 			if (fileName != null) {
 				var document = RoslynWorkspaceHelper.FindDocument(fileName);
@@ -175,8 +182,38 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			classComboBox.ItemsSource = classItems;
 		}
 
+		void UpdateTargetFrameworks(FileName fileName)
+		{
+			currentProject = fileName == null ? null : SD.ProjectService.FindProjectContainingFile(fileName);
+			var targetFrameworks = currentProject == null
+				? Array.Empty<string>()
+				: ProjectTargetFrameworkService.GetTargetFrameworks(currentProject);
+
+			updatingTargetFrameworks = true;
+			try {
+				targetFrameworkComboBox.ItemsSource = targetFrameworks;
+				targetFrameworkComboBox.Visibility = targetFrameworks.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+				targetFrameworkComboBox.SelectedItem = currentProject == null
+					? null
+					: ProjectTargetFrameworkService.GetActiveTargetFramework(currentProject);
+			} finally {
+				updatingTargetFrameworks = false;
+			}
+		}
+
+		void TargetFrameworkComboBoxSelectionChanged(object sender, SelectionChangedEventArgs e)
+		{
+			if (updatingTargetFrameworks || currentProject == null || targetFrameworkComboBox.SelectedItem is not string targetFramework)
+				return;
+
+			ProjectTargetFrameworkService.SetActiveTargetFramework(currentProject, targetFramework);
+			RoslynWorkspaceHelper.InvalidateProject(currentProject);
+			if (currentFileName != null)
+				Update(currentFileName);
+		}
+
 		bool IsDropDownOpen {
-			get { return classComboBox.IsDropDownOpen || membersComboBox.IsDropDownOpen; }
+			get { return targetFrameworkComboBox.IsDropDownOpen || classComboBox.IsDropDownOpen || membersComboBox.IsDropDownOpen; }
 		}
 
 		// Delayed execution - avoid changing combo boxes while the user is browsing the dropdown list.
