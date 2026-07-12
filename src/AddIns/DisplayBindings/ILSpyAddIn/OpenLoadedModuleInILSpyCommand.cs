@@ -13,23 +13,37 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using ICSharpCode.AvalonEdit.Document;
-using ICSharpCode.SharpDevelop.Parser;
+using System;
+using System.Reflection;
+
+using ICSharpCode.Core;
+using ICSharpCode.SharpDevelop;
 
 namespace ICSharpCode.ILSpyAddIn
 {
-	public sealed class ILSpyParseInformation : ParseInformation
+	public sealed class OpenLoadedModuleInILSpyCommand : AbstractMenuCommand
 	{
-		public ILSpyParseInformation(ILSpyUnresolvedFile unresolvedFile, ITextSourceVersion parsedVersion, DecompiledTypeResult result)
-			: base(unresolvedFile, parsedVersion, true)
-		{
-			Result = result;
+		public override bool IsEnabled {
+			get { return !string.IsNullOrEmpty(GetModulePath(Owner)); }
+			set { }
 		}
 		
-		public DecompiledTypeResult Result { get; private set; }
+		public override void Run()
+		{
+			string path = GetModulePath(Owner);
+			if (string.IsNullOrEmpty(path))
+				return;
+			
+			SD.FileService.OpenFile(new DecompiledTypeReference(FileName.Create(path), default(ICSharpCode.TypeSystem.TopLevelTypeName)).ToFileName());
+		}
 		
-		public override bool SupportsFolding {
-			get { return false; }
+		static string GetModulePath(object owner)
+		{
+			if (owner == null)
+				return null;
+			
+			PropertyInfo pathProperty = owner.GetType().GetProperty("Path", BindingFlags.Instance | BindingFlags.Public);
+			return pathProperty != null ? pathProperty.GetValue(owner, null) as string : null;
 		}
 	}
 }

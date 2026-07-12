@@ -6,16 +6,11 @@
 	
 	<Manifest>
 		<Identity name="ICSharpCode.ILSpyAddIn" />
-		<Dependency addin="ICSharpCode.Debugger" requirePreload="true" />
 	</Manifest>
 	
 	<Runtime>
 		<Import assembly = "ILSpyAddIn.dll"/>
 	</Runtime>
-	
-	<Path name="/SharpDevelop/Services/DebuggerService/SymbolSource">
-		<Class id="ILSpy" class="ICSharpCode.ILSpyAddIn.ILSpySymbolSource"/>
-	</Path>
 	
 	<Path name="/SharpDevelop/Services/NavigateToEntityService">
 		<Class id="ILSpy" class="ICSharpCode.ILSpyAddIn.NavigateToDecompiledEntityService"/>
@@ -32,6 +27,13 @@
 	<Path name="/SharpDevelop/EntityContextMenu">
 		<MenuItem id="ILSpySeparator" type="Separator" />
 		<MenuItem id="ILSpy" icon="ILSpy" type="Item" label="${res:ILSpyAddIn.OpenILSpyCommand}" class="ICSharpCode.ILSpyAddIn.OpenInILSpyCommand"/>
+	</Path>
+
+	<Path name="/SharpDevelop/Services/DebuggerService/ModuleContextMenu">
+		<MenuItem id="OpenLoadedModuleInILSpy"
+		          label="${res:ILSpyAddIn.OpenILSpyCommand}"
+		          icon="ILSpy"
+		          class="ICSharpCode.ILSpyAddIn.OpenLoadedModuleInILSpyCommand" />
 	</Path>
 
 	<Path name = "/SharpDevelop/Workbench/DisplayBindings/UrlBased">

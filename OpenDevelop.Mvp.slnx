@@ -32,6 +32,9 @@
   <Folder Name="/src/AddIns/DisplayBindings/AvalonEdit.AddIn/">
     <Project Path="src/AddIns/DisplayBindings/AvalonEdit.AddIn/AvalonEdit.AddIn.csproj" />
   </Folder>
+  <Folder Name="/src/AddIns/DisplayBindings/ILSpyAddIn/">
+    <Project Path="src/AddIns/DisplayBindings/ILSpyAddIn/ILSpyAddIn.csproj" />
+  </Folder>
   <Folder Name="/src/AddIns/DisplayBindings/WpfDesign/">
     <Project Path="src/AddIns/DisplayBindings/WpfDesign/WpfDesign.AddIn/WpfDesign.AddIn.csproj" />
   </Folder>
@@ -62,5 +65,6 @@
   <Project Path="src/Main/Base/Project/ICSharpCode.SharpDevelop.csproj" />
   <Project Path="externals/cps/src/ProjectSystem/Microsoft.VisualStudio.ProjectSystem.Shim.csproj" />
   <Project Path="externals/cps/src/ProjectSystemManaged/Microsoft.VisualStudio.ProjectSystem.Managed.csproj" />
+  <Project Path="externals/ilspy/ICSharpCode.Decompiler/ICSharpCode.Decompiler.csproj" />
   <Project Path="src/Main/SharpDevelop/SharpDevelop.csproj" />
 </Solution>

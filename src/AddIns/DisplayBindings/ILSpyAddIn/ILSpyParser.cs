@@ -1,14 +1,14 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
-// 
+// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -18,120 +18,70 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
-using System.Text;
 using System.Threading;
+
+using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory;
-using ICSharpCode.NRefactory.CSharp;
-using ICSharpCode.NRefactory.CSharp.Resolver;
-using ICSharpCode.NRefactory.Editor;
-using ICSharpCode.NRefactory.Semantics;
-using ICSharpCode.NRefactory.TypeSystem;
-using ICSharpCode.SharpDevelop;
-using ICSharpCode.SharpDevelop.Dom.ClassBrowser;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Editor.Search;
 using ICSharpCode.SharpDevelop.Parser;
 using ICSharpCode.SharpDevelop.Project;
+using ICSharpCode.SharpDevelop.Refactoring;
+using ICSharpCode.TypeSystem;
+
+using TextLocation = ICSharpCode.AvalonEdit.Document.TextLocation;
 
 namespace ICSharpCode.ILSpyAddIn
 {
-	/// <summary>
-	/// This class "parses" a decompiled type to provide the information required
-	/// by the ParserService.
-	/// </summary>
 	public class ILSpyParser : IParser
 	{
+		public IReadOnlyList<string> TaskListTokens { get; set; }
+		
 		public bool CanParse(string fileName)
 		{
 			return fileName != null && fileName.StartsWith("ilspy://", StringComparison.OrdinalIgnoreCase);
 		}
 		
-		readonly ITextSource EmptyFileContent = new StringTextSource("", new OnDiskTextSourceVersion(DateTime.MinValue));
-		
 		public ITextSource GetFileContent(FileName fileName)
 		{
-			return EmptyFileContent;
+			var result = ILSpyDecompilerService.DecompileType(DecompiledTypeReference.FromFileName(fileName));
+			return new StringTextSource(result.Output, new OnDiskTextSourceVersion(DateTime.UtcNow));
 		}
 		
 		public ParseInformation Parse(FileName fileName, ITextSource fileContent, bool fullParseInformationRequested, IProject parentProject, CancellationToken cancellationToken)
 		{
-			return ILSpyDecompilerService.DecompileType(DecompiledTypeReference.FromFileName(fileName), cancellationToken);
+			var reference = DecompiledTypeReference.FromFileName(fileName);
+			DecompiledTypeResult result;
+			if (fileContent != null) {
+				result = new DecompiledTypeResult(fileContent.Text, new Dictionary<string, ICSharpCode.TypeSystem.TextLocation>());
+			} else {
+				result = ILSpyDecompilerService.DecompileType(reference, cancellationToken);
+			}
+			return new ILSpyParseInformation(new ILSpyUnresolvedFile(reference), fileContent != null ? fileContent.Version : null, result);
 		}
 		
 		public ResolveResult Resolve(ParseInformation parseInfo, TextLocation location, ICompilation compilation, CancellationToken cancellationToken)
 		{
-			var decompiledParseInfo = parseInfo as ILSpyFullParseInformation;
-			if (decompiledParseInfo == null)
-				throw new ArgumentException("ParseInfo does not have SyntaxTree");
-			return ResolveAtLocation.Resolve(compilation, null, decompiledParseInfo.SyntaxTree, location, cancellationToken);
+			return ErrorResolveResult.UnknownError;
 		}
 		
 		public ICodeContext ResolveContext(ParseInformation parseInfo, TextLocation location, ICompilation compilation, CancellationToken cancellationToken)
 		{
-			var decompiledParseInfo = parseInfo as ILSpyFullParseInformation;
-			if (decompiledParseInfo == null)
-				throw new ArgumentException("ParseInfo does not have SyntaxTree");
-			var syntaxTree = decompiledParseInfo.SyntaxTree;
-			var node = syntaxTree.GetNodeAt(location);
-			if (node == null)
-				return null; // null result is allowed; the parser service will substitute a dummy context
-			var resolver = new CSharpAstResolver(compilation, syntaxTree, null);
-			return resolver.GetResolverStateBefore(node);
+			return null;
 		}
 		
 		public ResolveResult ResolveSnippet(ParseInformation parseInfo, TextLocation location, string codeSnippet, ICompilation compilation, CancellationToken cancellationToken)
 		{
-			var decompiledParseInfo = parseInfo as ILSpyFullParseInformation;
-			if (decompiledParseInfo == null)
-				throw new ArgumentException("ParseInfo does not have SyntaxTree");
-			CSharpAstResolver contextResolver = new CSharpAstResolver(compilation, decompiledParseInfo.SyntaxTree, null);
-			var node = decompiledParseInfo.SyntaxTree.GetNodeAt(location);
-			CSharpResolver context;
-			if (node != null)
-				context = contextResolver.GetResolverStateAfter(node, cancellationToken);
-			else
-				context = new CSharpResolver(compilation);
-			CSharpParser parser = new CSharpParser();
-			var expr = parser.ParseExpression(codeSnippet);
-			if (parser.HasErrors)
-				return new ErrorResolveResult(SpecialType.UnknownType, PrintErrorsAsString(parser.Errors), TextLocation.Empty);
-			CSharpAstResolver snippetResolver = new CSharpAstResolver(context, expr);
-			return snippetResolver.Resolve(expr, cancellationToken);
-		}
-		
-		string PrintErrorsAsString(IEnumerable<Error> errors)
-		{
-			StringBuilder builder = new StringBuilder();
-			
-			foreach (var error in errors)
-				builder.AppendLine(error.Message);
-			
-			return builder.ToString();
+			return ErrorResolveResult.UnknownError;
 		}
 		
 		public void FindLocalReferences(ParseInformation parseInfo, ITextSource fileContent, IVariable variable, ICompilation compilation, Action<SearchResultMatch> callback, CancellationToken cancellationToken)
 		{
-			throw new NotImplementedException();
 		}
 		
 		public ICompilation CreateCompilationForSingleFile(FileName fileName, IUnresolvedFile unresolvedFile)
 		{
-			DecompiledTypeReference reference = DecompiledTypeReference.FromFileName(fileName);
-			if (reference != null) {
-				var model = SD.GetService<IClassBrowser>().FindAssemblyModel(reference.AssemblyFile);
-				if (model == null)
-					model = SD.AssemblyParserService.GetAssemblyModelSafe(reference.AssemblyFile, true);
-				if (model != null)
-					return model.Context.GetCompilation();
-			}
-			return new CSharpProjectContent()
-				.AddOrUpdateFiles(unresolvedFile)
-				.CreateCompilation();
+			return null;
 		}
-		
-		public IReadOnlyList<string> TaskListTokens { get; set; }
 	}
 }

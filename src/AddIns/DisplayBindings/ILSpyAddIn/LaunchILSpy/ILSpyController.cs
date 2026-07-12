@@ -21,8 +21,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows.Forms;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.Documentation;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop;
 
 namespace ICSharpCode.ILSpyAddIn
@@ -53,7 +52,7 @@ namespace ICSharpCode.ILSpyAddIn
 			if (string.IsNullOrEmpty(ilspyPath))
 				return;
 			
-			string commandLine = "/singleInstance \"" + assemblyLocation + "\" \"/navigateTo:" + IdStringProvider.GetIdString(entity) + "\"";
+			string commandLine = "\"" + assemblyLocation + "\" --navigateto \"" + OpenDevelopIdStringProvider.GetIdString(entity) + "\"";
 			LoggingService.Debug(ilspyPath + " " + commandLine);
 			Process.Start(ilspyPath, commandLine);
 		}
@@ -81,7 +80,7 @@ namespace ICSharpCode.ILSpyAddIn
 			if (askReason != null) {
 				using(SetILSpyPathDialog dialog = new SetILSpyPathDialog(path, askReason)) {
 					
-					if (dialog.ShowDialog(SD.WinForms.MainWin32Window) != DialogResult.OK || !File.Exists(dialog.SelectedFile)) {
+					if (dialog.ShowDialog() != DialogResult.OK || !File.Exists(dialog.SelectedFile)) {
 						return null;
 					}
 					

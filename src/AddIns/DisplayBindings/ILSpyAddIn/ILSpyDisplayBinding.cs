@@ -43,7 +43,7 @@ namespace ICSharpCode.ILSpyAddIn
 		
 		public IViewContent CreateContentForFile(OpenedFile file)
 		{
-			return new DecompiledViewContent(DecompiledTypeReference.FromFileName(file.FileName), "");
+			return new DecompiledViewContent(DecompiledTypeReference.FromFileName(file.FileName), null);
 		}
 	}
 }

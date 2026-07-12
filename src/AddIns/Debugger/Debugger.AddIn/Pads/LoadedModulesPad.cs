@@ -21,8 +21,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Controls;
+using System.Windows.Input;
 
 using Debugger.AddIn.Service.Dap;
+using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
 using ICSharpCode.SharpDevelop.Services;
 using ICSharpCode.SharpDevelop.Workbench;
@@ -45,9 +47,19 @@ namespace ICSharpCode.SharpDevelop.Gui.Pads
 			listView = new ListView();
 			listView.View = (GridView)res["loadedModulesGridView"];
 			listView.SetValue(GridViewColumnAutoSize.AutoWidthProperty, "50%;70;50%;35;120");
+			listView.MouseRightButtonUp += OnListViewMouseRightButtonUp;
 
 			WindowsDebugger.RefreshingPads += RefreshPad;
 			RefreshPad();
+		}
+
+		void OnListViewMouseRightButtonUp(object sender, MouseButtonEventArgs e)
+		{
+			var module = listView.SelectedItem as ModuleItem;
+			if (module == null)
+				return;
+			MenuService.ShowContextMenu(listView, module, "/SharpDevelop/Services/DebuggerService/ModuleContextMenu");
+			e.Handled = true;
 		}
 
 		async void RefreshPad()

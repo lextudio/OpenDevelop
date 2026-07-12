@@ -20,8 +20,7 @@ using System;
 using System.IO;
 using System.Linq;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.Documentation;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop;
 
 namespace ICSharpCode.ILSpyAddIn
@@ -46,13 +45,13 @@ namespace ICSharpCode.ILSpyAddIn
 			
 			FileName assemblyLocation = declaringType.ParentAssembly.GetRuntimeAssemblyLocation();
 			if (assemblyLocation != null && File.Exists(assemblyLocation)) {
-				NavigateTo(assemblyLocation, declaringType.ReflectionName, IdStringProvider.GetIdString(entity));
+				NavigateTo(assemblyLocation, declaringType.ReflectionName, MemberLocationKey.Create(entity));
 				return true;
 			}
 			return false;
 		}
 		
-		public static void NavigateTo(FileName assemblyFile, string typeName, string entityIdString)
+		public static void NavigateTo(FileName assemblyFile, string typeName, string memberKey)
 		{
 			if (assemblyFile == null)
 				throw new ArgumentNullException("assemblyFile");
@@ -66,11 +65,11 @@ namespace ICSharpCode.ILSpyAddIn
 				var viewContentName = viewContent.DecompiledTypeName;
 				if (viewContentName.AssemblyFile == assemblyFile && type == viewContentName.Type) {
 					viewContent.WorkbenchWindow.SelectWindow();
-					viewContent.JumpToEntity(entityIdString);
+					viewContent.JumpToMember(memberKey);
 					return;
 				}
 			}
-			SD.Workbench.ShowView(new DecompiledViewContent(target, entityIdString));
+			SD.Workbench.ShowView(new DecompiledViewContent(target, memberKey));
 		}
 	}
 }

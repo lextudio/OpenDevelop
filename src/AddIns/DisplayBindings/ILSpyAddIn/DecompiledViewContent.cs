@@ -20,20 +20,17 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.Design;
 using System.IO;
-using System.Linq;
 using System.Threading;
 
 using ICSharpCode.AvalonEdit.AddIn;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.Core;
-using ICSharpCode.Decompiler;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.ILSpyAddIn;
-using ICSharpCode.NRefactory;
-using ICSharpCode.NRefactory.TypeSystem;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor.Bookmarks;
 using ICSharpCode.SharpDevelop.Workbench;
+using ICSharpCode.TypeSystem;
 
 namespace ICSharpCode.ILSpyAddIn
 {
@@ -46,24 +43,23 @@ namespace ICSharpCode.ILSpyAddIn
 		/// Entity to jump to once decompilation has finished.
 		/// </summary>
 		string jumpToEntityIdStringWhenDecompilationFinished;
+		string jumpToMemberKeyWhenDecompilationFinished;
 		int jumpToLineWhenDecompilationFinished, jumpToColumnWhenDecompilationFinished;
 		
 		bool decompilationFinished;
 		
 		readonly CodeEditor codeEditor = new CodeEditor();
 		readonly CancellationTokenSource cancellation = new CancellationTokenSource();
-		
-		Dictionary<string, TextLocation> memberLocations;
-		public Dictionary<string, MethodDebugSymbols> DebugSymbols { get; private set; }
+		IReadOnlyDictionary<string, TextLocation> memberLocations = new Dictionary<string, TextLocation>();
 		
 		#region Constructor
-		public DecompiledViewContent(DecompiledTypeReference typeName, string entityTag)
+		public DecompiledViewContent(DecompiledTypeReference typeName, string memberKey)
 		{
 			this.DecompiledTypeName = typeName;
 			
 			this.Services = codeEditor.GetRequiredService<IServiceContainer>();
 			codeEditor.PrimaryTextEditor.TextArea.LeftMargins.RemoveAll(m => m is ChangeMarkerMargin);
-			this.jumpToEntityIdStringWhenDecompilationFinished = entityTag;
+			this.jumpToMemberKeyWhenDecompilationFinished = memberKey;
 			this.TitleName = "[" + ReflectionHelper.SplitTypeParameterCountFromReflectionName(typeName.Type.Name) + "]";
 			
 			InitializeView();
@@ -133,8 +129,18 @@ namespace ICSharpCode.ILSpyAddIn
 				this.jumpToEntityIdStringWhenDecompilationFinished = entityIdString;
 				return;
 			}
+		}
+		
+		public void JumpToMember(string memberKey)
+		{
+			if (!decompilationFinished) {
+				jumpToMemberKeyWhenDecompilationFinished = memberKey;
+				return;
+			}
+			if (string.IsNullOrEmpty(memberKey))
+				return;
 			TextLocation location;
-			if (entityIdString != null && memberLocations != null && memberLocations.TryGetValue(entityIdString, out location))
+			if (memberLocations != null && memberLocations.TryGetValue(memberKey, out location))
 				codeEditor.JumpTo(location.Line, location.Column);
 		}
 		#endregion
@@ -143,12 +149,11 @@ namespace ICSharpCode.ILSpyAddIn
 		async void InitializeView()
 		{
 			try {
-				var parseInformation = await SD.ParserService.ParseAsync(DecompiledTypeName.ToFileName(), cancellationToken: cancellation.Token);
-				if (parseInformation == null || !(parseInformation.UnresolvedFile is ILSpyUnresolvedFile)) return;
-				var file = (ILSpyUnresolvedFile)parseInformation.UnresolvedFile;
-				memberLocations = file.MemberLocations;
-				DebugSymbols = file.DebugSymbols;
-				OnDecompilationFinished(file.Output);
+				var result = await System.Threading.Tasks.Task.Run(
+					() => ILSpyDecompilerService.DecompileType(DecompiledTypeName, cancellation.Token),
+					cancellation.Token);
+				memberLocations = result.MemberLocations;
+				OnDecompilationFinished(result.Output);
 			} catch (OperationCanceledException) {
 				// ignore cancellation
 			} catch (Exception ex) {
@@ -174,7 +179,9 @@ namespace ICSharpCode.ILSpyAddIn
 			codeEditor.Document.UndoStack.ClearAll();
 			
 			this.decompilationFinished = true;
-			if (!string.IsNullOrEmpty(jumpToEntityIdStringWhenDecompilationFinished))
+			if (!string.IsNullOrEmpty(jumpToMemberKeyWhenDecompilationFinished))
+				JumpToMember(jumpToMemberKeyWhenDecompilationFinished);
+			else if (!string.IsNullOrEmpty(jumpToEntityIdStringWhenDecompilationFinished))
 				JumpToEntity(this.jumpToEntityIdStringWhenDecompilationFinished);
 			else
 				JumpTo(jumpToLineWhenDecompilationFinished, jumpToColumnWhenDecompilationFinished);

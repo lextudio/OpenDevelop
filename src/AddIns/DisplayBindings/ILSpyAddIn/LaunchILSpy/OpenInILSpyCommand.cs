@@ -17,8 +17,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using ICSharpCode.NRefactory.Semantics;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Editor.Commands;
 
 namespace ICSharpCode.ILSpyAddIn

@@ -1,22 +1,33 @@
-﻿using System;
-using System.Collections;
+// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// software and associated documentation files (the "Software"), to deal in the Software
+// without restriction, including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+// to whom the Software is furnished to do so, subject to the following conditions:
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
+
 using System.Collections.Generic;
 using System.Linq;
+
 using Debugger;
 using ICSharpCode.Core;
-using ICSharpCode.Decompiler;
-using ICSharpCode.NRefactory;
-using ICSharpCode.NRefactory.Documentation;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop;
 
 namespace ICSharpCode.ILSpyAddIn
 {
-	public class ILSpySymbolSource : ISymbolSource
+	public sealed class ILSpySymbolSource : ISymbolSource
 	{
 		public bool Handles(IMethod method)
 		{
-			return !SD.Debugger.Options.EnableJustMyCode;
+			return method != null && !SD.Debugger.Options.EnableJustMyCode;
 		}
 		
 		public bool IsCompilerGenerated(IMethod method)
@@ -24,109 +35,88 @@ namespace ICSharpCode.ILSpyAddIn
 			return false;
 		}
 		
-		public static ILSpyUnresolvedFile GetSymbols(IMethod method)
+		public SequencePoint GetSequencePoint(IMethod method, int iloffset)
 		{
-			var typeName = DecompiledTypeReference.FromTypeDefinition(method.DeclaringTypeDefinition);
-			if (typeName == null) return null;
-			SD.Log.DebugFormatted("GetSymbols for: {0}", typeName.ToFileName());
-			// full parse info required to make ParserService caching possible...
-			return SD.ParserService.Parse(typeName.ToFileName()).UnresolvedFile as ILSpyUnresolvedFile;
-		}
-		
-		public Debugger.SequencePoint GetSequencePoint(IMethod method, int iloffset)
-		{
-			string id = IdStringProvider.GetIdString(method.MemberDefinition);
-			var file = GetSymbols(method);
-			if (file == null || !file.DebugSymbols.ContainsKey(id))
+			var symbols = GetSymbols(method);
+			if (symbols == null)
 				return null;
-			var symbols = file.DebugSymbols[id];
-			var seqs = symbols.SequencePoints;
-			var seq = seqs.FirstOrDefault(p => p.ILRanges.Any(r => r.From <= iloffset && iloffset < r.To));
-			if (seq == null)
-				seq = seqs.FirstOrDefault(p => iloffset <= p.ILOffset);
-			if (seq != null) {
-				// Use the widest sequence point containing the IL offset
-				iloffset = seq.ILOffset;
-				seq = seqs.Where(p => p.ILRanges.Any(r => r.From <= iloffset && iloffset < r.To))
-					.OrderByDescending(p => p.ILRanges.Last().To - p.ILRanges.First().From)
-					.FirstOrDefault();
-				return seq.ToDebugger(symbols, file.FileName);
-			}
-			return null;
+			
+			var sequencePoint = symbols.SequencePoints
+				.FirstOrDefault(p => p.Offset <= iloffset && iloffset < p.EndOffset)
+				?? symbols.SequencePoints.FirstOrDefault(p => iloffset <= p.Offset);
+			return sequencePoint != null ? ToDebugger(sequencePoint, symbols.MethodDefToken, GetFileName(method)) : null;
 		}
 		
-		public IEnumerable<Debugger.SequencePoint> GetSequencePoints(Module module, string filename, int line, int column)
+		public IEnumerable<SequencePoint> GetSequencePoints(Debugger.Module module, string filename, int line, int column)
 		{
 			var name = DecompiledTypeReference.FromFileName(filename);
-			if (name == null || !FileUtility.IsEqualFileName(module.FullPath, name.AssemblyFile))
+			if (name == null || module == null || !FileUtility.IsEqualFileName(module.FullPath, name.AssemblyFile))
 				yield break;
 			
-			var file = SD.ParserService.ParseFile(name.ToFileName()) as ILSpyUnresolvedFile;
-			if (file == null)
+			var parseInfo = SD.ParserService.Parse(name.ToFileName()) as ILSpyParseInformation;
+			if (parseInfo == null)
 				yield break;
 			
-			TextLocation loc = new TextLocation(line, column);
-			foreach(var symbols in file.DebugSymbols.Values.Where(s => s.StartLocation <= loc && loc <= s.EndLocation)) {
-				Decompiler.SequencePoint seq = null;
-				if (column != 0)
-					seq = symbols.SequencePoints.FirstOrDefault(p => p.StartLocation <= loc && loc <= p.EndLocation);
-				if (seq == null)
-					seq = symbols.SequencePoints.FirstOrDefault(p => line <= p.StartLocation.Line);
-				if (seq != null)
-					yield return seq.ToDebugger(symbols, filename);
+			foreach (var symbols in parseInfo.Result.DebugSymbols.Values) {
+				foreach (var point in symbols.SequencePoints) {
+					if (ContainsLocation(point, line, column))
+						yield return ToDebugger(point, symbols.MethodDefToken, filename);
+				}
 			}
 		}
 		
 		public IEnumerable<ILRange> GetIgnoredILRanges(IMethod method)
 		{
-			string id = IdStringProvider.GetIdString(method.MemberDefinition);
-			var file = GetSymbols(method);
-			
-			if (file == null || !file.DebugSymbols.ContainsKey(id))
-				return new ILRange[] { };
-			
-			var symbols = file.DebugSymbols[id];
-			int codesize = symbols.CecilMethod.Body.CodeSize;
-			var inv = ICSharpCode.Decompiler.ILAst.ILRange.Invert(symbols.SequencePoints.SelectMany(s => s.ILRanges), codesize);
-			return inv.Select(r => new ILRange(r.From, r.To));
+			return Enumerable.Empty<ILRange>();
 		}
 		
 		public IEnumerable<ILLocalVariable> GetLocalVariables(IMethod method)
 		{
-			string id = IdStringProvider.GetIdString(method.MemberDefinition);
-			var file = GetSymbols(method);
-			
-			if (file == null || !file.DebugSymbols.ContainsKey(id))
-				return Enumerable.Empty<ILLocalVariable>();
-			
-			var symbols = file.DebugSymbols[id];
-			
-			var context = new SimpleTypeResolveContext(method);
-			var loader = new CecilLoader();
-			
-			return symbols.LocalVariables.Where(v => v.OriginalVariable != null).Select(
-				v => new Debugger.ILLocalVariable() {
-					Index = v.OriginalVariable.Index,
-					Type = loader.ReadTypeReference(v.Type).Resolve(context).AcceptVisitor(method.Substitution),
-					Name = v.Name,
-					IsCompilerGenerated = false,
-					ILRanges = new [] { new ILRange(0, int.MaxValue) }
-				});
+			return Enumerable.Empty<ILLocalVariable>();
 		}
-	}
-	
-	static class ILSpySymbolSourceExtensions
-	{
-		public static Debugger.SequencePoint ToDebugger(this ICSharpCode.Decompiler.SequencePoint seq, ICSharpCode.Decompiler.MethodDebugSymbols symbols, string filename)
+		
+		static DecompiledMethodDebugInfo GetSymbols(IMethod method)
 		{
-			return new Debugger.SequencePoint() {
-				MethodDefToken = symbols.CecilMethod.MetadataToken.ToUInt32(),
-				ILRanges = seq.ILRanges.Select(r => new ILRange(r.From, r.To)).ToArray(),
+			if (method == null)
+				return null;
+			var typeName = DecompiledTypeReference.FromTypeDefinition(method.DeclaringTypeDefinition);
+			if (typeName == null)
+				return null;
+			
+			var parseInfo = SD.ParserService.Parse(typeName.ToFileName()) as ILSpyParseInformation;
+			if (parseInfo == null)
+				return null;
+			
+			DecompiledMethodDebugInfo symbols;
+			return parseInfo.Result.DebugSymbols.TryGetValue(MemberLocationKey.Create(method.MemberDefinition), out symbols) ? symbols : null;
+		}
+		
+		static string GetFileName(IMethod method)
+		{
+			var typeName = DecompiledTypeReference.FromTypeDefinition(method.DeclaringTypeDefinition);
+			return typeName != null ? typeName.ToFileName() : null;
+		}
+		
+		static bool ContainsLocation(ICSharpCode.Decompiler.DebugInfo.SequencePoint point, int line, int column)
+		{
+			if (point == null || point.IsHidden)
+				return false;
+			if (column == 0)
+				return line >= point.StartLine && line <= point.EndLine;
+			return (point.StartLine < line || (point.StartLine == line && point.StartColumn <= column))
+				&& (line < point.EndLine || (line == point.EndLine && column <= point.EndColumn));
+		}
+		
+		static SequencePoint ToDebugger(ICSharpCode.Decompiler.DebugInfo.SequencePoint point, uint methodDefToken, string filename)
+		{
+			return new SequencePoint {
+				MethodDefToken = methodDefToken,
+				ILRanges = new[] { new ILRange(point.Offset, point.EndOffset) },
 				Filename = filename,
-				StartLine = seq.StartLocation.Line,
-				StartColumn = seq.StartLocation.Column,
-				EndLine = seq.EndLocation.Line,
-				EndColumn = seq.EndLocation.Column,
+				StartLine = point.StartLine,
+				StartColumn = point.StartColumn,
+				EndLine = point.EndLine,
+				EndColumn = point.EndColumn
 			};
 		}
 	}
