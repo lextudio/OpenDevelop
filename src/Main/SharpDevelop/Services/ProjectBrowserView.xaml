@@ -7,10 +7,18 @@
         <HierarchicalDataTemplate DataType="{x:Type services:ProjectBrowserNodeModel}"
                                   ItemsSource="{Binding Children}">
             <StackPanel Orientation="Horizontal">
-                <Image Width="16"
-                       Height="16"
-                       Margin="0,0,4,0"
-                       Source="{Binding Icon}" />
+                <Grid Width="16"
+                      Height="16"
+                      Margin="0,0,4,0">
+                    <Image Width="16"
+                           Height="16"
+                           Source="{Binding Icon}" />
+                    <Image Width="8"
+                           Height="8"
+                           HorizontalAlignment="Right"
+                           VerticalAlignment="Bottom"
+                           Source="{Binding OverlayIcon}" />
+                </Grid>
                 <TextBlock Text="{Binding Name}" />
             </StackPanel>
         </HierarchicalDataTemplate>

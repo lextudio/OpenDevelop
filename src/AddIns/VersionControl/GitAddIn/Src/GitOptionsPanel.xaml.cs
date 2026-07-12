@@ -18,6 +18,7 @@
 
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
@@ -55,12 +56,13 @@ namespace ICSharpCode.GitAddIn
 		void FindGitPath_Click(object sender, RoutedEventArgs a)
 		{
 			OpenFileDialog dlg = new OpenFileDialog();
-			dlg.DefaultExt = "exe";
-			dlg.Filter = StringParser.Parse("Git|git.exe|${res:SharpDevelop.FileFilter.AllFiles}|*.*");
+			dlg.DefaultExt = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "exe" : string.Empty;
+			dlg.Filter = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+				? StringParser.Parse("Git|git.exe;git.cmd;git.bat|${res:SharpDevelop.FileFilter.AllFiles}|*.*")
+				: StringParser.Parse("Git|git|${res:SharpDevelop.FileFilter.AllFiles}|*.*");
 			if (dlg.ShowDialog() == true) {
-				string path = Path.GetDirectoryName(dlg.FileName);
-				if (Git.IsGitPath(path)) {
-					AddInOptions.PathToGit = Path.Combine(path, "git.exe");
+				if (Git.IsGitExecutable(dlg.FileName)) {
+					AddInOptions.PathToGit = dlg.FileName;
 				} else {
 					MessageService.ShowError("${res:AddIns.Git.DirectoryDoesNotContainGit}");
 				}

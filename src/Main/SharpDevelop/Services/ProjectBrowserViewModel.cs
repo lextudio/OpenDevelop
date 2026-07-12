@@ -17,6 +17,7 @@ namespace ICSharpCode.SharpDevelop.Services;
 internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHost, IDisposable
 {
     private readonly IProjectBrowserController controller = ServiceSingleton.GetRequiredService<IProjectBrowserController>();
+    private readonly IProjectBrowserOverlayService overlayService = ServiceSingleton.ServiceProvider.GetService<IProjectBrowserOverlayService>();
     private ProjectBrowserNodeModel selectedNode;
 
     public ProjectBrowserViewModel()
@@ -33,6 +34,9 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
         SD.ProjectService.SolutionClosed += ProjectServiceChanged;
         SD.ProjectService.ProjectItemAdded += ProjectServiceChanged;
         SD.ProjectService.ProjectItemRemoved += ProjectServiceChanged;
+        if (overlayService != null) {
+            overlayService.Invalidated += ProjectBrowserOverlayInvalidated;
+        }
 
         RefreshSolutionTree();
     }
@@ -65,6 +69,9 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
         SD.ProjectService.SolutionClosed -= ProjectServiceChanged;
         SD.ProjectService.ProjectItemAdded -= ProjectServiceChanged;
         SD.ProjectService.ProjectItemRemoved -= ProjectServiceChanged;
+        if (overlayService != null) {
+            overlayService.Invalidated -= ProjectBrowserOverlayInvalidated;
+        }
     }
 
     void IProjectBrowserHost.RefreshSolutionTree()
@@ -114,6 +121,11 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
     }
 
     private void ProjectServiceChanged(object sender, EventArgs e)
+    {
+        RefreshSolutionTree();
+    }
+
+    private void ProjectBrowserOverlayInvalidated(object sender, EventArgs e)
     {
         RefreshSolutionTree();
     }

@@ -18,6 +18,7 @@
 
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using ICSharpCode.Core;
@@ -80,6 +81,12 @@ namespace ICSharpCode.GitAddIn
 			return relFileName.Replace('\\', '/');
 		}
 		
+		public static string AdaptFileNameForWorkingCopy(string fileName)
+		{
+			string wcRoot = FindWorkingCopyRoot(fileName);
+			return wcRoot != null ? AdaptFileName(wcRoot, fileName) : fileName;
+		}
+		
 		static SemaphoreSlim gitMutex = new SemaphoreSlim(1);
 		
 		public static async Task<int> RunGitAsync(string workingDir, params string[] arguments)
@@ -112,27 +119,40 @@ namespace ICSharpCode.GitAddIn
 			}
 			
 			string pathVariable = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-			string[] paths = pathVariable.Split(new char[]{';'}, StringSplitOptions.RemoveEmptyEntries);
+			string[] paths = pathVariable.Split(new[] { Path.PathSeparator }, StringSplitOptions.RemoveEmptyEntries);
 			foreach (string path in paths) {
 				try {
-					string exe = Path.Combine(path, "git.exe");
-					if (File.Exists(exe))
-						return exe;
-					string cmd = Path.Combine(path, "git.cmd");
-					if (File.Exists(cmd)) {
-						exe = Path.Combine(path, "..\\bin\\git.exe");
+					foreach (string candidate in GetGitExecutableNames()) {
+						string exe = Path.Combine(path, candidate);
 						if (File.Exists(exe))
 							return exe;
+					}
+					if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) {
+						string cmd = Path.Combine(path, "git.cmd");
+						if (File.Exists(cmd)) {
+							string exe = Path.Combine(path, "..\\bin\\git.exe");
+							if (File.Exists(exe))
+								return exe;
+						}
 					}
 				} catch (ArgumentException) {
 					// ignore invalid entries in PATH
 				}
 			}
-			string programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86, Environment.SpecialFolderOption.DoNotVerify);
-			string gitExe = Path.Combine(programFiles, @"git\bin\git.exe");
-			if (File.Exists(gitExe))
-				return gitExe;
+			if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) {
+				string programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86, Environment.SpecialFolderOption.DoNotVerify);
+				string gitExe = Path.Combine(programFiles, @"git\bin\git.exe");
+				if (File.Exists(gitExe))
+					return gitExe;
+			}
 			return null;
+		}
+		
+		static string[] GetGitExecutableNames()
+		{
+			return RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+				? new[] { "git.exe", "git.cmd", "git.bat" }
+				: new[] { "git" };
 		}
 		
 		/// <summary>
@@ -140,7 +160,23 @@ namespace ICSharpCode.GitAddIn
 		/// </summary>
 		public static bool IsGitPath(string path)
 		{
-			return File.Exists(Path.Combine(path, "git.exe"));
+			foreach (string candidate in GetGitExecutableNames()) {
+				if (File.Exists(Path.Combine(path, candidate)))
+					return true;
+			}
+			return false;
+		}
+		
+		public static bool IsGitExecutable(string path)
+		{
+			if (string.IsNullOrEmpty(path) || !File.Exists(path))
+				return false;
+			string fileName = Path.GetFileName(path);
+			foreach (string candidate in GetGitExecutableNames()) {
+				if (string.Equals(fileName, candidate, RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+					return true;
+			}
+			return false;
 		}
 		
 		/*

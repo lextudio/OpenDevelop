@@ -13,14 +13,14 @@
 		</Import>
 	</Runtime>
 	
-	<Path name = "/SharpDevelop/Autostart">
-		<Class id = "ICSharpCode.GitAddIn.RegisterEventsCommand"
-		       class = "ICSharpCode.GitAddIn.RegisterEventsCommand"/>
-	</Path>
-	
 	<Path name="/Workspace/DocumentVersionProviders">
 		<Class id="git"
 		       class="ICSharpCode.GitAddIn.GitVersionProvider" />
+	</Path>
+	
+	<Path name="/SharpDevelop/Autostart">
+		<Class id="ICSharpCode.GitAddIn.RegisterEventsCommand"
+		       class="ICSharpCode.GitAddIn.RegisterEventsCommand"/>
 	</Path>
 	
 	<Path name = "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/GitItem">

@@ -55,8 +55,8 @@ internal static class ProjectBrowserIconService
         {
             ".csproj" or ".vbproj" or ".fsproj" => "Icons.16x16.NewProjectIcon",
             ".sln" or ".slnx" => "Icons.16x16.SolutionFolderSwitch",
-            ".cs" => "Icons.16x16.CSFile",
-            ".xaml" => "Icons.16x16.Control",
+            ".cs" => "Icons.16x16.CSSourceFile",
+            ".xaml" => "Icons.16x16.XMLFile",
             ".json" => "Icons.16x16.JSONFile",
             ".xml" or ".config" => "Icons.16x16.XMLFile",
             ".htm" or ".html" => "Icons.16x16.HTMLFile",

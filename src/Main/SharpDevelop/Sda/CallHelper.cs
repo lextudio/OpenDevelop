@@ -150,6 +150,9 @@ namespace ICSharpCode.SharpDevelop.Sda
 			if (SD.Services.GetService(typeof(IProjectBrowserController)) == null) {
 				SD.Services.AddService(typeof(IProjectBrowserController), new ProjectBrowserController());
 			}
+			if (SD.Services.GetService(typeof(IProjectBrowserOverlayService)) == null) {
+				SD.Services.AddService(typeof(IProjectBrowserOverlayService), new ProjectBrowserOverlayService());
+			}
 
 			// AssemblyParserService (real Mono.Cecil-based assembly parsing) is out of MVP scope
 			// (MVP policy 1: no Mono.Cecil submodule) - DomPersistencePath is simply not configured here.

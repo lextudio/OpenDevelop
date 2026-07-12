@@ -1,14 +1,14 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
-// 
+// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -17,28 +17,25 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Reflection;
-using ICSharpCode.Core;
+using System.Windows.Media;
 
-namespace ICSharpCode.GitAddIn
+namespace ICSharpCode.SharpDevelop.Services
 {
-	/// <summary>
-	/// Description of IsUnderGitControlCondition.
-	/// </summary>
-	public class IsUnderGitControlCondition : IConditionEvaluator
+	public interface IProjectBrowserNodeOverlayProvider
 	{
-		public bool IsValid(object caller, Condition condition)
-		{
-			string path = GetPath(caller);
-			return path != null && Git.IsInWorkingCopy(path);
-		}
+		ImageSource GetOverlay(string fullPath, bool isDirectory);
+	}
+	
+	public interface IProjectBrowserOverlayService
+	{
+		event EventHandler Invalidated;
 		
-		static string GetPath(object owner)
-		{
-			if (owner == null)
-				return null;
-			PropertyInfo property = owner.GetType().GetProperty("FullPath", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-			return property != null ? property.GetValue(owner, null) as string : null;
-		}
+		void RegisterProvider(IProjectBrowserNodeOverlayProvider provider);
+		
+		void UnregisterProvider(IProjectBrowserNodeOverlayProvider provider);
+		
+		ImageSource GetOverlay(string fullPath, bool isDirectory);
+		
+		void Invalidate(string path = null);
 	}
 }

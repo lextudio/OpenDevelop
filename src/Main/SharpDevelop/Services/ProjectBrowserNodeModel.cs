@@ -1,6 +1,8 @@
 using System.Collections.Generic;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
+using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Project;
 using Microsoft.VisualStudio.ProjectSystem;
 
@@ -51,6 +53,8 @@ internal sealed class ProjectBrowserNodeModel
     public List<ProjectBrowserNodeModel> Children { get; } = new();
 
     public BitmapSource Icon => ProjectBrowserIconService.GetIcon(this);
+
+    public ImageSource OverlayIcon => ServiceSingleton.ServiceProvider.GetService<IProjectBrowserOverlayService>()?.GetOverlay(FullPath, IsDirectory);
 
     public ProjectBrowserNodeContext ToContext()
     {

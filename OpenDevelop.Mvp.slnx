@@ -62,6 +62,9 @@
   <Folder Name="/src/AddIns/Misc/PackageManagement/">
     <Project Path="src/AddIns/Misc/PackageManagement/Project/PackageManagement.csproj" />
   </Folder>
+  <Folder Name="/src/AddIns/VersionControl/GitAddIn/">
+    <Project Path="src/AddIns/VersionControl/GitAddIn/GitAddIn.csproj" />
+  </Folder>
   <Project Path="src/Main/Base/Project/ICSharpCode.SharpDevelop.csproj" />
   <Project Path="externals/cps/src/ProjectSystem/Microsoft.VisualStudio.ProjectSystem.Shim.csproj" />
   <Project Path="externals/cps/src/ProjectSystemManaged/Microsoft.VisualStudio.ProjectSystem.Managed.csproj" />

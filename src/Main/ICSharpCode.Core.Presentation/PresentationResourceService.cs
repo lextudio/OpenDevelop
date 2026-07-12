@@ -94,6 +94,7 @@ namespace ICSharpCode.Core.Presentation
 			// Solution Explorer file-type icons (SolutionExplorerIconService). Folder names here
 			// match the VS2017 Image Library / UnoDevelop's Icons/*.svg base names 1:1.
 			{ "Icons.16x16.CSFile", "Resources/VS2017/CSFile/CSFile_16x.png" },
+			{ "Icons.16x16.CSSourceFile", "Resources/VS2017/CSSourceFile/CSSourceFile_16x.png" },
 			{ "Icons.16x16.Control", "Resources/VS2017/Control/Control_16x.png" },
 			{ "Icons.16x16.JSONFile", "Resources/VS2017/JSONFile/JSONFile_16x.png" },
 			{ "Icons.16x16.XMLFile", "Resources/VS2017/XMLFile/XMLFile_16x.png" },

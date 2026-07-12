@@ -19,12 +19,12 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using System.Windows.Forms;
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
-using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Workbench;
 
@@ -36,17 +36,8 @@ namespace ICSharpCode.GitAddIn
 		
 		public override void Run()
 		{
-			AbstractProjectBrowserTreeNode node = ProjectBrowserPad.Instance.SelectedNode;
-			if (node != null) {
-				string nodeFileName = null;
-				if (node is DirectoryNode) {
-					nodeFileName = ((DirectoryNode)node).Directory;
-				} else if (node is FileNode) {
-					nodeFileName =  ((FileNode)node).FileName;
-				} else if (node is SolutionNode) {
-					nodeFileName = ((SolutionNode)node).Solution.Directory;
-				}
-				if (nodeFileName != null) {
+			string nodeFileName = GetPath(Owner);
+			if (nodeFileName != null) {
 					List<OpenedFile> unsavedFiles = new List<OpenedFile>();
 					foreach (OpenedFile file in SD.FileService.OpenedFiles) {
 						if (file.IsDirty && !file.IsUntitled) {
@@ -68,7 +59,7 @@ namespace ICSharpCode.GitAddIn
 						{
 							// Save
 							foreach (OpenedFile file in unsavedFiles) {
-								ICSharpCode.SharpDevelop.Commands.SaveFile.Save(file);
+								file.SaveToDisk();
 							}
 						} else {
 							// Cancel
@@ -76,20 +67,24 @@ namespace ICSharpCode.GitAddIn
 						}
 					}
 					// now run the actual operation:
-					Run(nodeFileName, AfterCommand(nodeFileName, node));
-				}
+					Run(nodeFileName, AfterCommand(nodeFileName));
 			}
 		}
 		
-		Action AfterCommand(string nodeFileName, AbstractProjectBrowserTreeNode node)
+		Action AfterCommand(string nodeFileName)
 		{
 			return delegate {
 				SD.MainThread.VerifyAccess();
-				// and then refresh the project browser:
 				GitStatusCache.ClearCachedStatus(nodeFileName);
-				OverlayIconManager.EnqueueRecursive(node);
-				OverlayIconManager.EnqueueParents(node);
 			};
+		}
+		
+		protected static string GetPath(object owner)
+		{
+			if (owner == null)
+				return null;
+			PropertyInfo property = owner.GetType().GetProperty("FullPath", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+			return property != null ? property.GetValue(owner, null) as string : null;
 		}
 	}
 	
