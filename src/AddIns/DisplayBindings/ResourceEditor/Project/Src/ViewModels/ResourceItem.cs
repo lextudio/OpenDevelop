@@ -1,14 +1,14 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
-// 
+// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -18,17 +18,19 @@
 
 using System;
 using System.ComponentModel;
-using System.Drawing;
-using System.Resources;
 using System.Windows;
 using System.Windows.Documents;
-using System.Windows.Forms;
 using ICSharpCode.SharpDevelop;
 
 namespace ResourceEditor.ViewModels
 {
 	/// <summary>
-	/// Defines the type of resource item supported by editor.
+	/// Defines the type of resource item supported by editor. Bitmap/Icon/Cursor entries are kept
+	/// as distinct, typed kinds (matching the original WinForms-era model) but no longer backed
+	/// by System.Drawing.Bitmap/Icon or System.Windows.Forms.Cursor - ResourceValue holds the raw
+	/// image bytes instead (see ResourceEditor.csproj's header comment), and views decode them
+	/// with WPF's own imaging APIs, the same approach UnoDevelop's IconCursorViewerViewContent
+	/// uses for standalone .ico/.cur files.
 	/// </summary>
 	public enum ResourceItemEditorType
 	{
@@ -40,124 +42,139 @@ namespace ResourceEditor.ViewModels
 		Cursor,
 		Binary
 	}
-	
+
 	public class ResourceItem : DependencyObject, INotifyPropertyChanged
 	{
 		ResourceItemEditorType resourceType;
 		ResourceEditorViewModel resourceEditor;
 		string nameBeforeEditing;
 		string highlightText;
-		
+
 		public ResourceItem(ResourceEditorViewModel resourceEditor, string name, object resourceValue)
+			: this(resourceEditor, name, resourceValue, null, ResourceItemEditorType.Unknown)
 		{
-			this.resourceEditor = resourceEditor;
-			this.Name = name;
-			this.SortingCriteria = name;
-			this.ResourceValue = resourceValue;
-			this.resourceType = GetResourceTypeFromValue(resourceValue);
 		}
-		
+
 		public ResourceItem(ResourceEditorViewModel resourceEditor, string name, object resourceValue, string comment)
+			: this(resourceEditor, name, resourceValue, comment, ResourceItemEditorType.Unknown)
+		{
+		}
+
+		/// <param name="resourceType">
+		/// Explicit kind for the value, needed because a raw byte[] alone can't tell Bitmap/Icon/
+		/// Cursor/Binary apart the way a CLR Bitmap/Icon/Cursor object used to. Pass
+		/// <see cref="ResourceItemEditorType.Unknown"/> to infer from the CLR type of
+		/// <paramref name="resourceValue"/> instead (string/bool -&gt; String/Boolean, byte[] -&gt;
+		/// Binary).
+		/// </param>
+		public ResourceItem(ResourceEditorViewModel resourceEditor, string name, object resourceValue, string comment, ResourceItemEditorType resourceType)
 		{
 			this.resourceEditor = resourceEditor;
 			this.Name = name;
 			this.SortingCriteria = name;
 			this.ResourceValue = resourceValue;
-			this.resourceType = GetResourceTypeFromValue(resourceValue);
+			this.resourceType = resourceType != ResourceItemEditorType.Unknown ? resourceType : GetResourceTypeFromValue(resourceValue);
 			this.Comment = comment;
 			this.RichComment = comment;
 		}
 
+		/// <summary>
+		/// The literal .resx "type" attribute this entry was read with (e.g.
+		/// "System.Drawing.Bitmap, System.Drawing"), preserved so SaveFile can write the same
+		/// type attribute back. Null for plain string/boolean entries.
+		/// </summary>
+		public string OriginalResXType { get; set; }
+
 		#region INotifyPropertyChanged implementation
-		
+
 		public event PropertyChangedEventHandler PropertyChanged;
-		
+
 		void RaisePropertyChanged(string name)
 		{
 			if (PropertyChanged != null) {
 				PropertyChanged(this, new PropertyChangedEventArgs(name));
 			}
 		}
-		
+
 		#endregion
-		
+
 		public static readonly DependencyProperty NameProperty =
 			DependencyProperty.Register("Name", typeof(string), typeof(ResourceItem),
 				new FrameworkPropertyMetadata(NamePropertyChanged));
-		
+
 		static void NamePropertyChanged(DependencyObject obj, DependencyPropertyChangedEventArgs e)
 		{
 			((ResourceItem)obj).Highlight(((ResourceItem)obj).highlightText);
 		}
-		
+
 		public string Name {
 			get { return (string)GetValue(NameProperty); }
 			set { SetValue(NameProperty, value); }
 		}
-		
+
 		public static readonly DependencyProperty DisplayNameProperty =
 			DependencyProperty.Register("DisplayName", typeof(object), typeof(ResourceItem),
 			                            new FrameworkPropertyMetadata());
-		
+
 		public object DisplayName {
 			get { return (object)GetValue(DisplayNameProperty); }
 			set { SetValue(DisplayNameProperty, value); }
 		}
-		
+
 		public static readonly DependencyProperty SortingCriteriaProperty =
 			DependencyProperty.Register("SortingCriteria", typeof(string), typeof(ResourceItem),
 				new FrameworkPropertyMetadata());
-		
+
 		public string SortingCriteria {
 			get { return (string)GetValue(SortingCriteriaProperty); }
 			set { SetValue(SortingCriteriaProperty, value); }
 		}
-		
+
 		public static readonly DependencyProperty ResourceValueProperty =
 			DependencyProperty.Register("ResourceValue", typeof(object), typeof(ResourceItem),
 				new FrameworkPropertyMetadata());
-		
+
 		public object ResourceValue {
 			get { return (object)GetValue(ResourceValueProperty); }
 			set { SetValue(ResourceValueProperty, value); Highlight(highlightText); }
 		}
-		
+
 		public string DisplayedResourceType {
 			get {
-				return ResourceValue == null ? "(Nothing/null)" : ResourceValue.GetType().FullName;
+				return ResourceValue == null ? "(Nothing/null)" : (OriginalResXType ?? ResourceValue.GetType().FullName);
 			}
 		}
-		
+
 		public ResourceItemEditorType ResourceType {
 			get {
 				return resourceType;
 			}
 		}
-		
+
 		public static readonly DependencyProperty IsEditingProperty =
 			DependencyProperty.Register("IsEditing", typeof(bool), typeof(ResourceItem),
 				new FrameworkPropertyMetadata());
-		
+
 		public bool IsEditing {
 			get { return (bool)GetValue(IsEditingProperty); }
 			set { SetValue(IsEditingProperty, value); }
 		}
-		
+
 		public bool IsNew {
 			get;
 			set;
 		}
-		
+
 		protected override void OnPropertyChanged(DependencyPropertyChangedEventArgs e)
 		{
 			base.OnPropertyChanged(e);
-			
+
 			if (e.Property.Name == DisplayNameProperty.Name
 			    || e.Property.Name == RichContentProperty.Name
 			    || e.Property.Name == RichCommentProperty.Name) {
 				return;
 			}
-			
+
 			if (e.Property.Name == ResourceValueProperty.Name) {
 				// Update content property as well
 				RaisePropertyChanged("Content");
@@ -194,58 +211,51 @@ namespace ResourceEditor.ViewModels
 				resourceEditor.MakeDirty();
 			}
 		}
-		
-		ResourceItemEditorType GetResourceTypeFromValue(object val)
+
+		static ResourceItemEditorType GetResourceTypeFromValue(object val)
 		{
-			if (this.ResourceValue == null) {
-				return ResourceItemEditorType.Unknown;
-			}
-			switch (this.ResourceValue.GetType().ToString()) {
-				case "System.String":
+			switch (val) {
+				case null:
+					return ResourceItemEditorType.Unknown;
+				case string:
 					return ResourceItemEditorType.String;
-				case "System.Drawing.Bitmap":
-					return ResourceItemEditorType.Bitmap;
-				case "System.Drawing.Icon":
-					return ResourceItemEditorType.Icon;
-				case "System.Windows.Forms.Cursor":
-					return ResourceItemEditorType.Cursor;
-				case "System.Byte[]":
-					return ResourceItemEditorType.Binary;
-				case "System.Boolean":
+				case bool:
 					return ResourceItemEditorType.Boolean;
+				case byte[]:
+					return ResourceItemEditorType.Binary;
 				default:
 					return ResourceItemEditorType.Unknown;
 			}
 		}
-		
+
 		public string Content {
 			get {
 				return ToString();
 			}
 		}
-		
+
 		public static readonly DependencyProperty RichContentProperty =
 			DependencyProperty.Register("RichContent", typeof(object), typeof(ResourceItem),
 			                            new FrameworkPropertyMetadata());
-		
+
 		public object RichContent {
 			get { return (object)GetValue(RichContentProperty); }
 			set { SetValue(RichContentProperty, value); }
 		}
-		
+
 		public static readonly DependencyProperty CommentProperty =
 			DependencyProperty.Register("Comment", typeof(string), typeof(ResourceItem),
 				new FrameworkPropertyMetadata(""));
-		
+
 		public string Comment {
 			get { return (string)GetValue(CommentProperty); }
 			set { SetValue(CommentProperty, value); }
 		}
-		
+
 		public static readonly DependencyProperty RichCommentProperty =
 			DependencyProperty.Register("RichComment", typeof(object), typeof(ResourceItem),
 			                            new FrameworkPropertyMetadata());
-		
+
 		public object RichComment {
 			get { return (object)GetValue(RichCommentProperty); }
 			set { SetValue(RichCommentProperty, value); }
@@ -256,92 +266,47 @@ namespace ResourceEditor.ViewModels
 			if (ResourceValue == null) {
 				return "(Nothing/null)";
 			}
-			
-			string type = ResourceValue.GetType().FullName;
-			string tmp = String.Empty;
-			
-			switch (type) {
-				case "System.String":
-					tmp = ResourceValue.ToString();
-					break;
-				case "System.Byte[]":
-					tmp = "[Size = " + ((byte[])ResourceValue).Length + "]";
-					break;
-				case "System.Drawing.Bitmap":
-					Bitmap bmp = ResourceValue as Bitmap;
-					tmp = "[Width = " + bmp.Size.Width + ", Height = " + bmp.Size.Height + "]";
-					break;
-				case "System.Drawing.Icon":
-					Icon icon = ResourceValue as Icon;
-					tmp = "[Width = " + icon.Size.Width + ", Height = " + icon.Size.Height + "]";
-					break;
-				case "System.Windows.Forms.Cursor":
-					Cursor c = ResourceValue as Cursor;
-					tmp = "[Width = " + c.Size.Width + ", Height = " + c.Size.Height + "]";
-					break;
-				case "System.Boolean":
-					tmp = ResourceValue.ToString();
-					break;
+
+			switch (resourceType) {
+				case ResourceItemEditorType.String:
+					return (string)ResourceValue;
+				case ResourceItemEditorType.Boolean:
+					return ResourceValue.ToString();
+				case ResourceItemEditorType.Bitmap:
+				case ResourceItemEditorType.Icon:
+				case ResourceItemEditorType.Cursor:
+				case ResourceItemEditorType.Binary:
+					return "[Size = " + ((byte[])ResourceValue).Length + "]";
 				default:
-					tmp = ResourceValue.ToString();
-					break;
+					return ResourceValue.ToString();
 			}
-			return tmp;
 		}
-		
-		public ResXDataNode ToResXDataNode(Func<Type, string> typeNameConverter = null)
-		{
-			var node = new ResXDataNode(Name, ResourceValue, typeNameConverter) {
-				Comment = Comment
-			};
-			return node;
-		}
-		
+
+		/// <summary>
+		/// Replaces this item's value with the raw bytes of a file the user picks (used by the
+		/// Bitmap/Icon/Cursor item views' "update from file" link). Reads raw bytes only - no
+		/// System.Drawing/System.Windows.Forms constructors, matching how the value is stored.
+		/// </summary>
 		public bool UpdateFromFile()
 		{
-			var fileDialog = new Microsoft.Win32.OpenFileDialog();
-			fileDialog.AddExtension = true;
-			fileDialog.Filter = "All files (*.*)|*.*";
-			fileDialog.CheckFileExists = true;
-			
-			if (fileDialog.ShowDialog().Value) {
-				object newValue = null;
-				switch (resourceType) {
-					case ResourceItemEditorType.Bitmap:
-						try {
-							newValue = new Bitmap(fileDialog.FileName);
-						} catch (Exception ex) {
-							SD.MessageService.ShowWarningFormatted("${res:ResourceEditor.Messages.CantLoadResourceFromFile}", ex.Message);
-							return false;
-						}
-						break;
-					case ResourceItemEditorType.Icon:
-						try {
-							newValue = new Icon(fileDialog.FileName);
-						} catch (Exception ex) {
-							SD.MessageService.ShowWarningFormatted("${res:ResourceEditor.Messages.CantLoadResourceFromFile}", ex.Message);
-							return false;
-						}
-						break;
-					case ResourceItemEditorType.Cursor:
-						try {
-							newValue = new Cursor(fileDialog.FileName);
-						} catch (Exception ex) {
-							SD.MessageService.ShowWarningFormatted("${res:ResourceEditor.Messages.CantLoadResourceFromFile}", ex.Message);
-							return false;
-						}
-						break;
-				}
-				
-				if (newValue != null) {
-					ResourceValue = newValue;
-					return true;
-				}
+			var fileDialog = new Microsoft.Win32.OpenFileDialog {
+				AddExtension = true,
+				Filter = "All files (*.*)|*.*",
+				CheckFileExists = true,
+			};
+
+			if (fileDialog.ShowDialog() != true)
+				return false;
+
+			try {
+				ResourceValue = System.IO.File.ReadAllBytes(fileDialog.FileName);
+				return true;
+			} catch (Exception ex) {
+				SD.MessageService.ShowWarningFormatted("${res:ResourceEditor.Messages.CantLoadResourceFromFile}", ex.Message);
+				return false;
 			}
-			
-			return false;
 		}
-		
+
 		public void Highlight(string text)
 		{
 			this.highlightText = text;

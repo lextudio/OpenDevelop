@@ -68,12 +68,9 @@
 		<Include id = "SelectAll" item = "/SharpDevelop/Workbench/MainMenu/Edit/SelectAll"/>
 	</Path>
 	
-	<Path name = "/SharpDevelop/CustomTools">
-		<CustomTool id    = "ResXFileCodeGenerator"
-		            class = "ResourceEditor.ResourceCodeGeneratorTool"
-		            fileNamePattern = "\.res(x|ources)$"/>
-		<CustomTool id    = "PublicResXFileCodeGenerator"
-		            class = "ResourceEditor.PublicResourceCodeGeneratorTool"
-		            fileNamePattern = "\.res(x|ources)$"/>
-	</Path>
+	<!-- ResourceCodeGeneratorTool (ResXFileCodeGenerator custom tool) is not included in this
+	     build: it depends on ICSharpCode.NRefactory.TypeSystem, which was removed from the rest
+	     of OpenDevelop's codebase already (no other file references it), and on
+	     System.Resources.Tools.StronglyTypedResourceBuilder. Porting it to the current
+	     ICompilation-based type system is a separate task from this addin's WPF/byte[] migration. -->
 </AddIn>

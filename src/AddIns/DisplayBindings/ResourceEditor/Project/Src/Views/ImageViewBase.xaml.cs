@@ -1,14 +1,14 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
-// 
+// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -17,39 +17,51 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media.Imaging;
+
 using ICSharpCode.SharpDevelop;
+using LeXtudio.OpenDevelop.ResourceFiles;
 using ResourceEditor.ViewModels;
 
 namespace ResourceEditor.Views
 {
 	/// <summary>
-	/// Interaction logic for ImageViewBase.xaml
+	/// Interaction logic for ImageViewBase.xaml. Decodes Bitmap/Icon/Cursor resource values with
+	/// WPF's own imaging APIs directly from the raw bytes stored in ResourceItem.ResourceValue -
+	/// no System.Drawing/System.Windows.Forms involved (see ResourceEditor.csproj's header
+	/// comment). Icon/Cursor preview only works for the modern PNG-encoded frames a
+	/// System.Drawing.Icon.Save()/System.Windows.Forms.Cursor would have written; classic DIB/BMP
+	/// frames are parsed (via IconCursorFileReader, for metadata) but not rendered, the same
+	/// limitation UnoDevelop's IconCursorViewerViewContent documents for standalone .ico/.cur
+	/// files.
 	/// </summary>
 	public partial class ImageViewBase : UserControl, IResourceItemView
 	{
 		ResourceItem resourceItem;
-		
+
 		public ImageViewBase()
 		{
 			InitializeComponent();
 			DataContext = this;
 		}
-		
+
 		public static readonly DependencyProperty DisplayedImageProperty =
 			DependencyProperty.Register("DisplayedImage", typeof(object), typeof(ImageViewBase),
 				new FrameworkPropertyMetadata());
-		
+
 		public object DisplayedImage {
 			get { return (object)GetValue(DisplayedImageProperty); }
 			set { SetValue(DisplayedImageProperty, value); }
 		}
-		
+
 		public static readonly DependencyProperty UpdateLinkTextProperty =
 			DependencyProperty.Register("UpdateLinkText", typeof(string), typeof(ImageViewBase),
 				new FrameworkPropertyMetadata());
-		
+
 		public string UpdateLinkText {
 			get { return (string)GetValue(UpdateLinkTextProperty); }
 			set { SetValue(UpdateLinkTextProperty, value); }
@@ -60,7 +72,7 @@ namespace ResourceEditor.Views
 				return this;
 			}
 		}
-		
+
 		public ResourceItem ResourceItem {
 			get {
 				return resourceItem;
@@ -68,34 +80,58 @@ namespace ResourceEditor.Views
 			set {
 				resourceItem = value;
 				UpdateLinkText = "";
-				if (resourceItem != null) {
-					switch (resourceItem.ResourceType) {
-						case ResourceItemEditorType.Bitmap:
-							var gdiBitmap = resourceItem.ResourceValue as System.Drawing.Bitmap;
-							if (gdiBitmap != null) {
-								DisplayedImage = gdiBitmap.ToBitmapSource();
-								UpdateLinkText = SD.ResourceService.GetString("ResourceEditor.BitmapView.UpdateBitmap");
-							}
-							break;
-						case ResourceItemEditorType.Icon:
-							var gdiIcon = resourceItem.ResourceValue as System.Drawing.Icon;
-							if (gdiIcon != null) {
-								DisplayedImage = gdiIcon.ToImageSource();
-								UpdateLinkText = SD.ResourceService.GetString("ResourceEditor.BitmapView.UpdateIcon");
-							}
-							break;
-						case ResourceItemEditorType.Cursor:
-							var gdiCursor = resourceItem.ResourceValue as System.Windows.Forms.Cursor;
-							if (gdiCursor != null) {
-								DisplayedImage = gdiCursor.ToImageSource();
-								UpdateLinkText = SD.ResourceService.GetString("ResourceEditor.BitmapView.UpdateCursor");
-							}
-							break;
-					}
+				DisplayedImage = null;
+				if (resourceItem == null || resourceItem.ResourceValue is not byte[] bytes || bytes.Length == 0)
+					return;
+
+				switch (resourceItem.ResourceType) {
+					case ResourceItemEditorType.Bitmap:
+						DisplayedImage = TryDecodeBitmap(bytes);
+						UpdateLinkText = SD.ResourceService.GetString("ResourceEditor.BitmapView.UpdateBitmap");
+						break;
+					case ResourceItemEditorType.Icon:
+						DisplayedImage = TryDecodeIconOrCursor(bytes, IconCursorFileKind.Icon);
+						UpdateLinkText = SD.ResourceService.GetString("ResourceEditor.BitmapView.UpdateIcon");
+						break;
+					case ResourceItemEditorType.Cursor:
+						DisplayedImage = TryDecodeIconOrCursor(bytes, IconCursorFileKind.Cursor);
+						UpdateLinkText = SD.ResourceService.GetString("ResourceEditor.BitmapView.UpdateCursor");
+						break;
 				}
 			}
 		}
-		
+
+		static BitmapSource TryDecodeBitmap(byte[] bytes)
+		{
+			try {
+				using var stream = new MemoryStream(bytes);
+				var image = new BitmapImage();
+				image.BeginInit();
+				image.CacheOption = BitmapCacheOption.OnLoad;
+				image.StreamSource = stream;
+				image.EndInit();
+				image.Freeze();
+				return image;
+			} catch (NotSupportedException) {
+				return null;
+			}
+		}
+
+		static BitmapSource TryDecodeIconOrCursor(byte[] bytes, IconCursorFileKind expectedKind)
+		{
+			try {
+				using var stream = new MemoryStream(bytes);
+				var file = IconCursorFileReader.Read(stream, expectedKind == IconCursorFileKind.Icon ? "resource.ico" : "resource.cur");
+				// Prefer the largest PNG-encoded frame - classic DIB/BMP frames aren't decoded
+				// (see this class's header comment).
+				var frame = file.Frames.Where(f => f.IsPng).OrderByDescending(f => f.Width).FirstOrDefault();
+				return frame != null ? TryDecodeBitmap(frame.Data) : null;
+			} catch (Exception) when (true) {
+				// Not a valid ICO/CUR container (BadImageFormatException) or truncated data.
+				return null;
+			}
+		}
+
 		void Button_Click(object sender, RoutedEventArgs e)
 		{
 			if (resourceItem != null) {

@@ -1,0 +1,15 @@
+<Project Sdk="LibreWPF.Sdk/11.0.0-dev">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>LeXtudio.OpenDevelop.ResourceFiles</RootNamespace>
+    <AssemblyName>LeXtudio.OpenDevelop.ResourceFiles</AssemblyName>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Nullable>enable</Nullable>
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>..\..\Main\ICSharpCode.SharpDevelop.snk</AssemblyOriginatorKeyFile>
+    <Description>Resource file parsers and models for OpenDevelop (ported from UnoDevelop's LeXtudio.OpenDevelop.ResourceFiles) - .resx/.resources entry reading and writing, and .ico/.cur directory parsing. No WinForms/System.Drawing dependency, for the ResourceEditor addin's WPF-only migration.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\Main\GlobalAssemblyInfo.cs" Link="Properties\GlobalAssemblyInfo.cs" />
+  </ItemGroup>
+</Project>

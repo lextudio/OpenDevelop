@@ -19,13 +19,10 @@
 using System;
 using System.Collections;
 using System.IO;
-using System.Windows.Forms;
 
 using ICSharpCode.Core;
-using ICSharpCode.Core.WinForms;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
-using ICSharpCode.SharpDevelop.WinForms;
 using ICSharpCode.SharpDevelop.Workbench;
 using ResourceEditor.ViewModels;
 using ResourceEditor.Views;

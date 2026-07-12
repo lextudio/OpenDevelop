@@ -22,10 +22,8 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
-using System.ComponentModel.Design;
 using System.IO;
 using System.Linq;
-using System.Resources;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -33,6 +31,7 @@ using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Project.Commands;
+using LeXtudio.OpenDevelop.ResourceFiles;
 using ResourceEditor.Views;
 
 namespace ResourceEditor.ViewModels
@@ -307,79 +306,107 @@ namespace ResourceEditor.ViewModels
 			view.DataContext = this;
 		}
 		
+		/// <summary>
+		/// True for .resx (round-trip editable via ResourceFileReader.SaveResX); false for
+		/// .resources (binary format we can only preview - matches UnoDevelop's
+		/// ResourceViewerViewContent, which also only treats .resx as editable).
+		/// </summary>
+		public bool CanSave {
+			get;
+			private set;
+		}
+
 		public void LoadFile(FileName filename, Stream stream)
 		{
 			StartUpdate();
-			
+
 			resourceItems.Clear();
 			metadataItems.Clear();
-			switch (Path.GetExtension(filename).ToLowerInvariant()) {
-				case ".resx":
-					ResXResourceReader rx = new ResXResourceReader(stream);
-					ITypeResolutionService typeResolver = null;
-					rx.BasePath = Path.GetDirectoryName(filename);
-					rx.UseResXDataNodes = true;
-					IDictionaryEnumerator n = rx.GetEnumerator();
-					while (n.MoveNext()) {
-						ResXDataNode node = (ResXDataNode)n.Value;
-						resourceItems.Add(new ResourceItem(this, node.Name, node.GetValue(typeResolver), node.Comment));
-					}
-					
-					n = rx.GetMetadataEnumerator();
-					while (n.MoveNext()) {
-						ResXDataNode node = (ResXDataNode)n.Value;
-						metadataItems.Add(new ResourceItem(this, node.Name, node.GetValue(typeResolver)));
-					}
-					
-					rx.Close();
-					break;
-				case ".resources":
-					ResourceReader rr = null;
-					try {
-						rr = new ResourceReader(stream);
-						foreach (DictionaryEntry entry in rr) {
-							resourceItems.Add(new ResourceItem(this, entry.Key.ToString(), entry.Value));
-						}
-					} finally {
-						if (rr != null) {
-							rr.Close();
-						}
-					}
-					break;
+
+			var extension = Path.GetExtension(filename);
+			CanSave = extension.Equals(".resx", StringComparison.OrdinalIgnoreCase);
+
+			// ResourceFileReader needs a real file path (it re-opens the file itself rather than
+			// reading the passed-in stream), which OpenedFile always backs with one on disk.
+			foreach (var entry in ResourceFileReader.Read(filename))
+			{
+				var target = entry.Type.Equals("metadata", StringComparison.OrdinalIgnoreCase) ? metadataItems : resourceItems;
+				target.Add(CreateResourceItem(entry));
 			}
-			
+
 			EndUpdate();
 		}
-		
+
+		ResourceItem CreateResourceItem(ResourceEntry entry)
+		{
+			var resourceType = ClassifyResXType(entry.Type);
+			object value = resourceType switch {
+				ResourceItemEditorType.Boolean => bool.Parse(entry.Value),
+				ResourceItemEditorType.Bitmap or ResourceItemEditorType.Icon or ResourceItemEditorType.Cursor or ResourceItemEditorType.Binary
+					=> DecodeBase64OrEmpty(entry.Value),
+				_ => entry.Value,
+			};
+
+			var item = new ResourceItem(this, entry.Name, value, entry.Comment, resourceType);
+			if (resourceType != ResourceItemEditorType.String && resourceType != ResourceItemEditorType.Boolean)
+				item.OriginalResXType = entry.Type;
+			return item;
+		}
+
+		static byte[] DecodeBase64OrEmpty(string value)
+		{
+			try {
+				return Convert.FromBase64String(value.Trim());
+			} catch (FormatException) {
+				return Array.Empty<byte>();
+			}
+		}
+
+		/// <summary>
+		/// Classifies a .resx "type" attribute into our reduced set of editor kinds. Unlike the
+		/// original WinForms-era code, this never actually loads/resolves the named CLR type -
+		/// it only pattern-matches the type name string, since ResourceValue is always a plain
+		/// string/bool/byte[] now (see ResourceEditor.csproj's header comment).
+		/// </summary>
+		static ResourceItemEditorType ClassifyResXType(string type)
+		{
+			if (string.IsNullOrEmpty(type) || type.Equals("string", StringComparison.OrdinalIgnoreCase))
+				return ResourceItemEditorType.String;
+			if (ResourceFileReader.IsBooleanType(type))
+				return ResourceItemEditorType.Boolean;
+			if (type.Contains("System.Drawing.Bitmap", StringComparison.OrdinalIgnoreCase))
+				return ResourceItemEditorType.Bitmap;
+			if (type.Contains("System.Drawing.Icon", StringComparison.OrdinalIgnoreCase))
+				return ResourceItemEditorType.Icon;
+			if (type.Contains("System.Windows.Forms.Cursor", StringComparison.OrdinalIgnoreCase))
+				return ResourceItemEditorType.Cursor;
+			return ResourceItemEditorType.Binary;
+		}
+
 		public void SaveFile(FileName filename, Stream stream)
 		{
-			switch (Path.GetExtension(filename).ToLowerInvariant()) {
-				case ".resx":
-					// write XML resource
-					ResXResourceWriter rxw = new ResXResourceWriter(stream, t => ResXConverter.ConvertTypeName(t, filename));
-					foreach (ResourceItem entry in resourceItems) {
-						if (entry != null) {
-							rxw.AddResource(entry.ToResXDataNode(t => ResXConverter.ConvertTypeName(t, filename)));
-						}
-					}
-					foreach (ResourceItem entry in metadataItems) {
-						if (entry != null) {
-							rxw.AddMetadata(entry.Name, entry.ResourceValue);
-						}
-					}
-					rxw.Generate();
-					rxw.Close();
-					break;
-				default:
-					// write default resource
-					ResourceWriter rw = new ResourceWriter(stream);
-					foreach (ResourceItem entry in resourceItems) {
-						rw.AddResource(entry.Name, entry.ResourceValue);
-					}
-					rw.Generate();
-					rw.Close();
-					break;
-			}
+			if (!CanSave)
+				return;
+
+			var entries = resourceItems
+				.Concat(metadataItems)
+				.Select(ToResourceEntry);
+			ResourceFileReader.SaveResX(filename, entries, stream);
+		}
+
+		static ResourceEntry ToResourceEntry(ResourceItem item)
+		{
+			string type = item.ResourceType switch {
+				ResourceItemEditorType.Boolean => "System.Boolean",
+				ResourceItemEditorType.String => "string",
+				_ => item.OriginalResXType ?? "System.Byte[]",
+			};
+			string value = item.ResourceValue switch {
+				byte[] bytes => Convert.ToBase64String(bytes),
+				null => string.Empty,
+				var other => other.ToString(),
+			};
+			return new ResourceEntry(item.Name, type, value, item.Comment, value.Length);
 		}
 		
 		#region Standard clipboard commands
