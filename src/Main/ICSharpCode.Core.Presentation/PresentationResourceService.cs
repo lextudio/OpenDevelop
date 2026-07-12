@@ -227,6 +227,10 @@ namespace ICSharpCode.Core.Presentation
 			{ "CodeCoverage.Icons.16x16.File", "Resources/VS2017/CodeCoverage/CodeCoverage_16x.xaml" },
 			{ "CodeCoverage.Icons.16x16.Run", "Resources/VS2017/RunTest/RunTest_16x.xaml" },
 
+			// Version control context-menu icons.
+			{ "Svn.Commit", "Resources/VS2017/Commit/Commit_16x.xaml" },
+			{ "Svn.Diff", "Resources/VS2017/Compare/Compare_16x.xaml" },
+
 			// IconBarMargin/Bookmark margin icons (breakpoints, bookmarks).
 			// Mapped via "Bookmarks.*" resource name used by BreakpointBookmark / BookmarkBase.
 			{ "Bookmarks.Breakpoint", "Resources/VS2017/Breakpoint/BreakpointEnable_16x.xaml" },
