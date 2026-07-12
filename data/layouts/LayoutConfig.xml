@@ -10,6 +10,11 @@
 		file     = "Debug.xml"
 		readonly = "False"/>
 	
+	<Layout name     = "ILSpy"
+		displayName = "ILSpy"
+		file     = "ILSpy.xml"
+		readonly = "False"/>
+	
 	<Layout name     = "Plain"
 		displayName = "${res:ICSharpCode.SharpDevelop.Commands.ChooseLayoutCommand.PlainItem}"
 		file     = "Plain.xml"

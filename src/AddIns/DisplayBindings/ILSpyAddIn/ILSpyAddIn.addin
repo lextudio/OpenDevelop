@@ -42,4 +42,11 @@
 		                fileNamePattern = "^ilspy://"
 		                title = "ILSpy Decompiler View"/>
 	</Path>
+
+	<Path name = "/SharpDevelop/Workbench/MainMenu/File/Open">
+		<MenuItem id = "OpenAssembly"
+		          label = "Assembly..."
+		          insertafter = "Project"
+		          class = "ICSharpCode.ILSpyAddIn.Commands.OpenAssemblyCommand"/>
+	</Path>
 </AddIn>

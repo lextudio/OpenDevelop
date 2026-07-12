@@ -18,7 +18,8 @@ internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrateg
 {
     private readonly DockingManager dockingManager;
     private readonly ObservableCollection<AvalonWorkbenchWindow> documents = new ObservableCollection<AvalonWorkbenchWindow>();
-    private ReadOnlyCollection<ToolPaneModel> toolPanes;
+    private readonly ObservableCollection<ToolPaneModel> toolPanes = new ObservableCollection<ToolPaneModel>();
+    private ReadOnlyObservableCollection<ToolPaneModel> toolPanesView;
 
     public DockWorkspace(DockingManager dockingManager)
     {
@@ -28,12 +29,42 @@ internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrateg
 
     public static DockWorkspace Current { get; private set; }
 
-    public ReadOnlyCollection<ToolPaneModel> ToolPanes =>
-        toolPanes ??= OpenDevelopMefHost.ExportProvider
-            .GetExportedValues<ToolPaneModel>("ToolPane")
-            .OrderBy(item => item.Title)
-            .ToArray()
-            .AsReadOnly();
+    /// <summary>
+    /// MEF-exported tool panes plus any panes added at runtime via <see cref="AddToolPane"/>
+    /// (e.g. hosted addin panes that aren't MEF parts of this assembly, such as ILSpy's).
+    /// Backed by an ObservableCollection so additions/removals after the initial MEF scan are
+    /// picked up live by the AnchorablesSource binding, the same way <see cref="Documents"/>
+    /// already reflects <see cref="AddDocument"/>/<see cref="RemoveDocument"/>.
+    /// </summary>
+    public ReadOnlyObservableCollection<ToolPaneModel> ToolPanes {
+        get {
+            if (toolPanesView == null) {
+                foreach (var pane in OpenDevelopMefHost.ExportProvider
+                    .GetExportedValues<ToolPaneModel>("ToolPane")
+                    .OrderBy(item => item.Title)) {
+                    toolPanes.Add(pane);
+                }
+                toolPanesView = new ReadOnlyObservableCollection<ToolPaneModel>(toolPanes);
+            }
+            return toolPanesView;
+        }
+    }
+
+    /// <summary>
+    /// Adds a tool pane that isn't a MEF part of this assembly (e.g. an adapter wrapping a
+    /// hosted addin's own pane view-model) so it shows up alongside the built-in pads.
+    /// </summary>
+    public void AddToolPane(ToolPaneModel pane)
+    {
+        _ = ToolPanes; // ensure the MEF-backed panes are loaded first
+        if (!toolPanes.Contains(pane))
+            toolPanes.Add(pane);
+    }
+
+    public void RemoveToolPane(ToolPaneModel pane)
+    {
+        toolPanes.Remove(pane);
+    }
 
     public ReadOnlyObservableCollection<AvalonWorkbenchWindow> Documents { get; private set; }
 
@@ -159,4 +190,16 @@ internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrateg
     public void AfterInsertDocument(LayoutRoot layout, LayoutDocument anchorableShown)
     {
     }
+}
+
+/// <summary>
+/// Public seam for external addins (hosted panes that aren't MEF parts of this assembly, e.g.
+/// ILSpy's) to add/remove pads without exposing the rest of <see cref="DockWorkspace"/>'s
+/// internal surface (which references internal types like AvalonWorkbenchWindow).
+/// </summary>
+public static class DockWorkspaceExtensibility
+{
+    public static void AddToolPane(ToolPaneModel pane) => DockWorkspace.Current?.AddToolPane(pane);
+
+    public static void RemoveToolPane(ToolPaneModel pane) => DockWorkspace.Current?.RemoveToolPane(pane);
 }

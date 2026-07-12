@@ -28,7 +28,23 @@
 
   <ItemGroup>
     <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
-    <None Include="WpfDesign.addin" CopyToOutputDirectory="Always" />
+    <!-- Intentionally NOT CopyToOutputDirectory="Always": MSBuild propagates a project's own
+         <None CopyToOutputDirectory> content items into every downstream consumer's own
+         OutputPath (via GetCopyToOutputDirectoryItems walking the full transitive P2P closure),
+         regardless of Private="false" on intermediate ProjectReference edges (Private only
+         suppresses copying this project's own compiled assembly, not its content items). Since
+         several unrelated addins (ILSpyAddIn, PackageManagement, CodeCoverage) transitively
+         reference this project (e.g. via AvalonEdit.AddIn, which genuinely needs the WpfDesign.*
+         assemblies at compile time), that propagation was duplicating "WpfDesign.addin" - and the
+         AddInTree assemblies it pulls in - into their output folders too, each registering a
+         conflicting duplicate "ICSharpCode.WpfDesigner" AddInTree identity at startup. The
+         explicit AfterTargets="Build" copy below achieves the same "copy the manifest into this
+         project's own output" result without exposing it as a propagating content item. -->
+    <None Include="WpfDesign.addin" />
     <Resource Include="Images\Icons.32x32.Error.png" />
   </ItemGroup>
+
+  <Target Name="CopyAddInManifest" AfterTargets="Build">
+    <Copy SourceFiles="WpfDesign.addin" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+  </Target>
 </Project>
