@@ -21,3 +21,6 @@
 	path = externals/wpftoolkit
 	url = https://github.com/lextudio/wpftoolkit.git
 	branch = openwpf
+[submodule "externals/ilspy"]
+	path = externals/ilspy
+	url = https://github.com/lextudio/ILSpy.git
