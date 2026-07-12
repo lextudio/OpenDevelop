@@ -29,6 +29,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Markup;
+using System.Windows.Threading;
 using System.Xml;
 
 using ICSharpCode.Core;
@@ -53,7 +54,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 	/// <summary>
 	/// IViewContent implementation that hosts the WPF designer.
 	/// </summary>
-	public class WpfViewContent : AbstractViewContentHandlingLoadErrors, IToolsHost, IOutlineContentHost
+	public class WpfViewContent : AbstractViewContentHandlingLoadErrors, IToolsHost, IOutlineContentHost, IHasPropertyContainer
 	{
 		public WpfViewContent(OpenedFile file) : base(file)
 		{
@@ -76,6 +77,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 				? Path.GetDirectoryName(assemblyLocation)
 				: Path.GetDirectoryName(file.FileName.ToString());
 			AppDomain.CurrentDomain.AssemblyResolve += CurrentDomain_AssemblyResolve;
+			Application.Current.DispatcherUnhandledException += OnDispatcherUnhandledException;
 		}
 		
 		static WpfViewContent()
@@ -199,9 +201,43 @@ namespace ICSharpCode.WpfDesign.AddIn
 					designer.DesignContext.Services.Selection.SelectionChanged += OnSelectionChanged;
 					designer.DesignContext.Services.GetService<UndoService>().UndoStackChanged += OnUndoStackChanged;
 				} catch (Exception e) {
-					this.UserContent = new WpfDocumentError(e);
+					ShowDesignerError(e);
 				}
 			}
+		}
+
+		void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+		{
+			if (IsDisposed || !IsActiveViewContent || designer?.DesignContext == null || UserContent != designer)
+				return;
+
+			LoggingService.Error("Unhandled WPF designer UI exception", e.Exception);
+			e.Handled = true;
+			ShowDesignerError(e.Exception);
+		}
+
+		void ShowDesignerError(Exception exception)
+		{
+			DetachDesignerServices();
+			if (outline != null)
+				outline.Root = null;
+			if (propertyGridView != null)
+				propertyGridView.PropertyGrid.SelectedItems = null;
+			propertyContainer.SelectedObject = null;
+			designer?.UnloadDesigner();
+			this.UserContent = new WpfDocumentError(exception);
+		}
+
+		void DetachDesignerServices()
+		{
+			DesignContext context = designer?.DesignContext;
+			if (context == null)
+				return;
+
+			context.Services.Selection.SelectionChanged -= OnSelectionChanged;
+			UndoService undoService = context.Services.GetService<UndoService>();
+			if (undoService != null)
+				undoService.UndoStackChanged -= OnUndoStackChanged;
 		}
 		
 		System.Reflection.Assembly CurrentDomain_AssemblyResolve(object sender, ResolveEventArgs args)
@@ -274,7 +310,12 @@ namespace ICSharpCode.WpfDesign.AddIn
 		#region Property editor / SelectionChanged
 		
 		PropertyGridView propertyGridView;
-		
+		readonly PropertyContainer propertyContainer = new PropertyContainer();
+
+		public PropertyContainer PropertyContainer {
+			get { return propertyContainer; }
+		}
+
 		void InitPropertyEditor()
 		{
 			propertyGridView = new PropertyGridView();
@@ -297,6 +338,9 @@ namespace ICSharpCode.WpfDesign.AddIn
 		void OnSelectionChanged(object sender, DesignItemCollectionEventArgs e)
 		{
 			propertyGridView.PropertyGrid.SelectedItems = DesignContext.Services.Selection.SelectedItems;
+			propertyContainer.SelectedObject = DesignContext.Services.Selection.PrimarySelection != null
+				? new DesignItemPropertyGridAdapter(DesignContext.Services.Selection.PrimarySelection)
+				: null;
 		}
 
 		void OnPropertyGridPropertyChanged(object sender, PropertyChangedEventArgs e)
@@ -336,7 +380,10 @@ namespace ICSharpCode.WpfDesign.AddIn
 		public override void Dispose()
 		{
 			AppDomain.CurrentDomain.AssemblyResolve -= CurrentDomain_AssemblyResolve;
+			Application.Current.DispatcherUnhandledException -= OnDispatcherUnhandledException;
 			SD.ProjectService.ProjectItemAdded -= OnReferenceAdded;
+			DetachDesignerServices();
+			designer?.UnloadDesigner();
 
 			base.Dispose();
 		}
@@ -368,7 +415,20 @@ namespace ICSharpCode.WpfDesign.AddIn
 		}
 		
 		public object OutlineContent {
-			get { return this.Outline; }
+			get {
+				if (WorkbenchWindow != null) {
+					foreach (IViewContent view in WorkbenchWindow.ViewContents) {
+						if (view == this)
+							continue;
+
+						var sourceOutline = view.GetService(typeof(IOutlineContentHost)) as IOutlineContentHost;
+						if (sourceOutline != null)
+							return sourceOutline.OutlineContent;
+					}
+				}
+
+				return this.Outline;
+			}
 		}
 	}
 }

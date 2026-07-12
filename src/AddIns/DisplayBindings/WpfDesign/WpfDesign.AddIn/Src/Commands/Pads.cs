@@ -35,13 +35,13 @@ namespace ICSharpCode.WpfDesign.AddIn.Commands
     }
 	
 	/// <summary>
-	/// Opens up the Propeties Pad.
+	/// Opens up the Properties Pad (general-purpose Xceed-based PropertyPad).
 	/// </summary>
 	class Properties : AbstractMenuCommand
     {
         public override void Run()
         {
-            SD.Workbench.GetPad(typeof(WpfPropertyPad)).BringPadToFront();
+            SD.Workbench.GetPad(typeof(PropertyPad)).BringPadToFront();
         }
     }
 	

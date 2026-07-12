@@ -4,8 +4,6 @@ Microsoft Visual Studio Solution File, Format Version 11.00
 # SharpDevelop 4.3
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "XmlEditor", "Project\XmlEditor.csproj", "{DCA2703D-250A-463E-A68A-07ED105AE6BD}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "XmlEditor.Tests", "Test\XmlEditor.Tests.csproj", "{FC0FE702-A87D-4D70-A9B6-1ECCD611125F}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ICSharpCode.AvalonEdit", "..\..\..\Libraries\AvalonEdit\ICSharpCode.AvalonEdit\ICSharpCode.AvalonEdit.csproj", "{6C55B776-26D4-4DB3-A6AB-87E783B2F3D1}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ICSharpCode.Core", "..\..\..\Main\Core\Project\ICSharpCode.Core.csproj", "{35CEF10F-2D4C-45F2-9DD1-161E0FEC583C}"
@@ -36,10 +34,6 @@ Global
 		{DCA2703D-250A-463E-A68A-07ED105AE6BD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{DCA2703D-250A-463E-A68A-07ED105AE6BD}.Release|Any CPU.Build.0 = Release|Any CPU
 		{DCA2703D-250A-463E-A68A-07ED105AE6BD}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{FC0FE702-A87D-4D70-A9B6-1ECCD611125F}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{FC0FE702-A87D-4D70-A9B6-1ECCD611125F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{FC0FE702-A87D-4D70-A9B6-1ECCD611125F}.Release|Any CPU.Build.0 = Release|Any CPU
-		{FC0FE702-A87D-4D70-A9B6-1ECCD611125F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6C55B776-26D4-4DB3-A6AB-87E783B2F3D1}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6C55B776-26D4-4DB3-A6AB-87E783B2F3D1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{6C55B776-26D4-4DB3-A6AB-87E783B2F3D1}.Release|Any CPU.Build.0 = Release|Any CPU

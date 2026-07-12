@@ -16,6 +16,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System.ComponentModel.Design;
+
 using ICSharpCode.AvalonEdit;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
@@ -31,6 +33,7 @@ namespace ICSharpCode.XamlBinding
 	public class XamlOutlineExtension : ITextEditorExtension
 	{
 		TextEditor textEditor;
+		IServiceContainer services;
 		XamlOutlineContentHost host;
 
 		public void Attach(ITextEditor editor)
@@ -40,16 +43,17 @@ namespace ICSharpCode.XamlBinding
 				return;
 
 			host = new XamlOutlineContentHost(editor);
-			textEditor.TextArea.TextView.Services.AddService(typeof(IOutlineContentHost), host);
+			services = editor.GetRequiredService<IServiceContainer>();
+			services.AddService(typeof(IOutlineContentHost), host);
 		}
 
 		public void Detach()
 		{
-			if (textEditor != null)
-				textEditor.TextArea.TextView.Services.RemoveService(typeof(IOutlineContentHost));
+			services?.RemoveService(typeof(IOutlineContentHost));
 
 			host?.Dispose();
 			host = null;
+			services = null;
 			textEditor = null;
 		}
 	}

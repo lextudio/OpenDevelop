@@ -183,7 +183,7 @@
 		     shortcut = "F4"
 		     class    = "ICSharpCode.SharpDevelop.Gui.PropertyPad"
 		     defaultPosition = "Right" />
-		
+
 		<Pad id       = "FileScout"
 		     category = "Tools"
 		     title    = "${res:MainWindow.Windows.FileScoutLabel}"

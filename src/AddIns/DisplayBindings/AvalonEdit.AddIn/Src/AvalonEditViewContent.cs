@@ -21,6 +21,7 @@ using System.ComponentModel.Design;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Windows;
 using System.Windows.Threading;
 
 using ICSharpCode.AvalonEdit.AddIn.Options;
@@ -63,6 +64,8 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				if (!IsKnownFileExtension(filetype))
 					filetype = ".?";
 				trackedFeature = SD.AnalyticsMonitor.TrackFeature(typeof(AvalonEditViewContent), "open" + filetype.ToLowerInvariant());
+				if (filetype.Equals(".xaml", StringComparison.OrdinalIgnoreCase))
+					SetupXamlDragDrop();
 			}
 			
 			this.Files.Add(file);
@@ -293,9 +296,35 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		}
 		#endregion
 		
+		void SetupXamlDragDrop()
+		{
+			var textArea = codeEditor.PrimaryTextEditor.TextArea;
+			textArea.Drop += TextArea_Drop;
+		}
+
+		void TextArea_Drop(object sender, DragEventArgs e)
+		{
+			string typeName = e.Data.GetData("ComponentTypeName") as string;
+			if (typeName == null)
+				return;
+
+			// Use unqualified class name as the tag (e.g. "Button" for Button).
+			int lastDot = typeName.LastIndexOf('.');
+			string tagName = lastDot >= 0 ? typeName.Substring(lastDot + 1) : typeName;
+
+			string xaml = $"<{tagName} />";
+			int offset = codeEditor.PrimaryTextEditor.CaretOffset;
+			codeEditor.Document.Insert(offset, xaml);
+			e.Handled = true;
+		}
+
 		object IToolsHost.ToolsContent {
-			// WinForms SideBar (toolbox) is out of MVP scope; no tools content to host.
-			get { return null; }
+			get {
+				var fileName = this.PrimaryFileName;
+				if (fileName != null && fileName.ToString().EndsWith(".xaml", StringComparison.OrdinalIgnoreCase))
+					return ICSharpCode.WpfDesign.AddIn.WpfToolbox.Instance.ToolboxControl;
+				return null;
+			}
 		}
 	}
 }

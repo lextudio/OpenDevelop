@@ -210,9 +210,9 @@ namespace ICSharpCode.SharpDevelop.Workbench
 						window.viewTabControl.Items.Add(oldPage);
 					}
 
-					TabItem newPage = new TabItem();
-					newPage.Header = StringParser.Parse(item.TabPageText);
-					newPage.Content = item.Control;
+				TabItem newPage = new TabItem();
+				newPage.Header = StringParser.Parse(item.TabPageText);
+				newPage.Content = item.Control;
 
 					window.viewTabControl.Items.Insert(index, newPage);
 				}

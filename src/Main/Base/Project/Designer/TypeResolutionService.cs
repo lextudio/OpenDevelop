@@ -128,23 +128,46 @@ namespace ICSharpCode.SharpDevelop.Designer
 			// Very popular example of cyclic dependency: System <-> System.Xml
 			if (!projectContentsCurrentlyLoadingAssembly.Add(pc))
 				return null;
-			
-			Assembly sdAssembly;
-			if (IsSharpDevelopAssembly(pc.ProjectContent, out sdAssembly))
-				return sdAssembly;
-			
-			ICompilation compilation = SD.ParserService.GetCompilation(pc);
-			
+
 			try {
+				Assembly sdAssembly;
+				// pc.ProjectContent is null for C# projects now that they use the Roslyn/LSP model
+				// instead of the old NRefactory CSharpProjectContent (which used to populate it and
+				// which SD.ParserService.GetCompilation depended on). Guard both so this doesn't
+				// NullReference, and resolve the dependency list via MSBuild's own
+				// ResolveAssemblyReferences target - the same reference source Roslyn's
+				// RoslynWorkspaceHelper consumes - rather than the now-null NRefactory ICompilation.
+				if (pc.ProjectContent != null && IsSharpDevelopAssembly(pc.ProjectContent, out sdAssembly))
+					return sdAssembly;
+
 				// load dependencies of current assembly
-				foreach (IAssembly asm in compilation.ReferencedAssemblies) {
-					LoadAssembly(asm);
+				foreach (var reference in pc.ResolveAssemblyReferences(System.Threading.CancellationToken.None)) {
+					string path = reference.FileName;
+					if (!string.IsNullOrEmpty(path) && File.Exists(path))
+						LoadAssembly(path);
 				}
+			} catch (Exception ex) {
+				LoggingService.Warn("TypeResolutionService: failed to load project references for " + pc.Name, ex);
 			} finally {
 				projectContentsCurrentlyLoadingAssembly.Remove(pc);
 			}
-			
-			return LoadAssembly(pc.OutputAssemblyFullPath);
+
+			return LoadAssembly(GetManagedOutputAssemblyPath(pc));
+		}
+
+		/// <summary>
+		/// The project's own managed output assembly ("&lt;AssemblyName&gt;.dll"), which is what the
+		/// designer must reflect over to resolve local (clr-namespace, no assembly) XAML types.
+		/// This is deliberately NOT IProject.OutputAssemblyFullPath: for a WinExe/Exe project on
+		/// macOS/Linux that returns the extension-less native apphost (just "&lt;AssemblyName&gt;"),
+		/// not the managed .dll - loading the apphost as a managed assembly fails.
+		/// </summary>
+		static string GetManagedOutputAssemblyPath(IProject pc)
+		{
+			var compilable = pc as CompilableProject;
+			if (compilable != null)
+				return compilable.OutputFullPath.CombineFile(compilable.AssemblyName + ".dll");
+			return pc.OutputAssemblyFullPath;
 		}
 		
 		public Assembly LoadAssembly(IAssembly asm)

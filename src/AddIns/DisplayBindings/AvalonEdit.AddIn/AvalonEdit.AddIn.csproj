@@ -18,6 +18,7 @@
     <ProjectReference Include="..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
     <ProjectReference Include="..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" Private="false" />
     <ProjectReference Include="..\..\..\Main\ICSharpCode.SharpDevelop.Widgets\Project\ICSharpCode.SharpDevelop.Widgets.csproj" Private="false" />
+    <ProjectReference Include="..\WpfDesign\WpfDesign.AddIn\WpfDesign.AddIn.csproj" Private="false" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />

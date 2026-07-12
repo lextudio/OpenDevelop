@@ -29,6 +29,7 @@
     <ProjectReference Include="..\..\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" />
     <ProjectReference Include="..\..\ICSharpCode.SharpDevelop.Widgets\Project\ICSharpCode.SharpDevelop.Widgets.csproj" />
     <ProjectReference Include="..\..\..\Libraries\ICSharpCode.TypeSystem.Abstractions\ICSharpCode.TypeSystem.Abstractions.csproj" />
+    <ProjectReference Include="..\..\..\..\externals\wpftoolkit\ExtendedWPFToolkitSolution\Src\Xceed.Wpf.Toolkit\Xceed.Wpf.Toolkit.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\..\..\Libraries\ICSharpCode.Build.Tasks\Project\KnownFrameworkAssemblies.cs">
@@ -118,7 +119,9 @@
          that would otherwise need the removed IWinFormsService surface reimplemented. -->
     <Compile Remove="Src\Gui\Components\SideBar\**\*.cs" />
     <Compile Remove="Src\Gui\Pads\FileScout.cs" />
-    <Compile Remove="Src\Gui\Pads\PropertyPad\**\*.cs" />
+    <!-- PropertyPad was excluded during MVP rework (old WinForms PropertyGrid hosting); the
+         replacement WPF Xceed-based PropertyPad (in-place, same namespace & class name) is now
+         compiled again. -->
     <Compile Remove="Src\Commands\SideBarCommands.cs" />
     <!-- Out of MVP scope: WinForms Icon-based icon service (System.Drawing.Icon conversions layered on the
          removed IWinFormsService.BitmapToIcon); the WPF-facing IImage/IconService surface used elsewhere is

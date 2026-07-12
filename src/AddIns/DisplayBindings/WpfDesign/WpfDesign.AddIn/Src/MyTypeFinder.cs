@@ -1,14 +1,14 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
-// 
+// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -20,12 +20,10 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.ExceptionServices;
-using ICSharpCode.TypeSystem;
+using System.Threading;
 using ICSharpCode.SharpDevelop.Workbench;
 using ICSharpCode.WpfDesign.XamlDom;
 using ICSharpCode.SharpDevelop;
-using ICSharpCode.SharpDevelop.Dom;
 using ICSharpCode.SharpDevelop.Project;
 using TypeResolutionService = ICSharpCode.SharpDevelop.Designer.TypeResolutionService;
 
@@ -35,30 +33,36 @@ namespace ICSharpCode.WpfDesign.AddIn
 	{
 		OpenedFile file;
 		readonly TypeResolutionService typeResolutionService = new TypeResolutionService();
-		
+
 		public static MyTypeFinder Create(OpenedFile file)
 		{
 			MyTypeFinder f = new MyTypeFinder();
 			f.file = file;
 			f.ImportFrom(CreateWpfTypeFinder());
-			
-			// DO NOT USE Assembly.LoadFrom!
-			// use the special handling logic defined in TypeResolutionService!
-			var compilation = SD.ParserService.GetCompilationForFile(file.FileName);
-			if (compilation != null) {
-				foreach (var referencedAssembly in compilation.ReferencedAssemblies) {
+
+			// Preload the project's referenced assemblies so designer type resolution can see
+			// control types declared in referenced libraries. References come from MSBuild's own
+			// ResolveAssemblyReferences target (the same source Roslyn's RoslynWorkspaceHelper uses)
+			// rather than the old NRefactory ICompilation.ReferencedAssemblies, which no longer gets
+			// populated for C# projects since they moved to the Roslyn/LSP model.
+			IProject project = GetProject(file);
+			if (project != null) {
+				foreach (var reference in project.ResolveAssemblyReferences(CancellationToken.None)) {
+					string path = reference.FileName;
+					if (string.IsNullOrEmpty(path) || !File.Exists(path))
+						continue;
 					try {
-						var assembly = f.typeResolutionService.LoadAssembly(referencedAssembly);
+						var assembly = f.typeResolutionService.LoadAssembly(path);
 						if (assembly != null)
 							f.RegisterAssembly(assembly);
 					} catch (Exception ex) {
-						ICSharpCode.Core.LoggingService.Warn("Error loading Assembly : " + referencedAssembly.FullAssemblyName, ex);
+						ICSharpCode.Core.LoggingService.Warn("Error loading Assembly : " + path, ex);
 					}
 				}
 			}
 			return f;
 		}
-		
+
 		public override Assembly LoadAssembly(string name)
 		{
 			if (string.IsNullOrEmpty(name)) {
@@ -75,13 +79,11 @@ namespace ICSharpCode.WpfDesign.AddIn
 				return base.LoadAssembly(name);
 			}
 		}
-		
+
 		public override Uri ConvertUriToLocalUri(Uri uri)
 		{
 			if (!uri.IsAbsoluteUri)
 			{
-				var compilation = SD.ParserService.GetCompilationForFile(file.FileName);
-				var assembly = compilation != null ? this.typeResolutionService.LoadAssembly(compilation.MainAssembly) : null;
 				var prj = SD.ProjectService.CurrentProject;
 
 				if (uri.OriginalString.Contains(";"))
@@ -102,10 +104,10 @@ namespace ICSharpCode.WpfDesign.AddIn
 					return newUri;
 				}
 			}
-			
+
 			return uri;
 		}
-		
+
 		Assembly FindAssemblyInProjectReferences(string name)
 		{
 			IProject pc = GetProject(file);
@@ -114,17 +116,21 @@ namespace ICSharpCode.WpfDesign.AddIn
 			}
 			return null;
 		}
-		
+
 		Assembly FindAssemblyInProjectReferences(IProject pc, string name)
 		{
-			ICompilation compilation = SD.ParserService.GetCompilation(pc);
-			IAssembly assembly = compilation.ReferencedAssemblies.FirstOrDefault(asm => asm.AssemblyName == name);
-			if (assembly != null) {
-				return typeResolutionService.LoadAssembly(assembly);
+			// Match a referenced assembly by its short name against the MSBuild-resolved reference
+			// set (was: NRefactory ICompilation.ReferencedAssemblies, now always null post-Roslyn).
+			foreach (var reference in pc.ResolveAssemblyReferences(CancellationToken.None)) {
+				string path = reference.FileName;
+				if (string.IsNullOrEmpty(path) || !File.Exists(path))
+					continue;
+				if (string.Equals(reference.AssemblyName.ShortName, name, StringComparison.OrdinalIgnoreCase))
+					return typeResolutionService.LoadAssembly(path);
 			}
 			return null;
 		}
-		
+
 		public override XamlTypeFinder Clone()
 		{
 			MyTypeFinder copy = new MyTypeFinder();
@@ -132,7 +138,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 			copy.ImportFrom(this);
 			return copy;
 		}
-		
+
 		internal static IProject GetProject(OpenedFile file)
 		{
 			return SD.ProjectService.FindProjectContainingFile(file.FileName);

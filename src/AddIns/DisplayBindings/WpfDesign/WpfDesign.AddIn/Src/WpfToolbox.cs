@@ -62,6 +62,15 @@ namespace ICSharpCode.WpfDesign.AddIn
 
 		public WpfToolbox()
 		{
+			// Guarantees Metadata.GetPopularControls() is populated before this constructor reads
+			// it below, regardless of whether a WpfViewContent (which also calls this) has been
+			// constructed yet - WpfToolbox.Instance is a lazily-constructed, process-lifetime
+			// singleton, and whichever caller touches it first otherwise permanently freezes
+			// "items" as empty if that caller ran before any WpfViewContent existed (e.g. the
+			// Tools pad querying the active view's IToolsHost.ToolsContent before the WPF
+			// designer's own secondary view for the current file has loaded).
+			ICSharpCode.WpfDesign.Designer.BasicMetadata.Register();
+
 			itemsView.Source = items;
 			itemsView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(WpfSideTabItem.CategoryName)));
 
@@ -76,6 +85,13 @@ namespace ICSharpCode.WpfDesign.AddIn
 			items.Add(new WpfSideTabItem(PopularControlsCategory));
 			foreach (Type t in Metadata.GetPopularControls())
 				items.Add(new WpfSideTabItem(PopularControlsCategory, t));
+
+			// "items" is a plain List<T> (not observable), so the CollectionViewSource.View bound
+			// as the ListBox's ItemsSource above won't pick up these .Add() calls on its own -
+			// AddProjectDlls already knows this and calls Refresh() itself, but the constructor's
+			// own initial population needs the same nudge or the toolbox renders empty until
+			// something else happens to add project DLLs later.
+			itemsView.View.Refresh();
 
 			toolbox.SelectedIndex = 0;
 		}
@@ -120,16 +136,19 @@ namespace ICSharpCode.WpfDesign.AddIn
 		static readonly HashSet<string> addedAssemblies = new HashSet<string>();
 		public void AddProjectDlls(OpenedFile file)
 		{
-			var compilation = SD.ParserService.GetCompilationForFile(file.FileName);
-			if (compilation == null)
+			var project = SD.ProjectService.FindProjectContainingFile(file.FileName);
+			if (project == null)
 				return;
 
 			var typeResolutionService = new TypeResolutionService(file.FileName);
 
-			foreach (var reference in compilation.ReferencedAssemblies) {
-				string assemblyFileName = reference.GetReferenceAssemblyLocation();
+			// Enumerate the project's referenced assemblies from MSBuild's ResolveAssemblyReferences
+			// target (the Roslyn-aligned reference source) instead of the old NRefactory
+			// ICompilation.ReferencedAssemblies, which is null now that C# projects use Roslyn/LSP.
+			foreach (var reference in project.ResolveAssemblyReferences(System.Threading.CancellationToken.None)) {
+				string assemblyFileName = reference.FileName;
 
-				if (assemblyFileName == null || addedAssemblies.Contains(assemblyFileName))
+				if (string.IsNullOrEmpty(assemblyFileName) || !System.IO.File.Exists(assemblyFileName) || addedAssemblies.Contains(assemblyFileName))
 					continue;
 
 				try {
@@ -186,7 +205,15 @@ namespace ICSharpCode.WpfDesign.AddIn
 			if (!(toolbox.SelectedItem is WpfSideTabItem item) || item.Tool == null)
 				return;
 
-			DragDrop.DoDragDrop(toolbox, new DataObject(item.Tool), DragDropEffects.Copy);
+			var data = new DataObject(item.Tool);
+
+			if (item.Tool is CreateComponentTool componentTool)
+			{
+				data.SetData(typeof(Type), componentTool.ComponentType);
+				data.SetData("ComponentTypeName", componentTool.ComponentType.FullName);
+			}
+
+			DragDrop.DoDragDrop(toolbox, data, DragDropEffects.Copy);
 		}
 
 		public object ToolboxControl {

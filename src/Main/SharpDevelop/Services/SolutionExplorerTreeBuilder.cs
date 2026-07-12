@@ -127,16 +127,21 @@ internal static class SolutionExplorerTreeBuilder
             || tree.Flags.Contains(ProjectTreeFlags.Common.PackagesFolder);
     }
 
+    private static int GetSortOrder(SolutionExplorerNodeKind kind) => kind switch
+    {
+        SolutionExplorerNodeKind.DependenciesFolder => -2,
+        SolutionExplorerNodeKind.ReferencesFolder => -2,
+        SolutionExplorerNodeKind.PackagesFolder => -2,
+        SolutionExplorerNodeKind.Folder or SolutionExplorerNodeKind.GhostFolder => -1,
+        _ => 0,
+    };
+
     private static void SortChildren(SolutionExplorerNodeModel node)
     {
         node.Children.Sort((a, b) =>
         {
-            var aIsFolder = a.Kind is SolutionExplorerNodeKind.Folder or SolutionExplorerNodeKind.GhostFolder;
-            var bIsFolder = b.Kind is SolutionExplorerNodeKind.Folder or SolutionExplorerNodeKind.GhostFolder;
-            if (aIsFolder != bIsFolder)
-            {
-                return aIsFolder ? -1 : 1;
-            }
+            int order = GetSortOrder(a.Kind).CompareTo(GetSortOrder(b.Kind));
+            if (order != 0) return order;
 
             return string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
         });
