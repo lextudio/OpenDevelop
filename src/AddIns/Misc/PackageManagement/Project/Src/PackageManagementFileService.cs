@@ -19,7 +19,7 @@
 using System;
 using System.IO;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Dom;
 using ICSharpCode.SharpDevelop.Gui;
@@ -71,7 +71,7 @@ namespace ICSharpCode.PackageManagement
 				SD.MainThread.InvokeIfRequired(() => SaveFile(view));
 			} else {
 				if (view.IsDirty) {
-					view.Files.ForEach(ICSharpCode.SharpDevelop.Commands.SaveFile.Save);
+					ICSharpCode.SharpDevelop.Commands.SaveFileHelper.Save(view);
 				}
 			}
 		}

@@ -5,33 +5,33 @@ using ICSharpCode.Core.Presentation;
 
 namespace ICSharpCode.SharpDevelop.Services;
 
-internal static class SolutionExplorerIconService
+internal static class ProjectBrowserIconService
 {
-    public static BitmapSource GetIcon(SolutionExplorerNodeModel node)
+    public static BitmapSource GetIcon(ProjectBrowserNodeModel node)
     {
         return PresentationResourceService.GetBitmapSource(GetIconKey(node));
     }
 
-    private static string GetIconKey(SolutionExplorerNodeModel node)
+    private static string GetIconKey(ProjectBrowserNodeModel node)
     {
         return node.Kind switch
         {
-            SolutionExplorerNodeKind.Solution => "Icons.16x16.SolutionIcon",
-            SolutionExplorerNodeKind.Project or SolutionExplorerNodeKind.ProjectReference => "Icons.16x16.NewProjectIcon",
+            ProjectBrowserNodeKind.Solution => "Icons.16x16.SolutionIcon",
+            ProjectBrowserNodeKind.Project or ProjectBrowserNodeKind.ProjectReference => "Icons.16x16.NewProjectIcon",
             // Dependencies/References/Packages are all modeled as a handful of shared
-            // SolutionExplorerNodeKind values (see SharpDevelopProjectTreeProvider.
+            // ProjectBrowserNodeKind values (see SharpDevelopProjectTreeProvider.
             // GetDependencyGroupFlag), so "Assemblies"/"Analyzers"/"Frameworks"/etc. can only be
             // told apart by their display Name, not by Kind alone.
-            SolutionExplorerNodeKind.DependenciesFolder
-                or SolutionExplorerNodeKind.ReferencesFolder => GetDependencyGroupIconKey(node.Name),
-            SolutionExplorerNodeKind.Reference => "Icons.16x16.Reference",
-            SolutionExplorerNodeKind.PackagesFolder
-                or SolutionExplorerNodeKind.PackageReference => "Icons.16x16.Library",
-            SolutionExplorerNodeKind.Folder or SolutionExplorerNodeKind.GhostFolder => "Icons.16x16.ClosedFolderBitmap",
-            SolutionExplorerNodeKind.File
-                or SolutionExplorerNodeKind.LinkedFile
-                or SolutionExplorerNodeKind.MissingFile
-                or SolutionExplorerNodeKind.GhostFile => GetFileIconKey(node.FullPath),
+            ProjectBrowserNodeKind.DependenciesFolder
+                or ProjectBrowserNodeKind.ReferencesFolder => GetDependencyGroupIconKey(node.Name),
+            ProjectBrowserNodeKind.Reference => "Icons.16x16.Reference",
+            ProjectBrowserNodeKind.PackagesFolder
+                or ProjectBrowserNodeKind.PackageReference => "Icons.16x16.Library",
+            ProjectBrowserNodeKind.Folder or ProjectBrowserNodeKind.GhostFolder => "Icons.16x16.ClosedFolderBitmap",
+            ProjectBrowserNodeKind.File
+                or ProjectBrowserNodeKind.LinkedFile
+                or ProjectBrowserNodeKind.MissingFile
+                or ProjectBrowserNodeKind.GhostFile => GetFileIconKey(node.FullPath),
             _ => node.IsDirectory ? "Icons.16x16.ClosedFolderBitmap" : "Icons.16x16.MiscFiles"
         };
     }

@@ -1,0 +1,161 @@
+<AddIn name="OpenDevelop Project Browser"
+       author="OpenDevelop"
+       description="AddInTree-backed WPF Project Browser commands (CPS-based), ported from UnoDevelop">
+  <!--
+    R6b (see doc/technotes/solution-explorer.md): wires ProjectBrowserController/Service and its
+    commands into the AddInTree. Deliberately uses its own /SharpDevelop/Pads/ProjectBrowser/...
+    path namespace instead of the legacy /SharpDevelop/Pads/ProjectBrowser/... paths already owned
+    by the WinForms ExtTreeView-based ProjectBrowserPad (out of MVP scope, see
+    ProjectBrowserPadStub.cs) - reusing those paths would double-register menu items (old WinForms
+    commands + these) under the same ids. R6c will add the actual WPF pad/tree view that consumes
+    these menu paths and binds IProjectBrowserController/IProjectBrowserHost.
+  -->
+  <Manifest>
+    <Identity name="ICSharpCode.SharpDevelop.ProjectBrowser" version="1.0"/>
+  </Manifest>
+
+  <!-- Every class referenced below (ProjectBrowserController, ProjectBrowserPad, the
+       *ProjectBrowserCommand types) is compiled into the SharpDevelop.exe assembly itself
+       (src/Main/SharpDevelop/...), so AddIn.FindType needs a Runtime/Import pointing at the host
+       assembly to resolve them. Without this, FindType has zero runtimes to search and every
+       Service/Pad/MenuItem class attribute below silently resolves to null (logged as
+       "Cannot find class: ..." at AddInTree load time), so the service is never registered and
+       every DevFlow action depending on it (e.g. od.open-solution) 404s. -->
+  <Runtime>
+    <Import assembly=":OpenDevelop"/>
+  </Runtime>
+
+  <!-- Reuses the native "SolutionOpen" condition evaluator already registered by
+       ICSharpCode.SharpDevelop.addin (ICSharpCode.SharpDevelop.SolutionOpenConditionEvaluator,
+       in Base/Project/Src/Internal/ConditionEvaluators/CombineOpenEvaluator.cs) - registering a
+       second evaluator under the same name here throws AddInLoadException("Duplicate condition
+       evaluator: SolutionOpen") while loading the main addin, which aborts that addin's load
+       partway through and silently drops every condition evaluator/doozer registered after it
+       (including "WindowActive"), breaking most of the workbench's menu conditions. -->
+
+  <Path name="/SharpDevelop/Services">
+    <Service id="ICSharpCode.SharpDevelop.Services.IProjectBrowserController"
+             class="ICSharpCode.SharpDevelop.Services.ProjectBrowserController" />
+  </Path>
+
+  <Path name="/SharpDevelop/Workbench/Pads">
+    <Pad id="ProjectBrowser"
+         category="Main"
+         title="Project Browser"
+         class="ICSharpCode.SharpDevelop.Services.ProjectBrowserPad"
+         defaultPosition="Right" />
+  </Path>
+
+  <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Add">
+    <MenuItem id="NewProject" label="New Project..." class="ICSharpCode.SharpDevelop.Commands.NewProjectProjectBrowserCommand" />
+    <MenuItem id="NewItem" label="New Item..." class="ICSharpCode.SharpDevelop.Commands.NewItemProjectBrowserCommand" />
+    <MenuItem id="NewFolder" label="New Folder" class="ICSharpCode.SharpDevelop.Commands.NewFolderProjectBrowserCommand" />
+    <MenuItem id="NewFile" label="New File" class="ICSharpCode.SharpDevelop.Commands.NewFileProjectBrowserCommand" />
+    <MenuItem id="ExistingFile" label="Add Existing File" class="ICSharpCode.SharpDevelop.Commands.AddExistingFileProjectBrowserCommand">
+      <Condition name="Ownerstate" ownerstate="AddExisting" />
+    </MenuItem>
+    <MenuItem id="ExistingFolder" label="Add Existing Folder" class="ICSharpCode.SharpDevelop.Commands.AddExistingFolderProjectBrowserCommand">
+      <Condition name="Ownerstate" ownerstate="AddExisting" />
+    </MenuItem>
+  </Path>
+
+  <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Open">
+    <MenuItem id="Open" label="Open" class="ICSharpCode.SharpDevelop.Commands.OpenProjectBrowserItemCommand">
+      <Condition name="Ownerstate" ownerstate="Openable" />
+    </MenuItem>
+    <MenuItem id="OpenWith" label="Open With" class="ICSharpCode.SharpDevelop.Commands.OpenWithProjectBrowserCommand">
+      <Condition name="Ownerstate" ownerstate="OpenWith" />
+    </MenuItem>
+    <MenuItem id="OpenFolder" label="Open Folder" class="ICSharpCode.SharpDevelop.Commands.OpenFolderProjectBrowserCommand" />
+  </Path>
+
+  <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Edit">
+    <MenuItem id="Rename" label="Rename" class="ICSharpCode.SharpDevelop.Commands.RenameProjectBrowserItemCommand">
+      <Condition name="Ownerstate" ownerstate="Renameable" />
+    </MenuItem>
+    <MenuItem id="Delete" label="Delete" class="ICSharpCode.SharpDevelop.Commands.DeleteProjectBrowserItemCommand">
+      <Condition name="Ownerstate" ownerstate="Deletable" />
+    </MenuItem>
+    <MenuItem id="RemoveFromProject" label="Remove From Project" class="ICSharpCode.SharpDevelop.Commands.RemoveFromProjectProjectBrowserCommand">
+      <Condition name="Ownerstate" ownerstate="RemovableFromSolution" />
+    </MenuItem>
+    <MenuItem id="CopyPath" label="Copy Path" class="ICSharpCode.SharpDevelop.Commands.CopyPathProjectBrowserCommand" />
+  </Path>
+
+  <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Membership">
+    <MenuItem id="IncludeInProject" label="Include In Project" class="ICSharpCode.SharpDevelop.Commands.IncludeInProjectProjectBrowserCommand">
+      <Condition name="Ownerstate" ownerstate="IncludeInProject" />
+    </MenuItem>
+    <MenuItem id="ExcludeFromProject" label="Exclude From Project" class="ICSharpCode.SharpDevelop.Commands.ExcludeFromProjectProjectBrowserCommand">
+      <Condition name="Ownerstate" ownerstate="ExcludeFromProject" />
+    </MenuItem>
+  </Path>
+
+  <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/SolutionNode">
+    <MenuItem id="Refresh" label="Refresh" class="ICSharpCode.SharpDevelop.Commands.RefreshProjectBrowserCommand" />
+    <MenuItem id="Add" label="Add" type="Menu">
+      <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Add" />
+    </MenuItem>
+    <MenuItem id="Separator1" type="Separator" />
+    <MenuItem id="CopyPath" label="Copy Path" class="ICSharpCode.SharpDevelop.Commands.CopyPathProjectBrowserCommand" />
+    <MenuItem id="OpenFolder" label="Open Folder" class="ICSharpCode.SharpDevelop.Commands.OpenFolderProjectBrowserCommand" />
+  </Path>
+
+  <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/ProjectNode">
+    <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Open" />
+    <MenuItem id="Separator1" type="Separator" />
+    <MenuItem id="Refresh" label="Refresh" class="ICSharpCode.SharpDevelop.Commands.RefreshProjectBrowserCommand" />
+    <MenuItem id="Add" label="Add" type="Menu">
+      <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Add" />
+    </MenuItem>
+    <MenuItem id="SetStartup" label="Set Startup Project" class="ICSharpCode.SharpDevelop.Commands.SetStartupProjectProjectBrowserCommand">
+      <Condition name="Ownerstate" ownerstate="StartupProject" />
+    </MenuItem>
+    <MenuItem id="Separator2" type="Separator" />
+    <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Edit" />
+  </Path>
+
+  <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/FolderNode">
+    <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Open" />
+    <MenuItem id="Separator1" type="Separator" />
+    <MenuItem id="Add" label="Add" type="Menu">
+      <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Add" />
+    </MenuItem>
+    <MenuItem id="Separator2" type="Separator" />
+    <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Edit" />
+  </Path>
+
+  <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/FileNode">
+    <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Open" />
+    <MenuItem id="Separator1" type="Separator" />
+    <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Membership" />
+    <MenuItem id="Separator2" type="Separator" />
+    <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Edit" />
+  </Path>
+
+  <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/ReferenceNode">
+    <MenuItem id="OpenProjectReference" label="Open" class="ICSharpCode.SharpDevelop.Commands.OpenProjectReferenceProjectBrowserCommand">
+      <Condition name="Ownerstate" ownerstate="OpenReference" />
+    </MenuItem>
+    <MenuItem id="Separator0" type="Separator" />
+    <MenuItem id="RemoveReference" label="Remove" class="ICSharpCode.SharpDevelop.Commands.RemoveReferenceProjectBrowserCommand">
+      <Condition name="Ownerstate" ownerstate="RemovableReference" />
+    </MenuItem>
+    <MenuItem id="CopyPath" label="Copy Path" class="ICSharpCode.SharpDevelop.Commands.CopyPathProjectBrowserCommand" />
+  </Path>
+
+  <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/PackageReferenceNode">
+    <MenuItem id="RemoveReference" label="Remove" class="ICSharpCode.SharpDevelop.Commands.RemoveReferenceProjectBrowserCommand">
+      <Condition name="Ownerstate" ownerstate="RemovableReference" />
+    </MenuItem>
+  </Path>
+
+  <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/UnknownNode">
+  </Path>
+
+  <Path name="/SharpDevelop/Pads/ProjectBrowser/ToolBar/Standard">
+    <Condition name="SolutionOpen" action="Disable">
+      <ToolbarItem id="Refresh" tooltip="Refresh" class="ICSharpCode.SharpDevelop.Commands.RefreshProjectBrowserCommand" />
+    </Condition>
+  </Path>
+</AddIn>

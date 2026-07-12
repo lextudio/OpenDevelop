@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# launch.sh — build the latest OpenDevelop (SharpDevelop.exe) and run it.
+# launch.sh — build the latest OpenDevelop and run it.
 #
 # Usage:
-#   ./launch.sh                build OpenDevelop.Mvp.sln, then run SharpDevelop.exe
+#   ./launch.sh                build OpenDevelop.Mvp.sln, then run OpenDevelop
 #   ./launch.sh --no-build     skip the build, just (re)run the last build output
 #   ./launch.sh --build-only   build but do NOT launch (used by rebuild-all.sh --build-only and
 #                              by the integration tests, which start their own app instance)
@@ -32,7 +32,7 @@ setup_dotnet_env "${dotnet}"
 
 # Kill any previously running instance so DevFlow's port (9223) is free and we
 # don't end up staring at a stale window.
-pkill -f "SharpDevelop.dll" 2>/dev/null || true
+pkill -f "OpenDevelop.dll" 2>/dev/null || true
 sleep 1
 
 if [[ "${do_build}" -eq 1 ]]; then
@@ -69,5 +69,5 @@ if [[ "${do_run}" -eq 0 ]]; then
   exit 0
 fi
 
-echo "==> Launching SharpDevelop..."
+echo "==> Launching OpenDevelop..."
 exec "${dotnet}" run --project "${exe_project}" --no-build

@@ -1,5 +1,5 @@
 // R6c (see doc/technotes/solution-explorer.md): builds the WPF-bindable node tree shown by
-// SolutionExplorerPad, directly from SharpDevelop's native ISolution/IProject model. This is new
+// ProjectBrowserPad, directly from SharpDevelop's native ISolution/IProject model. This is new
 // code (UnoDevelop's tree builder walks its own WinUI-only UnoSolutionModel, so there was nothing
 // to port) - it is deliberately simpler than the CPS MutableProjectTree bridge
 // (SharpDevelopProjectTreeProvider) built for R6b: a flat file/folder tree is all the MVP tree view
@@ -15,20 +15,20 @@ using Microsoft.VisualStudio.ProjectSystem;
 
 namespace ICSharpCode.SharpDevelop.Services;
 
-internal static class SolutionExplorerTreeBuilder
+internal static class ProjectBrowserTreeBuilder
 {
-    public static SolutionExplorerNodeModel? BuildSolutionTree(ISolution? solution)
+    public static ProjectBrowserNodeModel? BuildSolutionTree(ISolution? solution)
     {
         if (solution is null)
         {
             return null;
         }
 
-        var root = new SolutionExplorerNodeModel(
+        var root = new ProjectBrowserNodeModel(
             solution.Name,
             solution.FileName.ToString(),
             isDirectory: false,
-            SolutionExplorerNodeKind.Solution,
+            ProjectBrowserNodeKind.Solution,
             boundItem: solution,
             isExpanded: true);
 
@@ -40,13 +40,13 @@ internal static class SolutionExplorerTreeBuilder
         return root;
     }
 
-    private static SolutionExplorerNodeModel BuildProjectNode(IProject project)
+    private static ProjectBrowserNodeModel BuildProjectNode(IProject project)
     {
-        var projectNode = new SolutionExplorerNodeModel(
+        var projectNode = new ProjectBrowserNodeModel(
             project.Name,
             project.FileName.ToString(),
             isDirectory: false,
-            SolutionExplorerNodeKind.Project,
+            ProjectBrowserNodeKind.Project,
             boundItem: project as ISolutionItem,
             projectPathHint: project.FileName.ToString(),
             isExpanded: true);
@@ -61,9 +61,9 @@ internal static class SolutionExplorerTreeBuilder
         return projectNode;
     }
     
-    private static SolutionExplorerNodeModel ConvertProjectTreeNode(IProjectTree tree, string projectPath)
+    private static ProjectBrowserNodeModel ConvertProjectTreeNode(IProjectTree tree, string projectPath)
     {
-        var node = new SolutionExplorerNodeModel(
+        var node = new ProjectBrowserNodeModel(
             tree.Caption,
             tree.FilePath ?? string.Empty,
             tree.IsFolder,
@@ -83,29 +83,29 @@ internal static class SolutionExplorerTreeBuilder
         return node;
     }
     
-    private static SolutionExplorerNodeKind GetNodeKind(IProjectTree tree)
+    private static ProjectBrowserNodeKind GetNodeKind(IProjectTree tree)
     {
         if (tree.Flags.Contains(ProjectTreeFlags.Common.DependenciesFolder))
-            return SolutionExplorerNodeKind.DependenciesFolder;
+            return ProjectBrowserNodeKind.DependenciesFolder;
         if (tree.Flags.Contains(ProjectTreeFlags.Common.PackagesFolder))
-            return SolutionExplorerNodeKind.PackagesFolder;
+            return ProjectBrowserNodeKind.PackagesFolder;
         if (tree.Flags.Contains(ProjectTreeFlags.Common.ReferencesFolder))
-            return SolutionExplorerNodeKind.ReferencesFolder;
+            return ProjectBrowserNodeKind.ReferencesFolder;
         if (tree.Flags.Contains(ProjectTreeFlags.Common.PackageReference))
-            return SolutionExplorerNodeKind.PackageReference;
+            return ProjectBrowserNodeKind.PackageReference;
         if (tree.Flags.Contains(ProjectTreeFlags.Common.ProjectReference))
-            return SolutionExplorerNodeKind.ProjectReference;
+            return ProjectBrowserNodeKind.ProjectReference;
         if (tree.Flags.Contains(ProjectTreeFlags.Common.Reference))
-            return SolutionExplorerNodeKind.Reference;
+            return ProjectBrowserNodeKind.Reference;
         if (tree.Flags.Contains(ProjectTreeFlags.Common.LinkedFile))
-            return SolutionExplorerNodeKind.LinkedFile;
+            return ProjectBrowserNodeKind.LinkedFile;
         if (tree.IsFolder)
             return tree.Flags.Contains(ProjectTreeFlags.Common.IncludeInProjectCandidate)
-                ? SolutionExplorerNodeKind.GhostFolder
-                : SolutionExplorerNodeKind.Folder;
+                ? ProjectBrowserNodeKind.GhostFolder
+                : ProjectBrowserNodeKind.Folder;
         if (!string.IsNullOrWhiteSpace(tree.FilePath) && !File.Exists(tree.FilePath))
-            return SolutionExplorerNodeKind.MissingFile;
-        return SolutionExplorerNodeKind.File;
+            return ProjectBrowserNodeKind.MissingFile;
+        return ProjectBrowserNodeKind.File;
     }
     
     private static string? GetIncludeHint(IProjectTree tree, string projectPath)
@@ -127,16 +127,16 @@ internal static class SolutionExplorerTreeBuilder
             || tree.Flags.Contains(ProjectTreeFlags.Common.PackagesFolder);
     }
 
-    private static int GetSortOrder(SolutionExplorerNodeKind kind) => kind switch
+    private static int GetSortOrder(ProjectBrowserNodeKind kind) => kind switch
     {
-        SolutionExplorerNodeKind.DependenciesFolder => -2,
-        SolutionExplorerNodeKind.ReferencesFolder => -2,
-        SolutionExplorerNodeKind.PackagesFolder => -2,
-        SolutionExplorerNodeKind.Folder or SolutionExplorerNodeKind.GhostFolder => -1,
+        ProjectBrowserNodeKind.DependenciesFolder => -2,
+        ProjectBrowserNodeKind.ReferencesFolder => -2,
+        ProjectBrowserNodeKind.PackagesFolder => -2,
+        ProjectBrowserNodeKind.Folder or ProjectBrowserNodeKind.GhostFolder => -1,
         _ => 0,
     };
 
-    private static void SortChildren(SolutionExplorerNodeModel node)
+    private static void SortChildren(ProjectBrowserNodeModel node)
     {
         node.Children.Sort((a, b) =>
         {

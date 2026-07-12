@@ -11,21 +11,21 @@ using ICSharpCode.SharpDevelop.ViewModels;
 
 namespace ICSharpCode.SharpDevelop.Services;
 
-[Export(typeof(SolutionExplorerViewModel))]
+[Export(typeof(ProjectBrowserViewModel))]
 [Export("ToolPane", typeof(ToolPaneModel))]
 [Shared]
-internal sealed class SolutionExplorerViewModel : ToolPaneModel, ISolutionExplorerHost, IDisposable
+internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHost, IDisposable
 {
-    private readonly ISolutionExplorerController controller = ServiceSingleton.GetRequiredService<ISolutionExplorerController>();
-    private SolutionExplorerNodeModel selectedNode;
+    private readonly IProjectBrowserController controller = ServiceSingleton.GetRequiredService<IProjectBrowserController>();
+    private ProjectBrowserNodeModel selectedNode;
 
-    public SolutionExplorerViewModel()
+    public ProjectBrowserViewModel()
     {
-        Title = "Solution Explorer";
-        ContentId = "SolutionExplorer";
+        Title = "Project Browser";
+        ContentId = "ProjectBrowser";
         IsVisible = true;
         IsCloseable = true;
-        Content = new SolutionExplorerView { DataContext = this };
+        Content = new ProjectBrowserView { DataContext = this };
 
         controller.BindHost(this);
 
@@ -37,14 +37,14 @@ internal sealed class SolutionExplorerViewModel : ToolPaneModel, ISolutionExplor
         RefreshSolutionTree();
     }
 
-    public ObservableCollection<SolutionExplorerNodeModel> RootNodes { get; } = new ObservableCollection<SolutionExplorerNodeModel>();
+    public ObservableCollection<ProjectBrowserNodeModel> RootNodes { get; } = new ObservableCollection<ProjectBrowserNodeModel>();
 
-    public SolutionExplorerNodeModel SelectedNode {
+    public ProjectBrowserNodeModel SelectedNode {
         get => selectedNode;
         set => SetProperty(ref selectedNode, value);
     }
 
-    SolutionExplorerNodeContext ISolutionExplorerHost.SelectedNode => SelectedNode?.ToContext();
+    ProjectBrowserNodeContext IProjectBrowserHost.SelectedNode => SelectedNode?.ToContext();
 
     public void OpenSelected()
     {
@@ -53,7 +53,7 @@ internal sealed class SolutionExplorerViewModel : ToolPaneModel, ISolutionExplor
         }
     }
 
-    public ContextMenu CreateContextMenu(SolutionExplorerNodeModel node)
+    public ContextMenu CreateContextMenu(ProjectBrowserNodeModel node)
     {
         var context = node.ToContext();
         return ICSharpCode.Core.Presentation.MenuService.CreateContextMenu(context, context.ContextMenuPath);
@@ -67,35 +67,35 @@ internal sealed class SolutionExplorerViewModel : ToolPaneModel, ISolutionExplor
         SD.ProjectService.ProjectItemRemoved -= ProjectServiceChanged;
     }
 
-    void ISolutionExplorerHost.RefreshSolutionTree()
+    void IProjectBrowserHost.RefreshSolutionTree()
     {
         RefreshSolutionTree();
     }
 
-    void ISolutionExplorerHost.OpenFileInWorkbench(string filePath)
+    void IProjectBrowserHost.OpenFileInWorkbench(string filePath)
     {
         if (File.Exists(filePath)) {
             SD.FileService.OpenFile(FileName.Create(filePath));
         }
     }
 
-    string ISolutionExplorerHost.ShowInputBox(string title, string prompt, string defaultValue)
+    string IProjectBrowserHost.ShowInputBox(string title, string prompt, string defaultValue)
     {
         return ServiceSingleton.GetRequiredService<IMessageService>().ShowInputBox(title, prompt, defaultValue);
     }
 
-    bool ISolutionExplorerHost.ConfirmDelete(string name)
+    bool IProjectBrowserHost.ConfirmDelete(string name)
     {
         return ServiceSingleton.GetRequiredService<IMessageService>().AskQuestion("Are you sure you want to delete '" + name + "'?");
     }
 
-    void ISolutionExplorerHost.CloseViewsForPath(string path)
+    void IProjectBrowserHost.CloseViewsForPath(string path)
     {
         var view = SD.FileService.GetOpenFile(FileName.Create(path));
         view?.WorkbenchWindow?.CloseWindow(force: true);
     }
 
-    void ISolutionExplorerHost.RetargetViewForRename(string oldPath, string newPath)
+    void IProjectBrowserHost.RetargetViewForRename(string oldPath, string newPath)
     {
         var view = SD.FileService.GetOpenFile(FileName.Create(oldPath));
         view?.WorkbenchWindow?.CloseWindow(force: true);
@@ -106,7 +106,7 @@ internal sealed class SolutionExplorerViewModel : ToolPaneModel, ISolutionExplor
         Application.Current?.Dispatcher.Invoke(() =>
         {
             RootNodes.Clear();
-            var root = SolutionExplorerTreeBuilder.BuildSolutionTree(SD.ProjectService.CurrentSolution);
+            var root = ProjectBrowserTreeBuilder.BuildSolutionTree(SD.ProjectService.CurrentSolution);
             if (root != null) {
                 RootNodes.Add(root);
             }

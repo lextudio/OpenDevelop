@@ -6,13 +6,13 @@ using Microsoft.VisualStudio.ProjectSystem;
 
 namespace ICSharpCode.SharpDevelop.Services;
 
-internal sealed class SolutionExplorerNodeModel
+internal sealed class ProjectBrowserNodeModel
 {
-    public SolutionExplorerNodeModel(
+    public ProjectBrowserNodeModel(
         string name,
         string fullPath,
         bool isDirectory,
-        SolutionExplorerNodeKind kind,
+        ProjectBrowserNodeKind kind,
         ISolutionItem? boundItem = null,
         IProjectTree? boundProjectTree = null,
         string? projectPathHint = null,
@@ -36,7 +36,7 @@ internal sealed class SolutionExplorerNodeModel
 
     public bool IsDirectory { get; }
 
-    public SolutionExplorerNodeKind Kind { get; }
+    public ProjectBrowserNodeKind Kind { get; }
 
     public ISolutionItem? BoundItem { get; }
 
@@ -48,12 +48,12 @@ internal sealed class SolutionExplorerNodeModel
 
     public bool IsExpanded { get; }
 
-    public List<SolutionExplorerNodeModel> Children { get; } = new();
+    public List<ProjectBrowserNodeModel> Children { get; } = new();
 
-    public BitmapSource Icon => SolutionExplorerIconService.GetIcon(this);
+    public BitmapSource Icon => ProjectBrowserIconService.GetIcon(this);
 
-    public SolutionExplorerNodeContext ToContext()
+    public ProjectBrowserNodeContext ToContext()
     {
-        return new SolutionExplorerNodeContext(Name, FullPath, IsDirectory, Kind, BoundItem, BoundProjectTree, ProjectPathHint, IncludeHint);
+        return new ProjectBrowserNodeContext(Name, FullPath, IsDirectory, Kind, BoundItem, BoundProjectTree, ProjectPathHint, IncludeHint);
     }
 }

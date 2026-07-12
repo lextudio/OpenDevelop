@@ -20,7 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Dom;
 using ICSharpCode.SharpDevelop.Gui;
@@ -102,7 +102,7 @@ namespace ICSharpCode.PackageManagement
 	
 		public IProjectBrowserUpdater CreateProjectBrowserUpdater()
 		{
-			return new ThreadSafeProjectBrowserUpdater();
+			return new NullProjectBrowserUpdater();
 		}
 		
 		public string GetDefaultCustomToolForFileName(FileProjectItem projectItem)

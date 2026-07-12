@@ -17,11 +17,12 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.PackageManagement.EnvDTE;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Dom;
 using ICSharpCode.SharpDevelop.Project;
+using TypeSystemAccessibility = ICSharpCode.TypeSystem.Accessibility;
 
 namespace ICSharpCode.PackageManagement
 {
@@ -35,21 +36,21 @@ namespace ICSharpCode.PackageManagement
 			return global::EnvDTE.CodeModelLanguageConstants.vsCMLanguageCSharp;
 		}
 		
-		public static global::EnvDTE.vsCMAccess ToAccess(this Accessibility accessiblity)
+		public static global::EnvDTE.vsCMAccess ToAccess(this TypeSystemAccessibility accessiblity)
 		{
-			if (accessiblity == Accessibility.Public) {
+			if (accessiblity == TypeSystemAccessibility.Public) {
 				return global::EnvDTE.vsCMAccess.vsCMAccessPublic;
 			}
 			return global::EnvDTE.vsCMAccess.vsCMAccessPrivate;
 		}
 		
-		public static Accessibility ToAccessibility(this global::EnvDTE.vsCMAccess access)
+		public static TypeSystemAccessibility ToAccessibility(this global::EnvDTE.vsCMAccess access)
 		{
 			switch (access) {
 				case global::EnvDTE.vsCMAccess.vsCMAccessPublic:
-					return Accessibility.Public;
+					return TypeSystemAccessibility.Public;
 				case global::EnvDTE.vsCMAccess.vsCMAccessPrivate:
-					return Accessibility.Private;
+					return TypeSystemAccessibility.Private;
 				default:
 					throw new Exception("Invalid value for vsCMAccess");
 			}

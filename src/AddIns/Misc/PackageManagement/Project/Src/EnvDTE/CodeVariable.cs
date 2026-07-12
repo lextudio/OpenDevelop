@@ -17,14 +17,15 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.PackageManagement;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Dom;
 
 namespace ICSharpCode.PackageManagement.EnvDTE
 {
 	public class CodeVariable : CodeElement, global::EnvDTE.CodeVariable
 	{
-		readonly IField field;
+		readonly IField fieldDefinition;
 		
 		public CodeVariable()
 		{
@@ -33,7 +34,7 @@ namespace ICSharpCode.PackageManagement.EnvDTE
 		public CodeVariable(CodeModelContext context, IField field)
 			: base(context, field)
 		{
-			this.field = field;
+			this.fieldDefinition = field;
 		}
 		
 		public override global::EnvDTE.vsCMElement Kind {
@@ -41,7 +42,7 @@ namespace ICSharpCode.PackageManagement.EnvDTE
 		}
 		
 		public global::EnvDTE.vsCMAccess Access {
-			get { return field.Accessibility.ToAccess(); }
+			get { return fieldDefinition.Accessibility.ToAccess(); }
 			set { }
 		}
 	}

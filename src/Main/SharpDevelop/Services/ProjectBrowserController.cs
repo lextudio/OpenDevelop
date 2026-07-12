@@ -12,9 +12,9 @@ using ICSharpCode.SharpDevelop.Templates;
 
 namespace ICSharpCode.SharpDevelop.Services;
 
-internal interface ISolutionExplorerHost
+internal interface IProjectBrowserHost
 {
-    SolutionExplorerNodeContext? SelectedNode { get; }
+    ProjectBrowserNodeContext? SelectedNode { get; }
     void RefreshSolutionTree();
     void OpenFileInWorkbench(string filePath);
     string? ShowInputBox(string title, string prompt, string defaultValue);
@@ -23,7 +23,7 @@ internal interface ISolutionExplorerHost
     void RetargetViewForRename(string oldPath, string newPath);
 }
 
-internal interface ISolutionExplorerService
+internal interface IProjectBrowserService
 {
     string CreateFolder(string targetDirectory, string baseName = "NewFolder");
     string CreateFile(string targetDirectory, string baseName = "NewFile", string extension = ".cs", string? initialContent = "// New file\n");
@@ -34,33 +34,33 @@ internal interface ISolutionExplorerService
     bool TryIncludeItemInProject(string itemPath, out string includedItemName);
     bool TryExcludeItemFromProject(string itemPath, bool isDirectory, out string excludedItemName);
     bool TryRemoveItemFromProject(string itemPath, bool isDirectory, out string removedItemName, string? projectPathHint = null, string? includeHint = null);
-    bool TryRemoveReference(string? projectPathHint, string include, SolutionExplorerNodeKind kind, out string removedName);
+    bool TryRemoveReference(string? projectPathHint, string include, ProjectBrowserNodeKind kind, out string removedName);
     bool TryRemoveProject(string projectPath, out string removedProjectName);
     bool TrySetStartupProject(string projectPath, out IProject? project);
 }
 
-internal interface ISolutionExplorerController
+internal interface IProjectBrowserController
 {
-    void BindHost(ISolutionExplorerHost host);
+    void BindHost(IProjectBrowserHost host);
     void Refresh();
-    void Open(SolutionExplorerNodeContext? node = null);
-    void CreateFolder(SolutionExplorerNodeContext? node = null);
-    void CreateFile(SolutionExplorerNodeContext? node = null);
-    void AddExistingFile(SolutionExplorerNodeContext? node = null);
-    void AddExistingFolder(SolutionExplorerNodeContext? node = null);
-    void AddNewItem(SolutionExplorerNodeContext? node = null);
-    void AddNewProject(SolutionExplorerNodeContext? node = null);
-    void Rename(SolutionExplorerNodeContext? node = null);
-    void Delete(SolutionExplorerNodeContext? node = null);
-    void IncludeInProject(SolutionExplorerNodeContext? node = null);
-    void ExcludeFromProject(SolutionExplorerNodeContext? node = null);
-    void RemoveFromProject(SolutionExplorerNodeContext? node = null);
-    void RemoveReference(SolutionExplorerNodeContext? node = null);
-    void OpenProjectReference(SolutionExplorerNodeContext? node = null);
-    void OpenWith(SolutionExplorerNodeContext? node = null);
-    void CopyPath(SolutionExplorerNodeContext? node = null);
-    void OpenFolder(SolutionExplorerNodeContext? node = null);
-    void SetStartupProject(SolutionExplorerNodeContext? node = null);
+    void Open(ProjectBrowserNodeContext? node = null);
+    void CreateFolder(ProjectBrowserNodeContext? node = null);
+    void CreateFile(ProjectBrowserNodeContext? node = null);
+    void AddExistingFile(ProjectBrowserNodeContext? node = null);
+    void AddExistingFolder(ProjectBrowserNodeContext? node = null);
+    void AddNewItem(ProjectBrowserNodeContext? node = null);
+    void AddNewProject(ProjectBrowserNodeContext? node = null);
+    void Rename(ProjectBrowserNodeContext? node = null);
+    void Delete(ProjectBrowserNodeContext? node = null);
+    void IncludeInProject(ProjectBrowserNodeContext? node = null);
+    void ExcludeFromProject(ProjectBrowserNodeContext? node = null);
+    void RemoveFromProject(ProjectBrowserNodeContext? node = null);
+    void RemoveReference(ProjectBrowserNodeContext? node = null);
+    void OpenProjectReference(ProjectBrowserNodeContext? node = null);
+    void OpenWith(ProjectBrowserNodeContext? node = null);
+    void CopyPath(ProjectBrowserNodeContext? node = null);
+    void OpenFolder(ProjectBrowserNodeContext? node = null);
+    void SetStartupProject(ProjectBrowserNodeContext? node = null);
 }
 
 internal static class FileDialogService
@@ -78,17 +78,17 @@ internal static class FileDialogService
     }
 }
 
-internal sealed class SolutionExplorerController : ISolutionExplorerController
+internal sealed class ProjectBrowserController : IProjectBrowserController
 {
-    private readonly ISolutionExplorerService _explorerService;
-    private ISolutionExplorerHost? _host;
+    private readonly IProjectBrowserService _explorerService;
+    private IProjectBrowserHost? _host;
 
-    public SolutionExplorerController()
+    public ProjectBrowserController()
     {
-        _explorerService = new SharpDevelopSolutionExplorerService();
+        _explorerService = new SharpDevelopProjectBrowserService();
     }
 
-    public void BindHost(ISolutionExplorerHost host)
+    public void BindHost(IProjectBrowserHost host)
     {
         _host = host;
     }
@@ -98,10 +98,10 @@ internal sealed class SolutionExplorerController : ISolutionExplorerController
         _host?.RefreshSolutionTree();
     }
 
-    public void Open(SolutionExplorerNodeContext? node = null)
+    public void Open(ProjectBrowserNodeContext? node = null)
     {
         var target = ResolveNode(node);
-        if (target is null || !target.IsFileLike || target.Kind == SolutionExplorerNodeKind.MissingFile)
+        if (target is null || !target.IsFileLike || target.Kind == ProjectBrowserNodeKind.MissingFile)
         {
             return;
         }
@@ -109,7 +109,7 @@ internal sealed class SolutionExplorerController : ISolutionExplorerController
         _host?.OpenFileInWorkbench(target.FullPath);
     }
 
-    public void CreateFolder(SolutionExplorerNodeContext? node = null)
+    public void CreateFolder(ProjectBrowserNodeContext? node = null)
     {
         ExecuteFileSystemAction(() =>
         {
@@ -119,7 +119,7 @@ internal sealed class SolutionExplorerController : ISolutionExplorerController
         }, "Failed to create folder.");
     }
 
-    public void CreateFile(SolutionExplorerNodeContext? node = null)
+    public void CreateFile(ProjectBrowserNodeContext? node = null)
     {
         ExecuteFileSystemAction(() =>
         {
@@ -130,7 +130,7 @@ internal sealed class SolutionExplorerController : ISolutionExplorerController
         }, "Failed to create file.");
     }
 
-    public async void AddNewItem(SolutionExplorerNodeContext? node = null)
+    public async void AddNewItem(ProjectBrowserNodeContext? node = null)
     {
         try
         {
@@ -196,7 +196,7 @@ internal sealed class SolutionExplorerController : ISolutionExplorerController
         }
     }
 
-    public async void AddNewProject(SolutionExplorerNodeContext? node = null)
+    public async void AddNewProject(ProjectBrowserNodeContext? node = null)
     {
         try
         {
@@ -351,7 +351,7 @@ internal sealed class SolutionExplorerController : ISolutionExplorerController
         path.EndsWith(".sln", StringComparison.OrdinalIgnoreCase)
         || path.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase);
 
-    static ISolutionFolder ResolveTargetSolutionFolder(SolutionExplorerNodeContext? selected, ISolution currentSolution)
+    static ISolutionFolder ResolveTargetSolutionFolder(ProjectBrowserNodeContext? selected, ISolution currentSolution)
     {
         if (selected?.BoundItem is ISolutionFolder folder)
             return folder;
@@ -362,7 +362,7 @@ internal sealed class SolutionExplorerController : ISolutionExplorerController
         return currentSolution;
     }
 
-    public async void AddExistingFile(SolutionExplorerNodeContext? node = null)
+    public async void AddExistingFile(ProjectBrowserNodeContext? node = null)
     {
         var selected = ResolveNode(node);
         var targetDirectory = ResolveTargetDirectoryForCreate(selected);
@@ -385,7 +385,7 @@ internal sealed class SolutionExplorerController : ISolutionExplorerController
         }, "Failed to add existing file.");
     }
 
-    public async void AddExistingFolder(SolutionExplorerNodeContext? node = null)
+    public async void AddExistingFolder(ProjectBrowserNodeContext? node = null)
     {
         var selected = ResolveNode(node);
         var targetDirectory = ResolveTargetDirectoryForCreate(selected);
@@ -401,10 +401,10 @@ internal sealed class SolutionExplorerController : ISolutionExplorerController
         }, "Failed to add existing folder.");
     }
 
-    public void Rename(SolutionExplorerNodeContext? node = null)
+    public void Rename(ProjectBrowserNodeContext? node = null)
     {
         var target = ResolveNode(node);
-        if (target is null || IsVirtualProjectFile(target) || (!target.IsFileLike && target.Kind != SolutionExplorerNodeKind.Folder))
+        if (target is null || IsVirtualProjectFile(target) || (!target.IsFileLike && target.Kind != ProjectBrowserNodeKind.Folder))
         {
             return;
         }
@@ -418,13 +418,13 @@ internal sealed class SolutionExplorerController : ISolutionExplorerController
 
         ExecuteFileSystemAction(() =>
         {
-            var newPath = _explorerService.RenameItem(target.FullPath, target.Kind == SolutionExplorerNodeKind.Folder, newName);
+            var newPath = _explorerService.RenameItem(target.FullPath, target.Kind == ProjectBrowserNodeKind.Folder, newName);
             _host?.RetargetViewForRename(target.FullPath, newPath);
             _host?.RefreshSolutionTree();
         }, "Failed to rename item.");
     }
 
-    public void Delete(SolutionExplorerNodeContext? node = null)
+    public void Delete(ProjectBrowserNodeContext? node = null)
     {
         var target = ResolveNode(node);
         if (target is null)
@@ -432,7 +432,7 @@ internal sealed class SolutionExplorerController : ISolutionExplorerController
             return;
         }
 
-        var isDirectory = target.Kind == SolutionExplorerNodeKind.Folder || target.Kind == SolutionExplorerNodeKind.Project;
+        var isDirectory = target.Kind == ProjectBrowserNodeKind.Folder || target.Kind == ProjectBrowserNodeKind.Project;
         if (IsVirtualProjectFile(target) || (!target.IsFileLike && !isDirectory))
         {
             return;
@@ -451,7 +451,7 @@ internal sealed class SolutionExplorerController : ISolutionExplorerController
         }, "Failed to delete item.");
     }
 
-    public void RemoveFromProject(SolutionExplorerNodeContext? node = null)
+    public void RemoveFromProject(ProjectBrowserNodeContext? node = null)
     {
         var target = ResolveNode(node);
         if (target is null)
@@ -466,11 +466,11 @@ internal sealed class SolutionExplorerController : ISolutionExplorerController
                 return;
             }
 
-            if (target.IsFileLike || target.Kind == SolutionExplorerNodeKind.Folder)
+            if (target.IsFileLike || target.Kind == ProjectBrowserNodeKind.Folder)
             {
                 var projectPathHint = target.BoundProjectTree?.Root?.FilePath;
                 var includeHint = target.IncludeHint;
-                if (!_explorerService.TryRemoveItemFromProject(target.FullPath, target.Kind == SolutionExplorerNodeKind.Folder, out var removedItemName, projectPathHint, includeHint))
+                if (!_explorerService.TryRemoveItemFromProject(target.FullPath, target.Kind == ProjectBrowserNodeKind.Folder, out var removedItemName, projectPathHint, includeHint))
                 {
                     return;
                 }
@@ -479,7 +479,7 @@ internal sealed class SolutionExplorerController : ISolutionExplorerController
                 return;
             }
 
-            if (target.Kind != SolutionExplorerNodeKind.Project)
+            if (target.Kind != ProjectBrowserNodeKind.Project)
             {
                 return;
             }
@@ -493,10 +493,10 @@ internal sealed class SolutionExplorerController : ISolutionExplorerController
         }, "Failed to remove project from solution.");
     }
 
-    public void IncludeInProject(SolutionExplorerNodeContext? node = null)
+    public void IncludeInProject(ProjectBrowserNodeContext? node = null)
     {
         var target = ResolveNode(node);
-        if (target is null || target.Kind != SolutionExplorerNodeKind.GhostFile)
+        if (target is null || target.Kind != ProjectBrowserNodeKind.GhostFile)
         {
             return;
         }
@@ -512,11 +512,11 @@ internal sealed class SolutionExplorerController : ISolutionExplorerController
         }, "Failed to include item in project.");
     }
 
-    public void ExcludeFromProject(SolutionExplorerNodeContext? node = null)
+    public void ExcludeFromProject(ProjectBrowserNodeContext? node = null)
     {
         var target = ResolveNode(node);
         if (target is null
-            || target.Kind is not (SolutionExplorerNodeKind.File or SolutionExplorerNodeKind.LinkedFile))
+            || target.Kind is not (ProjectBrowserNodeKind.File or ProjectBrowserNodeKind.LinkedFile))
         {
             return;
         }
@@ -532,12 +532,12 @@ internal sealed class SolutionExplorerController : ISolutionExplorerController
         }, "Failed to exclude item from project.");
     }
 
-    public void RemoveReference(SolutionExplorerNodeContext? node = null)
+    public void RemoveReference(ProjectBrowserNodeContext? node = null)
     {
         var target = ResolveNode(node);
-        if (target?.Kind is not (SolutionExplorerNodeKind.Reference
-                or SolutionExplorerNodeKind.ProjectReference
-                or SolutionExplorerNodeKind.PackageReference))
+        if (target?.Kind is not (ProjectBrowserNodeKind.Reference
+                or ProjectBrowserNodeKind.ProjectReference
+                or ProjectBrowserNodeKind.PackageReference))
         {
             return;
         }
@@ -560,10 +560,10 @@ internal sealed class SolutionExplorerController : ISolutionExplorerController
         }, "Failed to remove reference from project.");
     }
 
-    public void OpenProjectReference(SolutionExplorerNodeContext? node = null)
+    public void OpenProjectReference(ProjectBrowserNodeContext? node = null)
     {
         var target = ResolveNode(node);
-        if (target is null || target.Kind != SolutionExplorerNodeKind.ProjectReference)
+        if (target is null || target.Kind != ProjectBrowserNodeKind.ProjectReference)
         {
             return;
         }
@@ -574,7 +574,7 @@ internal sealed class SolutionExplorerController : ISolutionExplorerController
         }
     }
 
-    public void OpenWith(SolutionExplorerNodeContext? node = null)
+    public void OpenWith(ProjectBrowserNodeContext? node = null)
     {
         var target = ResolveNode(node);
         if (target is null || string.IsNullOrWhiteSpace(target.FullPath))
@@ -608,7 +608,7 @@ internal sealed class SolutionExplorerController : ISolutionExplorerController
         }
     }
 
-    public void CopyPath(SolutionExplorerNodeContext? node = null)
+    public void CopyPath(ProjectBrowserNodeContext? node = null)
     {
         var target = ResolveNode(node);
         if (target is null || string.IsNullOrWhiteSpace(target.FullPath))
@@ -619,7 +619,7 @@ internal sealed class SolutionExplorerController : ISolutionExplorerController
         System.Windows.Clipboard.SetText(target.FullPath);
     }
 
-    public void OpenFolder(SolutionExplorerNodeContext? node = null)
+    public void OpenFolder(ProjectBrowserNodeContext? node = null)
     {
         var target = ResolveNode(node);
         if (target is null)
@@ -650,10 +650,10 @@ internal sealed class SolutionExplorerController : ISolutionExplorerController
         }
     }
 
-    public void SetStartupProject(SolutionExplorerNodeContext? node = null)
+    public void SetStartupProject(ProjectBrowserNodeContext? node = null)
     {
         var target = ResolveNode(node);
-        if (target is null || target.Kind != SolutionExplorerNodeKind.Project)
+        if (target is null || target.Kind != ProjectBrowserNodeKind.Project)
         {
             return;
         }
@@ -663,24 +663,24 @@ internal sealed class SolutionExplorerController : ISolutionExplorerController
         }
     }
 
-    private SolutionExplorerNodeContext? ResolveNode(SolutionExplorerNodeContext? node)
+    private ProjectBrowserNodeContext? ResolveNode(ProjectBrowserNodeContext? node)
     {
         return node ?? _host?.SelectedNode;
     }
 
-    private string ResolveTargetDirectoryForCreate(SolutionExplorerNodeContext? selected)
+    private string ResolveTargetDirectoryForCreate(ProjectBrowserNodeContext? selected)
     {
         if (selected is null)
         {
             return Directory.GetCurrentDirectory();
         }
 
-        if (selected.IsFileLike || selected.Kind == SolutionExplorerNodeKind.Project)
+        if (selected.IsFileLike || selected.Kind == ProjectBrowserNodeKind.Project)
         {
             return Path.GetDirectoryName(selected.FullPath) ?? Directory.GetCurrentDirectory();
         }
 
-        if (selected.Kind == SolutionExplorerNodeKind.Solution)
+        if (selected.Kind == ProjectBrowserNodeKind.Solution)
         {
             return Path.GetDirectoryName(selected.FullPath) ?? Directory.GetCurrentDirectory();
         }
@@ -700,9 +700,9 @@ internal sealed class SolutionExplorerController : ISolutionExplorerController
         }
     }
 
-    private static bool IsVirtualProjectFile(SolutionExplorerNodeContext node)
+    private static bool IsVirtualProjectFile(ProjectBrowserNodeContext node)
     {
-        return node.Kind is SolutionExplorerNodeKind.MissingFile or SolutionExplorerNodeKind.GhostFile;
+        return node.Kind is ProjectBrowserNodeKind.MissingFile or ProjectBrowserNodeKind.GhostFile;
     }
 
 }

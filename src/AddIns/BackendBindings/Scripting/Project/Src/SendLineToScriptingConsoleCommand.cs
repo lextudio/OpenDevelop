@@ -17,7 +17,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using ICSharpCode.NRefactory.Editor;
+using ICSharpCode.AvalonEdit.Document;
 
 namespace ICSharpCode.Scripting
 {
@@ -42,7 +42,7 @@ namespace ICSharpCode.Scripting
 		{
 			int lineNumber = activeTextEditor.Caret.Line;
 			IDocumentLine documentLine =  activeTextEditor.Document.GetLineByNumber(lineNumber);
-			lineFromActiveTextEditor = activeTextEditor.Document.GetText(documentLine);
+			lineFromActiveTextEditor = activeTextEditor.Document.GetText(documentLine.Offset, documentLine.Length);
 		}
 		
 		void AppendLineToScriptingConsole()

@@ -1,9 +1,8 @@
-// MVP stub: the real ProjectBrowserPad (WinForms ExtTreeView-based Solution Explorer) is out of
-// MVP scope per docs/opendevelop.md - Solution Explorer will eventually be rebuilt WPF+CPS-style (R6).
-// This minimal stand-in keeps the handful of call sites elsewhere in Base (which only ever call the
-// static RefreshViewAsync() to ask for a repaint after a project change) compiling without pulling in
-// the excluded WinForms/ExtTreeView tree UI.
+// MVP ProjectBrowser entry point. The old WinForms/ExtTreeView ProjectBrowser is out of scope;
+// OpenDevelop's WPF ProjectBrowser implementation lives in the executable assembly, so Base uses
+// a late-bound service lookup to keep the original ProjectBrowserPad refresh contract.
 using System;
+using ICSharpCode.Core;
 
 namespace ICSharpCode.SharpDevelop.Project
 {
@@ -11,7 +10,15 @@ namespace ICSharpCode.SharpDevelop.Project
 	{
 		public static void RefreshViewAsync()
 		{
-			// no-op: Solution Explorer UI is not present in this MVP build.
+			Type controllerType = Type.GetType(
+				"ICSharpCode.SharpDevelop.Services.IProjectBrowserController, OpenDevelop",
+				throwOnError: false);
+			if (controllerType == null) {
+				return;
+			}
+			
+			object controller = ServiceSingleton.ServiceProvider.GetService(controllerType);
+			controllerType.GetMethod("Refresh")?.Invoke(controller, null);
 		}
 	}
 }

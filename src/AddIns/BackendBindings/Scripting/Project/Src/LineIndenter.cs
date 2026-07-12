@@ -18,7 +18,7 @@
 
 using System;
 using System.Text;
-using ICSharpCode.NRefactory.Editor;
+using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.SharpDevelop.Editor;
 
 namespace ICSharpCode.Scripting
@@ -65,7 +65,7 @@ namespace ICSharpCode.Scripting
 		{
 			int lineNumber = line.LineNumber - 1;
 			previousLine = document.GetLineByNumber(lineNumber);
-			previousLineText = document.GetText(previousLine).Trim();
+			previousLineText = document.GetText(previousLine.Offset, previousLine.Length).Trim();
 		}
 		
 		protected string PreviousLine {
@@ -96,7 +96,7 @@ namespace ICSharpCode.Scripting
 		{
 			string previousLineIndentation = GetPreviousLineIndentation();
 			string indentation = GetNewLineIndentation(previousLineIndentation, increaseIndent);
-			string newLineText = indentation + document.GetText(line);
+			string newLineText = indentation + document.GetText(line.Offset, line.Length);
 			ReplaceLine(newLineText);
 		}
 		
@@ -108,7 +108,8 @@ namespace ICSharpCode.Scripting
 		string GetIndentation(IDocumentLine documentLine)
 		{
 			StringBuilder whitespace = new StringBuilder();
-			foreach (char ch in document.GetText(documentLine)) {
+			string text = document.GetText(documentLine.Offset, documentLine.Length);
+			foreach (char ch in text) {
 				if (Char.IsWhiteSpace(ch)) {
 					whitespace.Append(ch);
 				} else {
@@ -125,7 +126,6 @@ namespace ICSharpCode.Scripting
 				return previousLineIndentation + singleIndent;
 			} 
 			
-			// Decrease the new line indentation.
 			int decreaselength = previousLineIndentation.Length - singleIndent.Length;
 			if (decreaselength < 0) {
 				decreaselength = 0;

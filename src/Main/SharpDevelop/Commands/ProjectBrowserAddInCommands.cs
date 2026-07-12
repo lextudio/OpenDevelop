@@ -1,7 +1,7 @@
-// Ported from UnoDevelop's SolutionExplorerAddInCommands.cs (see doc/technotes/solution-explorer.md).
+// Ported from UnoDevelop's ProjectBrowserAddInCommands.cs (see doc/technotes/solution-explorer.md).
 // Commands tied to WinUI-only concerns (NuGet package management dialog, T4 template runner,
 // MainPage.Current-based toolbar actions) are out of MVP scope and were not ported; every command
-// here maps 1:1 onto ISolutionExplorerController, which OpenDevelop already implements natively.
+// here maps 1:1 onto IProjectBrowserController, which OpenDevelop already implements natively.
 
 using System;
 using System.IO;
@@ -14,11 +14,11 @@ using ICSharpCode.SharpDevelop.Services;
 
 namespace ICSharpCode.SharpDevelop.Commands;
 
-internal abstract class SolutionExplorerCommandBase : AbstractMenuCommand
+internal abstract class ProjectBrowserCommandBase : AbstractMenuCommand
 {
-    protected ISolutionExplorerController Controller => ServiceSingleton.GetRequiredService<ISolutionExplorerController>();
+    protected IProjectBrowserController Controller => ServiceSingleton.GetRequiredService<IProjectBrowserController>();
 
-    protected SolutionExplorerNodeContext? OwnerNode => Owner as SolutionExplorerNodeContext;
+    protected ProjectBrowserNodeContext? OwnerNode => Owner as ProjectBrowserNodeContext;
 
     protected IProject? ResolveOwnerProject()
     {
@@ -83,7 +83,7 @@ internal abstract class SolutionExplorerCommandBase : AbstractMenuCommand
                     return byPath;
                 }
 
-                if ((OwnerNode.IsFileLike || OwnerNode.Kind == SolutionExplorerNodeKind.Folder)
+                if ((OwnerNode.IsFileLike || OwnerNode.Kind == ProjectBrowserNodeKind.Folder)
                     && File.Exists(normalizedNodePath))
                 {
                     var byContainingFile = SD.ProjectService.FindProjectContainingFile(FileName.Create(normalizedNodePath));
@@ -99,7 +99,7 @@ internal abstract class SolutionExplorerCommandBase : AbstractMenuCommand
             }
         }
 
-        if (OwnerNode.Kind == SolutionExplorerNodeKind.Project)
+        if (OwnerNode.Kind == ProjectBrowserNodeKind.Project)
         {
             var byName = solution.Projects.FirstOrDefault(project =>
                 string.Equals(project.Name, OwnerNode.Name, StringComparison.OrdinalIgnoreCase));
@@ -145,114 +145,114 @@ internal abstract class SolutionExplorerCommandBase : AbstractMenuCommand
     }
 }
 
-internal sealed class RefreshSolutionExplorerCommand : SolutionExplorerCommandBase
+internal sealed class RefreshProjectBrowserCommand : ProjectBrowserCommandBase
 {
     public override void Run() => Controller.Refresh();
 }
 
-internal sealed class OpenSolutionExplorerItemCommand : SolutionExplorerCommandBase
+internal sealed class OpenProjectBrowserItemCommand : ProjectBrowserCommandBase
 {
     public override void Run() => Controller.Open(OwnerNode);
 }
 
-internal sealed class NewFolderSolutionExplorerCommand : SolutionExplorerCommandBase
+internal sealed class NewFolderProjectBrowserCommand : ProjectBrowserCommandBase
 {
     public override void Run() => Controller.CreateFolder(OwnerNode);
 }
 
-internal sealed class NewFileSolutionExplorerCommand : SolutionExplorerCommandBase
+internal sealed class NewFileProjectBrowserCommand : ProjectBrowserCommandBase
 {
     public override void Run() => Controller.CreateFile(OwnerNode);
 }
 
-internal sealed class NewItemSolutionExplorerCommand : SolutionExplorerCommandBase
+internal sealed class NewItemProjectBrowserCommand : ProjectBrowserCommandBase
 {
     public override void Run() => Controller.AddNewItem(OwnerNode);
 }
 
-internal sealed class NewProjectSolutionExplorerCommand : SolutionExplorerCommandBase
+internal sealed class NewProjectProjectBrowserCommand : ProjectBrowserCommandBase
 {
     public override void Run() => Controller.AddNewProject(OwnerNode);
 }
 
-internal sealed class AddExistingFileSolutionExplorerCommand : SolutionExplorerCommandBase
+internal sealed class AddExistingFileProjectBrowserCommand : ProjectBrowserCommandBase
 {
     public override void Run() => Controller.AddExistingFile(OwnerNode);
 }
 
-internal sealed class AddExistingFolderSolutionExplorerCommand : SolutionExplorerCommandBase
+internal sealed class AddExistingFolderProjectBrowserCommand : ProjectBrowserCommandBase
 {
     public override void Run() => Controller.AddExistingFolder(OwnerNode);
 }
 
-internal sealed class RenameSolutionExplorerItemCommand : SolutionExplorerCommandBase
+internal sealed class RenameProjectBrowserItemCommand : ProjectBrowserCommandBase
 {
     public override void Run() => Controller.Rename(OwnerNode);
 }
 
-internal sealed class DeleteSolutionExplorerItemCommand : SolutionExplorerCommandBase
+internal sealed class DeleteProjectBrowserItemCommand : ProjectBrowserCommandBase
 {
     public override void Run() => Controller.Delete(OwnerNode);
 }
 
-internal sealed class RemoveFromProjectSolutionExplorerCommand : SolutionExplorerCommandBase
+internal sealed class RemoveFromProjectProjectBrowserCommand : ProjectBrowserCommandBase
 {
     public override bool IsEnabled => OwnerNode is not null
-        && (OwnerNode.Kind == SolutionExplorerNodeKind.Project
-            || OwnerNode.Kind == SolutionExplorerNodeKind.File
-            || OwnerNode.Kind == SolutionExplorerNodeKind.Folder);
+        && (OwnerNode.Kind == ProjectBrowserNodeKind.Project
+            || OwnerNode.Kind == ProjectBrowserNodeKind.File
+            || OwnerNode.Kind == ProjectBrowserNodeKind.Folder);
 
     public override void Run() => Controller.RemoveFromProject(OwnerNode);
 }
 
-internal sealed class RemoveReferenceSolutionExplorerCommand : SolutionExplorerCommandBase
+internal sealed class RemoveReferenceProjectBrowserCommand : ProjectBrowserCommandBase
 {
-    public override bool IsEnabled => OwnerNode?.Kind is SolutionExplorerNodeKind.Reference
-        or SolutionExplorerNodeKind.ProjectReference
-        or SolutionExplorerNodeKind.PackageReference;
+    public override bool IsEnabled => OwnerNode?.Kind is ProjectBrowserNodeKind.Reference
+        or ProjectBrowserNodeKind.ProjectReference
+        or ProjectBrowserNodeKind.PackageReference;
 
     public override void Run() => Controller.RemoveReference(OwnerNode);
 }
 
-internal sealed class OpenProjectReferenceSolutionExplorerCommand : SolutionExplorerCommandBase
+internal sealed class OpenProjectReferenceProjectBrowserCommand : ProjectBrowserCommandBase
 {
-    public override bool IsEnabled => OwnerNode?.Kind == SolutionExplorerNodeKind.ProjectReference;
+    public override bool IsEnabled => OwnerNode?.Kind == ProjectBrowserNodeKind.ProjectReference;
 
     public override void Run() => Controller.OpenProjectReference(OwnerNode);
 }
 
-internal sealed class IncludeInProjectSolutionExplorerCommand : SolutionExplorerCommandBase
+internal sealed class IncludeInProjectProjectBrowserCommand : ProjectBrowserCommandBase
 {
-    public override bool IsEnabled => OwnerNode?.Kind == SolutionExplorerNodeKind.GhostFile;
+    public override bool IsEnabled => OwnerNode?.Kind == ProjectBrowserNodeKind.GhostFile;
 
     public override void Run() => Controller.IncludeInProject(OwnerNode);
 }
 
-internal sealed class ExcludeFromProjectSolutionExplorerCommand : SolutionExplorerCommandBase
+internal sealed class ExcludeFromProjectProjectBrowserCommand : ProjectBrowserCommandBase
 {
-    public override bool IsEnabled => OwnerNode?.Kind is SolutionExplorerNodeKind.File or SolutionExplorerNodeKind.LinkedFile;
+    public override bool IsEnabled => OwnerNode?.Kind is ProjectBrowserNodeKind.File or ProjectBrowserNodeKind.LinkedFile;
 
     public override void Run() => Controller.ExcludeFromProject(OwnerNode);
 }
 
-internal sealed class OpenWithSolutionExplorerCommand : SolutionExplorerCommandBase
+internal sealed class OpenWithProjectBrowserCommand : ProjectBrowserCommandBase
 {
     public override bool IsEnabled => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
 
     public override void Run() => Controller.OpenWith(OwnerNode);
 }
 
-internal sealed class CopyPathSolutionExplorerCommand : SolutionExplorerCommandBase
+internal sealed class CopyPathProjectBrowserCommand : ProjectBrowserCommandBase
 {
     public override void Run() => Controller.CopyPath(OwnerNode);
 }
 
-internal sealed class OpenFolderSolutionExplorerCommand : SolutionExplorerCommandBase
+internal sealed class OpenFolderProjectBrowserCommand : ProjectBrowserCommandBase
 {
     public override void Run() => Controller.OpenFolder(OwnerNode);
 }
 
-internal sealed class SetStartupProjectSolutionExplorerCommand : SolutionExplorerCommandBase
+internal sealed class SetStartupProjectProjectBrowserCommand : ProjectBrowserCommandBase
 {
     public override void Run() => Controller.SetStartupProject(OwnerNode);
 }

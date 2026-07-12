@@ -17,15 +17,15 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using ICSharpCode.NRefactory;
-using ICSharpCode.NRefactory.Editor;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop;
+using AvalonDocument = ICSharpCode.AvalonEdit.Document.IDocument;
 
 namespace ICSharpCode.PackageManagement.EnvDTE
 {
 	public class EditPoint : TextPoint, global::EnvDTE.EditPoint
 	{
-		IDocument document;
+		AvalonDocument document;
 		IDocumentView documentView;
 		
 		internal EditPoint(string fileName, TextLocation location, IDocumentLoader documentLoader)

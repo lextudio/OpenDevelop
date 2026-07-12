@@ -147,8 +147,8 @@ namespace ICSharpCode.SharpDevelop.Sda
 			if (SD.Services.GetService(typeof(IClipboard)) == null) {
 				SD.Services.AddService(typeof(IClipboard), new ClipboardWrapper());
 			}
-			if (SD.Services.GetService(typeof(ISolutionExplorerController)) == null) {
-				SD.Services.AddService(typeof(ISolutionExplorerController), new SolutionExplorerController());
+			if (SD.Services.GetService(typeof(IProjectBrowserController)) == null) {
+				SD.Services.AddService(typeof(IProjectBrowserController), new ProjectBrowserController());
 			}
 
 			// AssemblyParserService (real Mono.Cecil-based assembly parsing) is out of MVP scope

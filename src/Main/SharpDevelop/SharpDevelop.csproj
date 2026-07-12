@@ -2,7 +2,7 @@
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>ICSharpCode.SharpDevelop</RootNamespace>
-    <AssemblyName>SharpDevelop</AssemblyName>
+    <AssemblyName>OpenDevelop</AssemblyName>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <UseWPF>true</UseWPF>
     <OutputType>WinExe</OutputType>
@@ -72,7 +72,7 @@
   <Target Name="DeployAddInsToRepoRoot" AfterTargets="Build">
     <ItemGroup>
       <SharpDevelopAddIn Include="..\Base\Project\ICSharpCode.SharpDevelop.addin" />
-      <SharpDevelopAddIn Include="ICSharpCode.SharpDevelop.SolutionExplorer.addin" />
+      <SharpDevelopAddIn Include="ICSharpCode.SharpDevelop.ProjectBrowser.addin" />
     </ItemGroup>
     <Copy SourceFiles="@(SharpDevelopAddIn)" DestinationFolder="$(MSBuildProjectDirectory)\..\..\..\AddIns" SkipUnchangedFiles="true" />
   </Target>

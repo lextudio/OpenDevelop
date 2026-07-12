@@ -18,7 +18,7 @@
 
 using System;
 using System.Collections.Generic;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.PackageManagement;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Dom;

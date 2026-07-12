@@ -1,4 +1,4 @@
-// ISolutionExplorerService implementation for OpenDevelop, using SharpDevelop's own native
+// IProjectBrowserService implementation for OpenDevelop, using SharpDevelop's own native
 // IProject/MSBuildBasedProject APIs (project.Items.Add/Remove + project.Save()) rather than raw
 // .csproj XML manipulation. UnoDevelop's UnoProjectService.cs implements the same interface by
 // directly parsing/rewriting XML, because UnoDevelop replaced SharpDevelop's IProjectService with
@@ -16,7 +16,7 @@ using ICSharpCode.SharpDevelop.Project;
 
 namespace ICSharpCode.SharpDevelop.Services
 {
-	internal sealed class SharpDevelopSolutionExplorerService : ISolutionExplorerService
+	internal sealed class SharpDevelopProjectBrowserService : IProjectBrowserService
 	{
 		public string CreateFolder(string targetDirectory, string baseName = "NewFolder")
 		{
@@ -156,7 +156,7 @@ namespace ICSharpCode.SharpDevelop.Services
 			return TryExcludeItemFromProject(itemPath, isDirectory, out removedItemName);
 		}
 
-		public bool TryRemoveReference(string? projectPathHint, string include, SolutionExplorerNodeKind kind, out string removedName)
+		public bool TryRemoveReference(string? projectPathHint, string include, ProjectBrowserNodeKind kind, out string removedName)
 		{
 			removedName = include;
 			var project = ResolveProjectByPathHint(projectPathHint);
@@ -164,7 +164,7 @@ namespace ICSharpCode.SharpDevelop.Services
 				return false;
 
 			var itemTypeName = kind switch {
-				SolutionExplorerNodeKind.PackageReference => "PackageReference",
+				ProjectBrowserNodeKind.PackageReference => "PackageReference",
 				_ => "Reference",
 			};
 

@@ -17,9 +17,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using ICSharpCode.NRefactory.CSharp;
-using ICSharpCode.NRefactory.CSharp.Refactoring;
-using ICSharpCode.NRefactory.Semantics;
+using ICSharpCode.TypeSystem;
 
 namespace ICSharpCode.PackageManagement.EnvDTE
 {
@@ -46,9 +44,7 @@ namespace ICSharpCode.PackageManagement.EnvDTE
 		
 		string GetValue(ResolveResult value)
 		{
-			var astBuilder = new TypeSystemAstBuilder();
-			Expression ast = astBuilder.ConvertConstantValue(value);
-			return ast.ToString();
+			return value?.ToString() ?? String.Empty;
 		}
 		
 		public override string Name {

@@ -423,8 +423,8 @@ namespace ICSharpCode.SharpDevelop.Workbench
 
 		static string GetMefToolPaneContentId(PadDescriptor padDescriptor)
 		{
-			if (padDescriptor.Class == typeof(ICSharpCode.SharpDevelop.Services.SolutionExplorerPad).FullName)
-				return "SolutionExplorer";
+			if (padDescriptor.Class == typeof(ICSharpCode.SharpDevelop.Services.ProjectBrowserPad).FullName)
+				return "ProjectBrowser";
 			return null;
 		}
 	}

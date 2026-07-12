@@ -18,8 +18,7 @@
 
 using System;
 using System.Linq;
-using ICSharpCode.NRefactory.TypeSystem;
-using ICSharpCode.NRefactory.TypeSystem.Implementation;
+using ICSharpCode.TypeSystem;
 
 namespace ICSharpCode.PackageManagement.EnvDTE
 {

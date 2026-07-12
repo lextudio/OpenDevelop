@@ -17,10 +17,10 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using ICSharpCode.NRefactory.CSharp;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Dom;
+using TypeSystemKind = ICSharpCode.TypeSystem.TypeKind;
 
 namespace ICSharpCode.PackageManagement.EnvDTE
 {
@@ -48,7 +48,7 @@ namespace ICSharpCode.PackageManagement.EnvDTE
 		public virtual string AsString {
 			get {
 				if (TypeKind != global::EnvDTE.vsCMTypeRef.vsCMTypeRefCodeType) {
-					return new CSharpAmbience().ConvertType(type);
+					return type.FullName;
 				}
 				return AsFullName;
 			}
@@ -67,24 +67,24 @@ namespace ICSharpCode.PackageManagement.EnvDTE
 		public virtual global::EnvDTE.vsCMTypeRef TypeKind {
 			get {
 				switch (type.Kind) {
-					case NRefactory.TypeSystem.TypeKind.Class:
+					case TypeSystemKind.Class:
 						return GetClassType(type);
-					case NRefactory.TypeSystem.TypeKind.Struct:
+					case TypeSystemKind.Struct:
 						ITypeDefinition typeDef = type.GetDefinition();
 						if (typeDef != null) {
 							return GetStructTypeKind(typeDef.KnownTypeCode);
 						} else {
 							return global::EnvDTE.vsCMTypeRef.vsCMTypeRefOther;
 						}
-					case NRefactory.TypeSystem.TypeKind.Delegate:
-					case NRefactory.TypeSystem.TypeKind.Interface:
-					case NRefactory.TypeSystem.TypeKind.Module:
+					case TypeSystemKind.Delegate:
+					case TypeSystemKind.Interface:
+					case TypeSystemKind.Module:
 						return global::EnvDTE.vsCMTypeRef.vsCMTypeRefObject;
-					case NRefactory.TypeSystem.TypeKind.Void:
+					case TypeSystemKind.Void:
 						return global::EnvDTE.vsCMTypeRef.vsCMTypeRefVoid;
-					case NRefactory.TypeSystem.TypeKind.Array:
+					case TypeSystemKind.Array:
 						return global::EnvDTE.vsCMTypeRef.vsCMTypeRefArray;
-					case NRefactory.TypeSystem.TypeKind.Pointer:
+					case TypeSystemKind.Pointer:
 						return global::EnvDTE.vsCMTypeRef.vsCMTypeRefPointer;
 					default:
 						if (type.IsReferenceType == true) {
@@ -98,9 +98,10 @@ namespace ICSharpCode.PackageManagement.EnvDTE
 		
 		global::EnvDTE.vsCMTypeRef GetClassType(IType type)
 		{
-			if (type.IsKnownType(KnownTypeCode.String)) {
+			var typeDefinition = type.GetDefinition();
+			if (typeDefinition?.KnownTypeCode == KnownTypeCode.String) {
 				return global::EnvDTE.vsCMTypeRef.vsCMTypeRefString;
-			} else if (type.IsKnownType(KnownTypeCode.Object)) {
+			} else if (typeDefinition?.KnownTypeCode == KnownTypeCode.Object) {
 				return global::EnvDTE.vsCMTypeRef.vsCMTypeRefObject;
 			} else {
 				return global::EnvDTE.vsCMTypeRef.vsCMTypeRefCodeType;

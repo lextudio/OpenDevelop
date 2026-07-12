@@ -21,8 +21,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.CSharp.TypeSystem;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop;
 
 namespace ICSharpCode.PackageManagement.EnvDTE
@@ -62,12 +61,7 @@ namespace ICSharpCode.PackageManagement.EnvDTE
 			if (projectContent != null) {
 				IUnresolvedFile file = projectContent.GetFile(context.FilteredFileName);
 				if (file != null) {
-					var csharpFile = file as CSharpUnresolvedFile;
-					if (csharpFile != null) {
-						AddUsings(csharpFile.RootUsingScope, compilation);
-					}
-					
-					var resolveContext = new SimpleTypeResolveContext(compilation.MainAssembly);
+					var resolveContext = new SimpleTypeResolveContext(compilation);
 					AddTypes(
 						file.TopLevelTypeDefinitions
 						.Select(td => td.Resolve(resolveContext) as ITypeDefinition)
@@ -86,17 +80,6 @@ namespace ICSharpCode.PackageManagement.EnvDTE
 				} else {
 					GetNamespace(typeDefinition.Namespace).AddMember(codeType);
 				}
-			}
-		}
-		
-		public void AddUsings(UsingScope usingScope, ICompilation compilation)
-		{
-			foreach (KeyValuePair<string, TypeOrNamespaceReference> alias in usingScope.UsingAliases) {
-				AddCodeImport(alias.Value.ToString());
-			}
-			
-			foreach (TypeOrNamespaceReference typeOrNamespace in usingScope.Usings) {
-				AddCodeImport(typeOrNamespace.ToString());
 			}
 		}
 		

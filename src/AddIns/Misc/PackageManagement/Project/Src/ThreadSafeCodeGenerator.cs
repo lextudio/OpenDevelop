@@ -18,9 +18,10 @@
 
 using System;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Refactoring;
+using TypeSystemAccessibility = ICSharpCode.TypeSystem.Accessibility;
 
 namespace ICSharpCode.PackageManagement
 {
@@ -50,12 +51,12 @@ namespace ICSharpCode.PackageManagement
 			mainThread.InvokeIfRequired(action);
 		}
 		
-		public void AddFieldAtStart(ITypeDefinition typeDefinition, Accessibility accessibility, IType fieldType, string name)
+		public void AddFieldAtStart(ITypeDefinition typeDefinition, TypeSystemAccessibility accessibility, IType fieldType, string name)
 		{
 			InvokeIfRequired(() => codeGenerator.AddFieldAtStart(typeDefinition, accessibility, fieldType, name));
 		}
 		
-		public void AddMethodAtStart(ITypeDefinition typeDefinition, Accessibility accessibility, IType returnType, string name)
+		public void AddMethodAtStart(ITypeDefinition typeDefinition, TypeSystemAccessibility accessibility, IType returnType, string name)
 		{
 			InvokeIfRequired(() => codeGenerator.AddMethodAtStart(typeDefinition, accessibility, returnType, name));
 		}

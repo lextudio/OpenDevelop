@@ -19,7 +19,6 @@
 using System;
 using System.Windows.Media;
 using ICSharpCode.AvalonEdit;
-using ICSharpCode.Core.WinForms;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
 
@@ -35,7 +34,7 @@ namespace ICSharpCode.Scripting
 			
 			textEditor.Options = new TextEditorOptions();
 			textEditor.Options.AllowScrollBelowDocument = false;
-			textEditor.FontFamily = new FontFamily(WinFormsResourceService.DefaultMonospacedFont.Name);
+			textEditor.FontFamily = new FontFamily("Consolas");
 			textEditor.FontSize = 13.0;
 			
 			return textEditor;

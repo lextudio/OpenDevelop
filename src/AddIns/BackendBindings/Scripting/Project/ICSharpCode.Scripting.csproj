@@ -1,150 +1,33 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" DefaultTargets="Build">
+﻿<Project Sdk="LibreWPF.Sdk/11.0.0-dev">
   <PropertyGroup>
-    <ProjectGuid>{7048AE18-EB93-4A84-82D0-DD60EB58ADBD}</ProjectGuid>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <OutputType>Library</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>ICSharpCode.Scripting</RootNamespace>
     <AssemblyName>ICSharpCode.Scripting</AssemblyName>
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
-    <AllowUnsafeBlocks>False</AllowUnsafeBlocks>
-    <NoStdLib>False</NoStdLib>
-    <WarningLevel>4</WarningLevel>
-    <TreatWarningsAsErrors>False</TreatWarningsAsErrors>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <UseWPF>true</UseWPF>
+    <OutputType>Library</OutputType>
     <OutputPath>..\..\..\..\..\bin\</OutputPath>
-    <TargetFrameworkProfile>
-    </TargetFrameworkProfile>
-    <NoWin32Manifest>False</NoWin32Manifest>
-    <IntermediateOutputPath>obj\$(Configuration)\</IntermediateOutputPath>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Platform)' == 'AnyCPU' ">
-    <BaseAddress>4194304</BaseAddress>
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <RegisterForComInterop>False</RegisterForComInterop>
-    <GenerateSerializationAssemblies>Auto</GenerateSerializationAssemblies>
-    <FileAlignment>4096</FileAlignment>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>Full</DebugType>
-    <Optimize>False</Optimize>
-    <CheckForOverflowUnderflow>True</CheckForOverflowUnderflow>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
-    <BaseIntermediateOutputPath>obj\</BaseIntermediateOutputPath>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
-    <DebugSymbols>false</DebugSymbols>
-    <DebugType>None</DebugType>
-    <Optimize>True</Optimize>
-    <CheckForOverflowUnderflow>False</CheckForOverflowUnderflow>
-    <DefineConstants>TRACE</DefineConstants>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="PresentationCore">
-      <RequiredTargetFramework>3.0</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="PresentationFramework">
-      <RequiredTargetFramework>3.0</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="System" />
-    <Reference Include="System.Design" />
-    <Reference Include="System.Drawing" />
-    <Reference Include="System.Xaml">
-      <RequiredTargetFramework>4.0</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="System.Xml" />
-    <Reference Include="WindowsBase">
-      <RequiredTargetFramework>3.0</RequiredTargetFramework>
-    </Reference>
+    <ProjectReference Include="..\..\..\..\Libraries\AvalonEdit\ICSharpCode.AvalonEdit\ICSharpCode.AvalonEdit.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\..\Libraries\NRefactory\ICSharpCode.NRefactory\ICSharpCode.NRefactory.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\Analysis\UnitTesting\UnitTesting.csproj" Private="false" />
   </ItemGroup>
   <ItemGroup>
-    <Folder Include="Configuration" />
-    <Folder Include="Src" />
+    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
   </ItemGroup>
+  <!-- WinForms: out of MVP scope -->
   <ItemGroup>
-    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs">
-      <Link>Configuration\GlobalAssemblyInfo.cs</Link>
-    </Compile>
-    <Compile Include="Configuration\AssemblyInfo.cs" />
-    <Compile Include="Src\CommandLineHistory.cs" />
-    <Compile Include="Src\ConsoleTextEditorKeyEventArgs.cs" />
-    <Compile Include="Src\ControlDispatcher.cs" />
-    <Compile Include="Src\CreateTextWriterInfo.cs" />
-    <Compile Include="Src\IComponentCreator.cs" />
-    <Compile Include="Src\IComponentWalker.cs" />
-    <Compile Include="Src\IControlDispatcher.cs" />
-    <Compile Include="Src\IMemberProvider.cs" />
-    <Compile Include="Src\IScriptingCodeDomSerializer.cs" />
-    <Compile Include="Src\IScriptingConsole.cs" />
-    <Compile Include="Src\IScriptingConsoleHost.cs" />
-    <Compile Include="Src\IScriptingConsolePad.cs" />
-    <Compile Include="Src\IScriptingConsoleTextEditor.cs" />
-    <Compile Include="Src\IScriptingDesignerGenerator.cs" />
-    <Compile Include="Src\IScriptingFileService.cs" />
-    <Compile Include="Src\IScriptingWorkbench.cs" />
-    <Compile Include="Src\LineIndenter.cs" />
-    <Compile Include="Src\PauseCommandPromptProcessStartInfo.cs" />
-    <Compile Include="Src\RunScriptingConsoleApplicationCommand.cs" />
-    <Compile Include="Src\ScriptingCodeBuilder.cs" />
-    <Compile Include="Src\ScriptingCommandLineBuilder.cs" />
-    <Compile Include="Src\ScriptingConsole.cs" />
-    <Compile Include="Src\ScriptingConsoleApplication.cs" />
-    <Compile Include="Src\ScriptingConsoleCompletionData.cs" />
-    <Compile Include="Src\ScriptingConsoleCompletionDataProvider.cs" />
-    <Compile Include="Src\ScriptingConsoleOutputStream.cs" />
-    <Compile Include="Src\ScriptingConsolePad.cs" />
-    <Compile Include="Src\ScriptingConsoleTextEditor.cs" />
-    <Compile Include="Src\ScriptingConsoleTextEditorKeyEventArgs.cs" />
-    <Compile Include="Src\ScriptingConsoleUnreadLines.cs" />
-    <Compile Include="Src\ScriptingDesignerGenerator.cs" />
-    <Compile Include="Src\ScriptingDesignerLoader.cs" />
-    <Compile Include="Src\ScriptingFileService.cs" />
-    <Compile Include="Src\ScriptingFormattingStrategy.cs" />
-    <Compile Include="Src\ScriptingLocalMethod.cs" />
-    <Compile Include="Src\ScriptingNameCreationService.cs" />
-    <Compile Include="Src\ScriptingStyle.cs" />
-    <Compile Include="Src\ScriptingTextEditorViewContent.cs" />
-    <Compile Include="Src\ScriptingWorkbench.cs" />
-    <Compile Include="Src\SendLineToScriptingConsoleCommand.cs" />
-    <Compile Include="Src\SendSelectedTextToScriptingConsoleCommand.cs" />
-    <Compile Include="Src\SendToScriptingConsoleCommand.cs" />
-    <Compile Include="Src\TextEditorFactory.cs" />
-    <Compile Include="Src\TextSentToScriptingConsole.cs" />
-    <Compile Include="Src\ThreadSafeScriptingConsole.cs" />
-    <Compile Include="Src\ThreadSafeScriptingConsoleEvents.cs" />
+    <Compile Remove="Src\ScriptingDesignerGenerator.cs" />
+    <Compile Remove="Src\ScriptingDesignerLoader.cs" />
+    <Compile Remove="Src\ScriptingNameCreationService.cs" />
+    <Compile Remove="Src\IComponentCreator.cs" />
+    <Compile Remove="Src\IComponentWalker.cs" />
+    <Compile Remove="Src\IScriptingCodeDomSerializer.cs" />
+    <Compile Remove="Src\ScriptingCodeBuilder.cs" />
+    <Compile Remove="Src\IScriptingDesignerGenerator.cs" />
   </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\..\..\..\Libraries\AvalonEdit\ICSharpCode.AvalonEdit\ICSharpCode.AvalonEdit.csproj">
-      <Project>{6C55B776-26D4-4DB3-A6AB-87E783B2F3D1}</Project>
-      <Name>ICSharpCode.AvalonEdit</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Libraries\NRefactory\ICSharpCode.NRefactory\ICSharpCode.NRefactory.csproj">
-      <Project>{3B2A5653-EC97-4001-BB9B-D90F1AF2C371}</Project>
-      <Name>ICSharpCode.NRefactory</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj">
-      <Project>{2748AD25-9C63-4E12-877B-4DCE96FBED54}</Project>
-      <Name>ICSharpCode.SharpDevelop</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj">
-      <Project>{35CEF10F-2D4C-45F2-9DD1-161E0FEC583C}</Project>
-      <Name>ICSharpCode.Core</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.WinForms\ICSharpCode.Core.WinForms.csproj">
-      <Project>{857CA1A3-FC88-4BE0-AB6A-D1EE772AB288}</Project>
-      <Name>ICSharpCode.Core.WinForms</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\Analysis\UnitTesting\UnitTesting.csproj">
-      <Project>{1F261725-6318-4434-A1B1-6C70CE4CD324}</Project>
-      <Name>UnitTesting</Name>
-      <Private>False</Private>
-    </ProjectReference>
-  </ItemGroup>
-  <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.Targets" />
 </Project>

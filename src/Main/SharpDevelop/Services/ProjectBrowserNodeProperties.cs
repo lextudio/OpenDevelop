@@ -8,15 +8,15 @@ using ICSharpCode.SharpDevelop.Project;
 namespace ICSharpCode.SharpDevelop.Services;
 
 // Browsable property bag shown in the Properties pad for a selected Solution
-// Explorer node. Kept separate from SolutionExplorerNodeContext so the grid
+// Explorer node. Kept separate from ProjectBrowserNodeContext so the grid
 // shows only meaningful, user-facing fields (not IconUri/State/etc.).
-internal sealed class SolutionExplorerNodeProperties
+internal sealed class ProjectBrowserNodeProperties
 {
-    private readonly SolutionExplorerNodeContext _node;
+    private readonly ProjectBrowserNodeContext _node;
 
     private ProjectItem? ProjectItem => ResolveProjectItem();
 
-    public SolutionExplorerNodeProperties(SolutionExplorerNodeContext node) => _node = node;
+    public ProjectBrowserNodeProperties(ProjectBrowserNodeContext node) => _node = node;
 
     [Category("General")]
     [DisplayName("Name")]
@@ -207,7 +207,7 @@ internal sealed class SolutionExplorerNodeProperties
             }
         }
 
-        if (_node.Kind == SolutionExplorerNodeKind.Project)
+        if (_node.Kind == ProjectBrowserNodeKind.Project)
         {
             return solution.Projects.FirstOrDefault(project =>
                 string.Equals(project.Name, _node.Name, StringComparison.OrdinalIgnoreCase));

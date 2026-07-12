@@ -156,6 +156,7 @@ namespace ICSharpCode.SharpDevelop.Startup
 				#endif
 				
 				Assembly exe = typeof(SharpDevelopMain).Assembly;
+				startup.ResourceAssemblyName = exe.GetName().Name;
 				startup.ApplicationRootPath = FindApplicationRootPath(Path.GetDirectoryName(exe.Location));
 				startup.AllowUserAddIns = true;
 				

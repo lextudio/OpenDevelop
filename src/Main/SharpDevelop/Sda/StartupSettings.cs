@@ -28,7 +28,7 @@ namespace ICSharpCode.SharpDevelop.Sda
 	public sealed class StartupSettings
 	{
 		bool useSharpDevelopErrorHandler = true;
-		string applicationName = "SharpDevelop";
+		string applicationName = "OpenDevelop";
 		string applicationRootPath;
 		bool allowAddInConfigurationAndExternalAddIns = true;
 		bool allowUserAddIns;
@@ -36,7 +36,7 @@ namespace ICSharpCode.SharpDevelop.Sda
 		string configDirectory;
 		string dataDirectory;
 		string domPersistencePath;
-		string resourceAssemblyName = "SharpDevelop";
+		string resourceAssemblyName = "OpenDevelop";
 		internal List<string> addInDirectories = new List<string>();
 		internal List<string> addInFiles = new List<string>();
 		

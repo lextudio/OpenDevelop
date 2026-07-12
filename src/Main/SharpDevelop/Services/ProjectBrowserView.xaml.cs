@@ -5,20 +5,20 @@ using System.Windows.Media;
 
 namespace ICSharpCode.SharpDevelop.Services;
 
-internal partial class SolutionExplorerView : UserControl
+internal partial class ProjectBrowserView : UserControl
 {
-    public SolutionExplorerView()
+    public ProjectBrowserView()
     {
         InitializeComponent();
     }
 
     public object InitiallyFocusedControl => treeView;
 
-    private SolutionExplorerViewModel ViewModel => (SolutionExplorerViewModel)DataContext;
+    private ProjectBrowserViewModel ViewModel => (ProjectBrowserViewModel)DataContext;
 
     private void TreeViewOnSelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
-        ViewModel.SelectedNode = e.NewValue as SolutionExplorerNodeModel;
+        ViewModel.SelectedNode = e.NewValue as ProjectBrowserNodeModel;
     }
 
     private void TreeViewOnMouseDoubleClick(object sender, MouseButtonEventArgs e)
@@ -33,7 +33,7 @@ internal partial class SolutionExplorerView : UserControl
         }
 
         var item = FindAncestor<TreeViewItem>(source);
-        if (item?.DataContext is not SolutionExplorerNodeModel node) {
+        if (item?.DataContext is not ProjectBrowserNodeModel node) {
             return;
         }
 

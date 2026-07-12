@@ -147,7 +147,7 @@ internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrateg
     {
         anchorableShown.IsActive = true;
         anchorableShown.IsSelected = true;
-        if (anchorableShown.ContentId == "SolutionExplorer" && anchorableShown.Parent is LayoutAnchorablePane pane)
+        if (anchorableShown.ContentId == "ProjectBrowser" && anchorableShown.Parent is LayoutAnchorablePane pane)
             pane.DockWidth = new GridLength(280);
     }
 

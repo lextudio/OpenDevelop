@@ -21,7 +21,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop;
 
 namespace ICSharpCode.PackageManagement.EnvDTE
@@ -172,24 +172,25 @@ namespace ICSharpCode.PackageManagement.EnvDTE
 		/// Returns true if the current type matches the fully qualified name or any of its
 		/// base types are a match.
 		/// </summary>
-		protected override bool GetIsDerivedFrom(string fullName)
-		{
-			return typeDefinition
-				.GetAllBaseTypeDefinitions()
-				.Any(baseType => baseType.FullName == fullName);
-		}
+			protected override bool GetIsDerivedFrom(string fullName)
+			{
+				return typeDefinition
+					.DirectBaseTypes
+					.Select(baseType => baseType.GetDefinition())
+					.Where(baseType => baseType != null)
+					.Any(baseType => baseType.FullName == fullName);
+			}
 		
-		protected IType FindType(string type)
-		{
-			var fieldTypeName = new FullTypeName(type);
-			return typeDefinition.Compilation.FindType(fieldTypeName);
-		}
+			protected IType FindType(string type)
+			{
+				return null;
+			}
 		
 		protected void ReloadTypeDefinition()
 		{
 			ICompilation compilation = context.DteProject.GetCompilationUnit(typeDefinition.BodyRegion.FileName);
 			
-			ITypeDefinition matchedTypeDefinition = compilation.MainAssembly.GetTypeDefinition(typeDefinition.FullTypeName);
+				ITypeDefinition matchedTypeDefinition = compilation.MainAssembly.GetTypeDefinition(typeDefinition.FullTypeName.TopLevelTypeName);
 			if (matchedTypeDefinition != null) {
 				typeDefinition = matchedTypeDefinition;
 			}

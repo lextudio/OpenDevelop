@@ -18,7 +18,8 @@
 
 using System;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
+using TypeSystemAccessibility = ICSharpCode.TypeSystem.Accessibility;
 
 namespace ICSharpCode.PackageManagement
 {
@@ -27,7 +28,7 @@ namespace ICSharpCode.PackageManagement
 		void AddImport(FileName fileName, string name);
 		void MakePartial(ITypeDefinition typeDefinition);
 		void MakeVirtual(IMember member);
-		void AddFieldAtStart(ITypeDefinition typeDefinition, Accessibility accessibility, IType fieldType, string name);
-		void AddMethodAtStart(ITypeDefinition typeDefinition, Accessibility accessibility, IType returnType, string name);
+		void AddFieldAtStart(ITypeDefinition typeDefinition, TypeSystemAccessibility accessibility, IType fieldType, string name);
+		void AddMethodAtStart(ITypeDefinition typeDefinition, TypeSystemAccessibility accessibility, IType returnType, string name);
 	}
 }
