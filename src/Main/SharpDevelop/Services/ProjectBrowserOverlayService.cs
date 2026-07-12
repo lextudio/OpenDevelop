@@ -56,12 +56,12 @@ namespace ICSharpCode.SharpDevelop.Services
 		{
 			if (string.IsNullOrEmpty(fullPath))
 				return null;
-			
+
 			IProjectBrowserNodeOverlayProvider[] snapshot;
 			lock (providers) {
 				snapshot = providers.ToArray();
 			}
-			
+
 			foreach (IProjectBrowserNodeOverlayProvider provider in snapshot) {
 				try {
 					ImageSource overlay = provider.GetOverlay(fullPath, isDirectory);
@@ -73,7 +73,29 @@ namespace ICSharpCode.SharpDevelop.Services
 			}
 			return null;
 		}
-		
+
+		public string GetOverlayKey(string fullPath, bool isDirectory)
+		{
+			if (string.IsNullOrEmpty(fullPath))
+				return null;
+
+			IProjectBrowserNodeOverlayProvider[] snapshot;
+			lock (providers) {
+				snapshot = providers.ToArray();
+			}
+
+			foreach (IProjectBrowserNodeOverlayProvider provider in snapshot) {
+				try {
+					string key = provider.GetOverlayKey(fullPath, isDirectory);
+					if (!string.IsNullOrEmpty(key))
+						return key;
+				} catch (Exception ex) {
+					LoggingService.Warn("Project Browser overlay provider failed.", ex);
+				}
+			}
+			return null;
+		}
+
 		public void Invalidate(string path = null)
 		{
 			Invalidated?.Invoke(this, EventArgs.Empty);

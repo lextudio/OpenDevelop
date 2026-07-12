@@ -56,6 +56,8 @@ internal sealed class ProjectBrowserNodeModel
 
     public ImageSource OverlayIcon => ServiceSingleton.ServiceProvider.GetService<IProjectBrowserOverlayService>()?.GetOverlay(FullPath, IsDirectory);
 
+    public string OverlayStatusKey => ServiceSingleton.ServiceProvider.GetService<IProjectBrowserOverlayService>()?.GetOverlayKey(FullPath, IsDirectory) ?? string.Empty;
+
     public ProjectBrowserNodeContext ToContext()
     {
         return new ProjectBrowserNodeContext(Name, FullPath, IsDirectory, Kind, BoundItem, BoundProjectTree, ProjectPathHint, IncludeHint);

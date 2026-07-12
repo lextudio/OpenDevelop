@@ -363,6 +363,16 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(modules.Select(ToPropertyDictionary).ToArray());
 		}
 
+		[DevFlowAction("od.show-pad", Description = "Activate/bring-to-front a workbench pad by title or class name so AvalonDock actually creates and renders its content (needed before inspecting some pads via od.ui.tree, since an un-activated pad's content is never realized)")]
+		public static string ShowPad(string padName)
+		{
+			var pad = FindPad(padName);
+			if (pad == null)
+				return JsonSerializer.Serialize(new { found = false, padName });
+			SD.Workbench.ActivatePad(pad);
+			return JsonSerializer.Serialize(new { found = true, title = pad.Title, className = pad.Class });
+		}
+
 		[DevFlowAction("od.pads", Description = "List registered workbench pads")]
 		public static string GetPads()
 		{

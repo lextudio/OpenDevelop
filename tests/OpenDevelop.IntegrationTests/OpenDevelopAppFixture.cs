@@ -46,6 +46,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     public string DebugTestProjectPath { get; } = LocateDebugTestProject();
     public string SlnxFixturePath { get; } = LocateSlnxFixture();
     public string WpfSampleSolutionPath { get; } = LocateWpfSampleSolution();
+    public string GitFixtureTemplatePath { get; } = LocateGitFixtureTemplate();
 
     public async ValueTask InitializeAsync()
     {
@@ -242,6 +243,19 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
             "Could not locate tests/fixtures/DebugTestApp/DebugTestApp.csproj by walking up from " + AppContext.BaseDirectory);
     }
 
+    static string LocateGitFixtureTemplate()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir, "tests", "fixtures", "GitFixture");
+            if (File.Exists(Path.Combine(candidate, "GitFixture.sln"))) return candidate;
+            dir = Path.GetDirectoryName(dir);
+        }
+        throw new FileNotFoundException(
+            "Could not locate tests/fixtures/GitFixture/GitFixture.sln by walking up from " + AppContext.BaseDirectory);
+    }
+
     static string LocateWpfSampleSolution()
     {
         var dir = AppContext.BaseDirectory;
@@ -258,7 +272,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     static string ResolveDotNetHost()
     {
         var envHost = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
-        if (!string.IsNullOrEmpty(envHost) && File.Exists(envHost))
+        if (!string.IsNullOrEmpty(envHost) && File.Exists(envHost) && DotNetHostResolvesSdk(envHost))
             return envHost;
 
         var dir = AppContext.BaseDirectory;
@@ -266,11 +280,55 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         {
             var candidate = Path.Combine(dir, "..", "librewpf", ".dotnet", "dotnet");
             candidate = Path.GetFullPath(candidate);
-            if (File.Exists(candidate)) return candidate;
+            if (File.Exists(candidate) && DotNetHostResolvesSdk(candidate)) return candidate;
             dir = Path.GetDirectoryName(dir);
         }
 
         return "dotnet";
+    }
+
+    // A dotnet host found on disk (e.g. a sibling "librewpf" checkout's bundled runtime) can carry
+    // an SDK version that doesn't satisfy this repo's global.json (rollForward doesn't cross major
+    // versions) - in that case "dotnet run" fails instantly with a "compatible SDK not found"
+    // error, but StartAsync only ever finds out indirectly, by timing out 120s later waiting for a
+    // DevFlow agent that never started. Validate the candidate actually resolves an SDK for this
+    // repo before preferring it over the plain "dotnet" already on PATH.
+    static bool DotNetHostResolvesSdk(string dotnetPath)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo(dotnetPath, "--version")
+            {
+                WorkingDirectory = FindRepoRoot(),
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            using var process = Process.Start(psi);
+            if (process is null)
+                return false;
+            if (!process.WaitForExit(10000))
+            {
+                try { process.Kill(entireProcessTree: true); } catch { }
+                return false;
+            }
+            return process.ExitCode == 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    static string FindRepoRoot()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null)
+        {
+            if (File.Exists(Path.Combine(dir, "global.json"))) return dir;
+            dir = Path.GetDirectoryName(dir);
+        }
+        return AppContext.BaseDirectory;
     }
 
 	static void ConfigureDotNetEnvironment(ProcessStartInfo psi)

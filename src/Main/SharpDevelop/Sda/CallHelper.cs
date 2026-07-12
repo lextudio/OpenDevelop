@@ -102,6 +102,18 @@ namespace ICSharpCode.SharpDevelop.Sda
 			CommandWrapper.UnregisterConditionRequerySuggestedHandler = (eh => CommandManager.RequerySuggested -= eh);
 			StringParser.RegisterStringTagProvider(new SharpDevelopStringTagProvider());
 			
+			// Must be registered before startup.RunInitialization() below: that call runs every
+			// addin's Autostart command (e.g. GitAddIn's RegisterEventsCommand), and
+			// RegisterEventsCommand.Run() looks this service up via SD.GetService<...>() to
+			// register its Project Browser overlay provider. Registering it after
+			// RunInitialization() (as the other core services below still are) meant
+			// SD.GetService<IProjectBrowserOverlayService>() always returned null during
+			// autostart, so the Git overlay provider silently never got registered and Project
+			// Browser file status icons never appeared, no matter what GitStatusCache reported.
+			if (SD.Services.GetService(typeof(IProjectBrowserOverlayService)) == null) {
+				SD.Services.AddService(typeof(IProjectBrowserOverlayService), new ProjectBrowserOverlayService());
+			}
+
 			LoggingService.Info("Looking for AddIns...");
 			foreach (string file in properties.addInFiles) {
 				startup.AddAddInFile(file);
@@ -149,9 +161,6 @@ namespace ICSharpCode.SharpDevelop.Sda
 			}
 			if (SD.Services.GetService(typeof(IProjectBrowserController)) == null) {
 				SD.Services.AddService(typeof(IProjectBrowserController), new ProjectBrowserController());
-			}
-			if (SD.Services.GetService(typeof(IProjectBrowserOverlayService)) == null) {
-				SD.Services.AddService(typeof(IProjectBrowserOverlayService), new ProjectBrowserOverlayService());
 			}
 
 			// AssemblyParserService (real Mono.Cecil-based assembly parsing) is out of MVP scope

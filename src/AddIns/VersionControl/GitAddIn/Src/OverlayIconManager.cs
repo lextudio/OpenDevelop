@@ -42,6 +42,12 @@ namespace ICSharpCode.GitAddIn
 				GitStatus status = GitStatusCache.GetFileStatus(fullPath);
 				return GetImage(status);
 			}
+
+			public string GetOverlayKey(string fullPath, bool isDirectory)
+			{
+				GitStatus status = GitStatusCache.GetFileStatus(fullPath);
+				return GetImage(status) == null ? null : status.ToString();
+			}
 		}
 		
 		public static ImageSource GetImage(GitStatus status)

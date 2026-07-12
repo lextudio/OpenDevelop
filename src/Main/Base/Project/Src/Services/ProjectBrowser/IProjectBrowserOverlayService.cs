@@ -24,18 +24,22 @@ namespace ICSharpCode.SharpDevelop.Services
 	public interface IProjectBrowserNodeOverlayProvider
 	{
 		ImageSource GetOverlay(string fullPath, bool isDirectory);
+
+		string GetOverlayKey(string fullPath, bool isDirectory);
 	}
-	
+
 	public interface IProjectBrowserOverlayService
 	{
 		event EventHandler Invalidated;
-		
+
 		void RegisterProvider(IProjectBrowserNodeOverlayProvider provider);
-		
+
 		void UnregisterProvider(IProjectBrowserNodeOverlayProvider provider);
-		
+
 		ImageSource GetOverlay(string fullPath, bool isDirectory);
-		
+
+		string GetOverlayKey(string fullPath, bool isDirectory);
+
 		void Invalidate(string path = null);
 	}
 }
