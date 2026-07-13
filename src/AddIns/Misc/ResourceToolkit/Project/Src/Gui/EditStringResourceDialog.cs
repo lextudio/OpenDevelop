@@ -1,95 +1,123 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
-// 
-// Permission is hereby granted, free of charge, to any person obtaining a copy of this
-// software and associated documentation files (the "Software"), to deal in the Software
-// without restriction, including without limitation the rights to use, copy, modify, merge,
-// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
-// to whom the Software is furnished to do so, subject to the following conditions:
-// 
-// The above copyright notice and this permission notice shall be included in all copies or
-// substantial portions of the Software.
-// 
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
-// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
-// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
-// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-// DEALINGS IN THE SOFTWARE.
-
-using System;
-using System.ComponentModel;
-using System.Windows.Forms;
-
+﻿using System;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using Hornung.ResourceToolkit.ResourceFileContent;
 using ICSharpCode.Core;
-using ICSharpCode.SharpDevelop.Gui.XmlForms;
+using ICSharpCode.SharpDevelop.Gui;
 
 namespace Hornung.ResourceToolkit.Gui
 {
-	/// <summary>
-	/// A dialog where the user can edit a string resource key and value.
-	/// </summary>
-	public class EditStringResourceDialog : BaseSharpDevelopForm
-	{
-		
-		readonly IResourceFileContent content;
-		
-		public EditStringResourceDialog(IResourceFileContent content, string key, string value, bool allowEditKey) : base()
-		{
-			this.content = content;
-			key = key ?? String.Empty;
-			value = value ?? String.Empty;
-			
-			InitializeComponent();
-			
-			if (allowEditKey) {
-				this.Get<TextBox>("key").Validating += this.KeyValidating;
-			} else {
-				this.Get<TextBox>("key").ReadOnly = true;
-			}
-			
-			this.Get<TextBox>("key").Text = key;
-			this.Get<TextBox>("value").Text = value;
-			
-			if (allowEditKey) {
-				this.Get<TextBox>("key").Select();
-				this.Get<TextBox>("key").Select(key.Length, 0);
-			} else {
-				this.Get<TextBox>("value").Select();
-				this.Get<TextBox>("value").Select(value.Length, 0);
-			}
-			
-		}
-		
-		void InitializeComponent()
-		{
-			SetupFromXmlStream(this.GetType().Assembly.GetManifestResourceStream("Hornung.ResourceToolkit.Resources.EditStringResourceDialog.xfrm"));
-		}
-		
-		[System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Globalization", "CA1303:DoNotPassLiteralsAsLocalizedParameters", MessageId = "ICSharpCode.Core.MessageService.ShowWarning(System.String)")]
-		void KeyValidating(object sender, CancelEventArgs e)
-		{
-			TextBox textBox = (TextBox)sender;
-			if (textBox.Text.Trim().Length == 0) {
-				e.Cancel = true;
-				MessageService.ShowWarning("${res:Hornung.ResourceToolkit.EditStringResourceDialog.KeyIsEmpty}");
-			} else if (this.content.ContainsKey(textBox.Text.Trim())) {
-				e.Cancel = true;
-				MessageService.ShowWarning("${res:Hornung.ResourceToolkit.EditStringResourceDialog.DuplicateKey}");
-			}
-		}
-		
-		public string Key {
-			get {
-				return this.Get<TextBox>("key").Text.Trim();
-			}
-		}
-		
-		public string Value {
-			get {
-				return this.Get<TextBox>("value").Text;
-			}
-		}
-		
-	}
+    public class EditStringResourceDialog : Window
+    {
+        readonly IResourceFileContent content;
+        readonly TextBox keyTextBox;
+        readonly TextBox valueTextBox;
+
+        public EditStringResourceDialog(IResourceFileContent content, string key, string value, bool allowEditKey) : base()
+        {
+            this.content = content;
+            key = key ?? String.Empty;
+            value = value ?? String.Empty;
+
+            this.Title = StringParser.Parse("${res:Hornung.ResourceToolkit.EditStringResourceDialog.Caption}");
+            this.SizeToContent = SizeToContent.WidthAndHeight;
+            this.Width = 380;
+            this.ResizeMode = ResizeMode.NoResize;
+            this.WindowStartupLocation = WindowStartupLocation.CenterOwner;
+
+            var stackPanel = new StackPanel { Margin = new Thickness(12) };
+
+            var keyLabel = new Label { Content = StringParser.Parse("${res:Hornung.ResourceToolkit.KeyLabel}") };
+            stackPanel.Children.Add(keyLabel);
+
+            keyTextBox = new TextBox { Margin = new Thickness(0, 0, 0, 8) };
+            if (allowEditKey) {
+                keyTextBox.LostKeyboardFocus += KeyValidating;
+            } else {
+                keyTextBox.IsReadOnly = true;
+            }
+            keyTextBox.Text = key;
+            stackPanel.Children.Add(keyTextBox);
+
+            var valueLabel = new Label { Content = StringParser.Parse("${res:Hornung.ResourceToolkit.ValueLabel}") };
+            stackPanel.Children.Add(valueLabel);
+
+            valueTextBox = new TextBox {
+                Margin = new Thickness(0, 0, 0, 8),
+                AcceptsReturn = true,
+                TextWrapping = TextWrapping.Wrap,
+                Height = 90
+            };
+            valueTextBox.Text = value;
+            stackPanel.Children.Add(valueTextBox);
+
+            var buttonPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+
+            var okButton = new Button {
+                Content = StringParser.Parse("${res:Global.OKButtonText}"),
+                Width = 75,
+                Height = 23,
+                Margin = new Thickness(0, 0, 6, 0),
+                IsDefault = true
+            };
+            okButton.Click += OkButtonClick;
+            buttonPanel.Children.Add(okButton);
+
+            var cancelButton = new Button {
+                Content = StringParser.Parse("${res:Global.CancelButtonText}"),
+                Width = 75,
+                Height = 23,
+                IsCancel = true
+            };
+            buttonPanel.Children.Add(cancelButton);
+
+            stackPanel.Children.Add(buttonPanel);
+            this.Content = stackPanel;
+
+            if (allowEditKey) {
+                keyTextBox.Focus();
+                keyTextBox.Select(key.Length, 0);
+            } else {
+                valueTextBox.Focus();
+                valueTextBox.Select(value.Length, 0);
+            }
+        }
+
+        void KeyValidating(object sender, KeyboardFocusChangedEventArgs e)
+        {
+            if (keyTextBox.Text.Trim().Length == 0) {
+                e.Handled = true;
+                keyTextBox.Focus();
+                MessageService.ShowWarning("${res:Hornung.ResourceToolkit.EditStringResourceDialog.KeyIsEmpty}");
+            } else if (this.content.ContainsKey(keyTextBox.Text.Trim())) {
+                e.Handled = true;
+                keyTextBox.Focus();
+                MessageService.ShowWarning("${res:Hornung.ResourceToolkit.EditStringResourceDialog.DuplicateKey}");
+            }
+        }
+
+        void OkButtonClick(object sender, RoutedEventArgs e)
+        {
+            if (keyTextBox.Text.Trim().Length == 0) {
+                MessageService.ShowWarning("${res:Hornung.ResourceToolkit.EditStringResourceDialog.KeyIsEmpty}");
+                keyTextBox.Focus();
+                return;
+            }
+            if (this.content != null && this.content.ContainsKey(keyTextBox.Text.Trim())) {
+                MessageService.ShowWarning("${res:Hornung.ResourceToolkit.EditStringResourceDialog.DuplicateKey}");
+                keyTextBox.Focus();
+                return;
+            }
+            this.DialogResult = true;
+        }
+
+        public string Key {
+            get { return keyTextBox.Text.Trim(); }
+        }
+
+        public string Value {
+            get { return valueTextBox.Text; }
+        }
+    }
 }

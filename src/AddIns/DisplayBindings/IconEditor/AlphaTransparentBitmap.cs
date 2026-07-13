@@ -1,54 +1,32 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
-// 
-// Permission is hereby granted, free of charge, to any person obtaining a copy of this
-// software and associated documentation files (the "Software"), to deal in the Software
-// without restriction, including without limitation the rights to use, copy, modify, merge,
-// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
-// to whom the Software is furnished to do so, subject to the following conditions:
-// 
-// The above copyright notice and this permission notice shall be included in all copies or
-// substantial portions of the Software.
-// 
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
-// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
-// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
-// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-// DEALINGS IN THE SOFTWARE.
-
-using System;
-using System.Drawing;
-using System.Drawing.Imaging;
+﻿using System;
 using System.IO;
+using System.Windows;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 namespace ICSharpCode.IconEditor
 {
-	/// <summary>
-	/// .NET does not support alpha-transparent .bmp files.
-	/// This means we have to use this workaround to load or save them.
-	/// </summary>
 	public static class AlphaTransparentBitmap
 	{
-		/// <summary>
-		/// Loads an alpha-transparent bitmap from the specified stream.
-		/// Only valid 32bit bitmaps are supported, everything else will throw an exception!
-		/// </summary>
-		public unsafe static Bitmap LoadAlphaTransparentBitmap(Stream stream)
+		const int BMP_MARK = 19778;
+
+		public unsafe static BitmapSource LoadAlphaTransparentBitmap(Stream stream)
 		{
-			const int knownHeaderSize = 4*3 + 2*2 + 4;
+			const int knownHeaderSize = 4 * 3 + 2 * 2 + 4;
 			const int MAXSIZE = ushort.MaxValue;
-			
-			using (BinaryReader r = new BinaryReader(stream)) {
-				if (r.ReadUInt16() != 19778)
+
+			using (BinaryReader r = new BinaryReader(stream))
+			{
+				if (r.ReadUInt16() != BMP_MARK)
 					throw new ArgumentException("The specified file is not a bitmap!");
-				r.ReadInt32(); // ignore file size
-				r.ReadInt32(); // ignore reserved bytes
-				r.ReadInt32(); // ignore data start offset
-				
+				r.ReadInt32();
+				r.ReadInt32();
+				r.ReadInt32();
+
 				int biSize = r.ReadInt32();
 				if (biSize <= knownHeaderSize)
 					throw new ArgumentException("biSize invalid: " + biSize);
-				if (biSize > 2048) // upper limit for header size
+				if (biSize > 2048)
 					throw new ArgumentException("biSize too high: " + biSize);
 				int width = r.ReadInt32();
 				int height = r.ReadInt32();
@@ -62,68 +40,71 @@ namespace ICSharpCode.IconEditor
 					throw new ArgumentException("Only 32bit bitmaps are supported!");
 				if (r.ReadInt32() != 0)
 					throw new ArgumentException("Only uncompressed bitmaps are supported!");
-				
-				// skip rest of header:
+
 				r.ReadBytes(biSize - knownHeaderSize);
-				
-				// 32bit bitmaps don't have a color table, so the data section starts here immediately
-				Bitmap bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-				BitmapData bmpData = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
-				try {
-					if (bmpData.Stride != width * 4)
-						throw new InvalidOperationException("expected 32bit bitmapdata");
-					int byteCount = bmpData.Stride * bmpData.Height;
-					uint* startPos = (uint*)bmpData.Scan0.ToPointer();
-					uint* endPos = (uint*)((byte*)bmpData.Scan0.ToPointer() + byteCount);
-					// .bmp files store the bitmap upside down, so we have to mirror it
-					uint* tmpPos = startPos;
-					startPos = endPos - width; // start of last line
-					endPos = tmpPos - width; // start of (-1)st line
-					for (uint* lineStart = startPos; lineStart != endPos; lineStart -= width) {
-						uint* lineEnd = lineStart + width;
-						for (uint* pos = lineStart; pos != lineEnd; pos++) {
-							*pos = r.ReadUInt32();
+
+				var bmp = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgra32, null);
+				bmp.Lock();
+				try
+				{
+					uint* startPos = (uint*)bmp.BackBuffer.ToPointer();
+					int stride = bmp.BackBufferStride;
+					uint* linePtr = startPos + (height - 1) * (stride / 4);
+					for (int y = 0; y < height; y++)
+					{
+						uint* endPtr = linePtr + width;
+						for (uint* p = linePtr; p < endPtr; p++)
+						{
+							*p = r.ReadUInt32();
 						}
+						linePtr -= stride / 4;
 					}
-				} finally {
-					bmp.UnlockBits(bmpData);
+				}
+				finally
+				{
+					bmp.Unlock();
 				}
 				return bmp;
 			}
 		}
-		
-		public unsafe static Bitmap ConvertToAlphaTransparentBitmap(Bitmap andMask, Bitmap xorMask)
+
+		public unsafe static BitmapSource ConvertToAlphaTransparentBitmap(BitmapSource andMask, BitmapSource xorMask)
 		{
 			if (andMask == null || xorMask == null)
 				return null;
-			int width = xorMask.Width;
-			int height = xorMask.Height;
-			if (andMask.Width != width || andMask.Height != height)
+			int width = xorMask.PixelWidth;
+			int height = xorMask.PixelHeight;
+			if (andMask.PixelWidth != width || andMask.PixelHeight != height)
 				throw new ArgumentException();
-			Bitmap bmp = new Bitmap(xorMask, width, height);
-			BitmapData bmpData = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
-			try {
-				if (bmpData.Stride != width * 4)
-					throw new InvalidOperationException("expected 32bit bitmapdata");
-				BitmapData maskData = andMask.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.ReadOnly, PixelFormat.Format1bppIndexed);
-				try {
-					uint* bmpPtr = (uint*)bmpData.Scan0.ToPointer();
-					byte* maskPtr = (byte*)maskData.Scan0.ToPointer();
-					for (int y = 0; y < height; y++) {
-						for (int x = 0; x < width; x++) {
-							if (((maskPtr[x >> 3] << (x & 7)) & 0x80) != 0) {
-								// white in the mask -> survives AND -> transparent
-								bmpPtr[x] = 0;
-							}
+
+			var bmp = new WriteableBitmap(xorMask);
+			bmp.Lock();
+			try
+			{
+				uint* bmpPtr = (uint*)bmp.BackBuffer.ToPointer();
+				int stride = bmp.BackBufferStride;
+
+				FormatConvertedBitmap monoMask = new FormatConvertedBitmap(andMask, PixelFormats.Indexed1, null, 0);
+				byte[] maskPixels = new byte[monoMask.PixelHeight * monoMask.PixelWidth / 8];
+				monoMask.CopyPixels(maskPixels, monoMask.PixelWidth / 8, 0);
+
+				for (int y = 0; y < height; y++)
+				{
+					int rowOffset = y * stride / 4;
+					int maskRowOffset = y * monoMask.PixelWidth / 8;
+					for (int x = 0; x < width; x++)
+					{
+						uint maskByte = (uint)(maskPixels[maskRowOffset + (x >> 3)] << (x & 7));
+						if ((maskByte & 0x80) != 0)
+						{
+							bmpPtr[rowOffset + x] = 0;
 						}
-						bmpPtr += width;
-						maskPtr += maskData.Stride;
 					}
-				} finally {
-					andMask.UnlockBits(maskData);
 				}
-			} finally {
-				bmp.UnlockBits(bmpData);
+			}
+			finally
+			{
+				bmp.Unlock();
 			}
 			return bmp;
 		}

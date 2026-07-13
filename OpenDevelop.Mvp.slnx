@@ -38,6 +38,9 @@
   <Folder Name="/src/AddIns/DisplayBindings/WpfDesign/">
     <Project Path="src/AddIns/DisplayBindings/WpfDesign/WpfDesign.AddIn/WpfDesign.AddIn.csproj" />
   </Folder>
+  <Folder Name="/src/AddIns/DisplayBindings/IconEditor/">
+    <Project Path="src/AddIns/DisplayBindings/IconEditor/IconEditor.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj" />
   </Folder>
@@ -64,6 +67,12 @@
   </Folder>
   <Folder Name="/src/AddIns/VersionControl/GitAddIn/">
     <Project Path="src/AddIns/VersionControl/GitAddIn/GitAddIn.csproj" />
+  </Folder>
+  <Folder Name="/src/AddIns/Misc/ResourceToolkit/">
+    <Project Path="src/AddIns/Misc/ResourceToolkit/Project/ResourceToolkit.csproj" />
+  </Folder>
+  <Folder Name="/src/AddIns/DisplayBindings/SettingsEditor/">
+    <Project Path="src/AddIns/DisplayBindings/SettingsEditor/Project/SettingsEditor.csproj" />
   </Folder>
   <Project Path="src/Main/Base/Project/ICSharpCode.SharpDevelop.csproj" />
   <Project Path="externals/cps/src/ProjectSystem/Microsoft.VisualStudio.ProjectSystem.Shim.csproj" />

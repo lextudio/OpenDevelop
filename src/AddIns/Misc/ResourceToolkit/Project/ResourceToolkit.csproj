@@ -1,157 +1,28 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="4.0">
+﻿<Project Sdk="LibreWPF.Sdk/11.0.0-dev">
   <PropertyGroup>
-    <OutputType>Library</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>Hornung.ResourceToolkit</RootNamespace>
     <AssemblyName>Hornung.ResourceToolkit</AssemblyName>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{461606BD-E824-4D0A-8CBA-01810B1F5E02}</ProjectGuid>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <OutputType>Library</OutputType>
     <OutputPath>..\..\..\..\..\AddIns\Misc\ResourceToolkit\</OutputPath>
-    <AllowUnsafeBlocks>False</AllowUnsafeBlocks>
-    <NoStdLib>False</NoStdLib>
-    <RegisterForComInterop>False</RegisterForComInterop>
-    <GenerateSerializationAssemblies>Auto</GenerateSerializationAssemblies>
-    <BaseAddress>4194304</BaseAddress>
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <FileAlignment>4096</FileAlignment>
-    <WarningLevel>4</WarningLevel>
-    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-    <RunCodeAnalysis>False</RunCodeAnalysis>
-    <CodeAnalysisRules>-Microsoft.Design#CA1020</CodeAnalysisRules>
-    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
-    <TargetFrameworkProfile>
-    </TargetFrameworkProfile>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
-    <IntermediateOutputPath>obj\Debug\</IntermediateOutputPath>
-    <Optimize>False</Optimize>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>Full</DebugType>
-    <CheckForOverflowUnderflow>True</CheckForOverflowUnderflow>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
-    <BaseIntermediateOutputPath>obj\</BaseIntermediateOutputPath>
-    <IntermediateOutputPath>obj\Release\</IntermediateOutputPath>
-    <Optimize>True</Optimize>
-    <DefineConstants>TRACE</DefineConstants>
-    <DebugSymbols>False</DebugSymbols>
-    <DebugType>None</DebugType>
-    <CheckForOverflowUnderflow>False</CheckForOverflowUnderflow>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <NoWarn>$(NoWarn);CA1416;WFO1000</NoWarn>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="PresentationCore">
-      <RequiredTargetFramework>3.0</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="PresentationFramework">
-      <RequiredTargetFramework>3.0</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="System" />
-    <Reference Include="System.Core">
-      <RequiredTargetFramework>3.5</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="System.Xml" />
-    <Reference Include="System.Xaml" />
-    <Reference Include="System.Windows.Forms" />
-    <Reference Include="System.Drawing" />
-    <Reference Include="System.Xml.Linq">
-      <RequiredTargetFramework>3.5</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="WindowsBase">
-      <RequiredTargetFramework>3.0</RequiredTargetFramework>
-    </Reference>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.3.0" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Src\CodeCompletion\AbstractNRefactoryResourceCodeCompletionBinding.cs" />
-    <Compile Include="Src\CodeCompletion\CSharpResourceCodeCompletionBinding.cs" />
-    <Compile Include="Src\CodeCompletion\ICSharpCodeCoreResourceCodeCompletionBinding.cs" />
-    <Compile Include="Src\CodeCompletion\NewResourceCodeCompletionItem.cs" />
-    <Compile Include="Src\CodeCompletion\ResourceCodeCompletionItem.cs" />
-    <Compile Include="Src\CodeCompletion\ResourceCodeCompletionItemList.cs" />
-    <Compile Include="Src\CodeCompletion\VBNetResourceCodeCompletionBinding.cs" />
-    <Compile Include="Src\Commands\RefactoringCommands.cs" />
-    <Compile Include="Src\Commands\TextEditorContextMenuBuilder.cs" />
-    <Compile Include="Src\Gui\EditStringResourceDialog.cs" />
-    <Compile Include="Src\Gui\UnusedResourceKeysViewContent.cs" />
-    <Compile Include="Src\Refactoring\AnyResourceReferenceFinder.cs" />
-    <Compile Include="Src\Refactoring\IResourceReferenceFinder.cs" />
-    <Compile Include="Src\Refactoring\ResourceRefactoringService.cs" />
-    <Compile Include="Src\Refactoring\SpecificResourceReferenceFinder.cs" />
-    <Compile Include="Src\Resolver\AbstractResourceResolver.cs" />
-    <Compile Include="Src\Resolver\BclNRefactoryResourceResolver.cs" />
-    <Compile Include="Src\Resolver\ICSharpCodeCoreNRefactoryResourceResolver.cs" />
-    <Compile Include="Src\Resolver\ICSharpCodeCoreResourceResolver.cs" />
-    <Compile Include="Src\Resolver\INRefactoryResourceResolver.cs" />
-    <Compile Include="Src\Resolver\IResourceResolver.cs" />
-    <Compile Include="Src\Resolver\NRefactoryAstCacheService.cs" />
-    <Compile Include="Src\Resolver\NRefactoryResourceResolver.cs" />
-    <Compile Include="Src\Resolver\PositionTrackingAstVisitor.cs" />
-    <Compile Include="Src\Resolver\PropertyFieldAssociationVisitor.cs" />
-    <Compile Include="Src\Resolver\ResourceResolveResult.cs" />
-    <Compile Include="Src\Resolver\ResourceSetReference.cs" />
-    <Compile Include="Src\ResourceFileContent\DefaultBclResourceFileContentFactory.cs" />
-    <Compile Include="Src\ResourceFileContent\DefaultFileLocalizedResourcesFinder.cs" />
-    <Compile Include="Src\ResourceFileContent\ILocalizedResourcesFinder.cs" />
-    <Compile Include="Src\ResourceFileContent\IMultiResourceFileContent.cs" />
-    <Compile Include="Src\ResourceFileContent\IResourceFileContent.cs" />
-    <Compile Include="Src\ResourceFileContent\IResourceFileContentFactory.cs" />
-    <Compile Include="Src\ResourceFileContent\MergedResourceFileContent.cs" />
-    <Compile Include="Src\ResourceFileContent\ResourceFileContentRegistry.cs" />
-    <Compile Include="Src\ResourceFileContent\ResourcesResourceFileContent.cs" />
-    <Compile Include="Src\ResourceFileContent\ResXResourceFileContent.cs" />
-    <Compile Include="Src\ToolTips\ResourceToolTipProvider.cs" />
-    <Compile Include="Src\ProjectFileDictionaryService.cs" />
-    <Compile Include="Src\ResourceResolverService.cs" />
-    <Compile Include="Configuration\AssemblyInfo.cs" />
-    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs">
-      <Link>Configuration\GlobalAssemblyInfo.cs</Link>
-    </Compile>
-    <Compile Include="Src\Conditions\SolutionContainsProjectOrReferenceConditionEvaluator.cs" />
-    <Compile Include="Src\Gui\UnusedResourceKeysCommands.cs" />
-    <Compile Include="Src\Gui\IFilter.cs" />
-    <Compile Include="Src\Gui\IFilterHost.cs" />
-    <Compile Include="Src\ResourceItem.cs" />
-    <EmbeddedResource Include="Resources\EditStringResourceDialog.xfrm" />
-    <Compile Include="Src\Resolver\MemberFindAstVisitor.cs" />
-    <Compile Include="Src\Resolver\MemberEqualityComparer.cs" />
-    <Compile Include="Src\CodeCompletion\ICSharpCodeCoreTagCompletionItemList.cs" />
+    <ProjectReference Include="..\..\..\..\Libraries\ICSharpCode.TypeSystem.Abstractions\ICSharpCode.TypeSystem.Abstractions.csproj" />
+    <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" Private="false" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj">
-      <Project>{7E4A7172-7FF5-48D0-B719-7CD959DD1AC9}</Project>
-      <Name>ICSharpCode.Core.Presentation</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.WinForms\ICSharpCode.Core.WinForms.csproj">
-      <Project>{857CA1A3-FC88-4BE0-AB6A-D1EE772AB288}</Project>
-      <Name>ICSharpCode.Core.WinForms</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj">
-      <Project>{2748AD25-9C63-4E12-877B-4DCE96FBED54}</Project>
-      <Name>ICSharpCode.SharpDevelop</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj">
-      <Project>{35CEF10F-2D4C-45F2-9DD1-161E0FEC583C}</Project>
-      <Name>ICSharpCode.Core</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <Content Include="Hornung.ResourceToolkit.addin">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-    <Folder Include="Src" />
-    <Folder Include="Src\CodeCompletion" />
-    <Folder Include="Src\Commands" />
-    <Folder Include="Src\Gui" />
-    <Folder Include="Src\Refactoring" />
-    <Folder Include="Src\Resolver" />
-    <Folder Include="Src\ResourceFileContent" />
-    <Folder Include="Src\ToolTips" />
-    <Folder Include="Resources" />
-    <Folder Include="Configuration" />
-    <Folder Include="Src\Conditions" />
+    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
+    <None Include="Hornung.ResourceToolkit.addin" CopyToOutputDirectory="Always" />
   </ItemGroup>
-  <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.Targets" />
 </Project>

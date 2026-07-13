@@ -14,29 +14,25 @@
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
 // FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-// DEALINGS IN THE SOFTWARE.
+// BACKGROUND, INCLUDING, BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+// FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+// HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+// CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR
+// THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Windows.Controls;
 
-using ICSharpCode.NRefactory.TypeSystem;
-using ICSharpCode.NRefactory.TypeSystem.Implementation;
-using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Widgets;
 
 namespace ICSharpCode.SettingsEditor
 {
-	/// <summary>
-	/// Interaction logic for SettingsViewXaml.xaml
-	/// </summary>
-	public partial class SettingsView : UserControl,ISettingsEntryHost
+	public partial class SettingsView : UserControl, ISettingsEntryHost
 	{
 		public event EventHandler SettingsChanged;
 		public event EventHandler SelectionChanged;
-		
-		// Remove empty constr from settingsentry
 		
 		static readonly Type[] defaultAvailableTypes = new Type[] {
 			typeof(bool),
@@ -65,29 +61,42 @@ namespace ICSharpCode.SettingsEditor
 		
 		List<string> typeNames = new List<string>();
 		List<Type> types = new List<Type>();
-		IAmbience ambience;
-		ICompilation compilation;
 		
 		public SettingsView()
 		{
-			
 			InitializeComponent();
-			ambience = AmbienceService.GetCurrentAmbience();
-			compilation = MinimalCorlib.Instance.CreateCompilation();
 			
 			foreach (Type type in defaultAvailableTypes) {
 				types.Add(type);
-				typeNames.Add(ambience.ConvertType(type.ToTypeReference().Resolve(compilation)));
+				typeNames.Add(GetCSharpName(type));
 			}
 			foreach (SpecialTypeDescriptor d in SpecialTypeDescriptor.Descriptors) {
 				types.Add(d.type);
 				typeNames.Add(d.name);
 			}
 			Entries = new ObservableCollection<SettingsVM>();
-			
-			
 		}
 		
+		static string GetCSharpName(Type type)
+		{
+			if (type == typeof(bool)) return "bool";
+			if (type == typeof(byte)) return "byte";
+			if (type == typeof(char)) return "char";
+			if (type == typeof(decimal)) return "decimal";
+			if (type == typeof(double)) return "double";
+			if (type == typeof(float)) return "float";
+			if (type == typeof(int)) return "int";
+			if (type == typeof(long)) return "long";
+			if (type == typeof(sbyte)) return "sbyte";
+			if (type == typeof(short)) return "short";
+			if (type == typeof(string)) return "string";
+			if (type == typeof(uint)) return "uint";
+			if (type == typeof(ulong)) return "ulong";
+			if (type == typeof(ushort)) return "ushort";
+			if (type == typeof(void)) return "void";
+			if (type == typeof(object)) return "object";
+			return type.FullName;
+		}
 		
 		public void ShowEntries(IList<SettingsEntry> list)
 		{
@@ -95,16 +104,14 @@ namespace ICSharpCode.SettingsEditor
 				Entries.Add(new SettingsVM(element));
 			}
 			
-			Entries.CollectionChanged +=   ((s,e)=>
-			                                {
-			                                	OnSettingsChanged(e);
-			                                });
+			Entries.CollectionChanged += (s, e) => {
+				OnSettingsChanged(e);
+			};
 			
 			foreach (var element in Entries) {
-				element.PropertyChanged += ((s,e) => {
-				                            	OnSettingsChanged(e);
-				                            });
-				
+				element.PropertyChanged += (s, e) => {
+					OnSettingsChanged(e);
+				};
 			}
 			
 			this.DataContext = this;
@@ -112,7 +119,6 @@ namespace ICSharpCode.SettingsEditor
 				datagrid.SelectedItem = Entries[0];
 			}
 		}
-		
 		
 		public IEnumerable<SettingsEntry> GetAllEntries()
 		{
@@ -124,16 +130,15 @@ namespace ICSharpCode.SettingsEditor
 				}
 			}
 			l.Sort(delegate(SettingsEntry a, SettingsEntry b) {
-			       	return a.Name.CompareTo(b.Name);
-			       });
+				return a.Name.CompareTo(b.Name);
+			});
 			return l;
 		}
-		
 		
 		public List<SettingsEntryPropertyGridWrapper> GetSelectedEntriesForPropertyGrid()
 		{
 			List<SettingsEntryPropertyGridWrapper> l = new List<SettingsEntryPropertyGridWrapper>();
-				
+			
 			if (datagrid.SelectedItems.Count > 0) {
 				foreach (var element in datagrid.SelectedItems) {
 					var vm = element as SettingsVM;
@@ -144,21 +149,21 @@ namespace ICSharpCode.SettingsEditor
 						}
 					}
 				}
-			} 
+			}
 			return l;
 		}
-	
+		
 		#region Properties
 		
-		public ObservableCollection<SettingsVM> Entries {get;set;}
+		public ObservableCollection<SettingsVM> Entries { get; set; }
 		
 		public List<string> TypeNames {
-			get {return typeNames;}
+			get { return typeNames; }
 		}
 		
 		#endregion
 		
-		#region ISettingsEntryHost	
+		#region ISettingsEntryHost
 		
 		public string GetDisplayNameForType(Type type)
 		{
@@ -166,9 +171,8 @@ namespace ICSharpCode.SettingsEditor
 				if (type == d.type)
 					return d.name;
 			}
-			return ambience.ConvertType(type.ToTypeReference().Resolve(compilation));
+			return GetCSharpName(type);
 		}
-		
 		
 		public Type GetTypeByDisplayName(string displayName)
 		{
@@ -188,13 +192,11 @@ namespace ICSharpCode.SettingsEditor
 			}
 		}
 		
-		
 		void datagrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
 		{
 			if (SelectionChanged != null)
 				SelectionChanged(this, e);
 		}
-		
 		
 		void Datagrid_AddingNewItem(object sender, AddingNewItemEventArgs e)
 		{
@@ -205,53 +207,50 @@ namespace ICSharpCode.SettingsEditor
 		}
 	}
 	
-	
-	public class SettingsVM: ViewModelBase
+	public class SettingsVM : ViewModelBase
 	{
-		
-		public SettingsVM ()
+		public SettingsVM()
 		{
 		}
 		
-		public SettingsVM (SettingsEntry entry)
+		public SettingsVM(SettingsEntry entry)
 		{
 			this.Entry = entry;
 		}
 		
-		public SettingsEntry Entry {get; private set;}
-				
-		public string Name 
-		{
-			get {return this.Entry.Name;}
-			set {Entry.Name = value;
+		public SettingsEntry Entry { get; private set; }
+		
+		public string Name {
+			get { return this.Entry.Name; }
+			set {
+				Entry.Name = value;
 				base.OnPropertyChanged("Name");
 			}
-				
 		}
 		
-		public string Type
-		{
-			get {return Entry.WrappedSettingType;}
-			set {Entry.WrappedSettingType = value;
+		public string Type {
+			get { return Entry.WrappedSettingType; }
+			set {
+				Entry.WrappedSettingType = value;
 				base.OnPropertyChanged("Type");
 			}
 		}
 		
-		
 		public string SerializedValue {
-			get {return Entry.SerializedValue;}
-			set {Entry.SerializedValue = value;
-				base.OnPropertyChanged("SerializedValue");}
+			get { return Entry.SerializedValue; }
+			set {
+				Entry.SerializedValue = value;
+				base.OnPropertyChanged("SerializedValue");
+			}
 		}
-	
-		
 		
 		public SettingScope Scope {
 			get { return Entry.Scope; }
-			set { Entry.Scope = value;
+			set {
+				Entry.Scope = value;
 				Console.WriteLine(Scope.ToString());
-				base.OnPropertyChanged("Scope");}
+				base.OnPropertyChanged("Scope");
+			}
 		}
-		
 	}
 }

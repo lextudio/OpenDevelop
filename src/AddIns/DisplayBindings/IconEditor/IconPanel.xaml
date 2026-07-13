@@ -1,0 +1,23 @@
+<UserControl x:Class="ICSharpCode.IconEditor.IconPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             AllowDrop="True"
+             BorderBrush="Gray"
+             BorderThickness="1"
+             Background="Transparent"
+             Focusable="True"
+             MouseDown="IconPanelMouseDown"
+             MouseMove="IconPanelMouseMove"
+             ContextMenuOpening="IconPanelContextMenuOpening">
+    <UserControl.ContextMenu>
+        <ContextMenu>
+            <MenuItem Header="_Replace Image..." Click="ReplaceWithImageToolStripMenuItemClick"/>
+            <MenuItem Header="_Delete" Click="DeleteToolStripMenuItemClick"/>
+            <MenuItem Header="Use embedded _PNG" IsCheckable="True" Click="CompressedToolStripMenuItemClick"/>
+            <Separator/>
+            <MenuItem Header="_Export..." Click="ExportToolStripMenuItemClick"/>
+            <MenuItem Header="Export _AND mask..." Click="ExportANDMaskToolStripMenuItemClick"/>
+            <MenuItem Header="Export _XOR image..." Click="ExportXORMaskToolStripMenuItemClick"/>
+        </ContextMenu>
+    </UserControl.ContextMenu>
+</UserControl>

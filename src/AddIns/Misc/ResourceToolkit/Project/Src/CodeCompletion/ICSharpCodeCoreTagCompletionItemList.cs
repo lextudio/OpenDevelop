@@ -1,48 +1,23 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
-// 
-// Permission is hereby granted, free of charge, to any person obtaining a copy of this
-// software and associated documentation files (the "Software"), to deal in the Software
-// without restriction, including without limitation the rights to use, copy, modify, merge,
-// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
-// to whom the Software is furnished to do so, subject to the following conditions:
-// 
-// The above copyright notice and this permission notice shall be included in all copies or
-// substantial portions of the Software.
-// 
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
-// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
-// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
-// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-// DEALINGS IN THE SOFTWARE.
-
-using System;
-using ICSharpCode.SharpDevelop;
-using ICSharpCode.SharpDevelop.Editor;
+﻿using System.Collections.Generic;
+using Hornung.ResourceToolkit.ResourceFileContent;
+using Hornung.ResourceToolkit.Resolver;
 using ICSharpCode.SharpDevelop.Editor.CodeCompletion;
 
 namespace Hornung.ResourceToolkit.CodeCompletion
 {
-	/// <summary>
-	/// Provides code completion data for the ${res tag.
-	/// </summary>
-	public sealed class ICSharpCodeCoreTagCompletionItemList : DefaultCompletionItemList
-	{
-		public ICSharpCodeCoreTagCompletionItemList(ITextEditor editor)
-			: base()
-		{
-			var item = new DefaultCompletionItem("{res") { Image = ClassBrowserIconService.Keyword };
-			this.Items.Add(item);
-			this.SuggestedItem = item;
-		}
-		
-		public override CompletionItemListKeyResult ProcessInput(char key)
-		{
-			if (key == ':' || key == '}' || Char.IsWhiteSpace(key)) {
-				return CompletionItemListKeyResult.InsertionKey;
-			} else {
-				return CompletionItemListKeyResult.NormalKey;
-			}
-		}
-	}
+    public class ICSharpCodeCoreTagCompletionItemList : DefaultCompletionItemList
+    {
+        public ICSharpCodeCoreTagCompletionItemList(IResourceFileContent content)
+        {
+            if (content != null) {
+                foreach (KeyValuePair<string, object> entry in content.Data) {
+                    this.Items.Add(new ResourceCodeCompletionItem(
+                        entry.Key,
+                        ResourceResolverService.FormatResourceDescription(content, entry.Key)
+                    ));
+                }
+            }
+            this.PreselectionLength = 0;
+        }
+    }
 }

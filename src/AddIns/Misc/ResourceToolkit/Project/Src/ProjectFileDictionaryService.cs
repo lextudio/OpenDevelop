@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 
 using ICSharpCode.Core;
+using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Project;
 
 namespace Hornung.ResourceToolkit
@@ -82,7 +83,7 @@ namespace Hornung.ResourceToolkit
 		{
 			if (ProjectService.OpenSolution != null) {
 				IProject p;
-				if ((p = ProjectService.OpenSolution.FindProjectContainingFile(fileName)) != null) {
+				if ((p = SD.ProjectService.FindProjectContainingFile(FileName.Create(fileName))) != null) {
 					return p;
 				}
 			}
