@@ -18,24 +18,14 @@
 
 Imports System.Collections.Generic
 Imports System.Collections.ObjectModel
-Imports System.Text
-Imports System.Windows
-Imports System.Windows.Controls
-Imports System.Windows.Data
-Imports System.Windows.Documents
-Imports System.Windows.Input
-Imports System.Windows.Media
 Imports System.Linq
+Imports System.Windows
 Imports ICSharpCode.SharpDevelop
-Imports ICSharpCode.SharpDevelop.Dom
 Imports ICSharpCode.SharpDevelop.Gui
 Imports ICSharpCode.SharpDevelop.Gui.OptionPanels
 Imports ICSharpCode.SharpDevelop.Project
 
 Namespace OptionPanels
-	''' <summary>
-	''' Interaction logic for ProjectImportsOptions.xaml
-	''' </summary>
 	Public Partial Class ProjectImports
 		Inherits ProjectOptionPanel
 
@@ -54,15 +44,7 @@ Namespace OptionPanels
 					ProjectItems.Add(item.Include)
 				End If
 			Next
-
-
-			Dim projectContent As IProjectContent = ParserService.GetProjectContent(MyBase.Project)
-			For Each refProjectContent As IProjectContent In projectContent.ThreadSafeGetReferencedContents()
-				AddNamespaces(refProjectContent)
-			Next
-			AddNamespaces(projectContent)
 		End Sub
-
 
 		Protected Overrides Function Save(project As MSBuildBasedProject, configuration As String, platform As String) As Boolean
 			Dim [imports] As New List(Of ProjectItem)()
@@ -84,7 +66,6 @@ Namespace OptionPanels
 		End Function
 
 		#End Region
-
 
 		Private m_projectItems As ObservableCollection(Of String)
 
@@ -124,7 +105,6 @@ Namespace OptionPanels
 			End Set
 		End Property
 
-
 		Private m_selectedNameSpace As String
 
 		Public Property SelectedNameSpace() As String
@@ -137,7 +117,6 @@ Namespace OptionPanels
 				AddButtonEnable = True
 			End Set
 		End Property
-
 
 		Private m_addButtonEnable As Boolean
 
@@ -162,19 +141,6 @@ Namespace OptionPanels
 				MyBase.RaisePropertyChanged(Function() RemoveButtonEnable)
 			End Set
 		End Property
-
-
-
-		Private Sub AddNamespaces(projectContent As IProjectContent)
-			For Each projectNamespace As String In projectContent.NamespaceNames
-				If Not String.IsNullOrEmpty(projectNamespace) Then
-
-					If Not NameSpaceItems.Contains(projectNamespace) Then
-						NameSpaceItems.Add(projectNamespace)
-					End If
-				End If
-			Next
-		End Sub
 
 		Private Sub AddButton_Click(sender As Object, e As RoutedEventArgs)
 			ProjectItems.Add(SelectedNameSpace)

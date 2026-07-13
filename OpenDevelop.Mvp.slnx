@@ -74,6 +74,9 @@
   <Folder Name="/src/AddIns/DisplayBindings/SettingsEditor/">
     <Project Path="src/AddIns/DisplayBindings/SettingsEditor/Project/SettingsEditor.csproj" />
   </Folder>
+  <Folder Name="/src/AddIns/BackendBindings/VBBinding/">
+    <Project Path="src/AddIns/BackendBindings/VBBinding/Project/VBBinding.vbproj" />
+  </Folder>
   <Folder Name="/src/AddIns/DisplayBindings/Data/">
     <Project Path="src/AddIns/DisplayBindings/Data/ICSharpCode.Data.Core/ICSharpCode.Data.Core.csproj" />
     <Project Path="src/AddIns/DisplayBindings/Data/ICSharpCode.Data.Core.UI/ICSharpCode.Data.Core.UI.csproj" />
