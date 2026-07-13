@@ -24,7 +24,7 @@
 	<Path name="/SharpDevelop/ViewContent/TextEditor/CodeCompletion">
 		<CodeCompletionBinding
 			id="Xml"
-			extensions=".xml;.xsl;.xslt;.xsd;.manifest;.config;.addin;.xshd;.wxs;.wxi;.wxl;.proj;.csproj;.vbproj;.ilproj;.build;.xfrm;.targets;.xpt;.xft;.map;.wsdl;.disco;.nuspec;.booproj;.fsproj;.pyproj;.rbproj;.vcxproj;.wixproj;.ps1xml"
+			extensions=".xml;.xsl;.xslt;.xsd;.manifest;.config;.addin;.xshd;.wxs;.wxi;.wxl;.proj;.csproj;.vbproj;.ilproj;.build;.xfrm;.targets;.xpt;.xft;.map;.wsdl;.disco;.nuspec;.booproj;.fsproj;.pyproj;.rbproj;.vcxproj;.wixproj;.ps1xml;.xaml"
 			class="ICSharpCode.XmlEditor.XmlCodeCompletionBinding"/>
 	</Path>
 	
@@ -61,7 +61,7 @@
 		<TextEditorExtension
 			id="XML"
 			class="ICSharpCode.XmlEditor.XmlTextEditorExtension"
-			extensions=".xml;.xsl;.xslt;.xsd;.manifest;.config;.addin;.xshd;.wxs;.wxi;.wxl;.proj;.csproj;.vbproj;.ilproj;.build;.xfrm;.targets;.xpt;.xft;.map;.wsdl;.disco;.nuspec;.booproj;.fsproj;.pyproj;.rbproj;.vcxproj;.wixproj;.ps1xml" />
+			extensions=".xml;.xsl;.xslt;.xsd;.manifest;.config;.addin;.xshd;.wxs;.wxi;.wxl;.proj;.csproj;.vbproj;.ilproj;.build;.xfrm;.targets;.xpt;.xft;.map;.wsdl;.disco;.nuspec;.booproj;.fsproj;.pyproj;.rbproj;.vcxproj;.wixproj;.ps1xml;.xaml" />
 	</Path>
 	
 	<Path name="/SharpDevelop/Workbench/DisplayBindings">

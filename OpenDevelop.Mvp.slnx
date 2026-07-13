@@ -41,6 +41,9 @@
   <Folder Name="/src/AddIns/DisplayBindings/IconEditor/">
     <Project Path="src/AddIns/DisplayBindings/IconEditor/IconEditor.csproj" />
   </Folder>
+  <Folder Name="/src/AddIns/DisplayBindings/XmlEditor/">
+    <Project Path="src/AddIns/DisplayBindings/XmlEditor/Project/XmlEditor.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj" />
   </Folder>
