@@ -1,106 +1,18 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+﻿<Project Sdk="LibreWPF.Sdk/11.0.0-dev">
   <PropertyGroup>
-    <ProjectGuid>{E954F3CB-A446-492F-A664-2B376EBC86E8}</ProjectGuid>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <OutputType>Library</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>FSharpBinding</RootNamespace>
     <AssemblyName>FSharpBinding</AssemblyName>
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
-    <AppDesignerFolder>Properties</AppDesignerFolder>
-    <SourceAnalysisOverrideSettingsFile>C:\Users\Daniel\AppData\Roaming\ICSharpCode/SharpDevelop3.0\Settings.SourceAnalysis</SourceAnalysisOverrideSettingsFile>
-    <AllowUnsafeBlocks>False</AllowUnsafeBlocks>
-    <NoStdLib>False</NoStdLib>
-    <WarningLevel>4</WarningLevel>
-    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <UseWPF>true</UseWPF>
     <OutputPath>..\..\..\..\AddIns\BackendBindings\FSharpBinding\</OutputPath>
-    <TargetFrameworkProfile>
-    </TargetFrameworkProfile>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
-  <PropertyGroup Condition=" '$(Platform)' == 'AnyCPU' ">
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <RegisterForComInterop>False</RegisterForComInterop>
-    <GenerateSerializationAssemblies>Auto</GenerateSerializationAssemblies>
-    <BaseAddress>4194304</BaseAddress>
-    <FileAlignment>4096</FileAlignment>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>Full</DebugType>
-    <Optimize>False</Optimize>
-    <CheckForOverflowUnderflow>True</CheckForOverflowUnderflow>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
-    <DebugSymbols>False</DebugSymbols>
-    <DebugType>None</DebugType>
-    <Optimize>True</Optimize>
-    <CheckForOverflowUnderflow>False</CheckForOverflowUnderflow>
-    <DefineConstants>TRACE</DefineConstants>
-  </PropertyGroup>
-  <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.Targets" />
   <ItemGroup>
-    <Reference Include="Microsoft.Build" />
-    <Reference Include="System" />
-    <Reference Include="System.Configuration" />
-    <Reference Include="System.Core">
-      <RequiredTargetFramework>3.5</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="System.Windows.Forms" />
-    <Reference Include="System.Xml" />
-    <Reference Include="System.Xml.Linq">
-      <RequiredTargetFramework>3.5</RequiredTargetFramework>
-    </Reference>
+    <None Include="FSharpBinding.addin" CopyToOutputDirectory="Always" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\..\..\Main\GlobalAssemblyInfo.cs">
-      <Link>Properties\GlobalAssemblyInfo.cs</Link>
-    </Compile>
-    <Compile Include="FSharpInteractive.cs" />
-    <Compile Include="FSharpLanguageBinding.cs" />
-    <Compile Include="FSharpProject.cs" />
-    <Compile Include="FSharpProjectNode.cs" />
-    <Compile Include="FSharpProjectNodeBuilder.cs" />
-    <Compile Include="FsOptions.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Include="ProjectHelpers.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
-    <EmbeddedResource Include="Resources\FS-Mode.xshd" />
-    <EmbeddedResource Include="Resources\FsOptions.xfrm" />
-    <None Include="FSharpBinding.addin">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <EmbeddedResource Include="Templates\EmptyClass.xft">
-      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
-    </EmbeddedResource>
-    <EmbeddedResource Include="Templates\FSharp2ConsoleProject.xpt">
-      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
-    </EmbeddedResource>
-    <EmbeddedResource Include="Templates\FSharp3LibraryProject.xpt">
-      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
-    </EmbeddedResource>
-    <EmbeddedResource Include="Templates\FSharp3ConsoleProject.xpt">
-      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
-    </EmbeddedResource>
-    <EmbeddedResource Include="Templates\FSharp2LibraryProject.xpt" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\..\..\Libraries\NRefactory\ICSharpCode.NRefactory\ICSharpCode.NRefactory.csproj">
-      <Project>{3B2A5653-EC97-4001-BB9B-D90F1AF2C371}</Project>
-      <Name>ICSharpCode.NRefactory</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj">
-      <Project>{2748AD25-9C63-4E12-877B-4DCE96FBED54}</Project>
-      <Name>ICSharpCode.SharpDevelop</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\Main\Core\Project\ICSharpCode.Core.csproj">
-      <Project>{35CEF10F-2D4C-45F2-9DD1-161E0FEC583C}</Project>
-      <Name>ICSharpCode.Core</Name>
-      <Private>False</Private>
-    </ProjectReference>
+    <ProjectReference Include="..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
   </ItemGroup>
 </Project>

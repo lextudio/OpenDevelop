@@ -16,21 +16,38 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
+using System.Windows;
+using System.Windows.Controls;
 using ICSharpCode.SharpDevelop.Gui.OptionPanels;
-using System.Windows.Forms;
+using ICSharpCode.SharpDevelop.Project;
 
 namespace FSharpBinding
 {
-	[Obsolete("TODO: rewrite me in WPF")]
-	public class FsOptions : AbstractXmlFormsProjectOptionPanel
+	public class FsOptions : ProjectOptionPanel
 	{
-		public override void LoadPanelContents()
+		CheckBox standaloneCheckBox;
+		CheckBox nomllibCheckBox;
+
+		public override void OnApplyTemplate()
 		{
-			SetupFromXmlStream(typeof(FsOptions).Assembly.GetManifestResourceStream("FSharpBinding.Resources.FsOptions.xfrm"));
-			InitializeHelper();
-			helper.BindBoolean(Get<CheckBox>("standalone"), "Standalone", false);
-			helper.BindBoolean(Get<CheckBox>("nomllib"), "NoMLLib", false);
+			base.OnApplyTemplate();
+			var stack = new StackPanel();
+			standaloneCheckBox = new CheckBox { Content = "Standalone", Margin = new Thickness(4) };
+			nomllibCheckBox = new CheckBox { Content = "No MLLib", Margin = new Thickness(4) };
+			stack.Children.Add(standaloneCheckBox);
+			stack.Children.Add(nomllibCheckBox);
+			Content = stack;
+		}
+
+		protected override void Load(MSBuildBasedProject project, string configuration, string platform)
+		{
+			// TODO: load Standalone and NoMLLib properties from project
+		}
+
+		protected override bool Save(MSBuildBasedProject project, string configuration, string platform)
+		{
+			// TODO: save Standalone and NoMLLib properties to project
+			return true;
 		}
 	}
 }

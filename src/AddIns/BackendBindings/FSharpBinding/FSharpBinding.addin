@@ -6,13 +6,11 @@
 	
 	<Manifest>
 		<Identity name = "ICSharpCode.FSharpBinding"/>
-		<Dependency addin = "ICSharpCode.CSharpBinding" requirePreload = "true"/>
 	</Manifest>
 	
 	<Runtime>
 		<Import assembly = "FSharpBinding.dll"/>
 		<Import assembly = ":ICSharpCode.SharpDevelop"/>
-		<Import assembly = "$ICSharpCode.CSharpBinding/CSharpBinding.dll"/>
 	</Runtime>
  	
 	<Path name = "/SharpDevelop/ViewContent/AvalonEdit/SyntaxModes">
@@ -46,13 +44,6 @@
 		            extensions = "*.fsproj"/>
 	</Path>
 	
-	<!-- Project Explorer tree node builders -->
-	<Path name = "/SharpDevelop/Views/ProjectBrowser/NodeBuilders">
-		<Class id = "FSharpProjectBuilder"
-		       insertbefore = "DefaultBuilder"
-		       class = "FSharpBinding.FSharpProjectNodeBuilder"/>
-	</Path>
-	
 	<Path path = "/SharpDevelop/BackendBindings/ProjectOptions/F#">
 		<OptionPanel id    = "Application"
 		             label = "${res:Dialog.ProjectOptions.ApplicationSettings}"
@@ -60,26 +51,12 @@
 		<OptionPanel id    = "BuildEvents"
 		             label = "${res:Dialog.ProjectOptions.BuildEvents}"
 		             class = "ICSharpCode.SharpDevelop.Gui.OptionPanels.BuildEvents"/>
-		<OptionPanel id    = "BuildOptions"
-		             label = "${res:Dialog.ProjectOptions.BuildOptions}"
-		             class = "CSharpBinding.OptionPanels.BuildOptions"/>
 		<OptionPanel id    = "FsOptions"
 		             label = "F# Options"
 		             class = "FSharpBinding.FsOptions"/>
 		<Include id = "AllManaged" path="/SharpDevelop/BackendBindings/ProjectOptions/AllManaged"/>
 	</Path>
-
-	<Path name = "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/FileNode">
-		<Condition name = "ProjectActive" activeproject="F#">
-			<MenuItem id = "MoveUp"
-			          label = "Move Up"
-			          class = "FSharpBinding.MoveUpFileEvent"/>
-			<MenuItem id = "MoveDown"
-			          label = "Move Down"
-			          class = "FSharpBinding.MoveDownFileEvent"/>
-		</Condition>
-	</Path>
-
+	
 	<Path name = "/Workspace/Icons">
 		<Icon id         = "F#Prj"
 		      language   = "F#"

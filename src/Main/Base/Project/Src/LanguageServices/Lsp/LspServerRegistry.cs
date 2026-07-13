@@ -63,6 +63,16 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
                 "--workspace",
                 repositoryRoot);
             registry.Register(".xaml", xaml);
+            var fsAutoComplete = new LspServerLaunchSpec(
+                "fsharp",
+                "dotnet",
+                repositoryRoot,
+                "fsautocomplete",
+                "--background-service-enabled",
+                "--workspace",
+                repositoryRoot);
+            registry.Register(".fs", fsAutoComplete);
+            registry.Register(".fsi", fsAutoComplete);
             return registry;
         }
 
