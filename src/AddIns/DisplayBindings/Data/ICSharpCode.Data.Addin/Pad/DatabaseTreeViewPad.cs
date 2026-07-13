@@ -25,7 +25,6 @@ using System.Windows.Controls;
 
 using ICSharpCode.Data.Core.Interfaces;
 using ICSharpCode.Data.Core.UI.UserControls;
-using ICSharpCode.Data.EDMDesigner.Core.UI.DisplayBinding;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Workbench;
@@ -85,7 +84,6 @@ namespace ICSharpCode.Data.Addin.Pad
 
             _control = new DatabasesTreeViewUserControl();
 			_databasesTreeView = new DatabasesTreeView();
-            _databasesTreeView.AdditionalNodes.Add(CSDLDatabaseTreeViewAdditionalNode.Instance);
             DockPanel.SetDock(_databasesTreeView, Dock.Top);
             _control.Content.Children.Add(_databasesTreeView);
 			

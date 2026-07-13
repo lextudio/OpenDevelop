@@ -23,12 +23,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Data;
-using System.Data.Sql;
 using ICSharpCode.Data.Core.Common;
 using ICSharpCode.Data.Core.Interfaces;
 using System.Collections.ObjectModel;
 using ICSharpCode.Data.Core.DatabaseObjects;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using System.Collections.Specialized;
 using ICSharpCode.Data.Core.Enums;
 using System.Windows;
@@ -161,30 +160,47 @@ namespace ICSharpCode.Data.Core.DatabaseDrivers.SQLServer
 
         public override void PopulateDatasources()
         {
-            DatabaseObjectsCollection<SQLServerDatasource> datasources = new DatabaseObjectsCollection<SQLServerDatasource>(null);
-            
-            DataTable dt = SqlDataSourceEnumerator.Instance.GetDataSources();
+            var datasources = new DatabaseObjectsCollection<SQLServerDatasource>(null);
 
-            foreach (DataRow dr in dt.Rows)
+            try
             {
-                string serverName = dr["ServerName"].ToString().Trim().ToUpper();
-                string instanceName = null;
-                Version version = null;
+                var sqlSourceEnumType = Type.GetType("System.Data.Sql.SqlDataSourceEnumerator, System.Data.SqlClient");
+                if (sqlSourceEnumType != null)
+                {
+                    var instanceProp = sqlSourceEnumType.GetProperty("Instance");
+                    if (instanceProp != null)
+                    {
+                        var instance = instanceProp.GetValue(null);
+                        var getDataSourcesMethod = sqlSourceEnumType.GetMethod("GetDataSources");
+                        if (getDataSourcesMethod != null)
+                        {
+                            var dt = (DataTable)getDataSourcesMethod.Invoke(instance, null);
+                            foreach (DataRow dr in dt.Rows)
+                            {
+                                string serverName = dr["ServerName"].ToString().Trim().ToUpper();
+                                string instanceName = null;
+                                Version version = null;
 
-                if (dr["InstanceName"] != null && dr["InstanceName"] != DBNull.Value)
-                    instanceName = dr["InstanceName"].ToString().Trim().ToUpper();
+                                if (dr["InstanceName"] != null && dr["InstanceName"] != DBNull.Value)
+                                    instanceName = dr["InstanceName"].ToString().Trim().ToUpper();
 
-                if (dr["Version"] != null && dr["Version"] != DBNull.Value)
-                	version = new Version(dr["Version"].ToString().Trim());
-                   
-                SQLServerDatasource datasource = new SQLServerDatasource(this) { Name = serverName };
+                                if (dr["Version"] != null && dr["Version"] != DBNull.Value)
+                                    version = new Version(dr["Version"].ToString().Trim());
 
-                datasource.ProviderManifestToken = GetManifestToken(version);
+                                var datasource = new SQLServerDatasource(this) { Name = serverName };
+                                datasource.ProviderManifestToken = GetManifestToken(version);
 
-                if (!String.IsNullOrEmpty(instanceName))
-                    datasource.Name += "\\" + instanceName;
+                                if (!string.IsNullOrEmpty(instanceName))
+                                    datasource.Name += "\\" + instanceName;
 
-                datasources.Add(datasource);
+                                datasources.Add(datasource);
+                            }
+                        }
+                    }
+                }
+            }
+            catch
+            {
             }
 
             Datasources = datasources;

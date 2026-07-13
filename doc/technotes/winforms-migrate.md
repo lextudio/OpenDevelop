@@ -127,3 +127,40 @@ $ dotnet build OpenDevelop.Mvp.slnx
 
 Full MVP solution builds with 0 errors. The ResourceToolkit addin is now WPF-only
 and Roslyn-backed, with no NRefactory or WinForms dependency.
+
+# Data addin: csproj conversion
+
+## Scope
+
+`src/AddIns/DisplayBindings/Data/` — four projects migrated from old-format csproj to SDK-style:
+`ICSharpCode.Data.Core`, `ICSharpCode.Data.Core.UI`, `ICSharpCode.Data.SQLServer`,
+`ICSharpCode.Data.Addin`. EDMDesigner sub-projects excluded per "just the addin host" scope.
+
+## Files changed
+
+**csproj files** — all four rewritten to SDK-style:
+
+| Project | Key details |
+|---|---|
+| `ICSharpCode.Data.Core` | `UseWPF=true`, no NuGet deps |
+| `ICSharpCode.Data.Core.UI` | `UseWPF=true`, references Core + Base/Core |
+| `ICSharpCode.Data.SQLServer` | `UseWPF=true`, `Microsoft.Data.SqlClient` 6.0.1, references Core.UI/Core |
+| `ICSharpCode.Data.Addin` | `UseWPF=true`, `Deterministic=false` (for `1.0.*` wildcard), excludes `UserControls\DatabaseTreeViewPad.cs` (WinForms duplicate) |
+
+**Source changes:**
+
+| File | Change |
+|---|---|
+| `ICSharpCode.Data.Core.UI/Helpers/DragDropInterop.cs` | Rewrote WinForms `DragEventArgs` interop → WPF `DragEventArgs` + `DataObject` APIs |
+| `ICSharpCode.Data.Core.UI/Helpers/VisualHelper.cs` | Removed stale `ICSharpCode.SharpDevelop.Gui` using |
+| `ICSharpCode.Data.Addin/Pad/DatabaseTreeViewPad.cs` | Removed EDMDesigner `CSDLDatabaseTreeViewAdditionalNode` reference |
+| `ICSharpCode.Data.SQLServer/SQLServerDatabaseDriver.cs` | `System.Data.Sql` → removed; `PopulateDatasources` uses reflection for `SqlDataSourceEnumerator` (unavailable in .NET 10); `System.Data.SqlClient` → `Microsoft.Data.SqlClient` |
+| `ICSharpCode.Data.SQLServer/SQLServerDatasource.cs` | `System.Data.SqlClient` → `Microsoft.Data.SqlClient` |
+
+**ICSharpCode.Data.addin** — removed EDMDesigner assembly imports, display binding, and custom tool entries.
+
+## Notes
+
+- `SqlDataSourceEnumerator` is not available in `System.Data.SqlClient` 4.9.0 on .NET 10 (type was removed). Using `Microsoft.Data.SqlClient` 6.0.1 provides `SqlConnection` etc.
+- `UserControls/DatabaseTreeViewPad.cs` is a WinForms `ElementHost`-based duplicate of `Pad/DatabaseTreeViewPad.cs` (WPF). Excluded from build.
+- `AssemblyVersion("1.0.*")` wildcard conflicts with deterministic build; `<Deterministic>false</Deterministic>` added.

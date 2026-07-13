@@ -25,7 +25,7 @@ using ICSharpCode.Data.SQLServer.ControlPanel;
 using System.Windows;
 using System.Windows.Threading;
 using System;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 
 #endregion
 

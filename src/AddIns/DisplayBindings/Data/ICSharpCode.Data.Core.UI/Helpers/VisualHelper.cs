@@ -29,9 +29,6 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 
-using ICSharpCode.SharpDevelop;
-using ICSharpCode.SharpDevelop.Gui;
-
 #endregion
 
 namespace ICSharpCode.Data.Core.UI

@@ -9,8 +9,7 @@
     <Import assembly="ICSharpCode.Data.Core.dll" />
     <Import assembly="ICSharpCode.Data.Core.UI.dll" />
     <Import assembly="ICSharpCode.Data.SQLServer.dll" />
-    <Import assembly="ICSharpCode.Data.EDMDesigner.Core.dll" />
-    <Import assebmly="ICSharpCode.Data.EDMDesigner.Core.UI.dll" />
+    <!-- EDMDesigner assemblies excluded from MVP build -->
   </Runtime>
   
   <Manifest>
@@ -34,23 +33,12 @@
           class="ICSharpCode.Data.Addin.Pad.DatabasesTreeViewPad" />
   </Path>
 
-  <Path name="/SharpDevelop/Workbench/DisplayBindings">
-    <DisplayBinding id="EDMDesignerDisplayBinding"
-  	                class="ICSharpCode.Data.EDMDesigner.Core.UI.DisplayBinding.EDMDesignerDisplayBinding"
-  	                insertbefore="Text"
-  	                fileNamePattern="\.edmx$"
-  	                languagePattern="^Edmx$" />
-  </Path>
+  <!-- EDMDesigner display binding excluded from MVP build -->
 
   <!--Template path -->
   <Path name = "/SharpDevelop/BackendBindings/Templates">
     <TemplateFile id = "Data" resourceNamespace = "ICSharpCode.Data.Addin.Templates" />
   </Path>
 
-  <!-- Custom tools path-->
-  <Path name = "/SharpDevelop/CustomTools">
-    <CustomTool id    = "EntityModelCodeGenerator"
-		            class = "ICSharpCode.Data.EDMDesigner.Core.IO.EntityModelCodeGenerator"
-		            fileNamePattern = "\.edmx$"/>
-  </Path>
+  <!-- Custom tools path (EDMDesigner EntityModelCodeGenerator excluded from MVP build) -->
 </AddIn>

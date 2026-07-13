@@ -74,6 +74,12 @@
   <Folder Name="/src/AddIns/DisplayBindings/SettingsEditor/">
     <Project Path="src/AddIns/DisplayBindings/SettingsEditor/Project/SettingsEditor.csproj" />
   </Folder>
+  <Folder Name="/src/AddIns/DisplayBindings/Data/">
+    <Project Path="src/AddIns/DisplayBindings/Data/ICSharpCode.Data.Core/ICSharpCode.Data.Core.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/Data/ICSharpCode.Data.Core.UI/ICSharpCode.Data.Core.UI.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/Data/ICSharpCode.Data.SQLServer/ICSharpCode.Data.SQLServer.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/Data/ICSharpCode.Data.Addin/ICSharpCode.Data.Addin.csproj" />
+  </Folder>
   <Project Path="src/Main/Base/Project/ICSharpCode.SharpDevelop.csproj" />
   <Project Path="externals/cps/src/ProjectSystem/Microsoft.VisualStudio.ProjectSystem.Shim.csproj" />
   <Project Path="externals/cps/src/ProjectSystemManaged/Microsoft.VisualStudio.ProjectSystem.Managed.csproj" />

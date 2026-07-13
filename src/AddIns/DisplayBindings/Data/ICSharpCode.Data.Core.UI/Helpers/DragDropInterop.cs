@@ -16,17 +16,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-#region Usings
-
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Reflection;
-using System.Collections;
-using System.Windows.Forms;
-
-#endregion
+using System.Windows;
 
 namespace ICSharpCode.Data.Core.UI.Helpers
 {
@@ -34,35 +25,28 @@ namespace ICSharpCode.Data.Core.UI.Helpers
     {
         public static T GetObjectFromDragEventArgs<T>(DragEventArgs e)
         {
-            if (!e.Data.GetDataPresent(typeof(T)))
-            {
+            if (e.Data == null)
                 return default(T);
+
+            if (e.Data.GetDataPresent(typeof(T)))
+            {
+                var data = e.Data.GetData(typeof(T));
+                if (data != null)
+                    return (T)data;
             }
+
             try
             {
-                var temp = e.Data.GetData(typeof(T));
-                if (temp != null)
+                if (e.Data.GetDataPresent(typeof(T).FullName))
                 {
-                    return (T)temp;
+                    return (T)e.Data.GetData(typeof(T).FullName);
                 }
-                var fieldInfo = e.Data.GetType().GetField("innerData", BindingFlags.NonPublic | BindingFlags.Instance);
-                temp = fieldInfo.GetValue(e.Data);
-                fieldInfo = temp.GetType().GetField("data", BindingFlags.NonPublic | BindingFlags.Instance);
-                fieldInfo = temp.GetType().GetField("innerData", BindingFlags.NonPublic | BindingFlags.Instance);
-                temp = fieldInfo.GetValue(temp);
-                fieldInfo = temp.GetType().GetField("_innerData", BindingFlags.NonPublic | BindingFlags.Instance);
-                temp = fieldInfo.GetValue(temp);
-                fieldInfo = temp.GetType().GetField("_data", BindingFlags.NonPublic | BindingFlags.Instance);
-                var hashtable = (Hashtable)fieldInfo.GetValue(temp);
-                var array = (object[])hashtable.Cast<DictionaryEntry>().First().Value;
-                temp = array[0];
-                fieldInfo = temp.GetType().GetField("_data", BindingFlags.NonPublic | BindingFlags.Instance);
-                return (T)fieldInfo.GetValue(temp);
             }
             catch
             {
-                return default(T);
             }
+
+            return default(T);
         }
     }
 }
