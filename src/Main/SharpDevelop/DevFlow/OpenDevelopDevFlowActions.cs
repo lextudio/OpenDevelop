@@ -6,11 +6,13 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.Json;
 using System.Threading.Tasks;
 
+using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Debugging;
 using ICSharpCode.SharpDevelop.Editor;
@@ -67,9 +69,13 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			var projects = solution.Projects.Select(p => new {
 				name = p.Name,
 				fileName = p.FileName != null ? p.FileName.ToString() : null,
-				files = p.Items.OfType<FileProjectItem>()
-					.Where(i => i.ItemType == ItemType.Compile)
-					.Select(i => i.FileName.ToString())
+				// ProjectDisplayItems (not the raw p.Items snapshot) since SDK-style projects don't
+				// list their (implicitly-globbed) Compile items in p.Items at all - only MSBuild
+				// evaluation sees them. This is the same source Solution Explorer's own tree uses
+				// (SharpDevelopProjectTreeProvider.AddProjectContentNodes), so this action reflects
+				// what the UI actually shows.
+				files = ICSharpCode.SharpDevelop.Services.ProjectDisplayItems.GetProjectDisplayItems(p)
+					.Select(i => i.PhysicalPath)
 					.ToArray()
 			}).ToArray();
 
@@ -100,14 +106,36 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			var editor = viewContent.GetService<ITextEditor>();
 			string text = editor != null ? editor.Document.Text : null;
 
+			string syntaxHighlighting = null;
+			if (viewContent.PrimaryFileName != null)
+			{
+				var def = HighlightingManager.Instance.GetDefinitionByExtension(Path.GetExtension(viewContent.PrimaryFileName.ToString()));
+				syntaxHighlighting = def?.Name;
+			}
+
 			return JsonSerializer.Serialize(new {
 				active = true,
 				typeName,
 				isAvalonEdit = typeName == "ICSharpCode.AvalonEdit.AddIn.AvalonEditViewContent",
 				fileName = viewContent.PrimaryFileName != null ? viewContent.PrimaryFileName.ToString() : null,
 				textLength = text?.Length,
-				textPreview = text != null ? text.Substring(0, Math.Min(200, text.Length)) : null
+				textPreview = text != null ? text.Substring(0, Math.Min(200, text.Length)) : null,
+				syntaxHighlighting
 			});
+		}
+
+		[DevFlowAction("od.parser.status", Description = "Check whether RoslynWorkspaceHelper has a real Roslyn Document for a file - the actual integration point GoToDefinition/completion/etc. use (see doc/technotes/roslyn.md). Note: SD.ParserService.GetCompilationForFile is NOT checked here - for project-owned files it still routes through the old IProjectContent mock, not RoslynParser, regardless of language.")]
+		public static string GetParserStatus(string fileName)
+		{
+			try {
+				var document = ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.FindDocument(fileName);
+				return JsonSerializer.Serialize(new {
+					hasDocument = document != null,
+					language = document?.Project.Language
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { hasDocument = false, error = ex.Message });
+			}
 		}
 
 		[DevFlowAction("od.build-solution", Description = "Build the current solution (or a single project by name) and return error/warning counts plus the individual diagnostics")]

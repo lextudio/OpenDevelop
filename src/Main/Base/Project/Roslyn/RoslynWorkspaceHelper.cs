@@ -17,8 +17,9 @@ using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.LanguageServices;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
+using CS = Microsoft.CodeAnalysis.CSharp;
+using VB = Microsoft.CodeAnalysis.VisualBasic;
 
 namespace ICSharpCode.SharpDevelop.Roslyn
 {
@@ -50,20 +51,34 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 			if (workspace == null)
 				workspace = new AdhocWorkspace();
 
-			var csharpProjects = SD.ProjectService.AllProjects
-				.Where(p => string.Equals(Path.GetExtension(p.FileName), ".csproj", StringComparison.OrdinalIgnoreCase))
+			// Supported Roslyn-backed project types today: C# (.csproj) and VB.NET (.vbproj) - see
+			// doc/technotes/roslyn.md. Each project is a single language (unlike a hypothetical
+			// mixed-language project), so the language is picked once per project, not per file.
+			var languageProjects = SD.ProjectService.AllProjects
+				.Where(p => IsSupportedExtension(Path.GetExtension(p.FileName)))
 				.ToList();
 
-			// Two passes: every csproj gets a ProjectId reserved first, so that when we wire up
+			// Two passes: every project gets a ProjectId reserved first, so that when we wire up
 			// P2P references below, the referenced project's ProjectId is always already known -
 			// even if that project hasn't been synced yet in this call (e.g. it comes later in
 			// AllProjects, or hasn't changed and would otherwise be skipped).
-			foreach (var project in csharpProjects)
+			foreach (var project in languageProjects)
 				EnsureProject(project);
-			foreach (var project in csharpProjects)
+			foreach (var project in languageProjects)
 				SyncProject(project);
 
 			return workspace.CurrentSolution;
+		}
+
+		static bool IsSupportedExtension(string extension)
+		{
+			return string.Equals(extension, ".csproj", StringComparison.OrdinalIgnoreCase)
+				|| string.Equals(extension, ".vbproj", StringComparison.OrdinalIgnoreCase);
+		}
+
+		static bool IsVBProject(IProject project)
+		{
+			return string.Equals(Path.GetExtension(project.FileName.ToString()), ".vbproj", StringComparison.OrdinalIgnoreCase);
 		}
 
 		static void EnsureProject(IProject project)
@@ -71,9 +86,16 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 			if (projectIds.ContainsKey(project))
 				return;
 			var projectId = ProjectId.CreateNewId();
-			var info = ProjectInfo.Create(
-				projectId, VersionStamp.Create(), project.Name, project.Name, LanguageNames.CSharp,
-				compilationOptions: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+			ProjectInfo info;
+			if (IsVBProject(project)) {
+				info = ProjectInfo.Create(
+					projectId, VersionStamp.Create(), project.Name, project.Name, LanguageNames.VisualBasic,
+					compilationOptions: new VB.VisualBasicCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+			} else {
+				info = ProjectInfo.Create(
+					projectId, VersionStamp.Create(), project.Name, project.Name, LanguageNames.CSharp,
+					compilationOptions: new CS.CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+			}
 			workspace.AddProject(info);
 			projectIds[project] = projectId;
 			dirtyProjects.Add(project);
@@ -227,12 +249,27 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 
 		static void SyncCompilationOptions(ProjectId projectId, LanguageServiceProjectSnapshot snapshot)
 		{
-			var languageVersion = LanguageVersion.Default;
-			if (!string.IsNullOrWhiteSpace(snapshot.LanguageVersion))
-				LanguageVersionFacts.TryParse(snapshot.LanguageVersion, out languageVersion);
-
 			var project = workspace.CurrentSolution.GetProject(projectId);
-			var parseOptions = new CSharpParseOptions(languageVersion, preprocessorSymbols: snapshot.PreprocessorSymbols);
+			ParseOptions parseOptions;
+			if (project.Language == LanguageNames.VisualBasic) {
+				var languageVersion = VB.LanguageVersion.Default;
+				if (!string.IsNullOrWhiteSpace(snapshot.LanguageVersion))
+					VB.LanguageVersionFacts.TryParse(snapshot.LanguageVersion, ref languageVersion);
+
+				// VB preprocessor symbols are name/value pairs (not just names like C#'s) - Roslyn's
+				// own convention for a plain #Const NAME without a value is `true`.
+				var symbols = snapshot.PreprocessorSymbols
+					.Select(name => new KeyValuePair<string, object>(name, true))
+					.ToArray();
+				parseOptions = new VB.VisualBasicParseOptions(languageVersion, preprocessorSymbols: symbols);
+			} else {
+				var languageVersion = CS.LanguageVersion.Default;
+				if (!string.IsNullOrWhiteSpace(snapshot.LanguageVersion))
+					CS.LanguageVersionFacts.TryParse(snapshot.LanguageVersion, out languageVersion);
+
+				parseOptions = new CS.CSharpParseOptions(languageVersion, preprocessorSymbols: snapshot.PreprocessorSymbols);
+			}
+
 			var solution = project.Solution.WithProjectParseOptions(projectId, parseOptions);
 			workspace.TryApplyChanges(solution);
 		}

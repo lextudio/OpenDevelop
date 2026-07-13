@@ -126,7 +126,16 @@ namespace ICSharpCode.SharpDevelop.Project
 					// The build engine will handle this exception (occurs when unloading a project while a build is running)
 					if (projectFile == null)
 						throw new ObjectDisposedException("MSBuildBasedProject");
-					if (string.IsNullOrEmpty(projectFile.ToolsVersion) || projectFile.ToolsVersion == "2.0") {
+					// SDK-style projects (<Project Sdk="...">) never set ToolsVersion at all - it's a
+					// legacy-format-only attribute. Treating an empty ToolsVersion as "VS2005" (as the
+					// branch below does for genuinely old projects) misidentifies every modern
+					// SDK-style project - C#, F#, VB alike - as needing the "upgrade this old project"
+					// wizard (see doc/technotes/roslyn.md session notes: this is what's behind
+					// IUpgradableProject.UpgradeDesired firing incorrectly for VB.NET SDK-style
+					// projects, and reproduces the same way for F#'s .fsproj).
+					if (!string.IsNullOrEmpty(projectFile.Sdk)) {
+						return SolutionFormatVersion.VS2012;
+					} else if (string.IsNullOrEmpty(projectFile.ToolsVersion) || projectFile.ToolsVersion == "2.0") {
 						return SolutionFormatVersion.VS2005;
 					} else if (projectFile.ToolsVersion == "3.0" || projectFile.ToolsVersion == "3.5") {
 						return SolutionFormatVersion.VS2008;

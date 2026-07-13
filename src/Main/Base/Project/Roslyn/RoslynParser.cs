@@ -3,6 +3,11 @@
 // GetCompilationForFile(...) return real data everywhere that already consumes ResolveResult/
 // IEntity/IType (GoToDefinition, DefinitionViewPad, DeclaringTypeSubMenuBuilder,
 // SymbolTypeAtCaretConditionEvaluator, EditorRefactoringContext, ...), instead of always null.
+//
+// Also registered for .vb (VBBinding.addin, see doc/technotes/roslyn.md) - nothing in this class is
+// C#-specific (it talks to Microsoft.CodeAnalysis.ISymbol/Compilation, not
+// Microsoft.CodeAnalysis.CSharp syntax), so the same class serves both languages; only
+// RoslynWorkspaceHelper needs to know which Roslyn language a given project is.
 
 using System;
 using System.Collections.Generic;
@@ -28,7 +33,9 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 
 		public bool CanParse(string fileName)
 		{
-			return fileName != null && fileName.EndsWith(".cs", StringComparison.OrdinalIgnoreCase);
+			return fileName != null &&
+				(fileName.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) ||
+				 fileName.EndsWith(".vb", StringComparison.OrdinalIgnoreCase));
 		}
 
 		public ITextSource GetFileContent(FileName fileName)

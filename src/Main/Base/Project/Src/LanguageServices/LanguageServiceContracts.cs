@@ -190,6 +190,18 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
         public string NewText { get; }
     }
 
+    public sealed class SemanticToken
+    {
+        public SemanticToken(TextSpan span, string type)
+        {
+            Span = span;
+            Type = type ?? throw new ArgumentNullException(nameof(type));
+        }
+
+        public TextSpan Span { get; }
+        public string Type { get; }
+    }
+
     public sealed class DocumentOutlineNode
     {
         public DocumentOutlineNode(

@@ -114,19 +114,26 @@ namespace ICSharpCode.SharpDevelop.Services
 		private static bool IsDisplayItemName(string name) =>
 			name is "Compile" or "None" or "Content" or "EmbeddedResource" or "Resource" or "Page" or "ApplicationDefinition";
 
+		// Originally C#-only (ported from UnoDevelop's own C#-only UnoProjectService.cs, see this
+		// file's header comment) - .vb/.fs/.vbproj/.fsproj were simply never added, so SDK-style VB
+		// and F# projects showed no source file nodes at all in Solution Explorer even though their
+		// Compile items were evaluated fine (see doc/technotes/roslyn.md session notes).
+		static readonly string[] SupportedExtensions = {
+			".cs", ".vb", ".fs",
+			".xaml",
+			".csproj", ".vbproj", ".fsproj",
+			".props", ".targets",
+			".json", ".md", ".txt", ".resx", ".xml"
+		};
+
 		private static bool IsSupportedProjectItemPath(string path)
 		{
 			var extension = Path.GetExtension(path);
-			return string.Equals(extension, ".cs", StringComparison.OrdinalIgnoreCase)
-				|| string.Equals(extension, ".xaml", StringComparison.OrdinalIgnoreCase)
-				|| string.Equals(extension, ".csproj", StringComparison.OrdinalIgnoreCase)
-				|| string.Equals(extension, ".props", StringComparison.OrdinalIgnoreCase)
-				|| string.Equals(extension, ".targets", StringComparison.OrdinalIgnoreCase)
-				|| string.Equals(extension, ".json", StringComparison.OrdinalIgnoreCase)
-				|| string.Equals(extension, ".md", StringComparison.OrdinalIgnoreCase)
-				|| string.Equals(extension, ".txt", StringComparison.OrdinalIgnoreCase)
-				|| string.Equals(extension, ".resx", StringComparison.OrdinalIgnoreCase)
-				|| string.Equals(extension, ".xml", StringComparison.OrdinalIgnoreCase);
+			foreach (var supported in SupportedExtensions) {
+				if (string.Equals(extension, supported, StringComparison.OrdinalIgnoreCase))
+					return true;
+			}
+			return false;
 		}
 
 		private static string NormalizeDisplayPath(string path)

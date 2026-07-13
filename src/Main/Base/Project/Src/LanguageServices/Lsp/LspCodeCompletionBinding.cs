@@ -1,6 +1,4 @@
 using System;
-using System.Collections.Generic;
-using System.IO;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Editor.CodeCompletion;
@@ -9,9 +7,6 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
 {
 	public sealed class LspCodeCompletionBinding : ICodeCompletionBinding
 	{
-		static readonly LspServerRegistry ServerRegistry = LspServerRegistry.CreateDefault();
-		static readonly Dictionary<string, LspLanguageService> ServicesByExtension = new Dictionary<string, LspLanguageService>(StringComparer.OrdinalIgnoreCase);
-
 		public CodeCompletionKeyPressResult HandleKeyPress(ITextEditor editor, char ch)
 		{
 			return CodeCompletionKeyPressResult.None;
@@ -34,7 +29,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
 			if (editor == null || editor.FileName == null)
 				return false;
 
-			var service = GetService(editor.FileName);
+			var service = LspServiceManager.GetService(editor.FileName);
 			if (service == null)
 				return false;
 
@@ -59,25 +54,5 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
 			}
 		}
 
-		static LspLanguageService GetService(string fileName)
-		{
-			var extension = Path.GetExtension(fileName);
-			if (!ServerRegistry.TryGetLaunchSpec(extension, out var spec))
-				return null;
-
-			if (!ServicesByExtension.TryGetValue(extension, out var service)) {
-				var rootPath = FindWorkspaceRoot(fileName);
-				service = new LspLanguageService(spec, new Uri(rootPath.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal) ? rootPath : rootPath + Path.DirectorySeparatorChar).AbsoluteUri);
-				ServicesByExtension[extension] = service;
-			}
-
-			return service;
-		}
-
-		static string FindWorkspaceRoot(string fileName)
-		{
-			var directory = Path.GetDirectoryName(fileName);
-			return string.IsNullOrEmpty(directory) ? Environment.CurrentDirectory : directory;
-		}
 	}
 }

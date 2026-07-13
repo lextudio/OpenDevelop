@@ -9,6 +9,10 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="Resources\FS-Mode.xshd" />
+    <EmbeddedResource Include="Resources\FsOptions.xfrm" />
+  </ItemGroup>
+  <ItemGroup>
     <None Include="FSharpBinding.addin" CopyToOutputDirectory="Always" />
   </ItemGroup>
   <ItemGroup>

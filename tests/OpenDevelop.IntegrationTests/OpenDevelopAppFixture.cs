@@ -47,6 +47,8 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     public string SlnxFixturePath { get; } = LocateSlnxFixture();
     public string WpfSampleSolutionPath { get; } = LocateWpfSampleSolution();
     public string GitFixtureTemplatePath { get; } = LocateGitFixtureTemplate();
+    public string FSharpFixtureSolutionPath { get; } = LocateFSharpFixture();
+    public string VBFixtureSolutionPath { get; } = LocateVBFixture();
     public string NuGetFixtureTemplatePath { get; } = LocateNuGetFixtureTemplate();
     public string LocalNuGetFeedPath { get; } = LocateLocalNuGetFeed();
 
@@ -269,6 +271,32 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         }
         throw new FileNotFoundException(
             "Could not locate tests/fixtures/NuGetFixture/NuGetFixture.sln by walking up from " + AppContext.BaseDirectory);
+    }
+
+    static string LocateFSharpFixture()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir, "tests", "fixtures", "FSharpFixture", "FSharpFixture.sln");
+            if (File.Exists(candidate)) return candidate;
+            dir = Path.GetDirectoryName(dir);
+        }
+        throw new FileNotFoundException(
+            "Could not locate tests/fixtures/FSharpFixture/FSharpFixture.sln by walking up from " + AppContext.BaseDirectory);
+    }
+
+    static string LocateVBFixture()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir, "tests", "fixtures", "VBFixture", "VBFixture.sln");
+            if (File.Exists(candidate)) return candidate;
+            dir = Path.GetDirectoryName(dir);
+        }
+        throw new FileNotFoundException(
+            "Could not locate tests/fixtures/VBFixture/VBFixture.sln by walking up from " + AppContext.BaseDirectory);
     }
 
     static string LocateLocalNuGetFeed()

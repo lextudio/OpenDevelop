@@ -101,4 +101,18 @@
 	<Path name="/SharpDevelop/Services/ParserService/SingleFileGacReferences">
 		<String id = "Microsoft.VisualBasic" text = "Microsoft.VisualBasic"/>
 	</Path>
+
+	<!-- Real (Roslyn-backed) language service for .vb - see doc/technotes/roslyn.md. Same
+	     RoslynParser/RoslynCodeCompletionBinding classes the C# side uses (AvalonEdit.AddIn.addin);
+	     RoslynWorkspaceHelper picks VisualBasicCompilationOptions/VisualBasicParseOptions based on
+	     the project's .vbproj extension. -->
+	<Path name = "/SharpDevelop/Parser">
+		<Parser id    = "VB-Roslyn"
+		        supportedfilenamepattern="\.vb$"
+		        class = "ICSharpCode.SharpDevelop.Roslyn.RoslynParser" />
+	</Path>
+
+	<Path name = "/SharpDevelop/ViewContent/TextEditor/CodeCompletion">
+		<CodeCompletionBinding id = "VB-Roslyn" extensions = ".vb" class = "ICSharpCode.SharpDevelop.Roslyn.RoslynCodeCompletionBinding"/>
+	</Path>
 </AddIn>

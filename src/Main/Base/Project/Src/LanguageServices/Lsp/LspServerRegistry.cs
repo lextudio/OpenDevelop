@@ -67,10 +67,10 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
                 "fsharp",
                 "dotnet",
                 repositoryRoot,
+                "tool",
+                "run",
                 "fsautocomplete",
-                "--background-service-enabled",
-                "--workspace",
-                repositoryRoot);
+                "--");
             registry.Register(".fs", fsAutoComplete);
             registry.Register(".fsi", fsAutoComplete);
             return registry;

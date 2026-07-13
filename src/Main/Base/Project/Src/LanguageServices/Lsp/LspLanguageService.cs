@@ -25,6 +25,12 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
     public sealed class LspLanguageService : ILanguageService, IAsyncDisposable
     {
         const string UnknownDiagnosticId = "LSP";
+		static readonly string[] SupportedSemanticTokenTypes = {
+			"namespace", "type", "class", "enum", "interface", "struct", "typeParameter",
+			"parameter", "variable", "property", "enumMember", "event", "function", "method",
+			"macro", "keyword", "modifier", "comment", "string", "number", "regexp", "operator",
+			"decorator", "module"
+		};
 
         readonly LspServerLaunchSpec _spec;
         readonly string _rootUri;
@@ -44,6 +50,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
         Process? _process;
         JsonRpc? _rpc;
         bool _unavailable;
+		string[] _semanticTokenTypes = Array.Empty<string>();
 
         public LspLanguageService(LspServerLaunchSpec spec, string rootUri)
         {
@@ -186,6 +193,43 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
                 : Array.Empty<LanguageDiagnostic>();
             return Task.FromResult(diagnostics);
         }
+
+		public async Task<IReadOnlyList<SemanticToken>> GetSemanticTokensAsync(DocumentId documentId, CancellationToken cancellationToken)
+		{
+			var uri = ToUri(documentId.FileName);
+			if (_unavailable || _rpc is null || !_openDocuments.TryGetValue(uri, out var open)
+			    || _semanticTokenTypes.Length == 0)
+				return Array.Empty<SemanticToken>();
+
+			JsonElement result;
+			try {
+				result = await _rpc.InvokeWithParameterObjectAsync<JsonElement>(
+					"textDocument/semanticTokens/full", new { textDocument = new { uri } }, cancellationToken);
+			} catch (Exception ex) when (ex is RemoteInvocationException or ConnectionLostException) {
+				return Array.Empty<SemanticToken>();
+			}
+
+			if (result.ValueKind != JsonValueKind.Object || !result.TryGetProperty("data", out var data)
+			    || data.ValueKind != JsonValueKind.Array)
+				return Array.Empty<SemanticToken>();
+
+			var values = data.EnumerateArray().Select(value => value.GetInt32()).ToArray();
+			var tokens = new List<SemanticToken>();
+			var line = 0;
+			var character = 0;
+			for (var i = 0; i + 4 < values.Length; i += 5) {
+				line += values[i];
+				character = values[i] == 0 ? character + values[i + 1] : values[i + 1];
+				var length = values[i + 2];
+				var typeIndex = values[i + 3];
+				if (typeIndex < 0 || typeIndex >= _semanticTokenTypes.Length)
+					continue;
+				var start = GetOffset(open.Text, line, character);
+				var end = Math.Min(open.Text.Length, start + length);
+				tokens.Add(new SemanticToken(new TextSpan(ToTextPosition(open.Text, start), ToTextPosition(open.Text, end)), _semanticTokenTypes[typeIndex]));
+			}
+			return tokens;
+		}
 
         public async Task<IReadOnlyList<NavigationTarget>> GoToDefinitionAsync(DocumentId documentId, int offset, CancellationToken cancellationToken)
         {
@@ -466,21 +510,23 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
                 rpc.StartListening();
                 _rpc = rpc;
 
-                await rpc.InvokeWithParameterObjectAsync<JsonElement>("initialize", new
+				var initializeResult = await rpc.InvokeWithParameterObjectAsync<JsonElement>("initialize", new
                 {
                     processId = Environment.ProcessId,
                     rootUri = _rootUri,
                     capabilities = new
                     {
-                        textDocument = new
-                        {
+						textDocument = new
+						{
+							semanticTokens = new { requests = new { full = true }, tokenTypes = SupportedSemanticTokenTypes, tokenModifiers = Array.Empty<string>(), formats = new[] { "relative" } },
                             // Declares support for literal-edit code actions (docs/language-
                             // services.md §8.2) — codeActionKind.valueSet left empty (any kind
                             // is fine) since GetCodeActionsAsync doesn't filter by kind today.
                             codeAction = new { codeActionLiteralSupport = new { codeActionKind = new { valueSet = Array.Empty<string>() } } },
                         },
                     },
-                }, cancellationToken);
+				}, cancellationToken);
+				_semanticTokenTypes = ReadSemanticTokenTypes(initializeResult);
                 await rpc.NotifyAsync("initialized");
 
                 return true;
@@ -755,6 +801,44 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
 
             return new { line, character = offset - lineStart };
         }
+
+		static string[] ReadSemanticTokenTypes(JsonElement initializeResult)
+		{
+			if (initializeResult.ValueKind != JsonValueKind.Object
+			    || !initializeResult.TryGetProperty("capabilities", out var capabilities)
+			    || !capabilities.TryGetProperty("semanticTokensProvider", out var provider)
+			    || provider.ValueKind != JsonValueKind.Object
+			    || !provider.TryGetProperty("legend", out var legend)
+			    || !legend.TryGetProperty("tokenTypes", out var tokenTypes)
+			    || tokenTypes.ValueKind != JsonValueKind.Array)
+				return Array.Empty<string>();
+			return tokenTypes.EnumerateArray().Select(token => token.GetString() ?? string.Empty).ToArray();
+		}
+
+		static int GetOffset(string text, int requestedLine, int character)
+		{
+			var line = 0;
+			var offset = 0;
+			while (offset < text.Length && line < requestedLine) {
+				if (text[offset++] == '\n')
+					line++;
+			}
+			return Math.Clamp(offset + character, 0, text.Length);
+		}
+
+		static TextPosition ToTextPosition(string text, int offset)
+		{
+			offset = Math.Clamp(offset, 0, text.Length);
+			var line = 0;
+			var lineStart = 0;
+			for (var index = 0; index < offset; index++) {
+				if (text[index] == '\n') {
+					line++;
+					lineStart = index + 1;
+				}
+			}
+			return new TextPosition(line + 1, offset - lineStart + 1);
+		}
 
         static string ToUri(string fileName)
         {

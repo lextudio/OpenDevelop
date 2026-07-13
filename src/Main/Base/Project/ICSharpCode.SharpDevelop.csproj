@@ -16,6 +16,9 @@
     <PackageReference Include="Microsoft.Build.Runtime" Version="18.0.2" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.3.0" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Features" Version="5.3.0" />
+    <!-- See doc/technotes/roslyn.md: RoslynWorkspaceHelper hosts both C# and VB projects in one
+         Roslyn workspace, the same way UnoDevelop's CSharpVBLanguageService does. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.VisualBasic.Workspaces" Version="5.3.0" />
     <PackageReference Include="Microsoft.TemplateEngine.Abstractions" Version="10.0.301" />
     <PackageReference Include="Microsoft.TemplateEngine.Edge" Version="10.0.301" />
     <PackageReference Include="Microsoft.TemplateEngine.Orchestrator.RunnableProjects" Version="10.0.301" />
