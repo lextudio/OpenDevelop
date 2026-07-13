@@ -19,6 +19,17 @@
     </Reference>
     <ProjectReference Include="..\..\..\..\Libraries\ICSharpCode.TypeSystem.Abstractions\ICSharpCode.TypeSystem.Abstractions.csproj" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.3.0" />
+    <!-- Real search engine (see NuGetPackageSearchService.cs): the legacy NuGet.Core repository's
+         OData V2 client needs System.Data.Services.Client, which has no modern-.NET package - so
+         remote (non-local-folder) sources cannot search through it at all on this runtime. Search
+         goes through the real, current NuGet.Client protocol stack instead; results are adapted
+         back into legacy IPackage so the rest of the (working) install/UI pipeline is untouched. -->
+    <!-- Pinned to match the version already resolved transitively across the rest of the solution
+         (src/Main/Base/Project/Src/Project/MSBuildInternals.cs, via the .NET SDK's own MSBuild/NuGet
+         resolver) - a different version here loads a byte-different NuGet.Protocol/NuGet.Common
+         assembly with the same strong name, which the runtime rejects with a FileLoadException
+         since the main app's own MSBuild internals already loaded the other copy first. -->
+    <PackageReference Include="NuGet.Protocol" Version="6.13.2" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
@@ -29,6 +40,9 @@
     <ProjectReference Include="..\..\..\DisplayBindings\AvalonEdit.AddIn\AvalonEdit.AddIn.csproj" Private="false" />
     <ProjectReference Include="..\SharpDevelop.EnvDTE\SharpDevelop.EnvDTE.vbproj" Private="false" />
     <ProjectReference Include="..\..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj" Private="False" />
+    <!-- PowerShell Package Console pad (Microsoft.PowerShell.SDK is cross-platform - PowerShell 7/
+         Core is embedded in-process, no external PowerShell install/detection needed). -->
+    <ProjectReference Include="..\PowerShell\Project\PackageManagement.PowerShell.csproj" Private="false" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
@@ -43,10 +57,11 @@
     <Compile Remove="Src\ProjectBrowserUpdater.cs" />
     <Compile Remove="Src\ThreadSafeProjectBrowserUpdater.cs" />
     <Compile Remove="Src\UpdateProjectBrowserFileNodesVisitor.cs" />
+    <!-- ConsoleInitializer.cs/ComponentModel.cs are VS SDK/MEF-service shims (IConsoleInitializer,
+         SComponentModel) for hosting this console inside Visual Studio's own service container -
+         not applicable to our own WPF PackageManagementConsolePad, and IConsoleInitializer's type
+         doesn't exist anywhere in this codebase (it came from the removed NuGet.Console.Types.dll). -->
     <Compile Remove="Src\Scripting\ConsoleInitializer.cs" />
-    <Compile Remove="Src\Scripting\ICmdletLogger.cs" />
-    <Compile Remove="Src\Scripting\PackageManagementConsoleHost.cs" />
-    <Compile Remove="Src\Scripting\PackageManagementConsoleHostLogger.cs" />
     <Compile Remove="Src\VisualStudio\ComponentModel.cs" />
   </ItemGroup>
 </Project>

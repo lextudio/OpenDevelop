@@ -17,50 +17,21 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using Microsoft.Win32;
 
 namespace ICSharpCode.PackageManagement.Scripting
 {
+	/// <summary>
+	/// The original implementation checked the Windows registry for a system-installed Windows
+	/// PowerShell 2.0 (Windows-only, and long obsolete). This addin instead embeds PowerShell 7/Core
+	/// in-process via the cross-platform Microsoft.PowerShell.SDK package (see
+	/// PackageManagement.PowerShell.csproj) - it is always available, no external install or
+	/// detection needed.
+	/// </summary>
 	public class PowerShellDetection : IPowerShellDetection
 	{
-		public static readonly string PowerShellRegistryKeyName = 
-			@"SOFTWARE\Microsoft\PowerShell\1\PowerShellEngine";
-		
-		public static readonly string PowerShellVersionRegistryValueName =
-			"PowerShellVersion";
-		
-		public bool? installed;
-		
 		public bool IsPowerShell2Installed()
 		{
-			return false;
-		}
-		
-		bool CheckIfPowerShell2IsInstalled()
-		{
-			RegistryKey key = OpenPowerShellRegistryKey();
-			if (key != null) {
-				using (key) {
-					return IsPowerShell2Installed(key);
-				}
-			}
-			return false;
-		}
-		
-		RegistryKey OpenPowerShellRegistryKey()
-		{
-			return Registry.LocalMachine.OpenSubKey(PowerShellRegistryKeyName);
-		}
-		
-		bool IsPowerShell2Installed(RegistryKey key)
-		{
-			string readValue = GetPowerShellVersion(key);
-			return readValue == "2.0";
-		}		
-		
-		string GetPowerShellVersion(RegistryKey key)
-		{
-			return (string)key.GetValue(PowerShellVersionRegistryValueName);
+			return true;
 		}
 	}
 }

@@ -105,6 +105,16 @@
 		</OptionPanel>
 	</Path>
 	
+	<!-- Package Manager Console pad (PowerShell 7/Core, embedded via Microsoft.PowerShell.SDK) -->
+	<Path name="/SharpDevelop/Workbench/Pads">
+		<Pad id="PackageManagementConsolePad"
+		     category="Main"
+		     title="${res:AddIns.PackageManagement.ConsolePad.Title}"
+		     icon="PadIcons.Output"
+		     defaultPosition="Bottom, Hidden"
+		     class="ICSharpCode.PackageManagement.Scripting.PackageManagementConsolePad"/>
+	</Path>
+
 	<!-- Project template command -->
 	<Path name="/AddIns/PackageManagement/TemplateCommands">
 		<Class

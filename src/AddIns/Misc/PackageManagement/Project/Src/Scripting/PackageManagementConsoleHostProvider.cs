@@ -62,7 +62,11 @@ namespace ICSharpCode.PackageManagement.Scripting
 		
 		void CreateConsoleHost()
 		{
-			consoleHost = new PowerShellMissingConsoleHost();
+			if (powerShellDetection.IsPowerShell2Installed()) {
+				consoleHost = new PackageManagementConsoleHost(solution, registeredRepositories, packageEvents);
+			} else {
+				consoleHost = new PowerShellMissingConsoleHost();
+			}
 		}
 	}
 }

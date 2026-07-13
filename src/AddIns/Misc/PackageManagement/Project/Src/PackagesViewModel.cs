@@ -167,7 +167,7 @@ namespace ICSharpCode.PackageManagement
 			IEnumerable<IPackage> packages = GetPackagesForSelectedPage(query);
 			return new PackagesForSelectedPageResult(packages, query);
 		}
-		
+
 		void OnPackagesReadForSelectedPage(ITask<PackagesForSelectedPageResult> task)
 		{
 			IsReadingPackages = false;

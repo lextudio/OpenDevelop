@@ -1,155 +1,165 @@
-# NuGet Package Management — Migration Plan
+# NuGet Package Management — Status
 
-## Why this exists
+## Current state
 
-While adding integration test coverage for the (already-ported) `PackageManagement` addin
-(`src/AddIns/Misc/PackageManagement/`), the addin turned out to be fundamentally broken on
-non-Windows hosts (this repo is developed on arm64 macOS). Two independent crashes on addin load:
+**The addin works end-to-end on macOS/arm64, for both offline/local feeds and real nuget.org.**
+`tests/OpenDevelop.IntegrationTests/NuGetAddInTests.cs` (`SearchAndInstallPackage_UpdatesProjectFile`)
+passes:
 
-1. `PackageManagement.dll`'s `<Runtime>` import pulls in `RequiredLibraries/NuGet.Console.Types.dll`
-   (referenced by `PackageManagement.csproj` as a `HintPath` `<Reference>`, used only to support the
-   PowerShell Package Manager Console pad). That file is a **Windows x86 (PE32) assembly**
-   (`file` reports "Intel 80386 ... for MS Windows") — loading it in an arm64 (or any non-x86)
-   process throws `FileLoadException: The assembly architecture is not compatible with the current
-   process architecture`, which aborts the whole addin's `ICSharpCode.Core.Runtime.Load()`.
-2. Independently, `SettingsProvider.LoadSettings()` (`src/AddIns/Misc/PackageManagement/Project/Src/SettingsProvider.cs`)
-   calls into the legacy `NuGet.Core` `NuGet.Settings` class, which synchronizes `nuget.config`
-   reads with a **named `Mutex`** using Windows-only syntax (`Global\<hash>`). `new Mutex(...)`
-   with that name throws `IOException` on macOS/Linux .NET. This one is *not* PowerShell-console-specific
-   — it's hit by ordinary package-source/config loading.
+```bash
+dotnet build src/Main/SharpDevelop/SharpDevelop.csproj -c Debug
+dotnet build tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj -c Debug
+dotnet exec tests/OpenDevelop.IntegrationTests/bin/Debug/net10.0/OpenDevelop.IntegrationTests.dll \
+  -class "OpenDevelop.IntegrationTests.NuGetAddInTests"
+# => Total: 1, Errors: 0, Failed: 0
+```
 
-Both are symptoms of the same root cause: this addin is a literal port of SharpDevelop's original
-Windows-only, legacy-`NuGet.Core`-based NuGet integration (pre-dating NuGet.org's modern,
-fully-portable `NuGet.Client` libraries and PowerShell Core). It was never going to work
-cross-platform as ported.
+It opens a project, loads the addin, points the package source at a local offline feed, drives the
+real search box (`SearchCommand`), asserts real result rows, installs via the real per-row
+`AddPackageCommand`, and confirms the `.csproj` on disk actually gained the `PackageReference`. A
+live search against real nuget.org (`https://api.nuget.org/v3/index.json`, term
+`newtonsoft.json`) was also manually verified this session (see "How search was fixed" below) — not
+kept as an automated test, since this repo avoids network-dependent tests in the suite.
 
-## What already works despite this
+This document previously described an 8-slice plan to replace the entire legacy `NuGet.Core` engine
+with modern `NuGet.Client` libraries, on the premise that the addin was fundamentally broken on
+non-Windows hosts. Most of that premise turned out to be already resolved by earlier (untracked)
+work; the two remaining real gaps — live search, and the PowerShell Console pad being built but
+disconnected — were both fixed this session. Details below.
 
-The WPF UI layer (`ManagePackagesView.xaml`/`PackagesView.xaml` and their view models
-`ManagePackagesViewModel`/`PackagesViewModel`/`AvailablePackagesViewModel`/`PackageViewModel`) is
-in reasonable shape and **does not need to be rebuilt** — unlike UnoDevelop (see below), which had
-no existing UI at all and had to design one from scratch. The bindings (`SearchTerms`,
-`SearchCommand`, `PackageViewModels`, `IsReadingPackages`, `AddPackageCommand`, `IsAdded`, ...) are
-sound MVVM shapes; they just currently call down into the legacy `NuGet.Core` engine
-(`IPackageManagementProject`, `SharpDevelopPackageManager`, `RegisteredPackageRepositories`, ...).
-The migration is an **engine swap under an existing UI**, not a UI rewrite.
+## What already worked (from earlier, untracked work)
 
-Already done in support of testing this addin (kept, not blocked on the migration below):
-- `AutomationProperties.AutomationId` added to the search box, results list/rows, and per-row
-  Add/Added controls in `PackagesView.xaml` (search: `PackageSearchTextBox`, results:
-  `PackageResultsListBox` + per-row `PackageRow_<Id>`, add button: `AddPackageButton`, added icon:
-  `PackageAddedIcon`) — see `doc/technotes/integration-testing.md` for why UI-tree-visible state
-  (not backend state) is what these tests assert on.
-- `PackageManagementDevFlowActions.cs` (`od.nuget.set-local-feed`, `od.nuget.open-dialog`,
-  `od.nuget.set-search-text`, `od.nuget.search`, `od.nuget.status`, `od.nuget.install`,
-  `od.nuget.close-dialog`) — drives the dialog through the same `SearchCommand`/`AddPackageCommand`
-  bindings the UI uses. These call VM-level members, not `IPackageManagementProject` directly, so
-  they should keep working largely unchanged once the VMs are re-wired to the new engine — the
-  method *names* (`AvailablePackagesViewModel.SearchCommand`, `PackageViewModel.AddPackageCommand`,
-  `.Id`, `.IsAdded`) are the contract; their *implementation* is what changes.
-- `tests/fixtures/LocalNuGetFeed/` — a throwaway `OpenDevelop.TestPackage` v1.0.0 nupkg + its
-  packable source project, so install tests don't depend on nuget.org over the network.
-- `tests/fixtures/NuGetFixture/` + `tests/OpenDevelop.IntegrationTests/NuGetAddInTests.cs` — an
-  end-to-end test (open project → set local feed → search → assert real UI-tree row state → click
-  the real per-row Add button → assert `IsAdded`/on-disk `.csproj` PackageReference/Project Browser
-  tree node) that is currently blocked on the two crashes above, not on anything test-side.
+1. **Crash #1 (Windows-only `NuGet.Console.Types.dll` PE32 assembly, PowerShell Console pad)** —
+   fixed by removing that reference. A *separate*, cross-platform PowerShell Package Console pad
+   was wired up this session instead — see "PowerShell Console + EnvDTE" below.
+2. **Crash #2 (legacy `NuGet.Settings`'s named-`Mutex` constructor for `SettingsProvider`)** —
+   worked around by `Src/PortableNuGetSettings.cs`, a hand-rolled `NuGet.Core.ISettings`
+   implementation (plain `XDocument` load-modify-save, no `Mutex`). Not the "real"
+   `NuGet.Configuration.Settings.LoadDefaultSettings` swap originally planned, but it works.
+3. **Install writes the real `PackageReference`** — `Src/SdkStylePackageReferenceService.cs` edits
+   the MSBuild project file directly (`ProjectItemElement`/`ProjectItemGroupElement`, matching how
+   `dotnet add package` itself edits a `.csproj`), saves it, refreshes the Solution Explorer tree,
+   then shells out to `dotnet restore` (optionally `--source <feed>`). Wired in from
+   `PackageManagementProject.cs`. Package content is fetched by that `dotnet restore` process
+   (modern, correct protocol handling), never by the legacy in-process engine — this is why install
+   already worked even before this session's search fix.
+4. **Restore command already uses `dotnet restore`** — `RestorePackagesCommand.cs` +
+   `NuGetPackageRestoreCommandLine.cs`, not the legacy `NuGet.exe`/`NuGet.Core` restore path this
+   doc's old slice 7 was written to replace.
 
-## Sources
+## How search was fixed (this session)
 
-- `externals/monodevelop-nuget-extensions` (submodule, `mrward/monodevelop-nuget-extensions`,
-  added this session) — **not** the core NuGet manager; it's MonoDevelop's PowerShell Package
-  Console *add-on*. Its `MonoDevelop.PackageManagement.PowerShell`/`.PowerShell.Cmdlets` projects
-  host real `Install-Package`/`Get-Package`/`Find-Package` PowerShell Core cmdlets against modern
-  `NuGet.PackageManagement`/`NuGet.Protocol`/`NuGet.Configuration` (referenced from MonoDevelop's
-  own bin dir, not vendored/forked) — this cmdlet-hosting code is UI-framework-agnostic and is the
-  genuinely reusable part for a *future* Console pad slice (see slice 8 below). Its actual Console
-  pad UI (`MonoDevelop.PackageManagement.Gui/PackageConsolePad.cs`,
-  `PackageConsoleViewController.cs`) is built on Xwt/GTK plus a nested submodule
-  `external/vsmac-console` (`Microsoft.VisualStudio.Components.ConsoleViewController`, a Mac-native
-  Cocoa terminal-input widget) — **not reusable as-is** for a WPF app; would need a WPF
-  reimplementation of the same REPL-pad shape, likely on top of the AvalonEdit-based skeleton
-  `PackageManagementConsolePad`/`ICSharpCode.Scripting` already provides in this addin.
-- `/Users/lextm/uno-tools/UnoDevelop` (sibling project, `docs/nuget-manager.md`) — already did the
-  "swap legacy engine for modern NuGet.Client" move, from a blank slate (no prior NuGet UI). Its
-  `src/Main/Base/Src/NuGet/UnoNuGetProject.cs` (implements `NuGet.ProjectManagement.NuGetProject`
-  over its own `IProject` abstraction) and `NuGetPackageSourceCatalog.cs`
-  (`NuGet.Configuration.Settings.LoadDefaultSettings` for `nuget.config` resolution) are the closest
-  precedent for OpenDevelop's own `IProject`-based adapter — read these before writing OpenDevelop's
-  equivalent, but note OpenDevelop's project model, while also SharpDevelop-derived, has since
-  diverged (CPS-based `IProjectTree`, see `src/Main/SharpDevelop/Services/SharpDevelopProjectTreeProvider.cs`) -
-  confirm the actual shape matches before assuming a drop-in.
-- `NuGet.PackageManagement`/`NuGet.Protocol`/`NuGet.Configuration`/`NuGet.Frameworks`/
-  `NuGet.Packaging`/`NuGet.Resolver`/`NuGet.ProjectManagement` — real, current packages from
-  nuget.org (same ones UnoDevelop and MonoDevelop's own addin both reference this way). No submodule
-  needed for these; a plain `<PackageReference>` in `PackageManagement.csproj` is the correct move,
-  same as `ICSharpCode.SharpDevelop.Uno.csproj` already does in UnoDevelop.
+Verified live nuget.org search was actually broken in three layered ways, each masking the next:
 
-## Scope
+1. Legacy NuGet.Core's OData V2 repository (`DataServicePackageRepository`, used for any real
+   HTTP(S) source) needs `System.Data.Services.Client`, which has no package for modern .NET at all
+   (confirmed: not on nuget.org, not vendored in `RequiredLibraries/`). **Fix**: search no longer
+   goes through legacy `IPackageRepository.Search(...)` at all. New
+   `Src/NuGetPackageSearchService.cs` calls real, current `NuGet.Protocol`
+   (`Repository.Factory.GetCoreV3(source)` → `PackageSearchResource.SearchAsync(...)`, same approach
+   as UnoDevelop's own `NuGetPackageSearchService.cs`), and new `Src/NuGetSearchResultPackage.cs`
+   adapts each `IPackageSearchMetadata` result back into the legacy `IPackage` shape the rest of the
+   pipeline (`PackagesViewModel`/`PackageViewModel`/`PackageFromRepository`) still expects — so only
+   `AvailablePackagesViewModel.GetAllPackages` changed, not the whole 124-file legacy-`IPackage`
+   surface.
+2. Merely reading `.Source` on a legacy `DataServicePackageRepository` (for an http(s) source)
+   *also* throws: it lazily resolves an HTTP redirect via `NuGet.RedirectedHttpClient`, which
+   initializes legacy NuGet.Core's own static `NuGet.ProxyCache`, which constructs a legacy
+   `NuGet.Settings` using the same Windows-only named-`Mutex` syntax as crash #2 above — a *third*,
+   independent instance of that bug family, inside repository access itself rather than settings or
+   search. **Fix**: `AvailablePackagesViewModel.GetAllPackages` now reads the source URL from
+   `RegisteredPackageRepositories.ActivePackageSource.Source` (the plain `PackageSource` string) and
+   never touches `repository.Source`. `RegisteredPackageRepositories.CreateActiveRepository()` also
+   got a try/catch fallback to a new minimal `Src/NuGetRemoteSourceRepository.cs` (an `IPackageRepository`
+   that only carries `.Source`) in case *construction* itself ever throws for some other source type
+   — construction itself turned out fine for `https://api.nuget.org/v3/index.json`, only `.Source`
+   access was the trap, but the fallback costs nothing and guards the same class of bug elsewhere.
+3. Pinning `NuGet.Protocol` to a fresh version (tried 6.15.1→resolved 7.0.0, then 7.6.0) caused a
+   `FileLoadException` ("manifest definition does not match") at runtime: the main app's own MSBuild
+   internals (`src/Main/Base/Project/Src/Project/MSBuildInternals.cs`) already load `NuGet.Common`/
+   `NuGet.Protocol`/`NuGet.Configuration` transitively at version **6.13.2** (verified via
+   `project.assets.json`), and loading a byte-different assembly under the same strong name from this
+   addin collides with that already-loaded copy. **Fix**: pinned `PackageManagement.csproj`'s
+   `NuGet.Protocol` reference to exactly `6.13.2` to match.
 
-`grep -rl "using NuGet;" src/AddIns/Misc/PackageManagement/Project/Src/*.cs` → **166 of 401** files
-in the addin reference the legacy `NuGet.Core` namespace; **86** touch core repository/package types
-directly (`IPackageRepository`, `IPackage`, `SemanticVersion`, `PackageSource`, `IPackageManager`).
-This is not a small patch — it's a from-the-engine-up rewrite of most of the addin's non-UI layer,
-comparable in size to UnoDevelop's multi-slice effort, just starting from an existing UI instead of
-none.
+All three were found the hard way — by actually running a live search against nuget.org (not just
+the offline fixture) and reading through the full exception each time, not by inspecting code. The
+offline `LocalPackageRepository` path never exercised any of the three, which is exactly why
+`NuGetAddInTests` alone didn't already catch this.
 
-## Proposed slice order
+## PowerShell Console + EnvDTE (this session)
 
-Numbered independently of UnoDevelop's (different starting point: UI already exists here).
+**EnvDTE was already fine** — `SharpDevelop.EnvDTE.vbproj` (86 files) already builds clean and is
+already referenced from `PackageManagement.csproj`; nothing needed changing.
 
-1. **Unblock loading, no engine change yet.** Remove the PowerShell Console pad's `<Pad>`/`<Class>`
-   Codons from `PackageManagement.addin` and the `NuGet.Console.Types`/`Microsoft.Web.XmlTransform`
-   `<Reference>`s + `Microsoft.PowerShell.SDK` `<PackageReference>` from `PackageManagement.csproj`
-   (mirrors `MonoDevelop.PackageManagement.PowerShell*` being split out as an *extension*, not core,
-   in the MonoDevelop lineage this was forked from). This alone fixes crash #1 but not #2 (Settings
-   Mutex) since ordinary package-source loading still goes through legacy `NuGet.Settings` — expect
-   this slice to still fail before search/install works, but it isolates crash #2 as the only
-   remaining blocker and is a good checkpoint to verify against `GitAddInTests`-style "does the
-   addin even load" smoke coverage (`od.addins` contains `PackageManagement.addin`) before going
-   further.
-2. **Package source / settings engine swap.** Replace `SettingsProvider`'s use of legacy
-   `NuGet.Settings`/`RegisteredPackageRepositories`'s `PackageSource` with
-   `NuGet.Configuration.Settings.LoadDefaultSettings` + `NuGet.Configuration.PackageSource`
-   (UnoDevelop's `NuGetPackageSourceCatalog.cs` is the concrete precedent). Fixes crash #2. At this
-   point the addin should load cleanly and `od.nuget.set-local-feed` should work end-to-end for
-   *reading* configured sources (not yet search/install).
-3. **Project adapter.** Implement `NuGet.ProjectManagement.NuGetProject` against this codebase's
-   `IProject` (own new code, informed by both `UnoNuGetProject.cs` and the existing
-   `IPackageManagementProject`'s method shape so the rest of the addin's call sites change as little
-   as possible) — `GetInstalledPackagesAsync` from evaluated `PackageReference` items (same data
-   `SharpDevelopProjectTreeProvider.cs` already extracts for the Solution Explorer tree).
-4. **Search.** Replace `RegisteredPackageRepositories`/`IPackageRepository.Search(...)` with
-   `NuGet.Protocol.PackageSearchResource` against the resolved sources from slice 2
-   (`NuGetPackageSearchService.cs` in UnoDevelop is the concrete precedent). `AvailablePackagesViewModel`
-   keeps its shape (`PackageViewModels`, `IsReadingPackages`) — only what populates the collection
-   changes. This is the slice that unblocks `NuGetAddInTests.SearchAndInstallPackage_...`'s search
-   half.
-5. **Install / uninstall.** Replace `IPackageManagementProject.InstallPackage`/
-   `SharpDevelopPackageManager` with real `NuGetPackageManager.InstallPackageAsync`/
-   `UninstallPackageAsync` against slice 3's project adapter, writing the `PackageReference` back
-   via MSBuild and triggering a restore. `PackageViewModel.AddPackageCommand`/`IsAdded` keep their
-   shape. This unblocks the rest of `NuGetAddInTests`.
-6. **Update.** Diff installed vs. latest/matching-range from search; `UpdatedPackagesViewModel`
-   already exists as a tab, currently unpopulated by real data.
-7. **Restore command.** `RestorePackagesCommand.cs` currently shells out via the legacy
-   `NuGet.exe`/`NuGet.Core` restore path — replace with `NuGet.PackageManagement`'s restore APIs
-   (or, simpler, shell out to `dotnet restore`, which is what actually resolves `PackageReference`
-   items in modern SDK-style projects regardless of what this addin does).
-8. **PowerShell Package Console pad** (optional, from `externals/monodevelop-nuget-extensions`,
-   *not* required for the core dialog to work) — port the cmdlet-hosting logic from
-   `MonoDevelop.PackageManagement.PowerShell.Cmdlets` (PowerShell Core, cross-platform, calls the
-   same `NuGet.PackageManagement` APIs slice 3-5 already wire up) against a new WPF pad built on
-   this addin's existing `PackageManagementConsolePad`/AvalonEdit skeleton — do **not** attempt to
-   reuse `PackageConsoleViewController`/`vsmac-console` (Xwt/Cocoa, not WPF).
+**The PowerShell Package Console pad was ~90% already built and just never wired in.** Found two
+whole sibling projects sitting disconnected from the solution and from `PackageManagement.csproj`:
+`PowerShell/Project/PackageManagement.PowerShell.csproj` (a `PSHost`/`IPowerShellHost` implementation
+on `Microsoft.PowerShell.SDK` 7.4.0 — cross-platform PowerShell 7/Core embedded in-process, no
+external PowerShell install needed) and `Cmdlets/Project/PackageManagement.Cmdlets.csproj` (a full
+`Install-Package`/`Uninstall-Package`/`Get-Package`/`Get-Project`/`Update-Package`/
+`Invoke-InitializePackages`/`Invoke-UpdateWorkingDirectory` cmdlet set). The WPF console pad UI itself
+(`Src/Scripting/PackageManagementConsolePad.cs`/`PackageManagementConsoleView.xaml`, AvalonEdit-based)
+was also already complete. What was missing:
 
-Deferred / open questions, not yet scoped:
+1. `PackageManagement.csproj` had no `ProjectReference` to `PackageManagement.PowerShell.csproj`, and
+   excluded `ICmdletLogger.cs`/`PackageManagementConsoleHost.cs`/`PackageManagementConsoleHostLogger.cs`
+   from compilation. **Fix**: added the reference, re-included those 3 files (left
+   `ConsoleInitializer.cs`/`VisualStudio/ComponentModel.cs` excluded — they're VS SDK/MEF-service
+   shims for hosting inside real Visual Studio's service container, referencing an `IConsoleInitializer`
+   type that only ever existed in the removed `NuGet.Console.Types.dll`; not needed for our own pad).
+2. `Src/Scripting/PowerShellDetection.cs` checked the Windows registry for a system-installed Windows
+   PowerShell 2.0 (`Microsoft.Win32.Registry`, Windows-only, and obsolete even on Windows).
+   **Fix**: rewritten to just return `true` — PowerShell is embedded via the SDK package, not
+   externally installed, so there's nothing to detect.
+3. `PackageManagementConsoleHostProvider.CreateConsoleHost()` unconditionally constructed
+   `PowerShellMissingConsoleHost` (a stub that prints "PowerShell is not installed"), ignoring the
+   detection result entirely. **Fix**: constructs the real `PackageManagementConsoleHost` when
+   `IPowerShellDetection` says PowerShell is available (now always).
+4. `IPackageManagementConsoleHost` was missing the `CreateLogger(ICmdletLogger)` member both concrete
+   host classes already implemented, so `Cmdlets.csproj` failed to build against the interface.
+   **Fix**: added it to the interface (and to `PowerShellMissingConsoleHost`'s stub implementation).
+5. `PackageManagement.Cmdlets.csproj`'s `Install/Uninstall/UpdatePackageCmdlet.cs` had an ambiguous
+   `SemanticVersion` reference (`System.Management.Automation.SemanticVersion`, introduced by the
+   PowerShell SDK, vs. `NuGet.SemanticVersion`). **Fix**: explicit `using SemanticVersion =
+   NuGet.SemanticVersion;` alias in those 3 files.
+6. No `<Pad>` codon existed in `PackageManagement.addin` for `PackageManagementConsolePad` (the
+   string resource `AddIns.PackageManagement.ConsolePad.Title` already existed, unused). **Fix**:
+   added the Pad entry under `/SharpDevelop/Workbench/Pads` (icon `PadIcons.Output`, matching the
+   existing Output pad).
+7. Added both projects to `OpenDevelop.Mvp.slnx` for IDE visibility (MSBuild already picked them up
+   transitively via the new `ProjectReference` regardless).
 
-- **`RegisteredPackageSourcesView`/`PackageManagementOptionsView`** (Tools > Options panels) also
-  reference legacy types (`PackageSource`, `RegisteredPackageSources`) and will need updating
-  alongside slice 2.
-- **EnvDTE / `install.ps1`/`uninstall.ps1` script support** — same open question UnoDevelop flagged;
-  likely skippable, revisit only if slice 8 is attempted and real-world packages are found needing it.
-- **Licensing**: `monodevelop-nuget-extensions` — confirm its license (check its own LICENSE file)
-  is compatible before porting code verbatim in slice 8, same diligence as `externals/SharpDevelop`.
-- Whether to keep `RequiredLibraries/NuGet.Core.dll`/`NuGet.exe` around at all after slice 5, or
-  remove them entirely once nothing references the legacy engine.
+Verified this session: `PackageManagement.csproj`, `PackageManagement.PowerShell.csproj`,
+`PackageManagement.Cmdlets.csproj`, and the full `SharpDevelop.csproj` app all build with 0 errors;
+`NuGetAddInTests` still passes (no regression); and a temporary DevFlow-driven smoke test (`od.pads`
+→ `od.show-pad` on `ICSharpCode.PackageManagement.Scripting.PackageManagementConsolePad`) confirmed
+the pad registers and activates without crashing — which exercises the full real path (constructs
+the WPF view → binds the view model → creates the real console host → spins up an actual PowerShell
+runspace on a background thread), not just registration. Not independently verified: that typed
+PowerShell commands (`Install-Package`, etc.) actually execute correctly end-to-end — the smoke test
+only confirms the host starts without throwing.
+
+## What's still genuinely legacy (not blocking)
+
+- **Install internals are still legacy `NuGet.Core`** for the small remaining surface that isn't
+  `SdkStylePackageReferenceService` (~124 files still `using NuGet;` overall, most of it
+  `IPackage`/`IPackageManagementProject` plumbing that search no longer touches). Not a correctness
+  problem today — install writes the real `PackageReference` and `dotnet restore` does the real
+  fetch — but a full swap to `NuGet.PackageManagement.NuGetPackageManager`/`NuGetProject` (this doc's
+  old slices 3/5) would be the "no legacy engine left at all" version, if ever wanted.
+- **Update tab** (`UpdatedPackagesViewModel`/`UpdatedPackages`) is real, non-stub code using the
+  legacy engine's diff logic — not independently exercised by `NuGetAddInTests`, not re-verified this
+  session.
+- **`RegisteredPackageSourcesView`/`PackageManagementOptionsView`** (Tools > Options panels) still
+  bind to legacy `PackageSource`/`RegisteredPackageSources` — not re-verified this session, but
+  nothing in the passing test path touches them; `PackageManagementDevFlowActions.SetLocalFeed`
+  manages sources directly through `RegisteredPackageRepositories` instead.
+- **PowerShell Console pad command coverage** — the pad now loads and runs a real PowerShell
+  runspace (see above), but only the cmdlets already written in `Cmdlets/Project/Src/` are
+  available (`Install-Package`/`Uninstall-Package`/`Get-Package`/`Get-Project`/`Update-Package`/
+  `Invoke-InitializePackages`/`Invoke-UpdateWorkingDirectory`) — no `install.ps1`/`uninstall.ps1`
+  package-script execution was added or verified this session.
+- **EnvDTE compatibility shim** (`Src/EnvDTE/`, 86 files) — confirmed already building cleanly and
+  already wired into `PackageManagement.csproj`; not otherwise touched or independently re-verified
+  beyond compiling.

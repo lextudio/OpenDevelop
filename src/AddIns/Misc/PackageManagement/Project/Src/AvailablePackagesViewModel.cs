@@ -78,15 +78,27 @@ namespace ICSharpCode.PackageManagement
 			if (repository == null) {
 				throw new ApplicationException(errorMessage);
 			}
-			
+
+			// The legacy NuGet.Core repository object is still used for callers elsewhere that need
+			// its identity/equality (PackageFromRepository), but never for .Search(...) - its OData
+			// V2 client can't run on this runtime for any real HTTP source (see
+			// doc/technotes/nuget.md). Its .Source getter is ALSO unsafe to call for an http(s)
+			// DataServicePackageRepository: on first access it lazily initializes NuGet.Core's own
+			// static NuGet.ProxyCache, which constructs a legacy NuGet.Settings using the same
+			// Windows-only named-Mutex syntax as the doc's crash #2 - so the source URL is read from
+			// the plain PackageSource instead, never touching repository.Source.
+			var sourceUrl = RegisteredPackageRepositories.ActivePackageSource?.Source;
+			var packages = NuGetPackageSearchService
+				.SearchAsync(sourceUrl, searchCriteria, IncludePrerelease, take: 200, System.Threading.CancellationToken.None)
+				.GetAwaiter()
+				.GetResult()
+				.Cast<IPackage>()
+				.AsQueryable();
+
 			if (IncludePrerelease) {
-				return repository
-					.Search(searchCriteria, IncludePrerelease)
-					.Where(package => package.IsAbsoluteLatestVersion);
+				return packages.Where(package => package.IsAbsoluteLatestVersion);
 			}
-			return repository
-				.Search(searchCriteria, IncludePrerelease)
-				.Where(package => package.IsLatestVersion);
+			return packages.Where(package => package.IsLatestVersion);
 		}
 		
 		/// <summary>

@@ -100,6 +100,11 @@ namespace ICSharpCode.PackageManagement.Scripting
 		{
 			return null;
 		}
-		
+
+		public IDisposable CreateLogger(ICmdletLogger logger)
+		{
+			return null;
+		}
+
 	}
 }

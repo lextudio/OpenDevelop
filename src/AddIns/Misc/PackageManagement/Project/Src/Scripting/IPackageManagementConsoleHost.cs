@@ -48,5 +48,7 @@ namespace ICSharpCode.PackageManagement.Scripting
 		PackageSource GetActivePackageSource(string source);
 		
 		IPackageRepository GetPackageRepository(PackageSource packageSource);
+
+		IDisposable CreateLogger(ICmdletLogger logger);
 	}
 }

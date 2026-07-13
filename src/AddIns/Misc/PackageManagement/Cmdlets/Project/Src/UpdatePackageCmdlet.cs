@@ -21,6 +21,7 @@ using System.Management.Automation;
 using ICSharpCode.PackageManagement.Scripting;
 using ICSharpCode.SharpDevelop.Project;
 using NuGet;
+using SemanticVersion = NuGet.SemanticVersion;
 
 namespace ICSharpCode.PackageManagement.Cmdlets
 {

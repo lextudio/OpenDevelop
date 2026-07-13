@@ -95,11 +95,21 @@ namespace ICSharpCode.PackageManagement
 		void CreateActiveRepository()
 		{
 			EnsureActivePackageSourceIsConfigured();
-			
+
 			if (ActivePackageSource.IsAggregate()) {
 				activePackageRepository = CreateAggregateRepository();
-			} else {
+				return;
+			}
+
+			try {
 				activePackageRepository = repositoryCache.CreateRepository(ActivePackageSource.Source);
+			} catch (Exception ex) {
+				// Legacy NuGet.Core repository construction for a real HTTP(S) source can throw on
+				// this runtime (see NuGetRemoteSourceRepository.cs) - fall back to a placeholder so
+				// callers still get a working .Source; real search/install go through
+				// NuGetPackageSearchService/"dotnet restore" instead, not this object.
+				ICSharpCode.Core.LoggingService.Warn($"Falling back to a placeholder repository for '{ActivePackageSource.Source}': {ex}");
+				activePackageRepository = new NuGetRemoteSourceRepository(ActivePackageSource.Source);
 			}
 		}
 		

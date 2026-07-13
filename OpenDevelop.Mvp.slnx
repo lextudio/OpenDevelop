@@ -64,6 +64,8 @@
   </Folder>
   <Folder Name="/src/AddIns/Misc/PackageManagement/">
     <Project Path="src/AddIns/Misc/PackageManagement/Project/PackageManagement.csproj" />
+    <Project Path="src/AddIns/Misc/PackageManagement/PowerShell/Project/PackageManagement.PowerShell.csproj" />
+    <Project Path="src/AddIns/Misc/PackageManagement/Cmdlets/Project/PackageManagement.Cmdlets.csproj" />
   </Folder>
   <Folder Name="/src/AddIns/VersionControl/GitAddIn/">
     <Project Path="src/AddIns/VersionControl/GitAddIn/GitAddIn.csproj" />
