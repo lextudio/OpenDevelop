@@ -193,6 +193,20 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			// ToolsVersion "4.0" (and the old 2003 xmlns) is rejected by modern MSBuild ("Available
 			// tools versions are \"Current\""), so the dummy project omits it and lets MSBuild pick
 			// its own default tools version.
+			//
+			// MUST run MSBuildInternals.InitializeMSBuildEnvironment() first: this warm-up is the
+			// first thing in the process to touch Microsoft.Build.Evaluation.ProjectCollection, and
+			// MSBuild resolves/caches its toolset location (MSBuildToolsPath) once, process-wide, the
+			// first time it's touched - falling back to the currently-running entry assembly's own
+			// directory (SharpDevelop's own bin folder) if the environment variable isn't set yet.
+			// That resolution is permanent for the process; calling InitializeMSBuildEnvironment()
+			// later (e.g. from LanguageServiceProjectSnapshot.TryEvaluateForTargetFramework when a
+			// real project is opened) no longer has any effect once MSBuild has already cached the
+			// wrong path here. The symptom was every per-TFM project evaluation failing with
+			// "Microsoft.CSharp.targets was not found" at .../SharpDevelop/bin/.../ - which starves
+			// Roslyn parse info for every file, which is why the class/member dropdown bar above the
+			// code editor never appeared.
+			MSBuildInternals.InitializeMSBuildEnvironment();
 			try {
 				string projectCode = @"
 <Project DefaultTargets=""Build"">

@@ -1,14 +1,14 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
-// 
+// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -16,127 +16,137 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+// Rewritten against Microsoft.CodeAnalysis directly (see doc/technotes/csharp-roslyn.md, Phase 3).
+// No longer a ResolveResultMenuCommand over the deleted NRefactory-era RefactoringService - resolves
+// its own Roslyn symbol at the caret and calls SymbolFinder, same pattern as GoToDefinition.
+
 using System;
+using System.Linq;
+
 using ICSharpCode.Core;
-using ICSharpCode.TypeSystem;
-using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor.Dialogs;
-using ICSharpCode.SharpDevelop.Gui;
-using ICSharpCode.SharpDevelop.Refactoring;
+using ICSharpCode.SharpDevelop.Editor.Search;
+using ICSharpCode.SharpDevelop.Roslyn;
+using Microsoft.CodeAnalysis;
+using TextLocation = ICSharpCode.AvalonEdit.Document.TextLocation;
 
 namespace ICSharpCode.SharpDevelop.Editor.Commands
 {
 	/// <summary>
-	/// Runs the find references command.
+	/// Finds every reference to the symbol at the caret across the whole solution and shows
+	/// them in the Search Results pad.
 	/// </summary>
-	public class FindReferencesCommand : ResolveResultMenuCommand
+	public class FindReferencesCommand : AbstractMenuCommand
 	{
-		public override void Run(ResolveResult symbol)
+		public override void Run()
 		{
-			var entity = GetSymbol(symbol) as IEntity;
-			if (entity != null) {
-				FindReferencesAndRenameHelper.RunFindReferences(entity);
+			var editor = SD.GetActiveViewContentService<ITextEditor>();
+			if (editor == null || editor.FileName == null)
+				return;
+			RunAsync(editor);
+		}
+
+		async void RunAsync(ITextEditor editor)
+		{
+			string fileName = editor.FileName.ToString();
+			var location = editor.Caret.Location;
+
+			ISymbol symbol;
+			try {
+				var document = RoslynWorkspaceHelper.FindDocument(fileName, editor.Document.Text);
+				symbol = document != null ? RoslynWorkspaceHelper.GetSymbolAt(document, location) : null;
+			} catch (Exception ex) {
+				SD.MessageService.ShowException(ex, "Error resolving symbol for Find References.");
 				return;
 			}
-			if (symbol is LocalResolveResult) {
-				FindReferencesAndRenameHelper.RunFindReferences((LocalResolveResult)symbol);
+			if (symbol == null)
+				return;
+
+			System.Collections.Generic.IReadOnlyList<Microsoft.CodeAnalysis.FindSymbols.ReferenceLocation> locations;
+			try {
+				locations = await RoslynWorkspaceHelper.FindReferencesAt(fileName, location);
+			} catch (Exception ex) {
+				SD.MessageService.ShowException(ex, "Error finding references.");
+				return;
 			}
+
+			var matches = locations.Select(ToSearchResultMatch).Where(m => m != null).ToArray();
+			string title = StringParser.Parse("${res:SharpDevelop.Refactoring.FindReferences}") + " '" + symbol.Name + "'";
+			SearchResultsPad.Instance.ShowSearchResults(title, matches);
+			SearchResultsPad.Instance.BringToFront();
+		}
+
+		static SearchResultMatch ToSearchResultMatch(Microsoft.CodeAnalysis.FindSymbols.ReferenceLocation referenceLocation)
+		{
+			if (referenceLocation.Document.FilePath == null)
+				return null;
+
+			var span = referenceLocation.Location.GetLineSpan();
+			var start = new TextLocation(span.StartLinePosition.Line + 1, span.StartLinePosition.Character + 1);
+			var end = new TextLocation(span.EndLinePosition.Line + 1, span.EndLinePosition.Character + 1);
+			var sourceSpan = referenceLocation.Location.SourceSpan;
+
+			return new SearchResultMatch(
+				FileName.Create(referenceLocation.Document.FilePath),
+				start, end,
+				sourceSpan.Start, sourceSpan.Length,
+				displayText: null, defaultTextColor: null);
 		}
 	}
-	
+
 	/// <summary>
-	/// Runs the rename refactoring.
+	/// Renames the symbol at the caret across the whole solution, via
+	/// <see cref="RoslynWorkspaceHelper.RenameSymbolAsync"/> - the modern replacement for the
+	/// deleted NRefactory-era ResolveResult-based RenameSymbolCommand/FindReferenceService.RenameSymbol.
 	/// </summary>
-	public class RenameSymbolCommand : ResolveResultMenuCommand
+	public class RenameSymbolCommand : AbstractMenuCommand
 	{
-		public override void Run(ResolveResult symbol)
+		public override void Run()
 		{
-			RunRename(GetSymbol(symbol));
+			var editor = SD.GetActiveViewContentService<ITextEditor>();
+			if (editor == null || editor.FileName == null)
+				return;
+			RunAsync(editor);
 		}
-		
-		public static void RunRename(ISymbol symbol, string newName = null)
+
+		async void RunAsync(ITextEditor editor)
 		{
-			if ((symbol is IMember) && ((symbol.SymbolKind == SymbolKind.Constructor) || (symbol.SymbolKind == SymbolKind.Destructor))) {
-				// Don't rename constructors/destructors, rename their declaring type instead
-				symbol = ((IMember) symbol).DeclaringType.GetDefinition();
+			string fileName = editor.FileName.ToString();
+			var location = editor.Caret.Location;
+
+			ISymbol symbol;
+			try {
+				var document = RoslynWorkspaceHelper.FindDocument(fileName, editor.Document.Text);
+				symbol = document != null ? RoslynWorkspaceHelper.GetSymbolAt(document, location) : null;
+			} catch (Exception ex) {
+				SD.MessageService.ShowException(ex, "Error resolving symbol for Rename.");
+				return;
 			}
-			if (symbol != null) {
-				var project = GetProjectFromSymbol(symbol);
-				if (project != null) {
-					var languageBinding = project.LanguageBinding;
-					if (newName == null) {
-						RenameSymbolDialog renameDialog = new RenameSymbolDialog(name => CheckName(name, languageBinding))
-						{
-							Owner = SD.Workbench.MainWindow,
-							OldSymbolName = symbol.Name,
-							NewSymbolName = symbol.Name
-						};
-						if (renameDialog.ShowDialog() == true) {
-							newName = renameDialog.NewSymbolName;
-						} else {
-							return;
-						}
-					}
-					AsynchronousWaitDialog.ShowWaitDialogForAsyncOperation(
-						"${res:SharpDevelop.Refactoring.Rename}",
-						progressMonitor =>
-						FindReferenceService.RenameSymbol(symbol, newName, progressMonitor)
-						.ObserveOnUIThread()
-						.Subscribe(error => SD.MessageService.ShowError(error.Message), ex => SD.MessageService.ShowException(ex), () => {}));
-				}
-			}
-		}
-		
-		static ICSharpCode.SharpDevelop.Project.IProject GetProjectFromSymbol(ISymbol symbol)
-		{
-			switch (symbol.SymbolKind) {
-				case SymbolKind.None:
-					return null;
-				case SymbolKind.TypeDefinition:
-				case SymbolKind.Field:
-				case SymbolKind.Property:
-				case SymbolKind.Indexer:
-				case SymbolKind.Event:
-				case SymbolKind.Method:
-				case SymbolKind.Operator:
-				case SymbolKind.Constructor:
-				case SymbolKind.Destructor:
-				case SymbolKind.Accessor:
-					return ((IEntity)symbol).ParentAssembly.GetProject();
-				case SymbolKind.Namespace:
-					return null; // TODO : extend rename on namespaces
-				case SymbolKind.Variable:
-					return SD.ProjectService.FindProjectContainingFile(new FileName(((IVariable)symbol).Region.FileName));
-				case SymbolKind.Parameter:
-					if (((IParameter) symbol).Owner != null) {
-						return ((IParameter)symbol).Owner.ParentAssembly.GetProject();
-					} else {
-						return SD.ProjectService.FindProjectContainingFile(new FileName(((IParameter)symbol).Region.FileName));
-					}
-				case SymbolKind.TypeParameter:
-					return null; // TODO : extend rename on type parameters
-				default:
-					throw new ArgumentOutOfRangeException();
+			if (symbol == null)
+				return;
+
+			var dialog = new RenameSymbolDialog(name => IsValidIdentifier(symbol, name)) {
+				Owner = SD.Workbench.MainWindow,
+				OldSymbolName = symbol.Name,
+				NewSymbolName = symbol.Name
+			};
+			if (dialog.ShowDialog() != true)
+				return;
+
+			try {
+				await RoslynWorkspaceHelper.RenameSymbolAsync(symbol, dialog.NewSymbolName);
+			} catch (Exception ex) {
+				SD.MessageService.ShowException(ex, "Error renaming symbol.");
 			}
 		}
-		
-		static bool CheckName(string name, ILanguageBinding language)
+
+		static bool IsValidIdentifier(ISymbol symbol, string name)
 		{
 			if (string.IsNullOrEmpty(name))
 				return false;
-
-			if ((language.CodeDomProvider == null) || (!language.CodeDomProvider.IsValidIdentifier(name) &&
-			                                           !language.CodeDomProvider.IsValidIdentifier(language.CodeGenerator.EscapeIdentifier(name))))
-				return false;
-			
-			return true;
-		}
-		
-		public override bool CanExecute(ResolveResult symbol)
-		{
-			if (symbol == null)
-				return false;
-			return !symbol.GetDefinitionRegion().IsEmpty;
+			return symbol.Language == LanguageNames.VisualBasic
+				? Microsoft.CodeAnalysis.VisualBasic.SyntaxFacts.IsValidIdentifier(name)
+				: Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(name);
 		}
 	}
 }

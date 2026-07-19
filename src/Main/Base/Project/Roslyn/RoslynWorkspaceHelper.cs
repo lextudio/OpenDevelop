@@ -10,6 +10,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
@@ -17,6 +19,7 @@ using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.LanguageServices;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Text;
 using CS = Microsoft.CodeAnalysis.CSharp;
 using VB = Microsoft.CodeAnalysis.VisualBasic;
@@ -375,6 +378,82 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 					return symbolInfo.Symbol;
 			}
 			return null;
+		}
+
+		/// <summary>
+		/// Finds every reference to the symbol at the given file:line/column across the whole
+		/// solution, using Roslyn's own <see cref="Microsoft.CodeAnalysis.FindSymbols.SymbolFinder"/> -
+		/// this is the modern replacement for the deleted NRefactory-era find-references engine
+		/// (Src\Services\RefactoringService, see doc/technotes/csharp-roslyn.md Phase 3); unlike
+		/// that engine it needs no persistent symbol index, since SymbolFinder walks the
+		/// already-in-memory Roslyn solution built by <see cref="GetSolution"/>.
+		/// </summary>
+		public static async Task<IReadOnlyList<ReferenceLocation>> FindReferencesAt(
+			string filePath, ICSharpCode.AvalonEdit.Document.TextLocation location, CancellationToken cancellationToken = default)
+		{
+			var document = FindDocument(filePath);
+			if (document == null)
+				return Array.Empty<ReferenceLocation>();
+
+			var symbol = GetSymbolAt(document, location);
+			if (symbol == null)
+				return Array.Empty<ReferenceLocation>();
+
+			var referencedSymbols = await Microsoft.CodeAnalysis.FindSymbols.SymbolFinder
+				.FindReferencesAsync(symbol, document.Project.Solution, cancellationToken)
+				.ConfigureAwait(false);
+
+			return referencedSymbols.SelectMany(r => r.Locations).ToList();
+		}
+
+		/// <summary>
+		/// Renames <paramref name="symbol"/> to <paramref name="newName"/> across the whole solution
+		/// via Roslyn's own <see cref="Microsoft.CodeAnalysis.Rename.Renamer"/> - the modern
+		/// replacement for the deleted NRefactory-era FindReferenceService.RenameSymbol - and writes
+		/// every changed document back out: to the live editor buffer (if the file is currently
+		/// open, so the user sees the change immediately and it participates in normal undo/save),
+		/// or straight to disk otherwise. Overload/string/comment renaming and file renaming are all
+		/// left off; this only touches identifier references Roslyn can prove are the same symbol.
+		/// </summary>
+		public static async Task RenameSymbolAsync(ISymbol symbol, string newName, CancellationToken cancellationToken = default)
+		{
+			var oldSolution = GetSolution();
+			var options = new Microsoft.CodeAnalysis.Rename.SymbolRenameOptions(
+				RenameOverloads: false, RenameInStrings: false, RenameInComments: false, RenameFile: false);
+			var newSolution = await Microsoft.CodeAnalysis.Rename.Renamer
+				.RenameSymbolAsync(oldSolution, symbol, options, newName, cancellationToken)
+				.ConfigureAwait(true);
+
+			var solutionChanges = newSolution.GetChanges(oldSolution);
+			foreach (var projectChanges in solutionChanges.GetProjectChanges()) {
+				foreach (var documentId in projectChanges.GetChangedDocuments()) {
+					var newDocument = newSolution.GetDocument(documentId);
+					if (newDocument?.FilePath == null)
+						continue;
+					var newText = (await newDocument.GetTextAsync(cancellationToken).ConfigureAwait(true)).ToString();
+					ApplyRenamedText(newDocument.FilePath, newText);
+				}
+			}
+		}
+
+		/// <summary>
+		/// Opens the file (bringing it into view if it wasn't already) and replaces its text through
+		/// the editor rather than writing straight to disk - the file is left dirty afterwards, same
+		/// as any other in-editor edit, so a multi-file rename surfaces every touched file for the
+		/// user to review/undo/save rather than silently rewriting files they never opened.
+		/// </summary>
+		static void ApplyRenamedText(string filePath, string newText)
+		{
+			var viewContent = SD.FileService.OpenFile(FileName.Create(filePath));
+			var editor = viewContent?.GetService<ITextEditor>();
+			if (editor != null) {
+				using (editor.Document.OpenUndoGroup()) {
+					editor.Document.Text = newText;
+				}
+			} else {
+				// No text editor available for this file (e.g. a non-text view) - nothing to leave dirty.
+				File.WriteAllText(filePath, newText);
+			}
 		}
 	}
 }

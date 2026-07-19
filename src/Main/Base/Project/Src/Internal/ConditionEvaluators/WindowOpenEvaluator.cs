@@ -43,6 +43,10 @@ namespace ICSharpCode.SharpDevelop
 		public bool IsValid(object caller, Condition condition)
 		{
 			string openWindow = condition.Properties["openwindow"];
+
+			if (openWindow == "*") {
+				return SD.Workbench.ActiveWorkbenchWindow != null;
+			}
 			
 			Type openWindowType = condition.AddIn.FindType(openWindow);
 			if (openWindowType == null) {
@@ -52,10 +56,6 @@ namespace ICSharpCode.SharpDevelop
 			
 			if (SD.GetActiveViewContentService(openWindowType) != null)
 				return true;
-			
-			if (openWindow == "*") {
-				return SD.Workbench.ActiveWorkbenchWindow != null;
-			}
 			
 			foreach (IViewContent view in SD.Workbench.ViewContentCollection) {
 				Type currentType = view.GetType();

@@ -81,6 +81,10 @@
          types via this TomsToolbox source generator (wired as a GlobalPackageReference in
          externals/ilspy/Directory.Packages.props, which does not apply to this project). -->
     <PackageReference Include="TomsToolbox.Composition.Analyzer" Version="2.24.0" PrivateAssets="all" />
+    <!-- OpenDevelop transitively requires 11.0.0-preview.5.26302.115 of these; pin explicitly to
+         prevent NU1605 downgrade from versions pulled by other dependencies. -->
+    <PackageReference Include="System.Windows.Extensions" Version="11.0.0-preview.5.26302.115" />
+    <PackageReference Include="System.IO.Packaging" Version="11.0.0-preview.5.26302.115" />
   </ItemGroup>
 
   <!--

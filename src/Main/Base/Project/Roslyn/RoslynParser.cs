@@ -22,6 +22,7 @@ using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Refactoring;
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.TypeSystem;
+using ICSharpCode.TypeSystem.Utils;
 using Microsoft.CodeAnalysis;
 using TextLocation = ICSharpCode.AvalonEdit.Document.TextLocation;
 
@@ -47,8 +48,10 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 		                               IProject parentProject, CancellationToken cancellationToken)
 		{
 			var document = RoslynWorkspaceHelper.FindDocument(fileName, fileContent != null ? fileContent.Text : null);
-			if (document == null)
-				return null;
+			if (document == null) {
+				LoggingService.Warn("RoslynParser: no Roslyn document found for " + fileName + "; returning empty parse information.");
+				return new ParseInformation(new EmptyUnresolvedFile(fileName), fileContent != null ? fileContent.Version : null, fullParseInformationRequested);
+			}
 			var compilation = new RoslynCompilation(document.Project.GetCompilationAsync(cancellationToken).Result);
 			var unresolvedFile = new RoslynUnresolvedFile(document, compilation);
 			return new ParseInformation(unresolvedFile, fileContent != null ? fileContent.Version : null, fullParseInformationRequested);
@@ -107,6 +110,36 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 			if (roslynFile == null)
 				return null;
 			return new RoslynCompilation(roslynFile.RoslynDocument.Project.GetCompilationAsync().Result);
+		}
+
+		sealed class EmptyUnresolvedFile : IUnresolvedFile
+		{
+			public EmptyUnresolvedFile(string fileName)
+			{
+				FileName = fileName;
+			}
+
+			public string FileName { get; private set; }
+			public DateTime? LastWriteTime { get; set; }
+			public IList<IUnresolvedTypeDefinition> TopLevelTypeDefinitions { get { return EmptyList<IUnresolvedTypeDefinition>.Instance; } }
+			public IList<IUnresolvedAttribute> AssemblyAttributes { get { return EmptyList<IUnresolvedAttribute>.Instance; } }
+			public IList<IUnresolvedAttribute> ModuleAttributes { get { return EmptyList<IUnresolvedAttribute>.Instance; } }
+			public IList<Error> Errors { get { return EmptyList<Error>.Instance; } }
+
+			public IUnresolvedTypeDefinition GetTopLevelTypeDefinition(ICSharpCode.TypeSystem.TextLocation location)
+			{
+				return null;
+			}
+
+			public IUnresolvedTypeDefinition GetInnermostTypeDefinition(ICSharpCode.TypeSystem.TextLocation location)
+			{
+				return null;
+			}
+
+			public IUnresolvedMember GetMember(ICSharpCode.TypeSystem.TextLocation location)
+			{
+				return null;
+			}
 		}
 	}
 }

@@ -19,6 +19,7 @@ setup_dotnet_env() {
 
   local dotnet_bin_dir
   dotnet_bin_dir="$(dirname "${dotnet}")"
+  export PATH="${dotnet_bin_dir}:${PATH}"
 
   # Homebrew's dotnet is a bin/dotnet symlink whose real SDK/runtime tree lives in a sibling
   # libexec/ dir; bundled dotnet layouts have sdk/ directly under the binary's own dir. Detect
@@ -34,8 +35,20 @@ setup_dotnet_env() {
 
   export DOTNET_HOST_PATH="${dotnet}"
 
-  local sdk_dir
-  sdk_dir="$(find "${DOTNET_ROOT}/sdk" -mindepth 1 -maxdepth 1 -type d | sort | tail -n 1)"
+  # Resolve the SDK version the same way `dotnet build`/`dotnet run` will: honor whatever
+  # global.json pins from the caller's working directory. Picking the lexicographically-highest
+  # installed SDK dir (e.g. via `sort -V`) is wrong whenever a newer preview SDK (e.g. an
+  # 11.0.100-preview.* used by an unrelated repo) is installed alongside the pinned 10.x one --
+  # `sort -V` ranks the preview higher, so MSBuildSDKsPath would point at an SDK version that
+  # doesn't match the one actually resolving/running the project, breaking Sdk="LibreWPF.Sdk"
+  # resolution entirely ("... is not a valid project file").
+  local resolved_version
+  resolved_version="$("${dotnet}" --version)"
+  local sdk_dir="${DOTNET_ROOT}/sdk/${resolved_version}"
+  if [[ ! -d "${sdk_dir}" ]]; then
+    echo "setup_dotnet_env: resolved SDK version '${resolved_version}' has no directory under ${DOTNET_ROOT}/sdk" >&2
+    return 1
+  fi
   export MSBuildSDKsPath="${sdk_dir}/Sdks"
   export MSBuildExtensionsPath="${sdk_dir}"
   export MSBUILDADDITIONALSDKRESOLVERSFOLDER_NET="${sdk_dir}/SdkResolvers"

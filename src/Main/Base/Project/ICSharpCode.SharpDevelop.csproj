@@ -43,12 +43,14 @@
     <Resource Include="Editor\CodeCompletion\Images\*.png" />
   </ItemGroup>
   <ItemGroup>
-    <!-- Out of MVP scope: deep NRefactory-era refactoring engine (find-references/rename/extract-interface/
-         type-graph) whose API shape (LocalResolveResult.CallingClass/.Field, TypeGraphNode, etc.) does not
-         match the minimal ICSharpCode.TypeSystem.Abstractions replacement and would need a real reimplementation,
-         not a stub. Not required for the WPF shell to boot. Src\Services\RefactoringService\ itself was
-         physically deleted (see doc/technotes/csharp-roslyn.md, Phase 3) - it had no other referrers. -->
-    <Compile Remove="Src\Editor\Commands\FindReferencesCommand.cs" />
+    <!-- Out of MVP scope: deep NRefactory-era refactoring engine (rename/extract-interface/type-graph)
+         whose API shape (LocalResolveResult.CallingClass/.Field, TypeGraphNode, etc.) does not match
+         the minimal ICSharpCode.TypeSystem.Abstractions replacement and would need a real
+         reimplementation, not a stub. Not required for the WPF shell to boot. Src\Services\RefactoringService\
+         itself was physically deleted (see doc/technotes/csharp-roslyn.md, Phase 3) - it had no other
+         referrers. FindReferencesCommand.cs is back in the build - it was rewritten against
+         Microsoft.CodeAnalysis.FindSymbols.SymbolFinder directly (see RoslynWorkspaceHelper.FindReferencesAt),
+         same as GoToDefinition; RenameSymbolCommand in that same file is still an MVP stub. -->
     <Compile Remove="Src\Editor\Commands\ClassMemberMenuBuilder.cs" />
     <Compile Remove="Src\Gui\Dialogs\ExtractInterfaceDialog.cs" />
     <Compile Remove="Dom\ClassBrowser\DerivedTypesTreeNode.cs" />
@@ -64,7 +66,6 @@
          call sites that dereference deeper Solution-Explorer node types are excluded below too. -->
     <Compile Remove="Src\Gui\Pads\ProjectBrowser\**\*.cs" />
     <Compile Remove="Src\Gui\Components\ExtTreeView\**\*.cs" />
-    <Compile Remove="Src\Commands\FileCommands.cs" />
     <Compile Remove="Src\Commands\FileTabStripCommands.cs" />
     <Compile Remove="Src\Commands\ViewInBrowser.cs" />
     <Compile Remove="Src\Internal\ConditionEvaluators\ViewInBrowserConditionEvaluator.cs" />

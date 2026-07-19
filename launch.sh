@@ -26,14 +26,25 @@ esac
 
 # OpenDevelop and LibreWPF both target net10.0/net10.0-windows now, so the system .NET 10 SDK
 # builds and runs the app.
-dotnet="$(readlink -f "$(command -v dotnet)")"
-source "${repo_root}/dotnet-env.sh"
-setup_dotnet_env "${dotnet}"
-
-# Kill any previously running instance so DevFlow's port (9223) is free and we
-# don't end up staring at a stale window.
-pkill -f "OpenDevelop.dll" 2>/dev/null || true
-sleep 1
+dotnet_candidates=(
+  "/usr/local/share/dotnet/dotnet"
+  "/opt/homebrew/bin/dotnet"
+)
+dotnet=""
+for c in "${dotnet_candidates[@]}"; do
+  if [[ -x "${c}" ]]; then
+    dotnet="${c}"
+    break
+  fi
+done
+if [[ -z "${dotnet}" ]]; then
+  dotnet="$(command -v dotnet 2>/dev/null || true)"
+fi
+if [[ -z "${dotnet}" || ! -x "${dotnet}" ]]; then
+  echo "launch.sh: cannot find dotnet (checked ${dotnet_candidates[*]} and PATH)" >&2
+  exit 1
+fi
+dotnet="$(readlink -f "${dotnet}")"
 
 if [[ "${do_build}" -eq 1 ]]; then
   # Several AddIn projects (UnitTesting, Debugger.AddIn, ...) build directly INTO this shared
@@ -68,6 +79,12 @@ if [[ "${do_run}" -eq 0 ]]; then
   echo "==> Build only (--build-only); not launching."
   exit 0
 fi
+
+# MSBuildSDKsPath and related overrides are only needed for SharpDevelop's
+# in-process MSBuild hosting — they interfere with `dotnet build` (which
+# respects global.json), so apply them only before launching.
+source "${repo_root}/dotnet-env.sh"
+setup_dotnet_env "${dotnet}"
 
 echo "==> Launching OpenDevelop..."
 exec "${dotnet}" run --project "${exe_project}" --no-build

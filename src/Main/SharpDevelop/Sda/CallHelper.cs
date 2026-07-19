@@ -92,6 +92,26 @@ namespace ICSharpCode.SharpDevelop.Sda
 				propertiesName);
 			
 			startup.StartCoreServices(propertyService);
+
+			// MUST run here: before startup.RunInitialization() below (which runs every addin's
+			// Autostart command - Git, Package Management, etc - any of which could touch project
+			// loading), but after StartCoreServices so PropertyService (which DotNetSdkService reads)
+			// is actually registered. MSBuild resolves and caches its toolset location
+			// (MSBuildToolsPath) once, process-wide, the first time ANY
+			// Microsoft.Build.Evaluation.ProjectCollection is constructed anywhere in the process -
+			// falling back to the currently-running entry assembly's own directory (SharpDevelop's own
+			// bin folder) if the environment variable isn't set yet. That resolution is permanent for
+			// the process; calling MSBuildInternals.InitializeMSBuildEnvironment() later (e.g. from
+			// WorkbenchStartup's preload thread, or Solution.CreateProjectCollection() when a solution
+			// opens) no longer has any effect once MSBuild has already cached the wrong path. Multiple
+			// call sites construct a ProjectCollection during ordinary startup/solution-load, so
+			// reordering just one of them isn't enough - this must run before all of them, here.
+			// Symptom when it doesn't: every per-TFM project evaluation fails with "Microsoft.CSharp
+			// .targets was not found" at .../SharpDevelop/bin/.../, which starves Roslyn parse info for
+			// every file, which is why the class/member dropdown bar above the code editor never
+			// appears.
+			MSBuildInternals.InitializeMSBuildEnvironment();
+
 			Assembly exe = Assembly.Load(properties.ResourceAssemblyName);
 			SD.ResourceService.RegisterNeutralStrings(new ResourceManager("ICSharpCode.SharpDevelop.Resources.StringResources", exe));
 

@@ -19,15 +19,15 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Drawing.Printing;
 using System.IO;
 using System.Linq;
-using System.Windows.Forms;
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Workbench;
+
+using Microsoft.Win32;
 
 namespace ICSharpCode.SharpDevelop.Commands
 {
@@ -35,11 +35,11 @@ namespace ICSharpCode.SharpDevelop.Commands
 	{
 		public override void Run()
 		{
-			ProjectNode node = ProjectBrowserPad.Instance.CurrentProject;
-			if (node != null) {
-				if (node.Project.IsReadOnly)
+			IProject project = ProjectService.CurrentProject;
+			if (project != null) {
+				if (project.IsReadOnly)
 				{
-					MessageService.ShowWarningFormatted("${res:Dialog.NewFile.ReadOnlyProjectWarning}", node.Project.FileName);
+					MessageService.ShowWarningFormatted("${res:Dialog.NewFile.ReadOnlyProjectWarning}", project.FileName);
 				}
 				else
 				{
@@ -48,7 +48,6 @@ namespace ICSharpCode.SharpDevelop.Commands
 					                                             "${res:Dialog.NewFile.AddToProjectQuestionProject}",
 					                                             "${res:Dialog.NewFile.AddToProjectQuestionStandalone}");
 					if (result == 0) {
-						node.AddNewItemsToProject();
 						return;
 					} else if (result == -1) {
 						return;
@@ -176,28 +175,28 @@ namespace ICSharpCode.SharpDevelop.Commands
 		{
 			Debug.Assert(file != null);
 			
-			using (SaveFileDialog fdiag = new SaveFileDialog()) {
-				fdiag.OverwritePrompt = true;
-				fdiag.AddExtension    = true;
-				
-				var fileFilters = ProjectService.GetFileFilters();
-				fdiag.Filter = String.Join("|", fileFilters);
-				for (int i = 0; i < fileFilters.Count; ++i) {
-					if (fileFilters[i].ContainsExtension(Path.GetExtension(file.FileName))) {
-						fdiag.FilterIndex = i + 1;
-						break;
-					}
+			var fdiag = new SaveFileDialog {
+				OverwritePrompt = true,
+				AddExtension    = true
+			};
+			
+			var fileFilters = ProjectService.GetFileFilters();
+			fdiag.Filter = String.Join("|", fileFilters);
+			for (int i = 0; i < fileFilters.Count; ++i) {
+				if (fileFilters[i].ContainsExtension(Path.GetExtension(file.FileName))) {
+					fdiag.FilterIndex = i + 1;
+					break;
 				}
-				
-				if (fdiag.ShowDialog(SD.WinForms.MainWin32Window) == DialogResult.OK) {
-					FileName fileName = FileName.Create(fdiag.FileName);
-					if (!FileService.CheckFileName(fileName)) {
-						return;
-					}
-					if (FileUtility.ObservedSave(new NamedFileOperationDelegate(file.SaveToDisk), fileName) == FileOperationResult.OK) {
-						SD.FileService.RecentOpen.AddRecentFile(fileName);
-						MessageService.ShowMessage(fileName, "${res:ICSharpCode.SharpDevelop.Commands.SaveFile.FileSaved}");
-					}
+			}
+			
+			if (fdiag.ShowDialog(SD.Workbench.MainWindow) == true) {
+				FileName fileName = FileName.Create(fdiag.FileName);
+				if (!FileService.CheckFileName(fileName)) {
+					return;
+				}
+				if (FileUtility.ObservedSave(new NamedFileOperationDelegate(file.SaveToDisk), fileName) == FileOperationResult.OK) {
+					SD.FileService.RecentOpen.AddRecentFile(fileName);
+					MessageService.ShowMessage(fileName, "${res:ICSharpCode.SharpDevelop.Commands.SaveFile.FileSaved}");
 				}
 			}
 		}
@@ -230,17 +229,16 @@ namespace ICSharpCode.SharpDevelop.Commands
 	{
 		public override void Run()
 		{
-			using (OpenFileDialog fdiag  = new OpenFileDialog()) {
-				fdiag.AddExtension    = true;
-				
-				fdiag.Filter = ProjectService.GetAllFilesFilter();
-				fdiag.FilterIndex     = 0;
-				fdiag.Multiselect     = true;
-				fdiag.CheckFileExists = true;
-				
-				if (fdiag.ShowDialog(SD.WinForms.MainWin32Window) == DialogResult.OK) {
-					OpenFiles(Array.ConvertAll(fdiag.FileNames, FileName.Create));
-				}
+			var fdiag = new OpenFileDialog {
+				AddExtension    = true,
+				Filter          = ProjectService.GetAllFilesFilter(),
+				FilterIndex     = 0,
+				Multiselect     = true,
+				CheckFileExists = true
+			};
+			
+			if (fdiag.ShowDialog(SD.Workbench.MainWindow) == true) {
+				OpenFiles(Array.ConvertAll(fdiag.FileNames, FileName.Create));
 			}
 		}
 		

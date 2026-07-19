@@ -230,12 +230,16 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			bool safeSaving = SD.FileService.SaveUsingTemporaryFile && File.Exists(FileName);
 			string saveAs = safeSaving ? FileName + ".bak" : FileName;
 			using (FileStream fs = new FileStream(saveAs, FileMode.Create, FileAccess.Write)) {
-			    if (safeSaving) {
+			    if (safeSaving && OperatingSystem.IsWindows()) {
 					// Copy creation time from source file
 					// Because setting the time requires opening the file for write access,
 					// we can't use System.IO.File.SetCreationTimeUtc for this, as it would open the file twice,
 					// which causes problems when another process is monitoring the directory
 					// and reading our new file as soon as we're done writing.
+					// Windows-only: NativeMethods.SetFileCreationTime P/Invokes kernel32.dll, which
+					// doesn't exist on macOS/Linux - skip there rather than throwing
+					// EntryPointNotFoundException on every safe-save (creation time preservation is
+					// a Windows Explorer nicety, not required for a correct save).
 					NativeMethods.SetFileCreationTime(fs.SafeFileHandle, File.GetCreationTimeUtc(FileName));
 				}
 				if (currentView != null) {

@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text.Json;
 using Xunit;
 
@@ -30,6 +31,46 @@ public sealed class UnitTestingTests
             }
         }
         return null;
+    }
+
+    /// <summary>
+    /// Recursively collects all nodes of a given type from the tree.
+    /// </summary>
+    static List<JsonElement> CollectNodesByType(JsonElement node, string type)
+    {
+        var result = new List<JsonElement>();
+        if (node.TryGetProperty("type", out var t) && t.GetString() == type)
+            result.Add(node);
+        if (node.TryGetProperty("nestedTests", out var kids))
+        {
+            foreach (var kid in kids.EnumerateArray())
+                result.AddRange(CollectNodesByType(kid, type));
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Recursively counts all leaf (method) nodes under the given node.
+    /// </summary>
+    static int CountLeafMethods(JsonElement node)
+    {
+        if (node.TryGetProperty("type", out var t) && t.GetString() == "method")
+            return 1;
+        if (node.TryGetProperty("nestedTests", out var kids))
+        {
+            var count = 0;
+            foreach (var kid in kids.EnumerateArray())
+                count += CountLeafMethods(kid);
+            return count;
+        }
+        return 0;
+    }
+
+    static void AssertNode(JsonElement node, string expectedType, string expectedDisplayName, int expectedChildCount)
+    {
+        Assert.Equal(expectedType, node.GetProperty("type").GetString());
+        Assert.Equal(expectedDisplayName, node.GetProperty("displayName").GetString());
+        Assert.Equal(expectedChildCount, node.GetProperty("nestedTests").GetArrayLength());
     }
 
     [Fact]
@@ -66,12 +107,56 @@ public sealed class UnitTestingTests
         Assert.True(discovered, "Test methods were not discovered within 30s timeout");
 
         var root = tree.GetProperty("tests")[0];
-        Assert.NotNull(FindTest(root, "PassTests"));
-        Assert.NotNull(FindTest(root, "FailTests"));
-        Assert.NotNull(FindTest(root, "SkipTests"));
-        Assert.NotNull(FindTest(root, "AlwaysPasses"));
-        Assert.NotNull(FindTest(root, "AlwaysFails"));
-        Assert.NotNull(FindTest(root, "AlwaysSkipped"));
+
+        // ── Full tree structure: solution → project → targetFramework → namespace → class → method ──
+        AssertNode(root, "solution", "All Tests", expectedChildCount: 1);
+
+        var project = root.GetProperty("nestedTests")[0];
+        AssertNode(project, "project", "SampleTestProject", expectedChildCount: 1);
+
+        var targetFramework = project.GetProperty("nestedTests")[0];
+        // MtpTargetFramework doesn't match WalkTestNode's type detection → default "test"
+        AssertNode(targetFramework, "test", "net10.0", expectedChildCount: 1);
+
+        var ns = targetFramework.GetProperty("nestedTests")[0];
+        AssertNode(ns, "namespace", "SampleTestProject", expectedChildCount: 3);
+
+        // ── Class-level nodes (alphabetical order from MtpTestTreeBuilder's OrderBy) ──
+        var classNodes = ns.GetProperty("nestedTests").EnumerateArray()
+            .OrderBy(c => c.GetProperty("displayName").GetString())
+            .ToArray();
+        Assert.Equal(3, classNodes.Length);
+        AssertNode(classNodes[0], "class", "FailTests", expectedChildCount: 1);
+        AssertNode(classNodes[1], "class", "PassTests", expectedChildCount: 1);
+        AssertNode(classNodes[2], "class", "SkipTests", expectedChildCount: 1);
+
+        // ── Method-level nodes ──
+        AssertNode(classNodes[0].GetProperty("nestedTests")[0], "method",
+            "SampleTestProject.FailTests.AlwaysFails", expectedChildCount: 0);
+        AssertNode(classNodes[1].GetProperty("nestedTests")[0], "method",
+            "SampleTestProject.PassTests.AlwaysPasses", expectedChildCount: 0);
+        AssertNode(classNodes[2].GetProperty("nestedTests")[0], "method",
+            "SampleTestProject.SkipTests.AlwaysSkipped", expectedChildCount: 0);
+
+        // ── One-to-one correspondence assertions ──
+        // Exactly 3 classes and 3 methods in the entire tree, no extras.
+        var classes = CollectNodesByType(root, "class");
+        var methods = CollectNodesByType(root, "method");
+        Assert.Equal(3, classes.Count);
+        Assert.Equal(3, methods.Count);
+
+        var classNames = classes.Select(c => c.GetProperty("displayName").GetString()).OrderBy(x => x).ToArray();
+        Assert.Equal(new[] { "FailTests", "PassTests", "SkipTests" }, classNames);
+
+        var methodNames = methods.Select(m => m.GetProperty("displayName").GetString()).OrderBy(x => x).ToArray();
+        Assert.Equal(new[] {
+            "SampleTestProject.FailTests.AlwaysFails",
+            "SampleTestProject.PassTests.AlwaysPasses",
+            "SampleTestProject.SkipTests.AlwaysSkipped"
+        }, methodNames);
+
+        // Total leaf method count across the tree must also be 3.
+        Assert.Equal(3, CountLeafMethods(root));
     }
 
     [Fact]

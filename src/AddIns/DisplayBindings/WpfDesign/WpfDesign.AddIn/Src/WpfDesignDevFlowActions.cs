@@ -12,6 +12,7 @@ using System.Windows.Controls;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.WpfDesign.Designer.OutlineView;
 using LeXtudio.DevFlow.Agent.Core;
+using Microsoft.Maui.DevFlow.Agent.Core;
 
 namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 {

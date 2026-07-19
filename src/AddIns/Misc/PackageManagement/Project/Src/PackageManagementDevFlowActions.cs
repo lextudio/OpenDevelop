@@ -11,6 +11,7 @@ using System.Windows.Threading;
 
 using ICSharpCode.SharpDevelop;
 using LeXtudio.DevFlow.Agent.Core;
+using Microsoft.Maui.DevFlow.Agent.Core;
 using NuGet;
 
 namespace ICSharpCode.PackageManagement

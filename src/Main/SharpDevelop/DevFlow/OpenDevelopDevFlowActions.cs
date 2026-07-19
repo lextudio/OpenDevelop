@@ -22,6 +22,7 @@ using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Project.Sdk;
 using ICSharpCode.SharpDevelop.Workbench;
 using LeXtudio.DevFlow.Agent.Core;
+using Microsoft.Maui.DevFlow.Agent.Core;
 
 namespace ICSharpCode.SharpDevelop.DevFlow
 {
@@ -138,6 +139,25 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			}
 		}
 
+		[DevFlowAction("od.find-references", Description = "Find all references to the symbol at file:line/column across the whole solution, via Roslyn's SymbolFinder (the modern replacement for the deleted NRefactory find-references engine)")]
+		public static async Task<string> FindReferences(string fileName, int line, int column)
+		{
+			try {
+				var location = new ICSharpCode.AvalonEdit.Document.TextLocation(line, column);
+				var references = await ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.FindReferencesAt(fileName, location);
+				return JsonSerializer.Serialize(new {
+					count = references.Count,
+					references = references.Select(r => new {
+						filePath = r.Document.FilePath,
+						line = r.Location.GetLineSpan().StartLinePosition.Line + 1,
+						column = r.Location.GetLineSpan().StartLinePosition.Character + 1
+					}).ToArray()
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { count = 0, error = ex.Message });
+			}
+		}
+
 		[DevFlowAction("od.build-solution", Description = "Build the current solution (or a single project by name) and return error/warning counts plus the individual diagnostics")]
 		public static async Task<string> BuildSolution(string projectName = null)
 		{
@@ -188,7 +208,33 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				text = text ?? string.Empty
 			});
 		}
-		
+
+		[DevFlowAction("od.error-list", Description = "Get the Error List pad's actual task collection (TaskService.Tasks) - a separate code path from od.build-solution's own BuildResults: errors reach here asynchronously via UIBuildFeedbackSink.ReportError -> TaskService.Add, dispatched with InvokeAsyncAndForget, so this can lag slightly behind od.build-solution's return and (since od.build-solution bypasses the Build menu command's TaskService.ClearExceptCommentTasks() call) accumulates across multiple builds unless od.error-list.clear is called first")]
+		public static string GetErrorList()
+		{
+			var tasks = TaskService.Tasks.Select(t => new {
+				type = t.TaskType.ToString(),
+				description = t.Description,
+				file = t.FileName?.ToString(),
+				line = t.Line,
+				column = t.Column
+			}).ToArray();
+			return JsonSerializer.Serialize(new {
+				count = tasks.Length,
+				errorCount = tasks.Count(t => t.type == "Error"),
+				warningCount = tasks.Count(t => t.type == "Warning"),
+				tasks
+			});
+		}
+
+		[DevFlowAction("od.error-list.clear", Description = "Clear the Error List pad's task collection (TaskService.ClearExceptCommentTasks) - the same reset the Build menu command does before a build, which od.build-solution's direct SD.BuildService.BuildAsync call does not do on its own")]
+		public static string ClearErrorList()
+		{
+			TaskService.ClearExceptCommentTasks();
+			return JsonSerializer.Serialize(new { success = true });
+		}
+
+
 		[DevFlowAction("od.addins", Description = "List loaded addins for diagnostics")]
 		public static string GetLoadedAddIns()
 		{
@@ -429,6 +475,193 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				className = pad.Class,
 				items = items.Select(ToPropertyDictionary).ToArray()
 			});
+		}
+
+		// --- File Save / Dirty-State Actions ---
+
+		[DevFlowAction("od.file.is-dirty", Description = "Check whether an open file has unsaved changes (OpenedFile.IsDirty)")]
+		public static string IsFileDirty(string path)
+		{
+			var file = SD.FileService.GetOpenedFile(FileName.Create(path));
+			return JsonSerializer.Serialize(new { isOpen = file != null, isDirty = file?.IsDirty ?? false });
+		}
+
+		[DevFlowAction("od.file.edit-text", Description = "Insert text at the end of an open file's editor document, the same AvalonEdit.Document.Insert call a real keystroke makes, so it dirties the file naturally rather than setting a flag directly")]
+		public static string EditFileText(string path, string text)
+		{
+			var fileName = FileName.Create(path);
+			var viewContent = SD.FileService.GetOpenFile(fileName) ?? SD.FileService.OpenFile(fileName);
+			var editor = viewContent?.GetService<ITextEditor>();
+			if (editor == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No text editor for " + path });
+
+			editor.Document.Insert(editor.Document.TextLength, text);
+			var file = SD.FileService.GetOpenedFile(fileName);
+			return JsonSerializer.Serialize(new { success = true, isDirty = file?.IsDirty ?? false });
+		}
+
+		[DevFlowAction("od.file.save", Description = "Save one open file to disk (same as Ctrl+S / File > Save)")]
+		public static string SaveOpenFile(string path)
+		{
+			var file = SD.FileService.GetOpenedFile(FileName.Create(path));
+			if (file == null)
+				return JsonSerializer.Serialize(new { success = false, error = "File is not open: " + path });
+
+			ICSharpCode.SharpDevelop.Commands.SaveFile.Save(file);
+			return JsonSerializer.Serialize(new { success = true, isDirty = file.IsDirty });
+		}
+
+		[DevFlowAction("od.file.save-all", Description = "Save all open dirty files to disk (same as File > Save All)")]
+		public static string SaveAllOpenFiles()
+		{
+			ICSharpCode.SharpDevelop.Commands.SaveAllFiles.SaveAll();
+			var stillDirty = SD.FileService.OpenedFiles.Where(f => f.IsDirty).Select(f => f.FileName.ToString()).ToArray();
+			return JsonSerializer.Serialize(new { success = true, stillDirtyFiles = stillDirty });
+		}
+
+		// --- Solution Explorer CRUD Actions ---
+
+		[DevFlowAction("od.solution.add-file", Description = "Create a new file on disk (if it doesn't already exist) and add it to a project as a FileProjectItem, then save the project file - the same effect as Solution Explorer's Add > New/Existing Item")]
+		public static string AddFileToProject(string projectName, string filePath, string itemType = "Compile")
+		{
+			var project = FindProjectByName(projectName);
+			if (project == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No project named '" + projectName + "' in the current solution." });
+
+			if (!File.Exists(filePath))
+				File.WriteAllText(filePath, string.Empty);
+
+			WithChangeWatchersDisabled(() => {
+				var item = new FileProjectItem(project, new ItemType(itemType)) { FileName = FileName.Create(filePath) };
+				project.Items.Add(item);
+				project.Save();
+			});
+
+			return JsonSerializer.Serialize(new { success = true, files = GetProjectFilesForTesting(project) });
+		}
+
+		[DevFlowAction("od.solution.remove-file", Description = "Remove a file's ProjectItem from a project (does not delete the file from disk) and save the project file - the same effect as Solution Explorer's Remove")]
+		public static string RemoveFileFromProject(string projectName, string filePath)
+		{
+			var project = FindProjectByName(projectName);
+			if (project == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No project named '" + projectName + "' in the current solution." });
+
+			var item = project.FindFile(FileName.Create(filePath));
+			if (item == null)
+				return JsonSerializer.Serialize(new { success = false, error = "File is not part of project '" + projectName + "': " + filePath });
+
+			WithChangeWatchersDisabled(() => {
+				project.Items.Remove(item);
+				project.Save();
+			});
+
+			var files = GetProjectFilesForTesting(project);
+
+			// Removing the ProjectItem element only stops the file from appearing in Solution
+			// Explorer if that was the *only* thing including it. For an SDK-style project's
+			// default implicit item globs (e.g. Microsoft.NET.Sdk.DefaultItems.props'
+			// `<Compile Include="**/*.cs">` / `<None Include="**">`), the glob independently
+			// re-matches the same physical file regardless of any explicit item add/remove - so
+			// Items.Remove() can succeed (no exception, item gone from the XML) while the file
+			// still shows up, because only a `<Compile Remove="...">` / `<None Remove="...">`
+			// exclude directive (not implemented here) actually overrides a default glob. Verify
+			// against the file's continued presence rather than assuming Remove()'s return value
+			// reflects what Solution Explorer will actually display.
+			bool stillPresent = files.Any(f => string.Equals(Path.GetFullPath(f), Path.GetFullPath(filePath), StringComparison.OrdinalIgnoreCase));
+			if (stillPresent) {
+				return JsonSerializer.Serialize(new {
+					success = false,
+					error = "'" + filePath + "' is still part of the project after removal - it's likely covered by the SDK's implicit item glob, and excluding glob-covered items (writing a <Remove> directive) isn't supported yet.",
+					files
+				});
+			}
+
+			return JsonSerializer.Serialize(new { success = true, files });
+		}
+
+		[DevFlowAction("od.solution.rename-file", Description = "Rename a file on disk and update the matching ProjectItem's Include so Solution Explorer's node follows it - the same effect as Solution Explorer's Rename")]
+		public static string RenameProjectFile(string projectName, string oldFilePath, string newFilePath)
+		{
+			var project = FindProjectByName(projectName);
+			if (project == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No project named '" + projectName + "' in the current solution." });
+
+			var item = project.FindFile(FileName.Create(oldFilePath));
+			if (item == null)
+				return JsonSerializer.Serialize(new { success = false, error = "File is not part of project '" + projectName + "': " + oldFilePath });
+
+			if (!File.Exists(oldFilePath))
+				return JsonSerializer.Serialize(new { success = false, error = "File does not exist: " + oldFilePath });
+
+			WithChangeWatchersDisabled(() => {
+				// Doesn't go through SD.FileService.RenameFile - that raises a FileRenamed event
+				// whose Solution.FileServiceFileRenamed handler unconditionally tries to update the
+				// matching ProjectItem's Include, which throws InvalidOperationException
+				// ("Cannot modify an evaluated object originating in an imported file ...") for any
+				// file that's only part of the project via the SDK's own implicit item glob (e.g.
+				// Microsoft.NET.Sdk.DefaultItems.props' `<None Include="**">`) rather than an explicit
+				// <Compile>/<None> entry actually written in the .csproj. A plain File.Move sidesteps
+				// that: the glob picks up the new filename on its own, no Include update needed.
+				File.Move(oldFilePath, newFilePath);
+				try {
+					item.FileName = FileName.Create(newFilePath);
+					project.Save();
+				} catch (InvalidOperationException) {
+					// item.FileName's Include write hit the same glob-derived-item restriction -
+					// harmless here since the glob already covers the new physical path.
+				}
+			});
+
+			return JsonSerializer.Serialize(new { success = true, files = GetProjectFilesForTesting(project) });
+		}
+
+		[DevFlowAction("od.solution.add-reference", Description = "Add an assembly reference (e.g. 'System.Xml') to a project as a ReferenceProjectItem and save the project file - the same effect as Solution Explorer's Add Reference")]
+		public static string AddProjectReference(string projectName, string referenceName)
+		{
+			var project = FindProjectByName(projectName);
+			if (project == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No project named '" + projectName + "' in the current solution." });
+
+			WithChangeWatchersDisabled(() => {
+				var item = new ReferenceProjectItem(project, referenceName);
+				project.Items.Add(item);
+				project.Save();
+			});
+
+			return JsonSerializer.Serialize(new {
+				success = true,
+				references = project.GetItemsOfType(ItemType.Reference).Select(i => i.Include).ToArray()
+			});
+		}
+
+		// Our own project.Save()/RenameFile writes make ProjectChangeWatcher think the project file
+		// was changed by an external tool, popping a blocking "Solution was altered externally?"
+		// MessageBox on the (single, shared) UI thread - which then hangs every later DevFlow action
+		// dispatched to that same thread. Suppress the watcher around our own writes so the
+		// in-memory project model (already updated via project.Items.Add/Remove) doesn't get
+		// second-guessed by a reload prompt for a change we made ourselves.
+		static void WithChangeWatchersDisabled(Action action)
+		{
+			ICSharpCode.SharpDevelop.Workbench.FileChangeWatcher.DisableAllChangeWatchers();
+			try {
+				action();
+			} finally {
+				ICSharpCode.SharpDevelop.Workbench.FileChangeWatcher.EnableAllChangeWatchers();
+			}
+		}
+
+		static IProject FindProjectByName(string projectName)
+		{
+			var solution = SD.ProjectService.CurrentSolution;
+			return solution?.Projects.FirstOrDefault(p => string.Equals(p.Name, projectName, StringComparison.OrdinalIgnoreCase));
+		}
+
+		static string[] GetProjectFilesForTesting(IProject project)
+		{
+			return ICSharpCode.SharpDevelop.Services.ProjectDisplayItems.GetProjectDisplayItems(project)
+				.Select(i => i.PhysicalPath)
+				.ToArray();
 		}
 
 		[DevFlowAction("od.nuget.set-local-feed", Description = "Add (and activate) a local folder as the only NuGet package source, so package search/install doesn't need network access")]

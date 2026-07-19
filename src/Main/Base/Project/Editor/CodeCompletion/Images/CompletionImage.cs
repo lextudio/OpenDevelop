@@ -356,15 +356,12 @@ namespace ICSharpCode.SharpDevelop.Editor.CodeCompletion
 			
 			ImageSource image = images[index];
 			if (image == null) {
-				DrawingGroup g = new DrawingGroup();
-				Rect iconRect = new Rect(0, 0, 16, 16);
-				g.Children.Add(new ImageDrawing(this.BaseImage, iconRect));
-				
-				if (accessibilityOverlays[accessibilityIndex] != null)
-					g.Children.Add(new ImageDrawing(accessibilityOverlays[accessibilityIndex], iconRect));
-				
-				image = new DrawingImage(g);
-				image.Freeze();
+				// DrawingGroup/DrawingImage compositing (used here historically) does not
+				// render correctly on the LibreWPF macOS port.  Fall back to the base icon
+				// without overlay decorations so icons always show.  Overlays (accessibility
+				// lock/key and static marker) are secondary visual cues - the base icon
+				// (class, method, field, ...) carries the primary semantic information.
+				image = this.BaseImage;
 				Thread.MemoryBarrier();
 				images[index] = image;
 			}
