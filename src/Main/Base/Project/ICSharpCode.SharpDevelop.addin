@@ -1926,7 +1926,13 @@
 		<MenuItem id = "FindReferences"
 		          label = "${res:SharpDevelop.Refactoring.FindReferencesCommand}"
 		          class = "ICSharpCode.SharpDevelop.Editor.Commands.FindReferencesCommand"/>
-		
+
+		<Condition name="SymbolTypeAtCaret" type="type">
+			<MenuItem id = "ExtractInterface"
+			          label = "${res:SharpDevelop.Refactoring.ExtractInterfaceCommand}"
+			          class = "ICSharpCode.SharpDevelop.Editor.Commands.ExtractInterfaceCommand"/>
+		</Condition>
+
 		<MenuItem id="DeclaringTypeContextMenu" type="Builder" class="ICSharpCode.SharpDevelop.Editor.Commands.DeclaringTypeSubMenuBuilder" />
 	</Path>
 	

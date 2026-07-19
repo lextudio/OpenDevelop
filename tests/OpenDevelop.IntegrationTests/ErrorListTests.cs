@@ -38,17 +38,19 @@ public sealed class ErrorListTests
         Assert.Equal(0, errorList.GetProperty("errorCount").GetInt32());
     }
 
-    // Documents an actual gap this test uncovered: MinimalMSBuildEngine (a real `dotnet build`
-    // child process, per BuildTests.cs) detects build failure only via a non-zero exit code - it
-    // does not parse the process's own console output into individual per-file/per-line compiler
-    // diagnostics. So BOTH od.build-solution's own BuildResults.Errors *and* the Error List pad
-    // (fed separately via UIBuildFeedbackSink.ReportError -> TaskService.Add) end up with exactly
-    // one generic synthetic entry - "Build failed (exit code non-zero); see build output for
-    // details.", pointing at the .csproj with Line=-1/0 - regardless of how many or which real
-    // compile errors caused the failure. The individual compiler errors are only visible as raw
-    // text via od.output-text (see BuildTests.cs' OutputPadCapturesRealBuildLog), not structured.
+    // MinimalMSBuildEngine (a real `dotnet build` child process, per BuildTests.cs) parses its own
+    // stdout/stderr for standard MSBuild diagnostic lines via a regex (DiagnosticLine in
+    // MinimalMSBuildEngine.cs), reporting one BuildError per match with real file/line/column - and
+    // only falls back to a single generic "Build failed (exit code non-zero)" entry if nothing
+    // matched. That regex used to only handle the classic 2-number "(line,column):" shape; this
+    // repo's SDK/Roslyn version instead emits a 4-number span shape - "(line,col,endLine,endCol):" -
+    // for CS1002 and similar diagnostics, which silently fell through the old regex, always hitting
+    // the generic fallback. Fixed by making the trailing ",endLine,endColumn" group optional. This
+    // test locks in the real per-line diagnostics now reaching both od.build-solution's own
+    // BuildResults.Errors and the Error List pad (TaskService, a separate code path - see
+    // UIBuildFeedbackSink.ReportError).
     [Fact]
-    public async Task ErrorList_OnBuildFailure_ShowsGenericSummaryTaskNotPerLineDiagnostics()
+    public async Task ErrorList_OnBuildFailure_CapturesRealPerLineCompileErrors()
     {
         var brokenFilePath = Path.Combine(SampleAppDirectory, "ScratchBroken.cs");
         try
@@ -65,17 +67,25 @@ public sealed class ErrorListTests
 
             var buildResult = await _app.InvokeAsync("od.build-solution");
             Assert.False(buildResult.GetProperty("errorCount").GetInt32() == 0, "Expected the broken scratch file to produce build errors");
-            // Even od.build-solution's own diagnostics are just the one generic summary, not
-            // per-line detail - the actual compile errors only ever reach od.output-text as text.
-            Assert.Single(buildResult.GetProperty("diagnostics").EnumerateArray());
 
+            // od.build-solution's own diagnostics now have real per-line detail, not just the one
+            // generic summary.
+            var buildDiagnostics = buildResult.GetProperty("diagnostics").EnumerateArray().ToList();
+            Assert.Contains(buildDiagnostics, d =>
+                (d.GetProperty("fileName").GetString() ?? "").Replace('\\', '/').EndsWith("ScratchBroken.cs")
+                && d.GetProperty("line").GetInt32() == 3
+                && d.GetProperty("errorCode").GetString() == "CS1002");
+
+            // ...and so does the separately-populated Error List pad.
             var errorList = await _app.InvokeAsync("od.error-list");
-            Assert.Equal(1, errorList.GetProperty("errorCount").GetInt32());
+            var tasks = errorList.GetProperty("tasks").EnumerateArray().ToList();
+            var brokenFileTasks = tasks.Where(t =>
+                (t.GetProperty("file").GetString() ?? "").Replace('\\', '/').EndsWith("ScratchBroken.cs")).ToList();
 
-            var task = errorList.GetProperty("tasks").EnumerateArray().Single();
-            Assert.Equal("Error", task.GetProperty("type").GetString());
-            Assert.EndsWith("SampleApp.csproj", task.GetProperty("file").GetString()!.Replace('\\', '/'));
-            Assert.Contains("Build failed", task.GetProperty("description").GetString());
+            Assert.NotEmpty(brokenFileTasks);
+            Assert.Contains(brokenFileTasks, t => t.GetProperty("type").GetString() == "Error");
+            Assert.Contains(brokenFileTasks, t => t.GetProperty("line").GetInt32() == 3);
+            Assert.Contains(brokenFileTasks, t => !string.IsNullOrWhiteSpace(t.GetProperty("description").GetString()));
         }
         finally
         {

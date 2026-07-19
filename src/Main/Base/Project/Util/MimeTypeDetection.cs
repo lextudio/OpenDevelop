@@ -153,17 +153,33 @@ namespace ICSharpCode.SharpDevelop
 		
 		static unsafe string FindMimeType(byte[] buffer, int offset, int length)
 		{
+			// FindMimeFromData P/Invokes urlmon.dll, a Windows-only COM component - not available
+			// on macOS/Linux (EntryPointNotFoundException there). Content that reaches this method
+			// already failed the UTF-8/UTF-16 heuristics above, so fall back to the standard
+			// git-style binary-vs-text heuristic: a NUL byte anywhere in the sample means binary.
+			if (!OperatingSystem.IsWindows())
+				return HasNulByte(buffer, offset, length) ? Binary : Text;
+
 			fixed (byte *b = &buffer[offset]) {
 				const int FMFD_ENABLEMIMESNIFFING = 0x00000002;
 				IntPtr mimeout;
 				int result = FindMimeFromData(IntPtr.Zero, null, b, length, null, FMFD_ENABLEMIMESNIFFING, out mimeout, 0);
-				
+
 				if (result != 0)
 					throw Marshal.GetExceptionForHR(result);
 				string mime = Marshal.PtrToStringUni(mimeout);
 				Marshal.FreeCoTaskMem(mimeout);
 				return mime;
 			}
+		}
+
+		static bool HasNulByte(byte[] buffer, int offset, int length)
+		{
+			for (int i = offset; i < offset + length; i++) {
+				if (buffer[i] == 0)
+					return true;
+			}
+			return false;
 		}
 
 		public static string FindMimeType(byte[] buffer)

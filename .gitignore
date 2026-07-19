@@ -34,3 +34,4 @@ tests/fixtures/SampleTestProject/OpenCover/
 __Instrumented/
 tests/fixtures/LocalNuGetFeed/
 *.app/
+.od/

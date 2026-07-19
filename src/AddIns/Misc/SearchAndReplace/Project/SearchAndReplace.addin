@@ -49,4 +49,11 @@
 			id="SearchAndReplace"
 			class="SearchAndReplace.SearchAndReplaceTextEditorExtension" />
 	</Path>
+
+	<!-- Autostart so DevFlow can discover od.search.* actions without depending on the Find/Replace
+	     menu items being clicked first -->
+	<Path name = "/SharpDevelop/Autostart">
+		<Class id    = "SearchAndReplaceRegisterDevFlowActionsCommand"
+		       class = "SearchAndReplace.RegisterDevFlowActionsCommand"/>
+	</Path>
 </AddIn>

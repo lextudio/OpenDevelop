@@ -431,7 +431,7 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 					if (newDocument?.FilePath == null)
 						continue;
 					var newText = (await newDocument.GetTextAsync(cancellationToken).ConfigureAwait(true)).ToString();
-					ApplyRenamedText(newDocument.FilePath, newText);
+					OpenAndReplaceText(newDocument.FilePath, newText);
 				}
 			}
 		}
@@ -439,10 +439,11 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 		/// <summary>
 		/// Opens the file (bringing it into view if it wasn't already) and replaces its text through
 		/// the editor rather than writing straight to disk - the file is left dirty afterwards, same
-		/// as any other in-editor edit, so a multi-file rename surfaces every touched file for the
-		/// user to review/undo/save rather than silently rewriting files they never opened.
+		/// as any other in-editor edit, so a multi-file refactoring surfaces every touched file for
+		/// the user to review/undo/save rather than silently rewriting files they never opened.
+		/// Shared by <see cref="RenameSymbolAsync"/> and <see cref="ExtractInterfaceAsync"/>.
 		/// </summary>
-		static void ApplyRenamedText(string filePath, string newText)
+		public static void OpenAndReplaceText(string filePath, string newText)
 		{
 			var viewContent = SD.FileService.OpenFile(FileName.Create(filePath));
 			var editor = viewContent?.GetService<ITextEditor>();
@@ -454,6 +455,115 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 				// No text editor available for this file (e.g. a non-text view) - nothing to leave dirty.
 				File.WriteAllText(filePath, newText);
 			}
+		}
+
+		/// <summary>
+		/// Members eligible for interface extraction: public instance methods/properties/events,
+		/// excluding constructors, operators, and accessors (matching the pre-2011 NRefactory-era
+		/// ExtractInterfaceDialog's own filter - see doc/technotes/csharp-roslyn.md).
+		/// </summary>
+		public static IReadOnlyList<ISymbol> GetExtractInterfaceCandidateMembers(INamedTypeSymbol type)
+		{
+			return type.GetMembers()
+				.Where(m => m.DeclaredAccessibility == Accessibility.Public && !m.IsStatic)
+				.Where(m => (m is IMethodSymbol method && method.MethodKind == MethodKind.Ordinary)
+					|| m is IPropertySymbol || m is IEventSymbol)
+				.ToArray();
+		}
+
+		/// <summary>
+		/// Generates a new interface file containing <paramref name="chosenMembers"/>' signatures and,
+		/// if requested, adds it to <paramref name="classSymbol"/>'s base list - the modern replacement
+		/// for the pre-2011 NRefactory-era ExtractInterfaceDialog/ExtractInterfaceOptions engine (see
+		/// doc/technotes/csharp-roslyn.md; that engine predates this project's Roslyn migration
+		/// entirely and was never revived across two separate rewrites). C# only for now.
+		/// </summary>
+		public static async Task<string> ExtractInterfaceAsync(
+			INamedTypeSymbol classSymbol, string interfaceName, IReadOnlyList<ISymbol> chosenMembers,
+			bool addInterfaceToClass, string newFilePath, CancellationToken cancellationToken = default)
+		{
+			var classSyntaxRef = classSymbol.DeclaringSyntaxReferences.First();
+			var classNode = (CS.Syntax.ClassDeclarationSyntax)await classSyntaxRef.GetSyntaxAsync(cancellationToken).ConfigureAwait(true);
+			var root = await classSyntaxRef.SyntaxTree.GetRootAsync(cancellationToken).ConfigureAwait(true) as CS.Syntax.CompilationUnitSyntax;
+
+			var usings = root?.Usings.Select(u => u.ToString()) ?? Enumerable.Empty<string>();
+			var interfaceText = BuildInterfaceSourceText(usings, classSymbol.ContainingNamespace, interfaceName, chosenMembers);
+			File.WriteAllText(newFilePath, interfaceText);
+			OpenAndReplaceText(newFilePath, interfaceText);
+
+			if (addInterfaceToClass) {
+				var newBaseType = CS.SyntaxFactory.SimpleBaseType(CS.SyntaxFactory.ParseTypeName(interfaceName));
+				var newBaseList = classNode.BaseList == null
+					? CS.SyntaxFactory.BaseList(CS.SyntaxFactory.SingletonSeparatedList<CS.Syntax.BaseTypeSyntax>(newBaseType))
+					: classNode.BaseList.AddTypes(newBaseType);
+				var newClassNode = classNode.WithBaseList(newBaseList).NormalizeWhitespace();
+				var newRoot = root!.ReplaceNode(classNode, newClassNode);
+				OpenAndReplaceText(classSyntaxRef.SyntaxTree.FilePath, newRoot.ToFullString());
+			}
+
+			return newFilePath;
+		}
+
+		static string BuildInterfaceSourceText(
+			IEnumerable<string> usings, INamespaceSymbol containingNamespace, string interfaceName, IReadOnlyList<ISymbol> members)
+		{
+			var sb = new System.Text.StringBuilder();
+			foreach (var u in usings)
+				sb.AppendLine(u);
+			if (usings.Any())
+				sb.AppendLine();
+
+			bool hasNamespace = containingNamespace != null && !containingNamespace.IsGlobalNamespace;
+			string indent = hasNamespace ? "\t" : "";
+			if (hasNamespace) {
+				sb.Append("namespace ").AppendLine(containingNamespace.ToDisplayString());
+				sb.AppendLine("{");
+			}
+
+			sb.Append(indent).Append("public interface ").AppendLine(interfaceName);
+			sb.Append(indent).AppendLine("{");
+			foreach (var member in members) {
+				sb.Append(indent).Append('\t').AppendLine(FormatInterfaceMember(member));
+			}
+			sb.Append(indent).AppendLine("}");
+
+			if (hasNamespace)
+				sb.AppendLine("}");
+
+			return sb.ToString();
+		}
+
+		static string FormatInterfaceMember(ISymbol member)
+		{
+			switch (member) {
+				case IMethodSymbol method: {
+					var typeParams = method.TypeParameters.Length == 0
+						? ""
+						: "<" + string.Join(", ", method.TypeParameters.Select(t => t.Name)) + ">";
+					var parameters = string.Join(", ", method.Parameters.Select(FormatParameter));
+					return $"{method.ReturnType.ToDisplayString()} {method.Name}{typeParams}({parameters});";
+				}
+				case IPropertySymbol property: {
+					var accessors = property.GetMethod != null ? "get; " : "";
+					accessors += property.SetMethod != null ? "set; " : "";
+					return $"{property.Type.ToDisplayString()} {property.Name} {{ {accessors}}}";
+				}
+				case IEventSymbol evt:
+					return $"event {evt.Type.ToDisplayString()} {evt.Name};";
+				default:
+					return "// unsupported member kind: " + member.Name;
+			}
+		}
+
+		static string FormatParameter(IParameterSymbol parameter)
+		{
+			var modifier = parameter.RefKind switch {
+				RefKind.Ref => "ref ",
+				RefKind.Out => "out ",
+				RefKind.In => "in ",
+				_ => parameter.IsParams ? "params " : "",
+			};
+			return $"{modifier}{parameter.Type.ToDisplayString()} {parameter.Name}";
 		}
 	}
 }

@@ -174,6 +174,31 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			}
 		}
 
+		[DevFlowAction("od.extract-interface", Description = "Extracts an interface from the class at file:line/column via RoslynWorkspaceHelper.ExtractInterfaceAsync (bypasses ExtractInterfaceDialog, which is modal). memberNames is a comma-separated allowlist of member names to include; pass an empty string to include every eligible public instance member")]
+		public static async Task<string> ExtractInterface(string fileName, int line, int column, string interfaceName, string newFilePath, bool addInterfaceToClass, string memberNames = "")
+		{
+			try {
+				var location = new ICSharpCode.AvalonEdit.Document.TextLocation(line, column);
+				var document = ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.FindDocument(fileName);
+				var symbol = document != null ? ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.GetSymbolAt(document, location) : null;
+				var classSymbol = symbol as Microsoft.CodeAnalysis.INamedTypeSymbol;
+				if (classSymbol == null || classSymbol.TypeKind != Microsoft.CodeAnalysis.TypeKind.Class)
+					return JsonSerializer.Serialize(new { success = false, error = "no class symbol at location" });
+
+				var candidates = ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.GetExtractInterfaceCandidateMembers(classSymbol);
+				var allowlist = memberNames.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+				var chosen = allowlist.Length == 0 ? candidates : candidates.Where(m => allowlist.Contains(m.Name)).ToArray();
+				if (chosen.Count == 0)
+					return JsonSerializer.Serialize(new { success = false, error = "no members matched", available = candidates.Select(m => m.Name).ToArray() });
+
+				var path = await ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.ExtractInterfaceAsync(
+					classSymbol, interfaceName, chosen, addInterfaceToClass, newFilePath);
+				return JsonSerializer.Serialize(new { success = true, filePath = path, members = chosen.Select(m => m.Name).ToArray() });
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
+			}
+		}
+
 		[DevFlowAction("od.file.revert-all-dirty", Description = "Reverts every open dirty file to its on-disk content, discarding unsaved changes without prompting - lets a test that intentionally leaves files dirty (e.g. od.rename-symbol) clean up afterwards so a later od.open-solution in the same app session doesn't hit a blocking 'save changes?' dialog")]
 		public static string RevertAllDirtyFiles()
 		{

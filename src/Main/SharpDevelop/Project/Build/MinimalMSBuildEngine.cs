@@ -57,8 +57,13 @@ namespace ICSharpCode.SharpDevelop.Project
 		// Standard MSBuild diagnostic line shape:
 		//   /path/File.cs(12,34): error CS1002: ; expected [/path/Project.csproj]
 		//   /path/File.cs(12,34): warning CS0168: The variable 'x' is declared but never used [/path/Project.csproj]
+		// Roslyn also emits a 4-number span variant for multi-position diagnostics -
+		// (startLine,startColumn,endLine,endColumn) - e.g.:
+		//   /path/File.cs(3,50,3,56): error CS1002: ; expected [/path/Project.csproj]
+		// The trailing ",endLine,endColumn)" group is optional so both shapes match; only the
+		// start position is reported (matching the plain 2-number shape's granularity).
 		static readonly Regex DiagnosticLine = new Regex(
-			@"^(?<file>.*?)\((?<line>\d+),(?<column>\d+)\):\s*(?<severity>error|warning)\s+(?<code>[A-Za-z0-9]+)\s*:\s*(?<text>.*?)(\s*\[.*\])?$",
+			@"^(?<file>.*?)\((?<line>\d+),(?<column>\d+)(?:,\d+,\d+)?\):\s*(?<severity>error|warning)\s+(?<code>[A-Za-z0-9]+)\s*:\s*(?<text>.*?)(\s*\[.*\])?$",
 			RegexOptions.Compiled);
 
 		// Which dotnet host/SDK to run builds with is no longer hardcoded here - it's resolved
