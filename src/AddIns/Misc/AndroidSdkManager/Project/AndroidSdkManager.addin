@@ -1,0 +1,25 @@
+<AddIn name="Android SDK Manager"
+       author="OpenDevelop"
+       description="Standalone tool window for viewing, installing and removing Android SDK platforms, tools and system images via the Android command-line sdkmanager."
+       addInManagerHidden="preinstalled">
+
+	<Manifest>
+		<Identity name="ICSharpCode.AndroidSdkManager" version="@AndroidSdkManager.dll" />
+	</Manifest>
+
+	<Runtime>
+		<Import assembly="AndroidSdkManager.dll"/>
+	</Runtime>
+
+	<Path name="/SharpDevelop/Workbench/Tools">
+		<MenuItem id="ShowAndroidSdkManager"
+		          label="Android SDK Manager..."
+		          class="ICSharpCode.AndroidSdkManager.ShowAndroidSdkManagerCommand"/>
+	</Path>
+
+	<!-- Autostart so DevFlow can discover od.androidsdk.* actions without a menu click first -->
+	<Path name="/SharpDevelop/Autostart">
+		<Class id="AndroidSdkManagerRegisterDevFlowActionsCommand"
+		       class="ICSharpCode.AndroidSdkManager.RegisterDevFlowActionsCommand"/>
+	</Path>
+</AddIn>
