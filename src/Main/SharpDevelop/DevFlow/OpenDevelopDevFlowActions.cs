@@ -158,6 +158,39 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			}
 		}
 
+		[DevFlowAction("od.rename-symbol", Description = "Renames the symbol at file:line/column across the whole solution via RoslynWorkspaceHelper.RenameSymbolAsync (bypasses RenameSymbolDialog, which the WPF-embedded DevFlow agent can't drive since it's modal - same reasoning as od.open-solution bypassing the native Open dialog)")]
+		public static async Task<string> RenameSymbol(string fileName, int line, int column, string newName)
+		{
+			try {
+				var location = new ICSharpCode.AvalonEdit.Document.TextLocation(line, column);
+				var document = ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.FindDocument(fileName);
+				var symbol = document != null ? ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.GetSymbolAt(document, location) : null;
+				if (symbol == null)
+					return JsonSerializer.Serialize(new { success = false, error = "no symbol at location" });
+				await ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.RenameSymbolAsync(symbol, newName);
+				return JsonSerializer.Serialize(new { success = true, oldName = symbol.Name });
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
+			}
+		}
+
+		[DevFlowAction("od.file.revert-all-dirty", Description = "Reverts every open dirty file to its on-disk content, discarding unsaved changes without prompting - lets a test that intentionally leaves files dirty (e.g. od.rename-symbol) clean up afterwards so a later od.open-solution in the same app session doesn't hit a blocking 'save changes?' dialog")]
+		public static string RevertAllDirtyFiles()
+		{
+			try {
+				var reverted = new System.Collections.Generic.List<string>();
+				foreach (var openedFile in SD.FileService.OpenedFiles.ToArray()) {
+					if (!openedFile.IsDirty)
+						continue;
+					openedFile.ReloadFromDisk();
+					reverted.Add(openedFile.FileName.ToString());
+				}
+				return JsonSerializer.Serialize(new { success = true, reverted = reverted.ToArray() });
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
+			}
+		}
+
 		[DevFlowAction("od.build-solution", Description = "Build the current solution (or a single project by name) and return error/warning counts plus the individual diagnostics")]
 		public static async Task<string> BuildSolution(string projectName = null)
 		{
