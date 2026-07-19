@@ -154,7 +154,9 @@ namespace ICSharpCode.SharpDevelop.Gui
 		void ProjectServiceEndBuild(object sender, EventArgs e)
 		{
 			if (TaskService.TaskCount > 0 && ShowAfterBuild) {
-				SD.Workbench.GetPad(typeof(ErrorListPad)).BringPadToFront();
+				SD.MainThread.InvokeIfRequired(() => {
+					SD.Workbench.GetPad(typeof(ErrorListPad)).BringPadToFront();
+				});
 			}
 		}
 		
