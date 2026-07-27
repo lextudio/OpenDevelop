@@ -65,6 +65,14 @@ namespace ICSharpCode.SharpDevelop.Editor.Dialogs
 			get;
 			set;
 		}
+
+		/// <summary>
+		/// All default to false, matching Visual Studio's own Rename dialog - see
+		/// RoslynWorkspaceHelper.RenameSymbolAsync for why these are opt-in.
+		/// </summary>
+		public bool RenameOverloads { get; set; }
+		public bool RenameInStrings { get; set; }
+		public bool RenameInComments { get; set; }
 		
 		public string NewSymbolName
 		{

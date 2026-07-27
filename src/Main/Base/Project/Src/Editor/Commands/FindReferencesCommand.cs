@@ -134,7 +134,8 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 				return;
 
 			try {
-				await RoslynWorkspaceHelper.RenameSymbolAsync(symbol, dialog.NewSymbolName);
+				await RoslynWorkspaceHelper.RenameSymbolAsync(
+					symbol, dialog.NewSymbolName, dialog.RenameOverloads, dialog.RenameInStrings, dialog.RenameInComments);
 			} catch (Exception ex) {
 				SD.MessageService.ShowException(ex, "Error renaming symbol.");
 			}

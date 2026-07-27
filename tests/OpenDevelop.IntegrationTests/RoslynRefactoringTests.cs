@@ -120,4 +120,34 @@ public sealed class RoslynRefactoringTests : IAsyncLifetime
         Assert.EndsWith("WidgetService.cs", serviceView.GetProperty("fileName").GetString()!.Replace('\\', '/'));
         Assert.Contains("IEnumerable<Gadget>", serviceView.GetProperty("textPreview").GetString());
     }
+
+    [Fact]
+    public async Task ExtractInterface_GeneratesInterfaceAndAddsToClassWithoutTouchingDisk()
+    {
+        Assert.True((await _app.InvokeAsync("od.open-solution", _solutionPath)).GetProperty("success").GetBoolean());
+        Assert.True((await _app.InvokeAsync("od.open-file", _widgetPath)).GetProperty("opened").GetBoolean());
+
+        var newInterfacePath = Path.Combine(Path.GetDirectoryName(_widgetPath)!, "IWidget.cs");
+
+        // "Widget" on the class declaration line, same location as the other two tests above.
+        var result = await _app.InvokeAsync("od.extract-interface", _widgetPath, 3, 27, "IWidget", newInterfacePath, true, "");
+        Assert.True(result.GetProperty("success").GetBoolean(), result.ToString());
+
+        var members = result.GetProperty("members").EnumerateArray().Select(m => m.GetString()).ToList();
+        Assert.Contains("Name", members);
+
+        Assert.True(File.Exists(newInterfacePath), "Extract Interface should have written the new interface file to disk");
+        var interfaceText = File.ReadAllText(newInterfacePath);
+        Assert.Contains("public interface IWidget", interfaceText);
+        Assert.Contains("string Name { get; set; }", interfaceText);
+
+        // The class edit (adding ": IWidget") goes through the live editor and is left dirty, same
+        // convention as Rename - the on-disk class file must stay untouched until the user saves.
+        Assert.True((await _app.InvokeAsync("od.open-file", _widgetPath)).GetProperty("opened").GetBoolean());
+        var classView = await _app.InvokeAsync("od.active-view");
+        Assert.Contains("class Widget : IWidget", classView.GetProperty("textPreview").GetString());
+
+        var onDiskClassText = File.ReadAllText(_widgetPath);
+        Assert.DoesNotContain(": IWidget", onDiskClassText);
+    }
 }

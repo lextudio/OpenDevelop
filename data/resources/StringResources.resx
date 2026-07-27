@@ -6617,11 +6617,23 @@ Removed the end part of the original message ", reason '${Message}'" since this 
     <value>Should SharpDevelop rename the property '{0}' to '{1}'?</value>
     <comment>displayed when a field that has a property is renamed</comment>
   </data>
+  <data name="SharpDevelop.Refactoring.RenameFile" xml:space="preserve">
+    <value>Rename file</value>
+  </data>
   <data name="SharpDevelop.Refactoring.RenameFileTo" xml:space="preserve">
     <value>Rename file to '${FileName}'</value>
   </data>
+  <data name="SharpDevelop.Refactoring.RenameIncludeComments" xml:space="preserve">
+    <value>Include comments</value>
+  </data>
+  <data name="SharpDevelop.Refactoring.RenameIncludeStrings" xml:space="preserve">
+    <value>Include strings</value>
+  </data>
   <data name="SharpDevelop.Refactoring.RenameMemberText" xml:space="preserve">
     <value>Enter the new name of the member</value>
+  </data>
+  <data name="SharpDevelop.Refactoring.RenameOverloads" xml:space="preserve">
+    <value>Rename overloads</value>
   </data>
   <data name="SharpDevelop.SideBar.AsciiTable" xml:space="preserve">
     <value>ASCII Table</value>

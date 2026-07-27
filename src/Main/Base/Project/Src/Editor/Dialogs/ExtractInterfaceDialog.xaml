@@ -46,6 +46,10 @@
 		          Content="{sd:Localize Dialog.Refactoring.ExtractInterface.AddInterfaceToClass}"
 		          IsChecked="{Binding AddInterfaceToClass, Mode=TwoWay}" Margin="0,0,0,4" />
 
+		<CheckBox Grid.Row="7" Name="includeCommentsCheckBox"
+		          Content="{sd:Localize Dialog.Refactoring.ExtractInterface.IncludeComments}"
+		          IsChecked="{Binding IncludeComments, Mode=TwoWay}" Margin="0,0,0,4" />
+
 		<Grid Grid.Row="8" Margin="0,8,0,0">
 			<Grid.ColumnDefinitions>
 				<ColumnDefinition Width="*" />

@@ -7,10 +7,11 @@ using Hornung.ResourceToolkit.ResourceFileContent;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
+using ICSharpCode.SharpDevelop.Editor.Search;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;
-using ICSharpCode.SharpDevelop.Refactoring;
 using ICSharpCode.SharpDevelop.Workbench;
+using TextLocation = ICSharpCode.AvalonEdit.Document.TextLocation;
 
 namespace Hornung.ResourceToolkit.Refactoring
 {
@@ -19,6 +20,18 @@ namespace Hornung.ResourceToolkit.Refactoring
         public static List<Reference> FindReferences(string resourceFileName, string key, IProgressMonitor monitor)
         {
             return FindReferences(new SpecificResourceReferenceFinder(resourceFileName, key), monitor, SearchScope.WholeSolution);
+        }
+
+        /// <summary>
+        /// Finds references to a resource key and shows them in the Search Results pad - the "Find
+        /// References" context menu command for resource keys (Commands/TextEditorContextMenuBuilder.cs)
+        /// used to call the now-deleted NRefactory-era FindReferencesAndRenameHelper with a hardcoded
+        /// null entity instead of this, so clicking it never did anything.
+        /// </summary>
+        public static void FindReferencesAndShowInSearchPad(string resourceFileName, string key, IProgressMonitor monitor)
+        {
+            var references = FindReferences(resourceFileName, key, monitor);
+            ShowReferencesInSearchPad(references, key);
         }
 
         public static List<Reference> FindReferences(IResourceReferenceFinder finder, IProgressMonitor monitor, SearchScope scope)
@@ -87,6 +100,46 @@ namespace Hornung.ResourceToolkit.Refactoring
             }
 
             return references;
+        }
+
+        /// <summary>
+        /// Shows resource-key <paramref name="references"/> in the Search Results pad - the same pad
+        /// ICSharpCode.SharpDevelop.Editor.Commands.FindReferencesCommand uses for C#/VB symbol
+        /// references. Replaces a call to the now-deleted NRefactory-era FindReferencesAndRenameHelper
+        /// (previously always passed a hardcoded null entity, so it never actually displayed anything -
+        /// see doc/technotes/csharp-roslyn.md).
+        /// </summary>
+        static void ShowReferencesInSearchPad(List<Reference> references, string key)
+        {
+            if (references == null)
+                return;
+
+            var matches = references.Select(ToSearchResultMatch).Where(m => m != null).ToArray();
+            string title = StringParser.Parse("${res:SharpDevelop.Refactoring.FindReferencesCommand}") + " '" + key + "'";
+            SearchResultsPad.Instance.ShowSearchResults(title, matches);
+            SearchResultsPad.Instance.BringToFront();
+        }
+
+        static SearchResultMatch ToSearchResultMatch(Reference reference)
+        {
+            string text;
+            try {
+                text = File.ReadAllText(reference.FileName);
+            } catch {
+                return null;
+            }
+            if (reference.Offset < 0 || reference.Offset + reference.Length > text.Length)
+                return null;
+
+            var document = new ICSharpCode.AvalonEdit.Document.TextDocument(text);
+            var start = document.GetLocation(reference.Offset);
+            var end = document.GetLocation(reference.Offset + reference.Length);
+
+            return new SearchResultMatch(
+                ICSharpCode.Core.FileName.Create(reference.FileName),
+                start, end,
+                reference.Offset, reference.Length,
+                displayText: null, defaultTextColor: null);
         }
 
         public static List<Reference> FindAllReferences(IProgressMonitor monitor, SearchScope scope)
@@ -198,7 +251,7 @@ namespace Hornung.ResourceToolkit.Refactoring
                 return;
             }
 
-            FindReferencesAndRenameHelper.RunFindReferences((ICSharpCode.TypeSystem.IEntity)null);
+            ShowReferencesInSearchPad(references, rrr.Key);
 
             foreach (KeyValuePair<string, IResourceFileContent> entry in ResourceFileContentRegistry.GetLocalizedContents(rrr.FileName)) {
                 try {

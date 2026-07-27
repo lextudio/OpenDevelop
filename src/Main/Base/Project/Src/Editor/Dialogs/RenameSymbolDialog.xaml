@@ -22,15 +22,18 @@
 			<RowDefinition Height="Auto" />
 			<RowDefinition Height="Auto" />
 			<RowDefinition Height="Auto" />
+			<RowDefinition Height="Auto" />
+			<RowDefinition Height="Auto" />
+			<RowDefinition Height="Auto" />
 		</Grid.RowDefinitions>
-		
+
 		<TextBlock
 			Text="{sd:Localize SharpDevelop.Refactoring.RenameMemberText}"
 			Grid.Row="0"
 			HorizontalAlignment="Stretch"
 			VerticalAlignment="Top"
 			Margin="10,5" />
-		
+
 		<TextBox
 			Name="symbolNameTextBox"
 			Grid.Row="1"
@@ -39,7 +42,7 @@
 			Margin="10,5"
 			Text="{Binding Path=NewSymbolName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
 			Grid.ColumnSpan="3" />
-		
+
 		<TextBlock
 			Name="invalidSymbolWarningTextBlock"
 			Grid.Row="2"
@@ -49,8 +52,29 @@
 			Text="{sd:Localize SharpDevelop.Refactoring.InvalidName}"
 			Visibility="{Binding Path=IsError, Converter={StaticResource BoolToVisibility}}"
 			Foreground="Red" />
-		
-		<Grid Grid.Row="3">
+
+		<CheckBox
+			Name="renameOverloadsCheckBox"
+			Content="{sd:Localize SharpDevelop.Refactoring.RenameOverloads}"
+			IsChecked="{Binding Path=RenameOverloads, Mode=TwoWay}"
+			Grid.Row="3"
+			Margin="10,2" />
+
+		<CheckBox
+			Name="renameInCommentsCheckBox"
+			Content="{sd:Localize SharpDevelop.Refactoring.RenameIncludeComments}"
+			IsChecked="{Binding Path=RenameInComments, Mode=TwoWay}"
+			Grid.Row="4"
+			Margin="10,2" />
+
+		<CheckBox
+			Name="renameInStringsCheckBox"
+			Content="{sd:Localize SharpDevelop.Refactoring.RenameIncludeStrings}"
+			IsChecked="{Binding Path=RenameInStrings, Mode=TwoWay}"
+			Grid.Row="5"
+			Margin="10,2" />
+
+		<Grid Grid.Row="6">
 			<Grid.ColumnDefinitions>
 				<ColumnDefinition Width="*" />
 				<ColumnDefinition Width="Auto" />

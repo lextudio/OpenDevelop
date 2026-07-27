@@ -412,17 +412,50 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 		/// replacement for the deleted NRefactory-era FindReferenceService.RenameSymbol - and writes
 		/// every changed document back out: to the live editor buffer (if the file is currently
 		/// open, so the user sees the change immediately and it participates in normal undo/save),
-		/// or straight to disk otherwise. Overload/string/comment renaming and file renaming are all
-		/// left off; this only touches identifier references Roslyn can prove are the same symbol.
+		/// or straight to disk otherwise. <paramref name="renameOverloads"/>/<paramref name="renameInStrings"/>/
+		/// <paramref name="renameInComments"/> all default to false, matching Visual Studio's own Rename
+		/// dialog defaults - renaming inside string literals/comments is a text match, not something
+		/// Roslyn can prove is the same symbol, so it's opt-in.
+		///
+		/// <paramref name="renameFile"/> only takes effect for a non-partial named type whose single
+		/// declaring file's name (without extension) currently matches the symbol's own name - the
+		/// same "does the file look like it's meant to track the type" heuristic Visual Studio uses to
+		/// decide whether to even offer a file rename. Deliberately NOT plumbed through Renamer's own
+		/// SymbolRenameOptions.RenameFile: that flag only tells the Renamer to prefer certain reference
+		/// text when a file is renamed elsewhere, it does not perform a rename itself - the actual
+		/// physical rename has to go through SD's own <see cref="SD.FileService.RenameFile"/> (which
+		/// handles re-pointing an already-open editor to the new path) plus updating the owning
+		/// project's FileProjectItem for non-SDK-style projects (SDK-style projects re-discover the
+		/// renamed file automatically via their implicit glob, same as a newly added file).
 		/// </summary>
-		public static async Task RenameSymbolAsync(ISymbol symbol, string newName, CancellationToken cancellationToken = default)
+		public static async Task RenameSymbolAsync(
+			ISymbol symbol, string newName, bool renameOverloads = false, bool renameInStrings = false,
+			bool renameInComments = false, bool renameFile = false, CancellationToken cancellationToken = default)
 		{
+			string oldFilePath = null;
+			string newFilePath = null;
+			if (renameFile && symbol is INamedTypeSymbol typeSymbol && typeSymbol.DeclaringSyntaxReferences.Length == 1) {
+				var declaringPath = typeSymbol.DeclaringSyntaxReferences[0].SyntaxTree.FilePath;
+				if (!string.IsNullOrEmpty(declaringPath)
+					&& string.Equals(Path.GetFileNameWithoutExtension(declaringPath), symbol.Name, StringComparison.Ordinal)) {
+					oldFilePath = declaringPath;
+					newFilePath = Path.Combine(Path.GetDirectoryName(declaringPath)!, newName + Path.GetExtension(declaringPath));
+				}
+			}
+
 			var oldSolution = GetSolution();
 			var options = new Microsoft.CodeAnalysis.Rename.SymbolRenameOptions(
-				RenameOverloads: false, RenameInStrings: false, RenameInComments: false, RenameFile: false);
+				RenameOverloads: renameOverloads, RenameInStrings: renameInStrings, RenameInComments: renameInComments, RenameFile: false);
 			var newSolution = await Microsoft.CodeAnalysis.Rename.Renamer
 				.RenameSymbolAsync(oldSolution, symbol, options, newName, cancellationToken)
 				.ConfigureAwait(true);
+
+			// Physically rename the file before writing any new content to it - at this point the
+			// file (if open) is not yet dirty, so RenameFile's already-open-editor handling doesn't
+			// have to contend with unsaved changes. The renamed identifier text is written afterwards,
+			// once the file already lives at its new path.
+			if (oldFilePath != null)
+				RenameProjectFile(oldFilePath, newFilePath);
 
 			var solutionChanges = newSolution.GetChanges(oldSolution);
 			foreach (var projectChanges in solutionChanges.GetProjectChanges()) {
@@ -431,7 +464,26 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 					if (newDocument?.FilePath == null)
 						continue;
 					var newText = (await newDocument.GetTextAsync(cancellationToken).ConfigureAwait(true)).ToString();
-					OpenAndReplaceText(newDocument.FilePath, newText);
+					var targetPath = oldFilePath != null && string.Equals(newDocument.FilePath, oldFilePath, StringComparison.OrdinalIgnoreCase)
+						? newFilePath
+						: newDocument.FilePath;
+					OpenAndReplaceText(targetPath, newText);
+				}
+			}
+		}
+
+		static void RenameProjectFile(string oldPath, string newPath)
+		{
+			if (!SD.FileService.RenameFile(oldPath, newPath, isDirectory: false))
+				throw new IOException($"Failed to rename '{oldPath}' to '{newPath}'.");
+
+			if (SD.ProjectService.FindProjectContainingFile(FileName.Create(newPath)) is MSBuildBasedProject project
+				&& !project.IsSdkStyleProject) {
+				var item = project.Items.OfType<FileProjectItem>()
+					.FirstOrDefault(i => string.Equals(i.FileName.ToString(), oldPath, StringComparison.OrdinalIgnoreCase));
+				if (item != null) {
+					item.FileName = FileName.Create(newPath);
+					project.Save();
 				}
 			}
 		}
@@ -480,16 +532,17 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 		/// </summary>
 		public static async Task<string> ExtractInterfaceAsync(
 			INamedTypeSymbol classSymbol, string interfaceName, IReadOnlyList<ISymbol> chosenMembers,
-			bool addInterfaceToClass, string newFilePath, CancellationToken cancellationToken = default)
+			bool addInterfaceToClass, string newFilePath, bool includeComments = false, CancellationToken cancellationToken = default)
 		{
 			var classSyntaxRef = classSymbol.DeclaringSyntaxReferences.First();
 			var classNode = (CS.Syntax.ClassDeclarationSyntax)await classSyntaxRef.GetSyntaxAsync(cancellationToken).ConfigureAwait(true);
 			var root = await classSyntaxRef.SyntaxTree.GetRootAsync(cancellationToken).ConfigureAwait(true) as CS.Syntax.CompilationUnitSyntax;
 
 			var usings = root?.Usings.Select(u => u.ToString()) ?? Enumerable.Empty<string>();
-			var interfaceText = BuildInterfaceSourceText(usings, classSymbol.ContainingNamespace, interfaceName, chosenMembers);
+			var interfaceText = BuildInterfaceSourceText(usings, classSymbol.ContainingNamespace, interfaceName, chosenMembers, includeComments);
 			File.WriteAllText(newFilePath, interfaceText);
 			OpenAndReplaceText(newFilePath, interfaceText);
+			AddCompileItemIfNonSdkProject(classSyntaxRef.SyntaxTree.FilePath, newFilePath);
 
 			if (addInterfaceToClass) {
 				var newBaseType = CS.SyntaxFactory.SimpleBaseType(CS.SyntaxFactory.ParseTypeName(interfaceName));
@@ -504,8 +557,28 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 			return newFilePath;
 		}
 
+		/// <summary>
+		/// SDK-style projects (the common case, verified against tests/fixtures/SolutionExplorerFixture)
+		/// pick up a new file under the project directory automatically via their own implicit glob -
+		/// see <see cref="ICSharpCode.SharpDevelop.LanguageServices.LanguageServiceProjectSnapshot"/>'s
+		/// SDK-style Compile-item handling. Legacy (non-SDK) projects have no such glob: a new file
+		/// only becomes part of the project - and therefore only shows up in Solution Explorer or
+		/// gets compiled - if it's explicitly added as a Compile item, so do that here.
+		/// </summary>
+		static void AddCompileItemIfNonSdkProject(string classFilePath, string newFilePath)
+		{
+			var project = SD.ProjectService.FindProjectContainingFile(FileName.Create(classFilePath));
+			if (project is not MSBuildBasedProject msbuildProject || msbuildProject.IsSdkStyleProject)
+				return;
+
+			var relativeInclude = FileUtility.GetRelativePath(project.Directory.ToString(), newFilePath);
+			project.Items.Add(new FileProjectItem(project, ItemType.Compile, relativeInclude));
+			project.Save();
+		}
+
 		static string BuildInterfaceSourceText(
-			IEnumerable<string> usings, INamespaceSymbol containingNamespace, string interfaceName, IReadOnlyList<ISymbol> members)
+			IEnumerable<string> usings, INamespaceSymbol containingNamespace, string interfaceName, IReadOnlyList<ISymbol> members,
+			bool includeComments)
 		{
 			var sb = new System.Text.StringBuilder();
 			foreach (var u in usings)
@@ -523,7 +596,7 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 			sb.Append(indent).Append("public interface ").AppendLine(interfaceName);
 			sb.Append(indent).AppendLine("{");
 			foreach (var member in members) {
-				sb.Append(indent).Append('\t').AppendLine(FormatInterfaceMember(member));
+				sb.Append(indent).Append('\t').AppendLine(FormatInterfaceMember(member, includeComments));
 			}
 			sb.Append(indent).AppendLine("}");
 
@@ -533,26 +606,83 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 			return sb.ToString();
 		}
 
-		static string FormatInterfaceMember(ISymbol member)
+		static string FormatInterfaceMember(ISymbol member, bool includeComments)
 		{
+			string signature;
 			switch (member) {
 				case IMethodSymbol method: {
 					var typeParams = method.TypeParameters.Length == 0
 						? ""
 						: "<" + string.Join(", ", method.TypeParameters.Select(t => t.Name)) + ">";
 					var parameters = string.Join(", ", method.Parameters.Select(FormatParameter));
-					return $"{method.ReturnType.ToDisplayString()} {method.Name}{typeParams}({parameters});";
+					var constraints = string.Join(" ", method.TypeParameters
+						.Select(FormatTypeParameterConstraints)
+						.Where(c => c != null));
+					signature = $"{method.ReturnType.ToDisplayString()} {method.Name}{typeParams}({parameters})"
+						+ (constraints.Length > 0 ? " " + constraints : "") + ";";
+					break;
 				}
 				case IPropertySymbol property: {
 					var accessors = property.GetMethod != null ? "get; " : "";
 					accessors += property.SetMethod != null ? "set; " : "";
-					return $"{property.Type.ToDisplayString()} {property.Name} {{ {accessors}}}";
+					signature = $"{property.Type.ToDisplayString()} {property.Name} {{ {accessors}}}";
+					break;
 				}
 				case IEventSymbol evt:
-					return $"event {evt.Type.ToDisplayString()} {evt.Name};";
+					signature = $"event {evt.Type.ToDisplayString()} {evt.Name};";
+					break;
 				default:
-					return "// unsupported member kind: " + member.Name;
+					signature = "// unsupported member kind: " + member.Name;
+					break;
 			}
+
+			if (!includeComments)
+				return signature;
+
+			var comment = GetXmlDocComment(member);
+			return comment == null ? signature : comment + "\n\t" + signature;
+		}
+
+		/// <summary>
+		/// Builds a `where T : ...` clause for a generic method's type parameter, or null if the
+		/// parameter has no constraints. Roslyn's <see cref="ITypeParameterSymbol"/> only exposes
+		/// constraint flags/types, not source text, so this has to be assembled by hand rather than
+		/// copied verbatim like <see cref="GetXmlDocComment"/> does for doc comments.
+		/// </summary>
+		static string FormatTypeParameterConstraints(ITypeParameterSymbol typeParameter)
+		{
+			var constraints = new List<string>();
+			if (typeParameter.HasReferenceTypeConstraint)
+				constraints.Add("class");
+			if (typeParameter.HasValueTypeConstraint)
+				constraints.Add("struct");
+			if (typeParameter.HasNotNullConstraint)
+				constraints.Add("notnull");
+			if (typeParameter.HasUnmanagedTypeConstraint)
+				constraints.Add("unmanaged");
+			constraints.AddRange(typeParameter.ConstraintTypes.Select(t => t.ToDisplayString()));
+			if (typeParameter.HasConstructorConstraint)
+				constraints.Add("new()");
+
+			return constraints.Count == 0 ? null : $"where {typeParameter.Name} : {string.Join(", ", constraints)}";
+		}
+
+		/// <summary>
+		/// Returns the member's original "///" doc comment block verbatim (not the semantically
+		/// processed XML from GetDocumentationCommentXml()), so the extracted interface member keeps
+		/// exactly what the author wrote on the class member.
+		/// </summary>
+		static string GetXmlDocComment(ISymbol member)
+		{
+			var syntaxRef = member.DeclaringSyntaxReferences.FirstOrDefault();
+			if (syntaxRef == null)
+				return null;
+			var node = syntaxRef.GetSyntax();
+			var docTrivia = node.GetLeadingTrivia()
+				.Select(t => t.GetStructure())
+				.OfType<CS.Syntax.DocumentationCommentTriviaSyntax>()
+				.FirstOrDefault();
+			return docTrivia?.ToFullString().Trim();
 		}
 
 		static string FormatParameter(IParameterSymbol parameter)

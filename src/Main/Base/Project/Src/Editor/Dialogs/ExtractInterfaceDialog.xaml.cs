@@ -71,6 +71,7 @@ namespace ICSharpCode.SharpDevelop.Editor.Dialogs
 		}
 
 		public bool AddInterfaceToClass { get; set; } = true;
+		public bool IncludeComments { get; set; }
 
 		public bool IsValid =>
 			!string.IsNullOrWhiteSpace(InterfaceName)

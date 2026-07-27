@@ -159,7 +159,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		}
 
 		[DevFlowAction("od.rename-symbol", Description = "Renames the symbol at file:line/column across the whole solution via RoslynWorkspaceHelper.RenameSymbolAsync (bypasses RenameSymbolDialog, which the WPF-embedded DevFlow agent can't drive since it's modal - same reasoning as od.open-solution bypassing the native Open dialog)")]
-		public static async Task<string> RenameSymbol(string fileName, int line, int column, string newName)
+		public static async Task<string> RenameSymbol(string fileName, int line, int column, string newName, bool renameOverloads = false, bool renameInStrings = false, bool renameInComments = false)
 		{
 			try {
 				var location = new ICSharpCode.AvalonEdit.Document.TextLocation(line, column);
@@ -167,7 +167,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				var symbol = document != null ? ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.GetSymbolAt(document, location) : null;
 				if (symbol == null)
 					return JsonSerializer.Serialize(new { success = false, error = "no symbol at location" });
-				await ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.RenameSymbolAsync(symbol, newName);
+				await ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.RenameSymbolAsync(symbol, newName, renameOverloads, renameInStrings, renameInComments);
 				return JsonSerializer.Serialize(new { success = true, oldName = symbol.Name });
 			} catch (Exception ex) {
 				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
@@ -175,7 +175,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		}
 
 		[DevFlowAction("od.extract-interface", Description = "Extracts an interface from the class at file:line/column via RoslynWorkspaceHelper.ExtractInterfaceAsync (bypasses ExtractInterfaceDialog, which is modal). memberNames is a comma-separated allowlist of member names to include; pass an empty string to include every eligible public instance member")]
-		public static async Task<string> ExtractInterface(string fileName, int line, int column, string interfaceName, string newFilePath, bool addInterfaceToClass, string memberNames = "")
+		public static async Task<string> ExtractInterface(string fileName, int line, int column, string interfaceName, string newFilePath, bool addInterfaceToClass, string memberNames = "", bool includeComments = false)
 		{
 			try {
 				var location = new ICSharpCode.AvalonEdit.Document.TextLocation(line, column);
@@ -192,7 +192,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 					return JsonSerializer.Serialize(new { success = false, error = "no members matched", available = candidates.Select(m => m.Name).ToArray() });
 
 				var path = await ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.ExtractInterfaceAsync(
-					classSymbol, interfaceName, chosen, addInterfaceToClass, newFilePath);
+					classSymbol, interfaceName, chosen, addInterfaceToClass, newFilePath, includeComments);
 				return JsonSerializer.Serialize(new { success = true, filePath = path, members = chosen.Select(m => m.Name).ToArray() });
 			} catch (Exception ex) {
 				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });

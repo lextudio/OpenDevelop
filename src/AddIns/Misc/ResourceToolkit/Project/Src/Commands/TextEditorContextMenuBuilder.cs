@@ -9,7 +9,6 @@ using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Gui;
-using ICSharpCode.SharpDevelop.Refactoring;
 using MenuItem = System.Windows.Controls.MenuItem;
 
 namespace Hornung.ResourceToolkit.Commands
@@ -101,7 +100,7 @@ namespace Hornung.ResourceToolkit.Commands
             ResourceResolveResult result = item.Tag as ResourceResolveResult;
             if (result == null) return;
 
-            FindReferencesAndRenameHelper.RunFindReferences((ICSharpCode.TypeSystem.IEntity)null);
+            ResourceRefactoringService.FindReferencesAndShowInSearchPad(result.FileName, result.Key, null);
         }
 
         void Rename(object sender, EventArgs e)

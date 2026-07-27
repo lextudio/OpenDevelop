@@ -86,7 +86,8 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 
 			try {
 				await RoslynWorkspaceHelper.ExtractInterfaceAsync(
-					classSymbol, dialog.InterfaceName, dialog.ChosenMembers, dialog.AddInterfaceToClass, dialog.NewFileName);
+					classSymbol, dialog.InterfaceName, dialog.ChosenMembers, dialog.AddInterfaceToClass, dialog.NewFileName,
+					dialog.IncludeComments);
 			} catch (Exception ex) {
 				SD.MessageService.ShowException(ex, "Error extracting interface.");
 			}
