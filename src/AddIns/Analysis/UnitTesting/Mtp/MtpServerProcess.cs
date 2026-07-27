@@ -8,6 +8,7 @@ using System.Net.Sockets;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using ICSharpCode.SharpDevelop;
 using StreamJsonRpc;
 
 namespace ICSharpCode.UnitTesting.Mtp
@@ -124,7 +125,7 @@ namespace ICSharpCode.UnitTesting.Mtp
 				"initialize",
 				new {
 					processId = Environment.ProcessId,
-					clientInfo = new { name = "OpenDevelop", version = "1.0.0" },
+					clientInfo = new { name = SD.MessageService.ProductName, version = "1.0.0" },
 					capabilities = new { testing = new { debuggerProvider = false } },
 				},
 				cancellationToken);
