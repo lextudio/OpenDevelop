@@ -10,7 +10,7 @@
 	url = https://github.com/lextudio/cps-shims.git
 [submodule "externals/sharpdbg"]
 	path = externals/sharpdbg
-	url = https://github.com/MattParkerDev/SharpDbg.git
+	url = https://github.com/lextudio/SharpDbg.git
 [submodule "externals/altcover"]
 	path = externals/altcover
 	url = https://github.com/lextudio/altcover.git
