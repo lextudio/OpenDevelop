@@ -2,12 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.TypeSystem;
 using ICSharpCode.UnitTesting.Mtp;
+using ICSharpCode.UnitTesting.Simple;
 
 namespace ICSharpCode.UnitTesting
 {
@@ -34,7 +36,50 @@ namespace ICSharpCode.UnitTesting
 			// class/namespace nodes but the colour never propagated up to the project node or the
 			// "All Tests" solution root above it.
 			RebindCompositeResultToNestedTests();
+			PopulateApproxTreeFromRoslyn();
 			TriggerDiscovery();
+		}
+
+		// Fast, approximate pass: a syntax-only Roslyn scan of the project's own source (see
+		// RoslynTestScanner and doc/technotes/unit-testing.md), so the tree shows candidate tests
+		// immediately instead of staying empty for the ~30-60s an MTP discovery round trip can
+		// take. TriggerDiscovery's real MTP pass replaces discoveredNodesByTargetFramework (and
+		// rebuilds the tree via the same PopulateTree call) once it completes, same as it always
+		// did - this just seeds it with an approximate answer first instead of nothing.
+		void PopulateApproxTreeFromRoslyn()
+		{
+			try {
+				var candidates = RoslynTestScanner.ScanProject(Project.Directory?.ToString());
+				if (candidates.Count == 0)
+					return;
+
+				var approx = new Dictionary<string, IReadOnlyList<MtpTestNode>>(StringComparer.OrdinalIgnoreCase);
+				foreach (var targetFramework in GetTargetFrameworks()) {
+					approx[targetFramework] = candidates.Select(BuildApproxNode).ToList();
+				}
+
+				discoveredNodesByTargetFramework = approx;
+				PopulateTree();
+			} catch (Exception ex) {
+				SD.Log.Warn("Roslyn approximate test scan failed: " + ex.Message);
+			}
+		}
+
+		// A synthetic MtpTestNode standing in for a not-yet-MTP-confirmed candidate. Uid is
+		// deliberately empty (never a valid MTP uid) rather than a made-up value, so
+		// MtpTestRunner's unconfirmed-selection guard can detect it cheaply via
+		// string.IsNullOrEmpty rather than needing a separate "is this real" flag threaded through
+		// MtpTestMethod/MtpTestNode.
+		static MtpTestNode BuildApproxNode(RoslynTestCandidate candidate)
+		{
+			var payload = new Dictionary<string, object?> {
+				["uid"] = string.Empty,
+				["display-name"] = candidate.DisplayName,
+				["node-type"] = "action",
+				["location.type"] = candidate.TypeFullName,
+				["location.method"] = candidate.MethodName,
+			};
+			return MtpTestNode.FromJson(JsonSerializer.SerializeToElement(payload));
 		}
 
 		void TriggerDiscovery()
@@ -45,6 +90,12 @@ namespace ICSharpCode.UnitTesting
 			discoveryInProgress = true;
 			var _ = DiscoverTestsAsync();
 		}
+
+		// Forces a fresh MTP discovery pass on demand, for an explicit "Refresh Tests" UI action -
+		// discovery otherwise only runs once (lazily, on first NestedTests access) and again after
+		// every build (OnBuildFinished). Internal rather than a full public ITestProject/ITest
+		// member since it's a UI-triggered mechanism, not part of the test model contract itself.
+		internal void RefreshForTesting() => TriggerDiscovery();
 
 		async Task DiscoverTestsAsync()
 		{
@@ -108,8 +159,14 @@ namespace ICSharpCode.UnitTesting
 
 		public override ITestRunner CreateTestRunner(TestExecutionOptions options)
 		{
+#if !HAS_UNO
 			if (options.UseDebugger)
 				return new MtpTestDebugger(this, options);
+#endif
+			// "Run under debugger" (MtpTestDebugger/TestDebuggerBase, ICSharpCode.SharpDevelop.
+			// Debugging-coupled) isn't linked under Uno - UnoDevelop's test panel never exposed
+			// that option even under the old flat contract, so falling back to the plain runner
+			// here isn't a regression.
 			return new MtpTestRunner(this, options);
 		}
 

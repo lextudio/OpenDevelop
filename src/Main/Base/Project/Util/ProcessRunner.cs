@@ -347,7 +347,11 @@ namespace ICSharpCode.SharpDevelop
 			outputCategory.AppendLine(printedCommandLine.ToString());
 			
 			using (TextReader reader = OpenStandardOutputReader()) {
-				await reader.CopyToAsync(new MessageViewCategoryTextWriter(outputCategory));
+				var writer = new MessageViewCategoryTextWriter(outputCategory);
+				var buffer = new char[4096];
+				int read;
+				while ((read = await reader.ReadAsync(buffer, 0, buffer.Length)) > 0)
+					await writer.WriteAsync(buffer, 0, read);
 			}
 			await WaitForExitAsync();
 			outputCategory.AppendLine(StringParser.Parse("${res:XML.MainMenu.ToolMenu.ExternalTools.ExitedWithCode} " + this.ExitCode));

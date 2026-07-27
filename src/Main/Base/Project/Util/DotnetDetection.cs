@@ -82,7 +82,57 @@ namespace ICSharpCode.SharpDevelop
 			// 393273 is .NET 4.6 on my Win7 machine with VS 2015 RC installed
 			return GetDotnet4Release() >= 393273;
 		}
-		
+
+		// Release numbers below from https://learn.microsoft.com/en-us/dotnet/framework/migration-guide/how-to-determine-which-versions-are-installed
+		public static bool IsDotnet461Installed()
+		{
+			if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+				return true;
+			return GetDotnet4Release() >= 394254;
+		}
+
+		public static bool IsDotnet462Installed()
+		{
+			if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+				return true;
+			return GetDotnet4Release() >= 394802;
+		}
+
+		public static bool IsDotnet47Installed()
+		{
+			if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+				return true;
+			return GetDotnet4Release() >= 460798;
+		}
+
+		public static bool IsDotnet471Installed()
+		{
+			if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+				return true;
+			return GetDotnet4Release() >= 461308;
+		}
+
+		public static bool IsDotnet472Installed()
+		{
+			if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+				return true;
+			return GetDotnet4Release() >= 461808;
+		}
+
+		public static bool IsDotnet48Installed()
+		{
+			if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+				return true;
+			return GetDotnet4Release() >= 528040;
+		}
+
+		public static bool IsDotnet481Installed()
+		{
+			if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+				return true;
+			return GetDotnet4Release() >= 533320;
+		}
+
 		/// <summary>
 		/// Gets the .NET 4.x release number.
 		/// The numbers are documented on http://msdn.microsoft.com/en-us/library/hh925568.aspx

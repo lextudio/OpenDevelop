@@ -56,7 +56,15 @@ namespace ICSharpCode.UnitTesting
 			await server.InitializeAsync(cancellationToken);
 
 			IReadOnlyList<MtpTestNode> results;
-			var allTestsSelected = testNodes.Count == CountAllMethodsForTargetFramework(testProject.NestedTests, targetFramework);
+			// A test still showing its Roslyn-approximate (pre-MTP-confirmation) node has an empty
+			// Uid (see MtpTestProject.BuildApproxNode) - it can never appear in a real discovered
+			// set, so filtering by it would silently run nothing instead of the test the user
+			// actually asked for. Fall back to running everything in this target framework instead
+			// of skipping it: a safe over-approximation, matching Simple.TestService's same
+			// fallback for its own unconfirmed entries.
+			var hasUnconfirmedSelection = testNodes.Any(n => string.IsNullOrEmpty(n.Uid));
+			var allTestsSelected = hasUnconfirmedSelection
+				|| testNodes.Count == CountAllMethodsForTargetFramework(testProject.NestedTests, targetFramework);
 			if (allTestsSelected) {
 				results = await server.RunTestsAsync(cancellationToken);
 			} else {

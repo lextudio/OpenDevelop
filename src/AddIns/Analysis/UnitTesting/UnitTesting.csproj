@@ -41,6 +41,12 @@
     <Compile Include="MtpTestFramework.cs" />
     <Compile Include="MtpTestProject.cs" />
     <Compile Include="MtpTestRunner.cs" />
+    <!-- Shared with UnoDevelop.UnitTesting (which links this same file) - see
+         doc/technotes/unit-testing.md "Implemented: Roslyn-assisted discovery". Deliberately not
+         under Service/*.cs or TestRunner/*.cs above (those wildcards would also pull in the rest
+         of Simple/*.cs, which is UnoDevelop's own flat ITestService and not part of this classic
+         tree-shaped AddIn). -->
+    <Compile Include="Simple/RoslynTestScanner.cs" />
     <Compile Include="..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

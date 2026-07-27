@@ -136,12 +136,16 @@ namespace ICSharpCode.UnitTesting.Frameworks
 		
 		void ShowUnitTestsPad()
 		{
+#if !HAS_UNO
 			var descriptor = workbench.GetPad(typeof(UnitTestsPad));
+			if (descriptor == null)
+				return;
 			descriptor.BringPadToFront();
 			var pad = descriptor.PadContent as UnitTestsPad;
 			if (pad != null) {
 				pad.TreeView.SelectedTests = testsByProject.Values;
 			}
+#endif
 		}
 		
 		void ShowOutputPad()
@@ -218,7 +222,9 @@ namespace ICSharpCode.UnitTesting.Frameworks
 		void ShowErrorList()
 		{
 			if (taskService.SomethingWentWrong && buildOptions.ShowErrorListAfterBuild) {
-				workbench.GetPad(typeof(ErrorListPad)).BringPadToFront();
+				// Null when the host has its own ErrorListPad under a different type/namespace
+				// (e.g. UnoDevelop.Workbench.ErrorListPad) instead of this classic one.
+				workbench.GetPad(typeof(ErrorListPad))?.BringPadToFront();
 			}
 		}
 	}
