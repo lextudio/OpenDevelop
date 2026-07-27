@@ -110,8 +110,15 @@ namespace ICSharpCode.UnitTesting
 					await server.InitializeAsync(default);
 					discovered[targetFramework] = await server.DiscoverTestsAsync(default);
 				}
-				discoveredNodesByTargetFramework = discovered;
-				PopulateTree();
+				// Never replace an already-populated (approximate) tree with an empty result: when
+				// no target framework yielded a built assembly the loop above `continue`s past
+				// every await, so this runs synchronously inside OnNestedTestsInitialized and would
+				// wipe the Roslyn candidates PopulateApproxTreeFromRoslyn just added, leaving the
+				// project node permanently empty instead of falling back to the approximate list.
+				if (discovered.Count > 0) {
+					discoveredNodesByTargetFramework = discovered;
+					PopulateTree();
+				}
 			} catch (Exception ex) {
 				SD.Log.Warn("MTP discovery failed: " + ex.Message);
 			} finally {
@@ -279,7 +286,21 @@ namespace ICSharpCode.UnitTesting
 			}
 
 			var dir = Path.GetDirectoryName(project.OutputAssemblyFullPath?.ToString());
-			return dir != null ? Path.Combine(dir, project.AssemblyName + ".dll") : project.OutputAssemblyFullPath;
+			if (dir == null)
+				return project.OutputAssemblyFullPath;
+
+			// Project models that don't derive from MSBuildBasedProject (e.g. UnoDevelop's own
+			// UnoProjectModel) report a TFM-less OutputAssemblyFullPath such as "bin/Debug/X.dll",
+			// while the SDK actually writes "bin/Debug/<tfm>/X.dll" for any project that declares a
+			// TargetFramework. Prefer the TFM-qualified path when it's the one that exists, so
+			// discovery finds the built assembly instead of silently skipping the framework.
+			var candidate = Path.Combine(dir, project.AssemblyName + ".dll");
+			if (!File.Exists(candidate) && !string.IsNullOrEmpty(targetFramework)) {
+				var withTargetFramework = Path.Combine(dir, targetFramework, project.AssemblyName + ".dll");
+				if (File.Exists(withTargetFramework))
+					return withTargetFramework;
+			}
+			return candidate;
 		}
 	}
 }
