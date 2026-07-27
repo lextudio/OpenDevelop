@@ -40,6 +40,8 @@ namespace ICSharpCode.SharpDevelop
 		bool showingDialog;
 		bool rootMonitorIsDisposed;
 		
+		readonly CancellationTokenSource cancellationTokenSource;
+
 		public ProgressCollector(ISynchronizeInvoke eventThread, CancellationToken cancellationToken)
 		{
 			if (eventThread == null)
@@ -47,7 +49,37 @@ namespace ICSharpCode.SharpDevelop
 			this.eventThread = eventThread;
 			this.root = new MonitorImpl(this, null, 1, cancellationToken);
 		}
-		
+
+		/// <summary>
+		/// Creates a collector whose progress the UI may cancel on the user's behalf (e.g. via a
+		/// cancel button next to the status bar progress bar). A bare <see cref="CancellationToken"/>
+		/// only lets the UI observe cancellation, never request it - which is why a long-running
+		/// operation that wants to be cancellable has to hand over its source, not just its token.
+		/// </summary>
+		public ProgressCollector(ISynchronizeInvoke eventThread, CancellationTokenSource cancellationTokenSource)
+			: this(eventThread, (cancellationTokenSource ?? throw new ArgumentNullException("cancellationTokenSource")).Token)
+		{
+			this.cancellationTokenSource = cancellationTokenSource;
+		}
+
+		/// <summary>
+		/// Gets whether the UI can offer to cancel this operation - true only when the operation
+		/// supplied a <see cref="CancellationTokenSource"/> and has not already been cancelled.
+		/// </summary>
+		public bool IsCancellable {
+			get { return cancellationTokenSource != null && !cancellationTokenSource.IsCancellationRequested; }
+		}
+
+		/// <summary>
+		/// Requests cancellation of the operation this collector reports on. No-op when the
+		/// operation did not opt in to cancellation (see <see cref="IsCancellable"/>).
+		/// </summary>
+		public void Cancel()
+		{
+			if (cancellationTokenSource != null && !cancellationTokenSource.IsCancellationRequested)
+				cancellationTokenSource.Cancel();
+		}
+
 		public event EventHandler ProgressMonitorDisposed;
 		public event PropertyChangedEventHandler PropertyChanged;
 		

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
@@ -82,22 +83,30 @@ namespace ICSharpCode.UnitTesting
 			return MtpTestNode.FromJson(JsonSerializer.SerializeToElement(payload));
 		}
 
-		void TriggerDiscovery()
+		// The in-flight (or last completed) discovery pass, so callers can await completion instead
+		// of polling the tree and guessing when it has settled. Never faulted: DiscoverTestsAsync
+		// handles its own exceptions.
+		Task discoveryTask = Task.CompletedTask;
+
+		Task TriggerDiscovery(CancellationToken cancellationToken = default)
 		{
 			if (discoveryInProgress)
-				return;
+				return discoveryTask;
 
 			discoveryInProgress = true;
-			var _ = DiscoverTestsAsync();
+			return discoveryTask = DiscoverTestsAsync(cancellationToken);
 		}
 
-		// Forces a fresh MTP discovery pass on demand, for an explicit "Refresh Tests" UI action -
-		// discovery otherwise only runs once (lazily, on first NestedTests access) and again after
-		// every build (OnBuildFinished). Internal rather than a full public ITestProject/ITest
-		// member since it's a UI-triggered mechanism, not part of the test model contract itself.
-		internal void RefreshForTesting() => TriggerDiscovery();
+		/// <summary>
+		/// Starts a fresh MTP discovery pass (unless one is already in flight) and returns a task
+		/// that completes once the tree reflects its result. Discovery otherwise runs only once
+		/// (lazily, on first <see cref="TestBase.NestedTests"/> access) and again after every build
+		/// (OnBuildFinished), so an explicit "Refresh Tests" action needs this entry point.
+		/// </summary>
+		/// <param name="cancellationToken">Abandons the pass; the tree keeps whatever it had.</param>
+		public Task RefreshAsync(CancellationToken cancellationToken = default) => TriggerDiscovery(cancellationToken);
 
-		async Task DiscoverTestsAsync()
+		async Task DiscoverTestsAsync(CancellationToken cancellationToken)
 		{
 			try {
 				var discovered = new Dictionary<string, IReadOnlyList<MtpTestNode>>(StringComparer.OrdinalIgnoreCase);
@@ -106,9 +115,10 @@ namespace ICSharpCode.UnitTesting
 					if (assemblyPath == null || !File.Exists(assemblyPath))
 						continue;
 
-					await using var server = await MtpServerProcess.StartAsync(assemblyPath, Path.GetDirectoryName(assemblyPath), default);
-					await server.InitializeAsync(default);
-					discovered[targetFramework] = await server.DiscoverTestsAsync(default);
+					cancellationToken.ThrowIfCancellationRequested();
+					await using var server = await MtpServerProcess.StartAsync(assemblyPath, Path.GetDirectoryName(assemblyPath), cancellationToken);
+					await server.InitializeAsync(cancellationToken);
+					discovered[targetFramework] = await server.DiscoverTestsAsync(cancellationToken);
 				}
 				// Never replace an already-populated (approximate) tree with an empty result: when
 				// no target framework yielded a built assembly the loop above `continue`s past
@@ -119,6 +129,9 @@ namespace ICSharpCode.UnitTesting
 					discoveredNodesByTargetFramework = discovered;
 					PopulateTree();
 				}
+			} catch (OperationCanceledException) {
+				// The user cancelled from the status bar: leave the tree exactly as it was rather
+				// than reporting a failure for something they asked to stop.
 			} catch (Exception ex) {
 				SD.Log.Warn("MTP discovery failed: " + ex.Message);
 			} finally {
@@ -278,29 +291,49 @@ namespace ICSharpCode.UnitTesting
 
 		public static string ResolveAssemblyDll(IProject project, string targetFramework)
 		{
+			// Candidates in preference order; the first that exists on disk wins, so a project whose
+			// declared output layout doesn't match what was actually built still resolves.
+			var candidates = new List<string>();
+
 			if (project is MSBuildBasedProject msbuildProject && !string.IsNullOrEmpty(targetFramework)) {
 				var outputPath = msbuildProject.GetEvaluatedProperty("OutputPath", targetFramework);
 				var assemblyName = msbuildProject.GetEvaluatedProperty("AssemblyName", targetFramework);
-				if (!string.IsNullOrEmpty(outputPath) && !string.IsNullOrEmpty(assemblyName))
-					return Path.Combine(project.Directory.ToString(), outputPath, assemblyName + ".dll");
+				if (!string.IsNullOrEmpty(outputPath) && !string.IsNullOrEmpty(assemblyName)) {
+					// OutputPath comes straight from MSBuild, which writes Windows separators
+					// ("bin\Debug\") on every platform. Path.Combine does not translate those, so on
+					// Unix the backslashes stay literal and the result names one absurd directory
+					// ("bin\Debug") that cannot exist - silently skipping discovery for this TFM.
+					var normalizedOutputPath = NormalizeDirectorySeparators(outputPath);
+					candidates.Add(Path.Combine(project.Directory.ToString(), normalizedOutputPath, assemblyName + ".dll"));
+					// OutputPath is TFM-qualified for multi-targeted projects but not always for
+					// single-TFM ones, so try both shapes rather than assuming which applies.
+					candidates.Add(Path.Combine(project.Directory.ToString(), normalizedOutputPath, targetFramework, assemblyName + ".dll"));
+				}
 			}
 
 			var dir = Path.GetDirectoryName(project.OutputAssemblyFullPath?.ToString());
-			if (dir == null)
-				return project.OutputAssemblyFullPath;
-
-			// Project models that don't derive from MSBuildBasedProject (e.g. UnoDevelop's own
-			// UnoProjectModel) report a TFM-less OutputAssemblyFullPath such as "bin/Debug/X.dll",
-			// while the SDK actually writes "bin/Debug/<tfm>/X.dll" for any project that declares a
-			// TargetFramework. Prefer the TFM-qualified path when it's the one that exists, so
-			// discovery finds the built assembly instead of silently skipping the framework.
-			var candidate = Path.Combine(dir, project.AssemblyName + ".dll");
-			if (!File.Exists(candidate) && !string.IsNullOrEmpty(targetFramework)) {
-				var withTargetFramework = Path.Combine(dir, targetFramework, project.AssemblyName + ".dll");
-				if (File.Exists(withTargetFramework))
-					return withTargetFramework;
+			if (dir != null) {
+				candidates.Add(Path.Combine(dir, project.AssemblyName + ".dll"));
+				// Project models that report a TFM-less OutputAssemblyFullPath such as
+				// "bin/Debug/X.dll" while the SDK actually writes "bin/Debug/<tfm>/X.dll".
+				if (!string.IsNullOrEmpty(targetFramework))
+					candidates.Add(Path.Combine(dir, targetFramework, project.AssemblyName + ".dll"));
 			}
-			return candidate;
+
+			foreach (var candidate in candidates) {
+				if (File.Exists(candidate))
+					return candidate;
+			}
+			// Nothing is built yet: hand back the most specific guess so callers report a missing
+			// assembly at the path a build would produce, rather than a nonexistent-by-construction one.
+			return candidates.Count > 0 ? candidates[candidates.Count - 1] : project.OutputAssemblyFullPath;
+		}
+
+		static string NormalizeDirectorySeparators(string path)
+		{
+			return Path.DirectorySeparatorChar == '\\'
+				? path
+				: path.Replace('\\', Path.DirectorySeparatorChar);
 		}
 	}
 }

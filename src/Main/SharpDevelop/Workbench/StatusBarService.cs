@@ -101,7 +101,14 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			AddProgress(progress);
 			return progress.ProgressMonitor;
 		}
-		
+
+		public IProgressMonitor CreateCancellableProgressMonitor(CancellationTokenSource cancellationTokenSource)
+		{
+			ProgressCollector progress = new ProgressCollector(SD.MainThread.SynchronizingObject, cancellationTokenSource);
+			AddProgress(progress);
+			return progress.ProgressMonitor;
+		}
+
 		public void AddProgress(ProgressCollector progress)
 		{
 			if (progress == null)

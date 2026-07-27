@@ -1,138 +1,130 @@
 # Unit Testing
 
-## Two implementations, on purpose
+## One backend: the classic `ICSharpCode.UnitTesting` tree
 
-This repo carries two separate `ITestService`-shaped things under
-`src/AddIns/Analysis/UnitTesting/`, and that's deliberate, not drift:
+There is exactly one unit-testing backend in this repo, under
+`src/AddIns/Analysis/UnitTesting/`: the classic, tree-shaped `ICSharpCode.UnitTesting`
+(`Service/ITestService.cs`/`SDTestService.cs`, `Model/*.cs`, `MtpTestFramework.cs`/
+`MtpTestProject.cs`/`MtpTestRunner.cs`). `ITestFramework.IsTestProject`/`CreateTestProject` are
+registered per-framework through the AddInTree path `/SharpDevelop/UnitTesting/TestFrameworks`, and
+the model is a tree: `ITestSolution` → `ITestProject` → `ITest` (target framework / class / method).
+Both hosts consume it — OpenDevelop's WPF `UnitTestsPad`/`TestTreeView` and UnoDevelop's native
+`TestResultsPad` — and UnoDevelop links the source in via `$(SharpDevelopSourceRoot)` rather than
+keeping a port of its own.
 
-- **`ICSharpCode.UnitTesting`** (`Service/ITestService.cs`/`SDTestService.cs`, `Model/*.cs`,
-  `MtpTestFramework.cs`/`MtpTestProject.cs`/`MtpTestRunner.cs`) - the classic, tree-shaped
-  abstraction: `ITestFramework.IsTestProject`/`CreateTestProject` registered per-framework via
-  AddInTree (`/SharpDevelop/UnitTesting/TestFrameworks`), `ITestSolution` → `ITestProject` →
-  `ITest` (namespace/class/method) tree, driving the WPF `UnitTestsPad`/`TestTreeView`. Built for
-  multiple simultaneously-supported frameworks (NUnit, MSTest, MSpec, MTP) and a tree UI.
-- **`ICSharpCode.UnitTesting.Simple`** (`Simple/ITestService.cs`/`TestService.cs`/
-  `TestProjectDetector.cs`/`DotNetTestRunner.cs`) - a flat, MTP-only contract: `GetTests()` returns
-  a plain `IReadOnlyList<TestInfo>`, `RunTestsAsync(IReadOnlyList<string> fullyQualifiedNames)`
-  takes keys, not `ITest` objects. Built for a single always-MTP backend and a native list-style
-  test panel with no tree UI at all.
+### Why this one, and not the flat contract
 
-This was originally two independent implementations - UnoDevelop had its own local
-`ITestService`/`TestService`/`TestProjectDetector`/`DotNetTestRunner` fork, OpenDevelop had (and
-still has) the classic tree-shaped one. On investigation (2026-07-27) the *literal* duplication
-turned out to be narrower than "the whole test service is forked twice": `MtpTestRunner.RunAsync`
-and `DotNetTestRunner.RunTestsAsync` ran the same discover→filter→run MTP sequence, and
-`MtpTestProject.ResolveAssemblyDll`/`GetTargetFrameworks` solved the same "where's the built test
-assembly" problem `DotNetTestRunner.ResolveOutputAssembly`/`TestService.ResolveTargetFrameworks`
-did (less reliably - by scanning `bin/` for the newest `.dll` instead of reading MSBuild's
-evaluated `OutputPath`/`AssemblyName`). The two `ITestService` *interfaces* themselves are not
-duplicates of each other; they're different, both-intentional shapes for different consumers (a
-tree pad vs a flat pad).
+There used to be a second, flat, MTP-only contract (`ICSharpCode.UnitTesting.Simple`:
+`ITestService.GetTests()` returning `IReadOnlyList<TestInfo>`, `RunTestsAsync` keyed by
+fully-qualified name). It began as a UnoDevelop-local fork and was briefly hosted here so both
+hosts could share it. Keeping two `ITestService`-shaped abstractions alive was the wrong end state:
+it left the discover→filter→run MTP sequence and the "where is the built test assembly" problem
+implemented twice, in two places that drifted independently.
 
-Rather than force UnoDevelop's flat pad to speak the tree contract (candidate rejected - would
-replace an already-correct, simpler design with a mismatched heavier one, just to make it "reuse"
-something), the flat implementation was moved here as `Simple/` (namespace
-`ICSharpCode.UnitTesting.Simple`, so it can't collide with the classic `ICSharpCode.UnitTesting`
-types) and UnoDevelop links it back via `$(SharpDevelopSourceRoot)`, same pattern as `Mtp/*.cs`.
-Both `ICSharpCode.UnitTesting.SDTestService`/`ITestFramework`/`MtpTestFramework` and
-`ICSharpCode.UnitTesting.Simple.TestService` remain live and necessary:
+The classic tree was kept as the single backend because it is a strict superset, not a peer:
 
-- OpenDevelop's own `UnitTestsPad`/`TestTreeView`, `Profiler`/`CodeCoverage` AddIns
-  (`RunTestWithProfilerCommand`, `RunTestWithCodeCoverageCommand`, `RunAllTestsWithCodeCoverageCommand`),
-  and `OpenDevelopDevFlowActions.cs` all consume the classic tree service - deleting it breaks
-  OpenDevelop.
-- UnoDevelop's native `TestResultsPad`/DevFlow actions consume `Simple/ITestService` - that's the
-  one now-shared, no-longer-forked implementation.
+- It already drives features the flat contract never modelled — the `Profiler` and `CodeCoverage`
+  AddIns (`RunTestWithProfilerCommand`, `RunTestWithCodeCoverageCommand`,
+  `RunAllTestsWithCodeCoverageCommand`) consume `ITest`/`ITestProject` objects, not name strings.
+- It supports several frameworks side by side via AddInTree registration, where the flat one
+  hard-assumed MTP.
+- `TestCollection` gives composite result roll-up (a failing method colours its class, project and
+  the "All Tests" root) for free; a flat list has nowhere to roll up to.
+- Both pads are trees anyway. UnoDevelop's `TestResultsPad` renders a `TreeView`, so the flat
+  contract was being re-expanded into a tree at the UI layer regardless.
 
-The genuinely duplicate MTP-driving logic (`MtpTestRunner` vs `DotNetTestRunner`,
-`MtpTestProject`'s assembly/TFM resolution vs `TestService`'s) is still forked today; unifying
-*that* narrower slice (not the two `ITestService` interfaces) is a real follow-up, not attempted
-in this pass.
+`Simple/RoslynTestScanner.cs` is the one piece of that namespace that survived, because it isn't an
+alternative backend — it's the fast-discovery mechanism described below, now consumed by
+`MtpTestProject`.
 
-## Implemented: Roslyn-assisted discovery, MTP-confirmed results
+## Roslyn-assisted discovery, MTP-confirmed results
 
-**Status: done for `Simple.TestService` (2026-07-27). Not done for the classic
-`ICSharpCode.UnitTesting`/`MtpTestProject` tree** - same idea applies there (see "Still open"
-below), just not implemented yet.
+MTP discovery is authoritative but slow: it needs a built assembly, a `dotnet exec --server` test
+host process, and a `testing/discoverTests` round trip — tens of seconds, and a project that isn't
+actually MTP-enabled burns the full timeout on every pass. A syntax-tree scan is the opposite
+trade-off: instant, but approximate (it can't expand a parameterized `[Theory]`/`[TestCase]` into
+its real per-data-row count, can't produce the MTP `Uid` needed to run a single test, and can't see
+tests generated or filtered at runtime).
 
-MTP-only discovery (`MtpTestProject`/`Simple.TestService`'s old `DiscoverTestsForProject`) is
-authoritative but slow: it must build the project, spawn a `dotnet exec --server` test host, and
-wait for it to connect back and answer `testing/discoverTests` - the existing code already carried
-a 60s timeout and an explicit warning message for this, because a project that isn't actually
-MTP-enabled hits that timeout on every single discovery pass, with no faster fallback.
+So the tree does both, in order:
 
-The classic (non-Mtp) `TestProjectBase.OnNestedTestsInitialized` takes the opposite tradeoff: a
-Roslyn/NRefactory syntax-tree walk over the project's source, looking for attribute-decorated test
-classes/methods. Fast (no process spin-up, no build required first), but only *approximate* - it
-can't expand a parameterized `[Theory]`/`[TestCase]` into its real per-data-row count, can't
-produce the MTP `Uid` needed to run just one test, and can silently include or miss tests
-dynamically generated/filtered at runtime.
+1. `MtpTestProject.PopulateApproxTreeFromRoslyn` runs `RoslynTestScanner.ScanProject`
+   synchronously (`CSharpSyntaxTree.ParseText` per `.cs` file, `bin`/`obj` excluded, no semantic
+   model, no build) and populates the tree immediately. Nodes are synthesised with a deliberately
+   **empty** `Uid` — never a made-up value — so `MtpTestRunner` can detect an unconfirmed selection
+   with `string.IsNullOrEmpty` and fall back to "run everything in this project" (a safe
+   over-approximation, never a silent skip) rather than needing a separate flag threaded through
+   `MtpTestNode`/`MtpTestMethod`.
+2. `TriggerDiscovery` starts the real MTP pass. When it completes it replaces
+   `discoveredNodesByTargetFramework` and rebuilds the tree with `Uid`-bearing nodes.
 
-### What was built
+Discovery otherwise runs only once per project (lazily, on first `NestedTests` access) and again
+after each build (`OnBuildFinished`).
 
-`Simple/RoslynTestScanner.cs` - a syntax-tree-only scan (`CSharpSyntaxTree.ParseText` per `.cs`
-file under the project directory, `bin`/`obj` excluded, no semantic model, no compilation, no
-build) that looks for methods carrying any of a fixed set of test-method attribute short names
-(`Fact`/`Theory`, `Test`/`TestCase`/`TestCaseSource`, `TestMethod`/`DataTestMethod` - xunit, NUnit,
-MSTest; TUnit's `[Test]` matches the same NUnit-shaped name) and returns `RoslynTestCandidate`
-(`TypeFullName`, `MethodName`, `DisplayName`) records - deliberately the same shape MTP's own
-`DisplayName` takes (`Namespace.Class.Method`), so results read consistently whichever source
-produced them.
+### Discovery is awaitable, and cancellable
 
-`Simple/TestService.cs`'s `GetTests()` was restructured around this:
+`MtpTestProject.RefreshAsync(CancellationToken)` returns a task that completes when the tree
+reflects the MTP host's answer. This matters more than it looks:
 
-1. `DiscoverTestsForProjectApprox` runs the Roslyn scan synchronously (fast enough to not need
-   backgrounding) and returns `TestInfo` entries with `Uid: null` - these are what the *first*
-   `GetTests()` call after a refresh returns.
-2. For each test project, a background `Task.Run` immediately kicks off
-   `ConfirmProjectAsync`/`DiscoverTestsForProjectViaMtpAsync` - the original MTP-based discovery,
-   now genuinely `async` (no more `.GetAwaiter().GetResult()` blocking the caller).
-3. When MTP confirmation completes, `ConfirmProjectAsync` replaces that project's entries in
-   `_cachedTests` (by `ProjectPath`) with the authoritative, `Uid`-bearing ones, then fires a new
-   `TestsConfirmed` event on `ITestService`.
-4. A `_generation` counter (bumped by `RefreshTests()`) is captured by each confirmation task at
-   launch and checked before it's allowed to write back - a `RefreshTests()` call that happens
-   while a confirmation is still in flight makes that confirmation's eventual result a no-op
-   instead of resurrecting stale data into a newer discovery pass's cache.
+- **Awaitable.** Discovery used to be fire-and-forget (`var _ = DiscoverTestsAsync()`), which left
+  callers no way to know when it finished — so they polled the tree and guessed. That is not just a
+  test-harness annoyance: `TestResultsPad.RefreshTestsAsync` fired the passes off and rebuilt the
+  tree *immediately*, so the explicit "Refresh Tests" action never actually displayed refreshed
+  results. It now awaits every project's pass before rebuilding.
+- **Cancellable.** The token reaches `MtpServerProcess`, so the host process round trip can be
+  abandoned. `OperationCanceledException` is caught separately from real failures: a user-requested
+  cancellation leaves the tree exactly as it was (keeping the Roslyn approximation) and is not
+  logged as a discovery failure.
 
-`TestResultsPad.cs` subscribes to `TestsConfirmed` (alongside the existing `TestResultUpdated`/
-`TestRunStarted`/`TestRunCompleted`) and re-fetches+rebuilds when it fires. The ordering this
-produces is deliberately "whoever's ready first paints first, the merge happens after there's
-already something on screen" - not "wait for both, then show the merged result": `RefreshTestsAsync`
-already shows the Roslyn-approximate list the moment `GetTests()` returns (no waiting on MTP at
-all), and each project's `TestsConfirmed` firing independently updates just that project's rows
-once its own MTP host answers, rather than waiting for every test project in the solution to
-finish confirming before updating any of them.
+The pad surfaces that cancellation to the user: `RefreshTestsAsync` creates its status-bar progress
+via `IStatusBarService.CreateCancellableProgressMonitor(cts)`, and the status bar shows a Cancel
+button for as long as that monitor lives. The seam exists because a bare `CancellationToken` only
+lets the UI *observe* cancellation — to *request* it the operation has to hand over its
+`CancellationTokenSource`, which is what `ProgressCollector`'s CTS constructor plus
+`IsCancellable`/`Cancel()` provide. Both hosts implement the service method, so the behaviour is
+shared rather than per-UI.
 
-Unconfirmed (Roslyn-only) entries have `Uid: null`; `RunTestsAsync`'s existing
-`.Where(uid => !string.IsNullOrEmpty(uid))` filter already turns "select an unconfirmed test and
-run it" into an empty `testUids` list, which `DotNetTestRunner`/`MtpServerProcess` already treat as
-"run everything in this project" - a safe over-approximation (never a silent skip), not new
-behavior added for this feature.
+### Locating the built test assembly
+
+`MtpTestProject.ResolveAssemblyDll` builds a list of candidate paths and returns the first that
+exists on disk, because no single rule is right for every project model:
+
+- MSBuild's evaluated `OutputPath` is TFM-qualified for multi-targeted projects but not always for
+  single-TFM ones, so both shapes are tried.
+- Project models that don't derive from `MSBuildBasedProject` can report a TFM-less
+  `OutputAssemblyFullPath` (`bin/Debug/X.dll`) while the SDK actually writes
+  `bin/Debug/<tfm>/X.dll`.
+
+One trap is worth calling out, since it silently disabled MTP discovery on macOS/Linux entirely:
+MSBuild writes **Windows separators** into `OutputPath` (`bin\Debug\`) on every platform, and
+`Path.Combine` does not translate them. On Unix the backslashes stay literal, so the result names a
+single absurd directory (`bin\Debug`) that cannot exist — every target framework was skipped, and
+because the empty result then overwrote the tree, the project node ended up permanently empty.
+Hence `NormalizeDirectorySeparators`, and hence `DiscoverTestsAsync` refusing to replace a populated
+tree with an empty result: when no TFM yields an assembly the loop `continue`s past every `await`,
+so that overwrite ran *synchronously* inside `OnNestedTestsInitialized` and wiped the Roslyn
+candidates the line above had just added.
 
 ### Measured benefit
 
 `RoslynTestScannerTests.cs` (`UnoDevelop.Core.Tests`) scans the real xunit/NUnit/MSTest fixture
-projects (`Tests/fixtures/Sample{Xunit,NUnit,}MtpTests`) and asserts both correctness (finds
-exactly the `[Fact]`/`[Test]`/`[TestMethod]`-decorated methods, none of `Calculator.cs`'s
-un-annotated methods) and speed (`ScanProject_IsFastEnoughToSeedTestServiceCache`: a 2-file fixture
-scans in low single-digit milliseconds in practice, asserted under a generous 5s ceiling to avoid
-CI flakiness - the real-world contrast being the 30-60s an MTP round trip can take, not a few
-hundred milliseconds either way). End-to-end, `UnoDevelop.IntegrationTests`' `UnitTesting`/
-`TestPanel` tests dropped from ~32s to ~21s wall-clock with this change, and the full 70-test suite
-still passes (`ide-refresh-tests` no longer blocks on the MTP round trip before returning anything).
+projects (`Tests/Fixtures/Sample{Xunit,NUnit,}MtpTests`) and asserts both correctness (finds exactly
+the `[Fact]`/`[Test]`/`[TestMethod]`-decorated methods, none of `Calculator.cs`'s un-annotated ones)
+and speed (a 2-file fixture scans in low single-digit milliseconds, asserted under a generous 5s
+ceiling to avoid CI flakiness — the contrast being the tens of seconds an MTP round trip takes).
+
+`UnitTestingCodeCoveragePadIntegrationTests` exercises discovery and a coverage run against a real
+MTP fixture end to end. Replacing its polling with `RefreshAsync` took it from two tests each
+burning a 120s deadline (~4m15s for the suite) to sub-second discovery and a ~3s coverage run.
 
 ### Still open
 
-- The classic `ICSharpCode.UnitTesting`/`MtpTestProject` tree doesn't have this yet -
-  `IsTestClass`/`CreateTestClass`/`UpdateTestClass` are still no-op stubs there (see
-  `MtpTestProject`'s `OnNestedTestsInitialized` override comment). Same idea applies: seed
-  `PopulateTree()` from a Roslyn pass before the first `DiscoverTestsAsync` round trip lands.
-- `RoslynTestScanner` re-parses every `.cs` file from scratch on every `GetTests()`-triggered
-  refresh; fine at fixture scale, worth revisiting (e.g. an mtime-based per-file cache) if it's ever
-  used against a large real-world solution.
-- No key-based reconciliation beyond "replace this project's entries wholesale" -
-  `ConfirmProjectAsync` doesn't try to match a specific Roslyn candidate to its confirmed
-  counterpart (e.g. to preserve a `Running`/`Passing` result across the swap); it just removes and
-  re-adds by `ProjectPath`. Not observed to matter in practice (`_lastResults` is keyed separately
-  and survives), but noted in case a future symptom traces back here.
+- `RoslynTestScanner` re-parses every `.cs` file on each refresh; fine at fixture scale, worth an
+  mtime-based per-file cache if it is ever pointed at a large real-world solution.
+- No key-based reconciliation between an approximate node and its confirmed counterpart — the MTP
+  pass replaces a project's nodes wholesale rather than matching them up (e.g. to preserve a
+  per-test result across the swap). Not observed to matter, noted in case a symptom traces back
+  here.
+- `IsTestClass`/`CreateTestClass`/`UpdateTestClass` remain no-op stubs on `MtpTestProject`: the
+  parser-driven incremental-update path of `TestProjectBase` is unused, since discovery is driven by
+  the Roslyn scan plus MTP rather than by `ParseInformationUpdated`.

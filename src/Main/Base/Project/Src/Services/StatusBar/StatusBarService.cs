@@ -70,6 +70,18 @@ namespace ICSharpCode.SharpDevelop.Gui
 		/// <returns>The new IProgressMonitor instance. This return value must be disposed
 		/// once the background task has completed.</returns>
 		IProgressMonitor CreateProgressMonitor(CancellationToken cancellationToken = default(CancellationToken));
+
+		/// <summary>
+		/// Creates a new <see cref="IProgressMonitor"/> that reports progress to the status bar and
+		/// additionally lets the user cancel the operation from there (the status bar shows a cancel
+		/// button for as long as the monitor lives). Handing over the source rather than just its
+		/// token is what makes this possible: a token alone only lets the UI observe cancellation.
+		/// </summary>
+		/// <param name="cancellationTokenSource">The source the operation itself observes; cancelled
+		/// when the user asks to cancel.</param>
+		/// <returns>The new IProgressMonitor instance. This return value must be disposed
+		/// once the background task has completed.</returns>
+		IProgressMonitor CreateCancellableProgressMonitor(CancellationTokenSource cancellationTokenSource);
 		
 		/// <summary>
 		/// Shows progress for the specified ProgressCollector in the status bar.
