@@ -26,6 +26,11 @@ public sealed class TestService : ITestService
     private CancellationTokenSource? _cts;
     private readonly object _lock = new();
     private static readonly string _dbgLog = "/tmp/ut-debug.log";
+    // Bumped by RefreshTests(); a background MTP confirmation task (see ConfirmProjectAsync)
+    // captures the generation it was launched under and drops its result if a refresh happened
+    // in the meantime, so a slow confirmation from a stale discovery pass can't clobber a fresh
+    // one's cache.
+    private int _generation;
 
     public TestService()
     {
@@ -37,6 +42,13 @@ public sealed class TestService : ITestService
     public event Action? TestRunStarted;
     public event Action<TestResultInfo>? TestResultUpdated;
     public event Action? TestRunCompleted;
+
+    // Fires once a project's approximate (Roslyn-scanned) test list has been replaced by the
+    // authoritative MTP-discovered one - see GetTests()/ConfirmProjectAsync. Not part of
+    // ITestService: existing consumers (DevFlow actions, TestResultsPad) already re-poll
+    // GetTests() on their own cadence and don't need to be broken by a new required member; this
+    // is here for callers (tests, a future pad) that want to react as soon as confirmation lands.
+    public event Action? TestsConfirmed;
 
     public IReadOnlyList<TestInfo> GetTests(IProgressMonitor? progressMonitor = null)
     {
@@ -63,21 +75,29 @@ public sealed class TestService : ITestService
                 progressMonitor.TaskName = $"Refreshing tests for solution '{solution.Name}'...";
 
             output?.AppendLine($"Refreshing tests for solution '{solution.Name}'...");
+            var generation = _generation;
             var all = new List<TestInfo>();
             foreach (var project in testProjects)
             {
-                Dbg($"GetTests: discovering in {project.Name}");
+                Dbg($"GetTests: scanning {project.Name} (Roslyn, approximate)");
                 if (progressMonitor is not null)
                 {
-                    progressMonitor.TaskName = $"Discovering tests in {project.Name}...";
+                    progressMonitor.TaskName = $"Scanning {project.Name} for tests...";
                     progressMonitor.Progress = (double)completed / total;
                 }
-                output?.AppendLine($"Discovering tests in {project.Name}...");
-                var tests = DiscoverTestsForProject(project);
-                Dbg($"GetTests: {project.Name} -> {tests.Count} test(s)");
-                output?.AppendLine($"Discovered {tests.Count} test(s) in {project.Name}.");
-                all.AddRange(tests);
+                // Roslyn-only pass first: fast (no build, no test-host spin-up), so a caller isn't
+                // stuck looking at "no tests yet" for the ~30-60s an MTP round trip can take. It's
+                // approximate (can't expand parameterized tests, has no MTP Uid to run just one
+                // test by) - see doc/technotes/unit-testing.md. The real MTP-confirmed list
+                // replaces these entries in the background via ConfirmProjectAsync below.
+                var approxTests = DiscoverTestsForProjectApprox(project);
+                Dbg($"GetTests: {project.Name} -> {approxTests.Count} candidate test(s) (unconfirmed)");
+                output?.AppendLine($"Found {approxTests.Count} candidate test(s) in {project.Name} (confirming via Microsoft.Testing.Platform...)");
+                all.AddRange(approxTests);
                 completed++;
+
+                var project1 = project;
+                _ = Task.Run(() => ConfirmProjectAsync(project1, generation));
             }
 
             _cachedTests = all;
@@ -106,6 +126,7 @@ public sealed class TestService : ITestService
         {
             _cachedTests.Clear();
             _hasDiscovered = false;
+            _generation++;
         }
     }
 
@@ -174,7 +195,72 @@ public sealed class TestService : ITestService
         _cts?.Cancel();
     }
 
-    private List<TestInfo> DiscoverTestsForProject(IProject project)
+    // Fast, approximate pass: a syntax-only Roslyn scan of the project's own source, no build and
+    // no MTP test-host round trip. See RoslynTestScanner and doc/technotes/unit-testing.md. Uid is
+    // always null here - RunTestsAsync treats "no Uid for any test in this project" as "run
+    // everything in this project", which is a safe (if imprecise) fallback for a test that hasn't
+    // been MTP-confirmed yet, never a silent skip.
+    private static List<TestInfo> DiscoverTestsForProjectApprox(IProject project)
+    {
+        var result = new List<TestInfo>();
+        var projectPath = project.FileName?.ToString();
+        if (string.IsNullOrEmpty(projectPath))
+            return result;
+
+        var candidates = RoslynTestScanner.ScanProject(Path.GetDirectoryName(projectPath));
+        if (candidates.Count == 0)
+            return result;
+
+        var targetFrameworks = ResolveTargetFrameworks(project, projectPath);
+        foreach (var targetFramework in targetFrameworks)
+        {
+            foreach (var candidate in candidates)
+            {
+                result.Add(new TestInfo(
+                    candidate.DisplayName,
+                    candidate.DisplayName,
+                    project.Name,
+                    projectPath,
+                    targetFramework,
+                    TestInfo.BuildKey(projectPath, targetFramework, candidate.DisplayName),
+                    Uid: null,
+                    candidate.TypeFullName,
+                    candidate.MethodName,
+                    ParameterCount: null));
+            }
+        }
+
+        return result;
+    }
+
+    // Authoritative pass: runs in the background (see GetTests()'s Task.Run) and replaces this
+    // project's approximate entries in _cachedTests once the real MTP test host confirms them.
+    private async Task ConfirmProjectAsync(IProject project, int generation)
+    {
+        var confirmed = await DiscoverTestsForProjectViaMtpAsync(project);
+
+        lock (_lock)
+        {
+            // A RefreshTests() happened since this confirmation was launched - its result belongs
+            // to a discovery pass that's already been thrown away; applying it now would resurrect
+            // stale data (or worse, data for a project the new pass no longer even considers a
+            // test project) into the current cache.
+            if (generation != _generation)
+            {
+                Dbg($"ConfirmProjectAsync: discarding stale confirmation for {project.Name} (generation {generation} != {_generation})");
+                return;
+            }
+
+            var projectPath = project.FileName?.ToString();
+            _cachedTests.RemoveAll(t => string.Equals(t.ProjectPath, projectPath, StringComparison.Ordinal));
+            _cachedTests.AddRange(confirmed);
+        }
+
+        Dbg($"ConfirmProjectAsync: {project.Name} -> {confirmed.Count} confirmed test(s)");
+        TestsConfirmed?.Invoke();
+    }
+
+    private async Task<List<TestInfo>> DiscoverTestsForProjectViaMtpAsync(IProject project)
     {
         var result = new List<TestInfo>();
         var projectPath = project.FileName?.ToString();
@@ -194,9 +280,7 @@ public sealed class TestService : ITestService
                 // DotNetTestRunner.ListTestsAsync still disposes (and kills) the host process once
                 // this token fires.
                 using var discoverCts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-                var tests = _runner.ListTestsAsync(projectPath, targetFramework, discoverCts.Token)
-                    .GetAwaiter()
-                    .GetResult();
+                var tests = await _runner.ListTestsAsync(projectPath, targetFramework, discoverCts.Token);
 
                 foreach (var test in tests)
                 {

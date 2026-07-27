@@ -49,6 +49,12 @@ public interface ITestService
     event Action<TestResultInfo>? TestResultUpdated;
     event Action? TestRunCompleted;
 
+    // Fires when a project's GetTests() entries that were approximate (Roslyn-scanned, no MTP Uid
+    // yet) are replaced by the authoritative MTP-confirmed ones. A caller that already displayed
+    // the approximate list from an earlier GetTests() call should re-fetch and merge in the
+    // confirmed data now, rather than wait for it before showing anything at all.
+    event Action? TestsConfirmed;
+
     IReadOnlyList<TestInfo> GetTests(IProgressMonitor? progressMonitor = null);
     IReadOnlyDictionary<string, TestResultInfo> GetLastResults();
     void RefreshTests();
