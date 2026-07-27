@@ -30,6 +30,9 @@ using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Parser;
 using ICSharpCode.AvalonEdit.Document;
+#if HAS_UNO
+using ICSharpCode.SharpDevelop.Workbench;
+#endif
 
 namespace ICSharpCode.SharpDevelop.Project
 {
@@ -192,8 +195,16 @@ namespace ICSharpCode.SharpDevelop.Project
 				outputItem.FileName = FileName.Create(outputFileName);
 				outputItem.DependentUpon = Path.GetFileName(baseItem.FileName);
 				outputItem.SetEvaluatedMetadata("AutoGen", "True");
+#if HAS_UNO
+				// Old static ProjectService/FileService facades aren't ported to Uno; this is
+				// exactly what ProjectService.AddProjectItem does (raises ProjectItemAdded via
+				// the collection itself), and IFileService.FireFileCreated is the DI equivalent.
+				project.Items.Add(outputItem);
+				ServiceSingleton.GetRequiredService<IFileService>().FireFileCreated(outputFileName, false);
+#else
 				ProjectService.AddProjectItem(project, outputItem);
 				FileService.FireFileCreated(outputFileName, false);
+#endif
 				saveProject = true;
 				ProjectBrowserPad.RefreshViewAsync();
 			}
@@ -217,7 +228,9 @@ namespace ICSharpCode.SharpDevelop.Project
 			                         },
 			                         FileName.Create(outputFileName), FileErrorPolicy.Inform);
 			EnsureOutputFileIsInProject(baseItem, outputFileName);
+#if !HAS_UNO
 			SD.ParserService.ParseAsync(FileName.Create(outputFileName), new StringTextSource(codeOutput)).FireAndForget();
+#endif
 		}
 		
 		public void GenerateCodeDomAsync(FileProjectItem baseItem, string outputFileName, Func<CodeCompileUnit> func)

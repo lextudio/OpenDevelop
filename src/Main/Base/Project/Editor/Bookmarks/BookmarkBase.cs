@@ -87,11 +87,13 @@ namespace ICSharpCode.SharpDevelop.Editor.Bookmarks
 		
 		protected virtual void RemoveMark()
 		{
+#if !HAS_UNO
 			if (document != null) {
 				IBookmarkMargin bookmarkMargin = document.GetService(typeof(IBookmarkMargin)) as IBookmarkMargin;
 				if (bookmarkMargin != null)
 					bookmarkMargin.Bookmarks.Remove(this);
 			}
+#endif
 		}
 		
 		/// <summary>
@@ -126,11 +128,13 @@ namespace ICSharpCode.SharpDevelop.Editor.Bookmarks
 		
 		protected virtual void Redraw()
 		{
+#if !HAS_UNO
 			if (document != null) {
 				IBookmarkMargin bookmarkMargin = document.GetService(typeof(IBookmarkMargin)) as IBookmarkMargin;
 				if (bookmarkMargin != null)
 					bookmarkMargin.Redraw();
 			}
+#endif
 		}
 		
 		public int LineNumber {
@@ -164,18 +168,22 @@ namespace ICSharpCode.SharpDevelop.Editor.Bookmarks
 			}
 		}
 		
+#if !HAS_UNO
 		public static IImage DefaultBookmarkImage {
 			get { return SD.ResourceService.GetImage("Bookmarks.ToggleMark"); }
 		}
-		
+
 		public virtual IImage Image {
 			get { return DefaultBookmarkImage; }
 		}
-		
+
 		public ImageSource ImageSource {
 			get { return this.Image != null ? this.Image.ImageSource : null; }
 		}
-		
+#else
+		public virtual IImage Image => null;
+#endif
+
 		public virtual void MouseDown(MouseButtonEventArgs e)
 		{
 		}

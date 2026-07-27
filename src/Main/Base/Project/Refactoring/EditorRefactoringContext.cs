@@ -150,6 +150,7 @@ namespace ICSharpCode.SharpDevelop.Refactoring
 		/// The resolved Roslyn symbol at editor caret (see doc/technotes/csharp-roslyn.md,
 		/// Phase 1 "option (b)" - no longer an ICSharpCode.TypeSystem.ResolveResult).
 		/// </summary>
+#if !HAS_UNO
 		public Task<Microsoft.CodeAnalysis.ISymbol> GetCurrentSymbolAsync()
 		{
 			lock (syncRoot) {
@@ -158,6 +159,7 @@ namespace ICSharpCode.SharpDevelop.Refactoring
 				return currentSymbol;
 			}
 		}
+#endif
 		
 		/// <summary>
 		/// Gets cached value shared by context actions. Initializes a new value if not present.

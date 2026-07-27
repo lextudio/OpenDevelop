@@ -87,7 +87,7 @@ namespace ICSharpCode.SharpDevelop
 		/// </summary>
 		public static T GetRequiredService<T>() where T : class
 		{
-			return ServiceSingleton.ServiceProvider.GetRequiredService<T>();
+			return ServiceSingleton.GetRequiredService<T>();
 		}
 		
 		/// <summary>
@@ -183,21 +183,25 @@ namespace ICSharpCode.SharpDevelop
 			get { return GetRequiredService<IParserService>(); }
 		}
 		
+#if !HAS_UNO
 		/// <inheritdoc see="IAssemblyParserService"/>
 		public static IAssemblyParserService AssemblyParserService {
 			get { return GetRequiredService<IAssemblyParserService>(); }
 		}
-		
+#endif
+
 		/// <inheritdoc see="IFileService"/>
 		public static IFileService FileService {
 			get { return GetRequiredService<IFileService>(); }
 		}
 		
+#if !HAS_UNO
 		/// <inheritdoc see="IGlobalAssemblyCacheService"/>
 		public static IGlobalAssemblyCacheService GlobalAssemblyCache {
 			get { return GetRequiredService<IGlobalAssemblyCacheService>(); }
 		}
-		
+#endif
+
 		/// <inheritdoc see="IAddInTree"/>
 		public static IAddInTree AddInTree {
 			get { return GetRequiredService<IAddInTree>(); }
@@ -242,21 +246,25 @@ namespace ICSharpCode.SharpDevelop
 			get { return GetRequiredService<ILanguageService>(); }
 		}
 		
+#if !HAS_UNO
 		/// <inheritdoc see="IUIService"/>
 		public static IUIService UIService {
 			get { return GetRequiredService<IUIService>(); }
 		}
-		
+#endif
+
 		/// <inheritdoc see="IMSBuildEngine"/>
 		public static IMSBuildEngine MSBuildEngine {
 			get { return GetRequiredService<IMSBuildEngine>(); }
 		}
-		
+
+#if !HAS_UNO
 		/// <inheritdoc see="ITemplateService"/>
 		public static ITemplateService Templates {
 			get { return GetRequiredService<ITemplateService>(); }
 		}
-		
+#endif
+
 		/// <inheritdoc see="IFileSystem"/>
 		public static IFileSystem FileSystem {
 			get { return GetRequiredService<IFileSystem>(); }
@@ -270,9 +278,11 @@ namespace ICSharpCode.SharpDevelop
 		// Note: ClassBrowser (IClassBrowser, SharpTreeView-based) was removed - out of MVP scope,
 		// see ICSharpCode.SharpDevelop.csproj for the SharpTreeView exclusion rationale.
 
+#if !HAS_UNO
 		/// <inheritdoc see="IDebuggerService"/>
 		public static IDebuggerService Debugger {
 			get { return GetRequiredService<IDebuggerService>(); }
 		}
+#endif
 	}
 }

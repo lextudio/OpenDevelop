@@ -39,7 +39,15 @@ namespace ICSharpCode.SharpDevelop.Project
 		public static readonly TargetFramework Net45 = new DotNet4x(Versions.V4_5, RedistLists.Net45, DotnetDetection.IsDotnet45Installed);
 		public static readonly TargetFramework Net451 = new DotNet4x(Versions.V4_5_1, RedistLists.Net45, DotnetDetection.IsDotnet451Installed);
 		public static readonly TargetFramework Net452 = new DotNet4x(Versions.V4_5_2, RedistLists.Net45, DotnetDetection.IsDotnet452Installed);
-		
+		public static readonly TargetFramework Net46 = new DotNet4x(Versions.V4_6, RedistLists.Net45, DotnetDetection.IsDotnet46Installed);
+		public static readonly TargetFramework Net461 = new DotNet4x(Versions.V4_6_1, RedistLists.Net45, DotnetDetection.IsDotnet461Installed);
+		public static readonly TargetFramework Net462 = new DotNet4x(Versions.V4_6_2, RedistLists.Net45, DotnetDetection.IsDotnet462Installed);
+		public static readonly TargetFramework Net47 = new DotNet4x(Versions.V4_7, RedistLists.Net45, DotnetDetection.IsDotnet47Installed);
+		public static readonly TargetFramework Net471 = new DotNet4x(Versions.V4_7_1, RedistLists.Net45, DotnetDetection.IsDotnet471Installed);
+		public static readonly TargetFramework Net472 = new DotNet4x(Versions.V4_7_2, RedistLists.Net45, DotnetDetection.IsDotnet472Installed);
+		public static readonly TargetFramework Net48 = new DotNet4x(Versions.V4_8, RedistLists.Net45, DotnetDetection.IsDotnet48Installed);
+		public static readonly TargetFramework Net481 = new DotNet4x(Versions.V4_8_1, RedistLists.Net45, DotnetDetection.IsDotnet481Installed);
+
 		/// <summary>
 		/// Retrieves a target framework by a 'name'.
 		/// Used by the .xpt project system; please do not use anywhere else.

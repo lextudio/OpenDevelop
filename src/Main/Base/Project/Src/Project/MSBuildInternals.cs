@@ -142,7 +142,15 @@ namespace ICSharpCode.SharpDevelop.Project
 				string toolsVersion = rootElement.ToolsVersion;
 				if (string.IsNullOrEmpty(toolsVersion))
 					toolsVersion = projectCollection.DefaultToolsVersion;
+#if HAS_UNO
+				// SDK resolvers (e.g. NuGet → Uno.Sdk) may not be available in-process.
+				// IgnoreMissingImports lets us read static XML properties (AssemblyName,
+				// RootNamespace, items) without requiring full SDK resolution.
+				return new MSBuild.Evaluation.Project(rootElement, globalProps, toolsVersion, null,
+					projectCollection, MSBuild.Evaluation.ProjectLoadSettings.IgnoreMissingImports);
+#else
 				return new MSBuild.Evaluation.Project(rootElement, globalProps, toolsVersion, projectCollection);
+#endif
 			}
 		}
 		

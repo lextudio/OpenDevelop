@@ -40,13 +40,16 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			this.content = content;
 		}
 		
+#if !HAS_UNO
 		// make this method public
 		/// <inheritdoc/>
 		public new void SetLocalizedTitle(string text)
 		{
 			base.SetLocalizedTitle(text);
 		}
-		
+#endif
+
+
 		public new string TitleName {
 			get { return base.TitleName; }
 			set { base.TitleName = value; } // make setter public

@@ -186,8 +186,8 @@ namespace ICSharpCode.SharpDevelop.Project
 		public virtual bool IsReadOnly {
 			get {
 				try {
-					FileAttributes attributes = File.GetAttributes(FileName);
-					return ((FileAttributes.ReadOnly & attributes) == FileAttributes.ReadOnly);
+					System.IO.FileAttributes attributes = File.GetAttributes(FileName);
+					return ((System.IO.FileAttributes.ReadOnly & attributes) == System.IO.FileAttributes.ReadOnly);
 				} catch (UnauthorizedAccessException) {
 					return false;
 				} catch (IOException) {

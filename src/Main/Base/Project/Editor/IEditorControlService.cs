@@ -21,7 +21,6 @@ using ICSharpCode.AvalonEdit;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.Core;
 using ICSharpCode.TypeSystem;
-using ICSharpCode.SharpDevelop.Editor.AvalonEdit;
 using ICSharpCode.AvalonEdit.Document;
 
 namespace ICSharpCode.SharpDevelop.Editor
@@ -29,7 +28,11 @@ namespace ICSharpCode.SharpDevelop.Editor
 	/// <summary>
 	/// Allows creating new text editor instances and accessing the default text editor options.
 	/// </summary>
+#if HAS_UNO
+	[SDService("SD.EditorControlService")]
+#else
 	[SDService("SD.EditorControlService", FallbackImplementation = typeof(EditorControlServiceFallback))]
+#endif
 	public interface IEditorControlService
 	{
 		ITextEditor CreateEditor(out object control);
@@ -43,6 +46,7 @@ namespace ICSharpCode.SharpDevelop.Editor
 	}
 	
 	// Fallback if AvalonEdit.AddIn is not available (e.g. some unit tests)
+#if !HAS_UNO
 	sealed class EditorControlServiceFallback : IEditorControlService, ITextEditorOptions
 	{
 		public ITextEditorOptions GlobalOptions {
@@ -101,4 +105,5 @@ namespace ICSharpCode.SharpDevelop.Editor
 			return null;
 		}
 	}
+#endif
 }

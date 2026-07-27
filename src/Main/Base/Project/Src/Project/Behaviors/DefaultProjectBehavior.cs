@@ -56,6 +56,7 @@ namespace ICSharpCode.SharpDevelop.Project
 				// project behavior chain would not be processed!
 				psi = Project.CreateStartInfo();
 			} catch (ProjectStartException ex) {
+#if !HAS_UNO
 				if (withDebugging) {
 					// A failure here (e.g. the build output is missing/stale) happens BEFORE
 					// SD.Debugger.Start() is ever called, so none of WindowsDebugger.StartAsync's
@@ -70,13 +71,20 @@ namespace ICSharpCode.SharpDevelop.Project
 				} else {
 					MessageService.ShowError(ex.Message);
 				}
+#else
+				MessageService.ShowError(ex.Message);
+#endif
 				return;
 			}
+#if !HAS_UNO
 			if (withDebugging) {
 				SD.Debugger.Start(psi);
 			} else {
 				SD.Debugger.StartWithoutDebugging(psi);
 			}
+#else
+			System.Diagnostics.Process.Start(psi);
+#endif
 		}
 		
 		public override ProcessStartInfo CreateStartInfo()
@@ -111,11 +119,13 @@ namespace ICSharpCode.SharpDevelop.Project
 			// breakpoints and files
 			preferences.SetList("bookmarks", SD.BookmarkManager.GetProjectBookmarks(Project));
 			List<string> files = new List<string>();
+#if !HAS_UNO
 			foreach (var fileName in FileService.GetOpenFiles()) {
 				if (fileName != null && Project.IsFileInProject(fileName)) {
 					files.Add(fileName);
 				}
 			}
+#endif
 			preferences.SetList("openFiles", files);
 		}
 		
@@ -133,6 +143,7 @@ namespace ICSharpCode.SharpDevelop.Project
 					filesToOpen.Add(fileName);
 				}
 			}
+#if !HAS_UNO
 			System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(
 				System.Windows.Threading.DispatcherPriority.Loaded,
 				new Action(
@@ -142,6 +153,8 @@ namespace ICSharpCode.SharpDevelop.Project
 							FileService.OpenFile(file);
 						NavigationService.ResumeLogging();
 					}));
+#endif
+			// HAS_UNO: file reopening deferred — no workbench file service available at startup
 		}
 	}
 }

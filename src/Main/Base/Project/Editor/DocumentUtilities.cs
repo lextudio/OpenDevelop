@@ -18,12 +18,10 @@
 
 using System;
 using System.Diagnostics;
-using System.Windows.Documents;
 using ICSharpCode.AvalonEdit;
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Utils;
 using ICSharpCode.TypeSystem;
-using ICSharpCode.SharpDevelop.Editor.AvalonEdit;
 
 namespace ICSharpCode.SharpDevelop.Editor
 {
@@ -58,6 +56,7 @@ namespace ICSharpCode.SharpDevelop.Editor
 			editor.Select(editor.Document.GetOffset(editor.Caret.Location), 0);
 		}
 		
+#if !HAS_UNO
 		/// <summary>
 		/// Gets the word in front of the caret.
 		/// </summary>
@@ -72,7 +71,9 @@ namespace ICSharpCode.SharpDevelop.Editor
 			else
 				return editor.Document.GetText(startOffset, endOffset - startOffset);
 		}
-		
+#endif
+
+
 		static readonly char[] whitespaceChars = {' ', '\t'};
 		
 		/// <summary>
@@ -116,6 +117,7 @@ namespace ICSharpCode.SharpDevelop.Editor
 			}
 		}
 		
+#if !HAS_UNO
 		/// <summary>
 		/// Finds the first word start in the document before offset.
 		/// </summary>
@@ -124,7 +126,7 @@ namespace ICSharpCode.SharpDevelop.Editor
 		{
 			return TextUtilities.GetNextCaretPosition(textSource, offset, LogicalDirection.Backward, CaretPositioningMode.WordStart);
 		}
-		
+
 		/// <summary>
 		/// Finds the first word start in the document before offset.
 		/// </summary>
@@ -133,7 +135,8 @@ namespace ICSharpCode.SharpDevelop.Editor
 		{
 			return TextUtilities.GetNextCaretPosition(textSource, offset, LogicalDirection.Forward, CaretPositioningMode.WordStart);
 		}
-		
+#endif
+
 		/// <summary>
 		/// Gets the word at the specified position.
 		/// </summary>

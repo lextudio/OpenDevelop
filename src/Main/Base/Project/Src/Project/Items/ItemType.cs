@@ -32,7 +32,8 @@ namespace ICSharpCode.SharpDevelop.Project
 		public static readonly ItemType Reference = new ItemType("Reference");
 		public static readonly ItemType ProjectReference = new ItemType("ProjectReference");
 		public static readonly ItemType COMReference = new ItemType("COMReference");
-		
+		public static readonly ItemType PackageReference = new ItemType("PackageReference");
+
 		public static readonly IReadOnlyList<ItemType> ReferenceItemTypes
 			= new ItemType[] { Reference, ProjectReference, COMReference };
 		
