@@ -13,7 +13,7 @@
 	url = https://github.com/MattParkerDev/SharpDbg.git
 [submodule "externals/altcover"]
 	path = externals/altcover
-	url = https://github.com/SteveGilham/altcover.git
+	url = https://github.com/lextudio/altcover.git
 [submodule "externals/vscode-wpf"]
 	path = externals/vscode-wpf
 	url = https://github.com/lextudio/vscode-wpf
@@ -26,4 +26,4 @@
 	url = https://github.com/lextudio/ILSpy.git
 [submodule "externals/monodevelop-nuget-extensions"]
 	path = externals/monodevelop-nuget-extensions
-	url = https://github.com/mrward/monodevelop-nuget-extensions
+	url = https://github.com/lextudio/monodevelop-nuget-extensions
