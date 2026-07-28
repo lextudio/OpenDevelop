@@ -346,12 +346,22 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		public virtual void ReloadFromDisk()
 		{
+#if HAS_UNO
+			try {
+				ReloadFromDiskInternal();
+			} catch {
+				if (currentView != null && currentView.WorkbenchWindow != null) {
+					currentView.WorkbenchWindow.CloseWindow(true);
+				}
+			}
+#else
 			var r = FileUtility.ObservedLoad(ReloadFromDiskInternal, FileName);
 			if (r == FileOperationResult.Failed) {
 				if (currentView != null && currentView.WorkbenchWindow != null) {
 					currentView.WorkbenchWindow.CloseWindow(true);
 				}
 			}
+#endif
 		}
 		
 		void ReloadFromDiskInternal()

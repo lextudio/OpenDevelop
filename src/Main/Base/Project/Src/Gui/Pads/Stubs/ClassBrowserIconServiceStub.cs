@@ -3,7 +3,9 @@
 // This lightweight replacement uses CompletionImage (WPF ImageSource) directly, avoiding the WinForms
 // dependency so that class/type/method icons appear correctly in the icon bar margin.
 using System;
+#if !HAS_UNO
 using System.Drawing;
+#endif
 using System.Windows.Media;
 using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Editor.CodeCompletion;
@@ -15,21 +17,39 @@ namespace ICSharpCode.SharpDevelop
 	/// </summary>
 	sealed class ImageSourceOnlyImage : IImage
 	{
-		readonly ImageSource imageSource;
+		readonly System.Windows.Media.ImageSource imageSource;
 
-		public ImageSourceOnlyImage(ImageSource imageSource)
+		public ImageSourceOnlyImage(System.Windows.Media.ImageSource imageSource)
 		{
 			this.imageSource = imageSource ?? throw new ArgumentNullException(nameof(imageSource));
 		}
 
-		public ImageSource ImageSource => imageSource;
+		public System.Windows.Media.ImageSource ImageSource => imageSource;
+#if !HAS_UNO
 		public Bitmap Bitmap => null;
 		public Icon Icon => null;
+#endif
 	}
 
 	public static class ClassBrowserIconService
 	{
-		static IImage Wrap(ImageSource imageSource) =>
+#if HAS_UNO
+		public static IImage GetIcon(object entity) => null;
+		public static IImage Const => null;
+		public static IImage Method => null;
+		public static IImage Property => null;
+		public static IImage Field => null;
+		public static IImage Event => null;
+		public static IImage Class => null;
+		public static IImage Struct => null;
+		public static IImage Interface => null;
+		public static IImage Enum => null;
+		public static IImage Delegate => null;
+		public static IImage Module => null;
+		public static IImage Namespace => null;
+		public static IImage Folder => null;
+#else
+		static IImage Wrap(System.Windows.Media.ImageSource imageSource) =>
 			imageSource != null ? new ImageSourceOnlyImage(imageSource) : null;
 
 		// Entity Images
@@ -76,5 +96,6 @@ namespace ICSharpCode.SharpDevelop
 		public static IImage Keyword => null;
 		public static IImage Operator => null;
 		public static IImage CodeTemplate => null;
+#endif
 	}
 }
