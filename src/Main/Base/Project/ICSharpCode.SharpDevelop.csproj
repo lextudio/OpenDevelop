@@ -11,6 +11,8 @@
     <AssemblyOriginatorKeyFile>..\..\ICSharpCode.SharpDevelop.snk</AssemblyOriginatorKeyFile>
   </PropertyGroup>
   <ItemGroup>
+    <!-- For NuGetPackageSearchService.cs (shared with UnoDevelop, doc/technotes/nuget.md) -->
+    <PackageReference Include="NuGet.Protocol" Version="6.13.2" />
     <PackageReference Include="Microsoft.Build" Version="18.0.2" />
     <PackageReference Include="Microsoft.Build.Framework" Version="18.0.2" />
     <PackageReference Include="Microsoft.Build.Runtime" Version="18.0.2" />

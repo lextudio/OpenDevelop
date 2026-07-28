@@ -1,9 +1,14 @@
 // Real, modern NuGet.Client-backed package search - replaces the legacy NuGet.Core
 // IPackageRepository.Search(...) call in AvailablePackagesViewModel.GetAllPackages, which cannot
 // work at all against a real HTTP source on this runtime (see doc/technotes/nuget.md: its OData V2
-// client needs System.Data.Services.Client, unavailable on modern .NET). Works uniformly for local
-// folder feeds and http(s) v2/v3 feeds via Repository.Factory.GetCoreV3, same approach as
-// UnoDevelop's NuGetPackageSearchService.cs (the precedent this was modeled on).
+// client needs System.Data.Services.Client, unavailable on modern .NET).
+//
+// The feed search itself now lives in the shared ICSharpCode.SharpDevelop.NuGet.NuGetPackageSearchEngine
+// (Main/Base/Project/Src/NuGet/), used by both hosts. What stays here is only the projection this
+// AddIn needs: adapting each result into the legacy NuGet.Core IPackage shape the rest of its
+// pipeline (PackagesViewModel/PackageViewModel/PackageFromRepository) still expects, including the
+// PackageDependencySet conversion. This method's signature is deliberately unchanged from before
+// the engine was extracted, so AvailablePackagesViewModel.GetAllPackages is unaffected.
 
 using System;
 using System.Collections.Generic;
@@ -12,9 +17,9 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using ICSharpCode.Core;
+using ICSharpCode.SharpDevelop.NuGet;
 
 using NuGet.Common;
-using NuGet.Protocol;
 using NuGet.Protocol.Core.Types;
 
 namespace ICSharpCode.PackageManagement
@@ -28,31 +33,20 @@ namespace ICSharpCode.PackageManagement
 			int take,
 			CancellationToken cancellationToken)
 		{
-			var results = new List<NuGetSearchResultPackage>();
-			try {
-				var repository = Repository.Factory.GetCoreV3(sourceUrl);
-				var searchResource = await repository.GetResourceAsync<PackageSearchResource>(cancellationToken).ConfigureAwait(false);
-				if (searchResource == null) {
-					return results;
-				}
+			var metadata = await NuGetPackageSearchEngine
+				.SearchAsync(sourceUrl, searchTerm, includePrerelease, take, NullLogger.Instance,
+					throwOnSourceError: true, cancellationToken)
+				.ConfigureAwait(false);
 
-				var filter = new SearchFilter(includePrerelease);
-				var metadata = await searchResource
-					.SearchAsync(searchTerm ?? string.Empty, filter, skip: 0, take: take, NullLogger.Instance, cancellationToken)
-					.ConfigureAwait(false);
-
-				foreach (var package in metadata) {
-					results.Add(await ToPackageAsync(package, cancellationToken).ConfigureAwait(false));
-				}
-			} catch (Exception ex) {
-				LoggingService.Warn($"NuGet search against '{sourceUrl}' failed: {ex}");
-				throw;
+			var results = new List<NuGetSearchResultPackage>(metadata.Count);
+			foreach (var package in metadata) {
+				results.Add(ToPackage(package));
 			}
 
 			return results;
 		}
 
-		static Task<NuGetSearchResultPackage> ToPackageAsync(IPackageSearchMetadata metadata, CancellationToken cancellationToken)
+		static NuGetSearchResultPackage ToPackage(IPackageSearchMetadata metadata)
 		{
 			IEnumerable<global::NuGet.PackageDependencySet> dependencySets = Enumerable.Empty<global::NuGet.PackageDependencySet>();
 			try {
@@ -61,7 +55,7 @@ namespace ICSharpCode.PackageManagement
 				LoggingService.Debug($"Could not read dependency groups for '{metadata.Identity.Id}': {ex.Message}");
 			}
 
-			return Task.FromResult(new NuGetSearchResultPackage(
+			return new NuGetSearchResultPackage(
 				metadata.Identity.Id,
 				metadata.Identity.Version.ToNormalizedString(),
 				metadata.Title,
@@ -75,7 +69,7 @@ namespace ICSharpCode.PackageManagement
 				metadata.Published,
 				metadata.IsListed,
 				metadata.RequireLicenseAcceptance,
-				dependencySets));
+				dependencySets);
 		}
 
 		static global::NuGet.PackageDependencySet ToDependencySet(NuGet.Packaging.PackageDependencyGroup group)
