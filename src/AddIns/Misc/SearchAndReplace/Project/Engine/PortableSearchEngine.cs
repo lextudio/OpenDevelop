@@ -1,9 +1,12 @@
+#nullable enable
+
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 
 namespace ICSharpCode.SearchAndReplace.Portable;
 
@@ -14,7 +17,8 @@ public sealed record PortableSearchOptions(
 	string FileTypes,
 	bool MatchCase,
 	bool UseRegex,
-	bool IncludeSubdirectories);
+	bool IncludeSubdirectories,
+	IReadOnlyList<string>? FilePaths = null);
 
 public sealed record PortableSearchResult(
 	string FilePath,
@@ -40,7 +44,11 @@ public sealed class PortableSearchEngine
 		"artifacts"
 	};
 
-	public IReadOnlyList<PortableSearchResult> FindAll(PortableSearchOptions options, out int searchedFileCount)
+	public IReadOnlyList<PortableSearchResult> FindAll(
+		PortableSearchOptions options,
+		out int searchedFileCount,
+		CancellationToken cancellationToken = default,
+		IProgress<int>? searchedFileProgress = null)
 	{
 		if (string.IsNullOrEmpty(options.Pattern))
 			throw new ArgumentException("Search pattern cannot be empty.", nameof(options));
@@ -53,39 +61,65 @@ public sealed class PortableSearchEngine
 
 		foreach (var file in EnumerateFiles(options))
 		{
+			cancellationToken.ThrowIfCancellationRequested();
 			searchedFileCount++;
 			AddMatches(file, matcher, results);
+			searchedFileProgress?.Report(searchedFileCount);
 		}
 
 		return results;
 	}
 
-	public int ReplaceListed(IEnumerable<PortableSearchResult> results, PortableSearchOptions options)
+	public PortableReplaceRunResult ReplaceListed(IEnumerable<PortableSearchResult> results, PortableSearchOptions options)
+	{
+		var plan = CreateReplacePlan(results, options);
+		return ApplyReplacePlan(plan);
+	}
+
+	public PortableReplacePlan CreateReplacePlan(IEnumerable<PortableSearchResult> results, PortableSearchOptions options)
 	{
 		if (string.IsNullOrEmpty(options.Pattern))
 			throw new ArgumentException("Search pattern cannot be empty.", nameof(options));
 
 		var replace = CreateReplacer(options);
-		var changed = 0;
+		var plannedFiles = new List<PortableReplaceFilePlan>();
 		foreach (var file in results.Select(item => item.FilePath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray())
 		{
 			try
 			{
 				var original = File.ReadAllText(file);
 				var updated = replace(original);
-				if (!string.Equals(original, updated, StringComparison.Ordinal))
-				{
-					File.WriteAllText(file, updated);
-					changed++;
-				}
+				var matchCount = results.Count(item => string.Equals(item.FilePath, file, StringComparison.OrdinalIgnoreCase));
+				plannedFiles.Add(new PortableReplaceFilePlan(file, original, updated, matchCount));
 			}
 			catch
 			{
-				// Keep replacing other listed files when one file is locked or unreadable.
+				// Keep planning other listed files when one file is locked or unreadable.
 			}
 		}
 
-		return changed;
+		return new PortableReplacePlan(plannedFiles);
+	}
+
+	public PortableReplaceRunResult ApplyReplacePlan(PortableReplacePlan plan)
+	{
+		var changed = 0;
+		var changedFiles = new List<string>();
+		foreach (var file in plan.Files.Where(file => file.HasChanges))
+		{
+			try
+			{
+				File.WriteAllText(file.FilePath, file.UpdatedText);
+				changed++;
+				changedFiles.Add(file.FilePath);
+			}
+			catch
+			{
+				// Keep replacing other planned files when one file is locked or unreadable.
+			}
+		}
+
+		return new PortableReplaceRunResult(changed, changedFiles);
 	}
 
 	static void AddMatches(string file, Func<string, IEnumerable<MatchRange>> matcher, List<PortableSearchResult> results)
@@ -157,6 +191,17 @@ public sealed class PortableSearchEngine
 
 	static IEnumerable<string> EnumerateFiles(PortableSearchOptions options)
 	{
+		if (options.FilePaths is { Count: > 0 })
+		{
+			foreach (var file in options.FilePaths.Distinct(StringComparer.OrdinalIgnoreCase))
+			{
+				if (File.Exists(file))
+					yield return file;
+			}
+
+			yield break;
+		}
+
 		var patterns = options.FileTypes
 			.Split(new[] { ';', ',', ' ' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
 			.DefaultIfEmpty("*.*")
