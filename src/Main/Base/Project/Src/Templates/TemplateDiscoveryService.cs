@@ -12,12 +12,30 @@ using Microsoft.TemplateEngine.IDE;
 
 namespace ICSharpCode.SharpDevelop.Templates
 {
+    /// <summary>
+    /// Discovers installed file/project templates (docs/template-system.md slice 1) via
+    /// <c>Microsoft.TemplateEngine.IDE</c>'s <see cref="Bootstrapper"/> — the same high-level
+    /// entry point real IDE hosts use (it wraps <c>EngineEnvironmentSettings</c> and registers
+    /// the default generator/provider components itself, which is what actually makes the
+    /// built-in .NET SDK templates show up — hand-constructing
+    /// <c>EngineEnvironmentSettings</c> directly finds nothing without also replicating that
+    /// component registration).
+    /// </summary>
     public sealed class TemplateDiscoveryService : IDisposable
     {
         readonly Bootstrapper _bootstrapper;
 
+        // "unodevelop"/"opendevelop": purely informational (identifies the calling host to
+        // Microsoft.TemplateEngine, e.g. in its own logs) - previously two near-identical
+        // *TemplateEngineHost classes differing only in this string, now just an #if branch here.
         public TemplateDiscoveryService()
-            : this(OpenDevelopTemplateEngineHost.Create())
+            : this(TemplateEngineHost.Create(
+#if HAS_UNO
+                "unodevelop"
+#else
+                "opendevelop"
+#endif
+            ))
         {
         }
 
@@ -31,6 +49,9 @@ namespace ICSharpCode.SharpDevelop.Templates
 
         public void Dispose() => _bootstrapper.Dispose();
 
+        /// <summary>
+        /// Discovers all installed templates (slice 1).
+        /// </summary>
         public async Task<IReadOnlyList<TemplateSummary>> GetInstalledTemplatesAsync(CancellationToken cancellationToken)
         {
             var templates = await _bootstrapper.GetTemplatesAsync(cancellationToken);
@@ -46,6 +67,15 @@ namespace ICSharpCode.SharpDevelop.Templates
                 .ToArray();
         }
 
+        /// <summary>
+        /// Instantiates a template into the specified output directory (slice 2).
+        /// </summary>
+        /// <param name="template">The template to instantiate (from a previous discovery call).</param>
+        /// <param name="name">The name for the template (equivalent to <c>dotnet new &lt;template&gt; --name &lt;name&gt;</c>).</param>
+        /// <param name="outputPath">The directory to generate files into.</param>
+        /// <param name="parameters">Optional template parameter overrides (key = parameter name, value = parameter value).</param>
+        /// <param name="cancellationToken">A cancellation token to cancel the asynchronous operation.</param>
+        /// <returns>A <see cref="TemplateInstantiationResult"/> describing success/failure and the generated files.</returns>
         public async Task<TemplateInstantiationResult> InstantiateAsync(
             TemplateSummary template,
             string name,
@@ -81,6 +111,10 @@ namespace ICSharpCode.SharpDevelop.Templates
             return MapResult(result, outputPath);
         }
 
+        /// <summary>
+        /// Dry-runs a template instantiation — returns the same result shape as
+        /// <see cref="InstantiateAsync"/> but does not generate any files (slice 2).
+        /// </summary>
         public async Task<TemplateInstantiationResult> GetCreationEffectsAsync(
             TemplateSummary template,
             string name,
@@ -116,6 +150,19 @@ namespace ICSharpCode.SharpDevelop.Templates
             return MapResult(result, outputPath);
         }
 
+        /// <summary>
+        /// Installs a template package from a folder, NuGet package, or NuGet feed (slice 2).
+        /// </summary>
+        /// <param name="packageIdentifier">
+        /// The template package to install. Supported formats:
+        /// <list type="bullet">
+        ///   <item><description>Path to a folder containing <c>.template.config/template.json</c></description></item>
+        ///   <item><description>Path to a <c>.nupkg</c> file</description></item>
+        ///   <item><description>NuGet package ID (e.g. <c>"Microsoft.Maui.Templates"</c>)</description></item>
+        /// </list>
+        /// </param>
+        /// <param name="cancellationToken">A cancellation token to cancel the asynchronous operation.</param>
+        /// <returns>True if the package was installed successfully.</returns>
         public async Task<bool> InstallTemplatePackageAsync(string packageIdentifier, CancellationToken cancellationToken)
         {
             if (string.IsNullOrEmpty(packageIdentifier))
@@ -140,6 +187,8 @@ namespace ICSharpCode.SharpDevelop.Templates
         {
             var outputDir = result.OutputBaseDirectory ?? fallbackOutputPath;
 
+            // Primary outputs come from the actual creation result, or from the dry-run
+            // effects (which are created prior to instantiation and preserved in the result).
             var primaryOutputs = result.CreationResult?.PrimaryOutputs
                 ?? result.CreationEffects?.CreationResult?.PrimaryOutputs;
 
