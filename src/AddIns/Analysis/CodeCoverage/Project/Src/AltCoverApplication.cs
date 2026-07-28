@@ -199,8 +199,7 @@ namespace ICSharpCode.CodeCoverage
 		/// </summary>
 		static string ResolveDotNetHost()
 		{
-			string host = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
-			return !string.IsNullOrEmpty(host) ? host : "dotnet";
+			return CodeCoverageDotNetHost.Resolve();
 		}
 
 		string GetPrepareArguments()

@@ -20,6 +20,10 @@
          AltCover=true, but no reason to import it at all). GeneratePathProperty gives us
          $(PkgAltCover) below to locate the package's files without hardcoding a NuGet cache path. -->
     <PackageReference Include="AltCover" Version="9.0.102" ExcludeAssets="all" GeneratePathProperty="true" />
+    <!-- coverlet.console is a DotnetTool-type package and cannot be a PackageReference.
+         PackageDownload restores it into the NuGet cache so DeployCoverageTools can copy
+         its tool payload into the same runtime tool layout as AltCover. -->
+    <PackageDownload Include="coverlet.console" Version="[6.0.4]" />
     <!-- Private=False on every one of these (matching the original, pre-SDK-style csproj, which
          had it on all its ProjectReferences too - lost when this project was first ported and
          restored here after an integration test caught the fallout): without it, MSBuild copies
@@ -75,13 +79,19 @@
        the files somewhere AltCoverApplication never looks. -->
   <PropertyGroup>
     <AltCoverToolDeployRoot>$(MSBuildThisFileDirectory)..\..\..\..\..\src\Main\SharpDevelop\bin\$(Configuration)\$(TargetFramework)\bin\Tools\AltCover\</AltCoverToolDeployRoot>
+    <CoverletConsolePackageRoot>$(NuGetPackageRoot)coverlet.console\6.0.4\</CoverletConsolePackageRoot>
+    <CoverletToolDeployRoot>$(MSBuildThisFileDirectory)..\..\..\..\..\src\Main\SharpDevelop\bin\$(Configuration)\$(TargetFramework)\bin\Tools\Coverlet\</CoverletToolDeployRoot>
   </PropertyGroup>
-  <Target Name="DeployAltCoverTool" AfterTargets="Build" Condition="'$(PkgAltCover)' != ''">
+  <Target Name="DeployCoverageTools" AfterTargets="Build" Condition="'$(PkgAltCover)' != ''">
     <ItemGroup>
       <AltCoverToolFiles Include="$(PkgAltCover)/tools/net8.0/**/*" />
+      <CoverletToolFiles Include="$(CoverletConsolePackageRoot)tools/**/*" Condition="Exists('$(CoverletConsolePackageRoot)')" />
     </ItemGroup>
     <Copy SourceFiles="@(AltCoverToolFiles)"
           DestinationFolder="$(AltCoverToolDeployRoot)%(RecursiveDir)"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(CoverletToolFiles)"
+          DestinationFolder="$(CoverletToolDeployRoot)%(RecursiveDir)"
           SkipUnchangedFiles="true" />
   </Target>
 </Project>

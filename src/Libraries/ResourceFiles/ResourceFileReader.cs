@@ -58,6 +58,57 @@ public sealed class ResourceEntry : INotifyPropertyChanged
 
     public bool IsEditable { get; }
 
+    /// <summary>
+    /// Human-readable summary for non-editable binary-ish entries (Bitmap/Icon/Cursor/other
+    /// serialized types), e.g. "Icon (2,238 bytes)" instead of a raw base64 blob. Returns
+    /// <see cref="Value"/> unchanged for editable (string/boolean/metadata) entries. Does not
+    /// attempt to decode actual image pixel data - legacy .NET Framework resx Bitmap/Icon/Cursor
+    /// payloads can be BinaryFormatter-serialized, and BinaryFormatter deserialization is
+    /// deprecated/removed in modern .NET for security reasons, so a byte-count summary is the
+    /// safe, correct thing to show rather than guessing at a decode.
+    /// </summary>
+    public string DisplaySummary
+    {
+        get
+        {
+            if (IsEditable)
+            {
+                return Value;
+            }
+
+            var kind = ClassifyBinaryKind(Type);
+            try
+            {
+                var bytes = Convert.FromBase64String(Value.Trim());
+                return $"{kind} ({bytes.Length:N0} bytes)";
+            }
+            catch (FormatException)
+            {
+                return $"{kind} (unreadable)";
+            }
+        }
+    }
+
+    private static string ClassifyBinaryKind(string type)
+    {
+        if (type.Contains("System.Drawing.Bitmap", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Bitmap";
+        }
+
+        if (type.Contains("System.Drawing.Icon", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Icon";
+        }
+
+        if (type.Contains("System.Windows.Forms.Cursor", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Cursor";
+        }
+
+        return "Binary";
+    }
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     private void SetField<T>(ref T field, T newValue, [CallerMemberName] string? propertyName = null)
@@ -69,6 +120,10 @@ public sealed class ResourceEntry : INotifyPropertyChanged
 
         field = newValue;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        if (propertyName is nameof(Value) or nameof(Type))
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DisplaySummary)));
+        }
     }
 }
 
@@ -111,7 +166,37 @@ public static class ResourceFileReader
             ?? Array.Empty<ResourceEntry>();
     }
 
+    /// <summary>
+    /// Saves <paramref name="entries"/> to <paramref name="fileName"/>, reading and writing the
+    /// same path safely (unlike the <see cref="Stream"/> overload below, which corrupts the file
+    /// to zero bytes if the caller opens its write stream via e.g. <c>File.Create(fileName)</c>
+    /// before calling this - that truncates fileName before this method's own
+    /// "read existing headers" step ever runs, since XDocument.Load re-reads from disk rather
+    /// than from the caller's stream). Prefer this overload whenever fileName and the save
+    /// destination are the same path - which is the common case (in-place save, rename).
+    /// </summary>
+    public static void SaveResX(string fileName, IEnumerable<ResourceEntry> entries)
+    {
+        var document = BuildResXDocument(fileName, entries);
+        using var stream = File.Create(fileName);
+        document.Save(stream);
+    }
+
+    /// <summary>
+    /// Saves <paramref name="entries"/> to <paramref name="stream"/>, using <paramref name="fileName"/>
+    /// only to load the existing document's headers/whitespace if it's a different, still-intact
+    /// file (e.g. "Save As" to a new path, or a stream that hasn't truncated fileName). Do not
+    /// pass a stream that has already truncated fileName itself - use the fileName-only overload
+    /// above for in-place saves instead.
+    /// </summary>
     public static void SaveResX(string fileName, IEnumerable<ResourceEntry> entries, Stream stream)
+    {
+        var document = BuildResXDocument(fileName, entries);
+        stream.SetLength(0);
+        document.Save(stream);
+    }
+
+    static XDocument BuildResXDocument(string fileName, IEnumerable<ResourceEntry> entries)
     {
         var document = File.Exists(fileName)
             ? XDocument.Load(fileName, LoadOptions.PreserveWhitespace)
@@ -142,8 +227,7 @@ public static class ResourceFileReader
             root.Add(element);
         }
 
-        stream.SetLength(0);
-        document.Save(stream);
+        return document;
     }
 
     public static bool IsBooleanType(string type)

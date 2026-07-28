@@ -18,10 +18,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.Collections.Specialized;
-using System.Diagnostics;
-using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 using ICSharpCode.Core;
@@ -39,8 +37,7 @@ namespace ICSharpCode.CodeCoverage
 	/// </summary>
 	public class RunTestWithCodeCoverageCommand : AbstractMenuCommand
 	{
-		OpenCoverSettingsFactory settingsFactory = new OpenCoverSettingsFactory();
-		IFileSystem fileSystem = SD.FileSystem;
+		AltCoverCoverageRunner coverageRunner = new AltCoverCoverageRunner();
 
 		public override void Run()
 		{
@@ -60,62 +57,23 @@ namespace ICSharpCode.CodeCoverage
 			if (project == null)
 				return;
 
-			var buildResults = await SD.BuildService.BuildAsync(project, new BuildOptions(BuildTarget.Build));
-			if (buildResults.Result != BuildResultCode.Success)
-				return;
-
-			// AltCover instruments ahead-of-time (unlike OpenCover, which wraps the test process
-			// at launch via the CLR profiler API), so the "prepare" step just needs to run to
-			// completion before anything reads the target assemblies.
-			AltCoverApplication app = CreateAltCoverApplication(project);
-			coverageResultsReader.AddResultsFile(app.CodeCoverageResultsFileName);
-			RunToCompletion(app.GetPrepareProcessStartInfo());
-
-			// Run the (now-instrumented) test project directly as a plain one-shot process -
-			// deliberately NOT through ITestService/MtpTestRunner's server-mode JSON-RPC session.
-			// AltCover's recorder flushes recorded visits to disk on the instrumented process's own
-			// exit (see externals/altcover/AltCover.Recorder/Recorder.fs, FlushFinish/ProcessExit),
-			// so the test process needs to be a single process that runs to completion and exits
-			// normally - exactly what a bare `dotnet exec`/apphost invocation is, and exactly what
-			// the JSON-RPC server-mode session (a longer-lived host talked to over a persistent
-			// connection, matching how VsTestRunAdapter's singleton vstest.console process behaved
-			// before this addin moved off VSTest) is not. This mirrors both
-			// tests/OpenDevelop.IntegrationTests/AltCover.Mtp.targets's own "Coverage" MSBuild target
-			// (build, instrument in place, `<Exec>` the built exe directly, collect) and UnoDevelop's
-			// own CoverletCoverageRunner, which bypasses its own MTP JSON-RPC client the same way for
-			// exactly this reason. See doc/technotes/altcover.md.
-			await RunInstrumentedProcessToCompletionAsync(project);
-
-			// Step 3 (Collect) - must run only after the test process above has fully exited.
-			RunToCompletion(app.GetCollectProcessStartInfo());
-			app.PromoteResultsToStableFileName();
+			CodeCoverageRunResult run = await coverageRunner.RunAsync(
+				new[] { project },
+				BuildProjectAsync,
+				CancellationToken.None);
+			foreach (string fileName in run.ResultFiles)
+				coverageResultsReader.AddResultsFile(fileName);
 
 			ShowCodeCoverageResultsPadIfNoCriticalTestFailures();
 			DisplayCodeCoverageResults(coverageResultsReader);
 		}
 
-		static async Task RunInstrumentedProcessToCompletionAsync(IProject project)
+		static async Task<bool> BuildProjectAsync(IProject project, CancellationToken cancellationToken)
 		{
-			var assembly = project.OutputAssemblyFullPath;
-			var psi = new ProcessStartInfo { UseShellExecute = false };
-
-			if (assembly != null && File.Exists(assembly)) {
-				// MTP test projects build to a self-contained apphost exe - run it directly.
-				psi.FileName = assembly;
-				psi.WorkingDirectory = Path.GetDirectoryName(assembly);
-			} else {
-				// No apphost for this TFM/platform - fall back to running the managed dll via the
-				// dotnet host (same "<AssemblyName>.dll next to the exe" resolution MtpTestProject
-				// uses for discovery/execution).
-				var dir = Path.GetDirectoryName(assembly);
-				psi.FileName = "dotnet";
-				psi.Arguments = "exec \"" + Path.Combine(dir ?? string.Empty, project.AssemblyName + ".dll") + "\"";
-				psi.WorkingDirectory = dir;
-			}
-
-			using (Process process = Process.Start(psi)) {
-				await process.WaitForExitAsync();
-			}
+			cancellationToken.ThrowIfCancellationRequested();
+			var buildResults = await SD.BuildService.BuildAsync(project, new BuildOptions(BuildTarget.Build));
+			cancellationToken.ThrowIfCancellationRequested();
+			return buildResults.Result == BuildResultCode.Success;
 		}
 
 		protected virtual IEnumerable<ITest> GetTests(ITestService testService)
@@ -126,17 +84,6 @@ namespace ICSharpCode.CodeCoverage
 		void ClearCodeCoverageResults()
 		{
 			SD.MainThread.InvokeIfRequired(() => CodeCoverageService.ClearResults());
-		}
-
-		AltCoverApplication CreateAltCoverApplication(IProject project)
-		{
-			OpenCoverSettings settings = settingsFactory.CreateOpenCoverSettings(project);
-			var application = new AltCoverApplication(settings, project);
-			// Each AltCoverApplication instance writes to its own unique working path (see that
-			// class's remarks) rather than the shared stable CodeCoverageResultsFileName, so there
-			// is no old file at that unique path to remove - just make sure the directory exists.
-			CreateDirectoryForCodeCoverageResultsFile(application.WorkingResultsFileName);
-			return application;
 		}
 
 		// RunAllTestsWithCodeCoverageCommand.GetTests() passes the *solution* root node (whose
@@ -158,20 +105,6 @@ namespace ICSharpCode.CodeCoverage
 			return null;
 		}
 
-
-		void CreateDirectoryForCodeCoverageResultsFile(string fileName)
-		{
-			string directory = Path.GetDirectoryName(fileName);
-			fileSystem.CreateDirectory(DirectoryName.Create(directory));
-		}
-
-		static void RunToCompletion(ProcessStartInfo processStartInfo)
-		{
-			processStartInfo.UseShellExecute = false;
-			using (Process process = Process.Start(processStartInfo)) {
-				process.WaitForExit();
-			}
-		}
 
 		void ShowCodeCoverageResultsPadIfNoCriticalTestFailures()
 		{
