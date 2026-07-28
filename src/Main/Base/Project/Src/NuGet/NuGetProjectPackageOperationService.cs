@@ -1,8 +1,13 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using NuGet.Configuration;
+using NuGet.Frameworks;
+using NuGet.Packaging.Core;
 using NuGet.Versioning;
 
 namespace ICSharpCode.SharpDevelop.NuGet
@@ -10,6 +15,7 @@ namespace ICSharpCode.SharpDevelop.NuGet
 	public sealed class NuGetProjectPackageOperationService
 	{
 		readonly Func<string, CancellationToken, Task<RestoreResult>> restoreRunner;
+		readonly NuGetPackageConflictResolutionService conflictResolutionService;
 
 		public NuGetProjectPackageOperationService()
 			: this(RunDotNetRestoreAsync)
@@ -17,8 +23,58 @@ namespace ICSharpCode.SharpDevelop.NuGet
 		}
 
 		public NuGetProjectPackageOperationService(Func<string, CancellationToken, Task<RestoreResult>> restoreRunner)
+			: this(restoreRunner, new NuGetPackageConflictResolutionService())
+		{
+		}
+
+		public NuGetProjectPackageOperationService(
+			Func<string, CancellationToken, Task<RestoreResult>> restoreRunner,
+			NuGetPackageConflictResolutionService conflictResolutionService)
 		{
 			this.restoreRunner = restoreRunner ?? throw new ArgumentNullException(nameof(restoreRunner));
+			this.conflictResolutionService = conflictResolutionService ?? throw new ArgumentNullException(nameof(conflictResolutionService));
+		}
+
+		/// <summary>
+		/// Walks the full transitive dependency closure of <paramref name="packageId"/> against the
+		/// project's currently installed direct package references (see
+		/// <see cref="NuGetPackageConflictResolutionService"/>) before touching the project file.
+		/// Returns the conflict report unresolved (with <see cref="NuGetProjectPackageOperationResult"/>
+		/// left as an unstarted/unchanged result) when a version conflict is found, so a caller (UI or
+		/// script) can surface it instead of silently proceeding with an incompatible graph.
+		/// </summary>
+		public async Task<(NuGetPackageConflictResolutionResult Conflicts, NuGetProjectPackageOperationResult Operation)> AddPackageReferenceWithConflictCheckAsync(
+			string projectFileName,
+			IReadOnlyList<PackageSource> sources,
+			NuGetFramework targetFramework,
+			string packageId,
+			NuGetVersion version,
+			bool restore,
+			CancellationToken cancellationToken)
+		{
+			if (projectFileName is null)
+				throw new ArgumentNullException(nameof(projectFileName));
+			if (sources is null)
+				throw new ArgumentNullException(nameof(sources));
+			if (version is null)
+				throw new ArgumentNullException(nameof(version));
+
+			var editor = new SdkStylePackageReferenceEditor(projectFileName);
+			var installed = editor.GetPackageReferences()
+				.Where(reference => NuGetVersion.TryParse(reference.Version, out _))
+				.Select(reference => new PackageIdentity(reference.Id, NuGetVersion.Parse(reference.Version)))
+				.ToArray();
+
+			var conflictResult = await conflictResolutionService
+				.ResolveAsync(sources, installed, packageId, version, targetFramework, cancellationToken)
+				.ConfigureAwait(false);
+
+			if (!conflictResult.Succeeded)
+				return (conflictResult, new NuGetProjectPackageOperationResult(false, false, null, string.Empty, string.Empty));
+
+			var operationResult = await AddPackageReferenceAsync(projectFileName, packageId, version, restore, cancellationToken)
+				.ConfigureAwait(false);
+			return (conflictResult, operationResult);
 		}
 
 		public Task<NuGetProjectPackageOperationResult> AddPackageReferenceAsync(

@@ -59,6 +59,7 @@ namespace ICSharpCode.SharpDevelop.NuGet
 		{
 			NuGetVersion latestVersion = null;
 			string latestSourceName = string.Empty;
+			IPackageSearchMetadata latestMetadata = null;
 
 			foreach (var source in sources)
 			{
@@ -72,19 +73,19 @@ namespace ICSharpCode.SharpDevelop.NuGet
 						continue;
 
 					using (var cacheContext = new SourceCacheContext()) {
-						var metadata = await metadataResource
+						var metadata = (await metadataResource
 							.GetMetadataAsync(packageId, includePrerelease, includeUnlisted: false, cacheContext, logger, cancellationToken)
-							.ConfigureAwait(false);
-						var sourceLatest = metadata
-							.Select(item => item.Identity.Version)
-							.Where(version => includePrerelease || !version.IsPrerelease)
-							.OrderByDescending(version => version)
+							.ConfigureAwait(false)).ToList();
+						var sourceLatestMetadata = metadata
+							.Where(item => includePrerelease || !item.Identity.Version.IsPrerelease)
+							.OrderByDescending(item => item.Identity.Version)
 							.FirstOrDefault();
 
-						if (sourceLatest is not null && (latestVersion is null || sourceLatest > latestVersion))
+						if (sourceLatestMetadata is not null && (latestVersion is null || sourceLatestMetadata.Identity.Version > latestVersion))
 						{
-							latestVersion = sourceLatest;
+							latestVersion = sourceLatestMetadata.Identity.Version;
 							latestSourceName = source.Name;
+							latestMetadata = sourceLatestMetadata;
 						}
 					}
 				}
@@ -101,7 +102,9 @@ namespace ICSharpCode.SharpDevelop.NuGet
 				packageId,
 				currentVersion.ToNormalizedString(),
 				latestVersion.ToNormalizedString(),
-				latestSourceName);
+				latestSourceName,
+				latestMetadata?.RequireLicenseAcceptance ?? false,
+				latestMetadata?.LicenseUrl?.ToString());
 		}
 	}
 }

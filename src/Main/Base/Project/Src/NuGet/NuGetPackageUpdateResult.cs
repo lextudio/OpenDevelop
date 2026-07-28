@@ -4,5 +4,7 @@ namespace ICSharpCode.SharpDevelop.NuGet
 		string Id,
 		string CurrentVersion,
 		string LatestVersion,
-		string SourceName);
+		string SourceName,
+		bool RequireLicenseAcceptance = false,
+		string? LicenseUrl = null);
 }
