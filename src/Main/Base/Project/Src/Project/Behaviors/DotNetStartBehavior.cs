@@ -51,6 +51,9 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		public override bool IsStartable {
 			get {
+#if HAS_UNO
+				return false;
+#else
 				switch (StartAction) {
 					case StartAction.Project:
 						return Project.OutputType == OutputType.Exe || Project.OutputType == OutputType.WinExe;
@@ -61,11 +64,15 @@ namespace ICSharpCode.SharpDevelop.Project
 					default:
 						return base.IsStartable;
 				}
+#endif
 			}
 		}
 		
 		public override ProcessStartInfo CreateStartInfo()
 		{
+#if HAS_UNO
+			throw new NotSupportedException();
+#else
 			switch (StartAction) {
 				case StartAction.Project:
 					return CreateStartInfo(Project.OutputAssemblyFullPath, Project.Directory, StartWorkingDirectory, StartArguments);
@@ -79,6 +86,7 @@ namespace ICSharpCode.SharpDevelop.Project
 				default:
 					return base.CreateStartInfo();
 			}
+#endif
 		}
 		
 		
@@ -119,6 +127,9 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		public override void ProjectCreationComplete()
 		{
+#if HAS_UNO
+			base.ProjectCreationComplete();
+#else
 			TargetFramework fx = Project.CurrentTargetFramework;
 			if (fx != null && fx.Version >= Versions.V3_5) {
 				AddDotnet35References();
@@ -136,6 +147,7 @@ namespace ICSharpCode.SharpDevelop.Project
 				}
 			}
 			base.ProjectCreationComplete();
+#endif
 		}
 		
 		public override ItemType GetDefaultItemType(string fileName)
@@ -150,6 +162,9 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		public override CompilerVersion CurrentCompilerVersion {
 			get {
+#if HAS_UNO
+				return CompilerVersion.MSBuild180;
+#else
 				switch (Project.MinimumSolutionVersion) {
 					case SolutionFormatVersion.VS2005:
 						return CompilerVersion.MSBuild20;
@@ -161,11 +176,25 @@ namespace ICSharpCode.SharpDevelop.Project
 					default:
 						throw new NotSupportedException();
 				}
+#endif
 			}
 		}
 		
 		public override IEnumerable<CompilerVersion> GetAvailableCompilerVersions()
 		{
+#if HAS_UNO
+			yield return CompilerVersion.MSBuild20;
+			yield return CompilerVersion.MSBuild35;
+			yield return CompilerVersion.MSBuild40;
+			yield return CompilerVersion.MSBuild80;
+			yield return CompilerVersion.MSBuild100;
+			yield return CompilerVersion.MSBuild120;
+			yield return CompilerVersion.MSBuild140;
+			yield return CompilerVersion.MSBuild150;
+			yield return CompilerVersion.MSBuild160;
+			yield return CompilerVersion.MSBuild170;
+			yield return CompilerVersion.MSBuild180;
+#else
 			List<CompilerVersion> versions = new List<CompilerVersion>();
 			if (DotnetDetection.IsDotnet35SP1Installed()) {
 				versions.Add(CompilerVersion.MSBuild20);
@@ -173,10 +202,14 @@ namespace ICSharpCode.SharpDevelop.Project
 			}
 			versions.Add(CompilerVersion.MSBuild40);
 			return versions;
+#endif
 		}
 		
 		public override TargetFramework CurrentTargetFramework {
 			get {
+#if HAS_UNO
+				return TargetFramework.Net481;
+#else
 				string fxVersion = Project.TargetFrameworkVersion ?? string.Empty;
 				string fxProfile = Project.TargetFrameworkProfile ?? string.Empty;
 				foreach (var fx in SD.ProjectService.TargetFrameworks) {
@@ -184,16 +217,34 @@ namespace ICSharpCode.SharpDevelop.Project
 						return fx;
 				}
 				return null;
+#endif
 			}
 		}
 		
 		public override IEnumerable<TargetFramework> GetAvailableTargetFrameworks()
 		{
+#if HAS_UNO
+			yield return TargetFramework.Net481;
+			yield return TargetFramework.Net48;
+			yield return TargetFramework.Net472;
+			yield return TargetFramework.Net471;
+			yield return TargetFramework.Net47;
+			yield return TargetFramework.Net462;
+			yield return TargetFramework.Net461;
+			yield return TargetFramework.Net46;
+			yield return TargetFramework.Net452;
+			yield return TargetFramework.Net451;
+			yield return TargetFramework.Net45;
+			yield return TargetFramework.Net40;
+#else
 			return SD.ProjectService.TargetFrameworks.Where(fx => fx.IsAvailable());
+#endif
 		}
 		
 		public override void UpgradeProject(CompilerVersion newVersion, TargetFramework newFramework)
 		{
+#if HAS_UNO
+#else
 			if (!Project.IsReadOnly) {
 				lock (Project.SyncRoot) {
 					TargetFramework oldFramework = Project.CurrentTargetFramework;
@@ -221,8 +272,10 @@ namespace ICSharpCode.SharpDevelop.Project
 					ResXConverter.UpdateResourceFiles(Project);
 				}
 			}
+#endif
 		}
 		
+#if !HAS_UNO
 		void AddDotnet35References()
 		{
 			AddReferenceIfNotExists("System.Core", "3.5");
@@ -365,6 +418,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			}
 		}
 		#endregion
+#endif
 		
 		#region Starting (debugging)
 		public string StartProgram {

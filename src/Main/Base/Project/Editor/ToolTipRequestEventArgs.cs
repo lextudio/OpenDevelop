@@ -59,8 +59,13 @@ namespace ICSharpCode.SharpDevelop.Editor
 		public ResolveResult ResolveResult {
 			get {
 				if (!resolveResultInitialized) {
+#if HAS_UNO
+					if (InDocument)
+						resolveResult = null;
+#else
 					if (InDocument)
 						resolveResult = SD.ParserService.Resolve(this.Editor, this.LogicalPosition);
+#endif
 					resolveResultInitialized = true;
 				}
 				return resolveResult;

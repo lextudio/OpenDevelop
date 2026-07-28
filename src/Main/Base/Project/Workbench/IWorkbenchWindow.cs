@@ -53,7 +53,11 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		/// <summary>
 		/// Gets/Sets the icon of the view content.
 		/// </summary>
+#if HAS_UNO
+		object Icon {
+#else
 		System.Windows.Media.ImageSource Icon {
+#endif
 			get;
 			set;
 		}
