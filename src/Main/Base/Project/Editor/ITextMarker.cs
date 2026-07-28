@@ -71,12 +71,14 @@ namespace ICSharpCode.SharpDevelop.Editor
 		/// <summary>
 		/// Gets/Sets the font weight.
 		/// </summary>
+#if !HAS_UNO
 		FontWeight? FontWeight { get; set; }
 		
 		/// <summary>
 		/// Gets/Sets the font style.
 		/// </summary>
 		FontStyle? FontStyle { get; set; }
+#endif
 		
 		/// <summary>
 		/// Gets/Sets the type of the marker. Use TextMarkerType.None for normal markers.

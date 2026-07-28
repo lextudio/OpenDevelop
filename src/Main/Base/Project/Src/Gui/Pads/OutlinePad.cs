@@ -25,18 +25,6 @@ using ICSharpCode.SharpDevelop.Workbench;
 namespace ICSharpCode.SharpDevelop.Gui
 {
 	/// <summary>
-	/// Implement this interface to make a view content display tools in the outline pad.
-	/// </summary>
-	[ViewContentService]
-	public interface IOutlineContentHost
-	{
-		/// <summary>
-		/// Gets the control to display in the outline pad.
-		/// </summary>
-		object OutlineContent { get; }
-	}
-	
-	/// <summary>
 	/// A pad that shows a single child control determined by the document that currently has the focus.
 	/// </summary>
 	public class OutlinePad : AbstractPadContent

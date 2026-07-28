@@ -1,3 +1,7 @@
+#if !HAS_UNO
+using ICSharpCode.SharpDevelop;
+#endif
+
 namespace ICSharpCode.SharpDevelop.Gui;
 
 public static class PadExtensions
