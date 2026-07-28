@@ -1,14 +1,14 @@
 using System.Collections.Generic;
-using System.Windows.Media;
-
-using ICSharpCode.Core;
-using ICSharpCode.Core.Presentation;
 using ICSharpCode.SharpDevelop.Project;
 using Microsoft.VisualStudio.ProjectSystem;
 
 namespace ICSharpCode.SharpDevelop.Services;
 
-internal sealed class ProjectBrowserNodeModel
+// Framework-agnostic tree node shape shared by both hosts' Project Browser pads (see
+// doc/technotes/solution-explorer.md) - WPF-specific rendering (Icon/overlay ImageSource
+// properties) lives in ProjectBrowserNodeModel.Wpf.cs, compiled only into OpenDevelop, since
+// System.Windows.Media isn't available under Uno.Sdk.
+internal sealed partial class ProjectBrowserNodeModel
 {
     public ProjectBrowserNodeModel(
         string name,
@@ -51,16 +51,6 @@ internal sealed class ProjectBrowserNodeModel
     public bool IsExpanded { get; }
 
     public List<ProjectBrowserNodeModel> Children { get; } = new();
-
-    public ImageSource Icon => ProjectBrowserIconService.GetIcon(this);
-
-    public ImageSource LinkedFileOverlayIcon => Kind == ProjectBrowserNodeKind.LinkedFile
-        ? PresentationResourceService.GetBitmapSource("ProjectBrowser.LinkedFileOverlay")
-        : null;
-
-    public ImageSource SourceControlOverlayIcon => ServiceSingleton.ServiceProvider.GetService<IProjectBrowserOverlayService>()?.GetOverlay(FullPath, IsDirectory);
-
-    public string OverlayStatusKey => ServiceSingleton.ServiceProvider.GetService<IProjectBrowserOverlayService>()?.GetOverlayKey(FullPath, IsDirectory) ?? string.Empty;
 
     public ProjectBrowserNodeContext ToContext()
     {

@@ -47,6 +47,24 @@ internal enum ProjectBrowserNodeKind
     GhostFolder
 }
 
+/// <summary>
+/// Git working-tree status for a node's path, used to render the same modified/added/untracked
+/// overlay VS/VS Code show in their own solution/project trees. Set only by hosts with a git
+/// status provider wired up (UnoDevelop's <c>GitStatusService</c>); stays <see cref="None"/> and
+/// renders no overlay for hosts that don't (OpenDevelop doesn't wire one up yet).
+/// </summary>
+internal enum GitFileStatus
+{
+    None,
+    Modified,
+    Added,
+    Untracked,
+    Deleted,
+    Renamed,
+    Conflicted,
+    Ignored
+}
+
 internal sealed record ProjectBrowserNodeContext(
     string Name,
     string FullPath,
@@ -55,7 +73,8 @@ internal sealed record ProjectBrowserNodeContext(
     ISolutionItem? BoundItem = null,
     IProjectTree? BoundProjectTree = null,
     string? ProjectPathHint = null,
-    string? IncludeHint = null) : ICSharpCode.Core.IOwnerState
+    string? IncludeHint = null,
+    GitFileStatus GitStatus = GitFileStatus.None) : ICSharpCode.Core.IOwnerState
 {
 
     public Enum InternalState => State;
