@@ -1224,6 +1224,33 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return value?.GetType().GetProperty(propertyName)?.GetValue(value) as string;
 		}
 
+		[DevFlowAction("od.xml-tree-status", Description = "Check the XML Tree View secondary view for the active workbench window. Returns {found, title, viewType} JSON.")]
+		public static string GetXmlTreeStatus()
+		{
+			var window = SD.Workbench.ActiveWorkbenchWindow;
+			var treeView = window?.ViewContents
+				.FirstOrDefault(vc => vc.GetType().FullName == "ICSharpCode.XmlEditor.XmlTreeView");
+
+			if (treeView is null)
+			{
+				return JsonSerializer.Serialize(new
+				{
+					found = false,
+					activeFile = window?.ActiveViewContent?.PrimaryFileName?.ToString(),
+					views = window?.ViewContents.Select(vc => vc.GetType().FullName).ToArray() ?? Array.Empty<string>()
+				});
+			}
+
+			return JsonSerializer.Serialize(new
+			{
+				found = true,
+				title = treeView.TabPageText,
+				viewType = treeView.GetType().FullName,
+				primaryFile = treeView.PrimaryFileName?.ToString(),
+				isDirty = treeView.IsDirty
+			});
+		}
+
 		// od.xaml-outline.status lives in XamlBinding's own XamlOutlineDevFlowActions.cs
 		// (ICSharpCode.XamlBinding.XamlOutlineDevFlowActions), next to the real
 		// XamlOutlineContentHost/XamlOutlineLspProvider it inspects - a stale duplicate
