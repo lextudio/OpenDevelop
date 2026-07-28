@@ -65,7 +65,9 @@ namespace ICSharpCode.SharpDevelop.NuGet
                         result.Description,
                         result.DownloadCount,
                         result.IconUrl?.ToString(),
-                        source.Name);
+                        source.Name,
+                        result.RequireLicenseAcceptance,
+                        result.LicenseUrl?.ToString());
                 }
             }
 

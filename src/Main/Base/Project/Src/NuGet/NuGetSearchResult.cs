@@ -11,5 +11,7 @@ namespace ICSharpCode.SharpDevelop.NuGet
         string? Description,
         long? DownloadCount,
         string? IconUrl,
-        string SourceName);
+        string SourceName,
+        bool RequireLicenseAcceptance = false,
+        string? LicenseUrl = null);
 }
