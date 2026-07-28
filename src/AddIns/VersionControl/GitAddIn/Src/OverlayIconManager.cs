@@ -28,53 +28,63 @@ namespace ICSharpCode.GitAddIn
 	public static class OverlayIconManager
 	{
 		public static readonly IProjectBrowserNodeOverlayProvider Provider = new GitProjectBrowserOverlayProvider();
-		
+
 		public static void Invalidate(string fileName)
 		{
-			GitStatusCache.ClearCachedStatus(fileName);
+			GitStatusService.ClearCachedStatus(fileName);
 			ICSharpCode.SharpDevelop.SD.GetService<IProjectBrowserOverlayService>()?.Invalidate(fileName);
 		}
-		
+
 		sealed class GitProjectBrowserOverlayProvider : IProjectBrowserNodeOverlayProvider
 		{
 			public ImageSource GetOverlay(string fullPath, bool isDirectory)
 			{
-				GitStatus status = GitStatusCache.GetFileStatus(fullPath);
+				GitFileStatus status = GitStatusService.GetStatus(fullPath);
 				return GetImage(status);
 			}
 
 			public string GetOverlayKey(string fullPath, bool isDirectory)
 			{
-				GitStatus status = GitStatusCache.GetFileStatus(fullPath);
+				GitFileStatus status = GitStatusService.GetStatus(fullPath);
 				return GetImage(status) == null ? null : status.ToString();
 			}
 		}
-		
-		public static ImageSource GetImage(GitStatus status)
+
+		// Only genuinely non-clean states get a badge - a clean tracked file shows nothing, matching
+		// VS/VS Code convention (the old GitStatusCache-backed version badged every tracked file with
+		// a green checkmark via a separate `git ls-files` pass; GitStatusService, shared with
+		// UnoDevelop, doesn't distinguish "clean and tracked" from "not in a git repo at all" - both
+		// report GitFileStatus.None - so that checkmark-on-every-file behavior is intentionally
+		// dropped rather than reintroduced just for parity).
+		public static ImageSource GetImage(GitFileStatus status)
 		{
 			return status switch {
-				GitStatus.Added => StatusImages.Added,
-				GitStatus.Deleted => StatusImages.Deleted,
-				GitStatus.Modified => StatusImages.Modified,
-				GitStatus.OK => StatusImages.OK,
+				GitFileStatus.Added => StatusImages.Added,
+				GitFileStatus.Deleted => StatusImages.Deleted,
+				GitFileStatus.Modified => StatusImages.Modified,
+				GitFileStatus.Renamed => StatusImages.Renamed,
+				GitFileStatus.Untracked => StatusImages.Untracked,
+				GitFileStatus.Conflicted => StatusImages.Conflicted,
 				_ => null
 			};
 		}
-		
+
 		static class StatusImages
 		{
-			static readonly Dictionary<GitStatus, ImageSource> images = new Dictionary<GitStatus, ImageSource>();
-			
-			public static ImageSource Added => Get(GitStatus.Added, Color.FromRgb(40, 154, 62), CreateAddedGeometry());
-			public static ImageSource Deleted => Get(GitStatus.Deleted, Color.FromRgb(211, 47, 47), CreateDeletedGeometry());
-			public static ImageSource Modified => Get(GitStatus.Modified, Color.FromRgb(245, 160, 30), CreateModifiedGeometry());
-			public static ImageSource OK => Get(GitStatus.OK, Color.FromRgb(43, 141, 77), CreateOKGeometry());
-			
-			static ImageSource Get(GitStatus status, Color color, Geometry glyph)
+			static readonly Dictionary<GitFileStatus, ImageSource> images = new Dictionary<GitFileStatus, ImageSource>();
+
+			public static ImageSource Added => Get(GitFileStatus.Added, Color.FromRgb(40, 154, 62), CreateAddedGeometry());
+			public static ImageSource Deleted => Get(GitFileStatus.Deleted, Color.FromRgb(211, 47, 47), CreateDeletedGeometry());
+			public static ImageSource Modified => Get(GitFileStatus.Modified, Color.FromRgb(245, 160, 30), CreateModifiedGeometry());
+			public static ImageSource Renamed => Get(GitFileStatus.Renamed, Color.FromRgb(30, 136, 229), CreateModifiedGeometry());
+			public static ImageSource Untracked => Get(GitFileStatus.Untracked, Color.FromRgb(0, 150, 136), CreateAddedGeometry());
+			public static ImageSource Conflicted => Get(GitFileStatus.Conflicted, Color.FromRgb(198, 40, 40), CreateConflictedGeometry());
+
+			static ImageSource Get(GitFileStatus status, Color color, Geometry glyph)
 			{
 				if (images.TryGetValue(status, out ImageSource image))
 					return image;
-				
+
 				Brush background = new SolidColorBrush(color);
 				background.Freeze();
 				Brush foreground = Brushes.White;
@@ -87,25 +97,28 @@ namespace ICSharpCode.GitAddIn
 				images[status] = image;
 				return image;
 			}
-			
+
 			static Geometry CreateAddedGeometry()
 			{
 				return Geometry.Parse("M7,3 L9,3 L9,7 L13,7 L13,9 L9,9 L9,13 L7,13 L7,9 L3,9 L3,7 L7,7 Z");
 			}
-			
+
 			static Geometry CreateDeletedGeometry()
 			{
 				return Geometry.Parse("M3,7 L13,7 L13,9 L3,9 Z");
 			}
-			
+
 			static Geometry CreateModifiedGeometry()
 			{
 				return Geometry.Parse("M7,3 L9,3 L9,10 L7,10 Z M7,12 L9,12 L9,14 L7,14 Z");
 			}
-			
-			static Geometry CreateOKGeometry()
+
+			static Geometry CreateConflictedGeometry()
 			{
-				return Geometry.Parse("M6.5,11.5 L3.5,8.5 L5,7 L6.5,8.5 L11,4 L12.5,5.5 Z");
+				// Same exclamation-mark shape as Modified's glyph - visually distinct via its color
+				// (Conflicted's red matches Deleted's, so relies on the badge's position/shape too),
+				// kept intentionally simple rather than inventing a new pictogram for a rare state.
+				return Geometry.Parse("M7,3 L9,3 L9,10 L7,10 Z M7,12 L9,12 L9,14 L7,14 Z");
 			}
 		}
 	}

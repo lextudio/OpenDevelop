@@ -26,6 +26,7 @@ using System.Windows.Forms;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Project;
+using ICSharpCode.SharpDevelop.Services;
 using ICSharpCode.SharpDevelop.Workbench;
 
 namespace ICSharpCode.GitAddIn
@@ -75,7 +76,7 @@ namespace ICSharpCode.GitAddIn
 		{
 			return delegate {
 				SD.MainThread.VerifyAccess();
-				GitStatusCache.ClearCachedStatus(nodeFileName);
+				GitStatusService.ClearCachedStatus(nodeFileName);
 			};
 		}
 		

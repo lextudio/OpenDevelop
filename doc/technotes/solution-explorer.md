@@ -1,8 +1,8 @@
 # Solution Explorer (WPF, CPS-backed)
 
-**Status update (2026-07-27): one shared implementation for node model, item resolution, CPS tree
-provider, AND the command/business-logic layer - only native dialog/clipboard calls and CPS-flag
-kind-resolution stay per-host.** The plan below (rungs R6a-R6d) reads as if none of this had
+**Status update (2026-07-28): one shared implementation for node model, item resolution, CPS tree
+provider, the command/business-logic layer, CPS-flag kind resolution, AND git status - only native
+dialog/clipboard calls stay per-host.** The plan below (rungs R6a-R6d) reads as if none of this had
 started; in practice OpenDevelop already had a complete, running `ProjectBrowser*`-named
 implementation (pad, WPF `TreeView`, icon/overlay services, `SharpDevelopProjectTreeProvider`) that
 had diverged from UnoDevelop's `SolutionExplorer*`/`Uno*`-named one under the same "copy, then
@@ -12,10 +12,10 @@ mechanical rename, by the time anyone went back to check. Unified in this pass:
 - **Node model** (`ProjectBrowserNodeContext`/`NodeProperties`/`NodeModel`) - canonically named
   after OpenDevelop's already-running pad rather than UnoDevelop's `SolutionExplorer*`/`Uno*`
   names, since that's the side with the fuller feature set (WPF Properties-pad integration,
-  overlay/icon services) actually wired up. `GitFileStatus` (previously UnoDevelop-only, since
-  OpenDevelop had no git-status provider wired into this layer) moved here too - it's a plain
-  status enum with no host dependency, so it costs OpenDevelop nothing to carry a field it doesn't
-  set yet. WPF-only rendering (`Icon`/overlay `ImageSource` properties, which don't exist under
+  overlay/icon services) actually wired up. `GitFileStatus` (previously UnoDevelop-only) is a field
+  on `ProjectBrowserNodeContext` here; the enum itself now lives in the Base layer alongside
+  `GitStatusService` (see "Git status" below) since `GitAddIn` needs it too and only references
+  Base. WPF-only rendering (`Icon`/overlay `ImageSource` properties, which don't exist under
   Uno.Sdk) split into `ProjectBrowserNodeModel.Wpf.cs`, compiled only into OpenDevelop.
 - **Project item resolution** (`ProjectDisplayItems.GetProjectDisplayItems`/
   `GetEvaluatedDependencyItems`) - this was already factored out as host-agnostic (operates on
@@ -52,34 +52,42 @@ mechanical rename, by the time anyone went back to check. Unified in this pass:
   copies of `IProjectBrowserHost`/`IProjectBrowserController`/`IProjectBrowserService`) are gone;
   `UnoProjectService` now implements the shared `IProjectBrowserService` directly.
 
-**Left as two separate implementations, still** (native UI code with no shared business logic to
-extract - unifying it means building a cross-framework dialog/clipboard abstraction, a
-qualitatively different and much larger effort than deduplicating logic):
+- **CPS-flags → `ProjectBrowserNodeKind` resolution** - `CpsTreeConverter.ResolveKind`
+  (UnoDevelop) and `ProjectBrowserTreeBuilder.GetNodeKind` (OpenDevelop) both used to have their own
+  copy of this mapping. UnoDevelop's was the more refined of the two (it distinguishes
+  ghost/ready-to-include and missing files via CPS's own `FileSystemEntity`/
+  `IncludeInProjectCandidate` flags, rather than an extra `File.Exists` disk check per node), so it
+  became the canonical one: extracted into `ProjectBrowserTreeKindResolver.ResolveKind`, called by
+  both converters. OpenDevelop gains ghost-file recognition it never had (a ready-to-include file
+  exists on disk, so its old `File.Exists`-based check always saw it as a plain `File`, not
+  `GhostFile`). An earlier revision of this note suspected the CPS-flag version was the source of
+  UnoDevelop's intermittent Solution Explorer content issues seen in integration testing; that
+  turned out not to hold up (the issue cleared on its own after the item-resolution/CPS-tree-provider
+  fixes above, not from touching kind resolution) - noted here so the suspicion isn't silently
+  forgotten if something like it resurfaces.
+- **Git status** - `GitStatusService`/`GitFileStatus` were UnoDevelop-only (proper porcelain-v1 X/Y
+  parsing, cross-platform `git` discovery, Untracked/Ignored/Renamed/Conflicted states), while
+  OpenDevelop's `GitAddIn` had its own older, narrower engine (`GitStatusCache` - `git ls-files` +
+  `status --porcelain --untracked-files=no`, only Added/Modified/Deleted/OK/None, and a WPF-typed
+  `ImageSource`-returning overlay provider). Unified onto UnoDevelop's engine: `GitStatusService`/
+  `GitFileStatus` moved to `Main/Base/Project/Src/Services/ProjectBrowser/` (Base layer, not the
+  App-layer `SharpDevelop.csproj` they started in during the node-model merge above - `GitAddIn`
+  only references Base, so a type it needs can't live in App). `GitAddIn`'s `OverlayIconManager`
+  now computes its `ImageSource` badges from the shared `GitFileStatus` instead of its own
+  `GitStatusCache`-backed `GitStatus` enum (deleted); `GitStatusCache.cs` is gone. One deliberate
+  behavior change: the old engine also badged every clean tracked file with a green checkmark (via
+  a separate `git ls-files` pass); the shared engine doesn't distinguish "clean and tracked" from
+  "not in a git repo at all" (both report `GitFileStatus.None`), so that checkmark-on-every-file
+  behavior was dropped rather than reintroduced just for parity - matches VS/VS Code convention
+  (only non-clean files get badged), not a regression.
 
-- The three `ProjectBrowserControllerBase` overrides themselves (WinUI `DataPackage`/`Clipboard`
-  vs WPF `Clipboard`; `NewItemDialog`/`NewProjectDialog` WinUI content dialogs vs
-  `NewItemWindow`/`NewProjectWindow` WPF windows with an owner handle) and the WPF-only
-  `FileDialogService` (`Microsoft.Win32.OpenFileDialog`/`OpenFolderDialog`) vs UnoDevelop's own.
-- **CPS-flags → `ProjectBrowserNodeKind` resolution and Show-All-Files filtering**
-  (`CpsTreeConverter.ResolveKind` vs `ProjectBrowserTreeBuilder.GetNodeKind`) - UnoDevelop's version
-  distinguishes ghost/ready-to-include and missing files via CPS's own `FileSystemEntity`/
-  `IncludeInProjectCandidate` flags; OpenDevelop's checks `File.Exists` on disk instead. Per
-  integration-testing feedback, UnoDevelop's own Solution Explorer has shown intermittently wrong
-  tree content in practice - i.e. the theoretically-more-refined CPS-flag version is the one with
-  the observed reliability problem, not OpenDevelop's simpler disk-check version. Reconciling onto
-  OpenDevelop's simpler approach (rather than the other way around) is the likely next step, but
-  needs the actual failure mode confirmed first, not just switched on a hunch - tracked separately.
-
-## Still open
-
-- Git status: UnoDevelop's `GitStatusService` bakes status directly into `NodeContext.GitStatus`
-  at tree-build time; OpenDevelop's `GitAddIn` instead registers a `IProjectBrowserNodeOverlayProvider`
-  with the extensible `IProjectBrowserOverlayService` (already visible to UnoDevelop via the shared
-  `ICSharpCode.SharpDevelop.csproj` Base-layer reference). The overlay-provider pattern is the
-  better architecture of the two; unifying onto it means changing how `GitStatusService` publishes
-  its data, not just renaming a type - a separate pass.
-- CPS-flag vs disk-check kind resolution (see above) - suspected but not yet confirmed as the cause
-  of UnoDevelop's intermittent Solution Explorer content issues.
+**Left as two separate implementations** (native UI code with no shared business logic to extract -
+unifying it means building a cross-framework dialog/clipboard abstraction, a qualitatively
+different and much larger effort than deduplicating logic): the three `ProjectBrowserControllerBase`
+overrides themselves (WinUI `DataPackage`/`Clipboard` vs WPF `Clipboard`;
+`NewItemDialog`/`NewProjectDialog` WinUI content dialogs vs `NewItemWindow`/`NewProjectWindow` WPF
+windows with an owner handle) and the WPF-only `FileDialogService`
+(`Microsoft.Win32.OpenFileDialog`/`OpenFolderDialog`) vs UnoDevelop's own.
 
 ## Goal
 

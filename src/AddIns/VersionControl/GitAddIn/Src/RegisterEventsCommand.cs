@@ -58,7 +58,7 @@ namespace ICSharpCode.GitAddIn
 		{
 			if (!AddInOptions.AutomaticallyDeleteFiles)
 				return;
-			if (GitStatusCache.GetFileStatus(fileName) == GitStatus.Added) {
+			if (GitStatusService.GetStatus(fileName) == GitFileStatus.Added) {
 				await Git.RemoveAsync(fileName, true);
 			}
 			ClearStatusCacheAndInvalidate(fileName);

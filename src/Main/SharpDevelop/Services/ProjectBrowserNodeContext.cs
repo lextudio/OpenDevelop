@@ -47,23 +47,9 @@ internal enum ProjectBrowserNodeKind
     GhostFolder
 }
 
-/// <summary>
-/// Git working-tree status for a node's path, used to render the same modified/added/untracked
-/// overlay VS/VS Code show in their own solution/project trees. Set only by hosts with a git
-/// status provider wired up (UnoDevelop's <c>GitStatusService</c>); stays <see cref="None"/> and
-/// renders no overlay for hosts that don't (OpenDevelop doesn't wire one up yet).
-/// </summary>
-internal enum GitFileStatus
-{
-    None,
-    Modified,
-    Added,
-    Untracked,
-    Deleted,
-    Renamed,
-    Conflicted,
-    Ignored
-}
+// GitFileStatus now lives in the Base layer (Main/Base/Project/Src/Services/ProjectBrowser/
+// GitStatusService.cs) alongside GitStatusService itself - GitAddIn only references Base, not this
+// App-layer project, so a type it needs can't live here.
 
 internal sealed record ProjectBrowserNodeContext(
     string Name,

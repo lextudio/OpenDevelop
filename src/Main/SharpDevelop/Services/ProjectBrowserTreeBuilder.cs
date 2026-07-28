@@ -93,30 +93,13 @@ internal static class ProjectBrowserTreeBuilder
         return node;
     }
     
-    private static ProjectBrowserNodeKind GetNodeKind(IProjectTree tree)
-    {
-        if (tree.Flags.Contains(ProjectTreeFlags.Common.DependenciesFolder))
-            return ProjectBrowserNodeKind.DependenciesFolder;
-        if (tree.Flags.Contains(ProjectTreeFlags.Common.PackagesFolder))
-            return ProjectBrowserNodeKind.PackagesFolder;
-        if (tree.Flags.Contains(ProjectTreeFlags.Common.ReferencesFolder))
-            return ProjectBrowserNodeKind.ReferencesFolder;
-        if (tree.Flags.Contains(ProjectTreeFlags.Common.PackageReference))
-            return ProjectBrowserNodeKind.PackageReference;
-        if (tree.Flags.Contains(ProjectTreeFlags.Common.ProjectReference))
-            return ProjectBrowserNodeKind.ProjectReference;
-        if (tree.Flags.Contains(ProjectTreeFlags.Common.Reference))
-            return ProjectBrowserNodeKind.Reference;
-        if (tree.Flags.Contains(ProjectTreeFlags.Common.LinkedFile))
-            return ProjectBrowserNodeKind.LinkedFile;
-        if (tree.IsFolder)
-            return tree.Flags.Contains(ProjectTreeFlags.Common.IncludeInProjectCandidate)
-                ? ProjectBrowserNodeKind.GhostFolder
-                : ProjectBrowserNodeKind.Folder;
-        if (!string.IsNullOrWhiteSpace(tree.FilePath) && !File.Exists(tree.FilePath))
-            return ProjectBrowserNodeKind.MissingFile;
-        return ProjectBrowserNodeKind.File;
-    }
+    // Shared with UnoDevelop's CpsTreeConverter (see doc/technotes/solution-explorer.md) - this used
+    // to check File.Exists on disk per node instead of CPS's own FileSystemEntity/
+    // IncludeInProjectCandidate flags, which meant a ghost (ready-to-include) file was
+    // indistinguishable from a normal one here (it exists on disk, so File.Exists was true) - the
+    // shared resolver now recognizes it as GhostFile like UnoDevelop's tree always did.
+    private static ProjectBrowserNodeKind GetNodeKind(IProjectTree tree) =>
+        ProjectBrowserTreeKindResolver.ResolveKind(tree);
     
     private static string? GetIncludeHint(IProjectTree tree, string projectPath)
     {
