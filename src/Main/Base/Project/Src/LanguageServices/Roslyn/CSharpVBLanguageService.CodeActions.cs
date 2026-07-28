@@ -14,14 +14,14 @@ using ICSharpCode.Core;
 
 namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
 {
-    // Roslyn-native code fixes (docs/language-services.md §8.3). Split into its own partial-class
+    // Roslyn-native code fixes (externals/OpenDevelop/doc/technotes/language-services.md §8.3). Split into its own partial-class
     // file since it's a self-contained concern (MEF provider discovery) with its own lifecycle
     // state, not because CSharpVBLanguageService.cs was reorganized.
     public sealed partial class CSharpVBLanguageService
     {
         // Built lazily and kept for this service's lifetime: composing a CompositionHost over
         // every MefHostServices.DefaultAssemblies (the same assembly set the Roslyn Workspace
-        // itself composes from, docs/language-services.md §8.3) isn't free, and the set of
+        // itself composes from, externals/OpenDevelop/doc/technotes/language-services.md §8.3) isn't free, and the set of
         // available CodeFixProviders can't change without a process restart anyway.
         CompositionHost? _codeFixHost;
 

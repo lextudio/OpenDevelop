@@ -1,5 +1,5 @@
 // Slice 6: wires the SharpDevelop/MSBuild project model to the CPS tree model.
-// See docs/project-system.md.
+// See externals/OpenDevelop/doc/technotes/project-system.md.
 
 using System;
 using System.Collections.Generic;
@@ -62,7 +62,7 @@ internal sealed class SharpDevelopProjectTreeProvider : ProjectTreeProviderBase
         return root;
     }
 
-    /// <summary>Async counterpart of <see cref="BuildTree"/>, routing the dependencies node through the real CPS dataflow pipeline. See docs/project-system.md (Slice 46).</summary>
+    /// <summary>Async counterpart of <see cref="BuildTree"/>, routing the dependencies node through the real CPS dataflow pipeline. See externals/OpenDevelop/doc/technotes/project-system.md (Slice 46).</summary>
     public async Task<MutableProjectTree> BuildTreeAsync()
     {
         var projectFile = _projectPath ?? _project.FileName.ToString();
@@ -102,7 +102,7 @@ internal sealed class SharpDevelopProjectTreeProvider : ProjectTreeProviderBase
     /// dataflow pipeline (<see cref="SharpDevelopDependenciesSnapshotFactory.BuildTreeAsync"/>,
     /// slice 46) instead of the imperative <see cref="DependencyTreeBridgeBuilder"/> — falling back
     /// to that same imperative path if the dataflow pipeline doesn't produce a snapshot in time.
-    /// See docs/project-system.md (Slice 46).
+    /// See externals/OpenDevelop/doc/technotes/project-system.md (Slice 46).
     /// </summary>
     private async Task AddSpecialNodesAsync(MutableProjectTree root, string projectFile, string projectDir)
     {

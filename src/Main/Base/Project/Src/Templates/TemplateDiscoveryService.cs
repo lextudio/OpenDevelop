@@ -13,7 +13,7 @@ using Microsoft.TemplateEngine.IDE;
 namespace ICSharpCode.SharpDevelop.Templates
 {
     /// <summary>
-    /// Discovers installed file/project templates (docs/template-system.md slice 1) via
+    /// Discovers installed file/project templates (externals/OpenDevelop/doc/technotes/template-system.md slice 1) via
     /// <c>Microsoft.TemplateEngine.IDE</c>'s <see cref="Bootstrapper"/> — the same high-level
     /// entry point real IDE hosts use (it wraps <c>EngineEnvironmentSettings</c> and registers
     /// the default generator/provider components itself, which is what actually makes the

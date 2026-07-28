@@ -10,7 +10,7 @@ namespace ICSharpCode.SharpDevelop.NuGet
 {
     /// <summary>
     /// Multi-source package search projected into the presentation-shaped
-    /// <see cref="NuGetSearchResult"/> record (docs/nuget-manager.md slice 3). The actual feed search
+    /// <see cref="NuGetSearchResult"/> record (externals/OpenDevelop/doc/technotes/nuget-manager.md slice 3). The actual feed search
     /// lives in the shared <see cref="NuGetPackageSearchEngine"/>; this is only the projection layer -
     /// see that class for why the projection is per-host rather than shared.
     /// </summary>

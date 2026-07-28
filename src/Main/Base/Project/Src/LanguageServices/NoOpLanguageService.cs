@@ -13,6 +13,12 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
         {
         }
 
+        public Task UpsertDocumentAsync(DocumentId documentId, string text, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
+        }
+
         public Task<CompletionResult> GetCompletionsAsync(DocumentId documentId, int offset, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();

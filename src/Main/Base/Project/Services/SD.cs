@@ -183,12 +183,10 @@ namespace ICSharpCode.SharpDevelop
 			get { return GetRequiredService<IParserService>(); }
 		}
 		
-#if !HAS_UNO
 		/// <inheritdoc see="IAssemblyParserService"/>
 		public static IAssemblyParserService AssemblyParserService {
 			get { return GetRequiredService<IAssemblyParserService>(); }
 		}
-#endif
 
 		/// <inheritdoc see="IFileService"/>
 		public static IFileService FileService {

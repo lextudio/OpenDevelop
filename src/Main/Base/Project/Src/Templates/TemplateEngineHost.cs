@@ -5,7 +5,7 @@ using Microsoft.TemplateEngine.Edge;
 namespace ICSharpCode.SharpDevelop.Templates
 {
     /// <summary>
-    /// Identifies the running host to Microsoft.TemplateEngine (docs/template-system.md §1) - the
+    /// Identifies the running host to Microsoft.TemplateEngine (externals/OpenDevelop/doc/technotes/template-system.md §1) - the
     /// same engine `dotnet new`/modern Visual Studio use for file and project templates, not
     /// SharpDevelop's or MonoDevelop's own proprietary template formats. Shared by both hosts (see
     /// doc/technotes/solution-explorer.md's precedent) - this used to be two near-identical classes

@@ -3,7 +3,7 @@
 **Status (2026-07-28): one shared implementation.** Both hosts back "New Item"/"New Project" with
 `Microsoft.TemplateEngine` (the same engine `dotnet new` and modern Visual Studio use), not
 SharpDevelop's or MonoDevelop's own proprietary template formats - see UnoDevelop's own
-`docs/template-system.md` for the original decision rationale (industry-standard `template.json`
+`externals/OpenDevelop/doc/technotes/template-system.md` for the original decision rationale (industry-standard `template.json`
 format, shares the same global cache `dotnet new install` populates, one engine for both file and
 project templates).
 

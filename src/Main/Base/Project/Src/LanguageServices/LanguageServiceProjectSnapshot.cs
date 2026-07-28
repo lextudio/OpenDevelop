@@ -53,7 +53,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
 
         /// <summary>
         /// Resolved paths of `Analyzer` items — third-party Roslyn analyzer/source-generator
-        /// assemblies from `PackageReference` analyzer assets (docs/language-services.md §2.3).
+        /// assemblies from `PackageReference` analyzer assets (externals/OpenDevelop/doc/technotes/language-services.md §2.3).
         /// </summary>
         public IReadOnlyList<string> AnalyzerAssemblyFileNames { get; }
 
@@ -68,7 +68,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
         }
 
         /// <summary>
-        /// Returns one snapshot per declared TFM for a multi-targeted project (docs/language-services.md
+        /// Returns one snapshot per declared TFM for a multi-targeted project (externals/OpenDevelop/doc/technotes/language-services.md
         /// §4 slice 4), or a single snapshot (<see cref="TargetFramework"/> = <see langword="null"/>)
         /// for a single-targeted (or unrecognized) project.
         /// </summary>

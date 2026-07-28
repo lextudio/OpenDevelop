@@ -7,6 +7,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
 {
     public interface ILanguageService
     {
+        Task UpsertDocumentAsync(DocumentId documentId, string text, CancellationToken cancellationToken);
         Task<CompletionResult> GetCompletionsAsync(DocumentId documentId, int offset, CancellationToken cancellationToken);
         Task<QuickInfo?> GetQuickInfoAsync(DocumentId documentId, int offset, CancellationToken cancellationToken);
         Task<IReadOnlyList<LanguageDiagnostic>> GetDiagnosticsAsync(DocumentId documentId, CancellationToken cancellationToken);
@@ -43,7 +44,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
 
         /// <summary>
         /// Lists the code actions (quick fixes/refactorings) applicable at <paramref name="span"/>
-        /// (docs/language-services.md §8). A computed action is short-lived backend-side state
+        /// (externals/OpenDevelop/doc/technotes/language-services.md §8). A computed action is short-lived backend-side state
         /// (a Roslyn <c>CodeAction</c>, or an LSP action that may still need a
         /// <c>codeAction/resolve</c> round trip) — it can't be handed back as plain data, so
         /// <see cref="CodeActionInfo.Id"/> is an opaque token the backend caches against, valid

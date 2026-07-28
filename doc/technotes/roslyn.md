@@ -19,7 +19,7 @@ already works.
 ## Precedent: UnoDevelop already did this, for both languages, in one implementation
 
 `/Users/lextm/uno-tools/UnoDevelop/src/Main/Base/Src/LanguageServices/Roslyn/CSharpVBLanguageService.cs`
-(see its `docs/language-services.md`) backs **both** `.cs` and `.vb` through a single
+(see its `externals/OpenDevelop/doc/technotes/language-services.md`) backs **both** `.cs` and `.vb` through a single
 `AdhocWorkspace(MefHostServices.DefaultHost)`, branching purely on file extension:
 
 ```csharp

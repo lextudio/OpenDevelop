@@ -12,7 +12,7 @@ using StreamJsonRpc;
 namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
 {
     /// <summary>
-    /// Generic LSP client backend (docs/language-services.md §3, slices 5-7). One instance
+    /// Generic LSP client backend (externals/OpenDevelop/doc/technotes/language-services.md §3, slices 5-7). One instance
     /// owns one child server process for one project language, launched lazily on first use.
     /// Completion, diagnostics, hover, go-to-definition, and formatting (whole-document via
     /// <c>textDocument/formatting</c>, or ranged via <c>textDocument/rangeFormatting</c> when
@@ -39,7 +39,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
         readonly Dictionary<string, IReadOnlyList<LanguageDiagnostic>> _diagnosticsByUri =
             new(StringComparer.OrdinalIgnoreCase);
 
-        // Last computed code-action list per document (docs/language-services.md §8), keyed by
+        // Last computed code-action list per document (externals/OpenDevelop/doc/technotes/language-services.md §8), keyed by
         // the opaque CodeActionInfo.Id GetCodeActionsAsync handed out — a fresh
         // GetCodeActionsAsync call for a document replaces its entry, so an id from a
         // superseded list is simply absent (ApplyCodeActionAsync treats that as "no edits"
@@ -405,7 +405,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
             if (result.ValueKind != JsonValueKind.Array)
                 return Array.Empty<CodeActionInfo>();
 
-            // Slice 1 (docs/language-services.md §8.2) only supports actions that already carry
+            // Slice 1 (externals/OpenDevelop/doc/technotes/language-services.md §8.2) only supports actions that already carry
             // a literal `edit` in the response - command-only actions and ones needing a
             // codeAction/resolve round trip first are skipped.
             var pending = new Dictionary<string, JsonElement>(StringComparer.Ordinal);

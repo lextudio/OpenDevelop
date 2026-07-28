@@ -30,7 +30,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         const string NoTargetFrameworkKey = "";
 
         readonly AdhocWorkspace _workspace;
-        // Multi-targeted projects (docs/language-services.md §4 slice 4) get one Roslyn project
+        // Multi-targeted projects (externals/OpenDevelop/doc/technotes/language-services.md §4 slice 4) get one Roslyn project
         // per TFM slice, so a document that's shared across TFMs has one RoslynDocumentId per
         // TFM here, keyed by TFM (NoTargetFrameworkKey for single-targeted/loose files).
         readonly Dictionary<DocumentId, Dictionary<string, RoslynDocumentId>> _documentVariantsByTfm;
@@ -41,7 +41,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         readonly Dictionary<string, string> _activeTargetFrameworkByProjectFileName;
         readonly IAnalyzerAssemblyLoader _analyzerAssemblyLoader = new DirectAnalyzerAssemblyLoader();
 
-        // Last computed code-action list per document (docs/language-services.md §8), keyed by
+        // Last computed code-action list per document (externals/OpenDevelop/doc/technotes/language-services.md §8), keyed by
         // the opaque CodeActionInfo.Id GetCodeActionsAsync handed out. See
         // CSharpVBLanguageService.CodeActions.cs.
         readonly Dictionary<DocumentId, Dictionary<string, CodeAction>> _pendingCodeActionsByDocument = new();
@@ -101,7 +101,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         }
 
         /// <summary>
-        /// Targeted add for a single new <c>Compile</c> item (docs/language-services.md §2.1/§4
+        /// Targeted add for a single new <c>Compile</c> item (externals/OpenDevelop/doc/technotes/language-services.md §2.1/§4
         /// slice 3) — adds one document to each of the project's already-known TFM slices
         /// (`Workspace.OnDocumentAdded` under the hood via <see cref="AddDocument"/>) instead of
         /// re-snapshotting and diffing the whole project's file list. Assumes the new file is
@@ -347,7 +347,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         /// Compiler + analyzer diagnostics for <paramref name="document"/>, as raw Roslyn
         /// <see cref="RoslynDiagnostic"/>s rather than our <see cref="LanguageDiagnostic"/> DTO —
         /// shared by <see cref="GetDiagnosticsAsync"/> and <see cref="GetCodeActionsAsync"/>
-        /// (docs/language-services.md §8.3), which needs the raw diagnostics to match against
+        /// (externals/OpenDevelop/doc/technotes/language-services.md §8.3), which needs the raw diagnostics to match against
         /// each <c>CodeFixProvider.FixableDiagnosticIds</c>.
         /// </summary>
         async Task<ImmutableArray<RoslynDiagnostic>> ComputeRoslynDiagnosticsAsync(Document document, CancellationToken cancellationToken)
@@ -476,7 +476,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         /// <summary>
         /// Diffs every document present in both solutions and returns the resulting
         /// <see cref="TextEdit"/>s per absolute file path — shared by <see cref="RenameSymbolAsync"/>
-        /// and <see cref="ApplyCodeActionAsync"/> (docs/language-services.md §8.3), since both
+        /// and <see cref="ApplyCodeActionAsync"/> (externals/OpenDevelop/doc/technotes/language-services.md §8.3), since both
         /// end up needing "what changed across the whole solution" from a before/after
         /// <see cref="Solution"/> pair. Every TFM slice of a multi-targeted project is a separate
         /// Roslyn <see cref="Document"/> pointing at the same real file — only the first slice's
@@ -552,7 +552,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             return Array.Empty<NavigationTarget>();
         }
 
-        // GetCodeActionsAsync/ApplyCodeActionAsync (docs/language-services.md §8.3) are
+        // GetCodeActionsAsync/ApplyCodeActionAsync (externals/OpenDevelop/doc/technotes/language-services.md §8.3) are
         // implemented in CSharpVBLanguageService.CodeActions.cs.
 
         public void OnTextChanged(DocumentId documentId, TextChange change)
@@ -707,7 +707,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         }
 
         /// <summary>
-        /// Loads third-party analyzer/source-generator assemblies (docs/language-services.md
+        /// Loads third-party analyzer/source-generator assemblies (externals/OpenDevelop/doc/technotes/language-services.md
         /// §2.3) via <see cref="AnalyzerFileReference"/> — the same Roslyn Workspace abstraction
         /// covers both `DiagnosticAnalyzer`s and `ISourceGenerator`/`IIncrementalGenerator`s, and
         /// once attached to a Project, `Project.GetCompilationAsync()` automatically runs any
