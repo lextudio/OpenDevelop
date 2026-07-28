@@ -1,0 +1,14 @@
+{
+  "solution": {
+    "path": "SharpDevelop.sln",
+    "projects": [
+      "src\\AddIns\\Analysis\\UnitTesting\\UnitTesting.csproj",
+      "src\\Main\\Base\\Project\\ICSharpCode.SharpDevelop.csproj",
+      "src\\Main\\Core\\Project\\ICSharpCode.Core.csproj",
+      "src\\Main\\ICSharpCode.Core.Presentation\\ICSharpCode.Core.Presentation.csproj",
+      "src\\Main\\ICSharpCode.SharpDevelop.Widgets\\Project\\ICSharpCode.SharpDevelop.Widgets.csproj",
+      "src\\Libraries\\SharpTreeView\\ICSharpCode.TreeView\\ICSharpCode.TreeView.csproj",
+      "src\\Libraries\\AvalonDock\\source\\Components\\AvalonDock\\AvalonDock.csproj"
+    ]
+  }
+}
