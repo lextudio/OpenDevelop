@@ -25,9 +25,31 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using ICSharpCode.SharpDevelop;
+using Microsoft.Diagnostics.NETCore.Client;
 
 namespace Debugger.AddIn.Service.Dap
 {
+	/// <summary>
+	/// How <see cref="DapSession.StartAsync"/> hands the debuggee to the adapter.
+	/// </summary>
+	public enum DapLaunchMode
+	{
+		/// <summary>
+		/// The adapter itself spawns the debuggee via the DAP "launch" request. Simplest, and what
+		/// every DAP adapter is required to support - the default.
+		/// </summary>
+		Launch,
+
+		/// <summary>
+		/// The session spawns the debuggee itself, suspended (via
+		/// DOTNET_DefaultDiagnosticPortSuspend), and hands the adapter its process id via "attach"
+		/// instead of "launch". <see cref="DapSession.ConfigurationDoneAsync"/> resumes the runtime
+		/// (<see cref="DiagnosticsClient.ResumeRuntime"/>) once the DAP configuration window closes.
+		/// Matches SharpDbg's own out-of-process test practice more closely than a plain "launch".
+		/// </summary>
+		AttachToSuspendedProcess
+	}
+
 	/// <summary>
 	/// A single Debug Adapter Protocol debugging session against the bundled SharpDbg.Cli adapter.
 	/// Replaces Debugger.Core's ICorDebug-based NDebugger/Process/Thread/StackFrame/Value engine.
@@ -35,8 +57,13 @@ namespace Debugger.AddIn.Service.Dap
 	public sealed class DapSession : IDisposable
 	{
 		Process adapterProcess;
+		Process debuggeeProcess;
+		DapLaunchMode launchMode;
 		DapClient client;
 		CancellationTokenSource cancellationTokenSource;
+		readonly string clientId;
+		readonly Action<string> log;
+		readonly string[] sharpDbgArtifactsSegments;
 
 		// SharpDbg (and DAP adapters generally) report loaded modules by pushing "module" *events*
 		// as assemblies load, and does NOT answer a "modules" *request* - issuing that request hung
@@ -65,13 +92,33 @@ namespace Debugger.AddIn.Service.Dap
 		public event Action Exited;
 		public event Action<string> OutputReceived;
 
-		public async Task StartAsync(string targetPath, string workingDirectory, bool breakAtBeginning, CancellationToken cancellationToken = default)
+		/// <param name="clientId">Sent as the DAP "clientID"/"clientName" - purely informational
+		/// (shows up in adapter logs), but distinguishes which host started the session.</param>
+		/// <param name="log">Optional SEND/RECV/error trace sink, forwarded to the underlying
+		/// <see cref="DapClient"/>. No-op by default.</param>
+		/// <param name="sharpDbgArtifactsPathFromRepoRoot">Path segments from the repo root
+		/// (found by walking up from <see cref="AppContext.BaseDirectory"/> looking for
+		/// ".gitmodules") down to the sharpdbg submodule's "artifacts" dir, used as a fallback
+		/// when no bundled adapter is found. Differs by host: OpenDevelop's own repo root has the
+		/// submodule directly under "externals/sharpdbg", but UnoDevelop's repo root sees it nested
+		/// one level deeper under "externals/OpenDevelop/externals/sharpdbg" (defaulted here).</param>
+		public DapSession(string clientId = "OpenDevelop", Action<string> log = null,
+			string[] sharpDbgArtifactsPathFromRepoRoot = null)
+		{
+			this.clientId = clientId;
+			this.log = log ?? (_ => { });
+			sharpDbgArtifactsSegments = sharpDbgArtifactsPathFromRepoRoot ?? new[] { "externals", "sharpdbg" };
+		}
+
+		public async Task StartAsync(string targetPath, string workingDirectory, bool breakAtBeginning,
+			DapLaunchMode launchMode = DapLaunchMode.Launch, CancellationToken cancellationToken = default)
 		{
 			string adapterDll = ResolveAdapterDll();
 			if (adapterDll == null) {
 				throw new FileNotFoundException("SharpDbg.Cli.dll was not found. Build OpenDevelop after initializing externals/sharpdbg.");
 			}
 
+			this.launchMode = launchMode;
 			cancellationTokenSource = new CancellationTokenSource();
 			adapterProcess = LaunchAdapter(adapterDll);
 			// Surface the adapter's (and, since the debuggee inherits it, the debuggee's) stderr to
@@ -83,14 +130,14 @@ namespace Debugger.AddIn.Service.Dap
 					OutputReceived?.Invoke(e.Data + Environment.NewLine);
 			};
 			adapterProcess.BeginErrorReadLine();
-			client = new DapClient(adapterProcess.StandardOutput.BaseStream, adapterProcess.StandardInput.BaseStream);
+			client = new DapClient(adapterProcess.StandardOutput.BaseStream, adapterProcess.StandardInput.BaseStream, log);
 			client.EventReceived += OnDapEvent;
 			client.Start();
 			adapterProcess.Exited += AdapterProcessExited;
 
 			JsonObject initializeResponse = await client.SendRequestAsync("initialize", new JsonObject {
-				["clientID"] = "OpenDevelop",
-				["clientName"] = "OpenDevelop",
+				["clientID"] = clientId,
+				["clientName"] = clientId,
 				["adapterID"] = "sharpdbg",
 				["linesStartAt1"] = true,
 				["columnsStartAt1"] = true,
@@ -98,12 +145,21 @@ namespace Debugger.AddIn.Service.Dap
 			}, cancellationToken).ConfigureAwait(false);
 			Capabilities = ParseCapabilities(initializeResponse);
 
-			await client.SendRequestAsync("launch", new JsonObject {
-				["program"] = targetPath,
-				["cwd"] = workingDirectory ?? Path.GetDirectoryName(targetPath),
-				["stopAtEntry"] = breakAtBeginning,
-				["console"] = "internalConsole"
-			}, cancellationToken).ConfigureAwait(false);
+			if (launchMode == DapLaunchMode.AttachToSuspendedProcess) {
+				debuggeeProcess = LaunchDebuggeeSuspended(targetPath, workingDirectory);
+				await client.SendRequestAsync("attach", new JsonObject {
+					["processId"] = debuggeeProcess.Id,
+					["console"] = "internalConsole",
+					["justMyCode"] = true
+				}, cancellationToken).ConfigureAwait(false);
+			} else {
+				await client.SendRequestAsync("launch", new JsonObject {
+					["program"] = targetPath,
+					["cwd"] = workingDirectory ?? Path.GetDirectoryName(targetPath),
+					["stopAtEntry"] = breakAtBeginning,
+					["console"] = "internalConsole"
+				}, cancellationToken).ConfigureAwait(false);
+			}
 		}
 
 		/// <summary>
@@ -117,7 +173,46 @@ namespace Debugger.AddIn.Service.Dap
 		{
 			await client.SendRequestAsync("configurationDone", null, cancellationToken).ConfigureAwait(false);
 
+			// DapLaunchMode.AttachToSuspendedProcess left the debuggee's runtime suspended at
+			// startup precisely so breakpoints/configuration land before any of its code runs -
+			// resume it now that configuration is done, the same point a plain "launch" adapter
+			// would start the debuggee at.
+			if (launchMode == DapLaunchMode.AttachToSuspendedProcess && debuggeeProcess != null) {
+				new DiagnosticsClient(debuggeeProcess.Id).ResumeRuntime();
+			}
+
 			Started?.Invoke();
+		}
+
+		static Process LaunchDebuggeeSuspended(string targetDll, string workingDirectory)
+		{
+			var processStartInfo = new ProcessStartInfo {
+				FileName = ResolveDotNetHost(),
+				RedirectStandardInput = false,
+				RedirectStandardOutput = false,
+				UseShellExecute = false,
+				CreateNoWindow = true,
+				WorkingDirectory = workingDirectory ?? Path.GetDirectoryName(targetDll) ?? Environment.CurrentDirectory
+			};
+			processStartInfo.ArgumentList.Add(targetDll);
+			// Suspends the runtime immediately at startup (before Main runs) so the DAP session
+			// can attach and land breakpoints before any debuggee code executes; resumed by
+			// ConfigurationDoneAsync above once the DAP configuration window closes.
+			processStartInfo.Environment["DOTNET_DefaultDiagnosticPortSuspend"] = "1";
+			// Diagnostic/telemetry env vars that can interfere with a suspended-attach session
+			// (forced tiering/GC modes, ReadyToRun disabling) if inherited from the IDE's own process.
+			foreach (string envVar in new[] {
+				"COMPLUS_FORCEENC", "COMPLUS_ReadyToRun", "COMPLUS_ZapDisable",
+				"DOTNET_GCConserveMemory", "DOTNET_GCHeapCount", "DOTNET_GCNoAffinitize",
+				"DOTNET_MODIFIABLE_ASSEMBLIES", "DOTNET_MULTILEVEL_LOOKUP", "DOTNET_TieredPGO",
+				"DOTNET_gcServer", "_NO_DEBUG_HEAP"
+			}) {
+				processStartInfo.Environment.Remove(envVar);
+			}
+
+			var process = new Process { StartInfo = processStartInfo, EnableRaisingEvents = true };
+			process.Start();
+			return process;
 		}
 
 		public void Stop()
@@ -130,6 +225,16 @@ namespace Debugger.AddIn.Service.Dap
 			try {
 				if (adapterProcess != null && !adapterProcess.HasExited) {
 					adapterProcess.Kill(true);
+				}
+			} catch {
+			}
+			try {
+				// In DapLaunchMode.AttachToSuspendedProcess the session owns the debuggee process
+				// directly (it isn't the adapter's child) - "disconnect terminateDebuggee" above only
+				// reaches a process the adapter itself launched via "launch", so it must be killed
+				// here too or a stopped/paused debuggee is orphaned running forever.
+				if (debuggeeProcess != null && !debuggeeProcess.HasExited) {
+					debuggeeProcess.Kill(true);
 				}
 			} catch {
 			}
@@ -166,7 +271,14 @@ namespace Debugger.AddIn.Service.Dap
 			if (client == null || ActiveThreadId == 0) {
 				return;
 			}
-			client.SendRequestAsync(command, new JsonObject { ["threadId"] = ActiveThreadId }).FireAndForget();
+			// Fire-and-forget: the caller (Break/Continue/StepInto/StepOver/StepOut) is a void method
+			// on this class's own public API, and the DAP "continued"/"stopped" event that actually
+			// follows is what callers observe, not this request's response. Not
+			// ICSharpCode.SharpDevelop.SharpDevelopExtensions.FireAndForget() - that extension isn't
+			// linked into every host this class is shared with (e.g. UnoDevelop links only this Dap/
+			// subtree, not all of SharpDevelopExtensions.cs), so surface a fault the same way inline.
+			client.SendRequestAsync(command, new JsonObject { ["threadId"] = ActiveThreadId })
+				.ContinueWith(t => log("Control request '" + command + "' failed: " + t.Exception), TaskContinuationOptions.OnlyOnFaulted);
 		}
 
 		/// <summary>
@@ -367,7 +479,8 @@ namespace Debugger.AddIn.Service.Dap
 			return new DapModuleInfo {
 				Id = module["id"]?.ToString(),
 				Name = module["name"] != null ? module["name"].GetValue<string>() : string.Empty,
-				Path = module["path"] != null ? module["path"].GetValue<string>() : null
+				Path = module["path"] != null ? module["path"].GetValue<string>() : null,
+				IsOptimized = module["isOptimized"] != null && module["isOptimized"].GetValue<bool>()
 			};
 		}
 
@@ -468,6 +581,8 @@ namespace Debugger.AddIn.Service.Dap
 			cancellationTokenSource = null;
 			adapterProcess?.Dispose();
 			adapterProcess = null;
+			debuggeeProcess?.Dispose();
+			debuggeeProcess = null;
 		}
 
 		static Process LaunchAdapter(string adapterDll)
@@ -507,7 +622,7 @@ namespace Debugger.AddIn.Service.Dap
 				ICSharpCode.SharpDevelop.Project.Sdk.DotNetSdkService.ResolveEffectiveSdk().DotnetExecutablePath);
 		}
 
-		static string ResolveAdapterDll()
+		string ResolveAdapterDll()
 		{
 			string addInDirectory = Path.GetDirectoryName(typeof(DapSession).Assembly.Location);
 			if (!string.IsNullOrEmpty(addInDirectory)) {
@@ -524,8 +639,9 @@ namespace Debugger.AddIn.Service.Dap
 
 			string repoRoot = FindRepoRoot(AppContext.BaseDirectory);
 			if (repoRoot != null) {
+				string artifactsDir = Path.Combine(new[] { repoRoot }.Concat(sharpDbgArtifactsSegments).ToArray());
 				foreach (string configuration in new[] { "debug", "release" }) {
-					string devPath = Path.Combine(repoRoot, "externals", "sharpdbg", "artifacts", "bin", "SharpDbg.Cli", configuration, "SharpDbg.Cli.dll");
+					string devPath = Path.Combine(artifactsDir, "artifacts", "bin", "SharpDbg.Cli", configuration, "SharpDbg.Cli.dll");
 					if (File.Exists(devPath)) {
 						return devPath;
 					}

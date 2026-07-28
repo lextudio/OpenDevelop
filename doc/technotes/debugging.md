@@ -1,6 +1,49 @@
 # Debugging migration plan
 
-**Status update:** the plan below originally called for a separate
+**Status update (2026-07-27): one shared DAP session backend for both hosts.**
+UnoDevelop used to carry its own from-scratch DAP client (`DapClient.cs`) and
+session/workbench-glue class (`DebugService.cs`), independently reimplementing
+the same Content-Length framing protocol `Debugger.AddIn`'s `Service/Dap/`
+already had. That duplication is gone: `Service/Dap/DapClient.cs`,
+`DapSession.cs`, and `DapModels.cs` are the one DAP transport/session
+implementation, linked into UnoDevelop's `SharpDevelop.csproj` the same way
+`UnitTesting.csproj` links the classic unit-testing backend (see
+`unit-testing.md`), and `UnoDevelop.Services.DebugService` is now a thin
+wrapper around `DapSession` rather than a second thing owning its own
+`DapClient`/JSON parsing.
+
+The two hosts genuinely differ in how they hand the debuggee to the adapter,
+so that had to be modelled rather than merged away: OpenDevelop's
+`WindowsDebugger` sends a plain DAP `launch` (the adapter spawns the process),
+while UnoDevelop's `DebugService` spawns the debuggee itself, suspended, and
+sends `attach` with its process id, resuming the runtime once the DAP
+configuration window closes (`DiagnosticsClient.ResumeRuntime()`) - closer to
+SharpDbg's own out-of-process test practice. `DapSession.StartAsync` takes a
+`DapLaunchMode` parameter (`Launch` default, `AttachToSuspendedProcess`) to
+cover both without either host bending to the other's launch semantics.
+`DapClient` also picked up UnoDevelop's two real improvements in the merge:
+write/request locking (needed once reverse DAP `request` messages share the
+same writer as outgoing requests) and auto-acking reverse requests the adapter
+sends (OpenDevelop's copy had neither). `DapSession`'s constructor takes a
+`clientId` (shown in adapter logs) and an optional log sink instead of either
+being hardcoded.
+
+Not merged, and not worth merging: OpenDevelop's WPF debugger pads
+(`Pads/*.cs`), `TreeModel/*`, and the text/XML/grid visualizers are a genuine
+superset with no UnoDevelop analogue - they consume `DapSession` from above,
+same as before. UnoDevelop's MSBuild build+`TargetPath` resolution
+(`ResolveBuildOutputAsync`) stays host-specific for the same reason project
+launch resolution was always going to differ (see "Project launch resolution"
+below). The two independently-authored `sharpdbg` submodule build/bundling
+MSBuild targets (one per host's own `.csproj`) were left as-is - both build the
+one nested submodule under `externals/OpenDevelop/externals/sharpdbg`, but
+unifying MSBuild target definitions across two SDK projects with different
+output layouts was judged lower value than the C# duplication above.
+
+---
+
+**Status update (2026-07-26): the DAP-backed engine itself is in place.**
+The plan below originally called for a separate
 `DapDebugger.AddIn` skeleton alongside the legacy `Debugger.AddIn`. In practice
 the migration was done in place instead: `Debugger.AddIn`'s `WindowsDebugger`
 now talks DAP directly (`Service/Dap/DapSession.cs`), `Debugger.Core` (ICorDebug)

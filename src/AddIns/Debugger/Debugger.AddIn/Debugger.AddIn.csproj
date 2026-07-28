@@ -33,6 +33,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Resumes the debuggee's runtime after it was launched suspended (DapLaunchMode.AttachToSuspendedProcess) -
+         see DapSession.ConfigurationDoneAsync. -->
+    <PackageReference Include="Microsoft.Diagnostics.NETCore.Client" Version="0.2.661903" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Include="..\..\..\Main\GlobalAssemblyInfo.cs" Link="Properties\GlobalAssemblyInfo.cs" />
     <None Include="Debugger.AddIn.addin" CopyToOutputDirectory="Always" />
     <!-- Local in-process expression evaluation against Debugger.Core.Value is superseded by the DAP

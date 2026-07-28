@@ -37,14 +37,25 @@ namespace Debugger.AddIn.Service.Dap
 		readonly StreamReader reader;
 		readonly ConcurrentDictionary<int, TaskCompletionSource<JsonObject>> pending = new ConcurrentDictionary<int, TaskCompletionSource<JsonObject>>();
 		readonly CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
+		// Requests must be written one at a time (a torn/interleaved Content-Length + body from two
+		// concurrent SendRequestAsync callers would corrupt the stream for both), and only one
+		// caller may occupy a given sequence-number slot's write-then-await span at once - a plain
+		// Interlocked.Increment for the sequence number was not enough on its own once reverse
+		// requests (below) started sharing the same writer from the read loop.
+		readonly SemaphoreSlim writeLock = new SemaphoreSlim(1, 1);
+		readonly SemaphoreSlim requestLock = new SemaphoreSlim(1, 1);
+		readonly Action<string> log;
 		int sequenceNumber;
 
 		public event Action<string, JsonObject> EventReceived;
 
-		public DapClient(Stream input, Stream output)
+		/// <param name="log">Optional sink for a SEND/RECV/error trace of every message - useful when
+		/// diagnosing a hung or misbehaving adapter session. No-op by default.</param>
+		public DapClient(Stream input, Stream output, Action<string> log = null)
 		{
 			writer = new StreamWriter(output, new UTF8Encoding(false)) { AutoFlush = true };
 			reader = new StreamReader(input, new UTF8Encoding(false));
+			this.log = log ?? (_ => { });
 		}
 
 		public void Start()
@@ -53,6 +64,16 @@ namespace Debugger.AddIn.Service.Dap
 		}
 
 		public async Task<JsonObject> SendRequestAsync(string command, JsonObject arguments = null, CancellationToken cancellationToken = default)
+		{
+			await requestLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+			try {
+				return await SendRequestCoreAsync(command, arguments, cancellationToken).ConfigureAwait(false);
+			} finally {
+				requestLock.Release();
+			}
+		}
+
+		async Task<JsonObject> SendRequestCoreAsync(string command, JsonObject arguments, CancellationToken cancellationToken)
 		{
 			int sequence = Interlocked.Increment(ref sequenceNumber);
 			var completionSource = new TaskCompletionSource<JsonObject>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -95,10 +116,16 @@ namespace Debugger.AddIn.Service.Dap
 		async Task WriteMessageAsync(JsonObject message)
 		{
 			string json = message.ToJsonString();
+			log("SEND " + json);
 			byte[] body = Encoding.UTF8.GetBytes(json);
-			await writer.WriteAsync("Content-Length: " + body.Length + "\r\n\r\n").ConfigureAwait(false);
-			await writer.BaseStream.WriteAsync(body, 0, body.Length).ConfigureAwait(false);
-			await writer.BaseStream.FlushAsync().ConfigureAwait(false);
+			await writeLock.WaitAsync().ConfigureAwait(false);
+			try {
+				await writer.WriteAsync("Content-Length: " + body.Length + "\r\n\r\n").ConfigureAwait(false);
+				await writer.BaseStream.WriteAsync(body, 0, body.Length).ConfigureAwait(false);
+				await writer.BaseStream.FlushAsync().ConfigureAwait(false);
+			} finally {
+				writeLock.Release();
+			}
 		}
 
 		async Task ReadLoopAsync()
@@ -128,11 +155,15 @@ namespace Debugger.AddIn.Service.Dap
 						read += count;
 					}
 
-					Dispatch(new string(buffer));
+					string json = new string(buffer);
+					log("RECV " + json);
+					Dispatch(json);
 				}
 			} catch (ObjectDisposedException) {
 			} catch (IOException) {
 			} catch (OperationCanceledException) {
+			} catch (Exception ex) {
+				log("READ LOOP ERROR " + ex);
 			}
 		}
 
@@ -158,12 +189,36 @@ namespace Debugger.AddIn.Service.Dap
 			} else if (type == "event") {
 				string eventName = message["event"] != null ? message["event"].GetValue<string>() : string.Empty;
 				EventReceived?.Invoke(eventName, message["body"] as JsonObject);
+			} else if (type == "request") {
+				// A "reverse request" - the adapter asking the client (us) to do something, e.g.
+				// "runInTerminal". We advertised supportsRunInTerminalRequest=false and don't
+				// implement any reverse request's actual body, but an adapter that sends one anyway
+				// is left waiting forever for a response unless something replies - acknowledge with
+				// an empty success response rather than hanging that side of the adapter.
+				_ = RespondToReverseRequestAsync(message);
 			}
+		}
+
+		async Task RespondToReverseRequestAsync(JsonObject request)
+		{
+			int requestSequence = request["seq"] != null ? request["seq"].GetValue<int>() : 0;
+			string command = request["command"] != null ? request["command"].GetValue<string>() : string.Empty;
+			var response = new JsonObject {
+				["seq"] = Interlocked.Increment(ref sequenceNumber),
+				["type"] = "response",
+				["request_seq"] = requestSequence,
+				["success"] = true,
+				["command"] = command,
+				["body"] = new JsonObject()
+			};
+			await WriteMessageAsync(response).ConfigureAwait(false);
 		}
 
 		public void Dispose()
 		{
 			cancellationTokenSource.Cancel();
+			requestLock.Dispose();
+			writeLock.Dispose();
 			writer.Dispose();
 			reader.Dispose();
 			cancellationTokenSource.Dispose();

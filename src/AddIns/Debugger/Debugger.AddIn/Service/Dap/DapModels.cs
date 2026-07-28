@@ -86,6 +86,7 @@ namespace Debugger.AddIn.Service.Dap
 		public string Id { get; set; }
 		public string Name { get; set; }
 		public string Path { get; set; }
+		public bool IsOptimized { get; set; }
 	}
 
 	public sealed class DapEvaluateResult
