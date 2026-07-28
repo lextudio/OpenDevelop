@@ -19,7 +19,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using ICSharpCode.AddInManager2.ViewModel;
 using NuGet;
 
 namespace ICSharpCode.AddInManager2.Model

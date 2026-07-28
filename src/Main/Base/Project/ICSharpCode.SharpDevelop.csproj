@@ -29,6 +29,18 @@
     <PackageReference Include="StreamJsonRpc" Version="2.21.10" />
   </ItemGroup>
   <ItemGroup>
+    <!-- For Src\AddInManager\ (shared AddIn Manager gallery engine, moved from AddInManager2's
+         Model layer; see doc/technotes/addin-manager2.md). Same legacy NuGet.Core / SharpZipLib
+         binaries AddInManager2.csproj itself references, via HintPath since they are pre-built
+         binaries in RequiredLibraries rather than NuGet packages. -->
+    <Reference Include="NuGet.Core">
+      <HintPath>..\..\..\AddIns\Misc\PackageManagement\RequiredLibraries\NuGet.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="ICSharpCode.SharpZipLib">
+      <HintPath>..\..\..\AddIns\Misc\AddInManager2\RequiredLibraries\ICSharpCode.SharpZipLib.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\..\Libraries\AvalonEdit\ICSharpCode.AvalonEdit\ICSharpCode.AvalonEdit.csproj" />
     <ProjectReference Include="..\..\Core\Project\ICSharpCode.Core.csproj" />
     <ProjectReference Include="..\..\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" />
