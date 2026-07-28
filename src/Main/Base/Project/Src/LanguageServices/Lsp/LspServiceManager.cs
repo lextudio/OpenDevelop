@@ -9,23 +9,42 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
 	{
 		static readonly LspServerRegistry registry = LspServerRegistry.CreateDefault();
 		static readonly Dictionary<string, LspLanguageService> services = new(StringComparer.OrdinalIgnoreCase);
+		static readonly object syncRoot = new();
+
+		/// <summary>
+		/// Allows addins to register additional LSP server mappings at startup.
+		/// Called by addin startup commands, not from the Base project.
+		/// </summary>
+		public static void RegisterExtension(string extension, LspServerLaunchSpec spec)
+		{
+			if (spec is null)
+				throw new ArgumentNullException(nameof(spec));
+			lock (syncRoot) {
+				registry.Register(extension, spec);
+			}
+		}
 
 		public static LspLanguageService GetService(string fileName)
 		{
 			var extension = Path.GetExtension(fileName);
-			if (!registry.TryGetLaunchSpec(extension, out var spec))
-				return null;
+			LspServerLaunchSpec spec;
+			lock (syncRoot) {
+				if (!registry.TryGetLaunchSpec(extension, out spec))
+					return null;
+			}
 
 			var rootPath = FindWorkspaceRoot(fileName);
 			var key = spec.LanguageId + "\0" + rootPath;
-			if (!services.TryGetValue(key, out var service)) {
-				var rootUri = new Uri(rootPath.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal)
-					? rootPath
-					: rootPath + Path.DirectorySeparatorChar).AbsoluteUri;
-				service = new LspLanguageService(spec, rootUri);
-				services[key] = service;
+			lock (syncRoot) {
+				if (!services.TryGetValue(key, out var service)) {
+					var rootUri = new Uri(rootPath.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal)
+						? rootPath
+						: rootPath + Path.DirectorySeparatorChar).AbsoluteUri;
+					service = new LspLanguageService(spec, rootUri);
+					services[key] = service;
+				}
+				return service;
 			}
-			return service;
 		}
 
 		static string FindWorkspaceRoot(string fileName)
