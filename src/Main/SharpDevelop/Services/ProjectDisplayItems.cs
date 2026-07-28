@@ -34,10 +34,17 @@ namespace ICSharpCode.SharpDevelop.Services
 				return GetEvaluatedProjectDisplayItems(msbuildProject);
 			}
 
+			var projectDirectory = Path.GetDirectoryName(project.FileName?.ToString());
 			return project.Items.CreateSnapshot()
 				.OfType<FileProjectItem>()
 				.Where(item => !IsReferenceItemName(item.ItemType.ItemName))
 				.Where(item => IsSupportedProjectItemPath(item.FileName.ToString()))
+				// Real MSBuild evaluation legitimately declares some generated sources as ordinary
+				// Compile items with no Visible="false" metadata at all (e.g. Uno.Resizetizer's
+				// obj/**/unoresizetizer/*.g.cs) - a real Solution Explorer hides anything physically
+				// under bin/obj/.git/.vs regardless of metadata, as a hardcoded convention, not just
+				// via Visible. Match that here so item-list resolution doesn't leak build output.
+				.Where(item => string.IsNullOrEmpty(projectDirectory) || !IsExcludedProjectPath(item.FileName.ToString(), projectDirectory))
 				.Select(item => new ProjectDisplayItem(
 					item.FileName.ToString(),
 					NormalizeDisplayPath(item.VirtualName),
@@ -45,15 +52,34 @@ namespace ICSharpCode.SharpDevelop.Services
 					item.IsLink,
 					File.Exists(item.FileName.ToString()),
 					item))
+				// A single physical file can legitimately register under more than one MSBuild item
+				// type/head evaluation (e.g. a .xaml file surfacing as both a Page item and a
+				// None/Content item) - each becomes a separate entry here, and since tree-building
+				// adds file leaves unconditionally (unlike folders, which dedupe by name), that showed
+				// up as the same file listed twice at the same tree level. One node per physical file,
+				// keeping the first item type MSBuild reports for it, matches what a real Solution
+				// Explorer shows regardless of how many item types happen to reference the same file.
+				.GroupBy(item => item.PhysicalPath, StringComparer.OrdinalIgnoreCase)
+				.Select(group => group.First())
 				.OrderBy(item => item.DisplayPath, StringComparer.OrdinalIgnoreCase)
 				.ToArray();
+		}
+
+		private static bool IsExcludedProjectPath(string path, string projectDirectory)
+		{
+			var relativePath = Path.GetRelativePath(projectDirectory, path);
+			var segments = relativePath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+			return segments.Any(segment => string.Equals(segment, "bin", StringComparison.OrdinalIgnoreCase)
+				|| string.Equals(segment, "obj", StringComparison.OrdinalIgnoreCase)
+				|| string.Equals(segment, ".git", StringComparison.OrdinalIgnoreCase)
+				|| string.Equals(segment, ".vs", StringComparison.OrdinalIgnoreCase));
 		}
 		
 		internal static IReadOnlyList<ProjectDisplayItem> GetEvaluatedProjectDisplayItems(MSBuildBasedProject project)
 		{
 			var projectDirectory = project.Directory.ToString();
 			var projectFile = project.FileName.ToString();
-			
+
 			return project.GetEvaluatedProjectItems()
 				.Where(item => IsDisplayItemName(item.ItemType))
 				.Select(item => CreateEvaluatedDisplayItem(projectDirectory, projectFile, item))
@@ -64,7 +90,7 @@ namespace ICSharpCode.SharpDevelop.Services
 				.OrderBy(item => item.DisplayPath, StringComparer.OrdinalIgnoreCase)
 				.ToArray();
 		}
-		
+
 		internal static IReadOnlyList<EvaluatedProjectItem> GetEvaluatedDependencyItems(MSBuildBasedProject project)
 		{
 			return project.GetEvaluatedProjectItems()

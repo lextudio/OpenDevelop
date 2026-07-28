@@ -233,7 +233,13 @@ namespace ICSharpCode.SharpDevelop.Project
 		}
 #endif
 
-#if !HAS_UNO
+		// OpenConfiguration/OpenCurrentConfiguration (used below) are used unconditionally elsewhere
+		// in this class (e.g. GetEvaluatedProperty) and already proven to work under HAS_UNO - see
+		// MtpTestProject.ResolveAssemblyDll's use of GetEvaluatedProperty("OutputPath", ...) in
+		// doc/technotes/unit-testing.md. This was previously guarded #if !HAS_UNO with no capability
+		// reason; removed so SDK-style dependency/display-item resolution (ProjectDisplayItems.cs,
+		// doc/technotes/solution-explorer.md) is a real, live code path for both hosts, not dead code
+		// kept only for source parity.
 		public IReadOnlyList<EvaluatedProjectItem> GetEvaluatedProjectItems()
 		{
 			var targetFramework = ProjectTargetFrameworkService.GetActiveTargetFramework(this);
@@ -253,7 +259,6 @@ namespace ICSharpCode.SharpDevelop.Project
 					item.DirectMetadata.ToDictionary(metadata => metadata.Name, metadata => metadata.EvaluatedValue, MSBuildInternals.PropertyNameComparer)))
 				.ToArray();
 		}
-#endif
 
 		public override IEnumerable<ReferenceProjectItem> ResolveAssemblyReferences(CancellationToken cancellationToken)
 		{

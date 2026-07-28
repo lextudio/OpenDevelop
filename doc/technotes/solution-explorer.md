@@ -1,5 +1,86 @@
 # Solution Explorer (WPF, CPS-backed)
 
+**Status update (2026-07-27): one shared implementation for node model, item resolution, CPS tree
+provider, AND the command/business-logic layer - only native dialog/clipboard calls and CPS-flag
+kind-resolution stay per-host.** The plan below (rungs R6a-R6d) reads as if none of this had
+started; in practice OpenDevelop already had a complete, running `ProjectBrowser*`-named
+implementation (pad, WPF `TreeView`, icon/overlay services, `SharpDevelopProjectTreeProvider`) that
+had diverged from UnoDevelop's `SolutionExplorer*`/`Uno*`-named one under the same "copy, then
+adapt call sites, rename types" instruction this doc itself gave in R6b - i.e. a real fork, not a
+mechanical rename, by the time anyone went back to check. Unified in this pass:
+
+- **Node model** (`ProjectBrowserNodeContext`/`NodeProperties`/`NodeModel`) - canonically named
+  after OpenDevelop's already-running pad rather than UnoDevelop's `SolutionExplorer*`/`Uno*`
+  names, since that's the side with the fuller feature set (WPF Properties-pad integration,
+  overlay/icon services) actually wired up. `GitFileStatus` (previously UnoDevelop-only, since
+  OpenDevelop had no git-status provider wired into this layer) moved here too - it's a plain
+  status enum with no host dependency, so it costs OpenDevelop nothing to carry a field it doesn't
+  set yet. WPF-only rendering (`Icon`/overlay `ImageSource` properties, which don't exist under
+  Uno.Sdk) split into `ProjectBrowserNodeModel.Wpf.cs`, compiled only into OpenDevelop.
+- **Project item resolution** (`ProjectDisplayItems.GetProjectDisplayItems`/
+  `GetEvaluatedDependencyItems`) - this was already factored out as host-agnostic (operates on
+  `IProject`/`MSBuildBasedProject`, no OpenDevelop-specific dependency) but not linked back into
+  UnoDevelop; `UnoProjectService`'s own duplicate `IProject`-based overload is deleted, with its one
+  real improvement (bin/obj/.git/.vs path exclusion, for MSBuild items that legitimately have no
+  `Visible="false"` metadata - e.g. Uno.Resizetizer-generated sources) ported into the shared
+  version rather than lost. `UnoProjectService.GetProjectDisplayItems(string projectPath)` (a raw
+  MSBuild-XML scan for projects with no live `IProject` yet) has no OpenDevelop equivalent and
+  stays UnoDevelop-only.
+- **CPS tree provider** (`SharpDevelopProjectTreeProvider`/`UnoDevelopProjectTreeProvider`) - the
+  SDK-style-project dependency branch OpenDevelop had added (reading evaluated MSBuild items via
+  `MSBuildBasedProject.GetEvaluatedProjectItems()`) is now in both, and it's a **live** branch on
+  both sides, not source parity for dead code: UnoDevelop's own `IProject` implementation,
+  `UnoProjectModel`, does derive from `MSBuildBasedProject`. `GetEvaluatedProjectItems()` had been
+  guarded `#if !HAS_UNO` in `MSBuildBasedProject.cs` with no actual platform reason - the
+  `OpenConfiguration`/`OpenCurrentConfiguration` machinery it depends on already worked under
+  Uno.Sdk elsewhere in the very same class (`GetEvaluatedProperty`, which
+  `MtpTestProject.ResolveAssemblyDll` already exercises successfully - see
+  `unit-testing.md`) - the guard is removed, completing the capability rather than papering over
+  the gap with a compile-time exclusion.
+- **Command/business-logic layer** (`ProjectBrowserController`) - ~90% of this ~700-line class
+  (create/rename/delete/import file or folder, include/exclude, remove reference, remove project,
+  open-with, open-folder, set-startup-project, new-item/new-project orchestration around a
+  template) was byte-for-byte identical between the two hosts once names were normalized, with
+  exactly three genuinely native touchpoints: the new-item/new-project dialog invocation, and
+  copy-to-clipboard. Split into `ProjectBrowserControllerBase` (shared, abstract - everything else)
+  plus a ~30-40 line concrete subclass per host supplying just those three overrides
+  (`ShowNewItemDialogAsync`/`ShowNewProjectDialogAsync`/`CopyTextToClipboard`) via host-neutral
+  `NewItemDialogOutcome`/`NewProjectDialogOutcome` records. OpenDevelop's T4-template
+  `CustomTool="TextTemplatingFileGenerator"` auto-set (a real feature UnoDevelop's copy lacked)
+  moved into the shared base, so UnoDevelop gains it for free. `IUnoSolutionExplorerHost`/
+  `IUnoSolutionExplorerController`/`IUnoSolutionExplorerService` (mechanically-identical renamed
+  copies of `IProjectBrowserHost`/`IProjectBrowserController`/`IProjectBrowserService`) are gone;
+  `UnoProjectService` now implements the shared `IProjectBrowserService` directly.
+
+**Left as two separate implementations, still** (native UI code with no shared business logic to
+extract - unifying it means building a cross-framework dialog/clipboard abstraction, a
+qualitatively different and much larger effort than deduplicating logic):
+
+- The three `ProjectBrowserControllerBase` overrides themselves (WinUI `DataPackage`/`Clipboard`
+  vs WPF `Clipboard`; `NewItemDialog`/`NewProjectDialog` WinUI content dialogs vs
+  `NewItemWindow`/`NewProjectWindow` WPF windows with an owner handle) and the WPF-only
+  `FileDialogService` (`Microsoft.Win32.OpenFileDialog`/`OpenFolderDialog`) vs UnoDevelop's own.
+- **CPS-flags → `ProjectBrowserNodeKind` resolution and Show-All-Files filtering**
+  (`CpsTreeConverter.ResolveKind` vs `ProjectBrowserTreeBuilder.GetNodeKind`) - UnoDevelop's version
+  distinguishes ghost/ready-to-include and missing files via CPS's own `FileSystemEntity`/
+  `IncludeInProjectCandidate` flags; OpenDevelop's checks `File.Exists` on disk instead. Per
+  integration-testing feedback, UnoDevelop's own Solution Explorer has shown intermittently wrong
+  tree content in practice - i.e. the theoretically-more-refined CPS-flag version is the one with
+  the observed reliability problem, not OpenDevelop's simpler disk-check version. Reconciling onto
+  OpenDevelop's simpler approach (rather than the other way around) is the likely next step, but
+  needs the actual failure mode confirmed first, not just switched on a hunch - tracked separately.
+
+## Still open
+
+- Git status: UnoDevelop's `GitStatusService` bakes status directly into `NodeContext.GitStatus`
+  at tree-build time; OpenDevelop's `GitAddIn` instead registers a `IProjectBrowserNodeOverlayProvider`
+  with the extensible `IProjectBrowserOverlayService` (already visible to UnoDevelop via the shared
+  `ICSharpCode.SharpDevelop.csproj` Base-layer reference). The overlay-provider pattern is the
+  better architecture of the two; unifying onto it means changing how `GitStatusService` publishes
+  its data, not just renaming a type - a separate pass.
+- CPS-flag vs disk-check kind resolution (see above) - suspected but not yet confirmed as the cause
+  of UnoDevelop's intermittent Solution Explorer content issues.
+
 ## Goal
 
 Replace the legacy WinForms/SharpTreeView-based Solution Explorer (excluded
