@@ -35,7 +35,7 @@ using ICSharpCode.SharpDevelop.Editor.Bookmarks;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Parser;
-using ICSharpCode.SharpDevelop.Project;
+using ProjectService = ICSharpCode.SharpDevelop.Project.ProjectService;
 using ICSharpCode.SharpDevelop.Workbench;
 
 namespace ICSharpCode.AvalonEdit.AddIn
