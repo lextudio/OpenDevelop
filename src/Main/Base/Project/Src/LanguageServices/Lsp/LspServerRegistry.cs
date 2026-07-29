@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
 {
@@ -51,18 +52,30 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
             var registry = new LspServerRegistry();
             var repositoryRoot = FindOpenDevelopRoot();
             var vscodeWpfRoot = Path.Combine(repositoryRoot, "externals", "vscode-wpf");
-            var xamlServerProject = Path.Combine(vscodeWpfRoot, "src", "XamlLanguageServer.Wpf", "XamlLanguageServer.Wpf.csproj");
-            var xaml = new LspServerLaunchSpec(
-                "xaml",
-                "dotnet",
-                vscodeWpfRoot,
-                "run",
-                "--project",
-                xamlServerProject,
-                "--",
-                "--workspace",
-                repositoryRoot);
-            registry.Register(".xaml", xaml);
+            // "dotnet exec <built dll>", not "dotnet run --project <csproj>": a plain "dotnet run"
+            // triggers an implicit restore/build whenever anything is out of date, and MSBuild/
+            // NuGet write that progress to stdout - the same stream this process's stdio-framed
+            // LSP protocol lives on, corrupting every frame after it. Confirmed directly while
+            // building UnoDevelop's equivalent Uno host: a plain "dotnet run" wrote thousands of
+            // bytes of NuGet warnings to stdout before the process ever spoke LSP; "dotnet exec"
+            // against a prebuilt dll produced none. This does mean the project must have been
+            // built at least once - if it hasn't, TryFindWpfLanguageServerDll returns null and
+            // ".xaml" is left unregistered (LspServiceManager.GetService already handles a missing
+            // registration by falling back to lexical-only highlighting) rather than falling back
+            // to "dotnet run" and risking a corrupted pipe.
+            var wpfServerDll = TryFindWpfLanguageServerDll(vscodeWpfRoot);
+            if (wpfServerDll != null)
+            {
+                var xaml = new LspServerLaunchSpec(
+                    "xaml",
+                    "dotnet",
+                    vscodeWpfRoot,
+                    "exec",
+                    wpfServerDll,
+                    "--workspace",
+                    repositoryRoot);
+                registry.Register(".xaml", xaml);
+            }
             var fsAutoComplete = new LspServerLaunchSpec(
                 "fsharp",
                 "dotnet",
@@ -117,6 +130,27 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Finds the built wpf-xaml-ls.dll under XamlLanguageServer.Wpf's bin output, preferring
+        /// Release over Debug and the most recently written match within a configuration (multiple
+        /// TFM/RID subfolders are possible depending on how it was last built). Returns null if it
+        /// has never been built - see the call site's comment for why that means leaving ".xaml"
+        /// unregistered rather than falling back to "dotnet run".
+        /// </summary>
+        static string TryFindWpfLanguageServerDll(string vscodeWpfRoot)
+        {
+            var binRoot = Path.Combine(vscodeWpfRoot, "src", "XamlLanguageServer.Wpf", "bin");
+            if (!Directory.Exists(binRoot))
+                return null;
+
+            return new[] { "Release", "Debug" }
+                .Select(configuration => Path.Combine(binRoot, configuration))
+                .Where(Directory.Exists)
+                .SelectMany(configurationDirectory => Directory.GetFiles(configurationDirectory, "wpf-xaml-ls.dll", SearchOption.AllDirectories))
+                .OrderByDescending(File.GetLastWriteTimeUtc)
+                .FirstOrDefault();
         }
 
         static string NormalizeExtension(string extension)
