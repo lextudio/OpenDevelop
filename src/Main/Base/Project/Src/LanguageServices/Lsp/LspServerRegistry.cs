@@ -73,6 +73,13 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
                 "--");
             registry.Register(".fs", fsAutoComplete);
             registry.Register(".fsi", fsAutoComplete);
+            var pylsp = new LspServerLaunchSpec("python", "pylsp");
+            registry.Register(".py", pylsp);
+            var typescript = new LspServerLaunchSpec("typescript", "typescript-language-server", null, "--stdio");
+            registry.Register(".ts", typescript);
+            registry.Register(".tsx", typescript);
+            registry.Register(".js", typescript);
+            registry.Register(".jsx", typescript);
             return registry;
         }
 
