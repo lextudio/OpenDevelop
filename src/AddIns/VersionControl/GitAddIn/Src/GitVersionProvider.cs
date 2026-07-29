@@ -112,7 +112,18 @@ namespace ICSharpCode.GitAddIn
 			this.fileName = fileName;
 			this.hash = hash;
 			
-			watcher = RepoChangeWatcher.AddWatch(Path.Combine(root, ".git"), HandleChanges);
+			// .git can be a directory (normal clone) or a file (submodule / linked worktree).
+			string gitDir = Path.Combine(root, ".git");
+			if (File.Exists(gitDir))
+			{
+				// Resolve submodule .git file: "gitdir: ../../.git/modules/externals/OpenDevelop"
+				string line = File.ReadAllText(gitDir).Trim();
+				const string prefix = "gitdir: ";
+				if (line.StartsWith(prefix, StringComparison.Ordinal))
+					gitDir = Path.GetFullPath(Path.Combine(root, line.Substring(prefix.Length)));
+			}
+			
+			watcher = RepoChangeWatcher.AddWatch(gitDir, HandleChanges);
 		}
 		
 		void HandleChanges()

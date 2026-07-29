@@ -56,6 +56,13 @@ public sealed class XmlEditorTests
         Assert.True(open.GetProperty("opened").GetBoolean());
 
         var status = await _app.InvokeAsync("od.xml-tree-status");
-        Assert.False(status.GetProperty("found").GetBoolean());
+        // If an XmlTreeView from a previously opened .xml file lingers in the window, found
+        // will still be true — check that it's *not* associated with the .cs file.
+        if (status.GetProperty("found").GetBoolean())
+        {
+            var primaryFile = status.GetProperty("primaryFile").GetString();
+            Assert.False(primaryFile!.EndsWith(".cs", StringComparison.OrdinalIgnoreCase),
+                $"Expected XmlTreeView NOT attached to .cs file, but found primaryFile={primaryFile}");
+        }
     }
 }
