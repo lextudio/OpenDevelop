@@ -25,6 +25,29 @@ public enum GitFileStatus
     Ignored
 }
 
+public readonly record struct GitStatusPresentation(
+    string Key,
+    string ColorHex,
+    string Glyph,
+    bool HasOverlay);
+
+public static class GitStatusPresentationService
+{
+    public static GitStatusPresentation GetPresentation(GitFileStatus status)
+    {
+        return status switch
+        {
+            GitFileStatus.Added => new("Added", "#289A3E", "+", true),
+            GitFileStatus.Deleted => new("Deleted", "#D32F2F", "-", true),
+            GitFileStatus.Modified => new("Modified", "#F5A01E", "!", true),
+            GitFileStatus.Renamed => new("Renamed", "#1E88E5", ">", true),
+            GitFileStatus.Untracked => new("Untracked", "#009688", "+", true),
+            GitFileStatus.Conflicted => new("Conflicted", "#C62828", "!", true),
+            _ => new("None", string.Empty, string.Empty, false)
+        };
+    }
+}
+
 /// <summary>
 /// Real <c>git status --porcelain</c> against the actual working tree - not a VCS abstraction,
 /// just enough to color/badge Project Browser nodes the way every other IDE's git integration
@@ -59,6 +82,7 @@ public static class GitStatusService
         var repoRoot = FindRepositoryRoot(anyPathUnderRepo);
         if (repoRoot is null)
             return;
+        repoRoot = FileUtility.NormalizePath(repoRoot);
 
         if (_statusesByRepoRoot.ContainsKey(repoRoot))
         {
@@ -97,7 +121,10 @@ public static class GitStatusService
     {
         var repoRoot = FindRepositoryRoot(anyPathUnderRepo);
         if (repoRoot is not null)
+        {
+            repoRoot = FileUtility.NormalizePath(repoRoot);
             _statusesByRepoRoot.Remove(repoRoot);
+        }
     }
 
     public static GitFileStatus GetStatus(string? fullPath)
@@ -111,14 +138,87 @@ public static class GitStatusService
         // single-slash key ("/Users/...") via naive string comparison. Normalize through the same
         // FileUtility.NormalizePath this codebase already uses everywhere else for exactly this.
         var normalized = FileUtility.NormalizePath(fullPath);
+        var repoRoot = FindRepositoryRoot(normalized);
 
-        foreach (var repoStatuses in _statusesByRepoRoot.Values)
+        if (repoRoot is not null)
         {
-            if (repoStatuses.TryGetValue(normalized, out var status))
+            repoRoot = FileUtility.NormalizePath(repoRoot);
+            if (!_statusesByRepoRoot.ContainsKey(repoRoot))
+            {
+                Refresh(repoRoot);
+            }
+
+            if (_statusesByRepoRoot.TryGetValue(repoRoot, out var repoStatuses)
+                && repoStatuses.TryGetValue(normalized, out var status))
+            {
                 return status;
+            }
         }
 
         return GitFileStatus.None;
+    }
+
+    public static GitFileStatus GetStatusForTreeNode(string? fullPath, bool isDirectory)
+    {
+        var status = GetStatus(fullPath);
+        if (status != GitFileStatus.None)
+            return status;
+
+        if (string.IsNullOrWhiteSpace(fullPath))
+            return GitFileStatus.None;
+
+        var statusRoot = ResolveTreeStatusRoot(fullPath, isDirectory);
+        if (string.IsNullOrWhiteSpace(statusRoot))
+            return GitFileStatus.None;
+
+        statusRoot = FileUtility.NormalizePath(statusRoot);
+        var repoRoot = FindRepositoryRoot(statusRoot);
+        if (repoRoot is null)
+            return GitFileStatus.None;
+
+        repoRoot = FileUtility.NormalizePath(repoRoot);
+        if (!_statusesByRepoRoot.ContainsKey(repoRoot))
+        {
+            Refresh(repoRoot);
+        }
+
+        if (!_statusesByRepoRoot.TryGetValue(repoRoot, out var repoStatuses))
+            return GitFileStatus.None;
+
+        var prefix = statusRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        return repoStatuses
+            .Where(pair => pair.Value != GitFileStatus.None
+                && pair.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            .Select(pair => pair.Value)
+            .DefaultIfEmpty(GitFileStatus.None)
+            .OrderByDescending(GetStatusPriority)
+            .First();
+    }
+
+    private static string? ResolveTreeStatusRoot(string fullPath, bool isDirectory)
+    {
+        if (isDirectory)
+            return fullPath;
+
+        var extension = Path.GetExtension(fullPath);
+        if (extension is ".sln" or ".slnx" or ".csproj" or ".vbproj" or ".fsproj")
+            return Path.GetDirectoryName(fullPath);
+
+        return null;
+    }
+
+    private static int GetStatusPriority(GitFileStatus status)
+    {
+        return status switch
+        {
+            GitFileStatus.Conflicted => 60,
+            GitFileStatus.Deleted => 50,
+            GitFileStatus.Modified => 40,
+            GitFileStatus.Renamed => 30,
+            GitFileStatus.Added => 20,
+            GitFileStatus.Untracked => 10,
+            _ => 0
+        };
     }
 
     private static void ParsePorcelainStatus(string output, string repoRoot, Dictionary<string, GitFileStatus> statuses)
@@ -161,6 +261,11 @@ public static class GitStatusService
         if (indexStatus == 'M' || worktreeStatus == 'M')
             return GitFileStatus.Modified;
         return GitFileStatus.None;
+    }
+
+    public static bool IsFileInGitRepo(string fullPath)
+    {
+        return FindRepositoryRoot(fullPath) != null;
     }
 
     private static string? FindRepositoryRoot(string fileOrDirectory)

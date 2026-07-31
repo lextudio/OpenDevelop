@@ -20,7 +20,10 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Shapes;
 using System.Windows.Media.Imaging;
 
 using ICSharpCode.Core;
@@ -41,6 +44,15 @@ namespace ICSharpCode.UnitTesting
 		TestTreeView treeView;
 		DockPanel panel;
 		ToolBar toolBar;
+		TextBlock totalStatusText;
+		TextBlock passedStatusText;
+		TextBlock failedStatusText;
+		TextBlock skippedStatusText;
+		TextBlock notRunStatusText;
+		int totalStatusCount;
+		int passedStatusCount;
+		int failedStatusCount;
+		int skippedStatusCount;
 		List<Tuple<IUnresolvedFile, IUnresolvedFile>> pending = new List<Tuple<IUnresolvedFile, IUnresolvedFile>>();
 
 		public UnitTestsPad()
@@ -58,6 +70,10 @@ namespace ICSharpCode.UnitTesting
 			toolBar = CreateToolBar("/SharpDevelop/Pads/UnitTestsPad/Toolbar");
 			panel.Children.Add(toolBar);
 			DockPanel.SetDock(toolBar, Dock.Top);
+			
+			var statusBar = CreateStatusBar();
+			panel.Children.Add(statusBar);
+			DockPanel.SetDock(statusBar, Dock.Bottom);
 			
 			panel.Children.Add(treeView);
 			
@@ -79,6 +95,33 @@ namespace ICSharpCode.UnitTesting
 		
 		public ITestTreeView TreeView {
 			get { return treeView; }
+		}
+		
+		public void StartRunStatus(int total)
+		{
+			totalStatusCount = total;
+			passedStatusCount = 0;
+			failedStatusCount = 0;
+			skippedStatusCount = 0;
+			UpdateRunStatusText();
+		}
+		
+		public void RecordRunResult(TestResult result)
+		{
+			if (result == null)
+				return;
+			switch (result.ResultType) {
+				case TestResultType.Success:
+					passedStatusCount++;
+					break;
+				case TestResultType.Failure:
+					failedStatusCount++;
+					break;
+				case TestResultType.Ignored:
+					skippedStatusCount++;
+					break;
+			}
+			UpdateRunStatusText();
 		}
 		
 		void testService_OpenSolutionChanged(object sender, EventArgs e)
@@ -104,6 +147,74 @@ namespace ICSharpCode.UnitTesting
 		{
 			Debug.Assert(treeView != null);
 			return MenuService.CreateContextMenu(treeView, name);
+		}
+		
+		UIElement CreateStatusBar()
+		{
+			var border = new Border {
+				Background = new SolidColorBrush(Color.FromRgb(245, 247, 250)),
+				BorderBrush = new SolidColorBrush(Color.FromRgb(218, 223, 230)),
+				BorderThickness = new Thickness(0, 1, 0, 0),
+				Padding = new Thickness(8, 4, 8, 4)
+			};
+			var items = new StackPanel {
+				Orientation = Orientation.Horizontal
+			};
+			border.Child = items;
+			
+			totalStatusText = CreateStatusText(Brushes.DimGray);
+			passedStatusText = CreateStatusItem(items, new SolidColorBrush(Color.FromRgb(29, 128, 73)));
+			failedStatusText = CreateStatusItem(items, new SolidColorBrush(Color.FromRgb(190, 58, 52)));
+			skippedStatusText = CreateStatusItem(items, new SolidColorBrush(Color.FromRgb(145, 106, 32)));
+			notRunStatusText = CreateStatusItem(items, new SolidColorBrush(Color.FromRgb(128, 138, 148)));
+			
+			items.Children.Add(totalStatusText);
+			
+			UpdateRunStatusText();
+			return border;
+		}
+		
+		static TextBlock CreateStatusText(Brush foreground)
+		{
+			return new TextBlock {
+				Foreground = foreground,
+				Margin = new Thickness(0, 0, 14, 0),
+				VerticalAlignment = VerticalAlignment.Center
+			};
+		}
+		
+		static TextBlock CreateStatusItem(Panel parent, Brush brush)
+		{
+			var item = new StackPanel {
+				Orientation = Orientation.Horizontal,
+				Margin = new Thickness(0, 0, 14, 0),
+				VerticalAlignment = VerticalAlignment.Center
+			};
+			item.Children.Add(new Ellipse {
+				Width = 8,
+				Height = 8,
+				Fill = brush,
+				Margin = new Thickness(0, 0, 5, 0),
+				VerticalAlignment = VerticalAlignment.Center
+			});
+			var text = new TextBlock {
+				Foreground = Brushes.DimGray,
+				VerticalAlignment = VerticalAlignment.Center
+			};
+			item.Children.Add(text);
+			parent.Children.Add(item);
+			return text;
+		}
+		
+		void UpdateRunStatusText()
+		{
+			int completed = passedStatusCount + failedStatusCount + skippedStatusCount;
+			int notRun = Math.Max(0, totalStatusCount - completed);
+			totalStatusText.Text = "Total: " + totalStatusCount;
+			passedStatusText.Text = passedStatusCount.ToString();
+			failedStatusText.Text = failedStatusCount.ToString();
+			skippedStatusText.Text = skippedStatusCount.ToString();
+			notRunStatusText.Text = notRun.ToString();
 		}
 	}
 }

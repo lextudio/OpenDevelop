@@ -6,7 +6,7 @@ using ICSharpCode.SharpDevelop.Project;
 
 namespace ICSharpCode.SharpDevelop;
 
-public static class ProjectService
+public static class ProjectServiceCompat
 {
 	public static IProject CurrentProject {
 		get {

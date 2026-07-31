@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ICSharpCode.SharpDevelop;
@@ -30,6 +31,12 @@ namespace ICSharpCode.UnitTesting
 {
 	sealed class SDTestService : ITestService
 	{
+		public SDTestService()
+		{
+			SD.ProjectService.SolutionOpened += ProjectServiceSolutionChanged;
+			SD.ProjectService.SolutionClosed += ProjectServiceSolutionChanged;
+		}
+
 		#region Test Framework Management
 		const string AddInPath = "/SharpDevelop/UnitTesting/TestFrameworks";
 		IReadOnlyList<TestFrameworkDescriptor> testFrameworkDescriptors = SD.AddInTree.BuildItems<TestFrameworkDescriptor>(AddInPath, null);
@@ -74,7 +81,14 @@ namespace ICSharpCode.UnitTesting
 			}
 		}
 		
-		public event EventHandler OpenSolutionChanged { add {} remove {} }
+		public event EventHandler OpenSolutionChanged = delegate { };
+
+		void ProjectServiceSolutionChanged(object sender, EventArgs e)
+		{
+			SD.MainThread.VerifyAccess();
+			solution = null;
+			OpenSolutionChanged(this, EventArgs.Empty);
+		}
 		#endregion
 		
 		#region RunTests
@@ -86,6 +100,13 @@ namespace ICSharpCode.UnitTesting
 		
 		public async Task RunTestsAsync(IEnumerable<ITest> selectedTests, TestExecutionOptions options)
 		{
+			if (SD.MainThread.InvokeRequired) {
+				var selectedTestsSnapshot = selectedTests.ToArray();
+				Task uiTask = await SD.MainThread.InvokeAsync(() => RunTestsAsync(selectedTestsSnapshot, options));
+				await uiTask;
+				return;
+			}
+			
 			CancelRunningTests();
 			runTestsCancellationTokenSource = new CancellationTokenSource();
 			// invalidate commands as IsRunningTests changes

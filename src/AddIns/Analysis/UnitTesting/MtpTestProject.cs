@@ -108,33 +108,37 @@ namespace ICSharpCode.UnitTesting
 
 		async Task DiscoverTestsAsync(CancellationToken cancellationToken)
 		{
+			var discovered = new Dictionary<string, IReadOnlyList<MtpTestNode>>(StringComparer.OrdinalIgnoreCase);
 			try {
-				var discovered = new Dictionary<string, IReadOnlyList<MtpTestNode>>(StringComparer.OrdinalIgnoreCase);
 				foreach (var targetFramework in GetTargetFrameworks()) {
-					var assemblyPath = ResolveAssemblyDll(Project, targetFramework);
-					if (assemblyPath == null || !File.Exists(assemblyPath))
-						continue;
+					try {
+						var assemblyPath = ResolveAssemblyDll(Project, targetFramework);
+						if (assemblyPath == null || !File.Exists(assemblyPath))
+							continue;
 
-					cancellationToken.ThrowIfCancellationRequested();
-					await using var server = await MtpServerProcess.StartAsync(assemblyPath, Path.GetDirectoryName(assemblyPath), cancellationToken);
-					await server.InitializeAsync(cancellationToken);
-					discovered[targetFramework] = await server.DiscoverTestsAsync(cancellationToken);
-				}
-				// Never replace an already-populated (approximate) tree with an empty result: when
-				// no target framework yielded a built assembly the loop above `continue`s past
-				// every await, so this runs synchronously inside OnNestedTestsInitialized and would
-				// wipe the Roslyn candidates PopulateApproxTreeFromRoslyn just added, leaving the
-				// project node permanently empty instead of falling back to the approximate list.
-				if (discovered.Count > 0) {
-					discoveredNodesByTargetFramework = discovered;
-					PopulateTree();
+						cancellationToken.ThrowIfCancellationRequested();
+						await using var server = await MtpServerProcess.StartAsync(assemblyPath, Path.GetDirectoryName(assemblyPath), cancellationToken);
+						await server.InitializeAsync(cancellationToken);
+						discovered[targetFramework] = await server.DiscoverTestsAsync(cancellationToken);
+					} catch (OperationCanceledException) {
+						throw;
+					} catch (Exception ex) {
+						SD.Log.Warn("MTP discovery failed for " + Project.Name + " " + targetFramework + ": " + ex.Message);
+					}
 				}
 			} catch (OperationCanceledException) {
 				// The user cancelled from the status bar: leave the tree exactly as it was rather
 				// than reporting a failure for something they asked to stop.
-			} catch (Exception ex) {
-				SD.Log.Warn("MTP discovery failed: " + ex.Message);
 			} finally {
+				// Never replace an already-populated (approximate) tree with an empty result: when
+				// no target framework yielded a built assembly the loop above `continue`s past every
+				// await, so this would wipe the Roslyn candidates PopulateApproxTreeFromRoslyn just
+				// added, leaving the project node permanently empty instead of falling back to the
+				// approximate list.
+				if (discovered.Count > 0) {
+					discoveredNodesByTargetFramework = discovered;
+					PopulateTree();
+				}
 				discoveryInProgress = false;
 			}
 		}
@@ -200,9 +204,10 @@ namespace ICSharpCode.UnitTesting
 			// Match the incoming result back to the MtpTestMethod node it belongs to by display
 			// name (MtpTestRunner builds the SD TestResult's name from the same MtpTestNode.DisplayName
 			// that MtpTestMethod's own DisplayName came from at discovery time) and apply it.
-			var separator = result.Name.IndexOf('\0');
-			var targetFramework = separator >= 0 ? result.Name.Substring(0, separator) : null;
-			var displayName = separator >= 0 ? result.Name.Substring(separator + 1) : result.Name;
+			var resultName = result is MtpTestResult mtpResult ? mtpResult.FullName : result.Name;
+			var separator = resultName.IndexOf('\0');
+			var targetFramework = separator >= 0 ? resultName.Substring(0, separator) : null;
+			var displayName = separator >= 0 ? resultName.Substring(separator + 1) : resultName;
 			var method = FindTestMethod(NestedTestCollection, targetFramework, displayName);
 			if (method != null)
 				method.SetResult(result.ResultType);
@@ -296,8 +301,13 @@ namespace ICSharpCode.UnitTesting
 			var candidates = new List<string>();
 
 			if (project is MSBuildBasedProject msbuildProject && !string.IsNullOrEmpty(targetFramework)) {
-				var outputPath = msbuildProject.GetEvaluatedProperty("OutputPath", targetFramework);
 				var assemblyName = msbuildProject.GetEvaluatedProperty("AssemblyName", targetFramework);
+				if (!string.IsNullOrEmpty(assemblyName)) {
+					var configuration = project.ActiveConfiguration.Configuration;
+					candidates.Add(Path.Combine(project.Directory.ToString(), "bin", configuration, targetFramework, assemblyName + ".dll"));
+				}
+
+				var outputPath = msbuildProject.GetEvaluatedProperty("OutputPath", targetFramework);
 				if (!string.IsNullOrEmpty(outputPath) && !string.IsNullOrEmpty(assemblyName)) {
 					// OutputPath comes straight from MSBuild, which writes Windows separators
 					// ("bin\Debug\") on every platform. Path.Combine does not translate those, so on

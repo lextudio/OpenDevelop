@@ -809,13 +809,45 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		[DevFlowAction("od.unit-test.run", Description = "Run all tests in the open solution and wait for completion")]
 		public static async Task<string> RunUnitTests(int timeoutSeconds = 120)
 		{
+			var task = TryStartRunAllUnitTests(out var error);
+			if (task == null)
+				return JsonSerializer.Serialize(new { started = false, error });
+			var done = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(timeoutSeconds)));
+			bool completed = done == task;
+			return JsonSerializer.Serialize(new {
+				started = true,
+				completed,
+				timedOut = !completed,
+				faulted = task.IsFaulted,
+				error = task.IsFaulted ? task.Exception?.InnerException?.Message : null
+			});
+		}
+		
+		[DevFlowAction("od.unit-test.run-start", Description = "Start running all tests in the open solution without waiting for completion")]
+		public static string StartRunUnitTests()
+		{
+			var task = TryStartRunAllUnitTests(out var error);
+			if (task == null)
+				return JsonSerializer.Serialize(new { started = false, error });
+			task.ContinueWith(t => LoggingService.Warn("DevFlow unit test run failed", t.Exception),
+				TaskContinuationOptions.OnlyOnFaulted);
+			return JsonSerializer.Serialize(new { started = true });
+		}
+		
+		static Task TryStartRunAllUnitTests(out string error)
+		{
+			error = null;
 			var s = GetTestService();
-			if (s == null)
-				return JsonSerializer.Serialize(new { started = false, error = "ITestService not available." });
+			if (s == null) {
+				error = "ITestService not available.";
+				return null;
+			}
 			var st = s.GetType();
 			var os = st.GetProperty("OpenSolution")?.GetValue(s);
-			if (os == null)
-				return JsonSerializer.Serialize(new { started = false, error = "No test solution open." });
+			if (os == null) {
+				error = "No test solution open.";
+				return null;
+			}
 			
 			if (itestInterfaceType == null)
 				itestInterfaceType = Type.GetType("ICSharpCode.UnitTesting.ITest, UnitTesting", throwOnError: false);
@@ -827,19 +859,12 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			
 			var run = st.GetMethods(BindingFlags.Instance | BindingFlags.Public)
 				.FirstOrDefault(m => m.Name == "RunTestsAsync" && m.GetParameters().Length == 2);
-			if (run == null)
-				return JsonSerializer.Serialize(new { started = false, error = "RunTestsAsync not found." });
+			if (run == null) {
+				error = "RunTestsAsync not found.";
+				return null;
+			}
 			
-			var task = (Task)run.Invoke(s, new object[] { arr, opts });
-			var done = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(timeoutSeconds)));
-			bool completed = done == task;
-			return JsonSerializer.Serialize(new {
-				started = true,
-				completed,
-				timedOut = !completed,
-				faulted = task.IsFaulted,
-				error = task.IsFaulted ? task.Exception?.InnerException?.Message : null
-			});
+			return (Task)run.Invoke(s, new object[] { arr, opts });
 		}
 		
 		[DevFlowAction("od.unit-test.debug", Description = "Debug all tests in the open solution (UseDebugger=true) and wait for completion or timeout")]

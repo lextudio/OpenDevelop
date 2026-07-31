@@ -21,6 +21,8 @@ using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Media;
 
+using ICSharpCode.Core;
+using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Services;
 
 namespace ICSharpCode.GitAddIn
@@ -39,14 +41,14 @@ namespace ICSharpCode.GitAddIn
 		{
 			public ImageSource GetOverlay(string fullPath, bool isDirectory)
 			{
-				GitFileStatus status = GitStatusService.GetStatus(fullPath);
+				GitFileStatus status = GitStatusService.GetStatusForTreeNode(fullPath, isDirectory);
 				return GetImage(status);
 			}
-
+			
 			public string GetOverlayKey(string fullPath, bool isDirectory)
 			{
-				GitFileStatus status = GitStatusService.GetStatus(fullPath);
-				return GetImage(status) == null ? null : status.ToString();
+				GitFileStatus status = GitStatusService.GetStatusForTreeNode(fullPath, isDirectory);
+				return GitStatusPresentationService.GetPresentation(status).Key;
 			}
 		}
 
@@ -58,44 +60,41 @@ namespace ICSharpCode.GitAddIn
 		// dropped rather than reintroduced just for parity).
 		public static ImageSource GetImage(GitFileStatus status)
 		{
-			return status switch {
-				GitFileStatus.Added => StatusImages.Added,
-				GitFileStatus.Deleted => StatusImages.Deleted,
-				GitFileStatus.Modified => StatusImages.Modified,
-				GitFileStatus.Renamed => StatusImages.Renamed,
-				GitFileStatus.Untracked => StatusImages.Untracked,
-				GitFileStatus.Conflicted => StatusImages.Conflicted,
-				_ => null
-			};
+			GitStatusPresentation presentation = GitStatusPresentationService.GetPresentation(status);
+			return presentation.HasOverlay ? StatusImages.Get(status, presentation) : null;
 		}
 
 		static class StatusImages
 		{
 			static readonly Dictionary<GitFileStatus, ImageSource> images = new Dictionary<GitFileStatus, ImageSource>();
 
-			public static ImageSource Added => Get(GitFileStatus.Added, Color.FromRgb(40, 154, 62), CreateAddedGeometry());
-			public static ImageSource Deleted => Get(GitFileStatus.Deleted, Color.FromRgb(211, 47, 47), CreateDeletedGeometry());
-			public static ImageSource Modified => Get(GitFileStatus.Modified, Color.FromRgb(245, 160, 30), CreateModifiedGeometry());
-			public static ImageSource Renamed => Get(GitFileStatus.Renamed, Color.FromRgb(30, 136, 229), CreateModifiedGeometry());
-			public static ImageSource Untracked => Get(GitFileStatus.Untracked, Color.FromRgb(0, 150, 136), CreateAddedGeometry());
-			public static ImageSource Conflicted => Get(GitFileStatus.Conflicted, Color.FromRgb(198, 40, 40), CreateConflictedGeometry());
-
-			static ImageSource Get(GitFileStatus status, Color color, Geometry glyph)
+			public static ImageSource Get(GitFileStatus status, GitStatusPresentation presentation)
 			{
 				if (images.TryGetValue(status, out ImageSource image))
 					return image;
 
+				Color color = (Color)ColorConverter.ConvertFromString(presentation.ColorHex);
 				Brush background = new SolidColorBrush(color);
 				background.Freeze();
 				Brush foreground = Brushes.White;
 				DrawingGroup drawing = new DrawingGroup();
 				drawing.Children.Add(new GeometryDrawing(background, null, new EllipseGeometry(new Point(8, 8), 7.5, 7.5)));
-				drawing.Children.Add(new GeometryDrawing(foreground, null, glyph));
+				drawing.Children.Add(new GeometryDrawing(foreground, null, CreateGlyphGeometry(presentation.Glyph)));
 				drawing.Freeze();
 				image = new DrawingImage(drawing);
 				image.Freeze();
 				images[status] = image;
 				return image;
+			}
+
+			static Geometry CreateGlyphGeometry(string glyph)
+			{
+				return glyph switch {
+					"+" => CreateAddedGeometry(),
+					"-" => CreateDeletedGeometry(),
+					">" => CreateRenamedGeometry(),
+					_ => CreateModifiedGeometry()
+				};
 			}
 
 			static Geometry CreateAddedGeometry()
@@ -113,12 +112,9 @@ namespace ICSharpCode.GitAddIn
 				return Geometry.Parse("M7,3 L9,3 L9,10 L7,10 Z M7,12 L9,12 L9,14 L7,14 Z");
 			}
 
-			static Geometry CreateConflictedGeometry()
+			static Geometry CreateRenamedGeometry()
 			{
-				// Same exclamation-mark shape as Modified's glyph - visually distinct via its color
-				// (Conflicted's red matches Deleted's, so relies on the badge's position/shape too),
-				// kept intentionally simple rather than inventing a new pictogram for a rare state.
-				return Geometry.Parse("M7,3 L9,3 L9,10 L7,10 Z M7,12 L9,12 L9,14 L7,14 Z");
+				return Geometry.Parse("M4,4 L10,8 L4,12 Z M10,4 L13,4 L13,12 L10,12 Z");
 			}
 		}
 	}

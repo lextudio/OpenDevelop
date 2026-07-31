@@ -62,6 +62,9 @@ namespace ICSharpCode.UnitTesting.Frameworks
 		CancellationToken cancellationToken;
 		ITestProject currentProjectBeingTested;
 		IProgressMonitor testProgressMonitor;
+#if !HAS_UNO
+		UnitTestsPad unitTestsPad;
+#endif
 		
 		public async Task RunTestsAsync(IEnumerable<ITest> selectedTests, TestExecutionOptions options, CancellationToken cancellationToken)
 		{
@@ -71,6 +74,7 @@ namespace ICSharpCode.UnitTesting.Frameworks
 			ClearTasks();
 			ShowUnitTestsPad();
 			ShowOutputPad();
+			StartUnitTestsPadStatus();
 			
 			ResetTestResults();
 			saveAllFilesCommand.SaveAllFiles();
@@ -88,7 +92,9 @@ namespace ICSharpCode.UnitTesting.Frameworks
 			}
 			
 			cancellationToken.ThrowIfCancellationRequested();
-			using (IProgressMonitor progressMonitor = statusBarService.CreateProgressMonitor(cancellationToken)) {
+			IProgressMonitor progressMonitor = await mainThread.InvokeAsync(
+				() => statusBarService.CreateProgressMonitor(cancellationToken));
+			using (progressMonitor) {
 				int projectsLeftToRun = testsByProject.Count;
 				foreach (IGrouping<ITestProject, ITest> g in testsByProject.OrderBy(g => g.Key.DisplayName)) {
 					currentProjectBeingTested = g.Key;
@@ -106,7 +112,7 @@ namespace ICSharpCode.UnitTesting.Frameworks
 				}
 			}
 			
-			ShowErrorList();
+			await mainThread.InvokeAsync(ShowErrorList);
 		}
 
 		void GroupTestsByProject(IEnumerable<ITest> selectedTests)
@@ -143,9 +149,33 @@ namespace ICSharpCode.UnitTesting.Frameworks
 			descriptor.BringPadToFront();
 			var pad = descriptor.PadContent as UnitTestsPad;
 			if (pad != null) {
+				unitTestsPad = pad;
 				pad.TreeView.SelectedTests = testsByProject.Values;
 			}
 #endif
+		}
+		
+		void StartUnitTestsPadStatus()
+		{
+#if !HAS_UNO
+			if (unitTestsPad != null) {
+				unitTestsPad.StartRunStatus(testsByProject.Values.Sum(CountLeafTests));
+			}
+#endif
+		}
+		
+		static int CountLeafTests(ITest test)
+		{
+			if (test == null)
+				return 0;
+			var nestedTests = test.NestedTests;
+			if (nestedTests == null || nestedTests.Count == 0)
+				return 1;
+			int count = 0;
+			foreach (var nestedTest in nestedTests) {
+				count += CountLeafTests(nestedTest);
+			}
+			return count;
 		}
 		
 		void ShowOutputPad()
@@ -188,6 +218,9 @@ namespace ICSharpCode.UnitTesting.Frameworks
 				UpdateProgressMonitorStatus(result);
 			}
 			UpdateTestResult(result);
+#if !HAS_UNO
+			unitTestsPad?.RecordRunResult(result);
+#endif
 		}
 		
 		bool IsTestResultFailureOrIsIgnored(TestResult result)

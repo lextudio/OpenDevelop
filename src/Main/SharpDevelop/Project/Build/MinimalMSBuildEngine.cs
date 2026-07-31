@@ -124,6 +124,10 @@ namespace ICSharpCode.SharpDevelop.Project
 			psi.ArgumentList.Add(TargetToVerb(options.Target));
 			psi.ArgumentList.Add(project.FileName.ToString());
 			psi.ArgumentList.Add("--nologo");
+			// Keep the child MSBuild graph inside a single node. The IDE already orchestrates builds
+			// at the project level, and .NET SDK 10.0.301 on macOS can crash ResolvePackageFileConflicts
+			// while parallelizing multi-target SDK projects that include net462.
+			psi.ArgumentList.Add("-m:1");
 			// We always build a single .csproj directly (never a .sln), so the CurrentVersion.targets
 			// logic that synthesizes solution-dependency ProjectReferences and resolves their
 			// per-solution-configuration via AssignProjectConfiguration is pure overhead we don't

@@ -52,47 +52,75 @@ namespace ICSharpCode.UnitTesting
 			// completion, and torn down within this one RunAsync call, matching how a one-shot
 			// `dotnet exec`/`dotnet run` invocation behaves. See doc/technotes/altcover.md for why
 			// a persistent host was the leading suspect behind the AltCover zero-visits bug.
-			await using var server = await MtpServerProcess.StartAsync(assemblyPath, Path.GetDirectoryName(assemblyPath), cancellationToken);
-			await server.InitializeAsync(cancellationToken);
-
 			IReadOnlyList<MtpTestNode> results;
-			// A test still showing its Roslyn-approximate (pre-MTP-confirmation) node has an empty
-			// Uid (see MtpTestProject.BuildApproxNode) - it can never appear in a real discovered
-			// set, so filtering by it would silently run nothing instead of the test the user
-			// actually asked for. Fall back to running everything in this target framework instead
-			// of skipping it: a safe over-approximation, matching Simple.TestService's same
-			// fallback for its own unconfirmed entries.
-			var hasUnconfirmedSelection = testNodes.Any(n => string.IsNullOrEmpty(n.Uid));
-			var allTestsSelected = hasUnconfirmedSelection
-				|| testNodes.Count == CountAllMethodsForTargetFramework(testProject.NestedTests, targetFramework);
-			if (allTestsSelected) {
-				results = await server.RunTestsAsync(cancellationToken);
-			} else {
-				// Re-discover on this same live host instance right before running so the filter
-				// nodes are guaranteed consistent with it, rather than reusing possibly-stale nodes
-				// from an earlier discovery call/process (mirrors DotNetTestRunner.RunTestsAsync).
-				var discovered = await server.DiscoverTestsAsync(cancellationToken);
-				var uidSet = new HashSet<string>(testNodes.Select(n => n.Uid), StringComparer.Ordinal);
-				var filter = discovered.Where(n => uidSet.Contains(n.Uid)).ToList();
-				results = filter.Count > 0
-					? await server.RunTestsAsync(filter, cancellationToken)
-					: Array.Empty<MtpTestNode>();
+			var liveReportedNames = new HashSet<string>(StringComparer.Ordinal);
+			try {
+				await using var server = await MtpServerProcess.StartAsync(assemblyPath, Path.GetDirectoryName(assemblyPath), cancellationToken);
+				await server.InitializeAsync(cancellationToken);
+
+				// A test still showing its Roslyn-approximate (pre-MTP-confirmation) node has an empty
+				// Uid (see MtpTestProject.BuildApproxNode) - it can never appear in a real discovered
+				// set, so filtering by it would silently run nothing instead of the test the user
+				// actually asked for. Fall back to running everything in this target framework instead
+				// of skipping it: a safe over-approximation, matching Simple.TestService's same
+				// fallback for its own unconfirmed entries.
+				var hasUnconfirmedSelection = testNodes.Any(n => string.IsNullOrEmpty(n.Uid));
+				var allTestsSelected = hasUnconfirmedSelection
+					|| testNodes.Count == CountAllMethodsForTargetFramework(testProject.NestedTests, targetFramework);
+				HashSet<string> selectedUids = allTestsSelected
+					? null
+					: new HashSet<string>(testNodes.Select(n => n.Uid), StringComparer.Ordinal);
+				server.TestNodeUpdated += node => {
+					if (!IsFinalTestResultNode(node))
+						return;
+					if (selectedUids != null && !selectedUids.Contains(node.Uid))
+						return;
+					if (!liveReportedNames.Add(node.DisplayName))
+						return;
+					ReportTestNodeResult(targetFramework, node, output);
+				};
+				if (allTestsSelected) {
+					results = await server.RunTestsAsync(cancellationToken);
+				} else {
+					// Re-discover on this same live host instance right before running so the filter
+					// nodes are guaranteed consistent with it, rather than reusing possibly-stale nodes
+					// from an earlier discovery call/process (mirrors DotNetTestRunner.RunTestsAsync).
+					var discovered = await server.DiscoverTestsAsync(cancellationToken);
+					var uidSet = new HashSet<string>(testNodes.Select(n => n.Uid), StringComparer.Ordinal);
+					var filter = discovered.Where(n => uidSet.Contains(n.Uid)).ToList();
+					results = filter.Count > 0
+						? await server.RunTestsAsync(filter, cancellationToken)
+						: Array.Empty<MtpTestNode>();
+				}
+			} catch (OperationCanceledException) {
+				throw;
+			} catch (Exception ex) {
+				output.WriteLine(ex.Message);
+				foreach (var method in testMethods) {
+					OnTestFinished(new TestFinishedEventArgs(new MtpTestResult(targetFramework + "\0" + method.DisplayName) {
+						Message = ex.Message,
+						ResultType = TestResultType.Failure
+					}));
+				}
+				return;
 			}
 
+			var reportedNames = new HashSet<string>(liveReportedNames, StringComparer.Ordinal);
 			foreach (var node in results.Where(n => n.NodeType == "action")) {
-				var converted = new TestResult(targetFramework + "\0" + node.DisplayName) {
-					Message = node.ErrorMessage,
-					ResultType = ToResultType(node.ExecutionState)
-				};
+				if (liveReportedNames.Contains(node.DisplayName))
+					continue;
+				reportedNames.Add(node.DisplayName);
+				ReportTestNodeResult(targetFramework, node, output);
+			}
 
-				// Echo each result to the run's output writer (the UnitTesting output pad) - without
-				// this the pad stayed completely empty after a run, with no textual record of what
-				// ran or how it went.
-				output.WriteLine("{0} {1}", node.DisplayName, converted.ResultType);
-				if (!string.IsNullOrEmpty(converted.Message))
-					output.WriteLine(converted.Message);
-
-				OnTestFinished(new TestFinishedEventArgs(converted));
+			foreach (var method in testMethods.Where(method => !reportedNames.Contains(method.DisplayName))) {
+				const string message = "The MTP test host did not report a result for this selected test.";
+				output.WriteLine("{0} {1}", method.DisplayName, TestResultType.Failure);
+				output.WriteLine(message);
+				OnTestFinished(new TestFinishedEventArgs(new MtpTestResult(targetFramework + "\0" + method.DisplayName) {
+					Message = message,
+					ResultType = TestResultType.Failure
+				}));
 			}
 		}
 
@@ -140,6 +168,40 @@ namespace ICSharpCode.UnitTesting
 				default:
 					return TestResultType.None;
 			}
+		}
+		
+		static bool IsFinalTestResultNode(MtpTestNode node)
+		{
+			if (node.NodeType != "action")
+				return false;
+			switch (node.ExecutionState) {
+				case "passed":
+				case "failed":
+				case "timed-out":
+				case "error":
+				case "canceled":
+				case "skipped":
+					return true;
+				default:
+					return false;
+			}
+		}
+		
+		void ReportTestNodeResult(string targetFramework, MtpTestNode node, TextWriter output)
+		{
+			var converted = new MtpTestResult(targetFramework + "\0" + node.DisplayName) {
+				Message = node.ErrorMessage,
+				ResultType = ToResultType(node.ExecutionState)
+			};
+			
+			// Echo each result to the run's output writer (the UnitTesting output pad) - without
+			// this the pad stayed completely empty after a run, with no textual record of what
+			// ran or how it went.
+			output.WriteLine("{0} {1}", node.DisplayName, converted.ResultType);
+			if (!string.IsNullOrEmpty(converted.Message))
+				output.WriteLine(converted.Message);
+			
+			OnTestFinished(new TestFinishedEventArgs(converted));
 		}
 
 		public void Dispose()

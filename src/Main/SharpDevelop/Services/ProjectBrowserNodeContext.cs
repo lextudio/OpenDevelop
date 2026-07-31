@@ -110,6 +110,14 @@ internal sealed record ProjectBrowserNodeContext(
             _ => "ms-appx:///Icons/CSFile_16x.svg"
         };
 
+    public bool HasGitOverlay => GitStatusPresentationService.GetPresentation(GitStatus).HasOverlay;
+
+    public string GitOverlayKey => GitStatusPresentationService.GetPresentation(GitStatus).Key;
+
+    public string GitOverlayColorHex => GitStatusPresentationService.GetPresentation(GitStatus).ColorHex;
+
+    public string GitOverlayGlyph => GitStatusPresentationService.GetPresentation(GitStatus).Glyph;
+
     private static string ResolveFileIcon(string path)
     {
         var ext = System.IO.Path.GetExtension(path)?.ToLowerInvariant();

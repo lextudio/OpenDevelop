@@ -39,6 +39,7 @@
     <ProjectReference Include="..\Core\Project\ICSharpCode.Core.csproj" />
     <ProjectReference Include="..\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" />
     <ProjectReference Include="..\ICSharpCode.SharpDevelop.Widgets\Project\ICSharpCode.SharpDevelop.Widgets.csproj" />
+    <ProjectReference Include="..\..\AddIns\Misc\StartPage\Project\StartPage.csproj" Private="false" />
     <ProjectReference Include="..\..\..\externals\cps\src\ProjectSystem\Microsoft.VisualStudio.ProjectSystem.Shim.csproj" />
     <ProjectReference Include="..\..\..\externals\cps\src\ProjectSystemManaged\Microsoft.VisualStudio.ProjectSystem.Managed.csproj" />
   </ItemGroup>

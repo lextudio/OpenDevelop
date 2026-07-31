@@ -27,7 +27,10 @@ namespace ICSharpCode.GitAddIn
 	{
 		public override void Run()
 		{
-			SD.GetService<IProjectBrowserOverlayService>()?.RegisterProvider(OverlayIconManager.Provider);
+			LoggingService.Info("GIT_REGISTER starting");
+			var svc = SD.GetService<IProjectBrowserOverlayService>();
+			svc?.RegisterProvider(OverlayIconManager.Provider);
+			LoggingService.Info("GIT_REGISTER done, svc=" + (svc != null ? "ok" : "null"));
 			
 			FileService.FileCreated += (sender, e) => {
 				AddFileAsync(e.FileName).FireAndForget();

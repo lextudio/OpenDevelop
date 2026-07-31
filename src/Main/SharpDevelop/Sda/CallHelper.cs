@@ -18,16 +18,19 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Resources;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
+
 using ICSharpCode.Core;
 using ICSharpCode.Core.Implementation;
 using ICSharpCode.SharpDevelop.Commands;
@@ -152,6 +155,7 @@ namespace ICSharpCode.SharpDevelop.Sda
 			
 			LoggingService.Info("Loading AddInTree...");
 			startup.RunInitialization();
+
 			if (SD.Services.GetService(typeof(IParserService)) == null) {
 				SD.Services.AddService(typeof(IParserService), new ParserService());
 			}

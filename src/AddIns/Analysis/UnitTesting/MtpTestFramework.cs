@@ -1,3 +1,4 @@
+using System;
 using ICSharpCode.SharpDevelop.Project;
 
 namespace ICSharpCode.UnitTesting
@@ -6,7 +7,11 @@ namespace ICSharpCode.UnitTesting
 	{
 		public bool IsTestProject(IProject project)
 		{
-			return true;
+			if (project is not MSBuildBasedProject msbuildProject)
+				return false;
+
+			return string.Equals(msbuildProject.GetEvaluatedProperty("IsTestProject"), "true", StringComparison.OrdinalIgnoreCase)
+				|| string.Equals(msbuildProject.GetEvaluatedProperty("IsTestingPlatformApplication"), "true", StringComparison.OrdinalIgnoreCase);
 		}
 
 		public ITestProject CreateTestProject(ITestSolution parentSolution, IProject project)

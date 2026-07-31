@@ -4,6 +4,7 @@
             <DockablePane ResizeWidth="200" ResizeHeight="*" EffectiveSize="200,670" ID="4b6a1236-66d8-480d-80c2-5fb4e6236fef" Anchor="Left" IsAutoHidden="false">
                 <DockableContent Name="ICSharpCode_SharpDevelop_Project_ProjectBrowserPad" FloatingWindowSize="250,400" />
                 <DockableContent Name="ICSharpCode_SharpDevelop_Gui_ToolsPad" FloatingWindowSize="250,400" />
+                <DockableContent Name="ICSharpCode_UnitTesting_UnitTestsPad" FloatingWindowSize="250,400" />
             </DockablePane>
             <ResizingPanel ResizeWidth="0.142857142857143*" ResizeHeight="*" EffectiveSize="868,670" Orientation="Vertical">
                 <DocumentPaneResizingPanel ResizeWidth="0.5*" ResizeHeight="*" EffectiveSize="868,476" Orientation="Vertical">
@@ -42,7 +43,6 @@
         <DockableContent Name="ICSharpCode_SharpDevelop_Gui_Pads_ConsolePad" FloatingWindowSize="250,400" ChildIndex="3" Width="100" Height="100" Anchor="Bottom" State="Docked" ContainerPaneID="5c97c37d-9f06-41e7-80f1-e2894cbbb501" />
         <DockableContent Name="ICSharpCode_SharpDevelop_Gui_Pads_WatchPad" FloatingWindowSize="250,400" ChildIndex="3" Width="100" Height="100" Anchor="Bottom" State="Docked" ContainerPaneID="5c97c37d-9f06-41e7-80f1-e2894cbbb501" />
         <DockableContent Name="ICSharpCode_Data_Addin_Pad_DatabasesTreeViewPad" FloatingWindowSize="250,400" ChildIndex="2" Width="100" Height="100" Anchor="Right" State="Docked" ContainerPaneID="9bb68751-4ad1-4e6e-8f46-a9830486c40f" />
-        <DockableContent Name="ICSharpCode_UnitTesting_UnitTestsPad" FloatingWindowSize="250,400" ChildIndex="2" Width="100" Height="100" Anchor="Right" State="Docked" ContainerPaneID="9bb68751-4ad1-4e6e-8f46-a9830486c40f" />
         <DockableContent Name="ICSharpCode_XmlEditor_XPathQueryPad" FloatingWindowSize="250,400" ChildIndex="3" Width="100" Height="100" Anchor="Bottom" State="Docked" ContainerPaneID="5c97c37d-9f06-41e7-80f1-e2894cbbb501" />
     </Hidden>
     <Windows />

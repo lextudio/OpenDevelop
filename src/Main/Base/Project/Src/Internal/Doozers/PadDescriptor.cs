@@ -102,7 +102,7 @@ namespace ICSharpCode.SharpDevelop
 		/// </summary>
 		public string Title {
 			get {
-				return title;
+				return StringParser.Parse(title);
 			}
 		}
 		

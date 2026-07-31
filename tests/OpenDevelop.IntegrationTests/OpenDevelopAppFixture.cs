@@ -57,7 +57,52 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     {
         StopApp();
         await WaitForPortFreeAsync(TimeSpan.FromSeconds(30));
+        DeleteStaleViewStateMemento();
         await StartAsync();
+    }
+
+    // Two separate persistence mechanisms restore previously-open documents on the next startup,
+    // both under the user's real ICSharpCode/SharpDevelop5 config directory (shared with the
+    // user's own interactive use of the app, not something this test run owns):
+    //  - WpfWorkbench's whole-session memento (LastViewStates.xml) - all views open at last exit.
+    //  - Per-project preferences (preferences/<project>.<hash>.xml, PropertyService-backed - see
+    //    AbstractProject's "openFiles" property) - each project remembers its own open-files list
+    //    and reopens (and, per observed behavior, ends up activating the *last* entry of) all of
+    //    them as soon as its solution/project loads, entirely independent of LastViewStates.xml.
+    // Neither restore is guaranteed to finish before this fixture's own explicit
+    // od.open-solution/od.open-file calls run, so a document left open from a *previous* test run
+    // (of this suite, or an earlier interactive session against the same sample project) can still
+    // be - or become - ActiveViewContent well after a test's own od.open-file call returned
+    // "opened: true", making tests that assert on "the currently active document" flaky depending
+    // on what was open the last time this exact project was loaded. Deleting both before each
+    // launch gives every test run a deterministic, empty-workbench starting point.
+    static void DeleteStaleViewStateMemento()
+    {
+        var configDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "ICSharpCode", "SharpDevelop5");
+
+        try
+        {
+            var lastViewStates = Path.Combine(configDir, "LastViewStates.xml");
+            if (File.Exists(lastViewStates))
+                File.Delete(lastViewStates);
+        }
+        catch
+        {
+            // Best-effort - a leftover memento only risks test flakiness, not a hard failure.
+        }
+
+        try
+        {
+            var preferencesDir = Path.Combine(configDir, "preferences");
+            if (Directory.Exists(preferencesDir))
+                Directory.Delete(preferencesDir, recursive: true);
+        }
+        catch
+        {
+            // Best-effort - same rationale as above.
+        }
     }
 
     public async ValueTask DisposeAsync()

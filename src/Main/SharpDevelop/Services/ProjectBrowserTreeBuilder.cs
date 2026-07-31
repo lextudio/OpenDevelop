@@ -24,6 +24,8 @@ internal static class ProjectBrowserTreeBuilder
             return null;
         }
 
+        RefreshGitStatus(solution);
+
         var root = new ProjectBrowserNodeModel(
             solution.Name,
             solution.FileName.ToString(),
@@ -38,6 +40,23 @@ internal static class ProjectBrowserTreeBuilder
         }
 
         return root;
+    }
+
+    private static void RefreshGitStatus(ISolution solution)
+    {
+        GitStatusService.ClearCache();
+
+        var solutionDirectory = Path.GetDirectoryName(solution.FileName.ToString());
+        if (!string.IsNullOrWhiteSpace(solutionDirectory)) {
+            GitStatusService.Refresh(solutionDirectory);
+        }
+
+        foreach (var project in solution.Projects.CreateSnapshot()) {
+            var projectDirectory = Path.GetDirectoryName(project.FileName.ToString());
+            if (!string.IsNullOrWhiteSpace(projectDirectory)) {
+                GitStatusService.Refresh(projectDirectory);
+            }
+        }
     }
 
     private static ProjectBrowserNodeModel BuildProjectNode(IProject project, bool showAllFiles)

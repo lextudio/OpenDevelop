@@ -119,16 +119,17 @@ public sealed class UnitTestingTests
         AssertNode(targetFramework, "test", "net10.0", expectedChildCount: 1);
 
         var ns = targetFramework.GetProperty("nestedTests")[0];
-        AssertNode(ns, "namespace", "SampleTestProject", expectedChildCount: 3);
+        AssertNode(ns, "namespace", "SampleTestProject", expectedChildCount: 4);
 
         // ── Class-level nodes (alphabetical order from MtpTestTreeBuilder's OrderBy) ──
         var classNodes = ns.GetProperty("nestedTests").EnumerateArray()
             .OrderBy(c => c.GetProperty("displayName").GetString())
             .ToArray();
-        Assert.Equal(3, classNodes.Length);
+        Assert.Equal(4, classNodes.Length);
         AssertNode(classNodes[0], "class", "FailTests", expectedChildCount: 1);
         AssertNode(classNodes[1], "class", "PassTests", expectedChildCount: 1);
         AssertNode(classNodes[2], "class", "SkipTests", expectedChildCount: 1);
+        AssertNode(classNodes[3], "class", "SlowTests", expectedChildCount: 1);
 
         // ── Method-level nodes ──
         AssertNode(classNodes[0].GetProperty("nestedTests")[0], "method",
@@ -137,26 +138,56 @@ public sealed class UnitTestingTests
             "SampleTestProject.PassTests.AlwaysPasses", expectedChildCount: 0);
         AssertNode(classNodes[2].GetProperty("nestedTests")[0], "method",
             "SampleTestProject.SkipTests.AlwaysSkipped", expectedChildCount: 0);
+        AssertNode(classNodes[3].GetProperty("nestedTests")[0], "method",
+            "SampleTestProject.SlowTests.FinishesLast", expectedChildCount: 0);
 
         // ── One-to-one correspondence assertions ──
-        // Exactly 3 classes and 3 methods in the entire tree, no extras.
+        // Exactly 4 classes and 4 methods in the entire tree, no extras.
         var classes = CollectNodesByType(root, "class");
         var methods = CollectNodesByType(root, "method");
-        Assert.Equal(3, classes.Count);
-        Assert.Equal(3, methods.Count);
+        Assert.Equal(4, classes.Count);
+        Assert.Equal(4, methods.Count);
 
         var classNames = classes.Select(c => c.GetProperty("displayName").GetString()).OrderBy(x => x).ToArray();
-        Assert.Equal(new[] { "FailTests", "PassTests", "SkipTests" }, classNames);
+        Assert.Equal(new[] { "FailTests", "PassTests", "SkipTests", "SlowTests" }, classNames);
 
         var methodNames = methods.Select(m => m.GetProperty("displayName").GetString()).OrderBy(x => x).ToArray();
         Assert.Equal(new[] {
             "SampleTestProject.FailTests.AlwaysFails",
             "SampleTestProject.PassTests.AlwaysPasses",
-            "SampleTestProject.SkipTests.AlwaysSkipped"
+            "SampleTestProject.SkipTests.AlwaysSkipped",
+            "SampleTestProject.SlowTests.FinishesLast"
         }, methodNames);
 
         // Total leaf method count across the tree must also be 3.
-        Assert.Equal(3, CountLeafMethods(root));
+        Assert.Equal(4, CountLeafMethods(root));
+    }
+
+    [Fact]
+    public async Task UnitTestingTree_RefreshesWhenPadIsOpenedBeforeSolution()
+    {
+        var showPad = await _app.InvokeAsync("od.show-pad", "Unit Tests");
+        Assert.True(showPad.GetProperty("found").GetBoolean());
+
+        await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);
+
+        JsonElement tree = default;
+        bool discovered = false;
+        var deadline = DateTime.UtcNow.AddSeconds(60);
+        while (DateTime.UtcNow < deadline)
+        {
+            tree = await _app.InvokeAsync("od.unit-test.tree");
+            Assert.True(tree.GetProperty("available").GetBoolean());
+            var tests = tree.GetProperty("tests");
+            if (tests.GetArrayLength() > 0)
+            {
+                discovered = FindTest(tests[0], "AlwaysPasses").HasValue;
+                if (discovered) break;
+            }
+            await Task.Delay(1000);
+        }
+
+        Assert.True(discovered, "Unit Tests pad did not refresh after opening a solution.");
     }
 
     [Fact]
@@ -194,6 +225,60 @@ public sealed class UnitTestingTests
         var skipTest = FindTest(root, "AlwaysSkipped");
         Assert.NotNull(skipTest);
         Assert.Equal("Ignored", skipTest.Value.GetProperty("result").GetString());
+
+        var slowTest = FindTest(root, "FinishesLast");
+        Assert.NotNull(slowTest);
+        Assert.Equal("Success", slowTest.Value.GetProperty("result").GetString());
+    }
+
+    [Fact]
+    public async Task UnitTestRun_StreamsResultsBeforeWholeRunCompletes()
+    {
+        await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);
+
+        var deadline = DateTime.UtcNow.AddSeconds(60);
+        while (DateTime.UtcNow < deadline)
+        {
+            var tree = await _app.InvokeAsync("od.unit-test.tree");
+            if (tree.GetProperty("tests").GetArrayLength() > 0
+                && FindTest(tree.GetProperty("tests")[0], "FinishesLast").HasValue)
+                break;
+            await Task.Delay(1000);
+        }
+
+        var start = await _app.InvokeAsync("od.unit-test.run-start");
+        Assert.True(start.GetProperty("started").GetBoolean());
+
+        bool observedPartialResults = false;
+        deadline = DateTime.UtcNow.AddSeconds(20);
+        while (DateTime.UtcNow < deadline)
+        {
+            var tree = await _app.InvokeAsync("od.unit-test.tree");
+            var root = tree.GetProperty("tests")[0];
+            var passTest = FindTest(root, "AlwaysPasses");
+            var slowTest = FindTest(root, "FinishesLast");
+            if (passTest.HasValue && slowTest.HasValue
+                && passTest.Value.GetProperty("result").GetString() == "Success"
+                && slowTest.Value.GetProperty("result").GetString() == "None")
+            {
+                observedPartialResults = true;
+                break;
+            }
+            await Task.Delay(100);
+        }
+
+        Assert.True(observedPartialResults, "The Unit Tests tree did not show completed tests while a slower test was still running.");
+
+        deadline = DateTime.UtcNow.AddSeconds(30);
+        while (DateTime.UtcNow < deadline)
+        {
+            var status = await _app.InvokeAsync("od.unit-test.status");
+            if (!status.GetProperty("isRunningTests").GetBoolean())
+                return;
+            await Task.Delay(250);
+        }
+
+        Assert.Fail("The unit test run did not finish after observing partial results.");
     }
 
     [Fact]

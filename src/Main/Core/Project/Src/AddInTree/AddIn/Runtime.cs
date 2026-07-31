@@ -109,14 +109,12 @@ namespace ICSharpCode.Core
 							loadedAssembly = LoadAssemblyFrom(Path.Combine(hintPath, assembly));
 						}
 
-						#if DEBUG
-						// preload assembly to provoke FileLoadException if dependencies are missing
-						loadedAssembly.GetExportedTypes();
-						#endif
 					} catch (FileNotFoundException ex) {
 						ShowError("The addin '" + assembly + "' could not be loaded:\n" + ex.ToString());
 					} catch (FileLoadException ex) {
 						ShowError("The addin '" + assembly + "' could not be loaded:\n" + ex.ToString());
+					} catch (ReflectionTypeLoadException ex) {
+						ShowError("The addin '" + assembly + "' could not be loaded:\n" + ex);
 					}
 				}
 			}

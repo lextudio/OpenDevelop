@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -39,6 +40,8 @@ namespace ICSharpCode.UnitTesting.Mtp
 		// host has already connected back). Lines from the initial connect handshake are only in
 		// ProcessOutput, not replayed here.
 		public event Action<string>? OutputLine;
+		
+		public event Action<MtpTestNode>? TestNodeUpdated;
 
 		MtpServerProcess(Process process, TcpListener listener, TcpClient tcpClient, JsonRpc rpc, List<string> processOutput)
 		{
@@ -51,6 +54,9 @@ namespace ICSharpCode.UnitTesting.Mtp
 
 		public static async Task<MtpServerProcess> StartAsync(string testAssemblyPath, string? workingDirectory, CancellationToken cancellationToken)
 		{
+			if (!File.Exists(testAssemblyPath))
+				throw new FileNotFoundException("Test assembly not found.", testAssemblyPath);
+			
 			var listener = new TcpListener(IPAddress.Loopback, 0);
 			listener.Start();
 			var port = ((IPEndPoint)listener.LocalEndpoint).Port;
@@ -93,7 +99,16 @@ namespace ICSharpCode.UnitTesting.Mtp
 			try {
 				using var acceptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 				acceptCts.CancelAfter(TimeSpan.FromSeconds(30));
-				tcpClient = await listener.AcceptTcpClientAsync(acceptCts.Token);
+				var acceptTask = listener.AcceptTcpClientAsync(acceptCts.Token).AsTask();
+				var exitTask = process.WaitForExitAsync(acceptCts.Token);
+				var completedTask = await Task.WhenAny(acceptTask, exitTask);
+				if (completedTask == exitTask) {
+					listener.Stop();
+					throw new InvalidOperationException(
+						"MTP test host exited before connecting back on the server-mode TCP port. Output:\n"
+						+ string.Join('\n', output));
+				}
+				tcpClient = await acceptTask;
 			} catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) {
 				listener.Stop();
 				TryKill(process);
@@ -188,8 +203,11 @@ namespace ICSharpCode.UnitTesting.Mtp
 			// test arrives as its own "testing/testUpdates/tests" notification carrying the same
 			// uid, so callers only care about the latest state per uid, not every transition.
 			foreach (var change in changes.EnumerateArray()) {
-				if (change.TryGetProperty("node", out var node))
-					pending.Nodes[MtpTestNode.FromJson(node).Uid] = MtpTestNode.FromJson(node);
+				if (change.TryGetProperty("node", out var node)) {
+					var testNode = MtpTestNode.FromJson(node);
+					pending.Nodes[testNode.Uid] = testNode;
+					TestNodeUpdated?.Invoke(testNode);
+				}
 			}
 		}
 

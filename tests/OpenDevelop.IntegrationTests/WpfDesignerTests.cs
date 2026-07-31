@@ -33,7 +33,7 @@ public sealed class WpfDesignerTests
         var openFileResult = await _app.InvokeAsync("od.open-file", xamlPath);
         Assert.True(openFileResult.GetProperty("opened").GetBoolean(), $"Failed to open {xamlPath}");
 
-        var status = await _app.InvokeAsync("od.wpf-designer.status");
+        var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "Window", timeoutSeconds: 30);
 
         Assert.True(status.GetProperty("active").GetBoolean());
         Assert.True(status.GetProperty("designerLoaded").GetBoolean(),
@@ -72,7 +72,7 @@ public sealed class WpfDesignerTests
         var openFileResult = await _app.InvokeAsync("od.open-file", appXamlPath);
         Assert.True(openFileResult.GetProperty("opened").GetBoolean(), $"Failed to open {appXamlPath}");
 
-        var status = await _app.InvokeAsync("od.xaml-outline.status");
+        var status = await WaitForXamlOutlineStatusAsync(expectedRootName: "App.xaml", timeoutSeconds: 30);
 
         Assert.True(status.GetProperty("active").GetBoolean(),
             "Expected the XAML code editor outline to be active for App.xaml (text editor, not designer)");
@@ -102,7 +102,7 @@ public sealed class WpfDesignerTests
         var openFileResult = await _app.InvokeAsync("od.open-file", xamlPath);
         Assert.True(openFileResult.GetProperty("opened").GetBoolean(), $"Failed to open {xamlPath}");
 
-        var status = await _app.InvokeAsync("od.wpf-designer.status");
+        var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "UserControl", timeoutSeconds: 30);
 
         Assert.True(status.GetProperty("active").GetBoolean());
         Assert.True(status.GetProperty("designerLoaded").GetBoolean(),
@@ -121,5 +121,82 @@ public sealed class WpfDesignerTests
         Assert.Contains("PaneList", outlineNames);
         Assert.Contains("PaneListItemOne", outlineNames);
         Assert.Contains("PaneListItemTwo", outlineNames);
+    }
+
+    // od.open-file returning "opened" only means the file's ViewContent/window was created -
+    // the WPF designer's secondary tab attaches its DesignSurface (WpfViewContent.LoadInternal)
+    // on a subsequent UI-thread layout pass, and that pass's timing isn't guaranteed to have
+    // completed yet when this suite reuses one already-running OpenDevelopAppFixture app across
+    // several tests/documents in the same collection (each test re-invoking od.open-solution on
+    // an already-open solution, switching tabs among several already-open windows). Poll instead
+    // of asserting immediately, matching the same wait-for-UI-state pattern already used by
+    // DebuggerIntegrationTests.WaitForTopFrameLineAsync/WaitForTopFrameNameAsync.
+    //
+    // Two extra things this has to guard against, both discovered by running the whole class
+    // together rather than one test at a time:
+    //  - Waiting for outlineChildCount > 0 alone isn't enough: nested custom-control instances
+    //    (e.g. MainWindow.xaml's <local:SamplePane x:Name="MainPane">) can populate their own
+    //    outline node a little later than their simpler siblings, once that control's own
+    //    type/assembly has been resolved - so the top-level count can already be > 0 while a
+    //    later sibling is still missing. Wait for the flattened outline name count to stop
+    //    growing across two consecutive polls instead of just checking it's non-zero once.
+    //  - ActiveViewContent can still be a PREVIOUS test's already-open window/tab for a moment
+    //    after od.open-file returns "opened" for the new one (window activation is itself
+    //    asynchronous) - so the very first poll or two can report a stable, fully-populated
+    //    outline that actually belongs to the wrong document entirely. Require the reported
+    //    root item's type to match what this specific test just opened before accepting it.
+    async Task<JsonElement> WaitForWpfDesignerStatusAsync(string expectedRootItemType, int timeoutSeconds)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(timeoutSeconds);
+        JsonElement status = default;
+        var previousCount = -1;
+        while (DateTime.UtcNow < deadline)
+        {
+            status = await _app.InvokeAsync("od.wpf-designer.status");
+            if (status.GetProperty("active").GetBoolean() &&
+                status.TryGetProperty("designerLoaded", out var loaded) && loaded.GetBoolean() &&
+                status.TryGetProperty("rootItemType", out var rootItemType) &&
+                rootItemType.GetString() == expectedRootItemType &&
+                status.TryGetProperty("outlineNames", out var names))
+            {
+                var count = names.GetArrayLength();
+                if (count > 0 && count == previousCount)
+                    break;
+                previousCount = count;
+            }
+            else
+            {
+                previousCount = -1;
+            }
+            await Task.Delay(250);
+        }
+        return status;
+    }
+
+    async Task<JsonElement> WaitForXamlOutlineStatusAsync(string expectedRootName, int timeoutSeconds)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(timeoutSeconds);
+        JsonElement status = default;
+        var previousCount = -1;
+        while (DateTime.UtcNow < deadline)
+        {
+            status = await _app.InvokeAsync("od.xaml-outline.status");
+            if (status.GetProperty("active").GetBoolean() &&
+                status.TryGetProperty("rootName", out var rootName) &&
+                rootName.GetString() == expectedRootName &&
+                status.TryGetProperty("outlineNames", out var names))
+            {
+                var count = names.GetArrayLength();
+                if (count > 0 && count == previousCount)
+                    break;
+                previousCount = count;
+            }
+            else
+            {
+                previousCount = -1;
+            }
+            await Task.Delay(250);
+        }
+        return status;
     }
 }
