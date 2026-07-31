@@ -372,6 +372,13 @@ public sealed class UnitTestingTests
             await Task.Delay(1000);
         }
 
+        var padTree = await _app.InvokeAsync("od.unit-test.pad-tree");
+        Assert.True(padTree.GetProperty("found").GetBoolean());
+        Assert.True(padTree.GetProperty("rootChildCount").GetInt32() > 0,
+            "The Unit Tests pad root did not reload after tests were discovered.");
+        Assert.True(padTree.GetProperty("itemCount").GetInt32() > 1,
+            "The Unit Tests pad only shows the project wrapper instead of expanding the single-project test hierarchy.");
+
         var result = await _app.InvokeAsync("od.unit-test.debug-one", "AlwaysPasses", 60);
 
         Assert.True(result.GetProperty("completed").GetBoolean());

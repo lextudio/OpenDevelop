@@ -245,6 +245,8 @@ public sealed class DebuggerIntegrationTests
             var output = await _app.InvokeAsync("od.debug.output");
             string text = output.GetProperty("text").GetString()!;
             Assert.NotEmpty(text);
+            Assert.Equal("Debug", output.GetProperty("selectedCategory").GetString());
+            Assert.True(output.GetProperty("isOutputVisible").GetBoolean());
         }
         finally
         {

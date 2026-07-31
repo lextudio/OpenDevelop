@@ -63,6 +63,19 @@ namespace ICSharpCode.UnitTesting
 		void OnRootChildrenCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
 		{
 			this.ShowRoot = this.Root != null && this.Root.Children.Count > 1;
+			ExpandSingleChildPath();
+		}
+
+		void ExpandSingleChildPath()
+		{
+			var node = Root;
+			while (node != null) {
+				node.EnsureLazyChildren();
+				if (node.Children.Count != 1)
+					break;
+				node = node.Children[0];
+				node.IsExpanded = true;
+			}
 		}
 		
 		public TestTreeView()

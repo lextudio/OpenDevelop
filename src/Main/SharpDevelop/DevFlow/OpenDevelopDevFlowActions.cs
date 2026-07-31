@@ -12,6 +12,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text.Json;
 using System.Threading.Tasks;
+using System.Windows;
 
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.Core;
@@ -312,7 +313,14 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		[DevFlowAction("od.debug.output", Description = "Read the Debug output category text (diagnostics)")]
 		public static string GetDebugOutput()
 		{
-			return JsonSerializer.Serialize(new { text = GetOutputCategoryText("Debug") });
+			var output = CompilerMessageView.Instance;
+			var selectedCategory = output.SelectedMessageViewCategory;
+			var control = output.Control as FrameworkElement;
+			return JsonSerializer.Serialize(new {
+				text = GetOutputCategoryText("Debug"),
+				selectedCategory = selectedCategory?.Category,
+				isOutputVisible = control?.IsVisible ?? false
+			});
 		}
 
 		[DevFlowAction("od.debug.service-info", Description = "Inspect debugger service registration and state")]
@@ -1002,6 +1010,64 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				var test = os != null ? FindTestNode(os, displayName) : null;
 				var padNode = FindUnitTestPadNode(displayName);
 				return JsonSerializer.Serialize(GetUnitTestPadNodeSnapshot(padNode, test, Array.Empty<string>()));
+			}
+
+			[DevFlowAction("od.unit-test.pad-tree", Description = "Inspect the Unit Tests pad tree without forcing lazy nodes to load")]
+			public static string GetUnitTestPadTree()
+			{
+				var pad = FindPad("ICSharpCode.UnitTesting.UnitTestsPad");
+				if (pad == null)
+					return JsonSerializer.Serialize(new { found = false });
+				pad.CreatePad();
+				var treeView = pad.PadContent?.GetType().GetProperty("TreeView")?.GetValue(pad.PadContent);
+				var root = treeView?.GetType().GetProperty("Root")?.GetValue(treeView);
+				var children = root?.GetType().GetProperty("Children")?.GetValue(root);
+				var childCount = children?.GetType().GetProperty("Count")?.GetValue(children);
+				var items = treeView?.GetType().GetProperty("Items")?.GetValue(treeView) as IEnumerable;
+				return JsonSerializer.Serialize(new {
+					found = root != null,
+					showRoot = treeView?.GetType().GetProperty("ShowRoot")?.GetValue(treeView),
+					itemCount = items is ICollection itemCollection ? itemCollection.Count : (int?)null,
+					rootChildCount = childCount,
+					rootIsExpanded = root?.GetType().GetProperty("IsExpanded")?.GetValue(root),
+					rootLazyLoading = root?.GetType().GetProperty("LazyLoading")?.GetValue(root),
+					visibleNodes = items?.Cast<object>().Select(GetUnitTestPadTreeNodeSnapshot).ToArray() ?? Array.Empty<object>()
+				});
+			}
+
+			[DevFlowAction("od.unit-test.expand-node", Description = "Expand a currently visible Unit Tests pad node by display name")]
+			public static string ExpandUnitTestPadNode(string displayName)
+			{
+				var pad = FindPad("ICSharpCode.UnitTesting.UnitTestsPad");
+				pad?.CreatePad();
+				var treeView = pad?.PadContent?.GetType().GetProperty("TreeView")?.GetValue(pad.PadContent);
+				var items = treeView?.GetType().GetProperty("Items")?.GetValue(treeView) as IEnumerable;
+				var node = items?.Cast<object>().FirstOrDefault(item => {
+					var model = GetDeclaredProperty(item, "Model");
+					var name = model?.GetType().GetProperty("DisplayName")?.GetValue(model) as string;
+					return string.Equals(name, displayName, StringComparison.Ordinal);
+				});
+				if (node == null)
+					return JsonSerializer.Serialize(new { found = false, displayName });
+				node.GetType().GetProperty("IsExpanded")?.SetValue(node, true);
+				return JsonSerializer.Serialize(new {
+					found = true,
+					node = GetUnitTestPadTreeNodeSnapshot(node)
+				});
+			}
+
+			static object GetUnitTestPadTreeNodeSnapshot(object node)
+			{
+				var model = GetDeclaredProperty(node, "Model");
+				return new {
+					displayName = model?.GetType().GetProperty("DisplayName")?.GetValue(model) as string,
+					modelType = model?.GetType().FullName,
+					result = model?.GetType().GetProperty("Result")?.GetValue(model)?.ToString(),
+					isExpanded = node?.GetType().GetProperty("IsExpanded")?.GetValue(node),
+					lazyLoading = node?.GetType().GetProperty("LazyLoading")?.GetValue(node),
+					childCount = node?.GetType().GetProperty("Children")?.GetValue(node)?.GetType().GetProperty("Count")?.GetValue(
+						node.GetType().GetProperty("Children")?.GetValue(node))
+				};
 			}
 
 			static object FindUnitTestPadNode(string displayName)

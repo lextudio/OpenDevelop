@@ -96,6 +96,7 @@ namespace ICSharpCode.SharpDevelop.Debugging
 			SD.Workbench.CurrentLayoutConfiguration = "Debug";
 			debugFeature = SD.AnalyticsMonitor.TrackFeature("Debugger");
 			ClearDebugMessages();
+			ActivateDebugCategory();
 			if (DebugStarting != null)
 				DebugStarting(null, e);
 		}
@@ -218,8 +219,10 @@ namespace ICSharpCode.SharpDevelop.Debugging
 		/// </summary>
 		public static void ActivateDebugCategory()
 		{
-			EnsureDebugCategory();
-			((ICSharpCode.SharpDevelop.Workbench.IOutputCategory)debugCategory).Activate(true);
+			SD.MainThread.InvokeIfRequired(() => {
+				EnsureDebugCategory();
+				((ICSharpCode.SharpDevelop.Workbench.IOutputCategory)debugCategory).Activate(true);
+			});
 		}
 
 		public abstract void ToggleBreakpointAt(ITextEditor editor, int lineNumber);
@@ -232,4 +235,3 @@ namespace ICSharpCode.SharpDevelop.Debugging
 		}
 	}
 }
-

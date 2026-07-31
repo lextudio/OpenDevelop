@@ -108,7 +108,13 @@ namespace ICSharpCode.UnitTesting
 
 		async Task DiscoverTestsAsync(CancellationToken cancellationToken)
 		{
-			var discovered = new Dictionary<string, IReadOnlyList<MtpTestNode>>(StringComparer.OrdinalIgnoreCase);
+			// Start with the approximate tree. Each successful MTP result replaces its TFM, while
+			// an unavailable runtime or unbuilt target keeps the stable Roslyn fallback. Clearing a
+			// failed TFM here used to remove its expanded tree node underneath WPF input handling.
+			var discovered = new Dictionary<string, IReadOnlyList<MtpTestNode>>(
+				discoveredNodesByTargetFramework,
+				StringComparer.OrdinalIgnoreCase);
+			var hasMtpResult = false;
 			try {
 				foreach (var targetFramework in GetTargetFrameworks()) {
 					try {
@@ -120,6 +126,7 @@ namespace ICSharpCode.UnitTesting
 						await using var server = await MtpServerProcess.StartAsync(assemblyPath, Path.GetDirectoryName(assemblyPath), cancellationToken);
 						await server.InitializeAsync(cancellationToken);
 						discovered[targetFramework] = await server.DiscoverTestsAsync(cancellationToken);
+						hasMtpResult = true;
 					} catch (OperationCanceledException) {
 						throw;
 					} catch (Exception ex) {
@@ -130,14 +137,9 @@ namespace ICSharpCode.UnitTesting
 				// The user cancelled from the status bar: leave the tree exactly as it was rather
 				// than reporting a failure for something they asked to stop.
 			} finally {
-				// Never replace an already-populated (approximate) tree with an empty result: when
-				// no target framework yielded a built assembly the loop above `continue`s past every
-				// await, so this would wipe the Roslyn candidates PopulateApproxTreeFromRoslyn just
-				// added, leaving the project node permanently empty instead of falling back to the
-				// approximate list.
-				if (discovered.Count > 0) {
+				if (hasMtpResult) {
 					discoveredNodesByTargetFramework = discovered;
-					PopulateTree();
+					await SD.MainThread.InvokeAsync(PopulateTree);
 				}
 				discoveryInProgress = false;
 			}

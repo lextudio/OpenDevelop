@@ -95,6 +95,12 @@ namespace ICSharpCode.SharpDevelop.Dom
 		{
 			if (!IsVisible) {
 				SwitchBackToLazyLoading();
+				// Hidden roots are kept expanded by SharpTreeView when ShowRoot is false.
+				// Setting LazyLoading alone cannot trigger another expansion transition, so
+				// reload immediately or the tree remains empty until some caller explicitly
+				// invokes EnsureLazyChildren().
+				if (IsExpanded)
+					EnsureLazyChildren();
 				return;
 			}
 			Children.RemoveAll(n => removedItems.Contains(n.Model));
