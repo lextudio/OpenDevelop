@@ -1,12 +1,13 @@
 ﻿using System;
-using System.Collections.Specialized;
+using System.Collections.Generic;
 using System.Windows;
+using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Dom;
 using ICSharpCode.TreeView;
 
 namespace ICSharpCode.UnitTesting
 {
-	public class UnitTestNode : SharpTreeNode
+	public class UnitTestNode : ModelCollectionTreeNode
 	{
 		readonly ITest test;
 
@@ -15,7 +16,6 @@ namespace ICSharpCode.UnitTesting
 			if (test == null)
 				throw new ArgumentNullException("test");
 			this.test = test;
-			this.LazyLoading = true;
 			if (IsVisible) {
 				test.DisplayNameChanged += test_NameChanged;
 				test.ResultChanged += test_ResultChanged;
@@ -38,11 +38,17 @@ namespace ICSharpCode.UnitTesting
 			get { return test; }
 		}
 
-		protected override void LoadChildren()
+		protected override IModelCollection<object> ModelChildren {
+			get { return test.NestedTests; }
+		}
+
+		protected override IComparer<SharpTreeNode> NodeComparer {
+			get { return NodeTextComparer; }
+		}
+
+		protected override object GetModel()
 		{
-			foreach (var nested in test.NestedTests) {
-				Children.Add(new UnitTestNode(nested));
-			}
+			return test;
 		}
 
 		public override void ActivateItem(RoutedEventArgs e)
@@ -78,8 +84,10 @@ namespace ICSharpCode.UnitTesting
 
 		void test_ResultChanged(object sender, EventArgs e)
 		{
-			RaisePropertyChanged("Icon");
-			RaisePropertyChanged("ExpandedIcon");
+			SD.MainThread.InvokeIfRequired(() => {
+				RaisePropertyChanged("Icon");
+				RaisePropertyChanged("ExpandedIcon");
+			});
 		}
 
 		public override object Text {
@@ -88,7 +96,7 @@ namespace ICSharpCode.UnitTesting
 
 		void test_NameChanged(object sender, EventArgs e)
 		{
-			RaisePropertyChanged("Text");
+			SD.MainThread.InvokeIfRequired(() => RaisePropertyChanged("Text"));
 		}
 	}
 }

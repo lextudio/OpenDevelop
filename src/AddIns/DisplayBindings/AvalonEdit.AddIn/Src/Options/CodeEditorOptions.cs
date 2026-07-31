@@ -31,6 +31,11 @@ namespace ICSharpCode.AvalonEdit.AddIn.Options
 	{
 		static readonly Lazy<CodeEditorOptions> instance = new Lazy<CodeEditorOptions>(
 			() => PropertyService.Get("CodeEditorOptions", new CodeEditorOptions()));
+
+		public CodeEditorOptions()
+		{
+			HighlightCurrentLine = true;
+		}
 		
 		public static CodeEditorOptions Instance {
 			get { return instance.Value; }

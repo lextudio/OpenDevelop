@@ -504,6 +504,9 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		Properties LoadOrCreateViewContentMementos()
 		{
+			if (!File.Exists(this.ViewContentMementosFileName)) {
+				return new Properties();
+			}
 			try {
 				return Properties.Load(this.ViewContentMementosFileName) ?? new Properties();
 			} catch (Exception ex) {

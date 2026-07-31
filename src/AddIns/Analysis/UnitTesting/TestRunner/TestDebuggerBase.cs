@@ -45,6 +45,7 @@ namespace ICSharpCode.UnitTesting
 
 		public override void Start(IEnumerable<ITest> selectedTests)
 		{
+			OnBeforeDebugStart(selectedTests);
 			ProcessStartInfo startInfo = GetProcessStartInfo(selectedTests);
 			if (IsDebuggerRunning) {
 				if (CanStopDebugging()) {
@@ -91,7 +92,16 @@ namespace ICSharpCode.UnitTesting
 		void DebugStopped(object source, EventArgs e)
 		{
 			debugger.DebugStopped -= DebugStopped;
+			OnDebugStopped();
 			OnAllTestsFinished();
+		}
+
+		protected virtual void OnBeforeDebugStart(IEnumerable<ITest> selectedTests)
+		{
+		}
+
+		protected virtual void OnDebugStopped()
+		{
 		}
 		
 		public override void Stop()

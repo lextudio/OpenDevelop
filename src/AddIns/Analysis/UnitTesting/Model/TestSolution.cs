@@ -89,7 +89,8 @@ namespace ICSharpCode.UnitTesting
 		{
 			if (entity == null)
 				return Enumerable.Empty<ITest>();
-			ITestProject testProject = GetTestProject(entity.ParentAssembly.GetProject());
+			IProject project = entity.ParentAssembly != null ? entity.ParentAssembly.GetProject() : null;
+			ITestProject testProject = project != null ? GetTestProject(project) : null;
 			if (testProject != null)
 				return testProject.GetTestsForEntity(entity);
 			else

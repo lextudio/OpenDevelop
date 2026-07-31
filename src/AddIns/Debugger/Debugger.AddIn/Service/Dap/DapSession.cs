@@ -111,8 +111,10 @@ namespace Debugger.AddIn.Service.Dap
 		}
 
 		public async Task StartAsync(string targetPath, string workingDirectory, bool breakAtBeginning,
+			IEnumerable<string> arguments = null,
 			DapLaunchMode launchMode = DapLaunchMode.Launch, CancellationToken cancellationToken = default)
 		{
+			var argumentList = arguments != null ? arguments.ToList() : new List<string>();
 			string adapterDll = ResolveAdapterDll();
 			if (adapterDll == null) {
 				throw new FileNotFoundException("SharpDbg.Cli.dll was not found. Build OpenDevelop after initializing externals/sharpdbg.");
@@ -146,15 +148,20 @@ namespace Debugger.AddIn.Service.Dap
 			Capabilities = ParseCapabilities(initializeResponse);
 
 			if (launchMode == DapLaunchMode.AttachToSuspendedProcess) {
-				debuggeeProcess = LaunchDebuggeeSuspended(targetPath, workingDirectory);
+				debuggeeProcess = LaunchDebuggeeSuspended(targetPath, workingDirectory, argumentList);
 				await client.SendRequestAsync("attach", new JsonObject {
 					["processId"] = debuggeeProcess.Id,
 					["console"] = "internalConsole",
 					["justMyCode"] = true
 				}, cancellationToken).ConfigureAwait(false);
 			} else {
+				var args = new JsonArray();
+				foreach (var argument in argumentList) {
+					args.Add(argument);
+				}
 				await client.SendRequestAsync("launch", new JsonObject {
 					["program"] = targetPath,
+					["args"] = args,
 					["cwd"] = workingDirectory ?? Path.GetDirectoryName(targetPath),
 					["stopAtEntry"] = breakAtBeginning,
 					["console"] = "internalConsole"
@@ -184,17 +191,32 @@ namespace Debugger.AddIn.Service.Dap
 			Started?.Invoke();
 		}
 
-		static Process LaunchDebuggeeSuspended(string targetDll, string workingDirectory)
+		public async Task SetExceptionBreakpointsAsync(IEnumerable<string> filters, CancellationToken cancellationToken = default)
+		{
+			var filterArray = new JsonArray();
+			foreach (var filter in filters ?? Array.Empty<string>()) {
+				filterArray.Add(filter);
+			}
+			await client.SendRequestAsync("setExceptionBreakpoints", new JsonObject {
+				["filters"] = filterArray
+			}, cancellationToken).ConfigureAwait(false);
+		}
+
+		Process LaunchDebuggeeSuspended(string targetDll, string workingDirectory, IEnumerable<string> arguments)
 		{
 			var processStartInfo = new ProcessStartInfo {
 				FileName = ResolveDotNetHost(),
 				RedirectStandardInput = false,
-				RedirectStandardOutput = false,
+				RedirectStandardOutput = true,
+				RedirectStandardError = true,
 				UseShellExecute = false,
 				CreateNoWindow = true,
 				WorkingDirectory = workingDirectory ?? Path.GetDirectoryName(targetDll) ?? Environment.CurrentDirectory
 			};
 			processStartInfo.ArgumentList.Add(targetDll);
+			foreach (var argument in arguments) {
+				processStartInfo.ArgumentList.Add(argument);
+			}
 			// Suspends the runtime immediately at startup (before Main runs) so the DAP session
 			// can attach and land breakpoints before any debuggee code executes; resumed by
 			// ConfigurationDoneAsync above once the DAP configuration window closes.
@@ -212,6 +234,16 @@ namespace Debugger.AddIn.Service.Dap
 
 			var process = new Process { StartInfo = processStartInfo, EnableRaisingEvents = true };
 			process.Start();
+			process.OutputDataReceived += (s, e) => {
+				if (!string.IsNullOrEmpty(e.Data))
+					OutputReceived?.Invoke(e.Data + Environment.NewLine);
+			};
+			process.ErrorDataReceived += (s, e) => {
+				if (!string.IsNullOrEmpty(e.Data))
+					OutputReceived?.Invoke(e.Data + Environment.NewLine);
+			};
+			process.BeginOutputReadLine();
+			process.BeginErrorReadLine();
 			return process;
 		}
 

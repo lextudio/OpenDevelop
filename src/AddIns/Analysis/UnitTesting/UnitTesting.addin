@@ -27,6 +27,10 @@
 		               class="ICSharpCode.UnitTesting.MtpTestFramework"
 		               supportedProjects=".csproj;.vbproj;.fsproj" />
 	</Path>
+
+	<Path name="/SharpDevelop/TreeNodeFactories">
+		<Class id="UnitTestNodeFactory" class="ICSharpCode.UnitTesting.UnitTestNodeFactory" />
+	</Path>
 	
 	
 	<Path name="/SharpDevelop/Workbench/Pads">

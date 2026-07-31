@@ -221,6 +221,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		protected virtual CodeEditorView CreateTextEditor()
 		{
 			CodeEditorView codeEditorView = new CodeEditorView();
+			codeEditorView.Options.HighlightCurrentLine = true;
 			CodeEditorAdapter adapter = new CodeEditorAdapter(this, codeEditorView);
 			codeEditorView.Adapter = adapter;
 			codeEditorView.Document = document;

@@ -38,7 +38,11 @@ namespace ICSharpCode.TypeSystem
 
 		public ResolveResult(IType type)
 		{
-			this.type = type ?? throw new ArgumentNullException("type");
+			// The old NRefactory type system used SpecialType.UnknownType for error/namespace
+			// resolve results. OpenDevelop's reduced type-system abstraction does not currently
+			// carry SpecialType, so allow null here to represent "unknown" instead of crashing
+			// while building context menus that probe ErrorResolveResult.UnknownError.
+			this.type = type;
 		}
 	}
 }

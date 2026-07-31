@@ -178,6 +178,7 @@ namespace ICSharpCode.SharpDevelop.Debugging
 		public abstract void HandleToolTipRequest(ToolTipRequestEventArgs e);
 
 		static MessageViewCategory debugCategory = null;
+		public static event Action<string> DebugMessagePrinted;
 
 		static void EnsureDebugCategory()
 		{
@@ -194,6 +195,7 @@ namespace ICSharpCode.SharpDevelop.Debugging
 
 		public static void PrintDebugMessage(string msg)
 		{
+			DebugMessagePrinted?.Invoke(msg);
 			// MessageViewCategory.AppendText is WPF-bound (backs an ObservableCollection the Output
 			// pad displays) and throws/no-ops off the UI thread. WindowsDebugger.StartAsync's
 			// synchronous prefix (everything before its first real await) runs on whatever thread
@@ -230,5 +232,4 @@ namespace ICSharpCode.SharpDevelop.Debugging
 		}
 	}
 }
-
 

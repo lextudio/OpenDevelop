@@ -215,9 +215,10 @@ namespace ICSharpCode.SharpDevelop
 			get { return GetRequiredService<IClipboard>(); }
 		}
 
-		// Note: TreeNodeFactory (ITreeNodeFactory/SharpTreeView-based Class Browser) and WinForms
-		// (IWinFormsService) were removed - both are out of MVP scope per the WinForms/SharpTreeView
-		// exclusion policy; see ICSharpCode.SharpDevelop.csproj for the full rationale.
+		/// <inheritdoc see="Dom.ITreeNodeFactory"/>
+		public static Dom.ITreeNodeFactory TreeNodeFactory {
+			get { return GetRequiredService<Dom.ITreeNodeFactory>(); }
+		}
 
 		/// <inheritdoc see="IBuildService"/>
 		public static IBuildService BuildService {

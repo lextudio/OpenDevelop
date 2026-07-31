@@ -1,4 +1,5 @@
 using ICSharpCode.SharpDevelop.Project;
+using System.Windows.Input;
 
 namespace ICSharpCode.UnitTesting.Mtp
 {
@@ -47,6 +48,10 @@ namespace ICSharpCode.UnitTesting.Mtp
 
 		public IProject Project {
 			get { return ((MtpTestProject)project).Project; }
+		}
+		
+		public override ICommand GoToDefinition {
+			get { return new MtpGoToDefinitionCommand(node, Project); }
 		}
 
 		// TestBase.Result's setter is `protected`, so MtpTestProject (a sibling subclass, not a

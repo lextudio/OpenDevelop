@@ -27,7 +27,9 @@ namespace ICSharpCode.SharpDevelop.Dom
 {
 	public abstract class ModelCollectionTreeNode : SharpTreeNode
 	{
-		protected static readonly IComparer<SharpTreeNode> NodeTextComparer = KeyComparer.Create((SharpTreeNode n) => n.Text.ToString(), StringComparer.OrdinalIgnoreCase, StringComparer.OrdinalIgnoreCase);
+		protected static readonly IComparer<SharpTreeNode> NodeTextComparer =
+			Comparer<SharpTreeNode>.Create((left, right) =>
+				StringComparer.OrdinalIgnoreCase.Compare(left?.Text?.ToString(), right?.Text?.ToString()));
 		protected bool listeningToCollectionChangedEvents;
 		
 		protected ModelCollectionTreeNode()

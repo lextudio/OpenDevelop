@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text;
 using ICSharpCode.SharpDevelop.Debugging;
 using ICSharpCode.UnitTesting.Mtp;
 
@@ -11,6 +12,8 @@ namespace ICSharpCode.UnitTesting
 	public class MtpTestDebugger : TestDebuggerBase
 	{
 		readonly MtpTestProject testProject;
+		IReadOnlyList<MtpTestMethod> debuggedMethods = new List<MtpTestMethod>();
+		StringBuilder debugOutput = new StringBuilder();
 
 		public MtpTestDebugger(MtpTestProject testProject, TestExecutionOptions options)
 		{
@@ -29,22 +32,74 @@ namespace ICSharpCode.UnitTesting
 			var fullyQualifiedNames = methods.Select(method => method.FullyQualifiedName).ToList();
 			var assembly = MtpTestProject.ResolveAssemblyDll(testProject.Project, targetFramework);
 
-			var info = new ProcessStartInfo {
-				WorkingDirectory = testProject.Project.Directory ?? Environment.CurrentDirectory
-			};
-
-			if (assembly != null && File.Exists(assembly)) {
-				info.FileName = "dotnet";
-				info.Arguments = "exec \"" + assembly + "\" " + string.Join(" ",
-					fullyQualifiedNames.Select(name => "--filter-method \"" + name + "\""));
-				info.WorkingDirectory = Path.GetDirectoryName(assembly);
-			} else {
-				info.FileName = "dotnet";
-				info.Arguments = "exec \"" + testProject.Project.AssemblyName + ".dll\" "
-					+ string.Join(" ", fullyQualifiedNames.Select(name => "--filter-method \"" + name + "\""));
+			if (assembly == null || !File.Exists(assembly)) {
+				throw new InvalidOperationException("Test assembly not found for target framework '" + targetFramework + "': " + assembly);
 			}
 
-			return info;
+			var startInfo = new ProcessStartInfo {
+				FileName = assembly,
+				WorkingDirectory = Path.GetDirectoryName(assembly) ?? testProject.Project.Directory ?? Environment.CurrentDirectory
+			};
+			foreach (var name in fullyQualifiedNames) {
+				startInfo.ArgumentList.Add("--filter-method");
+				startInfo.ArgumentList.Add(name);
+			}
+
+			return startInfo;
+		}
+
+		protected override void OnBeforeDebugStart(IEnumerable<ITest> selectedTests)
+		{
+			debuggedMethods = testProject.GetTestMethodsForSelectedTests(selectedTests);
+			debugOutput = new StringBuilder();
+			BaseDebuggerService.DebugMessagePrinted += OnDebugMessagePrinted;
+		}
+
+		protected override void OnDebugStopped()
+		{
+			BaseDebuggerService.DebugMessagePrinted -= OnDebugMessagePrinted;
+			var resultType = ParseSummaryResult(debugOutput.ToString(), out var message);
+			if (resultType == TestResultType.None)
+				return;
+
+			foreach (var method in debuggedMethods) {
+				OnTestFinished(this, new TestFinishedEventArgs(new MtpTestResult(method.TargetFramework + "\0" + method.DisplayName) {
+					Message = message,
+					ResultType = resultType
+				}));
+			}
+		}
+
+		void OnDebugMessagePrinted(string message)
+		{
+			debugOutput.Append(message);
+		}
+
+		public override void Dispose()
+		{
+			BaseDebuggerService.DebugMessagePrinted -= OnDebugMessagePrinted;
+			base.Dispose();
+		}
+
+		static TestResultType ParseSummaryResult(string outputText, out string message)
+		{
+			message = null;
+			if (string.IsNullOrEmpty(outputText))
+				return TestResultType.None;
+
+			var lines = outputText.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+			var summary = lines.FirstOrDefault(line => line.TrimStart().StartsWith("Test run summary:", StringComparison.Ordinal));
+			if (summary == null)
+				return TestResultType.None;
+
+			message = summary.Trim();
+			if (summary.IndexOf("Passed!", StringComparison.OrdinalIgnoreCase) >= 0)
+				return TestResultType.Success;
+			if (summary.IndexOf("Skipped!", StringComparison.OrdinalIgnoreCase) >= 0)
+				return TestResultType.Ignored;
+			if (summary.IndexOf("Failed!", StringComparison.OrdinalIgnoreCase) >= 0)
+				return TestResultType.Failure;
+			return TestResultType.None;
 		}
 
 		static List<string> CollectFullyQualifiedNames(IEnumerable<ITest> tests)

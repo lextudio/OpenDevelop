@@ -200,16 +200,19 @@ namespace ICSharpCode.SharpDevelop.Services
 				// throw CommandUnknownException ("Could not execute because the specified command or
 				// file was not found"), so the debuggee died immediately after the first stop and
 				// every subsequent IsDebugging/call-stack query correctly reported "not debugging".
-				// Send the sibling managed .dll when the target is an apphost.
-				targetPath = ResolveManagedAssemblyPath(targetPath);
+					// Send the sibling managed .dll when the target is an apphost.
+					targetPath = ResolveManagedAssemblyPath(targetPath);
+					var arguments = GetDebuggeeArguments(processStartInfo);
 
-				bool breakAtBeginning = BreakAtBeginning;
-				BreakAtBeginning = false;
-				await CurrentSession.StartAsync(targetPath, processStartInfo.WorkingDirectory, breakAtBeginning).ConfigureAwait(false);
+					bool breakAtBeginning = BreakAtBeginning;
+					BreakAtBeginning = false;
+					await CurrentSession.StartAsync(targetPath, processStartInfo.WorkingDirectory, breakAtBeginning, arguments,
+						DapLaunchMode.AttachToSuspendedProcess).ConfigureAwait(false);
 
 				// Breakpoints must be sent after "launch" but before "configurationDone" -
 				// most DAP adapters (including SharpDbg) ignore breakpoints set any later.
 				await SyncAllBreakpointsBeforeLaunch();
+				await CurrentSession.SetExceptionBreakpointsAsync(new[] { "user-unhandled" }).ConfigureAwait(false);
 
 				await CurrentSession.ConfigurationDoneAsync().ConfigureAwait(false);
 
@@ -239,6 +242,36 @@ namespace ICSharpCode.SharpDevelop.Services
 			string baseName = Path.GetFileNameWithoutExtension(targetPath);
 			string candidate = Path.Combine(directory ?? string.Empty, baseName + ".dll");
 			return File.Exists(candidate) ? candidate : targetPath;
+		}
+
+		static IReadOnlyList<string> GetDebuggeeArguments(ProcessStartInfo processStartInfo)
+		{
+			if (processStartInfo.ArgumentList.Count > 0)
+				return processStartInfo.ArgumentList.ToArray();
+			if (string.IsNullOrWhiteSpace(processStartInfo.Arguments))
+				return Array.Empty<string>();
+			return SplitCommandLine(processStartInfo.Arguments).ToArray();
+		}
+
+		static IEnumerable<string> SplitCommandLine(string commandLine)
+		{
+			var current = new System.Text.StringBuilder();
+			bool inQuotes = false;
+			for (int i = 0; i < commandLine.Length; i++) {
+				char ch = commandLine[i];
+				if (ch == '"') {
+					inQuotes = !inQuotes;
+				} else if (char.IsWhiteSpace(ch) && !inQuotes) {
+					if (current.Length > 0) {
+						yield return current.ToString();
+						current.Length = 0;
+					}
+				} else {
+					current.Append(ch);
+				}
+			}
+			if (current.Length > 0)
+				yield return current.ToString();
 		}
 
 		void SessionStarted()

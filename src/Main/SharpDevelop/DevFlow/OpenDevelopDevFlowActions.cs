@@ -6,6 +6,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -119,6 +120,8 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				typeName,
 				isAvalonEdit = typeName == "ICSharpCode.AvalonEdit.AddIn.AvalonEditViewContent",
 				fileName = viewContent.PrimaryFileName != null ? viewContent.PrimaryFileName.ToString() : null,
+				caretLine = editor != null ? editor.Caret.Line : (int?)null,
+				caretColumn = editor != null ? editor.Caret.Column : (int?)null,
 				textLength = text?.Length,
 				textPreview = text != null ? text.Substring(0, Math.Min(200, text.Length)) : null,
 				syntaxHighlighting
@@ -309,9 +312,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		[DevFlowAction("od.debug.output", Description = "Read the Debug output category text (diagnostics)")]
 		public static string GetDebugOutput()
 		{
-			var category = ICSharpCode.SharpDevelop.Gui.CompilerMessageView.Instance.MessageCategories
-				.FirstOrDefault(c => c.Category == "Debug");
-			return JsonSerializer.Serialize(new { text = category?.Text ?? string.Empty });
+			return JsonSerializer.Serialize(new { text = GetOutputCategoryText("Debug") });
 		}
 
 		[DevFlowAction("od.debug.service-info", Description = "Inspect debugger service registration and state")]
@@ -805,6 +806,36 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				return JsonSerializer.Serialize(new { available = true, tests = Array.Empty<object>() });
 			return JsonSerializer.Serialize(new { available = true, tests = new[] { WalkTestNode(os) } });
 		}
+
+		[DevFlowAction("od.unit-test.goto", Description = "Execute GoToDefinition for the first discovered unit test whose display name matches or ends with the given name")]
+		public static string GoToUnitTestDefinition(string displayName)
+		{
+			var s = GetTestService();
+			if (s == null)
+				return JsonSerializer.Serialize(new { success = false, error = "ITestService not available." });
+			var os = s.GetType().GetProperty("OpenSolution")?.GetValue(s);
+			if (os == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No test solution open." });
+
+			var test = FindTestNode(os, displayName);
+			if (test == null)
+				return JsonSerializer.Serialize(new { success = false, error = "Test not found." });
+
+			var command = test.GetType().GetProperty("GoToDefinition")?.GetValue(test) as System.Windows.Input.ICommand;
+			if (command == null || !command.CanExecute(null))
+				return JsonSerializer.Serialize(new { success = false, error = "GoToDefinition is not available for this test.", rawJson = GetRawMtpJson(test) });
+
+			command.Execute(null);
+
+			var viewContent = SD.Workbench.ActiveViewContent;
+			var editor = viewContent?.GetService<ITextEditor>();
+			return JsonSerializer.Serialize(new {
+				success = true,
+				fileName = viewContent?.PrimaryFileName != null ? viewContent.PrimaryFileName.ToString() : null,
+				caretLine = editor != null ? editor.Caret.Line : (int?)null,
+				caretColumn = editor != null ? editor.Caret.Column : (int?)null
+			});
+		}
 		
 		[DevFlowAction("od.unit-test.run", Description = "Run all tests in the open solution and wait for completion")]
 		public static async Task<string> RunUnitTests(int timeoutSeconds = 120)
@@ -906,11 +937,132 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				faulted = completed && task.IsFaulted,
 				error = completed && task.IsFaulted ? task.Exception?.InnerException?.Message : null,
 				isDebugging = SD.Debugger?.IsDebugging ?? false
-			});
-		}
+				});
+			}
 
-		[DevFlowAction("od.unit-test.output", Description = "Get the UnitTesting output pad text")]
-		public static string GetUnitTestOutput()
+			[DevFlowAction("od.unit-test.debug-one", Description = "Debug the first discovered unit test whose display name matches or ends with the given name")]
+			public static async Task<string> DebugOneUnitTest(string displayName, int timeoutSeconds = 60)
+			{
+				var s = GetTestService();
+				if (s == null)
+					return JsonSerializer.Serialize(new { started = false, error = "ITestService not available." });
+				var st = s.GetType();
+				var os = st.GetProperty("OpenSolution")?.GetValue(s);
+				if (os == null)
+					return JsonSerializer.Serialize(new { started = false, error = "No test solution open." });
+
+				var test = FindTestNode(os, displayName);
+				if (test == null)
+					return JsonSerializer.Serialize(new { started = false, error = "Test not found." });
+
+				if (itestInterfaceType == null)
+					itestInterfaceType = Type.GetType("ICSharpCode.UnitTesting.ITest, UnitTesting", throwOnError: false);
+				var optType = Type.GetType("ICSharpCode.UnitTesting.TestExecutionOptions, UnitTesting", throwOnError: false);
+				var opts = optType != null ? Activator.CreateInstance(optType) : null;
+				optType?.GetProperty("UseDebugger", BindingFlags.Instance | BindingFlags.Public)?.SetValue(opts, true);
+
+				var arr = Array.CreateInstance(itestInterfaceType ?? typeof(object), 1);
+				arr.SetValue(test, 0);
+
+				var run = st.GetMethods(BindingFlags.Instance | BindingFlags.Public)
+					.FirstOrDefault(m => m.Name == "RunTestsAsync" && m.GetParameters().Length == 2);
+				if (run == null)
+					return JsonSerializer.Serialize(new { started = false, error = "RunTestsAsync not found." });
+
+				var padNode = FindUnitTestPadNode(displayName);
+				var changedProperties = new List<string>();
+				PropertyChangedEventHandler propertyChanged = (sender, e) => changedProperties.Add(e.PropertyName);
+				(padNode as INotifyPropertyChanged)?.PropertyChanged += propertyChanged;
+
+				var task = (Task)run.Invoke(s, new object[] { arr, opts });
+				var done = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(timeoutSeconds)));
+				bool completed = done == task;
+				(padNode as INotifyPropertyChanged)?.PropertyChanged -= propertyChanged;
+				var finalPadNode = FindUnitTestPadNode(displayName);
+				var finalTest = FindTestNode(os, displayName);
+				return JsonSerializer.Serialize(new {
+					started = true,
+					displayName = test.GetType().GetProperty("DisplayName")?.GetValue(test) as string,
+					completed,
+					timedOut = !completed,
+					faulted = completed && task.IsFaulted,
+					error = completed && task.IsFaulted ? task.Exception?.InnerException?.Message : null,
+					isDebugging = SD.Debugger?.IsDebugging ?? false,
+					debugOutput = GetOutputCategoryText("Debug"),
+					padNodeReplaced = !ReferenceEquals(padNode, finalPadNode),
+					padNode = GetUnitTestPadNodeSnapshot(finalPadNode, finalTest, changedProperties)
+				});
+			}
+
+			[DevFlowAction("od.unit-test.pad-node", Description = "Inspect the actual UnitTestNode rendered by the Unit Tests pad")]
+			public static string GetUnitTestPadNode(string displayName)
+			{
+				var s = GetTestService();
+				var os = s?.GetType().GetProperty("OpenSolution")?.GetValue(s);
+				var test = os != null ? FindTestNode(os, displayName) : null;
+				var padNode = FindUnitTestPadNode(displayName);
+				return JsonSerializer.Serialize(GetUnitTestPadNodeSnapshot(padNode, test, Array.Empty<string>()));
+			}
+
+			static object FindUnitTestPadNode(string displayName)
+			{
+				var pad = FindPad("ICSharpCode.UnitTesting.UnitTestsPad");
+				if (pad == null)
+					return null;
+				pad.CreatePad();
+				var treeView = pad.PadContent?.GetType().GetProperty("TreeView")?.GetValue(pad.PadContent);
+				var root = treeView?.GetType().GetProperty("Root")?.GetValue(treeView);
+				return FindSharpTreeNode(root, displayName);
+			}
+
+			static object FindSharpTreeNode(object node, string displayName)
+			{
+				if (node == null)
+					return null;
+				var model = GetDeclaredProperty(node, "Model");
+				var nodeDisplayName = model?.GetType().GetProperty("DisplayName")?.GetValue(model) as string;
+				if (string.Equals(nodeDisplayName, displayName, StringComparison.Ordinal)
+				    || (nodeDisplayName?.EndsWith("." + displayName, StringComparison.Ordinal) ?? false))
+					return node;
+
+				node.GetType().GetMethod("EnsureLazyChildren", BindingFlags.Instance | BindingFlags.Public)?.Invoke(node, null);
+				var children = node.GetType().GetProperty("Children")?.GetValue(node) as IEnumerable;
+				if (children == null)
+					return null;
+				foreach (var child in children) {
+					var found = FindSharpTreeNode(child, displayName);
+					if (found != null)
+						return found;
+				}
+				return null;
+			}
+
+			static object GetUnitTestPadNodeSnapshot(object node, object serviceModel, IEnumerable<string> changedProperties)
+			{
+				if (node == null)
+					return new { found = false };
+				var model = GetDeclaredProperty(node, "Model");
+				var icon = node.GetType().GetProperty("Icon")?.GetValue(node);
+				return new {
+					found = true,
+					nodeType = node.GetType().FullName,
+					sameModelInstance = ReferenceEquals(model, serviceModel),
+					modelResult = model?.GetType().GetProperty("Result")?.GetValue(model)?.ToString(),
+					iconType = icon?.GetType().FullName,
+					iconUri = icon?.GetType().GetProperty("UriSource")?.GetValue(icon)?.ToString(),
+					changedProperties = changedProperties.ToArray()
+				};
+			}
+
+			static object GetDeclaredProperty(object instance, string propertyName)
+			{
+				return instance?.GetType()
+					.GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)
+					?.GetValue(instance);
+			}
+
+			[DevFlowAction("od.unit-test.output", Description = "Get the UnitTesting output pad text")]
+			public static string GetUnitTestOutput()
 		{
 			var s = GetTestService();
 			if (s == null)
@@ -1052,6 +1204,38 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			var kids = new List<object>();
 			if (nested != null) { foreach (var c in nested) { var n = WalkTestNode(c); if (n != null) kids.Add(n); } }
 			return new { displayName = name, result = res?.ToString() ?? "None", type = typeName, nestedTests = kids };
+		}
+
+		static string GetOutputCategoryText(string categoryName)
+		{
+			var category = ICSharpCode.SharpDevelop.Gui.CompilerMessageView.Instance.MessageCategories
+				.FirstOrDefault(c => c.Category == categoryName);
+			return category?.Text ?? string.Empty;
+		}
+
+		static object FindTestNode(object test, string displayName)
+		{
+			if (test == null || string.IsNullOrEmpty(displayName))
+				return null;
+			var t = test.GetType();
+			var name = t.GetProperty("DisplayName")?.GetValue(test) as string;
+			if (name == displayName || (name != null && name.EndsWith("." + displayName, StringComparison.Ordinal)))
+				return test;
+			var nested = GetMostDerivedProperty(t, "NestedTests")?.GetValue(test) as System.Collections.IEnumerable;
+			if (nested == null)
+				return null;
+			foreach (var child in nested) {
+				var found = FindTestNode(child, displayName);
+				if (found != null)
+					return found;
+			}
+			return null;
+		}
+
+		static string GetRawMtpJson(object test)
+		{
+			var node = test.GetType().GetProperty("Node", BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)?.GetValue(test);
+			return node?.GetType().GetProperty("RawJson", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(node) as string;
 		}
 
 		// Plain Type.GetProperty(name) throws AmbiguousMatchException when a subclass re-declares

@@ -437,6 +437,8 @@ namespace ICSharpCode.SharpDevelop
 		{
 			if (assembly == null)
 				throw new ArgumentNullException("assembly");
+			if (assembly.Compilation == null)
+				return null;
 			var snapshot = assembly.Compilation.SolutionSnapshot as ISolutionSnapshotWithProjectMapping;
 			if (snapshot == null)
 				return null;

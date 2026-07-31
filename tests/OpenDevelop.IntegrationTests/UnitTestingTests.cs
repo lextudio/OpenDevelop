@@ -191,6 +191,50 @@ public sealed class UnitTestingTests
     }
 
     [Fact]
+    public async Task UnitTestNode_GoToDefinition_OpensSourceAtTestMethod()
+    {
+        await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);
+
+        JsonElement tree = default;
+        bool discovered = false;
+        var deadline = DateTime.UtcNow.AddSeconds(60);
+        while (DateTime.UtcNow < deadline)
+        {
+            tree = await _app.InvokeAsync("od.unit-test.tree");
+            Assert.True(tree.GetProperty("available").GetBoolean());
+            var tests = tree.GetProperty("tests");
+            if (tests.GetArrayLength() > 0)
+            {
+                discovered = FindTest(tests[0], "AlwaysPasses").HasValue;
+                if (discovered) break;
+            }
+            await Task.Delay(1000);
+        }
+
+        Assert.True(discovered, "Test methods were not discovered within 60s timeout");
+
+        var result = await _app.InvokeAsync("od.unit-test.goto", "AlwaysPasses");
+
+        Assert.True(result.GetProperty("success").GetBoolean(),
+            result.TryGetProperty("error", out var error) ? error.GetString() : "GoToDefinition failed");
+
+        JsonElement activeView = default;
+        deadline = DateTime.UtcNow.AddSeconds(10);
+        while (DateTime.UtcNow < deadline)
+        {
+            activeView = await _app.InvokeAsync("od.active-view");
+            if (activeView.TryGetProperty("fileName", out var activeFile)
+                && activeFile.GetString()?.EndsWith("/tests/fixtures/SampleTestProject/PassTests.cs", StringComparison.Ordinal) == true)
+                break;
+            await Task.Delay(250);
+        }
+
+        Assert.EndsWith("/tests/fixtures/SampleTestProject/PassTests.cs",
+            activeView.GetProperty("fileName").GetString());
+        Assert.Equal(6, activeView.GetProperty("caretLine").GetInt32());
+    }
+
+    [Fact]
     public async Task UnitTestRun_ProducesExpectedResults()
     {
         await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);
@@ -310,6 +354,33 @@ public sealed class UnitTestingTests
         Assert.True(debugResult.TryGetProperty("started", out _), "od.unit-test.debug did not return a usable response");
 
         await _app.InvokeAsync("od.debug.stop");
+    }
+
+    [Fact]
+    public async Task DebugUnitTest_ReplacesStalePadNodeAndShowsSuccessIcon()
+    {
+        await _app.InvokeAsync("od.show-pad", "ICSharpCode.UnitTesting.UnitTestsPad");
+        await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);
+
+        var deadline = DateTime.UtcNow.AddSeconds(60);
+        while (DateTime.UtcNow < deadline)
+        {
+            var tree = await _app.InvokeAsync("od.unit-test.tree");
+            if (tree.GetProperty("tests").GetArrayLength() > 0
+                && FindTest(tree.GetProperty("tests")[0], "AlwaysPasses").HasValue)
+                break;
+            await Task.Delay(1000);
+        }
+
+        var result = await _app.InvokeAsync("od.unit-test.debug-one", "AlwaysPasses", 60);
+
+        Assert.True(result.GetProperty("completed").GetBoolean());
+        Assert.False(result.GetProperty("faulted").GetBoolean());
+        var padNode = result.GetProperty("padNode");
+        Assert.True(padNode.GetProperty("found").GetBoolean());
+        Assert.True(padNode.GetProperty("sameModelInstance").GetBoolean());
+        Assert.Equal("Success", padNode.GetProperty("modelResult").GetString());
+        Assert.EndsWith("/Resources/Green.png", padNode.GetProperty("iconUri").GetString());
     }
 
     [Fact]
