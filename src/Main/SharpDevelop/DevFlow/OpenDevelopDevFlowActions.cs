@@ -1186,24 +1186,24 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			if (runAllTestsWithCodeCoverageCommandType == null)
 				return JsonSerializer.Serialize(new { started = false, error = "RunAllTestsWithCodeCoverageCommand not found." });
 
-			int resultCountBefore = GetCodeCoverageResults()?.Length ?? 0;
-
 			var command = Activator.CreateInstance(runAllTestsWithCodeCoverageCommandType);
 			var run = runAllTestsWithCodeCoverageCommandType.GetMethod("Run", BindingFlags.Instance | BindingFlags.Public);
-			// Run() kicks off the Prepare/test-run/Collect sequence and returns immediately (it
-			// fire-and-forgets the actual test run) - poll CodeCoverageService.Results for a new
-			// entry rather than awaiting a Task, since there's nothing here to await.
 			await SD.MainThread.InvokeAsync(() => { run.Invoke(command, null); });
 
-			var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(timeoutSeconds);
-			bool completed = false;
-			while (DateTime.UtcNow < deadline) {
-				if ((GetCodeCoverageResults()?.Length ?? 0) > resultCountBefore) {
-					completed = true;
-					break;
-				}
-				await Task.Delay(200);
-			}
+			// The command clears old results before adding the new result, so comparing result
+			// counts is not a completion signal: one old result -> clear -> one new result keeps
+			// the count at one and used to make this action wait the full timeout. Await the real
+			// prepare/run/collect task exposed by the command instead.
+			var taskProperty = runAllTestsWithCodeCoverageCommandType.BaseType?.GetProperty(
+				"CurrentRunTask", BindingFlags.Static | BindingFlags.Public);
+			var coverageTask = taskProperty?.GetValue(null) as Task;
+			if (coverageTask == null)
+				return JsonSerializer.Serialize(new { started = false, error = "Code coverage run task was not available." });
+
+			var timeoutTask = Task.Delay(TimeSpan.FromSeconds(timeoutSeconds));
+			bool completed = await Task.WhenAny(coverageTask, timeoutTask) == coverageTask;
+			if (completed)
+				await coverageTask;
 
 			return JsonSerializer.Serialize(new {
 				started = true,
@@ -1219,6 +1219,8 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			var results = GetCodeCoverageResults();
 			if (results == null)
 				return JsonSerializer.Serialize(new { available = false, modules = Array.Empty<object>() });
+			bool highlighted = (bool?)(GetCodeCoverageServiceType()?.GetProperty(
+				"CodeCoverageHighlighted", BindingFlags.Static | BindingFlags.Public)?.GetValue(null)) ?? false;
 
 			var modules = new List<object>();
 			foreach (var result in results) {
@@ -1240,7 +1242,24 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 					});
 				}
 			}
-			return JsonSerializer.Serialize(new { available = true, modules = modules.ToArray() });
+			return JsonSerializer.Serialize(new { available = true, highlighted, modules = modules.ToArray() });
+		}
+
+		[DevFlowAction("od.code-coverage.editor-markers", Description = "Inspect code-coverage text markers in the active AvalonEdit document")]
+		public static string GetCodeCoverageEditorMarkers()
+		{
+			var view = SD.Workbench.ActiveViewContent;
+			var editor = view?.GetService<ITextEditor>();
+			var markerService = editor?.Document?.GetService(typeof(ITextMarkerService)) as ITextMarkerService;
+			var markers = markerService?.TextMarkers.Where(marker =>
+				(marker.Tag as Type)?.FullName == "ICSharpCode.CodeCoverage.CodeCoverageHighlighter").ToArray()
+				?? Array.Empty<ITextMarker>();
+			return JsonSerializer.Serialize(new {
+				fileName = view?.PrimaryFileName?.ToString(),
+				markerServiceAvailable = markerService != null,
+				markerCount = markers.Length,
+				coloredMarkerCount = markers.Count(marker => marker.BackgroundColor.HasValue)
+			});
 		}
 
 		[DevFlowAction("od.code-coverage.clear", Description = "Clear the current code coverage results")]

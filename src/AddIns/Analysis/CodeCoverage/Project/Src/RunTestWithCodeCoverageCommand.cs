@@ -38,10 +38,17 @@ namespace ICSharpCode.CodeCoverage
 	public class RunTestWithCodeCoverageCommand : AbstractMenuCommand
 	{
 		AltCoverCoverageRunner coverageRunner = new AltCoverCoverageRunner();
+		public static Task CurrentRunTask { get; private set; } = Task.CompletedTask;
 
 		public override void Run()
 		{
-			RunAsync().FireAndForget();
+			// Menu commands and DevFlow can both reach this entry point. Do not allow two
+			// AltCover --inplace prepare/collect sequences to rewrite the same output directory
+			// concurrently.
+			if (!CurrentRunTask.IsCompleted)
+				return;
+			CurrentRunTask = RunAsync();
+			CurrentRunTask.FireAndForget();
 		}
 
 		async Task RunAsync()
@@ -57,14 +64,33 @@ namespace ICSharpCode.CodeCoverage
 			if (project == null)
 				return;
 
-			CodeCoverageRunResult run = await coverageRunner.RunAsync(
-				new[] { project },
-				BuildProjectAsync,
-				CancellationToken.None);
+			var mtpTestProject = FindMtpTestProject(allTests, project);
+			if (mtpTestProject != null)
+				await mtpTestProject.RefreshAsync();
+
+			CodeCoverageRunResult run;
+			using (mtpTestProject?.SuppressBuildDiscovery()) {
+				run = await coverageRunner.RunAsync(
+					new[] { project },
+					BuildProjectAsync,
+					CancellationToken.None);
+			}
+			foreach (string line in run.LogLines)
+				SD.Log.Info("Code coverage: " + line);
 			foreach (string fileName in run.ResultFiles)
 				coverageResultsReader.AddResultsFile(fileName);
 
-			ShowCodeCoverageResultsPadIfNoCriticalTestFailures();
+			// Creating the pad must happen before DisplayCodeCoverageResults: ShowResults
+			// only populates an existing CodeCoveragePad instance. The old condition was
+			// inverted and brought the pad forward only when critical errors existed, so a
+			// successful run kept its valid results entirely invisible.
+			if (run.ResultFiles.Any())
+				SD.MainThread.InvokeIfRequired(ShowCodeCoverageResultsPad);
+			// Running with coverage is an explicit request to display coverage. Enable the
+			// editor overlay before ShowResults so its refresh paints already-open editors;
+			// ViewOpened then paints files reached by double-clicking a coverage node.
+			if (run.ResultFiles.Any())
+				CodeCoverageService.CodeCoverageHighlighted = true;
 			DisplayCodeCoverageResults(coverageResultsReader);
 		}
 
@@ -105,14 +131,19 @@ namespace ICSharpCode.CodeCoverage
 			return null;
 		}
 
-
-		void ShowCodeCoverageResultsPadIfNoCriticalTestFailures()
+		static MtpTestProject FindMtpTestProject(IEnumerable<ITest> tests, IProject project)
 		{
-			if (TaskService.HasCriticalErrors(false)) {
-				SD.MainThread.InvokeIfRequired(() => ShowCodeCoverageResultsPad());
+			foreach (ITest test in tests) {
+				if (test is MtpTestProject mtpTestProject && mtpTestProject.Project == project)
+					return mtpTestProject;
+				var found = FindMtpTestProject(test.NestedTests, project);
+				if (found != null)
+					return found;
 			}
+			return null;
 		}
-		
+
+
 		void ShowCodeCoverageResultsPad()
 		{
 			SD.Workbench.GetPad(typeof(CodeCoveragePad)).BringPadToFront();

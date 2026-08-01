@@ -38,7 +38,7 @@ namespace ICSharpCode.Data.Core.UI.UserControls
     /// Interaction logic for DatabasesTreeView.xaml
     /// </summary>
 
-    public partial class DatabaseTreeView : TreeView, INotifyPropertyChanged
+    public partial class DatabaseTreeView : System.Windows.Controls.TreeView, INotifyPropertyChanged
     {
         #region Fields
 

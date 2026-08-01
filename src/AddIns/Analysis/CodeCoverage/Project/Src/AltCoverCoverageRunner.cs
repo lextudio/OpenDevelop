@@ -47,7 +47,7 @@ namespace ICSharpCode.CodeCoverage
 
 				AltCoverApplication application = CreateAltCoverApplication(project);
 				log.Add("AltCover: " + application.FileName);
-				ClearPreviousSavedOutput(project, log);
+				RestoreSavedOutput(project, log);
 
 				var prepare = await CodeCoverageProcessRunner.RunAsync(application.GetPrepareProcessStartInfo(), cancellationToken);
 				log.AddRange(prepare.OutputLines);
@@ -63,6 +63,7 @@ namespace ICSharpCode.CodeCoverage
 
 				var collect = await CodeCoverageProcessRunner.RunAsync(application.GetCollectProcessStartInfo(), cancellationToken);
 				log.AddRange(collect.OutputLines);
+				RestoreSavedOutput(project, log);
 				if (collect.ExitCode != 0) {
 					log.Add("AltCover collect failed for " + project.Name + " with exit code " + collect.ExitCode);
 					continue;
@@ -88,14 +89,22 @@ namespace ICSharpCode.CodeCoverage
 			return application;
 		}
 
-		static void ClearPreviousSavedOutput(IProject project, IList<string> log)
+		static void RestoreSavedOutput(IProject project, IList<string> log)
 		{
 			string targetDirectory = Path.GetDirectoryName(CodeCoverageProjectOutput.GetAssembly(project));
 			string savedDirectory = Path.Combine(targetDirectory, "__Saved");
 			if (!Directory.Exists(savedDirectory))
 				return;
 
-			log.Add("Removing stale AltCover saved output: " + savedDirectory);
+			log.Add("Restoring AltCover saved output: " + savedDirectory);
+			foreach (string savedFile in Directory.GetFiles(savedDirectory, "*", SearchOption.AllDirectories)) {
+				string relativePath = savedFile.Substring(savedDirectory.Length).TrimStart(Path.DirectorySeparatorChar);
+				string destination = Path.Combine(targetDirectory, relativePath);
+				string destinationDirectory = Path.GetDirectoryName(destination);
+				if (!string.IsNullOrEmpty(destinationDirectory))
+					Directory.CreateDirectory(destinationDirectory);
+				File.Copy(savedFile, destination, overwrite: true);
+			}
 			Directory.Delete(savedDirectory, recursive: true);
 		}
 	}

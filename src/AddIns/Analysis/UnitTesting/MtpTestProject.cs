@@ -20,6 +20,7 @@ namespace ICSharpCode.UnitTesting
 			= new Dictionary<string, IReadOnlyList<MtpTestNode>>(StringComparer.OrdinalIgnoreCase);
 		DateTime? lastBuildTime;
 		bool discoveryInProgress;
+		int suppressBuildDiscoveryCount;
 
 		public MtpTestProject(IProject project)
 			: base(project)
@@ -106,6 +107,18 @@ namespace ICSharpCode.UnitTesting
 		/// <param name="cancellationToken">Abandons the pass; the tree keeps whatever it had.</param>
 		public Task RefreshAsync(CancellationToken cancellationToken = default) => TriggerDiscovery(cancellationToken);
 
+		/// <summary>
+		/// Temporarily prevents BuildFinished from starting an MTP host. Code coverage builds
+		/// immediately before AltCover rewrites the output directory in place; allowing discovery
+		/// to overlap that rewrite makes the host lose its JSON-RPC connection or read corrupt
+		/// metadata. Explicit/manual discovery remains available while this scope is active.
+		/// </summary>
+		public IDisposable SuppressBuildDiscovery()
+		{
+			Interlocked.Increment(ref suppressBuildDiscoveryCount);
+			return new DiscoverySuppression(this);
+		}
+
 		async Task DiscoverTestsAsync(CancellationToken cancellationToken)
 		{
 			// Start with the approximate tree. Each successful MTP result replaces its TFM, while
@@ -164,6 +177,8 @@ namespace ICSharpCode.UnitTesting
 		{
 			if (!args.Projects.Contains(Project))
 				return;
+			if (Volatile.Read(ref suppressBuildDiscoveryCount) != 0)
+				return;
 
 			var buildTime = GetAssemblyLastWriteTime();
 			if (buildTime.HasValue && lastBuildTime.HasValue && buildTime <= lastBuildTime)
@@ -171,6 +186,23 @@ namespace ICSharpCode.UnitTesting
 
 			lastBuildTime = buildTime;
 			TriggerDiscovery();
+		}
+
+		sealed class DiscoverySuppression : IDisposable
+		{
+			MtpTestProject owner;
+
+			public DiscoverySuppression(MtpTestProject owner)
+			{
+				this.owner = owner;
+			}
+
+			public void Dispose()
+			{
+				var value = Interlocked.Exchange(ref owner, null);
+				if (value != null)
+					Interlocked.Decrement(ref value.suppressBuildDiscoveryCount);
+			}
 		}
 
 		DateTime? GetAssemblyLastWriteTime()

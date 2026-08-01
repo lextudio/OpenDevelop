@@ -4,7 +4,7 @@
 	xmlns:core="clr-namespace:ICSharpCode.Core.Presentation;assembly=ICSharpCode.Core.Presentation"
 	xmlns:aimview="clr-namespace:ICSharpCode.AddInManager2.View"
 	xmlns:aimvm="clr-namespace:ICSharpCode.AddInManager2.ViewModel"
-	xmlns:model="clr-namespace:ICSharpCode.AddInManager2.Model"
+	xmlns:model="clr-namespace:ICSharpCode.AddInManager2.Model;assembly=ICSharpCode.SharpDevelop"
 	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
 	Height="480"
 	Width="640"

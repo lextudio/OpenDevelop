@@ -60,8 +60,20 @@ if [[ "${do_build}" -eq 1 ]]; then
   echo "==> Clearing AddIns/ to drop stale output from previous builds..."
   rm -rf "${repo_root}/AddIns"
 
-  echo "==> Building OpenDevelop.Mvp.sln..."
-  "${dotnet}" build "${sln}" -v minimal
+  # Some upstream projects use packages.lock.json. NuGet packages can be re-signed or
+  # republished by a feed without changing their ID/version; in that case the lock file's
+  # old content hash causes NU1403 even after the global package cache is cleared.
+  # Re-evaluate lock files against the configured feeds, then keep the actual build offline
+  # from restore so every project uses that single, consistent dependency graph.
+  echo "==> Restoring packages and refreshing package content hashes..."
+  "${dotnet}" restore "${sln}" --force-evaluate -v minimal
+
+  # AddIn projects write directly to the shared AddIns/ tree. Since it was removed above,
+  # an incremental build is not sufficient: MSBuild may consider a project up-to-date based
+  # on obj/ and skip recreating its shared output. --no-incremental forces all projects in
+  # the solution to rebuild and therefore republishes every current addin file.
+  echo "==> Rebuilding OpenDevelop.Mvp.sln and all addins..."
+  "${dotnet}" build "${sln}" --no-restore --no-incremental -v minimal
 
   # Microsoft.Build.Runtime 18.0.2 copies MSBuild .targets/.props files to every
   # project's output directory via contentFiles/CopyToOutputDirectory=PreserveNewest.

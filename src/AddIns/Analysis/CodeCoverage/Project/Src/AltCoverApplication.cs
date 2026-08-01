@@ -17,8 +17,10 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Text.RegularExpressions;
 using System.Text;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Project;
@@ -117,7 +119,12 @@ namespace ICSharpCode.CodeCoverage
 
 		public string GetTargetWorkingDirectory()
 		{
-			return Path.GetDirectoryName(project.OutputAssemblyFullPath);
+			// Keep AltCover's prepare/collect directory aligned with the assembly that
+			// CodeCoverageProjectOutput selected for the current OpenDevelop runtime.
+			// Multi-target projects may expose their first TargetFramework (for example
+			// net9.0) through OutputAssemblyFullPath even though the MTP runner must use
+			// the installed/current runtime output (net10.0 here).
+			return Path.GetDirectoryName(CodeCoverageProjectOutput.GetAssembly(project));
 		}
 
 		public string CodeCoverageResultsFileName {
@@ -230,8 +237,43 @@ namespace ICSharpCode.CodeCoverage
 
 		void AppendIncludedItems(StringBuilder arguments)
 		{
-			foreach (string item in settings.Include) {
-				arguments.AppendFormat("-s \"{0}\" ", item);
+			if (settings.Include.Count > 0) {
+				// AltCover combines separate inclusion filters conjunctively. Emit one
+				// alternation so any configured assembly can be selected.
+				arguments.AppendFormat("-s \"?(?:{0})\" ", string.Join("|", settings.Include));
+				return;
+			}
+
+			// With no explicit project settings, instrument only assemblies produced by project
+			// references. Modern MTP/xUnit test output folders contain the complete self-hosted
+			// runner and all of its NuGet dependencies; rewriting that whole directory prevents
+			// the runner from starting. Product project outputs are the useful default coverage
+			// target and keep the test infrastructure untouched.
+			var assemblyNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+			CollectReferencedProjectAssemblyNames(project, assemblyNames, new HashSet<IProject>());
+			if (assemblyNames.Count > 0) {
+				var escapedNames = new List<string>();
+				foreach (string assemblyName in assemblyNames)
+					escapedNames.Add(Regex.Escape(assemblyName));
+				arguments.AppendFormat("-s \"?^(?:{0})$\" ", string.Join("|", escapedNames));
+			}
+		}
+
+		static void CollectReferencedProjectAssemblyNames(
+			IProject source,
+			ISet<string> assemblyNames,
+			ISet<IProject> visitedProjects)
+		{
+			if (source == null || !visitedProjects.Add(source))
+				return;
+			foreach (ProjectItem item in source.GetItemsOfType(ItemType.ProjectReference)) {
+				var reference = item as ProjectReferenceProjectItem;
+				var referencedProject = reference?.ReferencedProject;
+				if (referencedProject == null)
+					continue;
+				if (!string.IsNullOrEmpty(referencedProject.AssemblyName))
+					assemblyNames.Add(referencedProject.AssemblyName);
+				CollectReferencedProjectAssemblyNames(referencedProject, assemblyNames, visitedProjects);
 			}
 		}
 
@@ -240,6 +282,16 @@ namespace ICSharpCode.CodeCoverage
 			foreach (string item in settings.Exclude) {
 				arguments.AppendFormat("-e \"{0}\" ", item);
 			}
+
+			// MTP/xUnit v3 test projects are self-hosted applications: their output assembly is
+			// both the test container and the runner executable. Instrumenting that assembly in
+			// place makes xUnit read its own rewritten metadata during discovery/startup; on real
+			// projects this can fail with BadImageFormatException ("The metadata is corrupt")
+			// before a single test executes. Keep the host/container pristine while still
+			// instrumenting the product assemblies copied beside it.
+			string testAssemblyName = Path.GetFileNameWithoutExtension(CodeCoverageProjectOutput.GetAssembly(project));
+			if (!string.IsNullOrEmpty(testAssemblyName))
+				arguments.AppendFormat("-s \"^{0}$\" ", Regex.Escape(testAssemblyName));
 		}
 	}
 }

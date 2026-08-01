@@ -11,6 +11,7 @@ using ICSharpCode.SharpDevelop.Editor.Search;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Workbench;
+using SearchResultsPad = ICSharpCode.SharpDevelop.Editor.Search.SearchResultsPad;
 using TextLocation = ICSharpCode.AvalonEdit.Document.TextLocation;
 
 namespace Hornung.ResourceToolkit.Refactoring

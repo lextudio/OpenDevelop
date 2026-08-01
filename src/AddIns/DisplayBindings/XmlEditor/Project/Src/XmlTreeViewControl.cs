@@ -43,7 +43,7 @@ namespace ICSharpCode.XmlEditor
 	/// be unit tested. It has no SharpDevelop specific parts, for example,
 	/// the context menus are defined in the XmlTreeViewContainerControl.
 	/// </summary>
-	public class XmlTreeViewControl : TreeView
+	public class XmlTreeViewControl : System.Windows.Controls.TreeView
 	{
 		const string ViewStatePropertyName = "XmlTreeViewControl.ViewState";
 
