@@ -70,10 +70,10 @@ internal interface IProjectBrowserController
 }
 
 /// <summary>Host-neutral result of the "Add New Item" dialog - see <see cref="ProjectBrowserControllerBase.ShowNewItemDialogAsync"/>.</summary>
-internal sealed record NewItemDialogOutcome(TemplateSummary SelectedTemplate, string ItemName, IReadOnlyDictionary<string, string> AdditionalParameters);
+internal sealed record NewItemDialogOutcome(TemplateSummary SelectedTemplate, string ItemName, IReadOnlyDictionary<string, string?> AdditionalParameters);
 
 /// <summary>Host-neutral result of the "Add New Project" dialog - see <see cref="ProjectBrowserControllerBase.ShowNewProjectDialogAsync"/>.</summary>
-internal sealed record NewProjectDialogOutcome(TemplateSummary SelectedTemplate, string ProjectName, string Location, IReadOnlyDictionary<string, string> AdditionalParameters);
+internal sealed record NewProjectDialogOutcome(TemplateSummary SelectedTemplate, string ProjectName, string Location, IReadOnlyDictionary<string, string?> AdditionalParameters);
 
 /// <summary>
 /// Shared Project Browser command surface (see doc/technotes/solution-explorer.md) - every command
@@ -157,7 +157,7 @@ internal abstract class ProjectBrowserControllerBase : IProjectBrowserController
             var itemName = dialog.ItemName;
             var template = dialog.SelectedTemplate;
 
-            var parameters = new Dictionary<string, string>(dialog.AdditionalParameters, StringComparer.OrdinalIgnoreCase);
+            var parameters = new Dictionary<string, string?>(dialog.AdditionalParameters, StringComparer.OrdinalIgnoreCase);
 
             var result = await service.InstantiateAsync(
                 template, itemName, targetDirectory, parameters, CancellationToken.None);

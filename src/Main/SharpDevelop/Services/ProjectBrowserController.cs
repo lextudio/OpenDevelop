@@ -38,7 +38,7 @@ internal sealed class ProjectBrowserController : ProjectBrowserControllerBase
             return null;
 
         return new NewItemDialogOutcome(dialog.SelectedTemplate, dialog.ItemName,
-            new Dictionary<string, string>(dialog.AdditionalParameters, StringComparer.OrdinalIgnoreCase));
+            new Dictionary<string, string?>(dialog.AdditionalParameters, StringComparer.OrdinalIgnoreCase));
     }
 
     protected override async Task<NewProjectDialogOutcome?> ShowNewProjectDialogAsync(TemplateDiscoveryService service, string defaultLocation)
@@ -49,7 +49,7 @@ internal sealed class ProjectBrowserController : ProjectBrowserControllerBase
             return null;
 
         return new NewProjectDialogOutcome(dialog.SelectedTemplate, dialog.ProjectName, dialog.Location,
-            new Dictionary<string, string>(dialog.AdditionalParameters, StringComparer.OrdinalIgnoreCase));
+            new Dictionary<string, string?>(dialog.AdditionalParameters, StringComparer.OrdinalIgnoreCase));
     }
 
     protected override void CopyTextToClipboard(string text)

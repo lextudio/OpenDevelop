@@ -23,7 +23,7 @@ namespace ICSharpCode.SharpDevelop.Templates
 
         public string ItemName => NameBox.Text.Trim();
 
-        public IReadOnlyDictionary<string, string> AdditionalParameters => ParseParameters(ParametersBox.Text);
+        public IReadOnlyDictionary<string, string?> AdditionalParameters => ParseParameters(ParametersBox.Text);
 
         NewItemWindow(TemplateDiscoveryService service, string targetDirectory)
         {
@@ -150,9 +150,9 @@ namespace ICSharpCode.SharpDevelop.Templates
                 && !string.IsNullOrWhiteSpace(ItemName);
         }
 
-        static IReadOnlyDictionary<string, string> ParseParameters(string text)
+        static IReadOnlyDictionary<string, string?> ParseParameters(string text)
         {
-            var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var values = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
 
             if (string.IsNullOrWhiteSpace(text))
                 return values;

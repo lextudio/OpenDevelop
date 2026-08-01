@@ -81,7 +81,7 @@ namespace ICSharpCode.SharpDevelop.Templates
             TemplateSummary template,
             string name,
             string outputPath,
-            IReadOnlyDictionary<string, string>? parameters,
+            IReadOnlyDictionary<string, string?>? parameters,
             CancellationToken cancellationToken)
         {
             if (template is null)
@@ -105,7 +105,7 @@ namespace ICSharpCode.SharpDevelop.Templates
                 info,
                 name,
                 outputPath,
-                parameters ?? new Dictionary<string, string>(),
+                parameters ?? new Dictionary<string, string?>(),
                 baselineName: null,
                 cancellationToken);
 
@@ -120,7 +120,7 @@ namespace ICSharpCode.SharpDevelop.Templates
             TemplateSummary template,
             string name,
             string outputPath,
-            IReadOnlyDictionary<string, string>? parameters,
+            IReadOnlyDictionary<string, string?>? parameters,
             CancellationToken cancellationToken)
         {
             if (template is null)
@@ -144,7 +144,7 @@ namespace ICSharpCode.SharpDevelop.Templates
                 info,
                 name,
                 outputPath,
-                parameters ?? new Dictionary<string, string>(),
+                parameters ?? new Dictionary<string, string?>(),
                 baselineName: null,
                 cancellationToken);
 

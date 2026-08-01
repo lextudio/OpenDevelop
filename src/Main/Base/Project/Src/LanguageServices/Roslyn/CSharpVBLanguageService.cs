@@ -1019,7 +1019,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             return new CompletionItem(
                 item.DisplayText,
                 insertionText,
-                description.Text,
+                description?.Text ?? string.Empty,
                 item.Tags.FirstOrDefault());
         }
 

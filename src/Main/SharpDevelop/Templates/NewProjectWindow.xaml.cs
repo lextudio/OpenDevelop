@@ -23,7 +23,7 @@ namespace ICSharpCode.SharpDevelop.Templates
 
         public string Location => LocationBox.Text.Trim();
 
-        public IReadOnlyDictionary<string, string> AdditionalParameters => ParseParameters(ParametersBox.Text);
+        public IReadOnlyDictionary<string, string?> AdditionalParameters => ParseParameters(ParametersBox.Text);
 
         NewProjectWindow(TemplateDiscoveryService service, string defaultLocation)
         {
@@ -105,9 +105,9 @@ namespace ICSharpCode.SharpDevelop.Templates
                 && !string.IsNullOrWhiteSpace(Location);
         }
 
-        static IReadOnlyDictionary<string, string> ParseParameters(string text)
+        static IReadOnlyDictionary<string, string?> ParseParameters(string text)
         {
-            var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var values = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
 
             if (string.IsNullOrWhiteSpace(text))
                 return values;

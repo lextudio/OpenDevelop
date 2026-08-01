@@ -174,7 +174,7 @@ namespace ICSharpCode.UnitTesting
 			}
 		}
 
-		void OnBuildFinished(object sender, BuildEventArgs args)
+		void OnBuildFinished(object? sender, BuildEventArgs args)
 		{
 			if (!args.Projects.Contains(Project))
 				return;
@@ -191,7 +191,7 @@ namespace ICSharpCode.UnitTesting
 
 		sealed class DiscoverySuppression : IDisposable
 		{
-			MtpTestProject owner;
+			MtpTestProject? owner;
 
 			public DiscoverySuppression(MtpTestProject owner)
 			{
@@ -248,7 +248,7 @@ namespace ICSharpCode.UnitTesting
 				method.SetResult(result.ResultType);
 		}
 
-		static MtpTestMethod FindTestMethod(IEnumerable<ITest> tests, string targetFramework, string name)
+		static MtpTestMethod? FindTestMethod(IEnumerable<ITest> tests, string? targetFramework, string name)
 		{
 			foreach (var test in tests) {
 				if (test is MtpTestMethod method && method.DisplayName == name
@@ -270,7 +270,7 @@ namespace ICSharpCode.UnitTesting
 
 		protected override ITest CreateTestClass(ITypeDefinition typeDefinition)
 		{
-			return null;
+			return null!;
 		}
 
 		protected override void UpdateTestClass(ITest test, ITypeDefinition typeDefinition)
