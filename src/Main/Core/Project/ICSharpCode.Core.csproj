@@ -16,4 +16,26 @@
     <!-- GlobalAssemblyInfo.cs is outside project dir, must be linked explicitly -->
     <Compile Include="..\..\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
   </ItemGroup>
+  <PropertyGroup>
+    <UpdateAssemblyInfoExe Condition="'$(OS)' == 'Windows_NT'">UpdateAssemblyInfo.exe</UpdateAssemblyInfoExe>
+    <UpdateAssemblyInfoExe Condition="'$(OS)' != 'Windows_NT'">UpdateAssemblyInfo</UpdateAssemblyInfoExe>
+  </PropertyGroup>
+  <!--
+    Regenerates GlobalAssemblyInfo.cs (and the other *AssemblyInfo templates) before every
+    compile, substituting $INSERTYEAR$ / $INSERTVERSION$ / $INSERTREVISION$ / ... — the
+    original SharpDevelop build wired UpdateAssemblyInfo.exe here; the .NET 11 port dropped
+    the step, which left the literal placeholders compiled into every linking assembly
+    (visible as "2000-$INSERTYEAR$" on the Start Page). The tool writes nothing when content
+    is unchanged, so incremental builds only pay for the two `git` probes.
+  -->
+  <Target Name="BeforeBuild">
+    <MSBuild Projects="$(MSBuildProjectDirectory)/../../../Tools/UpdateAssemblyInfo/UpdateAssemblyInfo.csproj"
+             Targets="Restore;Build" Properties="Configuration=Debug" />
+    <Exec WorkingDirectory="$(MSBuildProjectDirectory)/../../../.."
+          Command="&quot;$(MSBuildProjectDirectory)/../../../Tools/UpdateAssemblyInfo/bin/Debug/net10.0/$(UpdateAssemblyInfoExe)&quot; --branchname $(BranchName)"
+          Timeout="60000" Condition=" '$(BranchName)' != '' " />
+    <Exec WorkingDirectory="$(MSBuildProjectDirectory)/../../../.."
+          Command="&quot;$(MSBuildProjectDirectory)/../../../Tools/UpdateAssemblyInfo/bin/Debug/net10.0/$(UpdateAssemblyInfoExe)&quot;"
+          Timeout="60000" Condition=" '$(BranchName)' == '' " />
+  </Target>
 </Project>

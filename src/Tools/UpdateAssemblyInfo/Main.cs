@@ -81,12 +81,20 @@ namespace UpdateAssemblyInfo
 						}
 						return 0;
 					}
-					if (!File.Exists("SharpDevelop.sln")) {
-						string mainDir = Path.GetFullPath(Path.Combine(exeDir, "../../../../.."));
-						if (File.Exists(mainDir + "\\SharpDevelop.sln")) {
-							Directory.SetCurrentDirectory(mainDir);
+				if (!File.Exists("SharpDevelop.sln")) {
+					// The build runs the tool with the repo root as working directory, so the
+					// check above usually succeeds. When the exe is run directly from its bin
+					// output instead, walk up until the directory containing SharpDevelop.sln
+					// is found (depth varies with the target framework output folder).
+					string dir = Path.GetDirectoryName(exeDir);
+					while (dir != null) {
+						if (File.Exists(Path.Combine(dir, "SharpDevelop.sln"))) {
+							Directory.SetCurrentDirectory(dir);
+							break;
 						}
+						dir = Path.GetDirectoryName(dir);
 					}
+				}
 					if (!File.Exists("SharpDevelop.sln")) {
 						Console.WriteLine("Working directory must be SharpDevelop!");
 						return 2;
@@ -217,7 +225,9 @@ namespace UpdateAssemblyInfo
 		static void RetrieveRevisionNumber()
 		{
 			if (revisionNumber == null) {
-				if (Directory.Exists(".git")) {
+				// Checked-out git work trees keep either a .git directory (full clone) or a
+				// .git file (submodule / worktree), so accept both.
+				if (Directory.Exists(".git") || File.Exists(".git")) {
 					try {
 						ReadRevisionNumberFromGit();
 						ReadBranchNameFromGit();
@@ -237,12 +247,12 @@ namespace UpdateAssemblyInfo
 		
 		static void ReadRevisionNumberFromGit()
 		{
-			ProcessStartInfo info = new ProcessStartInfo("cmd", "/c git rev-list " + BaseCommit + "..HEAD");
-			string path = Environment.GetEnvironmentVariable("PATH");
-			path += ";" + Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "git\\bin");
-			info.EnvironmentVariables["PATH"] =  path;
-			info.RedirectStandardOutput = true;
-			info.UseShellExecute = false;
+			ProcessStartInfo info = new ProcessStartInfo("git") {
+				Arguments = "rev-list " + BaseCommit + "..HEAD",
+				RedirectStandardOutput = true,
+				UseShellExecute = false,
+				CreateNoWindow = true
+			};
 			using (Process p = Process.Start(info)) {
 				string line;
 				int revNum = BaseCommitRev;
@@ -264,12 +274,12 @@ namespace UpdateAssemblyInfo
 		
 		static void ReadBranchNameFromGit()
 		{
-			ProcessStartInfo info = new ProcessStartInfo("cmd", "/c git branch --no-color");
-			string path = Environment.GetEnvironmentVariable("PATH");
-			path += ";" + Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "git\\bin");
-			info.EnvironmentVariables["PATH"] =  path;
-			info.RedirectStandardOutput = true;
-			info.UseShellExecute = false;
+			ProcessStartInfo info = new ProcessStartInfo("git") {
+				Arguments = "branch --no-color",
+				RedirectStandardOutput = true,
+				UseShellExecute = false,
+				CreateNoWindow = true
+			};
 			using (Process p = Process.Start(info)) {
 				string line;
 				gitBranchName = "(no branch)";
