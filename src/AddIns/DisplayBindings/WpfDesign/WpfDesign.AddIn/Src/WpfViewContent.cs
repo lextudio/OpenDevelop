@@ -194,7 +194,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 					};
 					
 					if (outline != null && designer.DesignContext != null && designer.DesignContext.RootItem != null) {
-						outline.Root = OutlineNode.Create(designer.DesignContext.RootItem);
+						outline.Root = designer.DesignContext.RootItem.CreateOutlineNode();
 					}
 					
 					propertyGridView.PropertyGrid.SelectedItems = null;
@@ -404,7 +404,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 				if (outline == null) {
 					outline = new Outline();
 					if (DesignSurface != null && DesignSurface.DesignContext != null && DesignSurface.DesignContext.RootItem != null) {
-						outline.Root = OutlineNode.Create(DesignSurface.DesignContext.RootItem);
+						outline.Root = DesignSurface.DesignContext.RootItem.CreateOutlineNode();
 					}
 					// see 3522
 					outline.AddCommandHandler(ApplicationCommands.Delete,

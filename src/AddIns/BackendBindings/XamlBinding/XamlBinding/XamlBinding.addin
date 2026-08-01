@@ -60,4 +60,9 @@
 			class="ICSharpCode.XamlBinding.XamlOutlineExtension"
 			extensions=".xaml" />
 	</Path>
+
+	<Path name="/SharpDevelop/Autostart">
+		<Class id="ICSharpCode.XamlBinding.RegisterDevFlowActionsCommand"
+		       class="ICSharpCode.XamlBinding.RegisterDevFlowActionsCommand"/>
+	</Path>
 </AddIn>
