@@ -47,6 +47,25 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Src\*.cs" />
+    <!-- Platform-neutral contracts and repository are linked from the VS for Mac extension.
+         MonoDevelop.Projects types used by the repository are supplied by
+         VSMacSdkCompatibility.cs and delegate to SharpDevelop's project model. -->
+    <Compile Include="..\..\..\..\..\externals\vsmac-codecoverage\VSMac-CodeCoverage\CodeCoverage.Core\Coverage\CoverageResults.cs"
+             Link="External\VSMac-CodeCoverage\CoverageResults.cs" />
+    <Compile Include="..\..\..\..\..\externals\vsmac-codecoverage\VSMac-CodeCoverage\CodeCoverage.Core\Coverage\CoverageResultsRepository.cs"
+             Link="External\VSMac-CodeCoverage\CoverageResultsRepository.cs" />
+    <Compile Include="..\..\..\..\..\externals\vsmac-codecoverage\VSMac-CodeCoverage\CodeCoverage.Core\Coverage\CoverageService.cs"
+             Link="External\VSMac-CodeCoverage\CoverageService.cs" />
+    <Compile Include="..\..\..\..\..\externals\vsmac-codecoverage\VSMac-CodeCoverage\CodeCoverage.Core\Coverage\LoggedCoverageService.cs"
+             Link="External\VSMac-CodeCoverage\LoggedCoverageService.cs" />
+    <Compile Include="..\..\..\..\..\externals\vsmac-codecoverage\VSMac-CodeCoverage\CodeCoverage.Core\Coverage\LoggingService.cs"
+             Link="External\VSMac-CodeCoverage\LoggingService.cs" />
+    <Compile Include="..\..\..\..\..\externals\vsmac-codecoverage\VSMac-CodeCoverage\CodeCoverage.Core\Coverage\TestProjectService.cs"
+             Link="External\VSMac-CodeCoverage\TestProjectService.cs" />
+    <Compile Include="..\..\..\..\..\externals\vsmac-codecoverage\VSMac-CodeCoverage\CodeCoverage.Core\Presentation\CoveragePadPresenter.cs"
+             Link="External\VSMac-CodeCoverage\CoveragePadPresenter.cs" />
+    <Compile Include="..\..\..\..\..\externals\vsmac-codecoverage\VSMac-CodeCoverage\CodeCoverage.Core\CoverageExtension.cs"
+             Link="External\VSMac-CodeCoverage\CoverageExtension.cs" />
     <Compile Update="Src\CodeCoverageOptionsPanel.xaml.cs">
       <DependentUpon>CodeCoverageOptionsPanel.xaml</DependentUpon>
     </Compile>

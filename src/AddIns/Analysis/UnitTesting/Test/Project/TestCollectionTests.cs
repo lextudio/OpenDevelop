@@ -108,6 +108,32 @@ namespace UnitTesting.Tests.Project
 			Assert.AreEqual(TestResultType.Success, testCollection.CompositeResult);
 			Assert.IsTrue(testClassesResultChanged);
 		}
+
+		[Test]
+		public void OneTestClassPassesAndUnselectedTestsHaveNotRun()
+		{
+			testClass1.Result = TestResultType.Success;
+
+			Assert.AreEqual(TestResultType.Success, testCollection.CompositeResult);
+			Assert.IsTrue(testClassesResultChanged);
+		}
+
+		[Test]
+		public void PassedTestTakesPrecedenceOverSkippedAndNotRunTests()
+		{
+			testClass1.Result = TestResultType.Success;
+			testClass2.Result = TestResultType.Ignored;
+
+			Assert.AreEqual(TestResultType.Success, testCollection.CompositeResult);
+		}
+
+		[Test]
+		public void SkippedTestTakesPrecedenceOverNotRunTests()
+		{
+			testClass1.Result = TestResultType.Ignored;
+
+			Assert.AreEqual(TestResultType.Ignored, testCollection.CompositeResult);
+		}
 		
 		[Test]
 		public void ResetAfterAllPassed()

@@ -69,13 +69,13 @@ namespace ICSharpCode.UnitTesting
 			get {
 				switch (test.Result) {
 					case TestResultType.None:
-						return Images.Grey;
+						return Images.NotRun;
 					case TestResultType.Success:
-						return Images.Green;
+						return Images.Passed;
 					case TestResultType.Failure:
-						return Images.Red;
+						return Images.Failed;
 					case TestResultType.Ignored:
-						return Images.Yellow;
+						return Images.Skipped;
 					default:
 						throw new NotSupportedException("Invalid value for TestResultType");
 				}

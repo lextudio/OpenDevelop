@@ -42,14 +42,16 @@ namespace ICSharpCode.UnitTesting
 			
 			public TestResultType CompositeResult {
 				get {
+					// Match Visual Studio Test Explorer's hierarchy semantics:
+					// failed > passed > skipped > not run. In particular, tests that
+					// were not selected for a run must not make a partially-run group
+					// appear as though none of its tests ran.
 					if (failed > 0)
 						return TestResultType.Failure;
-					if (indeterminate > 0)
-						return TestResultType.None;
-					if (ignored > 0)
-						return TestResultType.Ignored;
 					if (successful > 0)
 						return TestResultType.Success;
+					if (ignored > 0)
+						return TestResultType.Ignored;
 					return TestResultType.None;
 				}
 			}

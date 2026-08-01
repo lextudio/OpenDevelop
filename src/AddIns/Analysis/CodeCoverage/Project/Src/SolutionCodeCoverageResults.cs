@@ -53,6 +53,12 @@ namespace ICSharpCode.CodeCoverage
 		
 		CodeCoverageResults GetCodeCoverageResultsForProject(IProject project)
 		{
+			// Prefer the configuration-aware repository linked from VSMac-CodeCoverage.
+			// Keep the legacy project-level file as a migration/fake-filesystem fallback.
+			CodeCoverageResults repositoryResults = VSMacCoverageRepositoryAdapter.Load(project);
+			if (repositoryResults != null)
+				return repositoryResults;
+
 			var fileName = new ProjectCodeCoverageResultsFileName(project);
 			if (fileSystem.FileExists(fileName.FileName)) {
 				TextReader reader = fileSystem.OpenText(fileName.FileName);

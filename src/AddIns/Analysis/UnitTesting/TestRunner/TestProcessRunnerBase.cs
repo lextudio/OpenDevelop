@@ -76,7 +76,7 @@ namespace ICSharpCode.UnitTesting
 				processRunner.StartCommandLine("\"" + processStartInfo.FileName + "\" " + processStartInfo.Arguments);
 				Task.WhenAll(
 					processRunner.OpenStandardOutputReader().CopyToAsync(output),
-					processRunner.WaitForExitAsync()).ContinueWith(_ => OnAllTestsFinished()).FireAndForget();
+					processRunner.WaitForExitAsync()).ContinueWith(_ => OnAllTestsFinished(), TaskScheduler.Default).FireAndForget();
 			} else {
 				ShowApplicationDoesNotExistMessage(processStartInfo.FileName);
 			}

@@ -16,23 +16,21 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
-using System.Windows.Media.Imaging;
+using System.Windows.Media;
+using ICSharpCode.Core.Presentation;
 
 namespace ICSharpCode.UnitTesting
 {
 	static class Images
 	{
-		static BitmapImage LoadBitmap(string name)
+		static ImageSource LoadVs2017Icon(string name)
 		{
-			BitmapImage image = new BitmapImage(new Uri("pack://application:,,,/UnitTesting;component/Resources/" + name + ".png"));
-			image.Freeze();
-			return image;
+			return PresentationResourceService.GetImageSource(name);
 		}
 		
-		public static readonly BitmapImage Grey = LoadBitmap("Grey");
-		public static readonly BitmapImage Green = LoadBitmap("Green");
-		public static readonly BitmapImage Red = LoadBitmap("Red");
-		public static readonly BitmapImage Yellow = LoadBitmap("Yellow");
+		public static readonly ImageSource NotRun = LoadVs2017Icon("UnitTesting.Status.NotRun");
+		public static readonly ImageSource Passed = LoadVs2017Icon("UnitTesting.Status.Passed");
+		public static readonly ImageSource Failed = LoadVs2017Icon("UnitTesting.Status.Failed");
+		public static readonly ImageSource Skipped = LoadVs2017Icon("UnitTesting.Status.Skipped");
 	}
 }

@@ -54,12 +54,6 @@
     <Compile Include="..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="Resources\Red.png" />
-    <EmbeddedResource Include="Resources\Green.png" />
-    <EmbeddedResource Include="Resources\Yellow.png" />
-    <EmbeddedResource Include="Resources\Grey.png" />
-  </ItemGroup>
-  <ItemGroup>
     <None Include="UnitTesting.addin">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

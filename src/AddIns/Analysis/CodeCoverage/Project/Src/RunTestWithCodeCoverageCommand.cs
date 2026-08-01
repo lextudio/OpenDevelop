@@ -79,7 +79,10 @@ namespace ICSharpCode.CodeCoverage
 			foreach (string line in run.LogLines)
 				SD.Log.Info("Code coverage: " + line);
 			foreach (string fileName in run.ResultFiles)
+			{
 				coverageResultsReader.AddResultsFile(fileName);
+				VSMacCoverageRepositoryAdapter.Save(project, fileName);
+			}
 
 			// Creating the pad must happen before DisplayCodeCoverageResults: ShowResults
 			// only populates an existing CodeCoveragePad instance. The old condition was

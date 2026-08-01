@@ -12,6 +12,46 @@ Both hosts consume it — OpenDevelop's WPF `UnitTestsPad`/`TestTreeView` and Un
 `TestResultsPad` — and UnoDevelop links the source in via `$(SharpDevelopSourceRoot)` rather than
 keeping a port of its own.
 
+## Visual Studio-compatible result states
+
+The test tree follows Visual Studio Test Explorer's hierarchy rules. A group node (class, target
+framework, project, or solution) reports the highest-priority result present below it:
+
+| Priority | State | Meaning for a group |
+| ---: | --- | --- |
+| 1 | Failed (red) | At least one descendant failed. |
+| 2 | Passed (green) | At least one descendant passed and none failed. |
+| 3 | Skipped (yellow) | At least one descendant was skipped and none failed or passed. |
+| 4 | Not run (blue outline) | No descendant has a failed, passed, or skipped result. |
+
+This ordering is deliberate. If a project contains many tests and the user selects only a subset,
+an all-passing selection makes its ancestors green even though the unselected tests remain not run.
+They must not make the parent look as though nothing ran. Likewise, a skipped test is yellow when
+the remaining tests have not run, while any failure makes every ancestor red.
+
+The icons are the Test Explorer status glyphs from the VS2017 Image Library. As with the other
+important IDE icons, their original XAML files and filenames live under
+`ICSharpCode.Core.Presentation/Resources/VS2017`, and `PresentationResourceService` exposes stable
+Unit Testing resource keys for them:
+
+- `StatusCriticalError_16x` for failed;
+- `StatusOK_16x` for passed;
+- `StatusWarning_16x` for skipped;
+- `StatusAlertOutline_16x` for not run.
+
+Visual Studio also uses the outline variants of the first three glyphs for a leaf test whose saved
+result did not come from the latest run. That is a separate *result recency* dimension, not another
+outcome and not part of group-result precedence. OpenDevelop currently resets the selected subtree
+before a run and leaves unselected results untouched, but it does not yet retain a run-generation
+marker with each result; consequently it cannot reliably distinguish a historical result from a
+current one. If that distinction is added, use `StatusCriticalErrorOutline_16x`,
+`StatusOKOutline_16x`, and `StatusWarningOutline_16x`. Do not use the `TestCoveredPassing` or
+`TestCoveredFailing` family: those represent Live Unit Testing/code-coverage state rather than Test
+Explorer results.
+
+The status meanings and precedence above are defined by Microsoft's
+[Test Explorer FAQ](https://learn.microsoft.com/visualstudio/test/test-explorer-faq#test-explorer-hierarchy-view).
+
 ### Why this one, and not the flat contract
 
 There used to be a second, flat, MTP-only contract (`ICSharpCode.UnitTesting.Simple`:
