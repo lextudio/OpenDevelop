@@ -60,7 +60,7 @@ namespace Debugger.AddIn.Service.Dap
 
 		public void Start()
 		{
-			Task.Run(ReadLoopAsync, cancellationTokenSource.Token);
+			_ = Task.Run(ReadLoopAsync, cancellationTokenSource.Token);
 		}
 
 		public async Task<JsonObject> SendRequestAsync(string command, JsonObject arguments = null, CancellationToken cancellationToken = default)

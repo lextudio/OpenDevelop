@@ -456,7 +456,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			this.Focus();
 			
 			if (CodeEditorOptions.Instance.EnableAnimations)
-				Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)DisplayCaretHighlightAnimation);
+				_ = Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)DisplayCaretHighlightAnimation);
 		}
 		
 		void DisplayCaretHighlightAnimation()

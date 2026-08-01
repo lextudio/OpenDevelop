@@ -51,7 +51,7 @@ namespace ICSharpCode.AddInManager2
 			TaskScheduler scheduler = TaskScheduler.FromCurrentSynchronizationContext();
 			cancellationTokenSource = new CancellationTokenSource();
 			task = new Task<TResult>(function, cancellationTokenSource.Token);
-			task.ContinueWith(result => OnContinueWith(result), scheduler);
+			_ = task.ContinueWith(result => OnContinueWith(result), scheduler);
 		}
 		
 		private void OnContinueWith(Task<TResult> task)

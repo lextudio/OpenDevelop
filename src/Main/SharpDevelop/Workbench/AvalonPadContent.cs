@@ -67,7 +67,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				return;
 			LoadPadContentIfRequired();
 			if (padInstance != null && padInstance.InitiallyFocusedControl is IInputElement focus) {
-				Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.Loaded,
+				_ = Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.Loaded,
 				                                         new Action(delegate { Keyboard.Focus(focus); }));
 			}
 		}
@@ -92,7 +92,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 
 		void AvalonPadContent_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
 		{
-			placeholder.Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(LoadPadContentIfRequired));
+			_ = placeholder.Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(LoadPadContentIfRequired));
 		}
 
 		internal void LoadPadContentIfRequired()

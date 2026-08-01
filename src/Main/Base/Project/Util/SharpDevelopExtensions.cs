@@ -98,7 +98,7 @@ namespace ICSharpCode.SharpDevelop
 			var scheduler = SynchronizationContext.Current != null
 				? TaskScheduler.FromCurrentSynchronizationContext()
 				: TaskScheduler.Default;
-			task.ContinueWith(
+			_ = task.ContinueWith(
 				t => {
 					if (t.Exception != null) {
 						if (t.Exception.InnerExceptions.Count == 1)

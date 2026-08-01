@@ -84,7 +84,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		{
 			backgroundTaskEvent.Reset();
 			Interlocked.Increment(ref outstandingBackgroundTasks);
-			task.ContinueWith(
+			_ = task.ContinueWith(
 				delegate {
 					if (Interlocked.Decrement(ref outstandingBackgroundTasks) == 0) {
 						backgroundTaskEvent.Set();

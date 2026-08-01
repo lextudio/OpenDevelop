@@ -141,7 +141,7 @@ namespace ICSharpCode.SharpDevelop.Gui.OptionPanels
 			// Because this event is raised while the combobox is still switching to the "<create>" or "<browse>" value,
 			// we cannot set comboBox.Text within this event handler.
 			// To avoid this problem, we invoke the operation after the combobox has finished switching to the new value.
-			Dispatcher.BeginInvoke(new Action(
+			_ = Dispatcher.BeginInvoke(new Action(
 				delegate {
 					if (this.keyFileComboBox.SelectedIndex == keyFile.Count - 1) {
 						keyFileComboBox.Text = String.Empty;

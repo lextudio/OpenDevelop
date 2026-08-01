@@ -668,7 +668,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			// When parse information is updated quickly in succession, only do a single update
 			// to the latest version.
 			updateParseInfoTo = e.NewParseInformation;
-			this.Dispatcher.BeginInvoke(
+			_ = this.Dispatcher.BeginInvoke(
 				DispatcherPriority.Background,
 				new Action(
 					delegate {

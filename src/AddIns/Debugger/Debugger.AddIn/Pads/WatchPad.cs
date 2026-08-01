@@ -96,7 +96,7 @@ namespace ICSharpCode.SharpDevelop.Gui.Pads
 			
 			if (focus) {
 				var view = tree.View as SharpGridView;
-				tree.Dispatcher.BeginInvoke(
+				_ = tree.Dispatcher.BeginInvoke(
 					DispatcherPriority.Input, (Action)delegate {
 						var container = tree.ItemContainerGenerator.ContainerFromItem(node) as SharpTreeViewItem;
 						if (container == null) return;

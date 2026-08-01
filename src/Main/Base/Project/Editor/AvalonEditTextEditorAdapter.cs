@@ -233,7 +233,7 @@ namespace ICSharpCode.SharpDevelop.Editor
 				textEditor.ScrollTo(actualLocation.Line, actualLocation.Column);
 			} else {
 				// we have to delay the scrolling if the text editor is not yet loaded
-				textEditor.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(
+				_ = textEditor.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(
 					delegate {
 						textEditor.ScrollTo(actualLocation.Line, actualLocation.Column);
 					}));

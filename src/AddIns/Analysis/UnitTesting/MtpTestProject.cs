@@ -40,7 +40,7 @@ namespace ICSharpCode.UnitTesting
 			// "All Tests" solution root above it.
 			RebindCompositeResultToNestedTests();
 			PopulateApproxTreeFromRoslyn();
-			TriggerDiscoveryAsync();
+			_ = TriggerDiscoveryAsync();
 		}
 
 		// Fast, approximate pass: a syntax-only Roslyn scan of the project's own source (see
@@ -186,7 +186,7 @@ namespace ICSharpCode.UnitTesting
 				return;
 
 			lastBuildTime = buildTime;
-			TriggerDiscoveryAsync();
+			_ = TriggerDiscoveryAsync();
 		}
 
 		sealed class DiscoverySuppression : IDisposable

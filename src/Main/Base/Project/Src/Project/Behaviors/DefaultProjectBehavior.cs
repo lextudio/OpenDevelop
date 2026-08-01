@@ -144,7 +144,7 @@ namespace ICSharpCode.SharpDevelop.Project
 				}
 			}
 #if !HAS_UNO
-			System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(
+			_ = System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(
 				System.Windows.Threading.DispatcherPriority.Loaded,
 				new Action(
 					delegate {

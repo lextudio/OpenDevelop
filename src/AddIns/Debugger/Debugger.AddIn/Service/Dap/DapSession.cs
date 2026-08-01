@@ -309,7 +309,7 @@ namespace Debugger.AddIn.Service.Dap
 			// ICSharpCode.SharpDevelop.SharpDevelopExtensions.FireAndForget() - that extension isn't
 			// linked into every host this class is shared with (e.g. UnoDevelop links only this Dap/
 			// subtree, not all of SharpDevelopExtensions.cs), so surface a fault the same way inline.
-			client.SendRequestAsync(command, new JsonObject { ["threadId"] = ActiveThreadId })
+			_ = client.SendRequestAsync(command, new JsonObject { ["threadId"] = ActiveThreadId })
 				.ContinueWith(t => log("Control request '" + command + "' failed: " + t.Exception), CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
 		}
 

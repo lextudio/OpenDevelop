@@ -137,7 +137,7 @@ namespace SearchAndReplace
 						ThrowIfCancellationRequested();
 						SearchParallel(list, observer);
 					}, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
-				task.ContinueWith(
+				_ = task.ContinueWith(
 					t => {
 						LoggingService.Debug("Parallel FindAll finished " + (t.IsFaulted ? "with error" : "successfully"));
 						if (t.Exception != null)

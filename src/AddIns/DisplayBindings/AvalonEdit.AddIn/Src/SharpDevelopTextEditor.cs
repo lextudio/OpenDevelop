@@ -108,7 +108,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			window.Closed += delegate {
 				completionWindow = null;
 			};
-			Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(
+			_ = Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(
 				delegate {
 					if (completionWindow == window) {
 						window.Show();
@@ -124,7 +124,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			window.Closed += delegate {
 				insightWindow = null;
 			};
-			Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(
+			_ = Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(
 				delegate {
 					if (insightWindow == window) {
 						window.Show();

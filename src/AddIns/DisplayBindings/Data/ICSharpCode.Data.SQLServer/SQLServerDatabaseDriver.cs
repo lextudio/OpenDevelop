@@ -258,7 +258,7 @@ namespace ICSharpCode.Data.Core.DatabaseDrivers.SQLServer
                     case 2:
                     case 3:
                     case 53:
-                        Application.Current.Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+                        _ = Application.Current.Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
                         {
                             Datasources.Remove(datasource as SQLServerDatasource);
                         }));

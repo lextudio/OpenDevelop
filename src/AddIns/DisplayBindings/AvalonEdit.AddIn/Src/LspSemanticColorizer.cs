@@ -50,7 +50,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			refreshCancellation.Dispose();
 			refreshCancellation = new CancellationTokenSource();
 			var cancellationToken = refreshCancellation.Token;
-			textView.Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(async () => {
+			_ = textView.Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(async () => {
 				try {
 					await Task.Delay(150, cancellationToken);
 					var text = document.Text;

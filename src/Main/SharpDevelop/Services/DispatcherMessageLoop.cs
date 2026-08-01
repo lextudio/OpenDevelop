@@ -145,12 +145,12 @@ namespace ICSharpCode.SharpDevelop
 		
 		public void InvokeAsyncAndForget(Action callback)
 		{
-			dispatcher.BeginInvoke(callback);
+			_ = dispatcher.BeginInvoke(callback);
 		}
 		
 		public void InvokeAsyncAndForget(Action callback, DispatcherPriority priority)
 		{
-			dispatcher.BeginInvoke(callback, priority);
+			_ = dispatcher.BeginInvoke(callback, priority);
 		}
 		
 		public async void CallLater(TimeSpan delay, Action method)

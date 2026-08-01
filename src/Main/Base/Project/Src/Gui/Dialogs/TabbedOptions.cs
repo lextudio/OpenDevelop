@@ -105,7 +105,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 			
 			void placeholder_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
 			{
-				Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(LoadPadContentIfRequired));
+				_ = Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(LoadPadContentIfRequired));
 			}
 			
 			void LoadPadContentIfRequired()

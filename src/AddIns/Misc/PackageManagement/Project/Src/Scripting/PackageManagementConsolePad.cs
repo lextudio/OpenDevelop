@@ -54,7 +54,7 @@ namespace ICSharpCode.PackageManagement.Scripting
 		void DoEvents()
 		{
 			DispatcherFrame frame = new DispatcherFrame();
-			Dispatcher.CurrentDispatcher.BeginInvoke(
+			_ = Dispatcher.CurrentDispatcher.BeginInvoke(
 				DispatcherPriority.Background,
 				new DispatcherOperationCallback(ExitFrame),
 				frame);

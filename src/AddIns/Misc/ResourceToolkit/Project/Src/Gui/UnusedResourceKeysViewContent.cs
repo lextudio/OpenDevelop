@@ -90,7 +90,7 @@ namespace Hornung.ResourceToolkit.Gui
         {
             if (!this.fillListViewQueued) {
                 this.fillListViewQueued = true;
-                this.listView.Dispatcher.BeginInvoke(new Action(this.FillListViewInternal));
+                _ = this.listView.Dispatcher.BeginInvoke(new Action(this.FillListViewInternal));
             }
         }
 

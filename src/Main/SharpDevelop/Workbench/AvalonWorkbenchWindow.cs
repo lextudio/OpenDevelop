@@ -72,7 +72,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 
 		internal static void SetFocus(Func<IInputElement> activeChildFunc)
 		{
-			Application.Current?.Dispatcher.BeginInvoke(
+			_ = Application.Current?.Dispatcher.BeginInvoke(
 				DispatcherPriority.Loaded,
 				new Action(
 					delegate {

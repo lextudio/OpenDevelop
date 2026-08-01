@@ -53,7 +53,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				// reset insight window to initial state
 				CloseAutomatically = true;
 				StartOffset = EndOffset = this.TextArea.Caret.Offset;
-				Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(SetPositionToStartOffset));
+				_ = Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(SetPositionToStartOffset));
 			}
 		}
 		

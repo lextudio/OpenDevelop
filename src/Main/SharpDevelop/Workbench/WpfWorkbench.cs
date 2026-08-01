@@ -348,7 +348,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			if (activeWindowWasChanged)
 				return;
 			activeWindowWasChanged = true;
-			Dispatcher.BeginInvoke(new Action(
+			_ = Dispatcher.BeginInvoke(new Action(
 				delegate {
 					activeWindowWasChanged = false;
 					if (workbenchLayout != null) {
@@ -682,7 +682,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 						return;
 					// Handle opening the files outside the drop event, so that the drag source doesn't think
 					// the operation is still in progress while we're showing a "file cannot be opened" error message.
-					Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action<string[]>(HandleDrop), files);
+					_ = Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action<string[]>(HandleDrop), files);
 				}
 			} catch (Exception ex) {
 				MessageService.ShowException(ex);

@@ -41,7 +41,7 @@ namespace ICSharpCode.PackageManagement
 			TaskScheduler scheduler = TaskScheduler.FromCurrentSynchronizationContext();
 			cancellationTokenSource = new CancellationTokenSource();
 			task = new Task<TResult>(function, cancellationTokenSource.Token);
-			task.ContinueWith(result => OnContinueWith(result), scheduler);
+			_ = task.ContinueWith(result => OnContinueWith(result), scheduler);
 		}
 		
 		void OnContinueWith(Task<TResult> task)

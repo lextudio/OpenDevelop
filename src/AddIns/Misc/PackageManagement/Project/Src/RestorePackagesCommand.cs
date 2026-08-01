@@ -73,7 +73,7 @@ namespace ICSharpCode.PackageManagement
 			
 			var runner = new ProcessRunner();
 			runner.WorkingDirectory = Path.GetDirectoryName(solution.FileName);
-			runner.RunInOutputPadAsync(outputMessagesView.OutputCategory, commandLine.Command, commandLine.Arguments)
+			_ = runner.RunInOutputPadAsync(outputMessagesView.OutputCategory, commandLine.Command, commandLine.Arguments)
 				.ContinueWith(task => OnNuGetPackageRestoreComplete(task), TaskScheduler.FromCurrentSynchronizationContext());
 		}
 		

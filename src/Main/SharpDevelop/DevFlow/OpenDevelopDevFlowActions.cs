@@ -869,7 +869,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			var task = TryStartRunAllUnitTestsAsync(out var error);
 			if (task == null)
 				return JsonSerializer.Serialize(new { started = false, error });
-			task.ContinueWith(t => LoggingService.Warn("DevFlow unit test run failed", t.Exception),
+			_ = task.ContinueWith(t => LoggingService.Warn("DevFlow unit test run failed", t.Exception),
 				CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
 			return JsonSerializer.Serialize(new { started = true });
 		}
