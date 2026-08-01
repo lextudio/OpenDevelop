@@ -19,21 +19,21 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using ICSharpCode.NRefactory.TypeSystem;
+using Microsoft.CodeAnalysis;
 
 namespace ICSharpCode.CodeQuality.Engine.Dom
 {
 	public class FieldNode : NodeBase
 	{
-		public IField FieldDefinition { get; private set; }
+		public IFieldSymbol FieldDefinition { get; private set; }
 		
-		public FieldNode(IField fieldDefinition)
+		public FieldNode(IFieldSymbol fieldDefinition)
 		{
 			this.FieldDefinition = fieldDefinition;
 		}
 		
 		public override string Name {
-			get { return FieldDefinition.PrintFullName(); }
+			get { return FieldDefinition.ToDisplayString(); }
 		}
 		
 		public override IList<NodeBase> Children {

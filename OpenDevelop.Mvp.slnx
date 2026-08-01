@@ -62,6 +62,9 @@
   <Folder Name="/src/AddIns/Analysis/CodeCoverage/">
     <Project Path="src/AddIns/Analysis/CodeCoverage/Project/CodeCoverage.csproj" />
   </Folder>
+  <Folder Name="/src/AddIns/Analysis/CodeQuality/">
+    <Project Path="src/AddIns/Analysis/CodeQuality/CodeQuality.csproj" />
+  </Folder>
   <Folder Name="/src/AddIns/Misc/AddInManager2/">
     <Project Path="src/AddIns/Misc/AddInManager2/Project/AddInManager2.csproj" />
   </Folder>

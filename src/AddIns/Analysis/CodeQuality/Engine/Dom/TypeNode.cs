@@ -20,16 +20,16 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-using ICSharpCode.NRefactory.TypeSystem;
-using ICSharpCode.NRefactory.Utils;
+using Microsoft.CodeAnalysis;
+
 
 namespace ICSharpCode.CodeQuality.Engine.Dom
 {
 	public class TypeNode : NodeBase
 	{
-		public ITypeDefinition TypeDefinition { get; private set; }
+		public INamedTypeSymbol TypeDefinition { get; private set; }
 		
-		public TypeNode(ITypeDefinition typeDefinition)
+		public TypeNode(INamedTypeSymbol typeDefinition)
 		{
 			this.TypeDefinition = typeDefinition;
 			children = new List<NodeBase>();

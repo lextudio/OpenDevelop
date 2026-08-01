@@ -18,65 +18,67 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Collections.ObjectModel;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection.Metadata;
+using System.Reflection.Metadata.Ecma335;
+using System.Reflection.PortableExecutable;
+
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+
 using ICSharpCode.CodeQuality.Engine.Dom;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory.TypeSystem;
-using ICSharpCode.NRefactory.TypeSystem.Implementation;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
-using Mono.Cecil;
 
 namespace ICSharpCode.CodeQuality.Engine
 {
 	/// <summary>
-	/// Description of AssemblyAnalyzer.
+	/// Builds the dependency graph between assemblies, namespaces, types and their members.
+	/// Driven by Roslyn symbols (Microsoft.CodeAnalysis) over metadata references, with IL-level
+	/// member usage analysis on top of System.Reflection.Metadata (PEReader) - replacing the old
+	/// NRefactory.TypeSystem + Mono.Cecil stack.
 	/// </summary>
 	public class AssemblyAnalyzer
 	{
-		Dictionary<object, object> unresolvedTypeSystemToCecilDict = new Dictionary<object, object>();
-		ICompilation compilation;
-		internal Dictionary<IAssembly, AssemblyNode> assemblyMappings;
+		internal Dictionary<IAssemblySymbol, AssemblyNode> assemblyMappings;
 		internal Dictionary<string, NamespaceNode> namespaceMappings;
-		internal Dictionary<ITypeDefinition, TypeNode> typeMappings;
-		internal Dictionary<IMethod, MethodNode> methodMappings;
-		internal Dictionary<IField, FieldNode> fieldMappings;
-		internal Dictionary<IProperty, PropertyNode> propertyMappings;
-		internal Dictionary<IEvent, EventNode> eventMappings;
-		internal Dictionary<MemberReference, IEntity> cecilMappings;
+		internal Dictionary<INamedTypeSymbol, TypeNode> typeMappings;
+		internal Dictionary<IMethodSymbol, MethodNode> methodMappings;
+		internal Dictionary<IFieldSymbol, FieldNode> fieldMappings;
+		internal Dictionary<IPropertySymbol, PropertyNode> propertyMappings;
+		internal Dictionary<IEventSymbol, EventNode> eventMappings;
+		internal Dictionary<IAssemblySymbol, PEReader> assemblyReaders;
 		List<string> fileNames;
-		
+
 		internal IProgressMonitor progressMonitor;
-		
+
 		public AssemblyAnalyzer()
 		{
 			fileNames = new List<string>();
 		}
-		
+
 		public void AddAssemblyFiles(params string[] files)
 		{
 			fileNames.AddRange(files);
 		}
-		
+
 		HashSet<NodeBase> outgoingEdges = new HashSet<NodeBase>();
-		
+
 		public void AddEdge(NodeBase target)
 		{
-			// copies all ancestors of target into a hashset
-			// duplicates are removed
 			while (target != null) {
 				if (!outgoingEdges.Add(target))
 					break;
 				target = target.Parent;
 			}
 		}
-		
+
 		void CreateEdges(NodeBase source)
 		{
-			// add edges to source
 			while (source != null) {
 				foreach (NodeBase n in outgoingEdges) {
 					source.AddRelationship(n);
@@ -85,298 +87,343 @@ namespace ICSharpCode.CodeQuality.Engine
 			}
 			outgoingEdges.Clear();
 		}
-		
+
 		public ReadOnlyCollection<AssemblyNode> Analyze()
 		{
 			var loadedAssemblies = LoadAssemblies();
-			compilation = new SimpleCompilation(loadedAssemblies.First(), loadedAssemblies.Skip(1));
-			
-			assemblyMappings = new Dictionary<IAssembly, AssemblyNode>();
+
+			assemblyMappings = new Dictionary<IAssemblySymbol, AssemblyNode>();
 			namespaceMappings = new Dictionary<string, NamespaceNode>();
-			typeMappings = new Dictionary<ITypeDefinition, TypeNode>();
-			fieldMappings = new Dictionary<IField, FieldNode>();
-			methodMappings = new Dictionary<IMethod, MethodNode>();
-			propertyMappings = new Dictionary<IProperty, PropertyNode>();
-			eventMappings = new Dictionary<IEvent, EventNode>();
-			cecilMappings = new Dictionary<MemberReference, IEntity>();
-			
-			// first we have to read all types so every method, field or property has a container
-			foreach (var type in compilation.GetAllTypeDefinitions()) {
-				var tn = ReadType(type);
-				
-				foreach (var field in type.Fields) {
-					var node = new FieldNode(field);
-					fieldMappings.Add(field, node);
-					var cecilObj = GetCecilObject((IUnresolvedField)field.UnresolvedMember);
-					if (cecilObj != null)
-						cecilMappings[cecilObj] = field;
-					tn.AddChild(node);
-				}
-				
-				foreach (var method in type.Methods) {
-					var node = new MethodNode(method);
-					methodMappings.Add(method, node);
-					var cecilObj = GetCecilObject((IUnresolvedMethod)method.UnresolvedMember);
-					if (cecilObj != null)
-						cecilMappings[cecilObj] = method;
-					tn.AddChild(node);
-				}
-				
-				foreach (var property in type.Properties) {
-					var node = new PropertyNode(property);
-					propertyMappings.Add(property, node);
-					var cecilPropObj = GetCecilObject((IUnresolvedProperty)property.UnresolvedMember);
-					if (cecilPropObj != null)
-						cecilMappings[cecilPropObj] = property;
-					if (property.CanGet) {
-						var cecilMethodObj = GetCecilObject((IUnresolvedMethod)property.Getter.UnresolvedMember);
-						if (cecilMethodObj != null)
-							cecilMappings[cecilMethodObj] = property;
+			typeMappings = new Dictionary<INamedTypeSymbol, TypeNode>();
+			fieldMappings = new Dictionary<IFieldSymbol, FieldNode>();
+			methodMappings = new Dictionary<IMethodSymbol, MethodNode>();
+			propertyMappings = new Dictionary<IPropertySymbol, PropertyNode>();
+			eventMappings = new Dictionary<IEventSymbol, EventNode>();
+
+			foreach (var assembly in loadedAssemblies) {
+				foreach (var type in GetAllTypeDefinitions(assembly)) {
+					var tn = ReadType(type);
+
+					foreach (var field in type.GetMembers().OfType<IFieldSymbol>()) {
+						var node = new FieldNode(field);
+						fieldMappings.Add(field, node);
+						tn.AddChild(node);
 					}
-					if (property.CanSet) {
-						var cecilMethodObj = GetCecilObject((IUnresolvedMethod)property.Setter.UnresolvedMember);
-						if (cecilMethodObj != null)
-							cecilMappings[cecilMethodObj] = property;
+
+					foreach (var method in type.GetMembers().OfType<IMethodSymbol>().Where(m => m.MethodKind == MethodKind.Ordinary || m.MethodKind == MethodKind.Constructor)) {
+						var node = new MethodNode(method);
+						methodMappings.Add(method, node);
+						tn.AddChild(node);
 					}
-					tn.AddChild(node);
-				}
-				
-				foreach (var @event in type.Events) {
-					var node = new EventNode(@event);
-					eventMappings.Add(@event, node);
-					var cecilObj = GetCecilObject((IUnresolvedEvent)@event.UnresolvedMember);
-					if (cecilObj != null)
-						cecilMappings[cecilObj] = @event;
-					if (@event.CanAdd) {
-						var cecilMethodObj = GetCecilObject((IUnresolvedMethod)@event.AddAccessor.UnresolvedMember);
-						if (cecilMethodObj != null)
-							cecilMappings[cecilMethodObj] = @event;
+
+					foreach (var property in type.GetMembers().OfType<IPropertySymbol>()) {
+						var node = new PropertyNode(property);
+						propertyMappings.Add(property, node);
+						tn.AddChild(node);
 					}
-					if (@event.CanInvoke) {
-						var cecilMethodObj = GetCecilObject((IUnresolvedMethod)@event.InvokeAccessor.UnresolvedMember);
-						if (cecilMethodObj != null)
-							cecilMappings[cecilMethodObj] = @event;
+
+					foreach (var @event in type.GetMembers().OfType<IEventSymbol>()) {
+						var node = new EventNode(@event);
+						eventMappings.Add(@event, node);
+						tn.AddChild(node);
 					}
-					if (@event.CanRemove) {
-						var cecilMethodObj = GetCecilObject((IUnresolvedMethod)@event.RemoveAccessor.UnresolvedMember);
-						if (cecilMethodObj != null)
-							cecilMappings[cecilMethodObj] = @event;
-					}
-					tn.AddChild(node);
 				}
 			}
-			
-			ILAnalyzer analyzer = new ILAnalyzer(loadedAssemblies.Select(asm => GetCecilObject(asm)).ToArray(), this);
+
+			ILAnalyzer analyzer = new ILAnalyzer(this);
 			int count = typeMappings.Count + methodMappings.Count + fieldMappings.Count + propertyMappings.Count;
-			int i  = 0;
-			
+			int i = 0;
+
 			foreach (var element in typeMappings) {
 				ReportProgress(++i / (double)count);
-				AddRelationshipsForTypes(element.Key.DirectBaseTypes, element.Value);
-				AddRelationshipsForAttributes(element.Key.Attributes, element.Value);
+				if (element.Key.BaseType != null)
+					AddRelationshipsForType(element.Value, element.Key.BaseType);
+				AddRelationshipsForTypes(element.Key.Interfaces, element.Value);
+				AddRelationshipsForAttributes(element.Key.GetAttributes(), element.Value);
 				CreateEdges(element.Value);
 			}
-			
+
 			foreach (var element in methodMappings) {
 				ReportProgress(++i / (double)count);
-				var cecilObj = GetCecilObject((IUnresolvedMethod)element.Key.UnresolvedMember);
-				if (cecilObj != null)
-					analyzer.Analyze(cecilObj.Body, element.Value);
+				analyzer.Analyze(element.Key, element.Value);
 				var node = element.Value;
 				var method = element.Key;
 				AddRelationshipsForType(node, method.ReturnType);
-				AddRelationshipsForAttributes(method.Attributes, node);
-				AddRelationshipsForAttributes(method.ReturnTypeAttributes, node);
+				AddRelationshipsForAttributes(method.GetAttributes(), node);
 				AddRelationshipsForTypeParameters(method.TypeParameters, node);
 				foreach (var param in method.Parameters) {
 					AddRelationshipsForType(node, param.Type);
-					AddRelationshipsForAttributes(param.Attributes, node);
+					AddRelationshipsForAttributes(param.GetAttributes(), node);
 				}
 				CreateEdges(element.Value);
 			}
-			
+
 			foreach (var element in fieldMappings) {
 				ReportProgress(++i / (double)count);
 				var node = element.Value;
 				var field = element.Key;
 				AddRelationshipsForType(node, field.Type);
-				AddRelationshipsForAttributes(field.Attributes, node);
+				AddRelationshipsForAttributes(field.GetAttributes(), node);
 				CreateEdges(element.Value);
 			}
-			
+
 			foreach (var element in propertyMappings) {
 				ReportProgress(++i / (double)count);
 				var node = element.Value;
 				var property = element.Key;
-				if (property.CanGet) {
-					var cecilObj = GetCecilObject((IUnresolvedMethod)element.Key.Getter.UnresolvedMember);
-					if (cecilObj != null)
-						analyzer.Analyze(cecilObj.Body, node);
-				}
-				if (property.CanSet) {
-					var cecilObj = GetCecilObject((IUnresolvedMethod)element.Key.Setter.UnresolvedMember);
-					if (cecilObj != null)
-						analyzer.Analyze(cecilObj.Body, node);
-				}
-				AddRelationshipsForType(node, property.ReturnType);
-				AddRelationshipsForAttributes(property.Attributes, node);
+				if (property.GetMethod != null)
+					analyzer.Analyze(property.GetMethod, node);
+				if (property.SetMethod != null)
+					analyzer.Analyze(property.SetMethod, node);
+				AddRelationshipsForType(node, property.Type);
+				AddRelationshipsForAttributes(property.GetAttributes(), node);
 				CreateEdges(element.Value);
 			}
-			
+
 			foreach (var element in eventMappings) {
 				ReportProgress(++i / (double)count);
 				var node = element.Value;
 				var @event = element.Key;
-				if (@event.CanAdd) {
-					var cecilObj = GetCecilObject((IUnresolvedMethod)@event.AddAccessor.UnresolvedMember);
-					if (cecilObj != null)
-						analyzer.Analyze(cecilObj.Body, node);
-				}
-				if (@event.CanInvoke) {
-					var cecilObj = GetCecilObject((IUnresolvedMethod)@event.InvokeAccessor.UnresolvedMember);
-					if (cecilObj != null)
-						analyzer.Analyze(cecilObj.Body, node);
-				}
-				if (@event.CanRemove) {
-					var cecilObj = GetCecilObject((IUnresolvedMethod)@event.RemoveAccessor.UnresolvedMember);
-					if (cecilObj != null)
-						analyzer.Analyze(cecilObj.Body, node);
-				}
-				AddRelationshipsForType(node, @event.ReturnType);
-				AddRelationshipsForAttributes(@event.Attributes, node);
+				if (@event.AddMethod != null)
+					analyzer.Analyze(@event.AddMethod, node);
+				if (@event.RemoveMethod != null)
+					analyzer.Analyze(@event.RemoveMethod, node);
+				if (@event.RaiseMethod != null)
+					analyzer.Analyze(@event.RaiseMethod, node);
+				AddRelationshipsForType(node, @event.Type);
+				AddRelationshipsForAttributes(@event.GetAttributes(), node);
 				CreateEdges(element.Value);
 			}
-			
+
 			return new ReadOnlyCollection<AssemblyNode>(assemblyMappings.Values.ToList());
 		}
-		
+
 		void ReportProgress(double progress)
 		{
 			if (progressMonitor != null) {
 				progressMonitor.Progress = progress;
 			}
 		}
-		
-		void AddRelationshipsForTypeParameters(IList<ITypeParameter> typeParameters, NodeBase node)
+
+		void AddRelationshipsForTypeParameters(ImmutableArray<ITypeParameterSymbol> typeParameters, NodeBase node)
 		{
 			foreach (var param in typeParameters) {
-				AddRelationshipsForAttributes(param.Attributes, node);
-				AddRelationshipsForType(node, param.EffectiveBaseClass);
+				AddRelationshipsForAttributes(param.GetAttributes(), node);
 			}
 		}
-		
-		void AddRelationshipsForTypes(IEnumerable<IType> directBaseTypes, NodeBase node)
+
+		void AddRelationshipsForTypes(IEnumerable<INamedTypeSymbol> directBaseTypes, NodeBase node)
 		{
 			foreach (var baseType in directBaseTypes) {
 				AddRelationshipsForType(node, baseType);
 			}
 		}
-		
-		void AddRelationshipsForAttributes(IList<IAttribute> attributes, NodeBase node)
+
+		void AddRelationshipsForAttributes(ImmutableArray<AttributeData> attributes, NodeBase node)
 		{
 			try {
 				foreach (var attr in attributes) {
-					if (attr.Constructor != null)
-						AddEdge(methodMappings[attr.Constructor]);
+					if (attr.AttributeConstructor != null) {
+						MethodNode target;
+						if (methodMappings.TryGetValue(attr.AttributeConstructor, out target))
+							AddEdge(target);
+					}
 				}
 			} catch (NotSupportedException nse) {
-				// HACK : workaround for bug in NR5's attribute blob parser.
 				LoggingService.DebugFormatted("CQA: Skipping attributes of: {0}\r\nException:\r\n{1}", node.Name, nse);
 			}
 		}
-		
-		void AddRelationshipsForType(NodeBase node, IType type)
+
+		void AddRelationshipsForType(NodeBase node, ITypeSymbol type)
 		{
-			type.AcceptVisitor(new AnalysisTypeVisitor(this, node));
-		}
-		
-		class AnalysisTypeVisitor : TypeVisitor
-		{
-			NodeBase node;
-			AssemblyAnalyzer context;
-			
-			public AnalysisTypeVisitor(AssemblyAnalyzer context, NodeBase node)
-			{
-				this.context = context;
-				this.node = node;
-			}
-			
-			public override IType VisitTypeDefinition(ITypeDefinition type)
-			{
-				TypeNode typeNode;
-				if (context.typeMappings.TryGetValue(type, out typeNode))
-					context.AddEdge(typeNode);
-				return base.VisitTypeDefinition(type);
+			if (type == null)
+				return;
+			// Strip away generic instantiations / pointers / arrays to get to the underlying type.
+			switch (type) {
+				case INamedTypeSymbol named:
+					TypeNode typeNode;
+					if (typeMappings.TryGetValue(named.OriginalDefinition, out typeNode))
+						AddEdge(typeNode);
+					break;
+				case IArrayTypeSymbol array:
+					AddRelationshipsForType(node, array.ElementType);
+					break;
+				case IPointerTypeSymbol pointer:
+					AddRelationshipsForType(node, pointer.PointedAtType);
+					break;
+				case ITypeParameterSymbol tp:
+					AddRelationshipsForType(node, tp.ConstraintTypes.FirstOrDefault());
+					break;
 			}
 		}
-		
-		IList<IUnresolvedAssembly> LoadAssemblies()
+
+		IEnumerable<IAssemblySymbol> LoadAssemblies()
 		{
-			var resolver = new AssemblyResolver();
-			foreach (var path in fileNames.Select(f => Path.GetDirectoryName(f)).Distinct(StringComparer.OrdinalIgnoreCase))
-				resolver.AddSearchDirectory(path);
-			List<AssemblyDefinition> assemblies = new List<AssemblyDefinition>();
-			foreach (var file in fileNames.Distinct(StringComparer.OrdinalIgnoreCase))
-				assemblies.Add(resolver.LoadAssemblyFile(file));
-			foreach (var asm in assemblies.ToArray())
-				assemblies.AddRange(asm.Modules.SelectMany(m => m.AssemblyReferences).Select(r => resolver.TryResolve(r)).Where(r => r != null));
-			CecilLoader loader = new CecilLoader { IncludeInternalMembers = true };
-			// Emulate the old CecilLoader.GetCecilObject() API: 
-			loader.OnEntityLoaded = delegate(IUnresolvedEntity entity, MemberReference cecilObj) {
-				unresolvedTypeSystemToCecilDict[entity] = cecilObj;
-			};
-			var loadedAssemblies = new List<IUnresolvedAssembly>();
-			foreach (var asm in assemblies.Distinct()) {
-				var loadedAssembly = loader.LoadAssembly(asm);
-				loadedAssemblies.Add(loadedAssembly);
-				unresolvedTypeSystemToCecilDict[loadedAssembly] = asm;
+			var refs = fileNames.Distinct(StringComparer.OrdinalIgnoreCase)
+				.Select(f => MetadataReference.CreateFromFile(f))
+				.ToList();
+			var compilation = CSharpCompilation.Create("CQA", references: refs);
+			var assemblies = compilation.References
+				.Select(compilation.GetAssemblyOrModuleSymbol)
+				.OfType<IAssemblySymbol>()
+				.ToList();
+
+			assemblyReaders = new Dictionary<IAssemblySymbol, PEReader>(SymbolEqualityComparer.Default);
+			foreach (var asm in assemblies) {
+				var file = fileNames.FirstOrDefault(f => Path.GetFileNameWithoutExtension(f).Equals(asm.Name, StringComparison.OrdinalIgnoreCase));
+				if (file != null) {
+					try {
+						assemblyReaders[asm] = new PEReader(File.OpenRead(file));
+					} catch (IOException) {
+					} catch (BadImageFormatException) {
+					}
+				}
 			}
-			return loadedAssemblies;
+			return assemblies;
 		}
-		
-		AssemblyDefinition GetCecilObject(IUnresolvedAssembly assembly)
+
+		internal PEReader GetReader(IAssemblySymbol assembly)
 		{
-			object cecilObj;
-			if (unresolvedTypeSystemToCecilDict.TryGetValue(assembly, out cecilObj)) {
-				return cecilObj as AssemblyDefinition;
-			} else {
-				return null;
-			}
+			PEReader reader;
+			if (assemblyReaders != null && assemblyReaders.TryGetValue(assembly, out reader))
+				return reader;
+			return null;
 		}
-		
-		MemberReference GetCecilObject(IUnresolvedEntity entity)
+
+		internal bool ResolveTokenTarget(int token, NodeBase node)
 		{
-			object cecilObj;
-			if (unresolvedTypeSystemToCecilDict.TryGetValue(entity, out cecilObj)) {
-				return cecilObj as MemberReference;
-			} else {
-				return null;
+			// The IL operand is a metadata token; match it against the analyzed assemblies via
+			// the SRM reader for the target's declaring assembly (cheap name-based fallback if
+			// the token cannot be resolved on the first reader).
+			foreach (var reader in assemblyReaders.Values) {
+				if (ResolveTokenInReader(reader, token, node))
+					return true;
 			}
+			return false;
 		}
-		
-		MethodDefinition GetCecilObject(IUnresolvedMethod method)
+
+		bool ResolveTokenInReader(PEReader reader, int token, NodeBase node)
 		{
-			object cecilObj;
-			if (unresolvedTypeSystemToCecilDict.TryGetValue(method, out cecilObj)) {
-				return cecilObj as MethodDefinition;
-			} else {
-				return null;
+			var md = reader.GetMetadataReader();
+			switch (token >> 24) {
+				case 0x06: { // MethodDef
+					var handle = MetadataTokens.MethodDefinitionHandle(token);
+					if (handle.IsNil)
+						return false;
+					MethodDefinition methodDef;
+					try {
+						methodDef = md.GetMethodDefinition(handle);
+					} catch (BadImageFormatException) {
+						return false;
+					}
+					string typeKey = GetTypeKey(md, methodDef.GetDeclaringType());
+					string methodName = md.GetString(methodDef.Name);
+					MethodNode target = methodMappings.Values.FirstOrDefault(m =>
+						m.MethodDefinition.Name == methodName && GetTypeKey(m.MethodDefinition.ContainingType) == typeKey);
+					if (target != null) {
+						AddEdge(target);
+						return true;
+					}
+					break;
+				}
+				case 0x04: { // FieldDef
+					var handle = MetadataTokens.FieldDefinitionHandle(token);
+					if (handle.IsNil)
+						return false;
+					FieldDefinition fieldDef;
+					try {
+						fieldDef = md.GetFieldDefinition(handle);
+					} catch (BadImageFormatException) {
+						return false;
+					}
+					string typeKey = GetTypeKey(md, fieldDef.GetDeclaringType());
+					string fieldName = md.GetString(fieldDef.Name);
+					FieldNode target = fieldMappings.Values.FirstOrDefault(f =>
+						f.FieldDefinition.Name == fieldName && GetTypeKey(f.FieldDefinition.ContainingType) == typeKey);
+					if (target != null) {
+						AddEdge(target);
+						return true;
+					}
+					break;
+				}
+			}
+			return false;
+		}
+
+		/// <summary>
+		/// Gets method bodies for a symbol: (type key, method name) match against the
+		/// per-assembly RVA index built from the PE files.
+		/// </summary>
+		internal IEnumerable<MethodBodyBlock> GetMethodBodies(IMethodSymbol method)
+		{
+			var reader = GetReader(method.ContainingAssembly);
+			if (reader == null)
+				yield break;
+			string typeKey = GetTypeKey(method.ContainingType);
+			foreach (var handle in reader.GetMetadataReader().MethodDefinitions) {
+				MethodDefinition def;
+				try {
+					def = reader.GetMetadataReader().GetMethodDefinition(handle);
+				} catch (BadImageFormatException) {
+					continue;
+				}
+				if (reader.GetMetadataReader().GetString(def.Name) != method.Name)
+					continue;
+				if (GetTypeKey(reader.GetMetadataReader(), def.GetDeclaringType()) != typeKey)
+					continue;
+				int rva = def.RelativeVirtualAddress;
+				if (rva == 0)
+					continue;
+				MethodBodyBlock body;
+				try {
+					body = reader.GetMethodBody(rva);
+				} catch (BadImageFormatException) {
+					continue;
+				}
+				if (body != null)
+					yield return body;
 			}
 		}
-		
+
+		// Type identity key used on both sides of the metadata boundary: fully qualified name
+		// with nested types joined by '.', generic arity stripped (MetadataName never includes
+		// type arguments), namespace only on the outermost type - mirrors GetTypeKey(MetadataReader).
+		static string GetTypeKey(ITypeSymbol type)
+		{
+			if (type.ContainingType != null)
+				return GetTypeKey(type.ContainingType) + "." + type.MetadataName;
+			var ns = type.ContainingNamespace != null && !type.ContainingNamespace.IsGlobalNamespace
+				? type.ContainingNamespace.ToDisplayString()
+				: string.Empty;
+			return string.IsNullOrEmpty(ns) ? type.MetadataName : ns + "." + type.MetadataName;
+		}
+
+		static string GetTypeKey(MetadataReader md, TypeDefinitionHandle handle)
+		{
+			try {
+				var typeDef = md.GetTypeDefinition(handle);
+				string name = md.GetString(typeDef.Name);
+				if (!typeDef.GetDeclaringType().IsNil)
+					return GetTypeKey(md, typeDef.GetDeclaringType()) + "." + name;
+				string ns = md.GetString(typeDef.Namespace);
+				return string.IsNullOrEmpty(ns) ? name : ns + "." + name;
+			} catch (BadImageFormatException) {
+				return string.Empty;
+			}
+		}
+
 		NamespaceNode GetOrCreateNamespace(AssemblyNode assembly, string namespaceName)
 		{
 			NamespaceNode result;
-			var asmDef = GetCecilObject(assembly.AssemblyInfo.UnresolvedAssembly);
-			if (!namespaceMappings.TryGetValue(namespaceName + "," + asmDef.FullName, out result)) {
+			if (!namespaceMappings.TryGetValue(namespaceName + "," + assembly.Name, out result)) {
 				result = new NamespaceNode(namespaceName);
 				assembly.AddChild(result);
-				namespaceMappings.Add(namespaceName + "," + asmDef.FullName, result);
+				namespaceMappings.Add(namespaceName + "," + assembly.Name, result);
 			}
 			return result;
 		}
-		
-		AssemblyNode GetOrCreateAssembly(IAssembly asm)
+
+		AssemblyNode GetOrCreateAssembly(IAssemblySymbol asm)
 		{
 			AssemblyNode result;
 			if (!assemblyMappings.TryGetValue(asm, out result)) {
@@ -385,43 +432,50 @@ namespace ICSharpCode.CodeQuality.Engine
 			}
 			return result;
 		}
-		
-		TypeNode ReadType(ITypeDefinition type)
+
+		TypeNode ReadType(INamedTypeSymbol type)
 		{
-			var asm = GetOrCreateAssembly(type.ParentAssembly);
-			var ns = GetOrCreateNamespace(asm, type.Namespace);
+			var asm = GetOrCreateAssembly(type.ContainingAssembly);
+			var ns = GetOrCreateNamespace(asm, type.ContainingNamespace?.ToDisplayString() ?? string.Empty);
 			TypeNode parent;
 			var node = new TypeNode(type);
-			if (type.DeclaringTypeDefinition != null) {
-				if (typeMappings.TryGetValue(type.DeclaringTypeDefinition, out parent))
+			if (type.ContainingType != null) {
+				if (typeMappings.TryGetValue(type.ContainingType, out parent))
 					parent.AddChild(node);
 				else
-					throw new Exception("TypeNode not found: " + type.DeclaringTypeDefinition.FullName);
+					throw new Exception("TypeNode not found: " + type.ContainingType.ToDisplayString());
 			} else
 				ns.AddChild(node);
-			cecilMappings[GetCecilObject(type.Parts.First())] = type;
 			typeMappings.Add(type, node);
 			return node;
 		}
-		
-		class AssemblyResolver : DefaultAssemblyResolver
+
+		static IEnumerable<INamedTypeSymbol> GetAllTypeDefinitions(IAssemblySymbol assembly)
 		{
-			public AssemblyDefinition LoadAssemblyFile(string fileName)
-			{
-				var assembly = AssemblyDefinition.ReadAssembly(fileName, new ReaderParameters { AssemblyResolver = this });
-				RegisterAssembly(assembly);
-				return assembly;
+			var visited = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
+			return GetAllTypes(assembly.GlobalNamespace, visited);
+		}
+
+		static IEnumerable<INamedTypeSymbol> GetAllTypes(INamespaceSymbol ns, HashSet<INamedTypeSymbol> visited)
+		{
+			foreach (var type in ns.GetTypeMembers()) {
+				foreach (var t in EnumerateTypeAndNested(type, visited))
+					yield return t;
 			}
-			
-			public AssemblyDefinition TryResolve(AssemblyNameReference reference)
-			{
-				try {
-					return Resolve(reference);
-				} catch (AssemblyResolutionException are) {
-					LoggingService.DebugFormatted("CQA: Skipping assembly reference: {0}\r\nException:\r\n{1}", reference, are);
-					TaskService.Add(new SDTask(null, are.Message, 0, 0, SharpDevelop.TaskType.Warning));
-					return null;
-				}
+			foreach (var nestedNs in ns.GetNamespaceMembers()) {
+				foreach (var t in GetAllTypes(nestedNs, visited))
+					yield return t;
+			}
+		}
+
+		static IEnumerable<INamedTypeSymbol> EnumerateTypeAndNested(INamedTypeSymbol type, HashSet<INamedTypeSymbol> visited)
+		{
+			if (!visited.Add(type))
+				yield break;
+			yield return type;
+			foreach (var nested in type.GetTypeMembers()) {
+				foreach (var t in EnumerateTypeAndNested(nested, visited))
+					yield return t;
 			}
 		}
 	}

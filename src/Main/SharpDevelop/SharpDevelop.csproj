@@ -30,6 +30,11 @@
     <PackageReference Include="LeXtudio.DevFlow.Agent.LibreWpf" Version="0.2.2" />
   </ItemGroup>
   <ItemGroup>
+    <Reference Include="NuGet.Core">
+      <HintPath>..\..\AddIns\Misc\PackageManagement\RequiredLibraries\NuGet.Core.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\Libraries\AvalonDock\source\Components\AvalonDock.Core\AvalonDock.Core.csproj" />
     <ProjectReference Include="..\..\Libraries\AvalonDock\source\Components\AvalonDock\AvalonDock.csproj" />
     <ProjectReference Include="..\..\Libraries\AvalonDock\source\Components\AvalonDock.Serializer.Xml\AvalonDock.Serializer.Xml.csproj" />

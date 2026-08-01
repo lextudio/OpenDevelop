@@ -23,8 +23,6 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using ICSharpCode.CodeQuality.Engine.Dom;
 using ICSharpCode.CodeQuality.Gui;
-using ICSharpCode.NRefactory.CSharp;
-using ICSharpCode.NRefactory.TypeSystem;
 using ICSharpCode.TreeView;
 
 namespace ICSharpCode.CodeQuality
@@ -90,13 +88,6 @@ namespace ICSharpCode.CodeQuality
 				(byte)(c1.R * amountFrom + c2.R * percent),
 				(byte)(c1.G * amountFrom + c2.G * percent),
 				(byte)(c1.B * amountFrom + c2.B * percent));
-		}
-		
-		static readonly IAmbience amb = new CSharpAmbience() { ConversionFlags = ConversionFlags.ShowParameterList | ConversionFlags.ShowParameterNames | ConversionFlags.ShowReturnType | ConversionFlags.ShowTypeParameterList };
-		
-		public static string PrintFullName(this IEntity entity)
-		{
-			return amb.ConvertSymbol(entity);
 		}
 	}
 }

@@ -21,8 +21,8 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 
-using ICSharpCode.NRefactory.TypeSystem;
-using ICSharpCode.NRefactory.Utils;
+using Microsoft.CodeAnalysis;
+
 
 namespace ICSharpCode.CodeQuality.Engine.Dom
 {

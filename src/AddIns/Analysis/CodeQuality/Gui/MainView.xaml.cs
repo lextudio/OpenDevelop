@@ -23,10 +23,9 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 
-using ICSharpCode.Reporting.WpfReportViewer;
 using ICSharpCode.CodeQuality.Engine;
 using ICSharpCode.CodeQuality.Engine.Dom;
-using ICSharpCode.CodeQuality.Reporting;
+using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;
 using Microsoft.Win32;
@@ -88,46 +87,17 @@ namespace ICSharpCode.CodeQuality.Gui
 		void Analyse (string[] fileNames)
 		{
 			context.AddAssemblyFiles(fileNames);
-			using (context.progressMonitor = AsynchronousWaitDialog.ShowWaitDialog("Analysis"))
+			using (context.progressMonitor = new DummyProgressMonitor())
 			{
 				list = context.Analyze();
 			}
 		}
-		
 		
 		void UpdateUI ()
 		{
 			matrix.Update(list);
 			introBlock.Visibility = Visibility.Collapsed;
 			matrix.Visibility = Visibility.Visible;
-			printMenu.Visibility = Visibility.Visible;
-		}
-		
-		
-		void OverviewReport_Click(object sender, RoutedEventArgs e)
-		{
-			var overviewReport = new OverviewReport(fileNames);
-			var reportCreator = overviewReport.Run(list);
-			var previewViewModel = new PreviewViewModel(overviewReport.ReportSettings,reportCreator.Pages);
-			viewer.SetBinding(previewViewModel);
-			ActivateReportTab();
-		}
-
-		
-		void DependecyReport_Click(object sender, RoutedEventArgs e)
-		{
-			var dependencyReport = new DependencyReport(fileNames);
-			var reportCreator = dependencyReport.Run(list);
-			var previewViewModel = new PreviewViewModel(dependencyReport.ReportSettings,reportCreator.Pages);
-			viewer.SetBinding(previewViewModel);
-			ActivateReportTab();
-			
-		}
-		
-		void ActivateReportTab()
-		{
-			reportTab.Visibility = Visibility.Visible;
-			mainTab.SelectedItem = reportTab;
 		}
 	}
 }

@@ -21,21 +21,21 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 
-using ICSharpCode.NRefactory.TypeSystem;
+using Microsoft.CodeAnalysis;
 
 namespace ICSharpCode.CodeQuality.Engine.Dom
 {
 	public class PropertyNode : NodeBase
 	{
-		public IProperty PropertyDefinition { get; private set; }
+		public IPropertySymbol PropertyDefinition { get; private set; }
 		
-		public PropertyNode(IProperty propertyDefinition)
+		public PropertyNode(IPropertySymbol propertyDefinition)
 		{
 			this.PropertyDefinition = propertyDefinition;
 		}
 		
 		public override string Name {
-			get { return PropertyDefinition.PrintFullName(); }
+			get { return PropertyDefinition.ToDisplayString(); }
 		}
 		
 		public override IList<NodeBase> Children {

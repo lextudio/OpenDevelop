@@ -21,21 +21,21 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 
-using ICSharpCode.NRefactory.TypeSystem;
+using Microsoft.CodeAnalysis;
 
 namespace ICSharpCode.CodeQuality.Engine.Dom
 {
 	public class EventNode : NodeBase
 	{
-		public IEvent EventDefinition { get; private set; }
+		public IEventSymbol EventDefinition { get; private set; }
 		
-		public EventNode(IEvent eventDefinition)
+		public EventNode(IEventSymbol eventDefinition)
 		{
 			this.EventDefinition = eventDefinition;
 		}
 		
 		public override string Name {
-			get { return EventDefinition.PrintFullName(); }
+			get { return EventDefinition.ToDisplayString(); }
 		}
 		
 		public override IList<NodeBase> Children {

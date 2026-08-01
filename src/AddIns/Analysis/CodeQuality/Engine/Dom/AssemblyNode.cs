@@ -21,23 +21,23 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 
-using ICSharpCode.NRefactory.TypeSystem;
-using ICSharpCode.NRefactory.Utils;
+using Microsoft.CodeAnalysis;
+
 
 namespace ICSharpCode.CodeQuality.Engine.Dom
 {
 	public class AssemblyNode : NodeBase
 	{
-		public AssemblyNode(IAssembly assembly)
+		public AssemblyNode(IAssemblySymbol assembly)
 		{
 			this.AssemblyInfo = assembly;
 			namespaces = new List<NodeBase>();
 		}
 		
-		public IAssembly AssemblyInfo { get; private set; }
+		public IAssemblySymbol AssemblyInfo { get; private set; }
 		
 		public override string Name {
-			get { return AssemblyInfo.AssemblyName; }
+			get { return AssemblyInfo.Name; }
 		}
 		
 		internal List<NodeBase> namespaces;

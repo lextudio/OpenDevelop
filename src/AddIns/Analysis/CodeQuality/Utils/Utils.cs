@@ -23,7 +23,6 @@ using System.Runtime.InteropServices;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using ICSharpCode.CodeQuality.Engine.Dom;
-using Mono.Cecil;
 
 namespace ICSharpCode.CodeQuality
 {

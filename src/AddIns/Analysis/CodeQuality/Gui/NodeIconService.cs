@@ -23,7 +23,7 @@ using System.Text;
 using System.Windows.Media.Imaging;
 using ICSharpCode.CodeQuality.Engine.Dom;
 using ICSharpCode.Core.Presentation;
-using ICSharpCode.NRefactory.TypeSystem;
+using Microsoft.CodeAnalysis;
 
 namespace ICSharpCode.CodeQuality.Gui
 {
@@ -78,7 +78,7 @@ namespace ICSharpCode.CodeQuality.Gui
 		static BitmapSource GetImage(string name)
 		{
 			try {
-				return PresentationResourceService.GetBitmapSource(name);
+				return (System.Windows.Media.Imaging.BitmapSource)PresentationResourceService.GetBitmapSource(name);
 			} catch (Exception) {
 				return null; // image isn't needed necessarily
 			}
@@ -163,45 +163,45 @@ namespace ICSharpCode.CodeQuality.Gui
 
 		public static BitmapSource GetIcon(TypeNode type)
 		{
-			switch (type.TypeDefinition.Kind) {
+			switch (type.TypeDefinition.TypeKind) {
 				case TypeKind.Enum:
-					if (type.TypeDefinition.IsPublic)
+					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Public)
 						return Enum;
-					if (type.TypeDefinition.IsProtected)
+					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Protected)
 						return ProtectedEnum;
-					if (type.TypeDefinition.IsInternal)
+					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Internal)
 						return InternalEnum;
 					return PrivateEnum;
 				case TypeKind.Struct:
-					if (type.TypeDefinition.IsPublic)
+					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Public)
 						return Struct;
-					if (type.TypeDefinition.IsProtected)
+					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Protected)
 						return ProtectedStruct;
-					if (type.TypeDefinition.IsInternal)
+					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Internal)
 						return InternalStruct;
 					return PrivateStruct;
 				case TypeKind.Interface:
-					if (type.TypeDefinition.IsPublic)
+					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Public)
 						return Interface;
-					if (type.TypeDefinition.IsProtected)
+					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Protected)
 						return ProtectedInterface;
-					if (type.TypeDefinition.IsInternal)
+					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Internal)
 						return InternalInterface;
 					return PrivateInterface;
 				case TypeKind.Delegate:
-					if (type.TypeDefinition.IsPublic)
+					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Public)
 						return Delegate;
-					if (type.TypeDefinition.IsProtected)
+					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Protected)
 						return ProtectedDelegate;
-					if (type.TypeDefinition.IsInternal)
+					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Internal)
 						return InternalDelegate;
 					return PrivateDelegate;
 				default:
-					if (type.TypeDefinition.IsPublic)
+					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Public)
 						return Class;
-					if (type.TypeDefinition.IsProtected)
+					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Protected)
 						return ProtectedClass;
-					if (type.TypeDefinition.IsInternal)
+					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Internal)
 						return InternalClass;
 					return PrivateClass;
 			}

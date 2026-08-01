@@ -6,7 +6,6 @@
 	
 	<Manifest>
 		<Identity name = "ICSharpCode.CodeQuality"/>
-		<Dependency addin="ICSharpCode.Reporting.Addin" requirePreload="true"></Dependency>
 	</Manifest>
 	
 	<Runtime>
