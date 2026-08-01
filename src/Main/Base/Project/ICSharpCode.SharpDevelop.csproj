@@ -63,8 +63,6 @@
       <Link>Dom\TreeNodeFactoryService.cs</Link>
     </Compile>
     <Compile Include="..\..\GlobalAssemblyInfo.cs" Link="Properties\GlobalAssemblyInfo.cs" />
-    <None Remove="Editor\CodeCompletion\Images\*.png" />
-    <Resource Include="Editor\CodeCompletion\Images\*.png" />
   </ItemGroup>
   <ItemGroup>
     <!-- Out of MVP scope: deep NRefactory-era refactoring engine (type-graph) whose API shape

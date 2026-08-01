@@ -21,7 +21,7 @@ using System.Linq;
 using System.Threading;
 using System.Windows;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
+using ICSharpCode.Core.Presentation;
 using ICSharpCode.TypeSystem;
 using ICSharpCode.AvalonEdit.Document;
 
@@ -33,7 +33,7 @@ namespace ICSharpCode.SharpDevelop.Editor.CodeCompletion
 	public class CompletionImage
 	{
 		#region non-entity Images
-		static readonly BitmapImage namespaceImage = LoadBitmap("NameSpace");
+		static readonly ImageSource namespaceImage = LoadImage("NameSpace");
 		
 		/// <summary>
 		/// Gets the image for namespaces.
@@ -42,11 +42,33 @@ namespace ICSharpCode.SharpDevelop.Editor.CodeCompletion
 			get { return namespaceImage; }
 		}
 		
-		static BitmapImage LoadBitmap(string name)
+		static ImageSource LoadImage(string name)
 		{
-			BitmapImage image = new BitmapImage(new Uri("pack://application:,,,/ICSharpCode.SharpDevelop;component/Editor/CodeCompletion/Images/" + name + ".png"));
-			image.Freeze();
-			return image;
+			string resourceName;
+			switch (name) {
+				case "Struct":
+					resourceName = "Icons.16x16.Struct";
+					break;
+				case "Enum":
+				case "EnumValue":
+					resourceName = "Icons.16x16.Enum";
+					break;
+				case "StaticClass":
+					resourceName = "Icons.16x16.Class";
+					break;
+				case "FieldReadOnly":
+					resourceName = "Icons.16x16.Field";
+					break;
+				case "Constructor":
+				case "VirtualMethod":
+				case "PInvokeMethod":
+					resourceName = "Icons.16x16.Method";
+					break;
+				default:
+					resourceName = "Icons.16x16." + name;
+					break;
+			}
+			return PresentationResourceService.GetImageSource(resourceName);
 		}
 		#endregion
 		
@@ -266,7 +288,7 @@ namespace ICSharpCode.SharpDevelop.Editor.CodeCompletion
 		#endregion
 		
 		#region Overlays
-		static readonly BitmapImage overlayStatic = LoadBitmap("OverlayStatic");
+		static readonly ImageSource overlayStatic;
 		
 		/// <summary>
 		/// Gets the overlay image for the static modifier.
@@ -275,13 +297,7 @@ namespace ICSharpCode.SharpDevelop.Editor.CodeCompletion
 		
 		const int AccessibilityOverlaysLength = 5;
 		
-		static readonly BitmapImage[] accessibilityOverlays = new BitmapImage[AccessibilityOverlaysLength] {
-			null,
-			LoadBitmap("OverlayPrivate"),
-			LoadBitmap("OverlayProtected"),
-			LoadBitmap("OverlayInternal"),
-			LoadBitmap("OverlayProtectedInternal")
-		};
+		static readonly ImageSource[] accessibilityOverlays = new ImageSource[AccessibilityOverlaysLength];
 		
 		/// <summary>
 		/// Gets an overlay image for the specified accessibility.
@@ -331,7 +347,7 @@ namespace ICSharpCode.SharpDevelop.Editor.CodeCompletion
 			get {
 				ImageSource image = images[0];
 				if (image == null) {
-					image = LoadBitmap(imageName);
+					image = LoadImage(imageName);
 					Thread.MemoryBarrier();
 					images[0] = image;
 				}

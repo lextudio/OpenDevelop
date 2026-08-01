@@ -98,6 +98,7 @@ namespace ICSharpCode.Core.Presentation
 			{ "F#.ProjectIcon", "FS" },
 			{ "TextTemplate.ProjectBrowser.File", "TextFile" },
 			{ "TypeScript.ProjectBrowser.File", "JSScript" },
+			{ "TypeScript.Template.EmptyFile", "JSScript" },
 			{ "C#.File.MvcRazorFile.Small", "CSRazorFile" },
 			{ "VBNet.File.MvcRazorFile.Small", "CSRazorFile" },
 			{ "ILSpy", "Assembly" }
@@ -109,6 +110,32 @@ namespace ICSharpCode.Core.Presentation
 			{ "UnitTesting.Status.Passed", "Resources/VS2017/StatusOK/StatusOK_16x.xaml" },
 			{ "UnitTesting.Status.Failed", "Resources/VS2017/StatusCriticalError/StatusCriticalError_16x.xaml" },
 			{ "UnitTesting.Status.Skipped", "Resources/VS2017/StatusWarning/StatusWarning_16x.xaml" },
+			// Shared widgets.
+			{ "Widgets.ZoomIn", "Resources/VS2017/ZoomIn/ZoomIn_16x.xaml" },
+			{ "Widgets.ZoomOut", "Resources/VS2017/ZoomOut/ZoomOut_16x.xaml" },
+			// Designer and editor affordances.
+			{ "WpfDesigner.StatusCriticalError", "Resources/VS2017/StatusCriticalError/StatusCriticalError_16x.xaml" },
+			{ "AvalonEdit.ContextActions", "Resources/VS2017/Lightbulb/Lightbulb_16x.xaml" },
+			// AddIn Manager.
+			{ "AddInManager.Installed", "Resources/VS2017/StatusOK/StatusOK_16x.xaml" },
+			{ "AddInManager.Warning", "Resources/VS2017/StatusWarning/StatusWarning_16x.xaml" },
+			{ "AddInManager.Search", "Resources/VS2017/Search/Search_16x.xaml" },
+			{ "AddInManager.Previous", "Resources/VS2017/Previous/Previous_16x.xaml" },
+			{ "AddInManager.Next", "Resources/VS2017/Next/Next_16x.xaml" },
+			{ "AddInManager.Package", "Resources/VS2017/Package/Package_16x.xaml" },
+			{ "AddInManager.AddIn", "Resources/VS2017/AddIn/AddIn_16x.xaml" },
+			{ "AddInManager.Extension", "Resources/VS2017/Extension/Extension_16x.xaml" },
+			// Data tools.
+			{ "Data.Error", "Resources/VS2017/StatusCriticalError/StatusCriticalError_16x.xaml" },
+			{ "Data.Warning", "Resources/VS2017/StatusWarning/StatusWarning_16x.xaml" },
+			{ "Data.Refresh", "Resources/VS2017/Refresh/Refresh_16x.xaml" },
+			{ "Data.Database", "Resources/VS2017/Database/Database_16x.xaml" },
+			{ "Data.ConnectToDatabase", "Resources/VS2017/ConnectToDatabase/ConnectToDatabase_16x.xaml" },
+			{ "Data.Table", "Resources/VS2017/Table/Table_16x.xaml" },
+			{ "Data.Column", "Resources/VS2017/DatabaseColumn/DatabaseColumn_16x.xaml" },
+			{ "Data.ForeignKey", "Resources/VS2017/ForeignKey/ForeignKey_16x.xaml" },
+			{ "Data.Key", "Resources/VS2017/Key/Key_16x.xaml" },
+			{ "Data.StoredProcedure", "Resources/VS2017/DatabaseStoredProcedure/DatabaseStoredProcedure_16x.xaml" },
 			// QuickClassBrowser icons (RoslynSymbolIcons).
 			{ "Icons.16x16.Class", "Resources/VS2017/Class/Class_16x.xaml" },
 			{ "Icons.16x16.Interface", "Resources/VS2017/Interface/Interface_16x.xaml" },

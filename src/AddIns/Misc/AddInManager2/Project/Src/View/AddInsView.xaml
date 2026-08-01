@@ -7,24 +7,13 @@
 	xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
 	xmlns:aimview="clr-namespace:ICSharpCode.AddInManager2.View"
 	xmlns:aimvm="clr-namespace:ICSharpCode.AddInManager2.ViewModel"
+	xmlns:aim="clr-namespace:ICSharpCode.AddInManager2"
 	mc:Ignorable="d"
 	d:DesignHeight="250"
 	d:DesignWidth="500">
 	
 	<UserControl.Resources>
 		<aimvm:OpenHyperlinkCommand x:Key="OpenHyperlinkCommand"/>
-		<BitmapImage x:Key="DefaultPackageIcon"
-		             UriSource="pack://application:,,,/ICSharpCode.AddInManager2;component/Resources/packageicon.png"/>
-		<BitmapImage x:Key="SmallPackageIcon"
-		             UriSource="pack://application:,,,/ICSharpCode.AddInManager2;component/Resources/packageicon_small.png"/>
-		<BitmapImage x:Key="SDPackageIcon"
-		             UriSource="pack://application:,,,/ICSharpCode.AddInManager2;component/Resources/sd_packageicon.png"/>
-		<BitmapImage x:Key="SmallExternalAddInIcon"
-		             UriSource="pack://application:,,,/ICSharpCode.AddInManager2;component/Resources/external_addin_small.png"/>
-		<BitmapImage x:Key="InstalledTickIcon"
-		             UriSource="pack://application:,,,/ICSharpCode.AddInManager2;component/Resources/accept.png"/>
-		<BitmapImage x:Key="SearchIcon"
-		             UriSource="pack://application:,,,/ICSharpCode.AddInManager2;component/Resources/magnifier.png"/>
 		<BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
 		
 		<DataTemplate x:Key="PackageSourceComboBoxItemTemplate">
@@ -44,10 +33,10 @@
 		<Style x:Key="AddInImageStyle" TargetType="{x:Type Image}">
 			<Style.Triggers>
 				<DataTrigger Binding="{Binding IsOffline}" Value="False">
-					<Setter Property="Source" Value="{Binding Path=IconUrl, TargetNullValue={StaticResource DefaultPackageIcon}}" />
+					<Setter Property="Source" Value="{Binding Path=IconUrl, TargetNullValue={x:Static aim:AddInManagerImages.Package}}" />
 				</DataTrigger>
 				<DataTrigger Binding="{Binding IsOffline}" Value="True">
-					<Setter Property="Source" Value="{Binding Path=IconUrl, TargetNullValue={StaticResource SDPackageIcon}}" />
+					<Setter Property="Source" Value="{Binding Path=IconUrl, TargetNullValue={x:Static aim:AddInManagerImages.AddIn}}" />
 				</DataTrigger>
 				<DataTrigger Binding="{Binding IsEnabled}" Value="False">
 					<Setter Property="Opacity" Value="0.5" />
@@ -56,7 +45,7 @@
 		</Style>
 		
 		<Style x:Key="AddInOnlineStateImageStyle" TargetType="{x:Type Image}">
-			<Setter Property="Source" Value="{StaticResource SmallPackageIcon}" />
+			<Setter Property="Source" Value="{x:Static aim:AddInManagerImages.Package}" />
 			<Setter Property="Visibility" Value="{Binding Path=HasNuGetConnection, Converter={StaticResource BoolToVisibility}}" />
 			<Style.Triggers>
 				<DataTrigger Binding="{Binding IsEnabled}" Value="False">
@@ -66,7 +55,7 @@
 		</Style>
 		
 		<Style x:Key="AddInExternalStateImageStyle" TargetType="{x:Type Image}">
-			<Setter Property="Source" Value="{StaticResource SmallExternalAddInIcon}" />
+			<Setter Property="Source" Value="{x:Static aim:AddInManagerImages.Extension}" />
 			<Setter Property="Visibility" Value="{Binding Path=IsExternallyReferenced, Converter={StaticResource BoolToVisibility}}" />
 			<Style.Triggers>
 				<DataTrigger Binding="{Binding IsEnabled}" Value="False">
@@ -76,7 +65,7 @@
 		</Style>
 		
 		<Style x:Key="InstalledTickImageStyle" TargetType="{x:Type Image}">
-			<Setter Property="Source" Value="{StaticResource InstalledTickIcon}" />
+			<Setter Property="Source" Value="{x:Static aim:AddInManagerImages.Installed}" />
 			<Setter Property="Visibility" Value="Collapsed" />
 			<Style.Triggers>
 				<MultiDataTrigger>
@@ -517,7 +506,7 @@
 							TextDecorations="{x:Null}"
 							Command="{Binding Path=SearchCommand}">
 							<Image
-								Source="{StaticResource SearchIcon}"
+								Source="{x:Static aim:AddInManagerImages.Search}"
 								Height="16"
 								Width="16"/>
 						</Hyperlink>

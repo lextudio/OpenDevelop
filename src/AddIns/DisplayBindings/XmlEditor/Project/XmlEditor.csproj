@@ -24,9 +24,5 @@
   <ItemGroup>
     <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
     <None Include="XmlEditor.addin" CopyToOutputDirectory="Always" />
-    <None Include="Resources\license.txt" />
-    <EmbeddedResource Include="Resources\XmlCommentTreeNodeIcon.png" />
-    <EmbeddedResource Include="Resources\XmlElementTreeNodeIcon.png" />
-    <EmbeddedResource Include="Resources\XmlTextTreeNodeIcon.png" />
   </ItemGroup>
 </Project>

@@ -4,6 +4,7 @@
 	xmlns:core="clr-namespace:ICSharpCode.Core.Presentation;assembly=ICSharpCode.Core.Presentation"
 	xmlns:aimview="clr-namespace:ICSharpCode.AddInManager2.View"
 	xmlns:aimvm="clr-namespace:ICSharpCode.AddInManager2.ViewModel"
+	xmlns:aim="clr-namespace:ICSharpCode.AddInManager2"
 	xmlns:model="clr-namespace:ICSharpCode.AddInManager2.Model;assembly=ICSharpCode.SharpDevelop"
 	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
 	Height="480"
@@ -18,12 +19,9 @@
 		<aimvm:AddInManagerViewModel x:Key="ViewModel"/>
 		<BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
 		
-		<BitmapImage x:Key="ErrorIcon"
-		             UriSource="pack://application:,,,/ICSharpCode.AddInManager2;component/Resources/exclamation.png"/>
-		
 		<Style x:Key="errorImageStyle" TargetType="{x:Type Image}">
 			<Setter Property="Visibility" Value="{Binding Path=HasError, Converter={StaticResource BoolToVisibility}}" />
-			<Setter Property="Source" Value="{StaticResource ErrorIcon}" />
+			<Setter Property="Source" Value="{x:Static aim:AddInManagerImages.Warning}" />
 			<Style.Triggers>
 				<DataTrigger Binding="{Binding Path=HasError}" Value="True">
 					<DataTrigger.EnterActions>

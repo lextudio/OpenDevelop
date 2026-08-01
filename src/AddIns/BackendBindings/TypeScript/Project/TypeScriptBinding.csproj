@@ -140,7 +140,6 @@
     <Compile Include="Src\Hosting\LanguageServiceShimHost.cs" />
     <Compile Include="Src\Hosting\Script.cs" />
     <Compile Include="Src\Hosting\TypeScriptContext.cs" />
-    <Compile Include="Src\RegisterIconsCommand.cs" />
     <Compile Include="Src\RenameTypeScriptReferenceCommand.cs" />
     <Compile Include="Src\InitializeTypeScriptServiceCommand.cs" />
     <Compile Include="Src\TypeScriptCodeCompletionBinding.cs" />
@@ -173,7 +172,6 @@
     <Compile Include="Src\UpdateProjectBrowserFileNodesVisitor.cs" />
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="Resources\ImageResources.resx" />
     <EmbeddedResource Include="Resources\TypeScript.xshd" />
     <None Include="Scripts\compile.js">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>

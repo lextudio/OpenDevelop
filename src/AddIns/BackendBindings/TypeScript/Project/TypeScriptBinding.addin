@@ -28,9 +28,6 @@
 	
 	<Path name="/SharpDevelop/Autostart">
 		<Class
-			id="ICSharpCode.TypeScriptBinding.RegisterIcons"
-			class="ICSharpCode.TypeScriptBinding.RegisterIconsCommand"/>
-		<Class
 			id="ICSharpCode.TypeScriptBinding.RegisterTypeScriptCompileOnSaveFile"
 			class="ICSharpCode.TypeScriptBinding.RegisterTypeScriptCompileOnSaveFileCommand"/>
 		<Class

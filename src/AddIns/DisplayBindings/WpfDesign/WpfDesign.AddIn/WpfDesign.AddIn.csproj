@@ -45,7 +45,6 @@
          explicit AfterTargets="Build" copy below achieves the same "copy the manifest into this
          project's own output" result without exposing it as a propagating content item. -->
     <None Include="WpfDesign.addin" />
-    <Resource Include="Images\Icons.32x32.Error.png" />
   </ItemGroup>
 
   <Target Name="CopyAddInManifest" AfterTargets="Build">

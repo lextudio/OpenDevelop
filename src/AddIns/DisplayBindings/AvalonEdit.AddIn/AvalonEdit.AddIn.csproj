@@ -33,10 +33,7 @@
   <ItemGroup>
     <Compile Include="..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
     <None Include="AvalonEdit.AddIn.addin" CopyToOutputDirectory="Always" />
-    <None Include="Src\ContextActions\license.txt" />
     <EmbeddedResource Include="Resources\IncrementalSearchCursor.cur" />
     <EmbeddedResource Include="Resources\ReverseIncrementalSearchCursor.cur" />
-    <Resource Include="Src\ContextActions\bulb.png" />
-    <Resource Include="Src\ContextActions\pencil.png" />
   </ItemGroup>
 </Project>
