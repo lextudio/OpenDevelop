@@ -310,6 +310,7 @@ namespace ICSharpCode.SharpDevelop.Sda
 				this.host = host;
 			}
 			
+			[Obsolete]
 			public override object InitializeLifetimeService()
 			{
 				return null;

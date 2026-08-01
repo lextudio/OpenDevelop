@@ -10,6 +10,7 @@ using ICSharpCode.SharpDevelop.Templates;
 
 namespace ICSharpCode.SharpDevelop.Templates
 {
+    [CLSCompliant(false)]
     public sealed partial class NewItemWindow : Window
     {
         const string BundledTextTemplateIdentity = "OpenDevelop.Templates.TextTemplate.Item";

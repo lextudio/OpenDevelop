@@ -78,12 +78,26 @@ public sealed class CodeCoverageTests
         bool anyMethodVisited = false;
         foreach (var module in modules.EnumerateArray())
         {
-            if (module.GetProperty("visitedCodeLength").GetInt32() > 0)
+            // Modules without locally-resolvable source spans can have zero computed
+            // character length even though AltCover reports visited sequence/branch points.
+            if (module.GetProperty("visitedCodeLength").GetInt32() > 0
+                || module.GetProperty("branchCoveragePercent").GetDecimal() > 0)
             {
                 anyMethodVisited = true;
                 break;
             }
         }
+		// A coverage run must still travel through the normal MTP result pipeline so
+		// the Unit Tests pad receives ResultChanged and paints pass/fail node icons.
+		var tree = await _app.InvokeAsync("od.unit-test.tree");
+		var root = tree.GetProperty("tests")[0];
+		var passingTest = FindTest(root, "AlwaysPasses");
+		var failingTest = FindTest(root, "AlwaysFails");
+		Assert.True(passingTest.HasValue, "AlwaysPasses was not present in the Unit Tests tree.");
+		Assert.True(failingTest.HasValue, "AlwaysFails was not present in the Unit Tests tree.");
+		Assert.Equal("Success", passingTest.Value.GetProperty("result").GetString());
+		Assert.Equal("Failure", failingTest.Value.GetProperty("result").GetString());
+
         Assert.True(anyMethodVisited, "Expected at least one module to show non-zero visited code length.");
     }
 

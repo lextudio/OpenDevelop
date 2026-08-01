@@ -58,7 +58,7 @@ namespace ICSharpCode.CodeCoverage
 			var coverageResultsReader = new CodeCoverageResultsReader();
 
 			ITestService testService = SD.GetRequiredService<ITestService>();
-			IEnumerable<ITest> allTests = GetTests(testService);
+			IReadOnlyList<ITest> allTests = GetTests(testService).ToList();
 
 			IProject project = FindProject(allTests);
 			if (project == null)
@@ -73,6 +73,7 @@ namespace ICSharpCode.CodeCoverage
 				run = await coverageRunner.RunAsync(
 					new[] { project },
 					BuildProjectAsync,
+					(_, outputLines, cancellationToken) => PublishTestResultsAsync(mtpTestProject, allTests, outputLines, cancellationToken),
 					CancellationToken.None);
 			}
 			foreach (string line in run.LogLines)
@@ -92,6 +93,51 @@ namespace ICSharpCode.CodeCoverage
 			if (run.ResultFiles.Any())
 				CodeCoverageService.CodeCoverageHighlighted = true;
 			DisplayCodeCoverageResults(coverageResultsReader);
+		}
+
+		static async Task PublishTestResultsAsync(
+			MtpTestProject testProject,
+			IReadOnlyList<ITest> tests,
+			IReadOnlyList<string> outputLines,
+			CancellationToken cancellationToken)
+		{
+			cancellationToken.ThrowIfCancellationRequested();
+			if (testProject == null)
+				return;
+
+			await SD.MainThread.InvokeAsync(() => {
+				foreach (ITest test in tests)
+					test.ResetTestResults();
+				foreach (string line in outputLines) {
+					if (!TryParseTestResultLine(line, out string name, out TestResultType resultType))
+						continue;
+					var result = new TestResult(name) {
+						ResultType = resultType
+					};
+					testProject.UpdateTestResult(result);
+				}
+			});
+		}
+
+		static bool TryParseTestResultLine(string line, out string name, out TestResultType resultType)
+		{
+			name = null;
+			resultType = TestResultType.None;
+			if (line.StartsWith("passed ", StringComparison.Ordinal))
+				resultType = TestResultType.Success;
+			else if (line.StartsWith("failed ", StringComparison.Ordinal))
+				resultType = TestResultType.Failure;
+			else if (line.StartsWith("skipped ", StringComparison.Ordinal))
+				resultType = TestResultType.Ignored;
+			else
+				return false;
+
+			int nameStart = line.IndexOf(' ') + 1;
+			int durationStart = line.LastIndexOf(" (", StringComparison.Ordinal);
+			if (durationStart <= nameStart)
+				return false;
+			name = line.Substring(nameStart, durationStart - nameStart);
+			return true;
 		}
 
 		static async Task<bool> BuildProjectAsync(IProject project, CancellationToken cancellationToken)

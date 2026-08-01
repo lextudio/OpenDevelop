@@ -147,7 +147,7 @@ namespace ICSharpCode.SharpDevelop.Parser
 		
 		static bool IsSerializable(IUnresolvedFile unresolvedFile)
 		{
-			return unresolvedFile != null && unresolvedFile.GetType().IsSerializable && unresolvedFile.LastWriteTime != default(DateTime);
+			return unresolvedFile != null && unresolvedFile.GetType().IsDefined(typeof(SerializableAttribute), false) && unresolvedFile.LastWriteTime != default(DateTime);
 		}
 		
 		static string GetCacheFileName(FileName projectFileName)

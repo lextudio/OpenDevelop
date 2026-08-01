@@ -51,6 +51,7 @@ namespace ICSharpCode.SharpDevelop.Sda
 		/// <summary>
 		/// Create a new RunWorkbenchException instance.
 		/// </summary>
+		[Obsolete(DiagnosticId = "SYSLIB0051")]
 		protected RunWorkbenchException(SerializationInfo info, StreamingContext context) : base(info, context)
 		{
 		}

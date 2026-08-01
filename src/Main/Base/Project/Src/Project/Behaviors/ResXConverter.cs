@@ -36,7 +36,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			else
 				version = ScanVersion(project.TargetFrameworkVersion);
 			string name = type.AssemblyQualifiedName;
-			if (type.Assembly.GlobalAssemblyCache && IsFrameworkAssembly(type.Assembly.GetName().GetPublicKeyToken()))
+			if (IsFrameworkAssembly(type.Assembly.GetName().GetPublicKeyToken()))
 				name = type.AssemblyQualifiedName.Replace(", Version=4.0.0.0,", ", Version=" + PrintVersion(version) + ",");
 			return name;
 		}

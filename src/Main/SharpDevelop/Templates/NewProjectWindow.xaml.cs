@@ -9,6 +9,7 @@ using ICSharpCode.SharpDevelop.Templates;
 
 namespace ICSharpCode.SharpDevelop.Templates
 {
+    [CLSCompliant(false)]
     public sealed partial class NewProjectWindow : Window
     {
         readonly TemplateDiscoveryService _service;

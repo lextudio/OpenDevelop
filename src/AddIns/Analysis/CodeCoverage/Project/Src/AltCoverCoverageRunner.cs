@@ -24,6 +24,7 @@ namespace ICSharpCode.CodeCoverage
 		public async Task<CodeCoverageRunResult> RunAsync(
 			IReadOnlyList<IProject> projects,
 			Func<IProject, CancellationToken, Task<bool>> buildProjectAsync,
+			Func<IProject, IReadOnlyList<string>, CancellationToken, Task> publishTestResultsAsync,
 			CancellationToken cancellationToken)
 		{
 			var log = new List<string>();
@@ -56,10 +57,19 @@ namespace ICSharpCode.CodeCoverage
 					continue;
 				}
 
-				var testRun = await CodeCoverageProcessRunner.RunAsync(CodeCoverageProjectOutput.CreateRunStartInfo(project), cancellationToken);
+				// MTP's server mode currently produces zero AltCover visits, so keep the
+				// proven one-shot process and request detailed, ANSI-free result lines. These
+				// are published into the ITest model without executing the tests a second time.
+				var testStartInfo = CodeCoverageProjectOutput.CreateRunStartInfo(project);
+				testStartInfo.ArgumentList.Add("--no-ansi");
+				testStartInfo.ArgumentList.Add("--no-progress");
+				testStartInfo.ArgumentList.Add("--output");
+				testStartInfo.ArgumentList.Add("Detailed");
+				var testRun = await CodeCoverageProcessRunner.RunAsync(testStartInfo, cancellationToken);
 				log.AddRange(testRun.OutputLines);
+				await publishTestResultsAsync(project, testRun.OutputLines, cancellationToken);
 				if (testRun.ExitCode != 0)
-					log.Add("Instrumented test run failed for " + project.Name + " with exit code " + testRun.ExitCode);
+					log.Add("Instrumented test run completed with exit code " + testRun.ExitCode + " for " + project.Name);
 
 				var collect = await CodeCoverageProcessRunner.RunAsync(application.GetCollectProcessStartInfo(), cancellationToken);
 				log.AddRange(collect.OutputLines);

@@ -86,7 +86,7 @@ namespace ICSharpCode.CodeCoverage
 				return foreColor;
 			}
 			set {
-				if (foreColor != null) {
+				if (foreColor != value) {
 					foreColor = value;
 					changed = true;
 				}

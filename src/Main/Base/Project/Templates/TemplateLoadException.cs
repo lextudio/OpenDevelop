@@ -40,6 +40,7 @@ namespace ICSharpCode.SharpDevelop.Templates
 		{
 		}
 		
+		[Obsolete(DiagnosticId = "SYSLIB0051")]
 		protected TemplateLoadException(SerializationInfo info, StreamingContext context) : base(info, context)
 		{
 		}

@@ -49,7 +49,7 @@ namespace ICSharpCode.SharpDevelop.Sda
 		SharpDevelopHost.CallbackHelper callback;
 		bool useSharpDevelopErrorHandler;
 		
-		
+		[Obsolete]
 		public override object InitializeLifetimeService()
 		{
 			return null;
