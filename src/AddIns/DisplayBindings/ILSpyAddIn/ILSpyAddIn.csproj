@@ -43,8 +43,6 @@
     <!-- Existing legacy launcher-based addin references (untouched). -->
     <ProjectReference Include="..\..\..\Libraries\AvalonEdit\ICSharpCode.AvalonEdit\ICSharpCode.AvalonEdit.csproj" Private="false" />
     <ProjectReference Include="..\..\..\..\externals\ilspy\ICSharpCode.Decompiler\ICSharpCode.Decompiler.csproj" />
-    <ProjectReference Include="..\..\..\Libraries\NRefactory\ICSharpCode.NRefactory.CSharp\ICSharpCode.NRefactory.CSharp.csproj" Private="false" />
-    <ProjectReference Include="..\..\..\Libraries\NRefactory\ICSharpCode.NRefactory\ICSharpCode.NRefactory.csproj" Private="false" />
     <ProjectReference Include="..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
     <!-- ICSharpCode.SharpDevelop.ViewModels.ToolPaneModel/DockWorkspace (the pads structure we
          plug ILSpy's panes into) live in the OpenDevelop workbench assembly, not in the Core

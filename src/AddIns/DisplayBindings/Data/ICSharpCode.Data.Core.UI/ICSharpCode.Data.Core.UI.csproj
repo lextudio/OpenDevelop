@@ -4,6 +4,7 @@
     <RootNamespace>ICSharpCode.Data.Core.UI</RootNamespace>
     <AssemblyName>ICSharpCode.Data.Core.UI</AssemblyName>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
     <UseWPF>true</UseWPF>
     <OutputType>Library</OutputType>
     <OutputPath>..\..\..\..\..\AddIns\DisplayBindings\Data\</OutputPath>

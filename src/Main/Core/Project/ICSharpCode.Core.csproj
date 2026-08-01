@@ -3,14 +3,13 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <UseWPF>true</UseWPF>
-    <NoWarn>$(NoWarn);CA1416;SYSLIB0051</NoWarn>
+    <NoWarn>$(NoWarn);CA1416;SYSLIB0051;1591;CS1591</NoWarn>
     <RootNamespace>ICSharpCode.Core</RootNamespace>
     <AssemblyName>ICSharpCode.Core</AssemblyName>
     <OutputType>Library</OutputType>
     <SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>..\..\ICSharpCode.SharpDevelop.snk</AssemblyOriginatorKeyFile>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-    <NoWarn>1591;CS1591</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <!-- GlobalAssemblyInfo.cs is outside project dir, must be linked explicitly -->
