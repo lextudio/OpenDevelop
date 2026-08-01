@@ -92,10 +92,30 @@ namespace ICSharpCode.UnitTesting
 		#endregion
 		
 		#region RunTests
-		CancellationTokenSource runTestsCancellationTokenSource;
+		TestOperation activeOperation;
+
+		public event EventHandler RunningTestsChanged = delegate { };
 		
 		public bool IsRunningTests {
-			get { return runTestsCancellationTokenSource != null; }
+			get { return activeOperation != null; }
+		}
+
+		public TestOperationKind? CurrentOperation {
+			get { return activeOperation != null ? activeOperation.Kind : (TestOperationKind?)null; }
+		}
+
+		public bool TryBeginOperation(TestOperationKind kind, out ITestOperation operation)
+		{
+			SD.MainThread.VerifyAccess();
+			if (activeOperation != null) {
+				operation = null;
+				return false;
+			}
+
+			activeOperation = new TestOperation(this, kind);
+			operation = activeOperation;
+			OnRunningTestsChanged();
+			return true;
 		}
 		
 		public async Task RunTestsAsync(IEnumerable<ITest> selectedTests, TestExecutionOptions options)
@@ -107,26 +127,75 @@ namespace ICSharpCode.UnitTesting
 				return;
 			}
 			
-			CancelRunningTests();
-			runTestsCancellationTokenSource = new CancellationTokenSource();
-			// invalidate commands as IsRunningTests changes
-			System.Windows.Input.CommandManager.InvalidateRequerySuggested();
+			ITestOperation operation;
+			var kind = options.UseDebugger ? TestOperationKind.Debug : TestOperationKind.Run;
+			if (!TryBeginOperation(kind, out operation))
+				return;
+
 			var executionManager = new TestExecutionManager();
-			try {
-				await executionManager.RunTestsAsync(selectedTests, options, runTestsCancellationTokenSource.Token);
-			} finally {
-				runTestsCancellationTokenSource = null;
-				// invalidate commands as IsRunningTests changes
-				System.Windows.Input.CommandManager.InvalidateRequerySuggested();
+			using (operation) {
+				await executionManager.RunTestsAsync(selectedTests, options, operation.CancellationToken);
 			}
 		}
 		
 		public void CancelRunningTests()
 		{
 			SD.MainThread.VerifyAccess();
-			if (runTestsCancellationTokenSource != null) {
-				runTestsCancellationTokenSource.Cancel();
-				runTestsCancellationTokenSource = null;
+			activeOperation?.Cancel();
+		}
+
+		void EndOperation(TestOperation operation)
+		{
+			void EndOnMainThread()
+			{
+				if (!ReferenceEquals(activeOperation, operation))
+					return;
+				activeOperation = null;
+				operation.DisposeCancellationTokenSource();
+				OnRunningTestsChanged();
+			}
+
+			SD.MainThread.InvokeIfRequired(EndOnMainThread);
+		}
+
+		void OnRunningTestsChanged()
+		{
+			RunningTestsChanged(this, EventArgs.Empty);
+			System.Windows.Input.CommandManager.InvalidateRequerySuggested();
+		}
+
+		sealed class TestOperation : ITestOperation
+		{
+			readonly SDTestService owner;
+			readonly CancellationTokenSource cancellation = new CancellationTokenSource();
+			bool disposed;
+
+			public TestOperation(SDTestService owner, TestOperationKind kind)
+			{
+				this.owner = owner;
+				Kind = kind;
+			}
+
+			public TestOperationKind Kind { get; }
+			public CancellationToken CancellationToken { get { return cancellation.Token; } }
+
+			public void Cancel()
+			{
+				if (!disposed)
+					cancellation.Cancel();
+			}
+
+			public void Dispose()
+			{
+				if (disposed)
+					return;
+				disposed = true;
+				owner.EndOperation(this);
+			}
+
+			public void DisposeCancellationTokenSource()
+			{
+				cancellation.Dispose();
 			}
 		}
 		#endregion

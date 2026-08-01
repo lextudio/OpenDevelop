@@ -53,11 +53,21 @@ namespace ICSharpCode.CodeCoverage
 
 		async Task RunAsync()
 		{
+			ITestService testService = SD.GetRequiredService<ITestService>();
+			ITestOperation operation;
+			if (!testService.TryBeginOperation(TestOperationKind.Coverage, out operation))
+				return;
+
+			using (operation) {
+				await RunWithLeaseAsync(testService, operation.CancellationToken);
+			}
+		}
+
+		async Task RunWithLeaseAsync(ITestService testService, CancellationToken cancellationToken)
+		{
 			ClearCodeCoverageResults();
 
 			var coverageResultsReader = new CodeCoverageResultsReader();
-
-			ITestService testService = SD.GetRequiredService<ITestService>();
 			IReadOnlyList<ITest> allTests = GetTests(testService).ToList();
 
 			IProject project = FindProject(allTests);
@@ -66,7 +76,7 @@ namespace ICSharpCode.CodeCoverage
 
 			var mtpTestProject = FindMtpTestProject(allTests, project);
 			if (mtpTestProject != null)
-				await mtpTestProject.RefreshAsync();
+				await mtpTestProject.RefreshAsync(cancellationToken);
 
 			CodeCoverageRunResult run;
 			using (mtpTestProject?.SuppressBuildDiscovery()) {
@@ -74,7 +84,7 @@ namespace ICSharpCode.CodeCoverage
 					new[] { project },
 					BuildProjectAsync,
 					(_, outputLines, cancellationToken) => PublishTestResultsAsync(mtpTestProject, allTests, outputLines, cancellationToken),
-					CancellationToken.None);
+					cancellationToken);
 			}
 			foreach (string line in run.LogLines)
 				SD.Log.Info("Code coverage: " + line);

@@ -48,15 +48,27 @@ namespace ICSharpCode.UnitTesting
 		event EventHandler OpenSolutionChanged;
 		
 		/// <summary>
-		/// Builds the project (if necessary) and runs the specified tests.
-		/// If tests are already running, the existing run is cancelled.
+		/// Builds the project (if necessary) and runs the specified tests. If another
+		/// test operation is active, this request is ignored.
 		/// </summary>
 		Task RunTestsAsync(IEnumerable<ITest> selectedTests, TestExecutionOptions options);
+
+		/// <summary>
+		/// Attempts to acquire the solution-wide test-operation lease. Test runs,
+		/// debugging and coverage must all hold this lease for their full lifetime.
+		/// </summary>
+		bool TryBeginOperation(TestOperationKind kind, out ITestOperation operation);
 		
 		/// <summary>
 		/// Gets whether tests are currently running.
 		/// </summary>
 		bool IsRunningTests { get; }
+
+		/// <summary>Gets the kind of the active operation, or null when idle.</summary>
+		TestOperationKind? CurrentOperation { get; }
+
+		/// <summary>Raised whenever the global test-operation state changes.</summary>
+		event EventHandler RunningTestsChanged;
 		
 		/// <summary>
 		/// Aborts the current test run.
