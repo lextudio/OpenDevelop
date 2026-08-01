@@ -345,7 +345,7 @@ namespace ICSharpCode.SharpDevelop.Parser
 					ResolveResult rr = entry.parser.Resolve(parseInfo, location, compilation, cancellationToken);
 					LoggingService.Debug("Resolved " + location + " to " + rr);
 					return rr ?? ErrorResolveResult.UnknownError;
-				}, cancellationToken);
+				}, cancellationToken, TaskContinuationOptions.None, TaskScheduler.Default);
 		}
 		
 		public async Task FindLocalReferencesAsync(FileName fileName, IVariable variable, Action<SearchResultMatch> callback, ITextSource fileContent, ICompilation compilation, CancellationToken cancellationToken)

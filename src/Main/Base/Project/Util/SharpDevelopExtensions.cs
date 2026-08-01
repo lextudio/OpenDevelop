@@ -22,6 +22,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -94,6 +95,9 @@ namespace ICSharpCode.SharpDevelop
 		/// </summary>
 		public static void FireAndForget(this Task task)
 		{
+			var scheduler = SynchronizationContext.Current != null
+				? TaskScheduler.FromCurrentSynchronizationContext()
+				: TaskScheduler.Default;
 			task.ContinueWith(
 				t => {
 					if (t.Exception != null) {
@@ -102,7 +106,7 @@ namespace ICSharpCode.SharpDevelop
 						else
 							Core.MessageService.ShowException(t.Exception);
 					}
-				}, TaskContinuationOptions.OnlyOnFaulted);
+				}, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, scheduler);
 		}
 		#endregion
 		

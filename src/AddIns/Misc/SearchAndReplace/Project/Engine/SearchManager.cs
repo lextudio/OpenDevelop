@@ -136,7 +136,7 @@ namespace SearchAndReplace
 						var list = fileList.ToList();
 						ThrowIfCancellationRequested();
 						SearchParallel(list, observer);
-					}, TaskCreationOptions.LongRunning);
+					}, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 				task.ContinueWith(
 					t => {
 						LoggingService.Debug("Parallel FindAll finished " + (t.IsFaulted ? "with error" : "successfully"));
@@ -145,7 +145,7 @@ namespace SearchAndReplace
 						else
 							observer.OnCompleted();
 						monitor.Dispose();
-					});
+					}, TaskScheduler.Default);
 				return this;
 			}
 			
@@ -172,7 +172,7 @@ namespace SearchAndReplace
 					}
 					if (exceptions.Count > 0) break;
 					FileName file = files[i];
-					queue.Enqueue(Task.Factory.StartNew(() => SearchFile(file)));
+					queue.Enqueue(Task.Run(() => SearchFile(file)));
 				}
 				while (queue.Count > 0) {
 					HandleResult(queue.Dequeue(), observer, exceptions, files);

@@ -681,7 +681,7 @@ namespace ICSharpCode.SharpDevelop
 			return managedProcess.WaitForExitAsync().ContinueWith(_ => {
 				exitCode = managedProcess.ExitCode;
 				hasExited = true;
-			});
+			}, TaskScheduler.Default);
 		}
 		if (safeProcessHandle.IsClosed)
 			throw new ObjectDisposedException("ProcessRunner");

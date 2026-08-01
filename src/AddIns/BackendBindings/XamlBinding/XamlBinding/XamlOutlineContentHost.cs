@@ -39,7 +39,7 @@ namespace ICSharpCode.XamlBinding
 	public sealed class XamlOutlineContentHost : IOutlineContentHost, IDisposable
 	{
 		readonly ITextEditor editor;
-		readonly TreeView treeView = new TreeView();
+		readonly System.Windows.Controls.TreeView treeView = new System.Windows.Controls.TreeView();
 		CancellationTokenSource refreshCts;
 
 		public XamlOutlineContentHost(ITextEditor editor)

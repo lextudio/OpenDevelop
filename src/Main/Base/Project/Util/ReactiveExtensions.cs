@@ -106,7 +106,7 @@ namespace ICSharpCode.SharpDevelop
 			public TaskToObserverSubscription(Func<CancellationToken, Action<T>, Task> func, IObserver<T> observer)
 			{
 				this.observer = observer;
-				func(cts.Token, Callback).ContinueWith(TaskCompleted).FireAndForget();
+				func(cts.Token, Callback).ContinueWith(TaskCompleted, TaskScheduler.Default).FireAndForget();
 			}
 			
 			public TaskToObserverSubscription(Func<IProgressMonitor, Action<T>, Task> func, IProgressMonitor progressMonitor, IObserver<T> observer)
@@ -114,7 +114,7 @@ namespace ICSharpCode.SharpDevelop
 				this.observer = observer;
 				this.progressMonitor = progressMonitor;
 				this.childProgressMonitor = progressMonitor.CreateSubTask(1, cts.Token);
-				func(childProgressMonitor, Callback).ContinueWith(TaskCompleted).FireAndForget();
+				func(childProgressMonitor, Callback).ContinueWith(TaskCompleted, TaskScheduler.Default).FireAndForget();
 			}
 			
 			void Callback(T item)

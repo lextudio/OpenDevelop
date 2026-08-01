@@ -89,7 +89,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 					if (Interlocked.Decrement(ref outstandingBackgroundTasks) == 0) {
 						backgroundTaskEvent.Set();
 					}
-				});
+				}, TaskScheduler.Default);
 		}
 		
 		internal void WaitForBackgroundTasks()

@@ -21,6 +21,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Input;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Dom;
@@ -39,7 +41,10 @@ namespace ICSharpCode.SharpDevelop.Project
 			projectBindings = SD.AddInTree.BuildItems<ProjectBindingDescriptor>("/SharpDevelop/Workbench/ProjectBindings", null, false);
 			targetFrameworks = SD.AddInTree.BuildItems<TargetFramework>("/SharpDevelop/TargetFrameworks", null, false);
 			
-			SD.GetFutureServiceAsync<IWorkbench>().ContinueWith(t => t.Result.ActiveViewContentChanged += ActiveViewContentChanged).FireAndForget();
+			var scheduler = SynchronizationContext.Current != null
+				? TaskScheduler.FromCurrentSynchronizationContext()
+				: TaskScheduler.Default;
+			SD.GetFutureServiceAsync<IWorkbench>().ContinueWith(t => t.Result.ActiveViewContentChanged += ActiveViewContentChanged, scheduler).FireAndForget();
 			
 			var applicationStateInfoService = SD.GetService<ApplicationStateInfoService>();
 			if (applicationStateInfoService != null) {

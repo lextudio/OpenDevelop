@@ -11,6 +11,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 
@@ -869,7 +870,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			if (task == null)
 				return JsonSerializer.Serialize(new { started = false, error });
 			task.ContinueWith(t => LoggingService.Warn("DevFlow unit test run failed", t.Exception),
-				TaskContinuationOptions.OnlyOnFaulted);
+				CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
 			return JsonSerializer.Serialize(new { started = true });
 		}
 		

@@ -170,9 +170,14 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 			if (!File.Exists(dotnetExe) || !Directory.Exists(sdkDir))
 				return null;
 
+			// Order by numeric version (stable releases only, like ResolveEffectiveSdk's version
+			// comparison below): plain ordinal sorting puts "9.0.305" above "10.0.200" ('1' < '9'),
+			// which wrongly picked an ancient SDK and failed every net10.0 build with NETSDK1045.
 			var versions = Directory.GetDirectories(sdkDir)
 				.Select(Path.GetFileName)
-				.OrderBy(v => v, StringComparer.OrdinalIgnoreCase)
+				.Where(v => v != null && !v.Contains('-'))
+				.OrderBy(v => Version.TryParse(v, out var ver) ? ver : new Version(0, 0))
+				.Select(v => v)
 				.ToList();
 			if (versions.Count == 0)
 				return null;
