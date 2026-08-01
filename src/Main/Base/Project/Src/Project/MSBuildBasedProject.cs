@@ -1205,7 +1205,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			// refresh project browser to make sure references and other project items are still valid
 			// after TargetFramework or other properties changed. Fixes SD-1876
 			if (!isLoading)
-				ProjectBrowserPad.RefreshViewAsync();
+				ProjectBrowserPad.RefreshView();
 		}
 		
 		void AddProjectItem(ProjectItem item)

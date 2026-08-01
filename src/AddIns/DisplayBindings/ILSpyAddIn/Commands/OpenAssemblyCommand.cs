@@ -22,7 +22,7 @@ namespace ICSharpCode.ILSpyAddIn.Commands
 			};
 
 			if (dialog.ShowDialog() == true) {
-				_ = IlSpyWorkspaceHost.OpenAssembly(dialog.FileName);
+				_ = IlSpyWorkspaceHost.OpenAssemblyAsync(dialog.FileName);
 			}
 		}
 	}

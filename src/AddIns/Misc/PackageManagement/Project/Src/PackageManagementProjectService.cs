@@ -48,7 +48,7 @@ namespace ICSharpCode.PackageManagement
 		
 		public void RefreshProjectBrowser()
 		{
-			SD.MainThread.InvokeAsyncAndForget(ProjectBrowserPad.RefreshViewAsync);
+			SD.MainThread.InvokeAsyncAndForget(ProjectBrowserPad.RefreshView);
 		}
 		
 		void InvokeIfRequired(Action action)

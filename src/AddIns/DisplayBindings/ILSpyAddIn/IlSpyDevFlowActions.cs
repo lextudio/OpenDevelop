@@ -16,9 +16,9 @@ namespace ICSharpCode.ILSpyAddIn
 	public static class IlSpyDevFlowActions
 	{
 		[DevFlowAction("od.ilspy.open-assembly", Description = "Open an assembly (.dll/.exe) into the hosted ILSpy AssemblyTreeModel, bypassing the native file dialog")]
-		public static async Task<string> OpenAssembly(string path)
+		public static async Task<string> OpenAssemblyAsync(string path)
 		{
-			await IlSpyWorkspaceHost.OpenAssembly(path);
+			await IlSpyWorkspaceHost.OpenAssemblyAsync(path);
 			return JsonSerializer.Serialize(new { opened = true, path });
 		}
 

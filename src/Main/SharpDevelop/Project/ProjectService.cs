@@ -39,7 +39,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			projectBindings = SD.AddInTree.BuildItems<ProjectBindingDescriptor>("/SharpDevelop/Workbench/ProjectBindings", null, false);
 			targetFrameworks = SD.AddInTree.BuildItems<TargetFramework>("/SharpDevelop/TargetFrameworks", null, false);
 			
-			SD.GetFutureService<IWorkbench>().ContinueWith(t => t.Result.ActiveViewContentChanged += ActiveViewContentChanged).FireAndForget();
+			SD.GetFutureServiceAsync<IWorkbench>().ContinueWith(t => t.Result.ActiveViewContentChanged += ActiveViewContentChanged).FireAndForget();
 			
 			var applicationStateInfoService = SD.GetService<ApplicationStateInfoService>();
 			if (applicationStateInfoService != null) {

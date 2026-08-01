@@ -159,18 +159,18 @@ namespace ICSharpCode.ILSpyAddIn
 			analyzerPane.Show();
 			decompiledCodePane.Show();
 
-			MessageBus<AssemblyTreeSelectionChangedEventArgs>.Subscribers += (sender, e) => lastDecompile = RefreshDecompiledView();
+			MessageBus<AssemblyTreeSelectionChangedEventArgs>.Subscribers += (sender, e) => lastDecompile = RefreshDecompiledViewAsync();
 		}
 
 		// Tracks the in-flight decompile kicked off by the AssemblyTreeSelectionChangedEventArgs
 		// subscriber above (fired synchronously from within OpenFiles() below, as soon as it
-		// selects the newly opened assembly's node), so OpenAssembly can await the *same* task
+		// selects the newly opened assembly's node), so OpenAssemblyAsync can await the *same* task
 		// instead of starting a second, redundant DecompileAsync call - ILSpy's decompiler
 		// cancels an in-progress decompilation when a new one starts, so racing two calls here
 		// just cancels one of them (surfaced as an unhandled TaskCanceledException).
 		private static Task lastDecompile = Task.CompletedTask;
 
-		public static async Task OpenAssembly(string fileName)
+		public static async Task OpenAssemblyAsync(string fileName)
 		{
 			EnsureInitialized();
 			assemblyTreeModel.OpenFiles(new[] { fileName });
@@ -193,7 +193,7 @@ namespace ICSharpCode.ILSpyAddIn
 			}
 		}
 
-		private static Task RefreshDecompiledView()
+		private static Task RefreshDecompiledViewAsync()
 		{
 			var exportProvider = App.ExportProvider;
 			var languageService = exportProvider.GetExportedValue<LanguageService>();

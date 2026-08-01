@@ -131,7 +131,7 @@ namespace CSharpBinding.Refactoring
 				ProjectService.AddProjectItem(project, projectItem);
 				FileService.FireFileCreated(newFileName, false);
 				project.Save();
-				ProjectBrowserPad.RefreshViewAsync();
+				ProjectBrowserPad.RefreshView();
 			}
 		}
 		

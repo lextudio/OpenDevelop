@@ -74,7 +74,7 @@ namespace ClassDiagramAddin
 			FileProjectItem fpi = new FileProjectItem(p, ItemType.Content);
 			fpi.FileName = filename;
 			ProjectService.AddProjectItem(p, fpi);
-			ProjectBrowserPad.RefreshViewAsync();
+			ProjectBrowserPad.RefreshView();
 			p.Save();
 			FileService.OpenFile(filename);
 		}

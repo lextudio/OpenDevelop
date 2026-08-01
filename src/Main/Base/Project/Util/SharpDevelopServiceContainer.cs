@@ -157,7 +157,7 @@ namespace ICSharpCode.SharpDevelop
 			RemoveService(serviceType);
 		}
 		
-		public Task<T> GetFutureService<T>()
+		public Task<T> GetFutureServiceAsync<T>()
 		{
 			Type serviceType = typeof(T);
 			lock (services) {

@@ -211,7 +211,7 @@ namespace ICSharpCode.SharpDevelop.Services
 
 				// Breakpoints must be sent after "launch" but before "configurationDone" -
 				// most DAP adapters (including SharpDbg) ignore breakpoints set any later.
-				await SyncAllBreakpointsBeforeLaunch();
+				await SyncAllBreakpointsBeforeLaunchAsync();
 				await CurrentSession.SetExceptionBreakpointsAsync(new[] { "user-unhandled" }).ConfigureAwait(false);
 
 				await CurrentSession.ConfigurationDoneAsync().ConfigureAwait(false);
@@ -427,7 +427,7 @@ namespace ICSharpCode.SharpDevelop.Services
 			}
 		}
 
-		async Task SyncAllBreakpointsBeforeLaunch()
+		async Task SyncAllBreakpointsBeforeLaunchAsync()
 		{
 			// This runs on a background thread (StartAsync's caller never touches the UI thread),
 			// but BookmarkManager.Bookmarks is UI-thread-affinitized - unlike

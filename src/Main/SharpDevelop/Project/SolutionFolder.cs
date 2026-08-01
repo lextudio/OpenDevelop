@@ -164,7 +164,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			this.Items.Add(project);
 			if (parentSolution.IsLoaded) {
 				project.ProjectLoaded();
-				ProjectBrowserPad.RefreshViewAsync();
+				ProjectBrowserPad.RefreshView();
 			}
 			return project;
 		}

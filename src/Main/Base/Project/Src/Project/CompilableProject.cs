@@ -372,7 +372,7 @@ namespace ICSharpCode.SharpDevelop.Project
 				FileProjectItem fpi = new FileProjectItem(project, ItemType.None, "app.config");
 				ProjectService.AddProjectItem(project, fpi);
 				FileService.FireFileCreated(appConfigFileName, false);
-				ProjectBrowserPad.RefreshViewAsync();
+				ProjectBrowserPad.RefreshView();
 #endif
 			}
 			return appConfigFileName;

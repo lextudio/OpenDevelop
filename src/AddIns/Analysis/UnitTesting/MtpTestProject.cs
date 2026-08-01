@@ -40,13 +40,13 @@ namespace ICSharpCode.UnitTesting
 			// "All Tests" solution root above it.
 			RebindCompositeResultToNestedTests();
 			PopulateApproxTreeFromRoslyn();
-			TriggerDiscovery();
+			TriggerDiscoveryAsync();
 		}
 
 		// Fast, approximate pass: a syntax-only Roslyn scan of the project's own source (see
 		// RoslynTestScanner and doc/technotes/unit-testing.md), so the tree shows candidate tests
 		// immediately instead of staying empty for the ~30-60s an MTP discovery round trip can
-		// take. TriggerDiscovery's real MTP pass replaces discoveredNodesByTargetFramework (and
+		// take. TriggerDiscoveryAsync's real MTP pass replaces discoveredNodesByTargetFramework (and
 		// rebuilds the tree via the same PopulateTree call) once it completes, same as it always
 		// did - this just seeds it with an approximate answer first instead of nothing.
 		void PopulateApproxTreeFromRoslyn()
@@ -90,7 +90,7 @@ namespace ICSharpCode.UnitTesting
 		// handles its own exceptions.
 		Task discoveryTask = Task.CompletedTask;
 
-		Task TriggerDiscovery(CancellationToken cancellationToken = default)
+		Task TriggerDiscoveryAsync(CancellationToken cancellationToken = default)
 		{
 			if (discoveryInProgress)
 				return discoveryTask;
@@ -106,7 +106,7 @@ namespace ICSharpCode.UnitTesting
 		/// (OnBuildFinished), so an explicit "Refresh Tests" action needs this entry point.
 		/// </summary>
 		/// <param name="cancellationToken">Abandons the pass; the tree keeps whatever it had.</param>
-		public Task RefreshAsync(CancellationToken cancellationToken = default) => TriggerDiscovery(cancellationToken);
+		public Task RefreshAsync(CancellationToken cancellationToken = default) => TriggerDiscoveryAsync(cancellationToken);
 
 		/// <summary>
 		/// Temporarily prevents BuildFinished from starting an MTP host. Code coverage builds
@@ -186,7 +186,7 @@ namespace ICSharpCode.UnitTesting
 				return;
 
 			lastBuildTime = buildTime;
-			TriggerDiscovery();
+			TriggerDiscoveryAsync();
 		}
 
 		sealed class DiscoverySuppression : IDisposable

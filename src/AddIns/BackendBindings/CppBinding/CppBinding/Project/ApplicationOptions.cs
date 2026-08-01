@@ -432,7 +432,7 @@ namespace ICSharpCode.CppBinding.Project
 				FileProjectItem newItem = new FileProjectItem(base.Project, ItemType.None);
 				newItem.Include = "app.manifest";
 				ProjectService.AddProjectItem(base.Project, newItem);
-				ProjectBrowserPad.RefreshViewAsync();
+				ProjectBrowserPad.RefreshView();
 			}
 			
 			FileService.OpenFile(manifestFile);

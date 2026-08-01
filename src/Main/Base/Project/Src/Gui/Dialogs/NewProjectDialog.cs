@@ -346,7 +346,7 @@ namespace ICSharpCode.SharpDevelop.Project.Dialogs
 				if (result != null)
 					item.Template.RunOpenActions(result);
 				
-				ProjectBrowserPad.RefreshViewAsync();
+				ProjectBrowserPad.RefreshView();
 				DialogResult = DialogResult.OK;
 			}
 		}

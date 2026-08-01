@@ -82,7 +82,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// Runs a method asynchronously. Prevents another CustomTool invocation
 		/// on the same file while action is running.
 		/// </summary>
-		public void RunAsync(Action action)
+		public void Run(Action action)
 		{
 			RunningSeparateThread = true;
 			System.Threading.ThreadPool.QueueUserWorkItem(
@@ -206,7 +206,7 @@ namespace ICSharpCode.SharpDevelop.Project
 				FileService.FireFileCreated(outputFileName, false);
 #endif
 				saveProject = true;
-				ProjectBrowserPad.RefreshViewAsync();
+				ProjectBrowserPad.RefreshView();
 			}
 			if (saveProject)
 				project.Save();
@@ -233,9 +233,9 @@ namespace ICSharpCode.SharpDevelop.Project
 #endif
 		}
 		
-		public void GenerateCodeDomAsync(FileProjectItem baseItem, string outputFileName, Func<CodeCompileUnit> func)
+		public void GenerateCodeDom(FileProjectItem baseItem, string outputFileName, Func<CodeCompileUnit> func)
 		{
-			RunAsync(delegate {
+			Run(delegate {
 			         	CodeCompileUnit ccu = func();
 			         	SD.MainThread.InvokeAsyncAndForget(() => WriteCodeDomToFile(baseItem, outputFileName, ccu));
 			         });

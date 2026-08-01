@@ -275,7 +275,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		static bool refreshViewEnqueued;
 		
-		public static void RefreshViewAsync()
+		public static void RefreshView()
 		{
 			SD.MainThread.VerifyAccess();
 			if (refreshViewEnqueued || instance == null)

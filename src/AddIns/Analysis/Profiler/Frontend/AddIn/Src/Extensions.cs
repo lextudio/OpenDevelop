@@ -51,7 +51,7 @@ namespace ICSharpCode.Profiler.AddIn
 				if (!project.IsReadOnly) {
 					FileProjectItem file = new FileProjectItem(project, ItemType.Content, "ProfilingSessions\\" + Path.GetFileName(path));
 					ProjectService.AddProjectItem(project, file);
-					ProjectBrowserPad.RefreshViewAsync();
+					ProjectBrowserPad.RefreshView();
 					project.Save();
 				}
 			};

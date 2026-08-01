@@ -77,7 +77,7 @@ namespace ICSharpCode.SharpDevelop.Project.PortableLibrary
 					}
 					project.AddProjectType(ProjectTypeGuids.PortableLibrary);
 					project.Save();
-					ProjectBrowserPad.RefreshViewAsync();
+					ProjectBrowserPad.RefreshView();
 				}
 			} else {
 				base.UpgradeProject(newVersion, newFramework);

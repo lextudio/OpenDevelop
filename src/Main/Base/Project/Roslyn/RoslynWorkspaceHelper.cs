@@ -388,7 +388,7 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 		/// that engine it needs no persistent symbol index, since SymbolFinder walks the
 		/// already-in-memory Roslyn solution built by <see cref="GetSolution"/>.
 		/// </summary>
-		public static async Task<IReadOnlyList<ReferenceLocation>> FindReferencesAt(
+		public static async Task<IReadOnlyList<ReferenceLocation>> FindReferencesAtAsync(
 			string filePath, ICSharpCode.AvalonEdit.Document.TextLocation location, CancellationToken cancellationToken = default)
 		{
 			var document = FindDocument(filePath);

@@ -99,9 +99,9 @@ namespace ICSharpCode.SharpDevelop
 		/// <remarks>
 		/// This method can be used to solve cyclic dependencies in service initialization.
 		/// </remarks>
-		public static Task<T> GetFutureService<T>() where T : class
+		public static Task<T> GetFutureServiceAsync<T>() where T : class
 		{
-			return GetRequiredService<SharpDevelopServiceContainer>().GetFutureService<T>();
+			return GetRequiredService<SharpDevelopServiceContainer>().GetFutureServiceAsync<T>();
 		}
 		
 		/// <summary>

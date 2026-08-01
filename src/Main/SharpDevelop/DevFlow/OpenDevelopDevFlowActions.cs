@@ -144,11 +144,11 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		}
 
 		[DevFlowAction("od.find-references", Description = "Find all references to the symbol at file:line/column across the whole solution, via Roslyn's SymbolFinder (the modern replacement for the deleted NRefactory find-references engine)")]
-		public static async Task<string> FindReferences(string fileName, int line, int column)
+		public static async Task<string> FindReferencesAsync(string fileName, int line, int column)
 		{
 			try {
 				var location = new ICSharpCode.AvalonEdit.Document.TextLocation(line, column);
-				var references = await ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.FindReferencesAt(fileName, location);
+				var references = await ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.FindReferencesAtAsync(fileName, location);
 				return JsonSerializer.Serialize(new {
 					count = references.Count,
 					references = references.Select(r => new {
@@ -163,7 +163,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		}
 
 		[DevFlowAction("od.rename-symbol", Description = "Renames the symbol at file:line/column across the whole solution via RoslynWorkspaceHelper.RenameSymbolAsync (bypasses RenameSymbolDialog, which the WPF-embedded DevFlow agent can't drive since it's modal - same reasoning as od.open-solution bypassing the native Open dialog)")]
-		public static async Task<string> RenameSymbol(string fileName, int line, int column, string newName, bool renameOverloads = false, bool renameInStrings = false, bool renameInComments = false)
+		public static async Task<string> RenameSymbolAsync(string fileName, int line, int column, string newName, bool renameOverloads = false, bool renameInStrings = false, bool renameInComments = false)
 		{
 			try {
 				var location = new ICSharpCode.AvalonEdit.Document.TextLocation(line, column);
@@ -179,7 +179,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		}
 
 		[DevFlowAction("od.extract-interface", Description = "Extracts an interface from the class at file:line/column via RoslynWorkspaceHelper.ExtractInterfaceAsync (bypasses ExtractInterfaceDialog, which is modal). memberNames is a comma-separated allowlist of member names to include; pass an empty string to include every eligible public instance member")]
-		public static async Task<string> ExtractInterface(string fileName, int line, int column, string interfaceName, string newFilePath, bool addInterfaceToClass, string memberNames = "", bool includeComments = false)
+		public static async Task<string> ExtractInterfaceAsync(string fileName, int line, int column, string interfaceName, string newFilePath, bool addInterfaceToClass, string memberNames = "", bool includeComments = false)
 		{
 			try {
 				var location = new ICSharpCode.AvalonEdit.Document.TextLocation(line, column);
@@ -221,7 +221,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		}
 
 		[DevFlowAction("od.build-solution", Description = "Build the current solution (or a single project by name) and return error/warning counts plus the individual diagnostics")]
-		public static async Task<string> BuildSolution(string projectName = null)
+		public static async Task<string> BuildSolutionAsync(string projectName = null)
 		{
 			var solution = SD.ProjectService.CurrentSolution;
 			if (solution == null)
@@ -372,7 +372,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		}
 		
 		[DevFlowAction("od.debug.start", Description = "Start debugging a project and optionally wait for a stopped event")]
-		public static async Task<string> StartDebug(string projectPath = null, bool waitForStop = true, int timeoutSeconds = 30)
+		public static async Task<string> StartDebugAsync(string projectPath = null, bool waitForStop = true, int timeoutSeconds = 30)
 		{
 			var debugger = SD.Debugger;
 			if (debugger == null) {
@@ -388,7 +388,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			
 			int stopSequence = GetIntProperty(debugger, "CurrentStopSequence");
 			var stopTask = waitForStop ? WaitForStopAsync(debugger, timeoutSeconds, stopSequence) : Task.FromResult(true);
-			Task startTask = InvokeTask(debugger, "StartProjectAsync", projectPath);
+			Task startTask = InvokeTaskAsync(debugger, "StartProjectAsync", projectPath);
 			if (startTask != null) {
 				await startTask;
 			} else {
@@ -423,7 +423,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		}
 		
 		[DevFlowAction("od.debug.continue", Description = "Continue debugging and optionally wait for the next stop")]
-		public static async Task<string> ContinueDebug(bool waitForStop = true, int timeoutSeconds = 30)
+		public static async Task<string> ContinueDebugAsync(bool waitForStop = true, int timeoutSeconds = 30)
 		{
 			int stopSequence = GetIntProperty(SD.Debugger, "CurrentStopSequence");
 			var wait = waitForStop ? WaitForStopAsync(SD.Debugger, timeoutSeconds, stopSequence) : Task.FromResult(true);
@@ -433,7 +433,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		}
 		
 		[DevFlowAction("od.debug.step-over", Description = "Step over and wait for the next stop")]
-		public static async Task<string> StepOverDebug(int timeoutSeconds = 30)
+		public static async Task<string> StepOverDebugAsync(int timeoutSeconds = 30)
 		{
 			int stopSequence = GetIntProperty(SD.Debugger, "CurrentStopSequence");
 			var wait = WaitForStopAsync(SD.Debugger, timeoutSeconds, stopSequence);
@@ -442,7 +442,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		}
 		
 		[DevFlowAction("od.debug.step-into", Description = "Step into and wait for the next stop")]
-		public static async Task<string> StepIntoDebug(int timeoutSeconds = 30)
+		public static async Task<string> StepIntoDebugAsync(int timeoutSeconds = 30)
 		{
 			int stopSequence = GetIntProperty(SD.Debugger, "CurrentStopSequence");
 			var wait = WaitForStopAsync(SD.Debugger, timeoutSeconds, stopSequence);
@@ -451,7 +451,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		}
 		
 		[DevFlowAction("od.debug.step-out", Description = "Step out and wait for the next stop")]
-		public static async Task<string> StepOutDebug(int timeoutSeconds = 30)
+		public static async Task<string> StepOutDebugAsync(int timeoutSeconds = 30)
 		{
 			int stopSequence = GetIntProperty(SD.Debugger, "CurrentStopSequence");
 			var wait = WaitForStopAsync(SD.Debugger, timeoutSeconds, stopSequence);
@@ -460,47 +460,47 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		}
 		
 		[DevFlowAction("od.debug.call-stack", Description = "Return current call stack")]
-		public static async Task<string> GetDebugCallStack()
+		public static async Task<string> GetDebugCallStackAsync()
 		{
 			var debugger = SD.Debugger;
 			int threadId = GetIntProperty(debugger, "CurrentThreadId");
-			var frames = await InvokeEnumerableTask(debugger, "GetStackFramesAsync", threadId);
+			var frames = await InvokeEnumerableTaskAsync(debugger, "GetStackFramesAsync", threadId);
 			return JsonSerializer.Serialize(frames.Select(ToPropertyDictionary).ToArray());
 		}
 		
 		[DevFlowAction("od.debug.locals", Description = "Return locals for the top stack frame")]
-		public static async Task<string> GetDebugLocals()
+		public static async Task<string> GetDebugLocalsAsync()
 		{
 			var debugger = SD.Debugger;
 			int threadId = GetIntProperty(debugger, "CurrentThreadId");
-			var frames = (await InvokeEnumerableTask(debugger, "GetStackFramesAsync", threadId)).ToList();
+			var frames = (await InvokeEnumerableTaskAsync(debugger, "GetStackFramesAsync", threadId)).ToList();
 			int frameId = frames.Count > 0 ? GetIntProperty(frames[0], "Id") : 0;
-			var locals = await InvokeEnumerableTask(debugger, "GetLocalsAsync", frameId);
+			var locals = await InvokeEnumerableTaskAsync(debugger, "GetLocalsAsync", frameId);
 			return JsonSerializer.Serialize(locals.Select(ToPropertyDictionary).ToArray());
 		}
 		
 		[DevFlowAction("od.debug.evaluate", Description = "Evaluate an expression in the top stack frame")]
-		public static async Task<string> EvaluateDebugExpression(string expression)
+		public static async Task<string> EvaluateDebugExpressionAsync(string expression)
 		{
 			var debugger = SD.Debugger;
 			int threadId = GetIntProperty(debugger, "CurrentThreadId");
-			var frames = (await InvokeEnumerableTask(debugger, "GetStackFramesAsync", threadId)).ToList();
+			var frames = (await InvokeEnumerableTaskAsync(debugger, "GetStackFramesAsync", threadId)).ToList();
 			int frameId = frames.Count > 0 ? GetIntProperty(frames[0], "Id") : 0;
-			object result = await InvokeObjectTask(debugger, "EvaluateAsync", expression, frameId);
+			object result = await InvokeObjectTaskAsync(debugger, "EvaluateAsync", expression, frameId);
 			return JsonSerializer.Serialize(result != null ? ToPropertyDictionary(result) : new Dictionary<string, object>());
 		}
 		
 		[DevFlowAction("od.debug.threads", Description = "Return debugger threads")]
-		public static async Task<string> GetDebugThreads()
+		public static async Task<string> GetDebugThreadsAsync()
 		{
-			var threads = await InvokeEnumerableTask(SD.Debugger, "GetThreadsAsync");
+			var threads = await InvokeEnumerableTaskAsync(SD.Debugger, "GetThreadsAsync");
 			return JsonSerializer.Serialize(threads.Select(ToPropertyDictionary).ToArray());
 		}
 		
 		[DevFlowAction("od.debug.modules", Description = "Return debugger modules")]
-		public static async Task<string> GetDebugModules()
+		public static async Task<string> GetDebugModulesAsync()
 		{
-			var modules = await InvokeEnumerableTask(SD.Debugger, "GetModulesAsync");
+			var modules = await InvokeEnumerableTaskAsync(SD.Debugger, "GetModulesAsync");
 			return JsonSerializer.Serialize(modules.Select(ToPropertyDictionary).ToArray());
 		}
 
@@ -526,7 +526,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		}
 		
 		[DevFlowAction("od.debug.pad-snapshot", Description = "Create a debugger pad and return its current snapshot")]
-		public static async Task<string> GetDebugPadSnapshot(string padName)
+		public static async Task<string> GetDebugPadSnapshotAsync(string padName)
 		{
 			var pad = FindPad(padName);
 			if (pad == null) {
@@ -534,7 +534,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			}
 			pad.CreatePad();
 			var content = pad.PadContent;
-			var items = await InvokeEnumerableTask(content, "GetSnapshotAsync");
+			var items = await InvokeEnumerableTaskAsync(content, "GetSnapshotAsync");
 			return JsonSerializer.Serialize(new {
 				found = true,
 				title = pad.Title,
@@ -846,9 +846,9 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		}
 		
 		[DevFlowAction("od.unit-test.run", Description = "Run all tests in the open solution and wait for completion")]
-		public static async Task<string> RunUnitTests(int timeoutSeconds = 120)
+		public static async Task<string> RunUnitTestsAsync(int timeoutSeconds = 120)
 		{
-			var task = TryStartRunAllUnitTests(out var error);
+			var task = TryStartRunAllUnitTestsAsync(out var error);
 			if (task == null)
 				return JsonSerializer.Serialize(new { started = false, error });
 			var done = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(timeoutSeconds)));
@@ -865,7 +865,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		[DevFlowAction("od.unit-test.run-start", Description = "Start running all tests in the open solution without waiting for completion")]
 		public static string StartRunUnitTests()
 		{
-			var task = TryStartRunAllUnitTests(out var error);
+			var task = TryStartRunAllUnitTestsAsync(out var error);
 			if (task == null)
 				return JsonSerializer.Serialize(new { started = false, error });
 			task.ContinueWith(t => LoggingService.Warn("DevFlow unit test run failed", t.Exception),
@@ -873,7 +873,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new { started = true });
 		}
 		
-		static Task TryStartRunAllUnitTests(out string error)
+		static Task TryStartRunAllUnitTestsAsync(out string error)
 		{
 			error = null;
 			var s = GetTestService();
@@ -907,7 +907,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		}
 		
 		[DevFlowAction("od.unit-test.debug", Description = "Debug all tests in the open solution (UseDebugger=true) and wait for completion or timeout")]
-		public static async Task<string> DebugUnitTests(int timeoutSeconds = 60)
+		public static async Task<string> DebugUnitTestsAsync(int timeoutSeconds = 60)
 		{
 			var s = GetTestService();
 			if (s == null)
@@ -949,7 +949,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			}
 
 			[DevFlowAction("od.unit-test.debug-one", Description = "Debug the first discovered unit test whose display name matches or ends with the given name")]
-			public static async Task<string> DebugOneUnitTest(string displayName, int timeoutSeconds = 60)
+			public static async Task<string> DebugOneUnitTestAsync(string displayName, int timeoutSeconds = 60)
 			{
 				var s = GetTestService();
 				if (s == null)
@@ -1169,7 +1169,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		}
 
 		[DevFlowAction("od.code-coverage.run", Description = "Run all tests in the open solution with code coverage (AltCover) and wait for results to appear")]
-		public static async Task<string> RunCodeCoverage(int timeoutSeconds = 180)
+		public static async Task<string> RunCodeCoverageAsync(int timeoutSeconds = 180)
 		{
 			if (GetCodeCoverageServiceType() == null)
 				return JsonSerializer.Serialize(new { started = false, error = "CodeCoverage addin not available." });
@@ -1458,22 +1458,22 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 		
-		static Task InvokeTask(object target, string methodName, params object[] args)
+		static Task InvokeTaskAsync(object target, string methodName, params object[] args)
 		{
 			// Calling an async method always returns a non-null Task immediately, even when the
 			// method-not-found case inside it resolves to a null *result* -- so callers checking
 			// "startTask != null" to decide whether the reflected method existed always saw a
-			// non-null Task and took the wrong branch (e.g. od.debug.start's StartDebug never
+			// non-null Task and took the wrong branch (e.g. od.debug.start's StartDebugAsync never
 			// fell through to project.Start(true), because reflection could never find
 			// "StartProjectAsync" on the debugger service, yet this always returned non-null).
 			// Do the existence check synchronously, before entering the async wrapper.
 			MethodInfo method = target?.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.Public);
 			if (method == null)
 				return null;
-			return InvokeObjectTask(target, methodName, args) as Task;
+			return InvokeObjectTaskAsync(target, methodName, args) as Task;
 		}
 		
-		static async Task<object> InvokeObjectTask(object target, string methodName, params object[] args)
+		static async Task<object> InvokeObjectTaskAsync(object target, string methodName, params object[] args)
 		{
 			MethodInfo method = target?.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.Public);
 			if (method == null) {
@@ -1491,9 +1491,9 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return invocation;
 		}
 		
-		static async Task<IEnumerable<object>> InvokeEnumerableTask(object target, string methodName, params object[] args)
+		static async Task<IEnumerable<object>> InvokeEnumerableTaskAsync(object target, string methodName, params object[] args)
 		{
-			object result = await InvokeObjectTask(target, methodName, args);
+			object result = await InvokeObjectTaskAsync(target, methodName, args);
 			return result is IEnumerable enumerable
 				? enumerable.Cast<object>().ToArray()
 				: Array.Empty<object>();

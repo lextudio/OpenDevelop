@@ -24,6 +24,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Editor.Dialogs;
@@ -42,10 +43,10 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 			var editor = SD.GetActiveViewContentService<ITextEditor>();
 			if (editor == null || editor.FileName == null)
 				return;
-			RunAsync(editor);
+			_ = RunAsync(editor);
 		}
 
-		async void RunAsync(ITextEditor editor)
+		async Task RunAsync(ITextEditor editor)
 		{
 			string fileName = editor.FileName.ToString();
 

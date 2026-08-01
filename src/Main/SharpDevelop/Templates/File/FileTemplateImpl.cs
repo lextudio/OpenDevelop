@@ -445,7 +445,7 @@ namespace ICSharpCode.SharpDevelop.Templates
 					if (!refs.Any(projItem => string.Equals(projItem.Include, reference.Include, StringComparison.OrdinalIgnoreCase))) {
 						ReferenceProjectItem projItem = (ReferenceProjectItem)reference.CloneFor(project);
 						ProjectService.AddProjectItem(project, projItem);
-						ProjectBrowserPad.RefreshViewAsync();
+						ProjectBrowserPad.RefreshView();
 					}
 				}
 			}

@@ -8,7 +8,7 @@ namespace ICSharpCode.SharpDevelop.Project
 {
 	public static class ProjectBrowserPad
 	{
-		public static void RefreshViewAsync()
+		public static void RefreshView()
 		{
 			Type controllerType = Type.GetType(
 				"ICSharpCode.SharpDevelop.Services.IProjectBrowserController, OpenDevelop",

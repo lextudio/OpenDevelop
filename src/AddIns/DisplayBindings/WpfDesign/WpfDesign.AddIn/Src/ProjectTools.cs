@@ -51,7 +51,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 				resultItems.Add(item);
 			}
 			project.Save();
-			ProjectBrowserPad.RefreshViewAsync();
+			ProjectBrowserPad.RefreshView();
 			return resultItems;
 		}
 		

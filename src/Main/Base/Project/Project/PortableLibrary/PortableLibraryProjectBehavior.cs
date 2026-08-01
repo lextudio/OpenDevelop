@@ -97,7 +97,7 @@ namespace ICSharpCode.SharpDevelop.Project.PortableLibrary
 					project.SetProperty(null, null, "TargetFrameworkVersion", newFx.TargetFrameworkVersion, PropertyStorageLocations.Base, true);
 				}
 				project.Save();
-				ProjectBrowserPad.RefreshViewAsync();
+				ProjectBrowserPad.RefreshView();
 			}
 		}
 		
