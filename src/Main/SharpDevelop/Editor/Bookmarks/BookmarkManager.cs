@@ -35,7 +35,7 @@ namespace ICSharpCode.SharpDevelop.Editor.Bookmarks
 	{
 		public BookmarkManager()
 		{
-			Project.ProjectService.SolutionClosed += delegate { Clear(); };
+			SD.ProjectService.SolutionClosed += delegate { Clear(); };
 		}
 		
 		List<SDBookmark> bookmarks = new List<SDBookmark>();

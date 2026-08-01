@@ -7,6 +7,7 @@ using Hornung.ResourceToolkit.Refactoring;
 using Hornung.ResourceToolkit.Resolver;
 using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
+using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Gui;
 using MenuItem = System.Windows.Controls.MenuItem;
@@ -82,7 +83,7 @@ namespace Hornung.ResourceToolkit.Commands
             if (svalue == null) {
                 dialog.Title = String.Format(CultureInfo.CurrentCulture, StringParser.Parse("${res:Hornung.ResourceToolkit.CodeCompletion.AddNewDescription}"), result.ResourceFileContent.FileName);
             }
-            dialog.Owner = WorkbenchSingleton.MainWindow;
+            dialog.Owner = SD.Workbench.MainWindow;
             if (dialog.ShowDialog() == true) {
                 if (svalue == null) {
                     result.ResourceFileContent.Add(dialog.Key, dialog.Value);

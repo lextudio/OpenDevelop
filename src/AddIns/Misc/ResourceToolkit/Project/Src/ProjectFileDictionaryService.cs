@@ -36,13 +36,13 @@ namespace Hornung.ResourceToolkit
 		static ProjectFileDictionaryService()
 		{
 			// Remove file from dictionary when file is removed from project
-			ProjectService.ProjectItemRemoved += delegate(object sender, ProjectItemEventArgs e) {
+			SD.ProjectService.ProjectItemRemoved += delegate(object sender, ProjectItemEventArgs e) {
 				if (e.ProjectItem != null && e.ProjectItem.FileName != null) {
 					files.Remove(e.ProjectItem.FileName);
 				}
 			};
 			// Clear cache when solution is closed
-			ProjectService.SolutionClosed += delegate { files.Clear(); };
+			SD.ProjectService.SolutionClosed += delegate { files.Clear(); };
 		}
 		
 		/// <summary>

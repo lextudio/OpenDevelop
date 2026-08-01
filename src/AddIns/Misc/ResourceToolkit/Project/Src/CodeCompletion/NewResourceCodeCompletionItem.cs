@@ -3,6 +3,7 @@ using System.Globalization;
 using Hornung.ResourceToolkit.Gui;
 using Hornung.ResourceToolkit.ResourceFileContent;
 using ICSharpCode.Core;
+using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor.CodeCompletion;
 using ICSharpCode.SharpDevelop.Gui;
 
@@ -24,7 +25,7 @@ namespace Hornung.ResourceToolkit.CodeCompletion
         public override void Complete(CompletionContext context)
         {
             EditStringResourceDialog dialog = new EditStringResourceDialog(this.content, this.preEnteredName, null, true);
-            dialog.Owner = WorkbenchSingleton.MainWindow;
+            dialog.Owner = SD.Workbench.MainWindow;
             if (dialog.ShowDialog() != true) {
                 return;
             }

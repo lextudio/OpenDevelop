@@ -1,3 +1,4 @@
+#nullable enable
 // Slice 6: wires the SharpDevelop/MSBuild project model to the CPS tree model.
 // See externals/OpenDevelop/doc/technotes/project-system.md.
 

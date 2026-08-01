@@ -14,6 +14,9 @@
       <HintPath>..\..\RequiredLibraries\NuGet.Core.dll</HintPath>
     </Reference>
     <PackageReference Include="Microsoft.PowerShell.SDK" Version="7.4.0" />
+    <!-- Microsoft.PowerShell.SDK 7.4.0 pulls System.Data.SqlClient 4.8.5 (NU1903, GHSA-98g6-xh36-x2p7).
+         Pin the patched 4.8.6 to override the transitive vulnerable version. -->
+    <PackageReference Include="System.Data.SqlClient" Version="4.8.6" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />

@@ -1,3 +1,4 @@
+#nullable enable
 // R6c (see doc/technotes/solution-explorer.md): builds the WPF-bindable node tree shown by
 // ProjectBrowserPad, directly from SharpDevelop's native ISolution/IProject model. This is new
 // code (UnoDevelop's tree builder walks its own WinUI-only UnoSolutionModel, so there was nothing

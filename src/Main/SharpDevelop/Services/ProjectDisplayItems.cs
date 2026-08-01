@@ -1,3 +1,4 @@
+#nullable enable
 // Extracted from UnoDevelop's UnoProjectService.cs (see doc/technotes/solution-explorer.md) -
 // only the bits SharpDevelopProjectTreeProvider actually needs: turning a SharpDevelop IProject's
 // evaluated MSBuild items into a flat, display-ready list. UnoProjectService itself is UnoDevelop's

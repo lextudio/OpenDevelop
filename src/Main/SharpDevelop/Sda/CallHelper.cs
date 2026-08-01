@@ -191,10 +191,10 @@ namespace ICSharpCode.SharpDevelop.Sda
 			// (MVP policy 1: no Mono.Cecil submodule) - DomPersistencePath is simply not configured here.
 
 			// Register events to marshal back
-			Project.ProjectService.BuildStarted   += delegate { this.callback.StartBuild(); };
-			Project.ProjectService.BuildFinished  += delegate { this.callback.EndBuild(); };
-			Project.ProjectService.SolutionLoaded += delegate { this.callback.SolutionLoaded(); };
-			Project.ProjectService.SolutionClosed += delegate { this.callback.SolutionClosed(); };
+			SD.BuildService.BuildStarted   += delegate { this.callback.StartBuild(); };
+			SD.BuildService.BuildFinished  += delegate { this.callback.EndBuild(); };
+			SD.ProjectService.SolutionOpened += delegate { this.callback.SolutionLoaded(); };
+			SD.ProjectService.SolutionClosed += delegate { this.callback.SolutionClosed(); };
 			FileUtility.FileLoaded += delegate(object sender, FileNameEventArgs e) { this.callback.FileLoaded(e.FileName); };
 			FileUtility.FileSaved  += delegate(object sender, FileNameEventArgs e) { this.callback.FileSaved(e.FileName); };
 			

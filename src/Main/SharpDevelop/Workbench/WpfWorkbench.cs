@@ -134,7 +134,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			UpdateMenu();
 			
 			AddHandler(Hyperlink.RequestNavigateEvent, new RequestNavigateEventHandler(OnRequestNavigate));
-			Project.ProjectService.CurrentProjectChanged += SetProjectTitle;
+			SD.ProjectService.CurrentProjectChanged += SetProjectTitle;
 			
 			SharpDevelop.FileService.FileRemoved += CheckRemovedOrReplacedFile;
 			SharpDevelop.FileService.FileReplaced += CheckRemovedOrReplacedFile;
@@ -199,10 +199,10 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			}
 		}
 		
-		void SetProjectTitle(object sender, Project.ProjectEventArgs e)
+		void SetProjectTitle(object sender, PropertyChangedEventArgs<IProject> e)
 		{
-			if (e.Project != null) {
-				Title = e.Project.Name + " - " + ResourceService.GetString("MainWindow.DialogName");
+			if (e.NewValue != null) {
+				Title = e.NewValue.Name + " - " + ResourceService.GetString("MainWindow.DialogName");
 			} else {
 				Title = ResourceService.GetString("MainWindow.DialogName");
 			}

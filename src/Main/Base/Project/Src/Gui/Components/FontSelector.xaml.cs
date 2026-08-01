@@ -119,10 +119,12 @@ namespace ICSharpCode.SharpDevelop.Gui
 			
 			async void DetectMonospaced()
 			{
-				this.IsMonospaced = await Task.Run(() => DetectMonospaced(this.FontFamily));
+				var window = Application.Current != null ? Application.Current.MainWindow : null;
+				double pixelsPerDip = window != null ? VisualTreeHelper.GetDpi(window).PixelsPerDip : 1.0;
+				this.IsMonospaced = await Task.Run(() => DetectMonospaced(this.FontFamily, pixelsPerDip));
 			}
 
-			bool DetectMonospaced(FontFamily fontFamily)
+			bool DetectMonospaced(FontFamily fontFamily, double pixelsPerDip)
 			{
 				var tf = fontFamily.GetTypefaces().FirstOrDefault(t => t.Style == FontStyles.Normal);
 				if (tf == null)
@@ -130,9 +132,9 @@ namespace ICSharpCode.SharpDevelop.Gui
 				// determine if the length of i == m because I see no other way of
 				// getting if a font is monospaced or not.
 				FormattedText formatted = new FormattedText("i.", CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
-				                                            tf, 12f, Brushes.Black);
+				                                            tf, 12f, Brushes.Black, pixelsPerDip);
 				FormattedText formatted2 = new FormattedText("mw", CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
-				                                             tf, 12f, Brushes.Black);
+				                                             tf, 12f, Brushes.Black, pixelsPerDip);
 				return formatted.Width == formatted2.Width;
 			}
 

@@ -27,6 +27,11 @@
     <PackageReference Include="Microsoft.TemplateEngine.Utils" Version="10.0.301" />
     <PackageReference Include="Microsoft.TemplateEngine.IDE" Version="10.0.301" />
     <PackageReference Include="StreamJsonRpc" Version="2.21.10" />
+    <!-- StreamJsonRpc pulls MessagePack 2.5.187 transitively, which has several known CVEs
+         (NU1902/NU1903). Pin the patched 2.5.x version here - the project owning the StreamJsonRpc
+         reference - so NuGet unifies MessagePack across every downstream addin to the same patched
+         build (matching what externals/cps already pins). -->
+    <PackageReference Include="MessagePack" Version="2.5.302" />
   </ItemGroup>
   <ItemGroup>
     <!-- For Src\AddInManager\ (shared AddIn Manager gallery engine, moved from AddInManager2's

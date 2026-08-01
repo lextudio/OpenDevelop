@@ -1,3 +1,4 @@
+#nullable enable
 using System.Collections.Generic;
 using ICSharpCode.SharpDevelop.Project;
 using Microsoft.VisualStudio.ProjectSystem;

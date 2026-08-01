@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using ICSharpCode.SharpDevelop.Project;
 using Microsoft.VisualStudio.ProjectSystem;

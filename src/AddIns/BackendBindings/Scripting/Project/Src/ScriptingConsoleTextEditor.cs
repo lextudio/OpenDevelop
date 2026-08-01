@@ -187,7 +187,8 @@ namespace ICSharpCode.Scripting
 				textEditor.FlowDirection, 
 				CreateTextEditorTypeFace(),
 				textEditor.FontSize,
-				textEditor.Foreground);
+				textEditor.Foreground,
+				VisualTreeHelper.GetDpi(textEditor).PixelsPerDip);
 		}
 		
 		Typeface CreateTextEditorTypeFace()

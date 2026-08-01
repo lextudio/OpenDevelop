@@ -1,3 +1,4 @@
+#nullable enable
 // IProjectBrowserService implementation for OpenDevelop, using SharpDevelop's own native
 // IProject/MSBuildBasedProject APIs (project.Items.Add/Remove + project.Save()) rather than raw
 // .csproj XML manipulation. UnoDevelop's UnoProjectService.cs implements the same interface by

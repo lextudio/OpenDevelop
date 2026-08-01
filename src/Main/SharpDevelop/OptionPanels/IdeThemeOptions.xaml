@@ -1,0 +1,21 @@
+<gui:OptionPanel x:Class="ICSharpCode.SharpDevelop.OptionPanels.IdeThemeOptions"
+                 x:ClassModifier="internal"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:gui="clr-namespace:ICSharpCode.SharpDevelop.Gui;assembly=ICSharpCode.SharpDevelop">
+    <StackPanel Margin="8">
+        <TextBlock Text="IDE theme" FontWeight="SemiBold" />
+        <TextBlock Margin="0,4,0,10"
+                   Text="Choose the Visual Studio color theme used by the IDE workbench."
+                   TextWrapping="Wrap" />
+        <ComboBox x:Name="themeComboBox" Width="240" HorizontalAlignment="Left">
+            <ComboBoxItem Content="Visual Studio Light" Tag="Light" />
+            <ComboBoxItem Content="Visual Studio Dark" Tag="Dark" />
+            <ComboBoxItem Content="Visual Studio Blue" Tag="Blue" />
+        </ComboBox>
+        <TextBlock Margin="0,10,0,0"
+                   Foreground="Gray"
+                   Text="The theme is applied when you choose OK and is restored on the next start."
+                   TextWrapping="Wrap" />
+    </StackPanel>
+</gui:OptionPanel>

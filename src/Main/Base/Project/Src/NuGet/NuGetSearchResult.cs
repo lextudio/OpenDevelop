@@ -1,3 +1,4 @@
+#nullable enable
 namespace ICSharpCode.SharpDevelop.NuGet
 {
     /// <summary>
