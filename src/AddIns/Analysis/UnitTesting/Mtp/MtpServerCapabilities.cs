@@ -1,3 +1,4 @@
+#nullable enable
 using System.Text.Json;
 
 namespace ICSharpCode.UnitTesting.Mtp

@@ -17,6 +17,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Workbench;
 
@@ -35,8 +36,8 @@ namespace ICSharpCode.CodeCoverage
 			codeCoverageControl = new CodeCoverageControl();
 			codeCoverageControl.UpdateToolbar();
 					
-			ProjectService.SolutionClosed += SolutionClosed;
-			ProjectService.SolutionLoaded += SolutionLoaded;
+			SD.ProjectService.SolutionClosed += SolutionClosed;
+			SD.ProjectService.SolutionOpened += SolutionLoaded;
 			
 			ShowSourceCodePanel = CodeCoverageOptions.ShowSourceCodePanel;
 			ShowVisitCountPanel = CodeCoverageOptions.ShowVisitCountPanel;
@@ -61,8 +62,8 @@ namespace ICSharpCode.CodeCoverage
 		{
 			if (!disposed) {
 				disposed = true;
-				ProjectService.SolutionClosed -= SolutionClosed;
-				ProjectService.SolutionLoaded -= SolutionLoaded;
+				SD.ProjectService.SolutionClosed -= SolutionClosed;
+				SD.ProjectService.SolutionOpened -= SolutionLoaded;
 				// CodeCoverageControl is a plain WPF UserControl now (no ElementHost/WinForms
 				// child controls needing an explicit Dispose() the way the old version did).
 			}

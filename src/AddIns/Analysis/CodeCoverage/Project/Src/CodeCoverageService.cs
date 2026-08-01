@@ -38,7 +38,7 @@ namespace ICSharpCode.CodeCoverage
 		static CodeCoverageService()
 		{
 			SD.Workbench.ViewOpened += ViewOpened;
-			ICSharpCode.SharpDevelop.Project.ProjectService.SolutionLoaded += SolutionLoaded;
+			SD.ProjectService.SolutionOpened += SolutionLoaded;
 		}
 		
 		/// <summary>
