@@ -401,7 +401,7 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 		public IUnresolvedFile UnresolvedFile { get { throw new NotImplementedException(); } }
 
 		public ITypeReference DeclaringTypeReference { get { throw new NotImplementedException(); } }
-		public new IList<IUnresolvedAttribute> Attributes { get { return new List<IUnresolvedAttribute>(); } }
+		public IList<IUnresolvedAttribute> Attributes { get { return new List<IUnresolvedAttribute>(); } }
 		IMember IMemberReference.Resolve(ITypeResolveContext context) { throw new NotImplementedException(); }
 		IMember IUnresolvedMember.Resolve(ITypeResolveContext context) { throw new NotImplementedException(); }
 		IMember IUnresolvedMember.CreateResolved(ITypeResolveContext context) { throw new NotImplementedException(); }

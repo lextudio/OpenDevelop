@@ -10,7 +10,7 @@
     <AssemblyOriginatorKeyFile>..\..\..\Main\ICSharpCode.SharpDevelop.snk</AssemblyOriginatorKeyFile>
     <OutputPath>..\..\..\..\AddIns\DisplayBindings\Decompiler\</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <NoWarn>$(NoWarn);CA1416;WFO1000;CS0067;CS0108;CS0114;CS0618;CS0649;CS8321;CS0169;CS0414</NoWarn>
+    <NoWarn>$(NoWarn);CA1416;WFO1000;CS0067;CS0108;CS0114;CS0618;CS0649;CS8321;CS0169;CS0414;NU1504</NoWarn>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- ILSpy's own source targets net10.0-windows and does not define CROSS_PLATFORM, so
          ToolPaneModel/PaneModel keep using their normal (non cross-platform) branch.
@@ -53,7 +53,8 @@
 
     <!-- DevFlow actions (od.ilspy.*) so tests/OpenDevelop.IntegrationTests can drive/inspect the
          hosted ILSpy pads without a native file dialog, mirroring WpfDesign.AddIn's DevFlow hooks. -->
-    <ProjectReference Include="..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj" Private="false" Condition="Exists('..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj')" />
+    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" Version="0.2.2" Condition="!Exists('..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj')" />
 
     <!-- Real ILSpy pane/composition source needs ILSpyX and its own AvalonDock fork identity. -->
     <ProjectReference Include="..\..\..\..\externals\ilspy\ICSharpCode.ILSpyX\ICSharpCode.ILSpyX.csproj" />

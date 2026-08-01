@@ -39,6 +39,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		{
 		}
 		
+		[Obsolete(DiagnosticId = "SYSLIB0051")]
 		protected ProjectUpgradeException(SerializationInfo info, StreamingContext context) : base(info, context)
 		{
 		}

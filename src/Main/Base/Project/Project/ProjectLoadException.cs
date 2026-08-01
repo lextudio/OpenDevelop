@@ -42,6 +42,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		{
 		}
 		
+		[Obsolete(DiagnosticId = "SYSLIB0051")]
 		protected ProjectLoadException(SerializationInfo info, StreamingContext context) : base(info, context)
 		{
 		}
@@ -96,6 +97,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		{
 		}
 		
+		[Obsolete(DiagnosticId = "SYSLIB0051")]
 		protected ToolNotFoundProjectLoadException(SerializationInfo info, StreamingContext context) : base(info, context)
 		{
 		}

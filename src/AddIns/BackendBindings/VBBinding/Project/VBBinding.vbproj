@@ -12,7 +12,7 @@
     <OptionStrict>Off</OptionStrict>
     <OptionCompare>Binary</OptionCompare>
     <OptionInfer>On</OptionInfer>
-    <NoWarn>$(NoWarn);BC30260</NoWarn>
+    <NoWarn>$(NoWarn);BC30260;CA1416</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <None Include="VBBinding.addin" CopyToOutputDirectory="Always" />

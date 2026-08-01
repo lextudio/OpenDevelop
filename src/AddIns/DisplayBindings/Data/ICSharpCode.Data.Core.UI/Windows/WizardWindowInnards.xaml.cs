@@ -241,7 +241,7 @@ namespace ICSharpCode.Data.Core.UI.Windows
                 }
                 else
                 {
-                    throw ex;
+                    throw;
                 }                    
             }
             

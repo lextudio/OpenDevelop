@@ -202,15 +202,7 @@ namespace ICSharpCode.SharpDevelop.Designer
 		static string GetOriginalAssemblyFullPath(Assembly asm)
 		{
 			if (asm == null) throw new ArgumentNullException("asm");
-			try {
-				return new Uri(asm.CodeBase, UriKind.Absolute).LocalPath;
-			} catch (UriFormatException ex) {
-				LoggingService.Warn("Could not determine path for assembly '" + asm.ToString() + "', CodeBase='" + asm.CodeBase + "': " + ex.Message);
-				return asm.Location;
-			} catch (InvalidOperationException ex) {
-				LoggingService.Warn("Could not determine path for assembly '" + asm.ToString() + "', CodeBase='" + asm.CodeBase + "': " + ex.Message);
-				return asm.Location;
-			}
+			return asm.Location;
 		}
 		
 		/// <summary>

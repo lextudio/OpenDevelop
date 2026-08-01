@@ -10,7 +10,7 @@ namespace Hornung.ResourceToolkit.ToolTips
     {
         public void HandleToolTipRequest(ToolTipRequestEventArgs e)
         {
-            if (e.InDocument || e.LogicalPosition == null) return;
+            if (e.InDocument) return;
 
             var editor = e.Editor;
             if (editor == null) return;

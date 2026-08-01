@@ -4,6 +4,7 @@
     <RootNamespace>ICSharpCode.SettingsEditor</RootNamespace>
     <AssemblyName>SettingsEditor</AssemblyName>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <OutputType>Library</OutputType>

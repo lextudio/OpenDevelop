@@ -267,7 +267,7 @@ namespace ICSharpCode.Data.Core.DatabaseDrivers.SQLServer
                         break;
                 }
 
-                throw ex;
+                throw;
             }
 
 			Version version = new Version(sqlConnection.ServerVersion);

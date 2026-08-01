@@ -28,6 +28,8 @@ using ICSharpCode.Data.Core.DatabaseObjects;
 using ICSharpCode.Data.Core.Interfaces;
 using System.IO;
 using System.Reflection;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
 
 #endregion
 
@@ -63,8 +65,6 @@ namespace ICSharpCode.Data.Core.DatabaseObjects
         /// </summary>
         static DatabaseDriver()
         {
-            AppDomain.CurrentDomain.ReflectionOnlyAssemblyResolve += new ResolveEventHandler(CurrentDomain_ReflectionOnlyAssemblyResolve);
-
             // Get all assumed plug in assemblies
             _databaseDrivers = new List<IDatabaseDriver>();
             FileInfo fileInfo = new FileInfo(Assembly.GetExecutingAssembly().Location);
@@ -75,30 +75,131 @@ namespace ICSharpCode.Data.Core.DatabaseObjects
             {
                 try
                 {
-                    Assembly assembly = Assembly.ReflectionOnlyLoadFrom(file);
-
-                    Type[] types = assembly.GetTypes();
-
-                    foreach (Type type in types)
+                    foreach (string typeName in FindDatabaseDriverTypes(file))
                     {
-                        if (type.GetInterface("IDatabaseDriver") != null)
-                        {
-                            if (!type.IsAbstract)
-                            {
-                                // Create an instance of the driver
-                                Type loadedType = Assembly.LoadFrom(file).GetType(type.FullName);
-                                _databaseDrivers.Add(Activator.CreateInstance(loadedType) as IDatabaseDriver);
-                            }
-                        }
+                        // Loading is deliberately deferred until metadata has identified a
+                        // concrete driver. Scanning every candidate must not execute module
+                        // initializers or pull its dependency graph into the IDE process.
+                        Type loadedType = Assembly.LoadFrom(file).GetType(typeName, throwOnError: true);
+                        if (Activator.CreateInstance(loadedType) is IDatabaseDriver driver)
+                            _databaseDrivers.Add(driver);
                     }
                 }
                 catch { }
             }
         }
 
-        static Assembly CurrentDomain_ReflectionOnlyAssemblyResolve(object sender, ResolveEventArgs args)
+        static IEnumerable<string> FindDatabaseDriverTypes(string fileName)
         {
-            return Assembly.ReflectionOnlyLoad(args.Name);
+            using (var stream = File.OpenRead(fileName))
+            using (var peReader = new PEReader(stream))
+            {
+                if (!peReader.HasMetadata)
+                    yield break;
+
+                MetadataReader reader = peReader.GetMetadataReader();
+                var provider = new MetadataTypeNameProvider();
+                foreach (TypeDefinitionHandle handle in reader.TypeDefinitions)
+                {
+                    TypeDefinition definition = reader.GetTypeDefinition(handle);
+                    if ((definition.Attributes & TypeAttributes.Abstract) != 0)
+                        continue;
+                    if (!IsDatabaseDriver(reader, handle, provider, new HashSet<TypeDefinitionHandle>()))
+                        continue;
+
+                    string name = reader.GetString(definition.Name);
+                    string ns = reader.GetString(definition.Namespace);
+                    yield return string.IsNullOrEmpty(ns) ? name : ns + "." + name;
+                }
+            }
+        }
+
+        static bool IsDatabaseDriver(
+            MetadataReader reader,
+            TypeDefinitionHandle handle,
+            MetadataTypeNameProvider provider,
+            HashSet<TypeDefinitionHandle> visited)
+        {
+            if (!visited.Add(handle))
+                return false;
+
+            TypeDefinition definition = reader.GetTypeDefinition(handle);
+            foreach (InterfaceImplementationHandle implementationHandle in definition.GetInterfaceImplementations())
+            {
+                EntityHandle interfaceHandle = reader.GetInterfaceImplementation(implementationHandle).Interface;
+                if (IsDatabaseDriverTypeName(GetTypeName(reader, interfaceHandle, provider)))
+                    return true;
+            }
+
+            EntityHandle baseType = definition.BaseType;
+            if (baseType.IsNil)
+                return false;
+            if (IsDatabaseDriverTypeName(GetTypeName(reader, baseType, provider)))
+                return true;
+            return baseType.Kind == HandleKind.TypeDefinition
+                && IsDatabaseDriver(reader, (TypeDefinitionHandle)baseType, provider, visited);
+        }
+
+        static bool IsDatabaseDriverTypeName(string name)
+        {
+            return name == "ICSharpCode.Data.Core.Interfaces.IDatabaseDriver"
+                || name == "ICSharpCode.Data.Core.Interfaces.IDatabaseDriver`1"
+                || name == "ICSharpCode.Data.Core.DatabaseObjects.DatabaseDriver`1";
+        }
+
+        static string GetTypeName(MetadataReader reader, EntityHandle handle, MetadataTypeNameProvider provider)
+        {
+            switch (handle.Kind)
+            {
+                case HandleKind.TypeDefinition:
+                    return provider.GetTypeFromDefinition(reader, (TypeDefinitionHandle)handle, 0);
+                case HandleKind.TypeReference:
+                    return provider.GetTypeFromReference(reader, (TypeReferenceHandle)handle, 0);
+                case HandleKind.TypeSpecification:
+                    return reader.GetTypeSpecification((TypeSpecificationHandle)handle)
+                        .DecodeSignature(provider, null);
+                default:
+                    return string.Empty;
+            }
+        }
+
+        sealed class MetadataTypeNameProvider : ISignatureTypeProvider<string, object>
+        {
+            static string GetFullName(MetadataReader reader, StringHandle namespaceHandle, StringHandle nameHandle)
+            {
+                string name = reader.GetString(nameHandle);
+                string ns = reader.GetString(namespaceHandle);
+                return string.IsNullOrEmpty(ns) ? name : ns + "." + name;
+            }
+
+            public string GetTypeFromDefinition(MetadataReader reader, TypeDefinitionHandle handle, byte rawTypeKind)
+            {
+                TypeDefinition type = reader.GetTypeDefinition(handle);
+                return GetFullName(reader, type.Namespace, type.Name);
+            }
+
+            public string GetTypeFromReference(MetadataReader reader, TypeReferenceHandle handle, byte rawTypeKind)
+            {
+                TypeReference type = reader.GetTypeReference(handle);
+                return GetFullName(reader, type.Namespace, type.Name);
+            }
+
+            public string GetTypeFromSpecification(MetadataReader reader, object genericContext, TypeSpecificationHandle handle, byte rawTypeKind)
+            {
+                return reader.GetTypeSpecification(handle).DecodeSignature(this, genericContext);
+            }
+
+            public string GetGenericInstantiation(string genericType, System.Collections.Immutable.ImmutableArray<string> typeArguments) => genericType;
+            public string GetArrayType(string elementType, ArrayShape shape) => elementType;
+            public string GetSZArrayType(string elementType) => elementType;
+            public string GetByReferenceType(string elementType) => elementType;
+            public string GetPointerType(string elementType) => elementType;
+            public string GetPinnedType(string elementType) => elementType;
+            public string GetModifiedType(string modifier, string unmodifiedType, bool isRequired) => unmodifiedType;
+            public string GetGenericMethodParameter(object genericContext, int index) => "!!" + index;
+            public string GetGenericTypeParameter(object genericContext, int index) => "!" + index;
+            public string GetPrimitiveType(PrimitiveTypeCode typeCode) => typeCode.ToString();
+            public string GetFunctionPointerType(MethodSignature<string> signature) => string.Empty;
         }
 
         #endregion
