@@ -12,10 +12,10 @@
   <ItemGroup>
     <!-- Client for Microsoft.Testing.Platform's server-mode JSON-RPC protocol (Mtp/MtpServerProcess.cs)
          - replaces the classic vstest.console/TranslationLayer path entirely. -->
-    <PackageReference Include="StreamJsonRpc" Version="2.21.10" />
+    <PackageReference Include="StreamJsonRpc" Version="2.25.29" />
     <!-- StreamJsonRpc pulls MessagePack 2.5.187 transitively (NU1902/NU1903, several known CVEs).
-         Pin the patched 2.5.x version so NuGet unifies to the same build Base uses. -->
-    <PackageReference Include="MessagePack" Version="2.5.302" />
+         Pin the patched 3.x version so NuGet unifies to the same build Base uses. -->
+    <PackageReference Include="MessagePack" Version="3.1.8" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" />

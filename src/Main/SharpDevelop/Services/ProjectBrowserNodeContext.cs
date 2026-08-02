@@ -8,7 +8,7 @@ namespace ICSharpCode.SharpDevelop.Services;
 [Flags]
 internal enum ProjectBrowserNodeState
 {
-    None = 0,
+    NoState = 0,
     HasPath = 1 << 0,
     Solution = 1 << 1,
     Project = 1 << 2,
@@ -26,7 +26,16 @@ internal enum ProjectBrowserNodeState
     IncludeInProject = 1 << 14,
     ExcludeFromProject = 1 << 15,
     RemovableReference = 1 << 16,
-    OpenReference = 1 << 17
+    OpenReference = 1 << 17,
+
+    // Compatibility flags consumed by the original Project Browser menu conditions in
+    // ICSharpCode.SharpDevelop.addin.  Those conditions are shared with the legacy tree and
+    // name FileNodeStatus values directly, so the replacement CPS-backed tree must expose the
+    // same semantic states in addition to its finer-grained command capability flags.
+    None = 1 << 18,
+    InProject = 1 << 19,
+    Missing = 1 << 20,
+    BehindFile = 1 << 21
 }
 
 internal enum ProjectBrowserNodeKind
@@ -87,12 +96,12 @@ internal sealed record ProjectBrowserNodeContext(
             ProjectBrowserNodeKind.DependenciesFolder or ProjectBrowserNodeKind.ReferencesFolder or ProjectBrowserNodeKind.PackagesFolder => ProjectBrowserNodeState.Folder,
             ProjectBrowserNodeKind.Reference or ProjectBrowserNodeKind.PackageReference => ProjectBrowserNodeState.File | ProjectBrowserNodeState.RemovableReference,
             ProjectBrowserNodeKind.ProjectReference => ProjectBrowserNodeState.File | ProjectBrowserNodeState.RemovableReference | ProjectBrowserNodeState.OpenReference,
-            ProjectBrowserNodeKind.Folder => ProjectBrowserNodeState.Folder | ProjectBrowserNodeState.CreateChild | ProjectBrowserNodeState.Renameable | ProjectBrowserNodeState.Deletable | ProjectBrowserNodeState.RemovableFromSolution | ProjectBrowserNodeState.AddExisting,
-            ProjectBrowserNodeKind.GhostFolder => ProjectBrowserNodeState.Folder,
-            ProjectBrowserNodeKind.File or ProjectBrowserNodeKind.LinkedFile => ProjectBrowserNodeState.File | ProjectBrowserNodeState.Openable | ProjectBrowserNodeState.Renameable | ProjectBrowserNodeState.Deletable | ProjectBrowserNodeState.RemovableFromSolution | ProjectBrowserNodeState.OpenWith | ProjectBrowserNodeState.ExcludeFromProject,
-            ProjectBrowserNodeKind.MissingFile => ProjectBrowserNodeState.File | ProjectBrowserNodeState.RemovableFromSolution,
-            ProjectBrowserNodeKind.GhostFile => ProjectBrowserNodeState.File | ProjectBrowserNodeState.Openable | ProjectBrowserNodeState.OpenWith | ProjectBrowserNodeState.IncludeInProject,
-            _ => ProjectBrowserNodeState.None
+            ProjectBrowserNodeKind.Folder => ProjectBrowserNodeState.Folder | ProjectBrowserNodeState.CreateChild | ProjectBrowserNodeState.Renameable | ProjectBrowserNodeState.Deletable | ProjectBrowserNodeState.RemovableFromSolution | ProjectBrowserNodeState.AddExisting | ProjectBrowserNodeState.InProject,
+            ProjectBrowserNodeKind.GhostFolder => ProjectBrowserNodeState.Folder | ProjectBrowserNodeState.None,
+            ProjectBrowserNodeKind.File or ProjectBrowserNodeKind.LinkedFile => ProjectBrowserNodeState.File | ProjectBrowserNodeState.Openable | ProjectBrowserNodeState.Renameable | ProjectBrowserNodeState.Deletable | ProjectBrowserNodeState.RemovableFromSolution | ProjectBrowserNodeState.OpenWith | ProjectBrowserNodeState.ExcludeFromProject | ProjectBrowserNodeState.InProject,
+            ProjectBrowserNodeKind.MissingFile => ProjectBrowserNodeState.File | ProjectBrowserNodeState.RemovableFromSolution | ProjectBrowserNodeState.Missing,
+            ProjectBrowserNodeKind.GhostFile => ProjectBrowserNodeState.File | ProjectBrowserNodeState.Openable | ProjectBrowserNodeState.OpenWith | ProjectBrowserNodeState.IncludeInProject | ProjectBrowserNodeState.None,
+            _ => ProjectBrowserNodeState.NoState
         });
 
     public string IconUri =>

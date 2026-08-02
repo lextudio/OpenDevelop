@@ -14,6 +14,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.Core;
@@ -87,6 +88,183 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				solutionFile = solution.FileName != null ? solution.FileName.ToString() : null,
 				projects
 			});
+		}
+
+		[DevFlowAction("od.project-context-menu", Description = "Build a project node's real AddIn-tree context menu and return its visible item labels")]
+		public static string GetProjectContextMenu(string projectName)
+		{
+			try {
+				var viewModel = OpenDevelopMefHost.ExportProvider.GetExportedValue<ICSharpCode.SharpDevelop.Services.ProjectBrowserViewModel>();
+				var projectNode = FindNode(viewModel.RootNodes, node =>
+					node.Kind == ICSharpCode.SharpDevelop.Services.ProjectBrowserNodeKind.Project
+					&& string.Equals(node.Name, projectName, StringComparison.OrdinalIgnoreCase));
+				if (projectNode == null)
+					return JsonSerializer.Serialize(new { success = false, error = "No project named '" + projectName + "'." });
+
+				// Use the same selection and menu paths as the real WPF Project Browser. Besides
+				// testing menu registration, this catches regressions in CurrentProject routing.
+				var descendant = FindNode(projectNode.Children, node => true);
+				if (descendant != null)
+					viewModel.SelectedNode = descendant;
+				var descendantCurrentProject = SD.ProjectService.CurrentProject?.Name;
+				viewModel.SelectedNode = projectNode;
+				var context = projectNode.ToContext();
+				// CreateContextMenu fills its Items when WPF raises Opened. Build those same
+				// AddIn-tree items directly so this headless probe does not depend on a popup.
+				var items = ICSharpCode.Core.Presentation.MenuService.CreateMenuItems(
+					null, context, context.ContextMenuPath, "ContextMenu");
+				var labels = FlattenMenuLabels(items).ToArray();
+				return JsonSerializer.Serialize(new {
+					success = true,
+					currentProject = SD.ProjectService.CurrentProject?.Name,
+					descendantCurrentProject,
+					labels
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
+			}
+		}
+
+		static ICSharpCode.SharpDevelop.Services.ProjectBrowserNodeModel FindNode(
+			IEnumerable<ICSharpCode.SharpDevelop.Services.ProjectBrowserNodeModel> nodes,
+			Func<ICSharpCode.SharpDevelop.Services.ProjectBrowserNodeModel, bool> predicate)
+		{
+			foreach (var node in nodes) {
+				if (predicate(node))
+					return node;
+				var match = FindNode(node.Children, predicate);
+				if (match != null)
+					return match;
+			}
+			return null;
+		}
+
+		static IEnumerable<string> FlattenMenuLabels(IEnumerable items)
+		{
+			foreach (var item in items.OfType<MenuItem>()) {
+				if (item.Visibility != Visibility.Visible)
+					continue;
+				var label = item.Header?.ToString();
+				if (!string.IsNullOrWhiteSpace(label))
+					yield return label;
+				foreach (var child in FlattenMenuLabels(item.Items))
+					yield return child;
+			}
+		}
+
+		[DevFlowAction("od.class-diagram-project-model", Description = "Analyze the selected project's sources through the installed Class Diagram add-in")]
+		public static string GetClassDiagramProjectModel(string projectName)
+		{
+			try {
+				var project = FindProjectByName(projectName);
+				if (project == null)
+					return JsonSerializer.Serialize(new { success = false, error = "No project named '" + projectName + "'." });
+				SD.ProjectService.CurrentProject = project;
+				var assembly = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(candidate =>
+					string.Equals(candidate.GetName().Name, "ClassDiagramAddin", StringComparison.Ordinal));
+				if (assembly == null) {
+					var addInFile = SD.AddInTree.AddIns.FirstOrDefault(addIn =>
+						addIn.FileName?.EndsWith("ClassDiagramAddin.addin", StringComparison.OrdinalIgnoreCase) == true)?.FileName;
+					if (!string.IsNullOrEmpty(addInFile))
+						assembly = Assembly.LoadFrom(Path.Combine(Path.GetDirectoryName(addInFile), "ClassDiagramAddin.dll"));
+				}
+				var sourceProvider = assembly?.GetType("ICSharpCode.ClassDiagram.ClassDiagramProjectSources");
+				var documentType = AppDomain.CurrentDomain.GetAssemblies()
+					.Select(candidate => candidate.GetType("ICSharpCode.ClassDiagram.ClassDiagramDocument"))
+					.FirstOrDefault(candidate => candidate != null);
+				if (documentType == null && assembly != null) {
+					var coreAssembly = Assembly.LoadFrom(Path.Combine(Path.GetDirectoryName(assembly.Location), "ClassDiagram.Core.dll"));
+					documentType = coreAssembly.GetType("ICSharpCode.ClassDiagram.ClassDiagramDocument");
+				}
+				if (sourceProvider == null || documentType == null)
+					return JsonSerializer.Serialize(new { success = false, error = "Class Diagram add-in types are not loaded." });
+				var sourceFiles = ((IEnumerable<string>)sourceProvider.GetMethod("GetSourceFiles",
+					BindingFlags.Public | BindingFlags.Static).Invoke(null, new object[] { project })).ToArray();
+				var document = documentType.GetMethod("Create", BindingFlags.Public | BindingFlags.Static)
+					.Invoke(null, new object[] { sourceFiles });
+				var types = (IEnumerable)documentType.GetProperty("Types").GetValue(document);
+				return JsonSerializer.Serialize(new {
+					success = true,
+					sourceFiles,
+					typeCount = types.Cast<object>().Count()
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
+			}
+		}
+
+		[DevFlowAction("od.class-diagram-canvas", Description = "Inspect the rendered WPF canvas of the active Class Diagram view")]
+		public static string GetClassDiagramCanvas(string path)
+		{
+			var view = string.IsNullOrEmpty(path)
+				? SD.Workbench.ActiveViewContent
+				: SD.FileService.GetOpenFile(FileName.Create(path));
+			if (view?.GetType().FullName != "ICSharpCode.ClassDiagram.ClassDiagramViewContent")
+				return JsonSerializer.Serialize(new { success = false, error = "The active view is not a Class Diagram." });
+			var root = view.Control as DependencyObject;
+			var canvas = FindLogicalDescendants<Canvas>(root).FirstOrDefault();
+			var status = FindLogicalDescendants<TextBlock>(root)
+				.Select(item => item.Text)
+				.FirstOrDefault(text => text?.Contains(" types,", StringComparison.Ordinal) == true);
+			var routes = canvas?.Children.OfType<System.Windows.Shapes.Polyline>()
+				.Where(route => Equals(route.Tag, "ClassDiagramRoute")).ToArray()
+				?? Array.Empty<System.Windows.Shapes.Polyline>();
+			var cards = canvas?.Children.OfType<Border>().ToArray() ?? Array.Empty<Border>();
+			var buttons = FindLogicalDescendants<Button>(root).ToArray();
+			var dependencies = FindLogicalDescendants<CheckBox>(root).FirstOrDefault(checkBox =>
+				string.Equals(checkBox.Content?.ToString(), "Dependencies", StringComparison.Ordinal));
+			bool IsAxisAligned(Point first, Point second) =>
+				Math.Abs(first.X - second.X) < 0.01 || Math.Abs(first.Y - second.Y) < 0.01;
+			bool IsOnCardBoundary(Point point) => cards.Any(card => {
+				var left = Canvas.GetLeft(card);
+				var top = Canvas.GetTop(card);
+				var width = card.ActualWidth > 0 ? card.ActualWidth : card.DesiredSize.Width;
+				var height = card.ActualHeight > 0 ? card.ActualHeight : card.DesiredSize.Height;
+				var inside = point.X >= left - 0.01 && point.X <= left + width + 0.01
+					&& point.Y >= top - 0.01 && point.Y <= top + height + 0.01;
+				return inside && (Math.Abs(point.X - left) < 0.01 || Math.Abs(point.X - left - width) < 0.01
+					|| Math.Abs(point.Y - top) < 0.01 || Math.Abs(point.Y - top - height) < 0.01);
+			});
+			return JsonSerializer.Serialize(new {
+				success = canvas != null,
+				cardCount = canvas?.Children.OfType<Border>().Count() ?? 0,
+				fitToCanvasAvailable = buttons.Any(button => string.Equals(button.Content?.ToString(), "Fit to canvas", StringComparison.Ordinal)),
+				dependenciesChecked = dependencies?.IsChecked == true,
+				routeCount = routes.Length,
+				allRoutesOrthogonal = routes.All(route => route.Points.Cast<Point>().Zip(route.Points.Cast<Point>().Skip(1))
+					.All(segment => IsAxisAligned(segment.First, segment.Second))),
+				allRouteEndpointsOnCardBoundaries = routes.All(route => route.Points.Count >= 2
+					&& IsOnCardBoundary(route.Points[0]) && IsOnCardBoundary(route.Points[^1])),
+				bentRouteCount = routes.Count(route => route.Points.Count > 2),
+				routePoints = routes.Select(route => route.Points.Cast<Point>().Select(point => new { point.X, point.Y }).ToArray()).ToArray(),
+				cardBounds = cards.Select(card => new {
+					left = Canvas.GetLeft(card), top = Canvas.GetTop(card),
+					width = card.ActualWidth > 0 ? card.ActualWidth : card.DesiredSize.Width,
+					height = card.ActualHeight > 0 ? card.ActualHeight : card.DesiredSize.Height
+				}).ToArray(),
+				visualCount = canvas?.Children.Count ?? 0,
+				status
+			});
+		}
+
+		static IEnumerable<T> FindLogicalDescendants<T>(DependencyObject root) where T : DependencyObject
+		{
+			if (root == null)
+				yield break;
+			foreach (var child in LogicalTreeHelper.GetChildren(root).OfType<DependencyObject>()) {
+				if (child is T match)
+					yield return match;
+				foreach (var descendant in FindLogicalDescendants<T>(child))
+					yield return descendant;
+			}
+		}
+
+		[DevFlowAction("od.close-active-view", Description = "Close the active document without prompting")]
+		public static string CloseActiveView()
+		{
+			var window = SD.Workbench.ActiveViewContent?.WorkbenchWindow;
+			window?.CloseWindow(force: true);
+			return JsonSerializer.Serialize(new { success = window != null });
 		}
 
 		[DevFlowAction("od.open-file", Description = "Open a file in the editor by path (bypasses the native Open dialog)")]

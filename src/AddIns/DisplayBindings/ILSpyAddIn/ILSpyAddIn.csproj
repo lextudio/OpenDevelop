@@ -69,12 +69,12 @@
     <PackageReference Include="TomsToolbox.Composition.MicrosoftExtensions" Version="2.24.0" />
     <PackageReference Include="TomsToolbox.Wpf.Composition.AttributedModel" Version="2.24.0" />
     <PackageReference Include="TomsToolbox.Wpf.Styles" Version="2.24.0" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.7" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
     <PackageReference Include="DataGridExtensions" Version="2.9.1" />
     <PackageReference Include="Microsoft.Xaml.Behaviors.Wpf" Version="1.1.142" />
     <!-- AvalonEdit itself comes from the local ICSharpCode.AvalonEdit ProjectReference above;
          do not also pull the NuGet package, or the two assembly identities collide (CS0433). -->
-    <PackageReference Include="McMaster.Extensions.CommandLineUtils" Version="4.1.1" />
+    <PackageReference Include="McMaster.Extensions.CommandLineUtils" Version="5.1.0" />
     <!-- ILSpy source uses `using System.Composition;` (Export/NonShared/etc.) without directly
          referencing the System.Composition NuGet package; upstream supplies those attribute
          types via this TomsToolbox source generator (wired as a GlobalPackageReference in

@@ -24,6 +24,8 @@ public sealed class ClassDiagramViewContent : AbstractViewContent
     readonly Canvas canvas = new Canvas();
     readonly TextBlock status = new TextBlock();
     readonly ScaleTransform scale = new ScaleTransform(1, 1);
+    readonly ScrollViewer scroller;
+    readonly Slider zoomSlider;
     readonly MsaglClassDiagramLayoutEngine layoutEngine = new MsaglClassDiagramLayoutEngine();
     ClassDiagramDocument document = new ClassDiagramDocument();
     Border draggedCard;
@@ -32,7 +34,7 @@ public sealed class ClassDiagramViewContent : AbstractViewContent
     Point stateOrigin;
     bool showInheritance = true;
     bool showAssociations = true;
-    bool showDependencies = true;
+    bool showDependencies;
     string selectedTypeName;
     IReadOnlyList<ClassDiagramRoute> layoutRoutes = Array.Empty<ClassDiagramRoute>();
     readonly List<FileSystemWatcher> sourceWatchers = new List<FileSystemWatcher>();
@@ -59,9 +61,11 @@ public sealed class ClassDiagramViewContent : AbstractViewContent
         };
         var export = new Button { Content = "Export PNG", Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(8, 3, 8, 3) };
         export.Click += delegate { ExportPng(); };
+        var fit = new Button { Content = "Fit to canvas", Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(8, 3, 8, 3) };
+        fit.Click += delegate { FitToCanvas(); };
         var zoomLabel = new TextBlock { Text = "Zoom", Margin = new Thickness(12, 4, 4, 0) };
-        var zoom = new Slider { Minimum = 0.5, Maximum = 2, Value = 1, Width = 160 };
-        zoom.ValueChanged += delegate(object sender, RoutedPropertyChangedEventArgs<double> e) {
+        zoomSlider = new Slider { Minimum = 0.1, Maximum = 2, Value = 1, Width = 160 };
+        zoomSlider.ValueChanged += delegate(object sender, RoutedPropertyChangedEventArgs<double> e) {
             scale.ScaleX = scale.ScaleY = e.NewValue;
         };
         toolbar.Children.Add(refresh);
@@ -70,14 +74,15 @@ public sealed class ClassDiagramViewContent : AbstractViewContent
         toolbar.Children.Add(collapse);
         toolbar.Children.Add(addNote);
         toolbar.Children.Add(export);
+        toolbar.Children.Add(fit);
         toolbar.Children.Add(zoomLabel);
-        toolbar.Children.Add(zoom);
+        toolbar.Children.Add(zoomSlider);
         AddRelationshipToggle(toolbar, "Inheritance", true, value => showInheritance = value);
         AddRelationshipToggle(toolbar, "Associations", true, value => showAssociations = value);
-        AddRelationshipToggle(toolbar, "Dependencies", true, value => showDependencies = value);
+        AddRelationshipToggle(toolbar, "Dependencies", false, value => showDependencies = value);
 
         canvas.RenderTransform = scale;
-        var scroller = new ScrollViewer {
+        scroller = new ScrollViewer {
             Content = canvas,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto
@@ -94,6 +99,24 @@ public sealed class ClassDiagramViewContent : AbstractViewContent
         root.Children.Add(status);
     }
 
+    void FitToCanvas()
+    {
+        // Actual viewport dimensions are unavailable until the document has participated in
+        // layout. A click during activation is simply retried once at dispatcher priority.
+        if (scroller.ViewportWidth <= 0 || scroller.ViewportHeight <= 0 || canvas.Width <= 0 || canvas.Height <= 0) {
+            _ = root.Dispatcher.BeginInvoke(new Action(FitToCanvas));
+            return;
+        }
+
+        const double margin = 24;
+        var availableWidth = Math.Max(1, scroller.ViewportWidth - margin * 2);
+        var availableHeight = Math.Max(1, scroller.ViewportHeight - margin * 2);
+        var fitScale = Math.Min(availableWidth / canvas.Width, availableHeight / canvas.Height);
+        zoomSlider.Value = Math.Clamp(fitScale, zoomSlider.Minimum, zoomSlider.Maximum);
+        scroller.ScrollToHorizontalOffset(0);
+        scroller.ScrollToVerticalOffset(0);
+    }
+
     public override object Control => root;
 
     public override void Load(OpenedFile file, Stream stream)
@@ -102,14 +125,19 @@ public sealed class ClassDiagramViewContent : AbstractViewContent
         if (document.SourceFiles.Count == 0) {
             var project = SD.ProjectService.CurrentProject;
             if (project is not null) {
-                document.SourceFiles.AddRange(project.Items.OfType<FileProjectItem>()
-                    .Select(item => item.FileName.ToString())
-                    .Where(path => path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)));
+                document.SourceFiles.AddRange(ClassDiagramProjectSources.GetSourceFiles(project));
                 document.Refresh();
             }
         }
+        var needsMeasuredLayout = !document.NodeStates.Values.Any(state => state.X != 0 || state.Y != 0);
         EnsureLayout();
         Render();
+        if (needsMeasuredLayout) {
+            // The first pass materializes/measures the real cards. Run layout once more with
+            // those dimensions instead of the conservative fallback height.
+            AutoArrange();
+            Render();
+        }
         StartWatchingSources();
     }
 
@@ -165,11 +193,8 @@ public sealed class ClassDiagramViewContent : AbstractViewContent
         var project = SD.ProjectService.CurrentProject;
         if (project is null)
             yield break;
-        foreach (var item in project.Items.OfType<FileProjectItem>()) {
-            var path = item.FileName.ToString();
-            if (path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
-                yield return path;
-        }
+        foreach (var path in ClassDiagramProjectSources.GetSourceFiles(project))
+            yield return path;
     }
 
     void StartWatchingSources()
@@ -220,6 +245,9 @@ public sealed class ClassDiagramViewContent : AbstractViewContent
             Canvas.SetTop(card, state.Y);
             canvas.Children.Add(card);
         }
+        // Saved positions, source refreshes, collapsing, and manual dragging all retain the node
+        // layout but still need fresh obstacle-aware routes using the cards' current dimensions.
+        RouteCurrentPositions();
         if (showInheritance)
             DrawRelationships(cardWidth);
         DrawCodeRelationships(cardWidth);
@@ -543,6 +571,7 @@ public sealed class ClassDiagramViewContent : AbstractViewContent
 
     Polyline CreateRoute(IReadOnlyList<ClassDiagramRoutePoint> points, Brush brush, double thickness) =>
         new Polyline {
+            Tag = "ClassDiagramRoute",
             Points = new PointCollection(points.Select(point => new Point(point.X, point.Y))),
             Stroke = brush,
             StrokeThickness = thickness,
@@ -616,9 +645,21 @@ public sealed class ClassDiagramViewContent : AbstractViewContent
 
     void EnsureLayout()
     {
-        if (document.NodeStates.Values.Any(state => state.X != 0 || state.Y != 0))
+        if (document.NodeStates.Values.Any(state => state.X != 0 || state.Y != 0)) {
+            RouteCurrentPositions();
             return;
+        }
         AutoArrange();
+    }
+
+    void RouteCurrentPositions()
+    {
+        try {
+            layoutRoutes = layoutEngine.Route(document, GetMeasuredNodeSizes());
+        } catch (Exception ex) {
+            SD.Log.Warn("MSAGL class diagram routing failed: " + ex.Message);
+            layoutRoutes = Array.Empty<ClassDiagramRoute>();
+        }
     }
 
     void AutoArrange()
@@ -626,20 +667,29 @@ public sealed class ClassDiagramViewContent : AbstractViewContent
         if (document.Types.Count == 0)
             return;
         try {
-            var measuredSizes = canvas.Children.OfType<Border>()
-                .Where(card => card.Tag is string)
-                .ToDictionary(
-                    card => (string)card.Tag,
-                    card => new ClassDiagramNodeSize(
-                        card.ActualWidth > 0 ? card.ActualWidth : card.DesiredSize.Width,
-                        card.ActualHeight > 0 ? card.ActualHeight : card.DesiredSize.Height),
-                    StringComparer.Ordinal);
+            var measuredSizes = GetMeasuredNodeSizes();
             layoutRoutes = layoutEngine.Arrange(document, measuredSizes);
         } catch (Exception ex) {
             SD.Log.Warn("MSAGL class diagram layout failed; using grid fallback: " + ex.Message);
             ArrangeGridFallback();
             layoutRoutes = Array.Empty<ClassDiagramRoute>();
         }
+    }
+
+    IReadOnlyDictionary<string, ClassDiagramNodeSize> GetMeasuredNodeSizes()
+    {
+        foreach (var card in canvas.Children.OfType<Border>()) {
+            if (card.DesiredSize.Width <= 0 || card.DesiredSize.Height <= 0)
+                card.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        }
+        return canvas.Children.OfType<Border>()
+            .Where(card => card.Tag is string)
+            .ToDictionary(
+                card => (string)card.Tag,
+                card => new ClassDiagramNodeSize(
+                    card.ActualWidth > 0 ? card.ActualWidth : card.DesiredSize.Width,
+                    card.ActualHeight > 0 ? card.ActualHeight : card.DesiredSize.Height),
+                StringComparer.Ordinal);
     }
 
     void ArrangeGridFallback()
@@ -685,7 +735,7 @@ public sealed class ClassDiagramViewContent : AbstractViewContent
         draggedCard.ReleaseMouseCapture();
         draggedCard = null;
         draggedState = null;
-        layoutRoutes = Array.Empty<ClassDiagramRoute>();
+        RouteCurrentPositions();
         MarkDirty();
         Render();
         e.Handled = true;

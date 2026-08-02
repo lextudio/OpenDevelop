@@ -4,6 +4,7 @@ using System.Linq;
 using Microsoft.Msagl.Core.Geometry;
 using Microsoft.Msagl.Core.Geometry.Curves;
 using Microsoft.Msagl.Core.Layout;
+using Microsoft.Msagl.Core.Routing;
 using Microsoft.Msagl.Layout.Layered;
 using Microsoft.Msagl.Miscellaneous;
 
@@ -19,6 +20,50 @@ public sealed class MsaglClassDiagramLayoutEngine
         ClassDiagramDocument document,
         IReadOnlyDictionary<string, ClassDiagramNodeSize> measuredSizes = null)
     {
+        var graph = CreateGraph(document, measuredSizes, useSavedPositions: false);
+
+        var settings = new SugiyamaLayoutSettings {
+            LayerSeparation = 70,
+            NodeSeparation = 45
+        };
+        ConfigureRouting(settings);
+        LayoutHelpers.CalculateLayout(graph, settings, null);
+
+        var left = graph.Nodes.Min(node => node.BoundingBox.Left);
+        var top = graph.Nodes.Max(node => node.BoundingBox.Top);
+        foreach (var node in graph.Nodes) {
+            var state = document.NodeStates[(string)node.UserData];
+            state.X = 30 + node.BoundingBox.Left - left;
+            state.Y = 30 + top - node.BoundingBox.Top;
+        }
+        return ExtractRoutes(graph, point => new ClassDiagramRoutePoint(30 + point.X - left, 30 + top - point.Y));
+    }
+
+    public IReadOnlyList<ClassDiagramRoute> Route(
+        ClassDiagramDocument document,
+        IReadOnlyDictionary<string, ClassDiagramNodeSize> measuredSizes = null)
+    {
+        var graph = CreateGraph(document, measuredSizes, useSavedPositions: true);
+        var settings = new SugiyamaLayoutSettings();
+        ConfigureRouting(settings);
+        LayoutHelpers.RouteAndLabelEdges(graph, settings, graph.Edges, 0, null);
+        return ExtractRoutes(graph, point => new ClassDiagramRoutePoint(point.X, -point.Y));
+    }
+
+    static void ConfigureRouting(LayoutAlgorithmSettings settings)
+    {
+        settings.EdgeRoutingSettings.EdgeRoutingMode = EdgeRoutingMode.Rectilinear;
+        settings.EdgeRoutingSettings.Padding = 12;
+        settings.EdgeRoutingSettings.PolylinePadding = 6;
+        settings.EdgeRoutingSettings.CornerRadius = 0;
+        settings.EdgeRoutingSettings.BendPenalty = 4;
+    }
+
+    static GeometryGraph CreateGraph(
+        ClassDiagramDocument document,
+        IReadOnlyDictionary<string, ClassDiagramNodeSize> measuredSizes,
+        bool useSavedPositions)
+    {
         var graph = new GeometryGraph();
         var nodes = new Dictionary<string, Node>(StringComparer.Ordinal);
         foreach (var type in document.Types) {
@@ -28,9 +73,10 @@ public sealed class MsaglClassDiagramLayoutEngine
             var size = measuredSizes is not null && measuredSizes.TryGetValue(id, out var measured)
                 ? measured
                 : new ClassDiagramNodeSize(NodeWidth, fallbackHeight);
-            var node = new Node(CurveFactory.CreateRectangle(size.Width, size.Height, new Point(0, 0))) {
-                UserData = id
-            };
+            var center = useSavedPositions
+                ? new Point(state.X + size.Width / 2, -(state.Y + size.Height / 2))
+                : new Point(0, 0);
+            var node = new Node(CurveFactory.CreateRectangle(size.Width, size.Height, center)) { UserData = id };
             graph.Nodes.Add(node);
             nodes[id] = node;
         }
@@ -53,33 +99,39 @@ public sealed class MsaglClassDiagramLayoutEngine
                     UserData = new LayoutEdgeData(relationship.SourceType, relationship.TargetType, relationship.Kind, false)
                 });
         }
+        return graph;
+    }
 
-        var settings = new SugiyamaLayoutSettings {
-            LayerSeparation = 70,
-            NodeSeparation = 45
-        };
-        LayoutHelpers.CalculateLayout(graph, settings, null);
-
-        var left = graph.Nodes.Min(node => node.BoundingBox.Left);
-        var top = graph.Nodes.Max(node => node.BoundingBox.Top);
-        foreach (var node in graph.Nodes) {
-            var state = document.NodeStates[(string)node.UserData];
-            state.X = 30 + node.BoundingBox.Left - left;
-            state.Y = 30 + top - node.BoundingBox.Top;
-        }
+    static IReadOnlyList<ClassDiagramRoute> ExtractRoutes(
+        GeometryGraph graph,
+        Func<Point, ClassDiagramRoutePoint> transform)
+    {
         var routes = new List<ClassDiagramRoute>();
         foreach (var edge in graph.Edges.Where(edge => edge.Curve is not null && edge.UserData is LayoutEdgeData)) {
             var data = (LayoutEdgeData)edge.UserData;
-            var points = Enumerable.Range(0, 25).Select(index => {
-                var parameter = edge.Curve.ParStart + (edge.Curve.ParEnd - edge.Curve.ParStart) * index / 24.0;
-                var point = edge.Curve[parameter];
-                return new ClassDiagramRoutePoint(30 + point.X - left, 30 + top - point.Y);
-            }).ToList();
+            var points = GetCurvePoints(edge.Curve).Select(transform).ToList();
             if (data.Reverse)
                 points.Reverse();
             routes.Add(new ClassDiagramRoute(data.Source, data.Target, data.Kind, data.IsInheritance, points));
         }
         return routes;
+    }
+
+    static IEnumerable<Point> GetCurvePoints(ICurve curve)
+    {
+        if (curve is Curve composite) {
+            var first = true;
+            foreach (var segment in composite.Segments) {
+                foreach (var point in GetCurvePoints(segment)) {
+                    if (first || point != segment.Start)
+                        yield return point;
+                    first = false;
+                }
+            }
+        } else {
+            yield return curve.Start;
+            yield return curve.End;
+        }
     }
 
     sealed record LayoutEdgeData(

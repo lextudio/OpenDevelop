@@ -18,7 +18,7 @@
       <HintPath>..\RequiredLibraries\NuGet.Core.dll</HintPath>
     </Reference>
     <ProjectReference Include="..\..\..\..\Libraries\ICSharpCode.TypeSystem.Abstractions\ICSharpCode.TypeSystem.Abstractions.csproj" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.3.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.6.0" />
     <!-- Real search engine (see NuGetPackageSearchService.cs): the legacy NuGet.Core repository's
          OData V2 client needs System.Data.Services.Client, which has no modern-.NET package - so
          remote (non-local-folder) sources cannot search through it at all on this runtime. Search
@@ -29,7 +29,7 @@
          resolver) - a different version here loads a byte-different NuGet.Protocol/NuGet.Common
          assembly with the same strong name, which the runtime rejects with a FileLoadException
          since the main app's own MSBuild internals already loaded the other copy first. -->
-    <PackageReference Include="NuGet.Protocol" Version="6.13.2" />
+    <PackageReference Include="NuGet.Protocol" Version="7.6.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />

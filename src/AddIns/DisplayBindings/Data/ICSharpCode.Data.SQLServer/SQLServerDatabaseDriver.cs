@@ -148,7 +148,7 @@ namespace ICSharpCode.Data.Core.DatabaseDrivers.SQLServer
 
         public override string ProviderName
         {
-            get { return "System.Data.SqlClient"; }
+            get { return "Microsoft.Data.SqlClient"; }
         }
 
         public override string ODBCProviderName
@@ -164,7 +164,7 @@ namespace ICSharpCode.Data.Core.DatabaseDrivers.SQLServer
 
             try
             {
-                var sqlSourceEnumType = Type.GetType("System.Data.Sql.SqlDataSourceEnumerator, System.Data.SqlClient");
+                var sqlSourceEnumType = Type.GetType("Microsoft.Data.Sql.SqlDataSourceEnumerator, Microsoft.Data.SqlClient");
                 if (sqlSourceEnumType != null)
                 {
                     var instanceProp = sqlSourceEnumType.GetProperty("Instance");

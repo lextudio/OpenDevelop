@@ -211,8 +211,32 @@ public sealed class ClassDiagramDocumentTests
         Assert.That(positions.All(position => double.IsFinite(position.X) && double.IsFinite(position.Y)), Is.True);
         Assert.That(positions.Distinct().Count(), Is.EqualTo(document.Types.Count));
         Assert.That(routes, Is.Not.Empty);
-        Assert.That(routes.All(route => route.Points.Count == 25), Is.True);
+        Assert.That(routes.All(route => route.Points.Count >= 2), Is.True);
+        Assert.That(routes.SelectMany(route => route.Points.Zip(route.Points.Skip(1)))
+            .All(segment => NearlyEqual(segment.First.X, segment.Second.X)
+                || NearlyEqual(segment.First.Y, segment.Second.Y)), Is.True,
+            "Rectilinear routes must contain only horizontal and vertical segments.");
+
+        var inheritance = routes.Single(route => route.IsInheritance);
+        var child = document.Types.Single(type => type.QualifiedName == inheritance.Source);
+        var parent = document.Types.Single(type => type.QualifiedName == inheritance.Target);
+        Assert.That(IsOnNodeBoundary(inheritance.Points[0], document.NodeStates[ClassDiagramDocument.GetNodeId(child)]), Is.True);
+        Assert.That(IsOnNodeBoundary(inheritance.Points[^1], document.NodeStates[ClassDiagramDocument.GetNodeId(parent)]), Is.True);
+
+        var rerouted = new MsaglClassDiagramLayoutEngine().Route(document);
+        Assert.That(rerouted, Is.Not.Empty, "Saved/manual layouts must be routed too.");
+        Assert.That(rerouted.SelectMany(route => route.Points.Zip(route.Points.Skip(1)))
+            .All(segment => NearlyEqual(segment.First.X, segment.Second.X)
+                || NearlyEqual(segment.First.Y, segment.Second.Y)), Is.True);
     }
+
+    static bool IsOnNodeBoundary(ClassDiagramRoutePoint point, ClassDiagramNodeState state) =>
+        point.X >= state.X - 0.01 && point.X <= state.X + 280.01
+        && point.Y >= state.Y - 0.01 && point.Y <= state.Y + 315.01
+        && (NearlyEqual(point.X, state.X) || NearlyEqual(point.X, state.X + 280)
+            || NearlyEqual(point.Y, state.Y) || NearlyEqual(point.Y, state.Y + 315));
+
+    static bool NearlyEqual(double left, double right) => Math.Abs(left - right) < 0.01;
 
     string WriteSource(string name, string contents)
     {

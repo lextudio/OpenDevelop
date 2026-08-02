@@ -14,19 +14,19 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="Dom\TreeNodeFactoryService.cs" />
-    <PackageReference Include="Microsoft.Build" Version="18.0.2" />
-    <PackageReference Include="Microsoft.Build.Framework" Version="18.0.2" />
-    <PackageReference Include="Microsoft.Build.Runtime" Version="18.0.2" />
+    <PackageReference Include="Microsoft.Build" Version="18.8.2" />
+    <PackageReference Include="Microsoft.Build.Framework" Version="18.8.2" />
+    <PackageReference Include="Microsoft.Build.Runtime" Version="18.8.2" />
     <PackageReference Include="System.CodeDom" Version="10.0.10" />
     <PackageReference Include="log4net" Version="3.3.2" />
     <!-- Without this, Microsoft.CodeAnalysis.CSharp.Features (Roslyn) only floors this app's own
          resolution of System.Composition.AttributedModel at 9.0.0, while externals/ilspy/
-         ICSharpCode.ILSpyX (used by ILSpyAddIn, hosted in-process) pins it exactly to 10.0.8. Two
+         ICSharpCode.ILSpyX (used by ILSpyAddIn, hosted in-process) pins it exactly to 10.0.10. Two
          different versions of the same simple-named assembly loaded into one process throws
          FileLoadException ("manifest definition does not match the assembly reference") the
          moment ILSpyAddIn.dll loads - align this app's own resolution to the same version so only
          one copy is ever in play. -->
-    <PackageReference Include="System.Composition.AttributedModel" Version="10.0.8" />
+    <PackageReference Include="System.Composition.AttributedModel" Version="10.0.10" />
     <PackageReference Include="LeXtudio.DevFlow.Agent.LibreWpf" Version="0.2.2" />
   </ItemGroup>
   <ItemGroup>

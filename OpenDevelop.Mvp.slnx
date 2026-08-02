@@ -41,6 +41,10 @@
   <Folder Name="/src/AddIns/DisplayBindings/IconEditor/">
     <Project Path="src/AddIns/DisplayBindings/IconEditor/IconEditor.csproj" />
   </Folder>
+  <Folder Name="/src/AddIns/DisplayBindings/ClassDiagram/">
+    <Project Path="src/AddIns/DisplayBindings/ClassDiagram/Core/ClassDiagram.Core.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/ClassDiagram/ClassDiagramAddin/ClassDiagramAddin.csproj" />
+  </Folder>
   <Folder Name="/src/AddIns/DisplayBindings/XmlEditor/">
     <Project Path="src/AddIns/DisplayBindings/XmlEditor/Project/XmlEditor.csproj" />
   </Folder>
@@ -87,6 +91,9 @@
   </Folder>
   <Folder Name="/src/AddIns/BackendBindings/VBBinding/">
     <Project Path="src/AddIns/BackendBindings/VBBinding/Project/VBBinding.vbproj" />
+  </Folder>
+  <Folder Name="/src/AddIns/BackendBindings/XamlBinding/">
+    <Project Path="src/AddIns/BackendBindings/XamlBinding/XamlBinding/XamlBinding.csproj" />
   </Folder>
   <Folder Name="/src/AddIns/DisplayBindings/Data/">
     <Project Path="src/AddIns/DisplayBindings/Data/ICSharpCode.Data.Core/ICSharpCode.Data.Core.csproj" />

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Composition;
@@ -77,10 +78,30 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
         get => selectedNode;
         set {
             if (SetProperty(ref selectedNode, value)) {
+                UpdateCurrentProject(value);
                 propertyContainer.SelectedObject = value != null ? new ProjectBrowserNodeProperties(value.ToContext()) : null;
                 CommandManager.InvalidateRequerySuggested();
             }
         }
+    }
+
+    // Keep the legacy Project Browser contract: selecting a project or any node below it
+    // makes that project current. A solution node has no owning project and clears the value.
+    // A null selection is transient while the WPF tree is rebuilt, so it must not disturb the
+    // current project (the old WinForms BeforeSelect handler likewise ignored a null node).
+    private static void UpdateCurrentProject(ProjectBrowserNodeModel node)
+    {
+        if (node == null) {
+            return;
+        }
+
+        IProject project = node.BoundItem as IProject;
+        if (project == null && !string.IsNullOrWhiteSpace(node.ProjectPathHint)) {
+            project = SD.ProjectService.CurrentSolution?.Projects.FirstOrDefault(candidate =>
+                string.Equals(candidate.FileName?.ToString(), node.ProjectPathHint, StringComparison.OrdinalIgnoreCase));
+        }
+
+        SD.ProjectService.CurrentProject = project;
     }
     
     public bool ShowAllFiles {

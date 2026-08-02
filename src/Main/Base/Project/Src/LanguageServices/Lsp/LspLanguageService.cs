@@ -641,7 +641,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
 
         static bool IsContainerSymbolKind(int kind) => kind is 1 or 2 or 3 or 4; // File, Module, Namespace, Package
 
-        static bool IsTypeSymbolKind(int kind) => kind is 5 or 10 or 11 or 23; // Class, Enum, Interface, Struct
+        static bool IsTypeSymbolKind(int kind) => kind is 5 or 10 or 11 or 19 or 23; // Class, Enum, Interface, Object, Struct
 
         static string ConvertSymbolKind(int kind)
         {
@@ -658,6 +658,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
                 12 => "Function",
                 13 => "Variable",
                 14 => "Constant",
+                19 => "Object",
                 23 => "Struct",
                 24 => "Event",
                 25 => "Operator",

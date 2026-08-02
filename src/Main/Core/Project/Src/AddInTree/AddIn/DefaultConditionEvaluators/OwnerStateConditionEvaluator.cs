@@ -35,17 +35,23 @@ namespace ICSharpCode.Core
 		public bool IsValid(object parameter, Condition condition)
 		{
 			if (parameter is IOwnerState) {
-				try {
-					System.Enum state         = ((IOwnerState)parameter).InternalState;
-					System.Enum conditionEnum = (System.Enum)Enum.Parse(state.GetType(), condition.Properties["ownerstate"]);
-					
-					int stateInt     = Int32.Parse(state.ToString("D"));
-					int conditionInt = Int32.Parse(conditionEnum.ToString("D"));
-					
-					return (stateInt & conditionInt) > 0;
-				} catch (Exception ex) {
-					throw new CoreException("can't parse '" + condition.Properties["state"] + "'. Not a valid value.", ex);
+				System.Enum state = ((IOwnerState)parameter).InternalState;
+				string requestedState = condition.Properties["ownerstate"];
+				object parsedState;
+				if (state == null || string.IsNullOrWhiteSpace(requestedState)
+				    || !Enum.TryParse(state.GetType(), requestedState, false, out parsedState)) {
+					// AddIn conditions are configuration, not user input. A stale condition must simply
+					// exclude/disable its codon; throwing here happens while a context menu is being
+					// constructed and would otherwise terminate the entire IDE UI process.
+					LoggingService.WarnFormatted(
+						"Ownerstate condition '{0}' is not valid for enum {1}.",
+						requestedState, state?.GetType().FullName ?? "<null>");
+					return false;
 				}
+
+				ulong stateValue = Convert.ToUInt64(state);
+				ulong conditionValue = Convert.ToUInt64(parsedState);
+				return (stateValue & conditionValue) != 0;
 			}
 			return false;
 		}

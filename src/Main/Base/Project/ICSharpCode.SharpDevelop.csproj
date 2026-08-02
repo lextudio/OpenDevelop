@@ -12,26 +12,26 @@
   </PropertyGroup>
   <ItemGroup>
     <!-- For NuGetPackageSearchService.cs (shared with UnoDevelop, doc/technotes/nuget.md) -->
-    <PackageReference Include="NuGet.Protocol" Version="6.13.2" />
-    <PackageReference Include="Microsoft.Build" Version="18.0.2" />
-    <PackageReference Include="Microsoft.Build.Framework" Version="18.0.2" />
-    <PackageReference Include="Microsoft.Build.Runtime" Version="18.0.2" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.3.0" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Features" Version="5.3.0" />
+    <PackageReference Include="NuGet.Protocol" Version="7.6.0" />
+    <PackageReference Include="Microsoft.Build" Version="18.8.2" />
+    <PackageReference Include="Microsoft.Build.Framework" Version="18.8.2" />
+    <PackageReference Include="Microsoft.Build.Runtime" Version="18.8.2" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.6.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Features" Version="5.6.0" />
     <!-- See doc/technotes/roslyn.md: RoslynWorkspaceHelper hosts both C# and VB projects in one
          Roslyn workspace, the same way UnoDevelop's CSharpVBLanguageService does. -->
-    <PackageReference Include="Microsoft.CodeAnalysis.VisualBasic.Workspaces" Version="5.3.0" />
-    <PackageReference Include="Microsoft.TemplateEngine.Abstractions" Version="10.0.301" />
-    <PackageReference Include="Microsoft.TemplateEngine.Edge" Version="10.0.301" />
-    <PackageReference Include="Microsoft.TemplateEngine.Orchestrator.RunnableProjects" Version="10.0.301" />
-    <PackageReference Include="Microsoft.TemplateEngine.Utils" Version="10.0.301" />
-    <PackageReference Include="Microsoft.TemplateEngine.IDE" Version="10.0.301" />
-    <PackageReference Include="StreamJsonRpc" Version="2.21.10" />
+    <PackageReference Include="Microsoft.CodeAnalysis.VisualBasic.Workspaces" Version="5.6.0" />
+    <PackageReference Include="Microsoft.TemplateEngine.Abstractions" Version="10.0.302" />
+    <PackageReference Include="Microsoft.TemplateEngine.Edge" Version="10.0.302" />
+    <PackageReference Include="Microsoft.TemplateEngine.Orchestrator.RunnableProjects" Version="10.0.302" />
+    <PackageReference Include="Microsoft.TemplateEngine.Utils" Version="10.0.302" />
+    <PackageReference Include="Microsoft.TemplateEngine.IDE" Version="10.0.302" />
+    <PackageReference Include="StreamJsonRpc" Version="2.25.29" />
     <!-- StreamJsonRpc pulls MessagePack 2.5.187 transitively, which has several known CVEs
-         (NU1902/NU1903). Pin the patched 2.5.x version here - the project owning the StreamJsonRpc
+         (NU1902/NU1903). Pin the patched 3.x version here - the project owning the StreamJsonRpc
          reference - so NuGet unifies MessagePack across every downstream addin to the same patched
          build (matching what externals/cps already pins). -->
-    <PackageReference Include="MessagePack" Version="2.5.302" />
+    <PackageReference Include="MessagePack" Version="3.1.8" />
   </ItemGroup>
   <ItemGroup>
     <!-- For Src\AddInManager\ (shared AddIn Manager gallery engine, moved from AddInManager2's

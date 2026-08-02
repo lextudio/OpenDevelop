@@ -387,7 +387,7 @@ public sealed class UnitTestingTests
         Assert.True(padNode.GetProperty("found").GetBoolean());
         Assert.True(padNode.GetProperty("sameModelInstance").GetBoolean());
         Assert.Equal("Success", padNode.GetProperty("modelResult").GetString());
-        Assert.EndsWith("/Resources/Green.png", padNode.GetProperty("iconUri").GetString());
+        Assert.Equal("System.Windows.Media.DrawingImage", padNode.GetProperty("iconType").GetString());
     }
 
     [Fact]

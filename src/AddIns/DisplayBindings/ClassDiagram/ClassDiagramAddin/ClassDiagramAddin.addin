@@ -4,12 +4,10 @@
        addInManagerHidden="preinstalled">
   <Manifest><Identity name="ClassDiagram" /></Manifest>
   <Runtime><Import assembly="ClassDiagramAddin.dll" /></Runtime>
-  <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/ProjectActions">
-    <Condition name="ProjectActive">
-      <MenuItem id="ShowClassDiagram" label="Class Diagram"
-                class="ICSharpCode.ClassDiagram.ShowClassDiagramCommand"
-                icon="Icons.16x16.Class" />
-    </Condition>
+  <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/ProjectNode">
+    <MenuItem id="ShowClassDiagram" label="Class Diagram"
+              class="ICSharpCode.ClassDiagram.ShowClassDiagramCommand"
+              icon="Icons.16x16.Class" />
   </Path>
   <Path name="/SharpDevelop/Workbench/FileFilter">
     <FileFilter id="ClassDiagramFileFilter" name="Class Diagrams (*.cd)"
