@@ -1,0 +1,24 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 9.00
+# Visual Studio 2005
+# SharpDevelop 5.2
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CoverageTests", "CoverageTests\CoverageTests.csproj", "{B3E2B1D0-9C14-4A2E-BE57-7F3C8D2A4E01}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CoverageLib", "CoverageLib\CoverageLib.csproj", "{A7C5F4D2-3B18-4C65-9A20-5D8E6B1C7F92}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B3E2B1D0-9C14-4A2E-BE57-7F3C8D2A4E01}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B3E2B1D0-9C14-4A2E-BE57-7F3C8D2A4E01}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B3E2B1D0-9C14-4A2E-BE57-7F3C8D2A4E01}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B3E2B1D0-9C14-4A2E-BE57-7F3C8D2A4E01}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A7C5F4D2-3B18-4C65-9A20-5D8E6B1C7F92}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A7C5F4D2-3B18-4C65-9A20-5D8E6B1C7F92}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A7C5F4D2-3B18-4C65-9A20-5D8E6B1C7F92}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A7C5F4D2-3B18-4C65-9A20-5D8E6B1C7F92}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

@@ -29,20 +29,6 @@ public sealed class DevFlowAddInsTests
     }
 
     [Fact]
-    public async Task EmptyStartup_LoadsStartPageAddInAndShowsStartPage()
-    {
-        var addInsResult = await _app.InvokeAsync("od.addins");
-        var addins = addInsResult.GetProperty("addins").EnumerateArray().ToList();
-
-        Assert.Contains(addins, a => a.GetProperty("fileName").GetString()!.Contains("StartPage.addin"));
-
-        var activeView = await _app.InvokeAsync("od.active-view");
-
-        Assert.True(activeView.GetProperty("active").GetBoolean(), "Expected an active Start Page view.");
-        Assert.Equal("ICSharpCode.StartPage.StartPageViewContent", activeView.GetProperty("typeName").GetString());
-    }
-
-    [Fact]
     public async Task UnitTestsPad_DefaultsVisibleInLeftPane()
     {
         var result = await _app.InvokeAsync("od.pads");

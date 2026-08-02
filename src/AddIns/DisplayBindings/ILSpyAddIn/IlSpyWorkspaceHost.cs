@@ -1,14 +1,17 @@
 // This file is NEW glue code written for OpenDevelop (not linked from the ILSpy submodule).
 //
 // Bridges real ILSpy panes (AssemblyTreeModel/AssemblyListPane, SearchPaneModel/SearchPane,
-// AnalyzerTreeViewModel/AnalyzerTreeView) and a real ILSpy DecompilerTextView into OpenDevelop's
-// own pads (DockWorkspace.ToolPanes), instead of standing up ILSpy's own separate
-// DockWorkspace/DockingManager. ILSpy's own document/tab system (Docking.DockWorkspace,
-// TabPageModel) is intentionally NOT used here - AssemblyTreeModel.DecompileSelectedNodes() calls
-// into it, so instead of reusing that call, selection changes are observed directly via
-// MessageBus<AssemblyTreeSelectionChangedEventArgs> and decompiled straight into one dedicated
-// DecompilerTextView hosted as an OpenDevelop pad, mirroring what TabPageModelExtensions.
-// CreateDecompilationOptions()/DecompilerTextView.DecompileAsync() do internally.
+// AnalyzerTreeViewModel/AnalyzerTreeView) into OpenDevelop's own pads (DockWorkspace.ToolPanes),
+// and renders decompiled output through a real ILSpy DecompilerTextView hosted as a plain
+// OpenDevelop document tab (DecompiledCodeViewContent) - i.e. the decompile result opens like a
+// read-only, virtual file, exactly as the legacy ILSpy integration presented it, instead of
+// standing up ILSpy's own separate DockWorkspace/DockingManager. ILSpy's own document/tab system
+// (Docking.DockWorkspace, TabPageModel) is intentionally NOT used here -
+// AssemblyTreeModel.DecompileSelectedNodes() calls into it, so instead of reusing that call,
+// selection changes are observed directly via MessageBus<AssemblyTreeSelectionChangedEventArgs>
+// and decompiled straight into one dedicated DecompilerTextView hosted as an OpenDevelop
+// document, mirroring what TabPageModelExtensions.CreateDecompilationOptions()/
+// DecompilerTextView.DecompileAsync() do internally.
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -24,6 +27,7 @@ using ICSharpCode.ILSpy.TextView;
 using ICSharpCode.ILSpy.Themes;
 using ICSharpCode.ILSpy.Util;
 using ICSharpCode.ILSpy.ViewModels;
+using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Workbench;
 
 using TomsToolbox.Wpf.Composition;
@@ -41,7 +45,7 @@ namespace ICSharpCode.ILSpyAddIn
 		private static IlSpyToolPaneAdapter assembliesPane;
 		private static IlSpyToolPaneAdapter searchPane;
 		private static IlSpyToolPaneAdapter analyzerPane;
-		private static DecompiledCodeToolPaneModel decompiledCodePane;
+		private static DecompiledCodeViewContent decompiledCodeView;
 		private static bool initialized;
 
 		public static AssemblyTreeModel AssemblyTreeModel {
@@ -65,7 +69,7 @@ namespace ICSharpCode.ILSpyAddIn
 		public static IEnumerable<ICSharpCode.SharpDevelop.ViewModels.ToolPaneModel> Panes {
 			get {
 				EnsureInitialized();
-				return new ICSharpCode.SharpDevelop.ViewModels.ToolPaneModel[] { assembliesPane, searchPane, analyzerPane, decompiledCodePane };
+				return new ICSharpCode.SharpDevelop.ViewModels.ToolPaneModel[] { assembliesPane, searchPane, analyzerPane };
 			}
 		}
 
@@ -121,8 +125,8 @@ namespace ICSharpCode.ILSpyAddIn
 			// ActiveTabPage.GetState() - even though we don't use ILSpy's tab/document hosting at
 			// all (see file header), that dependency isn't optional/skippable. Give it one real,
 			// otherwise-unused TabPageModel so that read doesn't NRE; its content is never shown
-			// anywhere (we render decompiled output through our own DecompiledCodeToolPaneModel
-			// pad instead).
+			// anywhere (we render decompiled output through our own DecompiledCodeViewContent
+			// document tab instead).
 			var ilSpyDockWorkspace = exportProvider.GetExportedValue<ICSharpCode.ILSpy.Docking.DockWorkspace>();
 			ilSpyDockWorkspace.ActiveTabPage = ilSpyDockWorkspace.AddTabPage();
 
@@ -145,19 +149,20 @@ namespace ICSharpCode.ILSpyAddIn
 			assembliesPane = new IlSpyToolPaneAdapter(assemblyTreeModel, assemblyTreeModel) { Title = "Assemblies" };
 			searchPane = new IlSpyToolPaneAdapter(searchPaneModel, searchPaneModel);
 			analyzerPane = new IlSpyToolPaneAdapter(analyzerTreeViewModel, analyzerTreeViewModel);
-			decompiledCodePane = new DecompiledCodeToolPaneModel(decompilerTextView);
 
 			DockWorkspaceExtensibility.AddToolPane(assembliesPane);
 			DockWorkspaceExtensibility.AddToolPane(searchPane);
 			DockWorkspaceExtensibility.AddToolPane(analyzerPane);
-			DockWorkspaceExtensibility.AddToolPane(decompiledCodePane);
 
 			// "Switching to the ILSpy layout": make the hosted pads visible/active as a group
 			// rather than leaving them registered-but-hidden.
 			assembliesPane.Show();
 			searchPane.Show();
 			analyzerPane.Show();
-			decompiledCodePane.Show();
+
+			// Decompiled output opens as a document tab (a read-only, virtual file), not a pad.
+			decompiledCodeView = new DecompiledCodeViewContent(decompilerTextView);
+			SD.Workbench.ShowView(decompiledCodeView);
 
 			MessageBus<AssemblyTreeSelectionChangedEventArgs>.Subscribers += (sender, e) => lastDecompile = RefreshDecompiledViewAsync();
 		}

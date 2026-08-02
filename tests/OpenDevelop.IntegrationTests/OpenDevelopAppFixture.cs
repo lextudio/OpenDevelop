@@ -42,6 +42,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 
     public string OpenDevelopProjectPath { get; } = LocateOpenDevelopProject();
     public string FixtureSolutionPath { get; } = LocateFixtureProject();
+    public string CoverageFixtureSolutionPath { get; } = LocateCoverageFixture();
     public string SolutionExplorerFixturePath { get; } = LocateSolutionExplorerFixture();
     public string DebugTestProjectPath { get; } = LocateDebugTestProject();
     public string SlnxFixturePath { get; } = LocateSlnxFixture();
@@ -138,6 +139,11 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     {
         try { if (_app is { HasExited: false }) _app.Kill(entireProcessTree: true); } catch { }
         try { foreach (var proc in Process.GetProcessesByName("SharpDevelop")) { try { proc.Kill(true); } catch { } } } catch { }
+        // On non-Windows the app exe is named "OpenDevelop" (the csproj AssemblyName), and a
+        // manually started instance (e.g. for ad-hoc DevFlow probing) would otherwise survive
+        // StopApp and keep holding the DevFlow port - making the next fixture launch bind a
+        // second app to a different process while tests talk to the stale one.
+        try { foreach (var proc in Process.GetProcessesByName("OpenDevelop")) { try { proc.Kill(true); } catch { } } } catch { }
         try { foreach (var proc in Process.GetProcessesByName("SharpDbg.Cli")) { try { proc.Kill(true); } catch { } } } catch { }
         try { foreach (var proc in Process.GetProcessesByName("DebugTestApp")) { try { proc.Kill(true); } catch { } } } catch { }
         _app = null;
@@ -252,6 +258,19 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         }
         throw new FileNotFoundException(
             "Could not locate tests/fixtures/SampleTestProject/SampleTestProject.csproj by walking up from " + AppContext.BaseDirectory);
+    }
+
+    static string LocateCoverageFixture()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir, "tests", "fixtures", "CoverageFixture", "CoverageFixture.sln");
+            if (File.Exists(candidate)) return candidate;
+            dir = Path.GetDirectoryName(dir);
+        }
+        throw new FileNotFoundException(
+            "Could not locate tests/fixtures/CoverageFixture/CoverageFixture.sln by walking up from " + AppContext.BaseDirectory);
     }
 
     static string LocateSolutionExplorerFixture()

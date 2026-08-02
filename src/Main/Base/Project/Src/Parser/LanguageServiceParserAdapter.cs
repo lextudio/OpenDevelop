@@ -243,13 +243,41 @@ public sealed class LanguageServiceParserAdapter : IParserService
 		if (registry == null || !registry.TryGetService(fileName, out var languageService))
 			return;
 
-		string text = fileContent != null
-			? fileContent.Text
-			: File.Exists(fileName) ? File.ReadAllText(fileName) : null;
+		string text = null;
+		if (fileContent != null) {
+			try {
+				text = fileContent.Text;
+			} catch (InvalidOperationException) {
+				// ITextSource may be a UI-thread-owned TextDocument (AvalonEdit): ParseAsync runs
+				// on a thread-pool thread and reading .Text there throws. Fall back to disk - the
+				// upsert is best-effort and the in-memory buffer usually matches the file anyway.
+			}
+		}
+		if (text == null && File.Exists(fileName))
+			text = File.ReadAllText(fileName);
 		if (text == null)
 			return;
 
-		languageService.UpsertDocumentAsync(new DocumentId(fileName), text, cancellationToken).GetAwaiter().GetResult();
+		// Never block the calling thread on UpsertDocumentAsync. Callers run on the WPF UI
+		// thread (CodeEditor.FetchParseInformation -> Parse -> this), and the async chain
+		// (LSP server start gate / initialize / didOpen RPC round-trip for XAML and other
+		// language-server backends) resumes on the captured DispatcherSynchronizationContext -
+		// a synchronous .GetResult() here deadlocks the whole app the moment the language
+		// service has to do more than a fast no-op. This upsert is a side-channel notification:
+		// Parse()/Resolve()/ResolveContext() build their own (unresolved) results and never
+		// observe its outcome, so fire-and-forget with logging is the correct contract.
+		_ = UpsertLanguageServiceDocumentAsync(languageService, new DocumentId(fileName), text, cancellationToken);
+	}
+
+	static async Task UpsertLanguageServiceDocumentAsync(ICSharpCode.SharpDevelop.LanguageServices.ILanguageService languageService, DocumentId documentId, string text, CancellationToken cancellationToken)
+	{
+		try {
+			await languageService.UpsertDocumentAsync(documentId, text, cancellationToken).ConfigureAwait(false);
+		} catch (OperationCanceledException) {
+			// Cancelled during app shutdown or by a superseded parse - expected.
+		} catch (Exception ex) {
+			LoggingService.Warn("Language service document upsert failed for " + documentId.FileName + ": " + ex.Message);
+		}
 	}
 
 	private sealed class NullLoadSolutionProjectsThread : ILoadSolutionProjectsThread

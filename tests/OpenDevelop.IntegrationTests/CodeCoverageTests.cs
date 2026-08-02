@@ -119,4 +119,65 @@ public sealed class CodeCoverageTests
         var afterClear = await _app.InvokeAsync("od.code-coverage.results");
         Assert.Equal(0, afterClear.GetProperty("modules").GetArrayLength());
     }
+
+    [Fact]
+    public async Task CodeCoverageRun_AddsEditorMarkersOnOpenSourceFile()
+    {
+        // The CoverageFixture solution pairs a test project with a *referenced library*
+        // (CoverageLib). AltCover's default include filter instruments exactly the assemblies
+        // produced by project references - the test project's own assembly is deliberately left
+        // pristine (self-hosted runner protection), so only the library's source can carry
+        // coverage sequence points.
+        await _app.InvokeAsync("od.open-solution", _app.CoverageFixtureSolutionPath);
+
+        var deadline = DateTime.UtcNow.AddSeconds(60);
+        while (DateTime.UtcNow < deadline)
+        {
+            var tree = await _app.InvokeAsync("od.unit-test.tree");
+            if (tree.GetProperty("tests").GetArrayLength() > 0
+                && FindTest(tree.GetProperty("tests")[0], "Add_ReturnsSum").HasValue)
+                break;
+            await Task.Delay(1000);
+        }
+
+        // Calculator.cs must be the active editor when results land: RunTestWithCodeCoverageCommand
+        // enables the editor overlay right before ShowResults, and RefreshCodeCoverageHighlights
+        // paints only views that are already open.
+        var sourcePath = Path.Combine(
+            Path.GetDirectoryName(_app.CoverageFixtureSolutionPath)!, "CoverageLib", "Calculator.cs");
+        var openFileResult = await _app.InvokeAsync("od.open-file", sourcePath);
+        Assert.True(openFileResult.GetProperty("opened").GetBoolean(), $"Failed to open {sourcePath}");
+
+        var runResult = await _app.InvokeAsync("od.code-coverage.run", 180);
+        Assert.True(runResult.GetProperty("completed").GetBoolean(), runResult.ToString());
+
+        // The run brings the Code Coverage pad to the front, which leaves no active *view*;
+        // the editor-markers action inspects the active view, so reactivate the source file.
+        // The document was already open during ShowResults, so its markers were painted then
+        // (and ViewOpened re-paints files opened after results exist).
+        var reactivate = await _app.InvokeAsync("od.open-file", sourcePath);
+        Assert.True(reactivate.GetProperty("opened").GetBoolean());
+
+        var markers = await WaitForEditorMarkersAsync();
+        Assert.Equal(sourcePath, markers.GetProperty("fileName").GetString());
+        Assert.True(markers.GetProperty("markerServiceAvailable").GetBoolean());
+        Assert.True(markers.GetProperty("markerCount").GetInt32() > 0,
+            "Expected code-coverage text markers on the open library source after a coverage run");
+        Assert.True(markers.GetProperty("coloredMarkerCount").GetInt32() > 0,
+            "Expected at least one marker to be colored (visited sequence points)");
+    }
+
+    async Task<JsonElement> WaitForEditorMarkersAsync()
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        JsonElement markers = default;
+        while (DateTime.UtcNow < deadline)
+        {
+            markers = await _app.InvokeAsync("od.code-coverage.editor-markers");
+            if (markers.TryGetProperty("markerCount", out var count) && count.GetInt32() > 0)
+                return markers;
+            await Task.Delay(500);
+        }
+        throw new TimeoutException($"Code-coverage editor markers never appeared. Last status: {markers}");
+    }
 }

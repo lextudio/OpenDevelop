@@ -7,8 +7,8 @@ OpenDevelop should expose an `ILSpy` workbench layout alongside `Default`, `Debu
 real WPF ILSpy panes:
 
 - left: ILSpy `AssemblyTreeModel` + `AssemblyListPane`
-- center: ILSpy decompiler document panes, or an adapter that routes decompiled text into the
-  existing AvalonEdit document area
+- center: decompiled output as an OpenDevelop document tab (a read-only, virtual file - see
+  `DecompiledCodeViewContent`), not a dedicated pad
 - right/bottom: ILSpy `SearchPaneModel`, `AnalyzerTreeViewModel`, metadata panes, and any future
   exported `ToolPaneModel`
 

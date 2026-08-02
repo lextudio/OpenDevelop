@@ -414,4 +414,37 @@ public sealed class UnitTestingTests
         Assert.Contains("AlwaysFails", text);
         Assert.Contains("AlwaysSkipped", text);
     }
+
+    [Fact]
+    public async Task UnitTestPad_ExpandNode_RevealsChildNodesInPadTree()
+    {
+        await _app.InvokeAsync("od.show-pad", "ICSharpCode.UnitTesting.UnitTestsPad");
+        await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);
+
+        var deadline = DateTime.UtcNow.AddSeconds(60);
+        while (DateTime.UtcNow < deadline)
+        {
+            var tree = await _app.InvokeAsync("od.unit-test.tree");
+            if (tree.GetProperty("tests").GetArrayLength() > 0
+                && FindTest(tree.GetProperty("tests")[0], "AlwaysPasses").HasValue)
+                break;
+            await Task.Delay(1000);
+        }
+
+        var expandResult = await _app.InvokeAsync("od.unit-test.expand-node", "SampleTestProject");
+        Assert.True(expandResult.GetProperty("found").GetBoolean(),
+            "Expected the SampleTestProject node to be present in the Unit Tests pad tree");
+        var expandedNode = expandResult.GetProperty("node");
+        Assert.Equal("SampleTestProject", expandedNode.GetProperty("displayName").GetString());
+        Assert.True(expandedNode.GetProperty("childCount").GetInt32() > 0,
+            "Expected the expanded project node to expose at least one child node");
+
+        // pad-node's snapshot has no displayName/childCount - it reports the rendered node's
+        // model identity (sameModelInstance vs. the ITestService model) and result state.
+        var padNode = await _app.InvokeAsync("od.unit-test.pad-node", "SampleTestProject");
+        Assert.True(padNode.GetProperty("found").GetBoolean(),
+            "Expected the rendered Unit Tests pad node for SampleTestProject");
+        Assert.True(padNode.GetProperty("sameModelInstance").GetBoolean(),
+            "Expected the pad node to render the same test model instance the tree reports");
+    }
 }

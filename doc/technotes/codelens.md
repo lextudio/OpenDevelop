@@ -1,9 +1,11 @@
 # CodeLens-style Reference/Implementation Counts for AvalonEdit
 
-## Status: plan only, not started
+## Status: in progress
 
-Deferred idea from `doc/technotes/roslyn.md` session work — revisit after the VB Roslyn work
-(cross-language go-to-definition check, VB snippets) settles.
+Deferred idea from `doc/technotes/roslyn.md` session work — revisited now that the VB Roslyn work
+and the `ILanguageService` unification (`doc/technotes/csharp-vb-binding.md`) have settled. Piece 1
+(data) is updated below to go through the unified contract; implementation starting with Piece 1,
+then the adorner-based renderer (Piece 2, approach 1).
 
 ## What it is
 
@@ -14,20 +16,33 @@ results. Two independent pieces:
 1. **Data**: reference/implementation counts per symbol.
 2. **Rendering**: an inline annotation above the declaration's line, in the text view.
 
-## Piece 1 — data: already free
+## Piece 1 — data: already free, but go through `ILanguageService`, not `RoslynWorkspaceHelper`
 
-`RoslynWorkspaceHelper.GetSolution()` (`src/Main/Base/Project/Roslyn/RoslynWorkspaceHelper.cs`) —
-the same workspace `RoslynParser`/`RoslynCodeCompletionBinding` already use for both C# and VB
-(see `doc/technotes/roslyn.md`) — already exposes everything needed via
-`Microsoft.CodeAnalysis.FindSymbols.SymbolFinder`:
+**Updated 2026-08-02** (see `doc/technotes/csharp-vb-binding.md`, `doc/technotes/language-services.md`):
+the unified language-service contract has since been built out, and the explicit rule now is that
+`RoslynWorkspaceHelper` must not become a long-term API sitting alongside it. This plan's original
+"just call `RoslynWorkspaceHelper.GetSolution()` + `SymbolFinder`" data layer would be new debt of
+exactly the kind that's being actively removed elsewhere (`RenameSymbolCommand`, `FindReferencesCommand`,
+`ExtractInterfaceCommand`, `DefinitionViewPad`, etc. all moved off it for the same reason) - and it
+would only ever work for Roslyn-backed languages, not any LSP-backed one, and wouldn't respect
+CSharpBinding/VBBinding's enable/disable lifecycle the way every other feature now does.
 
-- `SymbolFinder.FindReferencesAsync(symbol, solution)` → reference count.
-- `SymbolFinder.FindImplementationsAsync`/`FindDerivedClassesAsync`/`FindOverridesAsync` →
-  implementation/override count (the same APIs `FindDerivedClassesOrOverrides.cs` already calls,
-  per `csharp-roslyn.md` Phase 0).
+Use the already-built `ILanguageService` contract instead, obtained the same way every other
+feature does - `LanguageServiceRegistry.GetService(fileName)` (or `TryGetService`), keyed by
+`DocumentId`, no Roslyn or LSP types crossing into CodeLens code:
 
-No new infrastructure needed here; this piece is a thin wrapper around calls the codebase already
-makes elsewhere, generic across C#/VB since neither call is language-specific.
+- Reference count → `ILanguageService.FindReferencesAsync(documentId, offset, ct)` →
+  `SymbolReferencesResult.References.Count`.
+- Implementation/override count → `GetDerivedSymbolsAsync`/`GetBaseSymbolsAsync(documentId, offset, ct)`
+  → `SymbolHierarchyResult.Nodes.Count`.
+
+This is still effectively "free" - no new contract surface needed, these three methods already
+exist and are already exercised by `FindReferencesCommand`/`DeclaringTypeSubMenuBuilder`-adjacent
+code. It's also strictly better than the original plan: it's backend-neutral (an LSP-backed
+language gets real counts for free the moment its backend implements those two methods, and a
+harmless empty result until then, instead of CodeLens needing a Roslyn-only special case), and it
+automatically stops computing anything for a disabled language the same way completion/diagnostics/
+rename already do - no bespoke enable/disable wiring needed in CodeLens itself.
 
 ## Piece 2 — rendering: no built-in AvalonEdit widget, but the right hooks exist
 
@@ -68,15 +83,19 @@ in practice.
 
 - **Perf**: computing reference/implementation counts per visible declaration must be
   incremental/cached and off the UI thread — recomputing `FindReferencesAsync` for every symbol on
-  every scroll/keystroke would be the wrong default. `RoslynWorkspaceHelper` already has a
-  `dirtyProjects`/incremental-sync story (`doc/technotes/csharp-roslyn.md`'s "Incremental workspace
-  updates" note) to build on: only recompute counts for declarations whose containing file changed,
-  cache the rest.
+  every scroll/keystroke would be the wrong default. This caching is the backend's job (e.g.
+  `CSharpVBLanguageService`'s own incremental workspace sync), not CodeLens code reaching into
+  `RoslynWorkspaceHelper`'s `dirtyProjects` internals directly - CodeLens should just call
+  `ILanguageService` per visible declaration and let whichever backend answers own its own caching
+  story; at most, CodeLens itself should debounce/cache its own last-computed counts per document
+  version so a scroll that reveals no new declarations doesn't re-call at all.
 - **Scope of "declaration"**: decide up front whether CodeLens applies to every member (VS's
   default) or just types/methods (cheaper, less visual noise) — affects how many
-  `FindReferencesAsync` calls happen per file.
-- **VB parity**: since Piece 1 is already language-neutral (Roslyn `ISymbol`/`SymbolFinder`), a
-  CodeLens implementation gets VB support for free the same way completion/go-to-definition did -
-  worth keeping in mind as a design constraint (don't accidentally hardcode a C#-only declaration
-  finder when scanning visible lines for candidate symbols).
-- **Not started**: no code, no fixture, no test exists for this yet - this file is planning only.
+  `FindReferencesAsync`/`GetDerivedSymbolsAsync` calls happen per file.
+- **Language parity**: since Piece 1 is now the same `ILanguageService` contract every other
+  feature uses, a CodeLens implementation gets VB support for free (as before), and additionally
+  degrades gracefully rather than crashing for any language whose backend hasn't implemented
+  `GetDerivedSymbolsAsync`/`GetBaseSymbolsAsync` yet (LSP currently returns null for both) - it
+  simply shows a reference count with no implementation count for those, rather than needing a
+  hardcoded C#/VB-only declaration finder.
+- **Status**: no code, no fixture, no test exists for this yet - implementation starts now.

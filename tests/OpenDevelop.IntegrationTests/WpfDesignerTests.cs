@@ -33,7 +33,7 @@ public sealed class WpfDesignerTests
         var openFileResult = await _app.InvokeAsync("od.open-file", xamlPath);
         Assert.True(openFileResult.GetProperty("opened").GetBoolean(), $"Failed to open {xamlPath}");
 
-        var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "Window", timeoutSeconds: 30);
+        var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "Window", timeoutSeconds: 30, reactivatePath: xamlPath);
 
         Assert.True(status.GetProperty("active").GetBoolean());
         Assert.True(status.GetProperty("designerLoaded").GetBoolean(),
@@ -72,7 +72,7 @@ public sealed class WpfDesignerTests
         var openFileResult = await _app.InvokeAsync("od.open-file", appXamlPath);
         Assert.True(openFileResult.GetProperty("opened").GetBoolean(), $"Failed to open {appXamlPath}");
 
-        var status = await WaitForXamlOutlineStatusAsync(expectedRootName: "App.xaml", timeoutSeconds: 30);
+        var status = await WaitForXamlOutlineStatusAsync(expectedRootName: "App.xaml", timeoutSeconds: 30, reactivatePath: appXamlPath);
 
         Assert.True(status.GetProperty("active").GetBoolean(),
             "Expected the XAML code editor outline to be active for App.xaml (text editor, not designer)");
@@ -102,7 +102,7 @@ public sealed class WpfDesignerTests
         var openFileResult = await _app.InvokeAsync("od.open-file", xamlPath);
         Assert.True(openFileResult.GetProperty("opened").GetBoolean(), $"Failed to open {xamlPath}");
 
-        var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "UserControl", timeoutSeconds: 30);
+        var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "UserControl", timeoutSeconds: 30, reactivatePath: xamlPath);
 
         Assert.True(status.GetProperty("active").GetBoolean());
         Assert.True(status.GetProperty("designerLoaded").GetBoolean(),
@@ -136,12 +136,24 @@ public sealed class WpfDesignerTests
             Assert.True(openSolutionResult.GetProperty("success").GetBoolean());
             var openFileResult = await _app.InvokeAsync("od.open-file", xamlPath);
             Assert.True(openFileResult.GetProperty("opened").GetBoolean());
-            var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "Window", timeoutSeconds: 30);
+            var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "Window", timeoutSeconds: 30, reactivatePath: xamlPath);
             Assert.True(status.GetProperty("designerLoaded").GetBoolean(), status.ToString());
             Assert.Contains(status.GetProperty("outlineNames").EnumerateArray(),
                 name => name.GetString() == "PrimaryButton");
 
-            var selected = await _app.InvokeAsync("od.wpf-designer.select", "PrimaryButton");
+            // The async project-preferences restore can re-activate a previously-open document
+            // between the last WaitFor poll and this select (same race the WaitFor helpers guard
+            // against) - retry the select, re-activating MainWindow each round.
+            JsonElement selected = default;
+            var selectDeadline = DateTime.UtcNow.AddSeconds(15);
+            while (DateTime.UtcNow < selectDeadline)
+            {
+                selected = await _app.InvokeAsync("od.wpf-designer.select", "PrimaryButton");
+                if (selected.GetProperty("success").GetBoolean())
+                    break;
+                await _app.InvokeAsync("od.open-file", xamlPath);
+                await Task.Delay(250);
+            }
             Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
             Assert.Equal("PrimaryButton", selected.GetProperty("selectedName").GetString());
             Assert.Equal("PrimaryButton", selected.GetProperty("propertiesPadSelectedName").GetString());
@@ -177,6 +189,38 @@ public sealed class WpfDesignerTests
         }
     }
 
+    [Fact]
+    public async Task SelectControlOnSamplePane_ShowsSelectionInPropertiesPad()
+    {
+        // SamplePane.xaml is a UserControl root (unlike MainWindow.xaml's Window root): verify the
+        // designer + Properties pad selection round-trip for a non-Window document. The Xceed pad
+        // exposes only a narrow filtered property set (same as for MainWindow's Button - see the
+        // SelectControl_EditingContent test), and none of SamplePane's elements carry a string
+        // property in that set, so assert the selection/type linkage instead of editing.
+        var solutionDirectory = Path.GetDirectoryName(_app.WpfSampleSolutionPath)!;
+        var xamlPath = Path.Combine(solutionDirectory, "SamplePane.xaml");
+
+        var openSolutionResult = await _app.InvokeAsync("od.open-solution", _app.WpfSampleSolutionPath);
+        Assert.True(openSolutionResult.GetProperty("success").GetBoolean());
+        var openFileResult = await _app.InvokeAsync("od.open-file", xamlPath);
+        Assert.True(openFileResult.GetProperty("opened").GetBoolean());
+        var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "UserControl", timeoutSeconds: 30, reactivatePath: xamlPath);
+        Assert.True(status.GetProperty("designerLoaded").GetBoolean(), status.ToString());
+        Assert.Contains(status.GetProperty("outlineNames").EnumerateArray(),
+            name => name.GetString() == "PaneTitle");
+
+        var selected = await _app.InvokeAsync("od.wpf-designer.select", "PaneTitle");
+        Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
+        Assert.Equal("PaneTitle", selected.GetProperty("selectedName").GetString());
+        Assert.Equal("PaneTitle", selected.GetProperty("propertiesPadSelectedName").GetString());
+        Assert.Equal("TextBlock", selected.GetProperty("propertiesPadSelectedType").GetString());
+
+        var listSelected = await _app.InvokeAsync("od.wpf-designer.select", "PaneList");
+        Assert.True(listSelected.GetProperty("success").GetBoolean(), listSelected.ToString());
+        Assert.Equal("PaneList", listSelected.GetProperty("propertiesPadSelectedName").GetString());
+        Assert.Equal("ListBox", listSelected.GetProperty("propertiesPadSelectedType").GetString());
+    }
+
     // od.open-file returning "opened" only means the file's ViewContent/window was created -
     // the WPF designer's secondary tab attaches its DesignSurface (WpfViewContent.LoadInternal)
     // on a subsequent UI-thread layout pass, and that pass's timing isn't guaranteed to have
@@ -199,7 +243,13 @@ public sealed class WpfDesignerTests
     //    asynchronous) - so the very first poll or two can report a stable, fully-populated
     //    outline that actually belongs to the wrong document entirely. Require the reported
     //    root item's type to match what this specific test just opened before accepting it.
-    async Task<JsonElement> WaitForWpfDesignerStatusAsync(string expectedRootItemType, int timeoutSeconds)
+    // Per-project preferences restore previously-open documents when a solution loads (see the
+    // fixture's DeleteStaleViewStateMemento comment), so a document opened by an earlier test in
+    // this shared collection can still be - or become - the active view well after this test's
+    // own od.open-file returned. When the designer reports a different root than expected,
+    // re-invoke od.open-file on the target document periodically: it calls SelectWindow on the
+    // already-open view, which wins over the async restore activation.
+    async Task<JsonElement> WaitForWpfDesignerStatusAsync(string expectedRootItemType, int timeoutSeconds, string reactivatePath = null)
     {
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(timeoutSeconds);
         JsonElement status = default;
@@ -221,6 +271,8 @@ public sealed class WpfDesignerTests
             else
             {
                 previousCount = -1;
+                if (reactivatePath != null)
+                    await _app.InvokeAsync("od.open-file", reactivatePath);
             }
             await Task.Delay(250);
         }
@@ -241,7 +293,7 @@ public sealed class WpfDesignerTests
         return result;
     }
 
-    async Task<JsonElement> WaitForXamlOutlineStatusAsync(string expectedRootName, int timeoutSeconds)
+    async Task<JsonElement> WaitForXamlOutlineStatusAsync(string expectedRootName, int timeoutSeconds, string reactivatePath = null)
     {
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(timeoutSeconds);
         JsonElement status = default;
@@ -262,6 +314,8 @@ public sealed class WpfDesignerTests
             else
             {
                 previousCount = -1;
+                if (reactivatePath != null)
+                    await _app.InvokeAsync("od.open-file", reactivatePath);
             }
             await Task.Delay(250);
         }

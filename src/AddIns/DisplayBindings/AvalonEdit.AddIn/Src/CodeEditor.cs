@@ -65,6 +65,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		readonly IChangeWatcher changeWatcher;
 		ErrorPainter errorPainter;
 		DocumentColorizingTransformer semanticColorizer;
+		CodeLensRenderer codeLensRenderer;
 		
 		public CodeEditorView PrimaryTextEditor {
 			get { return primaryTextEditor; }
@@ -152,6 +153,10 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			semanticColorizer = LanguageServiceSemanticColorizer.Create(document, primaryTextEditor.TextArea.TextView, fileName);
 			if (semanticColorizer != null)
 				primaryTextEditor.TextArea.TextView.LineTransformers.Add(semanticColorizer);
+
+			codeLensRenderer?.Dispose();
+			codeLensRenderer = CodeLensRenderer.Create(document, primaryTextEditor.TextArea.TextView, fileName);
+
 			primaryTextEditor.UpdateCustomizedHighlighting();
 
 			// Dispose the old highlighter; necessary to avoid memory leaks as
@@ -707,6 +712,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		public void Dispose()
 		{
 			(semanticColorizer as IDisposable)?.Dispose();
+			codeLensRenderer?.Dispose();
 			CodeEditorOptions.Instance.PropertyChanged -= CodeEditorOptions_Instance_PropertyChanged;
 			CustomizedHighlightingColor.ActiveColorsChanged -= CustomizedHighlightingColor_ActiveColorsChanged;
 			SD.ParserService.ParseInformationUpdated -= ParserServiceParseInformationUpdated;

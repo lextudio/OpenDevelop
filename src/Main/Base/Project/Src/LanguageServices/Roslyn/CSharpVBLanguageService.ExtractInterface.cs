@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using ICSharpCode.Core;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 
@@ -60,7 +61,15 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             if (chosenMembers.Length == 0)
                 return null;
 
-            var classSyntaxRef = classSymbol.DeclaringSyntaxReferences.FirstOrDefault();
+            // Several AdhocWorkspace documents can declare the same type (same file name + same
+            // namespace, e.g. two test temp copies of Widget.cs): Roslyn merges them into one
+            // INamedTypeSymbol whose DeclaringSyntaxReferences lists EVERY declaration. The
+            // merged symbol's First() reference may belong to a stale document, which would make
+            // the class edit land in the wrong file - always pick the reference that belongs to
+            // the document this request is actually about.
+            var classSyntaxRef = classSymbol.DeclaringSyntaxReferences
+                .FirstOrDefault(reference => string.Equals(reference.SyntaxTree.FilePath, documentId.FileName, StringComparison.OrdinalIgnoreCase))
+                ?? classSymbol.DeclaringSyntaxReferences.FirstOrDefault();
             if (classSyntaxRef is null)
                 return null;
             var classNode = await classSyntaxRef.GetSyntaxAsync(cancellationToken) as Microsoft.CodeAnalysis.CSharp.Syntax.ClassDeclarationSyntax;

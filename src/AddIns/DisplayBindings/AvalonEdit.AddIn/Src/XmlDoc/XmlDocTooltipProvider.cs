@@ -19,6 +19,8 @@
 // Backend-neutral tooltip provider. Roslyn and LSP both supply QuickInfo through ILanguageService.
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -46,16 +48,36 @@ namespace ICSharpCode.AvalonEdit.AddIn.XmlDoc
 				return;
 			try {
 				var documentId = new ICSharpCode.SharpDevelop.LanguageServices.DocumentId(e.Editor.FileName);
-				service.UpsertDocumentAsync(documentId, e.Editor.Document.Text, CancellationToken.None).GetAwaiter().GetResult();
-				var info = service.GetQuickInfoAsync(documentId, e.Editor.Document.GetOffset(e.LogicalPosition), CancellationToken.None).GetAwaiter().GetResult();
-				if (info == null)
+				// Never block the UI thread on the async LSP round-trip: its continuations resume
+				// on the captured DispatcherSynchronizationContext, so a synchronous
+				// .GetAwaiter().GetResult() here deadlocks the whole app the moment the server
+				// has to do real work (same trap as LanguageServiceParserAdapter's
+				// UpsertLanguageServiceDocument). Run the chain on a thread-pool thread instead,
+				// and only wait a bounded time so a slow server degrades to "no tooltip" instead
+				// of freezing the hover.
+				var quickInfo = FetchQuickInfoAsync(
+					service, documentId, e.Editor.Document.Text, e.Editor.Document.GetOffset(e.LogicalPosition))
+					.WaitForResult(TimeSpan.FromMilliseconds(300));
+				if (quickInfo == null)
 					return;
 				var builder = new DocumentationUIBuilder();
-				builder.AddCodeBlock(info.Text, keepLargeMargin: true);
+				builder.AddCodeBlock(quickInfo.Text, keepLargeMargin: true);
 				e.SetToolTip(new FlowDocumentTooltip(builder.CreateFlowDocument()));
 			} catch (Exception ex) {
 				LoggingService.Warn("Quick info failed for '" + e.Editor.FileName + "'. " + ex.Message);
 			}
+		}
+
+		static async Task<QuickInfo> FetchQuickInfoAsync(
+			ICSharpCode.SharpDevelop.LanguageServices.ILanguageService service,
+			ICSharpCode.SharpDevelop.LanguageServices.DocumentId documentId,
+			string text,
+			int offset)
+		{
+			// ConfigureAwait(false): keep every continuation off the UI thread so the bounded
+			// wait in HandleToolTipRequest can never deadlock against the dispatcher.
+			await service.UpsertDocumentAsync(documentId, text, CancellationToken.None).ConfigureAwait(false);
+			return await service.GetQuickInfoAsync(documentId, offset, CancellationToken.None).ConfigureAwait(false);
 		}
 
 		sealed class FlowDocumentTooltip : Popup, ITooltip
@@ -99,6 +121,22 @@ namespace ICSharpCode.AvalonEdit.AddIn.XmlDoc
 				if (CloseWhenMouseMovesAway)
 					this.IsOpen = false;
 			}
+		}
+	}
+
+	static class TaskExtensions
+	{
+		/// <summary>
+		/// Waits up to <paramref name="timeout"/> for the task; returns default(T) on timeout
+		/// instead of throwing. Safe on the UI thread only if the task was started with
+		/// <c>ConfigureAwait(false)</c> (so no continuation needs the dispatcher).
+		/// </summary>
+		public static T WaitForResult<T>(this Task<T> task, TimeSpan timeout)
+		{
+			if (task.Wait(timeout))
+				return task.Result;
+			LoggingService.Warn("Language service quick info timed out after " + timeout + "; tooltip suppressed.");
+			return default;
 		}
 	}
 }

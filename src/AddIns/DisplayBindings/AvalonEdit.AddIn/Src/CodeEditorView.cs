@@ -483,10 +483,20 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			if (layer == null)
 				return;
 			
-			CaretHighlightAdorner adorner = new CaretHighlightAdorner(textArea);
-			layer.Add(adorner);
-			
-			SD.MainThread.CallLater(TimeSpan.FromSeconds(1), () => layer.Remove(adorner));
+			try {
+				CaretHighlightAdorner adorner = new CaretHighlightAdorner(textArea);
+				layer.Add(adorner);
+				
+				SD.MainThread.CallLater(TimeSpan.FromSeconds(1), () => layer.Remove(adorner));
+			} catch (Exception ex) {
+				// The animation is scheduled on the dispatcher after JumpTo and can run after the
+				// editor has been torn down (or while the syntax highlighter is being swapped) -
+				// CaretHighlightAdorner's Caret.CalculateCaretRectangle builds a visual line, which
+				// colorizes through the document highlighter. A disposed highlighter here would
+				// otherwise crash the whole app from inside a Dispatcher callback; the animation is
+				// purely cosmetic, so drop it instead.
+				LoggingService.Warn("Caret highlight animation skipped: " + ex.Message);
+			}
 		}
 		
 		#region UpdateParseInformation - Folding
@@ -516,10 +526,18 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			} else {
 				if (folding == null) {
 					TextArea textArea = this.Adapter.GetService(typeof(TextArea)) as TextArea;
-					folding = new ParserFoldingStrategy(textArea);
-					container.AddService(typeof(ParserFoldingStrategy), folding);
+					// Another extension may already have installed a FoldingManager on this
+					// TextView (e.g. XmlEditor's XmlFoldingManager attaches to .xml/.xaml files
+					// before the language-service parse finishes). FoldingManager.Install has no
+					// "get or create" semantics - its ServiceContainer.AddService throws when the
+					// manager already exists - so leave the existing manager alone instead of
+					// crashing the whole file-open.
+					if (textArea?.TextView.Services.GetService(typeof(FoldingManager)) == null)
+						folding = new ParserFoldingStrategy(textArea);
+					if (folding != null)
+						container.AddService(typeof(ParserFoldingStrategy), folding);
 				}
-				folding.UpdateFoldings(parseInfo);
+				folding?.UpdateFoldings(parseInfo);
 			}
 		}
 		#endregion

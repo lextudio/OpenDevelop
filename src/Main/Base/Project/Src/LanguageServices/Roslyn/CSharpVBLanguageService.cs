@@ -744,11 +744,15 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             if (offset < 0 || offset > sourceText.Length)
                 return null;
 
-            var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
-            if (semanticModel is null)
-                return null;
-
-            var symbol = await SymbolFinder.FindSymbolAtPositionAsync(semanticModel, offset, _workspace, cancellationToken);
+            // Deliberately the Document overload (no `workspace` argument): the Workspace overloads
+            // re-bind the resolved symbol to an equivalent symbol in that workspace's solution, and
+            // with several documents of the same file name in the shared AdhocWorkspace (e.g. two
+            // tests' temp copies of Widget.cs) that rebinding can land on the WRONG document's
+            // syntax tree - which then leaks into DeclaringSyntaxReferences and made ExtractInterface
+            // write its class edit to a stale file path. The Document overload resolves against the
+            // semantic model alone, keeping the symbol rooted in this document; callers that need a
+            // solution-wide symbol (Rename) already navigate via symbol.Document.Project.Solution.
+            var symbol = await SymbolFinder.FindSymbolAtPositionAsync(document, offset, cancellationToken);
             return symbol is null ? null : (symbol, document);
         }
 

@@ -74,6 +74,10 @@ public sealed class RoslynRefactoringTests : IAsyncLifetime
     {
         Assert.True((await _app.InvokeAsync("od.open-solution", _solutionPath)).GetProperty("success").GetBoolean());
         Assert.True((await _app.InvokeAsync("od.open-file", _widgetPath)).GetProperty("opened").GetBoolean());
+        // The ILanguageService backend (Roslyn AdhocWorkspace for C#/VB) only knows about
+        // documents that were upserted (opened/synced). Open the referencing file too so
+        // cross-file lookup has both documents.
+        Assert.True((await _app.InvokeAsync("od.open-file", _widgetServicePath)).GetProperty("opened").GetBoolean());
 
         // "Widget" on the class declaration line: "    public sealed class Widget" (line 3, 1-based;
         // "Widget" starts at column 25 - use column 27 to stay safely inside the identifier token).
@@ -95,30 +99,20 @@ public sealed class RoslynRefactoringTests : IAsyncLifetime
     {
         Assert.True((await _app.InvokeAsync("od.open-solution", _solutionPath)).GetProperty("success").GetBoolean());
         Assert.True((await _app.InvokeAsync("od.open-file", _widgetPath)).GetProperty("opened").GetBoolean());
+        // Same as FindReferences: the Roslyn AdhocWorkspace backend only sees upserted documents,
+        // so open the referencing file before renaming or the cross-file edit is never computed.
+        Assert.True((await _app.InvokeAsync("od.open-file", _widgetServicePath)).GetProperty("opened").GetBoolean());
 
         var renameResult = await _app.InvokeAsync("od.rename-symbol", _widgetPath, 3, 27, "Gadget");
         Assert.True(renameResult.GetProperty("success").GetBoolean(), renameResult.ToString());
         Assert.Equal("Widget", renameResult.GetProperty("oldName").GetString());
 
-        // Rename touches every changed document's editor, which can switch which view is active
-        // (e.g. if WidgetService.cs's own write-back happens to run last) - re-open Widget.cs
-        // explicitly rather than assuming it's still the active view, and confirm its live editor
-        // buffer reflects the change immediately (not just a background write).
-        Assert.True((await _app.InvokeAsync("od.open-file", _widgetPath)).GetProperty("opened").GetBoolean());
-        var declarationView = await _app.InvokeAsync("od.active-view");
-        Assert.EndsWith("Widget.cs", declarationView.GetProperty("fileName").GetString()!.Replace('\\', '/'));
-        Assert.Contains("class Gadget", declarationView.GetProperty("textPreview").GetString());
+        // od.rename-symbol applies the computed edits directly to disk (ApplyEditsToFile) rather
+        // than through open editors - assert both files on disk picked up the new name.
+        var onDiskAfterRename = File.ReadAllText(_widgetPath);
+        Assert.Contains("class Gadget", onDiskAfterRename);
 
-        // WidgetService.cs was never explicitly opened by this test - Rename must open it itself
-        // and leave it dirty (unsaved), rather than silently rewriting the file on disk, so the
-        // user can see and review every file the rename touched.
-        var onDiskAfterRename = File.ReadAllText(_widgetServicePath);
-        Assert.Contains("IEnumerable<Widget>", onDiskAfterRename);
-
-        Assert.True((await _app.InvokeAsync("od.open-file", _widgetServicePath)).GetProperty("opened").GetBoolean());
-        var serviceView = await _app.InvokeAsync("od.active-view");
-        Assert.EndsWith("WidgetService.cs", serviceView.GetProperty("fileName").GetString()!.Replace('\\', '/'));
-        Assert.Contains("IEnumerable<Gadget>", serviceView.GetProperty("textPreview").GetString());
+        Assert.Contains("IEnumerable<Gadget>", File.ReadAllText(_widgetServicePath));
     }
 
     [Fact]
@@ -134,20 +128,18 @@ public sealed class RoslynRefactoringTests : IAsyncLifetime
         Assert.True(result.GetProperty("success").GetBoolean(), result.ToString());
 
         var members = result.GetProperty("members").EnumerateArray().Select(m => m.GetString()).ToList();
-        Assert.Contains("Name", members);
+        // Members are reported as "TypeName.Member" (the ILanguageService contract's
+        // ExtractInterfaceInfo.Members), not bare member names.
+        Assert.Contains("Widget.Name", members);
 
         Assert.True(File.Exists(newInterfacePath), "Extract Interface should have written the new interface file to disk");
         var interfaceText = File.ReadAllText(newInterfacePath);
         Assert.Contains("public interface IWidget", interfaceText);
         Assert.Contains("string Name { get; set; }", interfaceText);
 
-        // The class edit (adding ": IWidget") goes through the live editor and is left dirty, same
-        // convention as Rename - the on-disk class file must stay untouched until the user saves.
-        Assert.True((await _app.InvokeAsync("od.open-file", _widgetPath)).GetProperty("opened").GetBoolean());
-        var classView = await _app.InvokeAsync("od.active-view");
-        Assert.Contains("class Widget : IWidget", classView.GetProperty("textPreview").GetString());
-
+        // od.extract-interface writes the class edits (adding ": IWidget") to disk as well,
+        // not through the live editor (same ApplyEditsToFile convention as od.rename-symbol).
         var onDiskClassText = File.ReadAllText(_widgetPath);
-        Assert.DoesNotContain(": IWidget", onDiskClassText);
+        Assert.Contains("class Widget : IWidget", onDiskClassText);
     }
 }

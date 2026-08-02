@@ -109,6 +109,46 @@ public sealed class NuGetAddInTests : IDisposable
         // being persisted.
     }
 
+    [Fact]
+    public async Task SearchText_FiltersPackageResultsInDialog()
+    {
+        var solutionPath = Path.Combine(_projectDir, "NuGetFixture.sln");
+        var openResult = await _app.InvokeAsync("od.open-solution", solutionPath);
+        Assert.True(openResult.GetProperty("success").GetBoolean(), $"Failed to open {solutionPath}");
+
+        var feedResult = await _app.InvokeAsync("od.nuget.set-local-feed", _app.LocalNuGetFeedPath);
+        Assert.True(feedResult.GetProperty("success").GetBoolean(), $"Set local feed failed: {feedResult}");
+
+        var openDialogResult = await _app.InvokeAsync("od.nuget.open-dialog");
+        Assert.True(openDialogResult.GetProperty("success").GetBoolean(), $"Open dialog failed: {openDialogResult}");
+
+        // A partial id match must surface the package from the local feed.
+        var setSearchResult = await _app.InvokeAsync("od.nuget.set-search-text", "TestPackage");
+        Assert.True(setSearchResult.GetProperty("success").GetBoolean(), $"Set search text failed: {setSearchResult}");
+
+        var searchResult = await _app.InvokeAsync("od.nuget.search");
+        Assert.True(searchResult.GetProperty("success").GetBoolean(), $"Search command failed: {searchResult}");
+
+        var status = await WaitForSearchToFinishAsync();
+        Assert.False(status.GetProperty("hasError").GetBoolean(), $"Search reported an error: {status}");
+        var packages = status.GetProperty("packages").EnumerateArray().ToList();
+        Assert.NotEmpty(packages);
+        Assert.Contains(packages, p => p.GetProperty("id").GetString() == TestPackageId);
+        Assert.All(packages, p =>
+            Assert.Contains("TestPackage", p.GetProperty("id").GetString()));
+
+        // A non-matching query must return no results - proves search actually filters instead
+        // of always returning the whole feed.
+        var noMatch = await _app.InvokeAsync("od.nuget.set-search-text", "definitely-not-in-feed-xyz");
+        Assert.True(noMatch.GetProperty("success").GetBoolean());
+        var noMatchSearch = await _app.InvokeAsync("od.nuget.search");
+        Assert.True(noMatchSearch.GetProperty("success").GetBoolean());
+        var emptyStatus = await WaitForSearchToFinishAsync();
+        Assert.Empty(emptyStatus.GetProperty("packages").EnumerateArray());
+
+        await _app.InvokeAsync("od.nuget.close-dialog");
+    }
+
     async Task<JsonElement> WaitForSearchToFinishAsync()
     {
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
