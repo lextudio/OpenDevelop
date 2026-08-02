@@ -85,7 +85,7 @@ namespace ICSharpCode.CodeCoverage.Tests.Coverage
 		{
 			CreateSolutionCodeCoverageResults();
 			AddProject(@"d:\Projects\MyProject\MyProject.csproj");
-			AddCodeCoverageFile(@"d:\Projects\MyProject\OpenCover\coverage.xml");
+			AddCodeCoverageFile(@"d:\Projects\MyProject\CodeCoverage\coverage.xml");
 			
 			List<CodeCoverageResults> results = GetCodeCoverageResultsForAllProjects().ToList();
 			

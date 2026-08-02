@@ -32,29 +32,29 @@ using UnitTesting.Tests.Utils;
 namespace ICSharpCode.CodeCoverage.Tests.Coverage
 {
 	/// <summary>
-	/// Tests the saving and loading of the OpenCover settings file. This
+	/// Tests the saving and loading of the Code coverage settings file. This
 	/// file is used to stores the includes and excludes regular expressions
-	/// that OpenCover uses.
+	/// that the coverage tools use.
 	/// </summary>
 	[TestFixture]
-	public class OpenCoverSettingsTestFixture : SDTestFixtureBase
+	public class CodeCoverageSettingsTestFixture : SDTestFixtureBase
 	{
-		OpenCoverSettings settings;
-		OpenCoverSettings savedSettings;
+		CodeCoverageSettings settings;
+		CodeCoverageSettings savedSettings;
 		StringBuilder savedSettingsXml;
 		XmlDocument doc;
 		
 		[SetUp]
 		public void Init()
 		{
-			settings = new OpenCoverSettings();
+			settings = new CodeCoverageSettings();
 			settings.Include.Add("[a]*");
 			settings.Include.Add("[b]*");
 			settings.Exclude.Add("[c]*");
 			settings.Exclude.Add("[d]*");
 			savedSettingsXml = new StringBuilder();
 			settings.Save(new StringWriter(savedSettingsXml));
-			savedSettings = new OpenCoverSettings(new StringReader(savedSettingsXml.ToString()));
+			savedSettings = new CodeCoverageSettings(new StringReader(savedSettingsXml.ToString()));
 
 			doc = new XmlDocument();
 			doc.LoadXml(savedSettingsXml.ToString());
@@ -73,24 +73,24 @@ namespace ICSharpCode.CodeCoverage.Tests.Coverage
 		}
 		
 		[Test]
-		public void OpenCoverSettingsFileName()
+		public void CodeCoverageSettingsFileName()
 		{
 			MSBuildBasedProject project = new MSBuildBasedProject(
 				new ProjectCreateInformation(MockSolution.Create(), new FileName(@"C:\temp\test.csproj")));
 			
-			Assert.AreEqual(@"C:\temp\test.OpenCover.Settings", OpenCoverSettings.GetFileName(project));
+			Assert.AreEqual(@"C:\temp\test.CodeCoverage.Settings", CodeCoverageSettings.GetFileName(project));
 		}
 		
 		[Test]
 		public void FourRuleElements()
 		{			
-			Assert.AreEqual(4, doc.SelectNodes("/OpenCoverSettings/Rule").Count);
+			Assert.AreEqual(4, doc.SelectNodes("/CodeCoverageSettings/Rule").Count);
 		}
 		
 		[Test]
 		public void FirstRuleElement()
 		{
-			Assert.IsNotNull(doc.SelectSingleNode("/OpenCoverSettings/Rule[text()='+[a]*']"));
+			Assert.IsNotNull(doc.SelectSingleNode("/CodeCoverageSettings/Rule[text()='+[a]*']"));
 		}
 	}
 }

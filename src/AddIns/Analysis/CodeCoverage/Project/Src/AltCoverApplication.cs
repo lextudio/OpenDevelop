@@ -28,7 +28,7 @@ using ICSharpCode.SharpDevelop.Project;
 namespace ICSharpCode.CodeCoverage
 {
 	/// <summary>
-	/// Replaces <see cref="OpenCoverApplication"/> as the code-coverage backend: OpenCover is
+	/// Replaces OpenCover as the code-coverage backend: OpenCover is
 	/// unmaintained (last release 2018-era), AltCover (https://github.com/SteveGilham/altcover)
 	/// is its actively-maintained successor and - conveniently - can emit reports in OpenCover's
 	/// own XML schema (its default <c>--reportFormat</c>), so <see cref="CodeCoverageResults"/>
@@ -53,7 +53,7 @@ namespace ICSharpCode.CodeCoverage
 	///
 	/// <see cref="RunTestWithCodeCoverageCommand"/> (and friends) must run all three steps in
 	/// order: GetPrepareProcessStartInfo() to completion, then the actual test-runner process
-	/// (unmodified - do NOT wrap it the way OpenCoverApplication.GetProcessStartInfo() used to),
+	/// (unmodified - do NOT wrap it the way the old OpenCover runner used to),
 	/// then GetCollectProcessStartInfo() to completion.
 	///
 	/// This project (like the rest of OpenDevelop) no longer targets classic .NET Framework, so
@@ -71,13 +71,13 @@ namespace ICSharpCode.CodeCoverage
 	public class AltCoverApplication
 	{
 		string fileName = String.Empty;
-		OpenCoverSettings settings;
+		CodeCoverageSettings settings;
 		IProject project;
 
 		readonly string workingResultsFileName;
 
 		public AltCoverApplication(
-			OpenCoverSettings settings,
+			CodeCoverageSettings settings,
 			IProject project)
 		{
 			this.settings = settings;
@@ -88,7 +88,7 @@ namespace ICSharpCode.CodeCoverage
 
 		void GetAltCoverApplicationFileName()
 		{
-			// Mirrors OpenCoverApplication's "bin\Tools\OpenCover\OpenCover.Console.exe" bundling
+			// Mirrors the old "bin\Tools\OpenCover\OpenCover.Console.exe" bundling
 			// convention, but bundles AltCover's net8.0 build (a managed dll, run via "dotnet",
 			// see ResolveDotNetHost()) rather than a native exe - see class remarks above for why.
 			// Path.Combine treats a literal "bin\Tools\..." string as a single path segment on

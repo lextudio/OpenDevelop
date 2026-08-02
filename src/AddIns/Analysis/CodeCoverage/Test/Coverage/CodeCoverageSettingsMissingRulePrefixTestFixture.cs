@@ -16,40 +16,43 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-//using System;
-//using ICSharpCode.UnitTesting;
-//
-//namespace ICSharpCode.CodeCoverage
-//{
-//	public class CodeCoverageTestRunnerContext : TestProcessRunnerBaseContext
-//	{
-//		UnitTestingOptions options;
-//		
-//		public CodeCoverageTestRunnerContext()
-//			: this(new UnitTestProcessRunner(),
-//				new TestResultsMonitor(),
-//				new FileSystem(),
-//				new UnitTestMessageService(),
-//				new UnitTestingOptions())
-//		{
-//		}
-//				
-//		public CodeCoverageTestRunnerContext(IUnitTestProcessRunner processRunner,
-//			ITestResultsMonitor testResultsMonitor,
-//			ICSharpCode.CodeCoverage.IFileSystem fileSystem,
-//			IUnitTestMessageService messageService,
-//			UnitTestingOptions options)
-//			: base(processRunner, testResultsMonitor, fileSystem, messageService)
-//		{
-//			this.options = options;
-//		}
-//		
-//		public UnitTestingOptions Options {
-//			get { return options; }
-//		}
-//		
-//		public ICSharpCode.CodeCoverage.IFileSystem CodeCoverageFileSystem {
-//			get { return base.FileSystem as ICSharpCode.CodeCoverage.IFileSystem; }
-//		}
-//	}
-//}
+using System;
+using System.IO;
+using ICSharpCode.CodeCoverage;
+using NUnit.Framework;
+
+namespace ICSharpCode.CodeCoverage.Tests.Coverage
+{
+	/// <summary>
+	/// Tests that the CodeCoverageSettings class does not throw an index out of
+	/// range exception when the Rule elements are empty strings.
+	/// </summary>
+	[TestFixture]
+	public class CodeCoverageSettingsMissingRulePrefixTestFixture
+	{
+		CodeCoverageSettings settings;
+		
+		[TestFixtureSetUp]
+		public void SetUpFixture()
+		{
+			string xml = "<CodeCoverageSettings>\r\n" +
+						"   <Rule/>\r\n" +
+						"   <Rule></Rule>\r\n" +
+						"</CodeCoverageSettings>";
+			
+			settings = new CodeCoverageSettings(new StringReader(xml));
+		}
+		
+		[Test]
+		public void NoIncludes()
+		{
+			Assert.AreEqual(0, settings.Include.Count);
+		}
+		
+		[Test]
+		public void NoExcludes()
+		{
+			Assert.AreEqual(0, settings.Exclude.Count);
+		}		
+	}
+}

@@ -74,9 +74,9 @@
     <Compile Include="Coverage\InvalidSequencePointDataTestFixture.cs" />
     <Compile Include="Coverage\MethodHasNoNamespaceTestFixture.cs" />
     <Compile Include="Coverage\ModuleVisitedSequencePointsTestFixture.cs" />
-    <Compile Include="Coverage\OpenCoverSettingsFactoryTests.cs" />
-    <Compile Include="Coverage\OpenCoverSettingsMissingRulePrefixTestFixture.cs" />
-    <Compile Include="Coverage\OpenCoverSettingsTestFixture.cs" />
+    <Compile Include="Coverage\CodeCoverageSettingsFactoryTests.cs" />
+    <Compile Include="Coverage\CodeCoverageSettingsMissingRulePrefixTestFixture.cs" />
+    <Compile Include="Coverage\CodeCoverageSettingsTestFixture.cs" />
     <Compile Include="Coverage\RemoveTaskMarkerTests.cs" />
     <Compile Include="Coverage\SequencePointTests.cs" />
     <Compile Include="Coverage\SimilarRootNamespaceTestFixture.cs" />
@@ -93,12 +93,7 @@
     <Compile Include="Highlighting\CodeCoverageMarkersInvalidStartColumnTestFixture.cs" />
     <Compile Include="Highlighting\CodeCoverageMarkersInvalidStartLineTestFixture.cs" />
     <Compile Include="Highlighting\RemoveCodeCoverageMarkersTestFixture.cs" />
-    <Compile Include="Testing\CodeCoverageTestRunnerTests.cs" />
-    <Compile Include="Testing\OpenCoverApplicationTests.cs" />
-    <Compile Include="Testing\RunTestWithCodeCoverageCommandTests.cs" />
     <Compile Include="Utils\CodeCoverageMethodXElementBuilder.cs" />
-    <Compile Include="Utils\DerivedCodeCoverageTestRunner.cs" />
-    <Compile Include="Utils\DerivedRunTestWithCodeCoverageCommand.cs" />
     <Compile Include="Gui\ClassWithNoNamespaceInTreeViewTestFixture.cs" />
     <Compile Include="Gui\CodeCoverageTreeViewTestFixture.cs" />
     <Compile Include="Gui\ListViewSortingTestFixture.cs" />
@@ -106,7 +101,6 @@
     <Compile Include="Utils\DerivedCodeCoverageTreeView.cs">
       <SubType>Component</SubType>
     </Compile>
-    <Compile Include="Utils\MockCodeCoverageTestRunnerFactory.cs" />
     <Compile Include="Utils\MockFileSystem.cs" />
     <Compile Include="Utils\XElementExtensions.cs" />
   </ItemGroup>

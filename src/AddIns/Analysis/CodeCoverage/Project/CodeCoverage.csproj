@@ -84,10 +84,10 @@
     </None>
   </ItemGroup>
 
-  <!-- Bundles AltCover's net8.0 build into bin/Tools/AltCover, mirroring the old (installer-era)
-       "src/Tools/OpenCover -> bin/Tools/OpenCover" convention AltCoverApplication.cs's
-       GetAltCoverApplicationFileName() expects - see that method's comment. There's no equivalent
-       of the old installer step in this SDK-style build, so this project does the copy itself.
+  <!-- Bundles AltCover's net8.0 build into bin/Tools/AltCover, mirroring the old installer-era
+       "bin/Tools/<tool>" layout AltCoverApplication.cs's GetAltCoverApplicationFileName()
+       expects - see that method's comment. There's no equivalent of the old installer step in
+       this SDK-style build, so this project does the copy itself.
 
        IMPORTANT: FileUtility.ApplicationRootPath resolves to AppDomain.CurrentDomain.BaseDirectory
        at runtime - the *main SharpDevelop.exe process's* own output directory, not this addin

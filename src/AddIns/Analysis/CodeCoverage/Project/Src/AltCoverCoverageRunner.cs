@@ -9,14 +9,14 @@ namespace ICSharpCode.CodeCoverage
 {
 	public sealed class AltCoverCoverageRunner
 	{
-		readonly OpenCoverSettingsFactory settingsFactory;
+		readonly CodeCoverageSettingsFactory settingsFactory;
 
 		public AltCoverCoverageRunner()
-			: this(new OpenCoverSettingsFactory())
+			: this(new CodeCoverageSettingsFactory())
 		{
 		}
 
-		public AltCoverCoverageRunner(OpenCoverSettingsFactory settingsFactory)
+		public AltCoverCoverageRunner(CodeCoverageSettingsFactory settingsFactory)
 		{
 			this.settingsFactory = settingsFactory;
 		}
@@ -91,7 +91,7 @@ namespace ICSharpCode.CodeCoverage
 
 		AltCoverApplication CreateAltCoverApplication(IProject project)
 		{
-			OpenCoverSettings settings = settingsFactory.CreateOpenCoverSettings(project);
+			CodeCoverageSettings settings = settingsFactory.CreateCodeCoverageSettings(project);
 			var application = new AltCoverApplication(settings, project);
 			string directory = Path.GetDirectoryName(application.WorkingResultsFileName);
 			if (!string.IsNullOrEmpty(directory))

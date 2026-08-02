@@ -29,10 +29,10 @@ using UnitTesting.Tests.Utils;
 namespace ICSharpCode.CodeCoverage.Tests.Coverage
 {
 	[TestFixture]
-	public class OpenCoverSettingsFactoryTests : SDTestFixtureBase
+	public class CodeCoverageSettingsFactoryTests : SDTestFixtureBase
 	{
-		OpenCoverSettingsFactory factory;
-		OpenCoverSettings openCoverSettings;
+		CodeCoverageSettingsFactory factory;
+		CodeCoverageSettings codeCoverageSettings;
 		MockCSharpProject project;
 		MockFileSystem fileSystem;
 		
@@ -40,38 +40,38 @@ namespace ICSharpCode.CodeCoverage.Tests.Coverage
 		public void Init()
 		{
 			fileSystem = new MockFileSystem();
-			factory = new OpenCoverSettingsFactory(fileSystem);
+			factory = new CodeCoverageSettingsFactory(fileSystem);
 			project = new MockCSharpProject();
 		}
 		
 		[Test]
-		public void CreateOpenCoverSettingsWhenFileDoesNotExistCreatesSettingsWithNoOpenCoverIncludes()
+		public void CreateCodeCoverageSettingsWhenFileDoesNotExistCreatesSettingsWithNoIncludes()
 		{
 			fileSystem.FileExistsReturnValue = false;
-			CreateOpenCoverSettingsFromFactory();
-			Assert.AreEqual(0, openCoverSettings.Include.Count);
+			CreateCodeCoverageSettingsFromFactory();
+			Assert.AreEqual(0, codeCoverageSettings.Include.Count);
 		}
 		
-		void CreateOpenCoverSettingsFromFactory()
+		void CreateCodeCoverageSettingsFromFactory()
 		{
-			openCoverSettings = factory.CreateOpenCoverSettings(project);
+			codeCoverageSettings = factory.CreateCodeCoverageSettings(project);
 		}
 		
 		[Test]
-		public void CreateOpenCoverSettingsWhenFileExistsCreatesSettingsFromFile()
+		public void CreateCodeCoverageSettingsWhenFileExistsCreatesSettingsFromFile()
 		{
-			string openCoverSettingsXml =
-				"<OpenCoverSettings>\r\n" +
+			string codeCoverageSettingsXml =
+				"<CodeCoverageSettings>\r\n" +
 				"   <Rule>+test</Rule>\r\n" +
-				"</OpenCoverSettings>";
+				"</CodeCoverageSettings>";
 			
-			StringReader reader = new StringReader(openCoverSettingsXml);
+			StringReader reader = new StringReader(codeCoverageSettingsXml);
 			fileSystem.CreateTextReaderReturnValue = reader;
 			
 			fileSystem.FileExistsReturnValue = true;
 			
-			CreateOpenCoverSettingsFromFactory();
-			Assert.AreEqual("test", openCoverSettings.Include[0]);
+			CreateCodeCoverageSettingsFromFactory();
+			Assert.AreEqual("test", codeCoverageSettings.Include[0]);
 		}
 	}
 }

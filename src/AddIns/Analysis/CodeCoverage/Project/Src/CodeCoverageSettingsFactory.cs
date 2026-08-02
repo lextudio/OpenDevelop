@@ -16,12 +16,41 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-//using System;
-//
-//namespace ICSharpCode.CodeCoverage
-//{
-//	public interface ICodeCoverageTestRunnerFactory
-//	{
-//		CodeCoverageTestRunner CreateCodeCoverageTestRunner();
-//	}
-//}
+using System;
+using System.IO;
+using ICSharpCode.Core;
+using ICSharpCode.SharpDevelop;
+using ICSharpCode.SharpDevelop.Project;
+
+namespace ICSharpCode.CodeCoverage
+{
+	public class CodeCoverageSettingsFactory
+	{
+		IFileSystem fileSystem;
+		
+		public CodeCoverageSettingsFactory(IFileSystem fileSystem)
+		{
+			this.fileSystem = fileSystem;
+		}
+		
+		public CodeCoverageSettingsFactory()
+			: this(SD.FileSystem)
+		{
+		}
+		
+		public CodeCoverageSettings CreateCodeCoverageSettings(IProject project)
+		{
+			string fileName = CodeCoverageSettings.GetFileName(project);
+			if (fileSystem.FileExists(FileName.Create(fileName))) {
+				return CreateCodeCoverageSettingsFromFile(fileName);
+			}
+			return new CodeCoverageSettings();
+		}
+		
+		CodeCoverageSettings CreateCodeCoverageSettingsFromFile(string fileName)
+		{
+			TextReader reader = fileSystem.OpenText(FileName.Create(fileName));
+			return new CodeCoverageSettings(reader);
+		}
+	}
+}

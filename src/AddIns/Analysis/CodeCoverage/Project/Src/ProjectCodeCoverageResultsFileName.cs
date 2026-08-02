@@ -40,7 +40,7 @@ namespace ICSharpCode.CodeCoverage
 		
 		string GetOutputDirectory(IProject project)
 		{
-			return Path.Combine(project.Directory, "OpenCover");
+			return Path.Combine(project.Directory, "CodeCoverage");
 		}
 	}
 }

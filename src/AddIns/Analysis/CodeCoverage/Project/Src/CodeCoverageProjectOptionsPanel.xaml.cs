@@ -53,9 +53,9 @@ namespace ICSharpCode.CodeCoverage
 		
 		void ReadPartCoverSettings()
 		{
-			string settingsFileName = OpenCoverSettings.GetFileName(base.Project);
+			string settingsFileName = CodeCoverageSettings.GetFileName(base.Project);
 			if (File.Exists(settingsFileName)) {
-				OpenCoverSettings settings = new OpenCoverSettings(settingsFileName);
+				CodeCoverageSettings settings = new CodeCoverageSettings(settingsFileName);
 				includeListTextBox.Text = ConvertToMultLineString(settings.Include);
 				excludeListTextBox.Text = ConvertToMultLineString(settings.Exclude);
 			}
@@ -64,10 +64,10 @@ namespace ICSharpCode.CodeCoverage
 		
 		private void SavePartCoverSettings()
 		{
-			OpenCoverSettings settings = new OpenCoverSettings();
+			CodeCoverageSettings settings = new CodeCoverageSettings();
 			settings.Include.AddRange(MakeStringArray(includeListTextBox.Text));
 			settings.Exclude.AddRange(MakeStringArray(excludeListTextBox.Text));
-			settings.Save(OpenCoverSettings.GetFileName(base.Project));
+			settings.Save(CodeCoverageSettings.GetFileName(base.Project));
 		}
 		
 		
