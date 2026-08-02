@@ -61,7 +61,8 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.OpenLens
 				Kind: ToAnchorKind(declaration.Kind),
 				DisplayName: declaration.Name,
 				SymbolKey: null,
-				DocumentVersion: context.DocumentVersion));
+				DocumentVersion: context.DocumentVersion,
+				Overridability: declaration.Overridability));
 		}
 
 		static OpenLensAnchorKind ToAnchorKind(string kind) => kind switch {

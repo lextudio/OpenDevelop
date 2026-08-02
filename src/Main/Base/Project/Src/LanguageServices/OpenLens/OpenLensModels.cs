@@ -41,7 +41,8 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.OpenLens
         OpenLensAnchorKind Kind,
         string? DisplayName,
         string? SymbolKey,
-        long DocumentVersion);
+        long DocumentVersion,
+        SymbolOverridability Overridability = SymbolOverridability.None);
 
     public enum OpenLensSeverity
     {

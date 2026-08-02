@@ -13,7 +13,13 @@
 	<Runtime>
 		<Import assembly = "CodeCoverage.dll"/>
 	</Runtime>
-	
+
+	<!-- doc/technotes/openlens.md §10.5/§20 Phase 5 - registers the "N% covered" lens against the
+	     shared OpenLensProviderRegistry (ICSharpCode.SharpDevelop.LanguageServices.OpenLens). -->
+	<Path name="/SharpDevelop/Autostart">
+		<Class id="CodeCoverageOpenLensProvider" class="ICSharpCode.CodeCoverage.RegisterCodeCoverageOpenLensProviderCommand"/>
+	</Path>
+
 	<Path name = "/SharpDevelop/Workbench/Pads">
 		<Pad id           = "CodeCoveragePad"
 		     category     = "Tools"

@@ -5,7 +5,7 @@ using Xunit;
 namespace OpenDevelop.Base.Tests;
 
 /// <summary>
-/// Contract tests for <see cref="OpenLensProviderRegistry"/> (doc/technotes/codelens.md §22
+/// Contract tests for <see cref="OpenLensProviderRegistry"/> (doc/technotes/openlens.md §22
 /// "Contract tests"). These exercise the registry in isolation - no editor, no document, no
 /// ILanguageService - so they run fast and without booting the full application, unlike
 /// tests/OpenDevelop.IntegrationTests.

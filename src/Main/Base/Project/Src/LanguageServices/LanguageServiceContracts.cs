@@ -383,6 +383,27 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
         public string Type { get; }
     }
 
+    /// <summary>
+    /// Whether further declarations could extend this one - doc/technotes/openlens.md §17.3's
+    /// "implementations vs overrides" table, generalized beyond OpenLens since it's really a
+    /// property of the symbol, not of any one feature. A backend that can't classify this (e.g.
+    /// plain LSP `textDocument/documentSymbol`, which carries no modifier info) reports
+    /// <see cref="None"/> rather than guessing - see doc §17.4 "do not claim implementation
+    /// support when the server lacks the capability".
+    /// </summary>
+    public enum SymbolOverridability
+    {
+        /// <summary>Not further extensible (non-virtual, non-interface member; sealed override;
+        /// or unknown/unclassified by this backend) - no second lens should be shown.</summary>
+        None,
+
+        /// <summary>An interface, or an abstract/interface member - "N implementations".</summary>
+        Implementable,
+
+        /// <summary>A virtual (non-abstract) member, or a non-sealed override - "N overrides".</summary>
+        Overridable
+    }
+
     public sealed class DocumentOutlineNode
     {
         public DocumentOutlineNode(
@@ -391,7 +412,8 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
             TextSpan span,
             IReadOnlyList<DocumentOutlineNode> children,
             TextSpan? extentSpan = null,
-            string? accessibility = null)
+            string? accessibility = null,
+            SymbolOverridability overridability = SymbolOverridability.None)
         {
             Name = name ?? throw new ArgumentNullException(nameof(name));
             Kind = kind ?? throw new ArgumentNullException(nameof(kind));
@@ -399,6 +421,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
             Children = children ?? throw new ArgumentNullException(nameof(children));
             ExtentSpan = extentSpan ?? span;
             Accessibility = accessibility;
+            Overridability = overridability;
         }
 
         public string Name { get; }
@@ -421,6 +444,9 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
         /// <see langword="null"/> for that backend.
         /// </summary>
         public string? Accessibility { get; }
+
+        /// <summary>See <see cref="SymbolOverridability"/>. Defaults to <see cref="SymbolOverridability.None"/>.</summary>
+        public SymbolOverridability Overridability { get; }
 
         public IReadOnlyList<DocumentOutlineNode> Children { get; }
 

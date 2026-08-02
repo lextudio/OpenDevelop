@@ -88,7 +88,7 @@
 		         class="ICSharpCode.SharpDevelop.SDLanguageService"/>
 		<Service id="ICSharpCode.SharpDevelop.LanguageServices.LanguageServiceRegistry"
 		         class="ICSharpCode.SharpDevelop.LanguageServices.LanguageServiceRegistry"/>
-		<!-- doc/technotes/codelens.md §8/§18/§20 Phase 0 - provider registry only, not yet consumed
+		<!-- doc/technotes/openlens.md §8/§18/§20 Phase 0 - provider registry only, not yet consumed
 		     by the OpenLensRenderer prototype in AvalonEdit.AddIn. -->
 		<Service id="ICSharpCode.SharpDevelop.LanguageServices.OpenLens.OpenLensProviderRegistry"
 		         class="ICSharpCode.SharpDevelop.LanguageServices.OpenLens.OpenLensProviderRegistry"/>

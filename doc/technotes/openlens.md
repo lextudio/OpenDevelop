@@ -1097,8 +1097,61 @@ Exact directories may differ, but AddIn ownership should remain visible in the p
   keyboard/automation peers, and folding-awareness (a lens on a folded-away line still isn't
   suppressed - anchors inside a fold aren't hidden). No GUI was available to visually confirm the
   rendered result; correctness rests on the height-tree math and the headless regression tests only.
-- Phase 3-5: not started (implementations/overrides labeling refinement, LSP OpenLens bridge, test
-  lenses, Git/coverage lenses, per-provider settings, results popup UI).
+- Phase 3 (partial): implementations-vs-overrides labeling done - `DocumentOutlineNode` gained
+  `Overridability` (`SymbolOverridability.None`/`Implementable`/`Overridable`, §17.3's table),
+  populated by `CSharpVBLanguageService.ToMemberOverridability` (interface member or abstract ->
+  Implementable; virtual or non-sealed override -> Overridable; sealed/non-virtual -> None; a plain
+  class type also stays None - "derived types" for classes is still skipped, per §17.3 marking it
+  optional). `LspLanguageService` leaves it at the default `None` (§17.4: don't claim a capability
+  the server can't back). `LanguageOpenLensProvider` now shows "N implementations" or "N overrides"
+  (never both) based on this instead of a blanket kind check, and shows neither for a non-virtual,
+  non-interface member. **Not done**: the native LSP CodeLens bridge (§17.4 items 1/3/4 - using a
+  server's own `textDocument/codeLens`+`codeLens/resolve` instead of always synthesizing from
+  `GetDocumentOutlineAsync`) and per-provider settings.
+- Phase 5 (coverage lens): done. `CodeCoverageOpenLensProvider`
+  (`src/AddIns/Analysis/CodeCoverage/Project/Src/CodeCoverageOpenLensProvider.cs`) attaches
+  "N% covered"/"not covered" to the same method/constructor/property/indexer anchors
+  `LanguageOpenLensAnchorProvider` already discovers, sourced from
+  `CodeCoverageService.Results` (matched by file + member name - not full symbol signature, so two
+  same-named overloads in one file would be conflated; property getters/setters are combined into
+  one anchor's count). Resolves inline in `ProvideAsync` rather than `ResolveAsync` since it's an
+  in-memory lookup, not a backend query. Registered via a new `RegisterCodeCoverageOpenLensProviderCommand`
+  Autostart entry in `CodeCoverage.addin`.
+  - Along the way, fixed a real gap this surfaced: `OpenLensRenderer` never subscribed to
+    `OpenLensProviderRegistry.RefreshRequested` at all (doc §13's "refresh model" was wired at the
+    registry level in Phase 0 but nothing ever consumed it). Added `CodeCoverageService.ResultsChanged`
+    (new event, raised from `ShowResults`/`ClearResults`) → `registry.RequestRefresh(...)` →
+    `OpenLensRenderer.OnRefreshRequested`, which invalidates the matching provider's cached items and
+    re-runs discovery - the same mechanism a future Git/test lens would also need.
+  - Added a generic `"OpenLens.RunAction"` command id (argument: a plain `Action`) so a provider
+    living in an AddIn that AvalonEdit.AddIn can't reference back (CodeCoverage depends on
+    AvalonEdit.AddIn, not the other way around) can still supply its own click behavior
+    (`CodeCoverageService.CodeCoverageHighlighted = true`) without the renderer needing to know
+    CodeCoverage exists.
+  - **Not done**: no automated test for the file+name matching logic (no existing modern test
+    project to attach it to - `CodeCoverage.Tests.csproj` is a pre-MVP .NET Framework 4.5 project,
+    same situation Base's tests were in before `tests/OpenDevelop.Base.Tests` was created) - reviewed
+    by hand instead.
+- Phase 4 (test lenses): not started. Researched (not implemented): `ITestService`/`SDTestService`
+  exist but hold results on live `MtpTestMethod` tree nodes, not a queryable-by-name service - a
+  provider would need to replicate `MtpTestProject`'s private traversal/lookup logic. **Per-method
+  duration isn't tracked anywhere today** (`MtpTestNode.DurationMs` is dropped before reaching
+  `MtpTestMethod`/`TestResult`) - a duration lens needs a small model change in UnitTesting itself
+  first, not just a new provider reading existing state. `TestBase.ResultChanged` is a usable
+  refresh hook; there's no "discovery completed" event. `ITestService.RunTestsAsync(IEnumerable<ITest>,
+  TestExecutionOptions)` is the real Run/Debug entry point, `TestExecutionOptions.UseDebugger` flips
+  the two; debug is `#if !HAS_UNO`-gated.
+- Git history lens: not started. Researched (not implemented): GitAddIn has no blame-style
+  per-line/method API at all (`GitGuiWrapper.Log` only shells `git log --stat` for a whole file into
+  an external viewer) - a Git lens needs a new `git blame --porcelain -L <start>,<end>` wrapper on
+  `Git.RunGitAsync` first. There's also no HEAD/branch-change/post-commit event anywhere in
+  GitAddIn or the shared `GitStatusService` - refresh would need a new `.git/HEAD`/`.git/index`
+  file-system watcher or a new event raised after `GitGuiWrapper.Commit`. Neither AddIn uses formal
+  `<Service>` addin-tree registration (both use a static class self-wiring into `SD.*` events from
+  their own static constructor, or an `Autostart` command) - a lens provider would follow that same
+  idiom, not `CodeCoverage`'s or `CSharpBinding`'s `<Service>`-based one.
+- Results popup UI and the rest of §22's test matrix (rendering/performance/provider-integration
+  tests): not started.
 
 ### Phase 0: contracts and lifecycle
 

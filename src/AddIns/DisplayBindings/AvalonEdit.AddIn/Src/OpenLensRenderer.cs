@@ -119,6 +119,38 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			document.Changed += DocumentChanged;
 			textView.BlockAdornmentGenerators.Add(this);
 			textView.VisualLinesChanged += VisualLinesChanged;
+			registry.RefreshRequested += OnRefreshRequested;
+			ScheduleAnchorRefresh();
+		}
+
+		/// <summary>
+		/// A provider-initiated refresh (doc §13) - e.g. a coverage run finishing, a Git HEAD
+		/// change, a test run completing - none of which are document edits, so nothing else would
+		/// otherwise invalidate this document's cached resolved items for that provider.
+		/// <see cref="OpenLensRefreshEventArgs.DocumentId"/> null means "every open document";
+		/// non-null is checked against this renderer's own <see cref="documentId"/>.
+		/// <see cref="OpenLensRefreshEventArgs.AnchorIds"/> null means "every anchor for this
+		/// provider" rather than "no anchors" (see its doc comment).
+		///
+		/// Drops the matching cache entries and re-runs full discovery rather than just re-resolving
+		/// them in place: a provider that computes its value directly in
+		/// <see cref="IOpenLensProvider.ProvideAsync"/> (e.g. the coverage lens, which is cheap
+		/// enough not to need <see cref="IOpenLensProvider.ResolveAsync"/> at all) would never
+		/// actually recompute if this only invalidated the cache and waited for the visible-viewport
+		/// resolution pass, since that pass calls <c>ResolveAsync</c>, not <c>ProvideAsync</c>.
+		/// </summary>
+		void OnRefreshRequested(object sender, OpenLensRefreshEventArgs e)
+		{
+			if (e.DocumentId != null && !e.DocumentId.Equals(documentId))
+				return;
+
+			var keysToInvalidate = resolvedItems
+				.Where(pair => pair.Value.ProviderId == e.ProviderId && (e.AnchorIds == null || e.AnchorIds.Contains(pair.Key.AnchorId)))
+				.Select(pair => pair.Key)
+				.ToArray();
+			foreach (var key in keysToInvalidate)
+				resolvedItems.Remove(key);
+
 			ScheduleAnchorRefresh();
 		}
 
@@ -446,6 +478,16 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		/// </summary>
 		void ExecuteCommand(OpenLensCommand command)
 		{
+			// "OpenLens.RunAction" is a generic escape hatch for providers outside Base/AvalonEdit.AddIn
+			// (e.g. CodeCoverageOpenLensProvider) that need to invoke their own AddIn's behavior -
+			// AvalonEdit.AddIn can't reference those AddIns directly (they already depend on it), so
+			// the provider supplies the click behavior itself as a plain delegate instead of a new
+			// command id this class would need to know about.
+			if (command.Argument is Action action) {
+				action();
+				return;
+			}
+
 			if (command.Argument is not OpenLensAnchor anchor) {
 				LoggingService.Warn("OpenLens: command '" + command.CommandId + "' has no anchor argument.");
 				return;
@@ -561,6 +603,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			document.Changed -= DocumentChanged;
 			textView.VisualLinesChanged -= VisualLinesChanged;
 			textView.BlockAdornmentGenerators.Remove(this);
+			registry.RefreshRequested -= OnRefreshRequested;
 			refreshCancellation.Cancel();
 			refreshCancellation.Dispose();
 			resolutionThrottle.Dispose();

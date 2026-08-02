@@ -74,7 +74,14 @@ namespace ICSharpCode.CodeCoverage
 				return results.ToArray();
 			}
 		}
-		
+
+		/// <summary>
+		/// Raised whenever <see cref="Results"/> changes - a run completed (<see cref="ShowResults"/>)
+		/// or the results were cleared (<see cref="ClearResults"/>). doc/technotes/openlens.md §10.5:
+		/// the coverage lens host uses this to refresh, rather than on every keystroke.
+		/// </summary>
+		public static event EventHandler ResultsChanged;
+
 		/// <summary>
 		/// Clears any code coverage results currently on display.
 		/// </summary>
@@ -86,8 +93,9 @@ namespace ICSharpCode.CodeCoverage
 			}
 			HideCodeCoverage();
 			results.Clear();
+			ResultsChanged?.Invoke(null, EventArgs.Empty);
 		}
-		
+
 		/// <summary>
 		/// Shows the code coverage results in the code coverage pad and
 		/// highlights any source code files that have been profiled.
@@ -100,6 +108,7 @@ namespace ICSharpCode.CodeCoverage
 				pad.ShowResults(results);
 			}
 			RefreshCodeCoverageHighlights();
+			ResultsChanged?.Invoke(null, EventArgs.Empty);
 		}
 		
 		/// <summary>

@@ -16,6 +16,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.OpenLens
 	{
 		public const string ReferencesLensId = "references";
 		public const string ImplementationsLensId = "implementations";
+		public const string OverridesLensId = "overrides";
 
 		readonly string extension;
 
@@ -42,10 +43,18 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.OpenLens
 					Presentation: new OpenLensPresentation("references"),
 					Command: null, ResolveData: anchor, IsResolved: false));
 
-				if (IsOverridable(anchor.Kind)) {
+				// doc/technotes/openlens.md §17.3: an interface/abstract member offers
+				// "implementations", a virtual member/non-sealed override offers "overrides" -
+				// never both, and nothing at all for a non-virtual, non-interface member.
+				if (anchor.Overridability == SymbolOverridability.Implementable) {
 					items.Add(new OpenLensItem(
 						ProviderId: Id, LensId: ImplementationsLensId, AnchorId: anchor.AnchorId, Order: 1,
 						Presentation: new OpenLensPresentation("implementations"),
+						Command: null, ResolveData: anchor, IsResolved: false));
+				} else if (anchor.Overridability == SymbolOverridability.Overridable) {
+					items.Add(new OpenLensItem(
+						ProviderId: Id, LensId: OverridesLensId, AnchorId: anchor.AnchorId, Order: 1,
+						Presentation: new OpenLensPresentation("overrides"),
 						Command: null, ResolveData: anchor, IsResolved: false));
 				}
 			}
@@ -73,11 +82,14 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.OpenLens
 				};
 			}
 
-			if (item.LensId == ImplementationsLensId) {
+			if (item.LensId == ImplementationsLensId || item.LensId == OverridesLensId) {
 				var result = await languageService.GetDerivedSymbolsAsync(context.DocumentId, offset, cancellationToken).ConfigureAwait(false);
 				int count = CountNodes(result?.Nodes);
+				var (singular, plural) = item.LensId == OverridesLensId
+					? ("override", "overrides")
+					: ("implementation", "implementations");
 				return item with {
-					Presentation = new OpenLensPresentation(FormatCount(count, "implementation", "implementations")),
+					Presentation = new OpenLensPresentation(FormatCount(count, singular, plural)),
 					Command = new OpenLensCommand("OpenLens.ShowImplementations", anchor),
 					IsResolved = true,
 				};
@@ -97,9 +109,6 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.OpenLens
 			}
 			return count;
 		}
-
-		static bool IsOverridable(OpenLensAnchorKind kind) =>
-			kind is OpenLensAnchorKind.Type or OpenLensAnchorKind.Method or OpenLensAnchorKind.Property or OpenLensAnchorKind.Indexer or OpenLensAnchorKind.Event;
 
 		static string FormatCount(int count, string singular, string plural) => count == 1 ? $"1 {singular}" : $"{count} {plural}";
 	}

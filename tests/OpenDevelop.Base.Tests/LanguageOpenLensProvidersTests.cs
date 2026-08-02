@@ -9,7 +9,7 @@ namespace OpenDevelop.Base.Tests;
 /// <summary>
 /// Tests for <see cref="LanguageOpenLensAnchorProvider"/>/<see cref="LanguageOpenLensProvider"/> -
 /// the generic <see cref="ILanguageService"/>-backed implementations CSharpBinding/VBBinding each
-/// register their own extension-scoped instance of (doc/technotes/codelens.md §17.1). A
+/// register their own extension-scoped instance of (doc/technotes/openlens.md §17.1). A
 /// <see cref="FakeLanguageService"/> stands in for Roslyn/LSP so these run without a real compiler.
 ///
 /// Each test gets its own <see cref="SD.InitializeForUnitTests"/> service container (see
@@ -79,19 +79,24 @@ public class LanguageOpenLensProvidersTests : IDisposable
 	}
 
 	[Fact]
-	public async Task ProvideAsync_AddsImplementationsLensOnlyForOverridableKinds()
+	public async Task ProvideAsync_AddsSecondLensOnlyWhenOverridabilityIsSet()
 	{
+		// doc/technotes/openlens.md §17.3: an interface member/abstract member gets
+		// "implementations", a virtual member/non-sealed override gets "overrides", and a
+		// non-virtual, non-interface member gets neither.
 		var provider = new LanguageOpenLensProvider("CSharp", ".cs");
 		var anchors = new[] {
-			new OpenLensAnchor("Class:Foo", new DocumentId("Test.cs"), default, OpenLensAnchorKind.Type, "Foo", null, 0),
+			new OpenLensAnchor("Interface:IFoo", new DocumentId("Test.cs"), default, OpenLensAnchorKind.Type, "IFoo", null, 0, SymbolOverridability.Implementable),
+			new OpenLensAnchor("Method:Bar", new DocumentId("Test.cs"), default, OpenLensAnchorKind.Method, "Bar", null, 0, SymbolOverridability.Overridable),
 			new OpenLensAnchor("Field:x", new DocumentId("Test.cs"), default, OpenLensAnchorKind.Field, "x", null, 0),
 		};
 
 		var items = await provider.ProvideAsync(Context(), anchors, CancellationToken.None);
 
-		Assert.Equal(3, items.Count);
+		Assert.Equal(5, items.Count);
 		Assert.All(items, i => Assert.False(i.IsResolved));
-		Assert.Equal(new[] { "references", "implementations", "references" },
+		// Sorted by AnchorId: "Field:x" < "Interface:IFoo" < "Method:Bar".
+		Assert.Equal(new[] { "references", "references", "implementations", "references", "overrides" },
 			items.OrderBy(i => i.AnchorId).ThenBy(i => i.Order).Select(i => i.LensId));
 	}
 

@@ -1147,18 +1147,35 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
                         && m.Locations.Any(location => location.SourceTree == syntaxTree))
                     .Select(m => new DocumentOutlineNode(
                         FormatMemberName(m), m.Kind.ToString(), ToOutlineSpan(m), Array.Empty<DocumentOutlineNode>(),
-                        ToOutlineExtentSpan(m, syntaxTree), ToOutlineAccessibility(m.DeclaredAccessibility)))
+                        ToOutlineExtentSpan(m, syntaxTree), ToOutlineAccessibility(m.DeclaredAccessibility),
+                        ToMemberOverridability(m)))
                     .OrderBy(node => node.Name, StringComparer.OrdinalIgnoreCase)
                     .ToArray();
 
                 results.Add(new DocumentOutlineNode(
                     type.Name, type.TypeKind.ToString(), ToOutlineSpan(type), members,
-                    ToOutlineExtentSpan(type, syntaxTree), ToOutlineAccessibility(type.DeclaredAccessibility)));
+                    ToOutlineExtentSpan(type, syntaxTree), ToOutlineAccessibility(type.DeclaredAccessibility),
+                    type.TypeKind == TypeKind.Interface ? SymbolOverridability.Implementable : SymbolOverridability.None));
 
                 // Nested types are listed as their own top-level entries (flat list), not nested
                 // under their declaring type — matches how a class/member navigation bar reads.
                 CollectTypes(type, syntaxTree, results);
             }
+        }
+
+        // doc/technotes/openlens.md §17.3: interface member/abstract member -> implementations;
+        // virtual member or non-sealed override -> overrides; anything else -> no lens.
+        static SymbolOverridability ToMemberOverridability(ISymbol member)
+        {
+            if (member.ContainingType?.TypeKind == TypeKind.Interface)
+                return SymbolOverridability.Implementable;
+            if (member.IsAbstract)
+                return SymbolOverridability.Implementable;
+            if (member.IsSealed)
+                return SymbolOverridability.None;
+            if (member.IsOverride || member.IsVirtual)
+                return SymbolOverridability.Overridable;
+            return SymbolOverridability.None;
         }
 
         static string? ToOutlineAccessibility(Accessibility accessibility)
