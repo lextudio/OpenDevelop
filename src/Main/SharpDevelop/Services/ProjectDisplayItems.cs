@@ -36,7 +36,7 @@ namespace ICSharpCode.SharpDevelop.Services
 			}
 
 			var projectDirectory = Path.GetDirectoryName(project.FileName?.ToString());
-			return project.Items.CreateSnapshot()
+			var items = project.Items.CreateSnapshot()
 				.OfType<FileProjectItem>()
 				.Where(item => !IsReferenceItemName(item.ItemType.ItemName))
 				.Where(item => IsSupportedProjectItemPath(item.FileName.ToString()))
@@ -64,6 +64,7 @@ namespace ICSharpCode.SharpDevelop.Services
 				.Select(group => group.First())
 				.OrderBy(item => item.DisplayPath, StringComparer.OrdinalIgnoreCase)
 				.ToArray();
+			return ApplyFileNesting(items);
 		}
 
 		private static bool IsExcludedProjectPath(string path, string projectDirectory)
@@ -81,7 +82,7 @@ namespace ICSharpCode.SharpDevelop.Services
 			var projectDirectory = project.Directory.ToString();
 			var projectFile = project.FileName.ToString();
 
-			return project.GetEvaluatedProjectItems()
+			var items = project.GetEvaluatedProjectItems()
 				.Where(item => IsDisplayItemName(item.ItemType))
 				.Select(item => CreateEvaluatedDisplayItem(projectDirectory, projectFile, item))
 				.Where(item => item != null)
@@ -90,6 +91,37 @@ namespace ICSharpCode.SharpDevelop.Services
 				.Select(group => group.First())
 				.OrderBy(item => item.DisplayPath, StringComparer.OrdinalIgnoreCase)
 				.ToArray();
+			return ApplyFileNesting(items);
+		}
+
+		// CPS also applies conventional nesting when the SDK does not emit an explicit
+		// DependentUpon value. In particular, modern WPF SDK projects normally expose
+		// MainWindow.xaml.cs with no DirectMetadata at all; VS still nests it under the
+		// matching MainWindow.xaml. Preserve explicit MSBuild metadata, then apply the
+		// same high-value conventions only when the parent really exists in the project.
+		private static IReadOnlyList<ProjectDisplayItem> ApplyFileNesting(ProjectDisplayItem[] items)
+		{
+			var displayPaths = new HashSet<string>(items.Select(item => item.DisplayPath), StringComparer.OrdinalIgnoreCase);
+			return items.Select(item => {
+				if (!string.IsNullOrWhiteSpace(item.DependentUpon))
+					return item;
+				var parentPath = GetConventionParentPath(item.DisplayPath);
+				if (parentPath is null || !displayPaths.Contains(parentPath))
+					return item;
+				return item with { DependentUpon = parentPath.Split('\\', '/').Last() };
+			}).ToArray();
+		}
+
+		private static string? GetConventionParentPath(string displayPath)
+		{
+			if (displayPath.EndsWith(".xaml.cs", StringComparison.OrdinalIgnoreCase)
+			    || displayPath.EndsWith(".xaml.vb", StringComparison.OrdinalIgnoreCase))
+				return Path.ChangeExtension(displayPath, null);
+			if (displayPath.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase))
+				return displayPath.Substring(0, displayPath.Length - ".Designer.cs".Length) + ".cs";
+			if (displayPath.EndsWith(".Designer.vb", StringComparison.OrdinalIgnoreCase))
+				return displayPath.Substring(0, displayPath.Length - ".Designer.vb".Length) + ".vb";
+			return null;
 		}
 
 		internal static IReadOnlyList<EvaluatedProjectItem> GetEvaluatedDependencyItems(MSBuildBasedProject project)

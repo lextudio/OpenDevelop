@@ -256,7 +256,10 @@ namespace ICSharpCode.SharpDevelop.Project
 				.Select(item => new EvaluatedProjectItem(
 					item.ItemType,
 					item.EvaluatedInclude,
-					item.DirectMetadata.ToDictionary(metadata => metadata.Name, metadata => metadata.EvaluatedValue, MSBuildInternals.PropertyNameComparer)))
+					// Use the final evaluated metadata, including values supplied by imported SDK
+					// targets and item definitions. DirectMetadata only contains values written on
+					// the item itself and loses Link/DependentUpon-style project-system semantics.
+					item.Metadata.ToDictionary(metadata => metadata.Name, metadata => metadata.EvaluatedValue, MSBuildInternals.PropertyNameComparer)))
 				.ToArray();
 		}
 

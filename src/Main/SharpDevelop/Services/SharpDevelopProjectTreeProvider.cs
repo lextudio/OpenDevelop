@@ -478,8 +478,9 @@ internal sealed class SharpDevelopProjectTreeProvider : ProjectTreeProviderBase
             current = GetOrAddFolder(current, segments[i], Path.Combine(projectDir, BuildDisplayPath(segments.Take(i + 1))), isGhost: false);
         }
 
-        current.AddChild(CreateFileNode(segments[^1], item.PhysicalPath, isLinked: item.IsLinked, isMissing: !item.Exists, isGhost: false,
-            isProjectItem: true));
+        var file = GetOrAddFile(current, segments[^1], item.PhysicalPath, isLinked: item.IsLinked,
+            isMissing: !item.Exists, isGhost: false, isProjectItem: true);
+        file.IsProjectItem = true;
     }
 
     private static void AddGhostProjectFileNode(MutableProjectTree root, string projectDir, string fullPath)

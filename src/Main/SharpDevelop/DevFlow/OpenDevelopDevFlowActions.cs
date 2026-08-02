@@ -90,6 +90,29 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 
+		[DevFlowAction("od.project-browser-state", Description = "Inspect the real hierarchical Projects pad tree and its scrolling policy")]
+		public static string GetProjectBrowserState(string projectName)
+		{
+			var viewModel = OpenDevelopMefHost.ExportProvider.GetExportedValue<ICSharpCode.SharpDevelop.Services.ProjectBrowserViewModel>();
+			var projectNode = FindNode(viewModel.RootNodes, node =>
+				node.Kind == ICSharpCode.SharpDevelop.Services.ProjectBrowserNodeKind.Project
+				&& string.Equals(node.Name, projectName, StringComparison.OrdinalIgnoreCase));
+			if (projectNode == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No project named '" + projectName + "'." });
+			var tree = FindLogicalDescendants<System.Windows.Controls.TreeView>(viewModel.Content as DependencyObject).FirstOrDefault();
+			return JsonSerializer.Serialize(new {
+				success = true,
+				verticalScrollBarVisibility = tree == null ? null : ScrollViewer.GetVerticalScrollBarVisibility(tree).ToString(),
+				project = SerializeProjectBrowserNode(projectNode)
+			});
+		}
+
+		static object SerializeProjectBrowserNode(ICSharpCode.SharpDevelop.Services.ProjectBrowserNodeModel node) => new {
+			name = node.Name,
+			kind = node.Kind.ToString(),
+			children = node.Children.Select(SerializeProjectBrowserNode).ToArray()
+		};
+
 		[DevFlowAction("od.project-context-menu", Description = "Build a project node's real AddIn-tree context menu and return its visible item labels")]
 		public static string GetProjectContextMenu(string projectName)
 		{
