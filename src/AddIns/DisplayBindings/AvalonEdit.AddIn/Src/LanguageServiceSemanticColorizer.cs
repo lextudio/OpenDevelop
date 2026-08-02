@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,37 +8,39 @@ using System.Windows.Threading;
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Rendering;
 using ICSharpCode.Core;
+using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.LanguageServices;
-using ICSharpCode.SharpDevelop.LanguageServices.Lsp;
+using SemanticLanguageService = ICSharpCode.SharpDevelop.LanguageServices.ILanguageService;
 
 namespace ICSharpCode.AvalonEdit.AddIn
 {
-	sealed class LspSemanticColorizer : DocumentColorizingTransformer, IDisposable
+	// Backend-agnostic semantic overlay. Roslyn and LSP both enter through ILanguageService and
+	// return the same SemanticToken DTO; only token vocabulary-to-theme mapping belongs here.
+	sealed class LanguageServiceSemanticColorizer : DocumentColorizingTransformer, IDisposable
 	{
 		readonly TextDocument document;
 		readonly TextView textView;
 		readonly string fileName;
-		readonly LspLanguageService service;
+		readonly SemanticLanguageService languageService;
 		CancellationTokenSource refreshCancellation = new();
 		IReadOnlyList<ColoredToken> tokens = Array.Empty<ColoredToken>();
 
-		LspSemanticColorizer(TextDocument document, TextView textView, string fileName, LspLanguageService service)
+		LanguageServiceSemanticColorizer(TextDocument document, TextView textView, string fileName, SemanticLanguageService languageService)
 		{
 			this.document = document;
 			this.textView = textView;
 			this.fileName = fileName;
-			this.service = service;
+			this.languageService = languageService;
 			document.Changed += DocumentChanged;
 			ScheduleRefresh();
 		}
 
-		public static LspSemanticColorizer Create(TextDocument document, TextView textView, string fileName)
+		public static LanguageServiceSemanticColorizer Create(TextDocument document, TextView textView, string fileName)
 		{
-			var extension = Path.GetExtension(fileName).ToLowerInvariant();
-			if (extension is not (".fs" or ".fsi" or ".xaml"))
+			var registry = SD.GetService<LanguageServiceRegistry>();
+			if (registry == null || !registry.TryGetService(fileName, out var languageService))
 				return null;
-			var service = LspServiceManager.GetService(fileName);
-			return service == null ? null : new LspSemanticColorizer(document, textView, fileName, service);
+			return new LanguageServiceSemanticColorizer(document, textView, fileName, languageService);
 		}
 
 		void DocumentChanged(object sender, DocumentChangeEventArgs e) => ScheduleRefresh();
@@ -55,15 +56,15 @@ namespace ICSharpCode.AvalonEdit.AddIn
 					await Task.Delay(150, cancellationToken);
 					var text = document.Text;
 					var documentId = new ICSharpCode.SharpDevelop.LanguageServices.DocumentId(fileName);
-					await service.UpsertDocumentAsync(documentId, text, cancellationToken);
-					var semanticTokens = await service.GetSemanticTokensAsync(documentId, cancellationToken);
+					await languageService.UpsertDocumentAsync(documentId, text, cancellationToken);
+					var semanticTokens = await languageService.GetSemanticTokensAsync(documentId, cancellationToken);
 					if (cancellationToken.IsCancellationRequested)
 						return;
 					tokens = semanticTokens.Select(token => ConvertToken(token)).Where(token => token.Length > 0).ToArray();
 					textView.Redraw();
 				}
 				catch (OperationCanceledException) { }
-				catch (Exception ex) { LoggingService.Warn("LSP semantic highlighting failed for '" + fileName + "'. " + ex.Message); }
+				catch (Exception ex) { LoggingService.Warn("Semantic highlighting failed for '" + fileName + "'. " + ex.Message); }
 			}));
 		}
 
@@ -74,8 +75,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				var end = document.GetOffset(token.Span.End.Line, token.Span.End.Column);
 				return new ColoredToken(start, Math.Max(0, end - start), GetBrush(token.Type));
 			}
-			catch (ArgumentOutOfRangeException)
-			{
+			catch (ArgumentOutOfRangeException) {
 				return default;
 			}
 		}
@@ -93,6 +93,10 @@ namespace ICSharpCode.AvalonEdit.AddIn
 
 		static Brush GetBrush(string type) => type switch
 		{
+			"ReferenceTypes" => Brushes.Teal,
+			"ValueTypes" => Brushes.DarkCyan,
+			"MethodCall" => Brushes.DarkViolet,
+			"FieldAccess" => Brushes.SaddleBrown,
 			"xamlDelimiter" or "xamlAttributeQuotes" => Brushes.DimGray,
 			"xamlName" or "xamlMarkupExtensionClass" => Brushes.Teal,
 			"xamlAttribute" or "xamlMarkupExtensionParameterName" => Brushes.SaddleBrown,

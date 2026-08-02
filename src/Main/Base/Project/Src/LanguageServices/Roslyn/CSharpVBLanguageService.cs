@@ -345,6 +345,61 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         }
 
         /// <summary>
+        /// Symbol-kind classifications for the four groups doc/technotes/csharp-vb-binding.md §8.4/§14
+        /// call out for phase 1 (ReferenceTypes/ValueTypes/MethodCall/FieldAccess) - everything
+        /// Roslyn's classifier also reports for keywords/strings/comments/numbers/operators/
+        /// punctuation/plain identifiers is intentionally left unmapped and dropped, since AvalonEdit's
+        /// own .xshd lexical highlighter already colors those and this must not double-paint them.
+        /// </summary>
+        public async Task<IReadOnlyList<SemanticToken>> GetSemanticTokensAsync(DocumentId documentId, CancellationToken cancellationToken)
+        {
+            var document = await GetOrLoadDocumentAsync(documentId, cancellationToken);
+            if (document is null)
+                return Array.Empty<SemanticToken>();
+
+            var text = await document.GetTextAsync(cancellationToken);
+            var classifiedSpans = await Microsoft.CodeAnalysis.Classification.Classifier.GetClassifiedSpansAsync(
+                document, new RoslynTextSpan(0, text.Length), cancellationToken);
+
+            var tokens = new List<SemanticToken>();
+            foreach (var classifiedSpan in classifiedSpans)
+            {
+                var type = ConvertClassificationType(classifiedSpan.ClassificationType);
+                if (type is null)
+                    continue;
+                tokens.Add(new SemanticToken(ConvertLineSpan(text.Lines.GetLinePositionSpan(classifiedSpan.TextSpan)), type));
+            }
+            return tokens;
+        }
+
+        static string? ConvertClassificationType(string roslynClassificationType)
+        {
+            switch (roslynClassificationType)
+            {
+                case Microsoft.CodeAnalysis.Classification.ClassificationTypeNames.ClassName:
+                case Microsoft.CodeAnalysis.Classification.ClassificationTypeNames.RecordClassName:
+                case Microsoft.CodeAnalysis.Classification.ClassificationTypeNames.InterfaceName:
+                case Microsoft.CodeAnalysis.Classification.ClassificationTypeNames.DelegateName:
+                case Microsoft.CodeAnalysis.Classification.ClassificationTypeNames.ModuleName:
+                    return "ReferenceTypes";
+                case Microsoft.CodeAnalysis.Classification.ClassificationTypeNames.StructName:
+                case Microsoft.CodeAnalysis.Classification.ClassificationTypeNames.RecordStructName:
+                case Microsoft.CodeAnalysis.Classification.ClassificationTypeNames.EnumName:
+                    return "ValueTypes";
+                case Microsoft.CodeAnalysis.Classification.ClassificationTypeNames.MethodName:
+                case Microsoft.CodeAnalysis.Classification.ClassificationTypeNames.ExtensionMethodName:
+                    return "MethodCall";
+                case Microsoft.CodeAnalysis.Classification.ClassificationTypeNames.FieldName:
+                case Microsoft.CodeAnalysis.Classification.ClassificationTypeNames.EnumMemberName:
+                case Microsoft.CodeAnalysis.Classification.ClassificationTypeNames.PropertyName:
+                case Microsoft.CodeAnalysis.Classification.ClassificationTypeNames.EventName:
+                    return "FieldAccess";
+                default:
+                    return null;
+            }
+        }
+
+        /// <summary>
         /// Compiler + analyzer diagnostics for <paramref name="document"/>, as raw Roslyn
         /// <see cref="RoslynDiagnostic"/>s rather than our <see cref="LanguageDiagnostic"/> DTO —
         /// shared by <see cref="GetDiagnosticsAsync"/> and <see cref="GetCodeActionsAsync"/>
@@ -403,6 +458,35 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
                 .ToArray();
         }
 
+        public async Task<SymbolReferencesResult?> FindReferencesAsync(DocumentId documentId, int offset, CancellationToken cancellationToken)
+        {
+            var document = await GetOrLoadDocumentAsync(documentId, cancellationToken);
+            if (document is null)
+                return null;
+
+            var sourceText = await document.GetTextAsync(cancellationToken);
+            if (offset < 0 || offset > sourceText.Length)
+                return null;
+
+            var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
+            if (semanticModel is null)
+                return null;
+
+            var symbol = await SymbolFinder.FindSymbolAtPositionAsync(semanticModel, offset, _workspace, cancellationToken);
+            if (symbol is null)
+                return null;
+
+            var referencedSymbols = await SymbolFinder.FindReferencesAsync(
+                symbol, document.Project.Solution, cancellationToken);
+            var references = referencedSymbols
+                .SelectMany(result => result.Locations)
+                .Where(reference => reference.Location.IsInSource && reference.Location.SourceTree is not null)
+                .Select(reference => ConvertLocationToNavigationTarget(reference.Location))
+                .Where(target => !string.IsNullOrEmpty(target.FileName))
+                .ToArray();
+            return new SymbolReferencesResult(symbol.Name, references);
+        }
+
         public async Task<IReadOnlyList<TextEdit>> FormatAsync(DocumentId documentId, TextSpan? span, CancellationToken cancellationToken)
         {
             var document = await GetOrLoadDocumentAsync(documentId, cancellationToken);
@@ -434,6 +518,146 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             var types = new List<DocumentOutlineNode>();
             CollectTypes(compilation.GlobalNamespace, syntaxTree, types);
             return types.OrderBy(type => type.Name, StringComparer.OrdinalIgnoreCase).ToArray();
+        }
+
+        public async Task<SymbolHierarchyResult?> GetBaseSymbolsAsync(DocumentId documentId, int offset, CancellationToken cancellationToken)
+        {
+            var symbol = await FindSymbolAsync(documentId, offset, cancellationToken);
+            if (symbol is null)
+                return null;
+
+            var nodes = new List<SymbolNavigationNode>();
+            if (symbol is INamedTypeSymbol type)
+            {
+                for (var baseType = type.BaseType; baseType is not null; baseType = baseType.BaseType)
+                    AddNavigationNode(nodes, baseType);
+                foreach (var interfaceType in type.AllInterfaces)
+                    AddNavigationNode(nodes, interfaceType);
+            }
+            else
+            {
+                for (var current = symbol; current is not null; current = GetBaseMember(current))
+                {
+                    var baseMember = GetBaseMember(current);
+                    if (baseMember is null)
+                        break;
+                    AddNavigationNode(nodes, baseMember);
+                }
+            }
+            return new SymbolHierarchyResult(FormatHierarchyName(symbol), nodes);
+        }
+
+        public async Task<SymbolHierarchyResult?> GetDerivedSymbolsAsync(DocumentId documentId, int offset, CancellationToken cancellationToken)
+        {
+            var symbol = await FindSymbolAsync(documentId, offset, cancellationToken);
+            if (symbol is null)
+                return null;
+
+            if (symbol is INamedTypeSymbol type)
+            {
+                var derived = (type.TypeKind == TypeKind.Interface
+                    ? await SymbolFinder.FindImplementationsAsync(type, _workspace.CurrentSolution, cancellationToken: cancellationToken)
+                    : await SymbolFinder.FindDerivedClassesAsync(type, _workspace.CurrentSolution, cancellationToken: cancellationToken))
+                    .OfType<INamedTypeSymbol>().ToList();
+                return new SymbolHierarchyResult(FormatHierarchyName(type), BuildDerivedTypeNodes(type, derived));
+            }
+
+            if (symbol is IMethodSymbol or IPropertySymbol or IEventSymbol)
+            {
+                var overrides = await SymbolFinder.FindOverridesAsync(symbol, _workspace.CurrentSolution, cancellationToken: cancellationToken);
+                var nodes = new List<SymbolNavigationNode>();
+                foreach (var item in overrides)
+                    AddNavigationNode(nodes, item);
+                return new SymbolHierarchyResult(FormatHierarchyName(symbol), nodes);
+            }
+
+            return null;
+        }
+
+        async Task<ISymbol?> FindSymbolAsync(DocumentId documentId, int offset, CancellationToken cancellationToken)
+        {
+            var document = await GetOrLoadDocumentAsync(documentId, cancellationToken);
+            if (document is null)
+                return null;
+            var model = await document.GetSemanticModelAsync(cancellationToken);
+            return model is null ? null : await SymbolFinder.FindSymbolAtPositionAsync(model, offset, _workspace, cancellationToken);
+        }
+
+        static IReadOnlyList<SymbolNavigationNode> BuildDerivedTypeNodes(INamedTypeSymbol parent, List<INamedTypeSymbol> allDerived)
+        {
+            var nodes = new List<SymbolNavigationNode>();
+            foreach (var child in allDerived.Where(candidate =>
+                SymbolEqualityComparer.Default.Equals(candidate.BaseType, parent)
+                || candidate.Interfaces.Contains(parent, SymbolEqualityComparer.Default)))
+            {
+                AddNavigationNode(nodes, child, BuildDerivedTypeNodes(child, allDerived));
+            }
+            return nodes;
+        }
+
+        static void AddNavigationNode(List<SymbolNavigationNode> nodes, ISymbol symbol, IReadOnlyList<SymbolNavigationNode>? children = null)
+        {
+            var location = symbol.Locations.FirstOrDefault(candidate => candidate.IsInSource);
+            if (location is null)
+                return;
+            nodes.Add(new SymbolNavigationNode(
+                FormatHierarchyName(symbol), symbol.Kind.ToString(), ConvertLocationToNavigationTarget(location), children,
+                symbol.ContainingNamespace is { IsGlobalNamespace: false } ns ? ns.ToDisplayString() : null));
+        }
+
+        static string FormatHierarchyName(ISymbol symbol) => symbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+
+        static readonly SymbolDisplayFormat HelpKeywordFormat = new(
+            typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces);
+
+        public async Task<string?> GetHelpKeywordAsync(DocumentId documentId, int offset, CancellationToken cancellationToken)
+        {
+            var symbol = await FindSymbolAsync(documentId, offset, cancellationToken);
+            if (symbol is null)
+                return null;
+            if (symbol is IFieldSymbol { ContainingType.TypeKind: TypeKind.Enum } enumField)
+                symbol = enumField.ContainingType;
+            return symbol.ToDisplayString(HelpKeywordFormat);
+        }
+
+        public async Task<string?> GetContainingTypeNameAsync(DocumentId documentId, int offset, CancellationToken cancellationToken)
+        {
+            var symbol = await FindSymbolAsync(documentId, offset, cancellationToken);
+            return (symbol as INamedTypeSymbol ?? symbol?.ContainingType)?.Name;
+        }
+
+        public Task RefreshProjectAsync(DocumentId documentId, CancellationToken cancellationToken)
+        {
+            var project = SD.ProjectService.FindProjectContainingFile(FileName.Create(documentId.FileName));
+            return project is null
+                ? Task.CompletedTask
+                : LoadProjectAsync(LanguageServiceProjectSnapshot.FromProject(project), cancellationToken);
+        }
+
+        static ISymbol? GetBaseMember(ISymbol member)
+        {
+            if (member is IMethodSymbol method)
+            {
+                if (method.ExplicitInterfaceImplementations.Length > 0) return method.ExplicitInterfaceImplementations[0];
+                if (method.OverriddenMethod is not null) return method.OverriddenMethod;
+            }
+            if (member is IPropertySymbol property)
+            {
+                if (property.ExplicitInterfaceImplementations.Length > 0) return property.ExplicitInterfaceImplementations[0];
+                if (property.OverriddenProperty is not null) return property.OverriddenProperty;
+            }
+            if (member is IEventSymbol eventSymbol)
+            {
+                if (eventSymbol.ExplicitInterfaceImplementations.Length > 0) return eventSymbol.ExplicitInterfaceImplementations[0];
+                if (eventSymbol.OverriddenEvent is not null) return eventSymbol.OverriddenEvent;
+            }
+            var containingType = member.ContainingType;
+            if (containingType is null) return null;
+            foreach (var interfaceType in containingType.AllInterfaces)
+                foreach (var interfaceMember in interfaceType.GetMembers())
+                    if (SymbolEqualityComparer.Default.Equals(containingType.FindImplementationForInterfaceMember(interfaceMember), member))
+                        return interfaceMember;
+            return null;
         }
 
         public async Task<IReadOnlyDictionary<string, IReadOnlyList<TextEdit>>> RenameSymbolAsync(

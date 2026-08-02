@@ -2,6 +2,7 @@ using System;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Editor.CodeCompletion;
+using ICSharpCode.SharpDevelop;
 
 namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
 {
@@ -29,8 +30,8 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
 			if (editor == null || editor.FileName == null)
 				return false;
 
-			var service = LspServiceManager.GetService(editor.FileName);
-			if (service == null)
+			var registry = SD.GetService<LanguageServiceRegistry>();
+			if (registry == null || !registry.TryGetService(editor.FileName, out var service))
 				return false;
 
 			var documentId = new DocumentId(editor.FileName);

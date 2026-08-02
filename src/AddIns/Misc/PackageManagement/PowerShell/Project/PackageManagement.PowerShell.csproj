@@ -20,4 +20,15 @@
   <ItemGroup>
     <Compile Include="..\..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
   </ItemGroup>
+
+  <!-- See PackageManagement.csproj: Private=false doesn't stop transitive projects' own .addin
+       manifests (e.g. via Scripting -> UnitTesting) from leaking into this shared output folder.
+       This project has no manifest of its own; keep only PackageManagement.addin, which also
+       builds into this same OutDir and owns it. -->
+  <Target Name="RemoveForeignAddinManifests" AfterTargets="Build">
+    <ItemGroup>
+      <_ForeignAddinManifest Include="$(OutDir)*.addin" Exclude="$(OutDir)PackageManagement.addin" />
+    </ItemGroup>
+    <Delete Files="@(_ForeignAddinManifest)" />
+  </Target>
 </Project>

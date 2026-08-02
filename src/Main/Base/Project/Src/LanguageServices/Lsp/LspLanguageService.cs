@@ -260,6 +260,33 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
             };
         }
 
+        public async Task<SymbolReferencesResult?> FindReferencesAsync(DocumentId documentId, int offset, CancellationToken cancellationToken)
+        {
+            var uri = ToUri(documentId.FileName);
+            if (_unavailable || _rpc is null || !_openDocuments.TryGetValue(uri, out var open))
+                return null;
+
+            var position = ToLspPosition(open.Text, offset);
+            JsonElement result;
+            try
+            {
+                result = await _rpc.InvokeWithParameterObjectAsync<JsonElement>(
+                    "textDocument/references",
+                    new { textDocument = new { uri }, position, context = new { includeDeclaration = false } },
+                    cancellationToken);
+            }
+            catch (Exception ex) when (ex is RemoteInvocationException or ConnectionLostException)
+            {
+                return null;
+            }
+
+            if (result.ValueKind != JsonValueKind.Array)
+                return null;
+
+            var references = result.EnumerateArray().Select(ConvertDefinitionResult).ToArray();
+            return new SymbolReferencesResult(GetIdentifierAt(open.Text, offset), references);
+        }
+
         public async Task<IReadOnlyList<TextEdit>> FormatAsync(DocumentId documentId, TextSpan? span, CancellationToken cancellationToken)
         {
             var uri = ToUri(documentId.FileName);
@@ -320,6 +347,20 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
                 CollectDocumentSymbols(token, nodes);
             return nodes;
         }
+
+        public Task<SymbolHierarchyResult?> GetBaseSymbolsAsync(DocumentId documentId, int offset, CancellationToken cancellationToken) =>
+            Task.FromResult<SymbolHierarchyResult?>(null);
+
+        public Task<SymbolHierarchyResult?> GetDerivedSymbolsAsync(DocumentId documentId, int offset, CancellationToken cancellationToken) =>
+            Task.FromResult<SymbolHierarchyResult?>(null);
+
+        public Task<string?> GetHelpKeywordAsync(DocumentId documentId, int offset, CancellationToken cancellationToken) =>
+            Task.FromResult<string?>(null);
+
+        public Task<string?> GetContainingTypeNameAsync(DocumentId documentId, int offset, CancellationToken cancellationToken) =>
+            Task.FromResult<string?>(null);
+
+        public Task RefreshProjectAsync(DocumentId documentId, CancellationToken cancellationToken) => Task.CompletedTask;
 
         public async Task<IReadOnlyDictionary<string, IReadOnlyList<TextEdit>>> RenameSymbolAsync(
             DocumentId documentId, int offset, string newName, CancellationToken cancellationToken)
@@ -803,6 +844,20 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
 
             return new { line, character = offset - lineStart };
         }
+
+        static string GetIdentifierAt(string text, int offset)
+        {
+            offset = Math.Clamp(offset, 0, text.Length);
+            var start = offset;
+            var end = offset;
+            while (start > 0 && IsIdentifierCharacter(text[start - 1]))
+                start--;
+            while (end < text.Length && IsIdentifierCharacter(text[end]))
+                end++;
+            return text.Substring(start, end - start);
+        }
+
+        static bool IsIdentifierCharacter(char value) => char.IsLetterOrDigit(value) || value == '_';
 
 		static string[] ReadSemanticTokenTypes(JsonElement initializeResult)
 		{

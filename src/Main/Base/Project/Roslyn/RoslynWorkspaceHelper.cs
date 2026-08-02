@@ -54,8 +54,11 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 			if (workspace == null)
 				workspace = new AdhocWorkspace();
 
-			// Supported Roslyn-backed project types today: C# (.csproj) and VB.NET (.vbproj) - see
-			// doc/technotes/roslyn.md. Each project is a single language (unlike a hypothetical
+			// Supported Roslyn-backed project types today: C# and VB.NET - see doc/technotes/roslyn.md
+			// and doc/technotes/csharp-vb-binding.md. Driven by which ProjectBinding is actually
+			// registered (CSharpBinding.addin/VBBinding.addin), not a hardcoded ".csproj"/".vbproj"
+			// check, so disabling either binding addin also stops its projects from getting a Roslyn
+			// workspace project. Each project is a single language (unlike a hypothetical
 			// mixed-language project), so the language is picked once per project, not per file.
 			var languageProjects = SD.ProjectService.AllProjects
 				.Where(p => IsSupportedExtension(Path.GetExtension(p.FileName)))
@@ -73,15 +76,30 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 			return workspace.CurrentSolution;
 		}
 
+		/// <summary>
+		/// Roslyn only knows how to build CS/VB compilation options (see EnsureProject/
+		/// SyncCompilationOptions below) - this is inherent to what this helper implements, not an
+		/// ownership decision, so it's fine for it to name the two languages directly. What must NOT
+		/// be hardcoded is which file extension maps to which binding - that comes from whichever
+		/// ProjectBindingDescriptor is actually registered right now.
+		/// </summary>
+		static bool IsRoslynLanguage(string language)
+		{
+			return string.Equals(language, "C#", StringComparison.Ordinal)
+				|| string.Equals(language, "VB", StringComparison.Ordinal);
+		}
+
 		static bool IsSupportedExtension(string extension)
 		{
-			return string.Equals(extension, ".csproj", StringComparison.OrdinalIgnoreCase)
-				|| string.Equals(extension, ".vbproj", StringComparison.OrdinalIgnoreCase);
+			return SD.ProjectService.ProjectBindings.Any(b =>
+				IsRoslynLanguage(b.Language) && string.Equals(b.ProjectFileExtension, extension, StringComparison.OrdinalIgnoreCase));
 		}
 
 		static bool IsVBProject(IProject project)
 		{
-			return string.Equals(Path.GetExtension(project.FileName.ToString()), ".vbproj", StringComparison.OrdinalIgnoreCase);
+			string extension = Path.GetExtension(project.FileName.ToString());
+			return SD.ProjectService.ProjectBindings.Any(b =>
+				string.Equals(b.Language, "VB", StringComparison.Ordinal) && string.Equals(b.ProjectFileExtension, extension, StringComparison.OrdinalIgnoreCase));
 		}
 
 		static void EnsureProject(IProject project)

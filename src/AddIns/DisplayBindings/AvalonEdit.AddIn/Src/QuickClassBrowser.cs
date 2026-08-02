@@ -16,10 +16,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-// Rewritten against Microsoft.CodeAnalysis directly (see doc/technotes/csharp-roslyn.md, Phase 1
-// "option (b)") - no longer routes through ICSharpCode.TypeSystem's IUnresolvedFile/
-// IUnresolvedTypeDefinition/IUnresolvedMember two-phase model (Roslyn has no separate
-// unresolved/resolved split).
+// Backend-neutral class/member navigation using ILanguageService.GetDocumentOutlineAsync.
 
 using System;
 using System.Collections.Generic;
@@ -31,9 +28,10 @@ using System.Windows;
 using ICSharpCode.AvalonEdit.CodeCompletion;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
-using ICSharpCode.SharpDevelop.Roslyn;
+using ICSharpCode.SharpDevelop.Editor.CodeCompletion;
+using ICSharpCode.SharpDevelop.Editor;
+using ICSharpCode.SharpDevelop.LanguageServices;
 using ICSharpCode.SharpDevelop.Project;
-using Microsoft.CodeAnalysis;
 using TextLocation = ICSharpCode.AvalonEdit.Document.TextLocation;
 
 namespace ICSharpCode.AvalonEdit.AddIn
@@ -43,42 +41,41 @@ namespace ICSharpCode.AvalonEdit.AddIn
 	/// </summary>
 	public partial class QuickClassBrowser : UserControl
 	{
-		static readonly SymbolDisplayFormat ClassFormat = new SymbolDisplayFormat(
-			typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
-			genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters);
-
-		static readonly SymbolDisplayFormat MemberFormat = new SymbolDisplayFormat(
-			genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
-			memberOptions: SymbolDisplayMemberOptions.IncludeParameters,
-			parameterOptions: SymbolDisplayParameterOptions.IncludeType | SymbolDisplayParameterOptions.IncludeName);
-
 		/// <summary>
 		/// ViewModel used for combobox items.
 		/// </summary>
 		class EntityItem : IComparable<EntityItem>, System.ComponentModel.INotifyPropertyChanged
 		{
-			readonly ISymbol entity;
+			readonly DocumentOutlineNode entity;
 			ImageSource image;
 			string text;
 
-			public ISymbol Entity {
+			public DocumentOutlineNode Entity {
 				get { return entity; }
 			}
 
-			public EntityItem(INamedTypeSymbol typeDef)
+			public EntityItem(DocumentOutlineNode node)
 			{
 				this.IsInSamePart = true;
-				this.entity = typeDef;
-				this.text = typeDef.ToDisplayString(ClassFormat);
-				this.image = RoslynSymbolIcons.GetImage(typeDef);
+				this.entity = node;
+				this.text = node.Name;
+				this.image = GetImage(node);
 			}
 
-			public EntityItem(ISymbol member)
+			static ImageSource GetImage(DocumentOutlineNode node)
 			{
-				this.IsInSamePart = true;
-				this.entity = member;
-				this.text = member.ToDisplayString(MemberFormat);
-				this.image = RoslynSymbolIcons.GetImage(member);
+				var image = node.Kind switch {
+					"Interface" => CompletionImage.Interface,
+					"Struct" or "Structure" => CompletionImage.Struct,
+					"Enum" => CompletionImage.Enum,
+					"Delegate" => CompletionImage.Delegate,
+					"Method" or "Function" or "Constructor" => CompletionImage.Method,
+					"Field" => CompletionImage.Field,
+					"Property" => CompletionImage.Property,
+					"Event" => CompletionImage.Event,
+					_ => CompletionImage.Class
+				};
+				return image.GetImage(ICSharpCode.TypeSystem.Accessibility.Public, false);
 			}
 
 			/// <summary>
@@ -108,7 +105,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 
 			public int CompareTo(EntityItem other)
 			{
-				int r = this.Entity.Kind.CompareTo(other.Entity.Kind);
+				int r = string.Compare(this.Entity.Kind, other.Entity.Kind, StringComparison.Ordinal);
 				if (r != 0)
 					return r;
 				r = string.Compare(text, other.text, StringComparison.OrdinalIgnoreCase);
@@ -166,16 +163,13 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			UpdateTargetFrameworks(fileName);
 			classItems = new List<EntityItem>();
 			if (fileName != null) {
-				var document = RoslynWorkspaceHelper.FindDocument(fileName);
-				if (document != null) {
-					var model = document.GetSemanticModelAsync().Result;
-					var root = model.SyntaxTree.GetRoot();
-					var topLevelTypes = root.DescendantNodes()
-						.Select(n => model.GetDeclaredSymbol(n) as INamedTypeSymbol)
-						.Where(s => s != null && s.ContainingType == null)
-						.Distinct(SymbolEqualityComparer.Default)
-						.Cast<INamedTypeSymbol>();
-					AddClasses(topLevelTypes);
+				var registry = SD.GetService<LanguageServiceRegistry>();
+				if (registry != null && registry.TryGetService(fileName, out var service)) {
+					var documentId = new ICSharpCode.SharpDevelop.LanguageServices.DocumentId(fileName);
+					var editor = SD.Workbench.ActiveViewContent?.GetService<ITextEditor>();
+					if (editor != null && FileName.Equals(editor.FileName, fileName))
+						service.UpsertDocumentAsync(documentId, editor.Document.Text, System.Threading.CancellationToken.None).GetAwaiter().GetResult();
+					AddClasses(service.GetDocumentOutlineAsync(documentId, System.Threading.CancellationToken.None).GetAwaiter().GetResult());
 				}
 			}
 			classItems.Sort();
@@ -207,7 +201,9 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				return;
 
 			ProjectTargetFrameworkService.SetActiveTargetFramework(currentProject, targetFramework);
-			RoslynWorkspaceHelper.InvalidateProject(currentProject);
+			var registry = SD.GetService<LanguageServiceRegistry>();
+			if (currentFileName != null && registry != null && registry.TryGetService(currentFileName, out var service))
+				service.RefreshProjectAsync(new ICSharpCode.SharpDevelop.LanguageServices.DocumentId(currentFileName), System.Threading.CancellationToken.None).GetAwaiter().GetResult();
 			if (currentFileName != null)
 				Update(currentFileName);
 		}
@@ -241,13 +237,10 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			}
 		}
 
-		void AddClasses(IEnumerable<INamedTypeSymbol> classes)
+		void AddClasses(IEnumerable<DocumentOutlineNode> classes)
 		{
 			foreach (var c in classes) {
-				if (c.IsImplicitlyDeclared)
-					continue;
 				classItems.Add(new EntityItem(c));
-				AddClasses(c.GetTypeMembers());
 			}
 		}
 
@@ -262,16 +255,10 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				ComboBox_DropDownClosed(null, null);
 		}
 
-		static bool IsInside(Location location, int line, int column)
+		static bool IsInside(ICSharpCode.SharpDevelop.LanguageServices.TextSpan span, int line, int column)
 		{
-			var span = location.GetLineSpan();
-			return IsInside(span, line, column);
-		}
-
-		static bool IsInside(FileLinePositionSpan span, int line, int column)
-		{
-			int beginLine = span.StartLinePosition.Line + 1, beginColumn = span.StartLinePosition.Character + 1;
-			int endLine = span.EndLinePosition.Line + 1, endColumn = span.EndLinePosition.Character + 1;
+			int beginLine = span.Start.Line, beginColumn = span.Start.Column;
+			int endLine = span.End.Line, endColumn = span.End.Column;
 			return line >= beginLine && (line <= endLine)
 				&& (line != beginLine || column >= beginColumn)
 				&& (line != endLine || column <= endColumn);
@@ -284,10 +271,8 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			int nearestMatchDistance = int.MaxValue;
 			foreach (EntityItem item in classItems) {
 				if (item.IsInSamePart) {
-					var loc = item.Entity.Locations.FirstOrDefault(l => l.IsInSource);
-					if (loc == null) continue;
-					var span = loc.GetLineSpan();
-					int beginLine = span.StartLinePosition.Line + 1, endLine = span.EndLinePosition.Line + 1;
+					var span = item.Entity.ExtentSpan;
+					int beginLine = span.Start.Line, endLine = span.End.Line;
 					if (IsInside(span, location.Line, location.Column)) {
 						matchInside = item;
 						// when there are multiple matches inside (nested classes), use the last one
@@ -313,8 +298,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			matchInside = null;
 			foreach (EntityItem item in memberItems) {
 				if (item.IsInSamePart) {
-					var loc = item.Entity.Locations.FirstOrDefault(l => l.IsInSource);
-					if (loc != null && IsInside(loc, location.Line, location.Column)) {
+					if (IsInside(item.Entity.ExtentSpan, location.Line, location.Column)) {
 						matchInside = item;
 					}
 				}
@@ -334,24 +318,15 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			// The selected class was changed.
 			// Update the list of member items to be the list of members of the current class.
 			EntityItem item = classComboBox.SelectedItem as EntityItem;
-			INamedTypeSymbol selectedClass = item != null ? item.Entity as INamedTypeSymbol : null;
 			memberItems = new List<EntityItem>();
-			if (selectedClass != null) {
-				var selectedClassLocation = selectedClass.Locations.FirstOrDefault(l => l.IsInSource);
-				foreach (var member in selectedClass.GetMembers()) {
-					if (member.IsImplicitlyDeclared)
-						continue;
-					if (!(member is IMethodSymbol || member is IFieldSymbol || member is IPropertySymbol || member is IEventSymbol))
-						continue;
-					var memberLocation = member.Locations.FirstOrDefault(l => l.IsInSource);
-					bool isInSamePart = memberLocation != null && selectedClassLocation != null
-						&& string.Equals(memberLocation.SourceTree.FilePath, selectedClassLocation.SourceTree.FilePath, StringComparison.OrdinalIgnoreCase);
-					memberItems.Add(new EntityItem(member) { IsInSamePart = isInSamePart });
+			if (item != null) {
+				foreach (var member in item.Entity.Children) {
+					memberItems.Add(new EntityItem(member));
 				}
 				memberItems.Sort();
 				if (jumpOnSelectionChange) {
 					SD.AnalyticsMonitor.TrackFeature(GetType(), "JumpToClass");
-					JumpTo(item, selectedClassLocation);
+					JumpTo(item);
 				}
 			}
 			membersComboBox.ItemsSource = memberItems;
@@ -362,20 +337,18 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			EntityItem item = membersComboBox.SelectedItem as EntityItem;
 			if (item != null && jumpOnSelectionChange) {
 				SD.AnalyticsMonitor.TrackFeature(GetType(), "JumpToMember");
-				JumpTo(item, item.Entity.Locations.FirstOrDefault(l => l.IsInSource));
+				JumpTo(item);
 			}
 		}
 
-		void JumpTo(EntityItem item, Location location)
+		void JumpTo(EntityItem item)
 		{
-			if (location == null)
-				return;
-			var span = location.GetLineSpan();
+			var span = item.Entity.Span;
 			Action<int, int> jumpAction = this.JumpAction;
 			if (item.IsInSamePart && jumpAction != null) {
-				jumpAction(span.StartLinePosition.Line + 1, span.StartLinePosition.Character + 1);
+				jumpAction(span.Start.Line, span.Start.Column);
 			} else {
-				FileService.JumpToFilePosition(FileName.Create(span.Path), span.StartLinePosition.Line + 1, span.StartLinePosition.Character + 1);
+				jumpAction?.Invoke(span.Start.Line, span.Start.Column);
 			}
 		}
 

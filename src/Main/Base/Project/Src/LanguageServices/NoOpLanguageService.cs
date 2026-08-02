@@ -44,6 +44,9 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
             return Task.FromResult<IReadOnlyList<NavigationTarget>>(Array.Empty<NavigationTarget>());
         }
 
+        public Task<SymbolReferencesResult?> FindReferencesAsync(DocumentId documentId, int offset, CancellationToken cancellationToken) =>
+            Task.FromResult<SymbolReferencesResult?>(null);
+
         public Task<IReadOnlyList<TextEdit>> FormatAsync(DocumentId documentId, TextSpan? span, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -88,5 +91,25 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
             return Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<TextEdit>>>(
                 new Dictionary<string, IReadOnlyList<TextEdit>>());
         }
+
+        public Task<IReadOnlyList<SemanticToken>> GetSemanticTokensAsync(DocumentId documentId, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult<IReadOnlyList<SemanticToken>>(Array.Empty<SemanticToken>());
+        }
+
+        public Task<SymbolHierarchyResult?> GetBaseSymbolsAsync(DocumentId documentId, int offset, CancellationToken cancellationToken) =>
+            Task.FromResult<SymbolHierarchyResult?>(null);
+
+        public Task<SymbolHierarchyResult?> GetDerivedSymbolsAsync(DocumentId documentId, int offset, CancellationToken cancellationToken) =>
+            Task.FromResult<SymbolHierarchyResult?>(null);
+
+        public Task<string?> GetHelpKeywordAsync(DocumentId documentId, int offset, CancellationToken cancellationToken) =>
+            Task.FromResult<string?>(null);
+
+        public Task<string?> GetContainingTypeNameAsync(DocumentId documentId, int offset, CancellationToken cancellationToken) =>
+            Task.FromResult<string?>(null);
+
+        public Task RefreshProjectAsync(DocumentId documentId, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 }

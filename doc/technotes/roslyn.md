@@ -1,5 +1,15 @@
 # VB.NET Language Support: Extend the Roslyn Bridge, Retire NRefactory Further
 
+> **Historical implementation record.** The canonical architecture is now
+> `language-services.md`; C#/VB ownership constraints are in `csharp-vb-binding.md`. This file
+> records the original VB enablement through `RoslynWorkspaceHelper`. Its earlier description of
+> `CSharpVBLanguageService` as a precedent did not mean that service was wired into the live app at
+> the time. Where this document conflicts with either canonical document, those documents win.
+
+> **Later migration update:** `IParserService` is now registered as
+> `LanguageServiceParserAdapter`, so statements below saying project-owned files still route through
+> the old `ParserService` describe the historical state at the time of implementation.
+
 ## Why this exists
 
 `doc/technotes/csharp-roslyn.md` already replaced NRefactory-for-C# (which wasn't even in the MVP

@@ -17,7 +17,10 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Linq;
+using System.Threading;
 using ICSharpCode.Core;
+using ICSharpCode.SharpDevelop.LanguageServices;
 
 namespace ICSharpCode.SharpDevelop.Editor.Commands
 {
@@ -35,7 +38,33 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 			if (editor == null)
 				return;
 			
-			editor.Language.FormattingStrategy.FormatLines(editor);
+			var registry = SD.GetService<LanguageServiceRegistry>();
+			if (registry == null || !registry.TryGetService(editor.FileName, out var service)) {
+				editor.Language.FormattingStrategy.FormatLines(editor);
+				return;
+			}
+
+			var documentId = new ICSharpCode.SharpDevelop.LanguageServices.DocumentId(editor.FileName);
+			TextSpan? selection = null;
+			if (editor.SelectionLength > 0) {
+				var start = editor.Document.GetLocation(editor.SelectionStart);
+				var end = editor.Document.GetLocation(editor.SelectionStart + editor.SelectionLength);
+				selection = new TextSpan(
+					new TextPosition(start.Line, start.Column),
+					new TextPosition(end.Line, end.Column));
+			}
+
+			try {
+				service.UpsertDocumentAsync(documentId, editor.Document.Text, CancellationToken.None).GetAwaiter().GetResult();
+				var edits = service.FormatAsync(documentId, selection, CancellationToken.None).GetAwaiter().GetResult();
+				foreach (var edit in edits.OrderByDescending(e => e.Span.Start.Line).ThenByDescending(e => e.Span.Start.Column)) {
+					int startOffset = editor.Document.GetOffset(edit.Span.Start.Line, edit.Span.Start.Column);
+					int endOffset = editor.Document.GetOffset(edit.Span.End.Line, edit.Span.End.Column);
+					editor.Document.Replace(startOffset, endOffset - startOffset, edit.NewText);
+				}
+			} catch (Exception ex) {
+				LoggingService.Warn("Format failed for '" + editor.FileName + "'. " + ex.Message);
+			}
 		}
 	}
 }

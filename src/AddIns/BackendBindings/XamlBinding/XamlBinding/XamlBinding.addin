@@ -62,7 +62,13 @@
 	</Path>
 
 	<Path name="/SharpDevelop/Autostart">
+		<Class id="ICSharpCode.XamlBinding.XamlLanguageService"
+		       class="ICSharpCode.XamlBinding.RegisterXamlLanguageServiceCommand"/>
 		<Class id="ICSharpCode.XamlBinding.RegisterDevFlowActionsCommand"
 		       class="ICSharpCode.XamlBinding.RegisterDevFlowActionsCommand"/>
+	</Path>
+
+	<Path name="/SharpDevelop/ViewContent/TextEditor/CodeCompletion">
+		<CodeCompletionBinding id="XAML-LSP" extensions=".xaml" class="ICSharpCode.SharpDevelop.LanguageServices.Lsp.LspCodeCompletionBinding"/>
 	</Path>
 </AddIn>

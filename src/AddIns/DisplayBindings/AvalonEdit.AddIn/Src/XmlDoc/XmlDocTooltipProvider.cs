@@ -16,12 +16,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-// Rewritten against Microsoft.CodeAnalysis directly (see doc/technotes/csharp-roslyn.md) - gets
-// the symbol at the hover position via Roslyn's SemanticModel instead of the old
-// ICSharpCode.TypeSystem.ResolveResult (which nothing produces today), and feeds its
-// ISymbol.GetDocumentationCommentXml() into the existing (and more complete)
-// ICSharpCode.SharpDevelop.Editor.DocumentationUIBuilder - via ICSharpCode.TypeSystem.XmlDocumentationElement,
-// a small System.Xml.Linq-backed adapter with no compiler-specific dependencies of its own.
+// Backend-neutral tooltip provider. Roslyn and LSP both supply QuickInfo through ILanguageService.
 
 using System;
 using System.Windows;
@@ -30,14 +25,13 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Xml.Linq;
+using System.Threading;
 
 using ICSharpCode.AvalonEdit.AddIn.Options;
-using ICSharpCode.SharpDevelop.Roslyn;
+using ICSharpCode.Core;
+using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
-using ICSharpCode.TypeSystem;
-using Microsoft.CodeAnalysis;
-using ISymbol = Microsoft.CodeAnalysis.ISymbol;
+using ICSharpCode.SharpDevelop.LanguageServices;
 
 namespace ICSharpCode.AvalonEdit.AddIn.XmlDoc
 {
@@ -47,44 +41,20 @@ namespace ICSharpCode.AvalonEdit.AddIn.XmlDoc
 		{
 			if (!e.InDocument)
 				return;
-			ISymbol symbol = RoslynWorkspaceHelper.GetSymbolAt(e.Editor, e.LogicalPosition);
-			if (symbol == null)
+			var registry = SD.GetService<LanguageServiceRegistry>();
+			if (registry == null || !registry.TryGetService(e.Editor.FileName, out var service))
 				return;
-			e.SetToolTip(new FlowDocumentTooltip(CreateTooltip(symbol)));
-		}
-
-		static readonly SymbolDisplayFormat HeaderFormat = new SymbolDisplayFormat(
-			typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
-			genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
-			memberOptions: SymbolDisplayMemberOptions.IncludeParameters | SymbolDisplayMemberOptions.IncludeType | SymbolDisplayMemberOptions.IncludeContainingType,
-			parameterOptions: SymbolDisplayParameterOptions.IncludeType | SymbolDisplayParameterOptions.IncludeName | SymbolDisplayParameterOptions.IncludeParamsRefOut,
-			miscellaneousOptions: SymbolDisplayMiscellaneousOptions.UseSpecialTypes);
-
-		static FlowDocument CreateTooltip(ISymbol symbol)
-		{
-			var builder = new DocumentationUIBuilder();
-			builder.AddCodeBlock(symbol.ToDisplayString(HeaderFormat), keepLargeMargin: true);
-
-			XElement xmlDoc = TryParseDocumentationXml(symbol);
-			if (xmlDoc != null) {
-				// <member name="..."><summary>...</summary>...</member> - render the children of <member>.
-				foreach (var child in XmlDocumentationElement.Parse(xmlDoc)) {
-					builder.AddDocumentationElement(child);
-				}
-			}
-
-			return builder.CreateFlowDocument();
-		}
-
-		static XElement TryParseDocumentationXml(ISymbol symbol)
-		{
-			string xml = symbol.GetDocumentationCommentXml();
-			if (string.IsNullOrEmpty(xml))
-				return null;
 			try {
-				return XElement.Parse(xml);
-			} catch (Exception) {
-				return null;
+				var documentId = new ICSharpCode.SharpDevelop.LanguageServices.DocumentId(e.Editor.FileName);
+				service.UpsertDocumentAsync(documentId, e.Editor.Document.Text, CancellationToken.None).GetAwaiter().GetResult();
+				var info = service.GetQuickInfoAsync(documentId, e.Editor.Document.GetOffset(e.LogicalPosition), CancellationToken.None).GetAwaiter().GetResult();
+				if (info == null)
+					return;
+				var builder = new DocumentationUIBuilder();
+				builder.AddCodeBlock(info.Text, keepLargeMargin: true);
+				e.SetToolTip(new FlowDocumentTooltip(builder.CreateFlowDocument()));
+			} catch (Exception ex) {
+				LoggingService.Warn("Quick info failed for '" + e.Editor.FileName + "'. " + ex.Message);
 			}
 		}
 

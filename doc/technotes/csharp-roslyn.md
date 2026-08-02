@@ -1,5 +1,15 @@
 # C# Type System: Replace NRefactory *and* the SD mock abstraction with Roslyn
 
+> **Historical implementation record.** The canonical architecture is now
+> `language-services.md`; C#/VB ownership constraints are in `csharp-vb-binding.md`. Direct
+> `RoslynWorkspaceHelper` calls described here record the path that was implemented, not the API
+> new editor features should use. Where this document conflicts with either canonical document,
+> those documents win.
+
+> **Later migration update:** the live application now registers the registry-backed
+> `LanguageServiceParserAdapter` as `IParserService`; descriptions below of the old threaded
+> `ParserService` are retained only as implementation history.
+
 ## Status update (this revision)
 
 The previous version of this note scoped "Roslyn migration" narrowly to

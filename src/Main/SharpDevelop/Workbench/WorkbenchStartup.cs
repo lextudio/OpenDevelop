@@ -156,7 +156,8 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			
 			NavigationService.ResumeLogging();
 			
-			((ParserService)SD.ParserService).StartParserThread();
+			if (SD.ParserService is ParserService parserService)
+				parserService.StartParserThread();
 			
 			// finally run the workbench window ...
 			app.Run(SD.Workbench.MainWindow);

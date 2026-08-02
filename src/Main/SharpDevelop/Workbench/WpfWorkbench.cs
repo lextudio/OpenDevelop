@@ -613,7 +613,8 @@ namespace ICSharpCode.SharpDevelop.Workbench
 					return;
 				}
 				
-				((ParserService)SD.ParserService).StopParserThread();
+				if (SD.ParserService is ParserService parserService)
+					parserService.StopParserThread();
 				((WpfWorkbench)SD.Workbench).WorkbenchLayout.StoreConfiguration();
 				restoreBoundsBeforeClosing = this.RestoreBounds;
 				

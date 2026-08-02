@@ -11,7 +11,8 @@ namespace OpenDevelop.IntegrationTests;
 // TaskService's task list is a static/global collection that only the Build *menu command*
 // (BuildCommands.cs' BeforeBuild()) clears before building - od.build-solution's direct
 // SD.BuildService.BuildAsync call does not. BuildTests.cs already covers BuildResults; this covers
-// what the pad itself actually accumulates.
+// what the pad itself actually accumulates, and (via od.show-pad + od.ui.tree) that the pad's
+// ListView renders those tasks as real visible rows.
 //
 // Uses a scratch broken .cs file dropped into the SolutionExplorerFixture's SampleApp project to
 // produce a real compile error, and deletes it (restoring the fixture) in a finally block.
@@ -86,6 +87,32 @@ public sealed class ErrorListTests
             Assert.Contains(brokenFileTasks, t => t.GetProperty("type").GetString() == "Error");
             Assert.Contains(brokenFileTasks, t => t.GetProperty("line").GetInt32() == 3);
             Assert.Contains(brokenFileTasks, t => !string.IsNullOrWhiteSpace(t.GetProperty("description").GetString()));
+
+            // The pad's own UI must render the error as real ListView rows (the JSON above is
+            // TaskService's data; the ListView rows are TaskViewResources.xaml's GridView cells),
+            // which only happens once AvalonDock actually shows the pad.
+            var showPadResult = await _app.InvokeAsync("od.show-pad", "ErrorListPad");
+            Assert.True(showPadResult.GetProperty("found").GetBoolean(), "Could not find the ErrorList pad");
+
+            var tree = await _app.GetUITreeAsync();
+            var elements = FlattenElements(tree).ToList();
+
+            // File column (DisplayMemberBinding="{Binding File}"): an auto-generated TextBlock
+            // carrying the real file path.
+            Assert.Contains(elements, e =>
+                e.TryGetProperty("type", out var t) && t.GetString() == "TextBlock"
+                && e.TryGetProperty("text", out var txt) && (txt.GetString() ?? "").Replace('\\', '/').EndsWith("ScratchBroken.cs"));
+
+            // Description column (explicit TextBlock bound to Description): the same text the
+            // pad's TaskService reports, rendered in the visible row.
+            var taskDescriptions = brokenFileTasks
+                .Select(t => t.GetProperty("description").GetString())
+                .Where(d => !string.IsNullOrWhiteSpace(d))
+                .Distinct().ToList();
+            Assert.NotEmpty(taskDescriptions);
+            Assert.Contains(elements, e =>
+                e.TryGetProperty("type", out var t) && t.GetString() == "TextBlock"
+                && e.TryGetProperty("text", out var txt) && taskDescriptions.Contains(txt.GetString()));
         }
         finally
         {
@@ -140,5 +167,21 @@ public sealed class ErrorListTests
     static void TryDelete(string path)
     {
         try { if (File.Exists(path)) File.Delete(path); } catch { }
+    }
+
+    static IEnumerable<JsonElement> FlattenElements(JsonElement tree)
+    {
+        foreach (var root in tree.GetProperty("elements").EnumerateArray())
+            foreach (var node in Flatten(root))
+                yield return node;
+    }
+
+    static IEnumerable<JsonElement> Flatten(JsonElement node)
+    {
+        yield return node;
+        if (node.TryGetProperty("children", out var children) && children.ValueKind == JsonValueKind.Array)
+            foreach (var child in children.EnumerateArray())
+                foreach (var descendant in Flatten(child))
+                    yield return descendant;
     }
 }

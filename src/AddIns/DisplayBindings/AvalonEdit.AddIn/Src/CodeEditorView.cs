@@ -24,6 +24,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -40,11 +41,13 @@ using ICSharpCode.AvalonEdit.Editing;
 using ICSharpCode.AvalonEdit.Folding;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Rendering;
+using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Editor.AvalonEdit;
 using ICSharpCode.SharpDevelop.Editor.Commands;
 using ICSharpCode.SharpDevelop.Gui;
+using ICSharpCode.SharpDevelop.LanguageServices;
 using ICSharpCode.SharpDevelop.Parser;
 using ICSharpCode.SharpDevelop.Refactoring;
 
@@ -234,23 +237,16 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			ShowHelp();
 		}
 		
-		static readonly Microsoft.CodeAnalysis.SymbolDisplayFormat HelpNameFormat =
-			new Microsoft.CodeAnalysis.SymbolDisplayFormat(
-				typeQualificationStyle: Microsoft.CodeAnalysis.SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces);
-
 		public void ShowHelp()
 		{
-			// Resolve expression at cursor and show help
-			var symbol = ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.GetSymbolAt(Adapter, TextArea.Caret.Location);
-			if (symbol == null)
+			var registry = SD.GetService<LanguageServiceRegistry>();
+			if (registry == null || !registry.TryGetService(Adapter.FileName, out var service))
 				return;
-			var namedType = symbol as Microsoft.CodeAnalysis.INamedTypeSymbol
-				?? (symbol as Microsoft.CodeAnalysis.IFieldSymbol)?.ContainingType;
-			if (namedType != null && namedType.TypeKind == Microsoft.CodeAnalysis.TypeKind.Enum) {
-				HelpProvider.ShowHelp(namedType.ToDisplayString(HelpNameFormat));
-			} else {
-				HelpProvider.ShowHelp(symbol.ToDisplayString(HelpNameFormat));
-			}
+			var id = new ICSharpCode.SharpDevelop.LanguageServices.DocumentId(Adapter.FileName);
+			service.UpsertDocumentAsync(id, Adapter.Document.Text, CancellationToken.None).GetAwaiter().GetResult();
+			var keyword = service.GetHelpKeywordAsync(id, Adapter.Caret.Offset, CancellationToken.None).GetAwaiter().GetResult();
+			if (!string.IsNullOrEmpty(keyword))
+				HelpProvider.ShowHelp(keyword);
 		}
 		#endregion
 		
@@ -433,10 +429,26 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				if (position == null)
 					return;
 				SD.AnalyticsMonitor.TrackFeature(typeof(GoToDefinition).FullName, "Ctrl+Click");
-				var symbol = ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.GetSymbolAt(Adapter, position.Value.Location);
-				new GoToDefinition().RunOn(symbol);
+				GoToDefinition(position.Value.Location);
 				e.Handled = true;
 				ctrlClickExecuted = true;
+			}
+		}
+
+		void GoToDefinition(TextLocation location)
+		{
+			var registry = SD.GetService<LanguageServiceRegistry>();
+			if (registry == null || !registry.TryGetService(Adapter.FileName, out var service))
+				return;
+			var documentId = new ICSharpCode.SharpDevelop.LanguageServices.DocumentId(Adapter.FileName);
+			try {
+				service.UpsertDocumentAsync(documentId, Adapter.Document.Text, CancellationToken.None).GetAwaiter().GetResult();
+				var targets = service.GoToDefinitionAsync(documentId, Adapter.Document.GetOffset(location), CancellationToken.None).GetAwaiter().GetResult();
+				var target = targets.FirstOrDefault();
+				if (target != null)
+					FileService.JumpToFilePosition(ICSharpCode.Core.FileName.Create(target.FileName), target.Position.Line, target.Position.Column);
+			} catch (Exception ex) {
+				LoggingService.Warn("Go to definition failed for '" + Adapter.FileName + "'. " + ex.Message);
 			}
 		}
 		

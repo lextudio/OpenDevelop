@@ -52,6 +52,17 @@
     <None Include="Scripts\Package.Format.ps1xml" CopyToOutputDirectory="Always" />
     <Resource Include="Resources\**\*" />
   </ItemGroup>
+
+  <!-- Private=false on the ProjectReferences above still lets transitive projects' own .addin
+       manifests (e.g. Scripting -> UnitTesting.addin) leak into this project's output, causing
+       duplicate-Identity errors at addin-tree load time. Only this project's own manifest belongs
+       here. -->
+  <Target Name="RemoveForeignAddinManifests" AfterTargets="Build">
+    <ItemGroup>
+      <_ForeignAddinManifest Include="$(OutDir)*.addin" Exclude="$(OutDir)PackageManagement.addin" />
+    </ItemGroup>
+    <Delete Files="@(_ForeignAddinManifest)" />
+  </Target>
   <ItemGroup>
     <!-- MVP scope excludes the legacy WinForms/SharpTreeView ProjectBrowser. Package operations still
          update project files; the WPF Solution Explorer is refreshed through its own service path. -->

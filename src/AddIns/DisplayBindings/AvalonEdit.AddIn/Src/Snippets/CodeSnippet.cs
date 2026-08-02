@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
 
 using ICSharpCode.AvalonEdit.Snippets;
 using ICSharpCode.Core;
@@ -28,6 +29,7 @@ using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Editor.AvalonEdit;
 using ICSharpCode.SharpDevelop.Editor.CodeCompletion;
+using ICSharpCode.SharpDevelop.LanguageServices;
 using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Refactoring;
 
@@ -206,17 +208,21 @@ namespace ICSharpCode.AvalonEdit.AddIn.Snippets
 		static string GetValue(ITextEditor editor, string propertyName)
 		{
 			if ("ClassName".Equals(propertyName, StringComparison.OrdinalIgnoreCase)) {
-				var c = GetCurrentClass(editor);
-				if (c != null)
-					return c.Name;
+				var name = GetCurrentClassName(editor);
+				if (name != null)
+					return name;
 			}
 			return Core.StringParser.GetValue(propertyName);
 		}
 		
-		static Microsoft.CodeAnalysis.INamedTypeSymbol GetCurrentClass(ITextEditor editor)
+		static string GetCurrentClassName(ITextEditor editor)
 		{
-			var symbol = ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.GetSymbolAtCaret(editor);
-			return symbol as Microsoft.CodeAnalysis.INamedTypeSymbol ?? symbol?.ContainingType;
+			var registry = SD.GetService<LanguageServiceRegistry>();
+			if (registry == null || !registry.TryGetService(editor.FileName, out var service))
+				return null;
+			var id = new ICSharpCode.SharpDevelop.LanguageServices.DocumentId(editor.FileName);
+			service.UpsertDocumentAsync(id, editor.Document.Text, CancellationToken.None).GetAwaiter().GetResult();
+			return service.GetContainingTypeNameAsync(id, editor.Caret.Offset, CancellationToken.None).GetAwaiter().GetResult();
 		}
 		
 		static Func<string, string> GetFunction(ITextEditor context, string name)

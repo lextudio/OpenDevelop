@@ -17,17 +17,9 @@
 		</Import>
 	</Runtime>
 	
-	<Path name = "/SharpDevelop/Parser">
-		<Parser id    = "C#-Roslyn"
-		        supportedfilenamepattern="\.cs$"
-		        class = "ICSharpCode.SharpDevelop.Roslyn.RoslynParser" />
-	</Path>
-
-	<Path name = "/SharpDevelop/ViewContent/TextEditor/CodeCompletion">
-		<CodeCompletionBinding id = "C#-Roslyn" extensions = ".cs" class = "ICSharpCode.SharpDevelop.Roslyn.RoslynCodeCompletionBinding"/>
-		<CodeCompletionBinding id = "XAML-LSP" extensions = ".xaml" class = "ICSharpCode.SharpDevelop.LanguageServices.Lsp.LspCodeCompletionBinding"/>
-	</Path>
-
+	<!-- C#-Roslyn Parser/CodeCompletionBinding ownership moved to CSharpBinding.addin - see
+	     doc/technotes/csharp-vb-binding.md Phase 0 (disabling CSharpBinding must actually stop C#
+	     completion, which it couldn't while these lived here). -->
 	<Path name = "/SharpDevelop/Workbench/DisplayBindings">
 		<DisplayBinding id = "Text"
 		                title = "${res:Gui.ProjectBrowser.OpenWith.Bindings.TextEditor}"

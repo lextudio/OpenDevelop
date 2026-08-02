@@ -157,7 +157,7 @@ namespace ICSharpCode.SharpDevelop.Sda
 			startup.RunInitialization();
 
 			if (SD.Services.GetService(typeof(IParserService)) == null) {
-				SD.Services.AddService(typeof(IParserService), new ParserService());
+				SD.Services.AddService(typeof(IParserService), new LanguageServiceParserAdapter());
 			}
 			if (SD.Services.GetService(typeof(IProjectService)) == null) {
 				SD.Services.AddService(typeof(IProjectService), new SDProjectService());

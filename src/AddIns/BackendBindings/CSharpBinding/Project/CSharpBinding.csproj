@@ -1,260 +1,38 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project Sdk="LibreWPF.Sdk">
   <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProductVersion>8.0.50215</ProductVersion>
-    <SchemaVersion>2.0</SchemaVersion>
-    <ProjectGuid>{1F1AC7CD-D154-45BB-8EAF-804CA8055F5A}</ProjectGuid>
-    <AssemblyName>CSharpBinding</AssemblyName>
-    <OutputTarget>Library</OutputTarget>
-    <NoStdLib>False</NoStdLib>
-    <NoConfig>False</NoConfig>
-    <RunPostBuildEvent>OnSuccessfulBuild</RunPostBuildEvent>
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
-    <OutputType>Library</OutputType>
-    <AssemblyOriginatorKeyMode>File</AssemblyOriginatorKeyMode>
-    <AllowUnsafeBlocks>False</AllowUnsafeBlocks>
-    <RegisterForComInterop>False</RegisterForComInterop>
-    <GenerateSerializationAssemblies>Auto</GenerateSerializationAssemblies>
-    <BaseAddress>103284736</BaseAddress>
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <FileAlignment>4096</FileAlignment>
-    <WarningLevel>4</WarningLevel>
-    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-    <TargetFrameworkProfile>
-    </TargetFrameworkProfile>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>CSharpBinding</RootNamespace>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>Full</DebugType>
-    <Optimize>False</Optimize>
-    <CheckForOverflowUnderflow>True</CheckForOverflowUnderflow>
+    <AssemblyName>CSharpBinding</AssemblyName>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <UseWPF>true</UseWPF>
+    <OutputType>Library</OutputType>
     <OutputPath>..\..\..\..\..\AddIns\BackendBindings\CSharpBinding\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EnableDefaultPageItems>false</EnableDefaultPageItems>
   </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <DebugSymbols>false</DebugSymbols>
-    <DebugType>None</DebugType>
-    <Optimize>True</Optimize>
-    <CheckForOverflowUnderflow>True</CheckForOverflowUnderflow>
-    <OutputPath>..\..\..\..\..\AddIns\BackendBindings\CSharpBinding\</OutputPath>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
-    <DefineConstants>DEBUG</DefineConstants>
-  </PropertyGroup>
+
+  <!-- Minimal ownership-correct slice (doc/technotes/csharp-vb-binding.md Phase 0). Everything else
+       under Src/ (Completion, Refactoring, FormattingStrategy, Parser, CSharpSemanticHighlighter,
+       CSharpTextEditorExtension, FormsDesigner, OptionPanels) is NRefactory-based and excluded here,
+       not deleted - it's deferred to later migration phases. -->
   <ItemGroup>
-    <Reference Include="Microsoft.Build.Utilities.v4.0" />
-    <Reference Include="Microsoft.CSharp" />
-    <Reference Include="PresentationCore">
-      <RequiredTargetFramework>3.0</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="PresentationFramework">
-      <RequiredTargetFramework>3.0</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Design" />
-    <Reference Include="System.Drawing" />
-    <Reference Include="System.Windows.Forms" />
-    <Reference Include="System.Xaml">
-      <RequiredTargetFramework>4.0</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="System.Xml" />
-    <Reference Include="Microsoft.Build.Engine" />
-    <Reference Include="System.Xml.Linq">
-      <RequiredTargetFramework>3.5</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="WindowsBase">
-      <RequiredTargetFramework>3.0</RequiredTargetFramework>
-    </Reference>
-  </ItemGroup>
-  <ItemGroup>
-    <Compile Include="Configuration\AssemblyInfo.cs" />
-    <Compile Include="Src\CaretReferenceHighlightRenderer.cs">
-      <DependentUpon>CSharpSemanticHighlighter.cs</DependentUpon>
-    </Compile>
-    <Compile Include="Src\CodeManipulation.cs" />
-    <Compile Include="Src\Completion\CSharpCompletionContext.cs" />
-    <Compile Include="Src\Completion\CSharpInsightItem.cs" />
-    <Compile Include="Src\Completion\CSharpMethodInsight.cs" />
-    <Compile Include="Src\Completion\EnumMemberCompletionData.cs" />
-    <Compile Include="Src\Completion\EventCreationCompletionData.cs" />
-    <Compile Include="Src\Completion\FormatItemCompletionData.cs" />
-    <Compile Include="Src\Completion\ImportCompletionData.cs" />
-    <Compile Include="Src\Completion\OverrideCompletionData.cs" />
-    <Compile Include="Src\Completion\OverrideEqualsGetHashCodeCompletionData.cs" />
-    <Compile Include="Src\Completion\OverrideToStringCompletionData.cs" />
-    <Compile Include="Src\Completion\PartialCompletionData.cs" />
-    <Compile Include="Src\Completion\SegmentTrackingOutputFormatter.cs" />
-    <Compile Include="Src\Completion\TypeCompletionData.cs" />
-    <Compile Include="Src\Completion\XmlDocCompletionData.cs" />
-    <Compile Include="Src\CSharpSemanticHighlighterVisitor.cs">
-      <DependentUpon>CSharpSemanticHighlighter.cs</DependentUpon>
-    </Compile>
-    <Compile Include="Src\CSharpTextEditorExtension.cs" />
-    <Compile Include="Src\FormattingStrategy\CSharpFormattingOptionsContainer.cs" />
-    <Compile Include="Src\FormattingStrategy\CSharpFormatter.cs" />
-    <Compile Include="Src\FormattingStrategy\CSharpFormattingPolicies.cs" />
-    <Compile Include="Src\FormattingStrategy\FormattingOptionBinding.cs" />
-    <Compile Include="Src\FormsDesigner\CSharpDesignerGenerator.cs" />
-    <Compile Include="Src\FormsDesigner\CSharpDesignerLoader.cs" />
-    <Compile Include="Src\FormsDesigner\CSharpDesignerLoaderProvider.cs" />
-    <Compile Include="Src\FormsDesigner\CSharpEventBindingService.cs" />
-    <Compile Include="Src\FormsDesigner\CSharpFormsDesignerLoaderContext.cs" />
-    <Compile Include="Src\FormsDesigner\ICSharpDesignerLoaderContext.cs" />
-    <Compile Include="Src\FormsDesigner\SecondaryDisplayBinding.cs" />
-    <Compile Include="Src\OptionPanels\CSharpFormattingEditor.xaml.cs">
-      <DependentUpon>CSharpFormattingEditor.xaml</DependentUpon>
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Src\OptionPanels\CSharpFormattingOptionPanel.xaml.cs">
-      <DependentUpon>CSharpFormattingOptionPanel.xaml</DependentUpon>
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Src\OptionPanels\CSharpProjectFormattingOptions.xaml.cs">
-      <DependentUpon>CSharpProjectFormattingOptions.xaml</DependentUpon>
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Src\Parser\FoldingVisitor.cs" />
-    <Compile Include="Src\Refactoring\AbstractInlineRefactorDialog.cs" />
-    <Compile Include="Src\Refactoring\ConvertInterfaceToAbstractClassContextAction.cs" />
-    <Compile Include="Src\Refactoring\CreateProperties.cs" />
-    <Compile Include="Src\Refactoring\CreatePropertiesDialog.xaml.cs">
-      <DependentUpon>CreatePropertiesDialog.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Src\Refactoring\CSharpCodeGenerator.cs" />
-    <Compile Include="Src\Refactoring\CSharpSyntaxIssue.cs" />
-    <Compile Include="Src\Refactoring\FieldWrapper.cs" />
-    <Compile Include="Src\Refactoring\InlineRefactorSnippetElement.cs" />
-    <Compile Include="Src\Refactoring\InsertCtorDialog.xaml.cs">
-      <DependentUpon>InsertCtorDialog.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Src\Refactoring\InsertCtorSnippetRefactoring.cs" />
-    <Compile Include="Src\Refactoring\InsertionCursorLayer.cs" />
-    <Compile Include="Src\Refactoring\InsertionPoint.cs" />
-    <Compile Include="Src\Refactoring\IssueOptions.xaml.cs">
-      <DependentUpon>IssueOptions.xaml</DependentUpon>
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Src\Refactoring\CSharpContextActionWrapper.cs" />
-    <Compile Include="Src\Refactoring\IssueManager.cs" />
-    <Compile Include="Src\Refactoring\IssueOptionsViewModel.cs" />
-    <Compile Include="Src\Refactoring\MoveTypeToFileContextAction.cs" />
-    <Compile Include="Src\Refactoring\Options.cs" />
-    <Compile Include="Src\Refactoring\ParamRangeCheckContextAction.cs" />
-    <Compile Include="Src\Refactoring\RefactoringExtensions.cs" />
-    <Compile Include="Src\Refactoring\OverrideEqualsGetHashCodeMethodsDialog.xaml.cs">
-      <DependentUpon>OverrideEqualsGetHashCodeMethodsDialog.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Src\Refactoring\OverrideToStringMethodDialog.xaml.cs">
-      <DependentUpon>OverrideToStringMethodDialog.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="Src\Refactoring\PropertyOrFieldWrapper.cs" />
-    <Compile Include="Src\Refactoring\RenameFileToMatchTypeNameContextAction.cs" />
-    <Compile Include="Src\Refactoring\SDCodeGenerationService.cs" />
-    <Compile Include="Src\Refactoring\SDNamingConventionService.cs" />
-    <Compile Include="Src\Refactoring\SDRedundantUsingIssue.cs" />
-    <Compile Include="Src\Refactoring\EditorScript.cs" />
-    <Compile Include="Src\Refactoring\SearchForIssuesCommand.cs" />
-    <Compile Include="Src\Refactoring\SearchForIssuesDialog.xaml.cs">
-      <DependentUpon>SearchForIssuesDialog.xaml</DependentUpon>
-      <SubType>Code</SubType>
-    </Compile>
-    <EmbeddedResource Include="Resources\MyNamespaceSupportForCSharp.cs" />
-    <Compile Include="Src\Completion\CompletionData.cs" />
-    <Compile Include="Src\Completion\CSharpCompletionBinding.cs" />
-    <Compile Include="Src\Completion\CSharpCompletionDataFactory.cs" />
-    <Compile Include="Src\Completion\EntityCompletionData.cs" />
-    <Compile Include="Src\CSharpBracketSearcher.cs" />
     <Compile Include="Src\CSharpLanguageBinding.cs" />
     <Compile Include="Src\CSharpProjectBinding.cs" />
-    <Compile Include="Src\Refactoring\CSharpCodeActionProviderDoozer.cs" />
-    <Compile Include="Src\Refactoring\SDRefactoringContext.cs" />
-    <Compile Include="Src\CSharpSemanticHighlighter.cs" />
-    <Compile Include="Src\ExtensionMethods.cs" />
-    <Compile Include="Src\FormattingStrategy\CSharpFormattingStrategy.cs" />
-    <Compile Include="Src\FormattingStrategy\DocumentAccessor.cs" />
-    <Compile Include="Src\OptionPanels\BuildOptions.xaml.cs">
-      <DependentUpon>BuildOptions.xaml</DependentUpon>
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Src\Parser\CSharpFullParseInformation.cs" />
-    <Compile Include="Src\Parser\CSharpSymbolSearch.cs" />
-    <Compile Include="Src\Parser\Parser.cs" />
-    <Compile Include="Src\Project\VBNetToCSharpConvertVisitorWithMyFormsSupport.cs" />
-    <Compile Include="Src\Project\CSharpMyNamespaceBuilder.cs" />
+    <Compile Include="Src\RegisterCSharpLanguageServiceCommand.cs" />
     <Compile Include="Src\Project\CSharpProject.cs" />
-    <None Include="CSharpBinding.addin">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <Compile Include="Src\Project\VBNetToCSharpConverter.cs" />
-    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs">
-      <Link>Configuration\GlobalAssemblyInfo.cs</Link>
-    </Compile>
+    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="CSharpBinding.addin" CopyToOutputDirectory="Always" />
     <EmbeddedResource Include="Resources\CSharp-Semantic.xshd" />
   </ItemGroup>
+
   <ItemGroup>
-    <ProjectReference Include="..\..\..\..\Libraries\AvalonEdit\ICSharpCode.AvalonEdit\ICSharpCode.AvalonEdit.csproj">
-      <Project>{6C55B776-26D4-4DB3-A6AB-87E783B2F3D1}</Project>
-      <Name>ICSharpCode.AvalonEdit</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Libraries\SharpTreeView\ICSharpCode.TreeView\ICSharpCode.TreeView.csproj">
-      <Project>{DDE2A481-8271-4EAC-A330-8FA6A38D13D1}</Project>
-      <Name>ICSharpCode.TreeView</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj">
-      <Project>{2748AD25-9C63-4E12-877B-4DCE96FBED54}</Project>
-      <Name>ICSharpCode.SharpDevelop</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj">
-      <Project>{35CEF10F-2D4C-45F2-9DD1-161E0FEC583C}</Project>
-      <Name>ICSharpCode.Core</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj">
-      <Project>{7E4A7172-7FF5-48D0-B719-7CD959DD1AC9}</Project>
-      <Name>ICSharpCode.Core.Presentation</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.WinForms\ICSharpCode.Core.WinForms.csproj">
-      <Project>{857CA1A3-FC88-4BE0-AB6A-D1EE772AB288}</Project>
-      <Name>ICSharpCode.Core.WinForms</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.SharpDevelop.Widgets\Project\ICSharpCode.SharpDevelop.Widgets.csproj">
-      <Project>{8035765F-D51F-4A0C-A746-2FD100E19419}</Project>
-      <Name>ICSharpCode.SharpDevelop.Widgets</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.SharpDevelop.Widgets\Project\ICSharpCode.SharpDevelop.Widgets.csproj">
-      <Project>{8035765F-D51F-4A0C-A746-2FD100E19419}</Project>
-      <Name>ICSharpCode.SharpDevelop.Widgets</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\DisplayBindings\FormsDesigner\Project\FormsDesigner.csproj">
-      <Project>{7d7e92df-aceb-4b69-92c8-8ac7a703cd57}</Project>
-      <Name>FormsDesigner</Name>
-      <Private>False</Private>
-    </ProjectReference>
+    <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\..\Libraries\ICSharpCode.TypeSystem.Abstractions\ICSharpCode.TypeSystem.Abstractions.csproj" Private="false" />
   </ItemGroup>
-  <ItemGroup>
-    <Page Include="Src\OptionPanels\CSharpFormattingEditor.xaml" />
-    <Page Include="Src\OptionPanels\CSharpFormattingOptionPanel.xaml" />
-    <Page Include="Src\OptionPanels\CSharpProjectFormattingOptions.xaml" />
-    <Page Include="Src\Refactoring\CreatePropertiesDialog.xaml" />
-    <Page Include="Src\Refactoring\InsertCtorDialog.xaml" />
-    <Page Include="Src\Refactoring\IssueOptions.xaml" />
-    <Page Include="Src\OptionPanels\BuildOptions.xaml" />
-    <Page Include="Src\Refactoring\OverrideEqualsGetHashCodeMethodsDialog.xaml" />
-    <Page Include="Src\Refactoring\OverrideToStringMethodDialog.xaml" />
-    <Page Include="Src\Refactoring\SearchForIssuesDialog.xaml" />
-  </ItemGroup>
-  <ItemGroup>
-    <Folder Include="Src\FormsDesigner" />
-  </ItemGroup>
-  <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.Targets" />
 </Project>

@@ -19,7 +19,7 @@ namespace ICSharpCode.SharpDevelop.Parser;
 
 // Compatibility adapter for hosts that still have legacy IParserService callers
 // but provide language features through ILanguageService implementations.
-internal sealed class LanguageServiceParserAdapter : IParserService
+public sealed class LanguageServiceParserAdapter : IParserService
 {
 	readonly object syncRoot = new object();
 	readonly Dictionary<FileName, FileEntry> files = new Dictionary<FileName, FileEntry>();

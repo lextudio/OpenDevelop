@@ -64,7 +64,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		readonly TextMarkerService textMarkerService;
 		readonly IChangeWatcher changeWatcher;
 		ErrorPainter errorPainter;
-		LspSemanticColorizer semanticColorizer;
+		DocumentColorizingTransformer semanticColorizer;
 		
 		public CodeEditorView PrimaryTextEditor {
 			get { return primaryTextEditor; }
@@ -147,9 +147,9 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			primaryTextEditor.TextArea.TextView.LineTransformers.Insert(0, new HighlightingColorizer(highlighter));
 			if (semanticColorizer != null) {
 				primaryTextEditor.TextArea.TextView.LineTransformers.Remove(semanticColorizer);
-				semanticColorizer.Dispose();
+				(semanticColorizer as IDisposable)?.Dispose();
 			}
-			semanticColorizer = LspSemanticColorizer.Create(document, primaryTextEditor.TextArea.TextView, fileName);
+			semanticColorizer = LanguageServiceSemanticColorizer.Create(document, primaryTextEditor.TextArea.TextView, fileName);
 			if (semanticColorizer != null)
 				primaryTextEditor.TextArea.TextView.LineTransformers.Add(semanticColorizer);
 			primaryTextEditor.UpdateCustomizedHighlighting();
@@ -706,7 +706,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		
 		public void Dispose()
 		{
-			semanticColorizer?.Dispose();
+			(semanticColorizer as IDisposable)?.Dispose();
 			CodeEditorOptions.Instance.PropertyChanged -= CodeEditorOptions_Instance_PropertyChanged;
 			CustomizedHighlightingColor.ActiveColorsChanged -= CustomizedHighlightingColor_ActiveColorsChanged;
 			SD.ParserService.ParseInformationUpdated -= ParserServiceParseInformationUpdated;

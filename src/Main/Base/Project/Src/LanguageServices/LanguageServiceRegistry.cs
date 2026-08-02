@@ -6,7 +6,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
 {
     public sealed class LanguageServiceRegistry
     {
-        readonly Dictionary<string, ILanguageService> _servicesByExtension;
+        readonly Dictionary<string, RegistrationEntry> _servicesByExtension;
         readonly ILanguageService _fallbackService;
 
         public LanguageServiceRegistry()
@@ -17,23 +17,40 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
         public LanguageServiceRegistry(ILanguageService fallbackService)
         {
             _fallbackService = fallbackService ?? throw new ArgumentNullException(nameof(fallbackService));
-            _servicesByExtension = new Dictionary<string, ILanguageService>(StringComparer.OrdinalIgnoreCase);
+            _servicesByExtension = new Dictionary<string, RegistrationEntry>(StringComparer.OrdinalIgnoreCase);
         }
 
         public ILanguageService FallbackService => _fallbackService;
 
-        public void RegisterExtension(string extension, ILanguageService languageService)
+        public IDisposable RegisterExtension(string extension, ILanguageService languageService)
         {
             if (languageService is null)
                 throw new ArgumentNullException(nameof(languageService));
 
-            _servicesByExtension[NormalizeExtension(extension)] = languageService;
+            return RegisterExtension(extension, _ => languageService);
+        }
+
+        public IDisposable RegisterExtension(string extension, Func<string, ILanguageService> languageServiceResolver)
+        {
+            if (languageServiceResolver is null)
+                throw new ArgumentNullException(nameof(languageServiceResolver));
+
+            var normalizedExtension = NormalizeExtension(extension);
+            var entry = new RegistrationEntry(languageServiceResolver);
+            _servicesByExtension[normalizedExtension] = entry;
+            return new Registration(this, normalizedExtension, entry);
         }
 
         public bool TryGetService(string fileNameOrExtension, out ILanguageService languageService)
         {
             var extension = NormalizeExtension(ExtractExtension(fileNameOrExtension));
-            return _servicesByExtension.TryGetValue(extension, out languageService!);
+            if (_servicesByExtension.TryGetValue(extension, out var entry))
+            {
+                languageService = entry.Resolve(fileNameOrExtension);
+                return languageService != null;
+            }
+            languageService = null!;
+            return false;
         }
 
         public ILanguageService GetService(string fileNameOrExtension)
@@ -62,6 +79,39 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
             return extension[0] == '.'
                 ? extension
                 : "." + extension;
+        }
+
+        sealed class Registration : IDisposable
+        {
+            LanguageServiceRegistry registry;
+            readonly string extension;
+            readonly RegistrationEntry entry;
+
+            public Registration(LanguageServiceRegistry registry, string extension, RegistrationEntry entry)
+            {
+                this.registry = registry;
+                this.extension = extension;
+                this.entry = entry;
+            }
+
+            public void Dispose()
+            {
+                var owner = registry;
+                if (owner == null)
+                    return;
+                registry = null;
+                if (owner._servicesByExtension.TryGetValue(extension, out var current) && ReferenceEquals(current, entry))
+                    owner._servicesByExtension.Remove(extension);
+            }
+        }
+
+        sealed class RegistrationEntry
+        {
+            readonly Func<string, ILanguageService> resolver;
+
+            public RegistrationEntry(Func<string, ILanguageService> resolver) => this.resolver = resolver;
+
+            public ILanguageService Resolve(string fileName) => resolver(fileName);
         }
     }
 }

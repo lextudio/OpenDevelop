@@ -61,7 +61,7 @@
 		<Service id="ICSharpCode.SharpDevelop.Parser.IGlobalAssemblyCacheService"
 		         class="ICSharpCode.SharpDevelop.Parser.GlobalAssemblyCacheService"/>
 		<Service id="ICSharpCode.SharpDevelop.Parser.IParserService"
-		         class="ICSharpCode.SharpDevelop.Parser.ParserService"/>
+		         class="ICSharpCode.SharpDevelop.Parser.LanguageServiceParserAdapter"/>
 		<Service id="ICSharpCode.SharpDevelop.Parser.IAssemblyParserService"
 		         class="ICSharpCode.SharpDevelop.Parser.AssemblyParserService"/>
 		<Service id="ICSharpCode.SharpDevelop.Workbench.IFileService"
@@ -86,6 +86,8 @@
 		         class="ICSharpCode.SharpDevelop.Project.SDProjectService"/>
 		<Service id="ICSharpCode.SharpDevelop.ILanguageService"
 		         class="ICSharpCode.SharpDevelop.SDLanguageService"/>
+		<Service id="ICSharpCode.SharpDevelop.LanguageServices.LanguageServiceRegistry"
+		         class="ICSharpCode.SharpDevelop.LanguageServices.LanguageServiceRegistry"/>
 		<!-- IMSBuildEngine: the real MSBuildEngine class here is out of MVP scope (needs an
 		     out-of-process WinForms build worker) - MinimalMSBuildEngine is registered directly
 		     in WorkbenchStartup.InitializeWorkbench instead. -->
@@ -217,31 +219,16 @@
 		<FileFilter id         = "Solution"
 		            name       = "${res:SharpDevelop.FileFilter.SolutionFiles}"
 		            extensions = "*.sln;*.slnx"/>
-		
-		<FileFilter id         = "CSharpProject"
-		            insertbefore="AllFiles"
-		            name       = "C# Projects (*.csproj)"
-		            extensions = "*.csproj"/>
-		
+
 		<FileFilter id         = "AllFiles"
 		            name       = "${res:SharpDevelop.FileFilter.AllFiles}"
 		            extensions = "*.*"/>
 	</Path>
-	
-	<Path name = "/SharpDevelop/Workbench/LanguageBindings">
-		<LanguageBinding id    = "CSharp"
-		                 class = "CSharpBinding.CSharpLanguageBinding"
-		                 extensions = ".cs" />
-	</Path>
-	
-	<Path path = "/SharpDevelop/Workbench/ProjectBindings">
-		<ProjectBinding id                   = "C#"
-		                guid                 = "{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}"
-		                supportedextensions  = ".cs"
-		                projectfileextension = ".csproj"
-		                class                = "CSharpBinding.CSharpProjectBinding" />
-	</Path>
-	
+
+	<!-- CSharp LanguageBinding/ProjectBindings/FileFilter("CSharpProject") ownership moved to
+	     CSharpBinding.addin - see doc/technotes/csharp-vb-binding.md Phase 0. These used to live
+	     here as stand-ins (src/Main/Base/Project/Stubs/) only because CSharpBinding didn't build. -->
+
 	<!-- Project browser Paths -->
 	<Path name = "/SharpDevelop/Pads/ProjectBrowser/ToolBar/Standard">
 		<Condition name = "SolutionOpen" action="Disable">

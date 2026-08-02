@@ -13,6 +13,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
         Task<QuickInfo?> GetQuickInfoAsync(DocumentId documentId, int offset, CancellationToken cancellationToken);
         Task<IReadOnlyList<LanguageDiagnostic>> GetDiagnosticsAsync(DocumentId documentId, CancellationToken cancellationToken);
         Task<IReadOnlyList<NavigationTarget>> GoToDefinitionAsync(DocumentId documentId, int offset, CancellationToken cancellationToken);
+        Task<SymbolReferencesResult?> FindReferencesAsync(DocumentId documentId, int offset, CancellationToken cancellationToken);
         Task<IReadOnlyList<TextEdit>> FormatAsync(DocumentId documentId, TextSpan? span, CancellationToken cancellationToken);
         void OnTextChanged(DocumentId documentId, TextChange change);
 
@@ -61,6 +62,64 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
         /// </summary>
         Task<IReadOnlyDictionary<string, IReadOnlyList<TextEdit>>> ApplyCodeActionAsync(
             DocumentId documentId, string actionId, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Symbol-kind classifications (doc/technotes/csharp-vb-binding.md §8.4/§14) for spans the
+        /// editor's own lexical/keyword highlighter (AvalonEdit's .xshd) can't tell apart on its own
+        /// — e.g. distinguishing a reference type name, a value type name, a method call, and a
+        /// field access, all of which lex identically. Callers should filter out any token type the
+        /// lexical highlighter already colors (keyword/string/comment/number/operator) rather than
+        /// double-painting it.
+        /// </summary>
+        Task<IReadOnlyList<SemanticToken>> GetSemanticTokensAsync(DocumentId documentId, CancellationToken cancellationToken);
+
+        Task<SymbolHierarchyResult?> GetBaseSymbolsAsync(DocumentId documentId, int offset, CancellationToken cancellationToken);
+        Task<SymbolHierarchyResult?> GetDerivedSymbolsAsync(DocumentId documentId, int offset, CancellationToken cancellationToken);
+        Task<string?> GetHelpKeywordAsync(DocumentId documentId, int offset, CancellationToken cancellationToken);
+        Task<string?> GetContainingTypeNameAsync(DocumentId documentId, int offset, CancellationToken cancellationToken);
+        Task RefreshProjectAsync(DocumentId documentId, CancellationToken cancellationToken);
+    }
+
+    public sealed class SymbolReferencesResult
+    {
+        public SymbolReferencesResult(string subject, IReadOnlyList<NavigationTarget> references)
+        {
+            Subject = subject ?? throw new ArgumentNullException(nameof(subject));
+            References = references ?? throw new ArgumentNullException(nameof(references));
+        }
+
+        public string Subject { get; }
+        public IReadOnlyList<NavigationTarget> References { get; }
+    }
+
+    public sealed class SymbolHierarchyResult
+    {
+        public SymbolHierarchyResult(string subject, IReadOnlyList<SymbolNavigationNode> nodes)
+        {
+            Subject = subject ?? throw new ArgumentNullException(nameof(subject));
+            Nodes = nodes ?? throw new ArgumentNullException(nameof(nodes));
+        }
+
+        public string Subject { get; }
+        public IReadOnlyList<SymbolNavigationNode> Nodes { get; }
+    }
+
+    public sealed class SymbolNavigationNode
+    {
+        public SymbolNavigationNode(string name, string kind, NavigationTarget target, IReadOnlyList<SymbolNavigationNode>? children = null, string? container = null)
+        {
+            Name = name ?? throw new ArgumentNullException(nameof(name));
+            Kind = kind ?? throw new ArgumentNullException(nameof(kind));
+            Target = target ?? throw new ArgumentNullException(nameof(target));
+            Children = children ?? Array.Empty<SymbolNavigationNode>();
+            Container = container;
+        }
+
+        public string Name { get; }
+        public string Kind { get; }
+        public NavigationTarget Target { get; }
+        public IReadOnlyList<SymbolNavigationNode> Children { get; }
+        public string? Container { get; }
     }
 
     public sealed class CodeActionInfo

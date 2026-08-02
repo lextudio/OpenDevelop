@@ -91,4 +91,12 @@
 		                 projectfileextension = ".fsproj"
 		                 class                = "FSharpBinding.FSharpProjectBinding" />
 	</Path>
+
+	<Path name="/SharpDevelop/Autostart">
+		<Class id="FSharpLanguageService" class="FSharpBinding.RegisterFSharpLanguageServiceCommand"/>
+	</Path>
+
+	<Path name="/SharpDevelop/ViewContent/TextEditor/CodeCompletion">
+		<CodeCompletionBinding id="FSharp-LSP" extensions=".fs;.fsi" class="ICSharpCode.SharpDevelop.LanguageServices.Lsp.LspCodeCompletionBinding"/>
+	</Path>
 </AddIn>

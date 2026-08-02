@@ -115,4 +115,8 @@
 	<Path name = "/SharpDevelop/ViewContent/TextEditor/CodeCompletion">
 		<CodeCompletionBinding id = "VB-Roslyn" extensions = ".vb" class = "ICSharpCode.SharpDevelop.Roslyn.RoslynCodeCompletionBinding"/>
 	</Path>
+
+	<Path name="/SharpDevelop/Autostart">
+		<Class id="VisualBasicLanguageService" class="ICSharpCode.VBBinding.RegisterVisualBasicLanguageServiceCommand"/>
+	</Path>
 </AddIn>
