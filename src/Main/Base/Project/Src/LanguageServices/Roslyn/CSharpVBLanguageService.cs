@@ -661,41 +661,95 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         }
 
         public async Task<IReadOnlyDictionary<string, IReadOnlyList<TextEdit>>> RenameSymbolAsync(
-            DocumentId documentId, int offset, string newName, CancellationToken cancellationToken)
+            DocumentId documentId, int offset, string newName, CancellationToken cancellationToken,
+            bool renameOverloads = false, bool renameInStrings = false, bool renameInComments = false)
         {
             var noEdits = new Dictionary<string, IReadOnlyList<TextEdit>>();
             if (string.IsNullOrWhiteSpace(newName))
                 return noEdits;
 
-            var document = await GetOrLoadDocumentAsync(documentId, cancellationToken);
-            if (document is null)
-                return noEdits;
-
-            var sourceText = await document.GetTextAsync(cancellationToken);
-            if (offset < 0 || offset > sourceText.Length)
-                return noEdits;
-
-            var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
-            if (semanticModel is null)
-                return noEdits;
-
-            var symbol = await SymbolFinder.FindSymbolAtPositionAsync(semanticModel, offset, _workspace, cancellationToken);
+            var symbol = await FindSymbolAtAsync(documentId, offset, cancellationToken);
             if (symbol is null)
                 return noEdits;
 
-            var originalSolution = document.Project.Solution;
+            var originalSolution = symbol.Value.Document.Project.Solution;
+            var options = new SymbolRenameOptions(
+                RenameOverloads: renameOverloads, RenameInStrings: renameInStrings, RenameInComments: renameInComments, RenameFile: false);
             Solution renamedSolution;
             try
             {
-                renamedSolution = await Renamer.RenameSymbolAsync(originalSolution, symbol, new SymbolRenameOptions(), newName, cancellationToken);
+                renamedSolution = await Renamer.RenameSymbolAsync(originalSolution, symbol.Value.Symbol, options, newName, cancellationToken);
             }
             catch (Exception ex)
             {
-                LoggingService.Warn($"Rename failed for '{symbol.Name}' -> '{newName}': {ex.Message}");
+                LoggingService.Warn($"Rename failed for '{symbol.Value.Symbol.Name}' -> '{newName}': {ex.Message}");
                 return noEdits;
             }
 
             return await DiffSolutionsToTextEditsAsync(originalSolution, renamedSolution, cancellationToken);
+        }
+
+        public async Task<string?> GetSymbolNameAsync(DocumentId documentId, int offset, CancellationToken cancellationToken)
+        {
+            var symbol = await FindSymbolAtAsync(documentId, offset, cancellationToken);
+            return symbol?.Symbol.Name;
+        }
+
+        public async Task<SymbolKindInfo?> GetSymbolKindAsync(DocumentId documentId, int offset, CancellationToken cancellationToken)
+        {
+            var found = await FindSymbolAtAsync(documentId, offset, cancellationToken);
+            if (found is null)
+                return null;
+
+            var symbol = found.Value.Symbol;
+            bool isMember = symbol is IMethodSymbol or IFieldSymbol or IPropertySymbol or IEventSymbol;
+            bool isType = symbol is INamedTypeSymbol;
+            bool isNamespace = symbol is INamespaceSymbol;
+            bool isLocal = symbol is ILocalSymbol or IParameterSymbol;
+            bool hasSourceLocation = !symbol.Locations.IsEmpty && symbol.Locations[0].IsInSource;
+            return new SymbolKindInfo(isMember, isType, isNamespace, isLocal, hasSourceLocation);
+        }
+
+        /// <summary>
+        /// Looks up the document's Roslyn project language once (cached from the last successful
+        /// load/sync - see <see cref="_projectsByLanguage"/>/<see cref="GetOrLoadDocumentAsync"/>)
+        /// rather than requiring a fresh document round trip just to know C# vs. VB.
+        /// </summary>
+        public async Task<bool> IsValidIdentifierAsync(DocumentId documentId, string name, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrEmpty(name))
+                return false;
+
+            var document = await GetOrLoadDocumentAsync(documentId, cancellationToken);
+            if (document is null)
+                return false;
+
+            return document.Project.Language == LanguageNames.VisualBasic
+                ? Microsoft.CodeAnalysis.VisualBasic.SyntaxFacts.IsValidIdentifier(name)
+                : Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(name);
+        }
+
+        /// <summary>
+        /// Shared by <see cref="RenameSymbolAsync"/> and <see cref="GetSymbolNameAsync"/> - both
+        /// need "the symbol at this offset, plus the document it came from" (the latter for its
+        /// containing solution, used as the rename's before-state).
+        /// </summary>
+        async Task<(ISymbol Symbol, Document Document)?> FindSymbolAtAsync(DocumentId documentId, int offset, CancellationToken cancellationToken)
+        {
+            var document = await GetOrLoadDocumentAsync(documentId, cancellationToken);
+            if (document is null)
+                return null;
+
+            var sourceText = await document.GetTextAsync(cancellationToken);
+            if (offset < 0 || offset > sourceText.Length)
+                return null;
+
+            var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
+            if (semanticModel is null)
+                return null;
+
+            var symbol = await SymbolFinder.FindSymbolAtPositionAsync(semanticModel, offset, _workspace, cancellationToken);
+            return symbol is null ? null : (symbol, document);
         }
 
         /// <summary>

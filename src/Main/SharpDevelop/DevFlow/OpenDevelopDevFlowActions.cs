@@ -331,32 +331,68 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 
-		[DevFlowAction("od.parser.status", Description = "Check whether RoslynWorkspaceHelper has a real Roslyn Document for a file - the actual integration point GoToDefinition/completion/etc. use (see doc/technotes/roslyn.md). Note: SD.ParserService.GetCompilationForFile is NOT checked here - for project-owned files it still routes through the old IProjectContent mock, not RoslynParser, regardless of language.")]
+		/// <summary>
+		/// Resolves the shared <see cref="ILanguageService"/> for a file (via <see cref="LanguageServiceRegistry"/>,
+		/// same as every UI command) and syncs it to the file's current content (open-editor buffer if
+		/// loaded, else on disk) before returning it, so DevFlow's headless callers see fresh data
+		/// without needing an actually-open editor.
+		/// </summary>
+		static async Task<(ICSharpCode.SharpDevelop.LanguageServices.ILanguageService Service, ICSharpCode.SharpDevelop.LanguageServices.DocumentId Id)?> GetSyncedLanguageServiceAsync(string fileName)
+		{
+			var registry = SD.GetService<ICSharpCode.SharpDevelop.LanguageServices.LanguageServiceRegistry>();
+			if (registry == null || !registry.TryGetService(fileName, out var service))
+				return null;
+
+			string text = SD.FileService.GetFileContent(FileName.Create(fileName)).Text;
+			var id = new ICSharpCode.SharpDevelop.LanguageServices.DocumentId(fileName);
+			await service.UpsertDocumentAsync(id, text, CancellationToken.None);
+			return (service, id);
+		}
+
+		static int GetOffset(string text, int requestedLine, int requestedColumn)
+		{
+			int line = 1;
+			int offset = 0;
+			while (offset < text.Length && line < requestedLine) {
+				if (text[offset++] == '\n')
+					line++;
+			}
+			return Math.Min(text.Length, offset + Math.Max(0, requestedColumn - 1));
+		}
+
+		[DevFlowAction("od.parser.status", Description = "Check whether the shared ILanguageService (LanguageServiceRegistry) has a language service registered for a file's extension - the actual integration point GoToDefinition/completion/etc. use (see doc/technotes/language-services.md). Note: SD.ParserService.GetCompilationForFile is NOT checked here - for project-owned files it still routes through the old IProjectContent mock, not the Roslyn/LSP language service, regardless of language.")]
 		public static string GetParserStatus(string fileName)
 		{
 			try {
-				var document = ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.FindDocument(fileName);
-				return JsonSerializer.Serialize(new {
-					hasDocument = document != null,
-					language = document?.Project.Language
-				});
+				var registry = SD.GetService<ICSharpCode.SharpDevelop.LanguageServices.LanguageServiceRegistry>();
+				bool hasService = registry != null && registry.TryGetService(fileName, out _);
+				return JsonSerializer.Serialize(new { hasDocument = hasService });
 			} catch (Exception ex) {
 				return JsonSerializer.Serialize(new { hasDocument = false, error = ex.Message });
 			}
 		}
 
-		[DevFlowAction("od.find-references", Description = "Find all references to the symbol at file:line/column across the whole solution, via Roslyn's SymbolFinder (the modern replacement for the deleted NRefactory find-references engine)")]
+		[DevFlowAction("od.find-references", Description = "Find all references to the symbol at file:line/column across the whole solution, via the shared ILanguageService contract (Roslyn's SymbolFinder for C#/VB, the equivalent LSP request for other languages)")]
 		public static async Task<string> FindReferencesAsync(string fileName, int line, int column)
 		{
 			try {
-				var location = new ICSharpCode.AvalonEdit.Document.TextLocation(line, column);
-				var references = await ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.FindReferencesAtAsync(fileName, location);
+				var resolved = await GetSyncedLanguageServiceAsync(fileName);
+				if (resolved == null)
+					return JsonSerializer.Serialize(new { count = 0, error = "no language service for file" });
+				var (service, id) = resolved.Value;
+
+				string text = SD.FileService.GetFileContent(FileName.Create(fileName)).Text;
+				int offset = GetOffset(text, line, column);
+				var result = await service.FindReferencesAsync(id, offset, CancellationToken.None);
+				if (result == null)
+					return JsonSerializer.Serialize(new { count = 0, error = "no symbol at location" });
+
 				return JsonSerializer.Serialize(new {
-					count = references.Count,
-					references = references.Select(r => new {
-						filePath = r.Document.FilePath,
-						line = r.Location.GetLineSpan().StartLinePosition.Line + 1,
-						column = r.Location.GetLineSpan().StartLinePosition.Character + 1
+					count = result.References.Count,
+					references = result.References.Where(r => r.Span != null).Select(r => new {
+						filePath = r.FileName,
+						line = r.Span.Value.Start.Line,
+						column = r.Span.Value.Start.Column
 					}).ToArray()
 				});
 			} catch (Exception ex) {
@@ -364,45 +400,79 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			}
 		}
 
-		[DevFlowAction("od.rename-symbol", Description = "Renames the symbol at file:line/column across the whole solution via RoslynWorkspaceHelper.RenameSymbolAsync (bypasses RenameSymbolDialog, which the WPF-embedded DevFlow agent can't drive since it's modal - same reasoning as od.open-solution bypassing the native Open dialog)")]
+		[DevFlowAction("od.rename-symbol", Description = "Renames the symbol at file:line/column across the whole solution via the shared ILanguageService.RenameSymbolAsync contract (bypasses RenameSymbolDialog, which the WPF-embedded DevFlow agent can't drive since it's modal - same reasoning as od.open-solution bypassing the native Open dialog)")]
 		public static async Task<string> RenameSymbolAsync(string fileName, int line, int column, string newName, bool renameOverloads = false, bool renameInStrings = false, bool renameInComments = false)
 		{
 			try {
-				var location = new ICSharpCode.AvalonEdit.Document.TextLocation(line, column);
-				var document = ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.FindDocument(fileName);
-				var symbol = document != null ? ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.GetSymbolAt(document, location) : null;
-				if (symbol == null)
+				var resolved = await GetSyncedLanguageServiceAsync(fileName);
+				if (resolved == null)
+					return JsonSerializer.Serialize(new { success = false, error = "no language service for file" });
+				var (service, id) = resolved.Value;
+
+				string text = SD.FileService.GetFileContent(FileName.Create(fileName)).Text;
+				int offset = GetOffset(text, line, column);
+				string oldName = await service.GetSymbolNameAsync(id, offset, CancellationToken.None);
+				if (oldName == null)
 					return JsonSerializer.Serialize(new { success = false, error = "no symbol at location" });
-				await ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.RenameSymbolAsync(symbol, newName, renameOverloads, renameInStrings, renameInComments);
-				return JsonSerializer.Serialize(new { success = true, oldName = symbol.Name });
+
+				var editsByFile = await service.RenameSymbolAsync(id, offset, newName, CancellationToken.None, renameOverloads, renameInStrings, renameInComments);
+				foreach (var pair in editsByFile)
+					ApplyEditsToFile(pair.Key, pair.Value);
+				return JsonSerializer.Serialize(new { success = true, oldName });
 			} catch (Exception ex) {
 				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
 			}
 		}
 
-		[DevFlowAction("od.extract-interface", Description = "Extracts an interface from the class at file:line/column via RoslynWorkspaceHelper.ExtractInterfaceAsync (bypasses ExtractInterfaceDialog, which is modal). memberNames is a comma-separated allowlist of member names to include; pass an empty string to include every eligible public instance member")]
+		[DevFlowAction("od.extract-interface", Description = "Extracts an interface from the class at file:line/column via the shared ILanguageService.ExtractInterfaceAsync contract (bypasses ExtractInterfaceDialog, which is modal). memberNames is a comma-separated allowlist of member display texts to include; pass an empty string to include every eligible public instance member")]
 		public static async Task<string> ExtractInterfaceAsync(string fileName, int line, int column, string interfaceName, string newFilePath, bool addInterfaceToClass, string memberNames = "", bool includeComments = false)
 		{
 			try {
-				var location = new ICSharpCode.AvalonEdit.Document.TextLocation(line, column);
-				var document = ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.FindDocument(fileName);
-				var symbol = document != null ? ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.GetSymbolAt(document, location) : null;
-				var classSymbol = symbol as Microsoft.CodeAnalysis.INamedTypeSymbol;
-				if (classSymbol == null || classSymbol.TypeKind != Microsoft.CodeAnalysis.TypeKind.Class)
+				var resolved = await GetSyncedLanguageServiceAsync(fileName);
+				if (resolved == null)
+					return JsonSerializer.Serialize(new { success = false, error = "no language service for file" });
+				var (service, id) = resolved.Value;
+
+				string text = SD.FileService.GetFileContent(FileName.Create(fileName)).Text;
+				int offset = GetOffset(text, line, column);
+				var info = await service.GetExtractInterfaceInfoAsync(id, offset, CancellationToken.None);
+				if (info == null)
 					return JsonSerializer.Serialize(new { success = false, error = "no class symbol at location" });
 
-				var candidates = ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.GetExtractInterfaceCandidateMembers(classSymbol);
 				var allowlist = memberNames.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-				var chosen = allowlist.Length == 0 ? candidates : candidates.Where(m => allowlist.Contains(m.Name)).ToArray();
+				var chosen = allowlist.Length == 0 ? info.Members : info.Members.Where(m => allowlist.Contains(m.DisplayText)).ToArray();
 				if (chosen.Count == 0)
-					return JsonSerializer.Serialize(new { success = false, error = "no members matched", available = candidates.Select(m => m.Name).ToArray() });
+					return JsonSerializer.Serialize(new { success = false, error = "no members matched", available = info.Members.Select(m => m.DisplayText).ToArray() });
 
-				var path = await ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.ExtractInterfaceAsync(
-					classSymbol, interfaceName, chosen, addInterfaceToClass, newFilePath, includeComments);
-				return JsonSerializer.Serialize(new { success = true, filePath = path, members = chosen.Select(m => m.Name).ToArray() });
+				var result = await service.ExtractInterfaceAsync(
+					id, offset, interfaceName, chosen.Select(m => m.Id).ToArray(), addInterfaceToClass, includeComments, CancellationToken.None);
+				if (result == null)
+					return JsonSerializer.Serialize(new { success = false, error = "extraction failed" });
+
+				File.WriteAllText(newFilePath, result.InterfaceFileContent);
+				foreach (var pair in result.Edits)
+					ApplyEditsToFile(pair.Key, pair.Value);
+				return JsonSerializer.Serialize(new { success = true, filePath = newFilePath, members = chosen.Select(m => m.DisplayText).ToArray() });
 			} catch (Exception ex) {
 				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
 			}
+		}
+
+		static void ApplyEditsToFile(string fileName, IReadOnlyList<ICSharpCode.SharpDevelop.LanguageServices.TextEdit> edits)
+		{
+			if (edits.Count == 0 || !File.Exists(fileName))
+				return;
+
+			string text = File.ReadAllText(fileName);
+			foreach (var edit in edits.OrderByDescending(e => e.Span.Start.Line).ThenByDescending(e => e.Span.Start.Column)) {
+				int start = GetOffset(text, edit.Span.Start.Line, edit.Span.Start.Column);
+				int end = GetOffset(text, edit.Span.End.Line, edit.Span.End.Column);
+				text = text.Substring(0, start) + edit.NewText + text.Substring(end);
+			}
+
+			File.WriteAllText(fileName, text);
+			var openedFile = SD.FileService.GetOpenedFile(FileName.Create(fileName));
+			openedFile?.SetData(System.Text.Encoding.UTF8.GetBytes(text));
 		}
 
 		[DevFlowAction("od.file.revert-all-dirty", Description = "Reverts every open dirty file to its on-disk content, discarding unsaved changes without prompting - lets a test that intentionally leaves files dirty (e.g. od.rename-symbol) clean up afterwards so a later od.open-solution in the same app session doesn't hit a blocking 'save changes?' dialog")]

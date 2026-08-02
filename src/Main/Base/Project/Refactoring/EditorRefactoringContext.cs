@@ -144,23 +144,6 @@ namespace ICSharpCode.SharpDevelop.Refactoring
 			this.TextSource = editor.Document.CreateSnapshot();
 		}
 		
-		Task<Microsoft.CodeAnalysis.ISymbol> currentSymbol;
-
-		/// <summary>
-		/// The resolved Roslyn symbol at editor caret (see doc/technotes/csharp-roslyn.md,
-		/// Phase 1 "option (b)" - no longer an ICSharpCode.TypeSystem.ResolveResult).
-		/// </summary>
-#if !HAS_UNO
-		public Task<Microsoft.CodeAnalysis.ISymbol> GetCurrentSymbolAsync()
-		{
-			lock (syncRoot) {
-				if (currentSymbol == null)
-					currentSymbol = Task.Run(() => Roslyn.RoslynWorkspaceHelper.GetSymbolAt(editor, caretLocation));
-				return currentSymbol;
-			}
-		}
-#endif
-		
 		/// <summary>
 		/// Gets cached value shared by context actions. Initializes a new value if not present.
 		/// </summary>

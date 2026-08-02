@@ -20,6 +20,7 @@
 // standard textDocument/references request through ILanguageService.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -31,6 +32,7 @@ using ICSharpCode.SharpDevelop.Editor.Search;
 using ICSharpCode.SharpDevelop.LanguageServices;
 using ICSharpCode.SharpDevelop.Roslyn;
 using Microsoft.CodeAnalysis;
+using SemanticLanguageService = ICSharpCode.SharpDevelop.LanguageServices.ILanguageService;
 using TextLocation = ICSharpCode.AvalonEdit.Document.TextLocation;
 
 namespace ICSharpCode.SharpDevelop.Editor.Commands
@@ -101,7 +103,7 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 				displayText: null, defaultTextColor: null);
 		}
 
-		static int GetOffset(string text, int requestedLine, int requestedColumn)
+		internal static int GetOffset(string text, int requestedLine, int requestedColumn)
 		{
 			int line = 1;
 			int offset = 0;
@@ -114,9 +116,11 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 	}
 
 	/// <summary>
-	/// Renames the symbol at the caret across the whole solution, via
-	/// <see cref="RoslynWorkspaceHelper.RenameSymbolAsync"/> - the modern replacement for the
-	/// deleted NRefactory-era ResolveResult-based RenameSymbolCommand/FindReferenceService.RenameSymbol.
+	/// Renames the symbol at the caret across the whole solution, via the shared
+	/// <see cref="ILanguageService"/> contract (Roslyn for C#/VB, the equivalent LSP request for
+	/// other languages) rather than talking to Roslyn/<see cref="ISymbol"/> directly - the modern
+	/// replacement for the deleted NRefactory-era ResolveResult-based RenameSymbolCommand/
+	/// FindReferenceService.RenameSymbol.
 	/// </summary>
 	public class RenameSymbolCommand : AbstractMenuCommand
 	{
@@ -130,43 +134,68 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 
 		async Task RunAsync(ITextEditor editor)
 		{
-			string fileName = editor.FileName.ToString();
-			var location = editor.Caret.Location;
+			var registry = SD.GetService<LanguageServiceRegistry>();
+			if (registry == null || !registry.TryGetService(editor.FileName, out var service))
+				return;
 
-			ISymbol symbol;
+			var id = new ICSharpCode.SharpDevelop.LanguageServices.DocumentId(editor.FileName.ToString());
+			string oldName;
 			try {
-				var document = RoslynWorkspaceHelper.FindDocument(fileName, editor.Document.Text);
-				symbol = document != null ? RoslynWorkspaceHelper.GetSymbolAt(document, location) : null;
+				await service.UpsertDocumentAsync(id, editor.Document.Text, CancellationToken.None);
+				oldName = await service.GetSymbolNameAsync(id, editor.Caret.Offset, CancellationToken.None);
 			} catch (Exception ex) {
 				SD.MessageService.ShowException(ex, "Error resolving symbol for Rename.");
 				return;
 			}
-			if (symbol == null)
+			if (oldName == null)
 				return;
 
-			var dialog = new RenameSymbolDialog(name => IsValidIdentifier(symbol, name)) {
+			var dialog = new RenameSymbolDialog(name => IsValidIdentifierAsync(service, id, name).GetAwaiter().GetResult()) {
 				Owner = SD.Workbench.MainWindow,
-				OldSymbolName = symbol.Name,
-				NewSymbolName = symbol.Name
+				OldSymbolName = oldName,
+				NewSymbolName = oldName
 			};
 			if (dialog.ShowDialog() != true)
 				return;
 
 			try {
-				await RoslynWorkspaceHelper.RenameSymbolAsync(
-					symbol, dialog.NewSymbolName, dialog.RenameOverloads, dialog.RenameInStrings, dialog.RenameInComments);
+				var editsByFile = await service.RenameSymbolAsync(
+					id, editor.Caret.Offset, dialog.NewSymbolName, CancellationToken.None,
+					dialog.RenameOverloads, dialog.RenameInStrings, dialog.RenameInComments);
+				foreach (var pair in editsByFile)
+					ApplyEdits(pair.Key, pair.Value);
 			} catch (Exception ex) {
 				SD.MessageService.ShowException(ex, "Error renaming symbol.");
 			}
 		}
 
-		static bool IsValidIdentifier(ISymbol symbol, string name)
+		static Task<bool> IsValidIdentifierAsync(SemanticLanguageService service, ICSharpCode.SharpDevelop.LanguageServices.DocumentId id, string name)
 		{
-			if (string.IsNullOrEmpty(name))
-				return false;
-			return symbol.Language == LanguageNames.VisualBasic
-				? Microsoft.CodeAnalysis.VisualBasic.SyntaxFacts.IsValidIdentifier(name)
-				: Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(name);
+			return string.IsNullOrEmpty(name) ? Task.FromResult(false) : service.IsValidIdentifierAsync(id, name, CancellationToken.None);
+		}
+
+		/// <summary>
+		/// Applies edits through the editor (in an open document) or straight to disk, matching
+		/// <see cref="RoslynWorkspaceHelper.OpenAndReplaceText"/>'s behavior - left dirty like any
+		/// other in-editor edit so a multi-file rename surfaces every touched file for the user to
+		/// review/undo/save.
+		/// </summary>
+		static void ApplyEdits(string fileName, IReadOnlyList<TextEdit> edits)
+		{
+			if (edits.Count == 0)
+				return;
+
+			string text = File.Exists(fileName) ? File.ReadAllText(fileName) : null;
+			if (text == null)
+				return;
+
+			foreach (var edit in edits.OrderByDescending(e => e.Span.Start.Line).ThenByDescending(e => e.Span.Start.Column)) {
+				int start = FindReferencesCommand.GetOffset(text, edit.Span.Start.Line, edit.Span.Start.Column);
+				int end = FindReferencesCommand.GetOffset(text, edit.Span.End.Line, edit.Span.End.Column);
+				text = text.Substring(0, start) + edit.NewText + text.Substring(end);
+			}
+
+			RoslynWorkspaceHelper.OpenAndReplaceText(fileName, text);
 		}
 	}
 }

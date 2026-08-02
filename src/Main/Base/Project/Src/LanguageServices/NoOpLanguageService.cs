@@ -64,11 +64,24 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
         }
 
         public Task<IReadOnlyDictionary<string, IReadOnlyList<TextEdit>>> RenameSymbolAsync(
-            DocumentId documentId, int offset, string newName, CancellationToken cancellationToken)
+            DocumentId documentId, int offset, string newName, CancellationToken cancellationToken,
+            bool renameOverloads = false, bool renameInStrings = false, bool renameInComments = false)
         {
             cancellationToken.ThrowIfCancellationRequested();
             return Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<TextEdit>>>(
                 new Dictionary<string, IReadOnlyList<TextEdit>>());
+        }
+
+        public Task<string?> GetSymbolNameAsync(DocumentId documentId, int offset, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult<string?>(null);
+        }
+
+        public Task<bool> IsValidIdentifierAsync(DocumentId documentId, string name, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(!string.IsNullOrWhiteSpace(name));
         }
 
         public Task<IReadOnlyList<NavigationTarget>> FindMemberAsync(
@@ -96,6 +109,26 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
         {
             cancellationToken.ThrowIfCancellationRequested();
             return Task.FromResult<IReadOnlyList<SemanticToken>>(Array.Empty<SemanticToken>());
+        }
+
+        public Task<ExtractInterfaceInfo?> GetExtractInterfaceInfoAsync(DocumentId documentId, int offset, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult<ExtractInterfaceInfo?>(null);
+        }
+
+        public Task<ExtractInterfaceResult?> ExtractInterfaceAsync(
+            DocumentId documentId, int offset, string interfaceName, IReadOnlyList<string> memberIds,
+            bool addInterfaceToClass, bool includeComments, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult<ExtractInterfaceResult?>(null);
+        }
+
+        public Task<SymbolKindInfo?> GetSymbolKindAsync(DocumentId documentId, int offset, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult<SymbolKindInfo?>(null);
         }
 
         public Task<SymbolHierarchyResult?> GetBaseSymbolsAsync(DocumentId documentId, int offset, CancellationToken cancellationToken) =>

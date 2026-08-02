@@ -396,7 +396,14 @@ and class/member navigation now use `LanguageServiceRegistry`/`ILanguageService`
 `IParserService` is now the registry-backed `LanguageServiceParserAdapter`. Base/derived type and
 override queries now return backend-neutral hierarchy DTOs through `ILanguageService`. Help-keyword
 lookup, snippet containing-type inference, target-framework workspace refresh, and both Ctrl+Click
-and command-based Go to Definition have also moved to focused common contracts.
+and command-based Go to Definition have also moved to focused common contracts. The
+`DefinitionViewPad` and the `SymbolTypeAtCaret` menu/command condition evaluator now resolve through
+`GoToDefinitionAsync`/`GetSymbolKindAsync` instead of `RoslynWorkspaceHelper.GetSymbolAtCaret`, so
+both work (or gracefully no-op) for any registered language, not just Roslyn-backed ones - the
+condition evaluator still inspects a raw Roslyn symbol directly when one is handed to it already
+resolved (e.g. by `DeclaringTypeSubMenuBuilder`), since that producer is itself still Roslyn-coupled
+(see the note under §8.9). `EditorRefactoringContext.GetCurrentSymbolAsync` (an unused, ISymbol-
+returning accessor) was deleted rather than migrated, since it had zero call sites.
 
 The old NRefactory Parser, `CSharpFullParseInformation`, and the old type system are not being
 revived.
@@ -585,10 +592,38 @@ without depending on Roslyn's internal Visual Studio services.
 
 ### 8.9 Refactoring and code generation
 
-**Current status: Find References is unified.** The command calls
-`ILanguageService.FindReferencesAsync`; C#/VB implement it with Roslyn `SymbolFinder`, while LSP
-languages use `textDocument/references`. Only backend-neutral symbol names and navigation ranges
-cross into the Search Results UI. Rename and the remaining refactorings still require migration.
+**Current status: Find References, Rename, and Extract Interface are unified.** `FindReferencesCommand`
+calls `ILanguageService.FindReferencesAsync`; C#/VB implement it with Roslyn `SymbolFinder`, while
+LSP languages use `textDocument/references`. Only backend-neutral symbol names and navigation
+ranges cross into the Search Results UI.
+
+`RenameSymbolCommand` now resolves through `GetSymbolNameAsync` (dialog prefill),
+`IsValidIdentifierAsync` (live validation - C#/VB check `SyntaxFacts.IsValidIdentifier` per
+language; LSP falls back to a generic ASCII-identifier shape), and `RenameSymbolAsync`, which grew
+`renameOverloads`/`renameInStrings`/`renameInComments` parameters so the old Roslyn-specific
+`SymbolRenameOptions` have a home in the shared contract instead of leaking a raw `ISymbol` to the
+command. The command applies the returned per-file `TextEdit`s itself (the contract returns edits,
+it doesn't apply them).
+
+Extract Interface followed the same shape: `GetExtractInterfaceInfoAsync` returns candidate members
+as opaque-id DTOs (same "valid until the next call for this document" convention
+`GetCodeActionsAsync`/`ApplyCodeActionAsync` already use), and `ExtractInterfaceAsync` returns the
+new interface file's source text plus an edit for the original class's base list, again without
+applying either - the command/DevFlow action write the file and apply the edit. The underlying
+member-formatting logic (`BuildInterfaceSourceText`/`FormatInterfaceMember`/etc.) was ported
+verbatim from the old `RoslynWorkspaceHelper.ExtractInterfaceAsync` into a new
+`CSharpVBLanguageService.ExtractInterface.cs` partial file; it's still C#-only, matching the
+original's scope. `OpenDevelopDevFlowActions`'s `od.find-references`/`od.rename-symbol`/
+`od.extract-interface`/`od.parser.status` all moved onto the same contract calls.
+
+**Known remaining debt, deliberately not migrated in this pass:** `DeclaringTypeSubMenuBuilder` and
+`EntityBookmark` still resolve a raw Roslyn `ISymbol` and bridge it into the shared
+`/SharpDevelop/EntityContextMenu` extension point (`EntityBookmark` via a `RoslynEntityFactory` ->
+old `ResolveResult`/`MemberResolveResult` conversion). That extension point is also fed by
+`TypeDefinitionTreeNode`/`MemberTreeNode` (Class Browser) using the old `ICSharpCode.TypeSystem`
+entities directly, so migrating these two requires redesigning the shared menu-parameter contract
+itself, not just swapping a symbol-resolution call - out of scope for a symbol-resolution-only
+cleanup pass.
 
 Prioritize keeping the high-value operations:
 

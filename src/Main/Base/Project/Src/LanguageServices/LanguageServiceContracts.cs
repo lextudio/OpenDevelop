@@ -30,9 +30,34 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
         /// include files other than the one <paramref name="documentId"/> points to) without
         /// applying them — the caller is responsible for applying edits to open editors and/or
         /// disk. Returns an empty map if there's no renameable symbol at that position.
+        /// <paramref name="renameOverloads"/>/<paramref name="renameInStrings"/>/
+        /// <paramref name="renameInComments"/> mirror Visual Studio's own Rename dialog options
+        /// (all default to false, matching those defaults — a text match inside a string literal
+        /// or comment isn't something the backend can prove is the same symbol, so it's opt-in).
+        /// A backend that has no equivalent concept (e.g. plain LSP `textDocument/rename`, which
+        /// has no such options) is free to ignore them.
         /// </summary>
         Task<IReadOnlyDictionary<string, IReadOnlyList<TextEdit>>> RenameSymbolAsync(
-            DocumentId documentId, int offset, string newName, CancellationToken cancellationToken);
+            DocumentId documentId, int offset, string newName, CancellationToken cancellationToken,
+            bool renameOverloads = false, bool renameInStrings = false, bool renameInComments = false);
+
+        /// <summary>
+        /// The display name of the symbol at <paramref name="offset"/> (e.g. to pre-fill a Rename
+        /// dialog's "old name" field), or <see langword="null"/> if there's no renameable/
+        /// nameable symbol there. Deliberately just a name, not a full <see cref="QuickInfo"/> —
+        /// callers that need a signature/description should use <see cref="GetQuickInfoAsync"/>.
+        /// </summary>
+        Task<string?> GetSymbolNameAsync(DocumentId documentId, int offset, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Whether <paramref name="name"/> would be a syntactically valid identifier in the
+        /// language <paramref name="documentId"/>'s project is written in (e.g. C# keywords like
+        /// <c>class</c> aren't valid unescaped, but <c>@class</c> is) — used for live validation
+        /// in a Rename dialog's text box. A backend with no such notion (e.g. LSP, which doesn't
+        /// expose grammar-level identifier rules) should fall back to a conservative generic check
+        /// rather than always returning <see langword="true"/>.
+        /// </summary>
+        Task<bool> IsValidIdentifierAsync(DocumentId documentId, string name, CancellationToken cancellationToken);
 
         /// <summary>
         /// Finds a type member by name across the whole solution rather than at a cursor position
@@ -62,6 +87,35 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
         /// </summary>
         Task<IReadOnlyDictionary<string, IReadOnlyList<TextEdit>>> ApplyCodeActionAsync(
             DocumentId documentId, string actionId, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Candidate members for Extract Interface at <paramref name="offset"/> (public instance
+        /// methods/properties/events on the type there), or <see langword="null"/> if there's no
+        /// eligible type at that position. <see cref="ExtractInterfaceMember.Id"/> is an opaque
+        /// token, same convention as <see cref="CodeActionInfo.Id"/> - valid only until the next
+        /// call to this method for the same document, and only <see cref="ExtractInterfaceAsync"/>
+        /// on that same document/offset consumes it.
+        /// </summary>
+        Task<ExtractInterfaceInfo?> GetExtractInterfaceInfoAsync(DocumentId documentId, int offset, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Generates the new interface file's source text for the chosen <paramref name="memberIds"/>
+        /// (from a preceding <see cref="GetExtractInterfaceInfoAsync"/> call on the same
+        /// document/offset) and, if <paramref name="addInterfaceToClass"/>, the edit that adds it to
+        /// the original type's base list - in the same "return, don't apply" shape as
+        /// <see cref="RenameSymbolAsync"/>. Returns <see langword="null"/> for a stale/unknown
+        /// document or member id.
+        /// </summary>
+        Task<ExtractInterfaceResult?> ExtractInterfaceAsync(
+            DocumentId documentId, int offset, string interfaceName, IReadOnlyList<string> memberIds,
+            bool addInterfaceToClass, bool includeComments, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Broad classification of the symbol at <paramref name="offset"/> - e.g. for menu/command
+        /// enable-conditions that only need "is this a member, a type, or a local?" rather than a
+        /// full symbol. Returns <see langword="null"/> if there's no symbol there.
+        /// </summary>
+        Task<SymbolKindInfo?> GetSymbolKindAsync(DocumentId documentId, int offset, CancellationToken cancellationToken);
 
         /// <summary>
         /// Symbol-kind classifications (doc/technotes/csharp-vb-binding.md §8.4/§14) for spans the
@@ -138,6 +192,72 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
         public bool IsPreferred { get; }
 
         public override string ToString() => Title;
+    }
+
+    public sealed class ExtractInterfaceMember
+    {
+        public ExtractInterfaceMember(string id, string displayText)
+        {
+            Id = id ?? throw new ArgumentNullException(nameof(id));
+            DisplayText = displayText ?? throw new ArgumentNullException(nameof(displayText));
+        }
+
+        public string Id { get; }
+        public string DisplayText { get; }
+
+        public override string ToString() => DisplayText;
+    }
+
+    public sealed class ExtractInterfaceInfo
+    {
+        public ExtractInterfaceInfo(string typeName, IReadOnlyList<ExtractInterfaceMember> members)
+        {
+            TypeName = typeName ?? throw new ArgumentNullException(nameof(typeName));
+            Members = members ?? throw new ArgumentNullException(nameof(members));
+        }
+
+        public string TypeName { get; }
+        public IReadOnlyList<ExtractInterfaceMember> Members { get; }
+    }
+
+    public sealed class ExtractInterfaceResult
+    {
+        public ExtractInterfaceResult(string interfaceFileContent, IReadOnlyDictionary<string, IReadOnlyList<TextEdit>> edits)
+        {
+            InterfaceFileContent = interfaceFileContent ?? throw new ArgumentNullException(nameof(interfaceFileContent));
+            Edits = edits ?? throw new ArgumentNullException(nameof(edits));
+        }
+
+        /// <summary>Source text for the new interface file - not yet written to disk.</summary>
+        public string InterfaceFileContent { get; }
+
+        /// <summary>Edits to existing files (e.g. adding the interface to the class's base list),
+        /// per absolute file path, not yet applied - same shape as <see cref="ILanguageService.RenameSymbolAsync"/>.</summary>
+        public IReadOnlyDictionary<string, IReadOnlyList<TextEdit>> Edits { get; }
+    }
+
+    public sealed class SymbolKindInfo
+    {
+        public SymbolKindInfo(bool isMember, bool isType, bool isNamespace, bool isLocal, bool hasSourceLocation)
+        {
+            IsMember = isMember;
+            IsType = isType;
+            IsNamespace = isNamespace;
+            IsLocal = isLocal;
+            HasSourceLocation = hasSourceLocation;
+        }
+
+        /// <summary>Method, field, property, or event.</summary>
+        public bool IsMember { get; }
+        public bool IsType { get; }
+        public bool IsNamespace { get; }
+
+        /// <summary>Local variable or parameter.</summary>
+        public bool IsLocal { get; }
+
+        /// <summary>Whether the symbol has at least one declaration in source (vs. only in a
+        /// referenced assembly) - e.g. to gate a "project only" menu condition.</summary>
+        public bool HasSourceLocation { get; }
     }
 
     public sealed class DocumentId : IEquatable<DocumentId>

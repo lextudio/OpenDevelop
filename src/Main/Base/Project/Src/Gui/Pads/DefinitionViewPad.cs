@@ -18,7 +18,7 @@
 
 using System;
 using System.IO;
-using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 
@@ -27,10 +27,9 @@ using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Editor;
+using ICSharpCode.SharpDevelop.LanguageServices;
 using ICSharpCode.SharpDevelop.Parser;
-using ICSharpCode.SharpDevelop.Roslyn;
 using ICSharpCode.SharpDevelop.Workbench;
-using Microsoft.CodeAnalysis;
 using TextLocation = ICSharpCode.AvalonEdit.Document.TextLocation;
 
 namespace ICSharpCode.SharpDevelop.Gui
@@ -107,44 +106,53 @@ namespace ICSharpCode.SharpDevelop.Gui
 			if (!isActive) return;
 			LoggingService.Debug("DefinitionViewPad.Update");
 			
-			ISymbol symbol = await ResolveAtCaretAsync(e);
-			if (symbol == null) return;
-			var location = symbol.Locations.FirstOrDefault(l => l.IsInSource);
-			if (location == null) return; // TODO : try to decompile?
-			OpenFile(location.GetLineSpan());
+			NavigationTarget target = await ResolveDefinitionAtCaretAsync(e);
+			if (target == null) return; // TODO : try to decompile?
+			OpenFile(target);
 		}
 
-		Task<ISymbol> ResolveAtCaretAsync(ParseInformationEventArgs e)
+		async Task<NavigationTarget> ResolveDefinitionAtCaretAsync(ParseInformationEventArgs e)
 		{
 			IWorkbenchWindow window = SD.Workbench.ActiveWorkbenchWindow;
 			if (window == null)
-				return Task.FromResult<ISymbol>(null);
+				return null;
 			IViewContent viewContent = window.ActiveViewContent;
 			if (viewContent == null)
-				return Task.FromResult<ISymbol>(null);
+				return null;
 			ITextEditor editor = viewContent.GetService<ITextEditor>();
-			if (editor == null)
-				return Task.FromResult<ISymbol>(null);
+			if (editor == null || editor.FileName == null)
+				return null;
 
 			// e might be null when this is a manually triggered update
 			// don't resolve when an unrelated file was changed
 			if (e != null && editor.FileName != e.FileName)
-				return Task.FromResult<ISymbol>(null);
+				return null;
 
-			return Task.Run(() => RoslynWorkspaceHelper.GetSymbolAtCaret(editor));
+			var registry = SD.GetService<LanguageServiceRegistry>();
+			if (registry == null || !registry.TryGetService(editor.FileName, out var service))
+				return null;
+
+			try {
+				var id = new DocumentId(editor.FileName.ToString());
+				await service.UpsertDocumentAsync(id, editor.Document.Text, CancellationToken.None);
+				var targets = await service.GoToDefinitionAsync(id, editor.Caret.Offset, CancellationToken.None);
+				return targets.Count > 0 ? targets[0] : null;
+			} catch {
+				return null;
+			}
 		}
 
-		FileLinePositionSpan oldPosition;
+		NavigationTarget oldPosition;
 		FileName currentFileName;
 
-		void OpenFile(FileLinePositionSpan pos)
+		void OpenFile(NavigationTarget target)
 		{
-			if (pos.Equals(oldPosition)) return;
-			oldPosition = pos;
-			var fileName = new FileName(pos.Path);
+			if (target.FileName == oldPosition?.FileName && target.Position.Equals(oldPosition?.Position)) return;
+			oldPosition = target;
+			var fileName = new FileName(target.FileName);
 			if (fileName != currentFileName)
 				LoadFile(fileName);
-			ctl.TextArea.Caret.Location = new TextLocation(pos.StartLinePosition.Line + 1, pos.StartLinePosition.Character + 1);
+			ctl.TextArea.Caret.Location = new TextLocation(target.Position.Line, target.Position.Column);
 			Rect r = ctl.TextArea.Caret.CalculateCaretRectangle();
 			if (!r.IsEmpty) {
 				ctl.ScrollToVerticalOffset(r.Top - 4);

@@ -362,8 +362,42 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
 
         public Task RefreshProjectAsync(DocumentId documentId, CancellationToken cancellationToken) => Task.CompletedTask;
 
+        public Task<ExtractInterfaceInfo?> GetExtractInterfaceInfoAsync(DocumentId documentId, int offset, CancellationToken cancellationToken) =>
+            Task.FromResult<ExtractInterfaceInfo?>(null);
+
+        public Task<ExtractInterfaceResult?> ExtractInterfaceAsync(
+            DocumentId documentId, int offset, string interfaceName, IReadOnlyList<string> memberIds,
+            bool addInterfaceToClass, bool includeComments, CancellationToken cancellationToken) =>
+            Task.FromResult<ExtractInterfaceResult?>(null);
+
+        public Task<SymbolKindInfo?> GetSymbolKindAsync(DocumentId documentId, int offset, CancellationToken cancellationToken) =>
+            Task.FromResult<SymbolKindInfo?>(null);
+
+        public Task<string?> GetSymbolNameAsync(DocumentId documentId, int offset, CancellationToken cancellationToken) =>
+            Task.FromResult<string?>(null);
+
+        /// <summary>
+        /// LSP has no `textDocument/*` request that exposes a language's grammar-level identifier
+        /// rules, so this falls back to a generic ASCII-identifier shape (leading letter/underscore,
+        /// then letters/digits/underscores) rather than always returning true - conservative enough
+        /// to reject the obviously-wrong cases (empty, leading digit, embedded whitespace/punctuation)
+        /// without claiming knowledge this backend doesn't have.
+        /// </summary>
+        public Task<bool> IsValidIdentifierAsync(DocumentId documentId, string name, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrEmpty(name) || !(char.IsLetter(name[0]) || name[0] == '_'))
+                return Task.FromResult(false);
+            for (int i = 1; i < name.Length; i++)
+            {
+                if (!(char.IsLetterOrDigit(name[i]) || name[i] == '_'))
+                    return Task.FromResult(false);
+            }
+            return Task.FromResult(true);
+        }
+
         public async Task<IReadOnlyDictionary<string, IReadOnlyList<TextEdit>>> RenameSymbolAsync(
-            DocumentId documentId, int offset, string newName, CancellationToken cancellationToken)
+            DocumentId documentId, int offset, string newName, CancellationToken cancellationToken,
+            bool renameOverloads = false, bool renameInStrings = false, bool renameInComments = false)
         {
             var noEdits = new Dictionary<string, IReadOnlyList<TextEdit>>();
             if (string.IsNullOrWhiteSpace(newName))

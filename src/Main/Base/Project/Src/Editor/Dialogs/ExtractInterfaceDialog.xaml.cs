@@ -28,7 +28,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Windows;
 
-using Microsoft.CodeAnalysis;
+using ICSharpCode.SharpDevelop.LanguageServices;
 
 namespace ICSharpCode.SharpDevelop.Editor.Dialogs
 {
@@ -40,7 +40,7 @@ namespace ICSharpCode.SharpDevelop.Editor.Dialogs
 		{
 			public event PropertyChangedEventHandler PropertyChanged;
 
-			public ISymbol Symbol { get; }
+			public string Id { get; }
 			public string DisplayText { get; }
 
 			bool isChecked = true;
@@ -49,10 +49,10 @@ namespace ICSharpCode.SharpDevelop.Editor.Dialogs
 				set { isChecked = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsChecked))); }
 			}
 
-			public MemberOption(ISymbol symbol)
+			public MemberOption(ExtractInterfaceMember member)
 			{
-				Symbol = symbol;
-				DisplayText = symbol.ToDisplayString(SymbolDisplayFormat.CSharpShortErrorMessageFormat);
+				Id = member.Id;
+				DisplayText = member.DisplayText;
 			}
 		}
 
@@ -85,7 +85,7 @@ namespace ICSharpCode.SharpDevelop.Editor.Dialogs
 			membersListBox.ItemsSource = Members;
 		}
 
-		public IReadOnlyList<ISymbol> ChosenMembers => Members.Where(m => m.IsChecked).Select(m => m.Symbol).ToArray();
+		public IReadOnlyList<string> ChosenMemberIds => Members.Where(m => m.IsChecked).Select(m => m.Id).ToArray();
 
 		void OnPropertyChanged(string propertyName) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 
