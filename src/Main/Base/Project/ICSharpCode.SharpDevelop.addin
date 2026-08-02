@@ -88,6 +88,10 @@
 		         class="ICSharpCode.SharpDevelop.SDLanguageService"/>
 		<Service id="ICSharpCode.SharpDevelop.LanguageServices.LanguageServiceRegistry"
 		         class="ICSharpCode.SharpDevelop.LanguageServices.LanguageServiceRegistry"/>
+		<!-- doc/technotes/codelens.md §8/§18/§20 Phase 0 - provider registry only, not yet consumed
+		     by the OpenLensRenderer prototype in AvalonEdit.AddIn. -->
+		<Service id="ICSharpCode.SharpDevelop.LanguageServices.OpenLens.OpenLensProviderRegistry"
+		         class="ICSharpCode.SharpDevelop.LanguageServices.OpenLens.OpenLensProviderRegistry"/>
 		<!-- IMSBuildEngine: the real MSBuildEngine class here is out of MVP scope (needs an
 		     out-of-process WinForms build worker) - MinimalMSBuildEngine is registered directly
 		     in WorkbenchStartup.InitializeWorkbench instead. -->

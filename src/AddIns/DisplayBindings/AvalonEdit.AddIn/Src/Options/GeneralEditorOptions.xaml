@@ -24,9 +24,12 @@
 				<CheckBox 
 					IsChecked="{core:OptionBinding local:CodeEditorOptions.ShowLineNumbers}" 
 					Content="{core:Localize Dialog.Options.IDEOptions.TextEditor.Markers.LineNumberCheckBox}" />
-				<CheckBox 
-					IsChecked="{core:OptionBinding local:CodeEditorOptions.ShowHiddenDefinitions}" 
+				<CheckBox
+					IsChecked="{core:OptionBinding local:CodeEditorOptions.ShowHiddenDefinitions}"
 					Content="{core:Localize Dialog.Options.IDEOptions.TextEditor.Markers.ShowHiddenDefinitionsCheckBox}" />
+				<CheckBox
+					IsChecked="{core:OptionBinding local:CodeEditorOptions.EnableOpenLens}"
+					Content="{core:Localize Dialog.Options.IDEOptions.TextEditor.General.OpenLensCheckBox}" />
 			</widgets:StackPanelWithSpacing>
 		</GroupBox>
 	</StackPanel>

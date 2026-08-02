@@ -65,7 +65,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		readonly IChangeWatcher changeWatcher;
 		ErrorPainter errorPainter;
 		DocumentColorizingTransformer semanticColorizer;
-		CodeLensRenderer codeLensRenderer;
+		OpenLensRenderer openLensRenderer;
 		
 		public CodeEditorView PrimaryTextEditor {
 			get { return primaryTextEditor; }
@@ -154,8 +154,8 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			if (semanticColorizer != null)
 				primaryTextEditor.TextArea.TextView.LineTransformers.Add(semanticColorizer);
 
-			codeLensRenderer?.Dispose();
-			codeLensRenderer = CodeLensRenderer.Create(document, primaryTextEditor.TextArea.TextView, fileName);
+			openLensRenderer?.Dispose();
+			openLensRenderer = OpenLensRenderer.Create(document, primaryTextEditor.TextArea.TextView, fileName);
 
 			primaryTextEditor.UpdateCustomizedHighlighting();
 
@@ -208,6 +208,8 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		{
 			if (e.PropertyName == "EnableQuickClassBrowser")
 				FetchParseInformation();
+			if (e.PropertyName == "EnableOpenLens" && fileName != null)
+				UpdateSyntaxHighlighting(fileName);
 		}
 		
 		void CustomizedHighlightingColor_ActiveColorsChanged(object sender, EventArgs e)
@@ -712,7 +714,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		public void Dispose()
 		{
 			(semanticColorizer as IDisposable)?.Dispose();
-			codeLensRenderer?.Dispose();
+			openLensRenderer?.Dispose();
 			CodeEditorOptions.Instance.PropertyChanged -= CodeEditorOptions_Instance_PropertyChanged;
 			CustomizedHighlightingColor.ActiveColorsChanged -= CustomizedHighlightingColor_ActiveColorsChanged;
 			SD.ParserService.ParseInformationUpdated -= ParserServiceParseInformationUpdated;

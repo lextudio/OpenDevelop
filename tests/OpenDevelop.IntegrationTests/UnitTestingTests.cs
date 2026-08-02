@@ -447,4 +447,94 @@ public sealed class UnitTestingTests
         Assert.True(padNode.GetProperty("sameModelInstance").GetBoolean(),
             "Expected the pad node to render the same test model instance the tree reports");
     }
+
+    // The pad's TestTreeView renders each node's DisplayName as a real TextBlock in the WPF visual
+    // tree (SharpTreeView template -> ContentPresenter Content="{Binding Text}"). od.unit-test.tree
+    // covers the ITestService model; this locks in that the pad itself displays the discovered test
+    // names as visible UI once the class node is expanded.
+    [Fact]
+    public async Task UnitTestPad_RendersTestNamesInUiTree()
+    {
+        await _app.InvokeAsync("od.show-pad", "ICSharpCode.UnitTesting.UnitTestsPad");
+        await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);
+
+        var deadline = DateTime.UtcNow.AddSeconds(60);
+        while (DateTime.UtcNow < deadline)
+        {
+            var tree = await _app.InvokeAsync("od.unit-test.tree");
+            if (tree.GetProperty("tests").GetArrayLength() > 0
+                && FindTest(tree.GetProperty("tests")[0], "AlwaysPasses").HasValue)
+                break;
+            await Task.Delay(1000);
+        }
+
+        // The pad tree refreshes asynchronously after discovery and only auto-expands the single-
+        // child chain up to the framework node, so walk the chain: project (occurrence 1 of
+        // "SampleTestProject") -> framework ("net10.0") -> namespace (occurrence 2 - the namespace
+        // displays the same name as its project) -> class ("PassTests"). Then the method child
+        // ("AlwaysPasses") is realized and rendered.
+        JsonElement expandResult = default;
+        var padDeadline = DateTime.UtcNow.AddSeconds(30);
+        while (DateTime.UtcNow < padDeadline)
+        {
+            expandResult = await _app.InvokeAsync("od.unit-test.expand-node", "SampleTestProject", 1);
+            if (expandResult.TryGetProperty("found", out var f) && f.GetBoolean())
+                break;
+            await Task.Delay(500);
+        }
+        Assert.True(expandResult.GetProperty("found").GetBoolean(),
+            "Expected the SampleTestProject node to be expandable in the Unit Tests pad");
+
+        expandResult = await _app.InvokeAsync("od.unit-test.expand-node", "net10.0");
+        Assert.True(expandResult.GetProperty("found").GetBoolean(),
+            "Expected the net10.0 framework node to be expandable in the Unit Tests pad");
+
+        expandResult = await _app.InvokeAsync("od.unit-test.expand-node", "SampleTestProject", 2);
+        Assert.True(expandResult.GetProperty("found").GetBoolean(),
+            "Expected the SampleTestProject namespace node to be expandable in the Unit Tests pad");
+
+        var uiTree = await _app.GetUITreeAsync();
+        var texts = FlattenElements(uiTree)
+            .Where(e => e.TryGetProperty("type", out var t) && t.GetString() == "TextBlock"
+                && e.TryGetProperty("text", out var txt) && !string.IsNullOrEmpty(txt.GetString()))
+            .Select(e => e.GetProperty("text").GetString())
+            .ToList();
+
+        Assert.Contains(texts, t => t == "PassTests");
+
+        expandResult = await _app.InvokeAsync("od.unit-test.expand-node", "PassTests");
+        Assert.True(expandResult.GetProperty("found").GetBoolean(),
+            "Expected the PassTests node to be expandable in the Unit Tests pad");
+
+        var methodDeadline = DateTime.UtcNow.AddSeconds(30);
+        while (DateTime.UtcNow < methodDeadline)
+        {
+            uiTree = await _app.GetUITreeAsync();
+            texts = FlattenElements(uiTree)
+                .Where(e => e.TryGetProperty("type", out var t) && t.GetString() == "TextBlock"
+                    && e.TryGetProperty("text", out var txt) && !string.IsNullOrEmpty(txt.GetString()))
+                .Select(e => e.GetProperty("text").GetString())
+                .ToList();
+            if (texts.Any(t => t.EndsWith(".AlwaysPasses", StringComparison.Ordinal)))
+                break;
+            await Task.Delay(500);
+        }
+        Assert.Contains(texts, t => t.EndsWith(".AlwaysPasses", StringComparison.Ordinal));
+    }
+
+    static IEnumerable<JsonElement> FlattenElements(JsonElement tree)
+    {
+        foreach (var root in tree.GetProperty("elements").EnumerateArray())
+            foreach (var node in Flatten(root))
+                yield return node;
+    }
+
+    static IEnumerable<JsonElement> Flatten(JsonElement node)
+    {
+        yield return node;
+        if (node.TryGetProperty("children", out var children) && children.ValueKind == JsonValueKind.Array)
+            foreach (var child in children.EnumerateArray())
+                foreach (var descendant in Flatten(child))
+                    yield return descendant;
+    }
 }

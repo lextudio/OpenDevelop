@@ -50,6 +50,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj" />
+    <Project Path="tests/OpenDevelop.Base.Tests/OpenDevelop.Base.Tests.csproj" />
   </Folder>
   <Folder Name="/src/AddIns/Misc/SearchAndReplace/">
     <Project Path="src/AddIns/Misc/SearchAndReplace/Project/SearchAndReplace.csproj" />

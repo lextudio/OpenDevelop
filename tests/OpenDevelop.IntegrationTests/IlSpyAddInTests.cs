@@ -100,6 +100,37 @@ public sealed class IlSpyAddInTests : IDisposable
             .ToList();
         Assert.Contains("DebugTestApp", loadedAssemblies);
 
+        // The ILSpy panes are registered as OpenDevelop pads and the opened assembly is in the
+        // real AssemblyTreeModel (loadedAssemblies above, decompiled output below) - but the panes'
+        // content AREA does not render in this host's visual tree: the LayoutAnchorable tab
+        // materializes (its title is a real visible element), while the pane content view
+        // (AssemblyListPane) is created without being laid out, so the assembly tree node itself is
+        // never walkable. Runtime-added tool panes also don't reliably dock at all - od.ilspy
+        // show-pane re-registers the pane so its tab deterministically appears in the layout.
+        // Assert the rendered UI surface we do have: the "Assemblies" tab (the pane hosting the
+        // assembly tree) and the "Decompiled Code" document tab (the decompiled view), with the
+        // tree content itself covered by the loadedAssemblies/decompiledTextLength JSON above.
+        var showPaneResult = await _app.InvokeAsync("od.ilspy.show-pane", "Assemblies");
+        Assert.True(showPaneResult.GetProperty("found").GetBoolean(), "Could not find the Assemblies ILSpy pane");
+
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        JsonElement uiTree = default;
+        List<string> texts = new();
+        while (DateTime.UtcNow < deadline)
+        {
+            uiTree = await _app.GetUITreeAsync();
+            texts = FlattenElements(uiTree)
+                .Where(e => e.TryGetProperty("type", out var t) && t.GetString() == "TextBlock"
+                    && e.TryGetProperty("text", out var txt) && !string.IsNullOrEmpty(txt.GetString()))
+                .Select(e => e.GetProperty("text").GetString())
+                .ToList();
+            if (texts.Contains("Assemblies") && texts.Contains("Decompiled Code"))
+                break;
+            await Task.Delay(500);
+        }
+        Assert.Contains(texts, t => t == "Assemblies");
+        Assert.Contains(texts, t => t == "Decompiled Code");
+
         // Decompiled Code pad: opening the assembly auto-selects and decompiles its tree node,
         // so the real DecompilerTextView should show non-empty, real decompiled output (not a
         // blank/placeholder pane).
@@ -112,5 +143,21 @@ public sealed class IlSpyAddInTests : IDisposable
         var snippet = status.GetProperty("decompiledTextSnippet").GetString()!;
         Assert.Contains("Program", snippet);
         Assert.DoesNotContain("The directory was not found", snippet);
+    }
+
+    static IEnumerable<JsonElement> FlattenElements(JsonElement tree)
+    {
+        foreach (var root in tree.GetProperty("elements").EnumerateArray())
+            foreach (var node in Flatten(root))
+                yield return node;
+    }
+
+    static IEnumerable<JsonElement> Flatten(JsonElement node)
+    {
+        yield return node;
+        if (node.TryGetProperty("children", out var children) && children.ValueKind == JsonValueKind.Array)
+            foreach (var child in children.EnumerateArray())
+                foreach (var descendant in Flatten(child))
+                    yield return descendant;
     }
 }

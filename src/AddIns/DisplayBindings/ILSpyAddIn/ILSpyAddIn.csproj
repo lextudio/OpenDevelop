@@ -219,15 +219,23 @@
     <Page Include="$(ILSpySrc)\Options\DisplaySettingsPanel.xaml" Link="ILSpy\Options\DisplaySettingsPanel.xaml" />
     <Page Include="$(ILSpySrc)\Options\MiscSettingsPanel.xaml" Link="ILSpy\Options\MiscSettingsPanel.xaml" />
     <Page Include="$(ILSpySrc)\Options\OptionsDialog.xaml" Link="ILSpy\Options\OptionsDialog.xaml" />
-    <Page Include="$(ILSpySrc)\Themes\Base.Dark.xaml" Link="ILSpy\Themes\Base.Dark.xaml" />
-    <Page Include="$(ILSpySrc)\Themes\Base.Light.xaml" Link="ILSpy\Themes\Base.Light.xaml" />
-    <Page Include="$(ILSpySrc)\Themes\Theme.Dark.xaml" Link="ILSpy\Themes\Theme.Dark.xaml" />
-    <Page Include="$(ILSpySrc)\Themes\Theme.Light.xaml" Link="ILSpy\Themes\Theme.Light.xaml" />
-    <Page Include="$(ILSpySrc)\Themes\Theme.RSharpDark.xaml" Link="ILSpy\Themes\Theme.RSharpDark.xaml" />
-    <Page Include="$(ILSpySrc)\Themes\Theme.RSharpLight.xaml" Link="ILSpy\Themes\Theme.RSharpLight.xaml" />
-    <Page Include="$(ILSpySrc)\Themes\Theme.VSCodeDarkPlus.xaml" Link="ILSpy\Themes\Theme.VSCodeDarkPlus.xaml" />
-    <Page Include="$(ILSpySrc)\Themes\Theme.VSCodeLightPlus.xaml" Link="ILSpy\Themes\Theme.VSCodeLightPlus.xaml" />
-    <Page Include="$(ILSpySrc)\Themes\generic.xaml" Link="ILSpy\Themes\generic.xaml" />
+    <!-- NOTE: theme resources are linked WITHOUT the "ILSpy\" path prefix on purpose. WPF's
+         default-style lookup for a control type looks for "/themes/generic.xaml" in the control's
+         own assembly, and ThemeManager loads themes via relative "/themes/Theme.*.xaml" pack URIs -
+         both resolve against the assembly ROOT, so linking them under "ILSpy\Themes\..." would
+         compile them to "ilspy/themes/generic.baml" etc., the lookups would miss, and every ILSpy
+         control (SharpTreeView and friends) would render without its default template (empty
+         panes). Keeping the link root at "Themes\" puts the BAML at exactly the expected
+         resource names. -->
+    <Page Include="$(ILSpySrc)\Themes\Base.Dark.xaml" Link="Themes\Base.Dark.xaml" />
+    <Page Include="$(ILSpySrc)\Themes\Base.Light.xaml" Link="Themes\Base.Light.xaml" />
+    <Page Include="$(ILSpySrc)\Themes\Theme.Dark.xaml" Link="Themes\Theme.Dark.xaml" />
+    <Page Include="$(ILSpySrc)\Themes\Theme.Light.xaml" Link="Themes\Theme.Light.xaml" />
+    <Page Include="$(ILSpySrc)\Themes\Theme.RSharpDark.xaml" Link="Themes\Theme.RSharpDark.xaml" />
+    <Page Include="$(ILSpySrc)\Themes\Theme.RSharpLight.xaml" Link="Themes\Theme.RSharpLight.xaml" />
+    <Page Include="$(ILSpySrc)\Themes\Theme.VSCodeDarkPlus.xaml" Link="Themes\Theme.VSCodeDarkPlus.xaml" />
+    <Page Include="$(ILSpySrc)\Themes\Theme.VSCodeLightPlus.xaml" Link="Themes\Theme.VSCodeLightPlus.xaml" />
+    <Page Include="$(ILSpySrc)\Themes\generic.xaml" Link="Themes\generic.xaml" />
     <Page Include="$(ILSpySrc)\Views\DebugSteps.xaml" Link="ILSpy\Views\DebugSteps.xaml" />
     <Page Include="$(ILSpySrc)\Views\ManageAssemblyListsDialog.xaml" Link="ILSpy\Views\ManageAssemblyListsDialog.xaml" />
     <Page Include="$(ILSpySrc)\Views\CreateListDialog.xaml" Link="ILSpy\Views\CreateListDialog.xaml" />

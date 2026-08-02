@@ -118,5 +118,6 @@
 
 	<Path name="/SharpDevelop/Autostart">
 		<Class id="VisualBasicLanguageService" class="ICSharpCode.VBBinding.RegisterVisualBasicLanguageServiceCommand"/>
+		<Class id="VisualBasicOpenLensProviders" class="ICSharpCode.VBBinding.RegisterVisualBasicOpenLensProvidersCommand"/>
 	</Path>
 </AddIn>

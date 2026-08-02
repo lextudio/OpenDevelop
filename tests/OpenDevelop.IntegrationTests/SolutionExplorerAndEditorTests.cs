@@ -79,4 +79,48 @@ public sealed class SolutionExplorerAndEditorTests
         Assert.Contains("class Widget", textPreview);
         Assert.Contains("namespace SampleApp.Models", textPreview);
     }
+
+    // The Project Browser pad renders its own tree in the real WPF visual tree (ProjectBrowserView.xaml's
+    // HierarchicalDataTemplate -> TextBlock per node). od.solution-tree covers the backing model; this
+    // locks in that opening a plain (non-git) solution actually displays the project, root file and
+    // folder nodes as visible UI. Folder nodes render even when collapsed; files nested under a folder
+    // (Widget.cs under Models/) are only realized once the folder is expanded, which has no DevFlow hook.
+    [Fact]
+    public async Task OpenSolution_ProjectBrowserPadRendersRealNodes()
+    {
+        await _app.InvokeAsync("od.open-solution", _app.SolutionExplorerFixturePath);
+
+        // The pad's TreeView content is only realized by AvalonDock once the pad is shown/activated
+        // (same pattern as GitAddInTests).
+        var showPadResult = await _app.InvokeAsync("od.show-pad", "ProjectBrowserPad");
+        Assert.True(showPadResult.GetProperty("found").GetBoolean(), "Could not find the ProjectBrowser pad");
+
+        var tree = await _app.GetUITreeAsync();
+        var texts = FlattenElements(tree)
+            .Where(e => e.TryGetProperty("type", out var t) && t.GetString() == "TextBlock"
+                && e.TryGetProperty("text", out var txt) && !string.IsNullOrEmpty(txt.GetString()))
+            .Select(e => e.GetProperty("text").GetString())
+            .ToList();
+
+        Assert.Contains("SampleApp", texts);
+        Assert.Contains("Program.cs", texts);
+        Assert.Contains("Models", texts);
+        Assert.Contains("Services", texts);
+    }
+
+    static IEnumerable<JsonElement> FlattenElements(JsonElement tree)
+    {
+        foreach (var root in tree.GetProperty("elements").EnumerateArray())
+            foreach (var node in Flatten(root))
+                yield return node;
+    }
+
+    static IEnumerable<JsonElement> Flatten(JsonElement node)
+    {
+        yield return node;
+        if (node.TryGetProperty("children", out var children) && children.ValueKind == JsonValueKind.Array)
+            foreach (var child in children.EnumerateArray())
+                foreach (var descendant in Flatten(child))
+                    yield return descendant;
+    }
 }

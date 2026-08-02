@@ -1307,20 +1307,21 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				});
 			}
 
-			[DevFlowAction("od.unit-test.expand-node", Description = "Expand a currently visible Unit Tests pad node by display name")]
-			public static string ExpandUnitTestPadNode(string displayName)
+			[DevFlowAction("od.unit-test.expand-node", Description = "Expand a currently visible Unit Tests pad node by display name (occurrence picks among same-named nodes, e.g. the project and its namespace both display 'SampleTestProject')")]
+			public static string ExpandUnitTestPadNode(string displayName, int occurrence = 1)
 			{
 				var pad = FindPad("ICSharpCode.UnitTesting.UnitTestsPad");
 				pad?.CreatePad();
 				var treeView = pad?.PadContent?.GetType().GetProperty("TreeView")?.GetValue(pad.PadContent);
 				var items = treeView?.GetType().GetProperty("Items")?.GetValue(treeView) as IEnumerable;
-				var node = items?.Cast<object>().FirstOrDefault(item => {
+				var matches = items?.Cast<object>().Where(item => {
 					var model = GetDeclaredProperty(item, "Model");
 					var name = model?.GetType().GetProperty("DisplayName")?.GetValue(model) as string;
 					return string.Equals(name, displayName, StringComparison.Ordinal);
 				});
+				var node = matches?.Skip(Math.Max(0, occurrence - 1)).FirstOrDefault();
 				if (node == null)
-					return JsonSerializer.Serialize(new { found = false, displayName });
+					return JsonSerializer.Serialize(new { found = false, displayName, occurrence });
 				node.GetType().GetProperty("IsExpanded")?.SetValue(node, true);
 				return JsonSerializer.Serialize(new {
 					found = true,

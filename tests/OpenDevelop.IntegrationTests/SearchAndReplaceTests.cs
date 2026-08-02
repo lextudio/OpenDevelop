@@ -72,6 +72,71 @@ public sealed class SearchAndReplaceTests
     }
 
     [Fact]
+    public async Task ShowResults_PopulatesSearchResultsPadUiTree()
+    {
+        await _app.InvokeAsync("od.open-solution", _app.SolutionExplorerFixturePath);
+
+        // od.search.find is headless; od.search.show-results goes through the same real
+        // SearchManager.FindAllParallel engine but also feeds SearchManager.ShowSearchResults ->
+        // SearchResultsPad, which the Find-in-Files dialog path never does. The pad's ResultsTreeView
+        // renders each SearchNode's Text via a ContentPresenter - the TextBlocks are built from
+        // Inlines (which TextBlock.Text does not expose), so the nodes carry AutomationIds
+        // (SearchRootNode/SearchFileNode/SearchResultNode, see the Gui/SearchNode*.cs CreateText
+        // methods) for the UI tree to identify. Poll for the async results to arrive.
+        var showResult = await _app.InvokeAsync("od.search.show-results", "Widget", "solution");
+        Assert.True(showResult.GetProperty("success").GetBoolean());
+
+        // The pad is registered with defaultPosition "Bottom, Hidden" (auto-hide), whose content is
+        // not realized until the pad is actually activated - the same pattern as the other pad tests.
+        var showPadResult = await _app.InvokeAsync("od.show-pad", "Search Results");
+        Assert.True(showPadResult.GetProperty("found").GetBoolean(), "Could not find the Search Results pad");
+
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        JsonElement tree = default;
+        List<JsonElement> elements = new();
+        while (DateTime.UtcNow < deadline)
+        {
+            tree = await _app.GetUITreeAsync();
+            elements = FlattenElements(tree).ToList();
+            if (elements.Count(e =>
+                e.TryGetProperty("automationId", out var a) && a.GetString() == "SearchResultNode"
+                && e.TryGetProperty("isVisible", out var v) && v.GetBoolean()) >= 2)
+                break;
+            await Task.Delay(500);
+        }
+
+        Assert.True(elements.Any(e =>
+            e.TryGetProperty("automationId", out var a) && a.GetString() == "SearchRootNode"
+            && e.TryGetProperty("isVisible", out var v) && v.GetBoolean()),
+            "Expected the Search Results pad root node to be rendered and visible");
+
+        // The default grouping is Flat (no per-file nodes); the match rows themselves are the
+        // rendered content. "Widget" matches in both Models/Widget.cs and Services/WidgetService.cs
+        // (see Find_InSolution_FindsTermAcrossMultipleFiles), so at least two real match rows must
+        // be visible.
+        Assert.True(elements.Count(e =>
+            e.TryGetProperty("automationId", out var a) && a.GetString() == "SearchResultNode"
+            && e.TryGetProperty("isVisible", out var v) && v.GetBoolean()) >= 2,
+            "Expected at least two match nodes to be rendered and visible");
+    }
+
+    static IEnumerable<JsonElement> FlattenElements(JsonElement tree)
+    {
+        foreach (var root in tree.GetProperty("elements").EnumerateArray())
+            foreach (var node in Flatten(root))
+                yield return node;
+    }
+
+    static IEnumerable<JsonElement> Flatten(JsonElement node)
+    {
+        yield return node;
+        if (node.TryGetProperty("children", out var children) && children.ValueKind == JsonValueKind.Array)
+            foreach (var child in children.EnumerateArray())
+                foreach (var descendant in Flatten(child))
+                    yield return descendant;
+    }
+
+    [Fact]
     public async Task Replace_InOpenFile_UpdatesEditorButNotDiskUntilSaved()
     {
         var scratchPath = Path.Combine(SampleAppDirectory, "ScratchReplaceTarget.cs");

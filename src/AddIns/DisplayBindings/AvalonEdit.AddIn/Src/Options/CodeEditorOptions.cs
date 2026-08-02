@@ -232,7 +232,7 @@ namespace ICSharpCode.AvalonEdit.AddIn.Options
 		}
 		
 		bool enableQuickClassBrowser = true;
-		
+
 		[DefaultValue(true)]
 		public bool EnableQuickClassBrowser {
 			get { return enableQuickClassBrowser; }
@@ -240,6 +240,23 @@ namespace ICSharpCode.AvalonEdit.AddIn.Options
 				if (enableQuickClassBrowser != value) {
 					enableQuickClassBrowser = value;
 					OnPropertyChanged("EnableQuickClassBrowser");
+				}
+			}
+		}
+
+		bool enableOpenLens = true;
+
+		/// <summary>OpenLens-style "N references | M implementations" annotations above declarations
+		/// (doc/technotes/codelens.md). Off by user preference disables the annotation entirely -
+		/// distinct from a language's Binding being disabled, which already stops it via
+		/// LanguageServiceRegistry regardless of this setting.</summary>
+		[DefaultValue(true)]
+		public bool EnableOpenLens {
+			get { return enableOpenLens; }
+			set {
+				if (enableOpenLens != value) {
+					enableOpenLens = value;
+					OnPropertyChanged("EnableOpenLens");
 				}
 			}
 		}

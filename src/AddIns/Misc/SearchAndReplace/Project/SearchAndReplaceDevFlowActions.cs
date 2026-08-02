@@ -10,6 +10,7 @@ using System.Text.Json;
 using System.Threading;
 
 using ICSharpCode.AvalonEdit.Search;
+using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor.Search;
 using LeXtudio.DevFlow.Agent.Core;
@@ -58,6 +59,30 @@ namespace SearchAndReplace
 				});
 			} catch (Exception ex) {
 				return JsonSerializer.Serialize(new { success = false, error = ex.Message });
+			}
+		}
+
+		[DevFlowAction("od.search.show-results", Description = "Run the same real plain-text search as od.search.find, but display the results in the Search Results pad (SearchResultsPad.ShowSearchResults), mirroring the FindReferences flow - unlike od.search.find, which never populates the pad")]
+		public static string ShowResults(string pattern, string scope = "solution", bool matchCase = false, bool wholeWord = false, bool useRegex = false, string filter = "*.*")
+		{
+			try {
+				// NOTE: deliberately uses the sequential SearchManager.FindAll path (like the real
+				// Find-in-Files dialog) instead of FindAllParallel: SearchRun's parallel path pushes
+				// results through ObserveOnUIThread, whose SD.MainThread.SynchronizationContext is
+				// null in this host, so OnNext/OnError NRE on the posted delegate and the results
+				// never reach the pad (pre-existing engine bug; nothing in the app uses
+				// FindAllParallel). The IObservable overload of SearchResultsPad.ShowSearchResults
+				// subscribes through the same broken path, so feed the plain match-list overload -
+				// the exact call FindReferencesCommand uses.
+				var results = RunFind(pattern, scope, matchCase, wholeWord, useRegex, filter);
+				var matches = results.SelectMany(f => f.Matches).ToList();
+				string title = StringParser.Parse("${res:MainWindow.Windows.SearchResultPanel.OccurrencesOf}",
+				                                  new StringTagPair("Pattern", pattern));
+				SearchResultsPad.Instance.ShowSearchResults(title, matches);
+				SearchResultsPad.Instance.BringToFront();
+				return JsonSerializer.Serialize(new { success = true });
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
 			}
 		}
 

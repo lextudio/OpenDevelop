@@ -8,9 +8,10 @@ namespace OpenDevelop.IntegrationTests;
 // (src/AddIns/Misc/PackageManagement/Project/Src/ManagePackagesView.xaml/PackagesView.xaml): open
 // a project, drive the real search box and the real per-row "Add" button (via the same
 // SearchCommand/AddPackageCommand bindings the UI uses - see PackageManagementDevFlowActions.cs),
-// then confirm the on-disk .csproj reflects the newly installed package. Installs against a local,
-// offline NuGet feed (tests/fixtures/LocalNuGetFeed) instead of nuget.org so the test doesn't
-// depend on network access.
+// then confirm the on-disk .csproj reflects the newly installed package, and (via od.ui.tree) that
+// the dialog's real WPF package row shows the package name and the added-check icon. Installs
+// against a local, offline NuGet feed (tests/fixtures/LocalNuGetFeed) instead of nuget.org so the
+// test doesn't depend on network access.
 //
 // Prerequisites:
 //   1. Build OpenDevelop in Debug:
@@ -95,6 +96,23 @@ public sealed class NuGetAddInTests : IDisposable
 
         var afterInstall = await WaitForPackageInstalledAsync();
         Assert.True(afterInstall, "Package's IsAdded flag never flipped true after install");
+
+        // The dialog is a real WPF Window (ManagePackagesView), so the visual tree walker sees it:
+        // the search result row must render the package name as a real TextBlock, and the per-row
+        // "added" check icon (AutomationId=PackageAddedIcon, Visibility bound to IsAdded) must have
+        // actually flipped to Visible after the install - i.e. the UI reflects the state the JSON
+        // status above claims, not just the view model.
+        var tree = await _app.GetUITreeAsync();
+        var elements = FlattenElements(tree).ToList();
+
+        Assert.Contains(elements, e =>
+            e.TryGetProperty("type", out var t) && t.GetString() == "TextBlock"
+            && e.TryGetProperty("text", out var txt) && txt.GetString() == TestPackageId);
+
+        Assert.True(elements.Any(e =>
+            e.TryGetProperty("automationId", out var a) && a.GetString() == "PackageAddedIcon"
+            && e.TryGetProperty("isVisible", out var v) && v.GetBoolean()),
+            "Expected the PackageAddedIcon to be Visible in the dialog's package row after install");
 
         await _app.InvokeAsync("od.nuget.close-dialog");
 

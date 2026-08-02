@@ -53,6 +53,7 @@
 
 	<Path name="/SharpDevelop/Autostart">
 		<Class id="CSharpLanguageService" class="CSharpBinding.RegisterCSharpLanguageServiceCommand"/>
+		<Class id="CSharpOpenLensProviders" class="CSharpBinding.RegisterCSharpOpenLensProvidersCommand"/>
 	</Path>
 
 	<Path name = "/SharpDevelop/BackendBindings/Templates">

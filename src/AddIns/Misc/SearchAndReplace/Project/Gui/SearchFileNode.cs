@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Documents;
 
@@ -41,12 +42,14 @@ namespace SearchAndReplace
 		
 		protected override object CreateText()
 		{
-			return new TextBlock {
+			TextBlock textBlock = new TextBlock {
 				Inlines = {
 					new Bold(new Run(Path.GetFileName(FileName))),
 					new Run(StringParser.Parse(" (${res:MainWindow.Windows.SearchResultPanel.In} ") + Path.GetDirectoryName(FileName) + ")")
 				}
 			};
+			AutomationProperties.SetAutomationId(textBlock, "SearchFileNode");
+			return textBlock;
 		}
 		
 		public override void ActivateItem()

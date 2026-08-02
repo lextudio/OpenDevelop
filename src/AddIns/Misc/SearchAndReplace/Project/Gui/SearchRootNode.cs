@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using ICSharpCode.Core;
@@ -131,7 +132,9 @@ namespace SearchAndReplace
 		
 		protected override object CreateText()
 		{
-			return new TextBlock {
+			// AutomationId so DevFlow-based UI-tree tests can prove this node is actually rendered
+			// (the TextBlock's Inlines carry the text, which TextBlock.Text doesn't expose).
+			TextBlock textBlock = new TextBlock {
 				Inlines = {
 					new Bold(new Run(this.Title)),
 					new Run(" (" + GetOccurrencesString(resultNodes.Count)
@@ -139,6 +142,8 @@ namespace SearchAndReplace
 					        + GetFileCountString(fileNodes.Count) + GetWasCancelledString(WasCancelled) + ")")
 				}
 			};
+			AutomationProperties.SetAutomationId(textBlock, "SearchRootNode");
+			return textBlock;
 		}
 		
 		public static string GetOccurrencesString(int count)

@@ -104,6 +104,25 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         {
             // Best-effort - same rationale as above.
         }
+
+        // The hosted ILSpy addin restores its own assembly list and layout from ILSpy.xml at
+        // startup (ILSpySettingsFilePathProvider -> ~/.config/ICSharpCode/ILSpy.xml). Leftovers
+        // from the user's own interactive ILSpy usage (e.g. an assembly list pointing at a
+        // different checkout) would load stale assemblies into the tree, auto-select a dead node,
+        // and make the decompiled view / assembly tree UI assertions nondeterministic - same
+        // restore-timing rationale as LastViewStates.xml above.
+        try
+        {
+            var ilSpySettings = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "ICSharpCode", "ILSpy.xml");
+            if (File.Exists(ilSpySettings))
+                File.Delete(ilSpySettings);
+        }
+        catch
+        {
+            // Best-effort - same rationale as above.
+        }
     }
 
     public async ValueTask DisposeAsync()

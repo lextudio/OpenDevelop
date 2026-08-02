@@ -27,6 +27,7 @@ using ICSharpCode.ILSpy.TextView;
 using ICSharpCode.ILSpy.Themes;
 using ICSharpCode.ILSpy.Util;
 using ICSharpCode.ILSpy.ViewModels;
+using ICSharpCode.ILSpyX.TreeView;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Workbench;
 
@@ -115,6 +116,16 @@ namespace ICSharpCode.ILSpyAddIn
 				new SolidColorBrush(Color.FromArgb(0x16, 0x00, 0x00, 0xFF));
 			Application.Current.Resources[ResourceKeys.BracketHighlightBorderPen] =
 				new Pen(new SolidColorBrush(Color.FromArgb(0x34, 0x00, 0x00, 0xFF)), 1);
+
+			// What real ILSpy's App ctor does after InitializeComponent/DI (App.xaml.cs):
+			// tree node icons + the ILSpy theme (which also pulls in Themes/generic.xaml's default
+			// control styles through ThemeManager's "/themes/Theme.*.xaml" load, whose resources
+			// are now linked at the assembly root - see ILSpyAddIn.csproj). Without the images
+			// provider, SharpTreeView nodes render no icons; without the theme, the pane controls
+			// fall back to unstyled rendering.
+			SharpTreeNode.SetImagesProvider(new WpfWindowsTreeNodeImagesProvider());
+			var settingsService = exportProvider.GetExportedValue<SettingsService>();
+			ThemeManager.Current.Theme = settingsService.SessionSettings.Theme;
 
 			assemblyTreeModel = exportProvider.GetExportedValue<AssemblyTreeModel>();
 			var searchPaneModel = exportProvider.GetExportedValue<SearchPaneModel>();

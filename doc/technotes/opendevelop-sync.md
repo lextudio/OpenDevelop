@@ -109,7 +109,7 @@ Keep migration and feature technotes in `OpenDevelop/doc/technotes/` as the shar
 
 Topics that still need a shared technote or parity update:
 
-- `debugging.md`, `multi-targeting.md`, `winforms-migrate.md`, `csharp-roslyn.md`/`roslyn.md`, `ilspy.md`, `altcover.md` (test coverage tooling), `codelens.md` (OpenDevelop itself hasn't started this — track it but don't prioritize implementation).
+- `debugging.md`, `multi-targeting.md`, `winforms-migrate.md`, `csharp-roslyn.md`/`roslyn.md`, `ilspy.md`, `altcover.md` (test coverage tooling), `openlens.md` (OpenDevelop itself hasn't started this — track it but don't prioritize implementation).
 - Skip porting `main-menu.md` as a doc — it's an OpenDevelop-specific bug investigation, not a feature spec.
 - `librewpf.md` has no equivalent need in UnoDevelop (it's a WPF-on-macOS runtime concern specific to OpenDevelop's stack; UnoDevelop runs on Uno Platform directly) — explicitly out of scope, don't create a parallel doc.
 
