@@ -26,11 +26,15 @@ namespace ICSharpCode.SharpDevelop.Workbench
 	}
 
 	/// <summary>
-	/// Describes one AddIn-contributed named layout. <see cref="TemplateFileName"/> is a filename
-	/// resolved the same way <see cref="LayoutConfiguration"/> resolves its XML-configured layouts'
-	/// <c>file</c> attribute (relative to <see cref="LayoutConfiguration.DataLayoutPath"/>/
-	/// <see cref="LayoutConfiguration.ConfigLayoutPath"/>) - not a full path, and not (yet) the
-	/// versioned layout DTO described in the doc's Phase 2.
+	/// Describes one AddIn-contributed named layout. <see cref="TemplateFileName"/> is either a
+	/// bare filename, resolved the same way <see cref="LayoutConfiguration"/> resolves its
+	/// XML-configured layouts' <c>file</c> attribute (relative to
+	/// <see cref="LayoutConfiguration.DataLayoutPath"/>) - or a rooted absolute path, which lets
+	/// the AddIn ship its template physically inside its own AddIn folder instead of the shell's
+	/// data/layouts (see doc/technotes/ilspy.md "layout file ownership"; ILSpyAddIn uses this to
+	/// keep Layouts/ILSpy.xml alongside its own sources). Either way, this is not (yet) the
+	/// versioned layout DTO described in the doc's Phase 2 - still today's AvalonDock-XML file
+	/// format as the template's content.
 	/// </summary>
 	public sealed class LayoutTemplateDescriptor
 	{

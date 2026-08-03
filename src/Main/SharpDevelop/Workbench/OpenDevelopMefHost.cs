@@ -1,80 +1,49 @@
 using System;
-using System.IO;
 using System.Reflection;
 
-using ICSharpCode.Core;
-using Microsoft.VisualStudio.Composition;
+using Microsoft.Extensions.DependencyInjection;
+
+using TomsToolbox.Composition;
+using TomsToolbox.Composition.MicrosoftExtensions;
 
 namespace ICSharpCode.SharpDevelop.Workbench;
 
+// TomsToolbox composition migration (doc/technotes/ilspy.md "Immediate next actions" #6,
+// 2026-08-02): OpenDevelop's own MEF usage was always narrow (this host, plus
+// ProjectBrowserViewModel as the one real [Export]-attributed part), so replacing
+// Microsoft.VisualStudio.Composition here is the whole migration, not step one of a larger
+// sweep - no [ImportingConstructor]/[Import] graph existed anywhere to untangle. Mirrors
+// src/AddIns/DisplayBindings/ILSpyAddIn/ILSpyCompositionHost.cs's App.Initialize() (ILSpy already
+// uses this same TomsToolbox-over-Microsoft.Extensions.DependencyInjection pattern), so both
+// composition containers in the process now use the same underlying technology - the small
+// registration API named in "Composition boundary" above (IToolPaneProvider/IDocumentPaneFactory)
+// can follow later as the one seam both feed, rather than needing to bridge two different MEF
+// implementations.
 internal static class OpenDevelopMefHost
 {
-    // Cache is keyed on the executing assembly's write time, not its content hash - MEF part
-    // discovery only depends on the assembly's attributes, and reading the write time is orders
-    // of magnitude cheaper than hashing the whole DLL on every startup.
-    const string CacheFileName = "mef-composition.cache";
+    private static readonly Lazy<IExportProvider> LazyExportProvider = new(BuildExportProvider);
 
-    private static readonly Lazy<ExportProvider> LazyExportProvider = new(BuildExportProvider);
+    public static IExportProvider ExportProvider => LazyExportProvider.Value;
 
-    public static ExportProvider ExportProvider => LazyExportProvider.Value;
-
-    private static ExportProvider BuildExportProvider()
+    private static IExportProvider BuildExportProvider()
     {
-        var assembly = Assembly.GetExecutingAssembly();
-        var cachePath = GetCachePath();
-        var cached = TryLoadFromCache(cachePath, assembly);
-        if (cached != null)
-            return cached.CreateExportProvider();
+        var services = new ServiceCollection();
 
-        var discovery = new AttributedPartDiscovery(Resolver.DefaultInstance, isNonPublicSupported: true);
-        var discoveredParts = discovery.CreatePartsAsync(assembly).GetAwaiter().GetResult();
-        var catalog = ComposableCatalog.Create(Resolver.DefaultInstance).AddParts(discoveredParts.Parts);
-        var configuration = CompositionConfiguration.Create(catalog);
+        // BindExports scans the given assembly's System.Composition-attributed types
+        // ([Export]/[Shared]) - the same attributes ProjectBrowserViewModel already carries
+        // (it was written against System.Composition from the start, so no attribute changes were
+        // needed on that class for this migration).
+        services.BindExports(Assembly.GetExecutingAssembly());
 
-        TrySaveToCache(cachePath, configuration, assembly);
+        IExportProvider exportProvider = null;
+        // The export provider must be resolvable by parts that ask for it directly (mirrors
+        // ILSpyCompositionHost.cs's identical registration).
+        services.AddSingleton(_ => exportProvider);
 
-        return configuration.CreateExportProviderFactory().CreateExportProvider();
-    }
+        var serviceProvider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = false });
 
-    static string GetCachePath()
-    {
-        var configDirectory = ICSharpCode.Core.PropertyService.ConfigDirectory?.ToString();
-        if (string.IsNullOrEmpty(configDirectory))
-            return null;
-        return Path.Combine(configDirectory, CacheFileName);
-    }
+        exportProvider = new ExportProviderAdapter(serviceProvider);
 
-    static IExportProviderFactory TryLoadFromCache(string cachePath, Assembly assembly)
-    {
-        if (cachePath == null || !File.Exists(cachePath))
-            return null;
-        try {
-            if (File.GetLastWriteTimeUtc(cachePath) < File.GetLastWriteTimeUtc(assembly.Location))
-                return null;
-
-            using var stream = File.OpenRead(cachePath);
-            return new CachedComposition().LoadExportProviderFactoryAsync(stream, Resolver.DefaultInstance)
-                .GetAwaiter().GetResult();
-        } catch (Exception ex) {
-            // Corrupt or version-mismatched cache (e.g. after a Microsoft.VisualStudio.Composition
-            // upgrade) - fall back to a fresh scan rather than failing startup.
-            LoggingService.Warn("OpenDevelopMefHost: failed to load MEF composition cache, rebuilding. " + ex.Message);
-            return null;
-        }
-    }
-
-    static void TrySaveToCache(string cachePath, CompositionConfiguration configuration, Assembly assembly)
-    {
-        if (cachePath == null)
-            return;
-        try {
-            Directory.CreateDirectory(Path.GetDirectoryName(cachePath));
-            using (var stream = File.Create(cachePath)) {
-                new CachedComposition().SaveAsync(configuration, stream).GetAwaiter().GetResult();
-            }
-            File.SetLastWriteTimeUtc(cachePath, File.GetLastWriteTimeUtc(assembly.Location));
-        } catch (Exception ex) {
-            LoggingService.Warn("OpenDevelopMefHost: failed to write MEF composition cache. " + ex.Message);
-        }
+        return exportProvider;
     }
 }

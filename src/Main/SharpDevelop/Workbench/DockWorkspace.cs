@@ -1,8 +1,11 @@
+using System;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Data;
+using System.Xml;
 
 using AvalonDock;
 using AvalonDock.Core;
@@ -10,12 +13,24 @@ using AvalonDock.Core.Serialization;
 using AvalonDock.Layout;
 using AvalonDock.Serializer.Xml;
 
+using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.ViewModels;
 
 namespace ICSharpCode.SharpDevelop.Workbench;
 
 internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrategy
 {
+    // Bumped whenever the persisted layout format changes in a way that's not just "more
+    // ToolPaneModel ContentIds" (e.g. if documents start being persisted, or IsVisible semantics
+    // change again - see LayoutSerializationCallback below). Stamped onto every layout file we
+    // write (SaveLayout) and checked on every restore (RestoreLayout) so a version mismatch is a
+    // deliberate, loggable decision rather than however XmlLayoutSerializer happens to react to
+    // unrecognized XML (previously: silently caught as FileFormatException, see
+    // AvalonDockLayout.TryLoadConfiguration). The shipped data/layouts/*.xml templates carry this
+    // same attribute (see doc/technotes/ilspy.md).
+    private const int CurrentLayoutSchemaVersion = 1;
+    private const string SchemaVersionAttribute = "OpenDevelopLayoutSchemaVersion";
+
     private readonly DockingManager dockingManager;
     private readonly ObservableCollection<AvalonWorkbenchWindow> documents = new ObservableCollection<AvalonWorkbenchWindow>();
     private readonly ObservableCollection<ToolPaneModel> toolPanes = new ObservableCollection<ToolPaneModel>();
@@ -130,6 +145,19 @@ internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrateg
         if (!File.Exists(fileName))
             return;
 
+        if (!HasCompatibleSchemaVersion(fileName)) {
+            // Not a version we understand yet - there is no migration step for schema version 1
+            // (nothing has ever shipped an incompatible version), so this currently only fires
+            // for hand-edited/foreign files. Throwing FileFormatException reuses
+            // AvalonDockLayout.TryLoadConfiguration's existing "fall back to the read-only
+            // template" path, but logs *why*, rather than relying on XmlLayoutSerializer to throw
+            // its own FileFormatException for unrelated reasons (schema drift vs. a real parse
+            // error used to be indistinguishable).
+            LoggingService.Warn($"Layout file '{fileName}' has no compatible {SchemaVersionAttribute} " +
+                $"(expected {CurrentLayoutSchemaVersion}) - falling back to template.");
+            throw new FileFormatException(new Uri(fileName, UriKind.RelativeOrAbsolute));
+        }
+
         var serializer = new XmlLayoutSerializer(dockingManager);
         serializer.LayoutSerializationCallback += LayoutSerializationCallback;
         try {
@@ -142,7 +170,29 @@ internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrateg
     public void SaveLayout(string fileName)
     {
         var serializer = new XmlLayoutSerializer(dockingManager);
-        serializer.Serialize(fileName);
+        using (var stream = new MemoryStream()) {
+            serializer.Serialize(stream);
+            stream.Position = 0;
+            var doc = new XmlDocument();
+            doc.Load(stream);
+            doc.DocumentElement?.SetAttribute(SchemaVersionAttribute, CurrentLayoutSchemaVersion.ToString(CultureInfo.InvariantCulture));
+            doc.Save(fileName);
+        }
+    }
+
+    private static bool HasCompatibleSchemaVersion(string fileName)
+    {
+        try {
+            var doc = new XmlDocument();
+            doc.Load(fileName);
+            var attr = doc.DocumentElement?.GetAttribute(SchemaVersionAttribute);
+            return int.TryParse(attr, NumberStyles.Integer, CultureInfo.InvariantCulture, out int version)
+                && version == CurrentLayoutSchemaVersion;
+        } catch (XmlException) {
+            // Let the real parse error surface via XmlLayoutSerializer.Deserialize instead of
+            // masking it as a schema mismatch.
+            return true;
+        }
     }
 
     private void LayoutSerializationCallback(object sender, LayoutSerializationCallbackEventArgs e)
@@ -165,7 +215,11 @@ internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrateg
 
         e.Content = pane;
         anchorable.CanDockAsTabbedDocument = false;
-        pane.IsVisible = true;
+        // Preserve whichever visibility was actually saved (doc/technotes/ilspy.md "real
+        // versioned layout DTO") - this used to force IsVisible = true unconditionally, so a pane
+        // the user had explicitly hidden before closing the IDE silently reappeared on every
+        // restore.
+        pane.IsVisible = anchorable.IsVisible;
     }
 
     public bool BeforeInsertAnchorable(LayoutRoot layout, LayoutAnchorable anchorableToShow, ILayoutContainer destinationContainer)

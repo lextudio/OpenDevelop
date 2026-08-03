@@ -786,6 +786,13 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new { found = true, title = pad.Title, className = pad.Class });
 		}
 
+		[DevFlowAction("od.workbench.set-theme", Description = "Set the IDE theme (Light/Dark/Blue) via IdeThemeService.SetTheme - drives the same code path as the Options panel's theme combo, raising IdeThemeService.ThemeChanged so subscribers (e.g. ILSpyAddIn's theme bridge) can be tested deterministically")]
+		public static string SetTheme(string theme)
+		{
+			IdeThemeService.SetTheme(theme);
+			return JsonSerializer.Serialize(new { theme = IdeThemeService.CurrentTheme });
+		}
+
 		[DevFlowAction("od.workbench.switch-layout", Description = "Switch the active named workbench layout (Default/Debug/Plain, or an AddIn-contributed one e.g. ILSpy via ILayoutTemplateProvider) by driving LayoutConfiguration.CurrentLayoutName directly - bypasses ChooseLayoutComboBox's UI (which the WPF-embedded DevFlow agent can't reliably drive through its popup), so tests can verify AddIn layout-activation (ILayoutTemplateProvider.OnActivating) deterministically")]
 		public static string SwitchLayout(string layoutName)
 		{

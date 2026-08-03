@@ -1009,6 +1009,41 @@ strengthened assertion.
    `IlSpyToolPaneAdapter`. Verified: `dotnet build -t:Rebuild` on `ILSpyAddIn.csproj` and a plain
    build of `SharpDevelop.csproj` both clean (0 errors, only the already-documented harmless
    `NativeMethods` CS0436 duplicate-type warning).
+
+   **`AssemblyTreeModel` migrated too (2026-08-02, medium/large-item follow-up) - the deferral
+   above turned out to be more pessimistic than necessary once actually investigated.** The 18
+   `DockWorkspace` call sites inside `AssemblyTreeModel.cs`/`.wpf.cs` (decompiler-tab/navigation
+   state) were the reason this was deferred longer than the other two panes - but on inspection,
+   none of those 18 call sites needed to change at all. `DockWorkspace` was only ever reachable
+   through a `protected static` property declared on ILSpy's *own* `PaneModel` base
+   (`ViewModels/PaneModel.cs:33`,
+   `protected static DockWorkspace DockWorkspace => App.ExportProvider.GetExportedValue<DockWorkspace>();`)
+   - switching `AssemblyTreeModel`'s base type away from that hierarchy only removes the *source*
+   of that property, not anything about what the 18 call sites do with it. Fix: added an
+   equivalent `DockWorkspace` accessor directly on `AssemblyTreeModel` itself
+   (`ICSharpCode.ILSpy.Docking.DockWorkspace DockWorkspace => exportProvider.GetExportedValue<...>();`),
+   using the `exportProvider` field the class already carries (constructor-injected) instead of
+   ILSpy's static `App.ExportProvider` - every one of the 18 sites keeps its exact existing
+   behavior, unchanged, because only where the property comes from changed, not what it returns.
+   Otherwise the same mechanical change as the other two panes: `[ExportToolPane]` →
+   `[Export(typeof(AssemblyTreeModel))]`, base type → `ICSharpCode.SharpDevelop.ViewModels.ToolPaneModel`,
+   `Content = this;` added (the ctor already set `Title`/`ContentId`/`IsCloseable`/`ShortcutKey`,
+   just never `Content`). `IlSpyWorkspaceHost.cs` now registers `assemblyTreeModel` directly
+   (still overriding `Title = "Assemblies"` explicitly, since the ctor's own
+   `Title = Resources.Assemblies` is an ILSpy-localized string, not necessarily "Assemblies").
+
+   With all three ILSpy panes migrated, `IlSpyToolPaneAdapter.cs` had zero remaining references
+   anywhere in the repo (confirmed by `grep`) and was deleted outright - it was OpenDevelop-authored
+   glue, not linked ILSpy source, so this is a plain dead-code removal, not something needing the
+   ILSpy-checkout-edit caution used elsewhere in this document.
+
+   Verified: `dotnet build -t:Rebuild` on `ILSpyAddIn.csproj` and a plain build of
+   `SharpDevelop.csproj` both clean (0 errors). More importantly, ran the actual
+   `IlSpyAddInTests` integration tests (`dotnet test ... --filter-query "/*/*/IlSpyAddInTests/*"`)
+   end-to-end after this change - both tests pass, meaning opening a real assembly, the assembly
+   tree rendering real non-empty `SharpTreeNodeView` content, decompiling real source, and the
+   ILSpy-layout-activates-panes behavior all still work correctly with `AssemblyTreeModel` no
+   longer going through the adapter - not just a compile-clean claim.
    Checked before making this change that nothing else depends on `SearchPaneModel` remaining under
    the "ToolPane" MEF contract: `SearchPane.xaml.cs`'s `[DataTemplate(typeof(SearchPaneModel))]` and
    `ScopeSearchToAssembly.cs`/`ScopeSearchToNamespace.cs`'s constructor-injected `SearchPaneModel`
@@ -1179,9 +1214,45 @@ strengthened assertion.
    `AddServiceReferenceDialog.xaml` have similar hardcoded brushes not touched in this pass).
 
    Explicitly deferred (real Phase 3, not attempted here): AvalonEdit editor-background/syntax-color
-   tokens, ILSpy's own `ResourceKeys`/`ThemeManager` bridging (tracked separately above under the
-   ILSpy pane-model/composition sections), the rest of the shell's hardcoded-brush inventory, and a
+   tokens for the shell's own editor, the rest of the shell's hardcoded-brush inventory, and a
    proper resource-completeness audit/visual-contrast test.
+
+   **ILSpy's own `ThemeManager` bridged too (2026-08-02, follow-up - this was the actual "big
+   problem" flagged when asked what remained).** `DecompilerTextView.cs:1457` calls
+   `ThemeManager.Current.ApplyHighlightingColors(highlightingDefinition)` on every decompile, and
+   `ThemeAwareHighlightingColorizer` reads `ThemeManager.Current.IsDarkTheme` for its fallback text
+   color - so ILSpy's decompiled-code syntax highlighting is a real, functional consumer of
+   `ThemeManager.Current.Theme`, not a cosmetic detail. Before this fix,
+   `IlSpyWorkspaceHost.EnsureInitialized()` seeded it once from ILSpy's own, independently
+   persisted `SessionSettings.Theme` and never touched it again - meaning switching OpenDevelop's
+   own IDE theme (`IdeThemeService`) had no effect on decompiled code colors at all, two
+   unsynchronized theme authorities in the same window.
+
+   Fixed by adding `IdeThemeService.ThemeChanged` (a new `event EventHandler<string>`, raised from
+   both `Attach` and `SetTheme` with the theme name that was just applied) to
+   `src/Main/SharpDevelop/Workbench/IdeThemeService.cs`, and having
+   `IlSpyWorkspaceHost.EnsureInitialized()` seed `ThemeManager.Current.Theme` from
+   `IdeThemeService.CurrentTheme` (mapped via a small `ToIlSpyTheme` helper: OpenDevelop's
+   `Light`/`Dark` map directly, `Blue` - the one OpenDevelop dock theme with no ILSpy analog -
+   falls back to `Light`, consistent with the "Light/Dark only, initially" scope of this whole
+   theming slice) instead of ILSpy's own settings, then subscribing to `ThemeChanged` to keep them
+   in sync for the rest of the process. This is the shell-owns-the-event/AddIn-owns-its-own-
+   reaction pattern already used for the ILSpy-layout-activation fix earlier in this document -
+   `IdeThemeService` has no ILSpy-specific code in it at all.
+
+   Verified live via DevFlow, not just compilation - added `od.ilspy.theme` (reads
+   `ThemeManager.Current.Theme`/`IsDarkTheme` without side effects) and `od.workbench.set-theme`
+   (drives `IdeThemeService.SetTheme` directly, the same DevFlow-bypasses-the-UI pattern as
+   `od.workbench.switch-layout`) as small, reusable diagnostic actions rather than one-off
+   scaffolding. Sequence: opened an assembly (`od.ilspy.theme` → `{"theme":"Light",
+   "isDarkTheme":false}`, matching OpenDevelop's default) → `od.workbench.set-theme "Dark"` →
+   `od.ilspy.theme` again → `{"theme":"Dark","isDarkTheme":true}` - the bridge fires correctly.
+   Known remaining nuance, not fixed here: `ThemeManager` doesn't itself broadcast a
+   re-render notification, so switching themes only affects the *next* decompile, not
+   already-open decompiled documents retroactively - matches how `ApplyHighlightingColors` is only
+   ever called from the decompile path (`DecompilerTextView.cs`), not from any live-update
+   subscription, so this isn't a regression introduced by the bridge, just an existing limitation
+   it doesn't newly solve.
 
    Verified: `SharpDevelop.csproj` and `ICSharpCode.SharpDevelop.csproj` (Base, where
    `AboutDialog.xaml` lives) both build clean. Runtime-verified via the DevFlow UI tree (not just
@@ -1227,7 +1298,83 @@ strengthened assertion.
      `IlSpyToolPaneAdapter`/`SearchPaneModel` work earlier in this pass already started proving out
      one pane at a time.
 
+   **Done (2026-08-02, executed the same day it was scoped).** `OpenDevelopMefHost.cs` now builds
+   its `IExportProvider` via `Microsoft.Extensions.DependencyInjection` +
+   `TomsToolbox.Composition.MicrosoftExtensions`'s `BindExports`/`ExportProviderAdapter`, mirroring
+   `ILSpyCompositionHost.cs`'s `App.Initialize()` almost line-for-line - both composition
+   containers in the process now use the same underlying technology. One correction to the scoping
+   above found while actually doing it: `ProjectBrowserViewModel` needed **no attribute changes at
+   all** - it already used `System.Composition`'s `[Export(typeof(ProjectBrowserViewModel))]`/
+   `[Export("ToolPane", typeof(ToolPaneModel))]`/`[Shared]` (confirmed via its own `using
+   System.Composition;`), and `BindExports` scans exactly those attributes (it's the same
+   attribute set ILSpy's own `SearchPaneModel`/`AnalyzerTreeViewModel`/`AssemblyTreeModel` already
+   carried before their own migrations earlier in this pass) - so the "re-attribute" step in the
+   scoping note above turned out to be unnecessary, not just easy. The 4
+   `GetExportedValue`/`GetExportedValues` call sites (`DockWorkspace.cs`,
+   `OpenDevelopDevFlowActions.cs` x2, `ProjectBrowserPad.cs`) needed zero code changes either -
+   `TomsToolbox`'s `IExportProvider` exposes the identical `GetExportedValue<T>()`/
+   `GetExportedValues<T>(contractName)` generic-extension-method shape as
+   `Microsoft.VisualStudio.Composition.ExportProvider` (confirmed: ILSpy's own linked
+   `Docking/DockWorkspace.cs:125` already calls `exportProvider.GetExportedValues<ToolPaneModel>
+   ("ToolPane")` against its TomsToolbox provider, the exact same call shape), so the entire
+   migration was contained to rewriting one file's internals.
+
+   Verified beyond compilation: launched the app and confirmed via the DevFlow UI tree that the
+   "Projects" pane (the one real MEF-exported pad, `DockWorkspace.ToolPanes` →
+   `OpenDevelopMefHost.ExportProvider.GetExportedValues<ToolPaneModel>("ToolPane")`) still renders
+   with no startup error. Also ran the **full** `OpenDevelop.IntegrationTests` suite (89 tests, not
+   just the ILSpy-focused ones) before and after this change to catch any wider regression from
+   swapping the whole shell's composition host - 4 tests failed both before and after
+   (`DebuggerIntegrationTests.DebugOutput_AfterStart_CapturesDebuggerText`,
+   `ErrorListTests.ErrorList_OnBuildFailure_CapturesRealPerLineCompileErrors`,
+   `UnitTestingTests.UnitTestPad_RendersTestNamesInUiTree`,
+   `SearchAndReplaceTests.ShowResults_PopulatesSearchResultsPadUiTree`), confirmed by `git stash`-ing
+   just `OpenDevelopMefHost.cs` back to its original `Microsoft.VisualStudio.Composition` form and
+   re-running the two spot-checked failures against that baseline, where they failed identically -
+   pre-existing environment/timing flakiness unrelated to this migration, not a regression it
+   introduced. 85/89 passed with the migration in place.
+
 These actions deliberately establish one model and one source-reuse policy before expanding the
 embedded ILSpy surface. That makes later ILSpy updates an input to OpenDevelop's architecture,
 rather than allowing linked standalone-shell implementation details to become the architecture by
 accident.
+
+### Real versioned layout DTO (2026-08-02/03)
+
+Picked as the next big task after the ILSpy theme bridge (see "AvalonEdit theme bridging" above).
+Investigated what `DockWorkspace.RestoreLayout`/`SaveLayout` (`src/Main/SharpDevelop/Workbench/
+DockWorkspace.cs`) actually persist today - they wrap AvalonDock's own `XmlLayoutSerializer`
+directly, no OpenDevelop-level DTO existed at all. Found three real gaps, not just a missing
+version number:
+
+1. `LayoutSerializationCallback` unconditionally cancels every `LayoutDocument` (line ~150) - open
+   editor tabs were never part of the persisted layout to begin with. Out of scope for this pass
+   (would need a real document-identity model - file path/project item - to round-trip; noted here
+   so it isn't rediscovered as a surprise later).
+2. **Fixed**: the callback forced `pane.IsVisible = true` unconditionally for every restored
+   anchorable, regardless of what was actually saved - a tool pane the user explicitly hid before
+   closing the IDE silently reappeared on every restart/layout switch. Now preserves
+   `anchorable.IsVisible` (the deserialized value) instead of overwriting it.
+3. **Fixed**: "versioning" was `AvalonDockLayout.TryLoadConfiguration` catching
+   `FileFormatException` from `XmlLayoutSerializer.Deserialize` and silently falling back to the
+   read-only template - indistinguishable from an actual XML parse error, and no way to react
+   differently to "this is an old/foreign schema" vs. "this file is corrupt." Added an explicit
+   `OpenDevelopLayoutSchemaVersion` attribute stamped onto the `<LayoutRoot>` root element by
+   `SaveLayout` (serializes to a `MemoryStream` first, sets the attribute via `XmlDocument`, then
+   writes the file) and checked by `RestoreLayout` before deserializing at all - a mismatch now
+   throws `FileFormatException` with an explicit `LoggingService.Warn` explaining why, reusing the
+   existing template-fallback path deliberately rather than replacing it (there is nothing to
+   migrate *from* yet - version 1 is the first version - so "log and fall back to template" is the
+   correct behavior for now; a real migration function has an obvious seam to slot into
+   `HasCompatibleSchemaVersion`/`RestoreLayout` whenever version 2 exists). The four shipped
+   `data/layouts/{Default,Debug,Plain,ILSpy}.xml` templates were stamped with the same attribute so
+   they pass the compatibility check unchanged.
+
+Verified live via targeted DevFlow calls (not the full integration suite, per the "focus on big
+ILSpy problems" constraint): built `SharpDevelop.csproj` clean, launched the app, called
+`od.workbench.switch-layout "ILSpy"` twice (once implicitly via `Default` on startup, once
+explicitly), confirmed `od.ilspy.is-initialized` returns `true` and the layout-changed path logs
+"Saving layout file" with no `FileFormatException`/template-fallback warning, then read the actual
+saved file at `~/Library/Application Support/ICSharpCode/SharpDevelop5/layouts/ILSpy.xml` and
+confirmed its root element is `<LayoutRoot OpenDevelopLayoutSchemaVersion="1">` - the round-trip
+writes and is accepted back without triggering the new compatibility check's warning path.

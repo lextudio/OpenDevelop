@@ -43,9 +43,10 @@ namespace ICSharpCode.ILSpyAddIn
 	{
 		private static AssemblyTreeModel assemblyTreeModel;
 		private static DecompilerTextView decompilerTextView;
-		private static IlSpyToolPaneAdapter assembliesPane;
-		// SearchPaneModel derives directly from OpenDevelop's ToolPaneModel now (see
-		// doc/technotes/ilspy.md "Immediate next actions" #3) - no adapter needed for this pane.
+		// AssemblyTreeModel derives directly from OpenDevelop's ToolPaneModel now too (see
+		// doc/technotes/ilspy.md "Immediate next actions" #3) - no adapter needed for any of the
+		// three ILSpy panes anymore.
+		private static AssemblyTreeModel assembliesPane;
 		private static SearchPaneModel searchPane;
 		// AnalyzerTreeViewModel derives directly from OpenDevelop's ToolPaneModel now too (see
 		// doc/technotes/ilspy.md "Immediate next actions" #3) - no adapter needed for this pane.
@@ -85,6 +86,16 @@ namespace ICSharpCode.ILSpyAddIn
 				EnsureInitialized();
 				return new ICSharpCode.SharpDevelop.ViewModels.ToolPaneModel[] { assembliesPane, searchPane, analyzerPane };
 			}
+		}
+
+		// Maps OpenDevelop's IdeThemeService theme names to one of ThemeManager.AllThemes
+		// ("Light", "Dark", "VS Code Light+", "VS Code Dark+", "R# Light", "R# Dark"). OpenDevelop
+		// doesn't have a VS-Code/R# equivalent concept, so only Light/Dark carry across; "Blue"
+		// (OpenDevelop's third built-in dock theme) has no ILSpy analog and falls back to Light -
+		// same "Light/Dark only, initially" scope as the rest of the theming work this pass.
+		static string ToIlSpyTheme(string ideTheme)
+		{
+			return ideTheme == ICSharpCode.SharpDevelop.Workbench.IdeThemeService.Dark ? "Dark" : "Light";
 		}
 
 		public static void EnsureInitialized()
@@ -144,8 +155,18 @@ namespace ICSharpCode.ILSpyAddIn
 			// throws InvalidOperationException on any attempt to set it after the framework has
 			// already set it once, which happens before this addin ever loads - confirmed at
 			// runtime, not just theoretical).
-			var settingsService = exportProvider.GetExportedValue<SettingsService>();
-			ThemeManager.Current.Theme = settingsService.SessionSettings.Theme;
+			// Theme bridge (doc/technotes/ilspy.md "Full application theming" / "Immediate next
+			// actions" #5 follow-up, 2026-08-02): ILSpy's own ThemeManager drives real, functional
+			// behavior - DecompilerTextView.cs applies ThemeManager.Current's syntax colors on every
+			// decompile, and ThemeAwareHighlightingColorizer reads ThemeManager.Current.IsDarkTheme
+			// to pick a fallback text color - so leaving it seeded once from ILSpy's own
+			// (unrelated, independently persisted) SessionSettings.Theme and never touched again
+			// would leave decompiled code in the wrong colors whenever the user switches
+			// OpenDevelop's own IDE theme (IdeThemeService). Seed from OpenDevelop's current theme
+			// instead, and keep them in sync via IdeThemeService.ThemeChanged for the rest of the
+			// process, rather than running two independent, unsynchronized theme authorities.
+			ThemeManager.Current.Theme = ToIlSpyTheme(ICSharpCode.SharpDevelop.Workbench.IdeThemeService.CurrentTheme);
+			ICSharpCode.SharpDevelop.Workbench.IdeThemeService.ThemeChanged += (_, theme) => ThemeManager.Current.Theme = ToIlSpyTheme(theme);
 
 			assemblyTreeModel = exportProvider.GetExportedValue<AssemblyTreeModel>();
 			var searchPaneModel = exportProvider.GetExportedValue<SearchPaneModel>();
@@ -172,12 +193,12 @@ namespace ICSharpCode.ILSpyAddIn
 			decompilerTextView = new DecompilerTextView(exportProvider);
 
 			// SearchPaneModel/AnalyzerTreeViewModel set their own real ILSpy titles ("Search",
-			// "Analyze") in their constructors - IlSpyToolPaneAdapter mirrors those live (see its
-			// PropertyChanged sync), so any override here just gets clobbered moments later
-			// anyway. AssemblyTreeModel never sets its own pane Title at all (real ILSpy names
-			// this pane via a static XAML anchorable header, not a Title binding), so it needs an
-			// explicit one.
-			assembliesPane = new IlSpyToolPaneAdapter(assemblyTreeModel, assemblyTreeModel) { Title = "Assemblies" };
+			// "Analyze") in their constructors, so no override is needed for them. AssemblyTreeModel
+			// sets Title = Resources.Assemblies (an ILSpy-localized string, not necessarily
+			// "Assemblies") - override it explicitly, matching what the (now-removed)
+			// IlSpyToolPaneAdapter used to do for this pane.
+			assemblyTreeModel.Title = "Assemblies";
+			assembliesPane = assemblyTreeModel;
 			searchPane = searchPaneModel;
 			analyzerPane = analyzerTreeViewModel;
 

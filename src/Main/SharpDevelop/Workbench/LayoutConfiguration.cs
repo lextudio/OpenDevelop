@@ -54,7 +54,8 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		string name;
 		string fileName;
 		string displayName;
-		
+		string templateFilePath;
+
 		bool   readOnly;
 		bool   custom;
 		Action onActivating;
@@ -178,7 +179,14 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			get {
 				LayoutConfiguration current = CurrentLayout;
 				if (current != null) {
-					return Path.Combine(DataLayoutPath, current.FileName);
+					// An AddIn-contributed layout (see ILayoutTemplateProvider) can own its template
+					// file physically inside its own AddIn folder instead of the shell's
+					// data/layouts - templateFilePath is only set in that case (see
+					// LoadAddInContributedLayoutTemplates below). The per-user saved copy still goes
+					// to ConfigLayoutPath/FileName regardless (see CurrentLayoutFileName/
+					// StoreConfiguration), so this only changes where the read-only starting
+					// template comes from, not where user customizations are written.
+					return current.templateFilePath ?? Path.Combine(DataLayoutPath, current.FileName);
 				}
 				return null;
 			}
@@ -225,6 +233,14 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		/// opposed to the XML-configured ones above which the shell owns directly. A name already
 		/// present from XML config wins (keeps `Default`/`Debug`/`Plain` authoritative here without
 		/// requiring every AddIn provider to know about them).
+		///
+		/// <see cref="LayoutTemplateDescriptor.TemplateFileName"/> may be a bare filename (resolved
+		/// against the shell's <see cref="DataLayoutPath"/>, like the XML-configured layouts above)
+		/// or a rooted absolute path - the latter lets an AddIn ship its template file physically
+		/// inside its own AddIn folder instead of the shell's data/layouts (see
+		/// doc/technotes/ilspy.md "layout file ownership"). Either way the per-user saved copy still
+		/// goes to <see cref="ConfigLayoutPath"/> under a plain filename, so user customizations
+		/// never get written back into the AddIn's own folder.
 		/// </summary>
 		static void LoadAddInContributedLayoutTemplates()
 		{
@@ -235,10 +251,15 @@ namespace ICSharpCode.SharpDevelop.Workbench
 					var l = new LayoutConfiguration();
 					l.name = descriptor.Name;
 					l.displayName = descriptor.DisplayName;
-					l.fileName = descriptor.TemplateFileName;
 					l.readOnly = descriptor.ReadOnly;
 					l.custom = false;
 					l.onActivating = descriptor.OnActivating;
+					if (Path.IsPathRooted(descriptor.TemplateFileName)) {
+						l.templateFilePath = descriptor.TemplateFileName;
+						l.fileName = Path.GetFileName(descriptor.TemplateFileName);
+					} else {
+						l.fileName = descriptor.TemplateFileName;
+					}
 					Layouts.Add(l);
 				}
 			}

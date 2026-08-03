@@ -72,6 +72,15 @@ namespace ICSharpCode.ILSpyAddIn
 			}
 		}
 
+		[DevFlowAction("od.ilspy.theme", Description = "Inspect ICSharpCode.ILSpy.Themes.ThemeManager.Current's theme name and IsDarkTheme, to verify the theme bridge (IlSpyWorkspaceHost's IdeThemeService.ThemeChanged subscription) keeps it in sync with OpenDevelop's own IDE theme")]
+		public static string GetTheme()
+		{
+			return JsonSerializer.Serialize(new {
+				theme = ICSharpCode.ILSpy.Themes.ThemeManager.Current.Theme,
+				isDarkTheme = ICSharpCode.ILSpy.Themes.ThemeManager.Current.IsDarkTheme
+			});
+		}
+
 		[DevFlowAction("od.ilspy.is-initialized", Description = "Whether IlSpyWorkspaceHost.EnsureInitialized has already run, without triggering it - unlike od.ilspy.status/show-pane/open-assembly, which all initialize as a side effect. Used to verify layout-activation (od.workbench.switch-layout \"ILSpy\") actually initializes the addin by itself, without any other ILSpy action having run first")]
 		public static string IsInitialized()
 		{

@@ -30,10 +30,23 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			get { return Normalize(SD.PropertyService.Get(PropertyKey, Light)); }
 		}
 
+		/// <summary>
+		/// Raised after the IDE theme (dock chrome + semantic shell resources) has been applied,
+		/// whether from <see cref="Attach"/> (initial) or <see cref="SetTheme"/> (user change) -
+		/// with the theme name (<see cref="Light"/>/<see cref="Dark"/>/<see cref="Blue"/>) that was
+		/// just applied. Lets an AddIn whose own rendering has a theme concept of its own (e.g.
+		/// ILSpy's DecompilerTextView/AvalonEdit syntax colors, driven by ILSpy's own
+		/// ICSharpCode.ILSpy.Themes.ThemeManager) stay in sync with the shell's theme choice
+		/// instead of maintaining an independent, unsynchronized theme authority - see
+		/// doc/technotes/ilspy.md "Full application theming" / "Immediate next actions" #5.
+		/// </summary>
+		public static event EventHandler<string> ThemeChanged;
+
 		internal static void Attach(DockingManager manager)
 		{
 			dockingManager = manager;
 			Apply(manager, CurrentTheme);
+			ThemeChanged?.Invoke(null, CurrentTheme);
 		}
 
 		public static void SetTheme(string theme)
@@ -42,6 +55,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			SD.PropertyService.Set(PropertyKey, theme);
 			if (dockingManager != null)
 				Apply(dockingManager, theme);
+			ThemeChanged?.Invoke(null, theme);
 		}
 
 		static string Normalize(string theme)
