@@ -2035,3 +2035,90 @@ The ILSpy strip now carries 13 items (6 buttons + 3 visibility toggles + 2 dropd
 + version dropdown), all rendering. `IlSpyAddInTests` 2/2 pass. Assembly-list *switching* is
 populated and selectable but not exercised end-to-end here: a fresh profile has only the `(Default)`
 list, and creating another one goes through the modal Manage dialog.
+
+### MSIL (and Asm) syntax highlighting was never registered - root cause + fix (2026-08-03)
+
+User: switching to IL shows no syntax highlighting. Confirmed and root-caused: `DecompilerTextView.
+RegisterHighlighting()` (called from its own ctor) does **not** call AvalonEdit's
+`HighlightingManager.RegisterHighlighting(string,string[],string)` overload - that overload is
+`internal` to AvalonEdit's own assembly (`HighlightingManager.cs`'s nested
+`DefaultHighlightingManager`) and unreachable from linked ILSpy source. What actually resolves the
+call is `DecompilerTextView.cs`'s own `static class ExtensionMethods` at the bottom of the same
+file - an extension method with the identical signature
+(`this HighlightingManager manager, string name, string[] extensions, string resourceName`), which
+C# overload resolution prefers. That extension method looks the `.xshd` up via
+`typeof(DecompilerTextView).Assembly.GetManifestResourceStream(typeof(DecompilerTextView),
+resourceName + ".xshd")` - i.e. **in this addin's own assembly**, under a namespace-qualified
+resource name (`GetManifestResourceStream(Type, string)` prefixes the type's namespace,
+`ICSharpCode.ILSpy.TextView`). **If the stream is `null` it just returns - no exception, nothing
+logged.** `ILSpyAddIn.csproj` never embedded `ILAsm-Mode.xshd`/`Asm-Mode.xshd` at all, so this was a
+silent no-op the whole time; "xml" was never affected because it collides with AvalonEdit's own
+built-in "XML" definition for `.xml`/`.baml`, masking the same gap for that one language only.
+
+Fix: embed the real (linked, not copied) `.xshd` files under the exact `LogicalName` that lookup
+expects - `ICSharpCode.ILSpy.TextView.ILAsm-Mode.xshd` / `...Asm-Mode.xshd` - in `ILSpyAddIn.csproj`.
+No code change needed: once the resources resolve, ILSpy's own extension method loads and registers
+them itself (and wires `ThemeManager.Current.ApplyHighlightingColors`, so IL highlighting is
+theme-aware for free - a first attempt at this fix wrote a custom loader before this was found;
+discarded once the real mechanism was understood, since it would have bypassed that theming and
+duplicated ILSpy's own working logic).
+
+Verified live via a new `od.ilspy.highlighting-status` action (checking "nothing crashed" is not
+evidence a silent no-op didn't happen, hence checking the live effect specifically):
+
+| state | `ilAsmRegistered` | live `textEditor.SyntaxHighlighting.Name` |
+|---|---|---|
+| C# (initial) | true | `C#` |
+| after switching to IL | true | **`ILAsm`** |
+
+`IlSpyAddInTests` 2/2 still pass.
+
+### Multi-pad workflow coverage - the actual point of the earlier per-pad checks (2026-08-03)
+
+User: improve ILSpy integration test coverage with attention to multi-pad linkage, since that's how
+a user actually works (not each pad in isolation). Added, inside
+`OpenAssembly_ShowsIlSpyPadsWithRealContent` (kept as one test - see the earlier "why one test
+method" note, which applies here too: the shared app instance makes independent `[Fact]`s interfere):
+
+1. **Search pad -> Assemblies pad -> Decompiled Code document.** The search-and-activate jump
+   (already covered) was only ever checked for its effect on the *tree selection*. Added the third
+   pad: after the jump, the decompiled document must contain the exact expected decompilation of
+   `ComputeGreeting` (fixed fixture, so exact source lines, not just "contains the name somewhere").
+2. **Assemblies pad -> Analyze pad.** New `od.ilspy.analyze-selected` DevFlow action runs exactly
+   what ILSpy's `AnalyzeCommand` does (`SelectedNodes.OfType<IMemberTreeNode>() ->
+   AnalyzerTreeViewModel.Analyze(node.Member)`). Asserts the exact resulting node
+   (`AnalyzedMethodTreeNode`, text `DebugTestApp.Program.ComputeGreeting(string) : string`) and its
+   exact children (`Uses`, `Used By`) - a real analysis, not an empty placeholder.
+3. **Back navigation undoes the jump.** New `od.ilspy.navigate-history` action drives
+   `AssemblyTreeModel.NavigateHistory` (what the Back/Forward toolbar buttons call). Asserts the
+   selection actually changes, Forward becomes available, and the tree lands back on the exact
+   assembly node.
+4. **Toolbar language dropdown -> Decompiled Code document.** Crosses the toolbar and the document -
+   the one toolbar element whose effect is directly observable in content. Asserts the exact IL
+   rendering of `ComputeGreeting` and that the language-version dropdown collapses (IL has none).
+
+**Two real bugs found by writing this, both are cross-pad state, exactly the kind of thing isolated
+per-pad tests structurally cannot catch:**
+
+- **The toolbar language dropdown didn't actually change the visible document.** Root cause:
+  `AssemblyTreeModel`'s own settings handler reacts to a language change by calling
+  `RefreshDecompiledView()`, which decompiles into `DockWorkspace.ActiveTabPage`'s text view - ILSpy's
+  own tab system, which this host deliberately never renders (only one dummy `TabPageModel` so
+  upstream reads of `ActiveTabPage` don't `NullReferenceException`). So the dropdown updated, ILSpy
+  decompiled *somewhere invisible*, and the document users actually see kept showing the previous
+  language. Fixed by giving `IlSpyWorkspaceHost` its own subscription to
+  `LanguageService.PropertyChanged` (Language/LanguageVersion), mirroring the existing
+  `AssemblyTreeSelectionChangedEventArgs` subscription that already exists for the same reason.
+  User first noticed this live ("刚才下拉框还是 IL，但是反编译的代码好像是 C#") before the test caught
+  it structurally - both point at the same gap.
+- **`od.ilspy.search` was not idempotent for repeated identical terms.** `SearchPaneModel.SearchTerm`
+  is a `SetProperty` - assigning the same value again is a no-op, so no `PropertyChanged` ->
+  no `searchBox.TextChanged` -> `StartSearch` never re-runs. The multi-pad test needs to re-search
+  the same term after other pads have been touched (the Search pane view can have been
+  re-materialized in between, invalidating any cached result index), and that second identical
+  search silently returned 0 results. Fixed by forcing the value to actually change
+  (clear then set) before assigning the real term.
+
+`IlSpyAddInTests` 2/2 pass with all of the above, using exact-value assertions throughout (fixed
+fixture, so precise expected output rather than "contains" checks) per explicit guidance to make
+assertions tighter given the fixture never changes.

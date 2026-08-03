@@ -95,6 +95,17 @@ namespace ICSharpCode.ILSpyAddIn
 			});
 		}
 
+		[DevFlowAction("od.ilspy.highlighting-status", Description = "Report whether ILAsm/Asm syntax highlighting is actually registered and applied (HighlightingManager.Instance.GetDefinition + the hosted DecompilerTextView's live textEditor.SyntaxHighlighting), used to verify the ILAsm-Mode.xshd/Asm-Mode.xshd resource-embedding fix - DecompilerTextView.RegisterHighlighting()'s own ExtensionMethods.RegisterHighlighting silently no-ops (no exception) when the embedded resource it looks up isn't found, so 'nothing crashed' is not evidence it worked")]
+		public static string HighlightingStatus()
+		{
+			var manager = ICSharpCode.AvalonEdit.Highlighting.HighlightingManager.Instance;
+			return JsonSerializer.Serialize(new {
+				ilAsmRegistered = manager.GetDefinition("ILAsm") != null,
+				asmRegistered = manager.GetDefinition("Asm") != null,
+				liveSyntaxHighlighting = IlSpyWorkspaceHost.DecompilerTextView.textEditor.SyntaxHighlighting?.Name
+			});
+		}
+
 		[DevFlowAction("od.ilspy.analyze-selected", Description = "Analyze the Assemblies tree's currently selected member(s) into the Analyze pad - exactly what ILSpy's AnalyzeCommand does (SelectedNodes.OfType<IMemberTreeNode>() -> AnalyzerTreeViewModel.Analyze(node.Member)). Returns the Analyze pad's root children, i.e. whether the Assemblies -> Analyze pad linkage actually produced anything")]
 		public static async Task<string> AnalyzeSelectedAsync()
 		{

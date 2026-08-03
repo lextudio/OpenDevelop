@@ -272,6 +272,24 @@
     <!-- Icons sourced from the VS2017 Image Library's own pre-converted XAML vector format
          (Microsoft's "AiToXaml" tool output - no SVG/PNG involved), loaded by VsIconLoader.cs. -->
     <EmbeddedResource Include="Icons\*.xaml" LogicalName="Icons.%(Filename)%(Extension)" />
+
+    <!-- ILSpy's own MSIL/Asm syntax highlighting definitions. DecompilerTextView.RegisterHighlighting()
+         doesn't actually call AvalonEdit's HighlightingManager.RegisterHighlighting(string,string[],string)
+         overload (that one is internal to AvalonEdit's assembly and unreachable from here) - it calls
+         DecompilerTextView.cs's own `static class ExtensionMethods` `RegisterHighlighting` extension
+         method (same file, bottom of DecompilerTextView.cs), which looks the resource up via
+         `typeof(DecompilerTextView).Assembly.GetManifestResourceStream(typeof(DecompilerTextView),
+         resourceName + ".xshd")` - i.e. in *this addin's own assembly*, under a namespace-qualified
+         resource name (GetManifestResourceStream(Type, string) prefixes the type's namespace). If the
+         stream is null it just does nothing - no exception, no fallback - which is why IL/Asm
+         decompiled output rendered as plain unhighlighted text instead of erroring. So: link the real
+         ILSpy .xshd files (not copies) and embed them under the exact LogicalName that lookup expects.
+         XML-Mode.xshd is not linked here: ILSpy registers "xml" via the OTHER (AvalonEdit-resolving)
+         RegisterHighlighting call for THAT one specifically it's actually a name collision with
+         AvalonEdit's own built-in "XML" definition for .xml/.baml, not a gap - only ILAsm/Asm use the
+         local-resource path and are actually missing. -->
+    <EmbeddedResource Include="$(ILSpySrc)\TextView\ILAsm-Mode.xshd" LogicalName="ICSharpCode.ILSpy.TextView.ILAsm-Mode.xshd" />
+    <EmbeddedResource Include="$(ILSpySrc)\TextView\Asm-Mode.xshd" LogicalName="ICSharpCode.ILSpy.TextView.Asm-Mode.xshd" />
   </ItemGroup>
 
   <ItemGroup Label="ILSpyLinkedView">
