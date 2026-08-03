@@ -136,8 +136,12 @@ namespace ICSharpCode.Core.Presentation
 				return Array.Empty<ToolBar>();
 			}
 			List<ToolBar> toolBars = new List<ToolBar>();
-			foreach (AddInTreeNode childNode in treeNode.ChildNodes.Values) {
-				toolBars.Add(CreateToolBar(inputBindingOwner, owner, childNode));
+			foreach (KeyValuePair<string, AddInTreeNode> childNode in treeNode.ChildNodes) {
+				ToolBar toolbar = CreateToolBar(inputBindingOwner, owner, childNode.Value);
+				// Tag the strip with its category id (the child path name, e.g. "Standard",
+				// "Build", "ILSpy") so hosts can order strips and build show/hide menus.
+				toolbar.Tag = childNode.Key;
+				toolBars.Add(toolbar);
 			}
 			return toolBars.ToArray();
 		}

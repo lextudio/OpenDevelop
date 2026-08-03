@@ -9,8 +9,10 @@ real WPF ILSpy panes:
 - left: ILSpy `AssemblyTreeModel` + `AssemblyListPane`
 - center: decompiled output as an OpenDevelop document tab (a read-only, virtual file - see
   `DecompiledCodeViewContent`), not a dedicated pad
-- right/bottom: ILSpy `SearchPaneModel`, `AnalyzerTreeViewModel`, metadata panes, and any future
-  exported `ToolPaneModel`
+- top (above the documents): ILSpy `SearchPaneModel` - real ILSpy docks Search above the
+  decompiled-code documents (`Docking/DockLayoutSettings.cs`), and ILSpyAddIn/Layouts/ILSpy.xml
+  mirrors that
+- bottom (below the documents): `AnalyzerTreeViewModel`, and any future exported `ToolPaneModel`
 
 ## Open assembly flow
 

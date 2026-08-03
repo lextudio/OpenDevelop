@@ -15,7 +15,10 @@ namespace ICSharpCode.ILSpyAddIn.Commands
 		{
 			var dialog = new OpenFileDialog {
 				AddExtension = true,
-				Filter = "Assemblies (*.dll;*.exe)|*.dll;*.exe|All files (*.*)|*.*",
+				Filter = ".NET assemblies (*.dll;*.exe;*.winmd;*.wasm)|*.dll;*.exe;*.winmd;*.wasm" +
+					"|NuGet Packages (*.nupkg)|*.nupkg" +
+					"|Portable Program Database (*.pdb)|*.pdb" +
+					"|All files (*.*)|*.*",
 				FilterIndex = 0,
 				Multiselect = false,
 				CheckFileExists = true,

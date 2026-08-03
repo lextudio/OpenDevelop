@@ -123,6 +123,21 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         {
             // Best-effort - same rationale as above.
         }
+
+        // Per-user saved layout copies (layouts/*.xml under the SharpDevelop5 config dir) are
+        // written at every graceful app exit and restored over the AddIn templates on the next
+        // launch - a stale ILSpy layout from an earlier session would override the ILSpyAddIn's
+        // own Layouts/ILSpy.xml template and make dock-position assertions nondeterministic.
+        try
+        {
+            var layoutsDir = Path.Combine(configDir, "layouts");
+            if (Directory.Exists(layoutsDir))
+                Directory.Delete(layoutsDir, recursive: true);
+        }
+        catch
+        {
+            // Best-effort - same rationale as above.
+        }
     }
 
     public async ValueTask DisposeAsync()

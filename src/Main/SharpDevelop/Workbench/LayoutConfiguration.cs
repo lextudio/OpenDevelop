@@ -26,7 +26,11 @@ using ICSharpCode.Core;
 
 namespace ICSharpCode.SharpDevelop.Workbench
 {
-	class LayoutConfiguration
+	// Public so AddIns (e.g. the ILSpy AddIn, which owns its own named layout via
+	// ILayoutTemplateProvider) can switch to their layout programmatically - e.g. opening an
+	// assembly enters the ILSpy layout. Setting CurrentLayoutName runs the layout's onActivating
+	// hook and reloads the layout XML, exactly like picking it from ChooseLayoutComboBox.
+	public class LayoutConfiguration
 	{
 		const string configFile = "LayoutConfig.xml";
 		public static readonly List<LayoutConfiguration> Layouts = new List<LayoutConfiguration>();

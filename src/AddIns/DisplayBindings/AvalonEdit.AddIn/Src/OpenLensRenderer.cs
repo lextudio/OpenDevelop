@@ -408,7 +408,18 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			var items = itemsByAnchorId[anchor.AnchorId].OrderBy(i => i.Order).ToArray();
 			if (items.Length == 0)
 				return null;
-			return new[] { (IVisualLineBlockAdornment)new OpenLensBlockAdornment(this, anchor.AnchorId, items) };
+			// Align the row with the code line's own indentation (the first non-whitespace column)
+			// like Visual Studio's CodeLens rows - the anchor's range spans the declaration's
+			// *name* token, which sits further right than the line's indent.
+			int alignToColumn = -1;
+			for (int i = documentLine.Offset; i < documentLine.EndOffset; i++) {
+				char ch = document.GetCharAt(i);
+				if (ch != ' ' && ch != '\t') {
+					alignToColumn = i - documentLine.Offset;
+					break;
+				}
+			}
+			return new[] { (IVisualLineBlockAdornment)new OpenLensBlockAdornment(this, anchor.AnchorId, items, alignToColumn) };
 		}
 
 		/// <summary>
@@ -423,14 +434,17 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			readonly OpenLensRenderer owner;
 			readonly IReadOnlyList<OpenLensItem> items;
 
-			public OpenLensBlockAdornment(OpenLensRenderer owner, string anchorId, IReadOnlyList<OpenLensItem> items)
+			public OpenLensBlockAdornment(OpenLensRenderer owner, string anchorId, IReadOnlyList<OpenLensItem> items, int alignToColumn)
 			{
 				this.owner = owner;
 				Key = anchorId;
 				this.items = items;
+				AlignToColumn = alignToColumn;
 			}
 
 			public object Key { get; }
+
+			public int AlignToColumn { get; }
 
 			// A lens row reads comfortably a bit shorter than a full text line - unlike the retired
 			// inline-element prototype, this number no longer needs to relate to

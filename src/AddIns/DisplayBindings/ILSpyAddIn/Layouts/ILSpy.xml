@@ -1,14 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Mirrors real ILSpy's default layout (ILSpy Docking/DockLayoutSettings.cs): assemblies on the
+     left, Search docked ABOVE the decompiled-code documents, Analyzer BELOW the documents. -->
 <LayoutRoot OpenDevelopLayoutSchemaVersion="1">
   <RootPanel Orientation="Horizontal">
     <LayoutAnchorablePane DockWidth="280" Name="LeftPane">
       <LayoutAnchorable Title="Assemblies" ContentId="assemblyListPane" IsSelected="true" AutoHideMinWidth="100" AutoHideMinHeight="100" />
     </LayoutAnchorablePane>
-    <LayoutDocumentPane />
-    <LayoutAnchorablePane DockWidth="280" Name="RightPane">
-      <LayoutAnchorable Title="Search" ContentId="searchPane" IsSelected="true" AutoHideMinWidth="100" AutoHideMinHeight="100" />
-      <LayoutAnchorable Title="Analyze" ContentId="analyzerPane" AutoHideMinWidth="100" AutoHideMinHeight="100" />
-    </LayoutAnchorablePane>
+    <LayoutPanel Orientation="Vertical">
+      <LayoutAnchorablePane DockHeight="225" Name="TopPane">
+        <LayoutAnchorable Title="Search" ContentId="searchPane" IsSelected="true" AutoHideMinWidth="100" AutoHideMinHeight="100" />
+      </LayoutAnchorablePane>
+      <LayoutDocumentPane />
+      <LayoutAnchorablePane DockHeight="225" Name="BottomPane">
+        <LayoutAnchorable Title="Analyze" ContentId="analyzerPane" AutoHideMinWidth="100" AutoHideMinHeight="100" />
+      </LayoutAnchorablePane>
+    </LayoutPanel>
   </RootPanel>
   <TopSide />
   <RightSide />

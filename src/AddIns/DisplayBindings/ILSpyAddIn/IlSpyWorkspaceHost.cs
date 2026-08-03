@@ -230,6 +230,14 @@ namespace ICSharpCode.ILSpyAddIn
 		public static async Task OpenAssemblyAsync(string fileName)
 		{
 			EnsureInitialized();
+
+			// Opening an assembly means entering the ILSpy workbench layout: the layout's
+			// onActivating hook (IlSpyLayoutTemplateProvider) already ran EnsureInitialized, and
+			// CurrentLayoutName's setter restores ILSpy.xml (docking the three panes) after it -
+			// only switch when the user isn't already in the ILSpy layout.
+			if (LayoutConfiguration.CurrentLayoutName != "ILSpy")
+				LayoutConfiguration.CurrentLayoutName = "ILSpy";
+
 			assemblyTreeModel.OpenFiles(new[] { fileName });
 
 			// DecompilerTextView.DecompileAsync's own doc comment: "If the operation is

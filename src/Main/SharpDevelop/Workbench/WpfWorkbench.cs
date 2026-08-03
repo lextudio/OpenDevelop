@@ -24,6 +24,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Xml;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -77,6 +78,11 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		List<PadDescriptor> padDescriptorCollection = new List<PadDescriptor>();
 		SDStatusBar statusBar = new SDStatusBar();
 		ToolBar[] toolBars;
+		readonly ToolBarTray toolBarTray = new ToolBarTray();
+
+		// Persisted user drag-reordering of the toolbar strips (saved next to the per-user layout
+		// files; restored over the preferred order at startup).
+		static string ToolBarLayoutFileName => Path.Combine(LayoutConfiguration.ConfigLayoutPath, "ToolBarLayout.xml");
 		
 		public WpfWorkbench()
 		{
@@ -122,10 +128,21 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			}
 			
 			toolBars = ToolBarService.CreateToolBars(this, this, "/SharpDevelop/Workbench/ToolBar");
+			// VS-style: several category strips (Standard/Edit/Build/Debug/...), each contributed
+			// as its own /SharpDevelop/Workbench/ToolBar/<Category> path, stacked in a ToolBarTray
+			// under the main menu. The tray carries a right-click menu to show/hide strips, and
+			// the strips can be dragged to reorder/regroup (ToolBarTray handles the drag chrome;
+			// CreateToolBar locks strips by default, so explicitly unlock the main ones here).
 			foreach (ToolBar tb in toolBars) {
-				DockPanel.SetDock(tb, Dock.Top);
-				dockPanel.Children.Insert(1, tb);
+				ToolBarTray.SetIsLocked(tb, false);
 			}
+			var orderedToolBars = OrderToolBars(toolBars);
+			foreach (ToolBar tb in orderedToolBars) {
+				toolBarTray.ToolBars.Add(tb);
+			}
+			BuildToolBarContextMenu();
+			DockPanel.SetDock(toolBarTray, Dock.Top);
+			dockPanel.Children.Insert(1, toolBarTray);
 			DockPanel.SetDock(statusBar, Dock.Bottom);
 			dockPanel.Children.Insert(dockPanel.Children.Count - 2, statusBar);
 			
@@ -248,6 +265,101 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			foreach (ToolBar tb in toolBars) {
 				ToolBarService.UpdateStatus(tb.ItemsSource);
 			}
+		}
+
+		// Preferred strip order (VS-style): anything not listed sorts alphabetically afterwards.
+		static readonly string[] PreferredToolBarOrder = {
+			"Standard", "Edit", "Build", "Debug", "Search", "Bookmarks", "Navigation", "ILSpy"
+		};
+
+		static int ToolBarOrderIndex(string category)
+		{
+			for (int i = 0; i < PreferredToolBarOrder.Length; i++) {
+				if (string.Equals(PreferredToolBarOrder[i], category, StringComparison.OrdinalIgnoreCase))
+					return i;
+			}
+			return int.MaxValue;
+		}
+
+		// A user-dragged strip arrangement wins over the preferred order; anything not covered by
+		// the saved layout (e.g. a new strip an addin contributed) appends in preferred order.
+		ToolBar[] OrderToolBars(IEnumerable<ToolBar> toolBars)
+		{
+			var saved = LoadToolBarLayout();
+			var byId = toolBars.ToDictionary(tb => tb.Tag as string ?? tb.Name, StringComparer.OrdinalIgnoreCase);
+			var result = new List<ToolBar>(toolBars.Count());
+			foreach (string id in saved) {
+				if (byId.TryGetValue(id, out ToolBar tb)) {
+					result.Add(tb);
+					byId.Remove(id);
+				}
+			}
+			result.AddRange(byId.Values.OrderBy(tb => ToolBarOrderIndex(tb.Tag as string))
+				.ThenBy(tb => tb.Tag as string, StringComparer.OrdinalIgnoreCase));
+			return result.ToArray();
+		}
+
+		void SaveToolBarLayout()
+		{
+			try {
+				string fileName = ToolBarLayoutFileName;
+				Directory.CreateDirectory(Path.GetDirectoryName(fileName));
+				var doc = new XmlDocument();
+				XmlElement root = doc.CreateElement("ToolBarLayout");
+				foreach (ToolBar tb in toolBarTray.ToolBars) {
+					string id = tb.Tag as string ?? tb.Name;
+					if (string.IsNullOrWhiteSpace(id))
+						continue;
+					XmlElement strip = doc.CreateElement("Strip");
+					strip.SetAttribute("id", id);
+					root.AppendChild(strip);
+				}
+				doc.AppendChild(root);
+				doc.Save(fileName);
+			} catch (Exception ex) {
+				LoggingService.Warn("Could not save toolbar strip layout.", ex);
+			}
+		}
+
+		string[] LoadToolBarLayout()
+		{
+			try {
+				var doc = new XmlDocument();
+				doc.Load(ToolBarLayoutFileName);
+				var nodes = doc.SelectNodes("//Strip");
+				if (nodes == null)
+					return Array.Empty<string>();
+				var ids = new List<string>();
+				foreach (XmlElement element in nodes) {
+					string id = element.GetAttribute("id");
+					if (!string.IsNullOrWhiteSpace(id))
+						ids.Add(id);
+				}
+				return ids.ToArray();
+			} catch {
+				return Array.Empty<string>();
+			}
+		}
+
+		// VS-style right-click on the toolbar area: toggle each registered strip on/off.
+		void BuildToolBarContextMenu()
+		{
+			var menu = new ContextMenu();
+			foreach (ToolBar tb in toolBars) {
+				string category = tb.Tag as string ?? tb.Name;
+				if (string.IsNullOrWhiteSpace(category))
+					continue;
+				var item = new MenuItem {
+					Header = category,
+					IsCheckable = true,
+					IsChecked = tb.Visibility == Visibility.Visible
+				};
+				item.Click += delegate {
+					tb.Visibility = item.IsChecked ? Visibility.Visible : Visibility.Collapsed;
+				};
+				menu.Items.Add(item);
+			}
+			toolBarTray.ContextMenu = menu;
 		}
 		
 		void OnLanguageChanged(object sender, EventArgs e)
@@ -615,6 +727,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				
 				if (SD.ParserService is ParserService parserService)
 					parserService.StopParserThread();
+				SaveToolBarLayout();
 				((WpfWorkbench)SD.Workbench).WorkbenchLayout.StoreConfiguration();
 				restoreBoundsBeforeClosing = this.RestoreBounds;
 				

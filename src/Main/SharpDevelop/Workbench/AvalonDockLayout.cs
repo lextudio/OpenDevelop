@@ -40,6 +40,10 @@ namespace ICSharpCode.SharpDevelop.Workbench
 	/// </summary>
 	sealed class AvalonDockLayout : IWorkbenchLayout
 	{
+		// Panes excluded from the currently restored layout (see LoadLayout): kept so the next
+		// layout switch can put them back into the source collection before restoring.
+		readonly List<ToolPaneModel> layoutExcludedPanes = new List<ToolPaneModel>();
+
 		WpfWorkbench workbench;
 		DockingManager dockingManager = new DockingManager();
 		DockWorkspace dockWorkspace;
@@ -345,7 +349,50 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			// data/layouts/*.xml template files were stale AvalonDock 1.x-schema XML, incompatible
 			// with XmlLayoutSerializer's modern schema - regenerated as part of this change (see
 			// the templates themselves for provenance).
+
+			// Re-add panes a previous layout switch excluded (see below), so this layout can
+			// restore them again if it contains them.
+			foreach (ToolPaneModel pane in layoutExcludedPanes) {
+				dockWorkspace.AddToolPane(pane);
+			}
+			layoutExcludedPanes.Clear();
+
 			dockWorkspace.RestoreLayout(fileName);
+
+			// A named layout shows exactly the panes it contains. The AnchorablesSource
+			// reconciliation re-docks any visible ToolPaneModel that isn't in the restored layout
+			// (e.g. the Project Browser when entering the ILSpy layout, landing in front), so
+			// remove those from the source collection here - their docked anchorable is removed
+			// with them. They stay registered and are re-added on the next LoadLayout call.
+			// NOTE: the "in layout" set must come from the layout FILE, not from the live
+			// dockingManager.Layout - by the time RestoreLayout returns, the reconciliation has
+			// already re-docked the extra panes, so a live check would see them as "in layout".
+			var contentIdsInLayout = ReadAnchorableContentIds(fileName);
+			foreach (ToolPaneModel pane in dockWorkspace.ToolPanes.ToList()) {
+				if (!contentIdsInLayout.Contains(pane.ContentId)) {
+					dockWorkspace.RemoveToolPane(pane);
+					layoutExcludedPanes.Add(pane);
+				}
+			}
+		}
+
+		static HashSet<string> ReadAnchorableContentIds(string fileName)
+		{
+			var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+			try {
+				var doc = new System.Xml.XmlDocument();
+				doc.Load(fileName);
+				var nodes = doc.SelectNodes("//@ContentId");
+				if (nodes != null) {
+					foreach (System.Xml.XmlAttribute attribute in nodes) {
+						if (!string.IsNullOrWhiteSpace(attribute.Value))
+							ids.Add(attribute.Value);
+					}
+				}
+			} catch (Exception ex) {
+				LoggingService.Warn("Could not read anchorable ContentIds from layout file '" + fileName + "'.", ex);
+			}
+			return ids;
 		}
 		
 		public void StoreConfiguration()

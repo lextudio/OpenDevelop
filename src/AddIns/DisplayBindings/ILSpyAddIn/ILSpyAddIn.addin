@@ -37,6 +37,39 @@
 		                title = "ILSpy Decompiler View"/>
 	</Path>
 
+	<Path name = "/SharpDevelop/Workbench/DisplayBindings">
+		<!-- .dll/.exe route to the hosted ILSpy (open + auto-enter the ILSpy layout) instead of
+		     failing with "no display binding". Also adds the Assemblies entry to File > Open's
+		     filter list via the FileFilter path below. -->
+		<DisplayBinding id = "Assembly"
+		                class = "ICSharpCode.ILSpyAddIn.AssemblyDisplayBinding"
+		                title = "ILSpy Assembly"/>
+	</Path>
+
+	<Path name = "/SharpDevelop/Workbench/FileFilter">
+		<!-- Mirrors real ILSpy's own open dialog (ILSpy Commands/OpenCommand.cs). -->
+		<FileFilter id         = "Assemblies"
+		            name       = ".NET assemblies (*.dll;*.exe;*.winmd;*.wasm)"
+		            extensions = "*.dll;*.exe;*.winmd;*.wasm"/>
+		<FileFilter id         = "NuGetPackages"
+		            name       = "NuGet Packages (*.nupkg)"
+		            extensions = "*.nupkg"/>
+		<FileFilter id         = "Pdb"
+		            name       = "Portable Program Database (*.pdb)"
+		            extensions = "*.pdb"/>
+	</Path>
+
+	<Path name = "/SharpDevelop/Workbench/ToolBar/ILSpy">
+		<!-- Main-toolbar entry point for opening an assembly into the hosted ILSpy. Kept on the
+		     main toolbar (not just File > Open > Assembly...) because this host's LibreWPF layer
+		     cannot open nested menu popups - a top-level button is the reliable path. Lives on
+		     its own strip so more ILSpy commands can join it later. -->
+		<ToolbarItem id = "OpenAssembly"
+		             icon = "Assembly"
+		             tooltip = "Open Assembly..."
+		             class = "ICSharpCode.ILSpyAddIn.Commands.OpenAssemblyCommand"/>
+	</Path>
+
 	<Path name = "/SharpDevelop/Workbench/MainMenu/File/Open">
 		<MenuItem id = "OpenAssembly"
 		          label = "Assembly..."

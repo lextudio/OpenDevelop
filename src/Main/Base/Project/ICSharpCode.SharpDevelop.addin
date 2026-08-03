@@ -949,7 +949,9 @@
 		</Condition>
 		
 		<ToolbarItem id = "Separator1" type = "Separator"/>
-		
+	</Path>
+	
+	<Path name = "/SharpDevelop/Workbench/ToolBar/Edit">
 		<ToolbarItem id = "Cut"
 		             icon = "Icons.16x16.CutIcon"
 		             tooltip = "${res:XML.MainMenu.EditMenu.Cut.Description}"
@@ -966,7 +968,10 @@
 		             icon = "Icons.16x16.DeleteIcon"
 		             tooltip = "${res:XML.MainMenu.EditMenu.Delete.Description}"
 		             command = "Delete"/>
-		<ToolbarItem id = "UndoRedoSeparator"  type = "Separator"/>
+	</Path>
+	
+	<Path name = "/SharpDevelop/Workbench/ToolBar/Standard">
+
 		<ToolbarItem id      = "Undo"
 		             icon    = "Icons.16x16.UndoIcon"
 		             tooltip = "${res:XML.MainMenu.EditMenu.Undo.Description}"
@@ -975,8 +980,10 @@
 		             icon    = "Icons.16x16.RedoIcon"
 		             tooltip = "${res:XML.MainMenu.EditMenu.Redo.Description}"
 		             command = "Redo"/>
-		
-		<ToolbarItem id = "CompileSeparator" type = "Separator"/>
+	</Path>
+	
+	<Path name = "/SharpDevelop/Workbench/ToolBar/Build">
+
 		
 		<Condition name = "SolutionOpen" action = "Disable">
 			<ToolbarItem id      = "Compile"
@@ -993,8 +1000,10 @@
 				             class   = "ICSharpCode.SharpDevelop.Project.Commands.BuildProject"/>
 			</Condition>
 		</Condition>
-		
-		<ToolbarItem id = "DebuggerSeparator" type = "Separator"  />
+	</Path>
+	
+	<Path name = "/SharpDevelop/Workbench/ToolBar/Debug">
+
 		
 		<ComplexCondition>
 			<Or>
@@ -1078,14 +1087,19 @@
 				</Condition>
 			</ComplexCondition>
 		</Condition>
+	</Path>
+	
+	<Path name = "/SharpDevelop/Workbench/ToolBar/Standard">
+
 		
-		<ToolbarItem id = "ChooseConfigurationSeparator" type = "Separator"/>
-		
+		<ToolbarItem id = "LayoutSeparator" type = "Separator"/>
 		<ToolbarItem id    = "ChooseLayout"
 		             type  = "Custom"
 		             class = "ICSharpCode.SharpDevelop.Workbench.ChooseLayoutComboBox" />
-		
-		<ToolbarItem id="NavigationSeparator" type="Separator"/>
+	</Path>
+	
+	<Path name = "/SharpDevelop/Workbench/ToolBar/Navigation">
+
 		<Condition name="CanNavigateBack" action="Disable">
 			<ToolbarItem id="NavigateBack"
 			             type="SplitButton"
@@ -2002,14 +2016,17 @@
 		<Class id = "DefaultDebuggerToolTips" class = "ICSharpCode.SharpDevelop.Debugging.DebuggerTextAreaToolTipProvider"/>
 	</Path>
 	
-	<Path name = "/SharpDevelop/Workbench/ToolBar/Standard">
-		<ToolbarItem id = "SearchSeparator" type = "Separator"/>
+	<Path name = "/SharpDevelop/Workbench/ToolBar/Edit">
 		<Condition name = "WindowActive" activewindow="ICSharpCode.SharpDevelop.Editor.ITextEditor" action="Disable">
 			<ToolbarItem id = "Comment"
 			             icon = "Icons.16x16.CommentRegion"
 			             tooltip = "${res:XML.TextAreaContextMenu.CommentUncommentSelection}"
 			             class = "ICSharpCode.SharpDevelop.Editor.Commands.CommentRegion"/>
-			<ToolbarItem id = "SearchSeparator2" type = "Separator"/>
+		</Condition>
+	</Path>
+	
+	<Path name = "/SharpDevelop/Workbench/ToolBar/Bookmarks">
+		<Condition name = "WindowActive" activewindow="ICSharpCode.SharpDevelop.Editor.ITextEditor" action="Disable">
 			<ToolbarItem id = "ToggleBookmark"
 			             icon = "Bookmarks.ToggleMark"
 			             tooltip = "${res:XML.MainMenu.SearchMenu.ToggleBookmark.Description}"

@@ -32,8 +32,7 @@
 		          class = "SearchAndReplace.Replace"/>
 	</Path>
 	
-	<Path name = "/SharpDevelop/Workbench/ToolBar/Standard">
-		<ToolbarItem id = "FindSeparator" type = "Separator" />
+	<Path name = "/SharpDevelop/Workbench/ToolBar/Search">
 		<ToolbarItem id      = "Find"
 		             icon    = "Icons.16x16.FindIcon"
 		             tooltip = "${res:MainWindow.Windows.ClassBrowser.CommitSearch.ToolTip}"

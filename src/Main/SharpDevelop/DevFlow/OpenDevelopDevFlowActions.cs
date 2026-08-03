@@ -53,6 +53,31 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new { success = true, effective = new { effective.Label, effective.RootPath, effective.HighestSdkVersion } });
 		}
 
+		[DevFlowAction("od.update.check", Description = "Check for OpenDevelop updates on GitHub (lextudio/OpenDevelop latest release). Returns the running version, the latest published version, whether an update is available, and the download URL. No published release yet is reported as updateAvailable=false; network/parse failures set checkFailed")]
+		public static async Task<string> CheckForUpdateAsync()
+		{
+			try {
+				var settings = new ICSharpCode.SharpDevelop.Updates.UpdateSettings();
+				var latest = await ICSharpCode.SharpDevelop.Updates.UpdateService.GetLatestVersionAsync();
+				bool available = latest != null && latest.Version > ICSharpCode.SharpDevelop.Updates.AppUpdateService.CurrentVersion;
+				return JsonSerializer.Serialize(new {
+					currentVersion = ICSharpCode.SharpDevelop.Updates.AppUpdateService.CurrentVersion.ToString(),
+					assemblyVersion = typeof(ICSharpCode.SharpDevelop.Updates.UpdateService).Assembly.GetName().Version?.ToString(),
+					latestVersion = latest?.Version.ToString(),
+					updateAvailable = available,
+					downloadUrl = available ? latest.DownloadUrl : null,
+					automaticCheckEnabled = settings.AutomaticUpdateCheckEnabled
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new {
+					currentVersion = ICSharpCode.SharpDevelop.Updates.AppUpdateService.CurrentVersion.ToString(),
+					assemblyVersion = typeof(ICSharpCode.SharpDevelop.Updates.UpdateService).Assembly.GetName().Version?.ToString(),
+					checkFailed = true,
+					error = ex.Message
+				});
+			}
+		}
+
 		[DevFlowAction("od.open-solution", Description = "Open a solution or project file by path (bypasses the native Open dialog)")]
 		public static string OpenSolution(string path)
 		{

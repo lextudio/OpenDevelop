@@ -9,6 +9,12 @@
     <NoWarn>$(NoWarn);0809;1591</NoWarn>
     <SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>..\..\ICSharpCode.SharpDevelop.snk</AssemblyOriginatorKeyFile>
+    <!-- Marks this build as OpenDevelop rather than an ILSpy host: the update checker links
+         ILSpy's own update-code shape but must resolve versions/release feed against
+         lextudio/OpenDevelop (see Src/Updates/). Local files use this symbol to keep
+         OpenDevelop-specific behavior explicit and to allow future linked ILSpy sources to
+         branch on it. -->
+    <DefineConstants>$(DefineConstants);OPOPENDEVELOP</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <!-- For NuGetPackageSearchService.cs (shared with UnoDevelop, doc/technotes/nuget.md) -->
@@ -63,6 +69,10 @@
       <Link>Dom\TreeNodeFactoryService.cs</Link>
     </Compile>
     <Compile Include="..\..\GlobalAssemblyInfo.cs" Link="Properties\GlobalAssemblyInfo.cs" />
+    <!-- Update checker reuses ILSpy's own minimal data-shape type verbatim (the remaining update
+         pieces live in Src/Updates/ and follow the same API shape: AppUpdateService.CurrentVersion,
+         UpdateService.CheckForUpdatesIfEnabledAsync/GetLatestVersionAsync, UpdateSettings). -->
+    <Compile Include="..\..\..\..\externals\ilspy\ILSpy\Updates\AvailableVersionInfo.cs" Link="Updates\AvailableVersionInfo.cs" />
   </ItemGroup>
   <ItemGroup>
     <!-- Out of MVP scope: deep NRefactory-era refactoring engine (type-graph) whose API shape

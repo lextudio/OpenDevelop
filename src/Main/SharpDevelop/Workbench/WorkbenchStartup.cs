@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Threading;
@@ -165,7 +166,21 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			
 			if (SD.ParserService is ParserService parserService)
 				parserService.StartParserThread();
-			
+
+			// Background update check (weekly, opt-out via UpdateSettings): never blocks startup
+			// and never shows UI on failure - the result is logged and surfaced through
+			// od.update.check / the About page.
+			Task.Run(async () => {
+				try {
+					var url = await ICSharpCode.SharpDevelop.Updates.UpdateService
+						.CheckForUpdatesIfEnabledAsync(new ICSharpCode.SharpDevelop.Updates.UpdateSettings());
+					if (url != null)
+						LoggingService.Info("An OpenDevelop update is available: " + url);
+				} catch (Exception ex) {
+					LoggingService.Warn("Update check failed: " + ex.Message);
+				}
+			});
+
 			// finally run the workbench window ...
 			app.Run(SD.Workbench.MainWindow);
 			
