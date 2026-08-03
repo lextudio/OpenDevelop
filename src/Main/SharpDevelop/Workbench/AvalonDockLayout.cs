@@ -397,6 +397,24 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		public void StoreConfiguration()
 		{
+			// Symmetric with LoadConfiguration's own "doesn't do anything until the docking
+			// manager is loaded" guard (see dockingManager_Loaded) - without it, switching layouts
+			// (LayoutConfiguration.CurrentLayoutName's setter, or ChooseLayoutComboBox's reactive
+			// re-selection in response to LayoutConfiguration.LayoutChanged) before the docking
+			// manager's first Loaded event has fired persists whatever ad-hoc arrangement
+			// AvalonDock's default insertion strategy produced for the newly-registered panes
+			// (e.g. an addin's onActivating adding its panes reactively via the AnchorablesSource
+			// binding) - not the layout's real template. Once that gets written to disk, it's
+			// self-reinforcing: the *next* LoadConfiguration (the one dockingManager_Loaded
+			// actually runs once IsLoaded becomes true) faithfully restores exactly that broken
+			// file instead of ever reaching the addin's clean template, and every later save just
+			// re-persists it (doc/technotes/ilspy.md, "the layout gets lost" - measured directly:
+			// opening an assembly right after startup, before the docking manager had rendered
+			// once, permanently corrupted the saved "ILSpy" layout to tab all three ILSpy pads
+			// into the pre-existing Properties/Projects pane instead of their own LeftPane/
+			// TopPane/BottomPane groups).
+			if (!dockingManager.IsLoaded)
+				return;
 			try {
 				LayoutConfiguration current = LayoutConfiguration.CurrentLayout;
 				if (current != null && !current.ReadOnly) {

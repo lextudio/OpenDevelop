@@ -1,5 +1,29 @@
 # ILSpy AddIn Port
 
+## Status (2026-08-03): feature integration complete
+
+The ILSpy decompiler AddIn feature work described by this document - the part a user actually
+interacts with - is done: the `ILSpy` workbench layout (Assemblies/Search/Analyze pads +
+decompiled-code documents), the toolbar (icon buttons, dropdowns, visibility toggles), MSIL/Asm
+syntax highlighting, reference hyperlink navigation, multi-select decompilation, single member-
+and namespace-node routing to native documents, and cross-assembly reference navigation are all
+implemented and covered by `tests/OpenDevelop.IntegrationTests/IlSpyAddInTests.cs`. See "Closing
+out the remaining smaller gaps" near the end of this document for the final items closed.
+
+Also fixed in the course of that work, but scoped wider than the AddIn itself: a real "the ILSpy
+layout gets lost" bug in the shell's own `AvalonDockLayout.StoreConfiguration()` - it could
+persist a not-yet-templated, ad-hoc pane arrangement if a layout switch happened before the
+docking manager's first `Loaded` event, permanently corrupting the saved layout on every
+subsequent launch. Fixed with a guard symmetric to `LoadConfiguration`'s existing one; see
+`AvalonDockLayout.cs`'s `StoreConfiguration` for the full explanation.
+
+**Not done, and out of scope for "the ILSpy AddIn":** the broader "use ILSpy as shell-
+modernization reference" architecture initiative this document also opened (see "2026-08
+architecture update" below) - the versioned layout DTO, `WorkbenchWorkspace`/`DocumentPaneModel`
+consolidation, and the AvalonEdit/full-app theming Phase 3 token work remain deliberately
+deferred, longer-running, separately-scoped efforts, not blockers for the AddIn's own
+completeness. Each is flagged as still-open at its own point in the document below.
+
 ## Layout goal
 
 OpenDevelop should expose an `ILSpy` workbench layout alongside `Default`, `Debug`, and
@@ -1671,6 +1695,11 @@ code to hit an edge case in.
 
 ### Multi-select and reference hyperlink navigation: still out of scope, on purpose
 
+> **Both since done - see "Reference hyperlink navigation - implemented earlier, now actually
+> verified" and "Multi-select decompilation - the last item with zero code either way" further
+> down this document (2026-08-03).** Left below for the historical reasoning, which is still
+> accurate as of when it was written.
+
 Per the plan's steps 4-5, these were not attempted this batch:
 
 - **Multi-node selection** (several tree nodes selected at once) has no native-document equivalent
@@ -2122,3 +2151,228 @@ per-pad tests structurally cannot catch:**
 `IlSpyAddInTests` 2/2 pass with all of the above, using exact-value assertions throughout (fixed
 fixture, so precise expected output rather than "contains" checks) per explicit guidance to make
 assertions tighter given the fixture never changes.
+
+### Step 3 re-enabled: whole-module tree selection now routes to the native document (2026-08-03, continued)
+
+Picked back up per the earlier survey of "what's left." The blocker was never technical - `NavigateToModule`/`DecompiledViewContent`'s whole-module support and the `DecompilationTask` plumbing were already correct and already used by direct exercising (`od.ilspy.navigate-to-type`-style calls) - it was that `OpenAssembly_ShowsIlSpyPadsWithRealContent` pinned the *old* behavior. Fixed by updating the test's expectations deliberately, then re-enabling the `AssemblyTreeNode` branch in `OnSelectionChangedAsync`:
+
+- Active view after opening an assembly is now `ICSharpCode.ILSpyAddIn.DecompiledViewContent` (native), not `DecompiledCodeViewContent` (bespoke pane).
+- Its tab title is `"[Module]"` (`DecompiledTypeReference.IsWholeModule`'s title, from the earlier fix), not `"Decompiled Code"`.
+- `od.ilspy.status`'s decompiled-text assertions needed no changes - the fallback added when step 2 first shipped (read from the active `DecompiledViewContent` when there is one, else the bespoke pane) already covers the whole-module case too.
+
+Verified live beyond the test itself: `od.active-view` after `od.ilspy.open-assembly` reports
+`typeName: DecompiledViewContent`, `fileName: ilspy://.../module.cs`, and real whole-module C# output
+(assembly-level attributes, `using` directives) - not a stub. `IlSpyAddInTests` 2/2 pass.
+
+**What this unblocks next** (not done in this pass): with ordinary tree selection now covering both
+the single-type and whole-module cases through the native path, the bespoke `DecompilerTextView`/
+`decompiledCodeView` singleton is only still reachable for namespace nodes, member nodes, and
+multi-selection (see "Multi-select and reference hyperlink navigation: still out of scope" above -
+unchanged, those remain real, separate gaps). Removing the bespoke pane entirely (Phase 4's "remove
+the dummy ILSpy TabPageModel path") still requires covering those remaining cases first.
+
+### Reference hyperlink navigation - implemented earlier, now actually verified (2026-08-03)
+
+Correction to this technote's own record: the "Multi-select and reference hyperlink navigation:
+still out of scope" entry above said "no code exists for this yet in either direction." That became
+stale without a follow-up note - `ReferenceTrackingTextOutput`'s `DecompiledReferenceSpan` capture
+and `DecompiledViewContent.OnPreviewMouseDown`'s Ctrl+Click handler (added while fixing the
+`SequencePointBuilder` root cause) already implement this for the native document path. It had only
+ever been checked for text/reference-*count* correctness (`od.ilspy.decompile-type`), never an actual
+click.
+
+Verified live and added to `OpenAssembly_ShowsIlSpyPadsWithRealContent` as step (5). Extracted the
+click handler's logic into `DecompiledViewContent.TryNavigateAtOffset(int offset)` (internal,
+testable) so a DevFlow action can exercise it directly - `od.ilspy.click-reference` finds a
+substring's offset in the active document and calls it, which is everything the mouse handler does
+except the pixel-to-offset step (`TextEditor.GetPositionFromPoint`) - unmodified, already-relied-
+upon AvalonEdit API that real `.cs`-file Ctrl+Click "Go To Definition" already uses today
+(`CodeEditorView.cs`), so it isn't the part actually being verified here.
+
+Real screen-coordinate clicking (`POST /api/v1/ui/actions/click`, `{"x":...,"y":...}`,
+`mode: "native-global"`) does exist in this environment (user-corrected an earlier "no click
+capability" claim) - attempted it first, calibrating against a known element with an observable,
+distinct effect (an API-visibility toggle CheckBox's `IsChecked`). Direct UI-tree bounds, bounds +
+window-origin offset, and bounds × 2 (Retina scale) were all tried; none toggled the checkbox, so
+the coordinate system this environment's `bounds` are reported in vs. what the click endpoint expects
+did not converge in reasonable attempts. Given the pixel-to-offset half is proven, stable, unmodified
+AvalonEdit code, this was descoped rather than chased further - `TryNavigateAtOffset` is the part
+this session actually wrote, and it is what's verified.
+
+Verified sequence: opened the DebugTestApp fixture (whole-module document), which contains
+`Main`'s call `ComputeGreeting("World")` - a real use-site reference, not a definition. Clicking it
+(`od.ilspy.click-reference "ComputeGreeting" 0`) navigated to a *new* native document for
+`DebugTestApp.Program` and landed the caret on line 17 - `private static string
+ComputeGreeting(string name)`, the method's exact declaration line, confirming both the reference-
+span lookup and the `memberKey`-based `JumpToMember` precision.
+
+**One real bug found while adding this to the test, unrelated to the click logic itself**:
+`od.ilspy.select-node` (routes through the real ILSpy tree control) does not reliably reclaim the
+dock's `ActiveContent` back to a document once *any* tool pane has held it - measured, `od.active-
+view` reported `{"active":false}` for a full 30-second poll after `select-node "DebugTestApp"`,
+following earlier `activate-pane` calls for Search/Analyze in the same test run. This is the same
+family of AvalonDock focus-priority quirk `od.ilspy.activate-decompiled-document` already exists to
+work around for the bespoke pane - not something this session's native-routing code introduced. Added
+`od.ilspy.navigate-to-module` (mirrors the existing `od.ilspy.navigate-to-type`) so the test - and any
+future caller that needs to reliably return to the whole-module document - can bypass the tree
+control entirely rather than depend on its focus behavior.
+
+Multi-select tree-node decompilation remains the one item still with zero code in either direction -
+see the "still out of scope" entry above, unchanged.
+
+### Multi-select decompilation - the last item with zero code either way (2026-08-03)
+
+Closed the one remaining gap from the "what's left" survey: multi-node tree selection now
+decompiles into a single native document too.
+
+**Design insight that made this small rather than another standalone-resolver saga**: real ILSpy's
+own bespoke-pane multi-select (`DecompilerTextView.DecompileNodes`,
+`TextView/DecompilerTextView.cs`) does nothing fancy - it just calls each selected
+`ILSpyTreeNode`'s own `Decompile(Language, ITextOutput, DecompilationOptions)` into one shared
+`ITextOutput`, blank line between. `ILSpyTreeNode.Decompile` is already polymorphic per node kind
+(type/member/namespace/assembly node all override it), and for C# it ultimately reaches
+`CSharpLanguage`'s own `WriteCode`, which builds its own `CSharpDecompiler` internally through the
+tree's already-loaded-assembly context - so passing `ReferenceTrackingTextOutput` in as that
+`ITextOutput` gets reference-span capture "for free," with **no separate `CSharpDecompiler`/resolver
+setup needed at all**. The resolver gap `DecompileType` (the single-type path) had to work around
+earlier in this document never applies here, because this path never builds its own decompiler -
+it just reuses each node's. Added as `ILSpyDecompilerService.DecompileNodes`.
+
+Bonus found while writing this: `CSharpLanguage.WriteCode` always runs `InsertParenthesesVisitor`
+first (readability parentheses) - something `DecompileType`'s hand-built pipeline still lacks (the
+"known remaining fidelity gap" noted earlier). Multi-node decompile therefore has *better* C#
+fidelity than single-type/whole-module decompile. Not backported there in this pass - noted, not
+fixed, consistent with the existing gap entry.
+
+**`DecompiledReferenceSpan` gained an `AssemblyFile`** (previously assumed "the document's own
+assembly," which was always correct for the single-type/whole-module path since its reference
+capture is restricted to same-module entities anyway). A multi-selection can span *different*
+assemblies with no single "the" assembly, so each span now carries its own target's assembly file,
+derived from `entity.ParentModule.MetadataFile.FileName`. `mainModule` in `ReferenceTrackingTextOutput`
+is `null` for the multi-node path (no same-module filter - capture every resolvable reference
+regardless of source module) but still non-null (unchanged behavior) for the existing single-type
+path. `DecompiledViewContent.TryNavigateAtOffset` was updated to read `span.AssemblyFile` too, so
+there is one navigation code path instead of two that happened to agree.
+
+New `DecompiledSelectionViewContent` (new file) hosts the combined output. Unlike
+`DecompiledViewContent`, there is no stable per-selection identity to reuse by - an arbitrary node
+combination has no natural URI - so it is a single, lazily-created, reused-and-overwritten instance
+(mirroring exactly how the retired-for-this-case bespoke pane behaved: one shared surface, content
+replaced each time, not one tab per selection). Wired into `IlSpyWorkspaceHost.OnSelectionChangedAsync`'s
+`nodes.Length > 1` branch. Single-node selections that aren't a `TypeTreeNode`/`AssemblyTreeNode`
+(member nodes, namespace nodes) still fell through to the bespoke pane at the time this was
+written - closed later in this pass, see "Closing out the remaining smaller gaps" below.
+
+**One real, if narrow, bug found and fixed while wiring this up**: the first version's
+`RefreshAsync` did `Task.Run(() => { ... codeEditor.Document.Text = result.Output; ... })` -
+i.e. the WPF/AvalonEdit `Document.Text` write happened *inside* the background thread the whole
+lambda ran on. AvalonEdit's document is not thread-safe; this is a cross-thread-access violation.
+Measured, not theorized: the document stayed at `textLength: 0` indefinitely with no visible
+crash (an unobserved faulted `Task`, since nothing awaited or logged it downstream) - a real trap
+easy to fall into when translating a synchronous multi-step decompile into an async method by
+wrapping the whole thing in one `Task.Run`. Fixed to match `DecompiledViewContent.InitializeView`'s
+existing shape: `await Task.Run(() => onlyTheDecompileItself)`, then set `Document.Text` after the
+`await` - which resumes on the original `SynchronizationContext` (the WPF Dispatcher) by default,
+not on the background thread.
+
+Also needed a small, unrelated fix for the *reporting*, not the feature: `od.ilspy.status`'s
+"which native document is active" fallback checked `ActiveViewContent as DecompiledViewContent`
+specifically, so it silently didn't recognize the new `DecompiledSelectionViewContent` and would
+have fallen back to stale bespoke-pane text for the multi-select case. Generalized to check
+`ActiveViewContent?.Control is CodeEditor` instead - both native document classes expose a
+`CodeEditor` as their `Control`, and the bespoke pane's `Control` is a real ILSpy
+`DecompilerTextView`, never a `CodeEditor`, so this can't misidentify it either way.
+
+New DevFlow action `od.ilspy.select-nodes` (comma-separated assembly ShortNames) drives
+`AssemblyTreeModel.SelectNodes` for testing. Verified live and added to
+`OpenAssembly_ShowsIlSpyPadsWithRealContent` as step (6): selected `DebugTestApp` + the
+already-auto-loaded `System.Linq` together (a genuine cross-assembly multi-select, not just
+multiple nodes within one module) and confirmed the combined document contains both modules' own
+header comments, DebugTestApp's before System.Linq's (selection order preserved), and that the
+active view is `DecompiledSelectionViewContent`. `IlSpyAddInTests` 2/2 pass.
+
+**Status update**: every item flagged as "zero code in either direction" at the start of this pass
+is now implemented (reference hyperlink navigation, multi-select). The remaining, smaller gaps -
+member/namespace single-node selection still on the bespoke pane, the `InsertParenthesesVisitor`
+fidelity gap on the single-type path, cross-assembly navigation restrictions on that same path - are
+documented above where each was found, not repeated here.
+
+## Closing out the remaining smaller gaps (2026-08-03, later in this pass)
+
+The three items flagged above as "documented above where each was found, not repeated here" are
+now all closed.
+
+**1. `InsertParenthesesVisitor` backported to `DecompileType`.** Added the same call
+`ILSpyDecompilerService.DecompileNodes` already got "for free" (`CSharpLanguage.WriteCode` always
+runs it) directly into `DecompileType`'s hand-built pipeline, right after building the syntax tree
+and before `WriteSyntaxTree`/`SetLocationsInAst` - it has to run before the location pass, since it
+mutates the AST (inserting new `ParenthesizedExpression` nodes) and the location pass assumes a
+stable tree. Verified live: decompiled the fixture's `ComputeGreeting` (`return "Hello, " + name +
+"!";`) before and after - byte-identical output, since a flat string concatenation never needs
+readability parens. `IlSpyAddInTests` 2/2 still pass (the test pins this exact string).
+
+**2. Cross-assembly reference navigation, single-type/whole-module path.** Removed
+`ReferenceTrackingTextOutput`'s `mainModule` field/constructor parameter and the same-module
+`ReferenceEquals` guard in `RecordAndWrite` entirely - every reference now gets its own
+`AssemblyFile` (from `entity.ParentModule.MetadataFile.FileName`) regardless of whether it's the
+module being decompiled, exactly like the multi-node path already worked. There's now exactly one
+`ReferenceTrackingTextOutput`, not "the single-type one, with a filter" and "the multi-node one,
+without" - both call sites (`WriteSyntaxTree`, `DecompileNodes`) construct it the same way.
+`DecompiledReferenceSpan`'s class doc comment updated to match (see the class - it no longer
+describes a same-module restriction). `IlSpyAddInTests` 2/2 still pass.
+
+**3. Member-node/namespace-node single selections now route to the native document.**
+`IlSpyWorkspaceHost.OnSelectionChangedAsync`'s dispatch widened from `nodes.Length > 1` to
+`nodes.Length >= 1 && nodes.All(n => n is ILSpyTreeNode)` - i.e. everything that isn't specifically
+a lone `TypeTreeNode`/`AssemblyTreeNode` (those two keep their own dedicated `NavigateTo`/
+`NavigateToModule` calls, since they have a stable per-entity document identity worth reusing
+across selections) now goes to `RefreshSelectionDocumentAsync`/`DecompiledSelectionViewContent`,
+covering `MethodTreeNode`/`FieldTreeNode`/`PropertyTreeNode`/`EventTreeNode`/`NamespaceTreeNode`
+and anything else alike. No new decompile logic was needed - `DecompileNodes`/
+`DecompiledSelectionViewContent` were already fully generic over node kind from the multi-select
+work; this just widened which selections reach them.
+
+This surfaced two real bugs, both found by re-running the full multi-pad integration test after
+the change (not just building):
+
+- **The language-dropdown handler still wrote into the bespoke pane unconditionally.**
+  `LanguageService.PropertyChanged`'s subscriber called `RefreshDecompiledViewAsync()` directly,
+  which always decompiles into `decompilerTextView` regardless of what's selected - correct back
+  when member-node selections had nowhere else to go, wrong now that they have their own document.
+  Measured: switching the toolbar's language dropdown to IL while a member node was selected left
+  the *native* selection document showing stale C#, while the (now nobody-reads-it) bespoke pane
+  correctly held the new IL - exactly the reverse of the bug this same handler was added to fix
+  earlier in this pass. Fixed by calling `OnSelectionChangedAsync()` instead of
+  `RefreshDecompiledViewAsync()` directly - it already contains the exact right per-node-kind
+  dispatch, so re-running it on a language change keeps whichever document is actually showing the
+  current selection in sync, the same way re-selecting the node would.
+
+- **`od.ilspy.status`'s "which document is active" fallback assumed `SD.Workbench.ActiveViewContent`
+  reliably reflects the just-refreshed selection document.** It doesn't, for tree-driven selections:
+  this is the pre-existing "select-node focus loss" quirk (documented earlier in this file on
+  `RefreshDecompiledViewAsync`'s callers, and worked around in the reference-hyperlink test step by
+  using `od.ilspy.navigate-to-module` instead of tree selection) - `AssemblyTreeModel`'s own pane
+  can end up holding AvalonDock's single shared `ActiveContent` even though
+  `RefreshSelectionDocumentAsync`'s `ShowView`/`SelectWindow` calls ran and the document refreshed
+  correctly underneath. Previously invisible for member-node selections specifically only because
+  they went to the bespoke `DecompilerTextView` pane, which never participates in
+  `Workbench.ActiveViewContent` at all - so the quirk had nothing to hide before. Measured directly:
+  `od.active-view` polled `{"active":false}` for 20+ seconds straight after a real search-driven
+  member-node selection, even though the selection document's content was correct underneath the
+  whole time. A `Dispatcher.BeginInvoke(ApplicationIdle, ...)` re-assertion of `SelectWindow()`
+  was tried first and measured *unreliable* (won the race sometimes, not always - the full
+  integration test flipped between passing and failing across otherwise-identical runs). The robust
+  fix instead exposes `IlSpyWorkspaceHost.DecompiledSelectionView`/
+  `DecompiledSelectionViewContent.CurrentText` and has `od.ilspy.status` check that content directly
+  as a fallback, before ever touching the bespoke pane - sidesteps the focus race for this
+  diagnostic read entirely rather than trying to win it. (The deferred `SelectWindow` re-assertion
+  was kept alongside this, since it doesn't hurt and helps real interactive use even though it isn't
+  the thing the test now depends on.)
+
+`IlSpyAddInTests` 2/2 pass, confirmed twice in a row (the second run specifically to rule out the
+flakiness the first fix attempt had).
+
+**Status update**: all three of the smaller remaining gaps identified in the "what's left" survey
+are now closed. Every item from that survey - reference hyperlink navigation, multi-select
+decompilation, member/namespace single-node routing, the `InsertParenthesesVisitor` fidelity gap,
+and cross-assembly reference navigation - has real, live-verified code behind it now.

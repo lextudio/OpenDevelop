@@ -31,6 +31,7 @@ using ICSharpCode.Decompiler;
 using ICSharpCode.Decompiler.CSharp;
 using ICSharpCode.Decompiler.CSharp.OutputVisitor;
 using ICSharpCode.Decompiler.CSharp.Syntax;
+using ICSharpCode.Decompiler.CSharp.Transforms;
 using ICSharpCode.Decompiler.Disassembler;
 using ICSharpCode.Decompiler.IL;
 using ICSharpCode.Decompiler.Metadata;
@@ -92,20 +93,28 @@ namespace ICSharpCode.ILSpyAddIn
 	/// <summary>
 	/// One clickable type/member reference occurrence in a <see cref="DecompiledTypeResult"/>'s
 	/// <see cref="DecompiledTypeResult.Output"/> - <see cref="Offset"/>/<see cref="Length"/> are
-	/// raw character offsets into that exact string. Restricted to entities whose declaring
-	/// module is the same module being decompiled (an external reference, e.g. `System.String`,
-	/// would need resolving and opening a *different* assembly's document - out of scope for this
-	/// pass; only same-assembly cross-type/cross-member navigation is captured).
+	/// raw character offsets into that exact string. Every reference carries its own
+	/// <see cref="AssemblyFile"/> (the referenced entity's own declaring module), not just entities
+	/// in the module being decompiled - cross-assembly references (e.g. clicking `System.String`)
+	/// resolve and open that other assembly's document the same way a same-assembly one does (see
+	/// doc/technotes/ilspy.md, "cross-assembly reference navigation", 2026-08-03). This is also why
+	/// <see cref="AssemblyFile"/> is per-span rather than assumed to be "the document's own
+	/// assembly" - a multi-node document has no single such assembly to assume.
 	/// </summary>
 	public sealed class DecompiledReferenceSpan
 	{
-		public DecompiledReferenceSpan(int offset, int length, string topLevelTypeReflectionName, string memberKey)
+		public DecompiledReferenceSpan(int offset, int length, FileName assemblyFile, string topLevelTypeReflectionName, string memberKey)
 		{
 			Offset = offset;
 			Length = length;
+			AssemblyFile = assemblyFile ?? throw new ArgumentNullException("assemblyFile");
 			TopLevelTypeReflectionName = topLevelTypeReflectionName ?? throw new ArgumentNullException("topLevelTypeReflectionName");
 			MemberKey = memberKey;
 		}
+
+		/// <summary>The assembly the reference target is declared in - not necessarily the same
+		/// assembly as the document this span appears in (see the multi-node path).</summary>
+		public FileName AssemblyFile { get; }
 
 		public int Offset { get; }
 		public int Length { get; }
@@ -144,6 +153,19 @@ namespace ICSharpCode.ILSpyAddIn
 					? decompiler.DecompileWholeModuleAsSingleFile()
 					: decompiler.DecompileType(new DecompilerFullTypeName(name.Type.ReflectionName));
 
+				// FIDELITY FIX (2026-08-03): both of CSharpLanguage's own decompile entry points
+				// (WriteCode, used by both the tree-driven bespoke pane and DecompileNodes below)
+				// run InsertParenthesesVisitor before any rendering at all - this service never
+				// did, since it calls CSharpDecompiler directly rather than going through
+				// Language.DecompileType. Previously left as a "known remaining fidelity gap" in
+				// the technote rather than fixed alongside the location-pass ordering fix above,
+				// specifically because changing output text deserved its own deliberate change,
+				// not to be bundled into a root-cause fix. Unlike that ordering fix, this runs
+				// *before* everything else (render, location pass, debug symbols) - matching
+				// upstream exactly - because it's an AST shape decision ("does this expression need
+				// parens for readability"), not scaffolding for a side channel.
+				syntaxTree.AcceptVisitor(new InsertParenthesesVisitor { InsertParenthesesForReadability = true });
+
 				// ROOT CAUSE FIX (2026-08-03) for the "missing startLocation" Debug.Assert storm out
 				// of ICSharpCode.Decompiler.CSharp.SequencePointBuilder.EndSequencePoint:
 				// CreateSequencePoints reads node.StartLocation/EndLocation off the AST, but a
@@ -175,6 +197,41 @@ namespace ICSharpCode.ILSpyAddIn
 				SetLocationsInAst(syntaxTree, settings);
 				return result.WithDebugSymbols(CreateDebugSymbols(decompiler, syntaxTree));
 			}
+		}
+
+		// Decompiles an arbitrary, heterogeneous set of tree nodes together into one document -
+		// what real ILSpy's own DecompilerTextView.DecompileNodes does for a multi-selection
+		// (TextView/DecompilerTextView.cs: `nodes[i].Decompile(context.Language, textOutput,
+		// context.Options)` for each node, blank line between). Reused here directly rather than
+		// reimplemented: ILSpyTreeNode.Decompile is already polymorphic per node kind (type,
+		// member, namespace, assembly all override it) and, for C#, ultimately calls
+		// CSharpLanguage's own WriteCode -> TextTokenWriter(output, ...) against whatever
+		// ITextOutput is passed in - the exact same mechanism WriteSyntaxTree above builds by
+		// hand for the single-type case. Passing ReferenceTrackingTextOutput as that output gets
+		// reference-span capture for free, with no separate CSharpDecompiler/resolver setup
+		// needed at all: each node decompiles through the tree's own already-loaded-assembly
+		// context, so the resolver gap DecompileType above had to work around never applies here.
+		//
+		// Also gets InsertParenthesesVisitor's readability parens "for free" (CSharpLanguage.
+		// WriteCode always runs it) - DecompileType above now runs the same visitor explicitly
+		// (see its "FIDELITY FIX" comment, 2026-08-03), so this is no longer a gap between the two
+		// paths, just two different ways of arriving at the same fidelity.
+		public static DecompiledTypeResult DecompileNodes(IEnumerable<ICSharpCode.ILSpyX.TreeView.SharpTreeNode> treeNodes, ICSharpCode.ILSpy.Language language, ICSharpCode.ILSpy.DecompilationOptions options)
+		{
+			var nodes = treeNodes.OfType<ICSharpCode.ILSpy.TreeNodes.ILSpyTreeNode>().ToArray();
+			if (nodes.Length == 0)
+				throw new ArgumentException("No ILSpyTreeNode to decompile.", nameof(treeNodes));
+
+			var output = new ReferenceTrackingTextOutput();
+			output.IndentationString = options.DecompilerSettings.CSharpFormattingOptions.IndentationString;
+			for (int i = 0; i < nodes.Length; i++) {
+				if (i > 0)
+					output.WriteLine();
+				options.CancellationToken.ThrowIfCancellationRequested();
+				nodes[i].Decompile(language, output, options);
+			}
+			return new DecompiledTypeResult(output.ToString(), output.MemberLocations,
+				new Dictionary<string, DecompiledMethodDebugInfo>(), output.References);
 		}
 
 		// A bare `new CSharpDecompiler(fileName, settings)` builds its own from-scratch
@@ -229,7 +286,7 @@ namespace ICSharpCode.ILSpyAddIn
 		// formatting and desynchronized offsets.
 		static DecompiledTypeResult WriteSyntaxTree(SyntaxTree syntaxTree, DecompilerSettings settings, CSharpDecompiler decompiler)
 		{
-			var output = new ReferenceTrackingTextOutput(decompiler.TypeSystem.MainModule);
+			var output = new ReferenceTrackingTextOutput();
 			output.IndentationString = settings.CSharpFormattingOptions.IndentationString;
 			var tokenWriter = new TextTokenWriter(output, settings, decompiler.TypeSystem);
 			syntaxTree.AcceptVisitor(new CSharpOutputVisitor(tokenWriter, settings.CSharpFormattingOptions));
@@ -248,17 +305,11 @@ namespace ICSharpCode.ILSpyAddIn
 		sealed class ReferenceTrackingTextOutput : ITextOutput
 		{
 			readonly StringBuilder sb = new StringBuilder();
-			readonly Decompiler.TypeSystem.IModule mainModule;
 			readonly Dictionary<string, OpenDevelopTextLocation> memberLocations = new Dictionary<string, OpenDevelopTextLocation>();
 			readonly List<DecompiledReferenceSpan> references = new List<DecompiledReferenceSpan>();
 			int indent;
 			bool needsIndent;
 			int line = 1, column = 1;
-
-			public ReferenceTrackingTextOutput(Decompiler.TypeSystem.IModule mainModule)
-			{
-				this.mainModule = mainModule;
-			}
 
 			public string IndentationString { get; set; } = "\t";
 			public IReadOnlyDictionary<string, OpenDevelopTextLocation> MemberLocations => memberLocations;
@@ -335,10 +386,16 @@ namespace ICSharpCode.ILSpyAddIn
 						memberLocations.Add(definitionKey, new OpenDevelopTextLocation(startLine, startColumn));
 				}
 
-				// Only same-module entities: an external reference (e.g. System.String) would need
-				// resolving and opening a *different* assembly's document - out of scope for this
-				// pass (see DecompiledReferenceSpan's doc comment).
-				if (!ReferenceEquals(entity.ParentModule, mainModule))
+				// No same-module restriction: every reference gets its own AssemblyFile below
+				// (entity.ParentModule's own metadata file), so navigating a reference to a
+				// *different* assembly than the one being decompiled works the same way as a
+				// same-assembly one - NavigateToDecompiledEntityService.NavigateTo already opens
+				// whichever assembly it's given, same-document or not. (Earlier revisions of this
+				// method restricted capture to the module being decompiled, from before
+				// DecompiledReferenceSpan carried a per-span AssemblyFile at all - that restriction
+				// no longer serves a purpose now that it does.)
+				string assemblyFileName = entity.ParentModule?.MetadataFile?.FileName;
+				if (assemblyFileName == null)
 					return;
 				var declaringType = entity as ICSharpCode.Decompiler.TypeSystem.ITypeDefinition ?? entity.DeclaringTypeDefinition;
 				while (declaringType?.DeclaringTypeDefinition != null)
@@ -346,7 +403,7 @@ namespace ICSharpCode.ILSpyAddIn
 				if (declaringType == null)
 					return;
 				string memberKey = entity is ICSharpCode.Decompiler.TypeSystem.ITypeDefinition ? null : MemberLocationKey.Create(entity);
-				references.Add(new DecompiledReferenceSpan(offset, text.Length, declaringType.ReflectionName, memberKey));
+				references.Add(new DecompiledReferenceSpan(offset, text.Length, FileName.Create(assemblyFileName), declaringType.ReflectionName, memberKey));
 			}
 
 			public void WriteLocalReference(string text, object reference, bool isDefinition = false) => Write(text);

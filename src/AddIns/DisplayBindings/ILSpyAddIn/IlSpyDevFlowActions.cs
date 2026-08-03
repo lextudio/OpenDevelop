@@ -4,10 +4,13 @@
 // [DevFlowUIThread]-annotated class are auto-discovered by LeXtudio.DevFlow.Agent.Core and
 // dispatched to the UI thread.
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Text.Json;
 using System.Threading.Tasks;
+
+using AvalonDock.Layout;
 
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Workbench;
@@ -56,13 +59,7 @@ namespace ICSharpCode.ILSpyAddIn
 		static string TryActivateDockPane(object pane)
 		{
 			try {
-				var dockType = Type.GetType("ICSharpCode.SharpDevelop.Workbench.DockWorkspace, OpenDevelop", throwOnError: false);
-				if (dockType == null)
-					return "dockType not found";
-				var current = dockType.GetProperty("Current", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
-				if (current == null)
-					return "Current is null";
-				var manager = current.GetType().GetField("dockingManager", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(current);
+				var manager = GetDockingManager();
 				if (manager == null)
 					return "dockingManager not found";
 				manager.GetType().GetProperty("ActiveContent")?.SetValue(manager, pane);
@@ -70,6 +67,68 @@ namespace ICSharpCode.ILSpyAddIn
 			} catch (Exception ex) {
 				return "failed: " + ex.Message;
 			}
+		}
+
+		// DockWorkspace is `internal sealed` (src/Main/SharpDevelop/Workbench/DockWorkspace.cs), so
+		// reaching it from this addin assembly needs reflection - but its `dockingManager` field is
+		// a real, public AvalonDock.DockingManager (AvalonDock.dll IS referenced by this addin, for
+		// the theme/tree-node-image work elsewhere), so once reflection gets the instance, everything
+		// past that point - Layout, Descendents(), LayoutAnchorable, GetSide() - is ordinary typed
+		// AvalonDock API, not reflection.
+		static AvalonDock.DockingManager GetDockingManager()
+		{
+			var dockType = Type.GetType("ICSharpCode.SharpDevelop.Workbench.DockWorkspace, OpenDevelop", throwOnError: false);
+			var current = dockType?.GetProperty("Current", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+			return current?.GetType().GetField("dockingManager", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(current) as AvalonDock.DockingManager;
+		}
+
+		/// <summary>
+		/// Where a pad's anchorable actually sits in the live AvalonDock layout right now - side
+		/// (Left/Top/Right/Bottom), the named <c>LayoutAnchorablePane</c> it's docked into (matches
+		/// the `Name="LeftPane"/"TopPane"/"BottomPane"` attributes in Layouts/ILSpy.xml), its index
+		/// within that pane (tab order), and whether it's floating/auto-hidden/hidden instead of
+		/// docked at all. Added to catch the "layout lost" failure mode the existing pane
+		/// title/IsVisible/content assertions can't: a pad can be visible, correctly titled, and
+		/// have real rendered content while floating in the wrong place, docked on the wrong side, or
+		/// auto-hidden - none of which those assertions would notice (doc/technotes/ilspy.md).
+		/// </summary>
+		static object ReadPanePosition(string contentId)
+		{
+			var manager = GetDockingManager();
+			if (manager?.Layout == null)
+				return new { found = false };
+
+			var anchorable = manager.Layout.Descendents()
+				.OfType<AvalonDock.Layout.LayoutAnchorable>()
+				.FirstOrDefault(a => string.Equals(a.ContentId, contentId, StringComparison.Ordinal));
+			if (anchorable == null)
+				return new { found = false };
+
+			bool isFloating = anchorable.IsFloating;
+			bool isAutoHidden = anchorable.IsAutoHidden;
+			bool isHidden = anchorable.IsHidden;
+			var pane = anchorable.Parent as AvalonDock.Layout.LayoutAnchorablePane;
+
+			return new {
+				found = true,
+				paneName = pane?.Name,
+				side = isFloating || pane == null ? (string)null : pane.GetSide().ToString(),
+				tabIndex = pane?.Children.IndexOf(anchorable) ?? -1,
+				siblingCount = pane?.Children.Count ?? 0,
+				isFloating,
+				isAutoHidden,
+				isHidden
+			};
+		}
+
+		[DevFlowAction("od.ilspy.pane-position", Description = "Report where a hosted ILSpy pad's anchorable actually sits in the live AvalonDock layout (side, named LayoutAnchorablePane, tab index, floating/auto-hidden/hidden) - used to catch the \"layout lost\" failure mode (pad visible/titled/content-correct but docked in the wrong place, or floating/auto-hidden) that plain visibility/title checks can't")]
+		public static string GetPanePosition(string title)
+		{
+			var pane = IlSpyWorkspaceHost.Panes.FirstOrDefault(p =>
+				string.Equals(p.Title, title, StringComparison.OrdinalIgnoreCase));
+			if (pane == null)
+				return JsonSerializer.Serialize(new { found = false, error = "No ILSpy pane titled '" + title + "'." });
+			return JsonSerializer.Serialize(ReadPanePosition(pane.ContentId));
 		}
 
 		[DevFlowAction("od.ilspy.activate-pane", Description = "Activate a hosted ILSpy pane by title WITHOUT re-registering it (unlike od.ilspy.show-pane, which removes and re-adds the anchorable). Re-registration is destructive: after the first show-pane, switching to a different pane fails to materialize it at all, so this is the path to use when a pane needs activating more than once in a session")]
@@ -333,6 +392,34 @@ namespace ICSharpCode.ILSpyAddIn
 			}
 		}
 
+		[DevFlowAction("od.ilspy.select-nodes", Description = "Select several assembly-root tree nodes at once (comma-separated ShortNames), exercising the real multi-selection path (AssemblyTreeModel.SelectNodes) - used to verify multi-node native document routing (doc/technotes/ilspy.md \"Unify C# document hosting\")")]
+		public static string SelectNodes(string commaSeparatedShortNames)
+		{
+			try {
+				var model = IlSpyWorkspaceHost.AssemblyTreeModel;
+				var shortNames = commaSeparatedShortNames.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+				var nodes = new List<ICSharpCode.ILSpyX.TreeView.SharpTreeNode>();
+				foreach (var shortName in shortNames) {
+					var assembly = model.AssemblyList.GetAssemblies()
+						.FirstOrDefault(a => string.Equals(a.ShortName, shortName, StringComparison.OrdinalIgnoreCase));
+					if (assembly == null)
+						return JsonSerializer.Serialize(new { success = false, error = "No loaded assembly named '" + shortName + "'." });
+					var node = model.FindAssemblyNode(assembly);
+					if (node == null)
+						return JsonSerializer.Serialize(new { success = false, error = "Assembly tree node not found for '" + shortName + "'." });
+					nodes.Add(node);
+				}
+				model.SelectNodes(nodes);
+				return JsonSerializer.Serialize(new {
+					success = true,
+					requested = shortNames,
+					selectedNodes = GetSelectedNodeNames()
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
+			}
+		}
+
 		static string[] GetSelectedNodeNames()
 		{
 			return IlSpyWorkspaceHost.AssemblyTreeModel.SelectedItems
@@ -362,7 +449,12 @@ namespace ICSharpCode.ILSpyAddIn
 			if (view != null)
 				return view;
 
-			ShowPane("Search");
+			// The view only exists in the visual tree while the Search tab is the selected one in
+			// its docked pane - any intermediate step that activates another pad tears it down, so
+			// activate the pane FIRST (non-destructively; the remove-then-re-add ShowPane path would
+			// destroy the very view this call is trying to find). ActivatePane just re-selects the
+			// existing anchorable, which re-realizes the view.
+			IlSpyWorkspaceHost.ActivatePane("Search");
 			for (int i = 0; i < 60; i++) {
 				await Task.Delay(50);
 				view = FindInAnyWindow<ICSharpCode.ILSpy.Search.SearchPane>();
@@ -538,6 +630,68 @@ namespace ICSharpCode.ILSpyAddIn
 			}
 		}
 
+		[DevFlowAction("od.ilspy.navigate-to-module", Description = "Directly exercise NavigateToDecompiledEntityService.NavigateToModule (the call OnSelectionChangedAsync makes for a single selected AssemblyTreeNode) - opens/reuses the native whole-module DecompiledViewContent document. Unlike routing through od.ilspy.select-node, this bypasses the real ILSpy tree control's own focus/ActiveContent-stealing behavior (interacting with any docked tool pane can leave a document's SelectWindow() unable to reclaim the dock's ActiveContent - a pre-existing ILSpy/AvalonDock quirk, not something this addin's routing introduced), so it reliably re-activates the module document regardless of what else was focused beforehand")]
+		public static string NavigateToModule(string shortName)
+		{
+			try {
+				var model = IlSpyWorkspaceHost.AssemblyTreeModel;
+				var assembly = model.AssemblyList.GetAssemblies()
+					.FirstOrDefault(a => string.Equals(a.ShortName, shortName, StringComparison.OrdinalIgnoreCase));
+				if (assembly == null)
+					return JsonSerializer.Serialize(new { success = false, error = "No loaded assembly named '" + shortName + "'." });
+
+				var assemblyFile = ICSharpCode.Core.FileName.Create(assembly.FileName);
+				NavigateToDecompiledEntityService.NavigateToModule(assemblyFile);
+
+				var view = SD.Workbench.ViewContentCollection.OfType<DecompiledViewContent>()
+					.FirstOrDefault(v => v.DecompiledTypeName.AssemblyFile == assemblyFile && v.DecompiledTypeName.IsWholeModule);
+				string text = (view?.Control as ICSharpCode.AvalonEdit.AddIn.CodeEditor)?.Document.Text;
+				return JsonSerializer.Serialize(new {
+					success = true,
+					shortName,
+					found = view != null,
+					titleName = view?.TitleName,
+					fileName = view?.PrimaryFileName?.ToString(),
+					activeViewTitle = SD.Workbench.ActiveViewContent?.TitleName,
+					decompiledTextLength = text?.Length ?? 0,
+					decompiledTextSnippet = text?.Length > 500 ? text[..500] : text
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
+			}
+		}
+
+		[DevFlowAction("od.ilspy.click-reference", Description = "Exercise the actual click-a-reference-to-navigate behavior on the currently active native decompiled document (DecompiledViewContent.TryNavigateAtOffset) - finds the given substring's offset in the document text and clicks there, exactly as a real Ctrl+Click would resolve once GetPositionFromPoint has mapped a pixel to that same offset (no synthetic-mouse-event capability exists in this environment, so this verifies everything downstream of that standard AvalonEdit API call). occurrence selects which match of the substring to click (0 = first)")]
+		public static string ClickReference(string substring, int occurrence)
+		{
+			try {
+				if (SD.Workbench.ActiveViewContent is not DecompiledViewContent view)
+					return JsonSerializer.Serialize(new { success = false, error = "Active view is not a DecompiledViewContent.", activeViewType = SD.Workbench.ActiveViewContent?.GetType().FullName });
+
+				string text = (view.Control as ICSharpCode.AvalonEdit.AddIn.CodeEditor)?.Document.Text ?? "";
+				int offset = -1;
+				for (int i = 0; i <= occurrence; i++) {
+					offset = text.IndexOf(substring, offset + 1, StringComparison.Ordinal);
+					if (offset < 0)
+						return JsonSerializer.Serialize(new { success = false, error = "Occurrence " + occurrence + " of '" + substring + "' not found (found fewer matches)." });
+				}
+
+				var before = new { activeViewTitle = SD.Workbench.ActiveViewContent?.TitleName, activeViewFile = SD.Workbench.ActiveViewContent?.PrimaryFileName?.ToString() };
+				bool navigated = view.TryNavigateAtOffset(offset);
+
+				return JsonSerializer.Serialize(new {
+					success = true,
+					substring,
+					offset,
+					navigated,
+					before,
+					after = new { activeViewTitle = SD.Workbench.ActiveViewContent?.TitleName, activeViewFile = SD.Workbench.ActiveViewContent?.PrimaryFileName?.ToString() }
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
+			}
+		}
+
 		[DevFlowAction("od.ilspy.decompile-type", Description = "Call ILSpyDecompilerService.DecompileType directly (bypassing the workbench/UI) for the given assembly ShortName + fully-qualified type reflection name, and report the decompiled text plus captured reference spans - used to verify the ReferenceTrackingTextOutput rewrite (doc/technotes/ilspy.md \"Unify C# document hosting\" - reference hyperlink navigation) didn't change decompiled text formatting and correctly captures use-site references")]
 		public static string DecompileType(string shortName, string typeReflectionName)
 		{
@@ -688,7 +842,7 @@ namespace ICSharpCode.ILSpyAddIn
 		public static string GetStatus()
 		{
 			var panes = IlSpyWorkspaceHost.Panes
-				.Select(p => new { title = p.Title, contentId = p.ContentId, isVisible = p.IsVisible, isActive = p.IsActive })
+				.Select(p => new { title = p.Title, contentId = p.ContentId, isVisible = p.IsVisible, isActive = p.IsActive, position = ReadPanePosition(p.ContentId) })
 				.ToArray();
 
 			var assemblyTreeModel = IlSpyWorkspaceHost.AssemblyTreeModel;
@@ -696,16 +850,23 @@ namespace ICSharpCode.ILSpyAddIn
 				.Select(a => a.ShortName)
 				.ToArray();
 
-			// A tree selection now decompiles through one of two places depending on what was
-			// selected (doc/technotes/ilspy.md "Unify C# document hosting" steps 2/3): a native
-			// DecompiledViewContent document (single TypeTreeNode/AssemblyTreeNode) or the old
-			// bespoke DecompilerTextView pane (everything else, still). Report from whichever the
-			// active view actually is, falling back to the bespoke pane, so this stays meaningful
-			// - and existing assertions like decompiledTextLength > 0 keep working - regardless of
-			// which path handled the current selection.
-			string decompiledText = (SD.Workbench.ActiveViewContent as DecompiledViewContent)?.Control is ICSharpCode.AvalonEdit.AddIn.CodeEditor nativeEditor
+			// A tree selection now decompiles through one of several places depending on what was
+			// selected (doc/technotes/ilspy.md "Unify C# document hosting"): a native
+			// DecompiledViewContent document (single TypeTreeNode/AssemblyTreeNode),
+			// DecompiledSelectionViewContent (multi-select and member-/namespace-node selections),
+			// or the old bespoke DecompilerTextView pane (only whatever's left, if anything). Report
+			// from whichever the active view actually is if it's one of the native documents
+			// (Control is a CodeEditor); otherwise DON'T fall straight to the bespoke pane - tree
+			// selection is subject to a pre-existing AvalonDock "focus loss" quirk (documented on
+			// RefreshDecompiledViewAsync's callers) that can leave a tool pane, not the document,
+			// holding ActiveViewContent even though the selection document itself refreshed
+			// correctly - so check the reused selection document directly before giving up on native
+			// content and reporting whatever the bespoke pane happens to still hold (which could be
+			// stale from an earlier, unrelated selection).
+			string decompiledText = SD.Workbench.ActiveViewContent?.Control is ICSharpCode.AvalonEdit.AddIn.CodeEditor nativeEditor
 				? nativeEditor.Document.Text
-				: IlSpyWorkspaceHost.DecompilerTextView.textEditor.Text;
+				: IlSpyWorkspaceHost.DecompiledSelectionView?.CurrentText
+					?? IlSpyWorkspaceHost.DecompilerTextView.textEditor.Text;
 
 			return JsonSerializer.Serialize(new {
 				panes,

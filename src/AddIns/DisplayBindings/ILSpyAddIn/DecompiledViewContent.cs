@@ -248,11 +248,31 @@ namespace ICSharpCode.ILSpyAddIn
 			if (position == null)
 				return;
 			int offset = editor.Document.GetOffset(position.Value.Location);
+			if (TryNavigateAtOffset(offset))
+				e.Handled = true;
+		}
+
+		/// <summary>
+		/// The actual "click a reference, jump to it" behavior, factored out of the pixel-position
+		/// handling above so it can be exercised directly (by a DevFlow diagnostic, or in principle
+		/// any other caller that already has a document offset) without needing to synthesize a real
+		/// WPF mouse event - there is no such synthesis available in this environment, and
+		/// pixel-to-offset mapping is standard AvalonEdit (TextEditor.GetPositionFromPoint,
+		/// TextDocument.GetOffset), not something this addin implements itself, so verifying this half
+		/// covers what's actually novel here.
+		/// </summary>
+		internal bool TryNavigateAtOffset(int offset)
+		{
 			var span = references.FirstOrDefault(r => offset >= r.Offset && offset < r.Offset + r.Length);
 			if (span == null)
-				return;
-			e.Handled = true;
-			NavigateToDecompiledEntityService.NavigateTo(DecompiledTypeName.AssemblyFile, span.TopLevelTypeReflectionName, span.MemberKey);
+				return false;
+			// span.AssemblyFile rather than DecompiledTypeName.AssemblyFile: same value today (this
+			// path's reference capture is restricted to the document's own module), but the span
+			// now always carries its own target assembly (added for the multi-node path, which has
+			// no single "this document's assembly"), so using it here too keeps one navigation
+			// code path instead of two that happen to agree.
+			NavigateToDecompiledEntityService.NavigateTo(span.AssemblyFile, span.TopLevelTypeReflectionName, span.MemberKey);
+			return true;
 		}
 		#endregion
 

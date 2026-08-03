@@ -326,8 +326,14 @@ namespace ICSharpCode.ILSpyAddIn
 			// IlSpyAddInTests' multi-pad workflow coverage.
 			var languageService = exportProvider.GetExportedValue<LanguageService>();
 			languageService.PropertyChanged += (_, e) => {
+				// OnSelectionChangedAsync, not RefreshDecompiledViewAsync directly: the latter
+				// always writes into the bespoke pane regardless of what's selected, which is wrong
+				// now that single-type/whole-module/multi-node/member-node/namespace-node selections
+				// route to their own native documents (see OnSelectionChangedAsync's dispatch) -
+				// re-running that same dispatch on a language change keeps whichever document is
+				// actually showing the current selection in sync, the same way re-selecting it would.
 				if (e.PropertyName is nameof(LanguageService.Language) or nameof(LanguageService.LanguageVersion))
-					lastDecompile = RefreshDecompiledViewAsync();
+					lastDecompile = OnSelectionChangedAsync();
 			};
 		}
 
@@ -353,21 +359,82 @@ namespace ICSharpCode.ILSpyAddIn
 				var assemblyFile = FileName.Create(typeNode.ParentAssemblyNode.LoadedAssembly.FileName);
 				return NavigateToDecompiledEntityService.NavigateTo(assemblyFile, topLevelName, memberKey: null);
 			}
-			// Step 3 (doc/technotes/ilspy.md "Unify C# document hosting") was attempted and
-			// REVERTED: routing single-AssemblyTreeNode (whole-module) selection here breaks
-			// tests/OpenDevelop.IntegrationTests/IlSpyAddInTests.cs's
-			// OpenAssembly_ShowsIlSpyPadsWithRealContent, which explicitly asserts the active view
-			// after opening an assembly is ICSharpCode.ILSpyAddIn.DecompiledCodeViewContent (the
-			// bespoke pane) and that a "Decompiled Code" tab renders in the UI tree - both would
-			// fail against the native "[Module]" document instead. NavigateToModule/
-			// DecompiledViewContent's whole-module support (and the DecompilationTask plumbing) is
-			// still real and still used by od.ilspy.navigate-to-type-style direct exercising - just
-			// not reachable through tree selection, on purpose, until that test (or the behavior it
-			// pins) is deliberately updated. See the technote for the full story - this was caught
-			// only by actually reading the existing test file, not by the earlier "verified live"
-			// checks, which is itself the lesson: check existing test assertions before wiring up
-			// a routing change, not just build+run-once.
+			// Step 3 (doc/technotes/ilspy.md "Unify C# document hosting"): single-AssemblyTreeNode
+			// (whole-module) selection now routes here too - re-enabled after being reverted once
+			// (see git history / the technote's "Correction" entry): it broke
+			// OpenAssembly_ShowsIlSpyPadsWithRealContent's assumption that opening an assembly leaves
+			// DecompiledCodeViewContent (the bespoke pane) active with a "Decompiled Code" tab. That
+			// test has now been updated deliberately to expect the native path instead
+			// (DecompiledViewContent, title "[Module]") - see the test file and the technote entry
+			// for this change. NavigateToModule/DecompiledViewContent's whole-module support was
+			// already real (od.ilspy.navigate-to-type-style direct exercising used it); this just
+			// makes ordinary tree selection reach it too.
+			if (nodes.Length == 1 && nodes[0] is ICSharpCode.ILSpy.TreeNodes.AssemblyTreeNode assemblyNode) {
+				var assemblyFile = FileName.Create(assemblyNode.LoadedAssembly.FileName);
+				return NavigateToDecompiledEntityService.NavigateToModule(assemblyFile);
+			}
+			// Multi-select, and now also single member-node/namespace-node selections (the last
+			// remaining gap noted above): anything that isn't specifically a TypeTreeNode or
+			// AssemblyTreeNode (both handled by dedicated NavigateTo*/NavigateToModule calls above,
+			// since those have a stable per-entity document identity worth reusing across
+			// selections) routes to the shared DecompiledSelectionViewContent instead, via
+			// ILSpyDecompilerService.DecompileNodes (which reuses each node's own
+			// ILSpyTreeNode.Decompile, exactly like the bespoke pane's DecompilerTextView.
+			// DecompileNodes does, just writing into a reference-tracking ITextOutput instead). This
+			// covers MethodTreeNode/FieldTreeNode/PropertyTreeNode/EventTreeNode/NamespaceTreeNode
+			// and any other ILSpyTreeNode kind alike - RefreshSelectionDocumentAsync/DecompileNodes
+			// were already fully generic over node kind (the multi-select work didn't special-case
+			// "more than one"), so no new decompile logic was needed here, just widening which
+			// selections reach it.
+			if (nodes.Length >= 1 && nodes.All(n => n is ICSharpCode.ILSpy.TreeNodes.ILSpyTreeNode)) {
+				return RefreshSelectionDocumentAsync(nodes.Cast<ICSharpCode.ILSpy.TreeNodes.ILSpyTreeNode>().ToArray());
+			}
 			return RefreshDecompiledViewAsync();
+		}
+
+		private static DecompiledSelectionViewContent decompiledSelectionView;
+
+		/// <summary>
+		/// The reused multi-/member-/namespace-node selection document (see
+		/// <see cref="RefreshSelectionDocumentAsync"/>), for callers that need to read its content
+		/// deterministically rather than through <c>SD.Workbench.ActiveViewContent</c> - the latter
+		/// is subject to the pre-existing tree-selection "focus loss" quirk documented there, which a
+		/// pure diagnostic read (like od.ilspy.status) shouldn't have to fight.
+		/// </summary>
+		internal static DecompiledSelectionViewContent DecompiledSelectionView => decompiledSelectionView;
+
+		private static Task RefreshSelectionDocumentAsync(ICSharpCode.ILSpy.TreeNodes.ILSpyTreeNode[] nodes)
+		{
+			var exportProvider = App.ExportProvider;
+			var languageService = exportProvider.GetExportedValue<LanguageService>();
+			var settingsService = exportProvider.GetExportedValue<SettingsService>();
+			var options = new DecompilationOptions(languageService.LanguageVersion, settingsService.DecompilerSettings, settingsService.DisplaySettings);
+
+			if (decompiledSelectionView == null) {
+				decompiledSelectionView = new DecompiledSelectionViewContent();
+				SD.Workbench.ShowView(decompiledSelectionView);
+			} else {
+				decompiledSelectionView.WorkbenchWindow?.SelectWindow();
+			}
+
+			// This whole method runs synchronously inside the AssemblyTreeSelectionChangedEventArgs
+			// subscriber (see EnsureInitialized), which fires *during* the tree control's own
+			// selection/focus handling - so ShowView/SelectWindow above race whatever the tree does
+			// to AvalonDock's single shared ActiveContent right after, and lose (measured: the
+			// selection view never became SD.Workbench.ActiveViewContent for a plain member-node
+			// selection, even though this same ShowView call reliably sticks for the single-
+			// TypeTreeNode/AssemblyTreeNode NavigateTo path elsewhere - the pre-existing "select-node
+			// focus loss" quirk documented on RefreshDecompiledViewAsync's callers, previously
+			// invisible here only because member-node selections used to fall through to the bespoke
+			// DecompilerTextView pane, which never participates in Workbench.ActiveViewContent at
+			// all). Re-assert the selection once more after the current dispatcher operation drains,
+			// so it wins the race instead of losing to it.
+			var view = decompiledSelectionView;
+			Application.Current.Dispatcher.BeginInvoke(
+				System.Windows.Threading.DispatcherPriority.ApplicationIdle,
+				new Action(() => view.WorkbenchWindow?.SelectWindow()));
+
+			return decompiledSelectionView.RefreshAsync(nodes, languageService.Language, options);
 		}
 
 		// Tracks the in-flight decompile kicked off by the AssemblyTreeSelectionChangedEventArgs

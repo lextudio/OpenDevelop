@@ -74,7 +74,7 @@ public sealed class IlSpyAddInTests : IDisposable
         // NOT one of those pads - it opens as a document tab (see the active-view assertion
         // below).
         var panes = status.GetProperty("panes").EnumerateArray()
-            .Select(p => (Title: p.GetProperty("title").GetString(), IsVisible: p.GetProperty("isVisible").GetBoolean()))
+            .Select(p => (Title: p.GetProperty("title").GetString(), IsVisible: p.GetProperty("isVisible").GetBoolean(), Position: p.GetProperty("position")))
             .ToList();
 
         // "Search"/"Analyze" are ILSpy's own real pane titles (SearchPaneModel/
@@ -83,16 +83,47 @@ public sealed class IlSpyAddInTests : IDisposable
         foreach (var expectedTitle in new[] { "Assemblies", "Search", "Analyze"})
         {
             var pane = panes.SingleOrDefault(p => p.Title == expectedTitle);
-            Assert.True(pane != default, $"Expected an ILSpy pad titled '{expectedTitle}' to be registered; got: {string.Join(", ", panes.Select(p => p.Title))}");
+            Assert.True(pane.Title != null, $"Expected an ILSpy pad titled '{expectedTitle}' to be registered; got: {string.Join(", ", panes.Select(p => p.Title))}");
             Assert.True(pane.IsVisible, $"Expected the '{expectedTitle}' pad to be visible after opening an assembly");
         }
         Assert.DoesNotContain(panes, p => p.Title == "Decompiled Code");
 
-        // Decompiled output opens as a document tab (a read-only, virtual file) - ShowView
-        // activates it, so the active view should be the DecompiledCodeViewContent document.
+        // Pad *position* coverage (added 2026-08-03): the checks above (title present, IsVisible)
+        // pass even when a pad is docked in the wrong place - measured live: a race between
+        // switching to the "ILSpy" layout and the docking manager's first Loaded event (see
+        // AvalonDockLayout.StoreConfiguration's guard, doc/technotes/ilspy.md "the layout gets
+        // lost") used to tab all three pads into whatever pane already existed (e.g. next to
+        // "Projects"), on the wrong side, with no test catching it - exactly the failure mode
+        // reported after repeated manual runs. Assert each pad's real AvalonDock position against
+        // Layouts/ILSpy.xml's template: Assemblies alone in "LeftPane" on the Left, Search alone in
+        // "TopPane" on the Top, Analyze alone in "BottomPane" on the Bottom - none floating,
+        // auto-hidden, or hidden.
+        var expectedPositions = new[] {
+            (Title: "Assemblies", PaneName: "LeftPane", Side: "Left"),
+            (Title: "Search", PaneName: "TopPane", Side: "Top"),
+            (Title: "Analyze", PaneName: "BottomPane", Side: "Bottom"),
+        };
+        foreach (var expected in expectedPositions)
+        {
+            var position = panes.Single(p => p.Title == expected.Title).Position;
+            Assert.True(position.GetProperty("found").GetBoolean(),
+                $"Expected to find '{expected.Title}''s anchorable in the live AvalonDock layout");
+            Assert.False(position.GetProperty("isFloating").GetBoolean(), $"Expected '{expected.Title}' to be docked, not floating");
+            Assert.False(position.GetProperty("isAutoHidden").GetBoolean(), $"Expected '{expected.Title}' to not be auto-hidden");
+            Assert.False(position.GetProperty("isHidden").GetBoolean(), $"Expected '{expected.Title}' to not be hidden");
+            Assert.Equal(expected.PaneName, position.GetProperty("paneName").GetString());
+            Assert.Equal(expected.Side, position.GetProperty("side").GetString());
+            Assert.Equal(1, position.GetProperty("siblingCount").GetInt32());
+        }
+
+        // Decompiled output opens as a document tab (a read-only, virtual file). Opening an assembly
+        // selects its AssemblyTreeNode, which routes through the native ilspy:// document path
+        // (doc/technotes/ilspy.md "Unify C# document hosting" step 3) rather than the bespoke
+        // DecompilerTextView pane - so the active view is DecompiledViewContent, not
+        // DecompiledCodeViewContent.
         var activeView = await _app.InvokeAsync("od.active-view");
         Assert.True(activeView.GetProperty("active").GetBoolean());
-        Assert.Equal("ICSharpCode.ILSpyAddIn.DecompiledCodeViewContent", activeView.GetProperty("typeName").GetString());
+        Assert.Equal("ICSharpCode.ILSpyAddIn.DecompiledViewContent", activeView.GetProperty("typeName").GetString());
 
         // ILSpy's AssemblyTreeModel.ShowAssemblyList would rename Application.Current.MainWindow
         // to "ILSpy {version}"; the OpenDevelop-hosted build skips that (OPOPENDEVELOP conditional
@@ -147,12 +178,15 @@ public sealed class IlSpyAddInTests : IDisposable
                     && e.TryGetProperty("text", out var txt) && !string.IsNullOrEmpty(txt.GetString()))
                 .Select(e => e.GetProperty("text").GetString())
                 .ToList();
-            if (texts.Contains("Assemblies") && texts.Contains("Decompiled Code"))
+            // "[Module]" is DecompiledViewContent's title for a whole-module DecompiledTypeReference
+            // (see its constructor) - the native document's tab, now that opening an assembly routes
+            // there instead of to the bespoke pane's "Decompiled Code" tab.
+            if (texts.Contains("Assemblies") && texts.Contains("[Module]"))
                 break;
             await Task.Delay(500);
         }
         Assert.Contains(texts, t => t == "Assemblies");
-        Assert.Contains(texts, t => t == "Decompiled Code");
+        Assert.Contains(texts, t => t == "[Module]");
 
         // The selected assembly's tree node is rendered as a real TextBlock (the theme fix made
         // the pane content renderable, and the node was selected above): the node text is
@@ -176,11 +210,12 @@ public sealed class IlSpyAddInTests : IDisposable
         Assert.True(treeNodes.Count > 0,
             "Expected the Assemblies pane's SharpTreeView to render at least one real, non-zero-size tree node - got an empty pane (the historical failure mode)");
 
-        // Decompiled Code pad: opening the assembly auto-selects and decompiles its tree node,
-        // so the real DecompilerTextView should show non-empty, real decompiled output (not a
-        // blank/placeholder pane).
+        // Opening the assembly auto-selects and decompiles its tree node - od.ilspy.status reads
+        // decompiled text from whichever is actually active (the native DecompiledViewContent here,
+        // per the AssemblyTreeNode routing above), so this should be the whole module's real output,
+        // not a blank/placeholder document.
         Assert.True(status.GetProperty("decompiledTextLength").GetInt32() > 0,
-            "Expected the Decompiled Code pad to show non-empty decompiled output after opening an assembly");
+            "Expected the decompiled document to show non-empty decompiled output after opening an assembly");
 
         // The decompiled text must be the fixture's real IL - not a placeholder/error pane.
         // Private members (ComputeGreeting) aren't decompiled by default, so assert on the
@@ -359,6 +394,80 @@ public sealed class IlSpyAddInTests : IDisposable
         {
             await _app.InvokeAsync("od.ilspy.toolbar-combos", "Language", originalLanguage);
         }
+
+        // (5) Reference hyperlink navigation inside the decompiled document itself - clicking a
+        // type/member reference must jump to its declaration, exactly like an IDE's "go to
+        // definition". The whole-module document open right now (re-opened as the active view by
+        // navigating back to it below) contains Main's call to ComputeGreeting - a real use-site
+        // reference, not a definition - so clicking it must open ComputeGreeting's *declaring type*
+        // as its own native document and land on the method's declaration line.
+        //
+        // od.ilspy.click-reference exercises DecompiledViewContent.TryNavigateAtOffset directly
+        // (offset resolved by searching the document text for the given substring) rather than a
+        // real synthesized mouse event: this environment's click action takes screen coordinates,
+        // and mapping a document offset to a screen pixel needs AvalonEdit's own
+        // TextEditor.GetPositionFromPoint - the same, unmodified, already-relied-upon API real
+        // .cs-file Ctrl+Click "Go To Definition" uses today (CodeEditorView.cs). That call is not
+        // novel here, so exercising the offset -> navigate half (the logic this session actually
+        // added: reference-span lookup + NavigateToDecompiledEntityService.NavigateTo) is what
+        // matters, and is exactly what TryNavigateAtOffset is.
+        // Deliberately od.ilspy.navigate-to-module, not od.ilspy.select-node: interacting with the
+        // Search/Analyze tool panes above can leave the real ILSpy tree's own SharpTreeView holding
+        // the dock's ActiveContent, and re-selecting the assembly node through the tree does not
+        // reliably reclaim it back to the document - a pre-existing ILSpy/AvalonDock focus quirk
+        // (measured: od.active-view reported {"active":false} for 30s straight after select-node
+        // here), not something this addin's routing introduced. navigate-to-module calls
+        // NavigateToDecompiledEntityService.NavigateToModule directly, sidestepping the tree
+        // control entirely.
+        var reopenModule = await _app.InvokeAsync("od.ilspy.navigate-to-module", "DebugTestApp");
+        Assert.True(reopenModule.GetProperty("success").GetBoolean(), ErrorOf(reopenModule));
+        await WaitForDecompiledTextAsync(
+            text => text.Contains("ComputeGreeting", StringComparison.Ordinal) && text.Contains("using System;", StringComparison.Ordinal),
+            "the whole-module document to be active again before testing reference-click navigation");
+
+        var click = await _app.InvokeAsync("od.ilspy.click-reference", "ComputeGreeting", 0);
+        Assert.True(click.GetProperty("success").GetBoolean(), ErrorOf(click));
+        Assert.True(click.GetProperty("navigated").GetBoolean(),
+            "Expected clicking the ComputeGreeting call site to resolve to a navigable reference span");
+
+        var afterClick = await _app.InvokeAsync("od.active-view");
+        // Settling this view switch can take one dispatcher tick - see the "Verified live" note in
+        // the technote for od.active-view showing the pre-navigation value on the very same call
+        // that triggered it.
+        for (int i = 0; i < 40 && afterClick.GetProperty("fileName").GetString() != null
+                && afterClick.GetProperty("fileName").GetString()!.EndsWith("module.cs", StringComparison.Ordinal); i++)
+        {
+            await Task.Delay(100);
+            afterClick = await _app.InvokeAsync("od.active-view");
+        }
+        Assert.EndsWith("DebugTestApp.Program.cs", afterClick.GetProperty("fileName").GetString());
+        Assert.Equal(17, afterClick.GetProperty("caretLine").GetInt32());
+
+        // (6) Multi-select decompilation: several Assemblies-tree nodes selected together must
+        // decompile into ONE combined document, not just whichever was selected last. This was, at
+        // the start of this technote's "what's left" pass, the one item with zero code in either
+        // direction - ILSpyDecompilerService.DecompileNodes + DecompiledSelectionViewContent close
+        // it. "System.Linq" is a real, already-auto-loaded framework assembly (WPF pulls it in), so
+        // this exercises the actual multi-assembly case, not just multiple nodes within one module.
+        var multiSelect = await _app.InvokeAsync("od.ilspy.select-nodes", "DebugTestApp,System.Linq");
+        Assert.True(multiSelect.GetProperty("success").GetBoolean(), ErrorOf(multiSelect));
+        Assert.Equal(
+            new[] { "DebugTestApp", "System.Linq" },
+            multiSelect.GetProperty("selectedNodes").EnumerateArray().Select(n => n.GetString()).ToArray());
+
+        var combined = await WaitForDecompiledTextAsync(
+            text => text.Contains("DebugTestApp.dll", StringComparison.Ordinal) && text.Contains("System.Linq.dll", StringComparison.Ordinal),
+            "the multi-selected DebugTestApp and System.Linq nodes to decompile together into one document");
+        // Both modules' own header comment (real ILSpy's AssemblyTreeNode.Decompile writes the
+        // assembly file path as a "// <path>" comment) must appear, in selection order, confirming
+        // this is genuinely both modules concatenated - not one replacing the other.
+        int debugTestAppIndex = combined.IndexOf("DebugTestApp.dll", StringComparison.Ordinal);
+        int systemLinqIndex = combined.IndexOf("System.Linq.dll", StringComparison.Ordinal);
+        Assert.True(debugTestAppIndex >= 0 && systemLinqIndex > debugTestAppIndex,
+            $"Expected DebugTestApp's module content before System.Linq's in the combined document; got indices {debugTestAppIndex}, {systemLinqIndex}");
+
+        var multiActiveView = await _app.InvokeAsync("od.active-view");
+        Assert.Equal("ICSharpCode.ILSpyAddIn.DecompiledSelectionViewContent", multiActiveView.GetProperty("typeName").GetString());
     }
 
     /// <summary>
