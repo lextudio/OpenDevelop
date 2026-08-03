@@ -3,12 +3,13 @@
 # Mirrors the CI steps in .github/workflows/package.yml.
 # Usage: ./dist.macos.sh [--skip-publish] [--debug]
 #   --skip-publish  reuse existing publish output (faster iteration on bundle/dmg)
-#   --debug         package the Debug configuration instead of Release. TEMPORARY WORKAROUND:
-#                    Debug happens to not hit the AvalonDock auto-hide HwndSource path that
-#                    crashes at startup on macOS (missing user32.dll RegisterWindowMessage shim
-#                    in LibreWPF) — but the underlying bug is still present. Manually toggling
-#                    any pad to auto-hide (the pin icon) will still crash a --debug build the
-#                    same way. Use only until the real fix lands in a published LibreWPF release.
+#   --debug         package the Debug configuration instead of Release. Rarely needed
+#                   anymore: Release crashed at startup because RID-specific `dotnet
+#                   publish` drops LibreWPF's win32 shim dlls (kernel32/user32/gdi32/
+#                   shell32/uxtheme/dwmapi/comdlg32), which AvalonDock's window hook
+#                   resolves at DockingManager load time. build-application-bundle.sh
+#                   now copies them into the payload, so Release works. Keep the flag
+#                   for fast debug iteration.
 
 set -euo pipefail
 

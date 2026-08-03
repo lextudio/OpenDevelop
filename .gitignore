@@ -2,7 +2,7 @@
 obj/
 bin/
 /REVISION
-/build/
+/build/*
 /AddIns/
 /doc/ChangeLog.html
 /data/resources/StringResources.*.resources
@@ -39,3 +39,7 @@ tests/fixtures/CoverageFixture/CoverageTests/CodeCoverage/coverage.xml
 *.app/
 .od/
 *.dmg
+
+# keep the macOS packaging scripts tracked
+/build/*
+!/build/macos/
