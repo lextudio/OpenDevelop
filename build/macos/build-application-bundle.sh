@@ -43,6 +43,32 @@ populate_repo_payload() {
     cp -Rp "$repo_root/AddIns" "$macos/AddIns"
     find "$macos/AddIns" -name '*.pdb' -delete
   fi
+
+  # LibreWPF's win32 shims (kernel32/user32/gdi32/shell32/uxtheme/dwmapi/
+  # comdlg32.dll) resolve DllImports like AvalonDock's GetCurrentThreadId at
+  # runtime. They land in every project's bin output via the LibreWPF repack,
+  # but RID-specific `dotnet publish` (osx-arm64/osx-x64) drops them, so the
+  # app in a bundle dies at startup with DllNotFoundException. Copy them next
+  # to the executable explicitly, from the first layout that has them.
+  local shim_sources=(
+    "$repo_root/externals/bin/net10.0-windows"
+    "$repo_root/src/Main/SharpDevelop/bin/Release/net10.0-windows"
+    "$repo_root/src/Main/SharpDevelop/bin/Debug/net10.0-windows"
+  )
+  local shim_names=(kernel32 user32 gdi32 shell32 uxtheme dwmapi comdlg32)
+  for src in "${shim_sources[@]}"; do
+    [[ -d "$src" ]] || continue
+    local copied=0
+    for name in "${shim_names[@]}"; do
+      if [[ -f "$src/$name.dll" ]]; then
+        cp -p "$src/$name.dll" "$macos/" 2>/dev/null && copied=$((copied + 1))
+      fi
+    done
+    if [[ "$copied" -gt 0 ]]; then
+      echo "Copied $copied win32 shim dlls from $src"
+      break
+    fi
+  done
 }
 
 if [[ "$rid" != "osx-universal" ]]; then
