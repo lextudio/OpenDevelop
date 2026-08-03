@@ -44,6 +44,20 @@ populate_repo_payload() {
     find "$macos/AddIns" -name '*.pdb' -delete
   fi
 
+  # Deduplicate: every addin project deploys its full dependency closure
+  # (LibreWPF/ProGPU/ICSharpCode dlls + native dylibs) into its own AddIns
+  # folder — 24 copies of the same ~100MB stack. Assemblies already loaded by
+  # the app (or resolvable from the payload root, which is the process's base
+  # directory) never load from the addin copies, so delete any binary whose
+  # name also exists next to the executable. Cuts the bundle by ~2GB.
+  local basename
+  find "$macos/AddIns" -type f \( -name '*.dll' -o -name '*.dylib' -o -name '*.so' \) | while IFS= read -r f; do
+    basename="$(basename "$f")"
+    if [[ -f "$macos/$basename" ]]; then
+      rm -f "$f"
+    fi
+  done
+
   # LibreWPF's win32 shims (kernel32/user32/gdi32/shell32/uxtheme/dwmapi/
   # comdlg32.dll) resolve DllImports like AvalonDock's GetCurrentThreadId at
   # runtime. They land in every project's bin output via the LibreWPF repack,

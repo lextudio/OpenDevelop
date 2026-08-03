@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build a universal macOS .dmg for local testing.
+# Build an Apple Silicon (arm64) macOS .dmg for local testing.
 # Mirrors the CI steps in .github/workflows/package.yml.
 # Usage: ./dist.macos.sh [--skip-publish] [--debug]
 #   --skip-publish  reuse existing publish output (faster iteration on bundle/dmg)
@@ -53,37 +53,28 @@ rm -rf "${core_pres_obj}/obj/${config}" "${core_pres_obj}/bin/${config}"
 # The AppHost (native executable entry point) is cached in
 # obj/<config>/net10.0-windows/apphost (shared across RIDs, not per-RID),
 # because the net10.0-windows TFM lacks a RID-specific host pack on macOS.
-# Without clearing it, the second publish reuses the first RID's AppHost
-# and both RIDs end up with the same architecture.  Clear it before each
-# publish so the SDK regenerates it for the correct RID.
+# Clear it before each publish so the SDK regenerates it for the correct RID.
 #
 # Similarly, the managed assembly is cached in obj/<config>/net10.0-windows/
-# (not RID-specific).  The PE machine type (Amd64 vs ARM64) must match the
-# running process, so we clean intermediate build outputs between RIDs to
-# force recompilation for the correct target — arm64 first (native on this
-# hardware) then x64.
+# (not RID-specific).  The PE machine type must match the running process, so
+# we clean intermediate build outputs before publishing to force
+# recompilation for the target (arm64 — this is an Apple Silicon build).
 host_obj="${script_dir}/src/Main/SharpDevelop/obj/${config}"
 
-publish_for_rid() {
-  local rid="$1"
-  echo "==> Cleaning intermediate outputs for ${rid}…"
-  rm -rf "$host_obj/net10.0-windows"
-  echo "==> Publishing ${rid} (${config})…"
-  "${dotnet}" publish "$host_dir" -r "${rid}" -c "${config}"
-}
-
 if [[ "$skip_publish" -eq 0 ]]; then
-  publish_for_rid osx-arm64
-  publish_for_rid osx-x64
+  echo "==> Cleaning intermediate outputs for osx-arm64…"
+  rm -rf "$host_obj/net10.0-windows"
+  echo "==> Publishing osx-arm64 (${config})…"
+  "${dotnet}" publish "$host_dir" -r osx-arm64 -c "${config}"
 else
   echo "==> Skipping publish (--skip-publish)"
 fi
 
-echo "==> Building .app bundle (universal, ${config})…"
-DIST_CONFIG="${config}" "$script_dir/build/macos/build-application-bundle.sh" osx-universal
+echo "==> Building .app bundle (arm64, ${config})…"
+DIST_CONFIG="${config}" "$script_dir/build/macos/build-application-bundle.sh" osx-arm64
 
 echo "==> Building .dmg…"
-"$script_dir/build/macos/build-dmg.sh" OpenDevelop.app OpenDevelop-macos-universal.dmg
+"$script_dir/build/macos/build-dmg.sh" OpenDevelop.app OpenDevelop-macos-arm64.dmg
 
 echo ""
-echo "Done: $(pwd)/OpenDevelop-macos-universal.dmg"
+echo "Done: $(pwd)/OpenDevelop-macos-arm64.dmg"
