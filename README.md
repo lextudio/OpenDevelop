@@ -1,7 +1,7 @@
 # OpenDevelop
 
 OpenDevelop is an open-source Integrated Development Environment (IDE) for C# and the .NET
-platform — a modern continuation of the classic SharpDevelop code base. It is written almost
+platform, a modern continuation of the classic SharpDevelop code base. It is written almost
 entirely in C# and runs on .NET 10 via LibreWPF (the cross-platform, WPF-compatible runtime),
 on Windows, macOS, and Linux.
 
@@ -25,9 +25,9 @@ on Windows, macOS, and Linux.
 
 ## Overview
 
-The SharpDevelop project started as #develop in 2000, initiated by Mike Krüger. OpenDevelop keeps
-the original SharpDevelop v4/v5 architecture — the addin tree, the workbench, AvalonEdit, and the
-project system — while moving it forward:
+The SharpDevelop project started in 2000, initiated by Mike Krüger. OpenDevelop keeps
+the original SharpDevelop v4/v5 architecture (the addin tree, the workbench, AvalonEdit, and the
+project system) while moving it forward:
 
 - **Cross-platform**: WPF UI on .NET 10 through LibreWPF; builds and runs on Windows, macOS, and Linux.
 - **Modern project support**: SDK-style .NET projects and the new `.slnx`
@@ -99,5 +99,5 @@ MIT
 
 ## Copyright
 
-Copyright (c) 2002-2016 AlphaSierraPapa for the SharpDevelop team.
-Copyright (c) 2026 LeXtudio Inc.
+Copyright © 2002-2016 AlphaSierraPapa for the SharpDevelop team.
+Copyright © 2026 LeXtudio Inc.
