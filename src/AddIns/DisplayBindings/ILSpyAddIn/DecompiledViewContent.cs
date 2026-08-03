@@ -20,7 +20,9 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.Design;
 using System.IO;
+using System.Linq;
 using System.Threading;
+using System.Windows.Input;
 
 using ICSharpCode.AvalonEdit.AddIn;
 using ICSharpCode.AvalonEdit.Highlighting;
@@ -51,18 +53,33 @@ namespace ICSharpCode.ILSpyAddIn
 		readonly CodeEditor codeEditor = new CodeEditor();
 		readonly CancellationTokenSource cancellation = new CancellationTokenSource();
 		IReadOnlyDictionary<string, TextLocation> memberLocations = new Dictionary<string, TextLocation>();
-		
+		IReadOnlyList<DecompiledReferenceSpan> references = Array.Empty<DecompiledReferenceSpan>();
+
 		#region Constructor
 		public DecompiledViewContent(DecompiledTypeReference typeName, string memberKey)
 		{
 			this.DecompiledTypeName = typeName;
-			
+
 			this.Services = codeEditor.GetRequiredService<IServiceContainer>();
 			codeEditor.PrimaryTextEditor.TextArea.LeftMargins.RemoveAll(m => m is ChangeMarkerMargin);
+			// Reference hyperlink navigation (doc/technotes/ilspy.md "Unify C# document hosting" -
+			// click a type/member reference inside decompiled code to jump to it): mirrors the
+			// existing Ctrl+Click "Go To Definition" convention CodeEditorView already uses for
+			// real .cs files (AvalonEdit.AddIn/Src/CodeEditorView.cs's TextViewMouseDown), which
+			// doesn't work here since it goes through the Roslyn-backed LanguageServiceRegistry -
+			// decompiled ilspy:// content has no such service, hence a dedicated handler using the
+			// reference spans ILSpyDecompilerService now captures instead.
+			codeEditor.PrimaryTextEditor.PreviewMouseDown += OnPreviewMouseDown;
 			this.jumpToMemberKeyWhenDecompilationFinished = memberKey;
-			this.TitleName = "[" + ReflectionHelper.SplitTypeParameterCountFromReflectionName(typeName.Type.Name) + "]";
-			
-			InitializeView();
+			// typeName.Type.Name is null for a whole-module reference (IsWholeModule) - this ctor
+			// was never actually reachable for that case before NavigateToDecompiledEntityService
+			// .NavigateToModule (doc/technotes/ilspy.md "Unify C# document hosting" step 3), so this
+			// was a real but previously-unexercised bug (confirmed live: NullReferenceException).
+			this.TitleName = typeName.IsWholeModule
+				? "[Module]"
+				: "[" + ReflectionHelper.SplitTypeParameterCountFromReflectionName(typeName.Type.Name) + "]";
+
+			this.DecompilationTask = InitializeView();
 			
 			SD.BookmarkManager.BookmarkRemoved += BookmarkManager_Removed;
 			SD.BookmarkManager.BookmarkAdded += BookmarkManager_Added;
@@ -90,12 +107,21 @@ namespace ICSharpCode.ILSpyAddIn
 		public override bool IsReadOnly {
 			get { return true; }
 		}
+
+		/// <summary>
+		/// Completes once this document's decompile (success, failure written as error text, or
+		/// cancellation) has finished - lets a caller that just opened/reused this document via
+		/// <see cref="NavigateToDecompiledEntityService"/> actually await readiness instead of
+		/// polling <c>Document.Text</c> (doc/technotes/ilspy.md "Unify C# document hosting").
+		/// </summary>
+		public System.Threading.Tasks.Task DecompilationTask { get; }
 		#endregion
 		
 		#region Dispose
 		public override void Dispose()
 		{
 			cancellation.Cancel();
+			codeEditor.PrimaryTextEditor.PreviewMouseDown -= OnPreviewMouseDown;
 			codeEditor.Dispose();
 			SD.BookmarkManager.BookmarkAdded -= BookmarkManager_Added;
 			SD.BookmarkManager.BookmarkRemoved -= BookmarkManager_Removed;
@@ -146,13 +172,14 @@ namespace ICSharpCode.ILSpyAddIn
 		#endregion
 		
 		#region Decompilation
-		async void InitializeView()
+		async System.Threading.Tasks.Task InitializeView()
 		{
 			try {
 				var result = await System.Threading.Tasks.Task.Run(
 					() => ILSpyDecompilerService.DecompileType(DecompiledTypeName, cancellation.Token),
 					cancellation.Token);
 				memberLocations = result.MemberLocations;
+				references = result.References;
 				OnDecompilationFinished(result.Output);
 			} catch (OperationCanceledException) {
 				// ignore cancellation
@@ -211,6 +238,24 @@ namespace ICSharpCode.ILSpyAddIn
 		 */
 		#endregion
 		
+		#region Reference hyperlink navigation
+		void OnPreviewMouseDown(object sender, MouseButtonEventArgs e)
+		{
+			if (e.ChangedButton != MouseButton.Left || Keyboard.Modifiers != ModifierKeys.Control)
+				return;
+			var editor = codeEditor.ActiveTextEditor;
+			var position = editor.GetPositionFromPoint(e.GetPosition(editor));
+			if (position == null)
+				return;
+			int offset = editor.Document.GetOffset(position.Value.Location);
+			var span = references.FirstOrDefault(r => offset >= r.Offset && offset < r.Offset + r.Length);
+			if (span == null)
+				return;
+			e.Handled = true;
+			NavigateToDecompiledEntityService.NavigateTo(DecompiledTypeName.AssemblyFile, span.TopLevelTypeReflectionName, span.MemberKey);
+		}
+		#endregion
+
 		#region Bookmarks
 		void BookmarkManager_Removed(object sender, BookmarkEventArgs e)
 		{

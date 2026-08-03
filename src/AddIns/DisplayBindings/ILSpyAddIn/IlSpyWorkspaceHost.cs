@@ -19,6 +19,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
 
+using ICSharpCode.Core;
 using ICSharpCode.ILSpy;
 using ICSharpCode.ILSpy.Analyzers;
 using ICSharpCode.ILSpy.AssemblyTree;
@@ -75,6 +76,69 @@ namespace ICSharpCode.ILSpyAddIn
 				EnsureInitialized();
 				return decompilerTextView;
 			}
+		}
+
+		public static SearchPaneModel SearchPane {
+			get {
+				EnsureInitialized();
+				return searchPane;
+			}
+		}
+
+		public static AnalyzerTreeViewModel AnalyzerPane {
+			get {
+				EnsureInitialized();
+				return analyzerPane;
+			}
+		}
+
+		/// <summary>
+		/// The hosted ILSpy's API-visibility level (which types/members the assembly tree shows) -
+		/// real ILSpy's three toolbar CheckBoxes are a radio group over this one enum. Changing it
+		/// needs no explicit refresh: AssemblyTreeModel subscribes to LanguageSettings'
+		/// PropertyChanged and calls Refresh() for any property other than the language ones.
+		/// </summary>
+		public static ICSharpCode.ILSpyX.ApiVisibility GetApiVisibility()
+		{
+			EnsureInitialized();
+			return App.ExportProvider.GetExportedValue<SettingsService>()
+				.SessionSettings.LanguageSettings.ShowApiLevel;
+		}
+
+		public static void SetApiVisibility(ICSharpCode.ILSpyX.ApiVisibility level)
+		{
+			EnsureInitialized();
+			App.ExportProvider.GetExportedValue<SettingsService>()
+				.SessionSettings.LanguageSettings.ShowApiLevel = level;
+		}
+
+		/// <summary>
+		/// Activates one of this addin's tool panes by title WITHOUT re-registering its anchorable.
+		/// Deliberately not the remove-then-re-add that od.ilspy.show-pane does: that was needed back
+		/// when runtime-added panes didn't reliably dock, but is destructive now that the ILSpy layout
+		/// template actually restores - measured, after one such re-registration, activating a
+		/// *different* pane fails to materialize it at all, and repeated churn leaves none of the
+		/// three rendered (see doc/technotes/ilspy.md).
+		/// </summary>
+		public static void ActivatePane(string title)
+		{
+			var pane = Panes.FirstOrDefault(p => string.Equals(p.Title, title, StringComparison.OrdinalIgnoreCase));
+			if (pane == null)
+				return;
+			pane.Show();
+			pane.IsActive = true;
+		}
+
+		/// <summary>
+		/// Re-activates the decompiled-code document tab. Activating any tool pane (e.g. via
+		/// od.ilspy.show-pane) makes that pane the dock's ActiveContent, which leaves the workbench
+		/// with no active *document* at all - so a test that inspects a pad needs a way to put things
+		/// back for whatever runs next against the same shared app instance.
+		/// </summary>
+		public static void ActivateDecompiledDocument()
+		{
+			EnsureInitialized();
+			decompiledCodeView?.WorkbenchWindow?.SelectWindow();
 		}
 
 		/// <summary>
@@ -168,6 +232,17 @@ namespace ICSharpCode.ILSpyAddIn
 			ThemeManager.Current.Theme = ToIlSpyTheme(ICSharpCode.SharpDevelop.Workbench.IdeThemeService.CurrentTheme);
 			ICSharpCode.SharpDevelop.Workbench.IdeThemeService.ThemeChanged += (_, theme) => ThemeManager.Current.Theme = ToIlSpyTheme(theme);
 
+			// ILSpy's control style dictionaries (SearchBox, ZoomScrollViewer, SortableGridViewColumn,
+			// ...) are compiled into this assembly's theme dictionary (themes/generic.xaml), but the
+			// per-assembly theme lookup does not resolve them in this host (LibreWPF): controls end
+			// up style-less (the SearchBox input box rendered as a blank gap, and ZoomScrollViewer
+			// silently fell back to its base ScrollViewer template). Loading the dictionary into
+			// Application.Resources makes the {x:Type ...} implicit styles reachable through the
+			// ordinary resource lookup instead.
+			Application.Current.Resources.MergedDictionaries.Add(new System.Windows.ResourceDictionary {
+				Source = new Uri("pack://application:,,,/ILSpyAddIn;component/themes/generic.xaml", UriKind.Absolute)
+			});
+
 			assemblyTreeModel = exportProvider.GetExportedValue<AssemblyTreeModel>();
 			var searchPaneModel = exportProvider.GetExportedValue<SearchPaneModel>();
 			var analyzerTreeViewModel = exportProvider.GetExportedValue<AnalyzerTreeViewModel>();
@@ -216,7 +291,46 @@ namespace ICSharpCode.ILSpyAddIn
 			decompiledCodeView = new DecompiledCodeViewContent(decompilerTextView);
 			SD.Workbench.ShowView(decompiledCodeView);
 
-			MessageBus<AssemblyTreeSelectionChangedEventArgs>.Subscribers += (sender, e) => lastDecompile = RefreshDecompiledViewAsync();
+			MessageBus<AssemblyTreeSelectionChangedEventArgs>.Subscribers += (sender, e) => lastDecompile = OnSelectionChangedAsync();
+		}
+
+		// Phase 1 of "decompiled code as a normal OpenDevelop document" (doc/technotes/ilspy.md
+		// "Unify C# document hosting"): a single selected TypeTreeNode now opens/reuses a plain
+		// OpenDevelop document (DecompiledViewContent, backed by an ilspy:// FileName and
+		// OpenDevelop's own CodeEditor) via the same NavigateToDecompiledEntityService.NavigateTo
+		// path "go to definition" already uses - instead of writing into the shared bespoke
+		// DecompilerTextView/decompiledCodeView pane. This was previously reverted-but-kept because
+		// ILSpyDecompilerService.DecompileType couldn't resolve external references for anything
+		// decompiled this way (ResolutionException: "Failed to resolve assembly: System.Runtime");
+		// that's now fixed (ILSpyDecompilerService.CreateDecompiler reuses the already-loaded
+		// LoadedAssembly's resolver), so this is safe to wire up. Everything else (assembly/module
+		// nodes, namespace nodes, member nodes, multi-selection) is intentionally left on the old
+		// bespoke-pane path for now - see the technote for why (whole-module native support is a
+		// trivial follow-up via DecompiledTypeReference.IsWholeModule; multi-select and reference
+		// hyperlink navigation are the genuinely hard remaining pieces).
+		private static Task OnSelectionChangedAsync()
+		{
+			var nodes = assemblyTreeModel.SelectedNodes.ToArray();
+			if (nodes.Length == 1 && nodes[0] is ICSharpCode.ILSpy.TreeNodes.TypeTreeNode typeNode) {
+				var topLevelName = typeNode.TypeDefinition.FullTypeName.TopLevelTypeName.ReflectionName;
+				var assemblyFile = FileName.Create(typeNode.ParentAssemblyNode.LoadedAssembly.FileName);
+				return NavigateToDecompiledEntityService.NavigateTo(assemblyFile, topLevelName, memberKey: null);
+			}
+			// Step 3 (doc/technotes/ilspy.md "Unify C# document hosting") was attempted and
+			// REVERTED: routing single-AssemblyTreeNode (whole-module) selection here breaks
+			// tests/OpenDevelop.IntegrationTests/IlSpyAddInTests.cs's
+			// OpenAssembly_ShowsIlSpyPadsWithRealContent, which explicitly asserts the active view
+			// after opening an assembly is ICSharpCode.ILSpyAddIn.DecompiledCodeViewContent (the
+			// bespoke pane) and that a "Decompiled Code" tab renders in the UI tree - both would
+			// fail against the native "[Module]" document instead. NavigateToModule/
+			// DecompiledViewContent's whole-module support (and the DecompilationTask plumbing) is
+			// still real and still used by od.ilspy.navigate-to-type-style direct exercising - just
+			// not reachable through tree selection, on purpose, until that test (or the behavior it
+			// pins) is deliberately updated. See the technote for the full story - this was caught
+			// only by actually reading the existing test file, not by the earlier "verified live"
+			// checks, which is itself the lesson: check existing test assertions before wiring up
+			// a routing change, not just build+run-once.
+			return RefreshDecompiledViewAsync();
 		}
 
 		// Tracks the in-flight decompile kicked off by the AssemblyTreeSelectionChangedEventArgs

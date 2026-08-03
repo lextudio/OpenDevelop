@@ -325,6 +325,16 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 
+		[DevFlowAction("od.window.title", Description = "Inspect the main workbench window title - used to verify ILSpy's hosted panes don't rename the OpenDevelop window")]
+		public static string GetMainWindowTitle()
+		{
+			var mainWindow = System.Windows.Application.Current?.MainWindow;
+			return JsonSerializer.Serialize(new {
+				title = mainWindow?.Title,
+				hasWindow = mainWindow != null
+			});
+		}
+
 		[DevFlowAction("od.active-view", Description = "Inspect the active view content - used to confirm AvalonEdit rendered an opened file")]
 		public static string GetActiveView()
 		{

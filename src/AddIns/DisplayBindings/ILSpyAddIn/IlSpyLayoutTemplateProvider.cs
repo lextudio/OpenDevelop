@@ -38,7 +38,9 @@ namespace ICSharpCode.ILSpyAddIn
 
 		public IEnumerable<LayoutTemplateDescriptor> GetLayoutTemplates()
 		{
-			yield return new LayoutTemplateDescriptor("ILSpy", "ILSpy", TemplateFilePath, readOnly: false,
+			// DisplayName matches the shell's own entries ("Default layout"/"Debug layout"/...)
+			// whose displayName comes from LayoutConfig.xml resource keys.
+			yield return new LayoutTemplateDescriptor("ILSpy", "ILSpy layout", TemplateFilePath, readOnly: false,
 				onActivating: IlSpyWorkspaceHost.EnsureInitialized);
 		}
 	}

@@ -48,6 +48,13 @@ namespace ICSharpCode.SharpDevelop.Logging
 			this.Fail(message, null);
 		}
 		
+		/// <summary>
+		/// Opt back in to the old blocking "Assertion Failed" dialog by setting
+		/// OPENDEVELOP_ASSERT_DIALOG=1. Off by default - see <see cref="Fail(string, string)"/>.
+		/// </summary>
+		static readonly bool ShowBlockingDialog =
+			Environment.GetEnvironmentVariable("OPENDEVELOP_ASSERT_DIALOG") == "1";
+
 		public override void Fail(string message, string detailMessage)
 		{
 			base.Fail(message, detailMessage); // let base class write the assert to the debug console
@@ -56,9 +63,28 @@ namespace ICSharpCode.SharpDevelop.Logging
 				stackTrace = new StackTrace(true).ToString();
 			} catch {}
 			lock (ignoredStacks) {
-				if (ignoredStacks.Contains(stackTrace))
-					return;
+				if (!ignoredStacks.Add(stackTrace))
+					return; // already reported this exact assert once
 			}
+
+			// Log-and-continue instead of blocking (2026-08-03). This listener is Debug-build-only
+			// (see Install's [Conditional("DEBUG")]) and used to spin up a dialog thread and
+			// thread.Join() it - i.e. a hard block until a human clicked a button. That is actively
+			// hostile in this codebase: we link large amounts of third-party source (ILSpy's
+			// decompiler in particular - ICSharpCode.Decompiler.CSharp.SequencePointBuilder,
+			// TypeSystem.Implementation.NullabilityAnnotatedType, ...) which is full of
+			// Debug.Assert calls that fire on inputs upstream considers non-fatal. Every one of
+			// those froze the entire IDE on the UI thread, and because DevFlow actions dispatch to
+			// the UI thread, it deadlocked all automation/integration tests too, with no output -
+			// making unrelated work impossible to verify. Their diagnostic value does not justify
+			// halting the process: dedupe by stack, write it to the log, carry on. Set
+			// OPENDEVELOP_ASSERT_DIALOG=1 to get the old blocking behavior back for a session where
+			// you specifically want to catch an assert interactively.
+			string report = message + Environment.NewLine + detailMessage + Environment.NewLine + stackTrace;
+			ICSharpCode.Core.LoggingService.Warn("Debug.Assert/Trace.Fail: " + report);
+
+			if (!ShowBlockingDialog)
+				return;
 			if (!dialogIsOpen.Set())
 				return;
 			// We might be unable to display a dialog here, e.g. because
@@ -66,34 +92,31 @@ namespace ICSharpCode.SharpDevelop.Logging
 			// In any case, we don't want to pump messages while the dialog is displaying,
 			// so we create a separate UI thread for the dialog:
 			bool debug = false;
-			var thread = new Thread(() => ShowAssertionDialog(message, detailMessage, stackTrace, ref debug));
-			thread.SetApartmentState(ApartmentState.STA);
+			var thread = new Thread(() => ShowAssertionDialog(report, ref debug));
+			// ApartmentState.STA relies on COM, which throws PlatformNotSupportedException on any
+			// non-Windows platform. The WPF MessageBox below has no actual STA requirement on this
+			// host (LibreWPF/macOS) - only set it on Windows, where it's still meaningful for
+			// classic WinForms/COM interop concerns.
+			if (OperatingSystem.IsWindows())
+				thread.SetApartmentState(ApartmentState.STA);
 			thread.Start();
 			thread.Join();
 			if (debug)
 				Debugger.Break();
 		}
-		
-		void ShowAssertionDialog(string message, string detailMessage, string stackTrace, ref bool debug)
+
+		void ShowAssertionDialog(string report, ref bool debug)
 		{
 			// CustomDialog (WinForms multi-button dialog) is out of MVP scope - fall back to a plain WPF
-			// message box with Yes(=Debug)/No(=Ignore)/Cancel(=Ignore All) semantics.
-			message = message + Environment.NewLine + detailMessage + Environment.NewLine + stackTrace;
+			// message box with Yes(=Debug)/No(=Ignore) semantics ("ignore all" is now the default
+			// behavior of Fail itself, which dedupes by stack before ever getting here).
 			try {
 				var result = System.Windows.MessageBox.Show(
-					message.TakeStartEllipsis(750) + Environment.NewLine + Environment.NewLine +
-					"Yes = Debug, No = Ignore, Cancel = Ignore All",
-					"Assertion Failed", MessageBoxButton.YesNoCancel);
-				switch (result) {
-					case MessageBoxResult.Yes:
-						debug = true;
-						break;
-					case MessageBoxResult.Cancel:
-						lock (ignoredStacks) {
-							ignoredStacks.Add(stackTrace);
-						}
-						break;
-				}
+					report.TakeStartEllipsis(750) + Environment.NewLine + Environment.NewLine +
+					"Yes = Debug, No = Ignore",
+					"Assertion Failed", MessageBoxButton.YesNo);
+				if (result == MessageBoxResult.Yes)
+					debug = true;
 			} finally {
 				dialogIsOpen.Reset();
 			}

@@ -141,6 +141,16 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				toolBarTray.ToolBars.Add(tb);
 			}
 			BuildToolBarContextMenu();
+			// ToolBarTray puts every strip on band 0 unless told otherwise, so all strips compete for
+			// a single row's width and whatever doesn't fit disappears into each strip's overflow
+			// popup. Measured on a 1024px-wide window: eight strips wanted ~1010px, leaving the last
+			// one (ILSpy) squeezed to 69px - it showed 2 of its 7 buttons and hid the rest. Wrap
+			// strips onto additional bands instead, which is what makes a strip's buttons actually
+			// visible rather than silently overflowed.
+			toolBarTray.SizeChanged += (_, e) => {
+				if (e.WidthChanged)
+					AssignToolBarBands();
+			};
 			DockPanel.SetDock(toolBarTray, Dock.Top);
 			dockPanel.Children.Insert(1, toolBarTray);
 			DockPanel.SetDock(statusBar, Dock.Bottom);
@@ -283,6 +293,40 @@ namespace ICSharpCode.SharpDevelop.Workbench
 
 		// A user-dragged strip arrangement wins over the preferred order; anything not covered by
 		// the saved layout (e.g. a new strip an addin contributed) appends in preferred order.
+		/// <summary>
+		/// Distributes the toolbar strips across as many <see cref="ToolBarTray"/> bands (rows) as it
+		/// takes for each strip to get its full desired width, so no strip's buttons end up hidden in
+		/// its overflow popup just because the strips ahead of it used up the row. Deliberately
+		/// generic rather than special-casing any one strip: the constraint is the tray's width, and
+		/// every strip is subject to it.
+		/// </summary>
+		void AssignToolBarBands()
+		{
+			double available = toolBarTray.ActualWidth;
+			if (available <= 0)
+				return;
+
+			int band = 0;
+			int indexInBand = 0;
+			double usedInBand = 0;
+			foreach (ToolBar tb in toolBarTray.ToolBars) {
+				// Measure unconstrained: a ToolBar asked to fit a narrow slot reports the *clipped*
+				// width it settled for, which is the very thing being corrected here.
+				tb.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+				double desired = tb.DesiredSize.Width;
+
+				if (indexInBand > 0 && usedInBand + desired > available) {
+					band++;
+					indexInBand = 0;
+					usedInBand = 0;
+				}
+				tb.Band = band;
+				tb.BandIndex = indexInBand;
+				indexInBand++;
+				usedInBand += desired;
+			}
+		}
+
 		ToolBar[] OrderToolBars(IEnumerable<ToolBar> toolBars)
 		{
 			var saved = LoadToolBarLayout();

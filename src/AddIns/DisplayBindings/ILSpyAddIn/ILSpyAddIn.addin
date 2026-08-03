@@ -64,10 +64,46 @@
 		     main toolbar (not just File > Open > Assembly...) because this host's LibreWPF layer
 		     cannot open nested menu popups - a top-level button is the reliable path. Lives on
 		     its own strip so more ILSpy commands can join it later. -->
+		<!-- Ordered to mirror real ILSpy's own toolbar (ILSpy/Controls/MainToolBar.xaml composes
+		     [ExportToolbarCommand] categories in this order): Navigation, then Open, then View.
+		     The Custom items are vector-icon buttons - see Commands/IlSpyToolBarButtons.cs for why
+		     they can't be plain type="Item" entries with an icon= attribute. -->
+		<ToolbarItem id = "BrowseBack"
+		             type = "Custom"
+		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpyBrowseBackToolBarButton"/>
+		<ToolbarItem id = "BrowseForward"
+		             type = "Custom"
+		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpyBrowseForwardToolBarButton"/>
+		<ToolbarItem id = "NavigationSeparator" type = "Separator"/>
 		<ToolbarItem id = "OpenAssembly"
 		             icon = "Assembly"
 		             tooltip = "Open Assembly..."
 		             class = "ICSharpCode.ILSpyAddIn.Commands.OpenAssemblyCommand"/>
+		<ToolbarItem id = "Refresh"
+		             type = "Custom"
+		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpyRefreshToolBarButton"/>
+		<ToolbarItem id = "OpenSeparator" type = "Separator"/>
+		<ToolbarItem id = "ShowSearch"
+		             type = "Custom"
+		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpyShowSearchToolBarButton"/>
+		<ToolbarItem id = "SortAssemblyList"
+		             type = "Custom"
+		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpySortAssemblyListToolBarButton"/>
+		<ToolbarItem id = "CollapseAll"
+		             type = "Custom"
+		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpyCollapseAllToolBarButton"/>
+		<ToolbarItem id = "ApiVisibilitySeparator" type = "Separator"/>
+		<!-- API-visibility radio group over LanguageSettings.ShowApiLevel, mirroring the three
+		     CheckBoxes real ILSpy hardcodes in ILSpy/Controls/MainToolBar.xaml. -->
+		<ToolbarItem id = "ShowPublicOnly"
+		             type = "Custom"
+		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpyShowPublicOnlyToggle"/>
+		<ToolbarItem id = "ShowPublicAndInternal"
+		             type = "Custom"
+		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpyShowPublicAndInternalToggle"/>
+		<ToolbarItem id = "ShowAll"
+		             type = "Custom"
+		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpyShowAllToggle"/>
 	</Path>
 
 	<Path name = "/SharpDevelop/Workbench/MainMenu/File/Open">

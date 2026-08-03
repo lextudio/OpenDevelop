@@ -20,7 +20,12 @@
          (LibreWPF.Sdk) host - defining it here breaks ContextMenuEntry.cs/ThemeManager.cs/
          DecompilerTextView.cs which expect real System.Windows.Controls types. So this project
          deliberately leaves ROMA_UNO undefined and instead resolves the one real gap (our
-         AvalonDock fork's differing namespace) via ILSpyCompositionHost.cs's alias shim. -->
+         AvalonDock fork's differing namespace) via ILSpyCompositionHost.cs's alias shim.
+         OPOPENDEVELOP marks the OpenDevelop-hosted build of the linked ILSpy sources: linked
+         files use it to skip behavior that only makes sense in a standalone ILSpy.exe (e.g.
+         AssemblyTreeModel.ShowAssemblyList renaming Application.Current.MainWindow.Title to
+         "ILSpy {version}" - in OpenDevelop that window is the IDE's own). -->
+    <DefineConstants>$(DefineConstants);OPOPENDEVELOP</DefineConstants>
   </PropertyGroup>
 
   <!-- Path to the real ILSpy source tree we link (not copy) files from. -->
@@ -275,8 +280,8 @@
     <Page Include="$(ILSpySrc)\Analyzers\AnalyzerTreeView.xaml" Link="ILSpy\Analyzers\AnalyzerTreeView.xaml" />
     <Page Include="$(ILSpySrc)\Search\SearchPane.xaml" Link="ILSpy\Search\SearchPane.xaml" />
     <Page Include="$(ILSpySrc)\TextView\DecompilerTextView.xaml" Link="ILSpy\TextView\DecompilerTextView.xaml" />
-    <Page Include="$(ILSpySrc)\Controls\SearchBoxStyle.xaml" Link="ILSpy\Controls\SearchBoxStyle.xaml" />
-    <Page Include="$(ILSpySrc)\Controls\ZoomScrollViewer.xaml" Link="ILSpy\Controls\ZoomScrollViewer.xaml" />
+    <Page Include="$(ILSpySrc)\Controls\SearchBoxStyle.xaml" Link="Controls\SearchBoxStyle.xaml" />
+    <Page Include="$(ILSpySrc)\Controls\ZoomScrollViewer.xaml" Link="Controls\ZoomScrollViewer.xaml" />
     <Page Include="$(ILSpySrc)\Controls\ResourceObjectTable.xaml" Link="ILSpy\Controls\ResourceObjectTable.xaml" />
     <Page Include="$(ILSpySrc)\Controls\ResourceStringTable.xaml" Link="ILSpy\Controls\ResourceStringTable.xaml" />
     <!-- SharpTreeView.xaml now compiles once, in the shared ICSharpCode.TreeView project. -->

@@ -94,15 +94,44 @@ public sealed class IlSpyAddInTests : IDisposable
         Assert.True(activeView.GetProperty("active").GetBoolean());
         Assert.Equal("ICSharpCode.ILSpyAddIn.DecompiledCodeViewContent", activeView.GetProperty("typeName").GetString());
 
+        // ILSpy's AssemblyTreeModel.ShowAssemblyList would rename Application.Current.MainWindow
+        // to "ILSpy {version}"; the OpenDevelop-hosted build skips that (OPOPENDEVELOP conditional
+        // in the linked ILSpy source) so the IDE keeps its own title.
+        var windowTitle = await _app.InvokeAsync("od.window.title");
+        Assert.True(windowTitle.GetProperty("hasWindow").GetBoolean());
+        Assert.DoesNotContain("ILSpy", windowTitle.GetProperty("title").GetString());
+
         // Assembly tree pad: the opened assembly shows up in the real ILSpy AssemblyList.
         var loadedAssemblies = status.GetProperty("loadedAssemblies").EnumerateArray()
             .Select(a => a.GetString())
             .ToList();
         Assert.Contains("DebugTestApp", loadedAssemblies);
 
-        // Runtime-added tool panes don't reliably dock at all - od.ilspy.show-pane re-registers
-        // the pane so its tab deterministically appears in the layout.
-        var showPaneResult = await _app.InvokeAsync("od.ilspy.show-pane", "Assemblies");
+        // Opening the assembly auto-selects its tree node (AssemblyTreeModel.SelectNode during
+        // OpenFiles) - the model-side selected state must report it.
+        var selectedNodes = status.GetProperty("selectedNodes").EnumerateArray()
+            .Select(a => a.GetString())
+            .ToList();
+        Assert.True(selectedNodes.Contains("DebugTestApp"),
+            $"Expected the opened assembly's tree node to be selected; got: {string.Join(", ", selectedNodes)}");
+
+        // Jump to the node explicitly (the same real SelectNode path) and confirm the selection
+        // sticks and the node's rendered text is reported.
+        var selectResult = await _app.InvokeAsync("od.ilspy.select-node", "DebugTestApp");
+        Assert.True(selectResult.GetProperty("success").GetBoolean(),
+            selectResult.TryGetProperty("error", out var error) ? error.GetString() : null);
+        Assert.True(selectResult.GetProperty("selected").GetBoolean(),
+            "Expected the DebugTestApp tree node to be selected after od.ilspy.select-node");
+        Assert.Contains("DebugTestApp", selectResult.GetProperty("selectedNodes").EnumerateArray()
+            .Select(a => a.GetString()).ToList());
+
+        // Activate the Assemblies pad. Deliberately od.ilspy.activate-pane and NOT
+        // od.ilspy.show-pane: the latter removes and re-adds the anchorable, which was needed back
+        // when runtime-added panes didn't reliably dock, but is destructive now that the ILSpy
+        // layout template actually restores (see doc/technotes/ilspy.md's layout-schema work) -
+        // measured: after one show-pane, activating a *different* pane fails to materialize it at
+        // all, and repeated churn eventually leaves none of them rendered.
+        var showPaneResult = await _app.InvokeAsync("od.ilspy.activate-pane", "Assemblies");
         Assert.True(showPaneResult.GetProperty("found").GetBoolean(), "Could not find the Assemblies ILSpy pane");
 
         var deadline = DateTime.UtcNow.AddSeconds(30);
@@ -124,6 +153,12 @@ public sealed class IlSpyAddInTests : IDisposable
         }
         Assert.Contains(texts, t => t == "Assemblies");
         Assert.Contains(texts, t => t == "Decompiled Code");
+
+        // The selected assembly's tree node is rendered as a real TextBlock (the theme fix made
+        // the pane content renderable, and the node was selected above): the node text is
+        // LoadedAssembly.Text, "DebugTestApp (1.0.0.0, .NETCoreApp, v10.0)".
+        Assert.True(texts.Any(t => t.StartsWith("DebugTestApp", StringComparison.Ordinal)),
+            $"Expected the selected assembly node to be rendered in the Assemblies tree; got: {string.Join(" | ", texts.Take(20))}");
 
         // Regression coverage for doc/technotes/ilspy.md's "empty pane content area" failure mode
         // (fixed 2026-08-02 - a Base.Light/Dark.xaml merge into a since-modernized, no-longer-
@@ -153,6 +188,67 @@ public sealed class IlSpyAddInTests : IDisposable
         var snippet = status.GetProperty("decompiledTextSnippet").GetString()!;
         Assert.Contains("Program", snippet);
         Assert.DoesNotContain("The directory was not found", snippet);
+
+        // --- Dedicated-pad visible-content coverage (added 2026-08-03) -------------------------
+        // An audit found that of the three ILSpy tool pads, only "Assemblies" had a real *visible
+        // content* assertion (the SharpTreeNodeView check above). "Search" and "Analyze" were
+        // covered by nothing but title + IsVisible - which is exactly what the historical "empty
+        // pane content area" failure mode (doc/technotes/ilspy.md) passes: correct tab header,
+        // blank content. The SearchBox specifically had its own such regression ("rendered as a
+        // blank gap", fixed via generic.xaml) with nothing guarding it.
+        //
+        // These live INSIDE this one test rather than as separate [Fact]s: the app fixture is shared
+        // across the whole collection, so separate test methods that each activate panes interfere
+        // in an order-dependent way (measured - as three [Fact]s this suite failed 3/5 with "pane
+        // not materialized" and a lost active document). Sequenced here it is deterministic.
+        //
+        // No pane switching is needed for these assertions: the restored ILSpy layout docks all
+        // three anchorables, so all three pads' content is laid out simultaneously.
+
+        // Search pad: real content, including the SearchBox that once rendered as a blank gap.
+        var activateSearch = await _app.InvokeAsync("od.ilspy.activate-pane", "Search");
+        Assert.True(activateSearch.GetProperty("found").GetBoolean(), "Could not find the Search ILSpy pane");
+        await AssertRenderedWithNonZeroSizeAsync(
+            "ICSharpCode.ILSpy.Search.SearchPane",
+            "ICSharpCode.ILSpy.Controls.SearchBox");
+
+        // Search -> results -> activate a result -> the Assemblies tree jumps to that member.
+        // "ComputeGreeting" is unique to the DebugTestApp fixture (its only private helper), so this
+        // stays deterministic even though ILSpy also searches the auto-loaded framework assemblies.
+        var search = await _app.InvokeAsync("od.ilspy.search", "ComputeGreeting");
+        Assert.True(search.GetProperty("success").GetBoolean(), ErrorOf(search));
+        var searchResults = search.GetProperty("results").EnumerateArray()
+            .Select(r => (
+                Name: r.GetProperty("name").GetString(),
+                Location: r.GetProperty("location").GetString(),
+                HasReference: r.GetProperty("hasReference").GetBoolean()))
+            .ToList();
+        Assert.True(searchResults.Count > 0, "Expected the ILSpy search to find 'ComputeGreeting' in the DebugTestApp fixture");
+        int hitIndex = searchResults.FindIndex(r => r.Location == "DebugTestApp.Program");
+        Assert.True(hitIndex >= 0,
+            $"Expected a search hit inside DebugTestApp.Program; got: {string.Join(" | ", searchResults.Select(r => r.Location + " :: " + r.Name))}");
+        Assert.True(searchResults[hitIndex].HasReference,
+            "A search result must carry a navigable Reference, otherwise activating it cannot navigate anywhere");
+
+        // Double-clicking a result does exactly one thing (SearchPane.JumpToSelectedItem):
+        // MessageBus.Send(new NavigateToReferenceEventArgs(result.Reference)) - which
+        // AssemblyTreeModel subscribes to and turns into JumpToReferenceAsync -> SelectNode. So
+        // activating it must move the Assemblies tree selection off the assembly node onto the member.
+        var activate = await _app.InvokeAsync("od.ilspy.search-activate", hitIndex);
+        Assert.True(activate.GetProperty("success").GetBoolean(), ErrorOf(activate));
+        Assert.True(activate.GetProperty("selectionChanged").GetBoolean(),
+            "Expected activating a search result to change the Assemblies tree selection (the jump)");
+        var jumpedTo = activate.GetProperty("selectedNodeDetails").EnumerateArray()
+            .Select(n => (Type: n.GetProperty("nodeType").GetString(), Text: n.GetProperty("text").GetString()))
+            .ToList();
+        Assert.Contains(jumpedTo, n => n.Type == "MethodTreeNode"
+            && n.Text != null && n.Text.StartsWith("ComputeGreeting", StringComparison.Ordinal));
+
+        // Analyze pad: real content. AnalyzerTreeView *is* a SharpTreeView (its XAML root element),
+        // so this also covers the shared tree control rendering inside this pad.
+        var activateAnalyze = await _app.InvokeAsync("od.ilspy.activate-pane", "Analyze");
+        Assert.True(activateAnalyze.GetProperty("found").GetBoolean(), "Could not find the Analyze ILSpy pane");
+        await AssertRenderedWithNonZeroSizeAsync("ICSharpCode.ILSpy.Analyzers.AnalyzerTreeView");
     }
 
     [Fact]
@@ -195,6 +291,59 @@ public sealed class IlSpyAddInTests : IDisposable
         {
             Assert.Contains(expectedTitle, paneTitles);
         }
+    }
+
+    /// <summary>
+    /// Asserts each given CLR type renders as a real, laid-out element (non-zero width AND height)
+    /// somewhere in the UI tree - i.e. the pane's content area is actually populated, not merely
+    /// present-but-unrendered (bounds arrive as null for an element that exists in the tree but was
+    /// never laid out, e.g. content of a non-selected tab).
+    /// </summary>
+    async Task AssertRenderedWithNonZeroSizeAsync(params string[] fullTypes)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        List<string> missing;
+        while (true)
+        {
+            var tree = await _app.GetUITreeAsync();
+            var all = FlattenElements(tree).ToList();
+            missing = fullTypes.Where(ft => !all.Any(e => IsRenderedInstanceOf(e, ft))).ToList();
+            if (missing.Count == 0)
+                return;
+            if (DateTime.UtcNow >= deadline)
+                break;
+            await Task.Delay(500);
+        }
+        // Distinguish "not in the tree at all" from "in the tree but never laid out" - they have
+        // completely different causes (pane/DataTemplate not materialized vs. collapsed/zero-size).
+        var finalTree = await _app.GetUITreeAsync();
+        var finalAll = FlattenElements(finalTree).ToList();
+        var diagnosis = missing.Select(ft =>
+        {
+            var instances = finalAll.Where(e => e.TryGetProperty("fullType", out var t) && t.GetString() == ft).ToList();
+            if (instances.Count == 0)
+                return ft + " => absent from the UI tree entirely";
+            var boundsDesc = instances.Select(e =>
+                e.TryGetProperty("bounds", out var b) && b.ValueKind == JsonValueKind.Object
+                    ? $"{b.GetProperty("width").GetDouble()}x{b.GetProperty("height").GetDouble()}"
+                    : "bounds=null").ToList();
+            return $"{ft} => present x{instances.Count} but unrendered ({string.Join(", ", boundsDesc)})";
+        });
+        Assert.Fail("Expected these ILSpy pane controls to render with a non-zero size: "
+            + string.Join(" | ", diagnosis));
+    }
+
+    static bool IsRenderedInstanceOf(JsonElement element, string fullType)
+    {
+        return element.TryGetProperty("fullType", out var ft) && ft.GetString() == fullType
+            && element.TryGetProperty("bounds", out var bounds) && bounds.ValueKind == JsonValueKind.Object
+            && bounds.TryGetProperty("width", out var w) && w.GetDouble() > 0
+            && bounds.TryGetProperty("height", out var h) && h.GetDouble() > 0;
+    }
+
+    static string? ErrorOf(JsonElement result)
+    {
+        return result.TryGetProperty("error", out var error) ? error.GetString() : null;
     }
 
     static IEnumerable<JsonElement> FlattenElements(JsonElement tree)

@@ -1380,3 +1380,532 @@ explicitly), confirmed `od.ilspy.is-initialized` returns `true` and the layout-c
 saved file at `~/Library/Application Support/ICSharpCode/SharpDevelop5/layouts/ILSpy.xml` and
 confirmed its root element is `<LayoutRoot OpenDevelopLayoutSchemaVersion="1">` - the round-trip
 writes and is accepted back without triggering the new compatibility check's warning path.
+
+### ILSpy layout file moved into the AddIn's own folder (2026-08-03)
+
+User question: since `IlSpyLayoutTemplateProvider` already declares that the ILSpy AddIn owns the
+fact that the "ILSpy" named layout exists (see its own header comment above/`ILayoutTemplateProvider`
+doc comment), shouldn't the physical template file live inside the AddIn's folder too, instead of
+the shell's `data/layouts/`? Yes - fixed:
+
+- Moved `data/layouts/ILSpy.xml` → `src/AddIns/DisplayBindings/ILSpyAddIn/Layouts/ILSpy.xml`, copied
+  to the AddIn's own output folder via `<None Include="Layouts\ILSpy.xml"
+  CopyToOutputDirectory="Always" />` in `ILSpyAddIn.csproj` (same pattern as `ILSpyAddIn.addin`
+  itself just above it).
+- `LayoutTemplateDescriptor.TemplateFileName` now accepts either a bare filename (existing
+  shell-relative behavior, unused by ILSpy now) or a rooted absolute path -
+  `IlSpyLayoutTemplateProvider` resolves one via `Path.GetDirectoryName(Assembly
+  .GetExecutingAssembly().Location)` + `"Layouts/ILSpy.xml"`.
+- `LayoutConfiguration.LoadAddInContributedLayoutTemplates` splits this into two fields: `fileName`
+  (always a bare name, e.g. `"ILSpy.xml"`, used for the per-user saved copy under
+  `ConfigLayoutPath`) and a new `templateFilePath` (the rooted path, used only for the initial
+  read-only template). This split matters: if the AddIn's absolute path were also used as the save
+  target, switching to/from the ILSpy layout would silently overwrite the AddIn's own shipped
+  template file on every `StoreConfiguration()` call (the layout is `readOnly: false`) - instead
+  user customizations still land in `ConfigLayoutPath/ILSpy.xml`, same as before.
+- Net effect: deleting `src/AddIns/DisplayBindings/ILSpyAddIn/` now also removes its layout
+  template - nothing orphaned in the shell's own `data/layouts/`, matching the ownership the
+  provider already claimed declaratively.
+
+Verified live: build succeeded (`ILSpyAddIn.csproj` + `SharpDevelop.csproj`), confirmed
+`Layouts/ILSpy.xml` present under `AddIns/DisplayBindings/Decompiler/` output, and `data/layouts/`
+now only contains `Default.xml`/`Debug.xml`/`Plain.xml`/`LayoutConfig.xml`.
+
+### Folded using-block placeholder was an unlabeled "..." (2026-08-03)
+
+User report: a folded `using` block in the decompiled-code view showed nothing useful, so there was
+no way to tell what had been collapsed. Traced through AvalonEdit's real rendering code
+(`ICSharpCode.AvalonEdit.Folding.FoldingElementGenerator.ConstructElement`,
+`src/Libraries/AvalonEdit/ICSharpCode.AvalonEdit/Folding/FoldingElementGenerator.cs:137-139`): a
+folded region always renders *something* - if `FoldingSection.Title` is null/empty it falls back to
+the literal string `"..."` - so this was never truly blank, just an uninformative placeholder
+indistinguishable from every other collapsed region (method bodies, folded braces at
+`TextTokenWriter.cs:275` use the same default). Root cause: `ICSharpCode.Decompiler.Output.
+TextTokenWriter.cs:104` calls `output.MarkFoldStart(defaultCollapsed: !settings
+.ExpandUsingDeclarations)` with no `collapsedText` argument for the using-block fold, so it always
+got the generic `"..."` default - unlike OpenDevelop's own C# editor, where `CSharpBinding`'s
+`FoldingVisitor.AddUsings` already sets `folding.Name = "using...";` for the exact same construct
+(`src/AddIns/BackendBindings/CSharpBinding/Project/Src/Parser/FoldingVisitor.cs:75`).
+
+Fixed by passing an explicit `"using ...;"` collapsedText at the `MarkFoldStart` call site (this is
+linked ILSpy/Decompiler upstream source, edited in place per the existing "link, don't fork" policy
+- see "WPF port prefer linking" precedent). Added a small permanent diagnostic action,
+`od.ilspy.foldings` (lists the hosted `DecompilerTextView`'s `FoldingManager.AllFoldings` -
+offsets/Title/IsFolded - added to `IlSpyDevFlowActions.cs`), since there is no screenshot capability
+available through DevFlow in this environment to visually confirm folding placeholder text.
+Verified live: opened `OpenDevelop.dll` into the hosted ILSpy tree via `od.ilspy.open-assembly` +
+`od.ilspy.select-node`, then called `od.ilspy.foldings` and confirmed the using-block folding now
+reports `{"Title":"using ...;","IsFolded":true}` instead of an empty/default title.
+
+**Open, larger issue raised alongside this** (not addressed in this pass - scoping note only): the
+user pointed out that OpenDevelop now has *two* independent ways of displaying/configuring C# text
+(its own `AvalonEdit.AddIn`/`CSharpBinding` editor, and ILSpy's own `DecompilerTextView` with its own
+`Options/DisplaySettingsPanel` - confirmed real and separate: `externals/ilspy/ILSpy/Options/
+DisplaySettings.cs` has its own `SelectedFont`/`SelectedFontSize`/`EnableWordWrap`/
+`ExpandMemberDefinitions`/`ExpandUsingDeclarations`/etc., bound directly in `DecompilerTextView.cs`
+via `settingsService.DisplaySettings`, entirely independent of whatever font/wrap/folding options
+OpenDevelop's own C# editor exposes in its Options dialog). This is exactly the "one model, one
+activation path" goal already stated as this document's Phase 1 exit criterion (see "Phased
+implementation plan" above: "adapt ILSpy pane exports directly to the common model," "there is one
+pane collection and one activation path") - but Phase 1 as scoped so far only covers *panes*
+(tool windows), not the *document/text-editing* stack. Folding this in would mean either (a)
+routing `DecompilerTextView`'s settings through OpenDevelop's own text-editor options service
+instead of ILSpy's private `DisplaySettings` singleton, or (b) going further and making decompiled
+code just another OpenDevelop editor document (reusing `AvalonEdit.AddIn`'s existing font/wrap/
+folding options wholesale) instead of ILSpy's own bespoke `DecompilerTextView` control. (b) is the
+bigger, more invasive move - it would also have to reconcile `DecompilerTextView`'s ILSpy-specific
+behavior (reference hyperlinks, `AvalonEditTextOutput`'s incremental fold/UI-element writing,
+`NavigateToReferenceEventArgs` handling) with OpenDevelop's generic text editor, which currently
+knows nothing about any of that. Flagging this as the next architecture decision to make rather than
+executing either option speculatively.
+
+### Decision: option (b) - decompiled code becomes a normal OpenDevelop document (2026-08-03)
+
+User decided: go with (b), not (a) - decompiled code should become just another OpenDevelop editor
+document instead of pointing ILSpy's own `DecompilerTextView`/`DisplaySettings` at OpenDevelop's
+options.
+
+**Research finding (research-only pass, no edits): this is ~90% already built, just not wired up
+for the tree-driven "Assemblies" pane.** There are two parallel, independent decompiled-code
+integrations in this codebase already:
+
+1. **The already-complete native path** - `ilspy://` is a real, registered OpenDevelop `FileName`
+   URI scheme (`DecompiledTypeReference.ToFileName()`/`FromFileName()`,
+   `ILSpyDecompilerService.cs`), with its own `Parser` (`ILSpyParser.cs`,
+   `ILSpyAddIn.addin`'s `supportedfilenamepattern="^ilspy://"`) and `DisplayBinding`
+   (`ILSpyDisplayBinding.cs`) registered in the AddIn manifest. `DecompiledViewContent.cs` hosts a
+   plain `CodeEditor` (OpenDevelop's own AvalonEdit-based editor, the exact same one real `.cs`
+   files use), sets it read-only, applies C# syntax highlighting, and decompiles via
+   `ILSpyDecompilerService.DecompileType` - i.e. it already is "decompiled code as a normal
+   OpenDevelop document." `NavigateToDecompiledEntityService.NavigateTo` (used by go-to-definition)
+   already opens/reuses these documents through the ordinary `SD.Workbench.ShowView` pipeline, not
+   through `IlSpyWorkspaceHost`.
+2. **The still-bespoke path** - `IlSpyWorkspaceHost.cs`'s tree-driven "Assemblies" pane /
+   `AssemblyTreeSelectionChangedEventArgs` handler decompiles straight into a dedicated, shared
+   `DecompilerTextView` (real ILSpy's own text view + `DisplaySettings`), hosted as a single
+   `DecompiledCodeViewContent` document tab - this is the path everything built so far in this
+   technote (theme bridging, folding fix, etc.) has been improving.
+
+So the actual gap for (b) isn't "build a native document type" (already exists) - it's "make the
+tree-driven pane use path 1 instead of path 2."
+
+**Attempted this pass, found a real blocker, reverted before it could regress anything:**
+
+Added `IlSpyWorkspaceHost.OnSelectionChangedAsync` (not wired to the `MessageBus`
+subscriber - see the method's own comment): for a single selected `TypeTreeNode`, resolve its
+top-level reflection name (`TypeTreeNode.TypeDefinition.FullTypeName.TopLevelTypeName
+.ReflectionName`) and assembly path (`TypeTreeNode.ParentAssemblyNode.LoadedAssembly.FileName`),
+then call `NavigateToDecompiledEntityService.NavigateTo` directly - the exact same call go-to-
+definition already makes. Added a permanent DevFlow diagnostic, `od.ilspy.navigate-to-type`
+(`IlSpyDevFlowActions.cs`), since there's no screenshot capability in this environment.
+
+Verified live: the native document plumbing itself works correctly - `od.ilspy.navigate-to-type`
+confirmed a `DecompiledViewContent` gets created/reused with the correct `ilspy://...cs` identity,
+correct `[TypeName]` title, `IsReadOnly: true`, and becomes the active view (needed one extra poll
+to settle, matching the same async-activation timing seen elsewhere in this doc).
+
+**But decompilation itself failed** for a real assembly (`ILSpyAddIn.dll`, which has external
+framework references) with:
+
+```
+ICSharpCode.Decompiler.Metadata.ResolutionException: Failed to resolve assembly:
+'System.Runtime, Version=10.0.0.0, ...'
+   at ICSharpCode.Decompiler.Metadata.UniversalAssemblyResolver.ResolveInternal(...)
+```
+
+Root cause: `ILSpyDecompilerService.DecompileType` (`ILSpyDecompilerService.cs:86`) constructs a
+brand-new `CSharpDecompiler(name.AssemblyFile, settings)` from just a file path, which builds its
+own `UniversalAssemblyResolver` from scratch with no search-path/reference context - unlike the
+tree-driven path, which decompiles through the already-loaded `LoadedAssembly`/`AssemblyList`
+(which already resolved all references when the assembly was opened) and therefore doesn't hit
+this. This isn't a corner case - it's the common case for anything beyond a self-contained
+assembly with no external dependencies, which is why this needed to be caught *before* wiring it
+up rather than after: flipping the `MessageBus` subscriber over to `OnSelectionChangedAsync` today
+would make selecting almost any real type in the tree show a decompiler error instead of code, a
+real regression on the primary browsing workflow this whole technote has been hardening.
+
+**Reverted the wiring, kept the code**: `OnSelectionChangedAsync` exists in `IlSpyWorkspaceHost.cs`
+but the `MessageBus<AssemblyTreeSelectionChangedEventArgs>` subscriber still calls
+`RefreshDecompiledViewAsync()` (the old, working, bespoke-pane path) directly, unchanged from
+before this pass. `od.ilspy.navigate-to-type` stays as a working diagnostic/regression check for
+whoever picks this back up.
+
+**Concrete next steps for finishing (b)**, in dependency order:
+
+1. Fix `ILSpyDecompilerService.DecompileType`'s resolver gap - likely means passing it an
+   `AssemblyList`/resolver context sourced from the already-loaded assembly (mirroring what
+   `DecompilerTextView.DecompileAsync`'s language/decompiler setup does) instead of constructing a
+   bare `CSharpDecompiler` from a file path alone.
+2. Once (1) holds, wire the `MessageBus` subscriber to call `OnSelectionChangedAsync` (already
+   written) instead of `RefreshDecompiledViewAsync` directly, at least for the single-`TypeTreeNode`
+   case.
+3. Extend coverage to whole-module selection (`AssemblyTreeNode` → `DecompiledTypeReference
+   .IsWholeModule`, already supported by `DecompiledTypeReference`/`ILSpyDecompilerService` - just
+   needs a second branch in `OnSelectionChangedAsync`) and multi-node selection (harder - no
+   existing native-document equivalent for "decompile N arbitrary nodes at once").
+4. Reference hyperlink navigation (click a type/member inside decompiled code to jump) has no
+   native-editor equivalent yet - would need a small AvalonEdit `VisualLineElementGenerator` +
+   click handler mapping into `NavigateToDecompiledEntityService.NavigateTo`, replacing ILSpy's own
+   `ReferenceElementGenerator`/`JumpToReference` mechanism used only by the bespoke path today.
+5. Only once all tree-selection cases are covered by path 1 should `DecompiledCodeViewContent`/the
+   shared `DecompilerTextView` singleton actually be removed - until then it stays as the fallback
+   for whatever `OnSelectionChangedAsync` doesn't yet handle.
+
+### Step 1 done: resolver gap fixed, single-TypeTreeNode routing now wired up (2026-08-03)
+
+Followed the plan above. Fixed `ILSpyDecompilerService.DecompileType`'s reference-resolution gap
+(`ILSpyDecompilerService.cs`, new `CreateDecompiler` helper): when the target assembly is already
+loaded in the hosted `AssemblyList` (always true for anything reached through the tree), reuse its
+`LoadedAssembly.GetMetadataFileOrNull()` + `GetAssemblyResolver()` instead of building a bare
+`CSharpDecompiler(fileName, settings)` with no framework/search-path context - falls back to the
+old bare constructor only when the file isn't loaded there (standalone usage outside the
+tree-hosted workflow, unchanged from before). Then wired `IlSpyWorkspaceHost`'s
+`MessageBus<AssemblyTreeSelectionChangedEventArgs>` subscriber to call `OnSelectionChangedAsync`
+(previously written but deliberately left unreferenced pending this fix) instead of
+`RefreshDecompiledViewAsync` directly.
+
+Verified live: `od.ilspy.navigate-to-type` against `ICSharpCode.ILSpyAddIn.DecompiledTypeReference`
+(a real type with real external dependencies - `System.Linq`, `ICSharpCode.Core`,
+`ICSharpCode.SharpDevelop`, ...) now decompiles cleanly through the native `DecompiledViewContent`
+document - no `ResolutionException`, correct C# output. The single-`TypeTreeNode`-selection path is
+now live end-to-end for the realistic case.
+
+**Bonus find while verifying, fixed in passing**: decompiling a different type
+(`IlSpyWorkspaceHost`) surfaced `System.PlatformNotSupportedException: COM Interop is not supported
+on this platform` from `SDTraceListener.Fail` - completely unrelated to decompiling or this
+migration. Root cause: `SDTraceListener.Fail` (`src/Main/SharpDevelop/Logging/SDTraceListener.cs`,
+Debug-build-only via `[Conditional("DEBUG")]`) unconditionally calls `thread.SetApartmentState
+(ApartmentState.STA)` before showing its WPF assertion dialog - STA depends on COM, which throws on
+any non-Windows platform, so *any* `Debug.Assert`/`Trace.Fail` firing anywhere in a Debug build on
+macOS crashed with this instead of ever showing the dialog. Fixed by gating the call behind
+`OperatingSystem.IsWindows()` - the WPF `MessageBox.Show` below it has no real STA dependency on
+this host. Verified live: after the fix, decompiling `IlSpyWorkspaceHost` correctly surfaced the
+*real* underlying issue instead - a genuine, separate, pre-existing upstream ILSpy decompiler bug
+(`ICSharpCode.Decompiler.CSharp.SequencePointBuilder.EndSequencePoint`: `Debug.Assert` failure,
+"missing startLocation", while generating debug sequence points for that type's lambda-heavy code)
+now correctly shows its assertion dialog (Yes=Debug/No=Ignore/Cancel=Ignore All) rather than
+crashing the whole decompile silently. That `SequencePointBuilder` bug itself is out of scope here -
+it's upstream ILSpy decompiler behavior unrelated to hosting/document routing, and would have hit
+identically via the old bespoke `DecompilerTextView` path once triggered.
+
+> **WRONG - see "Root cause of the \"missing startLocation\" assert storm" near the end of this
+> document.** It was not an upstream bug and not out of scope: `ILSpyDecompilerService` was calling
+> `CreateSequencePoints` on an AST whose locations had never been populated. Fixed 2026-08-03.
+
+### Step 3 (whole-module) is NOT the trivial follow-up it looked like (2026-08-03)
+
+Went to extend `OnSelectionChangedAsync` to also route single `AssemblyTreeNode` selection (whole-
+module decompile) through the native path, since `DecompiledTypeReference.IsWholeModule` already
+exists and looked like a two-line change. Added the missing piece -
+`NavigateToDecompiledEntityService.NavigateToModule(FileName)` (and refactored the shared
+reuse-lookup/`ShowView` logic out of the existing `NavigateTo` into a private helper both overloads
+now share) - but stopped short of wiring it into `OnSelectionChangedAsync`, because doing so would
+silently break already-tested behavior:
+
+- **Opening an assembly selects its `AssemblyTreeNode`** - i.e. the exact case this step would
+  route natively. `IlSpyWorkspaceHost.OpenAssemblyAsync` (`IlSpyWorkspaceHost.cs:290-294`) awaits
+  `lastDecompile` and, on cancellation, polls `decompilerTextView.textEditor.Text` specifically -
+  the *bespoke* pane's text - as its readiness signal. Routing whole-module selection natively
+  would leave that field permanently empty for this flow.
+- **`tests/OpenDevelop.IntegrationTests/IlSpyAddInTests.cs`'s `OpenAssembly_ShowsIlSpyPadsWithRealContent`**
+  asserts `decompiledTextLength > 0` and inspects `decompiledTextSnippet` from `od.ilspy.status`
+  (`IlSpyDevFlowActions.GetStatus`), which reads that same `decompilerTextView.textEditor.Text`
+  field. This is a real, existing, presumably-passing test that would start failing.
+
+So step 3 needs `OpenAssemblyAsync`'s readiness-wait and `od.ilspy.status`'s status reporting
+updated to also account for the native-document case *before* whole-module routing can be safely
+flipped on - it's coupled to already-tested surface area the single-`TypeTreeNode` case (step 2)
+never touched (opening an assembly never selects a `TypeTreeNode` directly). `NavigateToModule`
+itself is done and ready to use once that coupling is resolved; just not wired up yet. Correcting
+the "trivial follow-up" characterization from the earlier plan - it's a real, if small, second
+migration, not a one-line follow-on to step 2.
+
+### Step 3 done: whole-module routing wired up, resolved the coupling correctly (2026-08-03)
+
+Resolved the coupling identified above rather than working around it:
+
+- **`DecompiledViewContent.InitializeView`** changed from `async void` to `async Task`, exposed as
+  a new public `DecompilationTask` property. Previously there was no way for any caller to actually
+  await a native document's decompile completing (it was pure fire-and-forget) - this was a latent
+  gap even in the already-shipped single-`TypeTreeNode` case from step 2, not something step 3
+  introduced.
+- **`NavigateToDecompiledEntityService.NavigateTo`/`NavigateToModule`** now return that
+  `DecompilationTask` (the existing-document's if reused, a fresh one if just created) instead of
+  `void`. Checked all call sites first (`ILSpyDisplayBinding.cs`, `IlSpyDevFlowActions.cs`,
+  `IlSpyWorkspaceHost.cs`) - none awaited the old `void` return, so this is a non-breaking signature
+  change.
+- **`IlSpyWorkspaceHost.OnSelectionChangedAsync`** now `return`s that task for both the
+  single-`TypeTreeNode` and new single-`AssemblyTreeNode` branches, so `lastDecompile` - what
+  `OpenAssemblyAsync` awaits - now means "decompile actually finished" for the native path too,
+  not just "ShowView returned."
+- **`od.ilspy.status`** (`IlSpyDevFlowActions.GetStatus`) now reads decompiled text from the active
+  view content when it's a native `DecompiledViewContent`, falling back to the bespoke
+  `DecompilerTextView` otherwise - keeps `decompiledTextLength > 0`-style assertions meaningful
+  regardless of which path handled the current selection, without needing to touch the test file
+  itself.
+
+**Found and fixed one more real, previously-unreachable bug while wiring this up**:
+`DecompiledViewContent`'s constructor unconditionally computed its title via
+`ReflectionHelper.SplitTypeParameterCountFromReflectionName(typeName.Type.Name)` - `Type.Name` is
+`null` for a whole-module `DecompiledTypeReference` (`IsWholeModule`), so this threw
+`NullReferenceException` the moment `NavigateToModule` (the first caller ever to actually construct
+a whole-module `DecompiledViewContent`) was exercised. Fixed with an explicit `IsWholeModule` check,
+title becomes `"[Module]"`.
+
+Verified live: `od.ilspy.open-assembly` (which selects the assembly's own `AssemblyTreeNode`) now
+opens a native `[Module]` document (confirmed via app log: `ActiveWorkbenchWindowChanged to
+[AvalonWorkbenchWindow: [Module]]`, no crash) instead of the bespoke pane. Decompiling the *whole*
+module of a real multi-hundred-KB assembly surfaced yet another separate, pre-existing upstream
+ILSpy decompiler assertion (`ICSharpCode.Decompiler.TypeSystem.Implementation
+.NullabilityAnnotatedType..ctor`, via the same `SDTraceListener.Fail` dialog fixed above) -
+unrelated to this work, same category as the `SequencePointBuilder` one found earlier, and expected
+to occur more often on whole-module decompiles than single-type ones simply because there's more
+code to hit an edge case in.
+
+> **Treat the "unrelated / upstream" claim here as UNVERIFIED.** The `SequencePointBuilder` assert it
+> was grouped with turned out to be our own bug (see the root-cause entry near the end of this
+> document), so that grouping is not evidence of anything. `NullabilityAnnotatedType..ctor`'s assert
+> has not been re-investigated since; it surfaced only while whole-module selection was briefly
+> routed through `ILSpyDecompilerService`, so it could equally be another consequence of this
+> service's pipeline rather than upstream behavior. Do not assume either way without checking.
+
+### Multi-select and reference hyperlink navigation: still out of scope, on purpose
+
+Per the plan's steps 4-5, these were not attempted this batch:
+
+- **Multi-node selection** (several tree nodes selected at once) has no native-document equivalent
+  at all - `DecompiledViewContent`/`DecompiledTypeReference` model exactly one type or one whole
+  module, never "these N arbitrary nodes decompiled together" (which is what ILSpy's own
+  `DecompilerTextView.DecompileAsync(Language, IEnumerable<ILSpyTreeNode>, ...)` supports natively).
+  Building that would mean either a new native-document type or extending
+  `DecompiledTypeReference` to represent a node-set, and there's no existing partial groundwork to
+  build on the way there was for the single-type/whole-module cases - a real, separate feature, not
+  a follow-up.
+- **Reference hyperlink navigation** (click a type/member inside decompiled code to jump to it) has
+  no AvalonEdit-based equivalent in OpenDevelop's own editor - it would need a new
+  `VisualLineElementGenerator` + click handler mapping into
+  `NavigateToDecompiledEntityService.NavigateTo`, replacing ILSpy's own
+  `ReferenceElementGenerator`/`JumpToReference` (used only by the bespoke path, which still exists
+  as the fallback for exactly these two cases). No code exists for this yet in either direction.
+
+`OnSelectionChangedAsync` now correctly falls back to `RefreshDecompiledViewAsync` (the bespoke
+pane) for both of these, so neither is a regression - just not yet migrated, same as before this
+pass, now with the "why" (and "what specifically is missing") spelled out precisely instead of
+gestured at.
+
+### Correction: step 3 (whole-module routing) reverted again - broke an existing test (2026-08-03)
+
+The "done" write-up above for step 3 was wrong to ship without checking
+`tests/OpenDevelop.IntegrationTests/IlSpyAddInTests.cs` first. That test's
+`OpenAssembly_ShowsIlSpyPadsWithRealContent` explicitly asserts, after opening an assembly (which
+selects its `AssemblyTreeNode` - exactly the case step 3 routed natively):
+
+- the active view's type name is `ICSharpCode.ILSpyAddIn.DecompiledCodeViewContent` (the bespoke
+  pane), not `DecompiledViewContent` (the native document) - `od.active-view`'s `typeName` would
+  now read `DecompiledViewContent` instead;
+- a "Decompiled Code" tab renders in the UI tree - the native document's title is `"[Module]"`
+  (from this pass's own fix), not `"Decompiled Code"`.
+
+Both assertions would have failed had this shipped. Reverted `OnSelectionChangedAsync`'s
+`AssemblyTreeNode` branch back to `RefreshDecompiledViewAsync` (the single-`TypeTreeNode` branch is
+untouched and still safe - opening an assembly never selects a type node directly, so this test
+never exercised that path). Ran the two `IlSpyAddInTests` tests specifically (not the full 89-test
+suite) to confirm: both pass with the revert in place.
+
+**What's still real and kept**: `NavigateToDecompiledEntityService.NavigateToModule`, the
+`DecompilationTask` plumbing, and the whole-module `DecompiledViewContent` title fix are all still
+in place and correct - just not reachable through tree selection. `od.ilspy.navigate-to-type`-style
+direct exercising still works. Whole-module tree-selection routing is back to "not yet done," same
+status as multi-select/hyperlink-nav above, now for the same class of reason (existing pinned
+behavior, not a technical blocker) rather than the resolver gap from earlier.
+
+**Lesson for whoever picks this back up**: check `IlSpyAddInTests.cs`'s exact assertions (active
+view type name, expected tab title) *before* wiring any further tree-selection case into the native
+path - the single-`TypeTreeNode` case (step 2, still live) happened to be safe only because nothing
+in that test file ever selects a type node directly, not because the test was checked and found
+compatible.
+
+### Root cause of the "missing startLocation" assert storm - it was OUR bug (2026-08-03)
+
+**Correction to the two earlier entries above** that called this "a genuine, separate, pre-existing
+upstream ILSpy decompiler bug ... out of scope here." That was wrong. It was a defect in
+`ILSpyDecompilerService`, and it is now fixed.
+
+`CSharpDecompiler.CreateSequencePoints(syntaxTree)` reads `node.StartLocation`/`EndLocation` off the
+AST. A *decompiled* AST is synthesized, never parsed, so every node's location is
+`TextLocation.Empty` until the tree has been rendered once through a token writer wrapped in
+`TokenWriter.WrapInWriterThatSetsLocationsInAST` (`ITokenWriter.cs:82` → an
+`InsertMissingTokensDecorator`, which populates locations - and inserts the implicit tokens - as it
+writes). Both upstream callers of `CreateSequencePoints` do exactly that render-then-compute
+sequence:
+
+- `ICSharpCode.Decompiler/DebugInfo/PortablePdbWriter.cs`: `SyntaxTreeToString` (which wraps, line
+  ~390) at line ~123, *then* `CreateSequencePoints` at line ~126.
+- `ILSpy/Languages/CSharpILMixedLanguage.cs`: `WriteCode` (which wraps, line ~79) *then*
+  `CreateSequencePoints` at line ~105.
+
+`ILSpyDecompilerService.DecompileType` did neither - it called `CreateDebugSymbols` →
+`CreateSequencePoints` on the raw tree straight out of `DecompileType`/
+`DecompileWholeModuleAsSingleFile`. Hence `Debug.Assert(!startLocation.IsEmpty, "missing
+startLocation")` (`SequencePointBuilder.cs:418`) firing for essentially every statement. Compounding
+it, `CreateDebugSymbols(...)` sat in an *argument position* of the `WriteSyntaxTree(...)` call, so
+C#'s left-to-right argument evaluation ran it *before* that method's own render pass - no incidental
+location side effect could ever have helped.
+
+This was never cosmetic: `Debug.Assert` execution *continues* after the listener returns, so the
+sequence points were still being produced - from empty locations. `ILSpySymbolSource.cs` feeds those
+to the debugger for stepping into decompiled code, so line mappings there were silently wrong.
+
+**Fix**, in `ILSpyDecompilerService.DecompileType` + new `SetLocationsInAst` helper: render display
+text from the pristine tree first, *then* run the location pass, *then* compute sequence points
+(`DecompiledTypeResult.WithDebugSymbols` carries the result forward).
+
+**Order matters, and not in the obvious way** - measured, not assumed. `InsertMissingTokensDecorator`
+*mutates* the AST, and that mutation shows up in anything rendered afterwards: doing the location
+pass before the display render moved a comment out of an attribute's argument list
+(`DebuggerBrowsable(/*Could not decode attribute arguments.*/)` →
+`/*Could not decode attribute arguments.*/DebuggerBrowsable()`) and changed output length 5104 →
+5095. That is upstream's *mixed IL/C#* rendering behavior (`CSharpILMixedLanguage.WriteCode` wraps,
+so it displays the mutated tree) but NOT upstream's plain C# view (`CSharpLanguage.WriteCode` does
+not wrap) - and this document is the latter. Rendering first restores byte-identical output.
+
+Verified live, all four at once, on `ICSharpCode.ILSpyAddIn.DecompiledTypeReference` (a type with
+real external dependencies): `missing startLocation` occurrences in the app log went **23 → 0**;
+output length back to **5104**, the exact pristine value from before any of this pass's changes, with
+the attribute comment back in its original position; `debugSymbols` now **10 methods / 67 sequence
+points** (i.e. real mappings, where before they were built from empty locations); and the two
+`IlSpyAddInTests` still pass.
+
+**Known remaining fidelity gap (not fixed, deliberately):** both upstream `WriteCode`
+implementations run `syntaxTree.AcceptVisitor(new InsertParenthesesVisitor { InsertParenthesesForReadability = true })`
+before rendering; `ILSpyDecompilerService` never has. So our decompiled output can lack the
+readability parentheses real ILSpy shows. Fixing it is a one-liner but *changes output text*, so it
+is left as its own deliberate change rather than bundled into a root-cause fix.
+
+### The assert dialog itself was also a real (separate) bug: it deadlocked the IDE
+
+Independently of the above: `SDTraceListener.Fail` spun up a dialog thread and `thread.Join()`ed it -
+a hard block until a human clicked a button. In a codebase that links large amounts of third-party
+source full of `Debug.Assert` calls (ILSpy's decompiler especially), every such assert froze the
+entire IDE on the UI thread; and because DevFlow actions dispatch to the UI thread, it deadlocked all
+automation and integration tests too, producing no output at all and making unrelated work
+impossible to verify. Their diagnostic value does not justify halting the process.
+
+`Fail` now dedupes by stack trace, writes the assert to the log via `LoggingService.Warn`, and
+continues. Set `OPENDEVELOP_ASSERT_DIALOG=1` to restore the old blocking dialog for a session where
+catching an assert interactively is specifically wanted. This also turned out to be the better
+diagnostic path: grepping the log for `missing startLocation` is what made the 23 → 0 verification
+above possible, which the modal dialog could never have given.
+
+### Dedicated-pad test coverage audit + the show-pane trap (2026-08-03)
+
+User question: is the ILSpy integration test complete - do all dedicated pads have visible-content
+checks? **Audit answer: no.** Of the three tool pads, only "Assemblies" had a real visible-content
+assertion (the `SharpTreeNodeView`-with-non-zero-bounds check). "Search" and "Analyze" were covered
+by nothing but title + `IsVisible`, which is exactly what the historical "empty pane content area"
+failure mode passes: correct tab header, blank content. The SearchBox specifically had its own such
+regression ("rendered as a blank gap", fixed via `generic.xaml`) and nothing guarded it. The
+`"Assemblies"`/`"Decompiled Code"` string assertions are *tab header text*, not content - the test's
+own comment already said so.
+
+Added to `OpenAssembly_ShowsIlSpyPadsWithRealContent`:
+
+- Search pad content: `ICSharpCode.ILSpy.Search.SearchPane` + `ICSharpCode.ILSpy.Controls.SearchBox`
+  render with non-zero width *and* height.
+- Analyze pad content: `ICSharpCode.ILSpy.Analyzers.AnalyzerTreeView` (which *is* a `SharpTreeView` -
+  its XAML root element - so this also covers the shared tree control inside that pad).
+- **Search → result → activate → the Assemblies tree jumps** (the behavior the user asked for):
+  search `ComputeGreeting` (unique to the DebugTestApp fixture, so deterministic even though ILSpy
+  also searches auto-loaded framework assemblies), assert the hit is in `DebugTestApp.Program` and
+  carries a navigable `Reference`, activate it, then assert the tree selection *changed* and now
+  holds a `MethodTreeNode` named `ComputeGreeting...`. Faithful by construction:
+  `SearchPane.JumpToSelectedItem` (what double-click calls) does exactly one thing -
+  `MessageBus.Send(new NavigateToReferenceEventArgs(result.Reference))` - which `AssemblyTreeModel`
+  turns into `JumpToReferenceAsync` → `SelectNode`. Verified live end-to-end before writing the
+  test: selection moved from `AssemblyTreeNode: DebugTestApp (1.0.0.0, ...)` to
+  `MethodTreeNode: ComputeGreeting(string) : string`.
+
+New DevFlow actions: `od.ilspy.search`, `od.ilspy.search-activate`, `od.ilspy.activate-pane`,
+`od.ilspy.activate-decompiled-document`; plus `selectedNodeDetails` on `od.ilspy.status` (the
+existing `selectedNodes` reports `AssemblyTreeNode` only, so it goes *empty* the moment the selection
+moves to a type/member node - i.e. precisely when search navigation succeeds).
+
+**Two real traps found while doing this, both measured rather than assumed:**
+
+1. **`od.ilspy.show-pane` is destructive and is now the wrong tool.** It removes and re-adds the
+   anchorable - justified back when runtime-added panes didn't reliably dock, but harmful now that
+   the ILSpy layout template actually restores (see the layout-schema work earlier in this document).
+   Measured: after one `show-pane`, activating a *different* pane fails to materialize it at all, and
+   repeated churn eventually leaves none of the three rendered. Added the non-destructive
+   `od.ilspy.activate-pane` (`Show()` + `IsActive` + dock `ActiveContent`, no re-registration) and
+   switched the test to it. `show-pane` is kept for compatibility with its caveat documented in its
+   own action description.
+2. **A pane's DataTemplate view does not exist until the pane is activated**, and because these
+   DevFlow actions run *on* the UI thread, an action that activates a pane and then immediately walks
+   the visual tree finds nothing - WPF has not run measure/arrange yet. The action must `await` (not
+   spin) so the layout pass can happen; `EnsureSearchPaneAsync` polls with `await Task.Delay`. Also
+   note the view lives under a visual root that is *not* reachable from
+   `Application.Current.MainWindow` alone, so the search walks every open window.
+
+**Why these are one test method, not three `[Fact]`s:** the app fixture is shared across the whole
+collection, so separate tests that each activate panes interfere in an order-dependent way. Measured:
+as three `[Fact]`s the suite failed 3/5 - "pane not materialized" plus a lost active document
+(activating any tool pane makes it the dock's `ActiveContent`, leaving the workbench with no active
+*document*, which broke the existing active-view assertion). Sequenced inside one test it is
+deterministic. Result: 2/2 pass.
+
+**Still NOT covered** (honest list, so this isn't mistaken for完整 coverage): the theme bridge
+(`od.ilspy.theme`), the folded-using placeholder (`od.ilspy.foldings`), the native
+`DecompiledViewContent`/`ilspy://` document path including the live single-`TypeTreeNode` routing,
+reference hyperlink navigation, and debug-symbol/sequence-point correctness. Each of those has a
+working DevFlow action but no assertion pinning it.
+
+### ILSpy toolbar: dedicated icon buttons + the toolbar-tray width ceiling (2026-08-03)
+
+User: the ILSpy strip needs more dedicated icon buttons to line up with real ILSpy. It had exactly
+one ("Open Assembly..."). Real ILSpy composes its toolbar from `[ExportToolbarCommand]` attributes
+(`ILSpy/Controls/MainToolBar.xaml`); the commands are Back/Forward (Navigation), Open/Reload (Open),
+Search/Sort/CollapseAll (View). Added the six missing ones as
+`Commands/IlSpyToolBarButtons.cs`, ordered in the `.addin` to mirror that grouping with separators.
+
+Every one of those ILSpy commands does nothing but delegate to an `AssemblyTreeModel` method
+(`NavigateHistory`, `Refresh`, `SortAssemblyList`, `CollapseAll`), so these call the same model
+methods directly instead of resolving ILSpy's own MEF command objects - which are `internal sealed`
+and bound to ILSpy's composition/DockWorkspace anyway. Back/Forward drive their enabled state off
+`CanNavigateBack`/`CanNavigateForward` via `IStatusUpdate`. Search uses the new
+`IlSpyWorkspaceHost.ActivatePane` (the non-destructive path - see the show-pane finding above).
+
+**Icons: VS2017 Image Library, filenames kept verbatim** (per the user, and matching the existing
+`Icons/` convention of AiToXaml-converted vector XAML - explicitly *not* ILSpy's own `Images/`).
+Copied `Backward_16x.xaml`, `Forward_16x.xaml`, `Refresh_16x.xaml`, `SortAscending_16x.xaml`,
+`CollapseAll_16x.xaml`; Search reuses the already-present `Search.xaml`. The csproj's existing
+`Icons\*.xaml` glob embeds them as `Icons.{name}.xaml`, which is what `VsIconLoader.Load` expects.
+
+These are AddInTree `type="Custom"` (`ICustomToolBarItem`) items, not ordinary `type="Item"` ones
+with an `icon=` attribute, because `icon=` resolves through
+`PresentationResourceService.GetBitmapSource` - the shell's *bitmap* bundle
+(`data/resources/image/BitmapResources`), which knows nothing about these vector icons. Going
+through `ICustomToolBarItem` lets each button supply its own `ImageSource` and keeps the whole thing
+inside this addin, no shell change needed for the icons.
+
+**But a shell change *was* needed, for a real reason found by measuring.** With the six buttons
+added, only two of them rendered - the other four were silently swallowed by the strip's overflow
+popup. Cause: `ToolBarTray` puts every strip on band 0 unless told otherwise, so all strips compete
+for one row. Measured on a 1024px window: eight strips wanted ~1010px, and the ILSpy strip - last in
+order - was squeezed to 69px, enough for 2 of its 7 items. Fixed generically in
+`WpfWorkbench.AssignToolBarBands` (hooked to the tray's `SizeChanged`): measure each strip
+unconstrained and wrap onto additional bands so every strip gets its full desired width.
+Deliberately *not* special-casing the ILSpy strip - the constraint is the tray's width and every
+strip is subject to it (and hardcoding "ILSpy" in the shell is exactly the coupling the layout-
+ownership work earlier in this document removed).
+
+Verified live: all 6 ILSpy buttons render at 20x22, the ILSpy strip wrapped to a second row
+(`y=43` while the other seven sit at `y=16`), and enabled state is correct out of the box -
+Back/Forward disabled (no navigation history yet), Reload/Search/Sort/Collapse enabled. Regression
+check on the shell layout change: `IlSpyAddInTests` 2/2 and the UI-tree-heavy `WpfDesignerTests`
+5/5 pass.
+
+Not added (real ILSpy has them, but they are combo boxes / checkbox groups rather than icon buttons,
+i.e. a different piece of work): the assembly-list dropdown + Manage Assembly Lists, the three
+API-visibility toggles (public only / public+internal / all), and the language + language-version
+dropdowns.

@@ -51,25 +51,47 @@ namespace ICSharpCode.ILSpyAddIn
 			return false;
 		}
 		
-		public static void NavigateTo(FileName assemblyFile, string typeName, string memberKey)
+		public static System.Threading.Tasks.Task NavigateTo(FileName assemblyFile, string typeName, string memberKey)
 		{
 			if (assemblyFile == null)
 				throw new ArgumentNullException("assemblyFile");
 			if (string.IsNullOrEmpty(typeName))
 				throw new ArgumentException("typeName is null or empty");
-			
-			var type = new TopLevelTypeName(typeName);
-			var target = new DecompiledTypeReference(assemblyFile, type);
-			
+
+			return NavigateTo(new DecompiledTypeReference(assemblyFile, new TopLevelTypeName(typeName)), memberKey);
+		}
+
+		/// <summary>
+		/// Opens/reuses a native document for the whole module (doc/technotes/ilspy.md "Unify C#
+		/// document hosting" step 3 - the AssemblyTreeNode-selection counterpart of
+		/// <see cref="NavigateTo(FileName, string, string)"/>'s single-type case) -
+		/// <see cref="DecompiledTypeReference.IsWholeModule"/> already supports this, only
+		/// <see cref="NavigateTo(FileName, string, string)"/>'s typeName-required guard didn't.
+		/// </summary>
+		public static System.Threading.Tasks.Task NavigateToModule(FileName assemblyFile)
+		{
+			if (assemblyFile == null)
+				throw new ArgumentNullException("assemblyFile");
+
+			return NavigateTo(new DecompiledTypeReference(assemblyFile, default(TopLevelTypeName)), null);
+		}
+
+		// Returns the target document's DecompilationTask - a fresh one if just created, or the
+		// (possibly already-completed) one from the reused existing document - so callers like
+		// IlSpyWorkspaceHost.OnSelectionChangedAsync can actually await decompile completion
+		// instead of firing-and-forgetting into the workbench.
+		static System.Threading.Tasks.Task NavigateTo(DecompiledTypeReference target, string memberKey)
+		{
 			foreach (var viewContent in SD.Workbench.ViewContentCollection.OfType<DecompiledViewContent>()) {
-				var viewContentName = viewContent.DecompiledTypeName;
-				if (viewContentName.AssemblyFile == assemblyFile && type == viewContentName.Type) {
+				if (viewContent.DecompiledTypeName.Equals(target)) {
 					viewContent.WorkbenchWindow.SelectWindow();
 					viewContent.JumpToMember(memberKey);
-					return;
+					return viewContent.DecompilationTask;
 				}
 			}
-			SD.Workbench.ShowView(new DecompiledViewContent(target, memberKey));
+			var newViewContent = new DecompiledViewContent(target, memberKey);
+			SD.Workbench.ShowView(newViewContent);
+			return newViewContent.DecompilationTask;
 		}
 	}
 }
