@@ -235,7 +235,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			var cards = canvas?.Children.OfType<Border>().ToArray() ?? Array.Empty<Border>();
 			var buttons = FindLogicalDescendants<Button>(root).ToArray();
 			var dependencies = FindLogicalDescendants<CheckBox>(root).FirstOrDefault(checkBox =>
-				string.Equals(checkBox.Content?.ToString(), "Dependencies", StringComparison.Ordinal));
+				string.Equals(checkBox.ToolTip as string, "Dependencies", StringComparison.Ordinal));
 			bool IsAxisAligned(Point first, Point second) =>
 				Math.Abs(first.X - second.X) < 0.01 || Math.Abs(first.Y - second.Y) < 0.01;
 			bool IsOnCardBoundary(Point point) => cards.Any(card => {
@@ -251,7 +251,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new {
 				success = canvas != null,
 				cardCount = canvas?.Children.OfType<Border>().Count() ?? 0,
-				fitToCanvasAvailable = buttons.Any(button => string.Equals(button.Content?.ToString(), "Fit to canvas", StringComparison.Ordinal)),
+				fitToCanvasAvailable = buttons.Any(button => string.Equals(button.ToolTip as string, "Fit to canvas", StringComparison.Ordinal)),
 				dependenciesChecked = dependencies?.IsChecked == true,
 				routeCount = routes.Length,
 				allRoutesOrthogonal = routes.All(route => route.Points.Cast<Point>().Zip(route.Points.Cast<Point>().Skip(1))

@@ -10,6 +10,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
+using ICSharpCode.Core.Presentation;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;
@@ -45,25 +46,31 @@ public sealed class ClassDiagramViewContent : AbstractViewContent
     public ClassDiagramViewContent(OpenedFile file) : base(file)
     {
         var toolbar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(8) };
-        var refresh = new Button { Content = "Refresh from source", Padding = new Thickness(8, 3, 8, 3) };
+        var refresh = CreateIconButton("Refresh", "Refresh from source", new Thickness(0));
         refresh.Click += delegate { RefreshFromSourcesAsync(debounce: false).FireAndForget(); };
-        var arrange = new Button { Content = "Auto arrange", Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(8, 3, 8, 3) };
+        var arrange = CreateIconButton("Arrange", "Auto arrange", new Thickness(6, 0, 0, 0));
         arrange.Click += delegate { AutoArrange(); MarkDirty(); Render(); };
-        var expand = new Button { Content = "Expand all", Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(8, 3, 8, 3) };
+        var expand = CreateIconButton("ExpandAll", "Expand all", new Thickness(6, 0, 0, 0));
         expand.Click += delegate { SetCollapsed(false); };
-        var collapse = new Button { Content = "Collapse all", Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(8, 3, 8, 3) };
+        var collapse = CreateIconButton("CollapseAll", "Collapse all", new Thickness(6, 0, 0, 0));
         collapse.Click += delegate { SetCollapsed(true); };
-        var addNote = new Button { Content = "Add note", Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(8, 3, 8, 3) };
+        var addNote = CreateIconButton("Note", "Add note", new Thickness(6, 0, 0, 0));
         addNote.Click += delegate {
             document.Notes.Add(new ClassDiagramNote { X = 40, Y = 40, Text = "Note" });
             MarkDirty();
             Render();
         };
-        var export = new Button { Content = "Export PNG", Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(8, 3, 8, 3) };
+        var export = CreateIconButton("Export", "Export PNG", new Thickness(6, 0, 0, 0));
         export.Click += delegate { ExportPng(); };
-        var fit = new Button { Content = "Fit to canvas", Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(8, 3, 8, 3) };
+        var fit = CreateIconButton("FitToScreen", "Fit to canvas", new Thickness(6, 0, 0, 0));
         fit.Click += delegate { FitToCanvas(); };
-        var zoomLabel = new TextBlock { Text = "Zoom", Margin = new Thickness(12, 4, 4, 0) };
+        var zoomImage = new Image {
+            Source = PresentationResourceService.GetImageSource("ClassDiagram.Zoom"),
+            Width = 16,
+            Height = 16,
+            Margin = new Thickness(12, 3, 4, 0),
+            ToolTip = "Zoom"
+        };
         zoomSlider = new Slider { Minimum = 0.1, Maximum = 2, Value = 1, Width = 160 };
         zoomSlider.ValueChanged += delegate(object sender, RoutedPropertyChangedEventArgs<double> e) {
             scale.ScaleX = scale.ScaleY = e.NewValue;
@@ -75,11 +82,11 @@ public sealed class ClassDiagramViewContent : AbstractViewContent
         toolbar.Children.Add(addNote);
         toolbar.Children.Add(export);
         toolbar.Children.Add(fit);
-        toolbar.Children.Add(zoomLabel);
+        toolbar.Children.Add(zoomImage);
         toolbar.Children.Add(zoomSlider);
-        AddRelationshipToggle(toolbar, "Inheritance", true, value => showInheritance = value);
-        AddRelationshipToggle(toolbar, "Associations", true, value => showAssociations = value);
-        AddRelationshipToggle(toolbar, "Dependencies", false, value => showDependencies = value);
+        AddRelationshipToggle(toolbar, "Inheritance", "Inheritance", true, value => showInheritance = value);
+        AddRelationshipToggle(toolbar, "Relationship", "Associations", true, value => showAssociations = value);
+        AddRelationshipToggle(toolbar, "Link", "Dependencies", false, value => showDependencies = value);
 
         canvas.RenderTransform = scale;
         scroller = new ScrollViewer {
@@ -605,12 +612,28 @@ public sealed class ClassDiagramViewContent : AbstractViewContent
         canvas.Children.Add(diamond);
     }
 
-    void AddRelationshipToggle(Panel panel, string label, bool initialValue, Action<bool> setter)
+    // Icon-only toolbar button (VS2017 Image Library icons via PresentationResourceService -
+    // "ClassDiagram.X" resolves to Resources/VS2017/X/X_16x.xaml). Falls back to a text button if
+    // the icon is unavailable so the command stays discoverable.
+    static Button CreateIconButton(string iconName, string toolTip, Thickness margin)
     {
+        var icon = PresentationResourceService.GetImageSource("ClassDiagram." + iconName);
+        return new Button {
+            Content = icon != null ? new Image { Source = icon, Width = 16, Height = 16 } : new TextBlock { Text = toolTip },
+            ToolTip = toolTip,
+            Padding = new Thickness(5, 2, 5, 2),
+            Margin = margin
+        };
+    }
+
+    void AddRelationshipToggle(Panel panel, string iconName, string toolTip, bool initialValue, Action<bool> setter)
+    {
+        var icon = PresentationResourceService.GetImageSource("ClassDiagram." + iconName);
         var toggle = new CheckBox {
-            Content = label,
+            Content = icon != null ? new Image { Source = icon, Width = 16, Height = 16 } : new TextBlock { Text = toolTip },
+            ToolTip = toolTip,
             IsChecked = initialValue,
-            Margin = new Thickness(10, 3, 0, 0),
+            Margin = new Thickness(10, 2, 0, 0),
             VerticalAlignment = VerticalAlignment.Center
         };
         toggle.Checked += delegate { setter(true); Render(); };
