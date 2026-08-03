@@ -1,117 +1,103 @@
-# #develop (short for SharpDevelop) 
+# OpenDevelop
+
+OpenDevelop is an open-source Integrated Development Environment (IDE) for C# and the .NET
+platform — a modern continuation of the classic SharpDevelop code base. It is written almost
+entirely in C# and runs on .NET 10 via LibreWPF (the cross-platform, WPF-compatible runtime),
+on Windows, macOS, and Linux.
+
+## Screenshots
+
+![WPF designer](images/wpf-designer.png)
+
+*WPF designer for editing XAML with a live preview.*
+
+![ILSpy decompiler layout](images/ilspy-layout.png)
+
+*ILSpy integration: browse assemblies and decompile types side by side in an embedded pane.*
+
+![Code coverage](images/code-coverage.png)
+
+*Code coverage results with per-method markers in the editor.*
+
+![Class diagram](images/class-diagram.png)
+
+*Class diagram designer for visualizing type hierarchies.*
 
 ## Overview
 
- #develop is a free Integrated Development Environment
-(IDE) for C#, VB.NET, Boo, IronPython, IronRuby and F# projects on Microsoft's
-.NET platform. It is written (almost) entirely in C#, and comes with features 
-you would expect in an IDE plus a few more.
+The SharpDevelop project started as #develop in 2000, initiated by Mike Krüger. OpenDevelop keeps
+the original SharpDevelop v4/v5 architecture — the addin tree, the workbench, AvalonEdit, and the
+project system — while moving it forward:
 
-The #develop project started on September 11th, 2000. The project was initiated
-by Mike Krüger. In the course of the project, several contributors joined in.
+- **Cross-platform**: WPF UI on .NET 10 through LibreWPF; builds and runs on Windows, macOS, and Linux.
+- **Modern project support**: SDK-style .NET projects and the new `.slnx`
+  solution format.
+- **ILSpy decompiler built in**: navigate assemblies and decompiled source in a dedicated
+  pane with assembly-list, language, and language-version pickers, all bound to the hosted
+  ILSpy workspace.
+- **Semantic themes**: full Light and Dark themes for the entire shell — window chrome,
+  menus, toolbars, status bar, scrollbars, grids, and dialogs follow one coherent palette
+  and switch at runtime.
+- **Extensible**: the classic addin tree makes it easy to add pads, commands, and tools.
 
-Looking for the tech notes (Fine Art of Commenting, Coding Style Guide, and more)? These can be found as rtf files in [doc/technotes](https://github.com/icsharpcode/SharpDevelop/tree/master/doc/technotes)
+## Features
 
-## How To Compile
- #Develop can be compiled using the supplied .bat files, or in #Develop itself.
+- Code editor based on AvalonEdit with syntax highlighting, folding, bookmarks, and
+  breakpoints.
+- Solution explorer with per-node icons, overlays, and context actions.
+- Debugger integration (breakpoints, locals, call stack) with SharpDbg.
+- Class diagram generation and editing.
+- WPF designer (XAML editing with preview).
+- NuGet package management.
+- Unit test support based on the Microsoft Testing Platform.
+- Code coverage runner with editor markers with AltCover and coverlet.
+- Start page with recent projects and quick open.
 
-## System Requirements (running #Develop)
+## Building & Running
 
- - Windows Vista or higher.
- - [.NET 4.5](http://www.microsoft.com/en-au/download/details.aspx?id=30653)
- - [Visual C++ 2008 SP1 Runtime](http://www.microsoft.com/downloads/details.aspx?familyid=A5C84275-3B97-4AB7-A40D-3802B2AF5FC2&displaylang=en)
+Requirements: .NET 10 SDK.
 
-## Extended Requirements (building #Develop)
+### macOS
 
- - [Microsoft Build Tools 2013](http://www.microsoft.com/en-us/download/details.aspx?id=40760)
- - [.NET 3.5 SP1](http://www.microsoft.com/en-au/download/details.aspx?id=22)
- - [.NET 4.5 SDK](http://msdn.microsoft.com/en-us/windows/desktop/hh852363.aspx) (part of Windows SDK 8.0)
- - [Windows SDK 7.1](http://www.microsoft.com/downloads/details.aspx?familyid=6B6C21D2-2006-4AFA-9702-529FA782D63B)
- - [Windows SDK 7.0](http://www.microsoft.com/en-us/download/details.aspx?id=3138) (optional; C++ compiler needed for profiler)
- - [Windows PowerShell](http://www.microsoft.com/en-us/download/details.aspx?id=34595)
- - If you have cloned the SD git repository: git must be available on your PATH
- 
-## Libraries and Integrated tools:
+```sh
+./launch.sh            # build OpenDevelop.Mvp.slnx and run
+./launch.sh --no-build # run the last build output
+./launch.sh --build-only
+./rebuild-all.sh       # full rebuild of the app and its dependencies
+./dist.macos.sh        # produce a distributable bundle
+```
 
-* [Avalon Dock](http://avalondock.codeplex.com/) : New BSD License (BSD) (thanks to **Adolfo Marinucci**)
-* [Graph#](https://graphsharp.codeplex.com/)
-* [IQToolkit](https://iqtoolkit.codeplex.com/)
-* [Irony](https://irony.codeplex.com/)
-* [ITextSharp](http://sourceforge.net/projects/itextsharp/)
-* [log4Net](https://github.com/apache/log4net)
-* Mono T4
-* [Mono.Cecil](https://github.com/jbevain/cecil): MIT License (thanks to **Jb Evain**)
-* [Sharp Svn](https://sharpsvn.open.collab.net/)
-* [SQLite](https://sqlite.org/)
-* [WPFToolkit](https://wpf.codeplex.com/)
+A `DEVFLOW_DISABLE=1` environment variable turns off the built-in DevFlow automation agent
+(used by integration tests and interactive debugging through its HTTP API on `localhost:9299`).
 
-## Integrated Tools (packaged with #Develop):
+## Solutions
 
-* [IronPython](http://ironpython.net/)
-* [IronRuby](https://ironruby.codeplex.com/)
-* [NuGet](https://nuget.codeplex.com/)
-* [NUnit](http://www.nunit.org/)
-* [OpenCover](https://github.com/OpenCover/opencover)
-* [WiX](https://wix.codeplex.com/)
+| Solution | Purpose |
+|---|---|
+| `OpenDevelop.Mvp.slnx` | Main application solution |
 
-## Reusable Libraries (Part of #Develop):
+## Tests
 
-* [AvalonEdit](http://avalonedit.net/)
-* [Debugger.Core](https://github.com/icsharpcode/SharpDevelop/tree/master/src/AddIns/Debugger/Debugger.Core)
-* [ICSharpCode.Core](https://github.com/icsharpcode/SharpDevelop/tree/master/src/Main/Core)
-* [ICSharpCode.Decompiler](https://github.com/icsharpcode/SharpDevelop/tree/master/src/Libraries/ICSharpCode.Decompiler)
-* [NRefactory](https://github.com/icsharpcode/NRefactory)
-* [SharpTreeView](https://github.com/icsharpcode/SharpDevelop/tree/master/src/Libraries/SharpTreeView)
-* [WPF Designer]( https://github.com/icsharpcode/SharpDevelop/tree/master/src/AddIns/DisplayBindings/WpfDesign)
+Unit and integration tests live in `tests/`. Integration tests drive the running IDE through
+the DevFlow agent's UI/automation endpoints (`/api/v1/ui/*`), which allows verifying real
+UI behavior (themes, menus, pads) deterministically.
 
-## #Develop Contributors
+## Libraries
 
-### Developers
+- AvalonEdit — code editor
+- AvalonDock — docking framework
+- SharpTreeView — tree views
+- [ILSpy](https://github.com/icsharpcode/ILSpy) — decompiler (hosted in-process)
+- [LibreWPF — WPF-compatible runtime](https://github.com/wieslawsoltes/WPF) for .NET 10
+- [NuGet](https://www.nuget.org/) — package management
+- [Microsoft Testing Platform](https://github.com/microsoft/testfx) — unit testing
+- [log4net](https://logging.apache.org/log4net/) — logging
 
-* [Mike Krüger](https://github.com/mkrueger) (Project Founder)
-* [Daniel Grunwald](https://github.com/dgrunwald) (Technical Lead)
-* [Andreas Weizel](https://github.com/Rpinski)
-* [Matt Ward](https://github.com/mrward)
-* [David Srbecky](https://github.com/dsrbecky)(Debugger)
-* [Siegfried Pammer](https://github.com/siegfriedpammer)
-* [Peter Forstmeier]( https://github.com/PeterForstmeier)(#Develop Reports)	
+## License
 
-### Non-Developers
+MIT
 
-* Christoph Wille (PM)
-* Bernhard Spuida (Kalfaktor)
+## Copyright
 
-### Past Developers (Non-Exhaustive List)
-
-* [Mike Krüger](https://github.com/mkrueger) (Project Founder)
-* Alexandre Semenov
-* Andrea Paatz
-* Christian Hornung
-* David Alpert
-* Denis ERCHOFF
-* Dickon Field
-* Georg Brandl
-* Ifko Kovacka
-* Itai Bar-Haim
-* Ivan Shumilin
-* John Reilly
-* John Simons
-* Justin Dearing
-* Markus Palme
-* Mathias Simmack
-* Matt Everson
-* Nathan Allan
-* Nikola Kavaldjiev
-* Philipp Maihart
-* Poul Staugaard
-* Robert Pickering
-* Robert Zaunere
-* Roman Taranchenko
-* Russell Wilkins
-* Scott Ferrett
-* Sergej Andrejev
-* Shinsaku Nakagawa
-* Tomasz Tretkowski
-* Troy Simpson
-
-###### Copyright 2014 AlphaSierraPapa for the SharpDevelop team. SharpDevelop is distributed under the MIT license.
+Copyright (c) 2002-2016 AlphaSierraPapa for the SharpDevelop team.
+Copyright (c) 2026 LeXtudio Inc.
