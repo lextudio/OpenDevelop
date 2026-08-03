@@ -19,10 +19,14 @@ subsequent launch. Fixed with a guard symmetric to `LoadConfiguration`'s existin
 
 **Not done, and out of scope for "the ILSpy AddIn":** the broader "use ILSpy as shell-
 modernization reference" architecture initiative this document also opened (see "2026-08
-architecture update" below) - the versioned layout DTO, `WorkbenchWorkspace`/`DocumentPaneModel`
-consolidation, and the AvalonEdit/full-app theming Phase 3 token work remain deliberately
-deferred, longer-running, separately-scoped efforts, not blockers for the AddIn's own
-completeness. Each is flagged as still-open at its own point in the document below.
+architecture update" below) - `WorkbenchWorkspace`/`DocumentPaneModel` consolidation and the
+AvalonEdit/full-app theming Phase 3 token work remain deliberately deferred, longer-running,
+separately-scoped efforts, not blockers for the AddIn's own completeness. The versioned layout
+DTO is now in progress: steps 1 (the `Capture`/`Apply` converter) and 2 (it's now the actual
+persisted format, AvalonDock XML kept only as an import format for templates/legacy files) are
+done and live-verified 2026-08-03, see "Real versioned layout DTO, step 1/step 2" near the end.
+Step 3 (persisting open documents) remains open. Each is flagged as still-open at its own point
+in the document below.
 
 ## Layout goal
 
@@ -2376,3 +2380,484 @@ flakiness the first fix attempt had).
 are now closed. Every item from that survey - reference hyperlink navigation, multi-select
 decompilation, member/namespace single-node routing, the `InsertParenthesesVisitor` fidelity gap,
 and cross-assembly reference navigation - has real, live-verified code behind it now.
+
+## Pad-position test coverage, and a real "layout gets lost" bug found and fixed (2026-08-03)
+
+User-flagged: existing pad tests check title/`IsVisible`/rendered content, but none of that catches
+a pad docked in the *wrong place* - and the user had seen the ILSpy layout "get lost" a few times
+during manual testing. Added real position introspection instead of guessing:
+
+- `ILSpyAddIn`'s `od.ilspy.pane-position` (and `od.ilspy.status`'s `panes[].position`) walk the live
+  `AvalonDock.DockingManager.Layout` (reached via reflection into the shell's `internal sealed
+  DockWorkspace`, then ordinary typed AvalonDock API from there: `Descendents().OfType<
+  LayoutAnchorable>()`, `.Parent as LayoutAnchorablePane`, `.GetSide()`) and report which named pane
+  (`LeftPane`/`TopPane`/`BottomPane`, matching `Layouts/ILSpy.xml`'s `Name` attributes), which side,
+  tab index, and floating/auto-hidden/hidden state a pad's anchorable actually has right now.
+- Added matching assertions to `IlSpyAddInTests`: Assemblies alone in `LeftPane`/Left, Search alone
+  in `TopPane`/Top, Analyze alone in `BottomPane`/Bottom, none floating/auto-hidden/hidden.
+
+**Verifying this live immediately found the exact bug being tested for** - not hypothetically, a
+real, 100%-reproducible one on this machine, including from a *freshly regenerated* (not just
+stale) per-user layout file: opening an assembly right after a fresh launch left all three ILSpy
+pads tabbed together in whatever pane already existed (`Properties`/`Projects`), on the `Right`
+side, instead of their own `LeftPane`/`TopPane`/`BottomPane` groups.
+
+Root cause, traced via `LoggingService` timestamps in the app log, not guessed: `dockingManager
+_Loaded` (`AvalonDockLayout.cs` - the WPF `Loaded` routed event that flips `dockingManager.IsLoaded`
+true for the *first* time) fired **after** `LayoutConfiguration.CurrentLayoutName = "ILSpy"`'s
+setter had already run to completion in this session's timing (opening an assembly right after
+startup, via DevFlow, races ahead of the window finishing its first layout pass). Sequence:
+
+1. The setter's own `WorkbenchLayout.LoadConfiguration()` call is a no-op by design while
+   `!dockingManager.IsLoaded` ("`LoadConfiguration` doesn't do anything until the docking manager is
+   loaded" - existing comment on `dockingManager_Loaded`) - so the "ILSpy" layout template is never
+   actually applied at this point, silently.
+2. But `onActivating()` (`IlSpyWorkspaceHost.EnsureInitialized`, adding the three ILSpy panes via
+   `DockWorkspaceExtensibility.AddToolPane`) has no such guard - it runs anyway, and AvalonDock's
+   `AnchorablesSource` binding reactively docks the three new anchorables into whatever pane its
+   default insertion strategy (`DockWorkspace.BeforeInsertAnchorable` always returns `false`, i.e.
+   "AvalonDock decides") picks - landing them in the pre-existing `Properties`/`Projects` pane.
+3. `LayoutConfiguration.OnLayoutChanged` fires at the end of the setter, and
+   `ChooseLayoutComboBox.LayoutChanged` reacts by setting `comboBox.SelectedIndex`, which
+   synchronously re-enters `OnSelectionChanged` → `StoreConfiguration()` (also has no `IsLoaded`
+   guard) - persisting *that* ad-hoc, wrong arrangement to `ConfigLayoutPath/ILSpy.xml`.
+4. Once `dockingManager_Loaded` finally does fire and calls the real `LoadConfiguration()`, it
+   dutifully restores the file from step 3 - the now-corrupted one, not the AddIn's clean template
+   (which never got a chance to load at all). From here on this is self-reinforcing: every later
+   `StoreConfiguration()` (including a normal app exit) re-persists the same broken arrangement.
+
+Confirmed by directly reading the saved file after deleting it and relaunching: even with a
+guaranteed-fresh `ConfigLayoutPath/ILSpy.xml` (verified absent beforehand), it came back containing
+all three ILSpy pads jammed into the shell's default `Properties`/`Projects`
+`LayoutAnchorablePane`, and was byte-identical to `Default.xml`'s own freshly-saved content - i.e.
+the "ILSpy" layout's own template had *never* been loaded even once.
+
+**Fix**: added a guard to `AvalonDockLayout.StoreConfiguration()` symmetric with
+`LoadConfiguration`'s existing one - `if (!dockingManager.IsLoaded) return;` - so nothing gets
+persisted before the docking manager has loaded for the first time and had a chance to apply a
+layout's real template. The reactive-insert-into-the-wrong-pane in step 2 above can still happen
+transiently (that binding has no `IsLoaded` guard either, and doesn't need one - it's an in-memory,
+not-yet-observed state), but it's never captured to disk anymore, and gets fully overwritten the
+moment the real, guarded `LoadConfiguration()` eventually runs. Verified live: deleted the
+still-corrupted saved files, rebuilt, and repeated the exact same fast (`open-assembly`
+immediately after launch, no artificial delay) sequence twice from a clean state - both times
+`od.ilspy.pane-position`/`od.ilspy.status` reported the correct `LeftPane`/`Left`,
+`TopPane`/`Top`, `BottomPane`/`Bottom` placement, one anchorable each. `IlSpyAddInTests` (with the
+new position assertions) passes 2/2.
+
+## Real versioned layout DTO, step 1: the Capture/Apply converter (2026-08-03)
+
+Picked up the plan's next concrete item (see "2026-08 architecture update" -> "Docking and layout
+replacement" step 4, still flagged as-open there) right after the pad-position bug above made the
+motivation concrete: today's "durable format" is still AvalonDock's own `XmlLayoutSerializer`
+output (with a version-attribute stamp bolted on, see "Real versioned layout DTO (2026-08-02/03)"
+above) - not an OpenDevelop-owned model independent of AvalonDock's object graph, as the
+architecture section calls for.
+
+Scoped this as three ordered steps, agreed with the user before starting, doing only step 1 in this
+pass:
+
+1. Define the DTO and a `Capture`/`Apply` converter against the *live* `LayoutRoot`, and prove the
+   round-trip is correct - without touching `DockWorkspace.SaveLayout`/`RestoreLayout`'s actual
+   file format yet.
+2. Once step 1 is proven, switch the persisted file format itself from AvalonDock XML to this DTO
+   (e.g. as JSON), with AvalonDock XML kept only as a template *import* format (the existing
+   `data/layouts/*.xml`/`Layouts/ILSpy.xml` files) - not attempted yet.
+3. Persist open document tabs (real identity, not content) - depends on step 2, not attempted yet.
+
+**Step 1, done and verified live.** New `src/Main/SharpDevelop/Workbench/LayoutSnapshot.cs`:
+
+- `LayoutSnapshot` (versioned root, `SchemaVersion` + a tree of `LayoutNodeSnapshot`), with three
+  concrete node kinds: `LayoutSplitSnapshot` (mirrors a `LayoutPanel`'s `Orientation` + children),
+  `LayoutAnchorablePaneSnapshot` (mirrors a `LayoutAnchorablePane`'s `Name`/`DockWidth`/`DockHeight`
+  + an ordered `AnchorableSnapshot` list capturing `ContentId`/`IsSelected`/`IsVisible`), and
+  `LayoutDocumentAreaSnapshot` - a deliberate placeholder, not a real model, for wherever the
+  document pane sits in the tree (open-tab content/identity is explicitly out of scope for this
+  step, same gap `DockWorkspace.LayoutSerializationCallback`'s existing comments already flag for
+  the current XML-based path).
+- `LayoutSnapshotConverter.Capture(LayoutRoot)` walks `root.RootPanel` recursively into this DTO -
+  a pure read, no live-tree mutation.
+- `LayoutSnapshotConverter.Apply(LayoutRoot, LayoutSnapshot)` rebuilds the panel tree from the DTO
+  and assigns it to `root.RootPanel`, but **reuses** already-existing `LayoutAnchorable` instances
+  (matched by `ContentId`, looked up once via `Descendents()`) rather than constructing new ones -
+  a freshly-`new`'d `LayoutAnchorable` would have no bound `Content`, since that only happens
+  through the `AnchorablesSource` binding `DockWorkspace` sets up once at startup. Any
+  `ContentId` the snapshot mentions but that isn't currently registered is skipped, not fabricated.
+  Wherever the snapshot has a `LayoutDocumentAreaSnapshot`, `Apply` reuses whichever document
+  pane/group is already live in the current tree, preserving currently-open documents across an
+  `Apply` even though their content was never part of the snapshot.
+- `DockWorkspace` gained one small `internal LayoutRoot Layout => dockingManager.Layout;` seam
+  (the `dockingManager` field itself stays `private`) so this converter and its test actions can
+  reach the live layout without exposing AvalonDock any wider than that.
+
+**Verified live, not just compile-clean** - added four small, reusable DevFlow actions
+(`OpenDevelopDevFlowActions.cs`): `od.layout.pane-position` (the generic, non-ILSpy-specific
+version of `od.ilspy.pane-position` above, for any `ContentId`), `od.layout.capture-snapshot`
+(calls `Capture`, holds the result in memory for this session), `od.layout.scramble-into-pane`
+(test-only: force a comma-separated list of anchorables into some other anchorable's pane, to
+manufacture exactly the "everything got tabbed into the wrong pane" corruption the bug above
+produced for real), and `od.layout.apply-stored-snapshot` (calls `Apply` with the captured
+snapshot). Sequence run against a real app instance: opened an assembly (all three ILSpy pads
+correctly in `LeftPane`/`TopPane`/`BottomPane`) -> `capture-snapshot` (`{"paneCount":3}`) ->
+`scramble-into-pane` forcing `assemblyListPane`+`searchPane` into `analyzerPane`'s pane (confirmed
+via `pane-position`: all three now in `BottomPane`, `siblingCount:3`) -> `apply-stored-snapshot` ->
+`pane-position` again on all three: back to `LeftPane`/`Left`, `TopPane`/`Top`, `BottomPane`/
+`Bottom`, one anchorable each - a full corruption-and-repair cycle, not just a no-op round-trip.
+Also confirmed `Apply`'s `RootPanel` replacement doesn't disturb the document area: `od.active-view`
+still reported the same active decompiled document with its full text intact immediately after.
+`IlSpyAddInTests` still 2/2 after this change.
+
+Not done in this pass (steps 2-3 above, and this converter's own known gaps): switching
+`SaveLayout`/`RestoreLayout` to actually persist this DTO instead of AvalonDock XML; open-document
+persistence; and anything beyond the `LayoutPanel`/`LayoutAnchorablePane`/document-area shape this
+step's `Capture`/`Apply` models (e.g. `LayoutAnchorablePaneGroup`/floating windows fall through to
+the same `LayoutDocumentAreaSnapshot` placeholder as document panes today - harmless for the
+current shipped layouts, which don't use them, but not a general solution yet).
+
+## Real versioned layout DTO, step 2: it's now the actual persisted format (2026-08-03)
+
+Continuing directly from step 1 above. Wired `LayoutSnapshotConverter` into
+`DockWorkspace.SaveLayout`/`RestoreLayout` themselves:
+
+- `SaveLayout(fileName)` now always writes `JsonSerializer.Serialize(LayoutSnapshotConverter
+  .Capture(dockingManager.Layout))` - no more `XmlLayoutSerializer` on the write side at all.
+- `RestoreLayout(fileName)` sniffs the file's first non-whitespace character: `{` means the new
+  JSON DTO (`RestoreLayoutFromSnapshot` -> `JsonSerializer.Deserialize<LayoutSnapshot>` ->
+  `LayoutSnapshotConverter.Apply`), anything else falls through to the existing
+  `XmlLayoutSerializer`/`LayoutSerializationCallback` path unchanged - now genuinely an *import*
+  format only, exactly the framing the architecture section asks for: every shipped
+  `data/layouts/*.xml`/`Layouts/ILSpy.xml` template still works as-is (never rewritten), and any
+  legacy per-user save from before this change still loads once via that path, then gets
+  naturally upgraded to JSON the next time anything calls `SaveLayout`.
+- File names are unchanged (still `<LayoutName>.xml` per `LayoutConfiguration.CurrentLayoutFileName`
+  - not renamed to `.json`) - format is detected by content, not extension, so nothing about
+  `LayoutConfiguration`'s existing file-path logic needed to change.
+- `LayoutNodeSnapshot` gained `[JsonPolymorphic]`/`[JsonDerivedType]` attributes (three concrete
+  node kinds: `split`/`anchorablePane`/`documentArea`) so `System.Text.Json` can round-trip the
+  DTO's small class hierarchy without a hand-written converter.
+- `LayoutSnapshotConverter.Apply` fix made while wiring this in (not caught by step 1's testing,
+  since that never exercised the `IsVisible: false` path): the earlier version called
+  `anchorable.Show()`/`.Hide()` *while still building* each `LayoutAnchorablePane`, before the
+  rebuilt pane was attached anywhere - `Hide()`/`Show()` reparent the anchorable based on its
+  *current* parent chain, which at that point was either the old tree or nothing, not the new pane
+  being built, so the visibility state landed on the wrong object graph. Fixed by deferring all
+  `IsSelected`/`IsVisible`/`CanDockAsTabbedDocument` mutation to a second pass, run only after
+  `root.RootPanel` is fully assigned to the rebuilt tree - each anchorable's parent chain is then
+  the real, live one, and `Hide()` correctly relocates it into `LayoutRoot`'s own `Hidden`
+  collection instead of fighting the rebuild.
+- `AvalonDockLayout.ReadAnchorableContentIds` (used by `LoadLayout` to figure out which
+  currently-registered `ToolPaneModel`s aren't part of the layout being switched to, so they can be
+  excluded rather than left dangling) parsed `//@ContentId` via `XmlDocument` unconditionally -
+  **would have silently broken every layout switch** once `SaveLayout` started writing JSON: caught
+  via `LoggingService`'s own warning (`Could not read anchorable ContentIds from layout file`)
+  during verification, not by inspection. An `XmlException` there was being caught and treated as
+  "no content IDs" - so after switching to any layout whose file was now JSON, *every* registered
+  pane (including all three ILSpy ones) would look like "not part of this layout" and get removed.
+  Fixed with the same content-sniff approach as `RestoreLayout`: JSON walks the parsed
+  `JsonDocument` tree collecting every `"ContentId"` property value (structure-agnostic, so it
+  can't drift out of sync with `LayoutSnapshot`'s own shape), XML keeps the original XPath query.
+
+**Verified live end to end, including a real process restart** (not just an in-memory
+capture/apply cycle, which step 1 already covered) - this is the scenario that actually matters:
+does a layout saved in the new format survive being read back by a *different* process instance,
+the way a real app relaunch works.
+
+1. Deleted both `ConfigLayoutPath/{Default,ILSpy}.xml`, launched fresh, opened an assembly -
+   `od.layout.pane-position` confirmed `LeftPane`/`Left`, `TopPane`/`Top`, `BottomPane`/`Bottom` (the
+   template import path, still XML, still works).
+2. Confirmed on disk: `ConfigLayoutPath/ILSpy.xml`'s content now starts with
+   `{"SchemaVersion":1,"Root":{"$type":"split",...` - `SaveLayout` really did write JSON this time,
+   under the unchanged `.xml` filename.
+3. Killed the process, relaunched (a genuinely new process, not a re-used one - confirmed no leftover
+   listener on the DevFlow port beforehand), opened the assembly again - **no**
+   `Could not read anchorable ContentIds` warning this time (the fix from above), all three ILSpy
+   panes still registered, and `od.layout.pane-position` again reported the correct
+   `LeftPane`/`TopPane`/`BottomPane` placement - loaded purely from the JSON file written by the
+   *previous* process, proving the round-trip survives a real restart, not just staying correct
+   because nothing ever unloaded.
+4. Cycled `od.workbench.switch-layout` through `Debug` -> `Plain` -> `ILSpy` -> `Default` in one
+   session (each switch both saves the outgoing layout and loads the incoming one) - zero
+   warnings/exceptions in the log, and `od.pads` afterward still listed the full, unchanged set of
+   25 registered pads (nothing silently dropped by the `ReadAnchorableContentIds` exclusion logic).
+5. `IlSpyAddInTests` (with the pad-position assertions from the previous section) still 2/2 -
+   confirmed on a clean `ConfigLayoutPath` so this run genuinely exercised the import-then-JSON
+   path, not a cached prior state.
+
+Not done in this pass (step 3, and this converter's own remaining shape gaps - unchanged from step
+1, see that section): open-document persistence, and anything beyond the
+`LayoutPanel`/`LayoutAnchorablePane`/document-area shape `Capture`/`Apply` model
+(`LayoutAnchorablePaneGroup`/floating windows still fall through to the document-area placeholder -
+harmless today since no shipped layout uses them, but not a general solution).
+
+## Real versioned layout DTO, step 3 (first slice): capturing which real documents are open (2026-08-03)
+
+Continuing the plan from steps 1-2 above. Per the research done before starting this slice: there
+is no existing "reopen previously open files" feature anywhere in this codebase to build on
+(`IRecentOpen`/`RecentOpen.cs` is just an MRU menu list, never auto-replayed) - this is genuinely
+greenfield. Also confirmed a real blocker for the *reopen* half specifically: a document's
+`PrimaryFileName` is only a real, reopenable disk path for ordinary file-backed `IViewContent`;
+virtual documents (ILSpyAddIn's `ilspy://` decompiled views, the Start Page) have no such thing and
+would need addin-specific "can this be reopened, and how" logic, not a generic file-path replay.
+
+Scoped this the same way as steps 1/2 - prove the *capture* half is correct and low-risk before
+touching anything that reopens documents on restore (the actually risky half):
+
+- `LayoutDocumentSnapshot { FileName, IsActive }` and a `LayoutSnapshot.Documents` list.
+- `LayoutSnapshotConverter.Capture(DockWorkspace)` (new overload alongside the existing
+  `Capture(LayoutRoot)`) iterates `workspace.Documents`, and for each one whose
+  `ActiveViewContent.PrimaryFile` is real and not `IsUntitled`, records its `FileName` and whether
+  it's `workspace.ActiveDocument`. Virtual documents (`PrimaryFile == null` - ILSpy's
+  `DecompiledViewContent`/`DecompiledSelectionViewContent`, the Start Page) are silently skipped,
+  not recorded as broken/unreopenable entries - there's nothing wrong to report, they're simply
+  outside this slice's model.
+- Deliberately **not** wired into `SaveLayout`/`RestoreLayout` - `LayoutSnapshot.Documents` is
+  populated by this new overload but the two places that actually persist/restore layouts still
+  call the `LayoutRoot`-only overload, so nothing about real save/load behavior changed in this
+  pass. No reopen-on-restore logic exists yet at all.
+
+Verified live via the existing `od.layout.capture-snapshot` action (now reports `documents` too,
+sourced from `LayoutSnapshotConverter.Capture(DockWorkspace.Current)` instead of the
+`LayoutRoot`-only overload): with only the ILSpy virtual whole-module document open,
+`capture-snapshot` correctly reported `"documents":[]` - the virtual document is excluded, not
+misreported. Opened a real file (`od.open-file` on this technote itself) alongside it and
+captured again: `"documents":[{"FileName":".../doc/technotes/ilspy.md","IsActive":true}]` - the
+real file is recorded with the correct path and active-flag, the still-open virtual document still
+excluded. `IlSpyAddInTests` 2/2 (one run hit the pre-existing, already-documented AvalonDock
+focus-race flakiness on `od.ilspy.click-reference` - confirmed not a regression from this slice,
+since nothing here is wired into any runtime path yet - and passed cleanly on immediate rerun).
+
+**Status update**: the versioned layout DTO plan (steps 1-3) now has real Capture-side code for
+every one of pane placement, persisted-format switch, and document identity. What's left,
+genuinely not attempted: actually reopening documents from a snapshot on restore (needs the
+addin-specific "reopenable?" hook noted above for virtual documents, and ordinary
+`SD.FileService.OpenFile` for real ones), and wiring `LayoutDocumentSnapshot` capture into
+`SaveLayout` itself (trivial once reopen exists - pointless before it, since nothing would ever
+read the captured data).
+
+## Real versioned layout DTO, step 3 completed: documents actually reopen on restore (2026-08-03)
+
+Continuing directly from the first slice above. Widened `Capture(DockWorkspace)` from "real files
+only" to every document's `IViewContent.PrimaryFileName` regardless of real vs. virtual, and added
+`LayoutSnapshotConverter.ReopenDocuments`, wired into `DockWorkspace.RestoreLayoutFromSnapshot`
+right after `Apply`. This was simpler than originally scoped: the "virtual documents need a
+special addin-specific reopen hook" concern raised while planning step 3 turned out to already be
+solved by existing infrastructure - `ILSpyDisplayBinding` is already registered
+(`ILSpyAddIn.addin`, `fileNamePattern = "^ilspy://"`) to resolve exactly that scheme through the
+ordinary `SD.FileService.OpenFile` pipeline (the same one `OpenLoadedModuleInILSpyCommand.cs`
+already uses to open one), so `PrimaryFileName` is a general enough identity for both kinds with
+no new extension point needed.
+
+**Two real bugs found and fixed while verifying this live** - both pre-existing, both only
+actually exercised end-to-end by this new reopen path:
+
+1. **`DecompiledTypeReference.ToFileName()`/`FromFileName()`'s URI round-trip breaks on macOS/Linux
+   absolute paths.** `"ilspy://" + AssemblyFile` produces three consecutive slashes when
+   `AssemblyFile` is itself a Unix absolute path starting with `/` (e.g.
+   `ilspy:///Users/.../DebugTestApp.dll/module.cs`) - and `FileUtility.NormalizePath` (which every
+   `FileName` construction runs through, via `PathName`'s constructor) doesn't preserve three
+   consecutive slashes faithfully, silently collapsing to two and corrupting the parse. Measured
+   directly: reopening a persisted `ilspy://` document threw
+   `DirectoryNotFoundException: Could not find a part of the path '.../ilspy:/Users/.../module.cs'`
+   - the path had been treated as relative to the app's working directory instead of an absolute
+   Unix path. This is genuinely latent, pre-existing infrastructure - the tree-click-driven
+   decompile path never round-trips through the string form at all (it passes `AssemblyFile`/
+   `Type` directly), and `OpenLoadedModuleInILSpyCommand.cs`'s existing `ToFileName()` call is
+   exposed to exactly the same bug on this platform, just never exercised end-to-end before now.
+   Fixed symmetrically in both directions: `ToFileName()` strips exactly one leading separator from
+   `AssemblyFile` before concatenating (a no-op on Windows, which never starts with one),
+   `FromFileName()` restores it. Verified live: `ilspy://Users/.../DebugTestApp.dll/module.cs`
+   (two slashes, no leading-slash collision) now round-trips and decompiles correctly after a
+   process restart.
+
+2. **`ReopenDocuments`'s first version made an unrelated test flake at a ~75% rate** by reopening/
+   reselecting every recorded document on *every* `RestoreLayout` call, not just the first one -
+   `RestoreLayout` runs on every layout switch, not only at app startup, so switching back to a
+   layout whose documents never actually closed would still force `SD.FileService.OpenFile`'s
+   `switchToOpenedView` path to call `SelectWindow()` on whichever document the snapshot recorded
+   as active, fighting whatever the caller had just navigated to immediately before. Measured: three
+   of four consecutive `IlSpyAddInTests` runs failed on the reference-click-navigation step's
+   `caretLine` assertion (landed on line 1, i.e. still on the whole-module document, not the type
+   it should have jumped to) - a false positive traced back to exactly this. Fixed by skipping any
+   document the snapshot recorded that `SD.FileService.GetOpenFile` already finds open - a
+   same-session layout switch with nothing new to restore is now a true no-op, same as before this
+   slice existed. Confirmed with four consecutive clean `dotnet test` runs after the fix (zero
+   failures, versus 3/4 failing before it).
+
+**Verified live end to end** (same-session layout switch, and a genuine process restart):
+opened a real file (this technote) and the ILSpy whole-module document together, forced a save by
+switching away and back (`Default` -> `ILSpy`), and `od.layout.capture-snapshot` reported both
+still open with the correct active flag preserved; the ILSpy document's content was confirmed real
+(`od.active-view`/`od.ilspy.status` showing the actual decompiled C#, not a placeholder). `dotnet
+test` on `IlSpyAddInTests` passed cleanly four times in a row after the fixes above.
+
+**Status update**: the versioned layout DTO plan (steps 1-3) is now fully implemented - pane
+placement, the actual persisted format (JSON, AvalonDock XML as import-only), and document
+identity/reopen all work and are live-verified. Remaining known gaps, all pre-existing and
+explicitly out of scope for this pass (see each step's own section above for why): open-document
+*content* isn't part of the DTO (identity/reopen only), and the panel-shape model doesn't cover
+`LayoutAnchorablePaneGroup`/floating windows (harmless today - no shipped layout uses them).
+
+## AvalonEdit line-number margin misaligned with mixed line heights (2026-08-03)
+
+User-flagged (spotted while reviewing this technote's own `.md` rendering, which uses
+`MarkDownWithFontSize-Mode.xshd` - H1-H6 headings rendered at 15-30pt vs. ~13pt body text, per
+`od.active-view`'s `syntaxHighlighting: "MarkDownWithFontSize"`). Root cause:
+`LineNumberMargin.OnRender` (`src/Libraries/AvalonEdit/ICSharpCode.AvalonEdit/Editing/
+LineNumberMargin.cs`) drew every line's number aligned to `VisualYPosition.TextTop` of that visual
+line's own text - correct only when every line has the same height. A heading's `VisualLine` row
+is much taller than its neighbors (font-size-driven, not a fork-local change - confirmed via `git
+log` that this file and the whole variable-height rendering path, including `HeightTree`, are
+stock upstream AvalonEdit, not a regression introduced here), so top-aligning left the number
+sitting at the very top of a tall heading row instead of level with its text - looking
+disconnected from the line it labels whenever row heights are mixed, exactly the "行号显示对不上
+...不同行高混合的情况" the user reported.
+
+Fixed by centering the number within the visual line's full row height instead:
+`line.VisualTop + (line.Height - text.Height) / 2`, replacing the `GetTextLineVisualYPosition(...,
+TextTop)` call. `VisualLine.Height`/`VisualTop` are the same authoritative values the `HeightTree`
+already provides for scrolling and text rendering - this isn't a new height-tracking mechanism,
+just using the *centering* math instead of *top-alignment* math against data the margin already
+had access to.
+
+**Verified via DevFlow, not just build success** - since this environment runs the app off-screen
+(no screenshot capability available here), added a small diagnostic action,
+`od.file.visual-lines` (`OpenDevelopDevFlowActions.cs`), that reports each currently-rendered
+`VisualLine`'s `LineNumber`/`VisualTop`/`Height` plus both the old and new Y-position formulas
+side by side. Run against this technote's own `.md` file (H1 at line 1, H2 at line 3): line 1
+(`Height: 35`) - old formula gives `16` (pinned near the top of its tall row), new formula gives
+`9.5` (correctly centered - `(35-16)/2`); line 3 (`Height: 31`) - old `63`, new `57.5`, a 5.5px
+shift. Ordinary body-text lines (`Height: 15`, matching the digit glyph's own height) barely move
+(within 0.5px, sub-pixel rounding) - confirming the fix only changes anything for the
+mixed-height case it targets, not the common uniform-height case. `IlSpyAddInTests` still 2/2
+after this change (shared AvalonEdit infrastructure, worth the regression check even though this
+addin doesn't touch Markdown itself).
+
+## Legacy Pad migration, first slice - and the silent-drop bug it exposed (2026-08-03)
+
+Started item 4 of "Docking and layout replacement" (migrate the 11 remaining legacy AddInTree
+`<Pad>` tool panes to the modern `ToolPaneModel` pattern), plus the part of item 1 it naturally
+drags in. Three things came out of it.
+
+**1. `AvalonDockLayout`'s legacy→modern routing is no longer one hardcoded class name.**
+`GetMefToolPaneContentId` was literally
+`if (padDescriptor.Class == typeof(ProjectBrowserPad).FullName) return "ProjectBrowser";` - one
+comparison per migrated pad, living in the shell. Replaced with a lookup over
+`dockWorkspace.ToolPanes` on a new `ToolPaneModel.LegacyPadClass` property, so a migrated pad
+declares its own legacy identity in its own constructor and the shell needs no change per pad.
+`ProjectBrowserViewModel` now sets `LegacyPadClass = typeof(ProjectBrowserPad).FullName`; verified
+live that Projects still routes through the MEF path and docks at `LeftPane`/`Left` exactly as
+before.
+
+**2. `Outline` migrated** as the first real pad through that generalized path:
+`OutlineViewModel` (MEF-exported `ToolPaneModel`, same shape as `ProjectBrowserViewModel`) holds
+the real behavior; `OutlinePad` stays as a thin shim so the AddInTree `<Pad>` entry's
+title/icon/category/default-position metadata still resolves to a constructible type, and so
+callers reaching `PadDescriptor.PadContent` directly still get real content. The shim delegates to
+the same view model rather than duplicating it.
+
+**3. The bug that made this look impossible for a long time: `DockWorkspace.ToolPanes` silently
+dropped its entire pane set if any single part's constructor threw.** The getter did
+`foreach (var pane in ExportProvider.GetExportedValues<ToolPaneModel>("ToolPane").OrderBy(p => p.Title))`.
+`GetExportedValues` is lazy and `OrderBy` buffers it, so one throwing constructor aborted the whole
+enumeration - and because `toolPanesView` was assigned only *after* the loop, the failure left it
+null with `toolPanes` already partly filled, so the next access re-enumerated and re-added
+duplicates. Worst of all it surfaced **no diagnostics whatsoever**. `OutlineViewModel`'s first
+version touched `SD.Workbench` in its constructor, which is null that early (MEF composition runs
+from `AvalonDockLayout.BindSources()`, before the workbench is registered) - so adding one pane made
+*every* MEF pane vanish, with the only symptom being a wrong pane count and no error anywhere.
+That's what produced hours of contradictory readings (`count:1`, `count:3` with only runtime-added
+ILSpy panes, nondeterministic across runs - the same part constructs fine once the service exists,
+so the outcome depended on which code path touched `ToolPanes` first).
+
+Fixed by constructing parts one at a time via `GetExports<ToolPaneModel, IMetadata>(...)` and
+guarding each `.Value` individually: one broken pane now costs exactly that pane, logged by type,
+and materializing into a local list first means a failure can't leave the collection half-filled or
+duplicated. `OutlineViewModel` also got the deferred-subscription treatment (`EnsureSubscribed`,
+same shape as `CodeCoverageService.TryHookViewOpened`'s fix for the identical early-startup hazard),
+and the shim calls it on construction so the legacy route - which never calls
+`ToolPaneModel.Show()` - doesn't hand AvalonDock an empty `ContentPresenter`.
+
+**Diagnosis method worth recording**: the breakthrough came from a temporary DevFlow action that
+queried `MetadataReader.Read(assembly)` and `GetExports<ToolPaneModel, IMetadata>("ToolPane")`
+directly, which returned **2** (both panes, correct metadata/contract names) while
+`DockWorkspace.Current.ToolPanes` returned **1** - proving instantly that MEF registration was
+never the problem and the loss was downstream, inside this getter. Decompiling
+`BindExports`/`ExportProviderAdapter`/`MetadataReader` with this project's own embedded ILSpy (and
+`ilspycmd` for >2000-char output) ruled out the composition library first. Before that, every
+theory about attributes, `[Shared]`, contract names or assembly scanning was wrong; a standalone
+2-class repro of the same registration shape returned 2 as well, which is what redirected the
+search away from MEF.
+
+**Also learned, and worth not re-discovering**: `count:1` for `ToolPanes` *after* startup is not
+necessarily a bug at all - `AvalonDockLayout.LoadLayout` deliberately removes any registered pane
+the restored layout file doesn't name (into `layoutExcludedPanes`, "a named layout shows exactly
+the panes it contains"). Since `Outline` isn't in `Default.xml`, it's excluded post-population, and
+`od.show-pad "Outline"` then legitimately falls through to the legacy `AvalonPadContent` route -
+which works, and whose anchorable shows up under ContentId
+`ICSharpCode.SharpDevelop.Gui.OutlinePad` (verified live) rather than `Outline`. Reading
+`ToolPanes` after that exclusion and concluding "registration failed" is the trap; the
+`[TOOLPANES] populated 2 ...` log line at population time is the reliable signal.
+
+**Verified**: `populated 2 MEF tool pane(s): ProjectBrowser, Outline` at startup with zero part
+failures; Projects still docks correctly; the Outline anchorable materializes via the shim route.
+`IlSpyAddInTests` passed 7 of 8 consecutive runs, the single failure being the pre-existing,
+already-documented `od.ilspy.click-reference` dispatcher-tick race (established earlier in this
+session, before any of this work, and reproduced manually 5/5 successfully outside the test).
+
+**Not done** (deliberately, and not attempted): the other 10 legacy pads. `Outline` was chosen as
+the cheapest possible validation of the pattern; the remaining easy tier
+(`DefinitionViewPad`, `BookmarkPad`) should be mechanical now that `LegacyPadClass` exists and
+`ToolPanes` no longer hides constructor failures, while `ErrorListPad`/`ClassBrowserPad`/
+`OutputPad`/`SideBar`/`FileScout` need per-call-site dependency mapping first (same care as the
+`AssemblyTreeModel` migration). Making `Outline` render as a *docked, visible* pane in a layout
+that doesn't name it is a separate question about layout templates, not about this migration.
+
+## Legacy Pad migration, second slice: DefinitionViewPad (2026-08-03)
+
+Same shape as `Outline`: `DefinitionViewViewModel` (MEF-exported `ToolPaneModel`, in the App
+project since `ToolPaneModel` isn't reachable from Base) holds the real behavior (AvalonEdit
+control showing the definition under the caret, refreshed via a `DispatcherTimer` and
+`SD.ParserService.ParseInformationUpdated`); `DefinitionViewPad` is a thin shim so the AddInTree
+`<Pad>` entry still resolves and any direct `PadDescriptor.PadContent` access still gets real
+content. `LegacyPadClass` set to the shim's type, same as `Outline`/`ProjectBrowser`.
+
+Applied the same deferred-subscription guard as `Outline` even though `IParserService` starts
+before workbench initialization (so is very unlikely to be the timing hazard `SD.Workbench` was) -
+cheap insurance against the exact failure mode ("Failed to create tool pane... - skipping it" now
+at least gets logged instead of silently vanishing, but avoiding the failure in the first place is
+still better than relying on the log).
+
+Verified live: build clean, `[TOOLPANES]`-style pane count unaffected, `od.show-pad` finds it,
+routes through the legacy shim (not in `Default.xml`, same as `Outline`), and the anchorable
+materializes under `ICSharpCode.SharpDevelop.Gui.DefinitionViewPad`. `od.pads` still lists both
+migrated pads with correct titles/categories/default positions - no regression to AddInTree
+metadata resolution. `IlSpyAddInTests` 3/4 clean runs (the one failure being the same pre-existing
+dispatcher-tick race noted throughout this session, unrelated to pad migration).
+
+Two pads down (`Outline`, `DefinitionView`), nine to go
+(`BookmarkPad`/`PropertyPad`/`TaskListPad`/`SearchResultsPad`/`ErrorListPad`/`ClassBrowserPad`/
+`OutputPad`/`SideBar`/`FileScout`) - `BookmarkPad` is next in the easy tier, but it owns a XAML
+`UserControl` (`BookmarkPadContent`) that also needs relocating out of the Base project, a wrinkle
+`Outline`/`DefinitionView` didn't have (both were code-only controls).
+
+## BookmarkPad reclassified: not actually easy tier (2026-08-03)
+
+Looked at `BookmarkPad` next (the third "easy tier" item from the original survey) before
+migrating it, and stopped: `BookmarkPadBase` (the shared abstract base `BookmarkPad` derives from)
+is also the base class for `src/AddIns/Debugger/Debugger.AddIn/Pads/BreakPointsPad.cs` - a
+different pad in a different AddIn assembly. Its toolbar commands
+(`NextBookmarkPadCommand`/`PrevBookmarkPadCommand`/`DeleteMark`/`DeleteAllMarks`/`EnableDisableAll`
+in `BookmarkPadToolbarCommands.cs`) all cast `this.Owner` to `BookmarkPadBase` directly - changing
+that base type to a `ToolPaneModel` would mean updating the toolbar-owner contract for both pads
+across two assemblies, not the same "one pad, one file pair" shape `Outline`/`DefinitionView` were.
+
+Reclassifying this to medium/hard tier rather than rushing it - it needs the same kind of
+call-site mapping the original `AssemblyTreeModel` migration got, this time across an AddIn
+boundary, before attempting it. Not attempted in this pass.
+
+**Status after this pass**: 2 of 11 legacy pads migrated (`Outline`, `DefinitionView`), the
+`LegacyPadClass`/robust-`ToolPanes` foundation is proven across both, `ProjectBrowser` is
+unaffected. Remaining 9: `BookmarkPad`+`BreakPointsPad` (now known to be linked, medium tier),
+`PropertyPad`/`TaskListPad`/`SearchResultsPad` (medium, per the original survey), `ErrorListPad`/
+`ClassBrowserPad`/`OutputPad`/`SideBar`/`FileScout` (hard tier, broad fan-out - unexamined in
+detail yet).

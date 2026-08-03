@@ -74,7 +74,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			viewContent.DesignContext.Services.Selection.SetSelectedComponents(
 				new[] { designItem }, SelectionTypes.Replace);
 
-			var selectedObject = PropertyPad.Grid?.SelectedObject as DesignItemPropertyGridAdapter;
+			var selectedObject = PropertyPadGrid?.SelectedObject as DesignItemPropertyGridAdapter;
 			return JsonSerializer.Serialize(new {
 				success = true,
 				selectedName = viewContent.DesignContext.Services.Selection.PrimarySelection?.Name,
@@ -86,7 +86,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 		[DevFlowAction("od.wpf-designer.properties-pad.edit", Description = "Edit a property through the real Xceed Properties pad PropertyItem; does not access DesignItemProperty directly")]
 		public static string EditPropertyThroughPropertiesPad(string propertyName, string value)
 		{
-			var grid = PropertyPad.Grid;
+			var grid = PropertyPadGrid;
 			if (grid == null)
 				return JsonSerializer.Serialize(new { success = false, error = "Properties pad is not available" });
 			if (!(grid.SelectedObject is DesignItemPropertyGridAdapter selectedObject))
@@ -141,6 +141,15 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 		/// WpfViewContent.DesignContext throws NullReferenceException (designer surface field never
 		/// set) until we switch to it via IWorkbenchWindow.SwitchView.
 		/// </summary>
+		/// <summary>
+		/// The live Properties pad's Xceed grid, reached via <c>IPropertyPadHost</c> (Base
+		/// project) rather than a compile-time reference to <c>PropertyPad</c>/
+		/// <c>PropertyPadViewModel</c> - doc/technotes/ilspy.md "Docking and layout replacement":
+		/// the Properties pad's real implementation was migrated to the App project, which this
+		/// AddIn (like most) doesn't reference.
+		/// </summary>
+		static Xceed.Wpf.Toolkit.PropertyGrid.PropertyGrid PropertyPadGrid => (SD.Services.GetService(typeof(IPropertyPadHost)) as IPropertyPadHost)?.Grid;
+
 		static WpfViewContent FindWpfViewContent()
 		{
 			var active = SD.Workbench.ActiveViewContent;

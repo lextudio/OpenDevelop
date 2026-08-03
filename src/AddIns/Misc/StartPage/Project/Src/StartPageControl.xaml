@@ -47,7 +47,7 @@
 						<StackPanel
 							Orientation="Vertical">
 							<Border
-								Background="#A8C6E3"
+								Background="{DynamicResource Selection}"
 								Margin="4,12,4,0"
 								CornerRadius="15,15,0,0"
 								Padding="15,0,15,0">
@@ -55,11 +55,11 @@
 									Text="{Binding Control.Header}"
 									FontSize="11pt"
 									FontWeight="Bold"
-									Foreground="White"
+									Foreground="{DynamicResource SelectionForeground}"
 									Margin="0,0,0,2" />
 							</Border>
 							<Border
-								Background="#DCDDDE"
+								Background="{DynamicResource ToolWindowBackground}"
 								Margin="4,0,4,4"
 								CornerRadius="0,0,15,15"
 								Padding="15">
@@ -71,7 +71,7 @@
 				</ItemsControl.ItemTemplate>
 			</ItemsControl>
 			<TextBlock
-				Background="#A8C6E3"
+				Background="{DynamicResource Selection}"
 				Grid.Row="2"
 				Padding="4,0,4,0"
 				TextWrapping="WrapWithOverflow">

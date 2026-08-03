@@ -37,6 +37,10 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
         // next actions" #3): this used to be a `ContentId == "ProjectBrowser"` special case inside
         // DockWorkspace.AfterInsertAnchorable; now any pane can express the same preference.
         PreferredDockSize = 280;
+        // Generalized from AvalonDockLayout's own hardcoded class-name check
+        // (doc/technotes/ilspy.md "Docking and layout replacement", 2026-08-03) - same effective
+        // mapping, just declared here instead of in the shell.
+        LegacyPadClass = typeof(ProjectBrowserPad).FullName;
         Content = new ProjectBrowserView { DataContext = this };
         ShowPropertiesCommand = new DelegateCommand(ShowProperties, () => SelectedNode != null);
         ShowAllFilesCommand = new DelegateCommand(ToggleShowAllFiles);

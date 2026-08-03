@@ -86,8 +86,12 @@ namespace ICSharpCode.Core.Presentation
 					return codon.AddIn.CreateObject(codon.Properties["class"]);
 				case "Custom":
 					object result = codon.AddIn.CreateObject(codon.Properties["class"]);
-					if (result is ComboBox)
-						((ComboBox)result).SetResourceReference(FrameworkElement.StyleProperty, ToolBar.ComboBoxStyleKey);
+					// Note: do NOT pin ToolBar.ComboBoxStyleKey onto ComboBoxes here. That style
+					// is Aero2's toolbar-combo chrome with hardcoded light colors which ignores
+					// the semantic theme (its arrow is even hardcoded black), so in the dark
+					// theme it renders as a broken-looking light patch. The themed implicit
+					// ComboBox style from Themes/Theme.Light.xaml & Theme.Dark.xaml gives custom
+					// combos the same standard look as the workbench's own combos instead.
 					if (result is ICustomToolBarItem)
 						((ICustomToolBarItem)result).Initialize(inputBindingOwner, codon, caller);
 					return result;
@@ -110,6 +114,17 @@ namespace ICSharpCode.Core.Presentation
 			public CoreToolBar()
 			{
 				LanguageChangeWeakEventManager.AddListener(this);
+				// LibreWPF's implicit-style lookup only queries the exact element type and does
+				// not walk BaseType like WPF does (see FrameworkElement.FindImplicitStyleResource),
+				// so ToolBar subclasses never pick up the implicit ToolBar style from the
+				// semantic theme dictionary (Themes/Theme.Light.xaml / Theme.Dark.xaml). Resolve
+				// it by its type key instead and pin it once the strip is realized; the
+				// DynamicResource token colors inside the style keep following theme switches,
+				// so this is a one-time assignment.
+				Loaded += (_, _) => {
+					if (Style == null && Application.Current != null)
+						Style = Application.Current.TryFindResource(typeof(ToolBar)) as Style;
+				};
 			}
 			
 			bool IWeakEventListener.ReceiveWeakEvent(Type managerType, object sender, EventArgs e)

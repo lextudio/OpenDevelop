@@ -33,7 +33,7 @@ namespace ICSharpCode.WpfDesign.AddIn.Commands
             SD.Workbench.GetPad(typeof(ToolsPad)).BringPadToFront();
         }
     }
-	
+
 	/// <summary>
 	/// Opens up the Properties Pad (general-purpose Xceed-based PropertyPad).
 	/// </summary>
@@ -41,10 +41,14 @@ namespace ICSharpCode.WpfDesign.AddIn.Commands
     {
         public override void Run()
         {
-            SD.Workbench.GetPad(typeof(PropertyPad)).BringPadToFront();
+            // Looked up by class name, not typeof(PropertyPad): PropertyPad's real
+            // implementation lives in the App project (doc/technotes/ilspy.md "Docking and
+            // layout replacement"), which this AddIn - like most - only references the Base
+            // project, not the App project, so the type itself isn't visible here.
+            SD.Workbench.GetPad("ICSharpCode.SharpDevelop.Gui.PropertyPad").BringPadToFront();
         }
     }
-	
+
 	/// <summary>
 	/// Opens up the Outline Pad.
 	/// </summary>
@@ -52,7 +56,9 @@ namespace ICSharpCode.WpfDesign.AddIn.Commands
     {
         public override void Run()
         {
-            SD.Workbench.GetPad(typeof(OutlinePad)).BringPadToFront();
+            // Same reasoning as Properties above - OutlinePad's real implementation moved to the
+            // App project too.
+            SD.Workbench.GetPad("ICSharpCode.SharpDevelop.Gui.OutlinePad").BringPadToFront();
         }
     }
 }

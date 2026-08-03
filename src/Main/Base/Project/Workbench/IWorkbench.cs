@@ -146,7 +146,18 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		/// Returns a pad from a specific type.
 		/// </summary>
 		PadDescriptor GetPad(Type type);
-		
+
+		/// <summary>
+		/// Returns a pad by its AddInTree-registered class name (doc/technotes/ilspy.md "Docking
+		/// and layout replacement" item 1/item 4 consolidation, 2026-08-03) - the string-keyed
+		/// equivalent of <see cref="GetPad(Type)"/> (which is itself just a
+		/// <c>pad.Class == type.FullName</c> comparison), for callers that can't reference the pad
+		/// class's compile-time type at all - e.g. an AddIn that only references the Base project,
+		/// looking up a pad whose real implementation was migrated to a
+		/// <c>ToolPaneModel</c>-based class living in the App project instead.
+		/// </summary>
+		PadDescriptor GetPad(string className);
+
 		/// <summary>
 		/// Closes all views inside the workbench.
 		/// </summary>

@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Data;
 using System.Xml;
@@ -16,9 +18,11 @@ using AvalonDock.Serializer.Xml;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.ViewModels;
 
+using TomsToolbox.Composition;
+
 namespace ICSharpCode.SharpDevelop.Workbench;
 
-internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrategy
+internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrategy, IPaneModelHost
 {
     // Bumped whenever the persisted layout format changes in a way that's not just "more
     // ToolPaneModel ContentIds" (e.g. if documents start being persisted, or IsVisible semantics
@@ -40,9 +44,22 @@ internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrateg
     {
         this.dockingManager = dockingManager;
         Current = this;
+        // PaneModel.CloseCommand resolves this to call back into Remove() below - see
+        // IPaneModelHost's doc comment (ViewModels/PaneModel.cs) for why this indirection exists
+        // (PaneModel now lives in the Base project, reachable from every AddIn; DockWorkspace
+        // stays App-project-internal).
+        SD.Services.AddService(typeof(IPaneModelHost), this);
     }
 
     public static DockWorkspace Current { get; private set; }
+
+    /// <summary>
+    /// The live AvalonDock layout tree, for callers that need to inspect/mutate it directly (e.g.
+    /// <see cref="LayoutSnapshotConverter"/> and its DevFlow test actions) - <c>dockingManager</c>
+    /// itself stays private since nothing outside this class should touch AvalonDock APIs other
+    /// than the layout tree.
+    /// </summary>
+    internal LayoutRoot Layout => dockingManager.Layout;
 
     /// <summary>
     /// MEF-exported tool panes plus any panes added at runtime via <see cref="AddToolPane"/>
@@ -54,11 +71,39 @@ internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrateg
     public ReadOnlyObservableCollection<ToolPaneModel> ToolPanes {
         get {
             if (toolPanesView == null) {
-                foreach (var pane in OpenDevelopMefHost.ExportProvider
-                    .GetExportedValues<ToolPaneModel>("ToolPane")
-                    .OrderBy(item => item.Title)) {
-                    toolPanes.Add(pane);
+                // Constructed one part at a time via GetExports(...).Value rather than in one
+                // GetExportedValues() enumeration (doc/technotes/ilspy.md "Docking and layout
+                // replacement" item 4, 2026-08-03). The old one-shot form had three real defects,
+                // all of which this getter's own laziness turned into silent state corruption:
+                //   1. GetExportedValues() is lazy and OrderBy() buffers it, so ANY single part
+                //      whose constructor threw aborted the whole enumeration - every remaining
+                //      pane silently vanished from the workbench with no error surfaced anywhere
+                //      (measured: adding one new pane whose ctor touched SD.Workbench too early
+                //      made the entire MEF-backed pane set disappear, leaving only runtime-added
+                //      ILSpy panes, no exception logged).
+                //   2. `toolPanesView` was assigned only AFTER the loop, so a throw left it null
+                //      while `toolPanes` was already partly filled - the next access re-enumerated
+                //      and re-added the same panes, duplicating them.
+                //   3. That made the failure timing-dependent and therefore nondeterministic: the
+                //      same part constructs fine once the service it touches exists, so whether a
+                //      pane appeared depended on which code path happened to touch ToolPanes first.
+                // Materializing into a local list first, and guarding each part, means one broken
+                // pane costs exactly that pane (logged, by type name) instead of the whole set.
+                var loaded = new List<ToolPaneModel>();
+                foreach (var export in OpenDevelopMefHost.ExportProvider.GetExports<ToolPaneModel, IMetadata>("ToolPane")) {
+                    try {
+                        var pane = export.Value;
+                        if (pane == null) {
+                            LoggingService.Error("A ToolPane MEF export produced a null value - skipping it.");
+                            continue;
+                        }
+                        loaded.Add(pane);
+                    } catch (Exception ex) {
+                        LoggingService.Error("Failed to create tool pane from MEF export - skipping it.", ex);
+                    }
                 }
+                foreach (var pane in loaded.OrderBy(item => item.Title))
+                    toolPanes.Add(pane);
                 toolPanesView = new ReadOnlyObservableCollection<ToolPaneModel>(toolPanes);
             }
             return toolPanesView;
@@ -109,6 +154,7 @@ internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrateg
         return ToolPanes.Any(pane => pane.ContentId == contentId);
     }
 
+
     public bool ShowToolPane(string contentId)
     {
         var pane = ToolPanes.FirstOrDefault(p => p.ContentId == contentId);
@@ -140,10 +186,27 @@ internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrateg
         dockingManager.SetBinding(DockingManager.DocumentsSourceProperty, new Binding(nameof(Documents)) { Source = this });
     }
 
+    /// <summary>
+    /// Restores the layout from <paramref name="fileName"/>. Two formats are accepted, detected by
+    /// content, not extension (doc/technotes/ilspy.md, "Real versioned layout DTO, step 2"): the
+    /// OpenDevelop-owned <see cref="LayoutSnapshot"/> JSON DTO (<see cref="SaveLayout"/> always
+    /// writes this now) via <see cref="LayoutSnapshotConverter.Apply"/>, or legacy/template
+    /// AvalonDock XML (still how every shipped <c>data/layouts/*.xml</c>/<c>Layouts/ILSpy.xml</c>
+    /// template is authored, and how any layout file saved before this DTO existed still reads) via
+    /// <c>XmlLayoutSerializer</c> - an *import* format only now, per the architecture doc's framing,
+    /// never written by this class again. A legacy XML file loaded this way gets naturally upgraded
+    /// to the DTO format the next time anything calls <see cref="SaveLayout"/>.
+    /// </summary>
     public void RestoreLayout(string fileName)
     {
         if (!File.Exists(fileName))
             return;
+
+        string content = File.ReadAllText(fileName).TrimStart();
+        if (content.StartsWith("{", StringComparison.Ordinal)) {
+            RestoreLayoutFromSnapshot(fileName, content);
+            return;
+        }
 
         if (!HasCompatibleSchemaVersion(fileName)) {
             // Not a version we understand yet - there is no migration step for schema version 1
@@ -167,17 +230,32 @@ internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrateg
         }
     }
 
+    void RestoreLayoutFromSnapshot(string fileName, string json)
+    {
+        LayoutSnapshot snapshot;
+        try {
+            snapshot = JsonSerializer.Deserialize<LayoutSnapshot>(json);
+        } catch (JsonException ex) {
+            LoggingService.Warn($"Layout file '{fileName}' looked like JSON but failed to parse as a layout snapshot - falling back to template.", ex);
+            throw new FileFormatException(new Uri(fileName, UriKind.RelativeOrAbsolute));
+        }
+        if (snapshot == null || snapshot.Root == null || snapshot.SchemaVersion != LayoutSnapshot.CurrentSchemaVersion) {
+            LoggingService.Warn($"Layout file '{fileName}' has layout-snapshot schema version " +
+                $"{snapshot?.SchemaVersion} (expected {LayoutSnapshot.CurrentSchemaVersion}) - falling back to template.");
+            throw new FileFormatException(new Uri(fileName, UriKind.RelativeOrAbsolute));
+        }
+        LayoutSnapshotConverter.Apply(dockingManager.Layout, snapshot);
+        // Step 3 (doc/technotes/ilspy.md, "Real versioned layout DTO"): reopen whichever real or
+        // virtual documents this snapshot recorded, same pipeline as switching layouts brought the
+        // panes back - documents are addressed by SD.FileService.OpenFile's own dispatch, not by
+        // this converter constructing any view content directly.
+        LayoutSnapshotConverter.ReopenDocuments(snapshot);
+    }
+
     public void SaveLayout(string fileName)
     {
-        var serializer = new XmlLayoutSerializer(dockingManager);
-        using (var stream = new MemoryStream()) {
-            serializer.Serialize(stream);
-            stream.Position = 0;
-            var doc = new XmlDocument();
-            doc.Load(stream);
-            doc.DocumentElement?.SetAttribute(SchemaVersionAttribute, CurrentLayoutSchemaVersion.ToString(CultureInfo.InvariantCulture));
-            doc.Save(fileName);
-        }
+        var snapshot = LayoutSnapshotConverter.Capture(this);
+        File.WriteAllText(fileName, JsonSerializer.Serialize(snapshot));
     }
 
     private static bool HasCompatibleSchemaVersion(string fileName)

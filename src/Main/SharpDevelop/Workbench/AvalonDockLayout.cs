@@ -380,19 +380,53 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		{
 			var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 			try {
-				var doc = new System.Xml.XmlDocument();
-				doc.Load(fileName);
-				var nodes = doc.SelectNodes("//@ContentId");
-				if (nodes != null) {
-					foreach (System.Xml.XmlAttribute attribute in nodes) {
-						if (!string.IsNullOrWhiteSpace(attribute.Value))
-							ids.Add(attribute.Value);
+				string content = File.ReadAllText(fileName).TrimStart();
+				if (content.StartsWith("{", StringComparison.Ordinal)) {
+					// The layout DTO format (doc/technotes/ilspy.md, "Real versioned layout DTO,
+					// step 2") - DockWorkspace.SaveLayout now always writes this, even though the
+					// file still carries a ".xml" name (LayoutConfiguration.CurrentLayoutFileName
+					// is unchanged). Walk the JSON tree for any "ContentId" property rather than
+					// deserializing the full LayoutSnapshot shape here - this method only ever
+					// needs the flat set of IDs, and staying structure-agnostic means it can't get
+					// out of sync with LayoutSnapshot's own shape as that evolves.
+					using var doc = System.Text.Json.JsonDocument.Parse(content);
+					CollectContentIds(doc.RootElement, ids);
+				} else {
+					var xmlDoc = new System.Xml.XmlDocument();
+					xmlDoc.Load(fileName);
+					var nodes = xmlDoc.SelectNodes("//@ContentId");
+					if (nodes != null) {
+						foreach (System.Xml.XmlAttribute attribute in nodes) {
+							if (!string.IsNullOrWhiteSpace(attribute.Value))
+								ids.Add(attribute.Value);
+						}
 					}
 				}
 			} catch (Exception ex) {
 				LoggingService.Warn("Could not read anchorable ContentIds from layout file '" + fileName + "'.", ex);
 			}
 			return ids;
+		}
+
+		static void CollectContentIds(System.Text.Json.JsonElement element, HashSet<string> ids)
+		{
+			switch (element.ValueKind) {
+				case System.Text.Json.JsonValueKind.Object:
+					foreach (var property in element.EnumerateObject()) {
+						if (property.NameEquals("ContentId") && property.Value.ValueKind == System.Text.Json.JsonValueKind.String) {
+							var value = property.Value.GetString();
+							if (!string.IsNullOrWhiteSpace(value))
+								ids.Add(value);
+						} else {
+							CollectContentIds(property.Value, ids);
+						}
+					}
+					break;
+				case System.Text.Json.JsonValueKind.Array:
+					foreach (var item in element.EnumerateArray())
+						CollectContentIds(item, ids);
+					break;
+			}
 		}
 		
 		public void StoreConfiguration()
@@ -493,11 +527,17 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			return contentId != null && dockWorkspace.ShowToolPane(contentId);
 		}
 
-		static string GetMefToolPaneContentId(PadDescriptor padDescriptor)
+		// Generalized (doc/technotes/ilspy.md "Docking and layout replacement" item 4/item 1
+		// consolidation, 2026-08-03) from a single hardcoded `padDescriptor.Class ==
+		// typeof(ProjectBrowserPad).FullName -> "ProjectBrowser"` comparison into a lookup driven
+		// by ToolPaneModel.LegacyPadClass, so migrating another legacy Pad to the modern model
+		// needs no change here at all - just setting LegacyPadClass in the new model's
+		// constructor, the same way ProjectBrowserViewModel and (now) OutlineViewModel do.
+		string GetMefToolPaneContentId(PadDescriptor padDescriptor)
 		{
-			if (padDescriptor.Class == typeof(ICSharpCode.SharpDevelop.Services.ProjectBrowserPad).FullName)
-				return "ProjectBrowser";
-			return null;
+			return dockWorkspace.ToolPanes
+				.FirstOrDefault(pane => pane.LegacyPadClass == padDescriptor.Class)
+				?.ContentId;
 		}
 	}
 }

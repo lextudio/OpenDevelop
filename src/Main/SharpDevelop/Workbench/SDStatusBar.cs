@@ -61,6 +61,19 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		public SDStatusBar()
 		{
+			// LibreWPF's implicit-style lookup only queries the exact element type and does
+			// not walk BaseType like WPF does (see FrameworkElement.FindImplicitStyleResource),
+			// so StatusBar subclasses never pick up the implicit StatusBar style from the
+			// semantic theme dictionary (Themes/Theme.Light.xaml / Theme.Dark.xaml) and fall
+			// back to the Aero2 chrome with its hardcoded light background. Resolve the style
+			// by its type key instead and pin it once the element is realized; the
+			// DynamicResource token colors inside the style keep following theme switches,
+			// so this is a one-time assignment.
+			Loaded += (_, _) => {
+				if (Style == null && Application.Current != null)
+					Style = Application.Current.TryFindResource(typeof(StatusBar)) as Style;
+			};
+
 			cursorStatusBarPanel.Width = 150;
 			selectionStatusBarPanel.Content = 50;
 			modeStatusBarPanel.Width = 25;
@@ -92,12 +105,16 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		public void SetMessage(string message, bool highlighted)
 		{
 			Action setMessageAction = delegate {
+				// Resource references (DynamicResource-equivalent) into the semantic theme dict
+				// (Themes/Theme.Light.xaml / Theme.Dark.xaml) so the panel follows the active
+				// theme - the static SystemColors.ControlBrush used before is OS-invariant and
+				// stayed light in dark theme.
 				if (highlighted) {
-					txtStatusBarPanel.Background = SystemColors.HighlightBrush;
-					txtStatusBarPanel.Foreground = SystemColors.HighlightTextBrush;
+					txtStatusBarPanel.SetResourceReference(Control.BackgroundProperty, "Selection");
+					txtStatusBarPanel.SetResourceReference(Control.ForegroundProperty, "SelectionForeground");
 				} else {
-					txtStatusBarPanel.Background = SystemColors.ControlBrush;
-					txtStatusBarPanel.Foreground = SystemColors.ControlTextBrush;
+					txtStatusBarPanel.SetResourceReference(Control.BackgroundProperty, "WindowBackground");
+					txtStatusBarPanel.SetResourceReference(Control.ForegroundProperty, "Foreground");
 				}
 				txtStatusBarPanel.Content = message;
 			};

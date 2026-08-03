@@ -45,6 +45,17 @@ namespace ICSharpCode.Core.Presentation
 			this.codon = codon;
 			this.caller = caller;
 			this.conditions = conditions;
+			// LibreWPF's implicit-style lookup only queries the exact element type and does
+			// not walk BaseType like WPF does (see FrameworkElement.FindImplicitStyleResource),
+			// so MenuItem subclasses never pick up the implicit MenuItem style from the
+			// semantic theme dictionary (Themes/Theme.Light.xaml / Theme.Dark.xaml). Resolve
+			// it by its type key instead and pin it once the element is realized; the
+			// DynamicResource token colors inside the style keep following theme switches,
+			// so this is a one-time assignment.
+			Loaded += (_, _) => {
+				if (Style == null && Application.Current != null)
+					Style = Application.Current.TryFindResource(typeof(MenuItem)) as Style;
+			};
 			
 			if (codon.Properties.Contains("icon")) {
 				try {

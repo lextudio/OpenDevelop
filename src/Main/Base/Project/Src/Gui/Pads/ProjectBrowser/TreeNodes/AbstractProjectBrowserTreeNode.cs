@@ -103,7 +103,10 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		public virtual void ShowProperties()
 		{
-			SD.Workbench.GetPad(typeof(PropertyPad)).BringPadToFront();
+			// Looked up by class name, not typeof(PropertyPad): PropertyPad's real
+			// implementation lives in the App project (doc/technotes/ilspy.md "Docking and
+			// layout replacement"), not reachable from this Base project.
+			SD.Workbench.GetPad("ICSharpCode.SharpDevelop.Gui.PropertyPad").BringPadToFront();
 		}
 		
 		public static bool IsSomewhereBelow(string path, ProjectItem item)

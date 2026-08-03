@@ -1,0 +1,73 @@
+using System;
+using System.Composition;
+using System.Windows.Controls;
+
+using ICSharpCode.Core;
+using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.SharpDevelop.Workbench;
+
+namespace ICSharpCode.SharpDevelop.Gui;
+
+/// <summary>
+/// Modern (doc/technotes/ilspy.md "Docking and layout replacement" item 4, 2026-08-03)
+/// replacement for the legacy AddInTree-registered <see cref="OutlinePad"/>: shows a single
+/// child control determined by whichever document currently has focus, same behavior as before,
+/// just as a <see cref="ToolPaneModel"/> instead of an <see cref="AbstractPadContent"/>.
+/// </summary>
+[Export(typeof(OutlineViewModel))]
+[Export("ToolPane", typeof(ToolPaneModel))]
+[Shared]
+internal sealed class OutlineViewModel : ToolPaneModel, IDisposable
+{
+    readonly ContentPresenter contentControl = new ContentPresenter();
+    bool subscribed;
+
+    public OutlineViewModel()
+    {
+        Title = "Outline";
+        ContentId = "Outline";
+        IsVisible = false; // Matches the legacy Pad's `defaultPosition = "Left, Hidden"`.
+        IsCloseable = true;
+        LegacyPadClass = typeof(OutlinePad).FullName;
+        Content = contentControl;
+    }
+
+    /// <summary>
+    /// Subscribes to <c>SD.Workbench.ActiveViewContentChanged</c> on first real use rather than in
+    /// the constructor. This model is constructed eagerly, while MEF composes every
+    /// <c>[Export("ToolPane", typeof(ToolPaneModel))]</c> part (<see cref="DockWorkspace.ToolPanes"/>'s
+    /// getter, reached from <c>AvalonDockLayout.BindSources()</c>) - which happens before
+    /// <c>SD.Workbench</c> is registered, so touching it in the constructor throws. Same
+    /// early-startup hazard, and the same "defer until the service exists" shape, as
+    /// <c>CodeCoverageService</c>'s <c>TryHookViewOpened</c> (see doc/technotes/ilspy.md).
+    /// </summary>
+    internal void EnsureSubscribed()
+    {
+        if (subscribed || SD.Services.GetService(typeof(IWorkbench)) == null)
+            return;
+        subscribed = true;
+        SD.Workbench.ActiveViewContentChanged += WorkbenchActiveContentChanged;
+        WorkbenchActiveContentChanged(null, null);
+    }
+
+    public override void Show()
+    {
+        EnsureSubscribed();
+        base.Show();
+    }
+
+    void WorkbenchActiveContentChanged(object sender, EventArgs e)
+    {
+        var view = SD.Workbench.ActiveViewContent;
+        var host = view?.GetService(typeof(IOutlineContentHost)) as IOutlineContentHost;
+        contentControl.Content = host != null
+            ? host.OutlineContent
+            : StringParser.Parse("${res:MainWindow.Windows.OutlinePad.NoContentAvailable}");
+    }
+
+    public void Dispose()
+    {
+        if (subscribed)
+            SD.Workbench.ActiveViewContentChanged -= WorkbenchActiveContentChanged;
+    }
+}

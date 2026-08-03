@@ -111,7 +111,10 @@ namespace ICSharpCode.FormsDesigner.Commands
 
 		public override void Run()
 		{
-			PadDescriptor padContent = SD.Workbench.GetPad(typeof(ICSharpCode.SharpDevelop.Gui.PropertyPad));
+			// Looked up by class name, not typeof(...): PropertyPad's real implementation lives
+			// in the App project (doc/technotes/ilspy.md "Docking and layout replacement"), not
+			// reachable from this AddIn (only references the Base project).
+			PadDescriptor padContent = SD.Workbench.GetPad("ICSharpCode.SharpDevelop.Gui.PropertyPad");
 			if (padContent != null) {
 				padContent.BringPadToFront();
 			}

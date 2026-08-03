@@ -484,18 +484,36 @@ namespace ICSharpCode.ILSpyAddIn
 		
 		public FileName ToFileName()
 		{
-			return FileName.Create("ilspy://" + AssemblyFile + "/" + (IsWholeModule ? "module" : EscapeTypeName(Type.ReflectionName)) + ".cs");
+			// Strip exactly one leading separator from AssemblyFile before concatenating - on
+			// macOS/Linux, AssemblyFile is an absolute Unix path already starting with "/", so
+			// "ilspy://" + "/Users/..." would produce three consecutive slashes
+			// ("ilspy:///Users/..."). FileUtility.NormalizePath's segment-based collapsing (every
+			// FileName construction runs through it, via PathName's constructor) doesn't preserve
+			// three consecutive slashes faithfully - it silently collapses to two, corrupting the
+			// round trip (confirmed live: doc/technotes/ilspy.md "Real versioned layout DTO, step
+			// 3" - reopening a persisted ilspy:// document threw DirectoryNotFoundException from a
+			// mangled path). Windows paths (`C:\...`) never start with a separator, so this is a
+			// no-op there; FromFileName below restores the stripped separator symmetrically.
+			string assemblyPath = AssemblyFile.ToString();
+			if (assemblyPath.Length > 0 && (assemblyPath[0] == '/' || assemblyPath[0] == '\\'))
+				assemblyPath = assemblyPath.Substring(1);
+			return FileName.Create("ilspy://" + assemblyPath + "/" + (IsWholeModule ? "module" : EscapeTypeName(Type.ReflectionName)) + ".cs");
 		}
-		
+
 		static readonly Regex nameRegex = new Regex(@"^ilspy\://(.+)/(.+)\.cs$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-		
+
 		public static DecompiledTypeReference FromFileName(string filename)
 		{
 			var match = nameRegex.Match(filename);
 			if (!match.Success) return null;
-			
+
 			string asm, typeName;
 			asm = match.Groups[1].Value;
+			// Symmetric with ToFileName's leading-separator strip: on a Unix-style OS, a bare
+			// "Users/..." isn't a valid absolute path, so restore the separator ToFileName removed.
+			// Windows paths already have their own root (a drive letter), so this never applies there.
+			if (Path.DirectorySeparatorChar == '/' && !asm.StartsWith("/", StringComparison.Ordinal))
+				asm = "/" + asm;
 			typeName = match.Groups[2].Value;
 			if (string.Equals(typeName, "module", StringComparison.OrdinalIgnoreCase))
 				return new DecompiledTypeReference(new FileName(asm), default(TopLevelTypeName));

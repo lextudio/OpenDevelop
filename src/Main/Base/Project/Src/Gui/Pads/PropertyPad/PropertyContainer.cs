@@ -18,13 +18,21 @@ namespace ICSharpCode.SharpDevelop.Gui
 		internal PropertyContainer(bool createPadOnConstruction)
 		{
 			if (createPadOnConstruction) {
-				PadDescriptor desc = SD.Workbench.GetPad(typeof(PropertyPad));
-				if (desc != null) desc.CreatePad();
+				// Was SD.Workbench.GetPad(typeof(PropertyPad)).CreatePad() - forced the legacy
+				// Pad to materialize. PropertyPadViewModel (its modern replacement,
+				// doc/technotes/ilspy.md "Docking and layout replacement") is a `[Shared]` MEF
+				// singleton, already constructed by the time DockWorkspace.ToolPanes is first
+				// accessed (during workbench startup) - so there's nothing left to force here;
+				// just touch the service to keep this constructor's "the pad host exists by now"
+				// intent visible.
+				_ = SD.Services.GetService(typeof(IPropertyPadHost));
 			}
 		}
 
+		static IPropertyPadHost Host => SD.Services.GetService(typeof(IPropertyPadHost)) as IPropertyPadHost;
+
 		public bool IsActivePropertyContainer {
-			get { return PropertyPad.ActiveContainer == this; }
+			get { return Host?.ActiveContainer == this; }
 		}
 
 		object selectedObject;
@@ -35,7 +43,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 			set {
 				selectedObject = value;
 				selectedObjects = null;
-				PropertyPad.UpdateSelectedObjectIfActive(this);
+				Host?.UpdateSelectedObjectIfActive(this);
 			}
 		}
 
@@ -44,7 +52,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 			set {
 				selectedObject = null;
 				selectedObjects = value;
-				PropertyPad.UpdateSelectedObjectIfActive(this);
+				Host?.UpdateSelectedObjectIfActive(this);
 			}
 		}
 

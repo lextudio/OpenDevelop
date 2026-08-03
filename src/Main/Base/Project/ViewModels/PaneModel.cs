@@ -20,10 +20,24 @@ using System;
 using System.ComponentModel;
 using System.Windows.Input;
 
-using ICSharpCode.SharpDevelop.Workbench;
-
 namespace ICSharpCode.SharpDevelop.ViewModels
 {
+	/// <summary>
+	/// The one thing <see cref="PaneModel"/>'s <c>CloseCommand</c> needs from the actual docking
+	/// host (doc/technotes/ilspy.md "Docking and layout replacement" item 1/item 4
+	/// consolidation, 2026-08-03) - split out so <c>PaneModel</c>/<c>ToolPaneModel</c> can live in
+	/// the Base project (reachable from every AddIn) without depending on <c>DockWorkspace</c>,
+	/// which is internal to the App project (<c>OpenDevelop.dll</c>) and only ever has one real
+	/// implementation. Registered via <c>SD.Services.AddService(typeof(IPaneModelHost), this)</c>
+	/// by <c>DockWorkspace</c>'s constructor - the same "shell owns the mechanism, resolved
+	/// through the service container" pattern already used throughout this codebase (see
+	/// <c>IWorkbench</c>, <c>IStatusBarService</c>, etc.), not a new one invented for this.
+	/// </summary>
+	public interface IPaneModelHost
+	{
+		void Remove(PaneModel model);
+	}
+
 	public abstract class PaneModel : ObservableObjectBase
 	{
 		protected PaneModel()
@@ -57,7 +71,7 @@ namespace ICSharpCode.SharpDevelop.ViewModels
 
 			public void Execute(object parameter)
 			{
-				DockWorkspace.Current?.Remove(model);
+				(SD.Services.GetService(typeof(IPaneModelHost)) as IPaneModelHost)?.Remove(model);
 			}
 		}
 

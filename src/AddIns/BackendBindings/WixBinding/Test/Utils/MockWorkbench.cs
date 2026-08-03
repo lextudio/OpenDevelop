@@ -120,6 +120,11 @@ namespace WixBinding.Tests.Utils
 		{
 			return null;
 		}
+
+		public PadDescriptor GetPad(string className)
+		{
+			return null;
+		}
 		
 		public void CloseAllViews()
 		{

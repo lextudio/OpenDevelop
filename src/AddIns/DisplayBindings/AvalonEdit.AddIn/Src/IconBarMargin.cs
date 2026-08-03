@@ -104,11 +104,11 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		protected override void OnRender(DrawingContext drawingContext)
 		{
 			Size renderSize = this.RenderSize;
-			drawingContext.DrawRectangle(SystemColors.ControlBrush, null,
-			                             new Rect(0, 0, renderSize.Width, renderSize.Height));
-			drawingContext.DrawLine(new Pen(SystemColors.ControlDarkBrush, 1),
-			                        new Point(renderSize.Width - 0.5, 0),
-			                        new Point(renderSize.Width - 0.5, renderSize.Height));
+			// No background painting here on purpose: like LineNumberMargin, the icon bar lets
+			// the TextView's background (the editor's theme background) show through, so it
+			// follows the semantic theme automatically. Painting a brush of our own (the
+			// original code drew static SystemColors.ControlBrush) is what left a hardcoded
+			// light strip behind when the workbench switched to the dark theme.
 			
 			TextView textView = this.TextView;
 			if (textView != null && textView.VisualLinesValid) {

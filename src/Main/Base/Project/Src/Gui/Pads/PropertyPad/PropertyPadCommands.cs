@@ -8,7 +8,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 	{
 		public override void Run()
 		{
-			var grid = PropertyPad.Grid;
+			var grid = (SD.Services.GetService(typeof(IPropertyPadHost)) as IPropertyPadHost)?.Grid;
 			if (grid?.SelectedPropertyItem != null) {
 				PropertyItemCommands.ResetValue.Execute(null, grid.SelectedPropertyItem);
 			}

@@ -16,6 +16,8 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 
+using AvalonDock.Layout;
+
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Debugging;
@@ -24,9 +26,11 @@ using ICSharpCode.SharpDevelop.Editor.Bookmarks;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Project.Sdk;
+using ICSharpCode.SharpDevelop.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
 using LeXtudio.DevFlow.Agent.Core;
 using Microsoft.Maui.DevFlow.Agent.Core;
+using TomsToolbox.Composition;
 
 namespace ICSharpCode.SharpDevelop.DevFlow
 {
@@ -837,6 +841,90 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new { found = true, layoutName = LayoutConfiguration.CurrentLayoutName });
 		}
 
+		// Verification-only state for the LayoutSnapshot round-trip (doc/technotes/ilspy.md,
+		// "Real versioned layout DTO" -> step 1): held in memory only, this session, not
+		// persisted - these actions exist so a test can prove Capture/Apply actually restores a
+		// scrambled layout without wiring the DTO into DockWorkspace.SaveLayout/RestoreLayout yet.
+		static LayoutSnapshot storedLayoutSnapshot;
+
+		[DevFlowAction("od.layout.tool-panes", Description = "TEMP DIAGNOSTIC: list every ToolPaneModel DockWorkspace currently knows about (ContentId/Title/IsVisible/LegacyPadClass) - used to verify a newly MEF-migrated pad was actually composed and registered")]
+		public static string ListToolPanes()
+		{
+			var panes = DockWorkspace.Current.ToolPanes
+				.Select(p => new { p.ContentId, p.Title, p.IsVisible, p.LegacyPadClass })
+				.ToArray();
+			return JsonSerializer.Serialize(new { workspaceId = DockWorkspace.Current.GetHashCode(), count = panes.Length, panes });
+		}
+
+		[DevFlowAction("od.layout.pane-position", Description = "Report where an anchorable (by ContentId) actually sits in the live AvalonDock layout right now (named LayoutAnchorablePane, side, tab index, floating/hidden) - the generic, non-ILSpy-specific version of ILSpyAddIn's od.ilspy.pane-position, used to verify LayoutSnapshotConverter's round-trip")]
+		public static string GetPanePosition(string contentId)
+		{
+			var anchorable = DockWorkspace.Current.Layout.Descendents().OfType<LayoutAnchorable>()
+				.FirstOrDefault(a => string.Equals(a.ContentId, contentId, StringComparison.Ordinal));
+			if (anchorable == null)
+				return JsonSerializer.Serialize(new { found = false, contentId });
+			var pane = anchorable.Parent as LayoutAnchorablePane;
+			return JsonSerializer.Serialize(new {
+				found = true,
+				contentId,
+				paneName = pane?.Name,
+				side = anchorable.IsFloating || pane == null ? null : pane.GetSide().ToString(),
+				tabIndex = pane?.Children.IndexOf(anchorable) ?? -1,
+				siblingCount = pane?.Children.Count ?? 0,
+				isFloating = anchorable.IsFloating,
+				isHidden = anchorable.IsHidden,
+			});
+		}
+
+		[DevFlowAction("od.layout.capture-snapshot", Description = "Capture the live AvalonDock layout (panes AND real, file-backed open documents - see LayoutSnapshotConverter.Capture(DockWorkspace)) into an OpenDevelop-owned LayoutSnapshot DTO and hold it in memory for a later od.layout.apply-stored-snapshot call - used to verify the DTO round-trip end to end (capture known-good -> scramble -> apply -> confirm restored) without touching the persisted layout file format")]
+		public static string CaptureSnapshot()
+		{
+			storedLayoutSnapshot = LayoutSnapshotConverter.Capture(DockWorkspace.Current);
+			int PaneCount(LayoutNodeSnapshot node) => node switch {
+				LayoutAnchorablePaneSnapshot => 1,
+				LayoutSplitSnapshot split => split.Children.Sum(PaneCount),
+				_ => 0,
+			};
+			return JsonSerializer.Serialize(new {
+				captured = true,
+				paneCount = PaneCount(storedLayoutSnapshot.Root),
+				documents = storedLayoutSnapshot.Documents.Select(d => new { d.FileName, d.IsActive }),
+			});
+		}
+
+		[DevFlowAction("od.layout.apply-stored-snapshot", Description = "Apply the LayoutSnapshot previously captured by od.layout.capture-snapshot back onto the live AvalonDock layout (LayoutSnapshotConverter.Apply) - the other half of the round-trip verification")]
+		public static string ApplyStoredSnapshot()
+		{
+			if (storedLayoutSnapshot == null)
+				return JsonSerializer.Serialize(new { applied = false, error = "No snapshot captured yet - call od.layout.capture-snapshot first." });
+			LayoutSnapshotConverter.Apply(DockWorkspace.Current.Layout, storedLayoutSnapshot);
+			return JsonSerializer.Serialize(new { applied = true });
+		}
+
+		[DevFlowAction("od.layout.scramble-into-pane", Description = "TEST-ONLY: force every named anchorable (comma-separated ContentIds) into the same LayoutAnchorablePane as a given target ContentId, simulating the 'everything got tabbed into the wrong pane' corruption this DTO work exists to detect/repair - used to build a before/after for od.layout.apply-stored-snapshot")]
+		public static string ScrambleIntoPane(string targetContentId, string commaSeparatedContentIds)
+		{
+			var layout = DockWorkspace.Current.Layout;
+			var target = layout.Descendents().OfType<LayoutAnchorable>()
+				.FirstOrDefault(a => string.Equals(a.ContentId, targetContentId, StringComparison.Ordinal));
+			var targetPane = target?.Parent as LayoutAnchorablePane;
+			if (targetPane == null)
+				return JsonSerializer.Serialize(new { success = false, error = $"No LayoutAnchorablePane found for target ContentId '{targetContentId}'." });
+
+			var moved = new List<string>();
+			foreach (var contentId in commaSeparatedContentIds.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+			{
+				var anchorable = layout.Descendents().OfType<LayoutAnchorable>()
+					.FirstOrDefault(a => string.Equals(a.ContentId, contentId, StringComparison.Ordinal));
+				if (anchorable == null || anchorable == target)
+					continue;
+				(anchorable.Parent as LayoutAnchorablePane)?.Children.Remove(anchorable);
+				targetPane.Children.Add(anchorable);
+				moved.Add(contentId);
+			}
+			return JsonSerializer.Serialize(new { success = true, targetContentId, moved });
+		}
+
 		[DevFlowAction("od.pads", Description = "List registered workbench pads")]
 		public static string GetPads()
 		{
@@ -874,6 +962,48 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		{
 			var file = SD.FileService.GetOpenedFile(FileName.Create(path));
 			return JsonSerializer.Serialize(new { isOpen = file != null, isDirty = file?.IsDirty ?? false });
+		}
+
+		static T FindVisualDescendant<T>(System.Windows.DependencyObject root) where T : System.Windows.DependencyObject
+		{
+			if (root == null)
+				return null;
+			int count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+			for (int i = 0; i < count; i++)
+			{
+				var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+				if (child is T match)
+					return match;
+				var found = FindVisualDescendant<T>(child);
+				if (found != null)
+					return found;
+			}
+			return null;
+		}
+
+		[DevFlowAction("od.file.visual-lines", Description = "Report each currently-rendered AvalonEdit VisualLine for an open file's editor - line number, VisualTop, Height, and the exact Y the line-number margin now draws its digit at (VisualTop + (Height - digitTextHeight) / 2) versus the old formula (GetTextLineVisualYPosition TextTop) - used to verify LineNumberMargin centers correctly when line heights vary (e.g. Markdown heading FontSize scaling), without needing a screenshot")]
+		public static string GetVisualLines(string path, double digitTextHeight = 16.0)
+		{
+			var fileName = FileName.Create(path);
+			var viewContent = SD.FileService.GetOpenFile(fileName);
+			if (viewContent == null)
+				return JsonSerializer.Serialize(new { success = false, error = "File is not open: " + path });
+			// AvalonEdit.AddIn isn't referenced by this shell project - find the AvalonEdit
+			// TextEditor descendant by walking the visual tree instead, rather than adding a
+			// layering-violating reference just for this diagnostic action.
+			var textEditor = FindVisualDescendant<ICSharpCode.AvalonEdit.TextEditor>(viewContent.Control as System.Windows.DependencyObject);
+			var textView = textEditor?.TextArea?.TextView;
+			if (textView == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No AvalonEdit TextView found for " + path, controlType = viewContent.Control?.GetType().FullName });
+
+			var lines = textView.VisualLines.Select(line => new {
+				lineNumber = line.FirstDocumentLine.LineNumber,
+				visualTop = line.VisualTop,
+				height = line.Height,
+				oldTopAlignedY = line.GetTextLineVisualYPosition(line.TextLines[0], ICSharpCode.AvalonEdit.Rendering.VisualYPosition.TextTop),
+				newCenteredY = line.VisualTop + (line.Height - digitTextHeight) / 2,
+			}).ToArray();
+			return JsonSerializer.Serialize(new { success = true, count = lines.Length, lines });
 		}
 
 		[DevFlowAction("od.file.edit-text", Description = "Insert text at the end of an open file's editor document, the same AvalonEdit.Document.Insert call a real keystroke makes, so it dirties the file naturally rather than setting a flag directly")]

@@ -35,6 +35,17 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		public ChooseLayoutComboBox()
 		{
+			// LibreWPF's implicit-style lookup only queries the exact element type and does
+			// not walk BaseType like WPF does (see FrameworkElement.FindImplicitStyleResource),
+			// so ComboBox subclasses never pick up the implicit ComboBox style from the
+			// semantic theme dictionary (Themes/Theme.Light.xaml / Theme.Dark.xaml) and fall
+			// back to the Aero2 chrome with its hardcoded light body. Resolve the style by its
+			// type key instead and pin it once the element is realized; the DynamicResource
+			// token colors inside the style keep following theme switches, so this is one-time.
+			Loaded += (_, _) => {
+				if (Style == null && System.Windows.Application.Current != null)
+					Style = System.Windows.Application.Current.TryFindResource(typeof(System.Windows.Controls.ComboBox)) as System.Windows.Style;
+			};
 			MinWidth = 120;
 			Width = 150;
 			LayoutConfiguration.LayoutChanged += new EventHandler(LayoutChanged);

@@ -62,6 +62,19 @@ namespace ICSharpCode.SharpDevelop.ViewModels
 		/// placement is follow-on work (see doc's "Docking and layout replacement" Phase 2).
 		/// </summary>
 		public PreferredDockSide? PreferredDockSide { get; protected set; }
+
+		/// <summary>
+		/// The fully-qualified class name of the legacy AddInTree <c>&lt;Pad&gt;</c> this model
+		/// replaces, if any (doc/technotes/ilspy.md "Docking and layout replacement" item 4/item 1
+		/// consolidation, 2026-08-03) - lets <see cref="AvalonDockLayout"/> route a
+		/// <c>PadDescriptor</c> to this model's <see cref="ContentId"/> generically
+		/// (<c>AvalonDockLayout.GetMefToolPaneContentId</c>) instead of one hardcoded class-name
+		/// comparison per migrated pad (which is what routing <c>ProjectBrowserPad</c> to
+		/// <c>ProjectBrowserViewModel</c> used before this was generalized). Null for panes with no
+		/// legacy AddInTree counterpart (e.g. the ILSpy panes, added at runtime, never described by
+		/// an AddInTree <c>&lt;Pad&gt;</c> at all).
+		/// </summary>
+		public string LegacyPadClass { get; protected set; }
 	}
 
 	public enum PreferredDockSide

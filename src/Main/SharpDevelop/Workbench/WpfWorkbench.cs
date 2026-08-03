@@ -133,6 +133,10 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			// under the main menu. The tray carries a right-click menu to show/hide strips, and
 			// the strips can be dragged to reorder/regroup (ToolBarTray handles the drag chrome;
 			// CreateToolBar locks strips by default, so explicitly unlock the main ones here).
+			// The strip chrome (grey background, drag grip) comes from the implicit ToolBar style
+			// in the semantic theme dictionary (Themes/Theme.Light.xaml / Theme.Dark.xaml);
+			// CoreToolBar pins it onto itself since LibreWPF's implicit-style lookup does not
+			// walk base types.
 			foreach (ToolBar tb in toolBars) {
 				ToolBarTray.SetIsLocked(tb, false);
 			}
@@ -617,11 +621,18 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		public PadDescriptor GetPad(Type type)
 		{
-			SD.MainThread.VerifyAccess();
 			if (type == null)
 				throw new ArgumentNullException("type");
+			return GetPad(type.FullName);
+		}
+
+		public PadDescriptor GetPad(string className)
+		{
+			SD.MainThread.VerifyAccess();
+			if (className == null)
+				throw new ArgumentNullException("className");
 			foreach (PadDescriptor pad in PadContentCollection) {
-				if (pad.Class == type.FullName) {
+				if (pad.Class == className) {
 					return pad;
 				}
 			}
