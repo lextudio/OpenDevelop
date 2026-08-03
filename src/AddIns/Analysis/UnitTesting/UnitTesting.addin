@@ -21,7 +21,13 @@
 		<Service id="ICSharpCode.UnitTesting.ITestService"
 		         class="ICSharpCode.UnitTesting.SDTestService"/>
 	</Path>
-	
+
+	<!-- doc/technotes/openlens.md §20 Phase 4 - registers the "Run | Passed/Failed" lens against
+	     the shared OpenLensProviderRegistry (ICSharpCode.SharpDevelop.LanguageServices.OpenLens). -->
+	<Path name="/SharpDevelop/Autostart">
+		<Class id="TestOpenLensProvider" class="ICSharpCode.UnitTesting.RegisterTestOpenLensProviderCommand"/>
+	</Path>
+
 	<Path name="/SharpDevelop/UnitTesting/TestFrameworks">
 		<TestFramework id="mtpTest"
 		               class="ICSharpCode.UnitTesting.MtpTestFramework"

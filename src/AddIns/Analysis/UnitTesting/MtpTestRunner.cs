@@ -191,7 +191,8 @@ namespace ICSharpCode.UnitTesting
 		{
 			var converted = new MtpTestResult(targetFramework + "\0" + node.DisplayName) {
 				Message = node.ErrorMessage,
-				ResultType = ToResultType(node.ExecutionState)
+				ResultType = ToResultType(node.ExecutionState),
+				Duration = node.DurationMs.HasValue ? TimeSpan.FromMilliseconds(node.DurationMs.Value) : null
 			};
 			
 			// Echo each result to the run's output writer (the UnitTesting output pad) - without

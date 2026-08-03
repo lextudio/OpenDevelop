@@ -45,14 +45,21 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.OpenLens
 
 			var results = new List<OpenLensAnchor>();
 			foreach (var type in outline) {
-				AddAnchor(results, context, type);
+				AddAnchor(results, context, type, symbolKey: type.Name);
 				foreach (var member in type.Children)
-					AddAnchor(results, context, member);
+					AddAnchor(results, context, member, symbolKey: type.Name + "." + member.Name);
 			}
 			return results;
 		}
 
-		static void AddAnchor(List<OpenLensAnchor> results, OpenLensDocumentContext context, DocumentOutlineNode declaration)
+		// SymbolKey is "Type.Member" (or just "Type" for a type anchor) - not namespace-qualified,
+		// so two same-named types in different namespaces within one file would collide. A provider
+		// that cross-references by name (e.g. a coverage or test-status lens matching this file's
+		// anchors against a separately-discovered result set keyed by type/method name) accepts that
+		// same tradeoff doc §17.2 already accepts for reference counts; getting a true assembly-
+		// qualified name would mean threading the type's namespace through from Roslyn, which
+		// DocumentOutlineNode doesn't carry today.
+		static void AddAnchor(List<OpenLensAnchor> results, OpenLensDocumentContext context, DocumentOutlineNode declaration, string symbolKey)
 		{
 			results.Add(new OpenLensAnchor(
 				AnchorId: declaration.Kind + ":" + declaration.Name,
@@ -60,7 +67,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.OpenLens
 				Range: new OpenLensRange(declaration.Span),
 				Kind: ToAnchorKind(declaration.Kind),
 				DisplayName: declaration.Name,
-				SymbolKey: null,
+				SymbolKey: symbolKey,
 				DocumentVersion: context.DocumentVersion,
 				Overridability: declaration.Overridability));
 		}

@@ -275,7 +275,10 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				}
 			}
 
-			var providers = registry.GetProviders(context);
+			// doc §16 "Provider-specific options are contributed by their AddIns" - a disabled
+			// provider's items are dropped before composition, same as a disabled language Binding
+			// already removes its anchors via LanguageServiceRegistry.
+			var providers = registry.GetProviders(context).Where(p => CodeEditorOptions.Instance.IsOpenLensProviderEnabled(p.Id)).ToArray();
 			providersById = providers.ToDictionary(p => p.Id);
 
 			var items = new List<OpenLensItem>();
@@ -457,9 +460,11 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				if (item.Command != null) {
 					run.Cursor = Cursors.Hand;
 					var command = item.Command;
+					// Run (an inline text element, not a UIElement) can't be a Popup.PlacementTarget
+					// - anchor the results popup to the whole row's TextBlock instead.
 					run.MouseLeftButtonDown += (sender, e) => {
 						e.Handled = true;
-						ExecuteCommand(command);
+						ExecuteCommand(command, label);
 					};
 				}
 				label.Inlines.Add(run);
@@ -476,7 +481,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		/// command ids through a general command-execution service is Phase 3+ scope (doc §20), not
 		/// required for the two built-in lenses this host renders today.
 		/// </summary>
-		void ExecuteCommand(OpenLensCommand command)
+		void ExecuteCommand(OpenLensCommand command, UIElement placementTarget)
 		{
 			// "OpenLens.RunAction" is a generic escape hatch for providers outside Base/AvalonEdit.AddIn
 			// (e.g. CodeCoverageOpenLensProvider) that need to invoke their own AddIn's behavior -
@@ -494,10 +499,10 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			}
 			switch (command.CommandId) {
 				case "OpenLens.ShowReferences":
-					_ = ShowReferencesAsync(anchor);
+					_ = ShowReferencesAsync(anchor, placementTarget);
 					break;
 				case "OpenLens.ShowImplementations":
-					_ = ShowImplementationsAsync(anchor);
+					_ = ShowImplementationsAsync(anchor, placementTarget);
 					break;
 				default:
 					LoggingService.Warn("OpenLens: unrecognized command id '" + command.CommandId + "'.");
@@ -505,7 +510,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			}
 		}
 
-		async Task ShowReferencesAsync(OpenLensAnchor anchor)
+		async Task ShowReferencesAsync(OpenLensAnchor anchor, UIElement placementTarget)
 		{
 			try {
 				var languageService = GetLanguageService();
@@ -519,14 +524,20 @@ namespace ICSharpCode.AvalonEdit.AddIn
 
 				var matches = result.References.Where(t => t.Span != null).Select(ToSearchResultMatch).Where(m => m != null).ToArray();
 				string title = StringParser.Parse("${res:SharpDevelop.Refactoring.FindReferences}") + " '" + result.Subject + "'";
-				SearchResultsPad.Instance.ShowSearchResults(title, matches);
-				SearchResultsPad.Instance.BringToFront();
+				// doc §15.2: a lightweight popup anchored to the lens is the primary interaction;
+				// "Show in Search Results" promotes the exact same match list into the existing pad
+				// rather than this popup owning a second copy of the result data.
+				var popup = new OpenLensResultsPopup(placementTarget, title, matches, () => {
+					SearchResultsPad.Instance.ShowSearchResults(title, matches);
+					SearchResultsPad.Instance.BringToFront();
+				});
+				popup.IsOpen = true;
 			} catch (Exception ex) {
 				LoggingService.Warn("OpenLens: find references failed. " + ex.Message);
 			}
 		}
 
-		async Task ShowImplementationsAsync(OpenLensAnchor anchor)
+		async Task ShowImplementationsAsync(OpenLensAnchor anchor, UIElement placementTarget)
 		{
 			try {
 				var languageService = GetLanguageService();
@@ -544,8 +555,11 @@ namespace ICSharpCode.AvalonEdit.AddIn
 					.Where(m => m != null)
 					.ToArray();
 				string title = "Implementations of '" + result.Subject + "'";
-				SearchResultsPad.Instance.ShowSearchResults(title, matches);
-				SearchResultsPad.Instance.BringToFront();
+				var popup = new OpenLensResultsPopup(placementTarget, title, matches, () => {
+					SearchResultsPad.Instance.ShowSearchResults(title, matches);
+					SearchResultsPad.Instance.BringToFront();
+				});
+				popup.IsOpen = true;
 			} catch (Exception ex) {
 				LoggingService.Warn("OpenLens: find implementations failed. " + ex.Message);
 			}

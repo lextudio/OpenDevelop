@@ -21,6 +21,10 @@
 	<Path name="/SharpDevelop/Autostart">
 		<Class id="ICSharpCode.GitAddIn.RegisterEventsCommand"
 		       class="ICSharpCode.GitAddIn.RegisterEventsCommand"/>
+		<!-- doc/technotes/openlens.md §10.4/§20 Phase 5 - registers the "Author, N days ago" lens
+		     against the shared OpenLensProviderRegistry (ICSharpCode.SharpDevelop.LanguageServices.OpenLens). -->
+		<Class id="ICSharpCode.GitAddIn.RegisterGitOpenLensProviderCommand"
+		       class="ICSharpCode.GitAddIn.RegisterGitOpenLensProviderCommand"/>
 	</Path>
 	
 	<Path name = "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/GitItem">

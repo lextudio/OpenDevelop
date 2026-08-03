@@ -260,7 +260,39 @@ namespace ICSharpCode.AvalonEdit.AddIn.Options
 				}
 			}
 		}
-		
+
+		string disabledOpenLensProviders = string.Empty;
+
+		/// <summary>
+		/// Comma-separated <see cref="ICSharpCode.SharpDevelop.LanguageServices.OpenLens.IOpenLensProvider.Id"/>
+		/// values to suppress (doc/technotes/openlens.md §16 "Provider-specific options are
+		/// contributed by their AddIns"). Stored as a plain string, not a collection, because the
+		/// set of registered provider ids is only known at runtime (each AddIn registers its own),
+		/// so this property alone can't offer a checkbox list at options-panel-XAML-authoring time -
+		/// <see cref="IsOpenLensProviderEnabled"/> is the data-layer piece a future options panel
+		/// would enumerate <c>OpenLensProviderRegistry</c> and bind to; no such panel exists yet.
+		/// </summary>
+		[DefaultValue("")]
+		public string DisabledOpenLensProviders {
+			get { return disabledOpenLensProviders; }
+			set {
+				value = value ?? string.Empty;
+				if (disabledOpenLensProviders != value) {
+					disabledOpenLensProviders = value;
+					OnPropertyChanged("DisabledOpenLensProviders");
+				}
+			}
+		}
+
+		public bool IsOpenLensProviderEnabled(string providerId)
+		{
+			foreach (var id in disabledOpenLensProviders.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) {
+				if (string.Equals(id, providerId, StringComparison.OrdinalIgnoreCase))
+					return false;
+			}
+			return true;
+		}
+
 		bool showHiddenDefinitions = false;
 		
 		[DefaultValue(false)]

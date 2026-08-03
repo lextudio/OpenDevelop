@@ -33,6 +33,9 @@ bin/
 tests/fixtures/SampleTestProject/OpenCover/
 __Instrumented/
 tests/fixtures/LocalNuGetFeed/
+# CodeCoverage addin run output (ProjectCodeCoverageResultsFileName.cs writes coverage.xml
+# into the instrumented fixture's output directory during od.code-coverage.run).
+tests/fixtures/CoverageFixture/CoverageTests/CodeCoverage/coverage.xml
 *.app/
 .od/
 *.dmg

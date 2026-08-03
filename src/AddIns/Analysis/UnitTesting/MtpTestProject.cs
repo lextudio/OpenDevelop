@@ -244,8 +244,10 @@ namespace ICSharpCode.UnitTesting
 			var targetFramework = separator >= 0 ? resultName.Substring(0, separator) : null;
 			var displayName = separator >= 0 ? resultName.Substring(separator + 1) : resultName;
 			var method = FindTestMethod(NestedTestCollection, targetFramework, displayName);
-			if (method != null)
+			if (method != null) {
 				method.SetResult(result.ResultType);
+				method.SetDuration(result.Duration);
+			}
 		}
 
 		static MtpTestMethod? FindTestMethod(IEnumerable<ITest> tests, string? targetFramework, string name)

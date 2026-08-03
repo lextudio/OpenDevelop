@@ -46,6 +46,8 @@
     <Compile Include="MtpTestFramework.cs" />
     <Compile Include="MtpTestProject.cs" />
     <Compile Include="MtpTestRunner.cs" />
+    <Compile Include="TestOpenLensProvider.cs" />
+    <Compile Include="RegisterTestOpenLensProviderCommand.cs" />
     <!-- Shared with UnoDevelop.UnitTesting (which links this same file) - see
          doc/technotes/unit-testing.md "Implemented: Roslyn-assisted discovery". Deliberately not
          under Service/*.cs or TestRunner/*.cs above (those wildcards would also pull in the rest

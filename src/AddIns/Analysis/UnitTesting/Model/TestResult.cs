@@ -115,5 +115,12 @@ namespace ICSharpCode.UnitTesting
 			get { return stackTraceFilePosition; }
 			set { stackTraceFilePosition = value; }
 		}
+
+		/// <summary>
+		/// How long the test took to run, or <see langword="null"/> if unknown/not reported by the
+		/// runner. Used by <c>TestOpenLensProvider</c> (doc/technotes/openlens.md §20 Phase 4) to
+		/// show "12ms" alongside the pass/fail status.
+		/// </summary>
+		public TimeSpan? Duration { get; set; }
 	}
 }

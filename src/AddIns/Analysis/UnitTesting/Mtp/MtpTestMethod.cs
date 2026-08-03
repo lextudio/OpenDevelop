@@ -1,3 +1,4 @@
+using System;
 using ICSharpCode.SharpDevelop.Project;
 using System.Windows.Input;
 
@@ -60,6 +61,15 @@ namespace ICSharpCode.UnitTesting.Mtp
 		public void SetResult(TestResultType resultType)
 		{
 			Result = resultType;
+		}
+
+		/// <summary>How long the most recent run of this test took, or <see langword="null"/> if
+		/// never run or not reported. Set by <see cref="MtpTestProject.UpdateTestResult"/>.</summary>
+		public TimeSpan? Duration { get; private set; }
+
+		public void SetDuration(TimeSpan? duration)
+		{
+			Duration = duration;
 		}
 	}
 }

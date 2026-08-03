@@ -1132,26 +1132,88 @@ Exact directories may differ, but AddIn ownership should remain visible in the p
     project to attach it to - `CodeCoverage.Tests.csproj` is a pre-MVP .NET Framework 4.5 project,
     same situation Base's tests were in before `tests/OpenDevelop.Base.Tests` was created) - reviewed
     by hand instead.
-- Phase 4 (test lenses): not started. Researched (not implemented): `ITestService`/`SDTestService`
-  exist but hold results on live `MtpTestMethod` tree nodes, not a queryable-by-name service - a
-  provider would need to replicate `MtpTestProject`'s private traversal/lookup logic. **Per-method
-  duration isn't tracked anywhere today** (`MtpTestNode.DurationMs` is dropped before reaching
-  `MtpTestMethod`/`TestResult`) - a duration lens needs a small model change in UnitTesting itself
-  first, not just a new provider reading existing state. `TestBase.ResultChanged` is a usable
-  refresh hook; there's no "discovery completed" event. `ITestService.RunTestsAsync(IEnumerable<ITest>,
-  TestExecutionOptions)` is the real Run/Debug entry point, `TestExecutionOptions.UseDebugger` flips
-  the two; debug is `#if !HAS_UNO`-gated.
-- Git history lens: not started. Researched (not implemented): GitAddIn has no blame-style
-  per-line/method API at all (`GitGuiWrapper.Log` only shells `git log --stat` for a whole file into
-  an external viewer) - a Git lens needs a new `git blame --porcelain -L <start>,<end>` wrapper on
-  `Git.RunGitAsync` first. There's also no HEAD/branch-change/post-commit event anywhere in
-  GitAddIn or the shared `GitStatusService` - refresh would need a new `.git/HEAD`/`.git/index`
-  file-system watcher or a new event raised after `GitGuiWrapper.Commit`. Neither AddIn uses formal
-  `<Service>` addin-tree registration (both use a static class self-wiring into `SD.*` events from
-  their own static constructor, or an `Autostart` command) - a lens provider would follow that same
-  idiom, not `CodeCoverage`'s or `CSharpBinding`'s `<Service>`-based one.
-- Results popup UI and the rest of §22's test matrix (rendering/performance/provider-integration
-  tests): not started.
+- Phase 4 (test lenses): done. `TestOpenLensProvider`
+  (`src/AddIns/Analysis/UnitTesting/TestOpenLensProvider.cs`) shows "Run | ✓ Passed (12ms)" /
+  "✗ Failed" / "Ignored" / "Not run" on method anchors, matched to a live `MtpTestMethod` by
+  `OpenLensAnchor.SymbolKey` ("Type.Method") against `MtpTestMethod.FullyQualifiedName`, found by
+  walking `ITestService.OpenSolution`'s tree (an O(n) per-request walk - there's no queryable-by-
+  name lookup service, only the tree itself holds live result state; noted as a scaling caveat for
+  very large test solutions). Clicking the lens calls `ITestService.RunTestsAsync`.
+  - **Per-method duration wasn't tracked anywhere before this** - fixed as a small, necessary model
+    change: `TestResult.Duration` (new `TimeSpan?` property), populated in
+    `MtpTestRunner.ReportTestNodeResult` from `MtpTestNode.DurationMs`, carried onto
+    `MtpTestMethod.Duration` via a new `SetDuration` (mirroring the existing `SetResult` pattern)
+    called from `MtpTestProject.UpdateTestResult`.
+  - Refresh: new `RegisterTestOpenLensProviderCommand` subscribes to `ITestService.RunningTestsChanged`
+    and calls `registry.RequestRefresh(...)` when a run ends (fires one harmless redundant refresh
+    on run *start* too, since that's the same event - there's no separate "run finished" signal).
+  - `LanguageOpenLensAnchorProvider` now populates `OpenLensAnchor.SymbolKey` (was always `null`
+    before) as `"Type.Member"` - not namespace-qualified, so this and the coverage lens both accept
+    the same cross-file name-collision tradeoff doc §17.2 already accepts for reference counts.
+  - **Not done**: Debug variant of the click action (`TestExecutionOptions.UseDebugger = true`,
+    `#if !HAS_UNO`-gated) - only Run is wired up; no automated test (same "no modern test project to
+    attach it to" situation as the coverage lens).
+- Git history lens: done. `GitOpenLensProvider`
+  (`src/AddIns/VersionControl/GitAddIn/Src/GitOpenLensProvider.cs`) shows "Author, N days ago" /
+  "uncommitted" / "no history" on type/method/constructor/property/indexer/event anchors, blaming
+  only the anchor's own declaration line (not a range) via a new `GitBlame.GetLastEditAsync`
+  wrapper (`git blame --porcelain -L <line>,<line>`) - the single-line scope keeps porcelain parsing
+  simple (one commit per call, no repeated-commit-omits-metadata case to handle). Verified the
+  parser against this repo's own real `git blame --porcelain` output, not just written on faith.
+  Unlike the coverage/test lenses (cheap in-memory lookups, resolved inline in `ProvideAsync`),
+  blame spawns an external process, so this follows the same two-stage shape as the reference/
+  implementation lenses - `ProvideAsync` returns a placeholder, `ResolveAsync` (only called for the
+  visible viewport, doc §12.2) does the actual blame.
+  - Refresh: new `GitHeadWatcher` (a debounced `FileSystemWatcher` on `.git/HEAD`+`.git/index`,
+    created/torn down on `SD.ProjectService.SolutionOpened`/`SolutionClosed`) plus the existing
+    `FileUtility.FileSaved` event, both wired to `registry.RequestRefresh` by a new
+    `RegisterGitOpenLensProviderCommand` - together covering doc §10.4's "HEAD change, index/
+    worktree change, file saved, branch switch" list (a commit/checkout/branch-switch touches HEAD
+    and/or index either way).
+  - **Known limitations**: `GitHeadWatcher` only handles a plain `.git` *directory* - a submodule or
+    linked worktree's `.git` is a *file*, and `FileSystemWatcher`'s constructor throws for that (the
+    provider itself still works there via `Git.FindWorkingCopyRoot`, just without the HEAD-change
+    refresh trigger - file-saved still works). Only the current solution's single working-copy root
+    is watched - a multi-repo solution's other repos get no HEAD-change refresh either. Click action
+    reuses `GitGuiWrapper.Log` (opens `git log --stat` in the output pad), not the richer in-app
+    blame/history view doc §10.4 describes as a later refinement. No automated test for the parser
+    (same "no attached modern test project" situation as the coverage/test lenses) - verified by
+    hand against this repo's real `git blame` output instead.
+- Results popup UI (doc §15.2): done. `OpenLensResultsPopup`
+  (`src/AddIns/DisplayBindings/AvalonEdit.AddIn/Src/OpenLensResultsPopup.cs`) is a lightweight WPF
+  `Popup` anchored to the clicked lens row - `OpenLensRenderer.ShowReferencesAsync`/
+  `ShowImplementationsAsync` now open this instead of jumping straight into `SearchResultsPad`. Up/
+  Down navigates the list, Enter or double-click navigates to the selection via
+  `SD.FileService.JumpToFilePosition` and closes, Escape closes without navigating (doc §15.5's
+  minimum keyboard list). A "Show in Search Results" button promotes the exact same
+  `SearchResultMatch[]` into the existing pad (doc §15.2: "do not create separate result models") -
+  the popup is a view over that data, not a second copy of it. Doc §15.3 ("still open the list by
+  default even for one result") is satisfied by construction - there's no single-result special case.
+  **Not done**: preview pane, a general "Focus OpenLens"/context-menu command (doc §15.5), and
+  accessibility/automation properties (doc §15.6 - automation name, role, provider name aren't set
+  on the popup's `ListBoxItem`s). Only wired up for the references/implementations lenses - the
+  coverage/test/Git lenses don't have a "list of results" to show a popup over (they're
+  already a single computed value, not a result set).
+- Per-provider settings (doc §16): partial. `CodeEditorOptions.DisabledOpenLensProviders` (a
+  comma-separated provider-id string, with `IsOpenLensProviderEnabled(id)`) is a real data-layer
+  piece `OpenLensRenderer` already filters providers through - but there's no options-panel UI that
+  sets it. The set of registered provider ids is only known at runtime (each AddIn registers its
+  own), so a real settings UI would need to enumerate `OpenLensProviderRegistry` at panel-load time
+  rather than a static XAML checkbox list; that panel wasn't built. Theming resources (doc §16's
+  `OpenLensForeground`/etc. brush list) also weren't added - the renderer still hardcodes
+  `Brushes.Gray`.
+- LSP native OpenLens bridge (doc §17.4 items 1/3/4 - preferring a server's own
+  `textDocument/codeLens`+`codeLens/resolve` over synthesizing from `GetDocumentOutlineAsync`): not
+  attempted. Deliberately skipped rather than guessed at: this is real new JSON-RPC protocol surface
+  in `LspLanguageService` (capability declaration, request/response DTOs, a resolve-cache) that
+  can't be exercised against a real language server in this environment, so a mistake here would be
+  silent and unverifiable - unlike every other OpenLens piece built this session, which was checked
+  either by an automated test or (for the Git/coverage matching logic) by hand against this repo's
+  own real data.
+- Remaining §22 test matrix (rendering/performance/provider-integration tests beyond what's already
+  covered by `OpenDevelop.Base.Tests` and `ICSharpCode.AvalonEdit.Tests/Rendering/BlockAdornmentTests.cs`):
+  not started - these need a running GUI (word wrap, zoom, folding, split views, automation peers)
+  or a live test/Git/coverage run to exercise meaningfully, neither of which is available here.
 
 ### Phase 0: contracts and lifecycle
 
