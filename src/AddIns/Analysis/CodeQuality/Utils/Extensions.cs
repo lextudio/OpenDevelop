@@ -23,7 +23,8 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using ICSharpCode.CodeQuality.Engine.Dom;
 using ICSharpCode.CodeQuality.Gui;
-using ICSharpCode.TreeView;
+using ICSharpCode.ILSpyX.TreeView;
+using ICSharpCode.ILSpy.Controls.TreeView;
 
 namespace ICSharpCode.CodeQuality
 {

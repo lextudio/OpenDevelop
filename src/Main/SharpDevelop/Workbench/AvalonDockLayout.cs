@@ -337,8 +337,15 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		void LoadLayout(string fileName, bool hideAllLostPads)
 		{
 			LoggingService.Info("Loading layout file: " + fileName + ", hideAllLostPads=" + hideAllLostPads);
-			// TODO: re-enable after migrating legacy pads to MEF ToolPaneModel (layout serializer only handles MEF panes)
-			// dockWorkspace.RestoreLayout(fileName);
+			// Re-enabled (doc/technotes/ilspy.md "Phased implementation plan" Phase 2, 2026-08-02).
+			// DockWorkspace.RestoreLayout's LayoutSerializationCallback already skips (Cancel=true,
+			// no exception) any serialized LayoutAnchorable whose ContentId isn't a MEF-exported
+			// ToolPaneModel - legacy (AddInTree Pad-based) anchorables are silently dropped rather
+			// than restored, not migrated. The real reason this was disabled is that the shipped
+			// data/layouts/*.xml template files were stale AvalonDock 1.x-schema XML, incompatible
+			// with XmlLayoutSerializer's modern schema - regenerated as part of this change (see
+			// the templates themselves for provenance).
+			dockWorkspace.RestoreLayout(fileName);
 		}
 		
 		public void StoreConfiguration()

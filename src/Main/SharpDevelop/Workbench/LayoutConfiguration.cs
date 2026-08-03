@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Xml;
 
 using ICSharpCode.Core;
@@ -56,6 +57,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		bool   readOnly;
 		bool   custom;
+		Action onActivating;
 		
 		public bool Custom {
 			get {
@@ -141,15 +143,23 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				if (value != CurrentLayoutName) {
 					((WpfWorkbench)SD.Workbench).WorkbenchLayout.StoreConfiguration();
 					currentLayoutName = value;
+					// Let an AddIn-contributed layout (see ILayoutTemplateProvider) register/show
+					// its own panes on demand before the layout XML is loaded - otherwise switching
+					// to e.g. "ILSpy" before ever touching the ILSpy AddIn's own menu commands would
+					// silently restore nothing for its panes (DockWorkspace's
+					// LayoutSerializationCallback skips any ContentId that isn't a registered
+					// ToolPaneModel yet).
+					GetLayout(value)?.onActivating?.Invoke();
 					((WpfWorkbench)SD.Workbench).WorkbenchLayout.LoadConfiguration();
 					OnLayoutChanged(EventArgs.Empty);
 				}
 			}
 		}
-		
+
 		public static void ReloadDefaultLayout()
 		{
 			currentLayoutName = DefaultLayoutName;
+			GetLayout(DefaultLayoutName)?.onActivating?.Invoke();
 			((WpfWorkbench)SD.Workbench).WorkbenchLayout.LoadConfiguration();
 			OnLayoutChanged(EventArgs.Empty);
 		}
@@ -206,6 +216,32 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			if (File.Exists(Path.Combine(dataPath, configFile))) {
 				LoadLayoutConfiguration(Path.Combine(dataPath, configFile), false);
 			}
+			LoadAddInContributedLayoutTemplates();
+		}
+
+		/// <summary>
+		/// Merges in layout templates contributed via <see cref="ILayoutTemplateProvider"/>
+		/// (doc/technotes/ilspy.md "Immediate next actions" #4) - an AddIn-owned named layout, as
+		/// opposed to the XML-configured ones above which the shell owns directly. A name already
+		/// present from XML config wins (keeps `Default`/`Debug`/`Plain` authoritative here without
+		/// requiring every AddIn provider to know about them).
+		/// </summary>
+		static void LoadAddInContributedLayoutTemplates()
+		{
+			foreach (var provider in SD.AddInTree.BuildItems<ILayoutTemplateProvider>("/SharpDevelop/Workbench/LayoutTemplates", null, false)) {
+				foreach (var descriptor in provider.GetLayoutTemplates()) {
+					if (Layouts.Any(l => l.name == descriptor.Name))
+						continue;
+					var l = new LayoutConfiguration();
+					l.name = descriptor.Name;
+					l.displayName = descriptor.DisplayName;
+					l.fileName = descriptor.TemplateFileName;
+					l.readOnly = descriptor.ReadOnly;
+					l.custom = false;
+					l.onActivating = descriptor.OnActivating;
+					Layouts.Add(l);
+				}
+			}
 		}
 		
 		static void LoadLayoutConfiguration(string layoutConfig, bool custom)
@@ -213,7 +249,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			XmlDocument doc = new XmlDocument();
 			doc.Load(layoutConfig);
 			
-			foreach (XmlElement el in doc.DocumentElement.ChildNodes) {
+			foreach (XmlElement el in doc.DocumentElement.ChildNodes.OfType<XmlElement>()) {
 				Layouts.Add(new LayoutConfiguration(el, custom));
 			}
 		}

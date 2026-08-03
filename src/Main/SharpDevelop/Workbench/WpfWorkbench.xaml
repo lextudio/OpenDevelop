@@ -11,7 +11,7 @@
 	Height = "768"
 	MinWidth = "640"
 	MinHeight = "480"
-	Background = "{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+	Background = "{DynamicResource WindowBackground}"
 	AllowDrop = "True"
 	Style = "{x:Static core:GlobalStyles.WindowStyle}"
 >

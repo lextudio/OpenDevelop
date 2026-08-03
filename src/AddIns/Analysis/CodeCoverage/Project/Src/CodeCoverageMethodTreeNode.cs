@@ -18,6 +18,7 @@
 
 using System;
 using System.Windows;
+using ICSharpCode.ILSpyX.TreeView.PlatformAbstractions;
 
 namespace ICSharpCode.CodeCoverage
 {
@@ -40,7 +41,7 @@ namespace ICSharpCode.CodeCoverage
 			get { return method; }
 		}
 
-		public override void ActivateItem(RoutedEventArgs e)
+		public override void ActivateItem(IPlatformRoutedEventArgs e)
 		{
 			if (method != null && method.SequencePoints.Count > 0) {
 				CodeCoverageSequencePoint firstSequencePoint = method.SequencePoints[0];

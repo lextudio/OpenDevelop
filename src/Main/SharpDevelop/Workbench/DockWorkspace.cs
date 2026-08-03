@@ -178,8 +178,14 @@ internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrateg
     {
         anchorableShown.IsActive = true;
         anchorableShown.IsSelected = true;
-        if (anchorableShown.ContentId == "ProjectBrowser" && anchorableShown.Parent is LayoutAnchorablePane pane)
-            pane.DockWidth = new GridLength(280);
+
+        // Host-neutral pane/workspace contract vertical slice (doc/technotes/ilspy.md "Immediate
+        // next actions" #3, 2026-08-02): PreferredDockSize replaces what used to be a single
+        // `ContentId == "ProjectBrowser"` special case, so any ToolPaneModel can express a docked
+        // size preference instead of only the one pane the old code happened to special-case.
+        var pane = ToolPanes.FirstOrDefault(p => p.ContentId == anchorableShown.ContentId);
+        if (pane?.PreferredDockSize is double size && anchorableShown.Parent is LayoutAnchorablePane layoutPane)
+            layoutPane.DockWidth = new GridLength(size);
     }
 
     public bool BeforeInsertDocument(LayoutRoot layout, LayoutDocument anchorableToShow, ILayoutContainer destinationContainer)

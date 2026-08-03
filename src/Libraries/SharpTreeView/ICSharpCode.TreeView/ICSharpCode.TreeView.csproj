@@ -1,4 +1,22 @@
 ﻿<Project Sdk="LibreWPF.Sdk">
+  <!--
+    SharpTreeView duplicate resolution (2026-08-02, doc/technotes/ilspy.md). This project used to
+    contain OpenDevelop's own SharpTreeNode/SharpTreeView implementation. It now instead:
+      - references ICSharpCode.ILSpyX.TreeView (the extracted, dependency-light node/collection/
+        flattener/platform-abstraction model - see externals/ilspy/ICSharpCode.ILSpyX/TreeView/
+        ICSharpCode.ILSpyX.TreeView.csproj) for the SharpTreeNode/SharpTreeNodeCollection model,
+      - links ILSpy's Controls/TreeView/* WPF control layer (SharpTreeView/SharpTreeViewItem/
+        SharpTreeNodeView/SharpGridView, plus automation-peer and type-to-search support that
+        OpenDevelop's own control never had) instead of OpenDevelop's own control implementation,
+      - adds an OpenDevelop-authored partial-class extension (SharpTreeNode.OpenDevelop.cs) for the
+        GetModel/Model/ShowContextMenu members ILSpyX's SharpTreeNode does not have, since these
+        are used pervasively by OpenDevelop's ClassBrowser/Debugger/UnitTesting/etc. node classes.
+    This keeps the project/assembly name and the "http://icsharpcode.net/sharpdevelop/treeview"
+    XAML namespace stable so existing consumer XAML (AndroidSdkManagerWindow.xaml,
+    AnalysisProjectOptionsPanel.xaml, DependencyMatrixView.xaml, CommonResources.xaml,
+    SearchForIssuesDialog.xaml) needs no changes; only consumer .cs files with
+    `using ICSharpCode.TreeView;` need repointing to `ICSharpCode.ILSpyX.TreeView`.
+  -->
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>ICSharpCode.TreeView</RootNamespace>
@@ -8,10 +26,39 @@
     <AssemblyOriginatorKeyFile>..\..\..\Main\ICSharpCode.SharpDevelop.snk</AssemblyOriginatorKeyFile>
     <UseWPF>true</UseWPF>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <NoWarn>$(NoWarn);CA1416;WFO1000;CS0067;CS0108;CS0114;CS0618;CS0649</NoWarn>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+
+  <PropertyGroup>
+    <ILSpySrc>..\..\..\..\externals\ilspy\ILSpy</ILSpySrc>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" />
+    <ProjectReference Include="..\..\..\..\externals\ilspy\ICSharpCode.ILSpyX\TreeView\ICSharpCode.ILSpyX.TreeView.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="TomsToolbox.Wpf.Styles" Version="2.24.0" />
+    <PackageReference Include="TomsToolbox.Composition.MicrosoftExtensions" Version="2.24.0" />
+  </ItemGroup>
+
+  <!--
+    Linked ILSpy WPF control-layer source (not copied) - the "Controls/TreeView" fork this project
+    replaces OpenDevelop's own duplicate implementation with. Excludes nothing: unlike ILSpyAddIn's
+    broader Controls/** glob, every file here is the tree control itself, not app-shell UI.
+  -->
+  <ItemGroup Label="ILSpyLinkedTreeViewControl">
+    <Compile Include="$(ILSpySrc)\Controls\TreeView\*.cs" Link="ILSpy\Controls\TreeView\%(Filename)%(Extension)" />
+    <Page Include="$(ILSpySrc)\Controls\TreeView\SharpTreeView.xaml" Link="ILSpy\Controls\TreeView\SharpTreeView.xaml" />
+    <!-- EditTextBox/GeneralAdorner/InsertMarker styles used by SharpTreeView.xaml's SharpTreeNodeView
+         template live inline in that same file; nothing else to link. NativeMethods.cs is the one
+         root-level ILSpy file the control layer itself needs (SharpTreeViewTextSearch.cs calls
+         NativeMethods.GetDoubleClickTime()). -->
+    <Compile Include="$(ILSpySrc)\NativeMethods.cs" Link="ILSpy\NativeMethods.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <Compile Include="..\..\..\Main\GlobalAssemblyInfo.cs" Link="Properties\GlobalAssemblyInfo.cs" />
   </ItemGroup>

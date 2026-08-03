@@ -26,7 +26,7 @@ using System.Windows.Media.Imaging;
 
 using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
-using ICSharpCode.TreeView;
+using ICSharpCode.ILSpyX.TreeView;
 
 namespace ICSharpCode.CodeAnalysis
 {

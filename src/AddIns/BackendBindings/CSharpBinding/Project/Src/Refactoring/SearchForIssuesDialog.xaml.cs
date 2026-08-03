@@ -28,7 +28,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using ICSharpCode.NRefactory.CSharp;
 using ICSharpCode.SharpDevelop;
-using ICSharpCode.TreeView;
+using ICSharpCode.ILSpyX.TreeView;
 
 namespace CSharpBinding.Refactoring
 {

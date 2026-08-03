@@ -44,5 +44,31 @@ namespace ICSharpCode.SharpDevelop.ViewModels
 		public ICommand AssociatedCommand { get; set; }
 
 		public object Content { get; protected set; }
+
+		/// <summary>
+		/// Host-neutral layout hint (doc/technotes/ilspy.md "Modern pane and document model"):
+		/// preferred initial docked size along the pane's docking axis, in DIPs. Null means "no
+		/// preference, let the layout/AvalonDock default apply" - existing panes that don't set
+		/// this see no behavior change. Read by <see cref="DockWorkspace.AfterInsertAnchorable"/>
+		/// to replace what used to be a single `ContentId == "ProjectBrowser"` special case.
+		/// </summary>
+		public double? PreferredDockSize { get; protected set; }
+
+		/// <summary>
+		/// Host-neutral layout hint for which side of the workbench this pane prefers to dock to.
+		/// Not yet consulted by <see cref="DockWorkspace"/> (today's layout comes entirely from the
+		/// persisted AvalonDock XML) - added now, alongside <see cref="PreferredDockSize"/>, so both
+		/// halves of the doc's target `ToolPaneModel` contract exist together; wiring it into layout
+		/// placement is follow-on work (see doc's "Docking and layout replacement" Phase 2).
+		/// </summary>
+		public PreferredDockSide? PreferredDockSide { get; protected set; }
+	}
+
+	public enum PreferredDockSide
+	{
+		Left,
+		Right,
+		Top,
+		Bottom,
 	}
 }

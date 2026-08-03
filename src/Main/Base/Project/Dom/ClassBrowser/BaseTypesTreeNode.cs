@@ -20,7 +20,7 @@ using System;
 using System.Linq;
 using ICSharpCode.Core;
 using ICSharpCode.TypeSystem;
-using ICSharpCode.TreeView;
+using ICSharpCode.ILSpyX.TreeView;
 using ICSharpCode.SharpDevelop.Parser;
 using ICSharpCode.SharpDevelop.Project;
 

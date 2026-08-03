@@ -1,0 +1,17 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!--
+        Semantic application theme tokens (doc/technotes/ilspy.md "Immediate next actions" #5 /
+        "Full application theming", 2026-08-02). First slice: Light/Dark only, main shell chrome
+        only - AvalonEdit/ILSpy resource keys are a separate, larger effort tracked in the same
+        doc section and not touched here. IdeThemeService swaps this dictionary in
+        Application.Current.Resources.MergedDictionaries alongside AvalonDock's own
+        DockingManager.Theme, so both change together from one call.
+    -->
+    <SolidColorBrush x:Key="WindowBackground" Color="#FFF0F0F0" />
+    <SolidColorBrush x:Key="ToolWindowBackground" Color="#FFF5F5F5" />
+    <SolidColorBrush x:Key="Border" Color="#FFC0C0C0" />
+    <SolidColorBrush x:Key="Foreground" Color="#FF000000" />
+    <SolidColorBrush x:Key="MutedForeground" Color="#FF6E6E6E" />
+    <SolidColorBrush x:Key="Selection" Color="#FF3399FF" />
+</ResourceDictionary>

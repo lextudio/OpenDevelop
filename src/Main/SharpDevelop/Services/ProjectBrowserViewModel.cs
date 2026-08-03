@@ -33,6 +33,10 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
         ContentId = "ProjectBrowser";
         IsVisible = true;
         IsCloseable = true;
+        // Host-neutral pane/workspace contract vertical slice (doc/technotes/ilspy.md "Immediate
+        // next actions" #3): this used to be a `ContentId == "ProjectBrowser"` special case inside
+        // DockWorkspace.AfterInsertAnchorable; now any pane can express the same preference.
+        PreferredDockSize = 280;
         Content = new ProjectBrowserView { DataContext = this };
         ShowPropertiesCommand = new DelegateCommand(ShowProperties, () => SelectedNode != null);
         ShowAllFilesCommand = new DelegateCommand(ToggleShowAllFiles);

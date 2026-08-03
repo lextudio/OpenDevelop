@@ -33,7 +33,8 @@ using System.Windows.Threading;
 using ICSharpCode.CodeQuality;
 using ICSharpCode.CodeQuality.Engine.Dom;
 using ICSharpCode.SharpDevelop;
-using ICSharpCode.TreeView;
+using ICSharpCode.ILSpyX.TreeView;
+using ICSharpCode.ILSpy.Controls.TreeView;
 
 namespace ICSharpCode.CodeQuality.Gui
 {
@@ -54,8 +55,8 @@ namespace ICSharpCode.CodeQuality.Gui
 			
 			nodeDescriptionViewModel = new NodeDescriptionViewModel();
 			this.inform.DataContext = nodeDescriptionViewModel;
-			topTree.Root = new ICSharpCode.TreeView.SharpTreeNode();
-			leftTree.Root = new ICSharpCode.TreeView.SharpTreeNode();
+			topTree.Root = new ICSharpCode.ILSpyX.TreeView.SharpTreeNode();
+			leftTree.Root = new ICSharpCode.ILSpyX.TreeView.SharpTreeNode();
 			matrix.Colorizer = new DependencyColorizer();
 			matrix.ScrollOwner = scrollViewer;
 		}

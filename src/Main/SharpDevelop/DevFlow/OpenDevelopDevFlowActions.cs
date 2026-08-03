@@ -786,6 +786,15 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new { found = true, title = pad.Title, className = pad.Class });
 		}
 
+		[DevFlowAction("od.workbench.switch-layout", Description = "Switch the active named workbench layout (Default/Debug/Plain, or an AddIn-contributed one e.g. ILSpy via ILayoutTemplateProvider) by driving LayoutConfiguration.CurrentLayoutName directly - bypasses ChooseLayoutComboBox's UI (which the WPF-embedded DevFlow agent can't reliably drive through its popup), so tests can verify AddIn layout-activation (ILayoutTemplateProvider.OnActivating) deterministically")]
+		public static string SwitchLayout(string layoutName)
+		{
+			if (LayoutConfiguration.GetLayout(layoutName) == null)
+				return JsonSerializer.Serialize(new { found = false, layoutName });
+			LayoutConfiguration.CurrentLayoutName = layoutName;
+			return JsonSerializer.Serialize(new { found = true, layoutName = LayoutConfiguration.CurrentLayoutName });
+		}
+
 		[DevFlowAction("od.pads", Description = "List registered workbench pads")]
 		public static string GetPads()
 		{

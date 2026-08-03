@@ -54,4 +54,7 @@ using System.Windows.Markup;
 
 [assembly: XmlnsPrefix("http://icsharpcode.net/sharpdevelop/treeview", "treeview")]
 
-[assembly: XmlnsDefinition("http://icsharpcode.net/sharpdevelop/treeview", "ICSharpCode.TreeView")]
+// Maps to ILSpy's linked control-layer namespace (ICSharpCode.ILSpy.Controls.TreeView) now that
+// this assembly hosts ILSpy's SharpTreeView/SharpGridView instead of OpenDevelop's own duplicate
+// (see ICSharpCode.TreeView.csproj) - existing consumer XAML using this URI needs no changes.
+[assembly: XmlnsDefinition("http://icsharpcode.net/sharpdevelop/treeview", "ICSharpCode.ILSpy.Controls.TreeView")]

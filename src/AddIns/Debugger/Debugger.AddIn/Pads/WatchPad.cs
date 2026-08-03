@@ -32,7 +32,9 @@ using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
 using ICSharpCode.SharpDevelop.Services;
 using ICSharpCode.SharpDevelop.Workbench;
-using ICSharpCode.TreeView;
+using ICSharpCode.ILSpyX.TreeView;
+using ICSharpCode.ILSpyX.TreeView.PlatformAbstractions;
+using ICSharpCode.ILSpy.Controls.TreeView;
 
 namespace ICSharpCode.SharpDevelop.Gui.Pads
 {
@@ -139,25 +141,25 @@ namespace ICSharpCode.SharpDevelop.Gui.Pads
 	
 	class WatchRootNode : SharpTreeNode
 	{
-		public override bool CanPaste(IDataObject data)
+		// SharpTreeView duplicate resolution (2026-08-02): ILSpyX's SharpTreeNode folds
+		// GetDropEffect/CanPaste/Paste into a single CanDrop/Drop pair (see
+		// doc/technotes/ilspy.md "SharpTreeView duplicate resolution"), so what used to be a
+		// paste-via-clipboard-format check plus a separate drop-effect getter is now one
+		// CanDrop/Drop pair operating on the drag event's own IPlatformDataObject.
+		public override bool CanDrop(IPlatformDragEventArgs e, int index)
 		{
-			return data.GetDataPresent(DataFormats.StringFormat);
+			return e.Data.GetDataPresent(DataFormats.StringFormat);
 		}
-		
-		public override void Paste(IDataObject data)
+
+		public override void Drop(IPlatformDragEventArgs e, int index)
 		{
-			var watchValue = data.GetData(DataFormats.StringFormat) as string;
+			var watchValue = e.Data.GetData(DataFormats.StringFormat) as string;
 			if (string.IsNullOrEmpty(watchValue)) return;
-			
+
 			var pad = SD.Workbench.GetPad(typeof(WatchPad)).PadContent as WatchPad;
 			if (pad == null) return;
-			
+
 			pad.AddWatch(watchValue);
-		}
-		
-		public override DragDropEffects GetDropEffect(DragEventArgs e, int index)
-		{
-			return DragDropEffects.Copy;
 		}
 	}
 	

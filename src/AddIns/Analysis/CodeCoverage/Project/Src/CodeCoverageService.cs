@@ -37,18 +37,41 @@ namespace ICSharpCode.CodeCoverage
 		
 		static CodeCoverageService()
 		{
-			SD.Workbench.ViewOpened += ViewOpened;
+			// IWorkbench is not registered yet when this type is first touched from
+			// RegisterCodeCoverageOpenLensProviderCommand.Run() (runs during
+			// CoreStartup.RunInitialization(), before WorkbenchStartup.InitializeWorkbench()'s
+			// `SD.Services.AddService(typeof(IWorkbench), workbench)`). A static constructor that
+			// throws is permanently cached by the runtime - every later access (including from
+			// menu construction) would keep rethrowing a ServiceNotFoundException for the rest of
+			// the process - so this must not touch SD.Workbench directly. TryHookViewOpened()
+			// completes the subscription lazily, retried from CodeCoverageHighlighted (touched
+			// repeatedly via menu IsChecked checks) once IWorkbench actually exists.
 			SD.ProjectService.SolutionOpened += SolutionLoaded;
+			TryHookViewOpened();
 		}
-		
+
+		static bool viewOpenedHooked;
+
+		static void TryHookViewOpened()
+		{
+			if (viewOpenedHooked)
+				return;
+			if (SD.Services.GetService(typeof(IWorkbench)) is not IWorkbench workbench)
+				return;
+			workbench.ViewOpened += ViewOpened;
+			viewOpenedHooked = true;
+		}
+
 		/// <summary>
 		/// Shows/hides the code coverage in the source code.
 		/// </summary>
 		public static bool CodeCoverageHighlighted {
 			get {
+				TryHookViewOpened();
 				return CodeCoverageOptions.CodeCoverageHighlighted;
 			}
 			set {
+				TryHookViewOpened();
 				CodeCoveragePad pad = CodeCoveragePad.Instance;
 				if (CodeCoverageOptions.CodeCoverageHighlighted != value) {
 					CodeCoverageOptions.CodeCoverageHighlighted = value;

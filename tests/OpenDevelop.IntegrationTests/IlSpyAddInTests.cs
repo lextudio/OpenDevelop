@@ -100,26 +100,20 @@ public sealed class IlSpyAddInTests : IDisposable
             .ToList();
         Assert.Contains("DebugTestApp", loadedAssemblies);
 
-        // The ILSpy panes are registered as OpenDevelop pads and the opened assembly is in the
-        // real AssemblyTreeModel (loadedAssemblies above, decompiled output below) - but the panes'
-        // content AREA does not render in this host's visual tree: the LayoutAnchorable tab
-        // materializes (its title is a real visible element), while the pane content view
-        // (AssemblyListPane) is created without being laid out, so the assembly tree node itself is
-        // never walkable. Runtime-added tool panes also don't reliably dock at all - od.ilspy
-        // show-pane re-registers the pane so its tab deterministically appears in the layout.
-        // Assert the rendered UI surface we do have: the "Assemblies" tab (the pane hosting the
-        // assembly tree) and the "Decompiled Code" document tab (the decompiled view), with the
-        // tree content itself covered by the loadedAssemblies/decompiledTextLength JSON above.
+        // Runtime-added tool panes don't reliably dock at all - od.ilspy.show-pane re-registers
+        // the pane so its tab deterministically appears in the layout.
         var showPaneResult = await _app.InvokeAsync("od.ilspy.show-pane", "Assemblies");
         Assert.True(showPaneResult.GetProperty("found").GetBoolean(), "Could not find the Assemblies ILSpy pane");
 
         var deadline = DateTime.UtcNow.AddSeconds(30);
         JsonElement uiTree = default;
         List<string> texts = new();
+        List<JsonElement> allElements = new();
         while (DateTime.UtcNow < deadline)
         {
             uiTree = await _app.GetUITreeAsync();
-            texts = FlattenElements(uiTree)
+            allElements = FlattenElements(uiTree).ToList();
+            texts = allElements
                 .Where(e => e.TryGetProperty("type", out var t) && t.GetString() == "TextBlock"
                     && e.TryGetProperty("text", out var txt) && !string.IsNullOrEmpty(txt.GetString()))
                 .Select(e => e.GetProperty("text").GetString())
@@ -130,6 +124,22 @@ public sealed class IlSpyAddInTests : IDisposable
         }
         Assert.Contains(texts, t => t == "Assemblies");
         Assert.Contains(texts, t => t == "Decompiled Code");
+
+        // Regression coverage for doc/technotes/ilspy.md's "empty pane content area" failure mode
+        // (fixed 2026-08-02 - a Base.Light/Dark.xaml merge into a since-modernized, no-longer-
+        // shipped AvalonDock theme resource threw at startup, which previously left the assembly
+        // tree pane's content unrendered): the "Assemblies" pane's content is a real, walkable
+        // SharpTreeView tree, not an empty container. Assert on actual node instances with
+        // non-zero size, not just the tab header text asserted above.
+        var treeNodes = allElements
+            .Where(e => e.TryGetProperty("fullType", out var ft)
+                && ft.GetString() == "ICSharpCode.ILSpy.Controls.TreeView.SharpTreeNodeView"
+                && e.TryGetProperty("bounds", out var b)
+                && b.TryGetProperty("width", out var w) && w.GetDouble() > 0
+                && b.TryGetProperty("height", out var h) && h.GetDouble() > 0)
+            .ToList();
+        Assert.True(treeNodes.Count > 0,
+            "Expected the Assemblies pane's SharpTreeView to render at least one real, non-zero-size tree node - got an empty pane (the historical failure mode)");
 
         // Decompiled Code pad: opening the assembly auto-selects and decompiles its tree node,
         // so the real DecompilerTextView should show non-empty, real decompiled output (not a
@@ -143,6 +153,48 @@ public sealed class IlSpyAddInTests : IDisposable
         var snippet = status.GetProperty("decompiledTextSnippet").GetString()!;
         Assert.Contains("Program", snippet);
         Assert.DoesNotContain("The directory was not found", snippet);
+    }
+
+    [Fact]
+    public async Task SwitchToIlSpyLayout_ActivatesPanesWithoutPriorIlSpyInteraction()
+    {
+        // Regression coverage for the gap the user flagged 2026-08-02: registering "ILSpy" as an
+        // AddIn-contributed named layout (ILayoutTemplateProvider) is not enough by itself -
+        // selecting the layout must also activate IlSpyWorkspaceHost, or ILSpy.xml's pane
+        // anchorables silently restore nothing (DockWorkspace's LayoutSerializationCallback skips
+        // any ContentId that isn't registered yet). od.ilspy.is-initialized reads
+        // IlSpyWorkspaceHost.IsInitialized without triggering it (unlike od.ilspy.status/
+        // show-pane/open-assembly, which all initialize as a side effect), so it can distinguish
+        // "the layout switch itself did this" from "some other ILSpy action already had."
+        //
+        // Ordering caveat: OpenDevelopAppFixture's app instance is shared across every test in the
+        // "OpenDevelop app" collection, so if another test has already opened an assembly or
+        // touched an od.ilspy.* action first, IsInitialized may already be true before this test's
+        // switch-layout call - that's still a valid state (the addin was activated one way or
+        // another), just not proof this specific call did it. The was-it-already-initialized
+        // check below is therefore informational, not a hard assertion; what this test actually
+        // guards is the behavior that matters end-to-end: after switching to "ILSpy", the addin's
+        // panes are unconditionally initialized and visible, however that came about.
+        var before = await _app.InvokeAsync("od.ilspy.is-initialized");
+        var wasAlreadyInitialized = before.GetProperty("initialized").GetBoolean();
+
+        var switchResult = await _app.InvokeAsync("od.workbench.switch-layout", "ILSpy");
+        Assert.True(switchResult.GetProperty("found").GetBoolean(), "Expected the AddIn-contributed \"ILSpy\" layout to be registered");
+        Assert.Equal("ILSpy", switchResult.GetProperty("layoutName").GetString());
+
+        var after = await _app.InvokeAsync("od.ilspy.is-initialized");
+        Assert.True(after.GetProperty("initialized").GetBoolean(),
+            $"Expected switching to the \"ILSpy\" layout to activate IlSpyWorkspaceHost (ILayoutTemplateProvider.OnActivating). " +
+            $"wasAlreadyInitialized={wasAlreadyInitialized} (informational - see ordering caveat above)");
+
+        var status = await _app.InvokeAsync("od.ilspy.status");
+        var paneTitles = status.GetProperty("panes").EnumerateArray()
+            .Select(p => p.GetProperty("title").GetString())
+            .ToList();
+        foreach (var expectedTitle in new[] { "Assemblies", "Search", "Analyze" })
+        {
+            Assert.Contains(expectedTitle, paneTitles);
+        }
     }
 
     static IEnumerable<JsonElement> FlattenElements(JsonElement tree)

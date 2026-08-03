@@ -11,7 +11,7 @@
 
 using System.Linq;
 
-using ICSharpCode.TreeView;
+using ICSharpCode.ILSpyX.TreeView;
 
 namespace ICSharpCode.AndroidSdkManager
 {

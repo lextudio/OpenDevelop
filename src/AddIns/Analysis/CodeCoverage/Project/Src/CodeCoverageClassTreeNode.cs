@@ -19,6 +19,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
+using ICSharpCode.ILSpyX.TreeView.PlatformAbstractions;
 
 namespace ICSharpCode.CodeCoverage
 {
@@ -29,7 +30,7 @@ namespace ICSharpCode.CodeCoverage
 		{
 		}
 
-		public override void ActivateItem(RoutedEventArgs e)
+		public override void ActivateItem(IPlatformRoutedEventArgs e)
 		{
 			EnsureLazyChildren();
 			foreach (CodeCoverageTreeNode node in Children.OfType<CodeCoverageTreeNode>()) {

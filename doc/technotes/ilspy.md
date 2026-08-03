@@ -82,6 +82,43 @@ must be resolved before any pane-composition bridging:
 
 Only after this lands does the pane/composition bridging below become buildable.
 
+**Resolved (2026-08-02) - narrower than first thought, NOT a missing-content problem.** step 2
+(re-point to a project reference) is already done for `ILSpyAddIn.csproj` - it references
+`src/Libraries/AvalonDock/source/Components/AvalonDock.Themes.VS2013/AvalonDock.Themes.VS2013.csproj`
+directly, not the Dirkster NuGet package. ILSpy's linked `Themes/Base.Light.xaml`/`Base.Dark.xaml`
+each merged in `/AvalonDock.Themes.VS2013;component/lighttheme.xaml` /
+`.../darktheme.xaml` (the upstream Dirkster package's static-XAML resource names) and this
+technote's first pass concluded those resources were simply missing from OpenDevelop's fork -
+**that framing was wrong, corrected after the user pushed back** ("this fork must contain
+everything, v5 comes from this repo - look again"). The fork *does* contain the VS2013 palette
+data - it just modernized how VS2013 themes are built: `Vs2013LightTheme`/`Vs2013DarkTheme`
+(`AvalonDock.Themes.VS2013/Vs2013{Light,Dark}Theme.cs`) construct their `ResourceDictionary`
+programmatically at runtime from a GZIP-compressed `.vstheme` palette
+(`Resources/vs2013{light,dark}.vstheme.gz`) via `VsThemePaletteFactory.BuildDictionary(...)`,
+rather than shipping a static `lighttheme.xaml`/`darktheme.xaml` resource at all - so no amount of
+searching for that filename in the fork would ever find it, by design, not by omission.
+
+Given that, the fix was to stop trying to port/recreate that static resource and instead notice
+that ILSpy's own `Base.Light.xaml`/`Base.Dark.xaml` already fully redefine every color/brush key
+they use (`SystemColors.*`, `ICSharpCode.ILSpy.Themes.ResourceKeys.*`,
+`TomsToolbox.Wpf.Styles`' `styles:ResourceKeys.*`) standalone - the merged dictionary was
+vestigial for this hosting scenario. **Removed** the broken `<ResourceDictionary
+Source="/AvalonDock.Themes.VS2013;component/{light,dark}theme.xaml" />` merge from both files
+rather than porting anything.
+
+Combined with the separate `ThemeManager.UpdateTheme` pack-URI fix (see "Root cause: linked theme
+resource names" below), **the full ILSpy hosting pipeline now works end-to-end for the first time
+this technote records.** Verified via DevFlow: `od.ilspy.show-pane` and `od.ilspy.open-assembly`
+both return `"success":true` (previously always threw); `od.ilspy.status` reports all three panes
+(`assemblyListPane`/`searchPane`/`analyzerPane`) visible, the target assembly loaded, and 5189
+characters of real decompiled C# source text (usings, assembly attributes, the actual
+`SharpDevelopMain.Main` entry point) - not an empty/error snippet. The UI element tree shows real
+`ICSharpCode.ILSpy.Controls.TreeView.SharpTreeViewItem`/`SharpTreeNodeView` instances with varied
+non-zero widths (e.g. 348×17, 318×17, 285×17 - different per node's text) - the exact opposite of
+the "empty container, 0 `VisualTreeHelper` children" failure mode this technote documented as
+blocking ILSpy verification from the very first session. This closes out the last remaining
+"pre-existing, unrelated bug" blocker mentioned throughout the pane-model and layout work above.
+
 ## Composition-layer facts (corrects earlier assumptions in this note)
 
 - ILSpy does **not** use System.Composition/MEF2. It uses **TomsToolbox composition** layered over
@@ -185,6 +222,30 @@ SharpTreeViewItem, ...) finds no default style/template and renders as an empty 
 the observed empty panes. The theme dictionaries were also never loaded (no `ThemeManager`
 initialization), and `SharpTreeNode.SetImagesProvider(...)` (tree icons) was never called.
 
+**Follow-up bug found and fixed (2026-08-02):** even after `generic.xaml` and `Theme.*.xaml` were
+linked at the assembly root (fixing the lookup path) and `ThemeManager.Current.Theme = ...` was
+actually being called (`IlSpyWorkspaceHost.EnsureInitialized()`), it still threw
+`IOException: Cannot locate resource 'themes/theme.light.xaml'` at runtime. Root cause:
+`ThemeManager.UpdateTheme` (`Themes/ThemeManager.cs`) builds its `ResourceDictionary.Source` from a
+*bare* relative pack URI - `new Uri($"/themes/Theme.{themeFileName}.xaml", UriKind.Relative)`, with
+no `;component/` authority segment. That kind of URI resolves against
+`Application.ResourceAssembly`, which defaults to the process's *entry* assembly
+(`SharpDevelop.exe`) - not the assembly that owns the calling code - and unlike a control's own
+default-style lookup (which resolves against the control's defining type's assembly), there is no
+per-assembly fallback for a `ResourceDictionary.Source` set this way. Since the `Theme.*.xaml` BAML
+only exists in `ILSpyAddIn.dll`, resolving against the host `.exe` always fails. Tried setting
+`Application.ResourceAssembly = typeof(IlSpyWorkspaceHost).Assembly` in `IlSpyWorkspaceHost.cs`
+first - confirmed at runtime this throws `InvalidOperationException: The 'ResourceAssembly'
+property ... cannot be changed after it has been set` (WPF/LibreWPF sets it once, automatically,
+before this addin ever loads) - so that approach is a dead end, not just inelegant. Fixed instead
+at the actual source: `ThemeManager.cs` now qualifies the URI with its own defining assembly's name
+(`new Uri($"/{typeof(ThemeManager).Assembly.GetName().Name};component/themes/Theme.{themeFileName}.xaml", ...)`),
+which resolves unambiguously regardless of which process hosts `ThemeManager` - strictly more
+correct for standalone `ILSpy.exe` too, not just this hosting scenario. This got past the original
+failure to a *new, different* one - see the "AvalonDock 5 unification" section above for what that
+turned out to be (a real missing resource in OpenDevelop's own vendored AvalonDock fork, not
+another instance of this same bug class).
+
 Applied (but see the duplicate-type decision below, which may change part of this):
 - csproj: theme `Page` items now link as `Themes\...` (assembly root) so `/themes/generic.xaml`
   and `/themes/Theme.*.xaml` resolve.
@@ -242,6 +303,172 @@ OpenDevelop's `ICSharpCode.TreeView` + exclude the fork from the link set + add 
 `SetImagesProvider` must be OpenDevelop's type per the policy - or keep the fork linked for now
 and only fix the theme resource names.
 
+**Correction (2026-08-02 deep audit): the divergence above is understated.** A full file-by-file
+diff of `ICSharpCode.ILSpyX.TreeView.SharpTreeNode` (757 lines) against OpenDevelop's
+`ICSharpCode.TreeView.SharpTreeNode` found the node-base APIs are **substantively incompatible**,
+not "cosmetic plus 4 items":
+
+- `Delete()`/`DeleteCore()` (no args) vs. OpenDevelop's `Delete(SharpTreeNode[])` - different
+  per-node-vs-per-selection contract. `Cut(SharpTreeNode[])` exists only on OpenDevelop's side;
+  the fork has no cut concept.
+- `Copy(SharpTreeNode[]) : IPlatformDataObject` vs. OpenDevelop's `Copy(SharpTreeNode[])` void +
+  `GetDataObject(SharpTreeNode[]) : IDataObject` - different return contract and native-vs-
+  abstraction data type.
+- `StartDrag(object, SharpTreeNode[], IPlatformDragDrop)` vs. `StartDrag(DependencyObject,
+  SharpTreeNode[])` - extra drag-drop-manager abstraction parameter with no OpenDevelop analog.
+- `CanDrop`/`Drop` take `IPlatformDragEventArgs` vs. OpenDevelop's native `DragEventArgs`.
+- `ActivateItem(IPlatformRoutedEventArgs)` **and** `ActivateItemSecondary(IPlatformRoutedEventArgs)`
+  vs. OpenDevelop's `ActivateItem(RoutedEventArgs)` only - no secondary-activation hook exists on
+  the OpenDevelop side at all.
+- `ImagesProvider`/`SetImagesProvider` has no OpenDevelop analog (confirmed, as already noted).
+- `ShowContextMenu(ContextMenuEventArgs)` and `Model`/`GetModel()` exist only on OpenDevelop's
+  side, with no fork equivalent.
+- The two `SharpTreeNode` types also disagree on nullable-reference-type annotation (ILSpyX is
+  NRT-annotated throughout; OpenDevelop's is not), so even members that do line up aren't a clean
+  textual merge.
+- `PlatformAbstractions/` (`IPlatformDataObject`, `IPlatformDragDrop`, `IPlatformDragEventArgs`,
+  `IPlatformRoutedEventArgs`, `ITreeNodeImagesProvider`, `XPlatDragDropEffects`) has no analog
+  anywhere in OpenDevelop's tree library - it would need to be ported wholesale or every call site
+  rewritten to native WPF types.
+
+The control layer (`SharpTreeView`/`SharpTreeViewItem`/`SharpTreeNodeView`) is comparatively close
+to drop-in (cosmetic diffs plus the already-known `LockUpdates`/`Dispose`, `SetSelectedNodes`), but
+OpenDevelop's library additionally has **no automation-peer support and no type-to-search**
+(`SharpTreeViewAutomationPeer.cs`, `SharpTreeViewItemAutomationPeer.cs`,
+`SharpTreeViewTextSearch.cs` exist only in the fork) - porting the control without these is a
+feature regression, not just a rename.
+
+The control and node-base swaps are **one unit of work, not two independently schedulable ones**:
+`SharpTreeView`/`SharpTreeViewItem` are generically coupled to whichever `SharpTreeNode` they
+compile against, so swapping the control without also re-deriving `ILSpyTreeNode` (ILSpyX) and its
+~20-27 descendants (`AssemblyTreeNode.cs`, `AssemblyListTreeNode.cs`,
+`AssemblyReferenceTreeNode.cs`, `DerivedTypesEntryNode.cs`, `BaseTypesEntryNode.cs`,
+`ModuleReferenceTreeNode.cs`, and others under `TreeNodes/`) from OpenDevelop's `SharpTreeNode` is
+not mechanically possible. An additional reference site not previously tracked here:
+`externals/ilspy/ILSpy/Views/CompareView.xaml` also uses the fork namespace and is linked into the
+addin via the `Views/**` glob.
+
+Net effect: this is budgeted as a multi-file rewrite of every `TreeNodes/*` override body (new
+method signatures) plus a genuine feature-port (images-provider, secondary-activation, cut,
+automation peer, text search) into OpenDevelop's `ICSharpCode.TreeView` - not a namespace-and-
+reference swap. Given this, and that this addin cannot be UI-tested on this (macOS) development
+machine, this swap should not be attempted as a single uninterrupted pass; it needs its own
+phased/reviewable plan (e.g. port control layer first behind a feature-parity checklist, then
+node-base signatures file-by-file, keeping the build green after each step) rather than folding it
+into the Phase 0 link-manifest pass above.
+
+**Resolved (2026-08-02): reverse direction taken instead - adopt ILSpy's tree wholesale.** Rather
+than porting ILSpy's missing features into OpenDevelop's `ICSharpCode.TreeView`, the decision (user
+directive) was to make ILSpy's fork the ONE tree implementation project-wide and migrate every
+OpenDevelop consumer onto it - eliminating the duplicate instead of enriching one side of it. This
+was a materially larger change than the SharpTreeView-only swap above once its real blast radius
+was measured (see "Findings that shaped the actual shape of the fix" below), and it surfaced two
+follow-on architectural costs (composition-adjacent, not tree-specific) that were each confirmed
+with the user before proceeding rather than decided silently:
+
+- `ICSharpCode.ILSpyX.TreeView.SharpTreeNode`'s home project, `ICSharpCode.ILSpyX.csproj`, itself
+  references `ICSharpCode.Decompiler`/`Mono.Cecil`/`K4os.Compression.LZ4` - referencing it directly
+  from a shell-wide shared library would have pulled a decompiler engine into ClassBrowser/
+  Debugger/CodeCoverage/CodeQuality/UnitTesting/AndroidSdkManager. Resolved by extracting
+  `TreeView/` into its own dependency-light project,
+  `externals/ilspy/ICSharpCode.ILSpyX/TreeView/ICSharpCode.ILSpyX.TreeView.csproj` (referenced by
+  both `ICSharpCode.ILSpyX.csproj` and the shared control project below), rather than accepting the
+  heavier dependency footprint.
+- The fork's control template (`Controls/TreeView/SharpTreeView.xaml`) uses
+  `TomsToolbox.Wpf.Styles`. Rather than hand-writing a non-TomsToolbox replacement template, the
+  user accepted `TomsToolbox.Wpf.Styles`/`TomsToolbox.Composition.MicrosoftExtensions` becoming a
+  dependency of `src/Main/Base/Project/ICSharpCode.SharpDevelop.csproj` (the core shell) - consistent
+  with, and arguably an early down payment on, the "OpenDevelop migrates to TomsToolbox composition"
+  direction already decided in the "Composition boundary" section above.
+
+### Findings that shaped the actual shape of the fix
+
+- An exhaustive inventory of every class overriding a tree-behavior member (Delete/Copy/Drag/Drop/
+  Activate/ShowContextMenu) across the whole non-ILSpyAddIn codebase found the real blast radius
+  much smaller than a raw `grep` for `ICSharpCode.TreeView` suggested (~40 files matched the text,
+  but most only reference `Text`/`Icon`/`IsCheckable` and needed no behavior change):
+  - `src/Main/Base/Project/Dom/ClassBrowser/**` (the entire legacy Class Browser, ~13 files) is
+    already excluded from the MVP build via `<Compile Remove="Dom\ClassBrowser\**\*.cs">` in
+    `ICSharpCode.SharpDevelop.csproj` - dead code today, not a live migration risk despite matching
+    the text search.
+  - Only ~10 files had a real signature change to make: `SharpTreeNodeAdapter.cs` (Debugger,
+    `CanDelete(SharpTreeNode[])`/`Delete(SharpTreeNode[])` -> `CanDelete()`/`Delete()` - per-node,
+    not per-selection, matching how the fork's `SharpTreeView` actually invokes it), `WatchPad.cs`'s
+    `WatchRootNode` (`CanPaste`/`Paste`/`GetDropEffect` -> one `CanDrop`/`Drop` pair over
+    `IPlatformDragEventArgs`), and five `ActivateItem(RoutedEventArgs)` overrides (`UnitTestNode`,
+    `CodeCoverageClassTreeNode`, `CodeCoverageMethodTreeNode`, plus two dead ClassBrowser ones) ->
+    `ActivateItem(IPlatformRoutedEventArgs)` - every one of these ignored its event-arg parameter's
+    actual members, so no behavior changed, only the parameter type.
+- `GetModel()`/`Model`/`ShowContextMenu` have no ILSpyX equivalent but are used pervasively by
+  `ModelCollectionTreeNode`-derived classes. Added as an OpenDevelop-authored partial-class file,
+  `externals/ilspy/ICSharpCode.ILSpyX/TreeView/SharpTreeNode.OpenDevelop.cs` - a NEW file alongside
+  the checkout (like the extracted micro-project itself), not an edit to existing ILSpy source. It
+  has to live in that project, not a downstream one: C# partial classes only merge within the same
+  assembly compilation, so a `partial class SharpTreeNode` declared from a different assembly
+  creates a shadowing duplicate type instead of extending the real one (hit this directly as
+  CS0436 on the first attempt). `ShowContextMenu`'s parameter is typed `object` rather than WPF's
+  `ContextMenuEventArgs`, since the extracted project is deliberately platform-neutral (no WPF
+  reference) and a repo-wide search found the parameter is ignored by every existing override and
+  has no live caller today.
+- XAML consumers (`AndroidSdkManagerWindow.xaml`, `AnalysisProjectOptionsPanel.xaml`,
+  `DependencyMatrixView.xaml`, `CommonResources.xaml`, `SearchForIssuesDialog.xaml`) all reference
+  the tree control via the custom XML namespace URI `http://icsharpcode.net/sharpdevelop/treeview`
+  (an `XmlnsDefinition` on the library assembly), not a `clr-namespace:` URI - so repointing that
+  one `XmlnsDefinition` attribute (in `ICSharpCode.TreeView`'s `AssemblyInfo.cs`) from
+  `ICSharpCode.TreeView` to `ICSharpCode.ILSpy.Controls.TreeView` meant none of those five XAML
+  files needed any change. Two ILSpy-internal XAML files that DO use a direct `clr-namespace:` URI
+  (`AssemblyTree/AssemblyListPane.xaml`, `Analyzers/AnalyzerTreeView.xaml`) needed
+  `;assembly=ICSharpCode.TreeView` appended, since the control's type moved to a different assembly
+  than the one compiling those views.
+- The control's actual default styles (`SharpTreeView`/`SharpTreeViewItem`/`SharpTreeNodeView`/
+  `SharpGridView`, plus `InsertMarker`/`EditTextBox`) live in `Controls/TreeView/SharpTreeView.xaml`,
+  not at the WPF-conventional `themes/generic.xaml` path (that only holds unrelated resources
+  upstream) - the shared project's own `Themes/Generic.xaml` merges that dictionary by pack URI
+  rather than duplicating its content, so the implicit-default-style lookup still resolves.
+
+### What was NOT touched
+
+- `ICSharpCode.TreeView.Demo` (`src/Libraries/SharpTreeView/ICSharpCode.TreeView.Demo`) still uses
+  the old API and is left broken - it is only referenced by its own standalone
+  `SharpTreeView.sln`, not the main `SharpDevelop.sln`/build, so it never participates in what ships.
+- Three pre-existing, unrelated build/runtime issues were found and left alone (confirmed
+  unconnected to this change - different files, different error classes, reproduce independent of
+  any tree-view edit): `CodeAnalysis.csproj` targets .NET Framework 4.5 without the reference
+  assemblies installed on this machine; `AndroidSdkManager.csproj` is missing
+  `LeXtudio.DevFlow`/`Microsoft.Maui` types; `ICSharpCode.SharpDevelop.Tests.csproj` hits an
+  NU1605 LibreWPF/ProGPU package-downgrade lock-file conflict.
+- A pre-existing, unrelated runtime bug was hit while verifying this change at runtime:
+  `RegisterCodeCoverageOpenLensProviderCommand.Run()` (part of a separate, already-in-progress
+  OpenLens feature, not this session's work) calls `CodeCoverageService.ResultsChanged +=` during
+  `CoreStartup.RunInitialization()`, before `IWorkbench` is registered, which poisons
+  `CodeCoverageService`'s static type initializer for the rest of the process (a cached
+  `TypeInitializationException` is rethrown on every later access, including from menu
+  construction). Worked around only for this verification session by temporarily moving
+  `AddIns/Analysis/CodeCoverage/net10.0-windows/CodeCoverage.addin` aside and back; not fixed, since
+  it is unrelated to the tree-view migration.
+- ILSpy's own hosted panes (`od.ilspy.show-pane`/`od.ilspy.open-assembly`) still fail at runtime on
+  an unrelated, pre-existing issue: `IlSpyWorkspaceHost.EnsureInitialized()`'s
+  `ThemeManager.Theme = ...` throws `IOException: Cannot locate resource
+  'themes/theme.light.xaml'` - this is the same linked `ThemeManager.cs`/`Theme.*.xaml` Page-linking
+  code this technote already flagged as unresolved (see "Root cause: linked theme resource names"
+  and "Current host implementation status" above); neither the code path nor the Page/XmlnsDefinition
+  linkage for these files changed in this pass.
+
+### Verification performed
+
+- Every touched project builds clean individually: `ICSharpCode.ILSpyX.TreeView.csproj`,
+  `ICSharpCode.ILSpyX.csproj`, `ICSharpCode.TreeView.csproj`, `ILSpyAddIn.csproj`,
+  `ICSharpCode.SharpDevelop.csproj`, `Debugger.AddIn.csproj`, `UnitTesting.csproj`,
+  `CodeCoverage.csproj`, `CodeQuality.csproj`, `CSharpBinding.csproj`.
+- Launched `SharpDevelop.exe` on this machine (confirms LibreWPF really does run on macOS) and drove
+  it via its DevFlow HTTP agent (port 9299, see `DevFlowPort.cs`). Pixel screenshots aren't available
+  in this Debug build (missing native `wpfgfx_cor3.dll` for the screenshot capability specifically),
+  but the `/api/v1/ui/tree` element tree confirmed `ICSharpCode.UnitTesting.TestTreeView` (a
+  `SharpTreeView` subclass) renders its real control template end-to-end - `Border` ->
+  `ScrollViewer` -> `Grid` -> `ScrollContentPresenter` -> `ItemsPresenter` ->
+  `VirtualizingStackPanel`, sized to its real layout bounds - rather than the empty
+  zero-child container this technote documented as the old failure mode for hosted ILSpy panes.
+
 ### Other findings from the test work (2026-08-02)
 
 - Test-environment pollution: the hosted ILSpy restores its assembly list + layout from
@@ -263,6 +490,19 @@ and only fix the theme resource names.
   the IObservable overload of `SearchResultsPad.ShowSearchResults` is therefore broken and
   nothing in the app uses it. `od.search.show-results` deliberately uses the sequential path +
   the `IEnumerable<SearchResultMatch>` overload (the FindReferencesCommand call shape).
+
+  **Fixed (2026-08-02):** root cause was `WorkbenchStartup.InitializeWorkbench()`
+  (`src/Main/SharpDevelop/Workbench/WorkbenchStartup.cs`) capturing `SynchronizationContext.Current`
+  to construct the app's `DispatcherMessageLoop` - but at that point in startup, the WPF
+  `Dispatcher` had never pumped a message on that thread yet (that's normally what installs a
+  `DispatcherSynchronizationContext` as the thread's ambient one), so `SynchronizationContext.Current`
+  was always `null`, making `SD.MainThread.SynchronizationContext` (and therefore
+  `ReactiveExtensions.ObserveOnUIThread<T>`, which reads it directly) permanently broken for the
+  whole process. Fixed by constructing `new DispatcherSynchronizationContext(app.Dispatcher)`
+  explicitly instead of relying on ambient thread state at that specific call site. Verified:
+  `SharpDevelop.csproj` builds clean, a fresh launch shows no new startup errors, and both
+  `IlSpyAddInTests` (unrelated to this bug, used as a regression smoke check since they exercise
+  the same startup path) still pass.
 
 ## 2026-08 architecture update: use ILSpy as the shell-modernization reference
 
@@ -403,10 +643,62 @@ Build the replacement in this order:
    proportions, floating bounds and visibility. Treat AvalonDock XML as a WPF serialization
    detail or import format, not the durable application contract. Documents are restored by the
    document/session service, never deserialized as arbitrary CLR content.
+
+   **Status (2026-08-02): AvalonDock-XML-as-import-format restore is live; the versioned DTO
+   itself is still not started.** `AvalonDockLayout.LoadLayout()`
+   (`src/Main/SharpDevelop/Workbench/AvalonDockLayout.cs`) had its `dockWorkspace.RestoreLayout(...)`
+   call commented out with a `TODO: re-enable after migrating legacy pads to MEF ToolPaneModel` -
+   investigated and re-enabled: `DockWorkspace.RestoreLayout`'s `LayoutSerializationCallback`
+   (`DockWorkspace.cs`) already cancels/skips (no exception) any serialized `LayoutAnchorable`
+   whose `ContentId` isn't a currently-registered MEF `ToolPaneModel`, so legacy (AddInTree
+   `Pad`-based) anchorables were never actually going to crash anything - the TODO's stated blocker
+   didn't hold up under inspection. The **real** reason nothing restored: the shipped
+   `data/layouts/{Default,Debug,Plain,ILSpy}.xml` template files were stale AvalonDock 1.x-schema
+   XML (`<DockingManager version="1.3.0"><ResizingPanel>...<DockableContent Name="...">`), while
+   `XmlLayoutSerializer` (the modern serializer already in use) expects
+   `<LayoutRoot><RootPanel>...<LayoutAnchorable ContentId="...">`. A fresh install (no user
+   `config/layouts/Default.xml` yet) would deserialize-fail on the old schema every time, caught
+   only by `LoadConfiguration`'s generic `catch (Exception ex)` (shows an error dialog, then
+   continues with an unconfigured layout - not a crash, but not what "restore" was meant to do
+   either). Regenerated all four template files by hand in the current schema, referencing the one
+   real MEF-exported pane that exists today (`ContentId="ProjectBrowser"`, `DockWidth="280"` -
+   matching the `PreferredDockSize` set earlier in this same pass) for `Default`/`Debug`, an empty
+   `LayoutDocumentPane`-only layout for `Plain`, and the ILSpy AddIn's three real pane `ContentId`s
+   (`assemblyListPane`/`searchPane`/`analyzerPane`, confirmed by reading their actual
+   `PaneContentId` constants rather than guessing) for `ILSpy` - the first real, if minimal,
+   ILSpy-specific pane arrangement this technote has shipped, versus the empty
+   `<LayoutRoot></LayoutRoot>` placeholder that was there before.
+
+   This is still explicitly the "AvalonDock XML as import format" half of step 4, not the versioned
+   DTO itself - no pane identity/side/group/order/proportions model exists yet; today's fix makes
+   the *existing* file-based restore mechanism actually run instead of silently no-op.
+
+   **Bug found and fixed while verifying this:** the app's actual `LayoutConfiguration.ConfigDirectory`
+   differs across runs on this machine (`~/Library/Application Support/UnoDevelop/config/...` vs
+   `~/Library/Application Support/ICSharpCode/SharpDevelop5/...` seen in earlier sessions) - a
+   pre-existing environment quirk, not something this pass changed or needed to fix, but worth
+   noting for whoever next debugs "why didn't my saved layout load."
+
+   Verified: `SharpDevelop.csproj` builds clean. Runtime-verified via the DevFlow UI tree with any
+   pre-existing user `config/layouts/Default.xml` temporarily moved aside (simulating a fresh
+   install): the app now loads `data/layouts/Default.xml` with **no exception** (previously fatal
+   to the layout-loading step, shown via `MessageService.ShowException`), and the "Projects" pane's
+   actual rendered `AvalonDock.Controls.LayoutAnchorablePaneControl` width is **280px** - the exact
+   `DockWidth` value from the regenerated XML, itself matching the `PreferredDockSize` wired earlier
+   in this pass - confirming the full chain (XML → `XmlLayoutSerializer` → AvalonDock →
+   on-screen pixels) now actually runs end-to-end instead of being a no-op.
 5. Implement named layouts (`Default`, `Debug`, `Plain`, `ILSpy`) as DTO templates. Switching a
    layout applies placement/visibility to existing models without reconstructing services or
    losing open documents. The ILSpy template shows Assemblies left, Search/Analyze right or bottom,
    and shares the central document area with source editors.
+   - **`ILSpy` is a first-class, formally-named layout, not a demo/debug template.** It is
+     contributed to OpenDevelop by the ILSpy AddIn itself (as an AddIn-owned layout template
+     registration), not hard-coded into the shell's layout list alongside `Default`/`Debug`/`Plain`.
+     This means the layout DTO/registry needs a new extension point — e.g. an
+     `ILayoutTemplateProvider` (or an AddInTree `/OpenDevelop/Workbench/LayoutTemplates` path) that
+     AddIns implement to register named layout templates at startup, mirroring how
+     `IToolPaneProvider`/`IDocumentPaneFactory` let AddIns register panes/documents. The shell owns
+     the layout DTO format and switching mechanism; AddIns own which named layouts exist.
 6. After every built-in pad has a model/factory or compatibility registration, delete direct
    `AvalonPadContent` creation and the legacy SharpDevelop layout loader. Keep an importer for one
    release if existing user layouts need migration.
@@ -462,18 +754,30 @@ the editor's more complex file lifetime. Debugger pads follow as one group becau
 must preserve their coordinated visibility. Dialog MVVM is useful but is not on the critical path
 for ILSpy layout.
 
-### Composition boundary
+### Composition boundary (updated 2026-08-02)
 
-Do not require all OpenDevelop AddIns to adopt ILSpy's container in the first phase. Introduce a
-small shell-facing registration API (`IToolPaneProvider`, `IDocumentPaneFactory`, theme resource
-provider and command provider). Adapt both the existing Microsoft.VisualStudio.Composition exports
-and ILSpy's TomsToolbox export provider into that API.
+Two decisions now stand side by side and must not be conflated:
 
-Once the runtime inventory shows that no required AddIn relies on the old MEF-specific pane
-contract, decide whether TomsToolbox/DI becomes the single container. Container replacement is a
-later cleanup, not a prerequisite for common pane models. This corrects the earlier plan that made
-composition replacement the first step and reduces the risk of coupling docking work to AddIn
-activation work.
+1. **Unification path, not a docking gate.** Do not require all OpenDevelop AddIns to adopt
+   ILSpy's container before docking work proceeds. Introduce a small shell-facing registration API
+   (`IToolPaneProvider`, `IDocumentPaneFactory`, theme resource provider and command provider).
+   Adapt both the existing `Microsoft.VisualStudio.Composition` exports and ILSpy's TomsToolbox
+   export provider into that API, so both containers can feed one pane/document registry starting
+   in Phase 1. Finding this convergence point is required work, but it is explicitly **not** a
+   prerequisite for the pane-model/workspace/layout phases above — those proceed against the small
+   registration API regardless of which container(s) are still live underneath.
+2. **TomsToolbox composition is the target for OpenDevelop as a whole.** Unlike the earlier
+   "decide later" framing, the container-replacement direction is now settled: OpenDevelop should
+   migrate its own composition host from `Microsoft.VisualStudio.Composition` to TomsToolbox
+   composition (the same container ILSpy already uses), rather than the reverse or a permanent
+   dual-container split. This is a larger, separate migration from the docking/pane-model work
+   above and should be scoped and sequenced on its own track — it is not blocked on, and does not
+   block, Phases 0-5. Concretely: the registration API in point 1 should be designed so that
+   swapping the underlying container from `Microsoft.VisualStudio.Composition` to TomsToolbox is an
+   implementation change behind the API, not a rewrite of pane/AddIn registration call sites.
+
+This corrects the earlier plan that made composition replacement the first step (still wrong) while
+also correcting the earlier "maybe TomsToolbox, maybe not" framing (now decided).
 
 ### Phased implementation plan
 
@@ -488,6 +792,58 @@ activation work.
 
 Exit: linked-source updates are reviewable; no duplicate tree/dock CLR types are loaded; current
 ILSpy MVP behavior is green.
+
+**Status (2026-08-02): link-manifest audit done, categorized, build-verified.**
+`ILSpyAddIn.csproj` now carries a `Label="ILSpyLinkedModel"`/`"ILSpyLinkedView"` ItemGroup
+structure with an inline manifest comment classifying every linked directory into Category 1
+("Direct link"), Category 2 ("Shared-shell extraction candidate"), or Category 3
+("Reference only" target, currently kept linked because Category-1 code transitively depends on
+it). Findings:
+
+- The large majority of the linked surface (Analyzers, AssemblyTree, AvalonEdit, Languages,
+  Metadata, Options, Search, TextView, TreeNodes, Util, most of Commands/Controls/Views) is clean
+  Category 1 with no OpenDevelop duplicate and no app-shell ownership.
+- `Docking/**` (ILSpy's own `DockWorkspace`), `Updates/**`, and
+  `AppEnv/{SingleInstance,CommandLineArguments,CommandLineTools}.cs` are Category 3 by the policy
+  above, but a `grep` sweep of the whole ILSpy checkout (2026-08-02) found every reference to these
+  types originates from an already-linked Category-1 file (`AssemblyTreeModel.cs`,
+  `Options/MiscSettingsViewModel.cs`, `Search/SearchPane.xaml.cs`,
+  `Commands/ScopeSearchTo*.cs`, `ILSpySettingsFilePathProvider.cs`) - none are dead weight pulled
+  in only by excluded app-shell code. Excluding them now would break the build; their removal
+  stays scheduled under Phase 4 (Docking - dummy `TabPageModel` removal) rather than Phase 0.
+- `Controls/TreeView/**` (SharpTreeView) remains the known Category-3 duplicate; the swap to
+  OpenDevelop's own `ICSharpCode.TreeView` is unstarted and out of scope for this pass (tracked
+  separately, not folded into Phase 0).
+- `Themes/{ResourceKeys,ThemeManager,SyntaxColor}.cs` and `ViewModels/{PaneModel,ToolPaneModel,
+  Pane}.cs` are flagged as Category 2 (their OpenDevelop equivalents already exist at
+  `src/Main/SharpDevelop/ViewModels/{PaneModel,ToolPaneModel,ObservableObjectBase}.cs`), left
+  linked as-is pending the Phase 1/Phase 3 work that actually unifies the two sides.
+- Added a `VerifyILSpyLinkedDirsExist` MSBuild target (`BeforeTargets="BeforeBuild"`) that fails
+  the build if any manifest-listed top-level directory disappears from the ILSpy submodule -
+  MSBuild globs otherwise match zero files silently, which would let a submodule bump quietly stop
+  linking a whole category without any build error.
+- `dotnet build ILSpyAddIn.csproj` verified green (0 errors) both before and after the manifest
+  refactor, on this machine - the doc's earlier "CoffHeaderTreeNode.cs DataTemplateSelector" build
+  blocker note no longer reproduces here (LibreWPF gap may already be fixed, or environment
+  differs); left as still-linked-and-fine rather than re-investigated in this pass.
+
+Not done in this pass (deliberately deferred to their own next actions): the SharpTreeView swap,
+and the smoke-test suite for opening an assembly / rendering the three pane contents / switching
+layouts (still blocked on the empty-pane content-area bug documented above).
+
+**Stale as of this Phase 0 pass - both items above were completed later in the same session, see:**
+
+- The SharpTreeView swap: done, but in the *opposite* direction than sketched here (port ILSpy's
+  features into OpenDevelop's tree, category 2) - the actual approach taken was to adopt ILSpy's
+  tree wholesale project-wide (see "Resolved" under "Open design question" above, and the
+  `ICSharpCode.ILSpyX.TreeView` extraction under "Immediate next actions" #2/#3 near the end of
+  this document).
+- The smoke-test suite: done - `tests/OpenDevelop.IntegrationTests/IlSpyAddInTests.cs` now covers
+  opening an assembly, all three real pane contents rendering (not just tab headers), and
+  switching to the ILSpy layout activating those panes (see the "Immediate next actions" #3/#4
+  status updates and the "Verification matrix" section near the end of this document). The
+  "empty-pane content-area bug" that blocked this is also fixed (see "AvalonDock 5 unification"
+  and "Root cause: linked theme resource names" above).
 
 #### Phase 1 — common pane models and workspace
 
@@ -504,12 +860,16 @@ stable `ContentId`; the old APIs are compatibility façades only.
 #### Phase 2 — versioned layout service and ILSpy layout
 
 - Implement the renderer-independent layout DTO, migration/import, templates and persistence.
-- Make `Default`, `Debug`, `Plain`, and `ILSpy` use the same service.
+- Add the `ILayoutTemplateProvider` (or equivalent AddInTree path) extension point so AddIns can
+  register named layout templates; register built-in `Default`/`Debug`/`Plain` through it too, for
+  one registration path rather than a shell-hardcoded list plus an AddIn-contributed exception.
+- Make `Default`, `Debug`, `Plain`, and `ILSpy` use the same service, with `ILSpy` contributed by
+  the ILSpy AddIn through the new extension point.
 - Preserve open documents and service instances across layout switches.
 - Remove runtime pane re-registration/reflection activation workarounds.
 
 Exit: clean-profile and restored-profile tests produce the same pane groups; corrupt/unknown pane
-entries degrade safely; ILSpy layout is a first-class named layout.
+entries degrade safely; ILSpy layout is a first-class, AddIn-contributed named layout.
 
 #### Phase 3 — application-wide Light/Dark theme
 
@@ -570,17 +930,302 @@ ILSpy integration tests
 WPF integration tests should inspect actual rendered content, not merely tab headers or constructed
 view instances; the empty-control false positive documented above must remain a regression test.
 
+**Done (2026-08-02):** `tests/OpenDevelop.IntegrationTests/IlSpyAddInTests.cs`'s
+`OpenAssembly_ShowsIlSpyPadsWithRealContent` previously only asserted tab headers ("Assemblies"/
+"Decompiled Code" text) plus the DevFlow-reported `loadedAssemblies`/`decompiledTextLength` JSON,
+with a comment explicitly noting the assembly tree's content area "does not render in this host's
+visual tree" and "is never walkable" - written to match the bug that existed at the time. Now that
+the theme-loading bug is fixed (see "AvalonDock 5 unification" and "Root cause: linked theme
+resource names" above), strengthened the test to assert on the actual UI tree: at least one real
+`ICSharpCode.ILSpy.Controls.TreeView.SharpTreeNodeView` element with non-zero width/height must be
+present, not just tab headers - directly encoding the "empty container, 0 children" regression this
+technote worried about into an automated check, replacing the outdated comment that documented it
+as a known limitation. `dotnet test ... --filter-query "/*/*/IlSpyAddInTests/*"` passes with the
+strengthened assertion.
+
 ### Immediate next actions
 
-1. Replace `ILSpyAddIn.csproj` directory globs with the audited explicit link manifest.
-2. Resolve the SharpTreeView duplicate by converging on OpenDevelop's shared tree library (including
-   the small ILSpyX image/platform API delta) and prove the three pane contents render.
+1. ~~Replace `ILSpyAddIn.csproj` directory globs with the audited explicit link manifest.~~ **Done
+   (2026-08-02)** - see Phase 0 status above.
+2. ~~Resolve the SharpTreeView duplicate by converging on a shared tree library and prove pane
+   contents render.~~ **Done (2026-08-02)**, via the reverse direction (adopt ILSpy's tree
+   wholesale, project-wide) - see "Resolved" note under "Open design question" above. Note: this
+   proved the *control* renders (`TestTreeView` template end-to-end); the three ILSpy pane contents
+   specifically remain unverified at runtime due to the separate, pre-existing ThemeManager
+   resource-loading bug also noted there.
 3. Add the host-neutral pane/workspace contracts and adapt one built-in pane plus one ILSpy pane as
    a vertical slice.
-4. Define the versioned layout DTO and encode `ILSpy` as a template rather than another legacy
-   SharpDevelop XML layout.
+
+   **Partial progress (2026-08-02): built-in-pane half done, ILSpy-pane half deliberately
+   deferred.** An inventory of the current pane hierarchy found OpenDevelop's own
+   `ToolPaneModel`/`PaneModel` (`src/Main/SharpDevelop/ViewModels/`) is *already* the doc's intended
+   host-neutral hierarchy going forward (per "OpenDevelop's existing pane hierarchy adapts first"
+   above) - `ProjectBrowserViewModel` (Solution Explorer, the only real/live `ToolPaneModel`
+   subclass; `LegacyToolPaneModel` exists but has zero constructors anywhere in the repo, so
+   adapting it would prove nothing) already derives from it. The concrete, low-risk vertical slice
+   done this pass: added `ToolPaneModel.PreferredDockSize`/`PreferredDockSide` (new, additive,
+   default-null properties - the doc's target contract's dock-placement hints) and replaced
+   `DockWorkspace.AfterInsertAnchorable`'s single `anchorableShown.ContentId == "ProjectBrowser"`
+   special case with a generic `pane.PreferredDockSize` read, with `ProjectBrowserViewModel` setting
+   it in its constructor instead of being hardcoded into the workspace. `PreferredDockSide` is added
+   but not yet consulted anywhere (today's layout comes entirely from persisted AvalonDock XML) -
+   scaffolding for Phase 2, not wired behavior yet.
+
+   **ILSpy-pane half done too (2026-08-02, follow-up pass, explicitly confirmed first):**
+   `externals/ilspy/ILSpy/Search/SearchPaneModel.cs` now derives directly from
+   `ICSharpCode.SharpDevelop.ViewModels.ToolPaneModel` (OpenDevelop's) instead of
+   `ICSharpCode.ILSpy.ViewModels.ToolPaneModel` (ILSpy's own) - a genuine edit to the ILSpy
+   checkout's existing class declaration line, not an additive file (C# only allows one
+   partial-class part to declare the base type, so this couldn't be done the way
+   `SharpTreeNode.OpenDevelop.cs` extended `SharpTreeNode` for the tree model). `[ExportToolPane]`
+   (contract type `ICSharpCode.ILSpy.ViewModels.ToolPaneModel`) became a plain
+   `[Export(typeof(SearchPaneModel))]`, since the only consumer of the "ToolPane" contract
+   enumeration is ILSpy's own (unused-by-us) `Docking/DockWorkspace.cs` `ToolPanes` property, and
+   `IlSpyWorkspaceHost` already fetches this pane by concrete type
+   (`exportProvider.GetExportedValue<SearchPaneModel>()`), not by that contract. `Content = this;`
+   was added to its constructor to match what `IlSpyToolPaneAdapter` used to set, so the existing
+   `[DataTemplate(typeof(SearchPaneModel))]` view registration (`SearchPane.xaml.cs`) still
+   resolves the same way via WPF's implicit DataTemplate lookup.
+
+   `IlSpyWorkspaceHost.cs` now registers `searchPaneModel` directly with
+   `DockWorkspaceExtensibility.AddToolPane(...)` instead of wrapping it in `IlSpyToolPaneAdapter` -
+   `IlSpyToolPaneAdapter`'s property-mirroring remains in place only for `AssemblyTreeModel`
+   (not attempted in this pass - it's 1111 lines with drag/drop, navigation and ILSpy's own
+   `Docking.DockWorkspace` coupling already documented above as load-bearing; converting it is a
+   much larger, separate unit of work than a small pane).
+
+   **Follow-up (2026-08-02, later in this pass): `AnalyzerTreeViewModel` migrated too.** Same
+   mechanical change as `SearchPaneModel` - `[ExportToolPane]` dropped (the bare `[Export]` this
+   class already carried covers `IlSpyWorkspaceHost`'s concrete-type lookup), base type changed
+   from `ICSharpCode.ILSpy.ViewModels.ToolPaneModel` to
+   `ICSharpCode.SharpDevelop.ViewModels.ToolPaneModel`, `Content = this;` added to its constructor
+   (it previously had no `Content` at all - `IlSpyToolPaneAdapter` was the one setting it).
+   Checked the same categories of external reference before changing: `AnalyzeCommand.cs`'s two
+   constructor-injected `AnalyzerTreeViewModel` parameters and `AnalyzerTreeView.xaml.cs`'s
+   `[DataTemplate(typeof(AnalyzerTreeViewModel))]` both resolve by concrete type, unaffected;
+   `Docking/DockWorkspace.wpf.cs`'s `GetContainer<AnalyzerTreeViewModel>()` is ILSpy's own unused
+   `DockWorkspace`, same as before. `IlSpyWorkspaceHost.cs` now registers `analyzerTreeViewModel`
+   directly instead of wrapping it - only `AssemblyTreeModel` still goes through
+   `IlSpyToolPaneAdapter`. Verified: `dotnet build -t:Rebuild` on `ILSpyAddIn.csproj` and a plain
+   build of `SharpDevelop.csproj` both clean (0 errors, only the already-documented harmless
+   `NativeMethods` CS0436 duplicate-type warning).
+   Checked before making this change that nothing else depends on `SearchPaneModel` remaining under
+   the "ToolPane" MEF contract: `SearchPane.xaml.cs`'s `[DataTemplate(typeof(SearchPaneModel))]` and
+   `ScopeSearchToAssembly.cs`/`ScopeSearchToNamespace.cs`'s constructor-injected `SearchPaneModel`
+   parameter both resolve by concrete type, unaffected; `ShowSearchCommand.cs`/
+   `DockWorkspace.wpf.cs` call into ILSpy's own (unused) `Docking.DockWorkspace.ShowToolPane`/
+   `GetContainer<SearchPaneModel>()`, which would now just find no match (a no-op) rather than
+   throw - not a regression, since nothing wires that command into a live OpenDevelop menu today.
+
+   Verified: `ILSpyAddIn.csproj` builds clean (`dotnet build -t:Rebuild`, confirmed not a stale-cache
+   false positive) with this change. Full runtime verification of ILSpy pane rendering remains
+   blocked by the separate, pre-existing `ThemeManager`/`themes/theme.light.xaml` resource-loading
+   bug already documented above (`EnsureInitialized()` throws before any pane, including this one,
+   gets shown) - not something this pass could fix without going out of scope.
+
+   Verified: `ICSharpCode.SharpDevelop.csproj`, `SharpDevelop.csproj` (the app), and
+   `ILSpyAddIn.csproj` all build clean with the new properties. Runtime verification (launching the
+   app and checking the Project Browser pane's actual docked width via DevFlow) was attempted but
+   inconclusive - the Project Browser pane did not materialize in the DevFlow UI tree at all under a
+   freshly-generated layout (consistent with the pane-materialization flakiness this technote
+   already documents for runtime-added anchorables), so this was verified by code inspection
+   (identical `GridLength` assignment at the identical trigger point as the special case it
+   replaces, gated behind a null-check that preserves old behavior for every other pane) rather than
+   by an on-screen pixel check.
+
+   **Unrelated bug found and fixed while verifying this at runtime (2026-08-02):**
+   `CodeCoverageService`'s static constructor (`src/AddIns/Analysis/CodeCoverage/Project/Src/
+   CodeCoverageService.cs`) called `SD.Workbench.ViewOpened += ViewOpened` unconditionally.
+   `RegisterCodeCoverageOpenLensProviderCommand.Run()` (registered at `/SharpDevelop/Autostart`,
+   part of the separate, already-in-progress OpenLens feature - not this session's work) touches
+   `CodeCoverageService.ResultsChanged` during `CoreStartup.RunInitialization()`, before
+   `WorkbenchStartup.InitializeWorkbench()` has registered `IWorkbench` - so the static constructor
+   threw `ServiceNotFoundException`, and because .NET permanently caches a failed static
+   constructor as `TypeInitializationException` on every later access, this then also broke
+   `WpfWorkbench.Initialize()`'s menu construction (`ToggleCodeCoverageCommand.IsChecked` →
+   `CodeCoverageService.CodeCoverageHighlighted`), fatally crashing every launch that didn't have
+   the CodeCoverage AddIn manifest removed. (An initial attempt to fix this by deferring the
+   subscription via `SD.MainThread.InvokeAsyncAndForget` did not work: this early in startup,
+   `SD.MainThread` resolves to `FakeMessageLoop`, whose `InvokeAsyncAndForget` runs the callback
+   synchronously rather than actually deferring it - confirmed by re-hitting the exact same crash
+   with a different top stack frame.) Fixed at the root: the static constructor now only subscribes
+   to `SD.ProjectService.SolutionOpened` (available at this point) and lazily/idempotently attempts
+   the `IWorkbench.ViewOpened` subscription via a new `TryHookViewOpened()` guarded by
+   `SD.Services.GetService(typeof(IWorkbench))`, retried from the `CodeCoverageHighlighted`
+   getter/setter (touched repeatedly via menu `IsChecked` checks) so it completes once `IWorkbench`
+   actually exists. Verified: `CodeCoverage.csproj` and the app build clean, and a fresh launch (via
+   the DevFlow-driven verification loop) no longer crashes at this point at all - previously every
+   launch with the CodeCoverage AddIn enabled hit this fatal error.
+4. Define the versioned layout DTO, add the `ILayoutTemplateProvider` extension point, and encode
+   `ILSpy` as an AddIn-contributed template rather than another legacy SharpDevelop XML layout.
+
+   **Partial progress (2026-08-02): extension point done, versioned DTO deliberately deferred.**
+   Investigated the actual current state first: `data/layouts/LayoutConfig.xml` already listed
+   `Default`/`Debug`/`ILSpy`/`Plain` as four hand-authored rows (the doc's target - AddIn-owned
+   naming - was not yet true for `ILSpy`), and `AvalonDockLayout.LoadLayout()`
+   (`src/Main/SharpDevelop/Workbench/AvalonDockLayout.cs`) has its actual
+   `dockWorkspace.RestoreLayout(fileName)` call **commented out** (a pre-existing `TODO: re-enable
+   after migrating legacy pads to MEF ToolPaneModel`) - so no layout, named or not, is actually
+   deserialized/applied at runtime today; switching layouts only updates
+   `LayoutConfiguration.CurrentLayoutName` and logs. This means the versioned-DTO/pane-placement
+   work Phase 2 describes is genuinely greenfield, not a partial rewrite of working code, and
+   attempting it now would be exercising a code path nothing currently uses.
+
+   Given that, the reviewable slice actually done: a new `ILayoutTemplateProvider` interface +
+   `LayoutTemplateDescriptor` (`src/Main/SharpDevelop/Workbench/ILayoutTemplateProvider.cs`),
+   discovered via a new AddInTree path `/SharpDevelop/Workbench/LayoutTemplates` (mirroring the
+   existing `ITreeNodeFactory`/`IMSBuildAdditionalLogger` plain-interface extension-point pattern,
+   not a `ICommand`-wrapped one) and merged into `LayoutConfiguration.Layouts` from a new
+   `LoadAddInContributedLayoutTemplates()` step (a name already present from XML config wins, so
+   `Default`/`Debug`/`Plain` stay shell-owned as before). `ILSpyAddIn` now contributes the `ILSpy`
+   named layout through this path (`IlSpyLayoutTemplateProvider.cs`) instead of a
+   `LayoutConfig.xml` row, reusing the existing `data/layouts/ILSpy.xml` file as the template's
+   content unchanged - exactly the "AvalonDock XML as an import format, not the durable contract"
+   framing the doc's Phase 2 section already allows. `ChooseLayoutComboBox` needed no changes since
+   it already just enumerates `LayoutConfiguration.Layouts`.
+
+   **Gap found and closed (2026-08-02, user-flagged): registering the template as data wasn't
+   enough - the AddIn also needed to *activate itself* when its layout is selected.** The first
+   version of this change made `ILSpyAddIn` own the fact that the "ILSpy" named layout exists, but
+   `ILSpy.xml`'s `assemblyListPane`/`searchPane`/`analyzerPane` anchorables would only actually
+   restore if `IlSpyWorkspaceHost` had already registered those panes with `DockWorkspace` -
+   which only happened as a side effect of the user separately using `File > Open > Assembly` or
+   another `od.ilspy.*` action. Selecting "ILSpy" from `ChooseLayoutComboBox` *before* that would
+   silently restore nothing for those three anchorables (`DockWorkspace`'s
+   `LayoutSerializationCallback` skips any ContentId that isn't registered yet) - the layout would
+   look empty, not like "the ILSpy workspace." Added `LayoutTemplateDescriptor.OnActivating`
+   (an optional `Action`, null by default) and wired `LayoutConfiguration.CurrentLayoutName`'s
+   setter (and `ReloadDefaultLayout()`) to invoke `GetLayout(value)?.onActivating?.Invoke()` before
+   `LoadConfiguration()` runs. `IlSpyLayoutTemplateProvider` now passes
+   `onActivating: IlSpyWorkspaceHost.EnsureInitialized` - idempotent (guarded by its own
+   `initialized` flag), so this is a plain "activate me if I'm not already" hook, not a special
+   case. This keeps the "shell owns the mechanism, AddIn owns what happens" split: the shell has no
+   ILSpy-specific code, it just calls whatever activation callback the layout's own contributing
+   AddIn supplied.
+
+   **Verification gap closed (2026-08-02, same-day follow-up).** The UI-click-through problem
+   above (WPF popup items not captured by the DevFlow UI-tree snapshot) and the "every `od.ilspy.*`
+   action already initializes ILSpy as a side effect" problem were both solved the same way real
+   ILSpy testing elsewhere in this doc solves "no native dialog automation": add a narrow,
+   test-only DevFlow seam instead of fighting the UI. Added two small building blocks:
+   - `IlSpyWorkspaceHost.IsInitialized` (a plain `bool` property reading the existing `initialized`
+     field) and `od.ilspy.is-initialized` (`IlSpyDevFlowActions.cs`) - the one ILSpy status read
+     that does NOT itself trigger `EnsureInitialized()`, unlike `status`/`show-pane`/
+     `open-assembly`, so a test can tell "the layout switch did this" apart from "some other ILSpy
+     action already had."
+   - `od.workbench.switch-layout` (`OpenDevelopDevFlowActions.cs`) - drives
+     `LayoutConfiguration.CurrentLayoutName` directly (the same setter
+     `ChooseLayoutComboBox.cs:105` reaches on a real selection), bypassing the combo box UI
+     entirely rather than fighting its popup.
+
+   Verified live via DevFlow before writing the automated test: fresh launch,
+   `od.ilspy.is-initialized` → `{"initialized":false}`, then `od.workbench.switch-layout "ILSpy"` →
+   `{"found":true,"layoutName":"ILSpy"}`, then `od.ilspy.is-initialized` again →
+   `{"initialized":true}` - the layout switch alone, with zero prior ILSpy interaction, activated
+   the AddIn. Then added `IlSpyAddInTests.SwitchToIlSpyLayout_ActivatesPanesWithoutPriorIlSpyInteraction`
+   encoding the same check as a permanent regression test (the `wasAlreadyInitialized` read is
+   informational only, not asserted on, since `OpenDevelopAppFixture`'s app instance is shared
+   across the whole "OpenDevelop app" xUnit collection and another test may have already
+   initialized ILSpy first depending on run order - what the test does hard-assert is that after
+   switching to "ILSpy", the addin ends up initialized and its three panes are present, regardless
+   of how that came about). `dotnet test ... --filter-query "/*/*/IlSpyAddInTests/*"` passes both
+   tests in the file.
+
+   Explicitly NOT done in this pass (real Phase 2, tracked as still-open): the versioned layout DTO
+   itself (pane identity/side/group/order/proportions/floating bounds), re-enabling
+   `dockWorkspace.RestoreLayout()` in `AvalonDockLayout.LoadLayout()` (blocked on the legacy-pad
+   migration noted above, unrelated to *who registers* a named layout), and switching layouts
+   without reconstructing/losing open documents.
+
+   **Bug found and fixed while verifying this at runtime:** the first version of this change added
+   an explanatory XML comment inside `data/layouts/LayoutConfig.xml`. `LoadLayoutConfiguration`'s
+   parser did `foreach (XmlElement el in doc.DocumentElement.ChildNodes)` - an implicit cast that
+   throws `InvalidCastException` on any non-`XmlElement` child node. `XmlDocument` with
+   `PreserveWhitespace = false` (the default) already stripped insignificant whitespace text nodes,
+   which is why the four bare `<Layout>` rows previously worked with no `OfType<XmlElement>()`
+   guard - but XML comments are never treated as insignificant whitespace and are always kept as
+   `XmlComment` nodes, so adding one crashed every startup. Fixed both the immediate cause (removed
+   the comment from the XML data file - explanatory text belongs in this technote/commit, not in
+   parsed config data) and the underlying fragility (`ChildNodes.OfType<XmlElement>()` in
+   `LoadLayoutConfiguration`, so a future comment or stray text node in either `LayoutConfig.xml`
+   can't reintroduce the same crash). Verified: `SharpDevelop.csproj` and `ILSpyAddIn.csproj` build
+   clean, and a fresh launch (DevFlow-driven, as with the earlier verifications in this technote)
+   starts up with no fatal error and shows `ChooseLayoutComboBox` in the live UI tree.
 5. Replace `IdeThemeService`'s dock-only switch with the semantic application resource contract,
    initially covering Light and Dark.
+
+   **Partial progress (2026-08-02): main-shell-chrome slice done, AvalonEdit/ILSpy explicitly
+   deferred.** Confirmed first that `IdeThemeService.Apply()`
+   (`src/Main/SharpDevelop/Workbench/IdeThemeService.cs`) really did only ever set
+   `DockingManager.Theme` (`Vs2013Light/Dark/BlueTheme`) - nothing else - and that no semantic
+   light/dark resource-key pair existed anywhere in the main shell (only per-control
+   `themes/generic.xaml` implicit-style dictionaries, a different WPF mechanism). Added
+   `src/Main/SharpDevelop/Themes/Theme.{Light,Dark}.xaml` defining six semantic tokens
+   (`WindowBackground`, `ToolWindowBackground`, `Border`, `Foreground`, `MutedForeground`,
+   `Selection` - a deliberately small starting set, not the full token list the doc's "Full
+   application theming" section eventually wants). `IdeThemeService.Apply()` now merges the
+   matching dictionary into `Application.Current.Resources.MergedDictionaries` (removing the
+   previous one first) in the same call that sets `DockingManager.Theme`, so both change together
+   from the one existing call path (`Attach`/`SetTheme` via the Options panel) - no new call sites
+   needed. `Blue` maps to the Light semantic dictionary for now (doc only asks for Light/Dark this
+   pass).
+
+   Repointed two real elements to prove this end-to-end rather than leaving unused resource keys:
+   `WpfWorkbench.xaml`'s main-window `Background` (was a raw `SystemColors.ControlBrushKey`
+   binding, OS-theme-only and independent of the app's own IDE theme choice) and
+   `AboutDialog.xaml`'s quote-canvas background (was a hardcoded `#F5F5F5` hex literal, one of
+   several such literals found in a scan of shell XAML - `NumericUpDown.xaml`,
+   `ICSharpCode.Core.Presentation/themes/generic.xaml`, `FontSelector.xaml`,
+   `AddServiceReferenceDialog.xaml` have similar hardcoded brushes not touched in this pass).
+
+   Explicitly deferred (real Phase 3, not attempted here): AvalonEdit editor-background/syntax-color
+   tokens, ILSpy's own `ResourceKeys`/`ThemeManager` bridging (tracked separately above under the
+   ILSpy pane-model/composition sections), the rest of the shell's hardcoded-brush inventory, and a
+   proper resource-completeness audit/visual-contrast test.
+
+   Verified: `SharpDevelop.csproj` and `ICSharpCode.SharpDevelop.csproj` (Base, where
+   `AboutDialog.xaml` lives) both build clean. Runtime-verified via the DevFlow UI tree (not just
+   compilation): the live `WpfWorkbench` window's actual rendered
+   `frameworkProperties.background` reports `#F0F0F0` - exactly `Theme.Light.xaml`'s
+   `WindowBackground` color, confirming the `DynamicResource` binding resolves through the new
+   dictionary end-to-end rather than falling back to the old `SystemColors` binding.
+6. Scope the separate OpenDevelop-wide `Microsoft.VisualStudio.Composition` → TomsToolbox
+   composition migration as its own track (see "Composition boundary" above); do not let it block
+   or be blocked by Phases 0-5.
+
+   **Scoped (2026-08-02): decision + target + sequencing already recorded above; this closes item 6
+   with a concrete first step rather than leaving it an open-ended pointer.** Actually executing the
+   migration is deliberately NOT started here - doing so would contradict the whole point of "its
+   own track, not folded into Phases 0-5" established earlier in this pass. What's added instead is
+   the scoping itself:
+
+   - Re-confirmed (from the earlier "Composition-layer facts" investigation this session) that
+     OpenDevelop's own direct use of `Microsoft.VisualStudio.Composition` is narrow: exactly 3 files
+     carry `[Export]` (`ILSpyCompositionHost.cs` - ILSpy's own bridge, not OpenDevelop's;
+     `DecompiledCodeViewContent.cs` - a comment-only reference; and
+     `ProjectBrowserViewModel.cs` - the one real export, `ProjectBrowserViewModel` itself plus its
+     `"ToolPane"`-contract `ToolPaneModel`), zero uses of `[ImportingConstructor]`/`[Import]`
+     anywhere (no dependency-injection graph to untangle), and only 4 call sites read
+     `OpenDevelopMefHost.ExportProvider` directly (`DockWorkspace.cs`'s `ToolPanes` enumeration,
+     `ProjectBrowserPad.cs`, and `OpenDevelopDevFlowActions.cs` x2, all via
+     `GetExportedValue<ProjectBrowserViewModel>()`). This is the "low-risk/small footprint" claim
+     behind the "TomsToolbox is the settled target" decision - not an assumption.
+   - Concrete first step for whoever picks up this track: replace `OpenDevelopMefHost.cs`'s
+     `Microsoft.VisualStudio.Composition` `ExportProvider`/`ComposableCatalog`/
+     `CompositionConfiguration` host with a TomsToolbox `IExportProvider` built over
+     `Microsoft.Extensions.DependencyInjection` (mirroring `ILSpyCompositionHost.cs`'s existing
+     pattern almost exactly, since ILSpy already does this in the same process), re-attribute
+     `ProjectBrowserViewModel` from `[Export(typeof(ProjectBrowserViewModel))]`/
+     `[Export("ToolPane", typeof(ToolPaneModel))]`/`[Shared]` (System.Composition-style) to
+     TomsToolbox's export attributes, and update the 4 `GetExportedValue`/`GetExportedValues` call
+     sites to the TomsToolbox `IExportProvider` API. No `[ImportingConstructor]` graph means no
+     constructor-injection call sites to rewire - the entire migration is bounded by those 3 files
+     plus 4 call sites, not a sweep across the shell.
+   - Once that lands, `IToolPaneProvider`/`IDocumentPaneFactory` (the small registration API named
+     in "Composition boundary" above) can be introduced as the one seam both ILSpy's TomsToolbox
+     container and OpenDevelop's (now also TomsToolbox) container feed - closing the loop the
+     `IlSpyToolPaneAdapter`/`SearchPaneModel` work earlier in this pass already started proving out
+     one pane at a time.
 
 These actions deliberately establish one model and one source-reuse policy before expanding the
 embedded ILSpy surface. That makes later ILSpy updates an input to OpenDevelop's architecture,

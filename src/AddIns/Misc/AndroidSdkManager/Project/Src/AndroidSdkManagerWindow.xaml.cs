@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 using System.Windows;
 
 using ICSharpCode.Core;
-using ICSharpCode.TreeView;
+using ICSharpCode.ILSpyX.TreeView;
 using Microsoft.Win32;
 
 namespace ICSharpCode.AndroidSdkManager

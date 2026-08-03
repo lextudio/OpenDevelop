@@ -44,10 +44,23 @@ namespace ICSharpCode.ILSpyAddIn
 		private static AssemblyTreeModel assemblyTreeModel;
 		private static DecompilerTextView decompilerTextView;
 		private static IlSpyToolPaneAdapter assembliesPane;
-		private static IlSpyToolPaneAdapter searchPane;
-		private static IlSpyToolPaneAdapter analyzerPane;
+		// SearchPaneModel derives directly from OpenDevelop's ToolPaneModel now (see
+		// doc/technotes/ilspy.md "Immediate next actions" #3) - no adapter needed for this pane.
+		private static SearchPaneModel searchPane;
+		// AnalyzerTreeViewModel derives directly from OpenDevelop's ToolPaneModel now too (see
+		// doc/technotes/ilspy.md "Immediate next actions" #3) - no adapter needed for this pane.
+		private static AnalyzerTreeViewModel analyzerPane;
 		private static DecompiledCodeViewContent decompiledCodeView;
 		private static bool initialized;
+
+		/// <summary>
+		/// Whether <see cref="EnsureInitialized"/> has already run, WITHOUT triggering it as a side
+		/// effect (unlike every other member here, including <see cref="Panes"/>) - lets a test
+		/// distinguish "the ILSpy layout's activation hook already initialized this" from "my own
+		/// diagnostic call just initialized it," which every other status-reading DevFlow action
+		/// can't do since they all call <see cref="EnsureInitialized"/> themselves.
+		/// </summary>
+		public static bool IsInitialized => initialized;
 
 		public static AssemblyTreeModel AssemblyTreeModel {
 			get {
@@ -124,6 +137,13 @@ namespace ICSharpCode.ILSpyAddIn
 			// provider, SharpTreeView nodes render no icons; without the theme, the pane controls
 			// fall back to unstyled rendering.
 			SharpTreeNode.SetImagesProvider(new WpfWindowsTreeNodeImagesProvider());
+
+			// ThemeManager.UpdateTheme's relative-pack-URI resolution bug (see
+			// Themes/ThemeManager.cs) is fixed at its source now - see the assembly-qualified
+			// pack URI there instead of trying to force Application.ResourceAssembly here (WPF
+			// throws InvalidOperationException on any attempt to set it after the framework has
+			// already set it once, which happens before this addin ever loads - confirmed at
+			// runtime, not just theoretical).
 			var settingsService = exportProvider.GetExportedValue<SettingsService>();
 			ThemeManager.Current.Theme = settingsService.SessionSettings.Theme;
 
@@ -158,8 +178,8 @@ namespace ICSharpCode.ILSpyAddIn
 			// this pane via a static XAML anchorable header, not a Title binding), so it needs an
 			// explicit one.
 			assembliesPane = new IlSpyToolPaneAdapter(assemblyTreeModel, assemblyTreeModel) { Title = "Assemblies" };
-			searchPane = new IlSpyToolPaneAdapter(searchPaneModel, searchPaneModel);
-			analyzerPane = new IlSpyToolPaneAdapter(analyzerTreeViewModel, analyzerTreeViewModel);
+			searchPane = searchPaneModel;
+			analyzerPane = analyzerTreeViewModel;
 
 			DockWorkspaceExtensibility.AddToolPane(assembliesPane);
 			DockWorkspaceExtensibility.AddToolPane(searchPane);

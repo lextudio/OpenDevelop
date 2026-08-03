@@ -72,6 +72,12 @@ namespace ICSharpCode.ILSpyAddIn
 			}
 		}
 
+		[DevFlowAction("od.ilspy.is-initialized", Description = "Whether IlSpyWorkspaceHost.EnsureInitialized has already run, without triggering it - unlike od.ilspy.status/show-pane/open-assembly, which all initialize as a side effect. Used to verify layout-activation (od.workbench.switch-layout \"ILSpy\") actually initializes the addin by itself, without any other ILSpy action having run first")]
+		public static string IsInitialized()
+		{
+			return JsonSerializer.Serialize(new { initialized = IlSpyWorkspaceHost.IsInitialized });
+		}
+
 		[DevFlowAction("od.ilspy.status", Description = "Inspect the hosted ILSpy pads (Assemblies/Search/Analyzer/Decompiled Code): whether they're registered/visible, the assembly tree's loaded assemblies, and a snippet of the decompiled code pane")]
 		public static string GetStatus()
 		{

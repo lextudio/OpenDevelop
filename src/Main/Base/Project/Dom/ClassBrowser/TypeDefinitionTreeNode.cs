@@ -23,7 +23,7 @@ using System.Text;
 using System.Windows.Controls;
 using ICSharpCode.Core.Presentation;
 using ICSharpCode.TypeSystem;
-using ICSharpCode.TreeView;
+using ICSharpCode.ILSpyX.TreeView;
 using ICSharpCode.SharpDevelop.Dom;
 
 namespace ICSharpCode.SharpDevelop.Dom.ClassBrowser

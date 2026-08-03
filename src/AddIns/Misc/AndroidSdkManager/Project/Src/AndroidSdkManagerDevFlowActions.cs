@@ -9,7 +9,7 @@ using System.Text.Json;
 using System.Windows.Threading;
 
 using ICSharpCode.SharpDevelop;
-using ICSharpCode.TreeView;
+using ICSharpCode.ILSpyX.TreeView;
 using LeXtudio.DevFlow.Agent.Core;
 using Microsoft.Maui.DevFlow.Agent.Core;
 

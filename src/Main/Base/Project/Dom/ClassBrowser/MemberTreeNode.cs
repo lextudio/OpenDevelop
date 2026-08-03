@@ -20,7 +20,7 @@ using System;
 using System.Windows.Controls;
 using ICSharpCode.Core.Presentation;
 using ICSharpCode.TypeSystem;
-using ICSharpCode.TreeView;
+using ICSharpCode.ILSpyX.TreeView;
 
 namespace ICSharpCode.SharpDevelop.Dom.ClassBrowser
 {

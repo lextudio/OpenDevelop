@@ -19,7 +19,7 @@
 using System;
 using System.Linq;
 using Debugger.AddIn.TreeModel;
-using ICSharpCode.TreeView;
+using ICSharpCode.ILSpyX.TreeView;
 
 namespace Debugger.AddIn.Pads.Controls
 {
@@ -43,16 +43,18 @@ namespace Debugger.AddIn.Pads.Controls
 			get { return this.Node.GetChildren != null; }
 		}
 		
-		public override bool CanDelete(SharpTreeNode[] nodes)
+		// SharpTreeView duplicate resolution (2026-08-02): ILSpyX's SharpTreeNode calls
+		// CanDelete()/Delete() once per selected node (see SharpTreeView.cs's
+		// GetTopLevelSelection().All(node => node.CanDelete())/node.Delete() loop), rather than
+		// passing the whole selection array as OpenDevelop's own control used to.
+		public override bool CanDelete()
 		{
-			return nodes.All(n => n is SharpTreeNodeAdapter)
-				&& nodes.Cast<SharpTreeNodeAdapter>().All(n => n.Node.CanDelete);
+			return Node.CanDelete;
 		}
-		
-		public override void Delete(SharpTreeNode[] nodes)
+
+		public override void Delete()
 		{
-			foreach (var node in nodes)
-				node.Parent.Children.Remove(this);
+			Parent.Children.Remove(this);
 		}
 		
 		protected override void LoadChildren()

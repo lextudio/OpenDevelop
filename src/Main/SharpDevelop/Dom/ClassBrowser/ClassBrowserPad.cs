@@ -27,7 +27,7 @@ using ICSharpCode.Core.Presentation;
 using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Dom;
 using ICSharpCode.SharpDevelop.Parser;
-using ICSharpCode.TreeView;
+using ICSharpCode.ILSpyX.TreeView;
 using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Workbench;
 

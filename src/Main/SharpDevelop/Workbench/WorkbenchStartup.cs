@@ -51,7 +51,14 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			ComponentDispatcher.ThreadIdle -= ComponentDispatcher_ThreadIdle; // ensure we don't register twice
 			ComponentDispatcher.ThreadIdle += ComponentDispatcher_ThreadIdle;
 			LayoutConfiguration.LoadLayoutConfiguration();
-			SD.Services.AddService(typeof(IMessageLoop), new DispatcherMessageLoop(app.Dispatcher, SynchronizationContext.Current));
+			// SynchronizationContext.Current is captured here before the WPF Dispatcher has ever
+			// pumped a message on this thread (that's normally what installs a
+			// DispatcherSynchronizationContext as the ambient one) - so it was always null at this
+			// point, making SD.MainThread.SynchronizationContext permanently null too (doc/
+			// technotes/ilspy.md "Other findings from the test work" - broke SearchManager.
+			// FindAllParallel's ObserveOnUIThread path, though nothing in the app used it). Build
+			// the sync context explicitly from the dispatcher instead of relying on ambient state.
+			SD.Services.AddService(typeof(IMessageLoop), new DispatcherMessageLoop(app.Dispatcher, new DispatcherSynchronizationContext(app.Dispatcher)));
 			InitializeWorkbench(new WpfWorkbench(), new AvalonDockLayout());
 		}
 		

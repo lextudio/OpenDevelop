@@ -1,4 +1,19 @@
-<DockingManager version="1.3.0">
-    <LayoutRoot>
-    </LayoutRoot>
-</DockingManager>
+<?xml version="1.0" encoding="utf-8"?>
+<LayoutRoot>
+  <RootPanel Orientation="Horizontal">
+    <LayoutAnchorablePane DockWidth="280" Name="LeftPane">
+      <LayoutAnchorable Title="Assemblies" ContentId="assemblyListPane" IsSelected="true" AutoHideMinWidth="100" AutoHideMinHeight="100" />
+    </LayoutAnchorablePane>
+    <LayoutDocumentPane />
+    <LayoutAnchorablePane DockWidth="280" Name="RightPane">
+      <LayoutAnchorable Title="Search" ContentId="searchPane" IsSelected="true" AutoHideMinWidth="100" AutoHideMinHeight="100" />
+      <LayoutAnchorable Title="Analyze" ContentId="analyzerPane" AutoHideMinWidth="100" AutoHideMinHeight="100" />
+    </LayoutAnchorablePane>
+  </RootPanel>
+  <TopSide />
+  <RightSide />
+  <BottomSide />
+  <LeftSide />
+  <FloatingWindows />
+  <Hidden />
+</LayoutRoot>

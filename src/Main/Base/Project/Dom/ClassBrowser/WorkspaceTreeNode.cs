@@ -18,7 +18,7 @@
 
 using System;
 using System.Collections.Generic;
-using ICSharpCode.TreeView;
+using ICSharpCode.ILSpyX.TreeView;
 
 namespace ICSharpCode.SharpDevelop.Dom.ClassBrowser
 {

@@ -39,6 +39,10 @@ namespace ICSharpCode.CodeCoverage
 		{
 			registry = SD.GetRequiredService<OpenLensProviderRegistry>();
 			registration = registry.RegisterProvider(new CodeCoverageOpenLensProvider());
+			// This command runs from /SharpDevelop/Autostart (CoreStartup.RunInitialization()),
+			// before IWorkbench is registered as a service - CodeCoverageService's static
+			// constructor no longer requires it eagerly (see its TryHookViewOpened()), so this
+			// touch is safe this early.
 			CodeCoverageService.ResultsChanged += OnResultsChanged;
 		}
 

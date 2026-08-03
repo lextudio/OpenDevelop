@@ -48,4 +48,11 @@
 		<Class id="ICSharpCode.ILSpyAddIn.RegisterDevFlowActionsCommand"
 		       class="ICSharpCode.ILSpyAddIn.Commands.RegisterDevFlowActionsCommand"/>
 	</Path>
+
+	<!-- doc/technotes/ilspy.md "Immediate next actions" #4 - registers the "ILSpy" named layout
+	     as an AddIn-contributed template instead of a shell-hardcoded LayoutConfig.xml row. -->
+	<Path name="/SharpDevelop/Workbench/LayoutTemplates">
+		<Class id="IlSpyLayoutTemplateProvider"
+		       class="ICSharpCode.ILSpyAddIn.IlSpyLayoutTemplateProvider"/>
+	</Path>
 </AddIn>

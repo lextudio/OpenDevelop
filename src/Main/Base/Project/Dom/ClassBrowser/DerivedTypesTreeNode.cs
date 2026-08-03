@@ -19,7 +19,7 @@
 using System;
 using System.Linq;
 using ICSharpCode.TypeSystem;
-using ICSharpCode.TreeView;
+using ICSharpCode.ILSpyX.TreeView;
 using ICSharpCode.SharpDevelop.Refactoring;
 
 namespace ICSharpCode.SharpDevelop.Dom.ClassBrowser

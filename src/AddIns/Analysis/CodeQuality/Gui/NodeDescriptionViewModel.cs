@@ -35,7 +35,7 @@ using ICSharpCode.CodeQuality;
 using ICSharpCode.CodeQuality.Engine.Dom;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Widgets;
-using ICSharpCode.TreeView;
+using ICSharpCode.ILSpyX.TreeView;
 
 namespace ICSharpCode.CodeQuality.Gui
 {

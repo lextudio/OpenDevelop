@@ -21,7 +21,7 @@ using System.IO;
 using System.Linq;
 using System.Windows.Media;
 using ICSharpCode.SharpDevelop;
-using ICSharpCode.TreeView;
+using ICSharpCode.ILSpyX.TreeView;
 
 namespace ICSharpCode.CodeCoverage
 {
@@ -105,7 +105,7 @@ namespace ICSharpCode.CodeCoverage
 				} else if (TotalCodeLength == visitedCodeLength && VisitedBranchCoverage != 0 && VisitedBranchCoverage != 100) {
 					return PartialBranchesTextBrush;
 				}
-				return base.Foreground;
+				return (Brush)base.Foreground;
 			}
 		}
 

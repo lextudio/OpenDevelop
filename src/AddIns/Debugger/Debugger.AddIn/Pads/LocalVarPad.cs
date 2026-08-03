@@ -27,7 +27,8 @@ using Debugger.AddIn.TreeModel;
 using ICSharpCode.Core.Presentation;
 using ICSharpCode.SharpDevelop.Services;
 using ICSharpCode.SharpDevelop.Workbench;
-using ICSharpCode.TreeView;
+using ICSharpCode.ILSpyX.TreeView;
+using ICSharpCode.ILSpy.Controls.TreeView;
 
 namespace ICSharpCode.SharpDevelop.Gui.Pads
 {

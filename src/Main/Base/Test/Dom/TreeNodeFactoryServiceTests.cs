@@ -18,7 +18,7 @@
 
 using System;
 using System.Linq;
-using ICSharpCode.TreeView;
+using ICSharpCode.ILSpyX.TreeView;
 using NUnit.Framework;
 
 namespace ICSharpCode.SharpDevelop.Dom

@@ -18,7 +18,7 @@
 
 using System;
 using ICSharpCode.Core;
-using ICSharpCode.TreeView;
+using ICSharpCode.ILSpyX.TreeView;
 
 namespace ICSharpCode.SharpDevelop.Dom
 {

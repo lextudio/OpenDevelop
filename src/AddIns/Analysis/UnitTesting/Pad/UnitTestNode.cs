@@ -3,7 +3,8 @@ using System.Collections.Generic;
 using System.Windows;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Dom;
-using ICSharpCode.TreeView;
+using ICSharpCode.ILSpyX.TreeView;
+using ICSharpCode.ILSpyX.TreeView.PlatformAbstractions;
 
 namespace ICSharpCode.UnitTesting
 {
@@ -51,7 +52,7 @@ namespace ICSharpCode.UnitTesting
 			return test;
 		}
 
-		public override void ActivateItem(RoutedEventArgs e)
+		public override void ActivateItem(IPlatformRoutedEventArgs e)
 		{
 			if (test.GoToDefinition.CanExecute(e))
 				test.GoToDefinition.Execute(e);

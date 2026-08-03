@@ -26,7 +26,7 @@
       </Grid.ColumnDefinitions>
 
       <Border Grid.Column="0" BorderBrush="#C0C0C0" BorderThickness="1" Margin="0,0,8,0" ClipToBounds="True">
-        <Canvas x:Name="quoteCanvas" Background="#F5F5F5" Width="220" Height="320">
+        <Canvas x:Name="quoteCanvas" Background="{DynamicResource ToolWindowBackground}" Width="220" Height="320">
           <TextBlock x:Name="aboutImage" Width="220" Height="320"
                      Text="OpenDevelop" FontSize="28" FontWeight="Bold"
                      TextAlignment="Center" VerticalAlignment="Center"
