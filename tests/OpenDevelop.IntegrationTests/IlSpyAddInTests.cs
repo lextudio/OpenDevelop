@@ -223,12 +223,15 @@ public sealed class IlSpyAddInTests : IDisposable
                 Location: r.GetProperty("location").GetString(),
                 HasReference: r.GetProperty("hasReference").GetBoolean()))
             .ToList();
-        Assert.True(searchResults.Count > 0, "Expected the ILSpy search to find 'ComputeGreeting' in the DebugTestApp fixture");
-        int hitIndex = searchResults.FindIndex(r => r.Location == "DebugTestApp.Program");
-        Assert.True(hitIndex >= 0,
-            $"Expected a search hit inside DebugTestApp.Program; got: {string.Join(" | ", searchResults.Select(r => r.Location + " :: " + r.Name))}");
-        Assert.True(searchResults[hitIndex].HasReference,
+        // The fixture is fixed (tests/fixtures/DebugTestApp), and "ComputeGreeting" is its only
+        // private helper, so this is exact rather than "at least one hit": one result, with ILSpy's
+        // own rendering of the signature.
+        var hit = Assert.Single(searchResults);
+        Assert.Equal("Program.ComputeGreeting(string) : string", hit.Name);
+        Assert.Equal("DebugTestApp.Program", hit.Location);
+        Assert.True(hit.HasReference,
             "A search result must carry a navigable Reference, otherwise activating it cannot navigate anywhere");
+        int hitIndex = 0;
 
         // Double-clicking a result does exactly one thing (SearchPane.JumpToSelectedItem):
         // MessageBus.Send(new NavigateToReferenceEventArgs(result.Reference)) - which
@@ -241,14 +244,144 @@ public sealed class IlSpyAddInTests : IDisposable
         var jumpedTo = activate.GetProperty("selectedNodeDetails").EnumerateArray()
             .Select(n => (Type: n.GetProperty("nodeType").GetString(), Text: n.GetProperty("text").GetString()))
             .ToList();
-        Assert.Contains(jumpedTo, n => n.Type == "MethodTreeNode"
-            && n.Text != null && n.Text.StartsWith("ComputeGreeting", StringComparison.Ordinal));
+        var jumpedNode = Assert.Single(jumpedTo);
+        Assert.Equal("MethodTreeNode", jumpedNode.Type);
+        Assert.Equal("ComputeGreeting(string) : string", jumpedNode.Text);
 
         // Analyze pad: real content. AnalyzerTreeView *is* a SharpTreeView (its XAML root element),
         // so this also covers the shared tree control rendering inside this pad.
         var activateAnalyze = await _app.InvokeAsync("od.ilspy.activate-pane", "Analyze");
         Assert.True(activateAnalyze.GetProperty("found").GetBoolean(), "Could not find the Analyze ILSpy pane");
         await AssertRenderedWithNonZeroSizeAsync("ICSharpCode.ILSpy.Analyzers.AnalyzerTreeView");
+
+        // --- Multi-pad workflows (added 2026-08-03) -------------------------------------------
+        // The checks above verify each pad in isolation. What a user actually does is drive one pad
+        // from another, so these assert the linkages themselves, in the order a user would hit them.
+
+        // (1) Search pad -> Assemblies pad -> Decompiled Code document.
+        // The search jump above already moved the tree selection onto ComputeGreeting; the point of
+        // this assertion is the *third* pad: the decompiled document must follow the tree selection,
+        // which is the whole reason the jump is useful. Verified content, not just non-emptiness.
+        var afterJump = await WaitForDecompiledTextAsync(
+            text => text.Contains("ComputeGreeting", StringComparison.Ordinal),
+            "the decompiled document to follow the Assemblies-tree jump onto ComputeGreeting");
+        // Exact expected decompilation of the fixture's ComputeGreeting - the source is
+        // `$"Hello, {name}!"`, which the decompiler renders as string concatenation.
+        Assert.Contains("// DebugTestApp.Program", afterJump);
+        Assert.Contains("private static string ComputeGreeting(string name)", afterJump);
+        Assert.Contains("return \"Hello, \" + name + \"!\";", afterJump);
+
+        // (2) Assemblies pad -> Analyze pad. Selecting a member and analyzing it is the canonical
+        // cross-pad action; od.ilspy.analyze-selected runs exactly what ILSpy's AnalyzeCommand does
+        // (SelectedNodes.OfType<IMemberTreeNode>() -> AnalyzerTreeViewModel.Analyze(node.Member)).
+        var analyze = await _app.InvokeAsync("od.ilspy.analyze-selected");
+        Assert.True(analyze.GetProperty("success").GetBoolean(), ErrorOf(analyze));
+        var analyzerRoots = analyze.GetProperty("rootChildren").EnumerateArray()
+            .Select(n => (
+                Text: n.GetProperty("text").GetString(),
+                NodeType: n.GetProperty("nodeType").GetString(),
+                Children: n.GetProperty("children").EnumerateArray().Select(c => c.GetString()).ToList()))
+            .ToList();
+        var analyzedMethod = analyzerRoots.SingleOrDefault(n =>
+            n.Text != null && n.Text.Contains("ComputeGreeting", StringComparison.Ordinal));
+        Assert.True(analyzedMethod.Text != null,
+            $"Expected the Analyze pad to hold an analysis root for ComputeGreeting; got: {string.Join(" | ", analyzerRoots.Select(n => n.NodeType + ":" + n.Text))}");
+        Assert.Equal("AnalyzedMethodTreeNode", analyzedMethod.NodeType);
+        Assert.Equal("DebugTestApp.Program.ComputeGreeting(string) : string", analyzedMethod.Text);
+        // A real analysis, not an empty placeholder: a method analysis offers exactly these two.
+        Assert.Equal(new[] { "Uses", "Used By" }, analyzedMethod.Children);
+
+        // (3) Back navigation undoes the jump - the Back toolbar button's whole purpose, and only
+        // meaningful because the jump in (1) pushed history.
+        var back = await _app.InvokeAsync("od.ilspy.navigate-history", "back");
+        Assert.True(back.GetProperty("success").GetBoolean(), ErrorOf(back));
+        Assert.True(back.GetProperty("selectionChanged").GetBoolean(),
+            "Expected navigating back to move the Assemblies-tree selection off the jumped-to member");
+        Assert.True(back.GetProperty("canNavigateForward").GetBoolean(),
+            "Expected Forward to become available after navigating back");
+        var afterBack = back.GetProperty("selectedNodeDetails").EnumerateArray()
+            .Select(n => (Type: n.GetProperty("nodeType").GetString(), Text: n.GetProperty("text").GetString()))
+            .ToList();
+        var restored = Assert.Single(afterBack);
+        Assert.Equal("AssemblyTreeNode", restored.Type);
+        Assert.Equal("DebugTestApp (1.0.0.0, .NETCoreApp, v10.0)", restored.Text);
+
+        // (4) Toolbar language dropdown -> Decompiled Code document. Crosses the toolbar and the
+        // document, and is the one toolbar element whose effect is directly observable in content.
+        // ILSpy persists the chosen language in its session settings, so this must be put back or the
+        // *next* run of this test would start in IL - hence the try/finally.
+        var beforeLanguage = await _app.InvokeAsync("od.ilspy.toolbar-combos", "", "");
+        string originalLanguage = beforeLanguage.GetProperty("combos").EnumerateArray()
+            .First(c => c.GetProperty("type").GetString() == "IlSpyLanguageComboBox")
+            .GetProperty("selectedItem").GetString()!;
+        try
+        {
+            // Re-select the member first: step (3) navigated back to the assembly node, and what the
+            // decompiled document holds for an assembly-level selection is a different (much larger)
+            // output. Pinning the selection to one small member keeps this assertion about the
+            // *language switch* rather than about whatever happened to be selected.
+            // Re-search rather than reusing the earlier result index: the pad activations and the
+            // Analyze step in between can have re-materialized the Search pane, and its Results
+            // collection lives on the *view*, so a stale index is not guaranteed to still resolve.
+            var reSearch = await _app.InvokeAsync("od.ilspy.search", "ComputeGreeting");
+            Assert.True(reSearch.GetProperty("success").GetBoolean(), ErrorOf(reSearch));
+            Assert.Equal(1, reSearch.GetProperty("count").GetInt32());
+            var reActivate = await _app.InvokeAsync("od.ilspy.search-activate", 0);
+            Assert.True(reActivate.GetProperty("success").GetBoolean(), ErrorOf(reActivate));
+            await WaitForDecompiledTextAsync(
+                text => text.Contains("ComputeGreeting", StringComparison.Ordinal),
+                "the decompiled document to show ComputeGreeting again before switching language");
+
+            var toIl = await _app.InvokeAsync("od.ilspy.toolbar-combos", "Language", "IL");
+            Assert.True(toIl.GetProperty("success").GetBoolean(), ErrorOf(toIl));
+
+            // Exact expected IL for the fixture's ComputeGreeting, not just "some IL directive".
+            var il = await WaitForDecompiledTextAsync(
+                text => text.Contains(".maxstack", StringComparison.Ordinal),
+                "the decompiled document to switch to IL after picking IL in the toolbar's language dropdown");
+            Assert.Contains(".method private hidebysig static", il);
+            Assert.Contains("string ComputeGreeting (", il);
+            Assert.Contains(".maxstack 3", il);
+            Assert.Contains("System.String::Concat(string, string, string)", il);
+            Assert.Contains("end of method Program::ComputeGreeting", il);
+            // ...and it is no longer the C# rendering.
+            Assert.DoesNotContain("private static string ComputeGreeting(string name)", il);
+
+            // The language-version dropdown is part of the same linkage: IL has no versions, so it
+            // must collapse (ILSpy binds its Visibility to HasLanguageVersions).
+            var combosInIl = await _app.InvokeAsync("od.ilspy.toolbar-combos", "", "");
+            var versionCombo = combosInIl.GetProperty("combos").EnumerateArray()
+                .First(c => c.GetProperty("type").GetString() == "IlSpyLanguageVersionComboBox");
+            Assert.False(versionCombo.GetProperty("isVisible").GetBoolean(),
+                "Expected the language-version dropdown to collapse for IL, which has no language versions");
+        }
+        finally
+        {
+            await _app.InvokeAsync("od.ilspy.toolbar-combos", "Language", originalLanguage);
+        }
+    }
+
+    /// <summary>
+    /// Polls the decompiled document until its text satisfies <paramref name="predicate"/>. Decompiling
+    /// is asynchronous and triggered indirectly (by a tree selection or a language change), so the
+    /// content a linkage produces is never available on the very next call.
+    /// </summary>
+    async Task<string> WaitForDecompiledTextAsync(Func<string, bool> predicate, string expectation)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        string snippet = "";
+        while (true)
+        {
+            var status = await _app.InvokeAsync("od.ilspy.status");
+            snippet = status.GetProperty("decompiledTextSnippet").GetString() ?? "";
+            if (predicate(snippet))
+                return snippet;
+            if (DateTime.UtcNow >= deadline)
+                break;
+            await Task.Delay(500);
+        }
+        Assert.Fail($"Timed out waiting for {expectation}. Decompiled text was: {snippet[..Math.Min(400, snippet.Length)]}");
+        return snippet;
     }
 
     [Fact]

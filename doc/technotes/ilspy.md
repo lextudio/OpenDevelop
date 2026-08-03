@@ -1909,3 +1909,129 @@ Not added (real ILSpy has them, but they are combo boxes / checkbox groups rathe
 i.e. a different piece of work): the assembly-list dropdown + Manage Assembly Lists, the three
 API-visibility toggles (public only / public+internal / all), and the language + language-version
 dropdowns.
+
+#### Follow-up: the three API-visibility toggles (2026-08-03)
+
+User: the visibility-control buttons were still missing. Added them - real ILSpy hardcodes three
+CheckBoxes in `ILSpy/Controls/MainToolBar.xaml` bound to
+`SessionSettings.LanguageSettings.ApiVisPublicOnly` / `ApiVisPublicAndInternal` / `ApiVisAll`.
+
+Those three bools are not independent: they are a radio group over one enum,
+`LanguageSettings.ShowApiLevel` (`ICSharpCode.ILSpyX.ApiVisibility`: PublicOnly /
+PublicAndInternal / All) - each setter just switches the enum and raises PropertyChanged for all
+three. So `IlSpyApiVisibilityToggleBase` reads the enum to decide whether it is the checked one, and
+selecting one refreshes its siblings (`IlSpyApiVisibilityToggles.UpdateAll`, a weak-reference
+registry so toggles don't leak). Host access added as
+`IlSpyWorkspaceHost.GetApiVisibility`/`SetApiVisibility`.
+
+No explicit tree refresh is needed: `AssemblyTreeModel`'s settings handler already subscribes to
+`LanguageSettings` PropertyChanged and calls `Refresh()` for any property other than
+LanguageId/LanguageVersionId (`AssemblyTreeModel.cs`) - which is what re-filters the assembly tree.
+(Verified by reading that upstream code, not by observing the filtering.)
+
+`CheckBox`, not `Button`, matching ILSpy and conveying sticky state; styled with
+`ToolBar.CheckBoxStyleKey` exactly as the shell's own `ToolBarCheckBox` does, so it gets flat toolbar
+chrome. Icons from the VS2017 Image Library with **filenames kept verbatim**, chosen so the icon
+shows the *lowest* visibility the level includes: `Method_16x` (plain = public), `MethodFriend_16x`
+("friend" is VS iconography for internal), `MethodPrivate_16x`.
+
+Verified live. The UI tree cannot report a CheckBox's `IsChecked` (it only exposes
+`state.selected`, which reads false regardless), so a dedicated `od.ilspy.api-visibility` action was
+added to read/set the level and report each toggle's real `IsChecked` - without it the first
+observation looked like "none of the three are checked", which was a reporting artifact, not a bug:
+
+| action | level | PublicOnly | PublicAndInternal | All |
+|---|---|---|---|---|
+| initial (default) | PublicAndInternal | false | **true** | false |
+| set All | All | false | false | **true** |
+| set PublicOnly | PublicOnly | **true** | false | false |
+
+All 9 ILSpy toolbar items now render (6 buttons at 20x22 + 3 toggles at 22x22) on the strip's own
+wrapped band. `IlSpyAddInTests` 2/2 still pass.
+
+Still not ported (combo boxes, i.e. a different control type and a separate piece of work): the
+assembly-list dropdown + Manage Assembly Lists, and the language + language-version dropdowns.
+
+#### Fix: the toolbar buttons were rendering with default Button chrome (2026-08-03)
+
+User spotted that some ILSpy strip buttons had borders. Correct - and it was a styling bug of mine,
+not something inherent to the strip. A `Button` placed inside a WPF `ToolBar` does **not** pick up the
+flat toolbar chrome on its own; it keeps the default Button style, borders included. The shell's own
+`ToolBarButton` sets it explicitly (`ToolBarButton.cs:61`:
+`SetResourceReference(FrameworkElement.StyleProperty, ToolBar.ButtonStyleKey)`), and
+`IlSpyToolBarButtonBase` was missing exactly that - I had styled only the inner `Image` (and had
+remembered `ToolBar.CheckBoxStyleKey` for the CheckBox-based visibility toggles, which is why those
+looked right and the six buttons did not).
+
+Fixed by adding the same `ToolBar.ButtonStyleKey` reference. Measured before/after against the shell's
+own `ToolBarButton` as the baseline:
+
+| | before | after | shell baseline |
+|---|---|---|---|
+| size | 20x22 | **22x22** | 22x22 |
+| borderBrush | default Button chrome | **#00FFFFFF** (transparent) | #00FFFFFF |
+| background | default | **#00FFFFFF** | #00FFFFFF |
+
+The one element that still carries a visible border is `IlSpyShowPublicAndInternalToggle`
+(`border=#80DADADA`, `bg=#400080FF`) - that is the *checked* state highlight of a toggle and is
+correct: it is the currently selected API-visibility level (default `PublicAndInternal`), and the
+other two toggles are transparent. `IlSpyAddInTests` 2/2 still pass.
+
+#### The dropdown half of the toolbar (2026-08-03)
+
+User: the dropdown strip elements are needed too for complete ILSpy functionality. Added, in
+`Commands/IlSpyToolBarCombos.cs`. Unlike the icon buttons, ILSpy does **not** export these as
+commands - it hardcodes them in `ILSpy/Controls/MainToolBar.xaml` - so what is mirrored here is that
+XAML's bindings, not a command object:
+
+| dropdown | items | selection | notes |
+|---|---|---|---|
+| assembly list | `AssemblyListManager.AssemblyLists` (ObservableCollection&lt;string&gt;) | `SessionSettings.ActiveAssemblyList` | AssemblyTreeModel turns the write into `ShowAssemblyList(...)` |
+| (button) | - | - | opens ILSpy's own `ManageAssemblyListsDialog`, already linked source here |
+| language | `LanguageService.AllLanguages`, DisplayMemberPath `Name` | `LanguageService.Language` | drives `RefreshDecompiledView()` |
+| language version | selected language's `LanguageVersions`, DisplayMemberPath `DisplayName` | `LanguageService.LanguageVersion` | collapsed when `HasLanguageVersions` is false |
+
+Icon for Manage Assembly Lists: `Library_16x` from the VS2017 Image Library, filename kept verbatim.
+
+Three implementation points worth keeping:
+
+1. **Binding is deferred, never done in `Initialize`.** The toolbar is constructed during workbench
+   startup, long before any ILSpy action, and every `IlSpyWorkspaceHost` member except
+   `IsInitialized` boots the whole hosted ILSpy as a side effect. So `IlSpyToolBarComboBoxBase`
+   binds on the first `UpdateStatus()` that sees `IsInitialized` - a toolbar being built must not be
+   what starts ILSpy. A failing bind is logged and disables just that dropdown rather than taking
+   the workbench's status pass down.
+2. **`Language` is ambiguous inside these classes** - `ComboBox` inherits
+   `FrameworkElement.Language` (an `XmlLanguage`), which shadows ILSpy's own `Language` type. Aliased
+   (`IlSpyLanguage`/`IlSpyLanguageVersion`) rather than relying on resolution order.
+3. **The version dropdown is push-based, not polled.** First cut re-read the language on the
+   workbench's periodic status pass, and measured, that left it still showing `C# 15.0` with the
+   dropdown visible after switching to IL. It now subscribes to `LanguageService.PropertyChanged`
+   (Language/LanguageVersion), which is what ILSpy's XAML binding does for the same reason.
+
+Also fixed while verifying: the assembly-list dropdown showed **no selection** on a fresh profile.
+`SessionSettings.ActiveAssemblyList` is only written when settings are *saved*
+(`AssemblyTreeModel` does `settings.ActiveAssemblyList = AssemblyList.ListName` on save), so it is
+still null while `(Default)` is already the loaded list. Now prefers the actually-loaded
+`AssemblyTreeModel.AssemblyList.ListName` and falls back to the session setting.
+
+Verified live via a new `od.ilspy.toolbar-combos` action (reads item counts / selected item /
+visibility and can select a value, since the UI tree exposes neither `Items` nor `SelectedItem` for a
+ComboBox):
+
+| step | assembly list | language | language version |
+|---|---|---|---|
+| initial | `(Default)`, 1 item | `C#`, 21 items | `C# 15.0 / VS 202x.yy`, 18 items, visible |
+| select `IL` | `(Default)` | `IL` | 0 items, **collapsed** |
+| select `C#` | `(Default)` | `C#` | 18 items, visible again |
+| select `C# 5.0 / VS 2012` | `(Default)` | `C#` | `C# 5.0 / VS 2012` |
+
+And functionally, not just cosmetically: after switching the language dropdown to IL, the decompiled
+document's text really changed to IL output (verified via `od.ilspy.status`). Note ILSpy persists
+these session settings, so the language/version chosen in one run is still selected on the next -
+correct behavior, but it means "initial" state depends on the previous session.
+
+The ILSpy strip now carries 13 items (6 buttons + 3 visibility toggles + 2 dropdowns + manage button
++ version dropdown), all rendering. `IlSpyAddInTests` 2/2 pass. Assembly-list *switching* is
+populated and selectable but not exercised end-to-end here: a fresh profile has only the `(Default)`
+list, and creating another one goes through the modal Manage dialog.

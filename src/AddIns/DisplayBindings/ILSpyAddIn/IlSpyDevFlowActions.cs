@@ -95,6 +95,192 @@ namespace ICSharpCode.ILSpyAddIn
 			});
 		}
 
+		[DevFlowAction("od.ilspy.analyze-selected", Description = "Analyze the Assemblies tree's currently selected member(s) into the Analyze pad - exactly what ILSpy's AnalyzeCommand does (SelectedNodes.OfType<IMemberTreeNode>() -> AnalyzerTreeViewModel.Analyze(node.Member)). Returns the Analyze pad's root children, i.e. whether the Assemblies -> Analyze pad linkage actually produced anything")]
+		public static async Task<string> AnalyzeSelectedAsync()
+		{
+			try {
+				var model = IlSpyWorkspaceHost.AssemblyTreeModel;
+				var analyzer = IlSpyWorkspaceHost.AnalyzerPane;
+
+				var members = model.SelectedNodes
+					.OfType<ICSharpCode.ILSpy.TreeNodes.IMemberTreeNode>()
+					.ToArray();
+				if (members.Length == 0) {
+					return JsonSerializer.Serialize(new {
+						success = false,
+						error = "No IMemberTreeNode selected in the Assemblies tree - AnalyzeCommand would be disabled.",
+						selectedNodeDetails = GetSelectedNodeDetails()
+					});
+				}
+
+				foreach (var member in members)
+					analyzer.Analyze(member.Member);
+
+				// The root child is added synchronously; its own children (the actual analysis, e.g.
+				// "Used By") load lazily on a background thread, so give them a chance to arrive.
+				var roots = analyzer.Root.Children.ToArray();
+				foreach (var root in roots)
+					root.EnsureLazyChildren();
+				for (int i = 0; i < 60 && roots.All(r => r.Children.Count == 0); i++)
+					await Task.Delay(50);
+
+				return JsonSerializer.Serialize(new {
+					success = true,
+					analyzed = members.Select(m => m.Member?.Name).ToArray(),
+					rootChildren = analyzer.Root.Children.Select(c => new {
+						text = c.Text?.ToString(),
+						nodeType = c.GetType().Name,
+						childCount = c.Children.Count,
+						children = c.Children.Take(8).Select(g => g.Text?.ToString()).ToArray()
+					}).ToArray()
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
+			}
+		}
+
+		[DevFlowAction("od.ilspy.navigate-history", Description = "Walk the hosted ILSpy navigation history - what the Back/Forward toolbar buttons do (AssemblyTreeModel.NavigateHistory). Pass \"back\" or \"forward\". Returns CanNavigateBack/Forward and the resulting Assemblies tree selection, so a test can prove a jump is undoable")]
+		public static async Task<string> NavigateHistoryAsync(string direction)
+		{
+			try {
+				bool forward = string.Equals(direction, "forward", StringComparison.OrdinalIgnoreCase);
+				var model = IlSpyWorkspaceHost.AssemblyTreeModel;
+				bool can = forward ? model.CanNavigateForward : model.CanNavigateBack;
+				if (!can) {
+					return JsonSerializer.Serialize(new {
+						success = false,
+						error = "Cannot navigate " + (forward ? "forward" : "back") + " - history is empty in that direction.",
+						canNavigateBack = model.CanNavigateBack,
+						canNavigateForward = model.CanNavigateForward,
+						selectedNodeDetails = GetSelectedNodeDetails()
+					});
+				}
+
+				string before = SelectionSignature();
+				model.NavigateHistory(forward);
+				for (int i = 0; i < 60 && SelectionSignature() == before; i++)
+					await Task.Delay(50);
+
+				return JsonSerializer.Serialize(new {
+					success = true,
+					direction = forward ? "forward" : "back",
+					selectionChanged = SelectionSignature() != before,
+					canNavigateBack = model.CanNavigateBack,
+					canNavigateForward = model.CanNavigateForward,
+					selectedNodeDetails = GetSelectedNodeDetails()
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
+			}
+		}
+
+		[DevFlowAction("od.ilspy.toolbar-combos", Description = "Report the ILSpy toolbar dropdowns' real state (item count, selected item, visibility) - the UI tree exposes neither Items nor SelectedItem for a ComboBox, so rendering size alone cannot tell a populated dropdown from an empty one. Optionally select a value in one of them: pass e.g. \"Language\" and \"IL\" to drive the language dropdown exactly as the user would")]
+		public static string ToolbarCombos(string comboType, string select)
+		{
+			try {
+				var combos = new System.Collections.Generic.List<Commands.IlSpyToolBarComboBoxBase>();
+				var app = System.Windows.Application.Current;
+				if (app != null) {
+					foreach (System.Windows.Window window in app.Windows)
+						CollectCombos(window, combos);
+				}
+
+				string selected = null;
+				if (!string.IsNullOrEmpty(comboType) && !string.IsNullOrEmpty(select)) {
+					var target = combos.FirstOrDefault(c => c.GetType().Name.Contains(comboType, StringComparison.OrdinalIgnoreCase));
+					if (target == null)
+						return JsonSerializer.Serialize(new { success = false, error = "No toolbar dropdown matching '" + comboType + "'." });
+					var match = target.Items.Cast<object>()
+						.FirstOrDefault(i => string.Equals(ItemLabel(i), select, StringComparison.OrdinalIgnoreCase));
+					if (match == null)
+						return JsonSerializer.Serialize(new {
+							success = false,
+							error = "No item '" + select + "' in " + target.GetType().Name + ".",
+							available = target.Items.Cast<object>().Select(ItemLabel).ToArray()
+						});
+					// Assign SelectedItem, i.e. exactly what picking it from the dropdown does.
+					target.SelectedItem = match;
+					selected = ItemLabel(match);
+				}
+
+				return JsonSerializer.Serialize(new {
+					success = true,
+					selected,
+					combos = combos.Select(c => new {
+						type = c.GetType().Name,
+						itemCount = c.Items.Count,
+						selectedItem = ItemLabel(c.SelectedItem),
+						items = c.Items.Cast<object>().Take(12).Select(ItemLabel).ToArray(),
+						isVisible = c.Visibility == System.Windows.Visibility.Visible,
+						isEnabled = c.IsEnabled
+					}).ToArray()
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
+			}
+		}
+
+		static string ItemLabel(object item)
+		{
+			return item switch {
+				null => null,
+				string s => s,
+				ICSharpCode.ILSpy.Language language => language.Name,
+				ICSharpCode.ILSpyX.LanguageVersion version => version.DisplayName,
+				_ => item.ToString()
+			};
+		}
+
+		static void CollectCombos(System.Windows.DependencyObject root, System.Collections.Generic.List<Commands.IlSpyToolBarComboBoxBase> into)
+		{
+			if (root is Commands.IlSpyToolBarComboBoxBase combo) {
+				into.Add(combo);
+				return;
+			}
+			int count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+			for (int i = 0; i < count; i++)
+				CollectCombos(System.Windows.Media.VisualTreeHelper.GetChild(root, i), into);
+		}
+
+		[DevFlowAction("od.ilspy.api-visibility", Description = "Read/set the hosted ILSpy API-visibility level (LanguageSettings.ShowApiLevel: PublicOnly/PublicAndInternal/All - the radio group behind the three toolbar visibility toggles), and report each toggle's actual IsChecked. Pass an empty string to only read. The UI tree cannot show IsChecked for a CheckBox, hence this action")]
+		public static string ApiVisibility(string level)
+		{
+			try {
+				if (!string.IsNullOrEmpty(level)) {
+					if (!Enum.TryParse<ICSharpCode.ILSpyX.ApiVisibility>(level, ignoreCase: true, out var parsed))
+						return JsonSerializer.Serialize(new { success = false, error = "Unknown level '" + level + "'. Expected PublicOnly, PublicAndInternal or All." });
+					IlSpyWorkspaceHost.SetApiVisibility(parsed);
+					Commands.IlSpyApiVisibilityToggles.UpdateAll();
+				}
+
+				var toggles = new System.Collections.Generic.List<object>();
+				var app = System.Windows.Application.Current;
+				if (app != null) {
+					foreach (System.Windows.Window window in app.Windows) {
+						CollectToggles(window, toggles);
+					}
+				}
+				return JsonSerializer.Serialize(new {
+					success = true,
+					level = IlSpyWorkspaceHost.GetApiVisibility().ToString(),
+					toggles
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
+			}
+		}
+
+		static void CollectToggles(System.Windows.DependencyObject root, System.Collections.Generic.List<object> into)
+		{
+			if (root is Commands.IlSpyApiVisibilityToggleBase toggle) {
+				into.Add(new { type = toggle.GetType().Name, isChecked = toggle.IsChecked, isEnabled = toggle.IsEnabled });
+				return;
+			}
+			int count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+			for (int i = 0; i < count; i++)
+				CollectToggles(System.Windows.Media.VisualTreeHelper.GetChild(root, i), into);
+		}
+
 		[DevFlowAction("od.ilspy.theme", Description = "Inspect ICSharpCode.ILSpy.Themes.ThemeManager.Current's theme name and IsDarkTheme, to verify the theme bridge (IlSpyWorkspaceHost's IdeThemeService.ThemeChanged subscription) keeps it in sync with OpenDevelop's own IDE theme")]
 		public static string GetTheme()
 		{
@@ -232,8 +418,13 @@ namespace ICSharpCode.ILSpyAddIn
 				if (view == null)
 					return JsonSerializer.Serialize(new { success = false, error = "SearchPane view never appeared in any window's visual tree (pane not materialized?).", windowCount = System.Windows.Application.Current?.Windows.Count, hasMainWindow = System.Windows.Application.Current?.MainWindow != null });
 
+				// Searching the *same* term twice must still re-run: SetProperty ignores an equal
+				// value, so no PropertyChanged -> no searchBox TextChanged -> StartSearch never runs.
+				// Force the value to actually change first. (Do NOT clear Results here - StartSearch
+				// clears them itself, and clearing without re-running left the pane permanently empty.)
+				if (string.Equals(model.SearchTerm, term, StringComparison.Ordinal))
+					model.SearchTerm = string.Empty;
 				model.SearchTerm = term;
-				view.Results.Clear();
 
 				// await Task.Delay (not a blocking spin) so the dispatcher keeps pumping - the search
 				// runs async and its results are moved into Results from CompositionTarget.Rendering.

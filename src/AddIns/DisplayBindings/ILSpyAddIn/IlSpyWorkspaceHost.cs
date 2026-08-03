@@ -93,6 +93,28 @@ namespace ICSharpCode.ILSpyAddIn
 		}
 
 		/// <summary>
+		/// ILSpy's own settings service - source of <c>AssemblyListManager.AssemblyLists</c> and
+		/// <c>SessionSettings.ActiveAssemblyList</c> for the toolbar's assembly-list dropdown.
+		/// </summary>
+		public static SettingsService SettingsService {
+			get {
+				EnsureInitialized();
+				return App.ExportProvider.GetExportedValue<SettingsService>();
+			}
+		}
+
+		/// <summary>
+		/// ILSpy's own language service - source of <c>AllLanguages</c>/<c>Language</c>/
+		/// <c>LanguageVersion</c> for the toolbar's language and language-version dropdowns.
+		/// </summary>
+		public static LanguageService LanguageService {
+			get {
+				EnsureInitialized();
+				return App.ExportProvider.GetExportedValue<LanguageService>();
+			}
+		}
+
+		/// <summary>
 		/// The hosted ILSpy's API-visibility level (which types/members the assembly tree shows) -
 		/// real ILSpy's three toolbar CheckBoxes are a radio group over this one enum. Changing it
 		/// needs no explicit refresh: AssemblyTreeModel subscribes to LanguageSettings'
@@ -292,6 +314,21 @@ namespace ICSharpCode.ILSpyAddIn
 			SD.Workbench.ShowView(decompiledCodeView);
 
 			MessageBus<AssemblyTreeSelectionChangedEventArgs>.Subscribers += (sender, e) => lastDecompile = OnSelectionChangedAsync();
+
+			// Language / language-version changes need their own subscription, for the same reason
+			// the selection one above exists: upstream handles them in AssemblyTreeModel's settings
+			// handler by calling RefreshDecompiledView(), which decompiles into
+			// DockWorkspace.ActiveTabPage's text view - ILSpy's own tab system, which this host
+			// deliberately does not render (see the file header; it only gets one dummy TabPageModel
+			// so upstream reads of ActiveTabPage don't NRE). So without this, picking IL in the
+			// toolbar's language dropdown left the visible document still showing the previous C#
+			// output while the dropdown said IL - user-reported, then reproduced by
+			// IlSpyAddInTests' multi-pad workflow coverage.
+			var languageService = exportProvider.GetExportedValue<LanguageService>();
+			languageService.PropertyChanged += (_, e) => {
+				if (e.PropertyName is nameof(LanguageService.Language) or nameof(LanguageService.LanguageVersion))
+					lastDecompile = RefreshDecompiledViewAsync();
+			};
 		}
 
 		// Phase 1 of "decompiled code as a normal OpenDevelop document" (doc/technotes/ilspy.md

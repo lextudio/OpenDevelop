@@ -68,6 +68,11 @@ namespace ICSharpCode.ILSpyAddIn.Commands
 			image.SetResourceReference(FrameworkElement.StyleProperty, ToolBarService.ImageStyleKey);
 			Content = image;
 			ToolTip = ToolTipText;
+			// A Button placed inside a ToolBar does NOT pick up the flat toolbar chrome on its own -
+			// it keeps the default Button style, borders and all. The shell's own ToolBarButton sets
+			// this explicitly (ToolBarButton.cs), and so must this; the sibling CheckBox-based
+			// toggles below do the same with ToolBar.CheckBoxStyleKey.
+			SetResourceReference(FrameworkElement.StyleProperty, ToolBar.ButtonStyleKey);
 			Click += (_, _) => {
 				try {
 					Execute();
@@ -221,7 +226,7 @@ namespace ICSharpCode.ILSpyAddIn.Commands
 	}
 
 	/// <summary>Tracks the live API-visibility toggles so selecting one can refresh the others.</summary>
-	static class IlSpyApiVisibilityToggles
+	public static class IlSpyApiVisibilityToggles
 	{
 		static readonly System.Collections.Generic.List<System.WeakReference<IlSpyApiVisibilityToggleBase>> toggles = new();
 

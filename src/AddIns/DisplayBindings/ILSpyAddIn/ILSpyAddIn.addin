@@ -104,6 +104,23 @@
 		<ToolbarItem id = "ShowAll"
 		             type = "Custom"
 		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpyShowAllToggle"/>
+		<!-- Dropdown half of real ILSpy's toolbar, in its own order: assembly list + manage, then
+		     language + language version (see Commands/IlSpyToolBarCombos.cs). ILSpy hardcodes these
+		     in MainToolBar.xaml rather than exporting them as commands. -->
+		<ToolbarItem id = "AssemblyListSeparator" type = "Separator"/>
+		<ToolbarItem id = "AssemblyList"
+		             type = "Custom"
+		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpyAssemblyListComboBox"/>
+		<ToolbarItem id = "ManageAssemblyLists"
+		             type = "Custom"
+		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpyManageAssemblyListsToolBarButton"/>
+		<ToolbarItem id = "LanguageSeparator" type = "Separator"/>
+		<ToolbarItem id = "Language"
+		             type = "Custom"
+		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpyLanguageComboBox"/>
+		<ToolbarItem id = "LanguageVersion"
+		             type = "Custom"
+		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpyLanguageVersionComboBox"/>
 	</Path>
 
 	<Path name = "/SharpDevelop/Workbench/MainMenu/File/Open">
