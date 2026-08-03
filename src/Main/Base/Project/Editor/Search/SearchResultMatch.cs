@@ -98,7 +98,7 @@ namespace ICSharpCode.SharpDevelop.Editor.Search
 #if HAS_UNO
 			RichText inlineBuilder = null;
 #else
-			var inlineBuilder = SearchResultsPad.CreateInlineBuilder(startLocation, endLocation, document, highlighter);
+			var inlineBuilder = SearchResultFactory.CreateInlineBuilder(startLocation, endLocation, document, highlighter);
 #endif
 			var defaultTextColor = highlighter.DefaultTextColor;
 			return new SearchResultMatch(FileName.Create(document.FileName),

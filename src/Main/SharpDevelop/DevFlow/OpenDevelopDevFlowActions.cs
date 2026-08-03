@@ -822,6 +822,18 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			if (pad == null)
 				return JsonSerializer.Serialize(new { found = false, padName });
 			SD.Workbench.ActivatePad(pad);
+
+			// A migrated (MEF ToolPaneModel-backed) pad's control tree, unlike a legacy Pad's
+			// (always constructed eagerly at workbench startup - see AvalonDockLayout's startup
+			// loop, which skips MEF tool panes), is now only built the first time it's actually
+			// shown. When that first show happens to be right here (e.g. a pad only ever
+			// activated after a build already produced results to display), the ListView/GridView
+			// content isn't necessarily laid out yet by the time this method returns - flush
+			// pending dispatcher work up to Loaded priority so callers inspecting the pad
+			// immediately afterwards (e.g. via the UI automation tree) see fully realized content,
+			// matching what this action's own description already promises.
+			System.Windows.Application.Current.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Loaded);
+
 			return JsonSerializer.Serialize(new { found = true, title = pad.Title, className = pad.Class });
 		}
 

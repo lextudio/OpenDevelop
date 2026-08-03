@@ -165,7 +165,7 @@ namespace CSharpBinding
 					var region = new DomRegion(fileName, node.StartLocation, node.EndLocation);
 					int offset = document.GetOffset(node.StartLocation);
 					int length = document.GetOffset(node.EndLocation) - offset;
-					var builder = SearchResultsPad.CreateInlineBuilder(node.StartLocation, node.EndLocation, document, highlighter);
+					var builder = SearchResultFactory.CreateInlineBuilder(node.StartLocation, node.EndLocation, document, highlighter);
 					var defaultTextColor = highlighter != null ? highlighter.DefaultTextColor : null;
 					results.Add(new SearchResultMatch(fileName, node.StartLocation, node.EndLocation, offset, length, builder, defaultTextColor));
 				}, cancellationToken);
@@ -256,7 +256,7 @@ namespace CSharpBinding
 					int offset = document.GetOffset(startLocation);
 					int length = document.GetOffset(endLocation) - offset;
 					if (args.ProvideHighlightedLine) {
-						var builder = SearchResultsPad.CreateInlineBuilder(node.StartLocation, node.EndLocation, document, highlighter);
+						var builder = SearchResultFactory.CreateInlineBuilder(node.StartLocation, node.EndLocation, document, highlighter);
 						var defaultTextColor = highlighter != null ? highlighter.DefaultTextColor : null;
 						results.Add(new RenameResultMatch(fileName, startLocation, endLocation, offset, length, newCode, builder, defaultTextColor));
 					} else {

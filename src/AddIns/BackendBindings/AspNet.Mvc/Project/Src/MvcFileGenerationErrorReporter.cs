@@ -32,7 +32,7 @@ namespace ICSharpCode.AspNet.Mvc
 			foreach (CompilerError error in errors) {
 				TaskService.Add(new CompilerErrorTask(error));
 			}
-			SD.Workbench.GetPad(typeof(ErrorListPad)).BringPadToFront();
+			SD.Workbench.GetPad("ICSharpCode.SharpDevelop.Gui.ErrorListPad").BringPadToFront();
 		}
 	}
 }

@@ -78,8 +78,8 @@ namespace SearchAndReplace
 				var matches = results.SelectMany(f => f.Matches).ToList();
 				string title = StringParser.Parse("${res:MainWindow.Windows.SearchResultPanel.OccurrencesOf}",
 				                                  new StringTagPair("Pattern", pattern));
-				SearchResultsPad.Instance.ShowSearchResults(title, matches);
-				SearchResultsPad.Instance.BringToFront();
+				SearchResultsHost.Current.ShowSearchResults(title, matches);
+				SearchResultsHost.Current.BringToFront();
 				return JsonSerializer.Serialize(new { success = true });
 			} catch (Exception ex) {
 				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });

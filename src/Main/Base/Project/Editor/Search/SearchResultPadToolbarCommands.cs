@@ -31,12 +31,12 @@ namespace ICSharpCode.SharpDevelop.Editor.Search
 		public IEnumerable<object> BuildItems(Codon codon, object owner)
 		{
 			List<object> items = new List<object>();
-			foreach (ISearchResult searchResult in SearchResultsPad.Instance.LastSearches) {
+			foreach (ISearchResult searchResult in SearchResultsHost.Current.LastSearches) {
 				MenuItem menuItem = new MenuItem();
 				menuItem.Header = searchResult.Text;
 				// copy in local variable so that lambda refers to correct loop iteration
 				ISearchResult searchResultCopy = searchResult;
-				menuItem.Click += (sender, e) => SearchResultsPad.Instance.ShowSearchResults(searchResultCopy);
+				menuItem.Click += (sender, e) => SearchResultsHost.Current.ShowSearchResults(searchResultCopy);
 				items.Add(menuItem);
 			}
 			return items;
@@ -47,7 +47,7 @@ namespace ICSharpCode.SharpDevelop.Editor.Search
 	{
 		public override void Run()
 		{
-			SearchResultsPad.Instance.ClearLastSearchesList();
+			SearchResultsHost.Current.ClearLastSearchesList();
 		}
 	}
 }

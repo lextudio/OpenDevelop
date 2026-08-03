@@ -181,7 +181,7 @@ namespace CSharpBinding.Parser
 					var region = new DomRegion(parseInfo.FileName, node.StartLocation, node.EndLocation);
 					int offset = document.GetOffset(node.StartLocation);
 					int length = document.GetOffset(node.EndLocation) - offset;
-					var builder = SearchResultsPad.CreateInlineBuilder(node.StartLocation, node.EndLocation, document, highlighter);
+					var builder = SearchResultFactory.CreateInlineBuilder(node.StartLocation, node.EndLocation, document, highlighter);
 					var defaultTextColor = highlighter != null ? highlighter.DefaultTextColor : null;
 					callback(new SearchResultMatch(parseInfo.FileName, node.StartLocation, node.EndLocation, offset, length, builder, defaultTextColor));
 				}, cancellationToken);

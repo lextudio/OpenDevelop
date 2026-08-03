@@ -122,7 +122,7 @@ namespace ICSharpCode.Profiler.AddIn.Views
 				(Action)delegate {
 					List<SDTask> tasks = errors.Select(error => new SDTask(null, error.ErrorText, error.Column, error.Line, (error.IsWarning) ? TaskType.Warning : TaskType.Error)).ToList();
 					if (tasks.Count > 0) {
-						SD.Workbench.GetPad(typeof(ErrorListPad)).BringPadToFront();
+						SD.Workbench.GetPad("ICSharpCode.SharpDevelop.Gui.ErrorListPad").BringPadToFront();
 						TaskService.ClearExceptCommentTasks();
 						TaskService.AddRange(tasks);
 					}

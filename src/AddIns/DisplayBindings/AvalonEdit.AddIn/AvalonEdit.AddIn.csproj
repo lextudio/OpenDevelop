@@ -18,6 +18,8 @@
     <ProjectReference Include="..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
     <ProjectReference Include="..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" Private="false" />
     <ProjectReference Include="..\..\..\Main\ICSharpCode.SharpDevelop.Widgets\Project\ICSharpCode.SharpDevelop.Widgets.csproj" Private="false" />
+    <!-- For IdeThemeService (theme-aware editor syntax colors, see ThemeAwareHighlightingColorizer). -->
+    <ProjectReference Include="..\..\..\Main\SharpDevelop\SharpDevelop.csproj" Private="false" />
     <!-- Private="true" (the default - not "false" like the other addin-infra references above):
          AvalonEditViewContent.ToolsContent directly evaluates ICSharpCode.WpfDesign.AddIn.
          WpfToolbox.Instance (a hard compile-time reference, not reflection), so this addin's own

@@ -36,9 +36,6 @@ namespace ICSharpCode.SharpDevelop
 	
 	public class SDTask
 	{
-		[Obsolete("Default path now depends on parent pad, use ErrorListPad.DefaultContextMenuAddInTreeEntry instead.")]
-		public const string DefaultContextMenuAddInTreeEntry = Gui.ErrorListPad.DefaultContextMenuAddInTreeEntry;
-		
 		string   description;
 		TaskType type;
 		PermanentAnchor position;

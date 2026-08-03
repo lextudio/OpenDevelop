@@ -297,7 +297,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 			TaskService.AddRange(DllLoadErrors);
 			
 			if (xamlErrorService.Errors.Count != 0) {
-				SD.Workbench.GetPad(typeof(ErrorListPad)).BringPadToFront();
+				SD.Workbench.GetPad("ICSharpCode.SharpDevelop.Gui.ErrorListPad").BringPadToFront();
 			}
 		}
 		

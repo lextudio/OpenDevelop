@@ -246,7 +246,7 @@ namespace ICSharpCode.WixBinding
 		{
 			TaskService.ClearExceptCommentTasks();
 			TaskService.Add(new SDTask(this.PrimaryFileName, ex.Message, ex.LinePosition - 1, ex.LineNumber - 1, TaskType.Error));
-			SD.Workbench.GetPad(typeof(ErrorListPad)).BringPadToFront();
+			SD.Workbench.GetPad("ICSharpCode.SharpDevelop.Gui.ErrorListPad").BringPadToFront();
 		}
 		
 		/// <summary>

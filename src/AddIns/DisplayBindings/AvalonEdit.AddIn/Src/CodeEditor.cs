@@ -44,6 +44,7 @@ using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Editor.CodeCompletion;
 using ICSharpCode.SharpDevelop.Parser;
 using ICSharpCode.SharpDevelop.Widgets.MyersDiff;
+using ICSharpCode.SharpDevelop.Workbench;
 
 namespace ICSharpCode.AvalonEdit.AddIn
 {
@@ -145,7 +146,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 
 			primaryTextEditor.SyntaxHighlighting = highlighting;
 			primaryTextEditor.TextArea.TextView.LineTransformers.RemoveAll(t => t is HighlightingColorizer);
-			primaryTextEditor.TextArea.TextView.LineTransformers.Insert(0, new HighlightingColorizer(highlighter));
+			primaryTextEditor.TextArea.TextView.LineTransformers.Insert(0, new ThemeAwareHighlightingColorizer(highlighter, highlighting));
 			if (semanticColorizer != null) {
 				primaryTextEditor.TextArea.TextView.LineTransformers.Remove(semanticColorizer);
 				(semanticColorizer as IDisposable)?.Dispose();
@@ -178,6 +179,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			CodeEditorOptions.Instance.PropertyChanged += CodeEditorOptions_Instance_PropertyChanged;
 			CustomizedHighlightingColor.ActiveColorsChanged += CustomizedHighlightingColor_ActiveColorsChanged;
 			SD.ParserService.ParseInformationUpdated += ParserServiceParseInformationUpdated;
+			IdeThemeService.ThemeChanged += OnIdeThemeChanged;
 			
 			this.FlowDirection = FlowDirection.LeftToRight; // code editing is always left-to-right
 			this.document = new TextDocument();
@@ -219,6 +221,16 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			primaryTextEditor.UpdateCustomizedHighlighting();
 			foreach (var bookmark in SD.BookmarkManager.GetBookmarks(fileName).OfType<SDMarkerBookmark>())
 				bookmark.SetMarker();
+		}
+		
+		void OnIdeThemeChanged(object sender, string theme)
+		{
+			// Rebuild the highlighting pipeline so ThemeAwareHighlightingColorizer re-evaluates
+			// the dark fallback with the new theme. Definitions that already carry ILSpy's
+			// applied theme colors keep them until they are re-resolved - the same behavior as
+			// ILSpy's own decompiled views.
+			if (fileName != null)
+				UpdateSyntaxHighlighting(fileName);
 		}
 		
 		/// <summary>
@@ -718,6 +730,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			CodeEditorOptions.Instance.PropertyChanged -= CodeEditorOptions_Instance_PropertyChanged;
 			CustomizedHighlightingColor.ActiveColorsChanged -= CustomizedHighlightingColor_ActiveColorsChanged;
 			SD.ParserService.ParseInformationUpdated -= ParserServiceParseInformationUpdated;
+			IdeThemeService.ThemeChanged -= OnIdeThemeChanged;
 			
 			if (primaryTextEditorAdapter.Language != null)
 				primaryTextEditorAdapter.DetachExtensions();

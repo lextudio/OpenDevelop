@@ -542,8 +542,8 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				// "Show in Search Results" promotes the exact same match list into the existing pad
 				// rather than this popup owning a second copy of the result data.
 				var popup = new OpenLensResultsPopup(placementTarget, title, matches, () => {
-					SearchResultsPad.Instance.ShowSearchResults(title, matches);
-					SearchResultsPad.Instance.BringToFront();
+					SearchResultsHost.Current.ShowSearchResults(title, matches);
+					SearchResultsHost.Current.BringToFront();
 				});
 				popup.IsOpen = true;
 			} catch (Exception ex) {
@@ -570,8 +570,8 @@ namespace ICSharpCode.AvalonEdit.AddIn
 					.ToArray();
 				string title = "Implementations of '" + result.Subject + "'";
 				var popup = new OpenLensResultsPopup(placementTarget, title, matches, () => {
-					SearchResultsPad.Instance.ShowSearchResults(title, matches);
-					SearchResultsPad.Instance.BringToFront();
+					SearchResultsHost.Current.ShowSearchResults(title, matches);
+					SearchResultsHost.Current.BringToFront();
 				});
 				popup.IsOpen = true;
 			} catch (Exception ex) {

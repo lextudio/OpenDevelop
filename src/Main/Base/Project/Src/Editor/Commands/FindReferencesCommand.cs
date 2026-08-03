@@ -72,8 +72,8 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 
 			var matches = result.References.Select(target => ToSearchResultMatch(target, editor)).Where(m => m != null).ToArray();
 			string title = StringParser.Parse("${res:SharpDevelop.Refactoring.FindReferences}") + " '" + result.Subject + "'";
-			SearchResultsPad.Instance.ShowSearchResults(title, matches);
-			SearchResultsPad.Instance.BringToFront();
+			SearchResultsHost.Current.ShowSearchResults(title, matches);
+			SearchResultsHost.Current.BringToFront();
 		}
 
 		static SearchResultMatch ToSearchResultMatch(NavigationTarget target, ITextEditor activeEditor)

@@ -257,7 +257,7 @@ namespace ICSharpCode.UnitTesting.Frameworks
 			if (taskService.SomethingWentWrong && buildOptions.ShowErrorListAfterBuild) {
 				// Null when the host has its own ErrorListPad under a different type/namespace
 				// (e.g. UnoDevelop.Workbench.ErrorListPad) instead of this classic one.
-				workbench.GetPad(typeof(ErrorListPad))?.BringPadToFront();
+				workbench.GetPad("ICSharpCode.SharpDevelop.Gui.ErrorListPad")?.BringPadToFront();
 			}
 		}
 	}

@@ -11,7 +11,6 @@ using ICSharpCode.SharpDevelop.Editor.Search;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Workbench;
-using SearchResultsPad = ICSharpCode.SharpDevelop.Editor.Search.SearchResultsPad;
 using TextLocation = ICSharpCode.AvalonEdit.Document.TextLocation;
 
 namespace Hornung.ResourceToolkit.Refactoring
@@ -117,8 +116,8 @@ namespace Hornung.ResourceToolkit.Refactoring
 
             var matches = references.Select(ToSearchResultMatch).Where(m => m != null).ToArray();
             string title = StringParser.Parse("${res:SharpDevelop.Refactoring.FindReferencesCommand}") + " '" + key + "'";
-            SearchResultsPad.Instance.ShowSearchResults(title, matches);
-            SearchResultsPad.Instance.BringToFront();
+            SearchResultsHost.Current.ShowSearchResults(title, matches);
+            SearchResultsHost.Current.BringToFront();
         }
 
         static SearchResultMatch ToSearchResultMatch(Reference reference)

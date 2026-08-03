@@ -101,7 +101,7 @@ namespace ICSharpCode.SharpDevelop.Project.Commands
 		public static void AddNoSingleFileCompilationError()
 		{
 			TaskService.Add(new SDTask(null, StringParser.Parse("${res:BackendBindings.ExecutionManager.NoSingleFileCompilation}"), 0, 0, TaskType.Error));
-			SD.Workbench.GetPad(typeof(ErrorListPad)).BringPadToFront();
+			SD.Workbench.GetPad("ICSharpCode.SharpDevelop.Gui.ErrorListPad").BringPadToFront();
 		}
 	}
 	

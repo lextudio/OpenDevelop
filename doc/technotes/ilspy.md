@@ -2861,3 +2861,281 @@ unaffected. Remaining 9: `BookmarkPad`+`BreakPointsPad` (now known to be linked,
 `PropertyPad`/`TaskListPad`/`SearchResultsPad` (medium, per the original survey), `ErrorListPad`/
 `ClassBrowserPad`/`OutputPad`/`SideBar`/`FileScout` (hard tier, broad fan-out - unexamined in
 detail yet).
+
+## Legacy Pad migration, third slice: TaskListPad, and PropertyPad/SearchResultsPad reclassified (2026-08-03)
+
+**`TaskListPad` migrated** - same shape as `Outline`/`DefinitionView`: `TaskListViewModel` (MEF
+`ToolPaneModel` in the App project) holds the real behavior (comment-task list, scope filter,
+per-token toolbar checkboxes), `TaskListPad` is a thin shim. This one had an extra wrinkle:
+`TaskListPadCommands.cs`'s toolbar items (`SelectScopeComboBox`, `TaskListTokensToolbarCheckBox`)
+referenced `TaskListPad.Instance` - a static singleton only ever set when the shim class is
+actually constructed, which no longer happens on the common MEF-first path (the pad defaults
+*visible*, so unlike `Outline`/`DefinitionView` it usually never falls through to the legacy
+route at all). Rewrote those toolbar items to resolve `TaskListViewModel` directly via MEF instead
+of through the shim - simpler than trying to keep an `Instance` singleton in sync with two
+different construction paths, and `TaskListPadCommands.cs` had to move into the App project
+alongside `TaskListPad` regardless (both are in the same namespace, referencing each other, and
+that namespace's real content is now split across two assemblies otherwise).
+
+Verified live: zero MEF construction failures, `Task List` docks at `Bottom` (matches its
+non-hidden default), UI tree shows a real `ListView` under a `Task List`-titled tab. `dotnet test`
+3/3 clean.
+
+**`PropertyPad` and `SearchResultsPad` are blocked, not just harder** - looked at both before
+migrating and stopped, for a different reason than `BookmarkPad`'s (shared base class): both
+expose **static members that other AddIn assemblies call directly** -
+`PropertyPad.ActiveContainer`/`PropertyPad.Grid` from `WpfDesign.AddIn`, and
+`SearchResultsPad.Instance` from `SearchAndReplace`/`ResourceToolkit`/`AvalonEdit.AddIn`/
+`TypeScript`/`CSharpBinding` (five different AddIns). Every AddIn project references only the Base
+project (`ICSharpCode.SharpDevelop.csproj`), never the App project - confirmed by checking
+`WpfDesign.AddIn.csproj`'s `<ProjectReference>` list, which has no reference to `SharpDevelop.csproj`/
+`OpenDevelop.dll` at all. Since `ToolPaneModel` only exists in the App project, moving either pad
+class there the way `Outline`/`DefinitionView`/`TaskListPad` were moved would break every one of
+those callers at compile time - a real, structural blocker, not a matter of care/risk like
+`BookmarkPad`.
+
+This points at the actual prerequisite for unblocking the rest of the easy/medium tier at once:
+relocate `PaneModel`/`ToolPaneModel` (and whatever `ObservableObjectBase` base they need) down
+into a project every AddIn can already reference - Base itself, or a new small shared library -
+exactly what the architecture doc's "Shared modern shell primitives" section already called for.
+That's a separate, foundational piece of work, not attempted in this pass.
+
+**Status after this pass**: 3 of 11 legacy pads migrated (`Outline`, `DefinitionView`,
+`TaskListPad`). `BookmarkPad`+`BreakPointsPad` remain blocked on their shared base class;
+`PropertyPad`/`SearchResultsPad` remain blocked on `ToolPaneModel`'s current location being
+unreachable from other AddIns. `ErrorListPad`/`ClassBrowserPad`/`OutputPad`/`SideBar`/`FileScout`
+(hard tier) still unexamined - likely to have the same or worse fan-out, cross-assembly issues.
+
+## Foundational move: PaneModel/ToolPaneModel relocated to the Base project (2026-08-03)
+
+This is the actual prerequisite the previous slice identified: `PropertyPad`/`SearchResultsPad`
+(and any future pad) couldn't migrate to `ToolPaneModel` because that type lived in the App
+project (`SharpDevelop.csproj`/`OpenDevelop.dll`), which almost no AddIn references - they only
+reference the Base project (`ICSharpCode.SharpDevelop.csproj`). Moved
+`ObservableObjectBase`/`PaneModel`/`ToolPaneModel`/`LegacyToolPaneModel` from
+`src/Main/SharpDevelop/ViewModels/` into `src/Main/Base/Project/ViewModels/` (same namespace,
+`ICSharpCode.SharpDevelop.ViewModels`, so no call site needed a `using` change) - exactly the
+"Shared modern shell primitives" the architecture doc's target design already called for.
+
+**The one real dependency that had to be broken first**: `PaneModel`'s `CloseCommand` called
+`DockWorkspace.Current?.Remove(model)` directly - `DockWorkspace` is `internal sealed` and lives
+in the App project, the one thing standing between `PaneModel` and being Base-portable. Introduced
+`IPaneModelHost` (one method, `Remove(PaneModel model)`) in the same file/namespace as `PaneModel`;
+`DockWorkspace` implements it and registers itself via `SD.Services.AddService(typeof(IPaneModelHost),
+this)` in its constructor. `CloseCommandImpl.Execute` now resolves it through `SD.Services` instead
+of a direct type reference - the same "shell owns the mechanism, resolved through the service
+container" pattern already used for `IWorkbench`/`IStatusBarService` elsewhere in this codebase,
+not a new one invented for this.
+
+**A real, pre-existing regression surfaced immediately on rebuild** (from the `Outline`/
+`DefinitionView`/`TaskListPad` migrations two slices ago, never caught because those slices only
+rebuilt the App project and `ILSpyAddIn`, never the other AddIns): `WpfDesign.AddIn`'s
+`Commands/Pads.cs` did `SD.Workbench.GetPad(typeof(OutlinePad))`/`typeof(PropertyPad)` - a
+compile-time type reference that broke the moment those pad classes moved out of the Base project
+`WpfDesign.AddIn.csproj` references. Fixed generally rather than patching around it: added
+`IWorkbench.GetPad(string className)` (the string-keyed form `GetPad(Type)` was always just a
+`pad.Class == type.FullName` comparison underneath, now the public shape too), updated
+`WpfDesign.AddIn`'s two commands to look up by class-name string instead of `typeof(...)`, and
+added the matching overload to `WixBinding`'s `MockWorkbench` test double. This is the durable fix
+for the general problem, not just this one call site - any future AddIn wanting to reach a pad
+whose real implementation lives in the App project now has a supported way to do it.
+
+**Verified**: Base project builds clean with the four files now inside it;
+`SharpDevelop.csproj`/`ILSpyAddIn.csproj`/`WpfDesign.AddIn.csproj` all build clean afterward (the
+`WpfDesign.AddIn` failure above was caught and fixed in this same pass, not a leftover). Live:
+fresh launch, zero exceptions, all three already-migrated pads (`ProjectBrowser`/`Outline`/
+`Task List`) still dock and route correctly. Exercised the new `IPaneModelHost` indirection
+end-to-end, not just by inspection - called `ProjectBrowser`'s real `CloseCommand` (the same
+`ICommand` its close button binds to) via a temporary diagnostic action and confirmed
+`IsVisible` flipped `true -> false`, proving the service-lookup chain (`PaneModel.CloseCommand` ->
+`SD.Services.GetService(typeof(IPaneModelHost))` -> `DockWorkspace.Remove`) actually reaches the
+real workspace, not just that it compiles. `IlSpyAddInTests` 2/3 (the known pre-existing
+dispatcher-tick flake, unrelated).
+
+**Status**: the structural blocker for `PropertyPad`/`SearchResultsPad` is gone -
+`ToolPaneModel` is now reachable from every AddIn. Migrating those two pads themselves (updating
+their own external callers - `WpfDesign.AddIn`'s static `PropertyPad.ActiveContainer`/`.Grid`
+reads, and `SearchResultsPad.Instance`'s five call sites across as many AddIns - to resolve the new
+view-model via MEF the same way `TaskListPad`'s toolbar items were updated) is still separate,
+not-yet-done work, but no longer blocked on anything architectural.
+
+## Legacy Pad migration, fourth slice: PropertyPad unblocked, and a real "default-visible pad never subscribes" bug (2026-08-03)
+
+With `ToolPaneModel` now reachable from every AddIn (previous slice), migrated `PropertyPad` -
+same shape as `Outline`/`DefinitionView`/`TaskListPad`: `PropertyPadViewModel` (MEF `ToolPaneModel`
+in the App project) holds the real behavior (Xceed property grid, active-content tracking),
+`PropertyPad` is a thin shim.
+
+**The actual unblocking work was the external-caller migration**, not the pad itself - `PropertyPad`
+had two kinds of caller `Outline`/`DefinitionView`/`TaskListPad` didn't:
+
+- **Static member access from another AddIn**: `WpfDesign.AddIn`'s `WpfDesignDevFlowActions.cs`
+  called `PropertyPad.Grid`/`PropertyPad.ActiveContainer` directly - a compile-time reference no
+  amount of `LegacyPadClass`-style indirection fixes, since it's not going through
+  `AvalonDockLayout`/`PadDescriptor` routing at all. Introduced `IPropertyPadHost` (`Grid`,
+  `ActiveContainer`, `UpdateSelectedObjectIfActive`) in the Base project, next to
+  `PropertyContainer`; `PropertyPadViewModel` implements it and registers via
+  `SD.Services.AddService(typeof(IPropertyPadHost), this)` - the same pattern as `IPaneModelHost`
+  from the previous slice, not a new one. `WpfDesignDevFlowActions.cs` and
+  `PropertyContainer.cs`/`PropertyPadCommands.cs` (both already in Base, both referenced
+  `PropertyPad` directly) now resolve through this service instead.
+- **`typeof(PropertyPad)` from Base-project code that predates this whole migration effort**:
+  `AbstractProjectBrowserTreeNode.ShowProperties()` and `FormsDesigner`'s
+  `FormsCommands.cs`'s `ShowPropertiesWindow.Run()` both did
+  `SD.Workbench.GetPad(typeof(PropertyPad))` - broken the moment `PropertyPad` moved to the App
+  project, same as `WpfDesign.AddIn`'s `Commands/Pads.cs` was in the previous slice. Fixed with the
+  same `IWorkbench.GetPad(string className)` overload already added for that.
+
+**Also caught, this time actually a live-verified regression, not just a build failure**: the
+"defer subscription to first real use instead of the constructor" pattern from
+`Outline`/`DefinitionView`/`TaskListPad` deferred *only* to `Show()` - correct for those three,
+which all default hidden and are only ever shown by a user/test explicitly activating them. But
+`PropertyPad` defaults *visible* (`defaultPosition = "Right"`, no `Hidden`), and on the ordinary
+MEF-composed path nothing ever calls `Show()` on an already-visible pane at all - `IsVisible=true`
+is just set once in the constructor and AvalonDock renders it because of that, not because
+anything invoked `Show()`. Running the real `WpfDesignerTests` suite (not just a manual probe)
+caught this immediately: `SelectControlOnSamplePane_ShowsSelectionInPropertiesPad` and
+`SelectControl_EditingContentInPropertiesPad_UpdatesAndSavesXaml` both failed with the Properties
+pad reporting no selection at all, even though `PropertyPadGrid` itself resolved fine - the
+subscription that keeps the grid's `SelectedObject` in sync with the WPF designer's selection had
+simply never happened. Fixed by calling `EnsureSubscribed()` from every externally-reachable entry
+point (`Grid`, `ActiveContainer`, `UpdateSelectedObjectIfActive`), not only `Show()` - the first
+real touch from any direction now triggers it. `Outline`/`DefinitionView`/`TaskListPad` don't need
+this same fix since `Show()` is the only way anything ever reaches them (they default hidden).
+
+**Verified**: Base/App/`ILSpyAddIn`/`WpfDesign.AddIn` all build clean. `FormsDesigner`/`WixBinding`
+edits (both also fixed the same `typeof(PropertyPad)` pattern) could **not** be build-verified in
+this environment - both target `.NETFramework,Version=v4.5`, whose reference assemblies aren't
+installed here (pre-existing environment gap, unrelated to this change) - correctness there rests
+on inspection only (the same mechanical `GetPad(string)` substitution already proven elsewhere).
+Live: fresh launch, zero exceptions, Properties pad docks at `Right` correctly. `WpfDesignerTests`
+5/5 clean (twice in a row) after the subscription fix, versus 2 failures before it.
+`IlSpyAddInTests` clean too (shared infrastructure, worth the regression check).
+
+**Status**: 4 of 11 legacy pads migrated (`Outline`, `DefinitionView`, `TaskListPad`,
+`PropertyPad`). `SearchResultsPad` is next - structurally unblocked the same way now, but has five
+external call sites across five different AddIns (`SearchAndReplace`, `ResourceToolkit`,
+`AvalonEdit.AddIn`, `TypeScript`, `CSharpBinding`) via its `Instance` static property, more than any
+pad migrated so far. `BookmarkPad`+`BreakPointsPad` remain blocked on their shared base class
+(a different, harder problem than the reachability one this and the previous slice solved).
+
+## Legacy Pad migration, fifth slice: SearchResultsPad, and a virtualization false alarm (2026-08-03)
+
+`SearchResultsPad` had the most external callers of any pad so far (8+ call sites across
+`SearchAndReplace`, `ResourceToolkit`, `AvalonEdit.AddIn`'s `OpenLensRenderer`, `TypeScript`,
+`CSharpBinding`), all through the same `SearchResultsPad.Instance` static singleton, plus a set of
+genuinely stateless factory methods (`CreateSearchResult`, `CreateInlineBuilder`) that never
+touched pad state at all.
+
+**Split into two independent pieces**, mirroring the reason each half's callers exist:
+
+- `ISearchResultsHost` + `SearchResultsHost.Current` (Base project,
+  `Editor/Search/ISearchResultsHost.cs`) - same `SD.Services.AddService`/static-resolver pattern
+  as `IPropertyPadHost`, replacing every `.Instance` call site. Registered *eagerly* in
+  `SearchResultsPadViewModel`'s constructor, unlike the deferred-subscription pattern used
+  everywhere else this migration - `SD.Services.AddService` itself never touches `SD.Workbench` or
+  anything else not ready yet, and external callers need to resolve the host correctly on their
+  very first touch, not only after some later `Show()`.
+- `SearchResultFactory` (Base project, `Editor/Search/SearchResultFactory.cs`) - the stateless
+  `CreateSearchResult`/`CreateInlineBuilder`/`DummySearchResult` static helpers, extracted
+  unchanged since they never depended on the pad instance, just on AddInTree-registered
+  `ISearchResultFactory` extensions.
+
+**A real routing bug, same shape as the layout-exclusion issue from earlier slices**: initial
+`BringToFront()` was `=> Show()`, which does nothing when this default-hidden pad has been excluded
+from `DockWorkspace.ToolPanes` by the current layout file (see `Outline`'s original bug) - `Show()`
+only flips `IsVisible`/`IsActive` on a model with no live anchorable in that state. Fixed to
+`SD.Workbench.GetPad(typeof(SearchResultsPad))?.BringPadToFront()`, going through the same
+`PadDescriptor` routing `od.show-pad` already uses, which correctly falls back to the legacy
+`AvalonPadContent` path. Verified live: `od.layout.pane-position` for the pad's `ContentId` went
+from `found:false` to `found:true` after the fix, with real result text rendered in the UI tree.
+
+**A false alarm, not a regression**: `SearchAndReplaceTests.ShowResults_PopulatesSearchResultsPadUiTree`
+initially failed (only 1 of an expected 2+ `SearchResultNode`s found in the automation tree after
+searching "Widget" across the fixture solution, which has 5 raw matches in 2 files). Traced through
+`DefaultSearchResultFactory`/`SearchRootNode` (`SearchAndReplace/Project/Gui/SearchRootNode.cs`):
+node construction is a strict 1:1 map over matches with no dedup by line/column, and the default
+`Flat` grouping mode attaches `resultNodes` directly as `SearchRootNode`'s children (no
+intermediate per-file wrapper) - so the data model always holds the correct count. The actual cause
+is `ResultsTreeView.xaml`'s `VirtualizingStackPanel.IsVirtualizing="True"`: a UI-automation scan
+taken immediately after `ShowSearchResults`, without scrolling every row into view, only sees
+whichever `TreeViewItem` containers happened to already be realized - typically just the first.
+This is pre-existing WPF virtualization behavior, unrelated to this migration, and was never caught
+before because no earlier pad migration this session drove test assertions through automation-tree
+node *counts*. Confirmed harmless by direct visual check of a live-launched instance: the Search
+Results pad renders every match correctly once actually looked at (scrolled/rendered), matching
+what the data model always said. Not fixed (there is nothing in this migration's scope to fix);
+flagging the test's virtualization-blind assertion style as a known limitation for whoever next
+touches search UI tests.
+
+**Status**: 5 of 11 legacy pads migrated (`Outline`, `DefinitionView`, `TaskListPad`,
+`PropertyPad`, `SearchResultsPad`). `BookmarkPad`+`BreakPointsPad` remain blocked on their shared
+base class. `ErrorListPad`, `ClassBrowserPad`, `OutputPad`, `SideBar`, `FileScout` not yet examined
+for external-caller complexity.
+
+## Legacy Pad migration, sixth slice: ErrorListPad, and a real first-show layout race (2026-08-03)
+
+`ErrorListPad` had the same shape as `TaskListPad` (no shared base class, no cross-AddIn MEF
+reachability problem now that `ToolPaneModel` lives in Base) but the widest spread of external
+`typeof(ErrorListPad)`/`GetPad(typeof(ErrorListPad))` callers of any pad so far - production code in
+7 different AddIns/assemblies (`BuildCommands.cs`, `AspNet.Mvc`, `WixBinding` (x2), `XmlEditor`,
+`WpfDesign.AddIn`, `Profiler.AddIn`, `UnitTesting`'s `TestExecutionManager.cs`), none of which
+reference the App project. All fixed with the same `IWorkbench.GetPad(string className)` overload
+already added for `PropertyPad`'s slice - `XmlEditor` additionally needed
+`ErrorListPad.ShowAfterBuild` (a plain static forwarding property, never pad-instance-dependent)
+replaced with the direct `ICSharpCode.SharpDevelop.Project.BuildOptions.ShowErrorListAfterBuild` it
+always forwarded to, since `XmlEditor` has no reason to reference the App-project type at all for a
+property that never touched pad state. Also deleted a dead `[Obsolete]` `SDTask.
+DefaultContextMenuAddInTreeEntry` constant in Base's `Task.cs` that referenced
+`Gui.ErrorListPad.DefaultContextMenuAddInTreeEntry` directly - unused anywhere, and would have
+required its own indirection otherwise.
+
+`ErrorListToolbarCommands.cs`'s three toggle buttons moved into the App project alongside
+`ErrorListViewModel` (same treatment `TaskListPadCommands.cs` got) - they resolve the `[Shared]`
+view model straight via `OpenDevelopMefHost.ExportProvider.GetExportedValue<ErrorListViewModel>()`
+rather than through a legacy `ErrorListPad.Instance` singleton, since these commands only ever run
+from inside the AddIn tree the App project already owns (no cross-assembly boundary to cross, unlike
+`IPropertyPadHost`/`ISearchResultsHost`).
+
+**A newly-caught, real bug** (not a false alarm this time): `ErrorListTests.
+ErrorList_OnBuildFailure_CapturesRealPerLineCompileErrors` failed consistently (not flaky - reran
+clean, failed every time) on its Description-column assertion, even though `od.error-list` (raw
+`TaskService` data) showed all 6 expected tasks correctly. Root cause, confirmed by a manual
+step-by-step repro: the legacy `ErrorListPad` used to be constructed **eagerly at workbench
+startup** - `AvalonDockLayout`'s startup loop explicitly does `if (!IsMefToolPane(pd)) ShowPad(pd);`
+for every registered `PadDescriptor`, i.e. it deliberately *skips* pads that already have a migrated
+`ToolPaneModel` (this is what lets AvalonDock realize the modern pane through the ordinary
+`AnchorablesSource` binding instead of double-showing it). Before this slice, `ErrorListPad` was
+*not yet* a MEF tool pane, so it got that automatic early `ShowPad`, meaning its `ListView`/`GridView`
+visual tree already existed, laid out, by the time any build ever failed - a later build failure was
+just an `ItemsSource` update on an already-realized control. After migrating it, the pad's entire
+control tree is now built for the first time whenever it's first actually shown - which, in this
+test's sequence (build fails, *then* `od.show-pad` is called), is the same tick a caller might
+immediately inspect the rendered UI automation tree, racing ahead of WPF's layout pass for a
+freshly-constructed `GridView`. Manually reproducing the same steps with an extra beat of latency
+between `show-pad` and reading the tree always rendered correctly, confirming this was a genuine
+timing gap introduced by no longer eagerly constructing default-visible migrated pads, not a data or
+grouping bug (unlike the SearchResultsPad virtualization false alarm, which turned out to need no
+fix at all).
+
+Fixed at the shared `od.show-pad` DevFlow action level (`OpenDevelopDevFlowActions.cs`), not per-pad:
+after `SD.Workbench.ActivatePad(pad)`, flush the dispatcher up to `DispatcherPriority.Loaded` via a
+throwaway `Application.Current.Dispatcher.Invoke(() => {}, DispatcherPriority.Loaded)` before
+returning. This matches what the action's own description already promised ("so AvalonDock actually
+creates and renders its content") and benefits every migrated pad's first-show, not only
+`ErrorListPad` - the race is inherent to lazy MEF pad construction in general, this was just the
+first pad+test combination to actually expose it (a build-then-immediately-inspect sequence, which
+none of the earlier five pads' tests happened to do).
+
+**Verified**: Base/App/`WpfDesign.AddIn`/`XmlEditor`/`UnitTesting` all build clean. `WixBinding`/
+`AspNet.Mvc`/`Profiler.AddIn` could not be build-verified (pre-existing net45 reference-assembly gap,
+same as previous slices, confirmed unrelated). Live: fresh launch, zero exceptions, Errors pad shows/
+docks at `Bottom` correctly, a real 6-error build populates and renders every row (File + Description
+columns both confirmed via the UI automation tree). `ErrorListTests` 3/3 clean after the
+`od.show-pad` fix (was 2/3 before, failing consistently, not flaky).
+
+**Status**: 6 of 11 legacy pads migrated (`Outline`, `DefinitionView`, `TaskListPad`, `PropertyPad`,
+`SearchResultsPad`, `ErrorListPad`). `BookmarkPad`+`BreakPointsPad` remain blocked on their shared
+base class. `ClassBrowserPad`, `OutputPad`, `SideBar`, `FileScout` not yet examined for
+external-caller complexity - worth checking each for the same "eager-startup vs first-show timing"
+risk this slice found, in addition to the usual reachability checks.

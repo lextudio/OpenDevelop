@@ -180,8 +180,8 @@ namespace ICSharpCode.XmlEditor
 		
 		static void ShowErrorList()
 		{
-			if (ErrorListPad.ShowAfterBuild && TaskService.SomethingWentWrong) {
-				SD.Workbench.GetPad(typeof(ErrorListPad)).BringPadToFront();
+			if (ICSharpCode.SharpDevelop.Project.BuildOptions.ShowErrorListAfterBuild && TaskService.SomethingWentWrong) {
+				SD.Workbench.GetPad("ICSharpCode.SharpDevelop.Gui.ErrorListPad").BringPadToFront();
 			}
 		}
 		

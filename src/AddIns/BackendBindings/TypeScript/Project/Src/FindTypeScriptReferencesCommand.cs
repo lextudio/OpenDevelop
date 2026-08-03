@@ -52,8 +52,8 @@ namespace ICSharpCode.TypeScriptBinding
 		
 		static void ShowSearchResults(List<SearchResultMatch> searchResults)
 		{
-			SearchResultsPad.Instance.ShowSearchResults("References", searchResults);
-			SearchResultsPad.Instance.BringToFront();
+			SearchResultsHost.Current.ShowSearchResults("References", searchResults);
+			SearchResultsHost.Current.BringToFront();
 		}
 	}
 }

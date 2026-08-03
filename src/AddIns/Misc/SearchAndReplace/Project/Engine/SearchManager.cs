@@ -233,7 +233,7 @@ namespace SearchAndReplace
 					}
 					var start = document.GetLocation(result.Offset);
 					var end = document.GetLocation(result.Offset + result.Length);
-					var builder = SearchResultsPad.CreateInlineBuilder(start, end, document, highlighter);
+					var builder = SearchResultFactory.CreateInlineBuilder(start, end, document, highlighter);
 					results.Add(new AvalonEditSearchResultMatch(fileName, start, end, result.Offset, result.Length, builder, highlighter.DefaultTextColor, result));
 				}
 				if (highlighter != null) {
@@ -542,8 +542,8 @@ namespace SearchAndReplace
 		{
 			string title = StringParser.Parse("${res:MainWindow.Windows.SearchResultPanel.OccurrencesOf}",
 			                                  new StringTagPair("Pattern", pattern));
-			SearchResultsPad.Instance.ShowSearchResults(title, results);
-			SearchResultsPad.Instance.BringToFront();
+			SearchResultsHost.Current.ShowSearchResults(title, results);
+			SearchResultsHost.Current.BringToFront();
 		}
 		#endregion
 	}

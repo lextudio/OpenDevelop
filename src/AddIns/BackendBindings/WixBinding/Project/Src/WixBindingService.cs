@@ -47,7 +47,7 @@ namespace ICSharpCode.WixBinding
 			ClearErrorList();
 			
 			AddError(fileName, ex);
-			SD.Workbench.GetPad(typeof(ErrorListPad)).BringPadToFront();
+			SD.Workbench.GetPad("ICSharpCode.SharpDevelop.Gui.ErrorListPad").BringPadToFront();
 		}
 		
 		/// <summary>
@@ -64,7 +64,7 @@ namespace ICSharpCode.WixBinding
 		public static void ShowErrorList()
 		{
 			if (TaskService.SomethingWentWrong) {
-				SD.Workbench.GetPad(typeof(ErrorListPad)).BringPadToFront();
+				SD.Workbench.GetPad("ICSharpCode.SharpDevelop.Gui.ErrorListPad").BringPadToFront();
 			}
 		}
 		

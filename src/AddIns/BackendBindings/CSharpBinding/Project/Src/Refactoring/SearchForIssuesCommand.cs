@@ -63,7 +63,7 @@ namespace CSharpBinding.Refactoring
 						"{0} issues were fixed automatically." +
 						"{1} issues are remaining (no automatic fix available).",
 						fixedIssueCount, remainingIssues.Count);
-					SearchResultsPad.Instance.ShowSearchResults(title, remainingIssues);
+					SearchResultsHost.Current.ShowSearchResults(title, remainingIssues);
 					MessageService.ShowMessage(message, title);
 				} else if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Shift)) {
 					// Ctrl+Alt+Shift => run issue search on main thread,
@@ -73,13 +73,13 @@ namespace CSharpBinding.Refactoring
 						title, null,
 						monitor => SearchForIssues(fileNames, providers, f => issues.AddRange(f.Matches), monitor)
 					);
-					SearchResultsPad.Instance.ShowSearchResults(title, issues);
+					SearchResultsHost.Current.ShowSearchResults(title, issues);
 				} else {
 					var monitor = SD.StatusBar.CreateProgressMonitor();
 					var observable = ReactiveExtensions.CreateObservable<SearchedFile>(
 						(m, c) => SearchForIssuesAsync(fileNames, providers, c, m),
 						monitor);
-					SearchResultsPad.Instance.ShowSearchResults(title, observable);
+					SearchResultsHost.Current.ShowSearchResults(title, observable);
 				}
 			}
 		}
