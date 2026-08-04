@@ -63,7 +63,11 @@ namespace ICSharpCode.PackageManagement
 		
 		void BringOutputWindowToFront()
 		{
-			CompilerMessageView.Instance.BringToFront();
+			// Looked up via the already-established SD.OutputPad service, not
+			// CompilerMessageView.Instance: CompilerMessageView's real implementation now lives in
+			// the App project (doc/technotes/ilspy.md "Docking and layout replacement"), which this
+			// AddIn - like most - only references the Base project, not the App project.
+			SD.OutputPad.BringToFront();
 		}
 		
 		void RunRestore()

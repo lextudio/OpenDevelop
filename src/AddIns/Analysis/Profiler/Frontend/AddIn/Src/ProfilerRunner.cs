@@ -118,7 +118,7 @@ namespace ICSharpCode.Profiler.AddIn
 		
 		public Process Run()
 		{
-			SD.Workbench.GetPad(typeof(CompilerMessageView)).BringPadToFront();
+			SD.OutputPad.BringToFront();
 			controlWindow = new ProfilerControlWindow(this);
 			Process p = profiler.Start();
 			controlWindow.Show();

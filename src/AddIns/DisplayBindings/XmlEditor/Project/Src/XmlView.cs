@@ -464,7 +464,7 @@ namespace ICSharpCode.XmlEditor
 		public void RunXslTransform(string xsl, string transformFileName)
 		{
 			try {
-				SD.Workbench.GetPad(typeof(CompilerMessageView)).BringPadToFront();
+				SD.OutputPad.BringToFront();
 				
 				TaskService.ClearExceptCommentTasks();
 				
@@ -534,7 +534,7 @@ namespace ICSharpCode.XmlEditor
 		bool IsValidXsl(string xml, string transformFileName)
 		{
 			try	{
-				SD.Workbench.GetPad(typeof(CompilerMessageView)).BringPadToFront();
+				SD.OutputPad.BringToFront();
 
 				StringReader reader = new StringReader(xml);
 				XPathDocument doc = new XPathDocument(reader);
@@ -559,7 +559,7 @@ namespace ICSharpCode.XmlEditor
 		/// </summary>
 		static void ShowOutputWindow()
 		{
-			SD.Workbench.GetPad(typeof(CompilerMessageView)).BringPadToFront();
+			SD.OutputPad.BringToFront();
 		}
 		
 		/// <summary>

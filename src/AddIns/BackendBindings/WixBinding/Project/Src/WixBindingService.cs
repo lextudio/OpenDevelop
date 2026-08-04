@@ -35,7 +35,7 @@ namespace ICSharpCode.WixBinding
 		/// </summary>
 		public static void ClearErrorList()
 		{
-			SD.Workbench.GetPad(typeof(CompilerMessageView)).BringPadToFront();
+			SD.OutputPad.BringToFront();
 			TaskService.ClearExceptCommentTasks();
 		}
 		

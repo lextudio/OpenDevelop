@@ -86,7 +86,7 @@ public sealed class AddInTests : IAsyncDisposable
     [Fact]
     public async Task OpenFSharpSolution_LoadsFSharpFixture()
     {
-        var result = await _app.InvokeAsync("od.open-solution", _app.FSharpFixtureSolutionPath);
+        var result = await _app.ReopenSolutionAsync(_app.FSharpFixtureSolutionPath);
 
         Assert.True(result.GetProperty("success").GetBoolean(), $"OpenSolutionOrProject returned false for {_app.FSharpFixtureSolutionPath}");
         Assert.Equal(_app.FSharpFixtureSolutionPath, result.GetProperty("currentSolution").GetString());
@@ -95,7 +95,7 @@ public sealed class AddInTests : IAsyncDisposable
     [Fact]
     public async Task FSharpSolutionTree_ShowsSourceFileNode()
     {
-        await _app.InvokeAsync("od.open-solution", _app.FSharpFixtureSolutionPath);
+        await _app.EnsureSolutionOpenAsync(_app.FSharpFixtureSolutionPath);
 
         var tree = await _app.InvokeAsync("od.solution-tree");
         var project = tree.GetProperty("projects").EnumerateArray()
@@ -109,7 +109,7 @@ public sealed class AddInTests : IAsyncDisposable
     [Fact]
     public async Task OpenFSharpFile_DisplaysInAvalonEdit()
     {
-        await _app.InvokeAsync("od.open-solution", _app.FSharpFixtureSolutionPath);
+        await _app.EnsureSolutionOpenAsync(_app.FSharpFixtureSolutionPath);
         var fsPath = Path.Combine(Path.GetDirectoryName(_app.FSharpFixtureSolutionPath)!, "Program.fs");
 
         var openResult = await _app.InvokeAsync("od.open-file", fsPath);
@@ -131,7 +131,7 @@ public sealed class AddInTests : IAsyncDisposable
     [Fact]
     public async Task FSharpBuild_CompilesFixtureProject()
     {
-        await _app.InvokeAsync("od.open-solution", _app.FSharpFixtureSolutionPath);
+        await _app.EnsureSolutionOpenAsync(_app.FSharpFixtureSolutionPath);
         var preBuild = Path.Combine(Path.GetDirectoryName(_app.FSharpFixtureSolutionPath)!, "bin", "Debug", "net8.0", "FSharpFixture.dll");
         if (File.Exists(preBuild))
             File.Delete(preBuild);
@@ -157,7 +157,7 @@ public sealed class AddInTests : IAsyncDisposable
     [Fact]
     public async Task OpenVBSolution_LoadsVBFixture()
     {
-        var result = await _app.InvokeAsync("od.open-solution", _app.VBFixtureSolutionPath);
+        var result = await _app.ReopenSolutionAsync(_app.VBFixtureSolutionPath);
 
         Assert.True(result.GetProperty("success").GetBoolean(), $"OpenSolutionOrProject returned false for {_app.VBFixtureSolutionPath}");
         Assert.Equal(_app.VBFixtureSolutionPath, result.GetProperty("currentSolution").GetString());
@@ -166,7 +166,7 @@ public sealed class AddInTests : IAsyncDisposable
     [Fact]
     public async Task VBSolutionTree_ShowsSourceFileNode()
     {
-        await _app.InvokeAsync("od.open-solution", _app.VBFixtureSolutionPath);
+        await _app.EnsureSolutionOpenAsync(_app.VBFixtureSolutionPath);
 
         var tree = await _app.InvokeAsync("od.solution-tree");
         var project = tree.GetProperty("projects").EnumerateArray()
@@ -180,7 +180,7 @@ public sealed class AddInTests : IAsyncDisposable
     [Fact]
     public async Task OpenVBFile_DisplaysInAvalonEditAndParses()
     {
-        await _app.InvokeAsync("od.open-solution", _app.VBFixtureSolutionPath);
+        await _app.EnsureSolutionOpenAsync(_app.VBFixtureSolutionPath);
         var vbPath = Path.Combine(Path.GetDirectoryName(_app.VBFixtureSolutionPath)!, "Class1.vb");
 
         var openResult = await _app.InvokeAsync("od.open-file", vbPath);
@@ -210,7 +210,7 @@ public sealed class AddInTests : IAsyncDisposable
     [Fact]
     public async Task VBBuild_CompilesFixtureProject()
     {
-        await _app.InvokeAsync("od.open-solution", _app.VBFixtureSolutionPath);
+        await _app.EnsureSolutionOpenAsync(_app.VBFixtureSolutionPath);
         var preBuild = Path.Combine(Path.GetDirectoryName(_app.VBFixtureSolutionPath)!, "bin", "Debug", "net10.0", "VBFixture.dll");
         if (File.Exists(preBuild))
             File.Delete(preBuild);
@@ -291,7 +291,7 @@ public sealed class AddInTests : IAsyncDisposable
     [Fact]
     public async Task UnitTestingTree_ShowsTestsAfterOpeningTestProject()
     {
-        await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);
+        await _app.EnsureSolutionOpenAsync(_app.FixtureSolutionPath);
 
         JsonElement tree = default;
         bool discovered = false;
@@ -375,7 +375,7 @@ public sealed class AddInTests : IAsyncDisposable
         var showPad = await _app.InvokeAsync("od.show-pad", "Unit Tests");
         Assert.True(showPad.GetProperty("found").GetBoolean());
 
-        await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);
+        await _app.EnsureSolutionOpenAsync(_app.FixtureSolutionPath);
 
         JsonElement tree = default;
         bool discovered = false;
@@ -399,7 +399,7 @@ public sealed class AddInTests : IAsyncDisposable
     [Fact]
     public async Task UnitTestNode_GoToDefinition_OpensSourceAtTestMethod()
     {
-        await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);
+        await _app.EnsureSolutionOpenAsync(_app.FixtureSolutionPath);
 
         JsonElement tree = default;
         bool discovered = false;
@@ -599,7 +599,7 @@ public sealed class AddInTests : IAsyncDisposable
     [Fact]
     public async Task UnitTestRun_OutputPadCapturesMessages()
     {
-        await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);
+        await _app.EnsureSolutionOpenAsync(_app.FixtureSolutionPath);
 
         var deadline = DateTime.UtcNow.AddSeconds(60);
         while (DateTime.UtcNow < deadline)
@@ -625,7 +625,7 @@ public sealed class AddInTests : IAsyncDisposable
     public async Task UnitTestPad_ExpandNode_RevealsChildNodesInPadTree()
     {
         await _app.InvokeAsync("od.show-pad", "ICSharpCode.UnitTesting.UnitTestsPad");
-        await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);
+        await _app.EnsureSolutionOpenAsync(_app.FixtureSolutionPath);
 
         var deadline = DateTime.UtcNow.AddSeconds(60);
         while (DateTime.UtcNow < deadline)
@@ -662,7 +662,7 @@ public sealed class AddInTests : IAsyncDisposable
     public async Task UnitTestPad_RendersTestNamesInUiTree()
     {
         await _app.InvokeAsync("od.show-pad", "ICSharpCode.UnitTesting.UnitTestsPad");
-        await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);
+        await _app.EnsureSolutionOpenAsync(_app.FixtureSolutionPath);
 
         var deadline = DateTime.UtcNow.AddSeconds(60);
         while (DateTime.UtcNow < deadline)
@@ -699,13 +699,28 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.True(expandResult.GetProperty("found").GetBoolean(),
             "Expected the SampleTestProject namespace node to be expandable in the Unit Tests pad");
 
+        // The pad's TreeView renders its items asynchronously after the model is expanded, so
+        // poll for the class name to appear in the visual tree before asserting (the method-name
+        // assertion below already waits the same way).
         var uiTree = await _app.GetUITreeAsync();
         var texts = FlattenElements(uiTree)
             .Where(e => e.TryGetProperty("type", out var t) && t.GetString() == "TextBlock"
                 && e.TryGetProperty("text", out var txt) && !string.IsNullOrEmpty(txt.GetString()))
             .Select(e => e.GetProperty("text").GetString())
             .ToList();
-
+        var padDeadline2 = DateTime.UtcNow.AddSeconds(30);
+        while (DateTime.UtcNow < padDeadline2)
+        {
+            uiTree = await _app.GetUITreeAsync();
+            texts = FlattenElements(uiTree)
+                .Where(e => e.TryGetProperty("type", out var t) && t.GetString() == "TextBlock"
+                    && e.TryGetProperty("text", out var txt) && !string.IsNullOrEmpty(txt.GetString()))
+                .Select(e => e.GetProperty("text").GetString())
+                .ToList();
+            if (texts.Any(t => t == "PassTests"))
+                break;
+            await Task.Delay(500);
+        }
         Assert.Contains(texts, t => t == "PassTests");
 
         expandResult = await _app.InvokeAsync("od.unit-test.expand-node", "PassTests");
@@ -747,7 +762,7 @@ public sealed class AddInTests : IAsyncDisposable
     [Fact]
     public async Task OpenXamlFile_LoadsDesignerWithToolboxAndOutline()
     {
-        var openSolutionResult = await _app.InvokeAsync("od.open-solution", _app.WpfSampleSolutionPath);
+        var openSolutionResult = await _app.ReopenSolutionAsync(_app.WpfSampleSolutionPath);
         Assert.True(openSolutionResult.GetProperty("success").GetBoolean(),
             $"OpenSolutionOrProject returned false for {_app.WpfSampleSolutionPath}");
 
@@ -787,7 +802,7 @@ public sealed class AddInTests : IAsyncDisposable
         // editor opens. The XamlBinding addin's XamlOutlineContentHost registers itself on the
         // TextView services via XamlTextEditorExtension.Attach, making the OutlinePad show a
         // XAML element tree instead of the designer's IOutlineNode tree.
-        var openSolutionResult = await _app.InvokeAsync("od.open-solution", _app.WpfSampleSolutionPath);
+        var openSolutionResult = await _app.ReopenSolutionAsync(_app.WpfSampleSolutionPath);
         Assert.True(openSolutionResult.GetProperty("success").GetBoolean());
 
         var appXamlPath = Path.Combine(Path.GetDirectoryName(_app.WpfSampleSolutionPath)!, "App.xaml");
@@ -817,7 +832,7 @@ public sealed class AddInTests : IAsyncDisposable
     {
         // SamplePane.xaml is a UserControl with deeply nested named elements (Border→StackPanel→
         // TextBlocks, ListBox). The designer's Outline pad should reflect the full hierarchy.
-        var openSolutionResult = await _app.InvokeAsync("od.open-solution", _app.WpfSampleSolutionPath);
+        var openSolutionResult = await _app.ReopenSolutionAsync(_app.WpfSampleSolutionPath);
         Assert.True(openSolutionResult.GetProperty("success").GetBoolean());
 
         var xamlPath = Path.Combine(Path.GetDirectoryName(_app.WpfSampleSolutionPath)!, "SamplePane.xaml");
@@ -854,7 +869,7 @@ public sealed class AddInTests : IAsyncDisposable
 
         try
         {
-            var openSolutionResult = await _app.InvokeAsync("od.open-solution", _app.WpfSampleSolutionPath);
+            var openSolutionResult = await _app.ReopenSolutionAsync(_app.WpfSampleSolutionPath);
             Assert.True(openSolutionResult.GetProperty("success").GetBoolean());
             var openFileResult = await _app.InvokeAsync("od.open-file", xamlPath);
             Assert.True(openFileResult.GetProperty("opened").GetBoolean());
@@ -922,7 +937,7 @@ public sealed class AddInTests : IAsyncDisposable
         var solutionDirectory = Path.GetDirectoryName(_app.WpfSampleSolutionPath)!;
         var xamlPath = Path.Combine(solutionDirectory, "SamplePane.xaml");
 
-        var openSolutionResult = await _app.InvokeAsync("od.open-solution", _app.WpfSampleSolutionPath);
+        var openSolutionResult = await _app.ReopenSolutionAsync(_app.WpfSampleSolutionPath);
         Assert.True(openSolutionResult.GetProperty("success").GetBoolean());
         var openFileResult = await _app.InvokeAsync("od.open-file", xamlPath);
         Assert.True(openFileResult.GetProperty("opened").GetBoolean());
@@ -1047,7 +1062,7 @@ public sealed class AddInTests : IAsyncDisposable
     [Fact]
     public async Task ProjectContextMenu_ContainsClassDiagram()
     {
-        var opened = await _app.InvokeAsync("od.open-solution", _app.SolutionExplorerFixturePath);
+        var opened = await _app.ReopenSolutionAsync(_app.SolutionExplorerFixturePath);
         Assert.True(opened.GetProperty("success").GetBoolean());
 
         var loadedAddIns = await _app.InvokeAsync("od.addins");

@@ -84,11 +84,13 @@ namespace ICSharpCode.ILSpyAddIn
 		{
 			foreach (var viewContent in SD.Workbench.ViewContentCollection.OfType<DecompiledViewContent>()) {
 				if (viewContent.DecompiledTypeName.Equals(target)) {
+					ICSharpCode.Core.LoggingService.Info($"[DBG NavigateTo] existing doc {viewContent.DecompiledTypeName.Type} memberKey={memberKey}");
 					viewContent.WorkbenchWindow.SelectWindow();
 					viewContent.JumpToMember(memberKey);
 					return viewContent.DecompilationTask;
 				}
 			}
+			ICSharpCode.Core.LoggingService.Info($"[DBG NavigateTo] NEW doc {target.Type} memberKey={memberKey}");
 			var newViewContent = new DecompiledViewContent(target, memberKey);
 			SD.Workbench.ShowView(newViewContent);
 			return newViewContent.DecompilationTask;

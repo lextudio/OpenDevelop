@@ -158,6 +158,17 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		{
 			if (!CodeEditorOptions.Instance.EnableOpenLens)
 				return null;
+			// No real language-service document can ever back a file outside any open project (e.g.
+			// ILSpy's decompiled "ilspy://..." documents, ILSpyParser.cs/ILSpyDisplayBinding.cs's own
+			// synthetic scheme - or any other standalone file opened outside a project) - anchor
+			// discovery would just query a language service for a document it never registered.
+			// Today that happens to no-op harmlessly (CSharpVBLanguageService.GetOrLoadDocumentAsync
+			// returns null for an unregistered DocumentId, so GetDocumentOutlineAsync returns an empty
+			// list and no anchors/lenses ever render) rather than throw, but that's incidental, not a
+			// guarantee every current or future IOpenLensAnchorProvider honors - skip constructing the
+			// renderer at all rather than relying on every provider's own null-handling.
+			if (SD.ProjectService.FindProjectContainingFile(FileName.Create(fileName)) == null)
+				return null;
 			var registry = SD.GetService<OpenLensProviderRegistry>();
 			if (registry == null)
 				return null;

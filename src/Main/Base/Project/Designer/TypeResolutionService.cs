@@ -268,7 +268,7 @@ namespace ICSharpCode.SharpDevelop.Designer
 						// The error might be caused by an assembly that is
 						// not even needed for the designer to load.
 						LoggingService.Error("Error loading assembly " + fileName, e);
-						SD.Workbench.GetPad(typeof(CompilerMessageView)).BringPadToFront();
+						SD.OutputPad.BringToFront();
 						TaskService.BuildMessageViewCategory.AppendText(
 							StringParser.Parse("${res:FileUtilityService.ErrorWhileLoading}")
 							+ "\r\n" + fileName + "\r\n" + e.Message + "\r\n"

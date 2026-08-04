@@ -216,21 +216,52 @@ namespace ICSharpCode.SharpDevelop.Workbench
 
 			AvalonPadContent pad;
 			if (pads.TryGetValue(padDescriptor, out pad)) {
+				// A layout restore rebuilds the whole RootPanel from the snapshot (which only
+				// knows MEF panes - LayoutSnapshotConverter.Apply), leaving a legacy pad that was
+				// docked before the restore detached from the live tree: its Root is either null
+				// (parent pane replaced) or the stale pre-restore LayoutRoot (XmlLayoutSerializer
+				// replaces Manager.Layout wholesale). Re-dock it on demand, mirroring how a
+				// re-added MEF model gets a fresh anchorable.
+				if (pad.Root != dockWorkspace.Layout)
+					ReDock(pad);
 				pad.Show();
+				EnsureDefaultPositionSize(pad, padDescriptor);
 			} else {
 				pad = new AvalonPadContent(this, padDescriptor);
 				pads.Add(padDescriptor, pad);
 				padsByClass.Add(padDescriptor.Class, pad);
 				pad.ShowInDefaultPosition();
-				if (pad.Parent is LayoutAnchorablePane pane) {
-					if ((padDescriptor.DefaultPosition & DefaultPadPositions.Left) != 0)
-						pane.DockWidth = new GridLength(250);
-					else if ((padDescriptor.DefaultPosition & DefaultPadPositions.Right) != 0)
-						pane.DockWidth = new GridLength(280);
-					else if ((padDescriptor.DefaultPosition & DefaultPadPositions.Bottom) != 0)
-						pane.DockHeight = new GridLength(188);
-				}
+				EnsureDefaultPositionSize(pad, padDescriptor);
 			}
+		}
+
+		// Detaches a legacy pad's anchorable from a stale (pre-restore) pane and docks it again:
+		// ShowInDefaultPosition -> AddToLayout throws InvalidOperationException while the
+		// anchorable is still parented (IsVisible), and its parent pane belongs to a layout tree
+		// that no longer renders (see ShowPad's comment above).
+		void ReDock(AvalonPadContent pad)
+		{
+			if (pad.Parent is ILayoutContainer staleParent)
+				staleParent.RemoveChild(pad);
+			pad.ShowInDefaultPosition();
+		}
+
+		// A pad that was docked, then dropped by a layout restore (a saved layout only restores the
+		// panes it lists; everything else is re-docked on demand), gets re-docked into whatever
+		// strip AvalonDock re-creates for it - which, measured, collapses to a tab-row-only strip
+		// (25px, content viewport 0) so a virtualized tree/list never realizes its rows. Re-applying
+		// the legacy default-position sizing on every show is idempotent (the same values a fresh
+		// ShowInDefaultPosition docks would set) and gives a re-shown pad a usable pane again.
+		static void EnsureDefaultPositionSize(AvalonPadContent pad, PadDescriptor padDescriptor)
+		{
+			if (pad.Parent is not LayoutAnchorablePane pane)
+				return;
+			if ((padDescriptor.DefaultPosition & DefaultPadPositions.Left) != 0)
+				pane.DockWidth = new GridLength(250);
+			else if ((padDescriptor.DefaultPosition & DefaultPadPositions.Right) != 0)
+				pane.DockWidth = new GridLength(280);
+			else if ((padDescriptor.DefaultPosition & DefaultPadPositions.Bottom) != 0)
+				pane.DockHeight = new GridLength(188);
 		}
 		
 		public void ActivatePad(PadDescriptor padDescriptor)
@@ -240,8 +271,14 @@ namespace ICSharpCode.SharpDevelop.Workbench
 
 			AvalonPadContent p;
 			if (pads.TryGetValue(padDescriptor, out p)) {
+				// See ShowPad: a layout restore can leave a previously-docked legacy pad
+				// detached from the live tree, so re-dock before showing/activating it.
+				if (p.Root != dockWorkspace.Layout)
+					ReDock(p);
 				if (!p.IsVisible)
 					p.Show();
+				EnsureDefaultPositionSize(p, padDescriptor);
+				p.IsSelected = true;
 				p.IsActive = true;
 			} else {
 				ShowPad(padDescriptor);

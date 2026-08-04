@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using AvalonDock.Layout;
 
 using ICSharpCode.SharpDevelop;
+using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Workbench;
 using LeXtudio.DevFlow.Agent.Core;
 using Microsoft.Maui.DevFlow.Agent.Core;
@@ -662,7 +663,7 @@ namespace ICSharpCode.ILSpyAddIn
 		}
 
 		[DevFlowAction("od.ilspy.click-reference", Description = "Exercise the actual click-a-reference-to-navigate behavior on the currently active native decompiled document (DecompiledViewContent.TryNavigateAtOffset) - finds the given substring's offset in the document text and clicks there, exactly as a real Ctrl+Click would resolve once GetPositionFromPoint has mapped a pixel to that same offset (no synthetic-mouse-event capability exists in this environment, so this verifies everything downstream of that standard AvalonEdit API call). occurrence selects which match of the substring to click (0 = first)")]
-		public static string ClickReference(string substring, int occurrence)
+		public static async Task<string> ClickReference(string substring, int occurrence)
 		{
 			try {
 				if (SD.Workbench.ActiveViewContent is not DecompiledViewContent view)
@@ -678,12 +679,33 @@ namespace ICSharpCode.ILSpyAddIn
 
 				var before = new { activeViewTitle = SD.Workbench.ActiveViewContent?.TitleName, activeViewFile = SD.Workbench.ActiveViewContent?.PrimaryFileName?.ToString() };
 				bool navigated = view.TryNavigateAtOffset(offset);
+				string jumpInfo = "";
+				int caretLineAfter = -1, caretColAfter = -1;
+				for (int i = 0; i < 50; i++) {
+					await Task.Delay(100);
+					var av = SD.Workbench.ActiveViewContent;
+					if (av == null)
+						continue;
+					var editor = av.GetService<ITextEditor>();
+					if (editor?.Caret != null) {
+						caretLineAfter = editor.Caret.Line;
+						caretColAfter = editor.Caret.Column;
+						if (caretLineAfter > 1)
+							break;
+					}
+				}
+				if (SD.Workbench.ActiveViewContent is DecompiledViewContent dv) {
+					jumpInfo = $"{dv.DecompiledTypeName.Type};locs={dv.MemberLocationCount};";
+				}
 
 				return JsonSerializer.Serialize(new {
 					success = true,
 					substring,
 					offset,
 					navigated,
+					caretLineAfter,
+					caretColAfter,
+					jumpInfo,
 					before,
 					after = new { activeViewTitle = SD.Workbench.ActiveViewContent?.TitleName, activeViewFile = SD.Workbench.ActiveViewContent?.PrimaryFileName?.ToString() }
 				});

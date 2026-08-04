@@ -83,7 +83,7 @@ namespace ICSharpCode.SharpDevelop.Editor.Bookmarks
 		/// Gets whether the bookmark should be displayed in the given pad.
 		/// </summary>
 #if !HAS_UNO
-		public virtual bool ShowInPad(BookmarkPadBase pad)
+		public virtual bool ShowInPad(BookmarkPadViewModelBase pad)
 		{
 			return true;
 		}

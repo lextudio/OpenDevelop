@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Data;
 using System.Xml;
 
@@ -161,6 +162,17 @@ internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrateg
         if (pane == null)
             return false;
         pane.Show();
+        // pane.Show() only flips the model's IsVisible. When the pane was re-added on demand (a
+        // layout restore keeps exactly the panes a layout file lists, so a re-shown pad's
+        // anchorable is freshly docked into an existing group), the anchorable is NOT
+        // auto-activated, leaving the requested tab hidden behind whatever shares its group.
+        // Select and activate it explicitly - the semantics ActivatePad gives legacy pads.
+        if (Layout?.Descendents().OfType<LayoutAnchorable>()
+            .FirstOrDefault(a => a.ContentId == contentId) is LayoutAnchorable anchorable)
+        {
+            anchorable.IsSelected = true;
+            anchorable.IsActive = true;
+        }
         return true;
     }
 
@@ -172,6 +184,8 @@ internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrateg
             tool.IsVisible = false;
         }
     }
+
+    public void Add(ToolPaneModel model) => AddToolPane(model);
 
     public void InitializeLayout()
     {
@@ -315,9 +329,39 @@ internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrateg
         // next actions" #3, 2026-08-02): PreferredDockSize replaces what used to be a single
         // `ContentId == "ProjectBrowser"` special case, so any ToolPaneModel can express a docked
         // size preference instead of only the one pane the old code happened to special-case.
-        var pane = ToolPanes.FirstOrDefault(p => p.ContentId == anchorableShown.ContentId);
-        if (pane?.PreferredDockSize is double size && anchorableShown.Parent is LayoutAnchorablePane layoutPane)
-            layoutPane.DockWidth = new GridLength(size);
+        // The size applies to the pane's axis: a pane in a horizontally-stacked panel (left/right
+        // side) gets DockWidth, one in a vertically-stacked panel (top/bottom strip) gets
+        // DockHeight - the legacy AvalonPadContent.ShowInDefaultPosition path sizes exactly this
+        // way (DockWidth 250/280 for left/right, DockHeight 188 for bottom), and without it a
+        // re-docked pane collapses to a tab-row-only strip (0-height content viewport, so
+        // virtualized tree/list content never realizes).
+        // The anchorable's ContentId is not always the model's ContentId: AvalonDock falls back to
+        // the content control's Name when ContentId is unset (LayoutContent.SetContentIdFromContent),
+        // which for a migrated pad ends up being the legacy pad class full name (e.g.
+        // "ICSharpCode.SharpDevelop.Editor.Search.SearchResultsPad" vs model ContentId
+        // "SearchResultsPad") - so match on the LegacyPadClass too, or the size preference is
+        // silently never applied.
+        var pane = ToolPanes.FirstOrDefault(p => p.ContentId == anchorableShown.ContentId || p.LegacyPadClass == anchorableShown.ContentId);
+        if (pane?.PreferredDockSize is double size && anchorableShown.Parent is LayoutAnchorablePane layoutPane) {
+            if (IsInVerticallyStackedPanel(layoutPane))
+                layoutPane.DockHeight = new GridLength(size);
+            else
+                layoutPane.DockWidth = new GridLength(size);
+        }
+    }
+
+    static bool IsInVerticallyStackedPanel(LayoutAnchorablePane pane)
+    {
+        // The pane's docking axis is the orientation of the first LayoutPanel ancestor: a
+        // top/bottom strip is a vertically-stacked panel (its panes' height is the sized axis),
+        // a left/right side is horizontally-stacked (width).
+        ILayoutContainer parent = pane.Parent;
+        while (parent != null) {
+            if (parent is LayoutPanel panel)
+                return panel.Orientation == Orientation.Vertical;
+            parent = parent.Parent;
+        }
+        return false;
     }
 
     public bool BeforeInsertDocument(LayoutRoot layout, LayoutDocument anchorableToShow, ILayoutContainer destinationContainer)

@@ -75,9 +75,18 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			workbench.Initialize();
 			workbench.SetMemento(SD.PropertyService.NestedProperties(workbenchMemento));
 			workbench.WorkbenchLayout = layout;
-			
-			// HACK: eagerly load output pad because pad services cannnot be instanciated from background threads
-			SD.Services.AddService(typeof(IOutputPad), CompilerMessageView.Instance);
+
+			// The eager-load hack this replaced ("pad services cannot be instantiated from
+			// background threads") is no longer needed (doc/technotes/ilspy.md "Docking and layout
+			// replacement" item 4, 2026-08-04 OutputPad slice): `workbench.WorkbenchLayout = layout`
+			// just above already touches `DockWorkspace.ToolPanes` (binding AnchorablesSource),
+			// which constructs every MEF-exported `[Export("ToolPane", ...)] ToolPaneModel` -
+			// including `CompilerMessageViewViewModel` - right here on the main thread, before any
+			// background build/restore thread could reach it through `SD.OutputPad`. A separate
+			// explicit `GetExportedValue<CompilerMessageViewViewModel>()` call here would resolve a
+			// *second*, distinct instance under the plain-type contract rather than reusing the one
+			// already constructed under the "ToolPane" contract - confirmed live, it throws
+			// "duplicate key" on the constructor's own `SD.Services.AddService` calls.
 
 			// The real IMSBuildEngine (Project/Build/MSBuildEngine/*.cs) drives builds through a
 			// separate out-of-process WinForms worker that's out of MVP scope (see that folder's

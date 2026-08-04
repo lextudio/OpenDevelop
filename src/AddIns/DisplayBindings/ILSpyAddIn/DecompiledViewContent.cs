@@ -53,6 +53,7 @@ namespace ICSharpCode.ILSpyAddIn
 		readonly CodeEditor codeEditor = new CodeEditor();
 		readonly CancellationTokenSource cancellation = new CancellationTokenSource();
 		IReadOnlyDictionary<string, TextLocation> memberLocations = new Dictionary<string, TextLocation>();
+		public int MemberLocationCount => memberLocations?.Count ?? 0;
 		IReadOnlyList<DecompiledReferenceSpan> references = Array.Empty<DecompiledReferenceSpan>();
 
 		#region Constructor

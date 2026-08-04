@@ -220,6 +220,41 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         catch { return false; }
     }
 
+	// od.open-solution is never a no-op app-side: it unconditionally closes the current solution
+	// (force-closing views, canceling builds, saving prefs) and reloads a fresh MSBuild project
+	// tree from disk, even when the requested path is already open. That full reload is expensive
+	// and, across ~90 facts in this suite, mostly redundant - many consecutive facts re-open the
+	// exact same fixture solution just to run another read-only query against it.
+	//
+	// EnsureSolutionOpenAsync lets read-only facts skip the reopen when this exact path is already
+	// open. The source of truth is the app itself, not an in-memory cache: the app is queried for
+	// its currently open solution path (od.solution.status), so a fact is never misled by other
+	// facts that opened a different solution directly via od.open-solution (which, unlike this
+	// helper, does not record anything on the test side). Correctness never depends on xUnit's
+	// (unguaranteed) test execution order: whichever fact runs, if the requested path is not the
+	// app's current solution, it reopens; if it is, it's safe to skip only because the caller has
+	// verified the fact does not depend on a fresh reload for isolation (no dirty documents, no
+	// project mutation, no leftover build/debug/test-run state from a previous fact). Facts that
+	// mutate solution/project state, run builds/debug sessions/unit test runs, or otherwise rely
+	// on od.open-solution's full-reset side effects as their isolation mechanism must keep calling
+	// ReopenSolutionAsync (or InvokeAsync("od.open-solution", ...) directly) so they always get a
+	// genuine fresh reload.
+
+	public async Task EnsureSolutionOpenAsync(string path)
+	{
+		var status = await InvokeAsync("od.solution.status");
+		string? current = status.TryGetProperty("path", out var p) ? p.GetString() : null;
+		if (string.Equals(current, path, StringComparison.Ordinal))
+			return;
+		await InvokeAsync("od.open-solution", path);
+	}
+
+	public async Task<JsonElement> ReopenSolutionAsync(string path)
+	{
+		var result = await InvokeAsync("od.open-solution", path);
+		return result;
+	}
+
 	public async Task<JsonElement> InvokeAsync(string action, params object[] args)
 	{
 		var body = JsonSerializer.Serialize(new { args });

@@ -93,7 +93,7 @@ namespace ICSharpCode.SharpDevelop.Debugging
 			get { return false; }
 		}
 		
-		public override bool ShowInPad(BookmarkPadBase pad)
+		public override bool ShowInPad(BookmarkPadViewModelBase pad)
 		{
 			return false;
 		}

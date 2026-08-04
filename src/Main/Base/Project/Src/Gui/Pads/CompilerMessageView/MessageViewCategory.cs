@@ -85,7 +85,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 			if (System.Threading.Interlocked.CompareExchange(ref messageViewCategory, newMessageViewCategory, null) == null) {
 				// this thread was successful creating the category, so add it
 #if !HAS_UNO
-				CompilerMessageView.Instance.AddCategory(newMessageViewCategory);
+				(SD.Services.GetService(typeof(IOutputPadHost)) as IOutputPadHost)?.AddCategory(newMessageViewCategory);
 #endif
 			}
 		}

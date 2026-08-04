@@ -3139,3 +3139,203 @@ columns both confirmed via the UI automation tree). `ErrorListTests` 3/3 clean a
 base class. `ClassBrowserPad`, `OutputPad`, `SideBar`, `FileScout` not yet examined for
 external-caller complexity - worth checking each for the same "eager-startup vs first-show timing"
 risk this slice found, in addition to the usual reachability checks.
+
+## Legacy Pad migration, seventh slice: SideBar (ToolsPad), and FileScout ruled out (2026-08-04)
+
+**`FileScout` looked at first and ruled out, not migrated.** It's a pure `System.Windows.Forms`
+`UserControl` (`ListView`/`TreeView`/`Splitter`/`ShellTree`) hosted via `WindowsFormsHost`, but
+`WorkbenchStartup.InitializeWorkbench` has `WindowsFormsHost.EnableWindowsFormsInterop()` commented
+out with `"removed - no WinForms interop in this MVP build"`. So `FileScout` is very likely
+non-functional today (can't render), not merely un-migrated - wrapping it in a `ToolPaneModel` shim
+would just be polishing dead code. Migrating it for real means a native WPF rewrite of the file
+browser, not the mechanical "shim + ViewModel" shape every other pad in this list got. Left for a
+separate, deliberate decision (rewrite vs. delete the AddInTree `<Pad id="FileScout">` entry
+entirely) rather than attempted here.
+
+**`SideBar` migrated** (AddInTree pad id `"SideBar"`, class `ICSharpCode.SharpDevelop.Gui.ToolsPad`,
+the id and class name diverge, worth remembering when grepping for it). Turned out to be the
+easiest slice yet: already pure WPF (a single `ContentPresenter`), no shared base class, and only
+one production external caller of `typeof(ToolsPad)`
+(`WpfDesign.AddIn/Src/Commands/Pads.cs`'s `Tools` menu command), fixed the same way `PropertyPad`'s
+callers were, with `SD.Workbench.GetPad("ICSharpCode.SharpDevelop.Gui.ToolsPad")` instead of
+`typeof(ToolsPad)`, since that AddIn only references the Base project. `IToolsHost` (the interface
+several AddIns, WpfDesign, FormsDesigner, AvalonEdit.AddIn, Reporting, WorkflowDesigner,
+Data.EDMDesigner, implement to feed this pad) stays in the Base project on its own, since the new
+shim lives in the App project which those AddIns don't reference.
+
+`ToolsPadViewModel` (App project, MEF-exported `ToolPaneModel`) reproduces the original behavior
+exactly: subscribes to `SD.Workbench.ActiveViewContentChanged` (deferred to first real use, same
+early-startup hazard guarded against in every previous slice) and sets its `ContentPresenter.Content`
+from `SD.GetActiveViewContentService<IToolsHost>().ToolsContent`, falling back to the
+"no tools available" string. `ToolsPad` itself is now a two-line shim resolving the ViewModel from
+MEF, same shape as `ErrorListPad`.
+
+**Verified**: `SharpDevelop.csproj`, `WpfDesign.AddIn`, and the full `OpenDevelop.Mvp.slnx` all
+build clean (0 errors). Live: fresh launch, zero exceptions attributable to this change (only
+pre-existing unrelated errors - `BrowserDisplayBinding` class-not-found, stale recent-file paths),
+`od.show-pad "ToolsPad"` finds it and reports `success:true`,
+`className:"ICSharpCode.SharpDevelop.Gui.ToolsPad"` - confirming `LegacyPadClass` routing works for
+this pad same as the previous six.
+
+**Status**: 7 of 11 migrated. `FileScout` ruled out (see above, needs its own rewrite-or-delete
+decision, not a migration). Remaining 3 to examine: `BookmarkPad`+`BreakPointsPad` (known blocked,
+shared base class across two assemblies), `ClassBrowserPad`, `OutputPad`.
+
+## Legacy Pad migration, eighth slice: OutputPad, and `ClassBrowserPad` ruled out (2026-08-04)
+
+**`ClassBrowserPad` looked at and ruled out, not migrated.** Its AddInTree `<Pad id="ClassBrowser">`
+entry, and the `IClassBrowser`/`ClassBrowserServiceImpl` service it depends on, are both already
+wrapped in `<!-- MVP: removed ... -->` in `ICSharpCode.SharpDevelop.addin` - unlike `OutputPad`/
+`Bookmarks`, which are still live registrations. So this pad isn't reachable in the running app at
+all today; it doesn't need MVVM migration, it's simply out of this MVP build's scope already
+(same category the user asked to skip explicitly for this pass).
+
+**`OutputPad` migrated** (AddInTree pad id `"OutputPad"`, class `ICSharpCode.SharpDevelop.Gui.
+CompilerMessageView`) - the biggest slice yet, both in size (~570 lines) and in the number of
+external touch points, because it combines every hazard the previous seven slices found
+individually:
+
+- **Static `Instance` singleton with 12+ external call sites** across Base, three AddIns
+  (PackageManagement x2, and Base's own `ServiceReference`/`TypeResolutionService`/
+  `CompilerMessageViewToolbarCommands`), same shape as `PropertyPad`/`SearchResultsPad`'s
+  blocker. Two fixes, matched to what each caller actually needed:
+  - Callers that only needed `BringToFront()` (`RestorePackagesCommand.cs`,
+    `AddServiceReferenceViewModel.cs`, and seven separate `GetPad(typeof(CompilerMessageView)).
+    BringPadToFront()` call sites across `XmlView.cs`, `WixBindingService.cs`,
+    `TypeResolutionService.cs`, `ProfilerRunner.cs`, and the NAnt sample) now call the
+    already-registered `SD.OutputPad.BringToFront()` (`Workbench.IOutputPad`, pre-existing,
+    unrelated to this migration) directly - no new interface needed for that one method.
+  - Callers needing `MessageViewCategory`-typed access or the toolbar-facing surface
+    (`GetCategory`, `AddCategory`, `SelectedCategoryIndex`, `MessageCategories`, `WordWrap`, the two
+    change events, `Content`) got a new `IOutputPadHost` in the Base project, same shape as
+    `IPropertyPadHost`/`ISearchResultsHost`, registered via
+    `SD.Services.AddService(typeof(IOutputPadHost), this)` in the ViewModel's constructor.
+    `MessageViewCategory.Create`, `PackageManagementCompilerMessageView.cs`, and
+    `CompilerMessageViewToolbarCommands.cs` (moved into the App project, same treatment as
+    `ErrorListToolbarCommands.cs`/`TaskListPadCommands.cs`) all resolve through it now.
+- **A genuine "must stay eager" constraint, not just an early-startup timing hazard.** Every other
+  migrated pad's real work got deferred to a lazy `EnsureSubscribed()` on first touch. `OutputPad`
+  can't use that pattern: `Workbench.IOutputPad` is explicitly documented thread-safe and routinely
+  driven by background build/restore/coverage threads, and `WorkbenchStartup.cs` had a pre-existing
+  `// HACK: eagerly load output pad because pad services cannot be instantiated from background
+  threads` comment confirming this was already a known constraint before this migration. So
+  `CompilerMessageViewViewModel` builds its whole control tree and subscribes to
+  `SD.ProjectService.CurrentSolutionChanged` directly in the constructor, exactly like the original
+  class did - the only thing that changed is *what* constructs it (MEF's `[Shared]` "ToolPane"
+  export instead of the AddInTree), not *when* relative to workbench startup.
+- **A real, live-reproduced crash from a wrong assumption about MEF `[Shared]` scoping across two
+  export contracts of the same part.** `CompilerMessageViewViewModel` has two `[Export]` attributes
+  (`typeof(CompilerMessageViewViewModel)` and `"ToolPane"`/`typeof(ToolPaneModel)`, same pattern
+  every migrated pad uses) - assumed, wrongly, that `[Shared]` meant one singleton instance served
+  both contracts. It does not, under this codebase's TomsToolbox-over-Microsoft.Extensions.
+  DependencyInjection bridge: resolving via the plain-type contract after `DockWorkspace.ToolPanes`
+  had already constructed the instance via the "ToolPane" contract built a **second, distinct**
+  instance, whose constructor then crashed on its own `SD.Services.AddService(typeof(IOutputPad),
+  this)` call with `ArgumentException: An item with the same key has already been added`. Hit twice,
+  live: once from an explicit `GetExportedValue<CompilerMessageViewViewModel>()` this slice
+  initially added to `WorkbenchStartup.cs` (to replace the eager-load hack above - removed again,
+  unnecessary, since `workbench.WorkbenchLayout = layout` immediately above it already touches
+  `DockWorkspace.ToolPanes` and constructs the real instance right there), and once from
+  `CompilerMessageViewToolbarCommands.cs`'s `ShowOutputFromComboBox`, which is constructed *inside*
+  the ViewModel's own constructor (via `ToolBarService.CreateToolBar`) and so re-enters MEF
+  resolution mid-construction. Fixed by making every external touch point (toolbar commands, the
+  two `OpenDevelopDevFlowActions.cs` DevFlow actions, `MessageViewCategory`, the PackageManagement
+  AddIn) resolve via the already-registered `IOutputPadHost`/`IOutputPad` **services**
+  (`SD.Services.GetService`), never via a second `GetExportedValue<CompilerMessageViewViewModel>()`
+  call. The shim (`CompilerMessageView.cs`, App project) keeps its own `GetExportedValue` call same
+  as `ErrorListPad`/`ToolsPad`/`PropertyPad`'s shims - dormant in practice, like theirs, since
+  `CreatePad()` is only reachable through direct `PadDescriptor.PadContent`/`BringPadToFront()`
+  access and every remaining caller of those was fixed to go through `SD.OutputPad`/`IOutputPadHost`
+  instead. Worth flagging for whoever migrates the next pad with a constructor-time
+  `SD.Services.AddService` call (only `PropertyPad`/`OutputPad` do this so far): audit every
+  resolution of that ViewModel type, not just the shim, for this exact hazard.
+
+**Verified**: full `OpenDevelop.Mvp.slnx` builds clean (0 errors). Live: fresh launch after the
+fix, zero exceptions, `od.show-pad "Output"` finds it (`className:
+"ICSharpCode.SharpDevelop.Gui.CompilerMessageView"`), a real build's "Build finished successfully."
+text renders in the pad's UI automation tree. `WorkbenchTests` 33/33 clean (includes
+`BuildSolution_OutputPadCapturesRealBuildLog` and all three `ErrorList_*` tests, which build and
+read output/error-list state together).
+
+**Status**: 8 of 11 migrated. `ClassBrowserPad` ruled out (already excluded from the MVP AddInTree,
+not reachable). `FileScout` ruled out separately (needs a rewrite-or-delete decision). Only
+`BookmarkPad`+`BreakPointsPad` remain - known blocked on their shared base class across two
+assemblies (Base's `BookmarkPadBase` is also `Debugger.AddIn`'s `BreakPointsPad`'s base), not yet
+attempted.
+
+## Legacy Pad migration, eighth slice: BookmarkPad + BreakPointsPad, the last blocked pair (2026-08-04)
+
+**Root cause, confirmed by reading the code (not just repeating the earlier "blocked" note):**
+`OpenDevelopMefHost.BindExports` only scans `Assembly.GetExecutingAssembly()` - the App project's
+own assembly. `Debugger.AddIn` isn't scanned, and correctly doesn't reference the App project
+(only Base/Core/Core.Presentation) - so `BreakPointsPad`'s real implementation can never become a
+MEF `[Export("ToolPane", ...)]` part the way the other 9 migrated pads did. That's the actual
+blocker, not merely "two pads share a base class" - the shared base class is what made the
+blocker *visible* (migrating `BookmarkPad` alone, the way `Outline`/`DefinitionView` were migrated
+one at a time, would silently break `BreakPointsPad`'s compile), not the blocker itself.
+
+**The unblock**: `IPaneModelHost` (Base project, previously only had `Remove(PaneModel)`) got a new
+`Add(ToolPaneModel model)` method, implemented by `DockWorkspace` as a one-line forward to its
+existing internal `AddToolPane` (itself already used by ILSpyAddIn's runtime-constructed panes,
+but only reachable there because ILSpyAddIn is a special case that directly references the App
+project - the one thing every other AddIn in this migration correctly doesn't do). This gives any
+AddIn a way to register a runtime-constructed `ToolPaneModel` with the one real docking host,
+through the same service-indirection pattern as `IPropertyPadHost`/`IOutputPadHost` - no compile-time
+reference to the App project needed, and no change to `OpenDevelopMefHost`'s scanning.
+
+**Shape of the fix**:
+- `BookmarkPadBase : AbstractPadContent` (Base project) replaced by
+  `BookmarkPadViewModelBase : ToolPaneModel` (`Editor/Bookmarks/BookmarkPadViewModelBase.cs`) -
+  same members (`ListView`/`Items`/`SelectedItem`/`SelectedItems`, `BookmarkManager` subscription
+  deferred to `Show()` since both pads default hidden - `defaultPosition = "Bottom, Hidden"` for
+  both, so the simple `Outline`/`DefinitionView`-style deferred pattern applies, none of
+  `OutputPad`'s "must stay eager" complication), plus a new `protected abstract void
+  CreateToolBarContent()` hook (each subclass's toolbar/column setup differs) called at the end of
+  `EnsureSubscribed()` - same reasoning as `TaskListViewModel`'s deferred toolbar construction.
+  `SDBookmark.ShowInPad`/`CurrentLineBookmark.ShowInPad`'s parameter type updated to match.
+- `BookmarkPadViewModel : BookmarkPadViewModelBase` (App project, `[Export]`+`[Shared]`, same shape
+  as the other 9) - `BookmarkPad` is a thin shim, same file-location reasoning as
+  `CompilerMessageView`'s (needs `OpenDevelopMefHost.ExportProvider`, internal to the App
+  assembly) but keeps its **original namespace** (`ICSharpCode.SharpDevelop.Editor.Bookmarks`, not
+  `Gui`) so `PadDescriptor.Class`/`LegacyPadClass` keep resolving to the same fully-qualified name
+  regardless of which project the file physically lives in.
+- `BreakPointsPadViewModel : BookmarkPadViewModelBase` (Debugger.AddIn, **not** a MEF part -
+  constructed with a plain `new`) lives entirely in that AddIn's own assembly, referencing only the
+  Base project as before. `BreakPointsPad` (the AddInTree shim, unchanged namespace/location)
+  constructs it once (cached in a static field - this shim plays the role `[Shared]` MEF
+  composition plays for the App-project-hosted pads) and registers it via
+  `(SD.Services.GetService(typeof(IPaneModelHost)) as IPaneModelHost)?.Add(viewModel)` on first
+  touch.
+- `BookmarkPadToolbarCommands.cs`'s 5 commands (shared by both pads' toolbars via `this.Owner`)
+  needed only their cast target updated, `BookmarkPadBase` → `BookmarkPadViewModelBase` - no
+  duplication, they stay in Base, reachable from both assemblies exactly as before.
+
+**Same `CreatePad()`-must-stay-real lesson as `OutputPad`'s slice, caught before it shipped this
+time**: an early draft made both `CompilerMessageView` and `BookmarkPad`'s shims bare marker classes
+(no `IPadContent`), reasoning that `LegacyPadClass` routing means the real pane is never
+constructed through the legacy path. Wrong - `PadDescriptor.BringPadToFront()` unconditionally
+calls `CreatePad()` *first*, regardless of whether a MEF `ToolPaneModel` already exists for that
+class (the `IsMefToolPane` skip only applies to `AvalonDockLayout`'s own startup-time `ShowPad`
+loop, a different code path) - and several external callers this slice didn't touch
+(`GetPad(typeof(CompilerMessageView)).BringPadToFront()` in samples/Profiler.AddIn/XmlEditor/
+WixBinding/`TypeResolutionService`) still reach it. A bare marker class would have made
+`CreatePad()`'s `(IPadContent)Activator.CreateInstance(...)` cast throw, caught internally and
+shown as an error dialog - not a crash, but a real regression. Both shims stay real, constructible
+`AbstractPadContent`s, same as every other migrated pad's.
+
+**Verified**: `SharpDevelop.csproj`, `Debugger.AddIn.csproj`, and the full `OpenDevelop.Mvp.slnx`
+all build clean (0 errors). Live: fresh launch, zero exceptions attributable to this change,
+`od.show-pad "Bookmarks"` and `od.show-pad "BreakPointsPad"` both find their panes
+(`className`s: `ICSharpCode.SharpDevelop.Editor.Bookmarks.BookmarkPad` and
+`ICSharpCode.SharpDevelop.Gui.Pads.BreakPointsPad`), `od.debug.pad-snapshot "BreakPointsPad"` still
+works (empty breakpoint list, no error) confirming the DevFlow reflection-based `GetSnapshotAsync`
+lookup survived the shim rewrite, and `OutputPad`/`ToolsPad` (previous slices) still resolve
+correctly too (regression check).
+
+**Status: 11 of 11 legacy pads in the original "Docking and layout replacement" item 4 list are
+now either migrated (10: `Outline`, `DefinitionView`, `TaskListPad`, `PropertyPad`,
+`SearchResultsPad`, `ErrorListPad`, `SideBar`/`ToolsPad`, `OutputPad`, `BookmarkPad`,
+`BreakPointsPad`) or deliberately ruled out with a documented reason** (`ClassBrowserPad`: already
+excluded from the MVP AddInTree; `FileScout`: WinForms interop is disabled in this MVP build,
+needs a rewrite-or-delete decision, not a mechanical migration). No further pads in this list
+remain unexamined.

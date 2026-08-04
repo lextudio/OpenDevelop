@@ -93,6 +93,12 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			}
 		}
 
+		[DevFlowAction("od.solution.status", Description = "Get the currently open solution's file path (null when no solution is open)")]
+		public static string GetSolutionStatus()
+		{
+			return JsonSerializer.Serialize(new { path = SD.ProjectService.CurrentSolution?.FileName?.ToString() });
+		}
+
 		[DevFlowAction("od.solution-tree", Description = "Get the current solution's project/file tree, as seen by Solution Explorer")]
 		public static string GetSolutionTree()
 		{
@@ -624,9 +630,15 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		[DevFlowAction("od.debug.output", Description = "Read the Debug output category text (diagnostics)")]
 		public static string GetDebugOutput()
 		{
-			var output = CompilerMessageView.Instance;
-			var selectedCategory = output.SelectedMessageViewCategory;
-			var control = output.Control as FrameworkElement;
+			// Resolved via the already-registered IOutputPadHost service, not
+			// OpenDevelopMefHost.ExportProvider.GetExportedValue<CompilerMessageViewViewModel>():
+			// that call resolves a *different* MEF contract than the "ToolPane" one
+			// DockWorkspace.ToolPanes already constructed the real instance under, building a
+			// second, distinct instance whose constructor crashes on its own
+			// SD.Services.AddService(typeof(IOutputPad), ...) call ("duplicate key", confirmed live).
+			var output = SD.Services.GetService(typeof(IOutputPadHost)) as IOutputPadHost;
+			var selectedCategory = output?.SelectedMessageViewCategory;
+			var control = output?.Content as FrameworkElement;
 			return JsonSerializer.Serialize(new {
 				text = GetOutputCategoryText("Debug"),
 				selectedCategory = selectedCategory?.Category,
@@ -1759,7 +1771,10 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 
 		static string GetOutputCategoryText(string categoryName)
 		{
-			var category = ICSharpCode.SharpDevelop.Gui.CompilerMessageView.Instance.MessageCategories
+			// Resolved via IOutputPadHost - see the comment in GetDebugOutput() above for why
+			// GetExportedValue<CompilerMessageViewViewModel>() must not be called here.
+			var host = SD.Services.GetService(typeof(IOutputPadHost)) as IOutputPadHost;
+			var category = host?.MessageCategories
 				.FirstOrDefault(c => c.Category == categoryName);
 			return category?.Text ?? string.Empty;
 		}

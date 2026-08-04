@@ -17,6 +17,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
 
 namespace ICSharpCode.PackageManagement
@@ -29,10 +30,15 @@ namespace ICSharpCode.PackageManagement
 			MessageViewCategory.Create(ref view, categoryName, categoryDisplayName);
 			return new PackageManagementMessageViewCategory(view);
 		}
-		
+
 		public IMessageViewCategory GetExisting(string categoryName)
 		{
-			MessageViewCategory view = CompilerMessageView.Instance.GetCategory(categoryName);
+			// Looked up via IOutputPadHost, not CompilerMessageView.Instance: CompilerMessageView's
+			// real implementation now lives in the App project (doc/technotes/ilspy.md "Docking
+			// and layout replacement"), which this AddIn - like most - only references the Base
+			// project, not the App project.
+			var host = SD.Services.GetService(typeof(IOutputPadHost)) as IOutputPadHost;
+			MessageViewCategory view = host?.GetCategory(categoryName);
 			if (view != null) {
 				return new PackageManagementMessageViewCategory(view);
 			}

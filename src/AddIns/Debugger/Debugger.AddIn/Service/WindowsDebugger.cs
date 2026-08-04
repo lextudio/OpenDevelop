@@ -279,6 +279,11 @@ namespace ICSharpCode.SharpDevelop.Services
 			SD.MainThread.InvokeAsyncAndForget(() => {
 				OnDebugStarted(EventArgs.Empty);
 				OnIsProcessRunningChanged(EventArgs.Empty);
+				// Surface the Output pad's Debug channel while the session is live, not just when
+				// it ends (SessionExited). The debugger's text output (PrintDebugMessage) is only
+				// visible to the user if the pad is actually showing, and the DAP session's stdout/
+				// stderr is the primary way to see what the debuggee is doing.
+				ActivateDebugCategory();
 			});
 		}
 

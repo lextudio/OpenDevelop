@@ -33,9 +33,23 @@ namespace ICSharpCode.SharpDevelop.ViewModels
 	/// through the service container" pattern already used throughout this codebase (see
 	/// <c>IWorkbench</c>, <c>IStatusBarService</c>, etc.), not a new one invented for this.
 	/// </summary>
+	/// <remarks>
+	/// <see cref="Add"/> added for the <c>BookmarkPad</c>/<c>BreakPointsPad</c> slice
+	/// (doc/technotes/ilspy.md "Legacy Pad migration", 2026-08-04): <c>OpenDevelopMefHost</c> only
+	/// scans the App project's own assembly for <c>[Export]</c> parts, so an AddIn-owned
+	/// <see cref="ToolPaneModel"/> (e.g. Debugger.AddIn's <c>BreakPointsPadViewModel</c>, which
+	/// only references this Base project, not the App project) can never be MEF-discovered the
+	/// way the other migrated panes are. This mirrors the existing, working
+	/// <c>DockWorkspaceExtensibility.AddToolPane</c> seam ILSpyAddIn already uses for its own
+	/// runtime-constructed panes - but through the service-indirection pattern every other
+	/// cross-AddIn host interface in this migration uses, since (unlike ILSpyAddIn) ordinary
+	/// AddIns don't and shouldn't reference the App project just to reach it.
+	/// </remarks>
 	public interface IPaneModelHost
 	{
 		void Remove(PaneModel model);
+
+		void Add(ToolPaneModel model);
 	}
 
 	public abstract class PaneModel : ObservableObjectBase

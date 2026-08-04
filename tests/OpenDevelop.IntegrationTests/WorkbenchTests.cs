@@ -43,7 +43,7 @@ public sealed class WorkbenchTests
     [Fact]
     public async Task BuildSolution_FixtureProjectBuildsSuccessfully()
     {
-        await _app.InvokeAsync("od.open-solution", _app.SolutionExplorerFixturePath);
+        await _app.EnsureSolutionOpenAsync(_app.SolutionExplorerFixturePath);
 
         var result = await _app.InvokeAsync("od.build-solution");
 
@@ -57,7 +57,7 @@ public sealed class WorkbenchTests
     [Fact]
     public async Task BuildSolution_OutputPadCapturesRealBuildLog()
     {
-        await _app.InvokeAsync("od.open-solution", _app.SolutionExplorerFixturePath);
+        await _app.EnsureSolutionOpenAsync(_app.SolutionExplorerFixturePath);
         await _app.InvokeAsync("od.build-solution");
 
         var output = await _app.InvokeAsync("od.output-text");
@@ -72,7 +72,7 @@ public sealed class WorkbenchTests
     [Fact]
     public async Task BuildSolution_UnknownProjectNameReturnsError()
     {
-        await _app.InvokeAsync("od.open-solution", _app.SolutionExplorerFixturePath);
+        await _app.EnsureSolutionOpenAsync(_app.SolutionExplorerFixturePath);
 
         var result = await _app.InvokeAsync("od.build-solution", "NoSuchProject");
 
@@ -131,7 +131,7 @@ public sealed class WorkbenchTests
     [Fact]
     public async Task OpenSlnx_LoadsSolutionExplorerFixture()
     {
-        var result = await _app.InvokeAsync("od.open-solution", _app.SlnxFixturePath);
+        var result = await _app.ReopenSolutionAsync(_app.SlnxFixturePath);
 
         Assert.True(result.GetProperty("success").GetBoolean());
         Assert.Equal(_app.SlnxFixturePath, result.GetProperty("currentSolution").GetString());
@@ -140,7 +140,7 @@ public sealed class WorkbenchTests
     [Fact]
     public async Task SolutionTree_ListsAllProjects()
     {
-        await _app.InvokeAsync("od.open-solution", _app.SlnxFixturePath);
+        await _app.EnsureSolutionOpenAsync(_app.SlnxFixturePath);
 
         var tree = await _app.InvokeAsync("od.solution-tree");
 
@@ -163,7 +163,7 @@ public sealed class WorkbenchTests
     [Fact]
     public async Task OpenSlnxFile_DisplaysInAvalonEdit()
     {
-        await _app.InvokeAsync("od.open-solution", _app.SlnxFixturePath);
+        await _app.EnsureSolutionOpenAsync(_app.SlnxFixturePath);
 
         var programPath = Path.Combine(Path.GetDirectoryName(_app.SlnxFixturePath)!, "App", "Program.cs");
         var openResult = await _app.InvokeAsync("od.open-file", programPath);
@@ -180,7 +180,7 @@ public sealed class WorkbenchTests
     [Fact]
     public async Task OpenSolution_LoadsSolutionExplorerFixture()
     {
-        var result = await _app.InvokeAsync("od.open-solution", _app.SolutionExplorerFixturePath);
+        var result = await _app.ReopenSolutionAsync(_app.SolutionExplorerFixturePath);
 
         Assert.True(result.GetProperty("success").GetBoolean(), $"OpenSolutionOrProject returned false for {_app.SolutionExplorerFixturePath}");
         Assert.Equal(_app.SolutionExplorerFixturePath, result.GetProperty("currentSolution").GetString());
@@ -189,7 +189,7 @@ public sealed class WorkbenchTests
     [Fact]
     public async Task SolutionTree_MatchesFixtureProjectStructure()
     {
-        await _app.InvokeAsync("od.open-solution", _app.SolutionExplorerFixturePath);
+        await _app.EnsureSolutionOpenAsync(_app.SolutionExplorerFixturePath);
 
         var tree = await _app.InvokeAsync("od.solution-tree");
 
@@ -214,7 +214,7 @@ public sealed class WorkbenchTests
     [Fact]
     public async Task OpenFile_DisplaysInAvalonEdit()
     {
-        await _app.InvokeAsync("od.open-solution", _app.SolutionExplorerFixturePath);
+        await _app.EnsureSolutionOpenAsync(_app.SolutionExplorerFixturePath);
         var widgetPath = Path.Combine(Path.GetDirectoryName(_app.SolutionExplorerFixturePath)!, "SampleApp", "Models", "Widget.cs");
 
         var openResult = await _app.InvokeAsync("od.open-file", widgetPath);
@@ -245,7 +245,7 @@ public sealed class WorkbenchTests
     [Fact]
     public async Task OpenSolution_ProjectBrowserPadRendersRealNodes()
     {
-        await _app.InvokeAsync("od.open-solution", _app.SolutionExplorerFixturePath);
+        await _app.EnsureSolutionOpenAsync(_app.SolutionExplorerFixturePath);
 
         // The pad's TreeView content is only realized by AvalonDock once the pad is shown/activated
         // (same pattern as GitAddInTests).
@@ -446,7 +446,7 @@ public sealed class WorkbenchTests
     [Fact]
     public async Task Find_InSolution_FindsTermAcrossMultipleFiles()
     {
-        await _app.InvokeAsync("od.open-solution", _app.SolutionExplorerFixturePath);
+        await _app.EnsureSolutionOpenAsync(_app.SolutionExplorerFixturePath);
 
         // "Widget" appears in both Models/Widget.cs (class declaration) and Services/WidgetService.cs
         // (usage) in the real fixture files - a genuine cross-file plain-text match, not a rename.
@@ -471,7 +471,7 @@ public sealed class WorkbenchTests
     [Fact]
     public async Task Find_MatchCase_RespectsCaseSensitivity()
     {
-        await _app.InvokeAsync("od.open-solution", _app.SolutionExplorerFixturePath);
+        await _app.EnsureSolutionOpenAsync(_app.SolutionExplorerFixturePath);
 
         var caseInsensitive = await _app.InvokeAsync("od.search.find", "WIDGET", "solution", false, false, false);
         Assert.True(caseInsensitive.GetProperty("matchCount").GetInt32() > 0);
@@ -483,7 +483,7 @@ public sealed class WorkbenchTests
     [Fact]
     public async Task Find_UseRegex_MatchesPattern()
     {
-        await _app.InvokeAsync("od.open-solution", _app.SolutionExplorerFixturePath);
+        await _app.EnsureSolutionOpenAsync(_app.SolutionExplorerFixturePath);
 
         var result = await _app.InvokeAsync("od.search.find", @"Widget\w*", "solution", false, false, true);
 
@@ -496,7 +496,7 @@ public sealed class WorkbenchTests
     [Fact]
     public async Task ShowResults_PopulatesSearchResultsPadUiTree()
     {
-        await _app.InvokeAsync("od.open-solution", _app.SolutionExplorerFixturePath);
+        await _app.EnsureSolutionOpenAsync(_app.SolutionExplorerFixturePath);
 
         // od.search.find is headless; od.search.show-results goes through the same real
         // SearchManager.FindAllParallel engine but also feeds SearchManager.ShowSearchResults ->
@@ -683,7 +683,7 @@ public sealed class WorkbenchTests
 
     async Task OpenSolutionAndFile()
     {
-        await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);
+        await _app.EnsureSolutionOpenAsync(_app.FixtureSolutionPath);
     }
 
     [Fact]
@@ -736,7 +736,7 @@ public sealed class WorkbenchTests
     [Fact]
     public async Task ErrorList_IsEmptyAfterCleanBuild()
     {
-        await _app.InvokeAsync("od.open-solution", _app.SolutionExplorerFixturePath);
+        await _app.EnsureSolutionOpenAsync(_app.SolutionExplorerFixturePath);
         await _app.InvokeAsync("od.error-list.clear");
         await _app.InvokeAsync("od.build-solution");
 
@@ -872,7 +872,7 @@ public sealed class WorkbenchTests
     [Fact]
     public async Task WpfCodeBehindIsNestedAndTreeScrollsVertically()
     {
-        var opened = await _app.InvokeAsync("od.open-solution", _app.WpfSampleSolutionPath);
+        var opened = await _app.ReopenSolutionAsync(_app.WpfSampleSolutionPath);
         Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
 
         var state = await _app.InvokeAsync("od.project-browser-state", "sample");

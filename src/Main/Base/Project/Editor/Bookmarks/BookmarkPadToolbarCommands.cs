@@ -30,7 +30,7 @@ namespace ICSharpCode.SharpDevelop.Editor.Bookmarks
 	{
 		public override void Run()
 		{
-			BookmarkPadBase pad = (BookmarkPadBase)this.Owner;
+			BookmarkPadViewModelBase pad = (BookmarkPadViewModelBase)this.Owner;
 			if (pad.ListView.Items.Count > 0) {
 				pad.ListView.SelectedIndex = (pad.ListView.SelectedIndex + 1) % pad.ListView.Items.Count;
 				SD.FileService.JumpToFilePosition(pad.SelectedItem.FileName, pad.SelectedItem.LineNumber, pad.SelectedItem.ColumnNumber);
@@ -42,7 +42,7 @@ namespace ICSharpCode.SharpDevelop.Editor.Bookmarks
 	{
 		public override void Run()
 		{
-			BookmarkPadBase pad = (BookmarkPadBase)this.Owner;
+			BookmarkPadViewModelBase pad = (BookmarkPadViewModelBase)this.Owner;
 			if (pad.ListView.Items.Count > 0) {
 				pad.ListView.SelectedIndex = (pad.ListView.SelectedIndex - 1 + pad.ListView.Items.Count) % pad.ListView.Items.Count;
 				SD.FileService.JumpToFilePosition(pad.SelectedItem.FileName, pad.SelectedItem.LineNumber, pad.SelectedItem.ColumnNumber);
@@ -54,7 +54,7 @@ namespace ICSharpCode.SharpDevelop.Editor.Bookmarks
 	{
 		public override void Run()
 		{
-			BookmarkPadBase pad = (BookmarkPadBase)this.Owner;
+			BookmarkPadViewModelBase pad = (BookmarkPadViewModelBase)this.Owner;
 			foreach(SDBookmark bm in pad.Items.OfType<SDBookmark>().ToList()) {
 				SD.BookmarkManager.RemoveMark(bm);
 			}
@@ -65,7 +65,7 @@ namespace ICSharpCode.SharpDevelop.Editor.Bookmarks
 	{
 		public override void Run()
 		{
-			BookmarkPadBase pad = (BookmarkPadBase)this.Owner;
+			BookmarkPadViewModelBase pad = (BookmarkPadViewModelBase)this.Owner;
 			var selectedItems = pad.SelectedItems.ToList();
 			if (selectedItems.Any()) {
 				foreach (var selectedItem in selectedItems) {
@@ -79,7 +79,7 @@ namespace ICSharpCode.SharpDevelop.Editor.Bookmarks
 	{
 		public override void Run()
 		{
-			BookmarkPadBase pad = (BookmarkPadBase)Owner;
+			BookmarkPadViewModelBase pad = (BookmarkPadViewModelBase)Owner;
 			bool anyEnabled = pad.Items.OfType<IHaveStateEnabled>().Any(bp => bp.IsEnabled);
 			foreach (var bp in pad.Items.OfType<IHaveStateEnabled>()) {
 				bp.IsEnabled = !anyEnabled;

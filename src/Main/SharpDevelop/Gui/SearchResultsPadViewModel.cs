@@ -46,6 +46,7 @@ internal sealed class SearchResultsPadViewModel : ToolPaneModel, ISearchResultsH
         IsVisible = false; // Matches the legacy Pad's `defaultPosition = "Bottom, Hidden"`.
         IsCloseable = true;
         LegacyPadClass = typeof(SearchResultsPad).FullName;
+        PreferredDockSize = 188; // Legacy AvalonPadContent bottom default; see DockWorkspace.AfterInsertAnchorable.
         Content = contentPanel;
 
         // Registered eagerly, unlike the toolbar-building in EnsureSubscribed below: this is a

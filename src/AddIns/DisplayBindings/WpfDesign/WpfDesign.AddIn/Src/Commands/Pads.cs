@@ -30,7 +30,11 @@ namespace ICSharpCode.WpfDesign.AddIn.Commands
     {
         public override void Run()
         {
-            SD.Workbench.GetPad(typeof(ToolsPad)).BringPadToFront();
+            // Looked up by class name, not typeof(ToolsPad): ToolsPad's real implementation
+            // lives in the App project (doc/technotes/ilspy.md "Docking and layout replacement"),
+            // which this AddIn - like most - only references the Base project, not the App
+            // project, so the type itself isn't visible here.
+            SD.Workbench.GetPad("ICSharpCode.SharpDevelop.Gui.ToolsPad").BringPadToFront();
         }
     }
 

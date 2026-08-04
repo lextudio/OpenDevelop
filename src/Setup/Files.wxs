@@ -236,53 +236,6 @@
 										<File Source="..\..\bin\Tools\NUnit\nunit-console-dotnet2-x86.exe.config" Name="nunit-console-dotnet2-x86.exe.config" Id="nunit_console_dotnet2_x86.exe.config" />
 									</Component>
 								</Directory>
-								<Directory Id="OpenCoverFolder" Name="OpenCover">
-									<Component Id="OpenCoverGendarmeFrameworkDll" Guid="10810773-419F-4804-871E-1BA483E40D97" DiskId="1">
-										<File Id="OpenCover.Gendarme.Framework.dll" Name="Gendarme.Framework.dll" Source="..\..\bin\Tools\OpenCover\Gendarme.Framework.dll" KeyPath="yes" Assembly=".net" AssemblyApplication="OpenCover.Gendarme.Framework.dll" AssemblyManifest="OpenCover.Gendarme.Framework.dll" />
-									</Component>
-									<Component Id="OpenCoverGendarmeRulesMaintainabilityDll" Guid="2119F539-9FF0-4C55-8C38-CCC424C2F2A5" DiskId="1">
-										<File Id="OpenCover.Gendarme.Rules.Maintainability.dll" Name="Gendarme.Rules.Maintainability.dll" Source="..\..\bin\Tools\OpenCover\Gendarme.Rules.Maintainability.dll" KeyPath="yes" Assembly=".net" AssemblyApplication="OpenCover.Gendarme.Rules.Maintainability.dll" AssemblyManifest="OpenCover.Gendarme.Rules.Maintainability.dll" />
-									</Component>
-									<Component Id="OpenCoverLog4netConfig" Guid="C4D1A763-567B-4D72-B68D-8245E8A4526E" DiskId="1">
-										<File Id="OpenCover.log4net.config" Name="log4net.config" Source="..\..\bin\Tools\OpenCover\log4net.config" KeyPath="yes" />
-									</Component>
-									<Component Id="OpenCoverLog4netDll" Guid="DFF17E8D-D634-49D2-B53B-B0F190C12245" DiskId="1">
-										<File Id="OpenCover.log4net.dll" Name="log4net.dll" Source="..\..\bin\Tools\OpenCover\log4net.dll" KeyPath="yes" Assembly=".net" AssemblyApplication="OpenCover.log4net.dll" AssemblyManifest="OpenCover.log4net.dll" />
-									</Component>
-									<Component Id="OpenCoverMonoCecilDll" Guid="8B24DEA5-45FB-4D99-A9EE-71CACDA1993B" DiskId="1">
-										<File Id="OpenCover.Mono.Cecil.dll" Name="Mono.Cecil.dll" Source="..\..\bin\Tools\OpenCover\Mono.Cecil.dll" KeyPath="yes" Assembly=".net" AssemblyApplication="OpenCover.Mono.Cecil.dll" AssemblyManifest="OpenCover.Mono.Cecil.dll" />
-									</Component>
-									<Component Id="OpenCoverMonoCecilPdbDll" Guid="90837FF2-4834-499C-BF34-BF8298A4C511" DiskId="1">
-										<File Id="OpenCover.Mono.Cecil.Pdb.dll" Name="Mono.Cecil.Pdb.dll" Source="..\..\bin\Tools\OpenCover\Mono.Cecil.Pdb.dll" KeyPath="yes" Assembly=".net" AssemblyApplication="OpenCover.Mono.Cecil.Pdb.dll" AssemblyManifest="OpenCover.Mono.Cecil.Pdb.dll" />
-									</Component>
-									<Component Id="OpenCoverConsoleExe" Guid="C829811E-893A-44EE-AC8F-DC1FD1C67649" DiskId="1">
-										<File Id="OpenCover.Console.exe" Name="OpenCover.Console.exe" Source="..\..\bin\Tools\OpenCover\OpenCover.Console.exe" KeyPath="yes" Assembly=".net" AssemblyApplication="OpenCover.Console.exe" AssemblyManifest="OpenCover.Console.exe" />
-									</Component>
-									<Component Id="OpenCoverConsoleExeConfig" Guid="3DB460CC-3A0E-4EF1-925D-654F0B6BA034" DiskId="1">
-										<File Id="OpenCover.Console.exe.config" Name="OpenCover.Console.exe.config" Source="..\..\bin\Tools\OpenCover\OpenCover.Console.exe.config" KeyPath="yes" />
-									</Component>
-									<Component Id="OpenCoverFrameworkDll" Guid="05BACE6F-B879-4CB6-80FC-55BA44D1A39E" DiskId="1">
-										<File Id="OpenCover.Framework.dll" Name="OpenCover.Framework.dll" Source="..\..\bin\Tools\OpenCover\OpenCover.Framework.dll" KeyPath="yes" Assembly=".net" AssemblyApplication="OpenCover.Framework.dll" AssemblyManifest="OpenCover.Framework.dll" />
-									</Component>
-									<Directory Id="OpenCoverX64Folder" Name="x64">
-										<Component Id="OpenCoverProfilerX64Dll" Guid="58F8307C-E52C-4814-BDB6-8913E45309EB" DiskId="1">
-											<File Id="OpenCover.Profiler.x64.dll" Name="OpenCover.Profiler.dll" Source="..\..\bin\Tools\OpenCover\x64\OpenCover.Profiler.dll" KeyPath="yes" />
-										</Component>
-									</Directory>
-									<Directory Id="OpenCoverX86Folder" Name="x86">
-										<Component Id="OpenCoverProfilerX86Dll" Guid="59CD3529-07D6-41C9-A3F7-032CF7BA5167" DiskId="1">
-											<File Id="OpenCover.Profiler.x86.dll" Name="OpenCover.Profiler.dll" Source="..\..\bin\Tools\OpenCover\x86\OpenCover.Profiler.dll" KeyPath="yes" />
-										</Component>
-									</Directory>
-									<Component Id="OpenCoverAutofacConfigurationDll" Guid="C9F29A3E-67FF-4A66-B709-1FFBB7242F18" DiskId="1">
-										<File Id="OpenCover.Autofac.Configuration.dll" Name="Autofac.Configuration.dll" Source="..\..\bin\Tools\OpenCover\Autofac.Configuration.dll" KeyPath="yes" Assembly=".net" AssemblyApplication="OpenCover.Autofac.Configuration.dll" AssemblyManifest="OpenCover.Autofac.Configuration.dll" />
-									</Component>
-									<Component Id="OpenCoverAutofacDll" Guid="31671972-7979-4E76-8508-246B23267391" DiskId="1">
-										<File Id="OpenCover.Autofac.dll" Name="Autofac.dll" Source="..\..\bin\Tools\OpenCover\Autofac.dll" KeyPath="yes" Assembly=".net" AssemblyApplication="OpenCover.Autofac.dll" AssemblyManifest="OpenCover.Autofac.dll" />
-									</Component>
-									<Component Id="OpenCoverExtensionsDll" Guid="C0E73A83-C37B-4C71-834D-9D1626F2F1AA" DiskId="1">
-										<File Id="OpenCover.Extensions.dll" Name="OpenCover.Extensions.dll" Source="..\..\bin\Tools\OpenCover\OpenCover.Extensions.dll" KeyPath="yes" Assembly=".net" AssemblyApplication="OpenCover.Extensions.dll" AssemblyManifest="OpenCover.Extensions.dll" />
-									</Component>
 								</Directory>
 							</Directory>
 							<Component Guid="2EC34D8A-CF14-4E1F-A512-9A596A1C256D" Id="ICSharpCodeCoreWinFormsDll" DiskId="1">
@@ -1150,25 +1103,14 @@
 										<File Source="..\..\AddIns\DisplayBindings\XmlEditor\XmlEditor.addin" Id="XmlEditor.addin" Name="XmlEditor.addin" />
 									</Component>
 								</Directory>
-								<!--
 										<Directory Id="ClassDiagram" Name="ClassDiagram">
-											<Directory Id="Resources" Name="Resources">
-												<Component Guid="75152D8C-5D9A-4728-AB18-62637C785A7D" Id="ClassDiagramResources" DiskId="1">
-													<File Source="..\..\AddIns\DisplayBindings\ClassDiagram\Resources\Bitmaps.resources" Id="Bitmaps.resources" Name="Bitmaps.resources" />
-												</Component>
-											</Directory>
 											<Component Guid="A8619065-03F6-4AF0-A1F2-81D5C810D8A3" Id="ClassDiagramAddInFiles" DiskId="1">
 												<File Source="..\..\AddIns\DisplayBindings\ClassDiagram\ClassDiagramAddin.addin" Id="ClassDiagram.ClassDiagramAddin.addin" Name="ClassDiagramAddin.addin" />
 												<File Source="..\..\AddIns\DisplayBindings\ClassDiagram\ClassDiagramAddin.dll" Id="ClassDiagram.ClassDiagramAddin.dll" Name="ClassDiagramAddin.dll" Assembly=".net" AssemblyApplication="ClassDiagram.ClassDiagramAddin.dll" AssemblyManifest="ClassDiagram.ClassDiagramAddin.dll" KeyPath="yes" />
-											</Component>
-											<Component Guid="5F09F966-5605-4381-B346-8231DA0B1C6B" Id="ClassCanvasDll" DiskId="1">
-												<File Source="..\..\AddIns\DisplayBindings\ClassDiagram\ClassCanvas.dll" Id="ClassDiagram.ClassCanvas.dll" Name="ClassCanvas.dll" KeyPath="yes" Assembly=".net" AssemblyApplication="ClassDiagram.ClassCanvas.dll" AssemblyManifest="ClassDiagram.ClassCanvas.dll" />
-											</Component>
-											<Component Guid="EF2B150B-B0C4-4884-800C-BE904E520CF4" Id="DiagramsDll" DiskId="1">
-												<File Source="..\..\AddIns\DisplayBindings\ClassDiagram\Diagrams.dll" Id="ClassDiagram.Diagrams.dll" Name="Diagrams.dll" KeyPath="yes" Assembly=".net" AssemblyApplication="ClassDiagram.Diagrams.dll" AssemblyManifest="ClassDiagram.Diagrams.dll" />
+												<File Source="..\..\AddIns\DisplayBindings\ClassDiagram\ClassDiagram.Core.dll" Id="ClassDiagram.ClassDiagram.Core.dll" Name="ClassDiagram.Core.dll" Assembly=".net" />
+												<File Source="..\..\AddIns\DisplayBindings\ClassDiagram\Microsoft.Msagl.dll" Id="ClassDiagram.Microsoft.Msagl.dll" Name="Microsoft.Msagl.dll" Assembly=".net" />
 											</Component>
 										</Directory>
-										-->
 								<Directory Id="AvalonEdit" Name="AvalonEdit">
 									<Component Guid="A3376E4E-F07D-4554-ABF5-E91F2DA918E3" Id="AvalonEditAddInAddin" DiskId="1">
 										<File Source="..\..\AddIns\DisplayBindings\AvalonEdit\AvalonEdit.AddIn.addin" Name="AvalonEdit.AddIn.addin" Id="AvalonEdit.AddIn.addin" KeyPath="yes" />

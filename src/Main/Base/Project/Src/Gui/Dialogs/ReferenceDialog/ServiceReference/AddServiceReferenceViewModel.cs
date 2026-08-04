@@ -309,7 +309,11 @@ namespace ICSharpCode.SharpDevelop.Gui.Dialogs.ReferenceDialog.ServiceReference
 		
 		public void AddServiceReference()
 		{
-			CompilerMessageView.Instance.BringToFront();
+			// Looked up via the already-established SD.OutputPad service, not
+			// CompilerMessageView.Instance: CompilerMessageView's real implementation now lives in
+			// the App project (doc/technotes/ilspy.md "Docking and layout replacement"), which this
+			// Base project doesn't reference.
+			SD.OutputPad.BringToFront();
 			Uri uri = GetServiceUri();
 			if (uri == null)
 				return;
