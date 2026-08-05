@@ -34,6 +34,14 @@ namespace ICSharpCode.SharpDevelop.Startup
 			{
 				this.AddWpfDevFlowAgent();
 			}
+			// Log the exception that is about to terminate the app instead of dying silently:
+			// an unhandled dispatcher exception otherwise exits the process without a trace in
+			// the captured stdout/stderr (measured during integration-test debugging), making
+			// intermittent startup crashes impossible to diagnose.
+			this.DispatcherUnhandledException += (_, e) =>
+			{
+				ICSharpCode.Core.LoggingService.Fatal("Unhandled dispatcher exception - app is terminating.", e.Exception);
+			};
 		}
 	}
 }

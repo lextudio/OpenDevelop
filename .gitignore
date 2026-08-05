@@ -43,3 +43,4 @@ tests/fixtures/CoverageFixture/CoverageTests/CodeCoverage/coverage.xml
 # keep the macOS packaging scripts tracked
 /build/*
 !/build/macos/
+tests/fixtures/SampleTestProject/CodeCoverage/

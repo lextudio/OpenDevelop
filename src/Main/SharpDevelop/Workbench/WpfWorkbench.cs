@@ -86,6 +86,11 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		public WpfWorkbench()
 		{
+			// Integration-test runs (OpenDevelopAppFixture sets OD_TEST_MODE=1) must not steal
+			// focus from the user's active app: ShowActivated=false keeps the window fully
+			// rendered and the DevFlow agent fully functional, but never activates it on macOS.
+			if (Environment.GetEnvironmentVariable("OD_TEST_MODE") == "1")
+				this.ShowActivated = false;
 			SD.Services.AddService(typeof(IStatusBarService), new StatusBarService(statusBar));
 			InitializeComponent();
 			InitFocusTrackingEvents();
@@ -501,24 +506,39 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			}
 		}
 		
-		bool activeWindowWasChanged;
-		
 		void OnActiveWindowChanged(object sender, EventArgs e)
 		{
-			if (activeWindowWasChanged)
+			// Update the cached ActiveContent/ActiveWorkbenchWindow from the layout's live state
+			// both synchronously (the event fires after the dock's active content already changed,
+			// so the read is final) and once more on the next dispatcher tick. The old
+			// deferred-only design used a reentrancy guard that DROPPED events arriving while a
+			// dispatcher update was still pending - measured (OpenAssembly test): events can fire
+			// back-to-back faster than the dispatcher runs the deferred read, the final dock state
+			// update got dropped, and SD.Workbench.ActiveViewContent stayed stuck on an older
+			// document for the rest of the test while the dock itself was correct. The trailing
+			// re-read makes the eventual value converge regardless of event ordering.
+			UpdateActiveTracking();
+			_ = Dispatcher.BeginInvoke(new Action(UpdateActiveTracking));
+		}
+
+		void UpdateActiveTracking()
+		{
+			if (workbenchLayout == null) {
+				this.ActiveContent = null;
+				this.ActiveWorkbenchWindow = null;
 				return;
-			activeWindowWasChanged = true;
-			_ = Dispatcher.BeginInvoke(new Action(
-				delegate {
-					activeWindowWasChanged = false;
-					if (workbenchLayout != null) {
-						this.ActiveContent = workbenchLayout.ActiveContent;
-						this.ActiveWorkbenchWindow = workbenchLayout.ActiveWorkbenchWindow;
-					} else {
-						this.ActiveContent = null;
-						this.ActiveWorkbenchWindow = null;
-					}
-				}));
+			}
+			// Only a *window* (document) activation updates the tracked active workbench window.
+			// When the dock's ActiveContent is a tool pad (e.g. the ILSpy pads right after a
+			// layout restore activates them), ActiveWorkbenchWindow is null - clearing the
+			// tracking then would make SD.Workbench.ActiveViewContent null (measured: od.active-
+			// view reported "active:false" for a fully-open document right after the ILSpy layout
+			// activated its pads), so keep the last tracked window/view in that case.
+			var doc = workbenchLayout.ActiveWorkbenchWindow;
+			if (doc != null) {
+				this.ActiveContent = workbenchLayout.ActiveContent;
+				this.ActiveWorkbenchWindow = doc;
+			}
 		}
 		
 		IViewContent activeViewContent;

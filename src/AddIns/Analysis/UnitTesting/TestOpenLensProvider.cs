@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.LanguageServices.OpenLens;
 using ICSharpCode.UnitTesting.Mtp;
@@ -28,9 +29,12 @@ using ICSharpCode.UnitTesting.Mtp;
 namespace ICSharpCode.UnitTesting
 {
 	/// <summary>
-	/// "Run | ✓ Passed (12ms)" lens (doc/technotes/openlens.md §20 Phase 4), attaching to the same
+	/// "✓ Passed (12ms)" lens (doc/technotes/openlens.md §20 Phase 4), attaching to the same
 	/// method anchors <c>LanguageOpenLensAnchorProvider</c> already discovers - this class
-	/// contributes an additional lens to those rows, it doesn't discover its own anchors.
+	/// contributes an additional lens to those rows, it doesn't discover its own anchors. Clicking
+	/// the lens opens a small menu ("Run Test" / "Debug Test") supplied through
+	/// <see cref="OpenLensMenu"/>, so the run and debug behaviors both live in this AddIn while the
+	/// OpenLens host only provides the anchored popup.
 	///
 	/// Matches an anchor to a test by <see cref="OpenLensAnchor.SymbolKey"/> ("Type.Method", set by
 	/// <c>LanguageOpenLensAnchorProvider</c>) against <see cref="MtpTestMethod.FullyQualifiedName"/> -
@@ -39,7 +43,9 @@ namespace ICSharpCode.UnitTesting
 	/// per-request O(n) walk over the whole test tree, not indexed - acceptable for the tree sizes
 	/// this AddIn already handles interactively (nav bar, test explorer), but a solution with a very
 	/// large number of discovered tests could make this lens noticeably slower to resolve than the
-	/// reference/implementation/coverage lenses, which don't need a full-tree walk per anchor.
+	/// reference/implementation/coverage lenses, which don't need a full-tree walk per anchor. The
+	/// menu actions re-walk the tree by symbol key at click time rather than capturing a tree node,
+	/// since the tree is replaced wholesale on discovery/solution changes.
 	/// </summary>
 	public sealed class TestOpenLensProvider : IOpenLensProvider
 	{
@@ -69,9 +75,9 @@ namespace ICSharpCode.UnitTesting
 
 				items.Add(new OpenLensItem(
 					ProviderId: Id, LensId: LensId, AnchorId: anchor.AnchorId, Order: 3,
-					Presentation: new OpenLensPresentation(FormatStatus(method)),
-					Command: new OpenLensCommand("OpenLens.RunAction", (Action)(() =>
-						testService.RunTestsAsync(new ITest[] { method }, new TestExecutionOptions()).FireAndForget())),
+					Presentation: new OpenLensPresentation(
+						FormatStatus(method), Severity: SeverityFor(method.Result), IconKey: IconKeyFor(method.Result)),
+					Command: new OpenLensCommand("OpenLens.ShowMenu", CreateMenu(testService, anchor.SymbolKey)),
 					ResolveData: null, IsResolved: true));
 			}
 			return Task.FromResult<IReadOnlyList<OpenLensItem>>(items);
@@ -80,16 +86,60 @@ namespace ICSharpCode.UnitTesting
 		public Task<OpenLensItem> ResolveAsync(OpenLensDocumentContext context, OpenLensItem item, CancellationToken cancellationToken) =>
 			Task.FromResult(item);
 
+		static OpenLensMenu CreateMenu(ITestService testService, string symbolKey)
+		{
+			var items = new List<OpenLensMenuItem> {
+				new OpenLensMenuItem("Run Test", () => RunTests(testService, symbolKey, debug: false), IconKey: "Icons.16x16.RunAllIcon"),
+				new OpenLensMenuItem("Debug Test", () => RunTests(testService, symbolKey, debug: true), IconKey: "Icons.16x16.Debug.Bug"),
+			};
+			foreach (var contributor in TestLensMenuContributors.GetContributors()) {
+				var extra = contributor.GetMenuItem(() => ResolveTest(testService, symbolKey));
+				if (extra != null)
+					items.Add(extra);
+			}
+			return new OpenLensMenu(items);
+		}
+
+		static MtpTestMethod ResolveTest(ITestService testService, string symbolKey)
+		{
+			return testService.OpenSolution == null ? null : FindTestMethod(testService.OpenSolution.NestedTests, symbolKey);
+		}
+
+		static void RunTests(ITestService testService, string symbolKey, bool debug)
+		{
+			var method = ResolveTest(testService, symbolKey);
+			if (method == null) {
+				LoggingService.Warn("OpenLens: test '" + symbolKey + "' not found in the test tree.");
+				return;
+			}
+			testService.RunTestsAsync(new ITest[] { method }, new TestExecutionOptions { UseDebugger = debug }).FireAndForget();
+		}
+
+		// The lens row renders icon-only (this title becomes the tooltip), using the same
+		// "UnitTesting.Status.*" icons as the Unit Tests pad.
 		static string FormatStatus(MtpTestMethod method)
 		{
 			string duration = method.Duration is { } d ? $" ({(int)d.TotalMilliseconds}ms)" : "";
 			return method.Result switch {
-				TestResultType.Success => "Run | ✓ Passed" + duration,
-				TestResultType.Failure => "Run | ✗ Failed" + duration,
-				TestResultType.Ignored => "Run | Ignored",
-				_ => "Run | Not run",
+				TestResultType.Success => "Passed" + duration,
+				TestResultType.Failure => "Failed" + duration,
+				TestResultType.Ignored => "Ignored",
+				_ => "Not run",
 			};
 		}
+
+		static string IconKeyFor(TestResultType result) => result switch {
+			TestResultType.Success => "UnitTesting.Status.Passed",
+			TestResultType.Failure => "UnitTesting.Status.Failed",
+			TestResultType.Ignored => "UnitTesting.Status.Skipped",
+			_ => "UnitTesting.Status.NotRun",
+		};
+
+		static OpenLensSeverity SeverityFor(TestResultType result) => result switch {
+			TestResultType.Failure => OpenLensSeverity.Error,
+			TestResultType.Ignored => OpenLensSeverity.Warning,
+			_ => OpenLensSeverity.Normal,
+		};
 
 		static MtpTestMethod FindTestMethod(IEnumerable<ITest> tests, string symbolKey)
 		{

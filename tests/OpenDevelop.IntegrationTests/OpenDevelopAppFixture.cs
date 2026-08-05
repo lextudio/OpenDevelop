@@ -39,6 +39,18 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 	readonly object _outputLock = new();
 	readonly StringBuilder _appOutput = new();
 	Process? _app;
+	// Set for the lifetime of one launch; see AppLogPath.
+	string? _appLogPath;
+	DateTime _appStartedUtc;
+
+	// The in-memory _appOutput ring buffer is only ever surfaced through an InvokeAsync exception -
+	// which means the one failure mode that matters most is exactly the one it cannot report: the
+	// app dying *during startup*, before any action is invoked, takes its whole output with it. Each
+	// launch therefore also streams stdout/stderr to its own file that outlives the run, so a silent
+	// startup death can be diagnosed after the fact (a fatal stack overflow prints "Stack overflow."
+	// plus repeating frames to stderr and bypasses every managed handler, so this file is the only
+	// place that evidence ever lands). Override the directory with OD_TEST_LOG_DIR.
+	public string? AppLogPath => _appLogPath;
 
     public string OpenDevelopProjectPath { get; } = LocateOpenDevelopProject();
     public string FixtureSolutionPath { get; } = LocateFixtureProject();
@@ -54,12 +66,39 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     public string LocalNuGetFeedPath { get; } = LocateLocalNuGetFeed();
     public string XmlFixtureFilePath { get; } = LocateXmlFixtureFile();
 
+    // Only one fixture instance may own a live app at a time. This assembly has two collections
+    // ("OpenDevelop app" and "OpenDevelop startup"), each with its own OpenDevelopAppFixture, and
+    // StopApp() kills SharpDevelop/OpenDevelop *by process name* - so a second fixture coming up (or
+    // an old one going down) kills whatever app the other collection is currently driving. That is
+    // not hypothetical: a measured full run launched app A at 00:21:34, app B at 00:21:44 (B's
+    // InitializeAsync killed A before A had even finished loading its layout), then B was SIGTERM'd
+    // mid-suite at 00:24:21, cascading into 73 failures whose only symptom was
+    // "request failed / AppProcess=exited exitCode=143". Note how indistinguishable that is from the
+    // "intermittent silent startup crash" this suite has been chasing: an app killed by a foreign
+    // fixture during startup looks exactly like an app that died on its own.
+    //
+    // The assembly-level DisableTestParallelization was assumed to serialize the two fixtures'
+    // lifetimes. It does not (it orders test *execution*, not collection-fixture construction and
+    // disposal), so the mutual exclusion has to be enforced here.
+    static readonly SemaphoreSlim FixtureGate = new(1, 1);
+    bool _gateHeld;
+
     public async ValueTask InitializeAsync()
     {
+        // Timeout rather than an unbounded wait: if a future xunit version ever defers the previous
+        // collection's fixture disposal past the next collection's construction, an unbounded wait
+        // would deadlock the whole run with no output. Falling through instead degrades to the old
+        // (racy) behavior, and says so in the app log so it is diagnosable rather than silent.
+        _gateHeld = await FixtureGate.WaitAsync(TimeSpan.FromSeconds(300));
+
         StopApp();
         await WaitForPortFreeAsync(TimeSpan.FromSeconds(30));
         DeleteStaleViewStateMemento();
         await StartAsync();
+
+        if (!_gateHeld)
+            AppendAppOutput("fixture", "WARNING: fixture gate not acquired within 300s - another "
+                + "OpenDevelopAppFixture may still own a live app; cross-fixture kills are possible.");
     }
 
     // Two separate persistence mechanisms restore previously-open documents on the next startup,
@@ -144,11 +183,26 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     {
         StopApp();
         _http.Dispose();
+        if (_gateHeld)
+        {
+            _gateHeld = false;
+            FixtureGate.Release();
+        }
         await Task.CompletedTask;
+    }
+
+    static string ResolveLogDirectory()
+    {
+        var dir = Environment.GetEnvironmentVariable("OD_TEST_LOG_DIR");
+        if (string.IsNullOrEmpty(dir))
+            dir = Path.Combine(Path.GetTempPath(), "od-test-logs");
+        Directory.CreateDirectory(dir);
+        return dir;
     }
 
     async Task StartAsync()
     {
+        _appStartedUtc = DateTime.UtcNow;
         var psi = new ProcessStartInfo(ResolveDotNetHost())
         {
             WorkingDirectory = Path.GetDirectoryName(OpenDevelopProjectPath)!,
@@ -158,9 +212,26 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         };
         foreach (var a in new[] { "run", "--project", OpenDevelopProjectPath, "-f", "net10.0-windows", "--no-build" })
             psi.ArgumentList.Add(a);
+        // Tells the app it is being driven by the integration-test agent: the main window shows
+        // without activating (ShowActivated=false), so a test run never steals focus from whatever
+        // the user is doing on the machine (measured annoyance - the WPF window grabs activation on
+        // every fixture launch otherwise).
+        psi.Environment["OD_TEST_MODE"] = "1";
         ConfigureDotNetEnvironment(psi);
 
         _app = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start OpenDevelop");
+        try
+        {
+            _appLogPath = Path.Combine(
+                ResolveLogDirectory(),
+                $"od-app-{_appStartedUtc:yyyyMMdd-HHmmss}-pid{_app.Id}.log");
+            File.WriteAllText(_appLogPath, $"# OpenDevelop test launch {_appStartedUtc:O} pid {_app.Id}{Environment.NewLine}");
+        }
+        catch
+        {
+            // Best-effort - losing the log file must not fail the run itself.
+            _appLogPath = null;
+        }
 		_app.OutputDataReceived += (_, e) => AppendAppOutput("stdout", e.Data);
 		_app.ErrorDataReceived += (_, e) => AppendAppOutput("stderr", e.Data);
 		_app.BeginOutputReadLine();
@@ -194,9 +265,27 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
                 if (resp.IsSuccessStatusCode) return;
             }
             catch { }
+
+            // A startup death is terminal: the agent can never come up, so waiting out the full
+            // timeout only delays the report by ~2 minutes and (worse) used to hide the cause behind
+            // a bare TimeoutException. Fail immediately with the process's exit status and log path.
+            if (_app is { HasExited: true })
+            {
+                // Give the async output readers a moment to flush the final lines - the last thing
+                // printed before the abort is exactly the interesting part.
+                await Task.Delay(500);
+                throw new InvalidOperationException(
+                    $"OpenDevelop exited during startup before the DevFlow agent came up on {BaseUrl}. "
+                    + DescribeAppFailureContext()
+                    + $"\nApp output:\n{GetRecentAppOutput()}");
+            }
+
             await Task.Delay(1000);
         }
-        throw new TimeoutException($"DevFlow agent did not respond on {BaseUrl} within {timeout}.");
+        throw new TimeoutException(
+            $"DevFlow agent did not respond on {BaseUrl} within {timeout}. "
+            + DescribeAppFailureContext()
+            + $"\nApp output:\n{GetRecentAppOutput()}");
     }
 
     async Task WaitForPortFreeAsync(TimeSpan timeout)
@@ -266,14 +355,14 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 		}
 		catch (Exception ex)
 		{
-			throw new InvalidOperationException($"Action '{action}' request failed. AppExited={_app?.HasExited}. Recent app output:\n{GetRecentAppOutput()}", ex);
+			throw new InvalidOperationException($"Action '{action}' request failed. {DescribeAppFailureContext()}\nRecent app output:\n{GetRecentAppOutput()}", ex);
 		}
 		using (resp)
 		{
 			if (!resp.IsSuccessStatusCode)
 			{
 				var err = await resp.Content.ReadAsStringAsync();
-				throw new InvalidOperationException($"Action '{action}' failed ({(int)resp.StatusCode}): {err}\nRecent app output:\n{GetRecentAppOutput()}");
+				throw new InvalidOperationException($"Action '{action}' failed ({(int)resp.StatusCode}): {err}\n{DescribeAppFailureContext()}\nRecent app output:\n{GetRecentAppOutput()}");
 			}
 			var envelope = await resp.Content.ReadFromJsonAsync<JsonElement>();
 			var raw = envelope.TryGetProperty("returnValue", out var rv) ? rv.GetString() : null;
@@ -594,7 +683,76 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 			_appOutput.Append('[').Append(stream).Append("] ").AppendLine(line);
 			if (_appOutput.Length > 100_000)
 				_appOutput.Remove(0, _appOutput.Length - 100_000);
+			if (_appLogPath != null)
+			{
+				try { File.AppendAllText(_appLogPath, $"[{stream}] {line}{Environment.NewLine}"); }
+				catch { /* Best-effort - see AppLogPath. */ }
+			}
 		}
+	}
+
+	// Whether the app process is gone, and if so how it died - the distinction the fixture used to
+	// lose entirely. On macOS a SIGABRT surfaces as exit code 134, and a .NET fatal stack overflow
+	// aborts the same way; the code alone narrows a "silent startup death" to a signal kill vs a
+	// clean managed exit vs a still-running-but-unresponsive agent.
+	string DescribeAppProcess()
+	{
+		var app = _app;
+		if (app == null)
+			return "AppProcess=none";
+		try
+		{
+			if (!app.HasExited)
+				return $"AppProcess=running pid={app.Id}";
+			var code = app.ExitCode;
+			var signal = code > 128 ? $" (signal {code - 128})" : "";
+			return $"AppProcess=exited pid={app.Id} exitCode={code}{signal}";
+		}
+		catch (Exception ex)
+		{
+			return $"AppProcess=unknown ({ex.GetType().Name})";
+		}
+	}
+
+	// macOS writes a .ips crash report per abnormal termination. Surfacing the paths of reports
+	// written since this launch turns "the app vanished with no output" into a concrete artifact -
+	// for a stack overflow the report's repeating frame names name the offending call site, which is
+	// the only way to identify it (managed handlers never run).
+	string DescribeRecentCrashReports()
+	{
+		try
+		{
+			var dir = Path.Combine(
+				Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+				"Library", "Logs", "DiagnosticReports");
+			if (!Directory.Exists(dir))
+				return "";
+			var since = _appStartedUtc.AddSeconds(-5);
+			var hits = Directory.EnumerateFiles(dir, "*.ips")
+				.Select(f => new FileInfo(f))
+				.Where(f => f.LastWriteTimeUtc >= since)
+				.Where(f => f.Name.StartsWith("OpenDevelop", StringComparison.OrdinalIgnoreCase)
+					|| f.Name.StartsWith("SharpDevelop", StringComparison.OrdinalIgnoreCase)
+					|| f.Name.StartsWith("dotnet", StringComparison.OrdinalIgnoreCase))
+				.OrderByDescending(f => f.LastWriteTimeUtc)
+				.Take(3)
+				.Select(f => f.FullName)
+				.ToList();
+			return hits.Count == 0 ? "" : $"\nCrash reports since launch:\n  {string.Join("\n  ", hits)}";
+		}
+		catch
+		{
+			return "";
+		}
+	}
+
+	// One string carrying every out-of-band diagnostic: how the process is doing, where its full
+	// log is, and any crash report it left behind. Attached to every failure path that previously
+	// reported only the truncated in-memory output.
+	string DescribeAppFailureContext()
+	{
+		var log = _appLogPath == null ? "" : $"\nApp log: {_appLogPath}";
+		return $"{DescribeAppProcess()}{log}{DescribeRecentCrashReports()}";
 	}
 
 	string GetRecentAppOutput()

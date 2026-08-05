@@ -220,11 +220,14 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				// knows MEF panes - LayoutSnapshotConverter.Apply), leaving a legacy pad that was
 				// docked before the restore detached from the live tree: its Root is either null
 				// (parent pane replaced) or the stale pre-restore LayoutRoot (XmlLayoutSerializer
-				// replaces Manager.Layout wholesale). Re-dock it on demand, mirroring how a
-				// re-added MEF model gets a fresh anchorable.
+				// replaces Manager.Layout wholesale). Re-create the anchorable on demand, mirroring
+				// how a re-added MEF model gets a fresh anchorable.
 				if (pad.Root != dockWorkspace.Layout)
-					ReDock(pad);
-				pad.Show();
+					pad = ReplacePad(padDescriptor, pad);
+				if (pad.Parent == null)
+					pad.ShowInDefaultPosition();
+				else if (!pad.IsVisible)
+					pad.Show();
 				EnsureDefaultPositionSize(pad, padDescriptor);
 			} else {
 				pad = new AvalonPadContent(this, padDescriptor);
@@ -235,15 +238,22 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			}
 		}
 
-		// Detaches a legacy pad's anchorable from a stale (pre-restore) pane and docks it again:
-		// ShowInDefaultPosition -> AddToLayout throws InvalidOperationException while the
-		// anchorable is still parented (IsVisible), and its parent pane belongs to a layout tree
-		// that no longer renders (see ShowPad's comment above).
-		void ReDock(AvalonPadContent pad)
+		// A legacy pad whose anchorable belongs to a stale pre-restore LayoutRoot cannot be
+		// re-docked in place: the DockingManager never un-registered that anchorable's layout
+		// item (the stale root's element-removed events aren't watched after the layout object is
+		// swapped out), so re-attaching the same anchorable re-registers a duplicate logical
+		// child and the DockingManager throws (Debug build: InvalidOperationException).
+		// Re-attaching can also trip AddToLayout's own guards (the anchorable may still be
+		// parented or in a root's Hidden collection, where removing from the plain
+		// ObservableCollection does not clear Parent). Replace the anchorable wholesale - the pad
+		// control itself reloads on first show (LoadPadContentIfRequired), exactly like a fresh
+		// show.
+		AvalonPadContent ReplacePad(PadDescriptor padDescriptor, AvalonPadContent pad)
 		{
-			if (pad.Parent is ILayoutContainer staleParent)
-				staleParent.RemoveChild(pad);
-			pad.ShowInDefaultPosition();
+			var replacement = new AvalonPadContent(this, padDescriptor);
+			pads[padDescriptor] = replacement;
+			padsByClass[padDescriptor.Class] = replacement;
+			return replacement;
 		}
 
 		// A pad that was docked, then dropped by a layout restore (a saved layout only restores the
@@ -272,10 +282,12 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			AvalonPadContent p;
 			if (pads.TryGetValue(padDescriptor, out p)) {
 				// See ShowPad: a layout restore can leave a previously-docked legacy pad
-				// detached from the live tree, so re-dock before showing/activating it.
+				// detached from the live tree, so replace the anchorable before activating it.
 				if (p.Root != dockWorkspace.Layout)
-					ReDock(p);
-				if (!p.IsVisible)
+					p = ReplacePad(padDescriptor, p);
+				if (p.Parent == null)
+					p.ShowInDefaultPosition();
+				else if (!p.IsVisible)
 					p.Show();
 				EnsureDefaultPositionSize(p, padDescriptor);
 				p.IsSelected = true;

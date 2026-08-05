@@ -42,12 +42,14 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		
 		readonly Dictionary<HighlightingColor, HighlightingColor> darkColors = new Dictionary<HighlightingColor, HighlightingColor>();
 		readonly bool isHighlightingThemeAware;
+		readonly string highlightingDefinitionName;
 		
 		public ThemeAwareHighlightingColorizer(IHighlighter highlighter, IHighlightingDefinition highlightingDefinition)
 			: base(highlighter)
 		{
 			isHighlightingThemeAware = highlightingDefinition.Properties.TryGetValue(IsThemeAwareKey, out string value)
 				&& value == bool.TrueString;
+			highlightingDefinitionName = highlightingDefinition.Name;
 		}
 		
 		protected override void ApplyColorToElement(VisualLineElement element, HighlightingColor color)
@@ -64,11 +66,43 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				return lightColor;
 			}
 			
+			if (highlightingDefinitionName == XmlHighlightingDefinitionName
+				&& TryGetXmlDarkColor(lightColor.Name, out Color xmlDarkColor)) {
+				var xmlDark = lightColor.Clone();
+				xmlDark.Foreground = new SimpleHighlightingBrush(xmlDarkColor);
+				return xmlDark;
+			}
+			
 			if (!darkColors.TryGetValue(lightColor, out HighlightingColor darkColor)) {
 				darkColors[lightColor] = darkColor = GetColorForDarkThemeCore(lightColor);
 			}
 			
 			return darkColor;
+		}
+		
+		// XML/XAML (AvalonEdit's built-in "XML" definition, which also covers .xaml) gets a
+		// purpose-built dark palette instead of the generic lightness-inversion fallback: several
+		// of its named colors are pure "Blue" (CData/DocType/XmlDeclaration/AttributeValue),
+		// which the inversion barely brightens (blue's HSL lightness is ~0.5) and leaves as a
+		// low-contrast, saturated blue on the dark background. Palette mirrors VS Code's XML/
+		// XAML dark colors (tag medium-blue #569CD6, attribute light-blue #9CDCFE, value amber
+		// #CE9178, comment green #6A9955).
+		const string XmlHighlightingDefinitionName = "XML";
+		static readonly Dictionary<string, Color> XmlDarkColors = new(StringComparer.Ordinal) {
+			["Comment"] = Color.FromRgb(0x6A, 0x99, 0x55),
+			["CData"] = Color.FromRgb(0xCE, 0x91, 0x78),
+			["DocType"] = Color.FromRgb(0x56, 0x9C, 0xD6),
+			["XmlDeclaration"] = Color.FromRgb(0xCE, 0x91, 0x78),
+			["XmlTag"] = Color.FromRgb(0x56, 0x9C, 0xD6),
+			["AttributeName"] = Color.FromRgb(0x9C, 0xDC, 0xFE),
+			["AttributeValue"] = Color.FromRgb(0xCE, 0x91, 0x78),
+			["Entity"] = Color.FromRgb(0xCE, 0x91, 0x78),
+			["BrokenEntity"] = Color.FromRgb(0xF4, 0x87, 0x71)
+		};
+		
+		static bool TryGetXmlDarkColor(string colorName, out Color color)
+		{
+			return XmlDarkColors.TryGetValue(colorName ?? string.Empty, out color);
 		}
 		
 		// Ported from ICSharpCode.ILSpy.Themes.ThemeManager (MIT).

@@ -21,6 +21,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows;
@@ -162,18 +163,48 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		{
 			UpdateTargetFrameworks(fileName);
 			classItems = new List<EntityItem>();
-			if (fileName != null) {
-				var registry = SD.GetService<LanguageServiceRegistry>();
-				if (registry != null && registry.TryGetService(fileName, out var service)) {
-					var documentId = new ICSharpCode.SharpDevelop.LanguageServices.DocumentId(fileName);
-					var editor = SD.Workbench.ActiveViewContent?.GetService<ITextEditor>();
-					if (editor != null && FileName.Equals(editor.FileName, fileName))
-						service.UpsertDocumentAsync(documentId, editor.Document.Text, System.Threading.CancellationToken.None).GetAwaiter().GetResult();
-					AddClasses(service.GetDocumentOutlineAsync(documentId, System.Threading.CancellationToken.None).GetAwaiter().GetResult());
-				}
-			}
 			classItems.Sort();
 			classComboBox.ItemsSource = classItems;
+			if (fileName != null) {
+				// The outline round-trip is async (Roslyn in-process for C#/VB, an LSP
+				// textDocument/documentSymbol request for F#/XAML/etc.). Blocking the UI thread on
+				// .GetResult() deadlocks whenever the language service's continuations need the
+				// dispatcher (the same trap as LanguageServiceParserAdapter's upsert) - so fetch on
+				// a background thread and apply back on the UI thread, re-selecting the caret item
+				// once the class list is actually populated.
+				_ = FetchClassesAsync(fileName);
+			}
+		}
+
+		async Task FetchClassesAsync(FileName fileName)
+		{
+			try {
+				var registry = SD.GetService<LanguageServiceRegistry>();
+				if (registry == null || !registry.TryGetService(fileName, out var service))
+					return;
+				var documentId = new ICSharpCode.SharpDevelop.LanguageServices.DocumentId(fileName);
+				// Capture editor state on the UI thread before yielding (TextDocument is
+				// owner-thread-bound); null means "no matching open editor", keep the server's
+				// existing buffer.
+				var editor = SD.Workbench.ActiveViewContent?.GetService<ITextEditor>();
+				string text = editor != null && FileName.Equals(editor.FileName, fileName) ? editor.Document.Text : null;
+				if (text != null)
+					await service.UpsertDocumentAsync(documentId, text, System.Threading.CancellationToken.None).ConfigureAwait(false);
+				var outline = await service.GetDocumentOutlineAsync(documentId, System.Threading.CancellationToken.None).ConfigureAwait(false);
+				await SD.MainThread.InvokeAsync(() => {
+					if (currentFileName != fileName)
+						return;
+					classItems = new List<EntityItem>();
+					AddClasses(outline);
+					classItems.Sort();
+					classComboBox.ItemsSource = classItems;
+					var caret = SD.Workbench.ActiveViewContent?.GetService<ITextEditor>()?.Caret.Location;
+					if (caret.HasValue)
+						DoSelectItem(caret.Value);
+				});
+			} catch (Exception ex) {
+				LoggingService.Warn("Navigation bar outline failed for '" + fileName + "': " + ex.Message);
+			}
 		}
 
 		void UpdateTargetFrameworks(FileName fileName)
@@ -201,11 +232,25 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				return;
 
 			ProjectTargetFrameworkService.SetActiveTargetFramework(currentProject, targetFramework);
-			var registry = SD.GetService<LanguageServiceRegistry>();
-			if (currentFileName != null && registry != null && registry.TryGetService(currentFileName, out var service))
-				service.RefreshProjectAsync(new ICSharpCode.SharpDevelop.LanguageServices.DocumentId(currentFileName), System.Threading.CancellationToken.None).GetAwaiter().GetResult();
-			if (currentFileName != null)
-				Update(currentFileName);
+			// RefreshProjectAsync can be a real round-trip (Roslyn reload for C#/VB; a no-op for
+			// LSP-backed languages like F#) - never block the UI thread on it, then re-fetch the
+			// outline afterwards.
+			_ = RefreshProjectAndOutlineAsync(currentFileName);
+		}
+
+		async Task RefreshProjectAndOutlineAsync(FileName fileName)
+		{
+			try {
+				var registry = SD.GetService<LanguageServiceRegistry>();
+				if (fileName != null && registry != null && registry.TryGetService(fileName, out var service))
+					await service.RefreshProjectAsync(new ICSharpCode.SharpDevelop.LanguageServices.DocumentId(fileName), System.Threading.CancellationToken.None).ConfigureAwait(false);
+			} catch (Exception ex) {
+				LoggingService.Warn("Navigation bar project refresh failed: " + ex.Message);
+			}
+			await SD.MainThread.InvokeAsync(() => {
+				if (currentFileName != null)
+					Update(currentFileName);
+			});
 		}
 
 		bool IsDropDownOpen {

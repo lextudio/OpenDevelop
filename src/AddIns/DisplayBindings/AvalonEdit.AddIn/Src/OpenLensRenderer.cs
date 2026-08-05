@@ -14,6 +14,7 @@ using ICSharpCode.AvalonEdit.AddIn.Options;
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Rendering;
 using ICSharpCode.Core;
+using ICSharpCode.Core.Presentation;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor.Search;
 using ICSharpCode.SharpDevelop.LanguageServices;
@@ -481,6 +482,28 @@ namespace ICSharpCode.AvalonEdit.AddIn
 					label.Inlines.Add(new Run(" | "));
 
 				var item = items[i];
+				// A provider that knows an icon for its item (e.g. the test lens's pass/fail status)
+				// renders icon-only, with the title as tooltip; others keep the plain title text.
+				if (item.Presentation.IconKey != null) {
+					var icon = LoadIcon(item.Presentation.IconKey);
+					if (icon != null) {
+						var container = new InlineUIContainer(icon) {
+							BaselineAlignment = BaselineAlignment.Center,
+						};
+						label.ToolTip = item.Presentation.Title;
+						if (item.Command != null) {
+							icon.Cursor = Cursors.Hand;
+							var command = item.Command;
+							icon.MouseLeftButtonDown += (sender, e) => {
+								e.Handled = true;
+								ExecuteCommand(command, label);
+							};
+						}
+						label.Inlines.Add(container);
+						continue;
+					}
+				}
+
 				var run = new Run(item.Presentation.Title);
 				if (item.Command != null) {
 					run.Cursor = Cursors.Hand;
@@ -498,13 +521,31 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			return label;
 		}
 
+		static Image LoadIcon(string iconKey)
+		{
+			try {
+				var icon = new Image {
+					Source = PresentationResourceService.GetImageSource(iconKey),
+					Width = 12,
+					Height = 12,
+					VerticalAlignment = VerticalAlignment.Center,
+				};
+				if (icon.Source == null)
+					return null;
+				return icon;
+			} catch (Exception ex) {
+				LoggingService.Warn("OpenLens: couldn't load icon '" + iconKey + "'. " + ex.Message);
+				return null;
+			}
+		}
+
 		/// <summary>
-		/// Executes a resolved item's <see cref="OpenLensCommand"/>. Only the two built-in command
-		/// ids from <c>LanguageOpenLensProvider</c> are wired up here - a third-party provider's own
-		/// command id is simply logged and ignored, matching how an unrecognized menu command id
-		/// elsewhere in this codebase is a no-op rather than a crash. Dispatching arbitrary provider
-		/// command ids through a general command-execution service is Phase 3+ scope (doc §20), not
-		/// required for the two built-in lenses this host renders today.
+		/// Executes a resolved item's <see cref="OpenLensCommand"/>. Only the built-in command ids
+		/// from <c>LanguageOpenLensProvider</c> plus the two generic escape hatches are wired up here
+		/// - a third-party provider's own command id is simply logged and ignored, matching how an
+		/// unrecognized menu command id elsewhere in this codebase is a no-op rather than a crash.
+		/// Dispatching arbitrary provider command ids through a general command-execution service is
+		/// Phase 3+ scope (doc §20), not required for the lenses this host renders today.
 		/// </summary>
 		void ExecuteCommand(OpenLensCommand command, UIElement placementTarget)
 		{
@@ -515,6 +556,14 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			// command id this class would need to know about.
 			if (command.Argument is Action action) {
 				action();
+				return;
+			}
+
+			// "OpenLens.ShowMenu" is the same escape hatch for a provider that wants its click to
+			// offer several choices (e.g. the test lens's Run/Debug menu): the provider supplies the
+			// item actions, this host supplies the anchored popup (it has the placement target).
+			if (command.Argument is OpenLensMenu menu) {
+				new OpenLensMenuPopup(placementTarget, menu).IsOpen = true;
 				return;
 			}
 

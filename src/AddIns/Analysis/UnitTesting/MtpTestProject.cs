@@ -165,12 +165,32 @@ namespace ICSharpCode.UnitTesting
 				return;
 
 			var collection = base.NestedTestCollection;
-			collection.Clear();
+			var ordered = discoveredNodesByTargetFramework
+				.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+				.ToList();
+			var existing = collection.OfType<MtpTargetFramework>()
+				.ToDictionary(f => f.TargetFramework, StringComparer.OrdinalIgnoreCase);
 
-			foreach (var pair in discoveredNodesByTargetFramework.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)) {
-				var targetFramework = new MtpTargetFramework(this, pair.Key);
-				MtpTestTreeBuilder.BuildTree(this, targetFramework.NestedTests, pair.Value, pair.Key);
-				collection.Add(targetFramework);
+			// Refresh in place, reusing the existing model objects for frameworks (and, inside
+			// UpdateTree, namespaces/classes/methods) whose names the new discovery still
+			// reports. ModelCollectionTreeNode keys child nodes by model identity, so a wholesale
+			// Clear+rebuild would drop every node's IsExpanded - silently collapsing whatever the
+			// user (or a test) had expanded whenever a build-triggered re-discovery lands
+			// (measured in the integration suite: the Unit Tests pad's expanded chain vanished
+			// mid-test and its rows never rendered).
+			foreach (var gone in collection.OfType<MtpTargetFramework>()
+				         .Where(f => !ordered.Any(p => string.Equals(p.Key, f.TargetFramework, StringComparison.OrdinalIgnoreCase)))
+				         .ToList())
+				collection.Remove(gone);
+
+			foreach (var pair in ordered) {
+				if (existing.TryGetValue(pair.Key, out var framework)) {
+					MtpTestTreeBuilder.UpdateTree(this, framework.NestedTests, pair.Value, pair.Key);
+				} else {
+					var created = new MtpTargetFramework(this, pair.Key);
+					MtpTestTreeBuilder.BuildTree(this, created.NestedTests, pair.Value, pair.Key);
+					collection.Add(created);
+				}
 			}
 		}
 

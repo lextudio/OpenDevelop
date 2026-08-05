@@ -590,6 +590,10 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
                 {
                     processId = Environment.ProcessId,
                     rootUri = _rootUri,
+                    // Server-specific initialization options (e.g. fsautocomplete's
+                    // AutomaticWorkspaceInit) - omitted entirely when the launch spec has none so
+                    // other servers never see an unexpected member.
+                    initializationOptions = _spec.InitializationOptions,
                     capabilities = new
                     {
 						textDocument = new

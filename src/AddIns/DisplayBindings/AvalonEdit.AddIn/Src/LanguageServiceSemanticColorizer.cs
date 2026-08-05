@@ -10,6 +10,7 @@ using ICSharpCode.AvalonEdit.Rendering;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.LanguageServices;
+using ICSharpCode.SharpDevelop.Workbench;
 using SemanticLanguageService = ICSharpCode.SharpDevelop.LanguageServices.ILanguageService;
 
 namespace ICSharpCode.AvalonEdit.AddIn
@@ -91,33 +92,107 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			}
 		}
 
-		static Brush GetBrush(string type) => type switch
-		{
-			"ReferenceTypes" => Brushes.Teal,
-			"ValueTypes" => Brushes.DarkCyan,
-			"MethodCall" => Brushes.DarkViolet,
-			"FieldAccess" => Brushes.SaddleBrown,
-			"xamlDelimiter" or "xamlAttributeQuotes" => Brushes.DimGray,
-			"xamlName" or "xamlMarkupExtensionClass" => Brushes.Teal,
-			"xamlAttribute" or "xamlMarkupExtensionParameterName" => Brushes.SaddleBrown,
-			"xamlAttributeValue" or "xamlMarkupExtensionParameterValue" or "xamlText" => Brushes.Brown,
-			"xamlNamespacePrefix" => Brushes.DarkCyan,
-			"xamlKeyword" => Brushes.Blue,
-			"xamlComment" => Brushes.Green,
-			"namespace" or "module" => Brushes.DarkCyan,
-			"class" or "struct" or "interface" or "enum" or "type" => Brushes.Teal,
-			"typeParameter" => Brushes.DarkSlateGray,
-			"function" or "method" or "macro" => Brushes.DarkViolet,
-			"property" or "field" or "event" => Brushes.SaddleBrown,
-			"parameter" => Brushes.DarkGoldenrod,
-			"variable" => Brushes.DarkBlue,
-			"keyword" or "modifier" => Brushes.Blue,
-			"string" => Brushes.Brown,
-			"number" => Brushes.DarkGreen,
-			"comment" => Brushes.Green,
-			"operator" => Brushes.DarkSlateBlue,
-			_ => null
+		// The semantic token palette is hardcoded per theme: the original table used WPF named
+		// light-theme brushes (Teal/DarkViolet/Blue...) which stay readable in Light but look
+		// wrong on the dark workbench - e.g. method names in DarkViolet or XAML namespaces in
+		// Blue. The dark table mirrors VS Code's Dark+ palette (type cyan #4EC9B0, method yellow
+		// #DCDCAA, attribute light-blue #9CDCFE, string amber #CE9178, keyword medium-blue
+		// #569CD6, comment green #6A9955). CodeEditor rebuilds the pipeline on IdeThemeService.
+		// ThemeChanged, so switching themes re-resolves these brushes.
+		static readonly Dictionary<string, Brush> LightBrushes = new(StringComparer.Ordinal) {
+			["ReferenceTypes"] = Brushes.Teal,
+			["ValueTypes"] = Brushes.DarkCyan,
+			["MethodCall"] = Brushes.DarkViolet,
+			["FieldAccess"] = Brushes.SaddleBrown,
+			["xamlDelimiter"] = Brushes.DimGray,
+			["xamlAttributeQuotes"] = Brushes.DimGray,
+			["xamlName"] = Brushes.Teal,
+			["xamlMarkupExtensionClass"] = Brushes.Teal,
+			["xamlAttribute"] = Brushes.SaddleBrown,
+			["xamlMarkupExtensionParameterName"] = Brushes.SaddleBrown,
+			["xamlAttributeValue"] = Brushes.Brown,
+			["xamlMarkupExtensionParameterValue"] = Brushes.Brown,
+			["xamlText"] = Brushes.Brown,
+			["xamlNamespacePrefix"] = Brushes.DarkCyan,
+			["xamlKeyword"] = Brushes.Blue,
+			["xamlComment"] = Brushes.Green,
+			["namespace"] = Brushes.DarkCyan,
+			["module"] = Brushes.DarkCyan,
+			["class"] = Brushes.Teal,
+			["struct"] = Brushes.Teal,
+			["interface"] = Brushes.Teal,
+			["enum"] = Brushes.Teal,
+			["type"] = Brushes.Teal,
+			["typeParameter"] = Brushes.DarkSlateGray,
+			["function"] = Brushes.DarkViolet,
+			["method"] = Brushes.DarkViolet,
+			["macro"] = Brushes.DarkViolet,
+			["property"] = Brushes.SaddleBrown,
+			["field"] = Brushes.SaddleBrown,
+			["event"] = Brushes.SaddleBrown,
+			["parameter"] = Brushes.DarkGoldenrod,
+			["variable"] = Brushes.DarkBlue,
+			["keyword"] = Brushes.Blue,
+			["modifier"] = Brushes.Blue,
+			["string"] = Brushes.Brown,
+			["number"] = Brushes.DarkGreen,
+			["comment"] = Brushes.Green,
+			["operator"] = Brushes.DarkSlateBlue
 		};
+
+		static readonly Dictionary<string, Brush> DarkBrushes = new(StringComparer.Ordinal) {
+			["ReferenceTypes"] = CreateBrush(0x4E, 0xC9, 0xB0),
+			["ValueTypes"] = CreateBrush(0x4E, 0xC9, 0xB0),
+			["MethodCall"] = CreateBrush(0xDC, 0xDC, 0xAA),
+			["FieldAccess"] = CreateBrush(0xDC, 0xDC, 0xAA),
+			["xamlDelimiter"] = CreateBrush(0x80, 0x80, 0x80),
+			["xamlAttributeQuotes"] = CreateBrush(0x80, 0x80, 0x80),
+			["xamlName"] = CreateBrush(0x4E, 0xC9, 0xB0),
+			["xamlMarkupExtensionClass"] = CreateBrush(0x4E, 0xC9, 0xB0),
+			["xamlAttribute"] = CreateBrush(0x9C, 0xDC, 0xFE),
+			["xamlMarkupExtensionParameterName"] = CreateBrush(0x9C, 0xDC, 0xFE),
+			["xamlAttributeValue"] = CreateBrush(0xCE, 0x91, 0x78),
+			["xamlMarkupExtensionParameterValue"] = CreateBrush(0xCE, 0x91, 0x78),
+			["xamlText"] = CreateBrush(0xCE, 0x91, 0x78),
+			["xamlNamespacePrefix"] = CreateBrush(0x9C, 0xDC, 0xFE),
+			["xamlKeyword"] = CreateBrush(0x56, 0x9C, 0xD6),
+			["xamlComment"] = CreateBrush(0x6A, 0x99, 0x55),
+			["namespace"] = CreateBrush(0x4E, 0xC9, 0xB0),
+			["module"] = CreateBrush(0x4E, 0xC9, 0xB0),
+			["class"] = CreateBrush(0x4E, 0xC9, 0xB0),
+			["struct"] = CreateBrush(0x4E, 0xC9, 0xB0),
+			["interface"] = CreateBrush(0x4E, 0xC9, 0xB0),
+			["enum"] = CreateBrush(0x4E, 0xC9, 0xB0),
+			["type"] = CreateBrush(0x4E, 0xC9, 0xB0),
+			["typeParameter"] = CreateBrush(0x9C, 0xDC, 0xFE),
+			["function"] = CreateBrush(0xDC, 0xDC, 0xAA),
+			["method"] = CreateBrush(0xDC, 0xDC, 0xAA),
+			["macro"] = CreateBrush(0xDC, 0xDC, 0xAA),
+			["property"] = CreateBrush(0xDC, 0xDC, 0xAA),
+			["field"] = CreateBrush(0xDC, 0xDC, 0xAA),
+			["event"] = CreateBrush(0xDC, 0xDC, 0xAA),
+			["parameter"] = CreateBrush(0x9C, 0xDC, 0xFE),
+			["variable"] = CreateBrush(0x9C, 0xDC, 0xFE),
+			["keyword"] = CreateBrush(0x56, 0x9C, 0xD6),
+			["modifier"] = CreateBrush(0x56, 0x9C, 0xD6),
+			["string"] = CreateBrush(0xCE, 0x91, 0x78),
+			["number"] = CreateBrush(0xB5, 0xCE, 0xA8),
+			["comment"] = CreateBrush(0x6A, 0x99, 0x55),
+			["operator"] = CreateBrush(0xD4, 0xD4, 0xD4)
+		};
+
+		static Brush CreateBrush(byte r, byte g, byte b)
+		{
+			var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
+			brush.Freeze();
+			return brush;
+		}
+
+		static Brush GetBrush(string type)
+		{
+			var table = IdeThemeService.CurrentTheme == IdeThemeService.Dark ? DarkBrushes : LightBrushes;
+			return table.TryGetValue(type, out var brush) ? brush : null;
+		}
 
 		public void Dispose()
 		{

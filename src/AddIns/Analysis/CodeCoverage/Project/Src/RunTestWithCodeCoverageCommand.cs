@@ -42,16 +42,26 @@ namespace ICSharpCode.CodeCoverage
 
 		public override void Run()
 		{
-			// Menu commands and DevFlow can both reach this entry point. Do not allow two
-			// AltCover --inplace prepare/collect sequences to rewrite the same output directory
-			// concurrently.
-			if (!CurrentRunTask.IsCompleted)
-				return;
-			CurrentRunTask = RunAsync();
-			CurrentRunTask.FireAndForget();
+			RunTestsWithCoverageAsync(GetTests(SD.GetRequiredService<ITestService>()).ToList());
 		}
 
-		async Task RunAsync()
+		/// <summary>
+		/// Runs the given tests with code coverage. Menu commands, DevFlow and the OpenLens test
+		/// lens's "Run with Coverage" menu item all reach this entry point. Do not allow two
+		/// AltCover --inplace prepare/collect sequences to rewrite the same output directory
+		/// concurrently.
+		/// </summary>
+		public static Task RunTestsWithCoverageAsync(IReadOnlyList<ITest> tests)
+		{
+			if (!CurrentRunTask.IsCompleted)
+				return CurrentRunTask;
+			var task = new RunTestWithCodeCoverageCommand().RunAsync(tests);
+			CurrentRunTask = task;
+			task.FireAndForget();
+			return task;
+		}
+
+		async Task RunAsync(IReadOnlyList<ITest> tests)
 		{
 			ITestService testService = SD.GetRequiredService<ITestService>();
 			ITestOperation operation;
@@ -59,22 +69,21 @@ namespace ICSharpCode.CodeCoverage
 				return;
 
 			using (operation) {
-				await RunWithLeaseAsync(testService, operation.CancellationToken);
+				await RunWithLeaseAsync(testService, tests, operation.CancellationToken);
 			}
 		}
 
-		async Task RunWithLeaseAsync(ITestService testService, CancellationToken cancellationToken)
+		async Task RunWithLeaseAsync(ITestService testService, IReadOnlyList<ITest> tests, CancellationToken cancellationToken)
 		{
 			ClearCodeCoverageResults();
 
 			var coverageResultsReader = new CodeCoverageResultsReader();
-			IReadOnlyList<ITest> allTests = GetTests(testService).ToList();
 
-			IProject project = FindProject(allTests);
+			IProject project = FindProject(tests);
 			if (project == null)
 				return;
 
-			var mtpTestProject = FindMtpTestProject(allTests, project);
+			var mtpTestProject = FindMtpTestProject(tests, project);
 			if (mtpTestProject != null)
 				await mtpTestProject.RefreshAsync(cancellationToken);
 
@@ -83,7 +92,7 @@ namespace ICSharpCode.CodeCoverage
 				run = await coverageRunner.RunAsync(
 					new[] { project },
 					BuildProjectAsync,
-					(_, outputLines, cancellationToken) => PublishTestResultsAsync(mtpTestProject, allTests, outputLines, cancellationToken),
+					(_, outputLines, cancellationToken) => PublishTestResultsAsync(mtpTestProject, tests, outputLines, cancellationToken),
 					cancellationToken);
 			}
 			foreach (string line in run.LogLines)

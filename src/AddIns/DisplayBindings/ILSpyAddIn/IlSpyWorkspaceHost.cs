@@ -430,9 +430,23 @@ namespace ICSharpCode.ILSpyAddIn
 			// all). Re-assert the selection once more after the current dispatcher operation drains,
 			// so it wins the race instead of losing to it.
 			var view = decompiledSelectionView;
+			var reassertDeadline = DateTime.UtcNow.AddSeconds(1);
 			Application.Current.Dispatcher.BeginInvoke(
-				System.Windows.Threading.DispatcherPriority.ApplicationIdle,
-				new Action(() => view.WorkbenchWindow?.SelectWindow()));
+				System.Windows.Threading.DispatcherPriority.Normal,
+				new Action(() => {
+					// The re-assert only exists to win the tree's own selection/focus race that
+					// runs right after this subscriber fires, so it must run as soon as the
+					// current dispatcher operation drains - not at ApplicationIdle. Idle can be
+					// seconds away under sustained load (e.g. an integration-test driver issuing
+					// actions back to back); a re-assert that lands that late yanks the dock's
+					// ActiveContent away from whatever the user (or a test) moved to in the
+					// meantime (measured: the OpenAssembly test's reference-click navigation
+					// landed on Program, then a stale re-assert queued by the language-switch
+					// refresh of the selection document stole activation back to it). The
+					// freshness check is a belt-and-braces guard for extreme delays.
+					if (DateTime.UtcNow < reassertDeadline)
+						view.WorkbenchWindow?.SelectWindow();
+				}));
 
 			return decompiledSelectionView.RefreshAsync(nodes, languageService.Language, options);
 		}

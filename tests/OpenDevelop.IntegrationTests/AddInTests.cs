@@ -709,6 +709,7 @@ public sealed class AddInTests : IAsyncDisposable
             .Select(e => e.GetProperty("text").GetString())
             .ToList();
         var padDeadline2 = DateTime.UtcNow.AddSeconds(30);
+        bool passTestsFound = false;
         while (DateTime.UtcNow < padDeadline2)
         {
             uiTree = await _app.GetUITreeAsync();
@@ -718,16 +719,24 @@ public sealed class AddInTests : IAsyncDisposable
                 .Select(e => e.GetProperty("text").GetString())
                 .ToList();
             if (texts.Any(t => t == "PassTests"))
+            {
+                passTestsFound = true;
                 break;
+            }
             await Task.Delay(500);
         }
+        if (!passTestsFound)
+            Assert.Fail($"no PassTests text; padTree={await _app.InvokeAsync("od.unit-test.pad-tree")}; panePos={await _app.InvokeAsync("od.layout.pane-position", "ICSharpCode.UnitTesting.UnitTestsPad")}; texts={string.Join("|", texts.Take(50))};");
         Assert.Contains(texts, t => t == "PassTests");
 
         expandResult = await _app.InvokeAsync("od.unit-test.expand-node", "PassTests");
         Assert.True(expandResult.GetProperty("found").GetBoolean(),
             "Expected the PassTests node to be expandable in the Unit Tests pad");
+        if (!expandResult.GetProperty("found").GetBoolean())
+            Assert.Fail($"expand PassTests failed: {expandResult}; padTree={await _app.InvokeAsync("od.unit-test.pad-tree")};");
 
         var methodDeadline = DateTime.UtcNow.AddSeconds(30);
+        bool methodFound = false;
         while (DateTime.UtcNow < methodDeadline)
         {
             uiTree = await _app.GetUITreeAsync();
@@ -737,9 +746,14 @@ public sealed class AddInTests : IAsyncDisposable
                 .Select(e => e.GetProperty("text").GetString())
                 .ToList();
             if (texts.Any(t => t.EndsWith(".AlwaysPasses", StringComparison.Ordinal)))
+            {
+                methodFound = true;
                 break;
+            }
             await Task.Delay(500);
         }
+        if (!methodFound)
+            Assert.Fail($"no AlwaysPasses text; padTree={await _app.InvokeAsync("od.unit-test.pad-tree")}; texts={string.Join("|", texts.Take(60))};");
         Assert.Contains(texts, t => t.EndsWith(".AlwaysPasses", StringComparison.Ordinal));
     }
 
@@ -1601,6 +1615,14 @@ EndGlobal
         Assert.Contains("DebugTestApp", selectResult.GetProperty("selectedNodes").EnumerateArray()
             .Select(a => a.GetString()).ToList());
 
+        // ILSpy's NavigationHistory dedupes records within a 0.5s window (NavigationHistory.cs:
+        // NavigationSecondsBeforeNewEntry): a jump recorded less than 0.5s after the previous
+        // navigation updates the current entry without pushing to the back stack, which would make
+        // step (3)'s Back assertion flaky (measured). The opens above just recorded the assembly
+        // node's module navigation, so settle past that window before the search jump - then the
+        // jump is guaranteed to push its own back entry.
+        await Task.Delay(600);
+
         // Activate the Assemblies pad. Deliberately od.ilspy.activate-pane and NOT
         // od.ilspy.show-pane: the latter removes and re-adds the anchorable, which was needed back
         // when runtime-added panes didn't reliably dock, but is destructive now that the ILSpy
@@ -1885,6 +1907,8 @@ EndGlobal
             await Task.Delay(100);
             afterClick = await _app.InvokeAsync("od.active-view");
         }
+        if (!afterClick.GetProperty("fileName").GetString()!.EndsWith("DebugTestApp.Program.cs", StringComparison.Ordinal))
+            Assert.Fail($"click={click}; afterClick={afterClick};");
         Assert.EndsWith("DebugTestApp.Program.cs", afterClick.GetProperty("fileName").GetString());
         Assert.Equal(17, afterClick.GetProperty("caretLine").GetInt32());
 

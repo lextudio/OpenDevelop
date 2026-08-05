@@ -173,6 +173,7 @@ namespace ICSharpCode.Core.Presentation
 			{ "Icons.16x16.BuildCurrentSelectedProject", "Resources/VS2017/BuildSelection/BuildSelection_16x.xaml" },
 			{ "Icons.16x16.RunProgramIcon", "Resources/VS2017/Run/Run_16x.xaml" },
 			{ "Icons.16x16.RunAllIcon", "Resources/VS2017/RunTest/RunTest_16x.xaml" },
+			{ "Icons.16x16.Debug.Bug", "Resources/VS2017/Bug/Bug_16x.xaml" },
 			{ "Icons.16x16.Debug.StartWithoutDebugging", "Resources/VS2017/StartWithoutDebug/StartWithoutDebug_16x.xaml" },
 			{ "Icons.16x16.Debug.Continue", "Resources/VS2017/Run/Run_16x.xaml" },
 			{ "Icons.16x16.Debug.Break", "Resources/VS2017/Pause/Pause_16x.xaml" },
@@ -258,7 +259,7 @@ namespace ICSharpCode.Core.Presentation
 			// Code Coverage Pad icons.
 			{ "CodeCoverage.Icons.16x16.Pad", "Resources/VS2017/CodeCoverage/CodeCoverage_16x.xaml" },
 			{ "CodeCoverage.Icons.16x16.File", "Resources/VS2017/CodeCoverage/CodeCoverage_16x.xaml" },
-			{ "CodeCoverage.Icons.16x16.Run", "Resources/VS2017/RunTest/RunTest_16x.xaml" },
+			{ "CodeCoverage.Icons.16x16.Run", "Resources/VS2017/CodeCoverage/CodeCoverage_16x.xaml" },
 
 			// Version control context-menu icons.
 			{ "Svn.Commit", "Resources/VS2017/Commit/Commit_16x.xaml" },

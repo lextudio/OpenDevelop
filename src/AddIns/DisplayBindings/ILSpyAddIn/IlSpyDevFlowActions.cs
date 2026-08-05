@@ -12,8 +12,8 @@ using System.Threading.Tasks;
 
 using AvalonDock.Layout;
 
+
 using ICSharpCode.SharpDevelop;
-using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Workbench;
 using LeXtudio.DevFlow.Agent.Core;
 using Microsoft.Maui.DevFlow.Agent.Core;
@@ -471,6 +471,25 @@ namespace ICSharpCode.ILSpyAddIn
 				.Select(n => n.GetType().Name + ":" + n.Text));
 		}
 
+		static string AvalonDockRawActive()
+		{
+			try {
+				var wbType = SD.Workbench.GetType();
+				var layoutProp = wbType.GetProperty("WorkbenchLayout", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+				var layout = layoutProp?.GetValue(SD.Workbench);
+				var dmProp = layout?.GetType().GetProperty("DockingManager", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+				var dm = dmProp?.GetValue(layout);
+				var acProp = dm?.GetType().GetProperty("ActiveContent", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+				var ac = acProp?.GetValue(dm);
+				if (ac == null)
+					return "null";
+				var titleProp = ac.GetType().GetProperty("Title");
+				return (titleProp?.GetValue(ac)?.ToString()) ?? ac.GetType().Name;
+			} catch {
+				return "err";
+			}
+		}
+
 		static T FindVisualChild<T>(System.Windows.DependencyObject root) where T : System.Windows.DependencyObject
 		{
 			if (root == null)
@@ -679,23 +698,19 @@ namespace ICSharpCode.ILSpyAddIn
 
 				var before = new { activeViewTitle = SD.Workbench.ActiveViewContent?.TitleName, activeViewFile = SD.Workbench.ActiveViewContent?.PrimaryFileName?.ToString() };
 				bool navigated = view.TryNavigateAtOffset(offset);
-				string jumpInfo = "";
-				int caretLineAfter = -1, caretColAfter = -1;
-				for (int i = 0; i < 50; i++) {
-					await Task.Delay(100);
+				// The navigation's JumpToMember is deferred until the target document finishes
+				// decompiling (DecompiledViewContent.JumpToMember queues the member key while
+				// decompilationFinished is false). Await that completion so the caret has actually
+				// moved when this action returns - otherwise a test polling od.active-view right
+				// after can read the pre-jump caret (measured: caret stayed at line 1).
+				if (navigated && SD.Workbench.ActiveViewContent is DecompiledViewContent navDoc && !navDoc.IsDecompilationDone)
+					await navDoc.DecompilationTask;
+				var trace = new System.Collections.Generic.List<string>();
+				for (int i = 0; i < 30; i++) {
 					var av = SD.Workbench.ActiveViewContent;
-					if (av == null)
-						continue;
-					var editor = av.GetService<ITextEditor>();
-					if (editor?.Caret != null) {
-						caretLineAfter = editor.Caret.Line;
-						caretColAfter = editor.Caret.Column;
-						if (caretLineAfter > 1)
-							break;
-					}
-				}
-				if (SD.Workbench.ActiveViewContent is DecompiledViewContent dv) {
-					jumpInfo = $"{dv.DecompiledTypeName.Type};locs={dv.MemberLocationCount};";
+					var raw = AvalonDockRawActive();
+					trace.Add((i * 100) + "ms:trk=" + (av?.TitleName ?? "?") + " dock=" + raw);
+					await Task.Delay(100);
 				}
 
 				return JsonSerializer.Serialize(new {
@@ -703,9 +718,7 @@ namespace ICSharpCode.ILSpyAddIn
 					substring,
 					offset,
 					navigated,
-					caretLineAfter,
-					caretColAfter,
-					jumpInfo,
+					trace,
 					before,
 					after = new { activeViewTitle = SD.Workbench.ActiveViewContent?.TitleName, activeViewFile = SD.Workbench.ActiveViewContent?.PrimaryFileName?.ToString() }
 				});

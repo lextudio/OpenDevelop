@@ -27,6 +27,16 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
         public string WorkingDirectory { get; }
 
         public IReadOnlyList<string> Arguments { get; }
+
+        /// <summary>
+        /// Optional <c>initializationOptions</c> payload for the LSP <c>initialize</c> request
+        /// (serialized as JSON). Server-specific: e.g. fsautocomplete's
+        /// <c>AutomaticWorkspaceInit</c> (see FsAutoComplete docs/communication-protocol.md) makes
+        /// it auto-discover and load the workspace's projects without the client driving the
+        /// <c>fsharp/workspacePeek</c>/<c>fsharp/workspaceLoad</c> dance - required before
+        /// documentSymbol/references/codeLens can answer for any open F# file.
+        /// </summary>
+        public object InitializationOptions { get; init; }
     }
 
     public sealed class LspServerRegistry
@@ -83,7 +93,13 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
                 "tool",
                 "run",
                 "fsautocomplete",
-                "--");
+                "--") {
+                // fsautocomplete does not load any project unless told to (documentSymbol etc.
+                // then fail with "Couldn't find <file> in LoadedProjects"). AutomaticWorkspaceInit
+                // makes it discover the workspace itself - the documented option for clients like
+                // OpenDevelop that have no custom workspace-selection UI.
+                InitializationOptions = new { AutomaticWorkspaceInit = true }
+            };
             registry.Register(".fs", fsAutoComplete);
             registry.Register(".fsi", fsAutoComplete);
             var pylsp = new LspServerLaunchSpec("python", "pylsp");

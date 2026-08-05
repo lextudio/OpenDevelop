@@ -20,6 +20,7 @@ using System;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.LanguageServices.OpenLens;
+using ICSharpCode.UnitTesting;
 
 namespace ICSharpCode.CodeCoverage
 {
@@ -33,12 +34,17 @@ namespace ICSharpCode.CodeCoverage
 	public sealed class RegisterCodeCoverageOpenLensProviderCommand : AbstractCommand, IDisposable
 	{
 		IDisposable registration;
+		IDisposable menuContributorRegistration;
 		OpenLensProviderRegistry registry;
 
 		public override void Run()
 		{
 			registry = SD.GetRequiredService<OpenLensProviderRegistry>();
 			registration = registry.RegisterProvider(new CodeCoverageOpenLensProvider());
+			// UnitTesting can't reference CodeCoverage, so the test lens's "Run with Coverage"
+			// menu item is contributed from this AddIn's side through
+			// TestLensMenuContributors - disabling this AddIn removes the item with it.
+			menuContributorRegistration = TestLensMenuContributors.Register(new RunTestWithCoverageMenuContributor());
 			// This command runs from /SharpDevelop/Autostart (CoreStartup.RunInitialization()),
 			// before IWorkbench is registered as a service - CodeCoverageService's static
 			// constructor no longer requires it eagerly (see its TryHookViewOpened()), so this
@@ -55,7 +61,27 @@ namespace ICSharpCode.CodeCoverage
 		public void Dispose()
 		{
 			CodeCoverageService.ResultsChanged -= OnResultsChanged;
+			menuContributorRegistration?.Dispose();
 			registration?.Dispose();
+		}
+	}
+
+	/// <summary>
+	/// The test lens's "Run with Coverage" menu item, invoked at click time against the
+	/// then-current test instance (the tree node captured at menu-build time can be stale).
+	/// </summary>
+	sealed class RunTestWithCoverageMenuContributor : ITestLensMenuContributor
+	{
+		public OpenLensMenuItem GetMenuItem(Func<ITest> resolveCurrentTest)
+		{
+			return new OpenLensMenuItem(
+				"Run with Coverage",
+				() => {
+					var method = resolveCurrentTest();
+					if (method != null)
+						RunTestWithCodeCoverageCommand.RunTestsWithCoverageAsync(new[] { method });
+				},
+				IconKey: "CodeCoverage.Icons.16x16.Run");
 		}
 	}
 }

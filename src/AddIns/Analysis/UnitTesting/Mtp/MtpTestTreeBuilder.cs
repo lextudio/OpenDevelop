@@ -84,5 +84,63 @@ namespace ICSharpCode.UnitTesting.Mtp
 			int lastDot = className.LastIndexOf('.');
 			return lastDot < 0 ? className : className.Substring(lastDot + 1);
 		}
+
+		/// <summary>
+		/// Refreshes a framework's subtree from a new discovery result while reusing the existing
+		/// model objects by display name. ModelCollectionTreeNode keys its child nodes by model
+		/// identity, so replacing models wholesale (BuildTree into a cleared collection) also
+		/// drops every node's IsExpanded - which silently collapses whatever the user or a test
+		/// had expanded whenever a (build-triggered) re-discovery lands. Reusing the same model
+		/// objects keeps their nodes, and the expansion state, alive.
+		/// </summary>
+		public static void UpdateTree(
+			MtpTestProject project,
+			TestCollection rootCollection,
+			IEnumerable<MtpTestNode> nodes,
+			string targetFramework)
+		{
+			if (project == null)
+				throw new ArgumentNullException("project");
+
+			var groupedByClass = nodes
+				.Where(n => n.NodeType == "action")
+				.GroupBy(GetClassName)
+				.OrderBy(g => g.Key);
+
+			foreach (var classGroup in groupedByClass) {
+				var className = classGroup.Key;
+				var classNamespace = GetNamespace(className);
+				var shortClassName = GetShortName(className);
+
+				var nsCollection = FindOrCreateNamespace(project, rootCollection, classNamespace);
+
+				var testClass = nsCollection.OfType<MtpTestClass>().FirstOrDefault(c => c.DisplayName == shortClassName);
+				if (testClass == null) {
+					testClass = new MtpTestClass(project, shortClassName);
+					nsCollection.Add(testClass);
+				}
+
+				var methodNames = classGroup.Select(n => n.DisplayName).ToHashSet(StringComparer.Ordinal);
+				foreach (var gone in testClass.NestedTests.OfType<MtpTestMethod>()
+					         .Where(m => !methodNames.Contains(m.DisplayName)).ToList())
+					testClass.NestedTests.Remove(gone);
+				foreach (var node in classGroup.OrderBy(n => n.DisplayName)) {
+					if (!testClass.NestedTests.OfType<MtpTestMethod>().Any(m => m.DisplayName == node.DisplayName))
+						testClass.NestedTests.Add(new MtpTestMethod(project, node, targetFramework));
+				}
+			}
+
+			// Drop namespaces whose classes all disappeared in the new result.
+			RemoveEmptyNamespaces(rootCollection);
+		}
+
+		static void RemoveEmptyNamespaces(TestCollection rootCollection)
+		{
+			foreach (var ns in rootCollection.OfType<TestNamespace>().ToList()) {
+				RemoveEmptyNamespaces(ns.NestedTests);
+				if (ns.NestedTests.Count == 0)
+					rootCollection.Remove(ns);
+			}
+		}
 	}
 }

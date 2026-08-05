@@ -351,10 +351,15 @@ public sealed class ClassDiagramViewContent : AbstractViewContent
         var header = new TextBlock {
             Text = $"«{type.Kind}»  {type.Name}",
             FontWeight = FontWeights.SemiBold,
-            Background = SystemColors.ControlBrush,
             Padding = new Thickness(8),
             Cursor = Cursors.Hand
         };
+        // The card colors must follow the IDE theme (IdeThemeService's semantic resources,
+        // Theme.Light.xaml/Theme.Dark.xaml). The previous SystemColors.*Brush *properties* are
+        // static snapshots of the OS theme - the semantic theme only overrides the *resource
+        // keys*, so on a light-system/dark-IDE combination the cards stayed stuck in light mode.
+        header.SetResourceReference(TextBlock.BackgroundProperty, "ToolWindowBackground");
+        header.SetResourceReference(TextBlock.ForegroundProperty, "Foreground");
         header.MouseLeftButtonDown += delegate(object sender, MouseButtonEventArgs e) {
             if (e.ClickCount == 1)
                 SelectType(type.Name);
@@ -367,13 +372,15 @@ public sealed class ClassDiagramViewContent : AbstractViewContent
             Render();
         };
         panel.Children.Add(header);
-        if (!state.Collapsed && type.BaseTypes.Count > 0)
-            panel.Children.Add(new TextBlock {
+        if (!state.Collapsed && type.BaseTypes.Count > 0) {
+            var inherits = new TextBlock {
                 Text = "inherits: " + string.Join(", ", type.BaseTypes),
                 TextWrapping = TextWrapping.Wrap,
-                Padding = new Thickness(8, 5, 8, 5),
-                Foreground = Brushes.DimGray
-            });
+                Padding = new Thickness(8, 5, 8, 5)
+            };
+            inherits.SetResourceReference(TextBlock.ForegroundProperty, "MutedForeground");
+            panel.Children.Add(inherits);
+        }
         if (!state.Collapsed) {
             AddMemberGroup(panel, "Fields", type.Members.Where(member => member.Kind == ClassDiagramMemberKind.Field),
                 type.SourceFile, state.FieldsCollapsed, value => state.FieldsCollapsed = value);
@@ -388,12 +395,12 @@ public sealed class ClassDiagramViewContent : AbstractViewContent
             Width = 280,
             MinHeight = state.Collapsed ? 42 : 120,
             MaxHeight = state.Collapsed ? 42 : 315,
-            BorderBrush = SystemColors.ControlDarkBrush,
             BorderThickness = new Thickness(1),
-            Background = SystemColors.WindowBrush,
             Child = panel,
             Tag = ClassDiagramDocument.GetNodeId(type)
         };
+        border.SetResourceReference(Border.BackgroundProperty, "WindowBackground");
+        border.SetResourceReference(Border.BorderBrushProperty, "Border");
         border.MouseLeftButtonDown += delegate(object sender, MouseButtonEventArgs e) {
             if (e.ClickCount != 1)
                 return;
@@ -436,7 +443,9 @@ public sealed class ClassDiagramViewContent : AbstractViewContent
                 continue;
             var name = type.QualifiedName;
             card.Opacity = related.Contains(name) ? 1 : 0.35;
-            card.BorderBrush = name == selectedTypeName ? Brushes.DodgerBlue : SystemColors.ControlDarkBrush;
+            // null falls back to the card's "Border" semantic-theme resource set in CreateCard;
+            // the selected card keeps the accent color.
+            card.BorderBrush = name == selectedTypeName ? Brushes.DodgerBlue : null;
             card.BorderThickness = name == selectedTypeName ? new Thickness(3) : new Thickness(1);
         }
         status.Text = $"Selected {selected?.Name ?? selectedTypeName} — {related.Count - 1} directly related types";
@@ -461,6 +470,7 @@ public sealed class ClassDiagramViewContent : AbstractViewContent
                 Margin = new Thickness(8, 2, 8, 2),
                 Cursor = Cursors.Hand
             };
+            row.SetResourceReference(TextBlock.ForegroundProperty, "Foreground");
             row.MouseLeftButtonDown += delegate(object sender, MouseButtonEventArgs e) {
                 if (e.ClickCount == 2) {
                     FileService.JumpToFilePosition(sourceFile, member.SourceLine, 1);
@@ -555,7 +565,7 @@ public sealed class ClassDiagramViewContent : AbstractViewContent
                 ClassDiagramRelationshipKind.Aggregation => Brushes.DarkOrange,
                 ClassDiagramRelationshipKind.Composition => Brushes.Purple,
                 ClassDiagramRelationshipKind.Association => Brushes.SeaGreen,
-                _ => Brushes.DimGray
+                _ => null
             };
             var route = layoutRoutes.FirstOrDefault(candidate => !candidate.IsInheritance
                 && candidate.Source == relationship.SourceType && candidate.Target == relationship.TargetType
@@ -576,14 +586,21 @@ public sealed class ClassDiagramViewContent : AbstractViewContent
         }
     }
 
-    Polyline CreateRoute(IReadOnlyList<ClassDiagramRoutePoint> points, Brush brush, double thickness) =>
-        new Polyline {
+    Polyline CreateRoute(IReadOnlyList<ClassDiagramRoutePoint> points, Brush brush, double thickness)
+    {
+        var line = new Polyline {
             Tag = "ClassDiagramRoute",
             Points = new PointCollection(points.Select(point => new Point(point.X, point.Y))),
             Stroke = brush,
             StrokeThickness = thickness,
             IsHitTestVisible = false
         };
+        // A null brush (dependency/unknown relationship) means "use the theme's muted
+        // foreground" - a fixed DimGray is invisible on the dark workbench.
+        if (brush == null)
+            line.SetResourceReference(Shape.StrokeProperty, "MutedForeground");
+        return line;
+    }
 
     void AddDiamond(double ownerX, double ownerY, double targetX, double targetY, Brush brush, bool filled)
     {

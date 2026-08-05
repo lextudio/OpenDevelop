@@ -55,9 +55,27 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.OpenLens
     public sealed record OpenLensPresentation(
         string Title,
         string? Tooltip = null,
-        OpenLensSeverity Severity = OpenLensSeverity.Normal);
+        OpenLensSeverity Severity = OpenLensSeverity.Normal,
+        string? IconKey = null);
 
     public sealed record OpenLensCommand(string CommandId, object? Argument = null);
+
+    /// <summary>
+    /// A clickable menu a provider can attach to a lens row instead of a single command (e.g. the
+    /// test lens's "Run Test"/"Debug Test" pair, doc/technotes/openlens.md §20 Phase 4). The OpenLens
+    /// host owns the editor placement, so it is the host that pops the menu anchored to the lens -
+    /// the same decoupling as <see cref="OpenLensCommand"/>: the provider builds the items from its
+    /// own AddIn services, and the host never interprets the actions, only invokes the one the user
+    /// clicked.
+    /// </summary>
+    public sealed record OpenLensMenu(IReadOnlyList<OpenLensMenuItem> Items);
+
+    /// <summary>
+    /// One menu entry. <see cref="OpenLensMenuItem.IconKey"/> is a <c>PresentationResourceService</c>
+    /// icon name (e.g. "UnitTesting.Status.Passed") resolved by the host; <paramref name="Title"/>
+    /// doubles as the item's tooltip when the host renders the item as icon-only.
+    /// </summary>
+    public sealed record OpenLensMenuItem(string Title, Action Action, string? IconKey = null);
 
     /// <summary>
     /// One provider's contribution to one anchor's row (doc §7). <see cref="IsResolved"/> is false

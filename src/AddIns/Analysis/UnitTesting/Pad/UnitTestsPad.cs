@@ -152,21 +152,26 @@ namespace ICSharpCode.UnitTesting
 		UIElement CreateStatusBar()
 		{
 			var border = new Border {
-				Background = new SolidColorBrush(Color.FromRgb(245, 247, 250)),
-				BorderBrush = new SolidColorBrush(Color.FromRgb(218, 223, 230)),
 				BorderThickness = new Thickness(0, 1, 0, 0),
 				Padding = new Thickness(8, 4, 8, 4)
 			};
+			// The status bar must follow the IDE theme (IdeThemeService's semantic resources,
+			// swapped by Theme.Light.xaml/Theme.Dark.xaml). The previous hardcoded light colors
+			// (background 245,247,250 / border 218,223,230) stayed correct in Light but left the
+			// bar stuck in light mode under Dark. DynamicResource (via SetResourceReference) also
+			// re-resolves automatically when the user switches themes at runtime.
+			border.SetResourceReference(Border.BackgroundProperty, "ToolWindowBackground");
+			border.SetResourceReference(Border.BorderBrushProperty, "Border");
 			var items = new StackPanel {
 				Orientation = Orientation.Horizontal
 			};
 			border.Child = items;
 			
-			totalStatusText = CreateStatusText(Brushes.DimGray);
-			passedStatusText = CreateStatusItem(items, new SolidColorBrush(Color.FromRgb(29, 128, 73)));
-			failedStatusText = CreateStatusItem(items, new SolidColorBrush(Color.FromRgb(190, 58, 52)));
-			skippedStatusText = CreateStatusItem(items, new SolidColorBrush(Color.FromRgb(145, 106, 32)));
-			notRunStatusText = CreateStatusItem(items, new SolidColorBrush(Color.FromRgb(128, 138, 148)));
+			totalStatusText = CreateStatusText("MutedForeground");
+			passedStatusText = CreateStatusItem(items, new SolidColorBrush(Color.FromRgb(29, 128, 73)), "MutedForeground");
+			failedStatusText = CreateStatusItem(items, new SolidColorBrush(Color.FromRgb(190, 58, 52)), "MutedForeground");
+			skippedStatusText = CreateStatusItem(items, new SolidColorBrush(Color.FromRgb(145, 106, 32)), "MutedForeground");
+			notRunStatusText = CreateStatusItem(items, new SolidColorBrush(Color.FromRgb(128, 138, 148)), "MutedForeground");
 			
 			items.Children.Add(totalStatusText);
 			
@@ -174,16 +179,17 @@ namespace ICSharpCode.UnitTesting
 			return border;
 		}
 		
-		static TextBlock CreateStatusText(Brush foreground)
+		static TextBlock CreateStatusText(string foregroundResourceKey)
 		{
-			return new TextBlock {
-				Foreground = foreground,
+			var text = new TextBlock {
 				Margin = new Thickness(0, 0, 14, 0),
 				VerticalAlignment = VerticalAlignment.Center
 			};
+			text.SetResourceReference(TextBlock.ForegroundProperty, foregroundResourceKey);
+			return text;
 		}
 		
-		static TextBlock CreateStatusItem(Panel parent, Brush brush)
+		static TextBlock CreateStatusItem(Panel parent, Brush brush, string foregroundResourceKey)
 		{
 			var item = new StackPanel {
 				Orientation = Orientation.Horizontal,
@@ -198,9 +204,9 @@ namespace ICSharpCode.UnitTesting
 				VerticalAlignment = VerticalAlignment.Center
 			});
 			var text = new TextBlock {
-				Foreground = Brushes.DimGray,
 				VerticalAlignment = VerticalAlignment.Center
 			};
+			text.SetResourceReference(TextBlock.ForegroundProperty, foregroundResourceKey);
 			item.Children.Add(text);
 			parent.Children.Add(item);
 			return text;

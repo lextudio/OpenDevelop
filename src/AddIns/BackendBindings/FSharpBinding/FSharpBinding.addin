@@ -94,6 +94,7 @@
 
 	<Path name="/SharpDevelop/Autostart">
 		<Class id="FSharpLanguageService" class="FSharpBinding.RegisterFSharpLanguageServiceCommand"/>
+		<Class id="FSharpOpenLensProviders" class="FSharpBinding.RegisterFSharpOpenLensProvidersCommand"/>
 	</Path>
 
 	<Path name="/SharpDevelop/ViewContent/TextEditor/CodeCompletion">

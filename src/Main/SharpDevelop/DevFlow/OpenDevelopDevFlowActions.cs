@@ -348,7 +348,16 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		[DevFlowAction("od.active-view", Description = "Inspect the active view content - used to confirm AvalonEdit rendered an opened file")]
 		public static string GetActiveView()
 		{
-			var viewContent = SD.Workbench.ActiveViewContent;
+			// Read the docking manager's live active content rather than
+			// SD.Workbench.ActiveViewContent: that cache is updated from the dock's
+			// ActiveContentChanged event, which in practice can miss the final state when
+			// activations fire back-to-back (measured in the OpenAssembly test - the workbench
+			// cache stayed on an older document for seconds while the dock itself was correct).
+			// The layout's ActiveContent resolves the dock's current active window's active view.
+			var layout = (SD.Workbench as WpfWorkbench)?.WorkbenchLayout;
+			var viewContent = layout?.ActiveContent as IViewContent;
+			if (viewContent == null)
+				viewContent = SD.Workbench.ActiveViewContent;
 			if (viewContent == null)
 				return JsonSerializer.Serialize(new { active = false });
 
@@ -1515,16 +1524,15 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			[DevFlowAction("od.unit-test.expand-node", Description = "Expand a currently visible Unit Tests pad node by display name (occurrence picks among same-named nodes, e.g. the project and its namespace both display 'SampleTestProject')")]
 			public static string ExpandUnitTestPadNode(string displayName, int occurrence = 1)
 			{
-				var pad = FindPad("ICSharpCode.UnitTesting.UnitTestsPad");
-				pad?.CreatePad();
-				var treeView = pad?.PadContent?.GetType().GetProperty("TreeView")?.GetValue(pad.PadContent);
-				var items = treeView?.GetType().GetProperty("Items")?.GetValue(treeView) as IEnumerable;
-				var matches = items?.Cast<object>().Where(item => {
-					var model = GetDeclaredProperty(item, "Model");
-					var name = model?.GetType().GetProperty("DisplayName")?.GetValue(model) as string;
-					return string.Equals(name, displayName, StringComparison.Ordinal);
-				});
-				var node = matches?.Skip(Math.Max(0, occurrence - 1)).FirstOrDefault();
+				// Search the pad's model tree (recursively, ensuring lazy children) rather than
+				// the TreeView's realized Items: the SharpTreeView only materializes items in
+				// view, so a freshly-expanded chain's deeper nodes can briefly be missing from
+				// Items even though the model already holds them (measured flake: the PassTests
+				// class node wasn't found right after the namespace expand, while its text was
+				// already rendered). The model search is deterministic regardless of
+				// virtualization/realization timing.
+				int remaining = Math.Max(1, occurrence);
+				var node = FindUnitTestPadNode(displayName, ref remaining);
 				if (node == null)
 					return JsonSerializer.Serialize(new { found = false, displayName, occurrence });
 				node.GetType().GetProperty("IsExpanded")?.SetValue(node, true);
@@ -1550,16 +1558,35 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 
 			static object FindUnitTestPadNode(string displayName)
 			{
+				int remaining = 1;
+				return FindUnitTestPadNode(displayName, ref remaining);
+			}
+
+			static object FindUnitTestPadNode(string displayName, ref int remaining)
+			{
 				var pad = FindPad("ICSharpCode.UnitTesting.UnitTestsPad");
 				if (pad == null)
 					return null;
 				pad.CreatePad();
 				var treeView = pad.PadContent?.GetType().GetProperty("TreeView")?.GetValue(pad.PadContent);
 				var root = treeView?.GetType().GetProperty("Root")?.GetValue(treeView);
-				return FindSharpTreeNode(root, displayName);
+				// The tree's Root is the solution container, whose display name can equal the
+				// project's ("SampleTestProject") - the occurrence indices the test passes index
+				// the real nodes (project, namespace, ...), so search the root's children rather
+				// than the root itself (which would shift every occurrence by one and expand the
+				// wrong chain link).
+				var children = root?.GetType().GetProperty("Children")?.GetValue(root) as IEnumerable;
+				if (children == null)
+					return null;
+				foreach (var child in children) {
+					var found = FindSharpTreeNode(child, displayName, ref remaining);
+					if (found != null)
+						return found;
+				}
+				return null;
 			}
 
-			static object FindSharpTreeNode(object node, string displayName)
+			static object FindSharpTreeNode(object node, string displayName, ref int remaining)
 			{
 				if (node == null)
 					return null;
@@ -1567,14 +1594,17 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				var nodeDisplayName = model?.GetType().GetProperty("DisplayName")?.GetValue(model) as string;
 				if (string.Equals(nodeDisplayName, displayName, StringComparison.Ordinal)
 				    || (nodeDisplayName?.EndsWith("." + displayName, StringComparison.Ordinal) ?? false))
-					return node;
+				{
+					if (--remaining <= 0)
+						return node;
+				}
 
 				node.GetType().GetMethod("EnsureLazyChildren", BindingFlags.Instance | BindingFlags.Public)?.Invoke(node, null);
 				var children = node.GetType().GetProperty("Children")?.GetValue(node) as IEnumerable;
 				if (children == null)
 					return null;
 				foreach (var child in children) {
-					var found = FindSharpTreeNode(child, displayName);
+					var found = FindSharpTreeNode(child, displayName, ref remaining);
 					if (found != null)
 						return found;
 				}
