@@ -75,6 +75,10 @@ namespace ICSharpCode.SharpDevelop.Project
 					
 					var trackedFeature = SD.AnalyticsMonitor.TrackFeature("ICSharpCode.SharpDevelop.Project.BuildEngine.Build");
 					SD.StatusBar.SetMessage(StringParser.Parse("${res:MainWindow.CompilerMessages.BuildVerb}..."));
+					// Show the Output pad with the Build category selected so the user can follow
+					// the build as it runs (Activate switches CurrentCategory, and with
+					// bringPadToFront: true also docks/brings the pad to the front).
+					SD.OutputPad.BuildCategory.Activate(bringPadToFront: true);
 					IBuildable buildable;
 					if (projectsList.Count == 1)
 						buildable = projectsList[0];

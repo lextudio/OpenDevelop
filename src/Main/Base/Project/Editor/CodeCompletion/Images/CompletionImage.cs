@@ -288,12 +288,11 @@ namespace ICSharpCode.SharpDevelop.Editor.CodeCompletion
 		#endregion
 		
 		#region Overlays
-		static readonly ImageSource overlayStatic;
 		
 		/// <summary>
 		/// Gets the overlay image for the static modifier.
 		/// </summary>
-		public ImageSource StaticOverlay { get { return overlayStatic; } }
+		public ImageSource StaticOverlay { get { return null; } }
 		
 		const int AccessibilityOverlaysLength = 5;
 		

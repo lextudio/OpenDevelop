@@ -264,7 +264,7 @@ internal sealed class CompilerMessageViewViewModel : ToolPaneModel, IOutputPad, 
 
         SetTextEditorFont();
 
-        properties.PropertyChanged += new PropertyChangedEventHandler(PropertyChanged);
+        properties.PropertyChanged += new PropertyChangedEventHandler(OnOptionsPropertyChanged);
 
         MessageViewLinkElementGenerator.RegisterGenerators(textEditor.TextArea.TextView);
         textEditor.TextArea.TextView.ElementGenerators.OfType<LinkElementGenerator>().ForEach(x => x.RequireControlModifierForClick = false);
@@ -453,7 +453,7 @@ internal sealed class CompilerMessageViewViewModel : ToolPaneModel, IOutputPad, 
     /// <summary>
     /// Changes wordwrap settings if that property has changed.
     /// </summary>
-    void PropertyChanged(object sender, PropertyChangedEventArgs e)
+    void OnOptionsPropertyChanged(object sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == OutputWindowOptionsPanel.WordWrapName) {
             SetWordWrap();
@@ -464,12 +464,12 @@ internal sealed class CompilerMessageViewViewModel : ToolPaneModel, IOutputPad, 
         }
     }
 
-    protected void OnMessageCategoryAdded(EventArgs e)
+    void OnMessageCategoryAdded(EventArgs e)
     {
         MessageCategoryAdded?.Invoke(this, e);
     }
 
-    protected void OnSelectedCategoryIndexChanged(EventArgs e)
+    void OnSelectedCategoryIndexChanged(EventArgs e)
     {
         SelectedCategoryIndexChanged?.Invoke(this, e);
     }

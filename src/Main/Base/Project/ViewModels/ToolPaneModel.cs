@@ -16,6 +16,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System;
 using System.Windows.Input;
 
 namespace ICSharpCode.SharpDevelop.ViewModels
@@ -25,6 +26,10 @@ namespace ICSharpCode.SharpDevelop.ViewModels
 	{
 		protected static DockWorkspace DockWorkspace => App.ExportProvider.GetExportedValue<DockWorkspace>();
 #else
+	// The SharpDevelop assembly is CLS-compliant, and its public seam
+	// DockWorkspaceExtensibility takes ToolPaneModel parameters - keep the type
+	// compliant too (all of its public members already are).
+	[CLSCompliant(true)]
 	public abstract class ToolPaneModel : PaneModel
 	{
 #endif

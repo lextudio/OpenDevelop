@@ -27,7 +27,6 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Threading;
 
 using ICSharpCode.AvalonEdit.AddIn.Options;
 using ICSharpCode.Core;

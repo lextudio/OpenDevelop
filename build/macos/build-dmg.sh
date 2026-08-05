@@ -107,7 +107,22 @@ if [[ -f "$background_image" ]]; then
 fi
 
 echo "Creating writable DMG: $rw_dmg"
-hdiutil create -volname "$volume_name" -srcfolder "$stage_dir" -ov -format UDRW "$rw_dmg" >/dev/null
+# hdiutil create occasionally fails with "Resource busy" when a previous run
+# left the volume mounted under the same name, or when a concurrent instance is
+# mid-build. Detach any stale mount and retry before surfacing the real error.
+create_ok=0
+for attempt in 1 2 3; do
+  if hdiutil create -volname "$volume_name" -srcfolder "$stage_dir" -ov -format UDRW "$rw_dmg" >/dev/null 2>&1; then
+    create_ok=1
+    break
+  fi
+  echo "hdiutil create failed (attempt $attempt/3), detaching stale mounts and retrying…"
+  hdiutil detach "/Volumes/$volume_name" -quiet >/dev/null 2>&1 || true
+  sleep 3
+done
+if [[ "$create_ok" -eq 0 ]]; then
+  hdiutil create -volname "$volume_name" -srcfolder "$stage_dir" -ov -format UDRW "$rw_dmg"
+fi
 
 echo "Applying Finder window layout"
 attach_output="$(hdiutil attach -readwrite -noverify -noautoopen "$rw_dmg")"

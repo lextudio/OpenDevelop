@@ -67,7 +67,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			};
 		}
 
-		static Image LoadIcon(string? iconKey)
+		static Image LoadIcon(string iconKey)
 		{
 			if (string.IsNullOrEmpty(iconKey))
 				return null;

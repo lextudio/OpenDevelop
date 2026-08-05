@@ -57,7 +57,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             if (found is not { Symbol: INamedTypeSymbol { TypeKind: TypeKind.Class } classSymbol })
                 return null;
 
-            var chosenMembers = memberIds.Select(id => cache.TryGetValue(id, out var m) ? m : null).Where(m => m != null).ToArray()!;
+            var chosenMembers = memberIds.Select(id => cache.TryGetValue(id, out var m) ? m : null).OfType<ISymbol>().ToArray();
             if (chosenMembers.Length == 0)
                 return null;
 
