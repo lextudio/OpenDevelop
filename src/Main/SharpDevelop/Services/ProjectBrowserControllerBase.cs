@@ -67,6 +67,11 @@ internal interface IProjectBrowserController
     void CopyPath(ProjectBrowserNodeContext? node = null);
     void OpenFolder(ProjectBrowserNodeContext? node = null);
     void SetStartupProject(ProjectBrowserNodeContext? node = null);
+    bool CanCutOrCopy(ProjectBrowserNodeContext? node = null);
+    bool CanPaste(ProjectBrowserNodeContext? node = null);
+    void Cut(ProjectBrowserNodeContext? node = null);
+    void Copy(ProjectBrowserNodeContext? node = null);
+    void Paste(ProjectBrowserNodeContext? node = null);
 }
 
 /// <summary>Host-neutral result of the "Add New Item" dialog - see <see cref="ProjectBrowserControllerBase.ShowNewItemDialogAsync"/>.</summary>
@@ -84,6 +89,7 @@ internal sealed record NewProjectDialogOutcome(TemplateSummary SelectedTemplate,
 internal abstract class ProjectBrowserControllerBase : IProjectBrowserController
 {
     private readonly IProjectBrowserService _explorerService;
+    private (string Path, bool IsDirectory, bool IsCut)? _clipboardItem;
     protected IProjectBrowserHost? Host { get; private set; }
 
     protected ProjectBrowserControllerBase(IProjectBrowserService explorerService)
@@ -672,6 +678,83 @@ internal abstract class ProjectBrowserControllerBase : IProjectBrowserController
         if (_explorerService.TrySetStartupProject(target.FullPath, out _))
         {
         }
+    }
+
+    public bool CanCutOrCopy(ProjectBrowserNodeContext? node = null)
+    {
+        var target = ResolveNode(node);
+        if (target is null || IsVirtualProjectFile(target))
+        {
+            return false;
+        }
+
+        return target.IsFileLike || target.Kind == ProjectBrowserNodeKind.Folder;
+    }
+
+    public bool CanPaste(ProjectBrowserNodeContext? node = null)
+    {
+        if (_clipboardItem is null)
+        {
+            return false;
+        }
+
+        return ResolveNode(node) is not null;
+    }
+
+    public void Cut(ProjectBrowserNodeContext? node = null)
+    {
+        var target = ResolveNode(node);
+        if (target is null || !CanCutOrCopy(target))
+        {
+            return;
+        }
+
+        var isDirectory = target.Kind == ProjectBrowserNodeKind.Folder;
+        _clipboardItem = (target.FullPath, isDirectory, IsCut: true);
+    }
+
+    public void Copy(ProjectBrowserNodeContext? node = null)
+    {
+        var target = ResolveNode(node);
+        if (target is null || !CanCutOrCopy(target))
+        {
+            return;
+        }
+
+        var isDirectory = target.Kind == ProjectBrowserNodeKind.Folder;
+        _clipboardItem = (target.FullPath, isDirectory, IsCut: false);
+    }
+
+    public void Paste(ProjectBrowserNodeContext? node = null)
+    {
+        if (_clipboardItem is not { } item || !File.Exists(item.Path) && !Directory.Exists(item.Path))
+        {
+            _clipboardItem = null;
+            return;
+        }
+
+        var targetDirectory = ResolveTargetDirectoryForCreate(ResolveNode(node));
+
+        ExecuteFileSystemAction(() =>
+        {
+            if (item.IsDirectory)
+            {
+                _explorerService.ImportExistingFolder(targetDirectory, item.Path);
+            }
+            else
+            {
+                _explorerService.ImportExistingFiles(targetDirectory, new[] { item.Path });
+            }
+
+            if (item.IsCut)
+            {
+                Host?.CloseViewsForPath(item.Path);
+                _explorerService.DeleteItem(item.Path, item.IsDirectory);
+                _clipboardItem = null;
+            }
+
+            Host?.RefreshSolutionTree();
+        }, "Failed to paste item.");
     }
 
     private ProjectBrowserNodeContext? ResolveNode(ProjectBrowserNodeContext? node)

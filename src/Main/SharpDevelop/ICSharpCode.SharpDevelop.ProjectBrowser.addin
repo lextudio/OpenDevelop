@@ -70,6 +70,10 @@
   </Path>
 
   <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Edit">
+    <MenuItem id="Cut" label="Cut" class="ICSharpCode.SharpDevelop.Commands.CutProjectBrowserItemCommand" />
+    <MenuItem id="Copy" label="Copy" class="ICSharpCode.SharpDevelop.Commands.CopyProjectBrowserItemCommand" />
+    <MenuItem id="Paste" label="Paste" class="ICSharpCode.SharpDevelop.Commands.PasteProjectBrowserItemCommand" />
+    <MenuItem id="EditSeparator" type="Separator" />
     <MenuItem id="Rename" label="Rename" class="ICSharpCode.SharpDevelop.Commands.RenameProjectBrowserItemCommand">
       <Condition name="Ownerstate" ownerstate="Renameable" />
     </MenuItem>
@@ -127,6 +131,7 @@
 
   <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/FileNode">
     <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Open" />
+    <MenuItem id="ViewInBrowser" label="View in Browser" icon="Icons.22x22.Browser" class="ICSharpCode.SharpDevelop.Commands.ViewInBrowserProjectBrowserCommand" />
     <MenuItem id="Separator1" type="Separator" />
     <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Membership" />
     <MenuItem id="Separator2" type="Separator" />

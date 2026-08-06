@@ -22,6 +22,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Media;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.Core;
@@ -174,13 +175,34 @@ namespace Debugger.AddIn.Breakpoints
 		public override bool DisplaysTooltip {
 			get { return true; }
 		}
-		
+
 		public override object CreateTooltipContent()
 		{
 			return new BreakpointEditorPopup(this) {
 				MinWidth = 300,
 				StaysOpen = false
 			};
+		}
+
+		/// <summary>
+		/// Right-clicking a breakpoint marker opens the same condition/hit-count editor the hover
+		/// tooltip shows (<see cref="CreateTooltipContent"/>), but as a deliberately-opened, click-
+		/// to-dismiss popup rather than a hover tooltip - the discoverable "click the breakpoint to
+		/// configure it" interaction, matching common IDE convention. Left-click keeps its existing
+		/// toggle/remove behavior from <see cref="BookmarkBase.MouseUp"/>.
+		/// </summary>
+		public override void MouseDown(MouseButtonEventArgs e)
+		{
+			if (e.ChangedButton == MouseButton.Right) {
+				var popup = new BreakpointEditorPopup(this) {
+					MinWidth = 300,
+					StaysOpen = false,
+					Placement = PlacementMode.MousePoint,
+					PlacementTarget = e.OriginalSource as UIElement
+				};
+				popup.IsOpen = true;
+				e.Handled = true;
+			}
 		}
 	}
 }

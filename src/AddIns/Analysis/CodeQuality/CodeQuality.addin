@@ -13,9 +13,12 @@
 	</Runtime>
 	
 	<Path name = "/SharpDevelop/Workbench/MainMenu/Analysis">
+		<!-- insertafter="CheckWithStyleCop" removed - SourceAnalysis.addin's CheckWithStyleCop MenuItem
+		     in this same Path is nested inside a <ComplexCondition>, not a direct Path child, so it's
+		     not visible as an ordering sibling here; not worth restructuring SourceAnalysis.addin just
+		     for menu ordering. -->
 		<MenuItem id    = "AnalyzeCodeQuality"
 		          label = "Analyze Code Quality"
-		          class = "ICSharpCode.CodeQuality.Gui.AnalyzeCodeQualityCommand"
-		          insertafter = "CheckWithStyleCop" />
+		          class = "ICSharpCode.CodeQuality.Gui.AnalyzeCodeQualityCommand" />
 	</Path>
 </AddIn>

@@ -24,15 +24,15 @@
 	<Path name = "/SharpDevelop/ViewContent/TextEditor/ContextMenu">
 		<Condition name = "IsProcessRunning" isdebugging="True">
 			<Condition name = "IsProcessRunning" isdebugging="True" isprocessrunning="False">
+				<!-- insertbefore="Refactoring" removed - MVP: that menu item no longer exists -->
 				<MenuItem id = "DebuggerSetCurrentStatement"
-				          insertbefore = "Refactoring"
 				          label = "${res:MainWindow.Windows.Debug.SetCurrentStatement}"
 				          icon = "Icons.16x16.Debug.StepInto"
 				          class = "Debugger.AddIn.SetCurrentStatementCommand"/>
 			</Condition>
 			<!-- DebuggerRunToCursor removed: "run to cursor" has no standard DAP request. -->
+			<!-- insertbefore="Refactoring" removed - MVP: that menu item no longer exists -->
 			<MenuItem id = "DebuggerSeparator"
-			          insertbefore = "Refactoring"
 			          type = "Separator"/>
 		</Condition>
 		<MenuItem id="BreakpointSeparator" type = "Separator" />
@@ -67,8 +67,8 @@
 		          shortcut="Shift|F7"
 		          class = "Debugger.AddIn.AddExpressionBreakpointCommand"/>-->
 		<Condition name = "IsTextSelected" action="Disable">
+			<!-- insertafter="AddExpressionBreakpoint" removed - that MenuItem is commented out above -->
 			<MenuItem id="AddWatchExpression"
-			          insertafter="AddExpressionBreakpoint"
 			          icon = "Icons.16x16.WatchAdd"
 			          label = "${res:MainWindow.Windows.Debug.AddWatchExpression}"
 			          shortcut="Ctrl|F7"

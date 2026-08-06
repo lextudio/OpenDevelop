@@ -64,10 +64,14 @@
 		     main toolbar (not just File > Open > Assembly...) because this host's LibreWPF layer
 		     cannot open nested menu popups - a top-level button is the reliable path. Lives on
 		     its own strip so more ILSpy commands can join it later. -->
-		<!-- Ordered to mirror real ILSpy's own toolbar (ILSpy/Controls/MainToolBar.xaml composes
-		     [ExportToolbarCommand] categories in this order): Navigation, then Open, then View.
-		     The Custom items are vector-icon buttons - see Commands/IlSpyToolBarButtons.cs for why
-		     they can't be plain type="Item" entries with an icon= attribute. -->
+		<!-- Ordered to mirror real ILSpy's own toolbar 1:1. ILSpy/Controls/MainToolBar.xaml
+		     composes [ExportToolbarCommand] categories as follows (MainToolBar.xaml.cs's
+		     InitToolbar): Navigation is inserted at the front, Open after it, and every other
+		     category - the View category (Search/Sort/CollapseAll) - is appended to the END, after
+		     the hardcoded assembly-list/language dropdowns and the API-visibility toggles. Inside
+		     the View category the ToolbarOrder is Sort(0), CollapseAll(0), Search(100). The Custom
+		     items are vector-icon buttons - see Commands/IlSpyToolBarButtons.cs for why they can't
+		     be plain type="Item" entries with an icon= attribute. -->
 		<ToolbarItem id = "BrowseBack"
 		             type = "Custom"
 		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpyBrowseBackToolBarButton"/>
@@ -83,15 +87,15 @@
 		             type = "Custom"
 		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpyRefreshToolBarButton"/>
 		<ToolbarItem id = "OpenSeparator" type = "Separator"/>
-		<ToolbarItem id = "ShowSearch"
+		<!-- Dropdown half of real ILSpy's toolbar, in its own order: assembly list + manage, then
+		     language + language version (see Commands/IlSpyToolBarCombos.cs). ILSpy hardcodes these
+		     in MainToolBar.xaml rather than exporting them as commands. -->
+		<ToolbarItem id = "AssemblyList"
 		             type = "Custom"
-		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpyShowSearchToolBarButton"/>
-		<ToolbarItem id = "SortAssemblyList"
+		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpyAssemblyListComboBox"/>
+		<ToolbarItem id = "ManageAssemblyLists"
 		             type = "Custom"
-		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpySortAssemblyListToolBarButton"/>
-		<ToolbarItem id = "CollapseAll"
-		             type = "Custom"
-		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpyCollapseAllToolBarButton"/>
+		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpyManageAssemblyListsToolBarButton"/>
 		<ToolbarItem id = "ApiVisibilitySeparator" type = "Separator"/>
 		<!-- API-visibility radio group over LanguageSettings.ShowApiLevel, mirroring the three
 		     CheckBoxes real ILSpy hardcodes in ILSpy/Controls/MainToolBar.xaml. -->
@@ -104,16 +108,6 @@
 		<ToolbarItem id = "ShowAll"
 		             type = "Custom"
 		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpyShowAllToggle"/>
-		<!-- Dropdown half of real ILSpy's toolbar, in its own order: assembly list + manage, then
-		     language + language version (see Commands/IlSpyToolBarCombos.cs). ILSpy hardcodes these
-		     in MainToolBar.xaml rather than exporting them as commands. -->
-		<ToolbarItem id = "AssemblyListSeparator" type = "Separator"/>
-		<ToolbarItem id = "AssemblyList"
-		             type = "Custom"
-		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpyAssemblyListComboBox"/>
-		<ToolbarItem id = "ManageAssemblyLists"
-		             type = "Custom"
-		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpyManageAssemblyListsToolBarButton"/>
 		<ToolbarItem id = "LanguageSeparator" type = "Separator"/>
 		<ToolbarItem id = "Language"
 		             type = "Custom"
@@ -121,6 +115,19 @@
 		<ToolbarItem id = "LanguageVersion"
 		             type = "Custom"
 		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpyLanguageVersionComboBox"/>
+		<!-- View category: real ILSpy appends it to the END of the toolbar, after the dropdowns
+		     and API-visibility toggles (MainToolBar.xaml.cs InitToolbar's else branch), so it
+		     comes last here too. -->
+		<ToolbarItem id = "ViewSeparator" type = "Separator"/>
+		<ToolbarItem id = "SortAssemblyList"
+		             type = "Custom"
+		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpySortAssemblyListToolBarButton"/>
+		<ToolbarItem id = "CollapseAll"
+		             type = "Custom"
+		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpyCollapseAllToolBarButton"/>
+		<ToolbarItem id = "ShowSearch"
+		             type = "Custom"
+		             class = "ICSharpCode.ILSpyAddIn.Commands.IlSpyShowSearchToolBarButton"/>
 	</Path>
 
 	<Path name = "/SharpDevelop/Workbench/MainMenu/File/Open">

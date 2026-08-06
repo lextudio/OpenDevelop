@@ -67,10 +67,15 @@
     <SolidColorBrush x:Key="{x:Static SystemColors.InactiveCaptionTextBrushKey}" Color="#808080" />
 
     <Style x:Key="SharpDevelopToolBarGripStyle" TargetType="{x:Type Thumb}">
+        <!-- Cursor as a plain style Setter, NOT inside the template's ControlTemplate.Triggers:
+             this host's LibreWPF WPF layer does not reliably honor template-trigger setters that
+             target template-owned control properties (measured: hovering the strip grip kept the
+             arrow cursor, so the drag affordance was invisible). A style Setter always applies. -->
+        <Setter Property="Cursor" Value="SizeAll" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type Thumb}">
-                    <Border Background="Transparent" SnapsToDevicePixels="True">
+                    <Border x:Name="GripBorder" Background="Transparent" SnapsToDevicePixels="True">
                         <StackPanel HorizontalAlignment="Center"
                                     VerticalAlignment="Center"
                                     Margin="0,0,1,0">
@@ -95,8 +100,12 @@
                         </StackPanel>
                     </Border>
                     <ControlTemplate.Triggers>
+                        <!-- Hover highlight so the drag grip reads as draggable even on hosts whose
+                             LibreWPF layer ignores Cursor setters entirely (measured: both the
+                             template-trigger Cursor setter and the style-level one leave the arrow
+                             cursor unchanged). Same mechanism as the ToolBarButton hover state. -->
                         <Trigger Property="IsMouseOver" Value="true">
-                            <Setter Property="Cursor" Value="SizeAll" />
+                            <Setter TargetName="GripBorder" Property="Background" Value="#210080FF" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

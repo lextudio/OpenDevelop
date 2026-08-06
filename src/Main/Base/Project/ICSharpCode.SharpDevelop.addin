@@ -24,14 +24,14 @@
 			<ConditionEvaluator name="WriteableSolution" class="ICSharpCode.SharpDevelop.WriteableSolutionConditionEvaluator"/>
 			<ConditionEvaluator name="ProjectActive" class="ICSharpCode.SharpDevelop.ProjectActiveConditionEvaluator"/>
 			<ConditionEvaluator name="TextContent" class="ICSharpCode.SharpDevelop.Editor.TextContentConditionEvaluator"/>
-			<ConditionEvaluator name="BrowserLocation" class="ICSharpCode.SharpDevelop.BrowserDisplayBinding.BrowserLocationConditionEvaluator"/>
+			<!-- MVP: removed ConditionEvaluator name="BrowserLocation" class="ICSharpCode.SharpDevelop.BrowserDisplayBinding.BrowserLocationConditionEvaluator"/ - legacy WinForms embedded-browser DisplayBinding, see below -->
 			<!-- MVP: removed ConditionEvaluator name="RefactoringProviderSupports" class="ICSharpCode.SharpDevelop.Refactoring.RefactoringProviderSupportsConditionEvaluator"/ -->
 			<ConditionEvaluator name="CanNavigateBack" class="ICSharpCode.SharpDevelop.CanNavigateBackConditionEvaluator"/>
 			<ConditionEvaluator name="CanNavigateForward" class="ICSharpCode.SharpDevelop.CanNavigateForwardConditionEvaluator"/>
 			<ConditionEvaluator name="CompareProjectProperty" class="ICSharpCode.SharpDevelop.CompareProjectPropertyConditionEvaluator"/>
 			<ConditionEvaluator name="ProjectItem" class="ICSharpCode.SharpDevelop.Project.ProjectItemConditionEvaluator"/>
 			<ConditionEvaluator name="IsTextSelected" class="ICSharpCode.SharpDevelop.Editor.TextSelectedCondition"/>
-			<ConditionEvaluator name="ViewInBrowser" class="ICSharpCode.SharpDevelop.ViewInBrowserConditionEvaluator"/>
+			<!-- MVP: removed ConditionEvaluator name="ViewInBrowser" class="ICSharpCode.SharpDevelop.ViewInBrowserConditionEvaluator"/ - its only consumer (the "View in Browser" MenuItem further below) is disabled the same way; the new WPF pad's ViewInBrowserProjectBrowserCommand checks the file extension itself instead, see ICSharpCode.SharpDevelop.ProjectBrowser.addin -->
 			<ConditionEvaluator name="ProjectBehaviorSupported" class="ICSharpCode.SharpDevelop.Project.ProjectBehaviorSupportedConditionEvaluator"/>
 			<ConditionEvaluator name="SymbolTypeAtCaret" class="ICSharpCode.SharpDevelop.Internal.ConditionEvaluators.SymbolTypeAtCaretConditionEvaluator"/>
 			<!-- MVP: removed ConditionEvaluator name="IsAssemblyUnpinned" class="ICSharpCode.SharpDevelop.Dom.ClassBrowser.IsAssemblyUnpinnedConditionEvaluator"/ -->
@@ -113,9 +113,11 @@
 	</Path>
 	
 	<Path name = "/SharpDevelop/Workbench/DisplayBindings">
-		<DisplayBinding id    = "Browser"
-		                title = "${res:Gui.ProjectBrowser.OpenWith.Bindings.WebBrowser}"
-		                class = "ICSharpCode.SharpDevelop.BrowserDisplayBinding.BrowserDisplayBinding"/>
+		<!-- MVP: removed DisplayBinding id="Browser" title="${res:Gui.ProjectBrowser.OpenWith.Bindings.WebBrowser}"
+		     class="ICSharpCode.SharpDevelop.BrowserDisplayBinding.BrowserDisplayBinding"/ - legacy WinForms
+		     embedded-browser view (Src/Gui/BrowserDisplayBinding/**/*.cs is excluded from compilation);
+		     DisplayBindings are probed for every opened file, so this threw "Cannot find class" on every
+		     file open, not just html/browser-related ones. No WPF replacement for MVP. -->
 		<DisplayBinding id    = "AutoDetect"
 		                title = "Auto-detect file type"
 		                class = "ICSharpCode.SharpDevelop.Workbench.AutoDetectDisplayBinding"/>
@@ -315,7 +317,7 @@
 		          label = "${res:XML.MainMenu.EditMenu.Paste}"
 		          icon  = "Icons.16x16.PasteIcon"
 		          loadclasslazy = "false"
-		          class = "ICSharpCode.SharpDevelop.Project.Commands.PasteProjectBrowserNode"/>
+		          class = "ICSharpCode.SharpDevelop.Commands.PasteProjectBrowserItemCommand"/>
 		<MenuItem id       = "Rename"
 		          label    = "${res:ProjectComponent.ContextMenu.Rename}"
 		          shortcut = "F2"
@@ -482,7 +484,7 @@
 			          label = "${res:Global.RemoveButtonText}"
 			          type = "Item"
 			          icon  = "Icons.16x16.DeleteIcon"
-			          class = "ICSharpCode.SharpDevelop.Project.Commands.DeleteProjectBrowserNode"/>
+			          class = "ICSharpCode.SharpDevelop.Commands.DeleteProjectBrowserItemCommand"/>
 		</Condition>
 		<ComplexCondition>
 			<Not>
@@ -538,23 +540,13 @@
 				<MenuItem id = "ExcludeSeparator" type = "Separator" />
 			</ComplexCondition>
 			
-			<ComplexCondition>
-				<And>
-					<Condition name = "Ownerstate" ownerstate = "InProject"/>
-					<Not>
-						<Condition name = "Ownerstate" ownerstate = "BehindFile"/>
-					</Not>
-					<Condition name="IsProcessRunning" isprocessrunning="False" isdebugging="False"/>
-					<Condition name = "ViewInBrowser" extensions="html,htm"/>
-				</And>
-				
-				<MenuItem id          = "ViewInBrowser"
-				          label       = "${res:ProjectComponent.ContextMenu.ViewInBrowser}"
-				          icon        = "Icons.22x22.Browser"
-				          class       = "ICSharpCode.SharpDevelop.Project.Commands.ViewInBrowser"/>
-				<MenuItem id = "ExcludeSeparator_ViewInBrowser" type = "Separator" />
-			</ComplexCondition>
-			
+			<!-- MVP: removed ComplexCondition wrapping MenuItem id="ViewInBrowser" class="ICSharpCode.SharpDevelop.Project.Commands.ViewInBrowser" -
+			     that class's source (Src/Commands/ViewInBrowser.cs) is excluded from compilation (legacy
+			     WinForms ProjectBrowser), and its Condition name="ViewInBrowser" evaluator was removed above
+			     for the same reason. Superseded by the "ViewInBrowser" MenuItem added to this same
+			     ContextMenu/FileNode path in ICSharpCode.SharpDevelop.ProjectBrowser.addin, whose command
+			     checks the .htm/.html extension itself instead of relying on a ConditionEvaluator. -->
+
 			<Include id="CutCopyPasteDeleteRename" path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/CutCopyPasteDeleteRename"/>
 			<MenuItem id = "RenameSeparator" type = "Separator" />
 			<MenuItem id    = "Properties"
@@ -571,21 +563,21 @@
 			          type = "Item"
 			          icon = "Icons.16x16.CutIcon"
 			          loadclasslazy = "false"
-			          class = "ICSharpCode.SharpDevelop.Project.Commands.CutProjectBrowserNode"/>
+			          class = "ICSharpCode.SharpDevelop.Commands.CutProjectBrowserItemCommand"/>
 		</Condition>
 		<MenuItem id = "Copy"
 		          label = "${res:XML.MainMenu.EditMenu.Copy}"
 		          type = "Item"
 		          icon = "Icons.16x16.CopyIcon"
 		          loadclasslazy = "false"
-		          class = "ICSharpCode.SharpDevelop.Project.Commands.CopyProjectBrowserNode"/>
+		          class = "ICSharpCode.SharpDevelop.Commands.CopyProjectBrowserItemCommand"/>
 		<Condition name="WriteableProject" action="Disable">
 			<MenuItem id = "Remove"
 			          label = "${res:Global.RemoveButtonText}"
 			          type = "Item"
 			          icon  = "Icons.16x16.DeleteIcon"
 			          loadclasslazy = "false"
-			          class = "ICSharpCode.SharpDevelop.Project.Commands.DeleteProjectBrowserNode"/>
+			          class = "ICSharpCode.SharpDevelop.Commands.DeleteProjectBrowserItemCommand"/>
 			<MenuItem id = "Rename"
 			          label    = "${res:ProjectComponent.ContextMenu.Rename}"
 			          shortcut = "F2"
@@ -600,20 +592,20 @@
 			          type = "Item"
 			          icon = "Icons.16x16.CutIcon"
 			          loadclasslazy = "false"
-			          class = "ICSharpCode.SharpDevelop.Project.Commands.CutProjectBrowserNode"/>
+			          class = "ICSharpCode.SharpDevelop.Commands.CutProjectBrowserItemCommand"/>
 			<MenuItem id    = "Paste"
 			          label = "${res:XML.MainMenu.EditMenu.Paste}"
 			          type = "Item"
 			          icon  = "Icons.16x16.PasteIcon"
 			          loadclasslazy = "false"
-			          class = "ICSharpCode.SharpDevelop.Project.Commands.PasteProjectBrowserNode"/>
+			          class = "ICSharpCode.SharpDevelop.Commands.PasteProjectBrowserItemCommand"/>
 		</Condition>
 		<MenuItem id = "Remove"
 		          label = "${res:Global.RemoveButtonText}"
 		          type = "Item"
 		          icon  = "Icons.16x16.DeleteIcon"
 		          loadclasslazy = "false"
-		          class = "ICSharpCode.SharpDevelop.Project.Commands.DeleteProjectBrowserNode"/>
+		          class = "ICSharpCode.SharpDevelop.Commands.DeleteProjectBrowserItemCommand"/>
 		<Condition name="WriteableProject" action="Disable">
 			<MenuItem id = "Rename"
 			          label    = "${res:ProjectComponent.ContextMenu.Rename}"
@@ -629,27 +621,27 @@
 			          type = "Item"
 			          icon = "Icons.16x16.CutIcon"
 			          loadclasslazy = "false"
-			          class = "ICSharpCode.SharpDevelop.Project.Commands.CutProjectBrowserNode"/>
+			          class = "ICSharpCode.SharpDevelop.Commands.CutProjectBrowserItemCommand"/>
 		</Condition>
 		<MenuItem id = "Copy"
 		          label = "${res:XML.MainMenu.EditMenu.Copy}"
 		          type = "Item"
 		          icon = "Icons.16x16.CopyIcon"
 		          loadclasslazy = "false"
-		          class = "ICSharpCode.SharpDevelop.Project.Commands.CopyProjectBrowserNode"/>
+		          class = "ICSharpCode.SharpDevelop.Commands.CopyProjectBrowserItemCommand"/>
 		<Condition name="WriteableProject" action="Disable">
 			<MenuItem id    = "Paste"
 			          label = "${res:XML.MainMenu.EditMenu.Paste}"
 			          type = "Item"
 			          icon  = "Icons.16x16.PasteIcon"
 			          loadclasslazy = "false"
-			          class = "ICSharpCode.SharpDevelop.Project.Commands.PasteProjectBrowserNode"/>
+			          class = "ICSharpCode.SharpDevelop.Commands.PasteProjectBrowserItemCommand"/>
 			<MenuItem id = "Delete"
 			          label = "${res:XML.MainMenu.EditMenu.Delete}"
 			          type = "Item"
 			          icon  = "Icons.16x16.DeleteIcon"
 			          loadclasslazy = "false"
-			          class = "ICSharpCode.SharpDevelop.Project.Commands.DeleteProjectBrowserNode"/>
+			          class = "ICSharpCode.SharpDevelop.Commands.DeleteProjectBrowserItemCommand"/>
 			<MenuItem id = "Rename"
 			          label    = "${res:ProjectComponent.ContextMenu.Rename}"
 			          shortcut = "F2"
@@ -742,7 +734,7 @@
 			          label = "${res:XML.MainMenu.EditMenu.Delete}"
 			          type = "Item"
 			          icon  = "Icons.16x16.DeleteIcon"
-			          class = "ICSharpCode.SharpDevelop.Project.Commands.DeleteProjectBrowserNode"/>
+			          class = "ICSharpCode.SharpDevelop.Commands.DeleteProjectBrowserItemCommand"/>
 			<MenuItem id = "Rename"
 			          label    = "${res:ProjectComponent.ContextMenu.Rename}"
 			          shortcut = "F2"
@@ -771,7 +763,7 @@
 			          label = "${res:XML.MainMenu.EditMenu.Delete}"
 			          type = "Item"
 			          icon  = "Icons.16x16.DeleteIcon"
-			          class = "ICSharpCode.SharpDevelop.Project.Commands.DeleteProjectBrowserNode"/>
+			          class = "ICSharpCode.SharpDevelop.Commands.DeleteProjectBrowserItemCommand"/>
 			<MenuItem id = "Rename"
 			          label    = "${res:ProjectComponent.ContextMenu.Rename}"
 			          shortcut = "F2"
@@ -803,7 +795,7 @@
 			          label = "${res:XML.MainMenu.EditMenu.Delete}"
 			          type  = "Item"
 			          icon  = "Icons.16x16.DeleteIcon"
-			          class = "ICSharpCode.SharpDevelop.Project.Commands.DeleteProjectBrowserNode"/>
+			          class = "ICSharpCode.SharpDevelop.Commands.DeleteProjectBrowserItemCommand"/>
 			<MenuItem id       = "Rename"
 			          label    = "${res:ProjectComponent.ContextMenu.Rename}"
 			          shortcut = "F2"
@@ -827,7 +819,7 @@
 			          label = "${res:XML.MainMenu.EditMenu.Delete}"
 			          type = "Item"
 			          icon  = "Icons.16x16.DeleteIcon"
-			          class = "ICSharpCode.SharpDevelop.Project.Commands.DeleteProjectBrowserNode"/>
+			          class = "ICSharpCode.SharpDevelop.Commands.DeleteProjectBrowserItemCommand"/>
 			<MenuItem id = "Rename"
 			          label    = "${res:ProjectComponent.ContextMenu.Rename}"
 			          shortcut = "F2"
@@ -849,7 +841,7 @@
 			<MenuItem id    = "Remove"
 			          label = "${res:Global.RemoveButtonText}"
 			          icon  = "Icons.16x16.DeleteIcon"
-			          class = "ICSharpCode.SharpDevelop.Project.Commands.DeleteProjectBrowserNode"/>
+			          class = "ICSharpCode.SharpDevelop.Commands.DeleteProjectBrowserItemCommand"/>
 		</Condition>
 		<MenuItem id = "RemoveSeparator" type = "Separator" />
 		<MenuItem id    = "Properties"
@@ -2057,50 +2049,12 @@
 		<MenuItem insertbefore = "SelectAll" id = "Separator3" type = "Separator" />
 	</Path>
 	
-	<Path name = "/SharpDevelop/ViewContent/Browser/Toolbar">
-		<ToolbarItem id      = "Back"
-		             icon    = "Icons.16x16.BrowserBefore"
-		             tooltip = "${res:AddIns.HtmlHelp2.Back}"
-		             class   = "ICSharpCode.SharpDevelop.BrowserDisplayBinding.GoBack"/>
-		
-		<ToolbarItem id      = "Forward"
-		             icon    = "Icons.16x16.BrowserAfter"
-		             tooltip = "${res:AddIns.HtmlHelp2.Forward}"
-		             class   = "ICSharpCode.SharpDevelop.BrowserDisplayBinding.GoForward"/>
-		
-		<ToolbarItem id      = "Stop"
-		             icon    = "Icons.16x16.BrowserCancel"
-		             tooltip = "${res:AddIns.HtmlHelp2.Stop}"
-		             class   = "ICSharpCode.SharpDevelop.BrowserDisplayBinding.Stop"/>
-		
-		<ToolbarItem id      = "Refresh"
-		             icon    = "Icons.16x16.BrowserRefresh"
-		             tooltip = "${res:Global.Refresh}"
-		             class   = "ICSharpCode.SharpDevelop.BrowserDisplayBinding.Refresh"/>
-		
-		<ToolbarItem id = "Separator" type  = "Separator"/>
-		
-		<ToolbarItem id      = "GoHome"
-		             icon    = "Icons.16x16.BrowserHome"
-		             tooltip = "${res:AddIns.HtmlHelp2.Homepage}"
-		             class   = "ICSharpCode.SharpDevelop.BrowserDisplayBinding.GoHome"/>
-		
-		<ToolbarItem id      = "GoSearch"
-		             icon    = "Icons.16x16.FindIcon"
-		             tooltip = "${res:AddIns.HtmlHelp2.Search}"
-		             class   = "ICSharpCode.SharpDevelop.BrowserDisplayBinding.GoSearch"/>
-		
-		<ToolbarItem id      = "UrlComboBox"
-		             type    = "Builder"
-		             tooltip = "${res:AddIns.HtmlHelp2.EnterURL}"
-		             class   = "ICSharpCode.SharpDevelop.BrowserDisplayBinding.UrlComboBoxBuilder"/>
-		
-		<ToolbarItem id      = "NewWindow"
-		             icon    = "Icons.16x16.BrowserWindow"
-		             tooltip = "${res:AddIns.HtmlHelp2.NewWindow}"
-		             class   = "ICSharpCode.SharpDevelop.BrowserDisplayBinding.NewWindow"/>
-	</Path>
-	
+	<!-- MVP: removed Path name="/SharpDevelop/ViewContent/Browser/Toolbar" - toolbar for the legacy
+	     WinForms embedded-browser DisplayBinding above (BrowserDisplayBinding.GoBack/GoForward/Stop/
+	     Refresh/GoHome/GoSearch/UrlComboBoxBuilder/NewWindow), none of which compile anymore and none
+	     of which are referenced by any other addin (no Include of this path found repo-wide).
+	-->
+
 	<Path name = "/SharpDevelop/Dialogs/OptionsDialog/TextEditorOptions">
 		<OptionPanel id = "CodeCompletion"
 		             insertafter="Behavior"

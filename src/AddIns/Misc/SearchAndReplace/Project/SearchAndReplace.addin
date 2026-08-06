@@ -23,8 +23,8 @@
 		          icon = "Icons.16x16.FindNextIcon"
 		          shortcut = "F3"
 		          class = "SearchAndReplace.FindNext"/>
+		<!-- insertafter="FindNextSelected" removed - MVP: that menu item no longer exists; insertbefore="SearchSeparator" below is still enough to anchor this item's position -->
 		<MenuItem id = "Replace"
-		          insertafter = "FindNextSelected"
 		          insertbefore = "SearchSeparator"
 		          label = "${res:XML.MainMenu.SearchMenu.Replace}"
 		          icon = "Icons.16x16.ReplaceIcon"

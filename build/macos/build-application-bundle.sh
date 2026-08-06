@@ -50,10 +50,17 @@ populate_repo_payload() {
   # the app (or resolvable from the payload root, which is the process's base
   # directory) never load from the addin copies, so delete any binary whose
   # name also exists next to the executable. Cuts the bundle by ~2GB.
-  local basename
+  # Also match satellite resource dlls one level deep in per-locale subfolders
+  # (e.g. AddIns/Misc/StartPage/ru/Foo.resources.dll vs. the root copy at
+  # ru/Foo.resources.dll) — a flat basename check never matches those, leaving
+  # ~15 locale dlls duplicated in every one of the 24 addins. Addin folder
+  # depth isn't uniform (Category/AddinName/… vs. Category/… directly), so
+  # check parent-dir/basename first and fall back to basename alone.
+  local base parentdir
   find "$macos/AddIns" -type f \( -name '*.dll' -o -name '*.dylib' -o -name '*.so' \) | while IFS= read -r f; do
-    basename="$(basename "$f")"
-    if [[ -f "$macos/$basename" ]]; then
+    base="$(basename "$f")"
+    parentdir="$(basename "$(dirname "$f")")"
+    if [[ -f "$macos/$parentdir/$base" ]] || [[ -f "$macos/$base" ]]; then
       rm -f "$f"
     fi
   done

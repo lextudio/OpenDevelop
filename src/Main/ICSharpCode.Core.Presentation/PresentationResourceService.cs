@@ -51,6 +51,7 @@ namespace ICSharpCode.Core.Presentation
 			{ "Icons.16x16.BrowserCancel", "Stop" },
 			{ "Icons.16x16.BrowserHome", "Home" },
 			{ "Icons.16x16.BrowserWindow", "Application" },
+			{ "Icons.22x22.Browser", "Application" },
 			{ "Icons.16x16.WebSearchIcon", "FindinFiles" },
 			{ "ProjectBrowser.Toolbar.Refresh", "Refresh" },
 			{ "ProjectBrowser.SolutionFolder.CreateNew", "NewFolder" },

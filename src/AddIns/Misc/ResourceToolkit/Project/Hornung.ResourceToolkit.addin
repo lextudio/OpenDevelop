@@ -22,13 +22,13 @@
 			id = "CSharpResources"
 			extensions = ".cs"
 			class = "Hornung.ResourceToolkit.CodeCompletion.CSharpResourceCodeCompletionBinding"
-			insertbefore = "CSharp"
+			insertbefore = "C#-Roslyn"
 		/>
 		<CodeCompletionBinding
 			id = "VBNetResources"
 			extensions = ".vb"
 			class = "Hornung.ResourceToolkit.CodeCompletion.VBNetResourceCodeCompletionBinding"
-			insertbefore = "VBNet"
+			insertbefore = "VB-Roslyn"
 		/>
 		<CodeCompletionBinding
 			id = "ICSharpCodeCoreResources"
@@ -39,7 +39,8 @@
 	<!-- Context menus -->
 	
 	<Path name = "/SharpDevelop/ViewContent/TextEditor/ContextMenu">
-		<MenuItem id = "StringResources" insertbefore = "Refactoring" type = "Builder" class = "Hornung.ResourceToolkit.Commands.TextEditorContextMenuBuilder" />
+		<!-- insertbefore="Refactoring" removed - MVP: that menu item no longer exists (Refactoring feature out of scope, see doc/technotes/csharp-vb-binding.md) -->
+		<MenuItem id = "StringResources" type = "Builder" class = "Hornung.ResourceToolkit.Commands.TextEditorContextMenuBuilder" />
 	</Path>
 	
 	<!-- Tools menu -->

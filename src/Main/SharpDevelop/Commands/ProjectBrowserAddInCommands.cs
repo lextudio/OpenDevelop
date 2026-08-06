@@ -5,6 +5,7 @@
 // here maps 1:1 onto IProjectBrowserController, which OpenDevelop already implements natively.
 
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -256,4 +257,43 @@ internal sealed class OpenFolderProjectBrowserCommand : ProjectBrowserCommandBas
 internal sealed class SetStartupProjectProjectBrowserCommand : ProjectBrowserCommandBase
 {
     public override void Run() => Controller.SetStartupProject(OwnerNode);
+}
+
+internal sealed class CutProjectBrowserItemCommand : ProjectBrowserCommandBase
+{
+    public override bool IsEnabled => Controller.CanCutOrCopy(OwnerNode);
+
+    public override void Run() => Controller.Cut(OwnerNode);
+}
+
+internal sealed class CopyProjectBrowserItemCommand : ProjectBrowserCommandBase
+{
+    public override bool IsEnabled => Controller.CanCutOrCopy(OwnerNode);
+
+    public override void Run() => Controller.Copy(OwnerNode);
+}
+
+internal sealed class PasteProjectBrowserItemCommand : ProjectBrowserCommandBase
+{
+    public override bool IsEnabled => Controller.CanPaste(OwnerNode);
+
+    public override void Run() => Controller.Paste(OwnerNode);
+}
+
+internal sealed class ViewInBrowserProjectBrowserCommand : ProjectBrowserCommandBase
+{
+    public override bool IsEnabled => OwnerNode is not null
+        && OwnerNode.IsFileLike
+        && (OwnerNode.FullPath.EndsWith(".htm", StringComparison.OrdinalIgnoreCase)
+            || OwnerNode.FullPath.EndsWith(".html", StringComparison.OrdinalIgnoreCase));
+
+    public override void Run()
+    {
+        if (OwnerNode is null)
+        {
+            return;
+        }
+
+        Process.Start(new ProcessStartInfo { FileName = OwnerNode.FullPath, UseShellExecute = true });
+    }
 }
