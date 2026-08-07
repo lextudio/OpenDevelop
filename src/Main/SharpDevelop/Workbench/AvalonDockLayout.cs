@@ -572,6 +572,22 @@ namespace ICSharpCode.SharpDevelop.Workbench
 
 		bool TryShowMefToolPane(PadDescriptor padDescriptor)
 		{
+			// LoadLayout's own reconciliation (see below) evicts any ToolPaneModel not listed in
+			// the current layout FILE from dockWorkspace.ToolPanes entirely - into
+			// layoutExcludedPanes - right after re-docking it during import (the same import this
+			// class's BeforeInsertAnchorable handles PreferredDockSide for). A pane excluded that
+			// way is only ever restored on the *next* LoadLayout call, so a pad an explicit command
+			// wants shown *right now* (e.g. Build activating the Output pad on a from-scratch
+			// workbench whose layout file only ever listed the Project Browser) would otherwise
+			// silently fall through to the legacy ShowPad path below - a different, non-MEF pad
+			// instance ActivatePad's PreferredDockSide handling never touches. An explicit
+			// activation request is exactly the case that should override "not in this layout".
+			var excluded = layoutExcludedPanes.FirstOrDefault(p => p.LegacyPadClass == padDescriptor.Class);
+			if (excluded != null) {
+				layoutExcludedPanes.Remove(excluded);
+				dockWorkspace.AddToolPane(excluded);
+			}
+
 			var contentId = GetMefToolPaneContentId(padDescriptor);
 			return contentId != null && dockWorkspace.ShowToolPane(contentId);
 		}

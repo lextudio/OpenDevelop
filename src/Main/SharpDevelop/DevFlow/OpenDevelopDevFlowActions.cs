@@ -622,6 +622,17 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new { success = true });
 		}
 
+		[DevFlowAction("od.output-pad.status", Description = "Get the Output pad's actual dock visibility state. isVisible alone is NOT enough to prove the pad was actually shown - the ItemsSource-driven insert of a pane that isn't part of the persisted layout can tab-dock it behind an unrelated pane (regressed once: DockWorkspace.BeforeInsertAnchorable ignored ToolPaneModel.PreferredDockSide, so a first-ever show landed wherever AvalonDock's own fallback picked). isSelected is the front-most-tab-in-its-group flag - isVisible && isSelected is what the user would actually see on screen.")]
+		public static string GetOutputPadStatus()
+		{
+			var pane = SD.OutputPad as ToolPaneModel;
+			return JsonSerializer.Serialize(new {
+				isVisible = pane?.IsVisible ?? false,
+				isSelected = pane?.IsSelected ?? false,
+				isActive = pane?.IsActive ?? false,
+			});
+		}
+
 
 		[DevFlowAction("od.addins", Description = "List loaded addins for diagnostics")]
 		public static string GetLoadedAddIns()
@@ -1037,6 +1048,43 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				newCenteredY = line.VisualTop + (line.Height - digitTextHeight) / 2,
 			}).ToArray();
 			return JsonSerializer.Serialize(new { success = true, count = lines.Length, lines });
+		}
+
+		[DevFlowAction("od.file.foldings", Description = "Inspect an open file's AvalonEdit folding state: whether the FoldingMargin indicator (the clickable +/- gutter strip) is actually installed in the editor's left margins, whether a FoldingManager service is registered on the TextView at all, and the real list of foldings it currently knows about (as line ranges). Used to verify folding indicators actually appear when a file is opened, not just that a fold *would* be computed correctly.")]
+		public static string GetFoldings(string path)
+		{
+			var fileName = FileName.Create(path);
+			var viewContent = SD.FileService.GetOpenFile(fileName);
+			if (viewContent == null)
+				return JsonSerializer.Serialize(new { success = false, error = "File is not open: " + path });
+
+			// Same reasoning as od.file.visual-lines: AvalonEdit.AddIn (where CodeEditorView/
+			// ParserFoldingStrategy live) isn't referenced by this shell project, so find the
+			// AvalonEdit TextEditor by walking the visual tree instead of a layering-violating
+			// reference just for this diagnostic action.
+			var textEditor = FindVisualDescendant<ICSharpCode.AvalonEdit.TextEditor>(viewContent.Control as System.Windows.DependencyObject);
+			var textArea = textEditor?.TextArea;
+			if (textArea == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No AvalonEdit TextArea found for " + path, controlType = viewContent.Control?.GetType().FullName });
+
+			bool hasFoldingMargin = textArea.LeftMargins.OfType<ICSharpCode.AvalonEdit.Folding.FoldingMargin>().Any();
+			var foldingManager = textArea.TextView.Services.GetService(typeof(ICSharpCode.AvalonEdit.Folding.FoldingManager)) as ICSharpCode.AvalonEdit.Folding.FoldingManager;
+
+			var foldings = (foldingManager?.AllFoldings ?? Enumerable.Empty<ICSharpCode.AvalonEdit.Folding.FoldingSection>())
+				.Select(f => new {
+					startLine = textArea.Document.GetLineByOffset(f.StartOffset).LineNumber,
+					endLine = textArea.Document.GetLineByOffset(f.EndOffset).LineNumber,
+					isFolded = f.IsFolded,
+					title = f.Title,
+				}).ToArray();
+
+			return JsonSerializer.Serialize(new {
+				success = true,
+				hasFoldingMargin,
+				foldingManagerInstalled = foldingManager != null,
+				foldingCount = foldings.Length,
+				foldings
+			});
 		}
 
 		[DevFlowAction("od.file.edit-text", Description = "Insert text at the end of an open file's editor document, the same AvalonEdit.Document.Insert call a real keystroke makes, so it dirties the file naturally rather than setting a flag directly")]

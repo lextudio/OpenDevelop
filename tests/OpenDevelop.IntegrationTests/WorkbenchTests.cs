@@ -69,6 +69,33 @@ public sealed class WorkbenchTests
         Assert.Contains("SampleApp", text);
     }
 
+    // Regression test for the Output pad being tab-docked behind an unrelated pane on its first
+    // show: this fixture wipes ~/Library/Application Support/.../layouts/ before every launch (see
+    // OpenDevelopAppFixture.DeleteStaleViewStateMemento), so the Output pad is never part of the
+    // persisted layout when this runs - exactly the "never shown before" scenario
+    // DockWorkspace.BeforeInsertAnchorable's ToolPaneModel.PreferredDockSide handling exists for.
+    // Without that handling, AvalonDock's own AttachAnchorablesSource import falls back to
+    // whatever pane hosts the active content (or the first pane it finds), so the Output pad ends
+    // up as a background tab: od.output-text still returns the right build log (a different code
+    // path - MessageViewCategory.Text), but the user never actually sees the pad pop up. isVisible
+    // alone can't catch that regression (AvalonDock sets it even for a background tab); isSelected
+    // is the front-most-tab-in-its-group flag that BuildService.BuildAsync's
+    // SD.OutputPad.BuildCategory.Activate(bringPadToFront: true) call is supposed to guarantee.
+    [Fact]
+    public async Task BuildSolution_OutputPadIsActuallyShownNotJustPopulated()
+    {
+        await _app.EnsureSolutionOpenAsync(_app.SolutionExplorerFixturePath);
+        await _app.InvokeAsync("od.build-solution");
+
+        var status = await _app.InvokeAsync("od.output-pad.status");
+
+        Assert.True(status.GetProperty("isVisible").GetBoolean(),
+            "Output pad should be docked into the layout after a build");
+        Assert.True(status.GetProperty("isSelected").GetBoolean(),
+            "Output pad should be the front-most tab in its dock group after a build - if this is " +
+            "false, the pad exists but is hidden behind another tab (the bug this test guards against)");
+    }
+
     [Fact]
     public async Task BuildSolution_UnknownProjectNameReturnsError()
     {
@@ -235,6 +262,39 @@ public sealed class WorkbenchTests
         var textPreview = activeView.GetProperty("textPreview").GetString();
         Assert.Contains("class Widget", textPreview);
         Assert.Contains("namespace SampleApp.Models", textPreview);
+    }
+
+
+    // Folding indicators depend on a real Roslyn parse completing after the file opens
+    // (CodeEditor.ParseInformationUpdated -> CodeEditorView.UpdateParseInformationForFolding ->
+    // ParserFoldingStrategy.UpdateFoldings), which is async - so this polls od.file.foldings
+    // instead of asserting immediately after od.open-file returns.
+    [Fact]
+    public async Task OpenCSharpFile_ShowsFoldingIndicators()
+    {
+        await _app.EnsureSolutionOpenAsync(_app.SolutionExplorerFixturePath);
+        var programPath = Path.Combine(Path.GetDirectoryName(_app.SolutionExplorerFixturePath)!, "SampleApp", "Program.cs");
+
+        var openResult = await _app.InvokeAsync("od.open-file", programPath);
+        Assert.True(openResult.GetProperty("opened").GetBoolean(), $"Failed to open {programPath}");
+
+        JsonElement foldings = default;
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (DateTime.UtcNow < deadline)
+        {
+            foldings = await _app.InvokeAsync("od.file.foldings", programPath);
+            if (foldings.GetProperty("success").GetBoolean() && foldings.GetProperty("foldingCount").GetInt32() > 0)
+                break;
+            await Task.Delay(500);
+        }
+
+        Assert.True(foldings.GetProperty("success").GetBoolean());
+        Assert.True(foldings.GetProperty("hasFoldingMargin").GetBoolean(),
+            "The FoldingMargin (the gutter's +/- indicator strip) should be installed in the editor's left margins");
+        Assert.True(foldings.GetProperty("foldingManagerInstalled").GetBoolean(),
+            "A FoldingManager should be registered on the editor's TextView");
+        Assert.True(foldings.GetProperty("foldingCount").GetInt32() > 0,
+            "Program.cs has a namespace, a class and a method body - expected at least one foldable region");
     }
 
     // The Project Browser pad renders its own tree in the real WPF visual tree (ProjectBrowserView.xaml's

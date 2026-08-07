@@ -250,6 +250,7 @@ internal sealed class CompilerMessageViewViewModel : ToolPaneModel, IOutputPad, 
         IsVisible = true; // Matches the legacy Pad's `defaultPosition = "Bottom"`.
         IsCloseable = true;
         LegacyPadClass = typeof(CompilerMessageView).FullName;
+        PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Bottom; // Matches the legacy Pad's `defaultPosition = "Bottom"`.
         Content = panel;
 
         SD.Services.AddService(typeof(IOutputPad), this);

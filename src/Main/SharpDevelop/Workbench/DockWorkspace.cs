@@ -263,7 +263,14 @@ internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrateg
         // virtual documents this snapshot recorded, same pipeline as switching layouts brought the
         // panes back - documents are addressed by SD.FileService.OpenFile's own dispatch, not by
         // this converter constructing any view content directly.
-        LayoutSnapshotConverter.ReopenDocuments(snapshot);
+        //
+        // Only when a solution/project is actually loaded, though - this restore runs off the
+        // dockingManager's Loaded event, which fires from app.Run() in WorkbenchStartup.Run, i.e.
+        // strictly after that method has already decided (command line / LoadPrevProjectOnStartup)
+        // whether to open a solution. Reopening loose files from the last session on a bare
+        // "start with nothing loaded" run isn't wanted (they'd have no project context anyway).
+        if (SD.ProjectService.CurrentSolution != null)
+            LayoutSnapshotConverter.ReopenDocuments(snapshot);
     }
 
     public void SaveLayout(string fileName)
@@ -317,8 +324,47 @@ internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrateg
     public bool BeforeInsertAnchorable(LayoutRoot layout, LayoutAnchorable anchorableToShow, ILayoutContainer destinationContainer)
     {
         anchorableToShow.CanDockAsTabbedDocument = false;
+
+        // Consult ToolPaneModel.PreferredDockSide (previously declared but never read - see its
+        // own doc comment) for a pane that isn't already part of the persisted layout: without
+        // this, AvalonDock's AttachAnchorablesSource import (DockingManager.cs) falls back to
+        // whatever pane currently hosts the active content (or the first pane it finds), so e.g.
+        // the Output pad ends up tab-docked behind an unrelated pane instead of its own "Bottom"
+        // strip - it's technically shown, just not anywhere the user would look for it, which
+        // reads as "the Output panel wasn't shown immediately" when Build first activates it.
+        if (anchorableToShow.Content is ToolPaneModel pane && pane.PreferredDockSide is PreferredDockSide side) {
+            // ContentId is otherwise unset at this point and lazily derives from Content.Name on
+            // first read (LayoutContent.SetContentIdFromContent) - which won't match the model's
+            // own ContentId (our Content is the ToolPaneModel itself, not a named visual). Without
+            // this, ShowToolPane's later `a.ContentId == contentId` lookup (to select/activate the
+            // anchorable) never finds this one, so the pad docks correctly but never becomes the
+            // front-most tab in its group.
+            anchorableToShow.ContentId = pane.ContentId;
+            anchorableToShow.AddToLayout(dockingManager, ToShowStrategy(side));
+            // AddToLayout only touches the tree (Parent); LayoutAnchorable.IsSelected is a plain
+            // flag, not tree-derived like IsVisible (`Parent != null && Parent is not LayoutRoot`),
+            // so a freshly-added anchorable defaults to unselected - i.e. a background tab in
+            // whatever pane it landed in, indistinguishable from the original bug this whole method
+            // exists to fix. Set both the anchorable and the model directly rather than relying on
+            // the style's Model.IsSelected/IsActive TwoWay bindings (those target the generated
+            // LayoutItem chrome, not this LayoutAnchorable, and its sync back to the model wasn't
+            // reliably observed here) to guarantee the pad is the visible tab immediately.
+            anchorableToShow.IsSelected = true;
+            anchorableToShow.IsActive = true;
+            pane.IsSelected = true;
+            pane.IsActive = true;
+            return true;
+        }
         return false;
     }
+
+    static AnchorableShowStrategy ToShowStrategy(PreferredDockSide side) => side switch {
+        PreferredDockSide.Left => AnchorableShowStrategy.Left,
+        PreferredDockSide.Right => AnchorableShowStrategy.Right,
+        PreferredDockSide.Top => AnchorableShowStrategy.Top,
+        PreferredDockSide.Bottom => AnchorableShowStrategy.Bottom,
+        _ => AnchorableShowStrategy.Most,
+    };
 
     public void AfterInsertAnchorable(LayoutRoot layout, LayoutAnchorable anchorableShown)
     {

@@ -538,6 +538,13 @@ namespace ICSharpCode.AvalonEdit.AddIn
 						container.AddService(typeof(ParserFoldingStrategy), folding);
 				}
 				folding?.UpdateFoldings(parseInfo);
+				// UpdateFoldings above is a no-op for every language routed through
+				// LanguageServiceParserAdapter (SD.ParserService since the ILanguageService
+				// migration - see ParserFoldingStrategy's doc comment): its ParseInformation always
+				// carries an empty IUnresolvedFile, so GetFoldings always returns nothing. This is
+				// the real (async) source, via the same ILanguageService.GetDocumentOutlineAsync
+				// contract QuickClassBrowser already uses for the class/member dropdowns.
+				_ = folding?.UpdateFoldingsFromOutlineAsync(this.FileName);
 			}
 		}
 		#endregion
