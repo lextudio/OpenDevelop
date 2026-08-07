@@ -16,6 +16,8 @@
     <SolidColorBrush x:Key="Selection" Color="#FF007ACC" />
     <SolidColorBrush x:Key="SelectionForeground" Color="#FFFFFFFF" />
     <SolidColorBrush x:Key="HoverBackground" Color="#FF3E3E42" />
+    <SolidColorBrush x:Key="InfoBarBackground" Color="#FF264F78" />
+    <SolidColorBrush x:Key="InfoBarBorder" Color="#FF007ACC" />
 
     <!-- SystemColors overrides (Dark, ported from ILSpy Base.Dark.xaml) -->
     <Color x:Key="{x:Static SystemColors.ControlLightLightColorKey}">#333337</Color>

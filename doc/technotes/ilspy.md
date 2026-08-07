@@ -3339,3 +3339,92 @@ now either migrated (10: `Outline`, `DefinitionView`, `TaskListPad`, `PropertyPa
 excluded from the MVP AddInTree; `FileScout`: WinForms interop is disabled in this MVP build,
 needs a rewrite-or-delete decision, not a mechanical migration). No further pads in this list
 remain unexamined.
+
+## Follow-on infrastructure: a shell-wide notification banner (2026-08-07)
+
+Trigger for this section: `doc/technotes/auto-update.md` plans a visible "Check for Updates"
+feature (backend already implemented, see that file) modeled on ILSpy's own
+`Commands/CheckForUpdatesCommand.cs` + `ViewModels/UpdatePanelViewModel.cs` — a dismissible banner
+docked above the document area with a message and a "Download"/"Check again" button. OpenDevelop
+has no equivalent surface today, and auto-update is not the only feature that will eventually want
+one (extension-install prompts, "solution reload needed", crash-recovery notices are the same
+shape). Rather than building an update-specific banner, this section plans the generic shell
+primitive once, using the conventions the pad-migration work above already established, so
+auto-update becomes the *first consumer*, not a one-off.
+
+### What already exists and is directly reusable
+
+- `ObservableObjectBase`/`PaneModel`/`ToolPaneModel` now live in the Base project
+  (`src/Main/Base/Project/ViewModels/`, see "Foundational move" above) — reachable from every
+  AddIn, not just the App project. A banner view model does not need `ToolPaneModel`'s
+  dock-side/size semantics (it isn't a dockable pane), but it can and should extend the same
+  `ObservableObjectBase` for property-changed plumbing, for consistency with every other view model
+  in the shell.
+- The established idiom for "an AddIn/service needs to reach a shell-owned mechanism without a
+  compile-time reference to the App project" is a small single-purpose interface registered via
+  `SD.Services.AddService(typeof(IFoo), this)` and resolved via `SD.Services.GetService(...)` —
+  `IPaneModelHost`, `IPropertyPadHost`, `ISearchResultsHost`, `IOutputPadHost` all follow this
+  shape (see the four "Legacy Pad migration" slices above). A notification host follows the same
+  pattern; it does not need a new mechanism invented for it.
+- `IStatusBarService`/`SD.StatusBar.SetMessage(...)` already exists for cheap, transient,
+  no-action-required text — still the right choice for the *silent* weekly startup check
+  (`auto-update.md`'s plan already assumes this) and should stay separate from the banner, not be
+  replaced by it.
+
+### What's actually missing
+
+There is no dockable-or-fixed **banner region** anywhere in the shell chrome — nothing between "a
+line in the status bar" and "a modal dialog". ILSpy's `UpdatePanelViewModel` works because ILSpy's
+`MainWindow.xaml` has a dedicated `ContentControl`/row above its document area that the panel binds
+`Visibility` into (`Docking/DockLayoutSettings.cs` docks it there); OpenDevelop's `WpfWorkbench.xaml`
+has no analogous slot. That slot, plus one generic view model, is the actual gap.
+
+### Plan
+
+1. **`NotificationBannerViewModel : ObservableObjectBase`** (Base project,
+   `src/Main/Base/Project/ViewModels/NotificationBannerViewModel.cs`, next to `PaneModel`) — generic,
+   not update-specific:
+   - `IsVisible`, `Message`, `ActionText` (null hides the action button), `ActionCommand`,
+     `DismissCommand` (sets `IsVisible = false`).
+   - Mirrors ILSpy's `IsPanelVisible`/`Message`/`ButtonText`/`DownloadOrCheckUpdateCommand` shape,
+     generalized to any (message, single action) pair rather than update-specific
+     `UpdateAvailableDownloadUrl` state — that state stays in the *caller* (e.g. a future
+     `UpdateCheckCoordinator`), which sets `Message`/`ActionText`/`ActionCommand` on the shared
+     banner instead of the banner owning update semantics itself.
+2. **`INotificationHost`** (Base project, one interface: `void Show(string message, string
+   actionText, Action action); void Dismiss();`) — registered by whatever owns the single live
+   `NotificationBannerViewModel` instance and control (App project, see next point), resolved via
+   `SD.Services.GetService(typeof(INotificationHost))` by any caller (any AddIn, no App-project
+   reference needed) — same shape as `IOutputPadHost`.
+3. **Shell wiring** (App project): one `NotificationBannerViewModel` instance (constructed
+   alongside `DockWorkspace`, registering itself via `SD.Services.AddService` in its constructor,
+   same pattern as `PropertyPadViewModel`/`CompilerMessageViewViewModel`), one small
+   `NotificationBanner.xaml` control bound to it, hosted in a new fixed row in
+   `WpfWorkbench.xaml`/`AvalonDockLayout`'s chrome — above the `DockingManager`'s document area, not
+   inside it (so it survives layout switches and isn't itself a pane/document), collapsed
+   (`Visibility` bound to `IsVisible`) when idle so it costs nothing when unused.
+4. **Auto-update becomes the first consumer**: `auto-update.md`'s manual "Check for Updates"
+   command calls `SD.Services.GetService(typeof(INotificationHost))`'s `Show(...)` with the
+   download-available message/action, instead of (or in addition to) the dialog fallback that
+   technote sketches. The silent startup check keeps using the status bar, per that document's own
+   reasoning (never surface an unprompted banner from a background check) — the banner is for the
+   user-initiated path only, unless/until that policy is deliberately revisited.
+
+### Sequencing
+
+This is a small, one-time addition (one view model, one interface, one XAML control, one chrome
+slot) — not a phase of its own in the "Phased implementation plan" above, since it doesn't touch
+docking/layout/theming/composition. It can land independently of and before the Help-menu command +
+options-panel work in `auto-update.md`; those two pieces are unblocked by this section landing
+first, not the reverse.
+
+**Status (2026-08-07): done, and consumed.** `NotificationBannerViewModel`/`INotificationHost`
+(`src/Main/Base/Project/ViewModels/NotificationBannerViewModel.cs`), the `notificationBar` slot in
+`WpfWorkbench.xaml`/`.cs`, and `InfoBarBackground`/`InfoBarBorder` theme keys in
+`Theme.{Light,Dark}.xaml` are all in place exactly as planned above. Both the Base and App projects
+build clean (0 errors/warnings) with these changes. `auto-update.md`'s Help-menu command and
+options panel (see its own 2026-08-07 status update) are now the first real consumer, calling
+`SD.Services.GetService(typeof(INotificationHost))` exactly as sketched. Not yet live-UI-verified
+via DevFlow - no existing action drives a menu command or opens the Options dialog by id, so
+correctness here rests on the build passing plus following the same service-registration pattern
+already live-verified for `IPropertyPadHost`/`IOutputPadHost`/etc. above.

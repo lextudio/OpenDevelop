@@ -1218,7 +1218,10 @@
 			<OptionPanel id    = "LoadSave"
 			             label = "${res:Dialog.Options.IDEOptions.LoadSaveOptions.PanelName}"
 			             class = "ICSharpCode.SharpDevelop.OptionPanels.LoadSaveOptions"/>
-			
+			<OptionPanel id    = "Updates"
+			             label = "Updates"
+			             class = "ICSharpCode.SharpDevelop.OptionPanels.UpdatesOptions"/>
+
 			<OptionPanel id    = "TaskListOptions"
 			             label = "${res:Dialog.Options.IDEOptions.TaskListOptions.PanelName}"
 			             class = "ICSharpCode.SharpDevelop.Gui.OptionPanels.TaskListOptionsPanel"/>
@@ -1897,6 +1900,10 @@
 				</MenuItem>
 			</MenuItem>
 			<MenuItem id = "Separator2" type = "Separator" />
+			<MenuItem id = "CheckForUpdates"
+			          label = "${res:XML.MainMenu.HelpMenu.CheckForUpdates}"
+			          class = "ICSharpCode.SharpDevelop.Commands.CheckForUpdates" />
+			<MenuItem id = "Separator3" type = "Separator" />
 			<MenuItem id = "About"
 			          label = "${res:XML.MainMenu.HelpMenu.About}"
 			          icon = "Icons.16x16.AboutIcon"

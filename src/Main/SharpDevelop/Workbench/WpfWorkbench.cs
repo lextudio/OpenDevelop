@@ -79,6 +79,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		SDStatusBar statusBar = new SDStatusBar();
 		ToolBar[] toolBars;
 		readonly ToolBarTray toolBarTray = new ToolBarTray();
+		readonly ViewModels.NotificationBannerViewModel notificationBanner = new ViewModels.NotificationBannerViewModel();
 
 		// Persisted user drag-reordering of the toolbar strips (saved next to the per-user layout
 		// files; restored over the preferred order at startup).
@@ -92,7 +93,9 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			if (Environment.GetEnvironmentVariable("OD_TEST_MODE") == "1")
 				this.ShowActivated = false;
 			SD.Services.AddService(typeof(IStatusBarService), new StatusBarService(statusBar));
+			SD.Services.AddService(typeof(ViewModels.INotificationHost), notificationBanner);
 			InitializeComponent();
+			notificationBar.DataContext = notificationBanner;
 			InitFocusTrackingEvents();
 		}
 		

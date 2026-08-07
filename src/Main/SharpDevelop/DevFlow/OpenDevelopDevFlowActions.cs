@@ -82,6 +82,42 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			}
 		}
 
+		[DevFlowAction("od.menu.invoke", Description = "Instantiate a registered AbstractMenuCommand/ICommand by its fully-qualified class name (the same string used in a MenuItem's class= attribute in an .addin file) and call Execute(null) on it, bypassing the actual menu click. Lets DevFlow/integration tests exercise Help-menu-style commands (e.g. ICSharpCode.SharpDevelop.Commands.CheckForUpdates) headlessly, since there's no generic 'click this menu item' action")]
+		public static string InvokeMenuCommand(string className)
+		{
+			try {
+				Type type = AppDomain.CurrentDomain.GetAssemblies()
+					.Select(a => { try { return a.GetType(className, throwOnError: false); } catch { return null; } })
+					.FirstOrDefault(t => t != null);
+				if (type == null)
+					return JsonSerializer.Serialize(new { success = false, error = "Type not found: " + className });
+
+				if (!(Activator.CreateInstance(type) is System.Windows.Input.ICommand command))
+					return JsonSerializer.Serialize(new { success = false, error = "Type does not implement ICommand: " + className });
+
+				command.Execute(null);
+				return JsonSerializer.Serialize(new { success = true, type = type.FullName });
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.Message });
+			}
+		}
+
+		[DevFlowAction("od.notification.status", Description = "Inspect the shell-wide notification banner's current state (IsVisible/Message/ActionText) - see doc/technotes/ilspy.md 'Follow-on infrastructure: a shell-wide notification banner'. Used to verify a caller's SD.Services.GetService(typeof(INotificationHost)).Show(...) call actually reached the live banner instance")]
+		public static string GetNotificationStatus()
+		{
+			var host = SD.Services.GetService(typeof(INotificationHost)) as NotificationBannerViewModel;
+			if (host == null)
+				return JsonSerializer.Serialize(new { found = false });
+
+			return JsonSerializer.Serialize(new {
+				found = true,
+				isVisible = host.IsVisible,
+				message = host.Message,
+				actionText = host.ActionText,
+				hasAction = host.HasAction
+			});
+		}
+
 		[DevFlowAction("od.open-solution", Description = "Open a solution or project file by path (bypasses the native Open dialog)")]
 		public static string OpenSolution(string path)
 		{

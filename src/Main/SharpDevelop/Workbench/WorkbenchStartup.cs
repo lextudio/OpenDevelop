@@ -177,14 +177,20 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				parserService.StartParserThread();
 
 			// Background update check (weekly, opt-out via UpdateSettings): never blocks startup
-			// and never shows UI on failure - the result is logged and surfaced through
-			// od.update.check / the About page.
+			// and never shows the notification banner on failure or "no update" (that would be an
+			// unprompted, unwanted interruption on every session) - only the (rare) "update found"
+			// case gets a status-bar message (doc/technotes/auto-update.md). The manual "Check for
+			// Updates" command (Commands/AboutCommands.cs) always reports its result via the
+			// banner instead, since that path is user-initiated.
 			Task.Run(async () => {
 				try {
 					var url = await ICSharpCode.SharpDevelop.Updates.UpdateService
 						.CheckForUpdatesIfEnabledAsync(new ICSharpCode.SharpDevelop.Updates.UpdateSettings());
-					if (url != null)
+					if (url != null) {
 						LoggingService.Info("An OpenDevelop update is available: " + url);
+						SD.MainThread.InvokeAsyncAndForget(() =>
+							SD.StatusBar.SetMessage("An OpenDevelop update is available - see Help > Check for Updates…", highlighted: true));
+					}
 				} catch (Exception ex) {
 					LoggingService.Warn("Update check failed: " + ex.Message);
 				}

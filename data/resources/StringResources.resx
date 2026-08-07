@@ -7963,6 +7963,9 @@ P&amp;rint Preview to Print &amp;Preview</comment>
   <data name="XML.MainMenu.HelpMenu.About" xml:space="preserve">
     <value>&amp;About…</value>
   </data>
+  <data name="XML.MainMenu.HelpMenu.CheckForUpdates" xml:space="preserve">
+    <value>Check for &amp;Updates…</value>
+  </data>
   <data name="XML.MainMenu.HelpMenu.ContextHelp" xml:space="preserve">
     <value>Context help</value>
   </data>

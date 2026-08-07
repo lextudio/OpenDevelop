@@ -18,11 +18,47 @@
 	<Window.TaskbarItemInfo>
 		<TaskbarItemInfo />
 	</Window.TaskbarItemInfo>
-	
+
+	<Window.Resources>
+		<BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+	</Window.Resources>
+
 	<DockPanel Name="dockPanel">
 		<Menu Name="mainMenu" DockPanel.Dock="Top"/>
 		<!-- Toolbars will be inserted here (index: 1) -->
 		<!-- Statusbar will be inserted here (index: Count-2) -->
+		<!--
+			Shell-wide notification banner (doc/technotes/ilspy.md "Follow-on infrastructure: a
+			shell-wide notification banner", 2026-08-07). DataContext is set to a
+			NotificationBannerViewModel in WpfWorkbench's constructor and the view model is
+			registered as INotificationHost so any AddIn can call
+			SD.Services.GetService(typeof(INotificationHost)) to show it - see auto-update.md for
+			the first consumer. Docked above mainContent, not inside it, so it survives layout
+			switches and is never itself a pane/document.
+		-->
+		<Border Name="notificationBar"
+		        DockPanel.Dock="Top"
+		        Visibility="{Binding IsVisible, Converter={StaticResource BooleanToVisibilityConverter}}"
+		        Background="{DynamicResource InfoBarBackground}"
+		        BorderBrush="{DynamicResource InfoBarBorder}"
+		        BorderThickness="0,0,0,1"
+		        Padding="8,4">
+			<DockPanel LastChildFill="True">
+				<Button DockPanel.Dock="Right"
+				        Content="✕"
+				        Padding="6,0"
+				        Background="Transparent"
+				        BorderThickness="0"
+				        Command="{Binding DismissCommand}" />
+				<Button DockPanel.Dock="Right"
+				        Margin="8,0"
+				        Padding="8,0"
+				        Content="{Binding ActionText}"
+				        Command="{Binding ActionCommand}"
+				        Visibility="{Binding HasAction, Converter={StaticResource BooleanToVisibilityConverter}}" />
+				<TextBlock Text="{Binding Message}" VerticalAlignment="Center" TextWrapping="Wrap" />
+			</DockPanel>
+		</Border>
 		<ContentPresenter Name="mainContent" />
 	</DockPanel>
 </wb:FullScreenEnabledWindow>
