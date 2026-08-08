@@ -15,6 +15,7 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 host_dir="$script_dir/src/Main/SharpDevelop/SharpDevelop.csproj"
+mvp_solution="$script_dir/OpenDevelop.Mvp.slnx"
 
 dotnet_candidates=(
   "/usr/local/share/dotnet/dotnet"
@@ -66,6 +67,21 @@ if [[ "$skip_publish" -eq 0 ]]; then
   rm -rf "$host_obj/net10.0-windows"
   echo "==> Publishing osx-arm64 (${config})…"
   "${dotnet}" publish "$host_dir" -r osx-arm64 -c "${config}"
+
+  publish_dir="$script_dir/src/Main/SharpDevelop/bin/${config}/net10.0-windows/osx-arm64/publish"
+  if [[ ! -d "$publish_dir" ]]; then
+    echo "dist.macos.sh: host publish directory not found: $publish_dir" >&2
+    exit 1
+  fi
+
+  echo "==> Cleaning stale AddIn outputs…"
+  find "$script_dir/AddIns" -type f \( -name '*.dll' -o -name '*.dylib' -o -name '*.so' -o -name '*.pdb' \) -delete
+
+  echo "==> Building distribution AddIns without shared runtime copies…"
+  "${dotnet}" build "$mvp_solution" -c "${config}" --no-restore \
+    -p:OpenDevelopDistributionBuild=true \
+    -p:OpenDevelopHostPublishDir="$publish_dir" \
+    -p:ProGpuWpfCopyPackageRuntimeAssets=false
 else
   echo "==> Skipping publish (--skip-publish)"
 fi

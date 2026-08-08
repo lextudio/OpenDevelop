@@ -36,34 +36,27 @@ is_macho() {
 populate_repo_payload() {
   local macos="$1"
   cp -Rp "$repo_root/data" "$macos/data"
-  # Drop debug symbols: 255 pdbs bloat the bundle and are useless at runtime.
-  if command -v rsync >/dev/null 2>&1; then
-    rsync -a --exclude '*.pdb' "$repo_root/AddIns/" "$macos/AddIns/"
-  else
-    cp -Rp "$repo_root/AddIns" "$macos/AddIns"
-    find "$macos/AddIns" -name '*.pdb' -delete
+  if ! command -v rsync >/dev/null 2>&1; then
+    echo "build-application-bundle.sh: rsync is required to filter AddIn dependencies" >&2
+    exit 1
   fi
 
-  # Deduplicate: every addin project deploys its full dependency closure
-  # (LibreWPF/ProGPU/ICSharpCode dlls + native dylibs) into its own AddIns
-  # folder — 24 copies of the same ~100MB stack. Assemblies already loaded by
-  # the app (or resolvable from the payload root, which is the process's base
-  # directory) never load from the addin copies, so delete any binary whose
-  # name also exists next to the executable. Cuts the bundle by ~2GB.
-  # Also match satellite resource dlls one level deep in per-locale subfolders
-  # (e.g. AddIns/Misc/StartPage/ru/Foo.resources.dll vs. the root copy at
-  # ru/Foo.resources.dll) — a flat basename check never matches those, leaving
-  # ~15 locale dlls duplicated in every one of the 24 addins. Addin folder
-  # depth isn't uniform (Category/AddinName/… vs. Category/… directly), so
-  # check parent-dir/basename first and fall back to basename alone.
-  local base parentdir
-  find "$macos/AddIns" -type f \( -name '*.dll' -o -name '*.dylib' -o -name '*.so' \) | while IFS= read -r f; do
-    base="$(basename "$f")"
-    parentdir="$(basename "$(dirname "$f")")"
-    if [[ -f "$macos/$parentdir/$base" ]] || [[ -f "$macos/$base" ]]; then
-      rm -f "$f"
-    fi
-  done
+  # AddIn build outputs contain their full dependency closures. Files already
+  # supplied by the published host resolve from the application base directory,
+  # so tell rsync not to copy them into the bundle in the first place. This keeps
+  # the old basename/locale matching semantics without copying ~2 GB and then
+  # walking the bundle again to delete it.
+  local exclude_file
+  exclude_file="$(mktemp "${TMPDIR:-/tmp}/opendevelop-addin-excludes.XXXXXX")"
+  while IFS= read -r -d '' host_file; do
+    printf '**/%s\n' "$(basename "$host_file")" >> "$exclude_file"
+  done < <(find "$macos" -maxdepth 1 -type f \( -name '*.dll' -o -name '*.dylib' -o -name '*.so' \) -print0)
+  while IFS= read -r -d '' host_file; do
+    printf '**/%s/%s\n' "$(basename "$(dirname "$host_file")")" "$(basename "$host_file")" >> "$exclude_file"
+  done < <(find "$macos" -mindepth 2 -maxdepth 2 -type f -name '*.dll' -print0)
+
+  rsync -a --exclude '*.pdb' --exclude-from "$exclude_file" "$repo_root/AddIns/" "$macos/AddIns/"
+  rm -f "$exclude_file"
 
   # LibreWPF's win32 shims (kernel32/user32/gdi32/shell32/uxtheme/dwmapi/
   # comdlg32.dll) resolve DllImports like AvalonDock's GetCurrentThreadId at

@@ -1,0 +1,20 @@
+<Project>
+  <!--
+    A distribution keeps shared runtime dependencies beside OpenDevelop itself.
+    Remove those files from addin copy-local before they reach AddIns/. Regular
+    developer builds remain self-contained because this is opt-in.
+  -->
+  <Target Name="RemoveHostProvidedFilesFromAddInCopyLocal"
+          BeforeTargets="_CopyFilesMarkedCopyLocal"
+          Condition="'$(OpenDevelopDistributionBuild)' == 'true'
+                     and '$(OpenDevelopHostPublishDir)' != ''
+                     and $([System.String]::Copy('$(OutputPath)').Contains('AddIns'))">
+    <ItemGroup>
+      <_OpenDevelopHostFile Include="$(OpenDevelopHostPublishDir)/**/*"
+                            Condition="Exists('$(OpenDevelopHostPublishDir)')" />
+      <ReferenceCopyLocalPaths Remove="@(_OpenDevelopHostFile)"
+                               MatchOnMetadata="Filename;Extension"
+                               MatchOnMetadataOptions="PathLike" />
+    </ItemGroup>
+  </Target>
+</Project>
