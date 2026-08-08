@@ -278,6 +278,16 @@ public static class LayoutSnapshotConverter
                 var panel = new LayoutPanel { Orientation = splitSnapshot.Orientation };
                 foreach (var child in splitSnapshot.Children)
                     panel.Children.Add(Rebuild(child, existingAnchorables, existingDocumentArea, pendingState));
+                // One-time compatibility for the former JSON persistence format: it stored a
+                // fixed size on a pane nested inside a single-child split, but not on the split
+                // that the parent grid actually sizes. Carry that value outward while importing.
+                if (splitSnapshot.Children.Count == 1 && splitSnapshot.Children[0] is LayoutAnchorablePaneSnapshot onlyPane)
+                {
+                    if (onlyPane.DockWidth is double wrapperWidth)
+                        panel.DockWidth = new System.Windows.GridLength(wrapperWidth);
+                    if (onlyPane.DockHeight is double wrapperHeight)
+                        panel.DockHeight = new System.Windows.GridLength(wrapperHeight);
+                }
                 return panel;
 
             default:

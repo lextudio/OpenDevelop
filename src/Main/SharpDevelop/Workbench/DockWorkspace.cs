@@ -33,8 +33,6 @@ internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrateg
     // unrecognized XML (previously: silently caught as FileFormatException, see
     // AvalonDockLayout.TryLoadConfiguration). The shipped data/layouts/*.xml templates carry this
     // same attribute (see doc/technotes/ilspy.md).
-    private const int CurrentLayoutSchemaVersion = 1;
-    private const string SchemaVersionAttribute = "OpenDevelopLayoutSchemaVersion";
 
     private readonly DockingManager dockingManager;
     private readonly ObservableCollection<AvalonWorkbenchWindow> documents = new ObservableCollection<AvalonWorkbenchWindow>();
@@ -201,15 +199,8 @@ internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrateg
     }
 
     /// <summary>
-    /// Restores the layout from <paramref name="fileName"/>. Two formats are accepted, detected by
-    /// content, not extension (doc/technotes/ilspy.md, "Real versioned layout DTO, step 2"): the
-    /// OpenDevelop-owned <see cref="LayoutSnapshot"/> JSON DTO (<see cref="SaveLayout"/> always
-    /// writes this now) via <see cref="LayoutSnapshotConverter.Apply"/>, or legacy/template
-    /// AvalonDock XML (still how every shipped <c>data/layouts/*.xml</c>/<c>Layouts/ILSpy.xml</c>
-    /// template is authored, and how any layout file saved before this DTO existed still reads) via
-    /// <c>XmlLayoutSerializer</c> - an *import* format only now, per the architecture doc's framing,
-    /// never written by this class again. A legacy XML file loaded this way gets naturally upgraded
-    /// to the DTO format the next time anything calls <see cref="SaveLayout"/>.
+    /// Restores AvalonDock XML layouts. The former OpenDevelop-owned JSON snapshot format remains
+    /// readable only as a one-time migration path and is rewritten to XML immediately after import.
     /// </summary>
     public void RestoreLayout(string fileName)
     {
@@ -219,20 +210,8 @@ internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrateg
         string content = File.ReadAllText(fileName).TrimStart();
         if (content.StartsWith("{", StringComparison.Ordinal)) {
             RestoreLayoutFromSnapshot(fileName, content);
+            SaveLayout(fileName);
             return;
-        }
-
-        if (!HasCompatibleSchemaVersion(fileName)) {
-            // Not a version we understand yet - there is no migration step for schema version 1
-            // (nothing has ever shipped an incompatible version), so this currently only fires
-            // for hand-edited/foreign files. Throwing FileFormatException reuses
-            // AvalonDockLayout.TryLoadConfiguration's existing "fall back to the read-only
-            // template" path, but logs *why*, rather than relying on XmlLayoutSerializer to throw
-            // its own FileFormatException for unrelated reasons (schema drift vs. a real parse
-            // error used to be indistinguishable).
-            LoggingService.Warn($"Layout file '{fileName}' has no compatible {SchemaVersionAttribute} " +
-                $"(expected {CurrentLayoutSchemaVersion}) - falling back to template.");
-            throw new FileFormatException(new Uri(fileName, UriKind.RelativeOrAbsolute));
         }
 
         var serializer = new XmlLayoutSerializer(dockingManager);
@@ -275,23 +254,7 @@ internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrateg
 
     public void SaveLayout(string fileName)
     {
-        var snapshot = LayoutSnapshotConverter.Capture(this);
-        File.WriteAllText(fileName, JsonSerializer.Serialize(snapshot));
-    }
-
-    private static bool HasCompatibleSchemaVersion(string fileName)
-    {
-        try {
-            var doc = new XmlDocument();
-            doc.Load(fileName);
-            var attr = doc.DocumentElement?.GetAttribute(SchemaVersionAttribute);
-            return int.TryParse(attr, NumberStyles.Integer, CultureInfo.InvariantCulture, out int version)
-                && version == CurrentLayoutSchemaVersion;
-        } catch (XmlException) {
-            // Let the real parse error surface via XmlLayoutSerializer.Deserialize instead of
-            // masking it as a schema mismatch.
-            return true;
-        }
+        new XmlLayoutSerializer(dockingManager).Serialize(fileName);
     }
 
     private void LayoutSerializationCallback(object sender, LayoutSerializationCallbackEventArgs e)
