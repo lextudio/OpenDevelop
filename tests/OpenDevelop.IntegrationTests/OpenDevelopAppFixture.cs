@@ -57,6 +57,10 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     public string CoverageFixtureSolutionPath { get; } = LocateCoverageFixture();
     public string SolutionExplorerFixturePath { get; } = LocateSolutionExplorerFixture();
     public string DebugTestProjectPath { get; } = LocateDebugTestProject();
+    // A template rather than a path used in place: the runtime-upgrade test rewrites the
+    // project's TargetFramework, so it works on a per-test copy instead of this repo's tracked
+    // fixture (same reasoning as the NuGet and Git fixtures).
+    public string RuntimeUpgradeTemplatePath { get; } = LocateRuntimeUpgradeTemplate();
     public string SlnxFixturePath { get; } = LocateSlnxFixture();
     public string WpfSampleSolutionPath { get; } = LocateWpfSampleSolution();
     public string GitFixtureTemplatePath { get; } = LocateGitFixtureTemplate();
@@ -468,6 +472,19 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         }
         throw new FileNotFoundException(
             "Could not locate tests/fixtures/DebugTestApp/DebugTestApp.csproj by walking up from " + AppContext.BaseDirectory);
+    }
+
+    static string LocateRuntimeUpgradeTemplate()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir, "tests", "fixtures", "RuntimeUpgradeApp");
+            if (File.Exists(Path.Combine(candidate, "RuntimeUpgradeApp.csproj"))) return candidate;
+            dir = Path.GetDirectoryName(dir);
+        }
+        throw new FileNotFoundException(
+            "Could not locate tests/fixtures/RuntimeUpgradeApp/RuntimeUpgradeApp.csproj by walking up from " + AppContext.BaseDirectory);
     }
 
     static string LocateGitFixtureTemplate()

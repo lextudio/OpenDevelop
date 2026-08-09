@@ -1,135 +1,44 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
-// 
-// Permission is hereby granted, free of charge, to any person obtaining a copy of this
-// software and associated documentation files (the "Software"), to deal in the Software
-// without restriction, including without limitation the rights to use, copy, modify, merge,
-// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
-// to whom the Software is furnished to do so, subject to the following conditions:
-// 
-// The above copyright notice and this permission notice shall be included in all copies or
-// substantial portions of the Software.
-// 
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
-// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
-// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
-// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-// DEALINGS IN THE SOFTWARE.
-
-#region Usings
-
-using System;
+﻿using System;
 using System.Collections.ObjectModel;
-using System.ComponentModel;
-using System.Windows.Controls;
 
 using ICSharpCode.Data.Core.Interfaces;
-using ICSharpCode.Data.Core.UI.UserControls;
 using ICSharpCode.SharpDevelop;
-using ICSharpCode.SharpDevelop.Gui;
+using ICSharpCode.SharpDevelop.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
-
-#endregion
 
 namespace ICSharpCode.Data.Addin.Pad
 {
-    /// <summary>
-    /// Description of DatabasesTreeViewPad.
-    /// </summary>
-    public class DatabasesTreeViewPad : AbstractPadContent, INotifyPropertyChanged
+	/// <summary>
+	/// Legacy AddInTree <c>&lt;Pad&gt;</c> shim (doc/technotes/ilspy.md "Legacy Pad migration",
+	/// 2026-08-09) - the real implementation is now <see cref="DatabasesTreeViewPadViewModel"/>.
+	/// Constructed once with a plain <c>new</c> and cached in a static field (the AddIn's
+	/// assembly is never scanned by <c>OpenDevelopMefHost</c>), then registered with the real
+	/// docking host via <c>IPaneModelHost.Add</c>. Must stay a real, constructible
+	/// <see cref="AbstractPadContent"/> for the same
+	/// <c>PadDescriptor.BringPadToFront()</c>/<c>CreatePad()</c> reason as every other shim in
+	/// this migration - and because <c>DatabaseTreeViewCommands</c> still reaches the pad through
+	/// <c>DatabasesTreeViewPad.Instance</c>.
+	/// </summary>
+	public class DatabasesTreeViewPad : AbstractPadContent
 	{
-        #region Fields
-        
-        private static DatabasesTreeViewPad _instance = null;
-        
-        private DatabasesTreeViewUserControl _control = null;
-        private DatabasesTreeView _databasesTreeView = null;
-       
-        #endregion
+		static DatabasesTreeViewPad _instance;
+		static DatabasesTreeViewPadViewModel viewModel;
 
-        #region Properties
-
-        public static DatabasesTreeViewPad Instance 
-        {
+		public static DatabasesTreeViewPad Instance {
 			get { return _instance; }
 		}
 
-        public ObservableCollection<IDatabase> Databases
-        {
-            get { return _databasesTreeView.Databases; }
-        }
+		public ObservableCollection<IDatabase> Databases => viewModel?.Databases;
 
-		/// <summary>
-		/// The <see cref="System.Windows.Forms.Control"/> representing the pad
-		/// </summary>
-		public override object Control 
+		public DatabasesTreeViewPad()
 		{
-			get 
-			{
-			    return _control;
+			_instance = this;
+			if (viewModel == null) {
+				viewModel = new DatabasesTreeViewPadViewModel();
+				(SD.Services.GetService(typeof(IPaneModelHost)) as IPaneModelHost)?.Add(viewModel);
 			}
 		}
 
-        #endregion
-
-        #region Constructor
-
-        /// <summary>
-		/// Creates a new ReportExplorer object
-		/// </summary>	
-		public DatabasesTreeViewPad() : base()
-		{
-			SD.Workbench.ActiveViewContentChanged += ActiveViewContentChanged;
-			SD.Workbench.ViewClosed += ActiveViewClosed;
-
-            _control = new DatabasesTreeViewUserControl();
-			_databasesTreeView = new DatabasesTreeView();
-            DockPanel.SetDock(_databasesTreeView, Dock.Top);
-            _control.Content.Children.Add(_databasesTreeView);
-			
-			_instance = this;
-        }
-
-        #endregion
-
-        #region Event handlers
-
-        private void ActiveViewContentChanged(object source, EventArgs e)
-		{
-
-		}
-		
-		private void ActiveViewClosed (object source, ViewContentEventArgs e)
-		{
-
-        }
-
-        #endregion
-
-        #region Methods
-
-		/// <summary>
-		/// Cleans up all used resources
-		/// </summary>
-		public override void Dispose()
-		{
-			SD.Workbench.ActiveViewContentChanged -= ActiveViewContentChanged;
-		}
-
-        #endregion
-
-        #region INotifyPropertyChanged
-
-        public event PropertyChangedEventHandler PropertyChanged;
-
-        private void OnPropertyChanged(string property)
-        {
-            if (this.PropertyChanged != null)
-            {
-                this.PropertyChanged(this, new PropertyChangedEventArgs(property));
-            }
-        }
-
-        #endregion
-    }
+		public override object Control => viewModel?.Content;
+	}
 }

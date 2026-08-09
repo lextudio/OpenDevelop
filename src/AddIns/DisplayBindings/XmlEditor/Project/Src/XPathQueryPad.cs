@@ -1,14 +1,14 @@
 ﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -16,55 +16,45 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
-using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
-using ICSharpCode.SharpDevelop.Gui;
+using ICSharpCode.SharpDevelop.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
 
 namespace ICSharpCode.XmlEditor
 {
+	/// <summary>
+	/// Legacy AddInTree <c>&lt;Pad&gt;</c> shim (doc/technotes/ilspy.md "Legacy Pad migration",
+	/// 2026-08-09) - the real implementation is now <see cref="XPathQueryPadViewModel"/>.
+	/// Constructed once with a plain <c>new</c> and cached in a static field (the AddIn's
+	/// assembly is never scanned by <c>OpenDevelopMefHost</c>), then registered with the real
+	/// docking host via <c>IPaneModelHost.Add</c>. Must stay a real, constructible
+	/// <see cref="AbstractPadContent"/> for the same
+	/// <c>PadDescriptor.BringPadToFront()</c>/<c>CreatePad()</c> reason as every other shim in
+	/// this migration.
+	/// </summary>
 	public class XPathQueryPad : AbstractPadContent
 	{
-		public const string XPathQueryControlProperties = "XPathQueryControl.Options";
-		
-		XPathQueryControl xpathQueryControl;
-		bool disposed;
 		static XPathQueryPad instance;
-		
-		public XPathQueryPad()
-		{
-			xpathQueryControl = new XPathQueryControl();
-			SD.Workbench.ActiveViewContentChanged += ActiveViewContentChanged;
-			Properties properties = PropertyService.NestedProperties(XPathQueryControlProperties);
-			xpathQueryControl.SetMemento(properties);
-			instance = this;
-		}
-		
+		static XPathQueryPadViewModel viewModel;
+
 		public static XPathQueryPad Instance {
 			get { return instance; }
 		}
-		
-		/// <summary>
-		/// The <see cref="System.Windows.Forms.Control"/> representing the pad.
-		/// </summary>
-		public override object Control {
-			get { return xpathQueryControl; }
-		}
-		
-		public override void Dispose()
+
+		public XPathQueryPad()
 		{
-			if (!disposed) {
-				disposed = true;
-				SD.Workbench.ActiveViewContentChanged -= ActiveViewContentChanged;
-				Properties properties = xpathQueryControl.CreateMemento();
-				PropertyService.SetNestedProperties(XPathQueryControlProperties, properties);
+			instance = this;
+			if (viewModel == null) {
+				viewModel = new XPathQueryPadViewModel();
+				(SD.Services.GetService(typeof(IPaneModelHost)) as IPaneModelHost)?.Add(viewModel);
 			}
 		}
-		
-		void ActiveViewContentChanged(object source, EventArgs e)
+
+		public override object Control => viewModel?.Content;
+
+		public override void Dispose()
 		{
-			xpathQueryControl.ActiveWindowChanged();
+			viewModel?.Dispose();
 		}
 	}
 }

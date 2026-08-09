@@ -16,83 +16,35 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
-using System.Windows.Controls;
-using System.Windows.Input;
-
-using Debugger.AddIn.Pads.Controls;
-using Debugger.AddIn.Service.Dap;
-using ICSharpCode.AvalonEdit.Document;
-using ICSharpCode.Core;
-using ICSharpCode.Core.Presentation;
-using ICSharpCode.SharpDevelop;
-using ICSharpCode.SharpDevelop.Debugging;
-using ICSharpCode.SharpDevelop.Services;
+using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.SharpDevelop.Workbench;
 
 namespace ICSharpCode.SharpDevelop.Gui.Pads
 {
-	public class ConsolePad : AbstractConsolePad
+	/// <summary>
+	/// Legacy AddInTree <c>&lt;Pad&gt;</c> shim (doc/technotes/ilspy.md "Legacy Pad migration",
+	/// 2026-08-09) - the real implementation is now <see cref="ConsolePadViewModel"/>.
+	/// Constructed once with a plain <c>new</c> and cached in a static field (Debugger.AddIn's
+	/// assembly is never scanned by <c>OpenDevelopMefHost</c>), then registered with the real
+	/// docking host via <c>IPaneModelHost.Add</c>. Must stay a real, constructible
+	/// <see cref="AbstractPadContent"/> for the same
+	/// <c>PadDescriptor.BringPadToFront()</c>/<c>CreatePad()</c> reason as every other shim in
+	/// this migration.
+	/// </summary>
+	public class ConsolePad : AbstractPadContent
 	{
-		const string debuggerConsoleToolBarTreePath = "/SharpDevelop/Pads/ConsolePad/ToolBar";
-
-		protected override bool AcceptCommand(string command)
-		{
-			if (!string.IsNullOrEmpty(command)) {
-				EvaluateAsync(command).FireAndForget();
-			}
-			return true;
-		}
-
-		async System.Threading.Tasks.Task EvaluateAsync(string code)
-		{
-			var session = WindowsDebugger.CurrentSession;
-			if (session == null) {
-				Append(Environment.NewLine + "No process is being debugged");
-				return;
-			}
-			if (!session.IsPaused) {
-				Append(Environment.NewLine + "The process is running");
-				return;
-			}
-
-			try {
-				var result = await WindowsDebugger.EvaluateAsync(code, "repl").ConfigureAwait(true);
-				if (!string.IsNullOrEmpty(result.Value)) {
-					Append(Environment.NewLine + result.Value);
-				}
-			} catch (DapEvaluationException ex) {
-				Append(Environment.NewLine + ex.Message);
-			}
-		}
-
-		protected override string Prompt {
-			get {
-				return "> ";
-			}
-		}
+		static ConsolePadViewModel viewModel;
 
 		public ConsolePad()
 		{
-			WindowsDebugger debugger = (WindowsDebugger)SD.Debugger;
+			if (viewModel == null) {
+				viewModel = new ConsolePadViewModel();
+				(SD.Services.GetService(typeof(IPaneModelHost)) as IPaneModelHost)?.Add(viewModel);
+			}
 		}
 
-		protected override void AbstractConsolePadTextEntered(object sender, TextCompositionEventArgs e)
-		{
-			if (e.Text != ".")
-				return;
-			var frame = WindowsDebugger.CurrentStackFrame;
-			if (frame == null || string.IsNullOrEmpty(frame.FilePath))
-				return;
-			var fileName = new FileName(frame.FilePath);
-			var textLocation = new TextLocation(frame.Line, frame.Column);
-			var binding = DebuggerDotCompletion.PrepareDotCompletion(console.CommandText, SD.ParserService.ResolveContext(fileName, textLocation));
-			if (binding == null) return;
-			binding.HandleKeyPressed(console.TextEditor, '.');
-		}
+		public override object Control => viewModel?.Content;
 
-		protected override ToolBar BuildToolBar()
-		{
-			return ToolBarService.CreateToolBar(console, this, debuggerConsoleToolBarTreePath);
-		}
+		public override object InitiallyFocusedControl => viewModel?.Content;
 	}
 }

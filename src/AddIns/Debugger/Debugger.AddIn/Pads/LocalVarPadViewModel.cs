@@ -1,0 +1,96 @@
+// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// software and associated documentation files (the "Software"), to deal in the Software
+// without restriction, including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+// to whom the Software is furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all copies or
+// substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+
+using Debugger.AddIn.Pads.Controls;
+using Debugger.AddIn.TreeModel;
+using ICSharpCode.Core.Presentation;
+using ICSharpCode.SharpDevelop.Services;
+using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpyX.TreeView;
+using ICSharpCode.ILSpy.Controls.TreeView;
+
+namespace ICSharpCode.SharpDevelop.Gui.Pads
+{
+	/// <summary>
+	/// Modern (doc/technotes/ilspy.md "Legacy Pad migration", 2026-08-09) replacement for the
+	/// legacy AddInTree-registered <see cref="LocalVarPad"/> (AddInTree pad id "LocalVarPad").
+	/// Not a MEF part - Debugger.AddIn's assembly is never scanned by <c>OpenDevelopMefHost</c>
+	/// - so it is constructed with a plain <c>new</c> by the <see cref="LocalVarPad"/> shim on
+	/// first real use and registered with the real docking host via <c>IPaneModelHost.Add</c>.
+	/// </summary>
+	sealed class LocalVarPadViewModel : ToolPaneModel
+	{
+		readonly SharpTreeView tree;
+
+		SharpTreeNodeCollection Items {
+			get { return tree.Root.Children; }
+		}
+
+		public LocalVarPadViewModel()
+		{
+			Title = "Locals";
+			ContentId = "LocalVarPad";
+			IsVisible = false; // Matches the legacy Pad's `defaultPosition = "Bottom, Hidden"`.
+			IsCloseable = true;
+			LegacyPadClass = typeof(LocalVarPad).FullName;
+			PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Bottom;
+
+			var res = new CommonResources();
+			res.InitializeComponent();
+
+			tree = new SharpTreeView();
+			tree.Root = new SharpTreeNode();
+			tree.ShowRoot = false;
+			tree.View = (GridView)res["variableGridView"];
+			tree.ItemContainerStyle = (Style)res["itemContainerStyle"];
+			tree.SetValue(GridViewColumnAutoSize.AutoWidthProperty, "50%;25%;25%");
+			Content = tree;
+
+			WindowsDebugger.RefreshingPads += RefreshPad;
+			RefreshPad();
+		}
+
+		void RefreshPad()
+		{
+			var session = WindowsDebugger.CurrentSession;
+			this.Items.Clear();
+			if (session != null && session.IsPaused && WindowsDebugger.CurrentStackFrame != null) {
+				foreach (var node in ValueNode.GetLocalVariables().ToList()) {
+					this.Items.Add(node.ToSharpTreeNode());
+				}
+			}
+		}
+
+		/// <summary>Used by the DevFlow "od.debug.pad-snapshot" test action.</summary>
+		public Task<IEnumerable<object>> GetSnapshotAsync()
+		{
+			RefreshPad();
+			IEnumerable<object> items = this.Items
+				.OfType<SharpTreeNodeAdapter>()
+				.Select(n => (object)new { n.Node.Name, n.Node.Value, n.Node.Type });
+			return Task.FromResult(items);
+		}
+	}
+}

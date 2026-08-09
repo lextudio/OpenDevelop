@@ -18,86 +18,44 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
-using System.Windows.Controls;
-using System.Windows.Input;
 
 using Debugger.AddIn.Service.Dap;
-using ICSharpCode.Core;
-using ICSharpCode.Core.Presentation;
-using ICSharpCode.SharpDevelop.Services;
+using ICSharpCode.SharpDevelop.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
 
 namespace ICSharpCode.SharpDevelop.Gui.Pads
 {
+	/// <summary>
+	/// Legacy AddInTree <c>&lt;Pad&gt;</c> shim (doc/technotes/ilspy.md "Legacy Pad migration",
+	/// 2026-08-09) - the real implementation is now <see cref="ThreadsPadViewModel"/>.
+	/// Constructed once with a plain <c>new</c> and cached in a static field (Debugger.AddIn's
+	/// assembly is never scanned by <c>OpenDevelopMefHost</c>), then registered with the real
+	/// docking host via <c>IPaneModelHost.Add</c>. Must stay a real, constructible
+	/// <see cref="AbstractPadContent"/> for the same
+	/// <c>PadDescriptor.BringPadToFront()</c>/<c>CreatePad()</c> reason as every other shim in
+	/// this migration.
+	/// </summary>
 	public class ThreadsPad : AbstractPadContent
 	{
-		ListView listView;
-
-		public override object Control {
-			get { return listView; }
-		}
+		static ThreadsPadViewModel viewModel;
 
 		public ThreadsPad()
 		{
-			var res = new CommonResources();
-			res.InitializeComponent();
-
-			listView = new ListView();
-			listView.View = (GridView)res["threadsGridView"];
-			listView.MouseDoubleClick += listView_MouseDoubleClick;
-			listView.SetValue(GridViewColumnAutoSize.AutoWidthProperty, "70;100%;75;75");
-
-			WindowsDebugger.RefreshingPads += RefreshPad;
-			RefreshPad();
-		}
-
-		async void RefreshPad()
-		{
-			await RefreshPadAsync().ConfigureAwait(true);
-		}
-
-		async Task<IReadOnlyList<ThreadItem>> RefreshPadAsync()
-		{
-			var session = WindowsDebugger.CurrentSession;
-			if (session == null || !session.IsPaused) {
-				listView.ItemsSource = null;
-				return Array.Empty<ThreadItem>();
+			if (viewModel == null) {
+				viewModel = new ThreadsPadViewModel();
+				(SD.Services.GetService(typeof(IPaneModelHost)) as IPaneModelHost)?.Add(viewModel);
 			}
-
-			var threads = await session.GetThreadsAsync().ConfigureAwait(true);
-			var items = new List<ThreadItem>();
-			foreach (var thread in threads) {
-				items.Add(new ThreadItem(thread));
-			}
-			listView.ItemsSource = items;
-			return items;
 		}
+
+		public override object Control => viewModel?.Content;
 
 		/// <summary>Used by the DevFlow "od.debug.pad-snapshot" test action.</summary>
-		public async Task<IEnumerable<object>> GetSnapshotAsync()
+		public Task<IEnumerable<object>> GetSnapshotAsync()
 		{
-			var items = await RefreshPadAsync().ConfigureAwait(true);
-			return items.Select(i => (object)new { i.ID, i.Name });
-		}
-
-		void listView_MouseDoubleClick(object sender, MouseButtonEventArgs e)
-		{
-			ThreadItem item = listView.SelectedItem as ThreadItem;
-			if (item == null)
-				return;
-
-			var session = WindowsDebugger.CurrentSession;
-			if (session != null) {
-				if (session.IsPaused) {
-					WindowsDebugger.CurrentThread = item.Thread;
-					WindowsDebugger.Instance.JumpToCurrentLine();
-					WindowsDebugger.RefreshPads();
-				} else {
-					MessageService.ShowMessage("${res:MainWindow.Windows.Debug.Threads.CannotSwitchWhileRunning}", "${res:MainWindow.Windows.Debug.Threads.ThreadSwitch}");
-				}
-			}
+			if (viewModel == null)
+				return Task.FromResult<IEnumerable<object>>(Array.Empty<object>());
+			return viewModel.GetSnapshotAsync();
 		}
 	}
 

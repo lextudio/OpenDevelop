@@ -904,6 +904,13 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			var pad = FindPad(padName);
 			if (pad == null)
 				return JsonSerializer.Serialize(new { found = false, padName });
+			// A shim-backed migrated pad (e.g. the Debugger.AddIn pads: the shim's static model is
+			// only constructed by PadDescriptor.CreatePad, and ActivatePad's MEF route only finds
+			// the model once that ran) stays an unregistered legacy AvalonPadContent otherwise.
+			// Materialize it first so ActivatePad routes to the model and the pad becomes a real
+			// ToolPaneModel anchorable (legacy pads: CreatePad is what the legacy path would do
+			// lazily on first show anyway).
+			pad.CreatePad();
 			SD.Workbench.ActivatePad(pad);
 
 			// A migrated (MEF ToolPaneModel-backed) pad's control tree, unlike a legacy Pad's

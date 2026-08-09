@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Deliberately an out-of-support runtime the test host is not expected to have installed:
+         it still compiles (the reference assemblies come from NuGet) but cannot be launched, which
+         is what RuntimeUpgrade_Net6BuildsButCannotDebug_Net10BuildsAndDebugs asserts before it
+         retargets this file to net10.0. Keep this value on its own line - the test rewrites it. -->
+    <TargetFramework>net6.0</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- The suite treats an out-of-support target as an expected condition, not a build problem. -->
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
+  </PropertyGroup>
+  <!-- Explicit Compile item: this repo's MSBuildBasedProject/RoslynWorkspaceHelper reads
+       project.GetItemsOfType(ItemType.Compile) to build the Roslyn workspace, and does not expand
+       the SDK's implicit-glob Compile items - without this, ParserService.Parse() (and therefore
+       DevFlow's od.open-file/od.debug.set-breakpoint) fails with a NullReferenceException. -->
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+  </ItemGroup>
+</Project>

@@ -18,92 +18,45 @@
 
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.Linq;
 using System.Threading.Tasks;
-using System.Windows.Controls;
-using System.Windows.Input;
 using System.Windows.Media;
 
 using Debugger.AddIn.Service.Dap;
-using ICSharpCode.Core.Presentation;
-using ICSharpCode.Core;
-using ICSharpCode.SharpDevelop.Services;
+using ICSharpCode.SharpDevelop.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
 
 namespace ICSharpCode.SharpDevelop.Gui.Pads
 {
+	/// <summary>
+	/// Legacy AddInTree <c>&lt;Pad&gt;</c> shim (doc/technotes/ilspy.md "Legacy Pad migration",
+	/// 2026-08-09) - the real implementation is now <see cref="CallStackPadViewModel"/>.
+	/// Constructed once with a plain <c>new</c> and cached in a static field (Debugger.AddIn's
+	/// assembly is never scanned by <c>OpenDevelopMefHost</c>), then registered with the real
+	/// docking host via <c>IPaneModelHost.Add</c>. Must stay a real, constructible
+	/// <see cref="AbstractPadContent"/> for the same
+	/// <c>PadDescriptor.BringPadToFront()</c>/<c>CreatePad()</c> reason as every other shim in
+	/// this migration.
+	/// </summary>
 	public class CallStackPad : AbstractPadContent
 	{
-		ListView listView;
-
-		public override object Control {
-			get { return this.listView; }
-		}
+		static CallStackPadViewModel viewModel;
 
 		public CallStackPad()
 		{
-			var res = new CommonResources();
-			res.InitializeComponent();
-
-			listView = new ListView();
-			listView.View = (GridView)res["callstackGridView"];
-			listView.MouseDoubleClick += listView_MouseDoubleClick;
-			listView.SetValue(GridViewColumnAutoSize.AutoWidthProperty, "100%");
-
-			WindowsDebugger.RefreshingPads += RefreshPad;
-			RefreshPad();
-		}
-
-		void listView_MouseDoubleClick(object sender, MouseButtonEventArgs e)
-		{
-			CallStackItem item = listView.SelectedItem as CallStackItem;
-			if (item == null || item.Frame == null)
-				return;
-
-			if (WindowsDebugger.CurrentSession != null && WindowsDebugger.CurrentSession.IsPaused) {
-				WindowsDebugger.CurrentStackFrame = item.Frame;
-				WindowsDebugger.CurrentSession.ActiveFrameId = item.Frame.Id;
-				WindowsDebugger.Instance.JumpToCurrentLine();
-				WindowsDebugger.RefreshPads();
-			} else {
-				MessageService.ShowMessage("${res:MainWindow.Windows.Debug.CallStack.CannotSwitchWhileRunning}", "${res:MainWindow.Windows.Debug.CallStack.FunctionSwitch}");
+			if (viewModel == null) {
+				viewModel = new CallStackPadViewModel();
+				(SD.Services.GetService(typeof(IPaneModelHost)) as IPaneModelHost)?.Add(viewModel);
 			}
 		}
 
-		async void RefreshPad()
-		{
-			await RefreshPadAsync().ConfigureAwait(true);
-		}
-
-		async Task<IReadOnlyList<CallStackItem>> RefreshPadAsync()
-		{
-			var session = WindowsDebugger.CurrentSession;
-			var thread = WindowsDebugger.CurrentThread;
-			if (session == null || thread == null || !session.IsPaused) {
-				listView.ItemsSource = null;
-				return Array.Empty<CallStackItem>();
-			}
-
-			var frames = await session.GetStackFramesAsync(thread.Id).ConfigureAwait(true);
-			var items = new ObservableCollection<CallStackItem>();
-			foreach (var frame in frames) {
-				items.Add(new CallStackItem {
-					Frame = frame,
-					ImageSource = SD.ResourceService.GetImageSource("Icons.16x16.Method"),
-					Name = frame.Name + (frame.Line > 0 ? ":" + frame.Line : string.Empty),
-					HasSymbols = !string.IsNullOrEmpty(frame.FilePath)
-				});
-			}
-			listView.ItemsSource = items;
-			return items;
-		}
+		public override object Control => viewModel?.Content;
 
 		/// <summary>Used by the DevFlow "od.debug.pad-snapshot" test action.</summary>
-		public async Task<IEnumerable<object>> GetSnapshotAsync()
+		public Task<IEnumerable<object>> GetSnapshotAsync()
 		{
-			var items = await RefreshPadAsync().ConfigureAwait(true);
-			return items.Select(i => (object)new { i.Frame.Id, i.Name, i.Frame.FilePath, i.Frame.Line, i.Frame.Column });
+			if (viewModel == null)
+				return Task.FromResult<IEnumerable<object>>(Array.Empty<object>());
+			return viewModel.GetSnapshotAsync();
 		}
 	}
 

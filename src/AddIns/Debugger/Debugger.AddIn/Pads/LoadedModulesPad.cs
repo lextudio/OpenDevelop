@@ -18,74 +18,44 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
-using System.Windows.Controls;
-using System.Windows.Input;
 
 using Debugger.AddIn.Service.Dap;
-using ICSharpCode.Core;
-using ICSharpCode.Core.Presentation;
-using ICSharpCode.SharpDevelop.Services;
+using ICSharpCode.SharpDevelop.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
 
 namespace ICSharpCode.SharpDevelop.Gui.Pads
 {
+	/// <summary>
+	/// Legacy AddInTree <c>&lt;Pad&gt;</c> shim (doc/technotes/ilspy.md "Legacy Pad migration",
+	/// 2026-08-09) - the real implementation is now <see cref="LoadedModulesPadViewModel"/>.
+	/// Constructed once with a plain <c>new</c> and cached in a static field (Debugger.AddIn's
+	/// assembly is never scanned by <c>OpenDevelopMefHost</c>), then registered with the real
+	/// docking host via <c>IPaneModelHost.Add</c>. Must stay a real, constructible
+	/// <see cref="AbstractPadContent"/> for the same
+	/// <c>PadDescriptor.BringPadToFront()</c>/<c>CreatePad()</c> reason as every other shim in
+	/// this migration.
+	/// </summary>
 	public class LoadedModulesPad : AbstractPadContent
 	{
-		ListView listView;
-
-		public override object Control {
-			get { return listView; }
-		}
+		static LoadedModulesPadViewModel viewModel;
 
 		public LoadedModulesPad()
 		{
-			var res = new CommonResources();
-			res.InitializeComponent();
-
-			listView = new ListView();
-			listView.View = (GridView)res["loadedModulesGridView"];
-			listView.SetValue(GridViewColumnAutoSize.AutoWidthProperty, "50%;70;50%;35;120");
-			listView.MouseRightButtonUp += OnListViewMouseRightButtonUp;
-
-			WindowsDebugger.RefreshingPads += RefreshPad;
-			RefreshPad();
-		}
-
-		void OnListViewMouseRightButtonUp(object sender, MouseButtonEventArgs e)
-		{
-			var module = listView.SelectedItem as ModuleItem;
-			if (module == null)
-				return;
-			MenuService.ShowContextMenu(listView, module, "/SharpDevelop/Services/DebuggerService/ModuleContextMenu");
-			e.Handled = true;
-		}
-
-		async void RefreshPad()
-		{
-			await RefreshPadAsync().ConfigureAwait(true);
-		}
-
-		async Task<IReadOnlyList<ModuleItem>> RefreshPadAsync()
-		{
-			var session = WindowsDebugger.CurrentSession;
-			var loadedModules = new List<ModuleItem>();
-			if (session != null && session.IsPaused) {
-				var modules = await session.GetModulesAsync().ConfigureAwait(true);
-				foreach (var module in modules) {
-					loadedModules.Add(new ModuleItem(module));
-				}
+			if (viewModel == null) {
+				viewModel = new LoadedModulesPadViewModel();
+				(SD.Services.GetService(typeof(IPaneModelHost)) as IPaneModelHost)?.Add(viewModel);
 			}
-			listView.ItemsSource = loadedModules;
-			return loadedModules;
 		}
+
+		public override object Control => viewModel?.Content;
 
 		/// <summary>Used by the DevFlow "od.debug.pad-snapshot" test action.</summary>
-		public async Task<IEnumerable<object>> GetSnapshotAsync()
+		public Task<IEnumerable<object>> GetSnapshotAsync()
 		{
-			var items = await RefreshPadAsync().ConfigureAwait(true);
-			return items.Select(i => (object)new { i.Name, i.Path });
+			if (viewModel == null)
+				return Task.FromResult<IEnumerable<object>>(Array.Empty<object>());
+			return viewModel.GetSnapshotAsync();
 		}
 	}
 

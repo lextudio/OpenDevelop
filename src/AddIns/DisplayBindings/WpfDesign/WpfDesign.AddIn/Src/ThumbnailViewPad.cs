@@ -1,14 +1,14 @@
 ﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -16,53 +16,34 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
-using System.Windows;
-using System.Windows.Controls;
-
-using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
+using ICSharpCode.SharpDevelop.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
-using ICSharpCode.WpfDesign.Designer.ThumbnailView;
 
 namespace ICSharpCode.WpfDesign.AddIn
 {
+	/// <summary>
+	/// Legacy AddInTree <c>&lt;Pad&gt;</c> shim (doc/technotes/ilspy.md "Legacy Pad migration",
+	/// 2026-08-09) - the real implementation is now <see cref="ThumbnailViewPadViewModel"/>.
+	/// Constructed once with a plain <c>new</c> and cached in a static field (the AddIn's
+	/// assembly is never scanned by <c>OpenDevelopMefHost</c>), then registered with the real
+	/// docking host via <c>IPaneModelHost.Add</c>. Must stay a real, constructible
+	/// <see cref="AbstractPadContent"/> for the same
+	/// <c>PadDescriptor.BringPadToFront()</c>/<c>CreatePad()</c> reason as every other shim in
+	/// this migration.
+	/// </summary>
 	public class ThumbnailViewPad : AbstractPadContent
 	{
-		ContentPresenter contentControl = new ContentPresenter();
+		static ThumbnailViewPadViewModel viewModel;
 
-		ThumbnailView thumbnailView = new ThumbnailView();
-
-		TextBlock notAvailableTextBlock = new TextBlock {
-			Text = StringParser.Parse("${res:ICSharpCode.SharpDevelop.Gui.OutlinePad.NotAvailable}"),
-			TextWrapping = TextWrapping.Wrap
-		};
-		
 		public ThumbnailViewPad()
 		{
-			SD.Workbench.ActiveViewContentChanged += WorkbenchActiveViewContentChanged;
-			WorkbenchActiveViewContentChanged(null, null);
+			if (viewModel == null) {
+				viewModel = new ThumbnailViewPadViewModel();
+				(SD.Services.GetService(typeof(IPaneModelHost)) as IPaneModelHost)?.Add(viewModel);
+			}
 		}
 
-		void WorkbenchActiveViewContentChanged(object sender, EventArgs e)
-		{
-			WpfViewContent wpfView = SD.Workbench.ActiveViewContent as WpfViewContent;
-			if (wpfView != null)
-			{
-				thumbnailView.DesignSurface = wpfView.DesignSurface;
-				contentControl.Content = thumbnailView;
-			} else {
-				contentControl.Content = notAvailableTextBlock;
-			}
-		}
-		
-		/// <summary>
-		/// The <see cref="System.Windows.Forms.Control"/> representing the pad
-		/// </summary>
-		public override object Control {
-			get {
-				return contentControl;
-			}
-		}
+		public override object Control => viewModel?.Content;
 	}
 }

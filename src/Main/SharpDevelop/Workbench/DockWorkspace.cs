@@ -160,14 +160,24 @@ internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrateg
         if (pane == null)
             return false;
         pane.Show();
-        // pane.Show() only flips the model's IsVisible. When the pane was re-added on demand (a
-        // layout restore keeps exactly the panes a layout file lists, so a re-shown pad's
-        // anchorable is freshly docked into an existing group), the anchorable is NOT
-        // auto-activated, leaving the requested tab hidden behind whatever shares its group.
-        // Select and activate it explicitly - the semantics ActivatePad gives legacy pads.
+        // pane.Show() only flips the model's IsVisible. The anchorable only follows the model
+        // through the LayoutItem's OneWay Visibility sync (LayoutAnchorableItem) - nothing
+        // unhides it when the model's IsVisible flips to true, so an anchorable sitting in the
+        // Hidden area (a default-hidden pad, or one the user closed: BeforeInsertAnchorable
+        // routes IsVisible=false panes there since the incremental-layout change, 2026-08-09)
+        // would stay hidden forever. Show() it explicitly - it re-inserts the anchorable at its
+        // previous container (BeforeInsertAnchorable opts out for hidden anchorables, whose
+        // AddToLayout guard would otherwise throw).
         if (Layout?.Descendents().OfType<LayoutAnchorable>()
             .FirstOrDefault(a => a.ContentId == contentId) is LayoutAnchorable anchorable)
         {
+            if (anchorable.IsHidden)
+                anchorable.Show();
+            // When the pane was re-added on demand (a layout restore keeps exactly the panes a
+            // layout file lists, so a re-shown pad's anchorable is freshly docked into an
+            // existing group), the anchorable is NOT auto-activated, leaving the requested tab
+            // hidden behind whatever shares its group. Select and activate it explicitly - the
+            // semantics ActivatePad gives legacy pads.
             anchorable.IsSelected = true;
             anchorable.IsActive = true;
         }
@@ -303,6 +313,15 @@ internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrateg
             // anchorable) never finds this one, so the pad docks correctly but never becomes the
             // front-most tab in its group.
             anchorableToShow.ContentId = pane.ContentId;
+            if (anchorableToShow.IsHidden) {
+                // Re-show of a hidden anchorable (LayoutAnchorable.Show()): AddToLayout's own
+                // guard rejects an anchorable that is still marked hidden, so this strategy must
+                // not try to place it itself. HideAnchorable recorded the anchorable's previous
+                // container/index, so falling back to Show()'s default re-insertion restores the
+                // pad where it was (PreferredDockSide if it had never been docked before) - the
+                // same placement this branch would have chosen anyway.
+                return false;
+            }
             anchorableToShow.AddToLayout(dockingManager, ToShowStrategy(side));
             if (!pane.IsVisible) {
                 // A layout switch is incremental (AvalonDockLayout.LoadLayout, 2026-08-09): panes

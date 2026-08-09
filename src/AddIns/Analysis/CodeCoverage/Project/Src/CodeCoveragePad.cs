@@ -1,14 +1,14 @@
 ﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -17,103 +17,58 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+
 using ICSharpCode.SharpDevelop;
-using ICSharpCode.SharpDevelop.Project;
+using ICSharpCode.SharpDevelop.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
 
 namespace ICSharpCode.CodeCoverage
 {
+	/// <summary>
+	/// Legacy AddInTree <c>&lt;Pad&gt;</c> shim (doc/technotes/ilspy.md "Legacy Pad migration",
+	/// 2026-08-09) - the real implementation is now <see cref="CodeCoveragePadViewModel"/>.
+	/// Constructed once with a plain <c>new</c> and cached in a static field (the AddIn's
+	/// assembly is never scanned by <c>OpenDevelopMefHost</c>), then registered with the real
+	/// docking host via <c>IPaneModelHost.Add</c>. Must stay a real, constructible
+	/// <see cref="AbstractPadContent"/> for the same
+	/// <c>PadDescriptor.BringPadToFront()</c>/<c>CreatePad()</c> reason as every other shim in
+	/// this migration - and because <c>CodeCoverageService</c>/<c>ShowSourceCodeCommand</c>/
+	/// <c>ShowVisitCountCommand</c> still reach the pad through <c>CodeCoveragePad.Instance</c>.
+	/// </summary>
 	public class CodeCoveragePad : AbstractPadContent
 	{
 		static CodeCoveragePad instance;
-		bool disposed;
-		CodeCoverageControl codeCoverageControl;
-		
+		static CodeCoveragePadViewModel viewModel;
+
+		public static CodeCoveragePad Instance {
+			get { return instance; }
+		}
+
 		public CodeCoveragePad()
 		{
 			instance = this;
-			
-			codeCoverageControl = new CodeCoverageControl();
-			codeCoverageControl.UpdateToolbar();
-					
-			SD.ProjectService.SolutionClosed += SolutionClosed;
-			SD.ProjectService.SolutionOpened += SolutionLoaded;
-			
-			ShowSourceCodePanel = CodeCoverageOptions.ShowSourceCodePanel;
-			ShowVisitCountPanel = CodeCoverageOptions.ShowVisitCountPanel;
-		}
-		
-		public static CodeCoveragePad Instance {
-			get {
-				return instance;
+			if (viewModel == null) {
+				viewModel = new CodeCoveragePadViewModel();
+				(SD.Services.GetService(typeof(IPaneModelHost)) as IPaneModelHost)?.Add(viewModel);
 			}
 		}
 
-		public override object Control {
-			get {
-				return codeCoverageControl;
-			}
-		}
-		
-		/// <summary>
-		/// Cleans up all used resources
-		/// </summary>
-		public override void Dispose()
-		{
-			if (!disposed) {
-				disposed = true;
-				SD.ProjectService.SolutionClosed -= SolutionClosed;
-				SD.ProjectService.SolutionOpened -= SolutionLoaded;
-				// CodeCoverageControl is a plain WPF UserControl now (no ElementHost/WinForms
-				// child controls needing an explicit Dispose() the way the old version did).
-			}
-		}
-		
-		public void UpdateToolbar()
-		{
-			codeCoverageControl.UpdateToolbar();
-		}
-		
-		public void ShowResults(CodeCoverageResults results)
-		{
-			if (results != null) {
-				codeCoverageControl.AddModules(results.Modules);
-			}
-		}
-		
-		public void ClearCodeCoverageResults()
-		{
-			codeCoverageControl.Clear();
-		}
-		
+		public override object Control => viewModel?.Content;
+
+		public void UpdateToolbar() => viewModel?.UpdateToolbar();
+
+		public void ShowResults(CodeCoverageResults results) => viewModel?.ShowResults(results);
+
+		public void ClearCodeCoverageResults() => viewModel?.ClearCodeCoverageResults();
+
 		public bool ShowSourceCodePanel {
-			get {
-				return codeCoverageControl.ShowSourceCodePanel;
-			}
-			set {
-				codeCoverageControl.ShowSourceCodePanel = value;
-			}
+			get { return viewModel?.ShowSourceCodePanel ?? false; }
+			set { if (viewModel != null) viewModel.ShowSourceCodePanel = value; }
 		}
-		
+
 		public bool ShowVisitCountPanel {
-			get {
-				return codeCoverageControl.ShowVisitCountPanel;
-			}
-			set {
-				codeCoverageControl.ShowVisitCountPanel = value;
-			}
-		}
-		
-		void SolutionLoaded(object sender, EventArgs e)
-		{
-			codeCoverageControl.UpdateToolbar();
-		}
-		
-		void SolutionClosed(object sender, EventArgs e)
-		{
-			ClearCodeCoverageResults();
-			codeCoverageControl.UpdateToolbar();
-			ClearCodeCoverageResults();
+			get { return viewModel?.ShowVisitCountPanel ?? false; }
+			set { if (viewModel != null) viewModel.ShowVisitCountPanel = value; }
 		}
 	}
 }

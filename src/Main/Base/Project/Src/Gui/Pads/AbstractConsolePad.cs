@@ -1,14 +1,14 @@
 ﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
-// 
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -39,295 +39,206 @@ using TextLocation = ICSharpCode.AvalonEdit.Document.TextLocation;
 
 namespace ICSharpCode.SharpDevelop.Gui
 {
-	public abstract class AbstractConsolePad : AbstractPadContent, IEditable, IPositionable, IToolsHost
+	/// <summary>
+	/// Legacy interactive-console pad base (doc/technotes/ilspy.md "Legacy Pad migration",
+	/// 2026-08-09): the console body now lives in <see cref="ConsolePadCore"/> (shared with the
+	/// migrated <c>ConsolePadViewModel</c>), this class keeps its historical
+	/// <see cref="AbstractPadContent"/> surface and delegates to a core built from the subclass's
+	/// overrides. Still the base of the unmigrated <c>FSharpInteractive</c> pad.
+	/// </summary>
+	public abstract class AbstractConsolePad : AbstractPadContent, IConsolePadHost, IEditable, IPositionable, IToolsHost
 	{
 		const string toolBarTreePath = "/SharpDevelop/Pads/CommonConsole/ToolBar";
-		
-		Grid panel;
-		protected ConsoleControl console;
-		ToolBar toolbar;
-		
-		bool cleared;
-		IList<string> history;
-		int historyPointer;
-		
+
+		readonly ConsolePadCore core;
+
+		protected ConsoleControl console => core.Console;
+
 		protected AbstractConsolePad()
 		{
-			this.panel = new Grid();
-			
-			this.console = new ConsoleControl();
-			
-			// creating the toolbar accesses the WordWrap property, so we must do this after creating the console
-			this.toolbar = BuildToolBar();
-			this.toolbar.SetValue(DockPanel.DockProperty, Dock.Top);
-			
-			panel.Children.Add(toolbar);
-			panel.Children.Add(console);
-			
-			panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-			panel.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-
-			Grid.SetRow(console, 1);
-			
-			this.history = new List<string>();
-			
-			this.console.editor.TextArea.PreviewKeyDown += (sender, e) => {
-				e.Handled = HandleInput(e.Key);
-			};
-			
-			this.console.editor.TextArea.TextEntered += AbstractConsolePadTextEntered;
-			
-			this.InitializeConsole();
+			core = new ConsolePadCore(() => Prompt, AcceptCommand, e => AbstractConsolePadTextEntered(this, e), BuildToolBar);
 		}
 
-		protected virtual void AbstractConsolePadTextEntered(object sender, TextCompositionEventArgs e)
+		protected virtual ToolBar BuildToolBar(ConsoleControl console)
 		{
+			return ToolBarService.CreateToolBar(console, this, toolBarTreePath);
 		}
-		
-		protected virtual ToolBar BuildToolBar()
-		{
-			return ToolBarService.CreateToolBar(panel, this, toolBarTreePath);
-		}
-		
+
 		public virtual ITextEditor TextEditor {
 			get {
-				return console.TextEditor;
+				return core.TextEditor;
 			}
 		}
-		
+
 		public override object Control {
-			get { return panel; }
+			get { return core.Content; }
 		}
-		
+
 		public override object InitiallyFocusedControl {
 			get { return console.editor; }
 		}
-		
-		string GetText()
-		{
-			return this.TextEditor.Document.Text;
-		}
-		
+
 		/// <summary>
 		/// Creates a snapshot of the editor content.
 		/// This method is thread-safe.
 		/// </summary>
 		public ITextSource CreateSnapshot()
 		{
-			return this.TextEditor.Document.CreateSnapshot();
+			return core.CreateSnapshot();
 		}
-		
+
 		string IEditable.Text {
 			get {
-				return GetText();
+				return core.Text;
 			}
 		}
-		
+
 		public virtual IDocument GetDocumentForFile(OpenedFile file)
 		{
 			return null;
 		}
-		
+
 		#region IPositionable implementation
 		void IPositionable.JumpTo(int line, int column)
 		{
 			this.TextEditor.JumpTo(line, column);
 		}
-		
+
 		int IPositionable.Line {
 			get {
 				return this.TextEditor.Caret.Line;
 			}
 		}
-		
+
 		int IPositionable.Column {
 			get {
 				return this.TextEditor.Caret.Column;
 			}
 		}
 		#endregion
-		
+
 		object IToolsHost.ToolsContent {
 			// TextEditorSideBar (WinForms) is out of MVP scope - no tools content in this build.
 			get { return null; }
 		}
-		
-		protected virtual bool HandleInput(Key key) {
-			switch (key) {
-				case Key.Back:
-				case Key.Delete:
-					if (console.editor.SelectionStart == 0 &&
-					    console.editor.SelectionLength == console.editor.Document.TextLength) {
-						ClearConsole();
-						return true;
-					}
-					return false;
-				case Key.Down:
-					if (console.CommandText.Contains("\n"))
-						return false;
-					this.historyPointer = Math.Min(this.historyPointer + 1, this.history.Count);
-					if (this.historyPointer == this.history.Count)
-						console.CommandText = "";
-					else
-						console.CommandText = this.history[this.historyPointer];
-					console.editor.ScrollToEnd();
-					return true;
-				case Key.Up:
-					if (console.CommandText.Contains("\n"))
-						return false;
-					this.historyPointer = Math.Max(this.historyPointer - 1, 0);
-					if (this.historyPointer == this.history.Count)
-						console.CommandText = "";
-					else
-						console.CommandText = this.history[this.historyPointer];
-					console.editor.ScrollToEnd();
-					return true;
-				case Key.Return:
-					if (Keyboard.Modifiers == ModifierKeys.Shift)
-						return false;
-					int caretOffset = this.console.TextEditor.Caret.Offset;
-					string commandText = console.CommandText;
-					cleared = false;
-					if (AcceptCommand(commandText)) {
-						IDocument document = console.TextEditor.Document;
-						if (!cleared) {
-							if (document.GetCharAt(document.TextLength - 1) != '\n')
-								document.Insert(document.TextLength, Environment.NewLine);
-							AppendPrompt();
-							console.TextEditor.Select(document.TextLength, 0);
-						} else {
-							console.CommandText = "";
-						}
-						cleared = false;
-						this.history.Add(commandText);
-						this.historyPointer = this.history.Count;
-						console.editor.ScrollToEnd();
-						return true;
-					}
-					return false;
-				default:
-					return false;
-			}
+
+		protected virtual bool HandleInput(Key key)
+		{
+			return core.HandleInput(key);
 		}
-		
+
 		/// <summary>
 		/// Deletes the content of the console and prints a new prompt.
 		/// </summary>
 		public void ClearConsole()
 		{
-			this.console.editor.Document.Text = "";
-			cleared = true;
-			AppendPrompt();
+			core.ClearConsole();
 		}
-		
+
 		/// <summary>
 		/// Deletes the console history.
 		/// </summary>
 		public void DeleteHistory()
 		{
-			this.history.Clear();
-			this.historyPointer = 0;
+			core.DeleteHistory();
 		}
-		
+
 		public void SetHighlighting(string language)
 		{
-			if (this.console != null)
-				this.console.SetHighlighting(language);
+			core.SetHighlighting(language);
 		}
-		
+
 		public bool WordWrap {
-			get { return this.console.editor.WordWrap; }
-			set { this.console.editor.WordWrap = value; }
+			get { return core.WordWrap; }
+			set { core.WordWrap = value; }
 		}
-		
+
 		protected abstract string Prompt {
 			get;
 		}
-		
+
 		protected abstract bool AcceptCommand(string command);
-		
+
 		protected virtual void InitializeConsole()
 		{
-			AppendPrompt();
+			// The prompt is now appended by ConsolePadCore itself; kept as a hook for subclasses.
 		}
-		
+
 		protected virtual void AppendPrompt()
 		{
-			console.Append(Prompt);
-			console.SetReadonly();
-			console.editor.Document.UndoStack.ClearAll();
+			core.AppendPrompt();
 		}
-		
+
 		protected void AppendLine(string text)
 		{
-			console.Append(text + Environment.NewLine);
+			core.AppendLine(text);
 		}
-		
+
 		protected void Append(string text)
 		{
-			console.Append(text);
+			core.Append(text);
 		}
-		
+
 		protected void InsertBeforePrompt(string text)
 		{
-			int endOffset = this.console.readOnlyRegion.EndOffset;
-			bool needScrollDown = this.console.editor.CaretOffset >= endOffset;
-			this.console.editor.Document.Insert(endOffset - Prompt.Length, text);
-			this.console.editor.ScrollToEnd();
-			this.console.SetReadonly(endOffset + text.Length);
+			core.InsertBeforePrompt(text);
 		}
-		
+
+		protected virtual void AbstractConsolePadTextEntered(object sender, TextCompositionEventArgs e)
+		{
+		}
+
 		protected virtual void Clear()
 		{
 			this.ClearConsole();
 		}
 	}
-	
+
 	public class ConsoleControl : Grid
 	{
 		internal AvalonEdit.TextEditor editor;
 		internal ITextEditor editorAdapter;
 		internal BeginReadOnlySectionProvider readOnlyRegion;
-		
+
 		public event TextCompositionEventHandler TextAreaTextEntered;
 		public event KeyEventHandler TextAreaPreviewKeyDown;
-		
+
 		static TextEditorOptions consoleOptions;
-		
+
 		public ConsoleControl()
 		{
 			this.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
 			this.RowDefinitions.Add(new RowDefinition() { Height = new GridLength(1, GridUnitType.Star) });
-			
+
 			object tmp;
-			
+
 			this.editorAdapter = SD.EditorControlService.CreateEditor(out tmp);
-			
+
 			this.editor = (AvalonEdit.TextEditor)tmp;
 			this.editor.SetValue(Grid.ColumnProperty, 0);
 			this.editor.SetValue(Grid.RowProperty, 0);
 			this.editor.ShowLineNumbers = false;
-			
+
 			if (consoleOptions == null) {
 				consoleOptions = new TextEditorOptions(editor.Options);
 				consoleOptions.AllowScrollBelowDocument = false;
 			}
-			
+
 			this.editor.Options = consoleOptions;
-			
+
 			this.Children.Add(editor);
-			
+
 			editor.TextArea.ReadOnlySectionProvider = readOnlyRegion = new BeginReadOnlySectionProvider();
 			editor.TextArea.TextEntered += new TextCompositionEventHandler(editor_TextArea_TextEntered);
 			editor.TextArea.PreviewKeyDown += new KeyEventHandler(editor_TextArea_PreviewKeyDown);
 		}
-		
+
 		public ITextEditor TextEditor {
 			get {
 				return editorAdapter;
 			}
 		}
-		
+
 		public Encoding Encoding {
 			get {
 				return this.editor.Encoding;
@@ -336,23 +247,23 @@ namespace ICSharpCode.SharpDevelop.Gui
 				this.editor.Encoding = value;
 			}
 		}
-		
+
 		public void SelectText(int line, int column, int length)
 		{
 			int offset = this.editor.Document.GetOffset(new TextLocation(line, column));
 			this.editor.Select(offset, length);
 		}
-		
+
 		public void SetHighlighting(string language)
 		{
 			editor.SyntaxHighlighting = HighlightingManager.Instance.GetDefinition(language);
 		}
-		
+
 		public void Append(string text)
 		{
 			editor.AppendText(text);
 		}
-		
+
 		/// <summary>
 		/// Sets the readonly region to a specified offset.
 		/// </summary>
@@ -360,7 +271,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 		{
 			readOnlyRegion.EndOffset = offset;
 		}
-		
+
 		/// <summary>
 		/// Sets the readonly region to the end of the document.
 		/// </summary>
@@ -368,7 +279,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 		{
 			readOnlyRegion.EndOffset = editor.Document.TextLength;
 		}
-		
+
 		/// <summary>
 		/// Hides the scroll bar.
 		/// </summary>
@@ -377,16 +288,16 @@ namespace ICSharpCode.SharpDevelop.Gui
 			this.editor.HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden;
 			this.editor.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
 		}
-		
+
 		public void JumpToLine(int line)
 		{
 			this.editor.ScrollToLine(line);
 		}
-		
+
 		public int CommandOffset {
 			get { return readOnlyRegion.EndOffset; }
 		}
-		
+
 		/// <summary>
 		/// Gets/sets the command text displayed at the command prompt.
 		/// </summary>
@@ -398,43 +309,43 @@ namespace ICSharpCode.SharpDevelop.Gui
 				editor.Document.Replace(new TextSegment() { StartOffset = readOnlyRegion.EndOffset, EndOffset = editor.Document.TextLength }, value);
 			}
 		}
-		
+
 		void editor_TextArea_TextEntered(object sender, TextCompositionEventArgs e)
 		{
 			TextCompositionEventHandler handler = TextAreaTextEntered;
-			
+
 			if (handler != null)
 				handler(this, e);
 		}
-		
+
 		void editor_TextArea_PreviewKeyDown(object sender, KeyEventArgs e)
 		{
 			KeyEventHandler handler = TextAreaPreviewKeyDown;
-			
+
 			if (handler != null)
 				handler(this, e);
 		}
-		
+
 		public void Clear()
 		{
 			editor.Clear();
 		}
 	}
-	
+
 	public class BeginReadOnlySectionProvider : IReadOnlySectionProvider
 	{
 		public int EndOffset { get; set; }
-		
+
 		public bool CanInsert(int offset)
 		{
 			return offset >= EndOffset;
 		}
-		
+
 		public IEnumerable<ISegment> GetDeletableSegments(ISegment segment)
 		{
 			if (segment.EndOffset <= this.EndOffset)
 				return Enumerable.Empty<ISegment>();
-			
+
 			return new[] {
 				new TextSegment() {
 					StartOffset = Math.Max(this.EndOffset, segment.Offset),
@@ -443,47 +354,49 @@ namespace ICSharpCode.SharpDevelop.Gui
 			};
 		}
 	}
-	
+
 	class ClearConsoleCommand : AbstractMenuCommand
 	{
 		public override void Run()
 		{
-			var pad = this.Owner as AbstractConsolePad;
+			var pad = this.Owner as IConsolePadHost;
 			if (pad != null)
 				pad.ClearConsole();
 		}
 	}
-	
+
 	class DeleteHistoryCommand : AbstractMenuCommand
 	{
 		public override void Run()
 		{
-			var pad = this.Owner as AbstractConsolePad;
+			var pad = this.Owner as IConsolePadHost;
 			if (pad != null)
 				pad.DeleteHistory();
 		}
 	}
-	
+
 	class ToggleConsoleWordWrapCommand : ICheckableMenuCommand
 	{
 		public event EventHandler IsCheckedChanged = delegate {};
-		
+
 		public event EventHandler CanExecuteChanged { add {} remove {} }
-		
+
 		public bool IsChecked(object parameter)
 		{
-			var pad = (AbstractConsolePad)parameter;
-			return pad.WordWrap;
+			var pad = parameter as IConsolePadHost;
+			return pad != null && pad.WordWrap;
 		}
-		
+
 		public bool CanExecute(object parameter)
 		{
 			return true;
 		}
-		
+
 		public void Execute(object parameter)
 		{
-			var pad = (AbstractConsolePad)parameter;
+			var pad = parameter as IConsolePadHost;
+			if (pad == null)
+				return;
 			pad.WordWrap = !pad.WordWrap;
 			IsCheckedChanged(this, EventArgs.Empty);
 		}

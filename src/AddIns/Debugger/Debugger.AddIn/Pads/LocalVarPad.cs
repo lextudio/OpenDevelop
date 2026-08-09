@@ -16,69 +16,45 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Controls;
 
-using Debugger.AddIn.Pads.Controls;
-using Debugger.AddIn.TreeModel;
-using ICSharpCode.Core.Presentation;
-using ICSharpCode.SharpDevelop.Services;
+using ICSharpCode.SharpDevelop.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
-using ICSharpCode.ILSpyX.TreeView;
-using ICSharpCode.ILSpy.Controls.TreeView;
 
 namespace ICSharpCode.SharpDevelop.Gui.Pads
 {
+	/// <summary>
+	/// Legacy AddInTree <c>&lt;Pad&gt;</c> shim (doc/technotes/ilspy.md "Legacy Pad migration",
+	/// 2026-08-09) - the real implementation is now <see cref="LocalVarPadViewModel"/>.
+	/// Constructed once with a plain <c>new</c> and cached in a static field (Debugger.AddIn's
+	/// assembly is never scanned by <c>OpenDevelopMefHost</c>), then registered with the real
+	/// docking host via <c>IPaneModelHost.Add</c>. Must stay a real, constructible
+	/// <see cref="AbstractPadContent"/> for the same
+	/// <c>PadDescriptor.BringPadToFront()</c>/<c>CreatePad()</c> reason as every other shim in
+	/// this migration.
+	/// </summary>
 	public class LocalVarPad : AbstractPadContent
 	{
-		SharpTreeView tree;
-
-		public override object Control {
-			get { return tree; }
-		}
-
-		SharpTreeNodeCollection Items {
-			get { return tree.Root.Children; }
-		}
+		static LocalVarPadViewModel viewModel;
 
 		public LocalVarPad()
 		{
-			var res = new CommonResources();
-			res.InitializeComponent();
-
-			tree = new SharpTreeView();
-			tree.Root = new SharpTreeNode();
-			tree.ShowRoot = false;
-			tree.View = (GridView)res["variableGridView"];
-			tree.ItemContainerStyle = (Style)res["itemContainerStyle"];
-			tree.SetValue(GridViewColumnAutoSize.AutoWidthProperty, "50%;25%;25%");
-
-			WindowsDebugger.RefreshingPads += RefreshPad;
-			RefreshPad();
-		}
-
-		void RefreshPad()
-		{
-			var session = WindowsDebugger.CurrentSession;
-			this.Items.Clear();
-			if (session != null && session.IsPaused && WindowsDebugger.CurrentStackFrame != null) {
-				foreach (var node in ValueNode.GetLocalVariables().ToList()) {
-					this.Items.Add(node.ToSharpTreeNode());
-				}
+			if (viewModel == null) {
+				viewModel = new LocalVarPadViewModel();
+				(SD.Services.GetService(typeof(IPaneModelHost)) as IPaneModelHost)?.Add(viewModel);
 			}
 		}
+
+		public override object Control => viewModel?.Content;
 
 		/// <summary>Used by the DevFlow "od.debug.pad-snapshot" test action.</summary>
 		public Task<IEnumerable<object>> GetSnapshotAsync()
 		{
-			RefreshPad();
-			IEnumerable<object> items = this.Items
-				.OfType<SharpTreeNodeAdapter>()
-				.Select(n => (object)new { n.Node.Name, n.Node.Value, n.Node.Type });
-			return Task.FromResult(items);
+			if (viewModel == null)
+				return Task.FromResult<IEnumerable<object>>(Array.Empty<object>());
+			return viewModel.GetSnapshotAsync();
 		}
 	}
 }

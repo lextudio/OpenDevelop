@@ -36,8 +36,10 @@ namespace Debugger.AddIn
 	{
 		public override void Run()
 		{
-			if (this.Owner is WatchPad) {
-				WatchPad pad = (WatchPad)this.Owner;
+			// The toolbar is hosted by the migrated WatchPadViewModel now (legacy Pad migration,
+			// 2026-08-09), so the command Owner is the model, not the legacy WatchPad shim.
+			if (this.Owner is WatchPadViewModel) {
+				WatchPadViewModel pad = (WatchPadViewModel)this.Owner;
 				pad.AddWatch(focus: true);
 			}
 		}
@@ -47,8 +49,8 @@ namespace Debugger.AddIn
 	{
 		public override void Run()
 		{
-			if (this.Owner is WatchPad) {
-				WatchPad pad = (WatchPad)this.Owner;
+			if (this.Owner is WatchPadViewModel) {
+				WatchPadViewModel pad = (WatchPadViewModel)this.Owner;
 				pad.Items.Remove(pad.Tree.SelectedItem as SharpTreeNodeAdapter);
 				WindowsDebugger.RefreshPads();
 			}
@@ -59,8 +61,8 @@ namespace Debugger.AddIn
 	{
 		public override void Run()
 		{
-			if (this.Owner is WatchPad) {
-				WatchPad pad = (WatchPad)this.Owner;
+			if (this.Owner is WatchPadViewModel) {
+				WatchPadViewModel pad = (WatchPadViewModel)this.Owner;
 				pad.Items.Clear();
 			}
 		}
