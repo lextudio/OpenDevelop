@@ -19,12 +19,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
-using System.Windows.Shapes;
-using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 
 using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
@@ -42,55 +39,70 @@ namespace ICSharpCode.UnitTesting
 	{
 		ITestService testService;
 		TestTreeView treeView;
-		DockPanel panel;
-		ToolBar toolBar;
-		TextBlock totalStatusText;
-		TextBlock passedStatusText;
-		TextBlock failedStatusText;
-		TextBlock skippedStatusText;
-		TextBlock notRunStatusText;
-		int totalStatusCount;
-		int passedStatusCount;
-		int failedStatusCount;
-		int skippedStatusCount;
+		UnitTestsPadView view;
+		UnitTestsPadViewModel viewModel;
+		DispatcherOperation initialLoadOperation;
+		bool initialLoadPending;
 		List<Tuple<IUnresolvedFile, IUnresolvedFile>> pending = new List<Tuple<IUnresolvedFile, IUnresolvedFile>>();
 
 		public UnitTestsPad()
-			: this(SD.GetRequiredService<ITestService>())
+			: this(SD.GetRequiredService<ITestService>(), deferInitialTreeLoad: true)
 		{
 		}
 		
 		public UnitTestsPad(ITestService testService)
+			: this(testService, deferInitialTreeLoad: false)
+		{
+		}
+
+		UnitTestsPad(ITestService testService, bool deferInitialTreeLoad)
 		{
 			this.testService = testService;
-			
-			panel = new DockPanel();
-			treeView = new TestTreeView(); // treeView must be created first because it's used by CreateToolBar
 
-			toolBar = CreateToolBar("/SharpDevelop/Pads/UnitTestsPad/Toolbar");
-			panel.Children.Add(toolBar);
-			DockPanel.SetDock(toolBar, Dock.Top);
-			
-			var statusBar = CreateStatusBar();
-			panel.Children.Add(statusBar);
-			DockPanel.SetDock(statusBar, Dock.Bottom);
-			
-			panel.Children.Add(treeView);
+			viewModel = new UnitTestsPadViewModel { IsLoading = true };
+			view = new UnitTestsPadView { DataContext = viewModel };
+			treeView = view.TreeView; // must exist before CreateToolBar: commands use it as owner
+			view.Toolbar = CreateToolBar("/SharpDevelop/Pads/UnitTestsPad/Toolbar");
 			
 			treeView.ContextMenu = CreateContextMenu("/SharpDevelop/Pads/UnitTestsPad/ContextMenu");
 			
 			testService.OpenSolutionChanged += testService_OpenSolutionChanged;
-			testService_OpenSolutionChanged(null, null);
+			if (deferInitialTreeLoad) {
+				// Scheduling from the constructor is too early: the dispatcher can reach ContextIdle
+				// before AvalonDock has attached this pad to the visual tree, so the loading state is
+				// never actually painted. Wait for the first Loaded event, then yield through render
+				// priority before materializing and expanding the lazy test nodes.
+				initialLoadPending = true;
+				view.TreeHost.Loaded += TreeHostLoaded;
+			} else {
+				LoadOpenSolution();
+			}
+		}
+
+		void TreeHostLoaded(object sender, RoutedEventArgs e)
+		{
+			view.TreeHost.Loaded -= TreeHostLoaded;
+			initialLoadOperation = Application.Current.Dispatcher.BeginInvoke(
+				DispatcherPriority.ContextIdle,
+				new Action(() => {
+					initialLoadOperation = null;
+					initialLoadPending = false;
+					LoadOpenSolution();
+				}));
 		}
 		
 		public override void Dispose()
 		{
+			view.TreeHost.Loaded -= TreeHostLoaded;
+			initialLoadOperation?.Abort();
+			initialLoadOperation = null;
+			initialLoadPending = false;
 			testService.OpenSolutionChanged -= testService_OpenSolutionChanged;
 			base.Dispose();
 		}
 		
 		public override object Control {
-			get { return panel; }
+			get { return view; }
 		}
 		
 		public ITestTreeView TreeView {
@@ -99,34 +111,25 @@ namespace ICSharpCode.UnitTesting
 		
 		public void StartRunStatus(int total)
 		{
-			totalStatusCount = total;
-			passedStatusCount = 0;
-			failedStatusCount = 0;
-			skippedStatusCount = 0;
-			UpdateRunStatusText();
+			viewModel.StartRun(total);
 		}
 		
 		public void RecordRunResult(TestResult result)
 		{
-			if (result == null)
-				return;
-			switch (result.ResultType) {
-				case TestResultType.Success:
-					passedStatusCount++;
-					break;
-				case TestResultType.Failure:
-					failedStatusCount++;
-					break;
-				case TestResultType.Ignored:
-					skippedStatusCount++;
-					break;
-			}
-			UpdateRunStatusText();
+			viewModel.RecordResult(result);
 		}
 		
 		void testService_OpenSolutionChanged(object sender, EventArgs e)
 		{
+			if (!initialLoadPending) {
+				LoadOpenSolution();
+			}
+		}
+
+		void LoadOpenSolution()
+		{
 			treeView.TestSolution = testService.OpenSolution;
+			viewModel.IsLoading = false;
 		}
 		
 		/// <summary>
@@ -149,78 +152,5 @@ namespace ICSharpCode.UnitTesting
 			return MenuService.CreateContextMenu(treeView, name);
 		}
 		
-		UIElement CreateStatusBar()
-		{
-			var border = new Border {
-				BorderThickness = new Thickness(0, 1, 0, 0),
-				Padding = new Thickness(8, 4, 8, 4)
-			};
-			// The status bar must follow the IDE theme (IdeThemeService's semantic resources,
-			// swapped by Theme.Light.xaml/Theme.Dark.xaml). The previous hardcoded light colors
-			// (background 245,247,250 / border 218,223,230) stayed correct in Light but left the
-			// bar stuck in light mode under Dark. DynamicResource (via SetResourceReference) also
-			// re-resolves automatically when the user switches themes at runtime.
-			border.SetResourceReference(Border.BackgroundProperty, "ToolWindowBackground");
-			border.SetResourceReference(Border.BorderBrushProperty, "Border");
-			var items = new StackPanel {
-				Orientation = Orientation.Horizontal
-			};
-			border.Child = items;
-			
-			totalStatusText = CreateStatusText("MutedForeground");
-			passedStatusText = CreateStatusItem(items, new SolidColorBrush(Color.FromRgb(29, 128, 73)), "MutedForeground");
-			failedStatusText = CreateStatusItem(items, new SolidColorBrush(Color.FromRgb(190, 58, 52)), "MutedForeground");
-			skippedStatusText = CreateStatusItem(items, new SolidColorBrush(Color.FromRgb(145, 106, 32)), "MutedForeground");
-			notRunStatusText = CreateStatusItem(items, new SolidColorBrush(Color.FromRgb(128, 138, 148)), "MutedForeground");
-			
-			items.Children.Add(totalStatusText);
-			
-			UpdateRunStatusText();
-			return border;
-		}
-		
-		static TextBlock CreateStatusText(string foregroundResourceKey)
-		{
-			var text = new TextBlock {
-				Margin = new Thickness(0, 0, 14, 0),
-				VerticalAlignment = VerticalAlignment.Center
-			};
-			text.SetResourceReference(TextBlock.ForegroundProperty, foregroundResourceKey);
-			return text;
-		}
-		
-		static TextBlock CreateStatusItem(Panel parent, Brush brush, string foregroundResourceKey)
-		{
-			var item = new StackPanel {
-				Orientation = Orientation.Horizontal,
-				Margin = new Thickness(0, 0, 14, 0),
-				VerticalAlignment = VerticalAlignment.Center
-			};
-			item.Children.Add(new Ellipse {
-				Width = 8,
-				Height = 8,
-				Fill = brush,
-				Margin = new Thickness(0, 0, 5, 0),
-				VerticalAlignment = VerticalAlignment.Center
-			});
-			var text = new TextBlock {
-				VerticalAlignment = VerticalAlignment.Center
-			};
-			text.SetResourceReference(TextBlock.ForegroundProperty, foregroundResourceKey);
-			item.Children.Add(text);
-			parent.Children.Add(item);
-			return text;
-		}
-		
-		void UpdateRunStatusText()
-		{
-			int completed = passedStatusCount + failedStatusCount + skippedStatusCount;
-			int notRun = Math.Max(0, totalStatusCount - completed);
-			totalStatusText.Text = "Total: " + totalStatusCount;
-			passedStatusText.Text = passedStatusCount.ToString();
-			failedStatusText.Text = failedStatusCount.ToString();
-			skippedStatusText.Text = skippedStatusCount.ToString();
-			notRunStatusText.Text = notRun.ToString();
-		}
 	}
 }

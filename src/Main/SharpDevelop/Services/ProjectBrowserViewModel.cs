@@ -2,6 +2,8 @@ using System;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Composition;
@@ -24,8 +26,13 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
     private readonly IProjectBrowserController controller = ServiceSingleton.GetRequiredService<IProjectBrowserController>();
     private readonly IProjectBrowserOverlayService overlayService = ServiceSingleton.ServiceProvider.GetService<IProjectBrowserOverlayService>();
     private readonly PropertyContainer propertyContainer = new PropertyContainer();
+    private readonly SemaphoreSlim treeBuildGate = new SemaphoreSlim(1, 1);
     private ProjectBrowserNodeModel selectedNode;
     private bool showAllFiles;
+    private bool isLoading;
+    private bool disposed;
+    private int treeRefreshVersion;
+    private Task currentTreeRefresh = Task.CompletedTask;
 
     public ProjectBrowserViewModel()
     {
@@ -122,6 +129,11 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
         }
     }
 
+    public bool IsLoading {
+        get => isLoading;
+        private set => SetProperty(ref isLoading, value);
+    }
+
     ProjectBrowserNodeContext IProjectBrowserHost.SelectedNode => SelectedNode?.ToContext();
 
     public void OpenSelected()
@@ -145,6 +157,8 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
 
     public void Dispose()
     {
+        disposed = true;
+        Interlocked.Increment(ref treeRefreshVersion);
         SD.ProjectService.SolutionOpened -= ProjectServiceChanged;
         SD.ProjectService.SolutionClosed -= ProjectServiceChanged;
         SD.ProjectService.ProjectItemAdded -= ProjectServiceChanged;
@@ -194,16 +208,70 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
         view?.WorkbenchWindow?.CloseWindow(force: true);
     }
 
+    internal async Task WaitForCurrentRefreshAsync()
+    {
+        Task refresh;
+        do {
+            refresh = currentTreeRefresh;
+            await refresh;
+        } while (refresh != currentTreeRefresh);
+    }
+
     private void RefreshSolutionTree()
     {
-        Application.Current?.Dispatcher.Invoke(() =>
-        {
-            RootNodes.Clear();
-            var root = ProjectBrowserTreeBuilder.BuildSolutionTree(SD.ProjectService.CurrentSolution, ShowAllFiles);
-            if (root != null) {
-                RootNodes.Add(root);
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher != null && !dispatcher.CheckAccess()) {
+            _ = dispatcher.BeginInvoke(new Action(RefreshSolutionTree));
+            return;
+        }
+
+        if (disposed) {
+            return;
+        }
+
+        // Display the lightweight pane immediately. Tree construction also refreshes Git status,
+        // which may start an external process, so none of that work belongs on the UI thread.
+        var solution = SD.ProjectService.CurrentSolution;
+        var includeAllFiles = ShowAllFiles;
+        var gitStatusRoots = solution != null ? ProjectBrowserTreeBuilder.GetGitStatusRoots(solution) : Array.Empty<string>();
+        int refreshVersion = Interlocked.Increment(ref treeRefreshVersion);
+        RootNodes.Clear();
+        SelectedNode = null;
+        IsLoading = solution != null;
+
+        currentTreeRefresh = BuildSolutionTreeAsync(solution, includeAllFiles, gitStatusRoots, refreshVersion);
+    }
+
+    private async Task BuildSolutionTreeAsync(ISolution solution, bool includeAllFiles, string[] gitStatusRoots, int refreshVersion)
+    {
+        ProjectBrowserNodeModel root = null;
+        try {
+            await treeBuildGate.WaitAsync();
+            try {
+                // Coalesce the burst of project-item events commonly raised while a solution is
+                // opening. Only the newest request needs to walk the project and the file system.
+                if (refreshVersion != Volatile.Read(ref treeRefreshVersion) || disposed) {
+                    return;
+                }
+                // Only external/file-system work runs in the background. SharpDevelop's project
+                // collections are UI-thread-affine and must not be walked from Task.Run.
+                await Task.Run(() => ProjectBrowserTreeBuilder.RefreshGitStatus(gitStatusRoots));
+                root = ProjectBrowserTreeBuilder.BuildSolutionTree(solution, includeAllFiles, refreshGitStatus: false);
+            } finally {
+                treeBuildGate.Release();
             }
-        });
+        } catch (Exception ex) {
+            LoggingService.Warn("Could not build the Solution Explorer tree.", ex);
+        }
+
+        if (refreshVersion != Volatile.Read(ref treeRefreshVersion) || disposed) {
+            return;
+        }
+
+        if (root != null) {
+            RootNodes.Add(root);
+        }
+        IsLoading = false;
     }
     
     private void ToggleShowAllFiles()

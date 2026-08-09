@@ -162,9 +162,10 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		}
 
 		[DevFlowAction("od.project-browser-state", Description = "Inspect the real hierarchical Projects pad tree and its scrolling policy")]
-		public static string GetProjectBrowserState(string projectName)
+		public static async Task<string> GetProjectBrowserState(string projectName)
 		{
 			var viewModel = OpenDevelopMefHost.ExportProvider.GetExportedValue<ICSharpCode.SharpDevelop.Services.ProjectBrowserViewModel>();
+			await viewModel.WaitForCurrentRefreshAsync();
 			var projectNode = FindNode(viewModel.RootNodes, node =>
 				node.Kind == ICSharpCode.SharpDevelop.Services.ProjectBrowserNodeKind.Project
 				&& string.Equals(node.Name, projectName, StringComparison.OrdinalIgnoreCase));
@@ -185,10 +186,11 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		};
 
 		[DevFlowAction("od.project-context-menu", Description = "Build a project node's real AddIn-tree context menu and return its visible item labels")]
-		public static string GetProjectContextMenu(string projectName)
+		public static async Task<string> GetProjectContextMenu(string projectName)
 		{
 			try {
 				var viewModel = OpenDevelopMefHost.ExportProvider.GetExportedValue<ICSharpCode.SharpDevelop.Services.ProjectBrowserViewModel>();
+				await viewModel.WaitForCurrentRefreshAsync();
 				var projectNode = FindNode(viewModel.RootNodes, node =>
 					node.Kind == ICSharpCode.SharpDevelop.Services.ProjectBrowserNodeKind.Project
 					&& string.Equals(node.Name, projectName, StringComparison.OrdinalIgnoreCase));
@@ -884,7 +886,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		}
 
 		[DevFlowAction("od.show-pad", Description = "Activate/bring-to-front a workbench pad by title or class name so AvalonDock actually creates and renders its content (needed before inspecting some pads via od.ui.tree, since an un-activated pad's content is never realized)")]
-		public static string ShowPad(string padName)
+		public static async Task<string> ShowPad(string padName)
 		{
 			var pad = FindPad(padName);
 			if (pad == null)
@@ -901,6 +903,12 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			// immediately afterwards (e.g. via the UI automation tree) see fully realized content,
 			// matching what this action's own description already promises.
 			System.Windows.Application.Current.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Loaded);
+
+			if (string.Equals(pad.Class, typeof(ICSharpCode.SharpDevelop.Services.ProjectBrowserPad).FullName, StringComparison.Ordinal)) {
+				var projectBrowser = OpenDevelopMefHost.ExportProvider.GetExportedValue<ICSharpCode.SharpDevelop.Services.ProjectBrowserViewModel>();
+				await projectBrowser.WaitForCurrentRefreshAsync();
+				System.Windows.Application.Current.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Loaded);
+			}
 
 			return JsonSerializer.Serialize(new { found = true, title = pad.Title, className = pad.Class });
 		}

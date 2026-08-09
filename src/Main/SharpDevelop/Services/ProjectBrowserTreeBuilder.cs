@@ -18,14 +18,16 @@ namespace ICSharpCode.SharpDevelop.Services;
 
 internal static class ProjectBrowserTreeBuilder
 {
-    public static ProjectBrowserNodeModel? BuildSolutionTree(ISolution? solution, bool showAllFiles)
+    public static ProjectBrowserNodeModel? BuildSolutionTree(ISolution? solution, bool showAllFiles, bool refreshGitStatus = true)
     {
         if (solution is null)
         {
             return null;
         }
 
-        RefreshGitStatus(solution);
+        if (refreshGitStatus) {
+            RefreshGitStatus(GetGitStatusRoots(solution));
+        }
 
         var root = new ProjectBrowserNodeModel(
             solution.Name,
@@ -43,20 +45,20 @@ internal static class ProjectBrowserTreeBuilder
         return root;
     }
 
-    private static void RefreshGitStatus(ISolution solution)
+    internal static string[] GetGitStatusRoots(ISolution solution)
+    {
+        return new[] { Path.GetDirectoryName(solution.FileName.ToString()) }
+            .Concat(solution.Projects.CreateSnapshot().Select(project => Path.GetDirectoryName(project.FileName.ToString())))
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray()!;
+    }
+
+    internal static void RefreshGitStatus(IEnumerable<string> roots)
     {
         GitStatusService.ClearCache();
-
-        var solutionDirectory = Path.GetDirectoryName(solution.FileName.ToString());
-        if (!string.IsNullOrWhiteSpace(solutionDirectory)) {
-            GitStatusService.Refresh(solutionDirectory);
-        }
-
-        foreach (var project in solution.Projects.CreateSnapshot()) {
-            var projectDirectory = Path.GetDirectoryName(project.FileName.ToString());
-            if (!string.IsNullOrWhiteSpace(projectDirectory)) {
-                GitStatusService.Refresh(projectDirectory);
-            }
+        foreach (var root in roots) {
+            GitStatusService.Refresh(root);
         }
     }
 

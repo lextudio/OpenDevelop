@@ -83,5 +83,23 @@
                 </Style>
             </TreeView.ItemContainerStyle>
         </TreeView>
+        <TextBlock Grid.Row="1"
+                   Margin="12"
+                   HorizontalAlignment="Left"
+                   VerticalAlignment="Top"
+                   Foreground="{DynamicResource MutedForeground}"
+                   IsHitTestVisible="False"
+                   Text="Loading projects…">
+            <TextBlock.Style>
+                <Style TargetType="TextBlock">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsLoading}" Value="True">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </TextBlock.Style>
+        </TextBlock>
     </Grid>
 </UserControl>

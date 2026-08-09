@@ -39,6 +39,10 @@
     <Compile Include="Pad/UnitTestNode.cs" />
     <Compile Include="Pad/UnitTestNodeFactory.cs" />
     <Compile Include="Pad/UnitTestsPad.cs" />
+    <Compile Include="Pad/UnitTestsPadView.xaml.cs">
+      <DependentUpon>UnitTestsPadView.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Pad/UnitTestsPadViewModel.cs" />
     <Compile Include="Resources/*.cs" />
     <Compile Include="Service/*.cs" />
     <Compile Include="TestRunner/*.cs" />
