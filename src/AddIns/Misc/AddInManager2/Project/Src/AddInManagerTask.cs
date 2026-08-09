@@ -19,6 +19,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using ICSharpCode.SharpDevelop;
 
 namespace ICSharpCode.AddInManager2
 {
@@ -48,10 +49,13 @@ namespace ICSharpCode.AddInManager2
 
 		private void CreateTask(Func<TResult> function)
 		{
-			TaskScheduler scheduler = TaskScheduler.FromCurrentSynchronizationContext();
 			cancellationTokenSource = new CancellationTokenSource();
 			task = new Task<TResult>(function, cancellationTokenSource.Token);
-			_ = task.ContinueWith(result => OnContinueWith(result), scheduler);
+			_ = task.ContinueWith(
+				result => SD.MainThread.InvokeAsyncAndForget(() => OnContinueWith(result)),
+				CancellationToken.None,
+				TaskContinuationOptions.None,
+				TaskScheduler.Default);
 		}
 		
 		private void OnContinueWith(Task<TResult> task)

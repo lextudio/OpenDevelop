@@ -120,9 +120,9 @@ namespace ICSharpCode.StartPage
 			}
 		}
 		
-		void listViewHyperlinkClick(object sender, RoutedEventArgs e)
+		void listViewNameClick(object sender, MouseButtonEventArgs e)
 		{
-			RecentOpenItem item = (RecentOpenItem)((Hyperlink)sender).Tag;
+			RecentOpenItem item = (RecentOpenItem)((TextBlock)sender).Tag;
 			SD.ProjectService.OpenSolutionOrProject(FileName.Create(item.Path));
 		}
 		

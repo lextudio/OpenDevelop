@@ -21,6 +21,8 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -36,7 +38,7 @@ namespace ICSharpCode.AvalonEdit.AddIn.Snippets
 	/// <summary>
 	/// Interaction logic for Snippets.xaml
 	/// </summary>
-	public partial class SnippetOptionPanel : UserControl, IOptionPanel
+	public partial class SnippetOptionPanel : UserControl, IAsyncOptionPanel
 	{
 		ObservableCollection<CodeSnippetGroup> groups;
 		
@@ -54,6 +56,17 @@ namespace ICSharpCode.AvalonEdit.AddIn.Snippets
 		public void LoadOptions()
 		{
 			groups = new ObservableCollection<CodeSnippetGroup>(SnippetManager.Instance.LoadGroups().OrderBy(g => g.Extensions));
+			extensionComboBox.ItemsSource = groups;
+			extensionComboBox.SelectedItem = groups.FirstOrDefault();
+		}
+
+		public async Task LoadOptionsAsync(CancellationToken cancellationToken)
+		{
+			var loadedGroups = await Task.Run(
+				() => SnippetManager.Instance.LoadGroups().OrderBy(g => g.Extensions).ToList(),
+				cancellationToken);
+			cancellationToken.ThrowIfCancellationRequested();
+			groups = new ObservableCollection<CodeSnippetGroup>(loadedGroups);
 			extensionComboBox.ItemsSource = groups;
 			extensionComboBox.SelectedItem = groups.FirstOrDefault();
 		}

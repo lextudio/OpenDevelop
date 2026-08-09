@@ -23,6 +23,8 @@ using System.IO;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Shapes;
@@ -35,7 +37,7 @@ namespace ICSharpCode.SharpDevelop.Gui.OptionPanels
 	/// <summary>
 	/// Base class for project option panels with configuration picker.
 	/// </summary>
-	public class ProjectOptionPanel : UserControl, IOptionPanel, ICanBeDirty, INotifyPropertyChanged, IDisposable
+	public class ProjectOptionPanel : UserControl, IAsyncOptionPanel, ICanBeDirty, INotifyPropertyChanged, IDisposable
 	{
 		
 		static ProjectOptionPanel()
@@ -131,6 +133,18 @@ namespace ICSharpCode.SharpDevelop.Gui.OptionPanels
 		}
 		
 		void IOptionPanel.LoadOptions()
+		{
+			LoadOptions();
+		}
+
+		Task IAsyncOptionPanel.LoadOptionsAsync(CancellationToken cancellationToken)
+		{
+			cancellationToken.ThrowIfCancellationRequested();
+			LoadOptions();
+			return Task.CompletedTask;
+		}
+
+		void LoadOptions()
 		{
 			ApplyTemplate();
 			project = (MSBuildBasedProject)owner;

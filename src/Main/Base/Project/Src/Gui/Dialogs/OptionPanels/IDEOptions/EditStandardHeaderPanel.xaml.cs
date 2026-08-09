@@ -20,6 +20,7 @@ using System;
 using System.Windows.Controls;
 using System.Windows.Media;
 
+using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.SharpDevelop.Templates;
 
 namespace ICSharpCode.SharpDevelop.Gui.OptionPanels
@@ -49,19 +50,32 @@ namespace ICSharpCode.SharpDevelop.Gui.OptionPanels
 			int idx = headerChooser.SelectedIndex;
 			if (idx >= 0) {
 				headerTextBox.Text = SelectedHeader.Header;
+				headerTextBox.SyntaxHighlighting = GetHighlightingDefinition(SelectedHeader);
 				headerTextBox.IsEnabled = true;
 			} else {
 				headerTextBox.Text = "";
+				headerTextBox.SyntaxHighlighting = null;
 				headerTextBox.IsEnabled = false;
 			}
 			headerTextBox.TextChanged += HeaderTextBox_TextChanged;
+		}
+
+		static IHighlightingDefinition GetHighlightingDefinition(StandardHeader header)
+		{
+			string language = header.ToString();
+			string definitionName = language switch {
+				"VBNET" => "VB",
+				"C++.NET" => "C++",
+				_ => language
+			};
+			return HighlightingManager.Instance.GetDefinition(definitionName);
 		}
 		
 		StandardHeader SelectedHeader {
 			get { return (StandardHeader)headerChooser.SelectedItem; }
 		}
 		
-		void HeaderTextBox_TextChanged(object sender, TextChangedEventArgs e)
+		void HeaderTextBox_TextChanged(object sender, EventArgs e)
 		{
 			SelectedHeader.Header = headerTextBox.Text;
 		}

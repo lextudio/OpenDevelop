@@ -2,13 +2,6 @@
 	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
 	xmlns:Controls="clr-namespace:ICSharpCode.SharpDevelop.Widgets">
 		
-	<Brush x:Key="ButtonNormal">#DADFEA</Brush>
-	<Brush x:Key="ButtonHover">#E6EBEF</Brush>
-	<Brush x:Key="ButtonPressed">#B6BDD3</Brush>
-	<Brush x:Key="BorderBrush">#7F9DB9</Brush>
-	<Brush x:Key="ArrowBrush">Black</Brush>
-	<Brush x:Key="ArrowsBorderBrush">#B6BDD3</Brush>
-	
 	<Style x:Key="UpButton"
 	       TargetType="RepeatButton">
 		<Setter Property="Focusable"
@@ -17,9 +10,9 @@
 			<Setter.Value>
 				<ControlTemplate TargetType="{x:Type Controls:DragRepeatButton}">
 					<Border x:Name="bg"
-					        Background="{StaticResource ButtonNormal}"
+						Background="{DynamicResource ToolWindowBackground}"
 					        CornerRadius="2 2 0 0">
-						<Path Fill="{StaticResource ArrowBrush}"
+					<Path Fill="{DynamicResource Foreground}"
 						      Data="M 0 3 L 3.5 0 L 7 3"
 						      HorizontalAlignment="Center"
 						      VerticalAlignment="Center" />
@@ -29,19 +22,19 @@
 						         Value="True">
 							<Setter TargetName="bg"
 							        Property="Background"
-							        Value="{StaticResource ButtonHover}" />
+							        Value="{DynamicResource HoverBackground}" />
 						</Trigger>
 						<Trigger Property="IsMouseCaptured"
 						         Value="True">
 							<Setter TargetName="bg"
 							        Property="Background"
-							        Value="{StaticResource ButtonPressed}" />
+							        Value="{DynamicResource Selection}" />
 						</Trigger>
 						<Trigger Property="IsDragging"
 						         Value="True">
 							<Setter TargetName="bg"
 							        Property="Background"
-							        Value="{StaticResource ButtonPressed}" />
+							        Value="{DynamicResource Selection}" />
 						</Trigger>
 					</ControlTemplate.Triggers>
 				</ControlTemplate>
@@ -57,9 +50,9 @@
 			<Setter.Value>
 				<ControlTemplate TargetType="{x:Type Controls:DragRepeatButton}">
 					<Border x:Name="bg"
-					        Background="{StaticResource ButtonNormal}"
+						Background="{DynamicResource ToolWindowBackground}"
 					        CornerRadius="0 0 2 2">
-						<Path Fill="{StaticResource ArrowBrush}"
+					<Path Fill="{DynamicResource Foreground}"
 						      Data="M 0 0 L 3.5 3 L 7 0"
 						      HorizontalAlignment="Center"
 						      VerticalAlignment="Center" />
@@ -69,19 +62,19 @@
 						         Value="True">
 							<Setter TargetName="bg"
 							        Property="Background"
-							        Value="{StaticResource ButtonHover}" />
+							        Value="{DynamicResource HoverBackground}" />
 						</Trigger>
 						<Trigger Property="IsMouseCaptured"
 						         Value="True">
 							<Setter TargetName="bg"
 							        Property="Background"
-							        Value="{StaticResource ButtonPressed}" />
+							        Value="{DynamicResource Selection}" />
 						</Trigger>
 						<Trigger Property="IsDragging"
 						         Value="True">
 							<Setter TargetName="bg"
 							        Property="Background"
-							        Value="{StaticResource ButtonPressed}" />
+							        Value="{DynamicResource Selection}" />
 						</Trigger>
 					</ControlTemplate.Triggers>
 				</ControlTemplate>
@@ -91,11 +84,13 @@
 	
 	<Style TargetType="{x:Type Controls:NumericUpDown}">
 		<Setter Property="Background"
-		        Value="White" />
+		        Value="{DynamicResource WindowBackground}" />
+		<Setter Property="Foreground"
+		        Value="{DynamicResource Foreground}" />
 		<Setter Property="BorderThickness"
 		        Value="1" />
 		<Setter Property="BorderBrush"
-		        Value="{StaticResource BorderBrush}" />
+		        Value="{DynamicResource Border}" />
 		<Setter Property="Focusable"
 		        Value="False" />
 		<Setter Property="Template">
@@ -128,7 +123,7 @@
 								Grid.Row="1" />
 							<Border Grid.Column="1"
 							        Grid.RowSpan="2"
-							        BorderBrush="{StaticResource ArrowsBorderBrush}"
+						        BorderBrush="{DynamicResource Border}"
 							        BorderThickness="1"
 							        CornerRadius="2" />
 						</Grid>

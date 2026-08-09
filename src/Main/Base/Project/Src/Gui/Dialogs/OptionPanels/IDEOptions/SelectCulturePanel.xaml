@@ -23,21 +23,25 @@
 		</Style>
 		<Style TargetType="{x:Type ListViewItem}" BasedOn="{StaticResource {x:Type ListBoxItem}}">
 			<Setter Property="Padding" Value="3" />
-			<Setter Property="HorizontalContentAlignment" Value="Center" />
+			<Setter Property="HorizontalContentAlignment" Value="Stretch" />
 			<Setter Property="ContentTemplate">
 				<Setter.Value>
 					<DataTemplate>
-						<Grid HorizontalAlignment="Center" VerticalAlignment="Top">
+						<Grid Margin="2" VerticalAlignment="Center"
+						      ToolTip="{Binding DisplayName}">
 							<Grid.RowDefinitions>
+								<RowDefinition Height="22" />
 								<RowDefinition Height="Auto" />
 								<RowDefinition Height="Auto" />
 							</Grid.RowDefinitions>
-							<Image HorizontalAlignment="Center" Width="32">
-								<Image.Source>
-									<BitmapImage UriSource="{Binding ImagePath}" DecodePixelWidth="32" DecodePixelHeight="24" />
-								</Image.Source>
-							</Image>
-							<TextBlock Grid.Row="1" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Text="{Binding Name}" />
+							<Image Width="32" Height="20" HorizontalAlignment="Center" VerticalAlignment="Center"
+							       Source="{Binding FlagImage}" Stretch="Uniform" />
+							<TextBlock Grid.Row="1" HorizontalAlignment="Center" MaxWidth="88"
+							           TextAlignment="Center" TextTrimming="CharacterEllipsis"
+							           Text="{Binding Name}" />
+							<TextBlock Grid.Row="2" HorizontalAlignment="Center" FontSize="11"
+							           Foreground="{DynamicResource MutedForeground}"
+							           Text="{Binding Code, StringFormat=({0})}" />
 						</Grid>
 					</DataTemplate>
 				</Setter.Value>

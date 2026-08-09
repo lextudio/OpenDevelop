@@ -50,6 +50,44 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 			PropertyService.SetList(CustomRootsKey, roots);
 		}
 
+		/// <summary>Validates a user-selected DOTNET_ROOT and describes the SDK it contains.</summary>
+		public static bool TryDescribeCustomRoot(string rootPath, out DotNetSdkInfo sdk, out string error)
+		{
+			sdk = null;
+			error = null;
+			if (string.IsNullOrWhiteSpace(rootPath)) {
+				error = "No folder was selected.";
+				return false;
+			}
+
+			string normalized = NormalizeRoot(rootPath);
+			if (normalized == null || !Directory.Exists(normalized)) {
+				error = $"The folder does not exist:\n{rootPath}";
+				return false;
+			}
+			if (!File.Exists(Path.Combine(normalized, "dotnet"))) {
+				error = $"The selected folder is not a .NET SDK root because it does not contain the dotnet executable:\n{normalized}";
+				return false;
+			}
+			string sdkDirectory = Path.Combine(normalized, "sdk");
+			if (!Directory.Exists(sdkDirectory)) {
+				error = $"The selected folder contains dotnet, but it does not contain an sdk folder:\n{normalized}";
+				return false;
+			}
+
+			try {
+				sdk = TryDescribeRoot(normalized, "Custom", DotNetSdkOrigin.Custom);
+			} catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) {
+				error = $"The SDK folder could not be read:\n{normalized}\n\n{ex.Message}";
+				return false;
+			}
+			if (sdk == null) {
+				error = $"No stable SDK version was found under:\n{sdkDirectory}";
+				return false;
+			}
+			return true;
+		}
+
 		/// <summary>
 		/// Enumerates every SDK root we can find: well-known system install locations, the SDK
 		/// this OpenDevelop process itself was launched under (via launch.sh's DOTNET_ROOT), and
@@ -58,6 +96,13 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 		/// </summary>
 		public static IReadOnlyList<DotNetSdkInfo> DiscoverSdks()
 		{
+			return DiscoverSdks(CustomRoots);
+		}
+
+		internal static IReadOnlyList<DotNetSdkInfo> DiscoverSdks(IEnumerable<string> customRoots)
+		{
+			if (customRoots == null)
+				throw new ArgumentNullException(nameof(customRoots));
 			var results = new List<DotNetSdkInfo>();
 			var seenRoots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -112,7 +157,7 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 				}
 			}
 
-			foreach (var custom in CustomRoots)
+			foreach (var custom in customRoots)
 				TryAdd(custom, "Custom", DotNetSdkOrigin.Custom);
 
 			return results;
@@ -199,7 +244,13 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 		/// </summary>
 		public static DotNetSdkInfo ResolveEffectiveSdk()
 		{
-			var discovered = DiscoverSdks();
+			return ResolveEffectiveSdk(DiscoverSdks());
+		}
+
+		internal static DotNetSdkInfo ResolveEffectiveSdk(IReadOnlyList<DotNetSdkInfo> discovered)
+		{
+			if (discovered == null)
+				throw new ArgumentNullException(nameof(discovered));
 			string selected = SelectedSdkRootPath;
 			if (!string.IsNullOrEmpty(selected)) {
 				var match = discovered.FirstOrDefault(s => string.Equals(s.RootPath, NormalizeRoot(selected), StringComparison.OrdinalIgnoreCase));

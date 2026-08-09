@@ -17,6 +17,8 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 using ICSharpCode.Core;
@@ -27,7 +29,7 @@ using ICSharpCode.AvalonEdit.Document;
 namespace ICSharpCode.SharpDevelop.Gui.OptionPanels
 {
 	[Obsolete("XML Forms are obsolete")]
-	public class XmlFormsOptionPanel : BaseSharpDevelopUserControl, IOptionPanel
+	public class XmlFormsOptionPanel : BaseSharpDevelopUserControl, IAsyncOptionPanel
 	{
 		public object Owner { get; set; }
 		
@@ -45,6 +47,13 @@ namespace ICSharpCode.SharpDevelop.Gui.OptionPanels
 				wasActivated = true;
 				LoadPanelContents();
 			}
+		}
+
+		Task IAsyncOptionPanel.LoadOptionsAsync(CancellationToken cancellationToken)
+		{
+			cancellationToken.ThrowIfCancellationRequested();
+			((IOptionPanel)this).LoadOptions();
+			return Task.CompletedTask;
 		}
 		
 		bool IOptionPanel.SaveOptions()

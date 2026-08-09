@@ -31,9 +31,8 @@
     <None Include="AddInManager2.addin" CopyToOutputDirectory="Always" />
     <Resource Include="Resources\**\*" />
   </ItemGroup>
-  <!-- WinForms: out of MVP scope -->
+  <!-- The remaining package-repository editor is WinForms-era and out of MVP scope. -->
   <ItemGroup>
-    <Compile Remove="Src\UpdateNotifier.cs" />
     <Compile Remove="Src\ViewModel\PackageRepositoriesViewModel.cs" />
     <Compile Remove="Src\View\PackageRepositoriesView.xaml.cs" />
     <Page Remove="Src\View\PackageRepositoriesView.xaml" />

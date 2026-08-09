@@ -3,6 +3,7 @@
                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                  xmlns:gui="clr-namespace:ICSharpCode.SharpDevelop.Gui"
                  xmlns:widgets="http://icsharpcode.net/sharpdevelop/widgets"
+                 xmlns:avalonEdit="http://icsharpcode.net/sharpdevelop/avalonedit"
                  xmlns:core="http://icsharpcode.net/sharpdevelop/core">
 	<StackPanel>
 		
@@ -16,10 +17,12 @@
 		<Label Margin="0,8,0,0"
 		       Content="{core:Localize Dialog.Options.IDEOptions.EditStandardHeaderPanel.HeaderLabel}"></Label>
 		
-		<TextBox x:Name="headerTextBox"
-		         TextChanged="HeaderTextBox_TextChanged"
-		         AcceptsReturn="True"
-		         Margin="0,2,0,0" Height="200"></TextBox>
+		<avalonEdit:TextEditor x:Name="headerTextBox"
+		                       TextChanged="HeaderTextBox_TextChanged"
+		                       ShowLineNumbers="True"
+		                       HorizontalScrollBarVisibility="Auto"
+		                       VerticalScrollBarVisibility="Auto"
+		                       Margin="0,2,0,0" Height="200" />
 	
 	</StackPanel>
 </gui:OptionPanel>

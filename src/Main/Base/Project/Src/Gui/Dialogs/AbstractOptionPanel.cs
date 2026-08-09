@@ -21,6 +21,8 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 
@@ -31,7 +33,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 	/// <summary>
 	/// Simple implementation of IOptionPanel with support for OptionBinding markup extensions.
 	/// </summary>
-	public class OptionPanel : UserControl, IOptionPanel, IOptionBindingContainer, INotifyPropertyChanged
+	public class OptionPanel : UserControl, IAsyncOptionPanel, IOptionBindingContainer, INotifyPropertyChanged
 	{
 		
 		public event System.ComponentModel.PropertyChangedEventHandler PropertyChanged;
@@ -44,11 +46,6 @@ namespace ICSharpCode.SharpDevelop.Gui
 		
 		public OptionPanel()
 		{
-			this.Resources.Add(
-				typeof(GroupBox),
-				new Style(typeof(GroupBox)) { Setters = {
-						new Setter(GroupBox.PaddingProperty, new Thickness(3, 3, 3, 7))
-					}});
 			this.Resources.Add(typeof(CheckBox), GlobalStyles.WordWrapCheckBoxStyle);
 			this.Resources.Add(typeof(RadioButton), GlobalStyles.WordWrapCheckBoxStyle);
 		}
@@ -70,6 +67,13 @@ namespace ICSharpCode.SharpDevelop.Gui
 		
 		public virtual void LoadOptions()
 		{
+		}
+
+		public virtual Task LoadOptionsAsync(CancellationToken cancellationToken)
+		{
+			cancellationToken.ThrowIfCancellationRequested();
+			LoadOptions();
+			return Task.CompletedTask;
 		}
 		
 		public virtual bool SaveOptions()

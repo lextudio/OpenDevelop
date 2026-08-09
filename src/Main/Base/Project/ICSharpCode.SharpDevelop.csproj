@@ -140,6 +140,12 @@
          reference code, so the Page items themselves must be excluded too. -->
     <Page Remove="Src\Gui\Dialogs\ReferenceDialog\**\*.xaml" />
     <None Include="Src\Gui\Dialogs\ReferenceDialog\**\*.xaml" />
+    <!-- This tool-path option page is already pure WPF and independent of the excluded legacy
+         discovery/generation stack. Keep it while that stack moves to dotnet-svcutil. -->
+    <Compile Include="Src\Gui\Dialogs\ReferenceDialog\ServiceReference\ServiceReferenceOptions.cs" />
+    <Compile Include="Src\Gui\Dialogs\ReferenceDialog\ServiceReference\ServiceReferenceOptionsPanel.xaml.cs" />
+    <None Remove="Src\Gui\Dialogs\ReferenceDialog\ServiceReference\ServiceReferenceOptionsPanel.xaml" />
+    <Page Include="Src\Gui\Dialogs\ReferenceDialog\ServiceReference\ServiceReferenceOptionsPanel.xaml" />
     <!-- FormLocationHelper.cs was previously excluded wholesale because of its WinForms Form overload and
          Screen.* (System.Windows.Forms.Screen) multi-monitor validation logic; the file has since been
          trimmed to keep only the WPF ApplyWindow() overload (with single-monitor SystemParameters.WorkArea

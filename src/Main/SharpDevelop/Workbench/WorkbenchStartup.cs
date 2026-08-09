@@ -31,6 +31,7 @@ using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Parser;
 using ICSharpCode.SharpDevelop.Project;
+using ICSharpCode.SharpDevelop.Services;
 using ICSharpCode.SharpDevelop.Startup;
 
 namespace ICSharpCode.SharpDevelop.Workbench
@@ -60,12 +61,14 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			// FindAllParallel's ObserveOnUIThread path, though nothing in the app used it). Build
 			// the sync context explicitly from the dispatcher instead of relying on ambient state.
 			SD.Services.AddService(typeof(IMessageLoop), new DispatcherMessageLoop(app.Dispatcher, new DispatcherSynchronizationContext(app.Dispatcher)));
-			InitializeWorkbench(new WpfWorkbench(), new AvalonDockLayout());
+			var messageService = (WpfMessageService)SD.MessageService;
+			InitializeWorkbench(new WpfWorkbench(), new AvalonDockLayout(), messageService);
 		}
 		
-		static void InitializeWorkbench(WpfWorkbench workbench, IWorkbenchLayout layout)
+		static void InitializeWorkbench(WpfWorkbench workbench, IWorkbenchLayout layout, WpfMessageService messageService)
 		{
 			SD.Services.AddService(typeof(IWorkbench), workbench);
+			messageService.Attach(workbench.MainWindow.Dispatcher, workbench.MainWindow);
 			
 			UILanguageService.ValidateLanguage();
 			
@@ -94,9 +97,6 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			// reference-resolution results without it, via Microsoft.Build.Execution directly.
 			SD.Services.AddService(typeof(IMSBuildEngine), new MinimalMSBuildEngine());
 			
-			// IDialogMessageService (WinForms IDialogMessageService.DialogOwner wiring) removed -
-			// the WinForms message-service implementation is out of MVP scope.
-
 			var applicationStateInfoService = SD.GetService<ApplicationStateInfoService>();
 			if (applicationStateInfoService != null) {
 				applicationStateInfoService.RegisterStateGetter(activeContentState, delegate { return SD.Workbench.ActiveContent; });

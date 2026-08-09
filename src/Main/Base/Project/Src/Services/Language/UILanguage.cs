@@ -17,6 +17,8 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 namespace ICSharpCode.SharpDevelop
 {
@@ -25,6 +27,7 @@ namespace ICSharpCode.SharpDevelop
 		string name;
 		string code;
 		string imagePath;
+		ImageSource flagImage;
 		bool isRightToLeft;
 		
 		public string Name {
@@ -39,11 +42,18 @@ namespace ICSharpCode.SharpDevelop
 			}
 		}
 		
-		public string ImagePath {
-			get {
-				return imagePath;
-			}
-		}
+		public string ImagePath => imagePath;
+
+		/// <summary>
+		/// Flag decoded through BitmapFrame's file path, the same path used by OpenDevelop's
+		/// working local-file image editors. LibreWPF currently leaves BitmapImage instances
+		/// created through either StreamSource or UriSource at zero size on macOS.
+		/// </summary>
+		public ImageSource FlagImage => flagImage ??= LoadFlagImage();
+
+		ImageSource LoadFlagImage() => BitmapFrame.Create(new Uri(imagePath, UriKind.Absolute));
+
+		public string DisplayName => $"{name} ({code})";
 		
 		public bool IsRightToLeft {
 			get { return isRightToLeft; }

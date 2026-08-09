@@ -32,7 +32,6 @@ using System.Windows.Input;
 using System.Windows.Threading;
 
 using ICSharpCode.Core;
-using ICSharpCode.Core.Implementation;
 using ICSharpCode.SharpDevelop.Commands;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Workbench;
@@ -61,7 +60,9 @@ namespace ICSharpCode.SharpDevelop.Sda
 			// Initialize the most important services:
 			var container = new SharpDevelopServiceContainer();
 			container.AddFallbackProvider(ServiceSingleton.FallbackServiceProvider);
-			container.AddService(typeof(IMessageService), new TextWriterMessageService(Console.Out));
+			// Register the real UI message service once. WorkbenchStartup attaches the WPF
+			// Dispatcher and owner after the workbench window has been constructed.
+			container.AddService(typeof(IMessageService), new WpfMessageService());
 			container.AddService(typeof(ILoggingService), new log4netLoggingService());
 			ServiceSingleton.ServiceProvider = container;
 			

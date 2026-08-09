@@ -17,6 +17,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Diagnostics;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Gui;
 
@@ -39,7 +40,11 @@ namespace ICSharpCode.SharpDevelop.Commands
 		
 		public static bool? ShowTreeOptions(string dialogName, string dialogTitle, AddInTreeNode node)
 		{
-			TreeViewOptionsDialog o = new TreeViewOptionsDialog(node.BuildChildItems<IOptionPanelDescriptor>(null), dialogName);
+			var stopwatch = Stopwatch.StartNew();
+			var descriptors = node.BuildChildItems<IOptionPanelDescriptor>(null);
+			LoggingService.Debug($"Options descriptors built in {stopwatch.ElapsedMilliseconds} ms.");
+			TreeViewOptionsDialog o = new TreeViewOptionsDialog(descriptors, dialogName);
+			LoggingService.Debug($"Options dialog shell created in {stopwatch.ElapsedMilliseconds} ms total.");
 			o.Title = dialogTitle;
 			o.Owner = SD.Workbench.MainWindow;
 			return o.ShowDialog();

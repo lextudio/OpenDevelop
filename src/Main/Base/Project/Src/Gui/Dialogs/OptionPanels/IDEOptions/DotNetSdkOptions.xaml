@@ -7,14 +7,26 @@
 			<StackPanel>
 				<TextBlock TextWrapping="Wrap" Margin="0,0,0,6"
 				           Text="Choose which installed .NET SDK is used to compile, debug, and run tests for project files. The default is the system-installed SDK." />
+				<TextBlock Name="effectiveSdkText" Margin="0,0,0,8" FontWeight="Bold"
+				           TextWrapping="Wrap" />
 				<ListBox Name="sdkListBox" MinHeight="90" MaxHeight="200"
-				         SelectionMode="Single">
+				         SelectionMode="Single" SelectionChanged="sdkListBoxSelectionChanged">
 					<ListBox.ItemTemplate>
 						<DataTemplate>
-							<StackPanel Orientation="Vertical" Margin="2">
-								<TextBlock Text="{Binding Label}" FontWeight="Bold" />
-								<TextBlock Text="{Binding RootPath}" Foreground="Gray" FontSize="11" />
-							</StackPanel>
+							<Grid Margin="4,3">
+								<Grid.ColumnDefinitions>
+									<ColumnDefinition Width="Auto" />
+									<ColumnDefinition Width="*" />
+								</Grid.ColumnDefinitions>
+								<RadioButton Margin="0,0,8,0" VerticalAlignment="Center"
+								             IsHitTestVisible="False" Focusable="False"
+								             AutomationProperties.Name="{Binding Label}"
+								             IsChecked="{Binding IsSelected, Mode=OneWay, RelativeSource={RelativeSource AncestorType={x:Type ListBoxItem}}}" />
+								<StackPanel Grid.Column="1" Orientation="Vertical">
+									<TextBlock Text="{Binding Label}" FontWeight="Bold" />
+									<TextBlock Text="{Binding RootPath}" Foreground="{DynamicResource MutedForeground}" FontSize="11" />
+								</StackPanel>
+							</Grid>
 						</DataTemplate>
 					</ListBox.ItemTemplate>
 				</ListBox>
@@ -22,7 +34,6 @@
 					<Button Content="Refresh" Click="refreshButtonClick" Padding="8,2" Margin="0,0,6,0" />
 					<Button Content="Add Custom Path..." Click="addCustomPathButtonClick" Padding="8,2" />
 				</StackPanel>
-				<TextBlock Name="effectiveSdkText" Margin="0,10,0,0" FontStyle="Italic" TextWrapping="Wrap" />
 			</StackPanel>
 		</GroupBox>
 	</StackPanel>

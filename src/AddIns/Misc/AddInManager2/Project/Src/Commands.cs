@@ -45,9 +45,14 @@ namespace ICSharpCode.AddInManager2
 	
 	public class AddInManagerVisualInitializationCommand : SimpleCommand
 	{
+		static UpdateNotifier updateNotifier;
+
 		public override void Execute(object parameter)
 		{
-			// Auto-update check (UpdateNotifier) removed - WinForms notify icon out of MVP scope
+			if (AddInManagerServices.Settings.AutoSearchForUpdates) {
+				updateNotifier = new UpdateNotifier();
+				updateNotifier.StartUpdateLookup();
+			}
 		}
 	}
 }

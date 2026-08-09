@@ -19,6 +19,14 @@
   <ItemGroup>
     <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
     <Resource Include="Resources\**\*" />
-    <None Include="StartPage.addin" CopyToOutputDirectory="Always" />
+    <!-- CopyToOutputDirectory content propagates through the full transitive project-reference
+         closure. SharpDevelop references StartPage and AvalonEdit.AddIn references SharpDevelop,
+         so the manifest was also copied into AddIns/DisplayBindings/AvalonEdit and registered the
+         ICSharpCode.StartPage identity twice. Keep it as a normal project item and explicitly copy
+         it only to StartPage's own output directory. -->
+    <None Include="StartPage.addin" />
   </ItemGroup>
+  <Target Name="CopyAddInManifest" AfterTargets="Build">
+    <Copy SourceFiles="StartPage.addin" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+  </Target>
 </Project>

@@ -14,14 +14,14 @@
 			<ListView.Resources>
 				<DataTemplate
 					x:Key="nameCellTemplate">
-					<TextBlock>
-						<Hyperlink
-							Tag="{Binding}"
-							Click="listViewHyperlinkClick">
-							<TextBlock
-								Text="{Binding Path=Name}" />
-						</Hyperlink>
-					</TextBlock>
+					<!-- LibreWPF does not currently lay out a TextBlock nested inside a Hyperlink
+					     inline (the inner text has no bounds and the outer TextBlock measures 0 wide).
+					     A directly clickable TextBlock preserves the link behavior and renders normally. -->
+					<TextBlock Text="{Binding Path=Name}"
+					           Tag="{Binding}"
+					           Foreground="{DynamicResource Selection}"
+					           Cursor="Hand"
+					           MouseLeftButtonUp="listViewNameClick" />
 				</DataTemplate>
 			</ListView.Resources>
 			<ListView.ItemContainerStyle>

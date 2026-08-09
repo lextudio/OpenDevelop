@@ -27,8 +27,14 @@
 			</ComboBox.ItemTemplate>
 		</ComboBox>
 		<ComboBox Grid.Column="1" Grid.Row="1" Margin="3" SelectedValue="{Binding SelectedFontSize, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type local:FontSelector}}}" ItemsSource="{Binding Source={x:Static Member=local:FontSelector.FontSizes}}" />
-		<Border Grid.Row="2" Grid.ColumnSpan="2" Background="White" BorderBrush="Black" BorderThickness="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
-			<TextBlock Text="AaBbCcXxYyZz" TextAlignment="Center" VerticalAlignment="Center" HorizontalAlignment="Center" FontFamily="{Binding SelectedFontName, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type local:FontSelector}}}" FontSize="{Binding SelectedFontSize, Converter={StaticResource conv}, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type local:FontSelector}}}" />
+		<Border Grid.Row="2" Grid.ColumnSpan="2" Margin="3,0,3,0" Padding="6"
+		        Background="{DynamicResource ToolWindowBackground}"
+		        BorderBrush="{DynamicResource Border}" BorderThickness="1"
+		        HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+			<TextBlock Text="AaBbCcXxYyZz" Foreground="{DynamicResource Foreground}"
+			           TextAlignment="Center" VerticalAlignment="Center" HorizontalAlignment="Center"
+			           FontFamily="{Binding SelectedFontName, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type local:FontSelector}}}"
+			           FontSize="{Binding SelectedFontSize, Converter={StaticResource conv}, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type local:FontSelector}}}" />
 		</Border>
 	</Grid>
 </UserControl>

@@ -12,31 +12,6 @@
 	
 	<Grid d:DataContext="{d:DesignInstance pmd:DesignTimeRegisteredPackageSourcesViewModel, IsDesignTimeCreatable=True}">
 		<Grid.Resources>
-			<Style
-				x:Key="ListBoxItemStyle"
-				TargetType="{x:Type ListBoxItem}">
-				
-				<Style.Resources>
-					<SolidColorBrush
-						x:Key="{x:Static SystemColors.ControlBrushKey}"
-						Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}" />
-				</Style.Resources>
-				
-				<Setter
-					Property="Background"
-					Value="LightGray"/>
-				
-				<Style.Triggers>
-					<Trigger
-						Property="ItemsControl.AlternationIndex"
-						Value="0">
-						<Setter
-							Property="Background"
-							Value="White"/>
-					</Trigger>
-				</Style.Triggers>
-			</Style>
-			
 			<DataTemplate x:Key="PackageSourceListBoxTemplate">
 				<StackPanel
 					x:Name="PackageSourceStackPanel"
@@ -64,9 +39,7 @@
 		<ListBox
 			Grid.Row="0"
 			HorizontalContentAlignment="Stretch"
-			AlternationCount="2"
 			pm:ListBoxBehaviour.IsSelectedItemScrolledIntoView="True"
-			ItemContainerStyle="{StaticResource ListBoxItemStyle}"
 			ItemTemplate="{StaticResource PackageSourceListBoxTemplate}"
 			ItemsSource="{Binding Path=PackageSourceViewModels}"
 			SelectedItem="{Binding Path=SelectedPackageSourceViewModel}"/>

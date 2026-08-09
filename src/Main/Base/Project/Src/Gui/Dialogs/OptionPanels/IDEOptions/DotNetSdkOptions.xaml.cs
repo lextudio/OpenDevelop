@@ -1,6 +1,9 @@
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 
+using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Project.Sdk;
 
 namespace ICSharpCode.SharpDevelop.Gui.OptionPanels
@@ -15,7 +18,17 @@ namespace ICSharpCode.SharpDevelop.Gui.OptionPanels
 		public override void LoadOptions()
 		{
 			base.LoadOptions();
-			Refresh();
+			ApplyDiscoveredSdks(DotNetSdkService.DiscoverSdks());
+		}
+
+		public override async Task LoadOptionsAsync(CancellationToken cancellationToken)
+		{
+			// PropertyService is UI-owned; snapshot its values before moving filesystem scans
+			// to a worker thread.
+			var customRoots = DotNetSdkService.CustomRoots.ToArray();
+			var discovered = await Task.Run(() => DotNetSdkService.DiscoverSdks(customRoots), cancellationToken);
+			cancellationToken.ThrowIfCancellationRequested();
+			ApplyDiscoveredSdks(discovered);
 		}
 
 		public override bool SaveOptions()
@@ -30,36 +43,53 @@ namespace ICSharpCode.SharpDevelop.Gui.OptionPanels
 			return base.SaveOptions();
 		}
 
-		void Refresh()
+		void ApplyDiscoveredSdks(System.Collections.Generic.IReadOnlyList<DotNetSdkInfo> discovered, string preferredRoot = null)
 		{
-			var discovered = DotNetSdkService.DiscoverSdks();
 			sdkListBox.ItemsSource = discovered;
 
-			string selectedRoot = DotNetSdkService.SelectedSdkRootPath;
+			string selectedRoot = preferredRoot ?? DotNetSdkService.SelectedSdkRootPath;
 			DotNetSdkInfo toSelect = null;
 			if (!string.IsNullOrEmpty(selectedRoot))
 				toSelect = discovered.FirstOrDefault(s => string.Equals(s.RootPath, selectedRoot, System.StringComparison.OrdinalIgnoreCase));
 			toSelect ??= discovered.FirstOrDefault(s => s.Origin == DotNetSdkOrigin.System);
 			sdkListBox.SelectedItem = toSelect;
 
-			var effective = DotNetSdkService.ResolveEffectiveSdk();
-			effectiveSdkText.Text = $"Currently effective: {effective.Label}" +
-				(effective.RootPath != null ? $" ({effective.RootPath})" : " (not found - falling back to PATH)");
+			UpdateSelectedSdkText();
 		}
 
-		void refreshButtonClick(object sender, RoutedEventArgs e)
+		void sdkListBoxSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
 		{
-			Refresh();
+			UpdateSelectedSdkText();
 		}
 
-		void addCustomPathButtonClick(object sender, RoutedEventArgs e)
+		void UpdateSelectedSdkText()
+		{
+			var selected = sdkListBox.SelectedItem as DotNetSdkInfo;
+			effectiveSdkText.Text = selected == null
+				? "Selected SDK: none"
+				: $"Selected SDK: {selected.Label} ({selected.RootPath})";
+		}
+
+		async void refreshButtonClick(object sender, RoutedEventArgs e)
+		{
+			await LoadOptionsAsync(CancellationToken.None);
+		}
+
+		async void addCustomPathButtonClick(object sender, RoutedEventArgs e)
 		{
 			string path = SD.FileService.BrowseForFolder(
 				"Select a folder containing a \"dotnet\" executable and an \"sdk\" subfolder", null);
 			if (string.IsNullOrEmpty(path))
 				return;
-			DotNetSdkService.AddCustomRoot(path);
-			Refresh();
+			if (!DotNetSdkService.TryDescribeCustomRoot(path, out var customSdk, out string error)) {
+				MessageService.ShowError(error);
+				return;
+			}
+
+			DotNetSdkService.AddCustomRoot(customSdk.RootPath);
+			var customRoots = DotNetSdkService.CustomRoots.ToArray();
+			var discovered = await Task.Run(() => DotNetSdkService.DiscoverSdks(customRoots));
+			ApplyDiscoveredSdks(discovered, customSdk.RootPath);
 		}
 	}
 }

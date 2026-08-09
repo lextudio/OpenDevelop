@@ -19,6 +19,32 @@
     <SolidColorBrush x:Key="InfoBarBackground" Color="#FF264F78" />
     <SolidColorBrush x:Key="InfoBarBorder" Color="#FF007ACC" />
 
+    <Style TargetType="{x:Type GroupBox}">
+        <Setter Property="Foreground" Value="{DynamicResource Foreground}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="8" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type GroupBox}">
+                    <Grid SnapsToDevicePixels="True">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <ContentPresenter Margin="8,0,8,4" ContentSource="Header"
+                                          RecognizesAccessKey="True" />
+                        <Border Grid.Row="1" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter />
+                        </Border>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- SystemColors overrides (Dark, ported from ILSpy Base.Dark.xaml) -->
     <Color x:Key="{x:Static SystemColors.ControlLightLightColorKey}">#333337</Color>
     <Color x:Key="{x:Static SystemColors.ControlLightColorKey}">#464646</Color>

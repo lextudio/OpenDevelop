@@ -21,6 +21,8 @@ using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Win32;
@@ -31,7 +33,7 @@ using ICSharpCode.XmlEditor;
 
 namespace ICSharpCode.XmlEditor
 {
-	public partial class XmlSchemasPanel : UserControl, IOptionPanel, IXmlSchemasPanel
+	public partial class XmlSchemasPanel : UserControl, IAsyncOptionPanel, IXmlSchemasPanel
 	{
 		XmlSchemaCompletionCollection predefinedSchemas;
 		ICollection<string> xmlFileExtensions;
@@ -72,6 +74,13 @@ namespace ICSharpCode.XmlEditor
 		{
 			editor.LoadOptions();
 		}		
+
+		public Task LoadOptionsAsync(CancellationToken cancellationToken)
+		{
+			cancellationToken.ThrowIfCancellationRequested();
+			LoadOptions();
+			return Task.CompletedTask;
+		}
 				
 		/// <summary>
 		/// Saves any changes to the configured schemas.

@@ -17,6 +17,8 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace ICSharpCode.SharpDevelop
 {
@@ -34,5 +36,15 @@ namespace ICSharpCode.SharpDevelop
 		
 		void LoadOptions();
 		bool SaveOptions();
+	}
+
+	/// <summary>
+	/// Optional extension for option panels whose data can be loaded without blocking the UI
+	/// thread. Implementations must marshal UI updates back to the captured synchronization
+	/// context after awaited background work.
+	/// </summary>
+	public interface IAsyncOptionPanel : IOptionPanel
+	{
+		Task LoadOptionsAsync(CancellationToken cancellationToken);
 	}
 }

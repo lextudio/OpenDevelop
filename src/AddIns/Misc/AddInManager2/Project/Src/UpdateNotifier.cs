@@ -17,11 +17,9 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Drawing;
 using System.Linq;
-using System.Reflection;
-using System.Windows.Forms;
 using ICSharpCode.SharpDevelop;
+using ICSharpCode.SharpDevelop.ViewModels;
 using ICSharpCode.AddInManager2.Model;
 using ICSharpCode.AddInManager2.ViewModel;
 using ICSharpCode.AddInManager2.View;
@@ -36,7 +34,6 @@ namespace ICSharpCode.AddInManager2
 		private IAddInManagerServices _services;
 		private UpdatedAddInsViewModel _updatedAddInViewModel;
 		private bool _isDetached;
-		private NotifyIcon _notifyIcon;
 		private bool _hasNotified;
 		private PackageRepository _firstRepositoryWithUpdates;
 		
@@ -53,12 +50,8 @@ namespace ICSharpCode.AddInManager2
 			_services.Events.PackageListDownloadEnded += Events_PackageListDownloadEnded;
 		}
 		
-		private void NotifyIcon_Click(object sender, EventArgs e)
+		private void ShowUpdates()
 		{
-			// Remove the notify icon
-			DestroyIcon();
-			
-			// Show AddInManager window on click
 			using (AddInManagerView view = AddInManagerView.Create())
 			{
 				var viewModel = view.ViewModel;
@@ -74,20 +67,9 @@ namespace ICSharpCode.AddInManager2
 						viewModel.UpdatedAddInsViewModel.SelectedPackageSource = firstRepositoryWithUpdates;
 					}
 				}
-				_firstRepositoryWithUpdates = null;
 				view.ShowDialog();
 			}
-		}
-		
-		private void DestroyIcon()
-		{
-			if (_notifyIcon != null)
-			{
-				_notifyIcon.Dispose();
-				_notifyIcon = null;
-				
-				_services.Events.AddInManagerViewOpened -= Events_AddInManagerViewOpened;
-			}
+			_firstRepositoryWithUpdates = null;
 		}
 		
 		private void Detach()
@@ -106,12 +88,6 @@ namespace ICSharpCode.AddInManager2
 				// Start getting updates
 				_updatedAddInViewModel.ReadPackages();
 			}
-		}
-		
-		private void Events_AddInManagerViewOpened(object sender, EventArgs e)
-		{
-			// AddInManager dialog has been opened through menu, not through the NotifyIcon -> hide the icon
-			DestroyIcon();
 		}
 		
 		private void Events_PackageListDownloadEnded(object sender, PackageListDownloadEndedEventArgs e)
@@ -136,19 +112,13 @@ namespace ICSharpCode.AddInManager2
 					_hasNotified = true;
 					Detach();
 					
-					_services.Events.AddInManagerViewOpened += Events_AddInManagerViewOpened;
-					
-					_notifyIcon = new NotifyIcon();
-					_notifyIcon.Icon = Icon.ExtractAssociatedIcon(Assembly.GetEntryAssembly().Location);
-					_notifyIcon.Click += NotifyIcon_Click;
-					_notifyIcon.BalloonTipClicked += NotifyIcon_Click;
-					
-					_notifyIcon.Text = SD.ResourceService.GetString("AddInManager2.UpdateNotifier.BubbleTitle");
-					_notifyIcon.BalloonTipTitle = _notifyIcon.Text;
-					_notifyIcon.BalloonTipText = SD.ResourceService.GetString("AddInManager2.UpdateNotifier.BubbleText");
-					
-					_notifyIcon.Visible = true;
-					_notifyIcon.ShowBalloonTip(40000);
+					SD.MainThread.InvokeAsyncAndForget(() => {
+						var notificationHost = SD.Services.GetService(typeof(INotificationHost)) as INotificationHost;
+						notificationHost?.Show(
+							SD.ResourceService.GetString("AddInManager2.UpdateNotifier.BubbleText"),
+							SD.ResourceService.GetString("AddInManager.Title"),
+							ShowUpdates);
+					});
 					
 					return;
 				}

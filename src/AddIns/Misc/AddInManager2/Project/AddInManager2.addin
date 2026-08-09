@@ -18,7 +18,6 @@
 		          class="ICSharpCode.AddInManager2.ShowAddInManagerCommand"/>
 	</Path>
 	
-	<!-- Option dialog -->
 	<Path name="/SharpDevelop/Dialogs/OptionsDialog">
 		<OptionPanel
 			id="AddInManager2"

@@ -20,8 +20,11 @@ using ICSharpCode.Core;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -30,6 +33,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using ICSharpCode.Core.Presentation;
 
 namespace ICSharpCode.SharpDevelop.Gui
@@ -91,6 +95,24 @@ namespace ICSharpCode.SharpDevelop.Gui
 		protected override void OnSourceInitialized(EventArgs e)
 		{
 			base.OnSourceInitialized(e);
+		}
+
+		bool initialPanelActivationScheduled;
+
+		protected override void OnContentRendered(EventArgs e)
+		{
+			base.OnContentRendered(e);
+			if (initialPanelActivationScheduled)
+				return;
+			initialPanelActivationScheduled = true;
+
+			// Creating an addin's first option panel can load an assembly, parse XAML, or
+			// discover external tools. Do it only after the dialog's first frame is visible.
+			Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(ActivateInitialPanel));
+		}
+
+		void ActivateInitialPanel()
+		{
 			string[] lastOpenedPanelID = SD.PropertyService.Get(LastOpenedPanelIDSetting, "UIOptions/SelectCulture").Split('/');
 			
 			var topLevelList = (IEnumerable<OptionPanelNode>)treeView.ItemsSource;
@@ -120,6 +142,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 		
 		protected override void OnClosed(EventArgs e)
 		{
+			lifetimeCancellation.Cancel();
 			base.OnClosed(e);
 			var selectedPanelNode = treeView.SelectedItem as OptionPanelNode;
 			string openedPanelID = "";
@@ -139,6 +162,8 @@ namespace ICSharpCode.SharpDevelop.Gui
 		
 		List<IOptionPanel> optionPanels = new List<IOptionPanel>();
 		OptionPanelNode activeNode;
+		readonly CancellationTokenSource lifetimeCancellation = new CancellationTokenSource();
+		int loadGeneration;
 		
 		void SelectNode(OptionPanelNode node)
 		{
@@ -157,10 +182,38 @@ namespace ICSharpCode.SharpDevelop.Gui
 			activeNode = node;
 			optionPanelTitle.Text = node.Title;
 			optionPanelScrollViewer.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
-			optionPanelContent.Content = node.Content;
+			optionPanelContent.Content = new TextBlock {
+				Text = "Loading…",
+				Margin = new Thickness(8)
+			};
 			
 			node.IsExpanded = true;
 			node.IsActive = true;
+			okButton.IsEnabled = false;
+			int generation = ++loadGeneration;
+			Dispatcher.BeginInvoke(DispatcherPriority.Background,
+				new Action(() => LoadNodeContentAsync(node, generation)));
+		}
+
+		async void LoadNodeContentAsync(OptionPanelNode node, int generation)
+		{
+			if (node != activeNode || !IsLoaded)
+				return;
+			var stopwatch = Stopwatch.StartNew();
+			try {
+				var content = await node.GetContentAsync(lifetimeCancellation.Token);
+				if (node == activeNode && IsLoaded)
+					optionPanelContent.Content = content;
+			} catch (OperationCanceledException) when (lifetimeCancellation.IsCancellationRequested) {
+				// The dialog was closed while an asynchronous panel was loading.
+			} catch (Exception ex) {
+				MessageService.ShowException(ex);
+			} finally {
+				stopwatch.Stop();
+				if (generation == loadGeneration && IsLoaded)
+					okButton.IsEnabled = true;
+				LoggingService.Debug($"Options panel '{node.ID}' loaded in {stopwatch.ElapsedMilliseconds} ms.");
+			}
 		}
 		
 		sealed class OptionPanelNode : INotifyPropertyChanged
@@ -191,19 +244,40 @@ namespace ICSharpCode.SharpDevelop.Gui
 			}
 			
 			IOptionPanel optionPanel;
+			Task<object> contentTask;
+			bool optionsLoaded;
 			
-			public object Content {
-				get {
-					if (optionPanel == null) {
-						optionPanel = OptionPanelDescriptor.OptionPanel;
-						if (optionPanel == null) {
-							return null;
-						}
-						optionPanel.LoadOptions();
-						dialog.optionPanels.Add(optionPanel);
-					}
-					return optionPanel.Control;
+			public async Task<object> GetContentAsync(CancellationToken cancellationToken)
+			{
+				if (contentTask == null)
+					contentTask = LoadContentAsync(cancellationToken);
+				var currentTask = contentTask;
+				try {
+					return await currentTask;
+				} catch {
+					// A transient AddIn/file-system failure should be retryable when the user
+					// leaves this page and selects it again.
+					if (contentTask == currentTask)
+						contentTask = null;
+					throw;
 				}
+			}
+
+			async Task<object> LoadContentAsync(CancellationToken cancellationToken)
+			{
+				if (optionPanel == null)
+					optionPanel = OptionPanelDescriptor.OptionPanel;
+				if (optionPanel == null)
+					return null;
+				if (!optionsLoaded) {
+					if (optionPanel is IAsyncOptionPanel asyncOptionPanel)
+						await asyncOptionPanel.LoadOptionsAsync(cancellationToken);
+					else
+						optionPanel.LoadOptions();
+					optionsLoaded = true;
+					dialog.optionPanels.Add(optionPanel);
+				}
+				return optionPanel.Control;
 			}
 			
 			public ImageSource Image {
