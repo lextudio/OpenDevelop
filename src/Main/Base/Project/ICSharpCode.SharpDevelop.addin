@@ -392,6 +392,10 @@
 		          label = "${res:Gui.ProjectBrowser.OpenWith}"
 		          class = "ICSharpCode.SharpDevelop.Project.Commands.OpenFileFromProjectBrowserWith"/>
 		
+		<MenuItem id    = "EditProjectFile"
+		          label = "${res:ProjectComponent.ContextMenu.EditProjectFile}"
+		          class = "ICSharpCode.SharpDevelop.Project.Commands.EditProjectFile"/>
+		
 		<Include id = "ProjectActions" path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/ProjectActions"/>
 		<MenuItem id = "Separator2" type = "Separator"/>
 		<Include id="inc" path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/CutPasteRemoveRename"/>

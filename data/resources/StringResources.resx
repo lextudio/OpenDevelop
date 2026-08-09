@@ -6075,6 +6075,9 @@ Removed the end part of the original message ", reason '${Message}'" since this 
   <data name="ProjectComponent.ContextMenu.Build" xml:space="preserve">
     <value>B&amp;uild</value>
   </data>
+  <data name="ProjectComponent.ContextMenu.EditProjectFile" xml:space="preserve">
+    <value>&amp;Edit Project File</value>
+  </data>
   <data name="ProjectComponent.ContextMenu.Clean" xml:space="preserve">
     <value>Clea&amp;n</value>
   </data>

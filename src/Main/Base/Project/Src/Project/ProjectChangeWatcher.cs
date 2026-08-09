@@ -178,6 +178,22 @@ namespace ICSharpCode.SharpDevelop.Project
 			
 			LoggingService.DebugFormatted("Project file {0} was changed externally: {1}", e.Name, e.ChangeType);
 			UpdateLastWriteTime();
+
+			// SDK-style projects are routinely hand-edited - retargeting, package references - and the
+			// file is the project, with no designer state that a reload could lose. Asking "the solution
+			// was altered externally, reload?" every time turns a normal edit into a dialog, so apply the
+			// change instead. Legacy projects keep the prompt: their in-memory model can hold state that
+			// is not in the file, so silently dropping it would not be safe.
+			if (IsSdkStyleProjectFile()) {
+				if (!reloadQueued) {
+					reloadQueued = true;
+					// Same delay as the prompt below, and for the same reason: a writer may still be
+					// mid-save, and editors often touch the file twice in quick succession.
+					SD.MainThread.CallLater(TimeSpan.FromSeconds(0.5), ReloadAfterSdkStyleProjectChange);
+				}
+				return;
+			}
+
 			if (!wasChangedExternally) {
 				wasChangedExternally = true;
 				if (SD.Workbench.IsActiveWindow) {
@@ -186,6 +202,60 @@ namespace ICSharpCode.SharpDevelop.Project
 					// trying to reload the file while it is still being written
 					SD.MainThread.CallLater(TimeSpan.FromSeconds(0.5), delegate { MainFormActivated(); });
 				}
+			}
+		}
+
+		bool reloadQueued;
+
+		/// <summary>
+		/// Re-reads the solution so an edited SDK-style project file takes effect, without prompting.
+		/// </summary>
+		void ReloadAfterSdkStyleProjectChange()
+		{
+			reloadQueued = false;
+			var solution = ProjectService.OpenSolution;
+			if (solution == null)
+				return;
+			// Re-reading the whole solution is what the reload prompt does too; there is no
+			// single-project reload to call here.
+			LoggingService.Info("Reloading solution after " + fileName + " changed.");
+			SD.ProjectService.OpenSolutionOrProject(solution.FileName);
+		}
+
+		/// <summary>
+		/// Whether the watched file is an SDK-style project (<c>&lt;Project Sdk="..."&gt;</c>).
+		/// </summary>
+		/// <remarks>
+		/// Read as text rather than parsed as XML on purpose: this runs while another process may still
+		/// be writing the file, and a partial write must not throw. Anything unreadable or unrecognised
+		/// simply falls through to the existing prompt.
+		/// </remarks>
+		bool IsSdkStyleProjectFile()
+		{
+			if (string.IsNullOrEmpty(fileName))
+				return false;
+			string extension = Path.GetExtension(fileName);
+			if (!".csproj".Equals(extension, StringComparison.OrdinalIgnoreCase)
+			    && !".vbproj".Equals(extension, StringComparison.OrdinalIgnoreCase)
+			    && !".fsproj".Equals(extension, StringComparison.OrdinalIgnoreCase))
+				return false;
+
+			try {
+				using (var stream = new FileStream(fileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+				using (var reader = new StreamReader(stream)) {
+					char[] buffer = new char[4096];
+					int read = reader.Read(buffer, 0, buffer.Length);
+					if (read <= 0)
+						return false;
+					string head = new string(buffer, 0, read);
+					// Either the attribute form on the root element or the nested <Sdk .../> element.
+					return head.IndexOf("Sdk=\"", StringComparison.OrdinalIgnoreCase) >= 0
+						|| head.IndexOf("<Sdk ", StringComparison.OrdinalIgnoreCase) >= 0;
+				}
+			} catch (IOException) {
+				return false;
+			} catch (UnauthorizedAccessException) {
+				return false;
 			}
 		}
 

@@ -165,6 +165,90 @@ public sealed class WorkbenchTests
     }
 
     [Fact]
+    public async Task OpenSln_MigratesToSlnxAndOpensTheSlnx()
+    {
+        // Opening a classic .sln converts it to the XML .slnx format first and opens that, so the
+        // solution the workbench ends up holding is the .slnx sitting next to the original.
+        // Worked on a copy: migration writes a new file next to the solution, and this repo's
+        // fixture is tracked.
+        var workingDir = Path.Combine(Path.GetTempPath(), "SlnMigrateTests-" + Guid.NewGuid().ToString("N"));
+        CopyFixtureDirectory(Path.GetDirectoryName(_app.SolutionExplorerFixturePath)!, workingDir);
+        var slnPath = Path.Combine(workingDir, Path.GetFileName(_app.SolutionExplorerFixturePath));
+        var slnxPath = Path.ChangeExtension(slnPath, ".slnx");
+
+        try
+        {
+            Assert.True(File.Exists(slnPath), "Expected the copied fixture to still be a .sln.");
+            Assert.False(File.Exists(slnxPath), "The copied fixture should not start with a .slnx.");
+
+            var result = await _app.ReopenSolutionAsync(slnPath);
+
+            Assert.True(result.GetProperty("success").GetBoolean(), result.ToString());
+            Assert.True(File.Exists(slnxPath), "Expected opening the .sln to produce a .slnx beside it.");
+            Assert.Equal(slnxPath, result.GetProperty("currentSolution").GetString());
+
+            // The migrated solution still describes the same projects, not an empty shell.
+            var tree = await _app.InvokeAsync("od.solution-tree");
+            Assert.Equal(slnxPath, tree.GetProperty("solutionFile").GetString());
+        }
+        finally
+        {
+            try { Directory.Delete(workingDir, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task OpenSln_WhenSlnxAlreadyExists_AdoptsItWithoutRegenerating()
+    {
+        // A .slnx beside the .sln is opened as-is: regenerating it would discard whatever the user
+        // (or an earlier migration) put there.
+        var workingDir = Path.Combine(Path.GetTempPath(), "SlnMigrateTests-" + Guid.NewGuid().ToString("N"));
+        CopyFixtureDirectory(Path.GetDirectoryName(_app.SolutionExplorerFixturePath)!, workingDir);
+        var slnPath = Path.Combine(workingDir, Path.GetFileName(_app.SolutionExplorerFixturePath));
+        var slnxPath = Path.ChangeExtension(slnPath, ".slnx");
+
+        try
+        {
+            await _app.ReopenSolutionAsync(slnPath);
+            Assert.True(File.Exists(slnxPath));
+            var generated = File.ReadAllText(slnxPath);
+
+            // Mark the file, reopen the .sln, and check the marker survived.
+            var marked = generated.Replace("</Solution>", "  <!-- hand edited -->\n</Solution>");
+            File.WriteAllText(slnxPath, marked);
+
+            var result = await _app.ReopenSolutionAsync(slnPath);
+
+            Assert.True(result.GetProperty("success").GetBoolean(), result.ToString());
+            Assert.Equal(slnxPath, result.GetProperty("currentSolution").GetString());
+            Assert.Contains("hand edited", File.ReadAllText(slnxPath));
+        }
+        finally
+        {
+            try { Directory.Delete(workingDir, recursive: true); } catch { }
+        }
+    }
+
+    static void CopyFixtureDirectory(string sourceDir, string destDir)
+    {
+        Directory.CreateDirectory(destDir);
+        foreach (var dir in Directory.GetDirectories(sourceDir, "*", SearchOption.AllDirectories))
+        {
+            if (dir.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar) ||
+                dir.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar))
+                continue;
+            Directory.CreateDirectory(dir.Replace(sourceDir, destDir));
+        }
+        foreach (var file in Directory.GetFiles(sourceDir, "*", SearchOption.AllDirectories))
+        {
+            if (file.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar) ||
+                file.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar))
+                continue;
+            File.Copy(file, file.Replace(sourceDir, destDir), overwrite: true);
+        }
+    }
+
+    [Fact]
     public async Task SolutionTree_ListsAllProjects()
     {
         await _app.EnsureSolutionOpenAsync(_app.SlnxFixturePath);

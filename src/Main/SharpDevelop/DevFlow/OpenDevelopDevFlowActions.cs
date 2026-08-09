@@ -1,4 +1,4 @@
-// DevFlow actions used by tests/OpenDevelop.IntegrationTests to drive the app without a native
+﻿// DevFlow actions used by tests/OpenDevelop.IntegrationTests to drive the app without a native
 // file-open dialog (which the WPF-embedded DevFlow agent can't see/control - see
 // doc/technotes/csharp-roslyn.md session notes). Static methods on a [DevFlowUIThread]-annotated
 // class are auto-discovered by LeXtudio.DevFlow.Agent.Core and dispatched to the UI thread.
@@ -582,6 +582,52 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			} catch (Exception ex) {
 				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
 			}
+		}
+
+		[DevFlowAction("od.project.properties", Description = "Read evaluated MSBuild properties from a loaded project's in-memory model (not from the file on disk)")]
+		public static string GetProjectProperties(string projectName = null, string propertyNames = null)
+		{
+			// Reads the loaded model on purpose. Builds hand the project *path* to MSBuild, which
+			// re-reads the file itself, so a build result cannot distinguish "the workbench picked up
+			// this edit" from "the workbench never noticed but MSBuild read the new file anyway".
+			// Only the evaluated model can tell those apart.
+			var solution = SD.ProjectService.CurrentSolution;
+			if (solution == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No solution is open." });
+
+			IProject project;
+			if (string.IsNullOrEmpty(projectName)) {
+				project = solution.StartupProject ?? solution.Projects.FirstOrDefault();
+			} else {
+				project = solution.Projects.FirstOrDefault(p => string.Equals(p.Name, projectName, StringComparison.OrdinalIgnoreCase))
+					?? solution.Projects.FirstOrDefault(p => FileUtility.IsEqualFileName(p.FileName, projectName));
+			}
+			if (project == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No project named '" + projectName + "' in the current solution." });
+
+			var msbuildProject = project as MSBuildBasedProject;
+			if (msbuildProject == null)
+				return JsonSerializer.Serialize(new { success = false, error = "Project '" + project.Name + "' is not MSBuild-based." });
+
+			var requested = string.IsNullOrEmpty(propertyNames)
+				? new[] { "TargetFramework", "TargetFrameworks", "TargetFrameworkVersion", "OutputType", "AssemblyName" }
+				: propertyNames.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries).Select(n => n.Trim()).ToArray();
+
+			var properties = new Dictionary<string, string>();
+			foreach (var name in requested) {
+				try {
+					properties[name] = msbuildProject.GetEvaluatedProperty(name);
+				} catch (Exception ex) {
+					properties[name] = "<error: " + ex.Message + ">";
+				}
+			}
+
+			return JsonSerializer.Serialize(new {
+				success = true,
+				projectName = project.Name,
+				fileName = project.FileName.ToString(),
+				properties
+			});
 		}
 
 		[DevFlowAction("od.build-solution", Description = "Build the current solution (or a single project by name) and return error/warning counts plus the individual diagnostics")]

@@ -21,6 +21,30 @@ using ICSharpCode.Core;
 
 namespace ICSharpCode.SharpDevelop.Project.Commands
 {
+	/// <summary>
+	/// Opens the selected project's own project file in the text editor, the way Visual Studio's
+	/// "Edit &lt;project&gt;.csproj" does.
+	/// </summary>
+	/// <remarks>
+	/// Deliberately opens the file directly rather than going through "Open With": SDK-style projects
+	/// are routinely hand-edited (target framework, package references), and making that a two-dialog
+	/// detour is the difference between a normal edit and a chore. Saving the file re-applies it to
+	/// the loaded project - see ProjectChangeWatcher.
+	/// </remarks>
+	public class EditProjectFile : AbstractMenuCommand
+	{
+		public override void Run()
+		{
+			var project = ProjectService.CurrentProject;
+			if (project == null)
+				return;
+			var fileName = project.FileName;
+			if (fileName == null || !SD.FileSystem.FileExists(fileName))
+				return;
+			SD.FileService.OpenFile(fileName);
+		}
+	}
+
 	public class ShowPropertiesForNode : AbstractMenuCommand
 	{
 		public override void Run()

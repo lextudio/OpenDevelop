@@ -176,6 +176,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		void OpenSolutionInternal(FileName fileName)
 		{
+			fileName = MigrateToSlnxIfPossible(fileName);
 			ISolution solution;
 			using (var progress = SD.StatusBar.CreateProgressMonitor()) {
 				
@@ -186,6 +187,81 @@ namespace ICSharpCode.SharpDevelop.Project
 			OnSolutionOpened(solution);
 		}
 		
+		/// <summary>
+		/// Converts a classic <c>.sln</c> to the XML <c>.slnx</c> format and returns the file that
+		/// should actually be opened.
+		/// </summary>
+		/// <remarks>
+		/// Best effort by design: anything that goes wrong (no usable SDK, a <c>dotnet</c> too old to
+		/// know the command, an unwritable directory, a malformed solution) leaves the original
+		/// <c>.sln</c> to be opened exactly as before, because failing to modernise a solution is not a
+		/// reason to refuse to open it. An existing <c>.slnx</c> beside the <c>.sln</c> is adopted
+		/// rather than regenerated, so a hand-edited one is never overwritten.
+		/// </remarks>
+		FileName MigrateToSlnxIfPossible(FileName fileName)
+		{
+			if (!fileName.HasExtension(".sln"))
+				return fileName;
+
+			var slnxFileName = new FileName(Path.ChangeExtension(fileName, ".slnx"));
+			if (SD.FileSystem.FileExists(slnxFileName)) {
+				LoggingService.Info("Opening " + slnxFileName + " instead of " + fileName + " (.slnx already present).");
+				return slnxFileName;
+			}
+
+			string dotnetPath;
+			try {
+				dotnetPath = Sdk.DotNetSdkService.ResolveEffectiveSdk().DotnetExecutablePath;
+			} catch (Exception ex) {
+				LoggingService.Warn("Could not resolve a dotnet host to migrate " + fileName + " to .slnx.", ex);
+				return fileName;
+			}
+
+			if (string.IsNullOrEmpty(dotnetPath))
+				return fileName;
+
+			try {
+				var startInfo = new ProcessStartInfo(dotnetPath) {
+					WorkingDirectory = Path.GetDirectoryName(fileName),
+					UseShellExecute = false,
+					RedirectStandardOutput = true,
+					RedirectStandardError = true,
+					CreateNoWindow = true
+				};
+				foreach (string argument in new[] { "sln", fileName.ToString(), "migrate" })
+					startInfo.ArgumentList.Add(argument);
+
+				using (var process = Process.Start(startInfo)) {
+					if (process == null)
+						return fileName;
+					// Bounded: this runs on the solution-load path, so a dotnet that hangs must not
+					// take the whole open with it.
+					string error = process.StandardError.ReadToEnd();
+					process.StandardOutput.ReadToEnd();
+					if (!process.WaitForExit(30000)) {
+						try { process.Kill(true); } catch { }
+						LoggingService.Warn("Timed out migrating " + fileName + " to .slnx.");
+						return fileName;
+					}
+					if (process.ExitCode != 0) {
+						LoggingService.Warn("dotnet sln migrate failed for " + fileName + " (exit code " + process.ExitCode + "): " + error);
+						return fileName;
+					}
+				}
+			} catch (Exception ex) {
+				LoggingService.Warn("Could not migrate " + fileName + " to .slnx.", ex);
+				return fileName;
+			}
+
+			if (!SD.FileSystem.FileExists(slnxFileName)) {
+				LoggingService.Warn("dotnet sln migrate reported success but produced no " + slnxFileName + ".");
+				return fileName;
+			}
+
+			LoggingService.Info("Migrated " + fileName + " to " + slnxFileName + "; opening the .slnx.");
+			return slnxFileName;
+		}
+
 		public bool OpenSolution(FileName fileName)
 		{
 			if (!CloseSolution(allowCancel: true))
