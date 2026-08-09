@@ -174,6 +174,22 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			
 			AddHandler(Hyperlink.RequestNavigateEvent, new RequestNavigateEventHandler(OnRequestNavigate));
 			SD.ProjectService.CurrentProjectChanged += SetProjectTitle;
+			// Opening a solution surfaces the Projects pad (doc/technotes/ilspy.md, 2026-08-09):
+			// the tree the user just asked to inspect lives there, and nothing else in the shell
+			// moves focus to it. BringPadToFront routes through AvalonDockLayout.ActivatePad's
+			// LegacyPadClass match, so the migrated ToolPaneModel (ProjectBrowserViewModel) is the
+			// one that actually gets selected, not a second never-shown pad instance.
+			SD.ProjectService.SolutionOpened += delegate {
+				// typeof(...) must name the MEF-migrated pad registered in the AddInTree
+				// (ICSharpCode.SharpDevelop.Services.ProjectBrowserPad), not the legacy
+				// ICSharpCode.SharpDevelop.Project.ProjectBrowserPad stub - GetPad matches on the
+				// descriptor's Class string, and the legacy name is not registered anywhere
+				// (measured: GetPad returned null and the pad never came to front).
+				var descriptor = GetPad(typeof(Services.ProjectBrowserPad));
+				LoggingService.Debug("SolutionOpened: ProjectBrowserPad descriptor=" + (descriptor?.Class ?? "<null>"));
+				if (descriptor != null)
+					descriptor.BringPadToFront();
+			};
 			
 			SharpDevelop.FileService.FileRemoved += CheckRemovedOrReplacedFile;
 			SharpDevelop.FileService.FileReplaced += CheckRemovedOrReplacedFile;

@@ -47,16 +47,6 @@ namespace ICSharpCode.SharpDevelop.Gui.OptionPanels
 			
 			this.showExtensionsCheckBox.IsChecked =  PropertyService.Get("ICSharpCode.SharpDevelop.Gui.ProjectBrowser.ShowExtensions", true);
 			
-			AddInTreeNode treeNode = AddInTree.GetTreeNode("/SharpDevelop/Workbench/Ambiences");
-			
-			foreach (Codon codon in treeNode.Codons) {
-				this.selectAmbienceComboBox.Items.Add(codon.Id);
-			}
-			
-			this.selectAmbienceComboBox.Text = PropertyService.Get("SharpDevelop.UI.CurrentAmbience", "C#");
-			
-			this.preferProjectAmbienceCheckBox.IsChecked = AmbienceService.UseProjectAmbienceIfPossible;
-			
 			this.showStatusBarCheckBox.IsChecked = PropertyService.Get("ICSharpCode.SharpDevelop.Gui.StatusBarVisible", true);
 			this.showToolBarCheckBox.IsChecked   = PropertyService.Get("ICSharpCode.SharpDevelop.Gui.ToolBarVisible", true);
 			this.useProfessionalStyleCheckBox.IsChecked = PropertyService.Get("ICSharpCode.SharpDevelop.Gui.UseProfessionalRenderer", true);
@@ -66,11 +56,9 @@ namespace ICSharpCode.SharpDevelop.Gui.OptionPanels
 		public override bool SaveOptions()
 		{
 			PropertyService.Set("ICSharpCode.SharpDevelop.Gui.ProjectBrowser.ShowExtensions",this.showExtensionsCheckBox.IsChecked);
-			PropertyService.Set("SharpDevelop.UI.CurrentAmbience", this.selectAmbienceComboBox.Text);
 			PropertyService.Set("ICSharpCode.SharpDevelop.Gui.StatusBarVisible", this.showStatusBarCheckBox.IsChecked);
 			PropertyService.Set("ICSharpCode.SharpDevelop.Gui.ToolBarVisible", this.showToolBarCheckBox.IsChecked);
 			PropertyService.Set("ICSharpCode.SharpDevelop.Gui.UseProfessionalRenderer", this.useProfessionalStyleCheckBox.IsChecked);
-			AmbienceService.UseProjectAmbienceIfPossible = (bool)this.preferProjectAmbienceCheckBox.IsChecked;
 			return true;
 		}
 	}

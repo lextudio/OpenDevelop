@@ -38,11 +38,11 @@ namespace ICSharpCode.SharpDevelop.Editor
 		FlowDocument flowDocument;
 		BlockCollection blockCollection;
 		InlineCollection inlineCollection;
-		IAmbience ambience;
-		
-		public DocumentationUIBuilder(IAmbience ambience = null)
+		readonly IAmbience symbolFormatter;
+
+		public DocumentationUIBuilder(IAmbience symbolFormatter = null)
 		{
-			this.ambience = ambience ?? AmbienceService.GetCurrentAmbience();
+			this.symbolFormatter = symbolFormatter;
 			this.flowDocument = new FlowDocument();
 			this.blockCollection = flowDocument.Blocks;
 			
@@ -306,7 +306,7 @@ namespace ICSharpCode.SharpDevelop.Editor
 		
 		Inline ConvertReference(IEntity referencedEntity)
 		{
-			var h = new Hyperlink(new Run(ambience.ConvertSymbol(referencedEntity)));
+			var h = new Hyperlink(new Run(symbolFormatter?.ConvertSymbol(referencedEntity) ?? referencedEntity.Name));
 			h.Click += CreateNavigateOnClickHandler(referencedEntity);
 			return h;
 		}

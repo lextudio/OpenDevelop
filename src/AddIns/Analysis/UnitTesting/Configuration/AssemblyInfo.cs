@@ -33,3 +33,4 @@ using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("UnitTesting.Tests")]
 [assembly: InternalsVisibleTo("UnitTesting.VsTest.Tests")]
+[assembly: InternalsVisibleTo("OpenDevelop.Base.Tests")]

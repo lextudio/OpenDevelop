@@ -44,6 +44,9 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
         // next actions" #3): this used to be a `ContentId == "ProjectBrowser"` special case inside
         // DockWorkspace.AfterInsertAnchorable; now any pane can express the same preference.
         PreferredDockSize = 280;
+        // Matches the legacy Pad's `defaultPosition = "Left"`; used when a layout switch re-docks
+        // this pane outside any persisted layout (AvalonDockLayout.LoadLayout, 2026-08-09).
+        PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Left;
         // Generalized from AvalonDockLayout's own hardcoded class-name check
         // (doc/technotes/ilspy.md "Docking and layout replacement", 2026-08-03) - same effective
         // mapping, just declared here instead of in the shell.
@@ -244,7 +247,6 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
 
     private async Task BuildSolutionTreeAsync(ISolution solution, bool includeAllFiles, string[] gitStatusRoots, int refreshVersion)
     {
-        ProjectBrowserNodeModel root = null;
         try {
             await treeBuildGate.WaitAsync();
             try {
@@ -256,22 +258,34 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
                 // Only external/file-system work runs in the background. SharpDevelop's project
                 // collections are UI-thread-affine and must not be walked from Task.Run.
                 await Task.Run(() => ProjectBrowserTreeBuilder.RefreshGitStatus(gitStatusRoots));
-                root = ProjectBrowserTreeBuilder.BuildSolutionTree(solution, includeAllFiles, refreshGitStatus: false);
+
+                // LibreWPF does not install a SynchronizationContext that guarantees an await
+                // continuation returns to the WPF dispatcher. Explicitly marshal both the native
+                // project-model walk and every ObservableCollection/property update.
+                await Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    if (refreshVersion != Volatile.Read(ref treeRefreshVersion) || disposed) {
+                        return;
+                    }
+
+                    var root = ProjectBrowserTreeBuilder.BuildSolutionTree(
+                        solution,
+                        includeAllFiles,
+                        refreshGitStatus: false);
+                    if (root != null) {
+                        RootNodes.Add(root);
+                    }
+                    IsLoading = false;
+                });
             } finally {
                 treeBuildGate.Release();
             }
         } catch (Exception ex) {
             LoggingService.Warn("Could not build the Solution Explorer tree.", ex);
+            if (refreshVersion == Volatile.Read(ref treeRefreshVersion) && !disposed) {
+                await Application.Current.Dispatcher.InvokeAsync(() => IsLoading = false);
+            }
         }
-
-        if (refreshVersion != Volatile.Read(ref treeRefreshVersion) || disposed) {
-            return;
-        }
-
-        if (root != null) {
-            RootNodes.Add(root);
-        }
-        IsLoading = false;
     }
     
     private void ToggleShowAllFiles()

@@ -43,7 +43,7 @@ namespace ICSharpCode.UnitTesting
 			_ = TriggerDiscoveryAsync();
 		}
 
-		// Fast, approximate pass: a syntax-only Roslyn scan of the project's own source (see
+		// Fast, approximate pass: a syntax-only Roslyn scan of the project's evaluated Compile items (see
 		// RoslynTestScanner and doc/technotes/unit-testing.md), so the tree shows candidate tests
 		// immediately instead of staying empty for the ~30-60s an MTP discovery round trip can
 		// take. TriggerDiscoveryAsync's real MTP pass replaces discoveredNodesByTargetFramework (and
@@ -52,7 +52,7 @@ namespace ICSharpCode.UnitTesting
 		void PopulateApproxTreeFromRoslyn()
 		{
 			try {
-				var candidates = RoslynTestScanner.ScanProject(Project.Directory?.ToString());
+				var candidates = RoslynTestScanner.ScanFiles(GetCompileSourceFiles());
 				if (candidates.Count == 0)
 					return;
 
@@ -66,6 +66,34 @@ namespace ICSharpCode.UnitTesting
 			} catch (Exception ex) {
 				SD.Log.Warn("Roslyn approximate test scan failed: " + ex.Message);
 			}
+		}
+
+		IReadOnlyList<string> GetCompileSourceFiles()
+		{
+			var projectDirectory = Project.Directory?.ToString();
+			if (string.IsNullOrEmpty(projectDirectory))
+				return Array.Empty<string>();
+
+			if (Project is MSBuildBasedProject msbuildProject && msbuildProject.IsSdkStyleProject) {
+				return msbuildProject.GetEvaluatedProjectItems()
+					.Where(item => string.Equals(item.ItemType, "Compile", StringComparison.OrdinalIgnoreCase))
+					.Select(item => ResolveProjectItemPath(projectDirectory, item.EvaluatedInclude))
+					.Where(File.Exists)
+					.Distinct(StringComparer.OrdinalIgnoreCase)
+					.ToArray();
+			}
+
+			return Project.GetItemsOfType(ItemType.Compile)
+				.Select(item => item.FileName?.ToString())
+				.Where(path => !string.IsNullOrWhiteSpace(path) && File.Exists(path))
+				.Cast<string>()
+				.Distinct(StringComparer.OrdinalIgnoreCase)
+				.ToArray();
+		}
+
+		static string ResolveProjectItemPath(string projectDirectory, string include)
+		{
+			return Path.IsPathRooted(include) ? include : Path.GetFullPath(Path.Combine(projectDirectory, include));
 		}
 
 		// A synthetic MtpTestNode standing in for a not-yet-MTP-confirmed candidate. Uid is
@@ -315,6 +343,34 @@ namespace ICSharpCode.UnitTesting
 			var methods = new List<MtpTestMethod>();
 			CollectTestMethods(selectedTests, methods);
 			return methods;
+		}
+
+		internal async Task<IReadOnlyList<MtpTestMethod>> ConfirmTestMethodsAsync(
+			IEnumerable<ITest> selectedTests,
+			CancellationToken cancellationToken)
+		{
+			var requested = GetTestMethodsForSelectedTests(selectedTests);
+			if (requested.All(method => !string.IsNullOrEmpty(method.Uid)))
+				return requested;
+
+			await RefreshAsync(cancellationToken);
+			cancellationToken.ThrowIfCancellationRequested();
+
+			var current = GetTestMethodsForSelectedTests(new[] { this })
+				.Where(method => !string.IsNullOrEmpty(method.Uid))
+				.ToList();
+			var confirmed = new List<MtpTestMethod>();
+			foreach (var method in requested) {
+				var match = current.FirstOrDefault(candidate =>
+					string.Equals(candidate.TargetFramework, method.TargetFramework, StringComparison.OrdinalIgnoreCase)
+					&& string.Equals(candidate.DisplayName, method.DisplayName, StringComparison.Ordinal));
+				match ??= current.FirstOrDefault(candidate =>
+					string.Equals(candidate.TargetFramework, method.TargetFramework, StringComparison.OrdinalIgnoreCase)
+					&& string.Equals(candidate.FullyQualifiedName, method.FullyQualifiedName, StringComparison.Ordinal));
+				if (match != null && !confirmed.Contains(match))
+					confirmed.Add(match);
+			}
+			return confirmed;
 		}
 
 		void CollectTestMethods(IEnumerable<ITest> tests, List<MtpTestMethod> results)

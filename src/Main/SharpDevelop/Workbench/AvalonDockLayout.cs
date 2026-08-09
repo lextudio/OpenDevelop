@@ -40,10 +40,6 @@ namespace ICSharpCode.SharpDevelop.Workbench
 	/// </summary>
 	sealed class AvalonDockLayout : IWorkbenchLayout
 	{
-		// Panes excluded from the currently restored layout (see LoadLayout): kept so the next
-		// layout switch can put them back into the source collection before restoring.
-		readonly List<ToolPaneModel> layoutExcludedPanes = new List<ToolPaneModel>();
-
 		WpfWorkbench workbench;
 		DockingManager dockingManager = new DockingManager();
 		DockWorkspace dockWorkspace;
@@ -373,23 +369,22 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		void TryLoadConfiguration()
 		{
-			bool isPlainLayout = LayoutConfiguration.CurrentLayoutName == "Plain";
 			if (File.Exists(LayoutConfiguration.CurrentLayoutFileName)) {
 				try {
-					LoadLayout(LayoutConfiguration.CurrentLayoutFileName, isPlainLayout);
+					LoadLayout(LayoutConfiguration.CurrentLayoutFileName);
 					return;
 				} catch (FileFormatException) {
 					// error when version of AvalonDock has changed: ignore and load template instead
 				}
 			}
 			if (File.Exists(LayoutConfiguration.CurrentLayoutTemplateFileName)) {
-				LoadLayout(LayoutConfiguration.CurrentLayoutTemplateFileName, isPlainLayout);
+				LoadLayout(LayoutConfiguration.CurrentLayoutTemplateFileName);
 			}
 		}
 		
-		void LoadLayout(string fileName, bool hideAllLostPads)
+		void LoadLayout(string fileName)
 		{
-			LoggingService.Info("Loading layout file: " + fileName + ", hideAllLostPads=" + hideAllLostPads);
+			LoggingService.Info("Loading layout file: " + fileName);
 			// Re-enabled (doc/technotes/ilspy.md "Phased implementation plan" Phase 2, 2026-08-02).
 			// DockWorkspace.RestoreLayout's LayoutSerializationCallback already skips (Cancel=true,
 			// no exception) any serialized LayoutAnchorable whose ContentId isn't a MEF-exported
@@ -399,84 +394,28 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			// with XmlLayoutSerializer's modern schema - regenerated as part of this change (see
 			// the templates themselves for provenance).
 
-			// Re-add panes a previous layout switch excluded (see below), so this layout can
-			// restore them again if it contains them.
-			foreach (ToolPaneModel pane in layoutExcludedPanes) {
-				dockWorkspace.AddToolPane(pane);
-			}
-			layoutExcludedPanes.Clear();
-
 			dockWorkspace.RestoreLayout(fileName);
 
-			// A named layout shows exactly the panes it contains. The AnchorablesSource
-			// reconciliation re-docks any visible ToolPaneModel that isn't in the restored layout
-			// (e.g. the Project Browser when entering the ILSpy layout, landing in front), so
-			// remove those from the source collection here - their docked anchorable is removed
-			// with them. They stay registered and are re-added on the next LoadLayout call.
-			// NOTE: the "in layout" set must come from the layout FILE, not from the live
-			// dockingManager.Layout - by the time RestoreLayout returns, the reconciliation has
-			// already re-docked the extra panes, so a live check would see them as "in layout".
-			var contentIdsInLayout = ReadAnchorableContentIds(fileName);
-			foreach (ToolPaneModel pane in dockWorkspace.ToolPanes.ToList()) {
-				if (!contentIdsInLayout.Contains(pane.ContentId)) {
-					dockWorkspace.RemoveToolPane(pane);
-					layoutExcludedPanes.Add(pane);
-				}
-			}
+			// A layout switch is an INCREMENTAL operation (doc/technotes/ilspy.md "Legacy pad
+			// migration", 2026-08-09): it must open and surface the panes the layout names, but
+			// must NOT close panes that were already open (e.g. switching to the "Debug" layout
+			// for a debug session shouldn't evict pads the user had open). Panes not named in the
+			// restored layout are re-docked by the AnchorablesSource import that follows
+			// RestoreLayout - DockWorkspace.BeforeInsertAnchorable sends them to their
+			// ToolPaneModel.PreferredDockSide (and into the Hidden area when IsVisible is false),
+			// the same "initial dock" treatment a freshly-enabled pad gets, instead of the
+			// default "land in front of whatever is active" placement the eviction used to be
+			// there to undo.
+			// NOTE: the previous behavior ("a named layout shows exactly the panes it contains")
+			// evicted non-layout panes from ToolPanes entirely, which is what made a debug
+			// session's layout switch *close* pads the user had open (the reported bug this
+			// change fixes).
 		}
 
-		static HashSet<string> ReadAnchorableContentIds(string fileName)
-		{
-			var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-			try {
-				string content = File.ReadAllText(fileName).TrimStart();
-				if (content.StartsWith("{", StringComparison.Ordinal)) {
-					// The layout DTO format (doc/technotes/ilspy.md, "Real versioned layout DTO,
-					// step 2") - DockWorkspace.SaveLayout now always writes this, even though the
-					// file still carries a ".xml" name (LayoutConfiguration.CurrentLayoutFileName
-					// is unchanged). Walk the JSON tree for any "ContentId" property rather than
-					// deserializing the full LayoutSnapshot shape here - this method only ever
-					// needs the flat set of IDs, and staying structure-agnostic means it can't get
-					// out of sync with LayoutSnapshot's own shape as that evolves.
-					using var doc = System.Text.Json.JsonDocument.Parse(content);
-					CollectContentIds(doc.RootElement, ids);
-				} else {
-					var xmlDoc = new System.Xml.XmlDocument();
-					xmlDoc.Load(fileName);
-					var nodes = xmlDoc.SelectNodes("//@ContentId");
-					if (nodes != null) {
-						foreach (System.Xml.XmlAttribute attribute in nodes) {
-							if (!string.IsNullOrWhiteSpace(attribute.Value))
-								ids.Add(attribute.Value);
-						}
-					}
-				}
-			} catch (Exception ex) {
-				LoggingService.Warn("Could not read anchorable ContentIds from layout file '" + fileName + "'.", ex);
-			}
-			return ids;
-		}
+		// ReadAnchorableContentIds removed with the eviction it served (2026-08-09): a layout
+		// switch is incremental - panes not named in the restored layout stay docked at their
+		// PreferredDockSide instead of being removed from ToolPanes.
 
-		static void CollectContentIds(System.Text.Json.JsonElement element, HashSet<string> ids)
-		{
-			switch (element.ValueKind) {
-				case System.Text.Json.JsonValueKind.Object:
-					foreach (var property in element.EnumerateObject()) {
-						if (property.NameEquals("ContentId") && property.Value.ValueKind == System.Text.Json.JsonValueKind.String) {
-							var value = property.Value.GetString();
-							if (!string.IsNullOrWhiteSpace(value))
-								ids.Add(value);
-						} else {
-							CollectContentIds(property.Value, ids);
-						}
-					}
-					break;
-				case System.Text.Json.JsonValueKind.Array:
-					foreach (var item in element.EnumerateArray())
-						CollectContentIds(item, ids);
-					break;
-			}
-		}
 		
 		public void StoreConfiguration()
 		{
@@ -572,22 +511,6 @@ namespace ICSharpCode.SharpDevelop.Workbench
 
 		bool TryShowMefToolPane(PadDescriptor padDescriptor)
 		{
-			// LoadLayout's own reconciliation (see below) evicts any ToolPaneModel not listed in
-			// the current layout FILE from dockWorkspace.ToolPanes entirely - into
-			// layoutExcludedPanes - right after re-docking it during import (the same import this
-			// class's BeforeInsertAnchorable handles PreferredDockSide for). A pane excluded that
-			// way is only ever restored on the *next* LoadLayout call, so a pad an explicit command
-			// wants shown *right now* (e.g. Build activating the Output pad on a from-scratch
-			// workbench whose layout file only ever listed the Project Browser) would otherwise
-			// silently fall through to the legacy ShowPad path below - a different, non-MEF pad
-			// instance ActivatePad's PreferredDockSide handling never touches. An explicit
-			// activation request is exactly the case that should override "not in this layout".
-			var excluded = layoutExcludedPanes.FirstOrDefault(p => p.LegacyPadClass == padDescriptor.Class);
-			if (excluded != null) {
-				layoutExcludedPanes.Remove(excluded);
-				dockWorkspace.AddToolPane(excluded);
-			}
-
 			var contentId = GetMefToolPaneContentId(padDescriptor);
 			return contentId != null && dockWorkspace.ShowToolPane(contentId);
 		}
@@ -598,11 +521,23 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		// by ToolPaneModel.LegacyPadClass, so migrating another legacy Pad to the modern model
 		// needs no change here at all - just setting LegacyPadClass in the new model's
 		// constructor, the same way ProjectBrowserViewModel and (now) OutlineViewModel do.
+		//
+		// AddIns can't be MEF parts of the App assembly (OpenDevelopMefHost.BindExports only
+		// scans the App assembly), so an AddIn's migrated pad registers through
+		// PadToolPaneProvider instead (doc/technotes/ilspy.md "Legacy pad migration"): resolve the
+		// model lazily on first miss and register it with the workspace. The first ShowPad runs
+		// inside Attach, before InitializeLayout/BindSources, so the pane is already in
+		// ToolPanes when the AnchorablesSource binding attaches - exactly like a built-in pane.
 		string GetMefToolPaneContentId(PadDescriptor padDescriptor)
 		{
-			return dockWorkspace.ToolPanes
-				.FirstOrDefault(pane => pane.LegacyPadClass == padDescriptor.Class)
-				?.ContentId;
+			var pane = dockWorkspace.ToolPanes
+				.FirstOrDefault(pane => pane.LegacyPadClass == padDescriptor.Class);
+			if (pane == null) {
+				pane = PadToolPaneProvider.Resolve(padDescriptor.Class);
+				if (pane != null)
+					dockWorkspace.AddToolPane(pane);
+			}
+			return pane?.ContentId;
 		}
 	}
 }

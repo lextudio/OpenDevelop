@@ -26,6 +26,11 @@
 	     the shared OpenLensProviderRegistry (ICSharpCode.SharpDevelop.LanguageServices.OpenLens). -->
 	<Path name="/SharpDevelop/Autostart">
 		<Class id="TestOpenLensProvider" class="ICSharpCode.UnitTesting.RegisterTestOpenLensProviderCommand"/>
+		<!-- doc/technotes/ilspy.md "Legacy pad migration" - routes the legacy UnitTestingPad
+		     PadDescriptor to the modern UnitTestsPadToolPaneModel. Registration only; the pane
+		     itself is constructed lazily on first PadDescriptor resolution (inside
+		     AvalonDockLayout.Attach's ShowPad loop, after the workbench is up). -->
+		<Class id="RegisterUnitTestsPadToolPane" class="ICSharpCode.UnitTesting.RegisterUnitTestsPadToolPaneCommand"/>
 	</Path>
 
 	<Path name="/SharpDevelop/UnitTesting/TestFrameworks">

@@ -36,7 +36,7 @@ namespace ICSharpCode.UnitTesting
 		bool wasCancelled;
 		protected TextWriter output;
 		
-		public Task RunAsync(IEnumerable<ITest> selectedTests, IProgress<double> progress, TextWriter output, CancellationToken cancellationToken)
+		public virtual Task RunAsync(IEnumerable<ITest> selectedTests, IProgress<double> progress, TextWriter output, CancellationToken cancellationToken)
 		{
 			this.progress = progress;
 			this.output = output;

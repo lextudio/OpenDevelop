@@ -27,9 +27,7 @@ namespace CSharpBinding
 	// Minimal ownership-correct registration (doc/technotes/csharp-vb-binding.md Phase 0). The old
 	// NRefactory-based IProjectContent/CSharpProjectContent type-system wiring and CSharpProjectBehavior
 	// (compiler-version negotiation, ISymbol-based symbol search) are retired here, not ported - project
-	// loading/build/references come from the shared MSBuild/CPS project system regardless. GetAmbience()
-	// is left to the AbstractProject default (DefaultAmbience) until Ambience is migrated to
-	// ISymbol.ToDisplayString (doc §8.11).
+	// loading/build/references come from the shared MSBuild/CPS project system regardless.
 	public class CSharpProject : CompilableProject
 	{
 		public CSharpProject(ProjectLoadInformation loadInformation)

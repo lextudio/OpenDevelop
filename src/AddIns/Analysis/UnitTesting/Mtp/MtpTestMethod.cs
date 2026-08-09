@@ -7,7 +7,7 @@ namespace ICSharpCode.UnitTesting.Mtp
 	class MtpTestMethod : TestBase
 	{
 		readonly ITestProject project;
-		readonly MtpTestNode node;
+		MtpTestNode node;
 
 		public MtpTestMethod(ITestProject project, MtpTestNode node, string targetFramework)
 		{
@@ -32,6 +32,11 @@ namespace ICSharpCode.UnitTesting.Mtp
 
 		public MtpTestNode Node {
 			get { return node; }
+		}
+
+		public void UpdateNode(MtpTestNode discoveredNode)
+		{
+			node = discoveredNode ?? throw new ArgumentNullException(nameof(discoveredNode));
 		}
 
 		// Used to build a "--filter-method" argument for a one-off debug launch of the built test

@@ -151,8 +151,6 @@ namespace CSharpBinding.Refactoring
 				
 //			if (Options.AddIEquatableInterface) {
 				// TODO : add IEquatable<T> to class
-//				IAmbience ambience = currentClass.CompilationUnit.Language.GetAmbience();
-//
 //				IReturnType baseRType = currentClass.CompilationUnit.ProjectContent.GetClass("System.IEquatable", 1).DefaultReturnType;
 //
 //				IClass newClass = new DefaultClass(currentClass.CompilationUnit, currentClass.FullyQualifiedName, currentClass.Modifiers, currentClass.Region, null);

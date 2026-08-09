@@ -15,6 +15,13 @@ namespace ICSharpCode.UnitTesting
 
 		public event EventHandler<TestFinishedEventArgs> TestFinished;
 
+		/// <summary>Raised as soon as the MTP host has reported its complete discovered test set for
+		/// a target framework - the earliest point at which the true test count (including every
+		/// parameterized Theory data row, which a lazy UI tree snapshot can miss) is known. The
+		/// status bar consumes this so Total matches the results that follow instead of a stale
+		/// discovery-time tree count.</summary>
+		public event EventHandler<int> TestCountDiscovered;
+
 		public MtpTestRunner(MtpTestProject project, TestExecutionOptions options)
 		{
 			this.testProject = project;
@@ -79,13 +86,15 @@ namespace ICSharpCode.UnitTesting
 						return;
 					ReportTestNodeResult(targetFramework, node, output);
 				};
+				// Discover the complete set on this same live host before running - the earliest
+				// point at which the authoritative test count (including every parameterized Theory
+				// data row) is known. Report it immediately so the status bar's Total matches the
+				// results that will follow, instead of a possibly-stale lazy UI tree snapshot.
+				var discovered = await server.DiscoverTestsAsync(cancellationToken);
+				OnTestCountDiscovered(discovered.Count(node => node.NodeType == "action"));
 				if (allTestsSelected) {
 					results = await server.RunTestsAsync(cancellationToken);
 				} else {
-					// Re-discover on this same live host instance right before running so the filter
-					// nodes are guaranteed consistent with it, rather than reusing possibly-stale nodes
-					// from an earlier discovery call/process (mirrors DotNetTestRunner.RunTestsAsync).
-					var discovered = await server.DiscoverTestsAsync(cancellationToken);
 					var uidSet = new HashSet<string>(testNodes.Select(n => n.Uid), StringComparer.Ordinal);
 					var filter = discovered.Where(n => uidSet.Contains(n.Uid)).ToList();
 					results = filter.Count > 0
@@ -207,6 +216,11 @@ namespace ICSharpCode.UnitTesting
 
 		public void Dispose()
 		{
+		}
+
+		void OnTestCountDiscovered(int count)
+		{
+			TestCountDiscovered?.Invoke(this, count);
 		}
 
 		void OnTestFinished(TestFinishedEventArgs e)

@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" />
+    <ProjectReference Include="..\..\src\AddIns\Analysis\UnitTesting\UnitTesting.csproj" />
   </ItemGroup>
 
 </Project>

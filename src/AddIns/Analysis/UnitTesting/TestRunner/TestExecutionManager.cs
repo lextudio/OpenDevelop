@@ -103,6 +103,12 @@ namespace ICSharpCode.UnitTesting.Frameworks
 					using (testProgressMonitor = progressMonitor.CreateSubTask(1.0 / testsByProject.Count)) {
 						using (ITestRunner testRunner = currentProjectBeingTested.CreateTestRunner(options)) {
 							testRunner.TestFinished += testRunner_TestFinished;
+							if (testRunner is MtpTestRunner mtpRunner) {
+								// The MTP host's complete discovered set is the earliest authoritative
+								// test count (the lazy UI tree snapshot used by StartUnitTestsPadStatus
+								// can under-count Theory data rows); update the status bar when it arrives.
+								mtpRunner.TestCountDiscovered += MtpRunner_TestCountDiscovered;
+							}
 							var writer = new MessageViewCategoryTextWriter(testService.UnitTestMessageView);
 							await testRunner.RunAsync(g, testProgressMonitor, writer, testProgressMonitor.CancellationToken);
 						}
@@ -147,7 +153,11 @@ namespace ICSharpCode.UnitTesting.Frameworks
 			if (descriptor == null)
 				return;
 			descriptor.BringPadToFront();
-			var pad = descriptor.PadContent as UnitTestsPad;
+			// The pad is a migrated ToolPaneModel now (doc/technotes/ilspy.md "Legacy pad
+			// migration"): the instance on screen belongs to UnitTestsPadToolPaneModel, so
+			// descriptor.PadContent (AddInTree CreateObject) would yield a second, never-shown
+			// instance. Use the shared instance the pane owns.
+			var pad = UnitTestsPad.SharedInstance ?? descriptor.PadContent as UnitTestsPad;
 			if (pad != null) {
 				unitTestsPad = pad;
 				pad.TreeView.SelectedTests = testsByProject.Values;
@@ -208,6 +218,15 @@ namespace ICSharpCode.UnitTesting.Frameworks
 		{
 			mainThread.InvokeAsyncAndForget(delegate {
 				ShowResult(e.Result);
+			});
+		}
+
+		void MtpRunner_TestCountDiscovered(object sender, int count)
+		{
+			mainThread.InvokeAsyncAndForget(delegate {
+#if !HAS_UNO
+				unitTestsPad?.StartRunStatus(count);
+#endif
 			});
 		}
 		

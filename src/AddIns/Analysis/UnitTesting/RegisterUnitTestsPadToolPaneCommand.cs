@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2026 The OpenDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,55 +16,25 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
-using System.Collections.Generic;
 using ICSharpCode.Core;
-using ICSharpCode.TypeSystem;
-using ICSharpCode.SharpDevelop.Project;
+using ICSharpCode.SharpDevelop.ViewModels;
 
-namespace ICSharpCode.SharpDevelop
+namespace ICSharpCode.UnitTesting
 {
 	/// <summary>
-	/// Dummy ambience implementation.
+	/// Registers the Unit Tests pad's <see cref="UnitTestsPadToolPaneModel"/> with
+	/// <see cref="PadToolPaneProvider"/> (doc/technotes/ilspy.md "Legacy pad migration").
+	/// Runs from /SharpDevelop/Autostart, i.e. after the AddInTree is built but before the
+	/// workbench is constructed; the provider defers pane construction until the first
+	/// PadDescriptor resolution, which happens inside AvalonDockLayout.Attach's ShowPad loop.
 	/// </summary>
-	internal class DefaultAmbience : IAmbience
+	public class RegisterUnitTestsPadToolPaneCommand : AbstractCommand
 	{
-		public ConversionFlags ConversionFlags { get; set; }
-
-		public string ConvertSymbol(ISymbol symbol)
+		public override void Run()
 		{
-			return symbol.Name;
-		}
-		
-		public string ConvertEntity(IEntity e)
-		{
-			return e.Name;
-		}
-		
-		public string ConvertType(IType type)
-		{
-			return type.Name;
-		}
-		
-		public string ConvertVariable(IVariable variable)
-		{
-			return variable.Name;
-		}
-		
-		public string WrapComment(string comment)
-		{
-			return "// " + comment;
-		}
-		
-		public string ConvertConstantValue(object constantValue)
-		{
-			if (constantValue == null)
-				return "null";
-			if (constantValue is char)
-				return "'" + constantValue + "'";
-			if (constantValue is String)
-				return "\"" + constantValue + "\"";
-			return constantValue.ToString();
+			PadToolPaneProvider.Register(
+				typeof(UnitTestsPad).FullName,
+				() => new UnitTestsPadToolPaneModel());
 		}
 	}
 }

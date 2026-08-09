@@ -29,6 +29,7 @@ internal sealed class ToolsPadViewModel : ToolPaneModel
         ContentId = "ToolsPad";
         IsVisible = true; // Matches the legacy Pad's `defaultPosition = "Left"`.
         IsCloseable = true;
+        PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Left;
         LegacyPadClass = typeof(ToolsPad).FullName;
         Content = contentControl;
     }

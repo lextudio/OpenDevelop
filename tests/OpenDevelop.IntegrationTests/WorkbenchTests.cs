@@ -325,6 +325,73 @@ public sealed class WorkbenchTests
         Assert.Contains("Services", texts);
     }
 
+    // Regression coverage for the incremental layout-switch semantics (doc/technotes/ilspy.md
+    // "Legacy pad migration", 2026-08-09): switching layouts must open and surface the panes the
+    // target layout names, but must NOT close panes the user had open. The debugger's automatic
+    // switch to the "Debug" layout used to evict every pad not named in Debug.xml (ErrorList,
+    // UnitTestsPad, TaskList, ...) from ToolPanes - that's the "pads vanish during debugging"
+    // bug. Directly driving LayoutConfiguration.CurrentLayoutName exercises the same
+    // Store/LoadConfiguration path the debugger uses, without needing a full debug session.
+    [Fact]
+    public async Task SwitchLayout_Debug_KeepsOpenPadsDocked()
+    {
+        try
+        {
+            await _app.InvokeAsync("od.workbench.switch-layout", "Default");
+            var before = await _app.InvokeAsync("od.layout.tool-panes");
+            var visibleBefore = VisibleContentIds(before).ToHashSet();
+            Assert.Contains("ProjectBrowser", visibleBefore);
+            Assert.Contains("OutputPad", visibleBefore);
+
+            var switched = await _app.InvokeAsync("od.workbench.switch-layout", "Debug");
+            Assert.Equal("Debug", switched.GetProperty("layoutName").GetString());
+
+            var during = await _app.InvokeAsync("od.layout.tool-panes");
+            var visibleDuring = VisibleContentIds(during).ToHashSet();
+
+            // Every pad that was open before the switch must still be open after it - the
+            // incremental contract. (The Debug layout file itself only names ProjectBrowser +
+            // OutputPad; the rest must survive via the re-dock-at-PreferredDockSide path.)
+            foreach (var contentId in visibleBefore)
+                Assert.True(visibleDuring.Contains(contentId),
+                    $"Pad '{contentId}' was evicted by the switch to the Debug layout.");
+
+            var currentName = await _app.InvokeAsync("od.layout.current-name");
+            Assert.Equal("Debug", currentName.GetProperty("layoutName").GetString());
+        }
+        finally
+        {
+            await _app.InvokeAsync("od.workbench.switch-layout", "Default");
+        }
+    }
+
+    // Regression coverage for the "opening a solution must surface the Projects pad" behavior
+    // (doc/technotes/ilspy.md "Legacy pad migration", 2026-08-09): WpfWorkbench subscribes
+    // SD.ProjectService.SolutionOpened and BringPadToFronts the Project Browser, so a freshly
+    // opened solution lands with the Projects pad front-most (selected tab) rather than buried
+    // behind whatever else shares its dock strip.
+    [Fact]
+    public async Task OpenSolution_ActivatesProjectBrowserPad()
+    {
+        await _app.ReopenSolutionAsync(_app.SolutionExplorerFixturePath);
+
+        var projectBrowser = await _app.InvokeAsync("od.layout.pane-position", "ProjectBrowser");
+        Assert.True(projectBrowser.GetProperty("found").GetBoolean());
+        Assert.True(projectBrowser.GetProperty("isSelected").GetBoolean(),
+            "Project Browser must be the selected tab after opening a solution.");
+
+        // Belt and braces: it must be the FIRST tab of its strip, and the strip must actually
+        // have siblings (otherwise "tab 0" would be trivially true for a lone pane).
+        Assert.Equal(0, projectBrowser.GetProperty("tabIndex").GetInt32());
+        Assert.True(projectBrowser.GetProperty("siblingCount").GetInt32() >= 2,
+            "Expected the Project Browser to share its dock strip with at least one other pad.");
+    }
+
+    static IEnumerable<string> VisibleContentIds(JsonElement toolPanes)
+        => toolPanes.GetProperty("panes").EnumerateArray()
+            .Where(p => p.GetProperty("IsVisible").GetBoolean())
+            .Select(p => p.GetProperty("ContentId").GetString()!);
+
     static IEnumerable<JsonElement> FlattenElements(JsonElement tree)
     {
         foreach (var root in tree.GetProperty("elements").EnumerateArray())
@@ -858,6 +925,12 @@ public sealed class WorkbenchTests
             // which only happens once AvalonDock actually shows the pad.
             var showPadResult = await _app.InvokeAsync("od.show-pad", "ErrorListPad");
             Assert.True(showPadResult.GetProperty("found").GetBoolean(), "Could not find the ErrorList pad");
+
+            var errorListPosition = await _app.InvokeAsync("od.layout.pane-position", "ErrorList");
+            Assert.True(errorListPosition.GetProperty("found").GetBoolean(), "Error List has no live AvalonDock anchorable");
+            Assert.False(errorListPosition.GetProperty("isFloating").GetBoolean(),
+                "Error List fell through AvalonDock's insertion fallback into a floating window");
+            Assert.Equal("Bottom", errorListPosition.GetProperty("side").GetString());
 
             var tree = await _app.GetUITreeAsync();
             var elements = FlattenElements(tree).ToList();

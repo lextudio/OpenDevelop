@@ -27,6 +27,7 @@ internal sealed class BookmarkPadViewModel : BookmarkPadViewModelBase
         ContentId = "BookmarkPad";
         IsVisible = false; // Matches the legacy Pad's `defaultPosition = "Bottom, Hidden"`.
         IsCloseable = true;
+        PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Bottom;
         LegacyPadClass = typeof(BookmarkPad).FullName;
     }
 

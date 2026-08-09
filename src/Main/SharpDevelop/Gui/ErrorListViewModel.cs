@@ -70,6 +70,8 @@ internal sealed class ErrorListViewModel : ToolPaneModel
         IsVisible = true; // Matches the legacy Pad's `defaultPosition = "Bottom"`.
         IsCloseable = true;
         LegacyPadClass = typeof(ErrorListPad).FullName;
+        PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Bottom;
+        PreferredDockSize = 188; // Legacy AvalonPadContent bottom default; see DockWorkspace.AfterInsertAnchorable.
         Content = contentPanel;
     }
 

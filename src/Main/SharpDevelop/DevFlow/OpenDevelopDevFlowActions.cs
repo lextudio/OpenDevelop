@@ -795,6 +795,19 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		[DevFlowAction("od.debug.stop", Description = "Stop the current debug session")]
 		public static string StopDebug()
 		{
+			// Idempotent: with no session, WindowsDebugger.Stop() pops a modal
+			// "Can not perform action because no process is debugged." dialog - fine for an
+			// interactive menu click, but it blocks DevFlow callers (tests clean up with a
+			// finally-stop even after an explicit stop). Skip instead.
+			if (!SD.Debugger.IsDebugging) {
+				return JsonSerializer.Serialize(new {
+					success = true,
+					skipped = true,
+					reason = "no active debug session",
+					isDebugging = false,
+					isProcessRunning = false
+				});
+			}
 			SD.Debugger.Stop();
 			return JsonSerializer.Serialize(new {
 				success = true,
@@ -929,6 +942,12 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new { found = true, layoutName = LayoutConfiguration.CurrentLayoutName });
 		}
 
+		[DevFlowAction("od.layout.current-name", Description = "Read-only report of the active layout name (LayoutConfiguration.CurrentLayoutName) - lets tests assert a layout switch (e.g. the debugger's automatic Debug/Default switching) without having to switch themselves")]
+		public static string GetCurrentLayoutName()
+		{
+			return JsonSerializer.Serialize(new { layoutName = LayoutConfiguration.CurrentLayoutName });
+		}
+
 		// Verification-only state for the LayoutSnapshot round-trip (doc/technotes/ilspy.md,
 		// "Real versioned layout DTO" -> step 1): held in memory only, this session, not
 		// persisted - these actions exist so a test can prove Capture/Apply actually restores a
@@ -942,6 +961,37 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				.Select(p => new { p.ContentId, p.Title, p.IsVisible, p.LegacyPadClass })
 				.ToArray();
 			return JsonSerializer.Serialize(new { workspaceId = DockWorkspace.Current.GetHashCode(), count = panes.Length, panes });
+		}
+
+		[DevFlowAction("od.layout.anchorables", Description = "DIAGNOSTIC: list every LayoutAnchorable in the live AvalonDock tree (ContentId/parent pane/side/tab index/selected/visible/hidden/floating) - used to hunt duplicate anchorables and selection-state drift")]public static string ListAnchorables()
+		{
+			var items = DockWorkspace.Current.Layout.Descendents().OfType<LayoutAnchorable>()
+				.Select(a => {
+					var pane = a.Parent as LayoutAnchorablePane;
+					return new {
+						a.ContentId,
+						selected = a.IsSelected,
+						active = a.IsActive,
+						visible = a.IsVisible,
+						hidden = a.IsHidden,
+						floating = a.IsFloating,
+						pane = pane?.Name,
+						side = a.IsFloating || pane == null ? null : pane.GetSide().ToString(),
+						tabIndex = pane?.Children.IndexOf(a) ?? -1,
+						siblings = pane?.Children.Count ?? 0,
+					};
+				})
+				.ToArray();
+			return JsonSerializer.Serialize(new { count = items.Length, items });
+		}
+
+		[DevFlowAction("od.layout.pad-descriptors", Description = "DIAGNOSTIC: list every PadDescriptor in the workbench's PadContentCollection (Class/Title/DefaultPosition) - used to verify a pad's AddInTree registration reached the workbench at all")]
+		public static string ListPadDescriptors()
+		{
+			var items = SD.Workbench.PadContentCollection
+				.Select(p => new { p.Class, p.Title, p.DefaultPosition })
+				.ToArray();
+			return JsonSerializer.Serialize(new { count = items.Length, items });
 		}
 
 		[DevFlowAction("od.layout.pane-position", Description = "Report where an anchorable (by ContentId) actually sits in the live AvalonDock layout right now (named LayoutAnchorablePane, side, tab index, floating/hidden) - the generic, non-ILSpy-specific version of ILSpyAddIn's od.ilspy.pane-position, used to verify LayoutSnapshotConverter's round-trip")]
@@ -959,6 +1009,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				side = anchorable.IsFloating || pane == null ? null : pane.GetSide().ToString(),
 				tabIndex = pane?.Children.IndexOf(anchorable) ?? -1,
 				siblingCount = pane?.Children.Count ?? 0,
+				isSelected = anchorable.IsSelected,
 				isFloating = anchorable.IsFloating,
 				isHidden = anchorable.IsHidden,
 			});

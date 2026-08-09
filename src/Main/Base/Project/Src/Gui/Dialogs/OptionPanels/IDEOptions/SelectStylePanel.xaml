@@ -10,16 +10,6 @@
 					x:Name="showExtensionsCheckBox"
 					Content="{core:Localize Dialog.Options.IDEOptions.SelectStyle.ShowExtensionsCheckBox }"></CheckBox>
 				
-				<Label Margin="0,8,0,0"
-				       Content="{core:Localize Dialog.Options.IDEOptions.SelectStyle.SelectAmbienceLabel}"></Label>
-				
-				<ComboBox x:Name="selectAmbienceComboBox" Margin="2,0,0,2"
-				></ComboBox>
-				
-				<CheckBox Margin="2"
-					x:Name="preferProjectAmbienceCheckBox"
-					Content="{core:Localize Dialog.Options.IDEOptions.SelectStyle.UseProjectAmbience}"></CheckBox>
-			
 			</StackPanel>
 		</GroupBox>
 		

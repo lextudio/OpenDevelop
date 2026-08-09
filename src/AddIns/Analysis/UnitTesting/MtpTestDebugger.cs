@@ -4,6 +4,9 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Debugging;
 using ICSharpCode.UnitTesting.Mtp;
 
@@ -23,6 +26,28 @@ namespace ICSharpCode.UnitTesting
 		public override int GetExpectedNumberOfTestResults(IEnumerable<ITest> selectedTests)
 		{
 			return testProject.GetTestNodesForSelectedTests(selectedTests).Count;
+		}
+
+		public override async Task RunAsync(
+			IEnumerable<ITest> selectedTests,
+			IProgress<double> progress,
+			TextWriter output,
+			CancellationToken cancellationToken)
+		{
+			var selectedSnapshot = selectedTests.ToList();
+			var requested = testProject.GetTestMethodsForSelectedTests(selectedSnapshot);
+			var confirmed = await testProject.ConfirmTestMethodsAsync(selectedSnapshot, cancellationToken);
+			if (confirmed.Count != requested.Count) {
+				var names = string.Join(", ", requested.Select(method => method.FullyQualifiedName));
+				var message = "The selected test was found in source but is not present in the built test assembly"
+					+ (string.IsNullOrEmpty(names) ? "." : ":\n" + names)
+					+ "\n\nCheck that the source file is included as a Compile item and rebuild the project.";
+				output.WriteLine(message);
+				await SD.MainThread.InvokeAsync(() => SD.MessageService.ShowError(message));
+				return;
+			}
+
+			await base.RunAsync(confirmed, progress, output, cancellationToken);
 		}
 
 		protected override ProcessStartInfo GetProcessStartInfo(IEnumerable<ITest> selectedTests)

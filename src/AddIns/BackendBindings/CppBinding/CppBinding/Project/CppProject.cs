@@ -51,11 +51,6 @@ namespace ICSharpCode.CppBinding.Project
 		{
 		}
 
-		public override IAmbience GetAmbience()
-		{
-			return new CSharpAmbience();
-		}
-
 		public override string Language
 		{
 			get { return CppProjectBinding.LanguageName; }

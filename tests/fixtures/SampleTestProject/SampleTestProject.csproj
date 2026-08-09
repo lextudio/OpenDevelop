@@ -19,4 +19,9 @@
     <PackageReference Include="xunit.v3" Version="3.2.2" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Regression fixture: source-directory scanning must not report tests excluded by MSBuild. -->
+    <Compile Remove="ExcludedTests.cs" />
+  </ItemGroup>
+
 </Project>

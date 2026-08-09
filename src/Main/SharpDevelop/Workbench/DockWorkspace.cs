@@ -304,6 +304,16 @@ internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrateg
             // front-most tab in its group.
             anchorableToShow.ContentId = pane.ContentId;
             anchorableToShow.AddToLayout(dockingManager, ToShowStrategy(side));
+            if (!pane.IsVisible) {
+                // A layout switch is incremental (AvalonDockLayout.LoadLayout, 2026-08-09): panes
+                // not named in the restored layout are re-docked here rather than evicted, so a
+                // pad the user had hidden (or a default-hidden one like the Outline) must go to
+                // the Hidden area - not be selected - or every switch would re-surface it.
+                anchorableToShow.Hide();
+                pane.IsSelected = false;
+                pane.IsActive = false;
+                return true;
+            }
             // AddToLayout only touches the tree (Parent); LayoutAnchorable.IsSelected is a plain
             // flag, not tree-derived like IsVisible (`Parent != null && Parent is not LayoutRoot`),
             // so a freshly-added anchorable defaults to unselected - i.e. a background tab in

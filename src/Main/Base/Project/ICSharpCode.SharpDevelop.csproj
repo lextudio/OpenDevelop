@@ -151,7 +151,9 @@
          trimmed to keep only the WPF ApplyWindow() overload (with single-monitor SystemParameters.WorkArea
          validation replacing the removed Screen-based logic), so it's back in the build. -->
     <!-- Consumers of the excluded dialogs/panels above: menu commands that only exist to launch them. -->
-    <Compile Remove="Src\Commands\DebugCommands.cs" />
+    <!-- DebugCommands.cs is compiled again: the addin's Debug toolbar/menu still references its
+         Break/Continue/Step/StepInto/StepOut/Stop commands, and without them those toolbar buttons
+         fail at click time with "Cannot find class ... DebuggingCommand". -->
     <Compile Remove="Src\Commands\HelpCommands.cs" />
 
     <Compile Remove="Src\Editor\Commands\ShowColorDialog.cs" />

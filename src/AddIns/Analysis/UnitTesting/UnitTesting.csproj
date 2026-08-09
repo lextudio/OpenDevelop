@@ -39,6 +39,7 @@
     <Compile Include="Pad/UnitTestNode.cs" />
     <Compile Include="Pad/UnitTestNodeFactory.cs" />
     <Compile Include="Pad/UnitTestsPad.cs" />
+    <Compile Include="Pad/UnitTestsPadToolPaneModel.cs" />
     <Compile Include="Pad/UnitTestsPadView.xaml.cs">
       <DependentUpon>UnitTestsPadView.xaml</DependentUpon>
     </Compile>
@@ -53,6 +54,7 @@
     <Compile Include="TestOpenLensProvider.cs" />
     <Compile Include="TestLensMenuContributors.cs" />
     <Compile Include="RegisterTestOpenLensProviderCommand.cs" />
+    <Compile Include="RegisterUnitTestsPadToolPaneCommand.cs" />
     <!-- Shared with UnoDevelop.UnitTesting (which links this same file) - see
          doc/technotes/unit-testing.md "Implemented: Roslyn-assisted discovery". Deliberately not
          under Service/*.cs or TestRunner/*.cs above (those wildcards would also pull in the rest

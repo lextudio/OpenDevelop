@@ -39,11 +39,15 @@
   </Path>
 
   <Path name="/SharpDevelop/Workbench/Pads">
+    <!-- MEF-migrated pad (ProjectBrowserViewModel). The startup ShowPad loop skips it via
+         IsMefToolPane, but the descriptor is still required for PadDescriptor routing:
+         GetPad/BringPadToFront and DevFlow's od.show-pad resolve pads through
+         PadContentCollection + LegacyPadClass. Left matches the Default layout template. -->
     <Pad id="ProjectBrowser"
          category="Main"
          title="Projects"
          class="ICSharpCode.SharpDevelop.Services.ProjectBrowserPad"
-         defaultPosition="Right" />
+         defaultPosition="Left" />
   </Path>
 
   <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Add">

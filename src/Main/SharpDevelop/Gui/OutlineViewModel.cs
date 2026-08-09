@@ -28,6 +28,7 @@ internal sealed class OutlineViewModel : ToolPaneModel, IDisposable
         ContentId = "Outline";
         IsVisible = false; // Matches the legacy Pad's `defaultPosition = "Left, Hidden"`.
         IsCloseable = true;
+        PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Left;
         LegacyPadClass = typeof(OutlinePad).FullName;
         Content = contentControl;
     }

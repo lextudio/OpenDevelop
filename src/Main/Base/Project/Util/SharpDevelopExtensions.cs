@@ -510,19 +510,6 @@ namespace ICSharpCode.SharpDevelop
 		}
 		
 		/// <summary>
-		/// Gets the ambience for the specified compilation.
-		/// Never returns null.
-		/// </summary>
-		public static IAmbience GetAmbience(this ICompilation compilation)
-		{
-			IProject p = compilation.GetProject();
-			if (p != null)
-				return p.GetAmbience();
-			else
-				return AmbienceService.GetCurrentAmbience();
-		}
-		
-		/// <summary>
 		/// Retrieves the model instance for the given entity.
 		/// May return null if there is no model for the specified entity.
 		/// </summary>

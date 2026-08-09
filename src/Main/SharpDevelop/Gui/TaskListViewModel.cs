@@ -60,6 +60,7 @@ internal sealed class TaskListViewModel : ToolPaneModel
         ContentId = "TaskList";
         IsVisible = true; // Matches the legacy Pad's `defaultPosition = "Bottom"`.
         IsCloseable = true;
+        PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Bottom;
         LegacyPadClass = typeof(TaskListPad).FullName;
         Content = contentPanel;
     }

@@ -3,6 +3,7 @@
   <RootPanel Orientation="Horizontal">
     <LayoutAnchorablePane DockWidth="280" Name="LeftPane">
       <LayoutAnchorable Title="Projects" ContentId="ProjectBrowser" IsSelected="true" AutoHideMinWidth="100" AutoHideMinHeight="100" />
+      <LayoutAnchorable Title="Unit Tests" ContentId="UnitTestingPad" AutoHideMinWidth="100" AutoHideMinHeight="100" />
     </LayoutAnchorablePane>
     <LayoutDocumentPane />
   </RootPanel>

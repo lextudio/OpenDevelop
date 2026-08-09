@@ -40,27 +40,18 @@ internal static class RoslynTestScanner
         "DataTestMethod", "DataTestMethodAttribute",
     };
 
-    public static IReadOnlyList<RoslynTestCandidate> ScanProject(string? projectDirectory)
+    public static IReadOnlyList<RoslynTestCandidate> ScanFiles(IEnumerable<string> sourceFiles)
     {
         var results = new List<RoslynTestCandidate>();
-        if (string.IsNullOrEmpty(projectDirectory) || !Directory.Exists(projectDirectory))
+        if (sourceFiles is null)
             return results;
 
-        IEnumerable<string> sourceFiles;
-        try
-        {
-            sourceFiles = Directory.EnumerateFiles(projectDirectory, "*.cs", SearchOption.AllDirectories)
-                .Where(path => !IsInBuildOutputDirectory(path));
-        }
-        catch
-        {
-            return results;
-        }
-
-        foreach (var file in sourceFiles)
+        foreach (var file in sourceFiles.Where(path => !string.IsNullOrWhiteSpace(path)).Distinct(StringComparer.OrdinalIgnoreCase))
         {
             try
             {
+                if (!File.Exists(file))
+                    continue;
                 ScanFile(file, results);
             }
             catch
@@ -72,10 +63,6 @@ internal static class RoslynTestScanner
 
         return results;
     }
-
-    private static bool IsInBuildOutputDirectory(string path)
-        => path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-            .Any(segment => segment is "bin" or "obj");
 
     private static void ScanFile(string filePath, List<RoslynTestCandidate> results)
     {

@@ -255,6 +255,68 @@ public sealed class DebuggerIntegrationTests
     }
 
     [Fact]
+    public async Task DebugStart_SwitchesToDebugLayout_AndStopRestoresDefault_KeepingPadsOpen()
+    {
+        // Regression coverage for the debug-session layout switching (doc/technotes/ilspy.md
+        // "Legacy pad migration", 2026-08-09):
+        //  - BaseDebuggerService.OnDebugStarting switches the workbench to the "Debug" layout,
+        //    and that switch must NOT evict pads the user had open (the incremental layout
+        //    contract - previously the Debug layout switch *closed* ErrorList & co).
+        //  - WindowsDebugger.Stop() used to skip SessionExited entirely for an explicit stop
+        //    (DapSession.CleanupSession never raises Exited), so OnDebugStopped never ran and the
+        //    workbench stayed on "Debug" forever - the fix calls SessionExited() after
+        //    CurrentSession.Stop(), which must switch the layout back to "Default".
+        var program = ProgramPath;
+        var breakpointLine = FindLine(program, "var message = ComputeGreeting(\"World\");");
+
+        await _app.InvokeAsync("od.open-solution", _app.DebugTestProjectPath);
+        await _app.InvokeAsync("od.open-file", program);
+        await _app.InvokeAsync("od.debug.clear-breakpoints");
+        await _app.InvokeAsync("od.debug.set-breakpoint", program, breakpointLine);
+
+        try
+        {
+            var start = await _app.InvokeAsync("od.debug.start", _app.DebugTestProjectPath, true, 45);
+            Assert.True(start.GetProperty("stopped").GetBoolean(), start.ToString());
+
+            // While stopped at the breakpoint, the debugger's automatic layout switch is active:
+            var layoutDuring = await _app.InvokeAsync("od.layout.current-name");
+            Assert.Equal("Debug", layoutDuring.GetProperty("layoutName").GetString());
+
+            // ...and the pads that were open before the session started must still be docked.
+            var during = await _app.InvokeAsync("od.layout.tool-panes");
+            var visibleDuring = VisibleContentIds(during).ToHashSet();
+            Assert.Contains("ProjectBrowser", visibleDuring);
+            Assert.Contains("OutputPad", visibleDuring);
+            Assert.Contains("ErrorList", visibleDuring);
+
+            await _app.InvokeAsync("od.debug.stop");
+
+            // The explicit-stop fix: the layout must switch back to Default on its own.
+            var layoutAfter = await _app.InvokeAsync("od.layout.current-name");
+            Assert.Equal("Default", layoutAfter.GetProperty("layoutName").GetString());
+
+            var after = await _app.InvokeAsync("od.layout.tool-panes");
+            var visibleAfter = VisibleContentIds(after).ToHashSet();
+            Assert.Contains("ProjectBrowser", visibleAfter);
+            Assert.Contains("OutputPad", visibleAfter);
+            Assert.Contains("ErrorList", visibleAfter);
+
+            var info = await _app.InvokeAsync("od.debug.service-info");
+            Assert.False(info.GetProperty("isDebugging").GetBoolean());
+        }
+        finally
+        {
+            await _app.InvokeAsync("od.debug.stop");
+        }
+    }
+
+    static IEnumerable<string> VisibleContentIds(JsonElement toolPanes)
+        => toolPanes.GetProperty("panes").EnumerateArray()
+            .Where(p => p.GetProperty("IsVisible").GetBoolean())
+            .Select(p => p.GetProperty("ContentId").GetString()!);
+
+    [Fact]
     public async Task DebugStart_WhenTargetMissing_FailsCleanlyInsteadOfHanging()
     {
         // Regression coverage for the premature-exit/adapter-failure bug: WindowsDebugger.StartAsync

@@ -53,6 +53,21 @@ namespace ICSharpCode.UnitTesting.Mtp
 			_processOutput = processOutput;
 		}
 
+		/// <summary>Resolves the dotnet host for the MTP test host, using the same source as the
+		/// debugger (DapSession) and the build engine: the SDK selected in Options when one is set,
+		/// otherwise the effective system SDK - so "run tests" and "debug a test" never launch
+		/// different runtimes. DOTNET_HOST_PATH remains an explicit override for scripted/CI runs.</summary>
+		public static string ResolveDotnetHost()
+		{
+			string host = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
+			if (!string.IsNullOrEmpty(host))
+				return host;
+			// PropertyService (which DotNetSdkService reads through) is UI-thread-affinitized;
+			// this can run on a background thread.
+			return SD.MainThread.InvokeIfRequired(() =>
+				ICSharpCode.SharpDevelop.Project.Sdk.DotNetSdkService.ResolveEffectiveSdk().DotnetExecutablePath);
+		}
+
 		public static async Task<MtpServerProcess> StartAsync(string testAssemblyPath, string? workingDirectory, CancellationToken cancellationToken)
 		{
 			if (!File.Exists(testAssemblyPath))
@@ -64,7 +79,7 @@ namespace ICSharpCode.UnitTesting.Mtp
 
 			var psi = new ProcessStartInfo
 			{
-				FileName = "dotnet",
+				FileName = ResolveDotnetHost(),
 				RedirectStandardOutput = true,
 				RedirectStandardError = true,
 				UseShellExecute = false,

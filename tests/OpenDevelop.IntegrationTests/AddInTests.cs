@@ -482,6 +482,27 @@ public sealed class AddInTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task UnitTestDiscovery_DoesNotShowSourceExcludedFromCompileItems()
+    {
+        await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);
+
+        JsonElement tree = default;
+        var deadline = DateTime.UtcNow.AddSeconds(60);
+        while (DateTime.UtcNow < deadline)
+        {
+            tree = await _app.InvokeAsync("od.unit-test.tree");
+            if (tree.GetProperty("tests").GetArrayLength() > 0
+                && FindTest(tree.GetProperty("tests")[0], "AlwaysPasses").HasValue)
+                break;
+            await Task.Delay(1000);
+        }
+
+        Assert.True(tree.GetProperty("tests").GetArrayLength() > 0,
+            "The fixture test project was not discovered.");
+        Assert.Null(FindTest(tree.GetProperty("tests")[0], "NotPartOfTheBuiltTestAssembly"));
+    }
+
+    [Fact]
     public async Task UnitTestRun_StreamsResultsBeforeWholeRunCompletes()
     {
         await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);
@@ -529,6 +550,49 @@ public sealed class AddInTests : IAsyncDisposable
         }
 
         Assert.Fail("The unit test run did not finish after observing partial results.");
+    }
+
+    [Fact]
+    public async Task UnitTestPad_ShowsDiscoveredTotalInStatusBar()
+    {
+        // Regression coverage for the "Total: 0" bug (doc/technotes/ilspy.md "Legacy pad
+        // migration", 2026-08-09): the pad's status bar only ever counted *runs*, so a populated
+        // test tree next to "Total: 0" read as broken. LoadOpenSolution now counts the loaded
+        // test tree's leaves, so the discovered count must show up without any test run.
+        await _app.InvokeAsync("od.show-pad", "ICSharpCode.UnitTesting.UnitTestsPad");
+        await _app.ReopenSolutionAsync(_app.FixtureSolutionPath);
+
+        var deadline = DateTime.UtcNow.AddSeconds(60);
+        while (DateTime.UtcNow < deadline)
+        {
+            var tree = await _app.InvokeAsync("od.unit-test.tree");
+            if (tree.GetProperty("tests").GetArrayLength() > 0
+                && FindTest(tree.GetProperty("tests")[0], "AlwaysPasses").HasValue)
+                break;
+            await Task.Delay(1000);
+        }
+
+        // The status bar text is a plain TextBlock ("Total: N"); poll the visual tree until it
+        // appears (the pad realizes its content only once shown).
+        deadline = DateTime.UtcNow.AddSeconds(30);
+        string? totalText = null;
+        while (DateTime.UtcNow < deadline)
+        {
+            var uiTree = await _app.GetUITreeAsync();
+            totalText = FlattenElements(uiTree)
+                .Where(e => e.TryGetProperty("type", out var t) && t.GetString() == "TextBlock"
+                    && e.TryGetProperty("text", out var txt)
+                    && txt.GetString()?.StartsWith("Total: ", StringComparison.Ordinal) == true)
+                .Select(e => e.GetProperty("text").GetString())
+                .FirstOrDefault();
+            if (totalText != null)
+                break;
+            await Task.Delay(500);
+        }
+
+        Assert.NotNull(totalText);
+        var total = int.Parse(totalText!.Substring("Total: ".Length));
+        Assert.True(total > 0, $"Expected the discovered test count in the status bar, got '{totalText}'.");
     }
 
     [Fact]

@@ -125,8 +125,12 @@ namespace ICSharpCode.UnitTesting.Mtp
 					         .Where(m => !methodNames.Contains(m.DisplayName)).ToList())
 					testClass.NestedTests.Remove(gone);
 				foreach (var node in classGroup.OrderBy(n => n.DisplayName)) {
-					if (!testClass.NestedTests.OfType<MtpTestMethod>().Any(m => m.DisplayName == node.DisplayName))
+					var existingMethod = testClass.NestedTests.OfType<MtpTestMethod>()
+						.FirstOrDefault(m => m.DisplayName == node.DisplayName);
+					if (existingMethod == null)
 						testClass.NestedTests.Add(new MtpTestMethod(project, node, targetFramework));
+					else
+						existingMethod.UpdateNode(node);
 				}
 			}
 

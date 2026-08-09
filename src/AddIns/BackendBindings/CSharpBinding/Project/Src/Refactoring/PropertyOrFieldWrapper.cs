@@ -20,6 +20,7 @@ using System;
 using System.ComponentModel;
 using System.Linq;
 
+using ICSharpCode.NRefactory.CSharp;
 using ICSharpCode.NRefactory.TypeSystem;
 using ICSharpCode.SharpDevelop;
 
@@ -45,7 +46,7 @@ namespace CSharpBinding.Refactoring
 				throw new ArgumentException("member must be IField or IProperty");
 			
 			this.Member = member;
-			IAmbience ambience = AmbienceService.GetCurrentAmbience();
+			IAmbience ambience = new CSharpAmbience();
 			ambience.ConversionFlags |=
 				ConversionFlags.ShowReturnType
 				| ConversionFlags.ShowModifiers

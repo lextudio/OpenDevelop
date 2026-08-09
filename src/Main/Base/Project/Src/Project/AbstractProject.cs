@@ -652,19 +652,15 @@ namespace ICSharpCode.SharpDevelop.Project
 			var provider = this.CreateCodeDomProvider();
 			if (provider != null) {
 				var options = new System.CodeDom.Compiler.CodeGeneratorOptions();
-				options.BlankLinesBetweenMembers = AmbienceService.CodeGenerationProperties.Get("BlankLinesBetweenMembers", true);
-				options.BracingStyle             = AmbienceService.CodeGenerationProperties.Get("StartBlockOnSameLine", true) ? "Block" : "C";
-				options.ElseOnClosing            = AmbienceService.CodeGenerationProperties.Get("ElseOnClosing", true);
+				var codeGenerationProperties = PropertyService.NestedProperties("SharpDevelop.UI.CodeGenerationOptions");
+				options.BlankLinesBetweenMembers = codeGenerationProperties.Get("BlankLinesBetweenMembers", true);
+				options.BracingStyle             = codeGenerationProperties.Get("StartBlockOnSameLine", true) ? "Block" : "C";
+				options.ElseOnClosing            = codeGenerationProperties.Get("ElseOnClosing", true);
 				options.IndentString = SD.EditorControlService.GlobalOptions.IndentationString;
 				provider.GenerateCodeFromCompileUnit(compileUnit, writer, options);
 			} else {
 				writer.WriteLine("No CodeDom provider was found for this language.");
 			}
-		}
-		
-		public virtual IAmbience GetAmbience()
-		{
-			return new DefaultAmbience();
 		}
 		
 		public virtual Refactoring.ISymbolSearch PrepareSymbolSearch(ISymbol entity)

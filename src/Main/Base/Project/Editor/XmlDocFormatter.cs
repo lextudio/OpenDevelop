@@ -29,18 +29,13 @@ namespace ICSharpCode.SharpDevelop.Editor
 	{
 		public static FlowDocument CreateTooltip(IType type, bool useFullyQualifiedMemberNames = true)
 		{
-			var ambience = AmbienceService.GetCurrentAmbience();
-			ambience.ConversionFlags = ConversionFlags.StandardConversionFlags | ConversionFlags.ShowDeclaringType;
-			if (useFullyQualifiedMemberNames)
-				ambience.ConversionFlags |= ConversionFlags.UseFullyQualifiedEntityNames;
 			string header;
 			if (type is ITypeDefinition)
-				header = ambience.ConvertSymbol((ITypeDefinition)type);
+				header = useFullyQualifiedMemberNames ? ((ITypeDefinition)type).FullName : type.Name;
 			else
-				header = ambience.ConvertType(type);
+				header = useFullyQualifiedMemberNames ? type.FullName : type.Name;
 			
-			ambience.ConversionFlags = ConversionFlags.ShowTypeParameterList;
-			DocumentationUIBuilder b = new DocumentationUIBuilder(ambience);
+			DocumentationUIBuilder b = new DocumentationUIBuilder();
 			b.AddCodeBlock(header, keepLargeMargin: true);
 			
 			ITypeDefinition entity = type.GetDefinition();
@@ -57,15 +52,10 @@ namespace ICSharpCode.SharpDevelop.Editor
 		
 		public static FlowDocument CreateTooltip(IEntity entity, bool useFullyQualifiedMemberNames = true)
 		{
-			var ambience = AmbienceService.GetCurrentAmbience();
-			ambience.ConversionFlags = ConversionFlags.StandardConversionFlags | ConversionFlags.ShowDeclaringType;
-			if (useFullyQualifiedMemberNames)
-				ambience.ConversionFlags |= ConversionFlags.UseFullyQualifiedEntityNames;
-			string header = ambience.ConvertSymbol(entity);
+			string header = useFullyQualifiedMemberNames ? entity.FullName : entity.Name;
 			var documentation = XmlDocumentationElement.Get(entity);
 			
-			ambience.ConversionFlags = ConversionFlags.ShowTypeParameterList;
-			DocumentationUIBuilder b = new DocumentationUIBuilder(ambience);
+			DocumentationUIBuilder b = new DocumentationUIBuilder();
 			b.AddCodeBlock(header, keepLargeMargin: true);
 			if (documentation != null) {
 				foreach (var child in documentation.Children) {
@@ -77,9 +67,7 @@ namespace ICSharpCode.SharpDevelop.Editor
 		
 		public static FlowDocument CreateTooltip(ISymbol symbol)
 		{
-			var ambience = AmbienceService.GetCurrentAmbience();
-			ambience.ConversionFlags = ConversionFlags.StandardConversionFlags | ConversionFlags.ShowDeclaringType;
-			string header = ambience.ConvertSymbol(symbol);
+			string header = symbol.Name;
 			
 			if (symbol is IParameter) {
 				header = "parameter " + header;
@@ -87,8 +75,7 @@ namespace ICSharpCode.SharpDevelop.Editor
 				header = "local variable " + header;
 			}
 			
-			ambience.ConversionFlags = ConversionFlags.ShowTypeParameterList;
-			DocumentationUIBuilder b = new DocumentationUIBuilder(ambience);
+			DocumentationUIBuilder b = new DocumentationUIBuilder();
 			b.AddCodeBlock(header, keepLargeMargin: true);
 			return b.CreateFlowDocument();
 		}

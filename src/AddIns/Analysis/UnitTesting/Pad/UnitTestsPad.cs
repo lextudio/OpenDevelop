@@ -37,11 +37,23 @@ namespace ICSharpCode.UnitTesting
 {
 	public class UnitTestsPad : AbstractPadContent
 	{
+		// The single instance the workbench shows (doc/technotes/ilspy.md "Legacy pad
+		// migration"): the UnitTestsPadToolPaneModel creates it on first resolution (before the
+		// AnchorablesSource binding attaches), and TestExecutionManager uses it to reach the pad.
+		// A legacy AddInTree <Pad> descriptor that misses the modern routing would CreateObject a
+		// second, never-shown instance instead - callers must use SharedInstance, never the pad
+		// they constructed themselves.
+		static UnitTestsPad sharedInstance;
+
+		internal static UnitTestsPad SharedInstance {
+			get { return sharedInstance; }
+		}
+
 		ITestService testService;
 		TestTreeView treeView;
 		UnitTestsPadView view;
 		UnitTestsPadViewModel viewModel;
-		DispatcherOperation initialLoadOperation;
+		DispatcherTimer initialLoadTimer;
 		bool initialLoadPending;
 		List<Tuple<IUnresolvedFile, IUnresolvedFile>> pending = new List<Tuple<IUnresolvedFile, IUnresolvedFile>>();
 
@@ -58,6 +70,8 @@ namespace ICSharpCode.UnitTesting
 		UnitTestsPad(ITestService testService, bool deferInitialTreeLoad)
 		{
 			this.testService = testService;
+			if (sharedInstance == null)
+				sharedInstance = this;
 
 			viewModel = new UnitTestsPadViewModel { IsLoading = true };
 			view = new UnitTestsPadView { DataContext = viewModel };
@@ -82,20 +96,33 @@ namespace ICSharpCode.UnitTesting
 		void TreeHostLoaded(object sender, RoutedEventArgs e)
 		{
 			view.TreeHost.Loaded -= TreeHostLoaded;
-			initialLoadOperation = Application.Current.Dispatcher.BeginInvoke(
-				DispatcherPriority.ContextIdle,
-				new Action(() => {
-					initialLoadOperation = null;
-					initialLoadPending = false;
-					LoadOpenSolution();
-				}));
+			// A low-priority dispatcher callback can still run before macOS presents WPF's first
+			// composed frame. A one-shot timer forces the dispatcher to return to the native event
+			// loop first, so AvalonDock visibly activates the pad before tree materialization starts.
+			initialLoadTimer = new DispatcherTimer(DispatcherPriority.Background) {
+				Interval = TimeSpan.FromMilliseconds(100)
+			};
+			initialLoadTimer.Tick += InitialLoadTimerTick;
+			initialLoadTimer.Start();
+		}
+
+		void InitialLoadTimerTick(object sender, EventArgs e)
+		{
+			initialLoadTimer.Stop();
+			initialLoadTimer.Tick -= InitialLoadTimerTick;
+			initialLoadTimer = null;
+			initialLoadPending = false;
+			LoadOpenSolution();
 		}
 		
 		public override void Dispose()
 		{
 			view.TreeHost.Loaded -= TreeHostLoaded;
-			initialLoadOperation?.Abort();
-			initialLoadOperation = null;
+			if (initialLoadTimer != null) {
+				initialLoadTimer.Stop();
+				initialLoadTimer.Tick -= InitialLoadTimerTick;
+				initialLoadTimer = null;
+			}
 			initialLoadPending = false;
 			testService.OpenSolutionChanged -= testService_OpenSolutionChanged;
 			base.Dispose();
@@ -130,6 +157,26 @@ namespace ICSharpCode.UnitTesting
 		{
 			treeView.TestSolution = testService.OpenSolution;
 			viewModel.IsLoading = false;
+			// The status bar's Total reflects the discovered test count (doc/technotes/ilspy.md,
+			// "Total: 0" fix, 2026-08-09): the tree the user sees is this same model, so count its
+			// leaf tests now - a pad showing test classes while reading "Total: 0" reads as broken.
+			// A run's own StartRunStatus/TestCountDiscovered overrides this when tests actually run.
+			int count = testService.OpenSolution == null ? 0 : CountLeafTests(testService.OpenSolution);
+			viewModel.StartRun(count);
+		}
+
+		static int CountLeafTests(ITest test)
+		{
+			if (test == null)
+				return 0;
+			var nestedTests = test.NestedTests;
+			if (nestedTests == null || nestedTests.Count == 0)
+				return 1;
+			int count = 0;
+			foreach (var nestedTest in nestedTests) {
+				count += CountLeafTests(nestedTest);
+			}
+			return count;
 		}
 		
 		/// <summary>

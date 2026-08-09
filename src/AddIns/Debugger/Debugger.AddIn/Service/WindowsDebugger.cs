@@ -385,6 +385,14 @@ namespace ICSharpCode.SharpDevelop.Services
 				return;
 			}
 			CurrentSession.Stop();
+			// DapSession.Stop() tears the session down via CleanupSession(), which never raises
+			// Exited (Exited only fires from the DAP "terminated"/"exited" events or the adapter
+			// process exiting) - an explicit user stop would otherwise skip SessionExited entirely
+			// and leave the workbench stuck on the "Debug" layout, since
+			// BaseDebuggerService.OnDebugStopped (called from SessionExited) is what switches back
+			// to "Default". Reuse SessionExited so the explicit stop path gets the same main-thread
+			// cleanup (layout switch, line-marker removal, pad refresh, session null-out).
+			SessionExited();
 		}
 
 		public override void Break()

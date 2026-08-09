@@ -73,7 +73,15 @@ namespace ICSharpCode.FormsDesigner.Services
 			get {
 				if (stringLiteralDelimiter == null) {
 					const string TestString = "A";
-					string testCode = project.GetAmbience().ConvertConstantValue(TestString);
+					var provider = project.CreateCodeDomProvider();
+					if (provider == null)
+						return "\"";
+					var writer = new StringWriter();
+					provider.GenerateCodeFromExpression(
+						new CodePrimitiveExpression(TestString),
+						writer,
+						new System.CodeDom.Compiler.CodeGeneratorOptions());
+					string testCode = writer.ToString();
 					stringLiteralDelimiter = testCode.Substring(0, testCode.IndexOf(TestString, StringComparison.Ordinal));
 				}
 				return stringLiteralDelimiter;

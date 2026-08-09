@@ -109,9 +109,6 @@
 		         class="ICSharpCode.SharpDevelop.WinForms.WinFormsToolbarService"/ -->
 	</Path>
 	
-	<Path name = "/SharpDevelop/Workbench/Ambiences">
-	</Path>
-	
 	<Path name = "/SharpDevelop/Workbench/DisplayBindings">
 		<!-- MVP: removed DisplayBinding id="Browser" title="${res:Gui.ProjectBrowser.OpenWith.Bindings.WebBrowser}"
 		     class="ICSharpCode.SharpDevelop.BrowserDisplayBinding.BrowserDisplayBinding"/ - legacy WinForms

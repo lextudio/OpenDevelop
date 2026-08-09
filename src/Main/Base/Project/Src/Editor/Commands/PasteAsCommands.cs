@@ -54,7 +54,7 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 	/// Does the following:
 	/// - Take clipboard text
 	/// - Get current indentation
-	/// - Wrap first line using 'IAmbience.WrapComment'
+	/// - Prefix each wrapped line with the C-style line-comment marker
 	/// - If it's too long (according to the column ruler position), word-break
 	/// - Insert it
 	/// </summary>
@@ -63,14 +63,13 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 		protected override void Run(ITextEditor editor, string clipboardText)
 		{
 			string indentation = DocumentUtilities.GetIndentation(editor.Document, editor.Caret.Line);
-			IAmbience ambience = AmbienceService.GetCurrentAmbience();
 			int maxLineLength = editor.Options.VerticalRulerColumn - VisualIndentationLength(editor, indentation);
 			StringWriter insertedText = new StringWriter();
 			insertedText.NewLine = DocumentUtilities.GetLineTerminator(editor.Document, editor.Caret.Line);
 			using (StringReader reader = new StringReader(clipboardText)) {
 				string line;
 				while ((line = reader.ReadLine()) != null) {
-					AppendTextLine(indentation, ambience, maxLineLength, insertedText, line);
+					AppendTextLine(indentation, maxLineLength, insertedText, line);
 				}
 			}
 			IDocument document = editor.Document;
@@ -78,12 +77,12 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 			document.Insert(insertionPos, insertedText.ToString());
 		}
 		
-		void AppendTextLine(string indentation, IAmbience ambience, int maxLineLength, StringWriter insertedText, string line)
+		void AppendTextLine(string indentation, int maxLineLength, StringWriter insertedText, string line)
 		{
 			const int minimumLineLength = 10;
 			string commentedLine;
 			while (true) {
-				commentedLine = ambience.WrapComment(line);
+				commentedLine = "// " + line;
 				int commentingOverhead = commentedLine.Length - line.Length;
 				if (commentingOverhead < 0 || (maxLineLength - commentingOverhead) < minimumLineLength)
 					break;
@@ -91,7 +90,7 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 					int pos = FindWrapPositionBefore(line, maxLineLength - commentingOverhead);
 					if (pos < minimumLineLength)
 						break;
-					insertedText.WriteLine(ambience.WrapComment(line.Substring(0, pos)));
+					insertedText.WriteLine("// " + line.Substring(0, pos));
 					insertedText.Write(indentation);
 					line = line.Substring(pos + 1);
 				} else {

@@ -42,6 +42,7 @@ internal sealed class DefinitionViewViewModel : ToolPaneModel, IDisposable
         ContentId = "DefinitionView";
         IsVisible = false; // Matches the legacy Pad's `defaultPosition = "Bottom, Hidden"`.
         IsCloseable = true;
+        PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Bottom;
         LegacyPadClass = typeof(DefinitionViewPad).FullName;
 
         ctl = Editor.AvalonEditTextEditorAdapter.CreateAvalonEditInstance();

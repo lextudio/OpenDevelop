@@ -268,7 +268,7 @@ namespace ClassDiagram
 		
 		protected IAmbience GetAmbience()
 		{
-			IAmbience ambience = AmbienceService.GetCurrentAmbience();
+			IAmbience ambience = new CSharpAmbience();
 			ambience.ConversionFlags = ConversionFlags.None;
 			return ambience;
 		}

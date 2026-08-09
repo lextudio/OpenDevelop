@@ -70,9 +70,7 @@ namespace ICSharpCode.SharpDevelop.Dom.ClassBrowser
 			var member = model.Resolve();
 			if (member == null)
 				return model.Name;
-			IAmbience ambience = AmbienceService.GetCurrentAmbience();
-			ambience.ConversionFlags = ConversionFlags.ShowTypeParameterList | ConversionFlags.ShowParameterList | ConversionFlags.ShowParameterNames;
-			return ambience.ConvertSymbol(member);
+			return member.Name;
 		}
 		
 		public override void ActivateItem(System.Windows.RoutedEventArgs e)

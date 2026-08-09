@@ -19,9 +19,23 @@
 					     A directly clickable TextBlock preserves the link behavior and renders normally. -->
 					<TextBlock Text="{Binding Path=Name}"
 					           Tag="{Binding}"
-					           Foreground="{DynamicResource Selection}"
 					           Cursor="Hand"
-					           MouseLeftButtonUp="listViewNameClick" />
+					           MouseLeftButtonUp="listViewNameClick">
+						<TextBlock.Style>
+							<Style TargetType="TextBlock">
+								<!-- "Selection" is the link/emphasis blue, but the selected row's
+								     highlight background is the same blue, so the name would be
+								     unreadable when selected. Switch to SelectionForeground
+								     (white) while the row is selected. -->
+								<Setter Property="Foreground" Value="{DynamicResource Selection}" />
+								<Style.Triggers>
+									<DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListViewItem}}" Value="True">
+										<Setter Property="Foreground" Value="{DynamicResource SelectionForeground}" />
+									</DataTrigger>
+								</Style.Triggers>
+							</Style>
+						</TextBlock.Style>
+					</TextBlock>
 				</DataTemplate>
 			</ListView.Resources>
 			<ListView.ItemContainerStyle>

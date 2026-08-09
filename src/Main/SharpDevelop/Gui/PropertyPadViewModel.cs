@@ -52,6 +52,7 @@ internal sealed class PropertyPadViewModel : ToolPaneModel, IPropertyPadHost, ID
         ContentId = "PropertyPad";
         IsVisible = true; // Matches the legacy Pad's `defaultPosition = "Right"`.
         IsCloseable = true;
+        PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Right;
         LegacyPadClass = typeof(PropertyPad).FullName;
 
         propertyGrid.IsCategorized = true;

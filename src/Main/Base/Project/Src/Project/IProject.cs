@@ -305,16 +305,6 @@ namespace ICSharpCode.SharpDevelop.Project
 		void GenerateCodeFromCodeDom(System.CodeDom.CodeCompileUnit compileUnit, TextWriter writer);
 		
 		/// <summary>
-		/// Creates a new ambience for this project.
-		/// </summary>
-		/// <remarks>
-		/// This member is thread-safe.
-		/// As ambiences are not thread-safe, this method always returns a new ambience instance.
-		/// Never returns null.
-		/// </remarks>
-		IAmbience GetAmbience();
-		
-		/// <summary>
 		/// Returns the ILanguageBinding implementation for this project.
 		/// </summary>
 		ILanguageBinding LanguageBinding { get; }
