@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using ICSharpCode.Core;
 
 namespace ICSharpCode.SharpDevelop.Services;
@@ -343,8 +344,25 @@ public static class GitStatusService
             psi.ArgumentList.Add(arg);
 
         using var process = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start git");
-        var output = process.StandardOutput.ReadToEnd();
-        process.WaitForExit(5000);
-        return output;
+        // Drain both redirected pipes while the process runs. Reading stdout synchronously before
+        // WaitForExit made the five-second timeout ineffective: a stuck git process (or a full
+        // stderr pipe) could block ReadToEnd forever and leave Solution Explorer on Loading.
+        var outputTask = process.StandardOutput.ReadToEndAsync();
+        var errorTask = process.StandardError.ReadToEndAsync();
+        if (!process.WaitForExit(5000))
+        {
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch
+            {
+                // Best effort; the timeout is still reported to the caller.
+            }
+            throw new TimeoutException($"git {arguments} timed out in '{workingDirectory}'.");
+        }
+
+        Task.WaitAll(outputTask, errorTask);
+        return outputTask.Result;
     }
 }
