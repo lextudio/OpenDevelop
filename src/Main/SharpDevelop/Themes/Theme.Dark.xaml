@@ -1555,29 +1555,36 @@
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 Margin="0">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition MaxHeight="7" />
-                                    <RowDefinition />
-                                </Grid.RowDefinitions>
-                                <Rectangle x:Name="accentLine"
-                                           Visibility="Collapsed"
-                                           Fill="{DynamicResource Selection}"
-                                           Height="2"
-                                           VerticalAlignment="Bottom" />
-                                <ContentPresenter x:Name="contentPresenter"
-                                                  Grid.RowSpan="2"
-                                                  ContentSource="Header"
-                                                  HorizontalAlignment="{Binding HorizontalContentAlignment, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
-                                                  VerticalAlignment="{Binding VerticalContentAlignment, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
-                                                  SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"
-                                                  Focusable="False"
-                                                  Margin="{TemplateBinding Padding}"
-                                                  RecognizesAccessKey="True" />
-                            </Grid>
+                            <ContentPresenter x:Name="contentPresenter"
+                                              ContentSource="Header"
+                                              HorizontalAlignment="{Binding HorizontalContentAlignment, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
+                                              VerticalAlignment="{Binding VerticalContentAlignment, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
+                                              SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"
+                                              Focusable="False"
+                                              Margin="{TemplateBinding Padding}"
+                                              RecognizesAccessKey="True" />
                         </Border>
+                        <!-- The selection indicator is a full-width bar pinned to the tab's edge,
+                             in its own overlay layer so it can never crowd or overlap the header
+                             text (an earlier draft drew a line across the text). Tabs-at-top (the
+                             default): the bar sits on the tab's bottom edge; a
+                             TabStripPlacement="Bottom" strip (e.g. the WPF designer's
+                             Design/XAML switcher) flips it to the top edge via the trigger below,
+                             pointing at the content. -->
+                        <Rectangle x:Name="accentLine"
+                                   Visibility="Collapsed"
+                                   Fill="{DynamicResource Selection}"
+                                   Height="3"
+                                   VerticalAlignment="Bottom" />
                     </Grid>
                     <ControlTemplate.Triggers>
+                        <!-- Bottom-placed tab strip: the tab's top edge faces the content, so the
+                             connecting border moves to the bottom and the accent bar to the top. -->
+                        <DataTrigger Binding="{Binding TabStripPlacement, RelativeSource={RelativeSource AncestorType={x:Type TabControl}}}"
+                                     Value="Bottom">
+                            <Setter TargetName="mainBorder" Property="BorderThickness" Value="0,1,1,1" />
+                            <Setter TargetName="accentLine" Property="VerticalAlignment" Value="Top" />
+                        </DataTrigger>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="mainBorder" Property="Background" Value="{DynamicResource HoverBackground}" />
                             <Setter TargetName="mainBorder" Property="BorderBrush" Value="{DynamicResource Selection}" />
@@ -1586,7 +1593,10 @@
                             <Setter TargetName="mainBorder" Property="Background" Value="{DynamicResource ToolWindowBackground}" />
                             <Setter TargetName="mainBorder" Property="BorderBrush" Value="{DynamicResource Border}" />
                             <Setter TargetName="accentLine" Property="Visibility" Value="Visible" />
-                            <Setter Property="Foreground" Value="{DynamicResource SelectionForeground}" />
+                            <!-- See Theme.Light.xaml: keep the normal Foreground (white here) so the
+                                 selected tab stays readable on the ToolWindowBackground; the accent
+                                 line marks the selection. -->
+                            <Setter Property="Foreground" Value="{DynamicResource Foreground}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="contentPresenter" Property="Opacity" Value="0.56" />
