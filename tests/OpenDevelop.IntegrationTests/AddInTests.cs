@@ -1005,12 +1005,14 @@ public sealed class AddInTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task DropToolboxItem_OnDesignSurface_InsertsControlEditableThroughPropertiesPad()
+    public async Task DragToolboxItem_OntoDesignSurface_InsertsControlEditableThroughPropertiesPad()
     {
-        // Covers the toolbox -> design surface -> properties pad path end to end: DevFlow has no
-        // synthetic-drag primitive, so od.wpf-designer.toolbox.drop calls the same mouse-independent
-        // CreateComponentTool primitives the real DragDrop/mouse gesture path calls internally (see
-        // WpfDesignDevFlowActions.DropToolboxItem) instead of simulating pointer input.
+        // Covers the toolbox -> design surface -> properties pad path end to end using a REAL
+        // synthetic mouse drag (press/drag-move/release via cliclick, same primitives AvalonDock's
+        // own DevFlowClient uses), not an API shortcut: PortableDragDropOperation (LibreWPF's
+        // PresentationCore) now implements the source half of DragDrop.DoDragDrop for portable
+        // presentation sources, so WpfToolbox's actual DragDrop.DoDragDrop call - previously a
+        // guaranteed no-op off Windows - drives CreateComponentTool's real DragOver/Drop handlers.
         var solutionDirectory = Path.GetDirectoryName(_app.WpfSampleSolutionPath)!;
         var xamlPath = Path.Combine(solutionDirectory, "SamplePane.xaml");
         var originalXaml = await File.ReadAllTextAsync(xamlPath);
@@ -1023,47 +1025,107 @@ public sealed class AddInTests : IAsyncDisposable
             Assert.True(openFileResult.GetProperty("opened").GetBoolean());
             var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "UserControl", timeoutSeconds: 30, reactivatePath: xamlPath);
             Assert.True(status.GetProperty("designerLoaded").GetBoolean(), status.ToString());
-            Assert.Contains(status.GetProperty("outlineNames").EnumerateArray(),
-                name => name.GetString() == "PaneStack");
+            var outlineNamesBefore = status.GetProperty("outlineNames").EnumerateArray()
+                .Select(n => n.GetString()).ToArray();
+            Assert.Contains("PaneStack", outlineNamesBefore);
 
-            // Same re-activate-and-retry race as SelectControl_EditingContentInPropertiesPad_UpdatesAndSavesXaml.
-            JsonElement dropped = default;
-            var dropDeadline = DateTime.UtcNow.AddSeconds(15);
-            while (DateTime.UtcNow < dropDeadline)
+            // The generic ToolsPad ("SideBar" - hosts WpfViewContent.ToolsContent, i.e.
+            // WpfToolbox.Instance.ToolboxControl) only realizes its content the first time it's
+            // actually shown (see od.show-pad's own doc comment) - without this, the ListBox's
+            // items exist (Items.Count is already non-zero) but have no generated containers, so
+            // ItemContainerGenerator.ContainerFromItem returns null and there's nothing to press on.
+            await _app.InvokeAsync("od.show-pad", "Tools");
+
+            // OD_TEST_MODE=1 sets ShowActivated=false so a normal test run never steals focus
+            // from the developer's foreground app - but cliclick's synthetic mouse input is real
+            // OS-level input that needs this window to actually be frontmost/focused to route
+            // correctly. See od.activate's doc comment.
+            await _app.InvokeAsync("od.activate");
+
+            var toolboxBounds = await _app.InvokeAsync("od.wpf-designer.toolbox.query-item-bounds", "TextBox");
+            Assert.True(toolboxBounds.GetProperty("success").GetBoolean(), toolboxBounds.ToString());
+            var fromX = toolboxBounds.GetProperty("centerX").GetDouble();
+            var fromY = toolboxBounds.GetProperty("centerY").GetDouble();
+
+            var targetBounds = await _app.InvokeAsync("od.wpf-designer.query-element-screen-bounds", "PaneStack");
+            Assert.True(targetBounds.GetProperty("success").GetBoolean(), targetBounds.ToString());
+            // Drop near the bottom of PaneStack's empty space below its existing children (a
+            // StackPanel's own bounds still hit-test to itself past its children's combined
+            // height), not dead center, which could land on an existing child TextBlock/ListBox
+            // instead - CreateComponentTool.GetCurrentTarget only accepts a hit that resolves
+            // directly to an AllowDrop element, with no ancestor walk (see PortableDragDropOperation's
+            // ResolveDropTarget comment), so hitting a child instead of the panel itself would fail.
+            var toX = targetBounds.GetProperty("x").GetDouble() + targetBounds.GetProperty("width").GetDouble() / 2;
+            var toY = targetBounds.GetProperty("y").GetDouble() + targetBounds.GetProperty("height").GetDouble() - 4;
+
+            // The exact drop point can land on a WpfDesign adorner instead of the real target
+            // (PortableDragDropOperation.ResolveDropTarget's comment explains why - e.g.
+            // PanelMoveAdorner, a small localized move-handle rather than a full-panel overlay,
+            // ends up AllowDrop=true via a generic shared style and swallows the drop silently
+            // if the release happens to land on it), which is timing/rendering-position
+            // sensitive rather than deterministic - retry the whole press/move/release gesture
+            // rather than fine-tune a single "safe" coordinate that isn't guaranteed safe anyway.
+            JsonElement statusAfterDrop = default;
+            var outlineGrew = false;
+            for (int attempt = 1; attempt <= 4 && !outlineGrew; attempt++)
             {
-                dropped = await _app.InvokeAsync(
-                    "od.wpf-designer.toolbox.drop", "System.Windows.Controls.TextBox", "PaneStack", "DroppedTextBox");
-                if (dropped.GetProperty("success").GetBoolean())
-                    break;
-                await _app.InvokeAsync("od.open-file", xamlPath);
-                await Task.Delay(250);
+                var pressed = await _app.PressPointerAsync(fromX, fromY);
+                Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
+
+                // Several intermediate steps: WpfToolbox.OnPreviewMouseMove starts DragDrop.DoDragDrop
+                // on the very first move while the item is selected+pressed, and PortableDragDropOperation
+                // hit-tests on every move - one big jump would still work, but stepping mirrors an
+                // actual drag gesture and gives DragEnter/DragOver a chance to run more than once.
+                for (int step = 1; step <= 6; step++)
+                {
+                    var t = step / 6.0;
+                    var moved = await _app.DragMovePointerAsync(fromX + (toX - fromX) * t, fromY + (toY - fromY) * t);
+                    Assert.True(moved.GetProperty("ok").GetBoolean(), moved.ToString());
+                    await Task.Delay(150);
+                }
+
+                var released = await _app.ReleasePointerAsync(toX, toY);
+                Assert.True(released.GetProperty("ok").GetBoolean(), released.ToString());
+
+                // Confirm the dropped control actually landed in the live designer tree (outline) -
+                // it has no x:Name (nothing names a freshly-dropped item, mouse-driven or not), so
+                // identify it by the outline count growing rather than by name.
+                var dropDeadline = DateTime.UtcNow.AddSeconds(8);
+                while (DateTime.UtcNow < dropDeadline)
+                {
+                    statusAfterDrop = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "UserControl", timeoutSeconds: 10, reactivatePath: xamlPath);
+                    if (statusAfterDrop.GetProperty("outlineNames").GetArrayLength() > outlineNamesBefore.Length)
+                    {
+                        outlineGrew = true;
+                        break;
+                    }
+                    await Task.Delay(250);
+                }
             }
-            Assert.True(dropped.GetProperty("success").GetBoolean(), dropped.ToString());
-            Assert.Equal("TextBox", dropped.GetProperty("createdTypeName").GetString());
-            Assert.Equal("DroppedTextBox", dropped.GetProperty("createdName").GetString());
-            Assert.Equal("PaneStack", dropped.GetProperty("containerName").GetString());
+            Assert.True(outlineGrew,
+                "Expected a new element in the outline after the drag-drop, even after retries.\nBefore: " + string.Join(", ", outlineNamesBefore) +
+                "\nAfter: " + statusAfterDrop);
 
-            // Confirm the dropped control actually landed in the live designer tree (outline) and
-            // can be selected/edited through the real Properties pad, not just constructed in memory.
-            var statusAfterDrop = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "UserControl", timeoutSeconds: 10, reactivatePath: xamlPath);
-            Assert.Contains(statusAfterDrop.GetProperty("outlineNames").EnumerateArray(),
-                name => name.GetString() == "DroppedTextBox");
-
-            var selected = await _app.InvokeAsync("od.wpf-designer.select", "DroppedTextBox");
-            Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
-            Assert.Equal("DroppedTextBox", selected.GetProperty("propertiesPadSelectedName").GetString());
-            Assert.Equal("TextBox", selected.GetProperty("propertiesPadSelectedType").GetString());
-
+            // AddItemsWithCustomSize (the primitive CreateComponentTool's real drag/drop path calls
+            // internally, same as a plain click-to-place) already selects the newly created item,
+            // so the Properties pad should already be showing it - no explicit select needed.
             var edited = await WaitForPropertiesPadEditAsync("Text", "Dropped via DevFlow", timeoutSeconds: 10);
             Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
-            Assert.Equal("DroppedTextBox", edited.GetProperty("selectedName").GetString());
             Assert.Equal("Dropped via DevFlow", edited.GetProperty("after").GetString());
 
+            // The real drag-drop path (unlike a plain property edit alone) can leave a ChangeGroup
+            // open on the undo transaction stack - see WpfDesignDevFlowActions.FlushPendingTransaction's
+            // doc comment. An automatic fix (flushing on DragDrop.DropEvent) was attempted but that
+            // handler never actually fires, so this explicit call is a known, currently-necessary
+            // workaround, not just a test convenience - a real end user dragging with the mouse
+            // hits the same "control doesn't visibly persist immediately" gap today.
+            var flushed = await _app.InvokeAsync("od.wpf-designer.flush-pending-transaction");
+            Assert.True(flushed.GetProperty("success").GetBoolean(), flushed.ToString());
             var saved = await _app.InvokeAsync("od.file.save", xamlPath);
             Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
 
             var savedXaml = await File.ReadAllTextAsync(xamlPath);
-            Assert.Contains("x:Name=\"DroppedTextBox\"", savedXaml, StringComparison.Ordinal);
+            Assert.Contains("<TextBox", savedXaml, StringComparison.Ordinal);
             Assert.Contains("Text=\"Dropped via DevFlow\"", savedXaml, StringComparison.Ordinal);
         }
         finally

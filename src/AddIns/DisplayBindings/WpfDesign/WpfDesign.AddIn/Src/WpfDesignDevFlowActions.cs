@@ -87,6 +87,76 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 		}
 
 		/// <summary>
+		/// Real screen bounds for a Toolbox row, computed the same way AvalonDock's own
+		/// avd.query.bounds DevFlow action does (plain UIElement.PointToScreen - works reliably
+		/// here since, unlike AvalonDock's floating windows, the Toolbox and the design surface it
+		/// drags onto are always in the same single main window). Lets a test drive a REAL
+		/// synthetic mouse press/move/release (od.ui/actions/{press,drag-move,release}) starting
+		/// from the actual on-screen toolbox row, exercising DragDrop.DoDragDrop end to end -
+		/// PortableDragDropOperation (LibreWPF) now implements that for real, so this no longer
+		/// needs to fall back to od.wpf-designer.toolbox.drop's direct CreateComponentTool calls.
+		/// </summary>
+		[DevFlowAction("od.wpf-designer.toolbox.query-item-bounds", Description = "Get the real on-screen bounds of a Toolbox row for a given control type, for driving a synthetic mouse drag")]
+		public static string QueryToolboxItemBounds(string typeName)
+		{
+			// ToolsPadViewModel populates its content from SD.GetActiveViewContentService<IToolsHost>()
+			// - the ACTIVE view content's service, not just "some WPF designer is open somewhere".
+			// FindWpfViewContent() switches to the WPF secondary view/tab if it isn't already active
+			// (same reason od.wpf-designer.select/status need it), which is what makes the pad
+			// resolve WpfViewContent's IToolsHost.ToolsContent (WpfToolbox) in the first place.
+			var viewContent = FindWpfViewContent();
+			if (viewContent?.DesignContext?.RootItem == null)
+				return JsonSerializer.Serialize(new { success = false, error = "WPF designer is not loaded" });
+
+			var toolboxControl = WpfToolbox.Instance.ToolboxControl as ListBox;
+			var item = toolboxControl?.Items.OfType<WpfSideTabItem>()
+				.FirstOrDefault(i => string.Equals(i.DisplayName, typeName, StringComparison.Ordinal));
+			if (toolboxControl == null || item == null)
+				return JsonSerializer.Serialize(new { success = false, error = "Toolbox item not found: " + typeName });
+
+			toolboxControl.ScrollIntoView(item);
+			toolboxControl.UpdateLayout();
+
+			if (!(toolboxControl.ItemContainerGenerator.ContainerFromItem(item) is FrameworkElement container))
+				return JsonSerializer.Serialize(new { success = false, error = "Toolbox row has no realized container (not scrolled into view?): " + typeName });
+
+			return JsonSerializer.Serialize(GetScreenBounds(container));
+		}
+
+		/// <summary>
+		/// Same idea as <see cref="QueryToolboxItemBounds"/>, but for an already-placed element on
+		/// the active design surface - the drop target for a synthetic drag.
+		/// </summary>
+		[DevFlowAction("od.wpf-designer.query-element-screen-bounds", Description = "Get the real on-screen bounds of a named element in the active WPF designer, for driving a synthetic mouse drag")]
+		public static string QueryElementScreenBounds(string elementName)
+		{
+			var viewContent = FindWpfViewContent();
+			if (viewContent?.DesignContext?.RootItem == null)
+				return JsonSerializer.Serialize(new { success = false, error = "WPF designer is not loaded" });
+
+			var designItem = FindDesignItem(viewContent.DesignContext.RootItem, elementName);
+			if (!(designItem?.View is FrameworkElement view))
+				return JsonSerializer.Serialize(new { success = false, error = "Designer element not found: " + elementName });
+
+			return JsonSerializer.Serialize(GetScreenBounds(view));
+		}
+
+		static object GetScreenBounds(UIElement element)
+		{
+			var topLeft = element.PointToScreen(new Point(0, 0));
+			var bottomRight = element.PointToScreen(new Point(element.RenderSize.Width, element.RenderSize.Height));
+			return new {
+				success = true,
+				x = topLeft.X,
+				y = topLeft.Y,
+				width = bottomRight.X - topLeft.X,
+				height = bottomRight.Y - topLeft.Y,
+				centerX = (topLeft.X + bottomRight.X) / 2,
+				centerY = (topLeft.Y + bottomRight.Y) / 2
+			};
+		}
+
+		/// <summary>
 		/// Mirrors what actually happens when a user drags a WpfSideTabItem from the Toolbox onto
 		/// the design surface (WpfToolbox.cs's OnPreviewMouseMove -> DragDrop.DoDragDrop ->
 		/// CreateComponentTool.designPanel_Drop), but calls the vendored designer engine's
@@ -152,14 +222,43 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			});
 		}
 
-		static void CommitLeakedChangeGroup(DesignContext context)
+		/// <summary>
+		/// Also reachable directly as od.wpf-designer.flush-pending-transaction: the real
+		/// toolbox-drag-drop path (WpfToolbox -> DragDrop.DoDragDrop -> CreateComponentTool's
+		/// DragOver/Drop handlers) can leave the SAME kind of unfinished ChangeGroup open as
+		/// DropToolboxItem's direct CreateComponentTool calls do (see that method's comment) -
+		/// nothing about it is specific to calling AddItemWithCustomSizePosition directly, it's
+		/// inherent to how the underlying transaction stack is used. A test driving a real
+		/// synthetic mouse drag has no single call site to hang this off of, so expose it
+		/// standalone to call once after the drag (and any property edits through the Properties
+		/// pad, which land in the same still-open transaction) before saving.
+		/// </summary>
+		[DevFlowAction("od.wpf-designer.flush-pending-transaction", Description = "Commit any ChangeGroup left open on the active WPF designer's undo transaction stack (e.g. after a real toolbox drag-drop), so subsequent edits/saves see a consistent document instead of one still mid-transaction")]
+		public static string FlushPendingTransaction()
+		{
+			var viewContent = FindWpfViewContent();
+			if (viewContent?.DesignContext == null)
+				return JsonSerializer.Serialize(new { success = false, error = "WPF designer is not loaded" });
+
+			int committed = 0;
+			while (CommitLeakedChangeGroup(viewContent.DesignContext))
+				committed++;
+
+			return JsonSerializer.Serialize(new { success = true, committed });
+		}
+
+		static bool CommitLeakedChangeGroup(DesignContext context)
 		{
 			var undoService = context.Services.GetService(typeof(UndoService)) as UndoService;
 			var stack = undoService?.GetType()
 				.GetField("_transactionStack", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
 				?.GetValue(undoService);
+			var count = (int?)(stack?.GetType().GetProperty("Count")?.GetValue(stack)) ?? 0;
+			if (count == 0)
+				return false;
 			var top = stack?.GetType().GetMethod("Peek")?.Invoke(stack, null) as ChangeGroup;
 			top?.Commit();
+			return true;
 		}
 
 		static Type ResolveControlType(string typeName)

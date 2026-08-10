@@ -396,6 +396,28 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         return await resp.Content.ReadFromJsonAsync<JsonElement>(DeepJsonOptions);
     }
 
+    // Synthetic pointer input (real OS-level input via cliclick, per src/Libraries/AvalonDock/
+    // source/DevFlowIntegrationTests/DevFlowClient.cs's identical PressAsync/DragMoveAsync/
+    // ReleaseAsync) - screen coordinates, not app-relative. Callers get the coordinates from a
+    // DevFlow action that computes real on-screen bounds for the element being pressed/dragged
+    // onto (e.g. od.wpf-designer.toolbox.query-item-bounds), never hardcoded.
+    public Task<JsonElement> PressPointerAsync(double x, double y) => PostPointActionAsync("press", x, y);
+    public Task<JsonElement> DragMovePointerAsync(double x, double y) => PostPointActionAsync("drag-move", x, y);
+    public Task<JsonElement> ReleasePointerAsync(double x, double y) => PostPointActionAsync("release", x, y);
+
+    async Task<JsonElement> PostPointActionAsync(string action, double x, double y)
+    {
+        var body = JsonSerializer.Serialize(new { x, y });
+        using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+        using var resp = await _http.PostAsync($"{BaseUrl}/api/v1/ui/actions/{action}", content);
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync();
+            throw new InvalidOperationException($"ui/actions/{action} failed ({(int)resp.StatusCode}): {err}\n{DescribeAppFailureContext()}\nRecent app output:\n{GetRecentAppOutput()}");
+        }
+        return await resp.Content.ReadFromJsonAsync<JsonElement>();
+    }
+
     static string LocateOpenDevelopProject()
     {
         var dir = AppContext.BaseDirectory;

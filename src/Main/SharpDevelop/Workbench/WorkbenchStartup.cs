@@ -24,6 +24,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media.ProGPU;
 using System.Windows.Threading;
 
 using ICSharpCode.Core;
@@ -68,6 +69,17 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		static void InitializeWorkbench(WpfWorkbench workbench, IWorkbenchLayout layout, WpfMessageService messageService)
 		{
+			// Dispatcher.NativeInputPump (WindowsBase) lets a NESTED Dispatcher.PushFrame
+			// (Window.ShowDialog, DragDrop's portable drag-source loop -
+			// System.Windows.PortableDragDropOperation) keep receiving new mouse/keyboard input
+			// instead of exiting the instant the managed dispatcher queue is momentarily empty:
+			// Silk.NET's mouse/keyboard callbacks only fire as a direct result of pumping a
+			// window's native event queue, never asynchronously from another thread, so a nested
+			// frame with nothing actively pumping would otherwise never see new input at all.
+			// Wired here (not in ProGPU.Wpf itself) because that project only compiles against a
+			// minimal WPF-shaped stub (external/ProGPU/src/WindowsBase) that has no
+			// System.Windows.Threading namespace at all - this project references the real one.
+			Dispatcher.NativeInputPump = PumpActiveWindowHosts;
 			SD.Services.AddService(typeof(IWorkbench), workbench);
 			// Registers SD.WinForms - see IWinFormsService.cs's Compile Remove/re-include comment in
 			// ICSharpCode.SharpDevelop.csproj. Needed by FormsDesigner's DesignerViewContent to embed
@@ -126,6 +138,13 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			};
 		}
 		
+		static void PumpActiveWindowHosts()
+		{
+			foreach (var host in WpfPortableWindowActivation.GetActiveHosts()) {
+				host.DoEvents();
+			}
+		}
+
 		static void ComponentDispatcher_ThreadIdle(object sender, EventArgs e)
 		{
 			// Application.RaiseIdle (WinForms) removed - no WinForms message loop to pump in this MVP build.

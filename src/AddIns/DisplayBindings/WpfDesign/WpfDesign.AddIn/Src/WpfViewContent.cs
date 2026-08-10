@@ -200,6 +200,19 @@ namespace ICSharpCode.WpfDesign.AddIn
 					propertyGridView.PropertyGrid.SelectedItems = null;
 					designer.DesignContext.Services.Selection.SelectionChanged += OnSelectionChanged;
 					designer.DesignContext.Services.GetService<UndoService>().UndoStackChanged += OnUndoStackChanged;
+
+					// A real toolbox drag-drop (DragDrop.DoDragDrop -> CreateComponentTool's
+					// DragOver/Drop handlers, now actually reachable off Windows via
+					// System.Windows.PortableDragDropOperation) can leave the dropped item's
+					// ChangeGroup open on the undo transaction stack - designPanel_Drop's own
+					// Commit() closes ITS OWN reference, but something further up (not yet
+					// root-caused) can stay open, so the drop is only visible/selectable in
+					// memory until something commits it. Tried auto-flushing on DragDrop.DropEvent
+					// here; that handler never actually fires (root cause not yet found either -
+					// possibly ProcessPortableDragDrop's RaiseEvent call not routing the way a
+					// normal drop would), so for now a caller has to explicitly call
+					// od.wpf-designer.flush-pending-transaction (WpfDesignDevFlowActions) after a
+					// drop before the change is guaranteed visible/saveable. Known limitation.
 				} catch (Exception e) {
 					ShowDesignerError(e);
 				}

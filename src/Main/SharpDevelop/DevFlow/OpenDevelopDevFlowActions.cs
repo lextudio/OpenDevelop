@@ -15,6 +15,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media.ProGPU;
 
 using AvalonDock.Layout;
 
@@ -370,6 +371,41 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new {
 				opened = viewContent != null,
 				viewContentType = viewContent != null ? viewContent.GetType().FullName : null
+			});
+		}
+
+		[DevFlowAction("od.activate", Description = "Bring the main workbench window to the front and give it real OS keyboard/mouse focus - needed before any test drives cliclick-based synthetic mouse input (od.ui/actions/press,drag-move,release), since OD_TEST_MODE=1 sets ShowActivated=false so a normal test run never steals focus from the developer's foreground app. Mirrors AvalonDock's own avd.activate action (src/Libraries/AvalonDock/source/TestApp/MainWindow.xaml.cs)")]
+		public static string ActivateMainWindow()
+		{
+			var mainWindow = System.Windows.Application.Current?.MainWindow;
+			if (mainWindow == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No main window" });
+
+			if (mainWindow.WindowState == System.Windows.WindowState.Minimized)
+				mainWindow.WindowState = System.Windows.WindowState.Normal;
+			mainWindow.Activate();
+			mainWindow.Focus();
+
+			// Window.Activate()/Focus() only set WPF-internal IsActive bookkeeping - they don't by
+			// themselves raise/focus the underlying native (GLFW-backed) OS window that cliclick's
+			// CGEventPost injection actually targets. Drive the real native focus too, the same way
+			// AvalonDock's TestApp (src/Libraries/AvalonDock/source/TestApp/MainWindow.xaml.cs,
+			// e.g. line ~1394) reaches the native window for its own diagnostics: through
+			// ProGpuWpfDiagnostics.TryGetWindowHost's SilkWindow.
+			bool nativeFocused = false;
+			if (ProGpuWpfDiagnostics.TryGetWindowHost(mainWindow, out var host) && host?.SilkWindow is { } silk)
+			{
+				silk.TopMost = true;
+				silk.Focus();
+				silk.TopMost = false;
+				nativeFocused = true;
+			}
+
+			return JsonSerializer.Serialize(new {
+				success = true,
+				isActive = mainWindow.IsActive,
+				windowState = mainWindow.WindowState.ToString(),
+				nativeFocused
 			});
 		}
 
