@@ -24,6 +24,9 @@ using System.Windows.Media.Imaging;
 using ICSharpCode.CodeQuality.Engine.Dom;
 using ICSharpCode.Core.Presentation;
 using Microsoft.CodeAnalysis;
+// Disambiguates against the real COM interop "Accessibility" namespace, now transitively visible
+// via ICSharpCode.SharpDevelop.csproj's UseWindowsForms=true (same fix as CSharpVBLanguageService.cs).
+using RoslynAccessibility = Microsoft.CodeAnalysis.Accessibility;
 
 namespace ICSharpCode.CodeQuality.Gui
 {
@@ -165,43 +168,43 @@ namespace ICSharpCode.CodeQuality.Gui
 		{
 			switch (type.TypeDefinition.TypeKind) {
 				case TypeKind.Enum:
-					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Public)
+					if (type.TypeDefinition.DeclaredAccessibility == RoslynAccessibility.Public)
 						return Enum;
-					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Protected)
+					if (type.TypeDefinition.DeclaredAccessibility == RoslynAccessibility.Protected)
 						return ProtectedEnum;
-					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Internal)
+					if (type.TypeDefinition.DeclaredAccessibility == RoslynAccessibility.Internal)
 						return InternalEnum;
 					return PrivateEnum;
 				case TypeKind.Struct:
-					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Public)
+					if (type.TypeDefinition.DeclaredAccessibility == RoslynAccessibility.Public)
 						return Struct;
-					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Protected)
+					if (type.TypeDefinition.DeclaredAccessibility == RoslynAccessibility.Protected)
 						return ProtectedStruct;
-					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Internal)
+					if (type.TypeDefinition.DeclaredAccessibility == RoslynAccessibility.Internal)
 						return InternalStruct;
 					return PrivateStruct;
 				case TypeKind.Interface:
-					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Public)
+					if (type.TypeDefinition.DeclaredAccessibility == RoslynAccessibility.Public)
 						return Interface;
-					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Protected)
+					if (type.TypeDefinition.DeclaredAccessibility == RoslynAccessibility.Protected)
 						return ProtectedInterface;
-					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Internal)
+					if (type.TypeDefinition.DeclaredAccessibility == RoslynAccessibility.Internal)
 						return InternalInterface;
 					return PrivateInterface;
 				case TypeKind.Delegate:
-					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Public)
+					if (type.TypeDefinition.DeclaredAccessibility == RoslynAccessibility.Public)
 						return Delegate;
-					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Protected)
+					if (type.TypeDefinition.DeclaredAccessibility == RoslynAccessibility.Protected)
 						return ProtectedDelegate;
-					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Internal)
+					if (type.TypeDefinition.DeclaredAccessibility == RoslynAccessibility.Internal)
 						return InternalDelegate;
 					return PrivateDelegate;
 				default:
-					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Public)
+					if (type.TypeDefinition.DeclaredAccessibility == RoslynAccessibility.Public)
 						return Class;
-					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Protected)
+					if (type.TypeDefinition.DeclaredAccessibility == RoslynAccessibility.Protected)
 						return ProtectedClass;
-					if (type.TypeDefinition.DeclaredAccessibility == Accessibility.Internal)
+					if (type.TypeDefinition.DeclaredAccessibility == RoslynAccessibility.Internal)
 						return InternalClass;
 					return PrivateClass;
 			}

@@ -97,25 +97,21 @@ namespace ICSharpCode.Core.WinForms
 		{
 			bool isRTL = IsRightToLeft;
 			
-			DateTimePicker picker = control as DateTimePicker;
+			// DateTimePicker isn't implemented by LibreWinForms yet, and its ListView/TreeView
+			// don't expose RightToLeftLayout (Windows-only mirrored-layout support) - skip those,
+			// mirror what the portable implementation actually has.
 			Form form = control as Form;
-			ListView listView = control as ListView;
 			ProgressBar pg = control as ProgressBar;
 			TabControl tc = control as TabControl;
 			TrackBar trb = control as TrackBar;
-			TreeView treeView = control as TreeView;
 			if (form != null && form.RightToLeftLayout != isRTL)
 				form.RightToLeftLayout = isRTL;
-			if (listView != null && listView.RightToLeftLayout != isRTL)
-				listView.RightToLeftLayout = isRTL;
 			if (pg != null && pg.RightToLeftLayout != isRTL)
 				pg.RightToLeftLayout = isRTL;
 			if (tc != null && tc.RightToLeftLayout != isRTL)
 				tc.RightToLeftLayout = isRTL;
 			if (trb != null && trb.RightToLeftLayout != isRTL)
 				trb.RightToLeftLayout = isRTL;
-			if (treeView != null && treeView.RightToLeftLayout != isRTL)
-				treeView.RightToLeftLayout = isRTL;
 		}
 		
 		static void ConvertLayoutRecursive(Control control)

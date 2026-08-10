@@ -1,0 +1,115 @@
+<Project>
+  <!--
+    Every project under src/ that opts into UseWindowsForms gets the real, portable LibreWinForms
+    implementation instead of ProGPU.Wpf.Sdk's default: a plain UseWindowsForms=true only pulls in
+    the stock Windows Forms *reference assemblies*, which compile cleanly everywhere (including on
+    macOS, since EnableWindowsTargeting lets that succeed at design time) but resolve to no real
+    implementation off Windows, so anything that actually runs WinForms code would fail at runtime.
+    LibreWinForms.System.Windows.Forms/.WindowsFormsIntegration (built from
+    external/LibreWinForms in the librewpf checkout, not yet published anywhere) are the portable,
+    ProGPU-backed implementation that actually runs. This is additive: projects that never set
+    UseWindowsForms are untouched.
+
+    Scoped to src/ only - Libraries/AvalonDock/source has its own closer Directory.Build.props that
+    does not import this one, and its WinForms test apps target Microsoft.NET.Sdk.WindowsDesktop
+    rather than LibreWPF.Sdk, so they are unaffected either way.
+  -->
+  <PropertyGroup Condition="'$(UseWindowsForms)' == 'true'">
+    <ProGpuWpfUsePortableWinFormsCompat>true</ProGpuWpfUsePortableWinFormsCompat>
+    <ProGpuWpfUseLibreWinForms>true</ProGpuWpfUseLibreWinForms>
+  </PropertyGroup>
+
+  <!--
+    UseWindowsForms=true also makes the .NET SDK add an implicit FrameworkReference to
+    Microsoft.WindowsDesktop.App, whose ref pack (microsoft.windowsdesktop.app.ref) ships a
+    *compile-time* System.Windows.Forms.dll stub (AssemblyVersion 10.0.0.0) that RAR's conflict
+    resolution always prefers over the real LibreWinForms.System.Windows.Forms package
+    (AssemblyVersion 0.1.0.x) purely because 10.0.0.0 > 0.1.0.x - see ProGPU.Wpf.Sdk.targets'
+    identical, already-solved problem for System.Drawing.Common/System.Drawing (search
+    "_ProGpuWpfSdkRemoveNetCoreSystemDrawingFacade" in the librewpf checkout) for the upstream
+    precedent this mirrors.
+
+    Left alone, a project that only declares WindowsFormsHost/CustomWindowsFormsHost without
+    touching any member typed in terms of System.Windows.Forms.Control compiles fine (the stub
+    alone is self-consistent), but any project that also references LibreWinForms.WindowsFormsIntegration
+    directly and touches a member returning System.Windows.Forms.Control (e.g. WindowsFormsHost.Child)
+    hits CS0012, because WindowsFormsIntegration.dll has no compile-time stub competitor and so
+    always resolves to the real 0.1.0.x LibreWinForms package - a mismatch against the stub's
+    10.0.0.0 identity that the project's own System.Windows.Forms reference resolved to.
+
+    Fix: when the real LibreWinForms package is in play, drop the ref-pack's stub System.Windows.Forms
+    facade from the compile-time reference set entirely, so the real 0.1.0.x assembly wins for
+    compile too (matching what already happens for WindowsFormsIntegration.dll).
+
+    Microsoft.WindowsDesktop.App.Ref also ships its own System.Drawing.Common.dll stub (distinct
+    from - and not covered by - ProGPU.Wpf.Sdk's existing Microsoft.NETCore.App.Ref System.Drawing
+    facade removal), which loses the same "real ProGPU.System.Drawing.Common has a lower
+    AssemblyVersion than the ref-pack stub" conflict, since LibreWinForms.System.Windows.Forms.dll
+    itself was built against the real ProGPU.System.Drawing.Common (AssemblyVersion 0.0.0.0).
+    Fixed the same way, using a filesystem glob instead of a version property since neither
+    package's resolved version is reliably available as an MSBuild property at this point.
+
+    LibreWinForms.System.Windows.Forms.dll is a single merged assembly that also contains what
+    upstream .NET splits into System.Windows.Forms.Design/.Design.Editors/.Primitives (DesignSurface,
+    ToolboxItem, ComponentTray, Message, etc. all live directly in it). So once the real
+    LibreWinForms assembly is in play, the ref pack's separate stub facades for those three are
+    pure duplicates of types the real assembly already provides - drop them too, or any file that
+    touches one of those types directly (rather than only through System.Windows.Forms) hits
+    CS0433 ("exists in both ... System.Windows.Forms.Design ... and ... System.Windows.Forms ...").
+  -->
+  <Target Name="_ReplaceWindowsDesktopRefPackWinFormsFacades"
+          AfterTargets="ResolveAssemblyReferences"
+          BeforeTargets="GenerateTemporaryTargetAssembly;CoreCompile"
+          Condition="'$(ProGpuWpfUseLibreWinForms)' == 'true' And '$(NuGetPackageRoot)' != ''">
+    <ItemGroup>
+      <ReferencePath Remove="@(ReferencePath)"
+                     Condition="'%(ReferencePath.NuGetPackageId)' == 'Microsoft.WindowsDesktop.App.Ref' And ('%(ReferencePath.Filename)' == 'System.Windows.Forms' Or '%(ReferencePath.Filename)' == 'System.Drawing.Common' Or '%(ReferencePath.Filename)' == 'System.Windows.Forms.Design' Or '%(ReferencePath.Filename)' == 'System.Windows.Forms.Design.Editors' Or '%(ReferencePath.Filename)' == 'System.Windows.Forms.Primitives')" />
+      <ReferencePathWithRefAssemblies Remove="@(ReferencePathWithRefAssemblies)"
+                     Condition="'%(ReferencePathWithRefAssemblies.NuGetPackageId)' == 'Microsoft.WindowsDesktop.App.Ref' And ('%(ReferencePathWithRefAssemblies.Filename)' == 'System.Windows.Forms' Or '%(ReferencePathWithRefAssemblies.Filename)' == 'System.Drawing.Common' Or '%(ReferencePathWithRefAssemblies.Filename)' == 'System.Windows.Forms.Design' Or '%(ReferencePathWithRefAssemblies.Filename)' == 'System.Windows.Forms.Design.Editors' Or '%(ReferencePathWithRefAssemblies.Filename)' == 'System.Windows.Forms.Primitives')" />
+
+      <_RealLibreWinFormsSystemWindowsForms Include="$(NuGetPackageRoot)librewinforms.system.windows.forms/*/lib/net10.0/System.Windows.Forms.dll" />
+      <ReferencePath Include="@(_RealLibreWinFormsSystemWindowsForms)" Condition="'@(_RealLibreWinFormsSystemWindowsForms)' != ''">
+        <NuGetPackageId>LibreWinForms.System.Windows.Forms</NuGetPackageId>
+      </ReferencePath>
+
+      <_RemainingSystemDrawingCommon Include="@(ReferencePath)" Condition="'%(ReferencePath.Filename)' == 'System.Drawing.Common'" />
+    </ItemGroup>
+
+    <!--
+      Only inject ProGPU.System.Drawing.Common if nothing else in this project already resolved a
+      (legitimate, unrelated) System.Drawing.Common - e.g. plain Microsoft.NETCore.App's real
+      implementation, pulled in by some other dependency chain for non-WinForms drawing code.
+      Adding ours unconditionally alongside that would itself create a CS0433 ambiguity between
+      the two equally-real assemblies.
+    -->
+    <ItemGroup Condition="'@(_RemainingSystemDrawingCommon)' == ''">
+      <_RealProGpuSystemDrawingCommon Include="$(NuGetPackageRoot)progpu.system.drawing.common/*/lib/net10.0/System.Drawing.Common.dll" />
+      <ReferencePath Include="@(_RealProGpuSystemDrawingCommon)" Condition="'@(_RealProGpuSystemDrawingCommon)' != ''">
+        <NuGetPackageId>ProGPU.System.Drawing.Common</NuGetPackageId>
+      </ReferencePath>
+    </ItemGroup>
+  </Target>
+
+  <!--
+    The compile-time fix above has no effect on deps.json: RAR's OWN "Platform: vs CopyLocal:"
+    conflict resolution (a separate decision from the compile-time one, made earlier, well before
+    _ReplaceWindowsDesktopRefPackWinFormsFacades runs) picks the "Platform" answer - i.e. treats
+    System.Windows.Forms/WindowsFormsIntegration as coming from the Microsoft.WindowsDesktop.App
+    *shared framework* component, not the LibreWinForms NuGet package - for the runtime/deps.json
+    side, regardless of what compile ends up using. That shared-framework component doesn't exist
+    off Windows at all, so the CoreCLR host throws FileNotFoundException resolving it at process
+    start, right at ProGpuWpfSdkPortableBootstrap's module initializer - before AddInTree, before
+    Main() even gets to run a single statement (same module as the entry point).
+    ProGPU.Wpf.Sdk.targets already physically copies the real DLLs into the output directory
+    (_ProGpuWpfSdkCopyPortableWinFormsCompatRuntimeAssets) - they just aren't declared in
+    deps.json, which the CoreCLR host treats as authoritative for a framework-dependent app (an
+    undeclared-but-present DLL is not picked up by bin-directory fallback the way it might be for
+    a deps.json-less app). Patch deps.json directly after it's generated to add those declarations;
+    see build/patch-librewinforms-deps.py for the exact shape.
+  -->
+  <Target Name="_PatchLibreWinFormsDepsJson"
+          AfterTargets="GenerateBuildDependencyFile"
+          Condition="'$(ProGpuWpfUseLibreWinForms)' == 'true' And ('$(OutputType)' == 'Exe' Or '$(OutputType)' == 'WinExe') And '$(NuGetPackageRoot)' != '' And Exists('$(ProjectDepsFilePath)')">
+    <Exec Command="python3 &quot;$(MSBuildThisFileDirectory)../build/patch-librewinforms-deps.py&quot; &quot;$(ProjectDepsFilePath)&quot; &quot;$(NuGetPackageRoot)&quot;" />
+  </Target>
+</Project>

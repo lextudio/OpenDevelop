@@ -3340,6 +3340,208 @@ excluded from the MVP AddInTree; `FileScout`: WinForms interop is disabled in th
 needs a rewrite-or-delete decision, not a mechanical migration). No further pads in this list
 remain unexamined.
 
+## Legacy pad migration, fourth slice: UnitTestsPad and the AddIn-side routing seam (2026-08-09)
+
+The item-4 list was shell-internal pads only. The Unit Tests pad (`UnitTesting.addin`'s
+`<Pad id="UnitTestingPad" class="ICSharpCode.UnitTesting.UnitTestsPad">`) is an **AddIn** pad and
+is the last unexamined legacy one in the running product; it was also the subject of a user bug
+report: starting a test run in the debugger made the pad vanish, and it never came back even after
+debugging stopped.
+
+**Root cause 1 - the vanish**: legacy pads aren't part of persisted layouts
+(`LayoutSerializationCallback` cancels any anchorable whose ContentId isn't a registered
+`ToolPaneModel`), and the user's saved layout (`layouts/Default.xml`) still carried the legacy
+`ContentId="ICSharpCode.UnitTesting.UnitTestsPad"`. Combined with `LoadLayout`'s reconciliation
+(panes not named in the restored layout file are evicted from `ToolPanes`), a legacy pad was
+detached on every layout restore. The debugger makes this acute: `BaseDebuggerService`'s
+`OnDebugStarting`/`OnDebugStopped` switch to the `Debug` layout (which lists only
+`ProjectBrowser`+`OutputPad`), so **starting a debug session immediately evicted the pad** from the
+workbench.
+
+**Root cause 2 - it never came back**: `WindowsDebugger.Stop()` called `DapSession.Stop()`, which
+tears down via `CleanupSession()` - and `CleanupSession` never raises `Exited`. The only `Exited`
+triggers are the DAP `terminated`/`exited` events and `AdapterProcessExited`, so an **explicit
+user stop** skipped `SessionExited` entirely, which is the only path that calls
+`BaseDebuggerService.OnDebugStopped` (the thing that switches back to `"Default"`). Result: the
+workbench stayed on the `Debug` layout forever after any explicit stop. This is a pre-existing
+bug unrelated to pad migration (normal session *termination* still fired `Exited`); fixed in
+`WindowsDebugger.Stop()` by reusing `SessionExited()` after `CurrentSession.Stop()` so the explicit
+stop path gets the same main-thread cleanup (layout switch back to `Default`, line-marker
+removal, pad refresh, session null-out).
+
+**The migration**: `UnitTestsPad` is AddIn-side, so the App's MEF catalog
+(`OpenDevelopMefHost.BindExports(Assembly.GetExecutingAssembly())`) can never see a
+`[Export("ToolPane", ...)]` from the UnitTesting assembly. Added a Base-side seam instead:
+`PadToolPaneProvider` (`src/Main/Base/Project/ViewModels/PadToolPaneProvider.cs`) - a small
+`Register(legacyPadClass, Func<ToolPaneModel>)` / `Resolve(legacyPadClass)` registry whose factory
+is invoked lazily on first resolution. `AvalonDockLayout.GetMefToolPaneContentId` now falls back to
+it on a miss and registers the resolved pane via `DockWorkspaceExtensibility.AddToolPane` - the
+first `ShowPad` runs inside `Attach`, before `InitializeLayout`/`BindSources`, so the pane is in
+`ToolPanes` when the `AnchorablesSource` binding attaches, exactly like a built-in pane. The
+registration itself comes from a new `/SharpDevelop/Autostart` command
+(`RegisterUnitTestsPadToolPaneCommand`), which runs before the workbench is up - hence the lazy
+factory.
+
+`UnitTestsPadToolPaneModel` (`Pad/UnitTestsPadToolPaneModel.cs`) is the modern model:
+`ContentId="UnitTestingPad"`, `LegacyPadClass = typeof(UnitTestsPad).FullName`,
+`PreferredDockSide=Left`, `PreferredDockSize=250` (matching the legacy `defaultPosition="Left"`
+and `EnsureDefaultPositionSize`), `Content` = the shared `UnitTestsPad` instance. The pad keeps a
+static `SharedInstance` (first constructed instance wins) because `PadDescriptor.BringPadToFront()`
+unconditionally `CreatePad()`s - the AddInTree route can still mint a second, never-shown instance;
+`TestExecutionManager.ShowUnitTestsPad` now uses `SharedInstance` instead.
+
+**Layout data migration**: the saved `layouts/Default.xml` carried the legacy ContentId - rewritten
+to `UnitTestingPad` (the compatibility layer that would have matched
+`LegacyPadClass == anchorable.ContentId` in `LayoutSerializationCallback` was deliberately
+**not** added; the data, not the code, was migrated). The `data/layouts/Default.xml` template got
+the pad too, preserving the "always visible by default" semantics the legacy
+`defaultPosition="Left"` gave it (a pane not named in the restored layout is evicted, so without
+the template entry new users would never see the pad).
+
+**Verified end-to-end**: fresh launch shows `UnitTestingPad` in `od.layout.tool-panes` (4 panes,
+visible) and `UnitTestsPadView` in the UI tree; opening the Obfuscar solution, setting a
+breakpoint, and `od.unit-test.debug-one` reproduces the vanish *during* debugging (Debug layout,
+2 panes - the designed debug-layout behavior); `od.debug.stop` now switches back (`Saving
+Debug.xml → Loading Default.xml` in the log) and restores `ErrorList`+`UnitTestingPad`, visible in
+the UI tree again. The remaining AddIn legacy pads (the Debugger.AddIn pads, XPathQueryPad,
+PackageManagementConsolePad, etc.) can use the same `PadToolPaneProvider` seam.
+
+**Follow-up (same day): layout switches are incremental, not evicting**. A user review of the
+verification above rejected the "Debug layout shows exactly 2 panes" behavior: switching layouts
+must *open and surface the panes the target layout names* but must **not close pads the user had
+open** (the debugger's `Debug`-layout switch was *closing* ErrorList/UnitTestsPad/TaskList/...).
+`LoadLayout` therefore no longer removes non-layout panes from `ToolPanes` (the `layoutExcludedPanes`
+bookkeeping and `ReadAnchorableContentIds` were deleted with it); instead the `AnchorablesSource`
+import after `RestoreLayout` re-docks them via `DockWorkspace.BeforeInsertAnchorable` to their
+`ToolPaneModel.PreferredDockSide` (now declared on every migrated pane, matching the legacy
+`defaultPosition`; panes with `IsVisible=false` are sent to the Hidden area instead of selected).
+Verified live: during a paused debug session `od.layout.tool-panes` still lists ErrorList,
+PropertyPad, TaskList, ToolsPad, UnitTestingPad as visible, and the Debug→Default switch on stop
+keeps them all. The user's two other reports were fixed in the same pass: the Unit Tests pad
+status bar read `Total: 0` while its tree was populated (it only ever counted *runs*;
+`LoadOpenSolution` now counts the loaded test tree's leaves, so `Total: 524` shows the discovered
+set, and a run's `StartRunStatus`/`TestCountDiscovered` still override it), and opening a
+solution now brings the Projects pad to front (`WpfWorkbench` subscribes
+`SD.ProjectService.SolutionOpened` → `GetPad(typeof(ProjectBrowserPad)).BringPadToFront()`, which
+routes to the migrated `ProjectBrowserViewModel` via its `LegacyPadClass`).
+
+## Legacy Pad migration, fifth slice: the Debugger.AddIn pads (2026-08-09)
+
+The seven Debugger.AddIn pads were the last unexamined legacy cluster: `BreakPointsPad` had been
+migrated on 2026-08-04 (its `BookmarkPadViewModelBase` subclass + shim), the other six
+(`CallStackPad`, `ThreadsPad`, `LoadedModulesPad`, `LocalVarPad`, `WatchPad`, `ConsolePad`) were
+still plain `AbstractPadContent` classes - WPF already (ListView/SharpTreeView/console), so no
+control port was needed, only the same shim+model split the 08-04 slice established.
+
+**The pattern applied per pad** (mirroring `BreakPointsPad`): the legacy class stays as a thin
+shim - static field holding one `XxxPadViewModel`, ctor constructs it with a plain `new` (the
+AddIn's assembly is never scanned by `OpenDevelopMefHost`) and registers it via
+`IPaneModelHost.Add` (the Base-side seam added for the 08-04 slice), `Control` delegates to
+`viewModel.Content`. The shim keeps the members external code still casts to (`WatchPad`'s
+`AddWatch`/`Tree`/`Items` - `WatchRootNode.Drop` and `AddWatchExpressionCommand` still route
+through `GetPad(typeof(WatchPad)).PadContent as WatchPad`; the `GetSnapshotAsync` methods the
+DevFlow `od.debug.pad-snapshot` action reflects on). Each `XxxPadViewModel : ToolPaneModel` sets
+`Title`/`ContentId`/`IsVisible=false`/`IsCloseable=true`/`LegacyPadClass`/`PreferredDockSide=Bottom`
+(matching the addin file's `defaultPosition = "Bottom, Hidden"`) and owns the control + the
+`WindowsDebugger.RefreshingPads` subscription, so a paused session populates all four list/tree
+pads.
+
+**WatchPad's toolbar commands** (`AddWatchCommand`/`RemoveWatchCommand`/`ClearWatchesCommand`)
+received the model as their `Owner` once the toolbar was built with `this` = the model (the same
+shift every migrated toolbar went through), so they now cast to `WatchPadViewModel` instead of
+`WatchPad`. The `Debugger.AddIn.addin` registrations are untouched - the shim classes keep their
+exact class names, so `PadDescriptor.BringPadToFront()/CreatePad()` routing is unchanged.
+
+**ConsolePad needed a shared-console extraction, not just a model split.** `ConsolePad` was a
+subclass of Base's `AbstractConsolePad` (itself still the base of the unmigrated
+`FSharpInteractive`), and the common-console toolbar commands (`ClearConsoleCommand`,
+`DeleteHistoryCommand`, `ToggleConsoleWordWrapCommand`) cast `Owner` to `AbstractConsolePad` - a
+model can't be one. Extracted the console body (panel + `ConsoleControl` + toolbar + prompt/
+history/readonly-region handling + `IEditable`/`IPositionable`/`IToolsHost`) into a new
+`ConsolePadCore` (Base, `Gui/Pads/ConsolePadCore.cs`), parameterized by delegates for the
+per-console pieces (prompt, command acceptance, text-entered hook, toolbar construction);
+`AbstractConsolePad` now delegates to a core built from its subclass overrides (its public/
+protected surface is unchanged, so `FSharpInteractive` compiled untouched), and
+`ConsolePadViewModel` hosts its own core with the debugger behaviors (DAP `EvaluateAsync` REPL,
+`DebuggerDotCompletion`, the `ConsolePad`-specific toolbar path). The three common-console
+commands now operate on a new Base-side `IConsolePadHost` interface (`ClearConsole`/
+`DeleteHistory`/`WordWrap`) that both `AbstractConsolePad` and the model implement - the same
+host-neutral seam `IPaneModelHost`/`IPropertyPadHost`/`ISearchResultsHost` established in the
+earlier slices.
+
+**Verified end-to-end** (fresh build of Base/Debugger.AddIn/FSharpBinding/SharpDevelop, live app):
+`od.debug.pad-snapshot` for the four list/tree pads during a paused `DebugTestApp` session returns
+real content (CallStack 1 frame, Locals 3 variables, Threads 3, Modules 4); `od.show-pad` for
+`WatchPad`/`ConsolePad` creates them and their `ToolPaneModel` anchorables without exceptions; a
+full debug run still switches `Default` → `Debug` → `Default` and `DebuggerIntegrationTests` 9/9
+pass. The pads stay on-demand (the startup `ShowPad` loop's `AvalonPadContent` is content-lazy and
+the addin's pads are `Bottom, Hidden`), exactly as before the migration - only the created pad is
+now a layout-persisted `ToolPaneModel` anchorable instead of a legacy one.
+
+## Legacy Pad migration, sixth slice: the remaining AddIn pads (2026-08-09)
+
+With the Debugger.AddIn cluster done, the last six AddIn-side legacy pads in the running product
+were migrated with the same shim+model+`IPaneModelHost.Add` shape:
+
+- `XPathQueryPad` (XmlEditor) - model owns `XPathQueryControl` + the `ActiveViewContentChanged`
+  subscription and the `XPathQueryControl.Options` memento save/load; the shim keeps `Instance`
+  and forwards `Dispose` (which is when the memento is persisted) to the model.
+- `CodeCoveragePad` (CodeCoverage) - model owns `CodeCoverageControl` + the
+  `SolutionOpened`/`SolutionClosed` subscriptions; the shim keeps the full surface
+  `CodeCoverageService`/`ShowSourceCodeCommand`/`ShowVisitCountCommand` reach it through
+  (`Instance`, `UpdateToolbar`, `ShowResults`, `ClearCodeCoverageResults`,
+  `ShowSourceCodePanel`, `ShowVisitCountPanel`), all delegating to the model.
+- `FSharpInteractive` (FSharpBinding) - migrated onto the `ConsolePadCore` extracted in the
+  previous slice (the console body is no longer reachable only via `AbstractConsolePad`); the
+  model owns the fsi.exe process plumbing, `ReadAll`/`InsertBeforePrompt`, prompt "> " and the
+  `;;`-terminated command acceptance; the shim keeps `fsiProcess`/`foundCompiler` internals that
+  `SentToFSharpInteractive` still reads through `PadContent as FSharpInteractive`.
+- `DatabasesTreeViewPad` (Data) - model owns `DatabasesTreeViewUserControl`/`DatabasesTreeView`;
+  the shim keeps `Instance` + `Databases` (`DatabaseTreeViewCommands` adds through it).
+- `ThumbnailViewPad` (WpfDesign) - model owns the `ContentPresenter`/`ThumbnailView` swap on
+  `ActiveViewContentChanged`; note its legacy `defaultPosition = "Right, Hidden"` (unlike every
+  other pad in this cluster) so the model declares `PreferredDockSide = Right`.
+- `PackageManagementConsolePad` (PackageManagement) - model owns `PackageManagementConsoleView`
+  + the PowerShell `ShutdownConsole` teardown loop; `PackageManagementWorkbench` still reaches it
+  via `GetPad(typeof(...)).PadContent.Control`.
+
+Each shim keeps its exact class name and AddInTree registration (no `.addin` changes), and every
+pad's `ContentId`/`LegacyPadClass`/`IsVisible=false`/`PreferredDockSide` follows the established
+conventions. `FileScout` remains the only un-migrated legacy pad, still deliberately excluded
+(WinForms interop is disabled in this MVP build - see the seventh slice's ruling).
+
+**Verified end-to-end**: all six create their `ToolPaneModel` anchorables via `od.show-pad` and
+dock at the declared side (five `Bottom`, `ThumbnailViewPad` `Right`); `WorkbenchTests` 37/37 and
+`DebuggerIntegrationTests` 9/9. One live-verification gotcha worth remembering: an addin project
+whose `OutputPath` points into `AddIns/` silently keeps serving its *previously deployed* dll if
+its incremental build is skipped - after touching an addin's source, check the deployed dll's
+timestamp (the CodeCoverage pad initially "worked" against an 08:25 build until the project was
+force-rebuilt at 18:28).
+
+**Two real bugs the verification flushed out (fixed in the same pass)**:
+
+1. *A hidden pad could never be shown again.* `pane.Show()` only flips the model's `IsVisible`;
+   the anchorable follows it only through the `LayoutItem`'s OneWay Visibility sync, and since the
+   incremental-layout change (earlier today) sent `IsVisible=false` panes to the Hidden area at
+   insertion, nothing ever unhid them - `ShowToolPane`/`od.show-pad` on a default-hidden pad (e.g.
+   Search Results, or any of these seven) left the anchorable in the Hidden collection forever
+   (measured: `pane-position` stayed `isHidden:true` after `od.show-pad`). Two-part fix: `ShowToolPane`
+   now calls `LayoutAnchorable.Show()` on a hidden anchorable, and `DockWorkspace.BeforeInsertAnchorable`
+   opts out (`return false`) for hidden anchorables - `AddToLayout`'s guard throws on an anchorable
+   still marked hidden, and `HideAnchorable` recorded the previous container/index anyway, so
+   `Show()`'s default re-insertion restores the pad where it was. Caught by the previously-flaky
+   `ShowResults_PopulatesSearchResultsPadUiTree` (which had been green before today's layout change);
+   `WorkbenchTests` 37/37 and `DebuggerIntegrationTests` 9/9 after the fix.
+
+2. *`od.show-pad` never materialized a shim-backed pad.* A pad whose model is only constructed by
+   `PadDescriptor.CreatePad()` (all seven Debugger.AddIn pads) routed through the legacy
+   `AvalonPadContent` path on `od.show-pad` - the content is lazy, so the shim (and with it the
+   `ToolPaneModel` registration) never ran. The action now calls `pad.CreatePad()` before
+   `ActivatePad`, so `TryShowMefToolPane` finds the model and the pad becomes a real anchorable.
+   Also caught here: `ConsolePadViewModel`'s toolbar builder read `core.Console` from the model's
+   not-yet-assigned field during the `ConsolePadCore` constructor (NRE) - the core now passes the
+   `ConsoleControl` into the build delegate instead.
+
 ## Follow-on infrastructure: a shell-wide notification banner (2026-08-07)
 
 Trigger for this section: `doc/technotes/auto-update.md` plans a visible "Check for Updates"

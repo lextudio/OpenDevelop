@@ -28,6 +28,7 @@ using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Parser;
 using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Templates;
+using ICSharpCode.SharpDevelop.WinForms;
 using ICSharpCode.SharpDevelop.Workbench;
 
 namespace ICSharpCode.SharpDevelop
@@ -134,6 +135,16 @@ namespace ICSharpCode.SharpDevelop
 		/// <inheritdoc see="IWorkbench"/>
 		public static IWorkbench Workbench {
 			get { return GetRequiredService<IWorkbench>(); }
+		}
+
+		/// <inheritdoc see="IWinFormsService"/>
+		/// <remarks>
+		/// Registered by WorkbenchStartup (Main/SharpDevelop), the same project that provides the
+		/// concrete WinFormsService/SDWindowsFormsHost - IWinFormsService.cs itself lives here only
+		/// because SD.cs does.
+		/// </remarks>
+		public static IWinFormsService WinForms {
+			get { return GetRequiredService<IWinFormsService>(); }
 		}
 		
 		/// <summary>

@@ -21,6 +21,9 @@ using ICSharpCode.SharpDevelop.LanguageServices;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Text;
+// See CSharpVBLanguageService.cs's alias comment: disambiguates against the COM interop
+// "Accessibility" namespace now visible via UseWindowsForms=true.
+using RoslynAccessibility = Microsoft.CodeAnalysis.Accessibility;
 using CS = Microsoft.CodeAnalysis.CSharp;
 using VB = Microsoft.CodeAnalysis.VisualBasic;
 
@@ -535,7 +538,7 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 		public static IReadOnlyList<ISymbol> GetExtractInterfaceCandidateMembers(INamedTypeSymbol type)
 		{
 			return type.GetMembers()
-				.Where(m => m.DeclaredAccessibility == Accessibility.Public && !m.IsStatic)
+				.Where(m => m.DeclaredAccessibility == RoslynAccessibility.Public && !m.IsStatic)
 				.Where(m => (m is IMethodSymbol method && method.MethodKind == MethodKind.Ordinary)
 					|| m is IPropertySymbol || m is IEventSymbol)
 				.ToArray();

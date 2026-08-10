@@ -35,8 +35,8 @@ using ICSharpCode.SharpDevelop.WinForms;
 using ICSharpCode.SharpDevelop.Workbench;
 using ICSharpCode.FormsDesigner.Services;
 using ICSharpCode.FormsDesigner.UndoRedo;
-using ICSharpCode.NRefactory.Editor;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.AvalonEdit.Document;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Gui;
@@ -47,6 +47,13 @@ namespace ICSharpCode.FormsDesigner
 {
 	public class FormsDesignerViewContent : AbstractViewContentHandlingLoadErrors, IClipboardHandler, IUndoHandler, IHasPropertyContainer, IContextHelpProvider, IToolsHost, IFileDocumentProvider
 	{
+		// The SideBar-backed drag-from-toolbox panel (ToolboxProvider.FormsDesignerSideBar) is out of
+		// MVP scope - see FormsDesigner.csproj's exclusion comment. Services.ToolboxService (the real
+		// System.Drawing.Design.IToolboxService the .NET Design API talks to) has no dependency on
+		// that panel and stays fully live; only ToolsContent below - the WPF-hosted visible palette -
+		// is deferred pending a port to the WPF Toolbox Pad architecture.
+		static readonly ToolboxService toolboxService = new ToolboxService();
+
 		readonly Control pleaseWaitLabel = new Label() { Text = StringParser.Parse("${res:Global.PleaseWait}"), TextAlign=ContentAlignment.MiddleCenter };
 		DesignSurface designSurface;
 		bool disposing;
@@ -301,7 +308,7 @@ namespace ICSharpCode.FormsDesigner
 			
 			DefaultServiceContainer serviceContainer = new DefaultServiceContainer();
 			serviceContainer.AddService(typeof(System.Windows.Forms.Design.IUIService), new UIService());
-			serviceContainer.AddService(typeof(System.Drawing.Design.IToolboxService), ToolboxProvider.ToolboxService);
+			serviceContainer.AddService(typeof(System.Drawing.Design.IToolboxService), toolboxService);
 			
 			serviceContainer.AddService(typeof(IHelpService), new HelpService());
 			serviceContainer.AddService(typeof(System.Drawing.Design.IPropertyValueUIService), new PropertyValueUIService());
@@ -557,8 +564,10 @@ namespace ICSharpCode.FormsDesigner
 				CustomWindowsFormsHost host = base.UserContent as CustomWindowsFormsHost;
 				if (value == null) {
 					base.UserContent = null;
-					if (host != null)
-						host.Dispose();
+					// LibreWinForms' WindowsFormsHost doesn't expose a public Dispose() the way
+					// the real System.Windows.Forms.Integration.WindowsFormsHost does - fall back
+					// to IDisposable if it happens to implement it, otherwise let it be GC'd.
+					(host as IDisposable)?.Dispose();
 					return;
 				}
 				if (host != null && host.Child == value) {
@@ -767,16 +776,18 @@ namespace ICSharpCode.FormsDesigner
 
 		protected void UpdatePropertyPad()
 		{
+			// The modern PropertyContainer (doc/technotes/ilspy.md docking replacement) only
+			// tracks SelectedObject(s) - it has no equivalent of the old Host/SelectableObjects
+			// pair, which fed a separate "pick any component in this designer" dropdown in the
+			// SharpDevelop 4-era property grid toolbar. Forwarding the current selection (below)
+			// is what actually drives the property grid; that dropdown is not ported.
 			if (Host != null) {
-				propertyContainer.Host = Host;
-				propertyContainer.SelectableObjects = Host.Container.Components;
 				ISelectionService selectionService = (ISelectionService)Host.GetService(typeof(ISelectionService));
 				if (selectionService != null) {
 					UpdatePropertyPadSelection(selectionService);
 				}
 			} else {
-				propertyContainer.Host = null;
-				propertyContainer.SelectableObjects = null;
+				propertyContainer.Clear();
 			}
 		}
 
@@ -941,7 +952,8 @@ namespace ICSharpCode.FormsDesigner
 		}
 
 		public virtual object ToolsContent {
-			get { return ToolboxProvider.FormsDesignerSideBar; }
+			// See the toolboxService field comment: the visible drag-from-toolbox palette is deferred.
+			get { return null; }
 		}
 
 		void FileServiceFileRemoving(object sender, FileCancelEventArgs e)

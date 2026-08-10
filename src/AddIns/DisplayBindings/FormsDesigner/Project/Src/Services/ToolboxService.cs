@@ -16,6 +16,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+extern alias LibreWinForms;
+
 using System;
 using System.Collections;
 using System.Collections.Specialized;
@@ -23,6 +25,11 @@ using System.ComponentModel.Design;
 using System.Drawing.Design;
 
 using ICSharpCode.Core;
+
+// System.Drawing.Design.CategoryNameCollection is ambiguous between LibreWinForms.System.Windows.Forms.dll
+// (which IToolboxService itself comes from) and the real netcore System.Drawing.Common used elsewhere in
+// this project - the extern alias above picks the one that actually matches IToolboxService.CategoryNames.
+using CategoryNameCollection = LibreWinForms::System.Drawing.Design.CategoryNameCollection;
 
 namespace ICSharpCode.FormsDesigner.Services
 {

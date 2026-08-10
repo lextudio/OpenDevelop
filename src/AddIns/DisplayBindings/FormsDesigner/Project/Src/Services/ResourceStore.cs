@@ -275,14 +275,10 @@ namespace ICSharpCode.FormsDesigner.Services
 				ProjectService.AddProjectItem(project, newFileProjectItem);
 				FileService.FireFileCreated(resourceFileName, false);
 
-				PadDescriptor pd = SD.Workbench.GetPad(typeof(ProjectBrowserPad));
-				FileNode formFileNode = ((ProjectBrowserPad)pd.PadContent).ProjectBrowserControl.FindFileNode(formFileName);
-				if (formFileNode != null) {
-					LoggingService.Info("FormFileNode found, adding subitem");
-					FileNode fileNode = new FileNode(resourceFileName, FileNodeStatus.BehindFile);
-					fileNode.AddTo(formFileNode);
-					fileNode.ProjectItem = newFileProjectItem;
-				}
+				// Nesting the new resource file under the form's node in the project tree is out
+				// of MVP scope: ProjectBrowserPad is now a stub with no ProjectBrowserControl/
+				// FindFileNode (see the ProjectBrowser addin cleanup notes) - the resource file
+				// still gets added to the project and saved below, just without that tree nesting.
 				project.Save();
 			}
 		}

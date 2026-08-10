@@ -33,6 +33,7 @@ using ICSharpCode.SharpDevelop.Parser;
 using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Services;
 using ICSharpCode.SharpDevelop.Startup;
+using ICSharpCode.SharpDevelop.WinForms;
 
 namespace ICSharpCode.SharpDevelop.Workbench
 {
@@ -68,6 +69,10 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		static void InitializeWorkbench(WpfWorkbench workbench, IWorkbenchLayout layout, WpfMessageService messageService)
 		{
 			SD.Services.AddService(typeof(IWorkbench), workbench);
+			// Registers SD.WinForms - see IWinFormsService.cs's Compile Remove/re-include comment in
+			// ICSharpCode.SharpDevelop.csproj. Needed by FormsDesigner's DesignerViewContent to embed
+			// the WinForms designer surface inside a WPF-hosted view (SD.WinForms.CreateWindowsFormsHost).
+			SD.Services.AddService(typeof(IWinFormsService), new WinFormsService());
 			messageService.Attach(workbench.MainWindow.Dispatcher, workbench.MainWindow);
 			
 			UILanguageService.ValidateLanguage();

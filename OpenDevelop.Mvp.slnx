@@ -17,6 +17,7 @@
   </Folder>
   <Folder Name="/src/Main/">
     <Project Path="src/Main/ICSharpCode.Core.Presentation/ICSharpCode.Core.Presentation.csproj" />
+    <Project Path="src/Main/ICSharpCode.Core.WinForms/ICSharpCode.Core.WinForms.csproj" />
   </Folder>
   <Folder Name="/src/Main/Core/" />
   <Folder Name="/src/Main/Core/Project/">
@@ -37,6 +38,9 @@
   </Folder>
   <Folder Name="/src/AddIns/DisplayBindings/WpfDesign/">
     <Project Path="src/AddIns/DisplayBindings/WpfDesign/WpfDesign.AddIn/WpfDesign.AddIn.csproj" />
+  </Folder>
+  <Folder Name="/src/AddIns/DisplayBindings/FormsDesigner/">
+    <Project Path="src/AddIns/DisplayBindings/FormsDesigner/Project/FormsDesigner.csproj" />
   </Folder>
   <Folder Name="/src/AddIns/DisplayBindings/IconEditor/">
     <Project Path="src/AddIns/DisplayBindings/IconEditor/IconEditor.csproj" />

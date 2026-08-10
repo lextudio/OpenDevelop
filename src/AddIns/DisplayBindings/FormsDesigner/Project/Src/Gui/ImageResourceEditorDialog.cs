@@ -29,7 +29,7 @@ using System.Windows.Forms;
 
 using ICSharpCode.Core;
 using ICSharpCode.Core.WinForms;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Workbench;
 using ICSharpCode.FormsDesigner.Services;
 using ICSharpCode.SharpDevelop;
@@ -455,9 +455,14 @@ namespace ICSharpCode.FormsDesigner.Gui
 			
 			ImageList imageList = new ImageList();
 			imageList.ColorDepth = ColorDepth.Depth32Bit;
-			imageList.Images.Add(IconService.GetBitmap(IconService.GetImageForProjectType(this.project.Language)));
+			// IconService.GetBitmap returns a real System.Drawing.Bitmap (the WPF-side icon
+			// service's identity), which ImageList.Images.Add cannot accept here since this
+			// project's System.Drawing.Common resolves to LibreWinForms' ProGPU-backed identity
+			// instead (see FormsDesigner.csproj's _ReplaceTransitiveRealSystemDrawingCommon) -
+			// use WinFormsResourceService's own icons, already in the right identity, throughout.
+			imageList.Images.Add(WinFormsResourceService.GetBitmap("Icons.16x16.MiscFiles"));
 			imageList.Images.Add(WinFormsResourceService.GetBitmap("ProjectBrowser.Folder.Closed"));
-			imageList.Images.Add(IconService.GetBitmap(IconService.GetImageForFile("a.resx")));
+			imageList.Images.Add(WinFormsResourceService.GetBitmap("Icons.16x16.MiscFiles"));
 			imageList.Images.Add(WinFormsResourceService.GetBitmap("Icons.16x16.Field"));
 			imageList.Images.Add(WinFormsResourceService.GetBitmap("Icons.16x16.Error"));
 			this.projectResourcesTreeView.ImageList = imageList;

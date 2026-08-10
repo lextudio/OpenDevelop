@@ -19,6 +19,10 @@ using Microsoft.CodeAnalysis.Text;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Project;
 using RoslynCompletionItem = Microsoft.CodeAnalysis.Completion.CompletionItem;
+// Disambiguates against the COM interop "Accessibility" namespace (Accessibility.dll), now visible
+// transitively now that this project sets UseWindowsForms=true for the resurrected WinForms<->WPF
+// bridge (see ICSharpCode.SharpDevelop.csproj's WinForms\I*.cs re-include comment).
+using RoslynAccessibility = Microsoft.CodeAnalysis.Accessibility;
 using RoslynDiagnostic = Microsoft.CodeAnalysis.Diagnostic;
 using RoslynDocumentId = Microsoft.CodeAnalysis.DocumentId;
 using RoslynProjectId = Microsoft.CodeAnalysis.ProjectId;
@@ -1178,14 +1182,14 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             return SymbolOverridability.None;
         }
 
-        static string? ToOutlineAccessibility(Accessibility accessibility)
+        static string? ToOutlineAccessibility(RoslynAccessibility accessibility)
         {
             return accessibility switch
             {
-                Accessibility.Public => "Public",
-                Accessibility.Private => "Private",
-                Accessibility.Protected or Accessibility.ProtectedOrInternal or Accessibility.ProtectedAndInternal => "Protected",
-                Accessibility.Internal => "Internal",
+                RoslynAccessibility.Public => "Public",
+                RoslynAccessibility.Private => "Private",
+                RoslynAccessibility.Protected or RoslynAccessibility.ProtectedOrInternal or RoslynAccessibility.ProtectedAndInternal => "Protected",
+                RoslynAccessibility.Internal => "Internal",
                 _ => null
             };
         }

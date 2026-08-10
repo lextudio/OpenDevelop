@@ -32,35 +32,22 @@ namespace ICSharpCode.SharpDevelop.WinForms
 	/// </summary>
 	sealed class WinFormsService : IWinFormsService
 	{
+		// IPrintable.PrintDocument is typed against the real netcore System.Drawing.Common (matching
+		// ICSharpCode.SharpDevelop.csproj, where IPrintable/IWinFormsService are declared), but
+		// PrintDialog/PrintPreviewDialog.Document here comes from LibreWinForms' merged assembly and
+		// wants the unrelated ProGPU.System.Drawing.Common PrintDocument instead - the two aren't
+		// convertible. No IPrintable implementer exists yet in this fork (grep the tree), so rather
+		// than invent an unverified cross-implementation GDI+ print bridge, this is out of MVP scope
+		// for now, same call as IResourceService.GetBitmap/GetIcon's "MVP mock" in
+		// ResourceServiceWinFormsExtensions.cs.
 		public void Print(IPrintable printable)
 		{
-			using (PrintDocument pdoc = printable.PrintDocument) {
-				if (pdoc != null) {
-					using (PrintDialog ppd = new PrintDialog()) {
-						ppd.Document  = pdoc;
-						ppd.AllowSomePages = true;
-						if (ppd.ShowDialog(SD.WinForms.MainWin32Window) == DialogResult.OK) { // fixed by Roger Rubin
-							pdoc.Print();
-						}
-					}
-				} else {
-					MessageService.ShowError("${res:ICSharpCode.SharpDevelop.Commands.Print.CreatePrintDocumentError}");
-				}
-			}
+			MessageService.ShowError("${res:ICSharpCode.SharpDevelop.Commands.Print.CreatePrintDocumentError}");
 		}
-		
+
 		public void PrintPreview(IPrintable printable)
 		{
-			using (PrintDocument pdoc = printable.PrintDocument) {
-				if (pdoc != null) {
-					PrintPreviewDialog ppd = new PrintPreviewDialog();
-					ppd.TopMost   = true;
-					ppd.Document  = pdoc;
-					ppd.Show(SD.WinForms.MainWin32Window);
-				} else {
-					MessageService.ShowError("${res:ICSharpCode.SharpDevelop.Commands.Print.CreatePrintDocumentError}");
-				}
-			}
+			MessageService.ShowError("${res:ICSharpCode.SharpDevelop.Commands.Print.CreatePrintDocumentError}");
 		}
 		
 		public IWinFormsToolbarService ToolbarService {
@@ -77,44 +64,65 @@ namespace ICSharpCode.SharpDevelop.WinForms
 		
 		public Font DefaultMonospacedFont {
 			get {
-				return WinFormsResourceService.DefaultMonospacedFont;
+				return LoadDefaultMonospacedFont(FontStyle.Regular);
 			}
 		}
 		
 		public IWin32Window MainWin32Window {
 			get {
-				return (WpfWorkbench)SD.Workbench;
+				// WpfWorkbench never implemented IWin32Window - on the real .NET Framework/WPF-on-
+				// Windows stack this used to go through an HWND interop adapter (WindowInteropHelper),
+				// but LibreWPF has no real Win32 HWND to hand out on this platform at all (it's a
+				// from-scratch WebGPU compositor, not hosted in a Win32 window). Callers only use
+				// this to parent PrintDialog/PrintPreviewDialog - null just means those come up
+				// unparented instead of centered over the main window.
+				return null;
 			}
 		}
 		
+		// WinFormsResourceService (Core.WinForms) itself is compiled against LibreWinForms'
+		// ProGPU-backed System.Drawing.Common (needed to interoperate with the real
+		// System.Windows.Forms.Control API it works with there), but IWinFormsService - and this
+		// class's implementation of it - is compiled against the real netcore System.Drawing.Common
+		// instead, to match IconService.GetBitmap and friends elsewhere in ICSharpCode.SharpDevelop.
+		// The two Font/Bitmap/Icon families are unrelated types with no conversion between them, so:
+		// - Font is just constructed directly by name/size/style, which works identically either way.
+		// - Bitmap/Icon resource lookups can't be bridged without real GDI+ interop, which this
+		//   fork doesn't need for a WPF-first workbench - same "MVP mock, return null" call already
+		//   made for IResourceService.GetBitmap/GetIcon (see ResourceServiceWinFormsExtensions.cs).
 		public Font LoadDefaultMonospacedFont(FontStyle style)
 		{
-			return WinFormsResourceService.LoadDefaultMonospacedFont(style);
+			return LoadFont("Courier New", 10, style);
 		}
-		
+
 		public Font LoadFont(Font baseFont, FontStyle newStyle)
 		{
-			return WinFormsResourceService.LoadFont(baseFont, newStyle);
+			return LoadFont(baseFont.Name, (int)baseFont.Size, newStyle);
 		}
-		
+
 		public Font LoadFont(string fontName, int size, FontStyle style)
 		{
-			return WinFormsResourceService.LoadFont(fontName, size, style);
+			try {
+				return new Font(fontName, size, style);
+			} catch (Exception ex) {
+				LoggingService.Warn(ex);
+				return SystemFonts.MenuFont;
+			}
 		}
-		
+
 		public Bitmap GetResourceServiceBitmap(string resourceName)
 		{
-			return WinFormsResourceService.GetBitmap(resourceName);
+			return null;
 		}
-		
+
 		public Icon GetResourceServiceIcon(string resourceName)
 		{
-			return WinFormsResourceService.GetIcon(resourceName);
+			return null;
 		}
-		
+
 		public Icon BitmapToIcon(Bitmap bitmap)
 		{
-			return WinFormsResourceService.BitmapToIcon(bitmap);
+			return null;
 		}
 		
 		public void ApplyRightToLeftConverter(Control control, bool recurse)

@@ -4,17 +4,20 @@
 // LeXtudio.DevFlow.Agent.Core and dispatched to the UI thread — see
 // src/Main/SharpDevelop/DevFlow/OpenDevelopDevFlowActions.cs for the base set of actions.
 
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
 using System.Text.Json;
+using System.Windows;
 using System.Windows.Controls;
 
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.WpfDesign;
 using ICSharpCode.WpfDesign.Designer.OutlineView;
+using ICSharpCode.WpfDesign.Designer.Services;
 using LeXtudio.DevFlow.Agent.Core;
 using Microsoft.Maui.DevFlow.Agent.Core;
 using Xceed.Wpf.Toolkit.PropertyGrid;
@@ -81,6 +84,108 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				propertiesPadSelectedName = selectedObject?.DesignItem?.Name,
 				propertiesPadSelectedType = selectedObject?.DesignItem?.ComponentType?.Name
 			});
+		}
+
+		/// <summary>
+		/// Mirrors what actually happens when a user drags a WpfSideTabItem from the Toolbox onto
+		/// the design surface (WpfToolbox.cs's OnPreviewMouseMove -> DragDrop.DoDragDrop ->
+		/// CreateComponentTool.designPanel_Drop), but calls the vendored designer engine's
+		/// mouse-independent primitives directly (CreateComponentTool.CreateItem +
+		/// AddItemsWithDefaultSize - see externals/vscode-wpf/.../CreateComponentTool.cs) instead of
+		/// simulating DragDrop/mouse events, since DevFlow has no synthetic-drag primitive and the
+		/// real drag path is mouse-coordinate driven, not something a test can address deterministically.
+		/// </summary>
+		[DevFlowAction("od.wpf-designer.toolbox.drop", Description = "Create a control (mirroring a toolbox drag-drop) and insert it into a container element in the active WPF designer, without needing simulated mouse input")]
+		public static string DropToolboxItem(string typeName, string containerElementName = null, string elementName = null, double width = 100, double height = 25)
+		{
+			var viewContent = FindWpfViewContent();
+			if (viewContent?.DesignContext?.RootItem == null)
+				return JsonSerializer.Serialize(new { success = false, error = "WPF designer is not loaded" });
+
+			var type = ResolveControlType(typeName);
+			if (type == null)
+				return JsonSerializer.Serialize(new { success = false, error = "Could not resolve control type: " + typeName });
+
+			DesignItem container = viewContent.DesignContext.RootItem;
+			if (!string.IsNullOrEmpty(containerElementName)) {
+				container = FindDesignItem(container, containerElementName);
+				if (container == null)
+					return JsonSerializer.Serialize(new { success = false, error = "Container element not found: " + containerElementName });
+			}
+
+			// AddItemWithCustomSizePosition's own CreateItem() call (instance method, on the
+			// throwaway CreateComponentTool it constructs internally) opens a ChangeGroup that
+			// nothing ever commits or aborts afterwards (only the real mouse-driven drag path
+			// - designPanel_Drop - finishes the ChangeGroup CreateItemWithPosition opens; this
+			// static single-call helper has no equivalent finish step). Left open, the change
+			// never becomes durable: it's visible in-memory (selectable/editable) but Save
+			// serializes the pre-drop document, and the leaked transaction blocks any later
+			// OpenGroup from committing correctly ("Invalid transaction finish, nested
+			// transactions must finish first" - the leaked one is always on top of the stack).
+			// Finish it ourselves via UndoService's transaction stack (UndoTransaction itself is
+			// internal to the designer engine assembly, but its base ChangeGroup - which is all
+			// we need to call Commit() - is public).
+			bool added;
+			try {
+				added = CreateComponentTool.AddItemWithCustomSizePosition(
+					container, type, new Size(width, height), new Point(0, 0));
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.Message });
+			}
+
+			if (!added)
+				return JsonSerializer.Serialize(new { success = false, error = "Container does not accept a dropped " + type.Name + " (no placement behavior)" });
+
+			CommitLeakedChangeGroup(viewContent.DesignContext);
+
+			// AddItemWithCustomSizePosition (via AddItemsWithCustomSize) already selected the
+			// newly created item as a side effect - that's the only handle back to it.
+			var createdItem = container.Services.Selection.PrimarySelection;
+			if (createdItem != null && !string.IsNullOrEmpty(elementName))
+				createdItem.Name = elementName;
+
+			return JsonSerializer.Serialize(new {
+				success = true,
+				createdTypeName = createdItem?.ComponentType?.Name,
+				createdName = createdItem?.Name,
+				containerName = container.Name
+			});
+		}
+
+		static void CommitLeakedChangeGroup(DesignContext context)
+		{
+			var undoService = context.Services.GetService(typeof(UndoService)) as UndoService;
+			var stack = undoService?.GetType()
+				.GetField("_transactionStack", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+				?.GetValue(undoService);
+			var top = stack?.GetType().GetMethod("Peek")?.Invoke(stack, null) as ChangeGroup;
+			top?.Commit();
+		}
+
+		static Type ResolveControlType(string typeName)
+		{
+			if (string.IsNullOrEmpty(typeName))
+				return null;
+
+			var type = Type.GetType(typeName);
+			if (type != null)
+				return type;
+
+			foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies()) {
+				type = assembly.GetType(typeName, throwOnError: false);
+				if (type != null)
+					return type;
+			}
+
+			// Bare simple name (e.g. "Button" instead of "System.Windows.Controls.Button") -
+			// try the namespace most toolbox controls actually live in before giving up.
+			if (!typeName.Contains(".")) {
+				type = typeof(Button).Assembly.GetType("System.Windows.Controls." + typeName, throwOnError: false);
+				if (type != null)
+					return type;
+			}
+
+			return null;
 		}
 
 		[DevFlowAction("od.wpf-designer.properties-pad.edit", Description = "Edit a property through the real Xceed Properties pad PropertyItem; does not access DesignItemProperty directly")]

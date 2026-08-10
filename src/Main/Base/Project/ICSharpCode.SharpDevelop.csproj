@@ -5,8 +5,13 @@
     <AssemblyName>ICSharpCode.SharpDevelop</AssemblyName>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <UseWPF>true</UseWPF>
+    <!-- Needed for WinForms\IWinFormsService.cs and friends now that the WinForms<->WPF bridge is
+         back in the build (see that Compile Remove group's comment). Directory.Build.targets
+         (src/Directory.Build.targets) turns this into the real LibreWinForms implementation on
+         macOS rather than the reference-assemblies-only stub. -->
+    <UseWindowsForms>true</UseWindowsForms>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <NoWarn>$(NoWarn);0809;1591</NoWarn>
+    <NoWarn>$(NoWarn);0809;1591;CA1416;WFO1000</NoWarn>
     <SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>..\..\ICSharpCode.SharpDevelop.snk</AssemblyOriginatorKeyFile>
     <!-- Marks this build as OpenDevelop rather than an ILSpy host: the update checker links
@@ -101,16 +106,18 @@
     <Compile Remove="Src\Commands\ViewInBrowser.cs" />
     <Compile Remove="Src\Internal\ConditionEvaluators\ViewInBrowserConditionEvaluator.cs" />
     <Compile Remove="Src\Project\Converter\LanguageConverter.cs" />
-    <!-- Out of MVP scope: legacy WinForms XML-forms dialog engine (no consumers outside itself) and the
-         WinForms &lt;-&gt; WPF interop bridge (WinFormsService/SDWindowsFormsHost) - user directive is to
-         stop supporting WinForms entirely, not gate it. IClipboardHandler/IContextHelpProvider/IPrintable/
-         IUndoHandler don't actually use System.Windows.Forms (despite living in the "WinForms" folder) and
-         have real external consumers, so they are kept (see re-include below). -->
+    <!-- Out of MVP scope: legacy WinForms XML-forms dialog engine (no consumers outside itself).
+         IClipboardHandler/IContextHelpProvider/IPrintable/IUndoHandler don't actually use
+         System.Windows.Forms (despite living in the "WinForms" folder) and have real external
+         consumers, so they are kept (see re-include below).
+
+         The WinForms <-> WPF interop bridge (IWinFormsService/SDWindowsFormsHost) itself is back in
+         the build: it was previously excluded per a "stop supporting WinForms entirely" directive,
+         which the FormsDesigner addin's visual designer host now supersedes - SD.WinForms is exactly
+         the bridge DesignerViewContent.LoadDesigner() needs to embed the WinForms design surface
+         inside a WPF-hosted view. See the matching re-include in SharpDevelop.csproj for the
+         implementation classes (WinFormsService.cs/SDWindowsFormsHost.cs/etc., which live there). -->
     <Compile Remove="Src\Gui\XmlForms\**\*.cs" />
-    <Compile Remove="WinForms\IWinFormsService.cs" />
-    <Compile Remove="WinForms\IWinFormsMenuService.cs" />
-    <Compile Remove="WinForms\IWinFormsToolbarService.cs" />
-    <Compile Remove="WinForms\WinFormsExtensions.cs" />
     <!-- Out of MVP scope: WinForms WebBrowser-control-hosted HTML display binding; no WPF equivalent yet. -->
     <Compile Remove="Src\Gui\BrowserDisplayBinding\**\*.cs" />
     <!-- Out of MVP scope: legacy WinForms dialogs/panels with no WPF equivalent yet (About/AttachToProcess/

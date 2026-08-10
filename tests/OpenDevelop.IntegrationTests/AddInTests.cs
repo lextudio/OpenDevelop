@@ -1005,6 +1005,75 @@ public sealed class AddInTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task DropToolboxItem_OnDesignSurface_InsertsControlEditableThroughPropertiesPad()
+    {
+        // Covers the toolbox -> design surface -> properties pad path end to end: DevFlow has no
+        // synthetic-drag primitive, so od.wpf-designer.toolbox.drop calls the same mouse-independent
+        // CreateComponentTool primitives the real DragDrop/mouse gesture path calls internally (see
+        // WpfDesignDevFlowActions.DropToolboxItem) instead of simulating pointer input.
+        var solutionDirectory = Path.GetDirectoryName(_app.WpfSampleSolutionPath)!;
+        var xamlPath = Path.Combine(solutionDirectory, "SamplePane.xaml");
+        var originalXaml = await File.ReadAllTextAsync(xamlPath);
+
+        try
+        {
+            var openSolutionResult = await _app.ReopenSolutionAsync(_app.WpfSampleSolutionPath);
+            Assert.True(openSolutionResult.GetProperty("success").GetBoolean());
+            var openFileResult = await _app.InvokeAsync("od.open-file", xamlPath);
+            Assert.True(openFileResult.GetProperty("opened").GetBoolean());
+            var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "UserControl", timeoutSeconds: 30, reactivatePath: xamlPath);
+            Assert.True(status.GetProperty("designerLoaded").GetBoolean(), status.ToString());
+            Assert.Contains(status.GetProperty("outlineNames").EnumerateArray(),
+                name => name.GetString() == "PaneStack");
+
+            // Same re-activate-and-retry race as SelectControl_EditingContentInPropertiesPad_UpdatesAndSavesXaml.
+            JsonElement dropped = default;
+            var dropDeadline = DateTime.UtcNow.AddSeconds(15);
+            while (DateTime.UtcNow < dropDeadline)
+            {
+                dropped = await _app.InvokeAsync(
+                    "od.wpf-designer.toolbox.drop", "System.Windows.Controls.TextBox", "PaneStack", "DroppedTextBox");
+                if (dropped.GetProperty("success").GetBoolean())
+                    break;
+                await _app.InvokeAsync("od.open-file", xamlPath);
+                await Task.Delay(250);
+            }
+            Assert.True(dropped.GetProperty("success").GetBoolean(), dropped.ToString());
+            Assert.Equal("TextBox", dropped.GetProperty("createdTypeName").GetString());
+            Assert.Equal("DroppedTextBox", dropped.GetProperty("createdName").GetString());
+            Assert.Equal("PaneStack", dropped.GetProperty("containerName").GetString());
+
+            // Confirm the dropped control actually landed in the live designer tree (outline) and
+            // can be selected/edited through the real Properties pad, not just constructed in memory.
+            var statusAfterDrop = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "UserControl", timeoutSeconds: 10, reactivatePath: xamlPath);
+            Assert.Contains(statusAfterDrop.GetProperty("outlineNames").EnumerateArray(),
+                name => name.GetString() == "DroppedTextBox");
+
+            var selected = await _app.InvokeAsync("od.wpf-designer.select", "DroppedTextBox");
+            Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
+            Assert.Equal("DroppedTextBox", selected.GetProperty("propertiesPadSelectedName").GetString());
+            Assert.Equal("TextBox", selected.GetProperty("propertiesPadSelectedType").GetString());
+
+            var edited = await WaitForPropertiesPadEditAsync("Text", "Dropped via DevFlow", timeoutSeconds: 10);
+            Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
+            Assert.Equal("DroppedTextBox", edited.GetProperty("selectedName").GetString());
+            Assert.Equal("Dropped via DevFlow", edited.GetProperty("after").GetString());
+
+            var saved = await _app.InvokeAsync("od.file.save", xamlPath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+
+            var savedXaml = await File.ReadAllTextAsync(xamlPath);
+            Assert.Contains("x:Name=\"DroppedTextBox\"", savedXaml, StringComparison.Ordinal);
+            Assert.Contains("Text=\"Dropped via DevFlow\"", savedXaml, StringComparison.Ordinal);
+        }
+        finally
+        {
+            // SamplePane.xaml is a repository fixture - restore it regardless of outcome.
+            await File.WriteAllTextAsync(xamlPath, originalXaml);
+        }
+    }
+
+    [Fact]
     public async Task SelectControlOnSamplePane_ShowsSelectionInPropertiesPad()
     {
         // SamplePane.xaml is a UserControl root (unlike MainWindow.xaml's Window root): verify the

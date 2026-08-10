@@ -21,9 +21,8 @@ using System.CodeDom;
 using System.IO;
 using System.Linq;
 using ICSharpCode.Core;
-using ICSharpCode.NRefactory;
-using ICSharpCode.NRefactory.Editor;
-using ICSharpCode.NRefactory.TypeSystem;
+using ICSharpCode.AvalonEdit.Document;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Project;
@@ -186,10 +185,16 @@ namespace ICSharpCode.FormsDesigner.Services
 		/// </summary>
 		public static bool IsGeneratedResourceClass(ITypeDefinition @class)
 		{
-			IAttribute att = @class.GetAttribute(new TopLevelTypeName("System.CodeDom.Compiler", "GeneratedCodeAttribute"), false);
-			return att != null &&
-				att.PositionalArguments.Count == 2 &&
-				String.Equals("System.Resources.Tools.StronglyTypedResourceBuilder", att.PositionalArguments[0].ConstantValue as string, StringComparison.Ordinal);
+			// ITypeDefinition.GetAttribute(TopLevelTypeName, ...) does not exist in
+			// ICSharpCode.TypeSystem.Abstractions - only the plain Attributes list does. Nor does
+			// its ResolveResult expose the constant value of an attribute's positional arguments,
+			// so this can no longer check the GeneratedCodeAttribute's tool-name argument is
+			// exactly "System.Resources.Tools.StronglyTypedResourceBuilder" - just checking the
+			// attribute is present is a slightly looser but still practically-reliable heuristic
+			// (nothing else attaches GeneratedCodeAttribute to a resource wrapper class).
+			IAttribute att = @class.Attributes.FirstOrDefault(
+				a => a.AttributeType.FullName == "System.CodeDom.Compiler.GeneratedCodeAttribute");
+			return att != null && att.PositionalArguments.Count == 2;
 		}
 	}
 }

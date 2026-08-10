@@ -5,10 +5,14 @@
     <AssemblyName>OpenDevelop</AssemblyName>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <UseWPF>true</UseWPF>
+    <!-- WinForms\**\*.cs (WinFormsService/SDWindowsFormsHost/WinFormsMenuService/WinFormsToolbarService)
+         needs the real LibreWinForms implementation, same as ICSharpCode.SharpDevelop.csproj -
+         see that project's UseWindowsForms comment for why the WinForms bridge is back. -->
+    <UseWindowsForms>true</UseWindowsForms>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <OutputType>WinExe</OutputType>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
-    <NoWarn>$(NoWarn);436;1591</NoWarn>
+    <NoWarn>$(NoWarn);436;1591;CA1416;WFO1000</NoWarn>
     <SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>..\ICSharpCode.SharpDevelop.snk</AssemblyOriginatorKeyFile>
   </PropertyGroup>
@@ -43,6 +47,7 @@
     <ProjectReference Include="..\..\Libraries\ICSharpCode.TypeSystem.Abstractions\ICSharpCode.TypeSystem.Abstractions.csproj" />
     <ProjectReference Include="..\Base\Project\ICSharpCode.SharpDevelop.csproj" />
     <ProjectReference Include="..\Core\Project\ICSharpCode.Core.csproj" />
+    <ProjectReference Include="..\ICSharpCode.Core.WinForms\ICSharpCode.Core.WinForms.csproj" />
     <ProjectReference Include="..\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" />
     <ProjectReference Include="..\ICSharpCode.SharpDevelop.Widgets\Project\ICSharpCode.SharpDevelop.Widgets.csproj" />
     <ProjectReference Include="..\..\AddIns\Misc\StartPage\Project\StartPage.csproj" Private="false" />
@@ -96,8 +101,9 @@
     <Compile Remove="Dom\**\*.cs" />
     <Page Remove="Dom\**\*.xaml" />
     <None Include="Dom\**\*.xaml" />
-    <!-- Out of MVP scope: WinForms<->WPF bridge (mirrors the same exclusion in ICSharpCode.SharpDevelop.csproj). -->
-    <Compile Remove="WinForms\**\*.cs" />
+    <!-- WinForms<->WPF bridge (WinFormsService/SDWindowsFormsHost/WinFormsMenuService/
+         WinFormsToolbarService) is back in the build - see the matching re-include note in
+         ICSharpCode.SharpDevelop.csproj's WinForms\I*.cs entries. -->
     <!-- Out of MVP scope: WinForms dialogs (project configuration editor, open-with dialog) with no WPF
          replacement yet. -->
     <Compile Remove="Project\Configuration\AddNewConfigurationDialog.cs" />
@@ -119,6 +125,14 @@
          plain static class keeping only the pure command-line-parsing logic SharpDevelopMain.cs needs). -->
     <Compile Remove="Startup\SplashScreen.cs" />
   </ItemGroup>
+  <!--
+    Unlike FormsDesigner.csproj, this exe's WinFormsService implements IWinFormsService (defined
+    in ICSharpCode.SharpDevelop.csproj against the REAL netcore System.Drawing.Common, matching
+    IconService.GetBitmap etc. there) - so the real assembly stays the default here. WinFormsService.cs
+    no longer calls into WinFormsResourceService's Font/Bitmap/Icon members (which are compiled
+    against the unrelated ProGPU.System.Drawing.Common identity) for exactly this reason - see the
+    comment on WinFormsService.LoadFont/GetResourceServiceBitmap.
+  -->
   <Target Name="RemoveDesktopRuntimeFramework" AfterTargets="ProcessFrameworkReferences" BeforeTargets="FixupRuntimeFrameworkVersions">
     <ItemGroup>
       <RuntimeFramework Remove="@(RuntimeFramework)" Condition="'%(RuntimeFramework.Identity)' == 'Microsoft.WindowsDesktop.App'" />

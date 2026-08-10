@@ -225,15 +225,19 @@ namespace ICSharpCode.SharpDevelop.WinForms
 		public bool DisposeChild { get; set; }
 		
 		public bool IsDisposed { get; private set; }
-		
-		protected override void Dispose(bool disposing)
+
+		// LibreWinForms' WindowsFormsHost derives directly from FrameworkElement, not HwndHost,
+		// and exposes no Dispose(bool)/Dispose() to override or call - there's nothing here to
+		// forward to. Callers (WinFormsService.SetContent/CreateWindowsFormsHost) still call
+		// host.Dispose(), so keep the DisposeChild guard as a plain public method instead of an
+		// override.
+		public void Dispose()
 		{
-			if (disposing && !this.DisposeChild && Child != null) {
+			if (!this.DisposeChild && Child != null) {
 				// prevent child from being disposed
 				Child = null;
 			}
-			IsDisposed = disposing;
-			base.Dispose(disposing);
+			IsDisposed = true;
 		}
 	}
 }

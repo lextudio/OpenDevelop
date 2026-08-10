@@ -1,192 +1,131 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project Sdk="LibreWPF.Sdk">
   <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProductVersion>8.0.50215</ProductVersion>
-    <SchemaVersion>2.0</SchemaVersion>
-    <ProjectGuid>{7D7E92DF-ACEB-4B69-92C8-8AC7A703CD57}</ProjectGuid>
-    <AssemblyName>FormsDesigner</AssemblyName>
-    <OutputTarget>Library</OutputTarget>
-    <WarningLevel>4</WarningLevel>
-    <NoStdLib>False</NoStdLib>
-    <NoConfig>False</NoConfig>
-    <RunPostBuildEvent>OnSuccessfulBuild</RunPostBuildEvent>
-    <OutputType>Library</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>ICSharpCode.FormsDesigner</RootNamespace>
-    <RegisterForComInterop>False</RegisterForComInterop>
-    <GenerateSerializationAssemblies>Auto</GenerateSerializationAssemblies>
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-    <AllowUnsafeBlocks>False</AllowUnsafeBlocks>
+    <AssemblyName>FormsDesigner</AssemblyName>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <OutputType>Library</OutputType>
     <OutputPath>..\..\..\..\..\AddIns\DisplayBindings\FormsDesigner\</OutputPath>
-    <BaseAddress>108003328</BaseAddress>
-    <FileAlignment>4096</FileAlignment>
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
-    <SignAssembly>True</SignAssembly>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>..\..\..\..\Main\ICSharpCode.SharpDevelop.snk</AssemblyOriginatorKeyFile>
-    <DelaySign>False</DelaySign>
-    <AssemblyOriginatorKeyMode>File</AssemblyOriginatorKeyMode>
-    <TargetFrameworkProfile>
-    </TargetFrameworkProfile>
+    <NoWarn>$(NoWarn);CA1416;WFO1000</NoWarn>
   </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
-    <Optimize>True</Optimize>
-    <CheckForOverflowUnderflow>False</CheckForOverflowUnderflow>
-    <DebugType>None</DebugType>
-    <DebugSymbols>false</DebugSymbols>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
-    <Optimize>False</Optimize>
-    <CheckForOverflowUnderflow>True</CheckForOverflowUnderflow>
-    <DefineConstants>DEBUG</DefineConstants>
-    <DebugType>Full</DebugType>
-    <DebugSymbols>true</DebugSymbols>
-  </PropertyGroup>
+
   <ItemGroup>
-    <Reference Include="PresentationCore">
-      <RequiredTargetFramework>3.0</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="PresentationFramework">
-      <RequiredTargetFramework>3.0</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Design" />
-    <Reference Include="System.Drawing" />
-    <Reference Include="System.Drawing" />
-    <Reference Include="System.Drawing.Design" />
-    <Reference Include="System.Windows.Forms" />
-    <Reference Include="System.Xaml">
-      <RequiredTargetFramework>4.0</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="System.XML" />
-    <Reference Include="WindowsBase">
-      <RequiredTargetFramework>3.0</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="WindowsFormsIntegration">
-      <RequiredTargetFramework>3.0</RequiredTargetFramework>
-    </Reference>
+    <!-- Out of MVP scope, same as CSharpBinding's CSharpDesignerLoaderProvider.cs (see that
+         project's exclusion comment) and every other NRefactory-AST-dependent subsystem in this
+         fork: reading an EXISTING Designer.cs file's InitializeComponent method back into the
+         designer surface needs a real C# AST (NRefactory.Ast or Roslyn syntax trees), not the
+         type-system-only ICSharpCode.TypeSystem.Abstractions replacement. NRefactoryDesignerLoader
+         was already fully commented out upstream of this port; AbstractDesignerGenerator/
+         CSharpDesignerGenerator/VBNetDesignerGenerator have no other caller once it is gone (their
+         only consumer was the same load/generate round trip), so they are excluded alongside it
+         rather than compiled as dead code. Everything else in this addin - the undo engine,
+         resource services, option panels, and the WPF host that actually renders the WinForms
+         designer surface - does not depend on this and is fully live. -->
+    <Compile Remove="Src\DesignerLoader\NRefactoryDesignerLoader.cs" />
+    <Compile Remove="Src\DesignerGenerator\AbstractDesignerGenerator.cs" />
+    <Compile Remove="Src\DesignerGenerator\CSharpDesignerGenerator.cs" />
+    <Compile Remove="Src\DesignerGenerator\VBNetDesignerGenerator.cs" />
+
+    <!-- Out of MVP scope: the drag-from-toolbox side panel is built on
+         ICSharpCode.SharpDevelop.Widgets.SideBar/SideTab, a legacy WinForms control that is itself
+         excluded from that project's build (SideBar\**\*.cs Compile Remove) as part of the same
+         "no legacy WinForms tree/list UI" MVP decision as ClassBrowser and the old ProjectBrowserPad.
+         AddComponentsDialog/ConfigureSideBarDialog/RenameCategoryDialog are BaseSharpDevelopForm
+         (.xfrm) dialogs configuring that same SideBar, and BaseSharpDevelopForm's whole
+         ICSharpCode.SharpDevelop.Gui.XmlForms namespace is excluded from ICSharpCode.SharpDevelop's
+         build for the same reason. None of this is needed for the designer SURFACE to work -
+         Services\ToolboxService.cs (the real System.Drawing.Design.IToolboxService the .NET Design
+         API talks to) has no dependency on any of it and stays live; only the WPF-hosted panel that
+         would let a user drag a *new* control onto the form from a visible palette is deferred here,
+         pending a port to the WPF Toolbox Pad architecture doc/technotes/xaml-services.md already
+         built for XamlDesigner (IToolboxProvider + IOutlineContentHost, not SideBar). -->
+    <Compile Remove="Src\Commands\SideBarCommands.cs" />
+    <Compile Remove="Src\Gui\AddComponentsDialog.cs" />
+    <Compile Remove="Src\Gui\ComponentLibraryLoader.cs" />
+    <Compile Remove="Src\Gui\ConfigureSideBarDialog.cs" />
+    <Compile Remove="Src\Gui\CustomComponentsSideTab.cs" />
+    <Compile Remove="Src\Gui\RenameCategoryDialog.cs" />
+    <Compile Remove="Src\Gui\SideTabDesigner.cs" />
+    <Compile Remove="Src\Gui\SideTabItemDesigner.cs" />
+    <Compile Remove="Src\ToolboxProvider.cs" />
   </ItemGroup>
+
   <ItemGroup>
-    <EmbeddedResource Include="Resources\AddSidebarComponentsDialog.xfrm" />
-    <EmbeddedResource Include="Resources\ConfigureSidebarDialog.xfrm" />
-    <EmbeddedResource Include="Resources\RenameSidebarCategoryDialog.xfrm" />
-    <Compile Include="Configuration\AssemblyInfo.cs" />
-    <Compile Include="Src\Commands\FormsCommands.cs" />
-    <Compile Include="Src\Commands\SideBarCommands.cs" />
-    <Compile Include="Src\DesignerGenerator\CodeDOMGenerator.cs" />
-    <Compile Include="Src\DesignerGenerator\CSharpDesignerGenerator.cs" />
-    <Compile Include="Src\DesignerGenerator\IDesignerGenerator.cs" />
-    <Compile Include="Src\DesignerLoader\AbstractCodeDomDesignerLoader.cs" />
-    <Compile Include="Src\DesignerLoader\CodeDOMVerboseOutputGenerator.cs" />
-    <Compile Include="Src\DesignerLoader\NRefactoryDesignerLoader.cs" />
-    <Compile Include="Src\DesignerSourceCodeStorage.cs" />
-    <Compile Include="Src\Gui\ImageResourceEditorDialog.cs" />
-    <Compile Include="Src\Gui\ImageResourceEditorDialog.Designer.cs">
-      <DependentUpon>ImageResourceEditorDialog.cs</DependentUpon>
-    </Compile>
-    <Compile Include="Src\Gui\OptionPanels\GeneralOptionsPanel.xaml.cs">
-      <DependentUpon>GeneralOptionsPanel.xaml</DependentUpon>
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Src\Gui\OptionPanels\GridOptionsPanel.xaml.cs">
-      <DependentUpon>GridOptionsPanel.xaml</DependentUpon>
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Src\Gui\OptionPanels\LocalizationModelOptionsPanel.xaml.cs">
-      <DependentUpon>LocalizationModelOptionsPanel.xaml</DependentUpon>
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Src\DesignerViewContent.cs" />
-    <Compile Include="Src\FormKeyHandler.cs" />
-    <Compile Include="Src\Gui\AddComponentsDialog.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Src\Gui\ComponentLibraryLoader.cs" />
-    <Compile Include="Src\Gui\ConfigureSideBarDialog.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Src\Gui\CustomComponentsSideTab.cs" />
-    <Compile Include="Src\Gui\RenameCategoryDialog.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Src\Gui\SideTabDesigner.cs" />
-    <Compile Include="Src\Gui\SideTabItemDesigner.cs" />
-    <Compile Include="Src\Services\DefaultMemberRelationshipService.cs" />
-    <Compile Include="Src\Services\DefaultServiceContainer.cs" />
-    <Compile Include="Src\Services\DesignerOptionService.cs" />
-    <Compile Include="Src\Services\DesignerResourceService.cs" />
-    <Compile Include="Src\Services\EventBindingService.cs" />
-    <Compile Include="Src\Services\HelpService.cs" />
-    <Compile Include="Src\Services\ImageResourceEditor.cs" />
-    <Compile Include="Src\Services\MenuCommandService.cs" />
-    <Compile Include="Src\Services\ProjectResourceInfo.cs" />
-    <Compile Include="Src\Services\ProjectResourcesComponentCodeDomSerializer.cs" />
-    <Compile Include="Src\Services\ProjectResourceService.cs" />
-    <Compile Include="Src\Services\ProjectResourcesMemberCodeDomSerializer.cs" />
-    <Compile Include="Src\Services\PropertyValueUIService.cs" />
-    <Compile Include="Src\Services\ResourceStore.cs" />
-    <Compile Include="Src\Services\SharpDevelopSerializationProvider.cs" />
-    <Compile Include="Src\Services\ToolboxService.cs" />
-    <Compile Include="Src\Services\UIService.cs" />
-    <Compile Include="Src\Services\XmlDesignerNameCreationService.cs" />
-    <Compile Include="Src\ToolboxProvider.cs" />
-    <None Include="FormsDesigner.addin">
-      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
-    </None>
-    <Compile Include="Src\DesignerGenerator\VBNetDesignerGenerator.cs" />
-    <Compile Include="Src\DesignerLoader\DesignerLoaderProvider.cs" />
-    <Compile Include="Src\DesignerLoader\FormsDesignerLoadException.cs" />
-    <Compile Include="Src\DesignerGenerator\AbstractDesignerGenerator.cs" />
-    <Compile Include="Src\Services\TypeDiscoveryService.cs" />
-    <Compile Include="Src\UndoRedo\UndoEngine.cs" />
-    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs">
-      <Link>Configuration\GlobalAssemblyInfo.cs</Link>
-    </Compile>
-    <EmbeddedResource Include="Src\Gui\ImageResourceEditorDialog.resx">
+    <ProjectReference Include="..\..\..\..\Libraries\AvalonEdit\ICSharpCode.AvalonEdit\ICSharpCode.AvalonEdit.csproj" Private="False" />
+    <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="False" />
+    <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="False" />
+    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" Private="False" />
+    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.WinForms\ICSharpCode.Core.WinForms.csproj" Private="False" />
+    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.SharpDevelop.Widgets\Project\ICSharpCode.SharpDevelop.Widgets.csproj" Private="False" />
+    <ProjectReference Include="..\..\..\..\Libraries\ICSharpCode.TypeSystem.Abstractions\ICSharpCode.TypeSystem.Abstractions.csproj" Private="False" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
+    <None Include="FormsDesigner.addin" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- .xfrm resources for the excluded BaseSharpDevelopForm dialogs above; not needed. -->
+    <None Remove="Resources\AddSidebarComponentsDialog.xfrm" />
+    <None Remove="Resources\ConfigureSidebarDialog.xfrm" />
+    <None Remove="Resources\RenameSidebarCategoryDialog.xfrm" />
+    <EmbeddedResource Update="Src\Gui\ImageResourceEditorDialog.resx">
       <DependentUpon>ImageResourceEditorDialog.cs</DependentUpon>
     </EmbeddedResource>
-    <Compile Include="Src\Services\DesignerSerializationService.cs" />
   </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\..\..\..\Libraries\AvalonEdit\ICSharpCode.AvalonEdit\ICSharpCode.AvalonEdit.csproj">
-      <Project>{6C55B776-26D4-4DB3-A6AB-87E783B2F3D1}</Project>
-      <Name>ICSharpCode.AvalonEdit</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj">
-      <Project>{2748AD25-9C63-4E12-877B-4DCE96FBED54}</Project>
-      <Name>ICSharpCode.SharpDevelop</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj">
-      <Project>{35CEF10F-2D4C-45F2-9DD1-161E0FEC583C}</Project>
-      <Name>ICSharpCode.Core</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <Content Include="PostBuildEvent.proj" />
-    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj">
-      <Project>{7E4A7172-7FF5-48D0-B719-7CD959DD1AC9}</Project>
-      <Name>ICSharpCode.Core.Presentation</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.WinForms\ICSharpCode.Core.WinForms.csproj">
-      <Project>{857CA1A3-FC88-4BE0-AB6A-D1EE772AB288}</Project>
-      <Name>ICSharpCode.Core.WinForms</Name>
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\..\Main\ICSharpCode.SharpDevelop.Widgets\Project\ICSharpCode.SharpDevelop.Widgets.csproj">
-      <Project>{8035765F-D51F-4A0C-A746-2FD100E19419}</Project>
-      <Name>ICSharpCode.SharpDevelop.Widgets</Name>
-      <Private>False</Private>
-    </ProjectReference>
-  </ItemGroup>
-  <ItemGroup>
-    <Page Include="Src\Gui\OptionPanels\GeneralOptionsPanel.xaml" />
-    <Page Include="Src\Gui\OptionPanels\GridOptionsPanel.xaml" />
-    <Page Include="Src\Gui\OptionPanels\LocalizationModelOptionsPanel.xaml" />
-  </ItemGroup>
-  <Import Project="$(MSBuildBinPath)\Microsoft.CSHARP.Targets" />
-  <Import Project="PostBuildEvent.proj" />
+
+  <Target Name="CopyAddInManifest" AfterTargets="Build">
+    <Copy SourceFiles="FormsDesigner.addin" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!--
+    Services/ToolboxService.cs implements System.ComponentModel.Design.IToolboxService, whose
+    CategoryNames property is typed System.Drawing.Design.CategoryNameCollection - a type that
+    LibreWinForms.System.Windows.Forms.dll bundles directly (it merges what upstream .NET splits
+    into System.Windows.Forms.Design), while the real netcore System.Drawing.Common (needed
+    elsewhere in this project, unrelated to WinForms) happens to define an identically-named,
+    identically-shaped type too. Referencing the DLL a second time under an extern alias lets
+    ToolboxService.cs disambiguate which CategoryNameCollection it means (see the extern alias at
+    the top of that file) without affecting every other unaliased, unambiguous use of
+    System.Windows.Forms types throughout this project.
+  -->
+  <Target Name="_AddAliasedLibreWinFormsReference" AfterTargets="ResolveAssemblyReferences" BeforeTargets="GenerateTemporaryTargetAssembly;CoreCompile"
+          Condition="'$(NuGetPackageRoot)' != ''">
+    <ItemGroup>
+      <_AliasedLibreWinFormsSystemWindowsForms Include="$(NuGetPackageRoot)librewinforms.system.windows.forms/*/lib/net10.0/System.Windows.Forms.dll" />
+      <ReferencePath Include="@(_AliasedLibreWinFormsSystemWindowsForms)" Condition="'@(_AliasedLibreWinFormsSystemWindowsForms)' != ''">
+        <Aliases>LibreWinForms</Aliases>
+      </ReferencePath>
+    </ItemGroup>
+  </Target>
+
+  <!--
+    Font/Image/Icon/Graphics/Bitmap/ContentAlignment members reached through the real
+    LibreWinForms Control/Form/etc. API (e.g. Control.Font, PictureBox.Image) are typed in terms
+    of the ProGPU.System.Drawing.Common (0.0.0.0) that LibreWinForms.System.Windows.Forms.dll was
+    itself built against - not the real netcore System.Drawing.Common (10.0.9) that ends up on
+    this project's ReferencePath purely transitively, via ICSharpCode.SharpDevelop.Widgets'
+    PackageReference (used there for its own, WPF-side icon rendering; nothing in FormsDesigner's
+    own source touches it directly). Swap it out the same way _ReplaceWindowsDesktopRefPackWinFormsFacades
+    (Directory.Build.targets) already does for other projects, just without that target's
+    "only if nothing else resolved one" guard - safe here specifically because this project's own
+    code never needs the real one.
+  -->
+  <Target Name="_ReplaceTransitiveRealSystemDrawingCommon" AfterTargets="ResolveAssemblyReferences" BeforeTargets="GenerateTemporaryTargetAssembly;CoreCompile"
+          Condition="'$(NuGetPackageRoot)' != ''">
+    <ItemGroup>
+      <ReferencePath Remove="@(ReferencePath)" Condition="'%(ReferencePath.Filename)' == 'System.Drawing.Common' And '%(ReferencePath.NuGetPackageId)' == 'System.Drawing.Common'" />
+      <ReferencePathWithRefAssemblies Remove="@(ReferencePathWithRefAssemblies)" Condition="'%(ReferencePathWithRefAssemblies.Filename)' == 'System.Drawing.Common' And '%(ReferencePathWithRefAssemblies.NuGetPackageId)' == 'System.Drawing.Common'" />
+      <_RealProGpuSystemDrawingCommonForFormsDesigner Include="$(NuGetPackageRoot)progpu.system.drawing.common/*/lib/net10.0/System.Drawing.Common.dll" />
+      <ReferencePath Include="@(_RealProGpuSystemDrawingCommonForFormsDesigner)" Condition="'@(_RealProGpuSystemDrawingCommonForFormsDesigner)' != ''">
+        <NuGetPackageId>ProGPU.System.Drawing.Common</NuGetPackageId>
+      </ReferencePath>
+    </ItemGroup>
+  </Target>
 </Project>
