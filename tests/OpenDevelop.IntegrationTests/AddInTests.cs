@@ -1136,6 +1136,111 @@ public sealed class AddInTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task DragToolboxItem_OntoXamlSourceEditor_InsertsMarkupAtCaret()
+    {
+        // Covers the OTHER drag-drop target for a WPF toolbox item: the plain XAML text/source
+        // editor (AvalonEditViewContent, the file's default/primary view), not the WpfDesign
+        // canvas (WpfViewContent, a secondary view - see DragToolboxItem_OntoDesignSurface_...
+        // above). AvalonEditViewContent.SetupXamlDragDrop/TextArea_Drop already implements this:
+        // it inserts "<TagName />" at the editor's CURRENT caret offset on drop (not at the mouse
+        // drop point), so this test moves the caret first via the new od.file.set-caret-offset
+        // action, then drops anywhere over the TextArea's bounds (od.file.query-text-area-screen-
+        // bounds). Unlike the canvas test, there's no WpfDesign adorner/DesignPanel hit-testing
+        // involved here - but the synthetic press/drag-move/release gesture itself (cliclick +
+        // NativeInputPump, see PortableDragDropOperation's doc comment) is still occasionally
+        // flaky end to end, same as the canvas test - retry the whole gesture rather than assume
+        // a single attempt is reliable.
+        var solutionDirectory = Path.GetDirectoryName(_app.WpfSampleSolutionPath)!;
+        var xamlPath = Path.Combine(solutionDirectory, "SamplePane.xaml");
+        var originalXaml = await File.ReadAllTextAsync(xamlPath);
+
+        try
+        {
+            var openSolutionResult = await _app.ReopenSolutionAsync(_app.WpfSampleSolutionPath);
+            Assert.True(openSolutionResult.GetProperty("success").GetBoolean());
+            var openFileResult = await _app.InvokeAsync("od.open-file", xamlPath);
+            Assert.True(openFileResult.GetProperty("opened").GetBoolean());
+
+            // Insert right after "</ListBox>" - a sibling position inside PaneStack where a
+            // self-closing "<TextBox />" is well-formed regardless of surrounding whitespace.
+            int anchor = originalXaml.IndexOf("</ListBox>", StringComparison.Ordinal);
+            Assert.True(anchor >= 0, "Expected SamplePane.xaml fixture to contain a </ListBox> anchor.");
+            int caretOffset = anchor + "</ListBox>".Length;
+
+            var caretSet = await _app.InvokeAsync("od.file.set-caret-offset", xamlPath, caretOffset);
+            Assert.True(caretSet.GetProperty("success").GetBoolean(), caretSet.ToString());
+
+            // The generic ToolsPad only realizes its content the first time it's shown - see the
+            // canvas drag test's own comment on od.show-pad for why this call is required first.
+            await _app.InvokeAsync("od.show-pad", "Tools");
+            await _app.InvokeAsync("od.activate");
+
+            // Deliberately NOT od.wpf-designer.toolbox.query-item-bounds - that action always
+            // switches the active tab to the WpfDesign canvas (FindWpfViewContent), and switching
+            // this file's AvalonEditViewContent tab away and back does not reliably reconnect its
+            // TextArea to a PresentationSource afterward (a real bug, out of scope here - this
+            // test just avoids triggering it). AvalonEditViewContent.IToolsHost.ToolsContent
+            // already resolves to the very same WpfToolbox.Instance singleton for a .xaml file, so
+            // the toolbox is realized identically without ever leaving the source editor tab.
+            var toolboxBounds = await _app.InvokeAsync("od.wpf-toolbox.query-item-bounds", "TextBox");
+            Assert.True(toolboxBounds.GetProperty("success").GetBoolean(), toolboxBounds.ToString());
+            var fromX = toolboxBounds.GetProperty("centerX").GetDouble();
+            var fromY = toolboxBounds.GetProperty("centerY").GetDouble();
+
+            var textAreaBounds = await _app.InvokeAsync("od.file.query-text-area-screen-bounds", xamlPath);
+            Assert.True(textAreaBounds.GetProperty("success").GetBoolean(), textAreaBounds.ToString());
+            var toX = textAreaBounds.GetProperty("x").GetDouble() + textAreaBounds.GetProperty("width").GetDouble() / 2;
+            var toY = textAreaBounds.GetProperty("y").GetDouble() + textAreaBounds.GetProperty("height").GetDouble() / 2;
+
+            string savedXaml = null;
+            var inserted = false;
+            for (int attempt = 1; attempt <= 4 && !inserted; attempt++)
+            {
+                var pressed = await _app.PressPointerAsync(fromX, fromY);
+                Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
+
+                for (int step = 1; step <= 6; step++)
+                {
+                    var t = step / 6.0;
+                    var moved = await _app.DragMovePointerAsync(fromX + (toX - fromX) * t, fromY + (toY - fromY) * t);
+                    Assert.True(moved.GetProperty("ok").GetBoolean(), moved.ToString());
+                    await Task.Delay(150);
+                }
+
+                var released = await _app.ReleasePointerAsync(toX, toY);
+                Assert.True(released.GetProperty("ok").GetBoolean(), released.ToString());
+
+                // TextArea_Drop inserts synchronously on the UI thread, but that thread is still
+                // draining the synthetic input NativeInputPump pumped during the drag (see
+                // PortableDragDropOperation's doc comment) - poll save+read rather than assume the
+                // insert has already landed the instant ReleasePointerAsync's HTTP call returns.
+                var deadline = DateTime.UtcNow.AddSeconds(8);
+                while (DateTime.UtcNow < deadline)
+                {
+                    var saved = await _app.InvokeAsync("od.file.save", xamlPath);
+                    Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+                    savedXaml = await File.ReadAllTextAsync(xamlPath);
+                    if (savedXaml.Contains("<TextBox />", StringComparison.Ordinal))
+                    {
+                        inserted = true;
+                        break;
+                    }
+                    await Task.Delay(250);
+                }
+            }
+
+            Assert.Contains("<TextBox />", savedXaml, StringComparison.Ordinal);
+            Assert.True(savedXaml.IndexOf("<TextBox />", StringComparison.Ordinal) > savedXaml.IndexOf("</ListBox>", StringComparison.Ordinal),
+                "Expected <TextBox /> to be inserted after </ListBox> (at the caret), not somewhere earlier in the document.\n" + savedXaml);
+        }
+        finally
+        {
+            // SamplePane.xaml is a repository fixture - restore it regardless of outcome.
+            await File.WriteAllTextAsync(xamlPath, originalXaml);
+        }
+    }
+
+    [Fact]
     public async Task SelectControlOnSamplePane_ShowsSelectionInPropertiesPad()
     {
         // SamplePane.xaml is a UserControl root (unlike MainWindow.xaml's Window root): verify the

@@ -1285,6 +1285,65 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new { success = true, isDirty = file?.IsDirty ?? false });
 		}
 
+		/// <summary>
+		/// Finds the given file's primary text-editor view (the ITextEditor-capable
+		/// AvalonEditViewContent) among its <see cref="IWorkbenchWindow.ViewContents"/> and makes
+		/// it the active tab. Just resolving the ITextEditor service isn't enough when a
+		/// secondary view (e.g. WpfDesign's Design canvas) is currently active for the same file -
+		/// SharpDevelop only mounts a tab's Control into the live visual tree once it's actually
+		/// switched to, so the text editor's underlying WPF TextArea has no PresentationSource
+		/// (PointToScreen throws) until this runs, exactly like WpfDesignDevFlowActions.
+		/// FindWpfViewContent needs IWorkbenchWindow.SwitchView for the Design canvas side.
+		/// </summary>
+		static ITextEditor ActivateTextEditorView(string path)
+		{
+			var fileName = FileName.Create(path);
+			var viewContent = SD.FileService.GetOpenFile(fileName) ?? SD.FileService.OpenFile(fileName);
+			var window = viewContent?.WorkbenchWindow;
+			if (window == null)
+				return viewContent?.GetService<ITextEditor>();
+
+			for (int i = 0; i < window.ViewContents.Count; i++) {
+				var editor = window.ViewContents[i].GetService<ITextEditor>();
+				if (editor != null) {
+					window.SwitchView(i);
+					return editor;
+				}
+			}
+
+			return null;
+		}
+
+		[DevFlowAction("od.file.set-caret-offset", Description = "Set an open file's primary text editor caret to a specific document offset - used to control exactly where AvalonEditViewContent.TextArea_Drop's XAML-toolbox drop (which inserts at the CURRENT caret offset, not the mouse drop point) will insert markup, since a synthetic drag can land the mouse anywhere over the TextArea without moving the caret itself")]
+		public static string SetCaretOffset(string path, int offset)
+		{
+			var editor = ActivateTextEditorView(path);
+			if (editor == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No text editor for " + path });
+
+			editor.Caret.Offset = offset;
+			return JsonSerializer.Serialize(new { success = true, offset = editor.Caret.Offset });
+		}
+
+		[DevFlowAction("od.file.query-text-area-screen-bounds", Description = "Get an open file's primary AvalonEdit TextArea in screen coordinates - used to pick a real drop point for a synthetic mouse drag (press/drag-move/release via cliclick) onto the XAML source editor, mirroring od.wpf-designer.query-element-screen-bounds for the WPF Design canvas")]
+		public static string QueryTextAreaScreenBounds(string path)
+		{
+			var editor = ActivateTextEditorView(path);
+			var textArea = editor?.GetService(typeof(ICSharpCode.AvalonEdit.Editing.TextArea)) as FrameworkElement;
+			if (textArea == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No TextArea for " + path });
+
+			var topLeft = textArea.PointToScreen(new Point(0, 0));
+			var bottomRight = textArea.PointToScreen(new Point(textArea.ActualWidth, textArea.ActualHeight));
+			return JsonSerializer.Serialize(new {
+				success = true,
+				x = topLeft.X,
+				y = topLeft.Y,
+				width = bottomRight.X - topLeft.X,
+				height = bottomRight.Y - topLeft.Y
+			});
+		}
+
 		[DevFlowAction("od.file.save", Description = "Save one open file to disk (same as Ctrl+S / File > Save)")]
 		public static string SaveOpenFile(string path)
 		{

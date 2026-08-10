@@ -114,6 +114,52 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			if (toolboxControl == null || item == null)
 				return JsonSerializer.Serialize(new { success = false, error = "Toolbox item not found: " + typeName });
 
+			// WpfToolbox.Instance is a process-lifetime singleton shared by every open .xaml file's
+			// view, so its ListBox.SelectedItem is whatever some EARLIER drag (in this test run or
+			// a completely different test) last left selected - a synthetic mouse press at this
+			// row's coordinates does not reliably reselect it itself (unlike a real click, which
+			// goes through ListBoxItem's own selection handling before WpfToolbox.OnPreviewMouseMove
+			// ever reads SelectedItem). Select explicitly so the drag that follows this query always
+			// picks up the CreateComponentTool for the type asked for, not a stale prior selection.
+			toolboxControl.SelectedItem = item;
+			toolboxControl.ScrollIntoView(item);
+			toolboxControl.UpdateLayout();
+
+			if (!(toolboxControl.ItemContainerGenerator.ContainerFromItem(item) is FrameworkElement container))
+				return JsonSerializer.Serialize(new { success = false, error = "Toolbox row has no realized container (not scrolled into view?): " + typeName });
+
+			return JsonSerializer.Serialize(GetScreenBounds(container));
+		}
+
+		/// <summary>
+		/// Same as <see cref="QueryToolboxItemBounds"/>, but for dragging a toolbox item onto the
+		/// plain XAML source/text editor (AvalonEditViewContent.TextArea_Drop) rather than the
+		/// WpfDesign canvas - it deliberately does NOT call FindWpfViewContent(), since that always
+		/// switches the active tab to WpfViewContent (the Design view). AvalonEditViewContent's own
+		/// IToolsHost.ToolsContent already resolves to this SAME WpfToolbox.Instance singleton for
+		/// any .xaml file, so the ToolsPad realizes the identical toolbox regardless of which view
+		/// (source or design) is currently active - switching away is unnecessary here and, worse,
+		/// switching a WPF secondary view's tab away and back does not reliably reconnect its
+		/// Control to a PresentationSource (a real bug, tracked separately - not this action's job
+		/// to work around by forcing an unnecessary Design-view detour).
+		/// </summary>
+		[DevFlowAction("od.wpf-toolbox.query-item-bounds", Description = "Get the real on-screen bounds of a Toolbox row for a given control type WITHOUT switching the active view to the WpfDesign canvas - use this (instead of od.wpf-designer.toolbox.query-item-bounds) when the drag target is the plain XAML source/text editor, not the Design surface")]
+		public static string QueryToolboxItemBoundsWithoutActivatingDesigner(string typeName)
+		{
+			var toolboxControl = WpfToolbox.Instance.ToolboxControl as ListBox;
+			var item = toolboxControl?.Items.OfType<WpfSideTabItem>()
+				.FirstOrDefault(i => string.Equals(i.DisplayName, typeName, StringComparison.Ordinal));
+			if (toolboxControl == null || item == null)
+				return JsonSerializer.Serialize(new { success = false, error = "Toolbox item not found: " + typeName });
+
+			// WpfToolbox.Instance is a process-lifetime singleton shared by every open .xaml file's
+			// view, so its ListBox.SelectedItem is whatever some EARLIER drag (in this test run or
+			// a completely different test) last left selected - a synthetic mouse press at this
+			// row's coordinates does not reliably reselect it itself (unlike a real click, which
+			// goes through ListBoxItem's own selection handling before WpfToolbox.OnPreviewMouseMove
+			// ever reads SelectedItem). Select explicitly so the drag that follows this query always
+			// picks up the CreateComponentTool for the type asked for, not a stale prior selection.
+			toolboxControl.SelectedItem = item;
 			toolboxControl.ScrollIntoView(item);
 			toolboxControl.UpdateLayout();
 
