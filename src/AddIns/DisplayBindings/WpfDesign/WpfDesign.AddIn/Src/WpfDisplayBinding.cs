@@ -23,6 +23,7 @@ using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
 using System.Xml;
 using ICSharpCode.SharpDevelop.Workbench;
+using ICSharpCode.SharpDevelop.LanguageServices.Xaml;
 
 namespace ICSharpCode.WpfDesign.AddIn
 {
@@ -60,6 +61,9 @@ namespace ICSharpCode.WpfDesign.AddIn
 		public bool CanAttachTo(IViewContent content)
 		{
 			if (Path.GetExtension(content.PrimaryFileName).Equals(".xaml", StringComparison.OrdinalIgnoreCase)) {
+				var framework = XamlFrameworkDetector.Detect(content.PrimaryFileName.ToString());
+				if (framework.Kind == XamlFrameworkKind.WinUI || framework.Kind == XamlFrameworkKind.Uno)
+					return false;
 				IEditable editable = content.GetService<IEditable>();
 				if (editable != null) {
 					try {

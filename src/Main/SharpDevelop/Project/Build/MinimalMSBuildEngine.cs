@@ -116,9 +116,17 @@ namespace ICSharpCode.SharpDevelop.Project
 				psi.EnvironmentVariables[kv.Key] = kv.Value;
 			// This app's own process may be running under a non-invariant/non-English OS locale
 			// (LANG/LC_ALL inherited from the desktop session), and some MSBuild tasks parse
-			// culture-sensitive content internally; forcing invariant globalization for the build
-			// child avoids locale-dependent parsing surprises regardless of the app's own locale.
-			psi.EnvironmentVariables["DOTNET_SYSTEM_GLOBALIZATION_INVARIANT"] = "1";
+			// culture-sensitive content internally; pinning the build child to en_US.UTF-8 makes
+			// that parsing deterministic regardless of the app's own locale.
+			//
+			// Do NOT also set DOTNET_SYSTEM_GLOBALIZATION_INVARIANT here. It contradicts the two
+			// lines below - in globalization-invariant mode the only valid culture is the invariant
+			// one, so "en-US" becomes an invalid culture identifier - and any compiler that
+			// constructs a CultureInfo for its own diagnostics then fails outright. The F# compiler
+			// does exactly that and aborts every build with:
+			//   error FS0193 : internal error : Only the invariant culture is supported in
+			//   globalization-invariant mode ... 'en-US' is an invalid culture identifier
+			// Determinism is already achieved by the explicit locale, without disabling ICU.
 			psi.EnvironmentVariables["LANG"] = "en_US.UTF-8";
 			psi.EnvironmentVariables["LC_ALL"] = "en_US.UTF-8";
 			psi.ArgumentList.Add(TargetToVerb(options.Target));

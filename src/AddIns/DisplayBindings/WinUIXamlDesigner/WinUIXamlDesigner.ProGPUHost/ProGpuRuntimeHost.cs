@@ -1,0 +1,204 @@
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows;
+using ICSharpCode.SharpDevelop.LanguageServices.Xaml;
+using XamlStudio.Toolkit.Services;
+
+namespace ICSharpCode.WinUIXamlDesigner.ProGPUHost;
+
+public static class ProGpuRuntimeHostBootstrap
+{
+    public static void Register() => WinUIXamlRuntimeHostRegistry.Register(Create);
+
+    /// <summary>
+    /// Lifecycle probes for the technote's "unloading a document releases its runtime" acceptance
+    /// item. Closing a designer must drop its host and let the collectible preview assembly - and
+    /// therefore the WinUI tree built from it - be collected; a leak here would accumulate a whole
+    /// preview ALC per document open, which nothing else in the suite would notice.
+    /// </summary>
+    public static int LiveHostCount => ProGpuRuntimeHost.LiveHostCount;
+
+    public static bool LastPreviewRootAlive()
+    {
+        for (var attempt = 0; attempt < 3; attempt++) {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+        }
+        return ProGpuRuntimeHost.LastPreviewRootAlive;
+    }
+
+    static IWinUIXamlRuntimeHost Create(XamlFrameworkContext framework, string documentFileName) =>
+        new ProGpuRuntimeHost(framework, documentFileName);
+}
+
+sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost
+{
+    readonly ProGpuWinUIHostControl control = new();
+    readonly ProGpuXamlExecutor executor;
+    readonly XamlRenderService renderService;
+    readonly XamlFrameworkContext framework;
+    // x:Names from the source document, resolved against the rendered tree's namescope after each
+    // render so a hit test can be answered with a name the shell side understands.
+    IReadOnlyList<string> selectableNames = Array.Empty<string>();
+    readonly Dictionary<Microsoft.UI.Xaml.FrameworkElement, string> namesByElement = new();
+    // Guards against an earlier, slower render overwriting the result of a later edit.
+    int version;
+    bool disposed;
+
+    static int liveHostCount;
+    static WeakReference lastPreviewRoot = new(null);
+    internal static int LiveHostCount => Volatile.Read(ref liveHostCount);
+    internal static bool LastPreviewRootAlive => lastPreviewRoot.IsAlive;
+
+    public ProGpuRuntimeHost(XamlFrameworkContext framework, string documentFileName)
+    {
+        this.framework = framework;
+        Interlocked.Increment(ref liveHostCount);
+        control.SurfacePointerPressed += OnSurfacePointerPressed;
+        executor = new ProGpuXamlExecutor(documentFileName);
+        renderService = new XamlRenderService(executor);
+        StatusText = $"ProGPU WinUI host ready for {framework?.Kind}.";
+    }
+
+    public UIElement WpfSurface => control;
+    public bool HasRenderedPreview => control.HasPresentedFrame;
+    public string StatusText { get; private set; }
+    public event EventHandler StateChanged;
+    public event EventHandler<string> ElementPicked;
+
+    /// <summary>
+    /// How many of the document's x:Names actually resolved against the rendered namescope, and
+    /// what the last surface click hit. Without these, a click that fails to select is
+    /// indistinguishable between "the name map is empty" and "the pointer never arrived".
+    /// </summary>
+    public int ResolvedNameCount => namesByElement.Count;
+    public string LastPickDiagnostic { get; private set; } = "no click yet";
+
+    public void SetSelectableNames(IReadOnlyList<string> names)
+    {
+        selectableNames = names ?? Array.Empty<string>();
+        ResolveNameScope();
+    }
+
+    /// <summary>
+    /// Maps the rendered elements back to their x:Name. The generated program publishes names
+    /// through the WinUI namescope (XamlTemplateFactory.RegisterName), so FindName is the
+    /// supported way back - the emitter never assigns FrameworkElement.Name.
+    /// </summary>
+    void ResolveNameScope()
+    {
+        namesByElement.Clear();
+        var root = control.WinUIRoot;
+        if (root == null) return;
+        foreach (var name in selectableNames) {
+            if (root.FindName(name) is Microsoft.UI.Xaml.FrameworkElement element)
+                namesByElement[element] = name;
+        }
+    }
+
+    /// <summary>
+    /// Answers a click with the nearest ancestor that exists in the XAML source. Walking up
+    /// matters because a hit usually lands on a control-template part (a Button's inner text),
+    /// which has no counterpart in the document.
+    /// </summary>
+    void OnSurfacePointerPressed(System.Numerics.Vector2 point)
+    {
+        var name = ResolveNameAt(point);
+        if (name != null)
+            ElementPicked?.Invoke(this, name);
+    }
+
+    /// <summary>
+    /// The x:Name of the nearest source-backed element under <paramref name="point"/>, or null.
+    /// Also used to decide which container a Toolbox drop lands in.
+    /// </summary>
+    public string ResolveNameAt(System.Numerics.Vector2 point)
+    {
+        var hit = Microsoft.UI.Xaml.Input.InputSystem.HitTest(point);
+        LastPickDiagnostic = $"point={point.X:F0},{point.Y:F0} hit={hit?.GetType().Name ?? "null"} resolved={namesByElement.Count}";
+        var walked = 0;
+        while (hit != null) {
+            if (namesByElement.TryGetValue(hit, out var name)) {
+                LastPickDiagnostic += $" -> {name} after {walked} parent hop(s)";
+                return name;
+            }
+            hit = hit.Parent as Microsoft.UI.Xaml.FrameworkElement;
+            walked++;
+        }
+        LastPickDiagnostic += $" -> no named ancestor after {walked} hop(s)";
+        return null;
+    }
+
+    /// <summary>
+    /// Surface-local bounds of a named rendered element, or null when it is not in the current
+    /// namescope. Returned as plain numbers so no Microsoft.UI.Xaml type crosses the boundary.
+    /// </summary>
+    public (double X, double Y, double Width, double Height)? QueryElementBounds(string name)
+    {
+        var root = control.WinUIRoot;
+        if (root == null || string.IsNullOrEmpty(name))
+            return null;
+        if (root.FindName(name) is not Microsoft.UI.Xaml.FrameworkElement element)
+            return null;
+        var origin = element.TransformToVisual(root).TransformPoint(System.Numerics.Vector2.Zero);
+        // Width/Height stay NaN unless the markup set them explicitly; the arranged Size is the
+        // measured extent. Same fallback DesignerCanvas itself uses when sizing its adorners.
+        var width = float.IsNaN(element.Width) ? element.Size.X : element.Width;
+        var height = float.IsNaN(element.Height) ? element.Size.Y : element.Height;
+        return (origin.X, origin.Y, width, height);
+    }
+
+    public void LoadXaml(string text)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        var requested = Interlocked.Increment(ref version);
+        _ = RenderAsync(text, requested);
+    }
+
+    async Task RenderAsync(string text, int requested)
+    {
+        try {
+            var result = await renderService.RenderAsync(text).ConfigureAwait(true);
+            if (disposed || Volatile.Read(ref version) != requested)
+                return;
+            if (result.Element is Microsoft.UI.Xaml.FrameworkElement element) {
+                control.WinUIRoot = element;
+                lastPreviewRoot = new WeakReference(element);
+                ResolveNameScope();
+                StatusText = $"Rendered by ProGPU for {framework?.Kind}.";
+            } else {
+                // The session retains its last good tree, so leave WinUIRoot alone and report why.
+                StatusText = Describe(result);
+            }
+        } catch (Exception exception) {
+            if (disposed || Volatile.Read(ref version) != requested)
+                return;
+            StatusText = exception.GetBaseException().Message;
+        }
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    static string Describe(XamlStudio.Toolkit.Models.XamlRenderResultContext result)
+    {
+        if (result.Errors == null || result.Errors.Count == 0)
+            return "ProGPU produced no preview element for this document.";
+        return string.Join(Environment.NewLine, System.Linq.Enumerable.Select(result.Errors, static e => e.Message));
+    }
+
+    public void Dispose()
+    {
+        if (disposed) return;
+        disposed = true;
+        control.SurfacePointerPressed -= OnSurfacePointerPressed;
+        // Drop every strong reference to the preview tree BEFORE unloading its collectible load
+        // context - WinUiXamlLivePreviewSession.Reset explicitly requires the caller to have
+        // detached CurrentRoot from its visual host first, otherwise the ALC stays pinned.
+        namesByElement.Clear();
+        control.WinUIRoot = null;
+        executor.Dispose();
+        control.Dispose();
+        Interlocked.Decrement(ref liveHostCount);
+    }
+}

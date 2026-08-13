@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+  <!-- Detection fixture only: evaluation does not require restoring the package. -->
+  <ItemGroup><PackageReference Include="Uno.WinUI" Version="5.0.0" ExcludeAssets="all" /></ItemGroup>
+</Project>

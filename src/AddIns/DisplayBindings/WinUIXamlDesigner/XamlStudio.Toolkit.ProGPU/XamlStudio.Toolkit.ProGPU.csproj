@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>XamlStudio.Toolkit.ProGPU</AssemblyName>
+    <RootNamespace>XamlStudio.Toolkit</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+
+  <!-- XAML Studio remains the owner of preprocessing, binding inspection, diagnostics and
+       render-result models. ProGPU-specific execution adapters live only in Port/. -->
+  <ItemGroup>
+    <Compile Include="..\..\..\..\..\externals\xamlstudio\XamlStudio.Toolkit\Extensions\StringExtensions.cs" Link="Upstream\Extensions\StringExtensions.cs" />
+    <Compile Include="..\..\..\..\..\externals\xamlstudio\XamlStudio.Toolkit\Extensions\XmlExtensions.cs" Link="Upstream\Extensions\XmlExtensions.cs" />
+    <Compile Include="..\..\..\..\..\externals\xamlstudio\XamlStudio.Toolkit\Helpers\Singleton.cs" Link="Upstream\Helpers\Singleton.cs" />
+    <Compile Include="..\..\..\..\..\externals\xamlstudio\XamlStudio.Toolkit\Models\ConversionRecord.cs" Link="Upstream\Models\ConversionRecord.cs" />
+    <Compile Include="..\..\..\..\..\externals\xamlstudio\XamlStudio.Toolkit\Models\XamlExceptionRange.cs" Link="Upstream\Models\XamlExceptionRange.cs" />
+    <Compile Include="..\..\..\..\..\externals\xamlstudio\XamlStudio.Toolkit\Models\XamlRenderResultContext.cs" Link="Upstream\Models\XamlRenderResultContext.cs" />
+    <Compile Include="..\..\..\..\..\externals\xamlstudio\XamlStudio.Toolkit\Models\XmlnsNamespace.cs" Link="Upstream\Models\XmlnsNamespace.cs" />
+    <Compile Include="..\..\..\..\..\externals\xamlstudio\XamlStudio.Toolkit\Parsers\*.cs" Link="Upstream\Parsers\%(Filename)%(Extension)" />
+    <Compile Include="..\..\..\..\..\externals\xamlstudio\XamlStudio.Toolkit\Services\IdGenerator.cs" Link="Upstream\Services\IdGenerator.cs" />
+    <Compile Include="..\..\..\..\..\externals\xamlstudio\XamlStudio.Toolkit\Services\XamlBindingWrapperManager.cs" Link="Upstream\Services\XamlBindingWrapperManager.cs" />
+    <Compile Include="..\..\..\..\..\externals\xamlstudio\XamlStudio.Toolkit\Services\XamlRenderService\XamlRenderService.ParseBinding.cs" Link="Upstream\Services\XamlRenderService\XamlRenderService.ParseBinding.cs" />
+    <Compile Include="..\..\..\..\..\externals\xamlstudio\XamlStudio.Toolkit\Services\XamlRenderService\XamlRenderService.ParsePre.cs" Link="Upstream\Services\XamlRenderService\XamlRenderService.ParsePre.cs" />
+    <Compile Include="..\..\..\..\..\externals\xamlstudio\XamlStudio.Toolkit\Services\XamlRenderService\XamlRenderService.ParseXml.cs" Link="Upstream\Services\XamlRenderService\XamlRenderService.ParseXml.cs" />
+    <Compile Include="..\..\..\..\..\externals\xamlstudio\XamlStudio.Toolkit\Services\XamlRenderService\XamlRenderService.Properties.cs" Link="Upstream\Services\XamlRenderService\XamlRenderService.Properties.cs" />
+    <Compile Include="Port\AppAssemblyInfo.cs" />
+    <Compile Include="Port\XamlBindingInfo.cs" />
+    <Compile Include="Port\XamlRenderSettings.cs" />
+    <Compile Include="Port\ProGpuXamlRenderService.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ProGPU.WinUI" Version="0.1.0-preview.47" />
+    <PackageReference Include="GuiLabs.Language.Xml" Version="1.2.93" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+  </ItemGroup>
+</Project>

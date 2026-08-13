@@ -1,0 +1,20 @@
+<Project Sdk="LibreWPF.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>ICSharpCode.WinUIXamlDesigner</RootNamespace>
+    <AssemblyName>ICSharpCode.WinUIXamlDesigner</AssemblyName>
+    <UseWPF>true</UseWPF>
+    <OutputType>Library</OutputType>
+    <OutputPath>..\..\..\..\..\AddIns\DisplayBindings\WinUIXamlDesigner\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
+    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" Version="0.2.2" Condition="'$(Configuration)' == 'Debug'" />
+  </ItemGroup>
+  <ItemGroup><None Include="WinUIXamlDesigner.addin" /></ItemGroup>
+  <Target Name="CopyAddInManifest" AfterTargets="Build">
+    <Copy SourceFiles="WinUIXamlDesigner.addin" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

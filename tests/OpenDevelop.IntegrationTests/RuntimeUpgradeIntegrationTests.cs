@@ -52,7 +52,8 @@ public sealed class RuntimeUpgradeIntegrationTests : IDisposable
 
         var net6Build = await _app.InvokeAsync("od.build-solution");
         Assert.True(net6Build.GetProperty("success").GetBoolean(), net6Build.ToString());
-        Assert.Equal(0, net6Build.GetProperty("errorCount").GetInt32());
+        if (net6Build.GetProperty("errorCount").GetInt32() != 0)
+            Assert.Fail(await _app.DescribeBuildAsync(net6Build));
 
         await _app.InvokeAsync("od.open-file", ProgramPath);
         await _app.InvokeAsync("od.debug.clear-breakpoints");
@@ -101,7 +102,8 @@ public sealed class RuntimeUpgradeIntegrationTests : IDisposable
         // ---------- net10.0: builds and debugs ----------
         var net10Build = await _app.InvokeAsync("od.build-solution");
         Assert.True(net10Build.GetProperty("success").GetBoolean(), net10Build.ToString());
-        Assert.Equal(0, net10Build.GetProperty("errorCount").GetInt32());
+        if (net10Build.GetProperty("errorCount").GetInt32() != 0)
+            Assert.Fail(await _app.DescribeBuildAsync(net10Build));
 
         await _app.InvokeAsync("od.open-file", ProgramPath);
         await _app.InvokeAsync("od.debug.clear-breakpoints");

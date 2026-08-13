@@ -1,128 +1,152 @@
-# XAML 服务与统一 Designer 路线图
+# XAML Services and Unified Designer Roadmap
 
-本文记录 OpenDevelop 的 XAML 语言服务，以及 WinForms、WPF、WinUI 三类 designer
-的现状、目标架构和实施顺序。UnoDevelop 的 XAML Designer 是 WinUI 路线的重要参考实现，
-但它不是 OpenDevelop 当前已经拥有的功能。
+This document records OpenDevelop's XAML language services and the current state, target architecture, and implementation order of the three designer backends: WinForms, WPF, and WinUI. UnoDevelop's XAML Designer is an important reference implementation for the WinUI route, but it is not functionality OpenDevelop currently owns.
 
-## 最终目标
+## End Goal
 
-OpenDevelop 应根据项目和文件所属 UI framework，为同一个编辑器工作流选择正确的 designer：
+OpenDevelop should select the correct designer for the same editor workflow based on the UI framework of the project and file:
 
-| 项目类型 | 设计文件 | Designer backend | 目标能力 |
+| Project Type | Design Files | Designer Backend | Target Capabilities |
 |---|---|---|---|
-| WinForms | `.cs`/`.vb` + `.Designer.*` + `.resx` | 现有 `FormsDesigner` | 加载、选择、属性编辑、Toolbox、代码 round-trip |
-| WPF | `.xaml` | 现有 `WpfDesign` | XAML DOM、设计面、选择/Adorner、属性、Toolbox、源码同步 |
-| WinUI 3 / Uno Platform | `.xaml` | 新 WinUI/Uno backend | 实时预览、选择、属性、Toolbox、源码同步；按 project profile 处理 dialect/runtime 差异 |
+| WinForms | `.cs`/`.vb` + `.Designer.*` + `.resx` | Existing `FormsDesigner` | Load, selection, property editing, Toolbox, code round-trip |
+| WPF | `.xaml` | Existing `WpfDesign` | XAML DOM, design surface, selection/Adorner, properties, Toolbox, source synchronization |
+| WinUI 3 / Uno Platform | `.xaml` | New WinUI/Uno backend | Live preview, selection, properties, Toolbox, source synchronization; handle dialect/runtime differences per project profile |
 
-这里的“同时支持”是三套 framework backend 共享 IDE 级契约和用户体验，不是把三种
-对象模型强行合并成一套控件层次。`System.Windows.Forms.Control`、
-`System.Windows.DependencyObject` 和 `Microsoft.UI.Xaml.DependencyObject` 必须保持隔离。
+"Supporting all three simultaneously" here means the three framework backends share IDE-level contracts and user experience — not forcing the three object models into a single control hierarchy. `System.Windows.Forms.Control`, `System.Windows.DependencyObject`, and `Microsoft.UI.Xaml.DependencyObject` must remain isolated.
 
-## 当前基线
+## Current Baseline
 
 ### OpenDevelop
 
-| 组件 | 位置 | 当前状态 |
+| Component | Location | Current Status |
 |---|---|---|
-| WPF Designer | `src/AddIns/DisplayBindings/WpfDesign/` 与 `externals/vscode-wpf/external/WpfDesigner/` | 已进入主 solution，使用 `LibreWPF.Sdk`；是 WPF 的正式 backend |
-| WinForms Designer | `src/AddIns/DisplayBindings/FormsDesigner/` | C# backend 已改为无 CodeDOM 的 Roslyn `BasicDesignerLoader`；`.Designer.cs` round-trip、旧格式迁移、共享 Toolbox Pad 和真实拖放测试均已完成；VB Roslyn backend 尚未完成 |
-| XAML language server | `externals/vscode-wpf/` | `.xaml` 的 WPF language server 已接入；framework 判定不能只靠扩展名 |
-| WinUI Designer | 尚无 OpenDevelop addin | 待实现；不得把 UnoDevelop 的完成状态记作 OpenDevelop 的完成状态 |
+| WPF Designer | `src/AddIns/DisplayBindings/WpfDesign/` and `externals/vscode-wpf/external/WpfDesigner/` | Added to the main solution, uses `LibreWPF.Sdk`; it is the official WPF backend |
+| WinForms Designer | `src/AddIns/DisplayBindings/FormsDesigner/` | The C# backend has moved to a CodeDOM-free Roslyn `BasicDesignerLoader`; `.Designer.cs` round-trip, legacy format migration, shared Toolbox Pad, and real drag-drop tests are all complete; the VB Roslyn backend is not yet done |
+| XAML language server | `externals/vscode-wpf/` | The WPF language server for `.xaml` is wired up; framework detection cannot rely on file extension alone |
+| WinUI/Uno Designer | `src/AddIns/DisplayBindings/WinUIXamlDesigner/` | New AddIn and unified routing established; the early WPF `XamlReader` compatibility preview was judged a wrong approach and reverted; wiring up the original XAML Studio renderer and the Uno WPF host |
+| XAML Studio ProGPU port | `src/AddIns/DisplayBindings/WinUIXamlDesigner/XamlStudio.Toolkit.ProGPU/` | Standalone ProGPU WinUI runtime assembly; directly links the submodule's renderer models/preprocessing, adapts the instantiation boundary to the ProGPU XAML compiler, and does not depend on the Uno runtime |
+| ProGPU-in-WPF host | `src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.ProGPUHost/` | Standalone WPF control implemented: offscreen WebGPU render, DPI/resize, BGRA presentation, mouse/wheel/text/focus forwarding, and deterministic disposal; `ProGpuXamlExecutor` now drives the ProGPU XAML compiler and the collectible preview-assembly session |
+| ProGPU XAML packages | `librewpf/artifacts/local-feed` | `ProGPU.Xaml`, `ProGPU.Xaml.Roslyn`, `ProGPU.Xaml.Workspaces`, and `ProGPU.WinUI.Designer` are packed locally from the same preview.47 upstream commit that produced the published feed |
 
-### WinForms round-trip 与 Toolbox 的实际状态
+### Actual State of WinForms Round-Trip and Toolbox
 
-此前所谓“尚未恢复”来自 `FormsDesigner.csproj` 中已经过时的排除注释，而不是当前实现。
-实际链路如下：
+The earlier claim that this was "not yet restored" came from an outdated exclusion comment in `FormsDesigner.csproj`, not from the current implementation. The actual pipeline is:
 
-- `CSharpBinding.FormsDesigner.RoslynFormsDesignerSecondaryDisplayBinding` 用 Roslyn 判断 C#
-  partial class 是否可设计；
-- `RoslynDesignerLoader` 读取主文件与 `.Designer.cs`，把 `InitializeComponent` 的受支持子集
-  转成 CodeDOM object graph，保存时重写方法和新增字段；
-- `FormsDesignerViewContent.ToolsContent` 暴露共享 `WpfToolbox`；后者显示 WinForms 分类，
-  通过真实 `System.Drawing.Design.IToolboxService` 和 WPF/WinForms drag bridge 创建控件；
-- `DragToolboxItem_OntoWinFormsDesignSurface_AddsControlToForm` 端到端验证拖放、可见尺寸、
-  保存进 `.Designer.cs` 及 tool selection reset。
+- `CSharpBinding.FormsDesigner.RoslynFormsDesignerSecondaryDisplayBinding` uses Roslyn to decide whether a C# partial class is designable;
+- `RoslynDesignerLoader` reads the main file and `.Designer.cs`, converts a supported subset of `InitializeComponent` into a CodeDOM object graph, and rewrites methods and added fields on save;
+- `FormsDesignerViewContent.ToolsContent` exposes the shared `WpfToolbox`; the latter shows WinForms categories and creates controls through a real `System.Drawing.Design.IToolboxService` and a WPF/WinForms drag bridge;
+- `DragToolboxItem_OntoWinFormsDesignSurface_AddsControlToForm` verifies end-to-end drag-drop, visible sizing, persistence into `.Designer.cs`, and tool-selection reset.
 
-本次审计补上了 FormsDesigner DevFlow action 的启动预加载，避免 AddIn 惰性加载晚于 DevFlow
-一次性 action discovery 而造成测试 404。
+This audit also added startup preloading for the FormsDesigner DevFlow actions, so that lazy AddIn loading does not lag behind DevFlow's one-shot action discovery and cause test 404s.
 
-旧的实现曾是“Roslyn parser + CodeDOM serializer bridge”；该实现已经被替换。OpenDevelop 的
-目标比微软 17.5 的“Roslyn code generator”更进一步：活动的 WinForms backend 不再把 CodeDOM
-当作中间模型。新的 `RoslynFormsDesignerLoader` 直接派生
-`BasicDesignerLoader`，而不是 `CodeDomDesignerLoader`；读取端把 project `Document` 的 syntax /
-semantic model 投影为组件图，保存端从组件图生成 C# syntax tree。旧 CodeDOM generator
-产生的 `this.`、全限定类型和显式 delegate 必须作为兼容输入被接受，但第一次 designer 保存
-就迁移为 Roslyn 风格；不会为了兼容旧文件而回退到 CodeDOM serialization。
+The old implementation was a "Roslyn parser + CodeDOM serializer bridge"; it has been replaced. OpenDevelop's goal goes further than Microsoft 17.5's "Roslyn code generator": the active WinForms backend no longer treats CodeDOM as an intermediate model. The new `RoslynFormsDesignerLoader` derives directly from `BasicDesignerLoader`, not `CodeDomDesignerLoader`; on the read side it projects the project `Document`'s syntax/semantic models into a component graph, and on the save side it generates a C# syntax tree from the component graph. The `this.` prefixes, fully qualified types, and explicit delegates produced by the old CodeDOM generator must be accepted as compatible input, but the first designer save migrates to the Roslyn style; it will not fall back to CodeDOM serialization for compatibility with old files.
 
-实现需要使用 project `Document`/`Workspace`、compilation、Simplifier、Formatter 和
-AnalyzerConfigOptions，并只替换带 annotation 的字段与 `InitializeComponent`。资源读写也要从
-`ProjectResourcesComponentCodeDomSerializer` / `ProjectResourcesMemberCodeDomSerializer` 中
-提炼成了与语法树无关的 `RoslynDesignerResourceModel`，由 Roslyn backend 处理
-`ComponentResourceManager.ApplyResources`。仍待完成的是接入完整 project Workspace /
-`.editorconfig`、VB backend，以及微软新版 generator 的异步/并行、`nameof`、高 DPI 工作。
+The implementation uses the project `Document`/`Workspace`, compilation, Simplifier, Formatter, and AnalyzerConfigOptions, and replaces only annotated fields and `InitializeComponent`. Resource reading/writing was also extracted from `ProjectResourcesComponentCodeDomSerializer` / `ProjectResourcesMemberCodeDomSerializer` into a syntax-tree-independent `RoslynDesignerResourceModel`, which the Roslyn backend uses to handle `ComponentResourceManager.ApplyResources`. Still pending are wiring the full project Workspace / `.editorconfig`, the VB backend, and the async/parallel, `nameof`, and high-DPI work from Microsoft's newer generator.
 
-核心 backend 不把 `System.CodeDom` 作为文档模型；集成测试同时断言运行时 loader 不是
-`CodeDomDesignerLoader`。旧 loader 不作为运行时 fallback。出于第三方 WinForms 控件生态兼容，
-显式声明的自定义 `CodeDomSerializer` 允许在 `LegacyCodeDomSerializerAdapter` 边界内运行；其
-短生命周期输出立即转换成 Roslyn statements 并丢弃，最终仍由 Roslyn formatter / project
-document 写回。无法转换的返回形状会阻止保存并报告 serializer/control 类型，不能静默丢属性。
+The core backend does not use `System.CodeDom` as its document model; the integration test also asserts that the runtime loader is not a `CodeDomDesignerLoader`. The old loader is not a runtime fallback. For compatibility with the third-party WinForms control ecosystem, explicitly declared custom `CodeDomSerializer`s are allowed to run inside a `LegacyCodeDomSerializerAdapter` boundary; their short-lived output is immediately converted into Roslyn statements and discarded, with the final write-back still done by the Roslyn formatter / project document. Return shapes that cannot be converted block saving and report the serializer/control type — properties are never silently dropped.
 
-### UnoDevelop 可复用的经验
+### Reuse Boundary with UnoDevelop and XAML Studio
 
-UnoDevelop 的 `src/AddIns/DisplayBindings/XamlDesigner/` 已实现原生
-`Microsoft.UI.Xaml` 的 Source/Design secondary view、`XamlReader` 预览、Toolbox provider、
-Outline provider、Properties Pad 联动及集成测试。它证明了 XAML Studio 的交互和算法可以
-在 WinUI/Uno 上重建，也给出了 IDE 契约的参考形状。
+UnoDevelop's `src/AddIns/DisplayBindings/XamlDesigner/` has implemented native `Microsoft.UI.Xaml` Source/Design secondary views, a Toolbox provider, an Outline provider, Properties Pad wiring, and integration tests. OpenDevelop reuses that IDE wiring approach but does not re-implement the renderer: the original `XamlRenderService` in `externals/xamlstudio/XamlStudio.Toolkit/Services/XamlRenderService/` and its models/extensions are the upstream code, consumed through linked source or a standalone toolkit project, with only the narrow adaptations required to compile. Its algorithms must not be rewritten as a WPF XAML parser, nor maintained as a behavior-forked copy.
 
-但 UnoDevelop 的 UI 文件不能直接链接进 OpenDevelop：前者的控件类型是
-`Microsoft.UI.Xaml.*`，后者的 shell 和文档视图是 `System.Windows.*`。应优先提取无 UI
-依赖的模型、XAML 文本变换和测试 fixture，再分别保留 WinUI 与 WPF host adapter。
+UnoDevelop/XAML Studio's UI files cannot directly become OpenDevelop WPF visuals: the former's control types are `Microsoft.UI.Xaml.*`, while the latter's shell and document views are `System.Windows.*`. The two visual trees must be isolated by an explicit host, similar to how the WinForms designer embeds WPF through `WindowsFormsHost` rather than loading WinForms controls as WPF controls.
 
-## 外部参考与依赖
+## External References and Dependencies
 
 ```text
 externals/
-├── XAMLStudio/       UWP/Windows.UI.Xaml 参考实现；只参考交互、算法和资源
+├── xamlstudio/       `https://github.com/lextudio/xamlstudio` submodule; linked reuse of the original renderer source
 ├── vscode-wpf/
-│   ├── external/WpfDesigner/   OpenDevelop 的 WPF designer engine
-│   └── external/wxsg/          XAML language services 与 framework profiles
-└── AXSG（由 wxsg 间接包含）    XAML 分析/生成基础
+│   ├── external/WpfDesigner/   OpenDevelop's WPF designer engine
+│   └── external/wxsg/          XAML language services and framework profiles
+└── AXSG (included transitively by wxsg)    XAML analysis/generation foundation
 ```
 
-XAML Studio 使用 `Windows.UI.Xaml`，不能直接编译进使用 `Microsoft.UI.Xaml` 的 WinUI 3
-backend，也不能直接编译进 WPF shell。可移植的是设计思路和 UI-free 代码，而不是命名空间
-替换后的整批源码。
+The submodules are pinned to the WinUI migration commit of `origin/unodevelop`, and the XAML Studio renderer already uses `Microsoft.UI.Xaml`; it still cannot compile into the WPF shell, but should compile into a standalone WinUI/Uno renderer assembly. Upstream still contains UWP Storage/Media assumptions; the port should isolate those APIs behind small platform adapters while preserving upstream file identity and licenses; it must not be replaced by WPF's `System.Windows.Markup.XamlReader`.
 
-## ProGPU / WinUI：先验证，再决定 host
+OpenDevelop owns the `externals/xamlstudio` submodule directly; it must not fetch source indirectly through a sibling directory in the UnoDevelop parent repository. The current ingestion baseline is commit `d711d64fed7d07d5c2dda545d255d1007588ab78`; when upgrading the submodule, the renderer compilation, standard control rendering, and error-recovery tests must be re-run.
 
-ProGPU 已让 LibreWPF/LibreWinForms 在非 Windows 环境具备可运行的渲染基础，但“ProGPU
-具备 WinUI 相关支持”并不自动证明以下能力已经成立：
+## WinUI/Uno Host Decision
 
-- OpenDevelop 的 WPF visual tree 能直接承载 `Microsoft.UI.Xaml.UIElement`；
-- `Microsoft.UI.Xaml.Markup.XamlReader.Load` 能在 OpenDevelop 的目标平台和线程模型中工作；
-- WinUI dispatcher、resource lookup、XamlRoot、输入、焦点和 DPI 能嵌入 WPF 文档 tab；
-- 加载被设计项目的自定义控件时，依赖和 `x:Bind`/code-behind 能被安全隔离。
+The designer runtime uses the special `Microsoft.UI.Xaml` implementation of `ProGPU.WinUI`, not the Uno runtime or `Uno.Sdk`. Uno Platform is only a supported project profile whose shared WinUI XAML is previewed by the ProGPU runtime. ProGPU currently materializes pages through the XAML compiler/Roslyn preview assembly and does not provide `Microsoft.UI.Xaml.Markup.XamlReader`; therefore XAML Studio's preprocessing, binding inspection, diagnostics, and result model remain as original linked source, while the final instantiation point connects to the ProGPU pipeline through `IProGpuXamlExecutor`. The WPF hosting part is built on the ProGPU render surface/`IWindowHost` and plays a role similar to `WindowsFormsHost`.
 
-在选择架构前必须建立一个最小 spike，并记录所用 ProGPU 包/commit 和目标平台矩阵。验收项：
+The current hosting control uses `WgpuContext`, `ProGPU.Scene.Compositor.RenderOffscreen`, and a WPF `WriteableBitmap`. Each arrange rebuilds the render target at the WPF DPI; WPF mouse/wheel/text/focus events are converted into ProGPU `InputSystem` events; unload/dispose cancels the frame callback and releases the staging buffers, textures, compositor, and context. The first version uses GPU-to-CPU readback to verify correctness first; later it should switch to same-device texture sharing between LibreWPF and ProGPU to avoid per-frame synchronous readback.
 
-1. 在 OpenDevelop 进程中创建 WinUI `Application`/dispatcher，并用 `XamlReader.Load` 渲染
-   仅含标准控件的页面。
-2. 将该 visual 显示在 WPF 文档区域，验证 resize、输入、焦点、DPI 和主题资源。
-3. 连续加载有效/无效 XAML，验证异常不会污染 IDE，且能恢复最后一次有效预览。
-4. 卸载文档后检查线程、窗口、事件和 collectible load context 是否释放。
-5. 至少在 Windows 与当前 ProGPU 支持的非 Windows 目标各运行一次。
+The former dependency gap is closed. The published `0.1.0-preview.47` feed was built from the
+`wieslawsoltes/ProGPU` branch `openwpf` at commit `bab4dbef993f2b2d722ff46689021604c2e9b947`
+(recorded in the `ProGPU.WinUI` nuspec `<repository>` element); that branch no longer exists on
+GitHub, but the commit is still fetchable, and at that commit `ProGPU.Xaml`, `ProGPU.Xaml.Roslyn`,
+`ProGPU.Xaml.Workspaces`, and `ProGPU.WinUI.Designer` all exist and are already marked
+`IsPackable=true`. They were simply never published. OpenDevelop therefore hosts them itself:
+they are packed from that exact commit and dropped into the same local feed as
+`0.1.0-preview.47`, so there is no version drift and `LibreWPF.ProGPU` preview.41 — which was
+compiled against ProGPU preview.47 — keeps its binary-compatible dependency closure. The
+`ProGPU.*` pattern already present in `NuGet.config`'s `packageSourceMapping` covers the new
+packages without configuration changes. Upstream's default branch has since moved to
+preview.48 and still marks all four packable; if ProGPU ever publishes them, the local copies
+should be dropped rather than upgraded piecemeal.
 
-根据结果二选一：
+Note that ProGPU exposes **no** runtime XAML parser: `ProGPU.WinUI` contains a
+`Microsoft.UI.Xaml.Markup` namespace and a `MarkupExtension` base type, but no `XamlReader`,
+no `LoadComponent`, and no `IXamlMetadataProvider`. Materialization is only ever
+compiler-driven, which is why `IProGpuXamlExecutor` is the correct seam.
 
-- **方案 A：进程内 host**。仅在 ProGPU 明确提供 WPF/WinUI interop host 且上述 spike 全部
-  通过时采用。新增 WPF `WinUIDesignerViewContent` adapter，WinUI renderer 保持独立程序集。
-- **方案 B：进程外 preview host**。若对象模型或 dispatcher 不能安全共存，启动一个小型
-  WinUI/Uno preview process，通过 JSON-RPC 发送 XAML、项目上下文、viewport 和 selection，
-  通过原生子窗口或捕获画面承载预览。此方案隔离性更好，也更适合加载用户程序集。
+- OpenDevelop's WPF visual tree does not host `Microsoft.UI.Xaml.UIElement` directly;
+- WinUI dispatcher, resource lookup, XamlRoot, input, focus, and DPI can be embedded into a WPF document tab;
+- when loading custom controls of the designed project, dependencies and `x:Bind`/code-behind can be safely isolated.
 
-在 spike 完成前，文档不得把方案 A 标记为既定实现；方案 B 是必须保留的 fallback。
+Implementation order and acceptance items:
 
-## 目标架构
+1. Establish a standalone renderer/host assembly that links the XAML Studio renderer source files and renders pages containing only standard controls through the ProGPU XAML compiler/preview assembly pipeline.
+2. Display the render surface in the WPF document area with the new ProGPU-in-WPF host; verify resize, input, focus, DPI, and theme resources.
+3. Load valid/invalid XAML in succession and verify that exceptions never pollute the IDE and that the last valid preview can be restored.
+4. After unloading a document, check that threads, windows, events, and the collectible load context are released.
+5. Run at least once on Windows and on each non-Windows target ProGPU currently supports.
+
+The host stays replaceable:
+
+- **Preferred: in-process ProGPU WPF host.** Add a WPF hosting control similar to `WindowsFormsHost`; the renderer stays a separate assembly; this path serves both WinUI and Uno project profiles.
+- **Option B: out-of-process preview host.** If the object models or dispatchers cannot safely coexist, launch a small WinUI/Uno preview process that exchanges XAML, project context, viewport, and selection over JSON-RPC, hosting the preview in a native child window or a captured surface. This option isolates better and is also more suitable for loading user assemblies.
+
+Option B is the fallback for loading untrusted project assemblies and for native Windows App SDK-specific behavior; on Windows a `DesktopWindowXamlSource` adapter can also be added behind the same host contract. The WPF `XamlReader` compatibility renderer that was implemented at one point is not part of any official path: it conflates the object models, resource semantics, and control capabilities, and must be deleted — tests must not treat its successful rendering as a successful WinUI/Uno designer.
+
+### Designer Chrome Decision
+
+`ProGPU.WinUI.Designer` ships a complete in-surface designer: `DesignerHost`, `DesignerCanvas`,
+`SelectionAdorner`, `PanelDragEditor`, `PropertyGrid`, `Toolbox`, `VisualTreeOutline`,
+`DesignerSerializer`, and `VirtualizedCodeEditor`. Those chrome widgets are `Microsoft.UI.Xaml`
+controls, so adopting them wholesale would render the Toolbox and Properties **inside** the
+ProGPU surface and leave OpenDevelop's own pads empty — inconsistent with the WinForms and WPF
+designers and contrary to the shared IDE-experience goal.
+
+The decision is therefore **split chrome**: consume `WinUiXamlLivePreviewSession` for
+materialization and (later) `DesignerCanvas`/`SelectionAdorner`/`PanelDragEditor` for the design
+surface, but **not** ProGPU's `PropertyGrid`, `Toolbox`, or `VisualTreeOutline`. Toolbox,
+Properties, and Outline are served through OpenDevelop's existing shell contracts —
+`IToolsHost.ToolsContent`, `IHasPropertyContainer.PropertyContainer`, and
+`IOutlineContentHost.OutlineContent` — exactly as `WpfViewContent` does.
+
+Design-surface picking uses ProGPU's public `InputSystem.HitTest`, and maps the hit visual back
+to the document through the WinUI namescope: the emitter never assigns `FrameworkElement.Name`, it
+publishes names via `XamlTemplateFactory.RegisterName`, so `root.FindName(x)` is the supported way
+back. Only the x:Name **string** crosses the host boundary - never a `Microsoft.UI.Xaml` object -
+and a pick walks up to the nearest ancestor that exists in the source, because a hit normally lands
+on a control-template part with no counterpart in the document. A surface pick and an Outline pick
+call the same `SelectElement(name)`, so there is one selection concept rather than two.
+
+Because that name map holds strong references to preview elements, it must be cleared before the
+collectible preview assembly is unloaded; `WinUiXamlLivePreviewSession.Reset` requires the caller
+to have detached the root first, and otherwise the whole ALC stays pinned. `LiveHostCount` and a
+weak reference to the last preview root are exposed as lifecycle probes so
+`WinUIDesigner_ClosingDocument_ReleasesRuntimeHostAndPreviewAssembly` can assert this for real
+rather than merely observing that nothing crashed.
+
+`WinUIXamlElementPropertyAdapter` backs the Properties pad with the XAML **source** element
+(`System.Xml.Linq` only) rather than the live ProGPU visual. This keeps `Microsoft.UI.Xaml` out of
+the shell and makes every property change a source mutation that re-parses, re-renders, and can
+be undone.
+
+## Target Architecture
 
 ```text
                          OpenDevelop Workbench
@@ -135,97 +159,87 @@ ProGPU 已让 LibreWPF/LibreWinForms 在非 Windows 环境具备可运行的渲�
        ┌──────┴──────┬───────────────┐
        │             │               │
  WinForms backend  WPF backend   WinUI backend
- FormsDesigner     WpfDesign     in-proc adapter or preview RPC
+ FormsDesigner     WpfDesign     WPF host adapter or preview RPC
        │             │               │
- WinForms object   WPF XamlDom    WinUI XAML document model
- model/services    and designer   + isolated renderer
+ WinForms object   WPF XamlDom    XAML Studio renderer
+ model/services    and designer   + isolated WinUI/Uno runtime
 ```
 
-应从 UnoDevelop 已验证的 provider 模式中提炼并放到 shell/base 层的 framework-neutral 契约：
+The framework-neutral contracts should be extracted from the provider patterns UnoDevelop has already validated and placed in the shell/base layer:
 
-- `IDesignerProvider`：CanDesign、创建 secondary view、生命周期和保存；
-- `IDesignerToolboxProvider`：分类、工具项和 framework-specific insertion payload；
-- `IDesignerSelectionService`：当前 selection 与 selection change；
-- `IDesignerPropertyAdapter`：把 backend 对象暴露给统一 Properties Pad；
-- `IDesignerOutlineProvider`：元素/控件树及源码定位；
-- `IDesignerDocumentSynchronizer`：文本版本、解析结果、selection 与 mutation 的双向同步。
+- `IDesignerProvider`: CanDesign, creating the secondary view, lifecycle, and saving;
+- `IDesignerToolboxProvider`: categories, tool items, and framework-specific insertion payloads;
+- `IDesignerSelectionService`: the current selection and selection changes;
+- `IDesignerPropertyAdapter`: exposing backend objects to the unified Properties Pad;
+- `IDesignerOutlineProvider`: the element/control tree and source locations;
+- `IDesignerDocumentSynchronizer`: bidirectional synchronization of text versions, parse results, selection, and mutations.
 
-契约中不能出现三种 UI framework 的具体类型；使用 opaque handle、descriptor 和文本 edit。
-已有 `IToolboxProvider`、`IOutlineContentHost` 等契约能够满足需求时应扩展或适配它们，不再
-平行创建同义接口。
+Concrete types from the three UI frameworks must not appear in the contracts; use opaque handles, descriptors, and text edits. When existing contracts such as `IToolboxProvider` and `IOutlineContentHost` can satisfy a need, extend or adapt them instead of creating parallel synonymous interfaces.
 
-## Framework 检测与路由
+## Framework Detection and Routing
 
-`.xaml` 同时可能是 WPF、WinUI 或 Uno，不能以扩展名决定 designer/LSP。路由顺序应是：
+`.xaml` can equally be WPF, WinUI, or Uno, so the designer/LSP cannot be chosen by extension. The routing order should be:
 
-1. 读取 owning project 的 SDK、TFM、PackageReference 和 XAML item metadata；
-2. 优先识别 Uno（Uno 项目也包含 `Microsoft.UI.Xaml`，否则会被误判为 WinUI）；
-3. 识别 WinUI/Windows App SDK，再识别 WPF；
-4. loose XAML 无项目上下文时让用户选择 profile，或只开 source、不给出错误 designer；
-5. designer 与 language server 必须消费同一个 detection result，不能各自重新猜测。
+1. Read the owning project's SDK, TFM, PackageReferences, and XAML item metadata;
+2. Detect Uno first (Uno projects also contain `Microsoft.UI.Xaml` and would otherwise be misclassified as WinUI);
+3. Then detect WinUI/Windows App SDK, then WPF;
+4. For loose XAML with no project context, let the user choose the profile, or open source-only without offering a wrong designer;
+5. The designer and the language server must consume the same detection result and must not each re-guess independently.
 
-建议统一结果为 `XamlFrameworkKind`（Wpf、WinUI、Uno、Unknown）和带证据的
-`XamlFrameworkContext`。OpenDevelop 的新 backend 从第一阶段就同时承诺 WinUI 3 与 Uno
-Platform 项目：二者共享 `Microsoft.UI.Xaml` object model、presentation namespace 和大量控件，
-但必须保留独立 profile。Uno profile 的检测优先级高于 WinUI，并负责 Uno SDK、目标平台、
-`Uno.WinUI` 版本和 Uno-specific resource/custom-control resolution；不能把 Uno 项目仅当作
-普通 WinUI 项目误判后碰运气加载。
+The suggested unified result is `XamlFrameworkKind` (Wpf, WinUI, Uno, Unknown) plus an evidence-backed `XamlFrameworkContext`. OpenDevelop's new backend commits to both WinUI 3 and Uno Platform projects from the first phase: they share the `Microsoft.UI.Xaml` object model, presentation namespace, and most controls, but must keep separate profiles. The Uno profile has higher detection priority than WinUI and is responsible for the Uno SDK, target platforms, `Uno.WinUI` versions, and Uno-specific resource/custom-control resolution; Uno projects must not be treated as ordinary WinUI projects and loaded by luck after misdetection.
 
-## WinUI backend 的分层
+## WinUI Backend Layering
 
-| 层 | 职责 | 可复用来源 |
+| Layer | Responsibility | Reusable Source |
 |---|---|---|
-| Document model | XML/XAML 节点、稳定 ID、source span、诊断、文本 edits | AXSG/wxsg 与 UnoDevelop 的 UI-free 逻辑 |
-| Render protocol | Load/Update、viewport、theme、diagnostics、visual-tree snapshot、selection | 新建，兼容进程内和进程外实现 |
-| Renderer | `Microsoft.UI.Xaml.Markup.XamlReader`、资源和控件实例化 | UnoDevelop `XamlDesigner` 与 XAML Studio 的经验 |
-| OpenDevelop adapter | WPF secondary view、Toolbox/Outline/Properties wiring | OpenDevelop shell + provider contracts |
-| Editing operations | insert、delete、move、resize、set property 转为 versioned text edits | 三个 backend 共享命令语义，各自生成 edit |
+| Document model | XML/XAML nodes, stable IDs, source spans, diagnostics, text edits | AXSG/wxsg and UnoDevelop's UI-free logic |
+| Render protocol | Load/Update, viewport, theme, diagnostics, visual-tree snapshot, selection | New; compatible with both in-process and out-of-process implementations |
+| Renderer | Original `XamlRenderService` preprocessing/binding inspection, plus ProGPU compiler-driven instantiation (there is no runtime `XamlReader`) | Linked XAML Studio toolkit source + `ProGPU.Xaml.Roslyn`/`ProGPU.Xaml.Workspaces` |
+| Runtime host | ProGPU WinUI visual root, render surface, WPF interop; does not parse XAML | New ProGPU-in-WPF host, replaceable by preview RPC/Windows adapter |
+| OpenDevelop adapter | WPF secondary view, host lifecycle, Toolbox/Outline/Properties wiring | OpenDevelop shell + provider contracts |
+| Editing operations | Insert, delete, move, resize, set property → versioned text edits | Three backends share command semantics; each generates its own edits |
 
-不要把运行时 visual tree 当作唯一文档模型。每次操作最终必须生成可撤销的源码 edit；重新
-解析后再刷新预览。这样可以支持无效的中间文本、Undo/Redo、格式保留和进程外 renderer。
+Do not treat the runtime visual tree as the only document model. Every operation must ultimately produce an undoable source edit; re-parse and refresh the preview afterwards. This supports invalid intermediate text, Undo/Redo, formatting preservation, and out-of-process renderers.
 
-自定义控件、merged dictionaries、`x:Bind` 和 code-behind 不应进入首个 milestone。
-首版只加载安全白名单内的标准控件和资源，并对不支持的节点显示诊断/placeholder。
+Custom controls, merged dictionaries, `x:Bind`, and code-behind should not enter the first milestone. The first version loads only the standard controls and resources on a safe allowlist and shows diagnostics/placeholders for unsupported nodes.
 
-## 分阶段实施
+## Phased Implementation
 
-| Phase | 内容 | 完成标准 | 状态 |
+| Phase | Content | Completion Criteria | Status |
 |---|---|---|---|
-| 0 | 修正文档并盘点三套 backend | 明确 OpenDevelop/UnoDevelop 边界和已知缺口 | done |
-| 1 | ProGPU/WinUI host spike | 形成可重复 demo、平台矩阵和 A/B 架构决策 | todo |
-| 2 | 统一 framework detection | designer 与 LSP 对同一项目得到相同 profile；含 WPF/WinUI/Uno/Unknown 测试 | todo |
-| 3 | 提炼通用 provider/selection/sync 契约 | WPF 与 WinForms backend 通过 adapter 接入且无功能回退 | todo |
-| 4 | WinUI/Uno 只读 MVP | 两种 profile 均支持 Source/Design、标准控件预览、诊断、刷新、最后有效预览、Outline | todo |
-| 5 | WinUI/Uno 基础编辑 | 两种 profile 的 Toolbox 插入、选择、Properties 修改、删除、Undo/Redo 均落为源码 edit | todo |
-| 6 | 三类 designer 补齐 | WinForms VB backend 与现代 Roslyn codegen；WPF/WinUI/Uno 基础体验一致 | todo |
-| 7 | 高级 WinUI/Uno | 两种 profile 的项目资源、自定义控件、隔离加载；评估 `x:Bind`/code-behind | backlog |
+| 0 | Fix the docs and inventory the three backends | Clear OpenDevelop/UnoDevelop boundaries and known gaps | done |
+| 1 | WinUI/Uno host spike | Both the WPF compatibility renderer and Uno runtime routes are abandoned; the ProGPU-in-WPF host renders standard controls through the XAML Studio + ProGPU pipeline. Verified end-to-end against `src/Samples/UnoXamlSample/MainPage.xaml` on macOS: detected as Uno, compiled by ProGPU, materialized into a WinUI `FrameworkElement`, rendered offscreen, and presented into the WPF document tab | done |
+| 2 | Unified framework detection | `XamlFrameworkDetector` routes in Uno→WinUI→WPF order; unit tests for WPF/WinUI/Uno/Unknown added; LSP consuming the same result still pending | partial |
+| 3 | Extract common provider/selection/sync contracts | WPF and WinForms backends wire in through adapters with no feature regression | todo |
+| 4 | WinUI/Uno read-only MVP | AddIn/Source/Design routing, ProGPU materialization, diagnostics, last-good preview retention, Outline, and Source-to-Design refresh are all in place and covered by integration tests | done |
+| 5 | WinUI/Uno basic editing | Toolbox insertion, selection, Properties changes, deletion and Undo/Redo all land as source edits, driven through the shell's shared Toolbox and Properties pads. Selection works from the Outline *and* by clicking the rendered surface, and Toolbox insertion works via a real synthetic mouse drag that resolves the drop point to the container under the cursor. Covered by `WinUIDesigner_ToolboxInsertSelectEditDeleteUndoRedo_AllLandAsSourceEdits`, `WinUIDesigner_ClickOnDesignSurface_SelectsSourceElementInPropertiesPad` and `WinUIDesigner_DragToolboxItemOntoDesignSurface_InsertsIntoDroppedContainer` | done |
+| 6 | Complete all three designers | WinForms VB backend with modern Roslyn codegen; consistent base experience for WPF/WinUI/Uno | todo |
+| 7 | Advanced WinUI/Uno | Project resources, custom controls, and isolated loading for both profiles; evaluate `x:Bind`/code-behind | backlog |
 
-Phase 3 不应阻塞 Phase 1 的 spike；但正式 WinUI addin 不应在没有 framework detection 和
-document synchronization 契约的情况下直接复制 UnoDevelop view。
+Phase 3 must not block the Phase 1 spike; but the production WinUI addin must not directly copy the UnoDevelop view without framework detection and document-synchronization contracts.
 
-## 测试矩阵
+## Test Matrix
 
-每个 backend 至少覆盖：
+Each backend must cover at least:
 
-- 正确项目打开正确 designer，错误 framework 不抢占；
-- 有效、无效及由无效恢复为有效的文档；
-- Source/Design 切换和同一文档的未保存修改；
-- Toolbox、selection、Properties、Outline 和源码位置联动；
-- Undo/Redo、保存、关闭、重开及资源释放；
-- 不含 designer 的普通 `.cs`/`.xml` 文件不出现残留 provider；
-- host 崩溃或 renderer 超时不导致 OpenDevelop 退出（进程外方案）；
-- Windows 与 ProGPU 声称支持的非 Windows 平台分别有 smoke test。
+- The right project opens the right designer, and the wrong framework never takes over;
+- Valid, invalid, and invalid→valid recovery documents;
+- Source/Design switching and unsaved modifications of the same document;
+- Toolbox, selection, Properties, Outline, and source-location coordination;
+- Undo/Redo, save, close, reopen, and resource disposal;
+- Plain `.cs`/`.xml` files without a designer show no leftover providers;
+- A host crash or renderer timeout does not exit OpenDevelop (out-of-process option);
+- Smoke tests on Windows and on each non-Windows platform ProGPU claims to support.
 
-WinUI 集成测试可复用 UnoDevelop fixture 的意图，但测试必须运行 OpenDevelop 自己的 app 和
-backend，不能以 UnoDevelop 测试通过代替 OpenDevelop 验收。
+WinUI integration tests may reuse the intent of the UnoDevelop fixture, but the tests must run OpenDevelop's own app and backends; passing UnoDevelop's tests cannot substitute for OpenDevelop acceptance.
 
-## 完成定义
+## Definition of Done
 
-“OpenDevelop 支持 WinForms/WPF/WinUI designer”只有在以下条件同时满足时才能宣告：
+"OpenDevelop supports WinForms/WPF/WinUI designers" can only be declared when all of the following hold:
 
-- 三类真实项目能被稳定识别并打开正确设计面；
-- 每类至少具备预览、选择、Properties、Toolbox 插入、源码同步和 Undo/Redo；
-- unsupported XAML 给出诊断而不是使 IDE 崩溃；
-- framework-specific 类型没有泄漏进通用 shell 契约；
-- 自动化测试覆盖路由、编辑 round-trip、生命周期和目标平台；
-- 文档记录实际使用的 ProGPU/LibreWPF/WinUI 版本以及仍不支持的功能。
+- Three real project types are reliably identified and open the correct design surfaces;
+- Each type has at least preview, selection, Properties, Toolbox insertion, source synchronization, and Undo/Redo;
+- Unsupported XAML produces diagnostics instead of crashing the IDE;
+- Framework-specific types do not leak into the common shell contracts;
+- Automated tests cover routing, editing round-trips, lifecycle, and target platforms;
+- The docs record the actual ProGPU/LibreWPF/WinUI versions in use and the features still unsupported.

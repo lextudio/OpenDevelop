@@ -68,9 +68,13 @@ public sealed class WorkbenchTests
         }
 
         Assert.True(result.GetProperty("success").GetBoolean(), "od.build-solution reported an infrastructure failure, not a build failure");
-        Assert.Equal("Success", result.GetProperty("result").GetString());
-        Assert.Equal(0, result.GetProperty("errorCount").GetInt32());
-        Assert.Equal(0, result.GetProperty("warningCount").GetInt32());
+        // Report the compiler's own output rather than just "Success vs Error" - see DescribeBuildAsync.
+        if (result.GetProperty("result").GetString() != "Success"
+            || result.GetProperty("errorCount").GetInt32() != 0
+            || result.GetProperty("warningCount").GetInt32() != 0)
+        {
+            Assert.Fail(await _app.DescribeBuildAsync(result));
+        }
         Assert.Empty(result.GetProperty("diagnostics").EnumerateArray());
 
         // --- was: BuildSolution_OutputPadCapturesRealBuildLog ---
@@ -105,7 +109,9 @@ public sealed class WorkbenchTests
 
         // --- was: ErrorList_IsEmptyAfterCleanBuild ---
         var errorList = await _app.InvokeAsync("od.error-list");
-        Assert.Equal(0, errorList.GetProperty("errorCount").GetInt32());
+        if (errorList.GetProperty("errorCount").GetInt32() != 0)
+            Assert.Fail("Error List was not empty after a clean build. " + errorList + Environment.NewLine
+                + await _app.DescribeBuildAsync(result));
 
         // --- was: BuildSolution_UnknownProjectNameReturnsError ---
         var unknownProjectResult = await _app.InvokeAsync("od.build-solution", "NoSuchProject");
@@ -1038,7 +1044,8 @@ public sealed class WorkbenchTests
             // Fix the code and build again, WITHOUT calling od.error-list.clear first.
             TryDelete(brokenFilePath);
             var secondBuildResult = await _app.InvokeAsync("od.build-solution");
-            Assert.Equal(0, secondBuildResult.GetProperty("errorCount").GetInt32());
+            if (secondBuildResult.GetProperty("errorCount").GetInt32() != 0)
+                Assert.Fail(await _app.DescribeBuildAsync(secondBuildResult));
 
             var afterFixedBuild = await _app.InvokeAsync("od.error-list");
             Assert.True(afterFixedBuild.GetProperty("errorCount").GetInt32() > 0,

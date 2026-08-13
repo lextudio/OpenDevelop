@@ -64,6 +64,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     public string SlnxFixturePath { get; } = LocateSlnxFixture();
     public string WpfSampleSolutionPath { get; } = LocateWpfSampleSolution();
     public string WinFormsSampleSolutionPath { get; } = LocateWinFormsSampleSolution();
+    public string UnoXamlSampleSolutionPath { get; } = LocateUnoXamlSampleSolution();
     public string GitFixtureTemplatePath { get; } = LocateGitFixtureTemplate();
     public string FSharpFixtureSolutionPath { get; } = LocateFSharpFixture();
     public string VBFixtureSolutionPath { get; } = LocateVBFixture();
@@ -85,6 +86,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         // (racy) behavior, and says so in the app log so it is diagnosable rather than silent.
         _gateHeld = await FixtureGate.WaitAsync(TimeSpan.FromSeconds(300));
 
+        CaptureFixtureBaseline();
         StopApp();
         await WaitForPortFreeAsync(TimeSpan.FromSeconds(30));
         DeleteStaleViewStateMemento();
@@ -183,7 +185,100 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
             FixtureGate.Release();
         }
         await Task.CompletedTask;
+        VerifyFixturesUnchanged();
     }
+
+    #region Fixture integrity
+
+    // tests/fixtures is tracked source, but the app under test writes to disk (od.rename-symbol
+    // and od.extract-interface apply edits with ApplyEditsToFile). A test - or a product bug -
+    // that mutates a fixture leaves the working tree dirty, and the NEXT run then starts from
+    // poisoned input: a single stray rename of Widget.cs was measured to fail 4-8 otherwise
+    // unrelated tests on the following run, which is why this suite's failure set kept changing
+    // between runs. Silent contamination is the problem, so this reports the damage against the
+    // run that caused it, and restores the tree so the next run is clean regardless.
+    string? _fixtureBaseline;
+
+    void CaptureFixtureBaseline() => _fixtureBaseline = ReadFixtureStatus();
+
+    void VerifyFixturesUnchanged()
+    {
+        if (_fixtureBaseline is null)
+            return;
+        var current = ReadFixtureStatus();
+        if (current is null || string.Equals(current, _fixtureBaseline, StringComparison.Ordinal))
+            return;
+
+        var diff = RunGit("diff -- tests/fixtures") ?? "(diff unavailable)";
+        RunGit("checkout -- tests/fixtures");
+
+        // Deliberately reported, not thrown. Throwing from an assembly fixture's disposal makes
+        // xUnit attribute a "Test Assembly Cleanup Failure" to every test in the assembly, which
+        // turned an 81-test run into 162 results with 82 failures and buried the one real failure.
+        // Restoring the tree is what actually stops the damage from reaching the next run; this
+        // message is here so the run that caused it still says so.
+        var banner = new StringBuilder();
+        banner.AppendLine();
+        banner.AppendLine("################ FIXTURE CONTAMINATION ################");
+        banner.AppendLine("A test mutated tracked files under tests/fixtures. They have been restored so");
+        banner.AppendLine("the next run starts clean, but the mutation itself is a real defect - either the");
+        banner.AppendLine("test must work on a temp copy, or the app wrote outside the solution it was told");
+        banner.AppendLine("to change.");
+        banner.AppendLine("git status before: " + _fixtureBaseline);
+        banner.AppendLine("git status after:  " + current);
+        banner.AppendLine(diff);
+        banner.AppendLine("#######################################################");
+        Console.WriteLine(banner.ToString());
+        AppendAppOutput("fixture", banner.ToString());
+    }
+
+    string? ReadFixtureStatus() => RunGit("status --porcelain -- tests/fixtures");
+
+    static string? RunGit(string arguments)
+    {
+        var repoRoot = LocateRepoRoot();
+        if (repoRoot is null)
+            return null;
+        try
+        {
+            var psi = new ProcessStartInfo("git")
+            {
+                WorkingDirectory = repoRoot,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            foreach (var argument in arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                psi.ArgumentList.Add(argument);
+            using var process = Process.Start(psi);
+            if (process is null)
+                return null;
+            var output = process.StandardOutput.ReadToEnd();
+            process.WaitForExit(30_000);
+            return output;
+        }
+        catch
+        {
+            // No git available (or not a checkout): integrity checking is best-effort and must
+            // never turn into its own failure mode.
+            return null;
+        }
+    }
+
+    static string? LocateRepoRoot()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null)
+        {
+            if (Directory.Exists(Path.Combine(dir, ".git")) || File.Exists(Path.Combine(dir, ".git")))
+                return dir;
+            dir = Path.GetDirectoryName(dir);
+        }
+        return null;
+    }
+
+    #endregion
 
     static string ResolveLogDirectory()
     {
@@ -336,6 +431,53 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 	{
 		var result = await InvokeAsync("od.open-solution", path);
 		return result;
+	}
+
+	/// <summary>
+	/// Assertion message for a build that didn't come out as expected. A bare
+	/// <c>Assert.Equal("Success", ...)</c> reports only "Success vs Error", which says nothing
+	/// about *why* the compiler failed - reproducing it meant relaunching the app by hand and
+	/// querying DevFlow (that is how the F# globalization-invariant failure, FS0193, was finally
+	/// identified). This pulls the same information into the failure message: the build's own
+	/// diagnostics, the Error List, and the tail of the Output pad's real build log.
+	///
+	/// Call it only on the failure path - each call is three extra DevFlow round trips.
+	/// </summary>
+	public async Task<string> DescribeBuildAsync(JsonElement buildResult)
+	{
+		var description = new StringBuilder();
+		description.AppendLine("Build did not produce the expected result.");
+		description.AppendLine("od.build-solution returned: " + buildResult);
+		await AppendActionAsync(description, "Error List", "od.error-list");
+		await AppendOutputPadAsync(description);
+		return description.ToString();
+	}
+
+	async Task AppendActionAsync(StringBuilder description, string label, string action)
+	{
+		try {
+			description.AppendLine(label + ": " + await InvokeAsync(action));
+		} catch (Exception ex) {
+			// A diagnostic helper must never replace the real assertion failure with its own.
+			description.AppendLine(label + " unavailable: " + ex.Message);
+		}
+	}
+
+	async Task AppendOutputPadAsync(StringBuilder description)
+	{
+		const int MaxOutputChars = 4000;
+		try {
+			var output = await InvokeAsync("od.output-text");
+			var text = output.TryGetProperty("text", out var value) ? value.GetString() : output.ToString();
+			text ??= string.Empty;
+			description.AppendLine("Output pad (category " +
+				(output.TryGetProperty("category", out var category) ? category.GetString() : "?") + "):");
+			description.AppendLine(text.Length <= MaxOutputChars
+				? text
+				: "...(truncated)..." + text.Substring(text.Length - MaxOutputChars));
+		} catch (Exception ex) {
+			description.AppendLine("Output pad unavailable: " + ex.Message);
+		}
 	}
 
 	// Polling loops throughout this suite were written as `while (deadline) { check; delay(fixed) }`
@@ -651,6 +793,18 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         }
         throw new FileNotFoundException(
             "Could not locate src/Samples/WinFormsSample/WinFormsSample.sln by walking up from " + AppContext.BaseDirectory);
+    }
+
+    static string LocateUnoXamlSampleSolution()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir, "src", "Samples", "UnoXamlSample", "UnoXamlSample.slnx");
+            if (File.Exists(candidate)) return candidate;
+            dir = Path.GetDirectoryName(dir);
+        }
+        throw new FileNotFoundException("Could not locate src/Samples/UnoXamlSample/UnoXamlSample.slnx");
     }
 
     static string LocateXmlFixtureFile()

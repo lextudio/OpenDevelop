@@ -48,6 +48,12 @@ public sealed class AddInTests : IAsyncDisposable
     readonly string _widgetPath;
     readonly string _widgetServicePath;
 
+    // The WinUI/Uno editing tests mutate the page they design, so they must never point at the
+    // tracked sample under src/Samples - same reasoning as _solutionDir above.
+    readonly string _unoSampleDir;
+    readonly string _unoSolutionPath;
+    readonly string _unoPagePath;
+
     readonly OpenDevelopAppFixture _app;
 
     public AddInTests(OpenDevelopAppFixture app)
@@ -71,6 +77,10 @@ public sealed class AddInTests : IAsyncDisposable
                 _solutionPath = Path.Combine(_solutionDir, Path.GetFileName(app.SolutionExplorerFixturePath));
                 _widgetPath = Path.Combine(_solutionDir, "SampleApp", "Models", "Widget.cs");
                 _widgetServicePath = Path.Combine(_solutionDir, "SampleApp", "Services", "WidgetService.cs");
+                _unoSampleDir = Path.Combine(Path.GetTempPath(), "WinUIDesignerTests-" + Guid.NewGuid().ToString("N"));
+                CopyDirectoryOd(Path.GetDirectoryName(app.UnoXamlSampleSolutionPath)!, _unoSampleDir);
+                _unoSolutionPath = Path.Combine(_unoSampleDir, Path.GetFileName(app.UnoXamlSampleSolutionPath));
+                _unoPagePath = Path.Combine(_unoSampleDir, "MainPage.xaml");
     }
 
     [Fact]
@@ -127,7 +137,8 @@ public sealed class AddInTests : IAsyncDisposable
         // od.build-solution's JSON only has an "error" property for the early-exit cases (no
         // solution open / project not found) - once a build actually runs, "success" is always
         // true (the DevFlow call itself didn't throw) and the real pass/fail signal is "result".
-        Assert.Equal("Success", buildResult.GetProperty("result").GetString());
+        if (buildResult.GetProperty("result").GetString() != "Success")
+            Assert.Fail(await _app.DescribeBuildAsync(buildResult));
     }
 
     [Fact]
@@ -189,7 +200,8 @@ public sealed class AddInTests : IAsyncDisposable
 
         var buildResult = await _app.InvokeAsync("od.build-solution", "VBFixture");
 
-        Assert.Equal("Success", buildResult.GetProperty("result").GetString());
+        if (buildResult.GetProperty("result").GetString() != "Success")
+            Assert.Fail(await _app.DescribeBuildAsync(buildResult));
     }
 
     static JsonElement? FindTest(JsonElement node, string displayName)
@@ -788,6 +800,352 @@ public sealed class AddInTests : IAsyncDisposable
             "Expected the Outline pad's root node to have at least one child");
         Assert.Contains("PrimaryButton", outlineNames);
         Assert.Contains("MainPane", outlineNames);
+    }
+
+    [Fact]
+    public async Task OpenUnoXamlFile_UsesWinUIXamlDesignerInsteadOfWpfDesigner()
+    {
+        var openedSolution = await _app.ReopenSolutionAsync(_app.UnoXamlSampleSolutionPath);
+        Assert.True(openedSolution.GetProperty("success").GetBoolean(), openedSolution.ToString());
+        var xamlPath = Path.Combine(Path.GetDirectoryName(_app.UnoXamlSampleSolutionPath)!, "MainPage.xaml");
+        var opened = await _app.InvokeAsync("od.open-file", xamlPath);
+        Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+
+        JsonElement status = default;
+        // Materialization compiles the document through Roslyn and loads a collectible preview
+        // assembly before ProGPU presents its first frame, so poll on "rendered", not on "active".
+        var ready = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            status = await _app.InvokeAsync("od.winui-designer.status");
+            return status.TryGetProperty("active", out var active) && active.GetBoolean()
+                && status.GetProperty("rendered").GetBoolean();
+        }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 500);
+
+        Assert.True(ready, status.ToString());
+        Assert.Equal("Uno", status.GetProperty("framework").GetString());
+        // The preview must come from ProGPU's compiled WinUI pipeline. A WPF XamlReader renderer
+        // impersonating a WinUI designer is explicitly not an acceptable pass.
+        Assert.Contains("Rendered by ProGPU", status.GetProperty("status").GetString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Drives the full Phase 5 editing loop through the shell's own pads and asserts after every
+    /// step that the change reached the XAML *source* - not just the runtime visual tree - and that
+    /// ProGPU re-rendered from it. Insertion goes through the shared Toolbox pad's item list and
+    /// the property change through the real Properties pad PropertyItem, so this cannot pass if
+    /// the designer quietly grew its own private chrome.
+    /// </summary>
+    [Fact]
+    public async Task WinUIDesigner_ToolboxInsertSelectEditDeleteUndoRedo_AllLandAsSourceEdits()
+    {
+        var status = await OpenUnoDesignerAsync();
+
+        // The shared Toolbox pad is populated with WinUI/Uno controls.
+        Assert.True(status.GetProperty("toolboxItemCount").GetInt32() > 0,
+            "Expected the shared Toolbox pad to list WinUI/Uno controls: " + status);
+        Assert.True(status.GetProperty("toolboxGroupCount").GetInt32() > 0,
+            "Expected the Toolbox pad to show at least one control group: " + status);
+        Assert.True(status.GetProperty("outlineChildCount").GetInt32() > 0,
+            "Expected the Outline pad to show the page's element tree: " + status);
+
+        // ---------- Toolbox insertion becomes a source edit ----------
+        var inserted = await _app.InvokeAsync("od.winui-designer.toolbox.insert", "TextBlock", "");
+        Assert.True(inserted.GetProperty("success").GetBoolean(), inserted.ToString());
+        var insertedName = inserted.GetProperty("insertedName").GetString()!;
+
+        status = await WaitForRenderedAsync();
+        Assert.Contains(insertedName, status.GetProperty("elementNames").EnumerateArray().Select(n => n.GetString()));
+        Assert.Equal(insertedName, status.GetProperty("selectedName").GetString());
+        Assert.True(status.GetProperty("isDirty").GetBoolean(),
+            "Inserting a control must dirty the file, proving it is a document edit and not a visual-tree-only change");
+
+        // ---------- Selecting populates the SHARED Properties pad ----------
+        var selected = await _app.InvokeAsync("od.winui-designer.select", insertedName);
+        Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
+        Assert.Equal(
+            "ICSharpCode.WinUIXamlDesigner.WinUIXamlElementPropertyAdapter",
+            selected.GetProperty("propertyPadSelectedType").GetString());
+
+        // ---------- Editing through the real Properties pad rewrites the source ----------
+        var edited = await _app.InvokeAsync("od.winui-designer.properties-pad.edit", "Name", insertedName + "Renamed");
+        Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
+        Assert.Equal(insertedName + "Renamed", edited.GetProperty("after").GetString());
+
+        status = await WaitForRenderedAsync();
+        Assert.Contains(insertedName + "Renamed",
+            status.GetProperty("elementNames").EnumerateArray().Select(n => n.GetString()));
+
+        // Save, then read the file back: the edits must be real XAML text on disk.
+        await _app.InvokeAsync("od.file.save", _unoPagePath);
+        var onDisk = await File.ReadAllTextAsync(_unoPagePath);
+        Assert.Contains("<TextBlock", onDisk);
+        Assert.Contains(insertedName + "Renamed", onDisk);
+
+        // ---------- Undo/Redo ----------
+        var undo = await _app.InvokeAsync("od.winui-designer.undo");
+        Assert.True(undo.GetProperty("success").GetBoolean(), undo.ToString());
+        Assert.DoesNotContain(insertedName + "Renamed",
+            undo.GetProperty("elementNames").EnumerateArray().Select(n => n.GetString()));
+
+        var redo = await _app.InvokeAsync("od.winui-designer.redo");
+        Assert.True(redo.GetProperty("success").GetBoolean(), redo.ToString());
+        Assert.Contains(insertedName + "Renamed",
+            redo.GetProperty("elementNames").EnumerateArray().Select(n => n.GetString()));
+
+        // Undo all the way past the insertion: the element is gone from the document entirely.
+        while ((await _app.InvokeAsync("od.winui-designer.status")).GetProperty("canUndo").GetBoolean())
+            await _app.InvokeAsync("od.winui-designer.undo");
+        status = await WaitForRenderedAsync();
+        Assert.DoesNotContain(insertedName,
+            status.GetProperty("elementNames").EnumerateArray().Select(n => n.GetString()));
+
+        // ---------- Delete ----------
+        await _app.InvokeAsync("od.winui-designer.redo");
+        var reinserted = (await _app.InvokeAsync("od.winui-designer.status"))
+            .GetProperty("elementNames").EnumerateArray().Select(n => n.GetString()).ToList();
+        Assert.Contains(insertedName, reinserted);
+
+        Assert.True((await _app.InvokeAsync("od.winui-designer.select", insertedName)).GetProperty("success").GetBoolean());
+        var deleted = await _app.InvokeAsync("od.winui-designer.delete");
+        Assert.True(deleted.GetProperty("success").GetBoolean(), deleted.ToString());
+        Assert.DoesNotContain(insertedName,
+            deleted.GetProperty("elementNames").EnumerateArray().Select(n => n.GetString()));
+
+        // The preview must still be alive after all of that, not stuck on a stale/blank frame.
+        status = await WaitForRenderedAsync();
+        Assert.Contains("Rendered by ProGPU", status.GetProperty("status").GetString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Editing the XAML in the Source view and switching back to Design must re-parse and
+    /// re-render - the design surface is a view over the document, not an independent copy.
+    /// </summary>
+    [Fact]
+    public async Task WinUIDesigner_SourceEditOutsideDesigner_RefreshesDesignSurface()
+    {
+        await OpenUnoDesignerAsync();
+
+        // Go back to the Source tab and type into the real AvalonEdit document, exactly as a user
+        // switching tabs and editing would - writing to disk behind the IDE's back would not reach
+        // the open buffer at all, and would not be a test of the designer's refresh path.
+        var switched = await _app.InvokeAsync("od.winui-designer.switch-to-source");
+        Assert.True(switched.GetProperty("success").GetBoolean(), switched.ToString());
+
+        var edit = await _app.InvokeAsync("od.search.replace", "Hello Uno", "Edited In Source", "solution");
+        Assert.True(edit.GetProperty("success").GetBoolean(), edit.ToString());
+
+        // Re-activating the Design view is what makes SharpDevelop hand this secondary view the
+        // changed document; the designer must re-parse and re-render from it.
+        var status = await WaitForRenderedAsync();
+        Assert.Null(status.GetProperty("documentError").GetString());
+        Assert.Contains("Rendered by ProGPU", status.GetProperty("status").GetString(), StringComparison.OrdinalIgnoreCase);
+
+        await _app.InvokeAsync("od.file.save-all");
+        var onDisk = await File.ReadAllTextAsync(_unoPagePath);
+        Assert.Contains("Edited In Source", onDisk);
+        // The designer must not have rewritten a document it never edited.
+        Assert.Contains("x:Class=\"UnoXamlSample.MainPage\"", onDisk);
+    }
+
+    /// <summary>
+    /// Technote acceptance item: invalid XAML must produce a diagnostic without taking the IDE
+    /// down, and going back to valid XAML must recover the preview.
+    /// </summary>
+    [Fact]
+    public async Task WinUIDesigner_InvalidXamlReportsDiagnosticThenRecovers()
+    {
+        await OpenUnoDesignerAsync();
+
+        // Break the markup through the editor, the way a half-typed tag appears in real use.
+        Assert.True((await _app.InvokeAsync("od.winui-designer.switch-to-source")).GetProperty("success").GetBoolean());
+        await _app.InvokeAsync("od.file.edit-text", _unoPagePath, "<Bad");
+
+        JsonElement broken = default;
+        var reported = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            broken = await _app.InvokeAsync("od.winui-designer.status");
+            return broken.TryGetProperty("active", out var active) && active.GetBoolean()
+                && broken.GetProperty("documentError").ValueKind != JsonValueKind.Null;
+        }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 500);
+        Assert.True(reported, "Expected malformed XAML to surface a diagnostic instead of a silent blank surface: " + broken);
+
+        // The IDE is still answering, i.e. the bad document did not take the process down.
+        Assert.True((await _app.InvokeAsync("od.addins")).TryGetProperty("addins", out _));
+
+        Assert.True((await _app.InvokeAsync("od.winui-designer.switch-to-source")).GetProperty("success").GetBoolean());
+        var repaired = await _app.InvokeAsync("od.search.replace", "<Bad", "", "solution");
+        Assert.True(repaired.GetProperty("success").GetBoolean(), repaired.ToString());
+
+        var recovered = await WaitForRenderedAsync();
+        Assert.Null(recovered.GetProperty("documentError").GetString());
+        Assert.Contains("Rendered by ProGPU", recovered.GetProperty("status").GetString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Clicking the rendered design surface must select the corresponding element in the XAML
+    /// *source* and populate the shared Properties pad - the same end state an Outline pick
+    /// produces. Uses real synthetic pointer input at the element's actual on-screen position, so
+    /// it exercises ProGPU hit testing and the visual-to-source name mapping, not a shortcut API.
+    /// </summary>
+    [Fact]
+    public async Task WinUIDesigner_ClickOnDesignSurface_SelectsSourceElementInPropertiesPad()
+    {
+        await OpenUnoDesignerAsync();
+
+        // PrimaryButton is declared in the sample page, so it exists in both the source document
+        // and the rendered tree - exactly the correspondence this test is about.
+        // OD_TEST_MODE=1 sets ShowActivated=false so a test run never steals focus, but the
+        // synthetic pointer below is real OS-level input that only routes correctly when this
+        // window is actually frontmost - the WPF designer's drag tests do the same thing.
+        await _app.InvokeAsync("od.activate");
+
+        var bounds = await _app.InvokeAsync("od.winui-designer.query-element-screen-bounds", "PrimaryButton");
+        Assert.True(bounds.GetProperty("success").GetBoolean(), bounds.ToString());
+        Assert.True(bounds.GetProperty("width").GetDouble() > 0 && bounds.GetProperty("height").GetDouble() > 0,
+            "Expected the rendered button to have a real arranged size: " + bounds);
+
+        var x = bounds.GetProperty("centerX").GetDouble();
+        var y = bounds.GetProperty("centerY").GetDouble();
+
+        await _app.PressPointerAsync(x, y);
+        await _app.ReleasePointerAsync(x, y);
+
+        JsonElement status = default;
+        var selected = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            status = await _app.InvokeAsync("od.winui-designer.status");
+            return status.GetProperty("selectedName").ValueKind != JsonValueKind.Null
+                && status.GetProperty("selectedName").GetString() == "PrimaryButton";
+        }, TimeSpan.FromSeconds(20), initialDelayMs: 50, maxDelayMs: 500);
+        Assert.True(selected, "Clicking the design surface should select PrimaryButton: " + status);
+
+        // The click must land in the same place an Outline pick would: the shared Properties pad,
+        // backed by the XAML source element.
+        var reselect = await _app.InvokeAsync("od.winui-designer.select", "PrimaryButton");
+        Assert.Equal(
+            "ICSharpCode.WinUIXamlDesigner.WinUIXamlElementPropertyAdapter",
+            reselect.GetProperty("propertyPadSelectedType").GetString());
+
+        // And the selection is live: editing through the pad rewrites that element's source.
+        var edited = await _app.InvokeAsync("od.winui-designer.properties-pad.edit", "Content", "Clicked");
+        Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
+        await _app.InvokeAsync("od.file.save-all");
+        Assert.Contains("Clicked", await File.ReadAllTextAsync(_unoPagePath));
+    }
+
+    /// <summary>
+    /// The Toolbox-to-design-surface path driven by a REAL synthetic mouse drag (press/drag-move/
+    /// release), not the insert action: it exercises the pad's own DoDragDrop, the surface's drop
+    /// handling, and resolving the drop point to the container the user aimed at.
+    /// </summary>
+    [Fact]
+    public async Task WinUIDesigner_DragToolboxItemOntoDesignSurface_InsertsIntoDroppedContainer()
+    {
+        var status = await OpenUnoDesignerAsync();
+        var namesBefore = status.GetProperty("elementNames").EnumerateArray().Select(n => n.GetString()).ToList();
+
+        // The shared ToolsPad only realizes its content the first time it is actually shown, so
+        // without this the rows exist but have no containers to press on.
+        await _app.InvokeAsync("od.show-pad", "Tools");
+        await _app.InvokeAsync("od.activate");
+
+        var toolboxBounds = await _app.InvokeAsync("od.winui-designer.toolbox.query-item-bounds", "TextBlock");
+        Assert.True(toolboxBounds.GetProperty("success").GetBoolean(), toolboxBounds.ToString());
+
+        // Drop onto PrimaryButton's position: it resolves to the nearest source-backed element,
+        // proving the drop point - not a hardcoded root - decides where the control lands.
+        var target = await _app.InvokeAsync("od.winui-designer.query-element-screen-bounds", "PrimaryButton");
+        Assert.True(target.GetProperty("success").GetBoolean(), target.ToString());
+
+        var fromX = toolboxBounds.GetProperty("centerX").GetDouble();
+        var fromY = toolboxBounds.GetProperty("centerY").GetDouble();
+        var toX = target.GetProperty("centerX").GetDouble();
+        var toY = target.GetProperty("centerY").GetDouble();
+
+        await _app.PressPointerAsync(fromX, fromY);
+        for (var step = 1; step <= 8; step++)
+            await _app.DragMovePointerAsync(fromX + (toX - fromX) * step / 8.0, fromY + (toY - fromY) * step / 8.0);
+        await _app.ReleasePointerAsync(toX, toY);
+
+        JsonElement after = default;
+        var inserted = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            after = await _app.InvokeAsync("od.winui-designer.status");
+            return after.GetProperty("elementNames").EnumerateArray()
+                .Select(n => n.GetString()).Count() > namesBefore.Count;
+        }, TimeSpan.FromSeconds(30), initialDelayMs: 100, maxDelayMs: 500);
+        Assert.True(inserted, "A real toolbox drag should have added an element: " + after);
+
+        var newName = after.GetProperty("elementNames").EnumerateArray()
+            .Select(n => n.GetString()).Except(namesBefore).Single();
+        Assert.StartsWith("TextBlock", newName);
+
+        // And it is a genuine source edit, not a visual-tree-only insertion.
+        await _app.InvokeAsync("od.file.save-all");
+        var onDisk = await File.ReadAllTextAsync(_unoPagePath);
+        Assert.Contains("<TextBlock", onDisk);
+        Assert.Contains(newName, onDisk);
+    }
+
+    /// <summary>
+    /// Technote acceptance item: unloading the document must release the designer's runtime.
+    /// Each open builds a collectible preview assembly and a WinUI tree from it, so a host that
+    /// outlives its document would leak an entire ALC per open - invisible to every other test.
+    /// </summary>
+    [Fact]
+    public async Task WinUIDesigner_ClosingDocument_ReleasesRuntimeHostAndPreviewAssembly()
+    {
+        await OpenUnoDesignerAsync();
+
+        var open = await _app.InvokeAsync("od.winui-designer.runtime-stats");
+        Assert.True(open.GetProperty("success").GetBoolean(), open.ToString());
+        Assert.True(open.GetProperty("liveHosts").GetInt32() >= 1,
+            "Expected a live designer host while the document is open: " + open);
+
+        Assert.True((await _app.InvokeAsync("od.close-active-view")).GetProperty("success").GetBoolean());
+
+        JsonElement closed = default;
+        var released = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            // runtime-stats forces a GC before reporting, so this converges once the host is
+            // disposed and nothing else pins the preview tree.
+            closed = await _app.InvokeAsync("od.winui-designer.runtime-stats");
+            return closed.GetProperty("liveHosts").GetInt32() == 0
+                && !closed.GetProperty("lastPreviewRootAlive").GetBoolean();
+        }, TimeSpan.FromSeconds(30), initialDelayMs: 200, maxDelayMs: 1000);
+
+        Assert.True(released,
+            "Closing the document must dispose the designer host and let its collectible preview "
+            + "assembly be collected: " + closed);
+
+        // Reopening still works after a full release - i.e. teardown did not corrupt shared state.
+        await OpenUnoDesignerAsync();
+    }
+
+    async Task<JsonElement> OpenUnoDesignerAsync()
+    {
+        var openedSolution = await _app.ReopenSolutionAsync(_unoSolutionPath);
+        Assert.True(openedSolution.GetProperty("success").GetBoolean(), openedSolution.ToString());
+        var opened = await _app.InvokeAsync("od.open-file", _unoPagePath);
+        Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+        var status = await WaitForRenderedAsync();
+        Assert.Equal("Uno", status.GetProperty("framework").GetString());
+        return status;
+    }
+
+    async Task<JsonElement> WaitForRenderedAsync()
+    {
+        JsonElement status = default;
+        // Every edit recompiles the document through Roslyn and reloads a collectible preview
+        // assembly before ProGPU presents a frame, so "rendered" is the only safe gate.
+        var ready = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            status = await _app.InvokeAsync("od.winui-designer.status");
+            return status.TryGetProperty("active", out var active) && active.GetBoolean()
+                && status.GetProperty("rendered").GetBoolean();
+        }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 500);
+        Assert.True(ready, status.ToString());
+        return status;
     }
 
     [Fact]
@@ -2526,5 +2884,6 @@ EndGlobal
                 }
                 try { await _app.InvokeAsync("od.file.revert-all-dirty"); } catch { }
                 try { Directory.Delete(_solutionDir, recursive: true); } catch { }
+                try { Directory.Delete(_unoSampleDir, recursive: true); } catch { }
     }
 }

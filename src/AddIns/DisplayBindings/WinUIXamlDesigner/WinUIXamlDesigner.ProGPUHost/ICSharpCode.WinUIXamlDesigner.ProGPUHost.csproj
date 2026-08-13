@@ -1,0 +1,22 @@
+<Project Sdk="LibreWPF.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>ICSharpCode.WinUIXamlDesigner.ProGPUHost</AssemblyName>
+    <RootNamespace>ICSharpCode.WinUIXamlDesigner.ProGPUHost</RootNamespace>
+    <OutputPath>..\..\..\..\..\AddIns\DisplayBindings\WinUIXamlDesigner\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WinUIXamlDesigner.AddIn\ICSharpCode.WinUIXamlDesigner.csproj" Private="false" />
+    <ProjectReference Include="..\XamlStudio.Toolkit.ProGPU\XamlStudio.Toolkit.ProGPU.csproj" />
+    <PackageReference Include="ProGPU.WinUI" Version="0.1.0-preview.47" />
+    <!-- Packed locally from the same wieslawsoltes/ProGPU commit that produced the published
+         preview.47 feed (bab4dbef); upstream marks these packable but never published them. -->
+    <PackageReference Include="ProGPU.WinUI.Designer" Version="0.1.0-preview.47" />
+    <PackageReference Include="ProGPU.Xaml" Version="0.1.0-preview.47" />
+    <PackageReference Include="ProGPU.Xaml.Roslyn" Version="0.1.0-preview.47" />
+    <PackageReference Include="ProGPU.Xaml.Workspaces" Version="0.1.0-preview.47" />
+  </ItemGroup>
+</Project>

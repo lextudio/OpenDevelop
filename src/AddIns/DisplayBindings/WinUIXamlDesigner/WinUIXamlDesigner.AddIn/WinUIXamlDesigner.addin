@@ -1,0 +1,13 @@
+<AddIn name="WinUI and Uno XAML Designer" author="LeXtudio" description="Visual designer for WinUI 3 and Uno Platform XAML." addInManagerHidden="preinstalled">
+  <Manifest><Identity name="ICSharpCode.WinUIXamlDesigner" /></Manifest>
+  <Runtime>
+    <Import assembly="ICSharpCode.WinUIXamlDesigner.dll" />
+    <Import assembly="ICSharpCode.WinUIXamlDesigner.ProGPUHost.dll" />
+  </Runtime>
+  <Path name="/SharpDevelop/Workbench/DisplayBindings">
+    <DisplayBinding id="WinUIXamlDesigner" type="Secondary" class="ICSharpCode.WinUIXamlDesigner.WinUIXamlDesignerDisplayBinding" fileNamePattern="\.xaml$" />
+  </Path>
+  <Path name="/SharpDevelop/Autostart">
+    <Class id="ICSharpCode.WinUIXamlDesigner.RegisterDevFlowActionsCommand" class="ICSharpCode.WinUIXamlDesigner.RegisterDevFlowActionsCommand" />
+  </Path>
+</AddIn>
