@@ -39,8 +39,8 @@
     <ProjectReference Include="..\..\..\BackendBindings\Scripting\Project\ICSharpCode.Scripting.csproj" Private="false" />
     <ProjectReference Include="..\..\..\DisplayBindings\AvalonEdit.AddIn\AvalonEdit.AddIn.csproj" Private="false" />
     <ProjectReference Include="..\SharpDevelop.EnvDTE\SharpDevelop.EnvDTE.vbproj" Private="false" />
-    <ProjectReference Include="..\..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj" Private="False" Condition="Exists('..\..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj')" />
-    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" Version="0.2.2" Condition="!Exists('..\..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj')" />
+    <ProjectReference Include="..\..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj" Private="False" Condition="'$(Configuration)' == 'Debug' And Exists('..\..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj')" />
+    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" Version="0.2.2" Condition="'$(Configuration)' == 'Debug' And !Exists('..\..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj')" />
     <!-- PowerShell Package Console pad (Microsoft.PowerShell.SDK is cross-platform - PowerShell 7/
          Core is embedded in-process, no external PowerShell install/detection needed). -->
     <ProjectReference Include="..\PowerShell\Project\PackageManagement.PowerShell.csproj" Private="false" />

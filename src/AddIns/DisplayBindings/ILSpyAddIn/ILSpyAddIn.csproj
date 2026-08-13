@@ -58,8 +58,8 @@
 
     <!-- DevFlow actions (od.ilspy.*) so tests/OpenDevelop.IntegrationTests can drive/inspect the
          hosted ILSpy pads without a native file dialog, mirroring WpfDesign.AddIn's DevFlow hooks. -->
-    <ProjectReference Include="..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj" Private="false" Condition="Exists('..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj')" />
-    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" Version="0.2.2" Condition="!Exists('..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj')" />
+    <ProjectReference Include="..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj" Private="false" Condition="'$(Configuration)' == 'Debug' And Exists('..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj')" />
+    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" Version="0.2.2" Condition="'$(Configuration)' == 'Debug' And !Exists('..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj')" />
 
     <!-- Real ILSpy pane/composition source needs ILSpyX and its own AvalonDock fork identity. -->
     <ProjectReference Include="..\..\..\..\externals\ilspy\ICSharpCode.ILSpyX\ICSharpCode.ILSpyX.csproj" />

@@ -43,4 +43,5 @@ tests/fixtures/CoverageFixture/CoverageTests/CodeCoverage/coverage.xml
 # keep the macOS packaging scripts tracked
 /build/*
 !/build/macos/
+!/build/patch-librewinforms-deps.py
 tests/fixtures/SampleTestProject/CodeCoverage/

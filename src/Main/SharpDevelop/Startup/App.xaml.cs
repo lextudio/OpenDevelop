@@ -18,7 +18,9 @@
 
 using System;
 using System.Windows;
+#if !OPENDEVELOP_NO_DEVFLOW
 using LeXtudio.DevFlow.Agent.Wpf;
+#endif
 
 namespace ICSharpCode.SharpDevelop.Startup
 {
@@ -30,10 +32,12 @@ namespace ICSharpCode.SharpDevelop.Startup
 		public App()
 		{
 			InitializeComponent();
+			#if !OPENDEVELOP_NO_DEVFLOW
 			if (Environment.GetEnvironmentVariable("DEVFLOW_DISABLE") != "1")
 			{
 				this.AddWpfDevFlowAgent();
 			}
+			#endif
 			// Log the exception that is about to terminate the app instead of dying silently:
 			// an unhandled dispatcher exception otherwise exits the process without a trace in
 			// the captured stdout/stderr (measured during integration-test debugging), making

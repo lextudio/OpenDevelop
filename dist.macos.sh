@@ -1,15 +1,9 @@
 #!/usr/bin/env bash
-# Build an Apple Silicon (arm64) macOS .dmg for local testing.
+# Build a framework-dependent macOS .dmg for local testing.
 # Mirrors the CI steps in .github/workflows/package.yml.
 # Usage: ./dist.macos.sh [--skip-publish] [--debug]
 #   --skip-publish  reuse existing publish output (faster iteration on bundle/dmg)
-#   --debug         package the Debug configuration instead of Release. Rarely needed
-#                   anymore: Release crashed at startup because RID-specific `dotnet
-#                   publish` drops LibreWPF's win32 shim dlls (kernel32/user32/gdi32/
-#                   shell32/uxtheme/dwmapi/comdlg32), which AvalonDock's window hook
-#                   resolves at DockingManager load time. build-application-bundle.sh
-#                   now copies them into the payload, so Release works. Keep the flag
-#                   for fast debug iteration.
+#   --debug         package the Debug configuration instead of Release.
 
 set -euo pipefail
 
@@ -51,28 +45,42 @@ done
 core_pres_obj="${script_dir}/src/Main/ICSharpCode.Core.Presentation"
 rm -rf "${core_pres_obj}/obj/${config}" "${core_pres_obj}/bin/${config}"
 
-# The AppHost (native executable entry point) is cached in
-# obj/<config>/net10.0-windows/apphost (shared across RIDs, not per-RID),
-# because the net10.0-windows TFM lacks a RID-specific host pack on macOS.
-# Clear it before each publish so the SDK regenerates it for the correct RID.
-#
-# Similarly, the managed assembly is cached in obj/<config>/net10.0-windows/
-# (not RID-specific).  The PE machine type must match the running process, so
-# we clean intermediate build outputs before publishing to force
-# recompilation for the target (arm64 — this is an Apple Silicon build).
+# Clear the shared intermediate output so publish cannot reuse artifacts left
+# by a previous build. This distribution intentionally remains
+# framework-dependent and uses the installed .NET runtime; the SDK-generated
+# apphost is only the native entry point and does not bundle that runtime.
 host_obj="${script_dir}/src/Main/SharpDevelop/obj/${config}"
 
 if [[ "$skip_publish" -eq 0 ]]; then
-  echo "==> Cleaning intermediate outputs for osx-arm64…"
+  echo "==> Cleaning intermediate outputs…"
   rm -rf "$host_obj/net10.0-windows"
-  echo "==> Publishing osx-arm64 (${config})…"
-  "${dotnet}" publish "$host_dir" -r osx-arm64 -c "${config}"
+  echo "==> Publishing framework-dependent app (${config})…"
+  publish_dir="$script_dir/src/Main/SharpDevelop/bin/${config}/net10.0-windows/publish"
+  rm -rf "$publish_dir"
+  "${dotnet}" publish "$host_dir" -c "${config}" --self-contained false \
+    -p:OpenDevelopDistributionBuild=true \
+    -p:PublishDir="$publish_dir"
 
-  publish_dir="$script_dir/src/Main/SharpDevelop/bin/${config}/net10.0-windows/osx-arm64/publish"
   if [[ ! -d "$publish_dir" ]]; then
     echo "dist.macos.sh: host publish directory not found: $publish_dir" >&2
     exit 1
   fi
+
+  # NuGet conflict resolution omits LibreWinForms from the standard publish
+  # closure. Patch the final manifest and copy its matching runtime files.
+  nuget_packages="$("${dotnet}" nuget locals global-packages --list | sed -n 's/^global-packages: //p')"
+  if [[ -z "$nuget_packages" ]]; then
+    echo "dist.macos.sh: cannot determine the NuGet global-packages directory" >&2
+    exit 1
+  fi
+  python3 "$script_dir/build/patch-librewinforms-deps.py" \
+    "$publish_dir/OpenDevelop.deps.json" "$nuget_packages"
+
+  # Some projects write to OpenDevelopHostPublishDir while computing their
+  # distribution closure. Give that build a disposable copy so the verified
+  # host deployment above remains immutable.
+  host_publish_snapshot="$(mktemp -d "${TMPDIR:-/tmp}/opendevelop-host-publish.XXXXXX")"
+  cp -Rp "$publish_dir"/. "$host_publish_snapshot/"
 
   echo "==> Cleaning stale AddIn outputs…"
   find "$script_dir/AddIns" -type f \( -name '*.dll' -o -name '*.dylib' -o -name '*.so' -o -name '*.pdb' \) -delete
@@ -80,17 +88,43 @@ if [[ "$skip_publish" -eq 0 ]]; then
   echo "==> Building distribution AddIns without shared runtime copies…"
   "${dotnet}" build "$mvp_solution" -c "${config}" --no-restore \
     -p:OpenDevelopDistributionBuild=true \
-    -p:OpenDevelopHostPublishDir="$publish_dir" \
+    -p:OpenDevelopHostPublishDir="$host_publish_snapshot" \
     -p:ProGpuWpfCopyPackageRuntimeAssets=false
+  rm -rf "$host_publish_snapshot"
+
+  # The solution traversal may copy reference assemblies over the original
+  # PublishDir through cached project state. Restore the authoritative package
+  # runtime payload only after every build has completed.
+  python3 "$script_dir/build/patch-librewinforms-deps.py" \
+    "$publish_dir/OpenDevelop.deps.json" "$nuget_packages"
 else
   echo "==> Skipping publish (--skip-publish)"
 fi
 
-echo "==> Building .app bundle (arm64, ${config})…"
-DIST_CONFIG="${config}" "$script_dir/build/macos/build-application-bundle.sh" osx-arm64
+echo "==> Building framework-dependent .app bundle (${config})…"
+DIST_CONFIG="${config}" "$script_dir/build/macos/build-application-bundle.sh"
+
+echo "==> Smoke-testing packaged app…"
+smoke_log="$(mktemp "${TMPDIR:-/tmp}/opendevelop-package-smoke.XXXXXX")"
+"$script_dir/OpenDevelop.app/Contents/MacOS/OpenDevelop" >"$smoke_log" 2>&1 &
+smoke_pid=$!
+for _ in {1..10}; do
+  sleep 1
+  if ! kill -0 "$smoke_pid" 2>/dev/null; then
+    wait "$smoke_pid" || smoke_status=$?
+    echo "dist.macos.sh: packaged app exited during startup (status ${smoke_status:-0})" >&2
+    sed -n '1,160p' "$smoke_log" >&2
+    rm -f "$smoke_log"
+    exit 1
+  fi
+done
+kill -TERM "$smoke_pid"
+wait "$smoke_pid" 2>/dev/null || true
+rm -f "$smoke_log"
+echo "Packaged app startup smoke test passed"
 
 echo "==> Building .dmg…"
-"$script_dir/build/macos/build-dmg.sh" OpenDevelop.app OpenDevelop-macos-arm64.dmg
+"$script_dir/build/macos/build-dmg.sh" OpenDevelop.app OpenDevelop-macos.dmg
 
 echo ""
-echo "Done: $(pwd)/OpenDevelop-macos-arm64.dmg"
+echo "Done: $(pwd)/OpenDevelop-macos.dmg"

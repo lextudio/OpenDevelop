@@ -1,11 +1,14 @@
 <Project>
+  <!-- DevFlow is test/developer instrumentation, not a shipped dependency. Remove
+       it from the distribution graph before restore/reference resolution and omit
+       action-only sources before compilation. -->
   <!--
     A distribution keeps shared runtime dependencies beside OpenDevelop itself.
     Remove those files from addin copy-local before they reach AddIns/. Regular
     developer builds remain self-contained because this is opt-in.
   -->
   <Target Name="RemoveHostProvidedFilesFromAddInCopyLocal"
-          BeforeTargets="_CopyFilesMarkedCopyLocal"
+          BeforeTargets="GetCopyToOutputDirectoryItems;_CopyFilesMarkedCopyLocal"
           Condition="'$(OpenDevelopDistributionBuild)' == 'true'
                      and '$(OpenDevelopHostPublishDir)' != ''
                      and $([System.String]::Copy('$(OutputPath)').Contains('AddIns'))">
@@ -15,6 +18,14 @@
       <ReferenceCopyLocalPaths Remove="@(_OpenDevelopHostFile)"
                                MatchOnMetadata="Filename;Extension"
                                MatchOnMetadataOptions="PathLike" />
+      <!-- Package build targets can add native helpers as None/Content with
+           CopyToOutputDirectory, bypassing ReferenceCopyLocalPaths entirely. -->
+      <None Remove="@(_OpenDevelopHostFile)"
+            MatchOnMetadata="Filename;Extension"
+            MatchOnMetadataOptions="PathLike" />
+      <Content Remove="@(_OpenDevelopHostFile)"
+               MatchOnMetadata="Filename;Extension"
+               MatchOnMetadataOptions="PathLike" />
     </ItemGroup>
   </Target>
 </Project>

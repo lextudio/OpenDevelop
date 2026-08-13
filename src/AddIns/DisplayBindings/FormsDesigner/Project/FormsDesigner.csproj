@@ -67,7 +67,7 @@
          WpfDesign.AddIn.csproj for the ProjectReference variant used when wpf-labs is checked out
          locally; that relative path doesn't hold from this AddIn's location, so use the package
          directly here instead. -->
-    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" Version="0.2.2" />
+    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" Version="0.2.2" Condition="'$(Configuration)' == 'Debug'" />
   </ItemGroup>
 
   <ItemGroup>

@@ -2,12 +2,11 @@
 
 set -euo pipefail
 
-if [[ $# -ne 1 ]]; then
-  echo "Usage: $0 <rid|osx-universal>"
+if [[ $# -ne 0 ]]; then
+  echo "Usage: $0"
   exit 1
 fi
 
-rid="$1"
 config="${DIST_CONFIG:-Release}"
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 repo_root="$(cd "$script_dir/../.." && pwd)"
@@ -21,11 +20,6 @@ cp "$script_dir/Info.plist" "$bundle_root/Contents"
 if [[ -f "$script_dir/opendevelop.icns" ]]; then
   cp "$script_dir/opendevelop.icns" "$bundle_root/Contents/Resources"
 fi
-
-is_macho() {
-  local path="$1"
-  file -b "$path" 2>/dev/null | grep -q "Mach-O"
-}
 
 # OpenDevelop locates its addins and data at runtime by walking UP from the
 # executable looking for data/resources/languages/LanguageDefinition.xml
@@ -48,92 +42,44 @@ populate_repo_payload() {
   # walking the bundle again to delete it.
   local exclude_file
   exclude_file="$(mktemp "${TMPDIR:-/tmp}/opendevelop-addin-excludes.XXXXXX")"
+  # Include every host asset type. Distribution builds already prevent new
+  # CopyLocal duplicates; this also keeps stale XML docs, satellite resources,
+  # fonts and extensionless native helpers from an old developer build out of
+  # the bundle without first copying or deleting them.
   while IFS= read -r -d '' host_file; do
     printf '**/%s\n' "$(basename "$host_file")" >> "$exclude_file"
-  done < <(find "$macos" -maxdepth 1 -type f \( -name '*.dll' -o -name '*.dylib' -o -name '*.so' \) -print0)
-  while IFS= read -r -d '' host_file; do
-    printf '**/%s/%s\n' "$(basename "$(dirname "$host_file")")" "$(basename "$host_file")" >> "$exclude_file"
-  done < <(find "$macos" -mindepth 2 -maxdepth 2 -type f -name '*.dll' -print0)
+  done < <(find "$macos" -type f -print0)
 
-  rsync -a --exclude '*.pdb' --exclude-from "$exclude_file" "$repo_root/AddIns/" "$macos/AddIns/"
+  rsync -a \
+    --exclude '*.pdb' \
+    --exclude 'LeXtudio.DevFlow.*' \
+    --exclude 'CliclickSharp' \
+    --exclude-from "$exclude_file" \
+    "$repo_root/AddIns/" "$macos/AddIns/"
   rm -f "$exclude_file"
 
-  # LibreWPF's win32 shims (kernel32/user32/gdi32/shell32/uxtheme/dwmapi/
-  # comdlg32.dll) resolve DllImports like AvalonDock's GetCurrentThreadId at
-  # runtime. They land in every project's bin output via the LibreWPF repack,
-  # but RID-specific `dotnet publish` (osx-arm64/osx-x64) drops them, so the
-  # app in a bundle dies at startup with DllNotFoundException. Copy them next
-  # to the executable explicitly, from the first layout that has them.
-  local shim_sources=(
-    "$repo_root/externals/bin/net10.0-windows"
-    "$repo_root/src/Main/SharpDevelop/bin/Release/net10.0-windows"
-    "$repo_root/src/Main/SharpDevelop/bin/Debug/net10.0-windows"
-  )
-  local shim_names=(kernel32 user32 gdi32 shell32 uxtheme dwmapi comdlg32)
-  for src in "${shim_sources[@]}"; do
-    [[ -d "$src" ]] || continue
-    local copied=0
-    for name in "${shim_names[@]}"; do
-      if [[ -f "$src/$name.dll" ]]; then
-        cp -p "$src/$name.dll" "$macos/" 2>/dev/null && copied=$((copied + 1))
-      fi
-    done
-    if [[ "$copied" -gt 0 ]]; then
-      echo "Copied $copied win32 shim dlls from $src"
-      break
-    fi
-  done
 }
 
-if [[ "$rid" != "osx-universal" ]]; then
-  src="$base_dir/$rid/publish"
-  if [[ ! -d "$src" ]]; then
-    echo "Publish directory not found: $src"
+src="$base_dir/publish"
+if [[ ! -d "$src" ]]; then
+  echo "Framework-dependent publish directory not found: $src" >&2
+  exit 1
+fi
+cp -Rp "$src"/. "$bundle_macos/"
+
+# LibreWPF builds one native Win32-compatibility shim and exposes it under the
+# P/Invoke library names used by WPF/AvalonDock. Its SDK target writes these to
+# TargetDir after Build, not to framework-dependent PublishDir. They are required
+# deployment assets, not duplicated AddIn dependencies.
+win32_shims=(kernel32 user32 gdi32 dwmapi uxtheme shell32 gdiplus comdlg32)
+for name in "${win32_shims[@]}"; do
+  shim="$base_dir/$name.dll"
+  if [[ ! -f "$shim" ]]; then
+    echo "build-application-bundle.sh: required LibreWPF shim not found: $shim" >&2
     exit 1
   fi
-  cp -Rp "$src"/. "$bundle_macos/"
-  populate_repo_payload "$bundle_macos"
-  exit 0
-fi
-
-arm_src="$base_dir/osx-arm64/publish"
-x64_src="$base_dir/osx-x64/publish"
-
-if [[ ! -d "$arm_src" ]]; then
-  echo "Publish directory not found: $arm_src"
-  exit 1
-fi
-if [[ ! -d "$x64_src" ]]; then
-  echo "Publish directory not found: $x64_src"
-  exit 1
-fi
-
-# Use arm64 publish as base payload for the .app, then merge native binaries with x64.
-cp -Rp "$arm_src"/. "$bundle_macos/"
-
-while IFS= read -r -d '' arm_file; do
-  rel="${arm_file#$arm_src/}"
-  x64_file="$x64_src/$rel"
-  dest_file="$bundle_macos/$rel"
-
-  [[ -f "$x64_file" ]] || continue
-  if ! is_macho "$arm_file"; then
-    continue
-  fi
-  if ! is_macho "$x64_file"; then
-    continue
-  fi
-
-  arm_archs="$(lipo -archs "$arm_file" 2>/dev/null || true)"
-  x64_archs="$(lipo -archs "$x64_file" 2>/dev/null || true)"
-  if [[ -n "$arm_archs" && "$arm_archs" == "$x64_archs" ]]; then
-    # Already universal (or same arch set), keep arm64 copy.
-    continue
-  fi
-
-  lipo -create "$x64_file" "$arm_file" -output "$dest_file"
-  chmod +x "$dest_file" || true
-done < <(find "$arm_src" -type f -print0)
+  cp -p "$shim" "$bundle_macos/$name.dll"
+done
 
 populate_repo_payload "$bundle_macos"
 

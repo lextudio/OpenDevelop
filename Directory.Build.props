@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup Condition="'$(Configuration)' != 'Debug'">
+    <DefaultItemExcludes>$(DefaultItemExcludes);**/*DevFlowActions.cs;**/DevFlow/**/*.cs;**/DevFlowPort.cs</DefaultItemExcludes>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' != 'Debug' And '$(MSBuildProjectExtension)' == '.csproj'">
+    <DefineConstants>$(DefineConstants);OPENDEVELOP_NO_DEVFLOW</DefineConstants>
+  </PropertyGroup>
+</Project>
