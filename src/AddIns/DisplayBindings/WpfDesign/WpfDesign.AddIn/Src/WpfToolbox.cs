@@ -30,6 +30,7 @@ using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Designer;
 using ICSharpCode.SharpDevelop.Dom;
+using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Workbench;
 using ICSharpCode.WpfDesign.Designer.Services;
@@ -40,9 +41,10 @@ namespace ICSharpCode.WpfDesign.AddIn
 	/// Manages the WpfToolbox: a grouped list of the WPF popular-controls set plus one
 	/// group per assembly referenced by the project being designed.
 	/// </summary>
-	public class WpfToolbox
+	public class WpfToolbox : ISharedToolboxHost
 	{
 		const string PopularControlsCategory = "Windows Presentation Foundation";
+		const string WinFormsControlsCategory = "Windows Forms";
 
 		static WpfToolbox instance;
 
@@ -57,6 +59,10 @@ namespace ICSharpCode.WpfDesign.AddIn
 		readonly CollectionViewSource itemsView = new CollectionViewSource();
 		readonly List<WpfSideTabItem> items = new List<WpfSideTabItem>();
 		Point dragStartPoint;
+		WpfSideTabItem dragStartItem;
+		// Guards OnPreviewMouseMove against the re-entrant moves a portable drag delivers while
+		// DoDragDrop is blocked - see OnPreviewMouseMove's own comment.
+		bool isDragging;
 
 		IToolService toolService;
 
@@ -74,6 +80,16 @@ namespace ICSharpCode.WpfDesign.AddIn
 			itemsView.Source = items;
 			itemsView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(WpfSideTabItem.CategoryName)));
 
+			// Disabled rather than left to the default: ItemContainerGenerator.ContainerFromItem
+			// was confirmed (via direct hit-testing) to sometimes report a container for a
+			// virtualized/recycled row whose actual on-screen position doesn't match where that
+			// item renders, once the list is scrolled deep enough - a real click at the reported
+			// bounds then lands on a different row. DevFlow's toolbox-bounds queries work around
+			// this by walking the live visual tree instead of trusting the generator (see
+			// WpfDesignDevFlowActions.FindRealizedContainer), which only finds a correct answer if
+			// every item is actually realized - guaranteed by disabling virtualization here. This
+			// list is small enough (a few dozen items) that virtualization has no real benefit.
+			VirtualizingPanel.SetIsVirtualizing(toolbox, false);
 			toolbox.ItemsSource = itemsView.View;
 			toolbox.SelectionChanged += OnSelectionChanged;
 			toolbox.PreviewMouseLeftButtonDown += OnPreviewMouseLeftButtonDown;
@@ -94,6 +110,51 @@ namespace ICSharpCode.WpfDesign.AddIn
 			itemsView.View.Refresh();
 
 			toolbox.SelectedIndex = 0;
+
+			// Registered here (not by FormsDesigner) so neither AddIn needs a compile-time
+			// reference to the other - see ISharedToolboxHost's own doc comment.
+			SD.Services.AddService(typeof(ISharedToolboxHost), this);
+		}
+
+		// A small representative set, same spirit as Metadata.GetPopularControls() for WPF -
+		// dragged items are routed through the real System.Drawing.Design.IToolboxService
+		// (registered by FormsDesigner into SD.Services - see DesignerViewContent.cs's own doc
+		// comment) rather than WpfDesign's CreateComponentTool, since it's WinForms'
+		// ParentControlDesigner.OnDragEnter/OnDragDrop that actually creates the component on a
+		// WinForms DesignSurface. Each type gets its own System.Drawing.Design.ToolboxItem,
+		// created once and registered with the toolbox service up front (AddToolboxItem) - the
+		// drop side's DeserializeToolboxItem only accepts items it already knows about.
+		static readonly Type[] WinFormsPopularControls = {
+			typeof(System.Windows.Forms.Button),
+			typeof(System.Windows.Forms.Label),
+			typeof(System.Windows.Forms.TextBox),
+			typeof(System.Windows.Forms.CheckBox),
+			typeof(System.Windows.Forms.RadioButton),
+			typeof(System.Windows.Forms.ComboBox),
+			typeof(System.Windows.Forms.ListBox),
+			typeof(System.Windows.Forms.Panel),
+			typeof(System.Windows.Forms.GroupBox),
+			typeof(System.Windows.Forms.NumericUpDown),
+		};
+
+		bool winFormsControlsAdded;
+
+		void AddWinFormsControls()
+		{
+			if (winFormsControlsAdded)
+				return;
+			var toolboxService = SD.Services.GetService(typeof(System.Drawing.Design.IToolboxService)) as System.Drawing.Design.IToolboxService;
+			if (toolboxService == null)
+				return;
+
+			winFormsControlsAdded = true;
+			items.Add(new WpfSideTabItem(WinFormsControlsCategory));
+			foreach (Type t in WinFormsPopularControls) {
+				var toolboxItem = new System.Drawing.Design.ToolboxItem(t);
+				toolboxService.AddToolboxItem(toolboxItem);
+				items.Add(new WpfSideTabItem(WinFormsControlsCategory, t, toolboxItem));
+			}
+			itemsView.View.Refresh();
 		}
 
 		static DataTemplate CreateItemTemplate()
@@ -189,7 +250,44 @@ namespace ICSharpCode.WpfDesign.AddIn
 
 		void OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
 		{
+			ClearSelectedWinFormsTool();
 			dragStartPoint = e.GetPosition(toolbox);
+
+			// Latch WHICH row the press landed on, rather than reading toolbox.SelectedItem later
+			// when the drag threshold is finally exceeded: the pointer has usually already moved
+			// across other rows by then, and ListBox keeps moving its selection to whatever row is
+			// under the cursor while the button is held - so SelectedItem at threshold time is
+			// frequently a different control than the one the user actually grabbed (measured: a
+			// press on "NumericUpDown" reported "Panel", then "RadioButton", as the pointer swept
+			// upward toward the drop target). On Windows this is masked because DoDragDrop enters a
+			// modal OLE loop that stops delivering mouse moves to the ListBox at all; the portable
+			// drag loop (PortableDragDropOperation) keeps routing them, so the item has to be
+			// captured up front here to get the same "you drag what you pressed on" behavior.
+			// Fall back to SelectedItem when the press did not land on a draggable row at all (the
+			// per-category "Pointer" row, a group header, or the empty area below the last item):
+			// those have no tool attached, and treating them as "the user grabbed nothing" would
+			// silently swallow a drag that a caller had already set up by selecting the item
+			// explicitly. A press that DOES land on a draggable row always wins over the selection.
+			var pressedItem = ResolveItemFromEventSource(e.OriginalSource);
+			dragStartItem = IsDraggable(pressedItem) ? pressedItem : toolbox.SelectedItem as WpfSideTabItem;
+		}
+
+		static bool IsDraggable(WpfSideTabItem item)
+		{
+			return item != null && (item.Tool != null || item.WinFormsToolboxItem != null);
+		}
+
+		static WpfSideTabItem ResolveItemFromEventSource(object originalSource)
+		{
+			for (DependencyObject node = originalSource as DependencyObject; node != null; ) {
+				if (node is ListBoxItem listBoxItem)
+					return listBoxItem.DataContext as WpfSideTabItem;
+
+				node = node is System.Windows.Media.Visual || node is System.Windows.Media.Media3D.Visual3D
+					? System.Windows.Media.VisualTreeHelper.GetParent(node)
+					: LogicalTreeHelper.GetParent(node);
+			}
+			return null;
 		}
 
 		void OnPreviewMouseMove(object sender, MouseEventArgs e)
@@ -197,27 +295,106 @@ namespace ICSharpCode.WpfDesign.AddIn
 			if (e.LeftButton != MouseButtonState.Pressed)
 				return;
 
+			// A portable (non-Windows) drag keeps pumping input through WPF's normal event system
+			// while DoDragDrop blocks on its own nested DispatcherFrame, so this very handler is
+			// re-entered on every mouse move for the whole duration of the drag it just started -
+			// real OLE's native modal loop on Windows never delivers those moves here, which is why
+			// this guard was never needed before. PortableDragDropOperation already fails the
+			// nested DoDragDrop call closed (its own s_isRunning check), but that inner call still
+			// RETURNS, so its finally would run ResetToolSelection() while the outer drag is still
+			// in flight - switching CurrentTool back to the pointer tool, which Deactivates
+			// CreateComponentTool and unsubscribes the DesignPanel.DragOver handler the in-flight
+			// drag depends on. The drop then silently creates nothing. Ignore re-entrant moves.
+			if (isDragging)
+				return;
+
 			Point position = e.GetPosition(toolbox);
 			if (Math.Abs(position.X - dragStartPoint.X) < SystemParameters.MinimumHorizontalDragDistance &&
 			    Math.Abs(position.Y - dragStartPoint.Y) < SystemParameters.MinimumVerticalDragDistance)
 				return;
 
-			if (!(toolbox.SelectedItem is WpfSideTabItem item) || item.Tool == null)
+			// dragStartItem (latched on mouse-down), NOT toolbox.SelectedItem - see
+			// OnPreviewMouseLeftButtonDown's own comment on why the live selection is unreliable here.
+			var item = dragStartItem;
+			if (item == null || (item.Tool == null && item.WinFormsToolboxItem == null))
 				return;
 
-			var data = new DataObject(item.Tool);
+			if (item.WinFormsToolboxItem != null)
+			{
+				// Route through the real System.Drawing.Design.IToolboxService rather than
+				// WpfDesign's CreateComponentTool - WinForms' ParentControlDesigner is what
+				// actually creates the component on drop (see WpfSideTabItem.WinFormsToolboxItem's
+				// doc comment). SetSelectedToolboxItem matches the real .NET toolbox drag
+				// contract; ParentControlDesigner.OnDragEnter reads the item back from the data
+				// object itself (via DeserializeToolboxItem), not from SetSelectedToolboxItem, but
+				// setting it too keeps IToolboxService.GetSelectedToolboxItem consistent for any
+				// other caller that asks it mid-drag (e.g. SetCursor's "is something selected?").
+				var toolboxService = SD.Services.GetService(typeof(System.Drawing.Design.IToolboxService)) as System.Drawing.Design.IToolboxService;
+				toolboxService?.SetSelectedToolboxItem(item.WinFormsToolboxItem);
+
+				// WPF's own DataObject.SetData(Type, object) and Windows Forms' IDataObject.SetData
+				// use the same format-name convention (Type.FullName), and LibreWinForms' portable
+				// WindowsFormsHost forwards a WPF drop's data across that boundary format-by-format
+				// (CreateFormsDragData) - so a plain WPF DataObject carrying this same format key
+				// is all the WinForms side needs; no OLE marshaling is happening on either side.
+				var data = new DataObject();
+				data.SetData(typeof(System.Drawing.Design.ToolboxItem), item.WinFormsToolboxItem);
+
+				isDragging = true;
+				try {
+					DragDrop.DoDragDrop(toolbox, data, DragDropEffects.Copy);
+				} finally {
+					isDragging = false;
+					ResetToolSelection();
+				}
+				return;
+			}
+
+			var wpfData = new DataObject(item.Tool);
 
 			if (item.Tool is CreateComponentTool componentTool)
 			{
-				data.SetData(typeof(Type), componentTool.ComponentType);
-				data.SetData("ComponentTypeName", componentTool.ComponentType.FullName);
+				wpfData.SetData(typeof(Type), componentTool.ComponentType);
+				wpfData.SetData("ComponentTypeName", componentTool.ComponentType.FullName);
 			}
 
-			DragDrop.DoDragDrop(toolbox, data, DragDropEffects.Copy);
+			isDragging = true;
+			try {
+				DragDrop.DoDragDrop(toolbox, wpfData, DragDropEffects.Copy);
+			}
+			finally
+			{
+				isDragging = false;
+				ResetToolSelection();
+			}
+		}
+
+		void ResetToolSelection()
+		{
+			ClearSelectedWinFormsTool();
+			if (toolService != null)
+				toolService.CurrentTool = toolService.PointerTool;
+			toolbox.SelectedIndex = 0;
+			dragStartItem = null;
+		}
+
+		static void ClearSelectedWinFormsTool()
+		{
+			var toolboxService = SD.Services.GetService(typeof(System.Drawing.Design.IToolboxService)) as System.Drawing.Design.IToolboxService;
+			toolboxService?.SetSelectedToolboxItem(null);
 		}
 
 		public object ToolboxControl {
-			get { return toolbox; }
+			get {
+				// AddWinFormsControls() no-ops if IToolboxService isn't registered in SD.Services
+				// yet - construction order between WpfToolbox and FormsDesigner's static ctor
+				// (which registers it) isn't guaranteed, since both are lazily-constructed
+				// singletons touched on first use. Retry here (idempotent) so the Windows Forms
+				// category still shows up if a .xaml file (which constructs WpfToolbox) happened
+				// to be opened before the first WinForms designer file in this session.
+				AddWinFormsControls();
+				return toolbox;
+			}
 		}
 
 		public IToolService ToolService {

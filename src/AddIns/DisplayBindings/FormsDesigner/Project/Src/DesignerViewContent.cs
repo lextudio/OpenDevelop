@@ -47,12 +47,25 @@ namespace ICSharpCode.FormsDesigner
 {
 	public class FormsDesignerViewContent : AbstractViewContentHandlingLoadErrors, IClipboardHandler, IUndoHandler, IHasPropertyContainer, IContextHelpProvider, IToolsHost, IFileDocumentProvider
 	{
-		// The SideBar-backed drag-from-toolbox panel (ToolboxProvider.FormsDesignerSideBar) is out of
-		// MVP scope - see FormsDesigner.csproj's exclusion comment. Services.ToolboxService (the real
-		// System.Drawing.Design.IToolboxService the .NET Design API talks to) has no dependency on
-		// that panel and stays fully live; only ToolsContent below - the WPF-hosted visible palette -
-		// is deferred pending a port to the WPF Toolbox Pad architecture.
+		// The SideBar-backed drag-from-toolbox panel (ToolboxProvider.FormsDesignerSideBar) stays
+		// unused - Services.ToolboxService (the real System.Drawing.Design.IToolboxService the
+		// .NET Design API talks to) doesn't depend on it. Instead, the shared WPF Toolbox pad
+		// (ICSharpCode.WpfDesign.AddIn.WpfToolbox, already built for the XAML designer/editor) is
+		// reused for WinForms controls too, via ToolsContent below - dropping onto a WinForms
+		// DesignSurface (hosted in a WindowsFormsHost) goes through THIS IToolboxService instance,
+		// not WpfDesign's own CreateComponentTool/DesignItem machinery, since WinForms' real
+		// ParentControlDesigner.OnDragEnter/OnDragDrop is what actually creates the component.
+		// Registered into the global SD.Services below so WpfToolbox (a different AddIn, which
+		// must not take a compile-time reference to this one to avoid a project-reference cycle -
+		// FormsDesigner already depends on WpfDesign.AddIn for ToolsContent) can reach this exact
+		// instance via SD.Services.GetService(typeof(System.Drawing.Design.IToolboxService))
+		// instead of a direct type reference.
 		static readonly ToolboxService toolboxService = new ToolboxService();
+
+		static FormsDesignerViewContent()
+		{
+			SD.Services.AddService(typeof(System.Drawing.Design.IToolboxService), toolboxService);
+		}
 
 		readonly Control pleaseWaitLabel = new Label() { Text = StringParser.Parse("${res:Global.PleaseWait}"), TextAlign=ContentAlignment.MiddleCenter };
 		DesignSurface designSurface;
@@ -952,8 +965,12 @@ namespace ICSharpCode.FormsDesigner
 		}
 
 		public virtual object ToolsContent {
-			// See the toolboxService field comment: the visible drag-from-toolbox palette is deferred.
-			get { return null; }
+			// See the toolboxService field's own doc comment - this resolves the shared WPF
+			// Toolbox pad (WpfDesign.AddIn's WpfToolbox) via SD.Services, not a direct reference.
+			get {
+				var host = SD.Services.GetService(typeof(ISharedToolboxHost)) as ISharedToolboxHost;
+				return host?.ToolboxControl;
+			}
 		}
 
 		void FileServiceFileRemoving(object sender, FileCancelEventArgs e)

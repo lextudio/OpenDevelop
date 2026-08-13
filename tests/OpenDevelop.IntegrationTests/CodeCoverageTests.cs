@@ -3,7 +3,7 @@ using Xunit;
 
 namespace OpenDevelop.IntegrationTests;
 
-[Collection("OpenDevelop app")]
+[Collection("40 Code coverage fixture")]
 public sealed class CodeCoverageTests
 {
     readonly OpenDevelopAppFixture _app;
@@ -56,7 +56,7 @@ public sealed class CodeCoverageTests
     }
 
     [Fact]
-    public async Task RunWithCodeCoverage_ProducesModuleResults()
+    public async Task RunWithCodeCoverage_ProducesModuleResultsAndCanBeCleared()
     {
         await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);
         await WaitForTestDiscoveryAsync();
@@ -99,19 +99,6 @@ public sealed class CodeCoverageTests
 		Assert.Equal("Failure", failingTest.Value.GetProperty("result").GetString());
 
         Assert.True(anyMethodVisited, "Expected at least one module to show non-zero visited code length.");
-    }
-
-    [Fact]
-    public async Task ClearCodeCoverageResults_EmptiesResults()
-    {
-        await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);
-        await WaitForTestDiscoveryAsync();
-
-        var runResult = await _app.InvokeAsync("od.code-coverage.run", 180);
-        Assert.True(runResult.GetProperty("completed").GetBoolean(), runResult.ToString());
-
-        var beforeClear = await _app.InvokeAsync("od.code-coverage.results");
-        Assert.True(beforeClear.GetProperty("modules").GetArrayLength() > 0);
 
         var clearResult = await _app.InvokeAsync("od.code-coverage.clear");
         Assert.True(clearResult.GetProperty("success").GetBoolean());

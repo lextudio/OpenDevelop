@@ -189,6 +189,7 @@ namespace ICSharpCode.UnitTesting
 
 		void PopulateTree()
 		{
+			LoggingService.Debug($"[StreamDiag] MtpTestProject.PopulateTree called (project={DisplayName}) initialized={NestedTestsInitialized} t={DateTime.UtcNow:HH:mm:ss.fff}");
 			if (!NestedTestsInitialized)
 				return;
 
@@ -233,6 +234,7 @@ namespace ICSharpCode.UnitTesting
 			if (buildTime.HasValue && lastBuildTime.HasValue && buildTime <= lastBuildTime)
 				return;
 
+			LoggingService.Debug($"[StreamDiag] MtpTestProject.OnBuildFinished triggering re-discovery (project={DisplayName}) t={DateTime.UtcNow:HH:mm:ss.fff}");
 			lastBuildTime = buildTime;
 			_ = TriggerDiscoveryAsync();
 		}
@@ -291,10 +293,15 @@ namespace ICSharpCode.UnitTesting
 			var separator = resultName.IndexOf('\0');
 			var targetFramework = separator >= 0 ? resultName.Substring(0, separator) : null;
 			var displayName = separator >= 0 ? resultName.Substring(separator + 1) : resultName;
-			var method = FindTestMethod(NestedTestCollection, targetFramework, displayName);
+			var nestedTests = NestedTestCollection;
+			LoggingService.Debug($"[StreamDiag] MtpTestProject.UpdateTestResult name={displayName} tfm={targetFramework} nestedTestsInstance={nestedTests.GetHashCode()} discoveryInProgress={discoveryInProgress} t={DateTime.UtcNow:HH:mm:ss.fff}");
+			var method = FindTestMethod(nestedTests, targetFramework, displayName);
 			if (method != null) {
+				LoggingService.Debug($"[StreamDiag] MtpTestProject.UpdateTestResult MATCHED name={displayName} methodInstance={method.GetHashCode()} settingResult={result.ResultType} t={DateTime.UtcNow:HH:mm:ss.fff}");
 				method.SetResult(result.ResultType);
 				method.SetDuration(result.Duration);
+			} else {
+				LoggingService.Debug($"[StreamDiag] MtpTestProject.UpdateTestResult NO MATCH for name={displayName} tfm={targetFramework} - result dropped! t={DateTime.UtcNow:HH:mm:ss.fff}");
 			}
 		}
 

@@ -111,6 +111,17 @@ namespace ICSharpCode.SharpDevelop.Logging
 			// message box with Yes(=Debug)/No(=Ignore) semantics ("ignore all" is now the default
 			// behavior of Fail itself, which dedupes by stack before ever getting here).
 			try {
+				// An integration-test run has nobody to dismiss this, and a failed assertion would
+				// otherwise hang the whole run behind a modal nobody can see. Log and ignore
+				// (debug=false) so the assertion still shows up in the run's captured output.
+				// Written straight to stderr (which the test fixture captures) rather than through
+				// LoggingService: this type IS the trace listener, so logging from here can feed
+				// back into itself.
+				if (TestMode.IsActive) {
+					Console.Error.WriteLine("OD_TEST_MODE: suppressed assertion dialog, auto-answered Ignore:" + Environment.NewLine + report);
+					return;
+				}
+
 				var result = System.Windows.MessageBox.Show(
 					report.TakeStartEllipsis(750) + Environment.NewLine + Environment.NewLine +
 					"Yes = Debug, No = Ignore",

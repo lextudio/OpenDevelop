@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="CoverageLib/CoverageLib.csproj" />
+  <Project Path="CoverageTests/CoverageTests.csproj" />
+</Solution>

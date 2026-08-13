@@ -274,6 +274,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		{
 			if (viewTabControl != null) {
 				this.viewTabControl.SelectedIndex = viewNumber;
+				this.viewTabControl.UpdateLayout();
 
 				IViewContent vc = this.ActiveViewContent;
 				if (vc != null && this.IsActive)
@@ -283,6 +284,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 
 		public void SelectWindow()
 		{
+			this.IsSelected = true;
 			this.IsActive = true;
 		}
 
@@ -456,11 +458,24 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		void OnClosingEvent(object sender, CancelEventArgs e)
 		{
 			if (!e.Cancel && !forceClose && this.IsDirty) {
-				MessageBoxResult dr = MessageBox.Show(
-					ResourceService.GetString("MainWindow.SaveChangesMessage"),
-					ResourceService.GetString("MainWindow.SaveChangesMessageHeader") + " " + Title + " ?",
-					MessageBoxButton.YesNoCancel, MessageBoxImage.Question,
-					MessageBoxResult.Yes);
+				// This prompt bypasses IMessageService (which suppresses dialogs in test mode
+				// centrally), so it needs its own check or an integration-test run hangs here with
+				// nobody to click it. "No" is the safe default: the close still proceeds (Cancel
+				// would block teardown, and reopening a solution later), and nothing is written to
+				// disk, so a test never silently saves over a repository fixture. It also avoids
+				// the Yes branch below, whose "while (vc.IsDirty)" retry loop would spin forever
+				// once its DiscardChanges AskQuestion starts auto-answering No in test mode.
+				MessageBoxResult dr;
+				if (TestMode.IsActive) {
+					dr = MessageBoxResult.No;
+					LoggingService.Info("OD_TEST_MODE: suppressed \"save changes?\" prompt for " + Title + ", auto-answered No (close without saving)");
+				} else {
+					dr = MessageBox.Show(
+						ResourceService.GetString("MainWindow.SaveChangesMessage"),
+						ResourceService.GetString("MainWindow.SaveChangesMessageHeader") + " " + Title + " ?",
+						MessageBoxButton.YesNoCancel, MessageBoxImage.Question,
+						MessageBoxResult.Yes);
+				}
 				switch (dr) {
 					case MessageBoxResult.Yes:
 						foreach (IViewContent vc in this.ViewContents) {

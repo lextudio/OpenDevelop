@@ -5,12 +5,12 @@
 // is a dialog), so these call it directly rather than needing a non-modal Show() workaround.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
 
 using ICSharpCode.AvalonEdit.Search;
-using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor.Search;
 using LeXtudio.DevFlow.Agent.Core;
@@ -25,7 +25,7 @@ namespace SearchAndReplace
 		public static string Find(string pattern, string scope = "solution", bool matchCase = false, bool wholeWord = false, bool useRegex = false, string filter = "*.*")
 		{
 			try {
-				var results = RunFind(pattern, scope, matchCase, wholeWord, useRegex, filter);
+				var results = RunFindParallel(pattern, scope, matchCase, wholeWord, useRegex, filter);
 				return JsonSerializer.Serialize(new {
 					success = true,
 					matchCount = results.Sum(f => f.Matches.Count),
@@ -49,7 +49,7 @@ namespace SearchAndReplace
 		public static string Replace(string pattern, string replacement, string scope = "solution", bool matchCase = false, bool wholeWord = false, bool useRegex = false, string filter = "*.*")
 		{
 			try {
-				var results = RunFind(pattern, scope, matchCase, wholeWord, useRegex, filter);
+				var results = RunFindParallel(pattern, scope, matchCase, wholeWord, useRegex, filter);
 				var affectedFiles = results.Select(f => f.FileName.ToString()).ToArray();
 				int replacedCount = SearchManager.ReplaceAll(results, replacement, CancellationToken.None);
 				return JsonSerializer.Serialize(new {
@@ -66,19 +66,19 @@ namespace SearchAndReplace
 		public static string ShowResults(string pattern, string scope = "solution", bool matchCase = false, bool wholeWord = false, bool useRegex = false, string filter = "*.*")
 		{
 			try {
-				// NOTE: deliberately uses the sequential SearchManager.FindAll path (like the real
-				// Find-in-Files dialog) instead of FindAllParallel: SearchRun's parallel path pushes
-				// results through ObserveOnUIThread, whose SD.MainThread.SynchronizationContext is
-				// null in this host, so OnNext/OnError NRE on the posted delegate and the results
-				// never reach the pad (pre-existing engine bug; nothing in the app uses
-				// FindAllParallel). The IObservable overload of SearchResultsPad.ShowSearchResults
-				// subscribes through the same broken path, so feed the plain match-list overload -
-				// the exact call FindReferencesCommand uses.
-				var results = RunFind(pattern, scope, matchCase, wholeWord, useRegex, filter);
-				var matches = results.SelectMany(f => f.Matches).ToList();
-				string title = StringParser.Parse("${res:MainWindow.Windows.SearchResultPanel.OccurrencesOf}",
-				                                  new StringTagPair("Pattern", pattern));
-				SearchResultsHost.Current.ShowSearchResults(title, matches);
+				// Uses the parallel SearchManager.FindAllParallel + IObservable overload of
+				// ShowSearchResults: this returns immediately and streams results into the pad as
+				// they're found, instead of blocking this DevFlow-dispatched call (which runs on the
+				// UI thread - see [DevFlowUIThread] below) for the entire duration of a whole-solution
+				// scan. Safe now that SD.MainThread.SynchronizationContext is set from the real
+				// Dispatcher at startup (WorkbenchStartup.InitializeWorkbench) - ObserveOnUIThread,
+				// which both the parallel search's progress reporting and DefaultSearchResult's
+				// subscription go through, no longer NREs on a null context.
+				var strategy = SearchStrategyFactory.Create(pattern, !matchCase, wholeWord, useRegex ? SearchMode.RegEx : SearchMode.Normal);
+				var location = new SearchLocation(ResolveTarget(scope), null, filter, true, null);
+				var monitor = SD.StatusBar.CreateProgressMonitor();
+				var results = SearchManager.FindAllParallel(strategy, location, monitor);
+				SearchManager.ShowSearchResults(pattern, results);
 				SearchResultsHost.Current.BringToFront();
 				return JsonSerializer.Serialize(new { success = true });
 			} catch (Exception ex) {
@@ -86,15 +86,30 @@ namespace SearchAndReplace
 			}
 		}
 
-		static System.Collections.Generic.List<SearchedFile> RunFind(string pattern, string scope, bool matchCase, bool wholeWord, bool useRegex, string filter)
+		// Runs a search with SearchManager.FindAllParallel (multi-threaded across files) and blocks
+		// until it completes, for actions that need the full match list back synchronously
+		// (od.search.find's JSON response, od.search.replace's edits). Blocking here is safe: the
+		// parallel search runs on the thread pool via Task.Run, not the Dispatcher, so waiting for
+		// it from this [DevFlowUIThread]-dispatched call can't deadlock against it.
+		static List<SearchedFile> RunFindParallel(string pattern, string scope, bool matchCase, bool wholeWord, bool useRegex, string filter)
 		{
 			var strategy = SearchStrategyFactory.Create(pattern, !matchCase, wholeWord, useRegex ? SearchMode.RegEx : SearchMode.Normal);
-			var target = ResolveTarget(scope);
-			var location = new SearchLocation(target, null, filter, true, null);
-			// FindAll's underlying SearchRun takes ownership of the monitor and disposes it once
-			// enumeration completes - don't also wrap this in `using` (double-dispose).
+			var location = new SearchLocation(ResolveTarget(scope), null, filter, true, null);
+			var fileList = location.GenerateFileList().ToList();
+			var activeEditor = SD.GetActiveViewContentService<ICSharpCode.SharpDevelop.Editor.ITextEditor>();
+			ICSharpCode.Core.LoggingService.Debug($"[SearchDiag] scope={scope} fileListCount={fileList.Count} files=[{string.Join(",", fileList)}] activeEditorFileName={activeEditor?.FileName} activeViewContent={SD.Workbench.ActiveViewContent?.GetType().FullName} activeViewContentFile={SD.Workbench.ActiveViewContent?.PrimaryFileName}");
 			var monitor = SD.StatusBar.CreateProgressMonitor();
-			return SearchManager.FindAll(strategy, location, monitor).ToList();
+			var found = new List<SearchedFile>();
+			using var done = new ManualResetEventSlim(false);
+			Exception error = null;
+			SearchManager.FindAllParallel(strategy, location, monitor).Subscribe(
+				found.Add,
+				ex => { error = ex; done.Set(); },
+				() => done.Set());
+			done.Wait();
+			if (error != null)
+				throw error;
+			return found;
 		}
 
 		static SearchTarget ResolveTarget(string scope)

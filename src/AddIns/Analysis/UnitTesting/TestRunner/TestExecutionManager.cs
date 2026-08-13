@@ -216,7 +216,9 @@ namespace ICSharpCode.UnitTesting.Frameworks
 		
 		void testRunner_TestFinished(object sender, TestFinishedEventArgs e)
 		{
+			LoggingService.Debug($"[StreamDiag] testRunner_TestFinished received name={e.Result.Name} result={e.Result.ResultType} thread={Environment.CurrentManagedThreadId} t={DateTime.UtcNow:HH:mm:ss.fff}");
 			mainThread.InvokeAsyncAndForget(delegate {
+				LoggingService.Debug($"[StreamDiag] testRunner_TestFinished dispatched (UI thread) name={e.Result.Name} thread={Environment.CurrentManagedThreadId} t={DateTime.UtcNow:HH:mm:ss.fff}");
 				ShowResult(e.Result);
 			});
 		}
@@ -267,7 +269,10 @@ namespace ICSharpCode.UnitTesting.Frameworks
 		void UpdateTestResult(TestResult result)
 		{
 			if (currentProjectBeingTested != null) {
+				LoggingService.Debug($"[StreamDiag] UpdateTestResult calling {currentProjectBeingTested.GetType().Name}.UpdateTestResult name={result.Name} project={currentProjectBeingTested.DisplayName} t={DateTime.UtcNow:HH:mm:ss.fff}");
 				currentProjectBeingTested.UpdateTestResult(result);
+			} else {
+				LoggingService.Debug($"[StreamDiag] UpdateTestResult SKIPPED (currentProjectBeingTested is null) name={result.Name} t={DateTime.UtcNow:HH:mm:ss.fff}");
 			}
 		}
 		

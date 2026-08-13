@@ -36,4 +36,17 @@ namespace ICSharpCode.SharpDevelop.Gui
 		/// </summary>
 		object ToolsContent { get; }
 	}
+
+	/// <summary>
+	/// Marker service (registered into <c>SD.Services</c>, not a per-view <see cref="ViewContentServiceAttribute"/>)
+	/// for the single shared WPF-hosted toolbox control that more than one AddIn's <see cref="IToolsHost.ToolsContent"/>
+	/// can return - e.g. WpfDesign.AddIn's WpfToolbox, reused by FormsDesigner for WinForms controls so both the
+	/// XAML and WinForms designers drag from the exact same palette instance. Lives here (Base project, which both
+	/// AddIns already reference) purely so neither AddIn needs a compile-time reference to the other.
+	/// </summary>
+	public interface ISharedToolboxHost
+	{
+		/// <summary>Gets the shared toolbox's WPF control (a ListBox), the same object every caller gets back.</summary>
+		object ToolboxControl { get; }
+	}
 }

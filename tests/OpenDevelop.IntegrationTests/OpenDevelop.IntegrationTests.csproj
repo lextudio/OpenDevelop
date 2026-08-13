@@ -12,12 +12,10 @@
          dotnet run "-project" tests/OpenDevelop.IntegrationTests "-no-build"
          (i.e. dotnet run with the usual double-hyphen project/no-build switches)
 
-       All test classes below share ONE collection ("OpenDevelop app", see OpenDevelopAppFixture.cs):
-       one SharpDevelop process, one DevFlow port, so xunit already runs them sequentially, never in
-       parallel, against that single shared app. The CollectionBehavior(DisableTestParallelization)
-       assembly attribute in AssemblyInfo.cs makes that guarantee explicit in case a future test class
-       is added without joining the shared collection. Don't run two invocations of this project's
-       tests at the same time; they would both try to own the same DevFlow port. -->
+       All test classes share ONE assembly-level OpenDevelopAppFixture: one SharpDevelop process and
+       one DevFlow port. Named collections plus the assembly orderers in AssemblyInfo.cs guarantee a
+       stable fixture-oriented sequence even for filtered runs. Don't run two invocations of this
+       project at the same time; they would both try to own the same DevFlow port. -->
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>

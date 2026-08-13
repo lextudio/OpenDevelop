@@ -63,6 +63,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     public string RuntimeUpgradeTemplatePath { get; } = LocateRuntimeUpgradeTemplate();
     public string SlnxFixturePath { get; } = LocateSlnxFixture();
     public string WpfSampleSolutionPath { get; } = LocateWpfSampleSolution();
+    public string WinFormsSampleSolutionPath { get; } = LocateWinFormsSampleSolution();
     public string GitFixtureTemplatePath { get; } = LocateGitFixtureTemplate();
     public string FSharpFixtureSolutionPath { get; } = LocateFSharpFixture();
     public string VBFixtureSolutionPath { get; } = LocateVBFixture();
@@ -70,20 +71,9 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     public string LocalNuGetFeedPath { get; } = LocateLocalNuGetFeed();
     public string XmlFixtureFilePath { get; } = LocateXmlFixtureFile();
 
-    // Only one fixture instance may own a live app at a time. This assembly has two collections
-    // ("OpenDevelop app" and "OpenDevelop startup"), each with its own OpenDevelopAppFixture, and
-    // StopApp() kills SharpDevelop/OpenDevelop *by process name* - so a second fixture coming up (or
-    // an old one going down) kills whatever app the other collection is currently driving. That is
-    // not hypothetical: a measured full run launched app A at 00:21:34, app B at 00:21:44 (B's
-    // InitializeAsync killed A before A had even finished loading its layout), then B was SIGTERM'd
-    // mid-suite at 00:24:21, cascading into 73 failures whose only symptom was
-    // "request failed / AppProcess=exited exitCode=143". Note how indistinguishable that is from the
-    // "intermittent silent startup crash" this suite has been chasing: an app killed by a foreign
-    // fixture during startup looks exactly like an app that died on its own.
-    //
-    // The assembly-level DisableTestParallelization was assumed to serialize the two fixtures'
-    // lifetimes. It does not (it orders test *execution*, not collection-fixture construction and
-    // disposal), so the mutual exclusion has to be enforced here.
+    // The fixture is assembly-scoped, so one invocation owns exactly one app process. Keep the gate
+    // as cross-instance protection for custom runners or accidental future collection fixtures:
+    // StopApp kills by process name, so two fixture instances could otherwise kill each other.
     static readonly SemaphoreSlim FixtureGate = new(1, 1);
     bool _gateHeld;
 
@@ -348,7 +338,50 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 		return result;
 	}
 
+	// Polling loops throughout this suite were written as `while (deadline) { check; delay(fixed) }`
+	// with delays picked ad hoc (100ms-1000ms). Timing data (2026-08-11 investigation,
+	// doc/technotes/integration-testing.md) showed the fixed delay - not build cost or per-call
+	// DevFlow latency - dominates wall-clock for polling-heavy facts: e.g.
+	// UnitTestRun_StreamsResultsBeforeWholeRunCompletes spent 10s of its 36s total in actual HTTP
+	// calls, the other 26s in Task.Delay between polls; DragToolboxItem_OntoDesignSurface spent 9s
+	// of 50s in HTTP calls. A condition that's already true on the first or second check still pays
+	// a full fixed delay before that's discovered. Exponential backoff (short first delay, doubling
+	// up to a cap) fixes this without changing any test's pass/fail semantics: fast-converging
+	// conditions return almost immediately; slow ones still get polled at a reasonable cadence and
+	// still respect the same overall timeout as before.
+	public static async Task<bool> PollUntilAsync(
+		Func<Task<bool>> condition,
+		TimeSpan timeout,
+		int initialDelayMs = 50,
+		int maxDelayMs = 1000)
+	{
+		var deadline = DateTime.UtcNow + timeout;
+		int delayMs = initialDelayMs;
+		while (true)
+		{
+			if (await condition())
+				return true;
+			if (DateTime.UtcNow >= deadline)
+				return false;
+			await Task.Delay(Math.Min(delayMs, maxDelayMs));
+			delayMs = Math.Min(delayMs * 2, maxDelayMs);
+		}
+	}
+
 	public async Task<JsonElement> InvokeAsync(string action, params object[] args)
+	{
+		var sw = Stopwatch.StartNew();
+		try
+		{
+			return await InvokeAsyncCore(action, args);
+		}
+		finally
+		{
+			RecordTiming(action, sw.ElapsedMilliseconds);
+		}
+	}
+
+	async Task<JsonElement> InvokeAsyncCore(string action, object[] args)
 	{
 		var body = JsonSerializer.Serialize(new { args });
 		using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
@@ -373,6 +406,26 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 			if (string.IsNullOrEmpty(raw))
 				throw new InvalidOperationException($"Action '{action}' returned no value: {envelope}\nRecent app output:\n{GetRecentAppOutput()}");
 			return JsonDocument.Parse(raw).RootElement.Clone();
+		}
+	}
+
+	// Ad-hoc timing instrumentation (doc/technotes/integration-testing.md investigation, 2026-08-11):
+	// appends one CSV line per od.* HTTP round-trip so a representative slice of tests can be run
+	// and the actual per-action time distribution inspected afterward, instead of guessing from
+	// total suite wall-clock. Test name comes from xUnit's ambient TestContext so lines can be
+	// grouped per-[Fact] without threading a label through every InvokeAsync call site. Remove this
+	// (and the TIMING_LOG_PATH env var / _timingLock field) once the investigation concludes.
+	static readonly object _timingLock = new();
+	static void RecordTiming(string action, long elapsedMs)
+	{
+		var path = Environment.GetEnvironmentVariable("OD_TEST_TIMING_LOG");
+		if (string.IsNullOrEmpty(path))
+			return;
+		var testName = TestContext.Current?.Test?.TestDisplayName ?? "?";
+		var line = $"{DateTime.UtcNow:O},{testName},{action},{elapsedMs}{Environment.NewLine}";
+		lock (_timingLock)
+		{
+			File.AppendAllText(path, line);
 		}
 	}
 
@@ -585,6 +638,19 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         }
         throw new FileNotFoundException(
             "Could not locate externals/vscode-wpf/sample/net6.0/sample.sln by walking up from " + AppContext.BaseDirectory);
+    }
+
+    static string LocateWinFormsSampleSolution()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir, "src", "Samples", "WinFormsSample", "WinFormsSample.sln");
+            if (File.Exists(candidate)) return candidate;
+            dir = Path.GetDirectoryName(dir);
+        }
+        throw new FileNotFoundException(
+            "Could not locate src/Samples/WinFormsSample/WinFormsSample.sln by walking up from " + AppContext.BaseDirectory);
     }
 
     static string LocateXmlFixtureFile()
@@ -802,6 +868,3 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 		}
 	}
 }
-
-[CollectionDefinition("OpenDevelop app")]
-public sealed class OpenDevelopAppCollection : ICollectionFixture<OpenDevelopAppFixture> { }

@@ -22,6 +22,7 @@ using System.Collections;
 using System.ComponentModel;
 using System.ComponentModel.Design;
 using System.ComponentModel.Design.Serialization;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using ICSharpCode.Core;
@@ -76,6 +77,32 @@ namespace ICSharpCode.FormsDesigner
 		
 		static void ComponentContainerSetUp(object sender, ComponentEventArgs e)
 		{
+			// Real WinForms designers get System.Windows.Forms.Control.AllowDrop set to true by
+			// ParentControlDesigner.Initialize() (via TypeDescriptor.CreateDesigner, using the
+			// [Designer("System.Windows.Forms.Design.ParentControlDesigner, System.Design")]
+			// attribute on Control/Panel/etc.) - that's what lets a real designer accept toolbox
+			// drops at all (WindowsFormsHost.ProcessExternalDragEvent walks up from the drop point
+			// looking for the first AllowDrop=true control). System.Design.dll (which contains the
+			// real ParentControlDesigner) isn't available in this portable environment - confirmed
+			// via TypeResolutionService's own FileNotFoundException for "System.Design" at load
+			// time - so no per-control IDesigner ever gets created and AllowDrop is never set,
+			// silently breaking every WinForms designer's drag-and-drop regardless of what's being
+			// dragged. Set it directly here instead of depending on a real ParentControlDesigner.
+			if (e.Component is System.Windows.Forms.Control control) {
+				control.AllowDrop = true;
+
+				// Likewise, a real ParentControlDesigner.OnDragDrop is what actually creates a new
+				// component from the dropped System.Drawing.Design.ToolboxItem and adds it to the
+				// container - Control.OnDragDrop's own default implementation does nothing (that
+				// behavior is layered on by the designer, not the control). Without the real
+				// ParentControlDesigner (see the AllowDrop comment above for why), replicate just
+				// that part of it here so a toolbox drop actually produces a component.
+				control.DragEnter -= OnDesignerControlDragEnter;
+				control.DragEnter += OnDesignerControlDragEnter;
+				control.DragDrop -= OnDesignerControlDragDrop;
+				control.DragDrop += OnDesignerControlDragDrop;
+			}
+
 			// HACK: This reflection mess fixes SD2-1374 and SD2-1375. However I am not sure why it is needed in the first place.
 			// There seems to be a problem with the nested container class used
 			// by the designer. It only establishes a connection to the service
@@ -95,6 +122,99 @@ namespace ICSharpCode.FormsDesigner
 					LoggingService.Debug("Forms designer: Initializing nested service container of " + e.Component.ToString() + " using Reflection");
 					getServiceMethod.Invoke(nestedContainer, BindingFlags.InvokeMethod | BindingFlags.Instance | BindingFlags.NonPublic, null, new [] {typeof(IServiceContainer)}, null);
 				}
+			}
+		}
+
+		static void OnDesignerControlDragEnter(object sender, System.Windows.Forms.DragEventArgs e)
+		{
+			if (e.Data.GetDataPresent(typeof(System.Drawing.Design.ToolboxItem))) {
+				e.Effect = System.Windows.Forms.DragDropEffects.Copy;
+			}
+		}
+
+		// Turns a toolbox drop into a real component via the designer's own toolbox entry point
+		// (System.Drawing.Design.IToolboxUser.ToolPicked) rather than creating the component here:
+		// LibreWinForms' portable designer already implements parenting, transactions, and selection
+		// behind that interface. Creating the component directly instead -
+		// toolboxItem.CreateComponents(host) + Controls.Add - skips those behaviors.
+		//
+		// ToolPicked creates the component inside the nearest container designer of the CURRENT
+		// selection, so the drop target is communicated by selecting it first.
+		static void OnDesignerControlDragDrop(object sender, System.Windows.Forms.DragEventArgs e)
+		{
+			if (!(sender is System.Windows.Forms.Control targetControl))
+				return;
+
+			if (!(e.Data.GetData(typeof(System.Drawing.Design.ToolboxItem)) is System.Drawing.Design.ToolboxItem toolboxItem))
+				return;
+
+			IDesignerHost host = targetControl.Site?.GetService(typeof(IDesignerHost)) as IDesignerHost;
+			if (host == null)
+				return;
+
+			var selectionService = host.GetService(typeof(ISelectionService)) as ISelectionService;
+			selectionService?.SetSelectedComponents(new object[] { targetControl }, SelectionTypes.Replace);
+
+			if (!(host.GetDesigner(host.RootComponent) is System.Drawing.Design.IToolboxUser toolboxUser)
+			    || !toolboxUser.GetToolSupported(toolboxItem))
+				return;
+
+			var componentsBeforeDrop = new System.Collections.Generic.HashSet<System.ComponentModel.IComponent>(
+				host.Container.Components.Cast<System.ComponentModel.IComponent>());
+
+			toolboxUser.ToolPicked(toolboxItem);
+
+			// ToolPicked has no drop-point overload (the underlying CreateTool(tool, start, end) is
+			// internal to LibreWinForms), so it centers the new control in its container - move it
+			// to where the user actually dropped it. Going through the PropertyDescriptor rather
+			// than the CLR property keeps the designer's change notification/serialization in sync.
+			System.Drawing.Point dropLocation = targetControl.PointToClient(new System.Drawing.Point(e.X, e.Y));
+			foreach (System.ComponentModel.IComponent component in host.Container.Components) {
+				if (componentsBeforeDrop.Contains(component) || !(component is System.Windows.Forms.Control addedControl))
+					continue;
+
+				ApplyToolboxDefaults(addedControl);
+
+				var locationProperty = TypeDescriptor.GetProperties(component)["Location"];
+				if (locationProperty != null && !locationProperty.IsReadOnly)
+					locationProperty.SetValue(component, dropLocation);
+			}
+		}
+
+		// LibreWinForms intentionally keeps these compatibility controls at Size.Empty. Apply the
+		// familiar WinForms toolbox sizes only when OpenDevelop creates a new designer component;
+		// loaded source and explicit rubber-band sizes remain authoritative.
+		static void ApplyToolboxDefaults(System.Windows.Forms.Control control)
+		{
+			if (control.Size.IsEmpty) {
+				System.Drawing.Size size;
+				if (control is System.Windows.Forms.ComboBox)
+					size = new System.Drawing.Size(121, 21);
+				else if (control is System.Windows.Forms.ListBox)
+					size = new System.Drawing.Size(120, 96);
+				else if (control is System.Windows.Forms.Panel || control is System.Windows.Forms.GroupBox)
+					size = new System.Drawing.Size(200, 100);
+				else if (control is System.Windows.Forms.Label)
+					size = new System.Drawing.Size(100, 23);
+				else if (control is System.Windows.Forms.TextBox)
+					size = new System.Drawing.Size(100, 20);
+				else if (control is System.Windows.Forms.NumericUpDown)
+					size = new System.Drawing.Size(120, 20);
+				else
+					size = System.Drawing.Size.Empty;
+
+				if (!size.IsEmpty) {
+					var sizeProperty = TypeDescriptor.GetProperties(control)["Size"];
+					if (sizeProperty != null && !sizeProperty.IsReadOnly)
+						sizeProperty.SetValue(control, size);
+				}
+			}
+
+			if (string.IsNullOrEmpty(control.Text)
+			    && control is System.Windows.Forms.ButtonBase or System.Windows.Forms.Label or System.Windows.Forms.GroupBox) {
+				var textProperty = TypeDescriptor.GetProperties(control)["Text"];
+				if (textProperty != null && !textProperty.IsReadOnly)
+					textProperty.SetValue(control, control.Name);
 			}
 		}
 		

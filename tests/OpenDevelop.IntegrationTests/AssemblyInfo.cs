@@ -1,8 +1,9 @@
 using Xunit;
 
-// All test classes here share the single "OpenDevelop app" collection (one shared
-// OpenDevelopAppFixture: one SharpDevelop process, one DevFlow port), which already makes
-// xunit run them sequentially relative to each other. This attribute makes that requirement
-// explicit at the assembly level too, so a future test class added *without* joining that
-// collection can't accidentally run in parallel against the same live app/port.
+// One assembly fixture owns the sole OpenDevelop process. Named collections expose each test
+// class as an orderable workflow; FixtureTestCollectionOrderer fixes their cross-class order and
+// FixtureTestCaseOrderer fixes the fixture/scenario order inside mixed workflow classes.
 [assembly: CollectionBehavior(DisableTestParallelization = true)]
+[assembly: AssemblyFixture(typeof(OpenDevelop.IntegrationTests.OpenDevelopAppFixture))]
+[assembly: TestCaseOrderer(typeof(OpenDevelop.IntegrationTests.FixtureTestCaseOrderer))]
+[assembly: TestCollectionOrderer(typeof(OpenDevelop.IntegrationTests.FixtureTestCollectionOrderer))]

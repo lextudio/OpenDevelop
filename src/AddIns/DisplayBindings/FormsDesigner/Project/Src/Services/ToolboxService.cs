@@ -472,7 +472,14 @@ namespace ICSharpCode.FormsDesigner.Services
 		
 		public object SerializeToolboxItem(ToolboxItem toolboxItem)
 		{
-			return null;
+			// The real .NET Windows Forms designer's drag source (drag from a toolbox palette)
+			// calls this to build the OLE data object passed to Control.DoDragDrop; the drop
+			// target (ParentControlDesigner.OnDragEnter/OnDragDrop) reads it back via
+			// DeserializeToolboxItem, which checks for a System.Windows.Forms.IDataObject exposing
+			// typeof(ToolboxItem) - so the format key just needs to match on both sides.
+			var data = new System.Windows.Forms.DataObject();
+			data.SetData(typeof(ToolboxItem), toolboxItem);
+			return data;
 		}
 		
 		public bool SetCursor()

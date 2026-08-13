@@ -90,7 +90,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			// Integration-test runs (OpenDevelopAppFixture sets OD_TEST_MODE=1) must not steal
 			// focus from the user's active app: ShowActivated=false keeps the window fully
 			// rendered and the DevFlow agent fully functional, but never activates it on macOS.
-			if (Environment.GetEnvironmentVariable("OD_TEST_MODE") == "1")
+			if (TestMode.IsActive)
 				this.ShowActivated = false;
 			SD.Services.AddService(typeof(IStatusBarService), new StatusBarService(statusBar));
 			SD.Services.AddService(typeof(ViewModels.INotificationHost), notificationBanner);

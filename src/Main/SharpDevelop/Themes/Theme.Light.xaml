@@ -36,6 +36,7 @@
     <SolidColorBrush x:Key="HoverBackground" Color="#FFE8E8E8" />
     <SolidColorBrush x:Key="InfoBarBackground" Color="#FFD6E8FF" />
     <SolidColorBrush x:Key="InfoBarBorder" Color="#FF3399FF" />
+    <SolidColorBrush x:Key="EditorHyperlinkForeground" Color="#FF0066CC" />
 
     <Style TargetType="{x:Type GroupBox}">
         <Setter Property="Foreground" Value="{DynamicResource Foreground}" />

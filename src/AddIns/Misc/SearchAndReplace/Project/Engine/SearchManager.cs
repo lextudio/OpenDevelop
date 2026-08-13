@@ -66,8 +66,20 @@ namespace SearchAndReplace
 		
 		class SearchableFileContentFinder
 		{
-			FileName[] viewContentFileNamesCollection = SD.MainThread.InvokeIfRequired(() => SD.FileService.OpenedFiles.Select(f => f.FileName).ToArray());
-			
+			// Snapshots every open file's buffer eagerly, right here in the constructor - which
+			// InvokeIfRequired already runs synchronously on whichever thread constructs this
+			// finder (the UI thread, for every caller). Reading each buffer *lazily* per file
+			// instead (as this used to) needs its own InvokeIfRequired hop back onto the UI thread
+			// from inside Create() - fine for FindAll's sequential GetResults(), which runs on the
+			// UI thread already, but FindAllParallel's SearchRun.SearchFile calls Create() from a
+			// Task.Run background thread: a caller that synchronously blocks the UI thread waiting
+			// for that parallel search to finish (rather than pumping the dispatcher while it
+			// waits) deadlocks the instant a background thread's hop lands on the wedged UI thread.
+			// Doing every hop up front, before any background work starts, removes the possibility
+			// entirely regardless of how the caller waits for the search to finish.
+			Dictionary<FileName, ITextSource> openFileBuffers = SD.MainThread.InvokeIfRequired(() =>
+				SD.FileService.OpenedFiles.ToDictionary(f => f.FileName, f => ReadFile(f.FileName)));
+
 			static ITextSource ReadFile(FileName fileName)
 			{
 				OpenedFile openedFile = SD.FileService.GetOpenedFile(fileName);
@@ -81,17 +93,12 @@ namespace SearchAndReplace
 					return null;
 				return doc.CreateSnapshot();
 			}
-			
+
 			public ITextSource Create(FileName fileName)
 			{
 				try {
-					foreach (FileName name in viewContentFileNamesCollection) {
-						if (FileUtility.IsEqualFileName(name, fileName)) {
-							ITextSource buffer = SD.MainThread.InvokeIfRequired(() => ReadFile(fileName));
-							if (buffer != null)
-								return buffer;
-						}
-					}
+					if (openFileBuffers.TryGetValue(fileName, out ITextSource buffer) && buffer != null)
+						return buffer;
 					using (Stream stream = new FileStream(fileName, FileMode.Open, FileAccess.Read)) {
 						if (MimeTypeDetection.FindMimeType(stream).StartsWith("text/", StringComparison.Ordinal)) {
 							stream.Position = 0;

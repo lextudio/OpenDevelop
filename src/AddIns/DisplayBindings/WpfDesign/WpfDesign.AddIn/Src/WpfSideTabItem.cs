@@ -39,6 +39,14 @@ namespace ICSharpCode.WpfDesign.AddIn
 
 		public ITool Tool { get; }
 
+		/// <summary>
+		/// The real System.Drawing.Design.ToolboxItem for a Windows Forms entry (null for a WPF
+		/// entry, which uses <see cref="Tool"/>/CreateComponentTool instead) - WpfToolbox drags
+		/// this through the real IToolboxService rather than WpfDesign's own DesignItem machinery,
+		/// since it's WinForms' ParentControlDesigner that creates the component on drop.
+		/// </summary>
+		public System.Drawing.Design.ToolboxItem WinFormsToolboxItem { get; }
+
 		/// <summary>Creates the default "Pointer" item (selection tool, no draggable component).</summary>
 		public WpfSideTabItem(string categoryName)
 		{
@@ -57,6 +65,21 @@ namespace ICSharpCode.WpfDesign.AddIn
 			DisplayName = componentType.Name;
 			Icon = null;
 			Tool = new CreateComponentTool(componentType);
+		}
+
+		/// <summary>Creates a Windows Forms toolbox entry - see <see cref="WinFormsToolboxItem"/>.</summary>
+		public WpfSideTabItem(string categoryName, Type componentType, System.Drawing.Design.ToolboxItem winFormsToolboxItem)
+		{
+			if (componentType == null)
+				throw new ArgumentNullException(nameof(componentType));
+			if (winFormsToolboxItem == null)
+				throw new ArgumentNullException(nameof(winFormsToolboxItem));
+
+			CategoryName = categoryName;
+			DisplayName = componentType.Name;
+			Icon = null;
+			Tool = null;
+			WinFormsToolboxItem = winFormsToolboxItem;
 		}
 
 		public override string ToString()

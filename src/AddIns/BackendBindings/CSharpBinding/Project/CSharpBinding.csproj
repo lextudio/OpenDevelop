@@ -5,6 +5,7 @@
     <AssemblyName>CSharpBinding</AssemblyName>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <OutputType>Library</OutputType>
     <OutputPath>..\..\..\..\..\AddIns\BackendBindings\CSharpBinding\</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
@@ -24,6 +25,12 @@
     <Compile Include="Src\RegisterCSharpOpenLensProvidersCommand.cs" />
     <Compile Include="Src\Project\CSharpProject.cs" />
     <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
+    <!-- Roslyn-based WinForms Designer attachment - see CSharpBinding.addin's own doc comment on
+         why this is new code rather than the excluded NRefactory-based Src\FormsDesigner\*.cs. -->
+    <Compile Include="Src\FormsDesigner\RoslynFormsDesignerSecondaryDisplayBinding.cs" />
+    <Compile Include="Src\FormsDesigner\RoslynFormsDesignerLoaderProvider.cs" />
+    <Compile Include="Src\FormsDesigner\RoslynDesignerLoader.cs" />
+    <Compile Include="Src\FormsDesigner\RoslynToCodeDomTranslator.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -35,5 +42,6 @@
     <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
     <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
     <ProjectReference Include="..\..\..\..\Libraries\ICSharpCode.TypeSystem.Abstractions\ICSharpCode.TypeSystem.Abstractions.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\DisplayBindings\FormsDesigner\Project\FormsDesigner.csproj" Private="false" />
   </ItemGroup>
 </Project>

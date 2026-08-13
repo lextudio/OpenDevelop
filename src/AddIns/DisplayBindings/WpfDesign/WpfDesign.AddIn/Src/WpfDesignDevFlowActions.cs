@@ -125,8 +125,11 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			toolboxControl.ScrollIntoView(item);
 			toolboxControl.UpdateLayout();
 
-			if (!(toolboxControl.ItemContainerGenerator.ContainerFromItem(item) is FrameworkElement container))
+			if (!(FindRealizedContainer(toolboxControl, item) is FrameworkElement container))
 				return JsonSerializer.Serialize(new { success = false, error = "Toolbox row has no realized container (not scrolled into view?): " + typeName });
+
+			container.BringIntoView();
+			toolboxControl.UpdateLayout();
 
 			return JsonSerializer.Serialize(GetScreenBounds(container));
 		}
@@ -163,10 +166,108 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			toolboxControl.ScrollIntoView(item);
 			toolboxControl.UpdateLayout();
 
-			if (!(toolboxControl.ItemContainerGenerator.ContainerFromItem(item) is FrameworkElement container))
+			if (!(FindRealizedContainer(toolboxControl, item) is FrameworkElement container))
 				return JsonSerializer.Serialize(new { success = false, error = "Toolbox row has no realized container (not scrolled into view?): " + typeName });
 
+			container.BringIntoView();
+			toolboxControl.UpdateLayout();
+
+			if (!WaitUntilHitTestableAt(container))
+				return JsonSerializer.Serialize(new { success = false, error = "Toolbox row never became hit-testable at its own layout position (compositor did not catch up): " + typeName });
+
 			return JsonSerializer.Serialize(GetScreenBounds(container));
+		}
+
+		/// <summary>
+		/// Blocks until a hit-test at <paramref name="element"/>'s own layout position actually
+		/// resolves back to it, so the bounds this action returns are ones a real click will land on.
+		///
+		/// Necessary because layout and hit-testing are served by two different, independently
+		/// updated structures in this portable stack: ScrollIntoView/BringIntoView + UpdateLayout()
+		/// update WPF's visual tree synchronously (so TransformToAncestor/PointToScreen immediately
+		/// report the post-scroll position), but VisualTreeHelper.HitTest is routed through
+		/// PortablePresentationSource.HitTestOverride into the ProGPU compositor's scene graph
+		/// (see PortablePresentationSource.TryPointHitTestOverride), which is only rebuilt on a
+		/// render frame - and the native render loop cannot tick while a DevFlow action is running
+		/// synchronously on the UI thread. Measured directly: right after scrolling the toolbox to
+		/// its last item, a hit-test at that item's reported position returned an item exactly
+		/// ScrollViewer.VerticalOffset away (i.e. the pre-scroll scene); after ~1.5s of pumped
+		/// render frames the same hit-test returned the correct item. Pumping a nested
+		/// DispatcherFrame lets those frames run, and re-checking (rather than sleeping a fixed
+		/// amount) keeps this as short as possible and self-verifying.
+		/// </summary>
+		static bool WaitUntilHitTestableAt(FrameworkElement element, int timeoutMilliseconds = 4000)
+		{
+			var source = System.Windows.PresentationSource.FromVisual(element);
+			if (!(source?.RootVisual is System.Windows.Media.Visual rootVisual))
+				return true; // Not composited (no PresentationSource) - nothing to wait for.
+
+			for (int elapsed = 0; ; elapsed += 100) {
+				if (HitTestResolvesToElement(rootVisual, element))
+					return true;
+				if (elapsed >= timeoutMilliseconds)
+					return false;
+				PumpRenderFrames(100);
+			}
+		}
+
+		static bool HitTestResolvesToElement(System.Windows.Media.Visual rootVisual, FrameworkElement element)
+		{
+			var center = element.TransformToAncestor(rootVisual)
+				.Transform(new Point(element.ActualWidth / 2, element.ActualHeight / 2));
+
+			var hit = System.Windows.Media.VisualTreeHelper.HitTest(rootVisual, center)?.VisualHit;
+			for (DependencyObject node = hit; node != null; node = System.Windows.Media.VisualTreeHelper.GetParent(node)) {
+				if (ReferenceEquals(node, element))
+					return true;
+			}
+			return false;
+		}
+
+		/// <summary>
+		/// Runs the dispatcher (and with it the ProGPU native render loop, via
+		/// Dispatcher.NativeInputPump - see WorkbenchStartup's own comment on it) for roughly
+		/// <paramref name="milliseconds"/>, so pending render frames actually execute.
+		/// </summary>
+		static void PumpRenderFrames(int milliseconds)
+		{
+			var frame = new System.Windows.Threading.DispatcherFrame();
+			var timer = new System.Windows.Threading.DispatcherTimer {
+				Interval = TimeSpan.FromMilliseconds(milliseconds)
+			};
+			timer.Tick += (sender, e) => {
+				timer.Stop();
+				frame.Continue = false;
+			};
+			timer.Start();
+			System.Windows.Threading.Dispatcher.PushFrame(frame);
+		}
+
+		/// <summary>
+		/// ItemContainerGenerator.ContainerFromItem(item) is not trustworthy here - confirmed by
+		/// direct hit-testing that, for a deeply-scrolled row in this grouped ListBox, it can
+		/// report a container whose ACTUAL on-screen position (via PointToScreen) doesn't match
+		/// where that item visually renders; a real click at the reported bounds lands on a
+		/// different item's row instead. This bypasses the generator's mapping entirely and finds
+		/// the realized ListBoxItem by walking the live visual tree and matching DataContext by
+		/// reference - which is what a real click's hit-test would actually find.
+		/// </summary>
+		static ListBoxItem FindRealizedContainer(ItemsControl itemsControl, object item)
+		{
+			return FindInVisualTree(itemsControl);
+
+			ListBoxItem FindInVisualTree(DependencyObject node)
+			{
+				int count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(node);
+				for (int i = 0; i < count; i++) {
+					var child = System.Windows.Media.VisualTreeHelper.GetChild(node, i);
+					if (child is ListBoxItem listBoxItem && ReferenceEquals(listBoxItem.DataContext, item))
+						return listBoxItem;
+					if (FindInVisualTree(child) is ListBoxItem found)
+						return found;
+				}
+				return null;
+			}
 		}
 
 		/// <summary>

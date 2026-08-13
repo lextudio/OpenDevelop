@@ -5,6 +5,9 @@
 	xmlns:widgets="http://icsharpcode.net/sharpdevelop/widgets"
 	xmlns:core="http://icsharpcode.net/sharpdevelop/core"
 >
+	<Style TargetType="{x:Type ae:TextView}">
+		<Setter Property="LinkTextForegroundBrush" Value="{DynamicResource EditorHyperlinkForeground}" />
+	</Style>
 	<Style TargetType="{x:Type local:SharpDevelopTextEditor}">
 		<Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}" />
 		<Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" />

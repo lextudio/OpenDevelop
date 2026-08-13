@@ -1,4 +1,5 @@
 using System;
+using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Project;
 using System.Windows.Input;
 
@@ -65,6 +66,7 @@ namespace ICSharpCode.UnitTesting.Mtp
 		// for MtpTestProject.UpdateTestResult to apply a completed run's outcome.
 		public void SetResult(TestResultType resultType)
 		{
+			LoggingService.Debug($"[StreamDiag] MtpTestMethod.SetResult instance={GetHashCode()} name={DisplayName} {Result} -> {resultType} thread={Environment.CurrentManagedThreadId} t={DateTime.UtcNow:HH:mm:ss.fff}");
 			Result = resultType;
 		}
 

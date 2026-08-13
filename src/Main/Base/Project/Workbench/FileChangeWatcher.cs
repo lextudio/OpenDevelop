@@ -165,6 +165,13 @@ namespace ICSharpCode.SharpDevelop.Workbench
 					watcher.Dispose();
 				}
 				watcher = null;
+			} catch (DirectoryNotFoundException) {
+				// can occur if directory was deleted externally
+				// (.NET on macOS reports DirectoryNotFoundException for a missing path)
+				if (watcher != null) {
+					watcher.Dispose();
+				}
+				watcher = null;
 			} catch (ArgumentException) {
 				// can occur if parent directory was deleted externally
 				if (watcher != null) {

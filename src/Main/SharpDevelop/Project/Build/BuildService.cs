@@ -86,11 +86,15 @@ namespace ICSharpCode.SharpDevelop.Project
 						buildable = new MultipleProjectBuildable(projectsList);
 					
 					buildable = buildModifiedProjectsOnly.WrapBuildable(buildable, options.BuildDetection);
-					
+
 					var sink = new UIBuildFeedbackSink(SD.OutputPad.BuildCategory, SD.StatusBar);
 					// Actually run the build:
+					// [TimingDiag] ad-hoc instrumentation (integration-test rebuild-overhead
+					// investigation, 2026-08-11) - remove once that's resolved.
+					var buildSw = System.Diagnostics.Stopwatch.StartNew();
 					var results = await BuildEngine.BuildAsync(buildable, options, sink, progressMonitor);
-					
+					LoggingService.Debug($"[TimingDiag] BuildEngine.BuildAsync detection={options.BuildDetection} elapsedMs={buildSw.ElapsedMilliseconds} result={results.Result} projects={projectsList.Count}");
+
 					string message;
 					if (results.Result == BuildResultCode.Cancelled) {
 						message = "${res:MainWindow.CompilerMessages.BuildCancelled}";

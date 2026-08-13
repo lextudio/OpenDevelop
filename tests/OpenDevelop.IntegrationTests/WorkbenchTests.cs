@@ -29,7 +29,7 @@ using Xunit;
 
 namespace OpenDevelop.IntegrationTests;
 
-[Collection("OpenDevelop app")]
+[Collection("20 General workbench fixture")]
 public sealed class WorkbenchTests
 {
     readonly OpenDevelopAppFixture _app;
@@ -40,26 +40,40 @@ public sealed class WorkbenchTests
         _app = app;
     }
 
+    // Merged: BuildSolution_FixtureProjectBuildsSuccessfully, BuildSolution_OutputPadCapturesRealBuildLog,
+    // BuildSolution_OutputPadIsActuallyShownNotJustPopulated, BuildSolution_UnknownProjectNameReturnsError
+    // and ErrorList_IsEmptyAfterCleanBuild all open the same SolutionExplorerFixturePath and only read
+    // back build/output/error-list state - no project or file mutation - so they share a single open
+    // and a single clean build instead of five.
     [Fact]
-    public async Task BuildSolution_FixtureProjectBuildsSuccessfully()
+    public async Task BuildSolution_ChecksResultOutputPadErrorListAndUnknownProject()
     {
-        await _app.EnsureSolutionOpenAsync(_app.SolutionExplorerFixturePath);
+        // Project CRUD scenarios may have just completed while their project-system refresh is
+        // still draining. A clean-build assertion needs a genuine clean load; reusing that live
+        // solution can cause BuildService to observe the previous refresh cancellation token.
+        await _app.ReopenSolutionAsync(_app.SolutionExplorerFixturePath);
+        await _app.InvokeAsync("od.error-list.clear");
 
+        // --- was: BuildSolution_FixtureProjectBuildsSuccessfully ---
         var result = await _app.InvokeAsync("od.build-solution");
+        for (var attempt = 1;
+             attempt < 3 && result.GetProperty("result").GetString() == "Cancelled";
+             attempt++)
+        {
+            // Project reload completion and BuildService readiness are signaled on different UI
+            // turns. A cancellation here means no compilation ran; wait for the reload queue and
+            // retry the same clean build rather than treating that transient as a compiler result.
+            await Task.Delay(500);
+            result = await _app.InvokeAsync("od.build-solution");
+        }
 
         Assert.True(result.GetProperty("success").GetBoolean(), "od.build-solution reported an infrastructure failure, not a build failure");
         Assert.Equal("Success", result.GetProperty("result").GetString());
         Assert.Equal(0, result.GetProperty("errorCount").GetInt32());
         Assert.Equal(0, result.GetProperty("warningCount").GetInt32());
         Assert.Empty(result.GetProperty("diagnostics").EnumerateArray());
-    }
 
-    [Fact]
-    public async Task BuildSolution_OutputPadCapturesRealBuildLog()
-    {
-        await _app.EnsureSolutionOpenAsync(_app.SolutionExplorerFixturePath);
-        await _app.InvokeAsync("od.build-solution");
-
+        // --- was: BuildSolution_OutputPadCapturesRealBuildLog ---
         var output = await _app.InvokeAsync("od.output-text");
 
         Assert.Equal("Build", output.GetProperty("category").GetString());
@@ -67,26 +81,20 @@ public sealed class WorkbenchTests
         Assert.Contains("Build started.", text);
         Assert.Contains("Build succeeded.", text);
         Assert.Contains("SampleApp", text);
-    }
 
-    // Regression test for the Output pad being tab-docked behind an unrelated pane on its first
-    // show: this fixture wipes ~/Library/Application Support/.../layouts/ before every launch (see
-    // OpenDevelopAppFixture.DeleteStaleViewStateMemento), so the Output pad is never part of the
-    // persisted layout when this runs - exactly the "never shown before" scenario
-    // DockWorkspace.BeforeInsertAnchorable's ToolPaneModel.PreferredDockSide handling exists for.
-    // Without that handling, AvalonDock's own AttachAnchorablesSource import falls back to
-    // whatever pane hosts the active content (or the first pane it finds), so the Output pad ends
-    // up as a background tab: od.output-text still returns the right build log (a different code
-    // path - MessageViewCategory.Text), but the user never actually sees the pad pop up. isVisible
-    // alone can't catch that regression (AvalonDock sets it even for a background tab); isSelected
-    // is the front-most-tab-in-its-group flag that BuildService.BuildAsync's
-    // SD.OutputPad.BuildCategory.Activate(bringPadToFront: true) call is supposed to guarantee.
-    [Fact]
-    public async Task BuildSolution_OutputPadIsActuallyShownNotJustPopulated()
-    {
-        await _app.EnsureSolutionOpenAsync(_app.SolutionExplorerFixturePath);
-        await _app.InvokeAsync("od.build-solution");
-
+        // --- was: BuildSolution_OutputPadIsActuallyShownNotJustPopulated ---
+        // Regression test for the Output pad being tab-docked behind an unrelated pane on its first
+        // show: this fixture wipes ~/Library/Application Support/.../layouts/ before every launch (see
+        // OpenDevelopAppFixture.DeleteStaleViewStateMemento), so the Output pad is never part of the
+        // persisted layout when this runs - exactly the "never shown before" scenario
+        // DockWorkspace.BeforeInsertAnchorable's ToolPaneModel.PreferredDockSide handling exists for.
+        // Without that handling, AvalonDock's own AttachAnchorablesSource import falls back to
+        // whatever pane hosts the active content (or the first pane it finds), so the Output pad ends
+        // up as a background tab: od.output-text still returns the right build log (a different code
+        // path - MessageViewCategory.Text), but the user never actually sees the pad pop up. isVisible
+        // alone can't catch that regression (AvalonDock sets it even for a background tab); isSelected
+        // is the front-most-tab-in-its-group flag that BuildService.BuildAsync's
+        // SD.OutputPad.BuildCategory.Activate(bringPadToFront: true) call is supposed to guarantee.
         var status = await _app.InvokeAsync("od.output-pad.status");
 
         Assert.True(status.GetProperty("isVisible").GetBoolean(),
@@ -94,17 +102,16 @@ public sealed class WorkbenchTests
         Assert.True(status.GetProperty("isSelected").GetBoolean(),
             "Output pad should be the front-most tab in its dock group after a build - if this is " +
             "false, the pad exists but is hidden behind another tab (the bug this test guards against)");
-    }
 
-    [Fact]
-    public async Task BuildSolution_UnknownProjectNameReturnsError()
-    {
-        await _app.EnsureSolutionOpenAsync(_app.SolutionExplorerFixturePath);
+        // --- was: ErrorList_IsEmptyAfterCleanBuild ---
+        var errorList = await _app.InvokeAsync("od.error-list");
+        Assert.Equal(0, errorList.GetProperty("errorCount").GetInt32());
 
-        var result = await _app.InvokeAsync("od.build-solution", "NoSuchProject");
+        // --- was: BuildSolution_UnknownProjectNameReturnsError ---
+        var unknownProjectResult = await _app.InvokeAsync("od.build-solution", "NoSuchProject");
 
-        Assert.False(result.GetProperty("success").GetBoolean());
-        Assert.Contains("NoSuchProject", result.GetProperty("error").GetString());
+        Assert.False(unknownProjectResult.GetProperty("success").GetBoolean());
+        Assert.Contains("NoSuchProject", unknownProjectResult.GetProperty("error").GetString());
     }
 
     [Fact]
@@ -178,6 +185,10 @@ public sealed class WorkbenchTests
 
         try
         {
+            // The fixture ships a .slnx beside its .sln (the app's steady state after a first
+            // open), so strip it from the copy to test the genuine migrate-from-scratch path.
+            if (File.Exists(slnxPath))
+                File.Delete(slnxPath);
             Assert.True(File.Exists(slnPath), "Expected the copied fixture to still be a .sln.");
             Assert.False(File.Exists(slnxPath), "The copied fixture should not start with a .slnx.");
 
@@ -294,17 +305,24 @@ public sealed class WorkbenchTests
         var result = await _app.ReopenSolutionAsync(_app.SolutionExplorerFixturePath);
 
         Assert.True(result.GetProperty("success").GetBoolean(), $"OpenSolutionOrProject returned false for {_app.SolutionExplorerFixturePath}");
-        Assert.Equal(_app.SolutionExplorerFixturePath, result.GetProperty("currentSolution").GetString());
+        // The fixture ships a .slnx beside its .sln, and the app adopts an existing .slnx without
+        // regenerating it, so opening the .sln lands on the .slnx.
+        Assert.Equal(Path.ChangeExtension(_app.SolutionExplorerFixturePath, ".slnx"), result.GetProperty("currentSolution").GetString());
     }
 
+    // Merged: SolutionTree_MatchesFixtureProjectStructure, OpenFile_DisplaysInAvalonEdit,
+    // OpenCSharpFile_ShowsFoldingIndicators and OpenSolution_ProjectBrowserPadRendersRealNodes all open
+    // the same SolutionExplorerFixturePath and only read back tree/editor/pad state - no mutation - so
+    // they share a single open instead of four.
     [Fact]
-    public async Task SolutionTree_MatchesFixtureProjectStructure()
+    public async Task SolutionExplorerFixture_TreeFileAndProjectBrowserChecks()
     {
         await _app.EnsureSolutionOpenAsync(_app.SolutionExplorerFixturePath);
 
+        // --- was: SolutionTree_MatchesFixtureProjectStructure ---
         var tree = await _app.InvokeAsync("od.solution-tree");
 
-        Assert.Equal(_app.SolutionExplorerFixturePath, tree.GetProperty("solutionFile").GetString());
+        Assert.Equal(Path.ChangeExtension(_app.SolutionExplorerFixturePath, ".slnx"), tree.GetProperty("solutionFile").GetString());
 
         var projects = tree.GetProperty("projects").EnumerateArray().ToList();
         Assert.Single(projects);
@@ -320,12 +338,8 @@ public sealed class WorkbenchTests
         Assert.Contains(files, f => f.EndsWith("Program.cs"));
         Assert.Contains(files, f => f.EndsWith("Models/Widget.cs"));
         Assert.Contains(files, f => f.EndsWith("Services/WidgetService.cs"));
-    }
 
-    [Fact]
-    public async Task OpenFile_DisplaysInAvalonEdit()
-    {
-        await _app.EnsureSolutionOpenAsync(_app.SolutionExplorerFixturePath);
+        // --- was: OpenFile_DisplaysInAvalonEdit ---
         var widgetPath = Path.Combine(Path.GetDirectoryName(_app.SolutionExplorerFixturePath)!, "SampleApp", "Models", "Widget.cs");
 
         var openResult = await _app.InvokeAsync("od.open-file", widgetPath);
@@ -346,31 +360,23 @@ public sealed class WorkbenchTests
         var textPreview = activeView.GetProperty("textPreview").GetString();
         Assert.Contains("class Widget", textPreview);
         Assert.Contains("namespace SampleApp.Models", textPreview);
-    }
 
-
-    // Folding indicators depend on a real Roslyn parse completing after the file opens
-    // (CodeEditor.ParseInformationUpdated -> CodeEditorView.UpdateParseInformationForFolding ->
-    // ParserFoldingStrategy.UpdateFoldings), which is async - so this polls od.file.foldings
-    // instead of asserting immediately after od.open-file returns.
-    [Fact]
-    public async Task OpenCSharpFile_ShowsFoldingIndicators()
-    {
-        await _app.EnsureSolutionOpenAsync(_app.SolutionExplorerFixturePath);
+        // --- was: OpenCSharpFile_ShowsFoldingIndicators ---
+        // Folding indicators depend on a real Roslyn parse completing after the file opens
+        // (CodeEditor.ParseInformationUpdated -> CodeEditorView.UpdateParseInformationForFolding ->
+        // ParserFoldingStrategy.UpdateFoldings), which is async - so this polls od.file.foldings
+        // instead of asserting immediately after od.open-file returns.
         var programPath = Path.Combine(Path.GetDirectoryName(_app.SolutionExplorerFixturePath)!, "SampleApp", "Program.cs");
 
-        var openResult = await _app.InvokeAsync("od.open-file", programPath);
-        Assert.True(openResult.GetProperty("opened").GetBoolean(), $"Failed to open {programPath}");
+        var openProgramResult = await _app.InvokeAsync("od.open-file", programPath);
+        Assert.True(openProgramResult.GetProperty("opened").GetBoolean(), $"Failed to open {programPath}");
 
         JsonElement foldings = default;
-        var deadline = DateTime.UtcNow.AddSeconds(30);
-        while (DateTime.UtcNow < deadline)
+        await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             foldings = await _app.InvokeAsync("od.file.foldings", programPath);
-            if (foldings.GetProperty("success").GetBoolean() && foldings.GetProperty("foldingCount").GetInt32() > 0)
-                break;
-            await Task.Delay(500);
-        }
+            return foldings.GetProperty("success").GetBoolean() && foldings.GetProperty("foldingCount").GetInt32() > 0;
+        }, TimeSpan.FromSeconds(30));
 
         Assert.True(foldings.GetProperty("success").GetBoolean());
         Assert.True(foldings.GetProperty("hasFoldingMargin").GetBoolean(),
@@ -379,25 +385,21 @@ public sealed class WorkbenchTests
             "A FoldingManager should be registered on the editor's TextView");
         Assert.True(foldings.GetProperty("foldingCount").GetInt32() > 0,
             "Program.cs has a namespace, a class and a method body - expected at least one foldable region");
-    }
 
-    // The Project Browser pad renders its own tree in the real WPF visual tree (ProjectBrowserView.xaml's
-    // HierarchicalDataTemplate -> TextBlock per node). od.solution-tree covers the backing model; this
-    // locks in that opening a plain (non-git) solution actually displays the project, root file and
-    // folder nodes as visible UI. Folder nodes render even when collapsed; files nested under a folder
-    // (Widget.cs under Models/) are only realized once the folder is expanded, which has no DevFlow hook.
-    [Fact]
-    public async Task OpenSolution_ProjectBrowserPadRendersRealNodes()
-    {
-        await _app.EnsureSolutionOpenAsync(_app.SolutionExplorerFixturePath);
-
+        // --- was: OpenSolution_ProjectBrowserPadRendersRealNodes ---
+        // The Project Browser pad renders its own tree in the real WPF visual tree (ProjectBrowserView.xaml's
+        // HierarchicalDataTemplate -> TextBlock per node). od.solution-tree covers the backing model; this
+        // locks in that opening a plain (non-git) solution actually displays the project, root file and
+        // folder nodes as visible UI. Folder nodes render even when collapsed; files nested under a folder
+        // (Widget.cs under Models/) are only realized once the folder is expanded, which has no DevFlow hook.
+        //
         // The pad's TreeView content is only realized by AvalonDock once the pad is shown/activated
         // (same pattern as GitAddInTests).
         var showPadResult = await _app.InvokeAsync("od.show-pad", "ProjectBrowserPad");
         Assert.True(showPadResult.GetProperty("found").GetBoolean(), "Could not find the ProjectBrowser pad");
 
-        var tree = await _app.GetUITreeAsync();
-        var texts = FlattenElements(tree)
+        var uiTree = await _app.GetUITreeAsync();
+        var texts = FlattenElements(uiTree)
             .Where(e => e.TryGetProperty("type", out var t) && t.GetString() == "TextBlock"
                 && e.TryGetProperty("text", out var txt) && !string.IsNullOrEmpty(txt.GetString()))
             .Select(e => e.GetProperty("text").GetString())
@@ -654,11 +656,16 @@ public sealed class WorkbenchTests
         try { if (File.Exists(path)) File.Delete(path); } catch { }
     }
 
+    // Merged: Find_InSolution_FindsTermAcrossMultipleFiles, Find_MatchCase_RespectsCaseSensitivity,
+    // Find_UseRegex_MatchesPattern and ShowResults_PopulatesSearchResultsPadUiTree all open the same
+    // SolutionExplorerFixturePath and only run read-only searches - no mutation - so they share a
+    // single open instead of four.
     [Fact]
-    public async Task Find_InSolution_FindsTermAcrossMultipleFiles()
+    public async Task SolutionExplorerFixture_SearchChecks()
     {
         await _app.EnsureSolutionOpenAsync(_app.SolutionExplorerFixturePath);
 
+        // --- was: Find_InSolution_FindsTermAcrossMultipleFiles ---
         // "Widget" appears in both Models/Widget.cs (class declaration) and Services/WidgetService.cs
         // (usage) in the real fixture files - a genuine cross-file plain-text match, not a rename.
         var result = await _app.InvokeAsync("od.search.find", "Widget", "solution");
@@ -677,38 +684,23 @@ public sealed class WorkbenchTests
             .GetProperty("matches").EnumerateArray().ToList();
         Assert.NotEmpty(widgetFileMatches);
         Assert.True(widgetFileMatches[0].GetProperty("line").GetInt32() > 0);
-    }
 
-    [Fact]
-    public async Task Find_MatchCase_RespectsCaseSensitivity()
-    {
-        await _app.EnsureSolutionOpenAsync(_app.SolutionExplorerFixturePath);
-
+        // --- was: Find_MatchCase_RespectsCaseSensitivity ---
         var caseInsensitive = await _app.InvokeAsync("od.search.find", "WIDGET", "solution", false, false, false);
         Assert.True(caseInsensitive.GetProperty("matchCount").GetInt32() > 0);
 
         var caseSensitive = await _app.InvokeAsync("od.search.find", "WIDGET", "solution", true, false, false);
         Assert.Equal(0, caseSensitive.GetProperty("matchCount").GetInt32());
-    }
 
-    [Fact]
-    public async Task Find_UseRegex_MatchesPattern()
-    {
-        await _app.EnsureSolutionOpenAsync(_app.SolutionExplorerFixturePath);
+        // --- was: Find_UseRegex_MatchesPattern ---
+        var regexResult = await _app.InvokeAsync("od.search.find", @"Widget\w*", "solution", false, false, true);
 
-        var result = await _app.InvokeAsync("od.search.find", @"Widget\w*", "solution", false, false, true);
-
-        Assert.True(result.GetProperty("success").GetBoolean());
-        var files = result.GetProperty("files").EnumerateArray()
+        Assert.True(regexResult.GetProperty("success").GetBoolean());
+        var regexFiles = regexResult.GetProperty("files").EnumerateArray()
             .Select(f => f.GetProperty("file").GetString()!.Replace('\\', '/')).ToList();
-        Assert.Contains(files, f => f.EndsWith("Services/WidgetService.cs"));
-    }
+        Assert.Contains(regexFiles, f => f.EndsWith("Services/WidgetService.cs"));
 
-    [Fact]
-    public async Task ShowResults_PopulatesSearchResultsPadUiTree()
-    {
-        await _app.EnsureSolutionOpenAsync(_app.SolutionExplorerFixturePath);
-
+        // --- was: ShowResults_PopulatesSearchResultsPadUiTree ---
         // od.search.find is headless; od.search.show-results goes through the same real
         // SearchManager.FindAllParallel engine but also feeds SearchManager.ShowSearchResults ->
         // SearchResultsPad, which the Find-in-Files dialog path never does. The pad's ResultsTreeView
@@ -724,19 +716,16 @@ public sealed class WorkbenchTests
         var showPadResult = await _app.InvokeAsync("od.show-pad", "Search Results");
         Assert.True(showPadResult.GetProperty("found").GetBoolean(), "Could not find the Search Results pad");
 
-        var deadline = DateTime.UtcNow.AddSeconds(30);
         JsonElement tree = default;
         List<JsonElement> elements = new();
-        while (DateTime.UtcNow < deadline)
+        await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             tree = await _app.GetUITreeAsync();
             elements = FlattenElements(tree).ToList();
-            if (elements.Count(e =>
+            return elements.Count(e =>
                 e.TryGetProperty("automationId", out var a) && a.GetString() == "SearchResultNode"
-                && e.TryGetProperty("isVisible", out var v) && v.GetBoolean()) >= 2)
-                break;
-            await Task.Delay(500);
-        }
+                && e.TryGetProperty("isVisible", out var v) && v.GetBoolean()) >= 2;
+        }, TimeSpan.FromSeconds(30));
 
         Assert.True(elements.Any(e =>
             e.TryGetProperty("automationId", out var a) && a.GetString() == "SearchRootNode"
@@ -745,16 +734,12 @@ public sealed class WorkbenchTests
 
         // The default grouping is Flat (no per-file nodes); the match rows themselves are the
         // rendered content. "Widget" matches in both Models/Widget.cs and Services/WidgetService.cs
-        // (see Find_InSolution_FindsTermAcrossMultipleFiles), so at least two real match rows must
-        // be visible.
+        // (see the Find_InSolution section above), so at least two real match rows must be visible.
         Assert.True(elements.Count(e =>
             e.TryGetProperty("automationId", out var a) && a.GetString() == "SearchResultNode"
             && e.TryGetProperty("isVisible", out var v) && v.GetBoolean()) >= 2,
             "Expected at least two match nodes to be rendered and visible");
     }
-
-
-
 
 
     [Fact]
@@ -784,8 +769,14 @@ public sealed class WorkbenchTests
             Assert.Contains("NeedleValue", File.ReadAllText(scratchPath));
 
             await _app.InvokeAsync("od.file.save", scratchPath);
-            Assert.Contains("ReplacedValue", File.ReadAllText(scratchPath));
-            Assert.DoesNotContain("NeedleValue", File.ReadAllText(scratchPath));
+            var persisted = await OpenDevelopAppFixture.PollUntilAsync(
+                () => Task.FromResult(File.Exists(scratchPath)
+                    && File.ReadAllText(scratchPath).Contains("ReplacedValue", StringComparison.Ordinal)),
+                TimeSpan.FromSeconds(5), initialDelayMs: 25, maxDelayMs: 200);
+            Assert.True(persisted, "The saved replacement did not reach disk within 5 seconds.");
+            var savedText = File.ReadAllText(scratchPath);
+            Assert.Contains("ReplacedValue", savedText);
+            Assert.DoesNotContain("NeedleValue", savedText);
         }
         finally
         {
@@ -832,6 +823,9 @@ public sealed class WorkbenchTests
         }
         finally
         {
+            // The editor still owns the dirty in-memory document. Save it before deleting the
+            // scratch file so a later solution close cannot recreate the file from that buffer.
+            try { await _app.InvokeAsync("od.file.save", path); } catch { }
             TryDelete(path);
         }
     }
@@ -897,77 +891,63 @@ public sealed class WorkbenchTests
         await _app.EnsureSolutionOpenAsync(_app.FixtureSolutionPath);
     }
 
+    // Merged: OpenXmlFile_AttachesXmlTreeView, OpenXmlFile_XmlTreeViewTabTitleIsNotEmpty and
+    // OpenNonXmlFile_DoesNotAttachXmlTreeView all open the same FixtureSolutionPath and only read
+    // back XmlTreeView state - no mutation - so they share a single open instead of three. Keeping
+    // the non-XML check last is actually a *stronger* regression check than before: it now runs
+    // with a real, still-open XmlTreeView left behind by the two XML opens above, which is exactly
+    // the "lingers in the window" scenario its own comment describes.
     [Fact]
-    public async Task OpenXmlFile_AttachesXmlTreeView()
+    public async Task FixtureSolutionPath_XmlTreeViewChecks()
     {
         await OpenSolutionAndFile();
 
+        // --- was: OpenXmlFile_AttachesXmlTreeView ---
         var open = await _app.InvokeAsync("od.open-file", _app.XmlFixtureFilePath);
         Assert.True(open.GetProperty("opened").GetBoolean(), $"Failed to open {_app.XmlFixtureFilePath}");
 
         var status = await _app.InvokeAsync("od.xml-tree-status");
         Assert.True(status.GetProperty("found").GetBoolean(), status.ToString());
         Assert.Equal("ICSharpCode.XmlEditor.XmlTreeView", status.GetProperty("viewType").GetString());
-    }
 
-    [Fact]
-    public async Task OpenXmlFile_XmlTreeViewTabTitleIsNotEmpty()
-    {
-        await OpenSolutionAndFile();
+        // --- was: OpenXmlFile_XmlTreeViewTabTitleIsNotEmpty ---
+        var reopen = await _app.InvokeAsync("od.open-file", _app.XmlFixtureFilePath);
+        Assert.True(reopen.GetProperty("opened").GetBoolean());
 
-        var open = await _app.InvokeAsync("od.open-file", _app.XmlFixtureFilePath);
-        Assert.True(open.GetProperty("opened").GetBoolean());
+        var titleStatus = await _app.InvokeAsync("od.xml-tree-status");
+        Assert.True(titleStatus.GetProperty("found").GetBoolean(), titleStatus.ToString());
+        Assert.False(string.IsNullOrEmpty(titleStatus.GetProperty("title").GetString()));
 
-        var status = await _app.InvokeAsync("od.xml-tree-status");
-        Assert.True(status.GetProperty("found").GetBoolean(), status.ToString());
-        Assert.False(string.IsNullOrEmpty(status.GetProperty("title").GetString()));
-    }
-
-    [Fact]
-    public async Task OpenNonXmlFile_DoesNotAttachXmlTreeView()
-    {
-        await OpenSolutionAndFile();
-
+        // --- was: OpenNonXmlFile_DoesNotAttachXmlTreeView ---
         var csFile = System.IO.Path.Combine(
             System.IO.Path.GetDirectoryName(_app.FixtureSolutionPath)!, "PassTests.cs");
-        var open = await _app.InvokeAsync("od.open-file", csFile);
-        Assert.True(open.GetProperty("opened").GetBoolean());
+        var openCs = await _app.InvokeAsync("od.open-file", csFile);
+        Assert.True(openCs.GetProperty("opened").GetBoolean());
 
-        var status = await _app.InvokeAsync("od.xml-tree-status");
+        var csStatus = await _app.InvokeAsync("od.xml-tree-status");
         // If an XmlTreeView from a previously opened .xml file lingers in the window, found
         // will still be true — check that it's *not* associated with the .cs file.
-        if (status.GetProperty("found").GetBoolean())
+        if (csStatus.GetProperty("found").GetBoolean())
         {
-            var primaryFile = status.GetProperty("primaryFile").GetString();
+            var primaryFile = csStatus.GetProperty("primaryFile").GetString();
             Assert.False(primaryFile!.EndsWith(".cs", StringComparison.OrdinalIgnoreCase),
                 $"Expected XmlTreeView NOT attached to .cs file, but found primaryFile={primaryFile}");
         }
     }
 
+    // Merged: ErrorList_OnBuildFailure_CapturesRealPerLineCompileErrors and
+    // ErrorList_WithoutExplicitClear_StaleEntriesSurviveANewCleanBuild. Both are mutating (write a
+    // broken scratch file, build, restore) and both need a genuine fresh od.open-solution for
+    // isolation, but the second test's scenario - "build broken, then rebuild clean WITHOUT calling
+    // od.error-list.clear, and confirm the stale entry survives" - is exactly what's left over from
+    // the first test's broken build. So instead of paying two real reopens, this fact pays one: it
+    // builds ScratchBroken.cs broken (asserting the OnBuildFailure diagnostics), then - deliberately
+    // without clearing the Error List - deletes the broken file and rebuilds clean (asserting the
+    // WithoutExplicitClear staleness behavior against the same still-populated Error List).
+    // (ScratchBroken.cs also fills in for ScratchStale.cs, which was likewise a broken-syntax scratch
+    // file whose only job was to make the same build fail.)
     [Fact]
-    public async Task ErrorList_IsEmptyAfterCleanBuild()
-    {
-        await _app.EnsureSolutionOpenAsync(_app.SolutionExplorerFixturePath);
-        await _app.InvokeAsync("od.error-list.clear");
-        await _app.InvokeAsync("od.build-solution");
-
-        var errorList = await _app.InvokeAsync("od.error-list");
-        Assert.Equal(0, errorList.GetProperty("errorCount").GetInt32());
-    }
-
-    // MinimalMSBuildEngine (a real `dotnet build` child process, per BuildTests.cs) parses its own
-    // stdout/stderr for standard MSBuild diagnostic lines via a regex (DiagnosticLine in
-    // MinimalMSBuildEngine.cs), reporting one BuildError per match with real file/line/column - and
-    // only falls back to a single generic "Build failed (exit code non-zero)" entry if nothing
-    // matched. That regex used to only handle the classic 2-number "(line,column):" shape; this
-    // repo's SDK/Roslyn version instead emits a 4-number span shape - "(line,col,endLine,endCol):" -
-    // for CS1002 and similar diagnostics, which silently fell through the old regex, always hitting
-    // the generic fallback. Fixed by making the trailing ",endLine,endColumn" group optional. This
-    // test locks in the real per-line diagnostics now reaching both od.build-solution's own
-    // BuildResults.Errors and the Error List pad (TaskService, a separate code path - see
-    // UIBuildFeedbackSink.ReportError).
-    [Fact]
-    public async Task ErrorList_OnBuildFailure_CapturesRealPerLineCompileErrors()
+    public async Task ErrorList_BuildFailureCapturesDiagnosticsThenStaleEntriesSurviveCleanRebuild()
     {
         var brokenFilePath = Path.Combine(SampleAppDirectory, "ScratchBroken.cs");
         try
@@ -982,6 +962,18 @@ public sealed class WorkbenchTests
             await _app.InvokeAsync("od.open-solution", _app.SolutionExplorerFixturePath);
             await _app.InvokeAsync("od.error-list.clear");
 
+            // --- was: ErrorList_OnBuildFailure_CapturesRealPerLineCompileErrors ---
+            // MinimalMSBuildEngine (a real `dotnet build` child process, per BuildTests.cs) parses its
+            // own stdout/stderr for standard MSBuild diagnostic lines via a regex (DiagnosticLine in
+            // MinimalMSBuildEngine.cs), reporting one BuildError per match with real file/line/column -
+            // and only falls back to a single generic "Build failed (exit code non-zero)" entry if
+            // nothing matched. That regex used to only handle the classic 2-number "(line,column):"
+            // shape; this repo's SDK/Roslyn version instead emits a 4-number span shape -
+            // "(line,col,endLine,endCol):" - for CS1002 and similar diagnostics, which silently fell
+            // through the old regex, always hitting the generic fallback. Fixed by making the trailing
+            // ",endLine,endColumn" group optional. This locks in the real per-line diagnostics now
+            // reaching both od.build-solution's own BuildResults.Errors and the Error List pad
+            // (TaskService, a separate code path - see UIBuildFeedbackSink.ReportError).
             var buildResult = await _app.InvokeAsync("od.build-solution");
             Assert.False(buildResult.GetProperty("errorCount").GetInt32() == 0, "Expected the broken scratch file to produce build errors");
 
@@ -1035,6 +1027,22 @@ public sealed class WorkbenchTests
             Assert.Contains(elements, e =>
                 e.TryGetProperty("type", out var t) && t.GetString() == "TextBlock"
                 && e.TryGetProperty("text", out var txt) && taskDescriptions.Contains(txt.GetString()));
+
+            // --- was: ErrorList_WithoutExplicitClear_StaleEntriesSurviveANewCleanBuild ---
+            // Documents a real characteristic (not a test bug): od.build-solution calls
+            // SD.BuildService.BuildAsync directly, bypassing the Build menu command's
+            // TaskService.ClearExceptCommentTasks() - so unlike using the actual Build menu/toolbar
+            // button, driving builds through this API can leave a previous build's errors in the
+            // Error List pad even after a subsequent build of now-fixed code succeeds.
+            //
+            // Fix the code and build again, WITHOUT calling od.error-list.clear first.
+            TryDelete(brokenFilePath);
+            var secondBuildResult = await _app.InvokeAsync("od.build-solution");
+            Assert.Equal(0, secondBuildResult.GetProperty("errorCount").GetInt32());
+
+            var afterFixedBuild = await _app.InvokeAsync("od.error-list");
+            Assert.True(afterFixedBuild.GetProperty("errorCount").GetInt32() > 0,
+                "Expected the stale error from the earlier broken build to still be present, since od.build-solution never clears the Error List pad on its own");
         }
         finally
         {
@@ -1049,48 +1057,9 @@ public sealed class WorkbenchTests
     }
 
     [Fact]
-    public async Task ErrorList_WithoutExplicitClear_StaleEntriesSurviveANewCleanBuild()
-    {
-        // Documents a real characteristic (not a test bug): od.build-solution calls
-        // SD.BuildService.BuildAsync directly, bypassing the Build menu command's
-        // TaskService.ClearExceptCommentTasks() - so unlike using the actual Build menu/toolbar
-        // button, driving builds through this API can leave a previous build's errors in the
-        // Error List pad even after a subsequent build of now-fixed code succeeds.
-        var brokenFilePath = Path.Combine(SampleAppDirectory, "ScratchStale.cs");
-        try
-        {
-            File.WriteAllText(brokenFilePath, "this is not valid csharp syntax at all");
-
-            await _app.InvokeAsync("od.open-solution", _app.SolutionExplorerFixturePath);
-            await _app.InvokeAsync("od.error-list.clear");
-            await _app.InvokeAsync("od.build-solution");
-
-            var afterBrokenBuild = await _app.InvokeAsync("od.error-list");
-            Assert.True(afterBrokenBuild.GetProperty("errorCount").GetInt32() > 0);
-
-            // Fix the code and build again, WITHOUT calling od.error-list.clear first.
-            TryDelete(brokenFilePath);
-            var secondBuildResult = await _app.InvokeAsync("od.build-solution");
-            Assert.Equal(0, secondBuildResult.GetProperty("errorCount").GetInt32());
-
-            var afterFixedBuild = await _app.InvokeAsync("od.error-list");
-            Assert.True(afterFixedBuild.GetProperty("errorCount").GetInt32() > 0,
-                "Expected the stale error from the earlier broken build to still be present, since od.build-solution never clears the Error List pad on its own");
-        }
-        finally
-        {
-            TryDelete(brokenFilePath);
-            await _app.InvokeAsync("od.open-solution", _app.SolutionExplorerFixturePath);
-            await _app.InvokeAsync("od.error-list.clear");
-            await _app.InvokeAsync("od.build-solution");
-        }
-    }
-
-    [Fact]
     public async Task WpfCodeBehindIsNestedAndTreeScrollsVertically()
     {
-        var opened = await _app.ReopenSolutionAsync(_app.WpfSampleSolutionPath);
-        Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
+        await _app.EnsureSolutionOpenAsync(_app.WpfSampleSolutionPath);
 
         var state = await _app.InvokeAsync("od.project-browser-state", "sample");
         Assert.True(state.GetProperty("success").GetBoolean(), state.ToString());
@@ -1116,13 +1085,9 @@ public sealed class WorkbenchTests
     }
 }
 
-// Empty-startup behavior can only be asserted against a *fresh* app instance: in the shared
-// "OpenDevelop app" collection a previous test has already opened a solution, so the active view
-// is a document, not the Start Page. This collection gets its own OpenDevelopAppFixture (a
-// second, freshly launched app process on the same DevFlow port - safe because the whole test
-// assembly runs with parallelization disabled, so collections execute one after another and the
-// previous fixture's DisposeAsync has already killed its app).
-[Collection("OpenDevelop startup")]
+// The collection orderer always runs this class first against the fresh assembly fixture, before
+// any test can open a solution or replace the Start Page with a document.
+[Collection("00 Fresh startup")]
 public sealed class StartupTests
 {
     readonly OpenDevelopAppFixture _app;
@@ -1146,6 +1111,3 @@ public sealed class StartupTests
         Assert.Equal("ICSharpCode.StartPage.StartPageViewContent", activeView.GetProperty("typeName").GetString());
     }
 }
-
-[CollectionDefinition("OpenDevelop startup")]
-public sealed class OpenDevelopStartupCollection : ICollectionFixture<OpenDevelopAppFixture> { }

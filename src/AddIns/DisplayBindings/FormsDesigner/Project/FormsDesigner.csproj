@@ -63,6 +63,11 @@
     <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.WinForms\ICSharpCode.Core.WinForms.csproj" Private="False" />
     <ProjectReference Include="..\..\..\..\Main\ICSharpCode.SharpDevelop.Widgets\Project\ICSharpCode.SharpDevelop.Widgets.csproj" Private="False" />
     <ProjectReference Include="..\..\..\..\Libraries\ICSharpCode.TypeSystem.Abstractions\ICSharpCode.TypeSystem.Abstractions.csproj" Private="False" />
+    <!-- Needed for [DevFlowUIThread]/[DevFlowAction] on FormsDesignerDevFlowActions - see
+         WpfDesign.AddIn.csproj for the ProjectReference variant used when wpf-labs is checked out
+         locally; that relative path doesn't hold from this AddIn's location, so use the package
+         directly here instead. -->
+    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" Version="0.2.2" />
   </ItemGroup>
 
   <ItemGroup>

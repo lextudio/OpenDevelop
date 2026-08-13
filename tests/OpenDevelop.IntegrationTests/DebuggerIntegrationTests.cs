@@ -4,7 +4,7 @@ using Xunit;
 
 namespace OpenDevelop.IntegrationTests;
 
-[Collection("OpenDevelop app")]
+[Collection("50 Debugger fixture")]
 public sealed class DebuggerIntegrationTests
 {
     readonly OpenDevelopAppFixture _app;
@@ -32,7 +32,7 @@ public sealed class DebuggerIntegrationTests
     }
 
     [Fact]
-    public async Task BreakpointHit_ExposesCallStackLocalsAndEvaluate()
+    public async Task BreakpointHit_ExposesInspectionPadsThreadsModulesAndOutput()
     {
         var program = ProgramPath;
         var breakpointLine = FindLine(program, "var message = ComputeGreeting(\"World\");");
@@ -90,6 +90,17 @@ public sealed class DebuggerIntegrationTests
             var modulesPad = await _app.InvokeAsync("od.debug.pad-snapshot", "LoadedModulesPad");
             Assert.True(modulesPad.GetProperty("found").GetBoolean());
             Assert.Equal(JsonValueKind.Array, modulesPad.GetProperty("items").ValueKind);
+
+            var threads = await _app.InvokeAsync("od.debug.threads");
+            Assert.NotEmpty(threads.EnumerateArray());
+
+            var modules = await _app.InvokeAsync("od.debug.modules");
+            Assert.NotEmpty(modules.EnumerateArray());
+
+            var output = await _app.InvokeAsync("od.debug.output");
+            Assert.NotEmpty(output.GetProperty("text").GetString()!);
+            Assert.Equal("Debug", output.GetProperty("selectedCategory").GetString());
+            Assert.True(output.GetProperty("isOutputVisible").GetBoolean());
         }
         finally
         {
@@ -169,84 +180,6 @@ public sealed class DebuggerIntegrationTests
             var cont = await _app.InvokeAsync("od.debug.continue", true, 30);
             Assert.True(cont.GetProperty("stopped").GetBoolean(), cont.ToString());
             Assert.Equal(secondLine, cont.GetProperty("currentLine").GetInt32());
-        }
-        finally
-        {
-            await _app.InvokeAsync("od.debug.stop");
-        }
-    }
-
-    [Fact]
-    public async Task DebugThreads_WhileStopped_ReturnsAtLeastOneThread()
-    {
-        var program = ProgramPath;
-        var breakpointLine = FindLine(program, "var message = ComputeGreeting(\"World\");");
-
-        await _app.InvokeAsync("od.open-solution", _app.DebugTestProjectPath);
-        await _app.InvokeAsync("od.open-file", program);
-        await _app.InvokeAsync("od.debug.clear-breakpoints");
-        await _app.InvokeAsync("od.debug.set-breakpoint", program, breakpointLine);
-
-        try
-        {
-            var start = await _app.InvokeAsync("od.debug.start", _app.DebugTestProjectPath, true, 45);
-            Assert.True(start.GetProperty("stopped").GetBoolean(), start.ToString());
-
-            var threads = await _app.InvokeAsync("od.debug.threads");
-            Assert.NotEmpty(threads.EnumerateArray());
-        }
-        finally
-        {
-            await _app.InvokeAsync("od.debug.stop");
-        }
-    }
-
-    [Fact]
-    public async Task DebugModules_WhileStopped_ReturnsAtLeastOneModule()
-    {
-        var program = ProgramPath;
-        var breakpointLine = FindLine(program, "var message = ComputeGreeting(\"World\");");
-
-        await _app.InvokeAsync("od.open-solution", _app.DebugTestProjectPath);
-        await _app.InvokeAsync("od.open-file", program);
-        await _app.InvokeAsync("od.debug.clear-breakpoints");
-        await _app.InvokeAsync("od.debug.set-breakpoint", program, breakpointLine);
-
-        try
-        {
-            var start = await _app.InvokeAsync("od.debug.start", _app.DebugTestProjectPath, true, 45);
-            Assert.True(start.GetProperty("stopped").GetBoolean(), start.ToString());
-
-            var modules = await _app.InvokeAsync("od.debug.modules");
-            Assert.NotEmpty(modules.EnumerateArray());
-        }
-        finally
-        {
-            await _app.InvokeAsync("od.debug.stop");
-        }
-    }
-
-    [Fact]
-    public async Task DebugOutput_AfterStart_CapturesDebuggerText()
-    {
-        var program = ProgramPath;
-        var breakpointLine = FindLine(program, "var message = ComputeGreeting(\"World\");");
-
-        await _app.InvokeAsync("od.open-solution", _app.DebugTestProjectPath);
-        await _app.InvokeAsync("od.open-file", program);
-        await _app.InvokeAsync("od.debug.clear-breakpoints");
-        await _app.InvokeAsync("od.debug.set-breakpoint", program, breakpointLine);
-
-        try
-        {
-            var start = await _app.InvokeAsync("od.debug.start", _app.DebugTestProjectPath, true, 45);
-            Assert.True(start.GetProperty("stopped").GetBoolean(), start.ToString());
-
-            var output = await _app.InvokeAsync("od.debug.output");
-            string text = output.GetProperty("text").GetString()!;
-            Assert.NotEmpty(text);
-            Assert.Equal("Debug", output.GetProperty("selectedCategory").GetString());
-            Assert.True(output.GetProperty("isOutputVisible").GetBoolean());
         }
         finally
         {

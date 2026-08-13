@@ -1307,6 +1307,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				var editor = window.ViewContents[i].GetService<ITextEditor>();
 				if (editor != null) {
 					window.SwitchView(i);
+					window.SelectWindow();
 					return editor;
 				}
 			}
@@ -1341,6 +1342,38 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				y = topLeft.Y,
 				width = bottomRight.X - topLeft.X,
 				height = bottomRight.Y - topLeft.Y
+			});
+		}
+
+		[DevFlowAction("od.file.query-offset-screen-position", Description = "Get the on-screen position of a document offset in an open file's primary AvalonEdit view - lets a test drop a synthetic drag on an exact line/column and then assert the markup landed there, since AvalonEditViewContent.TextArea_Drop inserts at the real mouse drop point")]
+		public static string QueryOffsetScreenPosition(string path, int offset)
+		{
+			var editor = ActivateTextEditorView(path);
+			var textView = editor?.GetService(typeof(ICSharpCode.AvalonEdit.Rendering.TextView)) as ICSharpCode.AvalonEdit.Rendering.TextView;
+			if (textView == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No TextView for " + path });
+
+			var document = textView.Document;
+			if (document == null || offset < 0 || offset > document.TextLength)
+				return JsonSerializer.Serialize(new { success = false, error = "Offset out of range: " + offset });
+
+			// The visual line for the target offset only exists once it has been laid out, so make
+			// sure it is scrolled into view first.
+			var location = document.GetLocation(offset);
+			editor.Caret.Offset = offset;
+			textView.EnsureVisualLines();
+
+			var visualPosition = textView.GetVisualPosition(
+				new ICSharpCode.AvalonEdit.TextViewPosition(location),
+				ICSharpCode.AvalonEdit.Rendering.VisualYPosition.TextMiddle) - textView.ScrollOffset;
+			var screen = textView.PointToScreen(visualPosition);
+			return JsonSerializer.Serialize(new {
+				success = true,
+				offset,
+				line = location.Line,
+				column = location.Column,
+				x = screen.X,
+				y = screen.Y
 			});
 		}
 
@@ -1592,6 +1625,21 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new { available = true, tests = new[] { WalkTestNode(os) } });
 		}
 
+		[DevFlowAction("od.unit-test.cancel", Description = "Cancel the active unit test run and report the resulting state")]
+		public static string CancelUnitTests()
+		{
+			var s = GetTestService();
+			if (s == null)
+				return JsonSerializer.Serialize(new { success = false, error = "ITestService not available." });
+
+			var st = s.GetType();
+			st.GetMethod("CancelRunningTests", BindingFlags.Instance | BindingFlags.Public)?.Invoke(s, null);
+			return JsonSerializer.Serialize(new {
+				success = true,
+				isRunningTests = (bool)(st.GetProperty("IsRunningTests")?.GetValue(s) ?? false)
+			});
+		}
+
 		[DevFlowAction("od.unit-test.goto", Description = "Execute GoToDefinition for the first discovered unit test whose display name matches or ends with the given name")]
 		public static string GoToUnitTestDefinition(string displayName)
 		{
@@ -1792,11 +1840,13 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			[DevFlowAction("od.unit-test.pad-tree", Description = "Inspect the Unit Tests pad tree without forcing lazy nodes to load")]
 			public static string GetUnitTestPadTree()
 			{
-				var pad = FindPad("ICSharpCode.UnitTesting.UnitTestsPad");
-				if (pad == null)
+				// See FindUnitTestPadNode: the migrated pad's real instance lives on its
+				// ToolPaneModel, not on PadContentCollection's descriptor (whose CreatePad
+				// instantiates a second, never-displayed copy).
+				var padContent = GetUnitTestPadContent();
+				if (padContent == null)
 					return JsonSerializer.Serialize(new { found = false });
-				pad.CreatePad();
-				var treeView = pad.PadContent?.GetType().GetProperty("TreeView")?.GetValue(pad.PadContent);
+				var treeView = padContent.GetType().GetProperty("TreeView")?.GetValue(padContent);
 				var root = treeView?.GetType().GetProperty("Root")?.GetValue(treeView);
 				var children = root?.GetType().GetProperty("Children")?.GetValue(root);
 				var childCount = children?.GetType().GetProperty("Count")?.GetValue(children);
@@ -1855,11 +1905,18 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 
 			static object FindUnitTestPadNode(string displayName, ref int remaining)
 			{
-				var pad = FindPad("ICSharpCode.UnitTesting.UnitTestsPad");
-				if (pad == null)
+				// The pad is migrated to a ToolPaneModel (UnitTestsPadToolPaneModel,
+				// doc/technotes/ilspy.md "Legacy pad migration"): PadContentCollection's
+				// PadDescriptor.CreatePad() would instantiate a *second*, never-displayed
+				// UnitTestsPad whose TreeHost.Loaded never fires, so its deferred initial tree
+				// load never runs and Root stays null. Resolve the model's own pad instance
+				// instead (DockWorkspace.Current.ToolPanes is the same assembly, no reflection
+				// needed to reach it), falling back to the legacy descriptor only when no model
+				// is registered.
+				var padContent = GetUnitTestPadContent();
+				if (padContent == null)
 					return null;
-				pad.CreatePad();
-				var treeView = pad.PadContent?.GetType().GetProperty("TreeView")?.GetValue(pad.PadContent);
+				var treeView = padContent.GetType().GetProperty("TreeView")?.GetValue(padContent);
 				var root = treeView?.GetType().GetProperty("Root")?.GetValue(treeView);
 				// The tree's Root is the solution container, whose display name can equal the
 				// project's ("SampleTestProject") - the occurrence indices the test passes index
@@ -1875,6 +1932,26 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 						return found;
 				}
 				return null;
+			}
+
+			static object GetUnitTestPadContent()
+			{
+				// All of OpenDevelop's pads are migrated to ToolPaneModel-based routing
+				// (doc/technotes/ilspy.md "Legacy pad migration"), so the Unit Tests pad's real
+				// instance lives on its model in DockWorkspace.Current.ToolPanes (same assembly,
+				// no reflection needed to reach the collection). PadContentCollection's legacy
+				// PadDescriptor is only a registration stub - its CreatePad() would instantiate a
+				// second, never-displayed UnitTestsPad whose TreeHost.Loaded never fires, so its
+				// deferred initial tree load never runs and Root stays null.
+				const string unitTestsPadClass = "ICSharpCode.UnitTesting.UnitTestsPad";
+				var model = DockWorkspace.Current?.ToolPanes
+					.FirstOrDefault(p => string.Equals(p.LegacyPadClass, unitTestsPadClass, StringComparison.OrdinalIgnoreCase));
+				if (model == null)
+					return null;
+				// The model's own Pad property holds the single shared UnitTestsPad instance
+				// (UnitTestsPadToolPaneModel's constructor sets it); Content is only its view.
+				return model.GetType().GetProperty("Pad")?.GetValue(model)
+					?? model.Content;
 			}
 
 			static object FindSharpTreeNode(object node, string displayName, ref int remaining)
@@ -2077,6 +2154,8 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			var t = test.GetType();
 			var name = t.GetProperty("DisplayName")?.GetValue(test) as string ?? "";
 			var res = t.GetProperty("Result")?.GetValue(test);
+			if (t.Name == "MtpTestMethod")
+				LoggingService.Debug($"[StreamDiag] WalkTestNode read instance={test.GetHashCode()} name={name} result={res} thread={Environment.CurrentManagedThreadId} t={DateTime.UtcNow:HH:mm:ss.fff}");
 			string typeName = "test";
 			var ifaces = t.GetInterfaces();
 			if (ifaces.Any(i => i.Name == "ITestSolution")) typeName = "solution";

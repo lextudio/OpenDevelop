@@ -13,7 +13,14 @@
     <ProjectReference Include="..\..\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="System.Drawing.Common" Version="10.0.9" />
+    <!-- Uses ProGPU's portable System.Drawing.Common, not the real Microsoft one: the real
+         assembly's GDI+ P/Invoke layer unconditionally throws PlatformNotSupportedException off
+         Windows for essentially every Font/Bitmap/Graphics operation (confirmed - it dropped Unix
+         libgdiplus support), so nothing built against it can actually run here. Keeping the whole
+         app on one assembly identity (ProGPU's) also avoids the "real assembly loaded process-wide
+         starves WinForms designer code of ProGPU-only APIs like Graphics.FromProGpuDrawingContext"
+         conflict - only one physical System.Drawing.Common can be loaded per process. -->
+    <PackageReference Include="ProGPU.System.Drawing.Common" Version="0.1.0-preview.47" />
   </ItemGroup>
   <ItemGroup>
     <!-- WinForms-only: no cross-platform/WPF equivalent, out of MVP scope (see docs/opendevelop.md) -->

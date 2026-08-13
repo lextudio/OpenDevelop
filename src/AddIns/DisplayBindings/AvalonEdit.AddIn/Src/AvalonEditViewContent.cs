@@ -26,6 +26,7 @@ using System.Windows.Threading;
 
 using ICSharpCode.AvalonEdit.AddIn.Options;
 using ICSharpCode.AvalonEdit.Document;
+using ICSharpCode.AvalonEdit.Editing;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Utils;
 using ICSharpCode.Core;
@@ -312,9 +313,36 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			string tagName = lastDot >= 0 ? typeName.Substring(lastDot + 1) : typeName;
 
 			string xaml = $"<{tagName} />";
-			int offset = codeEditor.PrimaryTextEditor.CaretOffset;
+			int offset = GetDropOffset((TextArea)sender, e);
 			codeEditor.Document.Insert(offset, xaml);
+			// Leave the caret after the inserted markup, matching where a typed edit would end up.
+			codeEditor.PrimaryTextEditor.CaretOffset = offset + xaml.Length;
 			e.Handled = true;
+		}
+
+		/// <summary>
+		/// Resolves the document offset the pointer was actually released over. Previously this
+		/// inserted at the caret instead, which is wherever the user last clicked/typed - so a drop
+		/// landed several lines away from the mouse unless the caret happened to already be there.
+		/// </summary>
+		int GetDropOffset(TextArea textArea, DragEventArgs e)
+		{
+			var textView = textArea.TextView;
+			var position = e.GetPosition(textView);
+
+			// Clamp into the visible area and then into the document before hit-testing, the same
+			// way AvalonEdit's own drag-drop handling does (SelectionMouseHandler): a drop just
+			// past the last line or below the text is a normal gesture, and should resolve to the
+			// nearest real position rather than "outside the document" (null).
+			position.Y = Math.Max(0, Math.Min(position.Y, textView.ActualHeight));
+			var documentPoint = position + textView.ScrollOffset;
+			if (documentPoint.Y >= textView.DocumentHeight)
+				documentPoint.Y = Math.Max(0, textView.DocumentHeight - 1);
+
+			var dropPosition = textView.GetPositionFloor(documentPoint);
+			return dropPosition.HasValue
+				? codeEditor.Document.GetOffset(dropPosition.Value.Location)
+				: codeEditor.Document.TextLength;
 		}
 
 		object IToolsHost.ToolsContent {

@@ -18,6 +18,22 @@
 		<Import assembly = ":ICSharpCode.SharpDevelop"/>
 	</Runtime>
 
+	<Path name = "/SharpDevelop/Workbench/DisplayBindings">
+		<!-- WinForms Designer for .cs was listed as a Phase 5 deferred item (see
+		     doc/technotes/csharp-vb-binding.md's "Migration phases"/"Definition of done") because
+		     the original FormsDesignerSecondaryDisplayBinding/CSharpDesignerLoaderProvider
+		     (Src/FormsDesigner/, excluded from this project's Compile items - see the comment
+		     above) depend on the old NRefactory-based SD.ParserService, which this csproj no
+		     longer compiles at all. RoslynFormsDesignerSecondaryDisplayBinding is a new,
+		     Roslyn-based replacement (bounded scope: it only translates the small subset of C#
+		     shapes real designer-generated InitializeComponent methods use - see
+		     RoslynToCodeDomTranslator.cs's own doc comment). -->
+		<DisplayBinding id="WinFormsDesigner"
+		                type="Secondary"
+		                class="CSharpBinding.FormsDesigner.RoslynFormsDesignerSecondaryDisplayBinding"
+		                fileNamePattern="\.cs$" />
+	</Path>
+
 	<Path name = "/SharpDevelop/MSBuildEngine/CompileTaskNames">
 		<!-- Makes SharpDevelop show the text 'Compiling ProjectName...' when the task is started -->
 		<String id="csc" text = "csc"/>

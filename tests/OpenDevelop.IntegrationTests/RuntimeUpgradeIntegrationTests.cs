@@ -16,7 +16,7 @@ namespace OpenDevelop.IntegrationTests;
 /// and reloading is what a user does today, and it is the build/debug behaviour on either side of
 /// that edit that this test is actually about.
 /// </remarks>
-[Collection("OpenDevelop app")]
+[Collection("60 Runtime upgrade fixture")]
 public sealed class RuntimeUpgradeIntegrationTests : IDisposable
 {
     readonly OpenDevelopAppFixture _app;

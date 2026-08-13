@@ -26,7 +26,7 @@ using Xunit;
 
 namespace OpenDevelop.IntegrationTests;
 
-[Collection("OpenDevelop app")]
+[Collection("10 DevFlow without solution")]
 public sealed class DevFlowTests
 {
     readonly OpenDevelopAppFixture _app;

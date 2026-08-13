@@ -30,7 +30,7 @@ using Xunit;
 
 namespace OpenDevelop.IntegrationTests;
 
-[Collection("OpenDevelop app")]
+[Collection("30 Add-ins and specialized fixtures")]
 public sealed class AddInTests : IAsyncDisposable
 {
     readonly string _repoDir;
@@ -84,18 +84,14 @@ public sealed class AddInTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task OpenFSharpSolution_LoadsFSharpFixture()
+    public async Task FSharpFixture_LoadsShowsSourceEditsAndBuilds()
     {
         var result = await _app.ReopenSolutionAsync(_app.FSharpFixtureSolutionPath);
 
         Assert.True(result.GetProperty("success").GetBoolean(), $"OpenSolutionOrProject returned false for {_app.FSharpFixtureSolutionPath}");
-        Assert.Equal(_app.FSharpFixtureSolutionPath, result.GetProperty("currentSolution").GetString());
-    }
-
-    [Fact]
-    public async Task FSharpSolutionTree_ShowsSourceFileNode()
-    {
-        await _app.EnsureSolutionOpenAsync(_app.FSharpFixtureSolutionPath);
+        // The fixture ships a .slnx beside its .sln, and the app adopts an existing .slnx without
+        // regenerating it, so opening the .sln lands on the .slnx.
+        Assert.Equal(Path.ChangeExtension(_app.FSharpFixtureSolutionPath, ".slnx"), result.GetProperty("currentSolution").GetString());
 
         var tree = await _app.InvokeAsync("od.solution-tree");
         var project = tree.GetProperty("projects").EnumerateArray()
@@ -104,12 +100,7 @@ public sealed class AddInTests : IAsyncDisposable
 
         var files = project.GetProperty("files").EnumerateArray().Select(f => f.GetString()).ToList();
         Assert.Contains(files, f => f != null && f.EndsWith("Program.fs", StringComparison.OrdinalIgnoreCase));
-    }
 
-    [Fact]
-    public async Task OpenFSharpFile_DisplaysInAvalonEdit()
-    {
-        await _app.EnsureSolutionOpenAsync(_app.FSharpFixtureSolutionPath);
         var fsPath = Path.Combine(Path.GetDirectoryName(_app.FSharpFixtureSolutionPath)!, "Program.fs");
 
         var openResult = await _app.InvokeAsync("od.open-file", fsPath);
@@ -126,22 +117,17 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Contains("printfn", textPreview);
 
         Assert.Equal("F#", activeView.GetProperty("syntaxHighlighting").GetString());
-    }
 
-    [Fact]
-    public async Task FSharpBuild_CompilesFixtureProject()
-    {
-        await _app.EnsureSolutionOpenAsync(_app.FSharpFixtureSolutionPath);
         var preBuild = Path.Combine(Path.GetDirectoryName(_app.FSharpFixtureSolutionPath)!, "bin", "Debug", "net8.0", "FSharpFixture.dll");
         if (File.Exists(preBuild))
             File.Delete(preBuild);
 
-        var result = await _app.InvokeAsync("od.build-solution", "FSharpFixture");
+        var buildResult = await _app.InvokeAsync("od.build-solution", "FSharpFixture");
 
         // od.build-solution's JSON only has an "error" property for the early-exit cases (no
         // solution open / project not found) - once a build actually runs, "success" is always
         // true (the DevFlow call itself didn't throw) and the real pass/fail signal is "result".
-        Assert.Equal("Success", result.GetProperty("result").GetString());
+        Assert.Equal("Success", buildResult.GetProperty("result").GetString());
     }
 
     [Fact]
@@ -155,18 +141,14 @@ public sealed class AddInTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task OpenVBSolution_LoadsVBFixture()
+    public async Task VBFixture_LoadsShowsSourceParsesAndBuilds()
     {
         var result = await _app.ReopenSolutionAsync(_app.VBFixtureSolutionPath);
 
         Assert.True(result.GetProperty("success").GetBoolean(), $"OpenSolutionOrProject returned false for {_app.VBFixtureSolutionPath}");
-        Assert.Equal(_app.VBFixtureSolutionPath, result.GetProperty("currentSolution").GetString());
-    }
-
-    [Fact]
-    public async Task VBSolutionTree_ShowsSourceFileNode()
-    {
-        await _app.EnsureSolutionOpenAsync(_app.VBFixtureSolutionPath);
+        // The fixture ships a .slnx beside its .sln, and the app adopts an existing .slnx without
+        // regenerating it, so opening the .sln lands on the .slnx.
+        Assert.Equal(Path.ChangeExtension(_app.VBFixtureSolutionPath, ".slnx"), result.GetProperty("currentSolution").GetString());
 
         var tree = await _app.InvokeAsync("od.solution-tree");
         var project = tree.GetProperty("projects").EnumerateArray()
@@ -175,12 +157,7 @@ public sealed class AddInTests : IAsyncDisposable
 
         var files = project.GetProperty("files").EnumerateArray().Select(f => f.GetString()).ToList();
         Assert.Contains(files, f => f != null && f.EndsWith("Class1.vb", StringComparison.OrdinalIgnoreCase));
-    }
 
-    [Fact]
-    public async Task OpenVBFile_DisplaysInAvalonEditAndParses()
-    {
-        await _app.EnsureSolutionOpenAsync(_app.VBFixtureSolutionPath);
         var vbPath = Path.Combine(Path.GetDirectoryName(_app.VBFixtureSolutionPath)!, "Class1.vb");
 
         var openResult = await _app.InvokeAsync("od.open-file", vbPath);
@@ -205,19 +182,14 @@ public sealed class AddInTests : IAsyncDisposable
         var parserStatus = await _app.InvokeAsync("od.parser.status", vbPath);
         Assert.True(parserStatus.GetProperty("hasDocument").GetBoolean(),
             $"Expected a real Roslyn Document for {vbPath}: {parserStatus}");
-    }
 
-    [Fact]
-    public async Task VBBuild_CompilesFixtureProject()
-    {
-        await _app.EnsureSolutionOpenAsync(_app.VBFixtureSolutionPath);
         var preBuild = Path.Combine(Path.GetDirectoryName(_app.VBFixtureSolutionPath)!, "bin", "Debug", "net10.0", "VBFixture.dll");
         if (File.Exists(preBuild))
             File.Delete(preBuild);
 
-        var result = await _app.InvokeAsync("od.build-solution", "VBFixture");
+        var buildResult = await _app.InvokeAsync("od.build-solution", "VBFixture");
 
-        Assert.Equal("Success", result.GetProperty("result").GetString());
+        Assert.Equal("Success", buildResult.GetProperty("result").GetString());
     }
 
     static JsonElement? FindTest(JsonElement node, string displayName)
@@ -288,6 +260,9 @@ public sealed class AddInTests : IAsyncDisposable
             "ITestService should be available (UnitTesting addin loaded)");
     }
 
+    // Merged with UnitTestDiscovery_DoesNotShowSourceExcludedFromCompileItems below: both open the
+    // same FixtureSolutionPath and only read back the discovered test tree - no run, no mutation -
+    // so they share a single open instead of two.
     [Fact]
     public async Task UnitTestingTree_ShowsTestsAfterOpeningTestProject()
     {
@@ -295,20 +270,16 @@ public sealed class AddInTests : IAsyncDisposable
 
         JsonElement tree = default;
         bool discovered = false;
-        var deadline = DateTime.UtcNow.AddSeconds(60);
-        while (DateTime.UtcNow < deadline)
+        discovered = await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             tree = await _app.InvokeAsync("od.unit-test.tree");
             Assert.True(tree.GetProperty("available").GetBoolean());
             var tests = tree.GetProperty("tests");
-            if (tests.GetArrayLength() > 0)
-            {
-                discovered = FindTest(tests[0], "AlwaysPasses").HasValue
-                    || FindTest(tests[0], "AlwaysFails").HasValue;
-                if (discovered) break;
-            }
-            await Task.Delay(1000);
-        }
+            if (tests.GetArrayLength() == 0)
+                return false;
+            return FindTest(tests[0], "AlwaysPasses").HasValue
+                || FindTest(tests[0], "AlwaysFails").HasValue;
+        }, TimeSpan.FromSeconds(60));
 
         Assert.True(discovered, "Test methods were not discovered within 30s timeout");
 
@@ -367,6 +338,11 @@ public sealed class AddInTests : IAsyncDisposable
 
         // Total leaf method count across the tree must also be 3.
         Assert.Equal(4, CountLeafMethods(root));
+
+        // --- was: UnitTestDiscovery_DoesNotShowSourceExcludedFromCompileItems ---
+        Assert.True(tree.GetProperty("tests").GetArrayLength() > 0,
+            "The fixture test project was not discovered.");
+        Assert.Null(FindTest(tree.GetProperty("tests")[0], "NotPartOfTheBuiltTestAssembly"));
     }
 
     [Fact]
@@ -379,19 +355,15 @@ public sealed class AddInTests : IAsyncDisposable
 
         JsonElement tree = default;
         bool discovered = false;
-        var deadline = DateTime.UtcNow.AddSeconds(60);
-        while (DateTime.UtcNow < deadline)
+        discovered = await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             tree = await _app.InvokeAsync("od.unit-test.tree");
             Assert.True(tree.GetProperty("available").GetBoolean());
             var tests = tree.GetProperty("tests");
-            if (tests.GetArrayLength() > 0)
-            {
-                discovered = FindTest(tests[0], "AlwaysPasses").HasValue;
-                if (discovered) break;
-            }
-            await Task.Delay(1000);
-        }
+            if (tests.GetArrayLength() == 0)
+                return false;
+            return FindTest(tests[0], "AlwaysPasses").HasValue;
+        }, TimeSpan.FromSeconds(60));
 
         Assert.True(discovered, "Unit Tests pad did not refresh after opening a solution.");
     }
@@ -403,19 +375,15 @@ public sealed class AddInTests : IAsyncDisposable
 
         JsonElement tree = default;
         bool discovered = false;
-        var deadline = DateTime.UtcNow.AddSeconds(60);
-        while (DateTime.UtcNow < deadline)
+        discovered = await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             tree = await _app.InvokeAsync("od.unit-test.tree");
             Assert.True(tree.GetProperty("available").GetBoolean());
             var tests = tree.GetProperty("tests");
-            if (tests.GetArrayLength() > 0)
-            {
-                discovered = FindTest(tests[0], "AlwaysPasses").HasValue;
-                if (discovered) break;
-            }
-            await Task.Delay(1000);
-        }
+            if (tests.GetArrayLength() == 0)
+                return false;
+            return FindTest(tests[0], "AlwaysPasses").HasValue;
+        }, TimeSpan.FromSeconds(60));
 
         Assert.True(discovered, "Test methods were not discovered within 60s timeout");
 
@@ -425,15 +393,12 @@ public sealed class AddInTests : IAsyncDisposable
             result.TryGetProperty("error", out var error) ? error.GetString() : "GoToDefinition failed");
 
         JsonElement activeView = default;
-        deadline = DateTime.UtcNow.AddSeconds(10);
-        while (DateTime.UtcNow < deadline)
+        await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             activeView = await _app.InvokeAsync("od.active-view");
-            if (activeView.TryGetProperty("fileName", out var activeFile)
-                && activeFile.GetString()?.EndsWith("/tests/fixtures/SampleTestProject/PassTests.cs", StringComparison.Ordinal) == true)
-                break;
-            await Task.Delay(250);
-        }
+            return activeView.TryGetProperty("fileName", out var activeFile)
+                && activeFile.GetString()?.EndsWith("/tests/fixtures/SampleTestProject/PassTests.cs", StringComparison.Ordinal) == true;
+        }, TimeSpan.FromSeconds(10), initialDelayMs: 50, maxDelayMs: 250);
 
         Assert.EndsWith("/tests/fixtures/SampleTestProject/PassTests.cs",
             activeView.GetProperty("fileName").GetString());
@@ -446,15 +411,12 @@ public sealed class AddInTests : IAsyncDisposable
         await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);
 
         JsonElement tree = default;
-        var deadline = DateTime.UtcNow.AddSeconds(60);
-        while (DateTime.UtcNow < deadline)
+        await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             tree = await _app.InvokeAsync("od.unit-test.tree");
-            if (tree.GetProperty("tests").GetArrayLength() > 0
-                && FindTest(tree.GetProperty("tests")[0], "AlwaysPasses").HasValue)
-                break;
-            await Task.Delay(1000);
-        }
+            return tree.GetProperty("tests").GetArrayLength() > 0
+                && FindTest(tree.GetProperty("tests")[0], "AlwaysPasses").HasValue;
+        }, TimeSpan.FromSeconds(60));
 
         var runResult = await _app.InvokeAsync("od.unit-test.run");
         Assert.True(runResult.GetProperty("started").GetBoolean());
@@ -482,72 +444,40 @@ public sealed class AddInTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task UnitTestDiscovery_DoesNotShowSourceExcludedFromCompileItems()
-    {
-        await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);
-
-        JsonElement tree = default;
-        var deadline = DateTime.UtcNow.AddSeconds(60);
-        while (DateTime.UtcNow < deadline)
-        {
-            tree = await _app.InvokeAsync("od.unit-test.tree");
-            if (tree.GetProperty("tests").GetArrayLength() > 0
-                && FindTest(tree.GetProperty("tests")[0], "AlwaysPasses").HasValue)
-                break;
-            await Task.Delay(1000);
-        }
-
-        Assert.True(tree.GetProperty("tests").GetArrayLength() > 0,
-            "The fixture test project was not discovered.");
-        Assert.Null(FindTest(tree.GetProperty("tests")[0], "NotPartOfTheBuiltTestAssembly"));
-    }
-
-    [Fact]
     public async Task UnitTestRun_StreamsResultsBeforeWholeRunCompletes()
     {
         await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);
 
-        var deadline = DateTime.UtcNow.AddSeconds(60);
-        while (DateTime.UtcNow < deadline)
+        await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             var tree = await _app.InvokeAsync("od.unit-test.tree");
-            if (tree.GetProperty("tests").GetArrayLength() > 0
-                && FindTest(tree.GetProperty("tests")[0], "FinishesLast").HasValue)
-                break;
-            await Task.Delay(1000);
-        }
+            return tree.GetProperty("tests").GetArrayLength() > 0
+                && FindTest(tree.GetProperty("tests")[0], "FinishesLast").HasValue;
+        }, TimeSpan.FromSeconds(60));
 
         var start = await _app.InvokeAsync("od.unit-test.run-start");
         Assert.True(start.GetProperty("started").GetBoolean());
 
-        bool observedPartialResults = false;
-        deadline = DateTime.UtcNow.AddSeconds(20);
-        while (DateTime.UtcNow < deadline)
+        bool observedPartialResults = await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             var tree = await _app.InvokeAsync("od.unit-test.tree");
             var root = tree.GetProperty("tests")[0];
             var passTest = FindTest(root, "AlwaysPasses");
             var slowTest = FindTest(root, "FinishesLast");
-            if (passTest.HasValue && slowTest.HasValue
+            return passTest.HasValue && slowTest.HasValue
                 && passTest.Value.GetProperty("result").GetString() == "Success"
-                && slowTest.Value.GetProperty("result").GetString() == "None")
-            {
-                observedPartialResults = true;
-                break;
-            }
-            await Task.Delay(100);
-        }
+                && slowTest.Value.GetProperty("result").GetString() == "None";
+        }, TimeSpan.FromSeconds(20), initialDelayMs: 50, maxDelayMs: 100);
 
         Assert.True(observedPartialResults, "The Unit Tests tree did not show completed tests while a slower test was still running.");
 
-        deadline = DateTime.UtcNow.AddSeconds(30);
-        while (DateTime.UtcNow < deadline)
+        bool finished = await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             var status = await _app.InvokeAsync("od.unit-test.status");
-            if (!status.GetProperty("isRunningTests").GetBoolean())
-                return;
-            await Task.Delay(250);
-        }
+            return !status.GetProperty("isRunningTests").GetBoolean();
+        }, TimeSpan.FromSeconds(30), initialDelayMs: 50, maxDelayMs: 250);
+        if (finished)
+            return;
 
         Assert.Fail("The unit test run did not finish after observing partial results.");
     }
@@ -562,21 +492,17 @@ public sealed class AddInTests : IAsyncDisposable
         await _app.InvokeAsync("od.show-pad", "ICSharpCode.UnitTesting.UnitTestsPad");
         await _app.ReopenSolutionAsync(_app.FixtureSolutionPath);
 
-        var deadline = DateTime.UtcNow.AddSeconds(60);
-        while (DateTime.UtcNow < deadline)
+        await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             var tree = await _app.InvokeAsync("od.unit-test.tree");
-            if (tree.GetProperty("tests").GetArrayLength() > 0
-                && FindTest(tree.GetProperty("tests")[0], "AlwaysPasses").HasValue)
-                break;
-            await Task.Delay(1000);
-        }
+            return tree.GetProperty("tests").GetArrayLength() > 0
+                && FindTest(tree.GetProperty("tests")[0], "AlwaysPasses").HasValue;
+        }, TimeSpan.FromSeconds(60));
 
         // The status bar text is a plain TextBlock ("Total: N"); poll the visual tree until it
         // appears (the pad realizes its content only once shown).
-        deadline = DateTime.UtcNow.AddSeconds(30);
         string? totalText = null;
-        while (DateTime.UtcNow < deadline)
+        await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             var uiTree = await _app.GetUITreeAsync();
             totalText = FlattenElements(uiTree)
@@ -585,10 +511,8 @@ public sealed class AddInTests : IAsyncDisposable
                     && txt.GetString()?.StartsWith("Total: ", StringComparison.Ordinal) == true)
                 .Select(e => e.GetProperty("text").GetString())
                 .FirstOrDefault();
-            if (totalText != null)
-                break;
-            await Task.Delay(500);
-        }
+            return totalText != null;
+        }, TimeSpan.FromSeconds(30));
 
         Assert.NotNull(totalText);
         var total = int.Parse(totalText!.Substring("Total: ".Length));
@@ -604,15 +528,12 @@ public sealed class AddInTests : IAsyncDisposable
         // the fixture's own HttpClient.Timeout (120s), not forever.
         await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);
 
-        var deadline = DateTime.UtcNow.AddSeconds(60);
-        while (DateTime.UtcNow < deadline)
+        await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             var tree = await _app.InvokeAsync("od.unit-test.tree");
-            if (tree.GetProperty("tests").GetArrayLength() > 0
-                && FindTest(tree.GetProperty("tests")[0], "AlwaysPasses").HasValue)
-                break;
-            await Task.Delay(1000);
-        }
+            return tree.GetProperty("tests").GetArrayLength() > 0
+                && FindTest(tree.GetProperty("tests")[0], "AlwaysPasses").HasValue;
+        }, TimeSpan.FromSeconds(60));
 
         var debugResult = await _app.InvokeAsync("od.unit-test.debug", 60);
 
@@ -632,15 +553,12 @@ public sealed class AddInTests : IAsyncDisposable
         await _app.InvokeAsync("od.show-pad", "ICSharpCode.UnitTesting.UnitTestsPad");
         await _app.InvokeAsync("od.open-solution", _app.FixtureSolutionPath);
 
-        var deadline = DateTime.UtcNow.AddSeconds(60);
-        while (DateTime.UtcNow < deadline)
+        await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             var tree = await _app.InvokeAsync("od.unit-test.tree");
-            if (tree.GetProperty("tests").GetArrayLength() > 0
-                && FindTest(tree.GetProperty("tests")[0], "AlwaysPasses").HasValue)
-                break;
-            await Task.Delay(1000);
-        }
+            return tree.GetProperty("tests").GetArrayLength() > 0
+                && FindTest(tree.GetProperty("tests")[0], "AlwaysPasses").HasValue;
+        }, TimeSpan.FromSeconds(60));
 
         var padTree = await _app.InvokeAsync("od.unit-test.pad-tree");
         Assert.True(padTree.GetProperty("found").GetBoolean());
@@ -649,10 +567,32 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.True(padTree.GetProperty("itemCount").GetInt32() > 1,
             "The Unit Tests pad only shows the project wrapper instead of expanding the single-project test hierarchy.");
 
-        var result = await _app.InvokeAsync("od.unit-test.debug-one", "AlwaysPasses", 60);
+        var result = await _app.InvokeAsync("od.unit-test.debug-one", "AlwaysPasses", 45);
+        if (!result.GetProperty("completed").GetBoolean())
+        {
+            // A long fixture sequence can leave a timed-out MTP/DAP operation alive even though
+            // the DevFlow request itself returned. Cancel both halves, wait for TestService to
+            // become idle, reload the fixture, and retry once from a known state.
+            await _app.InvokeAsync("od.unit-test.cancel");
+            await _app.InvokeAsync("od.debug.stop");
+            await OpenDevelopAppFixture.PollUntilAsync(async () =>
+            {
+                var status = await _app.InvokeAsync("od.unit-test.status");
+                return !status.GetProperty("isRunningTests").GetBoolean();
+            }, TimeSpan.FromSeconds(15));
 
-        Assert.True(result.GetProperty("completed").GetBoolean());
-        Assert.False(result.GetProperty("faulted").GetBoolean());
+            await _app.ReopenSolutionAsync(_app.FixtureSolutionPath);
+            await OpenDevelopAppFixture.PollUntilAsync(async () =>
+            {
+                var tree = await _app.InvokeAsync("od.unit-test.tree");
+                return tree.GetProperty("tests").GetArrayLength() > 0
+                    && FindTest(tree.GetProperty("tests")[0], "AlwaysPasses").HasValue;
+            }, TimeSpan.FromSeconds(60));
+            result = await _app.InvokeAsync("od.unit-test.debug-one", "AlwaysPasses", 60);
+        }
+
+        Assert.True(result.GetProperty("completed").GetBoolean(), result.ToString());
+        Assert.False(result.GetProperty("faulted").GetBoolean(), result.ToString());
         var padNode = result.GetProperty("padNode");
         Assert.True(padNode.GetProperty("found").GetBoolean());
         Assert.True(padNode.GetProperty("sameModelInstance").GetBoolean());
@@ -665,15 +605,12 @@ public sealed class AddInTests : IAsyncDisposable
     {
         await _app.EnsureSolutionOpenAsync(_app.FixtureSolutionPath);
 
-        var deadline = DateTime.UtcNow.AddSeconds(60);
-        while (DateTime.UtcNow < deadline)
+        await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             var tree = await _app.InvokeAsync("od.unit-test.tree");
-            if (tree.GetProperty("tests").GetArrayLength() > 0
-                && FindTest(tree.GetProperty("tests")[0], "AlwaysPasses").HasValue)
-                break;
-            await Task.Delay(1000);
-        }
+            return tree.GetProperty("tests").GetArrayLength() > 0
+                && FindTest(tree.GetProperty("tests")[0], "AlwaysPasses").HasValue;
+        }, TimeSpan.FromSeconds(60));
 
         await _app.InvokeAsync("od.unit-test.run");
 
@@ -691,15 +628,12 @@ public sealed class AddInTests : IAsyncDisposable
         await _app.InvokeAsync("od.show-pad", "ICSharpCode.UnitTesting.UnitTestsPad");
         await _app.EnsureSolutionOpenAsync(_app.FixtureSolutionPath);
 
-        var deadline = DateTime.UtcNow.AddSeconds(60);
-        while (DateTime.UtcNow < deadline)
+        await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             var tree = await _app.InvokeAsync("od.unit-test.tree");
-            if (tree.GetProperty("tests").GetArrayLength() > 0
-                && FindTest(tree.GetProperty("tests")[0], "AlwaysPasses").HasValue)
-                break;
-            await Task.Delay(1000);
-        }
+            return tree.GetProperty("tests").GetArrayLength() > 0
+                && FindTest(tree.GetProperty("tests")[0], "AlwaysPasses").HasValue;
+        }, TimeSpan.FromSeconds(60));
 
         var expandResult = await _app.InvokeAsync("od.unit-test.expand-node", "SampleTestProject");
         Assert.True(expandResult.GetProperty("found").GetBoolean(),
@@ -728,15 +662,12 @@ public sealed class AddInTests : IAsyncDisposable
         await _app.InvokeAsync("od.show-pad", "ICSharpCode.UnitTesting.UnitTestsPad");
         await _app.EnsureSolutionOpenAsync(_app.FixtureSolutionPath);
 
-        var deadline = DateTime.UtcNow.AddSeconds(60);
-        while (DateTime.UtcNow < deadline)
+        await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             var tree = await _app.InvokeAsync("od.unit-test.tree");
-            if (tree.GetProperty("tests").GetArrayLength() > 0
-                && FindTest(tree.GetProperty("tests")[0], "AlwaysPasses").HasValue)
-                break;
-            await Task.Delay(1000);
-        }
+            return tree.GetProperty("tests").GetArrayLength() > 0
+                && FindTest(tree.GetProperty("tests")[0], "AlwaysPasses").HasValue;
+        }, TimeSpan.FromSeconds(60));
 
         // The pad tree refreshes asynchronously after discovery and only auto-expands the single-
         // child chain up to the framework node, so walk the chain: project (occurrence 1 of
@@ -744,14 +675,11 @@ public sealed class AddInTests : IAsyncDisposable
         // displays the same name as its project) -> class ("PassTests"). Then the method child
         // ("AlwaysPasses") is realized and rendered.
         JsonElement expandResult = default;
-        var padDeadline = DateTime.UtcNow.AddSeconds(30);
-        while (DateTime.UtcNow < padDeadline)
+        await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             expandResult = await _app.InvokeAsync("od.unit-test.expand-node", "SampleTestProject", 1);
-            if (expandResult.TryGetProperty("found", out var f) && f.GetBoolean())
-                break;
-            await Task.Delay(500);
-        }
+            return expandResult.TryGetProperty("found", out var f) && f.GetBoolean();
+        }, TimeSpan.FromSeconds(30));
         Assert.True(expandResult.GetProperty("found").GetBoolean(),
             "Expected the SampleTestProject node to be expandable in the Unit Tests pad");
 
@@ -763,6 +691,12 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.True(expandResult.GetProperty("found").GetBoolean(),
             "Expected the SampleTestProject namespace node to be expandable in the Unit Tests pad");
 
+        // The pad renders its tree items only while it's the pane group's selected tab
+        // (LayoutAnchorablePaneControl is a TabControl - unselected content never lays out, so
+        // SharpTreeView's virtualization realizes nothing). Opening the solution re-selected the
+        // Projects tab next to it, so re-activate the pad before polling for rendered text.
+        await _app.InvokeAsync("od.show-pad", "ICSharpCode.UnitTesting.UnitTestsPad");
+
         // The pad's TreeView renders its items asynchronously after the model is expanded, so
         // poll for the class name to appear in the visual tree before asserting (the method-name
         // assertion below already waits the same way).
@@ -772,9 +706,7 @@ public sealed class AddInTests : IAsyncDisposable
                 && e.TryGetProperty("text", out var txt) && !string.IsNullOrEmpty(txt.GetString()))
             .Select(e => e.GetProperty("text").GetString())
             .ToList();
-        var padDeadline2 = DateTime.UtcNow.AddSeconds(30);
-        bool passTestsFound = false;
-        while (DateTime.UtcNow < padDeadline2)
+        bool passTestsFound = await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             uiTree = await _app.GetUITreeAsync();
             texts = FlattenElements(uiTree)
@@ -782,13 +714,8 @@ public sealed class AddInTests : IAsyncDisposable
                     && e.TryGetProperty("text", out var txt) && !string.IsNullOrEmpty(txt.GetString()))
                 .Select(e => e.GetProperty("text").GetString())
                 .ToList();
-            if (texts.Any(t => t == "PassTests"))
-            {
-                passTestsFound = true;
-                break;
-            }
-            await Task.Delay(500);
-        }
+            return texts.Any(t => t == "PassTests");
+        }, TimeSpan.FromSeconds(30));
         if (!passTestsFound)
             Assert.Fail($"no PassTests text; padTree={await _app.InvokeAsync("od.unit-test.pad-tree")}; panePos={await _app.InvokeAsync("od.layout.pane-position", "ICSharpCode.UnitTesting.UnitTestsPad")}; texts={string.Join("|", texts.Take(50))};");
         Assert.Contains(texts, t => t == "PassTests");
@@ -799,9 +726,7 @@ public sealed class AddInTests : IAsyncDisposable
         if (!expandResult.GetProperty("found").GetBoolean())
             Assert.Fail($"expand PassTests failed: {expandResult}; padTree={await _app.InvokeAsync("od.unit-test.pad-tree")};");
 
-        var methodDeadline = DateTime.UtcNow.AddSeconds(30);
-        bool methodFound = false;
-        while (DateTime.UtcNow < methodDeadline)
+        bool methodFound = await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             uiTree = await _app.GetUITreeAsync();
             texts = FlattenElements(uiTree)
@@ -809,13 +734,8 @@ public sealed class AddInTests : IAsyncDisposable
                     && e.TryGetProperty("text", out var txt) && !string.IsNullOrEmpty(txt.GetString()))
                 .Select(e => e.GetProperty("text").GetString())
                 .ToList();
-            if (texts.Any(t => t.EndsWith(".AlwaysPasses", StringComparison.Ordinal)))
-            {
-                methodFound = true;
-                break;
-            }
-            await Task.Delay(500);
-        }
+            return texts.Any(t => t.EndsWith(".AlwaysPasses", StringComparison.Ordinal));
+        }, TimeSpan.FromSeconds(30));
         if (!methodFound)
             Assert.Fail($"no AlwaysPasses text; padTree={await _app.InvokeAsync("od.unit-test.pad-tree")}; texts={string.Join("|", texts.Take(60))};");
         Assert.Contains(texts, t => t.EndsWith(".AlwaysPasses", StringComparison.Ordinal));
@@ -840,9 +760,7 @@ public sealed class AddInTests : IAsyncDisposable
     [Fact]
     public async Task OpenXamlFile_LoadsDesignerWithToolboxAndOutline()
     {
-        var openSolutionResult = await _app.ReopenSolutionAsync(_app.WpfSampleSolutionPath);
-        Assert.True(openSolutionResult.GetProperty("success").GetBoolean(),
-            $"OpenSolutionOrProject returned false for {_app.WpfSampleSolutionPath}");
+        await _app.EnsureSolutionOpenAsync(_app.WpfSampleSolutionPath);
 
         var xamlPath = Path.Combine(Path.GetDirectoryName(_app.WpfSampleSolutionPath)!, "MainWindow.xaml");
         var openFileResult = await _app.InvokeAsync("od.open-file", xamlPath);
@@ -880,8 +798,7 @@ public sealed class AddInTests : IAsyncDisposable
         // editor opens. The XamlBinding addin's XamlOutlineContentHost registers itself on the
         // TextView services via XamlTextEditorExtension.Attach, making the OutlinePad show a
         // XAML element tree instead of the designer's IOutlineNode tree.
-        var openSolutionResult = await _app.ReopenSolutionAsync(_app.WpfSampleSolutionPath);
-        Assert.True(openSolutionResult.GetProperty("success").GetBoolean());
+        await _app.EnsureSolutionOpenAsync(_app.WpfSampleSolutionPath);
 
         var appXamlPath = Path.Combine(Path.GetDirectoryName(_app.WpfSampleSolutionPath)!, "App.xaml");
         var openFileResult = await _app.InvokeAsync("od.open-file", appXamlPath);
@@ -910,8 +827,7 @@ public sealed class AddInTests : IAsyncDisposable
     {
         // SamplePane.xaml is a UserControl with deeply nested named elements (Border→StackPanel→
         // TextBlocks, ListBox). The designer's Outline pad should reflect the full hierarchy.
-        var openSolutionResult = await _app.ReopenSolutionAsync(_app.WpfSampleSolutionPath);
-        Assert.True(openSolutionResult.GetProperty("success").GetBoolean());
+        await _app.EnsureSolutionOpenAsync(_app.WpfSampleSolutionPath);
 
         var xamlPath = Path.Combine(Path.GetDirectoryName(_app.WpfSampleSolutionPath)!, "SamplePane.xaml");
         var openFileResult = await _app.InvokeAsync("od.open-file", xamlPath);
@@ -960,15 +876,14 @@ public sealed class AddInTests : IAsyncDisposable
             // between the last WaitFor poll and this select (same race the WaitFor helpers guard
             // against) - retry the select, re-activating MainWindow each round.
             JsonElement selected = default;
-            var selectDeadline = DateTime.UtcNow.AddSeconds(15);
-            while (DateTime.UtcNow < selectDeadline)
+            await OpenDevelopAppFixture.PollUntilAsync(async () =>
             {
                 selected = await _app.InvokeAsync("od.wpf-designer.select", "PrimaryButton");
                 if (selected.GetProperty("success").GetBoolean())
-                    break;
+                    return true;
                 await _app.InvokeAsync("od.open-file", xamlPath);
-                await Task.Delay(250);
-            }
+                return false;
+            }, TimeSpan.FromSeconds(15), initialDelayMs: 50, maxDelayMs: 250);
             Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
             Assert.Equal("PrimaryButton", selected.GetProperty("selectedName").GetString());
             Assert.Equal("PrimaryButton", selected.GetProperty("propertiesPadSelectedName").GetString());
@@ -1090,17 +1005,11 @@ public sealed class AddInTests : IAsyncDisposable
                 // Confirm the dropped control actually landed in the live designer tree (outline) -
                 // it has no x:Name (nothing names a freshly-dropped item, mouse-driven or not), so
                 // identify it by the outline count growing rather than by name.
-                var dropDeadline = DateTime.UtcNow.AddSeconds(8);
-                while (DateTime.UtcNow < dropDeadline)
+                outlineGrew = await OpenDevelopAppFixture.PollUntilAsync(async () =>
                 {
                     statusAfterDrop = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "UserControl", timeoutSeconds: 10, reactivatePath: xamlPath);
-                    if (statusAfterDrop.GetProperty("outlineNames").GetArrayLength() > outlineNamesBefore.Length)
-                    {
-                        outlineGrew = true;
-                        break;
-                    }
-                    await Task.Delay(250);
-                }
+                    return statusAfterDrop.GetProperty("outlineNames").GetArrayLength() > outlineNamesBefore.Length;
+                }, TimeSpan.FromSeconds(8), initialDelayMs: 50, maxDelayMs: 250);
             }
             Assert.True(outlineGrew,
                 "Expected a new element in the outline after the drag-drop, even after retries.\nBefore: " + string.Join(", ", outlineNamesBefore) +
@@ -1136,17 +1045,20 @@ public sealed class AddInTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task DragToolboxItem_OntoXamlSourceEditor_InsertsMarkupAtCaret()
+    public async Task DragToolboxItem_OntoXamlSourceEditor_InsertsMarkupAtDropPoint()
     {
         // Covers the OTHER drag-drop target for a WPF toolbox item: the plain XAML text/source
         // editor (AvalonEditViewContent, the file's default/primary view), not the WpfDesign
         // canvas (WpfViewContent, a secondary view - see DragToolboxItem_OntoDesignSurface_...
-        // above). AvalonEditViewContent.SetupXamlDragDrop/TextArea_Drop already implements this:
-        // it inserts "<TagName />" at the editor's CURRENT caret offset on drop (not at the mouse
-        // drop point), so this test moves the caret first via the new od.file.set-caret-offset
-        // action, then drops anywhere over the TextArea's bounds (od.file.query-text-area-screen-
-        // bounds). Unlike the canvas test, there's no WpfDesign adorner/DesignPanel hit-testing
-        // involved here - but the synthetic press/drag-move/release gesture itself (cliclick +
+        // above). AvalonEditViewContent.TextArea_Drop inserts "<TagName />" at the position the
+        // pointer was actually released over. It used to insert at the editor's CURRENT caret
+        // instead, which is wherever the user last clicked or typed - so markup landed several
+        // lines away from the mouse unless the caret happened to already be there. This test
+        // therefore drops on the exact screen position of a chosen offset
+        // (od.file.query-offset-screen-position) and asserts the markup landed at that offset,
+        // rather than parking the caret somewhere and dropping anywhere.
+        // Unlike the canvas test, there's no WpfDesign adorner/DesignPanel hit-testing involved
+        // here - but the synthetic press/drag-move/release gesture itself (cliclick +
         // NativeInputPump, see PortableDragDropOperation's doc comment) is still occasionally
         // flaky end to end, same as the canvas test - retry the whole gesture rather than assume
         // a single attempt is reliable.
@@ -1161,36 +1073,45 @@ public sealed class AddInTests : IAsyncDisposable
             var openFileResult = await _app.InvokeAsync("od.open-file", xamlPath);
             Assert.True(openFileResult.GetProperty("opened").GetBoolean());
 
-            // Insert right after "</ListBox>" - a sibling position inside PaneStack where a
-            // self-closing "<TextBox />" is well-formed regardless of surrounding whitespace.
+            // Target the position right after "</ListBox>" - a sibling position inside PaneStack
+            // where a self-closing "<TextBox />" is well-formed regardless of surrounding
+            // whitespace. This is the DROP point, resolved to real screen coordinates below.
             int anchor = originalXaml.IndexOf("</ListBox>", StringComparison.Ordinal);
             Assert.True(anchor >= 0, "Expected SamplePane.xaml fixture to contain a </ListBox> anchor.");
-            int caretOffset = anchor + "</ListBox>".Length;
+            int dropOffset = anchor + "</ListBox>".Length;
 
-            var caretSet = await _app.InvokeAsync("od.file.set-caret-offset", xamlPath, caretOffset);
+            // Park the caret at the very start of the document - deliberately NOT the drop point.
+            // Two jobs: it activates this file's text view (the designer-status assertion below
+            // depends on that same view transition having happened, as it did when this test
+            // still drove the insert through the caret), and it makes the assertion at the end
+            // meaningful - if the insert ever regressed to using the caret again, the markup would
+            // land at offset 0 instead of at the pointer, and the assertion would catch it.
+            var caretSet = await _app.InvokeAsync("od.file.set-caret-offset", xamlPath, 0);
             Assert.True(caretSet.GetProperty("success").GetBoolean(), caretSet.ToString());
+
+            // Exercise the secondary-view transition that previously left AvalonEdit's TextArea
+            // detached when the source tab was selected again.
+            var designerStatus = await _app.InvokeAsync("od.wpf-designer.status");
+            Assert.True(designerStatus.GetProperty("designerLoaded").GetBoolean(), designerStatus.ToString());
 
             // The generic ToolsPad only realizes its content the first time it's shown - see the
             // canvas drag test's own comment on od.show-pad for why this call is required first.
             await _app.InvokeAsync("od.show-pad", "Tools");
             await _app.InvokeAsync("od.activate");
 
-            // Deliberately NOT od.wpf-designer.toolbox.query-item-bounds - that action always
-            // switches the active tab to the WpfDesign canvas (FindWpfViewContent), and switching
-            // this file's AvalonEditViewContent tab away and back does not reliably reconnect its
-            // TextArea to a PresentationSource afterward (a real bug, out of scope here - this
-            // test just avoids triggering it). AvalonEditViewContent.IToolsHost.ToolsContent
-            // already resolves to the very same WpfToolbox.Instance singleton for a .xaml file, so
-            // the toolbox is realized identically without ever leaving the source editor tab.
+            // AvalonEditViewContent.IToolsHost.ToolsContent resolves to the same WpfToolbox.Instance
+            // singleton, without changing the active secondary view again.
             var toolboxBounds = await _app.InvokeAsync("od.wpf-toolbox.query-item-bounds", "TextBox");
             Assert.True(toolboxBounds.GetProperty("success").GetBoolean(), toolboxBounds.ToString());
             var fromX = toolboxBounds.GetProperty("centerX").GetDouble();
             var fromY = toolboxBounds.GetProperty("centerY").GetDouble();
 
-            var textAreaBounds = await _app.InvokeAsync("od.file.query-text-area-screen-bounds", xamlPath);
-            Assert.True(textAreaBounds.GetProperty("success").GetBoolean(), textAreaBounds.ToString());
-            var toX = textAreaBounds.GetProperty("x").GetDouble() + textAreaBounds.GetProperty("width").GetDouble() / 2;
-            var toY = textAreaBounds.GetProperty("y").GetDouble() + textAreaBounds.GetProperty("height").GetDouble() / 2;
+            // Drop exactly on the target offset's own screen position, so the assertion below is a
+            // real check that the insert followed the mouse rather than landing there by accident.
+            var dropPoint = await _app.InvokeAsync("od.file.query-offset-screen-position", xamlPath, dropOffset);
+            Assert.True(dropPoint.GetProperty("success").GetBoolean(), dropPoint.ToString());
+            var toX = dropPoint.GetProperty("x").GetDouble();
+            var toY = dropPoint.GetProperty("y").GetDouble();
 
             string savedXaml = null;
             var inserted = false;
@@ -1214,29 +1135,183 @@ public sealed class AddInTests : IAsyncDisposable
                 // draining the synthetic input NativeInputPump pumped during the drag (see
                 // PortableDragDropOperation's doc comment) - poll save+read rather than assume the
                 // insert has already landed the instant ReleasePointerAsync's HTTP call returns.
-                var deadline = DateTime.UtcNow.AddSeconds(8);
-                while (DateTime.UtcNow < deadline)
+                inserted = await OpenDevelopAppFixture.PollUntilAsync(async () =>
                 {
                     var saved = await _app.InvokeAsync("od.file.save", xamlPath);
                     Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
                     savedXaml = await File.ReadAllTextAsync(xamlPath);
-                    if (savedXaml.Contains("<TextBox />", StringComparison.Ordinal))
-                    {
-                        inserted = true;
-                        break;
-                    }
-                    await Task.Delay(250);
-                }
+                    return savedXaml.Contains("<TextBox />", StringComparison.Ordinal);
+                }, TimeSpan.FromSeconds(8), initialDelayMs: 50, maxDelayMs: 250);
             }
 
             Assert.Contains("<TextBox />", savedXaml, StringComparison.Ordinal);
-            Assert.True(savedXaml.IndexOf("<TextBox />", StringComparison.Ordinal) > savedXaml.IndexOf("</ListBox>", StringComparison.Ordinal),
-                "Expected <TextBox /> to be inserted after </ListBox> (at the caret), not somewhere earlier in the document.\n" + savedXaml);
+
+            // The drop landed on the first character after "</ListBox>", so the markup must appear
+            // immediately after that tag - and, crucially, before "</StackPanel>". Asserting both
+            // ends pins it to the drop point: an insert that fell back to the caret (offset 0 on a
+            // freshly opened file) or to the end of the document fails one of them.
+            int insertedAt = savedXaml.IndexOf("<TextBox />", StringComparison.Ordinal);
+            int listBoxEnd = savedXaml.IndexOf("</ListBox>", StringComparison.Ordinal) + "</ListBox>".Length;
+            int stackPanelEnd = savedXaml.IndexOf("</StackPanel>", StringComparison.Ordinal);
+            Assert.True(insertedAt >= listBoxEnd && insertedAt < stackPanelEnd,
+                $"Expected <TextBox /> at the drop point (just after </ListBox>, before </StackPanel>), "
+                + $"but it landed at offset {insertedAt} (</ListBox> ends at {listBoxEnd}, </StackPanel> starts at {stackPanelEnd}).\n" + savedXaml);
         }
         finally
         {
             // SamplePane.xaml is a repository fixture - restore it regardless of outcome.
             await File.WriteAllTextAsync(xamlPath, originalXaml);
+        }
+    }
+
+    [Fact]
+    public async Task DragToolboxItem_OntoWinFormsDesignSurface_AddsControlToForm()
+    {
+        // Covers the THIRD drag-drop target for the shared WPF-hosted toolbox: a WinForms
+        // DesignSurface (FormsDesignerViewContent, hosted via a WindowsFormsHost inside the
+        // otherwise-all-WPF workbench). WinForms designer historically had no visible drag-from
+        // palette in this port (FormsDesignerViewContent.ToolsContent used to hardcode null - see
+        // its own doc comment) - it's now wired to the SAME WpfToolbox.Instance singleton used by
+        // the XAML designer/editor, with WinForms items routed through the real
+        // System.Drawing.Design.IToolboxService (ToolboxService.cs) rather than WpfDesign's
+        // CreateComponentTool, since it's WinForms' real ParentControlDesigner.OnDragEnter/
+        // OnDragDrop that actually creates the component on drop. Crossing from the WPF-hosted
+        // toolbox ListBox into the embedded WinForms control tree relies on LibreWinForms'
+        // WindowsFormsHost.ProcessExternalDragEvent bridge (see WpfToolbox.OnPreviewMouseMove's
+        // own doc comment on the DataObject format-name contract that makes this work).
+        var solutionDirectory = Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!;
+        var formCodePath = Path.Combine(solutionDirectory, "Form1.Designer.cs");
+        var originalFormCode = await File.ReadAllTextAsync(formCodePath);
+
+        try
+        {
+            var openSolutionResult = await _app.ReopenSolutionAsync(_app.WinFormsSampleSolutionPath);
+            Assert.True(openSolutionResult.GetProperty("success").GetBoolean());
+            var openFileResult = await _app.InvokeAsync("od.open-file", formCodePath.Replace(".Designer.cs", ".cs"));
+            Assert.True(openFileResult.GetProperty("opened").GetBoolean());
+
+            var status = await _app.InvokeAsync("od.forms-designer.status");
+            Assert.True(status.GetProperty("designerLoaded").GetBoolean(), status.ToString());
+            var controlNamesBefore = status.GetProperty("controlNames").EnumerateArray()
+                .Select(n => n.GetString()).ToArray();
+            Assert.Contains("dropPanel", controlNamesBefore);
+
+            // WpfToolbox.Instance (which registers ISharedToolboxHost into SD.Services - see its
+            // own doc comment) is a lazily-constructed singleton that, in every OTHER drag-drop
+            // test, already exists by this point because some .xaml file's WpfViewContent/
+            // AvalonEditViewContent touched it earlier. This test never opens a .xaml file, so
+            // nothing has constructed it yet - if od.show-pad ran first, ToolsPad would bind to
+            // FormsDesignerViewContent.ToolsContent while ISharedToolboxHost is still unregistered
+            // (null), latch onto that null content, and never re-query it once the toolbox singleton
+            // shows up afterward. Force construction (ignoring the expected "not realized" failure -
+            // nothing has been shown yet) before showing the pad, so ToolsPad's first real bind sees
+            // the actual toolbox.
+            await _app.InvokeAsync("od.wpf-toolbox.query-item-bounds", "NumericUpDown");
+
+            // Same reasoning as the XAML source-editor test's own comment: the generic ToolsPad
+            // only realizes its content the first time it's shown.
+            await _app.InvokeAsync("od.show-pad", "Tools");
+            await _app.InvokeAsync("od.activate");
+
+            // Query the drop target's bounds BEFORE the toolbox row's bounds, not after:
+            // od.forms-designer.query-control-screen-bounds switches the active tab to the
+            // FormsDesigner view (FindFormsDesignerViewContent's own SwitchView call), which
+            // re-hosts ToolsPad's content and resets the toolbox ListBox's scroll offset back to
+            // the top - querying the toolbox row afterward would return coordinates for whatever
+            // row now occupies that position post-reset, not NumericUpDown. Querying the toolbox
+            // row LAST, immediately before pressing, avoids that race.
+            var targetBounds = await _app.InvokeAsync("od.forms-designer.query-control-screen-bounds", "dropPanel");
+            Assert.True(targetBounds.GetProperty("success").GetBoolean(), targetBounds.ToString());
+            var toX = targetBounds.GetProperty("x").GetDouble() + targetBounds.GetProperty("width").GetDouble() / 2;
+            var toY = targetBounds.GetProperty("y").GetDouble() + targetBounds.GetProperty("height").GetDouble() / 2;
+
+            // NumericUpDown has no WPF counterpart in the toolbox's "Windows Presentation
+            // Foundation" category, so this DisplayName lookup can't accidentally match the wrong
+            // framework's control (both categories share one flat toolbox ListBox).
+            var toolboxBounds = await _app.InvokeAsync("od.wpf-toolbox.query-item-bounds", "NumericUpDown");
+            Assert.True(toolboxBounds.GetProperty("success").GetBoolean(), toolboxBounds.ToString());
+            var fromX = toolboxBounds.GetProperty("centerX").GetDouble();
+            var fromY = toolboxBounds.GetProperty("centerY").GetDouble();
+
+            // Same retry rationale as both other drag-drop tests: the synthetic press/drag-move/
+            // release gesture (cliclick + NativeInputPump) is occasionally flaky end to end.
+            JsonElement statusAfterDrop = default;
+            var controlAdded = false;
+            for (int attempt = 1; attempt <= 4 && !controlAdded; attempt++)
+            {
+                var pressed = await _app.PressPointerAsync(fromX, fromY);
+                Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
+
+                for (int step = 1; step <= 6; step++)
+                {
+                    var t = step / 6.0;
+                    var moved = await _app.DragMovePointerAsync(fromX + (toX - fromX) * t, fromY + (toY - fromY) * t);
+                    Assert.True(moved.GetProperty("ok").GetBoolean(), moved.ToString());
+                    await Task.Delay(150);
+                }
+
+                var released = await _app.ReleasePointerAsync(toX, toY);
+                Assert.True(released.GetProperty("ok").GetBoolean(), released.ToString());
+
+                controlAdded = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+                {
+                    statusAfterDrop = await _app.InvokeAsync("od.forms-designer.status");
+                    return statusAfterDrop.GetProperty("controlNames").GetArrayLength() > controlNamesBefore.Length;
+                }, TimeSpan.FromSeconds(8), initialDelayMs: 50, maxDelayMs: 250);
+            }
+            Assert.True(controlAdded,
+                "Expected a new control on the WinForms design surface after the drag-drop, even after retries.\nBefore: " + string.Join(", ", controlNamesBefore) +
+                "\nAfter: " + statusAfterDrop);
+
+            var saved = await _app.InvokeAsync("od.file.save", formCodePath.Replace(".Designer.cs", ".cs"));
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+
+            var savedFormCode = await File.ReadAllTextAsync(formCodePath);
+            Assert.Contains("System.Windows.Forms.NumericUpDown", savedFormCode, StringComparison.Ordinal);
+
+            // The dropped control must also come out with a real, non-empty Size. A control created
+            // straight from ToolboxItem.CreateComponents (rather than through the designer's own
+            // IToolboxUser.ToolPicked path - see AbstractCodeDomDesignerLoader's own comment) keeps
+            // Size.Empty, which still serializes to a perfectly valid-looking .Designer.cs but never
+            // paints, because WindowsFormsHost.RenderControl skips zero-sized controls. Asserting on
+            // the type name alone happily passed while the designer surface showed nothing at all.
+            var sizeMatch = System.Text.RegularExpressions.Regex.Match(
+                savedFormCode, @"numericUpDown1\.Size\s*=\s*new System\.Drawing\.Size\((\d+),\s*(\d+)\)");
+            Assert.True(sizeMatch.Success,
+                "Expected the dropped NumericUpDown to have a Size assignment in the generated designer code.\n" + savedFormCode);
+            Assert.Equal(120, int.Parse(sizeMatch.Groups[1].Value));
+            Assert.Equal(20, int.Parse(sizeMatch.Groups[2].Value));
+
+            // Selecting a WinForms toolbox row without dragging must not arm a persistent creation
+            // tool. The shared toolbox used to leave IToolboxService.SelectedToolboxItem set, so
+            // the next ordinary canvas click created a second control with no visible way to
+            // cancel the stale tool.
+            var toolboxBoundsAfterDrop = await _app.InvokeAsync("od.wpf-toolbox.query-item-bounds", "NumericUpDown");
+            Assert.True(toolboxBoundsAfterDrop.GetProperty("success").GetBoolean(), toolboxBoundsAfterDrop.ToString());
+            var selectX = toolboxBoundsAfterDrop.GetProperty("centerX").GetDouble();
+            var selectY = toolboxBoundsAfterDrop.GetProperty("centerY").GetDouble();
+            var selectedAgain = await _app.PressPointerAsync(selectX, selectY);
+            Assert.True(selectedAgain.GetProperty("ok").GetBoolean(), selectedAgain.ToString());
+            var selectionReleased = await _app.ReleasePointerAsync(selectX, selectY);
+            Assert.True(selectionReleased.GetProperty("ok").GetBoolean(), selectionReleased.ToString());
+
+            var clickX = targetBounds.GetProperty("x").GetDouble() + 10;
+            var clickY = targetBounds.GetProperty("y").GetDouble() + 10;
+            var clicked = await _app.PressPointerAsync(clickX, clickY);
+            Assert.True(clicked.GetProperty("ok").GetBoolean(), clicked.ToString());
+            var clickReleased = await _app.ReleasePointerAsync(clickX, clickY);
+            Assert.True(clickReleased.GetProperty("ok").GetBoolean(), clickReleased.ToString());
+            await Task.Delay(500);
+
+            var statusAfterCanvasClick = await _app.InvokeAsync("od.forms-designer.status");
+            Assert.Equal(
+                statusAfterDrop.GetProperty("controlNames").GetArrayLength(),
+                statusAfterCanvasClick.GetProperty("controlNames").GetArrayLength());
+        }
+        finally
+        {
+            // Form1.Designer.cs is a repository fixture - restore it regardless of outcome.
+            await File.WriteAllTextAsync(formCodePath, originalFormCode);
         }
     }
 
@@ -1251,8 +1326,7 @@ public sealed class AddInTests : IAsyncDisposable
         var solutionDirectory = Path.GetDirectoryName(_app.WpfSampleSolutionPath)!;
         var xamlPath = Path.Combine(solutionDirectory, "SamplePane.xaml");
 
-        var openSolutionResult = await _app.ReopenSolutionAsync(_app.WpfSampleSolutionPath);
-        Assert.True(openSolutionResult.GetProperty("success").GetBoolean());
+        await _app.EnsureSolutionOpenAsync(_app.WpfSampleSolutionPath);
         var openFileResult = await _app.InvokeAsync("od.open-file", xamlPath);
         Assert.True(openFileResult.GetProperty("opened").GetBoolean());
         var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "UserControl", timeoutSeconds: 30, reactivatePath: xamlPath);
@@ -1302,10 +1376,9 @@ public sealed class AddInTests : IAsyncDisposable
     // already-open view, which wins over the async restore activation.
     async Task<JsonElement> WaitForWpfDesignerStatusAsync(string expectedRootItemType, int timeoutSeconds, string reactivatePath = null)
     {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(timeoutSeconds);
         JsonElement status = default;
         var previousCount = -1;
-        while (DateTime.UtcNow < deadline)
+        await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             status = await _app.InvokeAsync("od.wpf-designer.status");
             if (status.GetProperty("active").GetBoolean() &&
@@ -1316,7 +1389,7 @@ public sealed class AddInTests : IAsyncDisposable
             {
                 var count = names.GetArrayLength();
                 if (count > 0 && count == previousCount)
-                    break;
+                    return true;
                 previousCount = count;
             }
             else
@@ -1325,31 +1398,27 @@ public sealed class AddInTests : IAsyncDisposable
                 if (reactivatePath != null)
                     await _app.InvokeAsync("od.open-file", reactivatePath);
             }
-            await Task.Delay(250);
-        }
+            return false;
+        }, TimeSpan.FromSeconds(timeoutSeconds), initialDelayMs: 50, maxDelayMs: 250);
         return status;
     }
 
     async Task<JsonElement> WaitForPropertiesPadEditAsync(string propertyName, string value, int timeoutSeconds)
     {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(timeoutSeconds);
         JsonElement result = default;
-        while (DateTime.UtcNow < deadline)
+        await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             result = await _app.InvokeAsync("od.wpf-designer.properties-pad.edit", propertyName, value);
-            if (result.GetProperty("success").GetBoolean())
-                return result;
-            await Task.Delay(100);
-        }
+            return result.GetProperty("success").GetBoolean();
+        }, TimeSpan.FromSeconds(timeoutSeconds), initialDelayMs: 50, maxDelayMs: 100);
         return result;
     }
 
     async Task<JsonElement> WaitForXamlOutlineStatusAsync(string expectedRootName, int timeoutSeconds, string reactivatePath = null)
     {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(timeoutSeconds);
         JsonElement status = default;
         var previousCount = -1;
-        while (DateTime.UtcNow < deadline)
+        await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             status = await _app.InvokeAsync("od.xaml-outline.status");
             if (status.GetProperty("active").GetBoolean() &&
@@ -1359,7 +1428,7 @@ public sealed class AddInTests : IAsyncDisposable
             {
                 var count = names.GetArrayLength();
                 if (count > 0 && count == previousCount)
-                    break;
+                    return true;
                 previousCount = count;
             }
             else
@@ -1368,16 +1437,15 @@ public sealed class AddInTests : IAsyncDisposable
                 if (reactivatePath != null)
                     await _app.InvokeAsync("od.open-file", reactivatePath);
             }
-            await Task.Delay(250);
-        }
+            return false;
+        }, TimeSpan.FromSeconds(timeoutSeconds), initialDelayMs: 50, maxDelayMs: 250);
         return status;
     }
 
     [Fact]
     public async Task ProjectContextMenu_ContainsClassDiagram()
     {
-        var opened = await _app.ReopenSolutionAsync(_app.SolutionExplorerFixturePath);
-        Assert.True(opened.GetProperty("success").GetBoolean());
+        await _app.EnsureSolutionOpenAsync(_app.SolutionExplorerFixturePath);
 
         var loadedAddIns = await _app.InvokeAsync("od.addins");
         var classDiagramAddIn = loadedAddIns.GetProperty("addins").EnumerateArray().FirstOrDefault(item =>
@@ -1787,31 +1855,25 @@ EndGlobal
 
     async Task<JsonElement> WaitForSearchToFinishAsync()
     {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
         JsonElement status = default;
-        while (DateTime.UtcNow < deadline)
+        var finished = await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             status = await _app.InvokeAsync("od.nuget.status");
-            if (status.TryGetProperty("isReadingPackages", out var reading) && !reading.GetBoolean())
-                return status;
-            await Task.Delay(500);
-        }
-        throw new TimeoutException($"Package search never finished. Last status: {status}");
+            return status.TryGetProperty("isReadingPackages", out var reading) && !reading.GetBoolean();
+        }, TimeSpan.FromSeconds(30));
+        if (!finished)
+            throw new TimeoutException($"Package search never finished. Last status: {status}");
+        return status;
     }
 
     async Task<bool> WaitForPackageInstalledAsync()
     {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
-        while (DateTime.UtcNow < deadline)
+        return await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             var status = await _app.InvokeAsync("od.nuget.status");
-            var installed = status.GetProperty("packages").EnumerateArray()
+            return status.GetProperty("packages").EnumerateArray()
                 .Any(p => p.GetProperty("id").GetString() == TestPackageId && p.GetProperty("isAdded").GetBoolean());
-            if (installed)
-                return true;
-            await Task.Delay(500);
-        }
-        return false;
+        }, TimeSpan.FromSeconds(30));
     }
 
     [Fact]
@@ -1854,9 +1916,12 @@ EndGlobal
         // lost") used to tab all three pads into whatever pane already existed (e.g. next to
         // "Projects"), on the wrong side, with no test catching it - exactly the failure mode
         // reported after repeated manual runs. Assert each pad's real AvalonDock position against
-        // Layouts/ILSpy.xml's template: Assemblies alone in "LeftPane" on the Left, Search alone in
-        // "TopPane" on the Top, Analyze alone in "BottomPane" on the Bottom - none floating,
-        // auto-hidden, or hidden.
+        // Layouts/ILSpy.xml's template: Assemblies in "LeftPane" on the Left, Search in "TopPane"
+        // on the Top, Analyze in "BottomPane" on the Bottom - none floating, auto-hidden, or
+        // hidden. (Layout switching is incremental since 2026-08-09 - panes not named in the
+        // template are re-docked beside the template's panes rather than evicted - so the panes
+        // legitimately host sibling pads like Projects/Tools; only the named pane/side are
+        // asserted, not sole occupancy.)
         var expectedPositions = new[] {
             (Title: "Assemblies", PaneName: "LeftPane", Side: "Left"),
             (Title: "Search", PaneName: "TopPane", Side: "Top"),
@@ -1872,7 +1937,6 @@ EndGlobal
             Assert.False(position.GetProperty("isHidden").GetBoolean(), $"Expected '{expected.Title}' to not be hidden");
             Assert.Equal(expected.PaneName, position.GetProperty("paneName").GetString());
             Assert.Equal(expected.Side, position.GetProperty("side").GetString());
-            Assert.Equal(1, position.GetProperty("siblingCount").GetInt32());
         }
 
         // Decompiled output opens as a document tab (a read-only, virtual file). Opening an assembly
@@ -1932,11 +1996,10 @@ EndGlobal
         var showPaneResult = await _app.InvokeAsync("od.ilspy.activate-pane", "Assemblies");
         Assert.True(showPaneResult.GetProperty("found").GetBoolean(), "Could not find the Assemblies ILSpy pane");
 
-        var deadline = DateTime.UtcNow.AddSeconds(30);
         JsonElement uiTree = default;
         List<string> texts = new();
         List<JsonElement> allElements = new();
-        while (DateTime.UtcNow < deadline)
+        await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             uiTree = await _app.GetUITreeAsync();
             allElements = FlattenElements(uiTree).ToList();
@@ -1948,10 +2011,8 @@ EndGlobal
             // "[Module]" is DecompiledViewContent's title for a whole-module DecompiledTypeReference
             // (see its constructor) - the native document's tab, now that opening an assembly routes
             // there instead of to the bespoke pane's "Decompiled Code" tab.
-            if (texts.Contains("Assemblies") && texts.Contains("[Module]"))
-                break;
-            await Task.Delay(500);
-        }
+            return texts.Contains("Assemblies") && texts.Contains("[Module]");
+        }, TimeSpan.FromSeconds(30));
         Assert.Contains(texts, t => t == "Assemblies");
         Assert.Contains(texts, t => t == "[Module]");
 
@@ -2246,18 +2307,15 @@ EndGlobal
     /// </summary>
     async Task<string> WaitForDecompiledTextAsync(Func<string, bool> predicate, string expectation)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(30);
         string snippet = "";
-        while (true)
+        var satisfied = await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             var status = await _app.InvokeAsync("od.ilspy.status");
             snippet = status.GetProperty("decompiledTextSnippet").GetString() ?? "";
-            if (predicate(snippet))
-                return snippet;
-            if (DateTime.UtcNow >= deadline)
-                break;
-            await Task.Delay(500);
-        }
+            return predicate(snippet);
+        }, TimeSpan.FromSeconds(30));
+        if (satisfied)
+            return snippet;
         Assert.Fail($"Timed out waiting for {expectation}. Decompiled text was: {snippet[..Math.Min(400, snippet.Length)]}");
         return snippet;
     }
@@ -2312,19 +2370,16 @@ EndGlobal
     /// </summary>
     async Task AssertRenderedWithNonZeroSizeAsync(params string[] fullTypes)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(30);
-        List<string> missing;
-        while (true)
+        List<string> missing = new();
+        var allRendered = await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             var tree = await _app.GetUITreeAsync();
             var all = FlattenElements(tree).ToList();
             missing = fullTypes.Where(ft => !all.Any(e => IsRenderedInstanceOf(e, ft))).ToList();
-            if (missing.Count == 0)
-                return;
-            if (DateTime.UtcNow >= deadline)
-                break;
-            await Task.Delay(500);
-        }
+            return missing.Count == 0;
+        }, TimeSpan.FromSeconds(30));
+        if (allRendered)
+            return;
         // Distinguish "not in the tree at all" from "in the tree but never laid out" - they have
         // completely different causes (pane/DataTemplate not materialized vs. collapsed/zero-size).
         var finalTree = await _app.GetUITreeAsync();
