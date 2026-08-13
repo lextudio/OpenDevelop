@@ -82,12 +82,27 @@ namespace ICSharpCode.UnitTesting.Frameworks
 			// Run the build, if necessary:
 			var projectsToBuild = testsByProject.Keys.Where(p => p.IsBuildNeededBeforeTestRun).Select(p => p.Project).ToList();
 			if (projectsToBuild.Count > 0) {
-				using (cancellationToken.Register(buildService.CancelBuild)) {
-					var buildOptions = new BuildOptions(BuildTarget.Build);
-					buildOptions.BuildDetection = BuildOptions.BuildOnExecute;
-					var buildResults = await buildService.BuildAsync(projectsToBuild, buildOptions);
-					if (buildResults.Result != BuildResultCode.Success)
-						return;
+				// BuildFinished normally starts background MTP discovery. During a debugger run that
+				// races the debugger launch: discovery and SharpDbg execute/open the same freshly-built
+				// test app at once, and a short first test can finish before its pending source
+				// breakpoint binds. The second run appears to work only because it does not rebuild and
+				// therefore starts no competing discovery host. Suppress only that automatic pass here;
+				// MtpTestDebugger.ConfirmTestMethodsAsync performs an explicit awaited refresh when the
+				// selected Roslyn node still needs authoritative MTP confirmation.
+				var discoverySuppressions = options.UseDebugger
+					? testsByProject.Keys.OfType<MtpTestProject>().Select(project => project.SuppressBuildDiscovery()).ToList()
+					: new List<IDisposable>();
+				try {
+					using (cancellationToken.Register(buildService.CancelBuild)) {
+						var buildOptions = new BuildOptions(BuildTarget.Build);
+						buildOptions.BuildDetection = BuildOptions.BuildOnExecute;
+						var buildResults = await buildService.BuildAsync(projectsToBuild, buildOptions);
+						if (buildResults.Result != BuildResultCode.Success)
+							return;
+					}
+				} finally {
+					foreach (var suppression in discoverySuppressions)
+						suppression.Dispose();
 				}
 			}
 			

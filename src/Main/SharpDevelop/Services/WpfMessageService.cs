@@ -139,7 +139,7 @@ sealed class WpfMessageService : IMessageService
 				Content = StringParser.Parse(buttontexts[index]), MinWidth = 80, Margin = new Thickness(4, 0, 0, 0),
 				IsDefault = index == acceptButtonIndex, IsCancel = index == cancelButtonIndex
 			};
-			button.Click += (_, _) => { result = selectedIndex; window.DialogResult = true; };
+				button.Click += (_, _) => { result = selectedIndex; CloseDialog(window); };
 			buttons.Children.Add(button);
 		}
 		window.ShowDialog();
@@ -162,12 +162,22 @@ sealed class WpfMessageService : IMessageService
 		var window = CreateDialog(caption, content);
 		var ok = new Button { Content = "OK", IsDefault = true, MinWidth = 80, Margin = new Thickness(4, 0, 0, 0) };
 		var cancel = new Button { Content = "Cancel", IsCancel = true, MinWidth = 80, Margin = new Thickness(4, 0, 0, 0) };
-		ok.Click += (_, _) => window.DialogResult = true;
+		ok.Click += (_, _) => CloseDialog(window);
 		buttons.Children.Add(ok);
 		buttons.Children.Add(cancel);
 		return window.ShowDialog() == true ? textBox.Text : null;
 		});
 	}
+
+	// Setting DialogResult straight from a Click handler closes (and disposes) the window while we
+	// are still inside the host's input callback, which on the portable WPF backend runs inside the
+	// Silk.NET render loop -- disposing the view there throws "You cannot call `Reset` inside of the
+	// render loop!". Post the close so it happens after the input pump has unwound.
+	static void CloseDialog(Window window) =>
+		window.Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => {
+			if (window.IsVisible)
+				window.DialogResult = true;
+		}));
 
 	Window CreateDialog(string caption, string text, UIElement buttons)
 	{
