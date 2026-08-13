@@ -35,8 +35,8 @@ project system) while moving it forward:
 - **ILSpy decompiler built in**: navigate assemblies and decompiled source in a dedicated
   pane with assembly-list, language, and language-version pickers, all bound to the hosted
   ILSpy workspace.
-- **Semantic themes**: full Light and Dark themes for the entire shell — window chrome,
-  menus, toolbars, status bar, scrollbars, grids, and dialogs follow one coherent palette
+- **Semantic themes**: full Light and Dark themes for the entire shell (window chrome,
+  menus, toolbars, status bar, scrollbars, grids, and dialogs) follow one coherent palette
   and switch at runtime.
 - **Extensible**: the classic addin tree makes it easy to add pads, commands, and tools.
 
@@ -48,6 +48,7 @@ project system) while moving it forward:
 - Debugger integration (breakpoints, locals, call stack) with SharpDbg.
 - Class diagram generation and editing.
 - WPF designer (XAML editing with preview).
+- Windows Forms designer (WinForms editing with preview).
 - NuGet package management.
 - Unit test support based on the Microsoft Testing Platform.
 - Code coverage runner with editor markers with AltCover and coverlet.
@@ -84,10 +85,10 @@ UI behavior (themes, menus, pads) deterministically.
 
 ## Libraries
 
-- AvalonEdit — code editor
-- AvalonDock — docking framework
+- [AvalonEdit](https://github.com/lextudio/AvalonEdit) — code editor
+- [AvalonDock](https://github.com/lextudio/AvalonDock) — docking framework
 - SharpTreeView — tree views
-- [ILSpy](https://github.com/icsharpcode/ILSpy) — decompiler (hosted in-process)
+- [ILSpy](https://github.com/lextudio/ILSpy) — decompiler (hosted in-process)
 - [LibreWPF — WPF-compatible runtime](https://github.com/wieslawsoltes/WPF) for .NET 10
 - [NuGet](https://www.nuget.org/) — package management
 - [Microsoft Testing Platform](https://github.com/microsoft/testfx) — unit testing
