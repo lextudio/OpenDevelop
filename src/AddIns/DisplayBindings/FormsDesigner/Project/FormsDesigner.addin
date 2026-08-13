@@ -12,6 +12,11 @@
 		<Import assembly = "FormsDesigner.dll"/>
 		<Import assembly = ":ICSharpCode.SharpDevelop"/>
 	</Runtime>
+
+	<Path name="/SharpDevelop/Autostart">
+		<Class id="ICSharpCode.FormsDesigner.RegisterDevFlowActionsCommand"
+		       class="ICSharpCode.FormsDesigner.RegisterDevFlowActionsCommand"/>
+	</Path>
 	
 	<Path name = "/SharpDevelop/FormsDesigner/ContextMenus/SelectionMenu">
 		<MenuItem id          = "ViewCode"

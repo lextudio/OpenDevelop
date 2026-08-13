@@ -878,6 +878,21 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             return roslynDocumentId is null ? null : _workspace.CurrentSolution.GetDocument(roslynDocumentId);
         }
 
+		/// <summary>
+		/// Returns the project-backed Roslyn document for IDE subsystems that must perform semantic,
+		/// analyzer-config-aware source transformations (for example the WinForms designer).
+		/// The returned document remains owned by this language service's workspace.
+		/// </summary>
+		public Task<Document?> GetProjectDocumentAsync(string fileName, CancellationToken cancellationToken = default) =>
+			GetOrLoadDocumentAsync(new DocumentId(fileName), cancellationToken);
+
+		/// <summary>Gets an already tracked project document without asynchronous loading.</summary>
+		public Document? TryGetProjectDocument(string fileName)
+		{
+			var id = ResolveActiveRoslynDocumentId(new DocumentId(fileName));
+			return id == null ? null : _workspace.CurrentSolution.GetDocument(id);
+		}
+
         /// <summary>
         /// Picks which TFM slice's <see cref="RoslynDocumentId"/> to use for a document that may
         /// have one variant per TFM — the project's "active target framework"

@@ -30,7 +30,8 @@
     <Compile Include="Src\FormsDesigner\RoslynFormsDesignerSecondaryDisplayBinding.cs" />
     <Compile Include="Src\FormsDesigner\RoslynFormsDesignerLoaderProvider.cs" />
     <Compile Include="Src\FormsDesigner\RoslynDesignerLoader.cs" />
-    <Compile Include="Src\FormsDesigner\RoslynToCodeDomTranslator.cs" />
+    <Compile Include="Src\FormsDesigner\RoslynDesignerResourceModel.cs" />
+    <Compile Include="Src\FormsDesigner\LegacyCodeDomSerializerAdapter.cs" />
   </ItemGroup>
 
   <ItemGroup>

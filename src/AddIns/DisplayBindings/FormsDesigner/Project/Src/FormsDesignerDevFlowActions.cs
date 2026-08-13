@@ -74,10 +74,13 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 
 			var root = viewContent.Host.RootComponent as Control;
 			var controlNames = root != null ? EnumerateControlsRecursively(root).Select(c => c.Name).ToArray() : Array.Empty<string>();
+			var loaderService = viewContent.Host.GetService(typeof(System.ComponentModel.Design.Serialization.IDesignerLoaderService));
 
 			return JsonSerializer.Serialize(new {
 				designerLoaded = true,
 				rootComponentType = viewContent.Host.RootComponent?.GetType().Name,
+				loaderType = loaderService?.GetType().FullName,
+				usesCodeDomLoader = loaderService is System.ComponentModel.Design.Serialization.CodeDomDesignerLoader,
 				controlNames
 			});
 		}

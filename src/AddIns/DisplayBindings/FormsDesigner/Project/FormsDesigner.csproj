@@ -15,23 +15,17 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Out of MVP scope, same as CSharpBinding's CSharpDesignerLoaderProvider.cs (see that
-         project's exclusion comment) and every other NRefactory-AST-dependent subsystem in this
-         fork: reading an EXISTING Designer.cs file's InitializeComponent method back into the
-         designer surface needs a real C# AST (NRefactory.Ast or Roslyn syntax trees), not the
-         type-system-only ICSharpCode.TypeSystem.Abstractions replacement. NRefactoryDesignerLoader
-         was already fully commented out upstream of this port; AbstractDesignerGenerator/
-         CSharpDesignerGenerator/VBNetDesignerGenerator have no other caller once it is gone (their
-         only consumer was the same load/generate round trip), so they are excluded alongside it
-         rather than compiled as dead code. Everything else in this addin - the undo engine,
-         resource services, option panels, and the WPF host that actually renders the WinForms
-         designer surface - does not depend on this and is fully live. -->
+    <!-- The old NRefactory loader/generators remain excluded. CSharpBinding now supplies the live
+         RoslynFormsDesignerSecondaryDisplayBinding/RoslynDesignerLoader implementation, including
+         the .Designer.cs load/save round trip. Do not interpret this exclusion as saying that the
+         running C# designer lacks source round-tripping; it only removes the obsolete implementation.
+         VB still needs an equivalent Roslyn backend. -->
     <Compile Remove="Src\DesignerLoader\NRefactoryDesignerLoader.cs" />
     <Compile Remove="Src\DesignerGenerator\AbstractDesignerGenerator.cs" />
     <Compile Remove="Src\DesignerGenerator\CSharpDesignerGenerator.cs" />
     <Compile Remove="Src\DesignerGenerator\VBNetDesignerGenerator.cs" />
 
-    <!-- Out of MVP scope: the drag-from-toolbox side panel is built on
+    <!-- The legacy drag-from-toolbox side panel is built on
          ICSharpCode.SharpDevelop.Widgets.SideBar/SideTab, a legacy WinForms control that is itself
          excluded from that project's build (SideBar\**\*.cs Compile Remove) as part of the same
          "no legacy WinForms tree/list UI" MVP decision as ClassBrowser and the old ProjectBrowserPad.
@@ -40,10 +34,11 @@
          ICSharpCode.SharpDevelop.Gui.XmlForms namespace is excluded from ICSharpCode.SharpDevelop's
          build for the same reason. None of this is needed for the designer SURFACE to work -
          Services\ToolboxService.cs (the real System.Drawing.Design.IToolboxService the .NET Design
-         API talks to) has no dependency on any of it and stays live; only the WPF-hosted panel that
-         would let a user drag a *new* control onto the form from a visible palette is deferred here,
-         pending a port to the WPF Toolbox Pad architecture doc/technotes/xaml-services.md already
-         built for XamlDesigner (IToolboxProvider + IOutlineContentHost, not SideBar). -->
+         API talks to) has no dependency on any of it and stays live. The old panel was replaced by
+         the shared WPF Toolbox Pad. FormsDesignerViewContent exposes that pad through
+         IToolsHost; WpfToolbox registers WinForms ToolboxItems with the real IToolboxService and
+         bridges drops into the hosted WinForms DesignSurface. The excluded files below are only
+         the obsolete SideBar UI/configuration implementation. -->
     <Compile Remove="Src\Commands\SideBarCommands.cs" />
     <Compile Remove="Src\Gui\AddComponentsDialog.cs" />
     <Compile Remove="Src\Gui\ComponentLibraryLoader.cs" />

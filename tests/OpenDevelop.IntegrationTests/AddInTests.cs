@@ -1192,6 +1192,8 @@ public sealed class AddInTests : IAsyncDisposable
 
             var status = await _app.InvokeAsync("od.forms-designer.status");
             Assert.True(status.GetProperty("designerLoaded").GetBoolean(), status.ToString());
+            Assert.False(status.GetProperty("usesCodeDomLoader").GetBoolean(), status.ToString());
+            Assert.Contains("RoslynDesignerLoader", status.GetProperty("loaderType").GetString(), StringComparison.Ordinal);
             var controlNamesBefore = status.GetProperty("controlNames").EnumerateArray()
                 .Select(n => n.GetString()).ToArray();
             Assert.Contains("dropPanel", controlNamesBefore);
@@ -1268,6 +1270,9 @@ public sealed class AddInTests : IAsyncDisposable
 
             var savedFormCode = await File.ReadAllTextAsync(formCodePath);
             Assert.Contains("System.Windows.Forms.NumericUpDown", savedFormCode, StringComparison.Ordinal);
+            Assert.DoesNotContain("this.", savedFormCode, StringComparison.Ordinal);
+            Assert.Contains("#region Windows Form Designer generated code", savedFormCode, StringComparison.Ordinal);
+            Assert.Contains("Required designer variable.", savedFormCode, StringComparison.Ordinal);
 
             // The dropped control must also come out with a real, non-empty Size. A control created
             // straight from ToolboxItem.CreateComponents (rather than through the designer's own
