@@ -8,8 +8,12 @@ WinUI together), framework detection, provider contracts, phases, and the test m
 
 Current status: the designer is integrated end-to-end for the `src/Samples/UnoXamlSample`
 fixture (detect → compile → materialize → render → present → edit round-trips, covered by
-`WinUIDesigner_*` integration tests). Real-world Uno projects are blocked by the diagnostics
-and preview gaps catalogued in [the problem section](#real-world-project-preview-problem-2026-08-14).
+`WinUIDesigner_*` integration tests). Real-world Uno projects are blocked at a structural ceiling
+of the current in-process host, not merely missing features — **the decision (2026-08-14) is that
+real-project support requires an out-of-process host**, see
+[the decision record](#out-of-process-host-decision-2026-08-14) and
+[the problem section](#real-world-project-preview-problem-2026-08-14) for what's fixed
+(type-resolution diagnostics) versus what remains blocked (materialization).
 
 ## Architecture
 
@@ -73,10 +77,81 @@ Implementation order and acceptance items:
 
 The host stays replaceable:
 
-- **Preferred: in-process ProGPU WPF host.** Add a WPF hosting control similar to `WindowsFormsHost`; the renderer stays a separate assembly; this path serves both WinUI and Uno project profiles.
-- **Option B: out-of-process preview host.** If the object models or dispatchers cannot safely coexist, launch a small WinUI/Uno preview process that exchanges XAML, project context, viewport, and selection over JSON-RPC, hosting the preview in a native child window or a captured surface. This option isolates better and is also more suitable for loading user assemblies.
+- **In-process ProGPU WPF host (current, first milestone).** A WPF hosting control similar to
+  `WindowsFormsHost`; the renderer stays a separate assembly; this path serves both WinUI and Uno
+  project profiles for the standard-control fixture. Confirmed by the 2026-08-14 investigation
+  below to be a dead end for real projects, not merely a "fallback for untrusted assemblies" as
+  originally scoped — see "Out-of-process host decision (2026-08-14)".
+- **Out-of-process preview host.** A small WinUI/Uno preview process that exchanges XAML, project
+  context, viewport, and selection over JSON-RPC, hosting the preview in a native child window or
+  a captured surface (the same shape as `DesktopWindowXamlSource` on Windows). This is now the
+  target architecture for real-project support, not merely an isolation upgrade.
 
-Option B is the fallback for loading untrusted project assemblies and for native Windows App SDK-specific behavior; on Windows a `DesktopWindowXamlSource` adapter can also be added behind the same host contract. The WPF `XamlReader` compatibility renderer that was implemented at one point is not part of any official path: it conflates the object models, resource semantics, and control capabilities, and must be deleted — tests must not treat its successful rendering as a successful WinUI/Uno designer.
+The WPF `XamlReader` compatibility renderer that was implemented at one point is not part of any official path: it conflates the object models, resource semantics, and control capabilities, and must be deleted — tests must not treat its successful rendering as a successful WinUI/Uno designer.
+
+### Out-of-process host decision (2026-08-14)
+
+**Decision: real-project support requires an out-of-process host running the actual Uno.WinUI
+runtime.** This supersedes the original framing of out-of-process as merely "Option B, a fallback
+for untrusted assemblies" (the "Host stays replaceable" list above records the earlier framing).
+Two independent findings from implementing Fix A (below) forced this:
+
+1. **Type identity.** `ProGPU.WinUI` is a from-scratch reimplementation of `Microsoft.UI.Xaml` —
+   its `FrameworkElement`, `Button`, etc. are unrelated CLR types that merely share a name and
+   namespace with the real Uno.WinUI SDK's types of the same name. A single Roslyn compilation
+   can reference at most one of them without "ambiguous type" errors, so the preview compiler can
+   never see both ProGPU.WinUI (needed to materialize *anything*, since it is the only runtime
+   this in-process host can actually render) and the project's real Uno.WinUI references (needed
+   to resolve `muxc:InfoBar`, the real `Grid.ColumnSpacing`, etc.) at the same time. This is a
+   structural ceiling on the in-process host, not a missing feature - no amount of `ProGPU.WinUI`
+   API completion (roadmap item B below) removes it for a project that references Uno.WinUI types
+   ProGPU.WinUI doesn't implement.
+2. **Runtime load, not just compile-time resolution.** Fix A adds the opened project's own output
+   assembly (e.g. `UnoXamlSample.dll`) as a `MetadataReference` for the preview *analysis*
+   compilation - this genuinely resolves the project's own converters/custom controls/code-behind
+   as *types* (category 1+2 in the diagnostics catalog below no longer appear). But the generated
+   preview program is materialized into a separate collectible `AssemblyLoadContext`
+   (`WinUiXamlLivePreviewSession`'s `PreviewAssemblyLoadContext`, in `ProGPU.WinUI.Designer`) that
+   has no load path to the project's own build output directory. Verified live: after Fix A, a
+   converter type resolves cleanly with zero diagnostics, but materialization then fails with
+   `Could not load file or assembly 'UnoXamlSample, Version=1.0.0.0, ...'. The system cannot find
+   the file specified.` — trading a wall of compile-time diagnostics for a single, clearer
+   runtime-load error, but still not a rendered preview. Teaching that ALC to probe the project's
+   output directory is a small, separate fix (`PreviewAssemblyLoadContext.Load` override) and
+   *would* work for the project's own assembly - but finding 1 still blocks it the moment the
+   project references any real Uno.WinUI-only type, which real Uno projects do pervasively (every
+   `Page`/`FrameworkElement` base class the generated program itself needs to be ProGPU.WinUI's,
+   while the project's compiled code needs the real Uno.WinUI's - the same collectible ALC cannot
+   satisfy both for a project that mixes them, which is every real Uno project, not an edge case).
+
+This is exactly the problem class Microsoft's own out-of-process WinForms designer solves for the
+in-process-hosting equivalent risk (see
+[the .NET blog post on it](https://devblogs.microsoft.com/dotnet/custom-controls-for-winforms-out-of-process-designer/)):
+run the *real* runtime the project targets in its own process, and talk to it over RPC, rather
+than trying to reconcile two incompatible in-process object models. For WinUI/Uno the need is
+structural (type identity), not merely defense-in-depth against a crashing/untrusted assembly -
+unlike the WinForms designer's own hosting choice (see
+[`winforms-designer.md`](winforms-designer.md#out-of-process-hosting-lower-priority-2026-08-14)),
+which already runs the real `System.Windows.Forms` in-process via `WindowsFormsHost` with no
+competing reimplementation, so it does not have this specific forcing function.
+
+**What ships now vs. later:**
+
+- Fix A (project assembly as a `MetadataReference`) stays - it is strictly additive, resolves the
+  bulk of the diagnostics wall for real projects, and does not regress the fixture sample. It is
+  necessary but not sufficient.
+- The in-process ProGPU host remains the renderer for the `src/Samples/UnoXamlSample` fixture and
+  any project that only uses the ProGPU.WinUI-covered standard-control subset - it is not being
+  deleted, and roadmap item B (ProGPU.WinUI API completion) still matters for that path.
+- A real Uno project's Design tab requires the out-of-process host. Until it exists, real projects
+  should get a clear, single diagnostic explaining *why* (missing project assembly load path /
+  Uno.WinUI type not available) rather than either the original 169-line wall or a confusing raw
+  `FileNotFoundException`, matching the "actionable diagnostic over broken render" spirit of
+  roadmap item C.
+- Out-of-process implementation is not yet scoped in detail (protocol surface, viewport transport,
+  selection/hit-test round trip, packaging a Windows-only child process from a non-Windows
+  OpenDevelop host) - that scoping is the next piece of work on this technote, not a decision made
+  today.
 
 ### Designer Chrome Decision
 
@@ -128,6 +203,51 @@ be undone.
 Do not treat the runtime visual tree as the only document model. Every operation must ultimately produce an undoable source edit; re-parse and refresh the preview afterwards. This supports invalid intermediate text, Undo/Redo, formatting preservation, and out-of-process renderers.
 
 Custom controls, merged dictionaries, `x:Bind`, and code-behind should not enter the first milestone. The first version loads only the standard controls and resources on a safe allowlist and shows diagnostics/placeholders for unsupported nodes.
+
+## Toolbox-to-design-surface drop was silently landing at the document root (fixed 2026-08-14)
+
+A real synthetic-mouse-drag test enrichment (bringing the WinUI designer's drag-drop test coverage
+up to parity with the WPF designer's) surfaced two independent, real bugs that a weaker
+substring-based test assertion had been masking - every toolbox-to-canvas drop had been silently
+falling back to inserting at the **document root** instead of the container the user visibly
+dropped onto, and the original test's `Assert.Contains("<TextBlock", onDisk)` couldn't tell the
+difference between that and success.
+
+1. **`InputSystem.HitTest` was hit-testing against a stale/absent root.**
+   `InputSystem.HitTest` (in `ProGPU.WinUI`) bails out immediately if `InputSystem.Current.Root`
+   is null (`if (_root == null) return null;`). That root is only ever set by
+   `ProGpuWinUIHostControl.SelectInput`, itself only called from real mouse move/down/up on the
+   render surface - never from a WPF `DragEventArgs.Drop`. A real toolbox drag starts on the
+   Toolbox pad and never first moves the mouse over the design surface, so `Current.Root` was
+   simply never set (or stale from an unrelated host), and every drop's hit test silently
+   returned null regardless of where the pointer actually was - confirmed live via
+   `LastPickDiagnostic`: a drop dead-center on a button's own on-screen bounds reported a
+   hit-test point that was numerically correct against that button's local bounds, yet resolved
+   to nothing. Fixed in `ProGpuRuntimeHost.ResolveNameAt`
+   (`WinUIXamlDesigner.ProGPUHost/ProGpuRuntimeHost.cs`) by explicitly setting
+   `InputSystem.Current.Root = control.WinUIRoot` before hit-testing, rather than depending on
+   incidental prior mouse traffic having set it.
+2. **A resolved leaf control was used directly as the insertion container.** Once (1) was fixed,
+   a drop onto `PrimaryButton` resolved the name correctly (matching click-to-select's own
+   resolution), but `InsertFromToolbox` inserted the new element as `PrimaryButton`'s own child -
+   which the real WinUI compiler correctly rejects for anything with a single-value content
+   property ("Member '\$content' cannot contain multiple values"). `ResolveNameAt`'s "nearest
+   named ancestor" is the right answer for click-to-select, but not for drop-target resolution: a
+   drop onto an existing leaf control is aiming at its *container*, not asking to become that
+   leaf's own content. Fixed in `WinUIXamlDesignerViewContent.InsertFromToolbox` by walking up
+   from the resolved element to the nearest ancestor whose tag is one of the toolbox's two actual
+   multi-child panel types (`Grid`, `StackPanel`), matching what a real design surface does.
+
+A third, separate finding did **not** get a product fix (out of scope, upstream ProGPU.WinUI):
+`ProGPU.WinUI`'s hit-test `HasBackground` check (`InputSystem.HitTestInternal`) only recognizes
+`Control`/`Border`/`ContentPresenter`, not `Panel`/`StackPanel` - so setting `Background` on a
+`StackPanel` has no effect on whether its own empty area is hit-testable, unlike real WinUI/UWP.
+The `src/Samples/UnoXamlSample/MainPage.xaml` fixture's `StackPanel` was named `RootStack` for the
+new test's parent-comparison assertion, but does **not** carry a `Background` (it would have no
+effect and could mislead a future reader into thinking it does something).
+
+See `WinUIDesigner_DragToolboxItemOntoDesignSurface_InsertsIntoDroppedContainer`'s test body and
+comments for the full before/after repro detail.
 
 ## Local Feed and Packaging Workflow
 
@@ -219,15 +339,24 @@ Kept for now to support further investigation; all under `od.winui-designer.*`:
 
 Categories, in order of frequency:
 
-1. **Project's own types unresolved (~140 lines).** `conv:NullToVisibilityConverter`,
-   `conv:BoolToVisibilityConverter`, ... (`using:DotNetUninstall.Presentation.Converters`) and
-   `controls:TwoPartBadge`/`controls:SingleBadge`
-   (`using:DotNetUninstall.Presentation.Controls`) fail to resolve, and every member of an
-   unresolved owner follows ("Member 'Label' cannot be resolved because its owner type is
-   unresolved", ~8 member errors per usage). **Root cause: the preview compilation
-   (`ProGpuXamlExecutor.EnsureProject`) builds an `AdhocWorkspace` from the framework metadata
+1. **Project's own types unresolved (~140 lines) — FIXED 2026-08-14, at the type-resolution
+   layer only.** `conv:NullToVisibilityConverter`, `conv:BoolToVisibilityConverter`, ...
+   (`using:DotNetUninstall.Presentation.Converters`) and `controls:TwoPartBadge`/`controls:SingleBadge`
+   (`using:DotNetUninstall.Presentation.Controls`) failed to resolve, and every member of an
+   unresolved owner followed ("Member 'Label' cannot be resolved because its owner type is
+   unresolved", ~8 member errors per usage). Root cause: the preview compilation
+   (`ProGpuXamlExecutor.EnsureProject`) built an `AdhocWorkspace` from the framework metadata
    references + the ProGPU runtime directory only — the project's own source files (converters,
-   custom controls, code-behind) and its output assemblies are never included.**
+   custom controls, code-behind) and its output assembly were never included. Fixed in
+   `ProGpuXamlExecutor.CollectMetadataReferences` by resolving the opened project via
+   `SD.ProjectService.FindProjectContainingFile` and adding its `OutputAssemblyFullPath` as a
+   `MetadataReference` (deliberately NOT the project's own Uno.WinUI references - see
+   "Out-of-process host decision" above for why that would create ambiguous-type errors instead).
+   Verified live on a synthetic reproduction (a dependency-free marker class referenced from XAML
+   as a resource): the diagnostic disappears entirely. **This closes the compile-time
+   type-resolution half of the problem, not materialization** - see the out-of-process host
+   decision above for the runtime-load half this surfaced (`PreviewAssemblyLoadContext` has no
+   load path to the project's own build output).
 2. **Code-behind event handlers unresolved.** `Code-behind event handler
    'OnMessageCenterFlyoutOpening' was not found or does not match the event delegate` and
    `'OnOpenReleasePage' ... 'Microsoft.UI.Xaml.RoutedEventHandler?'` — same root cause
@@ -251,28 +380,25 @@ Categories, in order of frequency:
    later in the same lexical resource chain` — the checker rejects page-level forward
    references that real WinUI/Uno accepts.
 
-### Fix roadmap (options under consideration)
+### Fix roadmap (updated 2026-08-14)
 
-Two orthogonal workstreams; both are needed:
+Three workstreams; A is partly done, B and D are independent of each other, C is a quick, cheap
+win done alongside A.
 
 **A. OpenDevelop side — give the preview compilation project context.**
-Add the opened `IProject`'s source files and output assemblies (including the project's own
-`DotNetUninstall.dll` and, for a Uno profile, the Uno.WinUI assemblies from `bin`) as
-`Document`s/`MetadataReference`s in `ProGpuXamlExecutor.EnsureProject`. This eliminates
-category 1 and 2 entirely (~140 lines) and, with the Uno assemblies referenced, category 3a.
-Materialization must then decide how to deal with types that exist in Uno but not in
-ProGPU.WinUI — options:
+**Done (compile-time half):** the opened project's own output assembly is now a
+`MetadataReference` in `ProGpuXamlExecutor.EnsureProject` (see the catalog entry above) — this
+eliminates category 1 and 2 (~140 lines). **Not done (runtime half):** materialization still
+fails to *load* that assembly (see "Out-of-process host decision" above) — teaching
+`PreviewAssemblyLoadContext` to probe the project's output directory would close this for the
+project's own assembly specifically, but does not help category 3a (`muxc:` types), which needs
+the project's real Uno.WinUI references - blocked by the type-identity conflict, i.e. blocked on
+workstream D.
 
-- (1) compile against ProGPU.WinUI + the project's own assembly only: project types resolve,
-  ProGPU-missing WinUI APIs still error;
-- (2) separate analysis compilation (Uno references, real diagnostics) from materialization
-  compilation (ProGPU references, renderable subset) — the VS Uno-designer-style split;
-- (3) adopt the Uno runtime for rendering — explicitly rejected by the host decision above.
-
-Recommended: (1) immediately, with an interface seam for (2).
-
-**B. ProGPU side — extend `ProGPU.WinUI`/`ProGPU.Xaml.Roslyn` toward WinUI baseline.** Each
-item has a known landing site:
+**B. ProGPU side — extend `ProGPU.WinUI`/`ProGPU.Xaml.Roslyn` toward WinUI baseline.** Still
+fully applicable regardless of the out-of-process decision: it's what makes the in-process host
+(the fixture-sample renderer, and any real project restricted to the ProGPU.WinUI-covered
+subset) more capable. Each item has a known landing site:
 
 | Missing piece | Landing site | Rough size |
 |---|---|---|
@@ -284,10 +410,21 @@ item has a known landing site:
 | `InfoBar` control | new, `src/ProGPU.WinUI/Controls/` | ~300-400 lines |
 | StaticResource forward reference | `ProGPU.Xaml` checker | ~30-50 lines |
 
-**C. Product improvement — diagnostics surfacing.** Route designer diagnostics into the shared
-Error List / Message View (copyable, line-navigable) instead of the unselectable status
-TextBlock under the design surface; keep `od.winui-designer.status` as the DevFlow surface.
+**C. Product improvement — diagnostics surfacing. Done 2026-08-14.** The design-surface status
+control (`WinUIXamlDesignerViewContent`'s `status` field) is now a read-only, scrollable
+`TextBox` instead of a plain `TextBlock` - diagnostics can be selected and copied like any other
+text, without needing the full Error List integration this item originally proposed. Routing into
+the shared Error List / Message View (line-navigable, filterable alongside build errors) remains
+a further improvement, not yet done; `od.winui-designer.status` stays the DevFlow surface either
+way.
 
-**Suggested order:** A (project context) first — it removes most of the noise — then B by
-frequency (`ColumnDefinition`/`ColumnSpacing`/`Loaded` are high-frequency in real XAML;
-`InfoBar`/`InfoBadge` mid; `Pivot`/StaticResource low), then C.
+**D. Out-of-process host for real-project support.** See "Out-of-process host decision
+(2026-08-14)" above - this is the only path past the type-identity ceiling A hit, and is required
+for category 3 (`muxc:` types) and for any real project whose XAML needs a WinUI API ProGPU.WinUI
+doesn't implement (category 4-6) to actually MATERIALIZE (as opposed to merely stop erroring at
+the type-resolution layer). Not yet scoped in detail.
+
+**Suggested order:** A's compile-time half and C are done. Next: scope D's protocol surface (this
+is the actual unlock for real projects), while B continues in parallel by frequency
+(`ColumnDefinition`/`ColumnSpacing`/`Loaded` are high-frequency in real XAML; `InfoBar`/`InfoBadge`
+mid; `Pivot`/StaticResource low) since it benefits the in-process host regardless of D's timeline.

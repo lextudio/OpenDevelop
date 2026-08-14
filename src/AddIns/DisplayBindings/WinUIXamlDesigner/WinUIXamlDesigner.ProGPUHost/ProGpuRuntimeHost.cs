@@ -155,6 +155,17 @@ sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost
     /// </summary>
     public string ResolveNameAt(System.Numerics.Vector2 point)
     {
+        // InputSystem.HitTest hit-tests against InputSystem.Current.Root, which is only ever set
+        // by ProGpuWinUIHostControl.SelectInput - itself only called from real mouse move/down/up
+        // on THIS control. A WPF DragEventArgs.Drop (the toolbox-drag path, WinUIXamlHost.OnDrop)
+        // never routes through those handlers, so on a drag that starts from the Toolbox and never
+        // first moves the mouse over this design surface, Current.Root can still be null (or stale
+        // from a different host), and HitTest bails out unconditionally before even considering
+        // the point - producing a hit-test point that looked numerically correct against this
+        // element's own bounds, yet resolved to nothing at all (confirmed live via
+        // LastPickDiagnostic during the drag-drop investigation). Make the root explicit here
+        // rather than depending on incidental prior mouse traffic having set it.
+        Microsoft.UI.Xaml.Input.InputSystem.Current.Root = control.WinUIRoot;
         var hit = Microsoft.UI.Xaml.Input.InputSystem.HitTest(point);
         LastPickDiagnostic = $"point={point.X:F0},{point.Y:F0} hit={hit?.GetType().Name ?? "null"} resolved={namesByElement.Count}";
         var walked = 0;

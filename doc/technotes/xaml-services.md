@@ -120,7 +120,9 @@ Each backend must cover at least:
 - Toolbox, selection, Properties, Outline, and source-location coordination;
 - Undo/Redo, save, close, reopen, and resource disposal;
 - Plain `.cs`/`.xml` files without a designer show no leftover providers;
-- A host crash or renderer timeout does not exit OpenDevelop (out-of-process option);
+- A host crash or renderer timeout does not exit OpenDevelop (required for WinUI's out-of-process
+  host — see [`winui-designer.md`](winui-designer.md#out-of-process-host-decision-2026-08-14) —
+  and a lower-priority hardening option for WinForms/WPF's in-process hosts);
 - Smoke tests on Windows and on each non-Windows platform ProGPU claims to support.
 
 WinUI integration tests may reuse the intent of the UnoDevelop fixture, but the tests must run OpenDevelop's own app and backends; passing UnoDevelop's tests cannot substitute for OpenDevelop acceptance.

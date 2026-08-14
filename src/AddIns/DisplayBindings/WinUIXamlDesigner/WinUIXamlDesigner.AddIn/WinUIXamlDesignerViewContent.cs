@@ -122,11 +122,24 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	/// Toolbox insertion. <paramref name="containerName"/> is the x:Name of the element to insert
 	/// into; null targets the root, matching a drop onto empty design-surface space.
 	/// </summary>
+	// The only two toolbox items that are genuine multi-child panels (see WinUIXamlToolbox's own
+	// item list) - everything else (Button, TextBlock, Border, ...) has at most one child slot, so
+	// dropping "onto" one of them is aiming at its container, not asking to become its own content.
+	static readonly HashSet<string> PanelElementNames = new(StringComparer.Ordinal) { "Grid", "StackPanel" };
+
 	public string InsertFromToolbox(string controlName, string containerName)
 	{
 		var container = containerName == null ? null : editor.FindElement(containerName);
 		if (containerName != null && container == null)
 			throw new InvalidOperationException("No element named '" + containerName + "' to insert into.");
+		// A drop resolves to the nearest NAMED source element under the cursor
+		// (WinUIXamlHost.OnDrop -> ProGpuRuntimeHost.ResolveNameAt), which is very often a leaf
+		// control - dropping onto PrimaryButton previously tried to insert a second child directly
+		// into it, which the WinUI compiler rejects outright ("Member '$content' cannot contain
+		// multiple values"). Walk up to the nearest actual panel so the drop lands as a sibling
+		// near where the user aimed, matching what a real design surface does.
+		while (container != null && !PanelElementNames.Contains(container.Name.LocalName))
+			container = container.Parent;
 		var inserted = editor.Insert(controlName, container);
 		ApplyDocumentChange();
 		var name = (string)inserted.Attribute(WinUIXamlDocumentEditor.NameDirective);

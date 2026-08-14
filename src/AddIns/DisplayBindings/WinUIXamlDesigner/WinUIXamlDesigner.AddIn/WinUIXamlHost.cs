@@ -102,7 +102,15 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 		var controlName = e.Data.GetData(WinUIXamlToolbox.DragDataFormat) as string;
 		if (string.IsNullOrEmpty(controlName))
 			return;
-		var point = e.GetPosition(this);
+		// ResolveNameAt/QueryElementBounds work in the ProGPU render SURFACE's own local
+		// coordinate space (control, this ContentControl's Content) - getting the position
+		// relative to "this" (the outer WinUIXamlHost wrapper) instead was wrong whenever the
+		// wrapper's own bounds/origin differ from its content's, and made every drop resolve to a
+		// point nowhere near the actual cursor (confirmed live via LastPickDiagnostic: dropping
+		// dead-center on a button's own on-screen bounds reported a hit-test point far outside
+		// them), so the container never resolved and every drop silently fell back to the
+		// document root instead of the container the user visibly aimed at.
+		var point = Content is UIElement surface ? e.GetPosition(surface) : e.GetPosition(this);
 		var container = ResolveNameAt(new System.Numerics.Vector2((float)point.X, (float)point.Y));
 		ControlDropped?.Invoke(this, (controlName, container));
 		e.Handled = true;

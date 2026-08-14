@@ -39,3 +39,23 @@ The core backend does not use `System.CodeDom` as its document model; the integr
 - VB Roslyn backend (Phase 6).
 - Full project `Workspace` / `.editorconfig` wiring for the Roslyn loader.
 - Async/parallel generation, `nameof`, and high-DPI work from Microsoft's newer generator.
+
+## Out-of-process hosting (lower priority, 2026-08-14)
+
+[`winui-designer.md`](winui-designer.md#out-of-process-host-decision-2026-08-14) made
+out-of-process hosting the *required* architecture for real-project WinUI/Uno support, because
+`ProGPU.WinUI` is a from-scratch reimplementation of `Microsoft.UI.Xaml` whose types cannot
+coexist in one Roslyn compilation with the real Uno.WinUI SDK's types of the same name.
+
+The WinForms designer does not have that forcing function: `DesignerViewContent`/`WpfToolbox`
+already host the *real* `System.Drawing`/`System.Windows.Forms` in-process via `WindowsFormsHost`
+and LibreWinForms (a compat shim over the real types, not a competing reimplementation like
+ProGPU.WinUI), so there is no type-identity ceiling analogous to WinUI's. Microsoft's own
+out-of-process WinForms designer
+([devblogs post](https://devblogs.microsoft.com/dotnet/custom-controls-for-winforms-out-of-process-designer/))
+solves a different problem for VS: crash/hang isolation from third-party control assemblies
+loaded into the designer process, and .NET Core/Framework side-by-side hosting. Those benefits
+are real but not structural here - a bad custom control can still take down OpenDevelop's own
+process today, same as before this note - and are lower priority than closing WinUI's forced gap.
+Revisit once the WinUI out-of-process host exists; much of its RPC/surface-capture plumbing would
+be directly reusable for a WinForms designer host process.
