@@ -1105,11 +1105,35 @@ public sealed class AddInTests : IAsyncDisposable
             .Select(n => n.GetString()).Except(namesBefore).Single();
         Assert.StartsWith("TextBlock", newName);
 
-        // And it is a genuine source edit, not a visual-tree-only insertion.
+        // And it is a genuine, well-formed source edit - not a visual-tree-only insertion, and not
+        // just "the string '<TextBlock' appears somewhere in the file" (a substring check like that
+        // would pass even if the insert corrupted the surrounding markup, or landed as a dangling
+        // top-level sibling rather than inside the dropped-onto container).
         await _app.InvokeAsync("od.file.save-all");
         var onDisk = await File.ReadAllTextAsync(_unoPagePath);
-        Assert.Contains("<TextBlock", onDisk);
-        Assert.Contains(newName, onDisk);
+        XDocument document = null;
+        try
+        {
+            document = XDocument.Parse(onDisk);
+        }
+        catch (System.Xml.XmlException exception)
+        {
+            Assert.Fail($"Drop produced malformed XAML: {exception.Message}\n{onDisk}");
+        }
+
+        var ns = document.Root!.GetDefaultNamespace();
+        var xNs = (XNamespace)"http://schemas.microsoft.com/winfx/2006/xaml";
+        var newElementMatches = document.Descendants().Where(e => (string)e.Attribute(xNs + "Name") == newName).ToList();
+        Assert.True(newElementMatches.Count == 1,
+            $"Expected exactly one element named '{newName}' in the saved document, found {newElementMatches.Count}:\n{onDisk}");
+        var newElement = newElementMatches[0];
+        Assert.Equal(ns + "TextBlock", newElement.Name);
+
+        // "Drop onto PrimaryButton's position resolves to the nearest source-backed element" (this
+        // test's whole point, per its own doc comment) means the new element must land in
+        // PrimaryButton's own container - as its sibling - not merely anywhere in the document.
+        var primaryButton = document.Descendants().Single(e => (string)e.Attribute(xNs + "Name") == "PrimaryButton");
+        Assert.Equal(primaryButton.Parent, newElement.Parent);
     }
 
     /// <summary>

@@ -13,6 +13,8 @@ using ProGPU.Xaml.Roslyn;
 using ProGPU.Xaml.Schema;
 using ProGPU.Xaml.Workspaces;
 using XamlStudio.Toolkit.Services;
+using ICSharpCode.Core;
+using ICSharpCode.SharpDevelop;
 
 namespace ICSharpCode.WinUIXamlDesigner.ProGPUHost;
 
@@ -139,7 +141,7 @@ sealed class ProGpuXamlExecutor : IProGpuXamlExecutor, IDisposable
 	/// The preview compilation resolves WinUI types from the ProGPU runtime this process already
 	/// loaded, so the designed document sees exactly the assemblies the renderer will execute.
 	/// </summary>
-	static ISet<string> CollectMetadataReferences()
+	ISet<string> CollectMetadataReferences()
 	{
 		var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 		var trusted = (string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") ?? string.Empty;
@@ -159,6 +161,22 @@ sealed class ProGpuXamlExecutor : IProGpuXamlExecutor, IDisposable
 			}
 		}
 		Add(paths, typeof(FrameworkElement).Assembly.Location);
+
+		// Without this, the preview compilation only ever sees ProGPU.WinUI + the BCL - so any
+		// type the DESIGNED PROJECT ITSELF defines (converters, custom controls, code-behind
+		// partial classes) is "unresolved", and every member access on it cascades into its own
+		// diagnostic (doc/technotes/winui-designer.md "Real-World Project Preview Problem", ~140 of
+		// 169 diagnostic lines on a real Uno project). Deliberately NOT adding the project's own
+		// Uno.WinUI/Microsoft.UI.Xaml package references here (see that technote's Fix roadmap,
+		// option (1) vs (2)): those assemblies declare a DIFFERENT, incompatible identity for
+		// "Microsoft.UI.Xaml.FrameworkElement" et al. than ProGPU.WinUI's own implementation
+		// already loaded above, and Roslyn would see two unrelated types of the same name - the
+		// project's compiled output assembly alone is the safe, additive step.
+		var project = SD.ProjectService.FindProjectContainingFile(FileName.Create(resourceUri));
+		var outputAssembly = project?.OutputAssemblyFullPath;
+		if (outputAssembly != null)
+			Add(paths, outputAssembly.ToString());
+
 		return paths;
 	}
 

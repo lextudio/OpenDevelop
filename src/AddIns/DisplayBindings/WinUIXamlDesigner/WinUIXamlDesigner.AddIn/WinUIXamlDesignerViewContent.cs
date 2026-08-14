@@ -16,7 +16,17 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 {
 	readonly Grid root = new();
 	readonly WinUIXamlHost previewHost;
-	readonly TextBlock status = new() { Margin = new Thickness(8, 4, 8, 4), TextWrapping = TextWrapping.Wrap };
+	// A TextBlock cannot be selected/copied, which made the diagnostics wall a real project
+	// triggers (doc/technotes/winui-designer.md "Real-World Project Preview Problem") impossible
+	// to get out of the app - a read-only TextBox looks the same but supports selection and Ctrl+C
+	// like any other text, without the bigger lift of routing diagnostics into the shared Error
+	// List (that technote's roadmap item C, still open).
+	readonly TextBox status = new() {
+		Margin = new Thickness(8, 4, 8, 4), TextWrapping = TextWrapping.Wrap,
+		IsReadOnly = true, IsReadOnlyCaretVisible = true, BorderThickness = new Thickness(0),
+		Background = System.Windows.Media.Brushes.Transparent, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+		MaxHeight = 200
+	};
 	readonly TreeView outline = new();
 	readonly PropertyContainer propertyContainer = new();
 	readonly WinUIXamlDocumentEditor editor = new();
