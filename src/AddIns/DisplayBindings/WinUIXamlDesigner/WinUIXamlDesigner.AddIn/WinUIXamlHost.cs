@@ -52,6 +52,24 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 	public int ResolvedNameCount => runtime?.ResolvedNameCount ?? 0;
 	public string LastPickDiagnostic => runtime?.LastPickDiagnostic ?? "no runtime";
 
+	public string FrameProfile() => runtime?.FrameProfile() ?? "no runtime";
+
+	public string CompositorMetricsDump() => runtime?.CompositorMetricsDump() ?? "no runtime";
+
+	public string RenderProbeAndProfile() => runtime?.RenderProbeAndProfile() ?? "no runtime";
+
+	public string DumpDrawCalls() => runtime?.DumpDrawCalls() ?? "no runtime";
+
+	public string WinUICommandProbe() => runtime?.WinUICommandProbe() ?? "no runtime";
+
+	public string ImagePathProbe() => runtime?.ImagePathProbe() ?? "no runtime";
+
+	public void SetShowDiagnosticOverlay(bool value) => runtime?.SetShowDiagnosticOverlay(value);
+
+	public void SetRecreateBitmapEachFrame(bool value) => runtime?.SetRecreateBitmapEachFrame(value);
+
+	public void SetPresentViaBackgroundBrush(bool value) => runtime?.SetPresentViaBackgroundBrush(value);
+
 	/// <summary>Translates surface-local element bounds into screen coordinates for pointer input.</summary>
 	public Rect? QueryElementScreenBounds(string name)
 	{
@@ -138,6 +156,33 @@ public interface IWinUIXamlRuntimeHost : IDisposable
 	/// <summary>Diagnostics for why a design-surface click did or did not resolve to an element.</summary>
 	int ResolvedNameCount { get; }
 	string LastPickDiagnostic { get; }
+
+	/// <summary>Temporary diagnostic: row profile of the presented frame's non-white pixels.</summary>
+	string FrameProfile();
+
+	/// <summary>Temporary diagnostic: ProGPU compositor metrics for the last offscreen render.</summary>
+	string CompositorMetricsDump();
+
+	/// <summary>Temporary diagnostic: render a hand-built ProGPU rounded rect and report the frame.</summary>
+	string RenderProbeAndProfile();
+
+	/// <summary>Temporary diagnostic: dump the compositor's compiled draw calls via reflection.</summary>
+	string DumpDrawCalls();
+
+	/// <summary>Temporary diagnostic: call the WinUI root's OnRender and report the commands it emits.</summary>
+	string WinUICommandProbe();
+
+	/// <summary>Temporary diagnostic: replay LibreWPF's image adapter path.</summary>
+	string ImagePathProbe();
+
+	/// <summary>Temporary diagnostic: toggle the red OnRender overlay.</summary>
+	void SetShowDiagnosticOverlay(bool value);
+
+	/// <summary>Temporary diagnostic: recreate the bitmap each frame.</summary>
+	void SetRecreateBitmapEachFrame(bool value);
+
+	/// <summary>Temporary diagnostic: present via Background brush.</summary>
+	void SetPresentViaBackgroundBrush(bool value);
 
 	/// <summary>x:Name of the nearest source-backed element at a surface-local point, or null.</summary>
 	string ResolveNameAt(System.Numerics.Vector2 point);

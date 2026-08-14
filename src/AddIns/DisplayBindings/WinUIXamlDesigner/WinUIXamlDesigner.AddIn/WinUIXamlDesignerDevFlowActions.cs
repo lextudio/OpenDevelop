@@ -260,7 +260,82 @@ public static class WinUIXamlDesignerDevFlowActions
 		});
 	}
 
+	[DevFlowAction("od.winui-designer.compositor-metrics", Description = "Temporary diagnostic: ProGPU compositor metrics from the last offscreen render")]
+	public static string CompositorMetrics()
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		return JsonSerializer.Serialize(new { success = true, metrics = view.CompositorMetricsDump() });
+	}
+
+	[DevFlowAction("od.winui-designer.draw-calls", Description = "Temporary diagnostic: dump the compositor's compiled draw calls")]
+	public static string DrawCalls()
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		return JsonSerializer.Serialize(new { success = true, drawCalls = view.DumpDrawCalls() });
+	}
+
+	[DevFlowAction("od.winui-designer.winui-commands", Description = "Temporary diagnostic: commands emitted by the WinUI root's OnRender")]
+	public static string WinUICommands()
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		return JsonSerializer.Serialize(new { success = true, commands = view.WinUICommandProbe() });
+	}
+
+	[DevFlowAction("od.winui-designer.overlay", Description = "Temporary diagnostic: toggle the red OnRender overlay on the design surface")]
+	public static string Overlay(bool enabled)
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		view.SetShowDiagnosticOverlay(enabled);
+		return JsonSerializer.Serialize(new { success = true, overlay = enabled });
+	}
+
+	[DevFlowAction("od.winui-designer.recreate-bitmap", Description = "Temporary diagnostic: toggle recreating the WriteableBitmap each frame")]
+	public static string RecreateBitmap(bool enabled)
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		view.SetRecreateBitmapEachFrame(enabled);
+		return JsonSerializer.Serialize(new { success = true, recreate = enabled });
+	}
+
+	[DevFlowAction("od.winui-designer.background-brush", Description = "Temporary diagnostic: toggle presenting the frame via Background = ImageBrush")]
+	public static string BackgroundBrush(bool enabled)
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		view.SetPresentViaBackgroundBrush(enabled);
+		return JsonSerializer.Serialize(new { success = true, backgroundBrush = enabled });
+	}
+
+	[DevFlowAction("od.winui-designer.image-path", Description = "Temporary diagnostic: replay LibreWPF's image adapter path step by step")]
+	public static string ImagePath()
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		return JsonSerializer.Serialize(new { success = true, imagePath = view.ImagePathProbe() });
+	}
+
 	static string Failure(string error) => JsonSerializer.Serialize(new { success = false, error });
+
+	[DevFlowAction("od.winui-designer.frame-profile", Description = "Temporary diagnostic: row profile of non-white pixels in the presented ProGPU frame")]
+	public static string FrameProfile()
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		return JsonSerializer.Serialize(new { success = true, profile = view.FrameProfile() });
+	}
 
 	/// <summary>
 	/// The designer registers as a secondary view alongside the primary AvalonEdit text view, and

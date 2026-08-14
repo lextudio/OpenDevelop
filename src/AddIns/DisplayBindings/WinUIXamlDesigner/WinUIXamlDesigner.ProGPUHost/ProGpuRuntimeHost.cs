@@ -67,6 +67,28 @@ sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost
         // that render invisibly on this host's plain white WPF canvas. Light matches what a design
         // surface is expected to look like regardless of the previewed app's own theme choice.
         Microsoft.UI.Xaml.ThemeManager.CurrentTheme = Microsoft.UI.Xaml.ElementTheme.Light;
+
+        // Window's constructor is where every real ProGPU host initializes the process-wide default
+        // font (PopupService.DefaultFont) - this offscreen host never creates a Window, so without
+        // this line RichTextBlock.GetOrUpdateRenderCommandCache sees ActiveFont == null and emits
+        // zero glyph commands: the previewed document's text renders as nothing at all.
+        EnsureDefaultFont();
+    }
+
+    static bool defaultFontInitialized;
+
+    static void EnsureDefaultFont()
+    {
+        if (defaultFontInitialized)
+            return;
+        defaultFontInitialized = true;
+        if (Microsoft.UI.Xaml.Controls.PopupService.DefaultFont != null)
+            return;
+        string fontPath = "/System/Library/Fonts/Supplemental/Arial.ttf";
+        if (!global::System.IO.File.Exists(fontPath))
+            fontPath = "Arial.ttf";
+        if (global::System.IO.File.Exists(fontPath))
+            Microsoft.UI.Xaml.Controls.PopupService.DefaultFont = new ProGPU.Text.TtfFont(fontPath);
     }
 
     public UIElement WpfSurface => control;
@@ -82,6 +104,16 @@ sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost
     /// </summary>
     public int ResolvedNameCount => namesByElement.Count;
     public string LastPickDiagnostic { get; private set; } = "no click yet";
+
+    public string FrameProfile() => control.FrameProfile();
+    public string CompositorMetricsDump() => control.CompositorMetricsDump();
+    public string RenderProbeAndProfile() => control.RenderProbeAndProfile();
+    public string DumpDrawCalls() => control.DumpDrawCalls();
+    public string WinUICommandProbe() => control.WinUICommandProbe();
+    public string ImagePathProbe() => control.ImagePathProbe();
+    public void SetShowDiagnosticOverlay(bool value) => control.ShowDiagnosticOverlay = value;
+    public void SetRecreateBitmapEachFrame(bool value) => control.RecreateBitmapEachFrame = value;
+    public void SetPresentViaBackgroundBrush(bool value) => control.PresentViaBackgroundBrush = value;
 
     public void SetSelectableNames(IReadOnlyList<string> names)
     {

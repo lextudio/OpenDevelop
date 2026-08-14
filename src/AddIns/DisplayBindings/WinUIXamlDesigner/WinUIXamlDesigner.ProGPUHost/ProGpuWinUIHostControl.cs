@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -30,6 +31,7 @@ public unsafe sealed class ProGpuWinUIHostControl : WpfControl, IDisposable
     uint stagingBufferSize;
     uint bytesPerRow;
     WriteableBitmap bitmap;
+    byte[] lastFrameBytes;
     readonly WindowInputState input = new();
     bool loaded;
     bool rendering;
@@ -43,6 +45,197 @@ public unsafe sealed class ProGpuWinUIHostControl : WpfControl, IDisposable
 
     public bool HasPresentedFrame { get; private set; }
 
+    /// <summary>Temporary diagnostic: replay LibreWPF's image adapter path step by step to find where it fails.</summary>
+    public string ImagePathProbe()
+    {
+        if (bitmap == null)
+            return "no bitmap";
+        var results = new System.Collections.Generic.List<string> { $"bitmap={bitmap.PixelWidth}x{bitmap.PixelHeight} fmt={bitmap.Format}" };
+        var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
+
+        // Step 1: TryGetGpuTexture (the sink's gate)
+        var adapterType = System.Type.GetType(
+            "System.Windows.Media.ProGPU.Composition.Mil.WpfBitmapSourceImageAdapter, ProGPU.Wpf",
+            throwOnError: false);
+        results.Add($"adapterType={(adapterType != null ? "found" : "MISSING")}");
+        if (adapterType != null)
+        {
+            var tryGet = adapterType.GetMethod("TryGetGpuTexture", flags);
+            var args = new object[] { bitmap, null };
+            var ok = (bool?)tryGet?.Invoke(null, args);
+            results.Add($"TryGetGpuTexture={ok} texture={(args[1] != null ? "created" : "null")}");
+        }
+
+        // Step 2: the bitmap's own portable pixel snapshot
+        if (bitmap is ProGPU.Wpf.Interop.IPortableBitmapSourcePixelsSource portable)
+        {
+            var ok2 = portable.TryGetPortableBitmapSourcePixels(out var pixels);
+            results.Add($"portablePixels={ok2} w={pixels?.Width} h={pixels?.Height} fmt={pixels?.Format} stride={pixels?.Stride}");
+        }
+        else
+        {
+            results.Add("portablePixels=interface NOT implemented on bitmap");
+        }
+
+        // Step 3: context identity — which context owns the cached texture vs the render contexts
+        results.Add($"ourHostContext={(context != null ? "ours:" + context.GetHashCode() : "null")}");
+        results.Add($"currentOnDevFlowThread={(ProGPU.Backend.WgpuContext.Current != null ? ProGPU.Backend.WgpuContext.Current.GetHashCode().ToString() : "null")}");
+        results.Add($"capturedAtOnRender={(capturedOnRenderContext != null ? capturedOnRenderContext.GetHashCode().ToString() : "null")}");
+        if (ProGPU.Backend.WgpuContext.TryGetFirstActiveContext(out var active))
+            results.Add($"firstActive={active.GetHashCode()}");
+        else
+            results.Add("firstActive=null");
+
+        return string.Join(" | ", results);
+    }
+
+    /// <summary>Temporary diagnostic: walk the WinUI visual tree, call OnRender on every node, and report commands.</summary>
+    public string WinUICommandProbe()
+    {
+        if (WinUIRoot == null)
+            return "no root";
+        var ctx = new ProGPU.Scene.DrawingContext();
+        var byType = new System.Collections.Generic.Dictionary<string, int>();
+        var nodeTypes = new System.Collections.Generic.Dictionary<string, int>();
+        var nodeCount = 0;
+        void Walk(ProGPU.Scene.Visual visual)
+        {
+            nodeCount++;
+            var typeName = visual.GetType().Name;
+            nodeTypes[typeName] = nodeTypes.TryGetValue(typeName, out var c) ? c + 1 : 1;
+            visual.OnRender(ctx);
+            if (visual is ProGPU.Scene.ContainerVisual container)
+            {
+                foreach (var child in container.Children)
+                    Walk(child);
+            }
+        }
+        Walk(WinUIRoot);
+        foreach (var command in ctx.Commands)
+        {
+            var name = command.Type.ToString();
+            byType[name] = byType.TryGetValue(name, out var n) ? n + 1 : 1;
+        }
+        var nodeSummary = string.Join(",", nodeTypes.Select(static kv => kv.Key + ":" + kv.Value));
+        var cmdSummary = byType.Count == 0 ? "none" : string.Join(",", byType.Select(static kv => kv.Key + "=" + kv.Value));
+        return $"nodes={nodeCount} [{nodeSummary}] commands={ctx.Commands.Count} [{cmdSummary}]";
+    }
+
+    /// <summary>Temporary diagnostic: dump the compositor's compiled draw calls via reflection.</summary>
+    public string DumpDrawCalls()
+    {
+        if (compositor == null)
+            return "no compositor";
+        var listField = typeof(ProGPU.Scene.Compositor).GetField(
+            "_drawCalls",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        if (listField == null || listField.GetValue(compositor) is not System.Collections.IList list)
+            return "no draw call list";
+        var parts = new System.Collections.Generic.List<string> { $"count={list.Count}" };
+        foreach (var dc in list)
+        {
+            var t = dc?.GetType();
+            if (t == null) continue;
+            object? G(string name) => t.GetField(name)?.GetValue(dc);
+            parts.Add($"type={G("Type")} solidRect={G("IsSolidRect")} solidRounded={G("IsSolidRounded")} " +
+                $"idxStart={G("IndexStart")} idxCount={G("IndexCount")} clip={(G("ClipRect") != null ? G("ClipRect") : "null")} " +
+                $"blend={G("BlendMode")} brush={(G("Brush") != null ? G("Brush") : "null")}");
+        }
+        return string.Join(" | ", parts);
+    }
+
+    /// <summary>Temporary diagnostic: render a hand-built ProGPU rounded rect (no WinUI) and report the frame.</summary>
+    public string RenderProbeAndProfile()
+    {
+        if (compositor == null || context == null || bitmap == null || texture == null)
+            return "not ready";
+        var probe = new ProGPU.Scene.DrawingVisual();
+        probe.Offset = System.Numerics.Vector2.Zero;
+        probe.Size = new System.Numerics.Vector2(bitmap.PixelWidth, bitmap.PixelHeight);
+        var brush = new ProGPU.Vector.SolidColorBrush(new System.Numerics.Vector4(1f, 0f, 0f, 1f));
+        probe.Context.DrawRoundedRectangle(brush, null, new ProGPU.Scene.Rect(10, 10, 200, 80), 4f);
+        compositor.RenderOffscreen(probe, (uint)bitmap.PixelWidth, (uint)bitmap.PixelHeight, texture, 0, 1f);
+        CopyTextureToBitmap();
+        return FrameProfile();
+    }
+
+    /// <summary>Temporary diagnostic: what the ProGPU compositor compiled for the last offscreen render.</summary>
+    public string CompositorMetricsDump()
+    {
+        if (compositor == null)
+            return "no compositor";
+        var m = compositor.Metrics;
+        return $"target={m.RenderTargetWidth}x{m.RenderTargetHeight} dpi={m.DpiScale} " +
+            $"drawCalls={m.DrawCallsCount} vectorVerts={m.VectorVerticesCount} vectorIdx={compositor.VectorIndexCount} " +
+            $"textVerts={m.TextVerticesCount} textStyles={m.ActiveTextStyleCount} brushes={m.ActiveBrushCount} " +
+            $"glyphBatches={m.GlyphRasterBatchSubmissions} glyphs={m.GlyphOutlineCompiledCount} " +
+            $"pathAtlasPaths={m.PathAtlasCurrentFramePathCount} pathAtlasCached={m.PathAtlasCachedCount} " +
+            $"glyphAtlas={m.GlyphAtlasSize} colorGlyphAtlas={m.ColorGlyphAtlasSize} maskPasses={m.MaskRenderPassCount} " +
+            $"pipelines={m.SceneRenderPipelineCount} computePipelines={m.SceneComputePipelineCount} effectPipelines={m.EffectPipelineCount} " +
+            $"shaders={m.SceneShaderCount} commands={m.RecordedCommandCount} " +
+            $"retainedScenes={m.RetainedCompositionSceneCount} retainedNodes={m.RetainedCompositionSceneNodeCount} " +
+            $"retainedFallback={m.RetainedCompositionFallbackNodeCount} retainedCustom={m.RetainedCompositionCustomVisualNodeCount} " +
+            $"retainedFullSync={m.RetainedCompositionSceneFullSynchronizations} retainedIncremental={m.RetainedCompositionSceneIncrementalSynchronizations} " +
+            $"retainedUnchanged={m.RetainedCompositionSceneUnchangedReuses} " +
+            $"compileMs={m.VisualTreeCompileTimeMs:F1} uploadMs={m.GpuUploadTimeMs:F1} renderMs={m.RenderPassTimeMs:F1} frameMs={m.FrameTimeMs:F1} " +
+            $"sceneCacheHit={m.SceneCacheHit} sceneCacheMiss={m.SceneCacheMissReason}";
+    }
+
+    /// <summary>Temporary diagnostic: where the presented frame actually has non-white pixels.</summary>
+    public string FrameProfile()
+    {
+        if (bitmap == null || !HasPresentedFrame)
+            return "no frame";
+        var w = bitmap.PixelWidth;
+        var h = bitmap.PixelHeight;
+        bitmap.Lock();
+        try
+        {
+            byte* back = (byte*)bitmap.BackBuffer;
+            int stride = bitmap.BackBufferStride;
+            int total = 0, firstRow = -1, lastRow = -1;
+            var lines = new System.Collections.Generic.List<string>();
+            var band = Math.Max(1, h / 20);
+            var samples = new System.Collections.Generic.List<string>();
+            for (var y = 0; y < h; y++)
+            {
+                byte* p = back + (long)y * stride;
+                int rowCount = 0;
+                long sumR = 0, sumG = 0, sumB = 0, sumA = 0;
+                for (var x = 0; x < w; x++)
+                {
+                    if (p[0] < 240 || p[1] < 240 || p[2] < 240)
+                        rowCount++;
+                    sumR += p[2];
+                    sumG += p[1];
+                    sumB += p[0];
+                    sumA += p[3];
+                    p += 4;
+                }
+                if (rowCount > 0)
+                {
+                    if (firstRow < 0) firstRow = y;
+                    lastRow = y;
+                }
+                total += rowCount;
+                if (y % band == 0)
+                    lines.Add($"y{y}:nw={rowCount} rgb=({sumR / w},{sumG / w},{sumB / w}) a={sumA / w}");
+                if (y < 60)
+                    lines.Add($"y{y}:nw={rowCount} a={sumA / w}");
+            }
+            foreach (var (x, y) in new[] { (343, 8), (343, 12), (343, 28), (343, 40), (343, 200), (10, 8), (600, 30) })
+            {
+                byte* p = back + (long)y * stride + x * 4;
+                samples.Add($"({x},{y})=(B{p[0]},G{p[1]},R{p[2]},A{p[3]})");
+            }
+            return $"w={w} h={h} nonWhite={total} firstRow={firstRow} lastRow={lastRow} | " + string.Join(" ", lines) + " | px: " + string.Join(" ", samples);
+        }
+        finally
+        {
+            bitmap.Unlock();
+        }
+    }
+
     public ProGpuWinUIHostControl()
     {
         Focusable = true;
@@ -53,8 +246,16 @@ public unsafe sealed class ProGpuWinUIHostControl : WpfControl, IDisposable
     void Start()
     {
         if (loaded || disposed) return;
+        // WgpuContext.Initialize sets the thread-static WgpuContext.Current to *this* context.
+        // Clobbering Current here would make LibreWPF's BitmapSource image adapter (which
+        // prefers Current when creating GPU textures for DrawImage) upload our frame bitmap
+        // onto THIS context, while the WPF window is composited on LibreWPF's OWN context -
+        // a cross-device texture that silently renders nothing on screen. Save the caller's
+        // Current and restore it after we finish creating our offscreen context.
+        var previousCurrent = ProGPU.Backend.WgpuContext.Current;
         context = new WgpuContext();
         context.Initialize(null);
+        ProGPU.Backend.WgpuContext.Current = previousCurrent;
         compositor = new Compositor(context, TextureFormat.Bgra8Unorm);
         loaded = true;
         // WPF arranges before it raises Loaded, so the arrange that sized this control already ran
@@ -62,11 +263,21 @@ public unsafe sealed class ProGpuWinUIHostControl : WpfControl, IDisposable
         // render target is never created and RenderFrame returns on every tick.
         InvalidateArrange();
         CompositionTarget.Rendering += RenderFrame;
+        ProGPU.Backend.WgpuContext.OnWebGpuError += OnWebGpuError;
+        ProGPU.Backend.WgpuContext.OnWebGpuDeviceLost += OnWebGpuDeviceLost;
     }
+
+    void OnWebGpuError(Silk.NET.WebGPU.ErrorType type, string message) =>
+        System.Diagnostics.Debug.WriteLine($"[OpenDevelop-Host] WebGPU error {type}: {message}");
+
+    void OnWebGpuDeviceLost(Silk.NET.WebGPU.DeviceLostReason reason, string message) =>
+        System.Diagnostics.Debug.WriteLine($"[OpenDevelop-Host] WebGPU device lost {reason}: {message}");
 
     void Stop()
     {
         if (!loaded) return;
+        ProGPU.Backend.WgpuContext.OnWebGpuError -= OnWebGpuError;
+        ProGPU.Backend.WgpuContext.OnWebGpuDeviceLost -= OnWebGpuDeviceLost;
         CompositionTarget.Rendering -= RenderFrame;
         ReleaseSurface();
         compositor?.Dispose();
@@ -122,10 +333,39 @@ public unsafe sealed class ProGpuWinUIHostControl : WpfControl, IDisposable
             WinUIRoot.Arrange(new ProGPU.Scene.Rect(0, 0, (float)ActualWidth, (float)ActualHeight));
             compositor.RenderOffscreen(WinUIRoot, (uint)bitmap.PixelWidth, (uint)bitmap.PixelHeight, texture, 0, (float)dpi.DpiScaleX);
             CopyTextureToBitmap();
+            if (RecreateBitmapEachFrame)
+                RecreateBitmapFromStaging();
+            if (PresentViaBackgroundBrush)
+                Background = new System.Windows.Media.ImageBrush(bitmap) { Stretch = System.Windows.Media.Stretch.Fill };
             HasPresentedFrame = true;
             InvalidateVisual();
         }
         finally { rendering = false; }
+    }
+
+    /// <summary>Temporary diagnostic: recreate the WriteableBitmap each frame instead of in-place updates.</summary>
+    public bool RecreateBitmapEachFrame { get; set; }
+
+    /// <summary>Temporary diagnostic: present the frame via Background = ImageBrush instead of OnRender DrawImage.</summary>
+    public bool PresentViaBackgroundBrush { get; set; }
+
+    void RecreateBitmapFromStaging()
+    {
+        if (lastFrameBytes == null || bitmap == null)
+            return;
+        var w = bitmap.PixelWidth;
+        var h = bitmap.PixelHeight;
+        var fresh = new WriteableBitmap(w, h, 96 * VisualTreeHelper.GetDpi(this).DpiScaleX, 96 * VisualTreeHelper.GetDpi(this).DpiScaleY, PixelFormats.Pbgra32, null);
+        fresh.Lock();
+        fixed (byte* p = lastFrameBytes)
+        {
+            byte* dst = (byte*)fresh.BackBuffer;
+            for (var row = 0; row < h; row++)
+                System.Buffer.MemoryCopy(p + row * bytesPerRow, dst + row * fresh.BackBufferStride, fresh.BackBufferStride, w * 4);
+        }
+        fresh.AddDirtyRect(new Int32Rect(0, 0, w, h));
+        fresh.Unlock();
+        bitmap = fresh;
     }
 
     void CopyTextureToBitmap()
@@ -147,6 +387,10 @@ public unsafe sealed class ProGpuWinUIHostControl : WpfControl, IDisposable
         context.Api.BufferMapAsync(stagingBuffer, MapMode.Read, 0, stagingBufferSize, callback, null);
         while (pending) context.PollDevice(false);
         byte* sourceBytes = (byte*)context.Api.BufferGetConstMappedRange(stagingBuffer, 0, stagingBufferSize);
+        if (lastFrameBytes == null || lastFrameBytes.Length != stagingBufferSize)
+            lastFrameBytes = new byte[stagingBufferSize];
+        fixed (byte* p = lastFrameBytes)
+            System.Buffer.MemoryCopy(sourceBytes, p, stagingBufferSize, stagingBufferSize);
         bitmap.Lock();
         for (var row = 0; row < bitmap.PixelHeight; row++)
             System.Buffer.MemoryCopy(sourceBytes + row * bytesPerRow, (byte*)bitmap.BackBuffer + row * bitmap.BackBufferStride,
@@ -159,9 +403,65 @@ public unsafe sealed class ProGpuWinUIHostControl : WpfControl, IDisposable
 
     protected override void OnRender(WpfDrawingContext drawingContext)
     {
+        capturedOnRenderContext = ProGPU.Backend.WgpuContext.Current;
         base.OnRender(drawingContext);
         if (bitmap != null) drawingContext.DrawImage(bitmap, new System.Windows.Rect(0, 0, ActualWidth, ActualHeight));
+        if (ShowDiagnosticOverlay)
+        {
+            var pen = new System.Windows.Media.Pen(System.Windows.Media.Brushes.Red, 2);
+            drawingContext.DrawRectangle(null, pen, new System.Windows.Rect(1, 1, Math.Max(0, ActualWidth - 2), Math.Max(0, ActualHeight - 2)));
+            drawingContext.DrawText(
+                new System.Windows.Media.FormattedText(
+                    $"frame={bitmap != null}, size={ActualWidth:F0}x{ActualHeight:F0}",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Windows.FlowDirection.LeftToRight,
+                    new System.Windows.Media.Typeface("Segoe UI"),
+                    12,
+                    System.Windows.Media.Brushes.Red),
+                new System.Windows.Point(4, 4));
+            if (diagWriteable == null)
+            {
+                var bmp = new WriteableBitmap(64, 64, 96, 96, PixelFormats.Pbgra32, null);
+                bmp.Lock();
+                unsafe
+                {
+                    byte* p = (byte*)bmp.BackBuffer;
+                    for (var i = 0; i < 64 * 64; i++)
+                    {
+                        p[0] = 0; p[1] = 0; p[2] = 255; p[3] = 255;
+                        p += 4;
+                    }
+                }
+                bmp.AddDirtyRect(new Int32Rect(0, 0, 64, 64));
+                bmp.Unlock();
+                diagWriteable = bmp;
+            }
+            drawingContext.DrawImage(diagWriteable, new System.Windows.Rect(10, 80, 64, 64));
+            if (diagSource == null)
+            {
+                var pixels = new byte[64 * 64 * 4];
+                for (var y = 0; y < 64; y++)
+                    for (var x = 0; x < 64; x++)
+                    {
+                        var idx = (y * 64 + x) * 4;
+                        var check = ((x / 8) + (y / 8)) % 2 == 0;
+                        pixels[idx] = check ? (byte)0 : (byte)255;
+                        pixels[idx + 1] = check ? (byte)0 : (byte)255;
+                        pixels[idx + 2] = check ? (byte)255 : (byte)0;
+                        pixels[idx + 3] = 255;
+                    }
+                diagSource = System.Windows.Media.Imaging.BitmapSource.Create(64, 64, 96, 96, PixelFormats.Pbgra32, null, pixels, 64 * 4);
+            }
+            drawingContext.DrawImage(diagSource, new System.Windows.Rect(90, 80, 64, 64));
+        }
     }
+
+    WriteableBitmap diagWriteable;
+    System.Windows.Media.Imaging.BitmapSource diagSource;
+    ProGPU.Backend.WgpuContext capturedOnRenderContext;
+
+    /// <summary>Temporary diagnostic: draw a red border + status text in OnRender.</summary>
+    public bool ShowDiagnosticOverlay { get; set; }
 
     void SelectInput(WpfPoint point)
     {

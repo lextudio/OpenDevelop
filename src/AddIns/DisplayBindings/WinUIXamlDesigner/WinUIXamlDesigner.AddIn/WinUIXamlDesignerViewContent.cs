@@ -71,6 +71,24 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	public int ResolvedNameCount => previewHost.ResolvedNameCount;
 	public string LastPickDiagnostic => previewHost.LastPickDiagnostic;
 
+	public string FrameProfile() => previewHost.FrameProfile();
+
+	public string CompositorMetricsDump() => previewHost.CompositorMetricsDump();
+
+	public string RenderProbeAndProfile() => previewHost.RenderProbeAndProfile();
+
+	public string DumpDrawCalls() => previewHost.DumpDrawCalls();
+
+	public string WinUICommandProbe() => previewHost.WinUICommandProbe();
+
+	public string ImagePathProbe() => previewHost.ImagePathProbe();
+
+	public void SetShowDiagnosticOverlay(bool value) => previewHost.SetShowDiagnosticOverlay(value);
+
+	public void SetRecreateBitmapEachFrame(bool value) => previewHost.SetRecreateBitmapEachFrame(value);
+
+	public void SetPresentViaBackgroundBrush(bool value) => previewHost.SetPresentViaBackgroundBrush(value);
+
 	public int OutlineChildCount =>
 		outline.Items.Count == 0 ? 0 : ((TreeViewItem)outline.Items[0]).Items.Count;
 
