@@ -241,10 +241,27 @@ namespace ICSharpCode.WpfDesign.AddIn
 
 		void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
 		{
+			var item = toolbox.SelectedItem as WpfSideTabItem;
 			if (toolService == null)
 				return;
 
-			var item = toolbox.SelectedItem as WpfSideTabItem;
+			// ListBox's own built-in Selector keeps tracking MouseMove and updating SelectedItem to
+			// whatever row is under the cursor while the button is held - completely independent of
+			// (and not suppressed by) WpfToolbox's own isDragging guard on OnPreviewMouseMove, since
+			// that guard only protects THIS class's handler, not the ListBox's internal one. Once a
+			// portable drag is actually under way, PortableDragDropOperation keeps routing every
+			// subsequent MouseMove through WPF's normal event system (see OnPreviewMouseMove's own
+			// comment) - which means the Selector goes on reassigning SelectedItem, and this handler
+			// keeps firing, for the ENTIRE remaining duration of the drag as the pointer sweeps from
+			// the toolbox towards the drop target. Each firing would overwrite CurrentTool away from
+			// dragStartItem (the row actually pressed and already sealed into the DataObject),
+			// breaking designPanel_DragOver's identity check (e.Data.GetData(this.GetType()) != this)
+			// on every subsequent DragOver - even though OnPreviewMouseMove already reasserted
+			// CurrentTool correctly right before DoDragDrop. dragStartItem is authoritative for the
+			// life of the drag; ignore the Selector's own opinion until it ends.
+			if (isDragging)
+				return;
+
 			toolService.CurrentTool = item?.Tool ?? toolService.PointerTool;
 		}
 
@@ -349,6 +366,21 @@ namespace ICSharpCode.WpfDesign.AddIn
 				}
 				return;
 			}
+
+			// Between mouse-down and this threshold check, the ListBox's own selection-follows-
+			// cursor behavior may have already fired OnSelectionChanged for whatever row the
+			// pointer drifted across on its way here (the exact drift OnPreviewMouseLeftButtonDown's
+			// own comment measured: "a press on NumericUpDown reported Panel, then RadioButton").
+			// That leaves toolService.CurrentTool pointing at the DRIFTED row instead of
+			// dragStartItem, the one actually pressed and about to be put in the DataObject below.
+			// CreateComponentTool.designPanel_DragOver's own identity check
+			// (e.Data.GetData(this.GetType()) != this) compares the DataObject's payload against
+			// "this" - the instance Activate()'d via CurrentTool - so a mismatch here makes every
+			// drop silently create nothing, regardless of which row the pointer actually lands on.
+			// Re-assert CurrentTool from dragStartItem right before the data leaves this method, so
+			// the tool that gets Activated always matches the tool being dragged.
+			if (toolService != null)
+				toolService.CurrentTool = item.Tool;
 
 			var wpfData = new DataObject(item.Tool);
 
