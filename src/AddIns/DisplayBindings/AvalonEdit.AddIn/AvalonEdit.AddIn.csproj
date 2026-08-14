@@ -31,6 +31,10 @@
          so this doesn't reintroduce the duplicate-AddInTree-identity problem in unrelated addins'
          folders (PackageManagement, CodeCoverage, ILSpyAddIn) that never reference this project. -->
     <ProjectReference Include="..\WpfDesign\WpfDesign.AddIn\WpfDesign.AddIn.csproj" />
+    <!-- Same reasoning as the WpfDesign.AddIn reference above: AvalonEditViewContent.ToolsContent
+         also hard-references ICSharpCode.WinUIXamlDesigner.WinUIXamlToolbox.Instance for a WinUI/
+         Uno .xaml file's Source tab. -->
+    <ProjectReference Include="..\WinUIXamlDesigner\WinUIXamlDesigner.AddIn\ICSharpCode.WinUIXamlDesigner.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />

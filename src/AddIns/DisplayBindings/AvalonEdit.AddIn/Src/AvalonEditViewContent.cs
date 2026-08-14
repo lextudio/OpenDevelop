@@ -348,9 +348,18 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		object IToolsHost.ToolsContent {
 			get {
 				var fileName = this.PrimaryFileName;
-				if (fileName != null && fileName.ToString().EndsWith(".xaml", StringComparison.OrdinalIgnoreCase))
-					return ICSharpCode.WpfDesign.AddIn.WpfToolbox.Instance.ToolboxControl;
-				return null;
+				if (fileName == null || !fileName.ToString().EndsWith(".xaml", StringComparison.OrdinalIgnoreCase))
+					return null;
+				// A WinUI/Uno document's Source tab must show that framework's own Toolbox, not
+				// WPF's - dragging a WPF-only control (e.g. RadioButton's WPF ContentControl shape)
+				// onto a Uno document's markup would silently produce something the Uno compiler
+				// can't resolve. Same detector the Design-tab secondary view binding itself uses
+				// (WinUIXamlDesignerDisplayBinding.CanAttachTo) to decide WinUI/Uno vs WPF.
+				var kind = ICSharpCode.SharpDevelop.LanguageServices.Xaml.XamlFrameworkDetector.Detect(fileName.ToString()).Kind;
+				if (kind is ICSharpCode.SharpDevelop.LanguageServices.Xaml.XamlFrameworkKind.WinUI
+					or ICSharpCode.SharpDevelop.LanguageServices.Xaml.XamlFrameworkKind.Uno)
+					return ICSharpCode.WinUIXamlDesigner.WinUIXamlToolbox.Instance.ToolboxControl;
+				return ICSharpCode.WpfDesign.AddIn.WpfToolbox.Instance.ToolboxControl;
 			}
 		}
 	}

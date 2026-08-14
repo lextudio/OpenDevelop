@@ -89,7 +89,13 @@ public sealed class WinUIXamlToolbox
 		isDragging = true;
 		try {
 			toolbox.SelectedItem = item;
-			DragDrop.DoDragDrop(toolbox, new DataObject(DragDataFormat, item.Name), DragDropEffects.Copy);
+			// Also carries "ComponentTypeName" (the same format WpfToolbox uses) so dropping a
+			// WinUI/Uno tool onto the plain XAML source editor - AvalonEditViewContent.TextArea_Drop,
+			// which only ever looks for that one format - inserts "<Tag />" there too, not just onto
+			// the ProGPU design surface (WinUIXamlHost.OnDrop, which reads DragDataFormat instead).
+			var data = new DataObject(DragDataFormat, item.Name);
+			data.SetData("ComponentTypeName", item.Name);
+			DragDrop.DoDragDrop(toolbox, data, DragDropEffects.Copy);
 		} finally {
 			isDragging = false;
 		}

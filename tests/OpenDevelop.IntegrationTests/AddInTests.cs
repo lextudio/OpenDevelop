@@ -1113,6 +1113,145 @@ public sealed class AddInTests : IAsyncDisposable
     }
 
     /// <summary>
+    /// Covers the OTHER drag-drop target for a WinUI/Uno toolbox item: the plain XAML text/source
+    /// editor (AvalonEditViewContent, the file's default/primary view), not the ProGPU design
+    /// surface (WinUIXamlHost, a secondary view - see
+    /// WinUIDesigner_DragToolboxItemOntoDesignSurface_InsertsIntoDroppedContainer above). Mirrors
+    /// the WPF designer's own DragToolboxItem_OntoXamlSourceEditor_InsertsMarkupAtDropPoint.
+    ///
+    /// Until this test, AvalonEditViewContent.IToolsHost.ToolsContent returned the *WPF* toolbox
+    /// unconditionally for every .xaml file - including WinUI/Uno ones - because it never checked
+    /// XamlFrameworkDetector.Detect the way the Design-tab secondary view binding
+    /// (WinUIXamlDesignerDisplayBinding.CanAttachTo) already does. The Source tab of a Uno document
+    /// showed WPF-only controls in the Tools pad, and WinUIXamlToolbox's own drag payload only ever
+    /// carried its ProGPU-canvas-specific data format - never the "ComponentTypeName" format
+    /// AvalonEditViewContent.TextArea_Drop looks for - so a WinUI/Uno tool dropped onto the source
+    /// editor silently did nothing.
+    /// </summary>
+    [Fact]
+    public async Task WinUIDesigner_DragToolboxItemOntoXamlSourceEditor_InsertsMarkupAtDropPoint()
+    {
+        var originalXaml = await File.ReadAllTextAsync(_unoPagePath);
+
+        try
+        {
+            await OpenUnoDesignerAsync();
+
+            // Realize the WinUI/Uno toolbox rows once (query-item-bounds needs a container to
+            // press on) - this also confirms the Tools pad resolves to the *WinUI* toolbox, not
+            // WPF's, via the design surface, before the source-view assertion below.
+            await _app.InvokeAsync("od.show-pad", "Tools");
+            await _app.InvokeAsync("od.activate");
+            var toolboxBounds = await _app.InvokeAsync("od.winui-designer.toolbox.query-item-bounds", "TextBox");
+            Assert.True(toolboxBounds.GetProperty("success").GetBoolean(), toolboxBounds.ToString());
+
+            // query-item-bounds activates the Design tab as a side effect (ActivateDesigner) -
+            // switch back to Source, the actual drop target for this test.
+            var switched = await _app.InvokeAsync("od.winui-designer.switch-to-source");
+            Assert.True(switched.GetProperty("success").GetBoolean(), switched.ToString());
+
+            // Target the position right before "<TextBlock" - a sibling position where a
+            // self-closing "<TextBox />" is well-formed regardless of surrounding whitespace.
+            // Anchoring on a narrow single character like "<StackPanel>"'s own closing '>' leaves
+            // no pixel slack: a drop that resolves even one character early lands INSIDE that tag
+            // instead of after it (exactly what a first attempt at this test caught: the result was
+            // "<StackPanel<TextBox />>"). The run of leading-whitespace indentation before
+            // "<TextBlock" is a much wider target, so the same sub-pixel imprecision still resolves
+            // to the same text offset.
+            int dropOffset = originalXaml.IndexOf("<TextBlock", StringComparison.Ordinal);
+            Assert.True(dropOffset >= 0, "Expected MainPage.xaml fixture to contain a <TextBlock anchor.");
+
+            // Park the caret away from the drop point, so a regression back to caret-based
+            // insertion (the same class of bug the WPF test guards against) is caught below.
+            var caretSet = await _app.InvokeAsync("od.file.set-caret-offset", _unoPagePath, 0);
+            Assert.True(caretSet.GetProperty("success").GetBoolean(), caretSet.ToString());
+
+            var fromX = toolboxBounds.GetProperty("centerX").GetDouble();
+            var fromY = toolboxBounds.GetProperty("centerY").GetDouble();
+
+            var dropPoint = await _app.InvokeAsync("od.file.query-offset-screen-position", _unoPagePath, dropOffset);
+            Assert.True(dropPoint.GetProperty("success").GetBoolean(), dropPoint.ToString());
+            // query-offset-screen-position returns the sub-pixel-exact boundary BEFORE the target
+            // offset's character - GetDropOffset's hit test (TextView.GetPositionFloor) resolves a
+            // click landing exactly on (or a hair before, once cliclick truncates to a whole pixel)
+            // that boundary to the PREVIOUS character, one short of the intended offset. This
+            // reproduced 100% of the time before the +2px bias below was added (e.g. inserting into
+            // "<StackPanel>" itself: "<StackPanel<TextBox />>"). A synthetic drag is the only actor
+            // that would ever aim at that exact razor's-edge pixel - nudge a couple of pixels into
+            // the target character's own cell instead, which is what a real drop would land within.
+            var toX = dropPoint.GetProperty("x").GetDouble() + 2;
+            var toY = dropPoint.GetProperty("y").GetDouble();
+
+            string savedXaml = null;
+            var inserted = false;
+            for (int attempt = 1; attempt <= 4 && !inserted; attempt++)
+            {
+                var pressed = await _app.PressPointerAsync(fromX, fromY);
+                Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
+
+                for (int step = 1; step <= 6; step++)
+                {
+                    var t = step / 6.0;
+                    var moved = await _app.DragMovePointerAsync(fromX + (toX - fromX) * t, fromY + (toY - fromY) * t);
+                    Assert.True(moved.GetProperty("ok").GetBoolean(), moved.ToString());
+                    await Task.Delay(150);
+                }
+
+                var released = await _app.ReleasePointerAsync(toX, toY);
+                Assert.True(released.GetProperty("ok").GetBoolean(), released.ToString());
+
+                inserted = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+                {
+                    var saved = await _app.InvokeAsync("od.file.save", _unoPagePath);
+                    Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+                    savedXaml = await File.ReadAllTextAsync(_unoPagePath);
+                    return savedXaml.Contains("<TextBox />", StringComparison.Ordinal);
+                }, TimeSpan.FromSeconds(8), initialDelayMs: 50, maxDelayMs: 250);
+            }
+
+            // The control, its markup, and the intended drop offset are all known ahead of time -
+            // so assert the exact resulting document, not just "a <TextBox /> landed somewhere
+            // plausible". A real synthetic mouse drag's screen-position -> text-offset hit test has
+            // an inherent +/-1 character jitter around the intended column (confirmed empirically:
+            // repeated runs of this exact test landed one character early - "<StackPanel<TextBox
+            // />>", clipping the tag itself - and one character late - an extra space before
+            // "<TextBox />" - never elsewhere), so pin down the landing spot with a tolerance
+            // instead of a single fixed offset.
+            int insertedAt = savedXaml.IndexOf("<TextBox />", StringComparison.Ordinal);
+            Assert.True(insertedAt >= 0, "Expected the drop to have inserted <TextBox />:\n" + savedXaml);
+            // Removing the inserted markup from wherever it actually landed must reproduce the
+            // ORIGINAL document byte-for-byte - proving the drop touched nothing else, i.e. it did
+            // not corrupt unrelated text elsewhere in the file. NOTE this alone is NOT sufficient:
+            // it also holds for "<StackPanel<TextBox />>" (removing "<TextBox />" reconstructs
+            // "<StackPanel>" exactly), which is genuinely malformed XML - the insertion landed
+            // INSIDE the "<StackPanel>" tag's own brackets rather than after them. The XDocument.
+            // Parse check below is what actually catches that.
+            var withoutInsertion = savedXaml.Remove(insertedAt, "<TextBox />".Length);
+            Assert.Equal(originalXaml, withoutInsertion);
+            // And it landed at the intended drop site (within the hit-test's inherent +/-1
+            // character jitter - confirmed empirically across repeated runs of this exact test),
+            // not e.g. at the caret (offset 0, deliberately parked elsewhere above) or the end of
+            // the document.
+            Assert.InRange(insertedAt, dropOffset - 2, dropOffset + 2);
+            // The two checks above can both pass on a drop that landed mid-tag - only parsing
+            // proves the result is still well-formed XAML.
+            try
+            {
+                XDocument.Parse(savedXaml);
+            }
+            catch (System.Xml.XmlException exception)
+            {
+                Assert.Fail($"Drop produced malformed XAML: {exception.Message}\n{savedXaml}");
+            }
+        }
+        finally
+        {
+            // MainPage.xaml is a repository fixture - restore it regardless of outcome.
+            await File.WriteAllTextAsync(_unoPagePath, originalXaml);
+        }
+    }
+
+    /// <summary>
     /// Technote acceptance item: unloading the document must release the designer's runtime.
     /// Each open builds a collectible preview assembly and a WinUI tree from it, so a host that
     /// outlives its document would leak an entire ALC per open - invisible to every other test.
@@ -1489,11 +1628,19 @@ public sealed class AddInTests : IAsyncDisposable
             var fromX = toolboxBounds.GetProperty("centerX").GetDouble();
             var fromY = toolboxBounds.GetProperty("centerY").GetDouble();
 
-            // Drop exactly on the target offset's own screen position, so the assertion below is a
-            // real check that the insert followed the mouse rather than landing there by accident.
+            // Drop on the target offset's own screen position, so the assertion below is a real
+            // check that the insert followed the mouse rather than landing there by accident.
             var dropPoint = await _app.InvokeAsync("od.file.query-offset-screen-position", xamlPath, dropOffset);
             Assert.True(dropPoint.GetProperty("success").GetBoolean(), dropPoint.ToString());
-            var toX = dropPoint.GetProperty("x").GetDouble();
+            // query-offset-screen-position returns the sub-pixel-exact boundary BEFORE the target
+            // offset's character - GetDropOffset's hit test (TextView.GetPositionFloor) resolves a
+            // click landing exactly on (or a hair before, once cliclick truncates to a whole pixel)
+            // that boundary to the PREVIOUS character, one short of the intended offset. This
+            // reproduced 100% of the time before the +2px bias below was added (e.g. inserting into
+            // "</ListBox>" itself: "</ListBox<TextBox />>"). A synthetic drag is the only actor that
+            // would ever aim at that exact razor's-edge pixel - nudge a couple of pixels into the
+            // target character's own cell instead, which is what a real drop would land within.
+            var toX = dropPoint.GetProperty("x").GetDouble() + 2;
             var toY = dropPoint.GetProperty("y").GetDouble();
 
             string savedXaml = null;
@@ -1527,18 +1674,38 @@ public sealed class AddInTests : IAsyncDisposable
                 }, TimeSpan.FromSeconds(8), initialDelayMs: 50, maxDelayMs: 250);
             }
 
-            Assert.Contains("<TextBox />", savedXaml, StringComparison.Ordinal);
-
-            // The drop landed on the first character after "</ListBox>", so the markup must appear
-            // immediately after that tag - and, crucially, before "</StackPanel>". Asserting both
-            // ends pins it to the drop point: an insert that fell back to the caret (offset 0 on a
-            // freshly opened file) or to the end of the document fails one of them.
+            // The control, its markup, and the intended drop offset are all known ahead of time -
+            // so assert the exact resulting document, not just "a <TextBox /> landed somewhere
+            // plausible". A real synthetic mouse drag's screen-position -> text-offset hit test has
+            // an inherent +/-1 character jitter around the intended column (confirmed empirically
+            // on the WinUI designer's equivalent test - repeated runs landed one character early,
+            // clipping into a neighboring tag, and one character late, adding an extra space -
+            // never elsewhere), so pin down the landing spot with a tolerance instead of a single
+            // fixed offset.
             int insertedAt = savedXaml.IndexOf("<TextBox />", StringComparison.Ordinal);
-            int listBoxEnd = savedXaml.IndexOf("</ListBox>", StringComparison.Ordinal) + "</ListBox>".Length;
-            int stackPanelEnd = savedXaml.IndexOf("</StackPanel>", StringComparison.Ordinal);
-            Assert.True(insertedAt >= listBoxEnd && insertedAt < stackPanelEnd,
-                $"Expected <TextBox /> at the drop point (just after </ListBox>, before </StackPanel>), "
-                + $"but it landed at offset {insertedAt} (</ListBox> ends at {listBoxEnd}, </StackPanel> starts at {stackPanelEnd}).\n" + savedXaml);
+            Assert.True(insertedAt >= 0, "Expected the drop to have inserted <TextBox />:\n" + savedXaml);
+            // Removing the inserted markup from wherever it actually landed must reproduce the
+            // ORIGINAL document byte-for-byte - proving the drop touched nothing else, i.e. it did
+            // not corrupt unrelated text elsewhere in the file. NOTE this alone is NOT sufficient:
+            // it also holds for a mid-tag split like "<StackPanel<TextBox />>" (removing "<TextBox
+            // />" reconstructs "<StackPanel>" exactly), which is genuinely malformed XML. The
+            // XDocument.Parse check below is what actually catches that.
+            var withoutInsertion = savedXaml.Remove(insertedAt, "<TextBox />".Length);
+            Assert.Equal(originalXaml, withoutInsertion);
+            // And it landed at the intended drop site (within the hit-test's inherent jitter), not
+            // e.g. at the caret (offset 0, which was deliberately parked elsewhere above) or at the
+            // end of the document.
+            Assert.InRange(insertedAt, dropOffset - 2, dropOffset + 2);
+            // The two checks above can both pass on a drop that landed mid-tag - only parsing
+            // proves the result is still well-formed XAML.
+            try
+            {
+                XDocument.Parse(savedXaml);
+            }
+            catch (System.Xml.XmlException exception)
+            {
+                Assert.Fail($"Drop produced malformed XAML: {exception.Message}\n{savedXaml}");
+            }
         }
         finally
         {
