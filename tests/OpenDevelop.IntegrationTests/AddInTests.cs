@@ -982,6 +982,31 @@ public sealed class AddInTests : IAsyncDisposable
     }
 
     /// <summary>
+    /// Regression for a bug found after this session's WPF drag-drop fixes were confirmed
+    /// unrelated: the design surface rendered a completely blank white canvas even though
+    /// HasPresentedFrame/resolvedNameCount proved the visual tree genuinely existed. Root cause -
+    /// ThemeManager.CurrentTheme is a process-wide static that every real ProGPU host (Samples,
+    /// Samples.Uno, Samples.Avalonia) sets explicitly on startup; our host never did, so it stayed
+    /// at the library's default of Dark, which styles a Button with a near-white translucent
+    /// background and fully-opaque white foreground - invisible against this host's plain white
+    /// WPF canvas. Asserts the rendered button now uses dark-on-light colors, i.e. actually visible.
+    /// </summary>
+    [Fact]
+    public async Task WinUIDesigner_RendersButtonWithVisibleLightThemeColors()
+    {
+        await OpenUnoDesignerAsync();
+
+        var described = await _app.InvokeAsync("od.winui-designer.describe-element", "PrimaryButton");
+        Assert.True(described.GetProperty("success").GetBoolean(), described.ToString());
+        var description = described.GetProperty("description").GetString();
+
+        Assert.Contains("hasTemplate=True", description, StringComparison.Ordinal);
+        // Light theme's default Button foreground is opaque black text (0,0,0,1) - the invisible
+        // Dark-theme default this regresses against was opaque *white* text (1,1,1,1).
+        Assert.Contains("foreground=Solid(<0, 0, 0, 1>)", description, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Clicking the rendered design surface must select the corresponding element in the XAML
     /// *source* and populate the shared Properties pad - the same end state an Outline pick
     /// produces. Uses real synthetic pointer input at the element's actual on-screen position, so

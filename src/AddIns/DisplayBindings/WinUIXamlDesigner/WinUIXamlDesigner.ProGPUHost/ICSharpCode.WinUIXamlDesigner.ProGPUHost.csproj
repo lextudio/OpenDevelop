@@ -18,5 +18,12 @@
     <PackageReference Include="ProGPU.Xaml" Version="0.1.0-preview.47" />
     <PackageReference Include="ProGPU.Xaml.Roslyn" Version="0.1.0-preview.47" />
     <PackageReference Include="ProGPU.Xaml.Workspaces" Version="0.1.0-preview.47" />
+    <!-- Standard controls (Button, TextBlock, ...) resolve their default style via
+         FrameworkElement.TryFindResource, which only ever finds one if a Fluent theme
+         dictionary has been merged somewhere in the visual tree or into Application.Resources -
+         ProGPU.WinUI ships no built-in fallback. Without this, every previewed control renders
+         with no template/brush at all, which is indistinguishable from "nothing rendered": the
+         page's own (default white) background is all that's visible. -->
+    <PackageReference Include="ProGPU.WinUI.Themes.Fluent" Version="0.1.0-preview.47" />
   </ItemGroup>
 </Project>

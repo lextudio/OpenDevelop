@@ -67,6 +67,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	public IReadOnlyList<string> ElementNames() => editor.ElementNames();
 
 	public Rect? QueryElementScreenBounds(string name) => previewHost.QueryElementScreenBounds(name);
+	public string DescribeElementState(string name) => previewHost.DescribeElementState(name);
 	public int ResolvedNameCount => previewHost.ResolvedNameCount;
 	public string LastPickDiagnostic => previewHost.LastPickDiagnostic;
 

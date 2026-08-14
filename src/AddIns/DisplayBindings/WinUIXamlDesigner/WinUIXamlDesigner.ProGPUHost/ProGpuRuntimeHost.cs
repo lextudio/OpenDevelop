@@ -60,6 +60,13 @@ sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost
         executor = new ProGpuXamlExecutor(documentFileName);
         renderService = new XamlRenderService(executor);
         StatusText = $"ProGPU WinUI host ready for {framework?.Kind}.";
+
+        // ThemeManager.CurrentTheme is a process-wide static that every real ProGPU host (Samples,
+        // Samples.Uno, Samples.Avalonia) sets explicitly on startup - it otherwise stays at its
+        // library default of Dark, which styles controls with near-white foregrounds/backgrounds
+        // that render invisibly on this host's plain white WPF canvas. Light matches what a design
+        // surface is expected to look like regardless of the previewed app's own theme choice.
+        Microsoft.UI.Xaml.ThemeManager.CurrentTheme = Microsoft.UI.Xaml.ElementTheme.Light;
     }
 
     public UIElement WpfSurface => control;
@@ -150,6 +157,41 @@ sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost
         return (origin.X, origin.Y, width, height);
     }
 
+    /// <summary>
+    /// Diagnostic-only dump of a named rendered element's style/template/box-model state, for
+    /// tracking down "renders but doesn't look right" symptoms that a bounds query alone can't
+    /// distinguish (e.g. an unstyled Control vs. one whose ControlTemplate never got built).
+    /// </summary>
+    public string DescribeElementState(string name)
+    {
+        var root = control.WinUIRoot;
+        if (root == null || string.IsNullOrEmpty(name))
+            return "no root";
+        if (root.FindName(name) is not Microsoft.UI.Xaml.FrameworkElement element)
+            return "not found";
+        var describe = $"type={element.GetType().FullName} actualSize={element.Size.X}x{element.Size.Y} width={element.Width} height={element.Height} " +
+            $"visibility={element.Visibility} opacity={element.Opacity}";
+        if (element is Microsoft.UI.Xaml.Controls.Control control2) {
+            describe += $" hasTemplate={control2.HasTemplate} style={(control2.Style != null ? "set" : "null")} " +
+                $"template={(control2.Template != null ? "set" : "null")} " +
+                $"background={DescribeBrush(control2.Background)} foreground={DescribeBrush(control2.Foreground)} " +
+                $"padding={control2.Padding.Left},{control2.Padding.Top},{control2.Padding.Right},{control2.Padding.Bottom} " +
+                $"content={(control2 as Microsoft.UI.Xaml.Controls.ContentControl)?.Content} " +
+                $"borderThickness={control2.BorderThickness.Left},{control2.BorderThickness.Top} " +
+                $"borderBrush={DescribeBrush(control2.BorderBrush)}";
+        }
+        return describe;
+    }
+
+    static string DescribeBrush(object brush)
+    {
+        if (brush == null)
+            return "null";
+        if (brush is ProGPU.Vector.SolidColorBrush solid)
+            return $"Solid({solid.Color})";
+        return brush.GetType().Name + ":" + brush;
+    }
+
     public void LoadXaml(string text)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
@@ -164,6 +206,7 @@ sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost
             if (disposed || Volatile.Read(ref version) != requested)
                 return;
             if (result.Element is Microsoft.UI.Xaml.FrameworkElement element) {
+                ApplyFluentTheme(element);
                 control.WinUIRoot = element;
                 lastPreviewRoot = new WeakReference(element);
                 ResolveNameScope();
@@ -179,6 +222,17 @@ sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost
         }
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
+
+    /// <summary>
+    /// Merges the Fluent theme dictionary into the previewed root's own Resources, so every
+    /// standard control under it resolves a default style/template via
+    /// FrameworkElement.TryFindResource's ancestor-Resources walk. Each fresh preview root gets
+    /// its own merge (a plain Add, no de-duplication needed): the root is a brand-new instance out
+    /// of a brand-new collectible preview assembly every render, never reused across renders.
+    /// </summary>
+    static void ApplyFluentTheme(Microsoft.UI.Xaml.FrameworkElement root) =>
+        root.Resources.MergedDictionaries.Add(
+            ProGPU.WinUI.Themes.Fluent.FluentThemeResources.CreateDictionary());
 
     static string Describe(XamlStudio.Toolkit.Models.XamlRenderResultContext result)
     {

@@ -45,6 +45,8 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 	public (double X, double Y, double Width, double Height)? QueryElementBounds(string name) =>
 		runtime?.QueryElementBounds(name);
 
+	public string DescribeElementState(string name) => runtime?.DescribeElementState(name) ?? "no runtime";
+
 	public string ResolveNameAt(System.Numerics.Vector2 point) => runtime?.ResolveNameAt(point);
 
 	public int ResolvedNameCount => runtime?.ResolvedNameCount ?? 0;
@@ -129,6 +131,9 @@ public interface IWinUIXamlRuntimeHost : IDisposable
 
 	/// <summary>Surface-local bounds of a rendered element, as plain numbers.</summary>
 	(double X, double Y, double Width, double Height)? QueryElementBounds(string name);
+
+	/// <summary>Diagnostic-only dump of a named element's style/template/box-model state.</summary>
+	string DescribeElementState(string name);
 
 	/// <summary>Diagnostics for why a design-surface click did or did not resolve to an element.</summary>
 	int ResolvedNameCount { get; }

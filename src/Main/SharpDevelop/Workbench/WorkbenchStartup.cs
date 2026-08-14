@@ -141,7 +141,15 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		static void PumpActiveWindowHosts()
 		{
 			foreach (var host in WpfPortableWindowActivation.GetActiveHosts()) {
-				host.DoEvents();
+				try {
+					host.DoEvents();
+				} catch (ObjectDisposedException) {
+					// GetActiveHosts() snapshots the not-yet-disposed hosts up front, but pumping an
+					// earlier host in this same loop can run nested dispatcher work (e.g. closing a
+					// modal dialog) that disposes a later host already in the snapshot before this
+					// loop reaches it - a TOCTOU race GetActiveHosts' own disposed check cannot close.
+					// Skipping it here is safe: a disposed host has nothing left to pump.
+				}
 			}
 		}
 

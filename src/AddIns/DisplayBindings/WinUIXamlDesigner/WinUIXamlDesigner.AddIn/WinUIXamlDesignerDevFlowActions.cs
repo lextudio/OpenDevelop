@@ -211,6 +211,15 @@ public static class WinUIXamlDesignerDevFlowActions
 		});
 	}
 
+	[DevFlowAction("od.winui-designer.describe-element", Description = "Diagnostic-only dump of a named rendered element's style/template/box-model state (HasTemplate, Style/Template/Background set, Padding), for tracking down 'renders but doesn't look right' symptoms")]
+	public static string DescribeElement(string name)
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		return JsonSerializer.Serialize(new { success = true, name, description = view.DescribeElementState(name) });
+	}
+
 	[DevFlowAction("od.winui-designer.switch-to-source",Description = "Switch the active XAML document back to its primary Source view, so a Source-then-Design round trip can be driven the way a user clicking the tabs would")]
 	public static string SwitchToSource()
 	{
