@@ -5,7 +5,10 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
 using System.Xml.Linq;
+using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.LanguageServices.Xaml;
 using ICSharpCode.SharpDevelop.Workbench;
@@ -33,6 +36,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	readonly WinUIXamlDocumentEditor editor = new();
 	string documentError;
 	string loadedText = "";
+	bool toolboxPopulated;
 	// Mirrors WpfViewContent.wasChangedInDesigner. Without it, saving while the Design tab happens
 	// to be the active view rewrites the file from this view's serialized document - discarding
 	// whatever the Source view did, and reformatting a file the designer never touched.
@@ -44,10 +48,17 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		previewHost = new WinUIXamlHost(framework, file?.FileName?.ToString() ?? "Preview.xaml");
 		previewHost.StateChanged += OnPreviewStateChanged;
 		previewHost.ElementPicked += OnElementPickedOnSurface;
+		previewHost.SelectionChanged += OnSelectionChangedOnSurface;
 		previewHost.ElementDragCommitted += OnElementDragCommittedOnSurface;
+		previewHost.ElementGroupDragCommitted += OnElementGroupDragCommittedOnSurface;
+		previewHost.GridGuideDragCommitted += OnGridGuideDragCommittedOnSurface;
 		previewHost.ElementDoubleClicked += OnElementDoubleClickedOnSurface;
 		previewHost.TextEditCommitted += OnTextEditCommittedOnSurface;
+		previewHost.ElementPathPicked += OnElementPathPickedOnSurface;
 		previewHost.ControlDropped += OnControlDroppedOnSurface;
+		previewHost.ContextCommandRequested += OnContextCommandOnSurface;
+		previewHost.NudgeRequested += OnNudgeRequestedOnSurface;
+		previewHost.UndoRedoRequested += OnUndoRedoRequestedOnSurface;
 		TabPageText = "Design";
 		root.RowDefinitions.Add(new RowDefinition());
 		root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -57,6 +68,11 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		root.Children.Add(status);
 		status.Text = previewHost.StatusText;
 		outline.SelectedItemChanged += OnOutlineSelectionChanged;
+		outline.AllowDrop = true;
+		outline.PreviewMouseLeftButtonDown += OnOutlineMouseDown;
+		outline.PreviewMouseMove += OnOutlineMouseMove;
+		outline.DragOver += OnOutlineDragOver;
+		outline.Drop += OnOutlineDrop;
 		UserContent = root;
 	}
 
@@ -113,11 +129,87 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	public (double Width, double Height)? GetDesignSize() => previewHost.GetDesignSize();
 	public void SetDesignSize(double width, double height) => previewHost.SetDesignSize(width, height);
 	public void ResetDesignSize() => previewHost.ResetDesignSize();
+	public void SetDesignTheme(string theme) => previewHost.SetDesignTheme(theme);
+	public string GetDesignTheme() => previewHost.GetDesignTheme();
+	public string ChildLog => previewHost.ChildLog;
+	public string RenderSample() => previewHost.RenderSample();
+	public IReadOnlyList<(string Message, int Line, int Column)> LastDiagnostics => previewHost.LastDiagnostics;
+	public string ExportPng(string path) => previewHost.ExportPng(path);
+	public (double RenderMs, int Width, int Height, double Dpi, int CompressedBytes, int RawBytes) RenderTiming()
+		=> previewHost.RenderTiming();
+	public double EffectiveDisplayDpi => previewHost.EffectiveDisplayDpi;
+	public void SetSimulatedDpi(double? dpi) => previewHost.SetSimulatedDpi(dpi);
+
+	/// <summary>The document-model parse error with its line/column extracted from the
+	/// message ("Line 13, position 2"), when the current source did not parse.</summary>
+	public (string Message, int Line, int Column)? DocumentErrorWithLocation
+	{
+		get
+		{
+			if (string.IsNullOrEmpty(DocumentError))
+				return null;
+			var match = System.Text.RegularExpressions.Regex.Match(DocumentError,
+				@"[Ll]ine\s+(\d+)(?:[,;]\s*[Pp]osition\s+(\d+))?");
+			var line = match.Success && int.TryParse(match.Groups[1].Value, out var l) ? l : 0;
+			var column = match.Success && match.Groups[2].Success && int.TryParse(match.Groups[2].Value, out var c) ? c : 0;
+			return (DocumentError, line, column);
+		}
+	}
+
+	/// <summary>
+	/// Switches to the document's Source view and jumps its caret to the 1-based
+	/// line/column (used by error navigation). The source editor belongs to another AddIn
+	/// (AvalonEdit), reached reflectively through its TextEditor.Caret.
+	/// </summary>
+	public string GotoSourceLocation(int line, int column)
+	{
+		var window = SD.Workbench.ActiveViewContent?.WorkbenchWindow;
+		if (window == null)
+			return "No active document window";
+		for (var index = 0; index < window.ViewContents.Count; index++)
+		{
+			if (window.ViewContents[index] is WinUIXamlDesignerViewContent)
+				continue;
+			window.SwitchView(index);
+			try
+			{
+				// The source editor (AvalonEditViewContent) keeps its editor in a private
+				// "codeEditor" field exposing PrimaryTextEditor.TextArea.Caret; reach it
+				// reflectively since this AddIn does not reference the AvalonEdit AddIn.
+				var content = window.ViewContents[index];
+				var codeEditor = content.GetType().GetField("codeEditor",
+					System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?.GetValue(content);
+				var textEditor = codeEditor?.GetType().GetProperty("PrimaryTextEditor")?.GetValue(codeEditor);
+				var textArea = textEditor?.GetType().GetProperty("TextArea")?.GetValue(textEditor);
+				var caret = textArea?.GetType().GetProperty("Caret")?.GetValue(textArea);
+				if (caret == null)
+					return "Source view does not expose a text editor caret";
+				caret.GetType().GetProperty("Line")?.SetValue(caret, Math.Max(1, line));
+				caret.GetType().GetProperty("Column")?.SetValue(caret, Math.Max(1, column));
+				textEditor?.GetType().GetMethod("ScrollToLine")?.Invoke(textEditor, new object[] { Math.Max(1, line) });
+				return $"Jumped to line {line}, column {column}";
+			}
+			catch (Exception e)
+			{
+				return "Jump failed: " + e.GetBaseException().Message;
+			}
+		}
+		return "No source view found";
+	}
+	public bool Gridlines => previewHost.Gridlines;
+	public void SetGridlines(bool show) => previewHost.SetGridlines(show);
+
+	/// <summary>True while the runtime's child process is alive (the Uno design host).</summary>
+	public bool IsChildProcessAlive => previewHost.IsChildProcessAlive;
 
 	#region Editing operations
 
+	bool syncingSelection;
+
 	public bool SelectElement(string name)
 	{
+		if (syncingSelection)
+			return true;
 		var element = editor.FindElement(name);
 		if (element == null) {
 			SelectedElementName = null;
@@ -125,10 +217,19 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			previewHost.ClearSelection();
 			return false;
 		}
-		SelectedElementName = name;
-		propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, SetAttributeThroughEditor);
-		SelectOutlineNode(name);
-		previewHost.ShowSelection(name);
+		syncingSelection = true;
+		try {
+			SelectedElementName = name;
+			propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor);
+			SelectOutlineNode(name);
+			// The runtime's selection set is managed by surface picks and MultiSelect -
+			// this path only syncs the pad/outline, so it never collapses a multi-selection.
+			previewHost.ShowSelection(name);
+			RefreshGridGuides(name);
+		}
+		finally {
+			syncingSelection = false;
+		}
 		return true;
 	}
 
@@ -165,6 +266,17 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	{
 		var element = editor.FindElement(SelectedElementName)
 			?? throw new InvalidOperationException("Nothing is selected.");
+		DeleteElement(SelectedElementName);
+	}
+
+	/// <summary>Deletes the named element as a source edit and clears the selection.</summary>
+	public void DeleteElement(string name)
+	{
+		if (string.IsNullOrEmpty(name))
+			return;
+		var element = editor.FindElement(name);
+		if (element == null)
+			return;
 		editor.Remove(element);
 		SelectedElementName = null;
 		propertyContainer.SelectedObject = null;
@@ -219,6 +331,13 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		// outline from the freshly indexed tree.
 		if (SelectedElementName != null)
 			previewHost.ShowSelection(SelectedElementName);
+		// Once the design host is ready it reports the toolbox catalog for the loaded
+		// runtime; the shared Toolbox pad then lists the controls the project can actually use.
+		if (!toolboxPopulated && previewHost.GetToolboxCatalog() is { Count: > 0 } catalog)
+		{
+			WinUIXamlToolbox.Instance.PopulateFromCatalog(catalog);
+			toolboxPopulated = true;
+		}
 	}
 
 	/// <summary>
@@ -233,6 +352,60 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		if (element == null)
 			return;
 		ApplyElementBounds(element, info);
+	}
+
+	void OnElementGroupDragCommittedOnSurface(object sender, IReadOnlyList<(string Name, double DX, double DY)> deltas)
+	{
+		var list = deltas.Where(d => editor.FindElement(d.Name) != null).ToList();
+		if (list.Count == 0)
+			return;
+		ApplyElementDeltas(list);
+		SelectElement(list[0].Name);
+	}
+
+	/// <summary>Shows Grid divider guides when a Grid is selected, hiding them otherwise.</summary>
+	void RefreshGridGuides(string selectedName)
+	{
+		if (string.IsNullOrEmpty(selectedName) || editor.FindElement(selectedName) is not { Name.LocalName: "Grid" } grid)
+		{
+			previewHost.ClearGridGuides();
+			return;
+		}
+		var (rows, cols) = GridGuides(selectedName);
+		var bounds = previewHost.QueryElementBounds(selectedName);
+		if (bounds == null)
+			return;
+		previewHost.SetGridGuides(selectedName, bounds.Value.X, bounds.Value.Y, bounds.Value.Width, bounds.Value.Height, rows, cols);
+	}
+
+	void OnGridGuideDragCommittedOnSurface(object sender, (string Name, bool IsRow, int Index, double Position) args)
+	{
+		var result = args.IsRow
+			? ResizeGridRow(args.Name, args.Index, args.Position)
+			: ResizeGridColumn(args.Name, args.Index, args.Position);
+		status.Text = result;
+		// Re-show the guides at the new layout.
+		RefreshGridGuides(args.Name);
+	}
+
+	void OnNudgeRequestedOnSurface(object sender, (double DX, double DY) delta)
+		=> NudgeSelection(delta.DX, delta.DY);
+
+	void OnUndoRedoRequestedOnSurface(object sender, bool undo)
+	{
+		var moved = undo ? Undo() : Redo();
+		status.Text = moved ? (undo ? "Undone" : "Redone") : "Nothing to " + (undo ? "undo" : "redo");
+	}
+
+	/// <summary>Nudges the selected element(s) by the given design-unit delta as a source edit.</summary>
+	public string NudgeSelection(double dx, double dy)
+	{
+		var targets = SelectedElementBounds;
+		if (targets.Count == 0)
+			return "Nothing selected";
+		var deltas = targets.Select(t => (t.Name, dx, dy)).ToList();
+		ApplyElementDeltas(deltas);
+		return $"nudged {deltas.Count} element(s)";
 	}
 
 	/// <summary>
@@ -296,10 +469,302 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		}
 	}
 
-	void ApplyElementBounds(XElement element, ElementDragInfo info)
+	/// <summary>Invokes a context command as if it came from the surface menu (scriptable).</summary>
+	public void InvokeContextCommand(string command, string name = "")
 	{
-		var positionDeltaX = info.EndX - info.StartX;
-		var positionDeltaY = info.EndY - info.StartY;
+		if (string.IsNullOrEmpty(name))
+			name = SelectedElementName;
+		OnContextCommandOnSurface(this, (command, name));
+	}
+
+	/// <summary>In-memory fallback clipboard for environments without a usable system clipboard
+	/// (LibreWPF's Clipboard bridge may be unavailable); the system clipboard is preferred.</summary>
+	static string clipboardXaml;
+
+	/// <summary>Copies XAML text to the system clipboard, falling back to the in-memory one.</summary>
+	static void SetClipboardText(string xaml)
+	{
+		try
+		{
+			Clipboard.SetText(xaml);
+		}
+		catch
+		{
+			// System clipboard unavailable (LibreWPF): keep the in-memory fallback working.
+		}
+		clipboardXaml = xaml;
+	}
+
+	/// <summary>Reads XAML text from the system clipboard, falling back to the in-memory one.</summary>
+	static string GetClipboardText()
+	{
+		try
+		{
+			if (!string.IsNullOrEmpty(Clipboard.GetText()))
+				return Clipboard.GetText();
+		}
+		catch
+		{
+			// System clipboard unavailable - fall through to the in-memory copy.
+		}
+		return clipboardXaml;
+	}
+
+	/// <summary>
+	/// Applies a design-surface context-menu command as a source edit: copy/paste,
+	/// delete, z-order and wrap-in-container.
+	/// </summary>
+	void OnContextCommandOnSurface(object sender, (string Command, string Name) args)
+	{
+		switch (args.Command)
+		{
+			case "copy":
+				if (editor.FindElement(args.Name) is { } copied)
+				{
+					var xaml = copied.ToString(SaveOptions.DisableFormatting);
+					SetClipboardText(xaml);
+					status.Text = "Copied " + args.Name;
+				}
+				break;
+			case "paste":
+				PasteElement(args.Name);
+				break;
+			case "delete":
+				DeleteElement(args.Name);
+				break;
+			case "bring-to-front":
+			case "send-to-back":
+				MoveSelectedToEdge(args.Name, args.Command == "bring-to-front");
+				break;
+			case "wrap-grid":
+			case "wrap-stackpanel":
+				WrapSelected(args.Name, args.Command == "wrap-grid" ? "Grid" : "StackPanel");
+				break;
+		}
+	}
+
+	/// <summary>Inserts the clipboard element into the selected container (or the root).</summary>
+	void PasteElement(string containerName)
+	{
+		var clipboardText = GetClipboardText();
+		if (string.IsNullOrWhiteSpace(clipboardText))
+		{
+			status.Text = "Designer clipboard is empty";
+			return;
+		}
+		var container = editor.FindElement(containerName) ?? editor.Document.Root;
+		if (container == null)
+		{
+			status.Text = "Cannot paste into " + (containerName ?? "root");
+			return;
+		}
+		try
+		{
+			var ns = editor.Document.Root.Name.Namespace;
+			var pasted = XElement.Parse(clipboardText);
+			var typeName = pasted.Name.LocalName;
+			var name = editor.UniqueName(typeName);
+			pasted.Name = ns + typeName;
+			pasted.SetAttributeValue(WinUIXamlDocumentEditor.NameDirective, name);
+			// Strip x:Name on the pasted copy's direct children only when they carry one -
+			// keep it simple: the copied fragment keeps its subtree as-is.
+			container.Add(pasted);
+			ApplyDocumentChange();
+			SelectElement(name);
+			status.Text = "Pasted " + name;
+		}
+		catch (Exception e)
+		{
+			status.Text = "Paste failed: " + e.GetBaseException().Message;
+		}
+	}
+
+	/// <summary>Moves the element to the first or last position of its parent (z-order).</summary>
+	void MoveSelectedToEdge(string name, bool front)
+	{
+		var element = editor.FindElement(name);
+		if (element?.Parent is not XContainer parent)
+			return;
+		element.Remove();
+		if (front)
+			parent.Add(element);
+		else
+			parent.AddFirst(element);
+		ApplyDocumentChange();
+		SelectElement(name);
+	}
+
+	/// <summary>Wraps the selected element in a new Grid or StackPanel container.</summary>
+	void WrapSelected(string name, string containerType)
+	{
+		var element = editor.FindElement(name);
+		if (element?.Parent is not XContainer parent)
+			return;
+		var ns = editor.Document.Root.Name.Namespace;
+		var wrapper = new XElement(ns + containerType);
+		var wrapperName = editor.UniqueName(containerType);
+		wrapper.SetAttributeValue(WinUIXamlDocumentEditor.NameDirective, wrapperName);
+		// Moving the element out of its parent requires it to be re-added in order.
+		element.Remove();
+		parent.Add(wrapper);
+		wrapper.Add(element);
+		ApplyDocumentChange();
+		SelectElement(wrapperName);
+	}
+
+	/// <summary>
+	/// Computes the row/column divider positions (design units, relative to the Grid's top-left)
+	/// for a selected Grid, from its RowDefinitions/ColumnDefinitions. Star rows/columns are
+	/// split proportionally over the remainder; Auto is approximated by sharing the remainder
+	/// evenly - drag-resizing writes explicit pixel sizes back, which is what VS does.
+	/// </summary>
+	/// <summary>Matches a Grid property element (Grid.ColumnDefinitions etc.), tolerating
+	/// the prefix some XAML parsers leave on the local name.</summary>
+	static bool IsNamedElement(XElement e, string kind)
+		=> e.Name.LocalName == kind || e.Name.LocalName.EndsWith("." + kind, StringComparison.Ordinal);
+
+	public (double[] RowOffsets, double[] ColOffsets) GridGuides(string name)
+	{
+		var element = editor.FindElement(name);
+		if (element == null || !string.Equals(element.Name.LocalName, "Grid", StringComparison.Ordinal))
+			return (Array.Empty<double>(), Array.Empty<double>());
+		var bounds = previewHost.QueryElementBounds(name);
+		if (bounds == null)
+			return (Array.Empty<double>(), Array.Empty<double>());
+		var rows = ParseGridLengths(element.Elements().FirstOrDefault(e => IsNamedElement(e, "RowDefinitions")), bounds.Value.Height, isRow: true);
+		var cols = ParseGridLengths(element.Elements().FirstOrDefault(e => IsNamedElement(e, "ColumnDefinitions")), bounds.Value.Width, isRow: false);
+		return (rows, cols);
+	}
+
+	static double[] ParseGridLengths(XElement definitions, double total, bool isRow)
+	{
+		if (definitions == null)
+			return new[] { total };
+		var items = definitions.Elements()
+			.Where(e => IsNamedElement(e, isRow ? "RowDefinition" : "ColumnDefinition"))
+			.ToList();
+		if (items.Count == 0)
+			return new[] { total };
+		var lengths = new (double Pixels, double Weight, bool Auto)[items.Count];
+		double fixedTotal = 0, starTotal = 0;
+		for (var i = 0; i < items.Count; i++)
+		{
+			var value = (string)items[i].Attribute(isRow ? "Height" : "Width");
+			if (string.IsNullOrWhiteSpace(value) || value == "Auto")
+			{
+				lengths[i] = (0, 0, true);
+			}
+			else if (value.EndsWith("*", StringComparison.Ordinal))
+			{
+				var weight = value.TrimEnd('*');
+				var w = string.IsNullOrEmpty(weight) ? 1.0 : double.Parse(weight, CultureInfo.InvariantCulture);
+				lengths[i] = (0, w, false);
+				starTotal += w;
+			}
+			else if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var px))
+			{
+				lengths[i] = (px, 0, false);
+				fixedTotal += px;
+			}
+			else
+			{
+				lengths[i] = (0, 0, true);
+			}
+		}
+		var autoCount = lengths.Count(l => l.Auto);
+		var remainder = Math.Max(0, total - fixedTotal);
+		var starUnit = starTotal > 0 ? remainder / starTotal : 0;
+		var autoSize = autoCount > 0 && starTotal == 0 ? remainder / autoCount : 0;
+		var offsets = new double[items.Count + 1];
+		offsets[0] = 0;
+		for (var i = 0; i < items.Count; i++)
+		{
+			var size = lengths[i].Auto
+				? (starTotal > 0 ? 0 : autoSize)
+				: lengths[i].Pixels + lengths[i].Weight * starUnit;
+			offsets[i + 1] = offsets[i] + size;
+		}
+		return offsets;
+	}
+
+	/// <summary>Sets a Grid column's width (design units) as a source edit; index is the
+	/// column index, width is the divider position from the Grid's left edge.</summary>
+	public string ResizeGridColumn(string name, int index, double position)
+	{
+		var element = editor.FindElement(name);
+		if (element == null || !string.Equals(element.Name.LocalName, "Grid", StringComparison.Ordinal))
+			return "Not a Grid";
+		return SetGridLength(element, name, index, position, isRow: false);
+	}
+
+	/// <summary>Sets a Grid row's height (design units) as a source edit; index is the row
+	/// index, position is the divider from the Grid's top edge.</summary>
+	public string ResizeGridRow(string name, int index, double position)
+	{
+		var element = editor.FindElement(name);
+		if (element == null || !string.Equals(element.Name.LocalName, "Grid", StringComparison.Ordinal))
+			return "Not a Grid";
+		return SetGridLength(element, name, index, position, isRow: true);
+	}
+
+	string SetGridLength(XElement grid, string gridName, int index, double position, bool isRow)
+	{
+		var definitions = grid.Elements().FirstOrDefault(e => IsNamedElement(e, isRow ? "RowDefinitions" : "ColumnDefinitions"));
+		if (definitions == null)
+			return "Grid has no " + (isRow ? "RowDefinitions" : "ColumnDefinitions");
+		var items = definitions.Elements()
+			.Where(e => IsNamedElement(e, isRow ? "RowDefinition" : "ColumnDefinition"))
+			.ToList();
+		if (index < 0 || index >= items.Count)
+			return "Index out of range";
+		var bounds = previewHost.QueryElementBounds(gridName);
+		if (bounds == null)
+			return "Grid bounds unknown";
+		var lengths = ParseGridLengths(definitions, isRow ? bounds.Value.Height : bounds.Value.Width, isRow);
+		// Convert the divider position into a size for THIS row/column: its share is the
+		// difference between the new divider and the previous divider.
+		var prev = index > 0 ? lengths[index] : 0;
+		var next = index + 1 < lengths.Length ? lengths[index + 1] : (isRow ? bounds.Value.Height : bounds.Value.Width);
+		var newSize = Math.Max(1, position - prev);
+		var attribute = isRow ? "Height" : "Width";
+		editor.SetAttribute(items[index], attribute, Math.Round(newSize).ToString(CultureInfo.InvariantCulture));
+		ApplyDocumentChange();
+		return $"{gridName} {(isRow ? "row" : "column")} {index} -> {Math.Round(newSize)}";
+	}
+
+	/// <summary>
+	/// A pick on an element without an x:Name: map its tree path back to the source, auto-assign
+	/// a unique name (like VS does), and select it - so the Properties pad works for any control,
+	/// not only pre-named ones.
+	/// </summary>
+	void OnElementPathPickedOnSurface(object sender, string path)	{
+		if (string.IsNullOrEmpty(path))
+			return;
+		foreach (var (type, typeIndex) in previewHost.GetPickChain(path))		{
+			if (FindNthSourceElement(type, typeIndex) is { } element)
+			{
+				var name = editor.UniqueName(type);
+				editor.SetAttribute(element, WinUIXamlDocumentEditor.NameDirective, name);
+				ApplyDocumentChange();
+				SelectElement(name);
+				return;
+			}
+		}
+	}
+
+	/// <summary>Finds the index-th element of the given XAML tag name in the source document.</summary>
+	XElement FindNthSourceElement(string typeName, int index)
+	{
+		if (editor.Document?.Root == null || string.IsNullOrEmpty(typeName) || index < 0)
+			return null;
+		var matches = editor.Document.Root.Descendants()
+			.Where(e => string.Equals(e.Name.LocalName, typeName, StringComparison.Ordinal))
+			.ToList();
+		return index < matches.Count ? matches[index] : null;
+	}
+
+	void ApplyElementBounds(XElement element, ElementDragInfo info)
+	{		var positionDeltaX = info.EndX - info.StartX;		var positionDeltaY = info.EndY - info.StartY;
 		var sizeDeltaX = info.EndWidth - info.StartWidth;
 		var sizeDeltaY = info.EndHeight - info.StartHeight;
 
@@ -346,6 +811,170 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		SelectElement(info.Name);
 	}
 
+	/// <summary>
+	/// Aligns all selected elements against the primary selection's edge: "left"/"center"/
+	/// "right" (horizontal) or "top"/"middle"/"bottom" (vertical), landing as margin edits.
+	/// </summary>
+	public string AlignSelection(string mode)
+	{
+		var targets = SelectedElementBounds;
+		if (targets.Count < 2)
+			return "Select at least two elements to align";
+		var (primary, _, _, _, _) = targets[0];
+		var deltas = new List<(string Name, double DX, double DY)>();
+		foreach (var (name, x, y, width, height) in targets)
+		{
+			if (name == primary)
+				continue;
+			var dx = mode switch
+			{
+				"left" => targets[0].X - x,
+				"center" => targets[0].X + targets[0].Width / 2 - (x + width / 2),
+				"right" => targets[0].X + targets[0].Width - (x + width),
+				_ => 0
+			};
+			var dy = mode switch
+			{
+				"top" => targets[0].Y - y,
+				"middle" => targets[0].Y + targets[0].Height / 2 - (y + height / 2),
+				"bottom" => targets[0].Y + targets[0].Height - (y + height),
+				_ => 0
+			};
+			if (Math.Abs(dx) > 0.01 || Math.Abs(dy) > 0.01)
+				deltas.Add((name, dx, dy));
+		}
+		if (deltas.Count == 0)
+			return "Already aligned";
+		ApplyElementDeltas(deltas);
+		return $"{mode} aligned {deltas.Count} element(s)";
+	}
+
+	/// <summary>
+	/// Distributes the selected elements evenly across the selection's bounding box:
+	/// "horizontal" spaces centers along X, "vertical" along Y.
+	/// </summary>
+	public string DistributeSelection(string axis)
+	{
+		var targets = SelectedElementBounds;
+		if (targets.Count < 3)
+			return "Select at least three elements to distribute";
+		if (axis == "horizontal")
+		{
+			var ordered = targets.OrderBy(t => t.X + t.Width / 2).ToList();
+			var min = ordered[0].X + ordered[0].Width / 2;
+			var max = ordered[^1].X + ordered[^1].Width / 2;
+			var step = (max - min) / (ordered.Count - 1);
+			var deltas = new List<(string, double, double)>();
+			for (var i = 1; i < ordered.Count - 1; i++)
+			{
+				var targetCenter = min + step * i;
+				var delta = targetCenter - (ordered[i].X + ordered[i].Width / 2);
+				if (Math.Abs(delta) > 0.01)
+					deltas.Add((ordered[i].Name, delta, 0));
+			}
+			if (deltas.Count == 0)
+				return "Already distributed";
+			ApplyElementDeltas(deltas);
+			return $"distributed {deltas.Count} element(s) horizontally";
+		}
+		if (axis == "vertical")
+		{
+			var ordered = targets.OrderBy(t => t.Y + t.Height / 2).ToList();
+			var min = ordered[0].Y + ordered[0].Height / 2;
+			var max = ordered[^1].Y + ordered[^1].Height / 2;
+			var step = (max - min) / (ordered.Count - 1);
+			var deltas = new List<(string, double, double)>();
+			for (var i = 1; i < ordered.Count - 1; i++)
+			{
+				var targetCenter = min + step * i;
+				var delta = targetCenter - (ordered[i].Y + ordered[i].Height / 2);
+				if (Math.Abs(delta) > 0.01)
+					deltas.Add((ordered[i].Name, 0, delta));
+			}
+			if (deltas.Count == 0)
+				return "Already distributed";
+			ApplyElementDeltas(deltas);
+			return $"distributed {deltas.Count} element(s) vertically";
+		}
+		return "Expected horizontal or vertical, got: " + axis;
+	}
+
+	/// <summary>Matches the selected elements' size to the primary: "width"/"height"/"both".</summary>
+	public string MatchSizeSelection(string mode)
+	{
+		var targets = SelectedElementBounds;
+		if (targets.Count < 2)
+			return "Select at least two elements to match sizes";
+		var (primary, _, _, pw, ph) = targets[0];
+		var changed = 0;
+		foreach (var (name, _, _, w, h) in targets)
+		{
+			if (name == primary)
+				continue;
+			var element = editor.FindElement(name);
+			if (element == null)
+				continue;
+			if (mode is "width" or "both" && Math.Abs(w - pw) > 0.01)
+			{
+				editor.SetAttribute(element, "Width", Math.Round(pw).ToString(CultureInfo.InvariantCulture));
+				changed++;
+			}
+			if (mode is "height" or "both" && Math.Abs(h - ph) > 0.01)
+			{
+				editor.SetAttribute(element, "Height", Math.Round(ph).ToString(CultureInfo.InvariantCulture));
+				changed++;
+			}
+		}
+		if (changed > 0)
+			ApplyDocumentChange();
+		return changed > 0 ? $"matched {mode} of {changed} attribute(s)" : "Already matched";
+	}
+
+	/// <summary>Applies positional deltas to several elements as a single source edit (one undo step).</summary>
+	void ApplyElementDeltas(List<(string Name, double DX, double DY)> deltas)
+	{
+		foreach (var (name, dx, dy) in deltas)
+		{
+			var element = editor.FindElement(name);
+			if (element == null)
+				continue;
+			var (left, top, right, bottom) = ParseMargin((string)element.Attribute("Margin"));
+			var deltaX = (int)Math.Round(dx);
+			var deltaY = (int)Math.Round(dy);
+			switch ((string)element.Attribute("HorizontalAlignment"))
+			{
+				case "Right":
+					right -= deltaX;
+					break;
+				case "Center":
+					left += deltaX;
+					right -= deltaX;
+					break;
+				default:
+					left += deltaX;
+					break;
+			}
+			switch ((string)element.Attribute("VerticalAlignment"))
+			{
+				case "Bottom":
+					bottom -= deltaY;
+					break;
+				case "Center":
+					top += deltaY;
+					bottom -= deltaY;
+					break;
+				default:
+					top += deltaY;
+					break;
+			}
+			if (left != 0 || top != 0 || right != 0 || bottom != 0)
+				editor.SetAttribute(element, "Margin", FormatMargin(left, top, right, bottom));
+			else
+				editor.SetAttribute(element, "Margin", null);
+		}
+		ApplyDocumentChange();
+	}
+
 	static (double Left, double Top, double Right, double Bottom) ParseMargin(string value)
 	{
 		if (string.IsNullOrWhiteSpace(value))
@@ -383,6 +1012,37 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	/// </summary>
 	void OnElementPickedOnSurface(object sender, string name) => SelectElement(name);
 
+	void OnSelectionChangedOnSurface(object sender, IReadOnlyList<string> names)
+	{
+		if (names == null || names.Count == 0)
+			return;
+		// The runtime keeps the primary selection first; sync it to the pad/outline and
+		// remember the full set for multi-element actions.
+		multiSelectedNames.Clear();
+		multiSelectedNames.AddRange(names);
+		SelectElement(names[0]);
+	}
+
+	readonly List<string> multiSelectedNames = new();
+
+	/// <summary>The current multi-selection (primary first), or a single-element list.</summary>
+	public IReadOnlyList<string> MultiSelectedNames
+		=> multiSelectedNames.Count > 0
+			? multiSelectedNames
+			: SelectedElementName == null ? Array.Empty<string>() : new[] { SelectedElementName };
+
+	/// <summary>Sets the design-surface multi-selection programmatically (primary = first).</summary>
+	public void MultiSelect(IReadOnlyList<string> names)
+	{
+		previewHost.SelectElements(names);
+		if (names.Count > 0)
+			SelectElement(names[0]);
+	}
+
+	/// <summary>All selected elements with their design bounds (primary first).</summary>
+	public IReadOnlyList<(string Name, double X, double Y, double Width, double Height)> SelectedElementBounds
+		=> previewHost.SelectedElementBounds;
+
 	/// <summary>
 	/// A real Toolbox drag ends here. It goes through exactly the same insertion path as the
 	/// programmatic one, so a drop cannot diverge from what the rest of the designer does.
@@ -408,7 +1068,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			return;
 		}
 		SelectedElementName = (string)element.Attribute(WinUIXamlDocumentEditor.NameDirective);
-		propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, SetAttributeThroughEditor);
+		propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor);
 		if (SelectedElementName != null)
 			previewHost.ShowSelection(SelectedElementName);
 	}
@@ -450,6 +1110,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	{
 		previewHost.StateChanged -= OnPreviewStateChanged;
 		previewHost.ElementPicked -= OnElementPickedOnSurface;
+		previewHost.ElementPathPicked -= OnElementPathPickedOnSurface;
 		previewHost.ControlDropped -= OnControlDroppedOnSurface;
 		outline.SelectedItemChanged -= OnOutlineSelectionChanged;
 		propertyContainer.Clear();
@@ -485,7 +1146,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 				yield return descendant;
 	}
 
-	static TreeViewItem CreateOutline(XElement element)
+	TreeViewItem CreateOutline(XElement element)
 	{
 		var name = (string)element.Attribute(WinUIXamlDocumentEditor.NameDirective);
 		var item = new TreeViewItem {
@@ -493,10 +1154,115 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			Tag = element,
 			IsExpanded = true
 		};
+		item.ContextMenu = BuildOutlineContextMenu(name);
 		foreach (var child in element.Elements())
 			item.Items.Add(CreateOutline(child));
 		return item;
 	}
+
+	ContextMenu BuildOutlineContextMenu(string name)
+	{
+		var menu = new ContextMenu();
+		void Add(string header, string command)
+		{
+			var entry = new MenuItem { Header = header };
+			entry.Click += (_, _) => OnContextCommandOnSurface(this, (command, name));
+			menu.Items.Add(entry);
+		}
+		Add("Copy", "copy");
+		Add("Paste Into", "paste");
+		menu.Items.Add(new Separator());
+		Add("Delete", "delete");
+		Add("Bring to Front", "bring-to-front");
+		Add("Send to Back", "send-to-back");
+		menu.Items.Add(new Separator());
+		Add("Wrap in Grid", "wrap-grid");
+		Add("Wrap in StackPanel", "wrap-stackpanel");
+		return menu;
+	}
+
+	#region Outline drag-reorder
+
+	TreeViewItem outlineDragItem;
+	Point outlineDragStart;
+
+	void OnOutlineMouseDown(object sender, MouseButtonEventArgs e)
+	{
+		outlineDragItem = GetOutlineItemAt(e.GetPosition(outline)) ?? outlineDragItem;
+		outlineDragStart = e.GetPosition(outline);
+	}
+
+	void OnOutlineMouseMove(object sender, MouseEventArgs e)
+	{
+		if (outlineDragItem == null || e.LeftButton != MouseButtonState.Pressed)
+			return;
+		var position = e.GetPosition(outline);
+		if (Math.Abs(position.X - outlineDragStart.X) < SystemParameters.MinimumHorizontalDragDistance
+			&& Math.Abs(position.Y - outlineDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+		{
+			return;
+		}
+		if (outlineDragItem.Tag is not XElement dragged)
+			return;
+		outlineDragItem = null;
+		DragDrop.DoDragDrop(outline, dragged, DragDropEffects.Move);
+	}
+
+	TreeViewItem GetOutlineItemAt(Point point)
+	{
+		var hit = outline.InputHitTest(point) as DependencyObject;
+		while (hit != null && hit is not TreeViewItem)
+			hit = VisualTreeHelper.GetParent(hit);
+		return hit as TreeViewItem;
+	}
+
+	void OnOutlineDragOver(object sender, DragEventArgs e)
+	{
+		if (e.Data.GetData(typeof(XElement)) is XElement)
+			e.Effects = DragDropEffects.Move;
+		else
+			e.Effects = DragDropEffects.None;
+		e.Handled = true;
+	}
+
+	void OnOutlineDrop(object sender, DragEventArgs e)
+	{
+		e.Handled = true;
+		if (e.Data.GetData(typeof(XElement)) is not XElement dragged)
+			return;
+		var target = GetOutlineItemAt(e.GetPosition(outline))?.Tag as XElement;
+		if (target == null)
+			return;
+		MoveElementUnder(dragged, target);
+	}
+
+	/// <summary>Moves an element under another as a source edit (scriptable outline re-parent).</summary>
+	public string ReparentElement(string name, string targetContainer)
+	{
+		var element = editor.FindElement(name);
+		var target = editor.FindElement(targetContainer);
+		if (element == null || target == null)
+			return "Element or target not found";
+		MoveElementUnder(element, target);
+		return $"moved {name} under {targetContainer}";
+	}
+
+	/// <summary>Moves an element under <paramref name="target"/> as a source
+	/// edit (re-parenting in the Outline tree), refusing cycles and self-moves.</summary>
+	void MoveElementUnder(XElement element, XElement target)
+	{
+		if (element == target || target.Descendants().Contains(element))
+			return;
+		var name = (string)element.Attribute(WinUIXamlDocumentEditor.NameDirective);
+		element.Remove();
+		target.Add(element);
+		ApplyDocumentChange();
+		RebuildOutline();
+		if (name != null)
+			SelectElement(name);
+	}
+
+	#endregion
 
 	#endregion
 }

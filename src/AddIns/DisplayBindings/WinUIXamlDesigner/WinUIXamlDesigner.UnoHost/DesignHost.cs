@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -36,9 +37,54 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		public DesignSnapshot Layout(double width, double height, double dpi)
 			=> HeadlessDispatcher.DispatchAsync(() => LayoutAsync(new LayoutRequest { Width = width, Height = height, Dpi = dpi })).GetAwaiter().GetResult();
 
+		public DesignSnapshot SetTheme(string theme)
+			=> HeadlessDispatcher.DispatchAsync(() => SetThemeAsync(theme)).GetAwaiter().GetResult();
+
 		public AppResourcesResult LoadAppResources(string xaml)
 			=> HeadlessDispatcher.Dispatch(() => LoadAppResourcesCore(xaml));
 
+		/// <summary>Renders the current design again and writes it as a PNG to the given
+		/// path (via Skia, which the WPF-side PNG codecs cannot do under LibreWPF).</summary>
+		public string ExportPng(string path)
+			=> HeadlessDispatcher.DispatchAsync(() => ExportPngAsync(path)).GetAwaiter().GetResult();
+
+		async Task<string> ExportPngAsync(string path)
+		{
+			if (string.IsNullOrEmpty(path) || root is null)
+			{
+				return "Nothing to export (no design loaded)";
+			}
+			try
+			{
+				var dpi = lastDpi > 1.0 ? lastDpi : 1.0;
+				var rtb = new RenderTargetBitmap();
+				var scaled = new Size(root.RenderSize.Width * dpi, root.RenderSize.Height * dpi);
+				await rtb.RenderAsync(root, (int)scaled.Width, (int)scaled.Height);
+				var pixels = await rtb.GetPixelsAsync();
+				var buffer = new byte[pixels.Length];
+				DataReader.FromBuffer(pixels).ReadBytes(buffer);
+				using var bitmap = new SkiaSharp.SKBitmap();
+				var info = new SkiaSharp.SKImageInfo(rtb.PixelWidth, rtb.PixelHeight, SkiaSharp.SKColorType.Bgra8888, SkiaSharp.SKAlphaType.Premul);
+				var pinned = System.Runtime.InteropServices.Marshal.AllocHGlobal(buffer.Length);
+				try
+				{
+					System.Runtime.InteropServices.Marshal.Copy(buffer, 0, pinned, buffer.Length);
+					bitmap.InstallPixels(info, pinned, info.RowBytes);
+					using var data = bitmap.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
+					using var stream = System.IO.File.Create(path);
+					data.SaveTo(stream);
+				}
+				finally
+				{
+					System.Runtime.InteropServices.Marshal.FreeHGlobal(pinned);
+				}
+				return $"Wrote {path} ({rtb.PixelWidth}x{rtb.PixelHeight})";
+			}
+			catch (Exception e)
+			{
+				return "Export failed: " + e.GetBaseException().Message;
+			}
+		}
 		public HitTestResult HitTest(double x, double y)
 			=> HeadlessDispatcher.Dispatch(() => HitTestCore(new HitTestRequest { X = x, Y = y }));
 
@@ -91,7 +137,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			{
 				return null;
 			}
-			if (!typeof(Control).IsAssignableFrom(type) && !typeof(ContentControl).IsAssignableFrom(type))
+			if (!typeof(FrameworkElement).IsAssignableFrom(type))
 			{
 				return null;
 			}
@@ -99,32 +145,191 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			{
 				return null;
 			}
+			// Shell/template parts and navigation hosts make no sense as insertable content.
+			switch (type.Name)
+			{
+				case "Page":
+				case "UserControl":
+				case "Frame":
+				case "Popup":
+				case "ContentDialog":
+				case "Flyout":
+				case "MenuFlyout":
+				case "ContentPresenter":
+				case "ItemsPresenter":
+				case "ContentControl":
+				case "MenuFlyoutItem":
+				case "ToggleMenuFlyoutItem":
+				case "MenuFlyoutSubItem":
+				case "CommandBarFlyout":
+				case "AppBarSeparator":
+				case "NavigationViewItem":
+				case "NavigationViewItemSeparator":
+				case "TreeViewItem":
+				case "TabViewItem":
+				case "ListViewItem":
+				case "GridViewItem":
+				case "ListBoxItem":
+				case "ComboBoxItem":
+				case "MediaPlayerElement":
+					return null;
+			}
 			var name = type.Name;
 			return new ToolboxItemInfo
 			{
 				Name = name,
 				DisplayName = name,
-				Category = "Common",
+				Category = Categorize(name),
 				XamlNamespace = "http://schemas.microsoft.com/winfx/2006/xaml/presentation",
 				Template = BuildDefaultTemplate(name)
 			};
 		}
 
-		/// <summary>Matches the default content the host's editor gives inserted controls.</summary>
+		/// <summary>Maps a WinUI control to its Toolbox group, mirroring the grouping the
+		/// Fluent control gallery uses so the pad reads like the real WinUI toolbox.</summary>
+		static string Categorize(string name)
+		{
+			switch (name)
+			{
+				case "Button":
+				case "RepeatButton":
+				case "ToggleButton":
+				case "HyperlinkButton":
+				case "AppBarButton":
+				case "AppBarToggleButton":
+				case "RadioButton":
+				case "CheckBox":
+				case "ToggleSwitch":
+					return "Buttons";
+
+				case "TextBlock":
+				case "TextBox":
+				case "RichEditBox":
+				case "RichTextBlock":
+				case "RichTextBlockOverflow":
+				case "PasswordBox":
+				case "AutoSuggestBox":
+				case "NumberBox":
+					return "Text";
+
+				case "Grid":
+				case "StackPanel":
+				case "RelativePanel":
+				case "Canvas":
+				case "VariableSizedWrapGrid":
+				case "Border":
+				case "ItemsRepeater":
+				case "ScrollViewer":
+					return "Containers";
+
+				case "ListView":
+				case "GridView":
+				case "ListBox":
+				case "ComboBox":
+				case "ItemsView":
+				case "SelectorBar":
+				case "TreeView":
+				case "Pivot":
+					return "Lists";
+
+				case "Image":
+				case "SymbolIcon":
+				case "FontIcon":
+				case "BitmapIcon":
+				case "PathIcon":
+				case "IconSourceElement":
+					return "Media";
+
+				case "NavigationView":
+				case "TabView":
+				case "SplitView":
+				case "CommandBar":
+				case "MenuBar":
+				case "PersonPicture":
+					return "Navigation";
+
+				case "ProgressBar":
+				case "ProgressRing":
+				case "RatingControl":
+				case "Slider":
+					return "Status & Progress";
+
+				case "InfoBar":
+				case "TeachingTip":
+				case "ToolTip":
+					return "Feedback";
+
+				case "DatePicker":
+				case "TimePicker":
+				case "CalendarDatePicker":
+				case "CalendarView":
+					return "Date & Time";
+
+				case "ColorPicker":
+				case "InkCanvas":
+				case "InkToolbar":
+					return "Ink & Color";
+
+				default:
+					return "Common";
+			}
+		}
+
+		/// <summary>Matches the default content the host's editor gives inserted controls.
+		/// Controls that need a size or a value to be useful on the canvas get sensible
+		/// initial properties; everything else is inserted as an empty element.</summary>
 		static string BuildDefaultTemplate(string name)
 		{
 			var ns = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
 			switch (name)
 			{
 				case "TextBlock":
+					return $"<TextBlock xmlns=\"{ns}\" Text=\"TextBlock\"/>";
 				case "TextBox":
-					return $"<{name} xmlns=\"{ns}\" Text=\"{name}\"/>";
+					return $"<TextBox xmlns=\"{ns}\" Text=\"TextBox\"/>";
+				case "RichEditBox":
+					return $"<RichEditBox xmlns=\"{ns}\" IsReadOnly=\"False\" Height=\"120\"/>";
+				case "PasswordBox":
+					return $"<PasswordBox xmlns=\"{ns}\" Password=\"PasswordBox\"/>";
+				case "NumberBox":
+					return $"<NumberBox xmlns=\"{ns}\" Value=\"0\"/>";
 				case "Button":
 				case "CheckBox":
 				case "HyperlinkButton":
 				case "RadioButton":
 				case "ToggleSwitch":
 					return $"<{name} xmlns=\"{ns}\" Content=\"{name}\"/>";
+				case "RepeatButton":
+				case "ToggleButton":
+				case "AppBarButton":
+				case "AppBarToggleButton":
+					return $"<{name} xmlns=\"{ns}\" Content=\"{name}\"/>";
+				case "Slider":
+					return $"<Slider xmlns=\"{ns}\" Width=\"200\" Minimum=\"0\" Maximum=\"100\" Value=\"50\"/>";
+				case "ProgressBar":
+					return $"<ProgressBar xmlns=\"{ns}\" Width=\"200\" Value=\"40\"/>";
+				case "ProgressRing":
+					return $"<ProgressRing xmlns=\"{ns}\" Width=\"60\" Height=\"60\" IsActive=\"True\"/>";
+				case "RatingControl":
+					return $"<RatingControl xmlns=\"{ns}\" Value=\"3\"/>";
+				case "Image":
+					return $"<Image xmlns=\"{ns}\" Width=\"200\" Height=\"120\"/>";
+				case "AutoSuggestBox":
+					return $"<AutoSuggestBox xmlns=\"{ns}\" PlaceholderText=\"Search\"/>";
+				case "InfoBar":
+					return $"<InfoBar xmlns=\"{ns}\" Title=\"Title\" Message=\"Message\" IsOpen=\"True\"/>";
+				case "CalendarDatePicker":
+					return $"<CalendarDatePicker xmlns=\"{ns}\" Header=\"Date\"/>";
+				case "ColorPicker":
+					return $"<ColorPicker xmlns=\"{ns}\" Color=\"#FF0078D4\"/>";
+				case "ComboBox":
+					return $"<ComboBox xmlns=\"{ns}\" PlaceholderText=\"Select\"><ComboBoxItem Content=\"Item 1\"/><ComboBoxItem Content=\"Item 2\"/></ComboBox>";
+				case "ListBox":
+					return $"<ListBox xmlns=\"{ns}\" Width=\"180\" Height=\"120\"><ListBoxItem Content=\"Item 1\"/><ListBoxItem Content=\"Item 2\"/></ListBox>";
+				case "ListView":
+					return $"<ListView xmlns=\"{ns}\" Width=\"240\" Height=\"160\"><ListViewItem Content=\"Item 1\"/><ListViewItem Content=\"Item 2\"/></ListView>";
+				case "GridView":
+					return $"<GridView xmlns=\"{ns}\" Width=\"240\" Height=\"160\"><GridViewItem Content=\"Item 1\"/><GridViewItem Content=\"Item 2\"/></GridView>";
 				default:
 					return $"<{name} xmlns=\"{ns}\"/>";
 			}
@@ -135,15 +340,93 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			var snapshot = new DesignSnapshot();
 			try
 			{
-				root = (FrameworkElement)Microsoft.UI.Xaml.Markup.XamlReader.Load(request.Xaml);
+				lastXaml = request.Xaml;
+				var xaml = InjectDesignData(request.Xaml);
+				root = (FrameworkElement)Microsoft.UI.Xaml.Markup.XamlReader.Load(xaml);
 				return await FinishLayoutAsync(request.Width, request.Height, request.Dpi, snapshot);
 			}
 			catch (Exception e)
 			{
 				root = null;
-				snapshot.Diagnostics.Add(new DesignDiagnostic { Message = e.GetBaseException().Message });
+				snapshot.Diagnostics.Add(ToDiagnostic(e.GetBaseException()));
 				return snapshot;
 			}
+		}
+
+		/// <summary>
+		/// Design-time data preview: an element carrying <c>d:DesignData="N"</c> (or
+		/// <c>"3;A,B,C"</c> for custom labels) gets placeholder items injected so collection
+		/// controls show content in the designer before any runtime data exists. The
+		/// d:-prefixed attribute (and its namespace/ignorable plumbing) is stripped before
+		/// the runtime XamlReader sees it. Injection happens on the XDocument; the namespace
+		/// cleanup is done on the serialized text (removing xmlns declarations via
+		/// XAttribute.Remove is fragile when the document was just re-enumerated).
+		/// </summary>
+		static string InjectDesignData(string xaml)
+		{
+			if (string.IsNullOrEmpty(xaml) || !xaml.Contains("DesignData", StringComparison.Ordinal))
+			{
+				return xaml;
+			}
+			var xns = "http://schemas.microsoft.com/winfx/2006/xaml";
+			var document = System.Xml.Linq.XDocument.Parse(xaml, System.Xml.Linq.LoadOptions.PreserveWhitespace);
+			foreach (var element in document.Descendants()
+				.Where(e => e.Attributes().Any(a => a.Name.LocalName == "DesignData")).ToList())
+			{
+				var attribute = element.Attributes().First(a => a.Name.LocalName == "DesignData");
+				var value = (string)attribute;
+				var labels = new List<string>();
+				if (value.Contains(';', StringComparison.Ordinal))
+				{
+					var parts = value.Split(';');
+					if (int.TryParse(parts[0].Trim(), out var count))
+					{
+						var custom = parts.Length > 1
+							? parts[1].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+							: Array.Empty<string>();
+						for (var i = 0; i < count; i++)
+							labels.Add(i < custom.Length ? custom[i] : "Item " + (i + 1));
+					}
+				}
+				else if (int.TryParse(value.Trim(), out var n))
+				{
+					for (var i = 1; i <= n; i++)
+						labels.Add("Item " + i);
+				}
+				attribute.Remove();
+				foreach (var label in labels)
+				{
+					element.Add(new System.Xml.Linq.XElement(System.Xml.Linq.XName.Get("String", xns), label));
+				}
+			}
+			using var writer = new StringWriter();
+			document.Save(writer, System.Xml.Linq.SaveOptions.DisableFormatting);
+			xaml = writer.ToString();
+			// Strip the design-time namespace declarations and attributes at the text level.
+			xaml = System.Text.RegularExpressions.Regex.Replace(xaml,
+				@"\s+xmlns:\w+=""[^""]*(expression/blend|openxmlformats)[^""]*""", "");
+			xaml = System.Text.RegularExpressions.Regex.Replace(xaml,
+				@"\s+\w+:Ignorable=""[^""]*""", "");
+			xaml = System.Text.RegularExpressions.Regex.Replace(xaml,
+				@"\s+\w+:DesignData=""[^""]*""", "");
+			return xaml;
+		}
+
+		/// <summary>Builds a diagnostic from a XAML load exception, extracting the line/position
+		/// from the message text ("Line N, position M") so the shell can jump to the error.</summary>
+		static DesignDiagnostic ToDiagnostic(Exception e)
+		{
+			var diagnostic = new DesignDiagnostic { Message = e.Message };
+			var match = System.Text.RegularExpressions.Regex.Match(e.Message,
+				@"[Ll]ine\s+(\d+)(?:[,;]\s*[Pp]osition\s+(\d+))?");
+			if (match.Success)
+			{
+				if (int.TryParse(match.Groups[1].Value, out var line))
+					diagnostic.Line = Math.Max(1, line);
+				if (match.Groups[2].Success && int.TryParse(match.Groups[2].Value, out var column))
+					diagnostic.Column = Math.Max(1, column);
+			}
+			return diagnostic;
 		}
 
 		async Task<DesignSnapshot> LayoutAsync(LayoutRequest request)
@@ -157,14 +440,77 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			return await FinishLayoutAsync(request.Width, request.Height, request.Dpi, snapshot);
 		}
 
+		/// <summary>Switches the design's theme (Light/Dark) and re-renders, so ThemeResource
+		/// lookups resolve against the chosen theme. The headless tree has no XamlRoot, so
+		/// element-level RequestedTheme cannot drive the resource re-resolution on its own;
+		/// instead the application-level explicit theme is set through the same internal
+		/// route Application.RequestedTheme would take (blocked post-initialization), and the
+		/// design is reloaded so {ThemeResource} values resolve under the new active theme.</summary>
+		async Task<DesignSnapshot> SetThemeAsync(string theme)
+		{
+			var snapshot = new DesignSnapshot();
+			if (root is null)
+			{
+				snapshot.Diagnostics.Add(new DesignDiagnostic { Message = "No design loaded." });
+				return snapshot;
+			}
+			try
+			{
+				SetApplicationThemeReflectively(theme);
+				return await LoadDesignAsync(new LoadDesignRequest
+				{
+					Xaml = lastXaml,
+					Width = lastWidth,
+					Height = lastHeight,
+					Dpi = lastDpi
+				});
+			}
+			catch (Exception e)
+			{
+				snapshot.Diagnostics.Add(new DesignDiagnostic { Message = e.GetBaseException().Message });
+				return snapshot;
+			}
+		}
+
+		/// <summary>
+		/// Uno blocks Application.RequestedTheme after initialization, but its internal
+		/// SetExplicitRequestedTheme still works (and is what the hot-reload/theme-change
+		/// paths use): it updates the framework theming state and notifies the core, which
+		/// flips the active theme for ThemeResource resolution.
+		/// </summary>
+		static void SetApplicationThemeReflectively(string theme)
+		{
+			var method = typeof(Application).GetMethod("SetExplicitRequestedTheme",
+				System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+			if (method == null)
+			{
+				throw new InvalidOperationException("SetExplicitRequestedTheme not found on Uno's Application.");
+			}
+			ApplicationTheme? value = theme switch
+			{
+				"Dark" => ApplicationTheme.Dark,
+				"Light" => ApplicationTheme.Light,
+				_ => null
+			};
+			method.Invoke(Application.Current, new object[] { value });
+		}
+
+		string lastXaml = "";
+		double lastWidth;
+		double lastHeight;
+		double lastDpi;
+
 		async Task<DesignSnapshot> FinishLayoutAsync(double width, double height, double dpi, DesignSnapshot snapshot)
 		{
 			try
 			{
+				lastWidth = width;
+				lastHeight = height;
+				lastDpi = dpi;
 				var size = new Size(width, height);
 				root!.Measure(size);
 				root.Arrange(new Rect(0, 0, width, height));
-				snapshot.Tree = BuildTree(root, root);
+				snapshot.Tree = BuildTree(root, root, "");
 				snapshot.Render = await RenderAsync(dpi);
 			}
 			catch (Exception e)
@@ -197,6 +543,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 
 		async Task<RenderResult> RenderAsync(double dpi)
 		{
+			var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 			var rtb = new RenderTargetBitmap();
 			// The headless visual tree has no display, so its system scale is 1.0 and an
 			// unscaled render would be soft on a Retina display. Uno's RenderTargetBitmap
@@ -217,13 +564,24 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			var pixels = await rtb.GetPixelsAsync();
 			var buffer = new byte[pixels.Length];
 			DataReader.FromBuffer(pixels).ReadBytes(buffer);
-			return new RenderResult
+			// The frame travels as deflate-compressed BGRA (base64): a 2x design bitmap is
+			// tens of MB raw, and UI frames compress very well - typically 10-30x smaller
+			// over the RPC pipe. The parent decompresses before presenting.
+			using (var stream = new MemoryStream())
 			{
-				Width = rtb.PixelWidth,
-				Height = rtb.PixelHeight,
-				Dpi = Math.Max(1.0, dpi),
-				Data = Convert.ToBase64String(buffer)
-			};
+				using (var deflate = new System.IO.Compression.DeflateStream(stream, System.IO.Compression.CompressionLevel.Fastest, leaveOpen: true))
+					deflate.Write(buffer, 0, buffer.Length);
+				stream.Flush();
+				stopwatch.Stop();
+				return new RenderResult
+				{
+					Width = rtb.PixelWidth,
+					Height = rtb.PixelHeight,
+					Dpi = Math.Max(1.0, dpi),
+					Data = Convert.ToBase64String(stream.ToArray()),
+					RenderMs = stopwatch.Elapsed.TotalMilliseconds
+				};
+			}
 		}
 
 		static bool TrySetRasterizationScale(FrameworkElement element, double dpi)
@@ -257,9 +615,11 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		/// coordinates. Template parts are included; the parent maps a pick back to the
 		/// nearest named ancestor, matching the document namescope rule.
 		/// </summary>
-		static ElementNode BuildTree(DependencyObject node, UIElement root)
+		static ElementNode BuildTree(DependencyObject node, UIElement root, string path)
 		{
-			var nodeInfo = new ElementNode();
+			var nodeInfo = new ElementNode {
+				Path = path
+			};
 			if (node is FrameworkElement fe)
 			{
 				nodeInfo.Name = string.IsNullOrEmpty(fe.Name) ? null : fe.Name;
@@ -281,7 +641,8 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				var child = VisualTreeHelper.GetChild(node, i);
 				if (child is UIElement)
 				{
-					nodeInfo.Children.Add(BuildTree(child, root));
+					var childPath = path.Length == 0 ? i.ToString() : path + "," + i;
+					nodeInfo.Children.Add(BuildTree(child, root, childPath));
 				}
 			}
 			return nodeInfo;
@@ -323,7 +684,8 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			// bounds, and report hits innermost-first.
 			var point = new Point(request.X, request.Y);
 			var hits = new List<UIElement>();
-			CollectHits(root, root, point, hits);
+			var paths = new List<string>();
+			CollectHits(root, root, point, hits, paths, "");
 			foreach (var hit in hits)
 			{
 				var name = ResolveName(hit);
@@ -332,17 +694,26 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 					result.Chain.Add(name);
 				}
 			}
+			if (paths.Count > 0)
+			{
+				// Always report the innermost hit's tree path alongside the chain: template parts
+				// can leak names (e.g. a ScrollViewer's internal "Root") that are not backed by
+				// the source, so the shell decides whether the chain yields a selectable name or
+				// falls back to auto-naming the picked element.
+				result.PickPath = paths[0];
+			}
 			return result;
 		}
 
-		static void CollectHits(UIElement element, UIElement root, Point point, List<UIElement> hits)
+		static void CollectHits(UIElement element, UIElement root, Point point, List<UIElement> hits, List<string> paths, string path)
 		{
 			var count = VisualTreeHelper.GetChildrenCount(element);
 			for (var i = 0; i < count; i++)
 			{
 				if (VisualTreeHelper.GetChild(element, i) is UIElement child)
 				{
-					CollectHits(child, root, point, hits);
+					var childPath = path.Length == 0 ? i.ToString() : path + "," + i;
+					CollectHits(child, root, point, hits, paths, childPath);
 				}
 			}
 			if (element is FrameworkElement fe)
@@ -350,6 +721,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				if (GetBoundsInRoot(fe, root).Contains(point))
 				{
 					hits.Add(element);
+					paths.Add(path);
 				}
 			}
 		}

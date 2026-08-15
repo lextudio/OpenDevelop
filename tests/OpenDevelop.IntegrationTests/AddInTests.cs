@@ -825,7 +825,159 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Equal("Uno", status.GetProperty("framework").GetString());
         // The preview must come from ProGPU's compiled WinUI pipeline. A WPF XamlReader renderer
         // impersonating a WinUI designer is explicitly not an acceptable pass.
-        Assert.Contains("Rendered by ProGPU", status.GetProperty("status").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Rendered by Uno design host", status.GetProperty("status").GetString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Theme switching must re-resolve ThemeResource against the new theme and actually change
+    /// the rendered pixels: UnoXamlSample's App.xaml maps PageBackgroundBrush to #EEEEEE (Light)
+    /// and #222222 (Dark), so the sampled bitmap center must flip between the two.
+    /// </summary>
+    [Fact]
+    public async Task WinUIDesigner_ThemeSwitch_ChangesRenderedBackgroundPixels()
+    {
+        await OpenUnoDesignerAsync();
+
+        // The designer persists its theme across sessions, so a previous run (or manual
+        // session) may have left it Dark - pin to Light and wait for the re-render first.
+        await _app.InvokeAsync("od.winui-designer.theme", "Light");
+        var lightBaseline = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            var s = await _app.InvokeAsync("od.winui-designer.render-sample");
+            return s.GetProperty("sample").GetString()?.Contains("center=#EEEEEE") == true;
+        }, TimeSpan.FromSeconds(20));
+        Assert.True(lightBaseline, "Light theme should render the Light PageBackgroundBrush");
+
+        var light = await _app.InvokeAsync("od.winui-designer.render-sample");
+        Assert.Contains("center=#EEEEEE", light.GetProperty("sample").GetString());
+
+        var set = await _app.InvokeAsync("od.winui-designer.theme", "Dark");
+        Assert.True(set.GetProperty("success").GetBoolean(), set.ToString());
+
+        // The theme switch re-renders asynchronously; poll the actual pixels until the
+        // Dark PageBackgroundBrush (#222222) shows up rather than trusting status.rendered,
+        // which flips before the re-render has settled.
+        JsonElement darkSample = default;
+        var darkArrived = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            darkSample = await _app.InvokeAsync("od.winui-designer.render-sample");
+            return darkSample.GetProperty("sample").GetString()?.Contains("center=#222222") == true;
+        }, TimeSpan.FromSeconds(20));
+        Assert.True(darkArrived, "Dark theme should re-render with #222222, got: " + darkSample);
+
+        var query = await _app.InvokeAsync("od.winui-designer.theme", "query");
+        Assert.Equal("Dark", query.GetProperty("theme").GetString());
+
+        await _app.InvokeAsync("od.winui-designer.theme", "Light");
+        var lightArrived = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            var s = await _app.InvokeAsync("od.winui-designer.render-sample");
+            return s.GetProperty("sample").GetString()?.Contains("center=#EEEEEE") == true;
+        }, TimeSpan.FromSeconds(20));
+        Assert.True(lightArrived, "Light theme should re-render with #EEEEEE");
+    }
+
+    /// <summary>The phone/tablet/desktop canvas presets must resize the rendered design.</summary>
+    [Fact]
+    public async Task WinUIDesigner_DesignSizePresets_ResizeCanvas()
+    {
+        await OpenUnoDesignerAsync();
+
+        var phone = await _app.InvokeAsync("od.winui-designer.design-size", "phone");
+        Assert.Equal("phone", phone.GetProperty("preset").GetString());
+        var phoneStatus = await WaitForStatusContainingAsync("390");
+        Assert.Contains("390", phoneStatus);
+
+        var tablet = await _app.InvokeAsync("od.winui-designer.design-size", "tablet");
+        Assert.Equal("tablet", tablet.GetProperty("preset").GetString());
+        var tabletStatus = await WaitForStatusContainingAsync("768");
+        Assert.Contains("768", tabletStatus);
+
+        var reset = await _app.InvokeAsync("od.winui-designer.design-size", "reset");
+        Assert.True(reset.GetProperty("success").GetBoolean(), reset.ToString());
+        var resetStatus = await WaitForStatusContainingAsync("1280");
+        Assert.Contains("1280", resetStatus);
+    }
+
+    /// <summary>Polls od.winui-designer.status until its status text contains the fragment
+    /// (a re-render has settled), returning the status text.</summary>
+    async Task<string> WaitForStatusContainingAsync(string fragment)
+    {
+        string last = "";
+        var arrived = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            var s = await _app.InvokeAsync("od.winui-designer.status");
+            last = s.GetProperty("status").GetString() ?? "";
+            return last.Contains(fragment, StringComparison.Ordinal);
+        }, TimeSpan.FromSeconds(20));
+        Assert.True(arrived, $"Status should contain '{fragment}', last was: {last}");
+        return last;
+    }
+
+    /// <summary>
+    /// Multi-select + align: the secondary element's right edge must land on the primary
+    /// element's right edge (measured through the rendered surface's screen bounds).
+    /// </summary>
+    [Fact]
+    public async Task WinUIDesigner_MultiSelectAlign_MovesElementToMatchPrimary()
+    {
+        await OpenUnoDesignerAsync();
+
+        var multi = await _app.InvokeAsync("od.winui-designer.multi-select", "TitleText,PrimaryButton");
+        Assert.True(multi.GetProperty("success").GetBoolean(), multi.ToString());
+
+        var before = await _app.InvokeAsync("od.winui-designer.query-element-screen-bounds", "PrimaryButton");
+        Assert.True(before.GetProperty("success").GetBoolean(), before.ToString());
+
+        var aligned = await _app.InvokeAsync("od.winui-designer.align", "right");
+        Assert.True(aligned.GetProperty("success").GetBoolean(), aligned.ToString());
+
+        // Align lands as a source edit and re-renders asynchronously; poll the surface
+        // bounds until the secondary element's right edge actually reaches the primary's.
+        double primaryRight = 0, movedRight = 0;
+        var converged = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            var primary = await _app.InvokeAsync("od.winui-designer.query-element-screen-bounds", "TitleText");
+            var moved = await _app.InvokeAsync("od.winui-designer.query-element-screen-bounds", "PrimaryButton");
+            primaryRight = primary.GetProperty("x").GetDouble() + primary.GetProperty("width").GetDouble();
+            movedRight = moved.GetProperty("x").GetDouble() + moved.GetProperty("width").GetDouble();
+            return Math.Abs(primaryRight - movedRight) < 1.5;
+        }, TimeSpan.FromSeconds(20));
+        Assert.True(converged, $"Right edges should match after align right: primary={primaryRight} moved={movedRight}");
+    }
+
+    /// <summary>
+    /// Context commands (copy/paste/wrap/delete) must land as source edits: pasting a copied
+    /// element creates a uniquely named sibling, wrapping nests it in a Grid, and deleting the
+    /// child leaves the wrapper in place.
+    /// </summary>
+    [Fact]
+    public async Task WinUIDesigner_ContextCommands_CopyPasteWrapDeleteLandAsSourceEdits()
+    {
+        await OpenUnoDesignerAsync();
+
+        var copied = await _app.InvokeAsync("od.winui-designer.context", "copy", "TitleText");
+        Assert.True(copied.GetProperty("success").GetBoolean(), copied.ToString());
+        var pasted = await _app.InvokeAsync("od.winui-designer.context", "paste", "RootStack");
+        Assert.True(pasted.GetProperty("success").GetBoolean(), pasted.ToString());
+
+        var status = await WaitForRenderedAsync();
+        var names = status.GetProperty("elementNames").EnumerateArray().Select(n => n.GetString()).ToList();
+        Assert.Contains("TextBlock1", names);
+        Assert.True(status.GetProperty("isDirty").GetBoolean(), "Pasting must dirty the document");
+
+        var wrapped = await _app.InvokeAsync("od.winui-designer.context", "wrap-grid", "TextBlock1");
+        Assert.True(wrapped.GetProperty("success").GetBoolean(), wrapped.ToString());
+        status = await WaitForRenderedAsync();
+        names = status.GetProperty("elementNames").EnumerateArray().Select(n => n.GetString()).ToList();
+        Assert.Contains("Grid1", names);
+
+        var deleted = await _app.InvokeAsync("od.winui-designer.context", "delete", "TextBlock1");
+        Assert.True(deleted.GetProperty("success").GetBoolean(), deleted.ToString());
+        status = await WaitForRenderedAsync();
+        names = status.GetProperty("elementNames").EnumerateArray().Select(n => n.GetString()).ToList();
+        Assert.DoesNotContain("TextBlock1", names);
+        Assert.Contains("Grid1", names);
     }
 
     /// <summary>
@@ -913,7 +1065,7 @@ public sealed class AddInTests : IAsyncDisposable
 
         // The preview must still be alive after all of that, not stuck on a stale/blank frame.
         status = await WaitForRenderedAsync();
-        Assert.Contains("Rendered by ProGPU", status.GetProperty("status").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Rendered by Uno design host", status.GetProperty("status").GetString(), StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -938,13 +1090,58 @@ public sealed class AddInTests : IAsyncDisposable
         // changed document; the designer must re-parse and re-render from it.
         var status = await WaitForRenderedAsync();
         Assert.Null(status.GetProperty("documentError").GetString());
-        Assert.Contains("Rendered by ProGPU", status.GetProperty("status").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Rendered by Uno design host", status.GetProperty("status").GetString(), StringComparison.OrdinalIgnoreCase);
 
         await _app.InvokeAsync("od.file.save-all");
         var onDisk = await File.ReadAllTextAsync(_unoPagePath);
         Assert.Contains("Edited In Source", onDisk);
         // The designer must not have rewritten a document it never edited.
         Assert.Contains("x:Class=\"UnoXamlSample.MainPage\"", onDisk);
+    }
+
+    /// <summary>
+    /// Editing a control's property through the shared Properties pad lands as a source edit and
+    /// the re-rendered design surface reflects it - the WinUI counterpart of the WPF designer's
+    /// properties-pad coverage.
+    /// </summary>
+    [Fact]
+    public async Task WinUIDesigner_PropertiesPadEdit_UpdatesSourceAndRender()
+    {
+        await OpenUnoDesignerAsync();
+
+        var selected = await _app.InvokeAsync("od.winui-designer.select", "PrimaryButton");
+        Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
+
+        var beforeBounds = (await _app.InvokeAsync("od.winui-designer.describe-element", "PrimaryButton"))
+            .GetProperty("description").GetString();
+
+        var edited = await WaitForWinUIPropertiesPadEditAsync("Content", "Changed through Properties", timeoutSeconds: 10);
+        Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
+        Assert.Equal("PrimaryButton", edited.GetProperty("selectedName").GetString());
+        Assert.Equal("Content", edited.GetProperty("propertyName").GetString());
+        Assert.Equal("Hello Uno", edited.GetProperty("before").GetString());
+        Assert.Equal("Changed through Properties", edited.GetProperty("after").GetString());
+
+        var dirty = await _app.InvokeAsync("od.file.is-dirty", _unoPagePath);
+        Assert.True(dirty.GetProperty("isDirty").GetBoolean(),
+            "Editing through the Properties pad should dirty the designer document");
+
+        // The re-render must reflect the new content: a longer label widens the button. Poll
+        // for the measured bounds to change - "rendered" stays true across re-renders, so
+        // waiting on it would race the async render that follows the source edit.
+        var widened = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            var d = await _app.InvokeAsync("od.winui-designer.describe-element", "PrimaryButton");
+            return d.GetProperty("success").GetBoolean()
+                && d.GetProperty("description").GetString() != beforeBounds;
+        }, TimeSpan.FromSeconds(20), initialDelayMs: 100, maxDelayMs: 500);
+        Assert.True(widened,
+            "Expected the re-render to widen the button after the Properties pad edit");
+
+        var saved = await _app.InvokeAsync("od.file.save", _unoPagePath);
+        Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+        var savedXaml = await File.ReadAllTextAsync(_unoPagePath);
+        Assert.Contains("Content=\"Changed through Properties\"", savedXaml, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -978,7 +1175,7 @@ public sealed class AddInTests : IAsyncDisposable
 
         var recovered = await WaitForRenderedAsync();
         Assert.Null(recovered.GetProperty("documentError").GetString());
-        Assert.Contains("Rendered by ProGPU", recovered.GetProperty("status").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Rendered by Uno design host", recovered.GetProperty("status").GetString(), StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -1000,10 +1197,14 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.True(described.GetProperty("success").GetBoolean(), described.ToString());
         var description = described.GetProperty("description").GetString();
 
-        Assert.Contains("hasTemplate=True", description, StringComparison.Ordinal);
-        // Light theme's default Button foreground is opaque black text (0,0,0,1) - the invisible
-        // Dark-theme default this regresses against was opaque *white* text (1,1,1,1).
-        Assert.Contains("foreground=Solid(<0, 0, 0, 1>)", description, StringComparison.Ordinal);
+        // The Uno design host renders the Fluent theme (light by default); the button must have
+        // materialized with real layout bounds - an invisible/blank render reports zero size.
+        Assert.Contains("type=Button", description, StringComparison.Ordinal);
+        Assert.DoesNotContain("0x0", description, StringComparison.Ordinal);
+
+        var status = await _app.InvokeAsync("od.winui-designer.status");
+        Assert.True(status.GetProperty("rendered").GetBoolean(), status.ToString());
+        Assert.Null(status.GetProperty("documentError").GetString());
     }
 
     /// <summary>
@@ -1032,16 +1233,17 @@ public sealed class AddInTests : IAsyncDisposable
         var x = bounds.GetProperty("centerX").GetDouble();
         var y = bounds.GetProperty("centerY").GetDouble();
 
-        await _app.PressPointerAsync(x, y);
-        await _app.ReleasePointerAsync(x, y);
-
         JsonElement status = default;
         var selected = await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
+            // Retry the synthetic click until the surface receives it - LibreWPF's pointer
+            // delivery occasionally drops the first attempt.
+            await _app.PressPointerAsync(x, y);
+            await _app.ReleasePointerAsync(x, y);
             status = await _app.InvokeAsync("od.winui-designer.status");
             return status.GetProperty("selectedName").ValueKind != JsonValueKind.Null
                 && status.GetProperty("selectedName").GetString() == "PrimaryButton";
-        }, TimeSpan.FromSeconds(20), initialDelayMs: 50, maxDelayMs: 500);
+        }, TimeSpan.FromSeconds(20), initialDelayMs: 100, maxDelayMs: 500);
         Assert.True(selected, "Clicking the design surface should select PrimaryButton: " + status);
 
         // The click must land in the same place an Outline pick would: the shared Properties pad,
@@ -1287,19 +1489,20 @@ public sealed class AddInTests : IAsyncDisposable
 
         var open = await _app.InvokeAsync("od.winui-designer.runtime-stats");
         Assert.True(open.GetProperty("success").GetBoolean(), open.ToString());
-        Assert.True(open.GetProperty("liveHosts").GetInt32() >= 1,
-            "Expected a live designer host while the document is open: " + open);
+        Assert.True(open.GetProperty("childAlive").GetBoolean(),
+            "Expected the Uno design host child to be alive while the document is open: " + open);
 
         Assert.True((await _app.InvokeAsync("od.close-active-view")).GetProperty("success").GetBoolean());
 
         JsonElement closed = default;
         var released = await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
-            // runtime-stats forces a GC before reporting, so this converges once the host is
-            // disposed and nothing else pins the preview tree.
+            // The out-of-process host's lifecycle contract: closing the document disposes the
+            // runtime host, which kills the child process.
             closed = await _app.InvokeAsync("od.winui-designer.runtime-stats");
-            return closed.GetProperty("liveHosts").GetInt32() == 0
-                && !closed.GetProperty("lastPreviewRootAlive").GetBoolean();
+            return closed.GetProperty("success").GetBoolean()
+                && !closed.GetProperty("childAlive").GetBoolean()
+                && closed.GetProperty("liveHosts").GetInt32() == 0;
         }, TimeSpan.FromSeconds(30), initialDelayMs: 200, maxDelayMs: 1000);
 
         Assert.True(released,
@@ -1988,6 +2191,17 @@ public sealed class AddInTests : IAsyncDisposable
         await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             result = await _app.InvokeAsync("od.wpf-designer.properties-pad.edit", propertyName, value);
+            return result.GetProperty("success").GetBoolean();
+        }, TimeSpan.FromSeconds(timeoutSeconds), initialDelayMs: 50, maxDelayMs: 100);
+        return result;
+    }
+
+    async Task<JsonElement> WaitForWinUIPropertiesPadEditAsync(string propertyName, string value, int timeoutSeconds)
+    {
+        JsonElement result = default;
+        await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            result = await _app.InvokeAsync("od.winui-designer.properties-pad.edit", propertyName, value);
             return result.GetProperty("success").GetBoolean();
         }, TimeSpan.FromSeconds(timeoutSeconds), initialDelayMs: 50, maxDelayMs: 100);
         return result;

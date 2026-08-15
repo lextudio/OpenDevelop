@@ -38,6 +38,12 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		public double Dpi { get; set; } = 1.0;
 	}
 
+	public class ThemeRequest
+	{
+		/// <summary>"Light", "Dark" or "Default".</summary>
+		public string Theme { get; set; } = "";
+	}
+
 	public class DesignSnapshot
 	{
 		public ElementNode? Tree { get; set; }
@@ -54,6 +60,9 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		public double Width { get; set; }
 		public double Height { get; set; }
 		public List<ElementNode> Children { get; set; } = new();
+
+		/// <summary>Child-index path from the root (e.g. "0,2,1"), for mapping a pick back to the source.</summary>
+		public string Path { get; set; } = "";
 	}
 
 	public class DesignDiagnostic
@@ -70,6 +79,8 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		public int Height { get; set; }
 		public double Dpi { get; set; } = 1.0;
 		public string Data { get; set; } = "";
+		/// <summary>Render time in milliseconds (rasterize + compress), for performance reporting.</summary>
+		public double RenderMs { get; set; }
 	}
 
 	public class AppResourcesResult
@@ -88,5 +99,8 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 	{
 		/// <summary>Named elements under the point, innermost first.</summary>
 		public List<string> Chain { get; set; } = new();
+
+		/// <summary>Tree path of the innermost hit when it has no name (the shell maps it to the source and auto-names it).</summary>
+		public string PickPath { get; set; } = "";
 	}
 }

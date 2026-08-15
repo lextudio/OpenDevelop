@@ -20,11 +20,24 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 		if (runtime != null) {
 			runtime.StateChanged += OnRuntimeStateChanged;
 			runtime.ElementPicked += OnRuntimeElementPicked;
-			if (runtime is IWinUIXamlDirectManipulation manipulation)
+			if (runtime is IWinUIXamlMultiSelection multi)
+				multi.SelectionChanged += OnRuntimeSelectionChanged;
+			if (runtime is IWinUIXamlContextCommands context)
+				context.ContextCommandRequested += OnRuntimeContextCommandRequested;
+			if (runtime is IWinUIXamlDirectManipulation manipulation) {
 				manipulation.ElementDragCommitted += OnRuntimeElementDragCommitted;
+				manipulation.ElementGroupDragCommitted += OnRuntimeElementGroupDragCommitted;
+				manipulation.GridGuideDragCommitted += OnRuntimeGridGuideDragCommitted;
+			}
 			if (runtime is IWinUIXamlTextEditing textEditing) {
 				textEditing.ElementDoubleClicked += OnRuntimeElementDoubleClicked;
 				textEditing.TextEditCommitted += OnRuntimeTextEditCommitted;
+			}
+			if (runtime is IWinUIXamlPathPick pathPick)
+				pathPick.ElementPathPicked += OnRuntimeElementPathPicked;
+			if (runtime is IWinUIXamlNudge nudge) {
+				nudge.NudgeRequested += OnRuntimeNudgeRequested;
+				nudge.UndoRedoRequested += OnRuntimeUndoRedoRequested;
 			}
 		}
 		Content = runtime?.WpfSurface ?? new TextBlock {
@@ -45,11 +58,85 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 
 	void OnRuntimeElementPicked(object sender, string name) => ElementPicked?.Invoke(this, name);
 
+	/// <summary>Raised with a design-surface context-menu command and the primary selection.</summary>
+	public event EventHandler<(string Command, string Name)> ContextCommandRequested;
+
+	void OnRuntimeContextCommandRequested(object sender, (string Command, string Name) args)
+		=> ContextCommandRequested?.Invoke(this, args);
+
+	/// <summary>Raised when the design-surface selection (possibly multiple elements) changes.</summary>
+	public event EventHandler<IReadOnlyList<string>> SelectionChanged;
+
+	void OnRuntimeSelectionChanged(object sender, IReadOnlyList<string> names)
+		=> SelectionChanged?.Invoke(this, names);
+
+	/// <summary>The selected element names, primary first.</summary>
+	public IReadOnlyList<string> SelectedNames => runtime is IWinUIXamlMultiSelection multi
+		? multi.SelectedNames
+		: Array.Empty<string>();
+
+	/// <summary>Sets the multi-selection programmatically; the first name becomes primary.</summary>
+	public void SelectElements(IReadOnlyList<string> names)
+	{
+		if (runtime is IWinUIXamlMultiSelection multi)
+			multi.SelectElements(names);
+	}
+
+	/// <summary>Selects a single element, resetting any multi-selection.</summary>
+	public void SelectElement(string name)
+	{
+		if (runtime is IWinUIXamlMultiSelection multi && name != null)
+			multi.SelectElements(new[] { name });
+	}
+
+	/// <summary>The selected element names in design coordinates (name → bounds), primary first.</summary>
+	public IReadOnlyList<(string Name, double X, double Y, double Width, double Height)> SelectedElementBounds
+	{
+		get
+		{
+			var result = new List<(string, double, double, double, double)>();
+			if (runtime is not IWinUIXamlMultiSelection multi)
+				return result;
+			foreach (var name in multi.SelectedNames)
+			{
+				if (QueryElementBounds(name) is { } b)
+					result.Add((name, b.X, b.Y, b.Width, b.Height));
+			}
+			return result;
+		}
+	}
+
 	/// <summary>Raised with a committed design-surface drag (move/resize), if the runtime supports it.</summary>
 	public event EventHandler<ElementDragInfo> ElementDragCommitted;
 
 	void OnRuntimeElementDragCommitted(object sender, ElementDragInfo info)
 		=> ElementDragCommitted?.Invoke(this, info);
+
+	/// <summary>Raised when a multi-selection group drag commits, with each element's delta.</summary>
+	public event EventHandler<IReadOnlyList<(string Name, double DX, double DY)>> ElementGroupDragCommitted;
+
+	void OnRuntimeElementGroupDragCommitted(object sender, IReadOnlyList<(string Name, double DX, double DY)> deltas)
+		=> ElementGroupDragCommitted?.Invoke(this, deltas);
+
+	/// <summary>Raised when a Grid row/column divider drag commits (name, isRow, index, design position).</summary>
+	public event EventHandler<(string Name, bool IsRow, int Index, double Position)> GridGuideDragCommitted;
+
+	void OnRuntimeGridGuideDragCommitted(object sender, (string Name, bool IsRow, int Index, double Position) args)
+		=> GridGuideDragCommitted?.Invoke(this, args);
+
+	/// <summary>Shows the Grid row/column divider guides (design rect + offsets).</summary>
+	public void SetGridGuides(string name, double x, double y, double width, double height, double[] rowOffsets, double[] colOffsets)
+	{
+		if (runtime is IWinUIXamlGridGuides guides)
+			guides.SetGridGuides(name, x, y, width, height, rowOffsets, colOffsets);
+	}
+
+	/// <summary>Hides the Grid row/column divider guides.</summary>
+	public void ClearGridGuides()
+	{
+		if (runtime is IWinUIXamlGridGuides guides)
+			guides.ClearGridGuides();
+	}
 
 	/// <summary>Raised on a design-surface double-click (null = empty space).</summary>
 	public event EventHandler<ElementDoubleClickInfo> ElementDoubleClicked;
@@ -119,6 +206,76 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 		if (runtime is IWinUIXamlDesignView view)
 			view.ResetDesignSize();
 	}
+
+	/// <summary>The runtime's toolbox catalog (the controls its loaded runtime provides), if available.</summary>
+	public IReadOnlyList<ToolboxItemInfo> GetToolboxCatalog()
+		=> runtime is IWinUIXamlToolboxCatalog catalog ? catalog.GetToolboxCatalog() : Array.Empty<ToolboxItemInfo>();
+
+	/// <summary>True while the runtime's child process is alive, when the runtime exposes one.</summary>
+	public bool IsChildProcessAlive => runtime is IWinUIXamlLifecycleProbe probe && probe.IsChildProcessAlive;
+
+	/// <summary>Raised with the tree path of an unnamed element picked on the design surface.</summary>
+	public event EventHandler<string> ElementPathPicked;
+
+	void OnRuntimeElementPathPicked(object sender, string path)
+		=> ElementPathPicked?.Invoke(this, path);
+
+	/// <summary>Raised when the user nudges the selection with arrow keys (design units).</summary>
+	public event EventHandler<(double DX, double DY)> NudgeRequested;
+
+	void OnRuntimeNudgeRequested(object sender, (double DX, double DY) delta)
+		=> NudgeRequested?.Invoke(this, delta);
+
+	/// <summary>Raised when the user presses Ctrl+Z/Ctrl+Y on the surface (undo: true/false).</summary>
+	public event EventHandler<bool> UndoRedoRequested;
+
+	void OnRuntimeUndoRedoRequested(object sender, bool undo)
+		=> UndoRedoRequested?.Invoke(this, undo);
+
+	/// <summary>The picked element's chain (with same-type indexes), for mapping an unnamed pick to the source.</summary>
+	public IReadOnlyList<(string Type, int TypeIndex)> GetPickChain(string path)
+		=> runtime is IWinUIXamlPathPick pick ? pick.GetPickChain(path) : Array.Empty<(string, int)>();
+
+	/// <summary>Switches the design's Light/Dark theme, when the runtime supports it.</summary>
+	public void SetDesignTheme(string theme)
+	{
+		if (runtime is IWinUIXamlTheme themed)
+			themed.SetDesignTheme(theme);
+	}
+
+	/// <summary>Returns "Light" or "Dark" per the current design theme, or null when unsupported.</summary>
+	public string GetDesignTheme()
+		=> runtime is IWinUIXamlTheme themed ? themed.GetDesignTheme() : null;
+
+	/// <summary>Last lines of the Uno child host's stdout/stderr, for diagnosing render issues.</summary>
+	public string ChildLog => runtime.ChildLog;
+
+	/// <summary>The last render's diagnostics (message + source line/column when known).</summary>
+	public IReadOnlyList<(string Message, int Line, int Column)> LastDiagnostics => runtime is IWinUIXamlDiagnostics diagnostics
+		? diagnostics.LastDiagnostics
+		: Array.Empty<(string, int, int)>();
+
+	/// <summary>Exports the current design to a PNG file (via the child host).</summary>
+	public string ExportPng(string path) => runtime.ExportPng(path);
+
+	/// <summary>Performance report of the last render.</summary>
+	public (double RenderMs, int Width, int Height, double Dpi, int CompressedBytes, int RawBytes) RenderTiming()
+		=> runtime.RenderTiming();
+
+	/// <summary>The effective display scale (including any debug simulation).</summary>
+	public double EffectiveDisplayDpi => runtime.EffectiveDisplayDpi;
+
+	/// <summary>Sets or clears the simulated display scale (test hook).</summary>
+	public void SetSimulatedDpi(double? dpi) => runtime.SetSimulatedDpi(dpi);
+
+	/// <summary>Pixel samples ("WxH center=#RRGGBB ...") of the last rendered frame.</summary>
+	public string RenderSample() => runtime.RenderSample();
+
+	/// <summary>Whether the design-space gridlines overlay is shown.</summary>
+	public bool Gridlines => runtime.Gridlines;
+
+	/// <summary>Shows or hides the design-space gridlines overlay.</summary>
+	public void SetGridlines(bool show) => runtime.SetGridlines(show);
 
 	public (double X, double Y, double Width, double Height)? QueryElementBounds(string name) =>
 		runtime?.QueryElementBounds(name);
@@ -216,12 +373,16 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 		if (runtime != null) {
 			runtime.StateChanged -= OnRuntimeStateChanged;
 			runtime.ElementPicked -= OnRuntimeElementPicked;
-			if (runtime is IWinUIXamlDirectManipulation manipulation)
-				manipulation.ElementDragCommitted -= OnRuntimeElementDragCommitted;
+		if (runtime is IWinUIXamlDirectManipulation manipulation) {
+			manipulation.ElementDragCommitted -= OnRuntimeElementDragCommitted;
+			manipulation.ElementGroupDragCommitted -= OnRuntimeElementGroupDragCommitted;
+		}
 			if (runtime is IWinUIXamlTextEditing textEditing) {
 				textEditing.ElementDoubleClicked -= OnRuntimeElementDoubleClicked;
 				textEditing.TextEditCommitted -= OnRuntimeTextEditCommitted;
 			}
+			if (runtime is IWinUIXamlPathPick pathPick)
+				pathPick.ElementPathPicked -= OnRuntimeElementPathPicked;
 		}
 		runtime?.Dispose();
 		runtime = null;
@@ -238,6 +399,22 @@ public interface IWinUIXamlRuntimeHost : IDisposable
 	UIElement WpfSurface { get; }
 	bool HasRenderedPreview { get; }
 	string StatusText { get; }
+	/// <summary>Last lines of the child host process's stdout/stderr, when there is one.</summary>
+	string ChildLog { get; }
+	/// <summary>Pixel samples ("WxH center=#RRGGBB ...") of the last rendered frame.</summary>
+	string RenderSample();
+	/// <summary>Exports the current design to a PNG file.</summary>
+	string ExportPng(string path);
+	/// <summary>Performance report of the last render (ms, size, wire bytes).</summary>
+	(double RenderMs, int Width, int Height, double Dpi, int CompressedBytes, int RawBytes) RenderTiming();
+	/// <summary>The effective display scale (including any debug simulation).</summary>
+	double EffectiveDisplayDpi { get; }
+	/// <summary>Sets or clears the simulated display scale (test hook).</summary>
+	void SetSimulatedDpi(double? dpi);
+	/// <summary>Whether the design-space gridlines overlay is shown.</summary>
+	bool Gridlines { get; }
+	/// <summary>Shows or hides the design-space gridlines overlay.</summary>
+	void SetGridlines(bool show);
 	/// <summary>Raised once an asynchronous <see cref="LoadXaml"/> has settled.</summary>
 	event EventHandler StateChanged;
 	void LoadXaml(string text);
@@ -297,6 +474,115 @@ public interface IWinUIXamlRuntimeHost : IDisposable
 }
 
 /// <summary>
+/// Optional capability: the runtime host switches the design's Light/Dark theme and re-renders.
+/// </summary>
+public interface IWinUIXamlTheme
+{
+	void SetDesignTheme(string theme);
+	string GetDesignTheme();
+}
+
+/// <summary>
+/// Optional capability: the design surface forwards arrow-key nudge requests (design units)
+/// and undo/redo shortcut presses (Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z).
+/// </summary>
+public interface IWinUIXamlNudge
+{
+	event EventHandler<(double DX, double DY)> NudgeRequested;
+	event EventHandler<bool> UndoRedoRequested;
+}
+
+/// <summary>
+/// Optional capability: the design surface offers a context menu (copy/paste/delete,
+/// z-order, wrap-in-container) whose commands are forwarded to the shell for source edits.
+/// </summary>
+public interface IWinUIXamlContextCommands
+{
+	event EventHandler<(string Command, string Name)> ContextCommandRequested;
+}
+
+/// <summary>
+/// Optional capability: the runtime shows draggable row/column divider guides for a
+/// selected Grid, and reports divider drags for source edits.
+/// </summary>
+public interface IWinUIXamlGridGuides
+{
+	void SetGridGuides(string name, double x, double y, double width, double height, double[] rowOffsets, double[] colOffsets);
+	void ClearGridGuides();
+}
+
+/// <summary>
+/// Optional capability: the runtime reports its last render diagnostics (message plus
+/// source line/column when the XAML parser provided them).
+/// </summary>
+public interface IWinUIXamlDiagnostics
+{
+	IReadOnlyList<(string Message, int Line, int Column)> LastDiagnostics { get; }
+}
+
+/// <summary>
+/// Optional capability: the runtime tracks a design-surface selection that may span
+/// multiple elements (primary first), enabling align/distribute actions.
+/// </summary>
+public interface IWinUIXamlMultiSelection
+{
+	IReadOnlyList<string> SelectedNames { get; }
+	event EventHandler<IReadOnlyList<string>> SelectionChanged;
+	void SelectElements(IReadOnlyList<string> names);
+}
+
+/// <summary>
+/// Optional capability: the runtime host maps a pick on an unnamed element back to its tree
+/// path, so the shell can auto-name the element and select it (making the Properties pad work
+/// for controls that lack an x:Name).
+/// </summary>
+public interface IWinUIXamlPathPick
+{
+	/// <summary>Raised with the tree path of an unnamed element under the pick point.</summary>
+	event EventHandler<string> ElementPathPicked;
+	/// <summary>The element at the given tree path, plus each ancestor, with each node's index
+	/// among same-type nodes in tree order (root first).</summary>
+	IReadOnlyList<(string Type, int TypeIndex)> GetPickChain(string path);
+}
+
+/// <summary>
+/// Optional capability: the runtime host reports its child-process lifecycle, so the
+/// runtime-stats probe can assert that closing the document actually releases the host.
+/// </summary>
+public interface IWinUIXamlLifecycleProbe
+{
+	bool IsChildProcessAlive { get; }
+}
+
+/// <summary>
+/// Optional capability: the runtime host reports its toolbox catalog (the controls the loaded
+/// runtime actually provides), so the shared Toolbox pad can match the project's real controls.
+/// </summary>
+public interface IWinUIXamlToolboxCatalog
+{
+	IReadOnlyList<ToolboxItemInfo> GetToolboxCatalog();
+}
+
+/// <summary>A toolbox entry: the control name plus the runtime's default XAML for it.</summary>
+public sealed class ToolboxItemInfo
+{
+	public string Name { get; set; }
+	public string DisplayName { get; set; }
+	public string Category { get; set; }
+	public string Template { get; set; }
+	public string XamlNamespace { get; set; }
+}
+
+/// <summary>A design host diagnostic (parse/render error), with source location when known.</summary>
+public sealed class DesignDiagnostic
+{
+	public string Severity { get; set; } = "Error";
+	public string Message { get; set; } = "";
+	public int Line { get; set; }
+	public int Column { get; set; }
+}
+
+/// <summary>
 /// Optional capability: the runtime host exposes its design surface viewport (pan/zoom)
 /// and the configurable design canvas size. Declined by runtimes without viewport
 /// support (e.g. ProGPU), which simply keeps the current behavior.
@@ -338,6 +624,10 @@ public sealed class ElementDragInfo
 public interface IWinUIXamlDirectManipulation
 {
 	event EventHandler<ElementDragInfo> ElementDragCommitted;
+	/// <summary>Raised when a multi-selection group drag commits, with each element's delta.</summary>
+	event EventHandler<IReadOnlyList<(string Name, double DX, double DY)>> ElementGroupDragCommitted;
+	/// <summary>Raised when a Grid row/column divider drag commits (name, isRow, index, design position).</summary>
+	event EventHandler<(string Name, bool IsRow, int Index, double Position)> GridGuideDragCommitted;
 }
 
 /// <summary>

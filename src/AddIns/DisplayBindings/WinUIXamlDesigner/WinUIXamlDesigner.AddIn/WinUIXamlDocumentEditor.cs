@@ -152,7 +152,7 @@ sealed class WinUIXamlDocumentEditor
 
 	void CommitChange() => Text = Serialize(Document);
 
-	string UniqueName(string controlName)
+	public string UniqueName(string controlName)
 	{
 		var existing = new HashSet<string>(ElementNames(), StringComparer.Ordinal);
 		for (var index = 1; ; index++) {

@@ -18,14 +18,21 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoDesignHost;
 public sealed class UnoDesignClient : IDisposable
 {
 	readonly Process process;
-	readonly TcpClient tcp;
-	readonly JsonRpc rpc;
+	TcpClient tcp;
+	JsonRpc rpc;
 	readonly StringBuilder childLog = new();
 	volatile bool shuttingDown;
 
-	UnoDesignClient(Process process, TcpClient tcp, JsonRpc rpc)
+	UnoDesignClient(Process process)
 	{
 		this.process = process;
+	}
+
+	void Attach(TcpClient tcp, JsonRpc rpc)
+	{
+		// The single instance is constructed with the process (so PumpAsync can collect the
+		// child's stdout/stderr into childLog before RPC is even possible) and receives the
+		// connected pipe afterwards - one instance, one ChildLog, no lost lines.
 		this.tcp = tcp;
 		this.rpc = rpc;
 	}
@@ -57,7 +64,11 @@ public sealed class UnoDesignClient : IDisposable
 	/// Spawns the child, waits for it to connect back on a fresh loopback port and to
 	/// signal readiness, then returns a client that can speak the design protocol.
 	/// </summary>
-	public static async Task<UnoDesignClient> StartAsync(CancellationToken cancellationToken)
+	/// <param name="runtimeConfigPath">The designed project's runtimeconfig.json, to run the
+	/// child inside the project's own dependency graph (its real Uno version and assemblies).
+	/// Null falls back to the child's own deployment.</param>
+	/// <param name="depsFilePath">The designed project's deps.json, paired with the runtimeconfig.</param>
+	public static async Task<UnoDesignClient> StartAsync(string runtimeConfigPath, string depsFilePath, CancellationToken cancellationToken)
 	{
 		var hostDll = LocateChildDll()
 			?? throw new FileNotFoundException("The Uno design host child is not deployed (AddIns/.../WinUIXamlDesigner/UnoHost/WinUIXamlDesigner.UnoHost.dll).");
@@ -66,14 +77,27 @@ public sealed class UnoDesignClient : IDisposable
 		listener.Start();
 		var port = ((IPEndPoint)listener.LocalEndpoint).Port;
 
-		var startInfo = new ProcessStartInfo(FindDotnetHost(), $"exec \"{hostDll}\" --port {port}") {
+		var arguments = $"exec \"{hostDll}\" --port {port}";
+		var useProjectContext = File.Exists(runtimeConfigPath) && File.Exists(depsFilePath);
+		if (useProjectContext)
+		{
+			// Run the child inside the designed project's dependency graph: its deps.json and
+			// runtimeconfig.json make Uno and the project's own assemblies (custom controls,
+			// converters, muxc types, the project's actual Uno version) resolve from the
+			// project's bin. The child loads anything the project does not provide
+			// (StreamJsonRpc) from its own deployment folder, and preloads the project's bin
+			// assemblies so XamlReader can resolve their types.
+			var appBin = Path.GetDirectoryName(runtimeConfigPath);
+			arguments = $"exec --runtimeconfig \"{runtimeConfigPath}\" --depsfile \"{depsFilePath}\" \"{hostDll}\" --port {port} --appbin \"{appBin}\"";
+		}
+		var startInfo = new ProcessStartInfo(FindDotnetHost(), arguments) {
 			UseShellExecute = false,
 			RedirectStandardOutput = true,
 			RedirectStandardError = true,
 			CreateNoWindow = true
 		};
 		var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
-		var client = new UnoDesignClient(process, null!, null!);
+		var client = new UnoDesignClient(process);
 		process.Start();
 
 		var ready = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -93,7 +117,8 @@ public sealed class UnoDesignClient : IDisposable
 			var handler = new HeaderDelimitedMessageHandler(stream, stream, formatter);
 			var rpc = new JsonRpc(handler);
 			rpc.StartListening();
-			return new UnoDesignClient(process, tcp, rpc);
+			client.Attach(tcp, rpc);
+			return client;
 		}
 		catch
 		{
@@ -155,8 +180,19 @@ public sealed class UnoDesignClient : IDisposable
 		=> rpc.InvokeWithParameterObjectAsync<AppResourcesResult>("app/resources",
 			new { xaml }, cancellationToken);
 
+	public Task<DesignSnapshot> SetThemeAsync(string theme, CancellationToken cancellationToken = default)
+		=> rpc.InvokeWithParameterObjectAsync<DesignSnapshot>("design/theme",
+			new { theme }, cancellationToken);
+
+	public Task<string> ExportPngAsync(string path, CancellationToken cancellationToken = default)
+		=> rpc.InvokeWithParameterObjectAsync<string>("design/export-png",
+			new { path }, cancellationToken);
+
 	public Task<HitTestResult> HitTestAsync(double x, double y, CancellationToken cancellationToken = default)
 		=> rpc.InvokeWithParameterObjectAsync<HitTestResult>("design/hit-test", new { x, y }, cancellationToken);
+
+	/// <summary>True while the child process is running and not yet shut down.</summary>
+	public bool IsProcessAlive => !shuttingDown && !process.HasExited;
 
 	public void Dispose()
 	{

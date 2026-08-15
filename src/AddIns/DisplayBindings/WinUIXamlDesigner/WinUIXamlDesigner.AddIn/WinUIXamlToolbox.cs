@@ -33,16 +33,6 @@ public sealed class WinUIXamlToolbox
 
 	WinUIXamlToolbox()
 	{
-		// First milestone stays inside the standard-control whitelist the technote calls for;
-		// project custom controls arrive with the isolated-loading phase.
-		foreach (var name in new[] {
-			"Border", "Button", "CheckBox", "ComboBox", "Grid", "HyperlinkButton", "Image",
-			"ItemsControl", "ListView", "ProgressBar", "ProgressRing", "RadioButton",
-			"ScrollViewer", "Slider", "StackPanel", "TextBlock", "TextBox", "ToggleSwitch"
-		}) {
-			items.Add(new WinUIToolboxItem(name, StandardControlsCategory));
-		}
-
 		// Populate before handing the list to the view: List<T> raises no collection-change
 		// notification, so a view created over the still-empty list would never pick the items up
 		// and would report zero groups forever.
@@ -58,6 +48,29 @@ public sealed class WinUIXamlToolbox
 		VirtualizingStackPanel.SetIsVirtualizing(toolbox, false);
 		toolbox.PreviewMouseLeftButtonDown += OnToolboxMouseDown;
 		toolbox.PreviewMouseMove += OnToolboxMouseMove;
+		toolbox.SelectionChanged += OnToolboxSelectionChanged;
+	}
+
+	/// <summary>
+	/// Replaces the tool list with the active document's runtime catalog (the controls the
+	/// project's actual Uno version loads), falling back to the standard whitelist when the
+	/// host has not reported one yet.
+	/// </summary>
+	public void PopulateFromCatalog(IReadOnlyList<ToolboxItemInfo> catalog)
+	{
+		if (catalog == null || catalog.Count == 0)
+			return;
+		items.Clear();
+		foreach (var tool in catalog)
+		{
+			if (string.IsNullOrWhiteSpace(tool.Name))
+				continue;
+			items.Add(new WinUIToolboxItem(tool.Name, string.IsNullOrEmpty(tool.Category) ? StandardControlsCategory : tool.Category, tool.Template));
+		}
+		// List<T> raises no collection-change notification, so the view must be told to
+		// re-read the source (the ctor populated before Source was assigned; a later catalog
+		// replacement has to refresh explicitly).
+		itemsView.View.Refresh();
 	}
 
 	/// <summary>Data format carrying a dragged tool from this pad to a WinUI/Uno design surface.</summary>
@@ -65,9 +78,11 @@ public sealed class WinUIXamlToolbox
 
 	Point dragStartPoint;
 	WinUIToolboxItem dragStartItem;
+	WinUIToolboxItem draggedItem;
 	// Guards against the re-entrant moves a portable drag delivers while DoDragDrop blocks -
 	// same hazard WpfToolbox documents.
 	bool isDragging;
+	bool reassertingSelection;
 
 	void OnToolboxMouseDown(object sender, MouseButtonEventArgs e)
 	{
@@ -89,6 +104,7 @@ public sealed class WinUIXamlToolbox
 		isDragging = true;
 		try {
 			toolbox.SelectedItem = item;
+			draggedItem = item;
 			// Also carries "ComponentTypeName" (the same format WpfToolbox uses) so dropping a
 			// WinUI/Uno tool onto the plain XAML source editor - AvalonEditViewContent.TextArea_Drop,
 			// which only ever looks for that one format - inserts "<Tag />" there too, not just onto
@@ -98,6 +114,25 @@ public sealed class WinUIXamlToolbox
 			DragDrop.DoDragDrop(toolbox, data, DragDropEffects.Copy);
 		} finally {
 			isDragging = false;
+			draggedItem = null;
+			// The ListBox's internal Selector keeps moving SelectedItem to whichever row is under
+			// the cursor while the button is held during the drag, so reassert the dragged tool -
+			// it must stay selected until the drop on the design surface completes.
+			toolbox.SelectedItem = item;
+		}
+	}
+
+	void OnToolboxSelectionChanged(object sender, SelectionChangedEventArgs e)
+	{
+		// Reassert the dragged item against the Selector's cursor-tracking reassignments for the
+		// whole duration of the drag (portable drag loops keep routing MouseMove through WPF).
+		if (isDragging && draggedItem != null && !reassertingSelection) {
+			reassertingSelection = true;
+			try {
+				toolbox.SelectedItem = draggedItem;
+			} finally {
+				reassertingSelection = false;
+			}
 		}
 	}
 
@@ -135,12 +170,16 @@ static class ToolboxVisualExtensions
 
 public sealed class WinUIToolboxItem
 {
-	public WinUIToolboxItem(string name, string categoryName)
+	public WinUIToolboxItem(string name, string categoryName, string template = "")
 	{
 		Name = name;
 		CategoryName = categoryName;
+		Template = template;
 	}
 
 	public string Name { get; }
 	public string CategoryName { get; }
+
+	/// <summary>The runtime's default XAML for this control (used for drop previews).</summary>
+	public string Template { get; }
 }

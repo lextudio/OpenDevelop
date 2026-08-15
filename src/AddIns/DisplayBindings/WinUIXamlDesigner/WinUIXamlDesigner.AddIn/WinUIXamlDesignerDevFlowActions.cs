@@ -51,6 +51,8 @@ public static class WinUIXamlDesignerDevFlowActions
 			return Failure("No WinUI/Uno designer is active");
 		if (!view.SelectElement(name))
 			return Failure("No element named '" + name + "'; known names: " + string.Join(", ", view.ElementNames()));
+		// A scripted single select must also reset the runtime's selection set.
+		view.MultiSelect(new[] { name });
 		return JsonSerializer.Serialize(new {
 			success = true,
 			selectedName = view.SelectedElementName,
@@ -238,25 +240,19 @@ public static class WinUIXamlDesignerDevFlowActions
 		return Failure("This document has no non-designer view to switch to");
 	}
 
-	[DevFlowAction("od.winui-designer.runtime-stats", Description = "Report WinUI/Uno designer runtime lifecycle probes: how many designer hosts are alive, and whether the last preview tree (and therefore its collectible preview assembly) is still reachable after a GC")]
+	[DevFlowAction("od.winui-designer.runtime-stats", Description = "Report WinUI/Uno designer runtime lifecycle probes: whether the out-of-process design host child is alive (and therefore not yet released after closing the document)")]
 	public static string RuntimeStats()
 	{
-		// The probes live in the ProGPUHost assembly, which this AddIn deliberately does not
-		// reference at compile time - same reflection seam RegisterDevFlowActionsCommand uses.
-		var bootstrap = Type.GetType(
-			"ICSharpCode.WinUIXamlDesigner.ProGPUHost.ProGpuRuntimeHostBootstrap, ICSharpCode.WinUIXamlDesigner.ProGPUHost",
-			throwOnError: false);
-		if (bootstrap == null)
-			return Failure("ProGPU runtime host is not loaded");
-
-		var liveHosts = bootstrap.GetProperty("LiveHostCount",
-			System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)?.GetValue(null);
-		var rootAlive = bootstrap.GetMethod("LastPreviewRootAlive",
-			System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)?.Invoke(null, null);
+		// The out-of-process Uno host is the active renderer: report the active designer's
+		// child-process liveness. (The retired ProGPU probes lived in the ProGPUHost assembly,
+		// which is still deployed but never hosts a design anymore.)
+		var view = ActivateDesigner();
+		var childAlive = view != null && view.IsChildProcessAlive;
 		return JsonSerializer.Serialize(new {
 			success = true,
-			liveHosts = liveHosts as int? ?? -1,
-			lastPreviewRootAlive = rootAlive as bool? ?? true
+			liveHosts = childAlive ? 1 : 0,
+			childAlive,
+			lastPreviewRootAlive = false
 		});
 	}
 
@@ -370,7 +366,7 @@ public static class WinUIXamlDesignerDevFlowActions
 		return Failure("Expected 'query', 'fit' or 'zoom panX panY', got: " + command);
 	}
 
-	[DevFlowAction("od.winui-designer.design-size", Description = "Get or set the design canvas size. 'query' returns the current size; 'reset' restores the default; 'WxH' (e.g. '1366x768') overrides the canvas size for pages without an explicit size")]
+	[DevFlowAction("od.winui-designer.design-size", Description = "Get or set the design canvas size. 'query' returns the current size; 'reset' restores the default; a named preset ('phone' 390x844, 'tablet' 768x1024, 'desktop' 1280x720) or 'WxH' (e.g. '1366x768') overrides the canvas size for pages without an explicit size")]
 	public static string DesignSize(string command = "query")
 	{
 		var view = ActivateDesigner();
@@ -386,6 +382,12 @@ public static class WinUIXamlDesignerDevFlowActions
 			view.ResetDesignSize();
 			return JsonSerializer.Serialize(new { success = true, configured = (double?)null });
 		}
+		var preset = Presets.FirstOrDefault(p => p.Key == command);
+		if (preset.Key != null)
+		{
+			view.SetDesignSize(preset.Width, preset.Height);
+			return JsonSerializer.Serialize(new { success = true, preset = preset.Key, configured = new { width = preset.Width, height = preset.Height } });
+		}
 		var separator = command.IndexOfAny(new[] { 'x', 'X', '*' });
 		if (separator > 0
 			&& double.TryParse(command.Substring(0, separator), NumberStyles.Float, CultureInfo.InvariantCulture, out var width)
@@ -395,8 +397,15 @@ public static class WinUIXamlDesignerDevFlowActions
 			view.SetDesignSize(width, height);
 			return JsonSerializer.Serialize(new { success = true, configured = new { width, height } });
 		}
-		return Failure("Expected 'query', 'reset' or 'WxH' (e.g. '1366x768'), got: " + command);
+		return Failure("Expected 'query', 'reset', a preset (phone/tablet/desktop) or 'WxH' (e.g. '1366x768'), got: " + command);
 	}
+
+	/// <summary>Common form-factor presets for the design canvas.</summary>
+	internal static readonly (string Key, double Width, double Height)[] Presets = {
+		("phone", 390, 844),
+		("tablet", 768, 1024),
+		("desktop", 1280, 720)
+	};
 
 	/// <summary>
 	/// The designer registers as a secondary view alongside the primary AvalonEdit text view, and
@@ -429,4 +438,257 @@ public static class WinUIXamlDesignerDevFlowActions
 	/// </summary>
 	static PropertyGrid PropertyPadGrid =>
 		(SD.Services.GetService(typeof(IPropertyPadHost)) as IPropertyPadHost)?.Grid;
+
+	[DevFlowAction("od.winui-designer.gridlines",
+		Description = "Show or hide the design-space gridlines overlay; pass on/off or omit to query the current state")]
+	public static string Gridlines(string command = "query")
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		if (command == "query")
+			return JsonSerializer.Serialize(new { success = true, gridlines = view.Gridlines });
+		var show = command switch
+		{
+			"on" or "true" or "1" => true,
+			"off" or "false" or "0" => false,
+			_ => (bool?)null
+		};
+		if (show is null)
+			return Failure("Expected on/off/true/false or 'query', got: " + command);
+		view.SetGridlines(show.Value);
+		return JsonSerializer.Serialize(new { success = true, gridlines = show.Value });
+	}
+
+	[DevFlowAction("od.winui-designer.multi-select",
+		Description = "Set the design-surface selection to the named elements (first is primary), for align/distribute/match-size operations")]
+	public static string MultiSelect(string names)
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		var list = names.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+			.Distinct(StringComparer.Ordinal)
+			.ToList();
+		view.MultiSelect(list);
+		return JsonSerializer.Serialize(new { success = true, selected = list });
+	}
+
+	[DevFlowAction("od.winui-designer.align",
+		Description = "Align the selected design elements against the primary selection: left/center/right (horizontal) or top/middle/bottom (vertical), landed as source edits")]
+	public static string Align(string mode)
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		var result = view.AlignSelection(mode);
+		return JsonSerializer.Serialize(new { success = true, result });
+	}
+
+	[DevFlowAction("od.winui-designer.distribute",
+		Description = "Distribute the selected design elements evenly across their bounding box: horizontal or vertical, landed as source edits")]
+	public static string Distribute(string axis)
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		var result = view.DistributeSelection(axis);
+		return JsonSerializer.Serialize(new { success = true, result });
+	}
+
+	[DevFlowAction("od.winui-designer.match-size",
+		Description = "Match the selected elements' size to the primary selection: width/height/both, landed as source edits")]
+	public static string MatchSize(string mode)
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		var result = view.MatchSizeSelection(mode);
+		return JsonSerializer.Serialize(new { success = true, result });
+	}
+
+	[DevFlowAction("od.winui-designer.context",
+		Description = "Invoke a design-surface context command as a source edit: copy/paste/delete/bring-to-front/send-to-back/wrap-grid/wrap-stackpanel")]
+	public static string Context(string command, string name = "")
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		view.InvokeContextCommand(command, name);
+		return JsonSerializer.Serialize(new { success = true, command, name });
+	}
+
+	[DevFlowAction("od.winui-designer.nudge",
+		Description = "Nudge the selected design elements by dx,dy design units as a source edit")]
+	public static string Nudge(double dx, double dy)
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		var result = view.NudgeSelection(dx, dy);
+		return JsonSerializer.Serialize(new { success = true, result });
+	}
+
+	[DevFlowAction("od.winui-designer.reparent",
+		Description = "Move a named element under another container element as a source edit (outline re-parent)")]
+	public static string Reparent(string name, string targetContainer)
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		var result = view.ReparentElement(name, targetContainer);
+		return JsonSerializer.Serialize(new { success = true, result });
+	}
+
+	[DevFlowAction("od.winui-designer.grid-resize",
+		Description = "Resize a Grid row/column as a source edit: name, 'row'|'col', index, divider position in design units")]
+	public static string GridResize(string name, string axis, int index, double position)
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		var result = axis == "row"
+			? view.ResizeGridRow(name, index, position)
+			: view.ResizeGridColumn(name, index, position);
+		return JsonSerializer.Serialize(new { success = true, result });
+	}
+
+	[DevFlowAction("od.winui-designer.activate-design",
+		Description = "Switch the active XAML document to its Design (secondary) view, which re-loads the current source into the designer")]
+	public static string ActivateDesign()
+	{
+		var window = SD.Workbench.ActiveViewContent?.WorkbenchWindow;
+		if (window == null)
+			return Failure("No active document window");
+		for (var index = 0; index < window.ViewContents.Count; index++)
+		{
+			if (window.ViewContents[index] is WinUIXamlDesignerViewContent)
+			{
+				window.SwitchView(index);
+				return JsonSerializer.Serialize(new {
+					success = true,
+					activeViewType = SD.Workbench.ActiveViewContent?.GetType().FullName
+				});
+			}
+		}
+		return Failure("No design view in the active document");
+	}
+
+	[DevFlowAction("od.winui-designer.diagnostics",
+		Description = "Return the design host's diagnostics: the document parse error (documentError) and the render diagnostics (message, line, column)")]
+	public static string Diagnostics()
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		var documentError = view.DocumentErrorWithLocation is { } doc
+			? new { message = doc.Message, line = doc.Line, column = doc.Column }
+			: null;
+		var list = view.LastDiagnostics.Select(d => new { message = d.Message, line = d.Line, column = d.Column }).ToList();
+		return JsonSerializer.Serialize(new { success = true, documentError, renderDiagnostics = list });
+	}
+
+	[DevFlowAction("od.winui-designer.goto-error",
+		Description = "Jump the source view's caret to the first design error's location: the document parse error when present, else the render diagnostic at the given index")]
+	public static string GotoError(int index = 0)
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		(string Message, int Line, int Column) target;
+		if (view.DocumentErrorWithLocation is { } doc)
+			target = (doc.Message, doc.Line, doc.Column);
+		else if (index >= 0 && index < view.LastDiagnostics.Count)
+			target = view.LastDiagnostics[index];
+		else
+			return Failure("No design error to jump to (count: " + view.LastDiagnostics.Count + ")");
+		var line = target.Line > 0 ? target.Line : 1;
+		var column = target.Column > 0 ? target.Column : 1;
+		var result = view.GotoSourceLocation(line, column);
+		return JsonSerializer.Serialize(new { success = true, result, diagnostic = new { message = target.Message, line = target.Line, column = target.Column } });
+	}
+
+	[DevFlowAction("od.winui-designer.render-timing",
+		Description = "Performance report of the last design render: render ms, pixel size, raw vs compressed wire bytes")]
+	public static string RenderTiming()
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		var (ms, width, height, dpi, compressed, raw) = view.RenderTiming();
+		return JsonSerializer.Serialize(new {
+			success = true,
+			renderMs = Math.Round(ms, 1),
+			width, height, dpi,
+			rawBytes = raw,
+			compressedBytes = compressed,
+			compressionRatio = raw > 0 ? Math.Round((double)compressed / raw * 100, 1) : 0
+		});
+	}
+
+	[DevFlowAction("od.winui-designer.debug-dpi",
+		Description = "Test hook: query the effective display scale, simulate a monitor scale change (set N) or clear it (clear) - the poller re-renders on change, as it would on a real monitor move")]
+	public static string DebugDpi(string command = "query")
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		if (command == "query")
+			return JsonSerializer.Serialize(new { success = true, dpi = view.EffectiveDisplayDpi });
+		if (command == "clear")
+		{
+			view.SetSimulatedDpi(null);
+			return JsonSerializer.Serialize(new { success = true, dpi = view.EffectiveDisplayDpi });
+		}
+		if (double.TryParse(command, NumberStyles.Float, CultureInfo.InvariantCulture, out var dpi) && dpi >= 1)
+		{
+			view.SetSimulatedDpi(dpi);
+			return JsonSerializer.Serialize(new { success = true, simulated = dpi });
+		}
+		return Failure("Expected 'query', 'clear' or a scale >= 1, got: " + command);
+	}
+
+	[DevFlowAction("od.winui-designer.export-png",
+		Description = "Export the current design surface to a PNG file at the given path")]
+	public static string ExportPng(string path)
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		var result = view.ExportPng(path);
+		return JsonSerializer.Serialize(new { success = true, result });
+	}
+
+	[DevFlowAction("od.winui-designer.render-sample",
+		Description = "Pixel samples of the last rendered design frame (center/corners as #RRGGBB), to verify a re-render actually changed the drawing")]
+	public static string RenderSample()
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		return JsonSerializer.Serialize(new { success = true, sample = view.RenderSample() });
+	}
+
+	[DevFlowAction("od.winui-designer.child-log",
+		Description = "Return the last lines of the Uno design host child's stdout/stderr (render logs, ready banners, errors)")]
+	public static string ChildLog()
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		return JsonSerializer.Serialize(new { success = true, log = view.ChildLog });
+	}
+
+	[DevFlowAction("od.winui-designer.theme",
+		Description = "Get or set the WinUI/Uno design surface theme; pass theme=Light|Dark to switch (re-renders), or omit it to query the current theme")]
+	public static string Theme(string theme = "query")
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		if (string.Equals(theme, "query", StringComparison.OrdinalIgnoreCase))
+			return JsonSerializer.Serialize(new { success = true, theme = view.GetDesignTheme() });
+		view.SetDesignTheme(theme);
+		return JsonSerializer.Serialize(new { success = true, theme });
+	}
 }

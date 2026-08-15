@@ -1,6 +1,9 @@
 using System;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
+using System.Runtime.Loader;
 using System.Threading;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -12,9 +15,38 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 	{
 		static int Main(string[] args)
 		{
+			InstallOwnDependencyResolver();
+			return Run(args);
+		}
+
+		/// <summary>
+		/// The JIT resolves this method's assembly references (StreamJsonRpc) lazily on its
+		/// first call - after the resolver hook below is installed, unlike Main itself, whose
+		/// body would be JITted before a single line could run.
+		/// </summary>
+		static void InstallOwnDependencyResolver()
+		{
+			// AppContext.BaseDirectory points at the deps.json's location when running inside
+			// the designed project's dependency graph - the host's own deployment is where the
+			// host assembly itself lives.
+			var ownDir = Path.GetDirectoryName(typeof(Program).Assembly.Location);
+			AssemblyLoadContext.Default.Resolving += (_, name) =>
+			{
+				var candidate = Path.Combine(ownDir, name.Name + ".dll");
+				return File.Exists(candidate)
+					? AssemblyLoadContext.Default.LoadFromAssemblyPath(candidate)
+					: null;
+			};
+		}
+
+		static int Run(string[] args)
+		{
 			var port = ParsePort(args);
+			var appBin = ParseArgument(args, "--appbin");
 
 			HeadlessDispatcher.Install();
+
+			PreloadProjectAssemblies(appBin);
 
 			// Connect BEFORE Application.Start: Application.Start installs Uno's
 			// SynchronizationContext, whose continuations are posted to the dispatcher
@@ -49,8 +81,10 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			rpc.AddLocalRpcMethod("initialize", new Func<DesignCapabilities>(Capabilities));
 			rpc.AddLocalRpcMethod("design/load", new Func<string, double, double, double, DesignSnapshot>(LoadDesign));
 			rpc.AddLocalRpcMethod("design/layout", new Func<double, double, double, DesignSnapshot>(Layout));
+			rpc.AddLocalRpcMethod("design/theme", new Func<string, DesignSnapshot>(SetTheme));
 			rpc.AddLocalRpcMethod("app/resources", new Func<string, AppResourcesResult>(LoadAppResources));
 			rpc.AddLocalRpcMethod("design/hit-test", new Func<double, double, HitTestResult>(HitTest));
+			rpc.AddLocalRpcMethod("design/export-png", new Func<string, string>(ExportPng));
 			rpc.AddLocalRpcMethod("shutdown", new Action(Shutdown));
 			rpc.StartListening();
 			Console.Error.WriteLine("UnoDesignHost: listening");
@@ -77,6 +111,43 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			return 0;
 		}
 
+		static string ParseArgument(string[] args, string name)
+		{
+			for (var i = 0; i < args.Length - 1; i++)
+			{
+				if (args[i] == name)
+				{
+					return args[i + 1];
+				}
+			}
+			return null;
+		}
+
+		/// <summary>
+		/// Preloads the designed project's output assemblies so XamlReader's type resolution
+		/// (which scans the loaded assemblies) can find the project's custom controls,
+		/// converters and library types. Runs after the dependency resolver hook so the loads
+		/// resolve through the project's deps; assemblies that fail to load are skipped.
+		/// </summary>
+		static void PreloadProjectAssemblies(string appBin)
+		{
+			if (string.IsNullOrEmpty(appBin) || !Directory.Exists(appBin))
+			{
+				return;
+			}
+			foreach (var dll in Directory.EnumerateFiles(appBin, "*.dll"))
+			{
+				try
+				{
+					AssemblyLoadContext.Default.LoadFromAssemblyPath(dll);
+				}
+				catch
+				{
+					// Not a loadable managed assembly (native lib, incompatible build) - skip.
+				}
+			}
+		}
+
 		static readonly DesignHost host = new(() => null);
 
 		static DesignCapabilities Capabilities()
@@ -86,7 +157,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		}
 		static DesignSnapshot LoadDesign(string xaml, double width, double height, double dpi)
 		{
-			Console.Error.WriteLine($"UnoDesignHost: design/load received ({xaml.Length} chars, {width}x{height})");
+			Console.Error.WriteLine($"UnoDesignHost: design/load received ({xaml.Length} chars, {width}x{height} @ dpi {dpi:0.##})");
 			try { return host.LoadDesign(xaml, width, height, dpi); }
 			catch (Exception e) { LogRpcError("design/load", e); throw; }
 		}
@@ -100,10 +171,21 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			try { return host.LoadAppResources(xaml); }
 			catch (Exception e) { LogRpcError("app/resources", e); throw; }
 		}
+		static DesignSnapshot SetTheme(string theme)
+		{
+			Console.Error.WriteLine($"UnoDesignHost: design/theme received ({theme})");
+			try { return host.SetTheme(theme); }
+			catch (Exception e) { LogRpcError("design/theme", e); throw; }
+		}
 		static HitTestResult HitTest(double x, double y)
 		{
 			try { return host.HitTest(x, y); }
 			catch (Exception e) { LogRpcError("design/hit-test", e); throw; }
+		}
+		static string ExportPng(string path)
+		{
+			try { return host.ExportPng(path); }
+			catch (Exception e) { LogRpcError("design/export-png", e); throw; }
 		}
 		static void Shutdown()
 		{

@@ -39,6 +39,9 @@ public class ElementNode
 	public double Width { get; set; }
 	public double Height { get; set; }
 	public List<ElementNode> Children { get; set; } = new();
+
+	/// <summary>Child-index path from the root (e.g. "0,2,1"), for mapping a pick back to the source.</summary>
+	public string Path { get; set; } = "";
 }
 
 public class DesignDiagnostic
@@ -54,7 +57,24 @@ public class RenderResult
 	public int Width { get; set; }
 	public int Height { get; set; }
 	public double Dpi { get; set; } = 1.0;
+	/// <summary>BGRA32 pixels, deflate-compressed then base64 (see DesignHost.RenderAsync).</summary>
 	public string Data { get; set; } = "";
+	/// <summary>Render time in milliseconds (rasterize + compress), for performance reporting.</summary>
+	public double RenderMs { get; set; }
+}
+
+/// <summary>Shared frame-codec helpers (deflate is applied by the child, undone by the parent).</summary>
+public static class RenderCodec
+{
+	public static byte[] Decode(string data)
+	{
+		var compressed = System.Convert.FromBase64String(data);
+		using var input = new System.IO.MemoryStream(compressed);
+		using var deflate = new System.IO.Compression.DeflateStream(input, System.IO.Compression.CompressionMode.Decompress);
+		using var output = new System.IO.MemoryStream();
+		deflate.CopyTo(output);
+		return output.ToArray();
+	}
 }
 
 public class AppResourcesResult
@@ -67,4 +87,7 @@ public class HitTestResult
 {
 	/// <summary>Named elements under the point, innermost first.</summary>
 	public List<string> Chain { get; set; } = new();
+
+	/// <summary>Tree path of the innermost hit, when it has no name (the shell can map it to the source and auto-name it).</summary>
+	public string PickPath { get; set; } = "";
 }

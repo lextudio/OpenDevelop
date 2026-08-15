@@ -1,19 +1,35 @@
-# WinUI/Uno Designer
+# WinUI Designer Runtimes: Uno, Windows App SDK, and ProGPU
 
-This technote is the dedicated home for the WinUI/Uno designer: architecture decisions, the
+This technote is the dedicated home for the WinUI-family designer: architecture decisions, the
 XAML Studio/ProGPU integration boundary, packaging workflow, the current state, and the
-real-world preview problem catalog (2026-08-14). The cross-designer roadmap (WinForms + WPF +
+real-world preview problem catalog (updated 2026-08-15). The cross-designer roadmap (WinForms + WPF +
 WinUI together), framework detection, provider contracts, phases, and the test matrix live in
 [`xaml-services.md`](xaml-services.md).
 
-Current status: the designer is integrated end-to-end for the `src/Samples/UnoXamlSample`
-fixture (detect → compile → materialize → render → present → edit round-trips, covered by
-`WinUIDesigner_*` integration tests). Real-world Uno projects are blocked at a structural ceiling
-of the current in-process host, not merely missing features — **the decision (2026-08-14) is that
-real-project support requires an out-of-process host**, see
-[the decision record](#out-of-process-host-decision-2026-08-14) and
-[the problem section](#real-world-project-preview-problem-2026-08-14) for what's fixed
-(type-resolution diagnostics) versus what remains blocked (materialization).
+Current status: the out-of-process Uno host is implemented and is the preferred renderer for Uno
+projects. It starts a real Uno 6.5.31 `net10.0-desktop` child, loads XAML and application
+resources, renders a bitmap, returns a visual-tree snapshot and hit-test results, and supplies a
+runtime-derived Toolbox catalog. The WPF-side surface also implements selection overlays, zoom,
+pan, design-size changes, drag/resize source edits, inline text editing, unnamed-element picking,
+and child-process lifecycle probing. The `WinUIDesigner_*` integration tests cover the shared
+source-edit/render path against `src/Samples/UnoXamlSample`.
+
+There are **three supported runtime profiles**, not two interchangeable names for one renderer:
+
+| Project/runtime profile | Renderer | Host model | Current state |
+|---|---|---|---|
+| Uno Platform (`Uno.Sdk`, `Uno.WinUI`) | Bundled Uno 6.5.31 runtime today; project runtime is the target | Out of process | Implemented for the fixture; project-version loading remains |
+| ProGPU WinUI (`ProGPU.WinUI`) | ProGPU's WinUI-shaped runtime and compositor | In process in the LibreWPF shell | Standard-control path implemented; must be routed explicitly |
+| Native WinUI (`Microsoft.WindowsAppSDK`) | The project's Windows App SDK/WinUI runtime | Windows-only, out of process | Planned adapter |
+
+The repository does not yet encode that routing completely. `XamlFrameworkKind` currently has
+only `WinUI` and `Uno`; the detector recognizes Uno and Windows App SDK markers but not
+`ProGPU.WinUI`. Both host factories are then registered globally, with the Uno factory tried
+first whenever its child binary exists, regardless of framework kind. Before calling all three
+profiles product-complete, add an explicit ProGPU profile (or an equivalent runtime discriminator)
+and make each factory decline projects it does not own. ProGPU must not be a silent fallback for
+an Uno or Windows App SDK project, and the Uno child must not claim a ProGPU or native WinUI
+project.
 
 ## Architecture
 
@@ -38,14 +54,42 @@ The submodules are pinned to the WinUI migration commit of `origin/unodevelop`, 
 
 OpenDevelop owns the `externals/xamlstudio` submodule directly; it must not fetch source indirectly through a sibling directory in the UnoDevelop parent repository. The current ingestion baseline is commit `d711d64fed7d07d5c2dda545d255d1007588ab78`; when upgrading the submodule, the renderer compilation, standard control rendering, and error-recovery tests must be re-run.
 
-### WinUI/Uno Host Decision
+### Runtime Routing Decision (2026-08-15)
 
-> **Superseded 2026-08-14:** the in-process ProGPU path described below is retired as a rendering
-> path (no in-process fallback); the out-of-process host is the *only* renderer. See
-> "Out-of-process host decision" and "Out-of-process host scoping" below for the operative
-> architecture. This section is kept as history and for the RPC-host shape it anticipated.
+The common `Microsoft.UI.Xaml` namespace is a source-level compatibility surface, not a CLR type
+identity guarantee. Runtime selection therefore follows project evidence and is never chosen by
+asking which renderer happens to be installed:
 
-The designer runtime uses the special `Microsoft.UI.Xaml` implementation of `ProGPU.WinUI`, not the Uno runtime or `Uno.Sdk`. Uno Platform is only a supported project profile whose shared WinUI XAML is previewed by the ProGPU runtime. ProGPU currently materializes pages through the XAML compiler/Roslyn preview assembly and does not provide `Microsoft.UI.Xaml.Markup.XamlReader`; therefore XAML Studio's preprocessing, binding inspection, diagnostics, and result model remain as original linked source, while the final instantiation point connects to the ProGPU pipeline through `IProGpuXamlExecutor`. The WPF hosting part is built on the ProGPU render surface/`IWindowHost` and plays a role similar to `WindowsFormsHost`.
+1. `Uno.Sdk`, `Uno.WinUI`, or `Uno.UI` selects the out-of-process Uno adapter.
+2. `ProGPU.WinUI` (or an explicit future ProGPU project property) selects the in-process ProGPU
+   adapter. This is the supported cross-platform **WinUI on ProGPU** profile.
+3. `Microsoft.WindowsAppSDK`, `Microsoft.UI.Xaml`, or `UseWinUI=true` selects the native Windows
+   App SDK adapter and is available only on Windows.
+
+The routing order above is also the detector precedence when a project contains incidental
+references from more than one family. A conflicting project should produce a diagnostic rather
+than fall through to a different runtime. The host registry contract remains useful, but its
+factories must be predicates over `XamlFrameworkContext`, not availability-based fallbacks.
+
+ProGPU is a legitimate renderer for projects authored against `ProGPU.WinUI`; it is not a
+compatibility renderer for assemblies built against Uno.WinUI or the Windows App SDK. Conversely,
+the Uno child must run the project's Uno assemblies, and a native WinUI child must run the
+project's Windows App SDK assemblies. No `Microsoft.UI.Xaml` object crosses into the WPF shell in
+any profile.
+
+### ProGPU WinUI Host
+
+> **Updated 2026-08-15:** the in-process ProGPU path is supported for projects targeting
+> `ProGPU.WinUI`. It remains retired as a renderer or fallback for projects targeting Uno.WinUI
+> or the Windows App SDK because those assemblies have incompatible type identities.
+
+This profile uses the `Microsoft.UI.Xaml` implementation supplied by `ProGPU.WinUI`; it does not
+load Uno or Windows App SDK UI assemblies. ProGPU currently materializes pages through its XAML
+compiler/Roslyn preview assembly and does not provide `Microsoft.UI.Xaml.Markup.XamlReader`;
+therefore XAML Studio's preprocessing, binding inspection, diagnostics, and result model remain as
+original linked source, while the final instantiation point connects to the ProGPU pipeline
+through `IProGpuXamlExecutor`. The WPF hosting part is built on the ProGPU render surface/
+`IWindowHost` and plays a role similar to `WindowsFormsHost`.
 
 The current hosting control uses `WgpuContext`, `ProGPU.Scene.Compositor.RenderOffscreen`, and a WPF `WriteableBitmap`. Each arrange rebuilds the render target at the WPF DPI; WPF mouse/wheel/text/focus events are converted into ProGPU `InputSystem` events; unload/dispose cancels the frame callback and releases the staging buffers, textures, compositor, and context. The first version uses GPU-to-CPU readback to verify correctness first; later it should switch to same-device texture sharing between LibreWPF and ProGPU to avoid per-frame synchronous readback.
 
@@ -59,9 +103,10 @@ they are packed from that exact commit and dropped into the same local feed as
 `0.1.0-preview.47`, so there is no version drift and `LibreWPF.ProGPU` preview.41 — which was
 compiled against ProGPU preview.47 — keeps its binary-compatible dependency closure. The
 `ProGPU.*` pattern already present in `NuGet.config`'s `packageSourceMapping` covers the new
-packages without configuration changes. Upstream's default branch has since moved to
-preview.48 and still marks all four packable; if ProGPU ever publishes them, the local copies
-should be dropped rather than upgraded piecemeal.
+packages without configuration changes. Upstream's default branch is at the preview.48 baseline
+(`d63f5cfa`, 2026-08-12) and still marks all four packable; OpenDevelop remains pinned to the
+internally consistent preview.47 package set. If ProGPU publishes the missing packages, the local
+copies should be dropped rather than upgraded piecemeal.
 
 Note that ProGPU exposes **no** runtime XAML parser: `ProGPU.WinUI` contains a
 `Microsoft.UI.Xaml.Markup` namespace and a `MarkupExtension` base type, but no `XamlReader`,
@@ -80,14 +125,12 @@ Implementation order and acceptance items:
 4. After unloading a document, check that threads, windows, events, and the collectible load context are released.
 5. Run at least once on Windows and on each non-Windows target ProGPU currently supports.
 
-The host stays replaceable:
+The shell boundary stays replaceable:
 
-- **In-process ProGPU WPF host (current, first milestone).** A WPF hosting control similar to
-  `WindowsFormsHost`; the renderer stays a separate assembly; this path serves both WinUI and Uno
-  project profiles for the standard-control fixture. Confirmed by the 2026-08-14 investigation
-  below to be a dead end for real projects, not merely a "fallback for untrusted assemblies" as
-  originally scoped — see "Out-of-process host decision (2026-08-14)". **Retired 2026-08-14:** no
-  in-process fallback; the fixture renders through the out-of-process host like any real project.
+- **In-process ProGPU WPF host.** A WPF hosting control similar to `WindowsFormsHost`; the
+  renderer stays a separate assembly. This path serves the ProGPU WinUI profile only. It is a
+  dead end for Uno and native Windows App SDK project assemblies, but that does not invalidate it
+  for projects that actually reference ProGPU.WinUI.
 - **Out-of-process preview host.** A small WinUI/Uno preview process that exchanges XAML, project
   context, viewport, and selection over JSON-RPC, hosting the preview in a native child window or
   a captured surface (the same shape as `DesktopWindowXamlSource` on Windows). This is now the
@@ -95,10 +138,10 @@ The host stays replaceable:
 
 The WPF `XamlReader` compatibility renderer that was implemented at one point is not part of any official path: it conflates the object models, resource semantics, and control capabilities, and must be deleted — tests must not treat its successful rendering as a successful WinUI/Uno designer.
 
-### Out-of-process host decision (2026-08-14)
+### Out-of-process host decision for Uno and native WinUI (2026-08-14; clarified 2026-08-15)
 
-**Decision: real-project support requires an out-of-process host running the actual Uno.WinUI
-runtime.** This supersedes the original framing of out-of-process as merely "Option B, a fallback
+**Decision: Uno and native Windows App SDK project support requires an out-of-process host running
+the project's actual runtime.** This supersedes the original framing of out-of-process as merely "Option B, a fallback
 for untrusted assemblies" (the "Host stays replaceable" list above records the earlier framing).
 Two independent findings from implementing Fix A (below) forced this:
 
@@ -141,22 +184,17 @@ unlike the WinForms designer's own hosting choice (see
 which already runs the real `System.Windows.Forms` in-process via `WindowsFormsHost` with no
 competing reimplementation, so it does not have this specific forcing function.
 
-**What ships now vs. later (updated 2026-08-14, same day):**
+**What ships now vs. later (updated 2026-08-15):**
 
-- **There is no in-process fallback.** The out-of-process host is the *only* renderer path for the
-  WinUI designer, including the `src/Samples/UnoXamlSample` fixture. The in-process ProGPU host
-  (`WinUIXamlDesigner.ProGPUHost`) never reached working real-project materialization (the
-  diagnostics catalog below), so keeping it as "the fallback" would mean maintaining a second
-  renderer of unknown viability while the product ships on the OOP path. The fixture is itself a
-  real Uno project, so a single code path (child process running the project's own runtime) serves
-  both it and real projects; retired ProGPU host code stays in history. `ProGpuRuntimeHost` and
-  `ProGpuXamlExecutor` are superseded by the child host scoped below.
+- **There is no cross-runtime in-process fallback.** The out-of-process Uno host is the only valid
+  renderer for Uno projects, including `src/Samples/UnoXamlSample`. `ProGpuRuntimeHost` and
+  `ProGpuXamlExecutor` remain valid for the separate ProGPU WinUI profile; they must never be used
+  to materialize a project assembly built against Uno.WinUI or the Windows App SDK.
 - Fix A's compile-time half (project assembly as a `MetadataReference`) remains valid for what it
   is - quick in-process feedback - but no longer feeds a product renderer; diagnostics for real
   projects come from the child process's own runtime parser instead.
-- Roadmap item B (ProGPU.WinUI API completion) is **parked**: its only remaining consumer would be
-  the in-process path this section now retires. If the in-process renderer is ever resurrected, B
-  resumes by the frequency ordering recorded below.
+- Roadmap item B (ProGPU.WinUI API completion) remains relevant to the ProGPU WinUI profile, but
+  does not unblock Uno or Windows App SDK compatibility.
 - Out-of-process scoping: see "Out-of-process host scoping (2026-08-14)" below.
 
 ### Out-of-process host scoping (2026-08-14)
@@ -186,33 +224,43 @@ line 6.6.184, and the DotUninstall project's restored graph):
    `MacOSDispatcher`); after setting them, `Application.Start(...)` initializes the full runtime
    (`Application.skia.cs`) without AppKit. The macOS native shim (`UnoNativeMac`/NSApplication) is
    only needed for real windows.
-5. **Dependency-identity packaging.** `dotnet exec --runtimeconfig <project>.runtimeconfig.json
+5. **Dependency-identity packaging (target, not current implementation).** `dotnet exec --runtimeconfig <project>.runtimeconfig.json
    --depsfile <project>.deps.json <host.dll>` makes the child's dependency graph *be* the
    project's dependency graph. The child is a thin shim; all Uno assemblies resolve from the
    project's bin, so the parent "OpenDevelop-side version" problem disappears - the child always
    runs the exact Uno the project references.
 
 **Architecture.** Child process `UnoDesignHost` (Uno.Sdk `net10.0-desktop` console shim, no app
-template): boots headless Uno (fact 4), runs in the project's dependency context (fact 5),
+template): boots headless Uno (fact 4),
 materializes the design surface's current XAML text via `XamlReader.Load` (fact 2), renders
-offscreen via `RenderTargetBitmap` (fact 3), and answers an RPC over stdio. OpenDevelop's shell
+offscreen via `RenderTargetBitmap` (fact 3), and answers StreamJsonRpc calls over loopback TCP.
+OpenDevelop's shell
 (`WinUIXamlDesignerViewContent`, toolbox, property pad, outline, DevFlow actions) keeps its
 contracts; only `WinUIXamlHost`'s backing changes from in-process ProGPU to child-process RPC. The
-fixture (`UnoXamlSample`) is handled by the same child by pointing it at the fixture's own bin.
+fixture (`UnoXamlSample`) is handled by that child using the controls/resources available in the
+child's bundled runtime.
+The checked-in child currently runs its own Uno 6.5.31 `.runtimeconfig.json`/`.deps.json`; it does
+not yet accept a project assembly or run under the opened project's dependency context described
+in fact 5. That is the main remaining boundary between fixture support and version-correct real
+Uno project support.
 
-**Runtime adapters.** One protocol; per-runtime bootloaders. Uno headless Skia is the first
-adapter and the only one reachable from macOS. A WinAppSDK adapter is Windows-only, needs in-child
-Roslyn XAML compilation (WinAppSDK has no `XamlReader`), and is out of scope until the Uno adapter
-is on its feet. ProGPU is retired as a rendering path entirely (see above). The protocol is
-runtime-agnostic so a future adapter is additive.
+**Runtime adapters.** One shell contract; per-runtime bootloaders. Uno headless Skia is the first
+out-of-process adapter and is reachable on macOS. A Windows App SDK adapter is Windows-only and
+remains future work. Contrary to the earlier version of this technote, current Windows App SDK
+WinUI does expose [`Microsoft.UI.Xaml.Markup.XamlReader.Load`](https://learn.microsoft.com/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.markup.xamlreader);
+the adapter investigation should begin with that supported runtime parser and determine its
+custom-control, compiled resource, dispatcher, and offscreen capture constraints before choosing
+Roslyn compilation. ProGPU is the separate in-process adapter for ProGPU.WinUI projects. The
+wire/data contracts remain runtime-neutral so another out-of-process adapter is additive.
 
-**Protocol surface** (JSON-RPC 2.0 over stdio, LSP-style framing already used elsewhere in this
-repo):
+**Protocol surface** (the implementation uses StreamJsonRpc over a fresh loopback TCP connection;
+the child connects back to the parent's listener and logs over redirected stdout/stderr):
 
-- `initialize` `{projectAssembly}` -> `capabilities`: toolbox catalog (categories, glyphs, default
-  XAML template snippets, required namespaces), supported theme resources, parser profile name.
-  The catalog is generated in-child by reflecting the *loaded* runtime assemblies and merged with a
-  per-runtime design-time allowlist - the toolbox always matches the project's actual Uno version.
+- `initialize` -> `capabilities`: runtime name/version and toolbox catalog (categories, default
+  XAML template snippets, required namespaces). The catalog is generated in-child by reflecting
+  the loaded runtime assemblies and applying a design-time allowlist. Today it therefore matches
+  the bundled Uno version; after project-context launch is implemented it must match the project's
+  actual Uno version.
 - `load` `{xaml, viewportWidth, viewportHeight, dpi}` -> `{elementTree, diagnostics}`: materialize
   via `XamlReader.Load`, measure/arrange at the viewport, return the namescope-backed element tree
   (x:Name, type, bounds via `TransformToVisual`) and parse/layout diagnostics. An implicit render
@@ -231,18 +279,22 @@ No child-side mutation protocol in the first milestone.
 
 **Milestones:**
 
-- **M0 - Headless probe (this session):** throwaway console project boots headless Uno on macOS,
-  `XamlReader.Load`s a small XAML, `RenderTargetBitmap` renders it, saves a PNG. Retires facts 2-4
-  live; everything else is ordinary engineering.
-- **M1 - Child host protocol:** `UnoDesignHost` with the stdio JSON-RPC surface above (load,
-  render, hit-test, capabilities, shutdown), exercised by a CLI driver against the fixture's bin.
-- **M2 - OpenDevelop wiring:** `WinUIXamlHost` remote mode - spawn child with the opened project's
-  runtimeconfig/depsfile, present `render` bitmaps on the existing WPF surface, forward pointer
-  input to `hit-test`, selection round-trip to outline/properties. Fixture renders end-to-end.
-- **M3 - Real-project parity:** DotUninstall (`muxc:` types, converters, custom controls,
-  code-behind gaps) renders; diagnostics from the child's parser shown in the status control;
-  viewport resize/re-render on every edit; design-time allowlist for unsupported constructs.
-- **M4 - (Windows-only, later):** WinAppSDK adapter with in-child Roslyn XAML materialization.
+- **M0 - Headless probe: done.** The production child now boots headless Uno, uses
+  `XamlReader.Load`, and renders through `RenderTargetBitmap`.
+- **M1 - Child host protocol: done.** The implemented surface includes capabilities/toolbox,
+  `design/load`, `design/layout`, `app/resources`, hit testing, and shutdown/lifecycle handling.
+- **M2 - OpenDevelop wiring: done for the fixture.** The parent spawns the bundled child, presents PNG
+  frames, consumes the element tree, and supports selection, editing, viewport, and lifecycle
+  operations through the shared shell contracts.
+- **M3 - Real-project parity: in progress.** First launch the child under the opened project's
+  runtimeconfig/depsfile and pass its project assembly. App.xaml and merged-resource preprocessing
+  already exists; then validate DotUninstall-style custom types, converters, compiled resources, and code-behind, and
+  finish line-addressable diagnostics plus a design-time unsupported-construct policy.
+- **M4 - ProGPU routing.** Detect ProGPU.WinUI explicitly, route only that profile to
+  `ProGpuRuntimeHost`, and add a ProGPU-targeted fixture so the Uno child cannot mask regressions.
+- **M5 - Windows-only native WinUI adapter.** Prototype `XamlReader.Load` in a child running the
+  project's Windows App SDK dependency context, then select the capture/materialization strategy
+  from measured limitations rather than assuming Roslyn is mandatory.
 
 ### Designer Chrome Decision
 
@@ -286,14 +338,17 @@ be undone.
 |---|---|---|
 | Document model | XML/XAML nodes, stable IDs, source spans, diagnostics, text edits | AXSG/wxsg and UnoDevelop's UI-free logic |
 | Render protocol | Load/Update, viewport, theme, diagnostics, visual-tree snapshot, selection | New; compatible with both in-process and out-of-process implementations |
-| Renderer | Original `XamlRenderService` preprocessing/binding inspection, plus ProGPU compiler-driven instantiation (there is no runtime `XamlReader`) | Linked XAML Studio toolkit source + `ProGPU.Xaml.Roslyn`/`ProGPU.Xaml.Workspaces` |
-| Runtime host | ProGPU WinUI visual root, render surface, WPF interop; does not parse XAML | New ProGPU-in-WPF host, replaceable by preview RPC/Windows adapter |
+| Renderer | Runtime-specific materialization: ProGPU compiler pipeline, Uno `XamlReader` + `RenderTargetBitmap`, or the future native WinUI adapter | XAML Studio + ProGPU packages for ProGPU; project runtime for OOP adapters |
+| Runtime host | Explicitly selected ProGPU in-process surface, Uno child, or future Windows App SDK child | `IWinUIXamlRuntimeHost` and optional capability interfaces |
 | OpenDevelop adapter | WPF secondary view, host lifecycle, Toolbox/Outline/Properties wiring | OpenDevelop shell + provider contracts |
 | Editing operations | Insert, delete, move, resize, set property → versioned text edits | Three backends share command semantics; each generates its own edits |
 
 Do not treat the runtime visual tree as the only document model. Every operation must ultimately produce an undoable source edit; re-parse and refresh the preview afterwards. This supports invalid intermediate text, Undo/Redo, formatting preservation, and out-of-process renderers.
 
-Custom controls, merged dictionaries, `x:Bind`, and code-behind should not enter the first milestone. The first version loads only the standard controls and resources on a safe allowlist and shows diagnostics/placeholders for unsupported nodes.
+Standard controls remain the minimum acceptance fixture. The implemented Uno path also imports
+App.xaml and local merged dictionaries; custom controls, compiled resources, `x:Bind`, and
+code-behind require real-project validation and clear diagnostics where runtime loading cannot
+reproduce application startup.
 
 ## Toolbox-to-design-surface drop was silently landing at the document root (fixed 2026-08-14)
 
@@ -509,14 +564,103 @@ the shared Error List / Message View (line-navigable, filterable alongside build
 a further improvement, not yet done; `od.winui-designer.status` stays the DevFlow surface either
 way.
 
-**D. Out-of-process host for real-project support.** See "Out-of-process host decision
-(2026-08-14)" and "Out-of-process host scoping (2026-08-14)" above - the only path past the
-type-identity ceiling A hit, now the *only* renderer path (no in-process fallback, decided same
-day). Required for category 3 (`muxc:` types, via the project's own runtime) and for any real
-project whose XAML needs a WinUI API ProGPU.WinUI doesn't implement (category 4-6). Scoped;
-M0 (headless probe) is underway.
+**D. Out-of-process hosts for project-native runtimes.** See "Out-of-process host decision for
+Uno and native WinUI" and "Out-of-process host scoping" above. The Uno M0-M2 implementation is
+present; M3 real-project validation remains. The Windows App SDK adapter is separate Windows-only
+work and should start by probing its real `XamlReader`, dispatcher, resource, and capture behavior.
 
-**Suggested order (updated 2026-08-14):** A's compile-time half stays only as introspection
-tooling. C is done. Scope D is done. Next: execute D's milestones M0 -> M3 (probe, protocol,
-OpenDevelop wiring, real-project parity). B (ProGPU extension) is **parked** - its only consumer,
-the in-process host, is retired.
+**E. Explicit ProGPU WinUI profile.** Add detector evidence and runtime discrimination, make the
+ProGPU and Uno factories decline foreign profiles, and add a ProGPU-targeted integration fixture.
+This turns the existing ProGPU implementation into intentional WinUI-on-ProGPU support instead of
+an availability-based fallback.
+
+**Suggested order (updated 2026-08-15):** fix routing (E) first so tests exercise the intended
+runtime; finish Uno real-project parity (D/M3); extend ProGPU coverage according to B; then build
+the Windows-only native WinUI adapter (D/M5). A remains useful only as ProGPU compilation
+introspection, and C is done.
+
+## Design-surface improvements (2026-08-15)
+
+Follow-on work on the out-of-process host's OpenDevelop shell, all verified live via DevFlow
+and by the `WinUIDesigner_*` integration tests:
+
+### Toolbox is populated from the runtime catalog (18 -> the loaded runtime's controls)
+
+`WinUIXamlToolbox` was a hardcoded 18-item whitelist. The child's `initialize` catalog (built
+by reflecting the loaded `Microsoft.UI.Xaml.Controls` assembly: `FrameworkElement` subclasses
+with a parameterless ctor, denylisted for shell/template parts and navigation hosts) is now
+wired through `IWinUIXamlToolboxCatalog` (`GetToolboxCatalog`) into the shared Toolbox pad
+when the design host reports ready. The fixture now lists 140 controls. The catalog filter was
+widened from `Control`/`ContentControl` to `FrameworkElement` so panels, `TextBlock`, `Border`
+and `Image` are included.
+
+### Unnamed elements are auto-named on pick
+
+Clicking a control without an `x:Name` previously resolved to nothing (the Properties pad
+stayed empty - every pick walked up to a *named* ancestor). Now:
+
+- the child reports the innermost hit's **tree path** (`ElementNode.Path`, `HitTestResult.PickPath`)
+  alongside the name chain (template parts leak names like a ScrollViewer's internal `Root`,
+  so the chain alone cannot tell "unnamed" from "template name");
+- the shell (`IWinUIXamlPathPick.GetPickChain`) maps the path back to the source document
+  (walking up to the first element type the source actually contains), auto-assigns a unique
+  `x:Name` through the editor (undoable, dirtied), and selects it - VS-style.
+
+The pick path mapping is index-based among same-type elements in tree order; template parts of
+the same type as the picked control are a known divergence risk, acceptable for now.
+
+### Toolbox drag keeps the dragged tool selected
+
+`WinUIXamlToolbox` reasserts the dragged item against the ListBox's internal Selector, which
+keeps moving `SelectedItem` to whichever row is under the cursor while the button is held
+during a drag (the hazard `WpfToolbox` documents); the tool stays selected until the drop on
+the design surface completes.
+
+### Scrollbars actually scroll the canvas
+
+The design rect was positioned at `origin + pan + scrollOffset` inside the scroll content, so
+the offset cancelled on screen - dragging the scrollbar thumb did nothing. The rect is now
+anchored at a fixed content position (top-left when zoomed in, centered at fit), the
+ScrollViewer moves it natively, and the scroll range covers the whole design. `ToDesignPoint`,
+`DesignToSurfacePoint` and zoom-at-cursor are scroll-aware; `FitView` resets the scroll.
+
+### Test coverage
+
+- `WinUIDesigner_PropertiesPadEdit_UpdatesSourceAndRender` (new): a property edited through
+  the shared Properties pad lands as a source edit and the re-rendered surface reflects it
+  (the button widens); polls the measured bounds because `rendered` stays true across re-renders.
+- `WinUIDesigner_DragToolboxItemOntoDesignSurface_InsertsIntoDroppedContainer` (existing):
+  real synthetic pointer drag from the Toolbox onto the surface, verifying the drop resolves
+  into the dropped container and lands as a source edit.
+- The retired-ProGPU assertions were updated to the Uno host: `runtime-stats` now reports the
+  child-process lifecycle (`IWinUIXamlLifecycleProbe`), `ClosingDocument` asserts the child
+  dies on close, and `RendersButton` asserts a non-zero rendered button with no diagnostics.
+
+### Project dependency context (A1, 2026-08-15)
+
+The child now runs inside the designed project's dependency graph - the architecture's fact 5
+landed. When the owning project has build output, `UnoDesignClient` spawns the child with
+
+```
+dotnet exec --runtimeconfig <project>.runtimeconfig.json --depsfile <project>.deps.json <host.dll> --port N --appbin <project-bin>
+```
+
+so Uno and every project assembly resolve from the project's bin (the project's real Uno
+version, custom controls, converters, muxc types). Two child-side pieces make this work:
+
+- **Own-dependency resolver**: with the project's deps, `AppContext.BaseDirectory` points at
+  the project bin, not the child's deployment - so the resolver hook loads the child's own
+  non-project dependencies (StreamJsonRpc etc.) from `typeof(Program).Assembly.Location`'s
+  directory. Registered from a helper method because `Main`'s own JIT resolves StreamJsonRpc
+  before the first line runs.
+- **Project-assembly preload**: XamlReader's type resolution scans the *loaded* assemblies
+  (`AppDomain.GetAssemblies()`), so the child preloads the project bin's dlls
+  (`--appbin`); without this, `{using:UnoPropertyGrid}PropertyGridControl` reported
+  "Unable to find type". Verified: `CustomControlPage.xaml` (a page referencing the sample's
+  own `pg:PropertyGridControl`, no event handlers) renders with zero diagnostics, while the
+  unbuilt `UnoXamlSample` fixture falls back to the child's own deployment unchanged.
+
+The compile baseline stays Uno.Sdk 6.5.31 (the API floor); the project's runtime is whatever
+the project references (verified against 6.6.42). The two reflection points into Uno internals
+(`CoreDispatcher.DispatchOverride`, `RootScale._testOverrideScale`) remain the version-risk
+surface; both fail with clear fallbacks.
