@@ -1,0 +1,61 @@
+<AddIn
+	name        = "ASP.NET Core"
+	author      = "LeXtudio"
+	description = "Adds launchSettings.json-aware run/debug support for ASP.NET Core projects"
+	addInManagerHidden = "preinstalled">
+
+	<Manifest>
+		<Identity name="ICSharpCode.AspNetCore"/>
+	</Manifest>
+
+	<Runtime>
+		<Import assembly="ICSharpCode.AspNetCore.AddIn.dll">
+			<ConditionEvaluator name="AspNetCoreProject" class="ICSharpCode.AspNetCore.AddIn.AspNetCoreProjectCondition"/>
+		</Import>
+	</Runtime>
+
+	<Path name="/SharpDevelop/Workbench/ProjectBehaviors">
+		<Condition name="AspNetCoreProject">
+			<Class id="AspNetCoreProjectBehavior" class="ICSharpCode.AspNetCore.AddIn.AspNetCoreProjectBehavior"/>
+		</Condition>
+	</Path>
+
+	<Path name="/SharpDevelop/Autostart">
+		<Class id="ICSharpCode.AspNetCore.AddIn.RegisterDevFlowActionsCommand"
+		       class="ICSharpCode.AspNetCore.AddIn.RegisterDevFlowActionsCommand"/>
+	</Path>
+
+	<Path name="/SharpDevelop/ViewContent/AvalonEdit/SyntaxModes">
+		<SyntaxMode id="AspNetCore.Razor.SyntaxMode"
+		            extensions=".razor"
+		            name="ASP.NET Core Razor"
+		            resource="ICSharpCode.AspNetCore.AddIn.Resources.AspNetCoreRazor.xshd"/>
+	</Path>
+
+	<Path name="/SharpDevelop/Workbench/FileFilter">
+		<FileFilter id="AspNetCore.Razor"
+		            insertbefore="AllFiles"
+		            name="Razor Component Files (*.razor)"
+		            extensions="*.razor"/>
+	</Path>
+
+	<Path name="/SharpDevelop/BackendBindings/ProjectOptions/AllManaged">
+		<Condition name="AspNetCoreProject">
+			<OptionPanel id="AspNetCoreLaunch" label="ASP.NET Core Launch" class="ICSharpCode.AspNetCore.AddIn.AspNetCoreLaunchOptionsPanel"/>
+		</Condition>
+	</Path>
+
+	<Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/ProjectNode">
+		<Condition name="AspNetCoreProject">
+			<MenuItem id="AspNetCorePublishToFolder"
+			          label="Publish to Folder..."
+			          insertafter="Build"
+			          class="ICSharpCode.AspNetCore.AddIn.AspNetCorePublishToFolderCommand"/>
+			<MenuItem id="AspNetCoreScaffold"
+			          label="Add Scaffolded Item..."
+			          insertafter="AspNetCorePublishToFolder"
+			          class="ICSharpCode.AspNetCore.AddIn.AspNetCoreScaffoldCommand"/>
+		</Condition>
+	</Path>
+
+</AddIn>

@@ -1,0 +1,39 @@
+<Project Sdk="LibreWPF.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>ICSharpCode.AspNetCore.AddIn</RootNamespace>
+    <AssemblyName>ICSharpCode.AspNetCore.AddIn</AssemblyName>
+    <UseWPF>true</UseWPF>
+    <OutputType>Library</OutputType>
+    <OutputPath>..\..\..\..\..\AddIns\BackendBindings\AspNetCore\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <!--
+    Windows-hosted binding layer: owns the .addin manifest and everything
+    that needs ICSharpCode.SharpDevelop/ICSharpCode.Core (project behavior,
+    project detection, browser readiness, future options commands).
+    Business logic - the launchSettings.json model and
+    load/save/sync logic - lives in the cross-platform ../AspNetCore.csproj
+    and is referenced here, not duplicated. See
+    doc/technotes/aspnetcore.md, "Proposed plan" / "Current state".
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\AspNetCore.csproj" />
+    <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" Version="0.2.2" Condition="'$(Configuration)' == 'Debug'" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="AspNetCore.addin" />
+	<EmbeddedResource Include="Resources\AspNetCoreRazor.xshd" LogicalName="ICSharpCode.AspNetCore.AddIn.Resources.AspNetCoreRazor.xshd" />
+  </ItemGroup>
+
+  <Target Name="CopyAddInManifest" AfterTargets="Build">
+    <Copy SourceFiles="AspNetCore.addin" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

@@ -93,6 +93,59 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Contains(addins, a => a.GetProperty("fileName").GetString()!.Contains("FSharpBinding.addin"));
     }
 
+	[Fact]
+	public async Task AspNetCoreAddIn_OpensBuildsAndRunsKestrelSample()
+	{
+		var addinsResult = await _app.InvokeAsync("od.addins");
+		Assert.Contains(addinsResult.GetProperty("addins").EnumerateArray(),
+			a => a.GetProperty("fileName").GetString()!.Contains("AspNetCore.addin", StringComparison.Ordinal));
+
+		var opened = await _app.ReopenSolutionAsync(_app.AspNetCoreSampleSolutionPath);
+		Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
+		var build = await _app.InvokeAsync("od.build-solution", "AspNetCoreSample");
+		if (build.GetProperty("result").GetString() != "Success")
+			Assert.Fail(await _app.DescribeBuildAsync(build));
+
+		var razorPath = Path.Combine(Path.GetDirectoryName(_app.AspNetCoreSampleSolutionPath)!, "StatusCard.razor");
+		var razorOpened = await _app.InvokeAsync("od.open-file", razorPath);
+		Assert.True(razorOpened.GetProperty("opened").GetBoolean(), razorOpened.ToString());
+		var razorView = await _app.InvokeAsync("od.active-view");
+		Assert.True(razorView.GetProperty("isAvalonEdit").GetBoolean(), razorView.ToString());
+		Assert.Equal("ASP.NET Core Razor", razorView.GetProperty("syntaxHighlighting").GetString());
+		Assert.Contains("@code", razorView.GetProperty("textPreview").GetString());
+
+		var status = await _app.InvokeAsync("od.aspnetcore.status", "AspNetCoreSample");
+		Assert.True(status.GetProperty("success").GetBoolean(), status.ToString());
+		Assert.True(status.GetProperty("startable").GetBoolean());
+		Assert.Equal("http://localhost:5188", status.GetProperty("applicationUrls").GetString());
+		Assert.Contains("run", status.GetProperty("arguments").EnumerateArray().Select(a => a.GetString()));
+
+		var started = await _app.InvokeAsync("od.aspnetcore.start", "AspNetCoreSample");
+		Assert.True(started.GetProperty("success").GetBoolean(), started.ToString());
+		try
+		{
+			using var client = new HttpClient { Timeout = TimeSpan.FromMilliseconds(500) };
+			var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
+			while (DateTime.UtcNow < deadline)
+			{
+				try
+				{
+					Assert.Equal("healthy", await client.GetStringAsync("http://localhost:5188/health", TestContext.Current.CancellationToken));
+					return;
+				}
+				catch (HttpRequestException) { }
+				catch (TaskCanceledException) { }
+				await Task.Delay(100, TestContext.Current.CancellationToken);
+			}
+			Assert.Fail("ASP.NET Core sample did not become reachable at http://localhost:5188/health");
+		}
+		finally
+		{
+			var stopped = await _app.InvokeAsync("od.aspnetcore.stop");
+			Assert.True(stopped.GetProperty("success").GetBoolean(), stopped.ToString());
+		}
+	}
+
     [Fact]
     public async Task FSharpFixture_LoadsShowsSourceEditsAndBuilds()
     {

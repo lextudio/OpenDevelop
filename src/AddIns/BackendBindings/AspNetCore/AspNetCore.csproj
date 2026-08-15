@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>ICSharpCode.AspNetCore</RootNamespace>
+    <AssemblyName>ICSharpCode.AspNetCore</AssemblyName>
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+
+  <!--
+    This is the cross-platform core: the launchSettings.json model plus the
+    launch-profile load/save/selection and process-command logic, with zero
+    dependency on ICSharpCode.SharpDevelop/ICSharpCode.Core (both require
+    net10.0-windows for WPF/WinForms). AddInTree integration - IProjectBinding
+    hookup, menu commands, options panel - lives in the sibling Binding/
+    project instead, which references this one. See
+    doc/technotes/aspnetcore.md, "Proposed plan" / "Current state".
+  -->
+
+  <ItemGroup>
+    <Compile Remove="Binding\**\*.cs" />
+    <Compile Remove="Tests\**\*.cs" />
+  </ItemGroup>
+
+  <!--
+	The immutable launch-profile interfaces remain linked from
+	MonoDevelop.AspNetCore (externals/monodevelop submodule, MIT/Apache-2.0,
+	itself ported from dotnet/project-system). Its legacy JSON-dependent
+	data/parser files are replaced by local System.Text.Json ports.
+    LaunchProfileProvider/AspNetCoreRunConfiguration etc. are NOT linked: they
+    depend on MonoDevelop.Projects.DotNetProject. Their applicable behavior is
+    ported in AspNetCoreLaunchProfileProvider/AspNetCoreLaunchCommand and the
+    sibling Binding project.
+  -->
+  <ItemGroup>
+    <Compile Include="..\..\..\..\externals\monodevelop\main\src\addins\MonoDevelop.AspNetCore\MonoDevelop.AspNetCore\ILaunchProfile.cs" Link="Linked\ILaunchProfile.cs" />
+    <Compile Include="..\..\..\..\externals\monodevelop\main\src\addins\MonoDevelop.AspNetCore\MonoDevelop.AspNetCore\LaunchProfile.cs" Link="Linked\LaunchProfile.cs" />
+  </ItemGroup>
+
+</Project>

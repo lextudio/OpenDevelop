@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+<SyntaxDefinition xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008"
+                  name="ASP.NET Core Razor" extensions=".razor">
+  <Color name="RazorMarker" foreground="DarkGoldenrod" fontWeight="bold" />
+  <Color name="Directive" foreground="DarkMagenta" fontWeight="bold" />
+  <Color name="Comment" foreground="Green" />
+  <Color name="String" foreground="Blue" />
+  <Color name="Keyword" foreground="Blue" fontWeight="bold" />
+  <Color name="Type" foreground="Teal" />
+
+  <RuleSet ignoreCase="false">
+    <Span color="Comment" multiline="true" begin="@\*" end="\*@" />
+    <Span ruleSet="CSharp" multiline="true" begin="@\{" end="\}" />
+    <Span ruleSet="CSharp" multiline="true" begin="@\(" end="\)" />
+    <Rule color="Directive">@(page|namespace|using|inject|implements|inherits|layout|typeparam|attribute|rendermode|preservewhitespace|key|ref|code|functions)\b</Rule>
+    <Rule color="RazorMarker">@@|@(?=[A-Za-z_])</Rule>
+    <Import ruleSet="HTML/" />
+  </RuleSet>
+
+  <RuleSet name="CSharp">
+    <Span color="Comment" begin="//" end="$" />
+    <Span color="Comment" multiline="true" begin="/\*" end="\*/" />
+    <Span color="String" begin="&quot;" end="&quot;">
+      <RuleSet><Span begin="\\" end="." /></RuleSet>
+    </Span>
+    <Span color="String" begin="'" end="'">
+      <RuleSet><Span begin="\\" end="." /></RuleSet>
+    </Span>
+    <Keywords color="Keyword">
+      <Word>if</Word><Word>else</Word><Word>switch</Word><Word>case</Word>
+      <Word>for</Word><Word>foreach</Word><Word>while</Word><Word>return</Word>
+      <Word>await</Word><Word>async</Word><Word>new</Word><Word>var</Word>
+      <Word>public</Word><Word>private</Word><Word>protected</Word><Word>internal</Word>
+      <Word>class</Word><Word>record</Word><Word>struct</Word><Word>interface</Word>
+      <Word>true</Word><Word>false</Word><Word>null</Word><Word>this</Word>
+    </Keywords>
+    <Keywords color="Type">
+      <Word>bool</Word><Word>byte</Word><Word>char</Word><Word>decimal</Word>
+      <Word>double</Word><Word>float</Word><Word>int</Word><Word>long</Word>
+      <Word>object</Word><Word>short</Word><Word>string</Word><Word>void</Word>
+    </Keywords>
+  </RuleSet>
+</SyntaxDefinition>

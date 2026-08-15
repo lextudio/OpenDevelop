@@ -33,3 +33,6 @@
 [submodule "externals/xamlstudio"]
 	path = externals/xamlstudio
 	url = https://github.com/lextudio/xamlstudio.git
+[submodule "externals/monodevelop"]
+	path = externals/monodevelop
+	url = https://github.com/mono/monodevelop.git

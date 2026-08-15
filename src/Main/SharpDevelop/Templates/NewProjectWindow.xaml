@@ -15,6 +15,7 @@
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto" />
       <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
       <RowDefinition Height="*" />
       <RowDefinition Height="Auto" />
       <RowDefinition Height="Auto" />
@@ -31,8 +32,14 @@
              Margin="0,0,0,8"
              TextChanged="OnLocationChanged" />
 
+    <TextBox x:Name="SearchBox"
+             Grid.Row="2"
+             Margin="0,0,0,8"
+             ToolTip="Search template name, short name, description, or tags"
+             TextChanged="OnSearchChanged" />
+
     <ListView x:Name="TemplateList"
-              Grid.Row="2"
+              Grid.Row="3"
               SelectionMode="Single"
               SelectionChanged="OnSelectionChanged"
               Margin="0,0,0,8">
@@ -48,7 +55,7 @@
     </ListView>
 
     <TextBox x:Name="ParametersBox"
-             Grid.Row="3"
+             Grid.Row="4"
              AcceptsReturn="True"
              TextWrapping="Wrap"
              VerticalScrollBarVisibility="Auto"
@@ -57,11 +64,11 @@
              MaxHeight="120" />
 
     <TextBlock x:Name="StatusText"
-               Grid.Row="4"
+               Grid.Row="5"
                Foreground="Gray"
                Margin="0,0,0,8" />
 
-    <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right">
+    <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right">
       <Button x:Name="CreateButton"
               Content="Create"
               IsEnabled="False"

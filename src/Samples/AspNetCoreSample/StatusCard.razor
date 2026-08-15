@@ -1,0 +1,9 @@
+<section class="status-card">
+    <h2>@Title</h2>
+    <p>Server time: @DateTimeOffset.Now</p>
+</section>
+
+@code {
+    [Parameter]
+    public string Title { get; set; } = "ASP.NET Core sample";
+}

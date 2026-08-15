@@ -65,6 +65,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     public string WpfSampleSolutionPath { get; } = LocateWpfSampleSolution();
     public string WinFormsSampleSolutionPath { get; } = LocateWinFormsSampleSolution();
     public string UnoXamlSampleSolutionPath { get; } = LocateUnoXamlSampleSolution();
+    public string AspNetCoreSampleSolutionPath { get; } = LocateAspNetCoreSampleSolution();
     public string GitFixtureTemplatePath { get; } = LocateGitFixtureTemplate();
     public string FSharpFixtureSolutionPath { get; } = LocateFSharpFixture();
     public string VBFixtureSolutionPath { get; } = LocateVBFixture();
@@ -690,6 +691,18 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         throw new FileNotFoundException(
             "Could not locate tests/fixtures/DebugTestApp/DebugTestApp.csproj by walking up from " + AppContext.BaseDirectory);
     }
+
+	static string LocateAspNetCoreSampleSolution()
+	{
+		var dir = AppContext.BaseDirectory;
+		while (dir is not null)
+		{
+			var candidate = Path.Combine(dir, "src", "Samples", "AspNetCoreSample", "AspNetCoreSample.sln");
+			if (File.Exists(candidate)) return candidate;
+			dir = Path.GetDirectoryName(dir);
+		}
+		throw new FileNotFoundException("Could not locate src/Samples/AspNetCoreSample/AspNetCoreSample.sln by walking up from " + AppContext.BaseDirectory);
+	}
 
     static string LocateRuntimeUpgradeTemplate()
     {

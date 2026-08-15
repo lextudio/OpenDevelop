@@ -54,11 +54,7 @@ namespace ICSharpCode.SharpDevelop.Templates
                     .ToArray();
 
                 dialog.Templates = projectTemplates;
-                dialog.TemplateList.ItemsSource = projectTemplates;
-
-                dialog.StatusText.Text = projectTemplates.Length == 0
-                    ? "No project templates found."
-                    : $"{projectTemplates.Length} template(s) available.";
+                dialog.ApplyFilter();
             }
             catch (Exception ex)
             {
@@ -74,6 +70,31 @@ namespace ICSharpCode.SharpDevelop.Templates
             SelectedTemplate = TemplateList.SelectedItem as TemplateSummary;
             UpdateCreateButton();
         }
+
+		void OnSearchChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+		{
+			ApplyFilter();
+		}
+
+		void ApplyFilter()
+		{
+			var query = SearchBox.Text.Trim();
+			var filtered = string.IsNullOrEmpty(query) ? Templates : Templates.Where(t => Matches(t, query)).ToArray();
+			TemplateList.ItemsSource = filtered;
+			StatusText.Text = Templates.Count == 0 ? "No project templates found."
+				: string.IsNullOrEmpty(query) ? $"{Templates.Count} template(s) available."
+				: $"{filtered.Count} of {Templates.Count} template(s) match.";
+		}
+
+		static bool Matches(TemplateSummary template, string query)
+		{
+			return Contains(template.Name, query) || Contains(template.ShortName, query)
+				|| Contains(template.Description, query)
+				|| template.Tags.Any(tag => Contains(tag.Key, query) || Contains(tag.Value, query));
+		}
+
+		static bool Contains(string? value, string query) =>
+			value?.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
 
         void OnNameChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
         {
