@@ -364,6 +364,21 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new { success = window != null });
 		}
 
+		[DevFlowAction("od.dock.close-document", Description = "Close the active document through its dock PaneModel.CloseCommand - the exact code path the document tab's X button uses (IPaneModelHost.Remove -> CloseWindow), unlike od.close-active-view which forces the close")]
+		public static string CloseDocumentViaDock()
+		{
+			var window = SD.Workbench.ActiveViewContent?.WorkbenchWindow;
+			if (window == null)
+				return JsonSerializer.Serialize(new { success = false, error = "no active document" });
+			var command = (window as ICSharpCode.SharpDevelop.ViewModels.PaneModel)?.CloseCommand;
+			if (command == null)
+				return JsonSerializer.Serialize(new { success = false, error = "active view has no dock close command" });
+			if (!command.CanExecute(null))
+				return JsonSerializer.Serialize(new { success = false, error = "close command not executable" });
+			command.Execute(null);
+			return JsonSerializer.Serialize(new { success = true });
+		}
+
 		[DevFlowAction("od.open-file", Description = "Open a file in the editor by path (bypasses the native Open dialog)")]
 		public static string OpenFile(string path)
 		{

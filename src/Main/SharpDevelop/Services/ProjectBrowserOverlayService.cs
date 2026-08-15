@@ -28,7 +28,7 @@ namespace ICSharpCode.SharpDevelop.Services
 	{
 		readonly List<IProjectBrowserNodeOverlayProvider> providers = new List<IProjectBrowserNodeOverlayProvider>();
 		
-		public event EventHandler Invalidated;
+		public event EventHandler<ProjectBrowserOverlayInvalidatedEventArgs> Invalidated;
 		
 		public void RegisterProvider(IProjectBrowserNodeOverlayProvider provider)
 		{
@@ -98,7 +98,7 @@ namespace ICSharpCode.SharpDevelop.Services
 
 		public void Invalidate(string path = null)
 		{
-			Invalidated?.Invoke(this, EventArgs.Empty);
+			Invalidated?.Invoke(this, new ProjectBrowserOverlayInvalidatedEventArgs(path));
 		}
 	}
 }

@@ -1,0 +1,22 @@
+<Project Sdk="Uno.Sdk/6.5.31">
+  <PropertyGroup>
+    <TargetFramework>net10.0-desktop</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <UnoSingleProject>true</UnoSingleProject>
+    <UnoFeatures>SkiaRenderer</UnoFeatures>
+    <RootNamespace>ICSharpCode.WinUIXamlDesigner.UnoHost</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="StreamJsonRpc" Version="2.25.29" />
+  </ItemGroup>
+  <!-- Deploy the whole runnable child (dll + deps + runtimeconfig + native libs) into the addin's
+       own folder, next to ICSharpCode.WinUIXamlDesigner.dll, so the WPF side can find and spawn
+       it from the deployed AddIns tree exactly like it does at dev time. -->
+  <Target Name="DeployToAddIns" AfterTargets="Build">
+    <ItemGroup>
+      <HostOutput Include="$(TargetDir)**" />
+    </ItemGroup>
+    <Copy SourceFiles="@(HostOutput)" SkipUnchangedFiles="true"
+          DestinationFiles="@(HostOutput->'$(MSBuildProjectDirectory)\..\..\..\..\..\AddIns\DisplayBindings\WinUIXamlDesigner\UnoHost\%(RecursiveDir)%(Filename)%(Extension)')" />
+  </Target>
+</Project>

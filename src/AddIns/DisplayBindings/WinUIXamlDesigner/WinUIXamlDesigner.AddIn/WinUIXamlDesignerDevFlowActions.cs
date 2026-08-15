@@ -337,6 +337,67 @@ public static class WinUIXamlDesignerDevFlowActions
 		return JsonSerializer.Serialize(new { success = true, profile = view.FrameProfile() });
 	}
 
+	[DevFlowAction("od.winui-designer.view", Description = "Get or set the design-surface viewport. 'query' returns zoom/pan/scale; 'fit' resets to the fitted centered view; 'WxH' sets the design canvas size; 'zoom panX panY' sets the viewport directly")]
+	public static string View(string command = "query")
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		if (command == "query")
+		{
+			var viewport = view.GetViewport();
+			return JsonSerializer.Serialize(new {
+				success = true,
+				zoom = viewport.Zoom,
+				panX = viewport.PanX,
+				panY = viewport.PanY
+			});
+		}
+		if (command == "fit")
+		{
+			view.FitView();
+			var viewport = view.GetViewport();
+			return JsonSerializer.Serialize(new { success = true, zoom = viewport.Zoom, panX = viewport.PanX, panY = viewport.PanY });
+		}
+		var parts = command.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+		if (parts.Length == 3 && double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var zoom)
+			&& double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var panX)
+			&& double.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var panY))
+		{
+			view.SetViewport(zoom, panX, panY);
+			return JsonSerializer.Serialize(new { success = true, zoom, panX, panY });
+		}
+		return Failure("Expected 'query', 'fit' or 'zoom panX panY', got: " + command);
+	}
+
+	[DevFlowAction("od.winui-designer.design-size", Description = "Get or set the design canvas size. 'query' returns the current size; 'reset' restores the default; 'WxH' (e.g. '1366x768') overrides the canvas size for pages without an explicit size")]
+	public static string DesignSize(string command = "query")
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		if (command == "query")
+		{
+			var configured = view.GetDesignSize();
+			return JsonSerializer.Serialize(new { success = true, configured });
+		}
+		if (command == "reset")
+		{
+			view.ResetDesignSize();
+			return JsonSerializer.Serialize(new { success = true, configured = (double?)null });
+		}
+		var separator = command.IndexOfAny(new[] { 'x', 'X', '*' });
+		if (separator > 0
+			&& double.TryParse(command.Substring(0, separator), NumberStyles.Float, CultureInfo.InvariantCulture, out var width)
+			&& double.TryParse(command.Substring(separator + 1), NumberStyles.Float, CultureInfo.InvariantCulture, out var height)
+			&& width > 0 && height > 0)
+		{
+			view.SetDesignSize(width, height);
+			return JsonSerializer.Serialize(new { success = true, configured = new { width, height } });
+		}
+		return Failure("Expected 'query', 'reset' or 'WxH' (e.g. '1366x768'), got: " + command);
+	}
+
 	/// <summary>
 	/// The designer registers as a secondary view alongside the primary AvalonEdit text view, and
 	/// "Source" is the default active sub-view, so ActiveViewContent alone never finds it. Merely

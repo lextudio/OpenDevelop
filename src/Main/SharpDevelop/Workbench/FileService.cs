@@ -307,6 +307,8 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			if (fileName == null)
 				throw new ArgumentNullException("fileName");
 			LoggingService.Info("Open file " + fileName);
+			if (fileName.ToString().Contains("MainPage", StringComparison.Ordinal))
+				LoggingService.Info("OpenFile stack:\n" + Environment.StackTrace);
 			
 			IViewContent viewContent = GetOpenFile(fileName);
 			if (viewContent != null) {

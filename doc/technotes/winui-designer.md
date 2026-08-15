@@ -40,6 +40,11 @@ OpenDevelop owns the `externals/xamlstudio` submodule directly; it must not fetc
 
 ### WinUI/Uno Host Decision
 
+> **Superseded 2026-08-14:** the in-process ProGPU path described below is retired as a rendering
+> path (no in-process fallback); the out-of-process host is the *only* renderer. See
+> "Out-of-process host decision" and "Out-of-process host scoping" below for the operative
+> architecture. This section is kept as history and for the RPC-host shape it anticipated.
+
 The designer runtime uses the special `Microsoft.UI.Xaml` implementation of `ProGPU.WinUI`, not the Uno runtime or `Uno.Sdk`. Uno Platform is only a supported project profile whose shared WinUI XAML is previewed by the ProGPU runtime. ProGPU currently materializes pages through the XAML compiler/Roslyn preview assembly and does not provide `Microsoft.UI.Xaml.Markup.XamlReader`; therefore XAML Studio's preprocessing, binding inspection, diagnostics, and result model remain as original linked source, while the final instantiation point connects to the ProGPU pipeline through `IProGpuXamlExecutor`. The WPF hosting part is built on the ProGPU render surface/`IWindowHost` and plays a role similar to `WindowsFormsHost`.
 
 The current hosting control uses `WgpuContext`, `ProGPU.Scene.Compositor.RenderOffscreen`, and a WPF `WriteableBitmap`. Each arrange rebuilds the render target at the WPF DPI; WPF mouse/wheel/text/focus events are converted into ProGPU `InputSystem` events; unload/dispose cancels the frame callback and releases the staging buffers, textures, compositor, and context. The first version uses GPU-to-CPU readback to verify correctness first; later it should switch to same-device texture sharing between LibreWPF and ProGPU to avoid per-frame synchronous readback.
@@ -81,7 +86,8 @@ The host stays replaceable:
   `WindowsFormsHost`; the renderer stays a separate assembly; this path serves both WinUI and Uno
   project profiles for the standard-control fixture. Confirmed by the 2026-08-14 investigation
   below to be a dead end for real projects, not merely a "fallback for untrusted assemblies" as
-  originally scoped — see "Out-of-process host decision (2026-08-14)".
+  originally scoped — see "Out-of-process host decision (2026-08-14)". **Retired 2026-08-14:** no
+  in-process fallback; the fixture renders through the out-of-process host like any real project.
 - **Out-of-process preview host.** A small WinUI/Uno preview process that exchanges XAML, project
   context, viewport, and selection over JSON-RPC, hosting the preview in a native child window or
   a captured surface (the same shape as `DesktopWindowXamlSource` on Windows). This is now the
@@ -135,23 +141,108 @@ unlike the WinForms designer's own hosting choice (see
 which already runs the real `System.Windows.Forms` in-process via `WindowsFormsHost` with no
 competing reimplementation, so it does not have this specific forcing function.
 
-**What ships now vs. later:**
+**What ships now vs. later (updated 2026-08-14, same day):**
 
-- Fix A (project assembly as a `MetadataReference`) stays - it is strictly additive, resolves the
-  bulk of the diagnostics wall for real projects, and does not regress the fixture sample. It is
-  necessary but not sufficient.
-- The in-process ProGPU host remains the renderer for the `src/Samples/UnoXamlSample` fixture and
-  any project that only uses the ProGPU.WinUI-covered standard-control subset - it is not being
-  deleted, and roadmap item B (ProGPU.WinUI API completion) still matters for that path.
-- A real Uno project's Design tab requires the out-of-process host. Until it exists, real projects
-  should get a clear, single diagnostic explaining *why* (missing project assembly load path /
-  Uno.WinUI type not available) rather than either the original 169-line wall or a confusing raw
-  `FileNotFoundException`, matching the "actionable diagnostic over broken render" spirit of
-  roadmap item C.
-- Out-of-process implementation is not yet scoped in detail (protocol surface, viewport transport,
-  selection/hit-test round trip, packaging a Windows-only child process from a non-Windows
-  OpenDevelop host) - that scoping is the next piece of work on this technote, not a decision made
-  today.
+- **There is no in-process fallback.** The out-of-process host is the *only* renderer path for the
+  WinUI designer, including the `src/Samples/UnoXamlSample` fixture. The in-process ProGPU host
+  (`WinUIXamlDesigner.ProGPUHost`) never reached working real-project materialization (the
+  diagnostics catalog below), so keeping it as "the fallback" would mean maintaining a second
+  renderer of unknown viability while the product ships on the OOP path. The fixture is itself a
+  real Uno project, so a single code path (child process running the project's own runtime) serves
+  both it and real projects; retired ProGPU host code stays in history. `ProGpuRuntimeHost` and
+  `ProGpuXamlExecutor` are superseded by the child host scoped below.
+- Fix A's compile-time half (project assembly as a `MetadataReference`) remains valid for what it
+  is - quick in-process feedback - but no longer feeds a product renderer; diagnostics for real
+  projects come from the child process's own runtime parser instead.
+- Roadmap item B (ProGPU.WinUI API completion) is **parked**: its only remaining consumer would be
+  the in-process path this section now retires. If the in-process renderer is ever resurrected, B
+  resumes by the frequency ordering recorded below.
+- Out-of-process scoping: see "Out-of-process host scoping (2026-08-14)" below.
+
+### Out-of-process host scoping (2026-08-14)
+
+Verified ground truth this scoping rests on (all from the Uno source tree `uno-tools/uno`, package
+line 6.6.184, and the DotUninstall project's restored graph):
+
+1. **The project's runtime is loadable on macOS.** A Uno.Sdk `net10.0-desktop` project (e.g.
+   DotUninstall) *is* a Skia desktop app; its `bin/Debug/net10.0-desktop` contains the full runtime
+   (`Uno.WinUI.Runtime.Skia`, `...Skia.MacOS`, SkiaSharp, FluentTheme, fonts). No Windows runtime
+   is involved at any point.
+2. **Uno has a real runtime XAML parser.** `Microsoft.UI.Xaml.Markup.XamlReader.Load(string)`
+   (`src/Uno.UI/UI/Xaml/Markup/XamlReader.cs`) runs the production `XamlStringParser` +
+   `XamlObjectBuilder` (`src/Uno.UI/UI/Xaml/Markup/Reader/`), which resolves types from loaded
+   assemblies and defers resource/template expansion via a post-action queue. This entirely
+   replaces the ProGPU compiler pipeline (the XamlStudio/ProGPU.Xaml.Roslyn port in this repo) for
+   the OOP path: no Roslyn compilation, no collectible ALC, no type-identity conflict, because
+   "the runtime" and "the project's runtime" are the same assemblies in one process.
+3. **Offscreen rendering needs no window.** `RenderTargetBitmap.RenderAsync(element)` on Skia
+   (`src/Uno.UI/UI/Xaml/Media/Imaging/RenderTargetBitmap.skia.cs`) creates a CPU `SKSurface`,
+   forces the software compositor (`Compositor.IsSoftwareRenderer = true`), clears the layout clip,
+   and renders `element.Visual` via `RenderRootVisual` - no Metal, no NSApplication, no visible
+   surface. `GetPixelsAsync()` returns BGRA8 premultiplied pixels. DPI resolves to 1 when there is
+   no XamlRoot/current view.
+4. **Headless boot is a dispatcher override, not a native host.** `NativeDispatcher` on Skia
+   exposes `DispatchOverride` + `HasThreadAccessOverride` (the exact hooks `MacSkiaHost` sets via
+   `MacOSDispatcher`); after setting them, `Application.Start(...)` initializes the full runtime
+   (`Application.skia.cs`) without AppKit. The macOS native shim (`UnoNativeMac`/NSApplication) is
+   only needed for real windows.
+5. **Dependency-identity packaging.** `dotnet exec --runtimeconfig <project>.runtimeconfig.json
+   --depsfile <project>.deps.json <host.dll>` makes the child's dependency graph *be* the
+   project's dependency graph. The child is a thin shim; all Uno assemblies resolve from the
+   project's bin, so the parent "OpenDevelop-side version" problem disappears - the child always
+   runs the exact Uno the project references.
+
+**Architecture.** Child process `UnoDesignHost` (Uno.Sdk `net10.0-desktop` console shim, no app
+template): boots headless Uno (fact 4), runs in the project's dependency context (fact 5),
+materializes the design surface's current XAML text via `XamlReader.Load` (fact 2), renders
+offscreen via `RenderTargetBitmap` (fact 3), and answers an RPC over stdio. OpenDevelop's shell
+(`WinUIXamlDesignerViewContent`, toolbox, property pad, outline, DevFlow actions) keeps its
+contracts; only `WinUIXamlHost`'s backing changes from in-process ProGPU to child-process RPC. The
+fixture (`UnoXamlSample`) is handled by the same child by pointing it at the fixture's own bin.
+
+**Runtime adapters.** One protocol; per-runtime bootloaders. Uno headless Skia is the first
+adapter and the only one reachable from macOS. A WinAppSDK adapter is Windows-only, needs in-child
+Roslyn XAML compilation (WinAppSDK has no `XamlReader`), and is out of scope until the Uno adapter
+is on its feet. ProGPU is retired as a rendering path entirely (see above). The protocol is
+runtime-agnostic so a future adapter is additive.
+
+**Protocol surface** (JSON-RPC 2.0 over stdio, LSP-style framing already used elsewhere in this
+repo):
+
+- `initialize` `{projectAssembly}` -> `capabilities`: toolbox catalog (categories, glyphs, default
+  XAML template snippets, required namespaces), supported theme resources, parser profile name.
+  The catalog is generated in-child by reflecting the *loaded* runtime assemblies and merged with a
+  per-runtime design-time allowlist - the toolbox always matches the project's actual Uno version.
+- `load` `{xaml, viewportWidth, viewportHeight, dpi}` -> `{elementTree, diagnostics}`: materialize
+  via `XamlReader.Load`, measure/arrange at the viewport, return the namescope-backed element tree
+  (x:Name, type, bounds via `TransformToVisual`) and parse/layout diagnostics. An implicit render
+  follows.
+- `render` -> `{bitmap (BGRA8), width, height}`: `RenderTargetBitmap` readback. On-demand only
+  (source edit, viewport resize, theme change) - never a frame stream, so base64 in JSON is an
+  acceptable first transport; shared-memory transport is a later optimization if latency demands.
+- `hit-test` `{x, y}` -> `{chain}`: nearest named elements with bounds, resolved in-child, so
+  selection mapping is authoritative (x:Name crosses the boundary, never UI objects - same rule as
+  the in-process design's `FindName` rule).
+- `shutdown`; `log`/`diagnostics` notifications (async layout/runtime errors outside a request).
+
+**Editing model unchanged:** every operation is a versioned XAML source edit in OpenDevelop
+(existing XML document model + `WinUIXamlElementPropertyAdapter`), followed by `load` + re-render.
+No child-side mutation protocol in the first milestone.
+
+**Milestones:**
+
+- **M0 - Headless probe (this session):** throwaway console project boots headless Uno on macOS,
+  `XamlReader.Load`s a small XAML, `RenderTargetBitmap` renders it, saves a PNG. Retires facts 2-4
+  live; everything else is ordinary engineering.
+- **M1 - Child host protocol:** `UnoDesignHost` with the stdio JSON-RPC surface above (load,
+  render, hit-test, capabilities, shutdown), exercised by a CLI driver against the fixture's bin.
+- **M2 - OpenDevelop wiring:** `WinUIXamlHost` remote mode - spawn child with the opened project's
+  runtimeconfig/depsfile, present `render` bitmaps on the existing WPF surface, forward pointer
+  input to `hit-test`, selection round-trip to outline/properties. Fixture renders end-to-end.
+- **M3 - Real-project parity:** DotUninstall (`muxc:` types, converters, custom controls,
+  code-behind gaps) renders; diagnostics from the child's parser shown in the status control;
+  viewport resize/re-render on every edit; design-time allowlist for unsupported constructs.
+- **M4 - (Windows-only, later):** WinAppSDK adapter with in-child Roslyn XAML materialization.
 
 ### Designer Chrome Decision
 
@@ -419,12 +510,13 @@ a further improvement, not yet done; `od.winui-designer.status` stays the DevFlo
 way.
 
 **D. Out-of-process host for real-project support.** See "Out-of-process host decision
-(2026-08-14)" above - this is the only path past the type-identity ceiling A hit, and is required
-for category 3 (`muxc:` types) and for any real project whose XAML needs a WinUI API ProGPU.WinUI
-doesn't implement (category 4-6) to actually MATERIALIZE (as opposed to merely stop erroring at
-the type-resolution layer). Not yet scoped in detail.
+(2026-08-14)" and "Out-of-process host scoping (2026-08-14)" above - the only path past the
+type-identity ceiling A hit, now the *only* renderer path (no in-process fallback, decided same
+day). Required for category 3 (`muxc:` types, via the project's own runtime) and for any real
+project whose XAML needs a WinUI API ProGPU.WinUI doesn't implement (category 4-6). Scoped;
+M0 (headless probe) is underway.
 
-**Suggested order:** A's compile-time half and C are done. Next: scope D's protocol surface (this
-is the actual unlock for real projects), while B continues in parallel by frequency
-(`ColumnDefinition`/`ColumnSpacing`/`Loaded` are high-frequency in real XAML; `InfoBar`/`InfoBadge`
-mid; `Pivot`/StaticResource low) since it benefits the in-process host regardless of D's timeline.
+**Suggested order (updated 2026-08-14):** A's compile-time half stays only as introspection
+tooling. C is done. Scope D is done. Next: execute D's milestones M0 -> M3 (probe, protocol,
+OpenDevelop wiring, real-project parity). B (ProGPU extension) is **parked** - its only consumer,
+the in-process host, is retired.

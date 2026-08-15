@@ -1,5 +1,7 @@
 #nullable enable
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using ICSharpCode.SharpDevelop.Project;
 using Microsoft.VisualStudio.ProjectSystem;
 
@@ -9,7 +11,7 @@ namespace ICSharpCode.SharpDevelop.Services;
 // doc/technotes/solution-explorer.md) - WPF-specific rendering (Icon/overlay ImageSource
 // properties) lives in ProjectBrowserNodeModel.Wpf.cs, compiled only into OpenDevelop, since
 // System.Windows.Media isn't available under Uno.Sdk.
-internal sealed partial class ProjectBrowserNodeModel
+internal sealed partial class ProjectBrowserNodeModel : INotifyPropertyChanged
 {
     public ProjectBrowserNodeModel(
         string name,
@@ -52,6 +54,12 @@ internal sealed partial class ProjectBrowserNodeModel
     public bool IsExpanded { get; }
 
     public List<ProjectBrowserNodeModel> Children { get; } = new();
+
+    public event PropertyChangedEventHandler PropertyChanged;
+
+    /// <summary>Raises <see cref="PropertyChanged"/> for the given property name.</summary>
+    public void NotifyPropertyChanged([CallerMemberName] string propertyName = null)
+        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 
     public ProjectBrowserNodeContext ToContext()
     {

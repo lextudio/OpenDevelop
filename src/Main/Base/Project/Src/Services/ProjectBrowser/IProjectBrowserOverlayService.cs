@@ -28,9 +28,20 @@ namespace ICSharpCode.SharpDevelop.Services
 		string GetOverlayKey(string fullPath, bool isDirectory);
 	}
 
+	/// <summary>Carries the path whose Git status changed (null = unknown/all).</summary>
+	public sealed class ProjectBrowserOverlayInvalidatedEventArgs : EventArgs
+	{
+		public ProjectBrowserOverlayInvalidatedEventArgs(string path)
+		{
+			Path = path;
+		}
+
+		public string Path { get; }
+	}
+
 	public interface IProjectBrowserOverlayService
 	{
-		event EventHandler Invalidated;
+		event EventHandler<ProjectBrowserOverlayInvalidatedEventArgs> Invalidated;
 
 		void RegisterProvider(IProjectBrowserNodeOverlayProvider provider);
 

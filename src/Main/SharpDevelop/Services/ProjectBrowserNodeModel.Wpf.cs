@@ -18,4 +18,11 @@ internal sealed partial class ProjectBrowserNodeModel
     public ImageSource SourceControlOverlayIcon => ServiceSingleton.ServiceProvider.GetService<IProjectBrowserOverlayService>()?.GetOverlay(FullPath, IsDirectory);
 
     public string OverlayStatusKey => ServiceSingleton.ServiceProvider.GetService<IProjectBrowserOverlayService>()?.GetOverlayKey(FullPath, IsDirectory) ?? string.Empty;
+
+    /// <summary>Re-reads the Git overlay badge in place, without rebuilding the node.</summary>
+    public void OnOverlayChanged()
+    {
+        NotifyPropertyChanged(nameof(SourceControlOverlayIcon));
+        NotifyPropertyChanged(nameof(OverlayStatusKey));
+    }
 }

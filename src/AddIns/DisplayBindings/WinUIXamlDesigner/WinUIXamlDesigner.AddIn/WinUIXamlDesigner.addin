@@ -3,6 +3,7 @@
   <Runtime>
     <Import assembly="ICSharpCode.WinUIXamlDesigner.dll" />
     <Import assembly="ICSharpCode.WinUIXamlDesigner.ProGPUHost.dll" />
+    <Import assembly="ICSharpCode.WinUIXamlDesigner.UnoDesignHost.dll" />
   </Runtime>
   <Path name="/SharpDevelop/Workbench/DisplayBindings">
     <DisplayBinding id="WinUIXamlDesigner" type="Secondary" class="ICSharpCode.WinUIXamlDesigner.WinUIXamlDesignerDisplayBinding" fileNamePattern="\.xaml$" />

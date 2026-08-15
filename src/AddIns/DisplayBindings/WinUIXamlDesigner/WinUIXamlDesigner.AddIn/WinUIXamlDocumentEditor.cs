@@ -75,9 +75,33 @@ sealed class WinUIXamlDocumentEditor
 		// rather than carrying its own xmlns - the same shape a hand-written page has.
 		var element = new XElement(Document.Root.GetDefaultNamespace() + controlName);
 		element.SetAttributeValue(NameDirective, UniqueName(controlName));
+		AddDefaultContent(element, controlName);
 		container.Add(element);
 		CommitChange();
 		return element;
+	}
+
+	/// <summary>
+	/// Gives an inserted control a meaningful default so the design surface shows something
+	/// real instead of an empty shell: Content for button-like controls, Text for
+	/// text-bearing ones. Panels and media controls stay empty on purpose.
+	/// </summary>
+	static void AddDefaultContent(XElement element, string controlName)
+	{
+		switch (controlName)
+		{
+			case "TextBlock":
+			case "TextBox":
+				element.SetAttributeValue("Text", controlName);
+				break;
+			case "Button":
+			case "CheckBox":
+			case "HyperlinkButton":
+			case "RadioButton":
+			case "ToggleSwitch":
+				element.SetAttributeValue("Content", controlName);
+				break;
+		}
 	}
 
 	public void SetAttribute(XElement element, XName attribute, string value)

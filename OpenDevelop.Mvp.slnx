@@ -43,6 +43,8 @@
     <Project Path="src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.AddIn/ICSharpCode.WinUIXamlDesigner.csproj" />
     <Project Path="src/AddIns/DisplayBindings/WinUIXamlDesigner/XamlStudio.Toolkit.ProGPU/XamlStudio.Toolkit.ProGPU.csproj" />
     <Project Path="src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.ProGPUHost/ICSharpCode.WinUIXamlDesigner.ProGPUHost.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.UnoHost/WinUIXamlDesigner.UnoHost.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.UnoDesignHost/ICSharpCode.WinUIXamlDesigner.UnoDesignHost.csproj" />
   </Folder>
   <Folder Name="/src/AddIns/DisplayBindings/FormsDesigner/">
     <Project Path="src/AddIns/DisplayBindings/FormsDesigner/Project/FormsDesigner.csproj" />

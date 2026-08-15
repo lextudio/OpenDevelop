@@ -20,6 +20,12 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 		if (runtime != null) {
 			runtime.StateChanged += OnRuntimeStateChanged;
 			runtime.ElementPicked += OnRuntimeElementPicked;
+			if (runtime is IWinUIXamlDirectManipulation manipulation)
+				manipulation.ElementDragCommitted += OnRuntimeElementDragCommitted;
+			if (runtime is IWinUIXamlTextEditing textEditing) {
+				textEditing.ElementDoubleClicked += OnRuntimeElementDoubleClicked;
+				textEditing.TextEditCommitted += OnRuntimeTextEditCommitted;
+			}
 		}
 		Content = runtime?.WpfSurface ?? new TextBlock {
 			Margin = new Thickness(16), TextWrapping = TextWrapping.Wrap, Text = StatusText
@@ -39,8 +45,80 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 
 	void OnRuntimeElementPicked(object sender, string name) => ElementPicked?.Invoke(this, name);
 
+	/// <summary>Raised with a committed design-surface drag (move/resize), if the runtime supports it.</summary>
+	public event EventHandler<ElementDragInfo> ElementDragCommitted;
+
+	void OnRuntimeElementDragCommitted(object sender, ElementDragInfo info)
+		=> ElementDragCommitted?.Invoke(this, info);
+
+	/// <summary>Raised on a design-surface double-click (null = empty space).</summary>
+	public event EventHandler<ElementDoubleClickInfo> ElementDoubleClicked;
+
+	void OnRuntimeElementDoubleClicked(object sender, ElementDoubleClickInfo info)
+		=> ElementDoubleClicked?.Invoke(this, info);
+
+	/// <summary>Raised with the committed inline-edited text.</summary>
+	public event EventHandler<string> TextEditCommitted;
+
+	void OnRuntimeTextEditCommitted(object sender, string text)
+		=> TextEditCommitted?.Invoke(this, text);
+
+	/// <summary>Starts inline text editing over the given design rect, if the runtime supports it.</summary>
+	public void BeginTextEdit(double x, double y, double width, double height, string text)
+	{
+		if (runtime is IWinUIXamlTextEditing textEditing)
+			textEditing.BeginTextEdit(x, y, width, height, text);
+	}
+
 	public void SetSelectableNames(IReadOnlyList<string> names) =>
 		runtime?.SetSelectableNames(names);
+
+	/// <summary>
+	/// Draws a selection outline over the named element on the design surface. Optional:
+	/// runtimes that do not implement <see cref="IWinUIXamlSelectionOverlay"/> ignore it.
+	/// </summary>
+	public void ShowSelection(string name)
+	{
+		if (runtime is IWinUIXamlSelectionOverlay overlay)
+			overlay.ShowSelection(name);
+	}
+
+	public void ClearSelection()
+	{
+		if (runtime is IWinUIXamlSelectionOverlay overlay)
+			overlay.ClearSelection();
+	}
+
+	/// <summary>Current design-surface viewport (zoom 1.0 = fit; pan in surface DIPs).</summary>
+	public (double Zoom, double PanX, double PanY) GetViewport()
+		=> runtime is IWinUIXamlDesignView view ? view.GetViewport() : (1.0, 0, 0);
+
+	public void SetViewport(double zoom, double panX, double panY)
+	{
+		if (runtime is IWinUIXamlDesignView view)
+			view.SetViewport(zoom, panX, panY);
+	}
+
+	public void FitView()
+	{
+		if (runtime is IWinUIXamlDesignView view)
+			view.FitView();
+	}
+
+	public (double Width, double Height)? GetDesignSize()
+		=> runtime is IWinUIXamlDesignView view ? view.GetDesignSize() : null;
+
+	public void SetDesignSize(double width, double height)
+	{
+		if (runtime is IWinUIXamlDesignView view)
+			view.SetDesignSize(width, height);
+	}
+
+	public void ResetDesignSize()
+	{
+		if (runtime is IWinUIXamlDesignView view)
+			view.ResetDesignSize();
+	}
 
 	public (double X, double Y, double Width, double Height)? QueryElementBounds(string name) =>
 		runtime?.QueryElementBounds(name);
@@ -76,8 +154,17 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 		var bounds = QueryElementBounds(name);
 		if (bounds == null || !IsVisible)
 			return null;
-		var origin = PointToScreen(new Point(bounds.Value.X, bounds.Value.Y));
-		return new Rect(origin.X, origin.Y, bounds.Value.Width, bounds.Value.Height);
+		var designPoint = new Point(bounds.Value.X, bounds.Value.Y);
+		double scale = 1.0;
+		var surfacePoint = designPoint;
+		if (runtime is IWinUIXamlDesignView view)
+		{
+			var translated = view.DesignToSurfacePoint(designPoint.X, designPoint.Y);
+			surfacePoint = new Point(translated.X, translated.Y);
+			scale = view.GetViewportScale();
+		}
+		var origin = PointToScreen(surfacePoint);
+		return new Rect(origin.X, origin.Y, bounds.Value.Width * scale, bounds.Value.Height * scale);
 	}
 
 	/// <summary>
@@ -129,6 +216,12 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 		if (runtime != null) {
 			runtime.StateChanged -= OnRuntimeStateChanged;
 			runtime.ElementPicked -= OnRuntimeElementPicked;
+			if (runtime is IWinUIXamlDirectManipulation manipulation)
+				manipulation.ElementDragCommitted -= OnRuntimeElementDragCommitted;
+			if (runtime is IWinUIXamlTextEditing textEditing) {
+				textEditing.ElementDoubleClicked -= OnRuntimeElementDoubleClicked;
+				textEditing.TextEditCommitted -= OnRuntimeTextEditCommitted;
+			}
 		}
 		runtime?.Dispose();
 		runtime = null;
@@ -203,13 +296,106 @@ public interface IWinUIXamlRuntimeHost : IDisposable
 	event EventHandler<string> ElementPicked;
 }
 
+/// <summary>
+/// Optional capability: the runtime host exposes its design surface viewport (pan/zoom)
+/// and the configurable design canvas size. Declined by runtimes without viewport
+/// support (e.g. ProGPU), which simply keeps the current behavior.
+/// </summary>
+public interface IWinUIXamlDesignView
+{
+	(double Zoom, double PanX, double PanY) GetViewport();
+	double GetViewportScale();
+	void SetViewport(double zoom, double panX, double panY);
+	void FitView();
+	/// <summary>Design-space point to surface-local DIPs, honoring the viewport.</summary>
+	(double X, double Y) DesignToSurfacePoint(double x, double y);
+	(double Width, double Height)? GetDesignSize();
+	void SetDesignSize(double width, double height);
+	void ResetDesignSize();
+}
+
+/// <summary>
+/// A committed design-surface drag: the named element and its start/end rects in design
+/// coordinates. The shell turns the rects into source edits (Margin/Width/Height).
+/// </summary>
+public sealed class ElementDragInfo
+{
+	public string Name { get; set; }
+	public double StartX { get; set; }
+	public double StartY { get; set; }
+	public double StartWidth { get; set; }
+	public double StartHeight { get; set; }
+	public double EndX { get; set; }
+	public double EndY { get; set; }
+	public double EndWidth { get; set; }
+	public double EndHeight { get; set; }
+}
+
+/// <summary>
+/// Optional capability: the runtime host reports design-surface drags (move/resize) so the
+/// shell can turn them into source edits. Declined by runtimes without direct manipulation.
+/// </summary>
+public interface IWinUIXamlDirectManipulation
+{
+	event EventHandler<ElementDragInfo> ElementDragCommitted;
+}
+
+/// <summary>
+/// A double-click on a design element: its name and design rect. A null value means the
+/// double-click hit empty space.
+/// </summary>
+public sealed class ElementDoubleClickInfo
+{
+	public string Name { get; set; }
+	public double X { get; set; }
+	public double Y { get; set; }
+	public double Width { get; set; }
+	public double Height { get; set; }
+}
+
+/// <summary>
+/// Optional capability: the runtime host reports design-surface double-clicks and supports
+/// inline text editing over the design (the shell decides editability and applies the
+/// committed text as a source edit).
+/// </summary>
+public interface IWinUIXamlTextEditing
+{
+	event EventHandler<ElementDoubleClickInfo> ElementDoubleClicked;
+	void BeginTextEdit(double x, double y, double width, double height, string text);
+	event EventHandler<string> TextEditCommitted;
+}
+
+/// <summary>
+/// Optional capability: the runtime host draws a selection outline over a named element
+/// on its design surface. Declined by runtimes without an overlay (e.g. ProGPU), which
+/// simply keeps the current behavior.
+/// </summary>
+public interface IWinUIXamlSelectionOverlay
+{
+	void ShowSelection(string name);
+	void ClearSelection();
+}
+
 public static class WinUIXamlRuntimeHostRegistry
 {
-	static Func<XamlFrameworkContext, string, IWinUIXamlRuntimeHost> factory;
+	static readonly List<Func<XamlFrameworkContext, string, IWinUIXamlRuntimeHost>> factories = new();
 
-	public static void Register(Func<XamlFrameworkContext, string, IWinUIXamlRuntimeHost> runtimeFactory) =>
-		factory = runtimeFactory ?? throw new ArgumentNullException(nameof(runtimeFactory));
+	/// <summary>
+	/// Registers a runtime host factory. The most recently registered factory is tried first;
+	/// a factory that declines (returns null - e.g. the out-of-process Uno host when its child
+	/// binary is missing) falls through to the previous one, so ProGPU remains the safety net.
+	/// </summary>
+	public static void Register(Func<XamlFrameworkContext, string, IWinUIXamlRuntimeHost> runtimeFactory)
+	{
+		factories.Add(runtimeFactory ?? throw new ArgumentNullException(nameof(runtimeFactory)));
+	}
 
-	internal static IWinUIXamlRuntimeHost Create(XamlFrameworkContext framework, string documentFileName) =>
-		factory?.Invoke(framework, documentFileName);
+	internal static IWinUIXamlRuntimeHost Create(XamlFrameworkContext framework, string documentFileName)
+	{
+		for (var i = factories.Count - 1; i >= 0; i--) {
+			if (factories[i].Invoke(framework, documentFileName) is { } host)
+				return host;
+		}
+		return null;
+	}
 }

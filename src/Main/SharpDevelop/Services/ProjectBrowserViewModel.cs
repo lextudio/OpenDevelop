@@ -298,9 +298,52 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
         RefreshSolutionTree();
     }
 
-    private void ProjectBrowserOverlayInvalidated(object sender, EventArgs e)
+    private void ProjectBrowserOverlayInvalidated(object sender, ProjectBrowserOverlayInvalidatedEventArgs e)
     {
-        RefreshSolutionTree();
+        // Only one file's Git status changed (Git status is re-checked on every save) -
+        // refresh just that node's badge in place. Rebuilding the tree or refreshing every
+        // badge would needlessly collapse the user's Solution Explorer navigation.
+        if (string.IsNullOrEmpty(e.Path))
+        {
+            foreach (var root in RootNodes)
+            {
+                RefreshOverlayRecursive(root);
+            }
+            return;
+        }
+        foreach (var root in RootNodes)
+        {
+            if (RefreshOverlayForPath(root, e.Path))
+            {
+                return;
+            }
+        }
+    }
+
+    static void RefreshOverlayRecursive(ProjectBrowserNodeModel node)
+    {
+        node.OnOverlayChanged();
+        foreach (var child in node.Children)
+        {
+            RefreshOverlayRecursive(child);
+        }
+    }
+
+    static bool RefreshOverlayForPath(ProjectBrowserNodeModel node, string path)
+    {
+        if (string.Equals(node.FullPath, path, StringComparison.OrdinalIgnoreCase))
+        {
+            node.OnOverlayChanged();
+            return true;
+        }
+        foreach (var child in node.Children)
+        {
+            if (RefreshOverlayForPath(child, path))
+            {
+                return true;
+            }
+        }
+        return false;
     }
     
     private sealed class DelegateCommand : ICommand

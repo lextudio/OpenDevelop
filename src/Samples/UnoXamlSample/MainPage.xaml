@@ -1,11 +1,12 @@
 <Page
     x:Class="UnoXamlSample.MainPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="{ThemeResource PageBackgroundBrush}">
     <Grid>
         <StackPanel x:Name="RootStack">
-            <TextBlock Text="Uno compatibility preview" />
-            <Button x:Name="PrimaryButton" Content="Hello Uno" />
+            <TextBlock x:Name="TitleText" Text="Uno compatibility preview" />
+            <Button x:Name="PrimaryButton" Content="Hello Uno" Background="{StaticResource PrimaryButtonBrush}" />
         </StackPanel>
     </Grid>
 </Page>

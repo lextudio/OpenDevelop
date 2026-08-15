@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -43,6 +44,9 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		previewHost = new WinUIXamlHost(framework, file?.FileName?.ToString() ?? "Preview.xaml");
 		previewHost.StateChanged += OnPreviewStateChanged;
 		previewHost.ElementPicked += OnElementPickedOnSurface;
+		previewHost.ElementDragCommitted += OnElementDragCommittedOnSurface;
+		previewHost.ElementDoubleClicked += OnElementDoubleClickedOnSurface;
+		previewHost.TextEditCommitted += OnTextEditCommittedOnSurface;
 		previewHost.ControlDropped += OnControlDroppedOnSurface;
 		TabPageText = "Design";
 		root.RowDefinitions.Add(new RowDefinition());
@@ -102,6 +106,14 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	public int OutlineChildCount =>
 		outline.Items.Count == 0 ? 0 : ((TreeViewItem)outline.Items[0]).Items.Count;
 
+	/// <summary>Design-surface viewport (zoom 1.0 = fit; pan in surface DIPs).</summary>
+	public (double Zoom, double PanX, double PanY) GetViewport() => previewHost.GetViewport();
+	public void SetViewport(double zoom, double panX, double panY) => previewHost.SetViewport(zoom, panX, panY);
+	public void FitView() => previewHost.FitView();
+	public (double Width, double Height)? GetDesignSize() => previewHost.GetDesignSize();
+	public void SetDesignSize(double width, double height) => previewHost.SetDesignSize(width, height);
+	public void ResetDesignSize() => previewHost.ResetDesignSize();
+
 	#region Editing operations
 
 	public bool SelectElement(string name)
@@ -110,11 +122,13 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		if (element == null) {
 			SelectedElementName = null;
 			propertyContainer.SelectedObject = null;
+			previewHost.ClearSelection();
 			return false;
 		}
 		SelectedElementName = name;
 		propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, SetAttributeThroughEditor);
 		SelectOutlineNode(name);
+		previewHost.ShowSelection(name);
 		return true;
 	}
 
@@ -154,6 +168,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		editor.Remove(element);
 		SelectedElementName = null;
 		propertyContainer.SelectedObject = null;
+		previewHost.ClearSelection();
 		ApplyDocumentChange();
 	}
 
@@ -197,7 +212,170 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 
 	#endregion
 
-	void OnPreviewStateChanged(object sender, EventArgs e) => status.Text = previewHost.StatusText;
+	void OnPreviewStateChanged(object sender, EventArgs e)
+	{
+		status.Text = previewHost.StatusText;
+		// A settled render may have moved or resized the selected element; re-apply the
+		// outline from the freshly indexed tree.
+		if (SelectedElementName != null)
+			previewHost.ShowSelection(SelectedElementName);
+	}
+
+	/// <summary>
+	/// Turns a committed design-surface drag into source edits: the position delta maps to
+	/// the element's Margin (alignment-aware), and a size delta writes explicit
+	/// Width/Height. Landed through the editor, so undo/redo and the dirty state behave
+	/// exactly like any other designer edit.
+	/// </summary>
+	void OnElementDragCommittedOnSurface(object sender, ElementDragInfo info)
+	{
+		var element = editor.FindElement(info.Name);
+		if (element == null)
+			return;
+		ApplyElementBounds(element, info);
+	}
+
+	/// <summary>
+	/// A double-click on the design surface starts inline text editing for text-bearing
+	/// elements (TextBlock/TextBox/Button-like: Text or Content attribute); anything else
+	/// or empty space resets the viewport to fit.
+	/// </summary>
+	void OnElementDoubleClickedOnSurface(object sender, ElementDoubleClickInfo info)
+	{
+		if (info == null || string.IsNullOrEmpty(info.Name))
+		{
+			previewHost.FitView();
+			return;
+		}
+		var element = editor.FindElement(info.Name);
+		var attribute = element == null ? null : TextAttributeFor(element);
+		var text = attribute == null ? null : (string)element.Attribute(attribute);
+		if (attribute == null || text == null)
+		{
+			previewHost.FitView();
+			return;
+		}
+		previewHost.BeginTextEdit(info.X, info.Y, info.Width, info.Height, text);
+	}
+
+	/// <summary>Applies the inline-edited text to the source document.</summary>
+	void OnTextEditCommittedOnSurface(object sender, string text)
+	{
+		var element = editor.FindElement(SelectedElementName);
+		if (element == null)
+			return;
+		var attribute = TextAttributeFor(element);
+		if (attribute == null)
+			return;
+		editor.SetAttribute(element, attribute, text);
+		ApplyDocumentChange();
+		SelectElement(SelectedElementName);
+	}
+
+	static XName TextAttributeFor(XElement element)
+	{
+		switch (element.Name.LocalName)
+		{
+			case "TextBlock":
+			case "TextBox":
+			case "PasswordBox":
+			case "RichEditBox":
+			case "NumberBox":
+				return "Text";
+			case "Button":
+			case "CheckBox":
+			case "RadioButton":
+			case "ToggleSwitch":
+			case "HyperlinkButton":
+			case "RepeatButton":
+			case "ToggleButton":
+			case "AppBarButton":
+				return "Content";
+			default:
+				return null;
+		}
+	}
+
+	void ApplyElementBounds(XElement element, ElementDragInfo info)
+	{
+		var positionDeltaX = info.EndX - info.StartX;
+		var positionDeltaY = info.EndY - info.StartY;
+		var sizeDeltaX = info.EndWidth - info.StartWidth;
+		var sizeDeltaY = info.EndHeight - info.StartHeight;
+
+		var (left, top, right, bottom) = ParseMargin((string)element.Attribute("Margin"));
+		var deltaX = (int)Math.Round(positionDeltaX);
+		var deltaY = (int)Math.Round(positionDeltaY);
+		switch ((string)element.Attribute("HorizontalAlignment"))
+		{
+			case "Right":
+				right -= deltaX;
+				break;
+			case "Center":
+				left += deltaX;
+				right -= deltaX;
+				break;
+			default:
+				left += deltaX;
+				break;
+		}
+		switch ((string)element.Attribute("VerticalAlignment"))
+		{
+			case "Bottom":
+				bottom -= deltaY;
+				break;
+			case "Center":
+				top += deltaY;
+				bottom -= deltaY;
+				break;
+			default:
+				top += deltaY;
+				break;
+		}
+
+		if (left != 0 || top != 0 || right != 0 || bottom != 0)
+			editor.SetAttribute(element, "Margin", FormatMargin(left, top, right, bottom));
+		else
+			editor.SetAttribute(element, "Margin", null);
+		if (Math.Abs(sizeDeltaX) > 0.01 || Math.Abs(sizeDeltaY) > 0.01)
+		{
+			editor.SetAttribute(element, "Width", ((int)Math.Round(info.EndWidth)).ToString(CultureInfo.InvariantCulture));
+			editor.SetAttribute(element, "Height", ((int)Math.Round(info.EndHeight)).ToString(CultureInfo.InvariantCulture));
+		}
+		ApplyDocumentChange();
+		SelectElement(info.Name);
+	}
+
+	static (double Left, double Top, double Right, double Bottom) ParseMargin(string value)
+	{
+		if (string.IsNullOrWhiteSpace(value))
+			return (0, 0, 0, 0);
+		var parts = value.Split(',');
+		if (parts.Length == 1 && double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var all))
+			return (all, all, all, all);
+		if (parts.Length == 2
+			&& double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var lr)
+			&& double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var tb))
+			return (lr, tb, lr, tb);
+		if (parts.Length == 4
+			&& double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var l)
+			&& double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var t)
+			&& double.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var r)
+			&& double.TryParse(parts[3], NumberStyles.Float, CultureInfo.InvariantCulture, out var b))
+			return (l, t, r, b);
+		return (0, 0, 0, 0);
+	}
+
+	/// <summary>Keeps the source compact: "v", "h v", or "l t r b".</summary>
+	static string FormatMargin(double left, double top, double right, double bottom)
+	{
+		if (left == right && top == bottom)
+			return left == top
+				? left.ToString(CultureInfo.InvariantCulture)
+				: $"{left.ToString(CultureInfo.InvariantCulture)},{top.ToString(CultureInfo.InvariantCulture)}";
+		return $"{left.ToString(CultureInfo.InvariantCulture)},{top.ToString(CultureInfo.InvariantCulture)}," +
+			$"{right.ToString(CultureInfo.InvariantCulture)},{bottom.ToString(CultureInfo.InvariantCulture)}";
+	}
 
 	/// <summary>
 	/// Clicking the design surface selects the corresponding *source* element, so a surface pick
@@ -226,10 +404,13 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		if ((e.NewValue as TreeViewItem)?.Tag is not XElement element) {
 			propertyContainer.SelectedObject = null;
 			SelectedElementName = null;
+			previewHost.ClearSelection();
 			return;
 		}
 		SelectedElementName = (string)element.Attribute(WinUIXamlDocumentEditor.NameDirective);
 		propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, SetAttributeThroughEditor);
+		if (SelectedElementName != null)
+			previewHost.ShowSelection(SelectedElementName);
 	}
 
 	protected override void LoadInternal(OpenedFile file, Stream stream)
