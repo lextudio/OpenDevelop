@@ -795,7 +795,8 @@ namespace ICSharpCode.FormsDesigner
 				TargetFramework = (project as MSBuildBasedProject)?.GetEvaluatedProperty("TargetFramework") ?? "",
 				ProjectAssemblyPath = project?.OutputAssemblyFullPath.ToString() ?? "",
 				PrimaryFileName = PrimaryFileName,
-				DesignerFileName = DesignerCodeFile?.FileName.ToString() ?? ""
+				DesignerFileName = DesignerCodeFile?.FileName.ToString() ?? "",
+				Language = PrimaryFileName.ToString().EndsWith(".vb", StringComparison.OrdinalIgnoreCase) ? "VisualBasic" : "CSharp"
 			};
 			foreach (var source in SourceFiles) {
 				snapshot.Files.Add(new DesignerSourceFileSnapshot {

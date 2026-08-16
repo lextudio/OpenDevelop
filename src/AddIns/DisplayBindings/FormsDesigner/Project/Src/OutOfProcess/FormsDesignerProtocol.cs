@@ -23,6 +23,8 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		public string ProjectAssemblyPath { get; set; } = "";
 		public string PrimaryFileName { get; set; } = "";
 		public string DesignerFileName { get; set; } = "";
+		/// <summary>Roslyn language name: "CSharp" or "VisualBasic" (defaults to CSharp).</summary>
+		public string Language { get; set; } = "CSharp";
 		public List<DesignerSourceFileSnapshot> Files { get; set; } = new List<DesignerSourceFileSnapshot>();
 	}
 

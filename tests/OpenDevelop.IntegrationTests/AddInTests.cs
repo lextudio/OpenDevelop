@@ -54,6 +54,9 @@ public sealed class AddInTests : IAsyncDisposable
     readonly string _unoSolutionPath;
     readonly string _unoPagePath;
 
+    readonly string _vbFormsDir;
+    readonly string _vbFormsSolutionPath;
+
     readonly OpenDevelopAppFixture _app;
 
     public AddInTests(OpenDevelopAppFixture app)
@@ -81,6 +84,9 @@ public sealed class AddInTests : IAsyncDisposable
                 CopyDirectoryOd(Path.GetDirectoryName(app.UnoXamlSampleSolutionPath)!, _unoSampleDir);
                 _unoSolutionPath = Path.Combine(_unoSampleDir, Path.GetFileName(app.UnoXamlSampleSolutionPath));
                 _unoPagePath = Path.Combine(_unoSampleDir, "MainPage.xaml");
+                _vbFormsDir = Path.Combine(Path.GetTempPath(), "VbFormsDesignerTests-" + Guid.NewGuid().ToString("N"));
+                CopyDirectoryOd(Path.GetDirectoryName(app.VbWinFormsSampleSolutionPath)!, _vbFormsDir);
+                _vbFormsSolutionPath = Path.Combine(_vbFormsDir, Path.GetFileName(app.VbWinFormsSampleSolutionPath));
     }
 
     [Fact]
@@ -2148,6 +2154,69 @@ public sealed class AddInTests : IAsyncDisposable
             // Form1.Designer.cs is a repository fixture - restore it regardless of outcome.
             await File.WriteAllTextAsync(formCodePath, originalFormCode);
         }
+    }
+
+    [Fact]
+    public async Task VbDesigner_OutOfProcess_RoundTripsEditsToDesignerFile()
+    {
+        // The VB WinForms designer runs in a separate child process (FormsDesigner.Host, launched
+        // by FormsDesignerHostClient) - the VB counterpart of the C# designer's in-process
+        // RoslynFormsDesignerSecondaryDisplayBinding. The parent only decides designability and
+        // ships the file text over JSON-RPC; all VB parsing/source rewriting happens child-side.
+        // This test drives that out-of-process surface end to end: open the fixture's Form1.vb,
+        // wait for the designer to come up in its own process, apply edits through the
+        // od.forms-designer.* DevFlow actions, save, and verify the round-tripped source landed on
+        // disk in both Form1.vb (handler) and Form1.Designer.vb (generated code).
+        var formCodePath = Path.Combine(Path.GetDirectoryName(_vbFormsSolutionPath)!, "Form1.vb");
+        var designerPath = Path.Combine(Path.GetDirectoryName(_vbFormsSolutionPath)!, "Form1.Designer.vb");
+
+        var openSolutionResult = await _app.ReopenSolutionAsync(_vbFormsSolutionPath);
+        Assert.True(openSolutionResult.GetProperty("success").GetBoolean());
+        var openFileResult = await _app.InvokeAsync("od.open-file", formCodePath);
+        Assert.True(openFileResult.GetProperty("opened").GetBoolean());
+
+        // The first child-process launch pays for process startup plus Roslyn/LibreWinForms load,
+        // so poll rather than assert on the first status call. od.forms-designer.status switches
+        // the active tab to the designer view, which is what triggers the child launch at all.
+        JsonElement status = default;
+        var loaded = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            status = await _app.InvokeAsync("od.forms-designer.status");
+            return status.GetProperty("designerLoaded").GetBoolean()
+                && status.GetProperty("outOfProcess").GetBoolean();
+        }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 1000);
+        Assert.True(loaded, "The VB designer did not come up out-of-process. Status: " + status);
+        Assert.Equal("System.Windows.Forms.Form", status.GetProperty("rootComponentType").GetString());
+        Assert.True(status.GetProperty("hostProcessId").GetInt32() > 0, status.ToString());
+        Assert.Contains("button1", status.GetProperty("controlNames").EnumerateArray()
+            .Select(n => n.GetString()).ToArray());
+
+        var added = await _app.InvokeAsync("od.forms-designer.add-control",
+            "Form1", "System.Windows.Forms.Label", "label1", 30, 70);
+        Assert.True(added.GetProperty("success").GetBoolean(), added.ToString());
+        var edited = await _app.InvokeAsync("od.forms-designer.set-property", "button1", "Text", "edited e2e");
+        Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
+        var bound = await _app.InvokeAsync("od.forms-designer.set-event", "button1", "Click", "button1_Click");
+        Assert.True(bound.GetProperty("success").GetBoolean(), bound.ToString());
+        var moved = await _app.InvokeAsync("od.forms-designer.set-bounds", "button1", 40, 50, 120, 35);
+        Assert.True(moved.GetProperty("success").GetBoolean(), moved.ToString());
+
+        // SaveInternal merges the child's flushed edits into the parent documents and then writes
+        // both the primary file and the dirty designer file (see FormsDesignerViewContent.SaveInternal).
+        var saved = await _app.InvokeAsync("od.file.save", formCodePath);
+        Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+
+        var savedDesigner = await File.ReadAllTextAsync(designerPath);
+        Assert.Contains("label1 = New System.Windows.Forms.Label()", savedDesigner, StringComparison.Ordinal);
+        Assert.Contains("Controls.Add(label1)", savedDesigner, StringComparison.Ordinal);
+        Assert.Contains("Friend WithEvents label1 As System.Windows.Forms.Label", savedDesigner, StringComparison.Ordinal);
+        Assert.Contains("AddHandler button1.Click, AddressOf button1_Click", savedDesigner, StringComparison.Ordinal);
+        Assert.Contains("button1.Location = New System.Drawing.Point(40, 50)", savedDesigner, StringComparison.Ordinal);
+        Assert.Contains("button1.Size = New System.Drawing.Size(120, 35)", savedDesigner, StringComparison.Ordinal);
+        Assert.DoesNotContain("Me.", savedDesigner, StringComparison.Ordinal);
+        var savedPrimary = await File.ReadAllTextAsync(formCodePath);
+        Assert.Contains("Private Sub button1_Click(sender As System.Object, e As System.EventArgs)",
+            savedPrimary, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -17,6 +17,17 @@
 		<Class id="ICSharpCode.FormsDesigner.RegisterDevFlowActionsCommand"
 		       class="ICSharpCode.FormsDesigner.RegisterDevFlowActionsCommand"/>
 	</Path>
+
+	<Path name = "/SharpDevelop/Workbench/DisplayBindings">
+		<!-- VB counterpart of CSharpBinding's RoslynFormsDesignerSecondaryDisplayBinding. The VB
+		     backend is entirely child-owned (SnapshotDesignerLoader in the out-of-process host), so
+		     this binding only detects designable .vb files and locates their .Designer.vb
+		     companion; the source round trip happens over JSON-RPC in the child process. -->
+		<DisplayBinding id="WinFormsDesignerVB"
+		                type="Secondary"
+		                class="ICSharpCode.FormsDesigner.VbDesignerSecondaryDisplayBinding"
+		                fileNamePattern="\.vb$" />
+	</Path>
 	
 	<Path name = "/SharpDevelop/FormsDesigner/ContextMenus/SelectionMenu">
 		<MenuItem id          = "ViewCode"

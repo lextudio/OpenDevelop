@@ -17,10 +17,6 @@
   <ItemGroup>
     <Compile Remove="Src\OutOfProcess\*.cs" />
     <Compile Include="Src\OutOfProcess\RemoteFormsDesignerControl.cs" />
-    <!-- Directory.Build.props excludes *DevFlowActions.cs from shipping builds. Include the
-         test-only diagnostics explicitly in Debug so the shell's stable forwarding actions can
-         reach them after the AddIn is loaded. -->
-    <Compile Include="Src\FormsDesignerDevFlowActions.cs" Condition="'$(Configuration)' == 'Debug'" />
     <!-- The old NRefactory loader/generators remain excluded. CSharpBinding now supplies the live
          RoslynFormsDesignerSecondaryDisplayBinding/RoslynDesignerLoader implementation, including
          the .Designer.cs load/save round trip. Do not interpret this exclusion as saying that the

@@ -4,13 +4,16 @@ using System.Globalization;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis;
+using Vb = Microsoft.CodeAnalysis.VisualBasic;
+using VbSyntax = Microsoft.CodeAnalysis.VisualBasic.Syntax;
 using System.Windows.Forms;
 using System.Xml.Linq;
 using System.Drawing;
 
 namespace ICSharpCode.FormsDesigner.Host;
 
-/// <summary>First child-owned Roslyn load path; intentionally source-in/memory-only.</summary>
+/// <summary>First child-owned Roslyn load path; intentionally source-in/memory-only.
+/// Handles both the C# and the Visual Basic designer-file dialects.</summary>
 sealed class SnapshotDesignerLoader : BasicDesignerLoader
 {
 	readonly DocumentSnapshot snapshot;
@@ -24,11 +27,19 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		this.projectTypeResolver = projectTypeResolver;
 	}
 
+	public bool IsVisualBasic => snapshot.Language.Equals("VisualBasic", StringComparison.OrdinalIgnoreCase)
+		|| snapshot.DesignerFileName.EndsWith(".vb", StringComparison.OrdinalIgnoreCase)
+		|| snapshot.PrimaryFileName.EndsWith(".vb", StringComparison.OrdinalIgnoreCase);
+
 	protected override void PerformLoad(IDesignerSerializationManager serializationManager)
 	{
 		LoadResources();
 		var source = snapshot.Files.FirstOrDefault(f => f.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))?.Text
 			?? snapshot.Files.First().Text;
+		if (IsVisualBasic) {
+			PerformLoadVisualBasic(source);
+			return;
+		}
 		var root = CSharpSyntaxTree.ParseText(source).GetCompilationUnitRoot();
 		var method = root.DescendantNodes().OfType<MethodDeclarationSyntax>()
 			.FirstOrDefault(m => m.Identifier.ValueText == "InitializeComponent")
@@ -40,6 +51,23 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		components[className] = form;
 		foreach (var statement in method.Body?.Statements ?? default)
 			Execute(statement);
+	}
+
+	void PerformLoadVisualBasic(string source)
+	{
+		var root = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(source).GetRoot();
+		var method = root.DescendantNodes().OfType<VbSyntax.MethodBlockSyntax>()
+			.FirstOrDefault(m => m.BlockStatement is VbSyntax.MethodStatementSyntax ms
+				&& ms.DeclarationKeyword.IsKind(Vb.SyntaxKind.SubKeyword)
+				&& ms.Identifier.ValueText == "InitializeComponent")
+			?? throw new InvalidOperationException("InitializeComponent was not found.");
+		var className = method.Ancestors().OfType<VbSyntax.ClassBlockSyntax>().First().BlockStatement.Identifier.ValueText;
+		SetBaseComponentClassName(className);
+		var form = LoaderHost.CreateComponent(typeof(Form), className);
+		components["this"] = form;
+		components[className] = form;
+		foreach (var statement in method.Statements)
+			ExecuteVisualBasic(statement);
 	}
 
 	void Execute(StatementSyntax statement)
@@ -80,6 +108,46 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 			var parent = ResolveObject(parentName) as Control;
 			var child = Evaluate(invocationAdd.ArgumentList.Arguments[0].Expression) as Control;
 			if (parent != null && child != null) parent.Controls.Add(child);
+		}
+	}
+
+	void ExecuteVisualBasic(VbSyntax.StatementSyntax statement)
+	{
+		if (statement is VbSyntax.AssignmentStatementSyntax assignment) {
+			var target = StripMe(assignment.Left.ToString());
+			if (!target.Contains('.') && assignment.Right is VbSyntax.ObjectCreationExpressionSyntax creation) {
+				var type = ResolveType(creation.Type.ToString());
+				if (type != null && typeof(IComponent).IsAssignableFrom(type))
+					components[target] = LoaderHost.CreateComponent(type, target);
+				return;
+			}
+			var separator = target.LastIndexOf('.');
+			var owner = separator < 0 ? components["this"] : ResolveObject(target[..separator]);
+			var name = separator < 0 ? target : target[(separator + 1)..];
+			var property = owner == null ? null : TypeDescriptor.GetProperties(owner)[name];
+			if (property != null && !property.IsReadOnly) {
+				var value = EvaluateVisualBasic(assignment.Right);
+				if (value != null) property.SetValue(owner, ConvertValue(value, property.PropertyType));
+			}
+			return;
+		}
+		if (statement is not VbSyntax.ExpressionStatementSyntax expression) return;
+		if (expression.Expression is VbSyntax.InvocationExpressionSyntax invocation
+			&& invocation.Expression is VbSyntax.MemberAccessExpressionSyntax member) {
+			if (member.Name.Identifier.ValueText == "ApplyResources") {
+				var target = EvaluateVisualBasic(VbArgument(invocation, 0)) as IComponent;
+				var key = EvaluateVisualBasic(VbArgument(invocation, 1)) as string;
+				if (target != null && key != null) ApplyResources(target, key);
+				return;
+			}
+			if (member.Name.Identifier.ValueText == "Add") {
+				var target = StripMe(member.Expression.ToString());
+				if (!target.EndsWith("Controls", StringComparison.Ordinal)) return;
+				var parentName = target == "Controls" ? "this" : target[..^".Controls".Length];
+				var parent = ResolveObject(parentName) as Control;
+				var child = EvaluateVisualBasic(VbArgument(invocation, 0)) as Control;
+				if (parent != null && child != null) parent.Controls.Add(child);
+			}
 		}
 	}
 
@@ -135,6 +203,38 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		_ => null
 	};
 
+	object? EvaluateVisualBasic(VbSyntax.ExpressionSyntax expression) => expression switch {
+		VbSyntax.LiteralExpressionSyntax literal => literal.Token.Value,
+		VbSyntax.IdentifierNameSyntax identifier => ResolveObject(identifier.Identifier.ValueText),
+		VbSyntax.MeExpressionSyntax => components["this"],
+		VbSyntax.MemberAccessExpressionSyntax access when access.Expression is VbSyntax.MeExpressionSyntax => ResolveObject(access.Name.Identifier.ValueText),
+		VbSyntax.MemberAccessExpressionSyntax access => EvaluateMemberVisualBasic(access),
+		VbSyntax.ObjectCreationExpressionSyntax creation => CreateValueVisualBasic(creation),
+		VbSyntax.CTypeExpressionSyntax cast => EvaluateVisualBasic(cast.Expression),
+		VbSyntax.GetTypeExpressionSyntax getType => ResolveType(getType.Type.ToString()),
+		VbSyntax.InvocationExpressionSyntax invocation when invocation.Expression is VbSyntax.MemberAccessExpressionSyntax member
+			&& member.Name.Identifier.ValueText == "GetObject" && invocation.ArgumentList.Arguments.Count == 1
+			=> EvaluateVisualBasic(VbArgument(invocation, 0)) is string key && resources.TryGetValue(key, out var resource) ? resource : null,
+		VbSyntax.InvocationExpressionSyntax invocation when invocation.Expression is VbSyntax.IdentifierNameSyntax identifier
+			&& identifier.Identifier.ValueText.Equals("NameOf", StringComparison.OrdinalIgnoreCase) && invocation.ArgumentList.Arguments.Count == 1
+			=> NameOfVisualBasic(VbArgument(invocation, 0)),
+		VbSyntax.UnaryExpressionSyntax unary when unary.IsKind(Vb.SyntaxKind.UnaryMinusExpression) => Negate(EvaluateVisualBasic(unary.Operand)),
+		_ => null
+	};
+
+	/// <summary>VB argument lists are typed as the base ArgumentSyntax; unwraps the first-class
+	/// SimpleArgumentSyntax that carries the expression.</summary>
+	static VbSyntax.ExpressionSyntax VbArgument(VbSyntax.ArgumentListSyntax list, int index)
+		=> ((VbSyntax.SimpleArgumentSyntax)list.Arguments[index]).Expression;
+	static VbSyntax.ExpressionSyntax VbArgument(VbSyntax.InvocationExpressionSyntax invocation, int index)
+		=> VbArgument(invocation.ArgumentList, index);
+
+	static string NameOfVisualBasic(VbSyntax.ExpressionSyntax expression) => expression switch {
+		VbSyntax.IdentifierNameSyntax identifier => identifier.Identifier.ValueText,
+		VbSyntax.MemberAccessExpressionSyntax member => member.Name.Identifier.ValueText,
+		_ => expression.ToString().Split('.').Last()
+	};
+
 	static string NameOf(ExpressionSyntax expression) => expression switch {
 		IdentifierNameSyntax identifier => identifier.Identifier.ValueText,
 		MemberAccessExpressionSyntax member => member.Name.Identifier.ValueText,
@@ -149,6 +249,14 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		return owner == null ? null : TypeDescriptor.GetProperties(owner)[access.Name.Identifier.ValueText]?.GetValue(owner);
 	}
 
+	object? EvaluateMemberVisualBasic(VbSyntax.MemberAccessExpressionSyntax access)
+	{
+		var owner = EvaluateVisualBasic(access.Expression);
+		if (owner is Type type)
+			return type.IsEnum ? Enum.Parse(type, access.Name.Identifier.ValueText) : type.GetField(access.Name.Identifier.ValueText)?.GetValue(null);
+		return owner == null ? null : TypeDescriptor.GetProperties(owner)[access.Name.Identifier.ValueText]?.GetValue(owner);
+	}
+
 	object? CreateValue(ObjectCreationExpressionSyntax creation)
 	{
 		var type = ResolveType(creation.Type.ToString());
@@ -157,7 +265,15 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		return Activator.CreateInstance(type, args);
 	}
 
-	object? ResolveObject(string name) => components.TryGetValue(StripThis(name), out var component) ? component : ResolveType(name);
+	object? CreateValueVisualBasic(VbSyntax.ObjectCreationExpressionSyntax creation)
+	{
+		var type = ResolveType(creation.Type.ToString());
+		if (type == null) return null;
+		var args = creation.ArgumentList?.Arguments.Select(a => EvaluateVisualBasic(((VbSyntax.SimpleArgumentSyntax)a).Expression)).ToArray() ?? [];
+		return Activator.CreateInstance(type, args);
+	}
+
+	object? ResolveObject(string name) => components.TryGetValue(StripMe(name), out var component) ? component : ResolveType(name);
 
 	Type? ResolveType(string name)
 	{
@@ -180,5 +296,7 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		: target.IsEnum ? Enum.ToObject(target, value) : Convert.ChangeType(value, target, CultureInfo.InvariantCulture);
 	static object? Negate(object? value) => value switch { int n => -n, long n => -n, float n => -n, double n => -n, _ => value };
 	static string StripThis(string value) => value.StartsWith("this.", StringComparison.Ordinal) ? value[5..] : value;
+	static string StripMe(string value) => value.StartsWith("Me.", StringComparison.Ordinal) ? value[3..]
+		: value.StartsWith("this.", StringComparison.Ordinal) ? value[5..] : value;
 	protected override void PerformFlush(IDesignerSerializationManager serializationManager) { }
 }

@@ -11,6 +11,8 @@ using System.Globalization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Vb = Microsoft.CodeAnalysis.VisualBasic;
+using VbSyntax = Microsoft.CodeAnalysis.VisualBasic.Syntax;
 using System.Reflection;
 using System.Runtime.Loader;
 
@@ -31,6 +33,14 @@ sealed class DesignerHostService
 	bool initialized;
 
 	public DesignerHostService(string expectedToken) => this.expectedToken = expectedToken;
+
+	bool IsVisualBasic => current?.Language.Equals("VisualBasic", StringComparison.OrdinalIgnoreCase) == true
+		|| current?.DesignerFileName.EndsWith(".vb", StringComparison.OrdinalIgnoreCase) == true
+		|| current?.PrimaryFileName.EndsWith(".vb", StringComparison.OrdinalIgnoreCase) == true;
+
+	bool IsValidIdentifier(string name) => IsVisualBasic
+		? Vb.SyntaxFacts.IsValidIdentifier(name)
+		: SyntaxFacts.IsValidIdentifier(name);
 
 	[JsonRpcMethod("initialize")]
 	public Handshake Initialize(string token, int protocolVersion)
@@ -75,8 +85,13 @@ sealed class DesignerHostService
 		if (current is null || current.Version != version)
 			throw new InvalidOperationException("Cannot flush a stale or unopened document version.");
 		foreach (var file in current.Files.Where(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))) {
-			var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
-			file.Text = new ThisQualifierRewriter().Visit(root)!.ToFullString();
+			if (IsVisualBasic) {
+				var vbRoot = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
+				file.Text = new MeQualifierRewriter().Visit(vbRoot)!.ToFullString();
+			} else {
+				var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
+				file.Text = new ThisQualifierRewriter().Visit(root)!.ToFullString();
+			}
 		}
 		return new EditSet { BaseVersion = version, Files = current.Files };
 	}
@@ -196,8 +211,8 @@ sealed class DesignerHostService
 	public SessionState RenameComponent(long version, string componentName, string newName)
 	{
 		EnsureCurrentVersion(version, "rename");
-		if (!SyntaxFacts.IsValidIdentifier(newName))
-			throw new ArgumentException("A valid C# component name is required.", nameof(newName));
+		if (!IsValidIdentifier(newName))
+			throw new ArgumentException("A valid component name is required.", nameof(newName));
 		var host = GetHost();
 		var component = host.Container.Components[componentName]
 			?? throw new ArgumentException("Component not found: " + componentName, nameof(componentName));
@@ -213,8 +228,8 @@ sealed class DesignerHostService
 	public SessionState SetEvent(long version, string componentName, string eventName, string handlerName)
 	{
 		EnsureCurrentVersion(version, "edit");
-		if (!String.IsNullOrEmpty(handlerName) && !SyntaxFacts.IsValidIdentifier(handlerName))
-			throw new ArgumentException("A valid C# event handler name is required.", nameof(handlerName));
+		if (!String.IsNullOrEmpty(handlerName) && !IsValidIdentifier(handlerName))
+			throw new ArgumentException("A valid event handler name is required.", nameof(handlerName));
 		var component = GetHost().Container.Components[componentName]
 			?? throw new ArgumentException("Component not found: " + componentName, nameof(componentName));
 		var descriptor = TypeDescriptor.GetEvents(component)[eventName]
@@ -247,8 +262,8 @@ sealed class DesignerHostService
 	public SessionState AddControl(long version, string parentName, string controlType, string componentName, int x, int y)
 	{
 		EnsureCurrentVersion(version, "edit");
-		if (!SyntaxFacts.IsValidIdentifier(componentName))
-			throw new ArgumentException("A valid C# component name is required.", nameof(componentName));
+		if (!IsValidIdentifier(componentName))
+			throw new ArgumentException("A valid component name is required.", nameof(componentName));
 		var host = designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost
 			?? throw new InvalidOperationException("The designer surface is unavailable.");
 		if (host.Container.Components[componentName] != null)
@@ -432,6 +447,7 @@ sealed class DesignerHostService
 
 	void RewriteProperty(string componentName, string propertyName, object value)
 	{
+		if (IsVisualBasic) { RewritePropertyVisualBasic(componentName, propertyName, value); return; }
 		var file = current!.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))
 			?? current.Files.First();
 		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
@@ -452,9 +468,43 @@ sealed class DesignerHostService
 			.NormalizeWhitespace().ToFullString();
 	}
 
+	void RewritePropertyVisualBasic(string componentName, string propertyName, object value)
+	{
+		var file = current!.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))
+			?? current.Files.First();
+		var root = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
+		var target = componentName + "." + propertyName;
+		var assignment = root.DescendantNodes().OfType<VbSyntax.AssignmentStatementSyntax>()
+			.FirstOrDefault(item => NormalizeTarget(item.Left.ToString()) == target);
+		var expression = SerializeValueVisualBasic(value);
+		if (assignment != null) {
+			file.Text = root.ReplaceNode(assignment.Right, expression.WithTriviaFrom(assignment.Right)).ToFullString();
+			return;
+		}
+		var method = root.DescendantNodes().OfType<VbSyntax.MethodBlockSyntax>()
+			.First(item => item.BlockStatement is VbSyntax.MethodStatementSyntax ms
+				&& ms.DeclarationKeyword.IsKind(Vb.SyntaxKind.SubKeyword)
+				&& ms.Identifier.ValueText == "InitializeComponent");
+		var statement = Vb.SyntaxFactory.ParseExecutableStatement($"Me.{target} = {expression}");
+		file.Text = root.ReplaceNode(method, method.WithStatements(method.Statements.Add(statement)))
+			.NormalizeWhitespace().ToFullString();
+	}
+
 	void RewriteComponentName(string oldName, string newName)
 	{
 		var file = CurrentDesignerFile();
+		if (IsVisualBasic) {
+			var vbRoot = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
+			var vbTokens = vbRoot.DescendantTokens().Where(token => token.IsKind(Vb.SyntaxKind.IdentifierToken)
+				&& token.ValueText == oldName && (token.Parent!.AncestorsAndSelf().OfType<VbSyntax.MethodBlockSyntax>()
+					.Any(method => method.BlockStatement is VbSyntax.MethodStatementSyntax ms
+					&& ms.DeclarationKeyword.IsKind(Vb.SyntaxKind.SubKeyword)
+					&& ms.Identifier.ValueText == "InitializeComponent")
+					|| token.Parent.AncestorsAndSelf().OfType<VbSyntax.FieldDeclarationSyntax>().Any())).ToArray();
+			vbRoot = vbRoot.ReplaceTokens(vbTokens, (token, _) => Vb.SyntaxFactory.Identifier(token.LeadingTrivia, newName, token.TrailingTrivia));
+			file.Text = vbRoot.NormalizeWhitespace().ToFullString();
+			return;
+		}
 		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
 		var tokens = root.DescendantTokens().Where(token => token.IsKind(SyntaxKind.IdentifierToken)
 			&& token.ValueText == oldName && (token.Parent!.AncestorsAndSelf().OfType<MethodDeclarationSyntax>()
@@ -467,8 +517,15 @@ sealed class DesignerHostService
 	void RewriteResetProperty(string componentName, string propertyName)
 	{
 		var file = CurrentDesignerFile();
-		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
 		var target = componentName + "." + propertyName;
+		if (IsVisualBasic) {
+			var vbRoot = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
+			var vbStatements = vbRoot.DescendantNodes().OfType<VbSyntax.AssignmentStatementSyntax>()
+				.Where(statement => NormalizeTarget(statement.Left.ToString()) == target).ToArray();
+			file.Text = vbRoot.RemoveNodes(vbStatements, SyntaxRemoveOptions.KeepNoTrivia)!.NormalizeWhitespace().ToFullString();
+			return;
+		}
+		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
 		var statements = root.DescendantNodes().OfType<ExpressionStatementSyntax>().Where(statement =>
 			statement.Expression is AssignmentExpressionSyntax assignment
 			&& assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)
@@ -476,7 +533,8 @@ sealed class DesignerHostService
 		file.Text = root.RemoveNodes(statements, SyntaxRemoveOptions.KeepNoTrivia)!.NormalizeWhitespace().ToFullString();
 	}
 
-	static string NormalizeTarget(string target) => target.StartsWith("this.", StringComparison.Ordinal) ? target[5..] : target;
+	static string NormalizeTarget(string target) => target.StartsWith("this.", StringComparison.Ordinal) ? target[5..]
+		: target.StartsWith("Me.", StringComparison.Ordinal) ? target[3..] : target;
 
 	static ExpressionSyntax SerializeValue(object value) => value switch {
 		string text => SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal(text)),
@@ -494,8 +552,33 @@ sealed class DesignerHostService
 		_ => throw new NotSupportedException($"Serializing property values of type {value.GetType().FullName} is not supported yet.")
 	};
 
+	/// <summary>VB expression form: literals use True/False/Nothing and the character/float
+	/// suffixes ("c, !, R), casts are CType, and struct values use New.</summary>
+	static VbSyntax.ExpressionSyntax SerializeValueVisualBasic(object value) => value switch {
+		string text => Vb.SyntaxFactory.StringLiteralExpression(Vb.SyntaxFactory.Literal(text)),
+		bool boolean => boolean
+			? Vb.SyntaxFactory.TrueLiteralExpression(Vb.SyntaxFactory.Token(Vb.SyntaxKind.TrueKeyword))
+			: Vb.SyntaxFactory.FalseLiteralExpression(Vb.SyntaxFactory.Token(Vb.SyntaxKind.FalseKeyword)),
+		char character => Vb.SyntaxFactory.CharacterLiteralExpression(Vb.SyntaxFactory.Literal(character)),
+		int integer => Vb.SyntaxFactory.ParseExpression(integer.ToString(CultureInfo.InvariantCulture)),
+		short or ushort or long or ulong or byte or sbyte or uint
+			=> Vb.SyntaxFactory.ParseExpression(Convert.ToString(value, CultureInfo.InvariantCulture)!),
+		float single => Vb.SyntaxFactory.ParseExpression(single.ToString(CultureInfo.InvariantCulture) + "!"),
+		double number => Vb.SyntaxFactory.ParseExpression(number.ToString(CultureInfo.InvariantCulture) + "R"),
+		decimal money => Vb.SyntaxFactory.ParseExpression(money.ToString(CultureInfo.InvariantCulture) + "D"),
+		Enum enumeration => Vb.SyntaxFactory.ParseExpression($"CType({Convert.ToInt64(enumeration, CultureInfo.InvariantCulture)}, {enumeration.GetType().FullName ?? enumeration.GetType().Name})"),
+		Point point => Vb.SyntaxFactory.ParseExpression($"New System.Drawing.Point({point.X}, {point.Y})"),
+		Size size => Vb.SyntaxFactory.ParseExpression($"New System.Drawing.Size({size.Width}, {size.Height})"),
+		SizeF size => Vb.SyntaxFactory.ParseExpression($"New System.Drawing.SizeF({size.Width.ToString(CultureInfo.InvariantCulture)}!, {size.Height.ToString(CultureInfo.InvariantCulture)}!)"),
+		Padding padding => Vb.SyntaxFactory.ParseExpression($"New System.Windows.Forms.Padding({padding.Left}, {padding.Top}, {padding.Right}, {padding.Bottom})"),
+		Font font => Vb.SyntaxFactory.ParseExpression($"New System.Drawing.Font(\"{font.Name}\", {font.Size.ToString(CultureInfo.InvariantCulture)}!, CType({Convert.ToInt32(font.Style, CultureInfo.InvariantCulture)}, System.Drawing.FontStyle))"),
+		Color color => Vb.SyntaxFactory.ParseExpression($"System.Drawing.Color.FromArgb({color.A}, {color.R}, {color.G}, {color.B})"),
+		_ => throw new NotSupportedException($"Serializing property values of type {value.GetType().FullName} is not supported yet.")
+	};
+
 	void RewriteEvent(string componentName, EventDescriptor descriptor, string handlerName)
 	{
+		if (IsVisualBasic) { RewriteEventVisualBasic(componentName, descriptor, handlerName); return; }
 		var designerFile = CurrentDesignerFile();
 		var root = CSharpSyntaxTree.ParseText(designerFile.Text).GetCompilationUnitRoot();
 		var target = componentName + "." + descriptor.Name;
@@ -532,6 +615,61 @@ sealed class DesignerHostService
 		primaryFile.Text = primaryRoot.ReplaceNode(declaration, declaration.AddMembers(method)).NormalizeWhitespace().ToFullString();
 	}
 
+	void RewriteEventVisualBasic(string componentName, EventDescriptor descriptor, string handlerName)
+	{
+		var designerFile = CurrentDesignerFile();
+		var root = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(designerFile.Text).GetRoot();
+		var target = componentName + "." + descriptor.Name;
+		var existing = root.DescendantNodes().OfType<VbSyntax.AddRemoveHandlerStatementSyntax>()
+			.FirstOrDefault(item => item.IsKind(Vb.SyntaxKind.AddHandlerStatement) && NormalizeTarget(item.EventExpression.ToString()) == target);
+		if (String.IsNullOrEmpty(handlerName)) {
+			if (existing != null)
+				designerFile.Text = root.RemoveNode(existing, SyntaxRemoveOptions.KeepNoTrivia)!.NormalizeWhitespace().ToFullString();
+			return;
+		}
+		if (existing != null) {
+			var handlerExpression = Vb.SyntaxFactory.AddressOfExpression(
+				Vb.SyntaxFactory.ParseExpression("Me." + handlerName));
+			designerFile.Text = root.ReplaceNode(existing.DelegateExpression, handlerExpression.WithTriviaFrom(existing.DelegateExpression))
+				.NormalizeWhitespace().ToFullString();
+		} else {
+			var initialize = root.DescendantNodes().OfType<VbSyntax.MethodBlockSyntax>()
+				.First(item => item.BlockStatement is VbSyntax.MethodStatementSyntax ms
+				&& ms.DeclarationKeyword.IsKind(Vb.SyntaxKind.SubKeyword)
+				&& ms.Identifier.ValueText == "InitializeComponent");
+			var statement = Vb.SyntaxFactory.ParseExecutableStatement($"AddHandler Me.{target}, AddressOf Me.{handlerName}");
+			designerFile.Text = root.ReplaceNode(initialize, initialize.WithStatements(initialize.Statements.Add(statement)))
+				.NormalizeWhitespace().ToFullString();
+		}
+
+		var primaryFile = current!.Files.FirstOrDefault(item => item.Kind.Equals("Source", StringComparison.OrdinalIgnoreCase));
+		if (primaryFile == null) return;
+		var primaryRoot = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(primaryFile.Text).GetRoot();
+		if (primaryRoot.DescendantNodes().OfType<VbSyntax.MethodBlockSyntax>().Any(item =>
+			item.BlockStatement is VbSyntax.MethodStatementSyntax ms
+			&& ms.DeclarationKeyword.IsKind(Vb.SyntaxKind.SubKeyword)
+			&& ms.Identifier.ValueText == handlerName)) return;
+		var declaration = primaryRoot.DescendantNodes().OfType<VbSyntax.ClassBlockSyntax>().FirstOrDefault();
+		if (declaration == null) return;
+		var invoke = descriptor.EventType?.GetMethod("Invoke");
+		var parameters = invoke?.GetParameters() ?? [];
+		// VB's NormalizeWhitespace round-trips "name As Type" parameter lists cleanly, while a
+		// bare "Type name" list gets "System . Object" spacing artifacts.
+		var parameterList = String.Join(", ", parameters.Select((parameter, index) =>
+			(parameter.Name ?? "arg" + index) + " As " + (parameter.ParameterType.FullName ?? parameter.ParameterType.Name)));
+		var member = ParseMemberMethod($"Private Sub {handlerName}({parameterList})\nEnd Sub");
+		primaryFile.Text = primaryRoot.ReplaceNode(declaration, declaration.WithMembers(declaration.Members.Add(member)))
+			.NormalizeWhitespace().ToFullString();
+	}
+
+	/// <summary>Parses a single VB member declaration through a dummy partial class; the
+	/// VisualBasic SyntaxFactory has no ParseMemberDeclaration equivalent.</summary>
+	static VbSyntax.MethodBlockSyntax ParseMemberMethod(string text)
+	{
+		var unit = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText("Partial Class Dummy\n" + text + "\nEnd Class").GetRoot();
+		return unit.DescendantNodes().OfType<VbSyntax.MethodBlockSyntax>().First();
+	}
+
 	Type ResolveControlType(string name)
 	{
 		var fullName = name.Contains('.') ? name : "System.Windows.Forms." + name;
@@ -544,6 +682,7 @@ sealed class DesignerHostService
 
 	void RewriteAddedControl(string parentName, Type type, string componentName, int x, int y, int width, int height)
 	{
+		if (IsVisualBasic) { RewriteAddedControlVisualBasic(parentName, type, componentName, x, y, width, height); return; }
 		var file = current!.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))
 			?? current.Files.First();
 		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
@@ -566,9 +705,50 @@ sealed class DesignerHostService
 		file.Text = root.NormalizeWhitespace().ToFullString();
 	}
 
+	void RewriteAddedControlVisualBasic(string parentName, Type type, string componentName, int x, int y, int width, int height)
+	{
+		var file = current!.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))
+			?? current.Files.First();
+		var root = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
+		var method = root.DescendantNodes().OfType<VbSyntax.MethodBlockSyntax>()
+			.First(item => item.BlockStatement is VbSyntax.MethodStatementSyntax ms
+				&& ms.DeclarationKeyword.IsKind(Vb.SyntaxKind.SubKeyword)
+				&& ms.Identifier.ValueText == "InitializeComponent");
+		var className = method.Ancestors().OfType<VbSyntax.ClassBlockSyntax>().First().BlockStatement.Identifier.ValueText;
+		var parentExpression = parentName == className ? "Me" : "Me." + parentName;
+		var statements = new[] {
+			Vb.SyntaxFactory.ParseExecutableStatement($"Me.{componentName} = New {type.FullName}()"),
+			Vb.SyntaxFactory.ParseExecutableStatement($"Me.{componentName}.Location = New System.Drawing.Point({x}, {y})"),
+			Vb.SyntaxFactory.ParseExecutableStatement($"Me.{componentName}.Size = New System.Drawing.Size({width}, {height})"),
+			Vb.SyntaxFactory.ParseExecutableStatement($"{parentExpression}.Controls.Add(Me.{componentName})")
+		};
+		var updatedMethod = method.WithStatements(method.Statements.AddRange(statements));
+		root = root.ReplaceNode(method, updatedMethod);
+		var declaration = root.DescendantNodes().OfType<VbSyntax.ClassBlockSyntax>().First(item => item.BlockStatement.Identifier.ValueText == className);
+		var field = ParseMemberField($"Friend WithEvents {componentName} As {type.FullName}");
+		root = root.ReplaceNode(declaration, declaration.WithMembers(declaration.Members.Add(field)));
+		file.Text = root.NormalizeWhitespace().ToFullString();
+	}
+
+	/// <summary>Parses a single VB field declaration through a dummy partial class.</summary>
+	static VbSyntax.FieldDeclarationSyntax ParseMemberField(string text)
+	{
+		var unit = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText("Partial Class Dummy\n" + text + "\nEnd Class").GetRoot();
+		return unit.DescendantNodes().OfType<VbSyntax.FieldDeclarationSyntax>().First();
+	}
+
 	void RewriteBounds(string componentName, int x, int y, int width, int height)
 	{
 		var file = CurrentDesignerFile();
+		if (IsVisualBasic) {
+			var vbRoot = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
+			vbRoot = ReplaceRequiredAssignmentVisualBasic(vbRoot, componentName + ".Location",
+				Vb.SyntaxFactory.ParseExpression($"New System.Drawing.Point({x}, {y})"));
+			vbRoot = ReplaceRequiredAssignmentVisualBasic(vbRoot, componentName + ".Size",
+				Vb.SyntaxFactory.ParseExpression($"New System.Drawing.Size({width}, {height})"));
+			file.Text = vbRoot.ToFullString();
+			return;
+		}
 		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
 		root = ReplaceRequiredAssignment(root, componentName + ".Location",
 			SyntaxFactory.ParseExpression($"new System.Drawing.Point({x}, {y})"));
@@ -580,6 +760,26 @@ sealed class DesignerHostService
 	void RewriteRootSize(int width, int height)
 	{
 		var file = CurrentDesignerFile();
+		if (IsVisualBasic) {
+			var vbRoot = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
+			var vbAssignment = vbRoot.DescendantNodes().OfType<VbSyntax.AssignmentStatementSyntax>()
+				.FirstOrDefault(item => NormalizeTarget(item.Left.ToString()) is "ClientSize" or "Size");
+			var vbValue = Vb.SyntaxFactory.ParseExpression($"New System.Drawing.Size({width}, {height})");
+			if (vbAssignment != null) {
+				var vbReplacement = Vb.SyntaxFactory.AssignmentStatement(Vb.SyntaxKind.SimpleAssignmentStatement,
+					Vb.SyntaxFactory.ParseExpression("Me.Size"), Vb.SyntaxFactory.Token(Vb.SyntaxKind.EqualsToken), vbValue).WithTriviaFrom(vbAssignment);
+				file.Text = vbRoot.ReplaceNode(vbAssignment, vbReplacement).ToFullString();
+				return;
+			}
+			var vbInitialize = vbRoot.DescendantNodes().OfType<VbSyntax.MethodBlockSyntax>()
+				.First(item => item.BlockStatement is VbSyntax.MethodStatementSyntax ms
+				&& ms.DeclarationKeyword.IsKind(Vb.SyntaxKind.SubKeyword)
+				&& ms.Identifier.ValueText == "InitializeComponent");
+			file.Text = vbRoot.ReplaceNode(vbInitialize, vbInitialize.WithStatements(vbInitialize.Statements.Add(
+				Vb.SyntaxFactory.ParseExecutableStatement($"Me.Size = New System.Drawing.Size({width}, {height})"))))
+				.NormalizeWhitespace().ToFullString();
+			return;
+		}
 		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
 		var assignment = root.DescendantNodes().OfType<AssignmentExpressionSyntax>()
 			.FirstOrDefault(item => NormalizeTarget(item.Left.ToString()) is "ClientSize" or "Size");
@@ -600,6 +800,19 @@ sealed class DesignerHostService
 	void RewriteDeletedComponent(string componentName)
 	{
 		var file = CurrentDesignerFile();
+		if (IsVisualBasic) {
+			var vbRoot = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
+			var vbStatements = vbRoot.DescendantNodes().OfType<VbSyntax.StatementSyntax>()
+				.Where(statement => statement.DescendantNodesAndSelf().OfType<VbSyntax.IdentifierNameSyntax>()
+					.Any(identifier => identifier.Identifier.ValueText == componentName)).ToArray();
+			vbRoot = vbRoot.RemoveNodes(vbStatements, SyntaxRemoveOptions.KeepNoTrivia)!;
+			var vbFields = vbRoot.DescendantNodes().OfType<VbSyntax.FieldDeclarationSyntax>()
+				.Where(field => field.Declarators.SelectMany(declarator => declarator.Names)
+					.Any(name => name.Identifier.ValueText == componentName)).ToArray();
+			vbRoot = vbRoot.RemoveNodes(vbFields, SyntaxRemoveOptions.KeepNoTrivia)!;
+			file.Text = vbRoot.NormalizeWhitespace().ToFullString();
+			return;
+		}
 		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
 		var statements = root.DescendantNodes().OfType<StatementSyntax>()
 			.Where(statement => statement.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>()
@@ -617,6 +830,7 @@ sealed class DesignerHostService
 	void RewriteZOrder(string parentName, string componentName, int childIndex)
 	{
 		var file = CurrentDesignerFile();
+		if (IsVisualBasic) { RewriteZOrderVisualBasic(parentName, componentName, childIndex); return; }
 		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
 		var initialize = root.DescendantNodes().OfType<MethodDeclarationSyntax>()
 			.First(item => item.Identifier.ValueText == "InitializeComponent");
@@ -633,8 +847,38 @@ sealed class DesignerHostService
 		file.Text = root.ReplaceNode(initialize, initialize.WithBody(body)).NormalizeWhitespace().ToFullString();
 	}
 
+	void RewriteZOrderVisualBasic(string parentName, string componentName, int childIndex)
+	{
+		var file = CurrentDesignerFile();
+		var root = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
+		var initialize = root.DescendantNodes().OfType<VbSyntax.MethodBlockSyntax>()
+			.First(item => item.BlockStatement is VbSyntax.MethodStatementSyntax ms
+				&& ms.DeclarationKeyword.IsKind(Vb.SyntaxKind.SubKeyword)
+				&& ms.Identifier.ValueText == "InitializeComponent");
+		var oldStatements = initialize.Statements.Where(statement => {
+			var invocation = statement.DescendantNodes().OfType<VbSyntax.InvocationExpressionSyntax>().FirstOrDefault();
+			return invocation?.Expression is VbSyntax.MemberAccessExpressionSyntax member
+				&& member.Name.Identifier.ValueText == "SetChildIndex"
+				&& NormalizeTarget(invocation.ArgumentList.Arguments.FirstOrDefault() is VbSyntax.SimpleArgumentSyntax first ? first.Expression.ToString() : "") == componentName;
+		}).ToArray();
+		var body = initialize.WithStatements(Vb.SyntaxFactory.List(initialize.Statements.Where(statement => !oldStatements.Contains(statement))));
+		var parentExpression = String.IsNullOrEmpty(parentName) || parentName == initialize.Ancestors().OfType<VbSyntax.ClassBlockSyntax>().First().BlockStatement.Identifier.ValueText
+			? "Me" : "Me." + parentName;
+		body = body.WithStatements(body.Statements.Add(Vb.SyntaxFactory.ParseExecutableStatement(
+			$"{parentExpression}.Controls.SetChildIndex(Me.{componentName}, {childIndex})")));
+		file.Text = root.ReplaceNode(initialize, body).NormalizeWhitespace().ToFullString();
+	}
+
 	SourceFileSnapshot CurrentDesignerFile() => current!.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))
 		?? current.Files.First();
+
+	static VbSyntax.CompilationUnitSyntax ReplaceRequiredAssignmentVisualBasic(VbSyntax.CompilationUnitSyntax root, string target, VbSyntax.ExpressionSyntax value)
+	{
+		var assignment = root.DescendantNodes().OfType<VbSyntax.AssignmentStatementSyntax>()
+			.FirstOrDefault(item => NormalizeTarget(item.Left.ToString()) == target)
+			?? throw new NotSupportedException("The existing designer source has no assignment for " + target + ".");
+		return root.ReplaceNode(assignment.Right, value.WithTriviaFrom(assignment.Right));
+	}
 
 	static CompilationUnitSyntax ReplaceRequiredAssignment(CompilationUnitSyntax root, string target, ExpressionSyntax value)
 	{
@@ -684,10 +928,27 @@ sealed class DesignerHostService
 		}
 	}
 
+	static string VbArgumentText(VbSyntax.ObjectCreationExpressionSyntax creation, int index)
+		=> ((VbSyntax.SimpleArgumentSyntax)creation.ArgumentList!.Arguments[index]).Expression.ToString();
+
+	static bool SnapshotIsVisualBasic(DocumentSnapshot snapshot) => snapshot.Language.Equals("VisualBasic", StringComparison.OrdinalIgnoreCase)
+		|| snapshot.DesignerFileName.EndsWith(".vb", StringComparison.OrdinalIgnoreCase)
+		|| snapshot.PrimaryFileName.EndsWith(".vb", StringComparison.OrdinalIgnoreCase);
+
 	static Size? ReadRootDesignSize(DocumentSnapshot snapshot)
 	{
 		var source = snapshot.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))?.Text;
 		if (String.IsNullOrEmpty(source)) return null;
+		if (SnapshotIsVisualBasic(snapshot)) {
+			var vbRoot = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(source).GetRoot();
+			var vbCreation = vbRoot.DescendantNodes().OfType<VbSyntax.AssignmentStatementSyntax>()
+				.Where(item => NormalizeTarget(item.Left.ToString()) is "Size" or "ClientSize")
+				.Select(item => item.Right).OfType<VbSyntax.ObjectCreationExpressionSyntax>().FirstOrDefault();
+			if (vbCreation?.ArgumentList?.Arguments.Count != 2
+				|| !Int32.TryParse(VbArgumentText(vbCreation, 0), out var vbWidth)
+				|| !Int32.TryParse(VbArgumentText(vbCreation, 1), out var vbHeight)) return null;
+			return new Size(vbWidth, vbHeight);
+		}
 		var root = CSharpSyntaxTree.ParseText(source).GetCompilationUnitRoot();
 		var creation = root.DescendantNodes().OfType<AssignmentExpressionSyntax>()
 			.Where(item => NormalizeTarget(item.Left.ToString()) is "Size" or "ClientSize")
@@ -702,6 +963,16 @@ sealed class DesignerHostService
 	{
 		var source = snapshot.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))?.Text;
 		if (String.IsNullOrEmpty(source)) return null;
+		if (SnapshotIsVisualBasic(snapshot)) {
+			var vbRoot = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(source).GetRoot();
+			var vbCreation = vbRoot.DescendantNodes().OfType<VbSyntax.AssignmentStatementSyntax>()
+				.Where(item => NormalizeTarget(item.Left.ToString()) == "AutoScaleDimensions")
+				.Select(item => item.Right).OfType<VbSyntax.ObjectCreationExpressionSyntax>().FirstOrDefault();
+			if (vbCreation?.ArgumentList?.Arguments.Count != 2
+				|| !Single.TryParse(VbArgumentText(vbCreation, 0).TrimEnd('!', 'F', 'f'), NumberStyles.Float, CultureInfo.InvariantCulture, out var vbWidth)
+				|| !Single.TryParse(VbArgumentText(vbCreation, 1).TrimEnd('!', 'F', 'f'), NumberStyles.Float, CultureInfo.InvariantCulture, out var vbHeight)) return null;
+			return new SizeF(vbWidth, vbHeight);
+		}
 		var root = CSharpSyntaxTree.ParseText(source).GetCompilationUnitRoot();
 		var creation = root.DescendantNodes().OfType<AssignmentExpressionSyntax>()
 			.Where(item => NormalizeTarget(item.Left.ToString()) == "AutoScaleDimensions")
@@ -769,12 +1040,22 @@ sealed class DesignerHostService
 	{
 		var handlers = CurrentDesignerFile().Text;
 		return TypeDescriptor.GetEvents(component).Cast<EventDescriptor>().Where(item => item.IsBrowsable).Select(item => {
-			var root = CSharpSyntaxTree.ParseText(handlers).GetCompilationUnitRoot();
 			var target = (component.Site?.Name ?? "") + "." + item.Name;
-			var assignment = root.DescendantNodes().OfType<AssignmentExpressionSyntax>()
-				.FirstOrDefault(node => node.IsKind(SyntaxKind.AddAssignmentExpression) && NormalizeTarget(node.Left.ToString()) == target);
-			var handler = assignment?.Right.ToString() ?? "";
-			if (handler.StartsWith("this.", StringComparison.Ordinal)) handler = handler[5..];
+			var handler = "";
+			if (IsVisualBasic) {
+				var vbRoot = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(handlers).GetRoot();
+				var statement = vbRoot.DescendantNodes().OfType<VbSyntax.AddRemoveHandlerStatementSyntax>()
+					.FirstOrDefault(node => node.IsKind(Vb.SyntaxKind.AddHandlerStatement) && NormalizeTarget(node.EventExpression.ToString()) == target);
+				handler = statement?.DelegateExpression.ToString() ?? "";
+				if (handler.StartsWith("AddressOf Me.", StringComparison.Ordinal)) handler = handler["AddressOf ".Length..];
+				if (handler.StartsWith("Me.", StringComparison.Ordinal)) handler = handler[3..];
+			} else {
+				var root = CSharpSyntaxTree.ParseText(handlers).GetCompilationUnitRoot();
+				var assignment = root.DescendantNodes().OfType<AssignmentExpressionSyntax>()
+					.FirstOrDefault(node => node.IsKind(SyntaxKind.AddAssignmentExpression) && NormalizeTarget(node.Left.ToString()) == target);
+				handler = assignment?.Right.ToString() ?? "";
+				if (handler.StartsWith("this.", StringComparison.Ordinal)) handler = handler[5..];
+			}
 			return new EventInfoDto { Name = item.Name, Category = item.Category ?? "Action", HandlerTypeName = item.EventType?.FullName ?? "", Handler = handler };
 		}).ToList();
 	}
@@ -783,7 +1064,8 @@ sealed class DesignerHostService
 	{
 		var result = new List<PropertyInfoDto>();
 		var componentName = component.Site?.Name ?? "";
-		var designerRoot = CSharpSyntaxTree.ParseText(CurrentDesignerFile().Text).GetCompilationUnitRoot();
+		var designerRoot = IsVisualBasic ? null : CSharpSyntaxTree.ParseText(CurrentDesignerFile().Text).GetCompilationUnitRoot();
+		var vbDesignerRoot = IsVisualBasic ? (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(CurrentDesignerFile().Text).GetRoot() : null;
 		foreach (PropertyDescriptor property in TypeDescriptor.GetProperties(component)) {
 			if (!property.IsBrowsable || property.Name is "Site" or "Container" or "Parent") continue;
 			object? value;
@@ -811,9 +1093,12 @@ sealed class DesignerHostService
 					&& property.PropertyType != typeof(SizeF)),
 				// The source assignment is authoritative. Some LibreWinForms
 				// descriptors keep returning true after ResetValue.
-				ShouldSerialize = designerRoot.DescendantNodes().OfType<AssignmentExpressionSyntax>().Any(assignment =>
-					assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)
-					&& NormalizeTarget(assignment.Left.ToString()) == componentName + "." + property.Name),
+				ShouldSerialize = IsVisualBasic
+					? vbDesignerRoot!.DescendantNodes().OfType<VbSyntax.AssignmentStatementSyntax>().Any(assignment =>
+						NormalizeTarget(assignment.Left.ToString()) == componentName + "." + property.Name)
+					: designerRoot!.DescendantNodes().OfType<AssignmentExpressionSyntax>().Any(assignment =>
+						assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)
+						&& NormalizeTarget(assignment.Left.ToString()) == componentName + "." + property.Name),
 				IsEnum = property.PropertyType.IsEnum
 			});
 		}
@@ -997,8 +1282,18 @@ sealed class ThisQualifierRewriter : CSharpSyntaxRewriter
 	}
 }
 
+sealed class MeQualifierRewriter : Vb.VisualBasicSyntaxRewriter
+{
+	public override SyntaxNode? VisitMemberAccessExpression(VbSyntax.MemberAccessExpressionSyntax node)
+	{
+		if (node.Expression is VbSyntax.MeExpressionSyntax)
+			return node.Name.WithTriviaFrom(node);
+		return base.VisitMemberAccessExpression(node);
+	}
+}
+
 sealed class Handshake { public int ProtocolVersion { get; set; } public string Runtime { get; set; } = ""; public int ProcessId { get; set; } }
-sealed class DocumentSnapshot { public long Version { get; set; } public string ProjectFileName { get; set; } = ""; public string TargetFramework { get; set; } = ""; public string ProjectAssemblyPath { get; set; } = ""; public string PrimaryFileName { get; set; } = ""; public string DesignerFileName { get; set; } = ""; public List<SourceFileSnapshot> Files { get; set; } = []; }
+sealed class DocumentSnapshot { public long Version { get; set; } public string ProjectFileName { get; set; } = ""; public string TargetFramework { get; set; } = ""; public string ProjectAssemblyPath { get; set; } = ""; public string PrimaryFileName { get; set; } = ""; public string DesignerFileName { get; set; } = ""; public string Language { get; set; } = "CSharp"; public List<SourceFileSnapshot> Files { get; set; } = []; }
 sealed class SourceFileSnapshot { public string FileName { get; set; } = ""; public string Kind { get; set; } = "Source"; public string Text { get; set; } = ""; public string Base64 { get; set; } = ""; }
 sealed class SessionState { public long Version { get; set; } public bool Accepted { get; set; } public string Error { get; set; } = ""; public string RootType { get; set; } = ""; public int ComponentCount { get; set; } public List<ComponentInfo> Components { get; set; } = []; public RenderFrame? Render { get; set; } }
 sealed class RenderFrame { public long Sequence { get; set; } public int Width { get; set; } public int Height { get; set; } public double Dpi { get; set; } = 1; public string PngBase64 { get; set; } = ""; }

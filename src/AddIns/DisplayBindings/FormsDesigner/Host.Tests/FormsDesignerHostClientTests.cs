@@ -270,6 +270,126 @@ public sealed class FormsDesignerHostClientTests
 
 	static string DesignerText(DesignerEditSet edits) => edits.Files.Single(item => item.Kind == "Designer").Text;
 
+	[Fact]
+	public async Task ChildHost_VbSnapshot_RoundTripsDesignerEdits()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		var hostDll = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+			"../../../../Host/bin/Debug/net10.0-windows/FormsDesigner.Host.dll"));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
+
+		var opened = await client.OpenAsync(VbSnapshot(7, "button1"), timeout.Token);
+		Assert.True(opened.Accepted);
+		Assert.Equal("System.Windows.Forms.Form", opened.RootType);
+		Assert.True(opened.ComponentCount >= 1);
+		Assert.NotNull(opened.Render);
+		Assert.Contains(opened.Components, component => component.Name == "button1"
+			&& component.Type == "System.Windows.Forms.Button"
+			&& component.Parent == "Form1"
+			&& component.Text == "button1"
+			&& component.X == 12 && component.Y == 20
+			&& component.Width == 90 && component.Height == 30);
+		Assert.Contains(opened.Components.Single(component => component.Name == "button1").Properties,
+			property => property.Name == "Text" && property.TypeName == "System.String");
+		var openedButton = Assert.Single(opened.Components, component => component.Name == "button1");
+		Assert.Contains(openedButton.Events, item => item.Name == "Click" && item.HandlerTypeName == "System.EventHandler");
+
+		// Flush normalizes the VB Me. qualifiers away, like the C# this. pass.
+		Assert.Contains("button1.Text = \"button1\"", DesignerText(await client.FlushAsync(7, timeout.Token)),
+			StringComparison.Ordinal);
+
+		var edited = await client.SetPropertyAsync(7, "button1", "Text", "edited in child", timeout.Token);
+		Assert.True(edited.Accepted);
+		Assert.Contains(edited.Components, component => component.Name == "button1" && component.Text == "edited in child");
+		var editedFiles = await client.FlushAsync(7, timeout.Token);
+		Assert.Contains("button1.Text = \"edited in child\"", DesignerText(editedFiles), StringComparison.Ordinal);
+		Assert.DoesNotContain("Me.", DesignerText(editedFiles), StringComparison.Ordinal);
+		var disabled = await client.SetPropertyAsync(7, "button1", "Enabled", "False", timeout.Token);
+		Assert.Contains(disabled.Components.Single(component => component.Name == "button1").Properties,
+			property => property.Name == "Enabled" && property.Value.Equals("False", StringComparison.OrdinalIgnoreCase));
+		Assert.Contains("button1.Enabled = False", DesignerText(await client.FlushAsync(7, timeout.Token)),
+			StringComparison.Ordinal);
+
+		var moved = await client.SetBoundsAsync(7, "button1", 40, 50, 120, 35, timeout.Token);
+		Assert.Contains(moved.Components, component => component.Name == "button1"
+			&& component.X == 40 && component.Y == 50 && component.Width == 120 && component.Height == 35);
+		var movedSource = DesignerText(await client.FlushAsync(7, timeout.Token));
+		Assert.Contains("button1.Location = New System.Drawing.Point(40, 50)", movedSource, StringComparison.Ordinal);
+		Assert.Contains("button1.Size = New System.Drawing.Size(120, 35)", movedSource, StringComparison.Ordinal);
+
+		var eventBound = await client.SetEventAsync(7, "button1", "Click", "button1_Click", timeout.Token);
+		Assert.Contains(eventBound.Components.Single(item => item.Name == "button1").Events,
+			item => item.Name == "Click" && item.Handler == "button1_Click");
+		var eventFiles = await client.FlushAsync(7, timeout.Token);
+		Assert.Contains("AddHandler button1.Click, AddressOf button1_Click",
+			eventFiles.Files.Single(item => item.Kind == "Designer").Text, StringComparison.Ordinal);
+		Assert.Contains("Private Sub button1_Click(sender As System.Object, e As System.EventArgs)",
+			eventFiles.Files.Single(item => item.Kind == "Source").Text, StringComparison.Ordinal);
+		var eventCleared = await client.SetEventAsync(7, "button1", "Click", "", timeout.Token);
+		Assert.Contains(eventCleared.Components.Single(item => item.Name == "button1").Events,
+			item => item.Name == "Click" && item.Handler == "");
+		Assert.DoesNotContain("AddHandler button1.Click",
+			DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
+
+		var added = await client.AddControlAsync(7, "Form1", "System.Windows.Forms.Label", "label1", 30, 70, timeout.Token);
+		Assert.Contains(added.Components, component => component.Name == "label1"
+			&& component.Type == "System.Windows.Forms.Label" && component.Parent == "Form1"
+			&& component.X == 30 && component.Y == 70);
+		var addedSource = DesignerText(await client.FlushAsync(7, timeout.Token));
+		Assert.Contains("label1 = New System.Windows.Forms.Label()", addedSource, StringComparison.Ordinal);
+		Assert.Contains("Controls.Add(label1)", addedSource, StringComparison.Ordinal);
+		Assert.Contains("Friend WithEvents label1 As System.Windows.Forms.Label", addedSource, StringComparison.Ordinal);
+		Assert.Contains("label1.Size = New System.Drawing.Size(", addedSource, StringComparison.Ordinal);
+		var labeled = await client.SetPropertyAsync(7, "label1", "Text", "new label", timeout.Token);
+		Assert.Contains(labeled.Components, component => component.Name == "label1" && component.Text == "new label");
+		Assert.Contains("label1.Text = \"new label\"", DesignerText(await client.FlushAsync(7, timeout.Token)),
+			StringComparison.Ordinal);
+
+		var deleted = await client.DeleteComponentAsync(7, "label1", timeout.Token);
+		Assert.True(deleted.Accepted);
+		Assert.DoesNotContain(deleted.Components, component => component.Name == "label1");
+		Assert.DoesNotContain("label1", DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
+
+		var stale = await client.UpdateAsync(VbSnapshot(7, "stale"), timeout.Token);
+		Assert.False(stale.Accepted);
+		Assert.Contains("Stale", stale.Error, StringComparison.Ordinal);
+	}
+
+	static DesignerDocumentSnapshot VbSnapshot(long version, string text) => new() {
+		Version = version,
+		PrimaryFileName = "/project/Form1.vb",
+		DesignerFileName = "/project/Form1.Designer.vb",
+		Language = "VisualBasic",
+		Files = {
+			new DesignerSourceFileSnapshot {
+				FileName = "/project/Form1.vb",
+				Kind = "Source",
+				Text = "Imports System.Windows.Forms\nPublic Class Form1\n    Inherits Form\nEnd Class"
+			},
+			new DesignerSourceFileSnapshot {
+				FileName = "/project/Form1.Designer.vb",
+				Kind = "Designer",
+				Text = $$"""
+					Imports System.Windows.Forms
+
+					Partial Class Form1
+					    Inherits Form
+
+					    Private Sub InitializeComponent()
+					        Me.button1 = New System.Windows.Forms.Button()
+					        Me.button1.Text = "{{text}}"
+					        Me.button1.Location = New System.Drawing.Point(12, 20)
+					        Me.button1.Size = New System.Drawing.Size(90, 30)
+					        Me.Controls.Add(Me.button1)
+					    End Sub
+
+					    Friend WithEvents button1 As System.Windows.Forms.Button
+					End Class
+					"""
+			}
+		}
+	};
+
 	static DesignerDocumentSnapshot Snapshot(long version, string text) => new() {
 		Version = version,
 		PrimaryFileName = "/project/Form1.cs",
