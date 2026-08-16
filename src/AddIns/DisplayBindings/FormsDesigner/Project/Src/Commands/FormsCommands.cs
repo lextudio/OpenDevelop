@@ -54,6 +54,20 @@ namespace ICSharpCode.FormsDesigner.Commands
 			
 			try {
 				FormsDesignerViewContent formDesigner = FormDesigner;
+				if (formDesigner?.IsRemoteDesignerLoaded == true && CommandID.Equals(StandardCommands.BringToFront)) {
+					formDesigner.SetRemoteZOrder(true);
+					return;
+				}
+				if (formDesigner?.IsRemoteDesignerLoaded == true && CommandID.Equals(StandardCommands.SendToBack)) {
+					formDesigner.SetRemoteZOrder(false);
+					return;
+				}
+				if (formDesigner?.IsRemoteDesignerLoaded == true && CommandID.Equals(StandardCommands.LockControls)) {
+					formDesigner.ToggleRemoteLock();
+					return;
+				}
+				if (formDesigner?.TryExecuteRemoteLayout(CommandID) == true)
+					return;
 				if (formDesigner != null && CanExecuteCommand(formDesigner.Host)) {
 					IMenuCommandService menuCommandService = (IMenuCommandService)formDesigner.Host.GetService(typeof(IMenuCommandService));
 					menuCommandService.GlobalInvoke(CommandID);

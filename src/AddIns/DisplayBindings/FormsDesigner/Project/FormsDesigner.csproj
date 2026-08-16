@@ -15,6 +15,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="Src\OutOfProcess\*.cs" />
+    <Compile Include="Src\OutOfProcess\RemoteFormsDesignerControl.cs" />
+    <!-- Directory.Build.props excludes *DevFlowActions.cs from shipping builds. Include the
+         test-only diagnostics explicitly in Debug so the shell's stable forwarding actions can
+         reach them after the AddIn is loaded. -->
+    <Compile Include="Src\FormsDesignerDevFlowActions.cs" Condition="'$(Configuration)' == 'Debug'" />
     <!-- The old NRefactory loader/generators remain excluded. CSharpBinding now supplies the live
          RoslynFormsDesignerSecondaryDisplayBinding/RoslynDesignerLoader implementation, including
          the .Designer.cs load/save round trip. Do not interpret this exclusion as saying that the
@@ -63,6 +69,8 @@
          locally; that relative path doesn't hold from this AddIn's location, so use the package
          directly here instead. -->
     <PackageReference Include="LeXtudio.DevFlow.Agent.Core" Version="0.2.2" Condition="'$(Configuration)' == 'Debug'" />
+    <ProjectReference Include="..\Remote\FormsDesigner.Remote.csproj" />
+    <ProjectReference Include="..\Host\FormsDesigner.Host.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <ItemGroup>

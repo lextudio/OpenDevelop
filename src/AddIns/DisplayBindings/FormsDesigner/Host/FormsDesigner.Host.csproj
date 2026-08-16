@@ -1,0 +1,33 @@
+<Project Sdk="LibreWPF.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>FormsDesigner.Host</AssemblyName>
+    <RootNamespace>ICSharpCode.FormsDesigner.Host</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ProGpuWpfEnablePortableBootstrap>false</ProGpuWpfEnablePortableBootstrap>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="StreamJsonRpc" Version="2.25.29" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.6.0" />
+  </ItemGroup>
+  <Target Name="RemoveDesktopRuntimeFramework" AfterTargets="ProcessFrameworkReferences" BeforeTargets="FixupRuntimeFrameworkVersions">
+    <ItemGroup>
+      <RuntimeFramework Remove="@(RuntimeFramework)" Condition="'%(RuntimeFramework.Identity)' == 'Microsoft.WindowsDesktop.App'" />
+    </ItemGroup>
+  </Target>
+  <Target Name="RemoveTransitiveDesktopFramework" AfterTargets="ResolvePackageAssets" BeforeTargets="AddTransitiveFrameworkReferences">
+    <ItemGroup>
+      <TransitiveFrameworkReference Remove="@(TransitiveFrameworkReference)" Condition="'%(TransitiveFrameworkReference.Identity)' == 'Microsoft.WindowsDesktop.App'" />
+    </ItemGroup>
+  </Target>
+  <Target Name="DeployToAddIns" AfterTargets="Build">
+    <ItemGroup>
+      <HostOutput Include="$(TargetDir)**" />
+    </ItemGroup>
+    <Copy SourceFiles="@(HostOutput)" SkipUnchangedFiles="true"
+          DestinationFiles="@(HostOutput->'$(MSBuildProjectDirectory)\..\..\..\..\..\AddIns\DisplayBindings\FormsDesigner\Host\%(RecursiveDir)%(Filename)%(Extension)')" />
+  </Target>
+</Project>

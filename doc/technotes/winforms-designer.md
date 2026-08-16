@@ -5,15 +5,48 @@ the Roslyn `BasicDesignerLoader` architecture, the round-trip pipeline, and know
 cross-designer roadmap (WinForms + WPF + WinUI together), framework detection, provider
 contracts, phases, and the test matrix live in [`xaml-services.md`](xaml-services.md).
 
-Current status: the C# backend is complete (CodeDOM-free Roslyn loader, `.Designer.cs`
-round-trip, legacy migration, shared Toolbox Pad, real drag-drop tests); the VB Roslyn backend
-is still pending (Phase 6 of `xaml-services.md`).
+Current status: the in-process C# backend is complete (CodeDOM-free Roslyn loader,
+`.Designer.cs` round-trip, legacy migration, shared Toolbox Pad, real drag-drop tests). The
+out-of-process C# path is now the default: a UI-framework-neutral protocol/client assembly and a real
+authenticated LibreWinForms child process now implement handshake, versioned document snapshots,
+stale-update rejection, flush and bounded shutdown. The child creates and owns a real
+`DesignSurface`/`System.Windows.Forms.Form` on macOS. A child-local Roslyn snapshot loader now
+materializes standard controls, properties, bounds and parent/child relationships from
+`InitializeComponent`; updates rebuild the child component graph and return a framework-neutral
+component snapshot. The child
+produces a portable-painted PNG frame and performs child-side coordinate hit-testing back to
+stable component names. A parent WPF adapter now presents that frame, forwards pointer hit tests,
+and exposes remote state through DevFlow. The first child-owned edit path changes an existing
+scalar property, refreshes the frame, rewrites its Roslyn assignment, and applies the
+version-matched flush to the parent document during save. The legacy in-process path is retained
+only as an emergency fallback with `OPENDEVELOP_WINFORMS_OOP=0`. Standard and project custom
+WinForms toolbox items can now also be dragged onto the
+remote root surface: the parent forwards type metadata and coordinates, while the child creates
+the component and generates its field/initialization source. Nested drops are supported.
+Move/resize, direction-key nudging and delete now also execute in the child, refresh the remote
+frame, and rewrite/remove the corresponding Roslyn statements. The parent overlay provides a
+selection rectangle, drag-to-move, a bottom-right resize handle, and Delete-key removal without
+hosting any project control in the IDE process. Design-time outlines and component-name labels
+keep empty or same-background LibreWinForms containers visible even when their portable paint is
+visually indistinguishable from the white canvas. Selecting a remote component now also supplies
+the Properties Pad with a parent-owned proxy for name/type, Text, X/Y and Width/Height; writes
+are converted back into versioned property/bounds RPC calls. Successful child edits are now
+immediately flushed into the parent-owned in-memory documents, so a later child failure cannot
+lose unsaved designer work. Unexpected process exit keeps the last frame visible under a
+diagnostic overlay and offers an explicit restart that reconstructs the session from those parent
+documents. RPC operations have a bounded timeout; a hung operation terminates the child process
+tree and enters the same recovery path. Project file, target framework and output assembly
+metadata travel with each snapshot, and the child loads project/custom-control assemblies in a
+collectible dependency-resolving load context while keeping LibreWinForms/Drawing contracts in
+the host context. The VB Roslyn
+backend is also pending
+(Phase 6 of `xaml-services.md`).
 
 ## Current Baseline
 
 | Component | Location | Current Status |
 |---|---|---|
-| WinForms Designer | `src/AddIns/DisplayBindings/FormsDesigner/` | The C# backend has moved to a CodeDOM-free Roslyn `BasicDesignerLoader`; `.Designer.cs` round-trip, legacy format migration, shared Toolbox Pad, and real drag-drop tests are all complete; the VB Roslyn backend is not yet done |
+| WinForms Designer | `src/AddIns/DisplayBindings/FormsDesigner/` | The out-of-process LibreWinForms host is the default C# path on macOS. It owns the real `DesignSurface`, project controls and dependencies; renders to PNG; supports selection, nested Toolbox drops, Properties, events, move/resize/delete, Undo/Redo, resources, save, timeout/crash recovery and restart. The VB backend remains. |
 
 ## Actual State of WinForms Round-Trip and Toolbox
 
@@ -36,26 +69,188 @@ The core backend does not use `System.CodeDom` as its document model; the integr
 
 ## Known Gaps
 
+- Native-surface optimization beyond the portable frame adapter.
+- Complex binary property editors and third-party legacy serializer edge cases beyond the
+  string-convertible/resource paths covered by the child protocol.
 - VB Roslyn backend (Phase 6).
 - Full project `Workspace` / `.editorconfig` wiring for the Roslyn loader.
 - Async/parallel generation, `nameof`, and high-DPI work from Microsoft's newer generator.
 
-## Out-of-process hosting (lower priority, 2026-08-14)
+## Out-of-process host decision (2026-08-15)
+
+**Decision: the WinForms designer must run project controls and designer services in a child
+process.** The current in-process implementation is a migration baseline, not the shipping
+architecture. No project output or third-party control assembly may be loaded into OpenDevelop's
+process.
 
 [`winui-designer.md`](winui-designer.md#out-of-process-host-decision-2026-08-14) made
 out-of-process hosting the *required* architecture for real-project WinUI/Uno support, because
 `ProGPU.WinUI` is a from-scratch reimplementation of `Microsoft.UI.Xaml` whose types cannot
 coexist in one Roslyn compilation with the real Uno.WinUI SDK's types of the same name.
 
-The WinForms designer does not have that forcing function: `DesignerViewContent`/`WpfToolbox`
-already host the *real* `System.Drawing`/`System.Windows.Forms` in-process via `WindowsFormsHost`
-and LibreWinForms (a compat shim over the real types, not a competing reimplementation like
-ProGPU.WinUI), so there is no type-identity ceiling analogous to WinUI's. Microsoft's own
-out-of-process WinForms designer
+WinForms does not have WinUI's same-name type-identity forcing function:
+`DesignerViewContent`/`WpfToolbox` currently host the real `System.Drawing` and
+`System.Windows.Forms` types via `WindowsFormsHost` and LibreWinForms. It nevertheless has an
+equally important product boundary: opening a form executes project and third-party designer
+code. A crashing control, blocked UI thread, incompatible target runtime, static-state mutation,
+or dependency conflict must not crash or contaminate the IDE. Microsoft's out-of-process
+WinForms designer
 ([devblogs post](https://devblogs.microsoft.com/dotnet/custom-controls-for-winforms-out-of-process-designer/))
-solves a different problem for VS: crash/hang isolation from third-party control assemblies
-loaded into the designer process, and .NET Core/Framework side-by-side hosting. Those benefits
-are real but not structural here - a bad custom control can still take down OpenDevelop's own
-process today, same as before this note - and are lower priority than closing WinUI's forced gap.
-Revisit once the WinUI out-of-process host exists; much of its RPC/surface-capture plumbing would
-be directly reusable for a WinForms designer host process.
+establishes the same isolation and target-runtime principles for Visual Studio. OpenDevelop will
+reuse the runtime-neutral transport, lifecycle, timeout, and surface-transfer patterns already
+implemented for the Uno host rather than inventing an in-process exception list.
+
+### Process and ownership boundary
+
+- OpenDevelop owns source buffers, dirty state, Undo/Redo, commands, Toolbox/Properties/Outline
+  pads, and the authoritative save transaction.
+- A per-project-runtime child owns `DesignSurface`, `IDesignerHost`, component instances, custom
+  designers and serializers, `ITypeResolutionService`, and all project/control assemblies.
+- The child is launched with the designed project's runtime/dependency context. Host selection is
+  explicit by target framework and platform; the IDE must not load a project assembly to decide.
+- Contracts contain descriptors, stable component handles, property values, diagnostics, source
+  edits, input events, and pixels/native-surface metadata only. No `Control`, `Component`,
+  `Type`, `Image`, service-provider, or designer object crosses the boundary.
+- The existing Roslyn loader/resource model moves behind the child boundary. The parent sends
+  versioned document snapshots and applies a returned, version-matched edit set atomically;
+  stale results are rejected and reloaded.
+
+The initial presentation path is a captured BGRA surface with explicit viewport, DPI, and frame
+sequence metadata. Pointer, keyboard, focus, drag/drop, accessibility, and selection requests are
+forwarded over RPC. A native child-window path may be added where supported, but cannot become a
+requirement for non-Windows LibreWinForms hosts. Toolbox items are metadata in the parent and are
+materialized only by the child.
+
+### Failure and lifecycle rules
+
+- RPC uses a private authenticated endpoint, a protocol/version handshake, request cancellation,
+  bounded payloads, and per-operation timeouts. The child must never expose a general object
+  invocation or arbitrary file API.
+- A timeout, disconnect, or child crash leaves the last frame visible with a diagnostic, releases
+  all pending calls, and offers a clean restart. It must not exit or block OpenDevelop.
+- Closing the document/project terminates the child after a bounded graceful shutdown; leaked
+  child processes are killed. Restart reconstructs state solely from parent-owned source and
+  project context, never from hidden child state.
+- Save succeeds only after the parent receives edits for its current document version, applies
+  them through the normal undoable document path, and persists all participating files. A host
+  failure cannot produce a partial `.Designer.cs`/`.resx` save.
+
+### Delivery plan and acceptance
+
+1. Extract a transport-neutral designer-session contract and adapt the current in-process loader
+   behind it without changing round-trip output.
+2. Add the child executable and launch it under the project's runtime/dependency graph; move all
+   component creation, custom-control loading, and serialization into it.
+3. Replace `WindowsFormsHost` ownership in the workbench with the remote frame/input adapter and
+   reconnect Toolbox, Properties, Outline, selection, Undo/Redo, and save.
+4. Remove the in-process project-control loading path after parity tests pass. A source-only/error
+   view is the fallback when no compatible child runtime is available.
+
+Completion requires existing load/edit/drag-drop/round-trip tests to pass through the child plus
+tests for host crash, hung control timeout, restart, stale-response rejection, multi-file atomic
+save, DPI/resize/input, custom control dependency conflicts, close cleanup, and simultaneous
+projects targeting incompatible runtimes. Tests must assert that project and third-party control
+assemblies are absent from OpenDevelop's process.
+
+Implementation lives in `FormsDesigner/Remote` (the `net10.0`, UI-type-free client/contract),
+`FormsDesigner/Host` (the deployed LibreWinForms child), and `FormsDesigner/Host.Tests`
+(process-level protocol tests). The test executes on macOS and asserts that the child owns a real
+`DesignSurface` whose root is `System.Windows.Forms.Form`, then loads a real Button from Roslyn
+syntax and verifies its text, bounds and parent through RPC. The same process test verifies a
+non-empty PNG frame, that a surface coordinate hits the Button by stable name, and that editing
+its `Text` property changes both the live child component and the flushed `.Designer.cs`
+snapshot. The test also creates a standard Label and verifies its generated field, construction,
+location, and parent-add statements, then verifies bounds rewrites and component deletion.
+Component snapshots now carry both parent-local and root-surface coordinates, so selection,
+screen-bounds queries and move gestures work for nested controls while source writes remain local
+to the parent. Toolbox drops hit-test the child surface and target supported containers such as
+Panel and GroupBox. The process test builds a separate custom-control fixture, loads its
+`FancyButton` only in the child collectible context, and asserts that the parent/test `AppDomain`
+never sees that assembly. Component snapshots also carry browsable property descriptors as
+runtime-neutral metadata; the Properties Pad dynamically exposes primitive and
+string-convertible values, and the child writes new scalar, enum, Point, Size and Color
+assignments through Roslyn. Event descriptors and bindings also cross the neutral contract; a
+binding updates `.Designer.cs` and generates a missing handler in the primary partial file.
+Binary `.resx` files travel as snapshot data and `ComponentResourceManager.ApplyResources` is
+resolved inside the child without granting arbitrary filesystem access. The parent owns Undo/Redo
+document snapshots and the WPF frame/input adapter. `FormsDesignerViewContent` selects this path
+by default; set `OPENDEVELOP_WINFORMS_OOP=0` only to diagnose the legacy in-process fallback.
+Transport awaits do not capture the WPF synchronization context, preventing the UI-thread startup
+deadlock that otherwise occurs when the synchronous secondary-view lifecycle launches the child.
+LibreWinForms controls whose native-style implementation reports
+`SupportsPortablePainting=false` are rendered by a child-side standard-control theme renderer;
+Button, TextBox, CheckBox, RadioButton, ComboBox, NumericUpDown, GroupBox, Panel, ListBox,
+ProgressBar and Label therefore carry their normal background, border, text and glyph structure
+in the PNG rather than appearing only as parent-side design outlines.
+TabControl, TreeView, ListView, DataGridView, MenuStrip and ToolStrip also have dedicated
+design-time renderers; the Host regression test asserts that adding a DataGridView changes the
+actual PNG, not only the component metadata. Remote single-selection Copy/Cut/Paste/Delete are
+wired to the IDE's standard clipboard commands. The parent retains only a neutral component
+description, and Paste asks the child to create an offset, uniquely named component.
+Bring to Front and Send to Back now execute in the child and persist through
+`Controls.SetChildIndex`; remote Tab Order mode overlays each component's `TabIndex` on the
+rendered design surface.
+Shift/Ctrl-click remote multi-selection now drives the Format commands through one child-side
+transaction: grid snapping, edge/center alignment, matching size/width/height, parent centering,
+equal spacing, spacing increase/decrease, and concatenation all refresh the frame and persist
+their resulting bounds into `.Designer.cs`.
+Select All now targets the remote component snapshot. Lock Controls is implemented in the parent
+adapter: locked controls retain selection and an orange design outline, but movement, resize,
+direction-key nudging and Format operations are suppressed without loading a control into the IDE.
+Copy/Cut/Paste/Delete now consume the full remote selection. Nested copied controls are recreated
+parent-first with remapped unique names, while grouped paste or deletion records one parent-side
+Undo snapshot; deleting a selected container does not issue duplicate child deletions.
+Dragging or using direction keys now moves the remote selection as one child-side transaction.
+Selected descendants of another selected container are excluded from the move request so their
+effective position changes exactly once, and Shift-direction continues to use the 10-pixel step.
+Dragging on empty canvas space now displays a translucent marquee and selects every intersecting
+remote component from its root-surface bounds; Shift/Ctrl preserves and extends the prior selection.
+Property descriptors now carry `ShouldSerializeValue` across the neutral contract. Group paste
+restores changed string, Boolean, numeric, enum, Point, Size and Color values after recreating each
+control, while deliberately skipping unsupported complex editors and structural bounds properties.
+The remote Properties Pad `(Name)` field is editable. Renaming validates C# identifiers and
+container uniqueness in the child, updates the site/control name, rewrites the generated field and
+all `InitializeComponent` references through Roslyn, and remaps parent-side selection/lock handles.
+Editing the root Form Width/Height now resizes its child-owned design `Size`, refreshes the PNG
+viewport, and inserts or updates the corresponding `this.Size` Roslyn assignment. The portable
+host uses `Size` because LibreWinForms' macOS `ClientSize` setter is not yet reliable.
+Selecting the root Form now shows its design outline and bottom-right resize handle; dragging the
+handle uses the same versioned bounds path, so visual resizing and Properties Pad resizing share
+one Undo/source/render pipeline while the root remains non-movable.
+Remote event descriptors are now editable in the Properties Pad under an Events category (shown
+with a lightning prefix). Assigning a handler updates `.Designer.cs` and creates a missing method
+in the primary partial class; clearing/resetting the value removes the event subscription while
+leaving user method bodies intact.
+Browsable remote properties now expose reset semantics from `PropertyDescriptor`: Reset asks the
+child to call `ResetValue`, removes the matching Roslyn assignment, refreshes metadata/rendering,
+and participates in the same parent-owned Undo history.
+Double-clicking a remote control now activates its `DefaultEventAttribute` event. The child reuses
+an existing binding or creates the conventional `<component>_<event>` handler through the same
+Roslyn event pipeline, so the designer source, primary partial class and Undo history stay atomic;
+the parent then navigates to the resulting handler in the primary source file.
+The remote surface also implements keyboard hierarchy navigation: Escape selects the current
+control's parent, while Tab and Shift+Tab cycle controls in `TabIndex` order without transferring
+keyboard focus into the child process.
+Render frames now carry a monotonically increasing sequence and an explicit DPI scale. The parent
+drops stale frames and sizes the WPF image in device-independent units. Component snapshots forward
+accessible name, description and role metadata, and property descriptors retain their display names
+and descriptions for the Properties Pad. Snapshot validation now caps file count, path length and
+aggregate payload size before design-time code is loaded. Process tests cover those limits, graceful
+close cleanup and two independent designer hosts remaining isolated throughout their lifetimes.
+The WPF adapter exposes a hierarchical virtual UI Automation tree for the root form and every
+remote component, including automation id, semantic control type, help text, screen bounds, focus,
+multi-selection and selection-item operations. Accessibility clients therefore interact with
+individual designed controls without loading WinForms accessibility objects into the IDE process.
+Complex string-convertible property edits are validated for Roslyn serialization before the live
+component is mutated, preventing a failed serializer from splitting surface and source state.
+`Padding`/`Margin` and `Font` now have explicit C# serializers and child-loader round-trip support.
+Modern high-DPI initialization using `AutoScaleDimensions = new SizeF(...)` is parsed, editable
+through the remote Properties Pad and serialized back with invariant floating-point literals;
+`AutoScaleMode` continues through the enum path.
+The child syntax evaluator accepts `nameof(...)` in designer expressions, including modern
+`ApplyResources(control, nameof(control))` calls. Component-name assignments remain string
+literals for LibreWinForms site-container compatibility, while Roslyn rename updates both forms.
+Binary image/bitmap entries embedded in `.resx` are decoded only inside the child and resolved by
+the common `(Image)resources.GetObject(...)` designer expression. Parent snapshots expose only a
+`[binary]` property marker, never a live `Image`; the original resource bytes remain part of the
+atomic multi-file flush.

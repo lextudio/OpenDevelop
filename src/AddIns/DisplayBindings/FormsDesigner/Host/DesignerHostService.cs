@@ -1,0 +1,1021 @@
+using StreamJsonRpc;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.ComponentModel.Design;
+using System.ComponentModel;
+using System.ComponentModel.Design.Serialization;
+using System.Windows.Forms;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.Globalization;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using System.Reflection;
+using System.Runtime.Loader;
+
+namespace ICSharpCode.FormsDesigner.Host;
+
+sealed class DesignerHostService
+{
+	const int ProtocolVersion = 1;
+	readonly string expectedToken;
+	readonly ManualResetEventSlim shutdown = new(false);
+	DocumentSnapshot? current;
+	DesignSurface? designSurface;
+	ProjectAssemblyLoadContext? projectLoadContext;
+	Assembly? projectAssembly;
+	Size? rootDesignSize;
+	SizeF? rootAutoScaleDimensions;
+	long frameSequence;
+	bool initialized;
+
+	public DesignerHostService(string expectedToken) => this.expectedToken = expectedToken;
+
+	[JsonRpcMethod("initialize")]
+	public Handshake Initialize(string token, int protocolVersion)
+	{
+		if (!CryptographicOperations.FixedTimeEquals(
+			Convert.FromHexString(expectedToken), Convert.FromHexString(token)))
+			throw new UnauthorizedAccessException("Invalid designer-host token.");
+		if (protocolVersion != ProtocolVersion)
+			throw new NotSupportedException($"Protocol {protocolVersion} is not supported.");
+		initialized = true;
+		return new Handshake { ProtocolVersion = ProtocolVersion, Runtime = RuntimeInformation.FrameworkDescription, ProcessId = Environment.ProcessId };
+	}
+
+	[JsonRpcMethod("session/open")]
+	public SessionState Open(DocumentSnapshot snapshot)
+	{
+		EnsureInitialized();
+		Validate(snapshot);
+		CreateDesignSurface(snapshot);
+		current = snapshot;
+		return CurrentState(snapshot.Version);
+	}
+
+	[JsonRpcMethod("session/update")]
+	public SessionState Update(DocumentSnapshot snapshot)
+	{
+		EnsureInitialized();
+		Validate(snapshot);
+		if (current is null)
+			return Rejected(snapshot.Version, "No designer session is open.");
+		if (snapshot.Version <= current.Version)
+			return Rejected(snapshot.Version, $"Stale document version {snapshot.Version}; current version is {current.Version}.");
+		CreateDesignSurface(snapshot);
+		current = snapshot;
+		return CurrentState(snapshot.Version);
+	}
+
+	[JsonRpcMethod("session/flush")]
+	public EditSet Flush(long version)
+	{
+		EnsureInitialized();
+		if (current is null || current.Version != version)
+			throw new InvalidOperationException("Cannot flush a stale or unopened document version.");
+		foreach (var file in current.Files.Where(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))) {
+			var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
+			file.Text = new ThisQualifierRewriter().Visit(root)!.ToFullString();
+		}
+		return new EditSet { BaseVersion = version, Files = current.Files };
+	}
+
+	[JsonRpcMethod("design/hit-test")]
+	public HitTestResult HitTest(long version, int x, int y)
+	{
+		EnsureInitialized();
+		if (current == null || current.Version != version)
+			throw new InvalidOperationException("Cannot hit-test a stale or unopened document version.");
+		var host = designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost;
+		var root = host?.RootComponent as Control;
+		var hit = root == null ? null : FindDeepest(root, new Point(x, y));
+		return new HitTestResult {
+			ComponentName = hit?.Site?.Name ?? "",
+			ComponentType = hit?.GetType().FullName ?? ""
+		};
+	}
+
+	[JsonRpcMethod("design/set-property")]
+	public SessionState SetProperty(long version, string componentName, string propertyName, string value)
+	{
+		EnsureCurrentVersion(version, "edit");
+		var host = designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost
+			?? throw new InvalidOperationException("The designer surface is unavailable.");
+		var component = host.Container.Components.Cast<IComponent>()
+			.FirstOrDefault(item => String.Equals(item.Site?.Name, componentName, StringComparison.Ordinal))
+			?? throw new ArgumentException("Component not found: " + componentName, nameof(componentName));
+		var property = TypeDescriptor.GetProperties(component)[propertyName]
+			?? throw new ArgumentException("Property not found: " + propertyName, nameof(propertyName));
+		if (property.IsReadOnly)
+			throw new InvalidOperationException($"Property {componentName}.{propertyName} is read-only.");
+		var converted = ConvertPropertyValue(property, value);
+		if (component == host.RootComponent && propertyName == "AutoScaleDimensions" && converted is SizeF scale)
+			rootAutoScaleDimensions = scale;
+		// Validate source serialization before mutating the live component. A
+		// failed complex-property serializer must not split live and source state.
+		_ = SerializeValue(converted);
+		using (var transaction = host.CreateTransaction($"Set {componentName}.{propertyName}")) {
+			property.SetValue(component, converted);
+			transaction.Commit();
+		}
+		RewriteProperty(componentName, propertyName, converted);
+		return CurrentState(version);
+	}
+
+	static object ConvertPropertyValue(PropertyDescriptor property, string value)
+	{
+		if (property.PropertyType == typeof(Padding)) {
+			var parts = value.Split(',').Select(item => Int32.Parse(item.Trim(), CultureInfo.InvariantCulture)).ToArray();
+			if (parts.Length == 1) return new Padding(parts[0]);
+			if (parts.Length == 4) return new Padding(parts[0], parts[1], parts[2], parts[3]);
+			throw new FormatException("Padding requires one or four comma-separated integers.");
+		}
+		if (property.PropertyType == typeof(Font)) {
+			var parts = value.Split(',').Select(item => item.Trim()).ToArray();
+			if (parts.Length < 2) throw new FormatException("Font requires 'family, size[, style]'.");
+			var style = parts.Length > 2 ? Enum.Parse<FontStyle>(parts[2], true) : FontStyle.Regular;
+			return new Font(parts[0], Single.Parse(parts[1], CultureInfo.InvariantCulture), style);
+		}
+		if (property.PropertyType == typeof(SizeF)) {
+			var parts = value.Split(',').Select(item => Single.Parse(item.Trim(), CultureInfo.InvariantCulture)).ToArray();
+			if (parts.Length != 2) throw new FormatException("SizeF requires two comma-separated numbers.");
+			return new SizeF(parts[0], parts[1]);
+		}
+		return property.Converter.ConvertFromInvariantString(value)
+			?? throw new InvalidOperationException($"Cannot convert '{value}' to {property.PropertyType.FullName}.");
+	}
+
+	[JsonRpcMethod("design/reset-property")]
+	public SessionState ResetProperty(long version, string componentName, string propertyName)
+	{
+		EnsureCurrentVersion(version, "reset property on");
+		var host = GetHost();
+		var component = host.Container.Components[componentName]
+			?? throw new ArgumentException("Component not found: " + componentName, nameof(componentName));
+		var property = TypeDescriptor.GetProperties(component)[propertyName]
+			?? throw new ArgumentException("Property not found: " + propertyName, nameof(propertyName));
+		// LibreWinForms currently returns false from CanResetValue for some properties
+		// (for example Enabled) even after they have been explicitly serialized.
+		if (property.IsReadOnly || (!property.CanResetValue(component) && !property.ShouldSerializeValue(component)))
+			throw new InvalidOperationException($"Property {componentName}.{propertyName} cannot be reset.");
+		using (var transaction = host.CreateTransaction($"Reset {componentName}.{propertyName}")) {
+			property.ResetValue(component);
+			// Some LibreWinForms descriptors expose DefaultValueAttribute but their
+			// ResetValue implementation is currently a no-op.
+			if (property.ShouldSerializeValue(component)
+				&& property.Attributes[typeof(DefaultValueAttribute)] is DefaultValueAttribute defaultValue)
+				property.SetValue(component, defaultValue.Value);
+			if (property.ShouldSerializeValue(component) && TryGetDefaultPropertyValue(component, property, out var freshDefault))
+				property.SetValue(component, freshDefault);
+			transaction.Commit();
+		}
+		RewriteResetProperty(componentName, propertyName);
+		return CurrentState(version);
+	}
+
+	static bool TryGetDefaultPropertyValue(IComponent component, PropertyDescriptor property, out object? value)
+	{
+		value = null;
+		object? fresh = null;
+		try {
+			fresh = Activator.CreateInstance(component.GetType());
+			if (fresh == null) return false;
+			var freshProperty = TypeDescriptor.GetProperties(fresh)[property.Name];
+			if (freshProperty == null) return false;
+			value = freshProperty.GetValue(fresh);
+			return true;
+		} catch {
+			return false;
+		} finally {
+			(fresh as IDisposable)?.Dispose();
+		}
+	}
+
+	[JsonRpcMethod("design/rename-component")]
+	public SessionState RenameComponent(long version, string componentName, string newName)
+	{
+		EnsureCurrentVersion(version, "rename");
+		if (!SyntaxFacts.IsValidIdentifier(newName))
+			throw new ArgumentException("A valid C# component name is required.", nameof(newName));
+		var host = GetHost();
+		var component = host.Container.Components[componentName]
+			?? throw new ArgumentException("Component not found: " + componentName, nameof(componentName));
+		if (component == host.RootComponent) throw new InvalidOperationException("The root component cannot be renamed here.");
+		if (host.Container.Components[newName] != null) throw new ArgumentException("A component with that name already exists: " + newName, nameof(newName));
+		RewriteComponentName(componentName, newName);
+		if (component is Control) RewriteProperty(newName, "Name", newName);
+		CreateDesignSurface(current!);
+		return CurrentState(version);
+	}
+
+	[JsonRpcMethod("design/set-event")]
+	public SessionState SetEvent(long version, string componentName, string eventName, string handlerName)
+	{
+		EnsureCurrentVersion(version, "edit");
+		if (!String.IsNullOrEmpty(handlerName) && !SyntaxFacts.IsValidIdentifier(handlerName))
+			throw new ArgumentException("A valid C# event handler name is required.", nameof(handlerName));
+		var component = GetHost().Container.Components[componentName]
+			?? throw new ArgumentException("Component not found: " + componentName, nameof(componentName));
+		var descriptor = TypeDescriptor.GetEvents(component)[eventName]
+			?? throw new ArgumentException("Event not found: " + eventName, nameof(eventName));
+		RewriteEvent(componentName, descriptor, handlerName);
+		return CurrentState(version);
+	}
+
+	[JsonRpcMethod("design/activate-default-event")]
+	public SessionState ActivateDefaultEvent(long version, string componentName)
+	{
+		EnsureCurrentVersion(version, "activate the default event on");
+		var component = GetHost().Container.Components[componentName]
+			?? throw new ArgumentException("Component not found: " + componentName, nameof(componentName));
+		var attribute = TypeDescriptor.GetAttributes(component)[typeof(DefaultEventAttribute)] as DefaultEventAttribute;
+		var eventName = attribute?.Name;
+		// LibreWinForms does not yet expose the framework DefaultEventAttribute on
+		// several standard controls. Preserve the established WinForms behavior.
+		if (String.IsNullOrEmpty(eventName))
+			eventName = component is Form ? "Load" : "Click";
+		var descriptor = String.IsNullOrEmpty(eventName) ? null : TypeDescriptor.GetEvents(component)[eventName];
+		if (descriptor == null)
+			throw new InvalidOperationException($"Component {componentName} has no default event.");
+		var existing = DescribeEvents(component).FirstOrDefault(item => item.Name == descriptor.Name)?.Handler;
+		RewriteEvent(componentName, descriptor, String.IsNullOrEmpty(existing) ? componentName + "_" + descriptor.Name : existing);
+		return CurrentState(version);
+	}
+
+	[JsonRpcMethod("design/add-control")]
+	public SessionState AddControl(long version, string parentName, string controlType, string componentName, int x, int y)
+	{
+		EnsureCurrentVersion(version, "edit");
+		if (!SyntaxFacts.IsValidIdentifier(componentName))
+			throw new ArgumentException("A valid C# component name is required.", nameof(componentName));
+		var host = designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost
+			?? throw new InvalidOperationException("The designer surface is unavailable.");
+		if (host.Container.Components[componentName] != null)
+			throw new ArgumentException("A component with that name already exists: " + componentName, nameof(componentName));
+		var parent = host.Container.Components[parentName] as Control
+			?? throw new ArgumentException("Parent control not found: " + parentName, nameof(parentName));
+		var type = ResolveControlType(controlType);
+		Control control;
+		using (var transaction = host.CreateTransaction("Add " + componentName)) {
+			control = (Control)host.CreateComponent(type, componentName);
+			if (control.Width <= 0 || control.Height <= 0)
+				control.Size = type == typeof(NumericUpDown) ? new Size(120, 20) : new Size(75, 23);
+			control.Location = new Point(x, y);
+			parent.Controls.Add(control);
+			transaction.Commit();
+		}
+		RewriteAddedControl(parentName, type, componentName, x, y, control.Width, control.Height);
+		return CurrentState(version);
+	}
+
+	[JsonRpcMethod("design/set-bounds")]
+	public SessionState SetBounds(long version, string componentName, int x, int y, int width, int height)
+	{
+		EnsureCurrentVersion(version, "edit");
+		if (width <= 0 || height <= 0) throw new ArgumentOutOfRangeException(nameof(width), "Control bounds must be positive.");
+		var host = GetHost();
+		var control = host.Container.Components[componentName] as Control
+			?? throw new ArgumentException("Control not found: " + componentName, nameof(componentName));
+		if (control == host.RootComponent) {
+			RewriteRootSize(width, height);
+			CreateDesignSurface(current!);
+			return CurrentState(version);
+		}
+		using (var transaction = host.CreateTransaction("Set bounds " + componentName)) {
+			control.Bounds = new Rectangle(x, y, width, height);
+			transaction.Commit();
+		}
+		RewriteBounds(componentName, x, y, width, height);
+		return CurrentState(version);
+	}
+
+	[JsonRpcMethod("design/delete-component")]
+	public SessionState DeleteComponent(long version, string componentName)
+	{
+		EnsureCurrentVersion(version, "edit");
+		var host = GetHost();
+		var component = host.Container.Components[componentName]
+			?? throw new ArgumentException("Component not found: " + componentName, nameof(componentName));
+		if (component == host.RootComponent) throw new InvalidOperationException("The root component cannot be deleted.");
+		using (var transaction = host.CreateTransaction("Delete " + componentName)) {
+			host.DestroyComponent(component);
+			transaction.Commit();
+		}
+		RewriteDeletedComponent(componentName);
+		return CurrentState(version);
+	}
+
+	[JsonRpcMethod("design/set-z-order")]
+	public SessionState SetZOrder(long version, string componentName, bool bringToFront)
+	{
+		EnsureCurrentVersion(version, "change z-order for");
+		var host = GetHost();
+		var control = host.Container.Components[componentName] as Control
+			?? throw new ArgumentException("Control not found: " + componentName, nameof(componentName));
+		if (control == host.RootComponent || control.Parent == null)
+			throw new InvalidOperationException("The root component z-order cannot be changed.");
+		using (var transaction = host.CreateTransaction((bringToFront ? "Bring to front " : "Send to back ") + componentName)) {
+			control.Parent.Controls.SetChildIndex(control, bringToFront ? 0 : control.Parent.Controls.Count - 1);
+			transaction.Commit();
+		}
+		RewriteZOrder(control.Parent.Site?.Name ?? "", componentName, bringToFront ? 0 : control.Parent.Controls.Count - 1);
+		return CurrentState(version);
+	}
+
+	[JsonRpcMethod("design/apply-layout")]
+	public SessionState ApplyLayout(long version, string operation, string[] componentNames, int deltaX, int deltaY)
+	{
+		EnsureCurrentVersion(version, "apply layout to");
+		var host = GetHost();
+		var controls = componentNames.Distinct(StringComparer.Ordinal)
+			.Select(name => host.Container.Components[name] as Control
+				?? throw new ArgumentException("Control not found: " + name, nameof(componentNames)))
+			.Where(control => control != host.RootComponent).ToArray();
+		if (controls.Length == 0) return CurrentState(version);
+		if (controls.Select(control => control.Parent).Distinct().Count() != 1)
+			throw new InvalidOperationException("Layout commands require controls with the same parent.");
+		var primary = controls[0];
+		using (var transaction = host.CreateTransaction("Remote layout " + operation)) {
+				switch (operation) {
+				case "move": foreach (var item in controls) item.Location = new Point(Math.Max(0, item.Left + deltaX), Math.Max(0, item.Top + deltaY)); break;
+				case "align-left": foreach (var item in controls.Skip(1)) item.Left = primary.Left; break;
+				case "align-right": foreach (var item in controls.Skip(1)) item.Left = primary.Right - item.Width; break;
+				case "align-top": foreach (var item in controls.Skip(1)) item.Top = primary.Top; break;
+				case "align-bottom": foreach (var item in controls.Skip(1)) item.Top = primary.Bottom - item.Height; break;
+				case "align-horizontal-centers": foreach (var item in controls.Skip(1)) item.Left = primary.Left + (primary.Width - item.Width) / 2; break;
+				case "align-vertical-centers": foreach (var item in controls.Skip(1)) item.Top = primary.Top + (primary.Height - item.Height) / 2; break;
+				case "same-size": foreach (var item in controls.Skip(1)) item.Size = primary.Size; break;
+				case "same-width": foreach (var item in controls.Skip(1)) item.Width = primary.Width; break;
+				case "same-height": foreach (var item in controls.Skip(1)) item.Height = primary.Height; break;
+				case "center-horizontal": foreach (var item in controls) item.Left = Math.Max(0, (item.Parent!.ClientSize.Width - item.Width) / 2); break;
+				case "center-vertical": foreach (var item in controls) item.Top = Math.Max(0, (item.Parent!.ClientSize.Height - item.Height) / 2); break;
+				case "snap-grid": foreach (var item in controls) item.Bounds = new Rectangle(Snap(item.Left), Snap(item.Top), Math.Max(8, Snap(item.Width)), Math.Max(8, Snap(item.Height))); break;
+				case "horizontal-space-equal": SpaceEqually(controls, true); break;
+				case "vertical-space-equal": SpaceEqually(controls, false); break;
+				case "horizontal-space-increase": AdjustSpacing(controls, true, 8, false); break;
+				case "horizontal-space-decrease": AdjustSpacing(controls, true, -8, false); break;
+				case "horizontal-space-concatenate": AdjustSpacing(controls, true, 0, true); break;
+				case "vertical-space-increase": AdjustSpacing(controls, false, 8, false); break;
+				case "vertical-space-decrease": AdjustSpacing(controls, false, -8, false); break;
+				case "vertical-space-concatenate": AdjustSpacing(controls, false, 0, true); break;
+				default: throw new NotSupportedException("Unsupported remote layout operation: " + operation);
+			}
+			transaction.Commit();
+		}
+		foreach (var control in controls)
+			RewriteBounds(control.Site!.Name!, control.Left, control.Top, control.Width, control.Height);
+		return CurrentState(version);
+	}
+
+	static int Snap(int value) => (int)Math.Round(value / 8d, MidpointRounding.AwayFromZero) * 8;
+
+	static void SpaceEqually(Control[] controls, bool horizontal)
+	{
+		if (controls.Length < 3) return;
+		var ordered = horizontal ? controls.OrderBy(item => item.Left).ToArray() : controls.OrderBy(item => item.Top).ToArray();
+		var first = horizontal ? ordered[0].Left : ordered[0].Top;
+		var lastEdge = horizontal ? ordered[^1].Right : ordered[^1].Bottom;
+		var occupied = ordered.Sum(item => horizontal ? item.Width : item.Height);
+		var gap = (lastEdge - first - occupied) / (ordered.Length - 1);
+		var cursor = first;
+		foreach (var item in ordered) {
+			if (horizontal) item.Left = cursor; else item.Top = cursor;
+			cursor += (horizontal ? item.Width : item.Height) + gap;
+		}
+	}
+
+	static void AdjustSpacing(Control[] controls, bool horizontal, int delta, bool concatenate)
+	{
+		if (controls.Length < 2) return;
+		var ordered = horizontal ? controls.OrderBy(item => item.Left).ToArray() : controls.OrderBy(item => item.Top).ToArray();
+		var cursor = horizontal ? ordered[0].Right : ordered[0].Bottom;
+		for (var index = 1; index < ordered.Length; index++) {
+			var previousEdge = horizontal ? ordered[index - 1].Right : ordered[index - 1].Bottom;
+			var currentStart = horizontal ? ordered[index].Left : ordered[index].Top;
+			var gap = concatenate ? 0 : Math.Max(0, currentStart - previousEdge + delta);
+			if (horizontal) ordered[index].Left = cursor + gap; else ordered[index].Top = cursor + gap;
+			cursor = horizontal ? ordered[index].Right : ordered[index].Bottom;
+		}
+	}
+
+	static Control? FindDeepest(Control control, Point point)
+	{
+		for (var index = control.Controls.Count - 1; index >= 0; index--) {
+			var child = control.Controls[index];
+			if (!child.Visible || !child.Bounds.Contains(point)) continue;
+			return FindDeepest(child, new Point(point.X - child.Left, point.Y - child.Top));
+		}
+		return control.ClientRectangle.Contains(point) ? control : null;
+	}
+
+	[JsonRpcMethod("shutdown")]
+	public void Shutdown() => shutdown.Set();
+	[JsonRpcMethod("diagnostics/delay")]
+	public async Task Delay(int milliseconds) => await Task.Delay(milliseconds);
+	public void WaitForShutdown() => shutdown.Wait();
+
+	void EnsureInitialized()
+	{
+		if (!initialized) throw new UnauthorizedAccessException("The designer host has not completed its handshake.");
+	}
+
+	void EnsureCurrentVersion(long version, string operation)
+	{
+		EnsureInitialized();
+		if (current == null || current.Version != version)
+			throw new InvalidOperationException($"Cannot {operation} a stale or unopened document version.");
+	}
+
+	IDesignerHost GetHost() => designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost
+		?? throw new InvalidOperationException("The designer surface is unavailable.");
+
+	void RewriteProperty(string componentName, string propertyName, object value)
+	{
+		var file = current!.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))
+			?? current.Files.First();
+		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
+		var target = componentName + "." + propertyName;
+		var assignment = root.DescendantNodes().OfType<AssignmentExpressionSyntax>()
+			.FirstOrDefault(item => NormalizeTarget(item.Left.ToString()) == target);
+		var expression = SerializeValue(value);
+		if (assignment != null) {
+			file.Text = root.ReplaceNode(assignment.Right, expression.WithTriviaFrom(assignment.Right)).ToFullString();
+			return;
+		}
+		var method = root.DescendantNodes().OfType<MethodDeclarationSyntax>()
+			.First(item => item.Identifier.ValueText == "InitializeComponent");
+		var statement = SyntaxFactory.ExpressionStatement(
+			SyntaxFactory.AssignmentExpression(SyntaxKind.SimpleAssignmentExpression,
+				SyntaxFactory.ParseExpression("this." + target), expression));
+		file.Text = root.ReplaceNode(method, method.WithBody(method.Body!.AddStatements(statement)))
+			.NormalizeWhitespace().ToFullString();
+	}
+
+	void RewriteComponentName(string oldName, string newName)
+	{
+		var file = CurrentDesignerFile();
+		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
+		var tokens = root.DescendantTokens().Where(token => token.IsKind(SyntaxKind.IdentifierToken)
+			&& token.ValueText == oldName && (token.Parent!.AncestorsAndSelf().OfType<MethodDeclarationSyntax>()
+				.Any(method => method.Identifier.ValueText == "InitializeComponent")
+				|| token.Parent.AncestorsAndSelf().OfType<FieldDeclarationSyntax>().Any())).ToArray();
+		root = root.ReplaceTokens(tokens, (token, _) => SyntaxFactory.Identifier(token.LeadingTrivia, newName, token.TrailingTrivia));
+		file.Text = root.NormalizeWhitespace().ToFullString();
+	}
+
+	void RewriteResetProperty(string componentName, string propertyName)
+	{
+		var file = CurrentDesignerFile();
+		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
+		var target = componentName + "." + propertyName;
+		var statements = root.DescendantNodes().OfType<ExpressionStatementSyntax>().Where(statement =>
+			statement.Expression is AssignmentExpressionSyntax assignment
+			&& assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)
+			&& NormalizeTarget(assignment.Left.ToString()) == target).ToArray();
+		file.Text = root.RemoveNodes(statements, SyntaxRemoveOptions.KeepNoTrivia)!.NormalizeWhitespace().ToFullString();
+	}
+
+	static string NormalizeTarget(string target) => target.StartsWith("this.", StringComparison.Ordinal) ? target[5..] : target;
+
+	static ExpressionSyntax SerializeValue(object value) => value switch {
+		string text => SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal(text)),
+		bool boolean => SyntaxFactory.LiteralExpression(boolean ? SyntaxKind.TrueLiteralExpression : SyntaxKind.FalseLiteralExpression),
+		char character => SyntaxFactory.LiteralExpression(SyntaxKind.CharacterLiteralExpression, SyntaxFactory.Literal(character)),
+		byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal
+			=> SyntaxFactory.ParseExpression(Convert.ToString(value, CultureInfo.InvariantCulture)!),
+		Enum enumeration => SyntaxFactory.ParseExpression($"({enumeration.GetType().FullName ?? enumeration.GetType().Name}){Convert.ToInt64(enumeration, CultureInfo.InvariantCulture)}"),
+		Point point => SyntaxFactory.ParseExpression($"new System.Drawing.Point({point.X}, {point.Y})"),
+		Size size => SyntaxFactory.ParseExpression($"new System.Drawing.Size({size.Width}, {size.Height})"),
+		SizeF size => SyntaxFactory.ParseExpression($"new System.Drawing.SizeF({size.Width.ToString(CultureInfo.InvariantCulture)}F, {size.Height.ToString(CultureInfo.InvariantCulture)}F)"),
+		Padding padding => SyntaxFactory.ParseExpression($"new System.Windows.Forms.Padding({padding.Left}, {padding.Top}, {padding.Right}, {padding.Bottom})"),
+		Font font => SyntaxFactory.ParseExpression($"new System.Drawing.Font({SyntaxFactory.Literal(font.Name)}, {font.Size.ToString(CultureInfo.InvariantCulture)}F, (System.Drawing.FontStyle){Convert.ToInt32(font.Style, CultureInfo.InvariantCulture)})"),
+		Color color => SyntaxFactory.ParseExpression($"System.Drawing.Color.FromArgb({color.A}, {color.R}, {color.G}, {color.B})"),
+		_ => throw new NotSupportedException($"Serializing property values of type {value.GetType().FullName} is not supported yet.")
+	};
+
+	void RewriteEvent(string componentName, EventDescriptor descriptor, string handlerName)
+	{
+		var designerFile = CurrentDesignerFile();
+		var root = CSharpSyntaxTree.ParseText(designerFile.Text).GetCompilationUnitRoot();
+		var target = componentName + "." + descriptor.Name;
+		var existing = root.DescendantNodes().OfType<AssignmentExpressionSyntax>()
+			.FirstOrDefault(item => item.IsKind(SyntaxKind.AddAssignmentExpression) && NormalizeTarget(item.Left.ToString()) == target);
+		if (String.IsNullOrEmpty(handlerName)) {
+			if (existing?.Parent is StatementSyntax statement)
+				designerFile.Text = root.RemoveNode(statement, SyntaxRemoveOptions.KeepNoTrivia)!.NormalizeWhitespace().ToFullString();
+			return;
+		}
+		var handlerExpression = SyntaxFactory.ParseExpression("this." + handlerName);
+		if (existing != null)
+			root = root.ReplaceNode(existing.Right, handlerExpression.WithTriviaFrom(existing.Right));
+		else {
+			var initialize = root.DescendantNodes().OfType<MethodDeclarationSyntax>()
+				.First(item => item.Identifier.ValueText == "InitializeComponent");
+			var statement = SyntaxFactory.ParseStatement($"this.{target} += this.{handlerName};\n");
+			root = root.ReplaceNode(initialize, initialize.WithBody(initialize.Body!.AddStatements(statement)));
+		}
+		designerFile.Text = root.NormalizeWhitespace().ToFullString();
+
+		var primaryFile = current!.Files.FirstOrDefault(item => item.Kind.Equals("Source", StringComparison.OrdinalIgnoreCase));
+		if (primaryFile == null) return;
+		var primaryRoot = CSharpSyntaxTree.ParseText(primaryFile.Text).GetCompilationUnitRoot();
+		if (primaryRoot.DescendantNodes().OfType<MethodDeclarationSyntax>().Any(item => item.Identifier.ValueText == handlerName)) return;
+		var declaration = primaryRoot.DescendantNodes().OfType<ClassDeclarationSyntax>().FirstOrDefault();
+		if (declaration == null) return;
+		var invoke = descriptor.EventType?.GetMethod("Invoke");
+		var parameters = invoke?.GetParameters() ?? [];
+		var parameterList = String.Join(", ", parameters.Select((parameter, index) =>
+			(parameter.ParameterType.FullName ?? parameter.ParameterType.Name) + " " + (parameter.Name ?? "arg" + index)));
+		var method = (MethodDeclarationSyntax)SyntaxFactory.ParseMemberDeclaration(
+			$"private void {handlerName}({parameterList}) {{\n}}\n")!;
+		primaryFile.Text = primaryRoot.ReplaceNode(declaration, declaration.AddMembers(method)).NormalizeWhitespace().ToFullString();
+	}
+
+	Type ResolveControlType(string name)
+	{
+		var fullName = name.Contains('.') ? name : "System.Windows.Forms." + name;
+		var type = projectAssembly?.GetType(fullName, false) ?? typeof(Control).Assembly.GetType(fullName, false)
+			?? AppDomain.CurrentDomain.GetAssemblies().Select(item => item.GetType(fullName, false)).FirstOrDefault(item => item != null);
+		if (type == null || !typeof(Control).IsAssignableFrom(type) || type.IsAbstract)
+			throw new NotSupportedException("Unsupported WinForms control type: " + name);
+		return type;
+	}
+
+	void RewriteAddedControl(string parentName, Type type, string componentName, int x, int y, int width, int height)
+	{
+		var file = current!.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))
+			?? current.Files.First();
+		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
+		var method = root.DescendantNodes().OfType<MethodDeclarationSyntax>()
+			.First(item => item.Identifier.ValueText == "InitializeComponent");
+		var className = method.Ancestors().OfType<ClassDeclarationSyntax>().First().Identifier.ValueText;
+		var parentExpression = parentName == className
+			? "this" : "this." + parentName;
+		var statements = new[] {
+			SyntaxFactory.ParseStatement($"this.{componentName} = new {type.FullName}();\n"),
+			SyntaxFactory.ParseStatement($"this.{componentName}.Location = new System.Drawing.Point({x}, {y});\n"),
+			SyntaxFactory.ParseStatement($"this.{componentName}.Size = new System.Drawing.Size({width}, {height});\n"),
+			SyntaxFactory.ParseStatement($"{parentExpression}.Controls.Add(this.{componentName});\n")
+		};
+		var updatedMethod = method.WithBody(method.Body!.AddStatements(statements));
+		root = root.ReplaceNode(method, updatedMethod);
+		var declaration = root.DescendantNodes().OfType<ClassDeclarationSyntax>().First(item => item.Identifier.ValueText == className);
+		var field = (FieldDeclarationSyntax)SyntaxFactory.ParseMemberDeclaration($"private {type.FullName} {componentName};\n")!;
+		root = root.ReplaceNode(declaration, declaration.AddMembers(field));
+		file.Text = root.NormalizeWhitespace().ToFullString();
+	}
+
+	void RewriteBounds(string componentName, int x, int y, int width, int height)
+	{
+		var file = CurrentDesignerFile();
+		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
+		root = ReplaceRequiredAssignment(root, componentName + ".Location",
+			SyntaxFactory.ParseExpression($"new System.Drawing.Point({x}, {y})"));
+		root = ReplaceRequiredAssignment(root, componentName + ".Size",
+			SyntaxFactory.ParseExpression($"new System.Drawing.Size({width}, {height})"));
+		file.Text = root.ToFullString();
+	}
+
+	void RewriteRootSize(int width, int height)
+	{
+		var file = CurrentDesignerFile();
+		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
+		var assignment = root.DescendantNodes().OfType<AssignmentExpressionSyntax>()
+			.FirstOrDefault(item => NormalizeTarget(item.Left.ToString()) is "ClientSize" or "Size");
+		var value = SyntaxFactory.ParseExpression($"new System.Drawing.Size({width}, {height})");
+		if (assignment != null) {
+			var replacement = SyntaxFactory.AssignmentExpression(SyntaxKind.SimpleAssignmentExpression,
+				SyntaxFactory.ParseExpression("this.Size"), value).WithTriviaFrom(assignment);
+			file.Text = root.ReplaceNode(assignment, replacement).ToFullString();
+			return;
+		}
+		var initialize = root.DescendantNodes().OfType<MethodDeclarationSyntax>()
+			.First(item => item.Identifier.ValueText == "InitializeComponent");
+		file.Text = root.ReplaceNode(initialize, initialize.WithBody(initialize.Body!.AddStatements(
+			SyntaxFactory.ParseStatement($"this.Size = new System.Drawing.Size({width}, {height});\n"))))
+			.NormalizeWhitespace().ToFullString();
+	}
+
+	void RewriteDeletedComponent(string componentName)
+	{
+		var file = CurrentDesignerFile();
+		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
+		var statements = root.DescendantNodes().OfType<StatementSyntax>()
+			.Where(statement => statement.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>()
+				.Any(identifier => identifier.Identifier.ValueText == componentName)).ToArray();
+		root = root.RemoveNodes(statements, SyntaxRemoveOptions.KeepNoTrivia)!;
+		var variables = root.DescendantNodes().OfType<VariableDeclaratorSyntax>()
+			.Where(variable => variable.Identifier.ValueText == componentName).ToArray();
+		foreach (var variable in variables) {
+			if (variable.Parent?.Parent is FieldDeclarationSyntax field)
+				root = root.RemoveNode(field, SyntaxRemoveOptions.KeepNoTrivia)!;
+		}
+		file.Text = root.NormalizeWhitespace().ToFullString();
+	}
+
+	void RewriteZOrder(string parentName, string componentName, int childIndex)
+	{
+		var file = CurrentDesignerFile();
+		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
+		var initialize = root.DescendantNodes().OfType<MethodDeclarationSyntax>()
+			.First(item => item.Identifier.ValueText == "InitializeComponent");
+		var oldStatements = initialize.Body!.Statements.Where(statement => {
+			var invocation = statement.DescendantNodes().OfType<InvocationExpressionSyntax>().FirstOrDefault();
+			return invocation?.Expression is MemberAccessExpressionSyntax member
+				&& member.Name.Identifier.ValueText == "SetChildIndex"
+				&& NormalizeTarget(invocation.ArgumentList.Arguments.FirstOrDefault()?.Expression.ToString() ?? "") == componentName;
+		}).ToArray();
+		var body = initialize.Body.RemoveNodes(oldStatements, SyntaxRemoveOptions.KeepNoTrivia)!;
+		var parentExpression = String.IsNullOrEmpty(parentName) || parentName == initialize.Ancestors().OfType<ClassDeclarationSyntax>().First().Identifier.ValueText
+			? "this" : "this." + parentName;
+		body = body.AddStatements(SyntaxFactory.ParseStatement($"{parentExpression}.Controls.SetChildIndex(this.{componentName}, {childIndex});\n"));
+		file.Text = root.ReplaceNode(initialize, initialize.WithBody(body)).NormalizeWhitespace().ToFullString();
+	}
+
+	SourceFileSnapshot CurrentDesignerFile() => current!.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))
+		?? current.Files.First();
+
+	static CompilationUnitSyntax ReplaceRequiredAssignment(CompilationUnitSyntax root, string target, ExpressionSyntax value)
+	{
+		var assignment = root.DescendantNodes().OfType<AssignmentExpressionSyntax>()
+			.FirstOrDefault(item => NormalizeTarget(item.Left.ToString()) == target)
+			?? throw new NotSupportedException("The existing designer source has no assignment for " + target + ".");
+		return root.ReplaceNode(assignment.Right, value.WithTriviaFrom(assignment.Right));
+	}
+
+	static void Validate(DocumentSnapshot snapshot)
+	{
+		if (snapshot.Version < 0) throw new ArgumentOutOfRangeException(nameof(snapshot.Version));
+		if (String.IsNullOrWhiteSpace(snapshot.PrimaryFileName)) throw new ArgumentException("A primary file is required.");
+		if (snapshot.Files.Count == 0) throw new ArgumentException("At least one source file is required.");
+		if (snapshot.Files.Count > 256) throw new ArgumentException("A designer snapshot may contain at most 256 files.");
+		long payloadSize = 0;
+		foreach (var file in snapshot.Files) {
+			if (file.FileName.Length > 4096) throw new ArgumentException("A designer snapshot file name is too long.");
+			payloadSize += file.Text.Length * sizeof(char);
+			payloadSize += file.Base64.Length * 3L / 4L;
+			if (payloadSize > 16 * 1024 * 1024)
+				throw new ArgumentException("The designer snapshot exceeds the 16 MiB payload limit.");
+		}
+	}
+
+	void CreateDesignSurface(DocumentSnapshot snapshot)
+	{
+		designSurface?.Dispose();
+		projectLoadContext?.Unload();
+		projectLoadContext = null;
+		projectAssembly = null;
+		rootDesignSize = ReadRootDesignSize(snapshot);
+		rootAutoScaleDimensions = ReadRootAutoScaleDimensions(snapshot);
+		if (!String.IsNullOrWhiteSpace(snapshot.ProjectAssemblyPath) && File.Exists(snapshot.ProjectAssemblyPath)) {
+			projectLoadContext = new ProjectAssemblyLoadContext(snapshot.ProjectAssemblyPath);
+			projectAssembly = projectLoadContext.LoadFromAssemblyPath(Path.GetFullPath(snapshot.ProjectAssemblyPath));
+		}
+		designSurface = new DesignSurface();
+		designSurface.BeginLoad(new SnapshotDesignerLoader(snapshot, ResolveProjectType));
+		if (!designSurface.IsLoaded) {
+			var errors = designSurface.LoadErrors?.Cast<object>().Select(item => item?.ToString()).Where(item => !String.IsNullOrEmpty(item));
+			throw new InvalidOperationException("The child design surface failed to load: " + String.Join(" | ", errors ?? []));
+		}
+		if (designSurface.View is Control view) {
+			view.CreateControl();
+			view.PerformLayout();
+		}
+	}
+
+	static Size? ReadRootDesignSize(DocumentSnapshot snapshot)
+	{
+		var source = snapshot.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))?.Text;
+		if (String.IsNullOrEmpty(source)) return null;
+		var root = CSharpSyntaxTree.ParseText(source).GetCompilationUnitRoot();
+		var creation = root.DescendantNodes().OfType<AssignmentExpressionSyntax>()
+			.Where(item => NormalizeTarget(item.Left.ToString()) is "Size" or "ClientSize")
+			.Select(item => item.Right).OfType<ObjectCreationExpressionSyntax>().FirstOrDefault();
+		if (creation?.ArgumentList?.Arguments.Count != 2
+			|| !Int32.TryParse(creation.ArgumentList.Arguments[0].Expression.ToString(), out var width)
+			|| !Int32.TryParse(creation.ArgumentList.Arguments[1].Expression.ToString(), out var height)) return null;
+		return new Size(width, height);
+	}
+
+	static SizeF? ReadRootAutoScaleDimensions(DocumentSnapshot snapshot)
+	{
+		var source = snapshot.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))?.Text;
+		if (String.IsNullOrEmpty(source)) return null;
+		var root = CSharpSyntaxTree.ParseText(source).GetCompilationUnitRoot();
+		var creation = root.DescendantNodes().OfType<AssignmentExpressionSyntax>()
+			.Where(item => NormalizeTarget(item.Left.ToString()) == "AutoScaleDimensions")
+			.Select(item => item.Right).OfType<ObjectCreationExpressionSyntax>().FirstOrDefault();
+		if (creation?.ArgumentList?.Arguments.Count != 2
+			|| !Single.TryParse(creation.ArgumentList.Arguments[0].Expression.ToString().TrimEnd('F', 'f'), NumberStyles.Float, CultureInfo.InvariantCulture, out var width)
+			|| !Single.TryParse(creation.ArgumentList.Arguments[1].Expression.ToString().TrimEnd('F', 'f'), NumberStyles.Float, CultureInfo.InvariantCulture, out var height)) return null;
+		return new SizeF(width, height);
+	}
+
+	Type? ResolveProjectType(string name) => projectAssembly?.GetType(name, false);
+
+	SessionState CurrentState(long version)
+	{
+		var host = designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost;
+		var rootControl = host?.RootComponent as Control;
+		var render = Render(rootControl, rootDesignSize);
+		return new SessionState {
+			Version = version,
+			Accepted = true,
+			RootType = host?.RootComponent?.GetType().FullName ?? "",
+			ComponentCount = host?.Container?.Components.Count ?? 0,
+			Render = render,
+			Components = host?.Container?.Components.Cast<IComponent>().Select(component => {
+				var properties = DescribeProperties(component);
+				if (component == host.RootComponent && rootAutoScaleDimensions.HasValue) {
+					var scale = properties.FirstOrDefault(item => item.Name == "AutoScaleDimensions");
+					if (scale != null)
+						scale.Value = $"{rootAutoScaleDimensions.Value.Width.ToString(CultureInfo.InvariantCulture)}, {rootAutoScaleDimensions.Value.Height.ToString(CultureInfo.InvariantCulture)}";
+				}
+				return new ComponentInfo {
+				Name = component.Site?.Name ?? "",
+				Type = component.GetType().FullName ?? component.GetType().Name,
+				Parent = component is Control control ? control.Parent?.Site?.Name ?? "" : "",
+				Text = component is Control textControl ? textControl.Text ?? "" : "",
+				AccessibleName = PropertyText(component, "AccessibleName") is { Length: > 0 } accessibleName
+					? accessibleName : component is Control namedControl && !String.IsNullOrEmpty(namedControl.Text)
+						? namedControl.Text : component.Site?.Name ?? "",
+				AccessibleDescription = PropertyText(component, "AccessibleDescription"),
+				AccessibleRole = PropertyText(component, "AccessibleRole") is { Length: > 0 } accessibleRole
+					? accessibleRole : component.GetType().Name,
+				X = component is Control boundsControl ? boundsControl.Left : 0,
+				Y = component is Control boundsControl2 ? boundsControl2.Top : 0,
+				SurfaceX = component is Control surfaceControl ? SurfaceLocation(surfaceControl).X : 0,
+				SurfaceY = component is Control surfaceControl2 ? SurfaceLocation(surfaceControl2).Y : 0,
+				Width = component == host.RootComponent && rootDesignSize.HasValue ? rootDesignSize.Value.Width : component is Control sizeControl ? sizeControl.Width : 0,
+				Height = component == host.RootComponent && rootDesignSize.HasValue ? rootDesignSize.Value.Height : component is Control sizeControl2 ? sizeControl2.Height : 0,
+				Properties = properties,
+				Events = DescribeEvents(component)
+				};
+			}).ToList() ?? []
+		};
+	}
+
+	static string PropertyText(IComponent component, string propertyName)
+	{
+		try {
+			var property = TypeDescriptor.GetProperties(component)[propertyName];
+			var value = property?.GetValue(component);
+			return value == null ? "" : property!.Converter.ConvertToInvariantString(value) ?? "";
+		} catch { return ""; }
+	}
+
+	List<EventInfoDto> DescribeEvents(IComponent component)
+	{
+		var handlers = CurrentDesignerFile().Text;
+		return TypeDescriptor.GetEvents(component).Cast<EventDescriptor>().Where(item => item.IsBrowsable).Select(item => {
+			var root = CSharpSyntaxTree.ParseText(handlers).GetCompilationUnitRoot();
+			var target = (component.Site?.Name ?? "") + "." + item.Name;
+			var assignment = root.DescendantNodes().OfType<AssignmentExpressionSyntax>()
+				.FirstOrDefault(node => node.IsKind(SyntaxKind.AddAssignmentExpression) && NormalizeTarget(node.Left.ToString()) == target);
+			var handler = assignment?.Right.ToString() ?? "";
+			if (handler.StartsWith("this.", StringComparison.Ordinal)) handler = handler[5..];
+			return new EventInfoDto { Name = item.Name, Category = item.Category ?? "Action", HandlerTypeName = item.EventType?.FullName ?? "", Handler = handler };
+		}).ToList();
+	}
+
+	List<PropertyInfoDto> DescribeProperties(IComponent component)
+	{
+		var result = new List<PropertyInfoDto>();
+		var componentName = component.Site?.Name ?? "";
+		var designerRoot = CSharpSyntaxTree.ParseText(CurrentDesignerFile().Text).GetCompilationUnitRoot();
+		foreach (PropertyDescriptor property in TypeDescriptor.GetProperties(component)) {
+			if (!property.IsBrowsable || property.Name is "Site" or "Container" or "Parent") continue;
+			object? value;
+			string serialized;
+			try {
+				value = property.GetValue(component);
+				if (value == null) serialized = "";
+				else if (value is Image) serialized = "[binary]";
+				else if (value is Padding padding) serialized = $"{padding.Left}, {padding.Top}, {padding.Right}, {padding.Bottom}";
+				else if (value is Font font) serialized = $"{font.Name}, {font.Size.ToString(CultureInfo.InvariantCulture)}, {font.Style}";
+				else if (value is SizeF size) serialized = $"{size.Width.ToString(CultureInfo.InvariantCulture)}, {size.Height.ToString(CultureInfo.InvariantCulture)}";
+				else if (property.Converter.CanConvertTo(typeof(string))) serialized = property.Converter.ConvertToInvariantString(value) ?? "";
+				else serialized = "[binary]";
+			} catch { continue; }
+			result.Add(new PropertyInfoDto {
+				Name = property.Name,
+				DisplayName = property.DisplayName ?? property.Name,
+				Description = property.Description ?? "",
+				Category = property.Category ?? "Misc",
+				TypeName = property.PropertyType.FullName ?? property.PropertyType.Name,
+				Value = serialized,
+				IsNull = value == null,
+				IsReadOnly = property.IsReadOnly || (!property.Converter.CanConvertFrom(typeof(string))
+					&& property.PropertyType != typeof(Padding) && property.PropertyType != typeof(Font)
+					&& property.PropertyType != typeof(SizeF)),
+				// The source assignment is authoritative. Some LibreWinForms
+				// descriptors keep returning true after ResetValue.
+				ShouldSerialize = designerRoot.DescendantNodes().OfType<AssignmentExpressionSyntax>().Any(assignment =>
+					assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)
+					&& NormalizeTarget(assignment.Left.ToString()) == componentName + "." + property.Name),
+				IsEnum = property.PropertyType.IsEnum
+			});
+		}
+		return result;
+	}
+
+	static Point SurfaceLocation(Control control)
+	{
+		var point = control.Location;
+		for (var parent = control.Parent; parent?.Parent != null; parent = parent.Parent)
+			point.Offset(parent.Location);
+		return point;
+	}
+
+	RenderFrame? Render(Control? root, Size? designSize)
+	{
+		if (root == null) return null;
+		if (root.Width <= 0 || root.Height <= 0) root.Size = new Size(300, 200);
+		root.CreateControl();
+		root.PerformLayout();
+		var renderSize = designSize ?? root.Size;
+		using var bitmap = new Bitmap(Math.Max(1, renderSize.Width), Math.Max(1, renderSize.Height));
+		using (var graphics = Graphics.FromImage(bitmap)) {
+			if (designSize.HasValue) {
+				PaintStandardControl(root, graphics, new Rectangle(Point.Empty, renderSize));
+				foreach (Control child in root.Controls) {
+					var state = graphics.Save();
+					graphics.TranslateTransform(child.Left, child.Top);
+					PaintControl(child, graphics);
+					graphics.Restore(state);
+				}
+			} else PaintControl(root, graphics);
+		}
+		using var stream = new MemoryStream();
+		bitmap.Save(stream, ImageFormat.Png);
+		return new RenderFrame {
+			Sequence = Interlocked.Increment(ref frameSequence),
+			Width = bitmap.Width,
+			Height = bitmap.Height,
+			// The portable renderer paints in WinForms logical pixels. ProGPU's
+			// Bitmap does not expose a device resolution on macOS.
+			Dpi = 1,
+			PngBase64 = Convert.ToBase64String(stream.ToArray())
+		};
+	}
+
+	static void PaintControl(Control control, Graphics graphics)
+	{
+		var bounds = new Rectangle(Point.Empty, control.Size);
+		if (control is IPortableWinFormsPaintSource paintSource && paintSource.SupportsPortablePainting) {
+			var args = new PaintEventArgs(graphics, bounds);
+			paintSource.PaintPortableBackground(args);
+			paintSource.PaintPortable(args);
+		} else PaintStandardControl(control, graphics, bounds);
+		foreach (Control child in control.Controls) {
+			var state = graphics.Save();
+			graphics.TranslateTransform(child.Left, child.Top);
+			PaintControl(child, graphics);
+			graphics.Restore(state);
+		}
+	}
+
+	static void PaintStandardControl(Control control, Graphics graphics, Rectangle bounds)
+	{
+		var back = control.BackColor.IsEmpty ? SystemColors.Control : control.BackColor;
+		var fore = control.ForeColor.IsEmpty ? SystemColors.ControlText : control.ForeColor;
+		using var background = new SolidBrush(back);
+		using var foreground = new SolidBrush(fore);
+		using var border = new Pen(SystemColors.ControlDark, 1);
+		using var light = new Pen(SystemColors.ControlLightLight, 1);
+		graphics.FillRectangle(background, bounds);
+		var font = control.Font ?? SystemFonts.DefaultFont;
+
+		if (control is Button) {
+			graphics.FillRectangle(new SolidBrush(SystemColors.Control), bounds);
+			graphics.DrawRectangle(border, 0, 0, Math.Max(0, bounds.Width - 1), Math.Max(0, bounds.Height - 1));
+			graphics.DrawLine(light, 1, 1, Math.Max(1, bounds.Width - 2), 1);
+			DrawCenteredText(graphics, control.Text, font, foreground, bounds);
+		} else if (control is TextBoxBase) {
+			graphics.FillRectangle(Brushes.White, bounds);
+			graphics.DrawRectangle(border, 0, 0, Math.Max(0, bounds.Width - 1), Math.Max(0, bounds.Height - 1));
+			graphics.DrawString(control.Text ?? "", font, foreground, new PointF(3, 3));
+		} else if (control is CheckBox or RadioButton) {
+			var mark = new Rectangle(1, Math.Max(1, (bounds.Height - 13) / 2), 12, 12);
+			if (control is RadioButton) graphics.DrawEllipse(border, mark);
+			else graphics.DrawRectangle(border, mark);
+			graphics.DrawString(control.Text ?? "", font, foreground, new PointF(17, Math.Max(1, (bounds.Height - font.Height) / 2f)));
+		} else if (control is ComboBox or NumericUpDown) {
+			graphics.FillRectangle(Brushes.White, bounds);
+			graphics.DrawRectangle(border, 0, 0, Math.Max(0, bounds.Width - 1), Math.Max(0, bounds.Height - 1));
+			var buttonWidth = Math.Min(18, bounds.Width);
+			graphics.FillRectangle(new SolidBrush(SystemColors.Control), bounds.Width - buttonWidth, 1, buttonWidth - 1, Math.Max(0, bounds.Height - 2));
+			graphics.DrawLine(border, bounds.Width - buttonWidth, 1, bounds.Width - buttonWidth, bounds.Height - 2);
+			graphics.DrawString(control.Text ?? "", font, foreground, new PointF(3, 3));
+		} else if (control is GroupBox) {
+			var top = Math.Max(6, font.Height / 2);
+			graphics.DrawRectangle(border, 0, top, Math.Max(0, bounds.Width - 1), Math.Max(0, bounds.Height - top - 1));
+			graphics.FillRectangle(background, 8, 0, Math.Min(bounds.Width - 10, graphics.MeasureString(control.Text ?? "", font).Width + 4), font.Height + 2);
+			graphics.DrawString(control.Text ?? "", font, foreground, new PointF(10, 0));
+		} else if (control is TabControl tabs) {
+			graphics.FillRectangle(Brushes.White, 1, 22, Math.Max(0, bounds.Width - 2), Math.Max(0, bounds.Height - 23));
+			graphics.DrawRectangle(border, 0, 21, Math.Max(0, bounds.Width - 1), Math.Max(0, bounds.Height - 22));
+			var left = 2;
+			foreach (TabPage page in tabs.TabPages) {
+				var width = Math.Max(45, (int)graphics.MeasureString(page.Text ?? "", font).Width + 14);
+				graphics.FillRectangle(page == tabs.SelectedTab ? Brushes.White : background, left, 1, width, 21);
+				graphics.DrawRectangle(border, left, 1, width, 21);
+				graphics.DrawString(page.Text ?? "", font, foreground, new PointF(left + 7, 4));
+				left += width + 1;
+			}
+		} else if (control is TreeView) {
+			graphics.FillRectangle(Brushes.White, bounds);
+			graphics.DrawRectangle(border, 0, 0, Math.Max(0, bounds.Width - 1), Math.Max(0, bounds.Height - 1));
+			DrawPlaceholderRows(graphics, font, foreground, border, bounds, tree: true);
+		} else if (control is ListView) {
+			graphics.FillRectangle(Brushes.White, bounds);
+			graphics.DrawRectangle(border, 0, 0, Math.Max(0, bounds.Width - 1), Math.Max(0, bounds.Height - 1));
+			DrawPlaceholderRows(graphics, font, foreground, border, bounds, tree: false);
+		} else if (control is DataGridView) {
+			graphics.FillRectangle(Brushes.White, bounds);
+			graphics.FillRectangle(background, 1, 1, Math.Max(0, bounds.Width - 2), Math.Min(23, bounds.Height - 2));
+			graphics.DrawRectangle(border, 0, 0, Math.Max(0, bounds.Width - 1), Math.Max(0, bounds.Height - 1));
+			for (var x = 36; x < bounds.Width; x += 80) graphics.DrawLine(border, x, 1, x, bounds.Height - 2);
+			for (var y = 24; y < bounds.Height; y += 22) graphics.DrawLine(border, 1, y, bounds.Width - 2, y);
+			graphics.DrawString("DataGridView", font, foreground, new PointF(42, 4));
+		} else if (control is MenuStrip or ToolStrip) {
+			graphics.FillRectangle(new SolidBrush(SystemColors.Menu), bounds);
+			graphics.DrawLine(border, 0, Math.Max(0, bounds.Height - 1), bounds.Width, Math.Max(0, bounds.Height - 1));
+			graphics.DrawString(control is MenuStrip ? "File    Edit    View" : "New   Open   Save", font, foreground, new PointF(6, Math.Max(1, (bounds.Height - font.Height) / 2f)));
+		} else if (control is Panel) {
+			graphics.DrawRectangle(border, 0, 0, Math.Max(0, bounds.Width - 1), Math.Max(0, bounds.Height - 1));
+		} else if (control is ListBox) {
+			graphics.FillRectangle(Brushes.White, bounds);
+			graphics.DrawRectangle(border, 0, 0, Math.Max(0, bounds.Width - 1), Math.Max(0, bounds.Height - 1));
+		} else if (control is ProgressBar progress) {
+			graphics.DrawRectangle(border, 0, 0, Math.Max(0, bounds.Width - 1), Math.Max(0, bounds.Height - 1));
+			var range = Math.Max(1, progress.Maximum - progress.Minimum);
+			var fill = Math.Max(0, (bounds.Width - 4) * (progress.Value - progress.Minimum) / range);
+			graphics.FillRectangle(new SolidBrush(SystemColors.Highlight), 2, 2, fill, Math.Max(0, bounds.Height - 4));
+		} else if (control is Label) {
+			graphics.DrawString(control.Text ?? "", font, foreground, new PointF(0, Math.Max(0, (bounds.Height - font.Height) / 2f)));
+		} else if (!String.IsNullOrEmpty(control.Text)) {
+			graphics.DrawString(control.Text, font, foreground, new PointF(3, 3));
+		}
+	}
+
+	static void DrawPlaceholderRows(Graphics graphics, Font font, Brush foreground, Pen border, Rectangle bounds, bool tree)
+	{
+		for (var row = 0; row < 4; row++) {
+			var y = 5 + row * 20;
+			if (y + font.Height >= bounds.Height) break;
+			var indent = tree ? 8 + row * 8 : 8;
+			if (tree) {
+				graphics.DrawRectangle(border, indent, y + 3, 8, 8);
+				graphics.DrawLine(border, indent + 2, y + 7, indent + 6, y + 7);
+			}
+			graphics.DrawString(tree ? "Node " + (row + 1) : "List item " + (row + 1), font, foreground,
+				new PointF(indent + (tree ? 14 : 0), y));
+		}
+	}
+
+	static void DrawCenteredText(Graphics graphics, string? text, Font font, Brush brush, Rectangle bounds)
+	{
+		if (String.IsNullOrEmpty(text)) return;
+		var size = graphics.MeasureString(text, font);
+		graphics.DrawString(text, font, brush,
+			new PointF(Math.Max(2, (bounds.Width - size.Width) / 2), Math.Max(1, (bounds.Height - size.Height) / 2)));
+	}
+
+	static SessionState Accepted(long version) => new() { Version = version, Accepted = true };
+	static SessionState Rejected(long version, string error) => new() { Version = version, Error = error };
+}
+
+sealed class ThisQualifierRewriter : CSharpSyntaxRewriter
+{
+	public override SyntaxNode? VisitMemberAccessExpression(MemberAccessExpressionSyntax node)
+	{
+		if (node.Expression is ThisExpressionSyntax)
+			return node.Name.WithTriviaFrom(node);
+		return base.VisitMemberAccessExpression(node);
+	}
+}
+
+sealed class Handshake { public int ProtocolVersion { get; set; } public string Runtime { get; set; } = ""; public int ProcessId { get; set; } }
+sealed class DocumentSnapshot { public long Version { get; set; } public string ProjectFileName { get; set; } = ""; public string TargetFramework { get; set; } = ""; public string ProjectAssemblyPath { get; set; } = ""; public string PrimaryFileName { get; set; } = ""; public string DesignerFileName { get; set; } = ""; public List<SourceFileSnapshot> Files { get; set; } = []; }
+sealed class SourceFileSnapshot { public string FileName { get; set; } = ""; public string Kind { get; set; } = "Source"; public string Text { get; set; } = ""; public string Base64 { get; set; } = ""; }
+sealed class SessionState { public long Version { get; set; } public bool Accepted { get; set; } public string Error { get; set; } = ""; public string RootType { get; set; } = ""; public int ComponentCount { get; set; } public List<ComponentInfo> Components { get; set; } = []; public RenderFrame? Render { get; set; } }
+sealed class RenderFrame { public long Sequence { get; set; } public int Width { get; set; } public int Height { get; set; } public double Dpi { get; set; } = 1; public string PngBase64 { get; set; } = ""; }
+sealed class ComponentInfo { public string Name { get; set; } = ""; public string Type { get; set; } = ""; public string Parent { get; set; } = ""; public string Text { get; set; } = ""; public string AccessibleName { get; set; } = ""; public string AccessibleDescription { get; set; } = ""; public string AccessibleRole { get; set; } = ""; public int X { get; set; } public int Y { get; set; } public int SurfaceX { get; set; } public int SurfaceY { get; set; } public int Width { get; set; } public int Height { get; set; } public List<PropertyInfoDto> Properties { get; set; } = []; public List<EventInfoDto> Events { get; set; } = []; }
+sealed class PropertyInfoDto { public string Name { get; set; } = ""; public string DisplayName { get; set; } = ""; public string Description { get; set; } = ""; public string Category { get; set; } = ""; public string TypeName { get; set; } = ""; public string Value { get; set; } = ""; public bool IsNull { get; set; } public bool IsReadOnly { get; set; } public bool ShouldSerialize { get; set; } public bool IsEnum { get; set; } }
+sealed class EventInfoDto { public string Name { get; set; } = ""; public string Category { get; set; } = ""; public string HandlerTypeName { get; set; } = ""; public string Handler { get; set; } = ""; }
+sealed class HitTestResult { public string ComponentName { get; set; } = ""; public string ComponentType { get; set; } = ""; }
+sealed class EditSet { public long BaseVersion { get; set; } public List<SourceFileSnapshot> Files { get; set; } = []; }
+
+sealed class ProjectAssemblyLoadContext : AssemblyLoadContext
+{
+	readonly AssemblyDependencyResolver resolver;
+	public ProjectAssemblyLoadContext(string assemblyPath) : base(isCollectible: true) => resolver = new AssemblyDependencyResolver(assemblyPath);
+	protected override Assembly? Load(AssemblyName assemblyName)
+	{
+		if (assemblyName.Name is "System.Windows.Forms" or "System.Drawing.Common" or "System.Drawing") return null;
+		var path = resolver.ResolveAssemblyToPath(assemblyName);
+		return path == null ? null : LoadFromAssemblyPath(path);
+	}
+}

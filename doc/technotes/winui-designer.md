@@ -179,10 +179,9 @@ in-process-hosting equivalent risk (see
 run the *real* runtime the project targets in its own process, and talk to it over RPC, rather
 than trying to reconcile two incompatible in-process object models. For WinUI/Uno the need is
 structural (type identity), not merely defense-in-depth against a crashing/untrusted assembly -
-unlike the WinForms designer's own hosting choice (see
-[`winforms-designer.md`](winforms-designer.md#out-of-process-hosting-lower-priority-2026-08-14)),
-which already runs the real `System.Windows.Forms` in-process via `WindowsFormsHost` with no
-competing reimplementation, so it does not have this specific forcing function.
+WinForms does not have this specific same-name type-identity forcing function, but its own
+out-of-process boundary is also required for target-runtime and third-party designer isolation
+(see [`winforms-designer.md`](winforms-designer.md#out-of-process-host-decision-2026-08-15)).
 
 **What ships now vs. later (updated 2026-08-15):**
 

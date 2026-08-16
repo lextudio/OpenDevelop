@@ -49,14 +49,31 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
 
 		static string FindWorkspaceRoot(string fileName)
 		{
-			var directory = new DirectoryInfo(Path.GetDirectoryName(fileName) ?? Environment.CurrentDirectory);
+			var requestedDirectory = Path.GetDirectoryName(fileName) ?? Environment.CurrentDirectory;
+			var directory = new DirectoryInfo(requestedDirectory);
 			while (directory != null) {
-				if (Directory.EnumerateFiles(directory.FullName, "*.sln*").Any()
-				    || Directory.EnumerateFiles(directory.FullName, "*.*proj").Any())
+				if (ContainsWorkspaceFile(directory.FullName))
 					return directory.FullName;
 				directory = directory.Parent;
 			}
-			return Path.GetDirectoryName(fileName) ?? Environment.CurrentDirectory;
+			return requestedDirectory;
+		}
+
+		static bool ContainsWorkspaceFile(string directory)
+		{
+			// Editor hover and other delayed UI work may run after a test/project has deleted its
+			// temporary workspace. Directory.Exists alone cannot close the check/enumerate race,
+			// so enumeration itself must tolerate the directory (or a mounted ancestor) vanishing.
+			try {
+				return Directory.EnumerateFiles(directory, "*.sln*").Any()
+				       || Directory.EnumerateFiles(directory, "*.*proj").Any();
+			} catch (DirectoryNotFoundException) {
+				return false;
+			} catch (IOException) {
+				return false;
+			} catch (UnauthorizedAccessException) {
+				return false;
+			}
 		}
 	}
 }

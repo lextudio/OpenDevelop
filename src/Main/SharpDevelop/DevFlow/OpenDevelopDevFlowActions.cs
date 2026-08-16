@@ -38,6 +38,30 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 	[DevFlowUIThread]
 	public static class OpenDevelopDevFlowActions
 	{
+		// DevFlow discovers actions once, before AddIn autostart commands load lazy assemblies.
+		// Keep these two stable integration-test entry points in the always-loaded shell and
+		// forward without introducing a compile-time FormsDesigner dependency.
+		[DevFlowAction("od.forms-designer.status", Description = "Inspect the active WinForms designer")]
+		public static string FormsDesignerStatus()
+		{
+			return InvokeFormsDesignerDevFlowAction("GetDesignerStatus");
+		}
+
+		[DevFlowAction("od.forms-designer.query-control-screen-bounds", Description = "Get a WinForms designer control's screen bounds")]
+		public static string FormsDesignerControlBounds(string controlName)
+		{
+			return InvokeFormsDesignerDevFlowAction("QueryControlScreenBounds", controlName);
+		}
+
+		static string InvokeFormsDesignerDevFlowAction(string methodName, params object[] args)
+		{
+			var type = AppDomain.CurrentDomain.GetAssemblies()
+				.Select(assembly => assembly.GetType("ICSharpCode.FormsDesigner.DevFlow.FormsDesignerDevFlowActions", throwOnError: false))
+				.FirstOrDefault(candidate => candidate != null);
+			var method = type?.GetMethod(methodName, BindingFlags.Public | BindingFlags.Static);
+			if (method == null) return JsonSerializer.Serialize(new { designerLoaded = false, success = false, error = "Forms Designer AddIn is unavailable" });
+			return (string)method.Invoke(null, args);
+		}
 		[DevFlowAction("od.sdk.list", Description = "List discovered .NET SDKs and which one is currently selected/effective")]
 		public static string ListDotNetSdks()
 		{

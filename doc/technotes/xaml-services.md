@@ -62,7 +62,7 @@ Moved to [`winui-designer.md`](winui-designer.md).
        ┌──────┴──────┬───────────────┐
        │             │               │
  WinForms backend  WPF backend   WinUI backend
- FormsDesigner     WpfDesign     WPF host adapter or preview RPC
+ preview RPC       WpfDesign     WPF host adapter or preview RPC
        │             │               │
  WinForms object   WPF XamlDom    XAML Studio renderer
  model/services    and designer   + isolated WinUI/Uno runtime
@@ -105,7 +105,7 @@ Moved to [`winui-designer.md`](winui-designer.md).
 | 3 | Extract common provider/selection/sync contracts | WPF and WinForms backends wire in through adapters with no feature regression | todo |
 | 4 | WinUI/Uno read-only MVP | AddIn/Source/Design routing, ProGPU materialization, diagnostics, last-good preview retention, Outline, and Source-to-Design refresh are all in place and covered by integration tests | done |
 | 5 | WinUI/Uno basic editing | Toolbox insertion, selection, Properties changes, deletion and Undo/Redo all land as source edits, driven through the shell's shared Toolbox and Properties pads. Selection works from the Outline *and* by clicking the rendered surface, and Toolbox insertion works via a real synthetic mouse drag that resolves the drop point to the container under the cursor. Covered by `WinUIDesigner_ToolboxInsertSelectEditDeleteUndoRedo_AllLandAsSourceEdits`, `WinUIDesigner_ClickOnDesignSurface_SelectsSourceElementInPropertiesPad` and `WinUIDesigner_DragToolboxItemOntoDesignSurface_InsertsIntoDroppedContainer` | done |
-| 6 | Complete all three designers | WinForms VB backend with modern Roslyn codegen; consistent base experience for WPF/WinUI/Uno | todo |
+| 6 | Complete all three designers | Required WinForms out-of-process host, WinForms VB backend with modern Roslyn codegen, and a consistent base experience for WPF/WinUI/Uno | todo |
 | 7 | Advanced WinUI/Uno | Project resources, custom controls, and isolated loading for both profiles; evaluate `x:Bind`/code-behind | backlog |
 
 Phase 3 must not block the Phase 1 spike; but the production WinUI addin must not directly copy the UnoDevelop view without framework detection and document-synchronization contracts.
@@ -120,9 +120,9 @@ Each backend must cover at least:
 - Toolbox, selection, Properties, Outline, and source-location coordination;
 - Undo/Redo, save, close, reopen, and resource disposal;
 - Plain `.cs`/`.xml` files without a designer show no leftover providers;
-- A host crash or renderer timeout does not exit OpenDevelop (required for WinUI's out-of-process
-  host — see [`winui-designer.md`](winui-designer.md#out-of-process-host-decision-2026-08-14) —
-  and a lower-priority hardening option for WinForms/WPF's in-process hosts);
+- A host crash or renderer timeout does not exit OpenDevelop (required for WinUI and WinForms;
+  see [`winui-designer.md`](winui-designer.md#out-of-process-host-decision-2026-08-14) and
+  [`winforms-designer.md`](winforms-designer.md#out-of-process-host-decision-2026-08-15));
 - Smoke tests on Windows and on each non-Windows platform ProGPU claims to support.
 
 WinUI integration tests may reuse the intent of the UnoDevelop fixture, but the tests must run OpenDevelop's own app and backends; passing UnoDevelop's tests cannot substitute for OpenDevelop acceptance.

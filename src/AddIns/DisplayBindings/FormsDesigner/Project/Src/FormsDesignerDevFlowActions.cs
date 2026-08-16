@@ -69,7 +69,23 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 		public static string GetDesignerStatus()
 		{
 			var viewContent = FindFormsDesignerViewContent();
-			if (viewContent?.Host == null)
+			if (viewContent == null)
+				return JsonSerializer.Serialize(new { designerLoaded = false });
+
+			if (viewContent.IsRemoteDesignerLoaded) {
+				var state = viewContent.RemoteDesignerState;
+				return JsonSerializer.Serialize(new {
+					designerLoaded = true,
+					outOfProcess = true,
+					usesCodeDomLoader = false,
+					loaderType = "ICSharpCode.FormsDesigner.Host.SnapshotRoslynDesignerLoader",
+					hostProcessId = viewContent.RemoteDesignerProcessId,
+					rootComponentType = state.RootType,
+					controlNames = state.Components.Select(component => component.Name).ToArray()
+				});
+			}
+
+			if (viewContent.Host == null)
 				return JsonSerializer.Serialize(new { designerLoaded = false });
 
 			var root = viewContent.Host.RootComponent as Control;
@@ -78,6 +94,7 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 
 			return JsonSerializer.Serialize(new {
 				designerLoaded = true,
+				outOfProcess = false,
 				rootComponentType = viewContent.Host.RootComponent?.GetType().Name,
 				loaderType = loaderService?.GetType().FullName,
 				usesCodeDomLoader = loaderService is System.ComponentModel.Design.Serialization.CodeDomDesignerLoader,
@@ -89,7 +106,22 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 		public static string QueryControlScreenBounds(string controlName)
 		{
 			var viewContent = FindFormsDesignerViewContent();
-			if (viewContent?.Host == null)
+			if (viewContent == null)
+				return JsonSerializer.Serialize(new { success = false, error = "WinForms designer is not loaded" });
+
+			if (viewContent.IsRemoteDesignerLoaded) {
+				if (!viewContent.TryGetRemoteComponentScreenBounds(controlName, out var bounds))
+					return JsonSerializer.Serialize(new { success = false, error = "Control not found: " + controlName });
+				return JsonSerializer.Serialize(new {
+					success = true,
+					x = bounds.X,
+					y = bounds.Y,
+					width = bounds.Width,
+					height = bounds.Height
+				});
+			}
+
+			if (viewContent.Host == null)
 				return JsonSerializer.Serialize(new { success = false, error = "WinForms designer is not loaded" });
 
 			var root = viewContent.Host.RootComponent as Control;
@@ -105,6 +137,65 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 				width = (double)control.Width,
 				height = (double)control.Height
 			});
+		}
+
+		[DevFlowAction("od.forms-designer.set-property", Description = "Set a component property in the active out-of-process WinForms designer and refresh its rendered frame")]
+		public static string SetProperty(string componentName, string propertyName, string value)
+		{
+			var viewContent = FindFormsDesignerViewContent();
+			if (viewContent?.IsRemoteDesignerLoaded != true)
+				return JsonSerializer.Serialize(new { success = false, error = "The out-of-process WinForms designer is not loaded" });
+			try {
+				viewContent.SetRemoteProperty(componentName, propertyName, value);
+				return JsonSerializer.Serialize(new { success = true });
+			} catch (Exception exception) {
+				return JsonSerializer.Serialize(new { success = false, error = exception.Message });
+			}
+		}
+
+		[DevFlowAction("od.forms-designer.set-event", Description = "Bind a component event in the out-of-process WinForms designer and generate a missing handler")]
+		public static string SetEvent(string componentName, string eventName, string handlerName)
+		{
+			return InvokeRemote(view => view.SetRemoteEvent(componentName, eventName, handlerName));
+		}
+
+		[DevFlowAction("od.forms-designer.add-control", Description = "Create a standard control in the active out-of-process WinForms designer and generate its designer source")]
+		public static string AddControl(string parentName, string controlType, string componentName, int x, int y)
+		{
+			var viewContent = FindFormsDesignerViewContent();
+			if (viewContent?.IsRemoteDesignerLoaded != true)
+				return JsonSerializer.Serialize(new { success = false, error = "The out-of-process WinForms designer is not loaded" });
+			try {
+				viewContent.AddRemoteControl(parentName, controlType, componentName, x, y);
+				return JsonSerializer.Serialize(new { success = true });
+			} catch (Exception exception) {
+				return JsonSerializer.Serialize(new { success = false, error = exception.Message });
+			}
+		}
+
+		[DevFlowAction("od.forms-designer.set-bounds", Description = "Move and resize a control in the active out-of-process WinForms designer")]
+		public static string SetBounds(string componentName, int x, int y, int width, int height)
+		{
+			return InvokeRemote(view => view.SetRemoteBounds(componentName, x, y, width, height));
+		}
+
+		[DevFlowAction("od.forms-designer.delete-component", Description = "Delete a component in the active out-of-process WinForms designer")]
+		public static string DeleteComponent(string componentName)
+		{
+			return InvokeRemote(view => view.DeleteRemoteComponent(componentName));
+		}
+
+		static string InvokeRemote(Action<FormsDesignerViewContent> action)
+		{
+			var viewContent = FindFormsDesignerViewContent();
+			if (viewContent?.IsRemoteDesignerLoaded != true)
+				return JsonSerializer.Serialize(new { success = false, error = "The out-of-process WinForms designer is not loaded" });
+			try {
+				action(viewContent);
+				return JsonSerializer.Serialize(new { success = true });
+			} catch (Exception exception) {
+				return JsonSerializer.Serialize(new { success = false, error = exception.Message });
+			}
 		}
 	}
 }

@@ -48,6 +48,9 @@
   </Folder>
   <Folder Name="/src/AddIns/DisplayBindings/FormsDesigner/">
     <Project Path="src/AddIns/DisplayBindings/FormsDesigner/Project/FormsDesigner.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/FormsDesigner/Host/FormsDesigner.Host.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/FormsDesigner/Remote/FormsDesigner.Remote.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/FormsDesigner/Host.Tests/FormsDesigner.Host.Tests.csproj" />
   </Folder>
   <Folder Name="/src/AddIns/DisplayBindings/IconEditor/">
     <Project Path="src/AddIns/DisplayBindings/IconEditor/IconEditor.csproj" />
