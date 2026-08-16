@@ -97,6 +97,31 @@ sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost
     public event EventHandler StateChanged;
     public event EventHandler<string> ElementPicked;
 
+    /// <summary>There is no child host process in this in-process runtime.</summary>
+    public string ChildLog => "(in-process host)";
+
+    /// <summary>Pixel samples of the last rendered frame.</summary>
+    public string RenderSample() => control.RenderSample();
+
+    /// <summary>Exports the current design to a PNG file.</summary>
+    public string ExportPng(string path) => control.ExportPng(path);
+
+    /// <summary>Performance report of the last render.</summary>
+    public (double RenderMs, int Width, int Height, double Dpi, int CompressedBytes, int RawBytes) RenderTiming()
+        => control.RenderTiming();
+
+    /// <summary>The effective display scale (including any debug simulation).</summary>
+    public double EffectiveDisplayDpi => control.EffectiveDpiScale;
+
+    /// <summary>Sets or clears the simulated display scale (test hook).</summary>
+    public void SetSimulatedDpi(double? dpi) => control.SetSimulatedDpi(dpi);
+
+    /// <summary>Whether the design-space gridlines overlay is shown.</summary>
+    public bool Gridlines => control.Gridlines;
+
+    /// <summary>Shows or hides the design-space gridlines overlay.</summary>
+    public void SetGridlines(bool show) => control.SetGridlines(show);
+
     /// <summary>
     /// How many of the document's x:Names actually resolved against the rendered namescope, and
     /// what the last surface click hit. Without these, a click that fails to select is

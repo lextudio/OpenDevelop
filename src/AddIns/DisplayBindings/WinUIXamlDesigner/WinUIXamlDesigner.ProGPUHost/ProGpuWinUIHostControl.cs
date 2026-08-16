@@ -45,6 +45,99 @@ public unsafe sealed class ProGpuWinUIHostControl : WpfControl, IDisposable
 
     public bool HasPresentedFrame { get; private set; }
 
+    /// <summary>Milliseconds the last frame took to rasterize and copy to the bitmap.</summary>
+    public double LastRenderMs { get; private set; }
+
+    /// <summary>
+    /// The display scale the compositor renders at: the simulated scale (test hook) wins, then
+    /// the UNO_DESIGN_DPI environment override, then the real WPF DPI of this control.
+    /// </summary>
+    public double EffectiveDpiScale
+    {
+        get
+        {
+            if (simulatedDpi is { } simulated && simulated > 0)
+                return simulated;
+            if (double.TryParse(Environment.GetEnvironmentVariable("UNO_DESIGN_DPI"), System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out var overrideDpi) && overrideDpi > 0)
+                return overrideDpi;
+            return Math.Max(1.0, VisualTreeHelper.GetDpi(this).DpiScaleX);
+        }
+    }
+
+    /// <summary>Sets or clears the simulated display scale (test hook); the next composition tick re-renders with it.</summary>
+    public void SetSimulatedDpi(double? dpi) => simulatedDpi = dpi;
+
+    /// <summary>Whether the design-space gridlines overlay is shown.</summary>
+    public bool Gridlines => gridlines;
+
+    /// <summary>Shows or hides the design-space gridlines overlay.</summary>
+    public void SetGridlines(bool show)
+    {
+        gridlines = show;
+        InvalidateVisual();
+    }
+
+    /// <summary>
+    /// Samples the last rendered frame at fixed points (center, top-left, mid-left) and returns
+    /// them as "#RRGGBB" strings - for pixel-level verification that a re-render actually changed
+    /// the drawing. Same sampling points as the Uno host so the two runtimes agree.
+    /// </summary>
+    public string RenderSample()
+    {
+        if (lastFrameBytes == null || bitmap == null || !HasPresentedFrame)
+            return "no frame";
+        var w = bitmap.PixelWidth;
+        var h = bitmap.PixelHeight;
+        if (w <= 0 || h <= 0 || lastFrameBytes.Length < bytesPerRow * h)
+            return "bad frame";
+        static string Sample(byte[] px, int stride, int w, int h, double fx, double fy)
+        {
+            var i = ((int)(fy * h) * stride + (int)(fx * w)) * 4;
+            // BGRA order from the compositor's Bgra8Unorm target.
+            return $"#{px[i + 2]:X2}{px[i + 1]:X2}{px[i]:X2}";
+        }
+        var center = Sample(lastFrameBytes, (int)bytesPerRow, w, h, 0.5, 0.5);
+        var topLeft = Sample(lastFrameBytes, (int)bytesPerRow, w, h, 0.03, 0.05);
+        var midLeft = Sample(lastFrameBytes, (int)bytesPerRow, w, h, 0.05, 0.5);
+        return $"{w}x{h} center={center} topleft={topLeft} midleft={midLeft}";
+    }
+
+    /// <summary>Exports the current design to a PNG file, from the last frame's staging bytes.</summary>
+    public string ExportPng(string path)
+    {
+        if (lastFrameBytes == null || bitmap == null || !HasPresentedFrame)
+            return "Nothing to export (no design loaded)";
+        try
+        {
+            var w = bitmap.PixelWidth;
+            var h = bitmap.PixelHeight;
+            var source = System.Windows.Media.Imaging.BitmapSource.Create(
+                w, h, 96 * EffectiveDpiScale, 96 * EffectiveDpiScale, PixelFormats.Pbgra32, null, lastFrameBytes, (int)bytesPerRow);
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(source));
+            using (var stream = System.IO.File.Create(path))
+                encoder.Save(stream);
+            return $"Wrote {path} ({w}x{h})";
+        }
+        catch (Exception exception)
+        {
+            return "Export failed: " + exception.GetBaseException().Message;
+        }
+    }
+
+    /// <summary>Performance report of the last render (ms, pixel size, effective scale, wire bytes).</summary>
+    public (double RenderMs, int Width, int Height, double Dpi, int CompressedBytes, int RawBytes) RenderTiming()
+    {
+        if (bitmap == null || !HasPresentedFrame)
+            return (0, 0, 0, 0, 0, 0);
+        var w = bitmap.PixelWidth;
+        var h = bitmap.PixelHeight;
+        var raw = w * h * 4;
+        // In-process: the staging copy is the only "wire" and carries no compression.
+        return (LastRenderMs, w, h, EffectiveDpiScale, raw, raw);
+    }
+
     /// <summary>Temporary diagnostic: replay LibreWPF's image adapter path step by step to find where it fails.</summary>
     public string ImagePathProbe()
     {
@@ -327,12 +420,14 @@ public unsafe sealed class ProGpuWinUIHostControl : WpfControl, IDisposable
         rendering = true;
         try
         {
-            var dpi = VisualTreeHelper.GetDpi(this);
+            var dpi = EffectiveDpiScale;
             WinUIRoot.UpdateAnimations(1f / 60f);
             WinUIRoot.Measure(new Vector2((float)ActualWidth, (float)ActualHeight));
             WinUIRoot.Arrange(new ProGPU.Scene.Rect(0, 0, (float)ActualWidth, (float)ActualHeight));
-            compositor.RenderOffscreen(WinUIRoot, (uint)bitmap.PixelWidth, (uint)bitmap.PixelHeight, texture, 0, (float)dpi.DpiScaleX);
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            compositor.RenderOffscreen(WinUIRoot, (uint)bitmap.PixelWidth, (uint)bitmap.PixelHeight, texture, 0, (float)dpi);
             CopyTextureToBitmap();
+            LastRenderMs = stopwatch.Elapsed.TotalMilliseconds;
             if (RecreateBitmapEachFrame)
                 RecreateBitmapFromStaging();
             if (PresentViaBackgroundBrush)
@@ -406,6 +501,15 @@ public unsafe sealed class ProGpuWinUIHostControl : WpfControl, IDisposable
         capturedOnRenderContext = ProGPU.Backend.WgpuContext.Current;
         base.OnRender(drawingContext);
         if (bitmap != null) drawingContext.DrawImage(bitmap, new System.Windows.Rect(0, 0, ActualWidth, ActualHeight));
+        if (gridlines)
+        {
+            var pen = new System.Windows.Media.Pen(new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0x40, 0x60, 0x60, 0x60)), 0.5);
+            const double step = 24;
+            for (var x = step; x < ActualWidth; x += step)
+                drawingContext.DrawLine(pen, new System.Windows.Point(x, 0), new System.Windows.Point(x, ActualHeight));
+            for (var y = step; y < ActualHeight; y += step)
+                drawingContext.DrawLine(pen, new System.Windows.Point(0, y), new System.Windows.Point(ActualWidth, y));
+        }
         if (ShowDiagnosticOverlay)
         {
             var pen = new System.Windows.Media.Pen(System.Windows.Media.Brushes.Red, 2);
@@ -459,6 +563,8 @@ public unsafe sealed class ProGpuWinUIHostControl : WpfControl, IDisposable
     WriteableBitmap diagWriteable;
     System.Windows.Media.Imaging.BitmapSource diagSource;
     ProGPU.Backend.WgpuContext capturedOnRenderContext;
+    double? simulatedDpi;
+    bool gridlines;
 
     /// <summary>Temporary diagnostic: draw a red border + status text in OnRender.</summary>
     public bool ShowDiagnosticOverlay { get; set; }
