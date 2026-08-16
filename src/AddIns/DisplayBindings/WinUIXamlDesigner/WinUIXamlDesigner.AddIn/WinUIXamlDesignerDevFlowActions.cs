@@ -439,6 +439,75 @@ public static class WinUIXamlDesignerDevFlowActions
 	static PropertyGrid PropertyPadGrid =>
 		(SD.Services.GetService(typeof(IPropertyPadHost)) as IPropertyPadHost)?.Grid;
 
+	[DevFlowAction("od.winui-designer.pad-view-mode",
+		Description = "Switch the Properties pad grid between its Properties and Events views; optionally set the Click handler name (exercises the XAML event-attribute write path) and report the events")]
+	public static string PadViewMode(string mode, string handlerName = null)
+	{
+		var grid = PropertyPadGrid;
+		if (grid == null)
+			return Failure("Properties pad is not available");
+		if (mode.Equals("Events", StringComparison.OrdinalIgnoreCase) || mode.Equals("Properties", StringComparison.OrdinalIgnoreCase))
+			grid.ViewMode = mode.Equals("Events", StringComparison.OrdinalIgnoreCase)
+				? Xceed.Wpf.Toolkit.PropertyGrid.PropertyGridMode.Events
+				: Xceed.Wpf.Toolkit.PropertyGrid.PropertyGridMode.Properties;
+		if (!string.IsNullOrEmpty(handlerName))
+		{
+			var click = grid.Events.Cast<Xceed.Wpf.Toolkit.PropertyGrid.EventItem>()
+				.FirstOrDefault(e => e.Name == "Click");
+			if (click != null)
+				click.HandlerName = handlerName;
+		}
+		return JsonSerializer.Serialize(new {
+			success = true,
+			viewMode = grid.ViewMode.ToString(),
+			eventCount = grid.Events.Count,
+			events = grid.Events.Cast<Xceed.Wpf.Toolkit.PropertyGrid.EventItem>().Select(e => new { e.Name, e.HandlerName, e.HandlerTypeName }).ToArray()
+		});
+	}
+
+	[DevFlowAction("od.winui-designer.pad-hit-test",
+		Description = "TEMP DIAGNOSTIC: hit-test the Properties pad grid at grid-relative (x,y) and report the topmost element chain")]
+	public static string PadHitTest(double x, double y)
+	{
+		var grid = PropertyPadGrid;
+		if (grid == null)
+			return Failure("Properties pad is not available");
+		var result = System.Windows.Media.VisualTreeHelper.HitTest(grid, new System.Windows.Point(x, y));
+		if (result == null)
+			return JsonSerializer.Serialize(new { hit = false, point = new { x, y } });
+		var chain = new System.Collections.Generic.List<string>();
+		var v = result.VisualHit;
+		while (v != null) {
+			chain.Add(v.GetType().Name);
+			v = System.Windows.Media.VisualTreeHelper.GetParent(v) as System.Windows.Media.Visual;
+		}
+		return JsonSerializer.Serialize(new { hit = true, type = result.VisualHit.GetType().FullName, chain });
+	}
+
+	[DevFlowAction("od.winui-designer.pad-diagnostics",
+		Description = "TEMP DIAGNOSTIC: report the Properties pad grid's property states (IsDefaultValue etc.) and the name-column width")]
+	public static string PadDiagnostics()
+	{
+		var grid = PropertyPadGrid;
+		if (grid == null)
+			return Failure("Properties pad is not available");
+		var props = grid.Properties?.Cast<object>().Take(6)
+			.Select(p => {
+				var pi = (Xceed.Wpf.Toolkit.PropertyGrid.PropertyItem)p;
+				var pi2 = pi as dynamic;
+				string isDefault = "";
+				try { isDefault = pi2.IsDefaultValue.ToString(); } catch { }
+				string val = "";
+				try { val = pi2.Value?.ToString() ?? "<null>"; } catch { }
+				return new { name = pi2.PropertyName, isDefault, value = val };
+			}).ToArray();
+		return JsonSerializer.Serialize(new {
+			success = true,
+			nameColumnWidth = grid.NameColumnWidth,
+			properties = props
+		});
+	}
+
 	[DevFlowAction("od.winui-designer.gridlines",
 		Description = "Show or hide the design-space gridlines overlay; pass on/off or omit to query the current state")]
 	public static string Gridlines(string command = "query")

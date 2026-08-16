@@ -1,40 +1,32 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Net;
-using System.Net.Sockets;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+
+using ICSharpCode.SharpDevelop.Designer.Remote;
 using StreamJsonRpc;
 
 namespace ICSharpCode.WinUIXamlDesigner.UnoDesignHost;
 
 /// <summary>
 /// Owns the out-of-process design host child: locates its deployed binary, spawns it
-/// (same .NET host that is running this process), connects the loopback TCP pipe and
-/// speaks the JSON-RPC design protocol. One instance per design surface.
+/// (same .NET host that is running this process), connects the authenticated loopback
+/// control plane and speaks the common designer protocol. One instance per design surface.
+/// The process lifecycle (spawn, token handshake, log pump, timeouts, shutdown) comes from
+/// <see cref="DesignerHostProcessClient"/>; the Uno-specific method mapping lives here.
 /// </summary>
-public sealed class UnoDesignClient : IDisposable
+public sealed class UnoDesignClient : DesignerHostProcessClient, IDesignHostClient
 {
-	readonly Process process;
-	TcpClient tcp;
-	JsonRpc rpc;
-	readonly StringBuilder childLog = new();
-	volatile bool shuttingDown;
+	readonly string runtimeConfigPath;
+	readonly string depsFilePath;
+	DesignerCapabilities capabilities;
 
-	UnoDesignClient(Process process)
+	UnoDesignClient(string runtimeConfigPath, string depsFilePath, TimeSpan? operationTimeout = null)
+		: base(operationTimeout)
 	{
-		this.process = process;
-	}
-
-	void Attach(TcpClient tcp, JsonRpc rpc)
-	{
-		// The single instance is constructed with the process (so PumpAsync can collect the
-		// child's stdout/stderr into childLog before RPC is even possible) and receives the
-		// connected pipe afterwards - one instance, one ChildLog, no lost lines.
-		this.tcp = tcp;
-		this.rpc = rpc;
+		this.runtimeConfigPath = runtimeConfigPath;
+		this.depsFilePath = depsFilePath;
 	}
 
 	/// <summary>Path of the deployed child binary, or null when the addin tree lacks it.</summary>
@@ -48,21 +40,9 @@ public sealed class UnoDesignClient : IDisposable
 	}
 
 	/// <summary>
-	/// Last lines of the child's stdout/stderr, for diagnosing startup or render failures
-	/// without restarting the app.
-	/// </summary>
-	public string ChildLog
-	{
-		get
-		{
-			lock (childLog)
-				return childLog.ToString();
-		}
-	}
-
-	/// <summary>
 	/// Spawns the child, waits for it to connect back on a fresh loopback port and to
-	/// signal readiness, then returns a client that can speak the design protocol.
+	/// complete the authenticated handshake, then returns a client that can speak the
+	/// design protocol.
 	/// </summary>
 	/// <param name="runtimeConfigPath">The designed project's runtimeconfig.json, to run the
 	/// child inside the project's own dependency graph (its real Uno version and assemblies).
@@ -70,16 +50,18 @@ public sealed class UnoDesignClient : IDisposable
 	/// <param name="depsFilePath">The designed project's deps.json, paired with the runtimeconfig.</param>
 	public static async Task<UnoDesignClient> StartAsync(string runtimeConfigPath, string depsFilePath, CancellationToken cancellationToken)
 	{
-		var hostDll = LocateChildDll()
-			?? throw new FileNotFoundException("The Uno design host child is not deployed (AddIns/.../WinUIXamlDesigner/UnoHost/WinUIXamlDesigner.UnoHost.dll).");
+		var client = new UnoDesignClient(runtimeConfigPath, depsFilePath);
+		await client.StartAsync(cancellationToken).ConfigureAwait(false);
+		return client;
+	}
 
-		using var listener = new TcpListener(IPAddress.Loopback, 0);
-		listener.Start();
-		var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+	protected override string GetChildDllPath()
+		=> LocateChildDll() ?? throw new FileNotFoundException("The Uno design host child is not deployed (AddIns/.../WinUIXamlDesigner/UnoHost/WinUIXamlDesigner.UnoHost.dll).");
 
-		var arguments = $"exec \"{hostDll}\" --port {port}";
-		var useProjectContext = File.Exists(runtimeConfigPath) && File.Exists(depsFilePath);
-		if (useProjectContext)
+	protected override string BuildCommandLine(string childDll, int port, string token)
+	{
+		var arguments = $"exec \"{childDll}\" --port {port} --token {token}";
+		if (File.Exists(runtimeConfigPath) && File.Exists(depsFilePath))
 		{
 			// Run the child inside the designed project's dependency graph: its deps.json and
 			// runtimeconfig.json make Uno and the project's own assemblies (custom controls,
@@ -88,146 +70,59 @@ public sealed class UnoDesignClient : IDisposable
 			// (StreamJsonRpc) from its own deployment folder, and preloads the project's bin
 			// assemblies so XamlReader can resolve their types.
 			var appBin = Path.GetDirectoryName(runtimeConfigPath);
-			arguments = $"exec --runtimeconfig \"{runtimeConfigPath}\" --depsfile \"{depsFilePath}\" \"{hostDll}\" --port {port} --appbin \"{appBin}\"";
+			arguments = $"exec --runtimeconfig \"{runtimeConfigPath}\" --depsfile \"{depsFilePath}\" \"{childDll}\" --port {port} --token {token} --appbin \"{appBin}\"";
 		}
-		var startInfo = new ProcessStartInfo(FindDotnetHost(), arguments) {
-			UseShellExecute = false,
-			RedirectStandardOutput = true,
-			RedirectStandardError = true,
-			CreateNoWindow = true
-		};
-		var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
-		var client = new UnoDesignClient(process);
-		process.Start();
-
-		var ready = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-		_ = client.PumpAsync(process.StandardOutput, process.StandardError, ready);
-
-		TcpClient? tcp = null;
-		try
-		{
-			var accept = await listener.AcceptTcpClientAsync(cancellationToken).AsTask();
-			tcp = accept;
-			// Readiness is the child's "ready on" line on stderr - RPC before that would
-			// queue on the not-yet-pumped dispatcher and time out.
-			await ready.Task.WaitAsync(TimeSpan.FromSeconds(60), cancellationToken);
-
-			var stream = tcp.GetStream();
-			var formatter = new SystemTextJsonFormatter();
-			var handler = new HeaderDelimitedMessageHandler(stream, stream, formatter);
-			var rpc = new JsonRpc(handler);
-			rpc.StartListening();
-			client.Attach(tcp, rpc);
-			return client;
-		}
-		catch
-		{
-			process.Kill(entireProcessTree: true);
-			client.Dispose();
-			tcp?.Dispose();
-			listener.Stop();
-			throw;
-		}
+		return arguments;
 	}
 
-	async Task PumpAsync(StreamReader stdout, StreamReader stderr, TaskCompletionSource<bool> ready)
-	{
-		async Task Pump(StreamReader reader, bool signalReady)
-		{
-			try
-			{
-				while (await reader.ReadLineAsync().ConfigureAwait(false) is { } line)
-				{
-					lock (childLog)
-						childLog.AppendLine(line);
-					if (signalReady && line.Contains("ready on", StringComparison.Ordinal))
-						ready.TrySetResult(true);
-				}
-			}
-			catch
-			{
-				// Child output ending or a redirect fault is not fatal here.
-			}
-		}
-		await Task.WhenAll(Pump(stdout, signalReady: false), Pump(stderr, signalReady: true)).ConfigureAwait(false);
-		if (!ready.Task.IsCompleted)
-			ready.TrySetException(new IOException("The design host child exited before becoming ready."));
-	}
+	/// <summary>Uno's headless boot (Application.Start + dispatcher install) is slow; the
+	/// handshake must not give up while the child is still initializing.</summary>
+	protected override TimeSpan HandshakeTimeout => TimeSpan.FromSeconds(60);
 
 	/// <summary>
-	/// The .NET host to spawn the child with. Reusing the current process's own dotnet
-	/// guarantees the child gets the same runtime family this app itself runs on - the
-	/// same-version/same-platform rule the out-of-process design host depends on.
+	/// Uno's initialize both authenticates and returns the runtime capabilities (one round
+	/// trip). The child validates the shared token and protocol version before answering.
 	/// </summary>
-	static string FindDotnetHost()
+	protected override async Task OnConnectedAsync(JsonRpc rpc, string token, CancellationToken cancellationToken)
 	{
-		var candidate = Process.GetCurrentProcess().MainModule?.FileName;
-		if (candidate != null && Path.GetFileName(candidate).StartsWith("dotnet", StringComparison.OrdinalIgnoreCase))
-			return candidate;
-		if (Environment.GetEnvironmentVariable("DOTNET_ROOT") is { Length: > 0 } root)
-			return Path.Combine(root, "dotnet");
-		return "dotnet";
+		capabilities = await rpc.InvokeWithParameterObjectAsync<DesignerCapabilities>("initialize",
+			new { token, protocolVersion = DesignerProtocol.Version }, cancellationToken)
+			.WaitAsync(HandshakeTimeout, cancellationToken).ConfigureAwait(false);
 	}
 
-	public Task<DesignCapabilities> GetCapabilitiesAsync(CancellationToken cancellationToken = default)
-		=> rpc.InvokeWithParameterObjectAsync<DesignCapabilities>("initialize", null, cancellationToken);
+	/// <summary>Capabilities collected during the handshake (runtime version + toolbox catalog).</summary>
+	public Task<DesignerCapabilities> GetCapabilitiesAsync(CancellationToken cancellationToken = default)
+		=> Task.FromResult(capabilities);
 
-	public Task<DesignSnapshot> LoadDesignAsync(string xaml, double width, double height, double dpi, CancellationToken cancellationToken = default)
-		=> rpc.InvokeWithParameterObjectAsync<DesignSnapshot>("design/load",
+	public Task<DesignerSessionState> LoadDesignAsync(string xaml, double width, double height, double dpi, CancellationToken cancellationToken = default)
+		=> InvokeAsync<DesignerSessionState>("design/load",
 			new { xaml, width, height, dpi }, cancellationToken);
 
-	public Task<AppResourcesResult> LoadAppResourcesAsync(string xaml, CancellationToken cancellationToken = default)
-		=> rpc.InvokeWithParameterObjectAsync<AppResourcesResult>("app/resources",
+	public Task<DesignerAppResourcesResult> LoadAppResourcesAsync(string xaml, CancellationToken cancellationToken = default)
+		=> InvokeAsync<DesignerAppResourcesResult>("app/resources",
 			new { xaml }, cancellationToken);
 
-	public Task<DesignSnapshot> SetThemeAsync(string theme, CancellationToken cancellationToken = default)
-		=> rpc.InvokeWithParameterObjectAsync<DesignSnapshot>("design/theme",
+	public Task<DesignerSessionState> SetThemeAsync(string theme, CancellationToken cancellationToken = default)
+		=> InvokeAsync<DesignerSessionState>("design/theme",
 			new { theme }, cancellationToken);
 
 	public Task<string> ExportPngAsync(string path, CancellationToken cancellationToken = default)
-		=> rpc.InvokeWithParameterObjectAsync<string>("design/export-png",
+		=> InvokeAsync<string>("design/export-png",
 			new { path }, cancellationToken);
 
-	public Task<HitTestResult> HitTestAsync(double x, double y, CancellationToken cancellationToken = default)
-		=> rpc.InvokeWithParameterObjectAsync<HitTestResult>("design/hit-test", new { x, y }, cancellationToken);
+	public Task<DesignerHitTestResult> HitTestAsync(double x, double y, CancellationToken cancellationToken = default)
+		=> InvokeAsync<DesignerHitTestResult>("design/hit-test", new { x, y }, cancellationToken);
 
 	/// <summary>True while the child process is running and not yet shut down.</summary>
-	public bool IsProcessAlive => !shuttingDown && !process.HasExited;
+	public bool IsProcessAlive => IsAlive;
 
-	public void Dispose()
-	{
-		if (shuttingDown)
-			return;
-		shuttingDown = true;
-		try
-		{
-			rpc.InvokeAsync("shutdown").GetAwaiter().GetResult();
-		}
-		catch
-		{
-			// The child may already be gone; killing below is the backstop.
-		}
-		try
-		{
-			rpc.Dispose();
-		}
-		catch
-		{
-		}
-		try
-		{
-			if (!process.WaitForExit(5000))
-				process.Kill(entireProcessTree: true);
-		}
-		catch
-		{
-		}
-		try
-		{
-			tcp.Dispose();
-		}
-		catch
-		{
-		}
-	}
+	#region IDesignHostClient
+
+	public Task PingAsync(CancellationToken cancellationToken = default)
+		=> InvokeAsync<object>("ping", null, cancellationToken);
+
+	public Task ShutdownAsync(CancellationToken cancellationToken = default)
+		=> InvokeAsync<object>("shutdown", null, cancellationToken, TimeSpan.FromSeconds(3));
+
+	#endregion
 }

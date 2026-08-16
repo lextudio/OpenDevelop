@@ -16,6 +16,7 @@
     <Project Path="src/Libraries/AvalonEdit/ICSharpCode.AvalonEdit/ICSharpCode.AvalonEdit.csproj" />
   </Folder>
   <Folder Name="/src/Main/">
+    <Project Path="src/Main/Designer/Designer.Remote/Designer.Remote.csproj" />
     <Project Path="src/Main/ICSharpCode.Core.Presentation/ICSharpCode.Core.Presentation.csproj" />
     <Project Path="src/Main/ICSharpCode.Core.WinForms/ICSharpCode.Core.WinForms.csproj" />
   </Folder>

@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.Loader;
+using System.Security.Cryptography;
 using System.Threading;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -43,6 +44,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		{
 			var port = ParsePort(args);
 			var appBin = ParseArgument(args, "--appbin");
+			var expectedToken = ParseArgument(args, "--token");
 
 			HeadlessDispatcher.Install();
 
@@ -78,13 +80,14 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			var formatter = new SystemTextJsonFormatter();
 			var handler = new HeaderDelimitedMessageHandler(stream, stream, formatter);
 			var rpc = new JsonRpc(handler);
-			rpc.AddLocalRpcMethod("initialize", new Func<DesignCapabilities>(Capabilities));
+			rpc.AddLocalRpcMethod("initialize", new Func<string, int, DesignCapabilities>((token, protocolVersion) => Initialize(expectedToken, token, protocolVersion)));
 			rpc.AddLocalRpcMethod("design/load", new Func<string, double, double, double, DesignSnapshot>(LoadDesign));
 			rpc.AddLocalRpcMethod("design/layout", new Func<double, double, double, DesignSnapshot>(Layout));
 			rpc.AddLocalRpcMethod("design/theme", new Func<string, DesignSnapshot>(SetTheme));
 			rpc.AddLocalRpcMethod("app/resources", new Func<string, AppResourcesResult>(LoadAppResources));
 			rpc.AddLocalRpcMethod("design/hit-test", new Func<double, double, HitTestResult>(HitTest));
 			rpc.AddLocalRpcMethod("design/export-png", new Func<string, string>(ExportPng));
+			rpc.AddLocalRpcMethod("ping", new Action(Ping));
 			rpc.AddLocalRpcMethod("shutdown", new Action(Shutdown));
 			rpc.StartListening();
 			Console.Error.WriteLine("UnoDesignHost: listening");
@@ -150,6 +153,21 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 
 		static readonly DesignHost host = new(() => null);
 
+		/// <summary>
+		/// Authenticates the parent with the shared token and validates the protocol version,
+		/// then returns the runtime capabilities - one round trip for handshake + capabilities,
+		/// matching the common designer protocol's initialize contract.
+		/// </summary>
+		static DesignCapabilities Initialize(string expectedToken, string token, int protocolVersion)
+		{
+			if (string.IsNullOrEmpty(expectedToken) || !CryptographicOperations.FixedTimeEquals(
+				Convert.FromHexString(expectedToken), Convert.FromHexString(token)))
+				throw new UnauthorizedAccessException("Invalid design-host token.");
+			if (protocolVersion != 1)
+				throw new NotSupportedException($"Protocol {protocolVersion} is not supported.");
+			return Capabilities();
+		}
+
 		static DesignCapabilities Capabilities()
 		{
 			try { return host.GetCapabilities(); }
@@ -186,6 +204,10 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		{
 			try { return host.ExportPng(path); }
 			catch (Exception e) { LogRpcError("design/export-png", e); throw; }
+		}
+		static void Ping()
+		{
+			// Liveness probe; nothing to do - the child answering is the answer.
 		}
 		static void Shutdown()
 		{

@@ -28,6 +28,7 @@ using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Widgets;
 using ICSharpCode.SharpDevelop.WinForms;
 using ICSharpCode.SharpDevelop.Workbench;
+using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.FormsDesigner.Services;
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.SharpDevelop;

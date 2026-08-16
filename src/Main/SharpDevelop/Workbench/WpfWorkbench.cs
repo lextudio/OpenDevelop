@@ -40,6 +40,7 @@ using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Parser;
 using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Startup;
+using ICSharpCode.SharpDevelop.WinForms;
 
 namespace ICSharpCode.SharpDevelop.Workbench
 {
@@ -97,6 +98,47 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			InitializeComponent();
 			notificationBar.DataContext = notificationBanner;
 			InitFocusTrackingEvents();
+			InitWorkbenchWindowCommandBindings();
+		}
+
+		/// <summary>
+		/// Window-level ApplicationCommands routing so standard shortcuts (Ctrl+Z/Ctrl+Y) reach
+		/// the active view content's <see cref="IUndoHandler"/> no matter where keyboard focus
+		/// currently sits (e.g. a tool pad like the Properties pad after editing a value there).
+		/// Focused controls that handle the command themselves (AvalonEdit, TextBox) consume it
+		/// first, so these bindings only fire when nothing lower in the focus path handled it -
+		/// the classic WorkbenchWindow behavior, restored for the WPF-only workbench.
+		/// </summary>
+		void InitWorkbenchWindowCommandBindings()
+		{
+			this.CommandBindings.Add(new CommandBinding(ApplicationCommands.Undo, ExecuteUndo, CanExecuteUndo));
+			this.CommandBindings.Add(new CommandBinding(ApplicationCommands.Redo, ExecuteRedo, CanExecuteRedo));
+		}
+
+		static IUndoHandler ActiveUndoHandler()
+		{
+			var viewContent = SD.Workbench.ActiveViewContent;
+			return viewContent == null ? null : viewContent.GetService<IUndoHandler>();
+		}
+
+		void CanExecuteUndo(object sender, CanExecuteRoutedEventArgs e)
+		{
+			e.CanExecute = ActiveUndoHandler()?.EnableUndo ?? false;
+		}
+
+		void ExecuteUndo(object sender, ExecutedRoutedEventArgs e)
+		{
+			ActiveUndoHandler()?.Undo();
+		}
+
+		void CanExecuteRedo(object sender, CanExecuteRoutedEventArgs e)
+		{
+			e.CanExecute = ActiveUndoHandler()?.EnableRedo ?? false;
+		}
+
+		void ExecuteRedo(object sender, ExecutedRoutedEventArgs e)
+		{
+			ActiveUndoHandler()?.Redo();
 		}
 		
 		protected override void OnSourceInitialized(EventArgs e)

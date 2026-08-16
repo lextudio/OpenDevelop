@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
+using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.LanguageServices.Xaml;
 
 namespace ICSharpCode.WinUIXamlDesigner;
@@ -208,8 +209,8 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 	}
 
 	/// <summary>The runtime's toolbox catalog (the controls its loaded runtime provides), if available.</summary>
-	public IReadOnlyList<ToolboxItemInfo> GetToolboxCatalog()
-		=> runtime is IWinUIXamlToolboxCatalog catalog ? catalog.GetToolboxCatalog() : Array.Empty<ToolboxItemInfo>();
+	public IReadOnlyList<DesignerToolboxItemInfo> GetToolboxCatalog()
+		=> runtime is IWinUIXamlToolboxCatalog catalog ? catalog.GetToolboxCatalog() : Array.Empty<DesignerToolboxItemInfo>();
 
 	/// <summary>True while the runtime's child process is alive, when the runtime exposes one.</summary>
 	public bool IsChildProcessAlive => runtime is IWinUIXamlLifecycleProbe probe && probe.IsChildProcessAlive;
@@ -560,26 +561,7 @@ public interface IWinUIXamlLifecycleProbe
 /// </summary>
 public interface IWinUIXamlToolboxCatalog
 {
-	IReadOnlyList<ToolboxItemInfo> GetToolboxCatalog();
-}
-
-/// <summary>A toolbox entry: the control name plus the runtime's default XAML for it.</summary>
-public sealed class ToolboxItemInfo
-{
-	public string Name { get; set; }
-	public string DisplayName { get; set; }
-	public string Category { get; set; }
-	public string Template { get; set; }
-	public string XamlNamespace { get; set; }
-}
-
-/// <summary>A design host diagnostic (parse/render error), with source location when known.</summary>
-public sealed class DesignDiagnostic
-{
-	public string Severity { get; set; } = "Error";
-	public string Message { get; set; } = "";
-	public int Line { get; set; }
-	public int Column { get; set; }
+	IReadOnlyList<DesignerToolboxItemInfo> GetToolboxCatalog();
 }
 
 /// <summary>

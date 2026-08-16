@@ -15,6 +15,8 @@ using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Drawing.Design;
 
+using ICSharpCode.SharpDevelop.Designer.Remote;
+
 namespace ICSharpCode.FormsDesigner.OutOfProcess
 {
 	sealed class RemoteFormsDesignerControl : Grid

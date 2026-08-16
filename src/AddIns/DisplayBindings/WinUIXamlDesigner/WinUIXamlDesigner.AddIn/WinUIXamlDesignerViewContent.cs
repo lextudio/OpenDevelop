@@ -10,13 +10,14 @@ using System.Windows.Media;
 using System.Xml.Linq;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
+using ICSharpCode.SharpDevelop.WinForms;
 using ICSharpCode.SharpDevelop.LanguageServices.Xaml;
 using ICSharpCode.SharpDevelop.Workbench;
 
 namespace ICSharpCode.WinUIXamlDesigner;
 
 public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLoadErrors,
-	IOutlineContentHost, IToolsHost, IHasPropertyContainer
+	IOutlineContentHost, IToolsHost, IHasPropertyContainer, IUndoHandler
 {
 	readonly Grid root = new();
 	readonly WinUIXamlHost previewHost;
@@ -93,6 +94,12 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	public string SelectedElementName { get; private set; }
 	public bool CanUndo => editor.CanUndo;
 	public bool CanRedo => editor.CanRedo;
+	// IUndoHandler (routed from the workbench window's ApplicationCommands.Undo/Redo bindings,
+	// so Ctrl+Z/Ctrl+Y keep working even when keyboard focus is in a tool pad).
+	bool IUndoHandler.EnableUndo => editor.CanUndo;
+	bool IUndoHandler.EnableRedo => editor.CanRedo;
+	void IUndoHandler.Undo() => Undo();
+	void IUndoHandler.Redo() => Redo();
 	public string DocumentError => documentError;
 	public IReadOnlyList<string> ElementNames() => editor.ElementNames();
 

@@ -7,16 +7,20 @@ using System.Windows;
 using System.Windows.Media;
 using System.Xml.Linq;
 using System.Windows.Controls;
+using Xceed.Wpf.Toolkit.PropertyGrid;
 
 namespace ICSharpCode.WinUIXamlDesigner
 {
 	/// <summary>
-	/// Adapts an XAML element to the shared Properties pad (Xceed PropertyGrid) with typed
+	/// Adapts a XAML element to the shared Properties pad (Xceed PropertyGrid) with typed
 	/// editing: known enum attributes render as dropdowns, brush/color attributes get a
 	/// color editor, and brush attributes holding a resource reference get a dropdown of
 	/// the document's resource keys. Everything still lands as a source edit.
+	/// The design-time events are exposed through <see cref="ICustomTypeDescriptor.GetEvents"/>
+	/// plus <see cref="IPropertyGridEventSource"/> (handler names live in the element's XAML
+	/// event attributes), which the grid's VS-style Events view consumes.
 	/// </summary>
-	sealed class WinUIXamlElementPropertyAdapter : ICustomTypeDescriptor
+	sealed class WinUIXamlElementPropertyAdapter : ICustomTypeDescriptor, IPropertyGridEventSource
 	{
 		readonly XElement element;
 		readonly XElement documentRoot;
@@ -31,6 +35,18 @@ namespace ICSharpCode.WinUIXamlDesigner
 
 		public override string ToString() => element.Name.LocalName;
 
+		string IPropertyGridEventSource.GetEventHandler(string eventName)
+			=> element.Attribute(XName.Get(eventName))?.Value ?? "";
+
+		void IPropertyGridEventSource.SetEventHandler(string eventName, string handlerName)
+		{
+			var attribute = XName.Get(eventName);
+			var current = element.Attribute(attribute)?.Value;
+			if (string.IsNullOrEmpty(handlerName) ? current == null : current == handlerName)
+				return;
+			setAttribute(element, attribute, string.IsNullOrEmpty(handlerName) ? null : handlerName);
+		}
+
 		public PropertyDescriptorCollection GetProperties() => GetProperties(null);
 
 		public PropertyDescriptorCollection GetProperties(Attribute[] attributes)
@@ -38,9 +54,13 @@ namespace ICSharpCode.WinUIXamlDesigner
 			var descriptors = new List<PropertyDescriptor>();
 			var resourceKeys = CollectResourceKeys();
 			var present = new HashSet<string>(StringComparer.Ordinal);
+			var eventNames = EventsFor(element.Name.LocalName);
 			foreach (var attribute in element.Attributes()) {
 				if (attribute.IsNamespaceDeclaration) continue;
 				present.Add(attribute.Name.LocalName);
+				// Event attributes (Click="...") live in the Events view, not the property list.
+				if (eventNames.Contains(attribute.Name.LocalName))
+					continue;
 				descriptors.Add(new XamlAttributeDescriptor(element, attribute.Name, attribute.Value, setAttribute, resourceKeys));
 			}
 			// The pad lists the element's common properties even when they are not set yet,
@@ -55,6 +75,17 @@ namespace ICSharpCode.WinUIXamlDesigner
 				descriptors.Add(new XamlAttributeDescriptor(element, XName.Get(name), null, setAttribute, resourceKeys, isNew: true));
 			}
 			return new PropertyDescriptorCollection(descriptors.ToArray(), readOnly: true);
+		}
+
+		public EventDescriptorCollection GetEvents() => GetEvents(null);
+
+		public EventDescriptorCollection GetEvents(Attribute[] attributes)
+		{
+			var eventNames = EventsFor(element.Name.LocalName);
+			var descriptors = new EventDescriptor[eventNames.Count];
+			for (var i = 0; i < eventNames.Count; i++)
+				descriptors[i] = new XamlEventDescriptor(element, XName.Get(eventNames[i]), setAttribute);
+			return new EventDescriptorCollection(descriptors, readOnly: true);
 		}
 
 		static class XamlNamespaces
@@ -109,6 +140,49 @@ namespace ICSharpCode.WinUIXamlDesigner
 			}
 		};
 
+		/// <summary>Common design-time events per control type, surfaced in the pad's VS-style
+		/// Events view. The value of each is the XAML event attribute's handler name.</summary>
+		static IReadOnlyList<string> EventsFor(string controlName)
+		{
+			if (ControlEvents.TryGetValue(controlName, out var specific))
+				return specific;
+			return DefaultEvents;
+		}
+
+		static readonly IReadOnlyList<string> DefaultEvents = new[] {
+			"Loaded", "Tapped", "DoubleTapped", "PointerPressed", "PointerReleased"
+		};
+
+		static readonly Dictionary<string, IReadOnlyList<string>> ControlEvents = new(StringComparer.Ordinal) {
+			["Button"] = new[] {
+				"Click", "DoubleTapped", "Tapped", "Loaded", "PointerPressed", "PointerReleased",
+				"KeyDown", "KeyUp", "GotFocus", "LostFocus"
+			},
+			["TextBlock"] = new[] {
+				"Loaded", "Tapped", "DoubleTapped", "PointerPressed", "PointerReleased",
+				"PointerEntered", "PointerExited", "GotFocus", "LostFocus"
+			},
+			["TextBox"] = new[] {
+				"TextChanged", "LostFocus", "GotFocus", "KeyDown", "KeyUp", "Loaded", "Paste"
+			},
+			["ComboBox"] = new[] {
+				"SelectionChanged", "DropDownOpened", "DropDownClosed", "Loaded", "GotFocus", "LostFocus"
+			},
+			["ListBox"] = new[] { "SelectionChanged", "Loaded", "DoubleTapped" },
+			["ListView"] = new[] { "ItemClick", "SelectionChanged", "Loaded" },
+			["Slider"] = new[] { "ValueChanged", "Loaded", "PointerPressed", "PointerReleased" },
+			["Grid"] = new[] {
+				"Loaded", "Tapped", "DoubleTapped", "PointerPressed", "PointerReleased", "SizeChanged"
+			},
+			["StackPanel"] = new[] {
+				"Loaded", "Tapped", "DoubleTapped", "PointerPressed", "PointerReleased", "SizeChanged"
+			},
+			["Image"] = new[] { "Loaded", "ImageOpened", "ImageFailed", "Tapped", "DoubleTapped" },
+			["ToggleSwitch"] = new[] { "Toggled", "Loaded" },
+			["CheckBox"] = new[] { "Checked", "Unchecked", "Click", "Loaded" },
+			["RadioButton"] = new[] { "Checked", "Unchecked", "Click", "Loaded" }
+		};
+
 		/// <summary>x:Key values from the document's ResourceDictionary(ies), for the resource picker.</summary>
 		IReadOnlyList<string> CollectResourceKeys()
 		{
@@ -133,13 +207,11 @@ namespace ICSharpCode.WinUIXamlDesigner
 
 		public AttributeCollection GetAttributes() => AttributeCollection.Empty;
 		public string GetClassName() => element.Name.LocalName;
-		public string GetComponentName() => element.Name.LocalName;
+		public string GetComponentName() => (string)element.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml")) ?? element.Name.LocalName;
 		public TypeConverter GetConverter() => TypeDescriptor.GetConverter(typeof(object));
 		public EventDescriptor GetDefaultEvent() => null;
 		public PropertyDescriptor GetDefaultProperty() => null;
 		public object GetEditor(Type editorBaseType) => null;
-		public EventDescriptorCollection GetEvents() => EventDescriptorCollection.Empty;
-		public EventDescriptorCollection GetEvents(Attribute[] attributes) => EventDescriptorCollection.Empty;
 		public object GetPropertyOwner(PropertyDescriptor pd) => this;
 
 		sealed class XamlAttributeDescriptor : PropertyDescriptor
@@ -265,9 +337,76 @@ namespace ICSharpCode.WinUIXamlDesigner
 				setAttribute(element, attributeName, value?.ToString());
 			}
 
-			public override bool CanResetValue(object component) => false;
-			public override void ResetValue(object component) { }
-			public override bool ShouldSerializeValue(object component) => true;
+			// An explicitly-set attribute is a non-default value: it can be reset (removed),
+			// which also drives the pad's default-value override indicator dot.
+			public override bool CanResetValue(object component) => element.Attribute(attributeName) != null;
+			public override void ResetValue(object component) => setAttribute(element, attributeName, null);
+			public override bool ShouldSerializeValue(object component) => element.Attribute(attributeName) != null;
+		}
+
+		/// <summary>
+		/// A design-time event, backed by the XAML event attribute (e.g. <c>Click="Button_Click"</c>).
+		/// Consumed by the Properties pad's VS-style Events view: the grid lists it via
+		/// <c>TypeDescriptor.GetEvents</c> and the handler name is read/written through the
+		/// adapter's <see cref="IPropertyGridEventSource"/> implementation (the XAML attribute).
+		/// </summary>
+		sealed class XamlEventDescriptor : EventDescriptor, IPropertyGridEventTypeName
+		{
+			static readonly Dictionary<string, string> StandardDelegateNames = new(StringComparer.Ordinal) {
+				["Click"] = "RoutedEventHandler", ["DoubleTapped"] = "DoubleTappedEventHandler",
+				["Tapped"] = "TappedEventHandler", ["Loaded"] = "RoutedEventHandler",
+				["PointerPressed"] = "PointerEventHandler", ["PointerReleased"] = "PointerEventHandler",
+				["PointerEntered"] = "PointerEventHandler", ["PointerExited"] = "PointerEventHandler",
+				["KeyDown"] = "KeyEventHandler", ["KeyUp"] = "KeyEventHandler",
+				["GotFocus"] = "RoutedEventHandler", ["LostFocus"] = "RoutedEventHandler",
+				["TextChanged"] = "TextChangedEventHandler", ["Paste"] = "TextControlPasteEventHandler",
+				["SelectionChanged"] = "SelectionChangedEventHandler",
+				["DropDownOpened"] = "EventHandler<object>", ["DropDownClosed"] = "EventHandler<object>",
+				["ValueChanged"] = "RangeBaseValueChangedEventHandler", ["SizeChanged"] = "SizeChangedEventHandler",
+				["ImageOpened"] = "RoutedEventHandler", ["ImageFailed"] = "ExceptionRoutedEventHandler",
+				["Toggled"] = "RoutedEventHandler", ["Checked"] = "RoutedEventHandler",
+				["Unchecked"] = "RoutedEventHandler", ["ItemClick"] = "ItemClickEventHandler"
+			};
+
+			readonly XElement element;
+			readonly XName attributeName;
+			readonly Action<XElement, XName, string> setAttribute;
+
+			public XamlEventDescriptor(XElement element, XName attributeName, Action<XElement, XName, string> setAttribute)
+				: base(attributeName.LocalName, new Attribute[] { new CategoryAttribute("Events") })
+			{
+				this.element = element;
+				this.attributeName = attributeName;
+				this.setAttribute = setAttribute;
+			}
+
+			public override string DisplayName => "⚡ " + attributeName.LocalName;
+			public override Type ComponentType => typeof(WinUIXamlElementPropertyAdapter);
+			public override Type EventType => typeof(EventHandler);
+			public override bool IsMulticast => true;
+
+			// The standard WinUI delegate type name for this event, so the pad shows e.g.
+			// "RoutedEventHandler" for Click instead of a generic placeholder.
+			public string HandlerTypeName => StandardDelegateNames.TryGetValue(attributeName.LocalName, out var name)
+				? name
+				: "EventHandler";
+
+			public string GetHandlerName()
+				=> element.Attribute(attributeName)?.Value ?? "";
+
+			public void SetHandlerName(string handlerName)
+			{
+				var current = element.Attribute(attributeName)?.Value;
+				if (string.IsNullOrEmpty(handlerName) ? current == null : current == handlerName)
+					return;
+				setAttribute(element, attributeName, string.IsNullOrEmpty(handlerName) ? null : handlerName);
+			}
+
+			public override void AddEventHandler(object component, Delegate handler)
+				=> SetHandlerName(handler?.Method.Name ?? "");
+
+			public override void RemoveEventHandler(object component, Delegate handler)
+				=> SetHandlerName("");
 		}
 
 		/// <summary>Converts between XAML enum values and CLR enum instances.</summary>

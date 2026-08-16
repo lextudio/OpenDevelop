@@ -53,6 +53,13 @@ internal sealed class PropertyPadViewModel : ToolPaneModel, IPropertyPadHost, ID
         IsVisible = true; // Matches the legacy Pad's `defaultPosition = "Right"`.
         IsCloseable = true;
         PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Right;
+        // Without a pixel DockSize the newly-docked right pane stays `1*` and AvalonDock's
+        // OnFixChildrenDockLengths freezes it to the rendered star width on first layout - which
+        // on the LibreWPF backend is the 25px DockMinWidth, collapsing the pad into a title-bar
+        // sliver whose property grid renders nothing (measured: "Properties pad is empty" after
+        // selecting a designed control). Same mechanism the ProjectBrowser/ErrorList/SearchResults
+        // pads rely on to keep their docked size (see DockWorkspace.AfterInsertAnchorable).
+        PreferredDockSize = 250;
         LegacyPadClass = typeof(PropertyPad).FullName;
 
         propertyGrid.IsCategorized = true;

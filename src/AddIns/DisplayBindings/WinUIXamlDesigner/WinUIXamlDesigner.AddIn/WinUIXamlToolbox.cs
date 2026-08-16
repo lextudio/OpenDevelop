@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 using ICSharpCode.SharpDevelop;
+using ICSharpCode.SharpDevelop.Designer.Remote;
 
 namespace ICSharpCode.WinUIXamlDesigner;
 
@@ -56,7 +57,7 @@ public sealed class WinUIXamlToolbox
 	/// project's actual Uno version loads), falling back to the standard whitelist when the
 	/// host has not reported one yet.
 	/// </summary>
-	public void PopulateFromCatalog(IReadOnlyList<ToolboxItemInfo> catalog)
+	public void PopulateFromCatalog(IReadOnlyList<DesignerToolboxItemInfo> catalog)
 	{
 		if (catalog == null || catalog.Count == 0)
 			return;

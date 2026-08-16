@@ -426,6 +426,8 @@ sealed class DesignerHostService
 
 	[JsonRpcMethod("shutdown")]
 	public void Shutdown() => shutdown.Set();
+	[JsonRpcMethod("ping")]
+	public void Ping() { }
 	[JsonRpcMethod("diagnostics/delay")]
 	public async Task Delay(int milliseconds) => await Task.Delay(milliseconds);
 	public void WaitForShutdown() => shutdown.Wait();

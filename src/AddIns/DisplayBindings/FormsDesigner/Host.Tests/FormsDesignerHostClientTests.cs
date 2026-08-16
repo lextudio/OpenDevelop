@@ -1,4 +1,5 @@
 using ICSharpCode.FormsDesigner.OutOfProcess;
+using ICSharpCode.SharpDevelop.Designer.Remote;
 using Xunit;
 
 namespace ICSharpCode.FormsDesigner.Host.Tests;

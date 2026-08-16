@@ -9,6 +9,8 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 
+using RenderResult = ICSharpCode.SharpDevelop.Designer.Remote.DesignerRenderFrame;
+
 namespace ICSharpCode.WinUIXamlDesigner.UnoDesignHost;
 
 /// <summary>

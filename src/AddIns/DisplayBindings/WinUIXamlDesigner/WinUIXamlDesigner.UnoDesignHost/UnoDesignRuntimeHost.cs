@@ -14,6 +14,12 @@ using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.LanguageServices.Xaml;
 
+using DesignSnapshot = ICSharpCode.SharpDevelop.Designer.Remote.DesignerSessionState;
+using ElementNode = ICSharpCode.SharpDevelop.Designer.Remote.DesignerElementNode;
+using DesignDiagnostic = ICSharpCode.SharpDevelop.Designer.Remote.DesignerDiagnostic;
+using RenderResult = ICSharpCode.SharpDevelop.Designer.Remote.DesignerRenderFrame;
+using ToolboxItemInfo = ICSharpCode.SharpDevelop.Designer.Remote.DesignerToolboxItemInfo;
+
 namespace ICSharpCode.WinUIXamlDesigner.UnoDesignHost;
 
 /// <summary>
@@ -436,9 +442,9 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 
 	#region IWinUIXamlToolboxCatalog
 
-	IReadOnlyList<ICSharpCode.WinUIXamlDesigner.ToolboxItemInfo> catalogCache;
+	IReadOnlyList<ToolboxItemInfo> catalogCache;
 
-	public IReadOnlyList<ICSharpCode.WinUIXamlDesigner.ToolboxItemInfo> GetToolboxCatalog()
+	public IReadOnlyList<ToolboxItemInfo> GetToolboxCatalog()
 	{
 		var catalog = Volatile.Read(ref catalogCache);
 		if (catalog != null)
@@ -447,7 +453,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		}
 		// The child reported the catalog at connect time; if it has not arrived yet, the
 		// toolbox keeps its previous content and this is re-queried on the next state change.
-		return Array.Empty<ICSharpCode.WinUIXamlDesigner.ToolboxItemInfo>();
+		return Array.Empty<ToolboxItemInfo>();
 	}
 
 	#endregion
@@ -490,7 +496,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 			client = await UnoDesignClient.StartAsync(runtimeConfig, depsFile, CancellationToken.None);
 			var capabilities = await client.GetCapabilitiesAsync();
 			Volatile.Write(ref catalogCache, capabilities.Toolbox
-				.Select(tool => new ICSharpCode.WinUIXamlDesigner.ToolboxItemInfo {
+				.Select(tool => new ToolboxItemInfo {
 					Name = tool.Name,
 					DisplayName = tool.DisplayName,
 					Category = tool.Category,
