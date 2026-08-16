@@ -38,15 +38,15 @@ documents. RPC operations have a bounded timeout; a hung operation terminates th
 tree and enters the same recovery path. Project file, target framework and output assembly
 metadata travel with each snapshot, and the child loads project/custom-control assemblies in a
 collectible dependency-resolving load context while keeping LibreWinForms/Drawing contracts in
-the host context. The VB Roslyn
-backend is also pending
-(Phase 6 of `xaml-services.md`).
+the host context. The VB backend is implemented in the same
+out-of-process child (see "VB.NET WinForms support" below); only the legacy in-process
+fallback remains C#-only.
 
 ## Current Baseline
 
 | Component | Location | Current Status |
 |---|---|---|
-| WinForms Designer | `src/AddIns/DisplayBindings/FormsDesigner/` | The out-of-process LibreWinForms host is the default C# path on macOS. It owns the real `DesignSurface`, project controls and dependencies; renders to PNG; supports selection, nested Toolbox drops, Properties, events, move/resize/delete, Undo/Redo, resources, save, timeout/crash recovery and restart. The VB backend remains. |
+| WinForms Designer | `src/AddIns/DisplayBindings/FormsDesigner/` | The out-of-process LibreWinForms host is the default C# path on macOS. It owns the real `DesignSurface`, project controls and dependencies; renders to PNG; supports selection, nested Toolbox drops, Properties, events, move/resize/delete, Undo/Redo, resources, save, timeout/crash recovery and restart. The VB backend runs in the same child for `.vb` files. |
 
 ## Actual State of WinForms Round-Trip and Toolbox
 
@@ -72,7 +72,6 @@ The core backend does not use `System.CodeDom` as its document model; the integr
 - Native-surface optimization beyond the portable frame adapter.
 - Complex binary property editors and third-party legacy serializer edge cases beyond the
   string-convertible/resource paths covered by the child protocol.
-- VB Roslyn backend (Phase 6).
 - Full project `Workspace` / `.editorconfig` wiring for the Roslyn loader.
 - Async/parallel generation, `nameof`, and high-DPI work from Microsoft's newer generator.
 
@@ -254,3 +253,53 @@ Binary image/bitmap entries embedded in `.resx` are decoded only inside the chil
 the common `(Image)resources.GetObject(...)` designer expression. Parent snapshots expose only a
 `[binary]` property marker, never a live `Image`; the original resource bytes remain part of the
 atomic multi-file flush.
+
+## VB.NET WinForms support (2026-08-16)
+
+`.vb` forms now design through the same out-of-process child as C#. The parent/child split is
+asymmetric by design: the parent-side binding is a thin syntactic gate, while all VB parsing and
+source rewriting happens child-side in `SnapshotDesignerLoader`/`DesignerHostService` using
+`Microsoft.CodeAnalysis.VisualBasic` (added to the Host project).
+
+### Parent side (`VbDesignerSecondaryDisplayBinding` / `VbDesignerLoaderProvider`)
+
+- Registered in both `VBBinding.addin` and `FormsDesigner.addin` under
+  `/SharpDevelop/Workbench/DisplayBindings` for `fileNamePattern="\.vb$"`; `VBBinding` declares a
+  dependency on `ICSharpCode.FormsDesigner`.
+- `CanAttachTo` is **syntactic only** — no semantic model or compilation. It parses the primary
+  file plus its co-located `Foo.Designer.vb` (the classic VB split: the base type lives in
+  `Foo.vb`, `InitializeComponent` in the designer file, so a single partial declaration rarely
+  has both), groups `ClassBlockSyntax` declarations by name, and attaches when some partial has
+  both a parameterless `Sub InitializeComponent` and a base type ending in `Form`, `UserControl`,
+  or `Component` — mirroring `RoslynFormsDesignerSecondaryDisplayBinding`'s resolution.
+- `VbDesignerLoaderProvider.CreateLoader` deliberately throws: there is **no in-process VB
+  loader**, so the legacy `OPENDEVELOP_WINFORMS_OOP=0` fallback remains C#-only. The provider's
+  `GetSourceFiles` locates the `.Designer.vb` companion for the round-trip.
+- The protocol's `SnapshotData` gains a `Language` field (`"CSharp"`/`"VisualBasic"`), derived
+  from the primary file extension by `DesignerViewContent`.
+
+### Child side (`SnapshotDesignerLoader` / `DesignerHostService`)
+
+- `PerformLoadVisualBasic` parses `InitializeComponent` (`Sub`, parameterless) from the designer
+  file, executes the same statement subset as C# — `Me.X = New ...()` creations,
+  `Me.X.Property = value` assignments, `Me.Controls.Add(Me.X)` — via VB-specific
+  `AssignmentStatementSyntax`/`InvocationExpressionSyntax` handling, with `Me.` stripped before
+  matching.
+- Property writes rewrite VB assignments in place (`AssignmentStatementSyntax` in
+  `InitializeComponent`) or append `Me.<component>.<prop> = <expression>` when absent, using a VB
+  expression serializer for string/Boolean/numeric/enum/Point/Size/Color literals.
+- Renaming validates with VB's own `SyntaxFacts.IsValidIdentifier`, then replaces
+  `IdentifierToken`s in `InitializeComponent` and field declarations; `ThisQualifierRewriter` has
+  a `MeQualifierRewriter` counterpart so the whole designer file is written in VB style.
+- Event binding/creation and the other child-side edit operations are likewise VB-aware and land
+  through the same versioned snapshot/RPC path as C#.
+
+### Verification
+
+`VbDesigner_OutOfProcess_RoundTripsEditsToDesignerFile` (integration test) opens the
+`tests/fixtures/VbWinFormsFixture` (`Form1.vb` + `Form1.Designer.vb`, classic
+`Me.button1 = New System.Windows.Forms.Button()` style), waits for the designer in its own
+process, asserts the child owns a real `System.Windows.Forms.Form` root with `button1`, then
+drives add-control/set-property/set-event/set-bounds through `od.forms-designer.*` and verifies
+after save that the handler landed in `Form1.vb` and the generated statements in
+`Form1.Designer.vb`.

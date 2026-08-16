@@ -25,6 +25,12 @@ namespace ICSharpCode.FormsDesigner
 {
 	public interface IDesignerLoaderProvider
 	{
+		/// <summary>
+		/// No longer called by FormsDesignerViewContent: since 2026-08 the WinForms designer is
+		/// exclusively out-of-process, so FormsDesigner's own providers throw
+		/// NotSupportedException here. Kept only because legacy consumers (e.g. WixBinding's
+		/// WixDialogDesignerLoaderProvider) still implement it.
+		/// </summary>
 		DesignerLoader CreateLoader(FormsDesignerViewContent viewContent);
 		
 		/// <summary>

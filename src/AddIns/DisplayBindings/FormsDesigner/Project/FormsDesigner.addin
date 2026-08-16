@@ -19,10 +19,16 @@
 	</Path>
 
 	<Path name = "/SharpDevelop/Workbench/DisplayBindings">
-		<!-- VB counterpart of CSharpBinding's RoslynFormsDesignerSecondaryDisplayBinding. The VB
-		     backend is entirely child-owned (SnapshotDesignerLoader in the out-of-process host), so
-		     this binding only detects designable .vb files and locates their .Designer.vb
-		     companion; the source round trip happens over JSON-RPC in the child process. -->
+		<!-- Both designer bindings are parent-side only: they detect designable source files and
+		     locate the .Designer companion; the real parsing, component loading and source
+		     rewriting happen in the out-of-process host (FormsDesigner.Host, launched by
+		     FormsDesignerHostClient) over JSON-RPC. The in-process Roslyn/NRefactory loaders and
+		     the OPENDEVELOP_WINFORMS_OOP switch were removed in 2026-08 - see
+		     doc/technotes/winforms-designer.md. -->
+		<DisplayBinding id="WinFormsDesigner"
+		                type="Secondary"
+		                class="ICSharpCode.FormsDesigner.CSharpDesignerSecondaryDisplayBinding"
+		                fileNamePattern="\.cs$" />
 		<DisplayBinding id="WinFormsDesignerVB"
 		                type="Secondary"
 		                class="ICSharpCode.FormsDesigner.VbDesignerSecondaryDisplayBinding"

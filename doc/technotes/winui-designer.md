@@ -663,3 +663,35 @@ The compile baseline stays Uno.Sdk 6.5.31 (the API floor); the project's runtime
 the project references (verified against 6.6.42). The two reflection points into Uno internals
 (`CoreDispatcher.DispatchOverride`, `RootScale._testOverrideScale`) remain the version-risk
 surface; both fail with clear fallbacks.
+
+## ProGPU host interface parity (2026-08-16)
+
+The `IWinUIXamlRuntimeHost` contract grew several members (gridlines, simulated display scale,
+render diagnostics, PNG export, pixel sampling, child log) when the out-of-process Uno host
+implemented them; the in-process ProGPU host lagged behind and no longer compiled against the
+shared interface. Both runtime profiles now implement the full contract, with the ProGPU side
+(`ProGpuRuntimeHost`/`ProGpuWinUIHostControl`) mirroring the Uno host's semantics:
+
+- **`RenderSample()`** samples the last frame's BGRA staging bytes at the same fixed points as
+  the Uno host (center, top-left, mid-left) and returns `WxH center=#RRGGBB topleft=#RRGGBB
+  midleft=#RRGGBB` — so a DevFlow pixel check reads identically for both runtimes.
+- **`ExportPng(path)`** encodes the last frame from the staging bytes via
+  `PngBitmapEncoder` (`Wrote <path> (WxH)`, or `Nothing to export (no design loaded)` /
+  `Export failed: ...`), instead of relying on the child process the Uno host uses.
+- **`RenderTiming()`** times the compositor pass with a `Stopwatch` around
+  `Compositor.RenderOffscreen` + GPU readback and reports `(RenderMs, Width, Height, Dpi,
+  CompressedBytes, RawBytes)`. In-process there is no wire compression, so compressed == raw.
+- **`EffectiveDisplayDpi` / `SetSimulatedDpi()`** — the render loop now renders at the
+  *effective* scale instead of the raw WPF DPI: the simulated override wins, then the
+  `UNO_DESIGN_DPI` environment override (the Uno host's existing test hook, so the two runtimes
+  share it), then the real `VisualTreeHelper.GetDpi` reading. The change is observable in
+  `compositor-metrics` (`dpi=` field) and re-renders on the next composition tick, exercising
+  the same DPI-aware render path a real monitor move would.
+- **`Gridlines` / `SetGridlines()`** — a design-space gridlines overlay drawn in the host
+  control's `OnRender` (24 px pitch, semi-transparent), matching the Uno surface's overlay.
+- **`ChildLog`** returns `"(in-process host)"` since this runtime owns no child process.
+
+The DevFlow actions that consume these members — `od.winui-designer.gridlines`,
+`od.winui-designer.debug-dpi`, `od.winui-designer.render-timing`, `od.winui-designer.export-png`,
+`od.winui-designer.render-sample`, and `od.winui-designer.child-log` — therefore behave
+identically against both runtime profiles.

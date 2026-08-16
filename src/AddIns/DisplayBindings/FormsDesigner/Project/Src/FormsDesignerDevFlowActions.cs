@@ -1,12 +1,12 @@
 // DevFlow actions used by tests/OpenDevelop.IntegrationTests to drive the WinForms designer's
-// runtime state (drag a toolbox item from the shared WpfToolbox onto a WinForms DesignSurface)
-// without a native UI automation pipeline. See WpfDesignDevFlowActions.cs for the WPF equivalent.
+// runtime state (drag a toolbox item from the shared WpfToolbox onto the out-of-process design
+// surface) without a native UI automation pipeline. See WpfDesignDevFlowActions.cs for the WPF
+// equivalent.
 
 using System;
 using System.Linq;
 using System.Text.Json;
 using System.Windows;
-using System.Windows.Forms;
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
@@ -53,89 +53,50 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 		/// <summary>
 		/// A toolbox drop onto a container control (e.g. a Panel) parents the new control under
 		/// THAT container, not directly under the root Form - real WinForms designers nest
-		/// controls this way too. Enumerate the whole tree so a drop like that is actually visible
-		/// here, not just direct children of the root.
+		/// controls this way too. The child process reports the whole component tree (see
+		/// DesignerSessionState.Components), so parent-side enumeration is not needed anymore.
 		/// </summary>
-		static System.Collections.Generic.IEnumerable<Control> EnumerateControlsRecursively(Control root)
-		{
-			foreach (Control child in root.Controls) {
-				yield return child;
-				foreach (Control descendant in EnumerateControlsRecursively(child))
-					yield return descendant;
-			}
-		}
 
-		[DevFlowAction("od.forms-designer.status", Description = "Inspect the active WinForms designer view: whether the DesignSurface loaded and the set of named controls on the root component")]
+		[DevFlowAction("od.forms-designer.status", Description = "Inspect the active WinForms designer view: whether the out-of-process DesignSurface loaded and the set of named controls on the root component")]
 		public static string GetDesignerStatus()
 		{
 			var viewContent = FindFormsDesignerViewContent();
 			if (viewContent == null)
 				return JsonSerializer.Serialize(new { designerLoaded = false });
 
-			if (viewContent.IsRemoteDesignerLoaded) {
-				var state = viewContent.RemoteDesignerState;
-				return JsonSerializer.Serialize(new {
-					designerLoaded = true,
-					outOfProcess = true,
-					usesCodeDomLoader = false,
-					loaderType = "ICSharpCode.FormsDesigner.Host.SnapshotRoslynDesignerLoader",
-					hostProcessId = viewContent.RemoteDesignerProcessId,
-					rootComponentType = state.RootType,
-					controlNames = state.Components.Select(component => component.Name).ToArray()
-				});
-			}
-
-			if (viewContent.Host == null)
+			if (!viewContent.IsRemoteDesignerLoaded)
 				return JsonSerializer.Serialize(new { designerLoaded = false });
 
-			var root = viewContent.Host.RootComponent as Control;
-			var controlNames = root != null ? EnumerateControlsRecursively(root).Select(c => c.Name).ToArray() : Array.Empty<string>();
-			var loaderService = viewContent.Host.GetService(typeof(System.ComponentModel.Design.Serialization.IDesignerLoaderService));
-
+			var state = viewContent.RemoteDesignerState;
 			return JsonSerializer.Serialize(new {
 				designerLoaded = true,
-				outOfProcess = false,
-				rootComponentType = viewContent.Host.RootComponent?.GetType().Name,
-				loaderType = loaderService?.GetType().FullName,
-				usesCodeDomLoader = loaderService is System.ComponentModel.Design.Serialization.CodeDomDesignerLoader,
-				controlNames
+				outOfProcess = true,
+				usesCodeDomLoader = false,
+				loaderType = "ICSharpCode.FormsDesigner.Host.SnapshotRoslynDesignerLoader",
+				hostProcessId = viewContent.RemoteDesignerProcessId,
+				rootComponentType = state.RootType,
+				controlNames = state.Components.Select(component => component.Name).ToArray()
 			});
 		}
 
-		[DevFlowAction("od.forms-designer.query-control-screen-bounds", Description = "Get a named control's on-screen bounds within the active WinForms DesignSurface, translated from the embedded WinForms control tree to WPF screen coordinates via Control.PointToScreen - used to drive a synthetic mouse drag (press/drag-move/release via cliclick) onto it, mirroring od.wpf-designer.query-element-screen-bounds for the WPF Design canvas")]
+		[DevFlowAction("od.forms-designer.query-control-screen-bounds", Description = "Get a named control's on-screen bounds within the active out-of-process WinForms design surface, translated to WPF screen coordinates by the child host - used to drive a synthetic mouse drag (press/drag-move/release via cliclick) onto it, mirroring od.wpf-designer.query-element-screen-bounds for the WPF Design canvas")]
 		public static string QueryControlScreenBounds(string controlName)
 		{
 			var viewContent = FindFormsDesignerViewContent();
 			if (viewContent == null)
 				return JsonSerializer.Serialize(new { success = false, error = "WinForms designer is not loaded" });
 
-			if (viewContent.IsRemoteDesignerLoaded) {
-				if (!viewContent.TryGetRemoteComponentScreenBounds(controlName, out var bounds))
-					return JsonSerializer.Serialize(new { success = false, error = "Control not found: " + controlName });
-				return JsonSerializer.Serialize(new {
-					success = true,
-					x = bounds.X,
-					y = bounds.Y,
-					width = bounds.Width,
-					height = bounds.Height
-				});
-			}
-
-			if (viewContent.Host == null)
+			if (!viewContent.IsRemoteDesignerLoaded)
 				return JsonSerializer.Serialize(new { success = false, error = "WinForms designer is not loaded" });
 
-			var root = viewContent.Host.RootComponent as Control;
-			var control = root?.Controls.Cast<Control>().FirstOrDefault(c => c.Name == controlName);
-			if (control == null)
+			if (!viewContent.TryGetRemoteComponentScreenBounds(controlName, out var bounds))
 				return JsonSerializer.Serialize(new { success = false, error = "Control not found: " + controlName });
-
-			var topLeft = control.PointToScreen(System.Drawing.Point.Empty);
 			return JsonSerializer.Serialize(new {
 				success = true,
-				x = (double)topLeft.X,
-				y = (double)topLeft.Y,
-				width = (double)control.Width,
-				height = (double)control.Height
+				x = bounds.X,
+				y = bounds.Y,
+				width = bounds.Width,
+				height = bounds.Height
 			});
 		}
 
