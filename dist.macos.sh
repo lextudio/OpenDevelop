@@ -38,6 +38,15 @@ for arg in "$@"; do
   [[ "$arg" == "--debug" ]] && config="Debug"
 done
 
+# Restore the solution up front. The build below runs with --no-restore, so a stale or corrupt
+# project.assets.json left by an earlier restore (e.g. after a NuGet.config change or a restore
+# for a different RID/TFM combination) would otherwise surface as an obscure
+# "ResolvePackageAssets" NullReferenceException deep inside the build - exactly the failure mode
+# seen for the AspNetCore projects. Restore is incremental, so this stays cheap when nothing
+# changed; it also fails fast with a clear error instead of leaving a half-built tree.
+echo "==> Restoring solution…"
+"${dotnet}" restore "$mvp_solution"
+
 # Ensure clean state for ICSharpCode.Core.Presentation — its .g.resources
 # (WPF theme resource blob) can otherwise stale-cross from a previous build
 # and produce a 12-byte corrupt file that crashes at boot with

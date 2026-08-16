@@ -17,15 +17,50 @@
   <ItemGroup>
     <Compile Remove="Src\OutOfProcess\*.cs" />
     <Compile Include="Src\OutOfProcess\RemoteFormsDesignerControl.cs" />
-    <!-- The old NRefactory loader/generators remain excluded. CSharpBinding now supplies the live
-         RoslynFormsDesignerSecondaryDisplayBinding/RoslynDesignerLoader implementation, including
-         the .Designer.cs load/save round trip. Do not interpret this exclusion as saying that the
-         running C# designer lacks source round-tripping; it only removes the obsolete implementation.
-         VB still needs an equivalent Roslyn backend. -->
+    <!-- The old NRefactory loader/generators remain excluded. The WinForms designer has been
+         exclusively out-of-process since 2026-08 (doc/technotes/winforms-designer.md): the parent
+         side only detects designable files (CSharpDesignerSecondaryDisplayBinding/
+         VbDesignerSecondaryDisplayBinding), ships the source over JSON-RPC to FormsDesigner.Host,
+         and renders the child's snapshot. The in-process fallback (OPENDEVELOP_WINFORMS_OOP=0,
+         RoslynDesignerLoader in CSharpBinding, LoadDesigner in FormsDesignerViewContent) was
+         removed - see doc/technotes/winforms-designer.md. The files excluded below are the
+         remaining in-process-only machinery (designer service implementations, the CodeDom
+         loader/generator base classes); they are excluded rather than deleted to preserve the
+         migration history, matching the convention for the NRefactory files above. -->
     <Compile Remove="Src\DesignerLoader\NRefactoryDesignerLoader.cs" />
+    <Compile Remove="Src\DesignerLoader\AbstractCodeDomDesignerLoader.cs" />
+    <Compile Remove="Src\DesignerLoader\CodeDOMVerboseOutputGenerator.cs" />
     <Compile Remove="Src\DesignerGenerator\AbstractDesignerGenerator.cs" />
     <Compile Remove="Src\DesignerGenerator\CSharpDesignerGenerator.cs" />
     <Compile Remove="Src\DesignerGenerator\VBNetDesignerGenerator.cs" />
+    <Compile Remove="Src\DesignerGenerator\CodeDOMGenerator.cs" />
+    <Compile Remove="Src\DesignerGenerator\IDesignerGenerator.cs" />
+    <Compile Remove="Src\UndoRedo\UndoEngine.cs" />
+    <Compile Remove="Src\Services\UIService.cs" />
+    <Compile Remove="Src\Services\HelpService.cs" />
+    <Compile Remove="Src\Services\PropertyValueUIService.cs" />
+    <Compile Remove="Src\Services\TypeDiscoveryService.cs" />
+    <Compile Remove="Src\Services\TypeSystemHelper.cs" />
+    <Compile Remove="Src\Services\DesignerResourceService.cs" />
+    <Compile Remove="Src\Services\DefaultMemberRelationshipService.cs" />
+    <Compile Remove="Src\Services\DefaultServiceContainer.cs" />
+    <Compile Remove="Src\Services\DesignerOptionService.cs" />
+    <Compile Remove="Src\Services\EventBindingService.cs" />
+    <Compile Remove="Src\Services\DesignerSerializationService.cs" />
+    <Compile Remove="Src\Services\SharpDevelopSerializationProvider.cs" />
+    <Compile Remove="Src\Services\XmlDesignerNameCreationService.cs" />
+    <!-- The in-process resource-editor cluster (Image/Icon property UITypeEditor + project
+         resource CodeDom serializers) was only reachable through the removed in-process
+         TypeDescriptor registration in LoadDesigner, so it is dead too. ResourceStore.cs and
+         ToolboxService.cs stay live (DesignerViewContent still uses both). -->
+    <Compile Remove="Src\Gui\ImageResourceEditorDialog.cs" />
+    <Compile Remove="Src\Gui\ImageResourceEditorDialog.Designer.cs" />
+    <Compile Remove="Src\Services\ImageResourceEditor.cs" />
+    <Compile Remove="Src\Services\ProjectResourceService.cs" />
+    <Compile Remove="Src\Services\ProjectResourceInfo.cs" />
+    <Compile Remove="Src\Services\ProjectResourcesComponentCodeDomSerializer.cs" />
+    <Compile Remove="Src\Services\ProjectResourcesMemberCodeDomSerializer.cs" />
+    <Compile Remove="Src\Services\TypeSystemHelper.cs" />
 
     <!-- The legacy drag-from-toolbox side panel is built on
          ICSharpCode.SharpDevelop.Widgets.SideBar/SideTab, a legacy WinForms control that is itself

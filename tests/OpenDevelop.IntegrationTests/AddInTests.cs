@@ -2003,18 +2003,14 @@ public sealed class AddInTests : IAsyncDisposable
     [Fact]
     public async Task DragToolboxItem_OntoWinFormsDesignSurface_AddsControlToForm()
     {
-        // Covers the THIRD drag-drop target for the shared WPF-hosted toolbox: a WinForms
-        // DesignSurface (FormsDesignerViewContent, hosted via a WindowsFormsHost inside the
-        // otherwise-all-WPF workbench). WinForms designer historically had no visible drag-from
-        // palette in this port (FormsDesignerViewContent.ToolsContent used to hardcode null - see
-        // its own doc comment) - it's now wired to the SAME WpfToolbox.Instance singleton used by
-        // the XAML designer/editor, with WinForms items routed through the real
-        // System.Drawing.Design.IToolboxService (ToolboxService.cs) rather than WpfDesign's
-        // CreateComponentTool, since it's WinForms' real ParentControlDesigner.OnDragEnter/
-        // OnDragDrop that actually creates the component on drop. Crossing from the WPF-hosted
-        // toolbox ListBox into the embedded WinForms control tree relies on LibreWinForms'
-        // WindowsFormsHost.ProcessExternalDragEvent bridge (see WpfToolbox.OnPreviewMouseMove's
-        // own doc comment on the DataObject format-name contract that makes this work).
+        // Covers the THIRD drag-drop target for the shared WPF-hosted toolbox: an out-of-process
+        // WinForms design surface (FormsDesignerViewContent; the designer itself runs in the
+        // separate FormsDesigner.Host process, whose snapshot is rendered in the parent). WinForms
+        // designer historically had no visible drag-from palette in this port - it's now wired to
+        // the SAME WpfToolbox.Instance singleton used by the XAML designer/editor, with WinForms
+        // items routed through the real System.Drawing.Design.IToolboxService (ToolboxService.cs)
+        // in the parent and forwarded to the child host over JSON-RPC
+        // (FormsDesignerViewContent.RemoteToolboxDrop).
         var solutionDirectory = Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!;
         var formCodePath = Path.Combine(solutionDirectory, "Form1.Designer.cs");
         var originalFormCode = await File.ReadAllTextAsync(formCodePath);
@@ -2160,8 +2156,8 @@ public sealed class AddInTests : IAsyncDisposable
     public async Task VbDesigner_OutOfProcess_RoundTripsEditsToDesignerFile()
     {
         // The VB WinForms designer runs in a separate child process (FormsDesigner.Host, launched
-        // by FormsDesignerHostClient) - the VB counterpart of the C# designer's in-process
-        // RoslynFormsDesignerSecondaryDisplayBinding. The parent only decides designability and
+        // by FormsDesignerHostClient) - the VB counterpart of the C# designer's out-of-process
+        // binding (CSharpDesignerSecondaryDisplayBinding). The parent only decides designability and
         // ships the file text over JSON-RPC; all VB parsing/source rewriting happens child-side.
         // This test drives that out-of-process surface end to end: open the fixture's Form1.vb,
         // wait for the designer to come up in its own process, apply edits through the
