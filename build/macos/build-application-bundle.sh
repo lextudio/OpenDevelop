@@ -50,7 +50,30 @@ populate_repo_payload() {
     printf '**/%s\n' "$(basename "$host_file")" >> "$exclude_file"
   done < <(find "$macos" -type f -print0)
 
+  # Out-of-process child deployments: folders that carry their own
+  # *.runtimeconfig.json/*.deps.json and are spawned via `dotnet exec` as separate
+  # processes (Uno design host, WinForms design host, SharpDbg.Cli DAP debugger).
+  # Such a process resolves dependencies ONLY from its own folder - unlike regular
+  # AddIn dlls, which fall back to the application base directory - so the basename
+  # dedup above would strip exactly the assemblies it needs and the child crashes
+  # at startup (FileNotFoundException for StreamJsonRpc.dll / 
+  # Microsoft.VisualStudio.Validation.dll in the Uno design host). Keep these
+  # folders' contents intact; add any future out-of-process child host here.
+  # Entries are rsync include patterns relative to AddIns/; `dir/***` keeps the
+  # whole folder. rsync applies rules in order, so these includes must precede the
+  # exclude-from below.
+  local keep_addin_folders=(
+    "DisplayBindings/WinUIXamlDesigner/UnoHost"
+    "DisplayBindings/FormsDesigner/Host"
+    "Debugger"
+  )
+  local keep_args=()
+  for folder in "${keep_addin_folders[@]}"; do
+    keep_args+=(--include="$folder/***")
+  done
+
   rsync -a \
+    "${keep_args[@]}" \
     --exclude '*.pdb' \
     --exclude 'LeXtudio.DevFlow.*' \
     --exclude 'CliclickSharp' \
