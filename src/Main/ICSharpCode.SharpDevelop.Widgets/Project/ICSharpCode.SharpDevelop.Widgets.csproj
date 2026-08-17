@@ -11,6 +11,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Core\Project\ICSharpCode.Core.csproj" />
     <ProjectReference Include="..\..\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" />
+    <!-- Shared designer DTOs (DesignerElementNode) for the common Document Outline pad. -->
+    <ProjectReference Include="..\..\Designer\Designer.Remote\Designer.Remote.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- Uses ProGPU's portable System.Drawing.Common, not the real Microsoft one: the real

@@ -1628,6 +1628,13 @@ public sealed class AddInTests : IAsyncDisposable
             "Expected the root node to have at least one child element");
         Assert.Contains("Application", outlineNames);
         Assert.Contains("Application.Resources", outlineNames);
+
+        // The code editor's outline is the shared DocumentOutlineControl and the pad auto-opens
+        // (XamlOutlineContentHost.ActivateOutlinePad), same as the designers' outline behavior.
+        Assert.True(status.GetProperty("padPresent").GetBoolean(),
+            "Expected the shared DocumentOutlineControl to be mounted for the XAML text editor");
+        Assert.True(status.GetProperty("padVisible").GetBoolean(),
+            "Expected the Outline pad to be visible (auto-opened) for the XAML text editor");
     }
 
     [Fact]
@@ -2213,6 +2220,48 @@ public sealed class AddInTests : IAsyncDisposable
         var savedPrimary = await File.ReadAllTextAsync(formCodePath);
         Assert.Contains("Private Sub button1_Click(sender As System.Object, e As System.EventArgs)",
             savedPrimary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WinFormsDesigner_DocumentOutline_ShowsControlTreeAndSelects()
+    {
+        // The Document Outline pad is the shared control (ICSharpCode.SharpDevelop.Widgets.
+        // DocumentOutlineControl) fed by the out-of-process protocol's element tree
+        // (DesignerSessionState.Tree, built by the child from the real control hierarchy).
+        // Opening a form in the designer must auto-show the pad
+        // (FormsDesignerViewContent.ActivateOutlinePadOnce) with the control tree, and picking a
+        // node must route into the same selection path as a surface click.
+        var formCodePath = Path.Combine(Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!, "Form1.cs");
+
+        var openSolutionResult = await _app.ReopenSolutionAsync(_app.WinFormsSampleSolutionPath);
+        Assert.True(openSolutionResult.GetProperty("success").GetBoolean());
+        var openFileResult = await _app.InvokeAsync("od.open-file", formCodePath);
+        Assert.True(openFileResult.GetProperty("opened").GetBoolean());
+
+        // The outline control mounts into the shared Outline pad when the designer view becomes
+        // active; the pad auto-opens on first designer load. Poll for present+visible.
+        JsonElement outline = default;
+        var shown = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            outline = await _app.InvokeAsync("od.forms-designer.outline-status");
+            return outline.GetProperty("present").GetBoolean()
+                && outline.GetProperty("visible").GetBoolean();
+        }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 1000);
+        Assert.True(shown, "The Document Outline pad did not show for the WinForms designer. Status: " + outline);
+
+        // The tree is the child-reported control hierarchy: Form1 (root) with its children.
+        Assert.Equal("Form1", outline.GetProperty("root").GetString());
+        Assert.Contains("System.Windows.Forms.Form", outline.GetProperty("rootType").GetString(), StringComparison.Ordinal);
+        var nodeNames = outline.GetProperty("nodes").EnumerateArray()
+            .Select(n => n.GetProperty("name").GetString()).ToArray();
+        Assert.Contains("Form1", nodeNames);
+        Assert.Contains("dropPanel", nodeNames);
+        Assert.Contains(nodeNames, name => name != null && name != "Form1"); // has real children
+
+        // Outline -> surface selection uses the same single-selection path as a click.
+        var selected = await _app.InvokeAsync("od.forms-designer.outline-select", "dropPanel");
+        Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
+        Assert.Equal("dropPanel", selected.GetProperty("selected").GetString());
     }
 
     [Fact]

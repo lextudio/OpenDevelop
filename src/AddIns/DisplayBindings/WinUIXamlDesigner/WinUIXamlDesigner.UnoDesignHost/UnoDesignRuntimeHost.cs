@@ -12,6 +12,7 @@ using System.Windows.Media;
 using System.Xml.Linq;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
+using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.LanguageServices.Xaml;
 
 using DesignSnapshot = ICSharpCode.SharpDevelop.Designer.Remote.DesignerSessionState;
@@ -612,6 +613,9 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 	public UIElement WpfSurface => surface;
 	public bool HasRenderedPreview { get; private set; }
 	public string StatusText { get; private set; }
+
+	/// <summary>The rendered element tree (protocol model), for the Document Outline pad.</summary>
+	public DesignerElementNode? ElementTree => lastSnapshot?.Tree;
 
 	/// <summary>Last lines of the child host's stdout/stderr (ready banners, render logs).</summary>
 	public string ChildLog => client?.ChildLog ?? "(child not started)";

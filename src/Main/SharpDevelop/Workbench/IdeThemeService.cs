@@ -45,8 +45,34 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		internal static void Attach(DockingManager manager)
 		{
 			dockingManager = manager;
+			RegisterXceedPropertyGridIcons();
 			Apply(manager, CurrentTheme);
 			ThemeChanged?.Invoke(null, CurrentTheme);
+		}
+
+		/// <summary>
+		/// Provides the VS2017 icons the Xceed PropertyGrid template references
+		/// (<c>{DynamicResource Xceed.Icons.*}</c>) as real <see cref="System.Windows.Media.ImageSource"/>
+		/// objects - the template cannot load them itself, because a pack URI string pointing at a
+		/// .xaml icon is not an image format the ImageSource converter understands. The values are
+		/// theme-independent, so registering once at startup is enough.
+		/// </summary>
+		static void RegisterXceedPropertyGridIcons()
+		{
+			var resources = Application.Current.Resources;
+			SetIcon(resources, "Xceed.Icons.GroupBy", "Icons.16x16.GroupBy");
+			SetIcon(resources, "Xceed.Icons.SortAscending", "Icons.16x16.SortAscending");
+			SetIcon(resources, "Xceed.Icons.Settings", "Icons.16x16.Settings");
+			SetIcon(resources, "Xceed.Icons.Event", "Icons.16x16.Event");
+			SetIcon(resources, "Xceed.Icons.Clear", "Icons.16x16.Clear");
+			SetIcon(resources, "Xceed.Icons.Search", "Icons.16x16.Search");
+		}
+
+		static void SetIcon(System.Windows.ResourceDictionary resources, string key, string iconKey)
+		{
+			if (resources.Contains(key))
+				return;
+			resources[key] = ICSharpCode.Core.Presentation.PresentationResourceService.GetImageSource(iconKey);
 		}
 
 		public static void SetTheme(string theme)

@@ -18,50 +18,59 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Input;
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
+using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.LanguageServices;
+using ICSharpCode.SharpDevelop.Widgets;
 
 namespace ICSharpCode.XamlBinding
 {
 	/// <summary>
 	/// Populates the Outline pad for a .xaml text editor view from the XAML language server's
-	/// textDocument/documentSymbol response (via <see cref="XamlOutlineLspProvider"/>), instead of
-	/// any local XAML parsing.
+	/// textDocument/documentSymbol response (via <see cref="XamlOutlineLspProvider"/>), projected
+	/// onto the shared <see cref="DocumentOutlineControl"/> so the code-editor outline looks and
+	/// behaves like the designers' Document Outline. Selecting a node jumps to its source span.
 	/// </summary>
 	public sealed class XamlOutlineContentHost : IOutlineContentHost, IDisposable
 	{
 		readonly ITextEditor editor;
-		readonly System.Windows.Controls.TreeView treeView = new System.Windows.Controls.TreeView();
+		readonly DocumentOutlineControl outline = new DocumentOutlineControl();
 		CancellationTokenSource refreshCts;
+		IReadOnlyList<DocumentOutlineNode> lastNodes = Array.Empty<DocumentOutlineNode>();
 
 		public XamlOutlineContentHost(ITextEditor editor)
 		{
 			this.editor = editor;
 
-			var itemTemplate = new HierarchicalDataTemplate(typeof(DocumentOutlineNode)) {
-				ItemsSource = new System.Windows.Data.Binding(nameof(DocumentOutlineNode.Children))
-			};
-			var text = new FrameworkElementFactory(typeof(TextBlock));
-			text.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding(nameof(DocumentOutlineNode.Name)));
-			itemTemplate.VisualTree = text;
-			treeView.ItemTemplate = itemTemplate;
-
-			treeView.MouseDoubleClick += OnMouseDoubleClick;
+			outline.SelectionCommitted += OnSelectionCommitted;
 
 			editor.Document.TextChanged += OnDocumentChanged;
 			RefreshAsync();
+			ActivateOutlinePad();
 		}
 
 		public object OutlineContent {
-			get { return treeView; }
+			get { return outline; }
+		}
+
+		/// <summary>
+		/// Shows the Document Outline pad once, mirroring the WinForms designer's behavior
+		/// (FormsDesignerViewContent.ActivateOutlinePadOnce): a .xaml code editor is expected to
+		/// show its element tree without the user opening the pad manually.
+		/// </summary>
+		void ActivateOutlinePad()
+		{
+			try {
+				SD.Workbench.GetPad("ICSharpCode.SharpDevelop.Gui.OutlinePad")?.BringPadToFront();
+			} catch (Exception ex) {
+				LoggingService.Debug("XamlOutlineContentHost: could not activate the Outline pad: " + ex.Message);
+			}
 		}
 
 		void OnDocumentChanged(object sender, EventArgs e)
@@ -95,22 +104,42 @@ namespace ICSharpCode.XamlBinding
 			if (cts.IsCancellationRequested)
 				return;
 
-			SD.MainThread.InvokeIfRequired(() => treeView.ItemsSource = nodes);
+			lastNodes = nodes;
+			SD.MainThread.InvokeIfRequired(() => outline.SetRoot(nodes.FirstOrDefault()?.ToElementNode()));
 		}
 
-		void OnMouseDoubleClick(object sender, MouseButtonEventArgs e)
+		void OnSelectionCommitted(object sender, EventArgs e)
 		{
-			if (!(treeView.SelectedItem is DocumentOutlineNode node))
+			if (!(outline.SelectedNode is { } node))
 				return;
-
-			editor.JumpTo(node.Span.Start.Line, node.Span.Start.Column);
+			// Jump to the first source node with the same name (names are unique per
+			// namescope in practice; the LSP tree's own ordering is authoritative).
+			var match = lastNodes.FirstOrDefault(n => n.Name == node.Name);
+			if (match != null)
+				editor.JumpTo(match.Span.Start.Line, match.Span.Start.Column);
 		}
 
 		public void Dispose()
 		{
 			refreshCts?.Cancel();
 			editor.Document.TextChanged -= OnDocumentChanged;
-			treeView.MouseDoubleClick -= OnMouseDoubleClick;
+			outline.SelectionCommitted -= OnSelectionCommitted;
+		}
+	}
+
+	internal static class XamlOutlineNodeExtensions
+	{
+		/// <summary>Projects a language-service outline node onto the shared Document Outline
+		/// model (name + kind as the gray type hint).</summary>
+		public static DesignerElementNode ToElementNode(this DocumentOutlineNode node)
+		{
+			return new DesignerElementNode {
+				Id = node.Name,
+				Name = node.Name,
+				Type = node.Kind,
+				IsDesignable = true,
+				Children = node.Children.Select(ToElementNode).ToList()
+			};
 		}
 	}
 }

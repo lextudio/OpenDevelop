@@ -208,6 +208,9 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 			view.ResetDesignSize();
 	}
 
+	/// <summary>The rendered element tree (protocol model), for the Document Outline pad.</summary>
+	public DesignerElementNode? ElementTree => (runtime as IWinUIXamlRuntimeHost)?.ElementTree;
+
 	/// <summary>The runtime's toolbox catalog (the controls its loaded runtime provides), if available.</summary>
 	public IReadOnlyList<DesignerToolboxItemInfo> GetToolboxCatalog()
 		=> runtime is IWinUIXamlToolboxCatalog catalog ? catalog.GetToolboxCatalog() : Array.Empty<DesignerToolboxItemInfo>();
@@ -487,6 +490,12 @@ public interface IWinUIXamlRuntimeHost : IDisposable
 	/// <summary>Raised once an asynchronous <see cref="LoadXaml"/> has settled.</summary>
 	event EventHandler StateChanged;
 	void LoadXaml(string text);
+
+	/// <summary>
+	/// The rendered element tree (protocol model), for the shared Document Outline pad.
+	/// Null until the runtime has produced a design snapshot.
+	/// </summary>
+	DesignerElementNode? ElementTree { get; }
 
 	/// <summary>
 	/// The x:Names the document defines. The runtime resolves them against the rendered tree's

@@ -47,6 +47,11 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public string TargetFramework { get; set; } = "";
 		public string Architecture { get; set; } = "";
 		public string ProjectAssemblyPath { get; set; } = "";
+		/// <summary>Absolute paths of the project's resolved reference assemblies (MSBuild's
+		/// ResolveAssemblyReferences output), so a child can load referenced control types
+		/// without reflecting into the IDE's project system. Empty for stock-controls-only
+		/// documents.</summary>
+		public List<string> ReferencedAssemblyPaths { get; set; } = new List<string>();
 		public string PrimaryFileName { get; set; } = "";
 		public string DesignerFileName { get; set; } = "";
 		/// <summary>Roslyn language name: "CSharp" or "VisualBasic" (defaults to CSharp). XAML backends leave it empty.</summary>
@@ -154,6 +159,16 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public string Category { get; set; } = "";
 		public string TypeName { get; set; } = "";
 		public string Value { get; set; } = "";
+		/// <summary>Tag for how <see cref="Value"/> is encoded: "Null" | "Boolean" | "String" |
+		/// "Number" | "Enum" | "Point" | "Size" | "Rect" | "Thickness" | "Color" | "Brush" |
+		/// "Uri" | "Xaml" | "Reference" | "ReadOnly" | "Unsupported" (designer-common.md
+		/// "Property and event values"). Defaults to "String" so WinForms/WinUI, whose
+		/// properties are all flat-string-representable today, need no change. A WPF backend
+		/// (not yet implemented) needs the other kinds for properties whose value is itself a
+		/// nested DesignItem - Binding, Brush, Gradient, Transform and other markup extensions -
+		/// which "Xaml"/"Reference" carry as constrained XAML text in the same <see cref="Value"/>
+		/// field rather than a runtime object.</summary>
+		public string Kind { get; set; } = "String";
 		public bool IsNull { get; set; }
 		public bool IsReadOnly { get; set; }
 		public bool ShouldSerialize { get; set; }
@@ -167,6 +182,20 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public string DocumentId { get; set; } = "";
 		public long BaseVersion { get; set; }
 		public List<DesignerSourceFileSnapshot> Files { get; set; } = new List<DesignerSourceFileSnapshot>();
+	}
+
+	/// <summary>Shape for a child-to-host selection-changed notification: the child owns
+	/// selection (designer-common.md's "the host never runs a competing selection model"), so
+	/// this carries only the selected element ids, never a live component/DesignItem. Not yet
+	/// wired to any RPC/notification transport on any backend - WinForms and WinUI/Uno currently
+	/// report selection through their own per-backend control events instead
+	/// (SelectionChanged/OnSurfacePointerPressed); this type exists so a future shared transport
+	/// has one settled shape to adopt rather than three per-backend ones.</summary>
+	public sealed class DesignerSelectionChanged
+	{
+		public string SessionId { get; set; } = "";
+		public string DocumentId { get; set; } = "";
+		public List<string> ElementIds { get; set; } = new List<string>();
 	}
 
 	/// <summary>Hit-test result. ComponentName/ComponentType (WinForms) or Chain/PickPath

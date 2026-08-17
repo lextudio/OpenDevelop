@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Fixtures/CustomControlFixture is its own project with its own compilation; without this,
+         MSBuild's default **/*.cs glob here would also compile its sources into this project. -->
+    <Compile Remove="Fixtures\**\*.cs" />
+    <Compile Remove="Fixtures\**\obj\**\*.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="3.2.2" />
+    <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
+    <ProjectReference Include="..\WpfDesign.SurfaceHost\WpfDesign.SurfaceHost.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" />
+    <!-- Build-only: proves type resolution happens in the child, never in this test process
+         (Phase 1 slice, see wpf-designer.md). Never add a using/typeof for this assembly here. -->
+    <ProjectReference Include="Fixtures\CustomControlFixture\CustomControlFixture.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" />
+  </ItemGroup>
+</Project>

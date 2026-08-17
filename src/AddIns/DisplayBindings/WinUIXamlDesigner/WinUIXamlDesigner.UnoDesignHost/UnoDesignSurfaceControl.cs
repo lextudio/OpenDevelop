@@ -80,20 +80,20 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 	readonly ComboBox zoomCombo = new() { Width = 84, Margin = new Thickness(4, 2, 4, 2) };
 	readonly ComboBox sizeCombo = new() { Width = 92, Margin = new Thickness(0, 2, 4, 2), ToolTip = "Design canvas size preset (for pages without an explicit size)" };
 	readonly Button fitButton = new() {
-		Content = "Fit",
+		Content = CreateToolbarIcon("Icons.16x16.FitToScreen"),
 		Margin = new Thickness(0, 2, 4, 2),
-		Padding = new Thickness(8, 1, 8, 1)
+		Padding = new Thickness(4, 2, 4, 2)
 	};
 	readonly ToggleButton themeButton = new() {
-		Content = "Dark",
+		Content = CreateToolbarIcon("Icons.16x16.DarkTheme"),
 		Margin = new Thickness(0, 2, 4, 2),
-		Padding = new Thickness(8, 1, 8, 1),
+		Padding = new Thickness(4, 2, 4, 2),
 		ToolTip = "Switch the design surface between Light and Dark theme"
 	};
 	readonly ToggleButton gridButton = new() {
-		Content = "Grid",
+		Content = CreateToolbarIcon("Icons.16x16.GridGuide"),
 		Margin = new Thickness(0, 2, 4, 2),
-		Padding = new Thickness(8, 1, 8, 1),
+		Padding = new Thickness(4, 2, 4, 2),
 		ToolTip = "Show design-space gridlines on the surface"
 	};
 	readonly TextBox textEditor = new() {
@@ -271,7 +271,7 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 		syncingTheme = true;
 		themeButton.IsChecked = dark;
 		syncingTheme = false;
-		themeButton.Content = dark ? "Light" : "Dark";
+		// The button content is an icon; the tooltip describes the next action.
 		themeButton.ToolTip = dark
 			? "Switch the design surface to Light theme"
 			: "Switch the design surface to Dark theme";
@@ -295,6 +295,27 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 		themeButton.Background = dark
 			? (themeButton.IsChecked == true ? ToolbarCheckedBackground : ToolbarDarkButtonBackground)
 			: null;
+	}
+
+	/// <summary>
+	/// Loads a VS2017 icon from the shared presentation resource service as a 16x16 Image,
+	/// the same icon source the rest of the IDE chrome uses (so the glyphs stay visible in
+	/// both themes). Returns a blank image when the resource is unavailable, so the button
+	/// still lays out correctly.
+	/// </summary>
+	static Image CreateToolbarIcon(string iconKey)
+	{
+		var image = new Image {
+			Width = 16,
+			Height = 16,
+			Stretch = Stretch.Uniform
+		};
+		try {
+			image.Source = ICSharpCode.Core.Presentation.PresentationResourceService.GetImageSource(iconKey);
+		} catch {
+			image.Source = null;
+		}
+		return image;
 	}
 
 	/// <summary>The current toggle state: "Light" or "Dark".</summary>

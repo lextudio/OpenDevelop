@@ -1,12 +1,16 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="LibreWPF.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
+    <ImplicitUsings>disable</ImplicitUsings>
     <UseWindowsForms>true</UseWindowsForms>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Remove="Microsoft.WindowsDesktop.App.WindowsForms" />
+  </ItemGroup>
 
 </Project>

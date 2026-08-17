@@ -920,6 +920,19 @@ sealed class DesignerHostService
 		}
 	}
 
+	/// <summary>Normalize a project output path to the managed assembly: <c>OutputAssemblyFullPath</c>
+	/// can point at the apphost (an extensionless executable on Unix, or a ".exe" native shim on
+	/// Windows), whose bytes are not valid IL. The managed assembly always sits next to it as
+	/// "<c>name</c>.dll".</summary>
+	static string ResolveManagedAssemblyPath(string path)
+	{
+		var full = Path.GetFullPath(path);
+		if (full.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+			return full;
+		var dll = Path.ChangeExtension(full, ".dll");
+		return File.Exists(dll) ? dll : full;
+	}
+
 	void CreateDesignSurface(DocumentSnapshot snapshot)
 	{
 		designSurface?.Dispose();
@@ -929,8 +942,14 @@ sealed class DesignerHostService
 		rootDesignSize = ReadRootDesignSize(snapshot);
 		rootAutoScaleDimensions = ReadRootAutoScaleDimensions(snapshot);
 		if (!String.IsNullOrWhiteSpace(snapshot.ProjectAssemblyPath) && File.Exists(snapshot.ProjectAssemblyPath)) {
-			projectLoadContext = new ProjectAssemblyLoadContext(snapshot.ProjectAssemblyPath);
-			projectAssembly = projectLoadContext.LoadFromAssemblyPath(Path.GetFullPath(snapshot.ProjectAssemblyPath));
+			// OutputAssemblyFullPath may point at the apphost (an extensionless executable
+			// on Unix, or ".exe" on Windows) instead of the managed assembly; loading the
+			// apphost throws BadImageFormatException, so prefer the sibling ".dll".
+			var managedAssemblyPath = ResolveManagedAssemblyPath(snapshot.ProjectAssemblyPath);
+			if (File.Exists(managedAssemblyPath)) {
+				projectLoadContext = new ProjectAssemblyLoadContext(managedAssemblyPath);
+				projectAssembly = projectLoadContext.LoadFromAssemblyPath(managedAssemblyPath);
+			}
 		}
 		designSurface = new DesignSurface();
 		designSurface.BeginLoad(new SnapshotDesignerLoader(snapshot, ResolveProjectType));
@@ -1014,6 +1033,7 @@ sealed class DesignerHostService
 			RootType = host?.RootComponent?.GetType().FullName ?? "",
 			ComponentCount = host?.Container?.Components.Count ?? 0,
 			Render = render,
+			Tree = rootControl == null ? null : BuildElementTree(rootControl, ""),
 			Components = host?.Container?.Components.Cast<IComponent>().Select(component => {
 				var properties = DescribeProperties(component);
 				if (component == host.RootComponent && rootAutoScaleDimensions.HasValue) {
@@ -1054,6 +1074,26 @@ sealed class DesignerHostService
 		} catch { return ""; }
 	}
 
+	/// <summary>Builds the element tree for the Document Outline pad (the protocol's
+	/// <c>Tree</c> shape), mirroring the flat <c>Components</c> list's control hierarchy.</summary>
+	static ElementNodeDto BuildElementTree(Control control, string path)
+	{
+		return new ElementNodeDto {
+			Id = control.Site?.Name ?? control.GetType().Name,
+			Name = control.Site?.Name,
+			Type = control.GetType().FullName ?? control.GetType().Name,
+			X = control.Left,
+			Y = control.Top,
+			Width = control.Width,
+			Height = control.Height,
+			Path = path,
+			IsDesignable = true,
+			Children = control.Controls.Cast<Control>()
+				.Select((child, index) => BuildElementTree(child, path.Length == 0 ? index.ToString(CultureInfo.InvariantCulture) : path + "," + index.ToString(CultureInfo.InvariantCulture)))
+				.ToList()
+		};
+	}
+
 	List<EventInfoDto> DescribeEvents(IComponent component)
 	{
 		var handlers = CurrentDesignerFile().Text;
@@ -1074,7 +1114,7 @@ sealed class DesignerHostService
 				handler = assignment?.Right.ToString() ?? "";
 				if (handler.StartsWith("this.", StringComparison.Ordinal)) handler = handler[5..];
 			}
-			return new EventInfoDto { Name = item.Name, Category = item.Category ?? "Action", HandlerTypeName = item.EventType?.FullName ?? "", Handler = handler };
+			return new EventInfoDto { Name = item.Name, Category = item.Category ?? "Action", HandlerTypeName = item.EventType?.Name ?? "", Handler = handler };
 		}).ToList();
 	}
 
@@ -1313,7 +1353,8 @@ sealed class MeQualifierRewriter : Vb.VisualBasicSyntaxRewriter
 sealed class Handshake { public int ProtocolVersion { get; set; } public string Runtime { get; set; } = ""; public int ProcessId { get; set; } public string SessionId { get; set; } = ""; }
 sealed class DocumentSnapshot { public string SessionId { get; set; } = ""; public string DocumentId { get; set; } = ""; public long Version { get; set; } public string ProjectFileName { get; set; } = ""; public string TargetFramework { get; set; } = ""; public string ProjectAssemblyPath { get; set; } = ""; public string PrimaryFileName { get; set; } = ""; public string DesignerFileName { get; set; } = ""; public string Language { get; set; } = "CSharp"; public List<SourceFileSnapshot> Files { get; set; } = []; }
 sealed class SourceFileSnapshot { public string FileName { get; set; } = ""; public string Kind { get; set; } = "Source"; public string Text { get; set; } = ""; public string Base64 { get; set; } = ""; }
-sealed class SessionState { public string SessionId { get; set; } = ""; public string DocumentId { get; set; } = ""; public long Version { get; set; } public bool Accepted { get; set; } public string Error { get; set; } = ""; public string RootType { get; set; } = ""; public int ComponentCount { get; set; } public List<ComponentInfo> Components { get; set; } = []; public RenderFrame? Render { get; set; } }
+sealed class SessionState { public string SessionId { get; set; } = ""; public string DocumentId { get; set; } = ""; public long Version { get; set; } public bool Accepted { get; set; } public string Error { get; set; } = ""; public string RootType { get; set; } = ""; public int ComponentCount { get; set; } public List<ComponentInfo> Components { get; set; } = []; public ElementNodeDto? Tree { get; set; } public RenderFrame? Render { get; set; } }
+sealed class ElementNodeDto { public string Id { get; set; } = ""; public string? Name { get; set; } public string Type { get; set; } = ""; public double X { get; set; } public double Y { get; set; } public double Width { get; set; } public double Height { get; set; } public string Path { get; set; } = ""; public bool IsDesignable { get; set; } = true; public List<ElementNodeDto> Children { get; set; } = []; }
 sealed class RenderFrame { public long Sequence { get; set; } public int Width { get; set; } public int Height { get; set; } public double Dpi { get; set; } = 1; public string PngBase64 { get; set; } = ""; }
 sealed class ComponentInfo { public string Name { get; set; } = ""; public string Type { get; set; } = ""; public string Parent { get; set; } = ""; public string Text { get; set; } = ""; public string AccessibleName { get; set; } = ""; public string AccessibleDescription { get; set; } = ""; public string AccessibleRole { get; set; } = ""; public int X { get; set; } public int Y { get; set; } public int SurfaceX { get; set; } public int SurfaceY { get; set; } public int Width { get; set; } public int Height { get; set; } public List<PropertyInfoDto> Properties { get; set; } = []; public List<EventInfoDto> Events { get; set; } = []; }
 sealed class PropertyInfoDto { public string Name { get; set; } = ""; public string DisplayName { get; set; } = ""; public string Description { get; set; } = ""; public string Category { get; set; } = ""; public string TypeName { get; set; } = ""; public string Value { get; set; } = ""; public bool IsNull { get; set; } public bool IsReadOnly { get; set; } public bool ShouldSerialize { get; set; } public bool IsEnum { get; set; } }

@@ -53,14 +53,6 @@ namespace ICSharpCode.SharpDevelop
 		}
 		
 		/// <summary>
-		/// Provides access to the <see cref="System.CodeDom.Compiler.CodeDomProvider" /> for this language.
-		/// Can be null, if not available.
-		/// </summary>
-		System.CodeDom.Compiler.CodeDomProvider CodeDomProvider {
-			get;
-		}
-		
-		/// <summary>
 		/// Creates a completion binding for a given expression and context.
 		/// </summary>
 		ICodeCompletionBinding CreateCompletionBinding(string expressionToComplete, ICodeContext context);

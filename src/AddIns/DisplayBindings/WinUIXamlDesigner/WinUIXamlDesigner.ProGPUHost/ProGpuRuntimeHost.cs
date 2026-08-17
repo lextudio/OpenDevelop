@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.LanguageServices.Xaml;
 using XamlStudio.Toolkit.Services;
 
@@ -96,6 +97,10 @@ sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost
     public string StatusText { get; private set; }
     public event EventHandler StateChanged;
     public event EventHandler<string> ElementPicked;
+
+    /// <summary>In-process runtime: no protocol element tree; the shell falls back to the
+    /// source document's element tree for the Document Outline pad.</summary>
+    public DesignerElementNode? ElementTree => null;
 
     /// <summary>There is no child host process in this in-process runtime.</summary>
     public string ChildLog => "(in-process host)";

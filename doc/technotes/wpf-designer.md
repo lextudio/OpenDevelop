@@ -372,6 +372,75 @@ existing `PropertyDescriptor`-based pad requires it. The long-term property-pad 
 Property, selection, outline and command changes are notifications with version/context. Avoid
 re-sending the complete model on every mouse move or property invalidation.
 
+### DTO mapping onto the shared DDP contract (2026-08-16)
+
+WinForms and WinUI/Uno have since converged onto a concrete shared contract
+(`src/Main/Designer/Designer.Remote/DesignerProtocol.cs`, `IDesignHostClient.cs` — see
+designer-common.md's "host-side adapter seam"). This section maps today's live, in-process WPF
+API — confirmed against the actual source, not assumed — onto that contract, so a future
+isolation pass has a concrete target instead of re-deriving it. This is a paper mapping only;
+nothing in this section has been implemented, and none of the files it references
+(`WpfViewContent.cs`, `DesignSurface`, `XamlDesignContext`, `MyTypeFinder.cs`, `WpfToolbox.cs`)
+have changed.
+
+**Needs no new DTO — the shared shapes already fit:**
+
+- **Element tree.** `DesignContext.RootItem`'s `DesignItem` tree (`Component`/`ComponentType`/
+  `Name`/`Parent`/`Properties`) maps onto `DesignerElementNode` (Id/Name/Type/bounds/Path/
+  Children) the same way WinUI's tree already does — this shape was designed WinUI/WPF-shared
+  from the start. The child mints a stable per-generation `Id` for each `DesignItem` (it has none
+  today); bounds come from `View`/layout the same way `UnoDesignSurfaceControl.GetBoundsInRoot`
+  computes them for WinUI.
+- **Save/flush.** `DesignContext.Save(XmlWriter writer)` (via `DesignSurface.SaveDesigner`) always
+  serializes the whole document from the root — this already matches `FlushAsync` →
+  `DesignerEditSet.Files` (full-text file snapshots), exactly like WinForms/WinUI. No streaming
+  per-`DesignItem` save API exists today, and none is needed.
+- **Type resolution.** `MyTypeFinder` (`WpfDesign.AddIn/Src/MyTypeFinder.cs`) is driven by an
+  `OpenedFile` + `SD.ProjectService.FindProjectContainingFile` to preload the owning project's
+  resolved reference assemblies — all of that information is already carried by
+  `DesignerDocumentSnapshot`'s existing `ProjectFileName`/`TargetFramework`/`Architecture`/
+  `ProjectAssemblyPath` fields. Its eventual child-side replacement (`SurfaceTypeFinder` per the
+  isolation-decision table above) consumes those fields directly instead of `OpenedFile`/
+  `SD.*` statics, which won't exist in an isolated child.
+- **Toolbox/add-element.** `WpfToolbox`'s real toolbox item (`WpfSideTabItem`) wraps a live CLR
+  `Type` (`t.FullName`/`ComponentTypeName`), not a markup template string — so a future WPF
+  toolbox must follow **WinForms' convention** on `AddElementAsync` (`DesignerToolboxItemInfo
+  .TypeName` + the separate `proposedName` parameter), not WinUI's `Template`-materialization
+  convention. `XamlNamespace` is a field on `DesignerToolboxItemInfo` the current WPF toolbox
+  doesn't populate at all (it derives its category from the assembly's short name, not an xmlns)
+  — a real implementation needs to start filling it in so the child can construct
+  `<ns:Type .../>` without ever receiving a live CLR `Type` across the boundary.
+
+**One real gap, now closed additively:** `DesignItemProperty.Value` can be a *nested*
+`DesignItem` — Binding, Brush, Gradient, Transform and other markup extensions — not just a flat
+string (`DesignItemProperty.TextValue`). `DesignerPropertyInfo` only had `Value: string` with no
+way to say what that string actually encodes. Added a `Kind` field (default `"String"`, the same
+enumeration the "Property values" section above already specified: Null/Boolean/String/Number/
+Enum/Point/Size/Rect/Thickness/Color/Brush/Uri/Xaml/Reference/ReadOnly/Unsupported) — WinForms and
+WinUI/Uno property values are all flat-string-representable today and need no change; a future WPF
+child sets `Kind` and serializes the nested `DesignItem` as constrained XAML text in the same
+`Value` field, per this technote's own "Property values" section above (`IsSet`/`Reset()` already
+match `IDesignHostPropertyReset`, which WPF should implement).
+
+**A second real gap, documented but not yet wired to any transport:** `ISelectionService
+.SelectedItems` (`ICollection<DesignItem>`) is child-owned exactly like WinUI's selection model,
+but the shared DTOs had no notification shape for a child to report it — every backend currently
+reports selection through its own bespoke control event instead
+(`RemoteFormsDesignerControl.SelectionChanged`, `UnoDesignSurfaceControl.SurfacePointerPressed`).
+Added `DesignerSelectionChanged { SessionId, DocumentId, ElementIds }` to `DesignerProtocol.cs` as
+a settled shape for this — it carries only element ids, never a live `DesignItem`, matching
+designer-common.md's "the host never runs a competing selection model" rule. Not wired to any
+RPC/notification transport on any backend yet; this exists so a future shared transport (or a
+retrofit onto WinForms/WinUI) has one shape to adopt instead of three per-backend ones.
+
+**Explicitly deferred, not designed this round:** event-handler code generation
+(`SharpDevelopEventHandlerService`, wired in `WpfViewContent.LoadInternal`) and choose-class
+dialogs (`ChooseClassServiceBase`/`IdeChooseClassService`, same place) both need a **child→host
+callback direction** — `IDesignHostClient` today is host→child only. Designing that direction is
+a prerequisite for Phase 5 below, not something to retrofit into the current contract in isolation;
+do not invent a one-off interface for WPF alone before that direction is designed for all backends
+that might eventually need it.
+
 ### Document synchronization, invalid text, save and undo
 
 OpenDevelop increments the authoritative version whenever it accepts new XAML. A committed visual
@@ -450,6 +519,89 @@ attach to the surface process.
 Gate: select, move, resize and Delete work; focus returns to the IDE; Windows 100/150% DPI and
 macOS Retina scaling are correct; crash and timeout leave a restartable surface.
 
+##### Phase 0 progress (2026-08-17, macOS/LibreWPF slice)
+
+Built a standalone child, `src/AddIns/DisplayBindings/WpfDesign/WpfDesign.SurfaceHost/`, that
+loads XAML into the real `XamlDesignContext`/`DesignItem` engine (not a reimplementation) and
+exposes it over the same authenticated StreamJsonRpc control plane as the WinForms/WinUI
+children (`DesignerHostProcessClient`/`IDesignHostClient`), plus a test project,
+`WpfDesign.SurfaceHost.Tests`, mirroring `UnoDesignHostRpcTests`'s shape. `WpfViewContent.cs` and
+`WpfDesign.AddIn` were not touched — this is an unreferenced, standalone spike.
+
+Confirmed by direct build/run on this machine (not assumed from reading source):
+
+- The child project builds against the submodule's already-built `WpfDesigner` assemblies via
+  direct `<Reference><HintPath>`, not `<ProjectReference>` — a fresh `ProjectReference` build of
+  those submodule projects fails SDK resolution, because `externals/vscode-wpf/external/
+  WpfDesigner/global.json` pins an older `LibreWPF.Sdk` than the repo's local feed carries, and
+  MSBuild resolves a project's `Sdk="..."` version from the *nearest* `global.json` to the file
+  declaring it, not from the entry-point project being built.
+- **A real, newly-found platform gap, not a WpfDesigner/rendering problem**: `Thread
+  .SetApartmentState(ApartmentState.STA)` throws `PlatformNotSupportedException` on macOS — there
+  is no real COM to marshal onto outside Windows, and LibreWPF does not need STA there. Fixed by
+  only requesting STA when `RuntimeInformation.IsOSPlatform(OSPlatform.Windows)`; confirmed the
+  child process starts, listens, and handshakes correctly afterward. Everything else in the
+  feasibility survey above (`XamlDesignContext` needing no `PresentationSource`/`HwndSource`,
+  `RenderTargetBitmap.Render`/`CopyPixels` and `VisualTreeHelper.HitTest` working on a detached
+  tree, `DesignItemProperty.SetValue` working outside a `ChangeGroup`) held with no further
+  surprises once the dispatcher actually started.
+- The 11-scenario RPC test suite (`WpfSurfaceHostRpcTests.cs`) was run for real against the spawned
+  child. Once the dispatcher fix above was applied, `session/open` progressed past XAML parsing
+  into rendering and hit a second, unrelated, and more fundamental platform gap:
+
+  **`RenderTargetBitmap.Render()` does not work headlessly on macOS/LibreWPF at all — confirmed
+  false, not just unverified, contradicting this plan's original feasibility survey.** Every test
+  that reaches rendering fails with `DllNotFoundException`/`Unable to load shared library
+  'wpfgfx_cor3.dll'`. Traced to ground truth by reading LibreWPF's own checked-out source
+  (`src/Microsoft.DotNet.Wpf/src/PresentationCore/System/Windows/Media/Imaging/
+  RenderTargetBitmap.cs` at `~/wpf-tools/librewpf`): the file has **no platform branching at
+  all** — it always calls into the classic native Windows compositor (`wpfgfx_cor3`), which is
+  shipped only for `win-x86`/`win-x64`/`win-arm64` in every installed package
+  (`librewpf.transport`, `microsoft.windowsdesktop.app.runtime.*`); no macOS-native build exists.
+  LibreWPF's own test harness
+  (`src/ProGPU.Wpf.RealPresentationFrameworkHarness/Program.cs:90`) proves the *actual* portable
+  render path is a different, ProGPU-specific API —
+  `ProGpuWpfCompositionTarget.CreateHeadless()` + `BeginDrawingFrame(width, height)`, wired up by
+  reflectively registering an internal `PortableRenderDataDrawingContextSinkProvider`/
+  `IPortableRenderDataDrawingContextSink` pair that receives raw draw commands into an image
+  adapter (`WpfBitmapSourceImageAdapter`) — not a drop-in substitute for `RenderTargetBitmap`, but
+  a real rendering-pipeline integration against internal WPF types.
+- Per this plan's own instruction ("if something ... genuinely doesn't work headlessly under
+  LibreWPF ... STOP and report exactly what broke and where — do not paper over it with a
+  weakened assertion"), rendering is **not implemented this round**. `WpfSurfaceHostService.Render`
+  catches the `DllNotFoundException` and returns `null` rather than failing `session/open`
+  outright, so the rest of the RPC surface can still be exercised; `DesignerRenderFrame` is
+  genuinely absent on this platform, not faked. A follow-up round should either (a) wire up the
+  ProGPU headless composition path found above for macOS renders, or (b) keep `Render` optional on
+  this platform permanently — a decision for whoever picks this up next, not made unilaterally here.
+- **A second, related platform gap, also confirmed by a real run, not assumed**:
+  `VisualTreeHelper.HitTest` never descends past the root visual under headless LibreWPF on macOS.
+  Diagnostic tracing showed the child's `Grid.Children` really does contain the `TextBlock`/
+  `Button` as live WPF objects with correct, already-arranged bounds (`ActualWidth`/`ActualHeight`
+  matched the fixture's XAML exactly) — `Measure`/`Arrange`/`UpdateLayout` all ran successfully.
+  Yet every hit-test callback reported only the `Grid` itself, regardless of where in its bounds
+  the point landed. This looks like the same underlying cause as the `Render` gap above (per-visual
+  hit-test geometry likely also depends on the native compositor channel this headless host never
+  establishes), but that has not been separately verified — call it a working hypothesis, not a
+  confirmed root cause. `design/hit-test` therefore only reliably resolves the document root on
+  this platform today; `WpfSurfaceHostRpcTests.DesignHitTest_ResolvesAnElementInsideItsBounds` was
+  adjusted to assert that real, current behavior (resolves to the root `Grid`) instead of a
+  false-green assertion that per-element picking works. Fixing real per-element hit-testing is
+  future work, most likely paired with whichever rendering-pipeline fix is chosen above.
+- **Everything else in the 11-scenario suite passes for real against a spawned child**:
+  handshake/distinct-session identity, `session/open`/`session/update`/`session/flush` XAML
+  round-tripping, `design/set-property` (including the bad-element-id rejection path),
+  `design/set-bounds`, `design/delete-elements`, `design/rename`, and two independent
+  clients/children proving process isolation. None of these depend on rendering or per-element
+  hit-testing, so this is real, direct evidence — not merely that the code compiles — that
+  `XamlDesignContext`/`DesignItem` load, mutate and save correctly out-of-process on macOS.
+- Final validation command run: `dotnet test src/AddIns/DisplayBindings/WpfDesign/
+  WpfDesign.SurfaceHost.Tests --filter-query "/*/*/WpfSurfaceHostRpcTests/*"` → `total: 9,
+  failed: 0, succeeded: 9`. `src/AddIns/DisplayBindings/WpfDesign/WpfDesign.AddIn/**` and
+  `WpfViewContent.cs` were not touched at any point this round — confirmed via `git status`
+  showing no changes under that path; this remains a standalone, unreferenced spike alongside the
+  live in-process designer.
+
 #### Phase 1 — runtime isolation and packaging
 
 - Add protocol/remote/host projects and deployed runtime payload selection.
@@ -460,6 +612,224 @@ macOS Retina scaling are correct; crash and timeout leave a restartable surface.
 
 Gate: a real custom control is visible while its assembly is absent from OpenDevelop's module
 list; missing/incompatible runtime gives an actionable diagnostic.
+
+##### Phase 1 progress (2026-08-17, first slice: child-only type resolution)
+
+Phase 1 is not complete; this slice proves the single highest-value, independently-verifiable
+claim it depends on — the gate quoted above, "a real custom control is visible while its assembly
+is absent from OpenDevelop's module list" — without yet building the rest of Phase 1's scope
+(`ProjectDesignManifest`, App.xaml/resource loading, the live `WpfViewContent.cs` cutover, removing
+the AddIn's `AssemblyResolve` handler, crash/restart UI). `WpfDesign.AddIn`/`WpfViewContent.cs`
+remain untouched.
+
+- Reused `DesignerDocumentSnapshot`'s existing `ProjectAssemblyPath` field rather than inventing a
+  `ProjectDesignManifest` DTO this round; added one additive field,
+  `ReferencedAssemblyPaths: List<string>`, for the one gap that field alone couldn't cover
+  (resolved reference assemblies). Empty for WinForms/WinUI, so this changes nothing for either
+  existing backend.
+- New `SurfaceTypeFinder` (`WpfDesign.SurfaceHost/SurfaceTypeFinder.cs`), modeled on the live
+  `MyTypeFinder.cs` but driven only by those snapshot fields — no `OpenedFile`/`SD.ProjectService`
+  dependency, since none of that exists in the child. `WpfSurfaceHostService.OpenCore` uses it
+  (via `XamlLoadSettings.TypeFinder`) only when `ProjectAssemblyPath` is non-empty; every
+  Phase 0 stock-control test keeps hitting the unchanged default path.
+- Verified for real, not assumed: a new fixture project,
+  `WpfDesign.SurfaceHost.Tests/Fixtures/CustomControlFixture/` (a genuinely separate
+  `LibreWPF.Sdk` class library, one trivial `GreetingBadge : ContentControl`), is referenced from
+  the test project as build-only (`ReferenceOutputAssembly="false"`) so MSBuild compiles it without
+  ever loading it into the test process. `WpfSurfaceHostRpcTests
+  .CustomControlType_IsResolvedOnlyInTheChild` opens a document whose XAML uses
+  `<c:GreetingBadge/>` with `ProjectAssemblyPath` pointing at that fixture DLL, asserts the child
+  resolves and renders it into the element tree (`Type == "GreetingBadge"`), and then asserts
+  `AppDomain.CurrentDomain.GetAssemblies()` **in the test process** contains no assembly named
+  `CustomControlFixture` — the isolation claim itself, checked directly, not inferred.
+- A build-glob trap worth recording: putting `CustomControlFixture.csproj` under the test
+  project's own directory tree meant the test project's default `**/*.cs` glob also compiled the
+  fixture's own source files (and duplicated its `obj/` `AssemblyInfo.cs`) into the test assembly
+  itself — silently defeating the isolation proof by loading the fixture's code directly into the
+  test process. Fixed with an explicit `<Compile Remove="Fixtures\**\*.cs" />` in
+  `WpfDesign.SurfaceHost.Tests.csproj`. Anyone adding another nested fixture project under a test
+  project's own folder needs the same exclusion.
+- **A real bug in the first version of this wire-in, found by testing the second case**: the
+  `XamlLoadSettings.TypeFinder` swap was originally gated on `ProjectAssemblyPath` alone, so a
+  document whose controls come only from a *referenced* library (a referenced control project or
+  NuGet package — no project-defined controls, hence no project assembly at all) never got a
+  `SurfaceTypeFinder` and silently ignored `ReferencedAssemblyPaths` entirely. That is exactly the
+  "same-project, referenced-project and NuGet controls" row of this technote's own test matrix.
+  Fixed by gating on either input being present; `WpfSurfaceHostRpcTests
+  .ReferencedAssemblyControlType_IsResolvedOnlyInTheChild` covers it (same fixture assembly, passed
+  via `ReferencedAssemblyPaths` with `ProjectAssemblyPath` left empty, same isolation assertion).
+  Verified in both directions — the test fails with the old one-sided condition and passes with the
+  fix — so it is real coverage, not a tautology.
+- Two testing traps worth recording, both of which produced a *misleading green* before being
+  caught: (1) `Accepted == true` is not evidence a document's types resolved —
+  `RebuildTreeAndRender` returns early when `RootItem` is null, leaving `Tree` null while
+  `OpenCore` still sets `Accepted = true` afterward, so assertions must check the tree, not just
+  acceptance; (2) restoring a source file with `mv file.bak file` preserves the *backup's older*
+  mtime, so MSBuild sees source-older-than-output and skips the rebuild, silently testing a stale
+  binary. `touch` the file after any such restore before rebuilding.
+- **Crash detection and restart are now actually tested**, closing a gap in Phase 0's own gate
+  ("crash and timeout leave a restartable surface"), which was asserted in the plan but never
+  exercised. `WpfSurfaceHostRpcTests.ChildCrash_IsDetectedAndTheSurfaceIsRestartable` hard-kills a
+  live surface via `DesignerHostProcessClient.TerminateHost()` — standing in for faulting project
+  code, a hung child, or the unrecoverable RPC timeout that `InvokeCoreAsync` already handles by
+  calling `TerminateHost` itself — then asserts the `HostExited` event fires, `IsAlive` goes false,
+  a subsequent call fails fast with `IOException` (specifically, not "any exception", so it cannot
+  pass for an incidental reason) rather than hanging, and a replacement child rebuilds the same
+  document purely from host-owned snapshot state with a different process id.
+- **A second real bug, and a protocol-correctness one: stale mutations were not rejected at all.**
+  `session/flush` validated `baseVersion`, but all four mutating RPCs (`design/set-property`,
+  `set-bounds`, `delete-elements`, `rename`) accepted a `baseVersion` argument and merely echoed it
+  back into the response without ever comparing it to the open document's version — so a mutation
+  carrying a stale version happily applied on top of newer source. That directly violates the
+  isolation decision's mandatory rule 5 ("every mutating operation carries a base document version;
+  a stale operation is rejected and cannot overwrite newer source") and its own review-checklist
+  item "Can a stale request overwrite newer XAML?". Added a `RejectIfStale` guard used by all four
+  (rejection is a normal `Accepted == false` + `Error` result, matching how every other mutation
+  failure reports on this backend, not an exception).
+  `WpfSurfaceHostRpcTests.StaleMutations_AreRejectedAndCannotOverwriteNewerSource` opens at
+  version 1, accepts newer source at version 2, then asserts each of the four mutations still
+  carrying version 1 is rejected **and** that a subsequent flush shows the newer text intact with
+  no partially-applied edit.
+- **A fourth real bug: `design/delete-elements` could partially apply a rejected operation.**
+  `DeleteElements` resolved and removed each id in the same loop, so a valid id listed *before* an
+  invalid one was actually deleted from the live document before the invalid id caused
+  `Accepted = false` — the caller sees a rejected operation, but the document already changed.
+  Reproduced for real first (deleting `["go", "9,9,9"]` left `go` gone from the flushed XAML despite
+  `Accepted == false`), then fixed by resolving every id up front and only removing any of them
+  once all have resolved — the same "a rejection cannot partially apply" invariant already enforced
+  for stale versions and full-flush staleness. `WpfSurfaceHostRpcTests
+  .DesignDeleteElements_OnABadElementId_IsRejectedWithoutPartiallyApplying` covers it; a
+  `DesignRename_OnABadElementId_IsRejected` bad-id test was also added, since `rename` had no
+  rejection coverage at all until now (it does not have the batch/partial-application risk, since
+  it only ever touches one element).
+  A narrower, unfixed variant remains: if `DesignItem.Remove()` itself throws partway through a
+  multi-item batch (not the bad-id case above, which is now fully guarded), items removed before
+  the throw are not rolled back. Fixing that would need a transactional wrapper
+  (`ChangeGroup`/`OpenGroup`); left as known, scoped follow-up rather than blocking this fix.
+- **`design/add-element` — the one DDP mutation this backend had zero implementation for
+  (`WpfSurfaceHostClient.AddElementAsync` threw `NotSupportedException`) — is now implemented,
+  passing on the first real run.** Built from the two **public** primitives the real engine's own
+  internal helper (`CreateComponentTool.AddItemsWithCustomSize`, `AddIn/Src`) uses under the hood:
+  `CreateComponentTool.CreateItem(DesignContext, Type)` creates the `DesignItem`, then
+  `PlacementOperation.TryStartInsertNewComponents(parent, items, positions, PlacementType.AddItem)`
+  attaches and commits it. The `AddIn`'s own wrapper is `internal` (no `InternalsVisibleTo` reaches
+  this child) and additionally hardcodes position to `(0,0)`, so calling the two primitives
+  directly — rather than trying to expose the wrapper — was both the only option and a strictly
+  better one (real position control for free). Type resolution goes through the document's own
+  `XamlDesignContext.ParserSettings.TypeFinder.GetType(xmlNamespace, typeName)`, the same
+  `TypeFinder` Phase 0/the `SurfaceTypeFinder` slice already wire up — so project-defined and
+  referenced-library controls can be added through this RPC too, with no extra work.
+  `IDesignHostClient.AddElementAsync`'s signature carries no width/height (`DesignerToolboxItemInfo`
+  has no size field either, matching WinForms/WinUI's own convention), so a fixed default size is
+  used, the same shape SetBounds already resizes after the fact if a caller wants something else.
+  `design/set-event` remains deliberately unimplemented — it needs a child→host callback direction
+  that doesn't exist yet (Phase 5 work per this technote's own notes), not a gap to fill
+  opportunistically alongside add-element.
+- Final validation: `dotnet test src/AddIns/DisplayBindings/WpfDesign/WpfDesign.SurfaceHost.Tests
+  --filter-query "/*/*/WpfSurfaceHostRpcTests/*"` → `total: 18, failed: 0, succeeded: 18` (the 9
+  Phase 0 scenarios plus project-assembly, referenced-assembly, crash/restart, stale-version
+  rejection, App.xaml resources, the two delete/rename rejection-path tests, and the two new
+  add-element tests), against real spawned children.
+- Explicitly not attempted this slice: `ProjectDesignManifest` (still using the flat snapshot
+  fields), wiring `WpfViewContent.cs` to actually use this child, removing the AddIn's process-wide
+  `AssemblyResolve` handler (only matters once real cutover happens), and crash/restart/safe-mode
+  UI. All remain open Phase 1 work.
+
+##### ProGPU headless render integration — attempted and reverted (2026-08-17)
+
+Before any real cutover of `WpfViewContent.cs`, the biggest known prerequisite gap was Phase 0's
+finding that `RenderTargetBitmap.Render()` never works headlessly on macOS/LibreWPF at all. A real,
+hands-on attempt was made to close it using `System.Windows.Media.ProGPU.ProGpuWpfCompositionTarget`
+— a genuinely public, ordinary managed API (`LibreWPF.ProGPU` NuGet package, no reflection needed,
+confirmed against LibreWPF's own passing test, `~/wpf-tools/librewpf/src/ProGPU.Wpf.Tests/
+ProGpuWpfDrawingFrameTests.cs`, not assumed). The integration **compiled and ran without crashing,
+but the rendered output never reflected the actual WPF content, and this was not fixed** — recorded
+here as a real, reproducible finding so the next attempt doesn't start from zero:
+
+- `ProGpuWpfCompositionTarget.CreateHeadless()`, `ReplayVisualSubtree(element, width, height)`,
+  `Render(...)`, and `GpuTexture.ReadPixels()` all ran successfully with no exceptions.
+- `ReplayVisualSubtree`'s own returned `WpfVisualReplayResult` proved it genuinely walked the real
+  WPF visual tree: `VisualCount=6, ContentCount=4, ChildEdgeCount=5, UnsupportedContentCount=0` for
+  the `Grid`+`TextBlock`(white background)+`Button` fixture — not a no-op.
+  `renderTarget.SceneChangeVersion`/`FlatDrawingChangeVersion` both incremented, and
+  `RootVisual.Size`/`SceneRootVisual.Size`/`RetainedWpfVisualRoot.Size` all correctly reported
+  `<400, 300>` matching the document.
+- Despite that, `GpuTexture.ReadPixels()` never showed the actual composited content: sampling a
+  pixel known to be inside the white-background `TextBlock` returned a dark, non-white color
+  `(31, 20, 20, 255)` uniformly across almost the entire buffer (only the single bottom-right corner
+  pixel differed, to `(154, 154, 154, 255)` — likely an unrelated readback/alignment artifact, not
+  real content).
+- **The decisive evidence this is a backend/environment limitation, not a usage mistake**: the
+  exact same byte-for-byte pixel output (including that same anomalous corner pixel) was produced
+  across three structurally different render code paths tried in sequence — the flat
+  `ReplayVisualSubtree` vs. the retained `ReplayVisualSubtreeRetained` (which uses the different
+  `ProGpuRetainedCompositionCommandSink` internally), and the auto-resolving 3-argument `Render`
+  overload vs. the fully-explicit 6-argument one that bypasses `ResolveLogicalRenderDimension`
+  entirely. Three genuinely different code paths producing identical output down to the same odd
+  corner pixel is inconsistent with a parameter or overload mistake on the caller's side; it points
+  at the GPU/WebGPU backend itself silently not executing the composited render on this machine.
+- Per this round's own plan ("if the render call itself fails for a real, reproducible reason, stop
+  and report exactly what broke ... rather than forcing a workaround"), the integration was fully
+  reverted rather than left half-working or shipped with a misleadingly-passing soft-guarded test —
+  the repo is back to Phase 0's `RenderTargetBitmap`/`DllNotFoundException` fallback and the
+  fully-verified 18/18 state.
+- Follow-up direction for whoever picks this up next, narrowed further by reading the actual
+  compositor source (`~/wpf-tools/progpu/src/ProGPU.Scene/Compositor.cs`) after this round's
+  revert: **the "mystery" uniform pixel `(31, 20, 20, 255)`/`RGBA (20, 20, 31, 255)` is not
+  garbage or a readback artifact — it is exactly `Compositor.ClearColor`'s default value,
+  `new Vector4(0.08f, 0.08f, 0.12f, 1.0f)` (`0.08×255≈20, 0.12×255≈31`), confirmed by direct
+  byte-for-byte match.** This means the render pass reliably executes its clear step and nothing
+  else — the composited WPF content is never drawn, not merely misplaced or wrongly colored. Ruled
+  out by reading `ProGPU.Scene/Visual.cs` directly (not assumed): `Visual.Invalidate()` correctly
+  propagates dirty state up the parent chain (so `RootVisual.Invalidate()` does reach
+  `SceneRootVisual`, consistent with the observed `SceneChangeVersion` increments),
+  `IsVisible`/`Opacity` default to `true`/`1.0f`, and `ContainerVisual.AddChild` invalidates
+  correctly — none of the "obvious" scene-graph wiring mistakes explain it. The remaining
+  candidates are lower in the stack than public API misuse: whether `Compositor.RenderScene`'s
+  internal frame/command-submission lifecycle actually requires happening while a
+  `Viewport3DTextureCache` frame is still open (`ReplayVisualSubtreeCore` opens and closes that
+  scope internally, before this code ever calls `Render()` — a lifecycle mismatch between the two
+  calls that this round's callers, all coming from the convenience `ReplayVisualSubtree`/
+  `ReplayVisualSubtreeRetained` overloads, do not control), or a genuine backend/driver limitation
+  specific to headless GPU init on this machine. This needs either interactive debugging (stepping
+  through `RenderSceneCore`/`Compositor.RenderScene` with a real debugger, not further static
+  reading or public-API permutations) or direct input from whoever maintains the LibreWPF/ProGPU
+  side.
+- **App.xaml / app-level resource loading now works in the child, and getting there produced
+  several findings worth keeping.** `ParseAppResources` follows the live in-process designer's
+  proven approach (`WpfViewContent.LoadInternal`'s `EnableAppXamlParsing` block): pull the
+  `<Application.Resources>` property element out of the `AppXaml`-kind snapshot file, copy the root
+  element's `xmlns` declarations onto its children (the inner XML is reparsed standalone and would
+  otherwise lose them), and parse through a `XamlDesignContext` — *not* a runtime `XamlReader` —
+  taking `RootItem.Component` as the dictionary.
+  - **Where the dictionary is merged matters.** Merging into `Application.Current.Resources` does
+    **not** work here (verified by a real run: the probe stayed unstyled). The live designer merges
+    into `DesignPanel.Resources`, i.e. the design surface's *visual ancestor*; this headless child
+    has no `DesignPanel`, and the document's own root element is the top of the tree, so the
+    dictionary is merged into that root's `Resources` — after parse, before layout, since that is
+    when implicit styles are applied.
+  - **Two adaptation bugs, both silent.** (1) `<Application.Resources>` is a single XML name
+    *containing a dot* — the dot is not a namespace separator, so its `LocalName` is the whole
+    `"Application.Resources"` string. Matching `LocalName == "Resources"` never matches and the
+    dictionary is skipped with no error (the live designer matched the full `Name`; "improving" it
+    to `LocalName` broke it). (2) `<Application.Resources>` may list entries directly rather than
+    wrapping them in an explicit `<ResourceDictionary>`, in which case the inner XML parses into
+    that single object (a bare `System.Windows.Style`) instead of a dictionary — so the children get
+    wrapped in a synthesized `<ResourceDictionary>` unless they already are one.
+  - **The verification had to be chosen carefully to avoid a false positive.** `Accepted == true`
+    proves nothing: `XamlDesignContext`'s DOM tolerates an unresolved `StaticResourceExtension`
+    without rejecting the document (confirmed by disabling the merge — still accepted). Reading the
+    value back is also ambiguous: WpfDesigner represents a markup-extension value as a design-time
+    wrapper (`XamlObject.cs`'s `StaticResourceWrapper : MarkupExtensionWrapper`) rather than eagerly
+    resolving it, so `DesignItemProperty.ValueOnInstance` returns `null` even for a resource that
+    *did* resolve. The decisive probe is an **implicit `Style`** (`TargetType`, no `x:Key`) that sets
+    `Width`: layout actually consumes it, so the `Width` already reported in the element tree is
+    real evidence — 250 with the merge, 400 (stretched to the parent `Grid`) without it, both
+    observed. `WpfSurfaceHostRpcTests.AppXamlResources_AreMergedAndAffectTheDocumentLayout` asserts
+    exactly that.
+  - Still deliberately narrow: no `StartupUri`, no code-behind, no merged-dictionary URI resolution
+    or theme dictionaries, and explicit-key `StaticResource` lookups (which resolve during parse
+    rather than at layout) are not separately verified.
 
 #### Phase 2 — document authority
 

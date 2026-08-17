@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
+using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.LanguageServices;
 using LeXtudio.DevFlow.Agent.Core;
 using Microsoft.Maui.DevFlow.Agent.Core;
@@ -40,11 +41,18 @@ namespace ICSharpCode.XamlBinding
 			foreach (var node in nodes)
 				CollectNames(node, names);
 
+			// The Outline pad itself: whether the shared DocumentOutlineControl is mounted for
+			// the active view and actually visible (auto-opened on editor attach).
+			var host = viewContent?.GetService(typeof(IOutlineContentHost)) as IOutlineContentHost;
+			var padControl = host?.OutlineContent as ICSharpCode.SharpDevelop.Widgets.DocumentOutlineControl;
+
 			return JsonSerializer.Serialize(new {
 				active = true,
 				rootName = Path.GetFileName(editor.FileName.ToString()),
 				rootChildCount = nodes.Count,
-				outlineNames = names.ToArray()
+				outlineNames = names.ToArray(),
+				padPresent = padControl != null,
+				padVisible = padControl?.IsVisible ?? false
 			});
 		}
 

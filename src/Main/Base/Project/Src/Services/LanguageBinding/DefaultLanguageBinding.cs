@@ -67,12 +67,6 @@ namespace ICSharpCode.SharpDevelop
 			}
 		}
 		
-		public System.CodeDom.Compiler.CodeDomProvider CodeDomProvider {
-			get {
-				return this.GetService<System.CodeDom.Compiler.CodeDomProvider>();
-			}
-		}
-		
 		public virtual ICodeCompletionBinding CreateCompletionBinding(string expressionToComplete, ICodeContext context)
 		{
 			throw new NotSupportedException();

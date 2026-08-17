@@ -218,6 +218,15 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			SelectionChanged?.Invoke(this, EventArgs.Empty);
 		}
 
+		/// <summary>Selects a single component by name (no-op when unknown), keeping the rest
+		/// of the selection machinery and the <see cref="SelectionChanged"/> event in sync.
+		/// Used by the Document Outline pad.</summary>
+		public void SelectComponent(string componentName)
+		{
+			if (componentName != null && state?.Components?.Any(item => item.Name == componentName) == true)
+				SelectSingleComponent(componentName);
+		}
+
 		public void ToggleSelectedLocked()
 		{
 			var shouldLock = selectedComponentNames.Any(name => !lockedComponentNames.Contains(name));

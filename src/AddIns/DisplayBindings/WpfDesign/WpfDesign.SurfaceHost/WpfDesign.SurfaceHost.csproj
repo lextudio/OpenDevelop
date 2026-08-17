@@ -1,0 +1,45 @@
+<Project Sdk="LibreWPF.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>ICSharpCode.WpfDesign.SurfaceHost</RootNamespace>
+    <AssemblyName>WpfDesign.SurfaceHost</AssemblyName>
+    <UseWPF>true</UseWPF>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The submodule (externals/vscode-wpf/external/WpfDesigner) carries its own nested
+         global.json pinning an older LibreWPF.Sdk version than this repo's local NuGet feed
+         actually has, so a fresh <ProjectReference> build of WpfDesign(.Designer/.XamlDom).csproj
+         fails SDK resolution (only WpfDesign.AddIn.csproj's incidental reuse of already-built
+         outputs masks this). Reference the already-built assemblies directly instead - they and
+         all their transitive WPF dependencies are already present under the submodule's own
+         bin/net10.0-windows/ output folder. -->
+    <Reference Include="ICSharpCode.WpfDesign">
+      <HintPath>..\..\..\..\..\externals\vscode-wpf\external\WpfDesigner\bin\net10.0-windows\ICSharpCode.WpfDesign.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="ICSharpCode.WpfDesign.XamlDom">
+      <HintPath>..\..\..\..\..\externals\vscode-wpf\external\WpfDesigner\bin\net10.0-windows\ICSharpCode.WpfDesign.XamlDom.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="ICSharpCode.WpfDesign.Designer">
+      <HintPath>..\..\..\..\..\externals\vscode-wpf\external\WpfDesigner\bin\net10.0-windows\ICSharpCode.WpfDesign.Designer.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
+    <PackageReference Include="StreamJsonRpc" Version="2.25.29" />
+  </ItemGroup>
+
+  <!-- Copy the submodule's own transitive WPF-stack dependencies (WindowsBase, PresentationCore,
+       System.Xaml, etc. - all already resolved and sitting in its bin/ folder) alongside this
+       host's own output, so the child actually has them at runtime, not just at compile time. -->
+  <Target Name="CopyWpfDesignerRuntimeAssets" AfterTargets="Build">
+    <ItemGroup>
+      <_WpfDesignerRuntimeAsset Include="..\..\..\..\..\externals\vscode-wpf\external\WpfDesigner\bin\net10.0-windows\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_WpfDesignerRuntimeAsset)" DestinationFolder="$(OutDir)%(RecursiveDir)" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

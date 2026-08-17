@@ -385,7 +385,7 @@ namespace ICSharpCode.WinUIXamlDesigner
 				this.setAttribute = setAttribute;
 			}
 
-			public override string DisplayName => "⚡ " + attributeName.LocalName;
+			public override string DisplayName => attributeName.LocalName;
 			public override Type ComponentType => typeof(WinUIXamlElementPropertyAdapter);
 			public override Type EventType => typeof(EventHandler);
 			public override bool IsMulticast => true;

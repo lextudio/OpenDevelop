@@ -91,8 +91,11 @@
     <ProjectReference Include="..\..\..\..\Libraries\AvalonEdit\ICSharpCode.AvalonEdit\ICSharpCode.AvalonEdit.csproj" Private="False" />
     <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="False" />
     <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="False" />
-    <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" Private="False" />
-    <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Presentation\Designer.Presentation.csproj" Private="False" />
+    <!-- Designer.Remote / Designer.Presentation are not part of the app bin (SharpDevelop.csproj
+         does not reference them), so they must be copied next to this addin like the WinUI addin's
+         deployment does. -->
+    <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
+    <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Presentation\Designer.Presentation.csproj" />
     <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" Private="False" />
     <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.WinForms\ICSharpCode.Core.WinForms.csproj" Private="False" />
     <ProjectReference Include="..\..\..\..\Main\ICSharpCode.SharpDevelop.Widgets\Project\ICSharpCode.SharpDevelop.Widgets.csproj" Private="False" />
@@ -101,6 +104,7 @@
          WpfDesign.AddIn.csproj for the ProjectReference variant used when wpf-labs is checked out
          locally; that relative path doesn't hold from this AddIn's location, so use the package
          directly here instead. -->
+    <ProjectReference Include="..\..\..\..\..\externals\wpftoolkit\ExtendedWPFToolkitSolution\Src\Xceed.Wpf.Toolkit\Xceed.Wpf.Toolkit.csproj" Private="false" />
     <PackageReference Include="LeXtudio.DevFlow.Agent.Core" Version="0.2.2" Condition="'$(Configuration)' == 'Debug'" />
     <ProjectReference Include="..\Remote\FormsDesigner.Remote.csproj" />
     <ProjectReference Include="..\Host\FormsDesigner.Host.csproj" ReferenceOutputAssembly="false" />

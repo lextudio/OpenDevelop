@@ -9,8 +9,10 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Xml.Linq;
 using ICSharpCode.SharpDevelop;
+using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.WinForms;
+using ICSharpCode.SharpDevelop.Widgets;
 using ICSharpCode.SharpDevelop.LanguageServices.Xaml;
 using ICSharpCode.SharpDevelop.Workbench;
 
@@ -32,7 +34,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		Background = System.Windows.Media.Brushes.Transparent, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
 		MaxHeight = 200
 	};
-	readonly TreeView outline = new();
+	readonly DocumentOutlineControl outline = new();
 	readonly PropertyContainer propertyContainer = new();
 	readonly WinUIXamlDocumentEditor editor = new();
 	string documentError;
@@ -70,6 +72,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		status.Text = previewHost.StatusText;
 		outline.SelectedItemChanged += OnOutlineSelectionChanged;
 		outline.AllowDrop = true;
+		outline.ContextMenuFactory = node => BuildOutlineContextMenu(node.Name);
 		outline.PreviewMouseLeftButtonDown += OnOutlineMouseDown;
 		outline.PreviewMouseMove += OnOutlineMouseMove;
 		outline.DragOver += OnOutlineDragOver;
@@ -1128,16 +1131,23 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 
 	void OnOutlineSelectionChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
 	{
-		if ((e.NewValue as TreeViewItem)?.Tag is not XElement element) {
+		var node = (e.NewValue as TreeViewItem)?.Tag as DesignerElementNode;
+		if (node == null || string.IsNullOrEmpty(node.Name)) {
 			propertyContainer.SelectedObject = null;
 			SelectedElementName = null;
 			previewHost.ClearSelection();
 			return;
 		}
-		SelectedElementName = (string)element.Attribute(WinUIXamlDocumentEditor.NameDirective);
+		var element = editor.FindElement(node.Name);
+		if (element == null) {
+			propertyContainer.SelectedObject = null;
+			SelectedElementName = null;
+			previewHost.ClearSelection();
+			return;
+		}
+		SelectedElementName = node.Name;
 		propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor);
-		if (SelectedElementName != null)
-			previewHost.ShowSelection(SelectedElementName);
+		previewHost.ShowSelection(SelectedElementName);
 	}
 
 	protected override void LoadInternal(OpenedFile file, Stream stream)
@@ -1150,7 +1160,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		// Called again whenever this secondary view is re-activated after the Source view changed
 		// the file, which is what keeps the design surface in sync with hand edits.
 		if (!editor.Reset(text, out documentError)) {
-			outline.ItemsSource = null;
+			outline.SetRoot(null);
 			previewHost.LoadXaml(text);
 			status.Text = $"{previewHost.StatusText} Document model error: {documentError}";
 			return;
@@ -1187,45 +1197,39 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 
 	#region Outline
 
+	/// <summary>
+	/// Rebuilds the Document Outline from the runtime's element tree when available, falling
+	/// back to the source document's element tree (the classic XAML outline, available even
+	/// before/without the child runtime). Both are projected onto the protocol's
+	/// <see cref="DesignerElementNode"/> model consumed by <see cref="DocumentOutlineControl"/>.
+	/// </summary>
 	void RebuildOutline()
 	{
-		outline.ItemsSource = editor.Document?.Root == null
-			? null
-			: new[] { CreateOutline(editor.Document.Root) };
+		var sourceRoot = editor.Document?.Root;
+		outline.SetRoot(previewHost.ElementTree ?? (sourceRoot == null ? null : XmlOutlineNode(sourceRoot)));
+	}
+
+	/// <summary>Projects a source XAML element onto the protocol outline node model. The id is
+	/// the element's x:Name (the selection contract with the surface); unnamed elements are
+	/// not individually selectable, matching the runtime's name-based picking.</summary>
+	static DesignerElementNode XmlOutlineNode(XElement element)
+	{
+		var name = (string)element.Attribute(WinUIXamlDocumentEditor.NameDirective);
+		return new DesignerElementNode {
+			Id = name ?? "",
+			Name = name,
+			Type = element.Name.LocalName,
+			IsDesignable = true,
+			Children = element.Elements().Select(XmlOutlineNode).ToList()
+		};
 	}
 
 	void SelectOutlineNode(string name)
 	{
-		if (outline.Items.Count == 0)
-			return;
-		var match = EnumerateOutline((TreeViewItem)outline.Items[0])
-			.FirstOrDefault(item => item.Tag is XElement element
-				&& string.Equals((string)element.Attribute(WinUIXamlDocumentEditor.NameDirective), name, StringComparison.Ordinal));
-		if (match != null)
-			match.IsSelected = true;
+		outline.SelectNodeById(name);
 	}
 
-	static IEnumerable<TreeViewItem> EnumerateOutline(TreeViewItem item)
-	{
-		yield return item;
-		foreach (var child in item.Items.OfType<TreeViewItem>())
-			foreach (var descendant in EnumerateOutline(child))
-				yield return descendant;
-	}
-
-	TreeViewItem CreateOutline(XElement element)
-	{
-		var name = (string)element.Attribute(WinUIXamlDocumentEditor.NameDirective);
-		var item = new TreeViewItem {
-			Header = name == null ? element.Name.LocalName : element.Name.LocalName + " (" + name + ")",
-			Tag = element,
-			IsExpanded = true
-		};
-		item.ContextMenu = BuildOutlineContextMenu(name);
-		foreach (var child in element.Elements())
-			item.Items.Add(CreateOutline(child));
-		return item;
-	}
+	#region Outline context menu
 
 	ContextMenu BuildOutlineContextMenu(string name)
 	{
@@ -1248,6 +1252,8 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		return menu;
 	}
 
+	#endregion
+
 	#region Outline drag-reorder
 
 	TreeViewItem outlineDragItem;
@@ -1269,10 +1275,12 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		{
 			return;
 		}
-		if (outlineDragItem.Tag is not XElement dragged)
+		if (outlineDragItem.Tag is not DesignerElementNode draggedNode || string.IsNullOrEmpty(draggedNode.Name))
 			return;
 		outlineDragItem = null;
-		DragDrop.DoDragDrop(outline, dragged, DragDropEffects.Move);
+		// Drag the source element (the outline's protocol node maps back to it by x:Name).
+		if (editor.FindElement(draggedNode.Name) is { } draggedElement)
+			DragDrop.DoDragDrop(outline, draggedElement, DragDropEffects.Move);
 	}
 
 	TreeViewItem GetOutlineItemAt(Point point)
@@ -1297,10 +1305,11 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		e.Handled = true;
 		if (e.Data.GetData(typeof(XElement)) is not XElement dragged)
 			return;
-		var target = GetOutlineItemAt(e.GetPosition(outline))?.Tag as XElement;
-		if (target == null)
+		var targetNode = GetOutlineItemAt(e.GetPosition(outline))?.Tag as DesignerElementNode;
+		if (targetNode == null || string.IsNullOrEmpty(targetNode.Name))
 			return;
-		MoveElementUnder(dragged, target);
+		if (editor.FindElement(targetNode.Name) is { } target)
+			MoveElementUnder(dragged, target);
 	}
 
 	/// <summary>Moves an element under another as a source edit (scriptable outline re-parent).</summary>

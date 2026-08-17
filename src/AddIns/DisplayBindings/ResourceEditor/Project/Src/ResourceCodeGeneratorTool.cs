@@ -40,6 +40,10 @@ namespace ResourceEditor
 			                             delegate {
 			                             	return GenerateCodeDom();
 			                             });*/
+			// The C#/VB language bindings no longer expose a CodeDom provider (Roslyn-only,
+			// no System.CodeDom at runtime); the strongly-typed resource builder still needs
+			// one, so fall back to the built-in C# provider.
+			System.CodeDom.Compiler.CodeDomProvider codeDomProvider = System.CodeDom.Compiler.CodeDomProvider.CreateProvider("cs");
 			string inputFilePath = item.FileName;
 			
 			// Ensure that the generated code will not conflict with an
@@ -47,11 +51,8 @@ namespace ResourceEditor
 			if (context.Project != null) {
 				ICompilation pc = SD.ParserService.GetCompilation(context.Project);
 				if (pc != null) {
-					var codeDomProvider = context.Project.LanguageBinding.CodeDomProvider;
 					string resourceName = Path.GetFileNameWithoutExtension(inputFilePath);
-					if (codeDomProvider != null) {
-						resourceName = StronglyTypedResourceBuilder.VerifyResourceName(resourceName, codeDomProvider);
-					}
+					resourceName = StronglyTypedResourceBuilder.VerifyResourceName(resourceName, codeDomProvider);
 					var existingClass = pc.FindType(new FullTypeName(context.OutputNamespace + "." + resourceName)).GetDefinition();
 					if (existingClass != null) {
 						if (!IsGeneratedResourceClass(existingClass)) {
@@ -87,7 +88,7 @@ namespace ResourceEditor
 					Path.GetFileNameWithoutExtension(inputFilePath), // baseName
 					generatedCodeNamespace, // generatedCodeNamespace
 					context.OutputNamespace, // resourcesNamespace
-					context.Project.LanguageBinding.CodeDomProvider, // codeProvider
+					codeDomProvider, // codeProvider
 					createInternalClass,             // internal class
 					out unmatchable
 				));

@@ -110,6 +110,10 @@ internal sealed class DefinitionViewViewModel : ToolPaneModel, IDisposable
 
     async void UpdateTick(ParseInformationEventArgs e)
     {
+        // The control's IsVisibleChanged (hooked in the constructor) can fire before
+        // Show() has run EnsureSubscribed(), so the timer does not exist yet.
+        if (timer == null)
+            return;
         bool isActive = ctl.IsVisible && !SD.ParserService.LoadSolutionProjectsThread.IsRunning;
         timer.IsEnabled = isActive;
         if (!isActive)

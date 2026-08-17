@@ -48,7 +48,17 @@ namespace ICSharpCode.XmlEditor
 		/// </summary>
 		public static bool IsFileNameHandled(string fileName)
 		{
-			return IsXmlFileExtension(Path.GetExtension(fileName));
+			return IsXmlFileExtension(Path.GetExtension(fileName)) && !IsDesignFile(fileName);
+		}
+
+		/// <summary>
+		/// Design documents (.xaml) get their element tree from the designer's Document Outline
+		/// pad (and the Design tab's surface), so the generic XML Tree view is redundant there.
+		/// Plain XML files (configuration, project files, ...) keep the XML Tree.
+		/// </summary>
+		static bool IsDesignFile(string fileName)
+		{
+			return String.Equals(Path.GetExtension(fileName), ".xaml", StringComparison.OrdinalIgnoreCase);
 		}
 		
 		/// <summary>

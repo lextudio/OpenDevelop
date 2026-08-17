@@ -48,10 +48,6 @@ namespace CSharpBinding
 			get { return null; }
 		}
 
-		public System.CodeDom.Compiler.CodeDomProvider CodeDomProvider {
-			get { return null; }
-		}
-
 		public ICodeCompletionBinding CreateCompletionBinding(string expressionToComplete, ICodeContext context)
 		{
 			return null;

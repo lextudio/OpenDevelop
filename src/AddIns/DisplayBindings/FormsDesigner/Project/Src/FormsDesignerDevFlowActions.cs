@@ -58,6 +58,54 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 		/// DesignerSessionState.Components), so parent-side enumeration is not needed anymore.
 		/// </summary>
 
+		[DevFlowAction("od.forms-designer.outline-status", Description = "Inspect the WinForms designer's Document Outline pad: whether the shared outline control is mounted and visible, and the element tree it currently shows")]
+		public static string GetOutlineStatus()
+		{
+			var viewContent = FindFormsDesignerViewContent();
+			if (viewContent == null)
+				return JsonSerializer.Serialize(new { present = false, visible = false });
+
+			var outline = viewContent.OutlineContent as ICSharpCode.SharpDevelop.Widgets.DocumentOutlineControl;
+			if (outline == null)
+				return JsonSerializer.Serialize(new { present = false, visible = false });
+
+			var root = outline.Items.Count > 0
+				? (outline.Items[0] as System.Windows.Controls.TreeViewItem)?.Tag as ICSharpCode.SharpDevelop.Designer.Remote.DesignerElementNode
+				: null;
+			var nodes = new System.Collections.Generic.List<object>();
+			void Collect(ICSharpCode.SharpDevelop.Designer.Remote.DesignerElementNode node)
+			{
+				nodes.Add(new { name = node.Name, type = node.Type });
+				foreach (var child in node.Children)
+					Collect(child);
+			}
+			if (root != null)
+				Collect(root);
+			return JsonSerializer.Serialize(new {
+				present = true,
+				visible = outline.IsVisible,
+				root = root == null ? null : root.Name,
+				rootType = root?.Type,
+				nodes = nodes.ToArray()
+			});
+		}
+
+		[DevFlowAction("od.forms-designer.outline-select", Description = "Select a control in the WinForms designer's Document Outline (routes through the same selection path as a surface click) and report the resulting selection")]
+		public static string OutlineSelect(string name)
+		{
+			var viewContent = FindFormsDesignerViewContent();
+			if (viewContent == null)
+				return JsonSerializer.Serialize(new { success = false, error = "no designer view" });
+			var outline = viewContent.OutlineContent as ICSharpCode.SharpDevelop.Widgets.DocumentOutlineControl;
+			if (outline == null)
+				return JsonSerializer.Serialize(new { success = false, error = "no outline control" });
+			outline.SelectNodeById(name);
+			return JsonSerializer.Serialize(new {
+				success = true,
+				selected = viewContent.RemoteDesignerSelectedComponent
+			});
+		}
+
 		[DevFlowAction("od.forms-designer.status", Description = "Inspect the active WinForms designer view: whether the out-of-process DesignSurface loaded and the set of named controls on the root component")]
 		public static string GetDesignerStatus()
 		{

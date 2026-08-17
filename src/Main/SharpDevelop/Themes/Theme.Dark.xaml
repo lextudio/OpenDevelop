@@ -13,6 +13,7 @@
     <SolidColorBrush x:Key="Border" Color="#FF3F3F46" />
     <SolidColorBrush x:Key="Foreground" Color="#FFF1F1F1" />
     <SolidColorBrush x:Key="MutedForeground" Color="#FFA0A0A0" />
+    <SolidColorBrush x:Key="SearchHighlight" Color="#FFD14F" />
     <SolidColorBrush x:Key="Selection" Color="#FF007ACC" />
     <SolidColorBrush x:Key="SelectionForeground" Color="#FFFFFFFF" />
     <SolidColorBrush x:Key="HoverBackground" Color="#FF3E3E42" />

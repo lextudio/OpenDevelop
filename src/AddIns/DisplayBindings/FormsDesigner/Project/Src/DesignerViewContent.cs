@@ -28,6 +28,7 @@ using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Widgets;
 using ICSharpCode.SharpDevelop.WinForms;
 using ICSharpCode.SharpDevelop.Workbench;
+using Xceed.Wpf.Toolkit.PropertyGrid;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.FormsDesigner.Services;
 using ICSharpCode.AvalonEdit.Document;
@@ -39,7 +40,7 @@ using ICSharpCode.FormsDesigner.OutOfProcess;
 
 namespace ICSharpCode.FormsDesigner
 {
-	public class FormsDesignerViewContent : AbstractViewContentHandlingLoadErrors, IClipboardHandler, IUndoHandler, IHasPropertyContainer, IContextHelpProvider, IToolsHost, IFileDocumentProvider
+	public class FormsDesignerViewContent : AbstractViewContentHandlingLoadErrors, IClipboardHandler, IUndoHandler, IHasPropertyContainer, IContextHelpProvider, IToolsHost, IFileDocumentProvider, IOutlineContentHost
 	{
 		// The SideBar-backed drag-from-toolbox panel (ToolboxProvider.FormsDesignerSideBar) stays
 		// unused - Services.ToolboxService (the real System.Drawing.Design.IToolboxService the
@@ -88,6 +89,9 @@ namespace ICSharpCode.FormsDesigner
 		internal bool IsRemoteDesignerLoaded => remoteClient?.IsAlive == true && remoteControl?.State?.Accepted == true;
 		internal int RemoteDesignerProcessId => remoteClient?.ProcessId ?? 0;
 		internal DesignerSessionState RemoteDesignerState => remoteControl?.State;
+
+		/// <summary>The currently selected component name on the remote design surface.</summary>
+		internal string RemoteDesignerSelectedComponent => remoteControl?.SelectedComponentName ?? "";
 
 		internal bool TryGetRemoteComponentScreenBounds(string componentName, out System.Windows.Rect bounds)
 		{
@@ -238,6 +242,7 @@ namespace ICSharpCode.FormsDesigner
 			if (!state.Accepted)
 				throw new FormsDesignerLoadException(state.Error);
 			remoteControl.Show(state);
+			UpdateOutline(state);
 			SynchronizeRemoteEdits();
 			MakeDirty();
 		}
@@ -259,6 +264,7 @@ namespace ICSharpCode.FormsDesigner
 			var state = remoteClient.UpdateAsync(snapshot, System.Threading.CancellationToken.None).GetAwaiter().GetResult();
 			if (!state.Accepted) throw new FormsDesignerLoadException(state.Error);
 			remoteControl.Show(state);
+			UpdateOutline(state);
 			MakeDirty();
 		}
 		
@@ -501,9 +507,79 @@ namespace ICSharpCode.FormsDesigner
 			remoteControl.DefaultEventRequested += RemoteDefaultEventRequested;
 			remoteControl.SelectionChanged += RemoteSelectionChanged;
 			remoteControl.RestartRequested += RemoteRestartRequested;
+			outline.SelectionCommitted += OnOutlineSelectionCommitted;
 			remoteControl.Show(state);
+			UpdateOutline(state);
+			ActivateOutlinePadOnce();
 			base.UserContent = remoteControl;
 			hasUnmergedChanges = false;
+		}
+
+		bool outlinePadActivated;
+
+		/// <summary>
+		/// Shows the Document Outline pad the first time a form is designed, so the control
+		/// tree is visible without the user having to open the pad manually.
+		/// </summary>
+		void ActivateOutlinePadOnce()
+		{
+			if (outlinePadActivated)
+				return;
+			outlinePadActivated = true;
+			try {
+				SD.Workbench.GetPad("ICSharpCode.SharpDevelop.Gui.OutlinePad")?.BringPadToFront();
+			} catch (Exception ex) {
+				LoggingService.Debug("Forms designer: could not activate the Outline pad: " + ex.Message);
+			}
+		}
+
+		readonly DocumentOutlineControl outline = new DocumentOutlineControl();
+
+		public object OutlineContent {
+			get { return outline; }
+		}
+
+		void OnOutlineSelectionCommitted(object sender, EventArgs e)
+		{
+			// Outline -> design surface: the surface owns selection; route the pick through the
+			// same single-selection path as a surface click.
+			if (outline.SelectedNode is { } node && remoteControl != null)
+				remoteControl.SelectComponent(node.Id);
+		}
+
+		/// <summary>Rebuilds the Document Outline from the protocol's element tree. Falls back
+		/// to building the tree from the flat component list when the child did not report one
+		/// (older host binaries).</summary>
+		void UpdateOutline(DesignerSessionState state)
+		{
+			outline.SetRoot(state.Tree ?? BuildOutlineTree(state.Components));
+		}
+
+		static DesignerElementNode BuildOutlineTree(List<DesignerComponentInfo> components)
+		{
+			var byName = components.ToDictionary(item => item.Name, StringComparer.Ordinal);
+			var root = components.FirstOrDefault(item => String.IsNullOrEmpty(item.Parent));
+			if (root == null)
+				return null;
+			return BuildOutlineNode(root, byName);
+		}
+
+		static DesignerElementNode BuildOutlineNode(DesignerComponentInfo component, Dictionary<string, DesignerComponentInfo> byName)
+		{
+			return new DesignerElementNode {
+				Id = component.Name,
+				Name = component.Name,
+				Type = component.Type,
+				X = component.X,
+				Y = component.Y,
+				Width = component.Width,
+				Height = component.Height,
+				IsDesignable = true,
+				Children = byName.Values
+					.Where(item => item.Parent == component.Name)
+					.Select(item => BuildOutlineNode(item, byName))
+					.ToList()
+			};
 		}
 
 		DesignerDocumentSnapshot CreateRemoteSnapshot(long version)
@@ -513,7 +589,7 @@ namespace ICSharpCode.FormsDesigner
 				Version = version,
 				ProjectFileName = project?.FileName.ToString() ?? "",
 				TargetFramework = (project as MSBuildBasedProject)?.GetEvaluatedProperty("TargetFramework") ?? "",
-				ProjectAssemblyPath = project?.OutputAssemblyFullPath.ToString() ?? "",
+				ProjectAssemblyPath = GetManagedAssemblyPath(project),
 				PrimaryFileName = PrimaryFileName,
 				DesignerFileName = DesignerCodeFile?.FileName.ToString() ?? "",
 				Language = PrimaryFileName.ToString().EndsWith(".vb", StringComparison.OrdinalIgnoreCase) ? "VisualBasic" : "CSharp"
@@ -536,6 +612,18 @@ namespace ICSharpCode.FormsDesigner
 				}
 			}
 			return snapshot;
+		}
+
+		/// <summary>OutputAssemblyFullPath can point at the apphost (an extensionless executable
+		/// on Unix, or a ".exe" native shim on Windows) instead of the managed assembly; the
+		/// out-of-process host needs the managed ".dll", so prefer the sibling when it exists.</summary>
+		static string GetManagedAssemblyPath(IProject project)
+		{
+			var path = project?.OutputAssemblyFullPath.ToString() ?? "";
+			if (String.IsNullOrEmpty(path) || path.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+				return path;
+			var dll = System.IO.Path.ChangeExtension(path, ".dll");
+			return System.IO.File.Exists(dll) ? dll : path;
 		}
 
 		void UnloadRemoteDesigner()
@@ -645,6 +733,9 @@ namespace ICSharpCode.FormsDesigner
 				return;
 			}
 			propertyContainer.SelectedObject = new RemoteComponentPropertyProxy(this, component);
+			// Design surface -> Document Outline: mirror the selection without re-triggering
+			// the outline->surface path (same element, no-op anyway).
+			outline.SelectNodeById(component.Name, raiseEvent: false);
 			System.Windows.Input.CommandManager.InvalidateRequerySuggested();
 		}
 
@@ -751,7 +842,7 @@ namespace ICSharpCode.FormsDesigner
 			}
 		}
 
-		sealed class RemoteComponentPropertyProxy : ICustomTypeDescriptor
+		sealed class RemoteComponentPropertyProxy : ICustomTypeDescriptor, IPropertyGridEventSource
 		{
 			readonly FormsDesignerViewContent owner;
 			string name;
@@ -817,11 +908,24 @@ namespace ICSharpCode.FormsDesigner
 			EventDescriptor ICustomTypeDescriptor.GetDefaultEvent() => null;
 			PropertyDescriptor ICustomTypeDescriptor.GetDefaultProperty() => null;
 			object ICustomTypeDescriptor.GetEditor(Type editorBaseType) => null;
-			EventDescriptorCollection ICustomTypeDescriptor.GetEvents() => EventDescriptorCollection.Empty;
-			EventDescriptorCollection ICustomTypeDescriptor.GetEvents(Attribute[] attributes) => EventDescriptorCollection.Empty;
+			EventDescriptorCollection ICustomTypeDescriptor.GetEvents() => GetRemoteEventDescriptors();
+			EventDescriptorCollection ICustomTypeDescriptor.GetEvents(Attribute[] attributes) => GetRemoteEventDescriptors();
 			PropertyDescriptorCollection ICustomTypeDescriptor.GetProperties() => GetRemotePropertyDescriptors();
 			PropertyDescriptorCollection ICustomTypeDescriptor.GetProperties(Attribute[] attributes) => GetRemotePropertyDescriptors();
 			object ICustomTypeDescriptor.GetPropertyOwner(PropertyDescriptor pd) => this;
+
+			// IPropertyGridEventSource: handler names live in the out-of-process host, so the
+			// Events view reads and writes them through the designer RPC instead of in-memory.
+			string IPropertyGridEventSource.GetEventHandler(string eventName)
+				=> remoteEvents.FirstOrDefault(item => item.Name == eventName)?.Handler ?? "";
+
+			void IPropertyGridEventSource.SetEventHandler(string eventName, string handlerName)
+			{
+				var remoteEvent = remoteEvents.FirstOrDefault(item => item.Name == eventName);
+				if (remoteEvent == null) return;
+				owner.SetRemoteEvent(name, remoteEvent.Name, handlerName ?? "");
+				remoteEvent.Handler = handlerName ?? "";
+			}
 
 			PropertyDescriptorCollection GetRemotePropertyDescriptors()
 			{
@@ -829,42 +933,55 @@ namespace ICSharpCode.FormsDesigner
 				var fixedNames = new HashSet<string>(descriptors.Select(item => item.Name), StringComparer.Ordinal);
 				foreach (var property in remoteProperties.Where(item => !fixedNames.Contains(item.Name)))
 					descriptors.Add(new RemotePropertyDescriptor(owner, name, property));
-				foreach (var remoteEvent in remoteEvents)
-					descriptors.Add(new RemoteEventPropertyDescriptor(owner, name, remoteEvent));
 				return new PropertyDescriptorCollection(descriptors.ToArray(), true);
+			}
+
+			// The WinForms events live in the dedicated Events view (TypeDescriptor.GetEvents),
+			// not in the property list - unlike the legacy in-process adapter, which used to
+			// surface them as an "Events" property category.
+			EventDescriptorCollection GetRemoteEventDescriptors()
+			{
+				var descriptors = new EventDescriptor[remoteEvents.Count];
+				for (var i = 0; i < remoteEvents.Count; i++)
+					descriptors[i] = new RemoteEventDescriptor(owner, name, remoteEvents[i]);
+				return new EventDescriptorCollection(descriptors, true);
 			}
 		}
 
-		sealed class RemoteEventPropertyDescriptor : PropertyDescriptor
+		sealed class RemoteEventDescriptor : EventDescriptor, IPropertyGridEventTypeName
 		{
 			readonly FormsDesignerViewContent owner;
 			readonly string componentName;
 			readonly DesignerEventInfo remoteEvent;
 
-			public RemoteEventPropertyDescriptor(FormsDesignerViewContent owner, string componentName, DesignerEventInfo remoteEvent)
-				: base("Event_" + remoteEvent.Name, new Attribute[] { new CategoryAttribute("Events") })
+			public RemoteEventDescriptor(FormsDesignerViewContent owner, string componentName, DesignerEventInfo remoteEvent)
+				: base(remoteEvent.Name, new Attribute[] { new CategoryAttribute(String.IsNullOrEmpty(remoteEvent.Category) ? "Events" : remoteEvent.Category) })
 			{
 				this.owner = owner;
 				this.componentName = componentName;
 				this.remoteEvent = remoteEvent;
 			}
 
-			public override string DisplayName => "⚡ " + remoteEvent.Name;
+			public override string DisplayName => remoteEvent.Name;
 			public override string Description => remoteEvent.HandlerTypeName;
 			public override Type ComponentType => typeof(RemoteComponentPropertyProxy);
-			public override Type PropertyType => typeof(string);
-			public override bool IsReadOnly => false;
-			public override bool CanResetValue(object component) => !String.IsNullOrEmpty(remoteEvent.Handler);
-			public override object GetValue(object component) => remoteEvent.Handler ?? "";
-			public override void ResetValue(object component) => SetValue(component, "");
-			public override void SetValue(object component, object value)
+			public override Type EventType => typeof(EventHandler);
+			public override bool IsMulticast => true;
+
+			/// <summary>The delegate type reported by the out-of-process host for this event.</summary>
+			public string HandlerTypeName => String.IsNullOrEmpty(remoteEvent.HandlerTypeName) ? "EventHandler" : remoteEvent.HandlerTypeName;
+
+			public override void AddEventHandler(object component, Delegate handler)
+				=> SetHandlerName(handler?.Method.Name ?? "");
+
+			public override void RemoveEventHandler(object component, Delegate handler)
+				=> SetHandlerName("");
+
+			void SetHandlerName(string handlerName)
 			{
-				var handler = Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? "";
-				owner.SetRemoteEvent(componentName, remoteEvent.Name, handler);
-				remoteEvent.Handler = handler;
-				OnValueChanged(component, EventArgs.Empty);
+				owner.SetRemoteEvent(componentName, remoteEvent.Name, handlerName);
+				remoteEvent.Handler = handlerName;
 			}
-			public override bool ShouldSerializeValue(object component) => !String.IsNullOrEmpty(remoteEvent.Handler);
 		}
 
 		sealed class RemotePropertyDescriptor : PropertyDescriptor

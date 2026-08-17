@@ -301,6 +301,16 @@ InputEvent {
   child runs under the project deps). The host never inspects project assemblies.
 - A toolbox drop is `design/add-element { ParentId, ToolboxItem, X, Y, BaseVersion }`; the
   child materializes and returns the new `SessionState`.
+- **Document Outline**: the shared `DocumentOutlineControl` (`ICSharpCode.SharpDevelop.Widgets`)
+  shows the design document's element tree from `DesignerSessionState.Tree`
+  (`DesignerElementNode`, name + gray type, per-node context menu via `ContextMenuFactory`).
+  Selection is bidirectional but single-authority: picking a node routes into the surface's
+  normal selection path (one selection concept), and surface/Properties selection mirrors back
+  into the control. WinForms feeds it the child-built tree (the `Tree` field added to
+  `DesignerSessionState`); WinUI feeds it the runtime's element tree with the source XML tree
+  as fallback; WPF keeps its in-process outline until it moves out of process. The legacy
+  generic "XML Tree" secondary view no longer attaches to `.xaml` files (their tree comes from
+  the designer), but stays for plain XML files.
 - **Outline**: the element tree is the outline model; the same tree backs the Outline pad.
   Reparent/delete/rename go through `design/command` or the dedicated methods, all versioned.
 - **Diagnostics**: `Diagnostic { Severity, Message, Line, Column }` accompany every
@@ -342,57 +352,31 @@ Disabled`.
 
 ## The host-side adapter seam
 
-OpenDevelop-side code depends only on:
+OpenDevelop-side code depends only on `IDesignHostClient`
+(`src/Main/Designer/Designer.Remote/IDesignHostClient.cs`) — that file is the single source of
+truth for this contract; do not duplicate its method list here, since a second copy only goes
+stale (as the pre-2026-08-16 version of this section did). In summary, as of 2026-08-16:
 
-```text
-IDesignHostClient {
-  Task<HostHandshake> InitializeAsync(token, version, ct)
-  Task<SessionState> OpenAsync(snapshot, ct)
-  Task<SessionState> UpdateAsync(snapshot, ct)
-  Task<DesignerEditSet> FlushAsync(baseVersion, ct)
-  Task CloseAsync(ct)
-  Task<SessionState> SetPropertyAsync(id, property, value, baseVersion, ct)
-  Task<SessionState> ResetPropertyAsync(id, property, baseVersion, ct)
-  Task<SessionState> SetEventAsync(id, evt, handler, baseVersion, ct)
-  Task<HitTestResult> HitTestAsync(x, y, ct)
-  Task<SessionState> AddElementAsync(parentId, item, x, y, baseVersion, ct)
-  Task<SessionState> SetBoundsAsync(id, x, y, w, h, baseVersion, ct)
-  Task<SessionState> DeleteElementsAsync(ids, baseVersion, ct)
-  Task<SessionState> ApplyLayoutAsync(commandId, ids, baseVersion, ct)
-  Task<SessionState> RenameAsync(id, newName, baseVersion, ct)
-  Task<SessionState> SetThemeAsync(theme, ct)
-  Task<RenderFrame> RenderAsync(width, height, dpi, ct)
-  Task<string> ExportPngAsync(path, ct)
-  Task<AppResourcesResult> SetAppResourcesAsync(xaml, ct)
-  Task PingAsync(ct)
-  Task ShutdownAsync()
-  event EventHandler HostExited
-  string ChildLog { get; }
-}
-```
-
-**As shipped (2026-08-16)** the seam is implemented in
-`src/Main/Designer/Designer.Remote/IDesignHostClient.cs`, with these deliberate differences from
-the sketch above:
-
-- **Split into a core interface plus optional capability interfaces.** Only what every backend
-  must speak stays on `IDesignHostClient`. `ResetPropertyAsync`, `ApplyLayoutAsync`/`SetZOrderAsync`
-  and default-event activation moved to `IDesignHostPropertyReset` / `IDesignHostLayout` /
-  `IDesignHostDefaultEvent` (WinForms implements these; a markup runtime has no defaults model or
-  absolute-position layout commands to back them). `SetThemeAsync`, `ExportPngAsync` and
-  `SetAppResourcesAsync` moved to `IDesignHostTheme` / `IDesignHostExport` /
-  `IDesignHostAppResources` (WinUI/Uno implements these). The host feature-detects and disables
-  the matching UI, which is what DDP's "unsupported command" rule asks for.
-- **`baseVersion` leads rather than trails** every mutation's parameter list, so the envelope
-  reads consistently across methods.
-- **`AddElementAsync` also takes `proposedName`** — a CLR-type backend must be told the new
-  component's name, whereas a markup backend derives it from the item template.
-- **`HitTestAsync` takes `baseVersion`** (the sketch omitted it), matching every other operation.
-- **No `InitializeAsync`/`CloseAsync`/`RenderAsync`.** The handshake is owned by
+- **Core interface**: lifecycle (`ProcessId`, `IsAlive`, `ChildLog`, `SessionId`, `DocumentId`,
+  `HostExited`, `PingAsync`, `ShutdownAsync`, `TerminateHost`), document
+  (`OpenAsync`/`UpdateAsync(DesignerDocumentSnapshot)`, `FlushAsync(baseVersion)`), and mutations
+  (`SetPropertyAsync`/`SetEventAsync`/`AddElementAsync`/`SetBoundsAsync`/`DeleteElementsAsync`/
+  `RenameAsync`/`HitTestAsync`, every one keyed by `baseVersion` first). Every backend must
+  implement all of it.
+- **Optional capability interfaces**, feature-detected per backend: `IDesignHostPropertyReset`,
+  `IDesignHostDefaultEvent`, `IDesignHostLayout` (WinForms implements these — a markup runtime has
+  no defaults model or absolute-position layout commands to back them); `IDesignHostTheme`,
+  `IDesignHostExport`, `IDesignHostAppResources` (WinUI/Uno implements these). The host disables
+  the matching pad UI when a backend doesn't implement one, per DDP's "unsupported command" rule.
+- **Deliberately not present**: a separate handshake/close/render verb. The handshake is owned by
   `DesignerHostProcessClient` (shared base, run during `StartAsync`); closing a document is
-  disposing the client in the one-document-per-child model in use today; and rendering is not a
-  separate verb on either backend — frames come back inside `DesignerSessionState.Render`. Should
-  multi-document-per-child or on-demand rendering land later, these are the three to add back.
+  disposing the client in the one-document-per-child model in use today; rendering is not a
+  separate call on either backend — frames come back inside `DesignerSessionState.Render`. Should
+  multi-document-per-child or on-demand rendering land later, these are the three to add.
+- **`AddElementAsync` takes both `DesignerToolboxItemInfo item` and `proposedName`** — a CLR-type
+  backend (WinForms, and eventually WPF — see wpf-designer.md) must be told the new component's
+  name via `proposedName` and reads `item.TypeName`; a markup backend (WinUI/Uno) derives the name
+  from the parsed `item.Template` and ignores `proposedName`.
 
 Each backend supplies:
 
