@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -33,6 +34,82 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 
 		public DesignSnapshot LoadDesign(string xaml, double width, double height, double dpi)
 			=> HeadlessDispatcher.DispatchAsync(() => LoadDesignAsync(new LoadDesignRequest { Xaml = xaml, Width = width, Height = height, Dpi = dpi })).GetAwaiter().GetResult();
+
+		/// <summary>Session-aware first load (session/open): stamps the returned snapshot with
+		/// the session/document ids and the initial version.</summary>
+		public DesignSnapshot OpenSession(string sessionId, string documentId, string xaml, double width, double height, double dpi)
+		{
+			this.sessionId = sessionId;
+			this.documentId = documentId;
+			var snapshot = HeadlessDispatcher.DispatchAsync(() => LoadDesignAsync(new LoadDesignRequest {
+				SessionId = sessionId, DocumentId = documentId, Version = 1, Xaml = xaml, Width = width, Height = height, Dpi = dpi
+			})).GetAwaiter().GetResult();
+			version = 1;
+			snapshot.SessionId = sessionId;
+			snapshot.DocumentId = documentId;
+			snapshot.Version = version;
+			return snapshot;
+		}
+
+		/// <summary>Session-aware subsequent full-document push (session/update): replaces
+		/// design/load for theme reloads, size-preset changes and any other full re-render.</summary>
+		public DesignSnapshot UpdateSession(string sessionId, string documentId, string xaml, double width, double height, double dpi, long requestVersion)
+		{
+			EnsureOwnSession(sessionId, documentId);
+			var snapshot = HeadlessDispatcher.DispatchAsync(() => LoadDesignAsync(new LoadDesignRequest {
+				SessionId = sessionId, DocumentId = documentId, Version = requestVersion, Xaml = xaml, Width = width, Height = height, Dpi = dpi
+			})).GetAwaiter().GetResult();
+			version = requestVersion;
+			snapshot.SessionId = sessionId;
+			snapshot.DocumentId = documentId;
+			snapshot.Version = version;
+			return snapshot;
+		}
+
+		/// <summary>Stub: this host holds no independent child-side edit buffer, so flush
+		/// reports the last-loaded XAML as the sole file - lands the wire shape now.</summary>
+		public DesignEditSet FlushSession(string sessionId, string documentId, long requestVersion)
+		{
+			EnsureOwnSession(sessionId, documentId);
+			return new DesignEditSet {
+				SessionId = sessionId,
+				DocumentId = documentId,
+				BaseVersion = requestVersion,
+				Files = new List<DesignFileSnapshot> {
+					new DesignFileSnapshot { FileName = "(document)", Text = lastXaml }
+				}
+			};
+		}
+
+		/// <summary>Applies a single property change directly to the live element and
+		/// re-renders, without re-running XamlReader.Load - the point of moving off design/load
+		/// for incremental edits.</summary>
+		public DesignSnapshot SetProperty(string sessionId, string documentId, long requestVersion, string elementName, string propertyName, string value)
+			=> HeadlessDispatcher.DispatchAsync(() => SetPropertyAsync(sessionId, documentId, requestVersion, elementName, propertyName, value)).GetAwaiter().GetResult();
+
+		/// <summary>No live code-behind instance exists in this design host, so this just
+		/// validates the element/event names and returns the snapshot unchanged - lands the
+		/// RPC contract; deeper semantics is future work.</summary>
+		public DesignSnapshot SetEvent(string sessionId, string documentId, long requestVersion, string elementName, string eventName, string handlerName)
+			=> HeadlessDispatcher.Dispatch(() => SetEventCore(sessionId, documentId, requestVersion, elementName, eventName, handlerName));
+
+		/// <summary>Parses <paramref name="itemXaml"/> and inserts it as a child of the named
+		/// parent, then re-renders without re-running the full document XamlReader.Load.</summary>
+		public DesignSnapshot AddElement(string sessionId, string documentId, long requestVersion, string parentName, string itemXaml, double x, double y)
+			=> HeadlessDispatcher.DispatchAsync(() => AddElementAsync(sessionId, documentId, requestVersion, parentName, itemXaml, x, y)).GetAwaiter().GetResult();
+
+		/// <summary>Sets an element's Width/Height directly, and its Canvas.Left/Top when its
+		/// parent is a Canvas, then re-renders.</summary>
+		public DesignSnapshot SetBounds(string sessionId, string documentId, long requestVersion, string elementName, double x, double y, double width, double height)
+			=> HeadlessDispatcher.DispatchAsync(() => SetBoundsAsync(sessionId, documentId, requestVersion, elementName, x, y, width, height)).GetAwaiter().GetResult();
+
+		/// <summary>Removes each named element from its Panel parent, then re-renders.</summary>
+		public DesignSnapshot DeleteElements(string sessionId, string documentId, long requestVersion, string[] elementNames)
+			=> HeadlessDispatcher.DispatchAsync(() => DeleteElementsAsync(sessionId, documentId, requestVersion, elementNames)).GetAwaiter().GetResult();
+
+		/// <summary>Renames the live element (FrameworkElement.Name), then re-renders.</summary>
+		public DesignSnapshot Rename(string sessionId, string documentId, long requestVersion, string elementName, string newName)
+			=> HeadlessDispatcher.DispatchAsync(() => RenameAsync(sessionId, documentId, requestVersion, elementName, newName)).GetAwaiter().GetResult();
 
 		public DesignSnapshot Layout(double width, double height, double dpi)
 			=> HeadlessDispatcher.DispatchAsync(() => LayoutAsync(new LayoutRequest { Width = width, Height = height, Dpi = dpi })).GetAwaiter().GetResult();
@@ -85,8 +162,11 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				return "Export failed: " + e.GetBaseException().Message;
 			}
 		}
-		public HitTestResult HitTest(double x, double y)
-			=> HeadlessDispatcher.Dispatch(() => HitTestCore(new HitTestRequest { X = x, Y = y }));
+		public HitTestResult HitTest(string sessionId, string documentId, double x, double y)
+		{
+			EnsureOwnSession(sessionId, documentId);
+			return HeadlessDispatcher.Dispatch(() => HitTestCore(new HitTestRequest { X = x, Y = y }));
+		}
 
 		public void Shutdown()
 		{
@@ -499,6 +579,303 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		double lastWidth;
 		double lastHeight;
 		double lastDpi;
+		string? sessionId;
+		string? documentId;
+		long version;
+
+		void EnsureOwnSession(string requestSessionId, string requestDocumentId)
+		{
+			if (sessionId != null && requestSessionId != sessionId)
+				throw new UnauthorizedAccessException("The request's session id does not match this design host.");
+			if (documentId != null && requestDocumentId != documentId)
+				throw new InvalidOperationException("The request's document id does not match the open document.");
+		}
+
+		async Task<DesignSnapshot> SetPropertyAsync(string requestSessionId, string requestDocumentId, long requestVersion, string elementName, string propertyName, string value)
+		{
+			EnsureOwnSession(requestSessionId, requestDocumentId);
+			var snapshot = new DesignSnapshot { SessionId = requestSessionId, DocumentId = requestDocumentId, Version = requestVersion };
+			if (root is null)
+			{
+				snapshot.Accepted = false;
+				snapshot.Error = "No design loaded.";
+				snapshot.Diagnostics.Add(new DesignDiagnostic { Message = snapshot.Error });
+				return snapshot;
+			}
+			var element = FindByName(root, elementName);
+			if (element is null)
+			{
+				snapshot.Accepted = false;
+				snapshot.Error = "Element not found: " + elementName;
+				snapshot.Diagnostics.Add(new DesignDiagnostic { Message = snapshot.Error });
+				return snapshot;
+			}
+			try
+			{
+				ApplyPropertyValue(element, propertyName, value);
+				version = Math.Max(version, requestVersion);
+				var result = await FinishLayoutAsync(lastWidth, lastHeight, lastDpi, snapshot);
+				result.SessionId = requestSessionId;
+				result.DocumentId = requestDocumentId;
+				result.Version = version;
+				return result;
+			}
+			catch (Exception e)
+			{
+				snapshot.Accepted = false;
+				snapshot.Error = e.GetBaseException().Message;
+				snapshot.Diagnostics.Add(new DesignDiagnostic { Message = snapshot.Error });
+				return snapshot;
+			}
+		}
+
+		/// <summary>Sets a property on a live FrameworkElement by name via TypeDescriptor/
+		/// reflection, converting the incoming string with the property's declared type.</summary>
+		static void ApplyPropertyValue(FrameworkElement element, string propertyName, string value)
+		{
+			var property = element.GetType().GetProperty(propertyName)
+				?? throw new ArgumentException("Property not found: " + propertyName, nameof(propertyName));
+			if (!property.CanWrite)
+				throw new InvalidOperationException($"Property {propertyName} is read-only.");
+			object? converted;
+			if (property.PropertyType == typeof(string))
+			{
+				converted = value;
+			}
+			else
+			{
+				var converter = System.ComponentModel.TypeDescriptor.GetConverter(property.PropertyType);
+				converted = converter != null && converter.CanConvertFrom(typeof(string))
+					? converter.ConvertFromInvariantString(value)
+					: Convert.ChangeType(value, property.PropertyType, CultureInfo.InvariantCulture);
+			}
+			property.SetValue(element, converted);
+		}
+
+		DesignSnapshot SetEventCore(string requestSessionId, string requestDocumentId, long requestVersion, string elementName, string eventName, string handlerName)
+		{
+			EnsureOwnSession(requestSessionId, requestDocumentId);
+			var snapshot = new DesignSnapshot { SessionId = requestSessionId, DocumentId = requestDocumentId, Version = requestVersion };
+			if (root is null)
+			{
+				snapshot.Accepted = false;
+				snapshot.Error = "No design loaded.";
+				return snapshot;
+			}
+			var element = FindByName(root, elementName);
+			if (element is null)
+			{
+				snapshot.Accepted = false;
+				snapshot.Error = "Element not found: " + elementName;
+				return snapshot;
+			}
+			var eventInfo = element.GetType().GetEvent(eventName);
+			if (eventInfo is null)
+			{
+				snapshot.Accepted = false;
+				snapshot.Error = "Event not found: " + eventName;
+				return snapshot;
+			}
+			// No live code-behind instance exists in this design host - the event/handler
+			// names are validated but nothing is actually wired up here.
+			snapshot.Tree = BuildTree(root, root, "");
+			snapshot.Accepted = true;
+			return snapshot;
+		}
+
+		async Task<DesignSnapshot> AddElementAsync(string requestSessionId, string requestDocumentId, long requestVersion, string parentName, string itemXaml, double x, double y)
+		{
+			EnsureOwnSession(requestSessionId, requestDocumentId);
+			var snapshot = new DesignSnapshot { SessionId = requestSessionId, DocumentId = requestDocumentId, Version = requestVersion };
+			if (root is null)
+			{
+				snapshot.Accepted = false;
+				snapshot.Error = "No design loaded.";
+				snapshot.Diagnostics.Add(new DesignDiagnostic { Message = snapshot.Error });
+				return snapshot;
+			}
+			var parent = FindByName(root, parentName);
+			if (parent is null)
+			{
+				snapshot.Accepted = false;
+				snapshot.Error = "Parent not found: " + parentName;
+				snapshot.Diagnostics.Add(new DesignDiagnostic { Message = snapshot.Error });
+				return snapshot;
+			}
+			try
+			{
+				var newElement = (UIElement)Microsoft.UI.Xaml.Markup.XamlReader.Load(itemXaml);
+				if (parent is Panel panel)
+				{
+					panel.Children.Add(newElement);
+					if (parent is Canvas && newElement is FrameworkElement newFe)
+					{
+						Canvas.SetLeft(newFe, x);
+						Canvas.SetTop(newFe, y);
+					}
+				}
+				else
+				{
+					snapshot.Accepted = false;
+					snapshot.Error = "Parent does not support adding children: " + parentName;
+					snapshot.Diagnostics.Add(new DesignDiagnostic { Message = snapshot.Error });
+					return snapshot;
+				}
+				version = Math.Max(version, requestVersion);
+				var result = await FinishLayoutAsync(lastWidth, lastHeight, lastDpi, snapshot);
+				result.SessionId = requestSessionId;
+				result.DocumentId = requestDocumentId;
+				result.Version = version;
+				return result;
+			}
+			catch (Exception e)
+			{
+				snapshot.Accepted = false;
+				snapshot.Error = e.GetBaseException().Message;
+				snapshot.Diagnostics.Add(new DesignDiagnostic { Message = snapshot.Error });
+				return snapshot;
+			}
+		}
+
+		async Task<DesignSnapshot> SetBoundsAsync(string requestSessionId, string requestDocumentId, long requestVersion, string elementName, double x, double y, double width, double height)
+		{
+			EnsureOwnSession(requestSessionId, requestDocumentId);
+			var snapshot = new DesignSnapshot { SessionId = requestSessionId, DocumentId = requestDocumentId, Version = requestVersion };
+			if (root is null)
+			{
+				snapshot.Accepted = false;
+				snapshot.Error = "No design loaded.";
+				snapshot.Diagnostics.Add(new DesignDiagnostic { Message = snapshot.Error });
+				return snapshot;
+			}
+			var element = FindByName(root, elementName);
+			if (element is null)
+			{
+				snapshot.Accepted = false;
+				snapshot.Error = "Element not found: " + elementName;
+				snapshot.Diagnostics.Add(new DesignDiagnostic { Message = snapshot.Error });
+				return snapshot;
+			}
+			try
+			{
+				element.Width = width;
+				element.Height = height;
+				if (VisualTreeHelper.GetParent(element) is Canvas)
+				{
+					Canvas.SetLeft(element, x);
+					Canvas.SetTop(element, y);
+				}
+				version = Math.Max(version, requestVersion);
+				var result = await FinishLayoutAsync(lastWidth, lastHeight, lastDpi, snapshot);
+				result.SessionId = requestSessionId;
+				result.DocumentId = requestDocumentId;
+				result.Version = version;
+				return result;
+			}
+			catch (Exception e)
+			{
+				snapshot.Accepted = false;
+				snapshot.Error = e.GetBaseException().Message;
+				snapshot.Diagnostics.Add(new DesignDiagnostic { Message = snapshot.Error });
+				return snapshot;
+			}
+		}
+
+		/// <summary>Matches WinForms' DeleteComponent, which throws on a not-found component
+		/// rather than skipping - a batch delete fails the whole request instead of silently
+		/// dropping a bad name, so the caller finds out about a stale reference immediately.</summary>
+		async Task<DesignSnapshot> DeleteElementsAsync(string requestSessionId, string requestDocumentId, long requestVersion, string[] elementNames)
+		{
+			EnsureOwnSession(requestSessionId, requestDocumentId);
+			var snapshot = new DesignSnapshot { SessionId = requestSessionId, DocumentId = requestDocumentId, Version = requestVersion };
+			if (root is null)
+			{
+				snapshot.Accepted = false;
+				snapshot.Error = "No design loaded.";
+				snapshot.Diagnostics.Add(new DesignDiagnostic { Message = snapshot.Error });
+				return snapshot;
+			}
+			try
+			{
+				foreach (var name in elementNames)
+				{
+					var element = FindByName(root, name)
+						?? throw new ArgumentException("Element not found: " + name, nameof(elementNames));
+					if (VisualTreeHelper.GetParent(element) is Panel panel)
+					{
+						panel.Children.Remove(element);
+					}
+					else
+					{
+						throw new InvalidOperationException("Element's parent does not support removing children: " + name);
+					}
+				}
+				version = Math.Max(version, requestVersion);
+				var result = await FinishLayoutAsync(lastWidth, lastHeight, lastDpi, snapshot);
+				result.SessionId = requestSessionId;
+				result.DocumentId = requestDocumentId;
+				result.Version = version;
+				return result;
+			}
+			catch (Exception e)
+			{
+				snapshot.Accepted = false;
+				snapshot.Error = e.GetBaseException().Message;
+				snapshot.Diagnostics.Add(new DesignDiagnostic { Message = snapshot.Error });
+				return snapshot;
+			}
+		}
+
+		async Task<DesignSnapshot> RenameAsync(string requestSessionId, string requestDocumentId, long requestVersion, string elementName, string newName)
+		{
+			EnsureOwnSession(requestSessionId, requestDocumentId);
+			var snapshot = new DesignSnapshot { SessionId = requestSessionId, DocumentId = requestDocumentId, Version = requestVersion };
+			if (root is null)
+			{
+				snapshot.Accepted = false;
+				snapshot.Error = "No design loaded.";
+				snapshot.Diagnostics.Add(new DesignDiagnostic { Message = snapshot.Error });
+				return snapshot;
+			}
+			var element = FindByName(root, elementName);
+			if (element is null)
+			{
+				snapshot.Accepted = false;
+				snapshot.Error = "Element not found: " + elementName;
+				snapshot.Diagnostics.Add(new DesignDiagnostic { Message = snapshot.Error });
+				return snapshot;
+			}
+			try
+			{
+				element.Name = newName;
+				version = Math.Max(version, requestVersion);
+				var result = await FinishLayoutAsync(lastWidth, lastHeight, lastDpi, snapshot);
+				result.SessionId = requestSessionId;
+				result.DocumentId = requestDocumentId;
+				result.Version = version;
+				return result;
+			}
+			catch (Exception e)
+			{
+				snapshot.Accepted = false;
+				snapshot.Error = e.GetBaseException().Message;
+				snapshot.Diagnostics.Add(new DesignDiagnostic { Message = snapshot.Error });
+				return snapshot;
+			}
+		}
+
+		static FrameworkElement? FindByName(DependencyObject node, string name)
+		{
+			if (node is FrameworkElement fe && string.Equals(fe.Name, name, StringComparison.Ordinal))
+				return fe;
+			var count = VisualTreeHelper.GetChildrenCount(node);
+			for (var i = 0; i < count; i++)
+			{
+				if (FindByName(VisualTreeHelper.GetChild(node, i), name) is { } found)
+					return found;
+			}
+			return null;
+		}
 
 		async Task<DesignSnapshot> FinishLayoutAsync(double width, double height, double dpi, DesignSnapshot snapshot)
 		{

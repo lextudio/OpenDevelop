@@ -116,7 +116,7 @@ namespace ICSharpCode.FormsDesigner
 			if (componentName == newName) return;
 			remoteControl.RenameSelection(componentName, newName);
 			try {
-				ExecuteRemoteEdit(() => remoteClient.RenameComponentAsync(remoteDocumentVersion, componentName, newName,
+				ExecuteRemoteEdit(() => remoteClient.RenameAsync(remoteDocumentVersion, componentName, newName,
 					System.Threading.CancellationToken.None).GetAwaiter().GetResult());
 			} catch {
 				remoteControl.RenameSelection(newName, componentName);
@@ -135,7 +135,8 @@ namespace ICSharpCode.FormsDesigner
 		{
 			if (!IsRemoteDesignerLoaded)
 				throw new InvalidOperationException("The out-of-process WinForms designer is not loaded.");
-			ExecuteRemoteEdit(() => remoteClient.AddControlAsync(remoteDocumentVersion, parentName, controlType, componentName, x, y,
+			ExecuteRemoteEdit(() => remoteClient.AddElementAsync(remoteDocumentVersion, parentName,
+				new DesignerToolboxItemInfo { TypeName = controlType }, componentName, x, y,
 				System.Threading.CancellationToken.None).GetAwaiter().GetResult());
 		}
 
@@ -149,7 +150,7 @@ namespace ICSharpCode.FormsDesigner
 		internal void DeleteRemoteComponent(string componentName)
 		{
 			EnsureRemoteDesignerLoaded();
-			ExecuteRemoteEdit(() => remoteClient.DeleteComponentAsync(remoteDocumentVersion, componentName,
+			ExecuteRemoteEdit(() => remoteClient.DeleteElementsAsync(remoteDocumentVersion, new[] { componentName },
 				System.Threading.CancellationToken.None).GetAwaiter().GetResult());
 		}
 
@@ -194,7 +195,7 @@ namespace ICSharpCode.FormsDesigner
 				: remoteControl.State.Components.First(item => item.Name == candidates[0]).Parent;
 			var names = candidates.Where(name => remoteControl.State.Components.First(item => item.Name == name).Parent == primaryParent).ToArray();
 			if (names.Length == 0) return true;
-			ExecuteRemoteEdit(() => remoteClient.ApplyLayoutAsync(remoteDocumentVersion, operation, names,
+			ExecuteRemoteEdit(() => remoteClient.ApplyLayoutAsync(remoteDocumentVersion, operation, names, 0, 0,
 				System.Threading.CancellationToken.None).GetAwaiter().GetResult());
 			return true;
 		}
@@ -217,8 +218,8 @@ namespace ICSharpCode.FormsDesigner
 			var roots = candidates.Where(item => !selected.Contains(item.Parent)).ToArray();
 			var parent = roots[0].Parent;
 			var names = roots.Where(item => item.Parent == parent).Select(item => item.Name).ToArray();
-			ExecuteRemoteEdit(() => remoteClient.ApplyLayoutAsync(remoteDocumentVersion, "move", names,
-				System.Threading.CancellationToken.None, deltaX, deltaY).GetAwaiter().GetResult());
+			ExecuteRemoteEdit(() => remoteClient.ApplyLayoutAsync(remoteDocumentVersion, "move", names, deltaX, deltaY,
+				System.Threading.CancellationToken.None).GetAwaiter().GetResult());
 		}
 
 		void ExecuteRemoteEdit(Func<DesignerSessionState> edit)
@@ -1005,7 +1006,8 @@ namespace ICSharpCode.FormsDesigner
 					foreach (var component in remoteClipboard.OrderBy(item => ClipboardDepth(item, remoteClipboard))) {
 						var parent = nameMap.TryGetValue(component.Parent, out var copiedParent) ? copiedParent
 							: state.Components.Any(item => item.Name == component.Parent) ? component.Parent : root;
-						latest = remoteClient.AddControlAsync(remoteDocumentVersion, parent, component.Type, nameMap[component.Name],
+						latest = remoteClient.AddElementAsync(remoteDocumentVersion, parent,
+							new DesignerToolboxItemInfo { TypeName = component.Type }, nameMap[component.Name],
 							component.X + 10, component.Y + 10, System.Threading.CancellationToken.None).GetAwaiter().GetResult();
 						foreach (var property in component.Properties.Where(CanCopyRemoteProperty))
 							latest = remoteClient.SetPropertyAsync(remoteDocumentVersion, nameMap[component.Name], property.Name, property.Value,
@@ -1039,11 +1041,9 @@ namespace ICSharpCode.FormsDesigner
 			var selectedNames = new HashSet<string>(components.Select(item => item.Name), StringComparer.Ordinal);
 			var roots = components.Where(item => !selectedNames.Contains(item.Parent)).ToArray();
 			ExecuteRemoteEdit(() => {
-				DesignerSessionState latest = RemoteDesignerState;
-				foreach (var component in roots)
-					latest = remoteClient.DeleteComponentAsync(remoteDocumentVersion, component.Name,
-						System.Threading.CancellationToken.None).GetAwaiter().GetResult();
-				return latest;
+				if (roots.Length == 0) return RemoteDesignerState;
+				return remoteClient.DeleteElementsAsync(remoteDocumentVersion, roots.Select(item => item.Name).ToArray(),
+					System.Threading.CancellationToken.None).GetAwaiter().GetResult();
 			});
 		}
 

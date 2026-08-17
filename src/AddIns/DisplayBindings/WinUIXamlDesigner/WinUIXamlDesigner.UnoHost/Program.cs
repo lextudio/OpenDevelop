@@ -80,12 +80,21 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			var formatter = new SystemTextJsonFormatter();
 			var handler = new HeaderDelimitedMessageHandler(stream, stream, formatter);
 			var rpc = new JsonRpc(handler);
-			rpc.AddLocalRpcMethod("initialize", new Func<string, int, DesignCapabilities>((token, protocolVersion) => Initialize(expectedToken, token, protocolVersion)));
+			rpc.AddLocalRpcMethod("initialize", new Func<string, int, string, DesignCapabilities>((token, protocolVersion, sessionId) => Initialize(expectedToken, token, protocolVersion, sessionId)));
 			rpc.AddLocalRpcMethod("design/load", new Func<string, double, double, double, DesignSnapshot>(LoadDesign));
 			rpc.AddLocalRpcMethod("design/layout", new Func<double, double, double, DesignSnapshot>(Layout));
+			rpc.AddLocalRpcMethod("session/open", new Func<string, string, string, double, double, double, DesignSnapshot>(OpenSession));
+			rpc.AddLocalRpcMethod("session/update", new Func<string, string, string, double, double, double, long, DesignSnapshot>(UpdateSession));
+			rpc.AddLocalRpcMethod("session/flush", new Func<string, string, long, DesignEditSet>(FlushSession));
+			rpc.AddLocalRpcMethod("design/set-property", new Func<string, string, long, string, string, string, DesignSnapshot>(SetProperty));
+			rpc.AddLocalRpcMethod("design/set-event", new Func<string, string, long, string, string, string, DesignSnapshot>(SetEvent));
+			rpc.AddLocalRpcMethod("design/add-element", new Func<string, string, long, string, string, double, double, DesignSnapshot>(AddElement));
+			rpc.AddLocalRpcMethod("design/set-bounds", new Func<string, string, long, string, double, double, double, double, DesignSnapshot>(SetBounds));
+			rpc.AddLocalRpcMethod("design/delete-elements", new Func<string, string, long, string[], DesignSnapshot>(DeleteElements));
+			rpc.AddLocalRpcMethod("design/rename", new Func<string, string, long, string, string, DesignSnapshot>(Rename));
 			rpc.AddLocalRpcMethod("design/theme", new Func<string, DesignSnapshot>(SetTheme));
 			rpc.AddLocalRpcMethod("app/resources", new Func<string, AppResourcesResult>(LoadAppResources));
-			rpc.AddLocalRpcMethod("design/hit-test", new Func<double, double, HitTestResult>(HitTest));
+			rpc.AddLocalRpcMethod("design/hit-test", new Func<string, string, double, double, HitTestResult>(HitTest));
 			rpc.AddLocalRpcMethod("design/export-png", new Func<string, string>(ExportPng));
 			rpc.AddLocalRpcMethod("ping", new Action(Ping));
 			rpc.AddLocalRpcMethod("shutdown", new Action(Shutdown));
@@ -158,14 +167,16 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		/// then returns the runtime capabilities - one round trip for handshake + capabilities,
 		/// matching the common designer protocol's initialize contract.
 		/// </summary>
-		static DesignCapabilities Initialize(string expectedToken, string token, int protocolVersion)
+		static DesignCapabilities Initialize(string expectedToken, string token, int protocolVersion, string sessionId)
 		{
 			if (string.IsNullOrEmpty(expectedToken) || !CryptographicOperations.FixedTimeEquals(
 				Convert.FromHexString(expectedToken), Convert.FromHexString(token)))
 				throw new UnauthorizedAccessException("Invalid design-host token.");
-			if (protocolVersion != 1)
+			if (protocolVersion != DesignProtocol.Version)
 				throw new NotSupportedException($"Protocol {protocolVersion} is not supported.");
-			return Capabilities();
+			var capabilities = Capabilities();
+			capabilities.SessionId = sessionId;
+			return capabilities;
 		}
 
 		static DesignCapabilities Capabilities()
@@ -173,6 +184,62 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			try { return host.GetCapabilities(); }
 			catch (Exception e) { LogRpcError("initialize", e); throw; }
 		}
+
+		static DesignSnapshot OpenSession(string sessionId, string documentId, string xaml, double width, double height, double dpi)
+		{
+			Console.Error.WriteLine($"UnoDesignHost: session/open received ({xaml.Length} chars, {width}x{height} @ dpi {dpi:0.##})");
+			try { return host.OpenSession(sessionId, documentId, xaml, width, height, dpi); }
+			catch (Exception e) { LogRpcError("session/open", e); throw; }
+		}
+
+		static DesignSnapshot UpdateSession(string sessionId, string documentId, string xaml, double width, double height, double dpi, long version)
+		{
+			Console.Error.WriteLine($"UnoDesignHost: session/update received ({xaml.Length} chars, {width}x{height} @ dpi {dpi:0.##}, v{version})");
+			try { return host.UpdateSession(sessionId, documentId, xaml, width, height, dpi, version); }
+			catch (Exception e) { LogRpcError("session/update", e); throw; }
+		}
+
+		static DesignEditSet FlushSession(string sessionId, string documentId, long version)
+		{
+			try { return host.FlushSession(sessionId, documentId, version); }
+			catch (Exception e) { LogRpcError("session/flush", e); throw; }
+		}
+
+		static DesignSnapshot SetProperty(string sessionId, string documentId, long version, string elementName, string propertyName, string value)
+		{
+			try { return host.SetProperty(sessionId, documentId, version, elementName, propertyName, value); }
+			catch (Exception e) { LogRpcError("design/set-property", e); throw; }
+		}
+
+		static DesignSnapshot SetEvent(string sessionId, string documentId, long version, string elementName, string eventName, string handlerName)
+		{
+			try { return host.SetEvent(sessionId, documentId, version, elementName, eventName, handlerName); }
+			catch (Exception e) { LogRpcError("design/set-event", e); throw; }
+		}
+		static DesignSnapshot AddElement(string sessionId, string documentId, long version, string parentName, string itemXaml, double x, double y)
+		{
+			try { return host.AddElement(sessionId, documentId, version, parentName, itemXaml, x, y); }
+			catch (Exception e) { LogRpcError("design/add-element", e); throw; }
+		}
+
+		static DesignSnapshot SetBounds(string sessionId, string documentId, long version, string elementName, double x, double y, double width, double height)
+		{
+			try { return host.SetBounds(sessionId, documentId, version, elementName, x, y, width, height); }
+			catch (Exception e) { LogRpcError("design/set-bounds", e); throw; }
+		}
+
+		static DesignSnapshot DeleteElements(string sessionId, string documentId, long version, string[] elementNames)
+		{
+			try { return host.DeleteElements(sessionId, documentId, version, elementNames); }
+			catch (Exception e) { LogRpcError("design/delete-elements", e); throw; }
+		}
+
+		static DesignSnapshot Rename(string sessionId, string documentId, long version, string elementName, string newName)
+		{
+			try { return host.Rename(sessionId, documentId, version, elementName, newName); }
+			catch (Exception e) { LogRpcError("design/rename", e); throw; }
+		}
+
 		static DesignSnapshot LoadDesign(string xaml, double width, double height, double dpi)
 		{
 			Console.Error.WriteLine($"UnoDesignHost: design/load received ({xaml.Length} chars, {width}x{height} @ dpi {dpi:0.##})");
@@ -195,9 +262,9 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			try { return host.SetTheme(theme); }
 			catch (Exception e) { LogRpcError("design/theme", e); throw; }
 		}
-		static HitTestResult HitTest(double x, double y)
+		static HitTestResult HitTest(string sessionId, string documentId, double x, double y)
 		{
-			try { return host.HitTest(x, y); }
+			try { return host.HitTest(sessionId, documentId, x, y); }
 			catch (Exception e) { LogRpcError("design/hit-test", e); throw; }
 		}
 		static string ExportPng(string path)

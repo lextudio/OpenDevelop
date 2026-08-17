@@ -19,6 +19,8 @@ public sealed class FormsDesignerHostClientTests
 		var first = Snapshot(7, "button1");
 		var opened = await client.OpenAsync(first, timeout.Token);
 		Assert.True(opened.Accepted);
+		Assert.Equal(client.SessionId, opened.SessionId);
+		Assert.Equal(client.DocumentId, opened.DocumentId);
 		Assert.Equal(7, opened.Version);
 		Assert.Equal("System.Windows.Forms.Form", opened.RootType);
 		Assert.True(opened.ComponentCount >= 1);
@@ -102,7 +104,7 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Contains("button1.Click += button1_Click;",
 			DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
 
-		var added = await client.AddControlAsync(7, "Form1", "System.Windows.Forms.Label", "label1", 30, 70, timeout.Token);
+		var added = await client.AddElementAsync(7, "Form1", new DesignerToolboxItemInfo { TypeName = "System.Windows.Forms.Label" }, "label1", 30, 70, timeout.Token);
 		Assert.Contains(added.Components, component => component.Name == "label1"
 			&& component.Type == "System.Windows.Forms.Label" && component.Parent == "Form1"
 			&& component.X == 30 && component.Y == 70);
@@ -123,21 +125,21 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Contains("new System.Drawing.Point(40, 50)", movedSource, StringComparison.Ordinal);
 		Assert.Contains("new System.Drawing.Size(120, 35)", movedSource, StringComparison.Ordinal);
 
-		await client.AddControlAsync(7, "Form1", "Panel", "panel1", 10, 100, timeout.Token);
-		var nested = await client.AddControlAsync(7, "panel1", "Button", "nestedButton", 5, 6, timeout.Token);
+		await client.AddElementAsync(7, "Form1", new DesignerToolboxItemInfo { TypeName = "Panel" }, "panel1", 10, 100, timeout.Token);
+		var nested = await client.AddElementAsync(7, "panel1", new DesignerToolboxItemInfo { TypeName = "Button" }, "nestedButton", 5, 6, timeout.Token);
 		Assert.Contains(nested.Components, component => component.Name == "nestedButton"
 			&& component.Parent == "panel1" && component.X == 5 && component.Y == 6
 			&& component.SurfaceX == 15 && component.SurfaceY == 106);
 		Assert.Contains("panel1.Controls.Add(nestedButton);",
 			DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
 		var beforeAdvancedControlRender = nested.Render!.PngBase64;
-		var advanced = await client.AddControlAsync(7, "Form1", "DataGridView", "dataGridView1", 145, 10, timeout.Token);
+		var advanced = await client.AddElementAsync(7, "Form1", new DesignerToolboxItemInfo { TypeName = "DataGridView" }, "dataGridView1", 145, 10, timeout.Token);
 		Assert.Contains(advanced.Components, component => component.Name == "dataGridView1"
 			&& component.Type == "System.Windows.Forms.DataGridView");
 		Assert.NotEqual(beforeAdvancedControlRender, advanced.Render!.PngBase64);
 		Assert.Contains("System.Windows.Forms.DataGridView dataGridView1", DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
-		await client.AddControlAsync(7, "Form1", "Button", "renameMe", 5, 5, timeout.Token);
-		var renamed = await client.RenameComponentAsync(7, "renameMe", "renamedButton", timeout.Token);
+		await client.AddElementAsync(7, "Form1", new DesignerToolboxItemInfo { TypeName = "Button" }, "renameMe", 5, 5, timeout.Token);
+		var renamed = await client.RenameAsync(7, "renameMe", "renamedButton", timeout.Token);
 		Assert.Contains(renamed.Components, component => component.Name == "renamedButton");
 		Assert.DoesNotContain(renamed.Components, component => component.Name == "renameMe");
 		var renamedSource = DesignerText(await client.FlushAsync(7, timeout.Token));
@@ -150,22 +152,22 @@ public sealed class FormsDesignerHostClientTests
 		var broughtFront = await client.SetZOrderAsync(7, "button1", true, timeout.Token);
 		Assert.True(broughtFront.Accepted);
 		Assert.Contains("Controls.SetChildIndex(button1, 0);", DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
-		var aligned = await client.ApplyLayoutAsync(7, "align-left", new[] { "button1", "label1" }, timeout.Token);
+		var aligned = await client.ApplyLayoutAsync(7, "align-left", new[] { "button1", "label1" }, 0, 0, timeout.Token);
 		Assert.Equal(40, aligned.Components.Single(item => item.Name == "button1").X);
 		Assert.Equal(40, aligned.Components.Single(item => item.Name == "label1").X);
-		var sameWidth = await client.ApplyLayoutAsync(7, "same-width", new[] { "button1", "label1" }, timeout.Token);
+		var sameWidth = await client.ApplyLayoutAsync(7, "same-width", new[] { "button1", "label1" }, 0, 0, timeout.Token);
 		Assert.Equal(120, sameWidth.Components.Single(item => item.Name == "label1").Width);
 		var layoutSource = DesignerText(await client.FlushAsync(7, timeout.Token));
 		Assert.Contains("label1.Location = new System.Drawing.Point(40, 70)", layoutSource, StringComparison.Ordinal);
 		Assert.Contains("label1.Size = new System.Drawing.Size(120,", layoutSource, StringComparison.Ordinal);
-		var groupMoved = await client.ApplyLayoutAsync(7, "move", new[] { "button1", "label1" }, timeout.Token, 3, 4);
+		var groupMoved = await client.ApplyLayoutAsync(7, "move", new[] { "button1", "label1" }, 3, 4, timeout.Token);
 		Assert.Contains(groupMoved.Components, item => item.Name == "button1" && item.X == 43 && item.Y == 54);
 		Assert.Contains(groupMoved.Components, item => item.Name == "label1" && item.X == 43 && item.Y == 74);
 		Assert.Contains("label1.Location = new System.Drawing.Point(43, 74)",
 			DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
 
-		await client.DeleteComponentAsync(7, "renamedButton", timeout.Token);
-		var deleted = await client.DeleteComponentAsync(7, "label1", timeout.Token);
+		await client.DeleteElementsAsync(7, new[] { "renamedButton" }, timeout.Token);
+		var deleted = await client.DeleteElementsAsync(7, new[] { "label1" }, timeout.Token);
 		Assert.DoesNotContain(deleted.Components, component => component.Name == "label1");
 		Assert.DoesNotContain("label1", DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
 		var stale = await client.UpdateAsync(Snapshot(7, "stale"), timeout.Token);
@@ -187,6 +189,8 @@ public sealed class FormsDesignerHostClientTests
 			property => property.Name == "AutoScaleDimensions");
 		Assert.Equal("7, 15", loadedScale.Value);
 		var edits = await client.FlushAsync(8, timeout.Token);
+		Assert.Equal(client.SessionId, edits.SessionId);
+		Assert.Equal(client.DocumentId, edits.DocumentId);
 		Assert.Equal(8, edits.BaseVersion);
 		Assert.Contains("button2", DesignerText(edits), StringComparison.Ordinal);
 
@@ -241,6 +245,7 @@ public sealed class FormsDesignerHostClientTests
 		var firstPid = first.ProcessId;
 		try {
 			Assert.NotEqual(first.ProcessId, second.ProcessId);
+			Assert.NotEqual(first.SessionId, second.SessionId);
 			Assert.True((await first.OpenAsync(Snapshot(1, "first"), timeout.Token)).Accepted);
 			Assert.True((await second.OpenAsync(Snapshot(1, "second"), timeout.Token)).Accepted);
 			var oversized = Snapshot(2, "oversized");
@@ -332,7 +337,7 @@ public sealed class FormsDesignerHostClientTests
 		Assert.DoesNotContain("AddHandler button1.Click",
 			DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
 
-		var added = await client.AddControlAsync(7, "Form1", "System.Windows.Forms.Label", "label1", 30, 70, timeout.Token);
+		var added = await client.AddElementAsync(7, "Form1", new DesignerToolboxItemInfo { TypeName = "System.Windows.Forms.Label" }, "label1", 30, 70, timeout.Token);
 		Assert.Contains(added.Components, component => component.Name == "label1"
 			&& component.Type == "System.Windows.Forms.Label" && component.Parent == "Form1"
 			&& component.X == 30 && component.Y == 70);
@@ -346,7 +351,7 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Contains("label1.Text = \"new label\"", DesignerText(await client.FlushAsync(7, timeout.Token)),
 			StringComparison.Ordinal);
 
-		var deleted = await client.DeleteComponentAsync(7, "label1", timeout.Token);
+		var deleted = await client.DeleteElementsAsync(7, new[] { "label1" }, timeout.Token);
 		Assert.True(deleted.Accepted);
 		Assert.DoesNotContain(deleted.Components, component => component.Name == "label1");
 		Assert.DoesNotContain("label1", DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);

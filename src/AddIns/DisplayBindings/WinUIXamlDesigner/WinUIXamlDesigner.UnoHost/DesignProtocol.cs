@@ -7,10 +7,18 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 	/// WinUI design surface. DTOs are duplicated on both sides deliberately - JSON is
 	/// the contract, not CLR type identity.
 	/// </summary>
+	/// <summary>Wire protocol version, matching the common designer protocol's
+	/// <c>DesignerProtocol.Version</c> - bumped whenever the session envelope shape changes.</summary>
+	public static class DesignProtocol
+	{
+		public const int Version = 2;
+	}
+
 	public class DesignCapabilities
 	{
 		public string Runtime { get; set; } = "Uno.Skia";
 		public string Version { get; set; } = "";
+		public string SessionId { get; set; } = "";
 		public List<ToolboxItemInfo> Toolbox { get; set; } = new();
 	}
 
@@ -25,6 +33,9 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 
 	public class LoadDesignRequest
 	{
+		public string SessionId { get; set; } = "";
+		public string DocumentId { get; set; } = "";
+		public long Version { get; set; }
 		public string Xaml { get; set; } = "";
 		public double Width { get; set; } = 640;
 		public double Height { get; set; } = 480;
@@ -46,9 +57,30 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 
 	public class DesignSnapshot
 	{
+		public string SessionId { get; set; } = "";
+		public string DocumentId { get; set; } = "";
+		public long Version { get; set; }
+		public bool Accepted { get; set; } = true;
+		public string Error { get; set; } = "";
 		public ElementNode? Tree { get; set; }
 		public List<DesignDiagnostic> Diagnostics { get; set; } = new();
 		public RenderResult? Render { get; set; }
+	}
+
+	/// <summary>Versioned edit set returned by session/flush; the child holds no independent
+	/// edit buffer today, so this reports the current XAML as the sole file.</summary>
+	public class DesignEditSet
+	{
+		public string SessionId { get; set; } = "";
+		public string DocumentId { get; set; } = "";
+		public long BaseVersion { get; set; }
+		public List<DesignFileSnapshot> Files { get; set; } = new();
+	}
+
+	public class DesignFileSnapshot
+	{
+		public string FileName { get; set; } = "";
+		public string Text { get; set; } = "";
 	}
 
 	public class ElementNode

@@ -17,6 +17,7 @@
   </Folder>
   <Folder Name="/src/Main/">
     <Project Path="src/Main/Designer/Designer.Remote/Designer.Remote.csproj" />
+    <Project Path="src/Main/Designer/Designer.Presentation/Designer.Presentation.csproj" />
     <Project Path="src/Main/ICSharpCode.Core.Presentation/ICSharpCode.Core.Presentation.csproj" />
     <Project Path="src/Main/ICSharpCode.Core.WinForms/ICSharpCode.Core.WinForms.csproj" />
   </Folder>
@@ -46,6 +47,8 @@
     <Project Path="src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.ProGPUHost/ICSharpCode.WinUIXamlDesigner.ProGPUHost.csproj" />
     <Project Path="src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.UnoHost/WinUIXamlDesigner.UnoHost.csproj" />
     <Project Path="src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.UnoDesignHost/ICSharpCode.WinUIXamlDesigner.UnoDesignHost.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.UnoDesignHost.Remote/WinUIXamlDesigner.UnoDesignHost.Remote.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.UnoHost.Tests/WinUIXamlDesigner.UnoHost.Tests.csproj" />
   </Folder>
   <Folder Name="/src/AddIns/DisplayBindings/FormsDesigner/">
     <Project Path="src/AddIns/DisplayBindings/FormsDesigner/Project/FormsDesigner.csproj" />

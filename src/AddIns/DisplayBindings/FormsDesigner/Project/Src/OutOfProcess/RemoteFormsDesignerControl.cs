@@ -15,6 +15,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Drawing.Design;
 
+using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 
 namespace ICSharpCode.FormsDesigner.OutOfProcess
@@ -22,10 +23,11 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 	sealed class RemoteFormsDesignerControl : Grid
 	{
 		readonly FormsDesignerHostClient client;
-		readonly System.Windows.Controls.Image image;
+		readonly DesignFramePresenter framePresenter = new(Stretch.None,
+			horizontalAlignment: HorizontalAlignment.Left, verticalAlignment: VerticalAlignment.Top);
 		readonly Canvas adorners;
 		readonly Canvas guides;
-		readonly Rectangle selectionBorder;
+		readonly SelectionAdornerLayer adornerLayer = new(Array.Empty<string>(), Brushes.DodgerBlue, showLabel: false);
 		readonly Rectangle marqueeBorder;
 		readonly Thumb moveThumb;
 		readonly Thumb resizeThumb;
@@ -34,6 +36,10 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		long version;
 		DesignerSessionState state;
 		long lastFrameSequence;
+		// WinForms never scales or pans - this is always the identity case of the same
+		// DesignViewport shape UnoDesignSurfaceControl uses for its zoom/pan math, so the two
+		// backends' coordinate conversions share one type (see DesignViewport's doc comment).
+		DesignViewport viewport = DesignViewport.Identity(0, 0);
 		DesignerComponentInfo selectedComponent;
 		double dragX;
 		double dragY;
@@ -54,12 +60,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			this.client = client;
 			Background = Brushes.White;
 			Focusable = true;
-			image = new System.Windows.Controls.Image {
-				Stretch = Stretch.None,
-				HorizontalAlignment = HorizontalAlignment.Left,
-				VerticalAlignment = VerticalAlignment.Top
-			};
-			Children.Add(image);
+			Children.Add(framePresenter.Visual);
 			guides = new Canvas { IsHitTestVisible = false };
 			Children.Add(guides);
 			adorners = new Canvas { IsHitTestVisible = true };
@@ -69,11 +70,10 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				StrokeDashArray = new DoubleCollection { 3, 2 }, IsHitTestVisible = false,
 				Visibility = Visibility.Collapsed
 			};
-			selectionBorder = new Rectangle { Stroke = Brushes.DodgerBlue, StrokeThickness = 1, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
 			moveThumb = new Thumb { Background = Brushes.Transparent, Cursor = Cursors.SizeAll, Visibility = Visibility.Collapsed };
 			resizeThumb = new Thumb { Width = 8, Height = 8, Background = Brushes.White, BorderBrush = Brushes.DodgerBlue, BorderThickness = new Thickness(1), Cursor = Cursors.SizeNWSE, Visibility = Visibility.Collapsed };
 			adorners.Children.Add(marqueeBorder);
-			adorners.Children.Add(selectionBorder);
+			adorners.Children.Add(adornerLayer.Visual);
 			adorners.Children.Add(moveThumb);
 			adorners.Children.Add(resizeThumb);
 			Children.Add(adorners);
@@ -134,6 +134,8 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			if (state.Render == null || String.IsNullOrEmpty(state.Render.PngBase64)) return;
 			if (state.Render.Sequence > 0 && state.Render.Sequence <= lastFrameSequence) return;
 			lastFrameSequence = state.Render.Sequence;
+			var dpi = Math.Max(1, state.Render.Dpi);
+			viewport = DesignViewport.Identity(state.Render.Width / dpi, state.Render.Height / dpi);
 			var bitmap = new BitmapImage();
 			using (var stream = new MemoryStream(Convert.FromBase64String(state.Render.PngBase64))) {
 				bitmap.BeginInit();
@@ -142,9 +144,8 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				bitmap.EndInit();
 				bitmap.Freeze();
 			}
-			image.Source = bitmap;
-			image.Width = state.Render.Width / Math.Max(1, state.Render.Dpi);
-			image.Height = state.Render.Height / Math.Max(1, state.Render.Dpi);
+			framePresenter.SetSource(bitmap);
+			framePresenter.Resize(viewport);
 			UpdateDesignGuides();
 			if (!String.IsNullOrEmpty(SelectedComponentName)) {
 				selectedComponent = state.Components.FirstOrDefault(item => item.Name == SelectedComponentName);
@@ -165,6 +166,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				Stroke = Brushes.Gray, StrokeThickness = 1
 			});
 			foreach (var component in state.Components.Where(item => !String.IsNullOrEmpty(item.Parent))) {
+				var (surfaceX, surfaceY) = viewport.DesignToSurface(component.SurfaceX, component.SurfaceY);
 				var outline = new Rectangle {
 					Width = Math.Max(1, component.Width), Height = Math.Max(1, component.Height),
 					Stroke = lockedComponentNames.Contains(component.Name) ? Brushes.DarkOrange
@@ -172,8 +174,8 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 					StrokeThickness = selectedComponentNames.Contains(component.Name) ? 2 : 1,
 					StrokeDashArray = selectedComponentNames.Contains(component.Name) ? null : new DoubleCollection { 3, 2 }
 				};
-				Canvas.SetLeft(outline, component.SurfaceX);
-				Canvas.SetTop(outline, component.SurfaceY);
+				Canvas.SetLeft(outline, surfaceX);
+				Canvas.SetTop(outline, surfaceY);
 				guides.Children.Add(outline);
 				if (component.Height >= 18 && component.Width >= 35) {
 					var label = new TextBlock {
@@ -181,8 +183,8 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 						Background = new SolidColorBrush(Color.FromArgb(190, 255, 255, 255)),
 						Padding = new Thickness(2, 0, 2, 0)
 					};
-					Canvas.SetLeft(label, component.SurfaceX + 2);
-					Canvas.SetTop(label, component.SurfaceY + 2);
+					Canvas.SetLeft(label, surfaceX + 2);
+					Canvas.SetTop(label, surfaceY + 2);
 					guides.Children.Add(label);
 				}
 				if (showTabOrder) {
@@ -191,8 +193,8 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 						Background = Brushes.RoyalBlue, CornerRadius = new CornerRadius(8), Padding = new Thickness(5, 1, 5, 1),
 						Child = new TextBlock { Text = tabIndex, Foreground = Brushes.White, FontWeight = FontWeights.Bold, FontSize = 11 }
 					};
-					Canvas.SetLeft(badge, component.SurfaceX - 5);
-					Canvas.SetTop(badge, component.SurfaceY - 8);
+					Canvas.SetLeft(badge, surfaceX - 5);
+					Canvas.SetTop(badge, surfaceY - 8);
 					guides.Children.Add(badge);
 				}
 			}
@@ -230,16 +232,17 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		{
 			disconnectedText.Text = message;
 			disconnectedOverlay.Visibility = Visibility.Visible;
-			selectionBorder.Visibility = moveThumb.Visibility = resizeThumb.Visibility = Visibility.Collapsed;
+			adornerLayer.ClearSelection();
+			moveThumb.Visibility = resizeThumb.Visibility = Visibility.Collapsed;
 		}
 
 		public bool TryGetComponentScreenBounds(string componentName, out Rect bounds)
 		{
 			bounds = Rect.Empty;
 			var component = state?.Components?.FirstOrDefault(item => item.Name == componentName);
-			if (component == null || !image.IsVisible)
+			if (component == null || !framePresenter.Visual.IsVisible)
 				return false;
-			var topLeft = image.PointToScreen(new Point(component.SurfaceX, component.SurfaceY));
+			var topLeft = framePresenter.Visual.PointToScreen(new Point(component.SurfaceX, component.SurfaceY));
 			bounds = new Rect(topLeft.X, topLeft.Y, component.Width, component.Height);
 			return true;
 		}
@@ -248,7 +251,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		{
 			try {
 				var extendSelection = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) || Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
-				var point = e.GetPosition(image);
+				var point = e.GetPosition(framePresenter.Visual);
 				if (!state.Components.Any(component => !String.IsNullOrEmpty(component.Parent)
 					&& new Rect(component.SurfaceX, component.SurfaceY, component.Width, component.Height).Contains(point))) {
 					marqueeSelecting = true;
@@ -285,7 +288,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		void OnMouseMove(object sender, MouseEventArgs e)
 		{
 			if (!marqueeSelecting || e.LeftButton != MouseButtonState.Pressed) return;
-			var point = e.GetPosition(image);
+			var point = e.GetPosition(framePresenter.Visual);
 			var left = Math.Min(marqueeStart.X, point.X);
 			var top = Math.Min(marqueeStart.Y, point.Y);
 			Canvas.SetLeft(marqueeBorder, left);
@@ -533,13 +536,16 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			AutomationProperties.SetHelpText(this, selectedComponent?.AccessibleDescription ?? "");
 			var visible = selectedComponent != null;
 			var isRoot = visible && String.IsNullOrEmpty(selectedComponent.Parent);
-			selectionBorder.Visibility = resizeThumb.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+			resizeThumb.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
 			moveThumb.Visibility = visible && !isRoot ? Visibility.Visible : Visibility.Collapsed;
-			if (!visible) return;
+			if (!visible) {
+				adornerLayer.ClearSelection();
+				return;
+			}
 			var locked = lockedComponentNames.Contains(selectedComponent.Name);
 			moveThumb.IsEnabled = !locked;
 			resizeThumb.IsEnabled = isRoot || !locked;
-			selectionBorder.Stroke = locked ? Brushes.DarkOrange : Brushes.DodgerBlue;
+			adornerLayer.SelectionStroke = locked ? Brushes.DarkOrange : Brushes.DodgerBlue;
 			dragX = selectedComponent.SurfaceX;
 			dragY = selectedComponent.SurfaceY;
 			selectedLocalX = selectedComponent.X;
@@ -551,16 +557,14 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 
 		void PositionAdorners()
 		{
-			Canvas.SetLeft(selectionBorder, dragX);
-			Canvas.SetTop(selectionBorder, dragY);
-			selectionBorder.Width = dragWidth;
-			selectionBorder.Height = dragHeight;
-			Canvas.SetLeft(moveThumb, dragX);
-			Canvas.SetTop(moveThumb, dragY);
+			adornerLayer.ShowSelection(new Rect(dragX, dragY, dragWidth, dragHeight), viewport);
+			var (left, top) = viewport.DesignToSurface(dragX, dragY);
+			Canvas.SetLeft(moveThumb, left);
+			Canvas.SetTop(moveThumb, top);
 			moveThumb.Width = dragWidth;
 			moveThumb.Height = dragHeight;
-			Canvas.SetLeft(resizeThumb, dragX + dragWidth - resizeThumb.Width / 2);
-			Canvas.SetTop(resizeThumb, dragY + dragHeight - resizeThumb.Height / 2);
+			Canvas.SetLeft(resizeThumb, left + dragWidth - resizeThumb.Width / 2);
+			Canvas.SetTop(resizeThumb, top + dragHeight - resizeThumb.Height / 2);
 			Panel.SetZIndex(resizeThumb, 2);
 		}
 
@@ -576,7 +580,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		{
 			if (e.Data.GetData(typeof(ToolboxItem)) is not ToolboxItem item || String.IsNullOrEmpty(item.TypeName))
 				return;
-			var point = e.GetPosition(image);
+			var point = e.GetPosition(framePresenter.Visual);
 			var hit = await client.HitTestAsync(version, (int)point.X, (int)point.Y, CancellationToken.None);
 			var target = state.Components.FirstOrDefault(component => component.Name == hit.ComponentName);
 			if (target != null && !IsContainer(target.Type))

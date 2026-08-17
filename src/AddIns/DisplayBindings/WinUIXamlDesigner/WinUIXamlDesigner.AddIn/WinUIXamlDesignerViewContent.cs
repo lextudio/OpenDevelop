@@ -227,7 +227,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		syncingSelection = true;
 		try {
 			SelectedElementName = name;
-			propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor);
+			propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor);
 			SelectOutlineNode(name);
 			// The runtime's selection set is managed by surface picks and MultiSelect -
 			// this path only syncs the pad/outline, so it never collapses a multi-selection.
@@ -263,8 +263,22 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		while (container != null && !PanelElementNames.Contains(container.Name.LocalName))
 			container = container.Parent;
 		var inserted = editor.Insert(controlName, container);
-		ApplyDocumentChange();
 		var name = (string)inserted.Attribute(WinUIXamlDocumentEditor.NameDirective);
+		// design/add-element needs a named Panel to attach into; a drop onto the document root
+		// (container == null, or the root panel simply has no x:Name) has nothing to address, so
+		// that case keeps going through the full-document reload as before. Otherwise, reuse the
+		// exact x:Name and XAML editor.Insert() already produced - the same "editor decides, RPC
+		// mirrors" split used by design/set-property and design/set-bounds.
+		var containerElementName = container == null ? null : (string)container.Attribute(WinUIXamlDocumentEditor.NameDirective);
+		if (containerElementName != null)
+		{
+			var itemXaml = inserted.ToString();
+			ApplyDocumentChange(xaml => previewHost.TryAddElement(containerElementName, itemXaml, xaml));
+		}
+		else
+		{
+			ApplyDocumentChange();
+		}
 		SelectElement(name);
 		return name;
 	}
@@ -288,7 +302,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		SelectedElementName = null;
 		propertyContainer.SelectedObject = null;
 		previewHost.ClearSelection();
-		ApplyDocumentChange();
+		ApplyDocumentChange(xaml => previewHost.TryDeleteElements(new[] { name }, xaml));
 	}
 
 	public bool Undo() => ReplayHistory(editor.Undo());
@@ -314,18 +328,46 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		ApplyDocumentChange();
 	}
 
+	/// <summary>Applies an event-handler-name change (the Properties pad's Events view) and pushes
+	/// it as a discrete design/set-event incremental render, the same way
+	/// <see cref="OnTextEditCommittedOnSurface"/> uses design/set-property.</summary>
+	void SetEventThroughEditor(XElement element, XName attribute, string value)
+	{
+		editor.SetAttribute(element, attribute, value);
+		var elementName = (string)element.Attribute(WinUIXamlDocumentEditor.NameDirective);
+		var eventName = attribute.LocalName;
+		var handlerName = value ?? "";
+		if (elementName == null)
+		{
+			ApplyDocumentChange();
+			return;
+		}
+		ApplyDocumentChange(xaml => previewHost.TrySetEvent(elementName, eventName, handlerName, xaml));
+	}
+
 	/// <summary>
 	/// The single point where an edit becomes visible: mark the file dirty so the shared
 	/// OpenedFile machinery writes it (and the Source view picks it up on the next view switch),
 	/// rebuild the outline from the new document, and re-render.
 	/// </summary>
-	void ApplyDocumentChange()
+	void ApplyDocumentChange() => ApplyDocumentChange((Action<string>)null);
+
+	/// <summary>Same as the parameterless overload, except the final render push can go out as
+	/// a discrete DDP edit (design/set-property, design/set-bounds) instead of a full document
+	/// reparse, when <paramref name="incrementalRender"/> is given. <c>editor</c> has already
+	/// been updated by the caller either way - this only ever changes which render request goes
+	/// out; undo/dirty/outline/save are unaffected. The runtime falls back to a full reload on
+	/// its own if the incremental edit is rejected, so callers never need to know which path ran.</summary>
+	void ApplyDocumentChange(Action<string> incrementalRender)
 	{
 		wasChangedInDesigner = true;
 		PrimaryFile?.MakeDirty();
 		RebuildOutline();
 		previewHost.SetSelectableNames(editor.ElementNames());
-		previewHost.LoadXaml(editor.Text);
+		if (incrementalRender != null)
+			incrementalRender(editor.Text);
+		else
+			previewHost.LoadXaml(editor.Text);
 		status.Text = previewHost.StatusText;
 	}
 
@@ -448,7 +490,9 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		if (attribute == null)
 			return;
 		editor.SetAttribute(element, attribute, text);
-		ApplyDocumentChange();
+		var propertyName = attribute.LocalName;
+		var elementName = SelectedElementName;
+		ApplyDocumentChange(xaml => previewHost.TrySetProperty(elementName, propertyName, text, xaml));
 		SelectElement(SelectedElementName);
 	}
 
@@ -809,12 +853,28 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			editor.SetAttribute(element, "Margin", FormatMargin(left, top, right, bottom));
 		else
 			editor.SetAttribute(element, "Margin", null);
-		if (Math.Abs(sizeDeltaX) > 0.01 || Math.Abs(sizeDeltaY) > 0.01)
+		var sizeChanged = Math.Abs(sizeDeltaX) > 0.01 || Math.Abs(sizeDeltaY) > 0.01;
+		if (sizeChanged)
 		{
 			editor.SetAttribute(element, "Width", ((int)Math.Round(info.EndWidth)).ToString(CultureInfo.InvariantCulture));
 			editor.SetAttribute(element, "Height", ((int)Math.Round(info.EndHeight)).ToString(CultureInfo.InvariantCulture));
 		}
-		ApplyDocumentChange();
+		// design/set-bounds only ever applies Width/Height directly (plus Canvas.Left/Top when
+		// the parent happens to be a Canvas); this codebase positions everything through Margin,
+		// so only a pure resize (no position delta) is safe to send incrementally - a move must
+		// go through the full document reload, same as before.
+		var pureResize = sizeChanged && Math.Abs(positionDeltaX) < 0.01 && Math.Abs(positionDeltaY) < 0.01;
+		if (pureResize)
+		{
+			var elementName = info.Name;
+			var width = info.EndWidth;
+			var height = info.EndHeight;
+			ApplyDocumentChange(xaml => previewHost.TrySetBounds(elementName, 0, 0, width, height, xaml));
+		}
+		else
+		{
+			ApplyDocumentChange();
+		}
 		SelectElement(info.Name);
 	}
 
@@ -1075,7 +1135,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			return;
 		}
 		SelectedElementName = (string)element.Attribute(WinUIXamlDocumentEditor.NameDirective);
-		propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor);
+		propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor);
 		if (SelectedElementName != null)
 			previewHost.ShowSelection(SelectedElementName);
 	}

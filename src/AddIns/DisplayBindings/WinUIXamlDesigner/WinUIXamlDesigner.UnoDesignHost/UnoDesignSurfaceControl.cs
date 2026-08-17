@@ -9,6 +9,8 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 
+using ICSharpCode.SharpDevelop.Designer.Presentation;
+
 using RenderResult = ICSharpCode.SharpDevelop.Designer.Remote.DesignerRenderFrame;
 
 namespace ICSharpCode.WinUIXamlDesigner.UnoDesignHost;
@@ -32,7 +34,6 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 	public const double MinZoom = 0.1;
 	public const double MaxZoom = 16.0;
 	const double DragThreshold = 4;
-	const double HandleSize = 7;
 
 	static readonly Color SelectionColor = Color.FromRgb(0x00, 0x78, 0xD4);
 	static readonly double[] ZoomPresets = { 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 4.0 };
@@ -65,10 +66,7 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 		};
 	}
 
-	readonly Image image = new() {
-		Stretch = Stretch.Fill,
-		SnapsToDevicePixels = true
-	};
+	readonly DesignFramePresenter framePresenter = new(Stretch.Fill, snapsToDevicePixels: true);
 	readonly Canvas overlay = new() {
 		IsHitTestVisible = false,
 		IsEnabled = false
@@ -110,22 +108,7 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 		Orientation = Orientation.Horizontal
 	};
 	readonly DockPanel root = new();
-	readonly Rectangle selectionBox = new() {
-		Stroke = new SolidColorBrush(SelectionColor),
-		StrokeThickness = 1.5,
-		StrokeDashArray = new DoubleCollection { 4, 2 },
-		IsHitTestVisible = false,
-		Visibility = Visibility.Collapsed
-	};
-	readonly TextBlock selectionLabel = new() {
-		Background = new SolidColorBrush(SelectionColor),
-		Foreground = Brushes.White,
-		FontSize = 10,
-		Padding = new Thickness(3, 1, 3, 1),
-		IsHitTestVisible = false,
-		Visibility = Visibility.Collapsed
-	};
-	readonly Dictionary<string, Rectangle> handles = new(StringComparer.Ordinal);
+	readonly SelectionAdornerLayer adornerLayer = new(HandleNames, new SolidColorBrush(SelectionColor));
 	int pixelWidth;
 	int pixelHeight;
 	// Viewport state: zoomFactor 1.0 = the design fits the surface; panX/panY is the user
@@ -179,25 +162,10 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 		gridButton.Click += (_, _) => SetGridlines(gridButton.IsChecked == true);
 		ApplyToolbarTheme(dark: false);
 		DockPanel.SetDock(toolbar, Dock.Top);
-		foreach (var name in HandleNames)
-		{
-			var handle = new Rectangle {
-				Width = HandleSize,
-				Height = HandleSize,
-				Fill = Brushes.White,
-				Stroke = new SolidColorBrush(SelectionColor),
-				StrokeThickness = 1,
-				IsHitTestVisible = false,
-				Visibility = Visibility.Collapsed
-			};
-			handles[name] = handle;
-			overlay.Children.Add(handle);
-		}
-		viewportCanvas.Children.Add(image);
+		viewportCanvas.Children.Add(framePresenter.Visual);
 		viewportCanvas.Children.Add(overlay);
 		viewportCanvas.Children.Add(textEditor);
-		overlay.Children.Add(selectionBox);
-		overlay.Children.Add(selectionLabel);
+		overlay.Children.Add(adornerLayer.Visual);
 		contentCanvas.Children.Add(viewportCanvas);
 		scroller.Content = contentCanvas;
 		ContextMenu = BuildContextMenu();
@@ -392,11 +360,8 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 	/// <summary>Design-space point to surface-local DIPs, honoring the viewport.</summary>
 	public Point DesignToSurfacePoint(double x, double y)
 	{
-		var (originX, originY, scale) = ViewportParams();
-		var (baseX, baseY) = (Math.Max(0, originX), Math.Max(0, originY));
-		return new Point(
-			baseX + panX - scroller.HorizontalOffset + x * scale,
-			toolbar.ActualHeight + baseY + panY - scroller.VerticalOffset + y * scale);
+		var (sx, sy) = CurrentViewport().DesignToSurface(x, y);
+		return new Point(sx - scroller.HorizontalOffset, toolbar.ActualHeight + sy - scroller.VerticalOffset);
 	}
 
 	public void SetRender(RenderResult render)
@@ -412,7 +377,7 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 		// LibreWPF on macOS, so present the pixels with the pure-managed BitmapSource.Create path.
 		// The bitmap DPI carries the render scale so the Image keeps the logical design size
 		// while showing dpi-scaled pixels.
-		image.Source = BitmapSource.Create(render.Width, render.Height, 96 * dpi, 96 * dpi, PixelFormats.Pbgra32, null, bytes, render.Width * 4);
+		framePresenter.SetSource(BitmapSource.Create(render.Width, render.Height, 96 * dpi, 96 * dpi, PixelFormats.Pbgra32, null, bytes, render.Width * 4));
 		pixelWidth = (int)Math.Round(render.Width / dpi);
 		pixelHeight = (int)Math.Round(render.Height / dpi);
 		HasRender = true;
@@ -425,6 +390,16 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 		designSelection = new Rect(x, y, width, height);
 		selectionName = name ?? "";
 		LayoutSelection();
+	}
+
+	void LayoutSelection()
+	{
+		if (pixelWidth == 0 || pixelHeight == 0 || designSelection.IsEmpty)
+		{
+			ClearSelection();
+			return;
+		}
+		adornerLayer.ShowSelection(designSelection, CurrentViewport(), selectionName);
 	}
 
 	readonly Dictionary<string, Rectangle> secondaryBoxes = new(StringComparer.Ordinal);
@@ -657,10 +632,7 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 
 	public void ClearSelection()
 	{
-		selectionBox.Visibility = Visibility.Collapsed;
-		selectionLabel.Visibility = Visibility.Collapsed;
-		foreach (var handle in handles.Values)
-			handle.Visibility = Visibility.Collapsed;
+		adornerLayer.ClearSelection();
 	}
 
 	/// <summary>
@@ -672,26 +644,24 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 	{
 		if (pixelWidth == 0 || pixelHeight == 0 || scroller.ViewportWidth == 0)
 			return new Vector2((float)point.X, (float)point.Y);
-		var (originX, originY, scale) = ViewportParams();
 		var viewportY = point.Y - toolbar.ActualHeight;
-		var (baseX, baseY) = (Math.Max(0, originX), Math.Max(0, originY));
-		return new Vector2(
-			(float)((point.X - baseX - panX + scroller.HorizontalOffset) / scale),
-			(float)((viewportY - baseY - panY + scroller.VerticalOffset) / scale));
+		var (dx, dy) = CurrentViewport().SurfaceToDesign(point.X + scroller.HorizontalOffset, viewportY + scroller.VerticalOffset);
+		return new Vector2((float)dx, (float)dy);
 	}
 
-	double EffectiveScale()
-	{
-		if (pixelWidth == 0 || pixelHeight == 0 || scroller.ViewportWidth == 0 || scroller.ViewportHeight == 0)
-			return 1.0;
-		return Math.Min(scroller.ViewportWidth / pixelWidth, scroller.ViewportHeight / pixelHeight) * zoomFactor;
-	}
+	/// <summary>The shared design-space-to-surface coordinate math (see
+	/// <see cref="DesignViewport"/>), computed from this control's own viewport size and
+	/// zoom/pan state. Every layout/hit-test method that used to inline this math now goes
+	/// through here - same formulas, one place.</summary>
+	DesignViewport CurrentViewport()
+		=> DesignViewport.Fit(pixelWidth, pixelHeight, scroller.ViewportWidth, scroller.ViewportHeight, zoomFactor, panX, panY);
+
+	double EffectiveScale() => CurrentViewport().Scale;
 
 	(double OriginX, double OriginY, double Scale) ViewportParams()
 	{
-		var scale = EffectiveScale();
-		return ((scroller.ViewportWidth - pixelWidth * scale) / 2,
-			(scroller.ViewportHeight - pixelHeight * scale) / 2, scale);
+		var viewport = CurrentViewport();
+		return (viewport.OriginX, viewport.OriginY, viewport.Scale);
 	}
 
 	/// <summary>True when the pointer is over the toolbar, where pick/pan must not fire.</summary>
@@ -737,8 +707,7 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 		// The image must fill the design-size canvas: without explicit size it renders at
 		// the bitmap's natural DIP size (1 design unit = 1 DIP), which at fit scale is about
 		// 2x too large and drifts from the selection outline.
-		image.Width = viewportCanvas.Width;
-		image.Height = viewportCanvas.Height;
+		framePresenter.Resize(CurrentViewport());
 		UpdateGridBrush(scale);
 		LayoutSelection();
 		foreach (var name in secondaryBounds.Keys)
@@ -787,79 +756,10 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 			gridBrush.Viewport = new Rect(0, 0, GridCellSize * scale, GridCellSize * scale);
 	}
 
-	/// <summary>Places the outline, its name label and the resize handles, in design units
-	/// scaled to the viewport.</summary>
-	void LayoutSelection()
-	{
-		if (pixelWidth == 0 || pixelHeight == 0 || designSelection.IsEmpty)
-		{
-			ClearSelection();
-			return;
-		}
-		var scale = EffectiveScale();
-		var x = designSelection.X * scale;
-		var y = designSelection.Y * scale;
-		var w = designSelection.Width * scale;
-		var h = designSelection.Height * scale;
-
-		Canvas.SetLeft(selectionBox, x);
-		Canvas.SetTop(selectionBox, y);
-		selectionBox.Width = w;
-		selectionBox.Height = h;
-		selectionBox.Visibility = Visibility.Visible;
-
-		Canvas.SetLeft(selectionLabel, x);
-		Canvas.SetTop(selectionLabel, Math.Max(0, y - 17));
-		selectionLabel.Text = selectionName;
-		selectionLabel.Visibility = string.IsNullOrEmpty(selectionName) ? Visibility.Collapsed : Visibility.Visible;
-
-		foreach (var (name, (hx, hy)) in HandlePositions())
-		{
-			var handle = handles[name];
-			Canvas.SetLeft(handle, hx * scale - HandleSize / 2);
-			Canvas.SetTop(handle, hy * scale - HandleSize / 2);
-			handle.Visibility = Visibility.Visible;
-		}
-	}
-
-	/// <summary>The eight resize-handle anchor points in design coordinates.</summary>
-	IEnumerable<(string Name, (double X, double Y))> HandlePositions()
-	{
-		var (x, y) = (designSelection.X, designSelection.Y);
-		var (w, h) = (designSelection.Width, designSelection.Height);
-		var (cx, cy) = (x + w / 2, y + h / 2);
-		yield return ("nw", (x, y));
-		yield return ("n", (cx, y));
-		yield return ("ne", (x + w, y));
-		yield return ("e", (x + w, cy));
-		yield return ("se", (x + w, y + h));
-		yield return ("s", (cx, y + h));
-		yield return ("sw", (x, y + h));
-		yield return ("w", (x, cy));
-	}
-
-	/// <summary>The resize handle under a design-space point, or null.</summary>
+	/// <summary>The resize handle under a design-space point, or null - delegates to the
+	/// shared adorner layer (same tolerance/center-third-is-move logic as before).</summary>
 	string HandleAt(Vector2 designPoint)
-	{
-		if (designSelection.IsEmpty || string.IsNullOrEmpty(selectionName))
-			return null;
-		var scale = EffectiveScale();
-		var tolerance = (HandleSize / 2 + 2) / scale;
-		// Presses in the central third of the element are always a move: on small elements
-		// the resize anchors sit right on top of the centre, and treating such presses as
-		// resize starts makes a plain drag resize (or crash on tiny elements).
-		var (x, y) = (designSelection.X, designSelection.Y);
-		var (w, h) = (designSelection.Width, designSelection.Height);
-		var (cx, cy) = (x + w / 2, y + h / 2);
-		if (Math.Abs(designPoint.X - cx) < w / 3 && Math.Abs(designPoint.Y - cy) < h / 3)
-			return null;
-		foreach (var (name, (hx, hy)) in HandlePositions())
-		{
-			if (Math.Abs(designPoint.X - hx) <= tolerance && Math.Abs(designPoint.Y - hy) <= tolerance)
-				return name;
-		}
-		return null;
-	}
+		=> adornerLayer.HandleAt(new Point(designPoint.X, designPoint.Y), CurrentViewport());
 
 	/// <summary>Places the inline text editor for the stored design rect at the current zoom.</summary>
 	void LayoutTextEditor()

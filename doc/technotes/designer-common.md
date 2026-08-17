@@ -371,6 +371,29 @@ IDesignHostClient {
 }
 ```
 
+**As shipped (2026-08-16)** the seam is implemented in
+`src/Main/Designer/Designer.Remote/IDesignHostClient.cs`, with these deliberate differences from
+the sketch above:
+
+- **Split into a core interface plus optional capability interfaces.** Only what every backend
+  must speak stays on `IDesignHostClient`. `ResetPropertyAsync`, `ApplyLayoutAsync`/`SetZOrderAsync`
+  and default-event activation moved to `IDesignHostPropertyReset` / `IDesignHostLayout` /
+  `IDesignHostDefaultEvent` (WinForms implements these; a markup runtime has no defaults model or
+  absolute-position layout commands to back them). `SetThemeAsync`, `ExportPngAsync` and
+  `SetAppResourcesAsync` moved to `IDesignHostTheme` / `IDesignHostExport` /
+  `IDesignHostAppResources` (WinUI/Uno implements these). The host feature-detects and disables
+  the matching UI, which is what DDP's "unsupported command" rule asks for.
+- **`baseVersion` leads rather than trails** every mutation's parameter list, so the envelope
+  reads consistently across methods.
+- **`AddElementAsync` also takes `proposedName`** — a CLR-type backend must be told the new
+  component's name, whereas a markup backend derives it from the item template.
+- **`HitTestAsync` takes `baseVersion`** (the sketch omitted it), matching every other operation.
+- **No `InitializeAsync`/`CloseAsync`/`RenderAsync`.** The handshake is owned by
+  `DesignerHostProcessClient` (shared base, run during `StartAsync`); closing a document is
+  disposing the client in the one-document-per-child model in use today; and rendering is not a
+  separate verb on either backend — frames come back inside `DesignerSessionState.Render`. Should
+  multi-document-per-child or on-demand rendering land later, these are the three to add back.
+
 Each backend supplies:
 
 - the child process/launcher (`dotnet exec` with the project's runtimeconfig/deps, or the
@@ -449,19 +472,149 @@ child process changed its JSON output):
 | Process lifecycle (`DesignerHostProcessClient`) | `FormsDesignerHostClient : DesignerHostProcessClient, IDesignHostClient`; launch/token/pump/timeout/dispose now inherited | `UnoDesignClient : DesignerHostProcessClient, IDesignHostClient`; same inherited lifecycle |
 | Authentication | Already token-authenticated; unchanged | Child (`UnoHost/Program.cs`) now parses `--token` and validates it plus the protocol version in `initialize` (which also returns capabilities in the same round trip) |
 | `ping` | `[JsonRpcMethod("ping")]` added to `DesignerHostService` | `ping` endpoint added to the Uno child |
-| DDP document methods (open/update/flush/commands) | Already implemented (`session/open`, `session/update`, `session/flush`, `design/*`) | Not yet — the WinUI host still uses its own `design/load`/`design/theme`/… surface; converging next |
+| DDP document methods (open/update/flush/commands) | Already implemented (`session/open`, `session/update`, `session/flush`, `design/*`) | `session/open`/`session/update`/`session/flush`/`design/set-property`/`design/set-event`/`design/add-element`/`design/set-bounds`/`design/delete-elements`/`design/rename` all exist on the child and IDE-side client (2026-08-16); `design/load` stays registered but is now unused by the IDE client — `UnoDesignRuntimeHost` calls `session/open` on first render and `session/update` thereafter. All six mutation RPCs are now wired to real IDE call sites (see step 1 below); `editor` (the local `XDocument`) remains the undo/dirty/save source of truth in every path, with the discrete RPC only choosing how the render is refreshed |
+| Envelope (`SessionId`/`DocumentId`/`Generation`) | Added (2026-08-16): `DesignerHostProcessClient` mints a `SessionId` and echoes/validates it at handshake; `FormsDesignerHostClient` mints a per-client `DocumentId`; both flow through `DesignerDocumentSnapshot`/`DesignerSessionState`/`DesignerEditSet`/`HostHandshake`. All remaining per-mutation RPCs (`design/hit-test`, `design/set-property`, `design/reset-property`, `design/rename`, `design/set-event`, `design/activate-default-event`, `design/add-element`, `design/set-bounds`, `design/delete-elements`, `design/set-z-order`, `design/apply-layout`) were retrofitted with the envelope in a later pass | `design/hit-test` retrofitted with the envelope in the same later pass, matching the other mutation RPCs already added on 2026-08-16 |
+| Host-side seam (`IDesignHostClient`) | **Unified (2026-08-16)**: the interface now carries the full DDP surface (`OpenAsync`/`UpdateAsync`/`FlushAsync` + `SetProperty`/`SetEvent`/`AddElement`/`SetBounds`/`DeleteElements`/`Rename`/`HitTest`), not just lifecycle. `FormsDesignerHostClient` implements it plus `IDesignHostPropertyReset`/`IDesignHostDefaultEvent`/`IDesignHostLayout` | `UnoDesignClient` implements the same core interface plus `IDesignHostTheme`/`IDesignHostExport`/`IDesignHostAppResources`. IDE-side code can now drive either backend through one contract |
 | Canvas | `RemoteFormsDesignerControl` (per-backend) | `UnoDesignSurfaceControl` (per-backend) |
+| Shared presentation helpers | `DesignViewport` + `DesignFramePresenter` + `SelectionAdornerLayer` (`ICSharpCode.Designer.Presentation`) | same three types; each backend keeps its own frame decode and gesture code |
+
+Deliberate deviation from the canonical method list: **no generic `design/command` dispatcher
+exists on either backend.** WinForms already used discrete named RPCs
+(`design/rename`, `design/add-element`, `design/set-z-order`, …) before this
+convergence pass, and WinUI's new methods followed that precedent rather than introducing a
+second, incompatible mutation-dispatch style. `design/command` in the method table above should
+be read as "whatever discrete named RPCs a backend needs," not as a literal generic verb.
+
+Signature conflicts resolved when unifying the seam (2026-08-16), each toward the superset so
+neither backend lost expressiveness:
+
+| Conflict | Was | Unified as |
+|---|---|---|
+| Bounds coordinates | WinForms `int`, WinUI `double` | `double`; WinForms rounds on its own side before the wire |
+| Delete | WinForms single `componentName`, WinUI `string[]` | `string[]`; WinForms loops one RPC per name against the same base version (verified safe: its child's delete never bumps the document version) |
+| Add element | WinForms `(controlType, componentName)`, WinUI `itemXaml` | `DesignerToolboxItemInfo item` + `proposedName`; WinForms reads `item.TypeName`, WinUI materializes `item.Template` |
+| Open/update | WinForms `DesignerDocumentSnapshot`, WinUI raw `(xaml, width, height, dpi)` | `DesignerDocumentSnapshot`; WinUI extracts the primary file's text and takes the viewport from a separate non-RPC `SetViewport(...)`, keeping presentation state out of the document model (a wpf-designer.md red line) |
+| Hit-test | WinForms `(version, int x, int y)`, WinUI `(double x, double y)` | `(long baseVersion, double x, double y)`; the Uno child validates session/document identity but not per-call version, so it ignores the value |
+| Rename | `RenameComponentAsync` vs `RenameAsync` | `RenameAsync` |
+
+### Where convergence stops: protocol yes, presentation no
+
+This is an architectural rule, not an unfinished task. The contract covers the **protocol** —
+session/document lifecycle, the element mutations, the DTO shapes, the identity/versioning
+envelope — and the host-side seam that expresses it (`IDesignHostClient`). It deliberately does
+**not** dictate how a backend's canvas control draws or behaves:
+
+- **Gesture/input models are legitimately per-backend.** `RemoteFormsDesignerControl` drives
+  selection through WPF `Thumb` + bubbling mouse events; `UnoDesignSurfaceControl` uses
+  `Preview` (tunneling) events and manual double-click detection because its `ScrollViewer`
+  (needed for zoom/pan) swallows bubbling events under LibreWPF, and `ClickCount` isn't
+  populated there. Both are correct for their runtime. Forcing one model on the other would be
+  a rewrite of live input handling with no protocol benefit.
+- **Runtime-specific chrome stays local**: zoom/pan viewport, Grid row/column guides, snap
+  guides, size presets, theme toggle and the inline text editor are WinUI/Uno concerns; tab-order
+  overlay, per-component lock state, marquee rubber-band select and the UIA automation-peer tree
+  are WinForms concerns. Neither set belongs in a shared canvas.
+- **What IS shared** lives in `ICSharpCode.Designer.Presentation` and is limited to pure,
+  runtime-neutral geometry/rendering helpers both backends were independently duplicating:
+  `DesignViewport` (design↔surface coordinate math), `DesignFramePresenter` (the frame `Image`
+  element + its sizing) and `SelectionAdornerLayer` (selection outline, resize handles, label
+  placement and handle hit-testing). Each backend still decodes its own frame bytes (PNG via
+  WIC for WinForms; raw BGRA via `BitmapSource.Create` for WinUI/Uno, a deliberate
+  WIC-avoidance workaround on macOS) and still owns its own gesture code.
+
+The practical payoff of the shared pieces on macOS: LibreWinForms, LibreWPF, ProGPU WinUI and
+Uno Platform designs all present through the same coordinate/frame/adorner code, so a geometry
+or DPI-scaling bug is fixed once rather than four times — without pretending four different
+input stacks are one.
 
 Remaining convergence steps, in order:
 
-1. Finish the WinUI host's DDP document methods (versioned `session/open`/`update`/`flush`,
-   `design/command`, property/event methods) so `IDesignHostClient` can grow the full
-   DDP surface and the WinUI addin stops using per-backend DTO aliases.
-2. Add the DDP envelope (`SessionId`/`DocumentId`/`Generation`) to both protocols.
-3. Extract the shared canvas (`DesignerCanvas` + frame presenter + selection/outline
+1. ~~Wire the remaining four RPCs (`design/set-event`, `design/add-element`,
+   `design/delete-elements`, `design/rename`)~~ — done (2026-08-16). `design/set-property`/
+   `design/set-bounds` were wired first; `WinUIXamlDesignerViewContent.cs`'s
+   `ApplyDocumentChange()` gained an optional `Action<string> incrementalRender` — `editor`
+   (the `XDocument`-based undo/dirty/save source of truth) is still mutated first as before, and
+   the callback only chooses whether the resulting render push goes out as a discrete DDP edit
+   (via a new `IWinUIXamlIncrementalRender` capability on `WinUIXamlHost`/`UnoDesignRuntimeHost`,
+   which falls back to a full `LoadXaml` reload itself on any rejection/exception) or the old
+   full-document `session/update`. `design/set-event` (Properties-pad handler-name edits) and
+   `design/delete-elements` (`DeleteElement`) are wired the same way; `design/add-element` is
+   wired only when the drop container has a resolvable `x:Name` (falls back to full reload for
+   an unnamed/root container, since the item XAML must already carry the locally-resolved name
+   to avoid the remote parse disagreeing with `editor`'s own naming); `design/rename` has no
+   existing "rename an already-named element" call site in the IDE today, so it's landed as a
+   ready-to-use capability only — no new rename UI was invented, that's a feature addition, not
+   a wiring task. Insert/paste/wrap-in-container/reparent and group drag/grid-guide-resize stay
+   on the full-reload path for the same naming/restructuring-safety reason.
+2. ~~Retrofit the SessionId/DocumentId envelope onto WinForms' and WinUI's older per-mutation
+   RPCs (hit-test, add-control/add-element, set-bounds, delete, rename, apply-layout,
+   set-z-order)~~ — done.
+3. ~~Rename WinForms' method names to DDP's canonical spelling (`design/rename-component` →
+   `design/rename`, `design/add-control` → `design/add-element`, `design/delete-component` →
+   `design/delete-elements`)~~ — done; only the wire strings changed, the C# method names
+   (`RenameComponent`/`AddControl`/`DeleteComponent` and their `*Async` client counterparts)
+   are unchanged.
+4. Extract the shared canvas (`DesignerCanvas` + frame presenter + selection/outline
    adorners) from `RemoteFormsDesignerControl`/`UnoDesignSurfaceControl`, then delete the
-   per-backend canvas classes.
-4. Implement the WPF surface host behind the same contract (wpf-designer.md phases).
+   per-backend canvas classes — **two of three layers done (2026-08-16)**, in a new
+   `ICSharpCode.Designer.Presentation` project (`src/Main/Designer/Designer.Presentation/`):
+   - **`DesignViewport`** (done): design size + scale + origin + pan → design↔surface
+     coordinate conversion, extracted verbatim from `UnoDesignSurfaceControl`'s
+     `EffectiveScale()`/`ViewportParams()`/`ToDesignPoint()`/`DesignToSurfacePoint()` formulas —
+     same numbers, just relocated, including the degenerate-input fallback shape. WinUI/Uno
+     computes it via `DesignViewport.Fit(...)`; WinForms (always 1:1, no zoom/pan) via
+     `DesignViewport.Identity(...)`, wired through `PositionAdorners`/`UpdateDesignGuides`.
+   - **`DesignFramePresenter`** (done): owns the one `Image` element each control displays its
+     decoded frame in, with `SetSource(ImageSource)` (backend keeps its own PNG-via-`BitmapImage`
+     vs raw-BGRA-via-`BitmapSource.Create` decode - genuinely different codecs, not unified) and
+     `Resize(DesignViewport)` (replaces the `image.Width/Height = ... * scale` math both
+     backends previously duplicated inline). Both `RemoteFormsDesignerControl` and
+     `UnoDesignSurfaceControl` now hold a `DesignFramePresenter` field instead of a raw `Image`
+     field; every other reference to the old field (hit-test point conversion,
+     `PointToScreen`, `IsVisible`) now goes through `framePresenter.Visual`. This became safe to
+     extract only once `DesignViewport` existed — the earlier blocker was that frame size and
+     selection/handle/guide geometry shared the same `pixelWidth`/`pixelHeight` state; centralizing
+     that math in `DesignViewport` decoupled frame placement from everything else that reads it.
+   - **`SelectionAdornerLayer`** (done, 2026-08-16, scoped narrowly): the selection outline +
+     up to 8 named resize handles + optional label are now a shared type
+     (`ShowSelection`/`ClearSelection`/`HandleAt`, all formulas relocated verbatim from
+     `UnoDesignSurfaceControl`'s `LayoutSelection`/`HandlePositions`/`HandleAt`). Deliberately
+     **excludes the mouse-gesture state machine that drives it** — WinUI/Uno keeps its own
+     `Preview`-event-based drag handling (a documented LibreWPF/`ScrollViewer` workaround) and
+     WinForms keeps its own `Thumb`-based drag handling (bubbling events, no `ScrollViewer` to
+     swallow them) completely untouched; both still call the shared layer's methods instead of
+     touching private rectangle/handle fields, but neither backend's *input* pipeline changed.
+     WinForms' `moveThumb`/`resizeThumb` stay real, separate interactive `Thumb` elements outside
+     the shared layer (handles there are non-interactive by design, matching WinUI where the
+     surrounding control's own mouse handlers do the hit-testing) — only the non-interactive
+     selection rectangle moved into the shared type, plus a small `SelectionStroke` setter added
+     to reproduce WinForms' locked-component recolor (DodgerBlue → DarkOrange), a purely visual
+     property untouched by the gesture-code exclusion.
+   - **Gesture/input state machine, marquee-select, grid/snap guides, toolbar chrome, zoom/pan
+     input, context menu, inline text editor, UIA automation peer tree**: intentionally NOT
+     shared — see "Where convergence stops: protocol yes, presentation no" above. These are
+     per-backend presentation concerns, not protocol gaps, and this item is complete as scoped
+     rather than blocked. (Should someone later want them merged anyway, it would be a rewrite
+     of live mouse-input handling needing interactive WPF/LibreWPF verification — but the
+     contract does not ask for it.)
+
+   Both layers landed this round are verified by code review (formulas/wiring unchanged in
+   effect - `DesignViewport.Identity`'s case is a numeric no-op, `DesignViewport.Fit`'s formulas
+   are a direct relocation) plus both existing test suites staying green
+   (`FormsDesignerHostClientTests`, `UnoDesignHostRpcTests`, 6/6). Neither confirms the frame or
+   selection outline actually renders correctly on screen - that still needs a live GUI session.
+5. Implement the WPF surface host behind the same contract (wpf-designer.md phases).
+
+Done (2026-08-16): a WinUI/Uno host test project now exists —
+`WinUIXamlDesigner.UnoHost.Tests` (plus a WPF-free `WinUIXamlDesigner.UnoDesignHost.Remote`
+project that links `UnoDesignClient.cs` by source, mirroring `FormsDesigner.Remote.csproj`'s
+pattern) — spawning a real headless Uno child and covering handshake, `session/open`/`update`/
+`flush`, all six mutation RPCs (including not-found/bad-name rejection paths), and independent
+client lifetimes. 3/3 passing; run with:
+`dotnet test src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.UnoHost.Tests --filter-query "/*/*/UnoDesignHostRpcTests/*"`.
+Not yet covered: the incremental-render accept/reject/exception-fallback paths inside
+`UnoDesignRuntimeHost` itself (that class is WPF-hosted and untested by this suite, which talks
+to the child directly) — a real desktop smoke test is still the only way to confirm those.
 
 ## Phased adoption
 

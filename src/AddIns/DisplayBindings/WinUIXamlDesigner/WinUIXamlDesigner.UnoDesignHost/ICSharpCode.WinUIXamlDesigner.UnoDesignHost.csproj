@@ -10,6 +10,7 @@
   <ItemGroup>
     <ProjectReference Include="..\WinUIXamlDesigner.AddIn\ICSharpCode.WinUIXamlDesigner.csproj" Private="false" />
     <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
+    <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Presentation\Designer.Presentation.csproj" />
     <PackageReference Include="StreamJsonRpc" Version="2.25.29" />
   </ItemGroup>
 </Project>

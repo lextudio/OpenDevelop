@@ -42,6 +42,12 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public string ChildLog { get { lock (childLog) return childLog.ToString(); } }
 		public event EventHandler? HostExited;
 
+		/// <summary>Host-chosen identity for this child process, minted before launch and
+		/// confirmed by the child's handshake echo. Stable for the child's life; every
+		/// document opened against this child shares it (see designer-common.md's
+		/// "Identity and versioning").</summary>
+		public string SessionId { get; } = Guid.NewGuid().ToString("N");
+
 		/// <summary>Absolute path of the deployed child host dll.</summary>
 		protected abstract string GetChildDllPath();
 
@@ -67,10 +73,12 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		protected virtual async Task OnConnectedAsync(JsonRpc rpc, string token, CancellationToken cancellationToken)
 		{
 			var handshake = await rpc.InvokeWithParameterObjectAsync<HostHandshake>("initialize",
-				new { token, protocolVersion = DesignerProtocol.Version }, cancellationToken)
+				new { token, protocolVersion = DesignerProtocol.Version, sessionId = SessionId }, cancellationToken)
 				.WaitAsync(HandshakeTimeout, cancellationToken).ConfigureAwait(false);
 			if (handshake.ProtocolVersion != DesignerProtocol.Version || handshake.ProcessId != process.Id)
 				throw new InvalidDataException("The designer host returned an incompatible handshake.");
+			if (handshake.SessionId != SessionId)
+				throw new InvalidDataException("The designer host did not echo the expected session id.");
 		}
 
 		/// <summary>Spawns the child and completes the authenticated handshake.</summary>

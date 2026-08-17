@@ -308,6 +308,15 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         // the user is doing on the machine (measured annoyance - the WPF window grabs activation on
         // every fixture launch otherwise).
         psi.Environment["OD_TEST_MODE"] = "1";
+        // Forwards the outer test-runner's own OD_WINUI_RUNTIME (see RegisterDevFlowActionsCommand)
+        // into the launched app, same pattern as DEVFLOW_AGENT_PORT above: one ambient override for
+        // the whole test process, not a per-collection setting (xUnit constructs collection
+        // fixtures itself with no constructor-injection point for that). Tests that need a specific
+        // WinUI backend (see ProGpuWinUIDesignerTests) are run as their own `dotnet test` invocation
+        // with this set, rather than mixed into the same run as the default-backend suite.
+        var winUIRuntime = Environment.GetEnvironmentVariable("OD_WINUI_RUNTIME");
+        if (!string.IsNullOrEmpty(winUIRuntime))
+            psi.Environment["OD_WINUI_RUNTIME"] = winUIRuntime;
         ConfigureDotNetEnvironment(psi);
 
         _app = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start OpenDevelop");

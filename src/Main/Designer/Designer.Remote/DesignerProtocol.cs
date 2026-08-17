@@ -19,7 +19,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	/// mismatched peers and reports both supported ranges.</summary>
 	public static class DesignerProtocol
 	{
-		public const int Version = 1;
+		public const int Version = 2;
 	}
 
 	/// <summary>Response to the <c>initialize</c> handshake.</summary>
@@ -28,11 +28,20 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public int ProtocolVersion { get; set; }
 		public string Runtime { get; set; } = "";
 		public int ProcessId { get; set; }
+		/// <summary>Session identity minted once per child lifetime; echoed back on every
+		/// subsequent call so the host can detect a stale/reused child.</summary>
+		public string SessionId { get; set; } = "";
 	}
 
 	/// <summary>Host-authoritative document snapshot. The child never writes files.</summary>
 	public sealed class DesignerDocumentSnapshot
 	{
+		/// <summary>Identifies the child process (host-chosen); stable for the child's life.</summary>
+		public string SessionId { get; set; } = "";
+		/// <summary>Identifies the document within the session; stable for the document's life.</summary>
+		public string DocumentId { get; set; } = "";
+		/// <summary>Per-document reload counter (the DDP "Generation"). All element IDs,
+		/// selection, undo state and cached model tokens are invalid across a change.</summary>
 		public long Version { get; set; }
 		public string ProjectFileName { get; set; } = "";
 		public string TargetFramework { get; set; } = "";
@@ -61,6 +70,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	/// <summary>Current state of the design session after open/update/mutation.</summary>
 	public sealed class DesignerSessionState
 	{
+		public string SessionId { get; set; } = "";
+		public string DocumentId { get; set; } = "";
 		public long Version { get; set; }
 		public bool Accepted { get; set; }
 		public string Error { get; set; } = "";
@@ -152,6 +163,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	/// <summary>Versioned edit set returned by session/flush; applied atomically at BaseVersion.</summary>
 	public sealed class DesignerEditSet
 	{
+		public string SessionId { get; set; } = "";
+		public string DocumentId { get; set; } = "";
 		public long BaseVersion { get; set; }
 		public List<DesignerSourceFileSnapshot> Files { get; set; } = new List<DesignerSourceFileSnapshot>();
 	}
@@ -173,6 +186,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	{
 		public string Runtime { get; set; } = "";
 		public string Version { get; set; } = "";
+		public string SessionId { get; set; } = "";
 		public List<DesignerToolboxItemInfo> Toolbox { get; set; } = new List<DesignerToolboxItemInfo>();
 	}
 

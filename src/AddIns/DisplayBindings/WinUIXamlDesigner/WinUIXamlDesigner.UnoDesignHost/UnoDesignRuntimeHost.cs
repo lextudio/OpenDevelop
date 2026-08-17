@@ -19,6 +19,8 @@ using ElementNode = ICSharpCode.SharpDevelop.Designer.Remote.DesignerElementNode
 using DesignDiagnostic = ICSharpCode.SharpDevelop.Designer.Remote.DesignerDiagnostic;
 using RenderResult = ICSharpCode.SharpDevelop.Designer.Remote.DesignerRenderFrame;
 using ToolboxItemInfo = ICSharpCode.SharpDevelop.Designer.Remote.DesignerToolboxItemInfo;
+using DocumentSnapshot = ICSharpCode.SharpDevelop.Designer.Remote.DesignerDocumentSnapshot;
+using SourceFileSnapshot = ICSharpCode.SharpDevelop.Designer.Remote.DesignerSourceFileSnapshot;
 
 namespace ICSharpCode.WinUIXamlDesigner.UnoDesignHost;
 
@@ -28,7 +30,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoDesignHost;
 /// XamlReader, lays it out and renders it to a PNG that is displayed here. All state
 /// crossings are JSON over loopback TCP - no WinUI type ever enters this process.
 /// </summary>
-sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverlay, IWinUIXamlDesignView, IWinUIXamlDirectManipulation, IWinUIXamlTextEditing, IWinUIXamlToolboxCatalog, IWinUIXamlLifecycleProbe, IWinUIXamlPathPick, IWinUIXamlTheme, IWinUIXamlMultiSelection, IWinUIXamlContextCommands, IWinUIXamlGridGuides, IWinUIXamlDiagnostics
+sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverlay, IWinUIXamlDesignView, IWinUIXamlDirectManipulation, IWinUIXamlTextEditing, IWinUIXamlToolboxCatalog, IWinUIXamlLifecycleProbe, IWinUIXamlPathPick, IWinUIXamlTheme, IWinUIXamlMultiSelection, IWinUIXamlContextCommands, IWinUIXamlGridGuides, IWinUIXamlDiagnostics, IWinUIXamlIncrementalRender
 {
 	readonly UnoDesignSurfaceControl surface = new();
 	readonly HashSet<string> selectableNames = new(StringComparer.Ordinal);
@@ -44,6 +46,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 	System.Windows.Threading.DispatcherTimer scaleTimer;
 	double lastRenderDpi = 1.0;
 	int version;
+	bool sessionOpened;
 	double? configuredDesignWidth;
 	double? configuredDesignHeight;
 	bool disposed;
@@ -361,7 +364,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		}
 		try
 		{
-			var result = client.HitTestAsync(design.X, design.Y).GetAwaiter().GetResult();
+			var result = client.HitTestAsync(Volatile.Read(ref version), design.X, design.Y).GetAwaiter().GetResult();
 			lastPickDiagnostic = $"point={design.X:F0},{design.Y:F0} chain=[{string.Join(",", result.Chain)}]";
 			foreach (var name in result.Chain)
 			{
@@ -535,7 +538,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		}
 		try
 		{
-			var result = await client.LoadAppResourcesAsync(xaml);
+			var result = await client.SetAppResourcesAsync(xaml);
 			if (!result.Success)
 			{
 				return " App.xaml skipped: " + result.Error;
@@ -680,7 +683,25 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 			var (width, height) = DesignSize(text);
 			var dpi = DisplayDpi();
 			lastRenderDpi = dpi;
-			snapshot = await client.LoadDesignAsync(text, width, height, dpi);
+			// Surface size/DPI is presentation state and stays out of the document snapshot.
+			client.SetViewport(width, height, dpi);
+			var document = new DocumentSnapshot {
+				SessionId = client.SessionId,
+				DocumentId = client.DocumentId,
+				Version = requested,
+				PrimaryFileName = documentFileName,
+				Language = "",
+				Files = { new SourceFileSnapshot { FileName = documentFileName, Kind = "Source", Text = text } }
+			};
+			if (!sessionOpened)
+			{
+				snapshot = await client.OpenAsync(document);
+				sessionOpened = true;
+			}
+			else
+			{
+				snapshot = await client.UpdateAsync(document);
+			}
 		}
 		catch (Exception e)
 		{
@@ -804,6 +825,263 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 			lastRenderDpi = dpi;
 			_ = RenderAsync(Volatile.Read(ref lastLoadedText), Interlocked.Increment(ref version));
 		}
+	}
+
+	/// <summary>DDP design/set-property as a render-refresh optimization: the caller's own
+	/// source-of-truth buffer has already been updated; this only decides which render request
+	/// goes out. Falls back to a full <see cref="LoadXaml"/> whenever the session isn't open
+	/// yet, the child rejects the edit, or the RPC throws - the caller never has to know which
+	/// path actually ran.</summary>
+	public void TrySetProperty(string elementName, string propertyName, string value, string fallbackXaml)
+	{
+		ObjectDisposedException.ThrowIf(disposed, this);
+		if (client == null || !sessionOpened)
+		{
+			LoadXaml(fallbackXaml);
+			return;
+		}
+		_ = SetPropertyIncrementalAsync(elementName, propertyName, value, fallbackXaml, Interlocked.Increment(ref version));
+	}
+
+	async Task SetPropertyIncrementalAsync(string elementName, string propertyName, string value, string fallbackXaml, int requested)
+	{
+		DesignSnapshot snapshot;
+		try
+		{
+			snapshot = await client.SetPropertyAsync(requested, elementName, propertyName, value);
+			if (!snapshot.Accepted)
+			{
+				LoadXaml(fallbackXaml);
+				return;
+			}
+		}
+		catch (Exception)
+		{
+			if (disposed) return;
+			LoadXaml(fallbackXaml);
+			return;
+		}
+		if (disposed || Volatile.Read(ref version) != requested)
+			return;
+		if (!dispatcher.CheckAccess())
+		{
+			dispatcher.BeginInvoke(() => ApplySnapshot(snapshot, requested));
+			return;
+		}
+		ApplySnapshot(snapshot, requested);
+	}
+
+	/// <summary>DDP design/set-bounds as a render-refresh optimization; see
+	/// <see cref="TrySetProperty"/> for the fallback contract. Only meant for a pure resize -
+	/// callers must not use this when the element's position (Margin) also changed, since this
+	/// design host's panels position children through Margin, not Canvas.Left/Top, and the
+	/// child only applies x/y when the parent happens to be a Canvas.</summary>
+	public void TrySetBounds(string elementName, double x, double y, double width, double height, string fallbackXaml)
+	{
+		ObjectDisposedException.ThrowIf(disposed, this);
+		if (client == null || !sessionOpened)
+		{
+			LoadXaml(fallbackXaml);
+			return;
+		}
+		_ = SetBoundsIncrementalAsync(elementName, x, y, width, height, fallbackXaml, Interlocked.Increment(ref version));
+	}
+
+	async Task SetBoundsIncrementalAsync(string elementName, double x, double y, double width, double height, string fallbackXaml, int requested)
+	{
+		DesignSnapshot snapshot;
+		try
+		{
+			snapshot = await client.SetBoundsAsync(requested, elementName, x, y, width, height);
+			if (!snapshot.Accepted)
+			{
+				LoadXaml(fallbackXaml);
+				return;
+			}
+		}
+		catch (Exception)
+		{
+			if (disposed) return;
+			LoadXaml(fallbackXaml);
+			return;
+		}
+		if (disposed || Volatile.Read(ref version) != requested)
+			return;
+		if (!dispatcher.CheckAccess())
+		{
+			dispatcher.BeginInvoke(() => ApplySnapshot(snapshot, requested));
+			return;
+		}
+		ApplySnapshot(snapshot, requested);
+	}
+
+	/// <summary>DDP design/set-event as a render-refresh optimization; see
+	/// <see cref="TrySetProperty"/> for the fallback contract.</summary>
+	public void TrySetEvent(string elementName, string eventName, string handlerName, string fallbackXaml)
+	{
+		ObjectDisposedException.ThrowIf(disposed, this);
+		if (client == null || !sessionOpened)
+		{
+			LoadXaml(fallbackXaml);
+			return;
+		}
+		_ = SetEventIncrementalAsync(elementName, eventName, handlerName, fallbackXaml, Interlocked.Increment(ref version));
+	}
+
+	async Task SetEventIncrementalAsync(string elementName, string eventName, string handlerName, string fallbackXaml, int requested)
+	{
+		DesignSnapshot snapshot;
+		try
+		{
+			snapshot = await client.SetEventAsync(requested, elementName, eventName, handlerName);
+			if (!snapshot.Accepted)
+			{
+				LoadXaml(fallbackXaml);
+				return;
+			}
+		}
+		catch (Exception)
+		{
+			if (disposed) return;
+			LoadXaml(fallbackXaml);
+			return;
+		}
+		if (disposed || Volatile.Read(ref version) != requested)
+			return;
+		if (!dispatcher.CheckAccess())
+		{
+			dispatcher.BeginInvoke(() => ApplySnapshot(snapshot, requested));
+			return;
+		}
+		ApplySnapshot(snapshot, requested);
+	}
+
+	/// <summary>DDP design/add-element as a render-refresh optimization; see
+	/// <see cref="TrySetProperty"/> for the fallback contract. <paramref name="itemXaml"/> is the
+	/// exact markup the caller's own editor already produced (x:Name included), so the incremental
+	/// render always ends up with the same element the source-of-truth document now has.</summary>
+	public void TryAddElement(string containerName, string itemXaml, string fallbackXaml)
+	{
+		ObjectDisposedException.ThrowIf(disposed, this);
+		if (client == null || !sessionOpened)
+		{
+			LoadXaml(fallbackXaml);
+			return;
+		}
+		_ = AddElementIncrementalAsync(containerName, itemXaml, fallbackXaml, Interlocked.Increment(ref version));
+	}
+
+	async Task AddElementIncrementalAsync(string containerName, string itemXaml, string fallbackXaml, int requested)
+	{
+		DesignSnapshot snapshot;
+		try
+		{
+			// The markup backend takes the element name from the item XAML itself, so the
+			// proposed name is only advisory here.
+			snapshot = await client.AddElementAsync(requested, containerName, new ToolboxItemInfo { Template = itemXaml }, "", 0, 0);
+			if (!snapshot.Accepted)
+			{
+				LoadXaml(fallbackXaml);
+				return;
+			}
+		}
+		catch (Exception)
+		{
+			if (disposed) return;
+			LoadXaml(fallbackXaml);
+			return;
+		}
+		if (disposed || Volatile.Read(ref version) != requested)
+			return;
+		if (!dispatcher.CheckAccess())
+		{
+			dispatcher.BeginInvoke(() => ApplySnapshot(snapshot, requested));
+			return;
+		}
+		ApplySnapshot(snapshot, requested);
+	}
+
+	/// <summary>DDP design/delete-elements as a render-refresh optimization; see
+	/// <see cref="TrySetProperty"/> for the fallback contract.</summary>
+	public void TryDeleteElements(string[] elementNames, string fallbackXaml)
+	{
+		ObjectDisposedException.ThrowIf(disposed, this);
+		if (client == null || !sessionOpened)
+		{
+			LoadXaml(fallbackXaml);
+			return;
+		}
+		_ = DeleteElementsIncrementalAsync(elementNames, fallbackXaml, Interlocked.Increment(ref version));
+	}
+
+	async Task DeleteElementsIncrementalAsync(string[] elementNames, string fallbackXaml, int requested)
+	{
+		DesignSnapshot snapshot;
+		try
+		{
+			snapshot = await client.DeleteElementsAsync(requested, elementNames);
+			if (!snapshot.Accepted)
+			{
+				LoadXaml(fallbackXaml);
+				return;
+			}
+		}
+		catch (Exception)
+		{
+			if (disposed) return;
+			LoadXaml(fallbackXaml);
+			return;
+		}
+		if (disposed || Volatile.Read(ref version) != requested)
+			return;
+		if (!dispatcher.CheckAccess())
+		{
+			dispatcher.BeginInvoke(() => ApplySnapshot(snapshot, requested));
+			return;
+		}
+		ApplySnapshot(snapshot, requested);
+	}
+
+	/// <summary>DDP design/rename as a render-refresh optimization; see
+	/// <see cref="TrySetProperty"/> for the fallback contract. Landed as an unused capability - no
+	/// call site in this shell renames an already-named element today.</summary>
+	public void TryRename(string elementName, string newName, string fallbackXaml)
+	{
+		ObjectDisposedException.ThrowIf(disposed, this);
+		if (client == null || !sessionOpened)
+		{
+			LoadXaml(fallbackXaml);
+			return;
+		}
+		_ = RenameIncrementalAsync(elementName, newName, fallbackXaml, Interlocked.Increment(ref version));
+	}
+
+	async Task RenameIncrementalAsync(string elementName, string newName, string fallbackXaml, int requested)
+	{
+		DesignSnapshot snapshot;
+		try
+		{
+			snapshot = await client.RenameAsync(requested, elementName, newName);
+			if (!snapshot.Accepted)
+			{
+				LoadXaml(fallbackXaml);
+				return;
+			}
+		}
+		catch (Exception)
+		{
+			if (disposed) return;
+			LoadXaml(fallbackXaml);
+			return;
+		}
+		if (disposed || Volatile.Read(ref version) != requested)
+			return;
+		if (!dispatcher.CheckAccess())
+		{
+			dispatcher.BeginInvoke(() => ApplySnapshot(snapshot, requested));
+			return;
+		}
+		ApplySnapshot(snapshot, requested);
 	}
 
 	void ApplySnapshot(DesignSnapshot snapshot, int requested)

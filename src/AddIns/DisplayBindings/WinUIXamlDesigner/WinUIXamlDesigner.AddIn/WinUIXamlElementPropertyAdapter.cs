@@ -25,12 +25,17 @@ namespace ICSharpCode.WinUIXamlDesigner
 		readonly XElement element;
 		readonly XElement documentRoot;
 		readonly Action<XElement, XName, string> setAttribute;
+		readonly Action<XElement, XName, string> setEventHandler;
 
-		public WinUIXamlElementPropertyAdapter(XElement element, XElement documentRoot, Action<XElement, XName, string> setAttribute)
+		public WinUIXamlElementPropertyAdapter(XElement element, XElement documentRoot, Action<XElement, XName, string> setAttribute, Action<XElement, XName, string> setEventHandler = null)
 		{
 			this.element = element ?? throw new ArgumentNullException(nameof(element));
 			this.documentRoot = documentRoot;
 			this.setAttribute = setAttribute ?? throw new ArgumentNullException(nameof(setAttribute));
+			// Event-handler assignment can drive a distinct incremental render RPC
+			// (design/set-event) from a plain attribute edit (design/set-property); callers that
+			// don't care about that distinction may omit it and share the property callback.
+			this.setEventHandler = setEventHandler ?? setAttribute;
 		}
 
 		public override string ToString() => element.Name.LocalName;
@@ -44,7 +49,7 @@ namespace ICSharpCode.WinUIXamlDesigner
 			var current = element.Attribute(attribute)?.Value;
 			if (string.IsNullOrEmpty(handlerName) ? current == null : current == handlerName)
 				return;
-			setAttribute(element, attribute, string.IsNullOrEmpty(handlerName) ? null : handlerName);
+			setEventHandler(element, attribute, string.IsNullOrEmpty(handlerName) ? null : handlerName);
 		}
 
 		public PropertyDescriptorCollection GetProperties() => GetProperties(null);
@@ -84,7 +89,7 @@ namespace ICSharpCode.WinUIXamlDesigner
 			var eventNames = EventsFor(element.Name.LocalName);
 			var descriptors = new EventDescriptor[eventNames.Count];
 			for (var i = 0; i < eventNames.Count; i++)
-				descriptors[i] = new XamlEventDescriptor(element, XName.Get(eventNames[i]), setAttribute);
+				descriptors[i] = new XamlEventDescriptor(element, XName.Get(eventNames[i]), setEventHandler);
 			return new EventDescriptorCollection(descriptors, readOnly: true);
 		}
 

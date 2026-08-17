@@ -367,6 +367,74 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 		"WinUI/Uno runtime host is not installed. The WPF XamlReader compatibility renderer is disabled.";
 	public void LoadXaml(string text) => runtime?.LoadXaml(text ?? string.Empty);
 
+	/// <summary>Applies a single property change to the live render without a full XAML
+	/// reparse, when the runtime supports it; otherwise (or on any rejection) falls back to
+	/// <paramref name="fallbackXaml"/> through the normal full-document <see cref="LoadXaml"/>
+	/// path. Fire-and-forget, matching <see cref="LoadXaml"/>'s own async rendering model -
+	/// <c>editor</c> (the source-of-truth/undo buffer) has already been updated by the caller
+	/// before this runs; this only affects which render request goes out.</summary>
+	public void TrySetProperty(string elementName, string propertyName, string value, string fallbackXaml)
+	{
+		if (runtime is IWinUIXamlIncrementalRender incremental)
+			incremental.TrySetProperty(elementName, propertyName, value, fallbackXaml);
+		else
+			LoadXaml(fallbackXaml);
+	}
+
+	/// <summary>Applies a width/height-only resize to the live render without a full XAML
+	/// reparse, when the runtime supports it; otherwise falls back to <paramref name="fallbackXaml"/>.
+	/// Only meant for a pure resize (no position change) - see
+	/// <see cref="IWinUIXamlIncrementalRender.TrySetBounds"/>.</summary>
+	public void TrySetBounds(string elementName, double x, double y, double width, double height, string fallbackXaml)
+	{
+		if (runtime is IWinUIXamlIncrementalRender incremental)
+			incremental.TrySetBounds(elementName, x, y, width, height, fallbackXaml);
+		else
+			LoadXaml(fallbackXaml);
+	}
+
+	/// <summary>Applies an event-handler-name change to the live render without a full XAML
+	/// reparse, when the runtime supports it; otherwise falls back to <paramref name="fallbackXaml"/>.</summary>
+	public void TrySetEvent(string elementName, string eventName, string handlerName, string fallbackXaml)
+	{
+		if (runtime is IWinUIXamlIncrementalRender incremental)
+			incremental.TrySetEvent(elementName, eventName, handlerName, fallbackXaml);
+		else
+			LoadXaml(fallbackXaml);
+	}
+
+	/// <summary>Adds a new element (already-resolved x:Name baked into <paramref name="itemXaml"/>)
+	/// as a child of the named container without a full XAML reparse, when the runtime supports it;
+	/// otherwise falls back to <paramref name="fallbackXaml"/>.</summary>
+	public void TryAddElement(string containerName, string itemXaml, string fallbackXaml)
+	{
+		if (runtime is IWinUIXamlIncrementalRender incremental)
+			incremental.TryAddElement(containerName, itemXaml, fallbackXaml);
+		else
+			LoadXaml(fallbackXaml);
+	}
+
+	/// <summary>Removes the named elements from the live render without a full XAML reparse, when
+	/// the runtime supports it; otherwise falls back to <paramref name="fallbackXaml"/>.</summary>
+	public void TryDeleteElements(string[] elementNames, string fallbackXaml)
+	{
+		if (runtime is IWinUIXamlIncrementalRender incremental)
+			incremental.TryDeleteElements(elementNames, fallbackXaml);
+		else
+			LoadXaml(fallbackXaml);
+	}
+
+	/// <summary>Renames an element in the live render without a full XAML reparse, when the
+	/// runtime supports it; otherwise falls back to <paramref name="fallbackXaml"/>. Landed as an
+	/// unused capability - no call site in this shell renames an already-named element today.</summary>
+	public void TryRename(string elementName, string newName, string fallbackXaml)
+	{
+		if (runtime is IWinUIXamlIncrementalRender incremental)
+			incremental.TryRename(elementName, newName, fallbackXaml);
+		else
+			LoadXaml(fallbackXaml);
+	}
+
 	public void Dispose()
 	{
 		DragOver -= OnDragOver;
@@ -610,6 +678,37 @@ public interface IWinUIXamlDirectManipulation
 	event EventHandler<IReadOnlyList<(string Name, double DX, double DY)>> ElementGroupDragCommitted;
 	/// <summary>Raised when a Grid row/column divider drag commits (name, isRow, index, design position).</summary>
 	event EventHandler<(string Name, bool IsRow, int Index, double Position)> GridGuideDragCommitted;
+}
+
+/// <summary>
+/// Optional: a runtime that can refresh its render from a single discrete edit (DDP's
+/// design/set-property / design/set-bounds) instead of a full document reparse. The source
+/// document (the caller's undo/save buffer) has already been updated before either method is
+/// called - these only choose which render request the runtime sends. Both are fire-and-forget
+/// (matching <see cref="IWinUIXamlRuntimeHost.LoadXaml"/>'s own async model): on any rejection
+/// or exception the implementation must fall back to a full <c>LoadXaml(fallbackXaml)</c> itself,
+/// so the caller never needs to know which path was actually taken.
+/// </summary>
+public interface IWinUIXamlIncrementalRender
+{
+	void TrySetProperty(string elementName, string propertyName, string value, string fallbackXaml);
+	/// <summary>Only meant for a pure resize (no position change) - most panels here position
+	/// children through Margin, which this does not touch; only Width/Height apply generally,
+	/// with Canvas.Left/Top applying too when the parent happens to be a Canvas.</summary>
+	void TrySetBounds(string elementName, double x, double y, double width, double height, string fallbackXaml);
+	/// <summary>DDP design/set-event: validates the element/event names against the live tree and
+	/// re-renders. No live code-behind instance exists in this design host, so no handler is
+	/// actually invoked - this only keeps the incremental render path in sync.</summary>
+	void TrySetEvent(string elementName, string eventName, string handlerName, string fallbackXaml);
+	/// <summary>DDP design/add-element: parses <paramref name="itemXaml"/> (the exact markup the
+	/// caller's own editor already produced, x:Name included) and appends it as a child of the
+	/// named parent Panel.</summary>
+	void TryAddElement(string containerName, string itemXaml, string fallbackXaml);
+	/// <summary>DDP design/delete-elements: removes each named element from its Panel parent.</summary>
+	void TryDeleteElements(string[] elementNames, string fallbackXaml);
+	/// <summary>DDP design/rename: renames the live element. Landed as an unused capability - no
+	/// call site in this shell renames an already-named element today.</summary>
+	void TryRename(string elementName, string newName, string fallbackXaml);
 }
 
 /// <summary>
