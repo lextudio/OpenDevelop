@@ -735,66 +735,104 @@ remain untouched.
   `AssemblyResolve` handler (only matters once real cutover happens), and crash/restart/safe-mode
   UI. All remain open Phase 1 work.
 
-##### ProGPU headless render integration — attempted and reverted (2026-08-17)
+##### ProGPU headless render integration — landed (2026-08-17)
 
 Before any real cutover of `WpfViewContent.cs`, the biggest known prerequisite gap was Phase 0's
-finding that `RenderTargetBitmap.Render()` never works headlessly on macOS/LibreWPF at all. A real,
-hands-on attempt was made to close it using `System.Windows.Media.ProGPU.ProGpuWpfCompositionTarget`
-— a genuinely public, ordinary managed API (`LibreWPF.ProGPU` NuGet package, no reflection needed,
-confirmed against LibreWPF's own passing test, `~/wpf-tools/librewpf/src/ProGPU.Wpf.Tests/
-ProGpuWpfDrawingFrameTests.cs`, not assumed). The integration **compiled and ran without crashing,
-but the rendered output never reflected the actual WPF content, and this was not fixed** — recorded
-here as a real, reproducible finding so the next attempt doesn't start from zero:
+finding that `RenderTargetBitmap.Render()` never works headlessly on macOS/LibreWPF at all (it
+calls into the classic native Windows compositor, `wpfgfx_cor3`, which has no macOS build). That
+gap is now closed: `System.Windows.Media.ProGPU.ProGpuWpfCompositionTarget` — a genuinely public,
+ordinary managed API (`LibreWPF.ProGPU` NuGet package, no reflection needed) — genuinely renders
+real WPF visual content headlessly, and `WpfSurfaceHostService.Render` now uses it for good.
 
-- `ProGpuWpfCompositionTarget.CreateHeadless()`, `ReplayVisualSubtree(element, width, height)`,
-  `Render(...)`, and `GpuTexture.ReadPixels()` all ran successfully with no exceptions.
-- `ReplayVisualSubtree`'s own returned `WpfVisualReplayResult` proved it genuinely walked the real
-  WPF visual tree: `VisualCount=6, ContentCount=4, ChildEdgeCount=5, UnsupportedContentCount=0` for
-  the `Grid`+`TextBlock`(white background)+`Button` fixture — not a no-op.
-  `renderTarget.SceneChangeVersion`/`FlatDrawingChangeVersion` both incremented, and
-  `RootVisual.Size`/`SceneRootVisual.Size`/`RetainedWpfVisualRoot.Size` all correctly reported
-  `<400, 300>` matching the document.
-- Despite that, `GpuTexture.ReadPixels()` never showed the actual composited content: sampling a
-  pixel known to be inside the white-background `TextBlock` returned a dark, non-white color
-  `(31, 20, 20, 255)` uniformly across almost the entire buffer (only the single bottom-right corner
-  pixel differed, to `(154, 154, 154, 255)` — likely an unrelated readback/alignment artifact, not
-  real content).
-- **The decisive evidence this is a backend/environment limitation, not a usage mistake**: the
-  exact same byte-for-byte pixel output (including that same anomalous corner pixel) was produced
-  across three structurally different render code paths tried in sequence — the flat
-  `ReplayVisualSubtree` vs. the retained `ReplayVisualSubtreeRetained` (which uses the different
-  `ProGpuRetainedCompositionCommandSink` internally), and the auto-resolving 3-argument `Render`
-  overload vs. the fully-explicit 6-argument one that bypasses `ResolveLogicalRenderDimension`
-  entirely. Three genuinely different code paths producing identical output down to the same odd
-  corner pixel is inconsistent with a parameter or overload mistake on the caller's side; it points
-  at the GPU/WebGPU backend itself silently not executing the composited render on this machine.
-- Per this round's own plan ("if the render call itself fails for a real, reproducible reason, stop
-  and report exactly what broke ... rather than forcing a workaround"), the integration was fully
-  reverted rather than left half-working or shipped with a misleadingly-passing soft-guarded test —
-  the repo is back to Phase 0's `RenderTargetBitmap`/`DllNotFoundException` fallback and the
-  fully-verified 18/18 state.
-- Follow-up direction for whoever picks this up next, narrowed further by reading the actual
-  compositor source (`~/wpf-tools/progpu/src/ProGPU.Scene/Compositor.cs`) after this round's
-  revert: **the "mystery" uniform pixel `(31, 20, 20, 255)`/`RGBA (20, 20, 31, 255)` is not
-  garbage or a readback artifact — it is exactly `Compositor.ClearColor`'s default value,
-  `new Vector4(0.08f, 0.08f, 0.12f, 1.0f)` (`0.08×255≈20, 0.12×255≈31`), confirmed by direct
-  byte-for-byte match.** This means the render pass reliably executes its clear step and nothing
-  else — the composited WPF content is never drawn, not merely misplaced or wrongly colored. Ruled
-  out by reading `ProGPU.Scene/Visual.cs` directly (not assumed): `Visual.Invalidate()` correctly
-  propagates dirty state up the parent chain (so `RootVisual.Invalidate()` does reach
-  `SceneRootVisual`, consistent with the observed `SceneChangeVersion` increments),
-  `IsVisible`/`Opacity` default to `true`/`1.0f`, and `ContainerVisual.AddChild` invalidates
-  correctly — none of the "obvious" scene-graph wiring mistakes explain it. The remaining
-  candidates are lower in the stack than public API misuse: whether `Compositor.RenderScene`'s
-  internal frame/command-submission lifecycle actually requires happening while a
-  `Viewport3DTextureCache` frame is still open (`ReplayVisualSubtreeCore` opens and closes that
-  scope internally, before this code ever calls `Render()` — a lifecycle mismatch between the two
-  calls that this round's callers, all coming from the convenience `ReplayVisualSubtree`/
-  `ReplayVisualSubtreeRetained` overloads, do not control), or a genuine backend/driver limitation
-  specific to headless GPU init on this machine. This needs either interactive debugging (stepping
-  through `RenderSceneCore`/`Compositor.RenderScene` with a real debugger, not further static
-  reading or public-API permutations) or direct input from whoever maintains the LibreWPF/ProGPU
-  side.
+**Bottom line up front: there was never an upstream LibreWPF/ProGPU bug.** An earlier pass through
+this investigation recorded two "root cause found" theories, both wrong, both born from the same
+mistake — trusting a specific pixel sample instead of scanning the whole frame. Recorded here so
+nobody re-chases them:
+
+- ❌ *"The GPU/WebGPU backend silently isn't executing the render; needs a debugger."* Wrong.
+  `ReplayVisualSubtree`'s own result object already showed the WPF content fully decoded and
+  applied (`RecordCount=10, AppliedCount=10, SkippedCount=0, UnsupportedCount=0`), and the
+  compositor's version counters incremented correctly. The pipeline was doing real work; the
+  probe pixels just weren't where the content landed.
+- ❌ *"The project compiles against a different `PresentationCore` identity than `ProGPU.Wpf`
+  (`Version=0.1.0.0`, a shim), which corrupts values crossing into the compositor."* Wrong. Dumping
+  actual assembly identities (`AssemblyName.GetAssemblyName`, not guessed) showed **every**
+  `ProGPU.Wpf.dll` build anywhere in the LibreWPF checkout — including the harness builds LibreWPF's
+  own passing tests use — consistently references that shim identity, by design
+  (`ProGpuUseWindowsBaseShim=true`, a deliberate cross-framework compile-time contract for the
+  standalone ProGPU engine, shared across WPF/WinUI/Avalonia backends). It is bridged successfully
+  at runtime via reflection-based `…Bridge` classes using duck-typed `Portable*` interfaces — not a
+  defect, and not the cause of anything.
+
+**The decisive experiment**, after chasing both theories into LibreWPF's own decoder
+(`WpfMilRenderDataDecoder`) and resource resolver (`WpfResourceResolver`) source: re-running the
+real `ReplayVisualSubtree` + `Render` + `ReadPixels` path with a **full-frame** scan (not a fixed
+sample point) found real, correctly-composited content — white/black pixels consistent with the
+fixture's `Button` — sitting at `(300–395, 285–295)` in the 400×300 frame, far from every pixel
+coordinate any earlier probe had sampled. To rule out that in-flight diagnostic patches to
+LibreWPF source had "fixed" something, the exact same full-frame scan was re-run against a
+**pristine, completely unmodified** `ProGPU.Wpf.dll` copied fresh from the NuGet cache
+(`~/.nuget/packages/librewpf.progpu/0.1.0-preview.41/lib/net10.0/ProGPU.Wpf.dll`, no edits at all)
+— byte-identical output. **The rendering pipeline was correct the entire time; the only bug was in
+this investigation's own pixel-sampling assumptions.** All temporary diagnostic edits made to the
+`~/wpf-tools/librewpf` checkout during the investigation were reverted (`git checkout`); that
+checkout is clean except for pre-existing, unrelated user changes to `Popup.cs`/`Window.cs`.
+
+**What's now in place, kept for good:**
+
+`WpfSurfaceHostService.Render` constructs one `ProGpuWpfCompositionTarget.CreateHeadless()` per
+process (cached, matching every LibreWPF test/harness), and per frame: creates a `GpuTexture`
+sized to the element, calls `ReplayVisualSubtree(element, width, height)` then
+`Render(width, height, width, height, 1f, texture.ViewPtr)`, reads back pixels via
+`texture.ReadPixels()` (which returns RGBA byte order — swapped to BGRA in place to match the
+existing `DesignerRenderFrame.Data` wire shape), then deflate+base64-encodes exactly as before. A
+broad catch still disables rendering for the rest of that process's life on any exception, same
+fallback behaviour as the old `RenderTargetBitmap` path.
+
+`WpfSurfaceHostRpcTests.cs`'s render assertions were tightened from Phase 0's soft
+`if (opened.Render != null)` guards to hard `Assert.NotNull(opened.Render)` — rendering is no
+longer best-effort — and a new test, `SessionOpen_RendersRealWpfContentIntoTheFrame`, decodes a
+real frame and asserts at least one pixel differs from the (0,0) background corner, proving real
+content was composited (verified decisive: temporarily forcing `Render()` to always return null
+made this test fail as expected, then restoring the real code made it pass again).
+
+**One new, genuinely separate, still-open finding, out of scope for this round:** the
+`DesignerElementNode` tree's own reported element bounds (computed via `TransformToAncestor` in
+`BuildNode`, e.g. the fixture's `Button` reported at `X=160, Y=138, W=80, H=24`) do **not** match
+where ProGPU's render pipeline actually paints that same content (observed around `(300, 285)` in
+the same frame). Root cause not investigated this round — the new test was written to be
+position-agnostic (scans the whole frame rather than the tree's reported bounds) specifically to
+avoid depending on resolving this. Worth a dedicated pass before relying on tree bounds to, e.g.,
+draw selection adorners over the rendered frame.
+
+**Final validation:** `dotnet test src/AddIns/DisplayBindings/WpfDesign/WpfDesign.SurfaceHost.Tests
+--filter-query "/*/*/WpfSurfaceHostRpcTests/*"` → `total: 19, failed: 0, succeeded: 19`, confirmed
+on two consecutive clean runs. (A transient batch of 3 failures with no logged exception was seen
+once mid-investigation during a rapid rebuild/DLL-swap cycle; `[assembly: CollectionBehavior
+(DisableTestParallelization = true)]` was added as a defensive measure in
+`WpfDesign.SurfaceHost.Tests/AssemblyInfo.cs`, but its effectiveness was never conclusively proven
+— the failures did not reliably reproduce even before that change, so the root cause may simply
+have been incidental system load during that investigation rather than GPU-context concurrency.
+Left in place since it's harmless either way, but treat its doc comment's stronger claim with that
+caveat.)
+
+**The per-element `VisualTreeHelper.HitTest` gap is confirmed unrelated to the render bug above —
+a separate, pure-WPF issue that has nothing to do with ProGPU.** Checked directly rather than left
+as a guess: `VisualTreeHelper.HitTest` takes an optional `HitTestFilterCallback`, invoked once per
+visual the traversal *considers* before it ever reaches the result callback — Phase 0's original
+finding only showed the result callback reporting the root, which left open whether children were
+visited and filtered out, or never visited at all. Passing a filter that logs every visit answers
+that directly: **it fires exactly once, for the root `Grid`, and never for either child** — the
+traversal itself never attempts to descend, before any filtering or result-reporting logic runs at
+all. Since ProGPU is not involved anywhere in `VisualTreeHelper.HitTest` (it is pure managed WPF,
+walking `Visual.HitTestCore`), this rules out the "same root cause as render" theory this technote
+carried since Phase 0. One plausible next lead, not yet chased: LibreWPF's headless hit-testing may
+require the visual to be attached to a `PresentationSource` (specifically `PortablePresentationSource`,
+`~/wpf-tools/librewpf/src/Microsoft.DotNet.Wpf/src/PresentationCore/System/Windows/
+PortablePresentationSource.cs`) for the recursive-descent machinery to engage, separate from the
+`Measure`/`Arrange`/render pipeline, which is confirmed not to need one. `PortablePresentationSource`'s
+constructor is `internal`, so testing this needs either reflection or an internals-visible
+harness — flagged rather than attempted, to avoid another round of unverified theories.
 - **App.xaml / app-level resource loading now works in the child, and getting there produced
   several findings worth keeping.** `ParseAppResources` follows the live in-process designer's
   proven approach (`WpfViewContent.LoadInternal`'s `EnableAppXamlParsing` block): pull the

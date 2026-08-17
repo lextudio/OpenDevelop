@@ -7,6 +7,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Xml.Linq;
 using System.Windows.Controls;
+using ICSharpCode.SharpDevelop.Designer.Remote;
 using Xceed.Wpf.Toolkit.PropertyGrid;
 
 namespace ICSharpCode.WinUIXamlDesigner
@@ -20,7 +21,7 @@ namespace ICSharpCode.WinUIXamlDesigner
 	/// plus <see cref="IPropertyGridEventSource"/> (handler names live in the element's XAML
 	/// event attributes), which the grid's VS-style Events view consumes.
 	/// </summary>
-	sealed class WinUIXamlElementPropertyAdapter : ICustomTypeDescriptor, IPropertyGridEventSource
+	sealed class WinUIXamlElementPropertyAdapter : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost
 	{
 		readonly XElement element;
 		readonly XElement documentRoot;
@@ -50,6 +51,19 @@ namespace ICSharpCode.WinUIXamlDesigner
 			if (string.IsNullOrEmpty(handlerName) ? current == null : current == handlerName)
 				return;
 			setEventHandler(element, attribute, string.IsNullOrEmpty(handlerName) ? null : handlerName);
+		}
+
+		// IEventBindingHost: VS-style double-click on an Events row creates the conventional
+		// <element>_<event> handler reference in the XAML event attribute (the code-behind method
+		// creation is a separate concern; the attribute write flows through the same
+		// design/set-event path as a typed binding).
+		void IEventBindingHost.BindEvent(string eventName)
+		{
+			if (!string.IsNullOrEmpty(element.Attribute(XName.Get(eventName))?.Value))
+				return; // already bound - a second double-click is a no-op
+			var elementName = (string)element.Attribute(WinUIXamlDocumentEditor.NameDirective)
+				?? element.Name.LocalName;
+			((IPropertyGridEventSource)this).SetEventHandler(eventName, elementName + "_" + eventName);
 		}
 
 		public PropertyDescriptorCollection GetProperties() => GetProperties(null);

@@ -6,5 +6,9 @@ namespace WinFormsSample
         {
             InitializeComponent();
         }
+
+        private void Form1_Load(System.Object sender, System.EventArgs e)
+        {
+        }
     }
 }

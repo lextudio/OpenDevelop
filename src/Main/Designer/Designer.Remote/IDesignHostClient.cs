@@ -139,4 +139,16 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	{
 		Task<DesignerAppResourcesResult> SetAppResourcesAsync(string xaml, CancellationToken cancellationToken = default);
 	}
+
+	/// <summary>
+	/// Implemented by a Properties-pad selection that can create and bind an event handler for a
+	/// named event on the design surface (VS-style double-click on an Events row). UI-neutral;
+	/// the UIShell feature-detects it on the selected object.
+	/// </summary>
+	public interface IEventBindingHost
+	{
+		/// <summary>Creates the conventional <c>&lt;component&gt;_&lt;event&gt;</c> handler, binds it,
+		/// and persists the binding through the design session.</summary>
+		void BindEvent(string eventName);
+	}
 }

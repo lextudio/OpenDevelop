@@ -2265,6 +2265,106 @@ public sealed class AddInTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task WinFormsDesigner_DoubleClickEventRow_CreatesAndBindsHandler()
+    {
+        // VS behavior: double-clicking a row in the Properties pad's Events view creates the
+        // conventional <component>_<event> handler and binds it (persisted into .Designer.cs on
+        // save, method body created in the primary file). The double-click lands on the shared
+        // Xceed grid (PropertyPadViewModel detects it and routes to the selected object's
+        // IEventBindingHost - the WinForms remote component proxy).
+        var formCodePath = Path.Combine(Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!, "Form1.cs");
+        var designerPath = Path.Combine(Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!, "Form1.Designer.cs");
+        var originalForm = await File.ReadAllTextAsync(formCodePath);
+        var originalDesigner = await File.ReadAllTextAsync(designerPath);
+
+        try {
+            await _app.ReopenSolutionAsync(_app.WinFormsSampleSolutionPath);
+            await _app.InvokeAsync("od.open-file", formCodePath);
+
+            JsonElement status = default;
+            var loaded = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await _app.InvokeAsync("od.forms-designer.status");
+                return status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 1000);
+            Assert.True(loaded, "The WinForms designer did not load. Status: " + status);
+
+            // Select the root form (so the pad shows its events) and switch to the Events view.
+            var sel = await _app.InvokeAsync("od.forms-designer.outline-select", "Form1");
+            Assert.Equal("Form1", sel.GetProperty("selected").GetString());
+            var mode = await _app.InvokeAsync("od.property-pad.view-mode", "Events");
+            Assert.Equal("Events", mode.GetProperty("viewMode").GetString());
+
+            // Locate the Shown event row (an event that starts unbounded) in the UI tree.
+            var tree = await _app.GetUITreeAsync();
+            var shownBounds = FindUiTextBounds(tree, "Shown");
+            Assert.True(shownBounds.HasValue, "Could not find the Shown event row in the UI tree.");
+            var x = shownBounds.Value.x + shownBounds.Value.width / 2;
+            var y = shownBounds.Value.y + shownBounds.Value.height / 2;
+
+            // Synthetic double-click (two rapid press+release pairs), retried - the same retry
+            // rationale as the drag-drop tests: the synthetic pointer pipeline is occasionally flaky.
+            bool bound = false;
+            for (int attempt = 1; attempt <= 6 && !bound; attempt++) {
+                await _app.PressPointerAsync(x, y);
+                await _app.ReleasePointerAsync(x, y);
+                await Task.Delay(120);
+                await _app.PressPointerAsync(x, y);
+                await _app.ReleasePointerAsync(x, y);
+                bound = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                    var events = await _app.InvokeAsync("od.property-pad.view-mode", "Events");
+                    return events.GetProperty("events").EnumerateArray().Any(ev =>
+                        ev.GetProperty("name").GetString() == "Shown"
+                        && !string.IsNullOrEmpty(ev.GetProperty("handler").GetString()));
+                }, TimeSpan.FromSeconds(5), initialDelayMs: 100, maxDelayMs: 300);
+            }
+            Assert.True(bound,
+                "Double-clicking the Shown event row did not create and bind a handler (attempted 6 times).");
+
+            // Save, then verify the binding and the generated method landed in both files.
+            var saved = await _app.InvokeAsync("od.file.save", formCodePath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            var savedDesigner = await File.ReadAllTextAsync(designerPath);
+            Assert.Contains("Form1.Shown += Form1_Shown;", savedDesigner, StringComparison.Ordinal);
+            var savedForm = await File.ReadAllTextAsync(formCodePath);
+            Assert.Contains("private void Form1_Shown", savedForm, StringComparison.Ordinal);
+        } finally {
+            await File.WriteAllTextAsync(formCodePath, originalForm);
+            await File.WriteAllTextAsync(designerPath, originalDesigner);
+        }
+    }
+
+    static (double x, double y, double width, double height)? FindUiTextBounds(JsonElement tree, string text)
+    {
+        foreach (var element in tree.GetProperty("elements").EnumerateArray()) {
+            if (FindUiTextBoundsCore(element, text) is { } bounds)
+                return bounds;
+        }
+        return null;
+    }
+
+    static (double x, double y, double width, double height)? FindUiTextBoundsCore(JsonElement node, string text)
+    {
+        if (node.TryGetProperty("text", out var textElement)
+            && textElement.ValueKind == JsonValueKind.String
+            && textElement.GetString() == text) {
+            if (node.TryGetProperty("bounds", out var boundsElement)) {
+                return (
+                    boundsElement.GetProperty("x").GetDouble(),
+                    boundsElement.GetProperty("y").GetDouble(),
+                    boundsElement.GetProperty("width").GetDouble(),
+                    boundsElement.GetProperty("height").GetDouble());
+            }
+        }
+        if (node.TryGetProperty("children", out var children)) {
+            foreach (var child in children.EnumerateArray()) {
+                if (FindUiTextBoundsCore(child, text) is { } bounds)
+                    return bounds;
+            }
+        }
+        return null;
+    }
+
+    [Fact]
     public async Task SelectControlOnSamplePane_ShowsSelectionInPropertiesPad()
     {
         // SamplePane.xaml is a UserControl root (unlike MainWindow.xaml's Window root): verify the

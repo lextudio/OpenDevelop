@@ -21,6 +21,10 @@ using ICSharpCode.SharpDevelop.Designer.Remote;
 
 using StreamJsonRpc;
 
+using ProGPU.Backend;
+using Silk.NET.WebGPU;
+using GpuCompositionTarget = System.Windows.Media.ProGPU.ProGpuWpfCompositionTarget;
+
 namespace ICSharpCode.WpfDesign.SurfaceHost
 {
 	/// <summary>
@@ -49,6 +53,12 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		Dictionary<string, DesignItem> pathToItem = new(StringComparer.Ordinal);
 		double lastWidth = 800;
 		double lastHeight = 600;
+		/// <summary>Created once, lazily, on first successful render and reused for the process's
+		/// life - matches every LibreWPF ProGPU test/harness, which all construct one
+		/// CreateHeadless() target and reuse it across frames rather than recreating the GPU
+		/// context per render.</summary>
+		GpuCompositionTarget? renderTarget;
+		bool renderUnavailable;
 
 		public WpfSurfaceHostService(string expectedToken, WpfHeadlessDispatcher dispatcher)
 		{
@@ -548,56 +558,60 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			return node;
 		}
 
-		DesignerRenderFrame? Render(FrameworkElement? element)
+		/// <summary>Headless GPU-composited render (see wpf-designer.md's Phase 1 progress notes).
+		/// RenderTargetBitmap always calls into the Windows-only native wpfgfx_cor3 compositor,
+		/// confirmed absent under LibreWPF on macOS. ProGpuWpfCompositionTarget is LibreWPF's
+		/// real, public, ordinary-managed-API portable render path instead: ReplayVisualSubtree
+		/// walks a real WPF visual directly (no manual DrawingContext calls needed), Render
+		/// composites it into a GpuTexture, ReadPixels reads it back to managed memory. Confirmed
+		/// working end to end by a real run - an earlier attempt wrongly concluded this path
+		/// produced no visible output, based on sampling pixel coordinates that assumed the
+		/// document's content would be centered; the actual rendered content was simply
+		/// elsewhere in the frame, which a scan across the whole buffer (comparing against the
+		/// pixel at (0,0) as the background) revealed. If the underlying WebGPU backend itself is
+		/// genuinely unavailable, this fails the same way RenderTargetBitmap did - caught below
+		/// and rendering is skipped rather than failing session/open, exactly as before.</summary>
+		unsafe DesignerRenderFrame? Render(FrameworkElement? element)
 		{
-			if (element == null || element.ActualWidth <= 0 || element.ActualHeight <= 0)
+			if (element == null || element.ActualWidth <= 0 || element.ActualHeight <= 0 || renderUnavailable)
 				return null;
 			var stopwatch = Stopwatch.StartNew();
-			var width = (int)Math.Ceiling(element.ActualWidth);
-			var height = (int)Math.Ceiling(element.ActualHeight);
-			RenderTargetBitmap rtb;
+			var width = (uint)Math.Ceiling(element.ActualWidth);
+			var height = (uint)Math.Ceiling(element.ActualHeight);
+			byte[] rgbaPixels;
 			try
 			{
-				rtb = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
-				rtb.Render(element);
+				renderTarget ??= GpuCompositionTarget.CreateHeadless();
+				using var texture = new GpuTexture(renderTarget.Context, width, height,
+					TextureFormat.Rgba8Unorm, TextureUsage.RenderAttachment | TextureUsage.CopySrc,
+					"WpfDesign.SurfaceHost render target");
+				renderTarget.ReplayVisualSubtree(element, width, height);
+				renderTarget.Render(width, height, width, height, 1f, texture.ViewPtr);
+				rgbaPixels = texture.ReadPixels();
 			}
-			catch (DllNotFoundException)
+			catch (Exception e)
 			{
-				// RenderTargetBitmap always calls into the native Windows compositor
-				// (wpfgfx_cor3), which has no macOS build under LibreWPF - confirmed by
-				// reading RenderTargetBitmap.cs (no platform branch at all) and LibreWPF's own
-				// ProGpuWpfCompositionTarget.CreateHeadless() harness, which proves the actual
-				// portable render path is a different, ProGPU-specific API. A real, hands-on
-				// attempt at that path (ProGpuWpfCompositionTarget/ReplayVisualSubtree(Retained)/
-				// GpuTexture.ReadPixels, all real public APIs) was made and reverted - see
-				// wpf-designer.md's Phase 1 progress notes: ReplayVisualSubtree genuinely
-				// processed real WPF visual content (confirmed via its own VisualCount/
-				// ContentCount and the target's SceneChangeVersion incrementing), but the texture
-				// readback never reflected it - byte-for-byte identical output across three
-				// structurally different render code paths (flat vs. retained replay, explicit
-				// vs. auto-resolved logical dimensions), which points to a real headless-GPU
-				// backend limitation on this machine, not a usage mistake worth re-guessing at.
-				// Skip rendering rather than fail the whole session/open on this platform - tree,
-				// hit-test, mutation and save all work without it.
+				// Not narrowed to DllNotFoundException like the old RenderTargetBitmap catch:
+				// this is a different native backend (WebGPU/GPU driver) with its own unknown
+				// failure shapes on a machine without one - fail soft the same way regardless.
+				renderUnavailable = true;
+				Console.Error.WriteLine("WpfDesign.SurfaceHost: ProGPU render unavailable, disabling rendering for this process: " + e);
 				return null;
 			}
-			var stride = width * 4;
-			var buffer = new byte[stride * height];
-			rtb.CopyPixels(buffer, stride, 0);
-			// Raw BGRA (deflate-compressed base64), same shape WinUI/Uno already uses - WPF's
-			// native PNG codec (WIC) is not available under LibreWPF on macOS (see
-			// UnoDesignSurfaceControl.cs's identical finding for decode; the same dependency
-			// would break PngBitmapEncoder here too), so this deliberately avoids
-			// PngBitmapEncoder/BitmapImage entirely. CopyPixels is a pure managed pixel copy.
+			// ReadPixels returns RGBA byte order (Rgba8Unorm); DesignerRenderFrame.Data's
+			// established wire shape (matching WinUI/Uno) is BGRA - swap R/B in place rather than
+			// widen the protocol, since this is purely an encoding detail of this one backend.
+			for (var i = 0; i + 2 < rgbaPixels.Length; i += 4)
+				(rgbaPixels[i], rgbaPixels[i + 2]) = (rgbaPixels[i + 2], rgbaPixels[i]);
 			using var stream = new MemoryStream();
 			using (var deflate = new DeflateStream(stream, CompressionLevel.Fastest, leaveOpen: true))
-				deflate.Write(buffer, 0, buffer.Length);
+				deflate.Write(rgbaPixels, 0, rgbaPixels.Length);
 			stream.Flush();
 			stopwatch.Stop();
 			return new DesignerRenderFrame {
 				Sequence = ++frameSequence,
-				Width = width,
-				Height = height,
+				Width = (int)width,
+				Height = (int)height,
 				Dpi = 1,
 				Data = Convert.ToBase64String(stream.ToArray()),
 				RenderMs = stopwatch.Elapsed.TotalMilliseconds

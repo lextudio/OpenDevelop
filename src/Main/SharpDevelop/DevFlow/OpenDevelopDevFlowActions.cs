@@ -1061,6 +1061,31 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new { theme = IdeThemeService.CurrentTheme });
 		}
 
+		[DevFlowAction("od.property-pad.view-mode", Description = "Switch the shared Properties pad (Xceed grid) between Properties and Events view, reporting the resulting mode and the current event rows - for tests that drive the Events view deterministically")]
+		public static string SetPropertyPadViewMode(string mode)
+		{
+			var viewModel = OpenDevelopMefHost.ExportProvider.GetExportedValue<PropertyPadViewModel>();
+			var grid = viewModel.Grid;
+			grid.ViewMode = string.Equals(mode, "Events", StringComparison.OrdinalIgnoreCase)
+				? Xceed.Wpf.Toolkit.PropertyGrid.PropertyGridMode.Events
+				: Xceed.Wpf.Toolkit.PropertyGrid.PropertyGridMode.Properties;
+			var events = new List<object>();
+			foreach (var item in grid.Events) {
+				if (item is Xceed.Wpf.Toolkit.PropertyGrid.EventItem eventItem) {
+					events.Add(new {
+						name = eventItem.Descriptor.Name,
+						handler = eventItem.HandlerName
+					});
+				}
+			}
+			return JsonSerializer.Serialize(new {
+				success = true,
+				viewMode = grid.ViewMode.ToString(),
+				eventCount = events.Count,
+				events
+			});
+		}
+
 		[DevFlowAction("od.workbench.switch-layout", Description = "Switch the active named workbench layout (Default/Debug/Plain, or an AddIn-contributed one e.g. ILSpy via ILayoutTemplateProvider) by driving LayoutConfiguration.CurrentLayoutName directly - bypasses ChooseLayoutComboBox's UI (which the WPF-embedded DevFlow agent can't reliably drive through its popup), so tests can verify AddIn layout-activation (ILayoutTemplateProvider.OnActivating) deterministically")]
 		public static string SwitchLayout(string layoutName)
 		{

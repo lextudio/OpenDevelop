@@ -70,6 +70,19 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 			return new DesignViewport(designWidth, designHeight, scale, originX, originY, panX, panY);
 		}
 
+		/// <summary>
+		/// Centers a design at a fixed zoom <paramref name="scale"/> (1.0 = 100%, 1:1), for
+		/// backends whose zoom is an absolute scale rather than a multiple of fit - e.g. the
+		/// WinForms designer's shared toolbar zoom.
+		/// </summary>
+		public static DesignViewport Zoom(double designWidth, double designHeight,
+			double viewportWidth, double viewportHeight, double scale)
+		{
+			var originX = (viewportWidth - designWidth * scale) / 2;
+			var originY = (viewportHeight - designHeight * scale) / 2;
+			return new DesignViewport(designWidth, designHeight, scale, originX, originY, 0.0, 0.0);
+		}
+
 		/// <summary>Design-space point to surface-local coordinates (no toolbar/scroll offsets -
 		/// callers with those apply them on top of this).</summary>
 		public (double X, double Y) DesignToSurface(double x, double y)

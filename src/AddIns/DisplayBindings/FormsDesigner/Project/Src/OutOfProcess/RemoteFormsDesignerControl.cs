@@ -17,12 +17,14 @@ using System.Drawing.Design;
 
 using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
+using ICSharpCode.SharpDevelop.Widgets;
 
 namespace ICSharpCode.FormsDesigner.OutOfProcess
 {
-	sealed class RemoteFormsDesignerControl : Grid
+	sealed class RemoteFormsDesignerControl : DesignerCanvas
 	{
 		readonly FormsDesignerHostClient client;
+		readonly Grid designSurface = new Grid();
 		readonly DesignFramePresenter framePresenter = new(Stretch.None,
 			horizontalAlignment: HorizontalAlignment.Left, verticalAlignment: VerticalAlignment.Top);
 		readonly Canvas adorners;
@@ -55,14 +57,29 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		readonly HashSet<string> selectedComponentNames = new HashSet<string>(StringComparer.Ordinal);
 		readonly HashSet<string> lockedComponentNames = new HashSet<string>(StringComparer.Ordinal);
 
+		static readonly double[] ZoomPresets = { 0.25, 0.5, 0.75, 1.0, 1.5, 2.0 };
+		static readonly string[] ZoomLabels = { "Fit", "25%", "50%", "75%", "100%", "150%", "200%" };
+		bool fitMode = true;
+		double zoomScale = 1.0;
+
+		void RebuildViewport()
+		{
+			if (state?.Render == null)
+				return;
+			// Re-derive the viewport from the current toolbar zoom and re-present.
+			Show(state);
+		}
+
 		public RemoteFormsDesignerControl(FormsDesignerHostClient client)
 		{
 			this.client = client;
-			Background = Brushes.White;
 			Focusable = true;
-			Children.Add(framePresenter.Visual);
+			// The design surface itself is white; the shared DesignerCanvas shell provides the
+			// dotted empty-canvas edge pattern and the common zoom toolbar around it.
+			designSurface.Background = Brushes.White;
+			designSurface.Children.Add(framePresenter.Visual);
 			guides = new Canvas { IsHitTestVisible = false };
-			Children.Add(guides);
+			designSurface.Children.Add(guides);
 			adorners = new Canvas { IsHitTestVisible = true };
 			marqueeBorder = new Rectangle {
 				Stroke = Brushes.DodgerBlue, StrokeThickness = 1,
@@ -76,7 +93,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			adorners.Children.Add(adornerLayer.Visual);
 			adorners.Children.Add(moveThumb);
 			adorners.Children.Add(resizeThumb);
-			Children.Add(adorners);
+			designSurface.Children.Add(adorners);
 			disconnectedText = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) };
 			var restartButton = new Button { Content = "Restart designer", HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(12, 5, 12, 5) };
 			restartButton.Click += (sender, args) => RestartRequested?.Invoke(this, EventArgs.Empty);
@@ -88,7 +105,29 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				Visibility = Visibility.Collapsed,
 				Child = new StackPanel { Children = { disconnectedText, restartButton } }
 			};
-			Children.Add(disconnectedOverlay);
+			designSurface.Children.Add(disconnectedOverlay);
+			ContentHost.Content = designSurface;
+
+			// Shared zoom toolbar: the WinForms surface supports zoom + fit only; design-size
+			// presets, gridlines and design themes are WinUI/Uno concepts.
+			ShowDesignSize = false;
+			ShowGrid = false;
+			ShowTheme = false;
+			foreach (var label in ZoomLabels)
+				ZoomCombo.Items.Add(label);
+			ZoomCombo.SelectedIndex = 0; // Fit
+			ZoomChanged += (_, _) => {
+				var index = ZoomCombo.SelectedIndex;
+				if (index <= 0) {
+					fitMode = true;
+				} else {
+					fitMode = false;
+					zoomScale = ZoomPresets[index - 1];
+				}
+				RebuildViewport();
+			};
+			FitRequested += (_, _) => { fitMode = true; RebuildViewport(); };
+
 			AllowDrop = true;
 			MouseLeftButtonDown += OnMouseLeftButtonDown;
 			MouseMove += OnMouseMove;
@@ -135,7 +174,14 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			if (state.Render.Sequence > 0 && state.Render.Sequence <= lastFrameSequence) return;
 			lastFrameSequence = state.Render.Sequence;
 			var dpi = Math.Max(1, state.Render.Dpi);
-			viewport = DesignViewport.Identity(state.Render.Width / dpi, state.Render.Height / dpi);
+			var designWidth = state.Render.Width / dpi;
+			var designHeight = state.Render.Height / dpi;
+			// The design surface itself is unscaled white; the shared canvas shell's zoom
+			// toolbar controls the presentation scale around it.
+			if (fitMode)
+				viewport = DesignViewport.Fit(designWidth, designHeight, ContentHost.ActualWidth, ContentHost.ActualHeight, 1.0, 0, 0);
+			else
+				viewport = DesignViewport.Zoom(designWidth, designHeight, ContentHost.ActualWidth, ContentHost.ActualHeight, zoomScale);
 			var bitmap = new BitmapImage();
 			using (var stream = new MemoryStream(Convert.FromBase64String(state.Render.PngBase64))) {
 				bitmap.BeginInit();

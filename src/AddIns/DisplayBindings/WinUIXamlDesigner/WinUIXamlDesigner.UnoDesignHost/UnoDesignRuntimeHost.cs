@@ -64,7 +64,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 			? null
 			: Path.GetDirectoryName(framework.ProjectFileName);
 		StatusText = "Starting Uno design host…";
-		surface.ThemeRequested += OnSurfaceThemeRequested;
+		surface.DesignThemeRequested += OnSurfaceThemeRequested;
 		surface.SizePresetRequested += OnSurfaceSizePresetRequested;
 		surface.ContextCommandRequested += OnSurfaceContextCommandRequested;
 		surface.NudgeRequested += OnSurfaceNudgeRequested;

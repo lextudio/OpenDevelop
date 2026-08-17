@@ -1,7 +1,11 @@
 using System;
 using System.Composition;
+using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
 
+using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
 
@@ -68,7 +72,69 @@ internal sealed class PropertyPadViewModel : ToolPaneModel, IPropertyPadHost, ID
         contentPresenter.Content = propertyGridContainer;
         Content = contentPresenter;
 
+        // VS-style double-click on an Events row: the selected object (e.g. the WinForms
+        // designer's remote component proxy) creates and binds the conventional handler.
+        // Both the routed MouseDoubleClick and a manual press-timing check are wired, because
+        // LibreWPF's ClickCount/MouseDoubleClick delivery is not reliable across control
+        // subtypes - whichever fires first wins, and the manual path only counts presses that
+        // actually landed on an Events row.
+        propertyGrid.MouseDoubleClick += OnGridMouseDoubleClick;
+        propertyGrid.PreviewMouseLeftButtonDown += OnGridPreviewMouseLeftButtonDown;
+
         SD.Services.AddService(typeof(IPropertyPadHost), this);
+    }
+
+    DateTime lastEventsRowPressUtc = DateTime.MinValue;
+
+    void OnGridMouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (BindEventFromRow(e.OriginalSource))
+            e.Handled = true;
+    }
+
+    void OnGridPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        // LibreWPF does not reliably populate ClickCount on MouseLeftButtonDown; detect the
+        // double click manually by press timing (same pattern as the WinForms design surface).
+        var now = DateTime.UtcNow;
+        var isDoubleClick = (now - lastEventsRowPressUtc).TotalMilliseconds < 800;
+        lastEventsRowPressUtc = now;
+        if (!isDoubleClick)
+            return;
+        if (BindEventFromRow(e.OriginalSource))
+            e.Handled = true;
+    }
+
+    bool BindEventFromRow(object originalSource)
+    {
+        var hit = originalSource as DependencyObject;
+        var chain = new System.Text.StringBuilder();
+        while (hit != null) {
+            var dc = (hit as FrameworkElement)?.DataContext;
+            var content = (hit as System.Windows.Controls.ContentPresenter)?.Content;
+            chain.Append(hit.GetType().Name)
+                .Append("(dc=").Append(dc?.GetType().Name ?? "null")
+                .Append(",content=").Append(content?.GetType().Name ?? "null")
+                .Append(") < ");
+            if (dc is Xceed.Wpf.Toolkit.PropertyGrid.EventItem viaDataContext)
+                return BindEventItem(viaDataContext);
+            if (content is Xceed.Wpf.Toolkit.PropertyGrid.EventItem eventItem)
+                return BindEventItem(eventItem);
+            hit = VisualTreeHelper.GetParent(hit);
+        }
+        ICSharpCode.Core.LoggingService.Debug("[PropertyGrid] double-click not on an EventItem; chain: " + chain);
+        return false;
+    }
+
+    bool BindEventItem(Xceed.Wpf.Toolkit.PropertyGrid.EventItem eventItem)
+    {
+        if (propertyGrid.SelectedObject is IEventBindingHost bindable) {
+            ICSharpCode.Core.LoggingService.Debug("[PropertyGrid] double-click on event '" + eventItem.Descriptor.Name + "' -> BindEvent");
+            bindable.BindEvent(eventItem.Descriptor.Name);
+            return true;
+        }
+        ICSharpCode.Core.LoggingService.Debug("[PropertyGrid] double-click on '" + eventItem.Descriptor.Name + "' but SelectedObject is not IEventBindingHost");
+        return false;
     }
 
     /// <summary>

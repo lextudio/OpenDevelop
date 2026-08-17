@@ -10,6 +10,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 
 using ICSharpCode.SharpDevelop.Designer.Presentation;
+using ICSharpCode.SharpDevelop.Widgets;
 
 using RenderResult = ICSharpCode.SharpDevelop.Designer.Remote.DesignerRenderFrame;
 
@@ -18,10 +19,11 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoDesignHost;
 /// <summary>
 /// WPF-side design surface for the out-of-process Uno host: shows the bitmap the child
 /// rendered (dpi-scaled pixels at the host display's scale, displayed at logical size)
-/// inside a ScrollViewer with a zoom toolbar, draws a selection outline with resize
-/// handles over the picked element, supports drag-to-move and drag-to-resize (the runtime
-/// turns the committed drag into source edits), and translates pointer positions into
-/// design coordinates, so pick, drop and selection always agree with the child's layout.
+/// inside a ScrollViewer with the shared designer toolbar (see <see cref="DesignerCanvas"/>),
+/// draws a selection outline with resize handles over the picked element, supports
+/// drag-to-move and drag-to-resize (the runtime turns the committed drag into source edits),
+/// and translates pointer positions into design coordinates, so pick, drop and selection
+/// always agree with the child's layout.
 ///
 /// Viewport model: the design (pixelWidth x pixelHeight logical units) is shown at
 /// eff = fitScale x zoomFactor. Its on-screen (viewport-local) origin is
@@ -29,42 +31,21 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoDesignHost;
 /// the user pan. The ScrollViewer adds scroll offsets on top; the design rect is placed
 /// at (originX + panX + scrollX, ...) inside the scroll content.
 /// </summary>
-public sealed class UnoDesignSurfaceControl : ContentControl
+public sealed class UnoDesignSurfaceControl : DesignerCanvas
 {
 	public const double MinZoom = 0.1;
 	public const double MaxZoom = 16.0;
 	const double DragThreshold = 4;
+	/// <summary>Empty-canvas margin around the design bitmap, so the design surface never
+	/// touches the scroll-viewport edge (the dotted EdgePattern reads as "outside the design"
+	/// and leaves room for edge-drag to resize the page).</summary>
+	public const double CanvasMargin = 32;
 
 	static readonly Color SelectionColor = Color.FromRgb(0x00, 0x78, 0xD4);
 	static readonly double[] ZoomPresets = { 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 4.0 };
 	static readonly string[] ZoomLabels = { "Fit", "25%", "50%", "75%", "100%", "125%", "150%", "200%", "400%" };
 	static readonly string[] SizePresetLabels = { "Auto", "Phone 390x844", "Tablet 768x1024", "Desktop 1280x720" };
 	static readonly string[] HandleNames = { "nw", "n", "ne", "e", "se", "s", "sw", "w" };
-
-	// Toolbar chrome follows the design theme, so the surface's own controls stay legible
-	// (and visually consistent) whether the design is Light or Dark.
-	static readonly Brush ToolbarDarkBackground = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x1E));
-	static readonly Brush ToolbarDarkForeground = new SolidColorBrush(Color.FromRgb(0xF0, 0xF0, 0xF0));
-	static readonly Brush ToolbarDarkButtonBackground = new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x33));
-	static readonly Brush ToolbarCheckedBackground = new SolidColorBrush(Color.FromRgb(0x00, 0x78, 0xD4));
-
-	// The chrome around the design bitmap uses a dotted pattern - same idea as VS's design
-	// surface - so empty space is clearly distinguishable from the design's own background
-	// (a plain colour frame would be mistaken for the page's background at a glance).
-	static readonly Brush CanvasLightPattern = CreateCanvasPattern(Color.FromRgb(0xE8, 0xE8, 0xE8), Color.FromRgb(0xC8, 0xC8, 0xC8));
-	static readonly Brush CanvasDarkPattern = CreateCanvasPattern(Color.FromRgb(0x1E, 0x1E, 0x1E), Color.FromRgb(0x2E, 0x2E, 0x2E));
-
-	static DrawingBrush CreateCanvasPattern(Color baseColor, Color dotColor)
-	{
-		var group = new DrawingGroup();
-		group.Children.Add(new GeometryDrawing(new SolidColorBrush(baseColor), null, new RectangleGeometry(new Rect(0, 0, 8, 8))));
-		group.Children.Add(new GeometryDrawing(new SolidColorBrush(dotColor), null, new EllipseGeometry(new Point(4, 4), 1, 1)));
-		return new DrawingBrush(group) {
-			TileMode = TileMode.Tile,
-			Viewport = new Rect(0, 0, 8, 8),
-			ViewportUnits = BrushMappingMode.Absolute
-		};
-	}
 
 	readonly DesignFramePresenter framePresenter = new(Stretch.Fill, snapsToDevicePixels: true);
 	readonly Canvas overlay = new() {
@@ -77,25 +58,6 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 		HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
 		VerticalScrollBarVisibility = ScrollBarVisibility.Auto
 	};
-	readonly ComboBox zoomCombo = new() { Width = 84, Margin = new Thickness(4, 2, 4, 2) };
-	readonly ComboBox sizeCombo = new() { Width = 92, Margin = new Thickness(0, 2, 4, 2), ToolTip = "Design canvas size preset (for pages without an explicit size)" };
-	readonly Button fitButton = new() {
-		Content = CreateToolbarIcon("Icons.16x16.FitToScreen"),
-		Margin = new Thickness(0, 2, 4, 2),
-		Padding = new Thickness(4, 2, 4, 2)
-	};
-	readonly ToggleButton themeButton = new() {
-		Content = CreateToolbarIcon("Icons.16x16.DarkTheme"),
-		Margin = new Thickness(0, 2, 4, 2),
-		Padding = new Thickness(4, 2, 4, 2),
-		ToolTip = "Switch the design surface between Light and Dark theme"
-	};
-	readonly ToggleButton gridButton = new() {
-		Content = CreateToolbarIcon("Icons.16x16.GridGuide"),
-		Margin = new Thickness(0, 2, 4, 2),
-		Padding = new Thickness(4, 2, 4, 2),
-		ToolTip = "Show design-space gridlines on the surface"
-	};
 	readonly TextBox textEditor = new() {
 		Visibility = Visibility.Collapsed,
 		BorderBrush = new SolidColorBrush(SelectionColor),
@@ -104,15 +66,10 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 		AcceptsReturn = false,
 		FontSize = 14
 	};
-	readonly StackPanel toolbar = new() {
-		Orientation = Orientation.Horizontal
-	};
-	readonly DockPanel root = new();
 	readonly SelectionAdornerLayer adornerLayer = new(HandleNames, new SolidColorBrush(SelectionColor));
 	int pixelWidth;
 	int pixelHeight;
-	// Viewport state: zoomFactor 1.0 = the design fits the surface; panX/panY is the user
-	// pan on top of the centered fit.
+	// Viewport state: zoomFactor 1.0 = the design at 100% (Fit sets the centered fit).
 	double zoomFactor = 1.0;
 	double panX;
 	double panY;
@@ -141,37 +98,31 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 
 	public UnoDesignSurfaceControl()
 	{
-		Background = new SolidColorBrush(Color.FromRgb(0xE8, 0xE8, 0xE8));
 		foreach (var label in ZoomLabels)
-			zoomCombo.Items.Add(label);
-		zoomCombo.SelectedIndex = 0;
-		zoomCombo.SelectionChanged += OnZoomSelectionChanged;
+			ZoomCombo.Items.Add(label);
+		// Default to 100% rather than Fit, matching VS's design surface.
+		ZoomCombo.SelectedIndex = 4;
+		syncingZoomCombo = true;
+		zoomComboSyncIndex = ZoomCombo.SelectedIndex;
+		syncingZoomCombo = false;
+		ZoomCombo.SelectionChanged += OnZoomSelectionChanged;
 		foreach (var label in SizePresetLabels)
-			sizeCombo.Items.Add(label);
-		sizeCombo.SelectedIndex = 0;
-		sizeCombo.SelectionChanged += OnSizePresetSelected;
-		fitButton.Click += (_, _) => FitView();
-		themeButton.Click += OnThemeToggle;
+			DesignSizeCombo.Items.Add(label);
+		DesignSizeCombo.SelectedIndex = 0;
+		DesignSizeCombo.SelectionChanged += OnSizePresetSelected;
+		FitRequested += (_, _) => FitView();
+		ThemeRequested += OnThemeToggle;
+		GridRequested += (_, enabled) => SetGridlines(enabled);
 		textEditor.KeyDown += OnTextEditorKeyDown;
 		textEditor.LostKeyboardFocus += OnTextEditorLostFocus;
-		toolbar.Children.Add(zoomCombo);
-		toolbar.Children.Add(sizeCombo);
-		toolbar.Children.Add(fitButton);
-		toolbar.Children.Add(gridButton);
-		toolbar.Children.Add(themeButton);
-		gridButton.Click += (_, _) => SetGridlines(gridButton.IsChecked == true);
-		ApplyToolbarTheme(dark: false);
-		DockPanel.SetDock(toolbar, Dock.Top);
 		viewportCanvas.Children.Add(framePresenter.Visual);
 		viewportCanvas.Children.Add(overlay);
 		viewportCanvas.Children.Add(textEditor);
 		overlay.Children.Add(adornerLayer.Visual);
 		contentCanvas.Children.Add(viewportCanvas);
 		scroller.Content = contentCanvas;
+		ContentHost.Content = scroller;
 		ContextMenu = BuildContextMenu();
-		root.Children.Add(toolbar);
-		root.Children.Add(scroller);
-		Content = root;
 		Focusable = true;
 		KeyDown += OnKeyDown;
 		KeyUp += OnKeyUp;
@@ -184,7 +135,11 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 		PreviewMouseLeftButtonDown += OnMouseLeftButtonDown;
 		scroller.ScrollChanged += OnScrollChanged;
 		scroller.SizeChanged += (_, _) => ApplyViewport();
+
+		ApplyDesignTheme(IsDarkTheme);
 	}
+
+	int zoomComboSyncIndex;
 
 	/// <summary>Raised with a design-unit delta when the user nudges the selection with arrow keys.</summary>
 	public event EventHandler<(double DX, double DY)> NudgeRequested;
@@ -260,7 +215,7 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 	public bool IsTextEditing => textEditing;
 
 	/// <summary>Raised when the user toggles the Light/Dark theme, with "Light" or "Dark".</summary>
-	public event EventHandler<string> ThemeRequested;
+	public event EventHandler<string> DesignThemeRequested;
 
 	/// <summary>Syncs the theme toggle with the runtime (e.g. after the design reloads).
 	/// The button reads as the theme a click would switch TO, so its text and chrome
@@ -269,65 +224,22 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 	{
 		var dark = string.Equals(theme, "Dark", StringComparison.OrdinalIgnoreCase);
 		syncingTheme = true;
-		themeButton.IsChecked = dark;
+		IsDarkTheme = dark;
 		syncingTheme = false;
 		// The button content is an icon; the tooltip describes the next action.
-		themeButton.ToolTip = dark
-			? "Switch the design surface to Light theme"
-			: "Switch the design surface to Dark theme";
-		ApplyToolbarTheme(dark);
-	}
-
-	/// <summary>Switches the toolbar chrome (backgrounds, button and text colors) between the
-	/// Light and Dark design themes, and highlights the theme button while Dark is active.</summary>
-	void ApplyToolbarTheme(bool dark)
-	{
-		toolbar.Background = dark ? ToolbarDarkBackground : null;
-		// The chrome around the design bitmap uses a dotted pattern so empty space reads
-		// as "outside the design", not as the design's own background.
-		Background = dark ? CanvasDarkPattern : CanvasLightPattern;
-		scroller.Background = dark ? CanvasDarkPattern : CanvasLightPattern;
-		var fg = dark ? ToolbarDarkForeground : SystemColors.ControlTextBrush;
-		zoomCombo.Foreground = fg;
-		fitButton.Foreground = fg;
-		fitButton.Background = dark ? ToolbarDarkButtonBackground : null;
-		themeButton.Foreground = fg;
-		themeButton.Background = dark
-			? (themeButton.IsChecked == true ? ToolbarCheckedBackground : ToolbarDarkButtonBackground)
-			: null;
-	}
-
-	/// <summary>
-	/// Loads a VS2017 icon from the shared presentation resource service as a 16x16 Image,
-	/// the same icon source the rest of the IDE chrome uses (so the glyphs stay visible in
-	/// both themes). Returns a blank image when the resource is unavailable, so the button
-	/// still lays out correctly.
-	/// </summary>
-	static Image CreateToolbarIcon(string iconKey)
-	{
-		var image = new Image {
-			Width = 16,
-			Height = 16,
-			Stretch = Stretch.Uniform
-		};
-		try {
-			image.Source = ICSharpCode.Core.Presentation.PresentationResourceService.GetImageSource(iconKey);
-		} catch {
-			image.Source = null;
-		}
-		return image;
+		ApplyDesignTheme(dark);
 	}
 
 	/// <summary>The current toggle state: "Light" or "Dark".</summary>
-	public string ThemeState => themeButton.IsChecked == true ? "Dark" : "Light";
+	public string ThemeState => IsDarkTheme ? "Dark" : "Light";
 
 	bool syncingTheme;
 
-	void OnThemeToggle(object sender, RoutedEventArgs e)
+	void OnThemeToggle(object sender, bool dark)
 	{
 		if (syncingTheme)
 			return;
-		ThemeRequested?.Invoke(this, themeButton.IsChecked == true ? "Dark" : "Light");
+		DesignThemeRequested?.Invoke(this, dark ? "Dark" : "Light");
 	}
 
 	/// <summary>Shows the inline text editor over the given design rect, pre-filled with
@@ -382,7 +294,7 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 	public Point DesignToSurfacePoint(double x, double y)
 	{
 		var (sx, sy) = CurrentViewport().DesignToSurface(x, y);
-		return new Point(sx - scroller.HorizontalOffset, toolbar.ActualHeight + sy - scroller.VerticalOffset);
+		return new Point(sx - scroller.HorizontalOffset, sy - scroller.VerticalOffset);
 	}
 
 	public void SetRender(RenderResult render)
@@ -665,7 +577,7 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 	{
 		if (pixelWidth == 0 || pixelHeight == 0 || scroller.ViewportWidth == 0)
 			return new Vector2((float)point.X, (float)point.Y);
-		var viewportY = point.Y - toolbar.ActualHeight;
+		var viewportY = point.Y;
 		var (dx, dy) = CurrentViewport().SurfaceToDesign(point.X + scroller.HorizontalOffset, viewportY + scroller.VerticalOffset);
 		return new Vector2((float)dx, (float)dy);
 	}
@@ -686,7 +598,7 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 	}
 
 	/// <summary>True when the pointer is over the toolbar, where pick/pan must not fire.</summary>
-	bool IsOverToolbar(Point position) => position.Y <= toolbar.ActualHeight;
+	bool IsOverToolbar(Point position) => position.Y <= 0;
 
 	/// <summary>
 	/// True when the pressed element lies inside the design canvas. Presses elsewhere (the
@@ -719,10 +631,12 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 		// anchored so the scroll range covers the whole design. The design rect is placed at
 		// a FIXED content position - the ScrollViewer moves it on screen as the scroll
 		// offsets change, which is what makes the scrollbars actually scroll the canvas.
-		contentCanvas.Width = Math.Max(scroller.ViewportWidth, pixelWidth * scale);
-		contentCanvas.Height = Math.Max(scroller.ViewportHeight, pixelHeight * scale);
-		Canvas.SetLeft(viewportCanvas, baseX + panX);
-		Canvas.SetTop(viewportCanvas, baseY + panY);
+		// A fixed margin keeps the design bitmap off the edges, surrounded by the dotted
+		// empty-canvas EdgePattern (see DesignerCanvas).
+		contentCanvas.Width = Math.Max(scroller.ViewportWidth, pixelWidth * scale + CanvasMargin * 2);
+		contentCanvas.Height = Math.Max(scroller.ViewportHeight, pixelHeight * scale + CanvasMargin * 2);
+		Canvas.SetLeft(viewportCanvas, baseX + panX + CanvasMargin);
+		Canvas.SetTop(viewportCanvas, baseY + panY + CanvasMargin);
 		viewportCanvas.Width = pixelWidth * scale;
 		viewportCanvas.Height = pixelHeight * scale;
 		// The image must fill the design-size canvas: without explicit size it renders at
@@ -829,13 +743,22 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 	/// <summary>Keeps the zoom dropdown in sync with the current zoom factor.</summary>
 	void UpdateZoomCombo()
 	{
-		if (zoomCombo.Items.Count == 0)
+		if (ZoomCombo.Items.Count == 0)
 			return;
 		syncingZoomCombo = true;
-		var effective = EffectiveScale();
-		if (Math.Abs(zoomFactor - 1.0) < 0.02)
+		if (!zoomComboInitialized)
 		{
-			zoomCombo.SelectedIndex = 0; // Fit
+			// Default to 100% (1:1) rather than Fit, matching VS's design surface: set the
+			// zoom factor so the effective scale is 1.0 and select the "100%" entry.
+			zoomComboInitialized = true;
+			var fitScale = EffectiveScale() / zoomFactor;
+			zoomFactor = Math.Clamp(1.0 / fitScale, MinZoom, MaxZoom);
+			ZoomCombo.SelectedIndex = 4; // "100%"
+			ApplyViewport();
+		}
+		else if (Math.Abs(zoomFactor - 1.0) < 0.02)
+		{
+			ZoomCombo.SelectedIndex = 0; // Fit
 		}
 		else
 		{
@@ -843,28 +766,30 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 			var bestDistance = double.MaxValue;
 			for (var i = 0; i < ZoomPresets.Length; i++)
 			{
-				var distance = Math.Abs(ZoomPresets[i] - effective);
+				var distance = Math.Abs(ZoomPresets[i] - EffectiveScale());
 				if (distance < bestDistance)
 				{
 					bestDistance = distance;
 					best = i;
 				}
 			}
-			zoomCombo.SelectedIndex = best + 1;
+			ZoomCombo.SelectedIndex = best + 1;
 		}
 		syncingZoomCombo = false;
 	}
 
+	bool zoomComboInitialized;
+
 	void OnZoomSelectionChanged(object sender, SelectionChangedEventArgs e)
 	{
-		if (syncingZoomCombo || zoomCombo.SelectedIndex <= 0)
+		if (syncingZoomCombo || ZoomCombo.SelectedIndex <= 0)
 		{
-			if (!syncingZoomCombo && zoomCombo.SelectedIndex == 0)
+			if (!syncingZoomCombo && ZoomCombo.SelectedIndex == 0)
 				FitView();
 			return;
 		}
 		var fitScale = EffectiveScale() / zoomFactor;
-		var preset = ZoomPresets[zoomCombo.SelectedIndex - 1];
+		var preset = ZoomPresets[ZoomCombo.SelectedIndex - 1];
 		zoomFactor = Math.Clamp(preset / fitScale, MinZoom, MaxZoom);
 		ApplyViewport();
 	}
@@ -876,9 +801,9 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 
 	void OnSizePresetSelected(object sender, SelectionChangedEventArgs e)
 	{
-		if (syncingSizeCombo || sizeCombo.SelectedIndex <= 0)
+		if (syncingSizeCombo || DesignSizeCombo.SelectedIndex <= 0)
 			return;
-		SizePresetRequested?.Invoke(this, SizePresetKeys[sizeCombo.SelectedIndex - 1]);
+		SizePresetRequested?.Invoke(this, SizePresetKeys[DesignSizeCombo.SelectedIndex - 1]);
 	}
 
 	/// <summary>Syncs the size combo with the runtime (e.g. after a preset is applied).</summary>
@@ -886,7 +811,7 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 	{
 		syncingSizeCombo = true;
 		var index = Array.IndexOf(SizePresetKeys, preset);
-		sizeCombo.SelectedIndex = index < 0 ? 0 : index + 1;
+		DesignSizeCombo.SelectedIndex = index < 0 ? 0 : index + 1;
 		syncingSizeCombo = false;
 	}
 
@@ -1163,7 +1088,7 @@ public sealed class UnoDesignSurfaceControl : ContentControl
 	void ZoomAt(Point cursorSurface, double factor)
 	{
 		var (originX, originY, scale) = ViewportParams();
-		var viewportY = cursorSurface.Y - toolbar.ActualHeight;
+		var viewportY = cursorSurface.Y;
 		var (baseX, baseY) = (Math.Max(0, originX), Math.Max(0, originY));
 		var designX = (cursorSurface.X - baseX - panX + scroller.HorizontalOffset) / scale;
 		var designY = (viewportY - baseY - panY + scroller.VerticalOffset) / scale;

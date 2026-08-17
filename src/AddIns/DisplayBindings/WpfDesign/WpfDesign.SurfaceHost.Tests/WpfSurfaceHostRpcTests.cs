@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using Xunit;
 
@@ -49,11 +50,10 @@ public sealed class WpfSurfaceHostRpcTests
 		Assert.NotNull(opened.Tree);
 		Assert.NotNull(FindByName(opened.Tree!, "greeting"));
 		Assert.NotNull(FindByName(opened.Tree!, "go"));
-		// Render is best-effort on this platform: RenderTargetBitmap needs LibreWPF's native
-		// wpfgfx compositor, which has no macOS build (see wpf-designer.md's Phase 0 progress
-		// notes) - session/open must still succeed and populate the rest of the state without it.
-		if (opened.Render != null)
-			Assert.False(string.IsNullOrEmpty(opened.Render.Data));
+		// RenderTargetBitmap doesn't work headlessly on macOS, but the ProGPU composition path
+		// does (see wpf-designer.md's Phase 1 progress notes) - render is no longer best-effort.
+		Assert.NotNull(opened.Render);
+		Assert.False(string.IsNullOrEmpty(opened.Render!.Data));
 	}
 
 	[Fact]
@@ -68,10 +68,9 @@ public sealed class WpfSurfaceHostRpcTests
 		var updatedXaml = Xaml.Replace("Text=\"Hello\"", "Text=\"Updated\"");
 		var updated = await client.UpdateAsync(Snapshot(2, updatedXaml), timeout.Token);
 		Assert.True(updated.Accepted, updated.Error);
-		// Render is best-effort on this platform (see ChildHost_HandshakesAndOpensASession); only
-		// compare sequence numbers when a native compositor actually produced frames.
-		if (opened.Render != null && updated.Render != null)
-			Assert.True(updated.Render.Sequence > opened.Render.Sequence);
+		Assert.NotNull(opened.Render);
+		Assert.NotNull(updated.Render);
+		Assert.True(updated.Render!.Sequence > opened.Render!.Sequence);
 
 		var flushed = await client.FlushAsync(2, timeout.Token);
 		Assert.Equal(2, flushed.BaseVersion);
@@ -286,6 +285,59 @@ public sealed class WpfSurfaceHostRpcTests
 			first.Dispose();
 			second.Dispose();
 		}
+	}
+
+	[Fact]
+	public async Task SessionOpen_RendersRealWpfContentIntoTheFrame()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await global::WpfDesign.SurfaceHost.Tests.WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, Xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		Assert.NotNull(opened.Render);
+		var frame = opened.Render!;
+
+		var compressed = Convert.FromBase64String(frame.Data);
+		using var compressedStream = new MemoryStream(compressed);
+		using var deflate = new DeflateStream(compressedStream, CompressionMode.Decompress);
+		using var pixelStream = new MemoryStream();
+		deflate.CopyTo(pixelStream);
+		var pixels = pixelStream.ToArray();
+		var stride = frame.Width * 4;
+		Assert.Equal(stride * frame.Height, pixels.Length);
+
+		// Deliberately does not assume WHERE in the frame content ends up. Two earlier attempts
+		// both did and were both wrong: one assumed the TextBlock/Button would be centered per
+		// default Grid alignment (real content was elsewhere); the other used the tree's own
+		// reported bounds for "go" (X/Y/Width/Height, computed via TransformToAncestor in
+		// BuildNode) - real content still did not land there. There is a real, confirmed,
+		// currently-unresolved mismatch between the coordinates ProGPU's replay pipeline paints
+		// at and the coordinates this backend's own element tree reports (see wpf-designer.md's
+		// Phase 1 progress notes) - this test does not depend on resolving that. It scans the
+		// whole frame and asserts at least one pixel differs from the (0,0) background corner
+		// (never part of any child's content, since the root Grid has no Background) - decisive
+		// proof real content was composited, regardless of exactly where.
+		var background = ReadBgra(pixels, stride, 0, 0);
+		var foundNonBackgroundPixel = false;
+		for (var y = 0; y < frame.Height && !foundNonBackgroundPixel; y++)
+		{
+			for (var x = 0; x < frame.Width; x++)
+			{
+				if (ReadBgra(pixels, stride, x, y) != background)
+				{
+					foundNonBackgroundPixel = true;
+					break;
+				}
+			}
+		}
+		Assert.True(foundNonBackgroundPixel,
+			"Every pixel in the frame matches the (0,0) background corner - rendering did not composite any real content.");
+	}
+
+	static (byte R, byte G, byte B, byte A) ReadBgra(byte[] pixels, int stride, int x, int y)
+	{
+		var offset = y * stride + x * 4;
+		return (pixels[offset], pixels[offset + 1], pixels[offset + 2], pixels[offset + 3]);
 	}
 
 	static string CustomControlFixtureDll() => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,

@@ -304,6 +304,25 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			public TabControlWithModifiedShortcuts(AvalonWorkbenchWindow parentWindow)
 			{
 				this.parentWindow = parentWindow;
+				// LibreWPF's implicit-style lookup does not walk BaseType, so this TabControl
+				// subclass never picks up the semantic theme's implicit TabControl style and
+				// falls back to the Aero2 chrome (white background, light border). Assign the
+				// theme brushes directly (SetResourceReference is unreliable here) and re-apply
+				// them on IDE theme switches.
+				ApplyThemeBrushes();
+				IdeThemeService.ThemeChanged += OnIdeThemeChanged;
+			}
+
+			void OnIdeThemeChanged(object sender, string theme) => ApplyThemeBrushes();
+
+			void ApplyThemeBrushes()
+			{
+				if (Application.Current == null)
+					return;
+				if (Application.Current.TryFindResource("ToolWindowBackground") is Brush background)
+					Background = background;
+				if (Application.Current.TryFindResource("Border") is Brush border)
+					BorderBrush = border;
 			}
 
 			protected override void OnKeyDown(KeyEventArgs e)

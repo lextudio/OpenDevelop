@@ -133,6 +133,27 @@ namespace ICSharpCode.FormsDesigner
 			EnsureRemoteDesignerLoaded();
 			ExecuteRemoteEdit(() => remoteClient.SetEventAsync(remoteDocumentVersion, componentName, eventName, handlerName,
 				System.Threading.CancellationToken.None).GetAwaiter().GetResult());
+			// VS-style: after creating/binding a handler, open the primary source and jump to it.
+			if (!String.IsNullOrEmpty(handlerName))
+				JumpToHandler(handlerName);
+		}
+
+		/// <summary>Locates the generated handler method in the primary source file and jumps to
+		/// it, opening/activating the code editor when needed.</summary>
+		void JumpToHandler(string handlerName)
+		{
+			var primary = SourceFiles.FirstOrDefault(item => item.Key != DesignerCodeFile);
+			if (primary.Key == null)
+				return;
+			var text = primary.Value?.Text;
+			var offset = text == null ? -1 : text.IndexOf(handlerName + "(", StringComparison.Ordinal);
+			if (offset < 0)
+				return;
+			var line = 1 + text.Take(offset).Count(character => character == '\n');
+			if (primary.Key == primaryViewContent.PrimaryFile)
+				ShowSourceCode(line);
+			else
+				FileService.JumpToFilePosition(primary.Key.FileName, line, 1);
 		}
 
 		internal void AddRemoteControl(string parentName, string controlType, string componentName, int x, int y)
@@ -842,7 +863,7 @@ namespace ICSharpCode.FormsDesigner
 			}
 		}
 
-		sealed class RemoteComponentPropertyProxy : ICustomTypeDescriptor, IPropertyGridEventSource
+		sealed class RemoteComponentPropertyProxy : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost
 		{
 			readonly FormsDesignerViewContent owner;
 			string name;
@@ -925,6 +946,18 @@ namespace ICSharpCode.FormsDesigner
 				if (remoteEvent == null) return;
 				owner.SetRemoteEvent(name, remoteEvent.Name, handlerName ?? "");
 				remoteEvent.Handler = handlerName ?? "";
+			}
+
+			// IEventBindingHost: VS-style double-click on an Events row creates the conventional
+			// <component>_<event> handler, binds it, and persists through the host session.
+			void IEventBindingHost.BindEvent(string eventName)
+			{
+				var remoteEvent = remoteEvents.FirstOrDefault(item => item.Name == eventName);
+				if (remoteEvent == null || !String.IsNullOrEmpty(remoteEvent.Handler))
+					return; // unknown event, or already bound (a second double-click is a no-op)
+				var handlerName = name + "_" + eventName;
+				owner.SetRemoteEvent(name, remoteEvent.Name, handlerName);
+				remoteEvent.Handler = handlerName;
 			}
 
 			PropertyDescriptorCollection GetRemotePropertyDescriptors()

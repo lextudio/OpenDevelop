@@ -8,8 +8,10 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Xml.Linq;
+using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Designer.Remote;
+using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.WinForms;
 using ICSharpCode.SharpDevelop.Widgets;
@@ -333,13 +335,34 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 
 	/// <summary>Applies an event-handler-name change (the Properties pad's Events view) and pushes
 	/// it as a discrete design/set-event incremental render, the same way
-	/// <see cref="OnTextEditCommittedOnSurface"/> uses design/set-property.</summary>
+	/// <see cref="OnTextEditCommittedOnSurface"/> uses design/set-property. A newly introduced
+	/// handler name also gets its code-behind method created (VS-style).</summary>
 	void SetEventThroughEditor(XElement element, XName attribute, string value)
 	{
+		var wasBound = !string.IsNullOrEmpty(element.Attribute(attribute)?.Value);
 		editor.SetAttribute(element, attribute, value);
 		var elementName = (string)element.Attribute(WinUIXamlDocumentEditor.NameDirective);
 		var eventName = attribute.LocalName;
 		var handlerName = value ?? "";
+		if (elementName != null && !string.IsNullOrEmpty(handlerName) && !wasBound)
+		{
+			// Create the paired method in the .xaml.cs partial class so the new event
+			// attribute reference actually compiles, then open the code-behind and jump
+			// to the created method (VS-style).
+			var rootElement = editor.Document?.Root;
+			var line = WinUIXamlCodeBehind.CreateHandlerMethod(PrimaryFile.FileName.ToString(), rootElement, eventName, handlerName);
+			if (line.HasValue)
+			{
+				var codePath = PrimaryFile.FileName.ToString() + ".cs";
+				try {
+					var view = SD.FileService.OpenFile(FileName.Create(codePath));
+					var codeEditor = view?.GetService(typeof(ITextEditor)) as ITextEditor;
+					codeEditor?.JumpTo(line.Value, 1);
+				} catch (Exception ex) {
+					LoggingService.Warn("WinUI designer: could not open code-behind " + codePath + ": " + ex.Message);
+				}
+			}
+		}
 		if (elementName == null)
 		{
 			ApplyDocumentChange();
