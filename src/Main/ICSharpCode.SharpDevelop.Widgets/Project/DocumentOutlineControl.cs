@@ -31,6 +31,15 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		/// <summary>Optional per-node context menu factory (e.g. designer-specific commands).</summary>
 		public Func<DesignerElementNode, ContextMenu> ContextMenuFactory { get; set; }
 
+		public DocumentOutlineControl()
+		{
+			// A selection change is the single commit path, whether the user clicked a node or
+			// SelectNodeById picked it programmatically (IsSelected=true raises the same event) -
+			// otherwise a real click would never reach the consumers (they only subscribe to
+			// SelectionCommitted).
+			SelectedItemChanged += (_, _) => SelectionCommitted?.Invoke(this, EventArgs.Empty);
+		}
+
 		/// <summary>Shows a new element tree. Collapses nothing and keeps the current
 		/// selection if the tree still contains it; otherwise clears the selection.</summary>
 		public void SetRoot(DesignerElementNode root)
@@ -44,12 +53,12 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			var item = CreateItem(root);
 			Items.Add(item);
 			if (keepId != null)
-				SelectNodeById(keepId, raiseEvent: false);
+				SelectNodeById(keepId);
 		}
 
 		/// <summary>Programmatically selects the node with the given id (no-op when absent).
 		/// Goes through the same <see cref="SelectionCommitted"/> path as a user click.</summary>
-		public void SelectNodeById(string id, bool raiseEvent = true)
+		public void SelectNodeById(string id)
 		{
 			if (string.IsNullOrEmpty(id) || Items.Count == 0)
 				return;
@@ -57,8 +66,6 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			if (match != null) {
 				match.IsSelected = true;
 				match.BringIntoView();
-				if (raiseEvent)
-					SelectionCommitted?.Invoke(this, EventArgs.Empty);
 			}
 		}
 

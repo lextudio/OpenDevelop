@@ -735,7 +735,7 @@ namespace ICSharpCode.FormsDesigner
 			propertyContainer.SelectedObject = new RemoteComponentPropertyProxy(this, component);
 			// Design surface -> Document Outline: mirror the selection without re-triggering
 			// the outline->surface path (same element, no-op anyway).
-			outline.SelectNodeById(component.Name, raiseEvent: false);
+			outline.SelectNodeById(component.Name);
 			System.Windows.Input.CommandManager.InvalidateRequerySuggested();
 		}
 
