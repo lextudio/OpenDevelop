@@ -74,60 +74,60 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			return InvokeAsync<DesignerSessionState>("session/update", new { snapshot }, cancellationToken);
 		}
 
-		public Task<DesignerEditSet> FlushAsync(long version, CancellationToken cancellationToken)
-			=> InvokeAsync<DesignerEditSet>("session/flush", new { sessionId = SessionId, documentId = DocumentId, version }, cancellationToken);
+		public Task<DesignerEditSet> FlushAsync(long baseVersion, CancellationToken cancellationToken)
+			=> InvokeAsync<DesignerEditSet>("session/flush", new { sessionId = SessionId, documentId = DocumentId, baseVersion }, cancellationToken);
 
-		public Task<DesignerHitTestResult> HitTestAsync(long version, double x, double y, CancellationToken cancellationToken)
-			=> InvokeAsync<DesignerHitTestResult>("design/hit-test", new { sessionId = SessionId, documentId = DocumentId, version, x = Round(x), y = Round(y) }, cancellationToken);
+		public Task<DesignerHitTestResult> HitTestAsync(long baseVersion, double x, double y, CancellationToken cancellationToken)
+			=> InvokeAsync<DesignerHitTestResult>("design/hit-test", new { sessionId = SessionId, documentId = DocumentId, baseVersion, x = Round(x), y = Round(y) }, cancellationToken);
 
 		/// <summary>The WinForms child lays out in integer device units; design-unit coordinates
 		/// round here so the wire contract stays unchanged.</summary>
 		static int Round(double value) => (int)Math.Round(value);
 
-		public Task<DesignerSessionState> SetPropertyAsync(long version, string componentName, string propertyName, string value, CancellationToken cancellationToken)
-			=> InvokeAsync<DesignerSessionState>("design/set-property", new { sessionId = SessionId, documentId = DocumentId, version, componentName, propertyName, value }, cancellationToken);
+		public Task<DesignerSessionState> SetPropertyAsync(long baseVersion, string elementId, string propertyName, string value, CancellationToken cancellationToken)
+			=> InvokeAsync<DesignerSessionState>("design/set-property", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, value }, cancellationToken);
 
-		public Task<DesignerSessionState> ResetPropertyAsync(long version, string componentName, string propertyName, CancellationToken cancellationToken)
-			=> InvokeAsync<DesignerSessionState>("design/reset-property", new { sessionId = SessionId, documentId = DocumentId, version, componentName, propertyName }, cancellationToken);
+		public Task<DesignerSessionState> ResetPropertyAsync(long baseVersion, string elementId, string propertyName, CancellationToken cancellationToken)
+			=> InvokeAsync<DesignerSessionState>("design/reset-property", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName }, cancellationToken);
 
-		public Task<DesignerSessionState> RenameAsync(long version, string componentName, string newName, CancellationToken cancellationToken)
-			=> InvokeAsync<DesignerSessionState>("design/rename", new { sessionId = SessionId, documentId = DocumentId, version, componentName, newName }, cancellationToken);
+		public Task<DesignerSessionState> RenameAsync(long baseVersion, string elementId, string newName, CancellationToken cancellationToken)
+			=> InvokeAsync<DesignerSessionState>("design/rename", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, newName }, cancellationToken);
 
-		public Task<DesignerSessionState> SetEventAsync(long version, string componentName, string eventName, string handlerName, CancellationToken cancellationToken)
-			=> InvokeAsync<DesignerSessionState>("design/set-event", new { sessionId = SessionId, documentId = DocumentId, version, componentName, eventName, handlerName }, cancellationToken);
+		public Task<DesignerSessionState> SetEventAsync(long baseVersion, string elementId, string eventName, string handlerName, CancellationToken cancellationToken)
+			=> InvokeAsync<DesignerSessionState>("design/set-event", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, eventName, handlerName }, cancellationToken);
 
-		public Task<DesignerSessionState> ActivateDefaultEventAsync(long version, string componentName, CancellationToken cancellationToken)
-			=> InvokeAsync<DesignerSessionState>("design/activate-default-event", new { sessionId = SessionId, documentId = DocumentId, version, componentName }, cancellationToken);
+		public Task<DesignerSessionState> ActivateDefaultEventAsync(long baseVersion, string elementId, CancellationToken cancellationToken)
+			=> InvokeAsync<DesignerSessionState>("design/activate-default-event", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId }, cancellationToken);
 
 		/// <summary>Inserts a control; the WinForms backend needs only the toolbox item's CLR type
 		/// name plus the proposed component name.</summary>
-		public Task<DesignerSessionState> AddElementAsync(long version, string parentName, DesignerToolboxItemInfo item, string componentName, double x, double y, CancellationToken cancellationToken)
-			=> InvokeAsync<DesignerSessionState>("design/add-element", new { sessionId = SessionId, documentId = DocumentId, version, parentName, controlType = item?.TypeName, componentName, x = Round(x), y = Round(y) }, cancellationToken);
+		public Task<DesignerSessionState> AddElementAsync(long baseVersion, string parentId, DesignerToolboxItemInfo item, string elementId, double x, double y, CancellationToken cancellationToken)
+			=> InvokeAsync<DesignerSessionState>("design/add-element", new { sessionId = SessionId, documentId = DocumentId, baseVersion, parentId, item, elementId, x = Round(x), y = Round(y) }, cancellationToken);
 
-		public Task<DesignerSessionState> SetBoundsAsync(long version, string componentName, double x, double y, double width, double height, CancellationToken cancellationToken)
-			=> InvokeAsync<DesignerSessionState>("design/set-bounds", new { sessionId = SessionId, documentId = DocumentId, version, componentName, x = Round(x), y = Round(y), width = Round(width), height = Round(height) }, cancellationToken);
+		public Task<DesignerSessionState> SetBoundsAsync(long baseVersion, string elementId, double x, double y, double width, double height, CancellationToken cancellationToken)
+			=> InvokeAsync<DesignerSessionState>("design/set-bounds", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, x = Round(x), y = Round(y), width = Round(width), height = Round(height) }, cancellationToken);
 
 		/// <summary>Deletes elements one RPC at a time: the child's <c>design/delete-elements</c>
 		/// takes a single name, and deletes do not bump the document version, so every call in
-		/// the loop validates against the same <paramref name="version"/>. The last child state wins.</summary>
-		public async Task<DesignerSessionState> DeleteElementsAsync(long version, string[] elementIds, CancellationToken cancellationToken)
+		/// the loop validates against the same <paramref name="baseVersion"/>. The last child state wins.</summary>
+		public async Task<DesignerSessionState> DeleteElementsAsync(long baseVersion, string[] elementIds, CancellationToken cancellationToken)
 		{
 			DesignerSessionState state = null;
 			if (elementIds != null) {
 				foreach (var elementId in elementIds)
-					state = await DeleteComponentAsync(version, elementId, cancellationToken).ConfigureAwait(false);
+					state = await DeleteComponentAsync(baseVersion, elementId, cancellationToken).ConfigureAwait(false);
 			}
 			return state;
 		}
 
-		Task<DesignerSessionState> DeleteComponentAsync(long version, string componentName, CancellationToken cancellationToken)
-			=> InvokeAsync<DesignerSessionState>("design/delete-elements", new { sessionId = SessionId, documentId = DocumentId, version, componentName }, cancellationToken);
+		Task<DesignerSessionState> DeleteComponentAsync(long baseVersion, string elementId, CancellationToken cancellationToken)
+			=> InvokeAsync<DesignerSessionState>("design/delete-elements", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId }, cancellationToken);
 
-		public Task<DesignerSessionState> SetZOrderAsync(long version, string componentName, bool bringToFront, CancellationToken cancellationToken)
-			=> InvokeAsync<DesignerSessionState>("design/set-z-order", new { sessionId = SessionId, documentId = DocumentId, version, componentName, bringToFront }, cancellationToken);
+		public Task<DesignerSessionState> SetZOrderAsync(long baseVersion, string elementId, bool bringToFront, CancellationToken cancellationToken)
+			=> InvokeAsync<DesignerSessionState>("design/set-z-order", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, bringToFront }, cancellationToken);
 
-		public Task<DesignerSessionState> ApplyLayoutAsync(long version, string operation, string[] componentNames, double deltaX, double deltaY, CancellationToken cancellationToken)
-			=> InvokeAsync<DesignerSessionState>("design/apply-layout", new { sessionId = SessionId, documentId = DocumentId, version, operation, componentNames, deltaX = Round(deltaX), deltaY = Round(deltaY) }, cancellationToken);
+		public Task<DesignerSessionState> ApplyLayoutAsync(long baseVersion, string operation, string[] elementIds, double deltaX, double deltaY, CancellationToken cancellationToken)
+			=> InvokeAsync<DesignerSessionState>("design/apply-layout", new { sessionId = SessionId, documentId = DocumentId, baseVersion, operation, elementIds, deltaX = Round(deltaX), deltaY = Round(deltaY) }, cancellationToken);
 
 		public Task DelayAsync(int milliseconds, CancellationToken cancellationToken)
 			=> InvokeAsync<object>("diagnostics/delay", new { milliseconds }, cancellationToken, TimeSpan.FromMilliseconds(250));

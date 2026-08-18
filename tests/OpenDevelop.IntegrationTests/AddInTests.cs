@@ -2369,18 +2369,18 @@ public sealed class AddInTests : IAsyncDisposable
 
             void AssertConsistent(JsonElement g, string label)
             {
-                var f = Bounds(g, "frame");
+                var e = Bounds(g, "element");
                 var s = Bounds(g, "selection");
                 var hx = g.GetProperty("handle").GetProperty("x").GetDouble();
                 var hy = g.GetProperty("handle").GetProperty("y").GetDouble();
-                Assert.True(f.w > 0 && f.h > 0, label + ": rendered frame has zero size: " + g);
-                // Selection outline must coincide with the rendered frame (allow 1px).
-                Assert.True(Math.Abs(s.x - f.x) <= 1 && Math.Abs(s.y - f.y) <= 1
-                    && Math.Abs(s.w - f.w) <= 1 && Math.Abs(s.h - f.h) <= 1,
-                    label + ": selection outline drifted from rendered frame.\nframe=" + f + "\nselection=" + s + "\n" + g);
-                // Resize handle must sit at the frame's bottom-right corner (allow 2px).
-                Assert.True(Math.Abs(hx - (f.x + f.w)) <= 2 && Math.Abs(hy - (f.y + f.h)) <= 2,
-                    label + ": resize handle not at frame bottom-right.\nframe=" + f + "\nhandle=(" + hx + "," + hy + ")\n" + g);
+                Assert.True(e.w > 0 && e.h > 0, label + ": selected element has zero size: " + g);
+                // Selection outline must coincide with the selected element (allow 1px).
+                Assert.True(Math.Abs(s.x - e.x) <= 1 && Math.Abs(s.y - e.y) <= 1
+                    && Math.Abs(s.w - e.w) <= 1 && Math.Abs(s.h - e.h) <= 1,
+                    label + ": selection outline drifted from rendered element.\nelement=" + e + "\nselection=" + s + "\n" + g);
+                // Resize handle must sit at the element's bottom-right corner (allow 2px).
+                Assert.True(Math.Abs(hx - (e.x + e.w)) <= 2 && Math.Abs(hy - (e.y + e.h)) <= 2,
+                    label + ": resize handle not at element bottom-right.\nelement=" + e + "\nhandle=(" + hx + "," + hy + ")\n" + g);
             }
 
             var before = await _app.InvokeAsync("od.forms-designer.surface-geometry");
@@ -2447,10 +2447,15 @@ public sealed class AddInTests : IAsyncDisposable
 
         void AssertHandleAtSelectionBottomRight(JsonElement g, string label)
         {
+            var e = Bounds(g, "element");
             var s = Bounds(g, "selection");
             var hx = g.GetProperty("handle").GetProperty("x").GetDouble();
             var hy = g.GetProperty("handle").GetProperty("y").GetDouble();
             Assert.True(s.w > 0 && s.h > 0, label + ": selection has zero size: " + g);
+            // The selection outline must hug the selected element (allow 1px).
+            Assert.True(Math.Abs(e.x - s.x) <= 1 && Math.Abs(e.y - s.y) <= 1
+                && Math.Abs(e.w - s.w) <= 1 && Math.Abs(e.h - s.h) <= 1,
+                label + ": element drifted from selection outline.\nelement=" + e + "\nselection=" + s + "\n" + g);
             Assert.True(Math.Abs(hx - (s.x + s.w)) <= 2 && Math.Abs(hy - (s.y + s.h)) <= 2,
                 label + ": resize handle not at selection bottom-right.\nselection=" + s + "\nhandle=(" + hx + "," + hy + ")\n" + g);
         }
@@ -2486,9 +2491,9 @@ public sealed class AddInTests : IAsyncDisposable
     [Fact]
     public async Task WpfDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement()
     {
-        // Drag a selected element's bottom-right resize handle in the in-process WPF designer
-        // and assert the invariant: the selection outline coincides with the element's rendered
-        // bounds and the resize handle sits at its bottom-right corner, before and after.
+        // Drag a selected element's bottom-right resize handle in the WPF designer and assert
+        // the invariant: the selection outline coincides with the element's rendered bounds
+        // and the resize handle sits at its bottom-right corner, before and after.
         var xamlPath = Path.Combine(Path.GetDirectoryName(_app.WpfSampleSolutionPath)!, "SamplePane.xaml");
         var original = await File.ReadAllTextAsync(xamlPath);
 
@@ -2523,17 +2528,17 @@ public sealed class AddInTests : IAsyncDisposable
 
             void AssertConsistent(JsonElement g, string label)
             {
-                var f = Bounds(g, "frame");
+                var e = Bounds(g, "element");
                 var s = Bounds(g, "selection");
                 var hx = g.GetProperty("handle").GetProperty("x").GetDouble();
                 var hy = g.GetProperty("handle").GetProperty("y").GetDouble();
-                Assert.True(f.w > 0 && f.h > 0, label + ": rendered element has zero size: " + g);
-                // WPF's adorner hugs the element: selection == frame.
-                Assert.True(Math.Abs(s.x - f.x) <= 1 && Math.Abs(s.y - f.y) <= 1
-                    && Math.Abs(s.w - f.w) <= 1 && Math.Abs(s.h - f.h) <= 1,
-                    label + ": selection outline drifted from rendered element.\nframe=" + f + "\nselection=" + s + "\n" + g);
-                Assert.True(Math.Abs(hx - (f.x + f.w)) <= 2 && Math.Abs(hy - (f.y + f.h)) <= 2,
-                    label + ": resize handle not at element bottom-right.\nframe=" + f + "\nhandle=(" + hx + "," + hy + ")\n" + g);
+                Assert.True(e.w > 0 && e.h > 0, label + ": selected element has zero size: " + g);
+                // WPF's adorner hugs the element: selection == element.
+                Assert.True(Math.Abs(s.x - e.x) <= 1 && Math.Abs(s.y - e.y) <= 1
+                    && Math.Abs(s.w - e.w) <= 1 && Math.Abs(s.h - e.h) <= 1,
+                    label + ": selection outline drifted from rendered element.\nelement=" + e + "\nselection=" + s + "\n" + g);
+                Assert.True(Math.Abs(hx - (e.x + e.w)) <= 2 && Math.Abs(hy - (e.y + e.h)) <= 2,
+                    label + ": resize handle not at element bottom-right.\nelement=" + e + "\nhandle=(" + hx + "," + hy + ")\n" + g);
             }
 
             var before = await _app.InvokeAsync("od.wpf-designer.surface-geometry");
@@ -2576,8 +2581,8 @@ public sealed class AddInTests : IAsyncDisposable
                 grew = await OpenDevelopAppFixture.PollUntilAsync(async () => {
                     after = await _app.InvokeAsync("od.wpf-designer.surface-geometry");
                     return after.GetProperty("available").GetBoolean()
-                        && after.GetProperty("frame").GetProperty("width").GetDouble() > before.GetProperty("frame").GetProperty("width").GetDouble() + 10
-                        && after.GetProperty("frame").GetProperty("height").GetDouble() > before.GetProperty("frame").GetProperty("height").GetDouble() + 10;
+                        && after.GetProperty("element").GetProperty("width").GetDouble() > before.GetProperty("element").GetProperty("width").GetDouble() + 10
+                        && after.GetProperty("element").GetProperty("height").GetDouble() > before.GetProperty("element").GetProperty("height").GetDouble() + 10;
                 }, TimeSpan.FromSeconds(8), initialDelayMs: 100, maxDelayMs: 400);
             }
             Assert.True(grew, "The resize drag did not grow the selected element, even after retries. before=" + before);

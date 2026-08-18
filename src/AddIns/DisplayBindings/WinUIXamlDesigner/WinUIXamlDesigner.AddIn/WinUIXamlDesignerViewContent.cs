@@ -10,6 +10,7 @@ using System.Windows.Media;
 using System.Xml.Linq;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
+using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Gui;
@@ -134,8 +135,8 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	public int OutlineChildCount =>
 		outline.Items.Count == 0 ? 0 : ((TreeViewItem)outline.Items[0]).Items.Count;
 
-	/// <summary>Surface geometry (frame/selection/resize-handle) for resize-drag tests.</summary>
-	public (System.Windows.Rect Frame, System.Windows.Rect Selection, System.Windows.Point Handle) SurfaceGeometry()
+	/// <summary>Surface geometry (frame/selection/handle/element) for resize-drag tests.</summary>
+	public DesignerSurfaceGeometry SurfaceGeometry()
 		=> previewHost.SurfaceGeometry();
 
 	/// <summary>Design-surface viewport (zoom 1.0 = fit; pan in surface DIPs).</summary>

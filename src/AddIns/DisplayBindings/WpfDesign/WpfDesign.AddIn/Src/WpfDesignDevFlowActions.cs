@@ -19,6 +19,7 @@ using System.Windows;
 using System.Windows.Controls;
 
 using ICSharpCode.SharpDevelop;
+using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.WpfDesign.AddIn.OutOfProcess;
@@ -31,19 +32,13 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 	[DevFlowUIThread]
 	public static class WpfDesignDevFlowActions
 	{
-		[DevFlowAction("od.wpf-designer.surface-geometry", Description = "Report the WPF design surface geometry (selected element's rendered bounds, its selection outline, bottom-right resize handle) in screen coordinates - the smoke probe for the resize-drag invariant that outline and handle always track the rendered element")]
+		[DevFlowAction("od.wpf-designer.surface-geometry", Description = "Report the WPF design surface geometry (rendered design bitmap bounds, selected element bounds, its selection outline, bottom-right resize handle) in screen coordinates - the smoke probe for the resize-drag invariant that outline and handle always track the rendered element")]
 		public static string GetSurfaceGeometry()
 		{
 			var viewContent = FindWpfViewContent();
 			if (viewContent == null)
 				return JsonSerializer.Serialize(new { available = false });
-			var (frame, selection, handle) = viewContent.SurfaceGeometry();
-			return JsonSerializer.Serialize(new {
-				available = true,
-				frame = new { x = frame.X, y = frame.Y, width = frame.Width, height = frame.Height },
-				selection = new { x = selection.X, y = selection.Y, width = selection.Width, height = selection.Height },
-				handle = new { x = handle.X, y = handle.Y }
-			});
+			return JsonSerializer.Serialize(DesignerSurfaceGeometryProbe.ToJson(viewContent.SurfaceGeometry()));
 		}
 
 		[DevFlowAction("od.wpf-designer.status", Description = "Inspect the active WPF designer view: whether the design surface loaded, the toolbox's item/group counts, and the outline pad's element tree")]

@@ -76,19 +76,19 @@ sealed class DesignerHostService
 		if (current is null)
 			return Rejected(snapshot.Version, "No designer session is open.");
 		if (snapshot.Version <= current.Version)
-			return Rejected(snapshot.Version, $"Stale document version {snapshot.Version}; current version is {current.Version}.");
+			return Rejected(snapshot.Version, $"Stale document baseVersion {snapshot.Version}; current baseVersion is {current.Version}.");
 		CreateDesignSurface(snapshot);
 		current = snapshot;
 		return CurrentState(snapshot.Version);
 	}
 
 	[JsonRpcMethod("session/flush")]
-	public EditSet Flush(string sessionId, string documentId, long version)
+	public EditSet Flush(string sessionId, string documentId, long baseVersion)
 	{
 		EnsureInitialized();
 		EnsureOwnSession(sessionId, documentId);
-		if (current is null || current.Version != version)
-			throw new InvalidOperationException("Cannot flush a stale or unopened document version.");
+		if (current is null || current.Version != baseVersion)
+			throw new InvalidOperationException("Cannot flush a stale or unopened document baseVersion.");
 		foreach (var file in current.Files.Where(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))) {
 			if (IsVisualBasic) {
 				var vbRoot = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
@@ -98,13 +98,13 @@ sealed class DesignerHostService
 				file.Text = new ThisQualifierRewriter().Visit(root)!.ToFullString();
 			}
 		}
-		return new EditSet { SessionId = sessionId, DocumentId = documentId, BaseVersion = version, Files = current.Files };
+		return new EditSet { SessionId = sessionId, DocumentId = documentId, BaseVersion = baseVersion, Files = current.Files };
 	}
 
 	[JsonRpcMethod("design/hit-test")]
-	public HitTestResult HitTest(string sessionId, string documentId, long version, int x, int y)
+	public HitTestResult HitTest(string sessionId, string documentId, long baseVersion, int x, int y)
 	{
-		EnsureCurrentVersion(sessionId, documentId, version, "hit-test");
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "hit-test");
 		var host = designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost;
 		var root = host?.RootComponent as Control;
 		var hit = root == null ? null : FindDeepest(root, new Point(x, y));
@@ -115,30 +115,30 @@ sealed class DesignerHostService
 	}
 
 	[JsonRpcMethod("design/set-property")]
-	public SessionState SetProperty(string sessionId, string documentId, long version, string componentName, string propertyName, string value)
+	public SessionState SetProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string value)
 	{
-		EnsureCurrentVersion(sessionId, documentId, version, "edit");
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
 		var host = designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost
 			?? throw new InvalidOperationException("The designer surface is unavailable.");
 		var component = host.Container.Components.Cast<IComponent>()
-			.FirstOrDefault(item => String.Equals(item.Site?.Name, componentName, StringComparison.Ordinal))
-			?? throw new ArgumentException("Component not found: " + componentName, nameof(componentName));
+			.FirstOrDefault(item => String.Equals(item.Site?.Name, elementId, StringComparison.Ordinal))
+			?? throw new ArgumentException("Component not found: " + elementId, nameof(elementId));
 		var property = TypeDescriptor.GetProperties(component)[propertyName]
 			?? throw new ArgumentException("Property not found: " + propertyName, nameof(propertyName));
 		if (property.IsReadOnly)
-			throw new InvalidOperationException($"Property {componentName}.{propertyName} is read-only.");
+			throw new InvalidOperationException($"Property {elementId}.{propertyName} is read-only.");
 		var converted = ConvertPropertyValue(property, value);
 		if (component == host.RootComponent && propertyName == "AutoScaleDimensions" && converted is SizeF scale)
 			rootAutoScaleDimensions = scale;
 		// Validate source serialization before mutating the live component. A
 		// failed complex-property serializer must not split live and source state.
 		_ = SerializeValue(converted);
-		using (var transaction = host.CreateTransaction($"Set {componentName}.{propertyName}")) {
+		using (var transaction = host.CreateTransaction($"Set {elementId}.{propertyName}")) {
 			property.SetValue(component, converted);
 			transaction.Commit();
 		}
-		RewriteProperty(componentName, propertyName, converted);
-		return CurrentState(version);
+		RewriteProperty(elementId, propertyName, converted);
+		return CurrentState(baseVersion);
 	}
 
 	static object ConvertPropertyValue(PropertyDescriptor property, string value)
@@ -165,19 +165,19 @@ sealed class DesignerHostService
 	}
 
 	[JsonRpcMethod("design/reset-property")]
-	public SessionState ResetProperty(string sessionId, string documentId, long version, string componentName, string propertyName)
+	public SessionState ResetProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName)
 	{
-		EnsureCurrentVersion(sessionId, documentId, version, "reset property on");
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "reset property on");
 		var host = GetHost();
-		var component = host.Container.Components[componentName]
-			?? throw new ArgumentException("Component not found: " + componentName, nameof(componentName));
+		var component = host.Container.Components[elementId]
+			?? throw new ArgumentException("Component not found: " + elementId, nameof(elementId));
 		var property = TypeDescriptor.GetProperties(component)[propertyName]
 			?? throw new ArgumentException("Property not found: " + propertyName, nameof(propertyName));
 		// LibreWinForms currently returns false from CanResetValue for some properties
 		// (for example Enabled) even after they have been explicitly serialized.
 		if (property.IsReadOnly || (!property.CanResetValue(component) && !property.ShouldSerializeValue(component)))
-			throw new InvalidOperationException($"Property {componentName}.{propertyName} cannot be reset.");
-		using (var transaction = host.CreateTransaction($"Reset {componentName}.{propertyName}")) {
+			throw new InvalidOperationException($"Property {elementId}.{propertyName} cannot be reset.");
+		using (var transaction = host.CreateTransaction($"Reset {elementId}.{propertyName}")) {
 			property.ResetValue(component);
 			// Some LibreWinForms descriptors expose DefaultValueAttribute but their
 			// ResetValue implementation is currently a no-op.
@@ -188,8 +188,8 @@ sealed class DesignerHostService
 				property.SetValue(component, freshDefault);
 			transaction.Commit();
 		}
-		RewriteResetProperty(componentName, propertyName);
-		return CurrentState(version);
+		RewriteResetProperty(elementId, propertyName);
+		return CurrentState(baseVersion);
 	}
 
 	static bool TryGetDefaultPropertyValue(IComponent component, PropertyDescriptor property, out object? value)
@@ -211,42 +211,42 @@ sealed class DesignerHostService
 	}
 
 	[JsonRpcMethod("design/rename")]
-	public SessionState RenameComponent(string sessionId, string documentId, long version, string componentName, string newName)
+	public SessionState RenameComponent(string sessionId, string documentId, long baseVersion, string elementId, string newName)
 	{
-		EnsureCurrentVersion(sessionId, documentId, version, "rename");
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "rename");
 		if (!IsValidIdentifier(newName))
 			throw new ArgumentException("A valid component name is required.", nameof(newName));
 		var host = GetHost();
-		var component = host.Container.Components[componentName]
-			?? throw new ArgumentException("Component not found: " + componentName, nameof(componentName));
+		var component = host.Container.Components[elementId]
+			?? throw new ArgumentException("Component not found: " + elementId, nameof(elementId));
 		if (component == host.RootComponent) throw new InvalidOperationException("The root component cannot be renamed here.");
 		if (host.Container.Components[newName] != null) throw new ArgumentException("A component with that name already exists: " + newName, nameof(newName));
-		RewriteComponentName(componentName, newName);
+		RewriteComponentName(elementId, newName);
 		if (component is Control) RewriteProperty(newName, "Name", newName);
 		CreateDesignSurface(current!);
-		return CurrentState(version);
+		return CurrentState(baseVersion);
 	}
 
 	[JsonRpcMethod("design/set-event")]
-	public SessionState SetEvent(string sessionId, string documentId, long version, string componentName, string eventName, string handlerName)
+	public SessionState SetEvent(string sessionId, string documentId, long baseVersion, string elementId, string eventName, string handlerName)
 	{
-		EnsureCurrentVersion(sessionId, documentId, version, "edit");
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
 		if (!String.IsNullOrEmpty(handlerName) && !IsValidIdentifier(handlerName))
 			throw new ArgumentException("A valid event handler name is required.", nameof(handlerName));
-		var component = GetHost().Container.Components[componentName]
-			?? throw new ArgumentException("Component not found: " + componentName, nameof(componentName));
+		var component = GetHost().Container.Components[elementId]
+			?? throw new ArgumentException("Component not found: " + elementId, nameof(elementId));
 		var descriptor = TypeDescriptor.GetEvents(component)[eventName]
 			?? throw new ArgumentException("Event not found: " + eventName, nameof(eventName));
-		RewriteEvent(componentName, descriptor, handlerName);
-		return CurrentState(version);
+		RewriteEvent(elementId, descriptor, handlerName);
+		return CurrentState(baseVersion);
 	}
 
 	[JsonRpcMethod("design/activate-default-event")]
-	public SessionState ActivateDefaultEvent(string sessionId, string documentId, long version, string componentName)
+	public SessionState ActivateDefaultEvent(string sessionId, string documentId, long baseVersion, string elementId)
 	{
-		EnsureCurrentVersion(sessionId, documentId, version, "activate the default event on");
-		var component = GetHost().Container.Components[componentName]
-			?? throw new ArgumentException("Component not found: " + componentName, nameof(componentName));
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "activate the default event on");
+		var component = GetHost().Container.Components[elementId]
+			?? throw new ArgumentException("Component not found: " + elementId, nameof(elementId));
 		var attribute = TypeDescriptor.GetAttributes(component)[typeof(DefaultEventAttribute)] as DefaultEventAttribute;
 		var eventName = attribute?.Name;
 		// LibreWinForms does not yet expose the framework DefaultEventAttribute on
@@ -255,102 +255,102 @@ sealed class DesignerHostService
 			eventName = component is Form ? "Load" : "Click";
 		var descriptor = String.IsNullOrEmpty(eventName) ? null : TypeDescriptor.GetEvents(component)[eventName];
 		if (descriptor == null)
-			throw new InvalidOperationException($"Component {componentName} has no default event.");
+			throw new InvalidOperationException($"Component {elementId} has no default event.");
 		var existing = DescribeEvents(component).FirstOrDefault(item => item.Name == descriptor.Name)?.Handler;
-		RewriteEvent(componentName, descriptor, String.IsNullOrEmpty(existing) ? componentName + "_" + descriptor.Name : existing);
-		return CurrentState(version);
+		RewriteEvent(elementId, descriptor, String.IsNullOrEmpty(existing) ? elementId + "_" + descriptor.Name : existing);
+		return CurrentState(baseVersion);
 	}
 
 	[JsonRpcMethod("design/add-element")]
-	public SessionState AddControl(string sessionId, string documentId, long version, string parentName, string controlType, string componentName, int x, int y)
+	public SessionState AddControl(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, string elementId, int x, int y)
 	{
-		EnsureCurrentVersion(sessionId, documentId, version, "edit");
-		if (!IsValidIdentifier(componentName))
-			throw new ArgumentException("A valid component name is required.", nameof(componentName));
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
+		if (!IsValidIdentifier(elementId))
+			throw new ArgumentException("A valid component name is required.", nameof(elementId));
 		var host = designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost
 			?? throw new InvalidOperationException("The designer surface is unavailable.");
-		if (host.Container.Components[componentName] != null)
-			throw new ArgumentException("A component with that name already exists: " + componentName, nameof(componentName));
-		var parent = host.Container.Components[parentName] as Control
-			?? throw new ArgumentException("Parent control not found: " + parentName, nameof(parentName));
-		var type = ResolveControlType(controlType);
+		if (host.Container.Components[elementId] != null)
+			throw new ArgumentException("A component with that name already exists: " + elementId, nameof(elementId));
+		var parent = host.Container.Components[parentId] as Control
+			?? throw new ArgumentException("Parent control not found: " + parentId, nameof(parentId));
+		var type = ResolveControlType(item?.TypeName);
 		Control control;
-		using (var transaction = host.CreateTransaction("Add " + componentName)) {
-			control = (Control)host.CreateComponent(type, componentName);
+		using (var transaction = host.CreateTransaction("Add " + elementId)) {
+			control = (Control)host.CreateComponent(type, elementId);
 			if (control.Width <= 0 || control.Height <= 0)
 				control.Size = type == typeof(NumericUpDown) ? new Size(120, 20) : new Size(75, 23);
 			control.Location = new Point(x, y);
 			parent.Controls.Add(control);
 			transaction.Commit();
 		}
-		RewriteAddedControl(parentName, type, componentName, x, y, control.Width, control.Height);
-		return CurrentState(version);
+		RewriteAddedControl(parentId, type, elementId, x, y, control.Width, control.Height);
+		return CurrentState(baseVersion);
 	}
 
 	[JsonRpcMethod("design/set-bounds")]
-	public SessionState SetBounds(string sessionId, string documentId, long version, string componentName, int x, int y, int width, int height)
+	public SessionState SetBounds(string sessionId, string documentId, long baseVersion, string elementId, int x, int y, int width, int height)
 	{
-		EnsureCurrentVersion(sessionId, documentId, version, "edit");
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
 		if (width <= 0 || height <= 0) throw new ArgumentOutOfRangeException(nameof(width), "Control bounds must be positive.");
 		var host = GetHost();
-		var control = host.Container.Components[componentName] as Control
-			?? throw new ArgumentException("Control not found: " + componentName, nameof(componentName));
+		var control = host.Container.Components[elementId] as Control
+			?? throw new ArgumentException("Control not found: " + elementId, nameof(elementId));
 		if (control == host.RootComponent) {
 			RewriteRootSize(width, height);
 			CreateDesignSurface(current!);
-			return CurrentState(version);
+			return CurrentState(baseVersion);
 		}
-		using (var transaction = host.CreateTransaction("Set bounds " + componentName)) {
+		using (var transaction = host.CreateTransaction("Set bounds " + elementId)) {
 			control.Bounds = new Rectangle(x, y, width, height);
 			transaction.Commit();
 		}
-		RewriteBounds(componentName, x, y, width, height);
-		return CurrentState(version);
+		RewriteBounds(elementId, x, y, width, height);
+		return CurrentState(baseVersion);
 	}
 
 	[JsonRpcMethod("design/delete-elements")]
-	public SessionState DeleteComponent(string sessionId, string documentId, long version, string componentName)
+	public SessionState DeleteComponent(string sessionId, string documentId, long baseVersion, string elementId)
 	{
-		EnsureCurrentVersion(sessionId, documentId, version, "edit");
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
 		var host = GetHost();
-		var component = host.Container.Components[componentName]
-			?? throw new ArgumentException("Component not found: " + componentName, nameof(componentName));
+		var component = host.Container.Components[elementId]
+			?? throw new ArgumentException("Component not found: " + elementId, nameof(elementId));
 		if (component == host.RootComponent) throw new InvalidOperationException("The root component cannot be deleted.");
-		using (var transaction = host.CreateTransaction("Delete " + componentName)) {
+		using (var transaction = host.CreateTransaction("Delete " + elementId)) {
 			host.DestroyComponent(component);
 			transaction.Commit();
 		}
-		RewriteDeletedComponent(componentName);
-		return CurrentState(version);
+		RewriteDeletedComponent(elementId);
+		return CurrentState(baseVersion);
 	}
 
 	[JsonRpcMethod("design/set-z-order")]
-	public SessionState SetZOrder(string sessionId, string documentId, long version, string componentName, bool bringToFront)
+	public SessionState SetZOrder(string sessionId, string documentId, long baseVersion, string elementId, bool bringToFront)
 	{
-		EnsureCurrentVersion(sessionId, documentId, version, "change z-order for");
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "change z-order for");
 		var host = GetHost();
-		var control = host.Container.Components[componentName] as Control
-			?? throw new ArgumentException("Control not found: " + componentName, nameof(componentName));
+		var control = host.Container.Components[elementId] as Control
+			?? throw new ArgumentException("Control not found: " + elementId, nameof(elementId));
 		if (control == host.RootComponent || control.Parent == null)
 			throw new InvalidOperationException("The root component z-order cannot be changed.");
-		using (var transaction = host.CreateTransaction((bringToFront ? "Bring to front " : "Send to back ") + componentName)) {
+		using (var transaction = host.CreateTransaction((bringToFront ? "Bring to front " : "Send to back ") + elementId)) {
 			control.Parent.Controls.SetChildIndex(control, bringToFront ? 0 : control.Parent.Controls.Count - 1);
 			transaction.Commit();
 		}
-		RewriteZOrder(control.Parent.Site?.Name ?? "", componentName, bringToFront ? 0 : control.Parent.Controls.Count - 1);
-		return CurrentState(version);
+		RewriteZOrder(control.Parent.Site?.Name ?? "", elementId, bringToFront ? 0 : control.Parent.Controls.Count - 1);
+		return CurrentState(baseVersion);
 	}
 
 	[JsonRpcMethod("design/apply-layout")]
-	public SessionState ApplyLayout(string sessionId, string documentId, long version, string operation, string[] componentNames, int deltaX, int deltaY)
+	public SessionState ApplyLayout(string sessionId, string documentId, long baseVersion, string operation, string[] elementIds, int deltaX, int deltaY)
 	{
-		EnsureCurrentVersion(sessionId, documentId, version, "apply layout to");
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "apply layout to");
 		var host = GetHost();
-		var controls = componentNames.Distinct(StringComparer.Ordinal)
+		var controls = elementIds.Distinct(StringComparer.Ordinal)
 			.Select(name => host.Container.Components[name] as Control
-				?? throw new ArgumentException("Control not found: " + name, nameof(componentNames)))
+				?? throw new ArgumentException("Control not found: " + name, nameof(elementIds)))
 			.Where(control => control != host.RootComponent).ToArray();
-		if (controls.Length == 0) return CurrentState(version);
+		if (controls.Length == 0) return CurrentState(baseVersion);
 		if (controls.Select(control => control.Parent).Distinct().Count() != 1)
 			throw new InvalidOperationException("Layout commands require controls with the same parent.");
 		var primary = controls[0];
@@ -383,7 +383,7 @@ sealed class DesignerHostService
 		}
 		foreach (var control in controls)
 			RewriteBounds(control.Site!.Name!, control.Left, control.Top, control.Width, control.Height);
-		return CurrentState(version);
+		return CurrentState(baseVersion);
 	}
 
 	static int Snap(int value) => (int)Math.Round(value / 8d, MidpointRounding.AwayFromZero) * 8;
@@ -450,24 +450,24 @@ sealed class DesignerHostService
 			throw new InvalidOperationException("The request's document id does not match the open document.");
 	}
 
-	void EnsureCurrentVersion(string sessionId, string documentId, long version, string operation)
+	void EnsureCurrentVersion(string sessionId, string documentId, long baseVersion, string operation)
 	{
 		EnsureInitialized();
 		EnsureOwnSession(sessionId, documentId);
-		if (current == null || current.Version != version)
-			throw new InvalidOperationException($"Cannot {operation} a stale or unopened document version.");
+		if (current == null || current.Version != baseVersion)
+			throw new InvalidOperationException($"Cannot {operation} a stale or unopened document baseVersion.");
 	}
 
 	IDesignerHost GetHost() => designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost
 		?? throw new InvalidOperationException("The designer surface is unavailable.");
 
-	void RewriteProperty(string componentName, string propertyName, object value)
+	void RewriteProperty(string elementId, string propertyName, object value)
 	{
-		if (IsVisualBasic) { RewritePropertyVisualBasic(componentName, propertyName, value); return; }
+		if (IsVisualBasic) { RewritePropertyVisualBasic(elementId, propertyName, value); return; }
 		var file = current!.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))
 			?? current.Files.First();
 		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
-		var target = componentName + "." + propertyName;
+		var target = elementId + "." + propertyName;
 		var assignment = root.DescendantNodes().OfType<AssignmentExpressionSyntax>()
 			.FirstOrDefault(item => NormalizeTarget(item.Left.ToString()) == target);
 		var expression = SerializeValue(value);
@@ -484,12 +484,12 @@ sealed class DesignerHostService
 			.NormalizeWhitespace().ToFullString();
 	}
 
-	void RewritePropertyVisualBasic(string componentName, string propertyName, object value)
+	void RewritePropertyVisualBasic(string elementId, string propertyName, object value)
 	{
 		var file = current!.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))
 			?? current.Files.First();
 		var root = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
-		var target = componentName + "." + propertyName;
+		var target = elementId + "." + propertyName;
 		var assignment = root.DescendantNodes().OfType<VbSyntax.AssignmentStatementSyntax>()
 			.FirstOrDefault(item => NormalizeTarget(item.Left.ToString()) == target);
 		var expression = SerializeValueVisualBasic(value);
@@ -530,10 +530,10 @@ sealed class DesignerHostService
 		file.Text = root.NormalizeWhitespace().ToFullString();
 	}
 
-	void RewriteResetProperty(string componentName, string propertyName)
+	void RewriteResetProperty(string elementId, string propertyName)
 	{
 		var file = CurrentDesignerFile();
-		var target = componentName + "." + propertyName;
+		var target = elementId + "." + propertyName;
 		if (IsVisualBasic) {
 			var vbRoot = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
 			var vbStatements = vbRoot.DescendantNodes().OfType<VbSyntax.AssignmentStatementSyntax>()
@@ -592,12 +592,12 @@ sealed class DesignerHostService
 		_ => throw new NotSupportedException($"Serializing property values of type {value.GetType().FullName} is not supported yet.")
 	};
 
-	void RewriteEvent(string componentName, EventDescriptor descriptor, string handlerName)
+	void RewriteEvent(string elementId, EventDescriptor descriptor, string handlerName)
 	{
-		if (IsVisualBasic) { RewriteEventVisualBasic(componentName, descriptor, handlerName); return; }
+		if (IsVisualBasic) { RewriteEventVisualBasic(elementId, descriptor, handlerName); return; }
 		var designerFile = CurrentDesignerFile();
 		var root = CSharpSyntaxTree.ParseText(designerFile.Text).GetCompilationUnitRoot();
-		var target = componentName + "." + descriptor.Name;
+		var target = elementId + "." + descriptor.Name;
 		var existing = root.DescendantNodes().OfType<AssignmentExpressionSyntax>()
 			.FirstOrDefault(item => item.IsKind(SyntaxKind.AddAssignmentExpression) && NormalizeTarget(item.Left.ToString()) == target);
 		if (String.IsNullOrEmpty(handlerName)) {
@@ -631,11 +631,11 @@ sealed class DesignerHostService
 		primaryFile.Text = primaryRoot.ReplaceNode(declaration, declaration.AddMembers(method)).NormalizeWhitespace().ToFullString();
 	}
 
-	void RewriteEventVisualBasic(string componentName, EventDescriptor descriptor, string handlerName)
+	void RewriteEventVisualBasic(string elementId, EventDescriptor descriptor, string handlerName)
 	{
 		var designerFile = CurrentDesignerFile();
 		var root = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(designerFile.Text).GetRoot();
-		var target = componentName + "." + descriptor.Name;
+		var target = elementId + "." + descriptor.Name;
 		var existing = root.DescendantNodes().OfType<VbSyntax.AddRemoveHandlerStatementSyntax>()
 			.FirstOrDefault(item => item.IsKind(Vb.SyntaxKind.AddHandlerStatement) && NormalizeTarget(item.EventExpression.ToString()) == target);
 		if (String.IsNullOrEmpty(handlerName)) {
@@ -696,32 +696,32 @@ sealed class DesignerHostService
 		return type;
 	}
 
-	void RewriteAddedControl(string parentName, Type type, string componentName, int x, int y, int width, int height)
+	void RewriteAddedControl(string parentId, Type type, string elementId, int x, int y, int width, int height)
 	{
-		if (IsVisualBasic) { RewriteAddedControlVisualBasic(parentName, type, componentName, x, y, width, height); return; }
+		if (IsVisualBasic) { RewriteAddedControlVisualBasic(parentId, type, elementId, x, y, width, height); return; }
 		var file = current!.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))
 			?? current.Files.First();
 		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
 		var method = root.DescendantNodes().OfType<MethodDeclarationSyntax>()
 			.First(item => item.Identifier.ValueText == "InitializeComponent");
 		var className = method.Ancestors().OfType<ClassDeclarationSyntax>().First().Identifier.ValueText;
-		var parentExpression = parentName == className
-			? "this" : "this." + parentName;
+		var parentExpression = parentId == className
+			? "this" : "this." + parentId;
 		var statements = new[] {
-			SyntaxFactory.ParseStatement($"this.{componentName} = new {type.FullName}();\n"),
-			SyntaxFactory.ParseStatement($"this.{componentName}.Location = new System.Drawing.Point({x}, {y});\n"),
-			SyntaxFactory.ParseStatement($"this.{componentName}.Size = new System.Drawing.Size({width}, {height});\n"),
-			SyntaxFactory.ParseStatement($"{parentExpression}.Controls.Add(this.{componentName});\n")
+			SyntaxFactory.ParseStatement($"this.{elementId} = new {type.FullName}();\n"),
+			SyntaxFactory.ParseStatement($"this.{elementId}.Location = new System.Drawing.Point({x}, {y});\n"),
+			SyntaxFactory.ParseStatement($"this.{elementId}.Size = new System.Drawing.Size({width}, {height});\n"),
+			SyntaxFactory.ParseStatement($"{parentExpression}.Controls.Add(this.{elementId});\n")
 		};
 		var updatedMethod = method.WithBody(method.Body!.AddStatements(statements));
 		root = root.ReplaceNode(method, updatedMethod);
 		var declaration = root.DescendantNodes().OfType<ClassDeclarationSyntax>().First(item => item.Identifier.ValueText == className);
-		var field = (FieldDeclarationSyntax)SyntaxFactory.ParseMemberDeclaration($"private {type.FullName} {componentName};\n")!;
+		var field = (FieldDeclarationSyntax)SyntaxFactory.ParseMemberDeclaration($"private {type.FullName} {elementId};\n")!;
 		root = root.ReplaceNode(declaration, declaration.AddMembers(field));
 		file.Text = root.NormalizeWhitespace().ToFullString();
 	}
 
-	void RewriteAddedControlVisualBasic(string parentName, Type type, string componentName, int x, int y, int width, int height)
+	void RewriteAddedControlVisualBasic(string parentId, Type type, string elementId, int x, int y, int width, int height)
 	{
 		var file = current!.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))
 			?? current.Files.First();
@@ -731,17 +731,17 @@ sealed class DesignerHostService
 				&& ms.DeclarationKeyword.IsKind(Vb.SyntaxKind.SubKeyword)
 				&& ms.Identifier.ValueText == "InitializeComponent");
 		var className = method.Ancestors().OfType<VbSyntax.ClassBlockSyntax>().First().BlockStatement.Identifier.ValueText;
-		var parentExpression = parentName == className ? "Me" : "Me." + parentName;
+		var parentExpression = parentId == className ? "Me" : "Me." + parentId;
 		var statements = new[] {
-			Vb.SyntaxFactory.ParseExecutableStatement($"Me.{componentName} = New {type.FullName}()"),
-			Vb.SyntaxFactory.ParseExecutableStatement($"Me.{componentName}.Location = New System.Drawing.Point({x}, {y})"),
-			Vb.SyntaxFactory.ParseExecutableStatement($"Me.{componentName}.Size = New System.Drawing.Size({width}, {height})"),
-			Vb.SyntaxFactory.ParseExecutableStatement($"{parentExpression}.Controls.Add(Me.{componentName})")
+			Vb.SyntaxFactory.ParseExecutableStatement($"Me.{elementId} = New {type.FullName}()"),
+			Vb.SyntaxFactory.ParseExecutableStatement($"Me.{elementId}.Location = New System.Drawing.Point({x}, {y})"),
+			Vb.SyntaxFactory.ParseExecutableStatement($"Me.{elementId}.Size = New System.Drawing.Size({width}, {height})"),
+			Vb.SyntaxFactory.ParseExecutableStatement($"{parentExpression}.Controls.Add(Me.{elementId})")
 		};
 		var updatedMethod = method.WithStatements(method.Statements.AddRange(statements));
 		root = root.ReplaceNode(method, updatedMethod);
 		var declaration = root.DescendantNodes().OfType<VbSyntax.ClassBlockSyntax>().First(item => item.BlockStatement.Identifier.ValueText == className);
-		var field = ParseMemberField($"Friend WithEvents {componentName} As {type.FullName}");
+		var field = ParseMemberField($"Friend WithEvents {elementId} As {type.FullName}");
 		root = root.ReplaceNode(declaration, declaration.WithMembers(declaration.Members.Add(field)));
 		file.Text = root.NormalizeWhitespace().ToFullString();
 	}
@@ -753,22 +753,22 @@ sealed class DesignerHostService
 		return unit.DescendantNodes().OfType<VbSyntax.FieldDeclarationSyntax>().First();
 	}
 
-	void RewriteBounds(string componentName, int x, int y, int width, int height)
+	void RewriteBounds(string elementId, int x, int y, int width, int height)
 	{
 		var file = CurrentDesignerFile();
 		if (IsVisualBasic) {
 			var vbRoot = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
-			vbRoot = ReplaceRequiredAssignmentVisualBasic(vbRoot, componentName + ".Location",
+			vbRoot = ReplaceRequiredAssignmentVisualBasic(vbRoot, elementId + ".Location",
 				Vb.SyntaxFactory.ParseExpression($"New System.Drawing.Point({x}, {y})"));
-			vbRoot = ReplaceRequiredAssignmentVisualBasic(vbRoot, componentName + ".Size",
+			vbRoot = ReplaceRequiredAssignmentVisualBasic(vbRoot, elementId + ".Size",
 				Vb.SyntaxFactory.ParseExpression($"New System.Drawing.Size({width}, {height})"));
 			file.Text = vbRoot.ToFullString();
 			return;
 		}
 		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
-		root = ReplaceRequiredAssignment(root, componentName + ".Location",
+		root = ReplaceRequiredAssignment(root, elementId + ".Location",
 			SyntaxFactory.ParseExpression($"new System.Drawing.Point({x}, {y})"));
-		root = ReplaceRequiredAssignment(root, componentName + ".Size",
+		root = ReplaceRequiredAssignment(root, elementId + ".Size",
 			SyntaxFactory.ParseExpression($"new System.Drawing.Size({width}, {height})"));
 		file.Text = root.ToFullString();
 	}
@@ -819,18 +819,18 @@ sealed class DesignerHostService
 			.NormalizeWhitespace().ToFullString();
 	}
 
-	void RewriteDeletedComponent(string componentName)
+	void RewriteDeletedComponent(string elementId)
 	{
 		var file = CurrentDesignerFile();
 		if (IsVisualBasic) {
 			var vbRoot = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
 			var vbStatements = vbRoot.DescendantNodes().OfType<VbSyntax.StatementSyntax>()
 				.Where(statement => statement.DescendantNodesAndSelf().OfType<VbSyntax.IdentifierNameSyntax>()
-					.Any(identifier => identifier.Identifier.ValueText == componentName)).ToArray();
+					.Any(identifier => identifier.Identifier.ValueText == elementId)).ToArray();
 			vbRoot = vbRoot.RemoveNodes(vbStatements, SyntaxRemoveOptions.KeepNoTrivia)!;
 			var vbFields = vbRoot.DescendantNodes().OfType<VbSyntax.FieldDeclarationSyntax>()
 				.Where(field => field.Declarators.SelectMany(declarator => declarator.Names)
-					.Any(name => name.Identifier.ValueText == componentName)).ToArray();
+					.Any(name => name.Identifier.ValueText == elementId)).ToArray();
 			vbRoot = vbRoot.RemoveNodes(vbFields, SyntaxRemoveOptions.KeepNoTrivia)!;
 			file.Text = vbRoot.NormalizeWhitespace().ToFullString();
 			return;
@@ -838,10 +838,10 @@ sealed class DesignerHostService
 		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
 		var statements = root.DescendantNodes().OfType<StatementSyntax>()
 			.Where(statement => statement.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>()
-				.Any(identifier => identifier.Identifier.ValueText == componentName)).ToArray();
+				.Any(identifier => identifier.Identifier.ValueText == elementId)).ToArray();
 		root = root.RemoveNodes(statements, SyntaxRemoveOptions.KeepNoTrivia)!;
 		var variables = root.DescendantNodes().OfType<VariableDeclaratorSyntax>()
-			.Where(variable => variable.Identifier.ValueText == componentName).ToArray();
+			.Where(variable => variable.Identifier.ValueText == elementId).ToArray();
 		foreach (var variable in variables) {
 			if (variable.Parent?.Parent is FieldDeclarationSyntax field)
 				root = root.RemoveNode(field, SyntaxRemoveOptions.KeepNoTrivia)!;
@@ -849,10 +849,10 @@ sealed class DesignerHostService
 		file.Text = root.NormalizeWhitespace().ToFullString();
 	}
 
-	void RewriteZOrder(string parentName, string componentName, int childIndex)
+	void RewriteZOrder(string parentId, string elementId, int childIndex)
 	{
 		var file = CurrentDesignerFile();
-		if (IsVisualBasic) { RewriteZOrderVisualBasic(parentName, componentName, childIndex); return; }
+		if (IsVisualBasic) { RewriteZOrderVisualBasic(parentId, elementId, childIndex); return; }
 		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
 		var initialize = root.DescendantNodes().OfType<MethodDeclarationSyntax>()
 			.First(item => item.Identifier.ValueText == "InitializeComponent");
@@ -860,16 +860,16 @@ sealed class DesignerHostService
 			var invocation = statement.DescendantNodes().OfType<InvocationExpressionSyntax>().FirstOrDefault();
 			return invocation?.Expression is MemberAccessExpressionSyntax member
 				&& member.Name.Identifier.ValueText == "SetChildIndex"
-				&& NormalizeTarget(invocation.ArgumentList.Arguments.FirstOrDefault()?.Expression.ToString() ?? "") == componentName;
+				&& NormalizeTarget(invocation.ArgumentList.Arguments.FirstOrDefault()?.Expression.ToString() ?? "") == elementId;
 		}).ToArray();
 		var body = initialize.Body.RemoveNodes(oldStatements, SyntaxRemoveOptions.KeepNoTrivia)!;
-		var parentExpression = String.IsNullOrEmpty(parentName) || parentName == initialize.Ancestors().OfType<ClassDeclarationSyntax>().First().Identifier.ValueText
-			? "this" : "this." + parentName;
-		body = body.AddStatements(SyntaxFactory.ParseStatement($"{parentExpression}.Controls.SetChildIndex(this.{componentName}, {childIndex});\n"));
+		var parentExpression = String.IsNullOrEmpty(parentId) || parentId == initialize.Ancestors().OfType<ClassDeclarationSyntax>().First().Identifier.ValueText
+			? "this" : "this." + parentId;
+		body = body.AddStatements(SyntaxFactory.ParseStatement($"{parentExpression}.Controls.SetChildIndex(this.{elementId}, {childIndex});\n"));
 		file.Text = root.ReplaceNode(initialize, initialize.WithBody(body)).NormalizeWhitespace().ToFullString();
 	}
 
-	void RewriteZOrderVisualBasic(string parentName, string componentName, int childIndex)
+	void RewriteZOrderVisualBasic(string parentId, string elementId, int childIndex)
 	{
 		var file = CurrentDesignerFile();
 		var root = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
@@ -881,13 +881,13 @@ sealed class DesignerHostService
 			var invocation = statement.DescendantNodes().OfType<VbSyntax.InvocationExpressionSyntax>().FirstOrDefault();
 			return invocation?.Expression is VbSyntax.MemberAccessExpressionSyntax member
 				&& member.Name.Identifier.ValueText == "SetChildIndex"
-				&& NormalizeTarget(invocation.ArgumentList.Arguments.FirstOrDefault() is VbSyntax.SimpleArgumentSyntax first ? first.Expression.ToString() : "") == componentName;
+				&& NormalizeTarget(invocation.ArgumentList.Arguments.FirstOrDefault() is VbSyntax.SimpleArgumentSyntax first ? first.Expression.ToString() : "") == elementId;
 		}).ToArray();
 		var body = initialize.WithStatements(Vb.SyntaxFactory.List(initialize.Statements.Where(statement => !oldStatements.Contains(statement))));
-		var parentExpression = String.IsNullOrEmpty(parentName) || parentName == initialize.Ancestors().OfType<VbSyntax.ClassBlockSyntax>().First().BlockStatement.Identifier.ValueText
-			? "Me" : "Me." + parentName;
+		var parentExpression = String.IsNullOrEmpty(parentId) || parentId == initialize.Ancestors().OfType<VbSyntax.ClassBlockSyntax>().First().BlockStatement.Identifier.ValueText
+			? "Me" : "Me." + parentId;
 		body = body.WithStatements(body.Statements.Add(Vb.SyntaxFactory.ParseExecutableStatement(
-			$"{parentExpression}.Controls.SetChildIndex(Me.{componentName}, {childIndex})")));
+			$"{parentExpression}.Controls.SetChildIndex(Me.{elementId}, {childIndex})")));
 		file.Text = root.ReplaceNode(initialize, body).NormalizeWhitespace().ToFullString();
 	}
 
@@ -1026,7 +1026,7 @@ sealed class DesignerHostService
 
 	Type? ResolveProjectType(string name) => projectAssembly?.GetType(name, false);
 
-	SessionState CurrentState(long version)
+	SessionState CurrentState(long baseVersion)
 	{
 		var host = designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost;
 		var rootControl = host?.RootComponent as Control;
@@ -1034,7 +1034,7 @@ sealed class DesignerHostService
 		return new SessionState {
 			SessionId = current?.SessionId ?? sessionId ?? "",
 			DocumentId = current?.DocumentId ?? "",
-			Version = version,
+			Version = baseVersion,
 			Accepted = true,
 			RootType = host?.RootComponent?.GetType().FullName ?? "",
 			ComponentCount = host?.Container?.Components.Count ?? 0,
@@ -1127,7 +1127,7 @@ sealed class DesignerHostService
 	List<PropertyInfoDto> DescribeProperties(IComponent component)
 	{
 		var result = new List<PropertyInfoDto>();
-		var componentName = component.Site?.Name ?? "";
+		var elementId = component.Site?.Name ?? "";
 		var designerRoot = IsVisualBasic ? null : CSharpSyntaxTree.ParseText(CurrentDesignerFile().Text).GetCompilationUnitRoot();
 		var vbDesignerRoot = IsVisualBasic ? (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(CurrentDesignerFile().Text).GetRoot() : null;
 		foreach (PropertyDescriptor property in TypeDescriptor.GetProperties(component)) {
@@ -1159,10 +1159,10 @@ sealed class DesignerHostService
 				// descriptors keep returning true after ResetValue.
 				ShouldSerialize = IsVisualBasic
 					? vbDesignerRoot!.DescendantNodes().OfType<VbSyntax.AssignmentStatementSyntax>().Any(assignment =>
-						NormalizeTarget(assignment.Left.ToString()) == componentName + "." + property.Name)
+						NormalizeTarget(assignment.Left.ToString()) == elementId + "." + property.Name)
 					: designerRoot!.DescendantNodes().OfType<AssignmentExpressionSyntax>().Any(assignment =>
 						assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)
-						&& NormalizeTarget(assignment.Left.ToString()) == componentName + "." + property.Name),
+						&& NormalizeTarget(assignment.Left.ToString()) == elementId + "." + property.Name),
 				IsEnum = property.PropertyType.IsEnum
 			});
 		}
@@ -1332,8 +1332,8 @@ sealed class DesignerHostService
 			new PointF(Math.Max(2, (bounds.Width - size.Width) / 2), Math.Max(1, (bounds.Height - size.Height) / 2)));
 	}
 
-	static SessionState Accepted(long version) => new() { Version = version, Accepted = true };
-	SessionState Rejected(long version, string error) => new() { SessionId = current?.SessionId ?? sessionId ?? "", DocumentId = current?.DocumentId ?? "", Version = version, Error = error };
+	static SessionState Accepted(long baseVersion) => new() { Version = baseVersion, Accepted = true };
+	SessionState Rejected(long baseVersion, string error) => new() { SessionId = current?.SessionId ?? sessionId ?? "", DocumentId = current?.DocumentId ?? "", Version = baseVersion, Error = error };
 }
 
 sealed class ThisQualifierRewriter : CSharpSyntaxRewriter
@@ -1363,6 +1363,7 @@ sealed class SessionState { public string SessionId { get; set; } = ""; public s
 sealed class ElementNodeDto { public string Id { get; set; } = ""; public string? Name { get; set; } public string Type { get; set; } = ""; public double X { get; set; } public double Y { get; set; } public double Width { get; set; } public double Height { get; set; } public string Path { get; set; } = ""; public bool IsDesignable { get; set; } = true; public List<ElementNodeDto> Children { get; set; } = []; }
 sealed class RenderFrame { public long Sequence { get; set; } public int Width { get; set; } public int Height { get; set; } public double Dpi { get; set; } = 1; public string PngBase64 { get; set; } = ""; }
 sealed class ComponentInfo { public string Name { get; set; } = ""; public string Type { get; set; } = ""; public string Parent { get; set; } = ""; public string Text { get; set; } = ""; public string AccessibleName { get; set; } = ""; public string AccessibleDescription { get; set; } = ""; public string AccessibleRole { get; set; } = ""; public int X { get; set; } public int Y { get; set; } public int SurfaceX { get; set; } public int SurfaceY { get; set; } public int Width { get; set; } public int Height { get; set; } public List<PropertyInfoDto> Properties { get; set; } = []; public List<EventInfoDto> Events { get; set; } = []; }
+sealed class DesignerToolboxItemInfo { public string Name { get; set; } = ""; public string DisplayName { get; set; } = ""; public string Category { get; set; } = ""; public string Template { get; set; } = ""; public string XamlNamespace { get; set; } = ""; public string TypeName { get; set; } = ""; }
 sealed class PropertyInfoDto { public string Name { get; set; } = ""; public string DisplayName { get; set; } = ""; public string Description { get; set; } = ""; public string Category { get; set; } = ""; public string TypeName { get; set; } = ""; public string Value { get; set; } = ""; public bool IsNull { get; set; } public bool IsReadOnly { get; set; } public bool ShouldSerialize { get; set; } public bool IsEnum { get; set; } }
 sealed class EventInfoDto { public string Name { get; set; } = ""; public string Category { get; set; } = ""; public string HandlerTypeName { get; set; } = ""; public string Handler { get; set; } = ""; }
 sealed class HitTestResult { public string ComponentName { get; set; } = ""; public string ComponentType { get; set; } = ""; }

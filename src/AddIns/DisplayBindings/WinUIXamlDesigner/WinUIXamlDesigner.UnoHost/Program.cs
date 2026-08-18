@@ -88,7 +88,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			rpc.AddLocalRpcMethod("session/flush", new Func<string, string, long, DesignEditSet>(FlushSession));
 			rpc.AddLocalRpcMethod("design/set-property", new Func<string, string, long, string, string, string, DesignSnapshot>(SetProperty));
 			rpc.AddLocalRpcMethod("design/set-event", new Func<string, string, long, string, string, string, DesignSnapshot>(SetEvent));
-			rpc.AddLocalRpcMethod("design/add-element", new Func<string, string, long, string, string, double, double, DesignSnapshot>(AddElement));
+			rpc.AddLocalRpcMethod("design/add-element", new Func<string, string, long, string, ToolboxItemInfo, double, double, DesignSnapshot>(AddElement));
 			rpc.AddLocalRpcMethod("design/set-bounds", new Func<string, string, long, string, double, double, double, double, DesignSnapshot>(SetBounds));
 			rpc.AddLocalRpcMethod("design/delete-elements", new Func<string, string, long, string[], DesignSnapshot>(DeleteElements));
 			rpc.AddLocalRpcMethod("design/rename", new Func<string, string, long, string, string, DesignSnapshot>(Rename));
@@ -192,51 +192,51 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			catch (Exception e) { LogRpcError("session/open", e); throw; }
 		}
 
-		static DesignSnapshot UpdateSession(string sessionId, string documentId, string xaml, double width, double height, double dpi, long version)
+		static DesignSnapshot UpdateSession(string sessionId, string documentId, string xaml, double width, double height, double dpi, long baseVersion)
 		{
-			Console.Error.WriteLine($"UnoDesignHost: session/update received ({xaml.Length} chars, {width}x{height} @ dpi {dpi:0.##}, v{version})");
-			try { return host.UpdateSession(sessionId, documentId, xaml, width, height, dpi, version); }
+			Console.Error.WriteLine($"UnoDesignHost: session/update received ({xaml.Length} chars, {width}x{height} @ dpi {dpi:0.##}, v{baseVersion})");
+			try { return host.UpdateSession(sessionId, documentId, xaml, width, height, dpi, baseVersion); }
 			catch (Exception e) { LogRpcError("session/update", e); throw; }
 		}
 
-		static DesignEditSet FlushSession(string sessionId, string documentId, long version)
+		static DesignEditSet FlushSession(string sessionId, string documentId, long baseVersion)
 		{
-			try { return host.FlushSession(sessionId, documentId, version); }
+			try { return host.FlushSession(sessionId, documentId, baseVersion); }
 			catch (Exception e) { LogRpcError("session/flush", e); throw; }
 		}
 
-		static DesignSnapshot SetProperty(string sessionId, string documentId, long version, string elementName, string propertyName, string value)
+		static DesignSnapshot SetProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string value)
 		{
-			try { return host.SetProperty(sessionId, documentId, version, elementName, propertyName, value); }
+			try { return host.SetProperty(sessionId, documentId, baseVersion, elementId, propertyName, value); }
 			catch (Exception e) { LogRpcError("design/set-property", e); throw; }
 		}
 
-		static DesignSnapshot SetEvent(string sessionId, string documentId, long version, string elementName, string eventName, string handlerName)
+		static DesignSnapshot SetEvent(string sessionId, string documentId, long baseVersion, string elementId, string eventName, string handlerName)
 		{
-			try { return host.SetEvent(sessionId, documentId, version, elementName, eventName, handlerName); }
+			try { return host.SetEvent(sessionId, documentId, baseVersion, elementId, eventName, handlerName); }
 			catch (Exception e) { LogRpcError("design/set-event", e); throw; }
 		}
-		static DesignSnapshot AddElement(string sessionId, string documentId, long version, string parentName, string itemXaml, double x, double y)
+		static DesignSnapshot AddElement(string sessionId, string documentId, long baseVersion, string parentId, ToolboxItemInfo item, double x, double y)
 		{
-			try { return host.AddElement(sessionId, documentId, version, parentName, itemXaml, x, y); }
+			try { return host.AddElement(sessionId, documentId, baseVersion, parentId, item, x, y); }
 			catch (Exception e) { LogRpcError("design/add-element", e); throw; }
 		}
 
-		static DesignSnapshot SetBounds(string sessionId, string documentId, long version, string elementName, double x, double y, double width, double height)
+		static DesignSnapshot SetBounds(string sessionId, string documentId, long baseVersion, string elementId, double x, double y, double width, double height)
 		{
-			try { return host.SetBounds(sessionId, documentId, version, elementName, x, y, width, height); }
+			try { return host.SetBounds(sessionId, documentId, baseVersion, elementId, x, y, width, height); }
 			catch (Exception e) { LogRpcError("design/set-bounds", e); throw; }
 		}
 
-		static DesignSnapshot DeleteElements(string sessionId, string documentId, long version, string[] elementNames)
+		static DesignSnapshot DeleteElements(string sessionId, string documentId, long baseVersion, string[] elementIds)
 		{
-			try { return host.DeleteElements(sessionId, documentId, version, elementNames); }
+			try { return host.DeleteElements(sessionId, documentId, baseVersion, elementIds); }
 			catch (Exception e) { LogRpcError("design/delete-elements", e); throw; }
 		}
 
-		static DesignSnapshot Rename(string sessionId, string documentId, long version, string elementName, string newName)
+		static DesignSnapshot Rename(string sessionId, string documentId, long baseVersion, string elementId, string newName)
 		{
-			try { return host.Rename(sessionId, documentId, version, elementName, newName); }
+			try { return host.Rename(sessionId, documentId, baseVersion, elementId, newName); }
 			catch (Exception e) { LogRpcError("design/rename", e); throw; }
 		}
 

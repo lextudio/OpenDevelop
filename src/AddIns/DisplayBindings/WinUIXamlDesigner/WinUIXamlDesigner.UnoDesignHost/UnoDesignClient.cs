@@ -144,49 +144,49 @@ public sealed class UnoDesignClient : DesignerHostProcessClient, IDesignHostClie
 	/// theme reloads, size-preset changes and any other full re-render after the first load.</summary>
 	public Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default)
 		=> InvokeAsync<DesignerSessionState>("session/update",
-			new { sessionId = SessionId, documentId = DocumentId, xaml = PrimaryText(snapshot), width = viewportWidth, height = viewportHeight, dpi = viewportDpi, version = snapshot?.Version ?? 0 }, cancellationToken);
+			new { sessionId = SessionId, documentId = DocumentId, xaml = PrimaryText(snapshot), width = viewportWidth, height = viewportHeight, dpi = viewportDpi, baseVersion = snapshot?.Version ?? 0 }, cancellationToken);
 
 	/// <summary>Stub: this host holds no independent child-side edit buffer, so this reports
 	/// the current XAML as the sole file - lands the wire shape now.</summary>
-	public Task<DesignerEditSet> FlushAsync(long version, CancellationToken cancellationToken = default)
+	public Task<DesignerEditSet> FlushAsync(long baseVersion, CancellationToken cancellationToken = default)
 		=> InvokeAsync<DesignerEditSet>("session/flush",
-			new { sessionId = SessionId, documentId = DocumentId, version }, cancellationToken);
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion }, cancellationToken);
 
 	/// <summary>Applies a single property change directly to the live element and re-renders,
 	/// without re-running the full XAML parse/load path.</summary>
-	public Task<DesignerSessionState> SetPropertyAsync(long version, string elementName, string propertyName, string value, CancellationToken cancellationToken = default)
+	public Task<DesignerSessionState> SetPropertyAsync(long baseVersion, string elementId, string propertyName, string value, CancellationToken cancellationToken = default)
 		=> InvokeAsync<DesignerSessionState>("design/set-property",
-			new { sessionId = SessionId, documentId = DocumentId, version, elementName, propertyName, value }, cancellationToken);
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, value }, cancellationToken);
 
 	/// <summary>Validates the element/event names exist; no live code-behind instance exists in
 	/// this design host, so no real wiring happens yet.</summary>
-	public Task<DesignerSessionState> SetEventAsync(long version, string elementName, string eventName, string handlerName, CancellationToken cancellationToken = default)
+	public Task<DesignerSessionState> SetEventAsync(long baseVersion, string elementId, string eventName, string handlerName, CancellationToken cancellationToken = default)
 		=> InvokeAsync<DesignerSessionState>("design/set-event",
-			new { sessionId = SessionId, documentId = DocumentId, version, elementName, eventName, handlerName }, cancellationToken);
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, eventName, handlerName }, cancellationToken);
 
 	/// <summary>Parses the toolbox item's XAML template and inserts it as a child of the named
 	/// parent element, then re-renders without re-running the full document XAML parse.
 	/// <paramref name="proposedName"/> is ignored: this markup backend derives the element name
 	/// from the parsed XAML (which already carries x:Name).</summary>
-	public Task<DesignerSessionState> AddElementAsync(long version, string parentName, DesignerToolboxItemInfo item, string proposedName, double x, double y, CancellationToken cancellationToken = default)
+	public Task<DesignerSessionState> AddElementAsync(long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, CancellationToken cancellationToken = default)
 		=> InvokeAsync<DesignerSessionState>("design/add-element",
-			new { sessionId = SessionId, documentId = DocumentId, version, parentName, itemXaml = item?.Template ?? "", x, y }, cancellationToken);
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, parentId, item, x, y }, cancellationToken);
 
 	/// <summary>Sets an element's width/height directly, and its Canvas position when its
 	/// parent is a Canvas, then re-renders.</summary>
-	public Task<DesignerSessionState> SetBoundsAsync(long version, string elementName, double x, double y, double width, double height, CancellationToken cancellationToken = default)
+	public Task<DesignerSessionState> SetBoundsAsync(long baseVersion, string elementId, double x, double y, double width, double height, CancellationToken cancellationToken = default)
 		=> InvokeAsync<DesignerSessionState>("design/set-bounds",
-			new { sessionId = SessionId, documentId = DocumentId, version, elementName, x, y, width, height }, cancellationToken);
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, x, y, width, height }, cancellationToken);
 
 	/// <summary>Removes each named element from its Panel parent, then re-renders.</summary>
-	public Task<DesignerSessionState> DeleteElementsAsync(long version, string[] elementNames, CancellationToken cancellationToken = default)
+	public Task<DesignerSessionState> DeleteElementsAsync(long baseVersion, string[] elementIds, CancellationToken cancellationToken = default)
 		=> InvokeAsync<DesignerSessionState>("design/delete-elements",
-			new { sessionId = SessionId, documentId = DocumentId, version, elementNames }, cancellationToken);
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementIds }, cancellationToken);
 
 	/// <summary>Renames the live element, then re-renders.</summary>
-	public Task<DesignerSessionState> RenameAsync(long version, string elementName, string newName, CancellationToken cancellationToken = default)
+	public Task<DesignerSessionState> RenameAsync(long baseVersion, string elementId, string newName, CancellationToken cancellationToken = default)
 		=> InvokeAsync<DesignerSessionState>("design/rename",
-			new { sessionId = SessionId, documentId = DocumentId, version, elementName, newName }, cancellationToken);
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, newName }, cancellationToken);
 
 	public Task<DesignerAppResourcesResult> SetAppResourcesAsync(string xaml, CancellationToken cancellationToken = default)
 		=> InvokeAsync<DesignerAppResourcesResult>("app/resources",

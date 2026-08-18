@@ -38,9 +38,11 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		long version;
 		DesignerSessionState state;
 		long lastFrameSequence;
-		// WinForms never scales or pans - this is always the identity case of the same
-		// DesignViewport shape UnoDesignSurfaceControl uses for its zoom/pan math, so the two
-		// backends' coordinate conversions share one type (see DesignViewport's doc comment).
+		// The design surface is unscaled; the shared canvas shell's zoom toolbar controls the
+		// presentation scale around it via DesignViewport - the same coordinate math
+		// UnoDesignSurfaceControl uses for its zoom/pan, so both backends' conversions share
+		// one type (see DesignViewport's doc comment). Zoom/Fit re-derive the viewport and
+		// re-present without re-decoding the frame.
 		DesignViewport viewport = DesignViewport.Identity(0, 0);
 		DesignerComponentInfo selectedComponent;
 		double dragX;
@@ -59,15 +61,20 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 
 		static readonly double[] ZoomPresets = { 0.25, 0.5, 0.75, 1.0, 1.5, 2.0 };
 		static readonly string[] ZoomLabels = { "Fit", "25%", "50%", "75%", "100%", "150%", "200%" };
-		bool fitMode = true;
+		// The zoom combo starts at "100%" (VS behavior), so the initial render must be a
+		// literal 100% zoom, not Fit; Fit is a user choice.
+		bool fitMode = false;
 		double zoomScale = 1.0;
 
 		void RebuildViewport()
 		{
 			if (state?.Render == null)
 				return;
-			// Re-derive the viewport from the current toolbar zoom and re-present.
-			Show(state);
+			// Re-derive the viewport from the current toolbar zoom and re-present. This must
+			// not go through Show's frame-sequence guard - a zoom change replays the same
+			// SessionState (same Sequence), so the guard would early-return and the zoom would
+			// never take effect.
+			ApplyViewport();
 		}
 
 		public RemoteFormsDesignerControl(FormsDesignerHostClient client)
@@ -148,33 +155,25 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 
 		/// <summary>
 		/// Surface geometry for the integration tests' resize-drag assertions: the rendered form
-		/// bitmap bounds, the current selection outline bounds, and the resize handle center -
-		/// all in design-surface coordinates. The selection outline must coincide with the
-		/// rendered form (and the handle sit at its bottom-right corner) both before and after a
-		/// resize drag; this is the smoke probe for that invariant.
+		/// bitmap bounds, the current selection outline bounds, the selected element's bounds and
+		/// the bottom-right resize handle position - all in screen coordinates. The selection
+		/// outline must coincide with the rendered form (and the handle sit at its bottom-right
+		/// corner) both before and after a resize drag; this is the smoke probe for that
+		/// invariant.
 		/// </summary>
-		public (Rect Frame, Rect Selection, Point Handle) SurfaceGeometry()
+		public DesignerSurfaceGeometry SurfaceGeometry()
 		{
-			// Screen coordinates (PointToScreen is reliable under LibreWPF), so the integration
-			// tests can drive the resize handle directly and compare selection vs. frame
-			// consistently in one coordinate space.
-			var frameTl = framePresenter.Visual.PointToScreen(new Point(0, 0));
-			var frameBr = framePresenter.Visual.PointToScreen(new Point(
-				framePresenter.Visual.ActualWidth, framePresenter.Visual.ActualHeight));
-			var frame = new Rect(frameTl.X, frameTl.Y, frameBr.X - frameTl.X, frameBr.Y - frameTl.Y);
+			var frame = DesignerSurfaceGeometryProbe.ScreenBoundsOf(framePresenter.Visual);
 			Rect selection = default;
 			if (selectedComponent != null)
 			{
-				var (x, y) = viewport.DesignToSurface(selectedComponent.SurfaceX, selectedComponent.SurfaceY);
-				var (x2, y2) = viewport.DesignToSurface(
-					selectedComponent.SurfaceX + selectedComponent.Width,
-					selectedComponent.SurfaceY + selectedComponent.Height);
-				var stl = designSurface.PointToScreen(new Point(x, y));
-				var sbr = designSurface.PointToScreen(new Point(x2, y2));
-				selection = new Rect(stl.X, stl.Y, sbr.X - stl.X, sbr.Y - stl.Y);
+				selection = DesignerSurfaceGeometryProbe.DesignRectToScreen(viewport,
+					new Rect(selectedComponent.SurfaceX, selectedComponent.SurfaceY,
+						selectedComponent.Width, selectedComponent.Height),
+					designSurface);
 			}
-			var handle = resizeThumb.PointToScreen(new Point(resizeThumb.ActualWidth / 2, resizeThumb.ActualHeight / 2));
-			return (frame, selection, handle);
+			var handle = new Point(selection.X + selection.Width, selection.Y + selection.Height);
+			return new DesignerSurfaceGeometry(frame, selection, handle, selection);
 		}
 		public string[] SelectedComponentNames => String.IsNullOrEmpty(SelectedComponentName)
 			? selectedComponentNames.ToArray()
@@ -205,15 +204,6 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			if (state.Render == null || String.IsNullOrEmpty(state.Render.PngBase64)) return;
 			if (state.Render.Sequence > 0 && state.Render.Sequence <= lastFrameSequence) return;
 			lastFrameSequence = state.Render.Sequence;
-			var dpi = Math.Max(1, state.Render.Dpi);
-			var designWidth = state.Render.Width / dpi;
-			var designHeight = state.Render.Height / dpi;
-			// The design surface itself is unscaled white; the shared canvas shell's zoom
-			// toolbar controls the presentation scale around it.
-			if (fitMode)
-				viewport = DesignViewport.Fit(designWidth, designHeight, ContentHost.ActualWidth, ContentHost.ActualHeight, 1.0, 0, 0);
-			else
-				viewport = DesignViewport.Zoom(designWidth, designHeight, ContentHost.ActualWidth, ContentHost.ActualHeight, zoomScale);
 			var bitmap = new BitmapImage();
 			using (var stream = new MemoryStream(Convert.FromBase64String(state.Render.PngBase64))) {
 				bitmap.BeginInit();
@@ -223,14 +213,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				bitmap.Freeze();
 			}
 			framePresenter.SetSource(bitmap);
-			framePresenter.Resize(viewport);
-			// The rendered form must sit at the viewport's base (centered-fit origin + pan),
-			// exactly where the DesignToSurface-based guides/adorners are placed - otherwise the
-			// selection outline and the bitmap drift apart whenever Scale != 1.
-			framePresenter.Visual.Margin = new Thickness(
-				Math.Max(0, viewport.OriginX) + viewport.PanX,
-				Math.Max(0, viewport.OriginY) + viewport.PanY, 0, 0);
-			UpdateDesignGuides();
+			ApplyViewport();
 			if (!String.IsNullOrEmpty(SelectedComponentName)) {
 				selectedComponent = state.Components.FirstOrDefault(item => item.Name == SelectedComponentName);
 				selectedComponentNames.RemoveWhere(name => !state.Components.Any(item => item.Name == name));
@@ -241,18 +224,49 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			AutomationProperties.SetHelpText(this, selectedComponent?.AccessibleDescription ?? "");
 		}
 
+		void ApplyViewport()
+		{
+			var dpi = Math.Max(1, state.Render.Dpi);
+			var designWidth = state.Render.Width / dpi;
+			var designHeight = state.Render.Height / dpi;
+			if (fitMode)
+				viewport = DesignViewport.Fit(designWidth, designHeight, ContentHost.ActualWidth, ContentHost.ActualHeight, 1.0, 0, 0);
+			else
+				viewport = DesignViewport.Zoom(designWidth, designHeight, ContentHost.ActualWidth, ContentHost.ActualHeight, zoomScale);
+			framePresenter.Resize(viewport);
+			// The rendered form must sit at the viewport's base (centered-fit origin + pan),
+			// exactly where the DesignToSurface-based guides/adorners are placed - otherwise the
+			// selection outline and the bitmap drift apart whenever Scale != 1.
+			framePresenter.Visual.Margin = new Thickness(
+				Math.Max(0, viewport.OriginX) + viewport.PanX,
+				Math.Max(0, viewport.OriginY) + viewport.PanY, 0, 0);
+			UpdateDesignGuides();
+			if (selectedComponent != null)
+				UpdateAdorners();
+		}
+
 		void UpdateDesignGuides()
 		{
 			guides.Children.Clear();
 			if (state?.Render == null) return;
-			guides.Children.Add(new Rectangle {
-				Width = state.Render.Width, Height = state.Render.Height,
+			// The form outline must cover exactly the rendered bitmap, so both corners go
+			// through DesignToSurface (same space the frame sits in once zoomed/centered).
+			var (fx, fy) = viewport.DesignToSurface(0, 0);
+			var (fx2, fy2) = viewport.DesignToSurface(state.Render.Width / Math.Max(1, state.Render.Dpi),
+				state.Render.Height / Math.Max(1, state.Render.Dpi));
+			var formOutline = new Rectangle {
+				Width = Math.Max(1, fx2 - fx), Height = Math.Max(1, fy2 - fy),
 				Stroke = Brushes.Gray, StrokeThickness = 1
-			});
+			};
+			Canvas.SetLeft(formOutline, fx);
+			Canvas.SetTop(formOutline, fy);
+			guides.Children.Add(formOutline);
 			foreach (var component in state.Components.Where(item => !String.IsNullOrEmpty(item.Parent))) {
 				var (surfaceX, surfaceY) = viewport.DesignToSurface(component.SurfaceX, component.SurfaceY);
+				var (surfaceX2, surfaceY2) = viewport.DesignToSurface(
+					component.SurfaceX + component.Width, component.SurfaceY + component.Height);
 				var outline = new Rectangle {
-					Width = Math.Max(1, component.Width), Height = Math.Max(1, component.Height),
+					Width = Math.Max(1, surfaceX2 - surfaceX), Height = Math.Max(1, surfaceY2 - surfaceY),
 					Stroke = lockedComponentNames.Contains(component.Name) ? Brushes.DarkOrange
 						: selectedComponentNames.Contains(component.Name) ? Brushes.DodgerBlue : new SolidColorBrush(Color.FromArgb(150, 80, 80, 80)),
 					StrokeThickness = selectedComponentNames.Contains(component.Name) ? 2 : 1,
@@ -335,8 +349,14 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			var component = state?.Components?.FirstOrDefault(item => item.Name == componentName);
 			if (component == null || !framePresenter.Visual.IsVisible)
 				return false;
-			var topLeft = framePresenter.Visual.PointToScreen(new Point(component.SurfaceX, component.SurfaceY));
-			bounds = new Rect(topLeft.X, topLeft.Y, component.Width, component.Height);
+			// Both corners through DesignToSurface so the UIA peer bounds track the (possibly
+			// zoomed) design rect, then PointToScreen from the design surface grid.
+			var (x, y) = viewport.DesignToSurface(component.SurfaceX, component.SurfaceY);
+			var (x2, y2) = viewport.DesignToSurface(
+				component.SurfaceX + component.Width, component.SurfaceY + component.Height);
+			var topLeft = designSurface.PointToScreen(new Point(x, y));
+			var bottomRight = designSurface.PointToScreen(new Point(x2, y2));
+			bounds = new Rect(topLeft.X, topLeft.Y, bottomRight.X - topLeft.X, bottomRight.Y - topLeft.Y);
 			return true;
 		}
 
@@ -344,21 +364,25 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		{
 			try {
 				var extendSelection = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) || Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
+				// GetPosition on the (possibly zoomed) frame image yields surface pixels;
+				// component bounds and the child's hit-testing are design-space.
 				var point = e.GetPosition(framePresenter.Visual);
+				var designPoint = new Point(point.X / viewport.Scale, point.Y / viewport.Scale);
 				if (!state.Components.Any(component => !String.IsNullOrEmpty(component.Parent)
-					&& new Rect(component.SurfaceX, component.SurfaceY, component.Width, component.Height).Contains(point))) {
+					&& new Rect(component.SurfaceX, component.SurfaceY, component.Width, component.Height).Contains(designPoint))) {
 					marqueeSelecting = true;
 					marqueeExtendsSelection = extendSelection;
-					marqueeStart = point;
+					marqueeStart = designPoint;
 					marqueeBorder.Width = marqueeBorder.Height = 0;
-					Canvas.SetLeft(marqueeBorder, point.X);
-					Canvas.SetTop(marqueeBorder, point.Y);
+					var (mx, my) = viewport.DesignToSurface(designPoint.X, designPoint.Y);
+					Canvas.SetLeft(marqueeBorder, mx);
+					Canvas.SetTop(marqueeBorder, my);
 					marqueeBorder.Visibility = Visibility.Visible;
 					CaptureMouse();
 					e.Handled = true;
 					return;
 				}
-				var result = await client.HitTestAsync(version, (int)point.X, (int)point.Y, CancellationToken.None);
+				var result = await client.HitTestAsync(version, (int)designPoint.X, (int)designPoint.Y, CancellationToken.None);
 				if (!extendSelection) selectedComponentNames.Clear();
 				if (!String.IsNullOrEmpty(result.ComponentName)) {
 					if (extendSelection && selectedComponentNames.Contains(result.ComponentName)) selectedComponentNames.Remove(result.ComponentName);
@@ -381,13 +405,20 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		void OnMouseMove(object sender, MouseEventArgs e)
 		{
 			if (!marqueeSelecting || e.LeftButton != MouseButtonState.Pressed) return;
+			// Marquee state is design-space; convert both corners before drawing so the
+			// rubber band tracks the zoomed design rect exactly.
 			var point = e.GetPosition(framePresenter.Visual);
-			var left = Math.Min(marqueeStart.X, point.X);
-			var top = Math.Min(marqueeStart.Y, point.Y);
-			Canvas.SetLeft(marqueeBorder, left);
-			Canvas.SetTop(marqueeBorder, top);
-			marqueeBorder.Width = Math.Abs(point.X - marqueeStart.X);
-			marqueeBorder.Height = Math.Abs(point.Y - marqueeStart.Y);
+			var designPoint = new Point(point.X / viewport.Scale, point.Y / viewport.Scale);
+			var left = Math.Min(marqueeStart.X, designPoint.X);
+			var top = Math.Min(marqueeStart.Y, designPoint.Y);
+			var (sx, sy) = viewport.DesignToSurface(left, top);
+			var (sx2, sy2) = viewport.DesignToSurface(
+				left + Math.Abs(designPoint.X - marqueeStart.X),
+				top + Math.Abs(designPoint.Y - marqueeStart.Y));
+			Canvas.SetLeft(marqueeBorder, sx);
+			Canvas.SetTop(marqueeBorder, sy);
+			marqueeBorder.Width = Math.Max(0, sx2 - sx);
+			marqueeBorder.Height = Math.Max(0, sy2 - sy);
 		}
 
 		void OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
@@ -401,7 +432,12 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			if (!marqueeExtendsSelection) selectedComponentNames.Clear();
 			if (bounds.Width >= 3 || bounds.Height >= 3) {
 				foreach (var component in state.Components.Where(item => !String.IsNullOrEmpty(item.Parent))) {
-					var componentBounds = new Rect(component.SurfaceX, component.SurfaceY, component.Width, component.Height);
+					// The marquee rect is drawn in surface space; convert each component rect
+					// the same way before intersecting.
+					var (cx, cy) = viewport.DesignToSurface(component.SurfaceX, component.SurfaceY);
+					var (cx2, cy2) = viewport.DesignToSurface(
+						component.SurfaceX + component.Width, component.SurfaceY + component.Height);
+					var componentBounds = new Rect(cx, cy, cx2 - cx, cy2 - cy);
 					if (bounds.IntersectsWith(componentBounds)) selectedComponentNames.Add(component.Name);
 				}
 			} else if (!marqueeExtendsSelection) {
@@ -680,15 +716,19 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		{
 			if (e.Data.GetData(typeof(ToolboxItem)) is not ToolboxItem item || String.IsNullOrEmpty(item.TypeName))
 				return;
+			// GetPosition on the (possibly zoomed) frame image yields surface pixels; the
+			// child's hit-testing and the drop position are design-space.
 			var point = e.GetPosition(framePresenter.Visual);
-			var hit = await client.HitTestAsync(version, (int)point.X, (int)point.Y, CancellationToken.None);
+			var designX = point.X / viewport.Scale;
+			var designY = point.Y / viewport.Scale;
+			var hit = await client.HitTestAsync(version, (int)designX, (int)designY, CancellationToken.None);
 			var target = state.Components.FirstOrDefault(component => component.Name == hit.ComponentName);
 			if (target != null && !IsContainer(target.Type))
 				target = state.Components.FirstOrDefault(component => component.Name == target.Parent);
 			target ??= state.Components.FirstOrDefault(component => String.IsNullOrEmpty(component.Parent));
 			if (target != null)
 				ToolboxDrop?.Invoke(this, new RemoteToolboxDropEventArgs(item.TypeName, target.Name,
-					(int)point.X - target.SurfaceX, (int)point.Y - target.SurfaceY));
+					(int)designX - target.SurfaceX, (int)designY - target.SurfaceY));
 			e.Handled = true;
 		}
 

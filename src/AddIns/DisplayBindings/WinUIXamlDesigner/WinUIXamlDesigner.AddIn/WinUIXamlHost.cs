@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
+using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.LanguageServices.Xaml;
 
@@ -211,8 +212,8 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 	/// <summary>The rendered element tree (protocol model), for the Document Outline pad.</summary>
 	public DesignerElementNode? ElementTree => (runtime as IWinUIXamlRuntimeHost)?.ElementTree;
 
-	/// <summary>Surface geometry (frame/selection/resize-handle) for resize-drag tests.</summary>
-	public (System.Windows.Rect Frame, System.Windows.Rect Selection, System.Windows.Point Handle) SurfaceGeometry()
+	/// <summary>Surface geometry (frame/selection/handle/element) for resize-drag tests.</summary>
+	public DesignerSurfaceGeometry SurfaceGeometry()
 		=> (runtime as IWinUIXamlRuntimeHost)?.SurfaceGeometry() ?? default;
 
 	/// <summary>The runtime's toolbox catalog (the controls its loaded runtime provides), if available.</summary>
@@ -501,8 +502,8 @@ public interface IWinUIXamlRuntimeHost : IDisposable
 	/// </summary>
 	DesignerElementNode? ElementTree { get; }
 
-	/// <summary>Surface geometry (frame/selection/resize-handle) for resize-drag tests.</summary>
-	(System.Windows.Rect Frame, System.Windows.Rect Selection, System.Windows.Point Handle) SurfaceGeometry();
+	/// <summary>Surface geometry (frame/selection/handle/element) for resize-drag tests.</summary>
+	DesignerSurfaceGeometry SurfaceGeometry();
 
 	/// <summary>
 	/// The x:Names the document defines. The runtime resolves them against the rendered tree's

@@ -29,6 +29,7 @@ using System.Windows.Threading;
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
+using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;
@@ -73,18 +74,15 @@ namespace ICSharpCode.WpfDesign.AddIn
 		/// through this rather than reaching into <see cref="client"/> directly.</summary>
 		public WpfSurfaceDesignerControl? SurfaceControl => surfaceControl;
 
-		/// <summary>Surface geometry for the resize-drag smoke test: the primary selection's
-		/// rendered bounds in screen coordinates, both as the "frame" and "selection" rect (the
-		/// selection outline hugs the element exactly, now that the tree-bounds/rendered-pixel
-		/// coordinate mismatch is fixed - see wpf-designer.md) and its bottom-right resize handle.
+		/// <summary>Surface geometry for the resize-drag smoke test: the rendered design bitmap
+		/// bounds (frame), the selected element's rendered bounds (element) and its selection
+		/// outline (selection) in screen coordinates, plus the bottom-right resize handle. The
+		/// selection outline hugs the element exactly (the tree-bounds/rendered-pixel
+		/// coordinate mismatch is fixed - see wpf-designer.md), and all three are the shared
+		/// <see cref="DesignerSurfaceGeometry"/> shape every designer reports.
 		/// </summary>
-		public (Rect Frame, Rect Selection, Point Handle) SurfaceGeometry()
-		{
-			if (surfaceControl?.ScreenBoundsOfSelected() is not { } bounds)
-				return default;
-			var handle = new Point(bounds.X + bounds.Width, bounds.Y + bounds.Height);
-			return (bounds, bounds, handle);
-		}
+		public DesignerSurfaceGeometry SurfaceGeometry()
+			=> surfaceControl?.SurfaceGeometry() ?? default;
 
 		protected override void LoadInternal(OpenedFile file, Stream stream)
 		{

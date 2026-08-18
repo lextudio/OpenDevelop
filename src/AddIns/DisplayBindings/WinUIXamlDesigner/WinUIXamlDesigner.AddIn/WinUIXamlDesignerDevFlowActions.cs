@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Text.Json;
 using System.Windows;
+using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
 using LeXtudio.DevFlow.Agent.Core;
@@ -15,19 +16,13 @@ namespace ICSharpCode.WinUIXamlDesigner;
 [DevFlowUIThread]
 public static class WinUIXamlDesignerDevFlowActions
 {
-	[DevFlowAction("od.winui-designer.surface-geometry", Description = "Report the WinUI/Uno design surface geometry (rendered design bitmap bounds, selection outline bounds, bottom-right resize handle) in screen coordinates - the smoke probe for the resize-drag invariant that selection and handle always track the rendered element")]
+	[DevFlowAction("od.winui-designer.surface-geometry", Description = "Report the WinUI/Uno design surface geometry (rendered design bitmap bounds, selection outline bounds, bottom-right resize handle, selected element bounds) in screen coordinates - the smoke probe for the resize-drag invariant that selection and handle always track the rendered element")]
 	public static string GetSurfaceGeometry()
 	{
 		var view = ActivateDesigner();
 		if (view == null)
 			return JsonSerializer.Serialize(new { available = false });
-		var (frame, selection, handle) = view.SurfaceGeometry();
-		return JsonSerializer.Serialize(new {
-			available = true,
-			frame = new { x = frame.X, y = frame.Y, width = frame.Width, height = frame.Height },
-			selection = new { x = selection.X, y = selection.Y, width = selection.Width, height = selection.Height },
-			handle = new { x = handle.X, y = handle.Y }
-		});
+		return JsonSerializer.Serialize(DesignerSurfaceGeometryProbe.ToJson(view.SurfaceGeometry()));
 	}
 
 	[DevFlowAction("od.winui-designer.status", Description = "Inspect the active WinUI/Uno XAML designer: framework profile, preview state, toolbox counts, outline tree, selection and undo/redo availability")]

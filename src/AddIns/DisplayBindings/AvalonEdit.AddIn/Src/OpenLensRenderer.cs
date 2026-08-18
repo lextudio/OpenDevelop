@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -87,7 +88,12 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		// Cache of resolved items, keyed by (AnchorId, LensId) - survives across discovery passes so
 		// an anchor untouched by a subsequent edit keeps its resolved value instead of re-querying.
 		readonly Dictionary<(string AnchorId, string LensId), OpenLensItem> resolvedItems = new();
-		readonly HashSet<(string AnchorId, string LensId)> resolving = new();
+		// Set of items currently mid-resolution, keyed by (AnchorId, LensId) - mutated from the
+		// render/measure pass (ResolveVisibleAnchors) and from ResolveAsync's finally on the
+		// continuation thread, so it must tolerate concurrent access (the plain HashSet raced:
+		// AddIfNotPresent threw IndexOutOfRangeException on resize while the async continuation
+		// was removing).
+		readonly ConcurrentDictionary<(string AnchorId, string LensId), byte> resolving = new();
 
 		CancellationTokenSource refreshCancellation = new();
 		long documentVersion;
@@ -351,7 +357,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			var toResolve = itemsByAnchorId
 				.Where(g => visibleAnchorIds.Contains(g.Key))
 				.SelectMany(g => g)
-				.Where(i => !i.IsResolved && providersById.ContainsKey(i.ProviderId) && resolving.Add((i.AnchorId, i.LensId)))
+				.Where(i => !i.IsResolved && providersById.ContainsKey(i.ProviderId) && resolving.TryAdd((i.AnchorId, i.LensId), 0))
 				.ToArray();
 
 			if (toResolve.Length > 0) {
@@ -401,7 +407,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			}
 			catch (Exception ex) { LoggingService.Warn("OpenLens resolution failed for '" + fileName + "'. " + ex.Message); }
 			finally {
-				resolving.Remove((item.AnchorId, item.LensId));
+				resolving.TryRemove((item.AnchorId, item.LensId), out _);
 				resolutionThrottle.Release();
 			}
 		}

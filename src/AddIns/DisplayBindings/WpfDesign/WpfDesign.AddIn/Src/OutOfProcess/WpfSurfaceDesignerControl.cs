@@ -518,6 +518,18 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		/// the screen once via <see cref="UIElement.PointToScreen"/>.</summary>
 		public Rect? ScreenBoundsOfSelected() => ScreenBoundsOf(SelectedNode);
 
+		/// <summary>The resize-drag smoke probe shared by all three designers
+		/// (<c>od.&lt;x&gt;-designer.surface-geometry</c>): the rendered design bitmap bounds,
+		/// the current selection outline bounds, the bottom-right resize handle position and
+		/// the selected element's own bounds, all in screen coordinates.</summary>
+		public DesignerSurfaceGeometry SurfaceGeometry()
+		{
+			var frame = DesignerSurfaceGeometryProbe.ScreenBoundsOf(framePresenter.Visual);
+			var selection = ScreenBoundsOfSelected() ?? default;
+			var handle = new Point(selection.X + selection.Width, selection.Y + selection.Height);
+			return new DesignerSurfaceGeometry(frame, selection, handle, selection);
+		}
+
 		/// <summary>Screen-coordinate bounds for an arbitrary tree node (found by
 		/// <see cref="DesignerElementNode.Id"/>/tree path), not just the current selection - for
 		/// DevFlow's <c>od.wpf-designer.query-element-screen-bounds</c> probe, which asks for a

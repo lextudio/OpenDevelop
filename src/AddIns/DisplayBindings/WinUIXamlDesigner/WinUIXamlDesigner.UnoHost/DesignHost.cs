@@ -53,13 +53,13 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 
 		/// <summary>Session-aware subsequent full-document push (session/update): replaces
 		/// design/load for theme reloads, size-preset changes and any other full re-render.</summary>
-		public DesignSnapshot UpdateSession(string sessionId, string documentId, string xaml, double width, double height, double dpi, long requestVersion)
+		public DesignSnapshot UpdateSession(string sessionId, string documentId, string xaml, double width, double height, double dpi, long baseVersion)
 		{
 			EnsureOwnSession(sessionId, documentId);
 			var snapshot = HeadlessDispatcher.DispatchAsync(() => LoadDesignAsync(new LoadDesignRequest {
-				SessionId = sessionId, DocumentId = documentId, Version = requestVersion, Xaml = xaml, Width = width, Height = height, Dpi = dpi
+				SessionId = sessionId, DocumentId = documentId, Version = baseVersion, Xaml = xaml, Width = width, Height = height, Dpi = dpi
 			})).GetAwaiter().GetResult();
-			version = requestVersion;
+			version = baseVersion;
 			snapshot.SessionId = sessionId;
 			snapshot.DocumentId = documentId;
 			snapshot.Version = version;
@@ -68,13 +68,13 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 
 		/// <summary>Stub: this host holds no independent child-side edit buffer, so flush
 		/// reports the last-loaded XAML as the sole file - lands the wire shape now.</summary>
-		public DesignEditSet FlushSession(string sessionId, string documentId, long requestVersion)
+		public DesignEditSet FlushSession(string sessionId, string documentId, long baseVersion)
 		{
 			EnsureOwnSession(sessionId, documentId);
 			return new DesignEditSet {
 				SessionId = sessionId,
 				DocumentId = documentId,
-				BaseVersion = requestVersion,
+				BaseVersion = baseVersion,
 				Files = new List<DesignFileSnapshot> {
 					new DesignFileSnapshot { FileName = "(document)", Text = lastXaml }
 				}
@@ -84,32 +84,32 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		/// <summary>Applies a single property change directly to the live element and
 		/// re-renders, without re-running XamlReader.Load - the point of moving off design/load
 		/// for incremental edits.</summary>
-		public DesignSnapshot SetProperty(string sessionId, string documentId, long requestVersion, string elementName, string propertyName, string value)
-			=> HeadlessDispatcher.DispatchAsync(() => SetPropertyAsync(sessionId, documentId, requestVersion, elementName, propertyName, value)).GetAwaiter().GetResult();
+		public DesignSnapshot SetProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string value)
+			=> HeadlessDispatcher.DispatchAsync(() => SetPropertyAsync(sessionId, documentId, baseVersion, elementId, propertyName, value)).GetAwaiter().GetResult();
 
 		/// <summary>No live code-behind instance exists in this design host, so this just
 		/// validates the element/event names and returns the snapshot unchanged - lands the
 		/// RPC contract; deeper semantics is future work.</summary>
-		public DesignSnapshot SetEvent(string sessionId, string documentId, long requestVersion, string elementName, string eventName, string handlerName)
-			=> HeadlessDispatcher.Dispatch(() => SetEventCore(sessionId, documentId, requestVersion, elementName, eventName, handlerName));
+		public DesignSnapshot SetEvent(string sessionId, string documentId, long baseVersion, string elementId, string eventName, string handlerName)
+			=> HeadlessDispatcher.Dispatch(() => SetEventCore(sessionId, documentId, baseVersion, elementId, eventName, handlerName));
 
-		/// <summary>Parses <paramref name="itemXaml"/> and inserts it as a child of the named
+		/// <summary>Parses <paramref name="item"/> and inserts it as a child of the named
 		/// parent, then re-renders without re-running the full document XamlReader.Load.</summary>
-		public DesignSnapshot AddElement(string sessionId, string documentId, long requestVersion, string parentName, string itemXaml, double x, double y)
-			=> HeadlessDispatcher.DispatchAsync(() => AddElementAsync(sessionId, documentId, requestVersion, parentName, itemXaml, x, y)).GetAwaiter().GetResult();
+		public DesignSnapshot AddElement(string sessionId, string documentId, long baseVersion, string parentId, ToolboxItemInfo item, double x, double y)
+			=> HeadlessDispatcher.DispatchAsync(() => AddElementAsync(sessionId, documentId, baseVersion, parentId, item, x, y)).GetAwaiter().GetResult();
 
 		/// <summary>Sets an element's Width/Height directly, and its Canvas.Left/Top when its
 		/// parent is a Canvas, then re-renders.</summary>
-		public DesignSnapshot SetBounds(string sessionId, string documentId, long requestVersion, string elementName, double x, double y, double width, double height)
-			=> HeadlessDispatcher.DispatchAsync(() => SetBoundsAsync(sessionId, documentId, requestVersion, elementName, x, y, width, height)).GetAwaiter().GetResult();
+		public DesignSnapshot SetBounds(string sessionId, string documentId, long baseVersion, string elementId, double x, double y, double width, double height)
+			=> HeadlessDispatcher.DispatchAsync(() => SetBoundsAsync(sessionId, documentId, baseVersion, elementId, x, y, width, height)).GetAwaiter().GetResult();
 
 		/// <summary>Removes each named element from its Panel parent, then re-renders.</summary>
-		public DesignSnapshot DeleteElements(string sessionId, string documentId, long requestVersion, string[] elementNames)
-			=> HeadlessDispatcher.DispatchAsync(() => DeleteElementsAsync(sessionId, documentId, requestVersion, elementNames)).GetAwaiter().GetResult();
+		public DesignSnapshot DeleteElements(string sessionId, string documentId, long baseVersion, string[] elementIds)
+			=> HeadlessDispatcher.DispatchAsync(() => DeleteElementsAsync(sessionId, documentId, baseVersion, elementIds)).GetAwaiter().GetResult();
 
 		/// <summary>Renames the live element (FrameworkElement.Name), then re-renders.</summary>
-		public DesignSnapshot Rename(string sessionId, string documentId, long requestVersion, string elementName, string newName)
-			=> HeadlessDispatcher.DispatchAsync(() => RenameAsync(sessionId, documentId, requestVersion, elementName, newName)).GetAwaiter().GetResult();
+		public DesignSnapshot Rename(string sessionId, string documentId, long baseVersion, string elementId, string newName)
+			=> HeadlessDispatcher.DispatchAsync(() => RenameAsync(sessionId, documentId, baseVersion, elementId, newName)).GetAwaiter().GetResult();
 
 		public DesignSnapshot Layout(double width, double height, double dpi)
 			=> HeadlessDispatcher.DispatchAsync(() => LayoutAsync(new LayoutRequest { Width = width, Height = height, Dpi = dpi })).GetAwaiter().GetResult();
@@ -591,10 +591,10 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				throw new InvalidOperationException("The request's document id does not match the open document.");
 		}
 
-		async Task<DesignSnapshot> SetPropertyAsync(string requestSessionId, string requestDocumentId, long requestVersion, string elementName, string propertyName, string value)
+		async Task<DesignSnapshot> SetPropertyAsync(string requestSessionId, string requestDocumentId, long baseVersion, string elementId, string propertyName, string value)
 		{
 			EnsureOwnSession(requestSessionId, requestDocumentId);
-			var snapshot = new DesignSnapshot { SessionId = requestSessionId, DocumentId = requestDocumentId, Version = requestVersion };
+			var snapshot = new DesignSnapshot { SessionId = requestSessionId, DocumentId = requestDocumentId, Version = baseVersion };
 			if (root is null)
 			{
 				snapshot.Accepted = false;
@@ -602,18 +602,18 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				snapshot.Diagnostics.Add(new DesignDiagnostic { Message = snapshot.Error });
 				return snapshot;
 			}
-			var element = FindByName(root, elementName);
+			var element = FindByName(root, elementId);
 			if (element is null)
 			{
 				snapshot.Accepted = false;
-				snapshot.Error = "Element not found: " + elementName;
+				snapshot.Error = "Element not found: " + elementId;
 				snapshot.Diagnostics.Add(new DesignDiagnostic { Message = snapshot.Error });
 				return snapshot;
 			}
 			try
 			{
 				ApplyPropertyValue(element, propertyName, value);
-				version = Math.Max(version, requestVersion);
+				version = Math.Max(version, baseVersion);
 				var result = await FinishLayoutAsync(lastWidth, lastHeight, lastDpi, snapshot);
 				result.SessionId = requestSessionId;
 				result.DocumentId = requestDocumentId;
@@ -652,21 +652,21 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			property.SetValue(element, converted);
 		}
 
-		DesignSnapshot SetEventCore(string requestSessionId, string requestDocumentId, long requestVersion, string elementName, string eventName, string handlerName)
+		DesignSnapshot SetEventCore(string requestSessionId, string requestDocumentId, long baseVersion, string elementId, string eventName, string handlerName)
 		{
 			EnsureOwnSession(requestSessionId, requestDocumentId);
-			var snapshot = new DesignSnapshot { SessionId = requestSessionId, DocumentId = requestDocumentId, Version = requestVersion };
+			var snapshot = new DesignSnapshot { SessionId = requestSessionId, DocumentId = requestDocumentId, Version = baseVersion };
 			if (root is null)
 			{
 				snapshot.Accepted = false;
 				snapshot.Error = "No design loaded.";
 				return snapshot;
 			}
-			var element = FindByName(root, elementName);
+			var element = FindByName(root, elementId);
 			if (element is null)
 			{
 				snapshot.Accepted = false;
-				snapshot.Error = "Element not found: " + elementName;
+				snapshot.Error = "Element not found: " + elementId;
 				return snapshot;
 			}
 			var eventInfo = element.GetType().GetEvent(eventName);
@@ -683,10 +683,10 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			return snapshot;
 		}
 
-		async Task<DesignSnapshot> AddElementAsync(string requestSessionId, string requestDocumentId, long requestVersion, string parentName, string itemXaml, double x, double y)
+		async Task<DesignSnapshot> AddElementAsync(string requestSessionId, string requestDocumentId, long baseVersion, string parentId, ToolboxItemInfo item, double x, double y)
 		{
 			EnsureOwnSession(requestSessionId, requestDocumentId);
-			var snapshot = new DesignSnapshot { SessionId = requestSessionId, DocumentId = requestDocumentId, Version = requestVersion };
+			var snapshot = new DesignSnapshot { SessionId = requestSessionId, DocumentId = requestDocumentId, Version = baseVersion };
 			if (root is null)
 			{
 				snapshot.Accepted = false;
@@ -694,17 +694,17 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				snapshot.Diagnostics.Add(new DesignDiagnostic { Message = snapshot.Error });
 				return snapshot;
 			}
-			var parent = FindByName(root, parentName);
+			var parent = FindByName(root, parentId);
 			if (parent is null)
 			{
 				snapshot.Accepted = false;
-				snapshot.Error = "Parent not found: " + parentName;
+				snapshot.Error = "Parent not found: " + parentId;
 				snapshot.Diagnostics.Add(new DesignDiagnostic { Message = snapshot.Error });
 				return snapshot;
 			}
 			try
 			{
-				var newElement = (UIElement)Microsoft.UI.Xaml.Markup.XamlReader.Load(itemXaml);
+				var newElement = (UIElement)Microsoft.UI.Xaml.Markup.XamlReader.Load(item.Template);
 				if (parent is Panel panel)
 				{
 					panel.Children.Add(newElement);
@@ -717,11 +717,11 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				else
 				{
 					snapshot.Accepted = false;
-					snapshot.Error = "Parent does not support adding children: " + parentName;
+					snapshot.Error = "Parent does not support adding children: " + parentId;
 					snapshot.Diagnostics.Add(new DesignDiagnostic { Message = snapshot.Error });
 					return snapshot;
 				}
-				version = Math.Max(version, requestVersion);
+				version = Math.Max(version, baseVersion);
 				var result = await FinishLayoutAsync(lastWidth, lastHeight, lastDpi, snapshot);
 				result.SessionId = requestSessionId;
 				result.DocumentId = requestDocumentId;
@@ -737,10 +737,10 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			}
 		}
 
-		async Task<DesignSnapshot> SetBoundsAsync(string requestSessionId, string requestDocumentId, long requestVersion, string elementName, double x, double y, double width, double height)
+		async Task<DesignSnapshot> SetBoundsAsync(string requestSessionId, string requestDocumentId, long baseVersion, string elementId, double x, double y, double width, double height)
 		{
 			EnsureOwnSession(requestSessionId, requestDocumentId);
-			var snapshot = new DesignSnapshot { SessionId = requestSessionId, DocumentId = requestDocumentId, Version = requestVersion };
+			var snapshot = new DesignSnapshot { SessionId = requestSessionId, DocumentId = requestDocumentId, Version = baseVersion };
 			if (root is null)
 			{
 				snapshot.Accepted = false;
@@ -748,11 +748,11 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				snapshot.Diagnostics.Add(new DesignDiagnostic { Message = snapshot.Error });
 				return snapshot;
 			}
-			var element = FindByName(root, elementName);
+			var element = FindByName(root, elementId);
 			if (element is null)
 			{
 				snapshot.Accepted = false;
-				snapshot.Error = "Element not found: " + elementName;
+				snapshot.Error = "Element not found: " + elementId;
 				snapshot.Diagnostics.Add(new DesignDiagnostic { Message = snapshot.Error });
 				return snapshot;
 			}
@@ -765,7 +765,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 					Canvas.SetLeft(element, x);
 					Canvas.SetTop(element, y);
 				}
-				version = Math.Max(version, requestVersion);
+				version = Math.Max(version, baseVersion);
 				var result = await FinishLayoutAsync(lastWidth, lastHeight, lastDpi, snapshot);
 				result.SessionId = requestSessionId;
 				result.DocumentId = requestDocumentId;
@@ -784,10 +784,10 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		/// <summary>Matches WinForms' DeleteComponent, which throws on a not-found component
 		/// rather than skipping - a batch delete fails the whole request instead of silently
 		/// dropping a bad name, so the caller finds out about a stale reference immediately.</summary>
-		async Task<DesignSnapshot> DeleteElementsAsync(string requestSessionId, string requestDocumentId, long requestVersion, string[] elementNames)
+		async Task<DesignSnapshot> DeleteElementsAsync(string requestSessionId, string requestDocumentId, long baseVersion, string[] elementIds)
 		{
 			EnsureOwnSession(requestSessionId, requestDocumentId);
-			var snapshot = new DesignSnapshot { SessionId = requestSessionId, DocumentId = requestDocumentId, Version = requestVersion };
+			var snapshot = new DesignSnapshot { SessionId = requestSessionId, DocumentId = requestDocumentId, Version = baseVersion };
 			if (root is null)
 			{
 				snapshot.Accepted = false;
@@ -797,10 +797,10 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			}
 			try
 			{
-				foreach (var name in elementNames)
+				foreach (var name in elementIds)
 				{
 					var element = FindByName(root, name)
-						?? throw new ArgumentException("Element not found: " + name, nameof(elementNames));
+						?? throw new ArgumentException("Element not found: " + name, nameof(elementIds));
 					if (VisualTreeHelper.GetParent(element) is Panel panel)
 					{
 						panel.Children.Remove(element);
@@ -810,7 +810,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 						throw new InvalidOperationException("Element's parent does not support removing children: " + name);
 					}
 				}
-				version = Math.Max(version, requestVersion);
+				version = Math.Max(version, baseVersion);
 				var result = await FinishLayoutAsync(lastWidth, lastHeight, lastDpi, snapshot);
 				result.SessionId = requestSessionId;
 				result.DocumentId = requestDocumentId;
@@ -826,10 +826,10 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			}
 		}
 
-		async Task<DesignSnapshot> RenameAsync(string requestSessionId, string requestDocumentId, long requestVersion, string elementName, string newName)
+		async Task<DesignSnapshot> RenameAsync(string requestSessionId, string requestDocumentId, long baseVersion, string elementId, string newName)
 		{
 			EnsureOwnSession(requestSessionId, requestDocumentId);
-			var snapshot = new DesignSnapshot { SessionId = requestSessionId, DocumentId = requestDocumentId, Version = requestVersion };
+			var snapshot = new DesignSnapshot { SessionId = requestSessionId, DocumentId = requestDocumentId, Version = baseVersion };
 			if (root is null)
 			{
 				snapshot.Accepted = false;
@@ -837,18 +837,18 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				snapshot.Diagnostics.Add(new DesignDiagnostic { Message = snapshot.Error });
 				return snapshot;
 			}
-			var element = FindByName(root, elementName);
+			var element = FindByName(root, elementId);
 			if (element is null)
 			{
 				snapshot.Accepted = false;
-				snapshot.Error = "Element not found: " + elementName;
+				snapshot.Error = "Element not found: " + elementId;
 				snapshot.Diagnostics.Add(new DesignDiagnostic { Message = snapshot.Error });
 				return snapshot;
 			}
 			try
 			{
 				element.Name = newName;
-				version = Math.Max(version, requestVersion);
+				version = Math.Max(version, baseVersion);
 				var result = await FinishLayoutAsync(lastWidth, lastHeight, lastDpi, snapshot);
 				result.SessionId = requestSessionId;
 				result.DocumentId = requestDocumentId;
