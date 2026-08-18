@@ -160,7 +160,7 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 			// DesignToSurface yields content coordinates; the scroll offset is subtracted so
 			// the selection maps to the viewport's own screen rectangle.
 			selection = DesignerSurfaceGeometryProbe.DesignRectToScreen(CurrentViewport(), designSelection, scroller,
-				new Vector(scroller.HorizontalOffset, scroller.VerticalOffset));
+				new System.Windows.Vector(scroller.HorizontalOffset, scroller.VerticalOffset));
 		}
 		var handle = new Point(selection.X + selection.Width, selection.Y + selection.Height);
 		return new DesignerSurfaceGeometry(frame, selection, handle, selection);
@@ -317,6 +317,33 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 	{
 		var (sx, sy) = CurrentViewport().DesignToSurface(x, y);
 		return new Point(sx - scroller.HorizontalOffset, sy - scroller.VerticalOffset);
+	}
+
+	/// <summary>Diagnostic-only: reports the screen origin of every candidate anchor for
+	/// element-to-screen-point translation, to measure which one actually lines up with
+	/// <see cref="SurfaceGeometry"/>'s own (verified-correct) frame origin.</summary>
+	public string DiagnoseScreenAnchors()
+	{
+		var thisOrigin = PointToScreen(new Point(0, 0));
+		var scrollerOrigin = scroller.PointToScreen(new Point(0, 0));
+		var frameOrigin = framePresenter.Visual is FrameworkElement fe ? fe.PointToScreen(new Point(0, 0)) : new Point(double.NaN, double.NaN);
+		return $"this=({thisOrigin.X},{thisOrigin.Y}) scroller=({scrollerOrigin.X},{scrollerOrigin.Y}) framePresenter=({frameOrigin.X},{frameOrigin.Y}) scrollOffset=({scroller.HorizontalOffset},{scroller.VerticalOffset})";
+	}
+
+	/// <summary>A DESIGN-space point (the same space <c>QueryElementBounds</c>/<c>nodesByName</c>
+	/// report element positions in - NOT surface-local pixels, despite this method's callers
+	/// originally assuming that) to real screen coordinates, honoring the current viewport/scroll.
+	/// Reuses exactly <see cref="DesignToSurfacePoint"/> + <c>scroller.PointToScreen</c>, the same
+	/// pair <see cref="SurfaceGeometry"/> uses via <see cref="DesignerSurfaceGeometryProbe.DesignRectToScreen"/>
+	/// - NOT <c>PointToScreen</c> on <c>this</c>, which sits above <c>scroller</c> by the shared
+	/// toolbar's height. Found live: <c>od.winui-designer.query-element-screen-bounds</c> (which
+	/// calls this) was reporting a point ~26px into the toolbar area for an element that visually
+	/// sits well inside the canvas, so every synthetic click driven from its numbers landed short
+	/// of the actual design surface and never registered at all.</summary>
+	public Point SurfacePointToScreen(double x, double y)
+	{
+		var surfacePoint = DesignToSurfacePoint(x, y);
+		return scroller.PointToScreen(surfacePoint);
 	}
 
 	public void SetRender(RenderResult render)
@@ -591,16 +618,31 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 	}
 
 	/// <summary>
-	/// Translates a control-local WPF point into design coordinates through the viewport.
-	/// Points outside the design area map outside its bounds; the child's hit-test then
-	/// reports nothing for them, so clicks on empty surface space resolve to the root.
+	/// Translates a control-local WPF point (every caller passes <c>e.GetPosition(this)</c>,
+	/// i.e. relative to THIS control, which includes the toolbar row above <see cref="scroller"/>)
+	/// into design coordinates through the viewport. Points outside the design area map outside
+	/// its bounds; the child's hit-test then reports nothing for them, so clicks on empty
+	/// surface space resolve to the root.
 	/// </summary>
 	public Vector2 ToDesignPoint(Point point)
 	{
 		if (pixelWidth == 0 || pixelHeight == 0 || scroller.ViewportWidth == 0)
 			return new Vector2((float)point.X, (float)point.Y);
-		var viewportY = point.Y;
-		var (dx, dy) = CurrentViewport().SurfaceToDesign(point.X + scroller.HorizontalOffset, viewportY + scroller.VerticalOffset);
+		// `point` is relative to `this` (the whole control, toolbar included); the formula
+		// below only adds the SCROLL offset, which silently assumed `point` was already
+		// relative to `scroller` - `this`'s own origin sits above `scroller`'s by the
+		// toolbar's height, a FIXED offset this was missing entirely. That made every mouse
+		// gesture (clicks, drags, resize handles) resolve to a design-space point shifted
+		// down by the toolbar's height: confirmed live by comparing od.winui-designer.
+		// surface-geometry's reported (correct) handle screen position against a real
+		// synthetic click there - HandleAt() never recognized it as a handle at all, so a
+		// resize-handle drag silently fell back to a plain element-drag at whatever the
+		// wrong point resolved to (observed: resizing PrimaryButton's handle actually dragged
+		// RootStack, its parent, because the mis-shifted point landed on it instead).
+		// TranslatePoint gives the correct scroller-relative point regardless of how the
+		// toolbar/scroller are laid out, rather than hardcoding its height.
+		var scrollerPoint = TranslatePoint(point, scroller);
+		var (dx, dy) = CurrentViewport().SurfaceToDesign(scrollerPoint.X + scroller.HorizontalOffset, scrollerPoint.Y + scroller.VerticalOffset);
 		return new Vector2((float)dx, (float)dy);
 	}
 

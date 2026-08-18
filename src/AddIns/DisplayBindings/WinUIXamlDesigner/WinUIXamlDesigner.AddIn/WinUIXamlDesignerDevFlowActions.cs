@@ -293,6 +293,15 @@ public static class WinUIXamlDesignerDevFlowActions
 		return JsonSerializer.Serialize(new { success = true, commands = view.WinUICommandProbe() });
 	}
 
+	[DevFlowAction("od.winui-designer.diagnose-screen-anchors", Description = "Temporary diagnostic: screen origins of every candidate PointToScreen anchor on the design surface")]
+	public static string DiagnoseScreenAnchors()
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		return JsonSerializer.Serialize(new { success = true, anchors = view.DiagnoseScreenAnchors() });
+	}
+
 	[DevFlowAction("od.winui-designer.overlay", Description = "Temporary diagnostic: toggle the red OnRender overlay on the design surface")]
 	public static string Overlay(bool enabled)
 	{

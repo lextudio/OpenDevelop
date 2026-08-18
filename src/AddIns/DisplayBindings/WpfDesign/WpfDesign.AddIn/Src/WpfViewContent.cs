@@ -272,10 +272,12 @@ namespace ICSharpCode.WpfDesign.AddIn
 		/// <c>od.file.is-dirty</c> after a Properties-pad edit.</summary>
 		void OnDocumentChanged(object? sender, DesignerSessionState state)
 		{
+			Console.Error.WriteLine("DIAG5 OnDocumentChanged accepted=" + state.Accepted + " file=" + PrimaryFile.FileName + " isDirtyBefore=" + PrimaryFile.IsDirty);
 			if (!state.Accepted)
 				return;
 			wasChangedInDesigner = true;
 			this.PrimaryFile.MakeDirty();
+			Console.Error.WriteLine("DIAG5 after MakeDirty isDirty=" + PrimaryFile.IsDirty);
 		}
 
 		#region Property editor / Outline

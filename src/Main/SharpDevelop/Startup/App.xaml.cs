@@ -19,7 +19,9 @@
 using System;
 using System.Windows;
 #if !OPENDEVELOP_NO_DEVFLOW
+using LeXtudio.DevFlow.Agent.Core;
 using LeXtudio.DevFlow.Agent.Wpf;
+using Microsoft.Maui.DevFlow.Agent.Core;
 #endif
 
 namespace ICSharpCode.SharpDevelop.Startup
@@ -35,7 +37,7 @@ namespace ICSharpCode.SharpDevelop.Startup
 			#if !OPENDEVELOP_NO_DEVFLOW
 			if (Environment.GetEnvironmentVariable("DEVFLOW_DISABLE") != "1")
 			{
-				this.AddWpfDevFlowAgent();
+				this.AddWpfDevFlowAgent(new AgentOptions { Port = GetAgentPort() });
 			}
 			#endif
 			// Log the exception that is about to terminate the app instead of dying silently:
@@ -47,5 +49,21 @@ namespace ICSharpCode.SharpDevelop.Startup
 				ICSharpCode.Core.LoggingService.Fatal("Unhandled dispatcher exception - app is terminating.", e.Exception);
 			};
 		}
+
+		#if !OPENDEVELOP_NO_DEVFLOW
+		/// <summary>
+		/// DevFlow agent port: the DEVFLOW_AGENT_PORT environment variable wins (mirrors the
+		/// LibreWpfDevFlowTestApp pattern), falling back to the pinned assembly metadata
+		/// (DevFlowPort.cs), then the agent default. Lets concurrent IDE sessions run side by
+		/// side without touching source.
+		/// </summary>
+		static int GetAgentPort()
+		{
+			var portValue = Environment.GetEnvironmentVariable("DEVFLOW_AGENT_PORT");
+			if (int.TryParse(portValue, out var parsedPort) && parsedPort > 0)
+				return parsedPort;
+			return DevFlowAgentPortResolver.GetPortFromAssemblyMetadata() ?? AgentOptions.DefaultPort;
+		}
+		#endif
 	}
 }

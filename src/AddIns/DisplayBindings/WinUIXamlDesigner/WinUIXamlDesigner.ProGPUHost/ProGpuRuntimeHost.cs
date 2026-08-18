@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.LanguageServices.Xaml;
 using XamlStudio.Toolkit.Services;
@@ -104,7 +105,7 @@ sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost
 
     /// <summary>In-process runtime: no remote rendered frame; the shell falls back to the
     /// source document's element tree for the Document Outline pad.</summary>
-    public (System.Windows.Rect Frame, System.Windows.Rect Selection, System.Windows.Point Handle) SurfaceGeometry() => default;
+    public DesignerSurfaceGeometry SurfaceGeometry() => default;
 
     /// <summary>There is no child host process in this in-process runtime.</summary>
     public string ChildLog => "(in-process host)";
@@ -144,6 +145,7 @@ sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost
     public string RenderProbeAndProfile() => control.RenderProbeAndProfile();
     public string DumpDrawCalls() => control.DumpDrawCalls();
     public string WinUICommandProbe() => control.WinUICommandProbe();
+    public string DiagnoseScreenAnchors() => "not applicable (retired ProGPU profile)";
     public string ImagePathProbe() => control.ImagePathProbe();
     public void SetShowDiagnosticOverlay(bool value) => control.ShowDiagnosticOverlay = value;
     public void SetRecreateBitmapEachFrame(bool value) => control.RecreateBitmapEachFrame = value;

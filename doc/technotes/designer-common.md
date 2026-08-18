@@ -809,6 +809,7 @@ Legend: **✓** implemented and exercised · **~** partial (see note) · **✗**
 | Resize-drag integration tests | ✓ | ✓ (4-attempt retry loop — known flake) | ✓ |
 | `query-element-screen-bounds` / `query-toolbox-item-bounds` | ✗ | ✓ | ✓ |
 | Outline probes (`outline-status`/`outline-select`) | ✓ (direct on shared control) | ✓ (from DDP tree) | ✓ (child count + names) |
+| `od.outline-pad.content` (shared, cross-designer) | ✓ | ✓ | ✓ — new 2026-08-18: reads the LIVE `DocumentOutlineControl` the Outline pad is showing, not any designer's internal tree; this is what caught WPF's `OutlineContent` bug (below), which a designer-side `outline-status`-style probe could not have caught since its own internal tree was already correct |
 | Test fixtures: WinForms sample / Uno sample / WPF xaml | ✓ | ✓ (file restored in `finally`) | ✓ (copied sample dir, no pollution) |
 
 ## Known technical limits (shared)
@@ -921,14 +922,317 @@ scaffolding, and DevFlow plumbing.
   shared implementation); the three outline probes should all go through one
   `DocumentOutlineControl.Snapshot()`.
 
+## Open task list (2026-08-18)
+
+Everything still open, in dependency order; each item names the files to touch and the
+acceptance check, so the list can be resumed by a fresh session at any point.
+
+### P0 — Fixing red tests
+
+1. **UI-tree bounds are offset from real rendering (~69 px).** `DoubleClickEventRow` fails
+   because `FindUiTextBounds(uiTree, "Shown")` yields a point that hits the `ScrollViewer`
+   gutter, never an event row. Measured by manual DevFlow reproduction against a live app
+   (port 9299): clicking the tree's reported bounds always logs `double-click not on an
+   EventItem`; clicking `treeY + 69` lands on the actual row (hit `LostFocus` at tree y=345
+   while clicking screen y=414) and binds the handler successfully. The x axis appears correct
+   to within a row. Suspects, in order: (a) DevFlow `LeXtudio.DevFlow.Agent.LibreWpf` 0.2.2
+   computing `bounds` from a transform that drops the window's top chrome (title bar +
+   tab/toolbar ≈ 62-69 px on this macOS layout); (b) the window's reported `PointToScreen`
+   origin drifting after `od.activate`; (c) Xceed `PropertyGrid` row layout differing from
+   what the visual tree reports. Fix options: compensate in `FindUiTextBounds` (verify the
+   offset is stable across window positions/DPI), switch the double-click to window-relative
+   `global:false` pointer events if the DevFlow client supports them reliably, or query a row
+   by index via a new DevFlow action instead of screen coordinates.
+   **Acceptance:** `WinFormsDesigner_DoubleClickEventRow_CreatesAndBindsHandler` passes
+   consistently, and the handler it binds is `Form1_Shown`, not a neighbor row.
+
+2. ~~**Decide the event-binding navigation behavior.**~~ **Decided (2026-08-18): keep the jump.**
+   `DesignerViewContent.SetRemoteEvent`
+   (src/AddIns/DisplayBindings/FormsDesigner/Project/Src/DesignerViewContent.cs:142-144)
+   jumps to the source tab after binding a handler ("VS-style") — this stays as-is, on
+   purpose, for all three designers, not just WinForms. The jump makes the design surface
+   disappear from view and empties the Properties pad (it follows `ActiveViewContent`), which
+   reads as "the designer selection changed", but the selection state itself never changes —
+   only the active view does, and jumping to the newly-generated handler stub is the
+   behavior a user actually wants after binding an event.
+   **Acceptance:** `WinFormsDesigner_DoubleClickEventRow_CreatesAndBindsHandler` asserts the
+   source tab becomes active after binding (not that it stays on the design tab); WinUI/WPF
+   should do the same once/if they grow an equivalent event-binding UI (today only WinForms
+   has one - see Part III's `design/set-event` row).
+
+### P1 — Wire and behavior parity leftovers
+
+3. **`design/hit-test` version parameter still diverges.** WPF sends
+   `baseVersion` and validates staleness; WinUI sends neither; WinForms sends `version`
+   (already renamed). Either unify on `baseVersion` everywhere (WinUI needs to start sending
+   it, WinForms already does) or document hit-test as intentionally version-free.
+   **Acceptance:** all three `IDesignHostClient.HitTestAsync` signatures agree.
+
+4. **Full three-designer integration regression run.** The RPC renames below are built and
+   the WinUI child-process suite (`UnoDesignHostRpcTests`, 3/3 green) plus the WinForms
+   resize/outline tests pass; a full `AddInTests` run against the renamed wire is still owed
+   once item 1 is fixed.
+   **Acceptance:** `dotnet test --project tests/OpenDevelop.IntegrationTests` green for the
+   FormsDesigner/WinUIXamlDesigner/WpfDesigner groups.
+
+### P2 — Shared shell extraction (Part IV "Shared helpers")
+
+5. **`DesignViewport.BaseOrigin`.** Extract the duplicated origin/scroll-offset math behind
+   `DesignerSurfaceGeometryProbe.DesignRectToScreen` into the viewport itself (both WinForms
+   `RemoteFormsDesignerControl` and WinUI `UnoDesignSurfaceControl` derive their scroll
+   origin from it today).
+   **Acceptance:** `DesignViewport` exposes `BaseOrigin`; both call sites use it.
+
+6. **Zoom state machine + gridlines brush into `DesignerCanvas`.** Move the zoom combo
+   state machine (WinForms `ZoomLevel`, WPF, WinUI) and the design-grid brush into the shared
+   `DesignerCanvas` so the three surfaces stop re-deriving them.
+   **Acceptance:** `DesignerCanvas` owns zoom state; WinForms keeps its fixed zoom bugs
+   fixed (Part II "Known bugs and limits" stays green).
+
+7. **`FrameCodec` sharing.** WinForms and WPF each encode the rendered frame; WinUI uses a
+   Skia path in the child. One codec in `Designer.Presentation` for the two WPF-side ones.
+   **Acceptance:** no duplicated Png/Bitmap encoding code outside the shared project.
+
+8. **Client boilerplate convergence.** The three `StartAsync`/`LocateChildDll`/ping/shutdown
+   wrappers around `DesignerHostProcessClient` collapse into one shared client (WinForms
+   `FormsDesignerHostClient` and WinUI `UnoDesignClient` become thin subclasses, WPF
+   `WpfSurfaceHostClient` the base shape).
+   **Acceptance:** one `DesignerHostProcessClient` subclass per backend, no copy-pasted
+   `InvokeAsync` mapping tables.
+
+9. **Child-process DTO sharing policy.** `FormsDesigner.Host` and `WinUIXamlDesigner.UnoHost`
+   each carry a hand-written DTO file (JSON is the contract, per `DesignProtocol`); the
+   WinForms host just gained a local `DesignerToolboxItemInfo` copy. Decide whether the child
+   projects should ProjectReference `Designer.Remote` (type identity still irrelevant across
+   the wire) or keep local copies — then document it here.
+   **Acceptance:** stated policy; both child projects follow it.
+
+### P3 — Test and DevFlow plumbing
+
+10. **`ResizeDragTestBase`.** The three resize-drag tests share ~80% verbatim (Part IV
+    "Test scaffolding"): parameterize action prefix, selection action, growth field, deltas;
+    make the WPF `od.activate` + retry loop an optional `RetryDragGestureAsync` and give
+    WinUI the same robustness.
+    **Acceptance:** three tests inherit one base, no duplicated drag/assert loops.
+
+11. **`RegisterDevFlowActionsCommand` collapse.** The empty `Run` classes are duplicated
+    across 11+ addins; a shared base class or assembly attribute removes the pattern.
+    **Acceptance:** no new addin adds a fourth copy.
+
+12. **Action-body convergence.** `query-toolbox-item-bounds`, `query-element-screen-bounds`,
+    and `properties-pad.edit` are near-duplicates between WinUI and WPF (back-port the WPF
+    `FindRealizedContainer`/`WaitUntilHitTestableAt` hardening); the three outline probes all
+    go through one `DocumentOutlineControl.Snapshot()`.
+    **Acceptance:** each probe exists once, in `Designer.Presentation` or its DevFlow layer.
+
+### Done (2026-08-18)
+
+- WinForms zoom correctness (`RemoteFormsDesignerControl`: `ApplyViewport`, scale-aware
+  hit-test/marquee/toolbox-drop/guides/UIA bounds; initial 100% zoom).
+- Unified `surface-geometry` contract: shared `DesignerSurfaceGeometry` +
+  `DesignerSurfaceGeometryProbe` (`Designer.Presentation/DesignerSurfaceGeometry.cs`), three
+  DevFlow actions down to ~3 lines each, three resize tests assert `element` semantics.
+- RPC parameter names unified to the WPF superset: `version`/`requestVersion` → `baseVersion`,
+  `componentName`/`elementName` → `elementId`, `elementNames` → `elementIds`,
+  `parentName` → `parentId`, `controlType`/`itemXaml` → `item` (DTO) — WinForms and WinUI
+  clients and child processes (client + `Program.cs` RPC wrapper + host), including a local
+  `DesignerToolboxItemInfo` in `DesignerHostService.cs`; all four projects build, WinUI child
+  RPC suite green.
+- `OpenLensRenderer` crash: `resolving` is now a `ConcurrentDictionary` (was a plain
+  `HashSet` mutated from the render pass and the async continuation — `AddIfNotPresent`
+  threw `IndexOutOfRangeException` and killed the app mid-test).
+- `OpenDevelopDevFlowActions.cs` was missing `using ICSharpCode.SharpDevelop.Widgets;` and
+  `using ICSharpCode.SharpDevelop.Designer.Remote;` (wpftmp build would not compile).
+- `designer-common.md` Part III matrix and Part II WinForms bug list updated to match.
+- TS/JS addin direction decided (investigation closed): the legacy `TypeScriptBinding`
+  (SharpDevelop 5.x) and its MonoDevelop port (`mrward/typescript-addin`) are the same
+  codebase on two dead JS bridges (Noesis.Javascript x86 / V8.NET) and are not references.
+  OpenDevelop's LSP infrastructure is already in place (`LanguageServices/Lsp/`,
+  `LspServerRegistry.CreateDefault` registers `.ts/.tsx/.js/.jsx` →
+  `typescript-language-server --stdio`; the F# addin shows the addin-side registration
+  pattern). Decision made: use the TypeScript 7 Go language server (preview build,
+  `@typescript/native-preview` or GA `typescript`, `tsc --lsp --stdio`) and swap the launch
+  spec accordingly; 7.1 (Stable 2026-11-10) is API stabilization only, so the LSP client is
+  not exposed to the remaining feature gaps. Recorded as P4 item 13 with acceptance
+  criteria; the two legacy projects are marked for removal from `SharpDevelop.sln`.
+- Open task list (P0-P4) and matching Priority section established in this file.
+- **Solution build was red** after the `DesignerSurfaceGeometry` unification: two files were
+  missing `using ICSharpCode.SharpDevelop.Designer.Presentation;`
+  (`WinUIXamlDesigner.UnoDesignHost/UnoDesignRuntimeHost.cs`,
+  `WinUIXamlDesigner.ProGPUHost/ProGpuRuntimeHost.cs` — the same class of miss as the
+  `OpenDevelopDevFlowActions.cs` one already listed above), the retired ProGPU in-process
+  profile's `SurfaceGeometry()` stub still returned the old `(Rect,Rect,Point)` tuple instead
+  of the new `DesignerSurfaceGeometry` record, and `UnoDesignSurfaceControl.cs` had an
+  ambiguous `Vector` reference (`System.Numerics.Vector` vs `System.Windows.Vector`, both
+  `using`d) once its own `SurfaceGeometry()` needed to construct one. Fixed; full solution
+  builds clean again.
+- **Two more instances of the "root id is `""`, not "no selection"" bug** (the same class
+  already fixed in `WpfSurfaceDesignerControl`/`WpfSurfaceHostService` for hit-testing and
+  selection):
+  - `WpfViewContent.OutlineContent` walked the OTHER open views and returned the SOURCE
+    editor's `IOutlineContentHost` instead of its own - a leftover from the old in-process
+    designer, which had no outline of its own to return. With the Design tab active, the
+    Outline pad showed the XAML text editor's LSP symbol list (one entry, e.g.
+    `TextBlock [PaneTitle]`) instead of the designed element tree that
+    `WpfViewContent.UpdateOutline` was building and nobody ever displayed. Fixed to
+    `=> outline` (matching `FormsDesignerViewContent`/`WinUIXamlDesignerViewContent`, which
+    both already just return their own).
+  - `DocumentOutlineControl.SelectNodeById(string id)` used `string.IsNullOrEmpty(id)` as its
+    "nothing to select" guard, so selecting the WPF root (id `""`) from the surface was
+    silently swallowed and the Outline pad never highlighted it even after the root became
+    selectable. Changed the parameter to `string?` and the guard to `id == null` - a real
+    empty-string id (the WPF root) now works, and every other caller (WinForms/WinUI, which
+    pass component/x:Name strings, never `""`) is unaffected.
+  - Found by adding `od.outline-pad.content` (`OpenDevelopDevFlowActions.cs`), a new DevFlow
+    probe that walks the LIVE `DocumentOutlineControl` the pad is actually showing (not any
+    designer's internal tree) — the gap in Part III's own "Outline probes" row: a
+    designer-side outline-status action can report a perfectly correct tree while the pad
+    displays something else entirely, and no existing probe could have caught that
+    divergence. Verified live: before the `OutlineContent` fix the probe reported
+    `names: ["TextBlock [PaneTitle]"]`; after, it reports the full designed tree and tracks
+    `selected` through a root selection made on the surface.
+  - Full 12-test cross-designer regression (all resize-drag/drag-drop/outline/properties
+    tests across WinForms, WPF, WinUI) green after these fixes.
+- **WPF mouse-driven mutations were silently not marking the document dirty.**
+  `WpfSurfaceDesignerControl`'s four mutation-commit paths (resize/move drag, toolbox drop,
+  hit-test/select, Delete key) were fire-and-forget `async void` handlers that called their
+  RPC wrapper with `.ConfigureAwait(true)`, trusting the WPF dispatcher's
+  `SynchronizationContext` to resume the continuation on the UI thread. Proven unreliable
+  live under LibreWPF on macOS: a real drag-resize genuinely committed and rendered (confirmed
+  via `od.wpf-designer.surface-geometry` showing the correct new size), but the continuation
+  resumed on a thread-pool thread instead (`Dispatcher.Thread.ManagedThreadId` differed from
+  `Environment.CurrentManagedThreadId` at that point), so touching WPF objects afterward threw
+  a cross-thread `InvalidOperationException` that the `async void` handler silently swallowed —
+  `DocumentChanged` never reached `WpfViewContent`, so `MakeDirty()` was never called even
+  though the edit had genuinely applied. A user could resize/move/drop/delete via the mouse,
+  close the file without touching anything else, and silently lose the change. Fixed by
+  converting all four commit methods (`CommitBounds`/`CommitDrop`/`HitTestAndSelect`/
+  `CommitDelete`) to block synchronously via `.GetAwaiter().GetResult()` instead — every
+  caller is already on the dispatcher thread (they're WPF routed-event handlers), so no
+  `SynchronizationContext` capture is needed at all. Matches the already-proven-reliable
+  pattern `WpfViewContent.LoadInternal`/`WpfDesignDevFlowActions` already use. Verified live:
+  `od.file.is-dirty` now correctly returns `true` after a mouse-driven resize, and the saved
+  XAML shows the exact expected `Width`/`Height`.
+- **RESOLVED (2026-08-18) - WinUI/Uno resize-drag mutated the wrong element, plus two related
+  coordinate/selection bugs, all traced to a single family of root causes and fixed.** Dragging
+  a correctly-selected element's own resize handle (e.g. `PrimaryButton`) used to instead mutate
+  its PARENT (`RootStack`, a `StackPanel`), adding an unexpected `Margin` attribute while leaving
+  the intended child untouched. Reproduced with both `od.winui-designer.select` and a genuine
+  mouse drag, ruling out a test-harness-only artifact. Root-caused via live diagnostics
+  (temporary `Console.Error.WriteLine` calls in `UnoDesignSurfaceControl.BeginDrag`,
+  `UnoDesignRuntimeHost.OnSurfaceElementDragStarted`/`OnSurfaceElementDragCommitted`, and
+  `WinUIXamlDesignerViewContent.OnElementDragCommittedOnSurface` - same technique that found the
+  WPF dirty-tracking bug above): the synthetic (and real) click on the reported resize-handle
+  screen position never actually registered as landing on the handle at all
+  (`dragHandle` came back empty from `HandleAt`), so `BeginDrag` silently fell back to treating
+  the gesture as a plain element-drag, resolving whatever was under the mis-shifted point -
+  `RootStack`, not `PrimaryButton`.
+
+  **Root cause**: `UnoDesignSurfaceControl.ToDesignPoint(Point point)` - the single entry point
+  every mouse handler (`OnMouseLeftButtonDown`, `OnMouseMove`, grid-guide dragging, etc.) uses to
+  convert a WPF mouse event position into a design-space point - took `point` from
+  `e.GetPosition(this)` (relative to the WHOLE surface control, toolbar row included) but only
+  adjusted for the ScrollViewer's *scroll* offset, silently assuming `point` was already relative
+  to the ScrollViewer (`scroller`) itself. `this`'s own origin sits above `scroller`'s by the
+  shared toolbar's height (a fixed, non-scroll offset the formula never accounted for at all), so
+  every mouse gesture on the WinUI/Uno canvas - not just resize - resolved to a design-space point
+  shifted by that height. Confirmed by comparing `this`/`scroller`/`framePresenter` screen origins
+  via a new diagnostic probe (`od.winui-designer.diagnose-screen-anchors`): the gap matched
+  exactly. **Fixed** by translating the point into `scroller`'s coordinate space with
+  `TranslatePoint` before applying scroll offset and running the viewport math - correct
+  regardless of the toolbar's actual height, not a hardcoded constant. Verified live and via
+  `WinUIXamlDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement`: `PrimaryButton` itself
+  now gets the resized `Width`/`Height`, `RootStack` is untouched, and the exact-delta assertion
+  passes (grew by the exact dragged distance).
+  - **Fixed** - `WinUIXamlDesignerViewContent.RebuildOutline` cleared `SelectedElementName` on
+    every edit. `DocumentOutlineControl.SetRoot` clears `Items` then re-selects the previous id
+    via `SelectNodeById` - but under LibreWPF, `TreeView.SelectedItemChanged` for a freshly-added
+    `TreeViewItem` doesn't always fire before `SetRoot` returns (its container isn't generated
+    yet), while `Items.Clear()`'s own "nothing selected" `SelectedItemChanged` fires
+    synchronously. That left a window where `OnOutlineSelectionChanged` had already nulled
+    `SelectedElementName` from the clear, but the matching re-selection event was still queued -
+    so `od.winui-designer.properties-pad.edit` reported `selectedName: null` immediately after a
+    successful edit, even though the edit itself correctly targeted the still-selected element.
+    Fixed by restoring `SelectedElementName` directly in `RebuildOutline` rather than trusting
+    that event ordering. Verified live and via `WinUIDesigner_PropertiesPadEdit_UpdatesSourceAndRender`
+    (green).
+  - **Fixed** - `WinUIXamlHost.QueryElementScreenBounds` (used by every DevFlow action/test that
+    drives a synthetic click/drag by element name, including the click-selection test below)
+    computed the wrong screen point, via two compounding mistakes: (1) it ran `QueryElementBounds`'
+    result through `PointToScreen` on `this` (`WinUIXamlHost`, the outer `ContentControl`) rather
+    than the actual surface control or its scroll viewport - `this` sits ~26px above the surface
+    control's own origin, which itself sits ~32px above the innermost rendered-frame element's
+    origin (three different, non-interchangeable screen anchors, measured via
+    `od.winui-designer.diagnose-screen-anchors`); (2) `QueryElementBounds`/`nodesByName` report
+    element positions in DESIGN-space (verified: the exact same source the resize-drag's own
+    `dragStartRect` uses, which live diagnostics showed printing design-local coordinates like
+    `(0, 20, 89, 33)` for `PrimaryButton`), not surface-local pixels as an earlier, incorrect
+    comment claimed - so the conversion needs the full design-to-surface viewport transform
+    (`UnoDesignSurfaceControl.DesignToSurfacePoint`), not a bare `PointToScreen`. Fixed by routing
+    through `IWinUIXamlDesignView.DesignToScreenPoint` → `DesignToSurfacePoint` →
+    `scroller.PointToScreen` - the same pair `SurfaceGeometry()` itself already used correctly.
+    Verified live: synthetic clicks driven from this probe's numbers went from never reaching the
+    design surface's mouse handlers at all (`lastPick` stuck at `"no click yet"`) to reliably
+    landing on and selecting the correct element on the first attempt.
+  - **Now passing** - `WinUIDesigner_ClickOnDesignSurface_SelectsSourceElementInPropertiesPad`,
+    which was still failing under `dotnet test` even after the first (incomplete) coordinate fix
+    above, now passes reliably through the real test harness once the `QueryElementBounds`
+    design-space fix (not just the anchor fix) was in place - confirming the click failure and
+    the resize wrong-element bug shared the same underlying coordinate-conversion family, not two
+    unrelated issues.
+
+  Full regression check after all of the above: `WinUIXamlDesigner_ResizeDrag_...`,
+  `WinUIDesigner_ClickOnDesignSurface_...`, `WinUIDesigner_PropertiesPadEdit_...`, and
+  `WinUIDesigner_DragToolboxItemOntoDesignSurface_...` all green individually; full suite run
+  pending as of this writing.
+
+### P4 — TypeScript/JavaScript addin (rebuilt, not migrated)
+
+13. **TS/JS support via the existing LSP infrastructure.** The legacy `TypeScriptBinding`
+    (SharpDevelop 5.x, `src/AddIns/BackendBindings/TypeScript/`) and `ICSharpCode.Scripting`
+    are dead: they depend on `Noesis.Javascript` (x86 V8 bridge) whose DLLs are gone from
+    `Libraries/`, package a 2014-era `typescriptServices.js`, and are v4.5/x86/old-style
+    csproj — they must be dropped from `SharpDevelop.sln` rather than migrated. The MonoDevelop
+    port (`mrward/typescript-addin`) is the same code on V8.NET; neither is a reference.
+    **No new LSP infrastructure is needed** — OpenDevelop already has a full LSP client stack
+    (`ICSharpCode.SharpDevelop.LanguageServices.Lsp` in
+    `src/Main/Base/Project/Src/LanguageServices/`: `LanguageServiceRegistry`,
+    `LspServiceManager` per-workspace-root service caching, `LspLanguageService`,
+    `LspCodeCompletionBinding`). `LspServerRegistry.CreateDefault()` already registers
+    `.ts/.tsx/.js/.jsx` → `typescript-language-server --stdio`
+    (src/Main/Base/Project/Src/LanguageServices/Lsp/LspServerRegistry.cs:107-111), and the
+    F# addin demonstrates the addin-side pattern — `RegisterFSharpLanguageServiceCommand`
+    is a 5-line `registry.RegisterExtension(".fs", LspServiceManager.GetService)`.
+    **Decision (2026-08-18): use the TypeScript 7 Go language server, preview build.** TS 7.0
+    is GA (2026-07-08; `typescript` npm package, `tsc --lsp --stdio` is the LSP entry point)
+    and the `@typescript/native-preview` npm package ships current nightlies with the same
+    `--lsp --stdio` surface; the native binary needs no Node runtime. The language service is
+    "nearly all features implemented" and the 7.1 iteration plan (Beta 2026-09-09, RC
+    2026-10-20, Stable 2026-11-10) is API stabilization — not LSP feature work — so an LSP
+    client is not exposed to the gap. Swap the `.ts/.tsx/.js/.jsx` launch spec in
+    `LspServerRegistry.CreateDefault()` (LspServerRegistry.cs:107-111) from
+    `typescript-language-server --stdio` to the TS 7 binary: command = the npm-installed
+    `tsgo`/`tsc` binary path (`@typescript/native-preview` or `typescript`), arguments =
+    `--lsp --stdio`, languageId stays `typescript`. Same for `.js`/`.jsx` (languageId
+    `javascript`). Validate the documented preview gaps (string-literal completion, signature
+    help in edge cases) against the sample workspace before treating them as regressions; pin
+    the npm version in a lockfile so a nightly cannot move underneath the IDE. Keep the F#
+    pattern as the addin shell.
+    **Acceptance:** `.ts`/`.tsx`/`.js`/`.jsx` open in AvalonEdit with highlighting,
+    completion, go-to-definition, find-references, rename, and diagnostics through the LSP
+    client; legacy `TypeScriptBinding`/`Scripting` removed from the solution.
+
 ## Priority
 
-1. Contract drift fixes (Part IV "Contract drift") — correctness of probes and tests.
-2. `DesignViewport.BaseOrigin` + `SurfaceGeometry` record — removes the largest verbatim copies.
-3. Zoom state machine + gridlines overlay into the shell (fixes the WinForms zoom bugs as a
-   side effect).
-4. `FrameCodec`, client boilerplate, child DTO sharing.
-5. `ResizeDragTestBase` + DevFlow plumbing.
+1. P0-1 UI-tree bounds offset (~69 px) — unblocks `DoubleClickEventRow`; then the full
+   three-designer integration regression (P1-4).
+2. ~~P0-2 event-binding navigation decision~~ — done, keep the jump (see above).
+3. P1-3 `design/hit-test` version parity.
+4. P2 `DesignViewport.BaseOrigin`, zoom state machine + gridlines in the shell (fixes the
+   WinForms zoom bugs as a side effect), `FrameCodec`/client boilerplate/child DTO policy.
+5. P3 `ResizeDragTestBase` + DevFlow plumbing.
+6. P4 TypeScript/JavaScript addin rebuilt on the TypeScript 7 Go LSP (drop the dead
+   `TypeScriptBinding`/`Scripting` from the solution first).
 
 ---
 

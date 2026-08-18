@@ -22,6 +22,7 @@
 // UpdateTests, FSharpBindingTests, VBBindingTests, UnitTestingTests and RoslynRefactoringTests.
 
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using System.Text.Json;
 using System.Xml.Linq;
@@ -1296,7 +1297,12 @@ public sealed class AddInTests : IAsyncDisposable
         var selected = await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             // Retry the synthetic click until the surface receives it - LibreWPF's pointer
-            // delivery occasionally drops the first attempt.
+            // delivery occasionally drops the first attempt. Re-activate on EVERY attempt, not
+            // just once before the loop: measured live, a single up-front od.activate is not
+            // enough - the window can lose frontmost status between attempts (a later attempt
+            // succeeds once od.activate runs again immediately before it), matching the retry
+            // pattern the resize-drag tests in this file already use for the same reason.
+            await _app.InvokeAsync("od.activate");
             await _app.PressPointerAsync(x, y);
             await _app.ReleasePointerAsync(x, y);
             status = await _app.InvokeAsync("od.winui-designer.status");
@@ -1849,8 +1855,20 @@ public sealed class AddInTests : IAsyncDisposable
             Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
 
             var savedXaml = await File.ReadAllTextAsync(xamlPath);
-            Assert.Contains("<TextBox", savedXaml, StringComparison.Ordinal);
-            Assert.Contains("Text=\"Dropped via DevFlow\"", savedXaml, StringComparison.Ordinal);
+            var savedDoc = XDocument.Parse(savedXaml);
+            var stackElement = savedDoc.Descendants().Single(e => (string)e.Attribute("Name") == "PaneStack"
+                || (string)e.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml")) == "PaneStack");
+            // Exactly one dropped TextBox, landed somewhere inside PaneStack's own subtree (the
+            // drop point was over PaneStack's empty space, but WPF hit-testing can resolve to the
+            // innermost container under that point - e.g. PaneList, PaneStack's last child - so a
+            // descendant check, not a direct-child check, is what's actually guaranteed here) -
+            // not just present somewhere in the whole document, which a loose substring check
+            // would have missed if the control landed in a wholly unrelated part of the tree.
+            var droppedTextBoxes = stackElement.Descendants()
+                .Where(e => e.Name.LocalName == "TextBox" && (string)e.Attribute("Text") == "Dropped via DevFlow")
+                .ToList();
+            Assert.True(droppedTextBoxes.Count == 1,
+                $"Expected exactly one dropped TextBox inside PaneStack's subtree, found {droppedTextBoxes.Count}.\n{savedXaml}");
         }
         finally
         {
@@ -2411,6 +2429,33 @@ public sealed class AddInTests : IAsyncDisposable
             }, TimeSpan.FromSeconds(8), initialDelayMs: 100, maxDelayMs: 400);
             Assert.True(grew, "The resize drag did not grow the rendered frame.");
             AssertConsistent(after, "after");
+
+            // Concern 2 - exact size delta, not just "grew by more than 20px".
+            var beforeFrame = Bounds(before, "frame");
+            var afterFrame = Bounds(after, "frame");
+            Assert.True(Math.Abs(afterFrame.w - beforeFrame.w - dx) < 3,
+                $"Form1's width should have grown by exactly {dx}px, but went from {beforeFrame.w} to {afterFrame.w}.");
+            Assert.True(Math.Abs(afterFrame.h - beforeFrame.h - dy) < 3,
+                $"Form1's height should have grown by exactly {dy}px, but went from {beforeFrame.h} to {afterFrame.h}.");
+
+            // Concern 1 - correct element identity: the persisted Form1.Designer.cs must show
+            // Form1 ITSELF (this.Size = ...) carrying the new size, not some other control.
+            var saved = await _app.InvokeAsync("od.file.save", formCodePath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            var savedDesigner = await File.ReadAllTextAsync(designerPath);
+            var sizeMatch = System.Text.RegularExpressions.Regex.Match(savedDesigner,
+                @"(?:this\.)?ClientSize\s*=\s*new System\.Drawing\.Size\((\d+),\s*(\d+)\)");
+            Assert.True(sizeMatch.Success, "Expected ClientSize = new System.Drawing.Size(w, h) in Form1.Designer.cs.\n" + savedDesigner);
+            var persistedWidth = int.Parse(sizeMatch.Groups[1].Value, CultureInfo.InvariantCulture);
+            var persistedHeight = int.Parse(sizeMatch.Groups[2].Value, CultureInfo.InvariantCulture);
+            // A generous tolerance here: ClientSize excludes window chrome that the rendered
+            // frame bitmap may include, so this is an identity/gross-mismatch check (catching a
+            // resize that landed on the wrong control entirely), not a pixel-exact one - the
+            // exact-delta check above already covers the precise rendered-size assertion.
+            Assert.True(Math.Abs(persistedWidth - afterFrame.w) < 40,
+                $"Form1's persisted ClientSize width ({persistedWidth}) should roughly match the rendered post-drag width ({afterFrame.w}).");
+            Assert.True(Math.Abs(persistedHeight - afterFrame.h) < 40,
+                $"Form1's persisted ClientSize height ({persistedHeight}) should roughly match the rendered post-drag height ({afterFrame.h}).");
         } finally {
             await File.WriteAllTextAsync(formCodePath, originalForm);
             await File.WriteAllTextAsync(designerPath, originalDesigner);
@@ -2464,28 +2509,84 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.True(before.GetProperty("available").GetBoolean(), before.ToString());
         AssertHandleAtSelectionBottomRight(before, "before");
 
-        var hx = before.GetProperty("handle").GetProperty("x").GetDouble();
-        var hy = before.GetProperty("handle").GetProperty("y").GetDouble();
         const double dx = 40, dy = 30;
-        await _app.PressPointerAsync(hx, hy);
-        for (int step = 1; step <= 6; step++) {
-            var t = step / 6.0;
-            var moved = await _app.DragMovePointerAsync(hx + dx * t, hy + dy * t);
-            Assert.True(moved.GetProperty("ok").GetBoolean(), moved.ToString());
-            await Task.Delay(80);
-        }
-        var released = await _app.ReleasePointerAsync(hx + dx, hy + dy);
-        Assert.True(released.GetProperty("ok").GetBoolean(), released.ToString());
-
         JsonElement after = default;
-        var grew = await OpenDevelopAppFixture.PollUntilAsync(async () => {
-            after = await _app.InvokeAsync("od.winui-designer.surface-geometry");
-            return after.GetProperty("available").GetBoolean()
-                && after.GetProperty("selection").GetProperty("width").GetDouble() > before.GetProperty("selection").GetProperty("width").GetDouble() + 10
-                && after.GetProperty("selection").GetProperty("height").GetDouble() > before.GetProperty("selection").GetProperty("height").GetDouble() + 10;
-        }, TimeSpan.FromSeconds(8), initialDelayMs: 100, maxDelayMs: 400);
-        Assert.True(grew, "The resize drag did not grow the selected element. before=" + before);
+        JsonElement effectiveBefore = before;
+        var grew = false;
+        for (int attempt = 1; attempt <= 4 && !grew; attempt++) {
+            await _app.InvokeAsync("od.activate");
+            var current = await _app.InvokeAsync("od.winui-designer.surface-geometry");
+            Assert.True(current.GetProperty("available").GetBoolean(), current.ToString());
+            effectiveBefore = current;
+            var hx = current.GetProperty("handle").GetProperty("x").GetDouble();
+            var hy = current.GetProperty("handle").GetProperty("y").GetDouble();
+
+            var pressed = await _app.PressPointerAsync(hx, hy);
+            Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
+            for (int step = 1; step <= 6; step++) {
+                var t = step / 6.0;
+                var moved = await _app.DragMovePointerAsync(hx + dx * t, hy + dy * t);
+                Assert.True(moved.GetProperty("ok").GetBoolean(), moved.ToString());
+                await Task.Delay(80);
+            }
+            var released = await _app.ReleasePointerAsync(hx + dx, hy + dy);
+            Assert.True(released.GetProperty("ok").GetBoolean(), released.ToString());
+
+            grew = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                after = await _app.InvokeAsync("od.winui-designer.surface-geometry");
+                return after.GetProperty("available").GetBoolean()
+                    && after.GetProperty("selection").GetProperty("width").GetDouble() > current.GetProperty("selection").GetProperty("width").GetDouble() + 10
+                    && after.GetProperty("selection").GetProperty("height").GetDouble() > current.GetProperty("selection").GetProperty("height").GetDouble() + 10;
+            }, TimeSpan.FromSeconds(8), initialDelayMs: 100, maxDelayMs: 400);
+        }
+        Assert.True(grew, "The resize drag did not grow the selected element, even after retries. before=" + before);
         AssertHandleAtSelectionBottomRight(after, "after");
+
+        // Concern 2 - exact size delta, not just "grew by more than 10px".
+        var beforeWidth = effectiveBefore.GetProperty("selection").GetProperty("width").GetDouble();
+        var beforeHeight = effectiveBefore.GetProperty("selection").GetProperty("height").GetDouble();
+        var afterWidth = after.GetProperty("selection").GetProperty("width").GetDouble();
+        var afterHeight = after.GetProperty("selection").GetProperty("height").GetDouble();
+        Assert.True(Math.Abs(afterWidth - beforeWidth - dx) < 3,
+            $"PrimaryButton's width should have grown by exactly {dx}px, but went from {beforeWidth} to {afterWidth}.");
+        Assert.True(Math.Abs(afterHeight - beforeHeight - dy) < 3,
+            $"PrimaryButton's height should have grown by exactly {dy}px, but went from {beforeHeight} to {afterHeight}.");
+
+        // Concern 1 - correct element identity: PrimaryButton itself must carry the size change
+        // in the persisted XAML, and no OTHER element (in particular, not its parent) should have
+        // been mutated by this drag.
+        //
+        // Was a KNOWN BUG (found and fixed 2026-08-18): dragging PrimaryButton's own resize
+        // handle used to instead add/modify a Margin on RootStack (its parent StackPanel) while
+        // leaving PrimaryButton untouched - root-caused to UnoDesignSurfaceControl.ToDesignPoint
+        // treating a this-relative mouse point as scroller-relative (missing the fixed offset
+        // between the control's own origin and its scroller's, sitting below the shared
+        // toolbar), which meant a synthetic OR real click on a resize handle didn't register as
+        // landing on the handle at all, silently falling back to a plain element-drag at the
+        // wrong, mis-shifted point. See doc/technotes/designer-common.md for the investigation.
+        //
+        var saved = await _app.InvokeAsync("od.file.save", mainPage);
+        Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+        var savedXaml = await File.ReadAllTextAsync(mainPage);
+        var savedDoc = XDocument.Parse(savedXaml);
+        var rootStack = savedDoc.Descendants().Single(e => (string)e.Attribute("Name") == "RootStack"
+            || (string)e.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml")) == "RootStack");
+        Assert.True(rootStack.Attribute("Margin") == null,
+            "RootStack (PrimaryButton's parent) should not have been mutated by a drag on PrimaryButton's own resize handle, " +
+            "but it now carries Margin=\"" + (string)rootStack.Attribute("Margin") + "\" - this was the wrong-element-resize bug, " +
+            "fixed 2026-08-18 (UnoDesignSurfaceControl.ToDesignPoint), so a failure here is a fresh regression.\n" + savedXaml);
+        var primaryButton = savedDoc.Descendants().Single(e => (string)e.Attribute("Name") == "PrimaryButton"
+            || (string)e.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml")) == "PrimaryButton");
+        var persistedWidth = double.Parse((string)primaryButton.Attribute("Width"), CultureInfo.InvariantCulture);
+        var persistedHeight = double.Parse((string)primaryButton.Attribute("Height"), CultureInfo.InvariantCulture);
+        // A generous tolerance here, same reasoning as the WinForms resize test's persisted-size
+        // check: this is an identity/gross-mismatch guard (catching a resize landing on the
+        // wrong element entirely), not a pixel-exact one - `afterWidth`/`afterHeight` above
+        // already went through the tight, exact-delta assertion against the rendered values.
+        Assert.True(Math.Abs(persistedWidth - afterWidth) < 10,
+            $"PrimaryButton's persisted Width ({persistedWidth}) should roughly match the rendered post-drag width ({afterWidth}).");
+        Assert.True(Math.Abs(persistedHeight - afterHeight) < 10,
+            $"PrimaryButton's persisted Height ({persistedHeight}) should roughly match the rendered post-drag height ({afterHeight}).");
     }
 
     [Fact]
@@ -2559,11 +2660,17 @@ public sealed class AddInTests : IAsyncDisposable
             // grown until its handle left the surface), so a failing attempt here means the input
             // didn't reach the window, which is exactly what re-activating can recover from.
             JsonElement after = default;
+            // The base geometry a given attempt actually dragged from - NOT the original
+            // "before", since a failed earlier attempt could have left a partial resize in
+            // place, which would make an exact-delta check against the original "before"
+            // wrong on a later, successful attempt.
+            JsonElement effectiveBefore = before;
             var grew = false;
             for (int attempt = 1; attempt <= 4 && !grew; attempt++) {
                 await _app.InvokeAsync("od.activate");
                 var current = await _app.InvokeAsync("od.wpf-designer.surface-geometry");
                 Assert.True(current.GetProperty("available").GetBoolean(), current.ToString());
+                effectiveBefore = current;
                 var hx = current.GetProperty("handle").GetProperty("x").GetDouble();
                 var hy = current.GetProperty("handle").GetProperty("y").GetDouble();
 
@@ -2581,12 +2688,39 @@ public sealed class AddInTests : IAsyncDisposable
                 grew = await OpenDevelopAppFixture.PollUntilAsync(async () => {
                     after = await _app.InvokeAsync("od.wpf-designer.surface-geometry");
                     return after.GetProperty("available").GetBoolean()
-                        && after.GetProperty("element").GetProperty("width").GetDouble() > before.GetProperty("element").GetProperty("width").GetDouble() + 10
-                        && after.GetProperty("element").GetProperty("height").GetDouble() > before.GetProperty("element").GetProperty("height").GetDouble() + 10;
+                        && after.GetProperty("element").GetProperty("width").GetDouble() > current.GetProperty("element").GetProperty("width").GetDouble() + 10
+                        && after.GetProperty("element").GetProperty("height").GetDouble() > current.GetProperty("element").GetProperty("height").GetDouble() + 10;
                 }, TimeSpan.FromSeconds(8), initialDelayMs: 100, maxDelayMs: 400);
             }
             Assert.True(grew, "The resize drag did not grow the selected element, even after retries. before=" + before);
             AssertConsistent(after, "after");
+
+            // Concern 2 - exact size delta: the element must have grown by exactly the dragged
+            // distance (within a small rounding/DPI tolerance), not just "grew by more than 10px".
+            var beforeWidth = effectiveBefore.GetProperty("element").GetProperty("width").GetDouble();
+            var beforeHeight = effectiveBefore.GetProperty("element").GetProperty("height").GetDouble();
+            var afterWidth = after.GetProperty("element").GetProperty("width").GetDouble();
+            var afterHeight = after.GetProperty("element").GetProperty("height").GetDouble();
+            Assert.True(Math.Abs(afterWidth - beforeWidth - dx) < 2,
+                $"Width should have grown by exactly {dx}px, but went from {beforeWidth} to {afterWidth}.");
+            Assert.True(Math.Abs(afterHeight - beforeHeight - dy) < 2,
+                $"Height should have grown by exactly {dy}px, but went from {beforeHeight} to {afterHeight}.");
+
+            // Concern 1 - correct element identity: the persisted XAML must show PaneStack itself
+            // (the element that was selected and dragged) carrying the new Width/Height, not some
+            // other element in the document.
+            var saved = await _app.InvokeAsync("od.file.save", xamlPath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            var savedXaml = await File.ReadAllTextAsync(xamlPath);
+            var savedDoc = XDocument.Parse(savedXaml);
+            var paneStack = savedDoc.Descendants().Single(e => (string)e.Attribute("Name") == "PaneStack"
+                || (string)e.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml")) == "PaneStack");
+            var persistedWidth = double.Parse((string)paneStack.Attribute("Width"), CultureInfo.InvariantCulture);
+            var persistedHeight = double.Parse((string)paneStack.Attribute("Height"), CultureInfo.InvariantCulture);
+            Assert.True(Math.Abs(persistedWidth - afterWidth) < 1,
+                $"PaneStack's persisted Width ({persistedWidth}) should match the rendered post-drag width ({afterWidth}).");
+            Assert.True(Math.Abs(persistedHeight - afterHeight) < 1,
+                $"PaneStack's persisted Height ({persistedHeight}) should match the rendered post-drag height ({afterHeight}).");
         } finally {
             await File.WriteAllTextAsync(xamlPath, original);
         }

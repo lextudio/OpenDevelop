@@ -57,10 +57,15 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		}
 
 		/// <summary>Programmatically selects the node with the given id (no-op when absent).
-		/// Goes through the same <see cref="SelectionCommitted"/> path as a user click.</summary>
-		public void SelectNodeById(string id)
+		/// Goes through the same <see cref="SelectionCommitted"/> path as a user click. NULL
+		/// means "no selection" - the empty string is NOT equivalent: a document ROOT's id is
+		/// itself "" (paths are built root-first), so treating "" the same as null here made the
+		/// root unselectable from the Outline pad (a real bug this fixes) even after
+		/// WpfSurfaceDesignerControl/WpfSurfaceHostService's own null-vs-empty root fix, since
+		/// this control's own guard never let the id through in the first place.</summary>
+		public void SelectNodeById(string? id)
 		{
-			if (string.IsNullOrEmpty(id) || Items.Count == 0)
+			if (id == null || Items.Count == 0)
 				return;
 			var match = FindNode((TreeViewItem)Items[0], id);
 			if (match != null) {

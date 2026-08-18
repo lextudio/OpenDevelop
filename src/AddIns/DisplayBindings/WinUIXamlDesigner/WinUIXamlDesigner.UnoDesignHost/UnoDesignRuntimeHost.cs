@@ -12,6 +12,7 @@ using System.Windows.Media;
 using System.Xml.Linq;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
+using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.LanguageServices.Xaml;
 
@@ -1505,6 +1506,12 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		return (point.X, point.Y);
 	}
 
+	public (double X, double Y) DesignToScreenPoint(double x, double y)
+	{
+		var point = dispatcher.Invoke(() => surface.SurfacePointToScreen(x, y));
+		return (point.X, point.Y);
+	}
+
 	public (double Width, double Height)? GetDesignSize()
 	{
 		if (configuredDesignWidth is null || configuredDesignHeight is null)
@@ -1557,6 +1564,8 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 	public string RenderProbeAndProfile() => "not applicable (out-of-process Uno host)";
 	public string DumpDrawCalls() => "not applicable (out-of-process Uno host)";
 	public string WinUICommandProbe() => "not applicable (out-of-process Uno host)";
+
+	public string DiagnoseScreenAnchors() => dispatcher.Invoke(() => surface.DiagnoseScreenAnchors());
 	public string ImagePathProbe() => "not applicable (out-of-process Uno host)";
 	public void SetShowDiagnosticOverlay(bool value) { }
 	public void SetRecreateBitmapEachFrame(bool value) { }

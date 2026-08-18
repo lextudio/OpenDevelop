@@ -305,6 +305,7 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 	public string DumpDrawCalls() => runtime?.DumpDrawCalls() ?? "no runtime";
 
 	public string WinUICommandProbe() => runtime?.WinUICommandProbe() ?? "no runtime";
+	public string DiagnoseScreenAnchors() => runtime?.DiagnoseScreenAnchors() ?? "no runtime";
 
 	public string ImagePathProbe() => runtime?.ImagePathProbe() ?? "no runtime";
 
@@ -320,16 +321,15 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 		var bounds = QueryElementBounds(name);
 		if (bounds == null || !IsVisible)
 			return null;
-		var designPoint = new Point(bounds.Value.X, bounds.Value.Y);
 		double scale = 1.0;
-		var surfacePoint = designPoint;
+		var surfacePoint = new Point(bounds.Value.X, bounds.Value.Y);
 		if (runtime is IWinUIXamlDesignView view)
 		{
-			var translated = view.DesignToSurfacePoint(designPoint.X, designPoint.Y);
-			surfacePoint = new Point(translated.X, translated.Y);
-			scale = view.GetViewportScale();
+			var translated = view.DesignToScreenPoint(bounds.Value.X, bounds.Value.Y);
+			return new Rect(translated.X, translated.Y,
+				bounds.Value.Width * view.GetViewportScale(), bounds.Value.Height * view.GetViewportScale());
 		}
-		var origin = PointToScreen(surfacePoint);
+		var origin = Content is UIElement surface ? surface.PointToScreen(surfacePoint) : PointToScreen(surfacePoint);
 		return new Rect(origin.X, origin.Y, bounds.Value.Width * scale, bounds.Value.Height * scale);
 	}
 
@@ -539,6 +539,10 @@ public interface IWinUIXamlRuntimeHost : IDisposable
 	/// <summary>Temporary diagnostic: replay LibreWPF's image adapter path.</summary>
 	string ImagePathProbe();
 
+	/// <summary>Temporary diagnostic: screen origins of every candidate PointToScreen anchor, to
+	/// measure which lines up with the verified-correct surface-geometry frame origin.</summary>
+	string DiagnoseScreenAnchors();
+
 	/// <summary>Temporary diagnostic: toggle the red OnRender overlay.</summary>
 	void SetShowDiagnosticOverlay(bool value);
 
@@ -662,6 +666,12 @@ public interface IWinUIXamlDesignView
 	void FitView();
 	/// <summary>Design-space point to surface-local DIPs, honoring the viewport.</summary>
 	(double X, double Y) DesignToSurfacePoint(double x, double y);
+	/// <summary>A DESIGN-space point (the same space <c>QueryElementBounds</c>/<c>nodesByName</c>
+	/// report element positions in) to real screen coordinates, for driving synthetic pointer
+	/// input at a named element - honors the current viewport/zoom/scroll via
+	/// <see cref="DesignToSurfacePoint"/>, then <c>PointToScreen</c> on the scroll viewport (NOT
+	/// the surface control itself, which sits above it by the shared toolbar's height).</summary>
+	(double X, double Y) DesignToScreenPoint(double x, double y);
 	(double Width, double Height)? GetDesignSize();
 	void SetDesignSize(double width, double height);
 	void ResetDesignSize();

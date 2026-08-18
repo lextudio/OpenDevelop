@@ -123,6 +123,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	public string DumpDrawCalls() => previewHost.DumpDrawCalls();
 
 	public string WinUICommandProbe() => previewHost.WinUICommandProbe();
+	public string DiagnoseScreenAnchors() => previewHost.DiagnoseScreenAnchors();
 
 	public string ImagePathProbe() => previewHost.ImagePathProbe();
 
@@ -1233,8 +1234,24 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	/// </summary>
 	void RebuildOutline()
 	{
+		var previouslySelected = SelectedElementName;
 		var sourceRoot = editor.Document?.Root;
 		outline.SetRoot(previewHost.ElementTree ?? (sourceRoot == null ? null : XmlOutlineNode(sourceRoot)));
+		// DocumentOutlineControl.SetRoot clears Items then re-selects the previous id via
+		// SelectNodeById - but under LibreWPF, TreeView.SelectedItemChanged for a freshly-added
+		// TreeViewItem doesn't always fire before this call returns (its container isn't
+		// generated yet), while Items.Clear()'s OWN "nothing selected" SelectedItemChanged fires
+		// synchronously. That left a window where OnOutlineSelectionChanged had already nulled
+		// SelectedElementName from the clear, but the matching re-selection event was still
+		// queued - observed live: editing a property through the Properties pad (which calls
+		// this via ApplyDocumentChange) reported selectedName: null immediately afterward even
+		// though the edit itself targeted the correct, still-selected element. Restore the field
+		// directly rather than trusting that event ordering.
+		if (previouslySelected != null && SelectedElementName != previouslySelected && editor.FindElement(previouslySelected) != null)
+		{
+			SelectedElementName = previouslySelected;
+			SelectOutlineNode(previouslySelected);
+		}
 	}
 
 	/// <summary>Projects a source XAML element onto the protocol outline node model. The id is

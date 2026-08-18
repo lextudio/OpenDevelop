@@ -200,19 +200,33 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 
 		/// <summary>Renders <paramref name="newState"/>'s frame and re-places the selection
 		/// adorner. Deliberately a separate step the caller invokes explicitly, rather than a
-		/// continuation this class's own async RPC wrappers run after their own await: those
-		/// wrappers are used two ways - fire-and-forget from interactive UI events (mouse
-		/// drag-commit, toolbox drop, Delete key), where continuing on the captured
-		/// (<c>ConfigureAwait(true)</c>) dispatcher context is correct and safe, and blocking
-		/// <c>.GetAwaiter().GetResult()</c> calls from <c>WpfViewContent.LoadInternal</c> and
-		/// <c>WpfDesignDevFlowActions</c> that already run ON the dispatcher thread. Calling this
-		/// via a captured-context continuation from that second group deadlocks outright - the
-		/// blocked thread IS the dispatcher, so it can never pump the posted continuation that
-		/// would call this - which is exactly the hang this method's removal from those RPC
-		/// wrappers was fixing (doc/technotes/wpf-designer.md's cutover-completion entry). Every
-		/// blocking caller now calls this itself once its own <c>GetResult()</c> returns (i.e.
-		/// already back on the correct, unblocked dispatcher thread); every fire-and-forget caller
-		/// calls it from its own <c>ConfigureAwait(true)</c> continuation.</summary>
+		/// continuation this class's own async RPC wrappers run after their own await.
+		///
+		/// EVERY caller of this method blocks via <c>.GetAwaiter().GetResult()</c> and calls this
+		/// directly afterward, on the same thread - including the mouse-gesture/toolbox-drop/
+		/// Delete-key handlers (<c>CommitBounds</c>/<c>CommitDrop</c>/<c>CommitDelete</c>/
+		/// <c>HitTestAndSelect</c>), which are always already on the dispatcher thread by
+		/// construction (they run inside WPF routed-event handlers). This used to be two
+		/// different patterns - those four also existed as fire-and-forget async methods that
+		/// awaited with <c>ConfigureAwait(true)</c>, trusting the WPF dispatcher's
+		/// SynchronizationContext to resume their continuation back on the same thread - but that
+		/// was proven unreliable live: a real drag-resize genuinely committed and rendered
+		/// (confirmed via <c>od.wpf-designer.surface-geometry</c> showing the correct new size),
+		/// yet the continuation after the await resumed on a thread-pool thread instead of the
+		/// dispatcher thread (verified via <c>Dispatcher.Thread.ManagedThreadId</c> differing from
+		/// <c>Environment.CurrentManagedThreadId</c> at that point), so touching WPF objects
+		/// afterward threw a cross-thread <c>InvalidOperationException</c> that the fire-and-forget
+		/// wrapper silently suppressed - <see cref="DocumentChanged"/> never reached
+		/// <c>WpfViewContent</c>, so the file was never marked dirty even though the edit had
+		/// genuinely applied and would be silently lost if the user closed without touching
+		/// anything else. Blocking needs no SynchronizationContext capture at all - <c>GetResult()</c>
+		/// simply returns control to whichever thread called it - so switching every one of these
+		/// four to a plain blocking call removes the whole class of risk, matching the same
+		/// already-proven-reliable pattern <c>WpfViewContent.LoadInternal</c>/
+		/// <c>WpfDesignDevFlowActions</c> use for their own blocking calls into this class
+		/// (doc/technotes/wpf-designer.md's cutover-completion entry has the original deadlock
+		/// this design was built to avoid - that deadlock only applied to callers already blocked
+		/// waiting for a captured-context continuation, which none of these four ever are).</summary>
 		internal void Show(DesignerSessionState newState)
 		{
 			state = newState;
@@ -359,7 +373,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				}
 			}
 
-			HitTestAndSelectAsync(currentState.Version, designX, designY).FireAndForget();
+			HitTestAndSelect(currentState.Version, designX, designY);
 		}
 
 		void BeginGesture(Point designPoint, DesignerElementNode node, string? handle)
@@ -430,12 +444,28 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			// One RPC for the whole gesture; Show() re-renders and re-places the adorner from the
 			// authoritative post-edit tree, so a rejected/adjusted placement snaps back correctly.
 			var bounds = ApplyGesture(designX - gestureStart.X, designY - gestureStart.Y);
-			CommitBoundsAsync(selectedPath, bounds).FireAndForget();
+			CommitBounds(selectedPath, bounds);
 		}
 
-		async Task CommitBoundsAsync(string elementId, Rect bounds)
+		/// <summary>Commits one drag-resize/move gesture. Deliberately BLOCKING
+		/// (<c>.GetAwaiter().GetResult()</c>), called directly from the mouse-up handler that is
+		/// always already on the dispatcher thread - NOT an async method awaited with
+		/// <c>ConfigureAwait(true)</c> from a fire-and-forget wrapper, which this used to be.
+		/// That pattern was proven unreliable live: a real drag committed and visibly resized the
+		/// element (confirmed via <c>od.wpf-designer.surface-geometry</c>), but the continuation
+		/// after the await resumed on a thread-pool thread instead of the dispatcher thread it was
+		/// captured from (verified via <c>Dispatcher.Thread.ManagedThreadId</c> vs
+		/// <c>Environment.CurrentManagedThreadId</c> differing), so touching WPF objects afterward
+		/// threw a cross-thread <c>InvalidOperationException</c> that <c>FireAndForget</c> silently
+		/// suppressed - <see cref="DocumentChanged"/> never reached <c>WpfViewContent</c>, so the
+		/// file was never marked dirty even though the resize had genuinely applied and would be
+		/// silently lost if the user closed without touching anything else first. Blocking here
+		/// needs no SynchronizationContext capture at all: <c>GetResult()</c> simply returns
+		/// control to whichever thread called it, which by construction already IS the dispatcher
+		/// thread for every caller of this method.</summary>
+		void CommitBounds(string elementId, Rect bounds)
 		{
-			var result = await SetBoundsAsync(elementId, bounds.X, bounds.Y, bounds.Width, bounds.Height).ConfigureAwait(true);
+			var result = SetBoundsAsync(elementId, bounds.X, bounds.Y, bounds.Width, bounds.Height).GetAwaiter().GetResult();
 			Show(result);
 			DocumentChanged?.Invoke(this, result);
 		}
@@ -456,14 +486,16 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			// Drop onto whatever element is under the pointer, falling back to the document root -
 			// the child decides whether that parent actually accepts a new child there and rejects
 			// the operation if not, so no container knowledge is duplicated on this side.
-			DropAsync(item, designX, designY).FireAndForget();
+			CommitDrop(item, designX, designY);
 		}
 
-		async Task DropAsync(DesignerToolboxItemInfo item, double designX, double designY)
+		/// <summary>Blocking for the same reason <see cref="CommitBounds"/> is - see its own doc
+		/// comment.</summary>
+		void CommitDrop(DesignerToolboxItemInfo item, double designX, double designY)
 		{
-			var hit = await client.HitTestAsync(state!.Version, designX, designY).ConfigureAwait(true);
+			var hit = client.HitTestAsync(state!.Version, designX, designY).GetAwaiter().GetResult();
 			var parentId = string.IsNullOrEmpty(hit.PickPath) ? OutlineRoot?.Id ?? "" : hit.PickPath;
-			var result = await AddElementAsync(parentId, item, proposedName: "", designX, designY).ConfigureAwait(true);
+			var result = AddElementAsync(parentId, item, proposedName: "", designX, designY).GetAwaiter().GetResult();
 			Show(result);
 			// A toolbox drop should select the element it just created, matching what a real drop
 			// onto every other designer backend already does (and what a real end user dragging a
@@ -482,9 +514,11 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				? data.GetData(typeof(DesignerToolboxItemInfo)) as DesignerToolboxItemInfo
 				: null;
 
-		async Task HitTestAndSelectAsync(long baseVersion, double designX, double designY)
+		/// <summary>Blocking for the same reason <see cref="CommitBounds"/> is - see its own doc
+		/// comment.</summary>
+		void HitTestAndSelect(long baseVersion, double designX, double designY)
 		{
-			var hit = await client.HitTestAsync(baseVersion, designX, designY).ConfigureAwait(true);
+			var hit = client.HitTestAsync(baseVersion, designX, designY).GetAwaiter().GetResult();
 			// Hit, not PickPath emptiness: the root's own path is "" (see DesignerHitTestResult.Hit),
 			// so testing PickPath here made clicking the Window/UserControl clear the selection
 			// instead of selecting it - the root could never be selected, and therefore never
@@ -602,7 +636,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		/// so <c>WpfViewContent.OnSelectionChanged</c> (its only subscriber) re-checks the document
 		/// version and marks the file dirty - the same "refresh dependent UI, then reconcile dirty
 		/// state" signal every other mutation path here already raises (see
-		/// <c>CommitBoundsAsync</c>/<c>DropAsync</c>/<c>CommitDeleteAsync</c>). A raw
+		/// <c>CommitBounds</c>/<c>CommitDrop</c>/<c>CommitDelete</c>). A raw
 		/// <c>Show</c> callback (this method's previous wiring) rendered the edit but never told
 		/// <c>WpfViewContent</c> a mutation happened at all, so editing a property through the
 		/// Properties pad silently never dirtied the document.</summary>
@@ -630,7 +664,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		/// <summary>Raised after an actual accepted mutation (bounds/add/delete/rename/property
 		/// edit) commits and renders - distinct from <see cref="SelectionChanged"/>, which also
 		/// fires for a plain selection with no mutation at all (<see cref="SelectElementId"/>,
-		/// <c>HitTestAndSelectAsync</c>). <c>WpfViewContent</c> uses this, not
+		/// <c>HitTestAndSelect</c>). <c>WpfViewContent</c> uses this, not
 		/// <see cref="DesignerSessionState.Version"/> comparisons, to decide when to mark the file
 		/// dirty: the DDP's <c>state.Version</c> is only ever bumped by <c>session/open</c>/
 		/// <c>session/update</c> (see <c>WpfSurfaceHostService.NewState</c>, which always echoes
@@ -745,13 +779,15 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			if (e.Key == Key.Delete && selectedPath != null)
 			{
 				e.Handled = true;
-				CommitDeleteAsync().FireAndForget();
+				CommitDelete();
 			}
 		}
 
-		async Task CommitDeleteAsync()
+		/// <summary>Blocking for the same reason <see cref="CommitBounds"/> is - see its own doc
+		/// comment.</summary>
+		void CommitDelete()
 		{
-			var result = await DeleteSelectedAsync().ConfigureAwait(true);
+			var result = DeleteSelectedAsync().GetAwaiter().GetResult();
 			if (result == null)
 				return;
 			SelectionChanged?.Invoke(this, EventArgs.Empty);
