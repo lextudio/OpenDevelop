@@ -64,6 +64,16 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			ShowFit = true;
 			ShowGrid = true;
 			ShowTheme = true;
+			// The toolbar chrome follows the IDE theme (not the design theme): toolbar background
+			// and the combo/button text use the semantic ToolWindowBackground/Foreground keys so
+			// they switch with the IDE. The design theme only drives the checked-button highlight
+			// below (ApplyDesignTheme).
+			toolbar.SetResourceReference(Panel.BackgroundProperty, "ToolWindowBackground");
+			ZoomCombo.SetResourceReference(Control.ForegroundProperty, "Foreground");
+			DesignSizeCombo.SetResourceReference(Control.ForegroundProperty, "Foreground");
+			fitButton.SetResourceReference(Control.ForegroundProperty, "Foreground");
+			gridButton.SetResourceReference(Control.ForegroundProperty, "Foreground");
+			themeButton.SetResourceReference(Control.ForegroundProperty, "Foreground");
 			ApplyDesignTheme(false);
 			// The empty-canvas edge follows the IDE theme via the semantic theme's "EdgePattern"
 			// key (Themes/Theme.Light.xaml / Theme.Dark.xaml each define their own), so a theme
@@ -102,23 +112,13 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		public event EventHandler<bool> GridRequested;
 		public event EventHandler<bool> ThemeRequested;
 
-		/// <summary>Switches the toolbar chrome between the Light and Dark design themes.</summary>
+		/// <summary>Switches the checked-button highlight between the Light and Dark design
+		/// themes. The toolbar background/text follow the IDE theme (DynamicResource), so only
+		/// the checked (active) button state is design-theme-dependent here.</summary>
 		public void ApplyDesignTheme(bool dark)
 		{
-			toolbar.Background = dark ? DarkToolbarBackground : null;
-			var fg = dark ? DarkToolbarForeground : SystemColors.ControlTextBrush;
-			ZoomCombo.Foreground = fg;
-			DesignSizeCombo.Foreground = fg;
-			fitButton.Foreground = fg;
-			fitButton.Background = dark ? DarkToolbarButtonBackground : null;
-			gridButton.Foreground = fg;
-			gridButton.Background = dark
-				? (gridButton.IsChecked == true ? CheckedBackground : DarkToolbarButtonBackground)
-				: null;
-			themeButton.Foreground = fg;
-			themeButton.Background = dark
-				? (themeButton.IsChecked == true ? CheckedBackground : DarkToolbarButtonBackground)
-				: null;
+			gridButton.Background = gridButton.IsChecked == true ? CheckedBackground : null;
+			themeButton.Background = themeButton.IsChecked == true ? CheckedBackground : null;
 		}
 
 		static Button CreateIconButton(string iconKey, string toolTip)
@@ -154,9 +154,6 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			return image;
 		}
 
-		static readonly Brush DarkToolbarBackground = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x1E));
-		static readonly Brush DarkToolbarForeground = new SolidColorBrush(Color.FromRgb(0xF0, 0xF0, 0xF0));
-		static readonly Brush DarkToolbarButtonBackground = new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x33));
 		static readonly Brush CheckedBackground = new SolidColorBrush(Color.FromRgb(0x00, 0x78, 0xD4));
 
 	}

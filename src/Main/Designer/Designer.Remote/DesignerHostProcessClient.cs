@@ -105,6 +105,15 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 			};
 			process.Start();
 			started = true;
+			// Drain stdout/stderr immediately, before waiting on the TCP accept below - the child's
+			// pipes are redirected from the moment Start() returns, and their OS buffer is finite.
+			// If the child writes enough startup output (WPF/LibreWPF banners, warnings) before it
+			// gets around to connecting, and nothing is reading those pipes yet, the child blocks
+			// on its own Console.Write and never connects - while this host sits waiting on
+			// AcceptTcpClientAsync below. Starting the pumps here, rather than only after a
+			// successful handshake, removes that deadlock window entirely.
+			_ = PumpAsync(process.StandardOutput);
+			_ = PumpAsync(process.StandardError);
 
 			TcpClient? tcp = null;
 			JsonRpc? rpc = null;
@@ -117,8 +126,6 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 				rpc.StartListening();
 				this.tcp = tcp;
 				this.rpc = rpc;
-				_ = PumpAsync(process.StandardOutput);
-				_ = PumpAsync(process.StandardError);
 				await OnConnectedAsync(rpc, token, cancellationToken).ConfigureAwait(false);
 			} catch {
 				rpc?.Dispose();

@@ -29,6 +29,7 @@ using ICSharpCode.SharpDevelop.Widgets;
 using ICSharpCode.SharpDevelop.WinForms;
 using ICSharpCode.SharpDevelop.Workbench;
 using Xceed.Wpf.Toolkit.PropertyGrid;
+using System.Windows;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.FormsDesigner.Services;
 using ICSharpCode.AvalonEdit.Document;
@@ -92,6 +93,10 @@ namespace ICSharpCode.FormsDesigner
 
 		/// <summary>The currently selected component name on the remote design surface.</summary>
 		internal string RemoteDesignerSelectedComponent => remoteControl?.SelectedComponentName ?? "";
+
+		/// <summary>Surface geometry (frame/selection/resize-handle) for integration tests.</summary>
+		internal (Rect Frame, Rect Selection, System.Windows.Point Handle)? RemoteSurfaceGeometry
+			=> remoteControl?.SurfaceGeometry();
 
 		internal bool TryGetRemoteComponentScreenBounds(string componentName, out System.Windows.Rect bounds)
 		{

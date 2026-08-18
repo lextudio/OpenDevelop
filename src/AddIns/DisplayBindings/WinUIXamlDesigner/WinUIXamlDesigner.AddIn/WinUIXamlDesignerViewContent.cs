@@ -134,6 +134,10 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	public int OutlineChildCount =>
 		outline.Items.Count == 0 ? 0 : ((TreeViewItem)outline.Items[0]).Items.Count;
 
+	/// <summary>Surface geometry (frame/selection/resize-handle) for resize-drag tests.</summary>
+	public (System.Windows.Rect Frame, System.Windows.Rect Selection, System.Windows.Point Handle) SurfaceGeometry()
+		=> previewHost.SurfaceGeometry();
+
 	/// <summary>Design-surface viewport (zoom 1.0 = fit; pan in surface DIPs).</summary>
 	public (double Zoom, double PanX, double PanY) GetViewport() => previewHost.GetViewport();
 	public void SetViewport(double zoom, double panX, double panY) => previewHost.SetViewport(zoom, panX, panY);

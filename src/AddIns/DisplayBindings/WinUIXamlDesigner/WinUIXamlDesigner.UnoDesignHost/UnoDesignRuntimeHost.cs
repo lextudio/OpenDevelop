@@ -617,6 +617,10 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 	/// <summary>The rendered element tree (protocol model), for the Document Outline pad.</summary>
 	public DesignerElementNode? ElementTree => lastSnapshot?.Tree;
 
+	/// <summary>Surface geometry (frame/selection/resize-handle) for resize-drag tests.</summary>
+	public (System.Windows.Rect Frame, System.Windows.Rect Selection, System.Windows.Point Handle) SurfaceGeometry()
+		=> surface.SurfaceGeometry();
+
 	/// <summary>Last lines of the child host's stdout/stderr (ready banners, render logs).</summary>
 	public string ChildLog => client?.ChildLog ?? "(child not started)";
 

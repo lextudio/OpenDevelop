@@ -5,11 +5,15 @@ using System.Threading.Tasks;
 
 using ICSharpCode.SharpDevelop.Designer.Remote;
 
-namespace WpfDesign.SurfaceHost.Tests;
+namespace ICSharpCode.WpfDesign.SurfaceHost;
 
-/// <summary>Owns one isolated WPF SurfaceHost child process. Test-only client: the real
-/// production client (once WpfDesign.AddIn actually moves out-of-process) would live alongside
-/// FormsDesignerHostClient/UnoDesignClient, but this Phase 0 slice has no IDE-side caller yet.</summary>
+/// <summary>Host-side DDP client for the WPF out-of-process design host, alongside
+/// FormsDesignerHostClient/UnoDesignClient (see doc/technotes/designer-common.md's adapter
+/// seam). Lives in its own WPF-free Remote project, mirroring FormsDesigner.Remote/
+/// WinUIXamlDesigner.UnoDesignHost.Remote, so it can be referenced both by tests and - once
+/// WpfViewContent.cs actually cuts over - by WpfDesign.AddIn without pulling in the child's own
+/// WPF/designer-engine dependencies. No IDE-side caller exists yet (WpfDesign.AddIn is still
+/// fully in-process); this class is otherwise real, not a test double.</summary>
 public sealed class WpfSurfaceHostClient : DesignerHostProcessClient, IDesignHostClient
 {
 	readonly string hostDllPath;
@@ -22,8 +26,23 @@ public sealed class WpfSurfaceHostClient : DesignerHostProcessClient, IDesignHos
 		this.hostDllPath = hostDllPath;
 	}
 
-	public static async Task<WpfSurfaceHostClient> StartAsync(string hostDllPath, CancellationToken cancellationToken, TimeSpan? operationTimeout = null)
+	/// <summary>Finds the deployed child under this assembly's own "Host" subfolder, matching
+	/// <c>FormsDesignerHostClient.LocateChildDll</c> exactly - <c>WpfDesign.SurfaceHost.csproj</c>'s
+	/// own <c>DeployToAddIns</c> target copies its build output there, next to the deployed
+	/// <c>WpfDesign.AddIn</c>/this Remote assembly.</summary>
+	public static string? LocateChildDll()
 	{
+		var directory = Path.GetDirectoryName(typeof(WpfSurfaceHostClient).Assembly.Location);
+		if (string.IsNullOrEmpty(directory))
+			return null;
+		var path = Path.Combine(directory, "Host", "WpfDesign.SurfaceHost.dll");
+		return File.Exists(path) ? path : null;
+	}
+
+	public static async Task<WpfSurfaceHostClient> StartAsync(string? hostDllPath, CancellationToken cancellationToken, TimeSpan? operationTimeout = null)
+	{
+		hostDllPath ??= LocateChildDll() ?? throw new InvalidOperationException(
+			"Could not locate WpfDesign.SurfaceHost.dll under this assembly's Host subfolder.");
 		var client = new WpfSurfaceHostClient(hostDllPath, operationTimeout);
 		await client.StartAsync(cancellationToken).ConfigureAwait(false);
 		return client;

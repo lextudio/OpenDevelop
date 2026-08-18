@@ -74,9 +74,10 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		{
 			this.client = client;
 			Focusable = true;
-			// The design surface itself is white; the shared DesignerCanvas shell provides the
-			// dotted empty-canvas edge pattern and the common zoom toolbar around it.
-			designSurface.Background = Brushes.White;
+			// The shared DesignerCanvas shell provides the dotted empty-canvas edge pattern and
+			// the common zoom toolbar; the design surface is transparent so the edge pattern
+			// shows around the rendered form bitmap.
+
 			designSurface.Children.Add(framePresenter.Visual);
 			guides = new Canvas { IsHitTestVisible = false };
 			designSurface.Children.Add(guides);
@@ -108,14 +109,14 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			designSurface.Children.Add(disconnectedOverlay);
 			ContentHost.Content = designSurface;
 
-			// Shared zoom toolbar: the WinForms surface supports zoom + fit only; design-size
-			// presets, gridlines and design themes are WinUI/Uno concepts.
+			// The full shared toolbar is shown (same chrome as every designer); WinForms
+			// implements zoom/fit today, while gridlines/design-theme stay as visible-but-inert
+			// entries until the backend grows those capabilities. The design-size (device) combo
+			// is a WinUI/Uno concept and is hidden here.
 			ShowDesignSize = false;
-			ShowGrid = false;
-			ShowTheme = false;
 			foreach (var label in ZoomLabels)
 				ZoomCombo.Items.Add(label);
-			ZoomCombo.SelectedIndex = 0; // Fit
+			ZoomCombo.SelectedIndex = 4; // 100%
 			ZoomChanged += (_, _) => {
 				var index = ZoomCombo.SelectedIndex;
 				if (index <= 0) {
@@ -144,6 +145,37 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		}
 
 		public string SelectedComponentName { get; private set; } = "";
+
+		/// <summary>
+		/// Surface geometry for the integration tests' resize-drag assertions: the rendered form
+		/// bitmap bounds, the current selection outline bounds, and the resize handle center -
+		/// all in design-surface coordinates. The selection outline must coincide with the
+		/// rendered form (and the handle sit at its bottom-right corner) both before and after a
+		/// resize drag; this is the smoke probe for that invariant.
+		/// </summary>
+		public (Rect Frame, Rect Selection, Point Handle) SurfaceGeometry()
+		{
+			// Screen coordinates (PointToScreen is reliable under LibreWPF), so the integration
+			// tests can drive the resize handle directly and compare selection vs. frame
+			// consistently in one coordinate space.
+			var frameTl = framePresenter.Visual.PointToScreen(new Point(0, 0));
+			var frameBr = framePresenter.Visual.PointToScreen(new Point(
+				framePresenter.Visual.ActualWidth, framePresenter.Visual.ActualHeight));
+			var frame = new Rect(frameTl.X, frameTl.Y, frameBr.X - frameTl.X, frameBr.Y - frameTl.Y);
+			Rect selection = default;
+			if (selectedComponent != null)
+			{
+				var (x, y) = viewport.DesignToSurface(selectedComponent.SurfaceX, selectedComponent.SurfaceY);
+				var (x2, y2) = viewport.DesignToSurface(
+					selectedComponent.SurfaceX + selectedComponent.Width,
+					selectedComponent.SurfaceY + selectedComponent.Height);
+				var stl = designSurface.PointToScreen(new Point(x, y));
+				var sbr = designSurface.PointToScreen(new Point(x2, y2));
+				selection = new Rect(stl.X, stl.Y, sbr.X - stl.X, sbr.Y - stl.Y);
+			}
+			var handle = resizeThumb.PointToScreen(new Point(resizeThumb.ActualWidth / 2, resizeThumb.ActualHeight / 2));
+			return (frame, selection, handle);
+		}
 		public string[] SelectedComponentNames => String.IsNullOrEmpty(SelectedComponentName)
 			? selectedComponentNames.ToArray()
 			: new[] { SelectedComponentName }.Concat(selectedComponentNames.Where(name => name != SelectedComponentName)).ToArray();
@@ -192,6 +224,12 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			}
 			framePresenter.SetSource(bitmap);
 			framePresenter.Resize(viewport);
+			// The rendered form must sit at the viewport's base (centered-fit origin + pan),
+			// exactly where the DesignToSurface-based guides/adorners are placed - otherwise the
+			// selection outline and the bitmap drift apart whenever Scale != 1.
+			framePresenter.Visual.Margin = new Thickness(
+				Math.Max(0, viewport.OriginX) + viewport.PanX,
+				Math.Max(0, viewport.OriginY) + viewport.PanY, 0, 0);
 			UpdateDesignGuides();
 			if (!String.IsNullOrEmpty(SelectedComponentName)) {
 				selectedComponent = state.Components.FirstOrDefault(item => item.Name == SelectedComponentName);
@@ -558,15 +596,19 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 
 		void OnMoveDragDelta(object sender, DragDeltaEventArgs e)
 		{
-			dragX = Math.Max(0, dragX + e.HorizontalChange);
-			dragY = Math.Max(0, dragY + e.VerticalChange);
+			// DragDelta reports surface pixels; convert to design units (the adorner math and
+			// the child's coordinates are design-space).
+			var scale = viewport.Scale;
+			dragX = Math.Max(0, dragX + e.HorizontalChange / scale);
+			dragY = Math.Max(0, dragY + e.VerticalChange / scale);
 			PositionAdorners();
 		}
 
 		void OnResizeDragDelta(object sender, DragDeltaEventArgs e)
 		{
-			dragWidth = Math.Max(8, dragWidth + e.HorizontalChange);
-			dragHeight = Math.Max(8, dragHeight + e.VerticalChange);
+			var scale = viewport.Scale;
+			dragWidth = Math.Max(8, dragWidth + e.HorizontalChange / scale);
+			dragHeight = Math.Max(8, dragHeight + e.VerticalChange / scale);
 			PositionAdorners();
 		}
 
@@ -613,13 +655,16 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		void PositionAdorners()
 		{
 			adornerLayer.ShowSelection(new Rect(dragX, dragY, dragWidth, dragHeight), viewport);
+			// Convert both design corners to surface coordinates so the move/resize handles
+			// track the (possibly zoomed) design rect exactly.
 			var (left, top) = viewport.DesignToSurface(dragX, dragY);
+			var (right, bottom) = viewport.DesignToSurface(dragX + dragWidth, dragY + dragHeight);
 			Canvas.SetLeft(moveThumb, left);
 			Canvas.SetTop(moveThumb, top);
-			moveThumb.Width = dragWidth;
-			moveThumb.Height = dragHeight;
-			Canvas.SetLeft(resizeThumb, left + dragWidth - resizeThumb.Width / 2);
-			Canvas.SetTop(resizeThumb, top + dragHeight - resizeThumb.Height / 2);
+			moveThumb.Width = Math.Max(1, right - left);
+			moveThumb.Height = Math.Max(1, bottom - top);
+			Canvas.SetLeft(resizeThumb, right - resizeThumb.Width / 2);
+			Canvas.SetTop(resizeThumb, bottom - resizeThumb.Height / 2);
 			Panel.SetZIndex(resizeThumb, 2);
 		}
 

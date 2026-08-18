@@ -15,7 +15,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="xunit.v3" Version="3.2.2" />
-    <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
+    <ProjectReference Include="..\WpfDesign.SurfaceHost.Remote\WpfDesign.SurfaceHost.Remote.csproj" />
     <ProjectReference Include="..\WpfDesign.SurfaceHost\WpfDesign.SurfaceHost.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" />
     <!-- Build-only: proves type resolution happens in the child, never in this test process
          (Phase 1 slice, see wpf-designer.md). Never add a using/typeof for this assembly here. -->

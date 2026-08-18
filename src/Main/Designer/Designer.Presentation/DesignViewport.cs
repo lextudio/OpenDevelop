@@ -76,11 +76,12 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 		/// WinForms designer's shared toolbar zoom.
 		/// </summary>
 		public static DesignViewport Zoom(double designWidth, double designHeight,
-			double viewportWidth, double viewportHeight, double scale)
+			double viewportWidth, double viewportHeight, double scale,
+			double panX = 0.0, double panY = 0.0)
 		{
 			var originX = (viewportWidth - designWidth * scale) / 2;
 			var originY = (viewportHeight - designHeight * scale) / 2;
-			return new DesignViewport(designWidth, designHeight, scale, originX, originY, 0.0, 0.0);
+			return new DesignViewport(designWidth, designHeight, scale, originX, originY, panX, panY);
 		}
 
 		/// <summary>Design-space point to surface-local coordinates (no toolbar/scroll offsets -

@@ -102,6 +102,10 @@ sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost
     /// source document's element tree for the Document Outline pad.</summary>
     public DesignerElementNode? ElementTree => null;
 
+    /// <summary>In-process runtime: no remote rendered frame; the shell falls back to the
+    /// source document's element tree for the Document Outline pad.</summary>
+    public (System.Windows.Rect Frame, System.Windows.Rect Selection, System.Windows.Point Handle) SurfaceGeometry() => default;
+
     /// <summary>There is no child host process in this in-process runtime.</summary>
     public string ChildLog => "(in-process host)";
 

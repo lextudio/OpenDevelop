@@ -796,14 +796,66 @@ real frame and asserts at least one pixel differs from the (0,0) background corn
 content was composited (verified decisive: temporarily forcing `Render()` to always return null
 made this test fail as expected, then restoring the real code made it pass again).
 
-**One new, genuinely separate, still-open finding, out of scope for this round:** the
-`DesignerElementNode` tree's own reported element bounds (computed via `TransformToAncestor` in
-`BuildNode`, e.g. the fixture's `Button` reported at `X=160, Y=138, W=80, H=24`) do **not** match
-where ProGPU's render pipeline actually paints that same content (observed around `(300, 285)` in
-the same frame). Root cause not investigated this round — the new test was written to be
-position-agnostic (scans the whole frame rather than the tree's reported bounds) specifically to
-avoid depending on resolving this. Worth a dedicated pass before relying on tree bounds to, e.g.,
-draw selection adorners over the rendered frame.
+### Coordinate mismatch: SOLVED (2026-08-17) — our own hardcoded 800x600 arrange viewport
+
+**The bug was entirely in this repo's own `WpfSurfaceHostService`, not in LibreWPF or ProGPU at
+all.** Two earlier hypotheses recorded in this technote were wrong; both are retracted below, since
+leaving them would send the next reader into the same dead ends:
+
+- ❌ *"ProGPU's replay pipeline mis-composes offsets/scale for a headless root — the content is an
+  exactly 0.5x scaled, corner-anchored copy."* Wrong on both counts. The scale reading was an
+  artifact of eyeballing a bounding box that had been **translated and then clipped**, not scaled.
+- ❌ *"The root is never `PropagateResumeLayout`-ed, so `IsLayoutSuspended` leaves its `DesiredSize`
+  at (0,0)."* A real code path (`UIElement.MeasureCore`), but not what happens here — measured
+  directly from `WpfSurfaceHostService` via public API: the root reports
+  `DesiredSize=400,300 ActualWidth=400 ActualHeight=300 RenderSize=400,300`, all correct.
+
+**Actual root cause**, pinned down by printing the values `FrameworkElement.ArrangeCore`'s alignment
+math consumes (`Width`/`MinWidth`/`MaxWidth`/`RenderSize`/`DesiredSize`/`VisualTreeHelper.GetOffset`,
+all public API, no LibreWPF rebuild needed):
+
+```text
+root:      Width=400 MaxWidth=inf RenderSize=400,300 DesiredSize=400,300 VisualOffset=200,150
+TextBlock: Width=200 MaxWidth=inf RenderSize=200,30  DesiredSize=200,30  VisualOffset=100,135
+Button:    Width=80  MaxWidth=inf RenderSize=80,24   DesiredSize=80,24   VisualOffset=160,138
+```
+
+The children are centered correctly inside 400 (`(400-200)/2 = 100`, `(400-80)/2 = 160`). The root
+is centered inside **800x600**: `(800-400)/2 = 200`, `(600-300)/2 = 150`. And indeed
+`RebuildTreeAndRender` called `root.Arrange(new Rect(0, 0, lastWidth, lastHeight))` with
+`lastWidth = 800, lastHeight = 600` — hardcoded field defaults that were never updated from the
+document. WPF then behaved *exactly correctly*: `ArrangeCore` clamps the arrange size back to the
+root's declared 400x300 via `MinMax` (which is why `RenderSize`/`ActualWidth` all looked right and
+hid the problem), but `ComputeAlignmentOffset` still centers that 400x300 content inside the
+800x600 slot it was given, leaving the root a `VisualOffset` of `(200,150)`. `Render()` then sized
+its texture from the root's own `ActualWidth`/`ActualHeight` (400x300), so every replayed pixel was
+shifted by that offset and clipped at the texture edge.
+
+Verified arithmetically against the original measurement: the `TextBlock` at tree-reported
+`(100,135)` plus the root's `(200,150)` lands at `(300,285)`, size 200x30, clipped to the 400x300
+frame → `x[300,399] y[285,299]` — **the exact bounding box measured earlier**, to the pixel.
+
+**Fix**: measure against the viewport as before, then arrange at the root's *own* `DesiredSize`
+rather than the viewport rect, so no alignment offset is introduced. That is also the semantics a
+design surface wants — show the design at its natural/declared size and let the host canvas
+letterbox around it (`DesignViewport`/`DesignerCanvas` already do exactly that on the host side).
+
+**Regression test**: `RenderedContent_LandsExactlyAtTheBoundsTheElementTreeReports` scans the frame
+for the fixture `TextBlock`'s white background and asserts its painted bounding box matches the
+bounds the element tree reports for that node, within 1px. Verified decisive by temporarily
+restoring the old `Arrange` call: the test fails with `Range: (99 - 101), Actual: 300`, i.e. it
+catches exactly the 200px shift. Full suite: `total: 21, failed: 0, succeeded: 21`.
+
+**Consequences for the rest of the cutover**: `WpfSurfaceDesignerControl` can now draw selection
+adorners straight from `DesignerElementNode` bounds and have them line up with the rendered frame,
+which was the blocker listed against interactive drag/resize/toolbox-drop work. LibreWPF and ProGPU
+need no change; `~/openavalon/LibreWPF` was left clean (all diagnostic patches and the temporary
+`LibreWPF.ProGPU 0.1.0-preview.99` package reverted).
+
+**Method note worth keeping**: the two wrong hypotheses both came from reasoning about *upstream*
+code before exhausting what this project's own public API could measure. The decisive datum -
+children centered in 400 while the root centered in 800 - was available from `WpfSurfaceHostService`
+itself the whole time, with no LibreWPF rebuild, no repacking, and no debugger.
 
 **Final validation:** `dotnet test src/AddIns/DisplayBindings/WpfDesign/WpfDesign.SurfaceHost.Tests
 --filter-query "/*/*/WpfSurfaceHostRpcTests/*"` → `total: 19, failed: 0, succeeded: 19`, confirmed
@@ -816,23 +868,65 @@ have been incidental system load during that investigation rather than GPU-conte
 Left in place since it's harmless either way, but treat its doc comment's stronger claim with that
 caveat.)
 
-**The per-element `VisualTreeHelper.HitTest` gap is confirmed unrelated to the render bug above —
-a separate, pure-WPF issue that has nothing to do with ProGPU.** Checked directly rather than left
-as a guess: `VisualTreeHelper.HitTest` takes an optional `HitTestFilterCallback`, invoked once per
-visual the traversal *considers* before it ever reaches the result callback — Phase 0's original
-finding only showed the result callback reporting the root, which left open whether children were
-visited and filtered out, or never visited at all. Passing a filter that logs every visit answers
-that directly: **it fires exactly once, for the root `Grid`, and never for either child** — the
-traversal itself never attempts to descend, before any filtering or result-reporting logic runs at
-all. Since ProGPU is not involved anywhere in `VisualTreeHelper.HitTest` (it is pure managed WPF,
-walking `Visual.HitTestCore`), this rules out the "same root cause as render" theory this technote
-carried since Phase 0. One plausible next lead, not yet chased: LibreWPF's headless hit-testing may
-require the visual to be attached to a `PresentationSource` (specifically `PortablePresentationSource`,
-`~/wpf-tools/librewpf/src/Microsoft.DotNet.Wpf/src/PresentationCore/System/Windows/
-PortablePresentationSource.cs`) for the recursive-descent machinery to engage, separate from the
-`Measure`/`Arrange`/render pipeline, which is confirmed not to need one. `PortablePresentationSource`'s
-constructor is `internal`, so testing this needs either reflection or an internals-visible
-harness — flagged rather than attempted, to avoid another round of unverified theories.
+**The per-element `VisualTreeHelper.HitTest` gap is fixed (2026-08-17), and it was indeed unrelated
+to the render bug above — a separate, pure-WPF issue that had nothing to do with ProGPU's render
+pipeline.** Checked directly rather than left as a guess: `VisualTreeHelper.HitTest` takes an
+optional `HitTestFilterCallback`, invoked once per visual the traversal *considers* before it ever
+reaches the result callback — Phase 0's original finding only showed the result callback reporting
+the root, which left open whether children were visited and filtered out, or never visited at all.
+Passing a filter that logs every visit answered that directly: it fired exactly once, for the root
+`Grid`, and never for either child — the traversal itself never attempted to descend, before any
+filtering or result-reporting logic ran at all. Reading `PortablePresentationSource.cs`
+(`~/openavalon/LibreWPF/src/Microsoft.DotNet.Wpf/src/PresentationCore/System/Windows/
+PortablePresentationSource.cs`) confirmed why: point/geometry hit-testing there is entirely
+delegated to `HitTestOverride`/`HitTestAllOverride`/`HitTestBoundsOverride` callbacks the host sets
+on the source (`IPortablePresentationSourceHost.HitTestOverride` etc.) — plain
+`VisualTreeHelper.HitTest`'s managed walk (`Visual.HitTestCore`) never descends past a visual with
+no such source/override wired up, root or not.
+
+The fix does **not** require constructing an internal `PortablePresentationSource` via reflection
+(the plausible-but-complex path this technote once flagged, and the one the user pushed back on as
+overcomplicated). `ProGpuWpfCompositionTarget.TryHitTestOwner(Vector2 logicalPoint, out object?
+owner, out ProGpuHitTestResult result)` (`~/openavalon/LibreWPF/src/ProGPU.Wpf/
+ProGpuWpfCompositionTarget.cs`) is a genuinely public API that answers the exact same question
+directly from the GPU-side hit-test index `ReplayVisualSubtree` already builds on every render —
+`owner` comes back as the real WPF `Visual` the render-data decoder (`ProGpuCompositionCommandSink`)
+attributed that geometry to (`WpfGpuHitTestOwnerMap`, keyed by `sourceVisual`), so the existing
+"walk up from the hit visual to the nearest `DesignItem`" logic in `WpfSurfaceHostService.HitTest`
+needed no changes — only the entry point (GPU owner lookup instead of `VisualTreeHelper.HitTest`)
+changed, with a fallback to the old root-only walk if nothing has been rendered yet.
+
+**Verified decisively**, following this session's standing rule of measuring rather than assuming:
+a temporary probe hit-tested a grid of points across the whole 400×300 frame and logged every
+`PickPath`. Background points (`(0,0)`, `(10,10)`, `(150,15)`) correctly resolved to no element at
+all (nothing painted there), while two different points within the actually-rendered content
+(`(300,285)` → path `"0"`, `(390,295)` → path `"1"`) resolved to two distinct, different elements —
+decisive, direct proof of genuine per-element resolution, not a fluke or a root-only fallback in
+disguise. `WpfSurfaceHostRpcTests.DesignHitTest_ResolvesAnElementInsideItsBounds` was rewritten
+around this same scan-for-two-distinct-elements shape (deliberately not hardcoded to `(300,285)`/
+`(390,295)`, for the same reason the render test avoids hardcoding coordinates — the tree-bounds
+vs. actual-render-position mismatch documented above is still open) rather than the old
+root-only assertion. Full suite: `total: 19, failed: 0, succeeded: 19`, confirmed on two
+consecutive runs.
+
+**Host-side client extracted into its own WPF-free `WpfDesign.SurfaceHost.Remote` project
+(2026-08-17)**, mirroring `FormsDesigner.Remote`/`WinUIXamlDesigner.UnoDesignHost.Remote` (see
+designer-common.md's "Relationship to the existing implementations" table). `WpfSurfaceHostClient`
+had already been a real `DesignerHostProcessClient : IDesignHostClient` implementation using the
+shared `Designer.Remote` DTOs directly (`DesignerSessionState`/`DesignerDocumentSnapshot`/
+`DesignerEditSet`/`DesignerHitTestResult`/etc.) — the DTO convergence step from designer-common.md
+was effectively already done as a side effect of Phase 0/1 work, not a separate migration. What
+moved this round: the class itself lived directly in `WpfDesign.SurfaceHost.Tests` marked "test
+only" even though nothing about it actually was; it's now in `ICSharpCode.WpfDesign.SurfaceHost`
+inside `WpfDesign.SurfaceHost.Remote.csproj` (net10.0, `PackageReference StreamJsonRpc` +
+`ProjectReference Designer.Remote`, `ReferenceOutputAssembly="false"` build-only reference to
+`WpfDesign.SurfaceHost.csproj` for the child dll path), and `WpfDesign.SurfaceHost.Tests`
+references it as a normal `ProjectReference` instead of compiling the source directly. This is
+purely a project-layout change — no behavior changed — so that once `WpfViewContent.cs` is ready
+to cut over to the child, `WpfDesign.AddIn` can reference `WpfDesign.SurfaceHost.Remote` the same
+way `FormsDesigner`/`WinUIXamlDesigner` reference their own `.Remote` projects, without pulling in
+the child's own WPF/designer-engine dependencies. Full suite re-verified after the move:
+`total: 19, failed: 0, succeeded: 19`, confirmed on two consecutive runs.
 - **App.xaml / app-level resource loading now works in the child, and getting there produced
   several findings worth keeping.** `ParseAppResources` follows the live in-process designer's
   proven approach (`WpfViewContent.LoadInternal`'s `EnableAppXamlParsing` block): pull the
@@ -951,6 +1045,567 @@ pointer/frame traffic is not JSON/base64 data-plane traffic.
 - Is presenter-specific state leaking into the document/model protocol?
 - Is a WpfDesigner core rewrite actually required, or can a runtime-local projection adapter do it?
 - Does the change rely on perfect ALC unload instead of a process restart boundary?
+
+### Phase 2 cutover begun: `WpfSurfaceDesignerControl` (2026-08-17)
+
+The actual cutover of `WpfViewContent.cs` from the in-process `DesignSurface` to the DDP child
+has started, in the same spirit as `RemoteFormsDesignerControl`/`UnoDesignSurfaceControl`: a new
+`WpfSurfaceDesignerControl : DesignerCanvas`
+(`WpfDesign.AddIn/Src/OutOfProcess/WpfSurfaceDesignerControl.cs`) drives its surface entirely
+through `WpfSurfaceHostClient`/`IDesignHostClient` — `OpenAsync`/`UpdateAsync` open/refresh a
+session, the returned `DesignerRenderFrame` is decoded (deflate+base64 → BGRA32, matching
+WinUI/Uno's `RenderCodec.Decode` pattern, duplicated per backend by design) and shown through the
+shared `DesignFramePresenter`, and a left-click forwards through `DesignViewport.SurfaceToDesign`
+into `design/hit-test`, resolving a `DesignerElementNode` by tree path and drawing its bounds via
+the shared `SelectionAdornerLayer`.
+
+**Deliberately scoped down, not attempted in one pass**: this is click-to-select only — no
+drag/resize, marquee-select, toolbox drop, keyboard commands, or multi-select yet, and zoom/grid/
+theme toolbar chrome stays hidden (`ShowZoom`/`ShowFit`/`ShowGrid`/`ShowTheme = false`) since this
+backend doesn't implement any of them yet. `WpfDesign.AddIn.csproj` gained two new project
+references to support it: `Designer.Presentation` (the shared canvas helpers) and
+`WpfDesign.SurfaceHost.Remote` (the host client, from the previous round's extraction).
+
+**Not yet wired into `WpfViewContent.cs`, and deliberately so.** `WpfViewContent`'s live
+`DesignSurface` is both the renderer AND the input surface today; swapping the visible content to
+this new control before it has hit-test-driven selection working correctly would regress
+interactivity, not improve it. Two real blockers stand between this control and being safe to
+swap in:
+
+1. ~~**The coordinate-mismatch bug** means selection outlines drawn from `DesignerElementNode`
+   bounds will visibly not line up with the rendered frame.~~ **Fixed later the same day** — see
+   "Coordinate mismatch: SOLVED" above; it was this repo's own hardcoded 800x600 arrange viewport,
+   not an upstream ProGPU/LibreWPF defect as this entry originally speculated. Tree bounds and
+   rendered pixels now line up to within 1px, enforced by a regression test.
+2. **No outline/mutation wiring yet** (the Properties-pad piece is now done - see below).
+   `WpfViewContent` currently binds the Properties pad directly to a live `DesignItem`
+   (`DesignItemPropertyGridAdapter`) and the Outline pad to `RootItem.CreateOutlineNode()`; the
+   DDP-shaped Properties replacement now exists (`WpfSurfaceElementPropertyAdapter`) but isn't
+   wired into `WpfViewContent` yet, and the Outline pad and the remaining mutations
+   (`SetBoundsAsync`/`AddElementAsync`/`DeleteElementsAsync`/`RenameAsync`) still need their own
+   DDP-shaped replacements before the old in-process versions can be retired.
+
+Verified by build only this round (`dotnet build WpfDesign.AddIn.csproj` succeeds cleanly, and the
+existing `WpfSurfaceHostRpcTests` suite stays at `19/19` — this new control has no runtime effect
+yet since nothing references it). No interactive/manual verification was possible without a live
+desktop session; that remains outstanding before any further phase.
+
+### Properties-pad adapter built (2026-08-17, same round)
+
+The Properties-pad piece of the cutover is done, following the exact precedent
+`FormsDesignerViewContent.RemoteComponentPropertyProxy`/`RemotePropertyDescriptor` already set for
+WinForms (an `ICustomTypeDescriptor` proxy over the RPC-reported property list, edits going out
+through `SetPropertyAsync`) — **not** WinUI/Uno's pattern (`WinUIXamlElementPropertyAdapter`
+reads/writes the host-owned `XElement` directly, with no RPC round trip for reads at all). WPF
+needs the WinForms shape, not the WinUI one: WinUI's approach only works because a XAML
+attribute's presence/absence *is* its property list, with no target-type knowledge needed; WPF's
+content-property/attached-property model means only the child (which already has real
+`DesignItem.Properties` reflection) can correctly enumerate what's actually settable on an
+arbitrary element without the host duplicating XAML content-model knowledge - exactly the kind of
+target-type awareness this technote's own red-lines list forbids in host code.
+
+**A real, non-obvious bug found and fixed getting there**: the natural-looking
+`item.Properties.Where(p => !p.IsEvent)` (copied from the existing in-process
+`DesignItemPropertyGridAdapter`, which uses exactly this) returns almost nothing for a
+freshly-opened session - confirmed by a real diagnostic run, not assumed. `DesignItem.Properties`
+(`XamlModelPropertyCollection`) only *enumerates* `DesignItemProperty` wrapper objects some caller
+has already realized via a name lookup (a lazy dictionary cache); it does not walk the element's
+actual CLR property set. In the live in-process designer this is masked because loading a real
+Xceed `PropertyGrid` against a `DesignItem` triggers many such lookups as a side effect before
+enumeration ever runs. Headless, with no property grid attached, only whatever `BuildNode`'s own
+`item.ContentProperty` walk happened to touch was realized (a `TextBlock` showed `propCount=0`,
+its `Grid` parent only `["Children"]`). **The fix**: `WpfSurfaceHostService.BuildProperties`
+enumerates the element's real CLR property set via `TypeDescriptor.GetProperties(item.ComponentType)`
+(which already filters out non-browsable WPF plumbing members like `Dispatcher`/`TemplatedParent`,
+same as any .NET property grid) to get real candidate names, then looks each one up through
+`item.Properties[name]` - which, unlike enumeration, *does* create the wrapper on demand for any
+valid name. `DesignerElementNode` gained a `Properties: List<DesignerPropertyInfo>` field to carry
+the result (the exact `DesignerPropertyInfo` shape `DesignerComponentInfo` already used for
+WinForms - the doc comment on `DesignerPropertyInfo.Kind` had already anticipated this exact need:
+*"A WPF backend (not yet implemented) needs the other kinds..."*).
+
+Value conversion (`WpfSurfaceHostService.ToPropertyInfo`) is deliberately conservative: only
+properties with a symmetric string `TypeConverter` (covers primitives, enums, and ordinary
+XAML-serializable value types) get a real editable `Value`; anything else (nested-`DesignItem`
+values - `Binding`, `Brush`, layout collections, ...) is reported `Kind="Unsupported"` and
+read-only with a best-effort display string, rather than crashing the tree build or silently
+corrupting data through a lossy round trip. Widening this to the `"Xaml"`/`"Reference"` kinds
+designer-common.md already reserves for exactly this case is real future work, not attempted here.
+
+Verified with a new, real test (not assumed): `Tree_CarriesRealPropertyValuesForTheAddInsPropertiesPad`
+opens the fixture, confirms `greeting.Properties` reports `Text="Hello"` (`Kind="String"`) and
+`Width="200"` (`Kind="Number"`), edits `Text` through `SetPropertyAsync`, and confirms the next
+tree reports the edited value - proving the property list is live, not a one-shot snapshot frozen
+at `session/open`. Full suite: `total: 20, failed: 0, succeeded: 20`, confirmed on two consecutive
+runs.
+
+The addin-side consumer, `WpfSurfaceElementPropertyAdapter`/`WpfSurfacePropertyDescriptor`
+(`WpfDesign.AddIn/Src/OutOfProcess/WpfSurfaceElementPropertyAdapter.cs`), mirrors
+`RemoteComponentPropertyProxy`/`RemotePropertyDescriptor` structurally: `SetValue` blocks on
+`SetPropertyAsync` (`PropertyDescriptor.SetValue` is inherently synchronous - matches
+`FormsDesignerViewContent.ExecuteRemoteEdit`'s already-established blocking-edit pattern in this
+codebase, not a new risk) and hands the returned `DesignerSessionState` back through a callback so
+the caller can refresh. `WpfSurfaceDesignerControl.SelectedPropertyAdapter` exposes a fresh
+adapter for whatever's currently selected, wired to `Show` as the refresh callback so an edit
+re-renders and re-positions the selection outline through the exact same path a hit-test-driven
+selection change already uses.
+
+### Outline-pad plumbing added (2026-08-17, same round)
+
+`WpfSurfaceDesignerControl` gained the two members the shared `DocumentOutlineControl`
+(`ICSharpCode.SharpDevelop.Widgets`) needs, following the exact wiring pattern
+`FormsDesignerViewContent` already uses (`outline.SetRoot`/`SelectionCommitted`/`SelectNodeById`,
+designer-common.md's Document Outline section):
+
+- **`OutlineRoot`** returns `state?.Tree` directly. Unlike WinForms, whose flat
+  `DesignerComponentInfo` list needs `FormsDesignerViewContent.BuildOutlineTree` to become a tree
+  first, WPF's own DDP shape already **is** the `DesignerElementNode` tree the Outline pad wants -
+  no conversion needed. This mirrors WinUI/Uno's outline convergence, which designer-common.md
+  already recorded as `DesignerSessionState.Tree` being consumed directly.
+- **`SelectElementId(string?)`** is the outline→surface direction: it selects locally from data
+  already in the current tree (no RPC round trip), matching how `RemoteFormsDesignerControl`'s own
+  `SelectComponent` works - the surface already has everything it needs (bounds) to draw the
+  selection outline without asking the child again.
+- The surface→outline direction (a `SelectionChanged` subscriber calling
+  `outline.SelectNodeById(control.SelectedElementId)`, mirroring `FormsDesignerViewContent
+  .RemoteSelectionChanged`) is `WpfViewContent`'s job once it actually owns a `DocumentOutlineControl`
+  instance - not this control's concern, since it has no reference to any outline widget itself
+  (same "protocol yes, presentation no" separation as everything else here).
+
+**A real, pre-existing infrastructure landmine found (and fixed) while verifying this**:
+`WpfDesign.AddIn.csproj` intermittently failed to build with `MSB4236: The SDK 'LibreWPF.Sdk'
+specified could not be found` on a *fresh* restore of its `WpfDesign.csproj`/`WpfDesign.Designer
+.csproj`/`WpfDesign.XamlDom.csproj` project references. Root cause, confirmed by reading the
+actual files rather than assumed: `externals/vscode-wpf/external/WpfDesigner/global.json` pinned
+`LibreWPF.Sdk` to `0.1.0-preview.28` - a version that was never available in either the old or new
+local NuGet feed (only `0.1.0-preview.41`, the version the *outer* repo's own `global.json` pins,
+was ever packed). `WpfDesign.SurfaceHost.csproj`'s own comment had already flagged the general
+shape of this problem ("a fresh `<ProjectReference>` build ... fails SDK resolution - only
+`WpfDesign.AddIn.csproj`'s incidental reuse of already-built outputs masks this") without anyone
+having chased the exact stale version down before now. Fixed by bumping the nested `global.json`
+to `0.1.0-preview.41`, verified by deleting that project's `obj/` folder and forcing a fully fresh
+restore + build (not just an incremental one, which would have hidden the same landmine again).
+Not a workaround - it's a genuine one-line stale-pin fix, and it removes the fragility for
+`WpfDesign.AddIn.csproj` too, not just this round's new files.
+
+### Remaining mutations wired as callable RPCs (2026-08-17, same round)
+
+`WpfSurfaceDesignerControl` gained `SetBoundsAsync`/`AddElementAsync`/`DeleteSelectedAsync`/
+`RenameSelectedAsync` - thin wrappers over the matching `WpfSurfaceHostClient` calls that refresh
+the surface (`Show`) with the returned `DesignerSessionState` afterward. Callable-but-no-interactive
+-UI-yet, the same convergence order WinForms already used for `design/rename` ("no existing
+'rename an already-named element' call site... landed as a ready-to-use capability only") - full
+drag/resize and toolbox-drop UI is real future work layered on top of these, deliberately not
+attempted here since it needed the coordinate-mismatch bug fixed first to place drag handles/drop
+targets correctly against the rendered frame (that blocker was cleared later the same day - see
+"Coordinate mismatch: SOLVED" above).
+
+One real keyboard command *is* wired end-to-end: `OnKeyDown` maps `Delete` to
+`DeleteSelectedAsync()`, matching `RemoteFormsDesignerControl.OnKeyDown`'s broader set (this is the
+one command out of that set implemented so far). `DeleteSelectedAsync` clears `selectedPath`
+*before* issuing the RPC rather than after - once the tree is rebuilt, sibling element paths (child
+-index strings) can shift, so the pre-delete path is no longer meaningful and must not be reused to
+draw a stale selection outline. `RenameSelectedAsync`, by contrast, keeps the current selection
+since a rename doesn't restructure the tree.
+
+Verified by build only (`dotnet build WpfDesign.AddIn.csproj`, twice, both clean) plus the existing
+`WpfSurfaceHostRpcTests` suite staying at `20/20` - none of these four methods have a test of their
+own yet in this round since they have no call site to exercise them from (same reasoning as
+WinForms' `design/rename` landing). A dedicated test for each, exercising them directly against a
+spawned child the way `WpfSurfaceHostRpcTests` already does for the RPCs themselves, is real
+future work before relying on them from real UI.
+
+**Next steps, in dependency order** (the coordinate-mismatch bug that used to head this list is
+now fixed - see "Coordinate mismatch: SOLVED" above): build the actual drag/resize/toolbox-drop
+interactive UI on top of the now-callable mutations, which is now unblocked because tree bounds and
+rendered pixels finally agree → only then swap `WpfViewContent.UserContent` from the live `DesignSurface`
+to `WpfSurfaceDesignerControl`, swap its `Outline` field from the legacy `OutlineNode`-based
+`Outline` to the shared `DocumentOutlineControl` (matching WinForms/WinUI), and delete the
+in-process fallback, `CurrentDomain_AssemblyResolve`, and the direct `DesignItem`/
+`XamlDesignContext` wiring. Still no interactive/manual verification of any of this without a live
+desktop session - build and RPC-level tests only. Full suite re-verified after this round's
+changes: `total: 20, failed: 0, succeeded: 20`, confirmed on repeated runs.
+
+### `design/set-bounds` now actually moves elements, and drag/resize/toolbox-drop UI landed (2026-08-17)
+
+**A real, previously-undiscovered bug found while building the interactive layer**:
+`WpfSurfaceHostService.SetBounds` set only `Width`/`Height` and silently ignored `x`/`y` - an
+interactive drag could resize an element but never move it, with no error reported anywhere. Fixed
+by routing through the designer's own `PlacementOperation`/`IPlacementBehavior` machinery (the same
+one `design/add-element` already used) instead of writing properties directly: a
+`PlacementOperation.Start(..., PlacementType.Resize)`, setting `info.Bounds` to the full new rect,
+and calling `CurrentContainerBehavior.SetPosition(info)` before `Commit()`. This expresses the move
+the way the *container* wants it - a `Grid` child gets a `Margin` (and, matching real WPF designer
+behavior, `GridPlacementSupport` resets `Width`/`Height` under `Stretch` alignment rather than
+setting them alongside a margin), a `Canvas` child would get `Canvas.Left`/`Top`, etc. - instead of
+this backend inventing its own container-naive geometry encoding. A plain `Width`/`Height` fallback
+is kept for a container with no placement behavior at all. `DesignSetBounds_ChangesWidthAndHeight`
+(which asserted the literal `Width="150"` attribute - actually asserting the old, container-naive
+behavior) was rewritten to assert the resulting *geometry* instead, and a new
+`DesignSetBounds_MovesTheElement_NotOnlyResizesIt` test proves `x`/`y` are honored - verified
+decisive the same way as the coordinate-mismatch fix: the old code was restored temporarily and the
+new test failed exactly as predicted (element stayed at `x=100` instead of moving to `12`).
+
+**A second real, upstream bug found in the same investigation, and fixed - not upstream in ProGPU/
+LibreWPF this time, but in the shared `WpfDesign.Designer` library `WpfDesign.AddIn` already
+references** (`externals/vscode-wpf/external/WpfDesigner/WpfDesign.Designer/Project/Extensions/
+RasterPlacementBehavior.cs`): `PlacementOperation.Start` threw `ServiceRequiredException: Service
+ICSharpCode.WpfDesign.IDesignPanel is required` for *every* move/resize in this headless host - not
+a corner case, unconditionally, confirmed by a real run before the fix (`DIAG placement failed:
+...`). Root cause: `RasterPlacementBehavior.BeginPlacement` read `ExtendedItem.Services.DesignPanel`
+(a `GetRequiredService<T>`-backed property that throws when nothing is registered) to look up the
+optional raster width, even though every other access to the same optional service in this exact
+file/its `SnaplinePlacementBehavior` subclass - including the `CreateSurface()` call three lines
+later in the same method - already used the non-throwing `GetService<IDesignPanel>() != null`
+guard, correctly treating a missing panel as "skip the panel-only behavior, everything else still
+works." This one line was the sole hold-out, and since `BeginPlacement` runs unconditionally at the
+top of every `PlacementOperation`, it broke *all* placement, not just raster-specific behavior.
+Fixed to use the same non-throwing lookup the surrounding code already established as the correct
+pattern - identical behavior when a `DesignPanel` is present (every live designer session), only
+different when one is absent (this headless host). Verified this doesn't regress the live
+in-process designer's own drag/resize by trying to run
+`WpfDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement`
+(`tests/OpenDevelop.IntegrationTests/AddInTests.cs`) - a real, pre-existing integration test that
+exercises this exact code path with actual UI drag input - but see the caveat below.
+
+**`WpfSurfaceDesignerControl` gained the actual interactive layer** this was all in service of:
+move (drag inside the selected element), resize (drag any of all eight handles - unlike WinForms,
+which only ever shows `"se"`, this backend's real container-aware placement supports all of them),
+and toolbox drop (`AllowDrop`/`DragOver`/`Drop`, hit-testing the drop point to find the target
+parent and falling back to the document root, then calling the now-real `AddElementAsync`). A drag
+only commits once, on mouse-up, via a single `design/set-bounds`/`design/add-element` call - the
+adorner tracks the gesture locally in between, matching both shipped backends' "one RPC per
+gesture, not per mouse-move" rule. `SelectionAdornerLayer` is now constructed with all eight handle
+names and a label (previously zero handles, no label, since selection-only didn't need them).
+
+**Honest caveat on verification**: the live in-process integration test
+(`WpfDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement`) could not actually be run to
+completion - `od.wpf-designer.status` reported `{"active":false}` (`WpfViewContent` never found),
+traced to the opened `.xaml` file falling back to a plain-text view
+(`AutoDetectDisplayBinding: no display binding claimed file ...`). This was checked and is **not**
+caused by anything in this round's changes: an entirely unrelated integration test
+(`VBFixture_LoadsShowsSourceParsesAndBuilds`, no relation to WPF/XAML at all) fails the same way
+in the same run (`Assert.Contains() Failure: Filter not matched in collection: []`), while a third,
+narrower test with no solution/file-opening (`FSharpAddIn_IsLoaded`) passes cleanly - so the
+integration-test harness itself is currently broken for reasons unrelated to WPF (the app log shows
+`MSBuild warm-up failed (non-fatal): ... Roslyn/Microsoft.CSharp.Core.targets was not found`,
+suggesting an incomplete `dotnet build` deployment of the main `SharpDevelop.csproj` app is missing
+Roslyn compiler assets some other build step normally provides). Fixing that is out of scope here -
+it's a pre-existing environment issue, not part of the WPF designer cutover. The `RasterPlacementBehavior`
+fix's correctness rests on direct code reading (identical behavior when the service exists, the
+exact same conditional shape the surrounding, already-correct code in the same file already uses)
+rather than an end-to-end interactive run; that run remains the next thing to confirm once the
+integration-test environment issue is separately resolved.
+
+Verified via `WpfDesign.SurfaceHost.Tests`: `total: 22, failed: 0, succeeded: 22`, confirmed on two
+consecutive runs. `WpfDesign.AddIn.csproj` builds clean.
+
+**What's left before the actual cutover swap**: only the swap itself -
+`WpfViewContent.UserContent` from the live `DesignSurface` to `WpfSurfaceDesignerControl`, the
+`Outline` field to the shared `DocumentOutlineControl`, and deleting the in-process fallback. Not
+attempted this round: `WpfViewContent.cs` has real, separate in-progress edits (the shared
+`DesignerCanvas` shell wiring) already underway outside this investigation, and swapping its
+`UserContent`/`Outline` fields now would collide with that work rather than build on it.
+
+### Cutover completed: `WpfViewContent.cs` swapped to the out-of-process control (2026-08-17)
+
+`WpfViewContent.cs` was fully rewritten: `LoadInternal` now starts a `WpfSurfaceHostClient` (via
+its new `LocateChildDll()`, mirroring `FormsDesignerHostClient` exactly) and drives a
+`WpfSurfaceDesignerControl` as `UserContent` through `OpenAsync`/`UpdateAsync`, instead of building
+a live in-process `XamlDesignContext`/`DesignSurface`. `SaveInternal` now flushes through
+`WpfSurfaceHostClient.FlushAsync` and writes back the child's serialized XAML rather than reading a
+live `DesignItem` tree. Selection routes through `WpfSurfaceDesignerControl.SelectedPropertyAdapter`
+(a `WpfSurfaceElementPropertyAdapter`) into the shared Xceed Properties pad, and through
+`DocumentOutlineControl`/`OutlineRoot` for the Outline pad - both bound directly to
+`DesignerElementNode`, no `IOutlineNode`/`DesignItem` translation layer needed anymore.
+`CreateSnapshot` builds the `DesignerDocumentSnapshot` sent to the child, including - for the first
+time on any host in this repo - a populated `ReferencedAssemblyPaths` list (via
+`project.ResolveAssemblyReferences`), plus optional `app.xaml` resource loading gated by
+`WpfEditorOptions.EnableAppXamlParsing`.
+
+Five classes that existed only to support the old `XamlDesignContext.CustomServiceRegisterFunctions`
+registration were deleted as fully orphaned (confirmed via repo-wide `grep -rln` before each
+deletion): `SharpDevelopEventHandlerService`/`AbstractEventHandlerService.cs`,
+`PropertyDescriptionService.cs`, `IdeChooseClassService.cs`,
+`WpfAndWinFormsTopLevelWindowService.cs`, `FileUriContext.cs`. `DesignItemPropertyGridAdapter.cs`
+was deleted too, once `WpfDesignDevFlowActions.cs` (below) stopped being its last caller.
+`ThumbnailViewPadViewModel` was adapted rather than deleted - its live-visual-tree minimap has no
+equivalent yet for the bitmap-based OOP surface, so it now always shows the pad's existing
+"not available" placeholder; a real thumbnail for the new surface is deferred, separate future work.
+
+**`WpfDesignDevFlowActions.cs`** (the integration-test probe surface) was rewritten in step: every
+action that read `WpfViewContent.DesignContext`/`.Outline` (live `DesignItem`/`IOutlineNode` APIs)
+now reads `WpfViewContent.SurfaceControl`/`DesignerSessionState`/`DesignerElementNode` instead -
+`GetDesignerStatus`, `SelectElement`, `QueryElementScreenBounds`, `DropToolboxItem`, and
+`EditPropertyThroughPropertiesPad` (the last one only needed its adapter cast changed, from
+`DesignItemPropertyGridAdapter` to `WpfSurfaceElementPropertyAdapter` - the live Xceed
+`PropertyGrid`/`PropertyItem` objects it drives are unchanged regardless of which adapter backs
+them). `FlushPendingTransaction`/`CommitLeakedChangeGroup` - a workaround for an old-model
+transaction-leak bug where the in-process designer could leave an unfinished `ChangeGroup` open on
+its undo stack - is now a no-op returning `committed: 0`: every `design/*` RPC to the child commits
+(or rejects) synchronously per call, so that class of bug is structurally impossible under the OOP
+model; the reflection-based `CommitLeakedChangeGroup` helper was deleted as dead code.
+
+**Verification**: `WpfDesign.AddIn.csproj` builds clean (0 errors) after every change, including
+after the `DesignItemPropertyGridAdapter.cs` deletion. A full solution build
+(`OpenDevelop.Mvp.slnx`) also completes with 0 errors. `WpfDesign.SurfaceHost.Tests` still passes
+22/22, unaffected (a separate project). As recorded above, the integration-test environment itself
+is broken for unrelated, pre-existing reasons (`.xaml` files fall back to a plain-text view before
+`WpfViewContent` is ever constructed) - this was surfaced explicitly, and the decision to proceed
+with the cutover accepting code-review-only verification (no interactive/manual confirmation of the
+swapped surface) was made explicitly with that gap acknowledged, not discovered after the fact.
+
+Checked afterwards: the old constructor's three now-dropped calls were not uniformly safe to just
+drop. `BasicMetadata.Register()` registers the WpfDesigner engine's own property-editor
+standard-value lists (`Brush`/`Color`/`Cursor`/`FontWeight`/`ICommand`, etc.) that the Properties
+pad's dropdowns depend on - since the engine (`DesignItem`/`Metadata`/`PlacementBehavior`) now runs
+entirely inside the child process, not the AddIn, this call was moved to
+`WpfSurfaceHostService`'s constructor instead of being dropped (it is itself idempotent via a
+`registered` guard, so calling it once per child process is correct and safe). `SharpDevelopTranslations.Init()`
+(sets the engine's `Translations.Instance`, used for an Alt-drag status-bar hint string) could not
+be moved the same way - it depends on `ICSharpCode.Core.StringParser` for resource-string lookup,
+and `WpfDesign.SurfaceHost.csproj` deliberately has no reference to `ICSharpCode.Core` (it is a
+plain child-process host, not an AddIn); adding that dependency just to localize one hint string was
+judged out of scope here. `DragDropExceptionHandler.UnhandledException` was a WPF OLE
+drag-drop-specific unhandled-exception guard for the old in-process control's own drag/drop path -
+`WpfSurfaceDesignerControl`'s drop handling already has its own try/catch (`DropAsync`), so this
+was not re-added. Net effect: functionally load-bearing (`BasicMetadata`) is now fixed; the other
+two are confirmed cosmetic/non-functional gaps, not silently-dropped correctness risk.
+
+### Post-cutover integration test pass: four real bugs found and fixed (2026-08-17/18)
+
+Running the WPF-designer-relevant integration tests for the first time against the completed
+cutover (previously impossible - the app hung on the very first one) surfaced four independent,
+real bugs, none of them findable by code review alone:
+
+1. **Deadlock on every file open** - `DesignerHostProcessClient.StartAsync` only started draining
+   the child's redirected stdout/stderr (`PumpAsync`) after its TCP handshake succeeded, but the
+   pipes are redirected from the moment `process.Start()` returns; if the child writes enough
+   startup output before it gets around to connecting, it blocks on `Console.Write` into a full
+   OS pipe buffer and never connects, while the host sits blocked waiting to accept that
+   connection. Fixed by starting both pumps immediately after `process.Start()`. Confirmed via a
+   full thread dump of a hung `OpenDevelop` process (`dotnet-dump`) - the UI thread was blocked in
+   `WpfViewContent.LoadInternal`'s `.GetAwaiter().GetResult()` for 8+ minutes with the child
+   process sitting idle in `WaitForShutdown()`, never having connected.
+2. **A second, independent deadlock class**: `WpfSurfaceDesignerControl.OpenAsync`/`UpdateAsync`/
+   `SetBoundsAsync`/`AddElementAsync` awaited their RPC call with `ConfigureAwait(true)` and then
+   called `Show()` (touches WPF UI) as the continuation. Every caller of these methods blocks
+   synchronously via `.GetAwaiter().GetResult()` from the UI thread (`WpfViewContent.LoadInternal`,
+   `WpfDesignDevFlowActions`) - `ConfigureAwait(true)`'s posted continuation can never run because
+   the blocked thread IS the dispatcher. Fixed by making these methods pure `ConfigureAwait(false)`
+   RPC wrappers with no UI side effects at all, and moving `Show()`/event-raising out to each call
+   site - blocking callers call it directly once `GetResult()` returns (already back on the correct
+   thread by definition); genuine fire-and-forget interactive callers (`OnMouseLeftButtonUp`,
+   `OnDrop`, `OnKeyDown`'s Delete handler) wrap the call in their own small async method that keeps
+   its own `ConfigureAwait(true)`, which is safe there because those callers never block the UI
+   thread. See `WpfSurfaceDesignerControl.Show`'s doc comment for the full reasoning.
+3. **`od.wpf-designer.status`'s `rootItemType` regression**: `WpfDesignDevFlowActions.GetDesignerStatus`
+   was rewritten to expose the DDP wire contract's `state.RootType`, which is the full CLR name
+   (`"System.Windows.Window"`, matching `WpfSurfaceHostRpcTests`' own assertion) - but this
+   action's own pre-existing contract (predating the cutover, encoded in the integration suite's
+   `WaitForWpfDesignerStatusAsync(expectedRootItemType: "Window", ...)`) is the bare type name.
+   Fixed by taking the substring after the last `.` in the action itself, leaving the wire contract
+   untouched.
+4. **Properties-pad edits never dirtied the file - a chain of two bugs**:
+   - `WpfViewContent`'s dirty-tracking compared `DesignerSessionState.Version` before/after a
+     mutation, but `WpfSurfaceHostService.NewState(baseVersion)` always echoes the caller's own
+     `baseVersion` back unchanged - no mutation RPC on this backend ever actually bumps the
+     document version, so the comparison could never fire. Fixed by adding a dedicated
+     `WpfSurfaceDesignerControl.DocumentChanged` event, raised only by real mutation-commit sites
+     (bounds/add/delete/property-edit), instead of inferring "did something change" from a version
+     number that never moves.
+   - Even after that fix, edits through the Properties pad specifically still weren't reaching the
+     child at all: `WpfSurfaceHostService.ToPropertyInfo` computed `IsReadOnly`/`Kind` from
+     `TypeDescriptor.GetConverter(property.ReturnType)` - the property's *declared* type. For an
+     `object`-typed content property (`Button.Content`, `ToolTip`, `Header`, etc.) holding a plain
+     string, `TypeDescriptor.GetConverter(typeof(object))` reports `CanConvertFrom(string) ==
+     false` (the base `TypeConverter` only round-trips via `InstanceDescriptor`), so the property
+     fell into the "Unsupported"/read-only branch purely because of its declared type, even though
+     the actual value was an ordinary editable string. `DescriptorPropertyDefinition.CreateValueBinding`
+     keys its binding `Mode` directly off `PropertyDescriptor.IsReadOnly`, so this silently made the
+     Properties pad's `Value` binding `OneWay` - a real edit updated the Xceed `PropertyItem`'s own
+     local value (so before/after checks looked like they worked) but never called
+     `WpfSurfacePropertyDescriptor.SetValue`, and so never reached `design/set-property` at all.
+     Root-caused via three rounds of `Console.Error.WriteLine` diagnostics bisecting the actual
+     call chain (`OnDocumentChanged` never fired -> `OnPropertyEdited` never fired ->
+     `WpfSurfaceElementPropertyAdapter.SetProperty` never fired -> `WpfSurfacePropertyDescriptor.
+     SetValue` never fired - zero hits at the very first line of our own code, ruling out every
+     "wiring" theory and pointing at the binding itself). Fixed by checking the actual runtime
+     value's type first in `ToPropertyInfo` (`value is string` short-circuits straight to
+     `Kind = "String"`) rather than trusting the declared type's converter.
+   - A related, smaller bug surfaced once (3) was fixed: `WpfSurfacePropertyDescriptor.GetValue`
+     read the `DesignerPropertyInfo` snapshot captured when the descriptor was constructed (at
+     selection time), which WPF's TwoWay binding re-reads immediately after a successful commit to
+     refresh its target - reporting the stale pre-edit value until the next full re-selection.
+     Fixed by updating that snapshot's `Value`/`IsNull` directly in `SetValue`, right after the RPC
+     call succeeds (an exception would throw before reaching that line, correctly leaving the stale
+     snapshot in place for a rejected edit).
+
+All four are now covered by real, passing integration tests: `OpenXamlFile_LoadsDesignerWithToolboxAndOutline`,
+`OpenAppXaml_ShowsCodeEditorOutline`, `OpenSamplePaneXaml_LoadsDesignerWithNestedControlTree`,
+`SelectControl_EditingContentInPropertiesPad_UpdatesAndSavesXaml`, `SelectControlOnSamplePane_ShowsSelectionInPropertiesPad`,
+and `OpenUnoXamlFile_UsesWinUIXamlDesignerInsteadOfWpfDesigner` all pass. `WpfDesign.SurfaceHost.Tests`
+stays at 22/22 throughout (confirmed after both the stdout/stderr-pump fix and the `ToPropertyInfo`
+fix, since both touch the shared `Designer.Remote`/`WpfSurfaceHostService` code those tests exercise
+directly). Full solution build (`OpenDevelop.Mvp.slnx`) is clean.
+
+**Three real synthetic-mouse-drag tests, root-caused and fixed (2026-08-18)**
+(`WpfDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement`, `DragToolboxItem_
+OntoDesignSurface_InsertsControlEditableThroughPropertiesPad`, `DragToolboxItem_OntoXamlSourceEditor_
+InsertsMarkupAtDropPoint`) - all three drive real OS-level synthetic mouse press/move/release
+through DevFlow (`cliclick`), and all three initially failed to observe any resulting change (no
+resize, no dropped element).
+
+Temporary `Console.Error.WriteLine` diagnostics at the top of `WpfSurfaceDesignerControl.
+OnMouseLeftButtonDown`/`OnMouseMove`/`OnMouseLeftButtonUp` showed **zero hits at all** across a
+full real press/drag/release sequence at the handle's own reported screen coordinates - ruling out
+every gesture/hit-test logic bug in this class (`adornerLayer.HandleAt`, `ApplyGesture`, the drag
+threshold, etc. were never even exercised). Two false leads were chased and ruled out before the
+real cause: (1) the resize-drag test was missing the `od.activate` call every sibling drag test
+makes first - added it, but it alone did not fix the zero-hits symptom; (2) a same-session
+`WinFormsDesigner_ResizeDrag_SelectionAndHandleTrackRenderedFrame` baseline run also failed
+identically, which was wrongly taken as proof of an environment-wide synthetic-input limitation
+unrelated to this cutover - **that inference was wrong**. Prompted to check further, running the
+*other* designers' equivalent real-mouse tests (`WinUIXamlDesigner_ResizeDrag_
+SelectionAndHandleTrackRenderedElement`, `DragToolboxItem_OntoWinFormsDesignSurface_
+AddsControlToForm`) showed they **passed** - real synthetic mouse input plainly does work in this
+environment; the earlier WinForms failure was its own separate, unrelated flake, not proof of
+anything environment-wide.
+
+That reopened the investigation with a live, working comparison to check against.
+`UnoDesignSurfaceControl` (WinUI's equivalent of `WpfSurfaceDesignerControl`) wires
+`PreviewMouseLeftButtonDown`/`PreviewMouseMove`/`PreviewMouseUp` (tunneling events), with its own
+doc comment explaining why: *"under LibreWPF the ScrollViewer swallows the bubbling mouse events,
+so picking and panning are handled before any child does."* `WpfSurfaceDesignerControl` wired the
+plain bubbling `MouseLeftButtonDown`/`MouseMove`/`MouseLeftButtonUp` instead - an ancestor
+(matching WinUI's own diagnosis, though the exact swallowing element wasn't independently
+re-identified for this control) intercepts the bubbling event before it ever reaches this control,
+explaining the zero hits. Switching to the identical `Preview*` tunneling events fixed the resize
+drag immediately (verified: press/drag/release now actually grows the element, confirmed via a
+passing `WpfDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement`).
+
+That fix alone got the toolbox-drop-onto-design-surface test to progress much further (the drop
+itself started landing, growing the outline), but it then failed at a later step - the Properties
+pad had no selected object after the drop. `WpfSurfaceDesignerControl.DropAsync` never selected the
+newly-created element: `WinForms`/`WinUI` solve this by having the caller supply a name up front and
+finding the result by that name afterward, but a real toolbox-dropped WPF element deliberately has
+no `x:Name` (the test's own comment says so), so that approach doesn't apply here. Fixed by adding
+`DesignerSessionState.CreatedElementId` to the shared DDP contract - populated by
+`WpfSurfaceHostService.AddElement` via the same `pathToItem` reverse-lookup `HitTest` already uses,
+valid only on that RPC's own response - and having `DropAsync`/`WpfDesignDevFlowActions.
+DropToolboxItem` select it after a successful drop. With both fixes in place, all three tests pass,
+`DragToolboxItem_OntoXamlSourceEditor_InsertsMarkupAtDropPoint` (unrelated AvalonEdit code, no
+changes needed) also passed cleanly on the same run, and a full re-verification of all nine
+WPF-designer-relevant integration tests plus `WpfDesign.SurfaceHost.Tests` (still 22/22) and a full
+solution build are all green.
+
+**Lesson for next time**: a single same-session "does an unrelated designer's equivalent test also
+fail" check is not sufficient evidence of an environment-wide limitation - that unrelated test can
+have its own, separate flake. Check at least one more independent, currently-passing comparison
+(here, WinUI's resize-drag) before concluding a failure is out of scope; had that been done first,
+the two false leads above would have been skipped entirely.
+
+### Toolbar (Zoom/Fit/Grid): completed, after two false starts (2026-08-18)
+
+**Final state: the toolbar ships, enabled and working.** Zoom, Fit and gridlines are implemented and
+verified end to end against a live app; design-size and design-theme stay hidden because they are
+genuinely other backends' concepts (see the constructor comment in `WpfSurfaceDesignerControl` for
+the per-entry reasoning). What follows records the two wrong conclusions reached on the way, since
+both were confidently wrong and cost real time.
+
+The breakthrough was abandoning 40-second test cycles and instead driving a **live app instance**
+through DevFlow directly (launch with `OD_TEST_MODE=1`, then `od.open-solution`/`od.open-file`/
+`od.wpf-designer.select`/`od.wpf-designer.surface-geometry` plus `/api/v1/ui/actions/*` and
+`/api/v1/ui/tree`). That turns a 40s guess into a 2s measurement and is strongly recommended for
+any future UI-level debugging here.
+
+Three real findings came out of it:
+
+1. **The toolbar never broke mouse input at all** (see the reverted conclusion below). With the
+   toolbar visible, a real press/drag/release on the resize handle resized the element correctly
+   6 times out of 7 consecutive manual attempts - the 7th only failed because the repeated +50px
+   growth had pushed the handle off the rendered surface. The earlier test failures were the
+   window simply not being frontmost when the synthetic press fired (`od.activate` reports
+   `isActive: false` even on success), which is an environment race independent of the toolbar.
+2. **`/api/v1/ui/tree` bounds are NOT screen coordinates.** The tree reported the docking manager
+   at `(0,72)` while its real `PointToScreen` origin was `(10,135)` - a constant `(+10,+63)` offset
+   in this layout. Early toolbar clicks were aimed from tree coordinates and landed ~63px above the
+   buttons, which is why "the toolbar buttons do nothing" looked like an input bug. `od.wpf-designer.
+   surface-geometry` *does* return true screen coordinates (it goes through `PointToScreen`), which
+   is why handle-based gestures worked while tree-based clicks did not. **Convert tree bounds before
+   feeding them to `cliclick`-backed pointer actions.**
+3. **Zoom was silently broken by `Stretch.None`** - a real bug this work uncovered.
+   `DesignFramePresenter.Resize` sets the frame `Image`'s `Width`/`Height` to
+   `Design* × viewport.Scale`, but WPF's presenter was constructed with `Stretch.None`, so the Image
+   drew the bitmap at its natural pixel size no matter what the element size said. Measured live at
+   Fit: the element was laid out 462 wide while the bitmap still rendered 297 wide, i.e. zoom
+   scaled the coordinate math and the selection adorners while the picture stayed put. Fixed by
+   switching to `Stretch.Fill`, matching `UnoDesignSurfaceControl` (the other backend with working
+   zoom); at the default scale of 1 the two are identical, so only zoomed rendering changes.
+   **`RemoteFormsDesignerControl` still uses `Stretch.None` with a live zoom combo and very likely
+   has this same latent bug** - not touched here, but worth checking.
+
+A fourth, smaller bug was found and fixed in the same pass: because the mouse handlers are
+`Preview` (tunneling) handlers on the whole control, they also saw presses on the toolbar above the
+design surface, ran the hit-test path with a negative design-space Y, resolved nothing, and silently
+cleared the user's selection - clicking Fit dropped the current selection. Guarded by ignoring
+presses outside `designSurface`'s own bounds.
+
+Verified live after the fixes: at 100% zoom the geometry is byte-identical to the pre-toolbar
+baseline (`222.09 x 86.09 @ (318,205)`, so no coordinate regression); Fit scales the bitmap and the
+selection by the same 1.87x and keeps the selection; the grid toggle turns on a `DrawingBrush`
+overlay sized exactly to the frame; and a resize drag under Fit still moves the element by exactly
+the dragged screen delta (+50/+40). The Zoom preset dropdown could not be exercised by synthetic
+input because ComboBox popups do not open under it in this stack (a general LibreWPF/popup
+limitation affecting every combo in the IDE - the repo ships `WpfMenuPopupDiagnostics` for this
+class of problem), so its preset path rests on sharing the exact pipeline Fit proves plus the
+already-shipping `DesignViewport.Zoom` helper, not on an end-to-end click.
+
+### Superseded: the earlier "toolbar breaks input, reverted" conclusion (kept as a record of the miss)
+
+Attempted to turn on the shared `DesignerCanvas` toolbar for the WPF designer - previously fully
+hidden (`ShowDesignSize`/`ShowZoom`/`ShowFit`/`ShowGrid`/`ShowTheme` all `false`) since none of it
+was ever wired up. Implemented Zoom + Fit for real, mirroring `RemoteFormsDesignerControl`'s own
+proven approach exactly: `zoomScale`/`fitMode` fields, the same `ZoomPresets`/`ZoomLabels` arrays,
+`ZoomChanged`/`FitRequested` wired to a `RebuildViewport()` that re-derives the viewport via
+`DesignViewport.Zoom`/`Fit` and re-presents the last-known state, plus an explicit
+`framePresenter.Visual.Margin` set from the viewport's origin (WPF's control never needed this
+before since it only ever used `DesignViewport.Identity`, whose origin is always (0,0) - Zoom/Fit
+both center non-trivially). Care was taken so the *default* state (`fitMode=false`,
+`zoomScale=1.0`) special-cases back to plain `Identity` rather than `Zoom(..., 1.0)` (which still
+centers whenever the viewport isn't exactly the render's pixel size), so an untouched zoom control
+wouldn't silently shift every screen coordinate the resize-drag/geometry tests depend on.
+
+Despite that care, simply making the toolbar **visible** (even just Zoom+Fit, without touching
+Grid/Theme) broke `WpfDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement` - and did so with
+a confusing, inconsistent signature: some runs showed zero `OnMouseLeftButtonDown` hits (matching
+the earlier Preview-event investigation's own signature), one isolated run passed cleanly with
+literally identical code, and a 3-full-retry-loop verification pass afterward showed 12 consecutive
+failed gesture attempts. Hiding just Grid/Theme while keeping Zoom/Fit visible appeared to fix it
+once, but that also failed to reproduce on a subsequent full run. This inconsistency - not a stable
+repro - is itself the finding: something about a visible toolbar interacts badly with LibreWPF's
+synthetic-input routing to this control, but not deterministically enough to root-cause with the
+diagnostics used elsewhere in this file (temporary `Console.Error.WriteLine`s, which this time
+themselves could not stay ahead of the timing-sensitivity involved).
+
+Given the toolbar was pure follow-up/nice-to-have work and the resize-drag/toolbox-drop
+interactions above were hard-won this session, **the toolbar was reverted to fully hidden**
+(all five `Show*` flags back to `false`) rather than ship something with an unresolved, intermittent
+interaction risk. The Zoom/Fit *logic* (fields, event wiring, `Show()`'s viewport computation) was
+left in place, dormant and inert while hidden - flipping `ShowZoom`/`ShowFit` back on is all a
+future attempt needs once the actual interaction is understood, but doing so should be re-verified
+against this exact regression, not assumed fixed by inspection alone.
+
+**A genuinely separate, real finding surfaced by this investigation**: even with the toolbar fully
+reverted to the exact state that was solidly green throughout the rest of this session,
+re-running `WpfDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement` three times in a row
+produced one failure and two passes - confirming this test has *some* inherent flake rate
+independent of the toolbar work entirely, the same class of "occasionally flaky end to end" the
+sibling `DragToolboxItem_OntoDesignSurface_...`/`DragToolboxItem_OntoXamlSourceEditor_...` tests
+already document and defend against with a 4-attempt retry loop. This test had no such loop -
+fixed by adding one, matching the established pattern exactly (retry the whole press/drag-move/
+release gesture, not a single fixed attempt). This is a real, permanent test improvement independent
+of the toolbar's fate, and should stay even though the toolbar itself was reverted.
 
 ## Reference record for the isolation decision
 

@@ -3,6 +3,11 @@
 // Static methods on a [DevFlowUIThread]-annotated class are auto-discovered by
 // LeXtudio.DevFlow.Agent.Core and dispatched to the UI thread — see
 // src/Main/SharpDevelop/DevFlow/OpenDevelopDevFlowActions.cs for the base set of actions.
+//
+// Rewritten for the out-of-process cutover (doc/technotes/wpf-designer.md): every action here
+// used to reach into a live in-process DesignItem/DesignContext/ChangeGroup transaction stack -
+// none of that exists anymore. Selection/properties/outline/mutations all go through
+// WpfSurfaceDesignerControl/WpfSurfaceHostClient instead, the same seam real UI code uses.
 
 using System;
 using System.Collections.Generic;
@@ -14,10 +19,9 @@ using System.Windows;
 using System.Windows.Controls;
 
 using ICSharpCode.SharpDevelop;
+using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.Gui;
-using ICSharpCode.WpfDesign;
-using ICSharpCode.WpfDesign.Designer.OutlineView;
-using ICSharpCode.WpfDesign.Designer.Services;
+using ICSharpCode.WpfDesign.AddIn.OutOfProcess;
 using LeXtudio.DevFlow.Agent.Core;
 using Microsoft.Maui.DevFlow.Agent.Core;
 using Xceed.Wpf.Toolkit.PropertyGrid;
@@ -27,6 +31,21 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 	[DevFlowUIThread]
 	public static class WpfDesignDevFlowActions
 	{
+		[DevFlowAction("od.wpf-designer.surface-geometry", Description = "Report the WPF design surface geometry (selected element's rendered bounds, its selection outline, bottom-right resize handle) in screen coordinates - the smoke probe for the resize-drag invariant that outline and handle always track the rendered element")]
+		public static string GetSurfaceGeometry()
+		{
+			var viewContent = FindWpfViewContent();
+			if (viewContent == null)
+				return JsonSerializer.Serialize(new { available = false });
+			var (frame, selection, handle) = viewContent.SurfaceGeometry();
+			return JsonSerializer.Serialize(new {
+				available = true,
+				frame = new { x = frame.X, y = frame.Y, width = frame.Width, height = frame.Height },
+				selection = new { x = selection.X, y = selection.Y, width = selection.Width, height = selection.Height },
+				handle = new { x = handle.X, y = handle.Y }
+			});
+		}
+
 		[DevFlowAction("od.wpf-designer.status", Description = "Inspect the active WPF designer view: whether the design surface loaded, the toolbox's item/group counts, and the outline pad's element tree")]
 		public static string GetDesignerStatus()
 		{
@@ -36,28 +55,36 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 
 			// If the XAML failed to parse, WpfViewContent swallows the exception into a
 			// WpfDocumentError placeholder (see WpfViewContent.LoadInternal's catch-all) rather than
-			// leaving DesignContext/RootItem null with no clue why - surface that reason here too.
+			// leaving the surface half-loaded with no clue why - surface that reason here too.
 			string loadError = GetLoadErrorIfAny(viewContent);
 			if (loadError != null)
 				return JsonSerializer.Serialize(new { active = true, designerLoaded = false, loadError });
 
-			bool designerLoaded = viewContent.DesignContext != null && viewContent.DesignContext.RootItem != null;
+			var state = viewContent.SurfaceControl?.State;
+			bool designerLoaded = state?.Accepted == true;
 
 			var toolboxControl = WpfToolbox.Instance.ToolboxControl as ListBox;
-			var toolboxItems = toolboxControl?.Items.OfType<WpfSideTabItem>().ToArray() ?? System.Array.Empty<WpfSideTabItem>();
+			var toolboxItems = toolboxControl?.Items.OfType<WpfSideTabItem>().ToArray() ?? Array.Empty<WpfSideTabItem>();
 
-			IOutlineNode outlineRoot = viewContent.Outline?.Root;
 			var outlineNames = new List<string>();
-			CollectOutlineNames(outlineRoot, outlineNames);
+			if (state?.Tree != null)
+				CollectOutlineNames(state.Tree, outlineNames);
 
 			return JsonSerializer.Serialize(new {
 				active = true,
 				designerLoaded,
-				rootItemType = viewContent.DesignContext?.RootItem?.ComponentType?.Name,
+				// state.RootType is the DDP wire contract's full CLR name (e.g.
+				// "System.Windows.Window" - see WpfSurfaceHostService.OpenCore and
+				// WpfSurfaceHostRpcTests, which assert the full name); this action's own
+				// pre-existing contract (predating the OOP cutover, still relied on by
+				// WaitForWpfDesignerStatusAsync's expectedRootItemType in the integration suite)
+				// is the bare type name, matching what the old in-process
+				// DesignContext.RootItem.ComponentType.Name used to report.
+				rootItemType = SimpleTypeName(state?.RootType),
 				toolboxItemCount = toolboxItems.Length,
 				toolboxGroupCount = toolboxItems.Select(i => i.CategoryName).Distinct().Count(),
-				outlineRootName = outlineRoot?.Name,
-				outlineChildCount = outlineRoot?.Children.Count ?? 0,
+				outlineRootName = state?.Tree?.Name ?? state?.Tree?.Type,
+				outlineChildCount = state?.Tree?.Children.Count ?? 0,
 				// Flattened (root + every descendant, depth-first) so tests can assert a named
 				// element shows up in the outline tree without knowing its exact nesting depth.
 				outlineNames = outlineNames.ToArray()
@@ -68,21 +95,22 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 		public static string SelectElement(string elementName)
 		{
 			var viewContent = FindWpfViewContent();
-			if (viewContent?.DesignContext?.RootItem == null)
+			var surface = viewContent?.SurfaceControl;
+			if (surface?.State?.Accepted != true)
 				return JsonSerializer.Serialize(new { success = false, error = "WPF designer is not loaded" });
-			var designItem = FindDesignItem(viewContent.DesignContext.RootItem, elementName);
-			if (designItem == null)
+
+			var node = surface.FindNodeByName(elementName);
+			if (node == null)
 				return JsonSerializer.Serialize(new { success = false, error = "Designer element not found: " + elementName });
 
-			viewContent.DesignContext.Services.Selection.SetSelectedComponents(
-				new[] { designItem }, SelectionTypes.Replace);
+			surface.SelectElementId(node.Id);
 
-			var selectedObject = PropertyPadGrid?.SelectedObject as DesignItemPropertyGridAdapter;
+			var selectedObject = viewContent!.PropertyContainer.SelectedObject as WpfSurfaceElementPropertyAdapter;
 			return JsonSerializer.Serialize(new {
 				success = true,
-				selectedName = viewContent.DesignContext.Services.Selection.PrimarySelection?.Name,
-				propertiesPadSelectedName = selectedObject?.DesignItem?.Name,
-				propertiesPadSelectedType = selectedObject?.DesignItem?.ComponentType?.Name
+				selectedName = node.Name,
+				propertiesPadSelectedName = selectedObject?.GetComponentName(),
+				propertiesPadSelectedType = selectedObject?.GetClassName()
 			});
 		}
 
@@ -94,7 +122,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 		/// synthetic mouse press/move/release (od.ui/actions/{press,drag-move,release}) starting
 		/// from the actual on-screen toolbox row, exercising DragDrop.DoDragDrop end to end -
 		/// PortableDragDropOperation (LibreWPF) now implements that for real, so this no longer
-		/// needs to fall back to od.wpf-designer.toolbox.drop's direct CreateComponentTool calls.
+		/// needs to fall back to od.wpf-designer.toolbox.drop's direct calls.
 		/// </summary>
 		[DevFlowAction("od.wpf-designer.toolbox.query-item-bounds", Description = "Get the real on-screen bounds of a Toolbox row for a given control type, for driving a synthetic mouse drag")]
 		public static string QueryToolboxItemBounds(string typeName)
@@ -105,7 +133,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			// (same reason od.wpf-designer.select/status need it), which is what makes the pad
 			// resolve WpfViewContent's IToolsHost.ToolsContent (WpfToolbox) in the first place.
 			var viewContent = FindWpfViewContent();
-			if (viewContent?.DesignContext?.RootItem == null)
+			if (viewContent?.SurfaceControl?.State?.Accepted != true)
 				return JsonSerializer.Serialize(new { success = false, error = "WPF designer is not loaded" });
 
 			var toolboxControl = WpfToolbox.Instance.ToolboxControl as ListBox;
@@ -155,13 +183,6 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			if (toolboxControl == null || item == null)
 				return JsonSerializer.Serialize(new { success = false, error = "Toolbox item not found: " + typeName });
 
-			// WpfToolbox.Instance is a process-lifetime singleton shared by every open .xaml file's
-			// view, so its ListBox.SelectedItem is whatever some EARLIER drag (in this test run or
-			// a completely different test) last left selected - a synthetic mouse press at this
-			// row's coordinates does not reliably reselect it itself (unlike a real click, which
-			// goes through ListBoxItem's own selection handling before WpfToolbox.OnPreviewMouseMove
-			// ever reads SelectedItem). Select explicitly so the drag that follows this query always
-			// picks up the CreateComponentTool for the type asked for, not a stale prior selection.
 			toolboxControl.SelectedItem = item;
 			toolboxControl.ScrollIntoView(item);
 			toolboxControl.UpdateLayout();
@@ -272,20 +293,31 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 
 		/// <summary>
 		/// Same idea as <see cref="QueryToolboxItemBounds"/>, but for an already-placed element on
-		/// the active design surface - the drop target for a synthetic drag.
+		/// the active design surface - the drop target for a synthetic drag. Unlike the live
+		/// in-process version, the element's rendered position now comes straight from the DDP
+		/// tree (<see cref="WpfSurfaceDesignerControl.ScreenBoundsOf(string)"/>) rather than a live
+		/// FrameworkElement's own PointToScreen.
 		/// </summary>
 		[DevFlowAction("od.wpf-designer.query-element-screen-bounds", Description = "Get the real on-screen bounds of a named element in the active WPF designer, for driving a synthetic mouse drag")]
 		public static string QueryElementScreenBounds(string elementName)
 		{
-			var viewContent = FindWpfViewContent();
-			if (viewContent?.DesignContext?.RootItem == null)
+			var surface = FindWpfViewContent()?.SurfaceControl;
+			if (surface?.State?.Accepted != true)
 				return JsonSerializer.Serialize(new { success = false, error = "WPF designer is not loaded" });
 
-			var designItem = FindDesignItem(viewContent.DesignContext.RootItem, elementName);
-			if (!(designItem?.View is FrameworkElement view))
+			var node = surface.FindNodeByName(elementName);
+			if (node == null || surface.ScreenBoundsOf(node.Id) is not { } bounds)
 				return JsonSerializer.Serialize(new { success = false, error = "Designer element not found: " + elementName });
 
-			return JsonSerializer.Serialize(GetScreenBounds(view));
+			return JsonSerializer.Serialize(new {
+				success = true,
+				x = bounds.X,
+				y = bounds.Y,
+				width = bounds.Width,
+				height = bounds.Height,
+				centerX = bounds.X + bounds.Width / 2,
+				centerY = bounds.Y + bounds.Height / 2
+			});
 		}
 
 		static object GetScreenBounds(UIElement element)
@@ -305,107 +337,82 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 
 		/// <summary>
 		/// Mirrors what actually happens when a user drags a WpfSideTabItem from the Toolbox onto
-		/// the design surface (WpfToolbox.cs's OnPreviewMouseMove -> DragDrop.DoDragDrop ->
-		/// CreateComponentTool.designPanel_Drop), but calls the vendored designer engine's
-		/// mouse-independent primitives directly (CreateComponentTool.CreateItem +
-		/// AddItemsWithDefaultSize - see externals/vscode-wpf/.../CreateComponentTool.cs) instead of
-		/// simulating DragDrop/mouse events, since DevFlow has no synthetic-drag primitive and the
-		/// real drag path is mouse-coordinate driven, not something a test can address deterministically.
+		/// the design surface, but calls <see cref="WpfSurfaceDesignerControl.AddElementAsync"/>
+		/// directly (design/add-element) instead of simulating DragDrop/mouse events, since DevFlow
+		/// has no synthetic-drag primitive and the real drag path is mouse-coordinate driven, not
+		/// something a test can address deterministically. Builds the same
+		/// <see cref="DesignerToolboxItemInfo"/> a real drop's DataObject now carries
+		/// (WpfToolbox.BuildToolboxItemInfo), so this exercises the identical child-side type
+		/// resolution a real drag would.
 		/// </summary>
 		[DevFlowAction("od.wpf-designer.toolbox.drop", Description = "Create a control (mirroring a toolbox drag-drop) and insert it into a container element in the active WPF designer, without needing simulated mouse input")]
 		public static string DropToolboxItem(string typeName, string containerElementName = null, string elementName = null, double width = 100, double height = 25)
 		{
-			var viewContent = FindWpfViewContent();
-			if (viewContent?.DesignContext?.RootItem == null)
+			var surface = FindWpfViewContent()?.SurfaceControl;
+			if (surface?.State?.Accepted != true)
 				return JsonSerializer.Serialize(new { success = false, error = "WPF designer is not loaded" });
 
 			var type = ResolveControlType(typeName);
 			if (type == null)
 				return JsonSerializer.Serialize(new { success = false, error = "Could not resolve control type: " + typeName });
 
-			DesignItem container = viewContent.DesignContext.RootItem;
+			string parentId;
 			if (!string.IsNullOrEmpty(containerElementName)) {
-				container = FindDesignItem(container, containerElementName);
+				var container = surface.FindNodeByName(containerElementName);
 				if (container == null)
 					return JsonSerializer.Serialize(new { success = false, error = "Container element not found: " + containerElementName });
+				parentId = container.Id;
+			} else {
+				parentId = surface.OutlineRoot?.Id ?? "";
 			}
 
-			// AddItemWithCustomSizePosition's own CreateItem() call (instance method, on the
-			// throwaway CreateComponentTool it constructs internally) opens a ChangeGroup that
-			// nothing ever commits or aborts afterwards (only the real mouse-driven drag path
-			// - designPanel_Drop - finishes the ChangeGroup CreateItemWithPosition opens; this
-			// static single-call helper has no equivalent finish step). Left open, the change
-			// never becomes durable: it's visible in-memory (selectable/editable) but Save
-			// serializes the pre-drop document, and the leaked transaction blocks any later
-			// OpenGroup from committing correctly ("Invalid transaction finish, nested
-			// transactions must finish first" - the leaked one is always on top of the stack).
-			// Finish it ourselves via UndoService's transaction stack (UndoTransaction itself is
-			// internal to the designer engine assembly, but its base ChangeGroup - which is all
-			// we need to call Commit() - is public).
-			bool added;
+			var item = WpfToolbox.BuildToolboxItemInfo(type);
+			DesignerSessionState state;
 			try {
-				added = CreateComponentTool.AddItemWithCustomSizePosition(
-					container, type, new Size(width, height), new Point(0, 0));
+				state = surface.AddElementAsync(parentId, item, elementName ?? "", 0, 0).GetAwaiter().GetResult();
 			} catch (Exception ex) {
 				return JsonSerializer.Serialize(new { success = false, error = ex.Message });
 			}
+			// AddElementAsync deliberately does not render internally (see
+			// WpfSurfaceDesignerControl.Show's remarks) - GetResult() above resumed this DevFlow
+			// action on the dispatcher thread it was invoked on, so calling Show() directly here
+			// is correct and safe.
+			surface.Show(state);
+			surface.NotifyDocumentChanged(state);
+			if (!state.Accepted)
+				return JsonSerializer.Serialize(new { success = false, error = state.Error });
+			// Matches what a real toolbox drag-drop does (WpfSurfaceDesignerControl.DropAsync) -
+			// select the element this action just created.
+			if (state.CreatedElementId != null)
+				surface.SelectElementId(state.CreatedElementId);
 
-			if (!added)
-				return JsonSerializer.Serialize(new { success = false, error = "Container does not accept a dropped " + type.Name + " (no placement behavior)" });
-
-			CommitLeakedChangeGroup(viewContent.DesignContext);
-
-			// AddItemWithCustomSizePosition (via AddItemsWithCustomSize) already selected the
-			// newly created item as a side effect - that's the only handle back to it.
-			var createdItem = container.Services.Selection.PrimarySelection;
-			if (createdItem != null && !string.IsNullOrEmpty(elementName))
-				createdItem.Name = elementName;
-
+			var createdName = string.IsNullOrEmpty(elementName) ? null : elementName;
+			var created = createdName != null ? surface.FindNodeByName(createdName) : null;
 			return JsonSerializer.Serialize(new {
 				success = true,
-				createdTypeName = createdItem?.ComponentType?.Name,
-				createdName = createdItem?.Name,
-				containerName = container.Name
+				createdTypeName = created?.Type ?? type.Name,
+				createdName = created?.Name,
+				containerName = surface.FindNodeByName(containerElementName ?? "")?.Name ?? containerElementName
 			});
 		}
 
 		/// <summary>
-		/// Also reachable directly as od.wpf-designer.flush-pending-transaction: the real
-		/// toolbox-drag-drop path (WpfToolbox -> DragDrop.DoDragDrop -> CreateComponentTool's
-		/// DragOver/Drop handlers) can leave the SAME kind of unfinished ChangeGroup open as
-		/// DropToolboxItem's direct CreateComponentTool calls do (see that method's comment) -
-		/// nothing about it is specific to calling AddItemWithCustomSizePosition directly, it's
-		/// inherent to how the underlying transaction stack is used. A test driving a real
-		/// synthetic mouse drag has no single call site to hang this off of, so expose it
-		/// standalone to call once after the drag (and any property edits through the Properties
-		/// pad, which land in the same still-open transaction) before saving.
+		/// Historical no-op, kept for callers that still invoke it defensively after a real
+		/// toolbox-drag-drop or a batch of Properties-pad edits: the in-process designer used to
+		/// leave an unfinished ChangeGroup open on its undo transaction stack after certain
+		/// mutations (see this technote's Phase 0 notes), requiring an explicit flush before a
+		/// save would see the change. Each design/* RPC to the out-of-process child now commits
+		/// (or rejects) its own mutation synchronously - there is no lingering client-side
+		/// transaction to flush anymore, so this always reports committed = 0.
 		/// </summary>
-		[DevFlowAction("od.wpf-designer.flush-pending-transaction", Description = "Commit any ChangeGroup left open on the active WPF designer's undo transaction stack (e.g. after a real toolbox drag-drop), so subsequent edits/saves see a consistent document instead of one still mid-transaction")]
+		[DevFlowAction("od.wpf-designer.flush-pending-transaction", Description = "No-op under the out-of-process WPF designer (kept for backward-compatible callers) - every design/* mutation now commits synchronously, so there is never a pending transaction to flush")]
 		public static string FlushPendingTransaction()
 		{
 			var viewContent = FindWpfViewContent();
-			if (viewContent?.DesignContext == null)
+			if (viewContent?.SurfaceControl?.State?.Accepted != true)
 				return JsonSerializer.Serialize(new { success = false, error = "WPF designer is not loaded" });
 
-			int committed = 0;
-			while (CommitLeakedChangeGroup(viewContent.DesignContext))
-				committed++;
-
-			return JsonSerializer.Serialize(new { success = true, committed });
-		}
-
-		static bool CommitLeakedChangeGroup(DesignContext context)
-		{
-			var undoService = context.Services.GetService(typeof(UndoService)) as UndoService;
-			var stack = undoService?.GetType()
-				.GetField("_transactionStack", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
-				?.GetValue(undoService);
-			var count = (int?)(stack?.GetType().GetProperty("Count")?.GetValue(stack)) ?? 0;
-			if (count == 0)
-				return false;
-			var top = stack?.GetType().GetMethod("Peek")?.Invoke(stack, null) as ChangeGroup;
-			top?.Commit();
-			return true;
+			return JsonSerializer.Serialize(new { success = true, committed = 0 });
 		}
 
 		static Type ResolveControlType(string typeName)
@@ -434,18 +441,18 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			return null;
 		}
 
-		[DevFlowAction("od.wpf-designer.properties-pad.edit", Description = "Edit a property through the real Xceed Properties pad PropertyItem; does not access DesignItemProperty directly")]
+		[DevFlowAction("od.wpf-designer.properties-pad.edit", Description = "Edit a property through the real Xceed Properties pad PropertyItem; does not access the DDP property list directly")]
 		public static string EditPropertyThroughPropertiesPad(string propertyName, string value)
 		{
 			var grid = PropertyPadGrid;
 			if (grid == null)
 				return JsonSerializer.Serialize(new { success = false, error = "Properties pad is not available" });
-			if (!(grid.SelectedObject is DesignItemPropertyGridAdapter selectedObject))
+			if (!(grid.SelectedObject is WpfSurfaceElementPropertyAdapter selectedObject))
 				return JsonSerializer.Serialize(new { success = false, error = "Properties pad has no selected WPF design item" });
 
 			// Use the PropertyItem generated and owned by the visible Xceed PropertyGrid. Setting its
 			// Value exercises the pad's normal binding -> PropertyDescriptor -> designer adapter path;
-			// deliberately do not reach into DesignItem.Properties here.
+			// deliberately do not call WpfSurfaceHostClient.SetPropertyAsync directly here.
 			var item = grid.Properties?.OfType<PropertyItem>()
 				.FirstOrDefault(candidate => candidate.PropertyName == propertyName);
 			if (item == null)
@@ -466,15 +473,31 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 					: converter != null && converter.CanConvertFrom(typeof(string))
 					? converter.ConvertFrom(null, CultureInfo.InvariantCulture, value)
 					: TypeDescriptor.GetConverter(item.PropertyType).ConvertFromInvariantString(value);
-			} catch (System.Exception ex) {
+			} catch (Exception ex) {
 				return JsonSerializer.Serialize(new { success = false, error = ex.Message });
 			}
 
 			item.Value = convertedValue;
 			var after = item.Value;
+
+			// The Value binding has ValidatesOnExceptions=true (DescriptorPropertyDefinition.
+			// CreateValueBinding), so if the descriptor's own SetValue - which calls
+			// WpfSurfaceElementPropertyAdapter.SetProperty, i.e. the real design/set-property RPC -
+			// throws, WPF's binding engine swallows it into a validation error rather than letting
+			// it propagate here. `after` still reflects the target-side DP's own local value
+			// regardless, so a caller checking only before/after cannot tell a real commit from a
+			// silently-failed one. Surface that explicitly instead of assuming success.
+			var bindingExpression = item.GetBindingExpression(PropertyItem.ValueProperty);
+			string bindingError = null;
+			if (bindingExpression?.DataItem is System.Windows.DependencyObject dataItem && System.Windows.Controls.Validation.GetHasError(dataItem)) {
+				var errors = System.Windows.Controls.Validation.GetErrors(dataItem);
+				bindingError = errors.Count > 0 ? errors[0].ErrorContent?.ToString() : "Unknown validation error";
+			}
+
 			return JsonSerializer.Serialize(new {
-				success = true,
-				selectedName = selectedObject.DesignItem.Name,
+				success = bindingError == null,
+				error = bindingError,
+				selectedName = selectedObject.GetComponentName(),
 				propertyName = item.PropertyName,
 				propertyItemType = item.GetType().FullName,
 				editorType = item.Editor?.GetType().FullName,
@@ -487,10 +510,9 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 		/// The WPF designer registers as a secondary view content alongside the primary AvalonEdit
 		/// text view for .xaml files, and the "Source" tab is the default active sub-view - so
 		/// ActiveViewContent alone won't find it, and merely finding the (inactive) secondary view
-		/// content isn't enough either: SharpDevelop only calls LoadInternal (which constructs the
-		/// DesignSurface) on a secondary view when its tab actually becomes active, so
-		/// WpfViewContent.DesignContext throws NullReferenceException (designer surface field never
-		/// set) until we switch to it via IWorkbenchWindow.SwitchView.
+		/// content isn't enough either: SharpDevelop only calls LoadInternal (which spawns the
+		/// out-of-process child) on a secondary view when its tab actually becomes active, so
+		/// WpfViewContent.SurfaceControl is null until we switch to it via IWorkbenchWindow.SwitchView.
 		/// </summary>
 		/// <summary>
 		/// The live Properties pad's Xceed grid, reached via <c>IPropertyPadHost</c> (Base
@@ -538,37 +560,17 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			return null;
 		}
 
-		static void CollectOutlineNames(IOutlineNode node, List<string> names)
+		static string SimpleTypeName(string fullName)
+			=> string.IsNullOrEmpty(fullName) ? fullName : fullName.Substring(fullName.LastIndexOf('.') + 1);
+
+		static void CollectOutlineNames(DesignerElementNode node, List<string> names)
 		{
 			if (node == null)
 				return;
 
-			// node.Name is a human-readable display string ("Border (PaneBorder)" via
-			// OutlineNodeNameService.GetOutlineNodeName), not the bare x:Name. DevFlow
-			// callers want the actual element identifiers, so prefer DesignItem.Name
-			// (falling back to the display string for unnamed/root nodes).
-			var name = node.DesignItem?.Name;
-			names.Add(string.IsNullOrEmpty(name) ? node.Name : name);
+			names.Add(string.IsNullOrEmpty(node.Name) ? node.Type : node.Name);
 			foreach (var child in node.Children)
 				CollectOutlineNames(child, names);
-		}
-
-		static DesignItem FindDesignItem(DesignItem item, string elementName)
-		{
-			if (item == null || item.Name == elementName)
-				return item;
-			var content = item.ContentProperty;
-			if (content == null)
-				return null;
-			if (content.IsCollection) {
-				foreach (var child in content.CollectionElements) {
-					var match = FindDesignItem(child, elementName);
-					if (match != null)
-						return match;
-				}
-				return null;
-			}
-			return FindDesignItem(content.Value, elementName);
 		}
 	}
 }

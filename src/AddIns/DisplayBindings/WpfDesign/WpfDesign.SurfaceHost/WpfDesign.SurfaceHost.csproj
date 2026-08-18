@@ -43,4 +43,16 @@
     </ItemGroup>
     <Copy SourceFiles="@(_WpfDesignerRuntimeAsset)" DestinationFolder="$(OutDir)%(RecursiveDir)" SkipUnchangedFiles="true" />
   </Target>
+
+  <!-- Deploy this whole build output (including everything CopyWpfDesignerRuntimeAssets just
+       copied in) into a "Host" subfolder next to the deployed WpfDesign.AddIn, mirroring
+       FormsDesigner.Host.csproj's own DeployToAddIns target exactly - WpfSurfaceHostClient's
+       LocateChildDll() looks for it at that same relative path. -->
+  <Target Name="DeployToAddIns" AfterTargets="CopyWpfDesignerRuntimeAssets">
+    <ItemGroup>
+      <_HostOutput Include="$(TargetDir)**" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_HostOutput)" SkipUnchangedFiles="true"
+          DestinationFiles="@(_HostOutput->'$(MSBuildProjectDirectory)\..\..\..\..\..\AddIns\DisplayBindings\WpfDesign\Host\%(RecursiveDir)%(Filename)%(Extension)')" />
+  </Target>
 </Project>

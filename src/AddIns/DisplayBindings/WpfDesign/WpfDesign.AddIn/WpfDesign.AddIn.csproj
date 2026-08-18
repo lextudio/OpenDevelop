@@ -17,6 +17,11 @@
     <ProjectReference Include="..\..\..\..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign.Designer\Project\WpfDesign.Designer.csproj" />
     <ProjectReference Include="..\..\..\..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign.XamlDom\Project\WpfDesign.XamlDom.csproj" />
     <ProjectReference Include="..\..\..\..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign\Project\WpfDesign.csproj" />
+    <!-- WPF DDP cutover (see doc/technotes/wpf-designer.md, "Phase 1"): the shared canvas
+         presentation helpers and the out-of-process host client, mirroring how FormsDesigner/
+         WinUIXamlDesigner reference their own equivalents. -->
+    <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Presentation\Designer.Presentation.csproj" />
+    <ProjectReference Include="..\WpfDesign.SurfaceHost.Remote\WpfDesign.SurfaceHost.Remote.csproj" />
     <ProjectReference Include="..\..\..\..\Libraries\ICSharpCode.TypeSystem.Abstractions\ICSharpCode.TypeSystem.Abstractions.csproj" Private="False" />
     <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="False" />
     <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="False" />

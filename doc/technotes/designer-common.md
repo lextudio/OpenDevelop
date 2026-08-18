@@ -574,9 +574,11 @@ Remaining convergence steps, in order:
      selection rectangle moved into the shared type, plus a small `SelectionStroke` setter added
      to reproduce WinForms' locked-component recolor (DodgerBlue → DarkOrange), a purely visual
      property untouched by the gesture-code exclusion.
-   - **Gesture/input state machine, marquee-select, grid/snap guides, toolbar chrome, zoom/pan
-     input, context menu, inline text editor, UIA automation peer tree**: intentionally NOT
-     shared — see "Where convergence stops: protocol yes, presentation no" above. These are
+   - **Gesture/input state machine, marquee-select, grid/snap guides, zoom/pan input,
+      context menu, inline text editor, UIA automation peer tree**: intentionally NOT
+      shared — see "Where convergence stops: protocol yes, presentation no" above. (Toolbar
+      chrome and the canvas shell, by contrast, ARE shared as of 2026-08-17 — see "Shared
+      DesignerCanvas shell" below.) These are
      per-backend presentation concerns, not protocol gaps, and this item is complete as scoped
      rather than blocked. (Should someone later want them merged anyway, it would be a rewrite
      of live mouse-input handling needing interactive WPF/LibreWPF verification — but the
@@ -588,6 +590,65 @@ Remaining convergence steps, in order:
    (`FormsDesignerHostClientTests`, `UnoDesignHostRpcTests`, 6/6). Neither confirms the frame or
    selection outline actually renders correctly on screen - that still needs a live GUI session.
 5. Implement the WPF surface host behind the same contract (wpf-designer.md phases).
+
+## Shared DesignerCanvas shell (2026-08-17)
+
+The earlier "Where convergence stops" rule kept *toolbar chrome* and the canvas shell
+per-backend. That changed: every visual designer now hosts its rendered surface in one shared
+`DesignerCanvas` (`ICSharpCode.SharpDevelop.Widgets`), so the surrounding chrome looks and
+behaves identically across WinForms and WinUI/Uno. The backend-specific surface (frame +
+selection + gestures) goes into `DesignerCanvas.ContentHost`; the gesture/input pipelines stay
+per-backend exactly as before.
+
+### What the shared shell provides
+
+- **Unified toolbar** with five slots: zoom combo, Fit button, gridlines toggle, Light/Dark
+  design-theme toggle, and the design-size (device) preset combo. Each slot has a
+  `ShowXxx` capability switch, so a backend keeps the full chrome but hides what it cannot
+  serve:
+  - WinUI/Uno shows all five (zoom/fit/grid/theme/size all implemented).
+  - WinForms shows zoom/fit/grid/theme; the **design-size (device) combo is hidden** — that is
+    a WinUI/Uno page concept, not a WinForms one. Gridlines/theme buttons stay visible but inert
+    until the backend grows those capabilities.
+- **Toolbar chrome follows the IDE theme**, not the design theme: toolbar background binds
+  `ToolWindowBackground` and every combo/button text binds `Foreground` (DynamicResource), so
+  dark mode gives dark toolbar + light text. The design theme (`ApplyDesignTheme`) only drives
+  the checked-button highlight (Selection blue).
+- **Empty-canvas edge pattern**: the area around the design bitmap is the semantic
+  `EdgePattern` key (defined in `Themes/Theme.Light.xaml` / `Theme.Dark.xaml` as a dotted
+  brush), so it switches with the IDE theme and reads as "outside the design" instead of a
+  flat border. The WinForms surface used to paint a solid white background over this area —
+  that is gone; the rendered form bitmap (itself white content) is surrounded by the pattern.
+- **Default zoom is 100%, not Fit** (VS behavior). Both backends initialize the zoom combo to
+  "100%" (`DesignViewport.Zoom` for WinForms, an absolute centered scale). Fit is a user choice.
+- **Design-size combo sits on its own at the far right** of the toolbar, after the theme
+  toggle.
+
+### Backend integration
+
+- `UnoDesignSurfaceControl : DesignerCanvas` — keeps its viewport/zoom math, selection,
+  drag/resize, inline text editor; the toolbar/edge/theme come from the shell. `CanvasMargin`
+  keeps the design bitmap offset from the scroll-viewport edges so the dotted edge pattern
+  shows all around (and leaves room for edge-drag page resizing).
+- `RemoteFormsDesignerControl : DesignerCanvas` — its surface (frame + guides + adorners +
+  disconnected overlay) moved into `ContentHost`. The WinForms backend now supports zoom/fit
+  through the shared toolbar via `DesignViewport.Zoom` (new static: absolute centered scale,
+  `1.0` = 100%) and `DesignViewport.Fit`. Because the WinForms canvas can now scale, all
+  coordinate consumers had to be converted to design↔surface terms:
+  - the rendered form bitmap is placed at the viewport base (`max(0, OriginX) + PanX`, …),
+    exactly where `DesignToSurface`-based guides/adorners land — otherwise selection and bitmap
+    drift apart whenever `Scale != 1` or the design is centered;
+  - `PositionAdorners` converts both design corners via `DesignToSurface` for handle
+    size/placement (was using raw design units for surface pixels);
+  - `DragDelta` reports surface pixels, so move/resize deltas are divided by `Scale` before
+    being added to design-space state.
+
+### Remaining
+
+WPF (in-process `WpfViewContent`) still hosts its own surface; wiring it through the shared
+`DesignerCanvas` shell is the remaining item (wpf-designer.md phases).
+
+
 
 Done (2026-08-16): a WinUI/Uno host test project now exists —
 `WinUIXamlDesigner.UnoHost.Tests` (plus a WPF-free `WinUIXamlDesigner.UnoDesignHost.Remote`

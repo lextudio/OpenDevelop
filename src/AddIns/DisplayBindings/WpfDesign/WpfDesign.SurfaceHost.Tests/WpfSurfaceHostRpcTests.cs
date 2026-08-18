@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using ICSharpCode.SharpDevelop.Designer.Remote;
+using ICSharpCode.WpfDesign.SurfaceHost;
 using Xunit;
 
 namespace WpfDesign.SurfaceHost.Tests;
@@ -38,7 +39,7 @@ public sealed class WpfSurfaceHostRpcTests
 	public async Task ChildHost_HandshakesAndOpensASession()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-		using var client = await global::WpfDesign.SurfaceHost.Tests.WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
 		Assert.True(client.IsAlive);
 		Assert.NotEqual(Environment.ProcessId, client.ProcessId);
 
@@ -60,7 +61,7 @@ public sealed class WpfSurfaceHostRpcTests
 	public async Task ChildHost_UpdatesAndFlushesTheEditedXaml()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-		using var client = await global::WpfDesign.SurfaceHost.Tests.WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
 
 		var opened = await client.OpenAsync(Snapshot(1, Xaml), timeout.Token);
 		Assert.True(opened.Accepted, opened.Error);
@@ -82,41 +83,46 @@ public sealed class WpfSurfaceHostRpcTests
 	public async Task DesignHitTest_ResolvesAnElementInsideItsBounds()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-		using var client = await global::WpfDesign.SurfaceHost.Tests.WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
 		var opened = await client.OpenAsync(Snapshot(1, Xaml), timeout.Token);
 		Assert.True(opened.Accepted, opened.Error);
 
-		// Confirmed by a real run (see wpf-designer.md's Phase 0 progress notes):
-		// VisualTreeHelper.HitTest never descends past the root visual under headless LibreWPF
-		// on macOS, even though the TextBlock/Button children are real, arranged WPF objects with
-		// correct bounds - every hit callback reports only the Grid itself. This is a confirmed
-		// platform gap, not a designer bug, so this scenario can only assert what genuinely works
-		// today: hit-testing resolves *some* valid element (the root), not a false green check
-		// pretending child-level picking works.
-		var hit = await client.HitTestAsync(1, 50, 15, timeout.Token);
-		Assert.False(hit.PickPath is null);
-		var hitNode = FindNodeByPath(opened.Tree!, hit.PickPath);
-		Assert.NotNull(hitNode);
-		Assert.Equal("Grid", hitNode!.Type);
-	}
+		// Plain VisualTreeHelper.HitTest never descends past the root visual under headless
+		// LibreWPF on macOS (confirmed by direct run; see wpf-designer.md). The fix is
+		// ProGpuWpfCompositionTarget.TryHitTestOwner, which answers per-element hit-testing
+		// straight from the GPU-side hit-test data ReplayVisualSubtree already builds - no
+		// PresentationSource needed. This stays deliberately position-agnostic even though the
+		// old tree-bounds-vs-rendered-pixels mismatch is now fixed (see
+		// RenderedContent_LandsExactlyAtTheBoundsTheElementTreeReports, which asserts that
+		// alignment directly): what this scenario is about is that hit-testing *distinguishes
+		// children at all*, so it scans for two points resolving to two different, non-background
+		// pick paths rather than hardcoding where those points are.
+		var background = await client.HitTestAsync(1, 0, 0, timeout.Token);
+		Assert.True(string.IsNullOrEmpty(background.PickPath));
 
-	static DesignerElementNode? FindNodeByPath(DesignerElementNode node, string path)
-	{
-		if (node.Path == path)
-			return node;
-		foreach (var child in node.Children)
+		string? firstPath = null, secondPath = null;
+		for (var y = 0; y < 300 && secondPath == null; y += 5)
 		{
-			if (FindNodeByPath(child, path) is { } found)
-				return found;
+			for (var x = 0; x < 400 && secondPath == null; x += 5)
+			{
+				var hit = await client.HitTestAsync(1, x, y, timeout.Token);
+				if (string.IsNullOrEmpty(hit.PickPath))
+					continue;
+				if (firstPath == null)
+					firstPath = hit.PickPath;
+				else if (hit.PickPath != firstPath)
+					secondPath = hit.PickPath;
+			}
 		}
-		return null;
+		Assert.False(firstPath is null, "No point in the frame resolved to any element - hit-testing found nothing at all.");
+		Assert.False(secondPath is null, "Only one distinct element was ever resolved across the whole frame - hit-testing is not distinguishing children.");
 	}
 
 	[Fact]
 	public async Task DesignSetProperty_RoundTripsIntoTheSavedXaml()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-		using var client = await global::WpfDesign.SurfaceHost.Tests.WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
 		var opened = await client.OpenAsync(Snapshot(1, Xaml), timeout.Token);
 		Assert.True(opened.Accepted, opened.Error);
 		var greetingPath = FindByName(opened.Tree!, "greeting")!.Id;
@@ -129,10 +135,38 @@ public sealed class WpfSurfaceHostRpcTests
 	}
 
 	[Fact]
+	public async Task Tree_CarriesRealPropertyValuesForTheAddInsPropertiesPad()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, Xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var greeting = FindByName(opened.Tree!, "greeting")!;
+
+		var text = greeting.Properties.SingleOrDefault(p => p.Name == "Text");
+		Assert.NotNull(text);
+		Assert.Equal("Hello", text!.Value);
+		Assert.Equal("String", text.Kind);
+		Assert.False(text.IsReadOnly);
+
+		var width = greeting.Properties.SingleOrDefault(p => p.Name == "Width");
+		Assert.NotNull(width);
+		Assert.Equal("200", width!.Value);
+		Assert.Equal("Number", width.Kind);
+
+		// Editing through design/set-property is reflected back in the next tree, proving the
+		// property list isn't a one-shot snapshot frozen at session/open.
+		var edited = await client.SetPropertyAsync(1, greeting.Id, "Text", "Edited", timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		var editedGreeting = FindByName(edited.Tree!, "greeting")!;
+		Assert.Equal("Edited", editedGreeting.Properties.Single(p => p.Name == "Text").Value);
+	}
+
+	[Fact]
 	public async Task DesignSetProperty_OnABadElementId_IsRejected()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-		using var client = await global::WpfDesign.SurfaceHost.Tests.WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
 		var opened = await client.OpenAsync(Snapshot(1, Xaml), timeout.Token);
 		Assert.True(opened.Accepted, opened.Error);
 
@@ -145,24 +179,37 @@ public sealed class WpfSurfaceHostRpcTests
 	public async Task DesignSetBounds_ChangesWidthAndHeight()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-		using var client = await global::WpfDesign.SurfaceHost.Tests.WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
 		var opened = await client.OpenAsync(Snapshot(1, Xaml), timeout.Token);
 		Assert.True(opened.Accepted, opened.Error);
 		var goPath = FindByName(opened.Tree!, "go")!.Id;
 
 		var resized = await client.SetBoundsAsync(1, goPath, 0, 0, 150, 40, timeout.Token);
 		Assert.True(resized.Accepted, resized.Error);
+
+		// Assert the resulting GEOMETRY, not the specific attribute used to express it. Since
+		// design/set-bounds routes through the designer's own PlacementOperation, the container
+		// decides how to encode the new bounds - a Grid child with the default Stretch alignment
+		// gets a Margin (and GridPlacementSupport deliberately Resets Width/Height), while a
+		// Canvas child would get Canvas.Left/Top. Asserting Width="150" in the XAML, as this test
+		// originally did, was really asserting the old Width/Height-only implementation that
+		// silently ignored x/y and could never move anything.
+		var after = FindByName(resized.Tree!, "go")!;
+		Assert.Equal(0, after.X, 1);
+		Assert.Equal(0, after.Y, 1);
+		Assert.Equal(150, after.Width, 1);
+		Assert.Equal(40, after.Height, 1);
+
+		// ...and it still round-trips into the saved document.
 		var flushed = await client.FlushAsync(1, timeout.Token);
-		var text = flushed.Files.Single().Text;
-		Assert.Contains("Width=\"150\"", text, StringComparison.Ordinal);
-		Assert.Contains("Height=\"40\"", text, StringComparison.Ordinal);
+		Assert.Contains("Margin=", flushed.Files.Single().Text, StringComparison.Ordinal);
 	}
 
 	[Fact]
 	public async Task DesignDeleteElements_RemovesTheElementFromTheSavedXaml()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-		using var client = await global::WpfDesign.SurfaceHost.Tests.WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
 		var opened = await client.OpenAsync(Snapshot(1, Xaml), timeout.Token);
 		Assert.True(opened.Accepted, opened.Error);
 		var goPath = FindByName(opened.Tree!, "go")!.Id;
@@ -177,7 +224,7 @@ public sealed class WpfSurfaceHostRpcTests
 	public async Task DesignAddElement_InsertsANewStockControl()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-		using var client = await global::WpfDesign.SurfaceHost.Tests.WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
 		var opened = await client.OpenAsync(Snapshot(1, Xaml), timeout.Token);
 		Assert.True(opened.Accepted, opened.Error);
 		var gridPath = opened.Tree!.Id;
@@ -202,7 +249,7 @@ public sealed class WpfSurfaceHostRpcTests
 	public async Task DesignAddElement_OnABadParentId_IsRejected()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-		using var client = await global::WpfDesign.SurfaceHost.Tests.WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
 		var opened = await client.OpenAsync(Snapshot(1, Xaml), timeout.Token);
 		Assert.True(opened.Accepted, opened.Error);
 
@@ -219,7 +266,7 @@ public sealed class WpfSurfaceHostRpcTests
 	public async Task DesignDeleteElements_OnABadElementId_IsRejectedWithoutPartiallyApplying()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-		using var client = await global::WpfDesign.SurfaceHost.Tests.WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
 		var opened = await client.OpenAsync(Snapshot(1, Xaml), timeout.Token);
 		Assert.True(opened.Accepted, opened.Error);
 		var goPath = FindByName(opened.Tree!, "go")!.Id;
@@ -238,7 +285,7 @@ public sealed class WpfSurfaceHostRpcTests
 	public async Task DesignRename_OnABadElementId_IsRejected()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-		using var client = await global::WpfDesign.SurfaceHost.Tests.WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
 		var opened = await client.OpenAsync(Snapshot(1, Xaml), timeout.Token);
 		Assert.True(opened.Accepted, opened.Error);
 
@@ -251,7 +298,7 @@ public sealed class WpfSurfaceHostRpcTests
 	public async Task DesignRename_ChangesTheElementName()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-		using var client = await global::WpfDesign.SurfaceHost.Tests.WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
 		var opened = await client.OpenAsync(Snapshot(1, Xaml), timeout.Token);
 		Assert.True(opened.Accepted, opened.Error);
 		var greetingPath = FindByName(opened.Tree!, "greeting")!.Id;
@@ -268,8 +315,8 @@ public sealed class WpfSurfaceHostRpcTests
 	public async Task TwoIndependentClients_HaveDistinctSessionsAndLifetimes()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-		var first = await global::WpfDesign.SurfaceHost.Tests.WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
-		var second = await global::WpfDesign.SurfaceHost.Tests.WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var first = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var second = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
 		try
 		{
 			Assert.NotEqual(first.ProcessId, second.ProcessId);
@@ -291,7 +338,7 @@ public sealed class WpfSurfaceHostRpcTests
 	public async Task SessionOpen_RendersRealWpfContentIntoTheFrame()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-		using var client = await global::WpfDesign.SurfaceHost.Tests.WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
 		var opened = await client.OpenAsync(Snapshot(1, Xaml), timeout.Token);
 		Assert.True(opened.Accepted, opened.Error);
 		Assert.NotNull(opened.Render);
@@ -358,7 +405,7 @@ public sealed class WpfSurfaceHostRpcTests
 		snapshot.ProjectAssemblyPath = fixtureDll;
 
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-		using var client = await global::WpfDesign.SurfaceHost.Tests.WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
 		var opened = await client.OpenAsync(snapshot, timeout.Token);
 		Assert.True(opened.Accepted, opened.Error);
 		Assert.NotNull(opened.Tree);
@@ -390,7 +437,7 @@ public sealed class WpfSurfaceHostRpcTests
 		snapshot.ReferencedAssemblyPaths.Add(fixtureDll);
 
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-		using var client = await global::WpfDesign.SurfaceHost.Tests.WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
 		var opened = await client.OpenAsync(snapshot, timeout.Token);
 		Assert.True(opened.Accepted, opened.Error);
 		Assert.NotNull(opened.Tree);
@@ -434,7 +481,7 @@ public sealed class WpfSurfaceHostRpcTests
 		};
 
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-		using var client = await global::WpfDesign.SurfaceHost.Tests.WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
 		var opened = await client.OpenAsync(snapshot, timeout.Token);
 		Assert.True(opened.Accepted, opened.Error);
 		Assert.NotNull(opened.Tree);
@@ -449,7 +496,7 @@ public sealed class WpfSurfaceHostRpcTests
 	public async Task StaleMutations_AreRejectedAndCannotOverwriteNewerSource()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-		using var client = await global::WpfDesign.SurfaceHost.Tests.WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
 		Assert.True((await client.OpenAsync(Snapshot(1, Xaml), timeout.Token)).Accepted);
 
 		// The host accepts newer source (a source-side edit), moving the document to version 2.
@@ -483,7 +530,7 @@ public sealed class WpfSurfaceHostRpcTests
 	public async Task ChildCrash_IsDetectedAndTheSurfaceIsRestartable()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-		var client = await global::WpfDesign.SurfaceHost.Tests.WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
 		var crashedProcessId = client.ProcessId;
 		Assert.True((await client.OpenAsync(Snapshot(1, Xaml), timeout.Token)).Accepted);
 
@@ -505,7 +552,7 @@ public sealed class WpfSurfaceHostRpcTests
 
 		// The Phase 0/1 recovery gate: a replacement surface rebuilds purely from host-owned
 		// snapshot state, with no residue from the dead child.
-		using var restarted = await global::WpfDesign.SurfaceHost.Tests.WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		using var restarted = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
 		Assert.NotEqual(crashedProcessId, restarted.ProcessId);
 		var reopened = await restarted.OpenAsync(Snapshot(1, Xaml), timeout.Token);
 		Assert.True(reopened.Accepted, reopened.Error);
@@ -515,4 +562,84 @@ public sealed class WpfSurfaceHostRpcTests
 	static void AssertFixtureNotLoadedHere()
 		=> Assert.DoesNotContain(AppDomain.CurrentDomain.GetAssemblies(), assembly =>
 			string.Equals(assembly.GetName().Name, "CustomControlFixture", StringComparison.OrdinalIgnoreCase));
+
+	[Fact]
+	public async Task RenderedContent_LandsExactlyAtTheBoundsTheElementTreeReports()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, Xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+
+		// Regression test for the coordinate-mismatch bug (see wpf-designer.md): the child used
+		// to Arrange its root into a hardcoded 800x600 viewport while rendering a texture sized
+		// to the root's own 400x300, so WPF's normal Stretch centering left the root a
+		// VisualOffset of ((800-400)/2, (600-300)/2) = (200,150) and every rendered pixel was
+		// shifted by that much relative to the coordinates the element tree reports. The fixture's
+		// white-background TextBlock is the probe: its painted white region must line up exactly
+		// with the bounds the tree reports for it, which is only true when the root's offset is 0.
+		var greeting = FindByName(opened.Tree!, "greeting")!;
+		var frame = opened.Render!;
+		var pixels = Inflate(frame.Data);
+		var stride = frame.Width * 4;
+
+		int minX = int.MaxValue, minY = int.MaxValue, maxX = int.MinValue, maxY = int.MinValue;
+		for (var y = 0; y < frame.Height; y++)
+		{
+			for (var x = 0; x < frame.Width; x++)
+			{
+				var offset = y * stride + x * 4;
+				// BGRA on the wire; the TextBlock's Background="White" is the only pure-white paint.
+				if (pixels[offset] == 255 && pixels[offset + 1] == 255 && pixels[offset + 2] == 255)
+				{
+					if (x < minX) minX = x;
+					if (x > maxX) maxX = x;
+					if (y < minY) minY = y;
+					if (y > maxY) maxY = y;
+				}
+			}
+		}
+		Assert.True(minX != int.MaxValue, "No white pixels at all - the TextBlock's background never rendered.");
+
+		// One pixel of tolerance on each edge for anti-aliasing/rounding at the boundary.
+		Assert.InRange(minX, greeting.X - 1, greeting.X + 1);
+		Assert.InRange(minY, greeting.Y - 1, greeting.Y + 1);
+		Assert.InRange(maxX, greeting.X + greeting.Width - 2, greeting.X + greeting.Width);
+		Assert.InRange(maxY, greeting.Y + greeting.Height - 2, greeting.Y + greeting.Height);
+	}
+
+	[Fact]
+	public async Task DesignSetBounds_MovesTheElement_NotOnlyResizesIt()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, Xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var before = FindByName(opened.Tree!, "greeting")!;
+
+		// design/set-bounds used to set only Width/Height and silently drop x/y, so an
+		// interactive drag could resize but never move. It now routes through the designer's own
+		// PlacementOperation, which expresses the move the way the container wants it (Margin
+		// under a Grid, Canvas.Left/Top under a Canvas, ...). Assert the element actually landed
+		// somewhere different, not just that the call was accepted.
+		var moved = await client.SetBoundsAsync(1, before.Id, 12, 34, before.Width, before.Height, timeout.Token);
+		Assert.True(moved.Accepted, moved.Error);
+
+		var after = FindByName(moved.Tree!, "greeting")!;
+		Assert.Equal(12, after.X, 1);
+		Assert.Equal(34, after.Y, 1);
+		Assert.NotEqual(before.X, after.X);
+		// The size it was told to keep must survive the move.
+		Assert.Equal(before.Width, after.Width, 1);
+		Assert.Equal(before.Height, after.Height, 1);
+	}
+
+	static byte[] Inflate(string data)
+	{
+		using var input = new MemoryStream(Convert.FromBase64String(data));
+		using var deflate = new DeflateStream(input, CompressionMode.Decompress);
+		using var output = new MemoryStream();
+		deflate.CopyTo(output);
+		return output.ToArray();
+	}
 }

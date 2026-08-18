@@ -211,6 +211,10 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 	/// <summary>The rendered element tree (protocol model), for the Document Outline pad.</summary>
 	public DesignerElementNode? ElementTree => (runtime as IWinUIXamlRuntimeHost)?.ElementTree;
 
+	/// <summary>Surface geometry (frame/selection/resize-handle) for resize-drag tests.</summary>
+	public (System.Windows.Rect Frame, System.Windows.Rect Selection, System.Windows.Point Handle) SurfaceGeometry()
+		=> (runtime as IWinUIXamlRuntimeHost)?.SurfaceGeometry() ?? default;
+
 	/// <summary>The runtime's toolbox catalog (the controls its loaded runtime provides), if available.</summary>
 	public IReadOnlyList<DesignerToolboxItemInfo> GetToolboxCatalog()
 		=> runtime is IWinUIXamlToolboxCatalog catalog ? catalog.GetToolboxCatalog() : Array.Empty<DesignerToolboxItemInfo>();
@@ -496,6 +500,9 @@ public interface IWinUIXamlRuntimeHost : IDisposable
 	/// Null until the runtime has produced a design snapshot.
 	/// </summary>
 	DesignerElementNode? ElementTree { get; }
+
+	/// <summary>Surface geometry (frame/selection/resize-handle) for resize-drag tests.</summary>
+	(System.Windows.Rect Frame, System.Windows.Rect Selection, System.Windows.Point Handle) SurfaceGeometry();
 
 	/// <summary>
 	/// The x:Names the document defines. The runtime resolves them against the rendered tree's

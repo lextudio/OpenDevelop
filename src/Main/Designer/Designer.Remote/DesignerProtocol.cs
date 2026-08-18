@@ -88,6 +88,14 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public DesignerElementNode? Tree { get; set; }
 		public List<DesignerDiagnostic> Diagnostics { get; set; } = new List<DesignerDiagnostic>();
 		public DesignerRenderFrame? Render { get; set; }
+		/// <summary>The id (tree path) of the element a <c>design/add-element</c> call just
+		/// created, valid only on that RPC's own response - null for every other response
+		/// (including a later <c>session/update</c>/<c>design/set-bounds</c> etc., where it would
+		/// be stale). Lets a caller select the just-dropped element without needing to invent a
+		/// name for it first (WinForms/WinUI instead have the caller supply a name up front and
+		/// look the result up by name afterward - not an option here, since a freshly toolbox-
+		/// dropped WPF element deliberately has no <c>x:Name</c> at all).</summary>
+		public string? CreatedElementId { get; set; }
 	}
 
 	/// <summary>Neutral element tree node. Id is generation-scoped; only Id crosses back
@@ -106,6 +114,14 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <summary>False for template parts / non-source nodes.</summary>
 		public bool IsDesignable { get; set; } = true;
 		public List<DesignerElementNode> Children { get; set; } = new List<DesignerElementNode>();
+		/// <summary>Optional per-node property list for the Properties pad, using the same
+		/// <see cref="DesignerPropertyInfo"/> shape <see cref="DesignerComponentInfo"/> already
+		/// uses (designer-common.md "Property and event values"). Empty for backends whose
+		/// Properties pad is instead driven off the host-owned XAML document directly
+		/// (WinUI/Uno's <c>WinUIXamlElementPropertyAdapter</c>) - this field exists for backends
+		/// like WPF whose real property metadata/values only the child (via its DesignItem
+		/// reflection) actually knows.</summary>
+		public List<DesignerPropertyInfo> Properties { get; set; } = new List<DesignerPropertyInfo>();
 	}
 
 	/// <summary>One rendered frame. PngBase64 (WinForms) or Data/RenderMs (WinUI) may be
@@ -208,6 +224,13 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public List<string> Chain { get; set; } = new List<string>();
 		/// <summary>Tree path of the innermost hit when it has no name (WinUI shape).</summary>
 		public string PickPath { get; set; } = "";
+		/// <summary>Whether anything was hit at all. Needed because the document ROOT's own
+		/// <see cref="PickPath"/> is the empty string (paths are built root-first, see
+		/// <c>WpfSurfaceHostService.BuildNode</c>), which is otherwise indistinguishable from
+		/// "hit nothing" - so a click on the root used to clear the selection instead of
+		/// selecting the root, making the Window/UserControl impossible to select or resize.
+		/// Backends that never report a root hit can leave this false and keep using PickPath.</summary>
+		public bool Hit { get; set; }
 	}
 
 	/// <summary>Runtime capabilities and toolbox catalog (WinUI shape).</summary>

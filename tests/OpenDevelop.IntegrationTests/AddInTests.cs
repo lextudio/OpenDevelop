@@ -2320,16 +2320,270 @@ public sealed class AddInTests : IAsyncDisposable
             Assert.True(bound,
                 "Double-clicking the Shown event row did not create and bind a handler (attempted 6 times).");
 
-            // Save, then verify the binding and the generated method landed in both files.
-            var saved = await _app.InvokeAsync("od.file.save", formCodePath);
-            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
-            var savedDesigner = await File.ReadAllTextAsync(designerPath);
-            Assert.Contains("Form1.Shown += Form1_Shown;", savedDesigner, StringComparison.Ordinal);
-            var savedForm = await File.ReadAllTextAsync(formCodePath);
-            Assert.Contains("private void Form1_Shown", savedForm, StringComparison.Ordinal);
+        // Save, then verify the binding and the generated method landed in both files.
+        var saved = await _app.InvokeAsync("od.file.save", formCodePath);
+        Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+        var savedDesigner = await File.ReadAllTextAsync(designerPath);
+        Assert.Contains("Form1.Shown += Form1_Shown;", savedDesigner, StringComparison.Ordinal);
+        var savedForm = await File.ReadAllTextAsync(formCodePath);
+        Assert.Contains("private void Form1_Shown", savedForm, StringComparison.Ordinal);
+    } finally {
+        await File.WriteAllTextAsync(formCodePath, originalForm);
+        await File.WriteAllTextAsync(designerPath, originalDesigner);
+    }
+}
+
+    [Fact]
+    public async Task WinFormsDesigner_ResizeDrag_SelectionAndHandleTrackRenderedFrame()
+    {
+        // Resize the root form by dragging its bottom-right handle, then assert the invariant
+        // the shared canvas guarantees: the selection outline must coincide with the rendered
+        // form bitmap, and the resize handle must sit at the frame's bottom-right corner -
+        // both before and after the drag. This is the probe that catches coordinate drift
+        // between the design surface and the child's rendered frame when scaling kicks in.
+        var formCodePath = Path.Combine(Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!, "Form1.cs");
+        var designerPath = Path.Combine(Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!, "Form1.Designer.cs");
+        var originalForm = await File.ReadAllTextAsync(formCodePath);
+        var originalDesigner = await File.ReadAllTextAsync(designerPath);
+
+        try {
+            await _app.ReopenSolutionAsync(_app.WinFormsSampleSolutionPath);
+            await _app.InvokeAsync("od.open-file", formCodePath);
+
+            JsonElement status = default;
+            var loaded = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await _app.InvokeAsync("od.forms-designer.status");
+                return status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 1000);
+            Assert.True(loaded, "The WinForms designer did not load. Status: " + status);
+
+            var sel = await _app.InvokeAsync("od.forms-designer.outline-select", "Form1");
+            Assert.Equal("Form1", sel.GetProperty("selected").GetString());
+
+            // Helper to read the geometry JSON.
+            static (double x, double y, double w, double h) Bounds(JsonElement g, string name)
+                => (g.GetProperty(name).GetProperty("x").GetDouble(),
+                    g.GetProperty(name).GetProperty("y").GetDouble(),
+                    g.GetProperty(name).GetProperty("width").GetDouble(),
+                    g.GetProperty(name).GetProperty("height").GetDouble());
+
+            void AssertConsistent(JsonElement g, string label)
+            {
+                var f = Bounds(g, "frame");
+                var s = Bounds(g, "selection");
+                var hx = g.GetProperty("handle").GetProperty("x").GetDouble();
+                var hy = g.GetProperty("handle").GetProperty("y").GetDouble();
+                Assert.True(f.w > 0 && f.h > 0, label + ": rendered frame has zero size: " + g);
+                // Selection outline must coincide with the rendered frame (allow 1px).
+                Assert.True(Math.Abs(s.x - f.x) <= 1 && Math.Abs(s.y - f.y) <= 1
+                    && Math.Abs(s.w - f.w) <= 1 && Math.Abs(s.h - f.h) <= 1,
+                    label + ": selection outline drifted from rendered frame.\nframe=" + f + "\nselection=" + s + "\n" + g);
+                // Resize handle must sit at the frame's bottom-right corner (allow 2px).
+                Assert.True(Math.Abs(hx - (f.x + f.w)) <= 2 && Math.Abs(hy - (f.y + f.h)) <= 2,
+                    label + ": resize handle not at frame bottom-right.\nframe=" + f + "\nhandle=(" + hx + "," + hy + ")\n" + g);
+            }
+
+            var before = await _app.InvokeAsync("od.forms-designer.surface-geometry");
+            Assert.True(before.GetProperty("available").GetBoolean(), before.ToString());
+            AssertConsistent(before, "before");
+
+            // Drag the bottom-right handle by (+60, +40) screen pixels to grow the form.
+            var hx = before.GetProperty("handle").GetProperty("x").GetDouble();
+            var hy = before.GetProperty("handle").GetProperty("y").GetDouble();
+            const double dx = 60, dy = 40;
+            await _app.PressPointerAsync(hx, hy);
+            for (int step = 1; step <= 6; step++) {
+                var t = step / 6.0;
+                var moved = await _app.DragMovePointerAsync(hx + dx * t, hy + dy * t);
+                Assert.True(moved.GetProperty("ok").GetBoolean(), moved.ToString());
+                await Task.Delay(80);
+            }
+            var released = await _app.ReleasePointerAsync(hx + dx, hy + dy);
+            Assert.True(released.GetProperty("ok").GetBoolean(), released.ToString());
+
+            JsonElement after = default;
+            var grew = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                after = await _app.InvokeAsync("od.forms-designer.surface-geometry");
+                // The frame must actually have grown; only then is the drag meaningful.
+                return after.GetProperty("available").GetBoolean()
+                    && after.GetProperty("frame").GetProperty("width").GetDouble() > before.GetProperty("frame").GetProperty("width").GetDouble() + 20
+                    && after.GetProperty("frame").GetProperty("height").GetDouble() > before.GetProperty("frame").GetProperty("height").GetDouble() + 20;
+            }, TimeSpan.FromSeconds(8), initialDelayMs: 100, maxDelayMs: 400);
+            Assert.True(grew, "The resize drag did not grow the rendered frame.");
+            AssertConsistent(after, "after");
         } finally {
             await File.WriteAllTextAsync(formCodePath, originalForm);
             await File.WriteAllTextAsync(designerPath, originalDesigner);
+        }
+    }
+
+    [Fact]
+    public async Task WinUIXamlDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement()
+    {
+        // Drag a selected element's bottom-right resize handle and assert the shared-canvas
+        // invariant: the selection outline always hugs the rendered element and the resize
+        // handle stays at the element's bottom-right corner, before and after the drag.
+        var solution = Path.Combine(_unoSampleDir, "UnoXamlSample.slnx");
+        var mainPage = Path.Combine(_unoSampleDir, "MainPage.xaml");
+
+        await _app.ReopenSolutionAsync(solution);
+        await _app.InvokeAsync("od.open-file", mainPage);
+
+        JsonElement status = default;
+        var rendered = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            status = await _app.InvokeAsync("od.winui-designer.status");
+            return status.GetProperty("rendered").GetBoolean();
+        }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 500);
+        Assert.True(rendered, "The Uno design host did not render. Status: " + status);
+
+        await _app.InvokeAsync("od.winui-designer.activate-design");
+        await _app.InvokeAsync("od.winui-designer.select", "PrimaryButton");
+
+        static (double x, double y, double w, double h) Bounds(JsonElement g, string name)
+            => (g.GetProperty(name).GetProperty("x").GetDouble(),
+                g.GetProperty(name).GetProperty("y").GetDouble(),
+                g.GetProperty(name).GetProperty("width").GetDouble(),
+                g.GetProperty(name).GetProperty("height").GetDouble());
+
+        void AssertHandleAtSelectionBottomRight(JsonElement g, string label)
+        {
+            var s = Bounds(g, "selection");
+            var hx = g.GetProperty("handle").GetProperty("x").GetDouble();
+            var hy = g.GetProperty("handle").GetProperty("y").GetDouble();
+            Assert.True(s.w > 0 && s.h > 0, label + ": selection has zero size: " + g);
+            Assert.True(Math.Abs(hx - (s.x + s.w)) <= 2 && Math.Abs(hy - (s.y + s.h)) <= 2,
+                label + ": resize handle not at selection bottom-right.\nselection=" + s + "\nhandle=(" + hx + "," + hy + ")\n" + g);
+        }
+
+        var before = await _app.InvokeAsync("od.winui-designer.surface-geometry");
+        Assert.True(before.GetProperty("available").GetBoolean(), before.ToString());
+        AssertHandleAtSelectionBottomRight(before, "before");
+
+        var hx = before.GetProperty("handle").GetProperty("x").GetDouble();
+        var hy = before.GetProperty("handle").GetProperty("y").GetDouble();
+        const double dx = 40, dy = 30;
+        await _app.PressPointerAsync(hx, hy);
+        for (int step = 1; step <= 6; step++) {
+            var t = step / 6.0;
+            var moved = await _app.DragMovePointerAsync(hx + dx * t, hy + dy * t);
+            Assert.True(moved.GetProperty("ok").GetBoolean(), moved.ToString());
+            await Task.Delay(80);
+        }
+        var released = await _app.ReleasePointerAsync(hx + dx, hy + dy);
+        Assert.True(released.GetProperty("ok").GetBoolean(), released.ToString());
+
+        JsonElement after = default;
+        var grew = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            after = await _app.InvokeAsync("od.winui-designer.surface-geometry");
+            return after.GetProperty("available").GetBoolean()
+                && after.GetProperty("selection").GetProperty("width").GetDouble() > before.GetProperty("selection").GetProperty("width").GetDouble() + 10
+                && after.GetProperty("selection").GetProperty("height").GetDouble() > before.GetProperty("selection").GetProperty("height").GetDouble() + 10;
+        }, TimeSpan.FromSeconds(8), initialDelayMs: 100, maxDelayMs: 400);
+        Assert.True(grew, "The resize drag did not grow the selected element. before=" + before);
+        AssertHandleAtSelectionBottomRight(after, "after");
+    }
+
+    [Fact]
+    public async Task WpfDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement()
+    {
+        // Drag a selected element's bottom-right resize handle in the in-process WPF designer
+        // and assert the invariant: the selection outline coincides with the element's rendered
+        // bounds and the resize handle sits at its bottom-right corner, before and after.
+        var xamlPath = Path.Combine(Path.GetDirectoryName(_app.WpfSampleSolutionPath)!, "SamplePane.xaml");
+        var original = await File.ReadAllTextAsync(xamlPath);
+
+        try {
+            await _app.EnsureSolutionOpenAsync(_app.WpfSampleSolutionPath);
+            await _app.InvokeAsync("od.open-file", xamlPath);
+
+            JsonElement status = default;
+            var loaded = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await _app.InvokeAsync("od.wpf-designer.status");
+                return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 500);
+            Assert.True(loaded, "The WPF designer did not load. Status: " + status);
+
+            var sel = await _app.InvokeAsync("od.wpf-designer.select", "PaneStack");
+            Assert.True(sel.GetProperty("success").GetBoolean(), sel.ToString());
+
+            // OD_TEST_MODE=1 sets ShowActivated=false so a normal test run never steals focus -
+            // but the press/drag-move/release below is real OS-level synthetic mouse input that
+            // needs this window frontmost/focused to route to it at all (see od.activate's doc
+            // comment, and the other drag-based tests in this file, which all call this first).
+            // Without it, a real run showed zero of the resulting mouse events ever reaching
+            // WpfSurfaceDesignerControl - the press landed on whatever window was actually
+            // frontmost instead.
+            await _app.InvokeAsync("od.activate");
+
+            static (double x, double y, double w, double h) Bounds(JsonElement g, string name)
+                => (g.GetProperty(name).GetProperty("x").GetDouble(),
+                    g.GetProperty(name).GetProperty("y").GetDouble(),
+                    g.GetProperty(name).GetProperty("width").GetDouble(),
+                    g.GetProperty(name).GetProperty("height").GetDouble());
+
+            void AssertConsistent(JsonElement g, string label)
+            {
+                var f = Bounds(g, "frame");
+                var s = Bounds(g, "selection");
+                var hx = g.GetProperty("handle").GetProperty("x").GetDouble();
+                var hy = g.GetProperty("handle").GetProperty("y").GetDouble();
+                Assert.True(f.w > 0 && f.h > 0, label + ": rendered element has zero size: " + g);
+                // WPF's adorner hugs the element: selection == frame.
+                Assert.True(Math.Abs(s.x - f.x) <= 1 && Math.Abs(s.y - f.y) <= 1
+                    && Math.Abs(s.w - f.w) <= 1 && Math.Abs(s.h - f.h) <= 1,
+                    label + ": selection outline drifted from rendered element.\nframe=" + f + "\nselection=" + s + "\n" + g);
+                Assert.True(Math.Abs(hx - (f.x + f.w)) <= 2 && Math.Abs(hy - (f.y + f.h)) <= 2,
+                    label + ": resize handle not at element bottom-right.\nframe=" + f + "\nhandle=(" + hx + "," + hy + ")\n" + g);
+            }
+
+            var before = await _app.InvokeAsync("od.wpf-designer.surface-geometry");
+            Assert.True(before.GetProperty("available").GetBoolean(), before.ToString());
+            AssertConsistent(before, "before");
+
+            const double dx = 50, dy = 40;
+
+            // Retry the whole gesture, like every other real-mouse-drag test in this file
+            // (DragToolboxItem_OntoDesignSurface_..., DragToolboxItem_OntoXamlSourceEditor_...).
+            // A real OS-level synthetic press only lands on this app if its window is genuinely
+            // frontmost at that moment, and nothing in a test run can guarantee that stays true
+            // (od.activate itself reports isActive=false even when it succeeds in focusing the
+            // native window) - so this re-activates AND re-reads the handle position on every
+            // attempt rather than re-pressing one stale coordinate captured up front. Verified
+            // directly against a live app instance: the gesture itself works reliably (6 of 7
+            // consecutive manual gestures resized correctly, the 7th only because the element had
+            // grown until its handle left the surface), so a failing attempt here means the input
+            // didn't reach the window, which is exactly what re-activating can recover from.
+            JsonElement after = default;
+            var grew = false;
+            for (int attempt = 1; attempt <= 4 && !grew; attempt++) {
+                await _app.InvokeAsync("od.activate");
+                var current = await _app.InvokeAsync("od.wpf-designer.surface-geometry");
+                Assert.True(current.GetProperty("available").GetBoolean(), current.ToString());
+                var hx = current.GetProperty("handle").GetProperty("x").GetDouble();
+                var hy = current.GetProperty("handle").GetProperty("y").GetDouble();
+
+                var pressed = await _app.PressPointerAsync(hx, hy);
+                Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
+                for (int step = 1; step <= 6; step++) {
+                    var t = step / 6.0;
+                    var moved = await _app.DragMovePointerAsync(hx + dx * t, hy + dy * t);
+                    Assert.True(moved.GetProperty("ok").GetBoolean(), moved.ToString());
+                    await Task.Delay(80);
+                }
+                var released = await _app.ReleasePointerAsync(hx + dx, hy + dy);
+                Assert.True(released.GetProperty("ok").GetBoolean(), released.ToString());
+
+                grew = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                    after = await _app.InvokeAsync("od.wpf-designer.surface-geometry");
+                    return after.GetProperty("available").GetBoolean()
+                        && after.GetProperty("frame").GetProperty("width").GetDouble() > before.GetProperty("frame").GetProperty("width").GetDouble() + 10
+                        && after.GetProperty("frame").GetProperty("height").GetDouble() > before.GetProperty("frame").GetProperty("height").GetDouble() + 10;
+                }, TimeSpan.FromSeconds(8), initialDelayMs: 100, maxDelayMs: 400);
+            }
+            Assert.True(grew, "The resize drag did not grow the selected element, even after retries. before=" + before);
+            AssertConsistent(after, "after");
+        } finally {
+            await File.WriteAllTextAsync(xamlPath, original);
         }
     }
 

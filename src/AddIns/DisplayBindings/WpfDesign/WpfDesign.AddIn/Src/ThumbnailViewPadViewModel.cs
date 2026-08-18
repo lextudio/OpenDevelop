@@ -23,7 +23,6 @@ using System.Windows.Controls;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.ViewModels;
-using ICSharpCode.WpfDesign.Designer.ThumbnailView;
 
 namespace ICSharpCode.WpfDesign.AddIn
 {
@@ -38,7 +37,6 @@ namespace ICSharpCode.WpfDesign.AddIn
 	sealed class ThumbnailViewPadViewModel : ToolPaneModel
 	{
 		readonly ContentPresenter contentControl = new ContentPresenter();
-		readonly ThumbnailView thumbnailView = new ThumbnailView();
 		readonly TextBlock notAvailableTextBlock = new TextBlock {
 			Text = StringParser.Parse("${res:ICSharpCode.SharpDevelop.Gui.OutlinePad.NotAvailable}"),
 			TextWrapping = TextWrapping.Wrap
@@ -60,13 +58,14 @@ namespace ICSharpCode.WpfDesign.AddIn
 
 		void WorkbenchActiveViewContentChanged(object sender, EventArgs e)
 		{
-			WpfViewContent wpfView = SD.Workbench.ActiveViewContent as WpfViewContent;
-			if (wpfView != null) {
-				thumbnailView.DesignSurface = wpfView.DesignSurface;
-				contentControl.Content = thumbnailView;
-			} else {
-				contentControl.Content = notAvailableTextBlock;
-			}
+			// WpfViewContent moved to the out-of-process design host (doc/technotes/
+			// wpf-designer.md): there is no live in-process DesignSurface visual tree for
+			// ThumbnailView to render a minimap of anymore - only a decoded frame bitmap. A real
+			// thumbnail for the new surface is a separate, later feature (it would need its own
+			// small preview, not ThumbnailView's live-visual-tree approach); until then this pad
+			// shows the same "not available" placeholder it already shows for every other
+			// document type rather than pretending to support WPF.
+			contentControl.Content = notAvailableTextBlock;
 		}
 	}
 }

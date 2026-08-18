@@ -41,7 +41,7 @@ namespace WinFormsSample
             //
             AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            ClientSize = new System.Drawing.Size(284, 261);
+            ClientSize =new System.Drawing.Size(400, 300);
             Controls.Add(dropPanel);
             Name = "Form1";
             Text = "Form1";

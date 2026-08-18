@@ -58,6 +58,20 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 		/// DesignerSessionState.Components), so parent-side enumeration is not needed anymore.
 		/// </summary>
 
+		[DevFlowAction("od.forms-designer.surface-geometry", Description = "Report the WinForms design surface geometry (rendered form bounds, selection outline bounds, resize-handle center) in surface coordinates - the smoke probe for the resize-drag invariant that selection and handle always track the rendered form")]
+		public static string GetSurfaceGeometry()
+		{
+			var viewContent = FindFormsDesignerViewContent();
+			if (viewContent?.RemoteSurfaceGeometry is not { } g)
+				return JsonSerializer.Serialize(new { available = false });
+			return JsonSerializer.Serialize(new {
+				available = true,
+				frame = new { x = g.Frame.X, y = g.Frame.Y, width = g.Frame.Width, height = g.Frame.Height },
+				selection = new { x = g.Selection.X, y = g.Selection.Y, width = g.Selection.Width, height = g.Selection.Height },
+				handle = new { x = g.Handle.X, y = g.Handle.Y }
+			});
+		}
+
 		[DevFlowAction("od.forms-designer.outline-status", Description = "Inspect the WinForms designer's Document Outline pad: whether the shared outline control is mounted and visible, and the element tree it currently shows")]
 		public static string GetOutlineStatus()
 		{

@@ -18,12 +18,21 @@
     <!-- AvalonDock VS2013 document-pane background (the template binds LayoutDocumentPaneControl
          to this key; LibreWPF resolves it to the light palette's white unless overridden). -->
     <SolidColorBrush x:Key="{ComponentResourceKey TypeInTargetAssembly={x:Type reskeys:ResourceKeys}, ResourceId=TabBackground}" Color="#FF2D2D30" />
-    <!-- Dotted edge pattern around the design bitmap in every visual designer (DesignerCanvas). -->
-    <DrawingBrush x:Key="EdgePattern" TileMode="Tile" Viewport="0,0,8,8" ViewportUnits="Absolute">
+    <!-- Dotted edge pattern around the design bitmap in every visual designer (DesignerCanvas).
+         A fine grid is more legible than the old 1px dots (which vanished in dark mode). -->
+    <DrawingBrush x:Key="EdgePattern" TileMode="Tile" Viewport="0,0,16,16" ViewportUnits="Absolute">
       <DrawingBrush.Drawing>
         <DrawingGroup>
-          <GeometryDrawing Brush="#FF2D2D30"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,8,8"/></GeometryDrawing.Geometry></GeometryDrawing>
-          <GeometryDrawing Brush="#FF3E3E42"><GeometryDrawing.Geometry><EllipseGeometry Center="4,4" RadiusX="1" RadiusY="1"/></GeometryDrawing.Geometry></GeometryDrawing>
+          <GeometryDrawing Brush="#FF2D2D30"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,16,16"/></GeometryDrawing.Geometry></GeometryDrawing>
+          <GeometryDrawing>
+            <GeometryDrawing.Pen><Pen Brush="#FF43434A" Thickness="1"/></GeometryDrawing.Pen>
+            <GeometryDrawing.Geometry>
+              <GeometryGroup>
+                <LineGeometry StartPoint="0,0" EndPoint="16,0"/>
+                <LineGeometry StartPoint="0,0" EndPoint="0,16"/>
+              </GeometryGroup>
+            </GeometryDrawing.Geometry>
+          </GeometryDrawing>
         </DrawingGroup>
       </DrawingBrush.Drawing>
     </DrawingBrush>

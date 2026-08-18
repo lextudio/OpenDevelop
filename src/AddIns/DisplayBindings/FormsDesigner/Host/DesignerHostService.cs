@@ -782,8 +782,11 @@ sealed class DesignerHostService
 				.FirstOrDefault(item => NormalizeTarget(item.Left.ToString()) is "ClientSize" or "Size");
 			var vbValue = Vb.SyntaxFactory.ParseExpression($"New System.Drawing.Size({width}, {height})");
 			if (vbAssignment != null) {
+				// Keep the original target (ClientSize or Size): Form.Size is the outer frame,
+				// while the rendered design surface is the client area - swapping ClientSize for
+				// Size shifts every control by the frame border and mis-scales the bitmap.
 				var vbReplacement = Vb.SyntaxFactory.AssignmentStatement(Vb.SyntaxKind.SimpleAssignmentStatement,
-					Vb.SyntaxFactory.ParseExpression("Me.Size"), Vb.SyntaxFactory.Token(Vb.SyntaxKind.EqualsToken), vbValue).WithTriviaFrom(vbAssignment);
+					vbAssignment.Left, Vb.SyntaxFactory.Token(Vb.SyntaxKind.EqualsToken), vbValue).WithTriviaFrom(vbAssignment);
 				file.Text = vbRoot.ReplaceNode(vbAssignment, vbReplacement).ToFullString();
 				return;
 			}
@@ -792,7 +795,7 @@ sealed class DesignerHostService
 				&& ms.DeclarationKeyword.IsKind(Vb.SyntaxKind.SubKeyword)
 				&& ms.Identifier.ValueText == "InitializeComponent");
 			file.Text = vbRoot.ReplaceNode(vbInitialize, vbInitialize.WithStatements(vbInitialize.Statements.Add(
-				Vb.SyntaxFactory.ParseExecutableStatement($"Me.Size = New System.Drawing.Size({width}, {height})"))))
+				Vb.SyntaxFactory.ParseExecutableStatement($"Me.ClientSize = New System.Drawing.Size({width}, {height})"))))
 				.NormalizeWhitespace().ToFullString();
 			return;
 		}
@@ -801,15 +804,18 @@ sealed class DesignerHostService
 			.FirstOrDefault(item => NormalizeTarget(item.Left.ToString()) is "ClientSize" or "Size");
 		var value = SyntaxFactory.ParseExpression($"new System.Drawing.Size({width}, {height})");
 		if (assignment != null) {
+			// Keep the original target (ClientSize or Size): Form.Size is the outer frame, while
+			// the rendered design surface is the client area - swapping ClientSize for Size
+			// shifts every control by the frame border and mis-scales the bitmap.
 			var replacement = SyntaxFactory.AssignmentExpression(SyntaxKind.SimpleAssignmentExpression,
-				SyntaxFactory.ParseExpression("this.Size"), value).WithTriviaFrom(assignment);
+				assignment.Left, value).WithTriviaFrom(assignment);
 			file.Text = root.ReplaceNode(assignment, replacement).ToFullString();
 			return;
 		}
 		var initialize = root.DescendantNodes().OfType<MethodDeclarationSyntax>()
 			.First(item => item.Identifier.ValueText == "InitializeComponent");
 		file.Text = root.ReplaceNode(initialize, initialize.WithBody(initialize.Body!.AddStatements(
-			SyntaxFactory.ParseStatement($"this.Size = new System.Drawing.Size({width}, {height});\n"))))
+			SyntaxFactory.ParseStatement($"this.ClientSize = new System.Drawing.Size({width}, {height});\n"))))
 			.NormalizeWhitespace().ToFullString();
 	}
 

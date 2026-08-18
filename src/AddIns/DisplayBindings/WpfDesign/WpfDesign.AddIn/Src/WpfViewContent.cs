@@ -1,14 +1,14 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
-// 
+// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -22,206 +22,183 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Threading;
-using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Markup;
 using System.Windows.Threading;
-using System.Xml;
 
 using ICSharpCode.Core;
-using ICSharpCode.Core.Presentation;
-using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop;
-using ICSharpCode.SharpDevelop.Designer;
+using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.Gui;
-using ICSharpCode.SharpDevelop.Parser;
 using ICSharpCode.SharpDevelop.Project;
-using ICSharpCode.SharpDevelop.Refactoring;
+using ICSharpCode.SharpDevelop.Widgets;
 using ICSharpCode.SharpDevelop.Workbench;
-using ICSharpCode.WpfDesign.Designer;
-using ICSharpCode.WpfDesign.Designer.OutlineView;
 using ICSharpCode.WpfDesign.Designer.PropertyGrid;
-using ICSharpCode.WpfDesign.Designer.Services;
-using ICSharpCode.WpfDesign.Designer.Xaml;
+using ICSharpCode.WpfDesign.AddIn.OutOfProcess;
 using ICSharpCode.WpfDesign.AddIn.Options;
+using ICSharpCode.WpfDesign.SurfaceHost;
 
 namespace ICSharpCode.WpfDesign.AddIn
 {
 	/// <summary>
 	/// IViewContent implementation that hosts the WPF designer.
+	///
+	/// Out-of-process cutover (doc/technotes/wpf-designer.md): drives a spawned
+	/// <see cref="WpfSurfaceHostClient"/>/<see cref="WpfSurfaceDesignerControl"/> instead of a
+	/// live in-process <c>DesignSurface</c>, mirroring FormsDesignerViewContent/
+	/// WinUIXamlDesignerViewContent's own already-converged shape. The host never touches a
+	/// target-defined type or loads a project assembly - all real WPF objects, and all type
+	/// resolution, live in the child (matches designer-common.md's "no target-type knowledge in
+	/// the host" red line the in-process version could not honor).
 	/// </summary>
 	public class WpfViewContent : AbstractViewContentHandlingLoadErrors, IToolsHost, IOutlineContentHost, IHasPropertyContainer
 	{
 		public WpfViewContent(OpenedFile file) : base(file)
 		{
-			SharpDevelopTranslations.Init();
-			
-			BasicMetadata.Register();
-			
 			this.TabPageText = "${res:FormsDesigner.DesignTabPages.DesignTabPage}";
 			this.IsActiveViewContentChanged += OnIsActiveViewContentChanged;
-			
-			var compilation = SD.ParserService.GetCompilationForFile(file.FileName);
-			string assemblyLocation = compilation?.MainAssembly?.UnresolvedAssembly?.Location;
-			// Falls back to the XAML file's own directory when the parser service has no
-			// resolvable project compilation for this file (e.g. the project hasn't been built
-			// yet, or isn't part of the currently open solution) - this path is only used to
-			// probe for referenced assemblies during designer AssemblyResolve, so an empty/best
-			// -effort guess is safe; a NullReferenceException here used to abort opening the
-			// designer entirely.
-			_path = !string.IsNullOrEmpty(assemblyLocation)
-				? Path.GetDirectoryName(assemblyLocation)
-				: Path.GetDirectoryName(file.FileName.ToString());
-			AppDomain.CurrentDomain.AssemblyResolve += CurrentDomain_AssemblyResolve;
 			Application.Current.DispatcherUnhandledException += OnDispatcherUnhandledException;
 		}
-		
-		static WpfViewContent()
+
+		WpfSurfaceHostClient? client;
+		WpfSurfaceDesignerControl? surfaceControl;
+		long documentVersion;
+		bool hasLoadedOnce;
+		bool wasChangedInDesigner;
+		MemoryStream? _stream;
+
+		/// <summary>The current out-of-process surface, or null before the first successful load.
+		/// Exposed for DevFlow probes (<c>WpfDesignDevFlowActions</c>) - real UI code should go
+		/// through this rather than reaching into <see cref="client"/> directly.</summary>
+		public WpfSurfaceDesignerControl? SurfaceControl => surfaceControl;
+
+		/// <summary>Surface geometry for the resize-drag smoke test: the primary selection's
+		/// rendered bounds in screen coordinates, both as the "frame" and "selection" rect (the
+		/// selection outline hugs the element exactly, now that the tree-bounds/rendered-pixel
+		/// coordinate mismatch is fixed - see wpf-designer.md) and its bottom-right resize handle.
+		/// </summary>
+		public (Rect Frame, Rect Selection, Point Handle) SurfaceGeometry()
 		{
-			DragDropExceptionHandler.UnhandledException += delegate(object sender, ThreadExceptionEventArgs e) {
-				ICSharpCode.Core.MessageService.ShowException(e.Exception);
-			};
+			if (surfaceControl?.ScreenBoundsOfSelected() is not { } bounds)
+				return default;
+			var handle = new Point(bounds.X + bounds.Width, bounds.Y + bounds.Height);
+			return (bounds, bounds, handle);
 		}
-		
-		DesignSurface designer;
-		List<SDTask> tasks = new List<SDTask>();
-		
-		public DesignSurface DesignSurface {
-			get { return designer; }
-		}
-		
-		public DesignContext DesignContext {
-			get { return designer.DesignContext; }
-		}
-		
-		protected override void LoadInternal(OpenedFile file, System.IO.Stream stream)
+
+		protected override void LoadInternal(OpenedFile file, Stream stream)
 		{
-			wasChangedInDesigner = false;
 			Debug.Assert(file == this.PrimaryFile);
 			SD.AnalyticsMonitor.TrackFeature(typeof(WpfViewContent), "Load");
-			
+
 			_stream = new MemoryStream();
 			stream.CopyTo(_stream);
 			stream.Position = 0;
-			
-			if (designer == null) {
-				// initialize designer on first load
-				designer = new DesignSurface();
-				this.UserContent = designer;
+			wasChangedInDesigner = false;
+
+			if (surfaceControl == null)
+			{
+				client = WpfSurfaceHostClient.StartAsync(null, CancellationToken.None).GetAwaiter().GetResult();
+				surfaceControl = new WpfSurfaceDesignerControl(client);
+				surfaceControl.SelectionChanged += OnSelectionChanged;
+				surfaceControl.DocumentChanged += OnDocumentChanged;
 				InitPropertyEditor();
 				InitWpfToolbox();
 			}
-			this.UserContent = designer;
-			if (outline != null) {
-				outline.Root = null;
+			this.UserContent = surfaceControl;
+
+			try
+			{
+				var snapshot = CreateSnapshot(++documentVersion);
+				var state = hasLoadedOnce
+					? surfaceControl.UpdateAsync(snapshot).GetAwaiter().GetResult()
+					: surfaceControl.OpenAsync(snapshot).GetAwaiter().GetResult();
+				// OpenAsync/UpdateAsync deliberately do not render internally (see
+				// WpfSurfaceDesignerControl.Show's remarks) - GetResult() above resumed execution
+				// on this thread, which IS the dispatcher thread here (LoadInternal always runs on
+				// it), so calling Show() directly, synchronously, right here is correct and safe.
+				surfaceControl.Show(state);
+				if (!state.Accepted)
+					throw new WpfDesignerLoadException(state.Error);
+				hasLoadedOnce = true;
+				UpdateTasks(state.Diagnostics);
+				UpdateOutline(state);
+				propertyContainer.SelectedObject = null;
 			}
-			
-			
-			using (XmlTextReader r = new XmlTextReader(stream)) {
-				XamlLoadSettings settings = new XamlLoadSettings();
-				settings.DesignerAssemblies.Add(typeof(WpfViewContent).Assembly);
-				settings.CustomServiceRegisterFunctions.Add(
-					delegate(XamlDesignContext context) {
-						context.Services.AddService(typeof(IUriContext), new FileUriContext(this.PrimaryFile));
-						context.Services.AddService(typeof(IPropertyDescriptionService), new PropertyDescriptionService(this.PrimaryFile));
-						context.Services.AddService(typeof(IEventHandlerService), new SharpDevelopEventHandlerService(this));
-						context.Services.AddService(typeof(ITopLevelWindowService), new WpfAndWinFormsTopLevelWindowService());
-						context.Services.AddService(typeof(ChooseClassServiceBase), new IdeChooseClassService());
-					});
-				settings.TypeFinder = MyTypeFinder.Create(this.PrimaryFile);
-				settings.CurrentProjectAssemblyName = SD.ProjectService.CurrentProject.AssemblyName;
-				
-				try
+			catch (Exception e)
+			{
+				ShowDesignerError(e);
+			}
+		}
+
+		DesignerDocumentSnapshot CreateSnapshot(long version)
+		{
+			var project = SD.ProjectService.FindProjectContainingFile(PrimaryFile.FileName);
+			var snapshot = new DesignerDocumentSnapshot {
+				Version = version,
+				ProjectFileName = project?.FileName.ToString() ?? "",
+				TargetFramework = (project as MSBuildBasedProject)?.GetEvaluatedProperty("TargetFramework") ?? "",
+				ProjectAssemblyPath = GetManagedAssemblyPath(project),
+				PrimaryFileName = PrimaryFile.FileName.ToString(),
+				Language = ""
+			};
+			if (project != null)
+			{
+				foreach (var reference in project.ResolveAssemblyReferences(CancellationToken.None))
 				{
-					if (WpfEditorOptions.EnableAppXamlParsing)
+					if (!string.IsNullOrEmpty(reference.FileName) && File.Exists(reference.FileName))
+						snapshot.ReferencedAssemblyPaths.Add(reference.FileName);
+				}
+			}
+
+			_stream!.Position = 0;
+			using (var reader = new StreamReader(new UnclosableStream(_stream)))
+			{
+				snapshot.Files.Add(new DesignerSourceFileSnapshot {
+					FileName = snapshot.PrimaryFileName, Kind = "Source", Text = reader.ReadToEnd()
+				});
+			}
+
+			if (WpfEditorOptions.EnableAppXamlParsing && project != null)
+			{
+				var appXamlItem = project.Items.OfType<FileProjectItem>()
+					.FirstOrDefault(item => item.FileName.GetFileName().Equals("app.xaml", StringComparison.OrdinalIgnoreCase));
+				if (appXamlItem != null)
+				{
+					try
 					{
-						var appXaml = SD.ProjectService.CurrentProject.Items.FirstOrDefault(x => x.FileName.GetFileName().ToLower() == ("app.xaml"));
-						if (appXaml != null)
-						{
-							var f = appXaml as FileProjectItem;
-							OpenedFile a = SD.FileService.GetOrCreateOpenedFile(f.FileName);
-
-							var xml = XmlReader.Create(a.OpenRead());
-							var doc = new XmlDocument();
-							doc.Load(xml);
-							var node = doc.FirstChild.ChildNodes.Cast<XmlNode>().FirstOrDefault(x => x.Name == "Application.Resources");
-
-							foreach (XmlAttribute att in doc.FirstChild.Attributes.Cast<XmlAttribute>().ToList())
-							{
-								if (att.Name.StartsWith("xmlns")) {
-									foreach (var childNode in node.ChildNodes.OfType<XmlNode>()) {
-										childNode.Attributes.Append(att);
-									}
-								}
-							}
-
-							var appXamlXml = XmlReader.Create(new StringReader(node.InnerXml));
-							var appxamlContext = new XamlDesignContext(appXamlXml, settings);
-							
-							//var parsed = XamlParser.Parse(appXamlXml, appxamlContext.ParserSettings);
-							var dict = (ResourceDictionary) appxamlContext.RootItem.Component;// parsed.RootInstance;
-							designer.DesignPanel.Resources.MergedDictionaries.Add(dict);
-						}
+						var appFile = SD.FileService.GetOrCreateOpenedFile(appXamlItem.FileName);
+						using var appStream = appFile.OpenRead();
+						using var appReader = new StreamReader(appStream);
+						snapshot.Files.Add(new DesignerSourceFileSnapshot {
+							FileName = appXamlItem.FileName.ToString(), Kind = "AppXaml", Text = appReader.ReadToEnd()
+						});
 					}
-				}
-				catch (Exception ex)
-				{
-					LoggingService.Error("Error in loading app.xaml", ex);
-				}
-
-				try
-				{
-					settings.ReportErrors = UpdateTasks;
-					designer.LoadDesigner(r, settings);
-					
-					designer.DesignPanel.ContextMenuHandler = (contextMenu) => {
-						var newContextmenu = new ContextMenu();
-						var sdContextMenuItems = MenuService.CreateMenuItems(newContextmenu, designer, "/AddIns/WpfDesign/Designer/ContextMenu", "ContextMenu");
-						foreach(var entry in sdContextMenuItems)
-							newContextmenu.Items.Add(entry);
-						newContextmenu.Items.Add(new Separator());
-						
-						var items = contextMenu.Items.Cast<Object>().ToList();
-						contextMenu.Items.Clear();
-						foreach(var entry in items)
-							newContextmenu.Items.Add(entry);
-						
-						designer.DesignPanel.ContextMenu = newContextmenu;
-					};
-					
-					if (outline != null && designer.DesignContext != null && designer.DesignContext.RootItem != null) {
-						outline.Root = designer.DesignContext.RootItem.CreateOutlineNode();
+					catch (Exception ex)
+					{
+						LoggingService.Warn("WPF designer: could not read app.xaml for resource loading", ex);
 					}
-					
-					propertyGridView.PropertyGrid.SelectedItems = null;
-					designer.DesignContext.Services.Selection.SelectionChanged += OnSelectionChanged;
-					designer.DesignContext.Services.GetService<UndoService>().UndoStackChanged += OnUndoStackChanged;
-
-					// A real toolbox drag-drop (DragDrop.DoDragDrop -> CreateComponentTool's
-					// DragOver/Drop handlers, now actually reachable off Windows via
-					// System.Windows.PortableDragDropOperation) can leave the dropped item's
-					// ChangeGroup open on the undo transaction stack - designPanel_Drop's own
-					// Commit() closes ITS OWN reference, but something further up (not yet
-					// root-caused) can stay open, so the drop is only visible/selectable in
-					// memory until something commits it. Tried auto-flushing on DragDrop.DropEvent
-					// here; that handler never actually fires (root cause not yet found either -
-					// possibly ProcessPortableDragDrop's RaiseEvent call not routing the way a
-					// normal drop would), so for now a caller has to explicitly call
-					// od.wpf-designer.flush-pending-transaction (WpfDesignDevFlowActions) after a
-					// drop before the change is guaranteed visible/saveable. Known limitation.
-				} catch (Exception e) {
-					ShowDesignerError(e);
 				}
 			}
+			return snapshot;
+		}
+
+		/// <summary>OutputAssemblyFullPath can point at the apphost (an extensionless executable
+		/// on Unix, or a ".exe" native shim on Windows) instead of the managed assembly; the child
+		/// needs the managed ".dll", so prefer the sibling when it exists - same fix
+		/// FormsDesignerViewContent.GetManagedAssemblyPath already established.</summary>
+		static string GetManagedAssemblyPath(IProject? project)
+		{
+			var path = project?.OutputAssemblyFullPath.ToString() ?? "";
+			if (string.IsNullOrEmpty(path) || path.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+				return path;
+			var dll = Path.ChangeExtension(path, ".dll");
+			return File.Exists(dll) ? dll : path;
 		}
 
 		void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
 		{
-			if (IsDisposed || !IsActiveViewContent || designer?.DesignContext == null || UserContent != designer)
+			if (IsDisposed || !IsActiveViewContent || surfaceControl == null || UserContent != surfaceControl)
 				return;
 
 			LoggingService.Error("Unhandled WPF designer UI exception", e.Exception);
@@ -231,103 +208,84 @@ namespace ICSharpCode.WpfDesign.AddIn
 
 		void ShowDesignerError(Exception exception)
 		{
-			DetachDesignerServices();
-			if (outline != null)
-				outline.Root = null;
-			if (propertyGridView != null)
-				propertyGridView.PropertyGrid.SelectedItems = null;
+			outline.SetRoot(null!);
 			propertyContainer.SelectedObject = null;
-			designer?.UnloadDesigner();
 			this.UserContent = new WpfDocumentError(exception);
 		}
 
-		void DetachDesignerServices()
+		protected override void SaveInternal(OpenedFile file, Stream stream)
 		{
-			DesignContext context = designer?.DesignContext;
-			if (context == null)
-				return;
-
-			context.Services.Selection.SelectionChanged -= OnSelectionChanged;
-			UndoService undoService = context.Services.GetService<UndoService>();
-			if (undoService != null)
-				undoService.UndoStackChanged -= OnUndoStackChanged;
-		}
-		
-		System.Reflection.Assembly CurrentDomain_AssemblyResolve(object sender, ResolveEventArgs args)
-		{
-			if (string.IsNullOrEmpty(_path))
-				return null;
-
-			var assemblyName = (new AssemblyName(args.Name));
-			string fileName = Path.Combine(_path, assemblyName.Name) + ".dll";
-			if (File.Exists(fileName))
-				return typeResolutionService.LoadAssembly(fileName);
-			return null;
-		}
-		
-		private TypeResolutionService typeResolutionService = new TypeResolutionService();
-		private string _path;
-		private MemoryStream _stream;
-		bool wasChangedInDesigner;
-		
-		protected override void SaveInternal(OpenedFile file, System.IO.Stream stream)
-		{
-			if (wasChangedInDesigner && designer.DesignContext != null) {
+			if (wasChangedInDesigner && client != null)
+			{
 				SD.AnalyticsMonitor.TrackFeature(typeof(WpfViewContent), "Save");
-				XmlWriterSettings settings = new XmlWriterSettings();
-				settings.Indent = true;
-				settings.IndentChars = SD.EditorControlService.GlobalOptions.IndentationString;
-				settings.NewLineOnAttributes = true;
-				using (XmlWriter xmlWriter = XmlWriter.Create(stream, settings)) {
-					designer.SaveDesigner(xmlWriter);
-				}
-			} else {
-				_stream.Position = 0;
-				using (var reader = new StreamReader(new UnclosableStream(_stream))) {
-					using (var writer = new StreamWriter(stream)) {
-						writer.Write(reader.ReadToEnd());
-					}
-				}
+				var edit = client.FlushAsync(documentVersion).GetAwaiter().GetResult();
+				var text = edit.Files.FirstOrDefault(f => f.FileName == PrimaryFile.FileName.ToString())?.Text
+					?? edit.Files.FirstOrDefault()?.Text ?? "";
+				using var writer = new StreamWriter(stream, leaveOpen: true);
+				writer.Write(text);
+			}
+			else
+			{
+				_stream!.Position = 0;
+				using var reader = new StreamReader(new UnclosableStream(_stream));
+				using var writer = new StreamWriter(stream, leaveOpen: true);
+				writer.Write(reader.ReadToEnd());
 			}
 		}
-		
+
 		public static List<SDTask> DllLoadErrors = new List<SDTask>();
-		void UpdateTasks(XamlErrorService xamlErrorService)
+		List<SDTask> tasks = new List<SDTask>();
+
+		void UpdateTasks(List<DesignerDiagnostic> diagnostics)
 		{
-			Debug.Assert(xamlErrorService != null);
-			foreach (SDTask task in tasks) {
+			foreach (var task in tasks)
 				TaskService.Remove(task);
-			}
-			
 			tasks.Clear();
-			
-			foreach (XamlError error in xamlErrorService.Errors) {
-				var task = new SDTask(PrimaryFile.FileName, error.Message, error.Column - 1, error.Line, SharpDevelop.TaskType.Error);
+
+			foreach (var diagnostic in diagnostics)
+			{
+				var task = new SDTask(PrimaryFile.FileName, diagnostic.Message, Math.Max(0, diagnostic.Column - 1), diagnostic.Line, SharpDevelop.TaskType.Error);
 				tasks.Add(task);
 				TaskService.Add(task);
 			}
-			
+
 			TaskService.AddRange(DllLoadErrors);
-			
-			if (xamlErrorService.Errors.Count != 0) {
+
+			if (diagnostics.Count != 0)
 				SD.Workbench.GetPad("ICSharpCode.SharpDevelop.Gui.ErrorListPad").BringPadToFront();
-			}
 		}
-		
-		void OnUndoStackChanged(object sender, EventArgs e)
+
+		void OnSelectionChanged(object? sender, EventArgs e)
 		{
+			propertyContainer.SelectedObject = surfaceControl?.SelectedPropertyAdapter;
+			// Design surface -> Document Outline: mirror the selection without re-triggering the
+			// outline -> surface path (same element, no-op anyway).
+			outline.SelectNodeById(surfaceControl?.SelectedElementId);
+			CommandManager.InvalidateRequerySuggested();
+		}
+
+		/// <summary>Marks the file dirty after any accepted mutation (bounds/add/delete/rename/
+		/// property edit) - <see cref="WpfSurfaceDesignerControl.DocumentChanged"/>'s only
+		/// subscriber. NOT wired off <see cref="DesignerSessionState.Version"/> comparisons: the
+		/// DDP's <c>state.Version</c> is never actually bumped by a mutation RPC on this backend
+		/// (see the event's own doc comment on <c>WpfSurfaceDesignerControl</c>), so a version-diff
+		/// check silently never fires - this was a real bug, caught by
+		/// <c>SelectControl_EditingContentInPropertiesPad_UpdatesAndSavesXaml</c> asserting
+		/// <c>od.file.is-dirty</c> after a Properties-pad edit.</summary>
+		void OnDocumentChanged(object? sender, DesignerSessionState state)
+		{
+			if (!state.Accepted)
+				return;
 			wasChangedInDesigner = true;
 			this.PrimaryFile.MakeDirty();
 		}
-		
-		#region Property editor / SelectionChanged
-		
-		PropertyGridView propertyGridView;
+
+		#region Property editor / Outline
+
+		PropertyGridView? propertyGridView;
 		readonly PropertyContainer propertyContainer = new PropertyContainer();
 
-		public PropertyContainer PropertyContainer {
-			get { return propertyContainer; }
-		}
+		public PropertyContainer PropertyContainer => propertyContainer;
 
 		void InitPropertyEditor()
 		{
@@ -340,108 +298,96 @@ namespace ICSharpCode.WpfDesign.AddIn
 			WpfToolbox.Instance.AddProjectDlls(Files[0]);
 			SD.ProjectService.ProjectItemAdded += OnReferenceAdded;
 		}
-		
+
 		void OnReferenceAdded(object sender, ProjectItemEventArgs e)
 		{
 			if (!(e.ProjectItem is ReferenceProjectItem)) return;
 			if (e.Project != SD.ProjectService.FindProjectContainingFile(Files[0].FileName)) return;
 			WpfToolbox.Instance.AddProjectDlls(Files[0]);
 		}
-		
-		void OnSelectionChanged(object sender, DesignItemCollectionEventArgs e)
-		{
-			propertyGridView.PropertyGrid.SelectedItems = DesignContext.Services.Selection.SelectedItems;
-			propertyContainer.SelectedObject = DesignContext.Services.Selection.PrimarySelection != null
-				? new DesignItemPropertyGridAdapter(DesignContext.Services.Selection.PrimarySelection)
-				: null;
-		}
 
 		void OnPropertyGridPropertyChanged(object sender, PropertyChangedEventArgs e)
 		{
-			if (propertyGridView.PropertyGrid.ReloadActive) return;
+			if (propertyGridView == null || propertyGridView.PropertyGrid.ReloadActive) return;
 			if (e.PropertyName != "Name") return;
 			if (!propertyGridView.PropertyGrid.IsNameCorrect) return;
 
-			OpenedFile file = this.Files.FirstOrDefault(f => f.FileName.ToString().EndsWith(".xaml", StringComparison.OrdinalIgnoreCase));
+			OpenedFile? file = this.Files.FirstOrDefault(f => f.FileName.ToString().EndsWith(".xaml", StringComparison.OrdinalIgnoreCase));
 			if (file == null) return;
 
 			string oldName = propertyGridView.PropertyGrid.OldName;
 			string newName = propertyGridView.PropertyGrid.Name;
 			WpfControlRenameSync.RenameAsync(file.FileName, oldName, newName).FireAndForget();
 		}
-		
-		static bool IsCollectionWithSameElements(ICollection<DesignItem> a, ICollection<DesignItem> b)
-		{
-			return ContainsAll(a, b) && ContainsAll(b, a);
-		}
-		
-		static bool ContainsAll(ICollection<DesignItem> a, ICollection<DesignItem> b)
-		{
-			foreach (DesignItem item in a) {
-				if (!b.Contains(item))
-					return false;
-			}
-			return true;
-		}
-		
+
 		#endregion
-		
-		public object ToolsContent {
-			get { return WpfToolbox.Instance.ToolboxControl; }
-		}
-		
+
+		public object ToolsContent => WpfToolbox.Instance.ToolboxControl;
+
 		public override void Dispose()
 		{
-			AppDomain.CurrentDomain.AssemblyResolve -= CurrentDomain_AssemblyResolve;
 			Application.Current.DispatcherUnhandledException -= OnDispatcherUnhandledException;
 			SD.ProjectService.ProjectItemAdded -= OnReferenceAdded;
-			DetachDesignerServices();
-			designer?.UnloadDesigner();
+			if (surfaceControl != null)
+			{
+				surfaceControl.SelectionChanged -= OnSelectionChanged;
+				surfaceControl.DocumentChanged -= OnDocumentChanged;
+			}
+			outline.SelectionCommitted -= OnOutlineSelectionCommitted;
+			client?.Dispose();
+			client = null;
 
 			base.Dispose();
 		}
-		
+
 		void OnIsActiveViewContentChanged(object sender, EventArgs e)
 		{
-			if (IsActiveViewContent) {
-				if (designer != null && designer.DesignContext != null) {
-					WpfToolbox.Instance.ToolService = designer.DesignContext.Services.Tool;
-				}
+			if (IsActiveViewContent && surfaceControl != null)
+			{
+				WpfToolbox.Instance.ToolService = null;
 			}
 		}
-		
-		Outline outline;
-		
-		public Outline Outline {
-			get {
-				if (outline == null) {
-					outline = new Outline();
-					if (DesignSurface != null && DesignSurface.DesignContext != null && DesignSurface.DesignContext.RootItem != null) {
-						outline.Root = DesignSurface.DesignContext.RootItem.CreateOutlineNode();
-					}
-					// see 3522
-					outline.AddCommandHandler(ApplicationCommands.Delete,
-					                          () => ApplicationCommands.Delete.Execute(null, designer));
-				}
-				return outline;
-			}
-		}
-		
-		public object OutlineContent {
-			get {
-				if (WorkbenchWindow != null) {
-					foreach (IViewContent view in WorkbenchWindow.ViewContents) {
-						if (view == this)
-							continue;
 
-						var sourceOutline = view.GetService(typeof(IOutlineContentHost)) as IOutlineContentHost;
-						if (sourceOutline != null)
-							return sourceOutline.OutlineContent;
-					}
-				}
+		readonly DocumentOutlineControl outline = new DocumentOutlineControl();
 
-				return this.Outline;
+		void UpdateOutline(DesignerSessionState state)
+		{
+			outline.SetRoot(state.Tree!);
+			if (!outlineSubscribed)
+			{
+				outline.SelectionCommitted += OnOutlineSelectionCommitted;
+				outlineSubscribed = true;
 			}
 		}
+
+		bool outlineSubscribed;
+
+		void OnOutlineSelectionCommitted(object sender, EventArgs e)
+		{
+			// Outline -> design surface: the surface owns selection; route the pick through the
+			// same single-selection path as a surface click.
+			surfaceControl?.SelectElementId(outline.SelectedNode?.Id);
+		}
+
+		/// <summary>The DESIGNER's own element tree, matching what
+		/// <c>FormsDesignerViewContent</c> and <c>WinUIXamlDesignerViewContent</c> both return
+		/// (each simply hands back its own outline). This used to walk the sibling views and
+		/// return the SOURCE editor's outline instead - a leftover from the old in-process
+		/// designer, which had no outline of its own - so with the Design tab active the Outline
+		/// pad showed the XAML text editor's LSP symbol list rather than the designed element
+		/// tree, and the tree built in <see cref="UpdateOutline"/> was never displayed at all.
+		/// The source view keeps its own <c>IOutlineContentHost</c> (XamlOutlineContentHost), so
+		/// switching to the Source tab still shows the source outline - that split is the point.</summary>
+		public object OutlineContent => outline;
+	}
+
+	/// <summary>Thrown when the child rejects <c>session/open</c>/<c>session/update</c> (e.g. a
+	/// XAML parse error) - caught by <see cref="WpfViewContent.LoadInternal"/> the same way the
+	/// old in-process load's catch-all did, showing <see cref="WpfDocumentError"/> instead of
+	/// leaving the view half-loaded.</summary>
+	[Serializable]
+	public class WpfDesignerLoadException : Exception
+	{
+		public WpfDesignerLoadException(string message) : base(message) { }
 	}
 }

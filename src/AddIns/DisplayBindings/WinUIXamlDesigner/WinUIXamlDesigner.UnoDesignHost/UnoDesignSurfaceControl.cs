@@ -144,6 +144,35 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 	/// <summary>Raised with a design-unit delta when the user nudges the selection with arrow keys.</summary>
 	public event EventHandler<(double DX, double DY)> NudgeRequested;
 
+	/// <summary>
+	/// Surface geometry for the resize-drag integration tests: the rendered design bitmap
+	/// bounds, the current selection outline bounds and the (bottom-right) resize handle
+	/// position, all in screen coordinates. The selection outline must coincide with the
+	/// rendered element and the handle sit at its bottom-right corner before and after a
+	/// resize drag - the smoke probe for the shared-canvas invariant.
+	/// </summary>
+	public (Rect Frame, Rect Selection, Point Handle) SurfaceGeometry()
+	{
+		var frameTl = framePresenter.Visual.PointToScreen(new Point(0, 0));
+		var frameBr = framePresenter.Visual.PointToScreen(new Point(
+			framePresenter.Visual.ActualWidth, framePresenter.Visual.ActualHeight));
+		var frame = new Rect(frameTl.X, frameTl.Y, frameBr.X - frameTl.X, frameBr.Y - frameTl.Y);
+		Rect selection = default;
+		if (!designSelection.IsEmpty)
+		{
+			var (sx, sy) = CurrentViewport().DesignToSurface(designSelection.X, designSelection.Y);
+			var (sx2, sy2) = CurrentViewport().DesignToSurface(
+				designSelection.X + designSelection.Width, designSelection.Y + designSelection.Height);
+			// DesignToSurface yields content coordinates; subtract scroll to get viewport-local,
+			// then map to screen.
+			var stl = scroller.PointToScreen(new Point(sx - scroller.HorizontalOffset, sy - scroller.VerticalOffset));
+			var sbr = scroller.PointToScreen(new Point(sx2 - scroller.HorizontalOffset, sy2 - scroller.VerticalOffset));
+			selection = new Rect(stl.X, stl.Y, sbr.X - stl.X, sbr.Y - stl.Y);
+		}
+		var handle = new Point(selection.X + selection.Width, selection.Y + selection.Height);
+		return (frame, selection, handle);
+	}
+
 	/// <summary>Raised when the user presses Ctrl+Z (undo: true) or Ctrl+Y / Ctrl+Shift+Z (undo: false).</summary>
 	public event EventHandler<bool> UndoRedoRequested;
 

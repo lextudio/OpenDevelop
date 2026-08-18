@@ -64,6 +64,13 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		{
 			this.expectedToken = expectedToken;
 			this.dispatcher = dispatcher;
+			// The old in-process WpfViewContent called this once at IDE startup, before ever
+			// constructing a DesignSurface - it registers the designer engine's own property-editor
+			// standard-value lists (Brush/Color/Cursor/FontWeight/ICommand, etc.) that the Properties
+			// pad's dropdowns rely on. The engine (DesignItem/Metadata/PlacementBehavior) now runs
+			// entirely in this child process, so this call belongs here instead; BasicMetadata.Register
+			// is itself idempotent (a `registered` guard), so calling it per-construction is safe.
+			ICSharpCode.WpfDesign.Designer.BasicMetadata.Register();
 		}
 
 		[JsonRpcMethod("initialize")]
@@ -241,46 +248,64 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			};
 		}
 
-		/// <summary>Confirmed by direct run (see wpf-designer.md's Phase 0 progress notes):
-		/// VisualTreeHelper.HitTest never descends past the root visual under headless LibreWPF
-		/// on macOS, even though children are real, arranged, correctly-bounded WPF objects
-		/// (Grid.Children/ActualWidth/ActualHeight all correct). Every hit callback reports only
-		/// the root - the same platform gap category as Render (see below), most likely because
-		/// per-visual hit-test geometry also depends on the native compositor channel this
-		/// headless host never establishes. Not fixed this round; see the technote for the
-		/// deferred follow-up options.</summary>
+		/// <summary>Per-element hit-testing under headless LibreWPF on macOS does not work through
+		/// plain WPF (`VisualTreeHelper.HitTest` never descends past the root visual there - it
+		/// depends on a `PresentationSource`/native compositor channel this host never
+		/// establishes, confirmed by direct run, see wpf-designer.md's Phase 0 progress notes).
+		/// The fix is not to build that channel - `ProGpuWpfCompositionTarget.TryHitTestOwner`
+		/// (`~/wpf-tools/librewpf/src/ProGPU.Wpf/ProGpuWpfCompositionTarget.cs`) is a genuinely
+		/// public API that answers the same question directly from the GPU-side hit-test data
+		/// `ReplayVisualSubtree` already builds on every render - no `PresentationSource` needed.
+		/// `owner` comes back as the real WPF `Visual` the render-data decoder attributed that
+		/// geometry to, so the existing "walk up to the nearest DesignItem" logic still applies
+		/// unchanged. Falls back to the root-only VisualTreeHelper walk if nothing has been
+		/// rendered yet (renderTarget is only created lazily by Render()).</summary>
 		[JsonRpcMethod("design/hit-test")]
 		public DesignerHitTestResult HitTest(string sessionId, string documentId, long baseVersion, double x, double y)
 			=> dispatcher.Dispatch(() => {
 				var result = new DesignerHitTestResult();
 				if (current?.RootItem?.View is not UIElement root)
 					return result;
+				var component = current.Services.Component;
 				DesignItem? hitItem = null;
-				VisualTreeHelper.HitTest(root, null, hitResult => {
-					if (hitResult.VisualHit is DependencyObject hit)
+
+				DesignItem? ResolveOwner(DependencyObject? hit)
+				{
+					var walked = hit;
+					while (walked != null)
 					{
-						var component = current.Services.Component;
-						var walked = hit;
-						while (walked != null && hitItem == null)
+						if (walked is UIElement || walked is System.Windows.Media.Visual)
 						{
-							if (walked is UIElement || walked is System.Windows.Media.Visual)
-							{
-								var item = component.GetDesignItem(walked);
-								if (item != null)
-								{
-									hitItem = item;
-									break;
-								}
-							}
-							walked = VisualTreeHelper.GetParent(walked);
+							var item = component.GetDesignItem(walked);
+							if (item != null)
+								return item;
 						}
+						walked = VisualTreeHelper.GetParent(walked);
 					}
-					return hitItem != null ? HitTestResultBehavior.Stop : HitTestResultBehavior.Continue;
-				}, new PointHitTestParameters(new Point(x, y)));
+					return null;
+				}
+
+				if (renderTarget != null &&
+					renderTarget.TryHitTestOwner(new System.Numerics.Vector2((float)x, (float)y), out var owner, out _) &&
+					owner is DependencyObject ownerVisual)
+				{
+					hitItem = ResolveOwner(ownerVisual);
+				}
+				else
+				{
+					VisualTreeHelper.HitTest(root, null, hitResult => {
+						hitItem = ResolveOwner(hitResult.VisualHit as DependencyObject);
+						return hitItem != null ? HitTestResultBehavior.Stop : HitTestResultBehavior.Continue;
+					}, new PointHitTestParameters(new Point(x, y)));
+				}
+
 				if (hitItem != null)
 				{
 					var path = pathToItem.FirstOrDefault(entry => entry.Value == hitItem).Key;
 					result.PickPath = path ?? "";
+					// The root's own path IS the empty string, so PickPath alone cannot tell a
+					// root hit from no hit - see DesignerHitTestResult.Hit.
+					result.Hit = true;
 				}
 				return result;
 			});
@@ -337,9 +362,10 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				var type = current!.ParserSettings.TypeFinder.GetType(item.XamlNamespace, item.TypeName);
 				if (type == null)
 					return NotFound(state, $"Could not resolve type '{item.TypeName}' in namespace '{item.XamlNamespace}'.");
+				DesignItem created;
 				try
 				{
-					var created = CreateComponentTool.CreateItem(current, type);
+					created = CreateComponentTool.CreateItem(current, type);
 					var operation = PlacementOperation.TryStartInsertNewComponents(
 						parent, new[] { created }, new[] { new Rect(x, y, DefaultElementSize, DefaultElementSize) }, PlacementType.AddItem);
 					if (operation == null)
@@ -353,6 +379,12 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					return NotFound(state, e.GetBaseException().Message);
 				}
 				RebuildTreeAndRender(state);
+				// pathToItem was just rebuilt fresh by RebuildTreeAndRender above, so this reverse
+				// lookup (the same pattern HitTest already uses) reflects the item's real, current
+				// path - letting a caller select the just-created element without needing a name
+				// (see DesignerSessionState.CreatedElementId's own doc comment for why a name isn't
+				// an option here, unlike WinForms/WinUI).
+				state.CreatedElementId = pathToItem.FirstOrDefault(entry => entry.Value == created).Key;
 				state.Accepted = true;
 				return state;
 			});
@@ -367,12 +399,44 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					return NotFound(state, "Element not found: " + elementId);
 				try
 				{
-					item.Properties["Width"].SetValue(width);
-					item.Properties["Height"].SetValue(height);
+					// Route through the designer's own PlacementOperation rather than setting
+					// Width/Height directly, so x/y (a MOVE) is actually honored and is expressed
+					// the way the *container* wants it: Canvas.Left/Top under a Canvas, Margin +
+					// alignment under a Grid, and so on. Setting Width/Height alone - what this
+					// did originally - silently dropped x/y entirely, so an interactive drag could
+					// only ever resize, never move. PlacementType.Resize covers both here: it is
+					// the "bounds changed" operation (move alone is PlacementType.Move, but a
+					// drag-resize also moves the top-left for the nw/n/w handles, so the general
+					// case is a single bounds assignment).
+					var operation = PlacementOperation.Start(new[] { item }, PlacementType.Resize);
+					try
+					{
+						var info = operation.PlacedItems[0];
+						info.Bounds = new Rect(x, y, width, height);
+						operation.CurrentContainerBehavior.SetPosition(info);
+						operation.Commit();
+					}
+					catch
+					{
+						operation.Abort();
+						throw;
+					}
 				}
-				catch (Exception e)
+				catch (Exception placementFailure)
 				{
-					return NotFound(state, e.GetBaseException().Message);
+					// A container with no placement behavior at all (or an element it refuses to
+					// place) still supports a plain resize - fall back rather than failing the
+					// whole operation, matching how the live in-process designer degrades.
+					try
+					{
+						item.Properties["Width"].SetValue(width);
+						item.Properties["Height"].SetValue(height);
+					}
+					catch (Exception e)
+					{
+						return NotFound(state, e.GetBaseException().Message + " (placement also failed: "
+							+ placementFailure.GetBaseException().Message + ")");
+					}
 				}
 				RebuildTreeAndRender(state);
 				state.Accepted = true;
@@ -477,6 +541,121 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			return Convert.ChangeType(value, targetType, CultureInfo.InvariantCulture);
 		}
 
+		/// <summary>Builds the Properties pad list for one element. <see cref="DesignItem.Properties"/>
+		/// is deliberately NOT enumerated directly here - confirmed by a real run that it only
+		/// yields properties some caller has already realized a <c>DesignItemProperty</c> wrapper
+		/// for (`XamlModelPropertyCollection` caches wrappers lazily, keyed by name, and its
+		/// enumerator only walks that cache) - for a freshly-opened session that's just whatever
+		/// this method's own `item.ContentProperty` walk happened to touch ("Children"/"Content"),
+		/// not the element's real browsable properties ("Text", "Width", ...). Instead, this
+		/// reflects the element's real CLR type via `TypeDescriptor.GetProperties` (which already
+		/// filters out non-browsable WPF plumbing members like `Dispatcher`/`TemplatedParent` the
+		/// way any .NET property grid would) to get the full candidate name list, then looks each
+		/// one up through `item.Properties[name]` - which, unlike enumeration, creates the wrapper
+		/// on demand for any valid name (`GetProperty` calls `FindOrCreateProperty`).</summary>
+		static List<DesignerPropertyInfo> BuildProperties(DesignItem item)
+		{
+			if (item.ComponentType == null)
+				return new List<DesignerPropertyInfo>();
+			var result = new List<DesignerPropertyInfo>();
+			foreach (PropertyDescriptor descriptor in TypeDescriptor.GetProperties(item.ComponentType))
+			{
+				if (!descriptor.IsBrowsable)
+					continue;
+				DesignItemProperty? property;
+				try
+				{
+					property = item.Properties[descriptor.Name];
+				}
+				catch (Exception)
+				{
+					continue;
+				}
+				if (property == null || property.IsEvent)
+					continue;
+				result.Add(ToPropertyInfo(property));
+			}
+			return result;
+		}
+
+		/// <summary>Converts one <see cref="DesignItemProperty"/> to the wire shape the
+		/// Properties pad reads (designer-common.md "Property and event values"). Deliberately
+		/// conservative: only properties with a symmetric string <see cref="TypeConverter"/>
+		/// (covers primitives, enums, and every simple XAML-serializable value type) get a real,
+		/// editable <see cref="DesignerPropertyInfo.Value"/>; anything else (nested DesignItem
+		/// values - Binding, Brush, layout objects, ...) is reported read-only with a best-effort
+		/// display string rather than crashing the whole tree build or silently corrupting data
+		/// through a lossy round-trip. Widening this to "Xaml"/"Reference" kinds for those nested
+		/// values is real future work, not attempted here.</summary>
+		static DesignerPropertyInfo ToPropertyInfo(DesignItemProperty property)
+		{
+			var info = new DesignerPropertyInfo {
+				Name = property.Name,
+				DisplayName = property.Name,
+				Category = string.IsNullOrEmpty(property.Category) ? "Misc" : property.Category,
+				TypeName = property.ReturnType?.FullName ?? "",
+				ShouldSerialize = property.IsSet
+			};
+			try
+			{
+				var value = property.ValueOnInstance;
+				if (value == null)
+				{
+					info.IsNull = true;
+					info.Kind = "Null";
+					return info;
+				}
+				// A WPF "object"-typed content property (Content/Header/ToolTip, etc.) holding a
+				// plain string is one of the most common editable properties in the Properties pad
+				// (e.g. a Button's Content="..."). TypeDescriptor.GetConverter(typeof(object))'s
+				// converter reports CanConvertFrom(string) == false (the base TypeConverter only
+				// supports InstanceDescriptor round-trips, not arbitrary strings), which fell into
+				// the "Unsupported"/read-only branch below purely because of the property's
+				// DECLARED type - even though the ACTUAL value is a string and perfectly editable.
+				// That silently made DescriptorPropertyDefinition.CreateValueBinding's Value binding
+				// OneWay (Mode is keyed off PropertyDescriptor.IsReadOnly), so a Properties-pad edit
+				// never reached WpfSurfacePropertyDescriptor.SetValue at all - a real edit appeared
+				// to "succeed" (the Xceed PropertyItem's own local DP value changed) while nothing
+				// was ever sent to the child, and the file never got marked dirty. Checking the
+				// actual runtime value's type first sidesteps the declared-type converter entirely.
+				if (value is string stringValue)
+				{
+					info.Value = stringValue;
+					info.Kind = "String";
+					return info;
+				}
+				var converter = property.ReturnType != null ? TypeDescriptor.GetConverter(property.ReturnType) : null;
+				if (converter != null && converter.CanConvertTo(typeof(string)) && converter.CanConvertFrom(typeof(string)))
+				{
+					info.Value = converter.ConvertToInvariantString(value) ?? "";
+					info.IsEnum = property.ReturnType!.IsEnum;
+					info.Kind = property.ReturnType == typeof(bool) ? "Boolean"
+						: info.IsEnum ? "Enum"
+						: IsNumericType(property.ReturnType) ? "Number"
+						: "String";
+				}
+				else
+				{
+					info.Kind = "Unsupported";
+					info.IsReadOnly = true;
+					info.Value = value.ToString() ?? "";
+				}
+			}
+			catch (Exception)
+			{
+				// A property whose getter/converter throws (e.g. not resolvable outside a real
+				// PresentationSource) must not fail the whole tree build - report it unsupported.
+				info.Kind = "Unsupported";
+				info.IsReadOnly = true;
+			}
+			return info;
+		}
+
+		static bool IsNumericType(Type type) =>
+			type == typeof(byte) || type == typeof(sbyte) || type == typeof(short) || type == typeof(ushort) ||
+			type == typeof(int) || type == typeof(uint) || type == typeof(long) || type == typeof(ulong) ||
+			type == typeof(float) || type == typeof(double) || type == typeof(decimal);
+
 		void EnsureInitialized()
 		{
 			if (!initialized)
@@ -502,8 +681,24 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			pathToItem = new Dictionary<string, DesignItem>(StringComparer.Ordinal);
 			if (current.RootItem.View is FrameworkElement root)
 			{
+				// Measure against the viewport, then arrange at the root's OWN desired size - not
+				// at the viewport rect. Arranging a root that declares an explicit Width/Height
+				// (or otherwise desires less than the viewport) into the larger viewport rect is
+				// what WPF's normal Stretch-alignment centering acts on: ArrangeCore clamps the
+				// arrange size back down via MinMax (so RenderSize stays correct and looks fine),
+				// but ComputeAlignmentOffset still centers that content inside the *viewport*,
+				// leaving the root with a non-zero VisualOffset of ((viewport - content) / 2).
+				// Render() then sizes its texture from the root's own ActualWidth/ActualHeight,
+				// so that offset shifted every rendered pixel relative to the coordinates the
+				// element tree reports - the "coordinate mismatch" tracked in wpf-designer.md.
+				// Arranging at DesiredSize keeps the root's offset at (0,0), which is also what
+				// a design surface wants: show the design at its natural/declared size and let
+				// the host's own canvas letterbox around it (DesignViewport/DesignerCanvas).
 				root.Measure(new Size(lastWidth, lastHeight));
-				root.Arrange(new Rect(0, 0, lastWidth, lastHeight));
+				var desired = root.DesiredSize;
+				root.Arrange(new Rect(0, 0,
+					desired.Width > 0 ? desired.Width : lastWidth,
+					desired.Height > 0 ? desired.Height : lastHeight));
 				root.UpdateLayout();
 			}
 			state.Tree = BuildNode(current.RootItem, current.RootItem, "");
@@ -518,7 +713,8 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				Id = path,
 				Name = string.IsNullOrEmpty(item.Name) ? null : item.Name,
 				Type = item.ComponentType?.Name ?? "",
-				Path = path
+				Path = path,
+				Properties = BuildProperties(item)
 			};
 			if (item.View is FrameworkElement element && root.View is Visual rootVisual)
 			{

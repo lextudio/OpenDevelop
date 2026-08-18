@@ -388,6 +388,13 @@ namespace ICSharpCode.WpfDesign.AddIn
 			{
 				wpfData.SetData(typeof(Type), componentTool.ComponentType);
 				wpfData.SetData("ComponentTypeName", componentTool.ComponentType.FullName);
+				// DDP-shaped toolbox payload for WpfSurfaceDesignerControl's drop handler (the
+				// out-of-process cutover, see wpf-designer.md): the child resolves types through
+				// its own SurfaceTypeFinder.GetType(xamlNamespace, typeName), so this carries a
+				// real XAML namespace string rather than a live System.Type - the in-process
+				// designer's own DataObject entries above stay untouched for its own drop path.
+				wpfData.SetData(typeof(ICSharpCode.SharpDevelop.Designer.Remote.DesignerToolboxItemInfo),
+					BuildToolboxItemInfo(componentTool.ComponentType));
 			}
 
 			isDragging = true;
@@ -399,6 +406,31 @@ namespace ICSharpCode.WpfDesign.AddIn
 				isDragging = false;
 				ResetToolSelection();
 			}
+		}
+
+		/// <summary>Maps a real CLR control type to the DDP <c>DesignerToolboxItemInfo</c> shape
+		/// (see designer-common.md's Toolbox section) - specifically its
+		/// <c>XamlNamespace</c>/<c>TypeName</c> pair, matching the exact string format
+		/// <c>XamlTypeFinder.GetXmlNamespaceFor</c>/<c>GetType</c> already use on the child side:
+		/// the standard presentation URI for stock <c>System.Windows</c>/<c>System.Windows.Controls</c>
+		/// types (the vast majority of toolbox items), falling back to the same
+		/// <c>"clr-namespace:X;assembly=Y"</c> form <c>XamlTypeFinder</c> constructs for anything
+		/// else - not a fresh convention invented here.</summary>
+		internal static ICSharpCode.SharpDevelop.Designer.Remote.DesignerToolboxItemInfo BuildToolboxItemInfo(Type componentType)
+		{
+			const string presentationNamespace = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+			var isStockPresentationType = componentType.Namespace == "System.Windows.Controls"
+				|| componentType.Namespace == "System.Windows.Controls.Primitives"
+				|| componentType.Namespace == "System.Windows";
+			var xamlNamespace = isStockPresentationType
+				? presentationNamespace
+				: $"clr-namespace:{componentType.Namespace};assembly={componentType.Assembly.GetName().Name}";
+			return new ICSharpCode.SharpDevelop.Designer.Remote.DesignerToolboxItemInfo {
+				Name = componentType.Name,
+				DisplayName = componentType.Name,
+				TypeName = componentType.Name,
+				XamlNamespace = xamlNamespace
+			};
 		}
 
 		void ResetToolSelection()

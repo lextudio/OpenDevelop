@@ -2496,5 +2496,77 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		// registration here (targeting a DockPanel+SharpTreeView shape that was never actually
 		// built) used to win the action-name collision since this assembly loads before
 		// XamlBinding.dll, silently shadowing the real implementation.
+
+		/// <summary>
+		/// Reports what the Outline pad is ACTUALLY DISPLAYING right now, by walking the live
+		/// <see cref="DocumentOutlineControl"/> the pad currently hosts - not any designer's own
+		/// internal element tree. That distinction is the whole point: all three designers
+		/// (WinForms, WinUI/Uno, WPF) build a correct tree internally and hand it to the same
+		/// shared control, so a designer-side "outlineNames" probe can look perfectly healthy
+		/// while the pad shows something else entirely. Exactly that happened - the WPF designer's
+		/// IOutlineContentHost returned the SOURCE editor's LSP outline instead of its own tree,
+		/// so the Design tab showed the XAML text symbol list, and no designer-side assertion
+		/// could have caught it.
+		/// </summary>
+		[DevFlowAction("od.outline-pad.content", Description = "Report the element tree the Outline pad is actually displaying (walks the live DocumentOutlineControl, not any designer's internal model)")]
+		public static string GetOutlinePadContent()
+		{
+			var pad = SD.Workbench.GetPad(typeof(ICSharpCode.SharpDevelop.Gui.OutlinePad));
+			var padContent = pad?.PadContent?.Control;
+			var outline = padContent as DocumentOutlineControl
+				?? (padContent as ContentPresenter)?.Content as DocumentOutlineControl
+				?? FindVisualDescendant<DocumentOutlineControl>(padContent as DependencyObject);
+			if (outline == null) {
+				return JsonSerializer.Serialize(new {
+					available = false,
+					padFound = pad != null,
+					contentType = padContent?.GetType().FullName
+				});
+			}
+
+			var names = new List<string>();
+			var labels = new List<string>();
+			foreach (TreeViewItem root in outline.Items.OfType<TreeViewItem>())
+				CollectOutlineItems(root, names, labels);
+
+			return JsonSerializer.Serialize(new {
+				available = true,
+				rootCount = outline.Items.Count,
+				// Name ?? Type per node, depth-first - the same flattened shape the designers'
+				// own status actions report, so a test can compare the two directly.
+				names = names.ToArray(),
+				// What the row literally renders (name + gray type), for a stricter check that
+				// the pad is showing designed elements rather than, say, source symbols.
+				labels = labels.ToArray(),
+				selected = (outline.SelectedItem as TreeViewItem)?.Tag is DesignerElementNode selectedNode
+					? selectedNode.Name ?? selectedNode.Type
+					: null
+			});
+		}
+
+		static void CollectOutlineItems(TreeViewItem item, List<string> names, List<string> labels)
+		{
+			if (item.Tag is DesignerElementNode node)
+				names.Add(string.IsNullOrEmpty(node.Name) ? node.Type : node.Name);
+			labels.Add(string.Join("", DescendantTextBlocks(item).Select(text => text.Text)).Trim());
+			foreach (TreeViewItem child in item.Items.OfType<TreeViewItem>())
+				CollectOutlineItems(child, names, labels);
+		}
+
+		/// <summary>The TextBlocks of one outline row's own header, stopping before nested rows so
+		/// a parent's label doesn't absorb its children's.</summary>
+		static IEnumerable<TextBlock> DescendantTextBlocks(DependencyObject node)
+		{
+			var count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(node);
+			for (var i = 0; i < count; i++) {
+				var child = System.Windows.Media.VisualTreeHelper.GetChild(node, i);
+				if (child is TreeViewItem)
+					continue;
+				if (child is TextBlock text)
+					yield return text;
+				foreach (var nested in DescendantTextBlocks(child))
+					yield return nested;
+			}
+		}
 	}
 }
