@@ -1,7 +1,8 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:core="clr-namespace:ICSharpCode.Core.Presentation;assembly=ICSharpCode.Core.Presentation"
-    xmlns:reskeys="clr-namespace:AvalonDock.Themes.VS2013.Themes;assembly=AvalonDock.Themes.VS2013">
+    xmlns:reskeys="clr-namespace:AvalonDock.Themes.VS2013.Themes;assembly=AvalonDock.Themes.VS2013"
+    xmlns:pg="clr-namespace:Xceed.Wpf.Toolkit.PropertyGrid.Editors;assembly=Xceed.Wpf.Toolkit">
     <!--
         Semantic application theme (Dark). See Theme.Light.xaml for the full structure notes:
         SystemColors overrides ported from ILSpy Base.Dark.xaml, direct-key implicit styles for
@@ -117,6 +118,40 @@
     <SolidColorBrush x:Key="{x:Static SystemColors.InactiveCaptionBrushKey}" Color="#2D2D30" />
     <SolidColorBrush x:Key="{x:Static SystemColors.InactiveBorderBrushKey}" Color="#434346" />
     <SolidColorBrush x:Key="{x:Static SystemColors.InactiveCaptionTextBrushKey}" Color="#808080" />
+
+    <!-- Xceed PropertyGrid editors (the shared Properties pad, used by every visual
+         designer): the value cell renders a PropertyGridEditorTextBox (BasedOn Xceed's own
+         WatermarkTextBox), whose default look is light-theme (a light gradient border via the
+         StaticResource 'TextBoxBorder' that app resources cannot override, plus Foreground/
+         Caret/Selection coming from SystemColors that do not reliably resolve under LibreWPF).
+         The search box already renders correctly because Xceed's template gives it an explicit
+         Transparent background and border, so only the value editor is re-themed here: explicit
+         dark brushes on a system TextBox template (which binds Background/Foreground/etc. back
+         to these setters), keeping the non-focused transparent border behavior. -->
+    <Style TargetType="{x:Type pg:PropertyGridEditorTextBox}"
+           BasedOn="{StaticResource {x:Type TextBox}}">
+        <Setter Property="Foreground" Value="{DynamicResource Foreground}" />
+        <Setter Property="Background" Value="{DynamicResource WindowBackground}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="3" />
+        <Setter Property="CaretBrush" Value="{DynamicResource Foreground}" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource Selection}" />
+        <Setter Property="SelectionTextBrush" Value="{DynamicResource SelectionForeground}" />
+        <Style.Triggers>
+            <!-- Match Xceed's default behavior: no border until the value cell gets keyboard
+                 focus (the row's own background provides the separation). -->
+            <Trigger Property="IsKeyboardFocusWithin" Value="False">
+                <Setter Property="BorderBrush" Value="Transparent" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+    <!-- Read-only property values render a PropertyGridEditorTextBlock (Xceed's default
+         Foreground is Gray, barely readable on the dark row background). -->
+    <Style TargetType="{x:Type pg:PropertyGridEditorTextBlock}">
+        <Setter Property="Foreground" Value="{DynamicResource MutedForeground}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
 
     <Style x:Key="SharpDevelopToolBarGripStyle" TargetType="{x:Type Thumb}">
         <!-- Cursor as a plain style Setter, NOT inside the template's ControlTemplate.Triggers:
