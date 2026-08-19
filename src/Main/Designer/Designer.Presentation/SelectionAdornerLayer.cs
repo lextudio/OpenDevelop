@@ -30,6 +30,22 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 		readonly Dictionary<string, Rectangle> handles = new(StringComparer.Ordinal);
 		Rect designSelection;
 		string? selectionName;
+		bool showNameLabel = true;
+
+		/// <summary>Whether the name label is shown at all, independent of whether a name was
+		/// supplied. <see cref="selectionName"/> itself keeps gating <see cref="HandleAt"/> even
+		/// when this is false - hiding the label must not also disable resize handles, which is
+		/// exactly why this is a separate switch rather than backends passing a null/empty label
+		/// to <see cref="ShowSelection"/> when they want the label hidden.</summary>
+		public bool ShowNameLabel {
+			get => showNameLabel;
+			set {
+				if (showNameLabel == value)
+					return;
+				showNameLabel = value;
+				UpdateLabelVisibility();
+			}
+		}
 
 		/// <param name="handleNames">Which named handles this instance shows - WinUI passes all
 		/// eight ("nw","n","ne","e","se","s","sw","w"); WinForms passes just <c>["se"]</c>.</param>
@@ -99,6 +115,14 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 				handle.Visibility = Visibility.Collapsed;
 		}
 
+		void UpdateLabelVisibility()
+		{
+			if (selectionLabel == null)
+				return;
+			selectionLabel.Visibility = showNameLabel && !string.IsNullOrEmpty(selectionName)
+				? Visibility.Visible : Visibility.Collapsed;
+		}
+
 		/// <summary>Re-lays-out the current selection at a new viewport (e.g. after a zoom/pan
 		/// change), without changing which element is selected.</summary>
 		public void Relayout(DesignViewport viewport) => Layout(viewport);
@@ -126,7 +150,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 				Canvas.SetLeft(selectionLabel, left);
 				Canvas.SetTop(selectionLabel, Math.Max(0, top - 17));
 				selectionLabel.Text = selectionName ?? "";
-				selectionLabel.Visibility = string.IsNullOrEmpty(selectionName) ? Visibility.Collapsed : Visibility.Visible;
+				UpdateLabelVisibility();
 			}
 
 			foreach (var (name, (hx, hy)) in HandlePositions())

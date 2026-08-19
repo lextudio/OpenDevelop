@@ -25,7 +25,13 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 	{
 		readonly FormsDesignerHostClient client;
 		readonly Grid designSurface = new Grid();
-		readonly DesignFramePresenter framePresenter = new(Stretch.None,
+		// Stretch.Fill (matching WpfSurfaceDesignerControl/UnoDesignSurfaceControl exactly): the
+		// bitmap must scale to fill framePresenter.Visual's Width/Height, which is all Resize()
+		// actually changes on zoom - Stretch.None would keep showing the bitmap at its native
+		// pixel size regardless of Width/Height, so the selection outline (computed independently
+		// through viewport.Scale) would resize with zoom while the rendered form image itself
+		// visibly stayed at its pre-zoom size.
+		readonly DesignFramePresenter framePresenter = new(Stretch.Fill,
 			horizontalAlignment: HorizontalAlignment.Left, verticalAlignment: VerticalAlignment.Top);
 		readonly Canvas adorners;
 		readonly Canvas guides;

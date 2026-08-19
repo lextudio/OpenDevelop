@@ -27,17 +27,20 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		readonly Button fitButton;
 		readonly ToggleButton gridButton;
 		readonly ToggleButton themeButton;
+		readonly ToggleButton namesButton;
 
 		public DesignerCanvas()
 		{
 			fitButton = CreateIconButton("Icons.16x16.FitToScreen", "Fit the design to the surface");
 			gridButton = CreateIconToggle("Icons.16x16.GridGuide", "Show design-space gridlines");
 			themeButton = CreateIconToggle("Icons.16x16.DarkTheme", "Switch the design surface between Light and Dark theme");
+			namesButton = CreateIconToggle("Icons.16x16.DisplayName", "Show control names on the selection outline");
 
 			toolbar.Children.Add(ZoomCombo);
 			toolbar.Children.Add(fitButton);
 			toolbar.Children.Add(gridButton);
 			toolbar.Children.Add(themeButton);
+			toolbar.Children.Add(namesButton);
 			// The design-size preset combo sits on its own at the far right.
 			toolbar.Children.Add(DesignSizeCombo);
 
@@ -55,15 +58,25 @@ namespace ICSharpCode.SharpDevelop.Widgets
 					DesignSizeSelected?.Invoke(this, label);
 			};
 			fitButton.Click += (_, _) => FitRequested?.Invoke(this, EventArgs.Empty);
-			gridButton.Checked += (_, _) => GridRequested?.Invoke(this, true);
-			gridButton.Unchecked += (_, _) => GridRequested?.Invoke(this, false);
-			themeButton.Click += (_, _) => ThemeRequested?.Invoke(this, themeButton.IsChecked == true);
+			// Checked/Unchecked must also refresh the button's OWN highlight: ApplyDesignTheme
+			// only runs once at construction (and whenever the IDE/design theme switches), so
+			// without this a real click toggled the underlying behavior correctly but the button
+			// never looked pressed - which is exactly why "the grid button doesn't work" was
+			// reported: SetGridlines(true) WAS running, the button just never lit up to show it.
+			gridButton.Checked += (_, _) => { UpdateButtonHighlight(gridButton); GridRequested?.Invoke(this, true); };
+			gridButton.Unchecked += (_, _) => { UpdateButtonHighlight(gridButton); GridRequested?.Invoke(this, false); };
+			themeButton.Click += (_, _) => { UpdateButtonHighlight(themeButton); ThemeRequested?.Invoke(this, themeButton.IsChecked == true); };
+			namesButton.Checked += (_, _) => { UpdateButtonHighlight(namesButton); ShowNamesRequested?.Invoke(this, true); };
+			namesButton.Unchecked += (_, _) => { UpdateButtonHighlight(namesButton); ShowNamesRequested?.Invoke(this, false); };
 
 			ShowZoom = true;
 			ShowDesignSize = true;
 			ShowFit = true;
 			ShowGrid = true;
 			ShowTheme = true;
+			ShowNames = true;
+			// Pressed = show names, matching today's existing behavior by default.
+			IsShowingNames = true;
 			// The toolbar chrome follows the IDE theme (not the design theme): toolbar background
 			// and the combo/button text use the semantic ToolWindowBackground/Foreground keys so
 			// they switch with the IDE. The design theme only drives the checked-button highlight
@@ -74,6 +87,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			fitButton.SetResourceReference(Control.ForegroundProperty, "Foreground");
 			gridButton.SetResourceReference(Control.ForegroundProperty, "Foreground");
 			themeButton.SetResourceReference(Control.ForegroundProperty, "Foreground");
+			namesButton.SetResourceReference(Control.ForegroundProperty, "Foreground");
 			ApplyDesignTheme(false);
 			// The empty-canvas edge follows the IDE theme via the semantic theme's "EdgePattern"
 			// key (Themes/Theme.Light.xaml / Theme.Dark.xaml each define their own), so a theme
@@ -99,6 +113,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		public bool ShowFit { get { return fitButton.Visibility == Visibility.Visible; } set { fitButton.Visibility = value ? Visibility.Visible : Visibility.Collapsed; } }
 		public bool ShowGrid { get { return gridButton.Visibility == Visibility.Visible; } set { gridButton.Visibility = value ? Visibility.Visible : Visibility.Collapsed; } }
 		public bool ShowTheme { get { return themeButton.Visibility == Visibility.Visible; } set { themeButton.Visibility = value ? Visibility.Visible : Visibility.Collapsed; } }
+		public bool ShowNames { get { return namesButton.Visibility == Visibility.Visible; } set { namesButton.Visibility = value ? Visibility.Visible : Visibility.Collapsed; } }
 
 		/// <summary>Gridlines toggle state (checked = show grid).</summary>
 		public bool IsGridEnabled { get { return gridButton.IsChecked == true; } set { gridButton.IsChecked = value; } }
@@ -106,20 +121,30 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		/// <summary>Design-theme toggle state (checked = dark design).</summary>
 		public bool IsDarkTheme { get { return themeButton.IsChecked == true; } set { themeButton.IsChecked = value; } }
 
+		/// <summary>Selection-name-label toggle state: pressed (checked) shows the control name
+		/// above every selection outline (today's existing behavior, the default); released
+		/// (unchecked) shows only the selection outline itself.</summary>
+		public bool IsShowingNames { get { return namesButton.IsChecked == true; } set { namesButton.IsChecked = value; } }
+
 		public event EventHandler ZoomChanged;
 		public event EventHandler<string> DesignSizeSelected;
 		public event EventHandler FitRequested;
 		public event EventHandler<bool> GridRequested;
 		public event EventHandler<bool> ThemeRequested;
+		public event EventHandler<bool> ShowNamesRequested;
 
 		/// <summary>Switches the checked-button highlight between the Light and Dark design
 		/// themes. The toolbar background/text follow the IDE theme (DynamicResource), so only
 		/// the checked (active) button state is design-theme-dependent here.</summary>
 		public void ApplyDesignTheme(bool dark)
 		{
-			gridButton.Background = gridButton.IsChecked == true ? CheckedBackground : null;
-			themeButton.Background = themeButton.IsChecked == true ? CheckedBackground : null;
+			UpdateButtonHighlight(gridButton);
+			UpdateButtonHighlight(themeButton);
+			UpdateButtonHighlight(namesButton);
 		}
+
+		static void UpdateButtonHighlight(ToggleButton button) =>
+			button.Background = button.IsChecked == true ? CheckedBackground : null;
 
 		static Button CreateIconButton(string iconKey, string toolTip)
 		{

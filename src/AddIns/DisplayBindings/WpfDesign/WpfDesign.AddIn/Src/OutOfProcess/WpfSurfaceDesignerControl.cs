@@ -159,6 +159,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			};
 			FitRequested += (_, _) => { fitMode = true; RebuildViewport(); };
 			GridRequested += (_, enabled) => SetGridlines(enabled);
+			ShowNamesRequested += (_, enabled) => adornerLayer.ShowNameLabel = enabled;
 
 			Focusable = true;
 			AllowDrop = true;

@@ -117,6 +117,7 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 		FitRequested += (_, _) => FitView();
 		ThemeRequested += OnThemeToggle;
 		GridRequested += (_, enabled) => SetGridlines(enabled);
+		ShowNamesRequested += (_, enabled) => adornerLayer.ShowNameLabel = enabled;
 		textEditor.KeyDown += OnTextEditorKeyDown;
 		textEditor.LostKeyboardFocus += OnTextEditorLostFocus;
 		viewportCanvas.Children.Add(framePresenter.Visual);
