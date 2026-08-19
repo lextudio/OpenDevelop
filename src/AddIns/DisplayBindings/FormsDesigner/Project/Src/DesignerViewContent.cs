@@ -236,6 +236,25 @@ namespace ICSharpCode.FormsDesigner
 			if (IsRemoteDesignerLoaded) remoteControl.ToggleSelectedLocked();
 		}
 
+		/// <summary>The current multi-selection's component names (first is primary).</summary>
+		internal string[] RemoteSelectedComponentNames
+			=> IsRemoteDesignerLoaded ? remoteControl.SelectedComponentNames : Array.Empty<string>();
+
+		/// <summary>Sets the design-surface selection to the named components (multi-select).</summary>
+		internal void SelectRemoteComponents(params string[] names)
+		{
+			if (IsRemoteDesignerLoaded) remoteControl.SelectComponents(names);
+		}
+
+		/// <summary>Moves the current multi-selection by (deltaX, deltaY) design units.</summary>
+		internal bool TryNudgeRemoteSelection(int deltaX, int deltaY)
+		{
+			if (!IsRemoteDesignerLoaded || (deltaX == 0 && deltaY == 0))
+				return false;
+			MoveRemoteSelection(deltaX, deltaY);
+			return true;
+		}
+
 		void MoveRemoteSelection(int deltaX, int deltaY)
 		{
 			if (deltaX == 0 && deltaY == 0) return;

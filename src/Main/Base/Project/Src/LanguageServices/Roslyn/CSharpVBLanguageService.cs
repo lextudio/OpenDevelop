@@ -45,6 +45,13 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         readonly Dictionary<string, List<string>> _targetFrameworksByProjectFileName;
         readonly Dictionary<string, string> _activeTargetFrameworkByProjectFileName;
         readonly IAnalyzerAssemblyLoader _analyzerAssemblyLoader = new DirectAnalyzerAssemblyLoader();
+        // Serializes access to the dictionaries above (and the variants-check-then-add sequences
+        // built on them). LoadProjectDocumentsAsync (background project load) and
+        // UpsertDocumentAsync (file opened) run concurrently and both add documents; without a
+        // lock, a concurrent Dictionary mutation corrupts state and one of the two documents ends
+        // up orphaned - doubling every OpenLens reference count (and raising "concurrent update
+        // performed on this collection" failures). No await happens while holding this lock.
+        readonly object _documentLock = new();
 
         // Last computed code-action list per document (externals/OpenDevelop/doc/technotes/language-services.md §8), keyed by
         // the opaque CodeActionInfo.Id GetCodeActionsAsync handed out. See
@@ -72,7 +79,10 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             if (documentId is null)
                 throw new ArgumentNullException(nameof(documentId));
 
-            return _documentVariantsByTfm.ContainsKey(documentId);
+            lock (_documentLock)
+            {
+                return _documentVariantsByTfm.ContainsKey(documentId);
+            }
         }
 
         /// <summary>
@@ -81,9 +91,12 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         /// </summary>
         public IReadOnlyList<string> GetTargetFrameworks(string projectFileName)
         {
-            return _targetFrameworksByProjectFileName.TryGetValue(projectFileName, out var targetFrameworks) && targetFrameworks.Count > 1
-                ? targetFrameworks.ToArray()
-                : Array.Empty<string>();
+            lock (_documentLock)
+            {
+                return _targetFrameworksByProjectFileName.TryGetValue(projectFileName, out var targetFrameworks) && targetFrameworks.Count > 1
+                    ? targetFrameworks.ToArray()
+                    : Array.Empty<string>();
+            }
         }
 
         /// <summary>
@@ -92,7 +105,10 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         /// </summary>
         public string? GetActiveTargetFramework(string projectFileName)
         {
-            return _activeTargetFrameworkByProjectFileName.TryGetValue(projectFileName, out var targetFramework) ? targetFramework : null;
+            lock (_documentLock)
+            {
+                return _activeTargetFrameworkByProjectFileName.TryGetValue(projectFileName, out var targetFramework) ? targetFramework : null;
+            }
         }
 
         public void SetActiveTargetFramework(string projectFileName, string targetFramework)
@@ -102,7 +118,10 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             if (string.IsNullOrWhiteSpace(targetFramework))
                 throw new ArgumentException("A target framework is required.", nameof(targetFramework));
 
-            _activeTargetFrameworkByProjectFileName[projectFileName] = targetFramework;
+            lock (_documentLock)
+            {
+                _activeTargetFrameworkByProjectFileName[projectFileName] = targetFramework;
+            }
         }
 
         /// <summary>
@@ -124,7 +143,12 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
                 throw new ArgumentException("A file name is required.", nameof(fileName));
 
             var documentId = new DocumentId(fileName);
-            if (_documentVariantsByTfm.ContainsKey(documentId) || !File.Exists(fileName))
+            bool alreadyTracked;
+            lock (_documentLock)
+            {
+                alreadyTracked = _documentVariantsByTfm.ContainsKey(documentId);
+            }
+            if (alreadyTracked || !File.Exists(fileName))
                 return;
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -132,14 +156,24 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             var targetFrameworks = GetTargetFrameworks(projectFileName);
             if (targetFrameworks.Count == 0)
             {
-                if (_projectsByKey.TryGetValue(ProjectKey(projectFileName, null), out var projectId))
+                RoslynProjectId? projectId = null;
+                lock (_documentLock)
+                {
+                    projectId = _projectsByKey.TryGetValue(ProjectKey(projectFileName, null), out var id) ? id : null;
+                }
+                if (projectId is not null)
                     AddDocument(projectId, projectFileName, documentId, text, NoTargetFrameworkKey);
                 return;
             }
 
             foreach (var targetFramework in targetFrameworks)
             {
-                if (_projectsByKey.TryGetValue(ProjectKey(projectFileName, targetFramework), out var projectId))
+                RoslynProjectId? projectId = null;
+                lock (_documentLock)
+                {
+                    projectId = _projectsByKey.TryGetValue(ProjectKey(projectFileName, targetFramework), out var id) ? id : null;
+                }
+                if (projectId is not null)
                     AddDocument(projectId, projectFileName, documentId, text, targetFramework);
             }
         }
@@ -155,11 +189,14 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
                 throw new ArgumentException("A file name is required.", nameof(fileName));
 
             var documentId = new DocumentId(fileName);
-            if (!_documentVariantsByTfm.TryGetValue(documentId, out var variants))
-                return;
+            lock (_documentLock)
+            {
+                if (!_documentVariantsByTfm.TryGetValue(documentId, out var variants))
+                    return;
 
-            foreach (var tfmKey in variants.Keys.ToArray())
-                RemoveDocumentVariant(documentId, tfmKey);
+                foreach (var tfmKey in variants.Keys.ToArray())
+                    RemoveDocumentVariant(documentId, tfmKey);
+            }
         }
 
         public Task LoadProjectAsync(IProject project, CancellationToken cancellationToken)
@@ -209,7 +246,12 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var documentId = new DocumentId(fileName);
-                if (_documentVariantsByTfm.TryGetValue(documentId, out var variants) && variants.ContainsKey(tfmKey))
+                bool alreadyTracked;
+                lock (_documentLock)
+                {
+                    alreadyTracked = _documentVariantsByTfm.TryGetValue(documentId, out var variants) && variants.ContainsKey(tfmKey);
+                }
+                if (alreadyTracked)
                     continue;
 
                 var text = await File.ReadAllTextAsync(fileName, cancellationToken);
@@ -227,17 +269,23 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             cancellationToken.ThrowIfCancellationRequested();
 
             var sourceText = SourceText.From(text);
-            if (_documentVariantsByTfm.TryGetValue(documentId, out var variants) && variants.Count > 0)
+            bool hasVariants;
+            lock (_documentLock)
             {
-                // Every TFM slice shares the same buffer — keep them all in sync so whichever one
-                // becomes active later reflects the latest edit, not a stale snapshot.
-                foreach (var roslynDocumentId in variants.Values)
+                hasVariants = _documentVariantsByTfm.TryGetValue(documentId, out var variants) && variants.Count > 0;
+                if (hasVariants)
                 {
-                    _workspace.TryApplyChanges(_workspace.CurrentSolution.WithDocumentText(roslynDocumentId, sourceText));
+                    // Every TFM slice shares the same buffer — keep them all in sync so whichever
+                    // one becomes active later reflects the latest edit, not a stale snapshot.
+                    foreach (var roslynDocumentId in variants.Values)
+                    {
+                        _workspace.TryApplyChanges(_workspace.CurrentSolution.WithDocumentText(roslynDocumentId, sourceText));
+                    }
                 }
-
-                return Task.CompletedTask;
             }
+
+            if (hasVariants)
+                return Task.CompletedTask;
 
             var projectId = EnsureProject(GetLanguage(documentId.FileName));
             AddDocument(projectId, string.Empty, documentId, text, NoTargetFrameworkKey);
@@ -487,6 +535,11 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
                 .Where(reference => reference.Location.IsInSource && reference.Location.SourceTree is not null)
                 .Select(reference => ConvertLocationToNavigationTarget(reference.Location))
                 .Where(target => !string.IsNullOrEmpty(target.FileName))
+                // A type used via 'new' shows up as both the NamedType reference and the implicit
+                // .ctor reference at the same location; a duplicate workspace document (see
+                // AddDocument) doubles it again. The lens count must be unique locations, like
+                // Visual Studio's CodeLens - not ReferencedSymbol entries.
+                .DistinctBy(target => (target.FileName, target.Span))
                 .ToArray();
             return new SymbolReferencesResult(symbol.Name, references);
         }
@@ -844,19 +897,22 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
 
         public void OnTextChanged(DocumentId documentId, TextChange change)
         {
-            if (!_documentVariantsByTfm.TryGetValue(documentId, out var variants))
-                return;
-
-            foreach (var roslynDocumentId in variants.Values.ToArray())
+            lock (_documentLock)
             {
-                var document = _workspace.CurrentSolution.GetDocument(roslynDocumentId);
-                if (document is null)
-                    continue;
+                if (!_documentVariantsByTfm.TryGetValue(documentId, out var variants))
+                    return;
 
-                var sourceText = document.GetTextAsync().GetAwaiter().GetResult();
-                var roslynSpan = ToRoslynSpan(sourceText, change.Span);
-                var changedText = sourceText.Replace(roslynSpan, change.NewText);
-                _workspace.TryApplyChanges(_workspace.CurrentSolution.WithDocumentText(roslynDocumentId, changedText));
+                foreach (var roslynDocumentId in variants.Values.ToArray())
+                {
+                    var document = _workspace.CurrentSolution.GetDocument(roslynDocumentId);
+                    if (document is null)
+                        continue;
+
+                    var sourceText = document.GetTextAsync().GetAwaiter().GetResult();
+                    var roslynSpan = ToRoslynSpan(sourceText, change.Span);
+                    var changedText = sourceText.Replace(roslynSpan, change.NewText);
+                    _workspace.TryApplyChanges(_workspace.CurrentSolution.WithDocumentText(roslynDocumentId, changedText));
+                }
             }
         }
 
@@ -901,46 +957,54 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         /// </summary>
         RoslynDocumentId? ResolveActiveRoslynDocumentId(DocumentId documentId)
         {
-            if (!_documentVariantsByTfm.TryGetValue(documentId, out var variants) || variants.Count == 0)
-                return null;
+            lock (_documentLock)
+            {
+                if (!_documentVariantsByTfm.TryGetValue(documentId, out var variants) || variants.Count == 0)
+                    return null;
 
-            var projectFileName = _documentProjectFileNames.TryGetValue(documentId, out var pf) ? pf : null;
-            var activeTargetFramework = projectFileName is not null ? GetActiveTargetFramework(projectFileName) : null;
-            if (activeTargetFramework is not null && variants.TryGetValue(activeTargetFramework, out var activeId))
-                return activeId;
+                var projectFileName = _documentProjectFileNames.TryGetValue(documentId, out var pf) ? pf : null;
+                var activeTargetFramework = projectFileName is not null ? GetActiveTargetFramework(projectFileName) : null;
+                if (activeTargetFramework is not null && variants.TryGetValue(activeTargetFramework, out var activeId))
+                    return activeId;
 
-            return variants.Values.First();
+                return variants.Values.First();
+            }
         }
 
         RoslynProjectId EnsureProject(string language)
         {
-            if (_projectsByLanguage.TryGetValue(language, out var projectId))
+            lock (_documentLock)
+            {
+                if (_projectsByLanguage.TryGetValue(language, out var projectId))
+                    return projectId;
+
+                projectId = RoslynProjectId.CreateNewId("UnoDevelop " + language);
+                var projectInfo = ProjectInfo.Create(
+                    projectId,
+                    VersionStamp.Create(),
+                    "UnoDevelop " + language,
+                    "UnoDevelop." + language,
+                    language,
+                    metadataReferences: CreateDefaultMetadataReferences(),
+                    compilationOptions: CreateCompilationOptions(language),
+                    parseOptions: CreateParseOptions(language));
+
+                _workspace.AddProject(projectInfo);
+                _projectsByLanguage[language] = projectId;
                 return projectId;
-
-            projectId = RoslynProjectId.CreateNewId("UnoDevelop " + language);
-            var projectInfo = ProjectInfo.Create(
-                projectId,
-                VersionStamp.Create(),
-                "UnoDevelop " + language,
-                "UnoDevelop." + language,
-                language,
-                metadataReferences: CreateDefaultMetadataReferences(),
-                compilationOptions: CreateCompilationOptions(language),
-                parseOptions: CreateParseOptions(language));
-
-            _workspace.AddProject(projectInfo);
-            _projectsByLanguage[language] = projectId;
-            return projectId;
+            }
         }
 
         RoslynProjectId EnsureProject(LanguageServiceProjectSnapshot projectSnapshot)
         {
-            var key = ProjectKey(projectSnapshot.ProjectFileName, projectSnapshot.TargetFramework);
-            if (_projectsByKey.TryGetValue(key, out var projectId))
+            lock (_documentLock)
             {
-                UpdateProject(projectId, projectSnapshot);
-                return projectId;
-            }
+                var key = ProjectKey(projectSnapshot.ProjectFileName, projectSnapshot.TargetFramework);
+                if (_projectsByKey.TryGetValue(key, out var projectId))
+                {
+                    UpdateProject(projectId, projectSnapshot);
+                    return projectId;
+                }
 
             var language = ToRoslynLanguageName(projectSnapshot.Language);
             var assemblyName = Path.GetFileNameWithoutExtension(projectSnapshot.ProjectFileName);
@@ -966,7 +1030,8 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             _workspace.AddProject(projectInfo);
             _projectsByKey[key] = projectId;
             RegisterTargetFramework(projectSnapshot.ProjectFileName, projectSnapshot.TargetFramework);
-            return projectId;
+                return projectId;
+            }
         }
 
         void RegisterTargetFramework(string projectFileName, string? targetFramework)
@@ -1052,18 +1117,21 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
 
         void ApplyProjectReferences(LanguageServiceProjectSnapshot projectSnapshot)
         {
-            var key = ProjectKey(projectSnapshot.ProjectFileName, projectSnapshot.TargetFramework);
-            if (!_projectsByKey.TryGetValue(key, out var projectId))
-                return;
+            lock (_documentLock)
+            {
+                var key = ProjectKey(projectSnapshot.ProjectFileName, projectSnapshot.TargetFramework);
+                if (!_projectsByKey.TryGetValue(key, out var projectId))
+                    return;
 
-            var references = projectSnapshot.ProjectReferenceFileNames
-                .Select(referencedProjectFileName => ResolveReferencedProjectId(referencedProjectFileName, projectSnapshot.TargetFramework))
-                .Where(id => id is not null)
-                .Select(id => new ProjectReference(id!))
-                .ToArray();
+                var references = projectSnapshot.ProjectReferenceFileNames
+                    .Select(referencedProjectFileName => ResolveReferencedProjectId(referencedProjectFileName, projectSnapshot.TargetFramework))
+                    .Where(id => id is not null)
+                    .Select(id => new ProjectReference(id!))
+                    .ToArray();
 
-            var solution = _workspace.CurrentSolution.WithProjectReferences(projectId, references);
-            _workspace.TryApplyChanges(solution);
+                var solution = _workspace.CurrentSolution.WithProjectReferences(projectId, references);
+                _workspace.TryApplyChanges(solution);
+            }
         }
 
         /// <summary>
@@ -1081,25 +1149,59 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         /// </summary>
         RoslynProjectId? ResolveReferencedProjectId(string referencedProjectFileName, string? referencingTargetFramework)
         {
-            if (referencingTargetFramework is not null
-                && _projectsByKey.TryGetValue(ProjectKey(referencedProjectFileName, referencingTargetFramework), out var exactMatchId))
+            lock (_documentLock)
             {
-                return exactMatchId;
-            }
+                if (referencingTargetFramework is not null
+                    && _projectsByKey.TryGetValue(ProjectKey(referencedProjectFileName, referencingTargetFramework), out var exactMatchId))
+                {
+                    return exactMatchId;
+                }
 
-            var activeTargetFramework = GetActiveTargetFramework(referencedProjectFileName);
-            if (activeTargetFramework is not null
-                && _projectsByKey.TryGetValue(ProjectKey(referencedProjectFileName, activeTargetFramework), out var activeId))
-            {
-                return activeId;
-            }
+                var activeTargetFramework = GetActiveTargetFramework(referencedProjectFileName);
+                if (activeTargetFramework is not null
+                    && _projectsByKey.TryGetValue(ProjectKey(referencedProjectFileName, activeTargetFramework), out var activeId))
+                {
+                    return activeId;
+                }
 
-            return _projectsByKey.TryGetValue(ProjectKey(referencedProjectFileName, null), out var id) ? id : null;
+                return _projectsByKey.TryGetValue(ProjectKey(referencedProjectFileName, null), out var id) ? id : null;
+            }
         }
 
         void AddDocument(RoslynProjectId projectId, string projectFileName, DocumentId documentId, string text, string tfmKey)
         {
+            // UpsertDocumentAsync (file opened) and LoadProjectDocumentsAsync (project loaded) can
+            // race: both may pass their variants check and both then call AddDocument, leaving two
+            // workspace documents for one file - which silently doubles every reference count.
+            // Make this idempotent: if the file is already registered for this project, just push
+            // the latest text into the existing document instead of creating a second one.
+            lock (_documentLock)
+            {
+                AddDocumentCore(projectId, projectFileName, documentId, text, tfmKey);
+            }
+        }
+
+        void AddDocumentCore(RoslynProjectId projectId, string projectFileName, DocumentId documentId, string text, string tfmKey)
+        {
             var sourceText = SourceText.From(text);
+            var existing = _workspace.CurrentSolution.Projects
+                .SelectMany(p => p.Documents)
+                .FirstOrDefault(d => d.Project.Id == projectId
+                    && string.Equals(d.FilePath, documentId.FileName, StringComparison.OrdinalIgnoreCase));
+            if (existing != null)
+            {
+                _workspace.TryApplyChanges(_workspace.CurrentSolution.WithDocumentText(existing.Id, sourceText));
+                if (!_documentVariantsByTfm.TryGetValue(documentId, out var existingVariants))
+                {
+                    existingVariants = new Dictionary<string, RoslynDocumentId>();
+                    _documentVariantsByTfm[documentId] = existingVariants;
+                }
+
+                existingVariants[tfmKey] = existing.Id;
+                _documentProjectFileNames[documentId] = projectFileName;
+                return;
+            }
+
             var documentInfo = DocumentInfo.Create(
                 RoslynDocumentId.CreateNewId(projectId, documentId.FileName + "|" + tfmKey),
                 Path.GetFileName(documentId.FileName),
@@ -1120,11 +1222,16 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         void RemoveProjectDocumentVariantsMissingFromSnapshot(LanguageServiceProjectSnapshot projectSnapshot, string tfmKey)
         {
             var currentDocumentFileNames = new HashSet<string>(projectSnapshot.DocumentFileNames, StringComparer.OrdinalIgnoreCase);
-            foreach (var documentId in _documentProjectFileNames
-                .Where(item => string.Equals(item.Value, projectSnapshot.ProjectFileName, StringComparison.OrdinalIgnoreCase)
-                    && !currentDocumentFileNames.Contains(item.Key.FileName))
-                .Select(item => item.Key)
-                .ToArray())
+            List<DocumentId> stale;
+            lock (_documentLock)
+            {
+                stale = _documentProjectFileNames
+                    .Where(item => string.Equals(item.Value, projectSnapshot.ProjectFileName, StringComparison.OrdinalIgnoreCase)
+                        && !currentDocumentFileNames.Contains(item.Key.FileName))
+                    .Select(item => item.Key)
+                    .ToList();
+            }
+            foreach (var documentId in stale)
             {
                 RemoveDocumentVariant(documentId, tfmKey);
             }
@@ -1132,15 +1239,18 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
 
         void RemoveDocumentVariant(DocumentId documentId, string tfmKey)
         {
-            if (!_documentVariantsByTfm.TryGetValue(documentId, out var variants) || !variants.TryGetValue(tfmKey, out var roslynDocumentId))
-                return;
-
-            _workspace.TryApplyChanges(_workspace.CurrentSolution.RemoveDocument(roslynDocumentId));
-            variants.Remove(tfmKey);
-            if (variants.Count == 0)
+            lock (_documentLock)
             {
-                _documentVariantsByTfm.Remove(documentId);
-                _documentProjectFileNames.Remove(documentId);
+                if (!_documentVariantsByTfm.TryGetValue(documentId, out var variants) || !variants.TryGetValue(tfmKey, out var roslynDocumentId))
+                    return;
+
+                _workspace.TryApplyChanges(_workspace.CurrentSolution.RemoveDocument(roslynDocumentId));
+                variants.Remove(tfmKey);
+                if (variants.Count == 0)
+                {
+                    _documentVariantsByTfm.Remove(documentId);
+                    _documentProjectFileNames.Remove(documentId);
+                }
             }
         }
 

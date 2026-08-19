@@ -80,6 +80,10 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				toolboxGroupCount = toolboxItems.Select(i => i.CategoryName).Distinct().Count(),
 				outlineRootName = state?.Tree?.Name ?? state?.Tree?.Type,
 				outlineChildCount = state?.Tree?.Children.Count ?? 0,
+				// The out-of-process WPF host has no undo/redo RPC, so these are always false -
+				// reported so the status shape matches od.winui-designer.status.
+				canUndo = false,
+				canRedo = false,
 				// Flattened (root + every descendant, depth-first) so tests can assert a named
 				// element shows up in the outline tree without knowing its exact nesting depth.
 				outlineNames = outlineNames.ToArray()
@@ -567,5 +571,96 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			foreach (var child in node.Children)
 				CollectOutlineNames(child, names);
 		}
+
+		static string Failure(string error) => JsonSerializer.Serialize(new { success = false, error });
+
+		[DevFlowAction("od.wpf-designer.delete", Description = "Delete the currently selected element in the active WPF designer - mirrors od.winui-designer.delete")]
+		public static string Delete()
+		{
+			var surface = FindWpfViewContent()?.SurfaceControl;
+			if (surface?.State?.Accepted != true)
+				return Failure("WPF designer is not loaded");
+			DesignerSessionState state;
+			try {
+				state = surface.DeleteSelectedAsync().GetAwaiter().GetResult()
+					?? throw new InvalidOperationException("No element is selected to delete");
+			} catch (Exception ex) {
+				return Failure(ex.Message);
+			}
+			surface.Show(state);
+			surface.NotifyDocumentChanged(state);
+			if (!state.Accepted)
+				return Failure(state.Error);
+			var names = new List<string>();
+			if (state.Tree != null)
+				CollectOutlineNames(state.Tree, names);
+			return JsonSerializer.Serialize(new { success = true, outlineNames = names.ToArray() });
+		}
+
+		[DevFlowAction("od.wpf-designer.activate-design", Description = "Switch the active document to its WPF Design (secondary) view, which re-loads the current source into the designer - mirrors od.winui-designer.activate-design")]
+		public static string ActivateDesign()
+		{
+			var window = SD.Workbench.ActiveViewContent?.WorkbenchWindow;
+			if (window == null)
+				return Failure("No active document window");
+			for (var index = 0; index < window.ViewContents.Count; index++) {
+				if (window.ViewContents[index] is WpfViewContent) {
+					window.SwitchView(index);
+					return JsonSerializer.Serialize(new {
+						success = true,
+						activeViewType = SD.Workbench.ActiveViewContent?.GetType().FullName
+					});
+				}
+			}
+			return Failure("No design view in the active document");
+		}
+
+		[DevFlowAction("od.wpf-designer.switch-to-source", Description = "Switch the active document back to its primary Source view, so a Source-then-Design round trip can be driven - mirrors od.winui-designer.switch-to-source")]
+		public static string SwitchToSource()
+		{
+			var window = SD.Workbench.ActiveViewContent?.WorkbenchWindow;
+			if (window == null)
+				return Failure("No active document window");
+			for (var index = 0; index < window.ViewContents.Count; index++) {
+				if (window.ViewContents[index] is not WpfViewContent) {
+					window.SwitchView(index);
+					return JsonSerializer.Serialize(new {
+						success = true,
+						activeViewType = SD.Workbench.ActiveViewContent?.GetType().FullName
+					});
+				}
+			}
+			return Failure("This document has no non-designer view to switch to");
+		}
+
+		/// <summary>
+		/// Capabilities the out-of-process WPF design host does not expose yet (no undo/redo RPC,
+		/// single-selection only, no layout RPCs). The actions are registered so all three
+		/// designers expose the same DevFlow surface and a caller gets a deterministic answer
+		/// rather than a missing-action error.
+		/// </summary>
+		static string NotSupported(string capability)
+			=> JsonSerializer.Serialize(new { success = false, supported = false, error = "Not supported by the out-of-process WPF design host: " + capability });
+
+		[DevFlowAction("od.wpf-designer.undo", Description = "Undo the last WPF designer edit - not supported by the out-of-process host (reported deterministically so the three designers' surfaces stay aligned)")]
+		public static string Undo() => NotSupported("undo");
+
+		[DevFlowAction("od.wpf-designer.redo", Description = "Redo the last undone WPF designer edit - not supported by the out-of-process host (reported deterministically so the three designers' surfaces stay aligned)")]
+		public static string Redo() => NotSupported("redo");
+
+		[DevFlowAction("od.wpf-designer.multi-select", Description = "Set the design-surface selection to the named elements - not supported by the out-of-process host (single-selection only)")]
+		public static string MultiSelect(string names) => NotSupported("multi-select");
+
+		[DevFlowAction("od.wpf-designer.align", Description = "Align the selected elements - not supported by the out-of-process host (reported deterministically so the three designers' surfaces stay aligned)")]
+		public static string Align(string mode) => NotSupported("align");
+
+		[DevFlowAction("od.wpf-designer.distribute", Description = "Distribute the selected elements - not supported by the out-of-process host (reported deterministically so the three designers' surfaces stay aligned)")]
+		public static string Distribute(string axis) => NotSupported("distribute");
+
+		[DevFlowAction("od.wpf-designer.match-size", Description = "Match the selected elements' size - not supported by the out-of-process host (reported deterministically so the three designers' surfaces stay aligned)")]
+		public static string MatchSize(string mode) => NotSupported("match-size");
+
+		[DevFlowAction("od.wpf-designer.nudge", Description = "Nudge the selected elements - not supported by the out-of-process host (reported deterministically so the three designers' surfaces stay aligned)")]
+		public static string Nudge(double dx, double dy) => NotSupported("nudge");
 	}
 }

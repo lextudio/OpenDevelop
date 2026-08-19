@@ -475,17 +475,19 @@ namespace ICSharpCode.AvalonEdit.AddIn
 
 		UIElement CreateElement(IReadOnlyList<OpenLensItem> items)
 		{
-			var label = new TextBlock {
-				FontSize = ((double)textView.GetValue(TextBlock.FontSizeProperty)) * 0.85,
-				Foreground = Brushes.Gray,
-				Background = Brushes.Transparent,
+			var panel = new StackPanel {
+				Orientation = Orientation.Horizontal,
 				VerticalAlignment = VerticalAlignment.Center,
-				HorizontalAlignment = HorizontalAlignment.Left,
 			};
 
 			for (int i = 0; i < items.Count; i++) {
-				if (i > 0)
-					label.Inlines.Add(new Run(" | "));
+				if (i > 0) {
+					panel.Children.Add(new TextBlock {
+						Text = " | ",
+						FontSize = ((double)textView.GetValue(TextBlock.FontSizeProperty)) * 0.85,
+						Foreground = Brushes.Gray,
+					});
+				}
 
 				var item = items[i];
 				// A provider that knows an icon for its item (e.g. the test lens's pass/fail status)
@@ -493,38 +495,43 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				if (item.Presentation.IconKey != null) {
 					var icon = LoadIcon(item.Presentation.IconKey);
 					if (icon != null) {
-						var container = new InlineUIContainer(icon) {
-							BaselineAlignment = BaselineAlignment.Center,
-						};
-						label.ToolTip = item.Presentation.Title;
+						icon.ToolTip = item.Presentation.Title;
 						if (item.Command != null) {
 							icon.Cursor = Cursors.Hand;
 							var command = item.Command;
 							icon.MouseLeftButtonDown += (sender, e) => {
 								e.Handled = true;
-								ExecuteCommand(command, label);
+								ExecuteCommand(command, panel);
 							};
 						}
-						label.Inlines.Add(container);
+						panel.Children.Add(icon);
 						continue;
 					}
 				}
 
-				var run = new Run(item.Presentation.Title);
+				// One TextBlock per item (not one label + Runs) so each item's title is readable as
+				// TextBlock.Text - the visual-tree walker (and assistive tech) sees "0 references"
+				// instead of an empty text with a drawing surface of inlines.
+				var block = new TextBlock {
+					Text = item.Presentation.Title,
+					FontSize = ((double)textView.GetValue(TextBlock.FontSizeProperty)) * 0.85,
+					Foreground = Brushes.Gray,
+					VerticalAlignment = VerticalAlignment.Center,
+				};
 				if (item.Command != null) {
-					run.Cursor = Cursors.Hand;
+					block.Cursor = Cursors.Hand;
 					var command = item.Command;
 					// Run (an inline text element, not a UIElement) can't be a Popup.PlacementTarget
-					// - anchor the results popup to the whole row's TextBlock instead.
-					run.MouseLeftButtonDown += (sender, e) => {
+					// - anchor the results popup to the whole row's panel instead.
+					block.MouseLeftButtonDown += (sender, e) => {
 						e.Handled = true;
-						ExecuteCommand(command, label);
+						ExecuteCommand(command, panel);
 					};
 				}
-				label.Inlines.Add(run);
+				panel.Children.Add(block);
 			}
 
-			return label;
+			return panel;
 		}
 
 		static Image LoadIcon(string iconKey)

@@ -316,6 +316,29 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			SelectionChanged?.Invoke(this, EventArgs.Empty);
 		}
 
+		/// <summary>
+		/// Sets the whole selection to the named components (first is primary), keeping the rest
+		/// of the selection machinery and the <see cref="SelectionChanged"/> event in sync -
+		/// mirrors <see cref="SelectAllComponents"/> but from an explicit name list, so DevFlow
+		/// actions can drive multi-select align/distribute the same way a rubber-band drag would.
+		/// Unknown names are skipped; the first known name becomes the primary selection.
+		/// </summary>
+		public void SelectComponents(params string[] names)
+		{
+			var known = names == null
+				? Array.Empty<string>()
+				: names.Where(name => state?.Components?.Any(item => item.Name == name) == true).ToArray();
+			selectedComponentNames.Clear();
+			foreach (var name in known)
+				selectedComponentNames.Add(name);
+			SelectedComponentName = known.FirstOrDefault() ?? "";
+			selectedComponent = String.IsNullOrEmpty(SelectedComponentName) ? null
+				: state.Components.FirstOrDefault(item => item.Name == SelectedComponentName);
+			UpdateDesignGuides();
+			UpdateAdorners();
+			SelectionChanged?.Invoke(this, EventArgs.Empty);
+		}
+
 		/// <summary>Selects a single component by name (no-op when unknown), keeping the rest
 		/// of the selection machinery and the <see cref="SelectionChanged"/> event in sync.
 		/// Used by the Document Outline pad.</summary>

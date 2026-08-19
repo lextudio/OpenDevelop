@@ -4,6 +4,7 @@
 // equivalent.
 
 using System;
+using System.ComponentModel.Design;
 using System.Linq;
 using System.Text.Json;
 using System.Windows;
@@ -12,9 +13,11 @@ using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
+using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Workbench;
 using LeXtudio.DevFlow.Agent.Core;
 using Microsoft.Maui.DevFlow.Agent.Core;
+using Xceed.Wpf.Toolkit.PropertyGrid;
 
 namespace ICSharpCode.FormsDesigner.DevFlow
 {
@@ -133,6 +136,8 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 				loaderType = "ICSharpCode.FormsDesigner.Host.SnapshotRoslynDesignerLoader",
 				hostProcessId = viewContent.RemoteDesignerProcessId,
 				rootComponentType = state.RootType,
+				canUndo = viewContent.EnableUndo,
+				canRedo = viewContent.EnableRedo,
 				controlNames = state.Components.Select(component => component.Name).ToArray()
 			});
 		}
@@ -202,6 +207,294 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 		public static string DeleteComponent(string componentName)
 		{
 			return InvokeRemote(view => view.DeleteRemoteComponent(componentName));
+		}
+
+		static string Failure(string error) => JsonSerializer.Serialize(new { success = false, error });
+
+		static FormsDesignerViewContent LoadedViewOr()
+		{
+			return FindFormsDesignerViewContent();
+		}
+
+		[DevFlowAction("od.forms-designer.select", Description = "Select a named component in the active out-of-process WinForms designer (routes through the Document Outline selection path, mirroring od.winui-designer.select)")]
+		public static string Select(string componentName)
+		{
+			var viewContent = FindFormsDesignerViewContent();
+			if (viewContent == null)
+				return Failure("no designer view");
+			var outline = viewContent.OutlineContent as ICSharpCode.SharpDevelop.Widgets.DocumentOutlineControl;
+			if (outline == null)
+				return Failure("no outline control");
+			outline.SelectNodeById(componentName);
+			return JsonSerializer.Serialize(new {
+				success = true,
+				selectedName = viewContent.RemoteDesignerSelectedComponent
+			});
+		}
+
+		[DevFlowAction("od.forms-designer.multi-select", Description = "Set the design-surface selection to the named components (first is primary), for align/distribute/match-size operations - mirrors od.winui-designer.multi-select")]
+		public static string MultiSelect(string names)
+		{
+			var viewContent = LoadedViewOr();
+			if (viewContent == null)
+				return Failure("The out-of-process WinForms designer is not loaded");
+			var list = names.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+				.Distinct(StringComparer.Ordinal)
+				.ToArray();
+			viewContent.SelectRemoteComponents(list);
+			return JsonSerializer.Serialize(new { success = true, selected = viewContent.RemoteSelectedComponentNames });
+		}
+
+		[DevFlowAction("od.forms-designer.undo", Description = "Undo the last WinForms designer edit - mirrors od.winui-designer.undo")]
+		public static string Undo()
+		{
+			return History(view => view.Undo());
+		}
+
+		[DevFlowAction("od.forms-designer.redo", Description = "Redo the last undone WinForms designer edit - mirrors od.winui-designer.redo")]
+		public static string Redo()
+		{
+			return History(view => view.Redo());
+		}
+
+		static string History(Action<FormsDesignerViewContent> operation)
+		{
+			var viewContent = LoadedViewOr();
+			if (viewContent == null)
+				return Failure("The out-of-process WinForms designer is not loaded");
+			operation(viewContent);
+			var after = viewContent.RemoteDesignerState;
+			return JsonSerializer.Serialize(new {
+				success = true,
+				canUndo = viewContent.EnableUndo,
+				canRedo = viewContent.EnableRedo,
+				controlNames = after?.Components.Select(component => component.Name).ToArray()
+			});
+		}
+
+		[DevFlowAction("od.forms-designer.delete", Description = "Delete the currently selected components in the active out-of-process WinForms designer - mirrors od.winui-designer.delete")]
+		public static string Delete()
+		{
+			var viewContent = LoadedViewOr();
+			if (viewContent == null)
+				return Failure("The out-of-process WinForms designer is not loaded");
+			try {
+				viewContent.Delete();
+				return JsonSerializer.Serialize(new { success = true, controlNames = viewContent.RemoteDesignerState?.Components.Select(component => component.Name).ToArray() });
+			} catch (Exception exception) {
+				return Failure(exception.Message);
+			}
+		}
+
+		static CommandID AlignCommand(string mode) => mode switch {
+			"left" => StandardCommands.AlignLeft,
+			"center" or "horizontal-centers" => StandardCommands.AlignHorizontalCenters,
+			"right" => StandardCommands.AlignRight,
+			"top" => StandardCommands.AlignTop,
+			"middle" or "vertical-centers" => StandardCommands.AlignVerticalCenters,
+			"bottom" => StandardCommands.AlignBottom,
+			_ => null
+		};
+
+		[DevFlowAction("od.forms-designer.align", Description = "Align the selected components against the primary selection: left/center/right (horizontal) or top/middle/bottom (vertical), routed through the real layout commands - mirrors od.winui-designer.align")]
+		public static string Align(string mode)
+		{
+			var command = AlignCommand(mode);
+			if (command == null)
+				return Failure("Expected left/center/right/top/middle/bottom, got: " + mode);
+			return RunLayout(command, mode);
+		}
+
+		[DevFlowAction("od.forms-designer.distribute", Description = "Distribute the selected components evenly across their bounding box: horizontal or vertical - mirrors od.winui-designer.distribute")]
+		public static string Distribute(string axis)
+		{
+			var command = axis == "horizontal" ? StandardCommands.HorizSpaceMakeEqual
+				: axis == "vertical" ? StandardCommands.VertSpaceMakeEqual
+				: null;
+			if (command == null)
+				return Failure("Expected horizontal or vertical, got: " + axis);
+			return RunLayout(command, axis);
+		}
+
+		[DevFlowAction("od.forms-designer.match-size", Description = "Match the selected components' size to the primary selection: width/height/both - mirrors od.winui-designer.match-size")]
+		public static string MatchSize(string mode)
+		{
+			var command = mode switch {
+				"width" => StandardCommands.SizeToControlWidth,
+				"height" => StandardCommands.SizeToControlHeight,
+				"both" => StandardCommands.SizeToControl,
+				_ => null
+			};
+			if (command == null)
+				return Failure("Expected width/height/both, got: " + mode);
+			return RunLayout(command, mode);
+		}
+
+		static string RunLayout(CommandID command, string mode)
+		{
+			var viewContent = LoadedViewOr();
+			if (viewContent == null)
+				return Failure("The out-of-process WinForms designer is not loaded");
+			var before = viewContent.RemoteSelectedComponentNames;
+			var applied = viewContent.TryExecuteRemoteLayout(command);
+			return JsonSerializer.Serialize(new {
+				success = applied,
+				mode,
+				selectedBefore = before,
+				selectedAfter = viewContent.RemoteSelectedComponentNames,
+				controlNames = viewContent.RemoteDesignerState?.Components.Select(component => component.Name).ToArray()
+			});
+		}
+
+		[DevFlowAction("od.forms-designer.nudge", Description = "Nudge the selected components by dx,dy design units - mirrors od.winui-designer.nudge")]
+		public static string Nudge(double dx, double dy)
+		{
+			var viewContent = LoadedViewOr();
+			if (viewContent == null)
+				return Failure("The out-of-process WinForms designer is not loaded");
+			var moved = viewContent.TryNudgeRemoteSelection((int)dx, (int)dy);
+			return JsonSerializer.Serialize(new {
+				success = moved,
+				dx = (int)dx,
+				dy = (int)dy,
+				selectedAfter = viewContent.RemoteSelectedComponentNames
+			});
+		}
+
+		[DevFlowAction("od.forms-designer.toolbox.query-item-bounds", Description = "Get the real on-screen bounds of a Toolbox row in the shared toolbox (same WpfToolbox the WinForms designer drags from), for driving a synthetic mouse drag - mirrors od.winui-designer.toolbox.query-item-bounds")]
+		public static string QueryToolboxItemBounds(string typeName)
+		{
+			if (FindFormsDesignerViewContent()?.IsRemoteDesignerLoaded != true)
+				return Failure("The out-of-process WinForms designer is not loaded");
+			var host = SD.Services.GetService(typeof(ISharedToolboxHost)) as ISharedToolboxHost;
+			if (!(host?.ToolboxControl is System.Windows.Controls.ListBox list))
+				return Failure("Shared toolbox is not available");
+			var item = list.Items.Cast<object>().FirstOrDefault(i => DisplayNameOf(i) == typeName);
+			if (item == null)
+				return Failure("Toolbox item not found: " + typeName);
+
+			list.SelectedItem = item;
+			list.ScrollIntoView(item);
+			list.UpdateLayout();
+
+			if (list.ItemContainerGenerator.ContainerFromItem(item) is not FrameworkElement container)
+				return Failure("Toolbox row has no realized container: " + typeName);
+			container.BringIntoView();
+			list.UpdateLayout();
+
+			var origin = container.PointToScreen(new Point(0, 0));
+			return JsonSerializer.Serialize(new {
+				success = true,
+				name = typeName,
+				x = origin.X,
+				y = origin.Y,
+				width = container.ActualWidth,
+				height = container.ActualHeight,
+				centerX = origin.X + container.ActualWidth / 2,
+				centerY = origin.Y + container.ActualHeight / 2
+			});
+		}
+
+		static string DisplayNameOf(object item)
+			=> item?.GetType().GetProperty("DisplayName")?.GetValue(item)?.ToString();
+
+		static PropertyGrid PropertyPadGrid =>
+			(SD.Services.GetService(typeof(IPropertyPadHost)) as IPropertyPadHost)?.Grid;
+
+		[DevFlowAction("od.forms-designer.properties-pad.edit", Description = "Edit a property through the real shared Properties pad PropertyItem; does not access the remote designer's property list directly - mirrors od.winui-designer.properties-pad.edit")]
+		public static string EditPropertyThroughPropertiesPad(string propertyName, string value)
+		{
+			var viewContent = FindFormsDesignerViewContent();
+			if (viewContent?.IsRemoteDesignerLoaded != true)
+				return Failure("The out-of-process WinForms designer is not loaded");
+			var grid = PropertyPadGrid;
+			if (grid == null)
+				return Failure("Properties pad is not available");
+			if (grid.SelectedObject == null)
+				return JsonSerializer.Serialize(new {
+					success = false,
+					error = "Properties pad has no selected WinForms design item",
+					selectedType = grid.SelectedObject?.GetType().FullName
+				});
+
+			var item = grid.Properties?.OfType<PropertyItem>()
+				.FirstOrDefault(candidate => candidate.PropertyName == propertyName);
+			if (item == null)
+				return JsonSerializer.Serialize(new {
+					success = false,
+					error = "Properties pad property not found: " + propertyName,
+					propertyNames = grid.Properties?.OfType<PropertyItem>().Select(p => p.PropertyName).ToArray()
+				});
+
+			var before = item.Value?.ToString();
+			item.Value = value;
+			return JsonSerializer.Serialize(new {
+				success = true,
+				selectedName = viewContent.RemoteDesignerSelectedComponent,
+				propertyName = item.PropertyName,
+				before,
+				after = item.Value?.ToString()
+			});
+		}
+
+		[DevFlowAction("od.forms-designer.pad-view-mode", Description = "Switch the shared Properties pad grid between its Properties and Events views; optionally set a Click handler name and report the events - mirrors od.winui-designer.pad-view-mode")]
+		public static string PadViewMode(string mode, string handlerName = null)
+		{
+			var grid = PropertyPadGrid;
+			if (grid == null)
+				return Failure("Properties pad is not available");
+			if (mode.Equals("Events", StringComparison.OrdinalIgnoreCase) || mode.Equals("Properties", StringComparison.OrdinalIgnoreCase))
+				grid.ViewMode = mode.Equals("Events", StringComparison.OrdinalIgnoreCase)
+					? Xceed.Wpf.Toolkit.PropertyGrid.PropertyGridMode.Events
+					: Xceed.Wpf.Toolkit.PropertyGrid.PropertyGridMode.Properties;
+			if (!string.IsNullOrEmpty(handlerName)) {
+				var click = grid.Events.Cast<EventItem>()
+					.FirstOrDefault(e => e.Name == "Click");
+				if (click != null)
+					click.HandlerName = handlerName;
+			}
+			return JsonSerializer.Serialize(new {
+				success = true,
+				viewMode = grid.ViewMode.ToString(),
+				eventCount = grid.Events.Count,
+				events = grid.Events.Cast<EventItem>().Select(e => new { e.Name, e.HandlerName, e.HandlerTypeName }).ToArray()
+			});
+		}
+
+		[DevFlowAction("od.forms-designer.activate-design", Description = "Switch the active document to its WinForms Design (secondary) view, which re-loads the current source into the designer - mirrors od.winui-designer.activate-design")]
+		public static string ActivateDesign()
+		{
+			var window = SD.Workbench.ActiveViewContent?.WorkbenchWindow;
+			if (window == null)
+				return Failure("No active document window");
+			for (var index = 0; index < window.ViewContents.Count; index++) {
+				if (window.ViewContents[index] is FormsDesignerViewContent) {
+					window.SwitchView(index);
+					return JsonSerializer.Serialize(new {
+						success = true,
+						activeViewType = SD.Workbench.ActiveViewContent?.GetType().FullName
+					});
+				}
+			}
+			return Failure("No design view in the active document");
+		}
+
+		[DevFlowAction("od.forms-designer.switch-to-source", Description = "Switch the active document back to its primary Source view, so a Source-then-Design round trip can be driven - mirrors od.winui-designer.switch-to-source")]
+		public static string SwitchToSource()
+		{
+			var window = SD.Workbench.ActiveViewContent?.WorkbenchWindow;
+			if (window == null)
+				return Failure("No active document window");
+			for (var index = 0; index < window.ViewContents.Count; index++) {
+				if (window.ViewContents[index] is not FormsDesignerViewContent) {
+					window.SwitchView(index);
+					return JsonSerializer.Serialize(new {
+						success = true,
+						activeViewType = SD.Workbench.ActiveViewContent?.GetType().FullName
+					});
+				}
+			}
+			return Failure("This document has no non-designer view to switch to");
 		}
 
 		static string InvokeRemote(Action<FormsDesignerViewContent> action)

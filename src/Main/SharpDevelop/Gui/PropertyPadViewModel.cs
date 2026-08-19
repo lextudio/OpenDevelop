@@ -68,6 +68,12 @@ internal sealed class PropertyPadViewModel : ToolPaneModel, IPropertyPadHost, ID
 
         propertyGrid.IsCategorized = true;
         propertyGrid.ShowSearchBox = true;
+        // The grid already sits inside the AvalonDock pane's own bordered ContentPanel
+        // (AnchorablePaneControlStyle, src/Libraries/AvalonDock/.../Themes/generic.xaml) - its
+        // own default 1px BorderThickness (Xceed's PropertyGrid style) just doubled that line.
+        // Zeroing the instance property (not overriding the Style/Template) leaves the rest of
+        // the default look intact.
+        propertyGrid.BorderThickness = new Thickness(0);
         propertyGridContainer.Children.Add(propertyGrid);
         contentPresenter.Content = propertyGridContainer;
         Content = contentPresenter;

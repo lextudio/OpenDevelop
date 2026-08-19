@@ -813,6 +813,125 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Contains(texts, t => t.EndsWith(".AlwaysPasses", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task OpenLens_RendersEachLensAboveItsDeclarationLine()
+    {
+        await _app.EnsureSolutionOpenAsync(_app.FixtureSolutionPath);
+
+        var lensPath = Path.Combine(Path.GetDirectoryName(_app.FixtureSolutionPath)!, "OpenLensFixture.cs");
+        var opened = await _app.InvokeAsync("od.open-file", lensPath);
+        Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+
+        // Lens rows are real StackPanels of TextBlocks (IVisualLineBlockAdornment visuals), so the
+        // visual tree sees them - the code lines themselves are drawing surfaces, not TextBlocks,
+        // so these rows are the only per-line positions the tree exposes. Each row has one
+        // "N reference(s)" TextBlock (the count is pluralized: "1 reference", "2 references"),
+        // which excludes the "M implementations" one. Adornments are only built for visual lines
+        // in (or near) the viewport, so rows below the fold do not exist in the tree: collect the
+        // rows visible at the top of the file, jump the caret to the end, and collect the rest.
+        List<(string Text, double Y)> topRows = null;
+        bool topRendered = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            topRows = CollectLensRows(await _app.GetUITreeAsync());
+            return topRows.Count >= 5;
+        }, TimeSpan.FromSeconds(60));
+
+        if (!topRendered)
+        {
+            var dumpTree = await _app.GetUITreeAsync();
+            File.WriteAllText("/tmp/od-lens-test-tree.json", dumpTree.ToString());
+            Assert.Fail($"OpenLens rows never rendered at the top of OpenLensFixture.cs; " +
+                $"texts={string.Join("|", (topRows ?? new List<(string, double)>()).Select(r => r.Text).Take(20))}; " +
+                $"tree-dumped=/tmp/od-lens-test-tree.json textblocks={FlattenElements(dumpTree).Count(e => e.TryGetProperty("type", out var t) && t.GetString() == "TextBlock")}");
+        }
+        Assert.NotNull(topRows);
+
+        // Declarations sit on lines 15,17,20,22,25 (top window) / 27,30,32 (bottom window):
+        // gap pattern 2,3,2,3,2,3,2 lines. Each lens row reserves 0.9 line heights above its
+        // line, so consecutive rows are spaced by 2.9 or 3.9 line heights - a lens on the wrong
+        // line (or two lenses on one line, or a missing row) breaks the 2.9/3.9 alternation and
+        // this assertion fails. The first two rows must be Alpha's and One's "2 references".
+        AssertLensGapPattern(topRows, new[] { 2, 3, 2, 3 });
+        Assert.Equal(
+            new[] { "2 references", "2 references", "1 reference", "1 reference", "1 reference" },
+            topRows.Select(r => r.Text).ToArray());
+
+        // Jump the caret to the end of the file so the bottom rows scroll into view. The bottom
+        // window must show the two "0 references" rows (Uses, Total) plus Three's "1 reference".
+        await _app.InvokeAsync("od.file.set-caret-offset", lensPath, 1_000_000);
+        List<(string Text, double Y)> bottomRows = null;
+        bool bottomRendered = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            bottomRows = CollectLensRows(await _app.GetUITreeAsync());
+            return bottomRows != null && bottomRows.Count(r => r.Text == "0 references") == 2
+                && bottomRows.Any(r => r.Text == "1 reference");
+        }, TimeSpan.FromSeconds(60));
+
+        if (!bottomRendered)
+            Assert.Fail($"OpenLens rows never rendered at the end of OpenLensFixture.cs; " +
+                $"texts={string.Join("|", (bottomRows ?? new List<(string, double)>()).Select(r => r.Text).Take(20))}");
+        Assert.NotNull(bottomRows);
+        Assert.True(bottomRows.Select(r => r.Text).All(t => t == "1 reference" || t == "0 references"),
+            $"bottom rows should be the last four lenses only: {string.Join("|", bottomRows.Select(r => r.Text))}");
+        // Three/Uses/Total sit on lines 27,30,32 (gaps 3,2) - whether Gamma's row (line 25) is
+        // still in view depends on the window size, so accept both the 3-row and 4-row window.
+        if (bottomRows.Count == 4)
+            AssertLensGapPattern(bottomRows, new[] { 2, 3, 2 });
+        else
+            AssertLensGapPattern(bottomRows, new[] { 3, 2 });
+
+        // Per-row reference counts must match the real call graph in Uses.Total (declarations in
+        // document order = lens rows in Y order). Anything else means the count is wrong - a
+        // failed resolution should not silently render "0 references". The two windows together
+        // expose exactly the eight declarations of the fixture; in the 4-row window Gamma's row
+        // overlaps the top window, so drop that duplicate before comparing.
+        var allTexts = topRows.Concat(bottomRows).Select(r => r.Text).ToList();
+        if (bottomRows.Count == 4)
+            allTexts.Remove("1 reference");
+        allTexts.Sort();
+        Assert.Equal(
+            new[]
+            {
+                "0 references",  // Uses
+                "0 references",  // Uses.Total
+                "1 reference",   // Beta (new Beta())
+                "1 reference",   // Beta.Two
+                "1 reference",   // Gamma (new Gamma())
+                "1 reference",   // Gamma.Three
+                "2 references",  // Alpha (new Alpha() twice)
+                "2 references",  // Alpha.One (called twice)
+            },
+            allTexts.ToArray());
+    }
+
+    static List<(string Text, double Y)> CollectLensRows(JsonElement tree) =>
+        FlattenElements(tree)
+            .Where(e => e.TryGetProperty("type", out var t) && t.GetString() == "TextBlock"
+                && e.TryGetProperty("text", out var txt) && txt.GetString() is { } s
+                && (s.EndsWith(" reference") || s.EndsWith(" references")))
+            .Where(e => e.TryGetProperty("bounds", out var bounds) && bounds.TryGetProperty("y", out _))
+            .Select(e => (Text: e.GetProperty("text").GetString()!, Y: e.GetProperty("bounds").GetProperty("y").GetDouble()))
+            .OrderBy(r => r.Y)
+            .ToList();
+
+    static void AssertLensGapPattern(List<(string Text, double Y)> rows, int[] lineGaps)
+    {
+        var gaps = rows.Zip(rows.Skip(1), (a, b) => b.Y - a.Y).ToList();
+        Assert.Equal(lineGaps.Length, gaps.Count);
+        // Each lens row reserves 0.9 line heights (OpenLensRenderer.DesiredHeight), so a lens
+        // above line N and one above line N+k are k + 0.9 line heights apart. The 2-line gap is
+        // always the smallest, so derive the line height from it.
+        double lineHeight = gaps.Min() / 2.9;
+        Assert.True(lineHeight > 1, $"lens rows overlap: {string.Join(", ", gaps.Select(g => g.ToString("F1")))}");
+        var expectedGaps = lineGaps.Select(g => (g + 0.9) * lineHeight).ToArray();
+        for (int i = 0; i < gaps.Count; i++)
+        {
+            Assert.True(Math.Abs(gaps[i] - expectedGaps[i]) <= expectedGaps[i] * 0.1,
+                $"lens gap #{i} is {gaps[i]:F1}, expected ~{expectedGaps[i]:F1} ({lineGaps[i]}-line declaration gap); " +
+                $"gaps={string.Join(", ", gaps.Select(g => g.ToString("F1")))}; rows={string.Join("|", rows.Select(r => $"{r.Text}@{r.Y:F0}"))}");
+        }
+    }
+
     static IEnumerable<JsonElement> FlattenElements(JsonElement tree)
     {
         foreach (var root in tree.GetProperty("elements").EnumerateArray())
@@ -2459,6 +2578,217 @@ public sealed class AddInTests : IAsyncDisposable
         } finally {
             await File.WriteAllTextAsync(formCodePath, originalForm);
             await File.WriteAllTextAsync(designerPath, originalDesigner);
+        }
+    }
+
+    [Fact]
+    public async Task WinFormsDesigner_MultiSelectAlignNudgeUndoRedo_LandAsDesignerEdits()
+    {
+        // The out-of-process WinForms designer now exposes the same editing surface as the
+        // WinUI designer (three-way DevFlow alignment): multi-select, align, nudge, undo/redo,
+        // and properties-pad edits. Everything must land as REAL designer edits that
+        // round-trip into Form1.Designer.cs on save.
+        var formCodePath = Path.Combine(Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!, "Form1.cs");
+        var designerPath = Path.Combine(Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!, "Form1.Designer.cs");
+        var originalForm = await File.ReadAllTextAsync(formCodePath);
+        var originalDesigner = await File.ReadAllTextAsync(designerPath);
+
+        try {
+            await _app.ReopenSolutionAsync(_app.WinFormsSampleSolutionPath);
+            await _app.InvokeAsync("od.open-file", formCodePath);
+
+            JsonElement status = default;
+            var loaded = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await _app.InvokeAsync("od.forms-designer.status");
+                return status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 1000);
+            Assert.True(loaded, "The WinForms designer did not load. Status: " + status);
+
+            // Two labels side by side (label1 left of label2, both at y=30).
+            var add1 = await _app.InvokeAsync("od.forms-designer.add-control", "Form1", "System.Windows.Forms.Label", "label1", 30, 30);
+            Assert.True(add1.GetProperty("success").GetBoolean(), add1.ToString());
+            var add2 = await _app.InvokeAsync("od.forms-designer.add-control", "Form1", "System.Windows.Forms.Label", "label2", 220, 30);
+            Assert.True(add2.GetProperty("success").GetBoolean(), add2.ToString());
+
+            // Multi-select both, then align left against the primary selection (label1).
+            var multi = await _app.InvokeAsync("od.forms-designer.multi-select", "label1,label2");
+            Assert.True(multi.GetProperty("success").GetBoolean(), multi.ToString());
+            Assert.Equal(2, multi.GetProperty("selected").GetArrayLength());
+            var aligned = await _app.InvokeAsync("od.forms-designer.align", "left");
+            Assert.True(aligned.GetProperty("success").GetBoolean(), aligned.ToString());
+
+            // The rendered bounds must converge: both labels' left edges equal.
+            double left1 = 0, left2 = 0;
+            var converged = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                var b1 = await _app.InvokeAsync("od.forms-designer.query-control-screen-bounds", "label1");
+                var b2 = await _app.InvokeAsync("od.forms-designer.query-control-screen-bounds", "label2");
+                if (!b1.GetProperty("success").GetBoolean() || !b2.GetProperty("success").GetBoolean())
+                    return false;
+                left1 = b1.GetProperty("x").GetDouble();
+                left2 = b2.GetProperty("x").GetDouble();
+                return Math.Abs(left1 - left2) < 1.5;
+            }, TimeSpan.FromSeconds(15), initialDelayMs: 100, maxDelayMs: 400);
+            Assert.True(converged, $"label2's left edge should match label1's after align left: {left1} vs {left2}");
+
+            // Nudge the whole selection +15, +5 design units; label1's left edge moves exactly that far.
+            var nudged = await _app.InvokeAsync("od.forms-designer.nudge", 15, 5);
+            Assert.True(nudged.GetProperty("success").GetBoolean(), nudged.ToString());
+            double left1AfterNudge = 0;
+            var moved = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                var b1 = await _app.InvokeAsync("od.forms-designer.query-control-screen-bounds", "label1");
+                left1AfterNudge = b1.GetProperty("x").GetDouble();
+                return Math.Abs(left1AfterNudge - (left1 + 15)) < 1.5;
+            }, TimeSpan.FromSeconds(15), initialDelayMs: 100, maxDelayMs: 400);
+            Assert.True(moved, $"label1 should have moved +15px after nudge: {left1} -> {left1AfterNudge}");
+
+            // Undo reverts the nudge; redo re-applies it.
+            var undone = await _app.InvokeAsync("od.forms-designer.undo");
+            Assert.True(undone.GetProperty("success").GetBoolean(), undone.ToString());
+            var undid = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                var b1 = await _app.InvokeAsync("od.forms-designer.query-control-screen-bounds", "label1");
+                return Math.Abs(b1.GetProperty("x").GetDouble() - left1) < 1.5;
+            }, TimeSpan.FromSeconds(15), initialDelayMs: 100, maxDelayMs: 400);
+            Assert.True(undid, "Undo should revert the nudge back to the aligned position.");
+
+            var redone = await _app.InvokeAsync("od.forms-designer.redo");
+            Assert.True(redone.GetProperty("success").GetBoolean(), redone.ToString());
+            var redid = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                var b1 = await _app.InvokeAsync("od.forms-designer.query-control-screen-bounds", "label1");
+                return Math.Abs(b1.GetProperty("x").GetDouble() - left1AfterNudge) < 1.5;
+            }, TimeSpan.FromSeconds(15), initialDelayMs: 100, maxDelayMs: 400);
+            Assert.True(redid, "Redo should re-apply the nudge.");
+
+            // A properties-pad edit lands through the real shared pad into the designer source.
+            JsonElement edited = default;
+            var editedOk = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                await _app.InvokeAsync("od.forms-designer.select", "label1");
+                edited = await _app.InvokeAsync("od.forms-designer.properties-pad.edit", "Text", "nudged-label");
+                return edited.GetProperty("success").GetBoolean();
+            }, TimeSpan.FromSeconds(10), initialDelayMs: 100, maxDelayMs: 300);
+            Assert.True(editedOk, "Editing label1.Text through the shared Properties pad failed: " + edited);
+
+            // Save and verify every edit round-tripped into Form1.Designer.cs: both labels
+            // aligned at x=30, nudged to (45,35), and the pad edit landed as a source edit.
+            var saved = await _app.InvokeAsync("od.file.save", formCodePath);
+            Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+            var savedDesigner = await File.ReadAllTextAsync(designerPath);
+            Assert.Contains("label1.Text = \"nudged-label\"", savedDesigner, StringComparison.Ordinal);
+            Assert.Contains("label1.Location = new System.Drawing.Point(45, 35)", savedDesigner, StringComparison.Ordinal);
+            Assert.Contains("label2.Location = new System.Drawing.Point(45, 35)", savedDesigner, StringComparison.Ordinal);
+        } finally {
+            await File.WriteAllTextAsync(formCodePath, originalForm);
+            await File.WriteAllTextAsync(designerPath, originalDesigner);
+        }
+    }
+
+    [Fact]
+    public async Task WinFormsDesigner_PadViewModeAndViewSwitching_RoundTrip()
+    {
+        // The WinForms designer's shared pad now switches Properties/Events views through the
+        // same od.forms-designer.pad-view-mode action as the WinUI designer, and the document
+        // view round-trips through switch-to-source/activate-design. The sample form binds
+        // Form1.Load already, so the Events view must surface it with its handler.
+        var formCodePath = Path.Combine(Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!, "Form1.cs");
+
+        await _app.ReopenSolutionAsync(_app.WinFormsSampleSolutionPath);
+        await _app.InvokeAsync("od.open-file", formCodePath);
+
+        JsonElement status = default;
+        var loaded = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            status = await _app.InvokeAsync("od.forms-designer.status");
+            return status.GetProperty("designerLoaded").GetBoolean();
+        }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 1000);
+        Assert.True(loaded, "The WinForms designer did not load. Status: " + status);
+
+        var selected = await _app.InvokeAsync("od.forms-designer.outline-select", "Form1");
+        Assert.Equal("Form1", selected.GetProperty("selected").GetString());
+        var events = await _app.InvokeAsync("od.forms-designer.pad-view-mode", "Events");
+        Assert.True(events.GetProperty("success").GetBoolean(), events.ToString());
+        Assert.Equal("Events", events.GetProperty("viewMode").GetString());
+        Assert.True(events.GetProperty("eventCount").GetInt32() > 0, events.ToString());
+        var loadEvent = events.GetProperty("events").EnumerateArray()
+            .FirstOrDefault(e => e.GetProperty("name").GetString() == "Load");
+        Assert.Equal("Form1_Load", loadEvent.GetProperty("handlerName").GetString());
+        var props = await _app.InvokeAsync("od.forms-designer.pad-view-mode", "Properties");
+        Assert.Equal("Properties", props.GetProperty("viewMode").GetString());
+
+        // Source-then-Design round trip through the view tabs.
+        var toSource = await _app.InvokeAsync("od.forms-designer.switch-to-source");
+        Assert.True(toSource.GetProperty("success").GetBoolean(), toSource.ToString());
+        Assert.Contains("AvalonEdit", toSource.GetProperty("activeViewType").GetString());
+        var toDesign = await _app.InvokeAsync("od.forms-designer.activate-design");
+        Assert.True(toDesign.GetProperty("success").GetBoolean(), toDesign.ToString());
+        JsonElement statusAfter = default;
+        var reloaded = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            statusAfter = await _app.InvokeAsync("od.forms-designer.status");
+            return statusAfter.GetProperty("designerLoaded").GetBoolean();
+        }, TimeSpan.FromSeconds(30), initialDelayMs: 100, maxDelayMs: 500);
+        Assert.True(reloaded, "Designer did not reload after switching back. Status: " + statusAfter);
+
+        // The shared toolbox row bounds resolve like the WPF/WinUI designers' do.
+        await _app.InvokeAsync("od.show-pad", "Tools");
+        var toolbox = await _app.InvokeAsync("od.forms-designer.toolbox.query-item-bounds", "NumericUpDown");
+        Assert.True(toolbox.GetProperty("success").GetBoolean(), toolbox.ToString());
+        Assert.True(toolbox.GetProperty("centerX").GetDouble() > 0, toolbox.ToString());
+    }
+
+    [Fact]
+    public async Task WpfDesigner_DeleteAndViewSwitching_AndUnsupportedSurfaceReports()
+    {
+        // WPF designer alignment additions: selection-based delete and Source/Design view
+        // switching now exist (mirroring the WinUI designer), and the capabilities the
+        // out-of-process host genuinely lacks (undo/redo, multi-select, layout ops) report a
+        // deterministic "supported=false" instead of failing with a missing-action error.
+        var xamlPath = Path.Combine(Path.GetDirectoryName(_app.WpfSampleSolutionPath)!, "SamplePane.xaml");
+        var originalXaml = await File.ReadAllTextAsync(xamlPath);
+
+        try {
+            await _app.ReopenSolutionAsync(_app.WpfSampleSolutionPath);
+            await _app.InvokeAsync("od.open-file", xamlPath);
+            var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "UserControl", timeoutSeconds: 30, reactivatePath: xamlPath);
+            Assert.True(status.GetProperty("designerLoaded").GetBoolean(), status.ToString());
+            var namesBefore = status.GetProperty("outlineNames").EnumerateArray().Select(n => n.GetString()).ToArray();
+            Assert.Contains("PaneListItemTwo", namesBefore);
+
+            // Select a leaf element and delete it; the reported outline must no longer contain it.
+            var selected = await _app.InvokeAsync("od.wpf-designer.select", "PaneListItemTwo");
+            Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
+            Assert.Equal("PaneListItemTwo", selected.GetProperty("selectedName").GetString());
+            var deleted = await _app.InvokeAsync("od.wpf-designer.delete");
+            Assert.True(deleted.GetProperty("success").GetBoolean(), deleted.ToString());
+            var namesAfter = deleted.GetProperty("outlineNames").EnumerateArray().Select(n => n.GetString()).ToArray();
+            Assert.DoesNotContain("PaneListItemTwo", namesAfter);
+
+            // Source-then-Design round trip through the view tabs.
+            var toSource = await _app.InvokeAsync("od.wpf-designer.switch-to-source");
+            Assert.True(toSource.GetProperty("success").GetBoolean(), toSource.ToString());
+            var toDesign = await _app.InvokeAsync("od.wpf-designer.activate-design");
+            Assert.True(toDesign.GetProperty("success").GetBoolean(), toDesign.ToString());
+
+            // Capabilities the out-of-process host lacks must report deterministically.
+            var undo = await _app.InvokeAsync("od.wpf-designer.undo");
+            Assert.False(undo.GetProperty("success").GetBoolean(), undo.ToString());
+            Assert.False(undo.GetProperty("supported").GetBoolean(), undo.ToString());
+            var redo = await _app.InvokeAsync("od.wpf-designer.redo");
+            Assert.False(redo.GetProperty("success").GetBoolean(), redo.ToString());
+            Assert.False(redo.GetProperty("supported").GetBoolean(), redo.ToString());
+            var multi = await _app.InvokeAsync("od.wpf-designer.multi-select", "PaneList,PaneTitle");
+            Assert.False(multi.GetProperty("success").GetBoolean(), multi.ToString());
+            Assert.False(multi.GetProperty("supported").GetBoolean(), multi.ToString());
+            var align = await _app.InvokeAsync("od.wpf-designer.align", "left");
+            Assert.False(align.GetProperty("success").GetBoolean(), align.ToString());
+            Assert.False(align.GetProperty("supported").GetBoolean(), align.ToString());
+            var distribute = await _app.InvokeAsync("od.wpf-designer.distribute", "horizontal");
+            Assert.False(distribute.GetProperty("success").GetBoolean(), distribute.ToString());
+            Assert.False(distribute.GetProperty("supported").GetBoolean(), distribute.ToString());
+            var match = await _app.InvokeAsync("od.wpf-designer.match-size", "both");
+            Assert.False(match.GetProperty("success").GetBoolean(), match.ToString());
+            Assert.False(match.GetProperty("supported").GetBoolean(), match.ToString());
+            var nudge = await _app.InvokeAsync("od.wpf-designer.nudge", 1.0, 1.0);
+            Assert.False(nudge.GetProperty("success").GetBoolean(), nudge.ToString());
+            Assert.False(nudge.GetProperty("supported").GetBoolean(), nudge.ToString());
+        } finally {
+            await File.WriteAllTextAsync(xamlPath, originalXaml);
         }
     }
 

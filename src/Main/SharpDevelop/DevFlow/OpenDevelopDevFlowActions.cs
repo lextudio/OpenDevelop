@@ -1388,7 +1388,9 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			if (editor == null)
 				return JsonSerializer.Serialize(new { success = false, error = "No text editor for " + path });
 
-			editor.Caret.Offset = offset;
+			int clampedOffset = Math.Min(offset, editor.Document.TextLength);
+			var location = editor.Document.GetLocation(clampedOffset);
+			editor.JumpTo(location.Line, location.Column);
 			return JsonSerializer.Serialize(new { success = true, offset = editor.Caret.Offset });
 		}
 
