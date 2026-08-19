@@ -47,15 +47,14 @@ namespace ICSharpCode.FormsDesigner
 		// The SideBar-backed drag-from-toolbox panel (ToolboxProvider.FormsDesignerSideBar) stays
 		// unused - Services.ToolboxService (the real System.Drawing.Design.IToolboxService the
 		// .NET Design API talks to) doesn't depend on it. Instead, the shared WPF Toolbox pad
-		// (ICSharpCode.WpfDesign.AddIn.WpfToolbox, already built for the XAML designer/editor) is
-		// reused for WinForms controls too, via ToolsContent below - dropping onto a WinForms
+		// (ICSharpCode.WpfDesign.AddIn.WpfToolbox, which also hosts the XAML designer's palette)
+		// is reused for WinForms controls too, via ToolsContent below - dropping onto a WinForms
 		// design surface (hosted in the out-of-process FormsDesigner.Host process) goes through
-		// THIS IToolboxService instance. Registered into the global SD.Services below so
-		// WpfToolbox (a different AddIn, which must not take a compile-time reference to this one
-		// to avoid a project-reference cycle - FormsDesigner already depends on WpfDesign.AddIn
-		// for ToolsContent) can reach this exact instance via
-		// SD.Services.GetService(typeof(System.Drawing.Design.IToolboxService)) instead of a
-		// direct type reference.
+		// THIS IToolboxService instance. The two AddIns deliberately have NO compile-time
+		// reference to each other - they coordinate entirely through services registered into the
+		// global SD.Services (Base project): WpfToolbox registers ISharedToolboxHost, this class
+		// registers IToolboxService, and each resolves the other's contribution by service lookup
+		// instead of a direct type reference (see ToolsPad.cs's ISharedToolboxHost doc comment).
 		static readonly ToolboxService toolboxService = new ToolboxService();
 
 		static FormsDesignerViewContent()

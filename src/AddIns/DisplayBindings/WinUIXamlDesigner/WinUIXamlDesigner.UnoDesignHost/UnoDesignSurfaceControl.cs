@@ -27,8 +27,12 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoDesignHost;
 ///
 /// Viewport model: the design (pixelWidth x pixelHeight logical units) is shown at
 /// eff = fitScale x zoomFactor. Its on-screen (viewport-local) origin is
-/// (originX + panX, originY + panY) where origin is the centered-fit offset and pan is
-/// the user pan. The ScrollViewer adds scroll offsets on top; the design rect is placed
+/// (originX + panX, originY + panY) where origin is the centered-fit offset, pan is
+/// the user pan PLUS <see cref="CanvasMargin"/> (the empty-canvas margin is folded into
+/// the pan by <see cref="CurrentViewport"/> so every conversion through the shared
+/// viewport automatically accounts for it - <see cref="ApplyViewport"/> then places the
+/// frame through that same viewport, and nothing adds the margin a second time).
+/// The ScrollViewer adds scroll offsets on top; the design rect is placed
 /// at (originX + panX + scrollX, ...) inside the scroll content.
 /// </summary>
 public sealed class UnoDesignSurfaceControl : DesignerCanvas
@@ -381,7 +385,7 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 			ClearSelection();
 			return;
 		}
-		adornerLayer.ShowSelection(designSelection, CurrentViewport(), selectionName);
+		adornerLayer.ShowSelection(designSelection, CanvasLocalViewport(), selectionName);
 	}
 
 	readonly Dictionary<string, Rectangle> secondaryBoxes = new(StringComparer.Ordinal);
@@ -415,12 +419,14 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 	{
 		if (guide.Tag is not (bool isVertical, double position))
 			return;
-		var (originX, originY, scale) = ViewportParams();
-		var width = Math.Max(scroller.ViewportWidth, pixelWidth * scale);
-		var height = Math.Max(scroller.ViewportHeight, pixelHeight * scale);
+		var scale = EffectiveScale();
+		// Guides live inside viewportCanvas, whose own position carries origin+pan+margin -
+		// map design units at the bare scale only (see CanvasLocalViewport).
+		var width = viewportCanvas.Width;
+		var height = viewportCanvas.Height;
 		if (isVertical)
 		{
-			Canvas.SetLeft(guide, originX + position * scale + panX);
+			Canvas.SetLeft(guide, position * scale);
 			Canvas.SetTop(guide, 0);
 			guide.Width = 1;
 			guide.Height = height;
@@ -428,7 +434,7 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 		else
 		{
 			Canvas.SetLeft(guide, 0);
-			Canvas.SetTop(guide, originY + position * scale + panY);
+			Canvas.SetTop(guide, position * scale);
 			guide.Width = width;
 			guide.Height = 1;
 		}
@@ -479,10 +485,11 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 
 	void LayoutGridGuides()
 	{
-		var (originX, originY, scale) = ViewportParams();
+		var scale = EffectiveScale();
 		var (gx, gy, gw, gh) = gridGuideRect;
-		var left = originX + gx * scale + panX;
-		var top = originY + gy * scale + panY;
+		// Guides live inside viewportCanvas - bare scale mapping only (see CanvasLocalViewport).
+		var left = gx * scale;
+		var top = gy * scale;
 		for (var i = 0; i < rowGuides.Count; i++)
 		{
 			Canvas.SetLeft(rowGuides[i], left);
@@ -536,14 +543,14 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 		if (!gridGuideDragActive || gridGuideName == null)
 			return;
 		var (gx, gy, gw, gh) = gridGuideRect;
-		var (originX, originY, scale) = ViewportParams();
 		var offsets = gridGuideIsRow ? gridRowOffsets : gridColOffsets;
 		if (gridGuideIndex + 1 >= offsets.Length)
 			return;
 		var originalOffset = offsets[gridGuideIndex + 1];
+		var scale = EffectiveScale();
 		if (gridGuideIsRow)
 		{
-			var y = originY + (gy + originalOffset + (current.Y - gridGuideDragStart.Y)) * scale + panY;
+			var y = (gy + originalOffset + (current.Y - gridGuideDragStart.Y)) * scale;
 			if (gridGuideIndex < rowGuides.Count)
 			{
 				Canvas.SetTop(rowGuides[gridGuideIndex], y);
@@ -552,7 +559,7 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 		}
 		else
 		{
-			var x = originX + (gx + originalOffset + (current.X - gridGuideDragStart.X)) * scale + panX;
+			var x = (gx + originalOffset + (current.X - gridGuideDragStart.X)) * scale;
 			if (gridGuideIndex < colGuides.Count)
 			{
 				Canvas.SetLeft(colGuides[gridGuideIndex], x);
@@ -605,9 +612,10 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 	{
 		if (!secondaryBoxes.TryGetValue(name, out var box) || !secondaryBounds.TryGetValue(name, out var b))
 			return;
-		var (originX, originY, scale) = ViewportParams();
-		Canvas.SetLeft(box, originX + b.X * scale + panX);
-		Canvas.SetTop(box, originY + b.Y * scale + panY);
+		var scale = EffectiveScale();
+		// Boxes live inside viewportCanvas - bare scale mapping only (see CanvasLocalViewport).
+		Canvas.SetLeft(box, b.X * scale);
+		Canvas.SetTop(box, b.Y * scale);
 		box.Width = b.W * scale;
 		box.Height = b.H * scale;
 	}
@@ -649,17 +657,25 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 	/// <summary>The shared design-space-to-surface coordinate math (see
 	/// <see cref="DesignViewport"/>), computed from this control's own viewport size and
 	/// zoom/pan state. Every layout/hit-test method that used to inline this math now goes
-	/// through here - same formulas, one place.</summary>
+	/// through here - same formulas, one place. <see cref="CanvasMargin"/> is folded into the
+	/// pan so every conversion through this viewport automatically accounts for the frame's
+	/// empty-canvas offset - the ONLY place the margin is applied, matching
+	/// <see cref="ApplyViewport"/> which positions the frame through this same viewport.</summary>
 	DesignViewport CurrentViewport()
-		=> DesignViewport.Fit(pixelWidth, pixelHeight, scroller.ViewportWidth, scroller.ViewportHeight, zoomFactor, panX, panY);
+		=> DesignViewport.Fit(pixelWidth, pixelHeight, scroller.ViewportWidth, scroller.ViewportHeight, zoomFactor, panX + CanvasMargin, panY + CanvasMargin);
 
 	double EffectiveScale() => CurrentViewport().Scale;
 
-	(double OriginX, double OriginY, double Scale) ViewportParams()
+	/// <summary>The viewport for elements that live INSIDE <see cref="viewportCanvas"/> (the
+	/// selection adorner layer, snap/grid guides): the frame's Canvas position already carries
+	/// origin+pan+margin, so overlays must map design units at the bare scale - re-applying
+	/// the origin/pan would double-shift them off the rendered bitmap.</summary>
+	DesignViewport CanvasLocalViewport()
 	{
 		var viewport = CurrentViewport();
-		return (viewport.OriginX, viewport.OriginY, viewport.Scale);
+		return DesignViewport.Scaled(viewport.DesignWidth, viewport.DesignHeight, viewport.Scale);
 	}
+
 
 	/// <summary>True when the pointer is over the toolbar, where pick/pan must not fire.</summary>
 	bool IsOverToolbar(Point position) => position.Y <= 0;
@@ -688,8 +704,9 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 	{
 		if (pixelWidth == 0 || pixelHeight == 0 || scroller.ViewportWidth == 0 || scroller.ViewportHeight == 0)
 			return;
-		var (originX, originY, scale) = ViewportParams();
-		var (baseX, baseY) = (Math.Max(0, originX), Math.Max(0, originY));
+		var viewport = CurrentViewport();
+		var scale = viewport.Scale;
+		var (baseX, baseY) = (Math.Max(0, viewport.OriginX), Math.Max(0, viewport.OriginY));
 		// Content spans the design at the current zoom; at fit the design is centered inside
 		// the viewport-sized content (no scroll range), when zoomed in it is top-left
 		// anchored so the scroll range covers the whole design. The design rect is placed at
@@ -699,8 +716,13 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 		// empty-canvas EdgePattern (see DesignerCanvas).
 		contentCanvas.Width = Math.Max(scroller.ViewportWidth, pixelWidth * scale + CanvasMargin * 2);
 		contentCanvas.Height = Math.Max(scroller.ViewportHeight, pixelHeight * scale + CanvasMargin * 2);
-		Canvas.SetLeft(viewportCanvas, baseX + panX + CanvasMargin);
-		Canvas.SetTop(viewportCanvas, baseY + panY + CanvasMargin);
+		// viewport.PanX/PanY already have CanvasMargin folded in (see CurrentViewport) - reading
+		// the raw panX/panY fields here instead (as a previous pass did) placed the rendered
+		// frame CanvasMargin short of where every other conversion (ToDesignPoint,
+		// SurfaceGeometry, CanvasLocalViewport) expected it, so the bitmap, selection outline
+		// and click hit-testing all disagreed by a fixed 32px offset.
+		Canvas.SetLeft(viewportCanvas, baseX + viewport.PanX);
+		Canvas.SetTop(viewportCanvas, baseY + viewport.PanY);
 		viewportCanvas.Width = pixelWidth * scale;
 		viewportCanvas.Height = pixelHeight * scale;
 		// The image must fill the design-size canvas: without explicit size it renders at
@@ -758,7 +780,7 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 	/// <summary>The resize handle under a design-space point, or null - delegates to the
 	/// shared adorner layer (same tolerance/center-third-is-move logic as before).</summary>
 	string HandleAt(Vector2 designPoint)
-		=> adornerLayer.HandleAt(new Point(designPoint.X, designPoint.Y), CurrentViewport());
+		=> adornerLayer.HandleAt(new Point(designPoint.X, designPoint.Y), CanvasLocalViewport());
 
 	/// <summary>Places the inline text editor for the stored design rect at the current zoom.</summary>
 	void LayoutTextEditor()
@@ -1151,20 +1173,24 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 
 	void ZoomAt(Point cursorSurface, double factor)
 	{
-		var (originX, originY, scale) = ViewportParams();
-		var viewportY = cursorSurface.Y;
-		var (baseX, baseY) = (Math.Max(0, originX), Math.Max(0, originY));
-		var designX = (cursorSurface.X - baseX - panX + scroller.HorizontalOffset) / scale;
-		var designY = (viewportY - baseY - panY + scroller.VerticalOffset) / scale;
+		// Same folded-pan requirement as ApplyViewport: viewport.PanX/PanY (not the raw
+		// panX/panY fields) already carry CanvasMargin, matching CurrentViewport()'s own
+		// DesignToSurface/SurfaceToDesign math - otherwise the "point under the cursor"
+		// this solves for drifts by CanvasMargin's worth of scale-dependent error on every zoom.
+		var viewport = CurrentViewport();
+		var (baseX, baseY) = (Math.Max(0, viewport.OriginX), Math.Max(0, viewport.OriginY));
+		var designX = (cursorSurface.X - baseX - viewport.PanX + scroller.HorizontalOffset) / viewport.Scale;
+		var designY = (cursorSurface.Y - baseY - viewport.PanY + scroller.VerticalOffset) / viewport.Scale;
 		// Keep the scroll-content position stable while the scale changes, so the point
 		// under the cursor does not jump and the scrollbar thumb stays put.
-		var contentX = baseX + panX + designX * scale;
-		var contentY = baseY + panY + designY * scale;
+		var contentX = baseX + viewport.PanX + designX * viewport.Scale;
+		var contentY = baseY + viewport.PanY + designY * viewport.Scale;
 		zoomFactor = Math.Clamp(zoomFactor * factor, MinZoom, MaxZoom);
-		var (originX2, originY2, scale2) = ViewportParams();
-		var (baseX2, baseY2) = (Math.Max(0, originX2), Math.Max(0, originY2));
-		panX = contentX - baseX2 - designX * scale2;
-		panY = contentY - baseY2 - designY * scale2;
+		var viewport2 = CurrentViewport();
+		var (baseX2, baseY2) = (Math.Max(0, viewport2.OriginX), Math.Max(0, viewport2.OriginY));
+		// Solve for the folded pan, then strip CanvasMargin back out for the raw field CurrentViewport() re-adds.
+		panX = contentX - baseX2 - designX * viewport2.Scale - CanvasMargin;
+		panY = contentY - baseY2 - designY * viewport2.Scale - CanvasMargin;
 		ApplyViewport();
 	}
 

@@ -70,6 +70,13 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 			return new DesignViewport(designWidth, designHeight, scale, originX, originY, panX, panY);
 		}
 
+		/// <summary>Scale-only viewport for elements that live inside the design frame's own
+		/// coordinate space (selection adorners, snap guides, grid guides): design units mapped
+		/// at <paramref name="scale"/> with no origin/pan - the frame's own placement on the
+		/// surface already carries those, so applying them again would double-shift the overlay.</summary>
+		public static DesignViewport Scaled(double designWidth, double designHeight, double scale)
+			=> new(designWidth, designHeight, scale, 0.0, 0.0, 0.0, 0.0);
+
 		/// <summary>
 		/// Centers a design at a fixed zoom <paramref name="scale"/> (1.0 = 100%, 1:1), for
 		/// backends whose zoom is an absolute scale rather than a multiple of fit - e.g. the

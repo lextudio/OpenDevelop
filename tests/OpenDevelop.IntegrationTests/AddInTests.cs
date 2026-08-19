@@ -2611,8 +2611,15 @@ public sealed class AddInTests : IAsyncDisposable
             Assert.True(add2.GetProperty("success").GetBoolean(), add2.ToString());
 
             // Multi-select both, then align left against the primary selection (label1).
-            var multi = await _app.InvokeAsync("od.forms-designer.multi-select", "label1,label2");
-            Assert.True(multi.GetProperty("success").GetBoolean(), multi.ToString());
+            // The remote host's component state trails the add-control responses, so the
+            // selection must be polled until the host knows both components.
+            JsonElement multi = default;
+            var selectedBoth = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                multi = await _app.InvokeAsync("od.forms-designer.multi-select", "label1,label2");
+                return multi.GetProperty("success").GetBoolean()
+                    && multi.GetProperty("selected").GetArrayLength() == 2;
+            }, TimeSpan.FromSeconds(15), initialDelayMs: 100, maxDelayMs: 400);
+            Assert.True(selectedBoth, "Both labels should be selected: " + multi);
             Assert.Equal(2, multi.GetProperty("selected").GetArrayLength());
             var aligned = await _app.InvokeAsync("od.forms-designer.align", "left");
             Assert.True(aligned.GetProperty("success").GetBoolean(), aligned.ToString());
@@ -2630,16 +2637,29 @@ public sealed class AddInTests : IAsyncDisposable
             }, TimeSpan.FromSeconds(15), initialDelayMs: 100, maxDelayMs: 400);
             Assert.True(converged, $"label2's left edge should match label1's after align left: {left1} vs {left2}");
 
-            // Nudge the whole selection +15, +5 design units; label1's left edge moves exactly that far.
+            // Nudge the whole selection +15, +5 design units; label1's left edge moves exactly
+            // that far. The align command reset the remote host's selection to the primary
+            // component, so (as a real user would) re-select before nudging.
+            JsonElement reMulti = default;
+            var reselected = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                reMulti = await _app.InvokeAsync("od.forms-designer.multi-select", "label1,label2");
+                return reMulti.GetProperty("success").GetBoolean()
+                    && reMulti.GetProperty("selected").GetArrayLength() == 2;
+            }, TimeSpan.FromSeconds(15), initialDelayMs: 100, maxDelayMs: 400);
+            Assert.True(reselected, "Both labels should be selected before nudge: " + reMulti);
+
             var nudged = await _app.InvokeAsync("od.forms-designer.nudge", 15, 5);
             Assert.True(nudged.GetProperty("success").GetBoolean(), nudged.ToString());
-            double left1AfterNudge = 0;
+            double left1AfterNudge = 0, left2AfterNudge = 0;
             var moved = await OpenDevelopAppFixture.PollUntilAsync(async () => {
                 var b1 = await _app.InvokeAsync("od.forms-designer.query-control-screen-bounds", "label1");
+                var b2 = await _app.InvokeAsync("od.forms-designer.query-control-screen-bounds", "label2");
                 left1AfterNudge = b1.GetProperty("x").GetDouble();
-                return Math.Abs(left1AfterNudge - (left1 + 15)) < 1.5;
+                left2AfterNudge = b2.GetProperty("x").GetDouble();
+                return Math.Abs(left1AfterNudge - (left1 + 15)) < 1.5
+                    && Math.Abs(left2AfterNudge - (left2 + 15)) < 1.5;
             }, TimeSpan.FromSeconds(15), initialDelayMs: 100, maxDelayMs: 400);
-            Assert.True(moved, $"label1 should have moved +15px after nudge: {left1} -> {left1AfterNudge}");
+            Assert.True(moved, $"both labels should have moved +15px after nudge: {left1}->{left1AfterNudge}, {left2}->{left2AfterNudge}");
 
             // Undo reverts the nudge; redo re-applies it.
             var undone = await _app.InvokeAsync("od.forms-designer.undo");
@@ -2707,8 +2727,8 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Equal("Events", events.GetProperty("viewMode").GetString());
         Assert.True(events.GetProperty("eventCount").GetInt32() > 0, events.ToString());
         var loadEvent = events.GetProperty("events").EnumerateArray()
-            .FirstOrDefault(e => e.GetProperty("name").GetString() == "Load");
-        Assert.Equal("Form1_Load", loadEvent.GetProperty("handlerName").GetString());
+            .FirstOrDefault(e => e.GetProperty("Name").GetString() == "Load");
+        Assert.Equal("Form1_Load", loadEvent.GetProperty("HandlerName").GetString());
         var props = await _app.InvokeAsync("od.forms-designer.pad-view-mode", "Properties");
         Assert.Equal("Properties", props.GetProperty("viewMode").GetString());
 
