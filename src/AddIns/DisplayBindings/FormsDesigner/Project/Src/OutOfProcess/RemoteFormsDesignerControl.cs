@@ -59,6 +59,14 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		readonly HashSet<string> selectedComponentNames = new HashSet<string>(StringComparer.Ordinal);
 		readonly HashSet<string> lockedComponentNames = new HashSet<string>(StringComparer.Ordinal);
 
+		/// <summary>Empty space kept on every side of the design inside the canvas, so the root
+		/// component's own resize handles are reachable and DesignerCanvas's tiled "EdgePattern"
+		/// background is visible around the form - matches WpfSurfaceDesignerControl's own
+		/// CanvasPadding (the WPF designer already has this; this control did not, which is
+		/// exactly why the WinForms designer's canvas visibly had no border around the form
+		/// while the WPF/WinUI ones did).</summary>
+		const double CanvasMargin = 24;
+
 		static readonly double[] ZoomPresets = { 0.25, 0.5, 0.75, 1.0, 1.5, 2.0 };
 		static readonly string[] ZoomLabels = { "Fit", "25%", "50%", "75%", "100%", "150%", "200%" };
 		// The zoom combo starts at "100%" (VS behavior), so the initial render must be a
@@ -229,10 +237,16 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			var dpi = Math.Max(1, state.Render.Dpi);
 			var designWidth = state.Render.Width / dpi;
 			var designHeight = state.Render.Height / dpi;
+			// Fit/zoom inside an inset area, then shift everything back out by the same margin
+			// through the viewport's own pan - so the frame bitmap, the guide overlay and every
+			// DesignToSurface-based adorner all move together and stay aligned (matches
+			// WpfSurfaceDesignerControl's identical CanvasPadding treatment).
+			var availableWidth = Math.Max(0, ContentHost.ActualWidth - 2 * CanvasMargin);
+			var availableHeight = Math.Max(0, ContentHost.ActualHeight - 2 * CanvasMargin);
 			if (fitMode)
-				viewport = DesignViewport.Fit(designWidth, designHeight, ContentHost.ActualWidth, ContentHost.ActualHeight, 1.0, 0, 0);
+				viewport = DesignViewport.Fit(designWidth, designHeight, availableWidth, availableHeight, 1.0, CanvasMargin, CanvasMargin);
 			else
-				viewport = DesignViewport.Zoom(designWidth, designHeight, ContentHost.ActualWidth, ContentHost.ActualHeight, zoomScale);
+				viewport = DesignViewport.Zoom(designWidth, designHeight, availableWidth, availableHeight, zoomScale, CanvasMargin, CanvasMargin);
 			framePresenter.Resize(viewport);
 			// The rendered form must sit at the viewport's base (centered-fit origin + pan),
 			// exactly where the DesignToSurface-based guides/adorners are placed - otherwise the
