@@ -1297,11 +1297,14 @@ namespace ICSharpCode.FormsDesigner
 		}
 
 		public virtual object ToolsContent {
-			// See the toolboxService field's own doc comment - this resolves the shared WPF
-			// Toolbox pad (WpfDesign.AddIn's WpfToolbox) via SD.Services, not a direct reference.
+			// See SharedToolboxAccess's doc comment - the shared palette's "winforms" scope must
+			// be seeded (touching WpfDesign.AddIn's facade via reflection) before the Tools pad
+			// mounts this content, or a pure WinForms session's pad would have nothing to show.
+			// This mirrors how WinUIXamlDesignerViewContent.ToolsContent constructs its facade
+			// eagerly, so the same single ListBox (Base's SharedToolbox) is what the pad mounts
+			// regardless of which designer opened the file.
 			get {
-				var host = SD.Services.GetService(typeof(ISharedToolboxHost)) as ISharedToolboxHost;
-				return host?.ToolboxControl;
+				return SharedToolboxAccess.ToolboxControl;
 			}
 		}
 

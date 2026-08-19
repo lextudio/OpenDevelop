@@ -74,6 +74,16 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		bool fitMode = false;
 		double zoomScale = 1.0;
 
+		/// <summary>A Thumb template that draws nothing but a transparent hit-target fill, so the
+		/// thumb stays invisible while still receiving mouse input - see moveThumb's own comment
+		/// on why relying on the theme's default Thumb template is not safe here.</summary>
+		static ControlTemplate CreateTransparentThumbTemplate()
+		{
+			var surface = new FrameworkElementFactory(typeof(Border));
+			surface.SetValue(Border.BackgroundProperty, Brushes.Transparent);
+			return new ControlTemplate(typeof(Thumb)) { VisualTree = surface };
+		}
+
 		void RebuildViewport()
 		{
 			if (state?.Render == null)
@@ -103,7 +113,22 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				StrokeDashArray = new DoubleCollection { 3, 2 }, IsHitTestVisible = false,
 				Visibility = Visibility.Collapsed
 			};
-			moveThumb = new Thumb { Background = Brushes.Transparent, Cursor = Cursors.SizeAll, Visibility = Visibility.Collapsed };
+			// moveThumb covers the WHOLE selected control and exists only as an invisible drag
+			// target (the visible outline is drawn by adornerLayer). Its Template must be set
+			// explicitly: the default WPF Thumb theme template paints its chrome from
+			// SystemColors brushes, NOT from TemplateBinding Background, so setting
+			// Background=Transparent alone does nothing. Under this app's dark theme (whose
+			// Theme.Dark.xaml overrides ControlBrushKey/ControlLightLightColorKey to #252526 /
+			// #333337) that chrome rendered as an OPAQUE DARK rectangle over the entire selected
+			// control - the "selecting a Panel turns it black" bug, located with DevFlow's
+			// ui/tree: the Thumb's inner template Borders reported background #252526/#333337
+			// at exactly the panel's rect, on top of the rendered form bitmap.
+			moveThumb = new Thumb {
+				Background = Brushes.Transparent,
+				Cursor = Cursors.SizeAll,
+				Visibility = Visibility.Collapsed,
+				Template = CreateTransparentThumbTemplate()
+			};
 			resizeThumb = new Thumb { Width = 8, Height = 8, Background = Brushes.White, BorderBrush = Brushes.DodgerBlue, BorderThickness = new Thickness(1), Cursor = Cursors.SizeNWSE, Visibility = Visibility.Collapsed };
 			adorners.Children.Add(marqueeBorder);
 			adorners.Children.Add(adornerLayer.Visual);

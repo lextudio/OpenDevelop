@@ -5,9 +5,7 @@
 
 using System;
 using System.ComponentModel.Design;
-using System.IO;
 using System.Linq;
-using System.Runtime.Loader;
 using System.Text.Json;
 using System.Windows;
 
@@ -363,32 +361,19 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 			});
 		}
 
-		[DevFlowAction("od.forms-designer.toolbox.query-item-bounds", Description = "Get the real on-screen bounds of a Toolbox row in the shared toolbox (same WpfToolbox the WinForms designer drags from), for driving a synthetic mouse drag - mirrors od.winui-designer.toolbox.query-item-bounds")]
+		[DevFlowAction("od.forms-designer.toolbox.query-item-bounds", Description = "Get the real on-screen bounds of a Toolbox row in the shared toolbox (the merged Base SharedToolbox, whose \"winforms\" scope the WpfToolbox facade seeds), for driving a synthetic mouse drag - mirrors od.winui-designer.toolbox.query-item-bounds")]
 		public static string QueryToolboxItemBounds(string typeName)
 		{
 			if (FindFormsDesignerViewContent()?.IsRemoteDesignerLoaded != true)
 				return Failure("The out-of-process WinForms designer is not loaded");
-			// The shared toolbox is a lazy WpfDesign singleton that only registers itself as
-			// ISharedToolboxHost when first constructed (normally by an open .xaml's Design view
-			// or Tools pad). A pure WinForms session never constructs it, so touch it through
-			// reflection - the WinForms designer drops from this same WpfToolbox, so the drag
-			// target must exist before a synthetic drag can start. No compile-time reference to
-			// WpfDesign.AddIn either way.
-			var host = SD.Services.GetService(typeof(ISharedToolboxHost)) as ISharedToolboxHost;
-			var diag = host == null ? "service-not-registered" : "service-registered";
-			if (!(host?.ToolboxControl is System.Windows.Controls.ListBox)) {
-				var toolboxType = WpfToolboxType();
-				diag += " toolbox-type=" + (toolboxType?.FullName ?? "null");
-				var instance = toolboxType?.GetProperty("Instance",
-					System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)?.GetValue(null);
-				diag += " instance=" + (instance?.GetType().FullName ?? "null");
-				host = instance as ISharedToolboxHost;
-				diag += " cast-host=" + (host == null ? "null" : "ok");
-				diag += " control=" + (host?.ToolboxControl?.GetType().FullName ?? "null");
-			}
+			// The merged engine is Base's SharedToolbox (referenced directly); only its
+			// "winforms" scope needs seeding, which SharedToolboxAccess does (touching
+			// WpfDesign.AddIn's WpfToolbox facade via reflection, since a pure WinForms session
+			// never loads that assembly - no compile-time reference to it either way).
+			var host = SharedToolboxAccess.Host;
 			if (!(host?.ToolboxControl is System.Windows.Controls.ListBox list))
-				return Failure("Shared toolbox is not available (" + diag + ")");
-			var item = list.Items.Cast<object>().FirstOrDefault(i => DisplayNameOf(i) == typeName);
+				return Failure("Shared toolbox is not available");
+			var item = SharedToolbox.Instance.FindItem("winforms", typeName);
 			if (item == null)
 				return Failure("Toolbox item not found: " + typeName);
 
@@ -412,30 +397,6 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 				centerX = origin.X + container.ActualWidth / 2,
 				centerY = origin.Y + container.ActualHeight / 2
 			});
-		}
-
-		static string DisplayNameOf(object item)
-			=> item?.GetType().GetProperty("DisplayName")?.GetValue(item)?.ToString();
-
-		// The WpfDesign addin assembly is only loaded once some .xaml is opened; a pure WinForms
-		// session never loads it, so locate it on disk (its AddIns dir sits next to ours) and load
-		// it explicitly, wiring the loader to resolve the sibling WPF designer assemblies.
-		static Type wpfToolboxTypeCache;
-		static Type WpfToolboxType()
-		{
-			if (wpfToolboxTypeCache != null) return wpfToolboxTypeCache;
-			var formsDir = Path.GetDirectoryName(typeof(FormsDesignerViewContent).Assembly.Location);
-			var wpfDir = Path.Combine(formsDir, "..", "WpfDesign");
-			var loadContext = AssemblyLoadContext.Default;
-			loadContext.Resolving += (_, name) => {
-				var candidate = Path.Combine(wpfDir, name.Name + ".dll");
-				return File.Exists(candidate) ? loadContext.LoadFromAssemblyPath(candidate) : null;
-			};
-			var path = Path.Combine(wpfDir, "ICSharpCode.WpfDesign.AddIn.dll");
-			if (!File.Exists(path)) return null;
-			wpfToolboxTypeCache = loadContext.LoadFromAssemblyPath(path)
-				.GetType("ICSharpCode.WpfDesign.AddIn.WpfToolbox");
-			return wpfToolboxTypeCache;
 		}
 
 		static PropertyGrid PropertyPadGrid =>
