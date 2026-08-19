@@ -1,3 +1,4 @@
+using ICSharpCode.SharpDevelop.Designer.Remote;
 using System.ComponentModel;
 using System.ComponentModel.Design.Serialization;
 using System.Globalization;
@@ -16,12 +17,12 @@ namespace ICSharpCode.FormsDesigner.Host;
 /// Handles both the C# and the Visual Basic designer-file dialects.</summary>
 sealed class SnapshotDesignerLoader : BasicDesignerLoader
 {
-	readonly DocumentSnapshot snapshot;
+	readonly DesignerDocumentSnapshot snapshot;
 	readonly Func<string, Type?> projectTypeResolver;
 	readonly Dictionary<string, IComponent> components = new(StringComparer.Ordinal);
 	readonly Dictionary<string, object> resources = new(StringComparer.Ordinal);
 
-	public SnapshotDesignerLoader(DocumentSnapshot snapshot, Func<string, Type?> projectTypeResolver)
+	public SnapshotDesignerLoader(DesignerDocumentSnapshot snapshot, Func<string, Type?> projectTypeResolver)
 	{
 		this.snapshot = snapshot;
 		this.projectTypeResolver = projectTypeResolver;

@@ -17,6 +17,7 @@
   </Folder>
   <Folder Name="/src/Main/">
     <Project Path="src/Main/Designer/Designer.Remote/Designer.Remote.csproj" />
+    <Project Path="src/Main/Designer/Designer.Server/Designer.Server.csproj" />
     <Project Path="src/Main/Designer/Designer.Presentation/Designer.Presentation.csproj" />
     <Project Path="src/Main/ICSharpCode.Core.Presentation/ICSharpCode.Core.Presentation.csproj" />
     <Project Path="src/Main/ICSharpCode.Core.WinForms/ICSharpCode.Core.WinForms.csproj" />

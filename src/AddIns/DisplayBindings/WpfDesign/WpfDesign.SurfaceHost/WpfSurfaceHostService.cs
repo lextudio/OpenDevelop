@@ -38,7 +38,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 	/// selection/adorner rendering, no raw gesture/input forwarding, no project-assembly type
 	/// resolution (default XamlTypeFinder only) - all deliberately deferred.
 	/// </summary>
-	sealed class WpfSurfaceHostService
+	sealed class WpfSurfaceHostService : IDesignerChildService
 	{
 		readonly string expectedToken;
 		readonly WpfHeadlessDispatcher dispatcher;

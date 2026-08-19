@@ -1,3 +1,4 @@
+using ICSharpCode.SharpDevelop.Designer.Remote;
 using StreamJsonRpc;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -18,13 +19,13 @@ using System.Runtime.Loader;
 
 namespace ICSharpCode.FormsDesigner.Host;
 
-sealed class DesignerHostService
+sealed class DesignerHostService : IDesignerChildService
 {
 	const int ProtocolVersion = 2;
 	readonly string expectedToken;
 	readonly ManualResetEventSlim shutdown = new(false);
 	string? sessionId;
-	DocumentSnapshot? current;
+	DesignerDocumentSnapshot? current;
 	DesignSurface? designSurface;
 	ProjectAssemblyLoadContext? projectLoadContext;
 	Assembly? projectAssembly;
@@ -44,7 +45,7 @@ sealed class DesignerHostService
 		: SyntaxFacts.IsValidIdentifier(name);
 
 	[JsonRpcMethod("initialize")]
-	public Handshake Initialize(string token, int protocolVersion, string sessionId)
+	public HostHandshake Initialize(string token, int protocolVersion, string sessionId)
 	{
 		if (!CryptographicOperations.FixedTimeEquals(
 			Convert.FromHexString(expectedToken), Convert.FromHexString(token)))
@@ -53,11 +54,11 @@ sealed class DesignerHostService
 			throw new NotSupportedException($"Protocol {protocolVersion} is not supported.");
 		initialized = true;
 		this.sessionId = sessionId;
-		return new Handshake { ProtocolVersion = ProtocolVersion, Runtime = RuntimeInformation.FrameworkDescription, ProcessId = Environment.ProcessId, SessionId = sessionId };
+		return new HostHandshake { ProtocolVersion = ProtocolVersion, Runtime = RuntimeInformation.FrameworkDescription, ProcessId = Environment.ProcessId, SessionId = sessionId };
 	}
 
 	[JsonRpcMethod("session/open")]
-	public SessionState Open(DocumentSnapshot snapshot)
+	public DesignerSessionState Open(DesignerDocumentSnapshot snapshot)
 	{
 		EnsureInitialized();
 		EnsureOwnSession(snapshot);
@@ -68,7 +69,7 @@ sealed class DesignerHostService
 	}
 
 	[JsonRpcMethod("session/update")]
-	public SessionState Update(DocumentSnapshot snapshot)
+	public DesignerSessionState Update(DesignerDocumentSnapshot snapshot)
 	{
 		EnsureInitialized();
 		EnsureOwnSession(snapshot);
@@ -83,7 +84,7 @@ sealed class DesignerHostService
 	}
 
 	[JsonRpcMethod("session/flush")]
-	public EditSet Flush(string sessionId, string documentId, long baseVersion)
+	public DesignerEditSet Flush(string sessionId, string documentId, long baseVersion)
 	{
 		EnsureInitialized();
 		EnsureOwnSession(sessionId, documentId);
@@ -98,24 +99,24 @@ sealed class DesignerHostService
 				file.Text = new ThisQualifierRewriter().Visit(root)!.ToFullString();
 			}
 		}
-		return new EditSet { SessionId = sessionId, DocumentId = documentId, BaseVersion = baseVersion, Files = current.Files };
+		return new DesignerEditSet { SessionId = sessionId, DocumentId = documentId, BaseVersion = baseVersion, Files = current.Files };
 	}
 
 	[JsonRpcMethod("design/hit-test")]
-	public HitTestResult HitTest(string sessionId, string documentId, long baseVersion, int x, int y)
+	public DesignerHitTestResult HitTest(string sessionId, string documentId, long baseVersion, int x, int y)
 	{
 		EnsureCurrentVersion(sessionId, documentId, baseVersion, "hit-test");
 		var host = designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost;
 		var root = host?.RootComponent as Control;
 		var hit = root == null ? null : FindDeepest(root, new Point(x, y));
-		return new HitTestResult {
+		return new DesignerHitTestResult {
 			ComponentName = hit?.Site?.Name ?? "",
 			ComponentType = hit?.GetType().FullName ?? ""
 		};
 	}
 
 	[JsonRpcMethod("design/set-property")]
-	public SessionState SetProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string value)
+	public DesignerSessionState SetProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string value)
 	{
 		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
 		var host = designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost
@@ -165,7 +166,7 @@ sealed class DesignerHostService
 	}
 
 	[JsonRpcMethod("design/reset-property")]
-	public SessionState ResetProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName)
+	public DesignerSessionState ResetProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName)
 	{
 		EnsureCurrentVersion(sessionId, documentId, baseVersion, "reset property on");
 		var host = GetHost();
@@ -211,7 +212,7 @@ sealed class DesignerHostService
 	}
 
 	[JsonRpcMethod("design/rename")]
-	public SessionState RenameComponent(string sessionId, string documentId, long baseVersion, string elementId, string newName)
+	public DesignerSessionState RenameComponent(string sessionId, string documentId, long baseVersion, string elementId, string newName)
 	{
 		EnsureCurrentVersion(sessionId, documentId, baseVersion, "rename");
 		if (!IsValidIdentifier(newName))
@@ -228,7 +229,7 @@ sealed class DesignerHostService
 	}
 
 	[JsonRpcMethod("design/set-event")]
-	public SessionState SetEvent(string sessionId, string documentId, long baseVersion, string elementId, string eventName, string handlerName)
+	public DesignerSessionState SetEvent(string sessionId, string documentId, long baseVersion, string elementId, string eventName, string handlerName)
 	{
 		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
 		if (!String.IsNullOrEmpty(handlerName) && !IsValidIdentifier(handlerName))
@@ -242,7 +243,7 @@ sealed class DesignerHostService
 	}
 
 	[JsonRpcMethod("design/activate-default-event")]
-	public SessionState ActivateDefaultEvent(string sessionId, string documentId, long baseVersion, string elementId)
+	public DesignerSessionState ActivateDefaultEvent(string sessionId, string documentId, long baseVersion, string elementId)
 	{
 		EnsureCurrentVersion(sessionId, documentId, baseVersion, "activate the default event on");
 		var component = GetHost().Container.Components[elementId]
@@ -262,7 +263,7 @@ sealed class DesignerHostService
 	}
 
 	[JsonRpcMethod("design/add-element")]
-	public SessionState AddControl(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, string elementId, int x, int y)
+	public DesignerSessionState AddControl(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, string elementId, int x, int y)
 	{
 		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
 		if (!IsValidIdentifier(elementId))
@@ -288,7 +289,7 @@ sealed class DesignerHostService
 	}
 
 	[JsonRpcMethod("design/set-bounds")]
-	public SessionState SetBounds(string sessionId, string documentId, long baseVersion, string elementId, int x, int y, int width, int height)
+	public DesignerSessionState SetBounds(string sessionId, string documentId, long baseVersion, string elementId, int x, int y, int width, int height)
 	{
 		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
 		if (width <= 0 || height <= 0) throw new ArgumentOutOfRangeException(nameof(width), "Control bounds must be positive.");
@@ -309,7 +310,7 @@ sealed class DesignerHostService
 	}
 
 	[JsonRpcMethod("design/delete-elements")]
-	public SessionState DeleteComponent(string sessionId, string documentId, long baseVersion, string elementId)
+	public DesignerSessionState DeleteComponent(string sessionId, string documentId, long baseVersion, string elementId)
 	{
 		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
 		var host = GetHost();
@@ -325,7 +326,7 @@ sealed class DesignerHostService
 	}
 
 	[JsonRpcMethod("design/set-z-order")]
-	public SessionState SetZOrder(string sessionId, string documentId, long baseVersion, string elementId, bool bringToFront)
+	public DesignerSessionState SetZOrder(string sessionId, string documentId, long baseVersion, string elementId, bool bringToFront)
 	{
 		EnsureCurrentVersion(sessionId, documentId, baseVersion, "change z-order for");
 		var host = GetHost();
@@ -342,7 +343,7 @@ sealed class DesignerHostService
 	}
 
 	[JsonRpcMethod("design/apply-layout")]
-	public SessionState ApplyLayout(string sessionId, string documentId, long baseVersion, string operation, string[] elementIds, int deltaX, int deltaY)
+	public DesignerSessionState ApplyLayout(string sessionId, string documentId, long baseVersion, string operation, string[] elementIds, int deltaX, int deltaY)
 	{
 		EnsureCurrentVersion(sessionId, documentId, baseVersion, "apply layout to");
 		var host = GetHost();
@@ -440,7 +441,7 @@ sealed class DesignerHostService
 		if (!initialized) throw new UnauthorizedAccessException("The designer host has not completed its handshake.");
 	}
 
-	void EnsureOwnSession(DocumentSnapshot snapshot) => EnsureOwnSession(snapshot.SessionId, snapshot.DocumentId);
+	void EnsureOwnSession(DesignerDocumentSnapshot snapshot) => EnsureOwnSession(snapshot.SessionId, snapshot.DocumentId);
 
 	void EnsureOwnSession(string requestSessionId, string requestDocumentId)
 	{
@@ -891,7 +892,7 @@ sealed class DesignerHostService
 		file.Text = root.ReplaceNode(initialize, body).NormalizeWhitespace().ToFullString();
 	}
 
-	SourceFileSnapshot CurrentDesignerFile() => current!.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))
+	DesignerSourceFileSnapshot CurrentDesignerFile() => current!.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))
 		?? current.Files.First();
 
 	static VbSyntax.CompilationUnitSyntax ReplaceRequiredAssignmentVisualBasic(VbSyntax.CompilationUnitSyntax root, string target, VbSyntax.ExpressionSyntax value)
@@ -910,7 +911,7 @@ sealed class DesignerHostService
 		return root.ReplaceNode(assignment.Right, value.WithTriviaFrom(assignment.Right));
 	}
 
-	static void Validate(DocumentSnapshot snapshot)
+	static void Validate(DesignerDocumentSnapshot snapshot)
 	{
 		if (snapshot.Version < 0) throw new ArgumentOutOfRangeException(nameof(snapshot.Version));
 		if (String.IsNullOrWhiteSpace(snapshot.PrimaryFileName)) throw new ArgumentException("A primary file is required.");
@@ -939,7 +940,7 @@ sealed class DesignerHostService
 		return File.Exists(dll) ? dll : full;
 	}
 
-	void CreateDesignSurface(DocumentSnapshot snapshot)
+	void CreateDesignSurface(DesignerDocumentSnapshot snapshot)
 	{
 		designSurface?.Dispose();
 		projectLoadContext?.Unload();
@@ -972,11 +973,11 @@ sealed class DesignerHostService
 	static string VbArgumentText(VbSyntax.ObjectCreationExpressionSyntax creation, int index)
 		=> ((VbSyntax.SimpleArgumentSyntax)creation.ArgumentList!.Arguments[index]).Expression.ToString();
 
-	static bool SnapshotIsVisualBasic(DocumentSnapshot snapshot) => snapshot.Language.Equals("VisualBasic", StringComparison.OrdinalIgnoreCase)
+	static bool SnapshotIsVisualBasic(DesignerDocumentSnapshot snapshot) => snapshot.Language.Equals("VisualBasic", StringComparison.OrdinalIgnoreCase)
 		|| snapshot.DesignerFileName.EndsWith(".vb", StringComparison.OrdinalIgnoreCase)
 		|| snapshot.PrimaryFileName.EndsWith(".vb", StringComparison.OrdinalIgnoreCase);
 
-	static Size? ReadRootDesignSize(DocumentSnapshot snapshot)
+	static Size? ReadRootDesignSize(DesignerDocumentSnapshot snapshot)
 	{
 		var source = snapshot.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))?.Text;
 		if (String.IsNullOrEmpty(source)) return null;
@@ -1000,7 +1001,7 @@ sealed class DesignerHostService
 		return new Size(width, height);
 	}
 
-	static SizeF? ReadRootAutoScaleDimensions(DocumentSnapshot snapshot)
+	static SizeF? ReadRootAutoScaleDimensions(DesignerDocumentSnapshot snapshot)
 	{
 		var source = snapshot.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))?.Text;
 		if (String.IsNullOrEmpty(source)) return null;
@@ -1026,12 +1027,12 @@ sealed class DesignerHostService
 
 	Type? ResolveProjectType(string name) => projectAssembly?.GetType(name, false);
 
-	SessionState CurrentState(long baseVersion)
+	DesignerSessionState CurrentState(long baseVersion)
 	{
 		var host = designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost;
 		var rootControl = host?.RootComponent as Control;
 		var render = Render(rootControl, rootDesignSize);
-		return new SessionState {
+		return new DesignerSessionState {
 			SessionId = current?.SessionId ?? sessionId ?? "",
 			DocumentId = current?.DocumentId ?? "",
 			Version = baseVersion,
@@ -1047,7 +1048,7 @@ sealed class DesignerHostService
 					if (scale != null)
 						scale.Value = $"{rootAutoScaleDimensions.Value.Width.ToString(CultureInfo.InvariantCulture)}, {rootAutoScaleDimensions.Value.Height.ToString(CultureInfo.InvariantCulture)}";
 				}
-				return new ComponentInfo {
+				return new DesignerComponentInfo {
 				Name = component.Site?.Name ?? "",
 				Type = component.GetType().FullName ?? component.GetType().Name,
 				Parent = component is Control control ? control.Parent?.Site?.Name ?? "" : "",
@@ -1082,9 +1083,9 @@ sealed class DesignerHostService
 
 	/// <summary>Builds the element tree for the Document Outline pad (the protocol's
 	/// <c>Tree</c> shape), mirroring the flat <c>Components</c> list's control hierarchy.</summary>
-	static ElementNodeDto BuildElementTree(Control control, string path)
+	static DesignerElementNode BuildElementTree(Control control, string path)
 	{
-		return new ElementNodeDto {
+		return new DesignerElementNode {
 			Id = control.Site?.Name ?? control.GetType().Name,
 			Name = control.Site?.Name,
 			Type = control.GetType().FullName ?? control.GetType().Name,
@@ -1100,7 +1101,7 @@ sealed class DesignerHostService
 		};
 	}
 
-	List<EventInfoDto> DescribeEvents(IComponent component)
+	List<DesignerEventInfo> DescribeEvents(IComponent component)
 	{
 		var handlers = CurrentDesignerFile().Text;
 		return TypeDescriptor.GetEvents(component).Cast<EventDescriptor>().Where(item => item.IsBrowsable).Select(item => {
@@ -1120,13 +1121,13 @@ sealed class DesignerHostService
 				handler = assignment?.Right.ToString() ?? "";
 				if (handler.StartsWith("this.", StringComparison.Ordinal)) handler = handler[5..];
 			}
-			return new EventInfoDto { Name = item.Name, Category = item.Category ?? "Action", HandlerTypeName = item.EventType?.Name ?? "", Handler = handler };
+			return new DesignerEventInfo { Name = item.Name, Category = item.Category ?? "Action", HandlerTypeName = item.EventType?.Name ?? "", Handler = handler };
 		}).ToList();
 	}
 
-	List<PropertyInfoDto> DescribeProperties(IComponent component)
+	List<DesignerPropertyInfo> DescribeProperties(IComponent component)
 	{
-		var result = new List<PropertyInfoDto>();
+		var result = new List<DesignerPropertyInfo>();
 		var elementId = component.Site?.Name ?? "";
 		var designerRoot = IsVisualBasic ? null : CSharpSyntaxTree.ParseText(CurrentDesignerFile().Text).GetCompilationUnitRoot();
 		var vbDesignerRoot = IsVisualBasic ? (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(CurrentDesignerFile().Text).GetRoot() : null;
@@ -1144,7 +1145,7 @@ sealed class DesignerHostService
 				else if (property.Converter.CanConvertTo(typeof(string))) serialized = property.Converter.ConvertToInvariantString(value) ?? "";
 				else serialized = "[binary]";
 			} catch { continue; }
-			result.Add(new PropertyInfoDto {
+			result.Add(new DesignerPropertyInfo {
 				Name = property.Name,
 				DisplayName = property.DisplayName ?? property.Name,
 				Description = property.Description ?? "",
@@ -1177,7 +1178,7 @@ sealed class DesignerHostService
 		return point;
 	}
 
-	RenderFrame? Render(Control? root, Size? designSize)
+	DesignerRenderFrame? Render(Control? root, Size? designSize)
 	{
 		if (root == null) return null;
 		if (root.Width <= 0 || root.Height <= 0) root.Size = new Size(300, 200);
@@ -1198,7 +1199,7 @@ sealed class DesignerHostService
 		}
 		using var stream = new MemoryStream();
 		bitmap.Save(stream, ImageFormat.Png);
-		return new RenderFrame {
+		return new DesignerRenderFrame {
 			Sequence = Interlocked.Increment(ref frameSequence),
 			Width = bitmap.Width,
 			Height = bitmap.Height,
@@ -1332,8 +1333,8 @@ sealed class DesignerHostService
 			new PointF(Math.Max(2, (bounds.Width - size.Width) / 2), Math.Max(1, (bounds.Height - size.Height) / 2)));
 	}
 
-	static SessionState Accepted(long baseVersion) => new() { Version = baseVersion, Accepted = true };
-	SessionState Rejected(long baseVersion, string error) => new() { SessionId = current?.SessionId ?? sessionId ?? "", DocumentId = current?.DocumentId ?? "", Version = baseVersion, Error = error };
+	static DesignerSessionState Accepted(long baseVersion) => new() { Version = baseVersion, Accepted = true };
+	DesignerSessionState Rejected(long baseVersion, string error) => new() { SessionId = current?.SessionId ?? sessionId ?? "", DocumentId = current?.DocumentId ?? "", Version = baseVersion, Error = error };
 }
 
 sealed class ThisQualifierRewriter : CSharpSyntaxRewriter
@@ -1356,18 +1357,6 @@ sealed class MeQualifierRewriter : Vb.VisualBasicSyntaxRewriter
 	}
 }
 
-sealed class Handshake { public int ProtocolVersion { get; set; } public string Runtime { get; set; } = ""; public int ProcessId { get; set; } public string SessionId { get; set; } = ""; }
-sealed class DocumentSnapshot { public string SessionId { get; set; } = ""; public string DocumentId { get; set; } = ""; public long Version { get; set; } public string ProjectFileName { get; set; } = ""; public string TargetFramework { get; set; } = ""; public string ProjectAssemblyPath { get; set; } = ""; public string PrimaryFileName { get; set; } = ""; public string DesignerFileName { get; set; } = ""; public string Language { get; set; } = "CSharp"; public List<SourceFileSnapshot> Files { get; set; } = []; }
-sealed class SourceFileSnapshot { public string FileName { get; set; } = ""; public string Kind { get; set; } = "Source"; public string Text { get; set; } = ""; public string Base64 { get; set; } = ""; }
-sealed class SessionState { public string SessionId { get; set; } = ""; public string DocumentId { get; set; } = ""; public long Version { get; set; } public bool Accepted { get; set; } public string Error { get; set; } = ""; public string RootType { get; set; } = ""; public int ComponentCount { get; set; } public List<ComponentInfo> Components { get; set; } = []; public ElementNodeDto? Tree { get; set; } public RenderFrame? Render { get; set; } }
-sealed class ElementNodeDto { public string Id { get; set; } = ""; public string? Name { get; set; } public string Type { get; set; } = ""; public double X { get; set; } public double Y { get; set; } public double Width { get; set; } public double Height { get; set; } public string Path { get; set; } = ""; public bool IsDesignable { get; set; } = true; public List<ElementNodeDto> Children { get; set; } = []; }
-sealed class RenderFrame { public long Sequence { get; set; } public int Width { get; set; } public int Height { get; set; } public double Dpi { get; set; } = 1; public string PngBase64 { get; set; } = ""; }
-sealed class ComponentInfo { public string Name { get; set; } = ""; public string Type { get; set; } = ""; public string Parent { get; set; } = ""; public string Text { get; set; } = ""; public string AccessibleName { get; set; } = ""; public string AccessibleDescription { get; set; } = ""; public string AccessibleRole { get; set; } = ""; public int X { get; set; } public int Y { get; set; } public int SurfaceX { get; set; } public int SurfaceY { get; set; } public int Width { get; set; } public int Height { get; set; } public List<PropertyInfoDto> Properties { get; set; } = []; public List<EventInfoDto> Events { get; set; } = []; }
-sealed class DesignerToolboxItemInfo { public string Name { get; set; } = ""; public string DisplayName { get; set; } = ""; public string Category { get; set; } = ""; public string Template { get; set; } = ""; public string XamlNamespace { get; set; } = ""; public string TypeName { get; set; } = ""; }
-sealed class PropertyInfoDto { public string Name { get; set; } = ""; public string DisplayName { get; set; } = ""; public string Description { get; set; } = ""; public string Category { get; set; } = ""; public string TypeName { get; set; } = ""; public string Value { get; set; } = ""; public bool IsNull { get; set; } public bool IsReadOnly { get; set; } public bool ShouldSerialize { get; set; } public bool IsEnum { get; set; } }
-sealed class EventInfoDto { public string Name { get; set; } = ""; public string Category { get; set; } = ""; public string HandlerTypeName { get; set; } = ""; public string Handler { get; set; } = ""; }
-sealed class HitTestResult { public string ComponentName { get; set; } = ""; public string ComponentType { get; set; } = ""; }
-sealed class EditSet { public string SessionId { get; set; } = ""; public string DocumentId { get; set; } = ""; public long BaseVersion { get; set; } public List<SourceFileSnapshot> Files { get; set; } = []; }
 
 sealed class ProjectAssemblyLoadContext : AssemblyLoadContext
 {

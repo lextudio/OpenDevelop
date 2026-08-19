@@ -31,6 +31,7 @@
       <Private>true</Private>
     </Reference>
     <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
+    <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Server\Designer.Server.csproj" />
     <PackageReference Include="StreamJsonRpc" Version="2.25.29" />
   </ItemGroup>
 
