@@ -33,6 +33,13 @@ namespace ICSharpCode.FormsDesigner
 			if (fileName == null || !fileName.ToString().EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
 				return false;
 
+			// The design view attaches to the primary partial (Foo.cs); the generated
+			// Foo.Designer.cs is a companion that should stay a plain source view - otherwise
+			// opening the .Designer.cs file from the project browser spawns a second design
+			// view over the same form.
+			if (fileName.ToString().EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase))
+				return false;
+
 			// Syntactic-only check (no semantic model/compilation needed just to decide whether
 			// to attach). The classic split convention puts the base type in Foo.cs but
 			// InitializeComponent in Foo.Designer.cs - a single partial DECLARATION rarely has
