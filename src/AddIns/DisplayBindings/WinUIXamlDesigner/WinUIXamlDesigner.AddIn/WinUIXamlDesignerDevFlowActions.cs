@@ -173,17 +173,18 @@ public static class WinUIXamlDesignerDevFlowActions
 
 		if (WinUIXamlToolbox.Instance.ToolboxControl is not System.Windows.Controls.ListBox list)
 			return Failure("Toolbox control is not a ListBox");
-		var item = WinUIXamlToolbox.Instance.FindItem(controlName);
-		if (item == null)
+		var tool = WinUIXamlToolbox.Instance.FindItem(controlName);
+		var listItem = WinUIXamlToolbox.Instance.FindListBoxItem(controlName);
+		if (tool == null || listItem == null)
 			return Failure("Toolbox has no item named '" + controlName + "'");
 
 		// The pad is a process-lifetime singleton, so an earlier drag may have left a different
 		// row selected; select explicitly so the drag picks up the tool that was asked for.
-		list.SelectedItem = item;
-		list.ScrollIntoView(item);
+		list.SelectedItem = listItem;
+		list.ScrollIntoView(listItem);
 		list.UpdateLayout();
 
-		if (list.ItemContainerGenerator.ContainerFromItem(item) is not FrameworkElement container)
+		if (list.ItemContainerGenerator.ContainerFromItem(listItem) is not FrameworkElement container)
 			return Failure("Toolbox row has no realized container: " + controlName);
 		container.BringIntoView();
 		list.UpdateLayout();
@@ -191,7 +192,7 @@ public static class WinUIXamlDesignerDevFlowActions
 		var origin = container.PointToScreen(new Point(0, 0));
 		return JsonSerializer.Serialize(new {
 			success = true,
-			name = item.Name,
+			name = tool.Name,
 			x = origin.X,
 			y = origin.Y,
 			width = container.ActualWidth,

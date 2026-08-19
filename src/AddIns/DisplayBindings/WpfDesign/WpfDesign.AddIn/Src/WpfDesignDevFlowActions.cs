@@ -59,7 +59,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			bool designerLoaded = state?.Accepted == true;
 
 			var toolboxControl = WpfToolbox.Instance.ToolboxControl as ListBox;
-			var toolboxItems = toolboxControl?.Items.OfType<WpfSideTabItem>().ToArray() ?? Array.Empty<WpfSideTabItem>();
+			var toolboxItems = toolboxControl?.Items.OfType<SharedToolboxItem>().ToArray() ?? Array.Empty<SharedToolboxItem>();
 
 			var outlineNames = new List<string>();
 			if (state?.Tree != null)
@@ -136,7 +136,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				return JsonSerializer.Serialize(new { success = false, error = "WPF designer is not loaded" });
 
 			var toolboxControl = WpfToolbox.Instance.ToolboxControl as ListBox;
-			var item = toolboxControl?.Items.OfType<WpfSideTabItem>()
+			var item = toolboxControl?.Items.OfType<SharedToolboxItem>()
 				.FirstOrDefault(i => string.Equals(i.DisplayName, typeName, StringComparison.Ordinal));
 			if (toolboxControl == null || item == null)
 				return JsonSerializer.Serialize(new { success = false, error = "Toolbox item not found: " + typeName });
@@ -177,7 +177,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 		public static string QueryToolboxItemBoundsWithoutActivatingDesigner(string typeName)
 		{
 			var toolboxControl = WpfToolbox.Instance.ToolboxControl as ListBox;
-			var item = toolboxControl?.Items.OfType<WpfSideTabItem>()
+			var item = toolboxControl?.Items.OfType<SharedToolboxItem>()
 				.FirstOrDefault(i => string.Equals(i.DisplayName, typeName, StringComparison.Ordinal));
 			if (toolboxControl == null || item == null)
 				return JsonSerializer.Serialize(new { success = false, error = "Toolbox item not found: " + typeName });
@@ -335,7 +335,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 		}
 
 		/// <summary>
-		/// Mirrors what actually happens when a user drags a WpfSideTabItem from the Toolbox onto
+		/// Mirrors what actually happens when a user drags a SharedToolboxItem from the Toolbox onto
 		/// the design surface, but calls <see cref="WpfSurfaceDesignerControl.AddElementAsync"/>
 		/// directly (design/add-element) instead of simulating DragDrop/mouse events, since DevFlow
 		/// has no synthetic-drag primitive and the real drag path is mouse-coordinate driven, not

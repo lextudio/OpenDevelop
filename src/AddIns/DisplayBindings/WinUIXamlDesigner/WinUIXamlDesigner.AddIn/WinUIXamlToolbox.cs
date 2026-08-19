@@ -1,16 +1,17 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
 using System.Windows.Input;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Designer.Remote;
+using ICSharpCode.SharpDevelop.Gui;
 
 namespace ICSharpCode.WinUIXamlDesigner;
 
 /// <summary>
-/// Content for the shell's shared Toolbox pad while a WinUI/Uno document is active. ProGPU's own
+/// The WinUI/Uno facade over the merged <see cref="SharedToolbox"/> engine (see that class's own
+/// header comment for why WpfToolbox and this class no longer each own an independent copy of
+/// the same ListBox/drag/selection state machine). ProGPU's own
 /// <c>ProGPU.WinUI.Designer.Toolbox</c> is intentionally not used: it is a Microsoft.UI.Xaml
 /// control that would render inside the ProGPU surface instead of the IDE's pad, which would
 /// diverge from the WinForms and WPF designers.
@@ -18,6 +19,7 @@ namespace ICSharpCode.WinUIXamlDesigner;
 public sealed class WinUIXamlToolbox
 {
 	const string StandardControlsCategory = "WinUI / Uno";
+	const string Scope = "winui";
 
 	static WinUIXamlToolbox instance;
 
@@ -28,28 +30,8 @@ public sealed class WinUIXamlToolbox
 		}
 	}
 
-	readonly ListBox toolbox = new();
-	readonly CollectionViewSource itemsView = new();
-	readonly List<WinUIToolboxItem> items = new();
-
 	WinUIXamlToolbox()
 	{
-		// Populate before handing the list to the view: List<T> raises no collection-change
-		// notification, so a view created over the still-empty list would never pick the items up
-		// and would report zero groups forever.
-		itemsView.Source = items;
-		itemsView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(WinUIToolboxItem.CategoryName)));
-
-		toolbox.ItemsSource = itemsView.View;
-		toolbox.DisplayMemberPath = nameof(WinUIToolboxItem.Name);
-
-		// Same reason WpfToolbox disables it: with virtualization on, ContainerFromItem can report
-		// a recycled row whose on-screen position does not match where the item actually renders,
-		// so a synthetic press at those coordinates lands on a different row.
-		VirtualizingStackPanel.SetIsVirtualizing(toolbox, false);
-		toolbox.PreviewMouseLeftButtonDown += OnToolboxMouseDown;
-		toolbox.PreviewMouseMove += OnToolboxMouseMove;
-		toolbox.SelectionChanged += OnToolboxSelectionChanged;
 	}
 
 	/// <summary>
@@ -61,114 +43,73 @@ public sealed class WinUIXamlToolbox
 	{
 		if (catalog == null || catalog.Count == 0)
 			return;
-		items.Clear();
+		var newItems = new List<SharedToolboxItem>();
 		foreach (var tool in catalog)
 		{
 			if (string.IsNullOrWhiteSpace(tool.Name))
 				continue;
-			items.Add(new WinUIToolboxItem(tool.Name, string.IsNullOrEmpty(tool.Category) ? StandardControlsCategory : tool.Category, tool.Template));
+			var category = string.IsNullOrEmpty(tool.Category) ? StandardControlsCategory : tool.Category;
+			newItems.Add(new SharedToolboxItem(category, tool.Name, Scope,
+				payload: new WinUIToolboxItem(tool.Name, category, tool.Template),
+				packDragData: data => {
+					data.SetData(DragDataFormat, tool.Name);
+					// Also carries "ComponentTypeName" (the same format WpfToolbox uses) so
+					// dropping a WinUI/Uno tool onto the plain XAML source editor -
+					// AvalonEditViewContent.TextArea_Drop, which only ever looks for that one
+					// format - inserts "<Tag />" there too, not just onto the ProGPU design
+					// surface (WinUIXamlHost.OnDrop, which reads DragDataFormat instead).
+					data.SetData("ComponentTypeName", tool.Name);
+				}));
 		}
-		// List<T> raises no collection-change notification, so the view must be told to
-		// re-read the source (the ctor populated before Source was assigned; a later catalog
-		// replacement has to refresh explicitly).
-		itemsView.View.Refresh();
+		SharedToolbox.Instance.AddItems(newItems);
 	}
 
 	/// <summary>Data format carrying a dragged tool from this pad to a WinUI/Uno design surface.</summary>
 	public const string DragDataFormat = "OpenDevelop.WinUIToolboxItem";
 
-	Point dragStartPoint;
-	WinUIToolboxItem dragStartItem;
-	WinUIToolboxItem draggedItem;
-	// Guards against the re-entrant moves a portable drag delivers while DoDragDrop blocks -
-	// same hazard WpfToolbox documents.
-	bool isDragging;
-	bool reassertingSelection;
-
-	void OnToolboxMouseDown(object sender, MouseButtonEventArgs e)
-	{
-		dragStartPoint = e.GetPosition(toolbox);
-		dragStartItem = (e.OriginalSource as DependencyObject).FindAncestorItem(toolbox);
-	}
-
-	void OnToolboxMouseMove(object sender, MouseEventArgs e)
-	{
-		if (isDragging || dragStartItem == null || e.LeftButton != MouseButtonState.Pressed)
-			return;
-		var position = e.GetPosition(toolbox);
-		if (System.Math.Abs(position.X - dragStartPoint.X) < SystemParameters.MinimumHorizontalDragDistance
-			&& System.Math.Abs(position.Y - dragStartPoint.Y) < SystemParameters.MinimumVerticalDragDistance)
-			return;
-
-		var item = dragStartItem;
-		dragStartItem = null;
-		isDragging = true;
-		try {
-			toolbox.SelectedItem = item;
-			draggedItem = item;
-			// Also carries "ComponentTypeName" (the same format WpfToolbox uses) so dropping a
-			// WinUI/Uno tool onto the plain XAML source editor - AvalonEditViewContent.TextArea_Drop,
-			// which only ever looks for that one format - inserts "<Tag />" there too, not just onto
-			// the ProGPU design surface (WinUIXamlHost.OnDrop, which reads DragDataFormat instead).
-			var data = new DataObject(DragDataFormat, item.Name);
-			data.SetData("ComponentTypeName", item.Name);
-			DragDrop.DoDragDrop(toolbox, data, DragDropEffects.Copy);
-		} finally {
-			isDragging = false;
-			draggedItem = null;
-			// The ListBox's internal Selector keeps moving SelectedItem to whichever row is under
-			// the cursor while the button is held during the drag, so reassert the dragged tool -
-			// it must stay selected until the drop on the design surface completes.
-			toolbox.SelectedItem = item;
+	public object ToolboxControl {
+		get {
+			SharedToolbox.Instance.SetActiveScopes(Scope);
+			return SharedToolbox.Instance.ToolboxControl;
 		}
 	}
-
-	void OnToolboxSelectionChanged(object sender, SelectionChangedEventArgs e)
-	{
-		// Reassert the dragged item against the Selector's cursor-tracking reassignments for the
-		// whole duration of the drag (portable drag loops keep routing MouseMove through WPF).
-		if (isDragging && draggedItem != null && !reassertingSelection) {
-			reassertingSelection = true;
-			try {
-				toolbox.SelectedItem = draggedItem;
-			} finally {
-				reassertingSelection = false;
-			}
-		}
-	}
-
-	public object ToolboxControl => toolbox;
 
 	/// <summary>The tool the user has selected, or null when the pad has no selection.</summary>
-	public WinUIToolboxItem SelectedItem => toolbox.SelectedItem as WinUIToolboxItem;
+	public WinUIToolboxItem SelectedItem => SharedToolbox.Instance.SelectedItem?.Payload as WinUIToolboxItem;
 
-	public int ItemCount => items.Count;
+	public int ItemCount {
+		get {
+			SharedToolbox.Instance.SetActiveScopes(Scope);
+			return SharedToolbox.Instance.ItemCount(Scope);
+		}
+	}
 
-	public int GroupCount => itemsView.View?.Groups?.Count ?? 0;
+	public int GroupCount {
+		get {
+			SharedToolbox.Instance.SetActiveScopes(Scope);
+			return SharedToolbox.Instance.GroupCount;
+		}
+	}
 
 	/// <summary>
 	/// Looks a tool up by the name the pad actually displays, so an insertion driven through this
 	/// cannot succeed for a control the Toolbox does not offer.
 	/// </summary>
 	public WinUIToolboxItem FindItem(string name) =>
-		items.FirstOrDefault(item => string.Equals(item.Name, name, System.StringComparison.OrdinalIgnoreCase));
+		SharedToolbox.Instance.FindItem(Scope, name)?.Payload as WinUIToolboxItem;
+
+	/// <summary>The actual row bound into the shared ListBox's ItemsSource for a tool name - use
+	/// this (not <see cref="FindItem"/>'s <see cref="WinUIToolboxItem"/> payload) for anything
+	/// that needs to select/scroll/realize the row itself, e.g.
+	/// <c>ListBox.SelectedItem</c>/<c>ItemContainerGenerator.ContainerFromItem</c> in DevFlow's
+	/// toolbox-bounds actions.</summary>
+	public object FindListBoxItem(string name) => SharedToolbox.Instance.FindItem(Scope, name);
 }
 
-static class ToolboxVisualExtensions
-{
-	/// <summary>Walks up from the pressed visual to the ListBoxItem's bound tool.</summary>
-	public static WinUIToolboxItem FindAncestorItem(this DependencyObject source, ListBox owner)
-	{
-		while (source != null && source != owner) {
-			if (source is ListBoxItem row)
-				return row.DataContext as WinUIToolboxItem;
-			source = System.Windows.Media.VisualTreeHelper.GetParent(source)
-				?? System.Windows.LogicalTreeHelper.GetParent(source);
-		}
-		return null;
-	}
-}
-
+/// <summary>Thin, host-agnostic-shape-preserving wrapper kept only because callers outside this
+/// file (DevFlow actions, WinUIXamlDesignerViewContent, WinUIXamlHost) already read
+/// <c>.Name</c>/<c>.Template</c> off whatever <see cref="WinUIXamlToolbox.FindItem"/> returns -
+/// the actual ListBox/drag/selection engine lives in <see cref="SharedToolbox"/> now.</summary>
 public sealed class WinUIToolboxItem
 {
 	public WinUIToolboxItem(string name, string categoryName, string template = "")
