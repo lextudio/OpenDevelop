@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using ICSharpCode.Core;
 
 namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
 {
@@ -29,8 +30,10 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
 			var extension = Path.GetExtension(fileName);
 			LspServerLaunchSpec spec;
 			lock (syncRoot) {
-				if (!registry.TryGetLaunchSpec(extension, out spec))
+				if (!registry.TryGetLaunchSpec(extension, out spec)) {
+					LoggingService.Debug($"LspServiceManager: no launch spec for extension '{extension}' ({fileName})");
 					return null;
+				}
 			}
 
 			var rootPath = FindWorkspaceRoot(fileName);

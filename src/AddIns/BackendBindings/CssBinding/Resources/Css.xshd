@@ -1,0 +1,74 @@
+﻿<?xml version="1.0"?>
+<!-- Based on AvalonEdit's own bundled CSS-Mode.xshd
+     (src/Libraries/AvalonEdit/ICSharpCode.AvalonEdit/Highlighting/Resources/CSS-Mode.xshd),
+     extended to also cover SCSS/LESS's line comments and $/@ variables so one definition can
+     serve all three extensions the LSP registration (LspServerRegistry) speaks to (vscode-css-
+     language-server dispatches on languageId, not file extension, so the wire protocol already
+     treats them as related dialects of one server). -->
+<SyntaxDefinition name="Css" extensions=".css;.scss;.less" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+	<Color name="Comment" foreground="Green" exampleText="/* comment */" />
+	<Color name="String" foreground="Sienna" exampleText="body { background: url(&quot;image.png&quot;) }" />
+	<Color name="Selector" foreground="DarkBlue" fontWeight="bold" exampleText="div p" />
+	<Color name="Class" foreground="DarkMagenta" exampleText="#para" />
+	<Color name="Property" foreground="Red" exampleText="p { color: red; }" />
+	<Color name="Value" foreground="Blue" exampleText="p { color: red; }" />
+	<Color name="Variable" foreground="Teal" exampleText="$brand-color / @brand-color" />
+	<Color name="CurlyBraces" foreground="Black" exampleText="{ }" />
+	<Color name="Colon" foreground="Black" exampleText=":" />
+	<RuleSet ignoreCase="true">
+		<Span color="Comment" multiline="true">
+			<Begin>/\*</Begin>
+			<End>\*/</End>
+		</Span>
+		<!-- SCSS/LESS-only line comment; plain CSS has no such thing, but the lexer runs over
+		     all three extensions and a stray "//" in a CSS file is not otherwise meaningful. -->
+		<Span color="Comment">
+			<Begin>//</Begin>
+		</Span>
+		<Span
+			color="Property"
+			multiline="true"
+			ruleSet="CssBlock">
+			<Begin color="CurlyBraces">\{</Begin>
+			<End color="CurlyBraces">\}</End>
+		</Span>
+		<Span color="Class">
+			<Begin>\#</Begin>
+			<End>\s</End>
+		</Span>
+		<Rule color="Variable">[$@][\w-]+</Rule>
+		<Rule color="Selector">[\d\w]</Rule>
+	</RuleSet>
+
+	<RuleSet name="CssBlock">
+		<Span color="Comment" multiline="true">
+			<Begin>/\*</Begin>
+			<End>\*/</End>
+		</Span>
+		<Span color="Comment">
+			<Begin>//</Begin>
+		</Span>
+		<Rule color="Variable">[$@][\w-]+</Rule>
+		<Span color="Value" multiline="true">
+			<Begin color="Colon">\:</Begin>
+			<End color="CurlyBraces">\;|(?=\})</End>
+			<RuleSet>
+				<Rule color="Variable">[$@][\w-]+</Rule>
+				<Span color="String" multiline="true">
+					<Begin>"</Begin>
+					<End>"</End>
+					<RuleSet>
+						<Span begin="\\" end="." />
+					</RuleSet>
+				</Span>
+				<Span color="String" multiline="true">
+					<Begin>'</Begin>
+					<End>'</End>
+					<RuleSet>
+						<Span begin="\\" end="." />
+					</RuleSet>
+				</Span>
+			</RuleSet>
+		</Span>
+	</RuleSet>
+</SyntaxDefinition>

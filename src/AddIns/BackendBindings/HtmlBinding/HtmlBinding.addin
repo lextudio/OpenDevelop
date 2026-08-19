@@ -1,0 +1,40 @@
+<AddIn name        = "HTML Binding"
+       author      = "LeXtudio"
+       copyright   = "prj:///doc/copyright.txt"
+       description = "HTML syntax highlighting and LSP language service (vscode-html-language-server), see doc/technotes/html.md"
+       addInManagerHidden = "preinstalled">
+
+	<Manifest>
+		<Identity name = "ICSharpCode.HtmlBinding"/>
+	</Manifest>
+
+	<Runtime>
+		<Import assembly = "HtmlBinding.dll"/>
+		<Import assembly = ":ICSharpCode.SharpDevelop"/>
+	</Runtime>
+
+	<!-- The lexer alone (this xshd) is what makes .html/.htm files open at all; the language
+	     service (completion, diagnostics, navigation) is provided by the LSP registration below
+	     (HtmlLanguageService), against the launch spec LspServerRegistry.CreateDefault already
+	     resolves (TryFindHtmlLanguageServerBinary). -->
+	<Path name = "/SharpDevelop/ViewContent/AvalonEdit/SyntaxModes">
+		<SyntaxMode id="Html.SyntaxMode" name="HTML" extensions=".htm;.html" resource="HtmlBinding.Resources.Html.xshd"/>
+	</Path>
+
+	<Path name="/SharpDevelop/Autostart">
+		<Class id="HtmlLanguageService" class="HtmlBinding.RegisterHtmlLanguageServiceCommand"/>
+	</Path>
+
+	<Path name="/SharpDevelop/ViewContent/TextEditor/CodeCompletion">
+		<CodeCompletionBinding id="Html-LSP" extensions=".htm;.html" class="ICSharpCode.SharpDevelop.LanguageServices.Lsp.LspCodeCompletionBinding"/>
+	</Path>
+
+	<!-- Document Outline pad support (LanguageServiceOutlineExtension is generic - shared with
+	     TypeScriptBinding/CssBinding, not HTML-specific). -->
+	<Path name="/SharpDevelop/ViewContent/TextEditor/Extensions">
+		<TextEditorExtension
+			id="HtmlOutline"
+			class="ICSharpCode.SharpDevelop.LanguageServices.LanguageServiceOutlineExtension"
+			extensions=".htm;.html" />
+	</Path>
+</AddIn>

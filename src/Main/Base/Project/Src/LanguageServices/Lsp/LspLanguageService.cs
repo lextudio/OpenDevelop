@@ -36,6 +36,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
         readonly LspServerLaunchSpec _spec;
         readonly string _rootUri;
         readonly SemaphoreSlim _startGate = new(1, 1);
+        readonly SemaphoreSlim _documentGate = new(1, 1);
         readonly Dictionary<string, OpenDocument> _openDocuments = new(StringComparer.OrdinalIgnoreCase);
         readonly Dictionary<string, IReadOnlyList<LanguageDiagnostic>> _diagnosticsByUri =
             new(StringComparer.OrdinalIgnoreCase);
@@ -90,6 +91,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
 
             _process?.Dispose();
             _startGate.Dispose();
+            _documentGate.Dispose();
         }
 
         public async Task UpsertDocumentAsync(DocumentId documentId, string text, CancellationToken cancellationToken)
@@ -102,25 +104,36 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
             if (!await EnsureStartedAsync(cancellationToken))
                 return;
 
-            var uri = ToUri(documentId.FileName);
-            if (_openDocuments.TryGetValue(uri, out var open))
+            // Semantic-colorizer refreshes and other document triggers can fire concurrently;
+            // _openDocuments is a plain Dictionary and the didOpen/didChange handshake must stay
+            // ordered, so serialize upserts.
+            await _documentGate.WaitAsync(cancellationToken);
+            try
             {
-                open.Version++;
-                open.Text = text;
-                await _rpc!.NotifyWithParameterObjectAsync("textDocument/didChange", new
+                var uri = ToUri(documentId.FileName);
+                if (_openDocuments.TryGetValue(uri, out var open))
                 {
-                    textDocument = new { uri, version = open.Version },
-                    contentChanges = new[] { new { text } }
-                });
-                return;
-            }
+                    open.Version++;
+                    open.Text = text;
+                    await _rpc!.NotifyWithParameterObjectAsync("textDocument/didChange", new
+                    {
+                        textDocument = new { uri, version = open.Version },
+                        contentChanges = new[] { new { text } }
+                    });
+                    return;
+                }
 
-            open = new OpenDocument { Version = 1, Text = text };
-            _openDocuments[uri] = open;
-            await _rpc!.NotifyWithParameterObjectAsync("textDocument/didOpen", new
+                open = new OpenDocument { Version = 1, Text = text };
+                _openDocuments[uri] = open;
+                await _rpc!.NotifyWithParameterObjectAsync("textDocument/didOpen", new
+                {
+                    textDocument = new { uri, languageId = _spec.LanguageId, version = open.Version, text }
+                });
+            }
+            finally
             {
-                textDocument = new { uri, languageId = _spec.LanguageId, version = open.Version, text }
-            });
+                _documentGate.Release();
+            }
         }
 
         public async Task<CompletionResult> GetCompletionsAsync(DocumentId documentId, int offset, CancellationToken cancellationToken)
@@ -551,6 +564,19 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
                 if (_rpc is not null)
                     return true;
 
+                // A previous instance may have died (e.g. the TypeScript 7 Go server's
+                // documented nil-*Session crash under startup-race document traffic, see
+                // doc/technotes/typescript.md "Known problems" #1) - OnRpcDisconnected already
+                // cleared _rpc/_process and _openDocuments so this path starts a fresh process
+                // and replays didOpen for every still-open document, rather than leaving the
+                // service permanently broken until the whole app restarts.
+                if (_process is { } dead)
+                {
+                    try { if (!dead.HasExited) dead.Kill(entireProcessTree: true); } catch { /* best-effort */ }
+                    dead.Dispose();
+                    _process = null;
+                }
+
                 var startInfo = new ProcessStartInfo(_spec.Command)
                 {
                     RedirectStandardInput = true,
@@ -583,9 +609,19 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
                 var handler = new HeaderDelimitedMessageHandler(process.StandardInput.BaseStream, process.StandardOutput.BaseStream, formatter);
                 var rpc = new JsonRpc(handler);
                 rpc.AddLocalRpcMethod("textDocument/publishDiagnostics", new Action<JsonElement>(OnPublishDiagnostics));
+                // The TypeScript 7 (Go) language server asks the client to register its
+                // configuration-change watcher (client/registerCapability) right after
+                // 'initialized'. StreamJsonRpc would otherwise answer "method not found",
+                // which the server rejects - it expects the request to be acknowledged with a
+                // literal null result. Accepting the registration is harmless for the servers
+                // that never ask (wpf-xaml-ls, fsautocomplete, pylsp).
+                rpc.AddLocalRpcMethod("client/registerCapability", new Func<JsonElement, object?>(_ => null));
+                rpc.AddLocalRpcMethod("window/logMessage", new Action<JsonElement>(OnServerLogMessage));
+                rpc.Disconnected += OnRpcDisconnected;
                 rpc.StartListening();
-                _rpc = rpc;
 
+                // Deliberately NOT assigning _rpc yet - see the assignment at the end of this
+                // method for why. Everything below uses the local `rpc`, never the field.
 				var initializeResult = await rpc.InvokeWithParameterObjectAsync<JsonElement>("initialize", new
                 {
                     processId = Environment.ProcessId,
@@ -607,14 +643,95 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
                     },
 				}, cancellationToken);
 				_semanticTokenTypes = ReadSemanticTokenTypes(initializeResult);
-                await rpc.NotifyAsync("initialized");
+                // ROOT CAUSE of the TypeScript 7 (Go) server's documented nil-*Session crash
+                // (doc/technotes/typescript.md "Known problems" #1), found by cloning
+                // microsoft/typescript-go at the exact installed commit and adding temporary
+                // stderr diagnostics to its own dispatch loop: NotifyAsync("initialized") (no
+                // params overload) sends the notification with NO "params" member at all.
+                // lsproto.UnmarshalParams rejects that outright - "params must be an object or
+                // array" (absent/null is explicitly disallowed) - for any method NOT declared
+                // NoParams, and InitializedParams isn't. So `initialized` was being REJECTED
+                // with ErrorCodeInvalidParams before handleInitialized ever ran, meaning
+                // s.session was NEVER created for the rest of that server's lifetime - not a
+                // timing race at all, a deterministic, 100%-reproducible protocol violation.
+                // Every later request (semanticTokens/full, hover, etc.) then crashed the
+                // server via the separate, also-real upstream gap this file documents
+                // (registerLanguageServiceDocumentRequestHandler skips the session-nil guard
+                // its sibling registration functions have). Confirmed live: a diagnostic build
+                // of tsgo showed `initialized` reaching the dispatch loop but its handler's own
+                // "about to assign session" line never printing, while every subsequent
+                // message's dispatch trace showed session-nil=true right up to the crash.
+                // LSP's own spec allows omitting params on notifications that declare none, but
+                // InitializedParams is specified as an (optional-content but present) object -
+                // sending a literal `{}` is what every other real LSP client does.
+                await rpc.NotifyWithParameterObjectAsync("initialized", new { });
 
+                // TypeScript 7 (Go)'s LSP server dispatches `initialized` and all later
+                // messages through the SAME sequential queue - a later message genuinely
+                // cannot be processed before `initialized` finishes creating the session
+                // (confirmed by reading internal/lsp/server.go's dispatchLoop/dynamic_queue.go
+                // upstream: single-consumer, strict FIFO). This delay is therefore NOT what
+                // was preventing the server's own documented crash (raising it 5x, to 1500 ms,
+                // measured live to have zero effect) - the actual race was entirely on OUR
+                // side, fixed by the _rpc assignment below. Kept only because removing it is
+                // unverified and it's cheap; doc/technotes/typescript.md has the full analysis.
+                if (string.Equals(_spec.LanguageId, "typescript", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(_spec.LanguageId, "javascript", StringComparison.OrdinalIgnoreCase))
+                {
+                    await Task.Delay(300, cancellationToken);
+                }
+
+                // Only now - after the full initialize/initialized handshake has actually
+                // completed on the wire - is this connection safe to hand to OTHER concurrent
+                // callers via EnsureStartedAsync's fast path (`if (_rpc is not null) return
+                // true;`, checked OUTSIDE _startGate). Assigning _rpc right after
+                // StartListening() (as this used to) exposed it to that fast path the instant
+                // the process could receive bytes, well before initialize/initialized were even
+                // sent - a concurrent caller (e.g. the semantic colorizer refreshing while
+                // UpsertDocumentAsync's own didOpen was still in flight) could see a non-null
+                // _rpc and fire its own request on the same connection, which StreamJsonRpc is
+                // free to write to the wire concurrently with (i.e. BEFORE) this method's own
+                // still-pending `initialize`/`initialized` traffic. That request would then be
+                // the first thing the Go server's dispatch queue sees after a bare `initialize`
+                // - hitting a server-side gap where `registerLanguageServiceDocumentRequestHandler`
+                // (unlike its sibling `registerRequestHandler`/`registerNotificationHandler`)
+                // never checks `session == nil` before dereferencing it, which crashed the
+                // server with the exact nil-*Session panic this file documents. Confirmed via a
+                // local clone of microsoft/typescript-go at the exact installed commit
+                // (session.go:909/976/989, server.go:864 - byte-for-byte matching the crash's
+                // own stack trace). Deferring this assignment until here means every concurrent
+                // caller genuinely waits on _startGate until the handshake is complete, closing
+                // the client-side half of the race outright.
+                _rpc = rpc;
                 return true;
             }
             finally
             {
                 _startGate.Release();
             }
+        }
+
+        void OnServerLogMessage(JsonElement parameters)
+        {
+            var message = parameters.TryGetProperty("message", out var messageProperty) ? messageProperty.GetString() : null;
+            LoggingService.Debug($"LSP server log ({_spec.LanguageId}): {message}");
+        }
+
+        /// <summary>Fires when the server process dies or the pipe breaks for any reason -
+        /// notably the TypeScript 7 Go server's documented nil-*Session startup-race crash
+        /// (doc/technotes/typescript.md). Clears the connection so the next
+        /// <see cref="EnsureStartedAsync"/> call restarts the process instead of forever
+        /// throwing "connection lost" against a dead <see cref="_rpc"/> - without this, one
+        /// early crash permanently disabled the language service until the whole app restarted.
+        /// Also clears <see cref="_openDocuments"/> so the fresh process gets a real
+        /// textDocument/didOpen (not a didChange against a document it never opened) the next
+        /// time a feature call pushes the buffer via <see cref="UpsertDocumentAsync"/>.</summary>
+        void OnRpcDisconnected(object? sender, JsonRpcDisconnectedEventArgs e)
+        {
+            if (e.Reason != DisconnectedReason.LocallyDisposed)
+                LoggingService.Warn($"LSP server '{_spec.Command}' disconnected ({e.Reason}: {e.Description}); will restart on next request.");
+            _rpc = null;
+            _openDocuments.Clear();
         }
 
         void OnPublishDiagnostics(JsonElement parameters)

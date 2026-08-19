@@ -1,0 +1,22 @@
+<Project Sdk="LibreWPF.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>HtmlBinding</RootNamespace>
+    <AssemblyName>HtmlBinding</AssemblyName>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <UseWPF>true</UseWPF>
+    <OutputPath>..\..\..\..\AddIns\BackendBindings\HtmlBinding\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\Html.xshd" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="HtmlBinding.addin" CopyToOutputDirectory="Always" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
+  </ItemGroup>
+</Project>

@@ -104,11 +104,16 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
             registry.Register(".fsi", fsAutoComplete);
             var pylsp = new LspServerLaunchSpec("python", "pylsp");
             registry.Register(".py", pylsp);
-            var typescript = new LspServerLaunchSpec("typescript", "typescript-language-server", null, "--stdio");
-            registry.Register(".ts", typescript);
-            registry.Register(".tsx", typescript);
-            registry.Register(".js", typescript);
-            registry.Register(".jsx", typescript);
+            // TypeScript, CSS/SCSS/LESS, and HTML deliberately do NOT register here - each has
+            // its own addin (TypeScriptBinding, CssBinding, HtmlBinding) that resolves its own
+            // npm-installed server binary (via the shared NpmLanguageServerLocator) and
+            // registers itself directly with LspServiceManager.RegisterExtension at addin
+            // startup. This registry (and the rest of Base) has no business knowing that
+            // TypeScript needs a Go binary or that CSS/HTML need a Node one - that's exactly the
+            // kind of per-language knowledge the "IDE semantic service layer" is supposed to
+            // stay ignorant of (see doc/technotes/language-services.md's layering rules), and it
+            // means disabling e.g. CssBinding actually stops Base from even trying to resolve
+            // vscode-css-language-server, not just from registering the extension mapping.
             return registry;
         }
 

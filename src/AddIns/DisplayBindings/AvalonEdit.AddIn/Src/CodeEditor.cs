@@ -146,7 +146,12 @@ namespace ICSharpCode.AvalonEdit.AddIn
 
 			primaryTextEditor.SyntaxHighlighting = highlighting;
 			primaryTextEditor.TextArea.TextView.LineTransformers.RemoveAll(t => t is HighlightingColorizer);
-			primaryTextEditor.TextArea.TextView.LineTransformers.Insert(0, new ThemeAwareHighlightingColorizer(highlighter, highlighting));
+			// A missing highlighting definition (unregistered extension) must not crash file
+			// open - fall back to uncolored text instead of asking the theme-aware colorizer
+			// to dereference a null definition (it reads Definition.Properties in its ctor).
+			if (highlighting != null) {
+				primaryTextEditor.TextArea.TextView.LineTransformers.Insert(0, new ThemeAwareHighlightingColorizer(highlighter, highlighting));
+			}
 			if (semanticColorizer != null) {
 				primaryTextEditor.TextArea.TextView.LineTransformers.Remove(semanticColorizer);
 				(semanticColorizer as IDisposable)?.Dispose();

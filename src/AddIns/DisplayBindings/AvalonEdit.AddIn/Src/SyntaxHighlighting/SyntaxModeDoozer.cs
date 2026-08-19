@@ -78,7 +78,12 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		{
 			manager.RegisterHighlighting(
 				this.Name, this.Extensions, delegate {
-					return HighlightingLoader.Load(LoadXshd(), manager);
+					try {
+						return HighlightingLoader.Load(LoadXshd(), manager);
+					} catch (Exception ex) {
+						LoggingService.Warn($"Failed to load syntax mode '{Name}' (resource '{resourceName}'): {ex}");
+						throw;
+					}
 				});
 		}
 	}

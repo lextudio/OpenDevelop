@@ -66,6 +66,46 @@ an LSP backend may resolve one server per workspace root and a Roslyn backend ma
 workspace across C# and VB. Those managers are implementation details behind the registered
 `ILanguageService`, not alternate APIs for editor code.
 
+**CSS/SCSS/LESS and HTML (2026-08-18)** added `vscode-css-language-server` and
+`vscode-html-language-server` (both from `vscode-langservers-extracted`), one launch spec per
+extension (CSS's one binary serves three dialects via different `languageId`s, since the server
+picks its parser from that, not the file extension - mirroring the existing `.ts`/`.js` split).
+
+**LSP registration is decentralized, not owned by `LspServerRegistry.CreateDefault()`
+(2026-08-18, same-day refactor).** The first pass at TypeScript/CSS copied the `.xaml`/F#/Python
+pattern too literally, hardcoding each language's binary-resolution logic directly into
+`LspServerRegistry.CreateDefault()` (Base). That was wrong: Base is the shared IDE semantic
+service layer described above and has no business knowing that TypeScript needs a Go binary or
+that CSS/HTML need a Node one - that per-language knowledge belongs in each language's own addin,
+so that disabling e.g. `CssBinding` means Base never even tries to resolve
+`vscode-css-language-server`, not just skip registering the extension mapping. Each of
+`TypeScriptBinding`, `CssBinding`, and `HtmlBinding` now resolves its own server binary and
+registers its own `LspServerLaunchSpec`s directly from its own addin's `Autostart` command, via
+the pre-existing-but-previously-unused `LspServiceManager.RegisterExtension` API ("Allows addins
+to register additional LSP server mappings at startup"). `LspServerRegistry.CreateDefault()`
+now only knows about `.xaml`, `.fs`/`.fsi`, and `.py`. The genuinely shared, generic mechanics
+(walking npm global roots, finding a plain bin shim on PATH or under a package's `bin/`) were
+promoted to a new public `NpmLanguageServerLocator`
+(`src/Main/Base/Project/Src/LanguageServices/Lsp/NpmLanguageServerLocator.cs`); the *decision* of
+which package/binary/extensions to use stays entirely in each language's own addin. See
+`typescript.md`, `css.md`, and `html.md` for the full implementation and verification notes.
+
+**LSP protocol-compliance fix affecting every LSP backend (2026-08-18).** `LspLanguageService`'s
+handshake sent the `initialized` notification via `rpc.NotifyAsync("initialized")` - StreamJsonRpc's
+no-parameters overload, which omits the `params` member entirely. That is a real JSON-RPC/LSP
+protocol violation: `InitializedParams` is an object-typed params shape (not `NoParams`), and a
+strict server is entitled to reject a params-less `initialized` outright rather than treat it as
+an empty object. The TypeScript 7 (Go) server does exactly that - confirmed by cloning
+`microsoft/typescript-go` at the exact installed commit and instrumenting its own dispatch loop -
+which meant the server's `initialized` handler (the one that constructs its session/workspace
+state) never ran at all, and every later request crashed it. Fixed by sending a literal empty
+object (`rpc.NotifyWithParameterObjectAsync("initialized", new { })`) instead. This is a client-side
+protocol fix in the shared `LspLanguageService`, so it applies to every LSP-backed language
+(F#/fsautocomplete, XAML/wpf-xaml-ls, Python/pylsp), not just TypeScript - those servers likely
+tolerated the missing `params` (many LSP servers are lenient here), which is presumably why this
+had gone unnoticed until a stricter server exposed it. See `typescript.md` "Known problems" #1 for
+the full investigation, live reproduction, and confirmation.
+
 ## Compatibility Facade
 
 The legacy direction is:

@@ -1,0 +1,22 @@
+<Project Sdk="LibreWPF.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>TypeScriptBinding</RootNamespace>
+    <AssemblyName>TypeScriptBinding</AssemblyName>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <UseWPF>true</UseWPF>
+    <OutputPath>..\..\..\..\AddIns\BackendBindings\TypeScriptBinding\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\TypeScript.xshd" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="TypeScriptBinding.addin" CopyToOutputDirectory="Always" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
+  </ItemGroup>
+</Project>

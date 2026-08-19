@@ -119,6 +119,15 @@
   <Folder Name="/src/AddIns/BackendBindings/FSharpBinding/">
     <Project Path="src/AddIns/BackendBindings/FSharpBinding/FSharpBinding.csproj" />
   </Folder>
+  <Folder Name="/src/AddIns/BackendBindings/TypeScriptBinding/">
+    <Project Path="src/AddIns/BackendBindings/TypeScriptBinding/TypeScriptBinding.csproj" />
+  </Folder>
+  <Folder Name="/src/AddIns/BackendBindings/CssBinding/">
+    <Project Path="src/AddIns/BackendBindings/CssBinding/CssBinding.csproj" />
+  </Folder>
+  <Folder Name="/src/AddIns/BackendBindings/HtmlBinding/">
+    <Project Path="src/AddIns/BackendBindings/HtmlBinding/HtmlBinding.csproj" />
+  </Folder>
   <Folder Name="/src/AddIns/BackendBindings/VBBinding/">
     <Project Path="src/AddIns/BackendBindings/VBBinding/Project/VBBinding.vbproj" />
   </Folder>

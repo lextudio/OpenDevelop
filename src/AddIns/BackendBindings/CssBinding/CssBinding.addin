@@ -1,0 +1,40 @@
+<AddIn name        = "CSS Binding"
+       author      = "LeXtudio"
+       copyright   = "prj:///doc/copyright.txt"
+       description = "CSS/SCSS/LESS syntax highlighting and LSP language service (vscode-css-language-server), see doc/technotes/css.md"
+       addInManagerHidden = "preinstalled">
+
+	<Manifest>
+		<Identity name = "ICSharpCode.CssBinding"/>
+	</Manifest>
+
+	<Runtime>
+		<Import assembly = "CssBinding.dll"/>
+		<Import assembly = ":ICSharpCode.SharpDevelop"/>
+	</Runtime>
+
+	<!-- The lexer alone (this xshd) is what makes .css/.scss/.less files open at all; the
+	     language service (completion, diagnostics, navigation) is provided by the LSP
+	     registration below (CssLanguageService), against the launch specs
+	     LspServerRegistry.CreateDefault already resolves (TryFindCssLanguageServerBinary). -->
+	<Path name = "/SharpDevelop/ViewContent/AvalonEdit/SyntaxModes">
+		<SyntaxMode id="Css.SyntaxMode" name="Css" extensions=".css;.scss;.less" resource="CssBinding.Resources.Css.xshd"/>
+	</Path>
+
+	<Path name="/SharpDevelop/Autostart">
+		<Class id="CssLanguageService" class="CssBinding.RegisterCssLanguageServiceCommand"/>
+	</Path>
+
+	<Path name="/SharpDevelop/ViewContent/TextEditor/CodeCompletion">
+		<CodeCompletionBinding id="Css-LSP" extensions=".css;.scss;.less" class="ICSharpCode.SharpDevelop.LanguageServices.Lsp.LspCodeCompletionBinding"/>
+	</Path>
+
+	<!-- Document Outline pad support (LanguageServiceOutlineExtension is generic - shared with
+	     TypeScriptBinding, not CSS-specific). -->
+	<Path name="/SharpDevelop/ViewContent/TextEditor/Extensions">
+		<TextEditorExtension
+			id="CssOutline"
+			class="ICSharpCode.SharpDevelop.LanguageServices.LanguageServiceOutlineExtension"
+			extensions=".css;.scss;.less" />
+	</Path>
+</AddIn>

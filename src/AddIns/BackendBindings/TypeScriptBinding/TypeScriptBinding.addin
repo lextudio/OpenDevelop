@@ -1,0 +1,40 @@
+<AddIn name        = "TypeScript Binding"
+       author      = "LeXtudio"
+       copyright   = "prj:///doc/copyright.txt"
+       description = "TypeScript/JavaScript syntax highlighting and LSP language service (TypeScript 7 Go), see doc/technotes/typescript.md"
+       addInManagerHidden = "preinstalled">
+
+	<Manifest>
+		<Identity name = "ICSharpCode.TypeScriptBinding"/>
+	</Manifest>
+
+	<Runtime>
+		<Import assembly = "TypeScriptBinding.dll"/>
+		<Import assembly = ":ICSharpCode.SharpDevelop"/>
+	</Runtime>
+
+	<!-- The lexer alone (this xshd) is what makes .ts/.tsx/.js/.jsx files open at all; the
+	     language service (completion, diagnostics, navigation) is provided by the LSP
+	     registration below (TypeScriptLanguageService), against the launch spec
+	     LspServerRegistry.CreateDefault already resolves (TryFindTypeScriptGoBinary). -->
+	<Path name = "/SharpDevelop/ViewContent/AvalonEdit/SyntaxModes">
+		<SyntaxMode id="TypeScript.SyntaxMode" name="TypeScript" extensions=".ts;.tsx;.js;.jsx" resource="TypeScriptBinding.Resources.TypeScript.xshd"/>
+	</Path>
+
+	<Path name="/SharpDevelop/Autostart">
+		<Class id="TypeScriptLanguageService" class="TypeScriptBinding.RegisterTypeScriptLanguageServiceCommand"/>
+	</Path>
+
+	<Path name="/SharpDevelop/ViewContent/TextEditor/CodeCompletion">
+		<CodeCompletionBinding id="TypeScript-LSP" extensions=".ts;.tsx;.js;.jsx" class="ICSharpCode.SharpDevelop.LanguageServices.Lsp.LspCodeCompletionBinding"/>
+	</Path>
+
+	<!-- Document Outline pad support (LanguageServiceOutlineExtension is generic - shared with
+	     CssBinding, not TypeScript-specific). -->
+	<Path name="/SharpDevelop/ViewContent/TextEditor/Extensions">
+		<TextEditorExtension
+			id="TypeScriptOutline"
+			class="ICSharpCode.SharpDevelop.LanguageServices.LanguageServiceOutlineExtension"
+			extensions=".ts;.tsx;.js;.jsx" />
+	</Path>
+</AddIn>
