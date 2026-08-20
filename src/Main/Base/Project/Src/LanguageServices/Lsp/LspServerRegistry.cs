@@ -61,31 +61,6 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
         {
             var registry = new LspServerRegistry();
             var repositoryRoot = FindOpenDevelopRoot();
-            var vscodeWpfRoot = Path.Combine(repositoryRoot, "externals", "vscode-wpf");
-            // "dotnet exec <built dll>", not "dotnet run --project <csproj>": a plain "dotnet run"
-            // triggers an implicit restore/build whenever anything is out of date, and MSBuild/
-            // NuGet write that progress to stdout - the same stream this process's stdio-framed
-            // LSP protocol lives on, corrupting every frame after it. Confirmed directly while
-            // building UnoDevelop's equivalent Uno host: a plain "dotnet run" wrote thousands of
-            // bytes of NuGet warnings to stdout before the process ever spoke LSP; "dotnet exec"
-            // against a prebuilt dll produced none. This does mean the project must have been
-            // built at least once - if it hasn't, TryFindWpfLanguageServerDll returns null and
-            // ".xaml" is left unregistered (LspServiceManager.GetService already handles a missing
-            // registration by falling back to lexical-only highlighting) rather than falling back
-            // to "dotnet run" and risking a corrupted pipe.
-            var wpfServerDll = TryFindWpfLanguageServerDll(vscodeWpfRoot);
-            if (wpfServerDll != null)
-            {
-                var xaml = new LspServerLaunchSpec(
-                    "xaml",
-                    "dotnet",
-                    vscodeWpfRoot,
-                    "exec",
-                    wpfServerDll,
-                    "--workspace",
-                    repositoryRoot);
-                registry.Register(".xaml", xaml);
-            }
             var fsAutoComplete = new LspServerLaunchSpec(
                 "fsharp",
                 "dotnet",
@@ -104,16 +79,18 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
             registry.Register(".fsi", fsAutoComplete);
             var pylsp = new LspServerLaunchSpec("python", "pylsp");
             registry.Register(".py", pylsp);
-            // TypeScript, CSS/SCSS/LESS, and HTML deliberately do NOT register here - each has
-            // its own addin (TypeScriptBinding, CssBinding, HtmlBinding) that resolves its own
-            // npm-installed server binary (via the shared NpmLanguageServerLocator) and
-            // registers itself directly with LspServiceManager.RegisterExtension at addin
-            // startup. This registry (and the rest of Base) has no business knowing that
-            // TypeScript needs a Go binary or that CSS/HTML need a Node one - that's exactly the
-            // kind of per-language knowledge the "IDE semantic service layer" is supposed to
-            // stay ignorant of (see doc/technotes/language-services.md's layering rules), and it
-            // means disabling e.g. CssBinding actually stops Base from even trying to resolve
-            // vscode-css-language-server, not just from registering the extension mapping.
+            // TypeScript, CSS/SCSS/LESS, HTML, and XAML deliberately do NOT register here - each
+            // has its own addin (TypeScriptBinding, CssBinding, HtmlBinding, XamlBinding) that
+            // resolves its own server binary (via the shared NpmLanguageServerLocator, or - for
+            // XAML - by locating the bundled wpf-xaml-ls.dll) and registers itself directly with
+            // LspServiceManager.RegisterExtension at addin startup (see XamlBinding's
+            // RegisterXamlLanguageServiceCommand). This registry (and the rest of Base) has no
+            // business knowing that TypeScript needs a Go binary, that CSS/HTML need a Node one,
+            // or that XAML needs a WPF-hosted Roslyn server - that's exactly the kind of
+            // per-language knowledge the "IDE semantic service layer" is supposed to stay
+            // ignorant of (see doc/technotes/language-services.md's layering rules), and it means
+            // disabling e.g. XamlBinding actually stops Base from even trying to resolve
+            // wpf-xaml-ls, not just from registering the extension mapping.
             return registry;
         }
 
@@ -151,27 +128,6 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
             }
 
             return null;
-        }
-
-        /// <summary>
-        /// Finds the built wpf-xaml-ls.dll under XamlLanguageServer.Wpf's bin output, preferring
-        /// Release over Debug and the most recently written match within a configuration (multiple
-        /// TFM/RID subfolders are possible depending on how it was last built). Returns null if it
-        /// has never been built - see the call site's comment for why that means leaving ".xaml"
-        /// unregistered rather than falling back to "dotnet run".
-        /// </summary>
-        static string TryFindWpfLanguageServerDll(string vscodeWpfRoot)
-        {
-            var binRoot = Path.Combine(vscodeWpfRoot, "src", "XamlLanguageServer.Wpf", "bin");
-            if (!Directory.Exists(binRoot))
-                return null;
-
-            return new[] { "Release", "Debug" }
-                .Select(configuration => Path.Combine(binRoot, configuration))
-                .Where(Directory.Exists)
-                .SelectMany(configurationDirectory => Directory.GetFiles(configurationDirectory, "wpf-xaml-ls.dll", SearchOption.AllDirectories))
-                .OrderByDescending(File.GetLastWriteTimeUtc)
-                .FirstOrDefault();
         }
 
         static string NormalizeExtension(string extension)

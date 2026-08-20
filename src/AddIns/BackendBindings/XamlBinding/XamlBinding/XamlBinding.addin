@@ -10,9 +10,11 @@
 		Its only job is highlighting/file-type plumbing (AvalonEdit's built-in XML highlighter
 		already covers .xaml - see XML-Mode.xshd). Code completion, outline, go-to-definition
 		and any richer semantic highlighting for .xaml come from the XAML language server
-		(externals/vscode-wpf's XamlLanguageServer.Wpf, registered in LspServerRegistry) via the
-		generic LSP plumbing - see the "XAML-LSP" CodeCompletionBinding registered in
-		AvalonEdit.AddIn.addin, not from this addin.
+		(externals/vscode-wpf's XamlLanguageServer.Wpf) via the generic LSP plumbing - see the
+		"XAML-LSP" CodeCompletionBinding registered below, and RegisterXamlLanguageServiceCommand
+		(this addin's own Autostart command, mirroring TypeScriptBinding/CssBinding/HtmlBinding)
+		which resolves wpf-xaml-ls.dll and registers it with LspServiceManager. Base's
+		LspServerRegistry has no XAML-specific knowledge at all.
 	-->
 
 	<Manifest>

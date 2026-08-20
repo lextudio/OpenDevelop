@@ -66,6 +66,7 @@ populate_repo_payload() {
     "DisplayBindings/WinUIXamlDesigner/UnoHost"
     "DisplayBindings/FormsDesigner/Host"
     "Debugger"
+    "LanguageServices/XamlLanguageServer.Wpf"
   )
   local keep_args=()
   for folder in "${keep_addin_folders[@]}"; do

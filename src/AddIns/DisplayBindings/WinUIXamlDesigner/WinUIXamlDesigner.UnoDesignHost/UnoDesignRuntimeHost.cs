@@ -578,10 +578,13 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		}
 		// The theme combo lists exactly the themes the app carries (its
 		// ThemeDictionaries keys); the default Light/Dark pair stays when the app has none.
+		// surface is a WPF DispatcherObject and this method runs on the async continuation
+		// thread (after the awaited RPC below), so marshal the combo update onto the UI
+		// dispatcher like every other surface mutation in this file.
 		var themes = AppResourceBuilder.GetThemeNames(xaml);
 		if (themes.Count > 0)
 		{
-			surface.SetDesignThemes(themes);
+			dispatcher.BeginInvoke(() => surface.SetDesignThemes(themes));
 		}
 		try
 		{

@@ -2813,6 +2813,31 @@ public sealed class AddInTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Editor_Exposes_VsTextBuffer_Over_LiveDocument()
+    {
+        // Milestone 5 (vs-editor-api.md section 67): the AvalonEdit editor's CodeEditor registers
+        // its TextDocument as a VS ITextBuffer in the document service container, so
+        // editor.GetService<ITextBuffer>() resolves a live wrapper over the exact same document.
+        // Verified through the DevFlow action that reads it out of the running IDE.
+        var openedSolution = await _app.ReopenSolutionAsync(_app.WinFormsSampleSolutionPath);
+        Assert.True(openedSolution.GetProperty("success").GetBoolean(), openedSolution.ToString());
+        // Program.cs is a plain .cs in the WinForms sample - not a designable form, so the
+        // AvalonEdit text editor (not the Forms designer) hosts it.
+        var csPath = Path.Combine(Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!, "Program.cs");
+        var opened = await _app.InvokeAsync("od.open-file", csPath);
+        Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+
+        var result = await _app.InvokeAsync("od.file.query-vs-text-buffer", csPath);
+        Assert.True(result.GetProperty("success").GetBoolean(), result.ToString());
+        Assert.Equal("CSharp", result.GetProperty("contentType").GetString());
+        // The initial file load is itself one buffer edit, so the version is >= 1, not 0.
+        Assert.True(result.GetProperty("version").GetInt32() >= 1, result.ToString());
+        var length = result.GetProperty("length").GetInt32();
+        Assert.True(length > 0, "The VS buffer should mirror the file's text length.");
+        Assert.Equal(length, result.GetProperty("text").GetString()!.Length);
+    }
+
+    [Fact]
     public async Task WinUIXamlDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement()
     {
         // Drag a selected element's bottom-right resize handle and assert the shared-canvas

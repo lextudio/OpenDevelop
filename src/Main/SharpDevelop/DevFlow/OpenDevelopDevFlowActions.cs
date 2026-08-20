@@ -1381,6 +1381,25 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return null;
 		}
 
+		[DevFlowAction("od.file.query-vs-text-buffer", Description = "Report the VS editor ITextBuffer exposed for an open file's primary AvalonEdit editor (registered by CodeEditor into the document's service container) - verifies the vs-editor-api integration point: editor.GetService<ITextBuffer>() returns a live wrapper over the same TextDocument")]
+		public static string QueryVsTextBuffer(string path)
+		{
+			var editor = ActivateTextEditorView(path);
+			if (editor == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No text editor for " + path });
+			var buffer = editor.GetService(typeof(Microsoft.VisualStudio.Text.ITextBuffer)) as Microsoft.VisualStudio.Text.ITextBuffer;
+			if (buffer == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No VS ITextBuffer exposed for " + path });
+			var snapshot = buffer.CurrentSnapshot;
+			return JsonSerializer.Serialize(new {
+				success = true,
+				text = snapshot.GetText(),
+				length = snapshot.Length,
+				version = snapshot.Version.VersionNumber,
+				contentType = buffer.ContentType.TypeName
+			});
+		}
+
 		[DevFlowAction("od.file.set-caret-offset", Description = "Set an open file's primary text editor caret to a specific document offset - used to control exactly where AvalonEditViewContent.TextArea_Drop's XAML-toolbox drop (which inserts at the CURRENT caret offset, not the mouse drop point) will insert markup, since a synthetic drag can land the mouse anywhere over the TextArea without moving the caret itself")]
 		public static string SetCaretOffset(string path, int offset)
 		{

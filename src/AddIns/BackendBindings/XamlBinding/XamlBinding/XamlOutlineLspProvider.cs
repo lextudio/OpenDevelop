@@ -18,7 +18,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -35,41 +34,23 @@ namespace ICSharpCode.XamlBinding
 	/// </summary>
 	static class XamlOutlineLspProvider
 	{
-		static readonly LspServerRegistry ServerRegistry = LspServerRegistry.CreateDefault();
-		static readonly Dictionary<string, LspLanguageService> ServicesByExtension = new Dictionary<string, LspLanguageService>(StringComparer.OrdinalIgnoreCase);
-
 		public static async Task<IReadOnlyList<DocumentOutlineNode>> GetOutlineAsync(ITextEditor editor, CancellationToken cancellationToken)
 		{
 			if (editor.FileName == null)
 				return Array.Empty<DocumentOutlineNode>();
 
-			var service = GetService(editor.FileName);
+			// LspServiceManager.GetService already caches per (languageId, workspace root) and
+			// resolves the workspace root correctly (walks up from the file for a *.sln*/*.*proj
+			// marker) - no need for a second private cache/registry here, and no risk of drifting
+			// out of sync with whatever XamlBinding's RegisterXamlLanguageServiceCommand
+			// registered for ".xaml" at addin startup.
+			var service = LspServiceManager.GetService(editor.FileName);
 			if (service == null)
 				return Array.Empty<DocumentOutlineNode>();
 
 			var documentId = new DocumentId(editor.FileName);
 			await service.UpsertDocumentAsync(documentId, editor.Document.Text, cancellationToken).ConfigureAwait(false);
 			return await service.GetDocumentOutlineAsync(documentId, cancellationToken).ConfigureAwait(false);
-		}
-
-		static LspLanguageService GetService(string fileName)
-		{
-			string extension = Path.GetExtension(fileName);
-			if (!ServerRegistry.TryGetLaunchSpec(extension, out var spec))
-				return null;
-
-			if (!ServicesByExtension.TryGetValue(extension, out var service)) {
-				string rootPath = Path.GetDirectoryName(fileName);
-				if (string.IsNullOrEmpty(rootPath))
-					rootPath = Environment.CurrentDirectory;
-				if (!rootPath.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal))
-					rootPath += Path.DirectorySeparatorChar;
-
-				service = new LspLanguageService(spec, new Uri(rootPath).AbsoluteUri);
-				ServicesByExtension[extension] = service;
-			}
-
-			return service;
 		}
 	}
 }

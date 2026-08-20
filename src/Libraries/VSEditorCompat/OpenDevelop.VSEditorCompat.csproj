@@ -1,0 +1,36 @@
+<Project Sdk="LibreWPF.Sdk">
+  <!-- Compatibility layer implementing the public Microsoft Visual Studio Editor Platform
+       text model over AvalonEdit (see doc/technotes/vs-editor-api.md). This first PR is a pure
+       text-model spike: no view, no tagging, no classification, no MEF, no projection.
+
+       Design rule (from vs-editor-api.md section 7): AvalonEdit must NOT reference
+       Microsoft.VisualStudio.Text.*; the dependency points only this way:
+
+           Microsoft.VisualStudio.Text.*  &lt;-  OpenDevelop.VSEditorCompat  -&gt;  ICSharpCode.AvalonEdit
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>LeXtudio.OpenDevelop.VSEditor</RootNamespace>
+    <AssemblyName>OpenDevelop.VSEditorCompat</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <SignAssembly>false</SignAssembly>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <VSEditorApiVersion>17.14.249</VSEditorApiVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The single pinned VS editor contract generation - do not mix versions across the
+         Microsoft.VisualStudio.Text.* family (vs-editor-api.md §38). Text.UI carries the
+         non-WPF view contracts (ITextView/ITextCaret/ITextSelection/IViewScroller) - the
+         WPF-only UI.Wpf package stays out (sections 5.1 and 36). -->
+    <PackageReference Include="Microsoft.VisualStudio.Text.Data" Version="$(VSEditorApiVersion)" />
+    <PackageReference Include="Microsoft.VisualStudio.Text.UI" Version="$(VSEditorApiVersion)" />
+    <PackageReference Include="Microsoft.VisualStudio.Text.Logic" Version="$(VSEditorApiVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AvalonEdit\ICSharpCode.AvalonEdit\ICSharpCode.AvalonEdit.csproj" Private="false" />
+  </ItemGroup>
+</Project>

@@ -42,6 +42,8 @@ using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor.Bookmarks;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Editor.CodeCompletion;
+using LeXtudio.OpenDevelop.VSEditor;
+using Microsoft.VisualStudio.Text;
 using ICSharpCode.SharpDevelop.Parser;
 using ICSharpCode.SharpDevelop.Widgets.MyersDiff;
 using ICSharpCode.SharpDevelop.Workbench;
@@ -64,6 +66,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		readonly IconBarManager iconBarManager;
 		readonly TextMarkerService textMarkerService;
 		readonly IChangeWatcher changeWatcher;
+		readonly AvalonTextBuffer vsTextBuffer;
 		ErrorPainter errorPainter;
 		DocumentColorizingTransformer semanticColorizer;
 		OpenLensRenderer openLensRenderer;
@@ -121,6 +124,8 @@ namespace ICSharpCode.AvalonEdit.AddIn
 					fileName = value;
 					this.document.FileName = fileName;
 					
+					vsTextBuffer.ChangeContentType(ContentTypeFor(fileName), editTag: null);
+					
 					primaryTextEditorAdapter.FileNameChanged();
 					
 					if (this.errorPainter == null) {
@@ -134,6 +139,28 @@ namespace ICSharpCode.AvalonEdit.AddIn
 					UpdateSyntaxHighlighting(value);
 					FetchParseInformation();
 				}
+			}
+		}
+		
+		/// <summary>Maps a file extension to the VS editor content type exposed on the buffer
+		/// (vs-editor-api.md section 19) - a small stand-in until a fuller language-binding
+		/// mapping lands.</summary>
+		static Microsoft.VisualStudio.Utilities.IContentType ContentTypeFor(FileName fileName)
+		{
+			switch (fileName.GetExtension().ToLowerInvariant()) {
+				case ".cs":
+					return AvalonContentTypeRegistry.CSharp;
+				case ".vb":
+					return AvalonContentTypeRegistry.Basic;
+				case ".fs":
+				case ".fsx":
+					return AvalonContentTypeRegistry.FSharp;
+				case ".xaml":
+					return AvalonContentTypeRegistry.Xaml;
+				case ".xml":
+					return AvalonContentTypeRegistry.Xml;
+				default:
+					return AvalonContentTypeRegistry.Text;
 			}
 		}
 		
@@ -196,6 +223,14 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			iconBarManager = new IconBarManager();
 			documentServiceContainer.AddService(typeof(IBookmarkMargin), iconBarManager);
 			
+			// VS editor API compatibility (vs-editor-api.md section 28-29): expose this document
+			// as an ITextBuffer through the standard service lookup chain - TextArea.GetService
+			// falls back to TextView.GetService, which falls back to the document's service
+			// container - so an extension can write editor.GetService<ITextBuffer>() and reach the
+			// exact buffer wrapping this document. One buffer per document, shared by all views.
+			vsTextBuffer = AvalonTextBufferRegistry.GetOrCreate(document, AvalonContentTypeRegistry.Text);
+			documentServiceContainer.AddService(typeof(ITextBuffer), vsTextBuffer);
+			
 			if (CodeEditorOptions.Instance.EnableChangeMarkerMargin) {
 				changeWatcher = new DefaultChangeWatcher();
 			}
@@ -250,6 +285,12 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			codeEditorView.Document = document;
 			TextView textView = codeEditorView.TextArea.TextView;
 			textView.Services.AddService(typeof(ITextEditor), adapter);
+			// VS editor API compatibility (vs-editor-api.md section 28-29, Milestone 6): one
+			// AvalonTextView per split-view TextArea, registered on that view's own service
+			// container (not the document's) since ITextView is inherently per-view, unlike the
+			// per-document ITextBuffer registered above in the constructor.
+			textView.Services.AddService(typeof(Microsoft.VisualStudio.Text.Editor.ITextView),
+				AvalonTextViewRegistry.GetOrCreate(vsTextBuffer, codeEditorView.TextArea));
 			textView.Services.AddService(typeof(CodeEditor), this);
 			textView.Services.AddService(typeof(ICSharpCode.SharpDevelop.Gui.IEditable), this);
 			textView.Services.AddService(typeof(ICSharpCode.SharpDevelop.Gui.IPositionable), this);
@@ -447,7 +488,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			if (textArea == null)
 				return;
 			
-			Selection selection = textArea.Selection;
+			var selection = textArea.Selection;
 			if (selection is RectangleSelection) {
 				int rows = Math.Abs(selection.EndPosition.Line - selection.StartPosition.Line) + 1;
 				int cols = Math.Abs(selection.EndPosition.VisualColumn - selection.StartPosition.VisualColumn);

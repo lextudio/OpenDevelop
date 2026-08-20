@@ -13,6 +13,12 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\Libraries\AvalonEdit\ICSharpCode.AvalonEdit\ICSharpCode.AvalonEdit.csproj" Private="false" />
+    <!-- Private="false": OpenDevelop.VSEditorCompat (and its Microsoft.VisualStudio.Text.*
+         contract packages) are provided by the SharpDevelop app project so there is exactly
+         one loaded copy - the CodeEditor registers its AvalonTextBuffer into the document
+         service container, and the DevFlow actions / extensions resolve the same buffer by
+         interface identity. -->
+    <ProjectReference Include="..\..\..\Libraries\VSEditorCompat\OpenDevelop.VSEditorCompat.csproj" Private="false" />
     <ProjectReference Include="..\..\..\Libraries\ICSharpCode.TypeSystem.Abstractions\ICSharpCode.TypeSystem.Abstractions.csproj" Private="false" />
     <ProjectReference Include="..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
     <ProjectReference Include="..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
@@ -35,6 +41,16 @@
          also hard-references ICSharpCode.WinUIXamlDesigner.WinUIXamlToolbox.Instance for a WinUI/
          Uno .xaml file's Source tab. -->
     <ProjectReference Include="..\WinUIXamlDesigner\WinUIXamlDesigner.AddIn\ICSharpCode.WinUIXamlDesigner.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- VSEditorViewDevFlowActions.cs: lets tests/OpenDevelop.IntegrationTests verify real
+         ITextViewLine geometry (vs-editor-api.md sections 22/64) against the app's actual running
+         Dispatcher - a bare in-process WPF Window/UpdateLayout() in a unit test process hangs on
+         this repo's LibreWPF/macOS stack (no native message loop), so [DevFlowUIThread] is the
+         only way to force real layout deterministically. Same conditional dev-inner-loop pattern
+         as XamlBinding.csproj. -->
+    <ProjectReference Include="..\..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj" Private="False" Condition="'$(Configuration)' == 'Debug' And Exists('..\..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj')" />
+    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" Version="0.2.2" Condition="'$(Configuration)' == 'Debug' And !Exists('..\..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj')" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />

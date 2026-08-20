@@ -145,5 +145,6 @@
   <Project Path="externals/cps/src/ProjectSystem/Microsoft.VisualStudio.ProjectSystem.Shim.csproj" />
   <Project Path="externals/cps/src/ProjectSystemManaged/Microsoft.VisualStudio.ProjectSystem.Managed.csproj" />
   <Project Path="externals/ilspy/ICSharpCode.Decompiler/ICSharpCode.Decompiler.csproj" />
+  <Project Path="externals/vscode-wpf/src/XamlLanguageServer.Wpf/XamlLanguageServer.Wpf.csproj" />
   <Project Path="src/Main/SharpDevelop/SharpDevelop.csproj" />
 </Solution>
