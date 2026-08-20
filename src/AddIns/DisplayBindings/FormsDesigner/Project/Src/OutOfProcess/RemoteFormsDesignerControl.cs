@@ -35,6 +35,13 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			horizontalAlignment: HorizontalAlignment.Left, verticalAlignment: VerticalAlignment.Top);
 		readonly Canvas adorners;
 		readonly Canvas guides;
+		// Drag-snap alignment guides (see SnapGuideCalculator): a vertical or horizontal line
+		// shown while a component is being dragged near another component's edge/centre,
+		// matching UnoDesignSurfaceControl's own guide overlay/rendering. Kept separate from
+		// `guides` (which UpdateDesignGuides clears wholesale on every viewport/selection
+		// change) so a live drag's guides aren't wiped by an unrelated redraw.
+		readonly Canvas snapGuideOverlay = new Canvas { IsHitTestVisible = false };
+		readonly List<Rectangle> snapGuides = new();
 		readonly SelectionAdornerLayer adornerLayer = new(Array.Empty<string>(), Brushes.DodgerBlue, showLabel: false);
 		readonly Rectangle marqueeBorder;
 		readonly Thumb moveThumb;
@@ -53,6 +60,8 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		DesignerComponentInfo selectedComponent;
 		double dragX;
 		double dragY;
+		double dragStartX;
+		double dragStartY;
 		double dragWidth;
 		double dragHeight;
 		int selectedLocalX;
@@ -105,6 +114,9 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		{
 			this.client = client;
 			Focusable = true;
+			// WinForms has no design-time theme concept - the shared toolbar's theme control
+			// is meaningless here and stays hidden.
+			ShowTheme = false;
 			// The shared DesignerCanvas shell provides the dotted empty-canvas edge pattern and
 			// the common zoom toolbar; the design surface is transparent so the edge pattern
 			// shows around the rendered form bitmap.
@@ -112,6 +124,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			designSurface.Children.Add(framePresenter.Visual);
 			guides = new Canvas { IsHitTestVisible = false };
 			designSurface.Children.Add(guides);
+			designSurface.Children.Add(snapGuideOverlay);
 			adorners = new Canvas { IsHitTestVisible = true };
 			marqueeBorder = new Rectangle {
 				Stroke = Brushes.DodgerBlue, StrokeThickness = 1,
@@ -692,10 +705,13 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			resizingDrag = ReferenceEquals(sender, resizeThumb);
 			dragX = selectedComponent.SurfaceX;
 			dragY = selectedComponent.SurfaceY;
+			dragStartX = dragX;
+			dragStartY = dragY;
 			selectedLocalX = selectedComponent.X;
 			selectedLocalY = selectedComponent.Y;
 			dragWidth = selectedComponent.Width;
 			dragHeight = selectedComponent.Height;
+			SetSnapGuides(Array.Empty<(bool, double)>());
 		}
 
 		void OnMoveDragDelta(object sender, DragDeltaEventArgs e)
@@ -703,9 +719,73 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			// DragDelta reports surface pixels; convert to design units (the adorner math and
 			// the child's coordinates are design-space).
 			var scale = viewport.Scale;
-			dragX = Math.Max(0, dragX + e.HorizontalChange / scale);
-			dragY = Math.Max(0, dragY + e.VerticalChange / scale);
+			var proposedX = Math.Max(0, dragX + e.HorizontalChange / scale);
+			var proposedY = Math.Max(0, dragY + e.VerticalChange / scale);
+			// Snap the dragged component's edges/centre to nearby siblings' edges/centres and
+			// show alignment guides while dragging (move only - resizes are not snapped),
+			// matching UnoDesignSurfaceControl's own ApplySnap behavior.
+			var (snapDx, snapDy, guideLines) = SnapGuideCalculator.ApplySnap(
+				(dragStartX, dragStartY, dragWidth, dragHeight),
+				proposedX - dragStartX, proposedY - dragStartY, SiblingBounds());
+			dragX = dragStartX + snapDx;
+			dragY = dragStartY + snapDy;
+			SetSnapGuides(guideLines);
 			PositionAdorners();
+		}
+
+		/// <summary>Every other component's design-space bounds, for <see cref="SnapGuideCalculator"/>
+		/// to snap the dragged component against.</summary>
+		IEnumerable<(double X, double Y, double Width, double Height)> SiblingBounds()
+		{
+			if (state?.Components == null || selectedComponent == null)
+				yield break;
+			foreach (var component in state.Components)
+			{
+				if (component.Name == selectedComponent.Name)
+					continue;
+				yield return (component.SurfaceX, component.SurfaceY, component.Width, component.Height);
+			}
+		}
+
+		/// <summary>Shows snap alignment guides at the given design positions
+		/// ((isVertical, position) pairs); empty clears them.</summary>
+		void SetSnapGuides(IReadOnlyList<(bool IsVertical, double Position)> guidesToShow)
+		{
+			foreach (var guide in snapGuides)
+				snapGuideOverlay.Children.Remove(guide);
+			snapGuides.Clear();
+			if (state?.Render == null || guidesToShow.Count == 0)
+				return;
+			var dpi = Math.Max(1, state.Render.Dpi);
+			var designWidth = state.Render.Width / dpi;
+			var designHeight = state.Render.Height / dpi;
+			var (x0, y0) = viewport.DesignToSurface(0, 0);
+			var (x1, y1) = viewport.DesignToSurface(designWidth, designHeight);
+			foreach (var (isVertical, position) in guidesToShow)
+			{
+				var guide = new Rectangle {
+					Fill = new SolidColorBrush(Color.FromRgb(0xE8, 0x5D, 0x2A)),
+					IsHitTestVisible = false
+				};
+				if (isVertical)
+				{
+					var (px, _) = viewport.DesignToSurface(position, 0);
+					Canvas.SetLeft(guide, px);
+					Canvas.SetTop(guide, y0);
+					guide.Width = 1;
+					guide.Height = Math.Max(1, y1 - y0);
+				}
+				else
+				{
+					var (_, py) = viewport.DesignToSurface(0, position);
+					Canvas.SetLeft(guide, x0);
+					Canvas.SetTop(guide, py);
+					guide.Width = Math.Max(1, x1 - x0);
+					guide.Height = 1;
+				}
+				snapGuides.Add(guide);
+				snapGuideOverlay.Children.Add(guide);
+			}
 		}
 
 		void OnResizeDragDelta(object sender, DragDeltaEventArgs e)
@@ -718,6 +798,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 
 		void OnDragCompleted(object sender, DragCompletedEventArgs e)
 		{
+			SetSnapGuides(Array.Empty<(bool, double)>());
 			if (selectedComponent == null || e.Canceled) return;
 			if (!resizingDrag) {
 				SelectionMoveRequested?.Invoke(this, new RemoteSelectionMoveEventArgs(

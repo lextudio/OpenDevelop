@@ -549,6 +549,27 @@ public static class WinUIXamlDesignerDevFlowActions
 		return JsonSerializer.Serialize(new { success = true, gridlines = show.Value });
 	}
 
+	[DevFlowAction("od.winui-designer.tab-order",
+		Description = "Show or hide the tab-order badge overlay (each element's TabIndex); pass on/off or omit to query the current state")]
+	public static string TabOrder(string command = "query")
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		if (command == "query")
+			return JsonSerializer.Serialize(new { success = true, showTabOrder = view.ShowTabOrder });
+		var show = command switch
+		{
+			"on" or "true" or "1" => true,
+			"off" or "false" or "0" => false,
+			_ => (bool?)null
+		};
+		if (show is null)
+			return Failure("Expected on/off/true/false or 'query', got: " + command);
+		view.SetTabOrderMode(show.Value);
+		return JsonSerializer.Serialize(new { success = true, showTabOrder = show.Value });
+	}
+
 	[DevFlowAction("od.winui-designer.multi-select",
 		Description = "Set the design-surface selection to the named elements (first is primary), for align/distribute/match-size operations")]
 	public static string MultiSelect(string names)

@@ -216,6 +216,8 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	}
 	public bool Gridlines => previewHost.Gridlines;
 	public void SetGridlines(bool show) => previewHost.SetGridlines(show);
+	public bool ShowTabOrder => previewHost.ShowTabOrder;
+	public void SetTabOrderMode(bool show) => previewHost.SetTabOrderMode(show);
 
 	/// <summary>True while the runtime's child process is alive (the Uno design host).</summary>
 	public bool IsChildProcessAlive => previewHost.IsChildProcessAlive;

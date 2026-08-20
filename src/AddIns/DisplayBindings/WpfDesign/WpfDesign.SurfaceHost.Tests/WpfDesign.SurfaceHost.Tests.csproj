@@ -1,6 +1,8 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="LibreWPF.Sdk">
+
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
     <OutputType>Exe</OutputType>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
@@ -12,6 +14,10 @@
          MSBuild's default **/*.cs glob here would also compile its sources into this project. -->
     <Compile Remove="Fixtures\**\*.cs" />
     <Compile Remove="Fixtures\**\obj\**\*.cs" />
+    <!-- The fixture projects embed their own themes/*.xaml; never compile any of them as
+         WPF Pages here (WinFX's default **/*.xaml glob would otherwise pick up fixtures'
+         output directories too). -->
+    <Page Remove="Fixtures\**\*.xaml" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="xunit.v3" Version="3.2.2" />
@@ -20,5 +26,10 @@
     <!-- Build-only: proves type resolution happens in the child, never in this test process
          (Phase 1 slice, see wpf-designer.md). Never add a using/typeof for this assembly here. -->
     <ProjectReference Include="Fixtures\CustomControlFixture\CustomControlFixture.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" />
+    <!-- Unlike CustomControlFixture above, this one IS referenced normally (not build-only):
+         the test needs typeof(WpfThemeFixture.FixtureMarker).Assembly.Location to pass this
+         fixture's own compiled path as ProjectAssemblyPath, proving embedded themes/*.xaml
+         enumeration end to end against a real assembly, not an inline XAML string. -->
+    <ProjectReference Include="Fixtures\WpfThemeFixture\WpfThemeFixture.csproj" />
   </ItemGroup>
 </Project>

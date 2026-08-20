@@ -1007,6 +1007,17 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				nodeInfo.Y = bounds.Y;
 				nodeInfo.Width = bounds.Width;
 				nodeInfo.Height = bounds.Height;
+				// Only TabIndex is populated here (not the WPF host's full property reflection) -
+				// this designer's Properties pad is driven off WinUIXamlElementPropertyAdapter
+				// reading the host-owned XAML document directly, not this per-node list; TabIndex
+				// is the one value the tab-order badge overlay needs that isn't otherwise
+				// available without selecting the element first.
+				if (fe is Control control)
+				{
+					nodeInfo.Properties.Add(new DesignerPropertyInfo {
+						Name = "TabIndex", Value = control.TabIndex.ToString(CultureInfo.InvariantCulture)
+					});
+				}
 			}
 			else if (node is UIElement ue)
 			{

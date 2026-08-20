@@ -85,11 +85,28 @@ public sealed class WpfSurfaceHostClient : DesignerHostProcessClient, IDesignHos
 	public Task<DesignerSessionState> SetBoundsAsync(long baseVersion, string elementId, double x, double y, double width, double height, CancellationToken cancellationToken = default)
 		=> InvokeAsync<DesignerSessionState>("design/set-bounds", new { baseVersion, elementId, x, y, width, height }, cancellationToken);
 
+	/// <summary>Grid row/column drag guides (WPF-specific - not part of <see cref="IDesignHostClient"/>,
+	/// since Uno/WinUI implements the same user-facing feature off its own live XAML text editor
+	/// instead, and WinForms has no equivalent Grid concept at all). Read-only; see
+	/// <see cref="SetGridTrackSizeAsync"/> for committing a completed drag.</summary>
+	public Task<DesignerGridGuides> QueryGridGuidesAsync(long baseVersion, string elementId, CancellationToken cancellationToken = default)
+		=> InvokeAsync<DesignerGridGuides>("design/query-grid-guides", new { baseVersion, elementId }, cancellationToken);
+
+	/// <summary>Commits one Grid row's/column's new pixel size (a completed divider drag).</summary>
+	public Task<DesignerSessionState> SetGridTrackSizeAsync(long baseVersion, string elementId, bool isRow, int index, double pixels, CancellationToken cancellationToken = default)
+		=> InvokeAsync<DesignerSessionState>("design/set-grid-track-size", new { baseVersion, elementId, isRow, index, pixels }, cancellationToken);
+
 	public Task<DesignerSessionState> DeleteElementsAsync(long baseVersion, string[] elementIds, CancellationToken cancellationToken = default)
 		=> InvokeAsync<DesignerSessionState>("design/delete-elements", new { baseVersion, elementIds }, cancellationToken);
 
 	public Task<DesignerSessionState> RenameAsync(long baseVersion, string elementId, string newName, CancellationToken cancellationToken = default)
 		=> InvokeAsync<DesignerSessionState>("design/rename", new { baseVersion, elementId, newName }, cancellationToken);
+
+	/// <summary>Switches the design-time theme by name - only has an effect for a project that
+	/// embeds <c>themes/*.xaml</c> resources; the response's <c>DesignThemes</c> tells the caller
+	/// which themes the project has at all, so the IDE can show exactly those in its combo.</summary>
+	public Task<DesignerSessionState> SetThemeAsync(long baseVersion, string theme, CancellationToken cancellationToken = default)
+		=> InvokeAsync<DesignerSessionState>("design/theme", new { baseVersion, theme }, cancellationToken);
 
 	public Task<DesignerHitTestResult> HitTestAsync(long baseVersion, double x, double y, CancellationToken cancellationToken = default)
 		=> InvokeAsync<DesignerHitTestResult>("design/hit-test", new { sessionId = SessionId, documentId = DocumentId, baseVersion, x, y }, cancellationToken);

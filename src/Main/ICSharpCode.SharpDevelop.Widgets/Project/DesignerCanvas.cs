@@ -1,13 +1,19 @@
 // Shared visual-designer canvas shell. Every designer backend (WinForms, WPF, WinUI/Uno) hosts
 // its rendered design surface in this control so the surrounding chrome - the toolbar (zoom,
-// design-size preset, fit, gridlines, Light/Dark design theme), the empty-canvas edge pattern,
-// and the toolbar theme - looks and behaves identically across all three. The backend-specific
-// surface (frame + selection + gestures) goes into <see cref="ContentHost"/>.
+// design-size preset, fit, gridlines, design theme), the empty-canvas edge pattern, and the
+// toolbar theme - looks and behaves identically across all three. The backend-specific surface
+// (frame + selection + gestures) goes into <see cref="ContentHost"/>.
 //
 // Two themes are in play:
 //  - the IDE theme (ApplyIdeTheme) drives the empty-canvas edge color around the design bitmap;
 //  - the design theme (ApplyDesignTheme) drives the toolbar chrome (the designer can render its
 //    page Light or Dark independently of the IDE).
+//
+// The design theme is chosen from a combo box that starts with the universal Light/Dark pair
+// and can be replaced by the backend with the themes the design actually carries - for WinUI/Uno
+// that is the set of ResourceDictionary.ThemeDictionaries keys hoisted from the app's App.xaml
+// (see AppResourceBuilder), so the designer's theme list always mirrors the app under design
+// instead of hardcoding two entries.
 
 using System;
 using System.Collections.Generic;
@@ -26,20 +32,28 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		readonly StackPanel toolbar = new StackPanel { Orientation = Orientation.Horizontal };
 		readonly Button fitButton;
 		readonly ToggleButton gridButton;
-		readonly ToggleButton themeButton;
+		readonly ComboBox themeCombo;
 		readonly ToggleButton namesButton;
+		bool syncingTheme;
 
 		public DesignerCanvas()
 		{
 			fitButton = CreateIconButton("Icons.16x16.FitToScreen", "Fit the design to the surface");
 			gridButton = CreateIconToggle("Icons.16x16.GridGuide", "Show design-space gridlines");
-			themeButton = CreateIconToggle("Icons.16x16.DarkTheme", "Switch the design surface between Light and Dark theme");
+			themeCombo = new ComboBox {
+				Width = 84,
+				Margin = new Thickness(0, 2, 4, 2),
+				ToolTip = "Switch the design surface theme"
+			};
+			themeCombo.Items.Add("Light");
+			themeCombo.Items.Add("Dark");
+			themeCombo.SelectedIndex = 0;
 			namesButton = CreateIconToggle("Icons.16x16.DisplayName", "Show control names on the selection outline");
 
 			toolbar.Children.Add(ZoomCombo);
 			toolbar.Children.Add(fitButton);
 			toolbar.Children.Add(gridButton);
-			toolbar.Children.Add(themeButton);
+			toolbar.Children.Add(themeCombo);
 			toolbar.Children.Add(namesButton);
 			// The design-size preset combo sits on its own at the far right.
 			toolbar.Children.Add(DesignSizeCombo);
@@ -65,7 +79,12 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			// reported: SetGridlines(true) WAS running, the button just never lit up to show it.
 			gridButton.Checked += (_, _) => { UpdateButtonHighlight(gridButton); GridRequested?.Invoke(this, true); };
 			gridButton.Unchecked += (_, _) => { UpdateButtonHighlight(gridButton); GridRequested?.Invoke(this, false); };
-			themeButton.Click += (_, _) => { UpdateButtonHighlight(themeButton); ThemeRequested?.Invoke(this, themeButton.IsChecked == true); };
+			themeCombo.SelectionChanged += (_, _) => {
+				if (syncingTheme)
+					return;
+				if (themeCombo.SelectedItem is string theme)
+					ThemeRequested?.Invoke(this, theme);
+			};
 			namesButton.Checked += (_, _) => { UpdateButtonHighlight(namesButton); ShowNamesRequested?.Invoke(this, true); };
 			namesButton.Unchecked += (_, _) => { UpdateButtonHighlight(namesButton); ShowNamesRequested?.Invoke(this, false); };
 
@@ -86,7 +105,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			DesignSizeCombo.SetResourceReference(Control.ForegroundProperty, "Foreground");
 			fitButton.SetResourceReference(Control.ForegroundProperty, "Foreground");
 			gridButton.SetResourceReference(Control.ForegroundProperty, "Foreground");
-			themeButton.SetResourceReference(Control.ForegroundProperty, "Foreground");
+			themeCombo.SetResourceReference(Control.ForegroundProperty, "Foreground");
 			namesButton.SetResourceReference(Control.ForegroundProperty, "Foreground");
 			ApplyDesignTheme(false);
 			// The empty-canvas edge follows the IDE theme via the semantic theme's "EdgePattern"
@@ -112,14 +131,49 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		public bool ShowDesignSize { get { return DesignSizeCombo.Visibility == Visibility.Visible; } set { DesignSizeCombo.Visibility = value ? Visibility.Visible : Visibility.Collapsed; } }
 		public bool ShowFit { get { return fitButton.Visibility == Visibility.Visible; } set { fitButton.Visibility = value ? Visibility.Visible : Visibility.Collapsed; } }
 		public bool ShowGrid { get { return gridButton.Visibility == Visibility.Visible; } set { gridButton.Visibility = value ? Visibility.Visible : Visibility.Collapsed; } }
-		public bool ShowTheme { get { return themeButton.Visibility == Visibility.Visible; } set { themeButton.Visibility = value ? Visibility.Visible : Visibility.Collapsed; } }
+		public bool ShowTheme { get { return themeCombo.Visibility == Visibility.Visible; } set { themeCombo.Visibility = value ? Visibility.Visible : Visibility.Collapsed; } }
 		public bool ShowNames { get { return namesButton.Visibility == Visibility.Visible; } set { namesButton.Visibility = value ? Visibility.Visible : Visibility.Collapsed; } }
 
 		/// <summary>Gridlines toggle state (checked = show grid).</summary>
 		public bool IsGridEnabled { get { return gridButton.IsChecked == true; } set { gridButton.IsChecked = value; } }
 
-		/// <summary>Design-theme toggle state (checked = dark design).</summary>
-		public bool IsDarkTheme { get { return themeButton.IsChecked == true; } set { themeButton.IsChecked = value; } }
+		/// <summary>Currently selected design-theme name.</summary>
+		public string DesignTheme
+		{
+			get => themeCombo.SelectedItem as string ?? "Light";
+			set
+			{
+				syncingTheme = true;
+				var index = themeCombo.Items.IndexOf(value);
+				themeCombo.SelectedIndex = index >= 0 ? index : 0;
+				syncingTheme = false;
+			}
+		}
+
+		/// <summary>Design-theme state as a boolean: true = Dark. Read for state inspection;
+		/// write only to sync the combo from outside (does not raise <see cref="ThemeRequested"/>).</summary>
+		public bool IsDarkTheme
+		{
+			get => string.Equals(DesignTheme, "Dark", StringComparison.OrdinalIgnoreCase);
+			set => DesignTheme = value ? "Dark" : "Light";
+		}
+
+		/// <summary>Replaces the theme list with the themes the design actually carries (for
+		/// WinUI/Uno: the app's ResourceDictionary.ThemeDictionaries keys). Keeps the current
+		/// selection when the new list still contains it.</summary>
+		public void SetDesignThemes(IEnumerable<string> themes)
+		{
+			var current = DesignTheme;
+			syncingTheme = true;
+			themeCombo.Items.Clear();
+			foreach (var theme in themes)
+			{
+				themeCombo.Items.Add(theme);
+			}
+			var index = themeCombo.Items.IndexOf(current);
+			themeCombo.SelectedIndex = index >= 0 ? index : 0;
+			syncingTheme = false;
+		}
 
 		/// <summary>Selection-name-label toggle state: pressed (checked) shows the control name
 		/// above every selection outline (today's existing behavior, the default); released
@@ -130,7 +184,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		public event EventHandler<string> DesignSizeSelected;
 		public event EventHandler FitRequested;
 		public event EventHandler<bool> GridRequested;
-		public event EventHandler<bool> ThemeRequested;
+		public event EventHandler<string> ThemeRequested;
 		public event EventHandler<bool> ShowNamesRequested;
 
 		/// <summary>Switches the checked-button highlight between the Light and Dark design
@@ -139,7 +193,6 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		public void ApplyDesignTheme(bool dark)
 		{
 			UpdateButtonHighlight(gridButton);
-			UpdateButtonHighlight(themeButton);
 			UpdateButtonHighlight(namesButton);
 		}
 

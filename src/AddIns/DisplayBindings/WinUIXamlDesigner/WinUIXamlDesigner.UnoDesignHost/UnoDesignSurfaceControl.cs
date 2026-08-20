@@ -56,6 +56,7 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 		IsHitTestVisible = false,
 		IsEnabled = false
 	};
+	readonly GridlineOverlay gridlineOverlay = new();
 	readonly Canvas viewportCanvas = new();
 	readonly Canvas contentCanvas = new();
 	readonly ScrollViewer scroller = new() {
@@ -115,12 +116,13 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 		DesignSizeCombo.SelectedIndex = 0;
 		DesignSizeCombo.SelectionChanged += OnSizePresetSelected;
 		FitRequested += (_, _) => FitView();
-		ThemeRequested += OnThemeToggle;
+		ThemeRequested += OnThemeSelected;
 		GridRequested += (_, enabled) => SetGridlines(enabled);
 		ShowNamesRequested += (_, enabled) => adornerLayer.ShowNameLabel = enabled;
 		textEditor.KeyDown += OnTextEditorKeyDown;
 		textEditor.LostKeyboardFocus += OnTextEditorLostFocus;
 		viewportCanvas.Children.Add(framePresenter.Visual);
+		viewportCanvas.Children.Add(gridlineOverlay.Visual);
 		viewportCanvas.Children.Add(overlay);
 		viewportCanvas.Children.Add(textEditor);
 		overlay.Children.Add(adornerLayer.Visual);
@@ -250,23 +252,16 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 	public void SetTheme(string theme)
 	{
 		var dark = string.Equals(theme, "Dark", StringComparison.OrdinalIgnoreCase);
-		syncingTheme = true;
-		IsDarkTheme = dark;
-		syncingTheme = false;
-		// The button content is an icon; the tooltip describes the next action.
+		DesignTheme = theme;
 		ApplyDesignTheme(dark);
 	}
 
-	/// <summary>The current toggle state: "Light" or "Dark".</summary>
-	public string ThemeState => IsDarkTheme ? "Dark" : "Light";
+	/// <summary>The current design-theme name.</summary>
+	public string ThemeState => DesignTheme;
 
-	bool syncingTheme;
-
-	void OnThemeToggle(object sender, bool dark)
+	void OnThemeSelected(object sender, string theme)
 	{
-		if (syncingTheme)
-			return;
-		DesignThemeRequested?.Invoke(this, dark ? "Dark" : "Light");
+		DesignThemeRequested?.Invoke(this, theme);
 	}
 
 	/// <summary>Shows the inline text editor over the given design rect, pre-filled with
@@ -621,6 +616,45 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 		box.Height = b.H * scale;
 	}
 
+	readonly Dictionary<string, Border> tabOrderBadges = new(StringComparer.Ordinal);
+	readonly Dictionary<string, (double X, double Y)> tabOrderBounds = new(StringComparer.Ordinal);
+
+	/// <summary>Shows a small numbered badge near every element that reports a TabIndex -
+	/// matching RemoteFormsDesignerControl's own tab-order badge overlay. Empty clears them
+	/// (toggling the view off, or a tree rebuild while it's off).</summary>
+	public void SetTabOrderBadges(IReadOnlyList<(string Name, double X, double Y, string TabIndex)> badges)
+	{
+		foreach (var badge in tabOrderBadges.Values)
+			overlay.Children.Remove(badge);
+		tabOrderBadges.Clear();
+		tabOrderBounds.Clear();
+		foreach (var (name, x, y, tabIndex) in badges)
+		{
+			var badge = new Border {
+				Background = Brushes.RoyalBlue,
+				CornerRadius = new CornerRadius(8),
+				Padding = new Thickness(5, 1, 5, 1),
+				IsHitTestVisible = false,
+				Child = new TextBlock {
+					Text = tabIndex, Foreground = Brushes.White, FontWeight = FontWeights.Bold, FontSize = 11
+				}
+			};
+			tabOrderBadges[name] = badge;
+			tabOrderBounds[name] = (x, y);
+			overlay.Children.Add(badge);
+			LayoutTabOrderBadge(name);
+		}
+	}
+
+	void LayoutTabOrderBadge(string name)
+	{
+		if (!tabOrderBadges.TryGetValue(name, out var badge) || !tabOrderBounds.TryGetValue(name, out var b))
+			return;
+		var scale = EffectiveScale();
+		Canvas.SetLeft(badge, b.X * scale - 5);
+		Canvas.SetTop(badge, b.Y * scale - 8);
+	}
+
 	public void ClearSelection()
 	{
 		adornerLayer.ClearSelection();
@@ -730,21 +764,20 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 		// the bitmap's natural DIP size (1 design unit = 1 DIP), which at fit scale is about
 		// 2x too large and drifts from the selection outline.
 		framePresenter.Resize(CurrentViewport());
-		UpdateGridBrush(scale);
+		gridlineOverlay.Visual.Width = viewportCanvas.Width;
+		gridlineOverlay.Visual.Height = viewportCanvas.Height;
+		gridlineOverlay.Update(viewportCanvas.Width, viewportCanvas.Height, scale, showGridlines);
 		LayoutSelection();
 		foreach (var name in secondaryBounds.Keys)
 			LayoutSecondaryBox(name);
+		foreach (var name in tabOrderBounds.Keys)
+			LayoutTabOrderBadge(name);
 		LayoutGridGuides();
 		foreach (var guide in snapGuides)
 			LayoutSnapGuideFromStored(guide);
 		LayoutTextEditor();
 		UpdateZoomCombo();
 	}
-
-	/// <summary>Design-space gridline spacing in design units (shown when gridlines are on).</summary>
-	const double GridCellSize = 20;
-
-	readonly DrawingBrush gridBrush = CreateGridBrush();
 
 	bool showGridlines;
 
@@ -755,27 +788,7 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 	public void SetGridlines(bool show)
 	{
 		showGridlines = show;
-		overlay.Background = show ? gridBrush : null;
-		UpdateGridBrush(EffectiveScale());
-	}
-
-	static DrawingBrush CreateGridBrush()
-	{
-		var group = new DrawingGroup();
-		var linePen = new Pen(new SolidColorBrush(Color.FromRgb(0x80, 0x80, 0x80)), 1);
-		group.Children.Add(new GeometryDrawing(null, linePen, new LineGeometry(new Point(0, 0), new Point(0, GridCellSize))));
-		group.Children.Add(new GeometryDrawing(null, linePen, new LineGeometry(new Point(0, 0), new Point(GridCellSize, 0))));
-		return new DrawingBrush(group) {
-			TileMode = TileMode.Tile,
-			ViewportUnits = BrushMappingMode.Absolute,
-			Viewport = new Rect(0, 0, GridCellSize, GridCellSize)
-		};
-	}
-
-	void UpdateGridBrush(double scale)
-	{
-		if (showGridlines)
-			gridBrush.Viewport = new Rect(0, 0, GridCellSize * scale, GridCellSize * scale);
+		gridlineOverlay.Update(viewportCanvas.Width, viewportCanvas.Height, EffectiveScale(), showGridlines);
 	}
 
 	/// <summary>The resize handle under a design-space point, or null - delegates to the

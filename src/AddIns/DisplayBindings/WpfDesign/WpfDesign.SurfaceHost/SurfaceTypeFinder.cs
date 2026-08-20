@@ -21,6 +21,11 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		readonly IReadOnlyList<string> referencedAssemblyPaths;
 		Assembly? projectAssembly;
 
+		/// <summary>The project's own loaded assembly (null if <c>projectAssemblyPath</c> was
+		/// empty or failed to load) - lets a caller reflect it for design-time conventions such
+		/// as enumerating embedded <c>themes/*.xaml</c> resources without its own separate load.</summary>
+		public Assembly? ProjectAssembly => projectAssembly;
+
 		public SurfaceTypeFinder(string projectAssemblyPath, IReadOnlyList<string> referencedAssemblyPaths)
 		{
 			this.projectAssemblyPath = projectAssemblyPath;

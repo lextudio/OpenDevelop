@@ -352,6 +352,44 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 
 	#endregion
 
+	#region Tab order
+
+	bool showTabOrder;
+
+	/// <summary>Whether the tab-order badge overlay is currently shown.</summary>
+	public bool ShowTabOrder => showTabOrder;
+
+	/// <summary>Toggles the tab-order badge overlay - a small numbered badge near every element
+	/// that reports a TabIndex property (<c>DesignHost.BuildTree</c> already populates it per
+	/// node), matching <c>RemoteFormsDesignerControl.SetTabOrderMode</c>'s own toggle.</summary>
+	public void SetTabOrderMode(bool show)
+	{
+		showTabOrder = show;
+		RefreshTabOrderBadges();
+	}
+
+	/// <summary>Re-pushes the tab-order badges from the current <see cref="nodesByName"/> tree -
+	/// called on toggle-on and whenever the tree is rebuilt while the view is already on, so
+	/// badges stay in sync with edits.</summary>
+	void RefreshTabOrderBadges()
+	{
+		if (!showTabOrder)
+		{
+			dispatcher.BeginInvoke(() => surface.SetTabOrderBadges(Array.Empty<(string, double, double, string)>()));
+			return;
+		}
+		var badges = nodesByName.Values
+			.Where(node => node.Name != null)
+			.Select(node => (Name: node.Name!, node.X, node.Y,
+				TabIndex: node.Properties?.FirstOrDefault(p => p.Name == "TabIndex")?.Value))
+			.Where(item => !string.IsNullOrEmpty(item.TabIndex))
+			.Select(item => (item.Name, item.X, item.Y, item.TabIndex!))
+			.ToArray();
+		dispatcher.BeginInvoke(() => surface.SetTabOrderBadges(badges));
+	}
+
+	#endregion
+
 	#region IWinUIXamlPathPick
 
 	public event EventHandler<string> ElementPathPicked;
@@ -537,6 +575,13 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		if (xaml == null)
 		{
 			return errors.Count == 0 ? "" : " App.xaml skipped: " + string.Join("; ", errors);
+		}
+		// The theme combo lists exactly the themes the app carries (its
+		// ThemeDictionaries keys); the default Light/Dark pair stays when the app has none.
+		var themes = AppResourceBuilder.GetThemeNames(xaml);
+		if (themes.Count > 0)
+		{
+			surface.SetDesignThemes(themes);
 		}
 		try
 		{
@@ -1099,6 +1144,8 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 			return;
 		lastSnapshot = snapshot;
 		nodesByName = IndexTree(snapshot.Tree);
+		if (showTabOrder)
+			RefreshTabOrderBadges();
 		if (snapshot.Render != null)
 		{
 			surface.SetRender(snapshot.Render);
@@ -1342,51 +1389,10 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 	{
 		if (!dragGroupStart.TryGetValue(dragName, out var start))
 			return (deltaX, deltaY, Array.Empty<(bool, double)>());
-		var tolerance = 8.0;
-		var guides = new List<(bool, double)>();
-		// Candidate lines from every other named element.
-		var verticalCandidates = new List<double>();
-		var horizontalCandidates = new List<double>();
-		foreach (var node in nodesByName.Values)
-		{
-			if (node.Name == dragName)
-				continue;
-			verticalCandidates.Add(node.X);
-			verticalCandidates.Add(node.X + node.Width / 2);
-			verticalCandidates.Add(node.X + node.Width);
-			horizontalCandidates.Add(node.Y);
-			horizontalCandidates.Add(node.Y + node.Height / 2);
-			horizontalCandidates.Add(node.Y + node.Height);
-		}
-		// The dragged element's own lines at the proposed position.
-		var (ex, ey, ew, eh) = (start.X + deltaX, start.Y + deltaY, start.Width, start.Height);
-		var ownV = new[] { ex, ex + ew / 2, ex + ew };
-		var ownH = new[] { ey, ey + eh / 2, ey + eh };
-		foreach (var own in ownV)
-		{
-			var best = verticalCandidates
-				.OrderBy(c => Math.Abs(c - own))
-				.FirstOrDefault();
-			if (Math.Abs(best - own) <= tolerance)
-			{
-				deltaX += best - own;
-				guides.Add((true, best));
-				break;
-			}
-		}
-		foreach (var own in ownH)
-		{
-			var best = horizontalCandidates
-				.OrderBy(c => Math.Abs(c - own))
-				.FirstOrDefault();
-			if (Math.Abs(best - own) <= tolerance)
-			{
-				deltaY += best - own;
-				guides.Add((false, best));
-				break;
-			}
-		}
-		return (deltaX, deltaY, guides);
+		var siblingBounds = nodesByName.Values
+			.Where(node => node.Name != dragName)
+			.Select(node => (node.X, node.Y, node.Width, node.Height));
+		return SnapGuideCalculator.ApplySnap(start, deltaX, deltaY, siblingBounds);
 	}
 
 	/// <summary>Raised when a group drag (multi-selection move) commits, with each element's delta.</summary>

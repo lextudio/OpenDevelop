@@ -1,0 +1,19 @@
+<Project Sdk="LibreWPF.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WPF-standard design-time theme convention: embedded themes/<name>.xaml resources -
+         the designer's theme combo enumerates them by file name (generic.xaml is the
+         fallback default-style dictionary and is excluded). -->
+    <Page Remove="Themes\**\*.xaml" />
+    <EmbeddedResource Include="Themes\*.xaml" />
+  </ItemGroup>
+
+</Project>

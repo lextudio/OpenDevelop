@@ -11,6 +11,7 @@
 // This keeps both existing child processes wire-compatible while the IDE side converges on
 // one contract. See doc/technotes/designer-common.md.
 
+using System;
 using System.Collections.Generic;
 
 namespace ICSharpCode.SharpDevelop.Designer.Remote
@@ -96,6 +97,42 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// look the result up by name afterward - not an option here, since a freshly toolbox-
 		/// dropped WPF element deliberately has no <c>x:Name</c> at all).</summary>
 		public string? CreatedElementId { get; set; }
+		/// <summary>Whether this session's project embeds any design-time theme (WPF shape only -
+		/// WinForms/WinUI have their own real theme mechanisms and never need this). True when
+		/// <see cref="DesignThemes"/> is non-empty.</summary>
+		public bool SupportsThemeSwitch { get; set; }
+
+		/// <summary>The design-time theme names the project embeds (WPF shape only): the file
+		/// names (without extension) of the embedded <c>themes/*.xaml</c> resources. Drives the
+		/// designer's theme combo, mirroring how the WinUI shape enumerates the app's
+		/// ThemeDictionaries keys. Empty when no theme is embedded.</summary>
+		public string[] DesignThemes { get; set; } = Array.Empty<string>();
+	}
+
+	/// <summary>One Grid row/column's current pixel geometry (<c>design/query-grid-guides</c>),
+	/// for drawing draggable divider guides over the rendered frame - the WPF shape's equivalent
+	/// of the Uno/WinUI designer's own Grid-guide overlay, which reads offsets straight from the
+	/// live XAML text editor instead (WPF has a real DesignItem/Grid model so this crosses the
+	/// wire as measured layout instead).</summary>
+	public sealed class DesignerGridTrackInfo
+	{
+		/// <summary>Cumulative pixel offset from the Grid's own origin (WPF's
+		/// <c>RowDefinition.Offset</c>/<c>ColumnDefinition.Offset</c> - already cumulative, no
+		/// summation needed).</summary>
+		public double Offset { get; set; }
+		/// <summary>The row's/column's current rendered size (<c>ActualHeight</c>/<c>ActualWidth</c>).</summary>
+		public double Size { get; set; }
+	}
+
+	/// <summary>Response to <c>design/query-grid-guides</c>: a Grid element's current row/column
+	/// track geometry, or <see cref="Accepted"/>=false with <see cref="Error"/> when the element
+	/// isn't a Grid (or isn't found).</summary>
+	public sealed class DesignerGridGuides
+	{
+		public bool Accepted { get; set; }
+		public string Error { get; set; } = "";
+		public List<DesignerGridTrackInfo> RowTracks { get; set; } = new List<DesignerGridTrackInfo>();
+		public List<DesignerGridTrackInfo> ColumnTracks { get; set; } = new List<DesignerGridTrackInfo>();
 	}
 
 	/// <summary>Neutral element tree node. Id is generation-scoped; only Id crosses back

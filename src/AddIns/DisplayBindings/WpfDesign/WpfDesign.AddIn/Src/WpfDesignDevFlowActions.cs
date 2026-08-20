@@ -84,10 +84,24 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				// reported so the status shape matches od.winui-designer.status.
 				canUndo = false,
 				canRedo = false,
+				// Whether the opened project embeds any design-time theme
+				// (see WpfSurfaceHostService.ResolveThemes) - the toolbar's theme combo
+				// is only shown when this is true.
+				supportsThemeSwitch = state?.SupportsThemeSwitch ?? false,
 				// Flattened (root + every descendant, depth-first) so tests can assert a named
 				// element shows up in the outline tree without knowing its exact nesting depth.
 				outlineNames = outlineNames.ToArray()
 			});
+		}
+
+		[DevFlowAction("od.wpf-designer.tab-order", Description = "Toggle the tab-order badge overlay - shows each element's TabIndex, matching the WinForms designer's own tab-order view")]
+		public static string SetTabOrder(bool show)
+		{
+			var surface = FindWpfViewContent()?.SurfaceControl;
+			if (surface?.State?.Accepted != true)
+				return Failure("WPF designer is not loaded");
+			surface.SetTabOrderMode(show);
+			return JsonSerializer.Serialize(new { success = true, showTabOrder = surface.ShowTabOrder });
 		}
 
 		[DevFlowAction("od.wpf-designer.select", Description = "Select a named element in the active WPF designer so the real Properties pad is populated")]
@@ -123,6 +137,23 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 		/// PortableDragDropOperation (LibreWPF) now implements that for real, so this no longer
 		/// needs to fall back to od.wpf-designer.toolbox.drop's direct calls.
 		/// </summary>
+		[DevFlowAction("od.wpf-designer.set-theme", Description = "Switch the active WPF designer between Light/Dark theme via the design/theme RPC directly (bypasses the toolbar button click, which synthetic pointer input cannot reliably hit on this toolbar) - only has an effect when od.wpf-designer.status reports supportsThemeSwitch=true")]
+		public static string SetTheme(string theme)
+		{
+			var viewContent = FindWpfViewContent();
+			var surface = viewContent?.SurfaceControl;
+			if (surface?.State?.Accepted != true)
+				return JsonSerializer.Serialize(new { success = false, error = "WPF designer is not loaded" });
+
+			var result = surface.SetThemeAsync(theme).GetAwaiter().GetResult();
+			return JsonSerializer.Serialize(new {
+				success = result.Accepted,
+				error = result.Error,
+				renderData = result.Render?.Data,
+				renderSequence = result.Render?.Sequence
+			});
+		}
+
 		[DevFlowAction("od.wpf-designer.toolbox.query-item-bounds", Description = "Get the real on-screen bounds of a Toolbox row for a given control type, for driving a synthetic mouse drag")]
 		public static string QueryToolboxItemBounds(string typeName)
 		{
@@ -634,31 +665,85 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 		}
 
 		/// <summary>
-		/// Capabilities the out-of-process WPF design host does not expose yet (no undo/redo RPC,
-		/// single-selection only, no layout RPCs). The actions are registered so all three
-		/// designers expose the same DevFlow surface and a caller gets a deterministic answer
-		/// rather than a missing-action error.
+		/// Capabilities not (or no longer) requiring this fallback: multi-select, undo/redo, and
+		/// align/distribute/match-size are all now supported (see <see cref="MultiSelect"/>,
+		/// <see cref="Undo"/>/<see cref="Redo"/>, <see cref="Align"/>/<see cref="Distribute"/>/
+		/// <see cref="MatchSize"/>) - only <see cref="Nudge"/> remains genuinely unimplemented.
+		/// The action is still registered so all three designers expose the same DevFlow surface
+		/// and a caller gets a deterministic answer rather than a missing-action error.
 		/// </summary>
 		static string NotSupported(string capability)
 			=> JsonSerializer.Serialize(new { success = false, supported = false, error = "Not supported by the out-of-process WPF design host: " + capability });
 
-		[DevFlowAction("od.wpf-designer.undo", Description = "Undo the last WPF designer edit - not supported by the out-of-process host (reported deterministically so the three designers' surfaces stay aligned)")]
-		public static string Undo() => NotSupported("undo");
+		[DevFlowAction("od.wpf-designer.undo", Description = "Undo the last WPF designer edit - restores the whole document's XAML text as of just before that edit via session/update, matching the WinForms designer's own whole-document undo")]
+		public static string Undo()
+		{
+			var viewContent = FindWpfViewContent();
+			if (viewContent?.SurfaceControl?.State?.Accepted != true)
+				return Failure("WPF designer is not loaded");
+			if (!viewContent.CanUndo)
+				return JsonSerializer.Serialize(new { success = false, error = "Nothing to undo" });
+			viewContent.Undo();
+			return JsonSerializer.Serialize(new { success = true, canUndo = viewContent.CanUndo, canRedo = viewContent.CanRedo });
+		}
 
-		[DevFlowAction("od.wpf-designer.redo", Description = "Redo the last undone WPF designer edit - not supported by the out-of-process host (reported deterministically so the three designers' surfaces stay aligned)")]
-		public static string Redo() => NotSupported("redo");
+		[DevFlowAction("od.wpf-designer.redo", Description = "Redo the last undone WPF designer edit - restores the whole document's XAML text as of just after that edit via session/update, matching the WinForms designer's own whole-document undo")]
+		public static string Redo()
+		{
+			var viewContent = FindWpfViewContent();
+			if (viewContent?.SurfaceControl?.State?.Accepted != true)
+				return Failure("WPF designer is not loaded");
+			if (!viewContent.CanRedo)
+				return JsonSerializer.Serialize(new { success = false, error = "Nothing to redo" });
+			viewContent.Redo();
+			return JsonSerializer.Serialize(new { success = true, canUndo = viewContent.CanUndo, canRedo = viewContent.CanRedo });
+		}
 
-		[DevFlowAction("od.wpf-designer.multi-select", Description = "Set the design-surface selection to the named elements - not supported by the out-of-process host (single-selection only)")]
-		public static string MultiSelect(string names) => NotSupported("multi-select");
+		[DevFlowAction("od.wpf-designer.multi-select", Description = "Set the design-surface selection to the named elements (comma-separated), driving the same Ctrl-click/marquee multi-selection state a real user gesture would")]
+		public static string MultiSelect(string names)
+		{
+			var surface = FindWpfViewContent()?.SurfaceControl;
+			if (surface?.State?.Accepted != true)
+				return Failure("WPF designer is not loaded");
 
-		[DevFlowAction("od.wpf-designer.align", Description = "Align the selected elements - not supported by the out-of-process host (reported deterministically so the three designers' surfaces stay aligned)")]
-		public static string Align(string mode) => NotSupported("align");
+			var requested = names.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+			surface.SetMultiSelection(requested);
+			return JsonSerializer.Serialize(new {
+				success = true,
+				requested = requested.Length,
+				selectedName = surface.SelectedElementId,
+			});
+		}
 
-		[DevFlowAction("od.wpf-designer.distribute", Description = "Distribute the selected elements - not supported by the out-of-process host (reported deterministically so the three designers' surfaces stay aligned)")]
-		public static string Distribute(string axis) => NotSupported("distribute");
+		[DevFlowAction("od.wpf-designer.align", Description = "Align every other selected element's edge/center to the primary selection's - mode: left/center/right/top/middle/bottom")]
+		public static string Align(string mode)
+		{
+			var surface = FindWpfViewContent()?.SurfaceControl;
+			if (surface?.State?.Accepted != true)
+				return Failure("WPF designer is not loaded");
+			surface.AlignSelection(mode);
+			return JsonSerializer.Serialize(new { success = true });
+		}
 
-		[DevFlowAction("od.wpf-designer.match-size", Description = "Match the selected elements' size - not supported by the out-of-process host (reported deterministically so the three designers' surfaces stay aligned)")]
-		public static string MatchSize(string mode) => NotSupported("match-size");
+		[DevFlowAction("od.wpf-designer.distribute", Description = "Distribute the selected elements with equal center-to-center spacing (requires 3+ selected) - axis: horizontal/vertical")]
+		public static string Distribute(string axis)
+		{
+			var surface = FindWpfViewContent()?.SurfaceControl;
+			if (surface?.State?.Accepted != true)
+				return Failure("WPF designer is not loaded");
+			surface.DistributeSelection(axis);
+			return JsonSerializer.Serialize(new { success = true });
+		}
+
+		[DevFlowAction("od.wpf-designer.match-size", Description = "Resize every other selected element to match the primary selection's size, keeping its own position - mode: width/height/both")]
+		public static string MatchSize(string mode)
+		{
+			var surface = FindWpfViewContent()?.SurfaceControl;
+			if (surface?.State?.Accepted != true)
+				return Failure("WPF designer is not loaded");
+			surface.MatchSizeSelection(mode);
+			return JsonSerializer.Serialize(new { success = true });
+		}
 
 		[DevFlowAction("od.wpf-designer.nudge", Description = "Nudge the selected elements - not supported by the out-of-process host (reported deterministically so the three designers' surfaces stay aligned)")]
 		public static string Nudge(double dx, double dy) => NotSupported("nudge");

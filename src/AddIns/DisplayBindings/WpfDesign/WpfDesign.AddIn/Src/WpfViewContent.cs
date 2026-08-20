@@ -69,6 +69,21 @@ namespace ICSharpCode.WpfDesign.AddIn
 		bool wasChangedInDesigner;
 		MemoryStream? _stream;
 
+		// Undo/redo: whole-document XAML text snapshot stacks, mirroring
+		// DesignerViewContent's own remoteUndo/remoteRedo pattern for the WinForms designer -
+		// neither backend does real live-element-tree transactional undo (no such RPC exists on
+		// either child host); both instead snapshot/restore the WHOLE flushed document text
+		// through the existing session/update RPC (client.UpdateAsync), which is already used for
+		// every document reload. lastKnownGoodXaml is the text as of the last accepted mutation
+		// (or load); OnDocumentChanged pushes it onto undoStack right before replacing it with the
+		// new post-mutation text, so Undo can restore exactly what preceded that mutation.
+		readonly Stack<string> undoStack = new();
+		readonly Stack<string> redoStack = new();
+		string? lastKnownGoodXaml;
+
+		public bool CanUndo => undoStack.Count > 0;
+		public bool CanRedo => redoStack.Count > 0;
+
 		/// <summary>The current out-of-process surface, or null before the first successful load.
 		/// Exposed for DevFlow probes (<c>WpfDesignDevFlowActions</c>) - real UI code should go
 		/// through this rather than reaching into <see cref="client"/> directly.</summary>
@@ -93,6 +108,9 @@ namespace ICSharpCode.WpfDesign.AddIn
 			stream.CopyTo(_stream);
 			stream.Position = 0;
 			wasChangedInDesigner = false;
+			undoStack.Clear();
+			redoStack.Clear();
+			lastKnownGoodXaml = null;
 
 			if (surfaceControl == null)
 			{
@@ -100,6 +118,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 				surfaceControl = new WpfSurfaceDesignerControl(client);
 				surfaceControl.SelectionChanged += OnSelectionChanged;
 				surfaceControl.DocumentChanged += OnDocumentChanged;
+				surfaceControl.UndoRedoRequested += OnUndoRedoRequested;
 				InitPropertyEditor();
 				InitWpfToolbox();
 			}
@@ -122,6 +141,9 @@ namespace ICSharpCode.WpfDesign.AddIn
 				UpdateTasks(state.Diagnostics);
 				UpdateOutline(state);
 				propertyContainer.SelectedObject = null;
+				// Baseline for Undo/Redo: the first mutation's OnDocumentChanged pushes THIS text
+				// (not the not-yet-fetched post-mutation text) onto undoStack.
+				lastKnownGoodXaml = FlushCurrentXaml();
 			}
 			catch (Exception e)
 			{
@@ -275,9 +297,71 @@ namespace ICSharpCode.WpfDesign.AddIn
 			Console.Error.WriteLine("DIAG5 OnDocumentChanged accepted=" + state.Accepted + " file=" + PrimaryFile.FileName + " isDirtyBefore=" + PrimaryFile.IsDirty);
 			if (!state.Accepted)
 				return;
+			// Undo/redo bookkeeping: the text as of just before this mutation becomes the entry
+			// Undo restores; a fresh mutation always invalidates the redo stack. Skipped when
+			// lastKnownGoodXaml is itself null, which only happens if a mutation somehow lands
+			// before LoadInternal's own post-load flush completes.
+			if (lastKnownGoodXaml != null)
+			{
+				undoStack.Push(lastKnownGoodXaml);
+				redoStack.Clear();
+			}
+			lastKnownGoodXaml = FlushCurrentXaml();
 			wasChangedInDesigner = true;
 			this.PrimaryFile.MakeDirty();
 			Console.Error.WriteLine("DIAG5 after MakeDirty isDirty=" + PrimaryFile.IsDirty);
+		}
+
+		string FlushCurrentXaml()
+		{
+			var edit = client!.FlushAsync(documentVersion).GetAwaiter().GetResult();
+			return edit.Files.FirstOrDefault(f => f.FileName == PrimaryFile.FileName.ToString())?.Text
+				?? edit.Files.FirstOrDefault()?.Text ?? "";
+		}
+
+		/// <summary>Restores a previously-flushed whole-document XAML text via
+		/// <c>session/update</c> (the same RPC every document reload already uses) - see the
+		/// undoStack/redoStack fields' own doc comment for why this is the right level for WPF's
+		/// undo, matching what WinForms already does.</summary>
+		void OnUndoRedoRequested(object? sender, bool undo)
+		{
+			if (undo)
+				Undo();
+			else
+				Redo();
+		}
+
+		public void Undo()
+		{
+			if (!CanUndo || client == null || surfaceControl == null)
+				return;
+			redoStack.Push(lastKnownGoodXaml ?? FlushCurrentXaml());
+			RestoreXaml(undoStack.Pop());
+		}
+
+		public void Redo()
+		{
+			if (!CanRedo || client == null || surfaceControl == null)
+				return;
+			undoStack.Push(lastKnownGoodXaml ?? FlushCurrentXaml());
+			RestoreXaml(redoStack.Pop());
+		}
+
+		void RestoreXaml(string text)
+		{
+			var snapshot = CreateSnapshot(++documentVersion);
+			var primary = snapshot.Files.FirstOrDefault(f => f.FileName == snapshot.PrimaryFileName);
+			if (primary != null)
+				primary.Text = text;
+			var state = surfaceControl!.UpdateAsync(snapshot).GetAwaiter().GetResult();
+			surfaceControl.Show(state);
+			if (!state.Accepted)
+				throw new WpfDesignerLoadException(state.Error);
+			lastKnownGoodXaml = text;
+			wasChangedInDesigner = true;
+			UpdateTasks(state.Diagnostics);
+			UpdateOutline(state);
+			PrimaryFile.MakeDirty();
 		}
 
 		#region Property editor / Outline
@@ -332,6 +416,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 			{
 				surfaceControl.SelectionChanged -= OnSelectionChanged;
 				surfaceControl.DocumentChanged -= OnDocumentChanged;
+				surfaceControl.UndoRedoRequested -= OnUndoRedoRequested;
 			}
 			outline.SelectionCommitted -= OnOutlineSelectionCommitted;
 			client?.Dispose();

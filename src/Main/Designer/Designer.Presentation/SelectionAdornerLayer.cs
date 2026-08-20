@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -28,6 +29,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 		readonly Rectangle selectionBox;
 		readonly TextBlock? selectionLabel;
 		readonly Dictionary<string, Rectangle> handles = new(StringComparer.Ordinal);
+		readonly Brush secondaryBrush;
+		readonly Dictionary<string, Rectangle> secondaryBoxes = new(StringComparer.Ordinal);
 		Rect designSelection;
 		string? selectionName;
 		bool showNameLabel = true;
@@ -53,6 +56,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 		/// true; WinForms: false - it has no label element today).</param>
 		public SelectionAdornerLayer(IReadOnlyList<string> handleNames, Brush selectionBrush, bool showLabel = true)
 		{
+			secondaryBrush = selectionBrush;
 			selectionBox = new Rectangle {
 				Stroke = selectionBrush,
 				StrokeThickness = 1.5,
@@ -114,6 +118,49 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 			foreach (var handle in handles.Values)
 				handle.Visibility = Visibility.Collapsed;
 		}
+
+		/// <summary>Shows dashed, thin secondary-selection outlines for every OTHER multi-selected
+		/// element (the primary selection stays drawn via <see cref="ShowSelection"/>) - a
+		/// relocation of UnoDesignSurfaceControl's own secondaryBoxes/LayoutSecondaryBox pattern
+		/// into the shared layer so WPF/WinForms can adopt multi-select without duplicating it.
+		/// Keyed by id so repeated calls reuse existing Rectangles instead of rebuilding them.</summary>
+		public void SetSecondarySelection(IReadOnlyList<(string Id, Rect Bounds)> selection, DesignViewport viewport)
+		{
+			var keep = new HashSet<string>(StringComparer.Ordinal);
+			foreach (var (id, bounds) in selection)
+			{
+				keep.Add(id);
+				if (!secondaryBoxes.TryGetValue(id, out var box))
+				{
+					box = new Rectangle {
+						Stroke = secondaryBrush,
+						StrokeThickness = 1,
+						StrokeDashArray = new DoubleCollection { 3, 2 },
+						IsHitTestVisible = false
+					};
+					secondaryBoxes[id] = box;
+					Visual.Children.Add(box);
+				}
+				var (left, top) = viewport.DesignToSurface(bounds.X, bounds.Y);
+				box.Width = bounds.Width * viewport.Scale;
+				box.Height = bounds.Height * viewport.Scale;
+				Canvas.SetLeft(box, left);
+				Canvas.SetTop(box, top);
+				box.Visibility = Visibility.Visible;
+			}
+			foreach (var id in secondaryBoxes.Keys)
+			{
+				if (keep.Contains(id))
+					continue;
+				Visual.Children.Remove(secondaryBoxes[id]);
+			}
+			foreach (var id in secondaryBoxes.Keys.Where(id => !keep.Contains(id)).ToList())
+				secondaryBoxes.Remove(id);
+		}
+
+		/// <summary>Clears all secondary-selection outlines (e.g. when the multi-selection drops
+		/// to zero/one element).</summary>
+		public void ClearSecondarySelection() => SetSecondarySelection(Array.Empty<(string, Rect)>(), DesignViewport.Identity(0, 0));
 
 		void UpdateLabelVisibility()
 		{

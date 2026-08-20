@@ -142,6 +142,39 @@ static class AppResourceBuilder
 		}
 	}
 
+	/// <summary>
+	/// Extracts the design-theme names from a built app-resources XAML string: the x:Key
+	/// values of the hoisted ResourceDictionary.ThemeDictionaries children ("Light", "Dark",
+	/// "HighContrast" or app-specific names). Drives the designer's theme combo, so it lists
+	/// exactly the themes the app under design carries. Falls back to an empty list when the
+	/// XAML has none (the combo then keeps its default Light/Dark pair).
+	/// </summary>
+	public static List<string> GetThemeNames(string xaml)
+	{
+		var names = new List<string>();
+		try
+		{
+			var themeDictionaries = XDocument.Parse(xaml).Root
+				?.Element(Xaml + "ResourceDictionary.ThemeDictionaries");
+			if (themeDictionaries != null)
+			{
+				foreach (var dictionary in themeDictionaries.Elements())
+				{
+					var key = (string)dictionary.Attribute(X + "Key");
+					if (!string.IsNullOrEmpty(key) && !names.Contains(key))
+					{
+						names.Add(key);
+					}
+				}
+			}
+		}
+		catch
+		{
+			// Malformed built XAML: the caller falls back to the default theme list.
+		}
+		return names;
+	}
+
 	/// <summary>Resolves a merged-dictionary Source to a file path, tolerating scheme prefixes.</summary>
 	static string ResolvePath(string baseDir, string source)
 	{

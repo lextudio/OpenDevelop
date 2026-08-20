@@ -6,10 +6,12 @@ using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Xml;
@@ -59,6 +61,14 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// context per render.</summary>
 		GpuCompositionTarget? renderTarget;
 		bool renderUnavailable;
+
+		// Design-time theme resolution - resolved once per session/open from the project
+		// assembly, see ResolveThemes. Theme name (as shown in the designer's combo) to
+		// theme source; any number of themes, with no light/dark semantics attached to the
+		// names (the theme IS whatever the dictionary paints).
+		Assembly? projectAssembly;
+		Dictionary<string, string>? themeSources;
+		ResourceDictionary? appliedThemeDictionary;
 
 		public WpfSurfaceHostService(string expectedToken, WpfHeadlessDispatcher dispatcher)
 		{
@@ -120,11 +130,21 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				// load-bearing: a document using only referenced-library controls has no project
 				// assembly at all, and testing ProjectAssemblyPath alone silently ignored its
 				// references. Stock-only documents keep the Phase 0 default untouched.
-				var loadSettings = string.IsNullOrEmpty(snapshot.ProjectAssemblyPath) && snapshot.ReferencedAssemblyPaths.Count == 0
-					? new XamlLoadSettings()
-					: new XamlLoadSettings { TypeFinder = new SurfaceTypeFinder(snapshot.ProjectAssemblyPath, snapshot.ReferencedAssemblyPaths) };
+				var typeFinder = string.IsNullOrEmpty(snapshot.ProjectAssemblyPath) && snapshot.ReferencedAssemblyPaths.Count == 0
+					? null
+					: new SurfaceTypeFinder(snapshot.ProjectAssemblyPath, snapshot.ReferencedAssemblyPaths);
+				var loadSettings = typeFinder == null ? new XamlLoadSettings() : new XamlLoadSettings { TypeFinder = typeFinder };
+				ResolveThemes(typeFinder?.ProjectAssembly);
+				state.SupportsThemeSwitch = themeSources != null;
+				state.DesignThemes = themeSources?.Keys.ToArray() ?? Array.Empty<string>();
 				var appResources = ParseAppResources(snapshot, loadSettings);
 				current = new XamlDesignContext(xmlReader, loadSettings);
+				// A fresh document parse means a fresh root FrameworkElement - the previous root's
+				// MergedDictionaries (and whatever theme dictionary this field used to point at)
+				// no longer exist, so re-applying design/theme (if the IDE asks again) must start
+				// from a clean slate rather than trying to remove a dictionary from the new root
+				// that was never actually added to it.
+				appliedThemeDictionary = null;
 				// Merged after parse but before RebuildTreeAndRender runs layout, which is when
 				// implicit styles get applied - the headless stand-in for the live designer's
 				// DesignPanel.Resources (see ParseAppResources' remarks).
@@ -443,6 +463,72 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				return state;
 			});
 
+		/// <summary>Reports the given Grid's current row/column track geometry (real post-layout
+		/// <c>Offset</c>/<c>ActualHeight</c>/<c>ActualWidth</c> off the live <see cref="Grid"/> -
+		/// <c>RowDefinition.Offset</c>/<c>ColumnDefinition.Offset</c> are already cumulative, no
+		/// summation needed), for the design surface to draw draggable divider guides over the
+		/// rendered frame - this backend's equivalent of the Uno/WinUI designer's own Grid-guide
+		/// overlay, which instead reads offsets from its live XAML text editor. Read-only: does
+		/// NOT call <see cref="RebuildTreeAndRender"/>, since nothing is mutated.</summary>
+		[JsonRpcMethod("design/query-grid-guides")]
+		public DesignerGridGuides QueryGridGuides(long baseVersion, string elementId)
+			=> dispatcher.Dispatch(() => {
+				if (current == null)
+					return new DesignerGridGuides { Accepted = false, Error = "No document is open." };
+				if (version != baseVersion)
+					return new DesignerGridGuides {
+						Accepted = false,
+						Error = $"Stale base version {baseVersion}; the open document is at version {version}."
+					};
+				if (!pathToItem.TryGetValue(elementId, out var item))
+					return new DesignerGridGuides { Accepted = false, Error = "Element not found: " + elementId };
+				if (item.Component is not Grid grid)
+					return new DesignerGridGuides { Accepted = false, Error = "Element is not a Grid: " + elementId };
+				return new DesignerGridGuides {
+					Accepted = true,
+					RowTracks = grid.RowDefinitions
+						.Select(r => new DesignerGridTrackInfo { Offset = r.Offset, Size = r.ActualHeight })
+						.ToList(),
+					ColumnTracks = grid.ColumnDefinitions
+						.Select(c => new DesignerGridTrackInfo { Offset = c.Offset, Size = c.ActualWidth })
+						.ToList()
+				};
+			});
+
+		/// <summary>Commits a Grid row's/column's new pixel size (a completed divider drag) -
+		/// routes through the same <c>DesignItem</c>/<c>DesignItemProperty</c> pipeline as
+		/// <see cref="SetProperty"/>, since <c>RowDefinitions</c>/<c>ColumnDefinitions</c> are
+		/// themselves represented as a <c>DesignItem</c> collection (each element a DesignItem
+		/// wrapping one <see cref="RowDefinition"/>/<see cref="ColumnDefinition"/>), not bypassed
+		/// via the live <see cref="Grid"/> object - so this edit gets the same undo/change-
+		/// notification coverage every other mutation RPC does.</summary>
+		[JsonRpcMethod("design/set-grid-track-size")]
+		public DesignerSessionState SetGridTrackSize(long baseVersion, string elementId, bool isRow, int index, double pixels)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var item))
+					return NotFound(state, "Element not found: " + elementId);
+				var collection = item.Properties[isRow ? "RowDefinitions" : "ColumnDefinitions"];
+				if (collection == null || index < 0 || index >= collection.CollectionElements.Count)
+					return NotFound(state, "Row/column index out of range: " + index);
+				try
+				{
+					var definitionItem = collection.CollectionElements[index];
+					var property = definitionItem.Properties[
+						isRow ? RowDefinition.HeightProperty : ColumnDefinition.WidthProperty];
+					property.SetValue(new GridLength(pixels, GridUnitType.Pixel));
+				}
+				catch (Exception e)
+				{
+					return NotFound(state, e.GetBaseException().Message);
+				}
+				RebuildTreeAndRender(state);
+				state.Accepted = true;
+				return state;
+			});
+
 		[JsonRpcMethod("design/delete-elements")]
 		public DesignerSessionState DeleteElements(long baseVersion, string[] elementIds)
 			=> dispatcher.Dispatch(() => {
@@ -495,6 +581,85 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				state.Accepted = true;
 				return state;
 			});
+
+		/// <summary>Switches the design-time theme by name, per the WPF-standard convention of
+		/// embedded <c>themes/*.xaml</c> resources (see <see cref="ResolveThemes"/>). The theme
+		/// dictionary is merged onto the open design's
+		/// root and the design re-rendered. Reports <c>Accepted = false</c> (not an exception)
+		/// when the project embeds no themes, the name is unknown, or no document is open - the
+		/// same "graceful no-op" shape RejectIfStale's own doc comment establishes for every
+		/// other mutation.</summary>
+		[JsonRpcMethod("design/theme")]
+		public DesignerSessionState SetTheme(long baseVersion, string theme)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				state.SupportsThemeSwitch = themeSources != null;
+				state.DesignThemes = themeSources?.Keys.ToArray() ?? Array.Empty<string>();
+				if (themeSources == null || !themeSources.TryGetValue(theme, out var resourceName))
+					return NotFound(state, "No theme named '" + theme + "' is embedded in this project's assembly.");
+				if (current?.RootItem?.View is not FrameworkElement root)
+					return NotFound(state, "No design is open.");
+				try
+				{
+					using var stream = projectAssembly!.GetManifestResourceStream(resourceName);
+					if (stream == null)
+						return NotFound(state, "Embedded theme resource not found: " + resourceName);
+					using var reader = new StreamReader(stream);
+					var dictionary = (ResourceDictionary)System.Windows.Markup.XamlReader.Parse(reader.ReadToEnd());
+					if (appliedThemeDictionary != null)
+						root.Resources.MergedDictionaries.Remove(appliedThemeDictionary);
+					root.Resources.MergedDictionaries.Add(dictionary);
+					appliedThemeDictionary = dictionary;
+				}
+				catch (Exception e)
+				{
+					return NotFound(state, "Failed to load theme dictionary '" + theme + "': " + e.GetBaseException().Message);
+				}
+				RebuildTreeAndRender(state);
+				state.Accepted = true;
+				return state;
+			});
+
+		/// <summary>Resolves the design-time themes of <paramref name="projectAssembly"/> using the
+		/// WPF-standard convention: one embedded <c>themes/&lt;name&gt;.xaml</c> resource per
+		/// theme, file name (without extension) = theme name. <c>generic.xaml</c> is excluded -
+		/// it is the fallback default-style dictionary, not a switchable theme. Clears any
+		/// PREVIOUS session's themes when the assembly has none, rather than leaving stale
+		/// names dangling.</summary>
+		void ResolveThemes(Assembly? projectAssembly)
+		{
+			themeSources = null;
+			this.projectAssembly = projectAssembly;
+			if (projectAssembly == null)
+				return;
+			var themes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+			foreach (var name in projectAssembly.GetManifestResourceNames())
+			{
+				// The manifest resource name is dot-separated ("WpfThemeFixture.themes.Bright.xaml"),
+				// with no directory slashes - the theme directory is the ".themes." segment, the
+				// theme file name is the next segment, and "xaml" the one after that.
+				var segments = name.Split('.');
+				for (int i = 0; i + 2 < segments.Length; i++)
+				{
+					if (!segments[i].Equals("themes", StringComparison.OrdinalIgnoreCase))
+						continue;
+					if (!segments[i + 2].Equals("xaml", StringComparison.OrdinalIgnoreCase))
+						continue;
+					var themeName = segments[i + 1];
+					// generic.xaml is the fallback default-style dictionary, not a theme.
+					if (themeName.Equals("generic", StringComparison.OrdinalIgnoreCase))
+						continue;
+					themes[themeName] = name;
+					break;
+				}
+			}
+			if (themes.Count > 0)
+			{
+				themeSources = themes;
+			}
+		}
 
 		[JsonRpcMethod("ping")]
 		public void Ping() { }

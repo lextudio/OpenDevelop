@@ -2,6 +2,7 @@ using System.IO.Compression;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.WpfDesign.SurfaceHost;
 using Xunit;
+using WpfThemeFixture;
 
 namespace WpfDesign.SurfaceHost.Tests;
 
@@ -14,12 +15,22 @@ public sealed class WpfSurfaceHostRpcTests
 		</Grid>
 		""";
 
+	// Uses FixtureThemeBackground via DynamicResource so a real render pixel actually differs
+	// between the fixture's "Bright"/"Midnight" dictionaries (see DesignTheme_* tests below) -
+	// StaticResource would only resolve once at parse time and never pick up a later swap.
+	const string ThemedXaml = """
+		<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="400" Height="300" Background="{DynamicResource FixtureThemeBackground}">
+		  <TextBlock x:Name="greeting" Text="Hello" Width="200" Height="30"/>
+		</Grid>
+		""";
+
 	static string HostDll() => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
 		"../../../../WpfDesign.SurfaceHost/bin/Debug/net10.0-windows/WpfDesign.SurfaceHost.dll"));
 
-	static DesignerDocumentSnapshot Snapshot(long version, string xaml) => new() {
+	static DesignerDocumentSnapshot Snapshot(long version, string xaml, string projectAssemblyPath = "") => new() {
 		Version = version,
 		PrimaryFileName = "/project/Page.xaml",
+		ProjectAssemblyPath = projectAssemblyPath,
 		Files = { new DesignerSourceFileSnapshot { FileName = "/project/Page.xaml", Kind = "Source", Text = xaml } }
 	};
 
@@ -641,5 +652,87 @@ public sealed class WpfSurfaceHostRpcTests
 		using var output = new MemoryStream();
 		deflate.CopyTo(output);
 		return output.ToArray();
+	}
+
+	static string WpfThemeFixtureDll() => typeof(FixtureMarker).Assembly.Location;
+
+	[Fact]
+	public async Task DesignTheme_NoThemeInfo_ReportsNoThemes()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		// This test assembly itself has no embedded themes - the convention
+		// must come from the project assembly, not be invented by the child.
+		var opened = await client.OpenAsync(Snapshot(1, Xaml, typeof(WpfSurfaceHostRpcTests).Assembly.Location), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		Assert.False(opened.SupportsThemeSwitch);
+		Assert.Empty(opened.DesignThemes);
+	}
+
+	[Fact]
+	public async Task DesignTheme_Declared_EnumeratesAllEmbeddedThemes()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, ThemedXaml, WpfThemeFixtureDll()), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		Assert.True(opened.SupportsThemeSwitch);
+		// Theme names come from the embedded themes/*.xaml file names - three of them here -
+		// and generic.xaml is the fallback default-style dictionary, NOT a switchable theme.
+		Assert.Equal(new[] { "Bright", "Midnight", "Solarized" }, opened.DesignThemes);
+	}
+
+	[Fact]
+	public async Task DesignTheme_SwitchesRenderBetweenThemes()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, ThemedXaml, WpfThemeFixtureDll()), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		Assert.True(opened.SupportsThemeSwitch);
+
+		var bright = await client.SetThemeAsync(1, "Bright", timeout.Token);
+		Assert.True(bright.Accepted, bright.Error);
+		Assert.NotNull(bright.Render);
+
+		var midnight = await client.SetThemeAsync(1, "Midnight", timeout.Token);
+		Assert.True(midnight.Accepted, midnight.Error);
+		Assert.NotNull(midnight.Render);
+
+		// The fixture's Bright/Midnight/Solarized dictionaries paint FixtureThemeBackground at
+		// different colors - a real theme swap must change what actually got composited.
+		Assert.NotEqual(bright.Render!.Data, midnight.Render!.Data);
+
+		var solarized = await client.SetThemeAsync(1, "Solarized", timeout.Token);
+		Assert.True(solarized.Accepted, solarized.Error);
+		Assert.NotNull(solarized.Render);
+		Assert.NotEqual(midnight.Render.Data, solarized.Render!.Data);
+	}
+
+	[Fact]
+	public async Task DesignTheme_UnknownName_IsRejected()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, ThemedXaml, WpfThemeFixtureDll()), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+
+		var result = await client.SetThemeAsync(1, "Dark", timeout.Token);
+		Assert.False(result.Accepted);
+		Assert.False(string.IsNullOrEmpty(result.Error));
+	}
+
+	[Fact]
+	public async Task DesignTheme_WithoutConvention_IsRejected()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, Xaml, typeof(WpfSurfaceHostRpcTests).Assembly.Location), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		Assert.False(opened.SupportsThemeSwitch);
+
+		var result = await client.SetThemeAsync(1, "Dark", timeout.Token);
+		Assert.False(result.Accepted);
+		Assert.False(string.IsNullOrEmpty(result.Error));
 	}
 }

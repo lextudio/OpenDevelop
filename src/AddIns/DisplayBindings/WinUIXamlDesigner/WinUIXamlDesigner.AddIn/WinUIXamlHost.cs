@@ -286,6 +286,13 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 	/// <summary>Shows or hides the design-space gridlines overlay.</summary>
 	public void SetGridlines(bool show) => runtime.SetGridlines(show);
 
+	/// <summary>Whether the tab-order badge overlay is shown.</summary>
+	public bool ShowTabOrder => runtime.ShowTabOrder;
+
+	/// <summary>Toggles the tab-order badge overlay - matching the WinForms designer's own
+	/// tab-order view.</summary>
+	public void SetTabOrderMode(bool show) => runtime.SetTabOrderMode(show);
+
 	public (double X, double Y, double Width, double Height)? QueryElementBounds(string name) =>
 		runtime?.QueryElementBounds(name);
 
@@ -492,6 +499,10 @@ public interface IWinUIXamlRuntimeHost : IDisposable
 	bool Gridlines { get; }
 	/// <summary>Shows or hides the design-space gridlines overlay.</summary>
 	void SetGridlines(bool show);
+	/// <summary>Whether the tab-order badge overlay is shown.</summary>
+	bool ShowTabOrder { get; }
+	/// <summary>Toggles the tab-order badge overlay.</summary>
+	void SetTabOrderMode(bool show);
 	/// <summary>Raised once an asynchronous <see cref="LoadXaml"/> has settled.</summary>
 	event EventHandler StateChanged;
 	void LoadXaml(string text);

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>WpfThemeFixture</RootNamespace>
+    <Nullable>enable</Nullable>
+    <!-- A design-time-only fixture, never actually launched: its themes/*.xaml files are
+         embedded as plain resources (WPF-standard convention - one embedded
+         themes/<name>.xaml resource per theme), which the child's ResolveThemes enumerates
+         by file name. No UseWPF needed: the child reads them as raw XAML text. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="themes\*.xaml" />
+  </ItemGroup>
+</Project>
