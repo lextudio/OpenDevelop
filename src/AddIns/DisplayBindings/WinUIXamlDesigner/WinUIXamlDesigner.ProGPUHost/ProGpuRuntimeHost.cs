@@ -45,6 +45,7 @@ sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost
     // render so a hit test can be answered with a name the shell side understands.
     IReadOnlyList<string> selectableNames = Array.Empty<string>();
     readonly Dictionary<Microsoft.UI.Xaml.FrameworkElement, string> namesByElement = new();
+    bool showTabOrder;
     // Guards against an earlier, slower render overwriting the result of a later edit.
     int version;
     bool disposed;
@@ -131,6 +132,15 @@ sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost
 
     /// <summary>Shows or hides the design-space gridlines overlay.</summary>
     public void SetGridlines(bool show) => control.SetGridlines(show);
+
+    /// <summary>Whether the tab-order badge overlay is shown.</summary>
+    public bool ShowTabOrder => showTabOrder;
+
+    /// <summary>Toggles the tab-order badge overlay. The retired in-process profile keeps the
+    /// state for contract/DevFlow parity (<c>od.winui-designer.tab-order</c>) but renders no
+    /// badges: <see cref="ElementTree"/> is null here, so there are no per-element bounds to
+    /// badge - the Uno out-of-process host is the supported WinUI path that actually draws them.</summary>
+    public void SetTabOrderMode(bool show) => showTabOrder = show;
 
     /// <summary>
     /// How many of the document's x:Names actually resolved against the rendered namescope, and
