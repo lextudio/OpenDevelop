@@ -695,3 +695,31 @@ The DevFlow actions that consume these members — `od.winui-designer.gridlines`
 `od.winui-designer.debug-dpi`, `od.winui-designer.render-timing`, `od.winui-designer.export-png`,
 `od.winui-designer.render-sample`, and `od.winui-designer.child-log` — therefore behave
 identically against both runtime profiles.
+
+## Shared-shell alignment (2026-08-19/20)
+
+A batch of changes brought the Uno surface and its toolbar onto the shared shell features added
+for all three designers (see designer-common.md "Done (2026-08-20)" for the shared-layer
+details; this section records the Uno-side specifics).
+
+- **Selection/guide offset fix (2026-08-19)**: selection adorners, snap-guide lines and grid-guide
+  drags had been re-applying `origin + pan` a second time, drifting the overlays off the rendered
+  frame once panning or the canvas margin was involved. They now map design→surface through a
+  canvas-local viewport (`UnoDesignSurfaceControl.CanvasLocalViewport`, which folds `CanvasMargin`
+  into the pan once — `CurrentViewport` still handles frame placement). Guide/box/selection
+  drawing changed from `origin + pos*scale + pan` to bare `pos*scale` inside the already-positioned
+  `viewportCanvas`. Integration tests for the selection offset were added/updated.
+- **Theme combo**: the toolbar's theme combo now lists the app's real
+  `ResourceDictionary.ThemeDictionaries` keys (hoisted by `AppResourceBuilder.GetThemeNames` in
+  `UnoDesignRuntimeHost.EnsureAppResourcesAsync` → `surface.SetDesignThemes`), and
+  `UnoDesignSurfaceControl.SetTheme` re-renders by that name — the old hardcoded Light/Dark
+  button is gone.
+- **Gridlines via shared `GridlineOverlay`**: the tiled-`DrawingBrush` grid never rendered under
+  LibreWPF-on-macOS; the Uno surface now uses the shared line-drawing overlay (see
+  `designer-gridlines-bug.md`).
+- **Show-names toggle**: `DesignerCanvas.ShowNames` (default on) toggles the control-name label
+  above the selection outline, consistent with WPF/WinForms.
+- **Shared `SharedToolbox`**: `WinUIXamlToolbox` became a thin facade over the shared toolbox
+  pad engine (`Base/Project/Src/Gui/Pads/SharedToolbox.cs`), preserving its `ToolboxControl`/
+  `DragDataFormat`/`FindItem` surface; a WinUI document's Tools pad shows only WinUI categories
+  via the shared ListBox's per-scope filter.

@@ -303,3 +303,25 @@ process, asserts the child owns a real `System.Windows.Forms.Form` root with `bu
 drives add-control/set-property/set-event/set-bounds through `od.forms-designer.*` and verifies
 after save that the handler landed in `Form1.vb` and the generated statements in
 `Form1.Designer.vb`.
+
+## Recent alignment (2026-08-19/20)
+
+- **`.Designer.cs` / `.Designer.vb` no longer open a design view (2026-08-19)**:
+  `CSharpDesignerSecondaryDisplayBinding` and `VbDesignerSecondaryDisplayBinding` both reject
+  `*.Designer.cs`/`*.Designer.vb` in `CanAttachTo`. The design view attaches only to the primary
+  partial (`Foo.cs`/`Foo.vb`); opening the generated companion from the project browser stays a
+  plain source view instead of spawning a second design view over the same form.
+- **Canvas margin (2026-08-19)**: `RemoteFormsDesignerControl` gained `CanvasMargin = 24`
+  (matching WPF's `CanvasPadding`), so the root component's handles are reachable and the shared
+  toolbar's `EdgePattern` is visible around the form — the WinForms canvas previously had no
+  border around the form while WPF/WinUI did. Fit/zoom inset the viewport and fold the margin
+  back into the pan (`DesignViewport.Fit/Zoom(…, CanvasMargin, CanvasMargin)`), keeping the
+  frame bitmap, guides and all `DesignToSurface`-based adorners aligned.
+- **Selection-render fix (2026-08-19)**: selection adorner rendering was corrected to track the
+  frame/selection under the new margin coordinates.
+- **Shared Toolbox engine (2026-08-19/20)**: `WpfToolbox` (which serves WPF + WinForms) became a
+  facade over the shared `SharedToolbox` pad engine (`Base/Project/Src/Gui/Pads/SharedToolbox.cs`);
+  the WinForms view routes through `SharedToolboxAccess` so a pure WinForms session's Tools pad
+  still shows content (the shared ListBox's "winforms" scope is seeded before the pad mounts it).
+- **Show-names toolbar toggle (2026-08-20)**: `DesignerCanvas.ShowNames` (default on) toggles the
+  component-name label on the selection outline, consistent with the other two designers.

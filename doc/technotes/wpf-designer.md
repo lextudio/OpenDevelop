@@ -1507,11 +1507,13 @@ the two false leads above would have been skipped entirely.
 
 ### Toolbar (Zoom/Fit/Grid): completed, after two false starts (2026-08-18)
 
-**Final state: the toolbar ships, enabled and working.** Zoom, Fit and gridlines are implemented and
-verified end to end against a live app; design-size and design-theme stay hidden because they are
-genuinely other backends' concepts (see the constructor comment in `WpfSurfaceDesignerControl` for
-the per-entry reasoning). What follows records the two wrong conclusions reached on the way, since
-both were confidently wrong and cost real time.
+**Final state (as of 2026-08-18): the toolbar ships, enabled and working.** Zoom, Fit and
+gridlines are implemented and verified end to end against a live app; design-size stays hidden
+because it is genuinely another backends' concept (see the constructor comment in
+`WpfSurfaceDesignerControl` for the per-entry reasoning). Design-theme was also hidden at this
+point — it landed two days later via the embedded-`themes/*.xaml` enumeration described in the
+"Design-theme combo" section below (2026-08-20). What follows records the two wrong conclusions
+reached on the way, since both were confidently wrong and cost real time.
 
 The breakthrough was abandoning 40-second test cycles and instead driving a **live app instance**
 through DevFlow directly (launch with `OD_TEST_MODE=1`, then `od.open-solution`/`od.open-file`/
@@ -1606,6 +1608,76 @@ already document and defend against with a 4-attempt retry loop. This test had n
 fixed by adding one, matching the established pattern exactly (retry the whole press/drag-move/
 release gesture, not a single fixed attempt). This is a real, permanent test improvement independent
 of the toolbar's fate, and should stay even though the toolbar itself was reverted.
+
+## Design-theme combo: embedded `themes/*.xaml` enumeration (2026-08-20)
+
+The shared toolbar's Light/Dark theme **button** became a theme **combo** whose entries are the
+themes a project actually carries (see designer-common.md). For WPF the theme list is per-project
+and derived from the project assembly's embedded resources, following the WPF-standard convention
+`ThemeInfoAttribute` describes (`themes/<name>.xaml` dictionaries), but implemented by
+**enumerating the manifest resources directly** — no `ThemeInfoAttribute` check:
+
+- `WpfSurfaceHostService.ResolveThemes` walks `projectAssembly.GetManifestResourceNames()` and
+  picks out embedded `themes/*.xaml` resources. The manifest name is dot-separated with no
+  slashes (`WpfThemeFixture.themes.Bright.xaml`), so the match looks for the `.themes.` segment,
+  treats the segment after it as the theme file name and the one after that as the `xaml`
+  extension, and skips `generic.xaml` (the fallback default-style dictionary, not a theme).
+- `DesignerSessionState.SupportsThemeSwitch` / `DesignThemes` (new shared DDP fields) carry the
+  result back: `WpfSurfaceDesignerControl.Show` sets `ShowTheme = DesignThemes.Length > 0` and
+  populates the combo via `SetDesignThemes` — a project with no embedded theme keeps the combo
+  hidden (the constructor defaults `ShowTheme = false`).
+- `SetTheme(name)` loads the named embedded dictionary via `GetManifestResourceStream` +
+  `XamlReader.Parse`, merges it onto the open design's root `Resources.MergedDictionaries` and
+  re-renders; an unknown name is reported as `Accepted = false` (the same graceful no-op shape
+  `RejectIfStale` establishes), never an exception.
+
+**A non-bug worth recording (2026-08-20):** the initial sample wrote `[assembly: ThemeInfo(...)]`
+with `using System.Windows.Themes;`, which fails to compile under `LibreWPF.Sdk`. That is NOT a
+LibreWPF gap — upstream dotnet/wpf has no `System.Windows.Themes` namespace in .NET Core+ either
+(`ThemeInfoAttribute`/`ResourceDictionaryLocation` are `System.Windows.*`, and the public
+`System.Windows.Themes.SystemTheme` from .NET Framework was dropped in the open-source port). The
+`using` was simply wrong against real WPF too. The sample and fixture therefore rely on the
+embedded-resource convention alone, no attribute.
+
+Verified by tests (`WpfSurfaceHostRpcTests`, five `DesignTheme_*` scenarios) against a real
+fixture assembly, `Fixtures/WpfThemeFixture`, whose `themes/*.xaml` (`Bright`, `Midnight`,
+`Solarized` plus `generic`) are embedded resources:
+
+- no-theme assembly → `SupportsThemeSwitch = false`, empty `DesignThemes`;
+- themed assembly → enumerates `["Bright", "Midnight", "Solarized"]` (generic excluded);
+- `SetTheme` actually switches rendering between the three;
+- unknown name → rejected;
+- a second themed assembly is detected only from its own embedded resources.
+
+The full suite stands at 27/27 (`WpfSurfaceHostRpcTests`). `WpfThemeSample`
+(`src/Samples/WpfThemeSample/`) is the runnable demo app.
+
+**One environment trap worth recording:** this repo's MSBuild incremental build did not reliably
+recompile `WpfSurfaceHostService.cs` — builds reported "succeeded" while the shipped DLL still
+lacked the new code (verified by timestamp and by searching the DLL for the new string). Use
+`dotnet build -t:Rebuild` (or `rm bin/obj`) after editing the SurfaceHost sources before running
+tests; this cost a full debug cycle.
+
+## Show-names, gridlines overlay, undo/redo, multi-select (2026-08-20)
+
+Same batch as the theme work, all shared-shell or WPF-side:
+
+- **Show-names toolbar toggle** (`DesignerCanvas.ShowNames`, default on): hides the control-name
+  label above the selection outline. WPF and the other backends just flip
+  `adornerLayer.ShowNameLabel`.
+- **Gridlines via shared `GridlineOverlay`**: WPF's grid now uses the shared line-drawing overlay
+  (plain `Line` shapes) because the old tiled `DrawingBrush` never rendered under
+  LibreWPF-on-macOS — see `designer-gridlines-bug.md`.
+- **Whole-document Undo/Redo** (`WpfViewContent`): host-side `undoStack`/`redoStack` of flushed
+  XAML text, restored through `session/update`; `CanUndo`/`CanRedo` + `Undo()`/`Redo()` back the
+  toolbar, mirroring WinForms' remote undo. No live-element-tree transactional undo (no such RPC).
+- **Multi-select + align/distribute/match-size**: `od.wpf-designer.multi-select`/`align`/
+  `distribute`/`match-size`/`undo`/`redo` DevFlow actions; secondary outlines use the shared
+  `SelectionAdornerLayer.SetSecondarySelection`, alignment snapping uses the shared
+  `SnapGuideCalculator`.
+- **Grid-guide drag**: `design/query-grid-guides` returns a Grid's live row/column track geometry
+  (`DesignerGridTrackInfo` cumulative offsets + sizes) for draggable divider guides — the WPF
+  analogue of Uno's Grid-guide overlay.
 
 ## Reference record for the isolation decision
 

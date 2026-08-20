@@ -92,7 +92,8 @@ The consequence: the shell-side work — document tabs, surface presenter, selec
 properties/toolbox pads, undo, save, crash recovery — is almost identical regardless of which
 runtime renders the surface, and OpenDevelop owns that shell once
 (`DesignerCanvas`, `DesignViewport`, `DesignFramePresenter`, `SelectionAdornerLayer`,
-`DocumentOutlineControl`, `IDesignHostClient`), treating each backend as an adapter.
+`GridlineOverlay`, `SnapGuideCalculator`, `DocumentOutlineControl`, `IDesignHostClient`), treating
+each backend as an adapter.
 
 ## Scope and non-goals
 
@@ -174,7 +175,7 @@ seam described below.
 | `design/delete-elements` | host → child | remove elements |
 | `design/apply-layout` | host → child | alignment/spacing/format operations |
 | `design/rename` | host → child | rename an element (updates source + identity) |
-| `design/theme` | host → child | switch Light/Dark theme and re-render |
+| `design/theme` | host → child | switch design theme by name (Light/Dark default; WPF uses embedded `themes/*.xaml` names, WinUI the app's ThemeDictionaries keys) and re-render |
 | `design/render` | host → child | produce a frame (on demand) |
 | `design/export-png` | host → child | render to a PNG file (diagnostics/tests) |
 | `app/resources` | host → child | supply App.xaml/merged-resource content |
@@ -483,8 +484,10 @@ All three backends converge on the same stack:
 | Layer | Shared project | WinForms | WPF | WinUI/Uno |
 |---|---|---|---|---|
 | Protocol DTOs + process lifecycle | `src/Main/Designer/Designer.Remote/` | `FormsDesignerHostClient : DesignerHostProcessClient, IDesignHostClient` | `WpfSurfaceHostClient : DesignerHostProcessClient, IDesignHostClient` | `UnoDesignClient : DesignerHostProcessClient, IDesignHostClient` |
-| Geometry/rendering helpers | `src/Main/Designer/Designer.Presentation/` (`DesignViewport`, `DesignFramePresenter`, `SelectionAdornerLayer`) | used | used | used |
-| Canvas shell (toolbar/edge/theme) | `ICSharpCode.SharpDevelop.Widgets/Project/DesignerCanvas.cs` | `RemoteFormsDesignerControl : DesignerCanvas` | `WpfSurfaceDesignerControl : DesignerCanvas` | `UnoDesignSurfaceControl : DesignerCanvas` |
+| Geometry/rendering helpers | `src/Main/Designer/Designer.Presentation/` (`DesignViewport`, `DesignFramePresenter`, `SelectionAdornerLayer`, `GridlineOverlay`, `SnapGuideCalculator`) | used | used | used |
+| Child-process bootstrap | `src/Main/Designer/Designer.Server/` (`DesignerChildHost` — the connect-back/JsonRpc/wait-for-shutdown boilerplate shared by WinForms and WPF children; Uno runs its own pump, see Part II) | `DesignerChildHost.Run` | `DesignerChildHost.Run` | own dispatcher pump |
+| Canvas shell (toolbar/edge/theme/names) | `ICSharpCode.SharpDevelop.Widgets/Project/DesignerCanvas.cs` | `RemoteFormsDesignerControl : DesignerCanvas` | `WpfSurfaceDesignerControl : DesignerCanvas` | `UnoDesignSurfaceControl : DesignerCanvas` |
+| Toolbox pad engine | `src/Main/Base/Project/Src/Gui/Pads/SharedToolbox.cs` (one ListBox + grouping/drag state machine, per-scope filter) | `WpfToolbox` facade | `WpfToolbox` facade | `WinUIXamlToolbox` facade |
 | Child process | — | `FormsDesigner/Host/` (`DesignerHostService`, `SnapshotDesignerLoader`) | `WpfDesign.SurfaceHost/` (`WpfSurfaceHostService`, ProGPU headless render) | `WinUIXamlDesigner.UnoHost/` (`DesignHost`, Uno page runtime) |
 | DevFlow actions | — | `FormsDesignerDevFlowActions.cs` | `WpfDesignDevFlowActions.cs` | `WinUIXamlDesignerDevFlowActions.cs` |
 
@@ -504,9 +507,9 @@ OpenDevelop
          └─ FormsDesignerHostClient (: DesignerHostProcessClient, IDesignHostClient)
               └─ StreamJsonRpc + token → FormsDesigner.Host.exe
 FormsDesigner.Host (child)
-  DesignerHostService  — RPC target: session/version/flush + 13 discrete design/* RPCs
+  DesignerChildHost.Run — shared connect-back/JsonRpc/wait-for-shutdown bootstrap (Designer.Server)
+  DesignerHostService  — RPC target: session/version/flush + discrete design/* RPCs
   SnapshotDesignerLoader + DesignSurface (LibreWinForms) — the real controls
-  Program — token/auth, dotnet exec with the project's runtimeconfig/deps
 ```
 
 ### Capabilities (protocol)
@@ -532,6 +535,13 @@ FormsDesigner.Host (child)
 - Only the **south-east** corner resizes (`"se"` single handle), with `Math.Max(8, …)` minimum
   size; no anchored-edge math, no snap, no alignment guides.
 - No drag threshold — the Thumb semantics start dragging on press (WinUI uses 4 px, WPF 3 px).
+- **Canvas margin (2026-08-19)**: `CanvasMargin = 24` keeps empty space on every side of the
+  design (matching WPF's `CanvasPadding`), so the root's handles are reachable and the
+  `EdgePattern` shows around the form — before this the WinForms canvas visibly had no border
+  around the form while WPF/WinUI did. The margin is folded into the viewport's pan
+  (`DesignViewport.Fit/Zoom(…, CanvasMargin, CanvasMargin)`), so the frame, guides and every
+  `DesignToSurface`-based adorner stay aligned. **Selection-render fix (2026-08-19)**: selection
+  adorner rendering was corrected to track the frame/selection under these new coordinates.
 
 ### WinForms-only features
 
@@ -548,6 +558,11 @@ FormsDesigner.Host (child)
   (Form/Panel/GroupBox/TabPage/UserControl).
 - **Disconnected overlay**: `disconnectedOverlay` + Restart button on child death.
 - Add Components dialog, image resource editor, localization model options, component library.
+- **`.Designer.cs`/`.Designer.vb` do not open a design view (2026-08-19)**: both
+  `CSharpDesignerSecondaryDisplayBinding` and `VbDesignerSecondaryDisplayBinding` reject
+  `*.Designer.cs`/`*.Designer.vb` in `CanAttachTo` — the design view attaches only to the primary
+  partial (`Foo.cs`/`Foo.vb`); opening the generated companion from the project browser stays a
+  plain source view instead of spawning a second design view over the same form.
 
 ### Known bugs and limits (2026-08-18)
 
@@ -579,7 +594,8 @@ OpenDevelop
          └─ WpfSurfaceHostClient (: DesignerHostProcessClient, IDesignHostClient)
               └─ StreamJsonRpc + token → WpfDesign.SurfaceHost.exe
 WpfDesign.SurfaceHost (child)
-  WpfSurfaceHostService — RPC target: open/update/flush + mutations + App.xaml merge
+  DesignerChildHost.Run — shared connect-back/JsonRpc/wait-for-shutdown bootstrap (Designer.Server)
+  WpfSurfaceHostService — RPC target: open/update/flush + mutations + App.xaml merge + theme
   XamlDesignContext / DesignItem / DesignSurface (WpfDesigner engine)
   ProGpuWpfCompositionTarget — headless GPU render (RenderTarget → texture → ReadPixels)
   TryHitTestOwner — GPU hit-test index, falls back to VisualTreeHelper + ResolveOwner
@@ -625,6 +641,24 @@ WpfDesign.SurfaceHost (child)
 - **`WpfToolbox.BuildToolboxItemInfo`** generates DDP DTOs, but `AddProjectDlls` still reflects
   project assemblies in the IDE process (Phase 4 item — the "host never inspects project
   assemblies" rule is not yet met here).
+- **Design-theme enumeration (WPF-standard convention)**: the child's `ResolveThemes` walks the
+  project assembly's manifest resources for embedded `themes/*.xaml` (excluding `generic.xaml`,
+  the fallback default-style dictionary) and reports the file names — sans extension — via
+  `DesignerSessionState.DesignThemes`/`SupportsThemeSwitch`. `SetTheme(name)` loads that embedded
+  dictionary and merges it onto the open design's root. The theme combo is shown only when a
+  project actually embeds themes (`ShowTheme = DesignThemes.Length > 0`). Verified by the
+  `WpfThemeFixture` (Bright/Midnight/Solarized + generic) and the WpfThemeSample.
+- **Grid-guide drag (WPF shape)**: `design/query-grid-guides` returns a Grid's live
+  row/column track geometry (`DesignerGridTrackInfo` cumulative offsets + sizes); the host
+  draws draggable divider guides over the frame — the WPF analogue of Uno's own Grid-guide
+  overlay (which reads the live XAML text instead).
+- **Whole-document Undo/Redo**: host-side `undoStack`/`redoStack` of flushed XAML text,
+  restored via `session/update` — mirroring WinForms' `DesignerViewContent` remote undo; neither
+  backend has live-element-tree transactional undo.
+- **Multi-select + align/distribute/match-size** (2026-08-20): `od.wpf-designer.multi-select`/
+  `align`/`distribute`/`match-size`/`undo`/`redo` DevFlow actions; multi-select drawing reuses
+  the shared `SelectionAdornerLayer.SetSecondarySelection`, and alignment snapping reuses the
+  shared `SnapGuideCalculator`.
 
 ### Legacy baggage (2026-08-18)
 
@@ -685,6 +719,10 @@ WinUIXamlDesigner.UnoHost (child)
   snap-to-guides applied before commit (8 design-unit tolerance) and the corrected delta (not the
   raw one) committed on mouse-up.
 - **Multi-select group drag**: dashed secondary outlines, whole group translated by one delta.
+- **Selection/guide offset fixed (2026-08-19)**: selection adorners, snap guides and grid-guide
+  drags now map design→surface through a canvas-local viewport (`CanvasLocalViewport`, which folds
+  `CanvasMargin` into the pan) instead of re-adding `origin + pan` a second time — previously the
+  margin/pan was applied twice and overlays drifted off the rendered frame.
 - `ScrollViewer`-based zoom/pan: Ctrl+wheel zoom-at-cursor, space/middle-button pan, scrollbars;
   design↔surface math = `DesignViewport` ± scroller offsets (`ToDesignPoint`/`DesignToSurfacePoint`).
 - Frame: BGRA8 deflate+base64, decoded with `BitmapSource.Create` (WIC avoidance on macOS).
@@ -692,7 +730,9 @@ WinUIXamlDesigner.UnoHost (child)
 ### WinUI/Uno-only features
 
 - **Zoom/pan** with `MinZoom 0.1 / MaxZoom 16`, zoom combo sync (Fit / 25%–400%).
-- **Gridlines**: 20-design-unit grid, tile-brushed at scale.
+- **Gridlines**: 20-design-unit grid via the shared `GridlineOverlay` (plain `Line` shapes —
+  tiled `DrawingBrush` does not render under LibreWPF-on-macOS, see
+  `designer-gridlines-bug.md`).
 - **Snap alignment guides**: orange guide lines from `ApplySnap` (align left/center/right,
   top/middle/bottom), `SetSnapGuides` draws them.
 - **Grid row/column guide resize**: select a Grid, drag its row/column separators, commit
@@ -700,8 +740,11 @@ WinUIXamlDesigner.UnoHost (child)
 - **Inline text editor**: double-click TextBlock/TextBox/Button → in-surface text edit
   (font scaled by viewport scale), Enter/focus-loss commits, Esc cancels; writes Text/Content
   through the incremental render path.
-- **Design-theme toggle**: Light/Dark re-render via `design/theme`; the button label reads the
-  theme the *next* click switches to.
+- **Design-theme combo**: the shared toolbar's theme combo is populated from the app's actual
+  `ResourceDictionary.ThemeDictionaries` keys, hoisted by `AppResourceBuilder.GetThemeNames`
+  from the App.xaml under design (`UnoDesignRuntimeHost.EnsureAppResourcesAsync` calls
+  `SetDesignThemes`), so the combo lists the themes the app really carries — not a hardcoded
+  Light/Dark pair. Selecting one fires `ThemeRequested` → `design/theme` (by name) and re-renders.
 - **Design-size (device) presets**: Auto / Phone 390×844 / Tablet 768×1024 / Desktop 1280×720
   drive the child's page layout size.
 - **Edge-drag page resize**: `CanvasMargin = 32` leaves room for it, but **only the comment
@@ -739,7 +782,7 @@ Legend: **✓** implemented and exercised · **~** partial (see note) · **✗**
 | `design/delete-elements` | ✓ | ✓ | ✓ |
 | `design/rename` | ✓ (rename UI exists) | ✗ (capability ready, no UI anywhere) | ~ (capability ready, no UI) |
 | `design/apply-layout` (align/spacing/z-order) | ✓ (`IDesignHostLayout`) | ✗ | ✗ |
-| `design/theme` (design Light/Dark re-render) | ✗ (toolbar button inert) | ✗ (toolbar button hidden) | ✓ |
+| `design/theme` (design-theme re-render) | ✗ (combo hidden — no theme concept in WinForms) | ✓ (enumerates embedded `themes/*.xaml`; combo per-project) | ✓ (combo from ThemeDictionaries keys) |
 | `app/resources` (App.xaml/merged dictionaries) | ✗ (not applicable) | ~ (App.xaml merged into root Resources, child-side) | ✓ |
 | Capability negotiation (optional interfaces feature-detected) | ✓ (Reset/DefaultEvent/Layout) | ~ (core only; SetEvent gap should become a capability) | ✓ (Theme/Export/AppResources) |
 | Crash/restart recovery | ✓ (disconnected overlay + Restart) | ✓ (crash/restart covered by tests) | ✓ (lifecycle probes + status) |
@@ -752,8 +795,9 @@ Legend: **✓** implemented and exercised · **~** partial (see note) · **✗**
 | Shared `DesignerCanvas` shell + toolbar | ✓ | ✓ | ✓ |
 | Zoom combo (100% default, VS behavior) | ✓ (**fixed 2026-08-18**: `RebuildViewport` no longer short-circuited by the frame-sequence guard; hit-test/marquee/toolbox-drop now divide by `viewport.Scale`; guides/UIA bounds use `DesignToSurface`) | ✓ (Stretch.Fill fix landed) | ✓ |
 | Fit | ✓ | ✓ | ✓ |
-| Gridlines toggle | ~ (button visible but inert — no capability) | ✓ | ✓ |
-| Light/Dark design-theme toggle | ✗ (inert) | ✗ (hidden) | ✓ |
+| Gridlines toggle | ~ (button visible but inert — no capability) | ✓ (shared `GridlineOverlay`) | ✓ (shared `GridlineOverlay`) |
+| Show names on selection (toolbar toggle, default on) | ✓ | ✓ | ✓ |
+| Design-theme combo (lists actual themes; Light/Dark default) | ✗ (hidden — not a WinForms concept) | ✓ (embedded `themes/*.xaml`, per-project) | ✓ (ThemeDictionaries keys) |
 | Design-size (device) preset combo | ✗ (hidden — not a WinForms concept) | ✗ (hidden) | ✓ |
 | Edge pattern around the design bitmap | ✓ | ✓ | ✓ |
 | Toolbar follows IDE theme (dark toolbar, light text) | ✓ | ✓ | ✓ |
@@ -790,7 +834,7 @@ Legend: **✓** implemented and exercised · **~** partial (see note) · **✗**
 | Component lock state | ✓ | (–) | (–) |
 | UIA automation peer tree | ✓ | ✗ | ✗ |
 | Add Components dialog / component library | ✓ | ✗ | ✗ |
-| Toolbox: child-side reflection catalog | ✓ | ~ (child builds DTOs; IDE still feeds project dlls — Phase 4) | ✓ |
+| Toolbox: child-side reflection catalog (engine shared via `SharedToolbox`) | ✓ | ~ (child builds DTOs; IDE still feeds project dlls — Phase 4) | ✓ |
 | Toolbox drop to surface | ✓ | ✓ | ✓ |
 | Toolbox drop to XAML source | ✗ | ✓ | ✗ |
 | Properties pad adapter | ✓ (`RemoteComponentPropertyProxy`, ICustomTypeDescriptor) | ✓ (`WpfSurfaceElementPropertyAdapter`) | ✓ (through the host) |
@@ -804,7 +848,7 @@ Legend: **✓** implemented and exercised · **~** partial (see note) · **✗**
 
 | Feature | WinForms | WPF | WinUI/Uno |
 |---|---|---|---|
-| Child-process RPC test suite | ✓ (`FormsDesignerHostClientTests`) | ✓ 22/22 (`WpfSurfaceHostRpcTests`) | ✓ 3/3 (`UnoDesignHostRpcTests`) |
+| Child-process RPC test suite | ✓ (`FormsDesignerHostClientTests`) | ✓ 27/27 (`WpfSurfaceHostRpcTests`, incl. five `DesignTheme_*`) | ✓ 3/3 (`UnoDesignHostRpcTests`) |
 | `od.<x>-designer.surface-geometry` probe | ✓ (Frame=whole bitmap, Selection=element outline, Handle=derived corner, Element=element — shared `DesignerSurfaceGeometry` record, 2026-08-18) | ✓ (same shared shape; `frame` = whole bitmap since 2026-08-18, was `frame==element`) | ✓ (same shared shape) |
 | Resize-drag integration tests | ✓ | ✓ (4-attempt retry loop — known flake) | ✓ |
 | `query-element-screen-bounds` / `query-toolbox-item-bounds` | ✗ | ✓ | ✓ |
@@ -879,11 +923,14 @@ scaffolding, and DevFlow plumbing.
    `RemoteFormsDesignerControl` and `WpfSurfaceDesignerControl` (comments acknowledge the
    duplication), with a third variant in `UnoDesignSurfaceControl`. Move it into the shell (the
    shell already owns the combo); this also gives a place to fix the WinForms sequence-guard bug.
-4. **Gridlines brush trio**: `CreateGridBrush`/`UpdateGridBrush`/`SetGridlines` +
-   `GridCellSize = 20` are duplicated verbatim between `WpfSurfaceDesignerControl` and
-   `UnoDesignSurfaceControl` (same gray `Color.FromRgb(0x80,0x80,0x80)`, same `TileMode.Tile`).
-   The shell already owns `ShowGrid`/`GridRequested` — a `DesignGridlinesOverlay` in
-   Designer.Presentation can be driven straight from it.
+ 4. ~~**Gridlines brush trio**: `CreateGridBrush`/`UpdateGridBrush`/`SetGridlines` +
+    `GridCellSize = 20` are duplicated verbatim between `WpfSurfaceDesignerControl` and
+    `UnoDesignSurfaceControl` (same gray `Color.FromRgb(0x80,0x80,0x80)`, same `TileMode.Tile`).
+    The shell already owns `ShowGrid`/`GridRequested` — a `DesignGridlinesOverlay` in
+    Designer.Presentation can be driven straight from it.~~ **Done (2026-08-20)**:
+    `GridlineOverlay` in `Designer.Presentation` draws the grid as plain `Line` shapes
+    (tiled `DrawingBrush` does not render under LibreWPF-on-macOS — see
+    `designer-gridlines-bug.md`) and both WPF and WinUI/Uno surfaces use it.
 5. **Deflate+base64 frame decode**: `WpfSurfaceDesignerControl.DecodeFrame` and
    `RenderCodec.Decode` are identical pure-managed code (the comment "duplicated per backend by
    design" is no longer justified — both decode the same BGRA wire format). One `FrameCodec` in
@@ -1221,6 +1268,41 @@ acceptance check, so the list can be resumed by a fresh session at any point.
     **Acceptance:** `.ts`/`.tsx`/`.js`/`.jsx` open in AvalonEdit with highlighting,
     completion, go-to-definition, find-references, rename, and diagnostics through the LSP
     client; legacy `TypeScriptBinding`/`Scripting` removed from the solution.
+
+### Done (2026-08-20)
+
+- **Shared `GridlineOverlay`** (`Designer.Presentation`) — gridlines drawn as plain `Line`
+  shapes because tiled `DrawingBrush` doesn't render under LibreWPF-on-macOS; adopted by both
+  WPF and WinUI/Uno surfaces (see `designer-gridlines-bug.md`).
+- **Shared `SnapGuideCalculator`** (`Designer.Presentation`) — pure geometry for drag-move
+  alignment snapping, relocated from Uno's `ApplySnap` so WPF/WinForms can share it.
+- **Shared `SelectionAdornerLayer.SetSecondarySelection`** — dashed secondary multi-select
+  outlines, relocated from Uno's `secondaryBoxes` pattern for cross-backend multi-select.
+- **Shared `DesignerChildHost`** (`Designer.Server`) — the child-side connect-back/JsonRpc/
+  wait-for-shutdown bootstrap, extracted from the WinForms and WPF child `Program.cs` files;
+  Uno keeps its own dispatcher pump.
+- **Shared `SharedToolbox` pad engine** (`Base/Project/Src/Gui/Pads/SharedToolbox.cs`) — one
+  ListBox + grouping/drag state machine with per-scope filtering, replacing the duplicated
+  WPF/WinForms `WpfToolbox` and WinUI `WinUIXamlToolbox` state machines; each keeps a thin
+  facade. WinForms routes through `SharedToolboxAccess` so a pure WinForms session's pad still
+  shows content.
+- **Design-theme combo in the shared toolbar** — the Light/Dark toggle button became a combo
+  that lists the themes a project actually carries: WinUI/Uno hoists the app's
+  `ResourceDictionary.ThemeDictionaries` keys (`AppResourceBuilder.GetThemeNames`), WPF
+  enumerates embedded `themes/*.xaml` (`ResolveThemes`), WinForms hides it (no theme concept).
+  `DesignerCanvas` gained `DesignTheme`/`SetDesignThemes`/`IsDarkTheme` and
+  `ThemeRequested` now carries the theme name (`EventHandler<string>`).
+- **Show-names toolbar toggle** — `DesignerCanvas.ShowNames`/`IsShowingNames` (default on);
+  toggling hides the control-name label above the selection outline on all three backends.
+- **WinForms canvas margin + selection-render fix** — `CanvasMargin = 24` (matching WPF's
+  padding) so the root handles are reachable and the `EdgePattern` shows around the form;
+  selection adorners track the frame under the new coordinates.
+- **Uno selection/guide offset fix** — overlay geometry now maps through a canvas-local
+  viewport (`CanvasLocalViewport`, margin folded into the pan) instead of double-applying
+  origin+pan.
+- **`.Designer.cs`/`.Designer.vb` no longer open a design view** — both secondary display
+  bindings reject `*.Designer.*` in `CanAttachTo`; the design view attaches only to the
+  primary partial.
 
 ## Priority
 
