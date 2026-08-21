@@ -81,6 +81,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		LoadSettings();
 		if (settingsGridlines)
 			surface.SetGridlines(true);
+		surface.IsGridEnabled = settingsGridlines;
 		if (settingsSizePreset is { } size)
 			SetDesignSize(size.Width, size.Height);
 		connectTask = ConnectAsync(framework?.Kind.ToString() ?? "unknown");

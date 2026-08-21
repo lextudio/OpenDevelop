@@ -43,7 +43,7 @@ namespace ICSharpCode.FormsDesigner.Services
 			int h = PropertyService.Get("FormsDesigner.DesignerOptions.GridSizeHeight", 8);
 			this.gridSize = new Size(w, h);
 			
-			this.showGrid   = PropertyService.Get("FormsDesigner.DesignerOptions.ShowGrid", true);
+			this.showGrid   = PropertyService.Get("FormsDesigner.DesignerOptions.ShowGrid", false);
 			this.snapToGrid = PropertyService.Get("FormsDesigner.DesignerOptions.SnapToGrid", true);
 			
 			this.useSmartTags = GeneralOptionsPanel.UseSmartTags;

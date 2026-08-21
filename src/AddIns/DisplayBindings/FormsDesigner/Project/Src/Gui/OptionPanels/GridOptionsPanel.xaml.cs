@@ -40,7 +40,7 @@ namespace ICSharpCode.FormsDesigner.Gui.OptionPanels
 			this.heightTextBox.Text = PropertyService.Get("FormsDesigner.DesignerOptions.GridSizeHeight", 8).ToString();
 			
 			
-			this.showGridCheckBox.IsChecked =  PropertyService.Get("FormsDesigner.DesignerOptions.ShowGrid", true);
+			this.showGridCheckBox.IsChecked =  PropertyService.Get("FormsDesigner.DesignerOptions.ShowGrid", false);
 			this.snapToGridCheckBox.IsChecked  = PropertyService.Get("FormsDesigner.DesignerOptions.SnapToGrid", true);
 			EnableGridOptions(snapToGridOn);
 		}
