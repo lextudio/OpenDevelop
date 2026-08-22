@@ -4,6 +4,22 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
+  <Folder Name="/externals/" />
+  <Folder Name="/externals/vscode-wpf/" />
+  <Folder Name="/externals/vscode-wpf/external/" />
+  <Folder Name="/externals/vscode-wpf/external/WpfDesigner/" />
+  <Folder Name="/externals/vscode-wpf/external/WpfDesigner/WpfDesign.Designer/" />
+  <Folder Name="/externals/vscode-wpf/external/WpfDesigner/WpfDesign.Designer/Project/">
+    <Project Path="externals/vscode-wpf/external/WpfDesigner/WpfDesign.Designer/Project/WpfDesign.Designer.csproj" />
+  </Folder>
+  <Folder Name="/externals/vscode-wpf/external/WpfDesigner/WpfDesign.XamlDom/" />
+  <Folder Name="/externals/vscode-wpf/external/WpfDesigner/WpfDesign.XamlDom/Project/">
+    <Project Path="externals/vscode-wpf/external/WpfDesigner/WpfDesign.XamlDom/Project/WpfDesign.XamlDom.csproj" />
+  </Folder>
+  <Folder Name="/externals/vscode-wpf/external/WpfDesigner/WpfDesign/" />
+  <Folder Name="/externals/vscode-wpf/external/WpfDesigner/WpfDesign/Project/">
+    <Project Path="externals/vscode-wpf/external/WpfDesigner/WpfDesign/Project/WpfDesign.csproj" />
+  </Folder>
   <Folder Name="/src/" />
   <Folder Name="/src/Libraries/">
     <Project Path="src/Libraries/ICSharpCode.TypeSystem.Abstractions/ICSharpCode.TypeSystem.Abstractions.csproj" />
@@ -26,6 +42,7 @@
   <Folder Name="/src/Main/Core/Project/">
     <Project Path="src/Main/Core/Project/ICSharpCode.Core.csproj" />
   </Folder>
+  <Folder Name="/src/Main/Designer/" />
   <Folder Name="/src/Main/ICSharpCode.SharpDevelop.Widgets/" />
   <Folder Name="/src/AddIns/Misc/StartPage/">
     <Project Path="src/AddIns/Misc/StartPage/Project/StartPage.csproj" />
@@ -33,6 +50,7 @@
   <Folder Name="/src/AddIns/Debugger/">
     <Project Path="src/AddIns/Debugger/Debugger.AddIn/Debugger.AddIn.csproj" />
   </Folder>
+  <Folder Name="/src/AddIns/DisplayBindings/" />
   <Folder Name="/src/AddIns/DisplayBindings/AvalonEdit.AddIn/">
     <Project Path="src/AddIns/DisplayBindings/AvalonEdit.AddIn/AvalonEdit.AddIn.csproj" />
   </Folder>
@@ -41,6 +59,8 @@
   </Folder>
   <Folder Name="/src/AddIns/DisplayBindings/WpfDesign/">
     <Project Path="src/AddIns/DisplayBindings/WpfDesign/WpfDesign.AddIn/WpfDesign.AddIn.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/WpfDesign/WpfDesign.SurfaceHost.Remote/WpfDesign.SurfaceHost.Remote.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/WpfDesign/WpfDesign.SurfaceHost/WpfDesign.SurfaceHost.csproj" />
   </Folder>
   <Folder Name="/src/AddIns/DisplayBindings/WinUIXamlDesigner/">
     <Project Path="src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.AddIn/ICSharpCode.WinUIXamlDesigner.csproj" />
@@ -83,12 +103,15 @@
   <Folder Name="/src/AddIns/Analysis/UnitTesting/">
     <Project Path="src/AddIns/Analysis/UnitTesting/UnitTesting.csproj" />
   </Folder>
+  <Folder Name="/src/AddIns/" />
+  <Folder Name="/src/AddIns/Analysis/" />
   <Folder Name="/src/AddIns/Analysis/CodeCoverage/">
     <Project Path="src/AddIns/Analysis/CodeCoverage/Project/CodeCoverage.csproj" />
   </Folder>
   <Folder Name="/src/AddIns/Analysis/CodeQuality/">
     <Project Path="src/AddIns/Analysis/CodeQuality/CodeQuality.csproj" />
   </Folder>
+  <Folder Name="/src/AddIns/Misc/" />
   <Folder Name="/src/AddIns/Misc/AddInManager2/">
     <Project Path="src/AddIns/Misc/AddInManager2/Project/AddInManager2.csproj" />
   </Folder>
@@ -97,6 +120,7 @@
     <Project Path="src/AddIns/Misc/PackageManagement/PowerShell/Project/PackageManagement.PowerShell.csproj" />
     <Project Path="src/AddIns/Misc/PackageManagement/Cmdlets/Project/PackageManagement.Cmdlets.csproj" />
   </Folder>
+  <Folder Name="/src/AddIns/VersionControl/" />
   <Folder Name="/src/AddIns/VersionControl/GitAddIn/">
     <Project Path="src/AddIns/VersionControl/GitAddIn/GitAddIn.csproj" />
   </Folder>
@@ -106,11 +130,13 @@
   <Folder Name="/src/AddIns/DisplayBindings/SettingsEditor/">
     <Project Path="src/AddIns/DisplayBindings/SettingsEditor/Project/SettingsEditor.csproj" />
   </Folder>
+  <Folder Name="/src/AddIns/BackendBindings/" />
   <Folder Name="/src/AddIns/BackendBindings/AspNetCore/">
     <Project Path="src/AddIns/BackendBindings/AspNetCore/AspNetCore.csproj" />
     <Project Path="src/AddIns/BackendBindings/AspNetCore/Binding/AspNetCore.AddIn.csproj" />
     <Project Path="src/AddIns/BackendBindings/AspNetCore/Tests/AspNetCore.Tests.csproj" />
   </Folder>
+  <Folder Name="/src/Samples/" />
   <Folder Name="/src/Samples/AspNetCoreSample/">
     <Project Path="src/Samples/AspNetCoreSample/AspNetCoreSample.csproj" />
   </Folder>
