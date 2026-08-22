@@ -44,14 +44,21 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		/// selection if the tree still contains it; otherwise clears the selection.</summary>
 		public void SetRoot(DesignerElementNode root)
 		{
-			if (root == null) {
-				Items.Clear();
-				return;
-			}
+			SetRoots(root == null ? null : new[] { root });
+		}
+
+		/// <summary>Shows a new element forest (multiple top-level nodes, e.g. a XAML file's
+		/// root element plus sibling property elements). Same selection-keeping behavior as
+		/// <see cref="SetRoot"/>; a NULL/empty sequence just clears the tree.</summary>
+		public void SetRoots(IEnumerable<DesignerElementNode> roots)
+		{
 			var keepId = SelectedNode?.Id;
 			Items.Clear();
-			var item = CreateItem(root);
-			Items.Add(item);
+			if (roots != null)
+			{
+				foreach (var root in roots)
+					Items.Add(CreateItem(root));
+			}
 			if (keepId != null)
 				SelectNodeById(keepId);
 		}
@@ -67,10 +74,15 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		{
 			if (id == null || Items.Count == 0)
 				return;
-			var match = FindNode((TreeViewItem)Items[0], id);
-			if (match != null) {
-				match.IsSelected = true;
-				match.BringIntoView();
+			foreach (TreeViewItem rootItem in Items)
+			{
+				var match = FindNode(rootItem, id);
+				if (match != null)
+				{
+					match.IsSelected = true;
+					match.BringIntoView();
+					return;
+				}
 			}
 		}
 

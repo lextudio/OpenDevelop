@@ -755,12 +755,12 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
             var kindNumber = token.TryGetProperty("kind", out var kindProperty) && kindProperty.ValueKind == JsonValueKind.Number
                 ? kindProperty.GetInt32()
                 : 0;
-            var hasChildren = token.TryGetProperty("children", out var childrenToken) && childrenToken.ValueKind == JsonValueKind.Array;
 
             if (IsContainerSymbolKind(kindNumber))
             {
-                // Namespace/module/package/file: not a type itself, recurse to find the types inside.
-                if (hasChildren)
+                // Namespace/module/package/file: not a symbol worth its own outline entry,
+                // recurse to surface what's inside at the same level.
+                if (token.TryGetProperty("children", out var childrenToken) && childrenToken.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var child in childrenToken.EnumerateArray())
                         CollectDocumentSymbols(child, results);
@@ -768,45 +768,45 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
                 return;
             }
 
-            var name = token.TryGetProperty("name", out var nameProperty) ? nameProperty.GetString() ?? string.Empty : string.Empty;
-            var kind = ConvertSymbolKind(kindNumber);
-            var span = GetDocumentSymbolSpan(token);
+            // Generic LSP backends (XAML/HTML/CSS/F#) return plain hierarchical symbols whose
+            // kinds carry no C# type/member semantics. Preserve their nesting as-is - the old
+            // type/member flattening turned every nested XAML element into a detached top-level
+            // entry, so the Outline pad showed a single arbitrary node instead of the document
+            // structure. Document order is kept (no name sort): XAML outlines read top-to-bottom.
+            ConvertDocumentSymbol(token, results);
+        }
 
-            var extentSpan = GetDocumentSymbolExtentSpan(token);
-            if (!IsTypeSymbolKind(kindNumber))
-            {
-                // A top-level member with no enclosing type (e.g. a free function) — surface it
-                // directly rather than dropping it.
-                results.Add(new DocumentOutlineNode(name, kind, span, Array.Empty<DocumentOutlineNode>(), extentSpan));
-                return;
-            }
+        static void ConvertDocumentSymbol(JsonElement token, List<DocumentOutlineNode> results)
+        {
+            var kindNumber = token.TryGetProperty("kind", out var kindProperty) && kindProperty.ValueKind == JsonValueKind.Number
+                ? kindProperty.GetInt32()
+                : 0;
 
-            var members = new List<DocumentOutlineNode>();
-            if (hasChildren)
+            var children = new List<DocumentOutlineNode>();
+            if (token.TryGetProperty("children", out var childrenToken) && childrenToken.ValueKind == JsonValueKind.Array)
             {
                 foreach (var child in childrenToken.EnumerateArray())
                 {
                     var childKind = child.TryGetProperty("kind", out var childKindProperty) && childKindProperty.ValueKind == JsonValueKind.Number
                         ? childKindProperty.GetInt32()
                         : 0;
-                    if (IsTypeSymbolKind(childKind))
+                    if (IsContainerSymbolKind(childKind))
                     {
-                        // Nested types become their own top-level entries (flat list), matching
-                        // the Roslyn backend's outline shape.
-                        CollectDocumentSymbols(child, results);
+                        if (child.TryGetProperty("children", out var grandChildren) && grandChildren.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (var grandChild in grandChildren.EnumerateArray())
+                                ConvertDocumentSymbol(grandChild, children);
+                        }
+                        continue;
                     }
-                    else
-                    {
-                        var memberName = child.TryGetProperty("name", out var childNameProperty) ? childNameProperty.GetString() ?? string.Empty : string.Empty;
-                        members.Add(new DocumentOutlineNode(
-                            memberName, ConvertSymbolKind(childKind), GetDocumentSymbolSpan(child), Array.Empty<DocumentOutlineNode>(),
-                            GetDocumentSymbolExtentSpan(child)));
-                    }
+                    ConvertDocumentSymbol(child, children);
                 }
             }
 
+            var name = token.TryGetProperty("name", out var nameProperty) ? nameProperty.GetString() ?? string.Empty : string.Empty;
             results.Add(new DocumentOutlineNode(
-                name, kind, span, members.OrderBy(member => member.Name, StringComparer.OrdinalIgnoreCase).ToArray(), extentSpan));
+                name, ConvertSymbolKind(kindNumber), GetDocumentSymbolSpan(token),
+                children.ToArray(), GetDocumentSymbolExtentSpan(token)));
         }
 
         static TextSpan GetDocumentSymbolSpan(JsonElement token)

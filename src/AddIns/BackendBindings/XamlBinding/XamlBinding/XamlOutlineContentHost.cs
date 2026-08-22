@@ -105,7 +105,7 @@ namespace ICSharpCode.XamlBinding
 				return;
 
 			lastNodes = nodes;
-			SD.MainThread.InvokeIfRequired(() => outline.SetRoot(nodes.FirstOrDefault()?.ToElementNode()));
+			SD.MainThread.InvokeIfRequired(() => outline.SetRoots(nodes.Select(n => n.ToElementNode())));
 		}
 
 		void OnSelectionCommitted(object sender, EventArgs e)
@@ -114,9 +114,19 @@ namespace ICSharpCode.XamlBinding
 				return;
 			// Jump to the first source node with the same name (names are unique per
 			// namescope in practice; the LSP tree's own ordering is authoritative).
-			var match = lastNodes.FirstOrDefault(n => n.Name == node.Name);
+			var match = Walk(lastNodes).FirstOrDefault(n => n.Name == node.Name);
 			if (match != null)
 				editor.JumpTo(match.Span.Start.Line, match.Span.Start.Column);
+		}
+
+		static IEnumerable<DocumentOutlineNode> Walk(IReadOnlyList<DocumentOutlineNode> nodes)
+		{
+			foreach (var node in nodes)
+			{
+				yield return node;
+				foreach (var descendant in Walk(node.Children))
+					yield return descendant;
+			}
 		}
 
 		public void Dispose()
