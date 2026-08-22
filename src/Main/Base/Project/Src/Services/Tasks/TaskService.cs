@@ -254,4 +254,27 @@ namespace ICSharpCode.SharpDevelop
 		
 		public static event EventHandler InUpdateChanged;
 	}
+
+	public sealed class TaskListService : ITaskListService
+	{
+		public void Add(HostTask task)
+		{
+			var taskType = task.TaskType switch {
+				HostTaskType.Error   => TaskType.Error,
+				HostTaskType.Warning => TaskType.Warning,
+				_                    => TaskType.Message
+			};
+			var sdTask = new SDTask(task.FileName, task.Message, task.Column, task.Line, taskType);
+			ICSharpCode.SharpDevelop.TaskService.Add(sdTask);
+		}
+
+		public void ClearExceptCommentTasks()
+			=> ICSharpCode.SharpDevelop.TaskService.ClearExceptCommentTasks();
+
+		public bool SomethingWentWrong
+			=> ICSharpCode.SharpDevelop.TaskService.SomethingWentWrong;
+
+		public bool HasCriticalErrors(bool treatWarningsAsErrors)
+			=> ICSharpCode.SharpDevelop.TaskService.HasCriticalErrors(treatWarningsAsErrors);
+	}
 }

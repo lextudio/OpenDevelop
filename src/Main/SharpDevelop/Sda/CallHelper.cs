@@ -64,6 +64,7 @@ namespace ICSharpCode.SharpDevelop.Sda
 			// Dispatcher and owner after the workbench window has been constructed.
 			container.AddService(typeof(IMessageService), new WpfMessageService());
 			container.AddService(typeof(ILoggingService), new log4netLoggingService());
+			container.AddService(typeof(ITaskListService), new TaskListService());
 			ServiceSingleton.ServiceProvider = container;
 			
 			LoggingService.Info("InitSharpDevelop...");
