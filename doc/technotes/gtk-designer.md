@@ -8,8 +8,21 @@ authoritative GtkBuilder document model, undo/redo history, mutations and serial
 receives only neutral `DesignerElementNode` snapshots over authenticated StreamJsonRpc and never
 loads the document editor implementation. The integration test asserts a live child process id and
 exercises the actual Tools, Outline and Properties pads, selection, Toolbox insertion, undo/redo,
-save, Zoom/Fit/Gridlines, refresh and child-process restart. The current child is a source-model
-host; native GTK construction, bounds, hit-testing and frame rendering remain a later host layer.
+save, Zoom/Fit/Gridlines, signal edits, child reorder, refresh and child-process restart. The child
+uses Gir.Core to instantiate the GtkBuilder document for native measure/allocation/bounds and uses
+GTK's own widget snapshot and GSK/Cairo renderer for real PNG pixels, including text and theme details. On
+macOS rendering stays inside the long-lived `LSUIElement`/`LSBackgroundOnly` designer host,
+so AppKit classifies the host as an accessory/background process before GTK rendering starts and
+repeated preview refreshes do not create process churn. The saved source is
+independently checked by `gtk4-builder-tool validate`.
+
+Multiple `.ui` documents now share one GTK designer host process. `GtkDesignerHostClient` is a
+per-document lease with its own `DocumentId`; the shared connection owns the child process and every
+mutation/flush/hit-test RPC includes that `documentId`. `GtkDesigner.Host` keeps separate
+`DocumentSession` objects for editor text, version, native bounds, render diagnostics and undo
+history, and `session/close` removes only the closed document. Opening MainWindow and
+SettingsWindow concurrently must therefore report the same host PID while edits and saves remain
+isolated by document.
 
 ## Decision
 
@@ -248,10 +261,17 @@ lossless authoring backends would double the hardest part of the project.
 
 ## Process architecture
 
-The diagram below is the target native-preview architecture. As of 2026-08-23, the implemented
-boundary stops after GtkBuilder parsing/mutation/serialization in `GtkDesigner.Host`; the IDE shows
-an independently authored safe WPF semantic projection. Therefore no GTK runtime or target
-assembly enters OpenDevelop, but the displayed pixels and hit testing are not yet GTK-native.
+The current implementation instantiates the document with Gir.Core inside the isolated child,
+performs GTK measure/allocation, and returns each widget's `ComputeBounds` rectangle. The
+transparent WPF selection overlay is therefore driven by GTK-native geometry, and
+`design/hit-test` resolves the smallest native rectangle at the requested design coordinate. Pixel
+frames come from GTK's own renderer so text, theme, sizing and widget styling survive. No GTK
+runtime or target assembly enters OpenDevelop.
+
+The native overlay handles direct pointer selection and sibling drag-reorder, shows an insertion
+line during a drag, and accepts Toolbox string drags. A Toolbox drop selects the native widget
+under the pointer and inserts into its nearest GtkBuilder container rather than defaulting to the
+first window-level container.
 
 ```text
 OpenDevelop (WPF/.NET 10)
@@ -266,8 +286,22 @@ GTK 4 preview host (separate process, Gir.Core)                 │
   ├── target GTK theme/CSS/resource loading                     │
   ├── layout + widget bounds/identity map                       │
   ├── hit testing                                               │
-  └── WidgetPaintable/snapshot rendering ───────────────────────┘
+  └── mapped transparent Gtk.Window → snapshot → GSK/Cairo ──────┘
 ```
+
+On macOS the child is a background UI service, not a foreground application. It applies
+`NSApplicationActivationPolicyAccessory` before and after GTK initialization and is launched with
+the background Launch Services flags and also calls the macOS Process Manager
+`TransformProcessType` API for itself. The GTK main context and Cairo renderer live for the full
+host lifetime. JSON-RPC work is dispatched to the host's main thread because AppKit requires native
+windows to be created there. Each document owns a mapped, fully transparent GTK window that is
+never presented; its content widget is snapped independently so window transparency does not erase
+the preview pixels. Frames are keyed by normalized GtkBuilder text and root id, so a refresh that
+only advances the protocol version reuses the PNG and native tree; source or property changes
+invalidate the key and produce a new GSK frame. Do not invoke
+`gtk4-builder-tool render` on macOS. Opening or editing a GTK document must not add
+transient foreground applications to the Dock or application switcher, and repeated preview
+refreshes must not create `GtkRenderHelper` or `gtk4-*` render processes.
 
 The GTK main loop never runs in OpenDevelop's WPF process. This avoids toolkit event-loop,
 native-library, theme and crash isolation problems and follows the existing remote designer
@@ -275,7 +309,7 @@ direction used elsewhere in OpenDevelop.
 
 The preview shown in WPF is a GTK-rendered frame with a WPF overlay for selection rectangles,
 drop targets, resize/spacing guides and diagnostics. This is not an approximate WPF recreation of
-GTK widgets. `GtkWidgetPaintable` and GTK snapshot/GSK rendering provide the host-side basis.
+GTK widgets; text and theme details must come from the GTK renderer.
 
 Minimum protocol messages:
 
@@ -434,11 +468,20 @@ Current executable coverage is split between `GtkDesignerTests` (the primary fix
 pad/toolbar/lifecycle contract) and `GtkDesignerIntegrationTests` (a larger two-toplevel, deeply
 nested GtkBuilder document). The former asserts that the real Tools and Outline pads host the
 designer controls and that selection populates the real Properties pad before editing persisted
-XML. It also invokes Zoom, Fit and Gridlines rather than merely checking that buttons exist.
+XML. It invokes measured Fit, Zoom and Gridlines rather than merely checking that buttons exist,
+requires a non-empty native GTK frame, requires native bounds for every fixture widget, selects
+the Run button through native coordinate hit-testing, exercises native sibling pointer-reorder mapping, persists signal and reorder mutations, and
+validates the final document with the installed GTK 4 validator. It also covers delete/undo/redo,
+save/close/reopen, Properties rebinding after reopen, and compilation of the mutated fixture.
+The fixture also opens MainWindow and SettingsWindow concurrently, requires the same host process
+ID, edits and saves the second document without changing the first, closes it, and then proves
+that the first document's original host and selection remain usable.
+Native render failures are
+returned as session warning diagnostics instead of silently falling back.
 
-Still-open coverage gaps are drag/drop pointer gestures, reorder/delete/reopen, signal-handler
-generation plus fixture compilation, multiple simultaneously open documents, malformed/external
-edit recovery, and native GTK bounds/frame/theme/resource/custom-widget behavior. Those items in
+Still-open coverage gaps are OS-level automation of the pointer gestures (the native coordinate
+mapping and resulting mutation are covered), behavior-file handler generation, malformed/external
+edit recovery, and GTK theme/resource/custom-widget variants. Those items in
 the lists above are acceptance targets, not claims about the present implementation.
 
 Fixture matrix:

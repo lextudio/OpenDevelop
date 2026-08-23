@@ -415,10 +415,11 @@ truth for this contract.
   no defaults model or absolute-position layout commands to back them); `IDesignHostTheme`,
   `IDesignHostExport`, `IDesignHostAppResources` (WinUI/Uno implements these). The host disables
   the matching pad UI when a backend doesn't implement one, per DDP's "unsupported command" rule.
-- **Deliberately not present**: a separate handshake/close/render verb. The handshake is owned by
-  `DesignerHostProcessClient` (shared base, run during `StartAsync`); closing a document is
-  disposing the client in the one-document-per-child model in use today; rendering is not a
-  separate call on either backend — frames come back inside `DesignerSessionState.Render`.
+- **Close is explicit for shared hosts**: the handshake is owned by `DesignerHostProcessClient`
+  (shared base, run during `StartAsync`). Backends that can host multiple documents in one child
+  expose `session/close { documentId }` internally and keep the public `IDesignHostClient.Dispose`
+  contract as the document-close operation. Rendering is not a separate public call on either
+  backend — frames come back inside `DesignerSessionState.Render`.
 - **`AddElementAsync` takes both `DesignerToolboxItemInfo item` and `proposedName`** — a CLR-type
   backend (WinForms, and eventually WPF) must be told the new component's name via `proposedName`
   and reads `item.TypeName`; a markup backend (WinUI/Uno) derives the name from the parsed
@@ -483,10 +484,14 @@ Host                              Child
 All backends converge on the same stack (the first three are runtime-rendering designers; the
 last two are **source-model** designers — see "The source-model designers" below):
 
+Designer integration-test builds explicitly invoke the GTK and MewUI addin projects. This is
+intentional: their deployed assemblies live under the repository `AddIns/` tree rather than the
+test runner output, so relying only on the host-app build can otherwise execute stale binaries.
+
 | Layer | Shared project | WinForms | WPF | WinUI/Uno | MewUI | GTK 4 |
 |---|---|---|---|---|---|---|
 | Protocol DTOs + process lifecycle | `src/Main/Designer/Designer.Remote/` | `FormsDesignerHostClient` | `WpfSurfaceHostClient` | `UnoDesignClient` | `MewUIDesignerHostClient` | `GtkDesignerHostClient` |
-| Geometry/rendering helpers | `src/Main/Designer/Designer.Presentation/` | used | used | used | n/a (approximate WPF preview) | n/a (approximate WPF preview) |
+| Geometry/rendering helpers | `src/Main/Designer/Designer.Presentation/` | used | used | used | n/a (semantic WPF projection) | native GTK PNG + Gir.Core bounds/hit-test |
 | Child-process bootstrap | `src/Main/Designer/Designer.Server/` (`DesignerChildHost`) | `DesignerChildHost.Run` | `DesignerChildHost.Run` | own dispatcher pump | host-specific pump | host-specific pump |
 | Canvas shell | `DesignerCanvas.cs` | `RemoteFormsDesignerControl` | `WpfSurfaceDesignerControl` | `UnoDesignSurfaceControl` | shared-pad composition (outline/tools/properties) | shared-pad composition |
 | Toolbox pad engine | `SharedToolbox.cs` | `WpfToolbox` facade | `WpfToolbox` facade | `WinUIXamlToolbox` facade | in-addin catalogue | in-addin catalogue |
@@ -496,8 +501,14 @@ last two are **source-model** designers — see "The source-model designers" bel
 ## The source-model designers: MewUI and GTK 4
 
 Added 2026-08; the fifth and fourth backends respectively. They reuse the DDP transport,
-handshake, and session lifecycle verbatim (`MewUIDesignerHostClient : DesignerHostProcessClient,
-IDesignHostClient`, same for GTK), with one architectural difference that drives everything else:
+handshake, and session lifecycle, but now split process and document ownership explicitly:
+`MewUIDesignerHostClient` and `GtkDesignerHostClient` are lightweight per-document leases, while
+their nested shared connection owns the single `DesignerHostProcessClient` child process. Every
+RPC after open carries `documentId`; the child keeps a `documentId -> DocumentSession` map and
+`session/close` removes only that document. This lets multiple windows of the same backend share
+one host process without sharing editor state, version counters, native bounds or undo history.
+They still have one architectural difference from the runtime-rendering designers that drives
+everything else:
 
 **the authoritative document is not a runtime object graph.**
 
@@ -842,15 +853,15 @@ Undo and Redo belong to document lifecycle or the IDE command system, not the ca
 | Shared `DesignerCanvas` shell + toolbar | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Declared visible capabilities | Zoom, Fit | Zoom, Fit, Gridlines, Show Names, optional Theme | All six | Zoom, Fit, Gridlines | Zoom, Fit, Gridlines |
 | Zoom combo (100% default, VS behavior) | ✓ (**fixed 2026-08-18**: viewport and hit-test scaling) | ✓ (Stretch.Fill fix landed) | ✓ | ✓ (safe projection) | ✓ (safe projection) |
-| Fit | ✓ | ✓ | ✓ | ✓ (returns safe projection to 100%) | ✓ (returns safe projection to 100%) |
-| Gridlines toggle | ✗ (hidden) | ✓ (shared `GridlineOverlay`) | ✓ (shared `GridlineOverlay`) | ✓ (safe-projection brush) | ✓ (safe-projection brush) |
+| Fit | ✓ | ✓ | ✓ | ✓ (measured safe projection) | ✓ (measured native frame) |
+| Gridlines toggle | ✗ (hidden) | ✓ (shared `GridlineOverlay`) | ✓ (shared `GridlineOverlay`) | ✓ (safe-projection brush) | ✓ (native-frame overlay brush) |
 | Show names on selection (toolbar toggle, default on) | ✗ (hidden) | ✓ | ✓ | ✗ (hidden) | ✗ (hidden) |
 | Design-theme combo (lists actual themes; Light/Dark default) | ✗ (hidden — not a WinForms concept) | ✓ (embedded `themes/*.xaml`, per-project) | ✓ (ThemeDictionaries keys) | ✗ (hidden) | ✗ (hidden) |
 | Design-size (device) preset combo | ✗ (hidden — not a WinForms concept) | ✗ (hidden) | ✓ | ✗ (hidden) | ✗ (hidden) |
 | Edge pattern around the design bitmap/projection | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Toolbar follows IDE theme (dark toolbar, light text) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Shared `DesignViewport` coordinate math | ✓ | ✓ | ✓ | ✗ (not frame-based) | ✗ (not frame-based) |
-| Shared `DesignFramePresenter` | ✓ PNG/WIC | ✓ BGRA/WIC-free | ✓ BGRA/WIC-free | ✗ | ✗ |
+| Shared `DesignFramePresenter` | ✓ PNG/WIC | ✓ BGRA/WIC-free | ✓ BGRA/WIC-free | ✗ | native GTK PNG via source-model view |
 | Shared `SelectionAdornerLayer` | ✓ (single "se" handle visual, no label, recolor for locked) | ✓ (8 handles + label) | ✓ (8 handles + label) | ✗ | ✗ |
 | Frame sequence backpressure (stale frames dropped) | ✓ | ✓ | ✓ | n/a | n/a |
 

@@ -21,7 +21,7 @@ public static class MewUIDesignerDevFlowActions
 			selectedName = view.SelectedName, hostProcessId = view.HostProcessId, canUndo = view.EnableUndo, canRedo = view.EnableRedo,
 			toolboxItemCount = view.ToolboxItemCount, toolboxHosted = view.IsToolboxHosted, outlineHosted = view.IsOutlineHosted, outlineItemCount = view.OutlineItemCount,
 			propertyPadSelectedType = grid?.SelectedObject?.GetType().FullName, propertyPadPropertyCount = grid?.Properties?.Count ?? 0,
-			toolbarItemCount = view.ToolbarItemCount, toolbarItems = view.ToolbarItems, toolbarCapabilities = view.ToolbarCapabilities, zoom = view.Zoom, gridlines = view.Gridlines,
+			toolbarItemCount = view.ToolbarItemCount, toolbarItems = view.ToolbarItems, toolbarCapabilities = view.ToolbarCapabilities, zoom = view.Zoom, fitMeasured = view.FitMeasured, gridlines = view.Gridlines,
 			isDirty = view.IsDesignerDirty, hostLogTail = view.HostLogTail
 		});
 	}
@@ -33,6 +33,8 @@ public static class MewUIDesignerDevFlowActions
 	public static string SetProperty(string name, string value) { var v = Activate(); return JsonSerializer.Serialize(new { success = v?.SetSelectedProperty(name, value) == true }); }
 	[DevFlowAction("od.mewui-designer.delete", Description = "Delete the selected MewUI element")]
 	public static string Delete() { var v = Activate(); return JsonSerializer.Serialize(new { success = v?.DeleteSelected() == true, elementCount = v?.ElementCount ?? 0 }); }
+	[DevFlowAction("od.mewui-designer.reorder", Description = "Move the selected MewUI child within its generated Children relationship")]
+	public static string Reorder(int delta) { var v = Activate(); return JsonSerializer.Serialize(new { success = v?.ReorderSelected(delta) == true, selectedName = v?.SelectedName }); }
 	[DevFlowAction("od.mewui-designer.undo", Description = "Undo the last MewUI designer source edit")]
 	public static string Undo() { var v = Activate(); v?.Undo(); return Status(); }
 	[DevFlowAction("od.mewui-designer.redo", Description = "Redo the last MewUI designer source edit")]
@@ -46,7 +48,7 @@ public static class MewUIDesignerDevFlowActions
 	[DevFlowAction("od.mewui-designer.zoom", Description = "Set the common designer toolbar zoom")]
 	public static string Zoom(double value) { var v = Activate(); if (v != null) v.Zoom = value; return JsonSerializer.Serialize(new { success = v != null, zoom = v?.Zoom ?? 0 }); }
 	[DevFlowAction("od.mewui-designer.fit", Description = "Fit the MewUI design using the common canvas toolbar behavior")]
-	public static string Fit() { var v = Activate(); v?.FitDesign(); return JsonSerializer.Serialize(new { success = v != null, zoom = v?.Zoom ?? 0 }); }
+	public static string Fit() { var v = Activate(); v?.FitDesign(); return JsonSerializer.Serialize(new { success = v != null, zoom = v?.Zoom ?? 0, measured = v?.FitMeasured ?? false }); }
 	[DevFlowAction("od.mewui-designer.gridlines", Description = "Toggle MewUI design-space gridlines")]
 	public static string Gridlines(bool enabled) { var v = Activate(); v?.ShowGridlines(enabled); return JsonSerializer.Serialize(new { success = v != null, gridlines = v?.Gridlines ?? false }); }
 

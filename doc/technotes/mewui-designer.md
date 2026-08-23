@@ -11,6 +11,13 @@ save across the RPC boundary. The design view uses the same `DesignerCanvas` she
 WPF, WinUI/Uno and GTK 4. Its declared toolbar capabilities are exactly Zoom, Fit and Gridlines;
 editing and lifecycle commands do not appear as fake canvas buttons.
 
+Multiple MewUI windows now share one `MewUIDesigner.Host` process. `MewUIDesignerHostClient` is a
+per-document lease with its own `DocumentId`; the shared connection owns the child process and every
+mutation/flush/reorder RPC includes that `documentId`. The host stores a separate
+`DocumentSession` for each generated file, including Roslyn editor state, version, file name and
+undo history, and `session/close` removes only the closed document. MainWindow and SettingsWindow
+therefore report the same host PID while source transforms and saves stay isolated.
+
 ## Decision
 
 MewUI is a C#-first UI framework (`Aprillz.MewUI`), so its designer must not translate the
@@ -178,13 +185,16 @@ for full-workbench integration. `MewUIDesignerTests` additionally proves that th
 hosts the MewUI catalogue, the live Outline pad hosts the parsed hierarchy, selection populates
 the real Properties pad with `MewUIPropertyAdapter`, and Zoom/Fit/Gridlines work through the common
 canvas. It also covers two independently designable windows, nested insertion, generated-file
-save, cross-file save safety, refresh and child-process restart. As with all xUnit v3 projects in
+save, delete/undo/redo with selection restoration, close/reopen with element reselection,
+cross-file save safety, refresh, child-process restart, and reopening a second window against the
+same live host process. As with all xUnit v3 projects in
 this repository, execute tests with `dotnet run --project ... --`, not `dotnet test`.
 
 Current deliberate gaps: the preview is a safe WPF semantic projection rather than MewUI-native
-pixels; Fit currently returns to the canonical 100% safe projection because the source-model
-surface has no native measured frame; direct pointer drag/reorder and event creation are not yet
-implemented. These must not be described as covered by the passing integration test.
+pixels. Fit is measured from the realized viewport and projected content. Child reorder is a
+Roslyn transformation of the canonical `Children(...)` relationship and is integration-covered;
+free-form pointer positioning and event creation are not yet implemented. These must not be
+described as covered by the passing integration test.
 
 ## Future runtime fidelity
 

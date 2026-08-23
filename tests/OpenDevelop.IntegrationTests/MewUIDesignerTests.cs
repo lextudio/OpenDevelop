@@ -55,7 +55,7 @@ public sealed class MewUIDesignerTests : IAsyncDisposable
 		Assert.Equal(3, status.GetProperty("toolbarItemCount").GetInt32());
 		Assert.Equal(new[] { "Zoom", "Fit", "Gridlines" }, status.GetProperty("toolbarItems").EnumerateArray().Select(x => x.GetString()).ToArray());
 		var zoomed = await app.InvokeAsync("od.mewui-designer.zoom", 1.25); Assert.Equal(1.25, zoomed.GetProperty("zoom").GetDouble());
-		var fitted = await app.InvokeAsync("od.mewui-designer.fit"); Assert.Equal(1, fitted.GetProperty("zoom").GetDouble());
+		var fitted = await app.InvokeAsync("od.mewui-designer.fit"); Assert.True(fitted.GetProperty("measured").GetBoolean(), fitted.ToString()); Assert.InRange(fitted.GetProperty("zoom").GetDouble(), .25, 2);
 		var gridOn = await app.InvokeAsync("od.mewui-designer.gridlines", true); Assert.True(gridOn.GetProperty("gridlines").GetBoolean());
 		status = await app.InvokeAsync("od.mewui-designer.status"); Assert.True(status.GetProperty("gridlines").GetBoolean());
 		var gridOff = await app.InvokeAsync("od.mewui-designer.gridlines", false); Assert.False(gridOff.GetProperty("gridlines").GetBoolean());
@@ -84,13 +84,19 @@ public sealed class MewUIDesignerTests : IAsyncDisposable
 		Assert.Equal(12, undo.GetProperty("elementCount").GetInt32());
 		var redo = await app.InvokeAsync("od.mewui-designer.redo");
 		Assert.Equal(13, redo.GetProperty("elementCount").GetInt32());
+		var reordered = await app.InvokeAsync("od.mewui-designer.reorder", -1);
+		Assert.True(reordered.GetProperty("success").GetBoolean(), reordered.ToString());
+		var deleted = await app.InvokeAsync("od.mewui-designer.delete"); Assert.True(deleted.GetProperty("success").GetBoolean(), deleted.ToString()); Assert.Equal(12, deleted.GetProperty("elementCount").GetInt32());
+		var undoDelete = await app.InvokeAsync("od.mewui-designer.undo"); Assert.Equal(13, undoDelete.GetProperty("elementCount").GetInt32());
+		var redoDelete = await app.InvokeAsync("od.mewui-designer.redo"); Assert.Equal(12, redoDelete.GetProperty("elementCount").GetInt32());
+		var restoreDeleted = await app.InvokeAsync("od.mewui-designer.undo"); Assert.Equal(13, restoreDeleted.GetProperty("elementCount").GetInt32());
 
 		var saved = await app.InvokeAsync("od.file.save", designerPath);
 		Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
 		var generated = await File.ReadAllTextAsync(designerPath, TestContext.Current.CancellationToken);
 		Assert.Contains("private TextBox textBox1", generated);
 		Assert.Contains("textBox1 = new TextBox", generated);
-		Assert.Contains("toolRow.Children(newButton, preferencesButton, saveButton, textBox1)", generated);
+		Assert.Contains("toolRow.Children(newButton, preferencesButton, textBox1, saveButton)", generated);
 		Assert.Contains("heading.Text = \"Configured\"", generated);
 		// The pre-existing nested status bar must survive edits untouched.
 		Assert.Contains("statusBar.Children(statusText)", generated);
@@ -101,6 +107,11 @@ public sealed class MewUIDesignerTests : IAsyncDisposable
 		Assert.Contains("SaveButton_Click", behavior);
 		Assert.Contains("PreferencesButton_Click", behavior);
 		Assert.DoesNotContain("new TextBox", behavior);
+
+		var closed = await app.InvokeAsync("od.close-active-view"); Assert.True(closed.GetProperty("success").GetBoolean(), closed.ToString());
+		var reopened = await app.InvokeAsync("od.open-file", sourcePath); Assert.True(reopened.GetProperty("opened").GetBoolean(), reopened.ToString());
+		var reopenedStatus = await WaitForDesignerAsync("MainWindow"); Assert.Equal(13, reopenedStatus.GetProperty("elementCount").GetInt32());
+		var reselectedAfterOpen = await app.InvokeAsync("od.mewui-designer.select", "textBox1"); Assert.True(reselectedAfterOpen.GetProperty("success").GetBoolean(), reselectedAfterOpen.ToString());
 
 		// M-1 regression (cross-file save safety): edit the user-owned file in the SOURCE tab
 		// (its live buffer becomes dirty), then save from the DESIGNER tab. The pre-OOP bug
@@ -133,11 +144,13 @@ public sealed class MewUIDesignerTests : IAsyncDisposable
 		var restarted = await app.InvokeAsync("od.mewui-designer.restart-host");
 		Assert.True(restarted.GetProperty("success").GetBoolean(), restarted.ToString());
 		Assert.NotEqual(restarted.GetProperty("oldHostProcessId").GetInt32(), restarted.GetProperty("hostProcessId").GetInt32());
+		var mainHostProcessId = restarted.GetProperty("hostProcessId").GetInt32();
 
 		var openedSettings = await app.InvokeAsync("od.open-file", settingsSourcePath);
 		Assert.True(openedSettings.GetProperty("opened").GetBoolean(), openedSettings.ToString());
 		var settingsStatus = await WaitForDesignerAsync("SettingsWindow");
 		Assert.True(settingsStatus.GetProperty("active").GetBoolean(), settingsStatus.ToString());
+		Assert.Equal(mainHostProcessId, settingsStatus.GetProperty("hostProcessId").GetInt32());
 		// Settings window: preferences form with GroupBox-nested fields (3 levels deep).
 		Assert.True(settingsStatus.GetProperty("elementCount").GetInt32() == 11,
 			"elementCount=" + settingsStatus.GetProperty("elementCount") + " status=" + settingsStatus);

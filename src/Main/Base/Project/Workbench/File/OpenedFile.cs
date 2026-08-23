@@ -23,6 +23,7 @@ using System.IO;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Parser;
+using ICSharpCode.SharpDevelop.Editor;
 
 namespace ICSharpCode.SharpDevelop.Workbench
 {
@@ -242,8 +243,9 @@ namespace ICSharpCode.SharpDevelop.Workbench
 					// a Windows Explorer nicety, not required for a correct save).
 					NativeMethods.SetFileCreationTime(fs.SafeFileHandle, File.GetCreationTimeUtc(FileName));
 				}
-				if (currentView != null) {
-					SaveCurrentViewToStream(fs);
+				IViewContent savingView = SelectSavingView();
+				if (savingView != null) {
+					SaveViewToStream(savingView, fs);
 				} else {
 					fs.Write(fileData, 0, fileData.Length);
 				}
@@ -276,11 +278,16 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		void SaveCurrentViewToStream(Stream stream)
 		{
+			SaveViewToStream(currentView, stream);
+		}
+
+		void SaveViewToStream(IViewContent view, Stream stream)
+		{
 //			if (SavingCurrentView != null)
 //				SavingCurrentView(this, EventArgs.Empty);
 			inSaveOperation = true;
 			try {
-				currentView.Save(this, stream);
+				view.Save(this, stream);
 			} finally {
 				inSaveOperation = false;
 			}
@@ -288,6 +295,40 @@ namespace ICSharpCode.SharpDevelop.Workbench
 //				SavedCurrentView(this, EventArgs.Empty);
 		}
 		
+		/// <summary>
+		/// Picks the view whose content gets persisted to disk.
+		/// Prefers a view that tracks a LIVE document for this file (IFileDocumentProvider -
+		/// e.g. the text editor holding unsaved keystrokes) over the currently active view when
+		/// the active view cannot provide one: a secondary visual-designer view attached to the
+		/// same .cs file does not own the primary file's editing surface, and asking it to
+		/// serialize that file wrote stale disk bytes over the user's dirty buffer (measured
+		/// data loss). Falls back to currentView, then to the in-memory fileData cache.
+		/// </summary>
+		IViewContent SelectSavingView()
+		{
+			if (currentView == null || !ShouldPreferLiveCodeDocument())
+				return currentView;
+			if (TracksLiveDocument(currentView))
+				return currentView;
+			foreach (IViewContent view in RegisteredViewContents) {
+				if (view != currentView && TracksLiveDocument(view))
+					return view;
+			}
+			return currentView;
+		}
+
+		bool ShouldPreferLiveCodeDocument()
+		{
+			string extension = Path.GetExtension(FileName).ToLowerInvariant();
+			return extension == ".cs" || extension == ".vb";
+		}
+
+		bool TracksLiveDocument(IViewContent view)
+		{
+			var provider = view == null ? null : view.GetService(typeof(IFileDocumentProvider)) as IFileDocumentProvider;
+			return provider != null && provider.GetDocumentForFile(this) != null;
+		}
+
 		protected void SaveCurrentView()
 		{
 			using (MemoryStream memoryStream = new MemoryStream()) {

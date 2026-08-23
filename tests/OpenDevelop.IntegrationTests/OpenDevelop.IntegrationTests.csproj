@@ -53,6 +53,17 @@
     <PackageReference Include="AltCover" Version="9.0.102" />
   </ItemGroup>
 
+  <!-- These designers deploy outside the host app's output tree. Build them with the
+       integration runner so a filtered designer test can never launch stale addin DLLs. -->
+  <ItemGroup>
+    <_DesignerAddinProject Include="../../src/AddIns/DisplayBindings/GtkDesigner/GtkDesigner.csproj" />
+    <_DesignerAddinProject Include="../../src/AddIns/DisplayBindings/MewUIDesigner/MewUIDesigner.csproj" />
+  </ItemGroup>
+  <Target Name="BuildDesignerAddinsForIntegrationTests" BeforeTargets="Build">
+    <MSBuild Projects="@(_DesignerAddinProject)" Targets="Build" BuildInParallel="true"
+             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true" />
+  </Target>
+
   <!-- Serialize test collections: every collection shares ONE assembly-scoped app process
        (port 9299) and the same on-disk fixture directories, so parallel collections race on
        both - e.g. one collection's od.build-solution observes another's ScratchBroken.cs, or

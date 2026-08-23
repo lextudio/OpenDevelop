@@ -99,6 +99,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 				RedirectStandardError = true,
 				CreateNoWindow = true
 			};
+			ConfigureChildProcess(startInfo);
 			process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
 			process.Exited += (sender, args) => {
 				if (!disposing) HostExited?.Invoke(this, EventArgs.Empty);
@@ -137,6 +138,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 				throw;
 			}
 		}
+
+		/// <summary>Allows a designer to supply runtime-specific child environment settings.</summary>
+		protected virtual void ConfigureChildProcess(ProcessStartInfo startInfo) { }
 
 		/// <summary>Invokes a JSON-RPC method on the child with the shared timeout; a timeout
 		/// terminates the host (it can no longer be trusted to be responsive).</summary>

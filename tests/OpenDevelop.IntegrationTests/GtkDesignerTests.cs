@@ -6,14 +6,14 @@ namespace OpenDevelop.IntegrationTests;
 [Collection("30 Add-ins and specialized fixtures")]
 public sealed class GtkDesignerTests : IAsyncDisposable
 {
-	readonly OpenDevelopAppFixture app; readonly string workDir; readonly string projectPath; readonly string uiPath;
+	readonly OpenDevelopAppFixture app; readonly string workDir; readonly string projectPath; readonly string uiPath; readonly string settingsUiPath;
 	public GtkDesignerTests(OpenDevelopAppFixture app)
 	{
 		this.app = app;
 		var repo = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(app.OpenDevelopProjectPath)!, "..", "..", ".."));
 		var fixture = Path.Combine(repo, "tests", "fixtures", "GtkDesignerFixture");
 		workDir = Path.Combine(Path.GetTempPath(), "GtkDesignerTests-" + Guid.NewGuid().ToString("N"));
-		CopyDirectory(fixture, workDir); projectPath = Path.Combine(workDir, "GtkDesignerFixture.csproj"); uiPath = Path.Combine(workDir, "Windows", "MainWindow.ui");
+		CopyDirectory(fixture, workDir); projectPath = Path.Combine(workDir, "GtkDesignerFixture.csproj"); uiPath = Path.Combine(workDir, "Windows", "MainWindow.ui"); settingsUiPath = Path.Combine(workDir, "Windows", "SettingsWindow.ui");
 	}
 
 	[Fact]
@@ -24,6 +24,12 @@ public sealed class GtkDesignerTests : IAsyncDisposable
 		var status = await WaitAsync();
 		Assert.True(status.GetProperty("active").GetBoolean(), status.ToString());
 		Assert.True(status.GetProperty("hostProcessId").GetInt32() > 0, "GTK designer did not start its isolated host: " + status);
+		Assert.True(status.GetProperty("nativeFrame").GetBoolean(), "GTK host did not return a native GTK frame: " + status);
+		Assert.True(status.GetProperty("nativeFrameWidth").GetInt32() > 0 && status.GetProperty("nativeFrameHeight").GetInt32() > 0, status.ToString());
+		Assert.Equal(status.GetProperty("elementCount").GetInt32(), status.GetProperty("nativeBoundsCount").GetInt32());
+		var runBounds = await app.InvokeAsync("od.gtk-designer.bounds", "runButton"); Assert.True(runBounds.GetProperty("success").GetBoolean(), runBounds.ToString());
+		var nativeHit = await app.InvokeAsync("od.gtk-designer.hit-test", runBounds.GetProperty("x").GetDouble() + runBounds.GetProperty("width").GetDouble() / 2, runBounds.GetProperty("y").GetDouble() + runBounds.GetProperty("height").GetDouble() / 2);
+		Assert.True(nativeHit.GetProperty("success").GetBoolean(), nativeHit.ToString()); Assert.Equal("runButton", nativeHit.GetProperty("selectedId").GetString());
 		Assert.True(status.GetProperty("toolboxHosted").GetBoolean(), "The real Tools pad did not host the GTK toolbox: " + status);
 		Assert.True(status.GetProperty("outlineHosted").GetBoolean(), "The real Outline pad did not host the GTK tree: " + status);
 		Assert.Equal(status.GetProperty("elementCount").GetInt32(), status.GetProperty("outlineItemCount").GetInt32());
@@ -31,7 +37,7 @@ public sealed class GtkDesignerTests : IAsyncDisposable
 		Assert.Equal(3, status.GetProperty("toolbarItemCount").GetInt32());
 		Assert.Equal(new[] { "Zoom", "Fit", "Gridlines" }, status.GetProperty("toolbarItems").EnumerateArray().Select(x => x.GetString()).ToArray());
 		var zoomed = await app.InvokeAsync("od.gtk-designer.zoom", 1.5); Assert.Equal(1.5, zoomed.GetProperty("zoom").GetDouble());
-		var fitted = await app.InvokeAsync("od.gtk-designer.fit"); Assert.Equal(1, fitted.GetProperty("zoom").GetDouble());
+		var fitted = await app.InvokeAsync("od.gtk-designer.fit"); Assert.True(fitted.GetProperty("measured").GetBoolean(), fitted.ToString()); Assert.InRange(fitted.GetProperty("zoom").GetDouble(), .25, 2);
 		var gridOn = await app.InvokeAsync("od.gtk-designer.gridlines", true); Assert.True(gridOn.GetProperty("gridlines").GetBoolean());
 		status = await app.InvokeAsync("od.gtk-designer.status"); Assert.True(status.GetProperty("gridlines").GetBoolean());
 		var gridOff = await app.InvokeAsync("od.gtk-designer.gridlines", false); Assert.False(gridOff.GetProperty("gridlines").GetBoolean());
@@ -40,6 +46,8 @@ public sealed class GtkDesignerTests : IAsyncDisposable
 		Assert.Contains("GtkPropertyAdapter", selected.GetProperty("propertyPadSelectedType").GetString());
 		status = await app.InvokeAsync("od.gtk-designer.status"); Assert.True(status.GetProperty("propertyPadPropertyCount").GetInt32() > 0, status.ToString());
 		var edited = await app.InvokeAsync("od.gtk-designer.properties.edit", "Label", "Execute"); Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
+		var signal = await app.InvokeAsync("od.gtk-designer.signal.set", "clicked", "OnRunClicked"); Assert.True(signal.GetProperty("success").GetBoolean(), signal.ToString());
+		var reordered = await app.InvokeAsync("od.gtk-designer.pointer-reorder", "runButton", "heading"); Assert.True(reordered.GetProperty("success").GetBoolean(), reordered.ToString());
 		var restarted = await app.InvokeAsync("od.gtk-designer.restart-host");
 		Assert.True(restarted.GetProperty("success").GetBoolean(), restarted.ToString());
 		Assert.NotEqual(restarted.GetProperty("oldHostProcessId").GetInt32(), restarted.GetProperty("hostProcessId").GetInt32());
@@ -50,15 +58,40 @@ public sealed class GtkDesignerTests : IAsyncDisposable
 		Assert.Equal("entry1", inserted.GetProperty("selectedId").GetString());
 		var undo = await app.InvokeAsync("od.gtk-designer.undo"); Assert.Equal(4, undo.GetProperty("elementCount").GetInt32());
 		var redo = await app.InvokeAsync("od.gtk-designer.redo"); Assert.Equal(5, redo.GetProperty("elementCount").GetInt32());
+		var deleted = await app.InvokeAsync("od.gtk-designer.delete"); Assert.True(deleted.GetProperty("success").GetBoolean(), deleted.ToString()); Assert.Equal(4, deleted.GetProperty("elementCount").GetInt32());
+		var undoDelete = await app.InvokeAsync("od.gtk-designer.undo"); Assert.Equal(5, undoDelete.GetProperty("elementCount").GetInt32());
+		var redoDelete = await app.InvokeAsync("od.gtk-designer.redo"); Assert.Equal(4, redoDelete.GetProperty("elementCount").GetInt32());
+		var restoreDeleted = await app.InvokeAsync("od.gtk-designer.undo"); Assert.Equal(5, restoreDeleted.GetProperty("elementCount").GetInt32());
 		var saved = await app.InvokeAsync("od.file.save", uiPath); Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
 		var xml = await File.ReadAllTextAsync(uiPath, TestContext.Current.CancellationToken);
-		Assert.Contains(">Execute</property>", xml); Assert.Contains("class=\"GtkEntry\"", xml); Assert.Contains("id=\"entry1\"", xml);
+		Assert.Contains(">Execute</property>", xml); Assert.Contains("<signal name=\"clicked\" handler=\"OnRunClicked\"", xml); Assert.Contains("class=\"GtkEntry\"", xml); Assert.Contains("id=\"entry1\"", xml);
+		Assert.True(xml.IndexOf("id=\"runButton\"", StringComparison.Ordinal) < xml.IndexOf("id=\"heading\"", StringComparison.Ordinal), "GTK reorder was not persisted: " + xml);
+		await ValidateGtkBuilderAsync(uiPath);
+
+		var closed = await app.InvokeAsync("od.close-active-view"); Assert.True(closed.GetProperty("success").GetBoolean(), closed.ToString());
+		var reopened = await app.InvokeAsync("od.open-file", uiPath); Assert.True(reopened.GetProperty("opened").GetBoolean(), reopened.ToString());
+		var reopenedStatus = await WaitAsync(); Assert.Equal(5, reopenedStatus.GetProperty("elementCount").GetInt32()); Assert.True(reopenedStatus.GetProperty("nativeFrame").GetBoolean(), reopenedStatus.ToString());
+		var reselected = await app.InvokeAsync("od.gtk-designer.select", "entry1"); Assert.True(reselected.GetProperty("success").GetBoolean(), reselected.ToString()); Assert.Contains("GtkPropertyAdapter", reselected.GetProperty("propertyPadSelectedType").GetString());
+
+		var mainHostProcessId = reopenedStatus.GetProperty("hostProcessId").GetInt32();
+		var openedSettings = await app.InvokeAsync("od.open-file", settingsUiPath); Assert.True(openedSettings.GetProperty("opened").GetBoolean(), openedSettings.ToString());
+		var settingsStatus = await WaitAsync("settingsWindow"); Assert.Equal(mainHostProcessId, settingsStatus.GetProperty("hostProcessId").GetInt32()); Assert.Equal(4, settingsStatus.GetProperty("elementCount").GetInt32());
+		var selectedSettings = await app.InvokeAsync("od.gtk-designer.select", "settingsHeading"); Assert.True(selectedSettings.GetProperty("success").GetBoolean(), selectedSettings.ToString()); Assert.Contains("GtkPropertyAdapter", selectedSettings.GetProperty("propertyPadSelectedType").GetString());
+		var editedSettings = await app.InvokeAsync("od.gtk-designer.properties.edit", "Label", "Advanced Preferences"); Assert.True(editedSettings.GetProperty("success").GetBoolean(), editedSettings.ToString());
+		var savedSettings = await app.InvokeAsync("od.file.save", settingsUiPath); Assert.True(savedSettings.GetProperty("success").GetBoolean(), savedSettings.ToString());
+		Assert.Contains("Advanced Preferences", await File.ReadAllTextAsync(settingsUiPath, TestContext.Current.CancellationToken));
+		Assert.DoesNotContain("Advanced Preferences", await File.ReadAllTextAsync(uiPath, TestContext.Current.CancellationToken));
+		var closedSettings = await app.InvokeAsync("od.close-active-view"); Assert.True(closedSettings.GetProperty("success").GetBoolean(), closedSettings.ToString());
+		var reactivateMain = await app.InvokeAsync("od.open-file", uiPath); Assert.True(reactivateMain.GetProperty("opened").GetBoolean(), reactivateMain.ToString());
+		var mainAgain = await WaitAsync("mainWindow"); Assert.Equal(mainHostProcessId, mainAgain.GetProperty("hostProcessId").GetInt32()); Assert.Equal(5, mainAgain.GetProperty("elementCount").GetInt32());
+		var mainSelectionAgain = await app.InvokeAsync("od.gtk-designer.select", "entry1"); Assert.True(mainSelectionAgain.GetProperty("success").GetBoolean(), mainSelectionAgain.ToString());
+		await ValidateFixtureBuildAsync(projectPath);
 	}
 
-	async Task<JsonElement> WaitAsync()
+	async Task<JsonElement> WaitAsync(string? rootId = null)
 	{
 		var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(20); JsonElement last = default;
-		while (DateTime.UtcNow < deadline) { last = await app.InvokeAsync("od.gtk-designer.status"); if (last.TryGetProperty("active", out var active) && active.GetBoolean() && last.GetProperty("toolboxHosted").GetBoolean() && last.GetProperty("outlineHosted").GetBoolean()) return last; await Task.Delay(100, TestContext.Current.CancellationToken); }
+		while (DateTime.UtcNow < deadline) { last = await app.InvokeAsync("od.gtk-designer.status"); if (last.TryGetProperty("active", out var active) && active.GetBoolean() && last.GetProperty("toolboxHosted").GetBoolean() && last.GetProperty("outlineHosted").GetBoolean() && (rootId == null || last.TryGetProperty("rootId", out var actualRoot) && actualRoot.GetString() == rootId)) return last; await Task.Delay(100, TestContext.Current.CancellationToken); }
 		return last;
 	}
 	static void CopyDirectory(string source, string destination)
@@ -71,6 +104,20 @@ public sealed class GtkDesignerTests : IAsyncDisposable
 		foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories)) {
 			var relative = Path.GetRelativePath(source, file); if (!IsBuildOutput(relative)) File.Copy(file, Path.Combine(destination, relative));
 		}
+	}
+	static async Task ValidateGtkBuilderAsync(string path)
+	{
+		var start = new System.Diagnostics.ProcessStartInfo("gtk4-builder-tool") { RedirectStandardError = true, RedirectStandardOutput = true, UseShellExecute = false };
+		start.ArgumentList.Add("validate"); start.ArgumentList.Add(path);
+		using var process = System.Diagnostics.Process.Start(start)!; var error = await process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken); await process.WaitForExitAsync(TestContext.Current.CancellationToken);
+		Assert.True(process.ExitCode == 0, "gtk4-builder-tool rejected saved UI: " + error);
+	}
+	static async Task ValidateFixtureBuildAsync(string projectPath)
+	{
+		var start = new System.Diagnostics.ProcessStartInfo("dotnet") { RedirectStandardError = true, RedirectStandardOutput = true, UseShellExecute = false };
+		start.ArgumentList.Add("build"); start.ArgumentList.Add(projectPath); start.ArgumentList.Add("--nologo"); start.ArgumentList.Add("-v:q");
+		using var process = System.Diagnostics.Process.Start(start)!; var outputTask = process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken); var errorTask = process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken); await process.WaitForExitAsync(TestContext.Current.CancellationToken);
+		var output = await outputTask; var error = await errorTask; Assert.True(process.ExitCode == 0, "GTK designer fixture no longer compiles after saved edits:\n" + output + error);
 	}
 	public ValueTask DisposeAsync() { try { Directory.Delete(workDir, true); } catch { } return ValueTask.CompletedTask; }
 }

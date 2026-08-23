@@ -98,6 +98,28 @@ public sealed class GtkUiDocumentEditor
 		child.Remove(); return Commit();
 	}
 
+	public bool SetSignal(string id, string signalName, string handlerName)
+	{
+		var element = Find(id);
+		if (element == null || string.IsNullOrWhiteSpace(signalName) || !IsIdentifier(handlerName)) return false;
+		var signal = element.Elements().FirstOrDefault(e => e.Name.LocalName == "signal" && (string?)e.Attribute("name") == signalName);
+		if (signal == null) element.Add(new XElement("signal", new XAttribute("name", signalName), new XAttribute("handler", handlerName)));
+		else signal.SetAttributeValue("handler", handlerName);
+		return Commit();
+	}
+
+	public bool Reorder(string id, int delta)
+	{
+		var element = Find(id); var wrapper = element?.Parent; var parent = wrapper?.Parent;
+		if (wrapper?.Name.LocalName != "child" || parent == null || delta == 0) return false;
+		var siblings = parent.Elements().Where(e => e.Name.LocalName == "child" && e.Elements().Any(IsObject)).ToList();
+		var oldIndex = siblings.IndexOf(wrapper); var newIndex = Math.Clamp(oldIndex + delta, 0, siblings.Count - 1);
+		if (oldIndex < 0 || newIndex == oldIndex) return false;
+		wrapper.Remove();
+		if (newIndex >= siblings.Count - 1) parent.Add(wrapper); else siblings[newIndex].AddBeforeSelf(wrapper);
+		return Commit();
+	}
+
 	public bool Undo() => Move(undo, redo);
 	public bool Redo() => Move(redo, undo);
 	bool Move(List<string> from, List<string> to) { if (from.Count == 0) return false; to.Add(Text); Text = from[^1]; from.RemoveAt(from.Count - 1); return Parse(); }

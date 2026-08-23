@@ -122,6 +122,20 @@ public sealed class MewUIDocumentEditor
 		return Commit(root.ReplaceNode(owner, owner.ReplaceTokens(tokens, (t, _) => SyntaxFactory.Identifier(t.LeadingTrivia, newName, t.TrailingTrivia))).NormalizeWhitespace().ToFullString());
 	}
 
+	public bool Reorder(string id, int delta)
+	{
+		if (id == "$window" || delta == 0) return false;
+		var method = InitializeMethod(); if (method?.Body == null) return false;
+		var relationship = method.Body.Statements.OfType<ExpressionStatementSyntax>().FirstOrDefault(s =>
+			s.Expression is InvocationExpressionSyntax call && Member(call.Expression, out _, out var member) && member == "Children" && call.ArgumentList.Arguments.Any(a => a.Expression.ToString() == id));
+		if (relationship?.Expression is not InvocationExpressionSyntax invocation) return false;
+		var args = invocation.ArgumentList.Arguments; var oldIndex = args.IndexOf(args.First(a => a.Expression.ToString() == id)); var newIndex = Math.Clamp(oldIndex + delta, 0, args.Count - 1);
+		if (newIndex == oldIndex) return false;
+		var moved = args[oldIndex]; args = args.RemoveAt(oldIndex).Insert(newIndex, moved);
+		var changed = relationship.WithExpression(invocation.WithArgumentList(invocation.ArgumentList.WithArguments(args)));
+		return Commit(root.ReplaceNode(relationship, changed).NormalizeWhitespace().ToFullString());
+	}
+
 	public bool Undo() => Move(undo, redo); public bool Redo() => Move(redo, undo);
 	bool Move(List<string> from, List<string> to) { if (from.Count == 0) return false; to.Add(Text); Text = from[^1]; from.RemoveAt(from.Count - 1); Parse(); return true; }
 	bool Commit(string text) { undo.Add(Text); redo.Clear(); Text = text; return Parse(); }

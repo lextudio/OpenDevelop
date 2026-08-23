@@ -8,6 +8,7 @@
     <OpenDevelopAddinKind>OutOfProcessHost</OpenDevelopAddinKind>
   </PropertyGroup>
   <ItemGroup>
+	<PackageReference Include="GirCore.Gtk-4.0" Version="0.8.1" />
     <ProjectReference Include="..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
     <ProjectReference Include="..\..\..\Main\Designer\Designer.Server\Designer.Server.csproj" />
     <Compile Include="..\GtkDesigner\GtkUiDocumentEditor.cs" Link="GtkUiDocumentEditor.cs" />
