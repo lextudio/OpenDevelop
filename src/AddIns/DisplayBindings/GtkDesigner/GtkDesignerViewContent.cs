@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -25,6 +27,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	readonly DesignerCanvas canvas = new();
 	readonly ScrollViewer scroller = new() { HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
 	GtkDesignerHostClient? host; DesignerSessionState state = new(); DesignerElementNode? selected; string preferredSelectionId = ""; string loadedText = "";
+	CancellationTokenSource? renderCancellation; long requestedRenderRevision; long renderedRevision;
 	double zoom = 1; bool gridlines;
 
 	public GtkDesignerViewContent(OpenedFile file) : base(file)
@@ -47,6 +50,8 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	public string NativeFrameFingerprint => HasNativeFrame ? Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Convert.FromBase64String(state.Render!.PngBase64))) : "";
 	public string[] Diagnostics => state.Diagnostics.Select(d => d.Message).ToArray();
 	public string HostLog => host?.ChildLog ?? "";
+	public string HostSessionId => host?.SessionId ?? ""; public string HostDocumentId => host?.DocumentId ?? ""; public string HostPoolKey => host?.PoolKey ?? "gtk4"; public int ActiveHostLeases => GtkDesignerHostClient.ActiveLeaseCount; public int HostRecoveryCount => host?.RecoveryCount ?? 0;
+	public long RequestedRenderRevision => requestedRenderRevision; public long RenderedRevision => renderedRevision; public bool IsRenderPending => requestedRenderRevision > renderedRevision;
 	public string Status => state.Accepted ? $"Ready: {ElementCount} GTK objects (host {host?.ProcessId}, native frame {(HasNativeFrame ? $"{NativeFrameWidth}x{NativeFrameHeight}" : "unavailable")})" : state.Error;
 	public bool EnableUndo => host?.IsAlive == true; public bool EnableRedo => host?.IsAlive == true;
 	public void Undo() => Mutate(() => host!.UndoAsync(state.Version).GetAwaiter().GetResult()); public void Redo() => Mutate(() => host!.RedoAsync(state.Version).GetAwaiter().GetResult());
@@ -60,9 +65,24 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	public bool ReorderSelected(int delta) { if (selected == null || host == null) return false; var id = selected.Id; Mutate(() => host.ReorderAsync(state.Version, id, delta).GetAwaiter().GetResult()); return SelectById(id); }
 	public bool PointerReorder(string sourceId, string targetId) { if (state.Tree == null) return false; var source = FindById(sourceId); var target = FindById(targetId); return source != null && target != null && ReorderBetween(state.Tree, source, target); }
 	public void RefreshDesign() { if (host == null) return; var text = host.FlushAsync(state.Version).GetAwaiter().GetResult().Files[0].Text; state = host.UpdateAsync(Snapshot(text, state.Version + 1)).GetAwaiter().GetResult(); loadedText = text; Rebuild(); }
-	public void RestartDesignHost() { var text = host == null ? loadedText : host.FlushAsync(state.Version).GetAwaiter().GetResult().Files[0].Text; host?.Dispose(); host = GtkDesignerHostClient.CreateAsync().GetAwaiter().GetResult(); state = host.OpenAsync(Snapshot(text, state.Version + 1)).GetAwaiter().GetResult(); loadedText = text; Rebuild(); }
+	public void RestartDesignHost() { if (host == null) return; state = host.RestartPoolAsync().GetAwaiter().GetResult(); loadedText = host.FlushAsync(state.Version).GetAwaiter().GetResult().Files[0].Text; Rebuild(); }
+	public void TerminateDesignHost() { if (host == null) return; state = host.TerminateAndRecoverAsync().GetAwaiter().GetResult(); requestedRenderRevision = renderedRevision = state.Render?.Sequence ?? 0; Rebuild(); }
 	public void ShowSource() { var window = WorkbenchWindow; if (window == null) return; for (var i = 0; i < window.ViewContents.Count; i++) if (!ReferenceEquals(window.ViewContents[i], this)) { window.SwitchView(i); return; } }
-	void Mutate(Func<DesignerSessionState> action) { state = action(); PrimaryFile?.MakeDirty(); Rebuild(); }
+	void Mutate(Func<DesignerSessionState> action) { state = action(); PrimaryFile?.MakeDirty(); Rebuild(); QueueRender(); }
+	void QueueRender()
+	{
+		if (host == null || !state.Accepted) return;
+		var version = state.Version; requestedRenderRevision = version;
+		renderCancellation?.Cancel(); renderCancellation?.Dispose(); renderCancellation = new CancellationTokenSource(); var token = renderCancellation.Token;
+		_ = RenderLatestAsync(host, version, token);
+	}
+	async Task RenderLatestAsync(GtkDesignerHostClient renderingHost, long version, CancellationToken token)
+	{
+		try {
+			var rendered = await renderingHost.RenderAsync(version, token).ConfigureAwait(false);
+			await Application.Current.Dispatcher.InvokeAsync(() => { if (token.IsCancellationRequested || host != renderingHost || state.Version != version || rendered.Render?.Sequence != version) return; state = rendered; renderedRevision = version; Rebuild(); });
+		} catch (OperationCanceledException) { } catch (Exception ex) { await Application.Current.Dispatcher.InvokeAsync(() => diagnostic.Text = "GTK render failed: " + ex.Message); }
+	}
 	void Rebuild() { var selectedId = selected?.Id ?? preferredSelectionId; diagnostic.Text = Status; outline.Items.Clear(); if (state.Tree != null) foreach (var outlineRoot in state.Tree.Id == "$interface" ? (IEnumerable<DesignerElementNode>)state.Tree.Children : new[] { state.Tree }) outline.Items.Add(Tree(outlineRoot)); var previewRoot = state.Tree?.Id == "$interface" ? state.Tree.Children.FirstOrDefault() : state.Tree; surface.Child = previewRoot == null ? new TextBlock { Text = "No GTK 4 object tree found.", Foreground = Brushes.White } : NativePreview(previewRoot); selected = null; properties.SelectedObject = null; if (!string.IsNullOrEmpty(selectedId)) SelectById(selectedId); }
 	FrameworkElement NativePreview(DesignerElementNode root)
 	{
@@ -99,7 +119,8 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	bool ReorderBetween(DesignerElementNode root, DesignerElementNode source, DesignerElementNode target) { var parent = Flatten(root).FirstOrDefault(p => p.Children.Contains(source) && p.Children.Contains(target)); if (parent == null) return false; var delta = parent.Children.IndexOf(target) - parent.Children.IndexOf(source); if (delta == 0) return false; Select(source); return ReorderSelected(delta); }
 	static string Value(DesignerElementNode n, string key, string fallback) => n.Properties.FirstOrDefault(p => p.Name == key)?.Value ?? fallback; static IEnumerable<DesignerElementNode> Flatten(DesignerElementNode n) => new[] { n }.Concat(n.Children.SelectMany(Flatten));
 	DesignerDocumentSnapshot Snapshot(string text, long version) => new() { Version = version, PrimaryFileName = PrimaryFile?.FileName.ToString() ?? "", Files = { new DesignerSourceFileSnapshot { FileName = PrimaryFile?.FileName.ToString() ?? "", Kind = "Designer", Text = text } } };
-	protected override void LoadInternal(OpenedFile file, Stream stream) { using var reader = new StreamReader(stream, leaveOpen: true); loadedText = reader.ReadToEnd(); host ??= GtkDesignerHostClient.CreateAsync().GetAwaiter().GetResult(); state = host.OpenAsync(Snapshot(loadedText, 1)).GetAwaiter().GetResult(); Rebuild(); }
+	protected override void LoadInternal(OpenedFile file, Stream stream) { using var reader = new StreamReader(stream, leaveOpen: true); loadedText = reader.ReadToEnd(); if (host == null) { host = GtkDesignerHostClient.CreateAsync().GetAwaiter().GetResult(); host.Recovered += HostRecovered; } state = host.OpenAsync(Snapshot(loadedText, 1)).GetAwaiter().GetResult(); requestedRenderRevision = renderedRevision = state.Render?.Sequence ?? 0; Rebuild(); }
 	protected override void SaveInternal(OpenedFile file, Stream stream) { var text = host == null ? loadedText : host.FlushAsync(state.Version).GetAwaiter().GetResult().Files[0].Text; using var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(false), leaveOpen: true); writer.Write(text); writer.Flush(); loadedText = text; }
-	public override void Dispose() { properties.Clear(); host?.Dispose(); base.Dispose(); }
+	void HostRecovered(object? sender, DesignerSessionState recovered) { Application.Current.Dispatcher.BeginInvoke(new Action(() => { state = recovered; requestedRenderRevision = renderedRevision = recovered.Render?.Sequence ?? 0; Rebuild(); })); }
+	public override void Dispose() { renderCancellation?.Cancel(); renderCancellation?.Dispose(); properties.Clear(); if (host != null) host.Recovered -= HostRecovered; host?.Dispose(); base.Dispose(); }
 }

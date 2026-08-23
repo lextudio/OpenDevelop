@@ -18,6 +18,20 @@ mutation/flush/reorder RPC includes that `documentId`. The host stores a separat
 undo history, and `session/close` removes only the closed document. MainWindow and SettingsWindow
 therefore report the same host PID while source transforms and saves stay isolated.
 
+The shared process lifecycle is governed by
+[`designer-common.md`](designer-common.md#shared-host-lifecycle-design-2026-08-23). The common
+broker replaces the private static lease counter, retains an idle process for ten seconds,
+coordinates one replacement after failure, and reopens every live generated-code document from
+its latest parent snapshot. Explicit restart is pool-wide and restores sibling windows and unsaved
+Roslyn transformations instead of invalidating their clients. MewUI has no native pixel phase
+today, so asynchronous frames are dormant; its semantic WPF projection still obeys the same
+version and recovery-generation checks.
+
+Completion requires two-window integration coverage for shared PID/distinct document ids, pad and
+edit isolation, close/reopen PID reuse, forced shared-host recovery, pool-wide explicit restart,
+unsaved generated-code preservation and independent saves. Status automation exposes the same
+lifecycle identity fields as GTK even when render revisions are zero.
+
 ## Decision
 
 MewUI is a C#-first UI framework (`Aprillz.MewUI`), so its designer must not translate the

@@ -37,8 +37,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 			this.operationTimeout = operationTimeout ?? TimeSpan.FromSeconds(30);
 		}
 
-		public int ProcessId => process.Id;
-		public bool IsAlive => !disposing && started && !process.HasExited;
+		public int ProcessId { get { try { return started ? process.Id : 0; } catch (InvalidOperationException) { return 0; } } }
+		public bool IsAlive { get { try { return !disposing && started && !process.HasExited; } catch (InvalidOperationException) { return false; } } }
 		public string ChildLog { get { lock (childLog) return childLog.ToString(); } }
 		public event EventHandler? HostExited;
 

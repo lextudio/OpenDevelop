@@ -151,6 +151,8 @@ public sealed class MewUIDesignerTests : IAsyncDisposable
 		var settingsStatus = await WaitForDesignerAsync("SettingsWindow");
 		Assert.True(settingsStatus.GetProperty("active").GetBoolean(), settingsStatus.ToString());
 		Assert.Equal(mainHostProcessId, settingsStatus.GetProperty("hostProcessId").GetInt32());
+		Assert.NotEqual(reopenedStatus.GetProperty("hostDocumentId").GetString(), settingsStatus.GetProperty("hostDocumentId").GetString());
+		Assert.Equal(2, settingsStatus.GetProperty("activeHostLeases").GetInt32());
 		// Settings window: preferences form with GroupBox-nested fields (3 levels deep).
 		Assert.True(settingsStatus.GetProperty("elementCount").GetInt32() == 11,
 			"elementCount=" + settingsStatus.GetProperty("elementCount") + " status=" + settingsStatus);
@@ -160,6 +162,25 @@ public sealed class MewUIDesignerTests : IAsyncDisposable
 		Assert.True(renamed.GetProperty("success").GetBoolean(), renamed.ToString());
 		var reselected = await app.InvokeAsync("od.mewui-designer.select", "userNameBox");
 		Assert.True(reselected.GetProperty("success").GetBoolean(), reselected.ToString());
+		var terminated = await app.InvokeAsync("od.mewui-designer.terminate-host");
+		Assert.True(terminated.GetProperty("success").GetBoolean(), terminated.ToString());
+		settingsStatus = await WaitForHostChangeAsync(mainHostProcessId, "SettingsWindow");
+		Assert.True(settingsStatus.GetProperty("hostRecoveryCount").GetInt32() > 0, settingsStatus.ToString());
+		var recoveredHostProcessId = settingsStatus.GetProperty("hostProcessId").GetInt32();
+		Assert.NotEqual(mainHostProcessId, recoveredHostProcessId);
+		var reopenedMain = await app.InvokeAsync("od.open-file", sourcePath);
+		Assert.True(reopenedMain.GetProperty("opened").GetBoolean(), reopenedMain.ToString());
+		var recoveredMainStatus = await WaitForDesignerAsync("MainWindow");
+		Assert.Equal(recoveredHostProcessId, recoveredMainStatus.GetProperty("hostProcessId").GetInt32());
+		Assert.True(recoveredMainStatus.GetProperty("hostRecoveryCount").GetInt32() > 0, recoveredMainStatus.ToString());
+		Assert.Equal(13, recoveredMainStatus.GetProperty("elementCount").GetInt32());
+	}
+
+	async Task<JsonElement> WaitForHostChangeAsync(int previousPid, string windowClassName)
+	{
+		var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30); JsonElement last = default;
+		while (DateTime.UtcNow < deadline) { last = await app.InvokeAsync("od.mewui-designer.status"); if (last.TryGetProperty("active", out var active) && active.GetBoolean() && last.GetProperty("hostProcessId").GetInt32() != previousPid && last.GetProperty("windowClassName").GetString() == windowClassName) return last; await Task.Delay(100, TestContext.Current.CancellationToken); }
+		return last;
 	}
 
 	async Task<JsonElement> WaitForDesignerAsync(string? windowClassName = null)

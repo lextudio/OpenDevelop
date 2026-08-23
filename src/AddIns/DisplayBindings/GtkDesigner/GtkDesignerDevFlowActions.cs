@@ -17,7 +17,7 @@ public static class GtkDesignerDevFlowActions
 	{
 		var view = Activate(); var grid = PropertyGrid;
 		return view == null ? JsonSerializer.Serialize(new { active = false }) : JsonSerializer.Serialize(new {
-			active = true, status = view.Status, diagnostics = view.Diagnostics, hostLog = view.HostLog, rootId = view.RootId, elementCount = view.ElementCount, selectedId = view.SelectedId, hostProcessId = view.HostProcessId, nativeRenderer = "in-process GSK/Cairo", nativeFrame = view.HasNativeFrame, nativeFrameFingerprint = view.NativeFrameFingerprint, nativeFrameWidth = view.NativeFrameWidth, nativeFrameHeight = view.NativeFrameHeight, nativeBoundsCount = view.NativeBoundsCount,
+			active = true, status = view.Status, diagnostics = view.Diagnostics, hostLog = view.HostLog, rootId = view.RootId, elementCount = view.ElementCount, selectedId = view.SelectedId, hostProcessId = view.HostProcessId, hostPoolKey = view.HostPoolKey, hostSessionId = view.HostSessionId, hostDocumentId = view.HostDocumentId, activeHostLeases = view.ActiveHostLeases, hostRecoveryCount = view.HostRecoveryCount, requestedRenderRevision = view.RequestedRenderRevision, renderedRevision = view.RenderedRevision, renderPending = view.IsRenderPending, nativeRenderer = "in-process GSK/Cairo", nativeFrame = view.HasNativeFrame, nativeFrameFingerprint = view.NativeFrameFingerprint, nativeFrameWidth = view.NativeFrameWidth, nativeFrameHeight = view.NativeFrameHeight, nativeBoundsCount = view.NativeBoundsCount,
 			toolboxItemCount = view.ToolboxItemCount, toolboxHosted = view.IsToolboxHosted, outlineHosted = view.IsOutlineHosted, outlineItemCount = view.OutlineItemCount,
 			toolbarItemCount = view.ToolbarItemCount, toolbarItems = view.ToolbarItems, toolbarCapabilities = view.ToolbarCapabilities, zoom = view.Zoom, fitMeasured = view.FitMeasured, gridlines = view.Gridlines,
 			propertyPadSelectedType = grid?.SelectedObject?.GetType().FullName,
@@ -56,6 +56,8 @@ public static class GtkDesignerDevFlowActions
 	public static string Refresh() { var view = Activate(); view?.RefreshDesign(); return JsonSerializer.Serialize(new { success = view != null, hostProcessId = view?.HostProcessId ?? 0 }); }
 	[DevFlowAction("od.gtk-designer.restart-host", Description = "Restart the isolated GTK designer host")]
 	public static string RestartHost() { var view = Activate(); var oldPid = view?.HostProcessId ?? 0; view?.RestartDesignHost(); return JsonSerializer.Serialize(new { success = view != null, oldHostProcessId = oldPid, hostProcessId = view?.HostProcessId ?? 0 }); }
+	[DevFlowAction("od.gtk-designer.terminate-host", Description = "Terminate the shared GTK host to verify automatic recovery")]
+	public static string TerminateHost() { var view = Activate(); var oldPid = view?.HostProcessId ?? 0; view?.TerminateDesignHost(); return JsonSerializer.Serialize(new { success = view != null, oldHostProcessId = oldPid }); }
 	[DevFlowAction("od.gtk-designer.show-source", Description = "Switch from the GTK designer to its source document")]
 	public static string ShowSource() { var view = Activate(); view?.ShowSource(); return JsonSerializer.Serialize(new { success = view != null }); }
 	[DevFlowAction("od.gtk-designer.zoom", Description = "Set the common designer toolbar zoom")]

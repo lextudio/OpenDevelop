@@ -38,7 +38,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		var session = GetOrCreate(snapshot.DocumentId);
 		session.Version = snapshot.Version; session.FileName = snapshot.PrimaryFileName;
 		session.Editor.Reset(snapshot.Files.FirstOrDefault()?.Text ?? "");
-		return State(session);
+		return State(session, true);
 	}
 
 	[JsonRpcMethod("design/set-property")]
@@ -47,7 +47,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		var session = Get(documentId); EnsureVersion(session, baseVersion);
 		var changed = propertyName == "$id" ? session.Editor.Rename(elementId, value) : session.Editor.SetProperty(elementId, propertyName, value);
 		if (!changed) throw new InvalidOperationException("GTK property mutation was rejected.");
-		session.Version++; return State(session);
+		session.Version++; return State(session, false);
 	}
 
 	[JsonRpcMethod("design/add-element")]
@@ -55,7 +55,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	{
 		var session = Get(documentId); EnsureVersion(session, baseVersion);
 		if (!session.Editor.Add(parentId, string.IsNullOrEmpty(item.TypeName) ? item.Name : item.TypeName)) throw new InvalidOperationException("GTK element insertion was rejected.");
-		session.Version++; return State(session);
+		session.Version++; return State(session, false);
 	}
 
 	[JsonRpcMethod("design/delete-elements")]
@@ -63,21 +63,24 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	{
 		var session = Get(documentId); EnsureVersion(session, baseVersion);
 		foreach (var id in elementIds) if (!session.Editor.Remove(id)) throw new InvalidOperationException("GTK element deletion was rejected: " + id);
-		session.Version++; return State(session);
+		session.Version++; return State(session, false);
 	}
 
 	[JsonRpcMethod("design/rename")]
 	public DesignerSessionState Rename(string documentId, long baseVersion, string elementId, string newName) => SetProperty(documentId, baseVersion, elementId, "$id", newName);
 	[JsonRpcMethod("design/set-event")]
-	public DesignerSessionState SetEvent(string documentId, long baseVersion, string elementId, string eventName, string handlerName) { var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Editor.SetSignal(elementId, eventName, handlerName)) throw new InvalidOperationException("GTK signal mutation was rejected."); session.Version++; return State(session); }
+	public DesignerSessionState SetEvent(string documentId, long baseVersion, string elementId, string eventName, string handlerName) { var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Editor.SetSignal(elementId, eventName, handlerName)) throw new InvalidOperationException("GTK signal mutation was rejected."); session.Version++; return State(session, false); }
 	[JsonRpcMethod("design/reorder")]
-	public DesignerSessionState Reorder(string documentId, long baseVersion, string elementId, int delta) { var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Editor.Reorder(elementId, delta)) throw new InvalidOperationException("GTK reorder was rejected."); session.Version++; return State(session); }
+	public DesignerSessionState Reorder(string documentId, long baseVersion, string elementId, int delta) { var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Editor.Reorder(elementId, delta)) throw new InvalidOperationException("GTK reorder was rejected."); session.Version++; return State(session, false); }
 	[JsonRpcMethod("design/hit-test")]
 	public DesignerHitTestResult HitTest(string documentId, long baseVersion, double x, double y) { var session = Get(documentId); EnsureVersion(session, baseVersion); var hit = session.NativeBounds.Where(p => x >= p.Value.X && y >= p.Value.Y && x <= p.Value.X + p.Value.Width && y <= p.Value.Y + p.Value.Height).OrderBy(p => p.Value.Width * p.Value.Height).FirstOrDefault(); return string.IsNullOrEmpty(hit.Key) ? new DesignerHitTestResult() : new DesignerHitTestResult { Hit = true, ComponentName = hit.Key, Chain = { hit.Key } }; }
 	[JsonRpcMethod("design/undo")]
-	public DesignerSessionState Undo(string documentId, long baseVersion) { var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Editor.Undo()) throw new InvalidOperationException("Nothing to undo."); session.Version++; return State(session); }
+	public DesignerSessionState Undo(string documentId, long baseVersion) { var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Editor.Undo()) throw new InvalidOperationException("Nothing to undo."); session.Version++; return State(session, false); }
 	[JsonRpcMethod("design/redo")]
-	public DesignerSessionState Redo(string documentId, long baseVersion) { var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Editor.Redo()) throw new InvalidOperationException("Nothing to redo."); session.Version++; return State(session); }
+	public DesignerSessionState Redo(string documentId, long baseVersion) { var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Editor.Redo()) throw new InvalidOperationException("Nothing to redo."); session.Version++; return State(session, false); }
+
+	[JsonRpcMethod("design/render")]
+	public DesignerSessionState RenderDocument(string documentId, long baseVersion) { var session = Get(documentId); EnsureVersion(session, baseVersion); return State(session, true); }
 
 	[JsonRpcMethod("session/flush")]
 	public DesignerEditSet Flush(string documentId, long baseVersion)
@@ -94,12 +97,12 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		return new();
 	}
 
-	DesignerSessionState State(DocumentSession session)
+	DesignerSessionState State(DocumentSession session, bool renderNative)
 	{
-		var render = OnGtkThread(() => {
+		var render = renderNative ? OnGtkThread(() => {
 			MeasureNativeBounds(session);
 			return string.IsNullOrEmpty(session.Editor.Error) ? Render(session, session.Editor.Roots.FirstOrDefault()?.Id) : null;
-		});
+		}) : session.CachedRender;
 		var roots = session.Editor.Roots.Select(n => Node(session, n)).ToList();
 		var tree = roots.Count == 1 ? roots[0] : new DesignerElementNode { Id = "$interface", Name = "interface", Type = "GtkInterface", Children = roots };
 		var result = new DesignerSessionState { SessionId = sessionId, DocumentId = session.DocumentId, Version = session.Version, Accepted = string.IsNullOrEmpty(session.Editor.Error), Error = session.Editor.Error, RootType = tree.Type, ComponentCount = Count(tree), Tree = tree, Render = render };

@@ -157,7 +157,11 @@ function Build-Solution {
         [string[]]$ExtraProperties = @()
     )
     Write-Host '==> Rebuilding OpenDevelop.Mvp.sln and all addins...'
-    Invoke-Native $DotNet build $Solution -c $Configuration --no-restore --no-incremental -v minimal @ExtraProperties
+    # Several projects share physical output directories (notably SharpTreeView and the
+    # host/addin graph). Parallel project builds can clean or replace those files while a
+    # sibling is copying them, producing intermittent MSB3030 failures after AddIns/ was
+    # cleared. Serialize this full republish; individual project builds remain parallel.
+    Invoke-Native $DotNet build $Solution -c $Configuration --no-restore --no-incremental '-m:1' -v minimal @ExtraProperties
 }
 
 function Remove-StaleMsBuildAssets {

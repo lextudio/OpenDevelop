@@ -18,7 +18,7 @@ public static class MewUIDesignerDevFlowActions
 		var grid = PropertyGrid;
 		return view == null ? JsonSerializer.Serialize(new { active = false }) : JsonSerializer.Serialize(new {
 			active = true, status = view.Status, windowClassName = view.WindowClassName, elementCount = view.ElementCount,
-			selectedName = view.SelectedName, hostProcessId = view.HostProcessId, canUndo = view.EnableUndo, canRedo = view.EnableRedo,
+			selectedName = view.SelectedName, hostProcessId = view.HostProcessId, hostPoolKey = view.HostPoolKey, hostSessionId = view.HostSessionId, hostDocumentId = view.HostDocumentId, activeHostLeases = view.ActiveHostLeases, hostRecoveryCount = view.HostRecoveryCount, canUndo = view.EnableUndo, canRedo = view.EnableRedo,
 			toolboxItemCount = view.ToolboxItemCount, toolboxHosted = view.IsToolboxHosted, outlineHosted = view.IsOutlineHosted, outlineItemCount = view.OutlineItemCount,
 			propertyPadSelectedType = grid?.SelectedObject?.GetType().FullName, propertyPadPropertyCount = grid?.Properties?.Count ?? 0,
 			toolbarItemCount = view.ToolbarItemCount, toolbarItems = view.ToolbarItems, toolbarCapabilities = view.ToolbarCapabilities, zoom = view.Zoom, fitMeasured = view.FitMeasured, gridlines = view.Gridlines,
@@ -43,6 +43,8 @@ public static class MewUIDesignerDevFlowActions
 	public static string Refresh() { var v = Activate(); v?.RefreshDesign(); return JsonSerializer.Serialize(new { success = v != null, hostProcessId = v?.HostProcessId ?? 0 }); }
 	[DevFlowAction("od.mewui-designer.restart-host", Description = "Restart the isolated MewUI designer host")]
 	public static string RestartHost() { var v = Activate(); var oldPid = v?.HostProcessId ?? 0; v?.RestartDesignHost(); return JsonSerializer.Serialize(new { success = v != null, oldHostProcessId = oldPid, hostProcessId = v?.HostProcessId ?? 0 }); }
+	[DevFlowAction("od.mewui-designer.terminate-host", Description = "Terminate the shared MewUI host to verify automatic recovery")]
+	public static string TerminateHost() { var v = Activate(); var oldPid = v?.HostProcessId ?? 0; v?.TerminateDesignHost(); return JsonSerializer.Serialize(new { success = v != null, oldHostProcessId = oldPid }); }
 	[DevFlowAction("od.mewui-designer.show-source", Description = "Switch from the MewUI designer to its user-owned source document")]
 	public static string ShowSource() { var v = Activate(); v?.ShowSource(); return JsonSerializer.Serialize(new { success = v != null }); }
 	[DevFlowAction("od.mewui-designer.zoom", Description = "Set the common designer toolbar zoom")]

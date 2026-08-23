@@ -24,6 +24,21 @@ history, and `session/close` removes only the closed document. Opening MainWindo
 SettingsWindow concurrently must therefore report the same host PID while edits and saves remain
 isolated by document.
 
+The next lifecycle step follows the normative shared-host design in
+[`designer-common.md`](designer-common.md#shared-host-lifecycle-design-2026-08-23). The common
+broker, rather than backend-specific static counters, owns the connection; the final close uses a
+ten-second idle grace; a crash or explicit restart restores every live `.ui` lease from its
+parent-owned snapshot; and pixels become an asynchronous, latest-revision-only result. GTK work
+remains serialized on GTK's main thread and all documents reuse one GSK/Cairo renderer.
+"Asynchronous" means the IDE and semantic edit path do not wait for pixels—it does not permit GTK
+calls on an arbitrary worker thread.
+
+Completion requires a two-window integration scenario that edits both documents, closes and
+reopens one during the grace period, kills/restarts the shared host while both remain open,
+verifies their unsaved models recover independently, and applies only the newest frame after rapid
+property changes. Status automation exposes pool/session/document identities, recovery count and
+requested/rendered revisions so this is asserted without screenshots.
+
 ## Decision
 
 Build a new source-backed GTK 4 designer. Do not port Stetic as the runtime designer.

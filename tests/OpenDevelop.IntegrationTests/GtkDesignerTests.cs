@@ -80,16 +80,21 @@ public sealed class GtkDesignerTests : IAsyncDisposable
 		var reselected = await app.InvokeAsync("od.gtk-designer.select", "entry1"); Assert.True(reselected.GetProperty("success").GetBoolean(), reselected.ToString()); Assert.Contains("GtkPropertyAdapter", reselected.GetProperty("propertyPadSelectedType").GetString());
 
 		var mainHostProcessId = reopenedStatus.GetProperty("hostProcessId").GetInt32();
+		var mainDocumentId = reopenedStatus.GetProperty("hostDocumentId").GetString(); Assert.False(string.IsNullOrEmpty(mainDocumentId));
 		var openedSettings = await app.InvokeAsync("od.open-file", settingsUiPath); Assert.True(openedSettings.GetProperty("opened").GetBoolean(), openedSettings.ToString());
 		var settingsStatus = await WaitAsync("settingsWindow"); Assert.Equal(mainHostProcessId, settingsStatus.GetProperty("hostProcessId").GetInt32()); Assert.Equal(4, settingsStatus.GetProperty("elementCount").GetInt32());
+		Assert.NotEqual(mainDocumentId, settingsStatus.GetProperty("hostDocumentId").GetString()); Assert.Equal(2, settingsStatus.GetProperty("activeHostLeases").GetInt32());
 		var selectedSettings = await app.InvokeAsync("od.gtk-designer.select", "settingsHeading"); Assert.True(selectedSettings.GetProperty("success").GetBoolean(), selectedSettings.ToString()); Assert.Contains("GtkPropertyAdapter", selectedSettings.GetProperty("propertyPadSelectedType").GetString());
 		var editedSettings = await app.InvokeAsync("od.gtk-designer.properties.edit", "Label", "Advanced Preferences"); Assert.True(editedSettings.GetProperty("success").GetBoolean(), editedSettings.ToString());
+		var terminated = await app.InvokeAsync("od.gtk-designer.terminate-host"); Assert.True(terminated.GetProperty("success").GetBoolean(), terminated.ToString());
+		settingsStatus = await WaitForHostChangeAsync(mainHostProcessId, "settingsWindow"); Assert.True(settingsStatus.GetProperty("hostRecoveryCount").GetInt32() > 0, settingsStatus.ToString());
+		var recoveredHostProcessId = settingsStatus.GetProperty("hostProcessId").GetInt32(); Assert.NotEqual(mainHostProcessId, recoveredHostProcessId);
 		var savedSettings = await app.InvokeAsync("od.file.save", settingsUiPath); Assert.True(savedSettings.GetProperty("success").GetBoolean(), savedSettings.ToString());
 		Assert.Contains("Advanced Preferences", await File.ReadAllTextAsync(settingsUiPath, TestContext.Current.CancellationToken));
 		Assert.DoesNotContain("Advanced Preferences", await File.ReadAllTextAsync(uiPath, TestContext.Current.CancellationToken));
 		var closedSettings = await app.InvokeAsync("od.close-active-view"); Assert.True(closedSettings.GetProperty("success").GetBoolean(), closedSettings.ToString());
 		var reactivateMain = await app.InvokeAsync("od.open-file", uiPath); Assert.True(reactivateMain.GetProperty("opened").GetBoolean(), reactivateMain.ToString());
-		var mainAgain = await WaitAsync("mainWindow"); Assert.Equal(mainHostProcessId, mainAgain.GetProperty("hostProcessId").GetInt32()); Assert.Equal(5, mainAgain.GetProperty("elementCount").GetInt32());
+		var mainAgain = await WaitAsync("mainWindow"); Assert.Equal(recoveredHostProcessId, mainAgain.GetProperty("hostProcessId").GetInt32()); Assert.True(mainAgain.GetProperty("hostRecoveryCount").GetInt32() > 0, mainAgain.ToString()); Assert.Equal(5, mainAgain.GetProperty("elementCount").GetInt32());
 		var mainSelectionAgain = await app.InvokeAsync("od.gtk-designer.select", "entry1"); Assert.True(mainSelectionAgain.GetProperty("success").GetBoolean(), mainSelectionAgain.ToString());
 		await ValidateFixtureBuildAsync(projectPath);
 	}
@@ -104,6 +109,12 @@ public sealed class GtkDesignerTests : IAsyncDisposable
 	{
 		var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(20); JsonElement last = default;
 		while (DateTime.UtcNow < deadline) { last = await app.InvokeAsync("od.gtk-designer.status"); if (last.GetProperty("nativeFrame").GetBoolean() && last.GetProperty("nativeFrameFingerprint").GetString() != previous) return last; await Task.Delay(100, TestContext.Current.CancellationToken); }
+		return last;
+	}
+	async Task<JsonElement> WaitForHostChangeAsync(int previousPid, string rootId)
+	{
+		var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30); JsonElement last = default;
+		while (DateTime.UtcNow < deadline) { last = await app.InvokeAsync("od.gtk-designer.status"); if (last.TryGetProperty("active", out var active) && active.GetBoolean() && last.GetProperty("hostProcessId").GetInt32() != previousPid && last.GetProperty("rootId").GetString() == rootId && last.GetProperty("nativeFrame").GetBoolean()) return last; await Task.Delay(100, TestContext.Current.CancellationToken); }
 		return last;
 	}
 	static void CopyDirectory(string source, string destination)

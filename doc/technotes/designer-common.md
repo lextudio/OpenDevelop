@@ -28,6 +28,112 @@ surface. The WinForms host (`FormsDesigner/Host/`), the Uno host
 (`WinUIXamlDesigner.UnoHost/`), and the WPF surface host (`WpfDesign.SurfaceHost/`) are the
 three data points this contract generalizes.
 
+## Shared-host lifecycle design (2026-08-23)
+
+This section is normative and implemented for the GTK4 and MewUI backends. It replaces the accidental
+"one client object owns one child process" lifetime with a two-level model:
+
+```text
+backend pool key                         one shared process
+(designer kind + runtime compatibility) ────────────────┐
+                                                        │ authenticated RPC connection
+                                                        ▼
+  document lease A ── DocumentId A ── DocumentSession A (model/history/frame)
+  document lease B ── DocumentId B ── DocumentSession B (model/history/frame)
+  document lease C ── DocumentId C ── DocumentSession C (model/history/frame)
+```
+
+The pool key is not globally "all designers". Runtime-incompatible backends remain in different
+processes. GTK and MewUI normally have one process for the IDE instance; WinForms, WPF and WinUI
+may need separate pools for incompatible target frameworks, architectures, dependency graphs or
+native runtimes. Documents with the same pool key must reuse the connection.
+
+The common `SharedDesignerHostBroker` owns process acquisition, reference counting, idle
+retention, invalidation and restart coordination. A backend client is only a document lease. It
+owns `DocumentId`, its recovery snapshot and view callbacks; disposing it sends `session/close`
+and releases the lease, but cannot shut down a process used by other documents.
+
+Lifecycle rules:
+
+1. The first lease starts and authenticates the process. Concurrent acquisitions await the same
+   start instead of launching competitors.
+2. Further compatible documents reuse its PID and receive distinct `DocumentId` values.
+3. Closing a document releases its child-side model immediately. After the final lease closes,
+   the connection stays idle for ten seconds. Reopening during that grace period cancels shutdown
+   and reuses the PID; expiry performs bounded `shutdown` and kills a stuck child.
+4. A transport failure, timeout or unexpected exit invalidates the pool generation exactly once.
+   Every live lease becomes disconnected and receives the same generation-change notification.
+5. Recovery starts one replacement, then reopens every live document from its latest parent-owned
+   snapshot. `DocumentId` remains stable across recovery while `SessionId` changes; selection is
+   restored by stable element name/id.
+6. Recovery is per-document after reconnection: failure to reopen one malformed document reports
+   diagnostics in that view without tearing down successfully restored siblings.
+7. Restart Host is a pool operation. It captures all live documents, replaces the process once,
+   and restores every lease. It must not leave sibling views bound to a disposed connection.
+
+The parent snapshot is the recovery authority. Hosts never write files, and a frame is never used
+to reconstruct source. Each view refreshes its recovery snapshot after load, accepted source edit,
+designer mutation and flush. Dirty state remains in `OpenedFile`, so a child crash cannot clear it.
+
+### Asynchronous latest-frame rendering
+
+Model mutation and rendering are separate phases. `session/open`, `session/update` and design
+mutations return the accepted tree, properties, bounds/diagnostics and a monotonically increasing
+`RenderRevision` without waiting for pixels. The host schedules a render for
+`(DocumentId, Version, RenderRevision)` and coalesces queued work per document.
+
+The shell requests `design/render` asynchronously. It displays a returned frame only when its
+`SessionId`, `DocumentId`, `Version` and `RenderRevision` still match the view. Older frames are
+discarded without changing selection or diagnostics. Until a matching frame arrives, the last
+good frame stays visible with a non-blocking rendering status. Invalid source also preserves the
+last good pixels while exposing parse diagnostics.
+
+GTK adds one invariant: all native construction, measurement, allocation, snapshot and GSK work
+runs serially on the GTK main thread. Coalescing removes obsolete queued renders but does not move
+GTK calls to worker threads. All GTK documents share one native scheduler and one `GskRenderer`;
+they never spawn per-frame helper processes.
+
+Render cache keys include normalized authoritative source, root id, target runtime/theme and
+scale. Cache hits still carry the requesting version/revision and obey the stale-frame rule.
+
+### Common shell and backend boundary
+
+| Common parent-side service | Backend responsibility |
+|---|---|
+| broker, authentication, idle shutdown | compatible pool-key calculation |
+| recovery registry and coordinated restart | reopen/materialize a document |
+| stale version/revision rejection | native/source model mutation |
+| canvas, frame presenter, selection overlay | pixels and native bounds/hit-test |
+| Toolbox/Outline/Properties host adapters | catalogue and property/event descriptors |
+| toolbar capability negotiation | runtime-specific capabilities |
+| lifecycle DevFlow fields and contract tests | backend-specific fidelity tests |
+
+The common layer cannot assume XAML, C#, GtkBuilder XML, HWNDs or a property system. A backend
+cannot reimplement process leasing, idle shutdown, crash fan-out or stale-frame acceptance.
+
+### Observability and acceptance
+
+Every designer status endpoint exposes backend, pool key, host PID, session id, document id, pool
+generation, active lease count, connection state, recovery count, document version,
+requested/rendered revision, pending-frame state, toolbar capabilities and pad-hosting state.
+
+This round is complete only when automated tests prove:
+
+- two compatible documents share a PID but have distinct document ids;
+- edits, undo/redo, selection, Properties, Outline, Toolbox and saves remain isolated;
+- closing one document does not affect its sibling;
+- close/reopen during idle grace reuses the PID, and final idle expiry terminates it;
+- forced termination creates one replacement and restores every open document;
+- explicit restart restores all siblings and their unsaved designer edits;
+- rapid edits never display an older frame after a newer frame;
+- GTK has one host/renderer and no `GtkRenderHelper` or `gtk4-builder-tool` render child;
+- saved GTK XML validates and GTK/MewUI fixtures compile after edits;
+- lifecycle mechanics have backend-independent unit tests and each backend retains a real
+  workbench integration test covering pads and persistence.
+
+Tests use semantic state and process inspection, never OS screenshots. xUnit v3 tests run through
+`dotnet run --project ... --` as required by the repository test-runner instructions.
+
 ---
 
 # Part I — The OOP visual designer architecture
