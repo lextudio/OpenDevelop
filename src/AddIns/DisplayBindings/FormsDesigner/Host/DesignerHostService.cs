@@ -436,6 +436,16 @@ sealed class DesignerHostService : IDesignerChildService
 	public async Task Delay(int milliseconds) => await Task.Delay(milliseconds);
 	public void WaitForShutdown() => shutdown.Wait();
 
+	internal void Close()
+	{
+		designSurface?.Dispose();
+		designSurface = null;
+		projectLoadContext?.Unload();
+		projectLoadContext = null;
+		projectAssembly = null;
+		current = null;
+	}
+
 	void EnsureInitialized()
 	{
 		if (!initialized) throw new UnauthorizedAccessException("The designer host has not completed its handshake.");
@@ -1121,7 +1131,7 @@ sealed class DesignerHostService : IDesignerChildService
 				handler = assignment?.Right.ToString() ?? "";
 				if (handler.StartsWith("this.", StringComparison.Ordinal)) handler = handler[5..];
 			}
-			return new DesignerEventInfo { Name = item.Name, Category = item.Category ?? "Action", HandlerTypeName = item.EventType?.Name ?? "", Handler = handler };
+			return new DesignerEventInfo { Name = item.Name, Category = item.Category ?? "Action", HandlerTypeName = item.EventType?.FullName ?? item.EventType?.Name ?? "", Handler = handler };
 		}).ToList();
 	}
 

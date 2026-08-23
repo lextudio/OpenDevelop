@@ -17,6 +17,15 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		TConnection? shared;
 		CancellationTokenSource? idleShutdown;
 		int leases;
+		long generation;
+
+		public int ActiveLeaseCount {
+			get { gate.Wait(); try { return leases; } finally { gate.Release(); } }
+		}
+
+		public long Generation {
+			get { gate.Wait(); try { return generation; } finally { gate.Release(); } }
+		}
 
 		public SharedDesignerHostBroker(Func<TConnection, bool> isAlive,
 			Func<CancellationToken, Task<TConnection>> start, TimeSpan? idleDelay = null)
@@ -36,6 +45,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 				if (shared == null || !isAlive(shared)) {
 					shared?.Dispose();
 					shared = await start(cancellationToken).ConfigureAwait(false);
+					generation++;
 					leases = 0;
 				}
 				leases++;

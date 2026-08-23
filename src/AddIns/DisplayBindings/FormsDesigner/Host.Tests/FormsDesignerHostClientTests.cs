@@ -264,6 +264,33 @@ public sealed class FormsDesignerHostClientTests
 		}
 	}
 
+	[Fact]
+	public async Task SharedHost_UsesOneProcessAndKeepsDocumentsIsolated()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		var hostDll = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+			"../../../../Host/bin/Debug/net10.0-windows/FormsDesigner.Host.dll"));
+		var first = await FormsDesignerHostClient.AcquireSharedAsync("", "", timeout.Token, hostDll);
+		var second = await FormsDesignerHostClient.AcquireSharedAsync("", "", timeout.Token, hostDll);
+		try {
+			Assert.Equal(first.ProcessId, second.ProcessId);
+			Assert.Equal(first.SessionId, second.SessionId);
+			Assert.NotEqual(first.DocumentId, second.DocumentId);
+			Assert.True((await first.OpenAsync(Snapshot(1, "first"), timeout.Token)).Accepted);
+			Assert.True((await second.OpenAsync(Snapshot(1, "second"), timeout.Token)).Accepted);
+			await first.SetPropertyAsync(1, "button1", "Text", "first edited", timeout.Token);
+			Assert.Contains("first edited", DesignerText(await first.FlushAsync(1, timeout.Token)), StringComparison.Ordinal);
+			Assert.Contains("second", DesignerText(await second.FlushAsync(1, timeout.Token)), StringComparison.Ordinal);
+			Assert.DoesNotContain("first edited", DesignerText(await second.FlushAsync(1, timeout.Token)), StringComparison.Ordinal);
+			first.Dispose();
+			Assert.True(second.IsAlive);
+			Assert.Contains("second", DesignerText(await second.FlushAsync(1, timeout.Token)), StringComparison.Ordinal);
+		} finally {
+			first.Dispose();
+			second.Dispose();
+		}
+	}
+
 	static async Task WaitForExitAsync(int processId, CancellationToken cancellationToken)
 	{
 		while (true) {

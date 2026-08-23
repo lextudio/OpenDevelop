@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>LeXtudio.MewUI.Xaml</RootNamespace>
+    <AssemblyName>LeXtudio.MewUI.Xaml</AssemblyName>
+    <Description>MXAML document model, diagnostics and strict-C# generator for the MewUI visual designer.</Description>
+  </PropertyGroup>
+  <!-- Deliberately dependency-free: System.Xml.Linq only. The Roslyn-based reader stays in
+       the designer addin (migration path), keeping this assembly usable by the OOP host and
+       by a future source generator. -->
+</Project>

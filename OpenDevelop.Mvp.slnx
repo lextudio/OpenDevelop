@@ -22,6 +22,10 @@
   </Folder>
   <Folder Name="/src/" />
   <Folder Name="/src/Libraries/">
+  <Folder Name="/src/Libraries/MewUI.Xaml/">
+    <Project Path="src/Libraries/MewUI.Xaml/LeXtudio.MewUI.Xaml.csproj" />
+    <Project Path="src/Libraries/MewUI.Xaml.Tests/LeXtudio.MewUI.Xaml.Tests.csproj" />
+  </Folder>
     <Project Path="src/Libraries/ICSharpCode.TypeSystem.Abstractions/ICSharpCode.TypeSystem.Abstractions.csproj" />
   </Folder>
   <Folder Name="/src/Libraries/AvalonDock/">

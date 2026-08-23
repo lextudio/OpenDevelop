@@ -30,7 +30,7 @@ three data points this contract generalizes.
 
 ## Shared-host lifecycle design (2026-08-23)
 
-This section is normative and implemented for the GTK4 and MewUI backends. It replaces the accidental
+This section is normative and implemented for the GTK4, MewUI and WinForms backends. It replaces the accidental
 "one client object owns one child process" lifetime with a two-level model:
 
 ```text
@@ -45,13 +45,19 @@ backend pool key                         one shared process
 
 The pool key is not globally "all designers". Runtime-incompatible backends remain in different
 processes. GTK and MewUI normally have one process for the IDE instance; WinForms, WPF and WinUI
-may need separate pools for incompatible target frameworks, architectures, dependency graphs or
+use separate pools for incompatible target frameworks, architectures, dependency graphs or
 native runtimes. Documents with the same pool key must reuse the connection.
 
 The common `SharedDesignerHostBroker` owns process acquisition, reference counting, idle
 retention, invalidation and restart coordination. A backend client is only a document lease. It
 owns `DocumentId`, its recovery snapshot and view callbacks; disposing it sends `session/close`
 and releases the lease, but cannot shut down a process used by other documents.
+
+`SharedDesignerHostPool<TKey, TConnection>` is the compatibility partition above the broker.
+It creates one broker per normalized runtime key and exposes the broker's active lease count and
+monotonic connection generation. Backends must not use a project path as the key when two projects
+have the same effective runtime graph; conversely, they must not merge differing runtimeconfig,
+deps, architecture or native-runtime inputs merely because both projects target the same TFM.
 
 Lifecycle rules:
 

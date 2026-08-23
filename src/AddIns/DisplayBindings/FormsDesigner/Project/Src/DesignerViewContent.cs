@@ -536,7 +536,7 @@ namespace ICSharpCode.FormsDesigner
 		void LoadRemoteDesigner()
 		{
 			UnloadRemoteDesigner();
-			remoteClient = FormsDesignerHostClient.StartAsync("", "", System.Threading.CancellationToken.None).GetAwaiter().GetResult();
+			remoteClient = FormsDesignerHostClient.AcquireSharedAsync("", "", System.Threading.CancellationToken.None).GetAwaiter().GetResult();
 			remoteClient.HostExited += RemoteHostExited;
 			var snapshot = CreateRemoteSnapshot(++remoteDocumentVersion);
 			var state = remoteClient.OpenAsync(snapshot, System.Threading.CancellationToken.None).GetAwaiter().GetResult();
