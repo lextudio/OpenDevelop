@@ -1,12 +1,13 @@
 # Common Designer Out-of-Process Protocol (DDP)
 
-This technote is the home for the unified, runtime-neutral architecture that the three OpenDevelop
-visual designers — WinForms, WPF, and WinUI/Uno — are built on. It covers three things:
+This technote is the home for the unified, runtime-neutral architecture that the five OpenDevelop
+visual designers — WinForms, WPF, WinUI/Uno, MewUI, and GTK 4 — converge on. It covers three things:
 
 1. **The architecture**: what an out-of-process (OOP) visual designer is, why OpenDevelop
    runs the real runtime objects in a separate child process, and the wire contract (DDP)
    that every backend speaks to its child.
-2. **The three implementations**: how WinForms, WPF, and WinUI/Uno each realize that
+2. **The five implementations**: how the three runtime-rendering designers and two source-model
+   designers realize that
    architecture today — their processes, files, capabilities, and known limits.
 3. **A feature matrix**: which designer feature exists in which framework, to what degree,
    and what technical constraint explains the difference.
@@ -477,11 +478,52 @@ Host                              Child
 
 ---
 
-# Part II — The three implementations
+# Part II — The implementations
 
-All three backends converge on the same stack:
+All backends converge on the same stack (the first three are runtime-rendering designers; the
+last two are **source-model** designers — see "The source-model designers" below):
 
-| Layer | Shared project | WinForms | WPF | WinUI/Uno |
+| Layer | Shared project | WinForms | WPF | WinUI/Uno | MewUI | GTK 4 |
+|---|---|---|---|---|---|---|
+| Protocol DTOs + process lifecycle | `src/Main/Designer/Designer.Remote/` | `FormsDesignerHostClient` | `WpfSurfaceHostClient` | `UnoDesignClient` | `MewUIDesignerHostClient` | `GtkDesignerHostClient` |
+| Geometry/rendering helpers | `src/Main/Designer/Designer.Presentation/` | used | used | used | n/a (approximate WPF preview) | n/a (approximate WPF preview) |
+| Child-process bootstrap | `src/Main/Designer/Designer.Server/` (`DesignerChildHost`) | `DesignerChildHost.Run` | `DesignerChildHost.Run` | own dispatcher pump | host-specific pump | host-specific pump |
+| Canvas shell | `DesignerCanvas.cs` | `RemoteFormsDesignerControl` | `WpfSurfaceDesignerControl` | `UnoDesignSurfaceControl` | shared-pad composition (outline/tools/properties) | shared-pad composition |
+| Toolbox pad engine | `SharedToolbox.cs` | `WpfToolbox` facade | `WpfToolbox` facade | `WinUIXamlToolbox` facade | in-addin catalogue | in-addin catalogue |
+| Child process | — | `FormsDesigner/Host/` | `WpfDesign.SurfaceHost/` | `WinUIXamlDesigner.UnoHost/` | `MewUIDesigner.Host/` (Roslyn transforms) | `GtkDesigner.Host/` (GtkBuilder XML transforms) |
+| DevFlow actions | — | `FormsDesignerDevFlowActions.cs` | `WpfDesignDevFlowActions.cs` | `WinUIXamlDesignerDevFlowActions.cs` | `MewUIDesignerDevFlowActions.cs` | `GtkDesignerDevFlowActions.cs` |
+
+## The source-model designers: MewUI and GTK 4
+
+Added 2026-08; the fifth and fourth backends respectively. They reuse the DDP transport,
+handshake, and session lifecycle verbatim (`MewUIDesignerHostClient : DesignerHostProcessClient,
+IDesignHostClient`, same for GTK), with one architectural difference that drives everything else:
+
+**the authoritative document is not a runtime object graph.**
+
+- **MewUI**: a C#-first framework, so the document IS the C# syntax tree. The child process
+  performs Roslyn source transformations for every toolbox insertion / property edit / delete /
+  rename (strict WinForms-style InitializeComponent grammar: field creations, then property
+  assignments, then `parent.Children(...)` relationship calls, anchored by a `Content = root`
+  assignment). See [`mewui-designer.md`](mewui-designer.md) for the decision record.
+- **GTK 4**: the document is GtkBuilder XML (`.ui`). The child validates and transforms the
+  XML tree directly (`<child>/<object>/<property>`), preserving whitespace-free canonical form.
+
+Consequences, all deliberate:
+
+1. **Rendering is an IDE-side WPF approximation**, not runtime pixels: the surface preview is
+   built from the parsed model (`StackPanel`-style proxies per node type). There is no ProGPU /
+   Uno runtime in the loop, so `hit-test` / `set-bounds` / events are **deterministic
+   NotSupported** on the client (same convention as the WPF designer's nudge) rather than
+   silently missing.
+2. **Undo/redo lives in the child as whole-document snapshots**, matching the WPF backend's
+   session-snapshot approach.
+3. **Container validation is enforced in the child** (a `<child>` under a leaf widget, or a
+   `.Children(...)` call on a non-container control, is rejected at edit time instead of
+   producing documents the runtime refuses to load).
+4. Deployment follows the standard Host layout (`AddIns/<Category>/<Name>/Host/`), so they are
+   `OutOfProcessHost` kind for the addin-trim rules in `Directory.Build.targets`.
+
 |---|---|---|---|---|
 | Protocol DTOs + process lifecycle | `src/Main/Designer/Designer.Remote/` | `FormsDesignerHostClient : DesignerHostProcessClient, IDesignHostClient` | `WpfSurfaceHostClient : DesignerHostProcessClient, IDesignHostClient` | `UnoDesignClient : DesignerHostProcessClient, IDesignHostClient` |
 | Geometry/rendering helpers | `src/Main/Designer/Designer.Presentation/` (`DesignViewport`, `DesignFramePresenter`, `SelectionAdornerLayer`, `GridlineOverlay`, `SnapGuideCalculator`) | used | used | used |
@@ -790,21 +832,27 @@ Legend: **✓** implemented and exercised · **~** partial (see note) · **✗**
 
 ## Canvas shell & presentation (shared)
 
-| Feature | WinForms | WPF | WinUI/Uno |
-|---|---|---|---|
-| Shared `DesignerCanvas` shell + toolbar | ✓ | ✓ | ✓ |
-| Zoom combo (100% default, VS behavior) | ✓ (**fixed 2026-08-18**: `RebuildViewport` no longer short-circuited by the frame-sequence guard; hit-test/marquee/toolbox-drop now divide by `viewport.Scale`; guides/UIA bounds use `DesignToSurface`) | ✓ (Stretch.Fill fix landed) | ✓ |
-| Fit | ✓ | ✓ | ✓ |
-| Gridlines toggle | ~ (button visible but inert — no capability) | ✓ (shared `GridlineOverlay`) | ✓ (shared `GridlineOverlay`) |
-| Show names on selection (toolbar toggle, default on) | ✓ | ✓ | ✓ |
-| Design-theme combo (lists actual themes; Light/Dark default) | ✗ (hidden — not a WinForms concept) | ✓ (embedded `themes/*.xaml`, per-project) | ✓ (ThemeDictionaries keys) |
-| Design-size (device) preset combo | ✗ (hidden — not a WinForms concept) | ✗ (hidden) | ✓ |
-| Edge pattern around the design bitmap | ✓ | ✓ | ✓ |
-| Toolbar follows IDE theme (dark toolbar, light text) | ✓ | ✓ | ✓ |
-| Shared `DesignViewport` coordinate math | ✓ | ✓ | ✓ |
-| Shared `DesignFramePresenter` | ✓ PNG/WIC | ✓ BGRA/WIC-free | ✓ BGRA/WIC-free |
-| Shared `SelectionAdornerLayer` | ✓ (single "se" handle visual, no label, recolor for locked) | ✓ (8 handles + label) | ✓ (8 handles + label) |
-| Frame sequence backpressure (stale frames dropped) | ✓ | ✓ | ✓ |
+`DesignerCanvasCapabilities` is the single toolbar visibility contract. Controls always retain
+the canonical order `Zoom → Fit → Gridlines → Theme → Show Names → Design Size`; unsupported
+controls are collapsed rather than left visible and inert. Refresh, Restart Host, Source, Delete,
+Undo and Redo belong to document lifecycle or the IDE command system, not the canvas toolbar.
+
+| Feature | WinForms | WPF | WinUI/Uno | MewUI | GTK 4 |
+|---|---|---|---|---|---|
+| Shared `DesignerCanvas` shell + toolbar | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Declared visible capabilities | Zoom, Fit | Zoom, Fit, Gridlines, Show Names, optional Theme | All six | Zoom, Fit, Gridlines | Zoom, Fit, Gridlines |
+| Zoom combo (100% default, VS behavior) | ✓ (**fixed 2026-08-18**: viewport and hit-test scaling) | ✓ (Stretch.Fill fix landed) | ✓ | ✓ (safe projection) | ✓ (safe projection) |
+| Fit | ✓ | ✓ | ✓ | ✓ (returns safe projection to 100%) | ✓ (returns safe projection to 100%) |
+| Gridlines toggle | ✗ (hidden) | ✓ (shared `GridlineOverlay`) | ✓ (shared `GridlineOverlay`) | ✓ (safe-projection brush) | ✓ (safe-projection brush) |
+| Show names on selection (toolbar toggle, default on) | ✗ (hidden) | ✓ | ✓ | ✗ (hidden) | ✗ (hidden) |
+| Design-theme combo (lists actual themes; Light/Dark default) | ✗ (hidden — not a WinForms concept) | ✓ (embedded `themes/*.xaml`, per-project) | ✓ (ThemeDictionaries keys) | ✗ (hidden) | ✗ (hidden) |
+| Design-size (device) preset combo | ✗ (hidden — not a WinForms concept) | ✗ (hidden) | ✓ | ✗ (hidden) | ✗ (hidden) |
+| Edge pattern around the design bitmap/projection | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Toolbar follows IDE theme (dark toolbar, light text) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Shared `DesignViewport` coordinate math | ✓ | ✓ | ✓ | ✗ (not frame-based) | ✗ (not frame-based) |
+| Shared `DesignFramePresenter` | ✓ PNG/WIC | ✓ BGRA/WIC-free | ✓ BGRA/WIC-free | ✗ | ✗ |
+| Shared `SelectionAdornerLayer` | ✓ (single "se" handle visual, no label, recolor for locked) | ✓ (8 handles + label) | ✓ (8 handles + label) | ✗ | ✗ |
+| Frame sequence backpressure (stale frames dropped) | ✓ | ✓ | ✓ | n/a | n/a |
 
 ## Selection & gestures
 

@@ -22,8 +22,8 @@ function Find-DotNetHost {
     }
     else {
         $candidates += @(
-            '/usr/local/share/dotnet/dotnet',
-            '/opt/homebrew/bin/dotnet'
+            '/opt/homebrew/bin/dotnet',
+            '/usr/local/share/dotnet/dotnet'
         )
     }
 
@@ -152,10 +152,12 @@ function Build-Solution {
     param(
         [Parameter(Mandatory)][string]$DotNet,
         [Parameter(Mandatory)][string]$Solution,
+        [ValidateSet('Debug', 'Release')]
+        [string]$Configuration = 'Debug',
         [string[]]$ExtraProperties = @()
     )
     Write-Host '==> Rebuilding OpenDevelop.Mvp.sln and all addins...'
-    Invoke-Native $DotNet build $Solution --no-restore --no-incremental -v minimal @ExtraProperties
+    Invoke-Native $DotNet build $Solution -c $Configuration --no-restore --no-incremental -v minimal @ExtraProperties
 }
 
 function Remove-StaleMsBuildAssets {

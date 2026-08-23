@@ -1,0 +1,10 @@
+<AddIn name="MewUI Designer" author="LeXtudio" description="Visual C# designer for Aprillz.MewUI applications." addInManagerHidden="preinstalled">
+  <Manifest><Identity name="ICSharpCode.MewUIDesigner" /></Manifest>
+  <Runtime><Import assembly="ICSharpCode.MewUIDesigner.dll" /></Runtime>
+  <Path name="/SharpDevelop/Workbench/DisplayBindings">
+    <DisplayBinding id="MewUIDesigner" type="Secondary" class="ICSharpCode.MewUIDesigner.MewUIDesignerDisplayBinding" fileNamePattern="\.cs$" />
+  </Path>
+  <Path name="/SharpDevelop/Autostart">
+    <Class id="ICSharpCode.MewUIDesigner.RegisterDevFlowActionsCommand" class="ICSharpCode.MewUIDesigner.RegisterDevFlowActionsCommand" />
+  </Path>
+</AddIn>

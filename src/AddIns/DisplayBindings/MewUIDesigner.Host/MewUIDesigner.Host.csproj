@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings><OpenDevelopAddin>true</OpenDevelopAddin><OpenDevelopAddinKind>OutOfProcessHost</OpenDevelopAddinKind></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
+    <ProjectReference Include="..\..\..\Main\Designer\Designer.Server\Designer.Server.csproj" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.6.0" />
+    <Compile Include="..\MewUIDesigner\MewUIDocumentEditor.cs" Link="MewUIDocumentEditor.cs" />
+  </ItemGroup>
+  <Target Name="DeployToAddIns" AfterTargets="Build"><ItemGroup><HostOutput Include="$(TargetDir)**" /></ItemGroup><Copy SourceFiles="@(HostOutput)" SkipUnchangedFiles="true" DestinationFiles="@(HostOutput->'$(MSBuildProjectDirectory)\..\..\..\..\AddIns\DisplayBindings\MewUIDesigner\Host\%(RecursiveDir)%(Filename)%(Extension)')" /></Target>
+</Project>

@@ -103,6 +103,7 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 
 	public UnoDesignSurfaceControl()
 	{
+		Capabilities = DesignerCanvasCapabilities.All;
 		foreach (var label in ZoomLabels)
 			ZoomCombo.Items.Add(label);
 		// Default to 100% rather than Fit, matching VS's design surface.

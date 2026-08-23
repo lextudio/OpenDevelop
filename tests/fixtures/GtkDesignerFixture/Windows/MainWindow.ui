@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0" />
+  <object class="GtkApplicationWindow" id="mainWindow">
+    <property name="title">GTK Designer Fixture</property>
+    <property name="default-width">800</property>
+    <property name="default-height">600</property>
+    <child>
+      <object class="GtkBox" id="contentBox">
+        <property name="orientation">vertical</property>
+        <property name="spacing">12</property>
+        <child>
+          <object class="GtkLabel" id="heading">
+            <property name="label">GTK 4 Designer</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkButton" id="runButton">
+            <property name="label">Run</property>
+          </object>
+        </child>
+      </object>
+    </child>
+  </object>
+</interface>

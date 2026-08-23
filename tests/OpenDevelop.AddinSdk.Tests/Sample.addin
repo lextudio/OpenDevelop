@@ -1,0 +1,3 @@
+<AddIn name="Sample" author="OpenDevelop" copyright="MIT" url="https://github.com/lextm" description="SDK test fixture">
+  <Manifest><Identity name="OpenDevelop.AddinSdk.Test" version="1.0" /></Manifest>
+</AddIn>

@@ -1,5 +1,7 @@
 <Project Sdk="LibreWPF.Sdk">
   <PropertyGroup>
+    <OpenDevelopAddin>true</OpenDevelopAddin>
+    <OpenDevelopAddinKind>InProcess</OpenDevelopAddinKind>
     <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>ICSharpCode.AspNetCore.AddIn</RootNamespace>
     <AssemblyName>ICSharpCode.AspNetCore.AddIn</AssemblyName>
@@ -32,8 +34,4 @@
     <None Include="AspNetCore.addin" />
 	<EmbeddedResource Include="Resources\AspNetCoreRazor.xshd" LogicalName="ICSharpCode.AspNetCore.AddIn.Resources.AspNetCoreRazor.xshd" />
   </ItemGroup>
-
-  <Target Name="CopyAddInManifest" AfterTargets="Build">
-    <Copy SourceFiles="AspNetCore.addin" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
-  </Target>
 </Project>

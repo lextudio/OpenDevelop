@@ -65,6 +65,9 @@ populate_repo_payload() {
   local keep_addin_folders=(
     "DisplayBindings/WinUIXamlDesigner/UnoHost"
     "DisplayBindings/FormsDesigner/Host"
+    "DisplayBindings/WpfDesign/Host"
+    "DisplayBindings/GtkDesigner/Host"
+    "DisplayBindings/MewUIDesigner/Host"
     "Debugger"
     "LanguageServices/XamlLanguageServer.Wpf"
   )
@@ -74,13 +77,26 @@ populate_repo_payload() {
   done
 
   rsync -a \
-    "${keep_args[@]}" \
     --exclude '*.pdb' \
+    --exclude '**/ref/***' \
+    --exclude '**/runtimes/win*/***' \
+    --exclude '**/runtimes/linux*/***' \
+    --exclude '**/runtimes/unix*/***' \
     --exclude 'LeXtudio.DevFlow.*' \
     --exclude 'CliclickSharp' \
+    "${keep_args[@]}" \
     --exclude-from "$exclude_file" \
     "$repo_root/AddIns/" "$macos/AddIns/"
   rm -f "$exclude_file"
+
+  # XML files paired with a DLL are compiler/API documentation, not runtime
+  # configuration. Preserve genuine layouts such as Decompiler/Layouts/ILSpy.xml.
+  while IFS= read -r -d '' documentation; do
+    assembly_name="$(basename "${documentation%.xml}.dll")"
+    if [[ -f "${documentation%.xml}.dll" || -f "$macos/$assembly_name" ]]; then
+      rm -f "$documentation"
+    fi
+  done < <(find "$macos/AddIns" -type f -name '*.xml' -print0)
 
 }
 

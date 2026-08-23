@@ -1,5 +1,7 @@
 ﻿<Project Sdk="LibreWPF.Sdk">
   <PropertyGroup>
+    <OpenDevelopAddin>true</OpenDevelopAddin>
+    <OpenDevelopAddinKind>InProcessDependency</OpenDevelopAddinKind>
     <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>ICSharpCode.PackageManagement.PowerShell</RootNamespace>
     <AssemblyName>PackageManagement.PowerShell</AssemblyName>

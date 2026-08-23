@@ -237,8 +237,8 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			//    DesignerSessionState.DesignThemes (see Show's own handling) - starts hidden
 			//    here (no document is open yet) and Show() reveals it once a project that
 			//    embeds themes is actually loaded.
-			ShowDesignSize = false;
-			ShowTheme = false;
+			Capabilities = DesignerCanvasCapabilities.Zoom | DesignerCanvasCapabilities.Fit |
+				DesignerCanvasCapabilities.Gridlines | DesignerCanvasCapabilities.ShowNames;
 			foreach (var label in ZoomLabels)
 				ZoomCombo.Items.Add(label);
 			ZoomCombo.SelectedIndex = 4; // "100%"
@@ -336,8 +336,10 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			// themes/*.xaml resources); a project without any embedded theme hides the combo.
 			// Opening a different document that does embed them (or a design/theme response
 			// confirming them again) shows and repopulates it.
-			ShowTheme = newState.DesignThemes.Length > 0;
-			if (ShowTheme)
+			Capabilities = DesignerCanvasCapabilities.Zoom | DesignerCanvasCapabilities.Fit |
+				DesignerCanvasCapabilities.Gridlines | DesignerCanvasCapabilities.ShowNames |
+				(newState.DesignThemes.Length > 0 ? DesignerCanvasCapabilities.Theme : DesignerCanvasCapabilities.None);
+			if (Capabilities.HasFlag(DesignerCanvasCapabilities.Theme))
 			{
 				SetDesignThemes(newState.DesignThemes);
 			}

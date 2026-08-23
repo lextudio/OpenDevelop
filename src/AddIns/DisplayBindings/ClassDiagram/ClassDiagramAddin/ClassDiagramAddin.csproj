@@ -1,5 +1,7 @@
 <Project Sdk="LibreWPF.Sdk">
   <PropertyGroup>
+    <OpenDevelopAddin>true</OpenDevelopAddin>
+    <OpenDevelopAddinKind>InProcess</OpenDevelopAddinKind>
     <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>ICSharpCode.ClassDiagram</RootNamespace>
     <AssemblyName>ClassDiagramAddin</AssemblyName>

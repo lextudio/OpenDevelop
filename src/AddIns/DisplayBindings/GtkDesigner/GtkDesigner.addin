@@ -1,0 +1,10 @@
+<AddIn name="GTK 4 Designer" author="LeXtudio" description="Source-backed GtkBuilder designer for GTK 4." addInManagerHidden="preinstalled">
+  <Manifest><Identity name="ICSharpCode.GtkDesigner" /></Manifest>
+  <Runtime><Import assembly="ICSharpCode.GtkDesigner.dll" /></Runtime>
+  <Path name="/SharpDevelop/Workbench/DisplayBindings">
+    <DisplayBinding id="GtkDesigner" type="Secondary" class="ICSharpCode.GtkDesigner.GtkDesignerDisplayBinding" fileNamePattern="\.ui$" />
+  </Path>
+  <Path name="/SharpDevelop/Autostart">
+    <Class id="ICSharpCode.GtkDesigner.RegisterDevFlowActionsCommand" class="ICSharpCode.GtkDesigner.RegisterDevFlowActionsCommand" />
+  </Path>
+</AddIn>

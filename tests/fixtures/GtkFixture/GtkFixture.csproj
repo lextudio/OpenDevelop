@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>GtkFixture</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Real GTK 4 bindings so the fixture is a runnable application. Running it requires
+         GTK 4 native libraries (e.g. `brew install gtk4` on macOS, distro packages on Linux);
+         the DESIGNER flows never run this project - the host parses ui/*.ui directly. -->
+    <PackageReference Include="GirCore.Gtk-4.0" Version="0.6.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="ui/**/*.ui" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

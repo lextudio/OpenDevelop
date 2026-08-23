@@ -5,6 +5,8 @@
     <UnoSingleProject>true</UnoSingleProject>
     <UnoFeatures>SkiaRenderer</UnoFeatures>
     <RootNamespace>ICSharpCode.WinUIXamlDesigner.UnoHost</RootNamespace>
+    <OpenDevelopAddin>true</OpenDevelopAddin>
+    <OpenDevelopAddinKind>OutOfProcessHost</OpenDevelopAddinKind>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />

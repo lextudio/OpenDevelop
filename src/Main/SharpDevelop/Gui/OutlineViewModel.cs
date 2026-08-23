@@ -17,7 +17,7 @@ namespace ICSharpCode.SharpDevelop.Gui;
 [Export(typeof(OutlineViewModel))]
 [Export("ToolPane", typeof(ToolPaneModel))]
 [Shared]
-internal sealed class OutlineViewModel : ToolPaneModel, IDisposable
+internal sealed class OutlineViewModel : ToolPaneModel, IOutlinePadHost, IDisposable
 {
     readonly ContentPresenter contentControl = new ContentPresenter();
     bool subscribed;
@@ -31,7 +31,10 @@ internal sealed class OutlineViewModel : ToolPaneModel, IDisposable
         PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Left;
         LegacyPadClass = typeof(OutlinePad).FullName;
         Content = contentControl;
+		SD.Services.AddService(typeof(IOutlinePadHost), this);
     }
+
+	public object HostedContent { get { EnsureSubscribed(); return contentControl.Content; } }
 
     /// <summary>
     /// Subscribes to <c>SD.Workbench.ActiveViewContentChanged</c> on first real use rather than in

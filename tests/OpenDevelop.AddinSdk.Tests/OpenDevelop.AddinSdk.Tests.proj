@@ -1,0 +1,42 @@
+<Project>
+  <PropertyGroup>
+    <OpenDevelopAddin>true</OpenDevelopAddin>
+    <OpenDevelopAddinKind>InProcess</OpenDevelopAddinKind>
+    <Configuration>Debug</Configuration>
+    <TestRoot>$(MSBuildThisFileDirectory)obj/sdk-test/</TestRoot>
+    <OutputPath>$(TestRoot)AddIns/Sample/</OutputPath>
+    <OpenDevelopHostBin>$(TestRoot)Host/</OpenDevelopHostBin>
+    <OpenDevelopHostManifest>$(OpenDevelopHostBin)OpenDevelop.host-assemblies.txt</OpenDevelopHostManifest>
+    <OpenDevelopDistributionBuild>true</OpenDevelopDistributionBuild>
+    <OpenDevelopDistributionRidFamily>osx</OpenDevelopDistributionRidFamily>
+  </PropertyGroup>
+  <ItemGroup>
+    <OpenDevelopAddinManifest Include="$(MSBuildThisFileDirectory)Sample.addin" />
+  </ItemGroup>
+  <Import Project="$(MSBuildThisFileDirectory)../../src/SDK/OpenDevelop.Addin.Sdk/Sdk/Sdk.targets" />
+  <Target Name="Build" DependsOnTargets="Prepare;OpenDevelopDeployAddinManifest;OpenDevelopTrimAddinOutput;OpenDevelopPruneAddinDeploymentAssets;Assert">
+  </Target>
+  <Target Name="Prepare">
+    <MakeDir Directories="$(OutputPath);$(OpenDevelopHostBin);$(OutputPath)ref;$(OutputPath)runtimes/win-x64;$(OutputPath)runtimes/osx" />
+    <WriteLinesToFile File="$(OpenDevelopHostManifest)" Lines="Host.Shared.dll" Overwrite="true" />
+    <WriteLinesToFile File="$(OpenDevelopHostBin)Host.Shared.dll" Lines="host" Overwrite="true" />
+    <WriteLinesToFile File="$(OutputPath)Host.Shared.dll" Lines="duplicate" Overwrite="true" />
+    <WriteLinesToFile File="$(OutputPath)Addin.Private.dll" Lines="private" Overwrite="true" />
+    <WriteLinesToFile File="$(OutputPath)Addin.Private.xml" Lines="documentation" Overwrite="true" />
+    <WriteLinesToFile File="$(OutputPath)Layout.xml" Lines="runtime layout" Overwrite="true" />
+    <WriteLinesToFile File="$(OutputPath)ref/Reference.dll" Lines="reference" Overwrite="true" />
+    <WriteLinesToFile File="$(OutputPath)runtimes/win-x64/native.dll" Lines="foreign" Overwrite="true" />
+    <WriteLinesToFile File="$(OutputPath)runtimes/osx/native.dylib" Lines="current" Overwrite="true" />
+  </Target>
+  <Target Name="Assert">
+    <Error Condition="Exists('$(OutputPath)Host.Shared.dll')" Text="Host-provided DLL was not trimmed." />
+    <Error Condition="!Exists('$(OutputPath)Addin.Private.dll')" Text="Addin-private DLL was incorrectly trimmed." />
+    <Error Condition="!Exists('$(OutputPath)Sample.addin')" Text="Addin manifest was not deployed." />
+    <Error Condition="Exists('$(OutputPath)Addin.Private.xml')" Text="Assembly XML documentation was not pruned." />
+    <Error Condition="!Exists('$(OutputPath)Layout.xml')" Text="Runtime XML layout was incorrectly pruned." />
+    <Error Condition="Exists('$(OutputPath)ref/Reference.dll')" Text="Reference asset was not pruned." />
+    <Error Condition="Exists('$(OutputPath)runtimes/win-x64/native.dll')" Text="Foreign runtime asset was not pruned." />
+    <Error Condition="!Exists('$(OutputPath)runtimes/osx/native.dylib')" Text="Current-platform runtime asset was incorrectly pruned." />
+    <Message Importance="high" Text="OpenDevelop Addin SDK deployment test passed." />
+  </Target>
+</Project>

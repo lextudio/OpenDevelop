@@ -36,6 +36,12 @@ if (-not $NoBuild) {
 
     Restore-Solution -DotNet $dotnet -Solution $sln
 
+    # Build the app project first so OpenDevelop.base.manifest exists before any addin's
+    # post-Build trim runs (doc/technotes/addin-sdk.md); otherwise the very first build after
+    # wiping AddIns/ fails open and re-emits every base-provided assembly.
+    Write-Host '==> Building host app (base manifest source)...'
+    Invoke-Native $dotnet build $exeProject --no-restore -v minimal
+
     Build-Solution -DotNet $dotnet -Solution $sln
 
     Remove-StaleMsBuildAssets -RepoRoot $repoRoot -Configuration $Configuration

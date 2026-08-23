@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0" />
+  <object class="GtkApplicationWindow" id="mainWindow">
+    <property name="title">GTK Designer</property>
+    <property name="default-width">900</property>
+    <property name="default-height">640</property>
+    <child>
+      <object class="GtkBox" id="rootBox">
+        <property name="orientation">vertical</property>
+        <child>
+          <object class="GtkLabel" id="heading">
+            <property name="label">Documents</property>
+            <property name="margin-top">8</property>
+            <property name="margin-bottom">8</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkPaned" id="mainPane">
+            <property name="position">260</property>
+            <child>
+              <object class="GtkScrolledWindow" id="sidebarScroller">
+                <property name="width-request">240</property>
+                <child>
+                  <object class="GtkListBox" id="documentList">
+                    <property name="selection-mode">single</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="GtkBox" id="detailBox">
+                <property name="orientation">vertical</property>
+                <property name="spacing">8</property>
+                <child>
+                  <object class="GtkLabel" id="detailTitle">
+                    <property name="label">No document selected</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkEntry" id="detailEntry">
+                    <property name="placeholder-text">Rename document…</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="GtkBox" id="actionBar">
+            <property name="spacing">6</property>
+            <child>
+              <object class="GtkButton" id="cancelButton">
+                <property name="label">Cancel</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkButton" id="applyButton">
+                <property name="label">Apply</property>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+  </object>
+  <object class="GtkDialog" id="settingsDialog">
+    <property name="title">Settings</property>
+    <property name="modal">True</property>
+    <child>
+      <object class="GtkBox" id="dialogBody">
+        <property name="orientation">vertical</property>
+        <property name="spacing">8</property>
+        <child>
+          <object class="GtkLabel" id="serverLabel">
+            <property name="label">Server</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkEntry" id="serverEntry">
+            <property name="placeholder-text">host.example.com</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkCheckButton" id="tlsCheck">
+            <property name="label">Use TLS</property>
+            <property name="active">True</property>
+          </object>
+        </child>
+      </object>
+    </child>
+  </object>
+</interface>

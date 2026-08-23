@@ -112,4 +112,13 @@
           Condition="'$(ProGpuWpfUseLibreWinForms)' == 'true' And ('$(OutputType)' == 'Exe' Or '$(OutputType)' == 'WinExe') And '$(NuGetPackageRoot)' != '' And Exists('$(ProjectDepsFilePath)')">
     <Exec Command="python3 &quot;$(MSBuildThisFileDirectory)../build/patch-librewinforms-deps.py&quot; &quot;$(ProjectDepsFilePath)&quot; &quot;$(NuGetPackageRoot)&quot;" />
   </Target>
+
+  <!--
+    Chain to the repo-root Directory.Build.targets (MSBuild imports only the NEAREST
+    Directory.Build.* walking up, so without this explicit import everything there -
+    including the distribution-time RemoveHostProvidedFilesFromAddInCopyLocal trim and
+    the OpenDevelop.Addin SDK phase-1 base-manifest/addin-trim targets - would silently
+    never apply to any project under src/.
+  -->
+  <Import Project="$(MSBuildThisFileDirectory)../Directory.Build.targets" />
 </Project>

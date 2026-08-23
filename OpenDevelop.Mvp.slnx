@@ -62,6 +62,14 @@
     <Project Path="src/AddIns/DisplayBindings/WpfDesign/WpfDesign.SurfaceHost.Remote/WpfDesign.SurfaceHost.Remote.csproj" />
     <Project Path="src/AddIns/DisplayBindings/WpfDesign/WpfDesign.SurfaceHost/WpfDesign.SurfaceHost.csproj" />
   </Folder>
+  <Folder Name="/src/AddIns/DisplayBindings/MewUIDesigner/">
+    <Project Path="src/AddIns/DisplayBindings/MewUIDesigner/MewUIDesigner.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/MewUIDesigner.Host/MewUIDesigner.Host.csproj" />
+  </Folder>
+  <Folder Name="/src/AddIns/DisplayBindings/GtkDesigner/">
+    <Project Path="src/AddIns/DisplayBindings/GtkDesigner/GtkDesigner.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/GtkDesigner.Host/GtkDesigner.Host.csproj" />
+  </Folder>
   <Folder Name="/src/AddIns/DisplayBindings/WinUIXamlDesigner/">
     <Project Path="src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.AddIn/ICSharpCode.WinUIXamlDesigner.csproj" />
     <Project Path="src/AddIns/DisplayBindings/WinUIXamlDesigner/XamlStudio.Toolkit.ProGPU/XamlStudio.Toolkit.ProGPU.csproj" />

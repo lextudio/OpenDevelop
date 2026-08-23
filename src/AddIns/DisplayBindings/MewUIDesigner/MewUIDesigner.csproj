@@ -1,0 +1,22 @@
+<Project Sdk="LibreWPF.Sdk">
+  <PropertyGroup>
+    <OpenDevelopAddin>true</OpenDevelopAddin>
+    <OpenDevelopAddinKind>InProcess</OpenDevelopAddinKind>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>ICSharpCode.MewUIDesigner</AssemblyName>
+    <RootNamespace>ICSharpCode.MewUIDesigner</RootNamespace>
+    <OutputPath>..\..\..\..\AddIns\DisplayBindings\MewUIDesigner\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="MewUIDocumentEditor.cs" />
+    <ProjectReference Include="..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\Main\ICSharpCode.SharpDevelop.Widgets\Project\ICSharpCode.SharpDevelop.Widgets.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" Private="false" />
+    <ProjectReference Include="..\MewUIDesigner.Host\MewUIDesigner.Host.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" SkipGetTargetFrameworkProperties="true" />
+    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" Version="0.2.2" Condition="'$(Configuration)' == 'Debug'" />
+  </ItemGroup>
+  <ItemGroup><None Include="MewUIDesigner.addin" /></ItemGroup>
+</Project>

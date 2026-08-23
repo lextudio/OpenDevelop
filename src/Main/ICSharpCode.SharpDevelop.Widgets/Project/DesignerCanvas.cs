@@ -1,7 +1,8 @@
-// Shared visual-designer canvas shell. Every designer backend (WinForms, WPF, WinUI/Uno) hosts
+// Shared visual-designer canvas shell. Every designer backend (WinForms, WPF, WinUI/Uno, GTK 4,
+// MewUI) hosts
 // its rendered design surface in this control so the surrounding chrome - the toolbar (zoom,
 // design-size preset, fit, gridlines, design theme), the empty-canvas edge pattern, and the
-// toolbar theme - looks and behaves identically across all three. The backend-specific surface
+// toolbar theme - looks and behaves identically across all five. The backend-specific surface
 // (frame + selection + gestures) goes into <see cref="ContentHost"/>.
 //
 // Two themes are in play:
@@ -21,11 +22,25 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using System.Windows.Automation;
 
 using ICSharpCode.Core.Presentation;
 
 namespace ICSharpCode.SharpDevelop.Widgets
 {
+	[Flags]
+	public enum DesignerCanvasCapabilities
+	{
+		None = 0,
+		Zoom = 1,
+		Fit = 2,
+		Gridlines = 4,
+		Theme = 8,
+		ShowNames = 16,
+		DesignSize = 32,
+		All = Zoom | Fit | Gridlines | Theme | ShowNames | DesignSize
+	}
+
 	public class DesignerCanvas : ContentControl
 	{
 		readonly Grid root = new Grid();
@@ -38,6 +53,8 @@ namespace ICSharpCode.SharpDevelop.Widgets
 
 		public DesignerCanvas()
 		{
+			AutomationProperties.SetName(this, "Designer canvas");
+			AutomationProperties.SetName(toolbar, "Designer toolbar");
 			fitButton = CreateIconButton("Icons.16x16.FitToScreen", "Fit the design to the surface");
 			gridButton = CreateIconToggle("Icons.16x16.GridGuide", "Show design-space gridlines");
 			themeCombo = new ComboBox {
@@ -49,6 +66,12 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			themeCombo.Items.Add("Dark");
 			themeCombo.SelectedIndex = 0;
 			namesButton = CreateIconToggle("Icons.16x16.DisplayName", "Show control names on the selection outline");
+			AutomationProperties.SetName(ZoomCombo, "Zoom");
+			AutomationProperties.SetName(fitButton, "Fit");
+			AutomationProperties.SetName(gridButton, "Gridlines");
+			AutomationProperties.SetName(themeCombo, "Theme");
+			AutomationProperties.SetName(namesButton, "Show Names");
+			AutomationProperties.SetName(DesignSizeCombo, "Design Size");
 
 			toolbar.Children.Add(ZoomCombo);
 			toolbar.Children.Add(fitButton);
@@ -88,12 +111,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			namesButton.Checked += (_, _) => { UpdateButtonHighlight(namesButton); ShowNamesRequested?.Invoke(this, true); };
 			namesButton.Unchecked += (_, _) => { UpdateButtonHighlight(namesButton); ShowNamesRequested?.Invoke(this, false); };
 
-			ShowZoom = true;
-			ShowDesignSize = true;
-			ShowFit = true;
-			ShowGrid = true;
-			ShowTheme = true;
-			ShowNames = true;
+			Capabilities = DesignerCanvasCapabilities.All;
 			// Pressed = show names, matching today's existing behavior by default.
 			IsShowingNames = true;
 			// The toolbar chrome follows the IDE theme (not the design theme): toolbar background
@@ -127,12 +145,44 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			ToolTip = "Design canvas size preset (for pages without an explicit size)"
 		};
 
-		public bool ShowZoom { get { return ZoomCombo.Visibility == Visibility.Visible; } set { ZoomCombo.Visibility = value ? Visibility.Visible : Visibility.Collapsed; } }
-		public bool ShowDesignSize { get { return DesignSizeCombo.Visibility == Visibility.Visible; } set { DesignSizeCombo.Visibility = value ? Visibility.Visible : Visibility.Collapsed; } }
-		public bool ShowFit { get { return fitButton.Visibility == Visibility.Visible; } set { fitButton.Visibility = value ? Visibility.Visible : Visibility.Collapsed; } }
-		public bool ShowGrid { get { return gridButton.Visibility == Visibility.Visible; } set { gridButton.Visibility = value ? Visibility.Visible : Visibility.Collapsed; } }
-		public bool ShowTheme { get { return themeCombo.Visibility == Visibility.Visible; } set { themeCombo.Visibility = value ? Visibility.Visible : Visibility.Collapsed; } }
-		public bool ShowNames { get { return namesButton.Visibility == Visibility.Visible; } set { namesButton.Visibility = value ? Visibility.Visible : Visibility.Collapsed; } }
+		DesignerCanvasCapabilities capabilities;
+		public DesignerCanvasCapabilities Capabilities
+		{
+			get => capabilities;
+			set
+			{
+				capabilities = value;
+				ZoomCombo.Visibility = value.HasFlag(DesignerCanvasCapabilities.Zoom) ? Visibility.Visible : Visibility.Collapsed;
+				fitButton.Visibility = value.HasFlag(DesignerCanvasCapabilities.Fit) ? Visibility.Visible : Visibility.Collapsed;
+				gridButton.Visibility = value.HasFlag(DesignerCanvasCapabilities.Gridlines) ? Visibility.Visible : Visibility.Collapsed;
+				themeCombo.Visibility = value.HasFlag(DesignerCanvasCapabilities.Theme) ? Visibility.Visible : Visibility.Collapsed;
+				namesButton.Visibility = value.HasFlag(DesignerCanvasCapabilities.ShowNames) ? Visibility.Visible : Visibility.Collapsed;
+				DesignSizeCombo.Visibility = value.HasFlag(DesignerCanvasCapabilities.DesignSize) ? Visibility.Visible : Visibility.Collapsed;
+			}
+		}
+
+		public IReadOnlyList<string> VisibleToolbarItems
+		{
+			get
+			{
+				var result = new List<string>();
+				if (capabilities.HasFlag(DesignerCanvasCapabilities.Zoom)) result.Add("Zoom");
+				if (capabilities.HasFlag(DesignerCanvasCapabilities.Fit)) result.Add("Fit");
+				if (capabilities.HasFlag(DesignerCanvasCapabilities.Gridlines)) result.Add("Gridlines");
+				if (capabilities.HasFlag(DesignerCanvasCapabilities.Theme)) result.Add("Theme");
+				if (capabilities.HasFlag(DesignerCanvasCapabilities.ShowNames)) result.Add("Show Names");
+				if (capabilities.HasFlag(DesignerCanvasCapabilities.DesignSize)) result.Add("Design Size");
+				return result;
+			}
+		}
+
+		public bool ShowZoom { get => capabilities.HasFlag(DesignerCanvasCapabilities.Zoom); set => SetCapability(DesignerCanvasCapabilities.Zoom, value); }
+		public bool ShowDesignSize { get => capabilities.HasFlag(DesignerCanvasCapabilities.DesignSize); set => SetCapability(DesignerCanvasCapabilities.DesignSize, value); }
+		public bool ShowFit { get => capabilities.HasFlag(DesignerCanvasCapabilities.Fit); set => SetCapability(DesignerCanvasCapabilities.Fit, value); }
+		public bool ShowGrid { get => capabilities.HasFlag(DesignerCanvasCapabilities.Gridlines); set => SetCapability(DesignerCanvasCapabilities.Gridlines, value); }
+		public bool ShowTheme { get => capabilities.HasFlag(DesignerCanvasCapabilities.Theme); set => SetCapability(DesignerCanvasCapabilities.Theme, value); }
+		public bool ShowNames { get => capabilities.HasFlag(DesignerCanvasCapabilities.ShowNames); set => SetCapability(DesignerCanvasCapabilities.ShowNames, value); }
+		void SetCapability(DesignerCanvasCapabilities capability, bool enabled) => Capabilities = enabled ? capabilities | capability : capabilities & ~capability;
 
 		/// <summary>Gridlines toggle state (checked = show grid).</summary>
 		public bool IsGridEnabled { get { return gridButton.IsChecked == true; } set { gridButton.IsChecked = value; } }

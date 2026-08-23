@@ -1,5 +1,7 @@
 <Project Sdk="LibreWPF.Sdk">
   <PropertyGroup>
+    <OpenDevelopAddin>true</OpenDevelopAddin>
+    <OpenDevelopAddinKind>InProcess</OpenDevelopAddinKind>
     <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>ICSharpCode.StartPage</RootNamespace>
     <AssemblyName>StartPage</AssemblyName>
@@ -26,7 +28,4 @@
          it only to StartPage's own output directory. -->
     <None Include="StartPage.addin" />
   </ItemGroup>
-  <Target Name="CopyAddInManifest" AfterTargets="Build">
-    <Copy SourceFiles="StartPage.addin" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
-  </Target>
 </Project>

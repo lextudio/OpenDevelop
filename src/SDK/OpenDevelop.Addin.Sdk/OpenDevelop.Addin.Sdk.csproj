@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <PackageId>OpenDevelop.Addin.Sdk</PackageId>
+    <Version>0.1.0-preview.1</Version>
+    <PackageType>MSBuildSdk</PackageType>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <NoBuild>true</NoBuild>
+    <NoWarn>NU5128</NoWarn>
+    <Description>MSBuild SDK for building and deploying OpenDevelop addins.</Description>
+  </PropertyGroup>
+  <ItemGroup><None Include="Sdk/**" Pack="true" PackagePath="Sdk/" /></ItemGroup>
+</Project>

@@ -18,7 +18,7 @@ namespace ICSharpCode.SharpDevelop.Gui;
 [Export(typeof(ToolsPadViewModel))]
 [Export("ToolPane", typeof(ToolPaneModel))]
 [Shared]
-internal sealed class ToolsPadViewModel : ToolPaneModel
+internal sealed class ToolsPadViewModel : ToolPaneModel, IToolsPadHost
 {
     readonly ContentPresenter contentControl = new ContentPresenter();
     bool subscribed;
@@ -32,6 +32,18 @@ internal sealed class ToolsPadViewModel : ToolPaneModel
         PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Left;
         LegacyPadClass = typeof(ToolsPad).FullName;
         Content = contentControl;
+        SD.Services.AddService(typeof(IToolsPadHost), this);
+        // The workbench service is installed before its layout composes ToolPane exports. Calling
+        // this here covers the normal, already-visible startup path where Show() is never invoked;
+        // the guarded calls below remain for unusual early composition and legacy activation.
+        EnsureSubscribed();
+    }
+
+    public object HostedContent {
+        get {
+            EnsureSubscribed();
+            return contentControl.Content;
+        }
     }
 
     /// <summary>

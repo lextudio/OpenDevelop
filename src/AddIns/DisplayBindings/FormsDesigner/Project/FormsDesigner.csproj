@@ -1,5 +1,7 @@
 <Project Sdk="LibreWPF.Sdk">
   <PropertyGroup>
+    <OpenDevelopAddin>true</OpenDevelopAddin>
+    <OpenDevelopAddinKind>InProcess</OpenDevelopAddinKind>
     <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>ICSharpCode.FormsDesigner</RootNamespace>
     <AssemblyName>FormsDesigner</AssemblyName>
@@ -124,10 +126,6 @@
       <DependentUpon>ImageResourceEditorDialog.cs</DependentUpon>
     </EmbeddedResource>
   </ItemGroup>
-
-  <Target Name="CopyAddInManifest" AfterTargets="Build">
-    <Copy SourceFiles="FormsDesigner.addin" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
-  </Target>
 
   <!--
     Services/ToolboxService.cs implements System.ComponentModel.Design.IToolboxService, whose

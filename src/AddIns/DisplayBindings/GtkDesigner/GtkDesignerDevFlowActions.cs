@@ -1,0 +1,66 @@
+using System;
+using System.Linq;
+using System.Text.Json;
+using ICSharpCode.SharpDevelop;
+using ICSharpCode.SharpDevelop.Gui;
+using LeXtudio.DevFlow.Agent.Core;
+using Microsoft.Maui.DevFlow.Agent.Core;
+using Xceed.Wpf.Toolkit.PropertyGrid;
+
+namespace ICSharpCode.GtkDesigner;
+
+[DevFlowUIThread]
+public static class GtkDesignerDevFlowActions
+{
+	[DevFlowAction("od.gtk-designer.status", Description = "Inspect the active GTK 4 designer and its real shared pads")]
+	public static string Status()
+	{
+		var view = Activate(); var grid = PropertyGrid;
+		return view == null ? JsonSerializer.Serialize(new { active = false }) : JsonSerializer.Serialize(new {
+			active = true, status = view.Status, elementCount = view.ElementCount, selectedId = view.SelectedId, hostProcessId = view.HostProcessId,
+			toolboxItemCount = view.ToolboxItemCount, toolboxHosted = view.IsToolboxHosted, outlineHosted = view.IsOutlineHosted, outlineItemCount = view.OutlineItemCount,
+			toolbarItemCount = view.ToolbarItemCount, toolbarItems = view.ToolbarItems, toolbarCapabilities = view.ToolbarCapabilities, zoom = view.Zoom, gridlines = view.Gridlines,
+			propertyPadSelectedType = grid?.SelectedObject?.GetType().FullName,
+			propertyPadPropertyCount = grid?.Properties?.Count ?? 0, canUndo = view.EnableUndo, canRedo = view.EnableRedo
+		});
+	}
+	[DevFlowAction("od.gtk-designer.select", Description = "Select a GtkBuilder object and populate the real Properties pad")]
+	public static string Select(string id) { var view = Activate(); var ok = view?.SelectById(id) == true; return JsonSerializer.Serialize(new { success = ok, selectedId = view?.SelectedId, propertyPadSelectedType = PropertyGrid?.SelectedObject?.GetType().FullName }); }
+	[DevFlowAction("od.gtk-designer.toolbox.insert", Description = "Insert a GTK 4 control from the real Tools catalogue")]
+	public static string Insert(string className) { var view = Activate(); var known = GtkDesignerViewContent.ToolNames.Contains(className, StringComparer.Ordinal); return JsonSerializer.Serialize(new { success = known && view?.Add(className) == true, elementCount = view?.ElementCount ?? 0, selectedId = view?.SelectedId }); }
+	[DevFlowAction("od.gtk-designer.properties.edit", Description = "Edit through the real shared Properties pad PropertyItem")]
+	public static string EditProperty(string propertyName, string value)
+	{
+		var view = Activate(); var grid = PropertyGrid; if (view == null || grid?.SelectedObject is not GtkPropertyAdapter) return JsonSerializer.Serialize(new { success = false, error = "GTK adapter is not selected in the shared Properties pad" });
+		var item = grid.Properties?.OfType<PropertyItem>().FirstOrDefault(p => p.PropertyName == propertyName);
+		if (item == null) return JsonSerializer.Serialize(new { success = false, error = "Property not found", propertyNames = grid.Properties?.OfType<PropertyItem>().Select(p => p.PropertyName).ToArray() });
+		item.Value = value; return JsonSerializer.Serialize(new { success = true, selectedId = view.SelectedId, propertyName, after = item.Value?.ToString() });
+	}
+	[DevFlowAction("od.gtk-designer.delete", Description = "Delete the selected GTK object")]
+	public static string Delete() { var view = Activate(); return JsonSerializer.Serialize(new { success = view?.DeleteSelected() == true, elementCount = view?.ElementCount ?? 0 }); }
+	[DevFlowAction("od.gtk-designer.undo", Description = "Undo a GTK designer source edit")]
+	public static string Undo() { var view = Activate(); view?.Undo(); return Status(); }
+	[DevFlowAction("od.gtk-designer.redo", Description = "Redo a GTK designer source edit")]
+	public static string Redo() { var view = Activate(); view?.Redo(); return Status(); }
+	[DevFlowAction("od.gtk-designer.refresh", Description = "Reload the GTK design from its source")]
+	public static string Refresh() { var view = Activate(); view?.RefreshDesign(); return JsonSerializer.Serialize(new { success = view != null, hostProcessId = view?.HostProcessId ?? 0 }); }
+	[DevFlowAction("od.gtk-designer.restart-host", Description = "Restart the isolated GTK designer host")]
+	public static string RestartHost() { var view = Activate(); var oldPid = view?.HostProcessId ?? 0; view?.RestartDesignHost(); return JsonSerializer.Serialize(new { success = view != null, oldHostProcessId = oldPid, hostProcessId = view?.HostProcessId ?? 0 }); }
+	[DevFlowAction("od.gtk-designer.show-source", Description = "Switch from the GTK designer to its source document")]
+	public static string ShowSource() { var view = Activate(); view?.ShowSource(); return JsonSerializer.Serialize(new { success = view != null }); }
+	[DevFlowAction("od.gtk-designer.zoom", Description = "Set the common designer toolbar zoom")]
+	public static string Zoom(double value) { var view = Activate(); if (view != null) view.Zoom = value; return JsonSerializer.Serialize(new { success = view != null, zoom = view?.Zoom ?? 0 }); }
+	[DevFlowAction("od.gtk-designer.fit", Description = "Fit the GTK design using the common canvas toolbar behavior")]
+	public static string Fit() { var view = Activate(); view?.FitDesign(); return JsonSerializer.Serialize(new { success = view != null, zoom = view?.Zoom ?? 0 }); }
+	[DevFlowAction("od.gtk-designer.gridlines", Description = "Toggle GTK design-space gridlines")]
+	public static string Gridlines(bool enabled) { var view = Activate(); view?.ShowGridlines(enabled); return JsonSerializer.Serialize(new { success = view != null, gridlines = view?.Gridlines ?? false }); }
+
+	static PropertyGrid? PropertyGrid => (SD.Services.GetService(typeof(IPropertyPadHost)) as IPropertyPadHost)?.Grid;
+	static GtkDesignerViewContent? Activate()
+	{
+		if (SD.Workbench.ActiveViewContent is GtkDesignerViewContent active) return active;
+		var window = SD.Workbench.ActiveViewContent?.WorkbenchWindow; if (window == null) return null;
+		for (var i = 0; i < window.ViewContents.Count; i++) if (window.ViewContents[i] is GtkDesignerViewContent view) { window.SwitchView(i); return view; }
+		return null;
+	}
+}

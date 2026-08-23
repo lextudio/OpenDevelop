@@ -1,0 +1,168 @@
+using System.Text.Json;
+using Xunit;
+
+namespace OpenDevelop.IntegrationTests;
+
+[Collection("30 Add-ins and specialized fixtures")]
+public sealed class MewUIDesignerTests : IAsyncDisposable
+{
+	readonly OpenDevelopAppFixture app;
+	readonly string workDir;
+	readonly string projectPath;
+	readonly string sourcePath;
+	readonly string designerPath;
+	readonly string settingsSourcePath;
+
+	public MewUIDesignerTests(OpenDevelopAppFixture app)
+	{
+		this.app = app;
+		var repo = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(app.OpenDevelopProjectPath)!, "..", "..", ".."));
+		var fixture = Path.Combine(repo, "tests", "fixtures", "MewUIFixture");
+		workDir = Path.Combine(Path.GetTempPath(), "MewUIDesignerTests-" + Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(workDir);
+		foreach (var directory in Directory.EnumerateDirectories(fixture, "*", SearchOption.AllDirectories)) {
+			if (directory.Contains(Path.DirectorySeparatorChar + "bin") || directory.Contains(Path.DirectorySeparatorChar + "obj")) continue;
+			Directory.CreateDirectory(Path.Combine(workDir, Path.GetRelativePath(fixture, directory)));
+		}
+		foreach (var file in Directory.EnumerateFiles(fixture, "*", SearchOption.AllDirectories)) {
+			var relative = Path.GetRelativePath(fixture, file);
+			if (relative.StartsWith("bin" + Path.DirectorySeparatorChar) || relative.StartsWith("obj" + Path.DirectorySeparatorChar)) continue;
+			var destination = Path.Combine(workDir, relative);
+			Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+			File.Copy(file, destination);
+		}
+		projectPath = Path.Combine(workDir, "MewUIFixture.csproj");
+		sourcePath = Path.Combine(workDir, "Windows", "MainWindow.cs");
+		designerPath = Path.Combine(workDir, "Windows", "MainWindow.Designer.cs");
+		settingsSourcePath = Path.Combine(workDir, "Windows", "SettingsWindow.cs");
+	}
+
+	[Fact]
+	public async Task MewUIDesigner_SourceBackedEditUndoRedoAndSave()
+	{
+		var openedProject = await app.ReopenSolutionAsync(projectPath);
+		Assert.True(openedProject.GetProperty("success").GetBoolean(), openedProject.ToString());
+		var opened = await app.InvokeAsync("od.open-file", sourcePath);
+		Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+
+		var status = await WaitForDesignerAsync();
+		Assert.True(status.GetProperty("active").GetBoolean(), status.ToString());
+		Assert.True(status.GetProperty("hostProcessId").GetInt32() > 0, "MewUI designer did not start its isolated host: " + status);
+		Assert.True(status.GetProperty("toolboxHosted").GetBoolean(), "The real Tools pad did not host the MewUI toolbox: " + status);
+		Assert.True(status.GetProperty("outlineHosted").GetBoolean(), "The real Outline pad did not host the MewUI tree: " + status);
+		Assert.Equal(status.GetProperty("elementCount").GetInt32(), status.GetProperty("outlineItemCount").GetInt32());
+		Assert.True(status.GetProperty("toolboxItemCount").GetInt32() >= 16, status.ToString());
+		Assert.Equal(3, status.GetProperty("toolbarItemCount").GetInt32());
+		Assert.Equal(new[] { "Zoom", "Fit", "Gridlines" }, status.GetProperty("toolbarItems").EnumerateArray().Select(x => x.GetString()).ToArray());
+		var zoomed = await app.InvokeAsync("od.mewui-designer.zoom", 1.25); Assert.Equal(1.25, zoomed.GetProperty("zoom").GetDouble());
+		var fitted = await app.InvokeAsync("od.mewui-designer.fit"); Assert.Equal(1, fitted.GetProperty("zoom").GetDouble());
+		var gridOn = await app.InvokeAsync("od.mewui-designer.gridlines", true); Assert.True(gridOn.GetProperty("gridlines").GetBoolean());
+		status = await app.InvokeAsync("od.mewui-designer.status"); Assert.True(status.GetProperty("gridlines").GetBoolean());
+		var gridOff = await app.InvokeAsync("od.mewui-designer.gridlines", false); Assert.False(gridOff.GetProperty("gridlines").GetBoolean());
+		// Window + rootPanel + heading + toolRow + 3 toolbar buttons + nameBox + notificationsCheck
+		// + statusList + statusBar + statusText.
+		Assert.True(status.GetProperty("elementCount").GetInt32() == 12, "elementCount=" + status.GetProperty("elementCount") + " status=" + status);
+
+		var selected = await app.InvokeAsync("od.mewui-designer.select", "rootPanel");
+		Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
+		var propertySelection = await app.InvokeAsync("od.mewui-designer.select", "heading");
+		Assert.True(propertySelection.GetProperty("success").GetBoolean(), propertySelection.ToString());
+		Assert.Contains("MewUIPropertyAdapter", propertySelection.GetProperty("propertyPadSelectedType").GetString());
+		status = await app.InvokeAsync("od.mewui-designer.status"); Assert.True(status.GetProperty("propertyPadPropertyCount").GetInt32() > 0, status.ToString());
+		var changedProperty = await app.InvokeAsync("od.mewui-designer.set-property", "Text", "Configured");
+		Assert.True(changedProperty.GetProperty("success").GetBoolean(), changedProperty.ToString());
+
+		// Insert into a NESTED container (toolRow inside rootPanel), not the root - the fixture is
+		// deep enough that "which container receives the child" is part of the contract.
+		var selectToolRow = await app.InvokeAsync("od.mewui-designer.select", "toolRow");
+		Assert.True(selectToolRow.GetProperty("success").GetBoolean(), selectToolRow.ToString());
+		var inserted = await app.InvokeAsync("od.mewui-designer.toolbox.insert", "TextBox");
+		Assert.True(inserted.GetProperty("success").GetBoolean(), inserted.ToString());
+		Assert.Equal(13, inserted.GetProperty("elementCount").GetInt32());
+
+		var undo = await app.InvokeAsync("od.mewui-designer.undo");
+		Assert.Equal(12, undo.GetProperty("elementCount").GetInt32());
+		var redo = await app.InvokeAsync("od.mewui-designer.redo");
+		Assert.Equal(13, redo.GetProperty("elementCount").GetInt32());
+
+		var saved = await app.InvokeAsync("od.file.save", designerPath);
+		Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+		var generated = await File.ReadAllTextAsync(designerPath, TestContext.Current.CancellationToken);
+		Assert.Contains("private TextBox textBox1", generated);
+		Assert.Contains("textBox1 = new TextBox", generated);
+		Assert.Contains("toolRow.Children(newButton, preferencesButton, saveButton, textBox1)", generated);
+		Assert.Contains("heading.Text = \"Configured\"", generated);
+		// The pre-existing nested status bar must survive edits untouched.
+		Assert.Contains("statusBar.Children(statusText)", generated);
+		Assert.DoesNotContain("this.", generated);
+		// The behavior (user-owned) file must keep its handlers and gain none of the designer's
+		// generated construction code.
+		var behavior = await File.ReadAllTextAsync(sourcePath, TestContext.Current.CancellationToken);
+		Assert.Contains("SaveButton_Click", behavior);
+		Assert.Contains("PreferencesButton_Click", behavior);
+		Assert.DoesNotContain("new TextBox", behavior);
+
+		// M-1 regression (cross-file save safety): edit the user-owned file in the SOURCE tab
+		// (its live buffer becomes dirty), then save from the DESIGNER tab. The pre-OOP bug
+		// wrote this view's load-time cache over the user's edits, silently reverting them.
+		// Save-all must persist BOTH sides: the designer's pending Roslyn edits AND the
+		// source tab's text.
+		var userEditMarker = "// user typed this in the source tab";
+		var sourceCommand = await app.InvokeAsync("od.mewui-designer.show-source");
+		Assert.True(sourceCommand.GetProperty("success").GetBoolean(), sourceCommand.ToString());
+		var edit = await app.InvokeAsync("od.file.edit-text", sourcePath, "\n" + userEditMarker + "\n");
+		Assert.True(edit.GetProperty("success").GetBoolean(), edit.ToString());
+		var savedSource = await app.InvokeAsync("od.file.save", sourcePath);
+		Assert.True(savedSource.GetProperty("success").GetBoolean(), savedSource.ToString());
+
+		var savedBoth = await app.InvokeAsync("od.file.save-all");
+		Assert.True(savedBoth.GetProperty("success").GetBoolean(), savedBoth.ToString());
+
+		var behaviorAfterSaveAll = await File.ReadAllTextAsync(sourcePath, TestContext.Current.CancellationToken);
+		// User-owned handlers survive (they were never at risk from THIS view), and the
+		// just-typed marker proves the live buffer won the write.
+		Assert.Contains("SaveButton_Click", behaviorAfterSaveAll);
+		Assert.Contains(userEditMarker, behaviorAfterSaveAll);
+
+		// And the designer side keeps its pending Roslyn edits across the same save-all.
+		var generatedAfterSaveAll = await File.ReadAllTextAsync(designerPath, TestContext.Current.CancellationToken);
+		Assert.Contains("heading.Text = \"Configured\"", generatedAfterSaveAll);
+		Assert.Contains("private TextBox textBox1", generatedAfterSaveAll);
+
+		var refreshed = await app.InvokeAsync("od.mewui-designer.refresh"); Assert.True(refreshed.GetProperty("success").GetBoolean(), refreshed.ToString());
+		var restarted = await app.InvokeAsync("od.mewui-designer.restart-host");
+		Assert.True(restarted.GetProperty("success").GetBoolean(), restarted.ToString());
+		Assert.NotEqual(restarted.GetProperty("oldHostProcessId").GetInt32(), restarted.GetProperty("hostProcessId").GetInt32());
+
+		var openedSettings = await app.InvokeAsync("od.open-file", settingsSourcePath);
+		Assert.True(openedSettings.GetProperty("opened").GetBoolean(), openedSettings.ToString());
+		var settingsStatus = await WaitForDesignerAsync("SettingsWindow");
+		Assert.True(settingsStatus.GetProperty("active").GetBoolean(), settingsStatus.ToString());
+		// Settings window: preferences form with GroupBox-nested fields (3 levels deep).
+		Assert.True(settingsStatus.GetProperty("elementCount").GetInt32() == 11,
+			"elementCount=" + settingsStatus.GetProperty("elementCount") + " status=" + settingsStatus);
+		var selectNameBox = await app.InvokeAsync("od.mewui-designer.select", "nameBox");
+		Assert.True(selectNameBox.GetProperty("success").GetBoolean(), selectNameBox.ToString());
+		var renamed = await app.InvokeAsync("od.mewui-designer.set-property", "$name", "userNameBox");
+		Assert.True(renamed.GetProperty("success").GetBoolean(), renamed.ToString());
+		var reselected = await app.InvokeAsync("od.mewui-designer.select", "userNameBox");
+		Assert.True(reselected.GetProperty("success").GetBoolean(), reselected.ToString());
+	}
+
+	async Task<JsonElement> WaitForDesignerAsync(string? windowClassName = null)
+	{
+		var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(20);
+		JsonElement last = default;
+		while (DateTime.UtcNow < deadline) {
+			last = await app.InvokeAsync("od.mewui-designer.status");
+			if (last.TryGetProperty("active", out var active) && active.GetBoolean()
+				&& last.TryGetProperty("toolboxHosted", out var tools) && tools.GetBoolean()
+				&& last.TryGetProperty("outlineHosted", out var outline) && outline.GetBoolean()
+				&& (windowClassName is null || last.TryGetProperty("windowClassName", out var className) && className.GetString() == windowClassName)) return last;
+			await Task.Delay(100, TestContext.Current.CancellationToken);
+		}
+		return last;
+	}
+
+	public ValueTask DisposeAsync() { try { Directory.Delete(workDir, true); } catch { } return ValueTask.CompletedTask; }
+}

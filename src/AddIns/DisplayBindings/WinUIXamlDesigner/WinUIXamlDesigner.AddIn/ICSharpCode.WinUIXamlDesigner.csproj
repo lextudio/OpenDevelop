@@ -1,5 +1,7 @@
 <Project Sdk="LibreWPF.Sdk">
   <PropertyGroup>
+    <OpenDevelopAddin>true</OpenDevelopAddin>
+    <OpenDevelopAddinKind>InProcess</OpenDevelopAddinKind>
     <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>ICSharpCode.WinUIXamlDesigner</RootNamespace>
     <AssemblyName>ICSharpCode.WinUIXamlDesigner</AssemblyName>
@@ -19,7 +21,4 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.6.0" />
   </ItemGroup>
   <ItemGroup><None Include="WinUIXamlDesigner.addin" /></ItemGroup>
-  <Target Name="CopyAddInManifest" AfterTargets="Build">
-    <Copy SourceFiles="WinUIXamlDesigner.addin" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
-  </Target>
 </Project>

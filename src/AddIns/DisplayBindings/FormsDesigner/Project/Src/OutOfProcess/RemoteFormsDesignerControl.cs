@@ -114,9 +114,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		{
 			this.client = client;
 			Focusable = true;
-			// WinForms has no design-time theme concept - the shared toolbar's theme control
-			// is meaningless here and stays hidden.
-			ShowTheme = false;
+			Capabilities = DesignerCanvasCapabilities.Zoom | DesignerCanvasCapabilities.Fit;
 			// The shared DesignerCanvas shell provides the dotted empty-canvas edge pattern and
 			// the common zoom toolbar; the design surface is transparent so the edge pattern
 			// shows around the rendered form bitmap.
@@ -168,11 +166,8 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			designSurface.Children.Add(disconnectedOverlay);
 			ContentHost.Content = designSurface;
 
-			// The full shared toolbar is shown (same chrome as every designer); WinForms
-			// implements zoom/fit today, while gridlines/design-theme stay as visible-but-inert
-			// entries until the backend grows those capabilities. The design-size (device) combo
-			// is a WinUI/Uno concept and is hidden here.
-			ShowDesignSize = false;
+			// Only controls backed by this designer are visible. Editing commands remain in the
+			// IDE command system; grid/theme/name/device controls are not inert toolbar chrome.
 			foreach (var label in ZoomLabels)
 				ZoomCombo.Items.Add(label);
 			ZoomCombo.SelectedIndex = 4; // 100%

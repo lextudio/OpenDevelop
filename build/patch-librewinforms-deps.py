@@ -30,6 +30,21 @@ def find_package_version(nuget_package_root, package_id_lower):
     return os.path.basename(candidates[0])
 
 
+def find_net10_package_version(nuget_package_root, package_id_lower, filename):
+    """Pick a .NET 10 implementation, never a newer/older ref-compatible package."""
+    pattern = os.path.join(nuget_package_root, package_id_lower, "10.*", "lib", "net10.0", filename)
+    candidates = [p for p in glob.glob(pattern) if os.path.isfile(p)]
+    if not candidates:
+        return None
+
+    def version_key(path):
+        version = os.path.basename(os.path.dirname(os.path.dirname(os.path.dirname(path))))
+        stable = version.split("-", 1)[0]
+        return tuple(int(part) if part.isdigit() else 0 for part in stable.split("."))
+
+    return os.path.basename(os.path.dirname(os.path.dirname(os.path.dirname(max(candidates, key=version_key)))))
+
+
 def main():
     deps_path, nuget_package_root = sys.argv[1], sys.argv[2]
 
@@ -118,6 +133,25 @@ def main():
         (progpudrawing_pkg_id.lower(), progpudrawing_version, "System.Drawing.Common.dll"),
     ]
     for package_id, version, filename in runtime_assets:
+        if version is None:
+            continue
+        source = os.path.join(nuget_package_root, package_id, version, "lib", "net10.0", filename)
+        if os.path.isfile(source):
+            shutil.copy2(source, os.path.join(output_dir, filename))
+
+    # LibreWPF's reference-pack substitution records these assemblies in deps.json
+    # as *.Reference libraries, but RID-less publish conflict resolution can leave
+    # only their XML documentation in PublishDir. They are real runtime dependencies
+    # on macOS, so restore the matching package implementation beside the app.
+    for package_id, filename in (
+        ("system.configuration.configurationmanager", "System.Configuration.ConfigurationManager.dll"),
+        ("system.formats.nrbf", "System.Formats.Nrbf.dll"),
+        ("system.io.packaging", "System.IO.Packaging.dll"),
+        ("system.security.cryptography.xml", "System.Security.Cryptography.Xml.dll"),
+        ("system.security.permissions", "System.Security.Permissions.dll"),
+        ("system.windows.extensions", "System.Windows.Extensions.dll"),
+    ):
+        version = find_net10_package_version(nuget_package_root, package_id, filename)
         if version is None:
             continue
         source = os.path.join(nuget_package_root, package_id, version, "lib", "net10.0", filename)

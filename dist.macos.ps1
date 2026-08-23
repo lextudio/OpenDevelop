@@ -39,7 +39,7 @@ function New-TempDir {
 # stays cheap when nothing changed; it also fails fast with a clear error instead of
 # leaving a half-built tree.
 Write-Host '==> Restoring solution...'
-Invoke-Native $dotnet restore $sln
+Restore-Solution -DotNet $dotnet -Solution $sln
 
 # Ensure clean state for ICSharpCode.Core.Presentation — its .g.resources (WPF theme
 # resource blob) can otherwise stale-cross from a previous build and produce a 12-byte
@@ -64,7 +64,7 @@ if (-not $SkipPublish) {
     $publishDir = Join-Path $repoRoot "src/Main/SharpDevelop/bin/$config/net10.0-windows/publish"
     if (Test-Path $publishDir) { Remove-Item -Recurse -Force $publishDir }
     Invoke-Native $dotnet publish $hostProject -c $config --self-contained false `
-        -p:OpenDevelopDistributionBuild=true `
+        "-p:OpenDevelopDistributionBuild=true" `
         "-p:PublishDir=$publishDir"
 
     if (-not (Test-Path $publishDir)) {
@@ -94,8 +94,9 @@ if (-not $SkipPublish) {
         Remove-Item -Force
 
     Write-Host '==> Building distribution AddIns without shared runtime copies...'
-    Build-Solution -DotNet $dotnet -Solution $sln -ExtraProperties @(
+    Build-Solution -DotNet $dotnet -Solution $sln -Configuration $config -ExtraProperties @(
         '-p:OpenDevelopDistributionBuild=true',
+        '-p:OpenDevelopDistributionRidFamily=osx',
         "-p:OpenDevelopHostPublishDir=$hostPublishSnapshot",
         '-p:ProGpuWpfCopyPackageRuntimeAssets=false'
     )

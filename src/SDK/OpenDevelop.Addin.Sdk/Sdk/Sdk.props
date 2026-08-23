@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <OpenDevelopAddin>true</OpenDevelopAddin>
+    <OpenDevelopTrimHostAssemblies Condition="'$(OpenDevelopTrimHostAssemblies)' == ''">true</OpenDevelopTrimHostAssemblies>
+    <OpenDevelopPruneDeploymentAssets Condition="'$(OpenDevelopPruneDeploymentAssets)' == ''">true</OpenDevelopPruneDeploymentAssets>
+    <OpenDevelopAddinKind Condition="'$(OpenDevelopAddinKind)' == ''">InProcess</OpenDevelopAddinKind>
+    <AppendTargetFrameworkToOutputPath Condition="'$(AppendTargetFrameworkToOutputPath)' == ''">false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+</Project>

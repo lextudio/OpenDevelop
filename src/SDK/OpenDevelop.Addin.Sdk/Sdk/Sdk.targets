@@ -1,0 +1,63 @@
+<Project>
+  <PropertyGroup>
+    <OpenDevelopTrimHostAssemblies Condition="'$(OpenDevelopTrimHostAssemblies)' == ''">true</OpenDevelopTrimHostAssemblies>
+    <OpenDevelopPruneDeploymentAssets Condition="'$(OpenDevelopPruneDeploymentAssets)' == ''">true</OpenDevelopPruneDeploymentAssets>
+    <OpenDevelopAddinKind Condition="'$(OpenDevelopAddinKind)' == ''">InProcess</OpenDevelopAddinKind>
+    <OpenDevelopHostBin Condition="'$(OpenDevelopHostBin)' == '' And '$(OpenDevelopRepoRoot)' != ''">$(OpenDevelopRepoRoot)src/Main/SharpDevelop/bin/$(Configuration)/net10.0-windows/</OpenDevelopHostBin>
+    <OpenDevelopHostManifest Condition="'$(OpenDevelopHostManifest)' == '' And '$(OpenDevelopHostBin)' != ''">$(OpenDevelopHostBin)OpenDevelop.host-assemblies.txt</OpenDevelopHostManifest>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(OpenDevelopAddin)' == 'true' And '@(OpenDevelopAddinManifest)' == ''">
+    <OpenDevelopAddinManifest Include="$(MSBuildProjectDirectory)/*.addin" />
+  </ItemGroup>
+  <Target Name="OpenDevelopValidateAddin" BeforeTargets="Build" Condition="'$(OpenDevelopAddin)' == 'true'">
+    <Error Condition="'$(OpenDevelopAddinKind)' != 'InProcess' And '$(OpenDevelopAddinKind)' != 'InProcessDependency' And '$(OpenDevelopAddinKind)' != 'OutOfProcessHost'" Text="OpenDevelopAddinKind must be InProcess, InProcessDependency, or OutOfProcessHost, not '$(OpenDevelopAddinKind)'." />
+    <Error Condition="'$(OpenDevelopAddinKind)' == 'InProcess' And '@(OpenDevelopAddinManifest)' == ''" Text="No .addin manifest was found. Add one beside the project or declare OpenDevelopAddinManifest explicitly." />
+  </Target>
+  <Target Name="OpenDevelopDeployAddinManifest" AfterTargets="Build" DependsOnTargets="OpenDevelopValidateAddin" Condition="'$(OpenDevelopAddin)' == 'true' And '$(OpenDevelopAddinKind)' == 'InProcess'">
+    <Copy SourceFiles="@(OpenDevelopAddinManifest)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="OpenDevelopTrimAddinOutput" AfterTargets="OpenDevelopDeployAddinManifest;Build" Condition="'$(OpenDevelopAddin)' == 'true' And '$(OpenDevelopAddinKind)' != 'OutOfProcessHost' And '$(OpenDevelopTrimHostAssemblies)' == 'true' And '$(OpenDevelopHostBin)' != '' And Exists('$(OpenDevelopHostManifest)')">
+    <ItemGroup>
+      <_OpenDevelopHostAssembly Include="$(OpenDevelopHostBin)*.dll" />
+      <_OpenDevelopRedundantAssembly Include="$(OutputPath)%(_OpenDevelopHostAssembly.Filename)%(_OpenDevelopHostAssembly.Extension)" Condition="Exists('$(OutputPath)%(_OpenDevelopHostAssembly.Filename)%(_OpenDevelopHostAssembly.Extension)')" />
+      <_OpenDevelopRedundantAssembly Remove="@(OpenDevelopAlwaysCopy)" MatchOnMetadata="Filename" />
+    </ItemGroup>
+    <Delete Files="@(_OpenDevelopRedundantAssembly)" />
+    <Message Importance="normal" Text="OpenDevelop Addin SDK: removed @(_OpenDevelopRedundantAssembly->Count()) host-provided assemblies from $(OutputPath)." Condition="@(_OpenDevelopRedundantAssembly->Count()) &gt; 0" />
+  </Target>
+  <Target Name="OpenDevelopRestorePortableWpfHostRuntime"
+          AfterTargets="Build"
+          BeforeTargets="OpenDevelopPruneAddinDeploymentAssets;DeployToAddIns"
+          Condition="'$(OpenDevelopAddin)' == 'true' And '$(OpenDevelopAddinKind)' == 'OutOfProcessHost' And '$(OpenDevelopDistributionBuild)' == 'true'">
+    <ItemGroup>
+      <!-- LibreWPF intentionally exposes reference assemblies from ref/net10.0.
+           RID-less publish can omit their lib/net10.0 implementations, which a
+           child process cannot resolve from the parent application's base dir. -->
+      <_OpenDevelopPortableWpfReference Include="@(ReferencePath)"
+        Condition="$([System.String]::Copy('%(FullPath)').ToLowerInvariant().Contains('/librewpf.transport/')) And $([System.String]::Copy('%(FullPath)').Contains('/ref/'))" />
+      <_OpenDevelopPortableWpfRuntime Include="$([System.String]::Copy('%(_OpenDevelopPortableWpfReference.FullPath)').Replace('/ref/', '/lib/'))"
+        Condition="Exists('%(Identity)')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_OpenDevelopPortableWpfRuntime)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
+    <Message Importance="normal" Text="OpenDevelop Addin SDK: restored @(_OpenDevelopPortableWpfRuntime->Count()) portable WPF runtime assemblies for $(MSBuildProjectName)." Condition="@(_OpenDevelopPortableWpfRuntime->Count()) &gt; 0" />
+  </Target>
+  <Target Name="OpenDevelopPruneAddinDeploymentAssets"
+          BeforeTargets="DeployToAddIns"
+          AfterTargets="OpenDevelopTrimAddinOutput;OpenDevelopDeployAddinManifest;Build"
+          Condition="'$(OpenDevelopAddin)' == 'true' And '$(OpenDevelopDistributionBuild)' == 'true' And '$(OpenDevelopPruneDeploymentAssets)' == 'true'">
+    <ItemGroup>
+      <!-- Delete an XML file only when a same-directory DLL proves that it is API
+           documentation. AddIn-owned XML layouts/configuration remain untouched. -->
+      <_OpenDevelopDeploymentAssembly Include="$(OutputPath)**/*.dll" />
+      <_OpenDevelopXmlDocumentation Include="@(_OpenDevelopDeploymentAssembly->'%(RootDir)%(Directory)%(Filename).xml')"
+                                    Condition="Exists('%(Identity)')" />
+      <_OpenDevelopReferenceAsset Include="$(OutputPath)**/ref/**/*" />
+      <_OpenDevelopForeignRuntimeAsset Include="$(OutputPath)**/runtimes/win*/**/*;$(OutputPath)**/runtimes/linux*/**/*;$(OutputPath)**/runtimes/unix*/**/*"
+                                       Condition="'$(OpenDevelopDistributionRidFamily)' == 'osx'" />
+    </ItemGroup>
+    <Delete Files="@(_OpenDevelopXmlDocumentation);@(_OpenDevelopReferenceAsset);@(_OpenDevelopForeignRuntimeAsset)" />
+    <Message Importance="normal"
+             Text="OpenDevelop Addin SDK: pruned @(_OpenDevelopXmlDocumentation->Count()) XML docs, @(_OpenDevelopReferenceAsset->Count()) reference assets, and @(_OpenDevelopForeignRuntimeAsset->Count()) foreign runtime assets from $(OutputPath)."
+             Condition="@(_OpenDevelopXmlDocumentation->Count()) &gt; 0 Or @(_OpenDevelopReferenceAsset->Count()) &gt; 0 Or @(_OpenDevelopForeignRuntimeAsset->Count()) &gt; 0" />
+  </Target>
+</Project>

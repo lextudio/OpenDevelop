@@ -38,6 +38,16 @@ namespace ICSharpCode.SharpDevelop.Gui
 	}
 
 	/// <summary>
+	/// Application-level host for the shared Tools pad. This is deliberately separate from
+	/// <see cref="IToolsHost"/>, which describes the active document rather than the pad itself.
+	/// </summary>
+	public interface IToolsPadHost
+	{
+		/// <summary>The document-provided content currently assigned to the real Tools pad.</summary>
+		object HostedContent { get; }
+	}
+
+	/// <summary>
 	/// Marker service (registered into <c>SD.Services</c>, not a per-view <see cref="ViewContentServiceAttribute"/>)
 	/// for the single shared WPF-hosted toolbox control that more than one AddIn's <see cref="IToolsHost.ToolsContent"/>
 	/// can return - e.g. WpfDesign.AddIn's WpfToolbox, reused by FormsDesigner for WinForms controls so both the
