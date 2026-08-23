@@ -4,6 +4,11 @@
   <Path name="/SharpDevelop/Workbench/DisplayBindings">
     <DisplayBinding id="GtkDesigner" type="Secondary" class="ICSharpCode.GtkDesigner.GtkDesignerDisplayBinding" fileNamePattern="\.ui$" />
   </Path>
+  <!-- GtkBuilder .ui files are plain XML; this reuses the standard XML lexer grammar under a
+       dedicated name/extension so uninstalling this addin cleanly removes .ui highlighting too. -->
+  <Path name="/SharpDevelop/ViewContent/AvalonEdit/SyntaxModes">
+    <SyntaxMode id="GtkUi.SyntaxMode" name="GtkUi" extensions=".ui" resource="ICSharpCode.GtkDesigner.Resources.GtkUi.xshd"/>
+  </Path>
   <Path name="/SharpDevelop/Autostart">
     <Class id="ICSharpCode.GtkDesigner.RegisterDevFlowActionsCommand" class="ICSharpCode.GtkDesigner.RegisterDevFlowActionsCommand" />
   </Path>

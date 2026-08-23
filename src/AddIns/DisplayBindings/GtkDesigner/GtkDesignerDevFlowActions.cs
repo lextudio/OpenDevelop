@@ -17,7 +17,7 @@ public static class GtkDesignerDevFlowActions
 	{
 		var view = Activate(); var grid = PropertyGrid;
 		return view == null ? JsonSerializer.Serialize(new { active = false }) : JsonSerializer.Serialize(new {
-			active = true, status = view.Status, diagnostics = view.Diagnostics, rootId = view.RootId, elementCount = view.ElementCount, selectedId = view.SelectedId, hostProcessId = view.HostProcessId, nativeFrame = view.HasNativeFrame, nativeFrameWidth = view.NativeFrameWidth, nativeFrameHeight = view.NativeFrameHeight, nativeBoundsCount = view.NativeBoundsCount,
+			active = true, status = view.Status, diagnostics = view.Diagnostics, hostLog = view.HostLog, rootId = view.RootId, elementCount = view.ElementCount, selectedId = view.SelectedId, hostProcessId = view.HostProcessId, nativeRenderer = "in-process GSK/Cairo", nativeFrame = view.HasNativeFrame, nativeFrameFingerprint = view.NativeFrameFingerprint, nativeFrameWidth = view.NativeFrameWidth, nativeFrameHeight = view.NativeFrameHeight, nativeBoundsCount = view.NativeBoundsCount,
 			toolboxItemCount = view.ToolboxItemCount, toolboxHosted = view.IsToolboxHosted, outlineHosted = view.IsOutlineHosted, outlineItemCount = view.OutlineItemCount,
 			toolbarItemCount = view.ToolbarItemCount, toolbarItems = view.ToolbarItems, toolbarCapabilities = view.ToolbarCapabilities, zoom = view.Zoom, fitMeasured = view.FitMeasured, gridlines = view.Gridlines,
 			propertyPadSelectedType = grid?.SelectedObject?.GetType().FullName,

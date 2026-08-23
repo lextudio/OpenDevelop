@@ -10,6 +10,9 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="Resources\GtkUi.xshd" />
+  </ItemGroup>
+  <ItemGroup>
     <Compile Remove="GtkUiDocumentEditor.cs" />
     <ProjectReference Include="..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
     <ProjectReference Include="..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />

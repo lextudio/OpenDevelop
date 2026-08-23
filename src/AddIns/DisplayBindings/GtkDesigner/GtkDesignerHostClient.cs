@@ -9,9 +9,8 @@ namespace ICSharpCode.GtkDesigner;
 
 sealed class GtkDesignerHostClient : IDesignHostClient
 {
-	static readonly SemaphoreSlim gate = new(1, 1);
-	static GtkDesignerHostConnection? shared;
-	static int leases;
+	static readonly SharedDesignerHostBroker<GtkDesignerHostConnection> broker = new(
+		connection => connection.IsAlive, StartConnectionAsync);
 
 	readonly GtkDesignerHostConnection connection;
 	bool disposed;
@@ -31,20 +30,15 @@ sealed class GtkDesignerHostClient : IDesignHostClient
 
 	public static async Task<GtkDesignerHostClient> CreateAsync(CancellationToken token = default)
 	{
-		await gate.WaitAsync(token).ConfigureAwait(false);
-		try {
-			if (shared == null || !shared.IsAlive) {
-				shared?.Dispose();
-				var root = Path.GetDirectoryName(typeof(GtkDesignerHostClient).Assembly.Location)!;
-				shared = new GtkDesignerHostConnection(Path.Combine(root, "Host", "GtkDesigner.Host.dll"));
-				await shared.StartConnectionAsync(token).ConfigureAwait(false);
-				leases = 0;
-			}
-			leases++;
-			return new GtkDesignerHostClient(shared);
-		} finally {
-			gate.Release();
-		}
+		return new GtkDesignerHostClient(await broker.AcquireAsync(token).ConfigureAwait(false));
+	}
+
+	static async Task<GtkDesignerHostConnection> StartConnectionAsync(CancellationToken token)
+	{
+		var root = Path.GetDirectoryName(typeof(GtkDesignerHostClient).Assembly.Location)!;
+		var connection = new GtkDesignerHostConnection(Path.Combine(root, "Host", "GtkDesigner.Host.dll"));
+		await connection.StartConnectionAsync(token).ConfigureAwait(false);
+		return connection;
 	}
 
 	public Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, CancellationToken token = default)
@@ -86,16 +80,7 @@ sealed class GtkDesignerHostClient : IDesignHostClient
 		disposed = true;
 		connection.HostExited -= OnConnectionExited;
 		try { connection.CloseDocumentAsync(DocumentId, CancellationToken.None).Wait(TimeSpan.FromSeconds(3)); } catch { }
-		gate.Wait();
-		try {
-			if (leases > 0) leases--;
-			if (leases == 0 && ReferenceEquals(shared, connection)) {
-				shared.Dispose();
-				shared = null;
-			}
-		} finally {
-			gate.Release();
-		}
+		broker.Release(connection);
 	}
 
 	void OnConnectionExited(object? sender, EventArgs e) => HostExited?.Invoke(this, EventArgs.Empty);

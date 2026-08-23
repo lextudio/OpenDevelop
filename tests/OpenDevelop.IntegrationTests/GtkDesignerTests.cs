@@ -25,7 +25,12 @@ public sealed class GtkDesignerTests : IAsyncDisposable
 		Assert.True(status.GetProperty("active").GetBoolean(), status.ToString());
 		Assert.True(status.GetProperty("hostProcessId").GetInt32() > 0, "GTK designer did not start its isolated host: " + status);
 		Assert.True(status.GetProperty("nativeFrame").GetBoolean(), "GTK host did not return a native GTK frame: " + status);
+		Assert.Equal("in-process GSK/Cairo", status.GetProperty("nativeRenderer").GetString());
+		Assert.DoesNotContain("GtkRenderHelper", status.GetProperty("hostLog").GetString() ?? "", StringComparison.Ordinal);
+		Assert.DoesNotContain("gtk4-builder-tool", status.GetProperty("hostLog").GetString() ?? "", StringComparison.Ordinal);
+		await AssertNoRenderChildrenAsync(status.GetProperty("hostProcessId").GetInt32());
 		Assert.True(status.GetProperty("nativeFrameWidth").GetInt32() > 0 && status.GetProperty("nativeFrameHeight").GetInt32() > 0, status.ToString());
+		var originalFrame = status.GetProperty("nativeFrameFingerprint").GetString(); Assert.False(string.IsNullOrEmpty(originalFrame));
 		Assert.Equal(status.GetProperty("elementCount").GetInt32(), status.GetProperty("nativeBoundsCount").GetInt32());
 		var runBounds = await app.InvokeAsync("od.gtk-designer.bounds", "runButton"); Assert.True(runBounds.GetProperty("success").GetBoolean(), runBounds.ToString());
 		var nativeHit = await app.InvokeAsync("od.gtk-designer.hit-test", runBounds.GetProperty("x").GetDouble() + runBounds.GetProperty("width").GetDouble() / 2, runBounds.GetProperty("y").GetDouble() + runBounds.GetProperty("height").GetDouble() / 2);
@@ -46,6 +51,7 @@ public sealed class GtkDesignerTests : IAsyncDisposable
 		Assert.Contains("GtkPropertyAdapter", selected.GetProperty("propertyPadSelectedType").GetString());
 		status = await app.InvokeAsync("od.gtk-designer.status"); Assert.True(status.GetProperty("propertyPadPropertyCount").GetInt32() > 0, status.ToString());
 		var edited = await app.InvokeAsync("od.gtk-designer.properties.edit", "Label", "Execute"); Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
+		status = await WaitForFrameChangeAsync(originalFrame); Assert.NotEqual(originalFrame, status.GetProperty("nativeFrameFingerprint").GetString());
 		var signal = await app.InvokeAsync("od.gtk-designer.signal.set", "clicked", "OnRunClicked"); Assert.True(signal.GetProperty("success").GetBoolean(), signal.ToString());
 		var reordered = await app.InvokeAsync("od.gtk-designer.pointer-reorder", "runButton", "heading"); Assert.True(reordered.GetProperty("success").GetBoolean(), reordered.ToString());
 		var restarted = await app.InvokeAsync("od.gtk-designer.restart-host");
@@ -91,7 +97,13 @@ public sealed class GtkDesignerTests : IAsyncDisposable
 	async Task<JsonElement> WaitAsync(string? rootId = null)
 	{
 		var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(20); JsonElement last = default;
-		while (DateTime.UtcNow < deadline) { last = await app.InvokeAsync("od.gtk-designer.status"); if (last.TryGetProperty("active", out var active) && active.GetBoolean() && last.GetProperty("toolboxHosted").GetBoolean() && last.GetProperty("outlineHosted").GetBoolean() && (rootId == null || last.TryGetProperty("rootId", out var actualRoot) && actualRoot.GetString() == rootId)) return last; await Task.Delay(100, TestContext.Current.CancellationToken); }
+		while (DateTime.UtcNow < deadline) { last = await app.InvokeAsync("od.gtk-designer.status"); if (last.TryGetProperty("active", out var active) && active.GetBoolean() && last.GetProperty("toolboxHosted").GetBoolean() && last.GetProperty("outlineHosted").GetBoolean() && last.GetProperty("nativeFrame").GetBoolean() && (rootId == null || last.TryGetProperty("rootId", out var actualRoot) && actualRoot.GetString() == rootId)) return last; await Task.Delay(100, TestContext.Current.CancellationToken); }
+		return last;
+	}
+	async Task<JsonElement> WaitForFrameChangeAsync(string? previous)
+	{
+		var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(20); JsonElement last = default;
+		while (DateTime.UtcNow < deadline) { last = await app.InvokeAsync("od.gtk-designer.status"); if (last.GetProperty("nativeFrame").GetBoolean() && last.GetProperty("nativeFrameFingerprint").GetString() != previous) return last; await Task.Delay(100, TestContext.Current.CancellationToken); }
 		return last;
 	}
 	static void CopyDirectory(string source, string destination)
@@ -118,6 +130,15 @@ public sealed class GtkDesignerTests : IAsyncDisposable
 		start.ArgumentList.Add("build"); start.ArgumentList.Add(projectPath); start.ArgumentList.Add("--nologo"); start.ArgumentList.Add("-v:q");
 		using var process = System.Diagnostics.Process.Start(start)!; var outputTask = process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken); var errorTask = process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken); await process.WaitForExitAsync(TestContext.Current.CancellationToken);
 		var output = await outputTask; var error = await errorTask; Assert.True(process.ExitCode == 0, "GTK designer fixture no longer compiles after saved edits:\n" + output + error);
+	}
+	static async Task AssertNoRenderChildrenAsync(int hostProcessId)
+	{
+		if (!OperatingSystem.IsMacOS() && !OperatingSystem.IsLinux()) return;
+		var start = new System.Diagnostics.ProcessStartInfo("ps") { RedirectStandardOutput = true, UseShellExecute = false };
+		start.ArgumentList.Add("-axo"); start.ArgumentList.Add("ppid=,command=");
+		using var process = System.Diagnostics.Process.Start(start)!; var output = await process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken); await process.WaitForExitAsync(TestContext.Current.CancellationToken);
+		var children = output.Split('\n').Where(line => line.TrimStart().StartsWith(hostProcessId.ToString() + " ", StringComparison.Ordinal)).ToArray();
+		Assert.DoesNotContain(children, line => line.Contains("gtk4-builder-tool", StringComparison.Ordinal) || line.Contains("GtkRenderHelper", StringComparison.Ordinal));
 	}
 	public ValueTask DisposeAsync() { try { Directory.Delete(workDir, true); } catch { } return ValueTask.CompletedTask; }
 }

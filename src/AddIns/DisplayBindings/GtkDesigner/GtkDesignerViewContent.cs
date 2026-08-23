@@ -44,7 +44,9 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	public int ToolbarItemCount => canvas.VisibleToolbarItems.Count; public IReadOnlyList<string> ToolbarItems => canvas.VisibleToolbarItems; public string ToolbarCapabilities => canvas.Capabilities.ToString(); public double Zoom { get => zoom; set { zoom = Math.Clamp(value, .25, 2); surface.LayoutTransform = new ScaleTransform(zoom, zoom); } }
 	public bool Gridlines => gridlines; public bool FitMeasured { get; private set; } public void FitDesign() => FitView(); public void ShowGridlines(bool show) { canvas.IsGridEnabled = show; SetGridlines(show); }
 	public bool HasNativeFrame => !string.IsNullOrEmpty(state.Render?.PngBase64); public int NativeFrameWidth => state.Render?.Width ?? 0; public int NativeFrameHeight => state.Render?.Height ?? 0; public int NativeBoundsCount => state.Tree == null ? 0 : Flatten(state.Tree).Count(n => n.Width > 0 && n.Height > 0);
+	public string NativeFrameFingerprint => HasNativeFrame ? Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Convert.FromBase64String(state.Render!.PngBase64))) : "";
 	public string[] Diagnostics => state.Diagnostics.Select(d => d.Message).ToArray();
+	public string HostLog => host?.ChildLog ?? "";
 	public string Status => state.Accepted ? $"Ready: {ElementCount} GTK objects (host {host?.ProcessId}, native frame {(HasNativeFrame ? $"{NativeFrameWidth}x{NativeFrameHeight}" : "unavailable")})" : state.Error;
 	public bool EnableUndo => host?.IsAlive == true; public bool EnableRedo => host?.IsAlive == true;
 	public void Undo() => Mutate(() => host!.UndoAsync(state.Version).GetAwaiter().GetResult()); public void Redo() => Mutate(() => host!.RedoAsync(state.Version).GetAwaiter().GetResult());
