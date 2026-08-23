@@ -140,16 +140,15 @@ language's own addin can wire it up with one `<TextEditorExtension>` addin node.
 XamlBinding keeps its own original copy for now (a working, tested feature not worth risking on
 this pass); a future cleanup could point it at the shared one too.
 
-One real difference from the XAML case, found live: `DocumentOutlineControl` only accepts a
-single root node, which is fine for XAML (always exactly one root element) but wrong for a
-plain source file, whose `textDocument/documentSymbol` response is a FLAT LIST of top-level
-symbols (multiple top-level functions/classes in one `.ts` file, multiple selectors in one
-`.css` file). Taking the XAML code's own `nodes.FirstOrDefault()` verbatim silently dropped
-every top-level symbol but the first - confirmed live via `od.outline-pad.content` (only
-`"greet"` showed for a file with a `function greet` AND a `class Widget`). Fixed by wrapping all
-top-level nodes under one synthetic, unnamed root (`Id`/`Name` both empty/null, matching this
-codebase's existing "empty string is the real root id, not 'no selection'" convention already
-established elsewhere this session for the WPF/WinUI designers) instead of picking just one.
+One real difference from the XAML case, found live: `DocumentOutlineControl` originally accepted
+a single root node (`SetRoot`), which is fine for XAML (always exactly one root element) but wrong
+for a plain source file, whose `textDocument/documentSymbol` response is a FLAT LIST of top-level
+symbols (multiple top-level functions/classes in one `.ts` file, multiple selectors in one `.css`
+file). Taking `nodes.FirstOrDefault()` verbatim silently dropped every top-level symbol but the
+first - confirmed live via `od.outline-pad.content`. The control now exposes `SetRoots(...)`
+(multi-root, selection-preserving), which is the preferred way to feed it a forest; this file's
+synthetic-unnamed-root wrapper predates that API and still works, but a future cleanup can pass
+the node list directly.
 - **Gotcha:** `AddInTreeSyntaxMode.LoadXshd()` does `SequenceEqual` between the addin
   node's `extensions` and the `<SyntaxDefinition extensions=...>` inside the xshd itself.
   The xshd originally said `extensions=".ts"`, so loading failed with a wrapped

@@ -20,7 +20,7 @@ that instance takes real seconds) and must be run explicitly, never as part of a
 Every test class:
 
 ```csharp
-[Collection("OpenDevelop app")]
+[Collection("30 Add-ins and specialized fixtures")]
 public sealed class SomeTests
 {
     readonly OpenDevelopAppFixture _app;
@@ -28,14 +28,16 @@ public sealed class SomeTests
 }
 ```
 
-`OpenDevelopAppFixture` (`OpenDevelopAppFixture.cs`) is registered once via
-`[CollectionDefinition("OpenDevelop app")]` + `ICollectionFixture<OpenDevelopAppFixture>`, so xunit
-starts **one** `SharpDevelop.exe` process for the entire test run and every test class in the
-collection shares it. `AssemblyInfo.cs` sets `CollectionBehavior(DisableTestParallelization)` so
-xunit never tries to run two test classes against that one shared app at the same time - don't
-remove that attribute, and don't add a test class that skips the `[Collection("OpenDevelop app")]`
-attribute, or it'll either hang waiting for its own app instance to bind the same port, or run
-concurrently against the shared one and corrupt other tests' state (wrong solution open, etc.).
+`OpenDevelopAppFixture` (`OpenDevelopAppFixture.cs`) is registered via
+`[assembly: AssemblyFixture(typeof(OpenDevelopAppFixture))]` in `AssemblyInfo.cs`, so xunit starts
+**one** `OpenDevelop.exe` process for the entire test run and every test class shares it.
+`AssemblyInfo.cs` also sets `CollectionBehavior(DisableTestParallelization)` and registers
+`FixtureTestCollectionOrderer`/`FixtureTestCaseOrderer`, which pin the cross-class and in-class
+execution order (each class assumes the app state its predecessors left). `xunit.runner.json`
+additionally sets `parallelizeTestCollections: false` — belt and braces; don't remove either, or
+two collections will run against that one shared app at the same time and corrupt each other's
+state (wrong solution open, focus stolen mid-gesture, scratch files appearing in another test's
+fixture, etc.). Don't add a test class that skips the `[Collection(...)]` attribute either.
 
 The fixture exposes:
 
@@ -58,6 +60,66 @@ dotnet build tests/fixtures/SampleTestProject/SampleTestProject.csproj
 Some test classes need their own fixture also built first (e.g. `IlSpyAddInTests` needs
 `tests/fixtures/DebugTestApp/DebugTestApp.csproj` built) - check the prerequisites comment at the
 top of the test file.
+
+## Test stability rules
+
+Each rule below exists because skipping it produced real, repeated failures (2026-08 stability
+pass: 31-49 flaky failures per full run → 16, with every rule tracing to a measured root cause).
+
+1. **Mutating tests operate on a temp copy of the fixture, never on the tracked one.**
+   Writing a scratch file into `tests/fixtures/...`, editing a fixture `.csproj`, renaming files,
+   or building an intentionally-broken file leaks across runs AND across later tests that read
+   the same directory (measured: a leftover broken scratch file turned the next clean-build
+   assertion into CS0246 noise about missing types; a search's matchCount shifted under another
+   test's scratch files). Use `WorkbenchTests.OpenIsolatedSampleAppCopyAsync()` (copy-on-write +
+   reopen + delete-in-finally) or the copy-to-temp pattern from `AddInTests`' constructor. The
+   tracked fixture is for READ-only scenarios.
+
+2. **Cross-file Roslyn actions don't need a readiness wait - but only because the app syncs.**
+   `od.find-references` / `od.rename-symbol` / `od.extract-interface` search the language
+   service's WHOLE workspace, and editors upsert their documents asynchronously on attach, so a
+   headless caller that opened N files and immediately searched used to race that pipeline and
+   legitimately get zero results. `GetSyncedLanguageServiceAsync` (in
+   `OpenDevelopDevFlowActions.cs`) now upserts every open document first, making those actions
+   deterministic. If you add another workspace-wide language action, route it through the same
+   helper. `od.language-workspace.status` reports whether a given file is tracked, for diagnosis.
+
+3. **Synthetic pointer input needs `od.activate` before EVERY attempt, not once upfront.**
+   `OD_TEST_MODE=1` launches with `ShowActivated=false`; cliclick input only routes to the app
+   when it is actually frontmost, and focus silently drifts back between attempts (measured: a
+   drag/double-click retry loop failing 6 times in a row, then passing once activate ran again
+   immediately before the gesture).
+
+4. **Aim pointer gestures with PointToScreen-accurate query actions, never with
+   `od.ui.tree` bounds.** The generic visual-tree walk reports stale/offset bounds for
+   virtualized controls - measured: clicks aimed at tree coordinates for the Properties pad's
+   Events grid landed one-to-three rows away (binding 'Closed'/'Scroll' instead of 'Shown').
+   Use the dedicated bounds actions (`od.property-pad.query-event-row-bounds`,
+   `od.wpf-toolbox.query-item-bounds`, `od.wpf-designer.query-element-screen-bounds`,
+   `od.file.query-offset-screen-position`), which compute via the element's own
+   `PointToScreen`. If none exists for your target, add one following that pattern rather than
+   trusting tree bounds.
+
+5. **Success criteria for UI-editing tests should be persisted state, not transient pad state.**
+   The Events-row double-click test originally polled the pad's own `HandlerName`, which refreshes
+   lazily via the project system - so a SUCCESSFUL bind looked like a failure and the retry loop
+   kept re-clicking (each further click re-virtualized the list and could un-realize the target
+   row). Assert on saved file content (`od.file.save` then read disk) instead.
+
+6. **Fixture readiness = agent up AND workbench ready.** The DevFlow agent binds inside the App
+   constructor, long before the workbench finishes layout/pad creation. `OpenDevelopAppFixture`
+   therefore waits for `od.active-view` to answer successfully and stably
+   (`WaitForWorkbenchReadyAsync`) after `WaitForAgentAsync`; without it, the first few facts of a
+   run can fail instantly against a half-loaded workbench. Note `WaitForPortFreeAsync` matches
+   both process names ("OpenDevelop" and legacy "SharpDevelop") - keep that if the binary is
+   ever renamed again.
+
+7. **When a test asserts designer capabilities, keep it in sync with the surface.** The WPF
+   designer gained undo/redo/multi-select/layout ops over time while its test still asserted
+   `supported=false` for them - the stale assertions failed with KeyNotFoundException once the
+   response shape changed. When you implement a previously-unsupported capability, update the
+   "unsupported reports" test in the same change; leave exactly one genuinely-unsupported case
+   (nudge) asserting the deterministic `supported=false` shape.
 
 ## Adding a new DevFlow-driven test case
 

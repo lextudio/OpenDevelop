@@ -265,6 +265,37 @@ public sealed class WorkbenchTests
         }
     }
 
+    /// <summary>
+    /// Copy-on-write isolation for every scenario that MUTATES the SampleApp fixture: writes a
+    /// scratch file into the shared tracked directory, edits SampleApp.csproj, renames/moves
+    /// files, or builds with an intentionally broken file. Mutating in place leaked across runs
+    /// AND across concurrently-executing collections sharing this one app instance - e.g. a
+    /// leftover ScratchBroken.cs turned the next clean-build assertion into CS0246 noise about
+    /// missing types, and a search's matchCount shifted under another test's scratch files.
+    /// Operate on the returned copy instead; delete <see cref="IsolatedSampleApp.WorkingRoot"/>
+    /// in a finally.
+    /// </summary>
+    async Task<IsolatedSampleApp> OpenIsolatedSampleAppCopyAsync()
+    {
+        var workingRoot = Path.Combine(Path.GetTempPath(), "WorkbenchTests-" + Guid.NewGuid().ToString("N"));
+        CopyFixtureDirectory(Path.GetDirectoryName(_app.SolutionExplorerFixturePath)!, workingRoot);
+        var solutionPath = Path.Combine(workingRoot, Path.GetFileName(_app.SolutionExplorerFixturePath));
+        await _app.ReopenSolutionAsync(solutionPath);
+        return new IsolatedSampleApp(workingRoot, solutionPath);
+    }
+
+    static void DeleteIsolatedSampleApp(IsolatedSampleApp app)
+    {
+        try { Directory.Delete(app.WorkingRoot, recursive: true); } catch { }
+    }
+
+    sealed record IsolatedSampleApp(string WorkingRoot, string SolutionPath)
+    {
+        public string SampleAppDirectory => Path.Combine(WorkingRoot, "SampleApp");
+        public string ProjectFilePath => Path.Combine(SampleAppDirectory, "SampleApp.csproj");
+        public string SharedDirectory => WorkingRoot;
+    }
+
     [Fact]
     public async Task SolutionTree_ListsAllProjects()
     {
@@ -500,17 +531,16 @@ public sealed class WorkbenchTests
                     yield return descendant;
     }
 
-    string SampleAppDirectory => Path.Combine(Path.GetDirectoryName(_app.SolutionExplorerFixturePath)!, "SampleApp");
-    string ProjectFilePath => Path.Combine(SampleAppDirectory, "SampleApp.csproj");
+    // Mutating scenarios must NOT use these shared-fixture paths - see
+    // OpenIsolatedSampleAppCopyAsync. Only read-only tests may touch the tracked fixture.
 
     [Fact]
     public async Task AddFileToProject_CreatesFileAndAppearsInSolutionTree()
     {
-        var originalProjectFile = File.ReadAllText(ProjectFilePath);
-        var newFilePath = Path.Combine(SampleAppDirectory, "Models", "ScratchWidgetPart.txt");
+        var sample = await OpenIsolatedSampleAppCopyAsync();
         try
         {
-            await _app.InvokeAsync("od.open-solution", _app.SolutionExplorerFixturePath);
+            var newFilePath = Path.Combine(sample.SampleAppDirectory, "Models", "ScratchWidgetPart.txt");
 
             // "None" (not "Compile") - SDK-style projects implicitly glob *.cs as Compile items, so
             // adding an explicit <Compile Include> for a file that glob would already pick up
@@ -531,8 +561,7 @@ public sealed class WorkbenchTests
         }
         finally
         {
-            File.WriteAllText(ProjectFilePath, originalProjectFile);
-            TryDelete(newFilePath);
+            DeleteIsolatedSampleApp(sample);
         }
     }
 
@@ -544,14 +573,13 @@ public sealed class WorkbenchTests
     [Fact]
     public async Task RemoveExplicitFileFromProject_DropsItFromTreeButKeepsFileOnDisk()
     {
-        var originalProjectFile = File.ReadAllText(ProjectFilePath);
-        var sharedDirectory = Path.Combine(Path.GetDirectoryName(_app.SolutionExplorerFixturePath)!, "Shared");
-        Directory.CreateDirectory(sharedDirectory);
-        var filePath = Path.Combine(sharedDirectory, "ScratchExplicit.txt");
+        var sample = await OpenIsolatedSampleAppCopyAsync();
         try
         {
+            var sharedDirectory = sample.SharedDirectory;
+            Directory.CreateDirectory(sharedDirectory);
+            var filePath = Path.Combine(sharedDirectory, "ScratchExplicit.txt");
             File.WriteAllText(filePath, "scratch content");
-            await _app.InvokeAsync("od.open-solution", _app.SolutionExplorerFixturePath);
             await _app.InvokeAsync("od.solution.add-file", ProjectName, filePath, "None");
 
             var removeResult = await _app.InvokeAsync("od.solution.remove-file", ProjectName, filePath);
@@ -559,16 +587,14 @@ public sealed class WorkbenchTests
 
             var files = removeResult.GetProperty("files").EnumerateArray()
                 .Select(f => f.GetString()!.Replace('\\', '/')).ToList();
-            Assert.DoesNotContain(files, f => f.EndsWith("Shared/ScratchExplicit.txt"));
+            Assert.DoesNotContain(files, f => f.EndsWith("ScratchExplicit.txt"));
 
             // Removing the ProjectItem must not touch the file on disk.
             Assert.True(File.Exists(filePath));
         }
         finally
         {
-            File.WriteAllText(ProjectFilePath, originalProjectFile);
-            TryDelete(filePath);
-            try { Directory.Delete(sharedDirectory); } catch { }
+            DeleteIsolatedSampleApp(sample);
         }
     }
 
@@ -579,12 +605,11 @@ public sealed class WorkbenchTests
     [Fact]
     public async Task RemoveGlobCoveredFile_ReportsUnsupportedInsteadOfSilentlyNoOp()
     {
-        var originalProjectFile = File.ReadAllText(ProjectFilePath);
-        var filePath = Path.Combine(SampleAppDirectory, "Models", "ScratchToRemove.txt");
+        var sample = await OpenIsolatedSampleAppCopyAsync();
         try
         {
+            var filePath = Path.Combine(sample.SampleAppDirectory, "Models", "ScratchToRemove.txt");
             File.WriteAllText(filePath, "scratch content");
-            await _app.InvokeAsync("od.open-solution", _app.SolutionExplorerFixturePath);
             await _app.InvokeAsync("od.solution.add-file", ProjectName, filePath, "None");
 
             var removeResult = await _app.InvokeAsync("od.solution.remove-file", ProjectName, filePath);
@@ -598,21 +623,19 @@ public sealed class WorkbenchTests
         }
         finally
         {
-            File.WriteAllText(ProjectFilePath, originalProjectFile);
-            TryDelete(filePath);
+            DeleteIsolatedSampleApp(sample);
         }
     }
 
     [Fact]
     public async Task RenameProjectFile_MovesFileAndUpdatesTree()
     {
-        var originalProjectFile = File.ReadAllText(ProjectFilePath);
-        var oldPath = Path.Combine(SampleAppDirectory, "Models", "ScratchOldName.txt");
-        var newPath = Path.Combine(SampleAppDirectory, "Models", "ScratchNewName.txt");
+        var sample = await OpenIsolatedSampleAppCopyAsync();
         try
         {
+            var oldPath = Path.Combine(sample.SampleAppDirectory, "Models", "ScratchOldName.txt");
+            var newPath = Path.Combine(sample.SampleAppDirectory, "Models", "ScratchNewName.txt");
             File.WriteAllText(oldPath, "scratch content");
-            await _app.InvokeAsync("od.open-solution", _app.SolutionExplorerFixturePath);
             await _app.InvokeAsync("od.solution.add-file", ProjectName, oldPath, "None");
 
             var renameResult = await _app.InvokeAsync("od.solution.rename-file", ProjectName, oldPath, newPath);
@@ -628,20 +651,16 @@ public sealed class WorkbenchTests
         }
         finally
         {
-            File.WriteAllText(ProjectFilePath, originalProjectFile);
-            TryDelete(oldPath);
-            TryDelete(newPath);
+            DeleteIsolatedSampleApp(sample);
         }
     }
 
     [Fact]
     public async Task AddProjectReference_AddsReferenceProjectItem()
     {
-        var originalProjectFile = File.ReadAllText(ProjectFilePath);
+        var sample = await OpenIsolatedSampleAppCopyAsync();
         try
         {
-            await _app.InvokeAsync("od.open-solution", _app.SolutionExplorerFixturePath);
-
             var addResult = await _app.InvokeAsync("od.solution.add-reference", ProjectName, "System.Xml");
             Assert.True(addResult.GetProperty("success").GetBoolean());
 
@@ -649,11 +668,11 @@ public sealed class WorkbenchTests
                 .Select(r => r.GetString()).ToList();
             Assert.Contains("System.Xml", references);
 
-            Assert.Contains("System.Xml", File.ReadAllText(ProjectFilePath));
+            Assert.Contains("System.Xml", File.ReadAllText(sample.ProjectFilePath));
         }
         finally
         {
-            File.WriteAllText(ProjectFilePath, originalProjectFile);
+            DeleteIsolatedSampleApp(sample);
         }
     }
 
@@ -751,12 +770,12 @@ public sealed class WorkbenchTests
     [Fact]
     public async Task Replace_InOpenFile_UpdatesEditorButNotDiskUntilSaved()
     {
-        var scratchPath = Path.Combine(SampleAppDirectory, "ScratchReplaceTarget.cs");
+        var sample = await OpenIsolatedSampleAppCopyAsync();
+        var scratchPath = Path.Combine(sample.SampleAppDirectory, "ScratchReplaceTarget.cs");
         try
         {
             File.WriteAllText(scratchPath, "namespace SampleApp { class ScratchReplaceTarget { string Value = \"NeedleValue\"; } }");
 
-            await _app.InvokeAsync("od.open-solution", _app.SolutionExplorerFixturePath);
             await _app.InvokeAsync("od.open-file", scratchPath);
 
             var replaceResult = await _app.InvokeAsync("od.search.replace", "NeedleValue", "ReplacedValue", "current-document");
@@ -787,15 +806,24 @@ public sealed class WorkbenchTests
         finally
         {
             TryDelete(scratchPath);
+            DeleteIsolatedSampleApp(sample);
         }
     }
 
-    string ScratchDirectory => Path.Combine(Path.GetDirectoryName(_app.SolutionExplorerFixturePath)!, "SampleApp");
+    // These dirty-flag tests only need SOME writable .cs file - no solution context at all -
+    // so use a plain temp dir instead of writing scratch files into the shared fixture.
+    static string NewScratchDirectory()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "WorkbenchDirtyFlagTests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
 
     [Fact]
     public async Task OpenFile_IsNotDirtyInitially()
     {
-        var path = Path.Combine(ScratchDirectory, "ScratchNotDirty.cs");
+        var scratchDirectory = NewScratchDirectory();
+        var path = Path.Combine(scratchDirectory, "ScratchNotDirty.cs");
         File.WriteAllText(path, "namespace SampleApp { class ScratchNotDirty { } }");
         try
         {
@@ -808,13 +836,15 @@ public sealed class WorkbenchTests
         finally
         {
             TryDelete(path);
+            try { Directory.Delete(scratchDirectory, recursive: true); } catch { }
         }
     }
 
     [Fact]
     public async Task EditFile_MarksDirty()
     {
-        var path = Path.Combine(ScratchDirectory, "ScratchEditDirty.cs");
+        var scratchDirectory = NewScratchDirectory();
+        var path = Path.Combine(scratchDirectory, "ScratchEditDirty.cs");
         File.WriteAllText(path, "namespace SampleApp { class ScratchEditDirty { } }");
         try
         {
@@ -833,13 +863,15 @@ public sealed class WorkbenchTests
             // scratch file so a later solution close cannot recreate the file from that buffer.
             try { await _app.InvokeAsync("od.file.save", path); } catch { }
             TryDelete(path);
+            try { Directory.Delete(scratchDirectory, recursive: true); } catch { }
         }
     }
 
     [Fact]
     public async Task SaveFile_ClearsDirtyFlagAndPersistsContent()
     {
-        var path = Path.Combine(ScratchDirectory, "ScratchSave.cs");
+        var scratchDirectory = NewScratchDirectory();
+        var path = Path.Combine(scratchDirectory, "ScratchSave.cs");
         File.WriteAllText(path, "namespace SampleApp { class ScratchSave { } }");
         try
         {
@@ -859,14 +891,16 @@ public sealed class WorkbenchTests
         finally
         {
             TryDelete(path);
+            try { Directory.Delete(scratchDirectory, recursive: true); } catch { }
         }
     }
 
     [Fact]
     public async Task SaveAllOpenFiles_SavesEveryDirtyFile()
     {
-        var pathA = Path.Combine(ScratchDirectory, "ScratchSaveAllA.cs");
-        var pathB = Path.Combine(ScratchDirectory, "ScratchSaveAllB.cs");
+        var scratchDirectory = NewScratchDirectory();
+        var pathA = Path.Combine(scratchDirectory, "ScratchSaveAllA.cs");
+        var pathB = Path.Combine(scratchDirectory, "ScratchSaveAllB.cs");
         File.WriteAllText(pathA, "namespace SampleApp { class ScratchSaveAllA { } }");
         File.WriteAllText(pathB, "namespace SampleApp { class ScratchSaveAllB { } }");
         try
@@ -889,6 +923,7 @@ public sealed class WorkbenchTests
         {
             TryDelete(pathA);
             TryDelete(pathB);
+            try { Directory.Delete(scratchDirectory, recursive: true); } catch { }
         }
     }
 
@@ -955,7 +990,12 @@ public sealed class WorkbenchTests
     [Fact]
     public async Task ErrorList_BuildFailureCapturesDiagnosticsThenStaleEntriesSurviveCleanRebuild()
     {
-        var brokenFilePath = Path.Combine(SampleAppDirectory, "ScratchBroken.cs");
+        // Isolated copy: this test deliberately breaks the build, and a crashed earlier run
+        // leaving ScratchBroken.cs behind used to poison the NEXT run's clean-build assertions
+        // (and any concurrently-executing collection's builds). Mutate the copy, not the tracked
+        // fixture.
+        var sample = await OpenIsolatedSampleAppCopyAsync();
+        var brokenFilePath = Path.Combine(sample.SampleAppDirectory, "ScratchBroken.cs");
         try
         {
             File.WriteAllText(brokenFilePath,
@@ -965,7 +1005,6 @@ public sealed class WorkbenchTests
                 "    }\n" +
                 "}\n");
 
-            await _app.InvokeAsync("od.open-solution", _app.SolutionExplorerFixturePath);
             await _app.InvokeAsync("od.error-list.clear");
 
             // --- was: ErrorList_OnBuildFailure_CapturesRealPerLineCompileErrors ---
@@ -1053,13 +1092,12 @@ public sealed class WorkbenchTests
         }
         finally
         {
-            TryDelete(brokenFilePath);
+            DeleteIsolatedSampleApp(sample);
             // Leave the app's own error-list state clean for whichever test runs next in this
             // shared app instance, rather than letting od.build-solution's non-clearing behavior
             // leak this test's induced error into later tests.
-            await _app.InvokeAsync("od.open-solution", _app.SolutionExplorerFixturePath);
+            await _app.ReopenSolutionAsync(_app.SolutionExplorerFixturePath);
             await _app.InvokeAsync("od.error-list.clear");
-            await _app.InvokeAsync("od.build-solution");
         }
     }
 

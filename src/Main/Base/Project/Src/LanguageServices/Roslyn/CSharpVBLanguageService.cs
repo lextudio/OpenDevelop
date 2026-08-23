@@ -949,6 +949,24 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
 			return id == null ? null : _workspace.CurrentSolution.GetDocument(id);
 		}
 
+		/// <summary>
+		/// Readiness probe for headless callers (DevFlow tests): reports whether
+		/// <paramref name="fileName"/> is tracked in this workspace AND backed by a real project
+		/// snapshot (Project.FilePath set), not just <see cref="UpsertDocumentAsync"/>'s loose
+		/// bootstrap project. Cross-file features - FindReferences, RenameSymbol,
+		/// ExtractInterface - only see the OTHER files of a solution once that real snapshot has
+		/// been loaded, so callers should poll this instead of asserting immediately after
+		/// od.open-solution.
+		/// </summary>
+		public LanguageWorkspaceStatus GetWorkspaceStatus(string fileName)
+		{
+			var document = TryGetProjectDocument(fileName);
+			return new LanguageWorkspaceStatus(
+				HasRealProject: document?.Project.FilePath is not null,
+				ProjectFileName: document?.Project.FilePath,
+				TrackedProjectCount: _workspace.CurrentSolution.Projects.Count());
+		}
+
         /// <summary>
         /// Picks which TFM slice's <see cref="RoslynDocumentId"/> to use for a document that may
         /// have one variant per TFM — the project's "active target framework"
@@ -1514,4 +1532,12 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             return RoslynTextSpan.FromBounds(start, end);
         }
     }
+
+    /// <summary>Snapshot of <see cref="CSharpVBLanguageService"/>'s workspace state for one
+    /// file - see <see cref="CSharpVBLanguageService.GetWorkspaceStatus"/> for what the flags
+    /// mean and why cross-file callers must wait for <see cref="LanguageWorkspaceStatus.HasRealProject"/>.</summary>
+    public sealed record LanguageWorkspaceStatus(
+        bool HasRealProject,
+        string? ProjectFileName,
+        int TrackedProjectCount);
 }

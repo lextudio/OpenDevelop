@@ -53,6 +53,16 @@
     <PackageReference Include="AltCover" Version="9.0.102" />
   </ItemGroup>
 
+  <!-- Serialize test collections: every collection shares ONE assembly-scoped app process
+       (port 9299) and the same on-disk fixture directories, so parallel collections race on
+       both - e.g. one collection's od.build-solution observes another's ScratchBroken.cs, or
+       two unit-test runs queue on the same TestService and blow the streaming-observation
+       window. xUnit v3 defaults to parallelizeTestCollections=true; this restores v2-style
+       serial collections (tests inside a collection were always serial). -->
+  <ItemGroup>
+    <None Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <Import Project="AltCover.Mtp.targets" />
 
 </Project>

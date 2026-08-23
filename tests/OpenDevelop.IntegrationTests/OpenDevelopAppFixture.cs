@@ -338,6 +338,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 		_app.BeginErrorReadLine();
 
         await WaitForAgentAsync(TimeSpan.FromSeconds(120));
+        await WaitForWorkbenchReadyAsync(TimeSpan.FromSeconds(120));
     }
 
     void StopApp()
@@ -388,12 +389,71 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
             + $"\nApp output:\n{GetRecentAppOutput()}");
     }
 
+    /// <summary>
+    /// The DevFlow agent binds inside the App constructor - long BEFORE the workbench has
+    /// finished building its layout (dockingManager_Loaded, pad creation, initial solution
+    /// restore). Tests that start immediately on agent-up raced that tail of startup and failed
+    /// instantly (measured: LSP/refactoring facts failing at ~1s because their od.open-file
+    /// landed mid-load). Wait for a cheap workbench-backed action to answer successfully AND
+    /// stably (two consistent reads) before declaring the app testable.
+    /// </summary>
+    async Task WaitForWorkbenchReadyAsync(TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        var lastError = "";
+        var stableReads = 0;
+        string? previous = null;
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                using var content = new StringContent("{\"args\":[]}", System.Text.Encoding.UTF8, "application/json");
+                using var resp = await _http.PostAsync($"{BaseUrl}/api/v1/invoke/actions/od.active-view", content);
+                var body = await resp.Content.ReadAsStringAsync();
+                // Parse instead of substring-matching: the envelope is INDENTED JSON
+                // ("success": true), so a compact-literal Contains check never fires.
+                var success = false;
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(body);
+                    success = doc.RootElement.GetProperty("success").GetBoolean();
+                }
+                catch { }
+                if (resp.IsSuccessStatusCode && success)
+                {
+                    stableReads = body == previous ? stableReads + 1 : 0;
+                    previous = body;
+                    if (stableReads >= 1)
+                        return;
+                }
+                else
+                {
+                    lastError = body;
+                    stableReads = 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                lastError = ex.Message;
+                stableReads = 0;
+            }
+            await Task.Delay(250);
+        }
+        throw new TimeoutException(
+            $"OpenDevelop workbench did not become ready within {timeout} (last od.active-view response: {lastError}). "
+            + DescribeAppFailureContext());
+    }
+
     async Task WaitForPortFreeAsync(TimeSpan timeout)
     {
         var deadline = DateTime.UtcNow + timeout;
         while (DateTime.UtcNow < deadline)
         {
-            if (Process.GetProcessesByName("SharpDevelop").Length == 0 && !IsPortInUse(Port))
+            // The process is OpenDevelop (was SharpDevelop in the ancestor project); match BOTH
+            // so a stale binary from an older checkout still gets detected.
+            if (Process.GetProcessesByName("OpenDevelop").Length == 0
+                && Process.GetProcessesByName("SharpDevelop").Length == 0
+                && !IsPortInUse(Port))
                 return;
             await Task.Delay(500);
         }

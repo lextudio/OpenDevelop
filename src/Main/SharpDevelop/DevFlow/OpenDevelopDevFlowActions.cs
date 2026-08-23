@@ -512,10 +512,32 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			if (registry == null || !registry.TryGetService(fileName, out var service))
 				return null;
 
+			await SyncOpenDocumentsToLanguageServiceAsync(service);
 			string text = SD.FileService.GetFileContent(FileName.Create(fileName)).Text;
 			var id = new ICSharpCode.SharpDevelop.LanguageServices.DocumentId(fileName);
 			await service.UpsertDocumentAsync(id, text, CancellationToken.None);
 			return (service, id);
+		}
+
+		/// <summary>
+		/// Upserts every currently-open file into <paramref name="service"/> so cross-file actions
+		/// (od.find-references / od.rename-symbol / od.extract-interface - the SymbolFinder /
+		/// rename / extraction passes all search the language service's WHOLE workspace) see the
+		/// full current solution state. Editors upsert their documents on attach asynchronously,
+		/// so a headless caller that opened N files and immediately searched raced that attach
+		/// pipeline and could miss the newest files - observed as FindReferences legitimately
+		/// reporting count=0 because the referencing document wasn't in the workspace yet.
+		/// Syncing here makes those actions deterministic for headless callers.
+		/// </summary>
+		static async Task SyncOpenDocumentsToLanguageServiceAsync(ICSharpCode.SharpDevelop.LanguageServices.ILanguageService service)
+		{
+			foreach (var openedFile in SD.FileService.OpenedFiles)
+			{
+				var openFileName = openedFile.FileName.ToString();
+				string text = SD.FileService.GetFileContent(openedFile.FileName).Text;
+				await service.UpsertDocumentAsync(
+					new ICSharpCode.SharpDevelop.LanguageServices.DocumentId(openFileName), text, CancellationToken.None);
+			}
 		}
 
 		static int GetOffset(string text, int requestedLine, int requestedColumn)
@@ -527,6 +549,28 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 					line++;
 			}
 			return Math.Min(text.Length, offset + Math.Max(0, requestedColumn - 1));
+		}
+
+		[DevFlowAction("od.language-workspace.status", Description = "Report whether fileName is tracked in its language service's workspace (tracked=true means a document exists - loose bootstrap or real project). Diagnostic/readiness aid for cross-file actions (od.find-references / od.rename-symbol / od.extract-interface); those now sync all open documents themselves, so callers normally don't need to poll this")]
+		public static string GetLanguageWorkspaceStatus(string fileName)
+		{
+			try {
+				var registry = SD.GetService<ICSharpCode.SharpDevelop.LanguageServices.LanguageServiceRegistry>();
+				if (registry == null || !registry.TryGetService(fileName, out var service))
+					return JsonSerializer.Serialize(new { supported = false, tracked = false, reason = "no language service for file" });
+				if (service is not ICSharpCode.SharpDevelop.LanguageServices.Roslyn.CSharpVBLanguageService roslyn)
+					return JsonSerializer.Serialize(new { supported = false, tracked = true, reason = "non-Roslyn backend" });
+
+				var document = roslyn.TryGetProjectDocument(fileName);
+				return JsonSerializer.Serialize(new {
+					supported = true,
+					tracked = document != null,
+					projectFile = document?.Project.FilePath,
+					trackedProjectCount = roslyn.GetWorkspaceStatus(fileName).TrackedProjectCount
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { supported = false, tracked = false, error = ex.Message });
+			}
 		}
 
 		[DevFlowAction("od.parser.status", Description = "Check whether the shared ILanguageService (LanguageServiceRegistry) has a language service registered for a file's extension - the actual integration point GoToDefinition/completion/etc. use (see doc/technotes/language-services.md). Note: SD.ParserService.GetCompilationForFile is NOT checked here - for project-owned files it still routes through the old IProjectContent mock, not the Roslyn/LSP language service, regardless of language.")]
@@ -1061,6 +1105,28 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		{
 			IdeThemeService.SetTheme(theme);
 			return JsonSerializer.Serialize(new { theme = IdeThemeService.CurrentTheme });
+		}
+
+		[DevFlowAction("od.property-pad.query-event-row-bounds", Description = "Get the real on-screen bounds (PointToScreen) of an Events-view row in the shared Properties pad, for aiming synthetic mouse double-clicks. DevFlow's generic UI-tree walk reports stale/offset bounds for this virtualized Xceed grid - measured clicks aimed at tree coordinates landed rows away - so tests must aim with this instead")]
+		public static string QueryPropertyPadEventRowBounds(string eventName)
+		{
+			try {
+				var viewModel = OpenDevelopMefHost.ExportProvider.GetExportedValue<PropertyPadViewModel>();
+				var bounds = viewModel.QueryEventRowScreenBounds(eventName);
+				if (bounds == null)
+					return JsonSerializer.Serialize(new { success = false, reason = "event row not realized in the visual tree (scrolled out of view?): " + eventName });
+				return JsonSerializer.Serialize(new {
+					success = true,
+					x = bounds.Value.X,
+					y = bounds.Value.Y,
+					width = bounds.Value.Width,
+					height = bounds.Value.Height,
+					centerX = bounds.Value.X + bounds.Value.Width / 2,
+					centerY = bounds.Value.Y + bounds.Value.Height / 2
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.Message });
+			}
 		}
 
 		[DevFlowAction("od.property-pad.view-mode", Description = "Switch the shared Properties pad (Xceed grid) between Properties and Events view, reporting the resulting mode and the current event rows - for tests that drive the Events view deterministically")]

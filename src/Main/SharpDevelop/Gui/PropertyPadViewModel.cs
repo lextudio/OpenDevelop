@@ -144,11 +144,44 @@ internal sealed class PropertyPadViewModel : ToolPaneModel, IPropertyPadHost, ID
     }
 
     /// <summary>
+    /// Real on-screen bounds of an Events-view row, computed via the row element's own
+    /// PointToScreen - the same trusted coordinate source the toolbox query actions use.
+    /// DevFlow's generic UI-tree walk reports stale/offset bounds for this virtualized Xceed
+    /// grid (measured: clicks aimed at its coordinates landed one-to-three rows off), so
+    /// synthetic-pointer tests must aim with this instead. Returns null when the named event
+    /// isn't realized in the visual tree (scrolled out of view).
+    /// </summary>
+    public (double X, double Y, double Width, double Height)? QueryEventRowScreenBounds(string eventName)
+    {
+        var row = FindEventRowElement(propertyGrid, eventName);
+        if (row == null)
+            return null;
+        var topLeft = row.PointToScreen(new Point(0, 0));
+        return (topLeft.X, topLeft.Y, row.ActualWidth, row.ActualHeight);
+    }
+
+    static FrameworkElement? FindEventRowElement(DependencyObject root, string eventName)
+    {
+        int children = VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < children; i++) {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is FrameworkElement element
+                && element.DataContext is Xceed.Wpf.Toolkit.PropertyGrid.EventItem viaDataContext
+                && viaDataContext.Descriptor.Name == eventName)
+                return element;
+            var nested = FindEventRowElement(child, eventName);
+            if (nested != null)
+                return nested;
+        }
+        return null;
+    }
+
+
+    /// <summary>
     /// Subscribes to <c>SD.Workbench</c> events on first real use rather than in the constructor -
     /// same early-startup hazard already found and fixed for <see cref="OutlineViewModel"/> et al.
     /// Called from every externally-reachable entry point (<see cref="Grid"/>,
-    /// <see cref="ActiveContainer"/>, <see cref="UpdateSelectedObjectIfActive"/>, <see cref="Show"/>),
-    /// not just <c>Show()</c> - unlike <c>Outline</c>/<c>DefinitionView</c>, this pad defaults
+    /// <see cref="ActiveContainer"/>, <see cref="UpdateSelectedObjectIfActive"/>, <see cref="Show"/>),    /// not just <c>Show()</c> - unlike <c>Outline</c>/<c>DefinitionView</c>, this pad defaults
     /// *visible*, so nothing ever calls <c>Show()</c> on it in the ordinary MEF-path case (only
     /// activating a pane the user never touches calls that); the pad still needs to react to
     /// selection changes from the moment anything - e.g. <see cref="PropertyContainer"/> setting

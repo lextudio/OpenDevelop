@@ -1,6 +1,6 @@
 namespace SampleApp.Models
 {
-    public sealed class Gadget
+    public sealed class Widget
     {
         public string Name { get; set; } = string.Empty;
     }
