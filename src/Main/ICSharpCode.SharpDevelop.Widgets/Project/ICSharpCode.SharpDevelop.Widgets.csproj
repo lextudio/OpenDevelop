@@ -22,7 +22,7 @@
          app on one assembly identity (ProGPU's) also avoids the "real assembly loaded process-wide
          starves WinForms designer code of ProGPU-only APIs like Graphics.FromProGpuDrawingContext"
          conflict - only one physical System.Drawing.Common can be loaded per process. -->
-    <PackageReference Include="ProGPU.System.Drawing.Common" Version="0.1.0-preview.47" />
+    <PackageReference Include="ProGPU.System.Drawing.Common" Version="0.1.0-preview.55" />
   </ItemGroup>
   <ItemGroup>
     <!-- WinForms-only: no cross-platform/WPF equivalent, out of MVP scope (see docs/opendevelop.md) -->

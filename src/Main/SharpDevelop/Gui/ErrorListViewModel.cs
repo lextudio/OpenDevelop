@@ -72,6 +72,16 @@ internal sealed class ErrorListViewModel : ToolPaneModel
         LegacyPadClass = typeof(ErrorListPad).FullName;
         PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Bottom;
         PreferredDockSize = 188; // Legacy AvalonPadContent bottom default; see DockWorkspace.AfterInsertAnchorable.
+
+        // Build the UI structure EAGERLY so the pad has its toolbar and grid visible from
+        // the moment the workbench shows it - not only after a build populates entries.
+        contentPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        contentPanel.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        contentPanel.Children.Add(errorView);
+        Grid.SetRow(errorView, 1);
+        errorView.MouseDoubleClick += ErrorViewMouseDoubleClick;
+        errorView.CommandBindings.Add(new CommandBinding(ApplicationCommands.Copy, ExecuteCopy, CanExecuteCopy));
+        errorView.CommandBindings.Add(new CommandBinding(ApplicationCommands.SelectAll, ExecuteSelectAll, CanExecuteSelectAll));
         Content = contentPanel;
     }
 
@@ -105,20 +115,14 @@ internal sealed class ErrorListViewModel : ToolPaneModel
         foreach (SDTask t in TaskService.Tasks.Where(t => t.TaskType != TaskType.Comment))
             errors.Add(t);
 
+        // Toolbar needs ToolBarService which may not be ready in the ctor; create it here.
         toolBar = ToolBarService.CreateToolBar(contentPanel, this, "/SharpDevelop/Pads/ErrorList/Toolbar");
-
-        contentPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        contentPanel.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        contentPanel.Children.Add(toolBar);
-        contentPanel.Children.Add(errorView);
-        Grid.SetRow(errorView, 1);
+        if (!contentPanel.Children.Contains(toolBar)) {
+            contentPanel.Children.Insert(0, toolBar);
+        }
         errorView.ItemsSource = errors;
-        errorView.MouseDoubleClick += ErrorViewMouseDoubleClick;
         errorView.Style = (Style)new TaskViewResources()["TaskListView"];
         errorView.ContextMenu = MenuService.CreateContextMenu(errorView, DefaultContextMenuAddInTreeEntry);
-
-        errorView.CommandBindings.Add(new CommandBinding(ApplicationCommands.Copy, ExecuteCopy, CanExecuteCopy));
-        errorView.CommandBindings.Add(new CommandBinding(ApplicationCommands.SelectAll, ExecuteSelectAll, CanExecuteSelectAll));
 
         InternalShowResults();
     }

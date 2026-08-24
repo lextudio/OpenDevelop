@@ -25,7 +25,12 @@ public sealed class LanguageServiceParserAdapter : IParserService
 	readonly Dictionary<FileName, FileEntry> files = new Dictionary<FileName, FileEntry>();
 	volatile Snapshot currentSnapshot;
 
-	public IReadOnlyList<string> TaskListTokens { get; set; } = Array.Empty<string>();
+	/// <summary>Comment tokens that the parser recognises as Task List entries.
+	/// Defaults mirror Visual Studio's out-of-box set.</summary>
+	public IReadOnlyList<string> TaskListTokens { get; set; } = new[]
+	{
+		"TODO", "HACK", "FIXME", "UNDONE", "NOTE",
+	};
 
 	public ILoadSolutionProjectsThread LoadSolutionProjectsThread { get; } = new NullLoadSolutionProjectsThread();
 

@@ -42,6 +42,8 @@ internal sealed class TaskListViewModel : ToolPaneModel
     bool subscribed;
 
     public Dictionary<string, bool> DisplayedTokens => displayedTokens;
+	/// <summary>Read-only access for tests/DevFlow.</summary>
+	public System.Collections.Generic.IReadOnlyList<SDTask> Tasks => tasks;
 
     public bool IsInitialized => subscribed;
 
@@ -62,6 +64,15 @@ internal sealed class TaskListViewModel : ToolPaneModel
         IsCloseable = true;
         PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Bottom;
         LegacyPadClass = typeof(TaskListPad).FullName;
+
+        // Build the UI structure EAGERLY so the pad has its toolbar and list visible from
+        // the moment the workbench shows it.
+        contentPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        contentPanel.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        contentPanel.Children.Add(taskView);
+        Grid.SetRow(taskView, 1);
+        taskView.ItemsSource = tasks;
+        taskView.MouseDoubleClick += TaskViewMouseDoubleClick;
         Content = contentPanel;
     }
 
@@ -148,6 +159,7 @@ internal sealed class TaskListViewModel : ToolPaneModel
                 displayedTokens.Add(token, true);
         }
 
+        // Toolbar needs ToolBarService; create it here (UI structure already built in ctor).
         var toolBar = ToolBarService.CreateToolBar(contentPanel, this, "/SharpDevelop/Pads/TaskList/Toolbar");
         var items = (IList)toolBar.ItemsSource;
 
@@ -158,15 +170,9 @@ internal sealed class TaskListViewModel : ToolPaneModel
 
         toolBar.Items.OfType<ComboBox>().ForEach(b => b.MinWidth = 75);
 
-        contentPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        contentPanel.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        if (!contentPanel.Children.Contains(toolBar))
+            contentPanel.Children.Insert(0, toolBar);
 
-        contentPanel.Children.Add(toolBar);
-        contentPanel.Children.Add(taskView);
-        Grid.SetRow(taskView, 1);
-
-        taskView.ItemsSource = tasks;
-        taskView.MouseDoubleClick += TaskViewMouseDoubleClick;
         taskView.Style = (Style)new TaskViewResources()["TaskListView"];
         taskView.ContextMenu = MenuService.CreateContextMenu(taskView, DefaultContextMenuAddInTreeEntry);
 

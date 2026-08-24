@@ -573,7 +573,26 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			}
 		}
 
-		[DevFlowAction("od.parser.status", Description = "Check whether the shared ILanguageService (LanguageServiceRegistry) has a language service registered for a file's extension - the actual integration point GoToDefinition/completion/etc. use (see doc/technotes/language-services.md). Note: SD.ParserService.GetCompilationForFile is NOT checked here - for project-owned files it still routes through the old IProjectContent mock, not the Roslyn/LSP language service, regardless of language.")]
+	
+	[DevFlowAction("od.task-list.entries", Description = "Report the current Task List pad entries (CommentTasks filtered by displayed tokens). Empty when no TODO/HACK/FIXME comments have been parsed.")]
+	public static string GetTaskListEntries()
+	{
+		var viewModel = OpenDevelopMefHost.ExportProvider.GetExportedValue<TaskListViewModel>();
+		var tasks = viewModel.Tasks.Select(t => new {
+			type = t.TaskType.ToString(),
+			description = t.Description,
+			fileName = t.FileName?.ToString() ?? "",
+			line = t.Line,
+			column = t.Column
+		}).ToArray();
+		return JsonSerializer.Serialize(new {
+			count = tasks.Length,
+			displayedTokens = viewModel.DisplayedTokens.Keys.ToArray(),
+			tasks
+		});
+	}
+
+	[DevFlowAction("od.parser.status", Description = "Check whether the shared ILanguageService (LanguageServiceRegistry) has a language service registered for a file's extension - the actual integration point GoToDefinition/completion/etc. use (see doc/technotes/language-services.md). Note: SD.ParserService.GetCompilationForFile is NOT checked here - for project-owned files it still routes through the old IProjectContent mock, not the Roslyn/LSP language service, regardless of language.")]
 		public static string GetParserStatus(string fileName)
 		{
 			try {
