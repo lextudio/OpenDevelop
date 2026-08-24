@@ -78,4 +78,5 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 		shutdown.Set();
 	}
 	public void WaitForShutdown() => shutdown.Wait();
+	public void OnParentDisconnected() => shutdown.Set();
 }

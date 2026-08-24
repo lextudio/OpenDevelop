@@ -10,6 +10,26 @@ The workbench integration now routes outline rebuilding and stable-ID selection 
 `Designer.Shell.DesignerSelectionController`. The common controller owns selection restoration
 and Properties adapter lifetime, while `DocumentOutlineControl` renders it. WPF-specific surface,
 XAML editing, runtime selection, and rendering behavior remain in the WPF backend.
+Whole-document Undo and Redo now execute through the common `DesignerCommandController`; WPF
+continues to own its XAML snapshot stacks and surface-update RPC.
+
+### macOS open deadlock fix (2026-08-24)
+
+Opening a real WPF document previously had two independent blocking failures. First, the shared
+host pool factory captured the workbench dispatcher synchronization context while `LoadInternal`
+was synchronously waiting for the handshake. The factory now uses `ConfigureAwait(false)`.
+Second, the child ran WPF on a background dispatcher thread; a real control template eventually
+queried `SystemParameters`, causing GLFW/ProGPU monitor initialization off the macOS main thread.
+The child now runs its WPF dispatcher on the process main thread and its RPC/wait loop on a worker.
+The common child bootstrap also waits for RPC transport completion as well as explicit shutdown,
+so an abruptly killed IDE cannot strand the WPF surface host; the completion callback shuts down
+the main-thread dispatcher in either case.
+
+The obsolete workbench-side `AddProjectDlls`/`ResolveAssemblyReferences` open path was also
+removed: it could freeze the dispatcher and loaded project assemblies into the IDE, violating the
+out-of-process boundary. Project-control catalogue discovery belongs in the child and crosses the
+boundary as neutral toolbox DTOs. The full Delete/Undo/Redo/view-switching integration test and
+the real-render SurfaceHost RPC test cover these fixes without a text-losing headless fallback.
 
 Current status: the WPF designer is the official WPF backend, added to the main solution and
 built on `LibreWPF.Sdk`.

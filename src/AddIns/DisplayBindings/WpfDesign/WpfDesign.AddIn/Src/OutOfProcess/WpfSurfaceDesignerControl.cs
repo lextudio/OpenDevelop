@@ -1334,6 +1334,9 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 
 		/// <summary>The currently selected element's id (its tree path), or null.</summary>
 		public string? SelectedElementId => selectedPath;
+		public IReadOnlyList<string> SelectedElementIds => selectedPath == null
+			? Array.Empty<string>()
+			: new[] { selectedPath }.Concat(secondarySelection).ToArray();
 
 		/// <summary>The current element tree, ready to hand straight to
 		/// <see cref="ICSharpCode.SharpDevelop.Widgets.DocumentOutlineControl.SetRoot"/> - unlike

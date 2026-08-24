@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using ICSharpCode.SharpDevelop.Project;
+using ICSharpCode.SharpDevelop.Workbench;
 
 namespace ICSharpCode.CodeCoverage
 {
@@ -40,6 +41,7 @@ namespace ICSharpCode.CodeCoverage
 				}
 
 				log.Add("Building " + project.Name);
+				OutputChannel.Write("CodeCoverage", "Building " + project.Name + "...");
 				bool buildSucceeded = await buildProjectAsync(project, cancellationToken);
 				if (!buildSucceeded) {
 					log.Add("Build failed for " + project.Name);
@@ -48,6 +50,7 @@ namespace ICSharpCode.CodeCoverage
 
 				AltCoverApplication application = CreateAltCoverApplication(project);
 				log.Add("AltCover: " + application.FileName);
+				OutputChannel.Write("CodeCoverage", "Instrumenting " + project.Name + "...");
 				RestoreSavedOutput(project, log);
 
 				var prepare = await CodeCoverageProcessRunner.RunAsync(application.GetPrepareProcessStartInfo(), cancellationToken);

@@ -22,6 +22,7 @@ using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.Gui;
+using ICSharpCode.SharpDevelop.Designer.Shell;
 using ICSharpCode.WpfDesign.AddIn.OutOfProcess;
 using LeXtudio.DevFlow.Agent.Core;
 using Microsoft.Maui.DevFlow.Agent.Core;
@@ -78,6 +79,8 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				rootItemType = SimpleTypeName(state?.RootType),
 				toolboxItemCount = toolboxItems.Length,
 				toolboxGroupCount = toolboxItems.Select(i => i.CategoryName).Distinct().Count(),
+				toolboxFilterText = SharedToolbox.Instance.FilterText,
+				toolboxSearchHosted = (SD.Services.GetService(typeof(IToolsPadHost)) as IToolsPadHost)?.HasToolboxSearch == true,
 				outlineRootName = state?.Tree?.Name ?? state?.Tree?.Type,
 				outlineChildCount = state?.Tree?.Children.Count ?? 0,
 				// The out-of-process WPF host has no undo/redo RPC, so these are always false -
@@ -92,6 +95,14 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				// element shows up in the outline tree without knowing its exact nesting depth.
 				outlineNames = outlineNames.ToArray()
 			});
+		}
+
+		[DevFlowAction("od.wpf-designer.toolbox.filter", Description = "Filter the active WPF Toolbox by control or category name")]
+		public static string FilterToolbox(string text)
+		{
+			_ = WpfToolbox.Instance.ToolboxControl;
+			SharedToolbox.Instance.Filter(text);
+			return DesignerDevFlowResults.ToolboxFilter(true, SharedToolbox.Instance.FilterText, SharedToolbox.Instance.VisibleItemCount);
 		}
 
 		[DevFlowAction("od.wpf-designer.tab-order", Description = "Toggle the tab-order badge overlay - shows each element's TabIndex, matching the WinForms designer's own tab-order view")]
@@ -603,7 +614,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				CollectOutlineNames(child, names);
 		}
 
-		static string Failure(string error) => JsonSerializer.Serialize(new { success = false, error });
+		static string Failure(string error) => DesignerDevFlowResults.Failure(error);
 
 		[DevFlowAction("od.wpf-designer.delete", Description = "Delete the currently selected element in the active WPF designer - mirrors od.winui-designer.delete")]
 		public static string Delete()

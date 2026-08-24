@@ -30,6 +30,11 @@ history, and `session/close` removes only the closed document. Opening MainWindo
 SettingsWindow concurrently must therefore report the same host PID while edits and saves remain
 isolated by document.
 
+The host uses the common `DesignerChildHost` bootstrap. It exits on either an explicit bounded
+`shutdown` RPC or loss of the parent RPC transport, so killing OpenDevelop cannot leave a GTK
+designer orphan behind. This does not introduce per-render helpers: native text/theme rendering
+continues inside the one long-lived, Dock-hidden GTK process shared by compatible documents.
+
 The implemented lifecycle follows the normative shared-host design in
 [`designer-common.md`](designer-common.md#shared-host-lifecycle-design-2026-08-23). The common
 broker, rather than backend-specific static counters, owns the connection; the final close uses a
@@ -443,6 +448,9 @@ without reopening the document.
 ### Phase 3 — production interaction
 
 - real toolbox drag/drop and reorder;
+- common Toolbox catalogue filtering (control or category, case-insensitive), including selection
+  repair/restoration and `od.gtk-designer.toolbox.filter` integration coverage;
+- the shared Tools-pad search field is visibly mounted and survives multi-window switching;
 - Grid/Paned/Stack/page adapters;
 - keyboard navigation, delete, copy/paste and multi-select where semantically valid;
 - signals/Roslyn handler creation;
@@ -521,6 +529,13 @@ Fixture matrix:
 An integration test that calls internal edit actions without asserting the actual active Tools and
 Properties pad contents is insufficient. Pad ownership, realized item counts, selected object
 identity and persisted source must all be asserted.
+
+The shell binding is now implemented by the shared `DesignerPadController`: a host tree refresh
+updates the live Outline, restores selection by GtkBuilder id, and rebinds the live Properties pad
+to the corresponding `GtkPropertyAdapter`. Outline selection commits through the same controller,
+whose re-entry guard prevents the asynchronous Outline notification from selecting twice. Common
+DevFlow result envelopes and the shared-host lifecycle stress test are defined in
+[`designer-common.md`](designer-common.md#shared-shell-contracts-completed-2026-08-24).
 
 ## Risks and non-goals
 

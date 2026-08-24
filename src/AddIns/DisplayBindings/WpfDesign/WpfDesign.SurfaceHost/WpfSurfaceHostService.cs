@@ -668,6 +668,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		public void Shutdown() => shutdown.Set();
 
 		public void WaitForShutdown() => shutdown.Wait();
+		public void OnParentDisconnected() => shutdown.Set();
 
 		internal void Close()
 		{

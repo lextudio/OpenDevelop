@@ -1,6 +1,9 @@
 using System;
 using System.Composition;
 using System.Windows.Controls;
+using System.Windows;
+using System.Windows.Media;
+using System.Runtime.CompilerServices;
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.ViewModels;
@@ -21,6 +24,15 @@ namespace ICSharpCode.SharpDevelop.Gui;
 internal sealed class ToolsPadViewModel : ToolPaneModel, IToolsPadHost
 {
     readonly ContentPresenter contentControl = new ContentPresenter();
+    object hostedContent;
+    TextBox searchBox;
+    readonly ConditionalWeakTable<FrameworkElement, ToolboxWrapper> toolboxWrappers = new();
+
+    sealed class ToolboxWrapper
+    {
+        public FrameworkElement Control { get; init; }
+        public TextBox Search { get; init; }
+    }
     bool subscribed;
 
     public ToolsPadViewModel()
@@ -42,9 +54,12 @@ internal sealed class ToolsPadViewModel : ToolPaneModel, IToolsPadHost
     public object HostedContent {
         get {
             EnsureSubscribed();
-            return contentControl.Content;
+            return hostedContent;
         }
     }
+
+    public bool HasToolboxSearch => searchBox != null;
+    public string ToolboxSearchText => searchBox?.Text ?? "";
 
     /// <summary>
     /// Subscribes to <c>SD.Workbench.ActiveViewContentChanged</c> on first real use rather than in
@@ -72,8 +87,43 @@ internal sealed class ToolsPadViewModel : ToolPaneModel, IToolsPadHost
     void WorkbenchActiveContentChanged(object sender, EventArgs e)
     {
         IToolsHost th = SD.GetActiveViewContentService<IToolsHost>();
-        contentControl.Content = th != null && th.ToolsContent != null
-            ? th.ToolsContent
-            : StringParser.Parse("${res:SharpDevelop.SideBar.NoToolsAvailableForCurrentDocument}");
+        hostedContent = th?.ToolsContent;
+        if (hostedContent is FrameworkElement element && element.Tag is IFilterableToolbox filterable)
+            contentControl.Content = CreateSearchableToolbox(element, filterable);
+        else {
+            searchBox = null;
+            contentControl.Content = hostedContent
+                ?? StringParser.Parse("${res:SharpDevelop.SideBar.NoToolsAvailableForCurrentDocument}");
+        }
+    }
+
+    FrameworkElement CreateSearchableToolbox(FrameworkElement toolbox, IFilterableToolbox filterable)
+    {
+        if (toolboxWrappers.TryGetValue(toolbox, out var existing)) {
+            searchBox = existing.Search;
+            return existing.Control;
+        }
+        var grid = new Grid();
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition());
+        var header = new Grid { Margin = new Thickness(6) };
+        header.ColumnDefinitions.Add(new ColumnDefinition());
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        searchBox = new TextBox { Text = filterable.FilterText, ToolTip = "Filter controls", MinHeight = 24 };
+        var clear = new Button { Content = "×", ToolTip = "Clear Toolbox filter", Margin = new Thickness(4, 0, 0, 0), MinWidth = 24 };
+        var body = new Grid();
+        var empty = new TextBlock { Text = "No matching controls", Margin = new Thickness(10), Foreground = Brushes.Gray, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        void ApplyFilter() { filterable.Filter(searchBox.Text); empty.Visibility = filterable.VisibleItemCount == 0 ? Visibility.Visible : Visibility.Collapsed; }
+        searchBox.TextChanged += (_, _) => ApplyFilter();
+        searchBox.KeyDown += (_, e) => {
+            if (e.Key == System.Windows.Input.Key.Escape) { searchBox.Clear(); e.Handled = true; }
+            else if (e.Key == System.Windows.Input.Key.Down && toolbox is Control control) { control.Focus(); e.Handled = true; }
+        };
+        clear.Click += (_, _) => { searchBox.Clear(); searchBox.Focus(); };
+        header.Children.Add(searchBox); Grid.SetColumn(clear, 1); header.Children.Add(clear);
+        body.Children.Add(toolbox); body.Children.Add(empty); ApplyFilter();
+        grid.Children.Add(header); Grid.SetRow(body, 1); grid.Children.Add(body);
+        toolboxWrappers.Add(toolbox, new ToolboxWrapper { Control = grid, Search = searchBox });
+        return grid;
     }
 }

@@ -65,6 +65,28 @@ public sealed class SharedDesignerHostPoolTests
 		pool.Release("b", other);
 	}
 
+	[Fact]
+	public async Task RepeatedOpenCloseAndCrashCyclesLeaveNoLeasesOrLiveSupersededConnections()
+	{
+		var token = TestContext.Current.CancellationToken;
+		var created = new List<FakeConnection>();
+		var pool = new SharedDesignerHostPool<string, FakeConnection>(
+			(_, connection) => connection.Alive,
+			(_, _) => { var connection = new FakeConnection(); lock (created) created.Add(connection); return Task.FromResult(connection); },
+			StringComparer.Ordinal, TimeSpan.FromMilliseconds(10));
+
+		for (var cycle = 0; cycle < 40; cycle++) {
+			var leases = await Task.WhenAll(Enumerable.Range(0, 5).Select(_ => pool.AcquireAsync("designer", token)));
+			Assert.All(leases, lease => Assert.Same(leases[0], lease));
+			if (cycle % 7 == 6) pool.Invalidate("designer", leases[0]);
+			foreach (var lease in leases) pool.Release("designer", lease);
+			Assert.Equal(0, pool.GetActiveLeaseCount("designer"));
+		}
+
+		await Task.Delay(50, token);
+		lock (created) Assert.InRange(created.Count(connection => connection.Alive), 0, 1);
+	}
+
 	static async Task WaitUntilAsync(Func<bool> condition, CancellationToken cancellationToken)
 	{
 		using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

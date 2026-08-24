@@ -30,6 +30,6 @@ sealed class MewUIDesignerHostService : IDesignerChildService
 	DocumentSession GetOrCreate(string documentId) => documents.GetOrAdd(documentId, () => new DocumentSession(documentId));
 	DocumentSession Get(string documentId) => documents.Get(documentId);
 	static void EnsureVersion(DocumentSession session, long candidate) { if (candidate != session.Version) throw new InvalidOperationException($"Stale version {candidate}; current is {session.Version}."); }
-	[JsonRpcMethod("ping")] public object Ping() => new(); [JsonRpcMethod("shutdown")] public object Shutdown() { documents.CloseAll(_ => { }); shutdown.Set(); return new(); } public void WaitForShutdown() => shutdown.Wait();
+	[JsonRpcMethod("ping")] public object Ping() => new(); [JsonRpcMethod("shutdown")] public object Shutdown() { documents.CloseAll(_ => { }); shutdown.Set(); return new(); } public void WaitForShutdown() => shutdown.Wait(); public void OnParentDisconnected() => shutdown.Set();
 	sealed class DocumentSession { public DocumentSession(string documentId) => DocumentId = documentId; public string DocumentId { get; } public MxamlDocument Document { get; } = new(); public string FileName = ""; public long Version; }
 }

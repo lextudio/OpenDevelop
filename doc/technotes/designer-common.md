@@ -73,6 +73,10 @@ Lifecycle rules:
    and reuses the PID; expiry performs bounded `shutdown` and kills a stuck child.
 4. A transport failure, timeout or unexpected exit invalidates the pool generation exactly once.
    Every live lease becomes disconnected and receives the same generation-change notification.
+   The child bootstrap also treats RPC transport completion as a terminal signal. This is
+   independent of graceful `shutdown`: if the IDE is killed and cannot send that RPC, the child
+   must still exit instead of surviving as a PPID=1 orphan. `DesignerChildHostTests` closes the
+   parent TCP connection without calling `shutdown` and asserts that `Run` returns.
 5. Recovery starts one replacement, then reopens every live document from its latest parent-owned
    snapshot. `DocumentId` remains stable across recovery while `SessionId` changes; selection is
    restored by stable element name/id.
@@ -176,10 +180,30 @@ cycle to it; WinForms, WPF and WinUI/Uno retain backend multi-selection/gesture 
 routing their single-selection and Outline synchronization through the same controller.
 
 The second shell slice, `DesignerCommandController`, now provides a runtime-neutral registered
-command gateway with dynamic enablement, re-entrancy protection and state invalidation. GTK4 and
-MewUI route Undo, Redo and Delete through it while retaining their backend RPC mutations. The
-next migration step is to adapt WinForms, WPF and WinUI's richer multi-selection commands to this
-gateway, followed by the common Toolbox catalogue/filter controller.
+command gateway with dynamic enablement, re-entrancy protection and state invalidation. All five
+designers route Undo and Redo through it; GTK4, MewUI, WinForms and WinUI also route Delete through
+it. Backend implementations still own history storage, multi-selection semantics, source/RPC
+mutations and selection repair. The next extraction is the common Toolbox catalogue/filter
+controller.
+
+`DesignerToolboxController` now implements that runtime-neutral catalogue state: DTO
+deduplication, case-insensitive filtering across name/type/category, stable type-name selection
+restoration and selection clearing when a filter hides the item. WPF controls remain views over
+this state; backend/runtime catalogue production and insertion RPC remain adapter responsibilities.
+
+All five designers expose the same case-insensitive control-name/category filtering contract.
+GTK 4 and MewUI share `DesignerToolboxController`; WPF, WinForms and WinUI share the scoped
+`SharedToolbox`. Both engines clear a selection hidden by a filter and restore the preferred item
+when that filter is cleared. `SharedToolbox.AddItems` also de-duplicates scope/category/name keys,
+so opening multiple WinUI documents cannot multiply catalogue rows. The five DevFlow endpoints are
+named `od.<designer>.toolbox.filter` and report the normalized filter plus visible item count.
+
+The real Tools pad now supplies the common visual search chrome for every `IFilterableToolbox`:
+a text field, clear button, Escape-to-clear and Down-arrow navigation into the catalogue. The pad
+keeps `IToolsPadHost.HostedContent` pointed at the original ListBox, preserving drag automation and
+document-host identity. Search wrappers are cached weakly per toolbox instance, so switching among
+multiple designer windows reuses their logical tree and retains per-document search state without
+leaking closed views.
 
 ### Observability and acceptance
 
@@ -668,7 +692,7 @@ test runner output, so relying only on the host-app build can otherwise execute 
 |---|---|---|---|---|---|---|
 | Protocol DTOs + process lifecycle | `src/Main/Designer/Designer.Remote/` | `FormsDesignerHostClient` | `WpfSurfaceHostClient` | `UnoDesignClient` | `MewUIDesignerHostClient` | `GtkDesignerHostClient` |
 | Geometry/rendering helpers | `src/Main/Designer/Designer.Presentation/` | used | used | used | n/a (semantic WPF projection) | native GTK PNG + Gir.Core bounds/hit-test |
-| Child-process bootstrap | `src/Main/Designer/Designer.Server/` (`DesignerChildHost`) | `DesignerChildHost.Run` | `DesignerChildHost.Run` | own dispatcher pump | host-specific pump | host-specific pump |
+| Child-process bootstrap | `src/Main/Designer/Designer.Server/` (`DesignerChildHost`) | `DesignerChildHost.Run` | `DesignerChildHost.Run` + WPF main-thread dispatcher | own dispatcher pump | `DesignerChildHost.Run` | `DesignerChildHost.Run` |
 | Canvas shell | `DesignerCanvas.cs` | `RemoteFormsDesignerControl` | `WpfSurfaceDesignerControl` | `UnoDesignSurfaceControl` | shared-pad composition (outline/tools/properties) | shared-pad composition |
 | Toolbox pad engine | `SharedToolbox.cs` | `WpfToolbox` facade | `WpfToolbox` facade | `WinUIXamlToolbox` facade | in-addin catalogue | in-addin catalogue |
 | Child process | — | `FormsDesigner/Host/` | `WpfDesign.SurfaceHost/` | `WinUIXamlDesigner.UnoHost/` | `MewUIDesigner.Host/` (Roslyn transforms) | `GtkDesigner.Host/` (GtkBuilder XML transforms) |
@@ -1568,6 +1592,23 @@ acceptance check, so the list can be resumed by a fresh session at any point.
 - Frame traffic is bounded and backpressured; no unbounded frame queue exists.
 - Tests cover open/edit/flush/save races, stale versions, invalid XAML recovery, crash/restart,
   and simultaneous projects with incompatible runtimes.
+
+## Shared shell contracts completed (2026-08-24)
+
+- `DesignerPadController` is the runtime-neutral bridge from `DesignerSelectionController` to
+  Outline and Properties. It owns tree refresh, stable-id reselection, property-object rebinding,
+  Outline-to-surface commits and the re-entry guard. GTK 4 and MewUI now use it directly; WPF,
+  WinUI and WinForms retain thin backend adapters where multi-selection or native property services
+  require extra behavior.
+- `DesignerDevFlowResults` provides the stable JSON envelopes used by all five designers for
+  Toolbox filtering, failures and host restart results. Tests parse the JSON contract rather than
+  comparing implementation-specific strings.
+- `SharedDesignerHostPoolTests` exercises forty acquire/release cycles with five concurrent
+  documents and periodic invalidation. The acceptance condition is zero leaked leases and no more
+  than one live connection after every recovery cycle.
+- The live integration gate remains pad-based: GTK 4 and MewUI tests assert the actual Tools,
+  Outline and Properties hosts, not only designer-internal state. Representative WPF, WinUI and
+  WinForms paths consume the same Toolbox/DevFlow contracts.
 
 ## References
 

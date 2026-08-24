@@ -49,9 +49,12 @@ public sealed class MewUIDesignerTests : IAsyncDisposable
 		Assert.True(status.GetProperty("active").GetBoolean(), status.ToString());
 		Assert.True(status.GetProperty("hostProcessId").GetInt32() > 0, "MewUI designer did not start its isolated host: " + status);
 		Assert.True(status.GetProperty("toolboxHosted").GetBoolean(), "The real Tools pad did not host the MewUI toolbox: " + status);
+		Assert.True(status.GetProperty("toolboxSearchHosted").GetBoolean(), "The visible Toolbox search UI was not mounted: " + status);
 		Assert.True(status.GetProperty("outlineHosted").GetBoolean(), "The real Outline pad did not host the MewUI tree: " + status);
 		Assert.Equal(status.GetProperty("elementCount").GetInt32(), status.GetProperty("outlineItemCount").GetInt32());
 		Assert.True(status.GetProperty("toolboxItemCount").GetInt32() >= 16, status.ToString());
+		var filteredTools = await app.InvokeAsync("od.mewui-designer.toolbox.filter", "textbox"); Assert.Equal(1, filteredTools.GetProperty("itemCount").GetInt32());
+		var allTools = await app.InvokeAsync("od.mewui-designer.toolbox.filter", ""); Assert.True(allTools.GetProperty("itemCount").GetInt32() >= 16, allTools.ToString());
 		Assert.Equal(3, status.GetProperty("toolbarItemCount").GetInt32());
 		Assert.Equal(new[] { "Zoom", "Fit", "Gridlines" }, status.GetProperty("toolbarItems").EnumerateArray().Select(x => x.GetString()).ToArray());
 		var zoomed = await app.InvokeAsync("od.mewui-designer.zoom", 1.25); Assert.Equal(1.25, zoomed.GetProperty("zoom").GetDouble());

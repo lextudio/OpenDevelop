@@ -972,6 +972,11 @@ public sealed class AddInTests : IAsyncDisposable
             "Expected the toolbox to list at least the popular WPF controls");
         Assert.True(status.GetProperty("toolboxGroupCount").GetInt32() > 0,
             "Expected the toolbox to show at least one control group");
+        Assert.True(status.GetProperty("toolboxSearchHosted").GetBoolean(), status.ToString());
+        var filteredTools = await _app.InvokeAsync("od.wpf-designer.toolbox.filter", "button");
+        Assert.True(filteredTools.GetProperty("itemCount").GetInt32() > 0, filteredTools.ToString());
+        var restoredTools = await _app.InvokeAsync("od.wpf-designer.toolbox.filter", "");
+        Assert.Equal(status.GetProperty("toolboxItemCount").GetInt32(), restoredTools.GetProperty("itemCount").GetInt32());
 
         // Outline pad: the flattened element tree should include MainWindow.xaml's named controls.
         var outlineNames = status.GetProperty("outlineNames").EnumerateArray()
@@ -1005,6 +1010,11 @@ public sealed class AddInTests : IAsyncDisposable
 
         Assert.True(ready, status.ToString());
         Assert.Equal("Uno", status.GetProperty("framework").GetString());
+        Assert.True(status.GetProperty("toolboxSearchHosted").GetBoolean(), status.ToString());
+        var filteredTools = await _app.InvokeAsync("od.winui-designer.toolbox.filter", "button");
+        Assert.True(filteredTools.GetProperty("itemCount").GetInt32() > 0, filteredTools.ToString());
+        var restoredTools = await _app.InvokeAsync("od.winui-designer.toolbox.filter", "");
+        Assert.Equal(status.GetProperty("toolboxItemCount").GetInt32(), restoredTools.GetProperty("itemCount").GetInt32());
         // The preview must come from ProGPU's compiled WinUI pipeline. A WPF XamlReader renderer
         // impersonating a WinUI designer is explicitly not an acceptable pass.
         Assert.Contains("Rendered by Uno design host", status.GetProperty("status").GetString(), StringComparison.OrdinalIgnoreCase);
@@ -2204,6 +2214,11 @@ public sealed class AddInTests : IAsyncDisposable
             Assert.True(status.GetProperty("designerLoaded").GetBoolean(), status.ToString());
             Assert.False(status.GetProperty("usesCodeDomLoader").GetBoolean(), status.ToString());
             Assert.Contains("RoslynDesignerLoader", status.GetProperty("loaderType").GetString(), StringComparison.Ordinal);
+            Assert.True(status.GetProperty("toolboxSearchHosted").GetBoolean(), status.ToString());
+            var filteredTools = await _app.InvokeAsync("od.forms-designer.toolbox.filter", "button");
+            Assert.True(filteredTools.GetProperty("itemCount").GetInt32() > 0, filteredTools.ToString());
+            var restoredTools = await _app.InvokeAsync("od.forms-designer.toolbox.filter", "");
+            Assert.True(restoredTools.GetProperty("itemCount").GetInt32() > filteredTools.GetProperty("itemCount").GetInt32(), restoredTools.ToString());
             var controlNamesBefore = status.GetProperty("controlNames").EnumerateArray()
                 .Select(n => n.GetString()).ToArray();
             Assert.Contains("dropPanel", controlNamesBefore);

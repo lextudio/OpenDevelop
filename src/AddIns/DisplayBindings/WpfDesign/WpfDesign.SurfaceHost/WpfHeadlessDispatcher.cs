@@ -19,8 +19,15 @@ sealed class WpfHeadlessDispatcher
 	readonly Thread thread;
 	Dispatcher? dispatcher;
 
-	public WpfHeadlessDispatcher()
+	public WpfHeadlessDispatcher(bool useCurrentThread = false)
 	{
+		if (useCurrentThread) {
+			thread = Thread.CurrentThread;
+			dispatcher = Dispatcher.CurrentDispatcher;
+			if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+				Dispatcher.NativeInputPump ??= () => { };
+			return;
+		}
 		using var ready = new ManualResetEventSlim(false);
 		thread = new Thread(() => {
 			dispatcher = Dispatcher.CurrentDispatcher;
@@ -45,6 +52,7 @@ sealed class WpfHeadlessDispatcher
 	}
 
 	public Dispatcher Dispatcher => dispatcher!;
+	public void Run() => Dispatcher.Run();
 
 	/// <summary>Runs <paramref name="action"/> on the dispatcher thread and blocks for its result.</summary>
 	public T Dispatch<T>(Func<T> action)
@@ -67,6 +75,6 @@ sealed class WpfHeadlessDispatcher
 	public void Shutdown()
 	{
 		if (dispatcher is { HasShutdownStarted: false, HasShutdownFinished: false })
-			dispatcher.InvokeShutdown();
+			dispatcher.BeginInvokeShutdown(DispatcherPriority.Send);
 	}
 }

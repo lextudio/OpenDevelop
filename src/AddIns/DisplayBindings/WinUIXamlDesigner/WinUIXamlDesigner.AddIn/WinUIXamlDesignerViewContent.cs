@@ -40,6 +40,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	};
 	readonly DocumentOutlineControl outline = new();
 	readonly DesignerSelectionController shellSelection = new();
+	readonly DesignerCommandController commands = new();
 	readonly PropertyContainer propertyContainer = new();
 	readonly WinUIXamlDocumentEditor editor = new();
 	string documentError;
@@ -67,6 +68,9 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		previewHost.ContextCommandRequested += OnContextCommandOnSurface;
 		previewHost.NudgeRequested += OnNudgeRequestedOnSurface;
 		previewHost.UndoRedoRequested += OnUndoRedoRequestedOnSurface;
+		commands.Register("Undo", () => editor.CanUndo, () => ReplayHistory(editor.Undo()));
+		commands.Register("Redo", () => editor.CanRedo, () => ReplayHistory(editor.Redo()));
+		commands.Register("Delete", () => editor.FindElement(SelectedElementName) != null, DeleteSelectedCore);
 		TabPageText = "Design";
 		root.RowDefinitions.Add(new RowDefinition());
 		root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -100,12 +104,12 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	public PropertyContainer PropertyContainer => propertyContainer;
 
 	public string SelectedElementName { get; private set; }
-	public bool CanUndo => editor.CanUndo;
-	public bool CanRedo => editor.CanRedo;
+	public bool CanUndo => commands.CanExecute("Undo");
+	public bool CanRedo => commands.CanExecute("Redo");
 	// IUndoHandler (routed from the workbench window's ApplicationCommands.Undo/Redo bindings,
 	// so Ctrl+Z/Ctrl+Y keep working even when keyboard focus is in a tool pad).
-	bool IUndoHandler.EnableUndo => editor.CanUndo;
-	bool IUndoHandler.EnableRedo => editor.CanRedo;
+	bool IUndoHandler.EnableUndo => CanUndo;
+	bool IUndoHandler.EnableRedo => CanRedo;
 	void IUndoHandler.Undo() => Undo();
 	void IUndoHandler.Redo() => Redo();
 	public string DocumentError => documentError;
@@ -301,10 +305,10 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 
 	public void DeleteSelected()
 	{
-		var element = editor.FindElement(SelectedElementName)
-			?? throw new InvalidOperationException("Nothing is selected.");
-		DeleteElement(SelectedElementName);
+		commands.Execute("Delete");
 	}
+
+	bool DeleteSelectedCore() { DeleteElement(SelectedElementName); return true; }
 
 	/// <summary>Deletes the named element as a source edit and clears the selection.</summary>
 	public void DeleteElement(string name)
@@ -321,8 +325,8 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		ApplyDocumentChange(xaml => previewHost.TryDeleteElements(new[] { name }, xaml));
 	}
 
-	public bool Undo() => ReplayHistory(editor.Undo());
-	public bool Redo() => ReplayHistory(editor.Redo());
+	public bool Undo() => commands.Execute("Undo");
+	public bool Redo() => commands.Execute("Redo");
 
 	bool ReplayHistory(bool moved)
 	{
@@ -1122,25 +1126,26 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			return;
 		// The runtime keeps the primary selection first; sync it to the pad/outline and
 		// remember the full set for multi-element actions.
-		multiSelectedNames.Clear();
-		multiSelectedNames.AddRange(names);
 		SelectElement(names[0]);
+		shellSelection.Select(names);
 	}
-
-	readonly List<string> multiSelectedNames = new();
 
 	/// <summary>The current multi-selection (primary first), or a single-element list.</summary>
 	public IReadOnlyList<string> MultiSelectedNames
-		=> multiSelectedNames.Count > 0
-			? multiSelectedNames
+		=> shellSelection.SelectedIds.Count > 0
+			? shellSelection.SelectedIds
 			: SelectedElementName == null ? Array.Empty<string>() : new[] { SelectedElementName };
 
 	/// <summary>Sets the design-surface multi-selection programmatically (primary = first).</summary>
 	public void MultiSelect(IReadOnlyList<string> names)
 	{
 		previewHost.SelectElements(names);
-		if (names.Count > 0)
+		if (names.Count > 0) {
 			SelectElement(names[0]);
+			shellSelection.Select(names);
+		} else {
+			shellSelection.Select(Array.Empty<string>());
+		}
 	}
 
 	/// <summary>All selected elements with their design bounds (primary first).</summary>

@@ -35,10 +35,13 @@ public sealed class GtkDesignerTests : IAsyncDisposable
 		var runBounds = await app.InvokeAsync("od.gtk-designer.bounds", "runButton"); Assert.True(runBounds.GetProperty("success").GetBoolean(), runBounds.ToString());
 		var nativeHit = await app.InvokeAsync("od.gtk-designer.hit-test", runBounds.GetProperty("x").GetDouble() + runBounds.GetProperty("width").GetDouble() / 2, runBounds.GetProperty("y").GetDouble() + runBounds.GetProperty("height").GetDouble() / 2);
 		Assert.True(nativeHit.GetProperty("success").GetBoolean(), nativeHit.ToString()); Assert.Equal("runButton", nativeHit.GetProperty("selectedId").GetString());
-		Assert.True(status.GetProperty("toolboxHosted").GetBoolean(), "The real Tools pad did not host the GTK toolbox: " + status);
+			Assert.True(status.GetProperty("toolboxHosted").GetBoolean(), "The real Tools pad did not host the GTK toolbox: " + status);
+			Assert.True(status.GetProperty("toolboxSearchHosted").GetBoolean(), "The visible Toolbox search UI was not mounted: " + status);
 		Assert.True(status.GetProperty("outlineHosted").GetBoolean(), "The real Outline pad did not host the GTK tree: " + status);
 		Assert.Equal(status.GetProperty("elementCount").GetInt32(), status.GetProperty("outlineItemCount").GetInt32());
 		Assert.True(status.GetProperty("toolboxItemCount").GetInt32() >= 15, status.ToString());
+		var filteredTools = await app.InvokeAsync("od.gtk-designer.toolbox.filter", "switch"); Assert.Equal(1, filteredTools.GetProperty("itemCount").GetInt32());
+		var allTools = await app.InvokeAsync("od.gtk-designer.toolbox.filter", ""); Assert.True(allTools.GetProperty("itemCount").GetInt32() >= 15, allTools.ToString());
 		Assert.Equal(3, status.GetProperty("toolbarItemCount").GetInt32());
 		Assert.Equal(new[] { "Zoom", "Fit", "Gridlines" }, status.GetProperty("toolbarItems").EnumerateArray().Select(x => x.GetString()).ToArray());
 		var zoomed = await app.InvokeAsync("od.gtk-designer.zoom", 1.5); Assert.Equal(1.5, zoomed.GetProperty("zoom").GetDouble());
@@ -99,7 +102,7 @@ public sealed class GtkDesignerTests : IAsyncDisposable
 		var closedSettings = await app.InvokeAsync("od.close-active-view"); Assert.True(closedSettings.GetProperty("success").GetBoolean(), closedSettings.ToString());
 		var reactivateMain = await app.InvokeAsync("od.open-file", uiPath); Assert.True(reactivateMain.GetProperty("opened").GetBoolean(), reactivateMain.ToString());
 		var mainAgain = await WaitAsync("mainWindow"); Assert.Equal(recoveredHostProcessId, mainAgain.GetProperty("hostProcessId").GetInt32()); Assert.True(mainAgain.GetProperty("hostRecoveryCount").GetInt32() > 0, mainAgain.ToString()); Assert.Equal(5, mainAgain.GetProperty("elementCount").GetInt32());
-		var mainSelectionAgain = await app.InvokeAsync("od.gtk-designer.select", "entry1"); Assert.True(mainSelectionAgain.GetProperty("success").GetBoolean(), mainSelectionAgain.ToString());
+			var mainSelectionAgain = await app.InvokeAsync("od.gtk-designer.select", "entry1"); Assert.True(mainSelectionAgain.GetProperty("success").GetBoolean(), mainSelectionAgain + " status=" + mainAgain);
 		await ValidateFixtureBuildAsync(projectPath);
 	}
 

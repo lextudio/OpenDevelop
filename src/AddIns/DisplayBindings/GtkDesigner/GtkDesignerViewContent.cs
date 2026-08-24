@@ -19,17 +19,19 @@ using ICSharpCode.SharpDevelop.Widgets;
 
 namespace ICSharpCode.GtkDesigner;
 
-public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErrors, IOutlineContentHost, IToolsHost, IHasPropertyContainer, IUndoHandler
+public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErrors, IOutlineContentHost, IToolsHost, IHasPropertyContainer, IUndoHandler, IFilterableToolbox
 {
 	public static readonly string[] ToolNames = { "GtkBox", "GtkGrid", "GtkCenterBox", "GtkPaned", "GtkScrolledWindow", "GtkLabel", "GtkButton", "GtkEntry", "GtkPasswordEntry", "GtkCheckButton", "GtkSwitch", "GtkSpinButton", "GtkDropDown", "GtkListBox", "GtkListView", "GtkGridView", "GtkImage", "GtkPicture", "GtkProgressBar", "GtkSeparator" };
-	readonly DocumentOutlineControl outline = new(); readonly ListBox toolbox = new() { ItemsSource = ToolNames }; readonly PropertyContainer properties = new();
+	readonly DocumentOutlineControl outline = new(); readonly ListBox toolbox = new() { DisplayMemberPath = nameof(DesignerToolboxItemInfo.DisplayName) }; readonly PropertyContainer properties = new();
+	readonly DesignerToolboxController toolboxModel = new();
 	readonly DesignerSelectionController selection;
+	readonly DesignerPadController pads;
 	readonly DesignerCommandController commands = new();
 	readonly Border surface = new() { Padding = new Thickness(24), Background = Brushes.DimGray };
 	readonly TextBlock diagnostic = new() { Foreground = Brushes.OrangeRed, Margin = new Thickness(8), TextWrapping = TextWrapping.Wrap };
 	readonly DesignerCanvas canvas = new();
 	readonly Dictionary<string, FrameworkElement> nativeTargetsById = new();
-	bool draggingFromToolbox; string? pressedToolboxType;
+	bool draggingFromToolbox; bool syncingToolbox; string? pressedToolboxType;
 	readonly ScrollViewer scroller = new() { HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
 	GtkDesignerHostClient? host; DesignerSessionState state = new(); DesignerElementNode? selected; string loadedText = "";
 	CancellationTokenSource? renderCancellation; long requestedRenderRevision; long renderedRevision;
@@ -37,16 +39,22 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 
 	public GtkDesignerViewContent(OpenedFile file) : base(file)
 	{
-		selection = new DesignerSelectionController(node => new GtkPropertyAdapter(node, (name, value) => SetSelectedProperty(name, value)));
+		toolboxModel.SetItems(ToolNames.Select(name => new DesignerToolboxItemInfo { Name = name, DisplayName = name, TypeName = name, Category = "GTK 4" }));
+		toolbox.ItemsSource = toolboxModel.VisibleItems;
+		toolbox.Tag = this;
+		toolboxModel.ItemsChanged += (_, _) => { syncingToolbox = true; toolbox.ItemsSource = toolboxModel.VisibleItems; toolbox.SelectedItem = toolboxModel.SelectedItem; syncingToolbox = false; };
+		toolboxModel.SelectionChanged += (_, _) => { syncingToolbox = true; toolbox.SelectedItem = toolboxModel.SelectedItem; syncingToolbox = false; };
+		toolbox.SelectionChanged += (_, _) => { if (!syncingToolbox) toolboxModel.Select((toolbox.SelectedItem as DesignerToolboxItemInfo)?.TypeName); };
+		selection = new DesignerSelectionController(node => new GtkPropertyAdapter(node, (name, value) => SetSelectedProperty(name, value)),
+			nodes => nodes.Select(node => (object)new GtkPropertyAdapter(node, (name, value) => SetSelectedProperty(name, value))).ToArray());
 		commands.Register("Undo", () => host?.IsAlive == true, () => { Mutate(() => host!.UndoAsync(state.Version).GetAwaiter().GetResult()); return true; });
 		commands.Register("Redo", () => host?.IsAlive == true, () => { Mutate(() => host!.RedoAsync(state.Version).GetAwaiter().GetResult()); return true; });
 		commands.Register("Delete", () => selected != null && host?.IsAlive == true, DeleteSelectedCore);
-		selection.TreeChanged += (_, _) => outline.SetRoots(selection.Roots);
-		selection.SelectionChanged += (_, _) => { selected = selection.SelectedNode; properties.SelectedObject = selection.SelectedPropertyObject; if (selection.SelectedId != null) outline.SelectNodeById(selection.SelectedId); };
+		pads = new DesignerPadController(selection, outline.SetRoots, value => { if (value is object[] many) properties.SelectedObjects = many; else properties.SelectedObject = value; }, outline.SelectNodeById, node => selected = node);
 		TabPageText = "Design"; ConfigureCanvas(); var grid = new Grid(); grid.RowDefinitions.Add(new RowDefinition()); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 		grid.Children.Add(canvas); Grid.SetRow(diagnostic, 1); grid.Children.Add(diagnostic); UserContent = grid;
-		outline.SelectionCommitted += (_, _) => selection.Select(outline.SelectedNode?.Id);
-		toolbox.MouseDoubleClick += (_, _) => { if (toolbox.SelectedItem is string type) Add(type); }; toolbox.KeyDown += (_, e) => { if (e.Key == Key.Enter && toolbox.SelectedItem is string type) { Add(type); e.Handled = true; } };
+		outline.SelectionCommitted += (_, _) => pads.CommitOutlineSelection(outline.SelectedNode?.Id);
+		toolbox.MouseDoubleClick += (_, _) => { if (toolboxModel.SelectedItem is { } item) Add(item.TypeName); }; toolbox.KeyDown += (_, e) => { if (e.Key == Key.Enter && toolboxModel.SelectedItem is { } item) { Add(item.TypeName); e.Handled = true; } };
 		// Latch what was pressed, rather than reading toolbox.SelectedItem when the drag actually
 		// starts: leaving the list drags the pointer across neighbouring rows, and ListBox's own
 		// drag-selection retargets SelectedItem to each one it passes over. Measured: pressing
@@ -58,7 +66,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		// still-in-flight session before it reaches the drop target.
 		toolbox.PreviewMouseMove += (_, e) => {
 			if (e.LeftButton != MouseButtonState.Pressed) { draggingFromToolbox = false; return; }
-			var type = pressedToolboxType ?? toolbox.SelectedItem as string;
+			var type = pressedToolboxType ?? toolboxModel.SelectedItem?.TypeName;
 			if (draggingFromToolbox || type == null) return;
 			draggingFromToolbox = true;
 			DragDrop.DoDragDrop(toolbox, new DataObject(DataFormats.StringFormat, type), DragDropEffects.Copy);
@@ -67,22 +75,32 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		grid.CommandBindings.Add(new CommandBinding(ApplicationCommands.Undo, (_, _) => Undo())); grid.CommandBindings.Add(new CommandBinding(ApplicationCommands.Redo, (_, _) => Redo())); grid.CommandBindings.Add(new CommandBinding(ApplicationCommands.Delete, (_, _) => DeleteSelected()));
 	}
 	public object OutlineContent => outline; public object ToolsContent => toolbox; public ListBox ToolboxControl => toolbox; public int ZoomComboSelectedIndex => canvas.ZoomCombo.SelectedIndex; public PropertyContainer PropertyContainer => properties;
+	public string? SelectedToolboxType => toolboxModel.SelectedItem?.TypeName;
+	public DesignerToolboxItemInfo? SelectedToolboxItem => toolboxModel.SelectedItem;
+	public bool SelectToolboxType(string type) { var ok = toolboxModel.Select(type); if (ok) toolbox.SelectedItem = toolboxModel.SelectedItem; return ok; }
+	public void FilterToolbox(string text) => toolboxModel.Filter(text);
+	void IFilterableToolbox.Filter(string text) => FilterToolbox(text);
+	int IFilterableToolbox.VisibleItemCount => ToolboxItemCount;
+	string IFilterableToolbox.FilterText => ToolboxFilterText;
+	public string ToolboxFilterText => toolboxModel.FilterText;
 	public FrameworkElement? FindNativeTarget(string id) => nativeTargetsById.GetValueOrDefault(id);
 	string? ToolboxTypeAt(Point point)
 	{
 		for (var hit = toolbox.InputHitTest(point) as DependencyObject; hit != null; hit = VisualTreeHelper.GetParent(hit))
-			if (hit is ListBoxItem row) return row.DataContext as string;
+			if (hit is ListBoxItem row) return (row.DataContext as DesignerToolboxItemInfo)?.TypeName;
 		return null;
 	}
 	public int ToolboxItemCount => toolbox.Items.Count; public bool IsToolboxHosted => ReferenceEquals((SD.Services.GetService(typeof(IToolsPadHost)) as IToolsPadHost)?.HostedContent, toolbox);
 	public bool IsOutlineHosted => ReferenceEquals((SD.Services.GetService(typeof(IOutlinePadHost)) as IOutlinePadHost)?.HostedContent, outline); public int OutlineItemCount => ElementCount;
 	public int ElementCount => state.Tree == null ? 0 : Flatten(state.Tree).Count(n => n.Id != "$interface"); public string SelectedId => selected?.Id ?? ""; public int HostProcessId => host?.ProcessId ?? 0;
+	public string[] ElementIds => state.Tree == null ? Array.Empty<string>() : Flatten(state.Tree).Where(n => n.Id != "$interface").Select(n => n.Id).ToArray();
 	public string RootId => state.Tree?.Id == "$interface" ? state.Tree.Children.FirstOrDefault()?.Id ?? "" : state.Tree?.Id ?? "";
 	public int ToolbarItemCount => canvas.VisibleToolbarItems.Count; public IReadOnlyList<string> ToolbarItems => canvas.VisibleToolbarItems; public string ToolbarCapabilities => canvas.Capabilities.ToString(); public double Zoom { get => zoom; set { zoom = Math.Clamp(value, .25, 2); surface.LayoutTransform = new ScaleTransform(zoom, zoom); } }
 	public bool Gridlines => gridlines; public bool FitMeasured { get; private set; } public void FitDesign() => FitView(); public void ShowGridlines(bool show) { canvas.IsGridEnabled = show; SetGridlines(show); }
 	public bool HasNativeFrame => !string.IsNullOrEmpty(state.Render?.PngBase64); public int NativeFrameWidth => state.Render?.Width ?? 0; public int NativeFrameHeight => state.Render?.Height ?? 0; public int NativeBoundsCount => state.Tree == null ? 0 : Flatten(state.Tree).Count(n => n.Width > 0 && n.Height > 0);
 	public string NativeFrameFingerprint => HasNativeFrame ? Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Convert.FromBase64String(state.Render!.PngBase64))) : "";
 	public string[] Diagnostics => state.Diagnostics.Select(d => d.Message).ToArray();
+	public string LoadError => HasLoadError && Control is ContentPresenter presenter && presenter.Content is TextBox error ? error.Text : "";
 	public string HostLog => host?.ChildLog ?? "";
 	public string HostSessionId => host?.SessionId ?? ""; public string HostDocumentId => host?.DocumentId ?? ""; public string HostPoolKey => host?.PoolKey ?? "gtk4"; public int ActiveHostLeases => GtkDesignerHostClient.ActiveLeaseCount; public int HostRecoveryCount => host?.RecoveryCount ?? 0;
 	public long RequestedRenderRevision => requestedRenderRevision; public long RenderedRevision => renderedRevision; public bool IsRenderPending => requestedRenderRevision > renderedRevision;
@@ -90,6 +108,8 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	public bool EnableUndo => commands.CanExecute("Undo"); public bool EnableRedo => commands.CanExecute("Redo");
 	public void Undo() => commands.Execute("Undo"); public void Redo() => commands.Execute("Redo");
 	public bool SelectById(string id) => selection.Select(id);
+	public IReadOnlyList<string> SelectedIds => selection.SelectedIds;
+	public bool SelectByIds(IEnumerable<string> ids) => pads.CommitSelection(ids);
 	public DesignerElementNode? FindById(string id) => selection.Find(id);
 	public bool HitTest(double x, double y) { if (host == null) return false; var result = host.HitTestAsync(state.Version, x, y).GetAwaiter().GetResult(); return result.Hit && SelectById(result.ComponentName); }
 	public bool SetSelectedProperty(string name, string value) { if (selected == null || host == null) return false; var old = selected.Id; Mutate(() => host.SetPropertyAsync(state.Version, old, name, value).GetAwaiter().GetResult()); return SelectById(name == "$id" ? value : old); }
@@ -118,7 +138,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 			await Application.Current.Dispatcher.InvokeAsync(() => { if (token.IsCancellationRequested || host != renderingHost || state.Version != version || rendered.Render?.Sequence != version) return; state = rendered; renderedRevision = version; Rebuild(); });
 		} catch (OperationCanceledException) { } catch (Exception ex) { await Application.Current.Dispatcher.InvokeAsync(() => diagnostic.Text = "GTK render failed: " + ex.Message); }
 	}
-	void Rebuild() { diagnostic.Text = Status; nativeTargetsById.Clear(); selection.UpdateRoots(state.Tree == null ? null : state.Tree.Id == "$interface" ? state.Tree.Children : new[] { state.Tree }); var previewRoot = state.Tree?.Id == "$interface" ? state.Tree.Children.FirstOrDefault() : state.Tree; surface.Child = previewRoot == null ? new TextBlock { Text = "No GTK 4 object tree found.", Foreground = Brushes.White } : NativePreview(previewRoot); }
+	void Rebuild() { diagnostic.Text = Status; nativeTargetsById.Clear(); pads.UpdateRoots(state.Tree == null ? null : state.Tree.Id == "$interface" ? state.Tree.Children : new[] { state.Tree }); var previewRoot = state.Tree?.Id == "$interface" ? state.Tree.Children.FirstOrDefault() : state.Tree; surface.Child = previewRoot == null ? new TextBlock { Text = "No GTK 4 object tree found.", Foreground = Brushes.White } : NativePreview(previewRoot); }
 	FrameworkElement NativePreview(DesignerElementNode root)
 	{
 		if (!HasNativeFrame) return Preview(root);
@@ -142,8 +162,8 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		hits.Drop += (_, e) => { if (e.Data.GetData(DataFormats.StringFormat) is not string type || !ToolNames.Contains(type, StringComparer.Ordinal)) return; var over = NativeNodeAt(root, e.GetPosition(hits)); if (over != null) Select(over); Add(type); e.Handled = true; };
 		var result = new Grid { Width = state.Render.Width, Height = state.Render.Height, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top }; result.Children.Add(image); result.Children.Add(hits); return result;
 	}
-	FrameworkElement Preview(DesignerElementNode? node) { if (node == null) return new TextBlock { Text = "Empty GTK interface" }; FrameworkElement result; if (IsContainer(node)) { var panel = new StackPanel { Background = Brushes.White, MinWidth = 480, MinHeight = 48, Orientation = Value(node, "orientation", "vertical") == "horizontal" ? Orientation.Horizontal : Orientation.Vertical }; foreach (var child in node.Children) panel.Children.Add(Preview(child)); result = panel; } else if (node.Type == "GtkButton") result = new Button { Content = Value(node, "label", node.Id) }; else if (node.Type is "GtkEntry" or "GtkPasswordEntry") result = new TextBox { Text = Value(node, "text", ""), MinWidth = 160 }; else if (node.Type == "GtkCheckButton") result = new CheckBox { Content = Value(node, "label", node.Id) }; else if (node.Type == "GtkProgressBar") result = new ProgressBar { Value = 45, Width = 180, Height = 18 }; else result = new TextBlock { Text = Value(node, "label", node.Id) }; result.Margin = new Thickness(5); result.PreviewMouseLeftButtonDown += (_, e) => { Select(node); e.Handled = true; }; return result; }
-	void Select(DesignerElementNode? node) => selection.Select(node);
+	FrameworkElement Preview(DesignerElementNode? node) { if (node == null) return new TextBlock { Text = "Empty GTK interface" }; FrameworkElement result; if (IsContainer(node)) { var panel = new StackPanel { Background = Brushes.White, MinWidth = 480, MinHeight = 48, Orientation = Value(node, "orientation", "vertical") == "horizontal" ? Orientation.Horizontal : Orientation.Vertical }; foreach (var child in node.Children) panel.Children.Add(Preview(child)); result = panel; } else if (node.Type == "GtkButton") result = new Button { Content = Value(node, "label", node.Id) }; else if (node.Type is "GtkEntry" or "GtkPasswordEntry") result = new TextBox { Text = Value(node, "text", ""), MinWidth = 160 }; else if (node.Type == "GtkCheckButton") result = new CheckBox { Content = Value(node, "label", node.Id) }; else if (node.Type == "GtkProgressBar") result = new ProgressBar { Value = 45, Width = 180, Height = 18 }; else result = new TextBlock { Text = Value(node, "label", node.Id) }; result.Margin = new Thickness(5); result.PreviewMouseLeftButtonDown += (_, e) => { Select(node, Keyboard.Modifiers.HasFlag(ModifierKeys.Control)); e.Handled = true; }; return result; }
+	void Select(DesignerElementNode? node, bool toggle = false) => selection.Select(node == null ? Array.Empty<DesignerElementNode>() : new[] { node }, toggle ? DesignerSelectionOperation.Toggle : DesignerSelectionOperation.Replace);
 	void ConfigureCanvas() { canvas.Capabilities = DesignerCanvasCapabilities.Zoom | DesignerCanvasCapabilities.Fit | DesignerCanvasCapabilities.Gridlines; foreach (var label in new[] { "Fit", "25%", "50%", "75%", "100%", "125%", "150%", "200%" }) canvas.ZoomCombo.Items.Add(label); canvas.ZoomCombo.SelectedIndex = 4; canvas.ZoomChanged += (_, _) => { if (canvas.ZoomCombo.SelectedIndex == 0) FitView(); else Zoom = new[] { .25, .5, .75, 1, 1.25, 1.5, 2 }[canvas.ZoomCombo.SelectedIndex - 1]; }; canvas.FitRequested += (_, _) => FitView(); canvas.GridRequested += (_, show) => SetGridlines(show); scroller.Content = surface; canvas.ContentHost.Content = scroller; }
 	void FitView() { var child = surface.Child as FrameworkElement; var width = (child?.ActualWidth ?? 0) + surface.Padding.Left + surface.Padding.Right; var height = (child?.ActualHeight ?? 0) + surface.Padding.Top + surface.Padding.Bottom; FitMeasured = width > 0 && height > 0 && scroller.ViewportWidth > 0 && scroller.ViewportHeight > 0; Zoom = FitMeasured ? Math.Min(scroller.ViewportWidth / width, scroller.ViewportHeight / height) : 1; if (canvas.ZoomCombo.SelectedIndex != 0) canvas.ZoomCombo.SelectedIndex = 0; }
 	void SetGridlines(bool show) { gridlines = show; surface.Background = show ? GridBrush() : Brushes.DimGray; }
@@ -154,8 +174,9 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	bool ReorderBetween(DesignerElementNode root, DesignerElementNode source, DesignerElementNode target) { var parent = Flatten(root).FirstOrDefault(p => p.Children.Contains(source) && p.Children.Contains(target)); if (parent == null) return false; var delta = parent.Children.IndexOf(target) - parent.Children.IndexOf(source); if (delta == 0) return false; Select(source); return ReorderSelected(delta); }
 	static string Value(DesignerElementNode n, string key, string fallback) => n.Properties.FirstOrDefault(p => p.Name == key)?.Value ?? fallback; static IEnumerable<DesignerElementNode> Flatten(DesignerElementNode n) => new[] { n }.Concat(n.Children.SelectMany(Flatten));
 	DesignerDocumentSnapshot Snapshot(string text, long version) => new() { Version = version, PrimaryFileName = PrimaryFile?.FileName.ToString() ?? "", Files = { new DesignerSourceFileSnapshot { FileName = PrimaryFile?.FileName.ToString() ?? "", Kind = "Designer", Text = text } } };
-	protected override void LoadInternal(OpenedFile file, Stream stream) { using var reader = new StreamReader(stream, leaveOpen: true); loadedText = reader.ReadToEnd(); if (host == null) { host = GtkDesignerHostClient.CreateAsync().GetAwaiter().GetResult(); host.Recovered += HostRecovered; } state = host.OpenAsync(Snapshot(loadedText, 1)).GetAwaiter().GetResult(); requestedRenderRevision = renderedRevision = state.Render?.Sequence ?? 0; Rebuild(); }
+	protected override void LoadInternal(OpenedFile file, Stream stream) { using var reader = new StreamReader(stream, leaveOpen: true); loadedText = reader.ReadToEnd(); if (host == null) { host = GtkDesignerHostClient.CreateAsync().GetAwaiter().GetResult(); host.Recovered += HostRecovered; } state = host.OpenAsync(Snapshot(loadedText, 1)).GetAwaiter().GetResult(); requestedRenderRevision = renderedRevision = state.Render?.Sequence ?? 0; Rebuild();
+		OutputChannel.Write("GtkDesigner", "Host started for " + System.IO.Path.GetFileName(file.FileName.ToString())); }
 	protected override void SaveInternal(OpenedFile file, Stream stream) { var text = host == null ? loadedText : host.FlushAsync(state.Version).GetAwaiter().GetResult().Files[0].Text; using var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(false), leaveOpen: true); writer.Write(text); writer.Flush(); loadedText = text; }
-	void HostRecovered(object? sender, DesignerSessionState recovered) { Application.Current.Dispatcher.BeginInvoke(new Action(() => { state = recovered; requestedRenderRevision = renderedRevision = recovered.Render?.Sequence ?? 0; Rebuild(); })); }
-	public override void Dispose() { renderCancellation?.Cancel(); renderCancellation?.Dispose(); properties.Clear(); if (host != null) host.Recovered -= HostRecovered; host?.Dispose(); base.Dispose(); }
+	void HostRecovered(object? sender, DesignerSessionState recovered) { Application.Current.Dispatcher.BeginInvoke(new Action(() => { OutputChannel.Write("GtkDesigner", "Host recovered"); state = recovered; requestedRenderRevision = renderedRevision = recovered.Render?.Sequence ?? 0; Rebuild(); })); }
+	public override void Dispose() { OutputChannel.Write("GtkDesigner", "Designer view disposed"); renderCancellation?.Cancel(); renderCancellation?.Dispose(); pads.Dispose(); properties.Clear(); if (host != null) host.Recovered -= HostRecovered; host?.Dispose(); base.Dispose(); }
 }

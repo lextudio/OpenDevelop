@@ -72,7 +72,8 @@ namespace ICSharpCode.FormsDesigner
 		RemoteFormsDesignerControl remoteControl;
 		long remoteDocumentVersion;
 		readonly Stack<Dictionary<string, string>> remoteUndo = new Stack<Dictionary<string, string>>();
-		readonly Stack<Dictionary<string, string>> remoteRedo = new Stack<Dictionary<string, string>>();
+			readonly Stack<Dictionary<string, string>> remoteRedo = new Stack<Dictionary<string, string>>();
+			readonly DesignerCommandController commands = new DesignerCommandController();
 		List<DesignerComponentInfo> remoteClipboard;
 		
 		readonly DesignerSourceCodeStorage sourceCodeStorage;
@@ -364,8 +365,11 @@ namespace ICSharpCode.FormsDesigner
 		
 		FormsDesignerViewContent(IViewContent primaryViewContent)
 			: base()
-		{
-			this.TabPageText = "${res:FormsDesigner.DesignTabPages.DesignTabPage}";
+			{
+				commands.Register("Undo", () => IsRemoteDesignerLoaded && remoteUndo.Count > 0, UndoCore);
+				commands.Register("Redo", () => IsRemoteDesignerLoaded && remoteRedo.Count > 0, RedoCore);
+				commands.Register("Delete", () => SelectedRemoteComponents().Count > 0, DeleteCore);
+				this.TabPageText = "${res:FormsDesigner.DesignTabPages.DesignTabPage}";
 			
 			this.primaryViewContent = primaryViewContent;
 			
@@ -541,6 +545,7 @@ namespace ICSharpCode.FormsDesigner
 			remoteClient.HostExited += RemoteHostExited;
 			var snapshot = CreateRemoteSnapshot(++remoteDocumentVersion);
 			var state = remoteClient.OpenAsync(snapshot, System.Threading.CancellationToken.None).GetAwaiter().GetResult();
+				OutputChannel.Write("WinForms", "Design host opened for " + PrimaryFile.FileName);
 			if (!state.Accepted) throw new FormsDesignerLoadException(state.Error);
 			remoteControl = new RemoteFormsDesignerControl(remoteClient);
 			remoteControl.ToolboxDrop += RemoteToolboxDrop;
@@ -683,6 +688,7 @@ namespace ICSharpCode.FormsDesigner
 				remoteControl = null;
 				base.UserContent = null;
 			}
+			OutputChannel.Write("WinForms", "Design host disposed");
 			remoteClient?.Dispose();
 			remoteClient = null;
 		}
@@ -784,7 +790,7 @@ namespace ICSharpCode.FormsDesigner
 				return;
 			}
 			propertyContainer.SelectedObject = new RemoteComponentPropertyProxy(this, component);
-			shellSelection.Select(component.Name);
+			shellSelection.Select(remoteControl.SelectedComponentNames);
 			// Design surface -> Document Outline: mirror the selection without re-triggering
 			// the outline->surface path (same element, no-op anyway).
 			outline.SelectNodeById(component.Name);
@@ -1099,28 +1105,28 @@ namespace ICSharpCode.FormsDesigner
 		#region IUndoHandler implementation
 		public bool EnableUndo {
 			get {
-				return IsRemoteDesignerLoaded && remoteUndo.Count > 0;
+					return commands.CanExecute("Undo");
 			}
 		}
 		public bool EnableRedo {
 			get {
-				return IsRemoteDesignerLoaded && remoteRedo.Count > 0;
+					return commands.CanExecute("Redo");
 			}
 		}
-		public virtual void Undo()
-		{
-			if (IsRemoteDesignerLoaded && remoteUndo.Count > 0) {
+			public virtual void Undo() => commands.Execute("Undo");
+			bool UndoCore()
+			{
 				remoteRedo.Push(CaptureRemoteDocuments());
 				RestoreRemoteDocuments(remoteUndo.Pop());
+				return true;
 			}
-		}
 
-		public virtual void Redo()
-		{
-			if (IsRemoteDesignerLoaded && remoteRedo.Count > 0) {
+			public virtual void Redo() => commands.Execute("Redo");
+			bool RedoCore()
+			{
 				remoteUndo.Push(CaptureRemoteDocuments());
 				RestoreRemoteDocuments(remoteRedo.Pop());
-			}
+				return true;
 		}
 		#endregion
 
@@ -1199,10 +1205,12 @@ namespace ICSharpCode.FormsDesigner
 			}
 		}
 
-		public void Delete()
-		{
-			DeleteRemoteComponents(SelectedRemoteComponents());
-		}
+			public void Delete()
+			{
+				commands.Execute("Delete");
+			}
+
+			bool DeleteCore() { DeleteRemoteComponents(SelectedRemoteComponents()); return true; }
 
 		DesignerComponentInfo SelectedRemoteComponent()
 		{

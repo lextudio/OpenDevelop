@@ -58,6 +58,8 @@ namespace ICSharpCode.WpfDesign.AddIn
 	{
 		public WpfViewContent(OpenedFile file) : base(file)
 		{
+			commands.Register("Undo", () => undoStack.Count > 0 && client != null && surfaceControl != null, UndoCore);
+			commands.Register("Redo", () => redoStack.Count > 0 && client != null && surfaceControl != null, RedoCore);
 			this.TabPageText = "${res:FormsDesigner.DesignTabPages.DesignTabPage}";
 			this.IsActiveViewContentChanged += OnIsActiveViewContentChanged;
 			Application.Current.DispatcherUnhandledException += OnDispatcherUnhandledException;
@@ -79,11 +81,12 @@ namespace ICSharpCode.WpfDesign.AddIn
 		// (or load); OnDocumentChanged pushes it onto undoStack right before replacing it with the
 		// new post-mutation text, so Undo can restore exactly what preceded that mutation.
 		readonly Stack<string> undoStack = new();
-		readonly Stack<string> redoStack = new();
+			readonly Stack<string> redoStack = new();
+			readonly DesignerCommandController commands = new();
 		string? lastKnownGoodXaml;
 
-		public bool CanUndo => undoStack.Count > 0;
-		public bool CanRedo => redoStack.Count > 0;
+			public bool CanUndo => commands.CanExecute("Undo");
+			public bool CanRedo => commands.CanExecute("Redo");
 
 		/// <summary>The current out-of-process surface, or null before the first successful load.
 		/// Exposed for DevFlow probes (<c>WpfDesignDevFlowActions</c>) - real UI code should go
@@ -115,7 +118,9 @@ namespace ICSharpCode.WpfDesign.AddIn
 
 			if (surfaceControl == null)
 			{
+				LoggingService.Info("WPF designer: acquiring shared surface host");
 				client = WpfSurfaceHostClient.AcquireSharedAsync(null, CancellationToken.None).GetAwaiter().GetResult();
+				LoggingService.Info($"WPF designer: acquired surface host pid={client.ProcessId}");
 				surfaceControl = new WpfSurfaceDesignerControl(client);
 				surfaceControl.SelectionChanged += OnSelectionChanged;
 				surfaceControl.DocumentChanged += OnDocumentChanged;
@@ -128,9 +133,11 @@ namespace ICSharpCode.WpfDesign.AddIn
 			try
 			{
 				var snapshot = CreateSnapshot(++documentVersion);
+				LoggingService.Info($"WPF designer: opening document version={snapshot.Version}");
 				var state = hasLoadedOnce
 					? surfaceControl.UpdateAsync(snapshot).GetAwaiter().GetResult()
 					: surfaceControl.OpenAsync(snapshot).GetAwaiter().GetResult();
+				LoggingService.Info($"WPF designer: document response accepted={state.Accepted}");
 				// OpenAsync/UpdateAsync deliberately do not render internally (see
 				// WpfSurfaceDesignerControl.Show's remarks) - GetResult() above resumed execution
 				// on this thread, which IS the dispatcher thread here (LoadInternal always runs on
@@ -144,7 +151,9 @@ namespace ICSharpCode.WpfDesign.AddIn
 				propertyContainer.SelectedObject = null;
 				// Baseline for Undo/Redo: the first mutation's OnDocumentChanged pushes THIS text
 				// (not the not-yet-fetched post-mutation text) onto undoStack.
+				LoggingService.Info("WPF designer: flushing initial document baseline");
 				lastKnownGoodXaml = FlushCurrentXaml();
+				LoggingService.Info("WPF designer: initial document baseline ready");
 			}
 			catch (Exception e)
 			{
@@ -163,14 +172,11 @@ namespace ICSharpCode.WpfDesign.AddIn
 				PrimaryFileName = PrimaryFile.FileName.ToString(),
 				Language = ""
 			};
-			if (project != null)
-			{
-				foreach (var reference in project.ResolveAssemblyReferences(CancellationToken.None))
-				{
-					if (!string.IsNullOrEmpty(reference.FileName) && File.Exists(reference.FileName))
-						snapshot.ReferencedAssemblyPaths.Add(reference.FileName);
-				}
-			}
+			// Do not run MSBuild ResolveAssemblyReferences synchronously from LoadInternal. It can
+			// block the dispatcher indefinitely while project evaluation/build hosts are busy, which
+			// also makes every DevFlow request time out. The child resolves dependencies beside the
+			// project output; explicit reference paths are reserved for already-available metadata,
+			// never computed on the UI thread.
 
 			_stream!.Position = 0;
 			using (var reader = new StreamReader(new UnclosableStream(_stream)))
@@ -279,7 +285,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 		void OnSelectionChanged(object? sender, EventArgs e)
 		{
 			propertyContainer.SelectedObject = surfaceControl?.SelectedPropertyAdapter;
-			shellSelection.Select(surfaceControl?.SelectedElementId);
+			shellSelection.Select(surfaceControl?.SelectedElementIds ?? Array.Empty<string>());
 			// Design surface -> Document Outline: mirror the selection without re-triggering the
 			// outline -> surface path (same element, no-op anyway).
 			outline.SelectNodeById(surfaceControl?.SelectedElementId);
@@ -333,21 +339,21 @@ namespace ICSharpCode.WpfDesign.AddIn
 				Redo();
 		}
 
-		public void Undo()
-		{
-			if (!CanUndo || client == null || surfaceControl == null)
-				return;
-			redoStack.Push(lastKnownGoodXaml ?? FlushCurrentXaml());
-			RestoreXaml(undoStack.Pop());
-		}
+			public void Undo() => commands.Execute("Undo");
+			bool UndoCore()
+			{
+				redoStack.Push(lastKnownGoodXaml ?? FlushCurrentXaml());
+				RestoreXaml(undoStack.Pop());
+				return true;
+			}
 
-		public void Redo()
-		{
-			if (!CanRedo || client == null || surfaceControl == null)
-				return;
-			undoStack.Push(lastKnownGoodXaml ?? FlushCurrentXaml());
-			RestoreXaml(redoStack.Pop());
-		}
+			public void Redo() => commands.Execute("Redo");
+			bool RedoCore()
+			{
+				undoStack.Push(lastKnownGoodXaml ?? FlushCurrentXaml());
+				RestoreXaml(redoStack.Pop());
+				return true;
+			}
 
 		void RestoreXaml(string text)
 		{
@@ -381,7 +387,10 @@ namespace ICSharpCode.WpfDesign.AddIn
 
 		void InitWpfToolbox()
 		{
-			WpfToolbox.Instance.AddProjectDlls(Files[0]);
+			// Never resolve or load project references on the workbench dispatcher. Besides freezing
+			// the whole IDE while MSBuild runs, AddProjectDlls loaded untrusted project assemblies
+			// into the IDE process and defeated the out-of-process designer boundary. Stock controls
+			// are already present; project controls are supplied as neutral toolbox DTOs by the child.
 			SD.ProjectService.ProjectItemAdded += OnReferenceAdded;
 		}
 
@@ -389,7 +398,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 		{
 			if (!(e.ProjectItem is ReferenceProjectItem)) return;
 			if (e.Project != SD.ProjectService.FindProjectContainingFile(Files[0].FileName)) return;
-			WpfToolbox.Instance.AddProjectDlls(Files[0]);
+			// The next child state refresh republishes the runtime-derived toolbox catalogue.
 		}
 
 		void OnPropertyGridPropertyChanged(object sender, PropertyChangedEventArgs e)
@@ -456,7 +465,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 			// Outline -> design surface: the surface owns selection; route the pick through the
 			// same single-selection path as a surface click.
 			shellSelection.Select(outline.SelectedNode?.Id);
-			surfaceControl?.SelectElementId(shellSelection.SelectedId);
+			surfaceControl?.SelectElementId(shellSelection.PrimarySelectedId);
 		}
 
 		/// <summary>The DESIGNER's own element tree, matching what

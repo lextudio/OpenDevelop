@@ -435,6 +435,7 @@ sealed class DesignerHostService : IDesignerChildService
 	[JsonRpcMethod("diagnostics/delay")]
 	public async Task Delay(int milliseconds) => await Task.Delay(milliseconds);
 	public void WaitForShutdown() => shutdown.Wait();
+	public void OnParentDisconnected() => shutdown.Set();
 
 	internal void Close()
 	{

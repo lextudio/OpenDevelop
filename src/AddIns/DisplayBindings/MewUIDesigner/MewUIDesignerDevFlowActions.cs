@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
+using ICSharpCode.SharpDevelop.Designer.Shell;
 using LeXtudio.DevFlow.Agent.Core;
 using Microsoft.Maui.DevFlow.Agent.Core;
 using Xceed.Wpf.Toolkit.PropertyGrid;
@@ -23,7 +24,7 @@ public static class MewUIDesignerDevFlowActions
 		return view == null ? JsonSerializer.Serialize(new { active = false }) : JsonSerializer.Serialize(new {
 			active = true, status = view.Status, windowClassName = view.WindowClassName, elementCount = view.ElementCount,
 			selectedName = view.SelectedName, hostProcessId = view.HostProcessId, hostPoolKey = view.HostPoolKey, hostSessionId = view.HostSessionId, hostDocumentId = view.HostDocumentId, activeHostLeases = view.ActiveHostLeases, hostRecoveryCount = view.HostRecoveryCount, canUndo = view.EnableUndo, canRedo = view.EnableRedo,
-			toolboxItemCount = view.ToolboxItemCount, toolboxHosted = view.IsToolboxHosted, zoomComboSelectedIndex = view.ZoomComboSelectedIndex, outlineHosted = view.IsOutlineHosted, outlineItemCount = view.OutlineItemCount,
+			toolboxItemCount = view.ToolboxItemCount, toolboxFilterText = view.ToolboxFilterText, toolboxSelectedItem = view.SelectedToolboxType, toolboxHosted = view.IsToolboxHosted, toolboxSearchHosted = (SD.Services.GetService(typeof(IToolsPadHost)) as IToolsPadHost)?.HasToolboxSearch == true, zoomComboSelectedIndex = view.ZoomComboSelectedIndex, outlineHosted = view.IsOutlineHosted, outlineItemCount = view.OutlineItemCount,
 			propertyPadSelectedType = grid?.SelectedObject?.GetType().FullName, propertyPadPropertyCount = grid?.Properties?.Count ?? 0,
 			toolbarItemCount = view.ToolbarItemCount, toolbarItems = view.ToolbarItems, toolbarCapabilities = view.ToolbarCapabilities, zoom = view.Zoom, fitMeasured = view.FitMeasured, gridlines = view.Gridlines,
 			isDirty = view.IsDesignerDirty, hostLogTail = view.HostLogTail
@@ -33,6 +34,8 @@ public static class MewUIDesignerDevFlowActions
 	public static string Select(string name) { var v = Activate(); var ok = v?.SelectByName(name) == true; return JsonSerializer.Serialize(new { success = ok, selectedName = v?.SelectedName, propertyPadSelectedType = PropertyGrid?.SelectedObject?.GetType().FullName }); }
 	[DevFlowAction("od.mewui-designer.toolbox.insert", Description = "Insert a MewUI control into the selected container")]
 	public static string Insert(string controlName) { var v = Activate(); return JsonSerializer.Serialize(new { success = v?.Add(controlName) == true, elementCount = v?.ElementCount ?? 0 }); }
+	[DevFlowAction("od.mewui-designer.toolbox.filter", Description = "Filter the MewUI Toolbox using the common catalogue semantics")]
+	public static string FilterToolbox(string text) { var v = Activate(); v?.FilterToolbox(text); return DesignerDevFlowResults.ToolboxFilter(v != null, v?.ToolboxFilterText, v?.ToolboxItemCount ?? 0, v?.SelectedToolboxType); }
 	[DevFlowAction("od.mewui-designer.set-property", Description = "Set a source-backed property on the selected MewUI element")]
 	public static string SetProperty(string name, string value) { var v = Activate(); return JsonSerializer.Serialize(new { success = v?.SetSelectedProperty(name, value) == true }); }
 	[DevFlowAction("od.mewui-designer.delete", Description = "Delete the selected MewUI element")]
@@ -69,11 +72,12 @@ public static class MewUIDesignerDevFlowActions
 			return JsonSerializer.Serialize(new { success = false, error = "Unknown toolbox item: " + typeName });
 
 		var toolbox = v.ToolboxControl;
-		toolbox.SelectedItem = typeName;
-		toolbox.ScrollIntoView(typeName);
+		if (!v.SelectToolboxType(typeName)) return JsonSerializer.Serialize(new { success = false, error = "Toolbox controller rejected item: " + typeName });
+		var toolboxItem = v.SelectedToolboxItem!;
+		toolbox.ScrollIntoView(toolboxItem);
 		toolbox.UpdateLayout();
 
-		if (FindRealizedContainer(toolbox, typeName) is not FrameworkElement container)
+		if (FindRealizedContainer(toolbox, toolboxItem) is not FrameworkElement container)
 			return JsonSerializer.Serialize(new { success = false, error = "Toolbox row has no realized container (not scrolled into view?): " + typeName });
 
 		container.BringIntoView();

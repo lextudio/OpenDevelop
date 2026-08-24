@@ -79,4 +79,5 @@ sealed class MultiDocumentDesignerHostService : IDesignerChildService
 		shutdown.Set();
 	}
 	public void WaitForShutdown() => shutdown.Wait();
+	public void OnParentDisconnected() => shutdown.Set();
 }

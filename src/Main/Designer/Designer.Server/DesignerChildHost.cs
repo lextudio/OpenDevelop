@@ -29,6 +29,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <summary>Blocks the calling thread until the host requests shutdown (an RPC call, a
 		/// parent disconnect, or equivalent) - <c>Main</c> returns once this returns.</summary>
 		void WaitForShutdown();
+		/// <summary>Unblocks <see cref="WaitForShutdown"/> when the parent transport vanishes
+		/// before it can send the graceful shutdown RPC.</summary>
+		void OnParentDisconnected();
 	}
 
 	/// <summary>Runs a designer child process end to end: connect back to the parent's listening
@@ -52,6 +55,16 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 			rpc.AddLocalRpcTarget(service);
 			rpc.StartListening();
 			Console.Error.WriteLine($"{readyMessagePrefix}: ready on {portNumber}");
+			// A parent killed by the OS cannot send the explicit shutdown RPC. Waiting only on the
+			// service event leaves a permanent PPID=1 designer host. Treat transport completion as
+			// an equal terminal condition so every shared child follows its parent out.
+			// Keep WaitForShutdown on the entry thread: GTK uses it to pump MainContext and WPF
+			// has an equivalent dispatcher affinity. Transport completion merely releases that
+			// runtime-owned loop; it must not move the loop to TaskScheduler.Default.
+			_ = rpc.Completion.ContinueWith(_ => service.OnParentDisconnected(),
+				System.Threading.CancellationToken.None,
+				System.Threading.Tasks.TaskContinuationOptions.ExecuteSynchronously,
+				System.Threading.Tasks.TaskScheduler.Default);
 			service.WaitForShutdown();
 			afterShutdown?.Invoke();
 			return 0;

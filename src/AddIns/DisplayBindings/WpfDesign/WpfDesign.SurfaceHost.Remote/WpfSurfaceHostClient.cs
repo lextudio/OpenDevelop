@@ -19,7 +19,14 @@ public sealed class WpfSurfaceHostClient : IDesignHostClient
 {
 	static readonly SharedDesignerHostPool<CompatibilityKey, Connection> sharedPool = new(
 		(_, connection) => connection.IsAlive,
-		async (key, token) => { var connection = new Connection(key.HostDllPath, key.OperationTimeout); await connection.StartConnectionAsync(token); return connection; });
+		async (key, token) => {
+			var connection = new Connection(key.HostDllPath, key.OperationTimeout);
+			// AcquireSharedAsync is also called synchronously by WpfViewContent.LoadInternal on the
+			// dispatcher. Never capture that SynchronizationContext here or the handshake continuation
+			// deadlocks against LoadInternal's GetResult().
+			await connection.StartConnectionAsync(token).ConfigureAwait(false);
+			return connection;
+		});
 	readonly Connection connection;
 	readonly CompatibilityKey? poolKey;
 	bool disposed;

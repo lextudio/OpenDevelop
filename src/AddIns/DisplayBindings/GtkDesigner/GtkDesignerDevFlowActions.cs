@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
+using ICSharpCode.SharpDevelop.Designer.Shell;
 using LeXtudio.DevFlow.Agent.Core;
 using Microsoft.Maui.DevFlow.Agent.Core;
 using Xceed.Wpf.Toolkit.PropertyGrid;
@@ -20,8 +21,8 @@ public static class GtkDesignerDevFlowActions
 	{
 		var view = Activate(); var grid = PropertyGrid;
 		return view == null ? JsonSerializer.Serialize(new { active = false }) : JsonSerializer.Serialize(new {
-			active = true, status = view.Status, diagnostics = view.Diagnostics, hostLog = view.HostLog, rootId = view.RootId, elementCount = view.ElementCount, selectedId = view.SelectedId, hostProcessId = view.HostProcessId, hostPoolKey = view.HostPoolKey, hostSessionId = view.HostSessionId, hostDocumentId = view.HostDocumentId, activeHostLeases = view.ActiveHostLeases, hostRecoveryCount = view.HostRecoveryCount, requestedRenderRevision = view.RequestedRenderRevision, renderedRevision = view.RenderedRevision, renderPending = view.IsRenderPending, nativeRenderer = "in-process GSK/Cairo", nativeFrame = view.HasNativeFrame, nativeFrameFingerprint = view.NativeFrameFingerprint, nativeFrameWidth = view.NativeFrameWidth, nativeFrameHeight = view.NativeFrameHeight, nativeBoundsCount = view.NativeBoundsCount,
-			toolboxItemCount = view.ToolboxItemCount, toolboxHosted = view.IsToolboxHosted, toolboxSelectedItem = view.ToolboxControl.SelectedItem as string, zoomComboSelectedIndex = view.ZoomComboSelectedIndex, outlineHosted = view.IsOutlineHosted, outlineItemCount = view.OutlineItemCount,
+			active = true, status = view.Status, loadError = view.LoadError, diagnostics = view.Diagnostics, hostLog = view.HostLog, rootId = view.RootId, elementCount = view.ElementCount, elementIds = view.ElementIds, selectedId = view.SelectedId, hostProcessId = view.HostProcessId, hostPoolKey = view.HostPoolKey, hostSessionId = view.HostSessionId, hostDocumentId = view.HostDocumentId, activeHostLeases = view.ActiveHostLeases, hostRecoveryCount = view.HostRecoveryCount, requestedRenderRevision = view.RequestedRenderRevision, renderedRevision = view.RenderedRevision, renderPending = view.IsRenderPending, nativeRenderer = "in-process GSK/Cairo", nativeFrame = view.HasNativeFrame, nativeFrameFingerprint = view.NativeFrameFingerprint, nativeFrameWidth = view.NativeFrameWidth, nativeFrameHeight = view.NativeFrameHeight, nativeBoundsCount = view.NativeBoundsCount,
+			toolboxItemCount = view.ToolboxItemCount, toolboxFilterText = view.ToolboxFilterText, toolboxHosted = view.IsToolboxHosted, toolboxSearchHosted = (SD.Services.GetService(typeof(IToolsPadHost)) as IToolsPadHost)?.HasToolboxSearch == true, toolboxSelectedItem = view.SelectedToolboxType, zoomComboSelectedIndex = view.ZoomComboSelectedIndex, outlineHosted = view.IsOutlineHosted, outlineItemCount = view.OutlineItemCount,
 			toolbarItemCount = view.ToolbarItemCount, toolbarItems = view.ToolbarItems, toolbarCapabilities = view.ToolbarCapabilities, zoom = view.Zoom, fitMeasured = view.FitMeasured, gridlines = view.Gridlines,
 			propertyPadSelectedType = grid?.SelectedObject?.GetType().FullName,
 			propertyPadPropertyCount = grid?.Properties?.Count ?? 0, canUndo = view.EnableUndo, canRedo = view.EnableRedo
@@ -35,6 +36,8 @@ public static class GtkDesignerDevFlowActions
 	public static string HitTest(double x, double y) { var view = Activate(); var ok = view?.HitTest(x, y) == true; return JsonSerializer.Serialize(new { success = ok, selectedId = view?.SelectedId }); }
 	[DevFlowAction("od.gtk-designer.toolbox.insert", Description = "Insert a GTK 4 control from the real Tools catalogue")]
 	public static string Insert(string className) { var view = Activate(); var known = GtkDesignerViewContent.ToolNames.Contains(className, StringComparer.Ordinal); return JsonSerializer.Serialize(new { success = known && view?.Add(className) == true, elementCount = view?.ElementCount ?? 0, selectedId = view?.SelectedId }); }
+	[DevFlowAction("od.gtk-designer.toolbox.filter", Description = "Filter the GTK Toolbox using the common catalogue semantics")]
+	public static string FilterToolbox(string text) { var view = Activate(); view?.FilterToolbox(text); return DesignerDevFlowResults.ToolboxFilter(view != null, view?.ToolboxFilterText, view?.ToolboxItemCount ?? 0, view?.SelectedToolboxType); }
 	[DevFlowAction("od.gtk-designer.properties.edit", Description = "Edit through the real shared Properties pad PropertyItem")]
 	public static string EditProperty(string propertyName, string value)
 	{
@@ -58,7 +61,7 @@ public static class GtkDesignerDevFlowActions
 	[DevFlowAction("od.gtk-designer.refresh", Description = "Reload the GTK design from its source")]
 	public static string Refresh() { var view = Activate(); view?.RefreshDesign(); return JsonSerializer.Serialize(new { success = view != null, hostProcessId = view?.HostProcessId ?? 0 }); }
 	[DevFlowAction("od.gtk-designer.restart-host", Description = "Restart the isolated GTK designer host")]
-	public static string RestartHost() { var view = Activate(); var oldPid = view?.HostProcessId ?? 0; view?.RestartDesignHost(); return JsonSerializer.Serialize(new { success = view != null, oldHostProcessId = oldPid, hostProcessId = view?.HostProcessId ?? 0 }); }
+	public static string RestartHost() { var view = Activate(); var oldPid = view?.HostProcessId ?? 0; view?.RestartDesignHost(); return DesignerDevFlowResults.HostRestart(view != null, oldPid, view?.HostProcessId ?? 0); }
 	[DevFlowAction("od.gtk-designer.terminate-host", Description = "Terminate the shared GTK host to verify automatic recovery")]
 	public static string TerminateHost() { var view = Activate(); var oldPid = view?.HostProcessId ?? 0; view?.TerminateDesignHost(); return JsonSerializer.Serialize(new { success = view != null, oldHostProcessId = oldPid }); }
 	[DevFlowAction("od.gtk-designer.show-source", Description = "Switch from the GTK designer to its source document")]
@@ -84,11 +87,12 @@ public static class GtkDesignerDevFlowActions
 			return JsonSerializer.Serialize(new { success = false, error = "Unknown toolbox item: " + typeName });
 
 		var toolbox = view.ToolboxControl;
-		toolbox.SelectedItem = typeName;
-		toolbox.ScrollIntoView(typeName);
+		if (!view.SelectToolboxType(typeName)) return JsonSerializer.Serialize(new { success = false, error = "Toolbox controller rejected item: " + typeName });
+		var toolboxItem = view.SelectedToolboxItem!;
+		toolbox.ScrollIntoView(toolboxItem);
 		toolbox.UpdateLayout();
 
-		if (FindRealizedContainer(toolbox, typeName) is not FrameworkElement container)
+		if (FindRealizedContainer(toolbox, toolboxItem) is not FrameworkElement container)
 			return JsonSerializer.Serialize(new { success = false, error = "Toolbox row has no realized container (not scrolled into view?): " + typeName });
 
 		container.BringIntoView();

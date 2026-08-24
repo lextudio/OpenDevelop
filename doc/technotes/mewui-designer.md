@@ -1,5 +1,24 @@
 # MewUI visual designer
 
+## MXAML document model (.mxaml)
+
+The designer's authoritative layout document is a dedicated XML dialect (.mxaml), replacing
+the previous C#-syntax-tree approach. The Aprillz.MewUI runtime stays C#-first: generated
+applications compile from a strict InitializeComponent partial that is GENERATED from the
+.mxaml at build time (via the MewUIGen tool) and never exists as an editable file.
+
+Key properties of the format:
+- Root element `<Window>` carries `Class` (partial class name) and control attributes.
+- Child elements nest by containment; only container types accept children.
+- Attribute values are always strings; the property registry decides literal kind at
+  generation time, eliminating the entire class of "numeric string breaks compilation" bugs.
+- Whole-tree uniqueness validation catches duplicate names and invalid identifiers at parse
+  time with line/column positions.
+
+The engine lives in `LeXtudio.MewUI.Xaml` (dependency-free, System.Xml.Linq only) alongside
+`MewUICSharpGenerator` for the build-time code emission. See
+[`mxaml.md`](mxaml.md) for the full specification.
+
 The workbench shell uses the common `Designer.Shell.DesignerSelectionController` for the MXAML
 outline, stable-name selection restoration and `MewUIPropertyAdapter` recreation. Roslyn/MXAML
 source generation and MewUI container semantics remain backend-owned.
@@ -24,6 +43,11 @@ mutation/flush/reorder RPC includes that `documentId`. The host stores a separat
 undo history, and `session/close` removes only the closed document. MainWindow and SettingsWindow
 therefore report the same host PID while source transforms and saves stay isolated.
 
+`MewUIDesigner.Host` uses the common `DesignerChildHost` bootstrap and exits when either graceful
+`shutdown` completes or the parent RPC transport disappears. Consequently an IDE crash/kill does
+not strand a MewUI host as an orphan; normal multi-window sharing and the idle grace period remain
+owned by the parent-side broker.
+
 The shared process lifecycle is governed by
 [`designer-common.md`](designer-common.md#shared-host-lifecycle-design-2026-08-23). The common
 broker replaces the private static lease counter, retains an idle process for ten seconds,
@@ -32,6 +56,13 @@ its latest parent snapshot. Explicit restart is pool-wide and restores sibling w
 Roslyn transformations instead of invalidating their clients. MewUI has no native pixel phase
 today, so asynchronous frames are dormant; its semantic WPF projection still obeys the same
 version and recovery-generation checks.
+
+Recovery notifications are marshalled as a whole to the WPF dispatcher. In particular,
+`OutputChannel.Write` must not run on the broker worker while a workbench command synchronously
+waits for recovery: the output channel is UI-affine and that ordering previously deadlocked the
+two-window `terminate-host` scenario after the replacement process had already started. Recovery
+also has a 45-second linked cancellation boundary so a failed replacement cannot occupy the UI
+request indefinitely.
 
 The two-window integration coverage verifies shared PID/distinct document ids, pad and edit
 isolation, closing one document without affecting its sibling, forced shared-host recovery,
@@ -178,6 +209,10 @@ known.
 The Design view contributes all three standard designer pads:
 
 - Toolbox: standard MewUI controls; double-click inserts into the selected/root container.
+- Toolbox filtering uses the common `DesignerToolboxController`: control/category matching is
+  case-insensitive, a hidden selection is cleared, and the preferred selection returns when the
+  filter is cleared. The shared Tools pad supplies the visible search field and clear button;
+  Enter and double-click both insert the selected item.
 - Outline: the parsed source hierarchy; selecting a node synchronizes the Properties pad.
 - Properties: identity, text/content, layout, appearance and enabled-state properties; edits land
   in C# source.
@@ -193,6 +228,7 @@ Debug builds expose:
 - `od.mewui-designer.status`
 - `od.mewui-designer.select`
 - `od.mewui-designer.toolbox.insert`
+- `od.mewui-designer.toolbox.filter`
 - `od.mewui-designer.set-property`
 - `od.mewui-designer.delete`
 - `od.mewui-designer.undo` / `redo`
@@ -209,6 +245,13 @@ save, delete/undo/redo with selection restoration, close/reopen with element res
 cross-file save safety, refresh, child-process restart, and reopening a second window against the
 same live host process. As with all xUnit v3 projects in
 this repository, execute tests with `dotnet run --project ... --`, not `dotnet test`.
+
+MewUI's Outline/Properties synchronization now goes through the shared
+`DesignerPadController`. Roslyn tree rebuilds, stable-id reselection, Outline commits and
+`MewUIPropertyAdapter` rebinding therefore follow the same shell contract as GTK 4, including the
+Outline notification re-entry guard. Toolbox-filter automation uses the common
+`DesignerDevFlowResults` JSON envelope; the cross-designer contract and lifecycle stress gate are
+documented in [`designer-common.md`](designer-common.md#shared-shell-contracts-completed-2026-08-24).
 
 Current deliberate gaps: the preview is a safe WPF semantic projection rather than MewUI-native
 pixels. Fit is measured from the realized viewport and projected content. Child reorder is a

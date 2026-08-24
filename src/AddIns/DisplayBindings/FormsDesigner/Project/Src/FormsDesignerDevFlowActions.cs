@@ -14,6 +14,7 @@ using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.Gui;
+using ICSharpCode.SharpDevelop.Designer.Shell;
 using ICSharpCode.SharpDevelop.Workbench;
 using LeXtudio.DevFlow.Agent.Core;
 using Microsoft.Maui.DevFlow.Agent.Core;
@@ -68,6 +69,15 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 			if (viewContent?.RemoteSurfaceGeometry is not { } g)
 				return JsonSerializer.Serialize(new { available = false });
 			return JsonSerializer.Serialize(DesignerSurfaceGeometryProbe.ToJson(g));
+		}
+
+		[DevFlowAction("od.forms-designer.toolbox.filter", Description = "Filter the active WinForms Toolbox by control or category name")]
+		public static string FilterToolbox(string text)
+		{
+			_ = SharedToolboxAccess.ToolboxControl;
+			SharedToolbox.Instance.SetActiveScopes("winforms");
+			SharedToolbox.Instance.Filter(text);
+			return DesignerDevFlowResults.ToolboxFilter(true, SharedToolbox.Instance.FilterText, SharedToolbox.Instance.VisibleItemCount);
 		}
 
 		[DevFlowAction("od.forms-designer.outline-status", Description = "Inspect the WinForms designer's Document Outline pad: whether the shared outline control is mounted and visible, and the element tree it currently shows")]
@@ -138,6 +148,7 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 				rootComponentType = state.RootType,
 				canUndo = viewContent.EnableUndo,
 				canRedo = viewContent.EnableRedo,
+				toolboxSearchHosted = (SD.Services.GetService(typeof(IToolsPadHost)) as IToolsPadHost)?.HasToolboxSearch == true,
 				controlNames = state.Components.Select(component => component.Name).ToArray()
 			});
 		}

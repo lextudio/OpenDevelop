@@ -10,6 +10,8 @@ The parent workbench now shares `Designer.Shell.DesignerSelectionController` wit
 designers for the element forest, stable-ID selection restoration, and Properties adapter
 lifetime. `DocumentOutlineControl` is the common WPF view over that state; Uno/WinUI runtime
 loading, XAML mutations, hit testing, and rendering stay backend-specific.
+Undo, Redo and Delete now execute through the common `DesignerCommandController`, while WinUI
+retains its XML history, source mutations, multi-selection gestures and preview synchronization.
 
 Current status: the out-of-process Uno host is implemented and is the preferred renderer for Uno
 projects. It starts a real Uno 6.5.31 `net10.0-desktop` child, loads XAML and application

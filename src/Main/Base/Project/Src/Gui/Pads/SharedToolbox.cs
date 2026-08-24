@@ -79,7 +79,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 
 	/// <summary>The merged Toolbox pad engine - see this file's own header comment for why this
 	/// exists and how scoping keeps today's per-designer filtering behavior unchanged.</summary>
-	public sealed class SharedToolbox
+	public sealed class SharedToolbox : IFilterableToolbox
 	{
 		static SharedToolbox instance;
 
@@ -94,6 +94,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 		readonly CollectionViewSource itemsView = new();
 		readonly List<SharedToolboxItem> items = new();
 		HashSet<string> activeScopes;
+		string filterText = "";
 
 		Point dragStartPoint;
 		SharedToolboxItem dragStartItem;
@@ -111,8 +112,13 @@ namespace ICSharpCode.SharpDevelop.Gui
 		{
 			itemsView.Source = items;
 			itemsView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(SharedToolboxItem.CategoryName)));
-			itemsView.Filter += (_, e) => e.Accepted = activeScopes == null
-				|| activeScopes.Contains(((SharedToolboxItem)e.Item).Scope);
+			itemsView.Filter += (_, e) => {
+				var item = (SharedToolboxItem)e.Item;
+				e.Accepted = (activeScopes == null || activeScopes.Contains(item.Scope))
+					&& (String.IsNullOrEmpty(filterText)
+						|| item.DisplayName.IndexOf(filterText, StringComparison.OrdinalIgnoreCase) >= 0
+						|| item.CategoryName.IndexOf(filterText, StringComparison.OrdinalIgnoreCase) >= 0);
+			};
 
 			// Disabled rather than left to the default: ItemContainerGenerator.ContainerFromItem
 			// was confirmed (via direct hit-testing, in both of this class's predecessors) to
@@ -126,6 +132,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 			// has no real benefit.
 			VirtualizingPanel.SetIsVirtualizing(toolbox, false);
 			toolbox.ItemsSource = itemsView.View;
+			toolbox.Tag = this;
 			toolbox.ItemTemplate = CreateItemTemplate();
 			toolbox.GroupStyle.Add(CreateGroupStyle());
 			toolbox.SelectionChanged += OnSelectionChanged;
@@ -138,6 +145,8 @@ namespace ICSharpCode.SharpDevelop.Gui
 		public object ToolboxControl => toolbox;
 
 		public SharedToolboxItem SelectedItem => toolbox.SelectedItem as SharedToolboxItem;
+		public string FilterText => filterText;
+		public int VisibleItemCount => itemsView.View.Cast<object>().Count();
 
 		public int ItemCount(string scope) => items.Count(item => item.Scope == scope);
 
@@ -153,10 +162,24 @@ namespace ICSharpCode.SharpDevelop.Gui
 		/// predecessors, which already tracked that themselves).</summary>
 		public void AddItems(IEnumerable<SharedToolboxItem> newItems)
 		{
-			items.AddRange(newItems);
+			foreach (var item in newItems)
+				if (!items.Any(existing => existing.Scope == item.Scope
+					&& existing.CategoryName == item.CategoryName
+					&& existing.DisplayName == item.DisplayName))
+					items.Add(item);
 			// List<T> raises no collection-change notification, so the CollectionViewSource.View
 			// bound as the ListBox's ItemsSource won't pick up these .Add()s on its own.
 			itemsView.View.Refresh();
+		}
+
+		/// <summary>Applies the same case-insensitive display-name/category filter to whichever
+		/// designer scopes are active. The owning pad may expose this through its search chrome.</summary>
+		public void Filter(string text)
+		{
+			filterText = text?.Trim() ?? String.Empty;
+			itemsView.View.Refresh();
+			if (toolbox.SelectedItem is SharedToolboxItem selected && !itemsView.View.Contains(selected))
+				toolbox.SelectedItem = null;
 		}
 
 		/// <summary>Looks a tool up by display name within one scope, so an insertion driven

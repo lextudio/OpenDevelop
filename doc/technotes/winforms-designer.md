@@ -10,6 +10,9 @@ for the remote element forest, stable-ID selection, and Properties adapter lifet
 `DocumentOutlineControl` is only the WPF presentation of that state. This is the same shell path
 used by WPF, WinUI, GTK 4, and MewUI; WinForms-specific code remains responsible for Roslyn
 round-tripping, runtime hosting, toolbox metadata, and property RPC.
+Undo, Redo and multi-selection Delete are now registered with the common
+`DesignerCommandController`; the WinForms backend retains its multi-file snapshot stacks and
+remote component mutation rules.
 
 Current status: the in-process C# backend is complete (CodeDOM-free Roslyn loader,
 `.Designer.cs` round-trip, legacy migration, shared Toolbox Pad, real drag-drop tests). The

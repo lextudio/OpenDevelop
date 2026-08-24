@@ -236,6 +236,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 			gtkWorkAvailable.WaitOne(10);
 		}
 	}
+	public void OnParentDisconnected() { shutdown.Set(); gtkWorkAvailable.Set(); }
 	sealed class DocumentSession
 	{
 		public DocumentSession(string documentId) => DocumentId = documentId;

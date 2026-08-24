@@ -7,6 +7,7 @@ using System.Windows;
 using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
+using ICSharpCode.SharpDevelop.Designer.Shell;
 using LeXtudio.DevFlow.Agent.Core;
 using Microsoft.Maui.DevFlow.Agent.Core;
 using Xceed.Wpf.Toolkit.PropertyGrid;
@@ -42,6 +43,8 @@ public static class WinUIXamlDesignerDevFlowActions
 			documentError = view.DocumentError,
 			toolboxItemCount = toolbox.ItemCount,
 			toolboxGroupCount = toolbox.GroupCount,
+			toolboxFilterText = SharedToolbox.Instance.FilterText,
+			toolboxSearchHosted = (SD.Services.GetService(typeof(IToolsPadHost)) as IToolsPadHost)?.HasToolboxSearch == true,
 			outlineChildCount = view.OutlineChildCount,
 			elementNames = view.ElementNames(),
 			selectedName = view.SelectedElementName,
@@ -51,6 +54,14 @@ public static class WinUIXamlDesignerDevFlowActions
 			canRedo = view.CanRedo,
 			isDirty = view.PrimaryFile?.IsDirty ?? false
 		});
+	}
+
+	[DevFlowAction("od.winui-designer.toolbox.filter", Description = "Filter the active WinUI/Uno Toolbox by control or category name")]
+	public static string FilterToolbox(string text)
+	{
+		_ = WinUIXamlToolbox.Instance.ToolboxControl;
+		SharedToolbox.Instance.Filter(text);
+		return DesignerDevFlowResults.ToolboxFilter(true, SharedToolbox.Instance.FilterText, SharedToolbox.Instance.VisibleItemCount);
 	}
 
 	[DevFlowAction("od.winui-designer.select", Description = "Select a named element in the active WinUI/Uno designer so the shared Properties pad is populated from the XAML source")]

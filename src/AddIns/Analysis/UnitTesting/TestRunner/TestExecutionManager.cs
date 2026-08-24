@@ -74,6 +74,7 @@ namespace ICSharpCode.UnitTesting.Frameworks
 			ClearTasks();
 			ShowUnitTestsPad();
 			ShowOutputPad();
+			OutputChannel.Write("UnitTesting", $"Running {selectedTests.Count()} tests...");
 			StartUnitTestsPadStatus();
 			
 			ResetTestResults();

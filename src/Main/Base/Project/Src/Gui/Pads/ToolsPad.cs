@@ -45,6 +45,16 @@ namespace ICSharpCode.SharpDevelop.Gui
 	{
 		/// <summary>The document-provided content currently assigned to the real Tools pad.</summary>
 		object HostedContent { get; }
+		bool HasToolboxSearch { get; }
+		string ToolboxSearchText { get; }
+	}
+
+	/// <summary>Implemented by toolbox content that participates in the common Tools-pad search UI.</summary>
+	public interface IFilterableToolbox
+	{
+		string FilterText { get; }
+		int VisibleItemCount { get; }
+		void Filter(string text);
 	}
 
 	/// <summary>
