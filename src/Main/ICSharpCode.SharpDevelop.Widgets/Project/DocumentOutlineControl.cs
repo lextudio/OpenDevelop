@@ -22,6 +22,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 	/// </summary>
 	public sealed class DocumentOutlineControl : TreeView
 	{
+		bool rebuilding;
 		/// <summary>Raised when the user (or a programmatic selection) picks a node;
 		/// <see cref="SelectedNode"/> holds the picked element.</summary>
 		public event EventHandler SelectionCommitted;
@@ -37,7 +38,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			// SelectNodeById picked it programmatically (IsSelected=true raises the same event) -
 			// otherwise a real click would never reach the consumers (they only subscribe to
 			// SelectionCommitted).
-			SelectedItemChanged += (_, _) => SelectionCommitted?.Invoke(this, EventArgs.Empty);
+			SelectedItemChanged += (_, _) => { if (!rebuilding) SelectionCommitted?.Invoke(this, EventArgs.Empty); };
 		}
 
 		/// <summary>Shows a new element tree. Collapses nothing and keeps the current
@@ -53,14 +54,19 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		public void SetRoots(IEnumerable<DesignerElementNode> roots)
 		{
 			var keepId = SelectedNode?.Id;
-			Items.Clear();
-			if (roots != null)
-			{
-				foreach (var root in roots)
-					Items.Add(CreateItem(root));
+			rebuilding = true;
+			try {
+				Items.Clear();
+				if (roots != null)
+				{
+					foreach (var root in roots)
+						Items.Add(CreateItem(root));
+				}
+				if (keepId != null)
+					SelectNodeById(keepId);
+			} finally {
+				rebuilding = false;
 			}
-			if (keepId != null)
-				SelectNodeById(keepId);
 		}
 
 		/// <summary>Programmatically selects the node with the given id (no-op when absent).

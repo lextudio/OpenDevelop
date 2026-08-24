@@ -121,6 +121,66 @@ scale. Cache hits still carry the requesting version/revision and obey the stale
 The common layer cannot assume XAML, C#, GtkBuilder XML, HWNDs or a property system. A backend
 cannot reimplement process leasing, idle shutdown, crash fan-out or stale-frame acceptance.
 
+### Second-stage common-library extraction (2026-08-24)
+
+The five implementations now share enough behavior that reuse must extend beyond process
+lifecycle. The target is a layered set of runtime-neutral libraries, not a single base class
+that knows every UI framework:
+
+```text
+Designer.Protocol / Designer.Remote
+  DTOs, RPC naming, connection/broker/pool, version and revision rules
+                         ▲
+Designer.Server          │ child bootstrap + authenticated multi-document registry
+                         ▲
+Designer.Shell           │ canvas/presenter + selection/command/pad controllers
+                         ▲
+backend adapters         │ model, render, source transforms, catalog/property descriptors
+  GTK4 | MewUI | WinForms | WPF | WinUI/Uno
+```
+
+`Designer.Server` owns `DesignerDocumentRegistry<TSession>`. A child host authenticates once,
+initializes the registry with that connection's session id, and obtains/removes documents only
+through the registry. The registry enforces session isolation, non-empty document ids,
+single-publication under concurrent open, and exactly-once close of materialized documents.
+Authentication tokens and capability negotiation remain host-specific and happen before the
+registry is initialized.
+
+The next extraction is `Designer.Shell`: runtime-neutral controllers for selection, command
+enablement, toolbar state, Outline synchronization, Toolbox filtering/insertion and Properties
+refresh/edit dispatch. WPF controls remain thin views over those controllers. Backend adapters
+continue to supply stable element identity, catalog entries, property/event descriptors,
+mutations, source edits, bounds/hit-test and frames. This keeps the common library usable by all
+five designers without teaching it C#, XAML, GtkBuilder XML or a native widget toolkit.
+
+Migration is deliberately incremental:
+
+1. introduce and unit-test the server document registry;
+2. replace each host's private session dictionary in GTK4, MewUI, WinForms, WPF and WinUI/Uno;
+3. extract shell controllers one vertical feature at a time, beginning with selection-to-
+   Outline/Properties synchronization;
+4. retain backend contract and real-workbench integration tests after every migration.
+
+This extraction is accepted only when concurrent opens cannot construct duplicate sessions,
+wrong-session requests cannot reach a document, closing one document leaves siblings alive,
+shutdown closes every remaining materialized session once, and all five existing RPC/workbench
+tests continue to cover Outline, Properties, Toolbox and persistence. Backend rendering and
+source generation are explicit non-goals for the shared libraries.
+
+Implementation status (2026-08-24): `src/Main/Designer/Designer.Shell` now exists. Its first
+vertical slice, `DesignerSelectionController`, is used by all five designers as the stable-ID
+authority for outline trees and single selection. It preserves selection across fresh protocol
+trees, clears removed elements, supports multi-root documents and recreates backend property
+adapters after a rebuild. GTK4 and MewUI delegate their complete Outline/Properties selection
+cycle to it; WinForms, WPF and WinUI/Uno retain backend multi-selection/gesture handling while
+routing their single-selection and Outline synchronization through the same controller.
+
+The second shell slice, `DesignerCommandController`, now provides a runtime-neutral registered
+command gateway with dynamic enablement, re-entrancy protection and state invalidation. GTK4 and
+MewUI route Undo, Redo and Delete through it while retaining their backend RPC mutations. The
+next migration step is to adapt WinForms, WPF and WinUI's richer multi-selection commands to this
+gateway, followed by the common Toolbox catalogue/filter controller.
+
 ### Observability and acceptance
 
 Every designer status endpoint exposes backend, pool key, host PID, session id, document id, pool

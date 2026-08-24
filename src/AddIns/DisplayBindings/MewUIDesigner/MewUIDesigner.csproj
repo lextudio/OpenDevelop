@@ -18,6 +18,7 @@
     <ProjectReference Include="..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
     <ProjectReference Include="..\..\..\Main\ICSharpCode.SharpDevelop.Widgets\Project\ICSharpCode.SharpDevelop.Widgets.csproj" Private="false" />
     <ProjectReference Include="..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" Private="false" />
+	  <ProjectReference Include="..\..\..\Main\Designer\Designer.Shell\Designer.Shell.csproj" Private="false" />
     <ProjectReference Include="..\MewUIDesigner.Host\MewUIDesigner.Host.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" SkipGetTargetFrameworkProperties="true" />
     <PackageReference Include="LeXtudio.DevFlow.Agent.Core" Version="0.2.2" Condition="'$(Configuration)' == 'Debug'" />
   </ItemGroup>

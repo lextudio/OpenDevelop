@@ -10,6 +10,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
+	<ProjectReference Include="..\..\..\..\Main\Designer\Designer.Server\Designer.Server.csproj" />
     <PackageReference Include="StreamJsonRpc" Version="2.25.29" />
   </ItemGroup>
   <!-- Deploy the whole runnable child (dll + deps + runtimeconfig + native libs) into the addin's

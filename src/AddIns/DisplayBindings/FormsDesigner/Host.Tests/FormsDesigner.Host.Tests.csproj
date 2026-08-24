@@ -11,6 +11,8 @@
 	<Compile Remove="CustomControl\**\*.cs" />
     <PackageReference Include="xunit.v3" Version="3.2.2" />
     <ProjectReference Include="..\Remote\FormsDesigner.Remote.csproj" />
+	<ProjectReference Include="..\..\..\..\Main\Designer\Designer.Server\Designer.Server.csproj" />
+	<ProjectReference Include="..\..\..\..\Main\Designer\Designer.Shell\Designer.Shell.csproj" />
     <ProjectReference Include="..\Host\FormsDesigner.Host.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" />
     <ProjectReference Include="CustomControl\FormsDesigner.CustomControlFixture.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" />
   </ItemGroup>

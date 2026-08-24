@@ -31,6 +31,7 @@ using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
+using ICSharpCode.SharpDevelop.Designer.Shell;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Widgets;
@@ -278,6 +279,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 		void OnSelectionChanged(object? sender, EventArgs e)
 		{
 			propertyContainer.SelectedObject = surfaceControl?.SelectedPropertyAdapter;
+			shellSelection.Select(surfaceControl?.SelectedElementId);
 			// Design surface -> Document Outline: mirror the selection without re-triggering the
 			// outline -> surface path (same element, no-op anyway).
 			outline.SelectNodeById(surfaceControl?.SelectedElementId);
@@ -434,10 +436,12 @@ namespace ICSharpCode.WpfDesign.AddIn
 		}
 
 		readonly DocumentOutlineControl outline = new DocumentOutlineControl();
+		readonly DesignerSelectionController shellSelection = new DesignerSelectionController();
 
 		void UpdateOutline(DesignerSessionState state)
 		{
-			outline.SetRoot(state.Tree!);
+			shellSelection.UpdateTree(state.Tree);
+			outline.SetRoots(shellSelection.Roots);
 			if (!outlineSubscribed)
 			{
 				outline.SelectionCommitted += OnOutlineSelectionCommitted;
@@ -451,7 +455,8 @@ namespace ICSharpCode.WpfDesign.AddIn
 		{
 			// Outline -> design surface: the surface owns selection; route the pick through the
 			// same single-selection path as a surface click.
-			surfaceControl?.SelectElementId(outline.SelectedNode?.Id);
+			shellSelection.Select(outline.SelectedNode?.Id);
+			surfaceControl?.SelectElementId(shellSelection.SelectedId);
 		}
 
 		/// <summary>The DESIGNER's own element tree, matching what

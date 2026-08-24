@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using ICSharpCode.SharpDevelop.Designer.Remote;
@@ -13,9 +12,7 @@ sealed class MultiDocumentDesignerHostService : IDesignerChildService
 	const int ProtocolVersion = 2;
 	readonly string expectedToken;
 	readonly ManualResetEventSlim shutdown = new(false);
-	readonly ConcurrentDictionary<string, DesignerHostService> documents = new(StringComparer.Ordinal);
-	string? sessionId;
-	bool initialized;
+	readonly DesignerDocumentRegistry<DesignerHostService> documents = new();
 
 	public MultiDocumentDesignerHostService(string expectedToken) => this.expectedToken = expectedToken;
 
@@ -25,34 +22,27 @@ sealed class MultiDocumentDesignerHostService : IDesignerChildService
 		if (!CryptographicOperations.FixedTimeEquals(Convert.FromHexString(expectedToken), Convert.FromHexString(token)))
 			throw new UnauthorizedAccessException("Invalid designer-host token.");
 		if (protocolVersion != ProtocolVersion) throw new NotSupportedException($"Protocol {protocolVersion} is not supported.");
-		this.sessionId = sessionId;
-		initialized = true;
+		documents.Initialize(sessionId);
 		return new HostHandshake { ProtocolVersion = ProtocolVersion, Runtime = RuntimeInformation.FrameworkDescription, ProcessId = Environment.ProcessId, SessionId = sessionId };
 	}
 
-	DesignerHostService Get(string documentId)
+	DesignerHostService Get(string requestSessionId, string documentId)
 	{
-		if (!initialized || sessionId == null) throw new UnauthorizedAccessException("The designer host has not completed its handshake.");
-		return documents.GetOrAdd(documentId, _ => {
+		return documents.GetOrAdd(requestSessionId, documentId, () => {
 			var service = new DesignerHostService(expectedToken);
-			service.Initialize(expectedToken, ProtocolVersion, sessionId);
+			service.Initialize(expectedToken, ProtocolVersion, requestSessionId);
 			return service;
 		});
 	}
 
-	void CheckSession(string requestSessionId)
-	{
-		if (requestSessionId != sessionId) throw new UnauthorizedAccessException("The request's session id does not match this designer host.");
-	}
-
 	[JsonRpcMethod("session/open")]
-	public DesignerSessionState Open(DesignerDocumentSnapshot snapshot) { CheckSession(snapshot.SessionId); return Get(snapshot.DocumentId).Open(snapshot); }
+	public DesignerSessionState Open(DesignerDocumentSnapshot snapshot) => Get(snapshot.SessionId, snapshot.DocumentId).Open(snapshot);
 	[JsonRpcMethod("session/update")]
-	public DesignerSessionState Update(DesignerDocumentSnapshot snapshot) { CheckSession(snapshot.SessionId); return Get(snapshot.DocumentId).Update(snapshot); }
+	public DesignerSessionState Update(DesignerDocumentSnapshot snapshot) => Get(snapshot.SessionId, snapshot.DocumentId).Update(snapshot);
 	[JsonRpcMethod("session/flush")]
-	public DesignerEditSet Flush(string sessionId, string documentId, long baseVersion) { CheckSession(sessionId); return Get(documentId).Flush(sessionId, documentId, baseVersion); }
+	public DesignerEditSet Flush(string sessionId, string documentId, long baseVersion) => Get(sessionId, documentId).Flush(sessionId, documentId, baseVersion);
 	[JsonRpcMethod("session/close")]
-	public void Close(string sessionId, string documentId) { CheckSession(sessionId); if (documents.TryRemove(documentId, out var service)) service.Close(); }
+	public void Close(string sessionId, string documentId) => documents.Remove(sessionId, documentId, service => service.Close());
 	[JsonRpcMethod("design/hit-test")]
 	public DesignerHitTestResult HitTest(string sessionId, string documentId, long baseVersion, int x, int y) => GetChecked(sessionId, documentId).HitTest(sessionId, documentId, baseVersion, x, y);
 	[JsonRpcMethod("design/set-property")]
@@ -76,7 +66,7 @@ sealed class MultiDocumentDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("design/apply-layout")]
 	public DesignerSessionState ApplyLayout(string sessionId, string documentId, long baseVersion, string operation, string[] elementIds, int deltaX, int deltaY) => GetChecked(sessionId, documentId).ApplyLayout(sessionId, documentId, baseVersion, operation, elementIds, deltaX, deltaY);
 
-	DesignerHostService GetChecked(string requestSessionId, string documentId) { CheckSession(requestSessionId); return Get(documentId); }
+	DesignerHostService GetChecked(string requestSessionId, string documentId) => Get(requestSessionId, documentId);
 
 	[JsonRpcMethod("ping")]
 	public void Ping() { }
@@ -85,7 +75,7 @@ sealed class MultiDocumentDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("shutdown")]
 	public void Shutdown()
 	{
-		foreach (var item in documents.ToArray()) if (documents.TryRemove(item.Key, out var service)) service.Close();
+		documents.CloseAll(service => service.Close());
 		shutdown.Set();
 	}
 	public void WaitForShutdown() => shutdown.Wait();

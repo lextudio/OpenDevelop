@@ -23,6 +23,7 @@
          presentation helpers and the out-of-process host client, mirroring how FormsDesigner/
          WinUIXamlDesigner reference their own equivalents. -->
     <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Presentation\Designer.Presentation.csproj" />
+	<ProjectReference Include="..\..\..\..\Main\Designer\Designer.Shell\Designer.Shell.csproj" />
     <ProjectReference Include="..\WpfDesign.SurfaceHost.Remote\WpfDesign.SurfaceHost.Remote.csproj" />
     <ProjectReference Include="..\..\..\..\Libraries\ICSharpCode.TypeSystem.Abstractions\ICSharpCode.TypeSystem.Abstractions.csproj" Private="False" />
     <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="False" />

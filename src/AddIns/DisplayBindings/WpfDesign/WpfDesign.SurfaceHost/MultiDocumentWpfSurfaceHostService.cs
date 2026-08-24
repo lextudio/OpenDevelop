@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using ICSharpCode.SharpDevelop.Designer.Remote;
@@ -11,9 +10,7 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	readonly string expectedToken;
 	readonly WpfHeadlessDispatcher dispatcher;
 	readonly ManualResetEventSlim shutdown = new(false);
-	readonly ConcurrentDictionary<string, WpfSurfaceHostService> documents = new(StringComparer.Ordinal);
-	string? sessionId;
-	bool initialized;
+	readonly DesignerDocumentRegistry<WpfSurfaceHostService> documents = new();
 
 	public MultiDocumentWpfSurfaceHostService(string expectedToken, WpfHeadlessDispatcher dispatcher)
 	{
@@ -27,25 +24,22 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 		if (!CryptographicOperations.FixedTimeEquals(Convert.FromHexString(expectedToken), Convert.FromHexString(token)))
 			throw new UnauthorizedAccessException("Invalid designer-host token.");
 		if (protocolVersion != DesignerProtocol.Version) throw new NotSupportedException($"Protocol {protocolVersion} is not supported.");
-		this.sessionId = sessionId;
-		initialized = true;
+		documents.Initialize(sessionId);
 		return new HostHandshake { ProtocolVersion = DesignerProtocol.Version, Runtime = RuntimeInformation.FrameworkDescription, ProcessId = Environment.ProcessId, SessionId = sessionId };
 	}
 
-	WpfSurfaceHostService Get(string documentId)
+	WpfSurfaceHostService Get(string requestSessionId, string documentId)
 	{
-		if (!initialized || sessionId == null) throw new UnauthorizedAccessException("The designer host has not completed its handshake.");
-		return documents.GetOrAdd(documentId, _ => {
+		return documents.GetOrAdd(requestSessionId, documentId, () => {
 			var service = new WpfSurfaceHostService(expectedToken, dispatcher);
-			service.Initialize(expectedToken, DesignerProtocol.Version, sessionId);
+			service.Initialize(expectedToken, DesignerProtocol.Version, requestSessionId);
 			return service;
 		});
 	}
 
 	WpfSurfaceHostService Checked(string requestSessionId, string documentId)
 	{
-		if (requestSessionId != sessionId) throw new UnauthorizedAccessException("The request's session id does not match this designer host.");
-		return Get(documentId);
+		return Get(requestSessionId, documentId);
 	}
 
 	[JsonRpcMethod("session/open")]
@@ -55,7 +49,7 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	[JsonRpcMethod("session/flush")]
 	public DesignerEditSet Flush(string sessionId, string documentId, long baseVersion) => Checked(sessionId, documentId).Flush(sessionId, documentId, baseVersion);
 	[JsonRpcMethod("session/close")]
-	public void Close(string sessionId, string documentId) { CheckedSession(sessionId); if (documents.TryRemove(documentId, out var service)) service.Close(); }
+	public void Close(string sessionId, string documentId) => documents.Remove(sessionId, documentId, service => service.Close());
 	[JsonRpcMethod("design/hit-test")]
 	public DesignerHitTestResult HitTest(string sessionId, string documentId, long baseVersion, double x, double y) => Checked(sessionId, documentId).HitTest(sessionId, documentId, baseVersion, x, y);
 	[JsonRpcMethod("design/set-property")]
@@ -75,13 +69,12 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	[JsonRpcMethod("design/theme")]
 	public DesignerSessionState SetTheme(string sessionId, string documentId, long baseVersion, string theme) => Checked(sessionId, documentId).SetTheme(baseVersion, theme);
 
-	void CheckedSession(string requestSessionId) { if (requestSessionId != sessionId) throw new UnauthorizedAccessException("The request's session id does not match this designer host."); }
 	[JsonRpcMethod("ping")]
 	public void Ping() { }
 	[JsonRpcMethod("shutdown")]
 	public void Shutdown()
 	{
-		foreach (var item in documents.ToArray()) if (documents.TryRemove(item.Key, out var service)) service.Close();
+		documents.CloseAll(service => service.Close());
 		shutdown.Set();
 	}
 	public void WaitForShutdown() => shutdown.Wait();

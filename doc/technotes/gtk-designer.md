@@ -1,5 +1,11 @@
 # GTK 4 Designer
 
+The workbench shell uses the common `Designer.Shell.DesignerSelectionController` for the GTK
+object forest, stable-ID selection restoration and `GtkPropertyAdapter` recreation. Native GTK
+rendering, GtkBuilder mutation, hit-testing and container rules remain backend-owned.
+Undo, Redo and Delete also pass through the common `DesignerCommandController`; GTK supplies the
+versioned RPC operations and invalidates command state after each mutation.
+
 ## Implemented process boundary (2026-08-23)
 
 The GTK designer now uses the shared DDP process architecture. `ICSharpCode.GtkDesigner.dll`

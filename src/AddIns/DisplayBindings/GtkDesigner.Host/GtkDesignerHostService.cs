@@ -10,7 +10,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 {
 	readonly string expectedToken;
 	readonly ManualResetEventSlim shutdown = new(false);
-	readonly Dictionary<string, DocumentSession> documents = new(StringComparer.Ordinal);
+	readonly DesignerDocumentRegistry<DocumentSession> documents = new();
 	readonly GLib.MainContext gtkContext = GLib.MainContext.Default();
 	readonly int gtkThreadId = Environment.CurrentManagedThreadId;
 	readonly System.Collections.Concurrent.ConcurrentQueue<Action> gtkWork = new();
@@ -24,6 +24,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	{
 		if (!CryptographicOperations.FixedTimeEquals(Convert.FromHexString(expectedToken), Convert.FromHexString(token))) throw new UnauthorizedAccessException();
 		if (protocolVersion != DesignerProtocol.Version) throw new NotSupportedException();
+		documents.Initialize(sessionId);
 		this.sessionId = sessionId;
 		return new HostHandshake { ProtocolVersion = DesignerProtocol.Version, Runtime = "GTK 4 document model", ProcessId = Environment.ProcessId, SessionId = sessionId };
 	}
@@ -93,7 +94,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("session/close")]
 	public object Close(string documentId)
 	{
-		if (documents.Remove(documentId, out var session)) OnGtkThread(() => { session.DisposeNative(); return true; });
+		documents.Remove(documentId, session => OnGtkThread(() => { session.DisposeNative(); return true; }));
 		return new();
 	}
 
@@ -217,14 +218,14 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		if (failure != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
 		return result!;
 	}
-	void EnsureSession(string candidate) { if (candidate != sessionId) throw new InvalidOperationException("Stale designer session."); }
-	DocumentSession GetOrCreate(string documentId) => documents.TryGetValue(documentId, out var session) ? session : documents[documentId] = new DocumentSession(documentId);
-	DocumentSession Get(string documentId) => documents.TryGetValue(documentId, out var session) ? session : throw new InvalidOperationException("Unknown document.");
+	void EnsureSession(string candidate) => documents.ValidateSession(candidate);
+	DocumentSession GetOrCreate(string documentId) => documents.GetOrAdd(documentId, () => new DocumentSession(documentId));
+	DocumentSession Get(string documentId) => documents.Get(documentId);
 	static void EnsureVersion(DocumentSession session, long candidate) { if (candidate != session.Version) throw new InvalidOperationException($"Stale version {candidate}; current is {session.Version}."); }
 	[JsonRpcMethod("ping")] public object Ping() => new();
 	[JsonRpcMethod("shutdown")] public object Shutdown()
 	{
-		OnGtkThread(() => { foreach (var session in documents.Values) session.DisposeNative(); return true; });
+		documents.CloseAll(session => OnGtkThread(() => { session.DisposeNative(); return true; }));
 		shutdown.Set(); gtkWorkAvailable.Set(); return new();
 	}
 	public void WaitForShutdown()

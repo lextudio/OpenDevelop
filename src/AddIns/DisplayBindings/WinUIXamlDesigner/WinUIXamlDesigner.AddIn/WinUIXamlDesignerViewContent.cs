@@ -12,6 +12,7 @@ using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
+using ICSharpCode.SharpDevelop.Designer.Shell;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.WinForms;
@@ -38,6 +39,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		MaxHeight = 200
 	};
 	readonly DocumentOutlineControl outline = new();
+	readonly DesignerSelectionController shellSelection = new();
 	readonly PropertyContainer propertyContainer = new();
 	readonly WinUIXamlDocumentEditor editor = new();
 	string documentError;
@@ -240,6 +242,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		syncingSelection = true;
 		try {
 			SelectedElementName = name;
+			shellSelection.Select(name);
 			propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor);
 			SelectOutlineNode(name);
 			// The runtime's selection set is managed by surface picks and MultiSelect -
@@ -1177,6 +1180,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			return;
 		}
 		SelectedElementName = node.Name;
+		shellSelection.Select(node.Id);
 		propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor);
 		previewHost.ShowSelection(SelectedElementName);
 	}
@@ -1238,7 +1242,8 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	{
 		var previouslySelected = SelectedElementName;
 		var sourceRoot = editor.Document?.Root;
-		outline.SetRoot(previewHost.ElementTree ?? (sourceRoot == null ? null : XmlOutlineNode(sourceRoot)));
+		shellSelection.UpdateTree(previewHost.ElementTree ?? (sourceRoot == null ? null : XmlOutlineNode(sourceRoot)));
+		outline.SetRoots(shellSelection.Roots);
 		// DocumentOutlineControl.SetRoot clears Items then re-selects the previous id via
 		// SelectNodeById - but under LibreWPF, TreeView.SelectedItemChanged for a freshly-added
 		// TreeViewItem doesn't always fire before this call returns (its container isn't

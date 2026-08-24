@@ -1,5 +1,11 @@
 # MewUI visual designer
 
+The workbench shell uses the common `Designer.Shell.DesignerSelectionController` for the MXAML
+outline, stable-name selection restoration and `MewUIPropertyAdapter` recreation. Roslyn/MXAML
+source generation and MewUI container semantics remain backend-owned.
+Undo, Redo and Delete also pass through the common `DesignerCommandController`; MewUI retains the
+MXAML/RPC mutation implementation while the shell owns command gating and re-entrancy.
+
 ## Implemented process boundary (2026-08-23)
 
 The MewUI designer now follows the shared DDP process architecture. The in-process AddIn owns only

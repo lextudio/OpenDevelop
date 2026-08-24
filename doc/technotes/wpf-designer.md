@@ -6,6 +6,11 @@ architecture, the drag-and-drop findings, and testing notes. The cross-designer 
 test matrix live in [`xaml-services.md`](xaml-services.md). The WinUI/Uno designer's dedicated
 technote is [`winui-designer.md`](winui-designer.md).
 
+The workbench integration now routes outline rebuilding and stable-ID selection through
+`Designer.Shell.DesignerSelectionController`. The common controller owns selection restoration
+and Properties adapter lifetime, while `DocumentOutlineControl` renders it. WPF-specific surface,
+XAML editing, runtime selection, and rendering behavior remain in the WPF backend.
+
 Current status: the WPF designer is the official WPF backend, added to the main solution and
 built on `LibreWPF.Sdk`.
 

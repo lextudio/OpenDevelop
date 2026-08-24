@@ -32,6 +32,7 @@ using Xceed.Wpf.Toolkit.PropertyGrid;
 using System.Windows;
 using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
+using ICSharpCode.SharpDevelop.Designer.Shell;
 using ICSharpCode.FormsDesigner.Services;
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.SharpDevelop;
@@ -579,6 +580,7 @@ namespace ICSharpCode.FormsDesigner
 		}
 
 		readonly DocumentOutlineControl outline = new DocumentOutlineControl();
+		readonly DesignerSelectionController shellSelection = new DesignerSelectionController();
 
 		public object OutlineContent {
 			get { return outline; }
@@ -588,8 +590,10 @@ namespace ICSharpCode.FormsDesigner
 		{
 			// Outline -> design surface: the surface owns selection; route the pick through the
 			// same single-selection path as a surface click.
-			if (outline.SelectedNode is { } node && remoteControl != null)
+			if (outline.SelectedNode is { } node && remoteControl != null) {
+				shellSelection.Select(node.Id);
 				remoteControl.SelectComponent(node.Id);
+			}
 		}
 
 		/// <summary>Rebuilds the Document Outline from the protocol's element tree. Falls back
@@ -597,7 +601,9 @@ namespace ICSharpCode.FormsDesigner
 		/// (older host binaries).</summary>
 		void UpdateOutline(DesignerSessionState state)
 		{
-			outline.SetRoot(state.Tree ?? BuildOutlineTree(state.Components));
+			var root = state.Tree ?? BuildOutlineTree(state.Components);
+			shellSelection.UpdateTree(root);
+			outline.SetRoots(shellSelection.Roots);
 		}
 
 		static DesignerElementNode BuildOutlineTree(List<DesignerComponentInfo> components)
@@ -778,6 +784,7 @@ namespace ICSharpCode.FormsDesigner
 				return;
 			}
 			propertyContainer.SelectedObject = new RemoteComponentPropertyProxy(this, component);
+			shellSelection.Select(component.Name);
 			// Design surface -> Document Outline: mirror the selection without re-triggering
 			// the outline->surface path (same element, no-op anyway).
 			outline.SelectNodeById(component.Name);

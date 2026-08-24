@@ -34,7 +34,7 @@ public sealed class MewUIDesignerTests : IAsyncDisposable
 		projectPath = Path.Combine(workDir, "MewUIFixture.csproj");
 		sourcePath = Path.Combine(workDir, "Windows", "MainWindow.mxaml.cs");
 		designerPath = Path.Combine(workDir, "Windows", "MainWindow.mxaml");
-		settingsSourcePath = Path.Combine(workDir, "Windows", "SettingsWindow.cs");
+		settingsSourcePath = Path.Combine(workDir, "Windows", "SettingsWindow.mxaml");
 	}
 
 	[Fact]
@@ -137,7 +137,7 @@ public sealed class MewUIDesignerTests : IAsyncDisposable
 		Assert.True(settingsStatus.GetProperty("hostRecoveryCount").GetInt32() > 0, settingsStatus.ToString());
 		var recoveredHostProcessId = settingsStatus.GetProperty("hostProcessId").GetInt32();
 		Assert.NotEqual(mainHostProcessId, recoveredHostProcessId);
-		var reopenedMain = await app.InvokeAsync("od.open-file", sourcePath);
+		var reopenedMain = await app.InvokeAsync("od.open-file", designerPath);
 		Assert.True(reopenedMain.GetProperty("opened").GetBoolean(), reopenedMain.ToString());
 		var recoveredMainStatus = await WaitForDesignerAsync("MainWindow");
 		Assert.Equal(recoveredHostProcessId, recoveredMainStatus.GetProperty("hostProcessId").GetInt32());

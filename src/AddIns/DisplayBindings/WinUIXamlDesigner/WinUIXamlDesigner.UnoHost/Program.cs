@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
@@ -164,13 +163,11 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		}
 
 		static readonly DesignHost capabilityHost = new(() => null);
-		static readonly ConcurrentDictionary<string, DesignHost> hosts = new(StringComparer.Ordinal);
-		static string initializedSessionId;
+		static readonly DesignerDocumentRegistry<DesignHost> hosts = new();
 
 		static DesignHost Host(string sessionId, string documentId)
 		{
-			if (sessionId != initializedSessionId) throw new UnauthorizedAccessException("The request's session id does not match this designer host.");
-			return hosts.GetOrAdd(documentId, _ => new DesignHost(() => null));
+			return hosts.GetOrAdd(sessionId, documentId, () => new DesignHost(() => null));
 		}
 
 		/// <summary>
@@ -186,7 +183,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			if (protocolVersion != DesignerProtocol.Version)
 				throw new NotSupportedException($"Protocol {protocolVersion} is not supported.");
 			var capabilities = Capabilities();
-			initializedSessionId = sessionId;
+			hosts.Initialize(sessionId);
 			capabilities.SessionId = sessionId;
 			return capabilities;
 		}
@@ -286,8 +283,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		}
 		static void CloseSession(string sessionId, string documentId)
 		{
-			if (sessionId != initializedSessionId) throw new UnauthorizedAccessException("The request's session id does not match this designer host.");
-			if (hosts.TryRemove(documentId, out var host)) host.Close();
+			hosts.Remove(sessionId, documentId, host => host.Close());
 		}
 		static void Ping()
 		{
@@ -296,7 +292,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		static void Shutdown()
 		{
 			try {
-				foreach (var item in hosts.ToArray()) if (hosts.TryRemove(item.Key, out var host)) host.Close();
+				hosts.CloseAll(host => host.Close());
 				capabilityHost.Shutdown();
 			}
 			catch (Exception e) { LogRpcError("shutdown", e); throw; }

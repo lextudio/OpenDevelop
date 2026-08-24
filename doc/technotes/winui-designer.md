@@ -6,6 +6,11 @@ real-world preview problem catalog (updated 2026-08-15). The cross-designer road
 WinUI together), framework detection, provider contracts, phases, and the test matrix live in
 [`xaml-services.md`](xaml-services.md).
 
+The parent workbench now shares `Designer.Shell.DesignerSelectionController` with the other four
+designers for the element forest, stable-ID selection restoration, and Properties adapter
+lifetime. `DocumentOutlineControl` is the common WPF view over that state; Uno/WinUI runtime
+loading, XAML mutations, hit testing, and rendering stay backend-specific.
+
 Current status: the out-of-process Uno host is implemented and is the preferred renderer for Uno
 projects. It starts a real Uno 6.5.31 `net10.0-desktop` child, loads XAML and application
 resources, renders a bitmap, returns a visual-tree snapshot and hit-test results, and supplies a
