@@ -31,7 +31,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="ProGPU.WinUI" Version="0.1.0-preview.47" />
+    <PackageReference Include="ProGPU.WinUI" Version="0.1.0-preview.55" />
     <PackageReference Include="GuiLabs.Language.Xml" Version="1.2.93" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
   </ItemGroup>
