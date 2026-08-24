@@ -2,7 +2,13 @@
   <Manifest><Identity name="ICSharpCode.MewUIDesigner" /></Manifest>
   <Runtime><Import assembly="ICSharpCode.MewUIDesigner.dll" /></Runtime>
   <Path name="/SharpDevelop/Workbench/DisplayBindings">
-    <DisplayBinding id="MewUIDesigner" type="Secondary" class="ICSharpCode.MewUIDesigner.MewUIDesignerDisplayBinding" fileNamePattern="\.cs$" />
+    <DisplayBinding id="MewUIDesigner" type="Secondary" class="ICSharpCode.MewUIDesigner.MewUIDesignerDisplayBinding" fileNamePattern="\.mxaml$" />
+  </Path>
+  <!-- .mxaml is a dedicated MewUI dialect, not a generic XML-shaped project/config file, so it
+       gets its own lexer here rather than piggybacking on the shared XML-Mode.xshd - keeps
+       .mxaml highlighting removed cleanly if this addin is ever disabled. -->
+  <Path name="/SharpDevelop/ViewContent/AvalonEdit/SyntaxModes">
+    <SyntaxMode id="MewUIXaml.SyntaxMode" name="MewUIXaml" extensions=".mxaml" resource="ICSharpCode.MewUIDesigner.Resources.MewUIXaml.xshd"/>
   </Path>
   <Path name="/SharpDevelop/Autostart">
     <Class id="ICSharpCode.MewUIDesigner.RegisterDevFlowActionsCommand" class="ICSharpCode.MewUIDesigner.RegisterDevFlowActionsCommand" />

@@ -4,7 +4,7 @@ using Aprillz.MewUI.Controls;
 namespace MewUIFixture.Windows;
 
 /// <summary>
-/// A second, independently constructible and designable window.
+/// User-owned behavior for the preferences window.
 /// </summary>
 public partial class SettingsWindow : Window
 {

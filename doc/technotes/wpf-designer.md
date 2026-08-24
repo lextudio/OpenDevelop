@@ -299,7 +299,13 @@ The process key is conceptually:
 (project ID, target framework, architecture, project-code mode)
 ```
 
-Start implementation with one project/one document per host to prove isolation and lifecycle.
+The initial implementation used one project/one document per host to prove isolation and lifecycle.
+As of 2026-08-23, the production client uses the common compatibility-keyed host pool: compatible
+WPF documents share one process and authenticated RPC connection while retaining distinct
+`DocumentId` values and independent `WpfSurfaceHostService` instances on the same STA dispatcher.
+`session/close` releases only that document; the final lease uses the common idle grace before
+process shutdown. `StartAsync` remains an explicitly isolated low-level test/diagnostic entry,
+while `WpfViewContent` uses `AcquireSharedAsync`.
 Move to multiple documents per compatible runtime process only after close/reopen/resource tests
 pass. Target framework, architecture, project-code-mode or incompatible dependency-graph changes
 create a new generation or restart boundary.

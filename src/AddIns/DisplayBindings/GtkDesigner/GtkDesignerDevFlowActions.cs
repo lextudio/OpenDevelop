@@ -1,6 +1,9 @@
 using System;
 using System.Linq;
 using System.Text.Json;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
 using LeXtudio.DevFlow.Agent.Core;
@@ -21,7 +24,8 @@ public static class GtkDesignerDevFlowActions
 			toolboxItemCount = view.ToolboxItemCount, toolboxHosted = view.IsToolboxHosted, outlineHosted = view.IsOutlineHosted, outlineItemCount = view.OutlineItemCount,
 			toolbarItemCount = view.ToolbarItemCount, toolbarItems = view.ToolbarItems, toolbarCapabilities = view.ToolbarCapabilities, zoom = view.Zoom, fitMeasured = view.FitMeasured, gridlines = view.Gridlines,
 			propertyPadSelectedType = grid?.SelectedObject?.GetType().FullName,
-			propertyPadPropertyCount = grid?.Properties?.Count ?? 0, canUndo = view.EnableUndo, canRedo = view.EnableRedo
+			propertyPadPropertyCount = grid?.Properties?.Count ?? 0, canUndo = view.EnableUndo, canRedo = view.EnableRedo,
+			debugMouseDownCount = view.DebugMouseDownCount, debugMouseMoveCount = view.DebugMouseMoveCount, debugMouseMovePressedCount = view.DebugMouseMovePressedCount, debugDragStartCount = view.DebugDragStartCount, debugDragOverCount = view.DebugDragOverCount, debugDropCount = view.DebugDropCount
 		});
 	}
 	[DevFlowAction("od.gtk-designer.select", Description = "Select a GtkBuilder object and populate the real Properties pad")]
@@ -66,6 +70,72 @@ public static class GtkDesignerDevFlowActions
 	public static string Fit() { var view = Activate(); view?.FitDesign(); return JsonSerializer.Serialize(new { success = view != null, zoom = view?.Zoom ?? 0, measured = view?.FitMeasured ?? false }); }
 	[DevFlowAction("od.gtk-designer.gridlines", Description = "Toggle GTK design-space gridlines")]
 	public static string Gridlines(bool enabled) { var view = Activate(); view?.ShowGridlines(enabled); return JsonSerializer.Serialize(new { success = view != null, gridlines = view?.Gridlines ?? false }); }
+
+	// Real screen bounds for a Toolbox row / a native-rendered design-surface target, computed
+	// the same way od.wpf-designer.toolbox.query-item-bounds does (plain UIElement.PointToScreen -
+	// the ToolsPad and design surface always share the single main window). Lets a test drive a
+	// REAL synthetic mouse press/drag-move/release (od.ui/actions) starting at the actual toolbox
+	// row and ending on the actual rendered target, exercising DragDrop.DoDragDrop end to end.
+	[DevFlowAction("od.gtk-designer.toolbox.query-item-bounds", Description = "Get the real on-screen bounds of a GTK Toolbox row for a given control type, for driving a synthetic mouse drag")]
+	public static string QueryToolboxItemBounds(string typeName)
+	{
+		var view = Activate();
+		if (view == null) return JsonSerializer.Serialize(new { success = false, error = "GTK designer is not loaded" });
+		if (!GtkDesignerViewContent.ToolNames.Contains(typeName, StringComparer.Ordinal))
+			return JsonSerializer.Serialize(new { success = false, error = "Unknown toolbox item: " + typeName });
+
+		var toolbox = view.ToolboxControl;
+		toolbox.SelectedItem = typeName;
+		toolbox.ScrollIntoView(typeName);
+		toolbox.UpdateLayout();
+
+		if (FindRealizedContainer(toolbox, typeName) is not FrameworkElement container)
+			return JsonSerializer.Serialize(new { success = false, error = "Toolbox row has no realized container (not scrolled into view?): " + typeName });
+
+		container.BringIntoView();
+		toolbox.UpdateLayout();
+		return JsonSerializer.Serialize(GetScreenBounds(container));
+	}
+
+	[DevFlowAction("od.gtk-designer.query-element-screen-bounds", Description = "Get the real on-screen bounds of a rendered GtkBuilder object in the active designer's native preview, for driving a synthetic mouse drag")]
+	public static string QueryElementScreenBounds(string id)
+	{
+		var view = Activate();
+		if (view == null) return JsonSerializer.Serialize(new { success = false, error = "GTK designer is not loaded" });
+		var target = view.FindNativeTarget(id);
+		if (target == null) return JsonSerializer.Serialize(new { success = false, error = "No rendered native target for: " + id });
+		return JsonSerializer.Serialize(GetScreenBounds(target));
+	}
+
+	static ListBoxItem? FindRealizedContainer(ItemsControl itemsControl, object item)
+	{
+		return FindInVisualTree(itemsControl);
+
+		ListBoxItem? FindInVisualTree(DependencyObject node)
+		{
+			int count = VisualTreeHelper.GetChildrenCount(node);
+			for (int i = 0; i < count; i++) {
+				var child = VisualTreeHelper.GetChild(node, i);
+				if (child is ListBoxItem listBoxItem && Equals(listBoxItem.DataContext, item))
+					return listBoxItem;
+				if (FindInVisualTree(child) is ListBoxItem found)
+					return found;
+			}
+			return null;
+		}
+	}
+
+	static object GetScreenBounds(UIElement element)
+	{
+		var topLeft = element.PointToScreen(new Point(0, 0));
+		var bottomRight = element.PointToScreen(new Point(element.RenderSize.Width, element.RenderSize.Height));
+		return new {
+			success = true,
+			x = topLeft.X, y = topLeft.Y,
+			width = bottomRight.X - topLeft.X, height = bottomRight.Y - topLeft.Y,
+			centerX = (topLeft.X + bottomRight.X) / 2, centerY = (topLeft.Y + bottomRight.Y) / 2
+		};
+	}
 
 	static PropertyGrid? PropertyGrid => (SD.Services.GetService(typeof(IPropertyPadHost)) as IPropertyPadHost)?.Grid;
 	static GtkDesignerViewContent? Activate()

@@ -99,6 +99,68 @@ public sealed class GtkDesignerTests : IAsyncDisposable
 		await ValidateFixtureBuildAsync(projectPath);
 	}
 
+	[Fact]
+	public async Task GtkDesigner_DragToolboxItemOntoNativeDesignSurface_InsertsAndPersistsControl()
+	{
+		// Companion to WPF's DragToolboxItem_OntoDesignSurface_InsertsAndPersistsControl and
+		// WinUI's *_DragToolboxItemOntoDesignSurface_* (AddInTests.cs): drives a REAL synthetic
+		// mouse drag (press/drag-move/release) from the shared Tools pad onto the GTK host's
+		// rendered native preview, exercising GtkDesignerViewContent's own DragDrop.DoDragDrop
+		// wiring (toolbox.PreviewMouseMove -> the "hits" overlay canvas's Drop handler) - the
+		// existing od.gtk-designer.toolbox.insert-based test only covers the API shortcut.
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", uiPath); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitAsync();
+		Assert.True(status.GetProperty("nativeFrame").GetBoolean(), status.ToString());
+		var elementCountBefore = status.GetProperty("elementCount").GetInt32();
+
+		// See DragToolboxItem_OntoDesignSurface_InsertsAndPersistsControl's own comment on why
+		// the Tools pad needs an explicit show first, and why activation is repeated per attempt.
+		await app.InvokeAsync("od.show-pad", "Tools");
+		await app.InvokeAsync("od.activate");
+		await app.InvokeAsync("od.gtk-designer.fit");
+
+		var toolboxBounds = await app.InvokeAsync("od.gtk-designer.toolbox.query-item-bounds", "GtkSwitch");
+		Assert.True(toolboxBounds.GetProperty("success").GetBoolean(), toolboxBounds.ToString());
+		var fromX = toolboxBounds.GetProperty("centerX").GetDouble();
+		var fromY = toolboxBounds.GetProperty("centerY").GetDouble();
+
+		// Target a real LEAF element (runButton), not a container whose own native bounds can
+		// tie exactly with an ancestor's (e.g. contentBox vs mainWindow both reporting the full
+		// 800x600 frame here) - NativeNodeAt's tie-break on equal area is order-dependent and
+		// made an early version of this test flaky at the coordinate-resolution step, independent
+		// of the drag/drop mechanics themselves.
+		var targetBounds = await app.InvokeAsync("od.gtk-designer.query-element-screen-bounds", "runButton");
+		Assert.True(targetBounds.GetProperty("success").GetBoolean(), targetBounds.ToString());
+		var toX = targetBounds.GetProperty("centerX").GetDouble();
+		var toY = targetBounds.GetProperty("centerY").GetDouble();
+
+		JsonElement statusAfterDrop = default;
+		var grew = false;
+		for (int attempt = 1; attempt <= 4 && !grew; attempt++) {
+			await app.InvokeAsync("od.activate");
+			var pressed = await app.PressPointerAsync(fromX, fromY); Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
+			for (int step = 1; step <= 6; step++) {
+				var t = step / 6.0;
+				var moved = await app.DragMovePointerAsync(fromX + (toX - fromX) * t, fromY + (toY - fromY) * t);
+				Assert.True(moved.GetProperty("ok").GetBoolean(), moved.ToString());
+				await Task.Delay(150, TestContext.Current.CancellationToken);
+			}
+			var released = await app.ReleasePointerAsync(toX, toY); Assert.True(released.GetProperty("ok").GetBoolean(), released.ToString());
+
+			grew = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+				statusAfterDrop = await app.InvokeAsync("od.gtk-designer.status");
+				return statusAfterDrop.GetProperty("elementCount").GetInt32() > elementCountBefore;
+			}, TimeSpan.FromSeconds(8), initialDelayMs: 50, maxDelayMs: 250);
+		}
+		Assert.True(grew, "Expected elementCount to grow after the drag-drop, even after retries.\nBefore: " + elementCountBefore + "\nAfter: " + statusAfterDrop);
+
+		var saved = await app.InvokeAsync("od.file.save", uiPath); Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+		var xml = await File.ReadAllTextAsync(uiPath, TestContext.Current.CancellationToken);
+		Assert.Contains("class=\"GtkSwitch\"", xml);
+		await ValidateGtkBuilderAsync(uiPath);
+	}
+
 	async Task<JsonElement> WaitAsync(string? rootId = null)
 	{
 		var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(20); JsonElement last = default;

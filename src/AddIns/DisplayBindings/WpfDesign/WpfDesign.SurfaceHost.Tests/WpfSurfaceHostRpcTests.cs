@@ -346,6 +346,36 @@ public sealed class WpfSurfaceHostRpcTests
 	}
 
 	[Fact]
+	public async Task SharedClients_UseOneProcessAndKeepDocumentsIsolated()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		var first = await WpfSurfaceHostClient.AcquireSharedAsync(HostDll(), timeout.Token);
+		var second = await WpfSurfaceHostClient.AcquireSharedAsync(HostDll(), timeout.Token);
+		try
+		{
+			Assert.Equal(first.ProcessId, second.ProcessId);
+			Assert.Equal(first.SessionId, second.SessionId);
+			Assert.NotEqual(first.DocumentId, second.DocumentId);
+			var firstState = await first.OpenAsync(Snapshot(1, Xaml), timeout.Token);
+			var secondState = await second.OpenAsync(Snapshot(1, Xaml.Replace("Hello", "Sibling")), timeout.Token);
+			var greeting = FindByName(firstState.Tree!, "greeting")!;
+			Assert.True((await first.SetPropertyAsync(1, greeting.Id, "Text", "First edited", timeout.Token)).Accepted);
+			Assert.Contains("First edited", (await first.FlushAsync(1, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+			var siblingText = (await second.FlushAsync(1, timeout.Token)).Files.Single().Text;
+			Assert.Contains("Sibling", siblingText, StringComparison.Ordinal);
+			Assert.DoesNotContain("First edited", siblingText, StringComparison.Ordinal);
+			first.Dispose();
+			Assert.True(second.IsAlive);
+			Assert.Contains("Sibling", (await second.FlushAsync(1, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		}
+		finally
+		{
+			first.Dispose();
+			second.Dispose();
+		}
+	}
+
+	[Fact]
 	public async Task SessionOpen_RendersRealWpfContentIntoTheFrame()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));

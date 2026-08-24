@@ -537,7 +537,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		try
 		{
 			var (runtimeConfig, depsFile) = ProjectDependencyContext();
-			client = await UnoDesignClient.StartAsync(runtimeConfig, depsFile, CancellationToken.None);
+			client = await UnoDesignClient.AcquireSharedAsync(runtimeConfig, depsFile, CancellationToken.None);
 			var capabilities = await client.GetCapabilitiesAsync();
 			Volatile.Write(ref catalogCache, capabilities.Toolbox
 				.Select(tool => new ToolboxItemInfo {

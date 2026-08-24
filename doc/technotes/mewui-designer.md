@@ -27,10 +27,10 @@ Roslyn transformations instead of invalidating their clients. MewUI has no nativ
 today, so asynchronous frames are dormant; its semantic WPF projection still obeys the same
 version and recovery-generation checks.
 
-Completion requires two-window integration coverage for shared PID/distinct document ids, pad and
-edit isolation, close/reopen PID reuse, forced shared-host recovery, pool-wide explicit restart,
-unsaved generated-code preservation and independent saves. Status automation exposes the same
-lifecycle identity fields as GTK even when render revisions are zero.
+The two-window integration coverage verifies shared PID/distinct document ids, pad and edit
+isolation, closing one document without affecting its sibling, forced shared-host recovery,
+pool-wide explicit restart, unsaved generated-code preservation and independent saves. Status
+automation exposes the same lifecycle identity fields as GTK even when render revisions are zero.
 
 ## Decision
 

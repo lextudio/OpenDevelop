@@ -174,6 +174,17 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			HeadlessDispatcher.RequestExit();
 		}
 
+		public void Close()
+		{
+			HeadlessDispatcher.Dispatch(() => {
+				root = null;
+				sessionId = null;
+				documentId = null;
+				lastXaml = "";
+				return true;
+			});
+		}
+
 		DesignerCapabilities BuildCapabilities()
 		{
 			var asm = typeof(FrameworkElement).Assembly;

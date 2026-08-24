@@ -669,6 +669,19 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 
 		public void WaitForShutdown() => shutdown.Wait();
 
+		internal void Close()
+		{
+			dispatcher.Dispatch(() => {
+				current = null;
+				pathToItem.Clear();
+				appliedThemeDictionary = null;
+				themeSources = null;
+				projectAssembly = null;
+				documentId = null;
+				return true;
+			});
+		}
+
 		DesignerSessionState NewState(long baseVersion) => new() { SessionId = sessionId ?? "", DocumentId = documentId ?? "", Version = baseVersion };
 
 		/// <summary>Enforces the DDP's mandatory stale-operation rule ("every mutating operation

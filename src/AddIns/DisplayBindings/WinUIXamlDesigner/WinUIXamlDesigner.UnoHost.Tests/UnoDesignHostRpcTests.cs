@@ -138,6 +138,35 @@ public sealed class UnoDesignHostRpcTests
 		}
 	}
 
+	[Fact]
+	public async Task SharedHost_UsesOneUnoApplicationAndKeepsDocumentsIsolated()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		var first = await UnoDesignClient.AcquireSharedAsync("", "", timeout.Token, HostDll());
+		var second = await UnoDesignClient.AcquireSharedAsync("", "", timeout.Token, HostDll());
+		try {
+			Assert.Equal(first.ProcessId, second.ProcessId);
+			Assert.Equal(first.SessionId, second.SessionId);
+			Assert.NotEqual(first.DocumentId, second.DocumentId);
+			var firstOpened = await first.OpenAsync(Document(first, Fixture("First")), timeout.Token);
+			Assert.True(firstOpened.Accepted);
+			Assert.True((await second.OpenAsync(Document(second, Fixture("Second")), timeout.Token)).Accepted);
+			var edited = await first.SetPropertyAsync(1, "greeting", "Text", "First edited", timeout.Token);
+			Assert.True(edited.Accepted);
+			Assert.NotEqual(firstOpened.Render!.Data, edited.Render!.Data);
+			Assert.Contains("First", (await first.FlushAsync(1, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+			var sibling = (await second.FlushAsync(1, timeout.Token)).Files.Single().Text;
+			Assert.Contains("Second", sibling, StringComparison.Ordinal);
+			Assert.DoesNotContain("First edited", sibling, StringComparison.Ordinal);
+			first.Dispose();
+			Assert.True(second.IsAlive);
+			Assert.Contains("Second", (await second.FlushAsync(1, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		} finally {
+			first.Dispose();
+			second.Dispose();
+		}
+	}
+
 	static async Task WaitForExitAsync(int processId, CancellationToken cancellationToken)
 	{
 		while (true) {

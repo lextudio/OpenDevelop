@@ -11,7 +11,6 @@ namespace LeXtudio.MewUI.Xaml;
 /// </summary>
 public sealed class MxamlDocument
 {
-	const string RootElement = "MewUI";
 	const string NamespaceUri = "http://schemas.lextudio.com/mewui/2026";
 
 	readonly List<MxamlDiagnostic> diagnostics = new();
@@ -20,8 +19,67 @@ public sealed class MxamlDocument
 	public MxamlObject Root { get; private set; } = new() { Type = "Window", Name = "root" };
 	public IReadOnlyList<MxamlDiagnostic> Diagnostics => diagnostics;
 	public bool HasErrors => diagnostics.Any(d => d.Severity == MxamlDiagnosticSeverity.Error);
+	readonly List<string> undo = new();
+	readonly List<string> redo = new();
+	string rawText = "";
 
-	MxamlDocument() { }
+	/// <summary>Creates an empty document (placeholder Window root). Prefer
+	/// <see cref="Parse"/> to load existing MXAML text.</summary>
+	public MxamlDocument() { }
+
+	/// <summary>Replaces the document text. Clears undo/redo. When parsing fails the document
+	/// becomes an empty placeholder and <see cref="Error"/> holds the reason; the original text
+	/// stays available via <see cref="LastRawText"/> so a caller's flush echoes it back losslessly.</summary>
+	public bool Reset(string text)
+	{
+		rawText = text ?? "";
+		undo.Clear(); redo.Clear();
+		var ok = TryLoad(rawText);
+		rawText = ToXaml(); // parsed state canonicalizes
+		return ok;
+	}
+
+	public string Error { get; private set; } = "";
+	public bool LastParseSucceeded { get; private set; } = true;
+	public string LastRawText => rawText;
+
+	bool TryLoad(string text)
+	{
+		diagnostics.Clear();
+		try {
+			var loaded = Parse(text);
+			Class = loaded.Class;
+			Root = loaded.Root;
+			foreach (var d in loaded.Diagnostics) diagnostics.Add(d);
+			Error = HasErrors ? string.Join("; ", diagnostics.Where(d => d.Severity == MxamlDiagnosticSeverity.Error).Select(d => d.Message)) : "";
+			return !HasErrors;
+		} catch (MxamlException ex) {
+			Error = ex.Message;
+			return false;
+		}
+	}
+
+	public bool Undo()
+	{
+		if (undo.Count == 0) return false;
+		redo.Add(ToXaml());
+		var previous = undo[^1];
+		undo.RemoveAt(undo.Count - 1);
+		TryLoad(previous);
+		rawText = previous;
+		return true;
+	}
+
+	public bool Redo()
+	{
+		if (redo.Count == 0) return false;
+		undo.Add(ToXaml());
+		var next = redo[^1];
+		redo.RemoveAt(redo.Count - 1);
+		TryLoad(next);
+		rawText = next;
+		return true;
+	}
 
 	/// <summary>Parses MXAML text. Throws <see cref="MxamlException"/> for malformed XML or a
 	/// wrong root; structural/semantic problems surface as <see cref="Diagnostics"/> instead.</summary>
@@ -33,22 +91,15 @@ public sealed class MxamlDocument
 		} catch (XmlException ex) {
 			throw new MxamlException($"MXAML is not well-formed XML: {ex.Message}", ex);
 		}
-		if (xdoc.Root == null || xdoc.Root.Name.LocalName != RootElement)
-			throw new MxamlException($"MXAML root must be <{RootElement}>.");
+		if (xdoc.Root == null || xdoc.Root.Name.LocalName != "Window")
+			throw new MxamlException("MXAML root must be a <Window> element (it carries the Class attribute, WPF-style).");
 
 		var doc = new MxamlDocument();
 		var classAttr = xdoc.Root.Attribute("Class");
 		if (classAttr == null || !IsDottedIdentifier(classAttr.Value))
 			doc.AddDiagnostic(xdoc.Root, MxamlDiagnosticSeverity.Error, "Root requires a Class attribute naming the partial class (e.g. \"App.MainWindow\").");
 
-		var windows = xdoc.Root.Elements().Where(e => e.Name.LocalName != "xmlns").ToList();
-		if (windows.Count != 1) {
-			doc.AddDiagnostic(xdoc.Root, MxamlDiagnosticSeverity.Error,
-				$"Exactly one window element is required, found {xdoc.Root.Elements().Count()}.");
-		}
-		else {
-			doc.Root = doc.BuildObject(windows[0]);
-		}
+		doc.Root = doc.BuildObject(xdoc.Root);
 
 		doc.Class = classAttr?.Value ?? "";
 
@@ -112,14 +163,7 @@ public sealed class MxamlDocument
 
 	// ---- transformations ---------------------------------------------------------------
 
-	string Snapshot()
-	{
-		var sb = new StringBuilder();
-		sb.Append('<').Append(RootElement).Append(" Class=\"").Append(Class).Append("\">").Append('\n');
-		Root.WriteTo(sb, "    ");
-		sb.Append("</").Append(RootElement).Append('>');
-		return sb.ToString();
-	}
+	string Snapshot() => ToXaml();
 
 	bool Commit(Func<bool> mutate)
 	{
@@ -127,11 +171,16 @@ public sealed class MxamlDocument
 		diagnostics.RemoveAll(d => d.Severity != MxamlDiagnosticSeverity.Info && d.Line == 0);
 		if (!mutate()) return false;
 		Revalidate();
-		if (!HasErrors) return true;
-		// transactional: roll back to the pre-mutation snapshot on newly-introduced errors
-		var restored = Parse(before);
-		Class = restored.Class; Root = restored.Root;
-		return false;
+		if (HasErrors) {
+			// transactional: roll back to the pre-mutation snapshot on newly-introduced errors
+			var restored = Parse(before);
+			Class = restored.Class; Root = restored.Root;
+			return false;
+		}
+		undo.Add(before);
+		redo.Clear();
+		rawText = before;
+		return true;
 	}
 
 	void Revalidate()
@@ -173,6 +222,24 @@ public sealed class MxamlDocument
 		return Commit(() => {
 			var name = UniqueName(type);
 			parent.Children.Add(new MxamlObject { Type = type, Name = name });
+			return true;
+		});
+	}
+
+	/// <summary>Moves a child within its parent by <paramref name="delta"/> positions.</summary>
+	public bool Reorder(string name, int delta)
+	{
+		if (delta == 0 || name == Root.Name) return false;
+		var parent = FindParent(name);
+		if (parent == null) return false;
+		return Commit(() => {
+			var index = parent.Children.IndexOf(parent.Children.First(c => c.Name == name));
+			if (index < 0) return false;
+			var target = Math.Clamp(index + delta, 0, parent.Children.Count - 1);
+			if (target == index) return false;
+			var item = parent.Children[index];
+			parent.Children.RemoveAt(index);
+			parent.Children.Insert(target, item);
 			return true;
 		});
 	}
@@ -269,9 +336,16 @@ public sealed class MxamlDocument
 	{
 		var sb = new StringBuilder();
 		sb.Append("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
-		sb.Append('<').Append(RootElement).Append(" xmlns=\"").Append(NamespaceUri).Append("\" Class=\"").Append(Escape(Class)).Append("\">\n");
-		Root.WriteTo(sb, "    ");
-		sb.Append("</").Append(RootElement).Append('>');
+		sb.Append("<Window xmlns=\"").Append(NamespaceUri).Append('"');
+		if (!string.IsNullOrEmpty(Root.Name))
+			sb.Append(" Name=\"").Append(Escape(Root.Name)).Append('"');
+		sb.Append(" Class=\"").Append(Escape(Class)).Append('"');
+		foreach (var a in Root.Attributes.Where(a => !a.IsEvent))
+			sb.Append(' ').Append(a.Name).Append("=\"").Append(Escape(a.Value)).Append('"');
+		sb.Append(">\n");
+		foreach (var child in Root.Children)
+			child.WriteTo(sb, "    ");
+		sb.Append("</Window>");
 		return sb.ToString();
 	}
 

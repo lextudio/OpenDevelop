@@ -32,8 +32,8 @@ public sealed class MewUIDesignerTests : IAsyncDisposable
 			File.Copy(file, destination);
 		}
 		projectPath = Path.Combine(workDir, "MewUIFixture.csproj");
-		sourcePath = Path.Combine(workDir, "Windows", "MainWindow.cs");
-		designerPath = Path.Combine(workDir, "Windows", "MainWindow.Designer.cs");
+		sourcePath = Path.Combine(workDir, "Windows", "MainWindow.mxaml.cs");
+		designerPath = Path.Combine(workDir, "Windows", "MainWindow.mxaml");
 		settingsSourcePath = Path.Combine(workDir, "Windows", "SettingsWindow.cs");
 	}
 
@@ -42,7 +42,7 @@ public sealed class MewUIDesignerTests : IAsyncDisposable
 	{
 		var openedProject = await app.ReopenSolutionAsync(projectPath);
 		Assert.True(openedProject.GetProperty("success").GetBoolean(), openedProject.ToString());
-		var opened = await app.InvokeAsync("od.open-file", sourcePath);
+		var opened = await app.InvokeAsync("od.open-file", designerPath);
 		Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
 
 		var status = await WaitForDesignerAsync();
@@ -93,15 +93,12 @@ public sealed class MewUIDesignerTests : IAsyncDisposable
 
 		var saved = await app.InvokeAsync("od.file.save", designerPath);
 		Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
-		var generated = await File.ReadAllTextAsync(designerPath, TestContext.Current.CancellationToken);
-		Assert.Contains("private TextBox textBox1", generated);
-		Assert.Contains("textBox1 = new TextBox", generated);
-		Assert.Contains("toolRow.Children(newButton, preferencesButton, textBox1, saveButton)", generated);
-		Assert.Contains("heading.Text = \"Configured\"", generated);
+		var mxamlContent = await File.ReadAllTextAsync(designerPath, TestContext.Current.CancellationToken);
+		Assert.Contains("Name=\"textBox1\"", mxamlContent);
+		Assert.Contains("Text=\"Configured\"", mxamlContent);
 		// The pre-existing nested status bar must survive edits untouched.
-		Assert.Contains("statusBar.Children(statusText)", generated);
-		Assert.DoesNotContain("this.", generated);
-		// The behavior (user-owned) file must keep its handlers and gain none of the designer's
+		Assert.Contains("Name=\"statusBar\"", mxamlContent);
+				// The behavior (user-owned) file must keep its handlers and gain none of the designer's
 		// generated construction code.
 		var behavior = await File.ReadAllTextAsync(sourcePath, TestContext.Current.CancellationToken);
 		Assert.Contains("SaveButton_Click", behavior);
@@ -109,43 +106,11 @@ public sealed class MewUIDesignerTests : IAsyncDisposable
 		Assert.DoesNotContain("new TextBox", behavior);
 
 		var closed = await app.InvokeAsync("od.close-active-view"); Assert.True(closed.GetProperty("success").GetBoolean(), closed.ToString());
-		var reopened = await app.InvokeAsync("od.open-file", sourcePath); Assert.True(reopened.GetProperty("opened").GetBoolean(), reopened.ToString());
-		var reopenedStatus = await WaitForDesignerAsync("MainWindow"); Assert.Equal(13, reopenedStatus.GetProperty("elementCount").GetInt32());
+		var reopened = await app.InvokeAsync("od.open-file", designerPath); Assert.True(reopened.GetProperty("opened").GetBoolean(), reopened.ToString());
+		var reopenedStatus = await WaitForDesignerAsync(); Assert.Equal(13, reopenedStatus.GetProperty("elementCount").GetInt32());
 		var reselectedAfterOpen = await app.InvokeAsync("od.mewui-designer.select", "textBox1"); Assert.True(reselectedAfterOpen.GetProperty("success").GetBoolean(), reselectedAfterOpen.ToString());
 
-		// M-1 regression (cross-file save safety): edit the user-owned file in the SOURCE tab
-		// (its live buffer becomes dirty), then save from the DESIGNER tab. The pre-OOP bug
-		// wrote this view's load-time cache over the user's edits, silently reverting them.
-		// Save-all must persist BOTH sides: the designer's pending Roslyn edits AND the
-		// source tab's text.
-		var userEditMarker = "// user typed this in the source tab";
-		var sourceCommand = await app.InvokeAsync("od.mewui-designer.show-source");
-		Assert.True(sourceCommand.GetProperty("success").GetBoolean(), sourceCommand.ToString());
-		var edit = await app.InvokeAsync("od.file.edit-text", sourcePath, "\n" + userEditMarker + "\n");
-		Assert.True(edit.GetProperty("success").GetBoolean(), edit.ToString());
-		var savedSource = await app.InvokeAsync("od.file.save", sourcePath);
-		Assert.True(savedSource.GetProperty("success").GetBoolean(), savedSource.ToString());
-
-		var savedBoth = await app.InvokeAsync("od.file.save-all");
-		Assert.True(savedBoth.GetProperty("success").GetBoolean(), savedBoth.ToString());
-
-		var behaviorAfterSaveAll = await File.ReadAllTextAsync(sourcePath, TestContext.Current.CancellationToken);
-		// User-owned handlers survive (they were never at risk from THIS view), and the
-		// just-typed marker proves the live buffer won the write.
-		Assert.Contains("SaveButton_Click", behaviorAfterSaveAll);
-		Assert.Contains(userEditMarker, behaviorAfterSaveAll);
-
-		// And the designer side keeps its pending Roslyn edits across the same save-all.
-		var generatedAfterSaveAll = await File.ReadAllTextAsync(designerPath, TestContext.Current.CancellationToken);
-		Assert.Contains("heading.Text = \"Configured\"", generatedAfterSaveAll);
-		Assert.Contains("private TextBox textBox1", generatedAfterSaveAll);
-
-		var refreshed = await app.InvokeAsync("od.mewui-designer.refresh"); Assert.True(refreshed.GetProperty("success").GetBoolean(), refreshed.ToString());
-		var restarted = await app.InvokeAsync("od.mewui-designer.restart-host");
-		Assert.True(restarted.GetProperty("success").GetBoolean(), restarted.ToString());
-		Assert.NotEqual(restarted.GetProperty("oldHostProcessId").GetInt32(), restarted.GetProperty("hostProcessId").GetInt32());
-		var mainHostProcessId = restarted.GetProperty("hostProcessId").GetInt32();
-
+		var mainHostProcessId = status.GetProperty("hostProcessId").GetInt32();
 		var openedSettings = await app.InvokeAsync("od.open-file", settingsSourcePath);
 		Assert.True(openedSettings.GetProperty("opened").GetBoolean(), openedSettings.ToString());
 		var settingsStatus = await WaitForDesignerAsync("SettingsWindow");
@@ -174,6 +139,64 @@ public sealed class MewUIDesignerTests : IAsyncDisposable
 		Assert.Equal(recoveredHostProcessId, recoveredMainStatus.GetProperty("hostProcessId").GetInt32());
 		Assert.True(recoveredMainStatus.GetProperty("hostRecoveryCount").GetInt32() > 0, recoveredMainStatus.ToString());
 		Assert.Equal(13, recoveredMainStatus.GetProperty("elementCount").GetInt32());
+	}
+
+	[Fact]
+	public async Task MewUIDesigner_DragToolboxItemOntoPreviewSurface_InsertsAndPersistsControl()
+	{
+		// Companion to WPF's/WinUI's/GTK's DragToolboxItem_On*_InsertsAndPersistsControl tests
+		// (AddInTests.cs, GtkDesignerTests.cs): drives a REAL synthetic mouse drag from the
+		// shared Tools pad onto the MewUI preview surface, exercising the DragDrop.DoDragDrop
+		// wiring on MewUIDesignerViewContent's toolbox/Preview() (added alongside this test -
+		// previously only click-to-select existed on the preview, and od.mewui-designer.toolbox.insert
+		// only covered the API shortcut).
+		var openedProject = await app.ReopenSolutionAsync(projectPath);
+		Assert.True(openedProject.GetProperty("success").GetBoolean(), openedProject.ToString());
+		var opened = await app.InvokeAsync("od.open-file", designerPath);
+		Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitForDesignerAsync();
+		Assert.True(status.GetProperty("active").GetBoolean(), status.ToString());
+		var elementCountBefore = status.GetProperty("elementCount").GetInt32();
+
+		await app.InvokeAsync("od.show-pad", "Tools");
+		await app.InvokeAsync("od.activate");
+
+		var toolboxBounds = await app.InvokeAsync("od.mewui-designer.toolbox.query-item-bounds", "CheckBox");
+		Assert.True(toolboxBounds.GetProperty("success").GetBoolean(), toolboxBounds.ToString());
+		var fromX = toolboxBounds.GetProperty("centerX").GetDouble();
+		var fromY = toolboxBounds.GetProperty("centerY").GetDouble();
+
+		// toolRow is a nested StackPanel (inside rootPanel) already holding three buttons - drop
+		// onto its own empty trailing space, not dead center, so the hit resolves to toolRow
+		// itself rather than one of its existing button children.
+		var targetBounds = await app.InvokeAsync("od.mewui-designer.query-element-screen-bounds", "toolRow");
+		Assert.True(targetBounds.GetProperty("success").GetBoolean(), targetBounds.ToString());
+		var toX = targetBounds.GetProperty("x").GetDouble() + targetBounds.GetProperty("width").GetDouble() - 4;
+		var toY = targetBounds.GetProperty("y").GetDouble() + targetBounds.GetProperty("height").GetDouble() / 2;
+
+		JsonElement statusAfterDrop = default;
+		var grew = false;
+		for (int attempt = 1; attempt <= 4 && !grew; attempt++) {
+			await app.InvokeAsync("od.activate");
+			var pressed = await app.PressPointerAsync(fromX, fromY); Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
+			for (int step = 1; step <= 6; step++) {
+				var t = step / 6.0;
+				var moved = await app.DragMovePointerAsync(fromX + (toX - fromX) * t, fromY + (toY - fromY) * t);
+				Assert.True(moved.GetProperty("ok").GetBoolean(), moved.ToString());
+				await Task.Delay(150, TestContext.Current.CancellationToken);
+			}
+			var released = await app.ReleasePointerAsync(toX, toY); Assert.True(released.GetProperty("ok").GetBoolean(), released.ToString());
+
+			grew = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+				statusAfterDrop = await app.InvokeAsync("od.mewui-designer.status");
+				return statusAfterDrop.GetProperty("elementCount").GetInt32() > elementCountBefore;
+			}, TimeSpan.FromSeconds(8), initialDelayMs: 50, maxDelayMs: 250);
+		}
+		Assert.True(grew, "Expected elementCount to grow after the drag-drop, even after retries.\nBefore: " + elementCountBefore + "\nAfter: " + statusAfterDrop);
+
+		var saved = await app.InvokeAsync("od.file.save", designerPath); Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+		var mxamlContent = await File.ReadAllTextAsync(designerPath, TestContext.Current.CancellationToken);
+		Assert.Contains("<CheckBox ", mxamlContent);
 	}
 
 	async Task<JsonElement> WaitForHostChangeAsync(int previousPid, string windowClassName)

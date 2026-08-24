@@ -19,6 +19,10 @@ in the dedicated technotes:
 - [`wpf-designer.md`](wpf-designer.md) — the WPF designer, cut over to OOP on 2026-08-17/18;
 - [`winui-designer.md`](winui-designer.md) — the WinUI/Uno out-of-process host, the retired
   ProGPU in-process profile, and the native WinUI (Windows App SDK) planned adapter;
+- [`mewui-designer.md`](mewui-designer.md) — the C#-first/Roslyn-backed MewUI designer,
+  generated `.Designer.cs` convention, source transformations and safe preview projection;
+- [`gtk-designer.md`](gtk-designer.md) — the GTK 4 GtkBuilder designer, GIR/catalogue model,
+  native rendering boundary, macOS background-host behavior and Cambalache non-reuse policy;
 - [`xaml-services.md`](xaml-services.md) — the cross-designer roadmap, framework detection and
   the shared IDE-level contracts.
 
@@ -30,7 +34,7 @@ three data points this contract generalizes.
 
 ## Shared-host lifecycle design (2026-08-23)
 
-This section is normative and implemented for the GTK4, MewUI and WinForms backends. It replaces the accidental
+This section is normative and implemented across all five backends: GTK4, MewUI, WinForms, WPF and WinUI/Uno. It replaces the accidental
 "one client object owns one child process" lifetime with a two-level model:
 
 ```text

@@ -114,7 +114,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 
 			if (surfaceControl == null)
 			{
-				client = WpfSurfaceHostClient.StartAsync(null, CancellationToken.None).GetAwaiter().GetResult();
+				client = WpfSurfaceHostClient.AcquireSharedAsync(null, CancellationToken.None).GetAwaiter().GetResult();
 				surfaceControl = new WpfSurfaceDesignerControl(client);
 				surfaceControl.SelectionChanged += OnSelectionChanged;
 				surfaceControl.DocumentChanged += OnDocumentChanged;

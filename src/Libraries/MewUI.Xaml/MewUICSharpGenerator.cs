@@ -37,7 +37,21 @@ public static class MewUICSharpGenerator
 
 		// Window-level properties first (Title/Width/...), then each control's block.
 		foreach (var a in root.Attributes)
-			EmitAttribute(sb, root.Type, root.Name, a);
+		// Root Window-level props: instance members, NO owner prefix.
+		foreach (var attr in root.Attributes) {
+			var kind = MewUIControlCatalog.KindOf("Window", attr.Name);
+			switch (kind) {
+				case MxamlPropertyKind.String:
+					sb.Append("        ").Append(attr.Name).Append(" = \"").Append(Escape(attr.Value)).Append("\";\n");
+					break;
+				case MxamlPropertyKind.Double:
+					sb.Append("        ").Append(attr.Name).Append(" = ").Append(DoubleLiteral(a.Value)).Append(";\n");
+					break;
+				default:
+					sb.Append("        // unsupported: ").Append(attr.Name).Append("\n");
+					break;
+			}
+		}
 
 		foreach (var c in controls) {
 			sb.Append('\n');
@@ -46,13 +60,35 @@ public static class MewUICSharpGenerator
 		}
 
 		sb.Append('\n');
-		foreach (var container in containersInDependencyOrder(root))
-			if (container.Children.Count > 0)
-				sb.Append("        ").Append(container.Name).Append(".Children(")
-				   .Append(string.Join(", ", container.Children.Select(ch => ch.Name)))
-				   .Append(");\n");
 
-		sb.Append("        Content = ").Append(root.Name).Append(";\n");
+		// Relationship calls: each container expresses how it holds its children.
+		// Only actual Panel subclasses use .Children(); ContentControl types use .Content;
+		// Border uses .Child. The root Window's Content is set to its first container child.
+		foreach (var container in containersInDependencyOrder(root)) {
+			if (container.Type == "Window") continue; // root Content assignment below
+			if (container.Children.Count == 0) continue;
+			var mode = MewUIControlCatalog.ContainmentMode(container.Type);
+			switch (mode) {
+				case "Children":
+					sb.Append("        ").Append(container.Name).Append(".Children(")
+					   .Append(string.Join(", ", container.Children.Select(ch => ch.Name)))
+					   .Append(");\n");
+					break;
+				case "Content":
+					if (container.Children.Count == 1)
+						sb.Append("        ").Append(container.Name).Append(".Content = ")
+						   .Append(container.Children[0].Name).Append(";\n");
+					break;
+				case "Child":
+					if (container.Children.Count >= 1)
+						sb.Append("        ").Append(container.Name).Append(".Child = ")
+						   .Append(container.Children[0].Name).Append(";\n");
+					break;
+			}
+		}
+
+		var contentRoot = root.Children.FirstOrDefault()?.Name ?? "";
+		sb.Append("        Content = ").Append(contentRoot).Append(";\n");
 		sb.Append("    }\n}");
 		return sb.ToString();
 	}

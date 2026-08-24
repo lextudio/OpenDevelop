@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window xmlns="http://schemas.lextudio.com/mewui/2026"
+        Class="MewUIFixture.Windows.MainWindow"
+        Name="MainWindow"
+        Title="QuickNotes">
+  <StackPanel Name="rootPanel" Spacing="8">
+    <Label Name="heading" Text="QuickNotes"/>
+    <StackPanel Name="toolRow" Spacing="6" Orientation="Horizontal">
+      <Button Name="newButton" Content="New" Click="NewButton_Click"/>
+      <Button Name="preferencesButton" Content="Settings" Click="PreferencesButton_Click"/>
+      <Button Name="saveButton" Content="Save" Click="SaveButton_Click"/>
+    </StackPanel>
+    <TextBox Name="nameBox" Text="untitled"/>
+    <CheckBox Name="notificationsCheck" Text="Enable notifications"/>
+    <ListBox Name="statusList"/>
+    <StackPanel Name="statusBar">
+      <Label Name="statusText" Text="Ready"/>
+    </StackPanel>
+  </StackPanel>
+</Window>

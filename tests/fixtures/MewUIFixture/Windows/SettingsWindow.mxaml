@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window xmlns="http://schemas.lextudio.com/mewui/2026"
+        Class="MewUIFixture.Windows.SettingsWindow"
+        Name="SettingsWindow"
+        Title="Settings">
+  <StackPanel Name="prefsRoot" Spacing="10">
+    <GroupBox Name="generalGroup">
+      <StackPanel Name="generalStack">
+        <Label Name="nameLabel" Text="User name"/>
+        <TextBox Name="nameBox" Text="designer"/>
+      </StackPanel>
+    </GroupBox>
+    <CheckBox Name="notifyCheck" Text="Show notifications"/>
+    <StackPanel Name="themeRow" Spacing="6">
+      <Label Name="themeLabel" Text="Theme"/>
+      <ComboBox Name="themeCombo"/>
+    </StackPanel>
+    <Button Name="saveButton" Content="Save" Click="SaveButton_Click"/>
+  </StackPanel>
+</Window>

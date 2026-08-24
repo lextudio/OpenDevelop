@@ -25,6 +25,8 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	readonly Border surface = new() { Padding = new Thickness(24), Background = Brushes.DimGray };
 	readonly TextBlock diagnostic = new() { Foreground = Brushes.OrangeRed, Margin = new Thickness(8), TextWrapping = TextWrapping.Wrap };
 	readonly DesignerCanvas canvas = new();
+	readonly Dictionary<string, FrameworkElement> nativeTargetsById = new();
+	bool draggingFromToolbox;
 	readonly ScrollViewer scroller = new() { HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
 	GtkDesignerHostClient? host; DesignerSessionState state = new(); DesignerElementNode? selected; string preferredSelectionId = ""; string loadedText = "";
 	CancellationTokenSource? renderCancellation; long requestedRenderRevision; long renderedRevision;
@@ -36,10 +38,28 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		grid.Children.Add(canvas); Grid.SetRow(diagnostic, 1); grid.Children.Add(diagnostic); UserContent = grid;
 		outline.SelectedItemChanged += (_, _) => Select((outline.SelectedItem as TreeViewItem)?.Tag as DesignerElementNode);
 		toolbox.MouseDoubleClick += (_, _) => { if (toolbox.SelectedItem is string type) Add(type); }; toolbox.KeyDown += (_, e) => { if (e.Key == Key.Enter && toolbox.SelectedItem is string type) { Add(type); e.Handled = true; } };
-		toolbox.PreviewMouseMove += (_, e) => { if (e.LeftButton == MouseButtonState.Pressed && toolbox.SelectedItem is string type) DragDrop.DoDragDrop(toolbox, new DataObject(DataFormats.StringFormat, type), DragDropEffects.Copy); };
+		toolbox.PreviewMouseDown += (_, e) => { DebugMouseDownCount++; draggingFromToolbox = false; };
+		// Guard against re-entrancy: WPF only supports one active DoDragDrop session at a time,
+		// so calling it again on every subsequent PreviewMouseMove while the button stays down
+		// (which fires repeatedly for a real or synthetic multi-step drag) cancels the prior,
+		// still-in-flight session before it ever reaches the drop target's DragOver - verified
+		// live via od.gtk-designer.status's debugDragOverCount staying 0 across many real
+		// synthetic drags despite debugDragStartCount incrementing on every move.
+		toolbox.PreviewMouseMove += (_, e) => {
+			DebugMouseMoveCount++;
+			if (e.LeftButton != MouseButtonState.Pressed) { draggingFromToolbox = false; return; }
+			DebugMouseMovePressedCount++;
+			if (draggingFromToolbox || toolbox.SelectedItem is not string type) return;
+			draggingFromToolbox = true;
+			DebugDragStartCount++;
+			DragDrop.DoDragDrop(toolbox, new DataObject(DataFormats.StringFormat, type), DragDropEffects.Copy);
+			draggingFromToolbox = false;
+		};
 		grid.CommandBindings.Add(new CommandBinding(ApplicationCommands.Undo, (_, _) => Undo())); grid.CommandBindings.Add(new CommandBinding(ApplicationCommands.Redo, (_, _) => Redo())); grid.CommandBindings.Add(new CommandBinding(ApplicationCommands.Delete, (_, _) => DeleteSelected()));
 	}
-	public object OutlineContent => outline; public object ToolsContent => toolbox; public PropertyContainer PropertyContainer => properties;
+	public object OutlineContent => outline; public object ToolsContent => toolbox; public ListBox ToolboxControl => toolbox; public PropertyContainer PropertyContainer => properties;
+	public FrameworkElement? FindNativeTarget(string id) => nativeTargetsById.GetValueOrDefault(id);
+	public int DebugMouseDownCount; public int DebugMouseMoveCount; public int DebugMouseMovePressedCount; public int DebugDragStartCount; public int DebugDragOverCount; public int DebugDropCount;
 	public int ToolboxItemCount => toolbox.Items.Count; public bool IsToolboxHosted => ReferenceEquals((SD.Services.GetService(typeof(IToolsPadHost)) as IToolsPadHost)?.HostedContent, toolbox);
 	public bool IsOutlineHosted => ReferenceEquals((SD.Services.GetService(typeof(IOutlinePadHost)) as IOutlinePadHost)?.HostedContent, outline); public int OutlineItemCount => ElementCount;
 	public int ElementCount => state.Tree == null ? 0 : Flatten(state.Tree).Count(n => n.Id != "$interface"); public string SelectedId => selected?.Id ?? ""; public int HostProcessId => host?.ProcessId ?? 0;
@@ -83,7 +103,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 			await Application.Current.Dispatcher.InvokeAsync(() => { if (token.IsCancellationRequested || host != renderingHost || state.Version != version || rendered.Render?.Sequence != version) return; state = rendered; renderedRevision = version; Rebuild(); });
 		} catch (OperationCanceledException) { } catch (Exception ex) { await Application.Current.Dispatcher.InvokeAsync(() => diagnostic.Text = "GTK render failed: " + ex.Message); }
 	}
-	void Rebuild() { var selectedId = selected?.Id ?? preferredSelectionId; diagnostic.Text = Status; outline.Items.Clear(); if (state.Tree != null) foreach (var outlineRoot in state.Tree.Id == "$interface" ? (IEnumerable<DesignerElementNode>)state.Tree.Children : new[] { state.Tree }) outline.Items.Add(Tree(outlineRoot)); var previewRoot = state.Tree?.Id == "$interface" ? state.Tree.Children.FirstOrDefault() : state.Tree; surface.Child = previewRoot == null ? new TextBlock { Text = "No GTK 4 object tree found.", Foreground = Brushes.White } : NativePreview(previewRoot); selected = null; properties.SelectedObject = null; if (!string.IsNullOrEmpty(selectedId)) SelectById(selectedId); }
+	void Rebuild() { var selectedId = selected?.Id ?? preferredSelectionId; diagnostic.Text = Status; outline.Items.Clear(); nativeTargetsById.Clear(); if (state.Tree != null) foreach (var outlineRoot in state.Tree.Id == "$interface" ? (IEnumerable<DesignerElementNode>)state.Tree.Children : new[] { state.Tree }) outline.Items.Add(Tree(outlineRoot)); var previewRoot = state.Tree?.Id == "$interface" ? state.Tree.Children.FirstOrDefault() : state.Tree; surface.Child = previewRoot == null ? new TextBlock { Text = "No GTK 4 object tree found.", Foreground = Brushes.White } : NativePreview(previewRoot); selected = null; properties.SelectedObject = null; if (!string.IsNullOrEmpty(selectedId)) SelectById(selectedId); }
 	FrameworkElement NativePreview(DesignerElementNode root)
 	{
 		if (!HasNativeFrame) return Preview(root);
@@ -96,14 +116,15 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		foreach (var node in Flatten(root).Where(n => n.Width > 0 && n.Height > 0).OrderByDescending(n => n.Width * n.Height)) {
 			var target = new Border { Width = node.Width, Height = node.Height, Background = Brushes.Transparent, Tag = node };
 			Canvas.SetLeft(target, node.X); Canvas.SetTop(target, node.Y);
+			nativeTargetsById[node.Id] = target;
 			target.PreviewMouseLeftButtonDown += (_, e) => { dragged = node; dragStart = e.GetPosition(hits); Select(node); target.CaptureMouse(); e.Handled = true; };
 			target.PreviewMouseMove += (_, e) => { if (dragged == null || e.LeftButton != MouseButtonState.Pressed || (e.GetPosition(hits) - dragStart).Length < 4) return; var over = NativeNodeAt(root, e.GetPosition(hits)); if (over == null || ReferenceEquals(over, dragged)) return; insertion.Width = over.Width; Canvas.SetLeft(insertion, over.X); Canvas.SetTop(insertion, over.Y); insertion.Visibility = Visibility.Visible; };
 			target.PreviewMouseLeftButtonUp += (_, e) => { target.ReleaseMouseCapture(); insertion.Visibility = Visibility.Collapsed; var source = dragged; dragged = null; var over = NativeNodeAt(root, e.GetPosition(hits)); if (source != null && over != null && !ReferenceEquals(source, over)) ReorderBetween(root, source, over); e.Handled = true; };
 			hits.Children.Add(target);
 		}
 		hits.Children.Add(insertion);
-		hits.DragOver += (_, e) => { e.Effects = e.Data.GetDataPresent(DataFormats.StringFormat) ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; };
-		hits.Drop += (_, e) => { if (e.Data.GetData(DataFormats.StringFormat) is not string type || !ToolNames.Contains(type, StringComparer.Ordinal)) return; var over = NativeNodeAt(root, e.GetPosition(hits)); if (over != null) Select(over); Add(type); e.Handled = true; };
+		hits.DragOver += (_, e) => { DebugDragOverCount++; e.Effects = e.Data.GetDataPresent(DataFormats.StringFormat) ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; };
+		hits.Drop += (_, e) => { DebugDropCount++; if (e.Data.GetData(DataFormats.StringFormat) is not string type || !ToolNames.Contains(type, StringComparer.Ordinal)) return; var over = NativeNodeAt(root, e.GetPosition(hits)); if (over != null) Select(over); Add(type); e.Handled = true; };
 		var result = new Grid { Width = state.Render.Width, Height = state.Render.Height, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top }; result.Children.Add(image); result.Children.Add(hits); return result;
 	}
 	TreeViewItem Tree(DesignerElementNode node) { var item = new TreeViewItem { Header = $"{node.Name}  ({node.Type})", Tag = node, IsExpanded = true }; foreach (var child in node.Children) item.Items.Add(Tree(child)); return item; }

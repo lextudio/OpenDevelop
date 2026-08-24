@@ -52,11 +52,17 @@ public static class MewUIControlCatalog
 		},
 	};
 
-	static readonly HashSet<string> containerTypes = new(StringComparer.Ordinal)
+	static readonly HashSet<string> panelTypes = new(StringComparer.Ordinal)
 	{
-		"Window", "StackPanel", "DockPanel", "WrapPanel", "Grid", "Canvas", "ScrollViewer",
-		"Border", "GroupBox", "TabControl", "TabItem", "ContentControl", "Menu",
+		"StackPanel", "DockPanel", "WrapPanel", "Grid", "Canvas",
 	};
+	static readonly HashSet<string> contentTypes = new(StringComparer.Ordinal)
+	{
+		"Window", "GroupBox", "TabControl", "TabItem", "ContentControl", "ScrollViewer",
+	};
+	static readonly HashSet<string> borderTypes = new(StringComparer.Ordinal) { "Border" };
+	static readonly HashSet<string> containerTypes =
+		panelTypes.Concat(contentTypes).Concat(borderTypes).ToHashSet(StringComparer.Ordinal);
 
 	static readonly HashSet<string> types = new(StringComparer.Ordinal)
 	{
@@ -76,6 +82,18 @@ public static class MewUIControlCatalog
 
 	public static bool IsKnownType(string type) => allTypes.Contains(type);
 	public static bool IsContainer(string type) => containerTypes.Contains(type);
+	/// <summary>"Children()" extension target (real Panel subclass).</summary>
+	public static bool IsPanel(string type) => panelTypes.Contains(type);
+	/// <summary>Single-child Content assignment (ContentControl family).</summary>
+	public static bool IsContentHost(string type) => contentTypes.Contains(type) || type == "Border";
+	/// <summary>How a parent accepts children: Children / Content / Child.</summary>
+	public static string ContainmentMode(string parentType)
+	{
+		if (panelTypes.Contains(parentType)) return "Children";
+		if (contentTypes.Contains(parentType)) return "Content";
+		if (borderTypes.Contains(parentType)) return "Child";
+		return "";
+	}
 	public static bool IsKnownEvent(string eventName) => events.Contains(eventName);
 
 	/// <summary>Registry kind for a property on a type. Unlisted combinations return

@@ -1,5 +1,9 @@
+using System;
 using System.Linq;
 using System.Text.Json;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
 using LeXtudio.DevFlow.Agent.Core;
@@ -45,14 +49,77 @@ public static class MewUIDesignerDevFlowActions
 	public static string RestartHost() { var v = Activate(); var oldPid = v?.HostProcessId ?? 0; v?.RestartDesignHost(); return JsonSerializer.Serialize(new { success = v != null, oldHostProcessId = oldPid, hostProcessId = v?.HostProcessId ?? 0 }); }
 	[DevFlowAction("od.mewui-designer.terminate-host", Description = "Terminate the shared MewUI host to verify automatic recovery")]
 	public static string TerminateHost() { var v = Activate(); var oldPid = v?.HostProcessId ?? 0; v?.TerminateDesignHost(); return JsonSerializer.Serialize(new { success = v != null, oldHostProcessId = oldPid }); }
-	[DevFlowAction("od.mewui-designer.show-source", Description = "Switch from the MewUI designer to its user-owned source document")]
-	public static string ShowSource() { var v = Activate(); v?.ShowSource(); return JsonSerializer.Serialize(new { success = v != null }); }
 	[DevFlowAction("od.mewui-designer.zoom", Description = "Set the common designer toolbar zoom")]
 	public static string Zoom(double value) { var v = Activate(); if (v != null) v.Zoom = value; return JsonSerializer.Serialize(new { success = v != null, zoom = v?.Zoom ?? 0 }); }
 	[DevFlowAction("od.mewui-designer.fit", Description = "Fit the MewUI design using the common canvas toolbar behavior")]
 	public static string Fit() { var v = Activate(); v?.FitDesign(); return JsonSerializer.Serialize(new { success = v != null, zoom = v?.Zoom ?? 0, measured = v?.FitMeasured ?? false }); }
 	[DevFlowAction("od.mewui-designer.gridlines", Description = "Toggle MewUI design-space gridlines")]
 	public static string Gridlines(bool enabled) { var v = Activate(); v?.ShowGridlines(enabled); return JsonSerializer.Serialize(new { success = v != null, gridlines = v?.Gridlines ?? false }); }
+
+	// Mirrors od.wpf-designer.toolbox.query-item-bounds / od.gtk-designer.toolbox.query-item-bounds -
+	// real screen bounds via plain UIElement.PointToScreen, so a test can drive a REAL synthetic
+	// mouse press/drag-move/release starting at the actual toolbox row and ending on the actual
+	// rendered preview element, exercising DragDrop.DoDragDrop end to end.
+	[DevFlowAction("od.mewui-designer.toolbox.query-item-bounds", Description = "Get the real on-screen bounds of a MewUI Toolbox row for a given control type, for driving a synthetic mouse drag")]
+	public static string QueryToolboxItemBounds(string typeName)
+	{
+		var v = Activate();
+		if (v == null) return JsonSerializer.Serialize(new { success = false, error = "MewUI designer is not loaded" });
+		if (!MewUIDesignerViewContent.ToolNames.Contains(typeName, StringComparer.Ordinal))
+			return JsonSerializer.Serialize(new { success = false, error = "Unknown toolbox item: " + typeName });
+
+		var toolbox = v.ToolboxControl;
+		toolbox.SelectedItem = typeName;
+		toolbox.ScrollIntoView(typeName);
+		toolbox.UpdateLayout();
+
+		if (FindRealizedContainer(toolbox, typeName) is not FrameworkElement container)
+			return JsonSerializer.Serialize(new { success = false, error = "Toolbox row has no realized container (not scrolled into view?): " + typeName });
+
+		container.BringIntoView();
+		toolbox.UpdateLayout();
+		return JsonSerializer.Serialize(GetScreenBounds(container));
+	}
+
+	[DevFlowAction("od.mewui-designer.query-element-screen-bounds", Description = "Get the real on-screen bounds of a rendered MewUI element in the active designer's preview, for driving a synthetic mouse drag")]
+	public static string QueryElementScreenBounds(string id)
+	{
+		var v = Activate();
+		if (v == null) return JsonSerializer.Serialize(new { success = false, error = "MewUI designer is not loaded" });
+		var target = v.FindPreviewTarget(id);
+		if (target == null) return JsonSerializer.Serialize(new { success = false, error = "No rendered preview target for: " + id });
+		return JsonSerializer.Serialize(GetScreenBounds(target));
+	}
+
+	static ListBoxItem? FindRealizedContainer(ItemsControl itemsControl, object item)
+	{
+		return FindInVisualTree(itemsControl);
+
+		ListBoxItem? FindInVisualTree(DependencyObject node)
+		{
+			int count = VisualTreeHelper.GetChildrenCount(node);
+			for (int i = 0; i < count; i++) {
+				var child = VisualTreeHelper.GetChild(node, i);
+				if (child is ListBoxItem listBoxItem && Equals(listBoxItem.DataContext, item))
+					return listBoxItem;
+				if (FindInVisualTree(child) is ListBoxItem found)
+					return found;
+			}
+			return null;
+		}
+	}
+
+	static object GetScreenBounds(UIElement element)
+	{
+		var topLeft = element.PointToScreen(new Point(0, 0));
+		var bottomRight = element.PointToScreen(new Point(element.RenderSize.Width, element.RenderSize.Height));
+		return new {
+			success = true,
+			x = topLeft.X, y = topLeft.Y,
+			width = bottomRight.X - topLeft.X, height = bottomRight.Y - topLeft.Y,
+			centerX = (topLeft.X + bottomRight.X) / 2, centerY = (topLeft.Y + bottomRight.Y) / 2
+		};
+	}
 
 	static MewUIDesignerViewContent Activate()
 	{

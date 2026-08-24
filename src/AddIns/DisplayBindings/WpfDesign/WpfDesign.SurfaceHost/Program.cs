@@ -10,7 +10,10 @@ static class Program
 	{
 		WpfHeadlessDispatcher? dispatcher = null;
 		return DesignerChildHost.Run(args, "WpfDesign.SurfaceHost",
-			token => new WpfSurfaceHostService(token, dispatcher = new WpfHeadlessDispatcher()),
+			token => {
+				dispatcher = new WpfHeadlessDispatcher();
+				return new MultiDocumentWpfSurfaceHostService(token, dispatcher);
+			},
 			afterShutdown: () => dispatcher?.Shutdown());
 	}
 }

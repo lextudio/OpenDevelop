@@ -5,9 +5,27 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>MewUIFixture</RootNamespace>
+    <!-- Repo-relative path to the MXAML->C# generator tool (repo root = 4 levels up). -->
+    <MewUIGenDll>$(MSBuildThisFileDirectory)..\..\..\src\Tools\MewUIGen\bin\$(Configuration)\net10.0\MewUIGen.dll</MewUIGenDll>
+    <MewUIGeneratedDir>$(IntermediateOutputPath)mewuigen\</MewUIGeneratedDir>
   </PropertyGroup>
-
   <ItemGroup>
     <PackageReference Include="Aprillz.MewUI.Core" Version="0.12.0" />
   </ItemGroup>
+  <ItemGroup>
+    <MewUIPage Include="Windows\*.mxaml" />
+  </ItemGroup>
+  <!-- WPF-style generated-code separation: .mxaml is the authoritative layout document; the
+       strict InitializeComponent partial is GENERATED into obj/ at build time and never
+       exists as an editable file. The Exec batches per-item: inputs first, then outputs
+       (mewuigen's arg contract). -->
+  <Target Name="GenerateMewUICSharp" BeforeTargets="CoreCompile">
+    <Exec Command="dotnet &quot;$(MewUIGenDll)&quot; @(MewUIPage->'&quot;%(FullPath)&quot;', ' ') @(MewUIPage->'&quot;$(MSBuildProjectDirectory)/$(IntermediateOutputPath)mewuigen/%(Filename).mxaml.g.cs&quot;', ' ')" />
+    <ItemGroup>
+      <Compile Include="$(IntermediateOutputPath)mewuigen\*.mxaml.g.cs" />
+    </ItemGroup>
+    <ItemGroup>
+      <_MewUIGeneratedSource Include="$(IntermediateOutputPath)mewuigen\*.mxaml.g.cs" />
+    </ItemGroup>
+  </Target>
 </Project>

@@ -285,6 +285,12 @@ No child-side mutation protocol in the first milestone.
 - **M2 - OpenDevelop wiring: done for the fixture.** The parent spawns the bundled child, presents PNG
   frames, consumes the element tree, and supports selection, editing, viewport, and lifecycle
   operations through the shared shell contracts.
+- **Shared host lifecycle: done (2026-08-23).** The production adapter uses the common
+  compatibility-keyed pool. Compatible windows share one child process, Uno `Application` and
+  headless dispatcher, while every `DocumentId` routes to an independent `DesignHost` with its own
+  live tree, XAML, viewport, theme and app resources. `session/close` removes only that document;
+  final-lease shutdown uses the common idle grace. `StartAsync` remains the isolated diagnostic
+  entry and production uses `AcquireSharedAsync`.
 - **M3 - Real-project parity: in progress.** First launch the child under the opened project's
   runtimeconfig/depsfile and pass its project assembly. App.xaml and merged-resource preprocessing
   already exists; then validate DotUninstall-style custom types, converters, compiled resources, and code-behind, and

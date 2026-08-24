@@ -1,11 +1,11 @@
 using Aprillz.MewUI;
 using Aprillz.MewUI.Controls;
-using Aprillz.MewUI;
 
 namespace MewUIFixture.Windows;
 
 /// <summary>
-/// User-owned behavior for the main window. The designer never rewrites this file.
+/// User-owned behavior. Layout lives in MainWindow.mxaml; the generated partial (from the
+/// .mxaml at build time) provides the fields and InitializeComponent.
 /// </summary>
 public partial class MainWindow : Window
 {

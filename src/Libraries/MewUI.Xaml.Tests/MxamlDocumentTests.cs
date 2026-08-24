@@ -5,16 +5,14 @@ public sealed class MxamlDocumentTests
 {
 	const string Source = """
 <?xml version="1.0" encoding="utf-8"?>
-<MewUI xmlns="http://schemas.lextudio.com/mewui/2026" Class="App.MainWindow">
-  <Window Name="mainWindow" Title="QuickNotes">
-    <StackPanel Name="rootPanel" Spacing="8">
-      <Label Name="heading" Text="QuickNotes"/>
-      <StackPanel Name="toolRow" Spacing="6" Orientation="Horizontal">
-        <Button Name="newButton" Content="New" Click="NewButton_Click"/>
-      </StackPanel>
+<Window xmlns="http://schemas.lextudio.com/mewui/2026" Class="App.MainWindow" Name="mainWindow" Title="QuickNotes">
+  <StackPanel Name="rootPanel" Spacing="8">
+    <Label Name="heading" Text="QuickNotes"/>
+    <StackPanel Name="toolRow" Spacing="6" Orientation="Horizontal">
+      <Button Name="newButton" Content="New" Click="NewButton_Click"/>
     </StackPanel>
-  </Window>
-</MewUI>
+  </StackPanel>
+</Window>
 """;
 
 	MxamlDocument NewDoc() { var d = MxamlDocument.Parse(Source); Assert.False(d.HasErrors, string.Join("\n", d.Diagnostics)); return d; }
