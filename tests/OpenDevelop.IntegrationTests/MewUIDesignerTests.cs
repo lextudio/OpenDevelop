@@ -56,6 +56,10 @@ public sealed class MewUIDesignerTests : IAsyncDisposable
 		Assert.Equal(new[] { "Zoom", "Fit", "Gridlines" }, status.GetProperty("toolbarItems").EnumerateArray().Select(x => x.GetString()).ToArray());
 		var zoomed = await app.InvokeAsync("od.mewui-designer.zoom", 1.25); Assert.Equal(1.25, zoomed.GetProperty("zoom").GetDouble());
 		var fitted = await app.InvokeAsync("od.mewui-designer.fit"); Assert.True(fitted.GetProperty("measured").GetBoolean(), fitted.ToString()); Assert.InRange(fitted.GetProperty("zoom").GetDouble(), .25, 2);
+		// The shared DesignerCanvas toolbar's Fit action bypasses the Zoom combo - without syncing
+		// it back, the combo kept showing the last manually-picked percentage while the canvas
+		// visibly rendered at Fit scale (observed live: combo stuck on "100%").
+		status = await app.InvokeAsync("od.mewui-designer.status"); Assert.Equal(0, status.GetProperty("zoomComboSelectedIndex").GetInt32());
 		var gridOn = await app.InvokeAsync("od.mewui-designer.gridlines", true); Assert.True(gridOn.GetProperty("gridlines").GetBoolean());
 		status = await app.InvokeAsync("od.mewui-designer.status"); Assert.True(status.GetProperty("gridlines").GetBoolean());
 		var gridOff = await app.InvokeAsync("od.mewui-designer.gridlines", false); Assert.False(gridOff.GetProperty("gridlines").GetBoolean());
@@ -160,19 +164,24 @@ public sealed class MewUIDesignerTests : IAsyncDisposable
 
 		await app.InvokeAsync("od.show-pad", "Tools");
 		await app.InvokeAsync("od.activate");
+		// Fit first: the preview surface can be wider than the canvas viewport, and an element's
+		// PointToScreen still reports the off-screen part - which put an edge-relative drop point
+		// outside the designer entirely (observed landing on the Properties pad).
+		await app.InvokeAsync("od.mewui-designer.fit");
 
 		var toolboxBounds = await app.InvokeAsync("od.mewui-designer.toolbox.query-item-bounds", "CheckBox");
 		Assert.True(toolboxBounds.GetProperty("success").GetBoolean(), toolboxBounds.ToString());
 		var fromX = toolboxBounds.GetProperty("centerX").GetDouble();
 		var fromY = toolboxBounds.GetProperty("centerY").GetDouble();
 
-		// toolRow is a nested StackPanel (inside rootPanel) already holding three buttons - drop
-		// onto its own empty trailing space, not dead center, so the hit resolves to toolRow
-		// itself rather than one of its existing button children.
+		// Drop on toolRow's centre. Landing on one of its child Buttons is fine and intended:
+		// ResolveDropTarget walks up from the hit, and a Button only has AllowDrop by inheritance
+		// (which the portable resolver deliberately ignores), so the first EXPLICIT AllowDrop
+		// ancestor - toolRow's own panel - is what receives the drop.
 		var targetBounds = await app.InvokeAsync("od.mewui-designer.query-element-screen-bounds", "toolRow");
 		Assert.True(targetBounds.GetProperty("success").GetBoolean(), targetBounds.ToString());
-		var toX = targetBounds.GetProperty("x").GetDouble() + targetBounds.GetProperty("width").GetDouble() - 4;
-		var toY = targetBounds.GetProperty("y").GetDouble() + targetBounds.GetProperty("height").GetDouble() / 2;
+		var toX = targetBounds.GetProperty("centerX").GetDouble();
+		var toY = targetBounds.GetProperty("centerY").GetDouble();
 
 		JsonElement statusAfterDrop = default;
 		var grew = false;

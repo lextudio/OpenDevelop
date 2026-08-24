@@ -43,6 +43,10 @@ public sealed class GtkDesignerTests : IAsyncDisposable
 		Assert.Equal(new[] { "Zoom", "Fit", "Gridlines" }, status.GetProperty("toolbarItems").EnumerateArray().Select(x => x.GetString()).ToArray());
 		var zoomed = await app.InvokeAsync("od.gtk-designer.zoom", 1.5); Assert.Equal(1.5, zoomed.GetProperty("zoom").GetDouble());
 		var fitted = await app.InvokeAsync("od.gtk-designer.fit"); Assert.True(fitted.GetProperty("measured").GetBoolean(), fitted.ToString()); Assert.InRange(fitted.GetProperty("zoom").GetDouble(), .25, 2);
+		// The shared DesignerCanvas toolbar's Fit button/action bypasses the Zoom combo entirely -
+		// without syncing the combo back, it kept showing the last manually-picked percentage while
+		// the canvas visibly rendered at Fit scale (observed live: combo stuck on "100%").
+		status = await app.InvokeAsync("od.gtk-designer.status"); Assert.Equal(0, status.GetProperty("zoomComboSelectedIndex").GetInt32());
 		var gridOn = await app.InvokeAsync("od.gtk-designer.gridlines", true); Assert.True(gridOn.GetProperty("gridlines").GetBoolean());
 		status = await app.InvokeAsync("od.gtk-designer.status"); Assert.True(status.GetProperty("gridlines").GetBoolean());
 		var gridOff = await app.InvokeAsync("od.gtk-designer.gridlines", false); Assert.False(gridOff.GetProperty("gridlines").GetBoolean());
@@ -157,7 +161,8 @@ public sealed class GtkDesignerTests : IAsyncDisposable
 
 		var saved = await app.InvokeAsync("od.file.save", uiPath); Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
 		var xml = await File.ReadAllTextAsync(uiPath, TestContext.Current.CancellationToken);
-		Assert.Contains("class=\"GtkSwitch\"", xml);
+		Assert.True(xml.Contains("class=\"GtkSwitch\"", StringComparison.Ordinal),
+			"Dropped GtkSwitch not persisted.\nstatusAfterDrop=" + statusAfterDrop + "\nsaved xml:\n" + xml);
 		await ValidateGtkBuilderAsync(uiPath);
 	}
 
