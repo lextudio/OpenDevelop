@@ -23,7 +23,7 @@ public static class MewUIDesignerDevFlowActions
 		return view == null ? JsonSerializer.Serialize(new { active = false }) : JsonSerializer.Serialize(new {
 			active = true, status = view.Status, windowClassName = view.WindowClassName, elementCount = view.ElementCount,
 			selectedName = view.SelectedName, hostProcessId = view.HostProcessId, hostPoolKey = view.HostPoolKey, hostSessionId = view.HostSessionId, hostDocumentId = view.HostDocumentId, activeHostLeases = view.ActiveHostLeases, hostRecoveryCount = view.HostRecoveryCount, canUndo = view.EnableUndo, canRedo = view.EnableRedo,
-			toolboxItemCount = view.ToolboxItemCount, toolboxHosted = view.IsToolboxHosted, outlineHosted = view.IsOutlineHosted, outlineItemCount = view.OutlineItemCount,
+			toolboxItemCount = view.ToolboxItemCount, toolboxHosted = view.IsToolboxHosted, zoomComboSelectedIndex = view.ZoomComboSelectedIndex, outlineHosted = view.IsOutlineHosted, outlineItemCount = view.OutlineItemCount,
 			propertyPadSelectedType = grid?.SelectedObject?.GetType().FullName, propertyPadPropertyCount = grid?.Properties?.Count ?? 0,
 			toolbarItemCount = view.ToolbarItemCount, toolbarItems = view.ToolbarItems, toolbarCapabilities = view.ToolbarCapabilities, zoom = view.Zoom, fitMeasured = view.FitMeasured, gridlines = view.Gridlines,
 			isDirty = view.IsDesignerDirty, hostLogTail = view.HostLogTail
@@ -78,7 +78,53 @@ public static class MewUIDesignerDevFlowActions
 
 		container.BringIntoView();
 		toolbox.UpdateLayout();
+
+		if (!WaitUntilRowHitTestableAt(toolbox, container))
+			return JsonSerializer.Serialize(new { success = false, error = "Toolbox row never settled at its own layout position (scroll/render lag): " + typeName });
+
 		return JsonSerializer.Serialize(GetScreenBounds(container));
+	}
+
+	/// <summary>
+	/// Blocks until an input hit-test at <paramref name="container"/>'s own centre resolves back to
+	/// it, so the bounds handed out are ones a real synthetic click lands on. ScrollIntoView updates
+	/// layout synchronously, but the pointer hits the last RENDERED frame, which lags a compose.
+	/// InputHitTest deliberately: VisualTreeHelper.HitTest goes through the compositor scene on this
+	/// stack and reports stale results for layout-only elements. Mirrors the GTK designer's copy.
+	/// </summary>
+	static bool WaitUntilRowHitTestableAt(ListBox toolbox, FrameworkElement container, int timeoutMilliseconds = 4000)
+	{
+		for (var elapsed = 0; ; elapsed += 100) {
+			var centre = new Point(container.RenderSize.Width / 2, container.RenderSize.Height / 2);
+			var inToolbox = container.TranslatePoint(centre, toolbox);
+			if (toolbox.InputHitTest(inToolbox) is DependencyObject hit && ResolvesTo(hit, container))
+				return true;
+			if (elapsed >= timeoutMilliseconds)
+				return false;
+			PumpFor(100);
+			toolbox.UpdateLayout();
+		}
+
+		static bool ResolvesTo(DependencyObject hit, FrameworkElement container)
+		{
+			for (var current = hit; current != null; current = VisualTreeHelper.GetParent(current))
+				if (ReferenceEquals(current, container))
+					return true;
+			return false;
+		}
+	}
+
+	static void PumpFor(int milliseconds)
+	{
+		var frame = new System.Windows.Threading.DispatcherFrame();
+		var timer = new System.Windows.Threading.DispatcherTimer(
+			TimeSpan.FromMilliseconds(milliseconds),
+			System.Windows.Threading.DispatcherPriority.Background,
+			(_, _) => frame.Continue = false,
+			System.Windows.Threading.Dispatcher.CurrentDispatcher);
+		timer.Start();
+		try { System.Windows.Threading.Dispatcher.PushFrame(frame); }
+		finally { timer.Stop(); }
 	}
 
 	[DevFlowAction("od.mewui-designer.query-element-screen-bounds", Description = "Get the real on-screen bounds of a rendered MewUI element in the active designer's preview, for driving a synthetic mouse drag")]

@@ -26,7 +26,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	readonly TextBlock diagnostic = new() { Foreground = Brushes.OrangeRed, Margin = new Thickness(8), TextWrapping = TextWrapping.Wrap };
 	readonly DesignerCanvas canvas = new();
 	readonly Dictionary<string, FrameworkElement> nativeTargetsById = new();
-	bool draggingFromToolbox;
+	bool draggingFromToolbox; string? pressedToolboxType;
 	readonly ScrollViewer scroller = new() { HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
 	GtkDesignerHostClient? host; DesignerSessionState state = new(); DesignerElementNode? selected; string preferredSelectionId = ""; string loadedText = "";
 	CancellationTokenSource? renderCancellation; long requestedRenderRevision; long renderedRevision;
@@ -38,28 +38,33 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		grid.Children.Add(canvas); Grid.SetRow(diagnostic, 1); grid.Children.Add(diagnostic); UserContent = grid;
 		outline.SelectedItemChanged += (_, _) => Select((outline.SelectedItem as TreeViewItem)?.Tag as DesignerElementNode);
 		toolbox.MouseDoubleClick += (_, _) => { if (toolbox.SelectedItem is string type) Add(type); }; toolbox.KeyDown += (_, e) => { if (e.Key == Key.Enter && toolbox.SelectedItem is string type) { Add(type); e.Handled = true; } };
-		toolbox.PreviewMouseDown += (_, e) => { DebugMouseDownCount++; draggingFromToolbox = false; };
+		// Latch what was pressed, rather than reading toolbox.SelectedItem when the drag actually
+		// starts: leaving the list drags the pointer across neighbouring rows, and ListBox's own
+		// drag-selection retargets SelectedItem to each one it passes over. Measured: pressing
+		// GtkSwitch and dragging up to the canvas dropped a GtkCheckButton (the row above) instead.
+		toolbox.PreviewMouseDown += (_, e) => { draggingFromToolbox = false; pressedToolboxType = ToolboxTypeAt(e.GetPosition(toolbox)); };
 		// Guard against re-entrancy: WPF only supports one active DoDragDrop session at a time,
 		// so calling it again on every subsequent PreviewMouseMove while the button stays down
-		// (which fires repeatedly for a real or synthetic multi-step drag) cancels the prior,
-		// still-in-flight session before it ever reaches the drop target's DragOver - verified
-		// live via od.gtk-designer.status's debugDragOverCount staying 0 across many real
-		// synthetic drags despite debugDragStartCount incrementing on every move.
+		// (which fires repeatedly for a real or synthetic multi-step drag) would cancel the prior,
+		// still-in-flight session before it reaches the drop target.
 		toolbox.PreviewMouseMove += (_, e) => {
-			DebugMouseMoveCount++;
 			if (e.LeftButton != MouseButtonState.Pressed) { draggingFromToolbox = false; return; }
-			DebugMouseMovePressedCount++;
-			if (draggingFromToolbox || toolbox.SelectedItem is not string type) return;
+			var type = pressedToolboxType ?? toolbox.SelectedItem as string;
+			if (draggingFromToolbox || type == null) return;
 			draggingFromToolbox = true;
-			DebugDragStartCount++;
 			DragDrop.DoDragDrop(toolbox, new DataObject(DataFormats.StringFormat, type), DragDropEffects.Copy);
 			draggingFromToolbox = false;
 		};
 		grid.CommandBindings.Add(new CommandBinding(ApplicationCommands.Undo, (_, _) => Undo())); grid.CommandBindings.Add(new CommandBinding(ApplicationCommands.Redo, (_, _) => Redo())); grid.CommandBindings.Add(new CommandBinding(ApplicationCommands.Delete, (_, _) => DeleteSelected()));
 	}
-	public object OutlineContent => outline; public object ToolsContent => toolbox; public ListBox ToolboxControl => toolbox; public PropertyContainer PropertyContainer => properties;
+	public object OutlineContent => outline; public object ToolsContent => toolbox; public ListBox ToolboxControl => toolbox; public int ZoomComboSelectedIndex => canvas.ZoomCombo.SelectedIndex; public PropertyContainer PropertyContainer => properties;
 	public FrameworkElement? FindNativeTarget(string id) => nativeTargetsById.GetValueOrDefault(id);
-	public int DebugMouseDownCount; public int DebugMouseMoveCount; public int DebugMouseMovePressedCount; public int DebugDragStartCount; public int DebugDragOverCount; public int DebugDropCount;
+	string? ToolboxTypeAt(Point point)
+	{
+		for (var hit = toolbox.InputHitTest(point) as DependencyObject; hit != null; hit = VisualTreeHelper.GetParent(hit))
+			if (hit is ListBoxItem row) return row.DataContext as string;
+		return null;
+	}
 	public int ToolboxItemCount => toolbox.Items.Count; public bool IsToolboxHosted => ReferenceEquals((SD.Services.GetService(typeof(IToolsPadHost)) as IToolsPadHost)?.HostedContent, toolbox);
 	public bool IsOutlineHosted => ReferenceEquals((SD.Services.GetService(typeof(IOutlinePadHost)) as IOutlinePadHost)?.HostedContent, outline); public int OutlineItemCount => ElementCount;
 	public int ElementCount => state.Tree == null ? 0 : Flatten(state.Tree).Count(n => n.Id != "$interface"); public string SelectedId => selected?.Id ?? ""; public int HostProcessId => host?.ProcessId ?? 0;
@@ -123,15 +128,15 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 			hits.Children.Add(target);
 		}
 		hits.Children.Add(insertion);
-		hits.DragOver += (_, e) => { DebugDragOverCount++; e.Effects = e.Data.GetDataPresent(DataFormats.StringFormat) ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; };
-		hits.Drop += (_, e) => { DebugDropCount++; if (e.Data.GetData(DataFormats.StringFormat) is not string type || !ToolNames.Contains(type, StringComparer.Ordinal)) return; var over = NativeNodeAt(root, e.GetPosition(hits)); if (over != null) Select(over); Add(type); e.Handled = true; };
+		hits.DragOver += (_, e) => { e.Effects = e.Data.GetDataPresent(DataFormats.StringFormat) ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; };
+		hits.Drop += (_, e) => { if (e.Data.GetData(DataFormats.StringFormat) is not string type || !ToolNames.Contains(type, StringComparer.Ordinal)) return; var over = NativeNodeAt(root, e.GetPosition(hits)); if (over != null) Select(over); Add(type); e.Handled = true; };
 		var result = new Grid { Width = state.Render.Width, Height = state.Render.Height, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top }; result.Children.Add(image); result.Children.Add(hits); return result;
 	}
 	TreeViewItem Tree(DesignerElementNode node) { var item = new TreeViewItem { Header = $"{node.Name}  ({node.Type})", Tag = node, IsExpanded = true }; foreach (var child in node.Children) item.Items.Add(Tree(child)); return item; }
 	FrameworkElement Preview(DesignerElementNode? node) { if (node == null) return new TextBlock { Text = "Empty GTK interface" }; FrameworkElement result; if (IsContainer(node)) { var panel = new StackPanel { Background = Brushes.White, MinWidth = 480, MinHeight = 48, Orientation = Value(node, "orientation", "vertical") == "horizontal" ? Orientation.Horizontal : Orientation.Vertical }; foreach (var child in node.Children) panel.Children.Add(Preview(child)); result = panel; } else if (node.Type == "GtkButton") result = new Button { Content = Value(node, "label", node.Id) }; else if (node.Type is "GtkEntry" or "GtkPasswordEntry") result = new TextBox { Text = Value(node, "text", ""), MinWidth = 160 }; else if (node.Type == "GtkCheckButton") result = new CheckBox { Content = Value(node, "label", node.Id) }; else if (node.Type == "GtkProgressBar") result = new ProgressBar { Value = 45, Width = 180, Height = 18 }; else result = new TextBlock { Text = Value(node, "label", node.Id) }; result.Margin = new Thickness(5); result.PreviewMouseLeftButtonDown += (_, e) => { Select(node); e.Handled = true; }; return result; }
 	void Select(DesignerElementNode? node) { selected = node; if (node != null) preferredSelectionId = node.Id; properties.SelectedObject = node == null ? null : new GtkPropertyAdapter(node, (name, value) => SetSelectedProperty(name, value)); }
 	void ConfigureCanvas() { canvas.Capabilities = DesignerCanvasCapabilities.Zoom | DesignerCanvasCapabilities.Fit | DesignerCanvasCapabilities.Gridlines; foreach (var label in new[] { "Fit", "25%", "50%", "75%", "100%", "125%", "150%", "200%" }) canvas.ZoomCombo.Items.Add(label); canvas.ZoomCombo.SelectedIndex = 4; canvas.ZoomChanged += (_, _) => { if (canvas.ZoomCombo.SelectedIndex == 0) FitView(); else Zoom = new[] { .25, .5, .75, 1, 1.25, 1.5, 2 }[canvas.ZoomCombo.SelectedIndex - 1]; }; canvas.FitRequested += (_, _) => FitView(); canvas.GridRequested += (_, show) => SetGridlines(show); scroller.Content = surface; canvas.ContentHost.Content = scroller; }
-	void FitView() { var child = surface.Child as FrameworkElement; var width = (child?.ActualWidth ?? 0) + surface.Padding.Left + surface.Padding.Right; var height = (child?.ActualHeight ?? 0) + surface.Padding.Top + surface.Padding.Bottom; FitMeasured = width > 0 && height > 0 && scroller.ViewportWidth > 0 && scroller.ViewportHeight > 0; Zoom = FitMeasured ? Math.Min(scroller.ViewportWidth / width, scroller.ViewportHeight / height) : 1; }
+	void FitView() { var child = surface.Child as FrameworkElement; var width = (child?.ActualWidth ?? 0) + surface.Padding.Left + surface.Padding.Right; var height = (child?.ActualHeight ?? 0) + surface.Padding.Top + surface.Padding.Bottom; FitMeasured = width > 0 && height > 0 && scroller.ViewportWidth > 0 && scroller.ViewportHeight > 0; Zoom = FitMeasured ? Math.Min(scroller.ViewportWidth / width, scroller.ViewportHeight / height) : 1; if (canvas.ZoomCombo.SelectedIndex != 0) canvas.ZoomCombo.SelectedIndex = 0; }
 	void SetGridlines(bool show) { gridlines = show; surface.Background = show ? GridBrush() : Brushes.DimGray; }
 	static Brush GridBrush() { var drawing = new GeometryDrawing(new SolidColorBrush(Color.FromRgb(70, 70, 70)), new Pen(new SolidColorBrush(Color.FromRgb(100, 100, 100)), 1), new RectangleGeometry(new Rect(0, 0, 16, 16))); var brush = new DrawingBrush(drawing) { TileMode = TileMode.Tile, Viewport = new Rect(0, 0, 16, 16), ViewportUnits = BrushMappingMode.Absolute }; brush.Freeze(); return brush; }
 	static bool IsContainer(DesignerElementNode n) => n.Type is "GtkBox" or "GtkGrid" or "GtkCenterBox" or "GtkPaned" or "GtkScrolledWindow" or "GtkApplicationWindow" or "GtkWindow";
