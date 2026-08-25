@@ -537,6 +537,26 @@ whose re-entry guard prevents the asynchronous Outline notification from selecti
 DevFlow result envelopes and the shared-host lifecycle stress test are defined in
 [`designer-common.md`](designer-common.md#shared-shell-contracts-completed-2026-08-24).
 
+GTK selection is no longer a single-selection exception. `DesignerSelectionController` owns the
+ordered id set and primary object, Ctrl-click toggles membership, and
+`od.gtk-designer.multi-select` exercises replacement selection in integration tests. The Outline
+tracks the primary object and the Properties pad receives their common editable property
+intersection through `DesignerMultiPropertyAdapter`; edits are broadcast to each selected
+`GtkPropertyAdapter`. The primary integration test performs that edit through the realized shared
+Properties-pad `PropertyItem` and verifies both GtkBuilder objects in the saved `.ui`; the action
+uses the common `selectedIds`/`primarySelectedId`/`selectionCount` result contract.
+
+Undo, Redo and Delete are registered through the shared `DesignerCommandController`. The GTK
+document host publishes exact history availability in every `DesignerSessionState`, so toolbar,
+keyboard, global menu and automation enablement all follow the same state after edit/undo/redo.
+
+GTK signals are first-class Properties-pad events. The child publishes the supported signal names
+and current handler for each element in `DesignerElementNode.Events`; `GtkPropertyAdapter` exposes
+them through `ICustomTypeDescriptor`, `IPropertyGridEventSource` and `IEventBindingHost`. Editing or
+double-click binding uses versioned `design/set-event`, updates the GtkBuilder `<signal>`, rebuilds
+the tree and participates in undo/redo. Integration binds `clicked` through the actual selected
+Properties-pad object and verifies the conventional `runButton_clicked` handler in saved XML.
+
 ## Risks and non-goals
 
 - GTK 4 native runtime availability differs by operating system; installation diagnostics are a

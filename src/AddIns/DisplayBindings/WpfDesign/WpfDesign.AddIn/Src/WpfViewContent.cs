@@ -58,8 +58,8 @@ namespace ICSharpCode.WpfDesign.AddIn
 	{
 		public WpfViewContent(OpenedFile file) : base(file)
 		{
-			commands.Register("Undo", () => undoStack.Count > 0 && client != null && surfaceControl != null, UndoCore);
-			commands.Register("Redo", () => redoStack.Count > 0 && client != null && surfaceControl != null, RedoCore);
+			commands.RegisterStandard(() => undoStack.Count > 0 && client != null && surfaceControl != null, UndoCore,
+				() => redoStack.Count > 0 && client != null && surfaceControl != null, RedoCore);
 			this.TabPageText = "${res:FormsDesigner.DesignTabPages.DesignTabPage}";
 			this.IsActiveViewContentChanged += OnIsActiveViewContentChanged;
 			Application.Current.DispatcherUnhandledException += OnDispatcherUnhandledException;
@@ -284,11 +284,15 @@ namespace ICSharpCode.WpfDesign.AddIn
 
 		void OnSelectionChanged(object? sender, EventArgs e)
 		{
-			propertyContainer.SelectedObject = surfaceControl?.SelectedPropertyAdapter;
+			var adapters = surfaceControl?.SelectedPropertyAdapters ?? Array.Empty<object>();
+			propertyContainer.SelectedObject = adapters.Length > 1 ? new DesignerMultiPropertyAdapter(adapters) : adapters.FirstOrDefault();
 			shellSelection.Select(surfaceControl?.SelectedElementIds ?? Array.Empty<string>());
 			// Design surface -> Document Outline: mirror the selection without re-triggering the
-			// outline -> surface path (same element, no-op anyway).
-			outline.SelectNodeById(surfaceControl?.SelectedElementId);
+			// outline -> surface path. The outline raises SelectionCommitted for a programmatic
+			// selection too, so an explicit guard is required to preserve secondary selections.
+			syncingOutlineSelection = true;
+			try { outline.SelectNodeById(surfaceControl?.SelectedElementId); }
+			finally { syncingOutlineSelection = false; }
 			CommandManager.InvalidateRequerySuggested();
 		}
 
@@ -459,9 +463,12 @@ namespace ICSharpCode.WpfDesign.AddIn
 		}
 
 		bool outlineSubscribed;
+		bool syncingOutlineSelection;
 
 		void OnOutlineSelectionCommitted(object sender, EventArgs e)
 		{
+			if (syncingOutlineSelection)
+				return;
 			// Outline -> design surface: the surface owns selection; route the pick through the
 			// same single-selection path as a surface click.
 			shellSelection.Select(outline.SelectedNode?.Id);

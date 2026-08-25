@@ -2728,10 +2728,10 @@ public sealed class AddInTests : IAsyncDisposable
             var selectedBoth = await OpenDevelopAppFixture.PollUntilAsync(async () => {
                 multi = await _app.InvokeAsync("od.forms-designer.multi-select", "label1,label2");
                 return multi.GetProperty("success").GetBoolean()
-                    && multi.GetProperty("selected").GetArrayLength() == 2;
+					&& multi.GetProperty("selectedIds").GetArrayLength() == 2;
             }, TimeSpan.FromSeconds(15), initialDelayMs: 100, maxDelayMs: 400);
             Assert.True(selectedBoth, "Both labels should be selected: " + multi);
-            Assert.Equal(2, multi.GetProperty("selected").GetArrayLength());
+			Assert.Equal(2, multi.GetProperty("selectionCount").GetInt32());
             var aligned = await _app.InvokeAsync("od.forms-designer.align", "left");
             Assert.True(aligned.GetProperty("success").GetBoolean(), aligned.ToString());
 
@@ -2755,7 +2755,7 @@ public sealed class AddInTests : IAsyncDisposable
             var reselected = await OpenDevelopAppFixture.PollUntilAsync(async () => {
                 reMulti = await _app.InvokeAsync("od.forms-designer.multi-select", "label1,label2");
                 return reMulti.GetProperty("success").GetBoolean()
-                    && reMulti.GetProperty("selected").GetArrayLength() == 2;
+					&& reMulti.GetProperty("selectedIds").GetArrayLength() == 2;
             }, TimeSpan.FromSeconds(15), initialDelayMs: 100, maxDelayMs: 400);
             Assert.True(reselected, "Both labels should be selected before nudge: " + reMulti);
 
@@ -2916,7 +2916,7 @@ public sealed class AddInTests : IAsyncDisposable
             // AlignSelection / DistributeSelection / MatchSizeSelection).
             var multi = await _app.InvokeAsync("od.wpf-designer.multi-select", "PaneList,PaneTitle");
             Assert.True(multi.GetProperty("success").GetBoolean(), multi.ToString());
-            Assert.Equal(2, multi.GetProperty("requested").GetInt32());
+			Assert.Equal(2, multi.GetProperty("selectionCount").GetInt32());
 
             var align = await _app.InvokeAsync("od.wpf-designer.align", "left");
             Assert.True(align.GetProperty("success").GetBoolean(), align.ToString());

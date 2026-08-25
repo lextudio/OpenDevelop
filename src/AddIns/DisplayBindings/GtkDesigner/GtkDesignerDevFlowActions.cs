@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Linq;
 using System.Text.Json;
 using System.Windows;
@@ -7,6 +8,7 @@ using System.Windows.Media;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Designer.Shell;
+using ICSharpCode.SharpDevelop.Designer.Remote;
 using LeXtudio.DevFlow.Agent.Core;
 using Microsoft.Maui.DevFlow.Agent.Core;
 using Xceed.Wpf.Toolkit.PropertyGrid;
@@ -21,7 +23,7 @@ public static class GtkDesignerDevFlowActions
 	{
 		var view = Activate(); var grid = PropertyGrid;
 		return view == null ? JsonSerializer.Serialize(new { active = false }) : JsonSerializer.Serialize(new {
-			active = true, status = view.Status, loadError = view.LoadError, diagnostics = view.Diagnostics, hostLog = view.HostLog, rootId = view.RootId, elementCount = view.ElementCount, elementIds = view.ElementIds, selectedId = view.SelectedId, hostProcessId = view.HostProcessId, hostPoolKey = view.HostPoolKey, hostSessionId = view.HostSessionId, hostDocumentId = view.HostDocumentId, activeHostLeases = view.ActiveHostLeases, hostRecoveryCount = view.HostRecoveryCount, requestedRenderRevision = view.RequestedRenderRevision, renderedRevision = view.RenderedRevision, renderPending = view.IsRenderPending, nativeRenderer = "in-process GSK/Cairo", nativeFrame = view.HasNativeFrame, nativeFrameFingerprint = view.NativeFrameFingerprint, nativeFrameWidth = view.NativeFrameWidth, nativeFrameHeight = view.NativeFrameHeight, nativeBoundsCount = view.NativeBoundsCount,
+			active = true, status = view.Status, loadError = view.LoadError, diagnostics = view.Diagnostics, hostLog = view.HostLog, rootId = view.RootId, elementCount = view.ElementCount, elementIds = view.ElementIds, selectedId = view.SelectedId, selectedIds = view.SelectedIds, hostProcessId = view.HostProcessId, hostPoolKey = view.HostPoolKey, hostSessionId = view.HostSessionId, hostDocumentId = view.HostDocumentId, activeHostLeases = view.ActiveHostLeases, hostRecoveryCount = view.HostRecoveryCount, requestedRenderRevision = view.RequestedRenderRevision, renderedRevision = view.RenderedRevision, renderPending = view.IsRenderPending, nativeRenderer = "in-process GSK/Cairo", nativeFrame = view.HasNativeFrame, nativeFrameFingerprint = view.NativeFrameFingerprint, nativeFrameWidth = view.NativeFrameWidth, nativeFrameHeight = view.NativeFrameHeight, nativeBoundsCount = view.NativeBoundsCount,
 			toolboxItemCount = view.ToolboxItemCount, toolboxFilterText = view.ToolboxFilterText, toolboxHosted = view.IsToolboxHosted, toolboxSearchHosted = (SD.Services.GetService(typeof(IToolsPadHost)) as IToolsPadHost)?.HasToolboxSearch == true, toolboxSelectedItem = view.SelectedToolboxType, zoomComboSelectedIndex = view.ZoomComboSelectedIndex, outlineHosted = view.IsOutlineHosted, outlineItemCount = view.OutlineItemCount,
 			toolbarItemCount = view.ToolbarItemCount, toolbarItems = view.ToolbarItems, toolbarCapabilities = view.ToolbarCapabilities, zoom = view.Zoom, fitMeasured = view.FitMeasured, gridlines = view.Gridlines,
 			propertyPadSelectedType = grid?.SelectedObject?.GetType().FullName,
@@ -30,6 +32,8 @@ public static class GtkDesignerDevFlowActions
 	}
 	[DevFlowAction("od.gtk-designer.select", Description = "Select a GtkBuilder object and populate the real Properties pad")]
 	public static string Select(string id) { var view = Activate(); var ok = view?.SelectById(id) == true; return JsonSerializer.Serialize(new { success = ok, selectedId = view?.SelectedId, propertyPadSelectedType = PropertyGrid?.SelectedObject?.GetType().FullName }); }
+	[DevFlowAction("od.gtk-designer.multi-select", Description = "Replace the GTK designer selection set; first id is primary")]
+	public static string MultiSelect(string ids) { var view = Activate(); var list = ids.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries); var ok = view?.SelectByIds(list) == true; return DesignerDevFlowResults.Selection(ok, view?.SelectedIds); }
 	[DevFlowAction("od.gtk-designer.bounds", Description = "Get GTK-native layout bounds for a GtkBuilder object")]
 	public static string Bounds(string id) { var view = Activate(); var node = view?.FindById(id); return JsonSerializer.Serialize(new { success = node?.Width > 0 && node.Height > 0, id, x = node?.X ?? 0, y = node?.Y ?? 0, width = node?.Width ?? 0, height = node?.Height ?? 0 }); }
 	[DevFlowAction("od.gtk-designer.hit-test", Description = "Select using the child GTK-native layout hit-test")]
@@ -41,15 +45,17 @@ public static class GtkDesignerDevFlowActions
 	[DevFlowAction("od.gtk-designer.properties.edit", Description = "Edit through the real shared Properties pad PropertyItem")]
 	public static string EditProperty(string propertyName, string value)
 	{
-		var view = Activate(); var grid = PropertyGrid; if (view == null || grid?.SelectedObject is not GtkPropertyAdapter) return JsonSerializer.Serialize(new { success = false, error = "GTK adapter is not selected in the shared Properties pad" });
+		var view = Activate(); var grid = PropertyGrid; if (view == null || grid?.SelectedObject == null) return DesignerDevFlowResults.Failure("GTK selection is not bound to the shared Properties pad");
 		var item = grid.Properties?.OfType<PropertyItem>().FirstOrDefault(p => p.PropertyName == propertyName);
 		if (item == null) return JsonSerializer.Serialize(new { success = false, error = "Property not found", propertyNames = grid.Properties?.OfType<PropertyItem>().Select(p => p.PropertyName).ToArray() });
-		item.Value = value; return JsonSerializer.Serialize(new { success = true, selectedId = view.SelectedId, propertyName, after = item.Value?.ToString() });
+		item.Value = value; return JsonSerializer.Serialize(new { success = true, selectedIds = view.SelectedIds, primarySelectedId = view.SelectedId, propertyName, after = item.Value?.ToString() });
 	}
 	[DevFlowAction("od.gtk-designer.delete", Description = "Delete the selected GTK object")]
 	public static string Delete() { var view = Activate(); return JsonSerializer.Serialize(new { success = view?.DeleteSelected() == true, elementCount = view?.ElementCount ?? 0 }); }
 	[DevFlowAction("od.gtk-designer.signal.set", Description = "Set a GtkBuilder signal handler on the selected object")]
 	public static string SetSignal(string signalName, string handlerName) { var view = Activate(); return JsonSerializer.Serialize(new { success = view?.SetSelectedSignal(signalName, handlerName) == true, selectedId = view?.SelectedId }); }
+	[DevFlowAction("od.gtk-designer.properties.event.bind", Description = "Bind a GTK signal through the selected Properties-pad adapter")]
+	public static string BindEvent(string eventName) { var view = Activate(); var selected = PropertyGrid?.SelectedObject; var exists = selected != null && TypeDescriptor.GetEvents(selected).Find(eventName, false) != null; if (exists && selected is IEventBindingHost host) host.BindEvent(eventName); return JsonSerializer.Serialize(new { success = exists && selected is IEventBindingHost, eventName, selectedId = view?.SelectedId }); }
 	[DevFlowAction("od.gtk-designer.reorder", Description = "Move the selected GTK child within its parent")]
 	public static string Reorder(int delta) { var view = Activate(); return JsonSerializer.Serialize(new { success = view?.ReorderSelected(delta) == true, selectedId = view?.SelectedId }); }
 	[DevFlowAction("od.gtk-designer.pointer-reorder", Description = "Exercise the native-bounds pointer reorder mapping between sibling objects")]
@@ -198,7 +204,13 @@ public static class GtkDesignerDevFlowActions
 	static PropertyGrid? PropertyGrid => (SD.Services.GetService(typeof(IPropertyPadHost)) as IPropertyPadHost)?.Grid;
 	static GtkDesignerViewContent? Activate()
 	{
-		if (SD.Workbench.ActiveViewContent is GtkDesignerViewContent active) return active;
+		if (SD.Workbench.ActiveViewContent is GtkDesignerViewContent active) {
+			var activeWindow = active.WorkbenchWindow;
+			if (activeWindow != null)
+				for (var i = 0; i < activeWindow.ViewContents.Count; i++)
+					if (ReferenceEquals(activeWindow.ViewContents[i], active)) { activeWindow.SwitchView(i); break; }
+			return active;
+		}
 		var window = SD.Workbench.ActiveViewContent?.WorkbenchWindow; if (window == null) return null;
 		for (var i = 0; i < window.ViewContents.Count; i++) if (window.ViewContents[i] is GtkDesignerViewContent view) { window.SwitchView(i); return view; }
 		return null;

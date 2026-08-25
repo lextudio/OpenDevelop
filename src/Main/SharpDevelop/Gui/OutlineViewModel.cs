@@ -34,7 +34,19 @@ internal sealed class OutlineViewModel : ToolPaneModel, IOutlinePadHost, IDispos
 		SD.Services.AddService(typeof(IOutlinePadHost), this);
     }
 
-	public object HostedContent { get { EnsureSubscribed(); return contentControl.Content; } }
+	public object HostedContent
+	{
+		get
+		{
+			EnsureSubscribed();
+			// Active-content notifications can be coalesced while one designer is closed and
+			// another is opened in the same dispatcher turn. A host query is also a synchronization
+			// point: reconcile against the current workbench view instead of returning stale pad
+			// ownership indefinitely.
+			WorkbenchActiveContentChanged(null, EventArgs.Empty);
+			return contentControl.Content;
+		}
+	}
 
     /// <summary>
     /// Subscribes to <c>SD.Workbench.ActiveViewContentChanged</c> on first real use rather than in
@@ -51,6 +63,7 @@ internal sealed class OutlineViewModel : ToolPaneModel, IOutlinePadHost, IDispos
             return;
         subscribed = true;
         SD.Workbench.ActiveViewContentChanged += WorkbenchActiveContentChanged;
+		SD.Workbench.ActiveContentChanged += WorkbenchActiveContentChanged;
         WorkbenchActiveContentChanged(null, null);
     }
 
@@ -62,7 +75,12 @@ internal sealed class OutlineViewModel : ToolPaneModel, IOutlinePadHost, IDispos
 
     void WorkbenchActiveContentChanged(object sender, EventArgs e)
     {
-        var view = SD.Workbench.ActiveViewContent;
+        // AvalonDock is the live authority. During rapid close/open/switch sequences the
+        // workbench's cached ActiveViewContent can remain on the previous document even though
+        // the dock already displays the new designer (the same condition handled by
+        // od.active-view). Reading the layout first keeps the pad attached to what is visible.
+        var view = (SD.Workbench as WpfWorkbench)?.WorkbenchLayout?.ActiveContent as IViewContent
+            ?? SD.Workbench.ActiveViewContent;
         var host = view?.GetService(typeof(IOutlineContentHost)) as IOutlineContentHost;
         contentControl.Content = host != null
             ? host.OutlineContent
@@ -72,6 +90,9 @@ internal sealed class OutlineViewModel : ToolPaneModel, IOutlinePadHost, IDispos
     public void Dispose()
     {
         if (subscribed)
+        {
             SD.Workbench.ActiveViewContentChanged -= WorkbenchActiveContentChanged;
+			SD.Workbench.ActiveContentChanged -= WorkbenchActiveContentChanged;
+		}
     }
 }

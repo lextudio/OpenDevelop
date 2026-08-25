@@ -45,12 +45,11 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		toolboxModel.ItemsChanged += (_, _) => { syncingToolbox = true; toolbox.ItemsSource = toolboxModel.VisibleItems; toolbox.SelectedItem = toolboxModel.SelectedItem; syncingToolbox = false; };
 		toolboxModel.SelectionChanged += (_, _) => { syncingToolbox = true; toolbox.SelectedItem = toolboxModel.SelectedItem; syncingToolbox = false; };
 		toolbox.SelectionChanged += (_, _) => { if (!syncingToolbox) toolboxModel.Select((toolbox.SelectedItem as DesignerToolboxItemInfo)?.TypeName); };
-		selection = new DesignerSelectionController(node => new GtkPropertyAdapter(node, (name, value) => SetSelectedProperty(name, value)),
-			nodes => nodes.Select(node => (object)new GtkPropertyAdapter(node, (name, value) => SetSelectedProperty(name, value))).ToArray());
-		commands.Register("Undo", () => host?.IsAlive == true, () => { Mutate(() => host!.UndoAsync(state.Version).GetAwaiter().GetResult()); return true; });
-		commands.Register("Redo", () => host?.IsAlive == true, () => { Mutate(() => host!.RedoAsync(state.Version).GetAwaiter().GetResult()); return true; });
-		commands.Register("Delete", () => selected != null && host?.IsAlive == true, DeleteSelectedCore);
-		pads = new DesignerPadController(selection, outline.SetRoots, value => { if (value is object[] many) properties.SelectedObjects = many; else properties.SelectedObject = value; }, outline.SelectNodeById, node => selected = node);
+		selection = new DesignerSelectionController(node => Adapter(node), nodes => new DesignerMultiPropertyAdapter(nodes.Select(node => (object)Adapter(node))));
+		commands.RegisterStandard(() => host?.IsAlive == true && state.CanUndo, () => { Mutate(() => host!.UndoAsync(state.Version).GetAwaiter().GetResult()); return true; },
+			() => host?.IsAlive == true && state.CanRedo, () => { Mutate(() => host!.RedoAsync(state.Version).GetAwaiter().GetResult()); return true; },
+			() => selection.SelectedIds.Count > 0 && host?.IsAlive == true, DeleteSelectedCore);
+		pads = new DesignerPadController(selection, outline.SetRoots, value => properties.SelectedObject = value, outline.SelectNodeById, node => selected = node);
 		TabPageText = "Design"; ConfigureCanvas(); var grid = new Grid(); grid.RowDefinitions.Add(new RowDefinition()); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 		grid.Children.Add(canvas); Grid.SetRow(diagnostic, 1); grid.Children.Add(diagnostic); UserContent = grid;
 		outline.SelectionCommitted += (_, _) => pads.CommitOutlineSelection(outline.SelectedNode?.Id);
@@ -72,7 +71,9 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 			DragDrop.DoDragDrop(toolbox, new DataObject(DataFormats.StringFormat, type), DragDropEffects.Copy);
 			draggingFromToolbox = false;
 		};
-		grid.CommandBindings.Add(new CommandBinding(ApplicationCommands.Undo, (_, _) => Undo())); grid.CommandBindings.Add(new CommandBinding(ApplicationCommands.Redo, (_, _) => Redo())); grid.CommandBindings.Add(new CommandBinding(ApplicationCommands.Delete, (_, _) => DeleteSelected()));
+		grid.CommandBindings.Add(new CommandBinding(ApplicationCommands.Undo, (_, _) => Undo(), (_, e) => e.CanExecute = commands.CanExecute(DesignerCommandNames.Undo)));
+		grid.CommandBindings.Add(new CommandBinding(ApplicationCommands.Redo, (_, _) => Redo(), (_, e) => e.CanExecute = commands.CanExecute(DesignerCommandNames.Redo)));
+		grid.CommandBindings.Add(new CommandBinding(ApplicationCommands.Delete, (_, _) => DeleteSelected(), (_, e) => e.CanExecute = commands.CanExecute(DesignerCommandNames.Delete)));
 	}
 	public object OutlineContent => outline; public object ToolsContent => toolbox; public ListBox ToolboxControl => toolbox; public int ZoomComboSelectedIndex => canvas.ZoomCombo.SelectedIndex; public PropertyContainer PropertyContainer => properties;
 	public string? SelectedToolboxType => toolboxModel.SelectedItem?.TypeName;
@@ -112,11 +113,14 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	public bool SelectByIds(IEnumerable<string> ids) => pads.CommitSelection(ids);
 	public DesignerElementNode? FindById(string id) => selection.Find(id);
 	public bool HitTest(double x, double y) { if (host == null) return false; var result = host.HitTestAsync(state.Version, x, y).GetAwaiter().GetResult(); return result.Hit && SelectById(result.ComponentName); }
-	public bool SetSelectedProperty(string name, string value) { if (selected == null || host == null) return false; var old = selected.Id; Mutate(() => host.SetPropertyAsync(state.Version, old, name, value).GetAwaiter().GetResult()); return SelectById(name == "$id" ? value : old); }
+	public bool SetSelectedProperty(string name, string value) => selected != null && SetProperty(selected.Id, name, value);
+	bool SetProperty(string id, string name, string value) { if (host == null) return false; Mutate(() => host.SetPropertyAsync(state.Version, id, name, value).GetAwaiter().GetResult()); return name == "$id" ? SelectById(value) : selection.Find(id) != null; }
 	public bool Add(string type) { if (host == null || state.Tree == null) return false; var parent = selected == null ? Flatten(state.Tree).FirstOrDefault(IsContainer) : NearestContainer(selected); if (parent == null) return false; var before = Flatten(state.Tree).Select(n => n.Id).ToHashSet(StringComparer.Ordinal); Mutate(() => host.AddElementAsync(state.Version, parent.Id, new DesignerToolboxItemInfo { Name = type, TypeName = type }, "", 0, 0).GetAwaiter().GetResult()); var added = state.Tree == null ? null : Flatten(state.Tree).FirstOrDefault(n => !before.Contains(n.Id)); if (added != null) Select(added); return added != null; }
 	public bool DeleteSelected() => commands.Execute("Delete");
-	bool DeleteSelectedCore() { if (selected == null || host == null) return false; Mutate(() => host.DeleteElementsAsync(state.Version, new[] { selected.Id }).GetAwaiter().GetResult()); return true; }
+	bool DeleteSelectedCore() { if (selection.SelectedIds.Count == 0 || host == null) return false; var ids = selection.SelectedIds.ToArray(); Mutate(() => host.DeleteElementsAsync(state.Version, ids).GetAwaiter().GetResult()); return true; }
 	public bool SetSelectedSignal(string signal, string handler) { if (selected == null || host == null) return false; var id = selected.Id; Mutate(() => host.SetEventAsync(state.Version, id, signal, handler).GetAwaiter().GetResult()); return SelectById(id); }
+	GtkPropertyAdapter Adapter(DesignerElementNode node) => new(node, (name, value) => SetProperty(node.Id, name, value), (name, value) => SetEvent(node.Id, name, value));
+	void SetEvent(string id, string signal, string handler) { if (host == null) return; Mutate(() => host.SetEventAsync(state.Version, id, signal, handler).GetAwaiter().GetResult()); }
 	public bool ReorderSelected(int delta) { if (selected == null || host == null) return false; var id = selected.Id; Mutate(() => host.ReorderAsync(state.Version, id, delta).GetAwaiter().GetResult()); return SelectById(id); }
 	public bool PointerReorder(string sourceId, string targetId) { if (state.Tree == null) return false; var source = FindById(sourceId); var target = FindById(targetId); return source != null && target != null && ReorderBetween(state.Tree, source, target); }
 	public void RefreshDesign() { if (host == null) return; var text = host.FlushAsync(state.Version).GetAwaiter().GetResult().Files[0].Text; state = host.UpdateAsync(Snapshot(text, state.Version + 1)).GetAwaiter().GetResult(); loadedText = text; Rebuild(); }

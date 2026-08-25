@@ -253,10 +253,32 @@ Outline notification re-entry guard. Toolbox-filter automation uses the common
 `DesignerDevFlowResults` JSON envelope; the cross-designer contract and lifecycle stress gate are
 documented in [`designer-common.md`](designer-common.md#shared-shell-contracts-completed-2026-08-24).
 
+MewUI uses the same ordered multi-selection contract: Ctrl-click toggles an element,
+`od.mewui-designer.multi-select` replaces the set, Outline follows the primary element and the
+Properties pad receives their common editable property intersection through
+`DesignerMultiPropertyAdapter`, which broadcasts edits to each `MewUIPropertyAdapter`. Tree
+regeneration restores the complete set by generated field id rather than retaining only the first
+element. Integration drives the realized shared Properties-pad `PropertyItem` while two elements
+are selected and verifies the broadcast value in generated MXAML; selection automation returns
+the same ordered `selectedIds`/`primarySelectedId`/`selectionCount` schema as the other four
+designers.
+
+Undo, Redo and Delete now use the shared `DesignerCommandController`. The isolated MewUI document
+session tracks its undo/redo depths and publishes them with every state response, giving routed
+commands, `IUndoHandler` and automation one authoritative enablement result.
+
+MewUI events now use the same Properties-pad event contract as WinForms, WinUI and GTK. The child
+publishes the catalogued events and existing handlers in `DesignerElementNode.Events`, implements
+versioned `design/set-event` with `MxamlDocument.SetEvent`, and flushes the resulting event
+attribute to canonical MXAML. `MewUIPropertyAdapter` supplies `IPropertyGridEventSource` and
+`IEventBindingHost`; integration binds `Loaded` through the real Properties-pad selected object and
+asserts the saved `Loaded="heading_Loaded"` source.
+
 Current deliberate gaps: the preview is a safe WPF semantic projection rather than MewUI-native
 pixels. Fit is measured from the realized viewport and projected content. Child reorder is a
 Roslyn transformation of the canonical `Children(...)` relationship and is integration-covered;
-free-form pointer positioning and event creation are not yet implemented. These must not be
+free-form pointer positioning is not yet implemented. Code-behind method-body creation remains a
+Roslyn-side follow-up; event attribute creation and binding are implemented. These must not be
 described as covered by the passing integration test.
 
 ## Future runtime fidelity

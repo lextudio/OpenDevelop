@@ -592,7 +592,7 @@ public static class WinUIXamlDesignerDevFlowActions
 			.Distinct(StringComparer.Ordinal)
 			.ToList();
 		view.MultiSelect(list);
-		return JsonSerializer.Serialize(new { success = true, selected = list });
+		return DesignerDevFlowResults.Selection(true, view.MultiSelectedNames);
 	}
 
 	[DevFlowAction("od.winui-designer.align",

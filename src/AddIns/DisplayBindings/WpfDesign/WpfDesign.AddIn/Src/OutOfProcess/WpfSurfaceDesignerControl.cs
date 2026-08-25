@@ -1282,6 +1282,11 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			SelectedNode is { } node
 				? new WpfSurfaceElementPropertyAdapter(client, () => state!.Version, node, OnPropertyEdited)
 				: null;
+		public object[] SelectedPropertyAdapters => state?.Tree == null ? Array.Empty<object>() : SelectedElementIds
+			.Select(id => FindNodeByPath(state.Tree, id))
+			.Where(node => node != null)
+			.Select(node => (object)new WpfSurfaceElementPropertyAdapter(client, () => state!.Version, node!, OnPropertyEdited))
+			.ToArray();
 
 		/// <summary>Renders a property edit's resulting state, then raises <see cref="SelectionChanged"/>
 		/// so <c>WpfViewContent.OnSelectionChanged</c> (its only subscriber) re-checks the document

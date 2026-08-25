@@ -89,6 +89,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public DesignerElementNode? Tree { get; set; }
 		public List<DesignerDiagnostic> Diagnostics { get; set; } = new List<DesignerDiagnostic>();
 		public DesignerRenderFrame? Render { get; set; }
+		/// <summary>History availability reported by the document authority after every mutation.</summary>
+		public bool CanUndo { get; set; }
+		public bool CanRedo { get; set; }
 		/// <summary>The id (tree path) of the element a <c>design/add-element</c> call just
 		/// created, valid only on that RPC's own response - null for every other response
 		/// (including a later <c>session/update</c>/<c>design/set-bounds</c> etc., where it would
@@ -159,6 +162,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// like WPF whose real property metadata/values only the child (via its DesignItem
 		/// reflection) actually knows.</summary>
 		public List<DesignerPropertyInfo> Properties { get; set; } = new List<DesignerPropertyInfo>();
+		/// <summary>Events/signals supported by this element and their current handler names.</summary>
+		public List<DesignerEventInfo> Events { get; set; } = new List<DesignerEventInfo>();
 	}
 
 	/// <summary>One rendered frame. PngBase64 (WinForms) or Data/RenderMs (WinUI) may be

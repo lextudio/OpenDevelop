@@ -8,6 +8,21 @@ namespace ICSharpCode.FormsDesigner.Host.Tests;
 public sealed class DesignerChildHostTests
 {
 	[Fact]
+	public void Run_ReportsStartupFailureAsAnOrdinaryNonZeroExit()
+	{
+		using var listener = new TcpListener(IPAddress.Loopback, 0);
+		listener.Start();
+		var unusedPort = ((IPEndPoint)listener.LocalEndpoint).Port;
+		listener.Stop();
+
+		var exitCode = DesignerChildHost.Run(
+			new[] { "--port", unusedPort.ToString(), "--token", "test-token" },
+			"DesignerChildHostTests", _ => new NeverExplicitlyShutdownService());
+
+		Assert.Equal(1, exitCode);
+	}
+
+	[Fact]
 	public async Task Run_ExitsWhenParentTransportDisconnectsWithoutShutdownRpc()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));

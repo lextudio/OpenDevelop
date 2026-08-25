@@ -47,6 +47,8 @@ public sealed class MewUIDesignerTests : IAsyncDisposable
 
 		var status = await WaitForDesignerAsync();
 		Assert.True(status.GetProperty("active").GetBoolean(), status.ToString());
+		Assert.False(status.GetProperty("canUndo").GetBoolean());
+		Assert.False(status.GetProperty("canRedo").GetBoolean());
 		Assert.True(status.GetProperty("hostProcessId").GetInt32() > 0, "MewUI designer did not start its isolated host: " + status);
 		Assert.True(status.GetProperty("toolboxHosted").GetBoolean(), "The real Tools pad did not host the MewUI toolbox: " + status);
 		Assert.True(status.GetProperty("toolboxSearchHosted").GetBoolean(), "The visible Toolbox search UI was not mounted: " + status);
@@ -75,9 +77,16 @@ public sealed class MewUIDesignerTests : IAsyncDisposable
 		var propertySelection = await app.InvokeAsync("od.mewui-designer.select", "heading");
 		Assert.True(propertySelection.GetProperty("success").GetBoolean(), propertySelection.ToString());
 		Assert.Contains("MewUIPropertyAdapter", propertySelection.GetProperty("propertyPadSelectedType").GetString());
+		var multi = await app.InvokeAsync("od.mewui-designer.multi-select", "heading,nameBox"); Assert.True(multi.GetProperty("success").GetBoolean(), multi.ToString());
+		Assert.Equal(2, multi.GetProperty("selectedIds").GetArrayLength());
+		status = await app.InvokeAsync("od.mewui-designer.status"); Assert.Equal(2, status.GetProperty("selectedIds").GetArrayLength()); Assert.True(status.GetProperty("propertyPadPropertyCount").GetInt32() > 0, status.ToString());
+		var batchEdit = await app.InvokeAsync("od.mewui-designer.properties.edit", "Text", "Shared note"); Assert.True(batchEdit.GetProperty("success").GetBoolean(), batchEdit.ToString());
+		await app.InvokeAsync("od.mewui-designer.select", "heading");
 		status = await app.InvokeAsync("od.mewui-designer.status"); Assert.True(status.GetProperty("propertyPadPropertyCount").GetInt32() > 0, status.ToString());
 		var changedProperty = await app.InvokeAsync("od.mewui-designer.set-property", "Text", "Configured");
 		Assert.True(changedProperty.GetProperty("success").GetBoolean(), changedProperty.ToString());
+		var boundEvent = await app.InvokeAsync("od.mewui-designer.properties.event.bind", "Loaded");
+		Assert.True(boundEvent.GetProperty("success").GetBoolean(), boundEvent.ToString());
 
 		// Insert into a NESTED container (toolRow inside rootPanel), not the root - the fixture is
 		// deep enough that "which container receives the child" is part of the contract.
@@ -86,11 +95,14 @@ public sealed class MewUIDesignerTests : IAsyncDisposable
 		var inserted = await app.InvokeAsync("od.mewui-designer.toolbox.insert", "TextBox");
 		Assert.True(inserted.GetProperty("success").GetBoolean(), inserted.ToString());
 		Assert.Equal(13, inserted.GetProperty("elementCount").GetInt32());
+		status = await app.InvokeAsync("od.mewui-designer.status"); Assert.True(status.GetProperty("canUndo").GetBoolean()); Assert.False(status.GetProperty("canRedo").GetBoolean());
 
 		var undo = await app.InvokeAsync("od.mewui-designer.undo");
 		Assert.Equal(12, undo.GetProperty("elementCount").GetInt32());
+		Assert.True(undo.GetProperty("canRedo").GetBoolean());
 		var redo = await app.InvokeAsync("od.mewui-designer.redo");
 		Assert.Equal(13, redo.GetProperty("elementCount").GetInt32());
+		Assert.False(redo.GetProperty("canRedo").GetBoolean());
 		var reordered = await app.InvokeAsync("od.mewui-designer.reorder", -1);
 		Assert.True(reordered.GetProperty("success").GetBoolean(), reordered.ToString());
 		var deleted = await app.InvokeAsync("od.mewui-designer.delete"); Assert.True(deleted.GetProperty("success").GetBoolean(), deleted.ToString()); Assert.Equal(12, deleted.GetProperty("elementCount").GetInt32());
@@ -103,6 +115,8 @@ public sealed class MewUIDesignerTests : IAsyncDisposable
 		var mxamlContent = await File.ReadAllTextAsync(designerPath, TestContext.Current.CancellationToken);
 		Assert.Contains("Name=\"textBox1\"", mxamlContent);
 		Assert.Contains("Text=\"Configured\"", mxamlContent);
+		Assert.Contains("Loaded=\"heading_Loaded\"", mxamlContent);
+		Assert.Contains("Name=\"nameBox\" Text=\"Shared note\"", mxamlContent);
 		// The pre-existing nested status bar must survive edits untouched.
 		Assert.Contains("Name=\"statusBar\"", mxamlContent);
 				// The behavior (user-owned) file must keep its handlers and gain none of the designer's

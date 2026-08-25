@@ -11,4 +11,8 @@ public static class DesignerDevFlowResults
 		JsonSerializer.Serialize(new { success = available, filterText, itemCount, selectedItem });
 	public static string HostRestart(bool available, int oldProcessId, int processId) =>
 		JsonSerializer.Serialize(new { success = available, oldHostProcessId = oldProcessId, hostProcessId = processId });
+	public static string Selection(bool available, IEnumerable<string>? selectedIds) {
+		var ids = selectedIds?.ToArray() ?? Array.Empty<string>();
+		return JsonSerializer.Serialize(new { success = available, selectedIds = ids, primarySelectedId = ids.FirstOrDefault(), selectionCount = ids.Length });
+	}
 }

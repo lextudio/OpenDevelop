@@ -2,13 +2,14 @@ using System;
 using System.ComponentModel;
 using System.Linq;
 using ICSharpCode.SharpDevelop.Designer.Remote;
+using Xceed.Wpf.Toolkit.PropertyGrid;
 
 namespace ICSharpCode.GtkDesigner;
 
-public sealed class GtkPropertyAdapter
+public sealed class GtkPropertyAdapter : ICustomTypeDescriptor, IPropertyGridEventSource, IEventBindingHost
 {
-	readonly DesignerElementNode node; readonly Action<string, string> set;
-	public GtkPropertyAdapter(DesignerElementNode node, Action<string, string> set) { this.node = node; this.set = set; }
+	readonly DesignerElementNode node; readonly Action<string, string> set; readonly Action<string, string> setEvent;
+	public GtkPropertyAdapter(DesignerElementNode node, Action<string, string> set, Action<string, string>? setEvent = null) { this.node = node; this.set = set; this.setEvent = setEvent ?? set; }
 	[Category("Identity")] public string Id { get => node.Id; set => set("$id", value); }
 	[Category("Identity"), ReadOnly(true)] public string Class => node.Type;
 	[Category("Common")] public string Label { get => Get("label"); set => set("label", value); }
@@ -21,4 +22,15 @@ public sealed class GtkPropertyAdapter
 	[Category("Behavior")] public string Sensitive { get => Get("sensitive", "True"); set => set("sensitive", value.ToLowerInvariant()); }
 	[Category("Behavior")] public string Visible { get => Get("visible", "True"); set => set("visible", value.ToLowerInvariant()); }
 	string Get(string name, string fallback = "") => node.Properties.FirstOrDefault(p => p.Name == name)?.Value ?? fallback;
+	string IPropertyGridEventSource.GetEventHandler(string eventName) => node.Events.FirstOrDefault(e => e.Name == eventName)?.Handler ?? "";
+	void IPropertyGridEventSource.SetEventHandler(string eventName, string handlerName) { setEvent(eventName, handlerName); var item = node.Events.FirstOrDefault(e => e.Name == eventName); if (item != null) item.Handler = handlerName; }
+	void IEventBindingHost.BindEvent(string eventName) { if (string.IsNullOrEmpty(((IPropertyGridEventSource)this).GetEventHandler(eventName))) ((IPropertyGridEventSource)this).SetEventHandler(eventName, node.Id.TrimStart('$') + "_" + eventName.Replace('-', '_')); }
+	public PropertyDescriptorCollection GetProperties() => TypeDescriptor.GetProperties(this, true);
+	public PropertyDescriptorCollection GetProperties(Attribute[]? attributes) => GetProperties();
+	public EventDescriptorCollection GetEvents() => new(node.Events.Select(e => (EventDescriptor)new RemoteEventDescriptor(e)).ToArray(), true);
+	public EventDescriptorCollection GetEvents(Attribute[]? attributes) => GetEvents();
+	public AttributeCollection GetAttributes() => AttributeCollection.Empty;
+	public string GetClassName() => node.Type; public string GetComponentName() => node.Id; public TypeConverter? GetConverter() => null;
+	public EventDescriptor? GetDefaultEvent() => GetEvents().Cast<EventDescriptor>().FirstOrDefault(); public PropertyDescriptor? GetDefaultProperty() => null; public object? GetEditor(Type editorBaseType) => null; public object GetPropertyOwner(PropertyDescriptor? pd) => this;
+	sealed class RemoteEventDescriptor : EventDescriptor { readonly DesignerEventInfo item; public RemoteEventDescriptor(DesignerEventInfo item) : base(item.Name, new Attribute[] { new CategoryAttribute(item.Category) }) => this.item = item; public override Type ComponentType => typeof(GtkPropertyAdapter); public override Type EventType => typeof(EventHandler); public override bool IsMulticast => false; public override void AddEventHandler(object component, Delegate value) { } public override void RemoveEventHandler(object component, Delegate value) { } public override string Description => item.Handler; }
 }

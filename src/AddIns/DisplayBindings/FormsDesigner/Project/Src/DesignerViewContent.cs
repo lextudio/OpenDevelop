@@ -366,9 +366,9 @@ namespace ICSharpCode.FormsDesigner
 		FormsDesignerViewContent(IViewContent primaryViewContent)
 			: base()
 			{
-				commands.Register("Undo", () => IsRemoteDesignerLoaded && remoteUndo.Count > 0, UndoCore);
-				commands.Register("Redo", () => IsRemoteDesignerLoaded && remoteRedo.Count > 0, RedoCore);
-				commands.Register("Delete", () => SelectedRemoteComponents().Count > 0, DeleteCore);
+				commands.RegisterStandard(() => IsRemoteDesignerLoaded && remoteUndo.Count > 0, UndoCore,
+					() => IsRemoteDesignerLoaded && remoteRedo.Count > 0, RedoCore,
+					() => SelectedRemoteComponents().Count > 0, DeleteCore);
 				this.TabPageText = "${res:FormsDesigner.DesignTabPages.DesignTabPage}";
 			
 			this.primaryViewContent = primaryViewContent;
@@ -789,7 +789,8 @@ namespace ICSharpCode.FormsDesigner
 				propertyContainer.Clear();
 				return;
 			}
-			propertyContainer.SelectedObject = new RemoteComponentPropertyProxy(this, component);
+			var proxies = remoteControl.SelectedComponentNames.Select(name => RemoteDesignerState?.Components.FirstOrDefault(item => item.Name == name)).Where(item => item != null).Select(item => (object)new RemoteComponentPropertyProxy(this, item)).ToArray();
+			propertyContainer.SelectedObject = proxies.Length > 1 ? new DesignerMultiPropertyAdapter(proxies) : proxies.FirstOrDefault();
 			shellSelection.Select(remoteControl.SelectedComponentNames);
 			// Design surface -> Document Outline: mirror the selection without re-triggering
 			// the outline->surface path (same element, no-op anyway).

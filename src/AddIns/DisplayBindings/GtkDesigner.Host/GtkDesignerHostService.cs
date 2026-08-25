@@ -106,7 +106,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		}) : session.CachedRender;
 		var roots = session.Editor.Roots.Select(n => Node(session, n)).ToList();
 		var tree = roots.Count == 1 ? roots[0] : new DesignerElementNode { Id = "$interface", Name = "interface", Type = "GtkInterface", Children = roots };
-		var result = new DesignerSessionState { SessionId = sessionId, DocumentId = session.DocumentId, Version = session.Version, Accepted = string.IsNullOrEmpty(session.Editor.Error), Error = session.Editor.Error, RootType = tree.Type, ComponentCount = Count(tree), Tree = tree, Render = render };
+		var result = new DesignerSessionState { SessionId = sessionId, DocumentId = session.DocumentId, Version = session.Version, Accepted = string.IsNullOrEmpty(session.Editor.Error), Error = session.Editor.Error, RootType = tree.Type, ComponentCount = Count(tree), Tree = tree, Render = render, CanUndo = session.Editor.CanUndo, CanRedo = session.Editor.CanRedo };
 		if (!string.IsNullOrEmpty(session.RenderDiagnostic)) result.Diagnostics.Add(new DesignerDiagnostic { Severity = "Warning", Message = session.RenderDiagnostic });
 		return result;
 	}
@@ -188,7 +188,15 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	}
 	DesignerElementNode Node(DocumentSession session, GtkUiNode node) { session.NativeBounds.TryGetValue(node.Id, out var bounds); return new() { Id = node.Id, Name = node.Id, Type = node.ClassName, X = bounds.X, Y = bounds.Y, Width = bounds.Width, Height = bounds.Height,
 		Properties = node.Properties.Select(p => new DesignerPropertyInfo { Name = p.Key, DisplayName = p.Key, Value = p.Value, Category = "GTK" }).Prepend(new DesignerPropertyInfo { Name = "$id", DisplayName = "ID", Value = node.Id, Category = "GTK" }).ToList(),
+		Events = SignalsFor(node.ClassName).Select(name => new DesignerEventInfo { Name = name, Category = "GTK Signals", Handler = session.Editor.GetSignals(node.Id).GetValueOrDefault(name) ?? "" }).ToList(),
 		Children = node.Children.Select(n => Node(session, n)).ToList() }; }
+	static IEnumerable<string> SignalsFor(string type) => type switch {
+		"GtkButton" => new[] { "clicked", "activate" },
+		"GtkEntry" or "GtkPasswordEntry" => new[] { "activate", "changed" },
+		"GtkCheckButton" => new[] { "toggled", "activate" },
+		"GtkWindow" or "GtkApplicationWindow" => new[] { "close-request", "show", "hide" },
+		_ => new[] { "show", "hide" }
+	};
 	void MeasureNativeBounds(DocumentSession session)
 	{
 		session.NativeBounds.Clear(); if (!string.IsNullOrEmpty(session.Editor.Error) || session.Editor.Roots.Count == 0) return;

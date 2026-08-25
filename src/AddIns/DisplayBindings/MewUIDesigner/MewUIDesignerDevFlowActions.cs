@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Linq;
 using System.Text.Json;
 using System.Windows;
@@ -7,6 +8,7 @@ using System.Windows.Media;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Designer.Shell;
+using ICSharpCode.SharpDevelop.Designer.Remote;
 using LeXtudio.DevFlow.Agent.Core;
 using Microsoft.Maui.DevFlow.Agent.Core;
 using Xceed.Wpf.Toolkit.PropertyGrid;
@@ -23,7 +25,7 @@ public static class MewUIDesignerDevFlowActions
 		var grid = PropertyGrid;
 		return view == null ? JsonSerializer.Serialize(new { active = false }) : JsonSerializer.Serialize(new {
 			active = true, status = view.Status, windowClassName = view.WindowClassName, elementCount = view.ElementCount,
-			selectedName = view.SelectedName, hostProcessId = view.HostProcessId, hostPoolKey = view.HostPoolKey, hostSessionId = view.HostSessionId, hostDocumentId = view.HostDocumentId, activeHostLeases = view.ActiveHostLeases, hostRecoveryCount = view.HostRecoveryCount, canUndo = view.EnableUndo, canRedo = view.EnableRedo,
+			selectedName = view.SelectedName, selectedIds = view.SelectedIds, hostProcessId = view.HostProcessId, hostPoolKey = view.HostPoolKey, hostSessionId = view.HostSessionId, hostDocumentId = view.HostDocumentId, activeHostLeases = view.ActiveHostLeases, hostRecoveryCount = view.HostRecoveryCount, canUndo = view.EnableUndo, canRedo = view.EnableRedo,
 			toolboxItemCount = view.ToolboxItemCount, toolboxFilterText = view.ToolboxFilterText, toolboxSelectedItem = view.SelectedToolboxType, toolboxHosted = view.IsToolboxHosted, toolboxSearchHosted = (SD.Services.GetService(typeof(IToolsPadHost)) as IToolsPadHost)?.HasToolboxSearch == true, zoomComboSelectedIndex = view.ZoomComboSelectedIndex, outlineHosted = view.IsOutlineHosted, outlineItemCount = view.OutlineItemCount,
 			propertyPadSelectedType = grid?.SelectedObject?.GetType().FullName, propertyPadPropertyCount = grid?.Properties?.Count ?? 0,
 			toolbarItemCount = view.ToolbarItemCount, toolbarItems = view.ToolbarItems, toolbarCapabilities = view.ToolbarCapabilities, zoom = view.Zoom, fitMeasured = view.FitMeasured, gridlines = view.Gridlines,
@@ -32,12 +34,26 @@ public static class MewUIDesignerDevFlowActions
 	}
 	[DevFlowAction("od.mewui-designer.select", Description = "Select a MewUI element by generated field name")]
 	public static string Select(string name) { var v = Activate(); var ok = v?.SelectByName(name) == true; return JsonSerializer.Serialize(new { success = ok, selectedName = v?.SelectedName, propertyPadSelectedType = PropertyGrid?.SelectedObject?.GetType().FullName }); }
+	[DevFlowAction("od.mewui-designer.multi-select", Description = "Replace the MewUI designer selection set; first name is primary")]
+	public static string MultiSelect(string names) { var view = Activate(); var list = names.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries); var ok = view?.SelectByNames(list) == true; return DesignerDevFlowResults.Selection(ok, view?.SelectedIds); }
 	[DevFlowAction("od.mewui-designer.toolbox.insert", Description = "Insert a MewUI control into the selected container")]
 	public static string Insert(string controlName) { var v = Activate(); return JsonSerializer.Serialize(new { success = v?.Add(controlName) == true, elementCount = v?.ElementCount ?? 0 }); }
 	[DevFlowAction("od.mewui-designer.toolbox.filter", Description = "Filter the MewUI Toolbox using the common catalogue semantics")]
 	public static string FilterToolbox(string text) { var v = Activate(); v?.FilterToolbox(text); return DesignerDevFlowResults.ToolboxFilter(v != null, v?.ToolboxFilterText, v?.ToolboxItemCount ?? 0, v?.SelectedToolboxType); }
 	[DevFlowAction("od.mewui-designer.set-property", Description = "Set a source-backed property on the selected MewUI element")]
 	public static string SetProperty(string name, string value) { var v = Activate(); return JsonSerializer.Serialize(new { success = v?.SetSelectedProperty(name, value) == true }); }
+	[DevFlowAction("od.mewui-designer.properties.event.bind", Description = "Bind a MewUI event through the selected Properties-pad adapter")]
+	public static string BindEvent(string eventName) { var view = Activate(); var selected = PropertyGrid?.SelectedObject; var exists = selected != null && TypeDescriptor.GetEvents(selected).Find(eventName, false) != null; if (exists && selected is IEventBindingHost host) host.BindEvent(eventName); return JsonSerializer.Serialize(new { success = exists && selected is IEventBindingHost, eventName, selectedName = view?.SelectedName }); }
+	[DevFlowAction("od.mewui-designer.properties.edit", Description = "Edit a common property through the real shared Properties pad")]
+	public static string EditProperty(string propertyName, string value)
+	{
+		var view = Activate(); var grid = PropertyGrid;
+		if (view == null || grid?.SelectedObject == null) return DesignerDevFlowResults.Failure("MewUI selection is not bound to the Properties pad");
+		var item = grid.Properties?.OfType<PropertyItem>().FirstOrDefault(property => property.PropertyName == propertyName);
+		if (item == null) return JsonSerializer.Serialize(new { success = false, error = "Property not found", propertyNames = grid.Properties?.OfType<PropertyItem>().Select(property => property.PropertyName).ToArray() });
+		item.Value = value;
+		return JsonSerializer.Serialize(new { success = true, selectedIds = view.SelectedIds, propertyName, after = item.Value?.ToString() });
+	}
 	[DevFlowAction("od.mewui-designer.delete", Description = "Delete the selected MewUI element")]
 	public static string Delete() { var v = Activate(); return JsonSerializer.Serialize(new { success = v?.DeleteSelected() == true, elementCount = v?.ElementCount ?? 0 }); }
 	[DevFlowAction("od.mewui-designer.reorder", Description = "Move the selected MewUI child within its generated Children relationship")]
@@ -173,7 +189,13 @@ public static class MewUIDesignerDevFlowActions
 
 	static MewUIDesignerViewContent Activate()
 	{
-		if (SD.Workbench.ActiveViewContent is MewUIDesignerViewContent active) return active;
+		if (SD.Workbench.ActiveViewContent is MewUIDesignerViewContent active) {
+			var activeWindow = active.WorkbenchWindow;
+			if (activeWindow != null)
+				for (var i = 0; i < activeWindow.ViewContents.Count; i++)
+					if (ReferenceEquals(activeWindow.ViewContents[i], active)) { activeWindow.SwitchView(i); break; }
+			return active;
+		}
 		var window = SD.Workbench.ActiveViewContent?.WorkbenchWindow;
 		if (window == null) return null;
 		for (var i = 0; i < window.ViewContents.Count; i++) if (window.ViewContents[i] is MewUIDesignerViewContent view) { window.SwitchView(i); return view; }

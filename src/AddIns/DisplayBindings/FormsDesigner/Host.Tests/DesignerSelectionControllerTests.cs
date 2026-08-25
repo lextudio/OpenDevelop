@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.Designer.Shell;
 using Xunit;
@@ -31,6 +32,17 @@ public sealed class DesignerSelectionControllerTests
 		Assert.Equal("button", root.GetProperty("filterText").GetString());
 		Assert.Equal(2, root.GetProperty("itemCount").GetInt32());
 		Assert.Equal("Button", root.GetProperty("selectedItem").GetString());
+	}
+
+	[Fact]
+	public void CommonDevFlowResultsKeepStableMultiSelectionContract()
+	{
+		using var json = System.Text.Json.JsonDocument.Parse(DesignerDevFlowResults.Selection(true, new[] { "primary", "secondary" }));
+		var root = json.RootElement;
+		Assert.True(root.GetProperty("success").GetBoolean());
+		Assert.Equal("primary", root.GetProperty("primarySelectedId").GetString());
+		Assert.Equal(2, root.GetProperty("selectionCount").GetInt32());
+		Assert.Equal(new[] { "primary", "secondary" }, root.GetProperty("selectedIds").EnumerateArray().Select(item => item.GetString()).ToArray());
 	}
 
 	[Fact]
@@ -75,6 +87,57 @@ public sealed class DesignerSelectionControllerTests
 
 		Assert.Equal(new[] { "one", "two" }, controller.SelectedIds);
 		Assert.Equal("batch:2:one,two", controller.SelectedPropertyObject);
+	}
+
+	[Fact]
+	public void MultiPropertyAdapterIntersectsAndBroadcastsProperties()
+	{
+		var first = new EditableTarget { Text = "one", Width = 10 };
+		var second = new EditableTarget { Text = "two", Width = 20 };
+		var adapter = new DesignerMultiPropertyAdapter(new object[] { first, second });
+		var properties = System.ComponentModel.TypeDescriptor.GetProperties(adapter);
+
+		Assert.Contains(properties.Cast<System.ComponentModel.PropertyDescriptor>(), property => property.Name == nameof(EditableTarget.Text));
+		Assert.Null(properties[nameof(EditableTarget.Text)]!.GetValue(adapter));
+		properties[nameof(EditableTarget.Text)]!.SetValue(adapter, "shared");
+
+		Assert.Equal("shared", first.Text);
+		Assert.Equal("shared", second.Text);
+		Assert.False(adapter.IsMixed(nameof(EditableTarget.Text)));
+	}
+
+	[Fact]
+	public void MultiPropertyAdapterRollsBackEarlierTargetsWhenOneRejectsEdit()
+	{
+		var first = new EditableTarget { Text = "one" };
+		var second = new EditableTarget { Text = "two", Reject = "invalid" };
+		var adapter = new DesignerMultiPropertyAdapter(new object[] { first, second });
+
+		Assert.True(adapter.IsMixed(nameof(EditableTarget.Text)));
+		Assert.ThrowsAny<Exception>(() => TypeDescriptor.GetProperties(adapter)[nameof(EditableTarget.Text)]!.SetValue(adapter, "invalid"));
+		Assert.Equal("one", first.Text);
+		Assert.Equal("two", second.Text);
+	}
+
+	[Fact]
+	public void MultiPropertyAdapterIntersectsAndBroadcastsEvents()
+	{
+		var first = new EditableTarget(); var second = new EditableTarget();
+		var adapter = new DesignerMultiPropertyAdapter(new object[] { first, second });
+
+		Assert.Contains(adapter.GetEvents().Cast<EventDescriptor>(), item => item.Name == nameof(EditableTarget.Click));
+		((IEventBindingHost)adapter).BindEvent(nameof(EditableTarget.Click));
+		Assert.Equal(nameof(EditableTarget.Click), first.BoundEvent);
+		Assert.Equal(nameof(EditableTarget.Click), second.BoundEvent);
+	}
+
+	sealed class EditableTarget : IEventBindingHost
+	{
+		string text = "";
+		public string Text { get => text; set { if (value == Reject) throw new InvalidOperationException("rejected"); text = value; } }
+		public int Width { get; set; } public string? Reject { get; set; } public string? BoundEvent { get; private set; }
+		public event EventHandler? Click;
+		public void BindEvent(string eventName) => BoundEvent = eventName;
 	}
 
 	[Fact]
@@ -160,6 +223,22 @@ public sealed class DesignerCommandControllerTests
 
 		Assert.True(controller.Execute("Delete"));
 		Assert.False(nested);
+	}
+
+	[Fact]
+	public void StandardRegistrationExposesStableCapabilitySnapshot()
+	{
+		var canUndo = true;
+		var controller = new DesignerCommandController();
+		controller.RegisterStandard(() => canUndo, () => true, () => false, () => true,
+			() => true, () => true);
+
+		Assert.Equal(new[] { "Delete", "Redo", "Undo" }, controller.RegisteredCommands);
+		Assert.True(controller.State(DesignerCommandNames.Undo).CanExecute);
+		Assert.False(controller.State(DesignerCommandNames.Redo).CanExecute);
+		Assert.True(controller.State(DesignerCommandNames.Delete).Registered);
+		canUndo = false;
+		Assert.False(controller.Snapshot().Single(state => state.Name == DesignerCommandNames.Undo).CanExecute);
 	}
 }
 

@@ -1595,20 +1595,56 @@ acceptance check, so the list can be resumed by a fresh session at any point.
 
 ## Shared shell contracts completed (2026-08-24)
 
-- `DesignerPadController` is the runtime-neutral bridge from `DesignerSelectionController` to
-  Outline and Properties. It owns tree refresh, stable-id reselection, property-object rebinding,
-  Outline-to-surface commits and the re-entry guard. GTK 4 and MewUI now use it directly; WPF,
-  WinUI and WinForms retain thin backend adapters where multi-selection or native property services
-  require extra behavior.
+- `DesignerSelectionController` is the common ordered multi-selection authority for all five
+  designers. It exposes `SelectedIds`/`SelectedNodes`, an explicit primary selection, and
+  Replace/Add/Toggle/Remove operations; it restores the entire set by stable id after a tree
+  rebuild. Backends no longer keep a second host-side selection list.
+- `DesignerPadController` is the runtime-neutral bridge from that selection set to Outline and
+  Properties. Outline follows the primary selection, while Properties receives either one adapter
+  or a `DesignerMultiPropertyAdapter` exposing the common-property intersection and broadcasting
+  edits to every selected backend adapter; tree refresh, stable-id reselection,
+  Outline-to-surface commits and the re-entry guard remain centralized.
+- WPF, WinUI and WinForms publish their native surface selection sets into the controller. GTK 4
+  and MewUI support the same programmatic contract plus Ctrl-click toggle selection. Native code is
+  limited to hit testing, drawing adorners and constructing backend property adapters.
 - `DesignerDevFlowResults` provides the stable JSON envelopes used by all five designers for
-  Toolbox filtering, failures and host restart results. Tests parse the JSON contract rather than
-  comparing implementation-specific strings.
+  selection, Toolbox filtering, failures and host restart results. Every multi-selection action
+  now returns `success`, ordered `selectedIds`, `primarySelectedId` and `selectionCount`; tests
+  parse that contract rather than backend-specific fields or strings.
 - `SharedDesignerHostPoolTests` exercises forty acquire/release cycles with five concurrent
   documents and periodic invalidation. The acceptance condition is zero leaked leases and no more
   than one live connection after every recovery cycle.
 - The live integration gate remains pad-based: GTK 4 and MewUI tests assert the actual Tools,
-  Outline and Properties hosts, not only designer-internal state. Representative WPF, WinUI and
-  WinForms paths consume the same Toolbox/DevFlow contracts.
+  Outline and Properties hosts, not only designer-internal state, and edit a common property
+  through the realized Xceed `PropertyItem` while multiple elements are selected. The persisted
+  source proves the edit reached every adapter. Representative WPF, WinUI and WinForms paths
+  consume the same selection/Toolbox/DevFlow contracts.
+- `DesignerChildHost` is also the common failure boundary: startup, transport and shutdown
+  exceptions are written to the captured child log and become exit code 1. They never escape
+  `Main` as a CoreCLR `abort()`, preventing disposable designer hosts from producing macOS crash
+  dialogs while retaining the full diagnostic for host recovery. WPF additionally guards its
+  main-thread dispatcher pump, which necessarily sits outside the common worker-host boundary.
+- `DesignerCommandController` now owns the standard Undo/Redo/Delete registration shape for all
+  five designers, stable command names, re-entrancy protection and capability snapshots. GTK 4
+  and MewUI report authoritative `CanUndo`/`CanRedo` flags from each child document after every
+  mutation instead of treating a live host as an always-enabled history stack; their routed UI
+  commands use the same predicates as DevFlow and `IUndoHandler`.
+- Rapid source/design/close transitions no longer leave AvalonEdit's delayed hover callback
+  touching a disposed `DocumentHighlighter`: `CodeEditorView.Dispose` detaches its input/render
+  handlers and the queued callback checks the view lifetime. The combined GTK→MewUI integration
+  run is the regression gate because it repeatedly closes source-backed designer windows in one
+  application process.
+- `DesignerElementNode` now carries the same neutral `DesignerEventInfo` collection previously
+  available only on the WinForms flat component snapshot. Properties-pad adapters can therefore
+  expose backend events/signals through `ICustomTypeDescriptor` without loading runtime types in
+  the IDE. `DesignerMultiPropertyAdapter` intersects both properties and events, reports mixed
+  property values, broadcasts edits, and rolls back already-written targets if a later target
+  rejects a multi-edit. Event binding is rejected unless every selected adapter supports it,
+  preventing a silent partial binding.
+- WinForms and WinUI retain their native metadata adapters; GTK 4 and MewUI now implement the same
+  Xceed `IPropertyGridEventSource` plus UI-neutral `IEventBindingHost` path. WPF participates in
+  the common property/multi-selection contract, but host-side event serialization remains an
+  explicit backend gap rather than a shell exception.
 
 ## References
 

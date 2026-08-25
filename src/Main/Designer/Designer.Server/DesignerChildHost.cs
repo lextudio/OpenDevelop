@@ -47,7 +47,24 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 			var token = GetArgument(args, "--token");
 			if (!int.TryParse(port, out var portNumber) || string.IsNullOrEmpty(token))
 				return 2;
+			try
+			{
+				return RunCore(portNumber, token, readyMessagePrefix, createService, afterShutdown);
+			}
+			catch (Exception exception)
+			{
+				// A child host is an implementation detail of the IDE. Letting a transport or
+				// shutdown exception escape Main makes CoreCLR call abort() on macOS, which shows
+				// an alarming crash dialog for a disposable background process. Preserve the full
+				// diagnostic on stderr and report failure with an ordinary process exit instead.
+				Console.Error.WriteLine($"{readyMessagePrefix}: fatal host error: {exception}");
+				return 1;
+			}
+		}
 
+		static int RunCore(int portNumber, string token, string readyMessagePrefix,
+			Func<string, IDesignerChildService> createService, Action? afterShutdown)
+		{
 			using var tcp = new TcpClient();
 			tcp.Connect(IPAddress.Loopback, portNumber);
 			var service = createService(token);

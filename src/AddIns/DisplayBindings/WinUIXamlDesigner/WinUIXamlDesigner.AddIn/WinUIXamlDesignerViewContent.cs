@@ -68,9 +68,9 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		previewHost.ContextCommandRequested += OnContextCommandOnSurface;
 		previewHost.NudgeRequested += OnNudgeRequestedOnSurface;
 		previewHost.UndoRedoRequested += OnUndoRedoRequestedOnSurface;
-		commands.Register("Undo", () => editor.CanUndo, () => ReplayHistory(editor.Undo()));
-		commands.Register("Redo", () => editor.CanRedo, () => ReplayHistory(editor.Redo()));
-		commands.Register("Delete", () => editor.FindElement(SelectedElementName) != null, DeleteSelectedCore);
+		commands.RegisterStandard(() => editor.CanUndo, () => ReplayHistory(editor.Undo()),
+			() => editor.CanRedo, () => ReplayHistory(editor.Redo()),
+			() => editor.FindElement(SelectedElementName) != null, DeleteSelectedCore);
 		TabPageText = "Design";
 		root.RowDefinitions.Add(new RowDefinition());
 		root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -1128,6 +1128,14 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		// remember the full set for multi-element actions.
 		SelectElement(names[0]);
 		shellSelection.Select(names);
+		BindPropertySelection(names);
+	}
+
+	void BindPropertySelection(IReadOnlyList<string> names)
+	{
+		var adapters = names.Select(editor.FindElement).Where(element => element != null)
+			.Select(element => (object)new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor)).ToArray();
+		propertyContainer.SelectedObject = adapters.Length > 1 ? new DesignerMultiPropertyAdapter(adapters) : adapters.FirstOrDefault();
 	}
 
 	/// <summary>The current multi-selection (primary first), or a single-element list.</summary>
@@ -1143,6 +1151,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		if (names.Count > 0) {
 			SelectElement(names[0]);
 			shellSelection.Select(names);
+			BindPropertySelection(names);
 		} else {
 			shellSelection.Select(Array.Empty<string>());
 		}

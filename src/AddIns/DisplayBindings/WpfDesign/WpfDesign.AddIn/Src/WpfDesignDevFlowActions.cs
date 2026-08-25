@@ -719,11 +719,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 
 			var requested = names.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 			surface.SetMultiSelection(requested);
-			return JsonSerializer.Serialize(new {
-				success = true,
-				requested = requested.Length,
-				selectedName = surface.SelectedElementId,
-			});
+			return DesignerDevFlowResults.Selection(true, surface.SelectedElementIds);
 		}
 
 		[DevFlowAction("od.wpf-designer.align", Description = "Align every other selected element's edge/center to the primary selection's - mode: left/center/right/top/middle/bottom")]

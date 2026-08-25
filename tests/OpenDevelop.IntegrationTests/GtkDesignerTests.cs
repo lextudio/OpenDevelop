@@ -23,6 +23,8 @@ public sealed class GtkDesignerTests : IAsyncDisposable
 		var opened = await app.InvokeAsync("od.open-file", uiPath); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
 		var status = await WaitAsync();
 		Assert.True(status.GetProperty("active").GetBoolean(), status.ToString());
+		Assert.False(status.GetProperty("canUndo").GetBoolean());
+		Assert.False(status.GetProperty("canRedo").GetBoolean());
 		Assert.True(status.GetProperty("hostProcessId").GetInt32() > 0, "GTK designer did not start its isolated host: " + status);
 		Assert.True(status.GetProperty("nativeFrame").GetBoolean(), "GTK host did not return a native GTK frame: " + status);
 		Assert.Equal("in-process GSK/Cairo", status.GetProperty("nativeRenderer").GetString());
@@ -56,10 +58,15 @@ public sealed class GtkDesignerTests : IAsyncDisposable
 
 		var selected = await app.InvokeAsync("od.gtk-designer.select", "runButton"); Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
 		Assert.Contains("GtkPropertyAdapter", selected.GetProperty("propertyPadSelectedType").GetString());
+		var multi = await app.InvokeAsync("od.gtk-designer.multi-select", "runButton,heading"); Assert.True(multi.GetProperty("success").GetBoolean(), multi.ToString());
+		Assert.Equal(new[] { "runButton", "heading" }, multi.GetProperty("selectedIds").EnumerateArray().Select(item => item.GetString()).ToArray());
+		status = await app.InvokeAsync("od.gtk-designer.status"); Assert.Equal(2, status.GetProperty("selectedIds").GetArrayLength()); Assert.True(status.GetProperty("propertyPadPropertyCount").GetInt32() > 0, status.ToString());
+		var batchEdit = await app.InvokeAsync("od.gtk-designer.properties.edit", "Label", "Shared heading"); Assert.True(batchEdit.GetProperty("success").GetBoolean(), batchEdit.ToString());
+		await app.InvokeAsync("od.gtk-designer.select", "runButton");
 		status = await app.InvokeAsync("od.gtk-designer.status"); Assert.True(status.GetProperty("propertyPadPropertyCount").GetInt32() > 0, status.ToString());
 		var edited = await app.InvokeAsync("od.gtk-designer.properties.edit", "Label", "Execute"); Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
 		status = await WaitForFrameChangeAsync(originalFrame); Assert.NotEqual(originalFrame, status.GetProperty("nativeFrameFingerprint").GetString());
-		var signal = await app.InvokeAsync("od.gtk-designer.signal.set", "clicked", "OnRunClicked"); Assert.True(signal.GetProperty("success").GetBoolean(), signal.ToString());
+		var signal = await app.InvokeAsync("od.gtk-designer.properties.event.bind", "clicked"); Assert.True(signal.GetProperty("success").GetBoolean(), signal.ToString());
 		var reordered = await app.InvokeAsync("od.gtk-designer.pointer-reorder", "runButton", "heading"); Assert.True(reordered.GetProperty("success").GetBoolean(), reordered.ToString());
 		var restarted = await app.InvokeAsync("od.gtk-designer.restart-host");
 		Assert.True(restarted.GetProperty("success").GetBoolean(), restarted.ToString());
@@ -69,15 +76,18 @@ public sealed class GtkDesignerTests : IAsyncDisposable
 		await app.InvokeAsync("od.gtk-designer.select", "contentBox");
 		var inserted = await app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkEntry"); Assert.True(inserted.GetProperty("success").GetBoolean(), inserted.ToString());
 		Assert.Equal("entry1", inserted.GetProperty("selectedId").GetString());
+		status = await app.InvokeAsync("od.gtk-designer.status"); Assert.True(status.GetProperty("canUndo").GetBoolean()); Assert.False(status.GetProperty("canRedo").GetBoolean());
 		var undo = await app.InvokeAsync("od.gtk-designer.undo"); Assert.Equal(4, undo.GetProperty("elementCount").GetInt32());
+		Assert.True(undo.GetProperty("canRedo").GetBoolean());
 		var redo = await app.InvokeAsync("od.gtk-designer.redo"); Assert.Equal(5, redo.GetProperty("elementCount").GetInt32());
+		Assert.False(redo.GetProperty("canRedo").GetBoolean());
 		var deleted = await app.InvokeAsync("od.gtk-designer.delete"); Assert.True(deleted.GetProperty("success").GetBoolean(), deleted.ToString()); Assert.Equal(4, deleted.GetProperty("elementCount").GetInt32());
 		var undoDelete = await app.InvokeAsync("od.gtk-designer.undo"); Assert.Equal(5, undoDelete.GetProperty("elementCount").GetInt32());
 		var redoDelete = await app.InvokeAsync("od.gtk-designer.redo"); Assert.Equal(4, redoDelete.GetProperty("elementCount").GetInt32());
 		var restoreDeleted = await app.InvokeAsync("od.gtk-designer.undo"); Assert.Equal(5, restoreDeleted.GetProperty("elementCount").GetInt32());
 		var saved = await app.InvokeAsync("od.file.save", uiPath); Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
 		var xml = await File.ReadAllTextAsync(uiPath, TestContext.Current.CancellationToken);
-		Assert.Contains(">Execute</property>", xml); Assert.Contains("<signal name=\"clicked\" handler=\"OnRunClicked\"", xml); Assert.Contains("class=\"GtkEntry\"", xml); Assert.Contains("id=\"entry1\"", xml);
+		Assert.Contains(">Execute</property>", xml); Assert.Contains(">Shared heading</property>", xml); Assert.Contains("<signal name=\"clicked\" handler=\"runButton_clicked\"", xml); Assert.Contains("class=\"GtkEntry\"", xml); Assert.Contains("id=\"entry1\"", xml);
 		Assert.True(xml.IndexOf("id=\"runButton\"", StringComparison.Ordinal) < xml.IndexOf("id=\"heading\"", StringComparison.Ordinal), "GTK reorder was not persisted: " + xml);
 		await ValidateGtkBuilderAsync(uiPath);
 

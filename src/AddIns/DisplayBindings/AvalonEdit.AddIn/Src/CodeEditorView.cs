@@ -100,6 +100,19 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		
 		public virtual void Dispose()
 		{
+			if (disposed)
+				return;
+			disposed = true;
+			this.MouseHover -= TextEditorMouseHover;
+			this.MouseHoverStopped -= TextEditorMouseHoverStopped;
+			this.MouseMove -= TextEditorMouseMove;
+			this.MouseLeave -= TextEditorMouseLeave;
+			this.Unloaded -= OnUnloaded;
+			this.TextArea.TextView.MouseDown -= TextViewMouseDown;
+			this.TextArea.TextView.MouseUp -= TextViewMouseUp;
+			this.TextArea.Caret.PositionChanged -= HighlightBrackets;
+			this.TextArea.TextView.VisualLinesChanged -= CodeEditorView_VisualLinesChanged;
+			TryCloseExistingPopup(true);
 			contextActionsRenderer.Dispose();
 			hiddenDefinitionRenderer.ClosePopup();
 		}
@@ -253,9 +266,15 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		#region Tooltip
 		ToolTip toolTip;
 		Popup popupToolTip;
+		bool disposed;
 		
 		void TextEditorMouseHover(object sender, MouseEventArgs e)
 		{
+			// LibreWPF's hover timer can deliver a queued tick after the editor view and its
+			// DocumentHighlighter have been disposed during a rapid source/design/close switch.
+			// Never force visual-line construction for that detached document.
+			if (disposed || !IsLoaded)
+				return;
 			Debug.Assert(sender == this);
 			
 			if (!TryCloseExistingPopup(false)) {

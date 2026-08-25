@@ -236,6 +236,7 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 			var outline = viewContent.OutlineContent as ICSharpCode.SharpDevelop.Widgets.DocumentOutlineControl;
 			if (outline == null)
 				return Failure("no outline control");
+			viewContent.SelectRemoteComponents(componentName);
 			outline.SelectNodeById(componentName);
 			return JsonSerializer.Serialize(new {
 				success = true,
@@ -253,7 +254,7 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 				.Distinct(StringComparer.Ordinal)
 				.ToArray();
 			viewContent.SelectRemoteComponents(list);
-			return JsonSerializer.Serialize(new { success = true, selected = viewContent.RemoteSelectedComponentNames });
+			return DesignerDevFlowResults.Selection(true, viewContent.RemoteSelectedComponentNames);
 		}
 
 		[DevFlowAction("od.forms-designer.undo", Description = "Undo the last WinForms designer edit - mirrors od.winui-designer.undo")]

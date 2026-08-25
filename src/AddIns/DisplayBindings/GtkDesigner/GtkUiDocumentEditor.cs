@@ -108,6 +108,15 @@ public sealed class GtkUiDocumentEditor
 		return Commit();
 	}
 
+	public IReadOnlyDictionary<string, string> GetSignals(string id)
+	{
+		var element = Find(id);
+		return element == null ? new Dictionary<string, string>() : element.Elements()
+			.Where(e => e.Name.LocalName == "signal" && e.Attribute("name") != null)
+			.GroupBy(e => (string)e.Attribute("name")!, StringComparer.Ordinal)
+			.ToDictionary(g => g.Key, g => (string?)g.Last().Attribute("handler") ?? "", StringComparer.Ordinal);
+	}
+
 	public bool Reorder(string id, int delta)
 	{
 		var element = Find(id); var wrapper = element?.Parent; var parent = wrapper?.Parent;
