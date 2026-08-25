@@ -1,0 +1,95 @@
+<Project Sdk="LibreWPF.Sdk">
+  <PropertyGroup>
+    <OpenDevelopAddin>true</OpenDevelopAddin>
+    <OpenDevelopAddinKind>InProcess</OpenDevelopAddinKind>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>ICSharpCode.StrideGameStudio</RootNamespace>
+    <AssemblyName>ICSharpCode.StrideGameStudio</AssemblyName>
+    <UseWPF>true</UseWPF>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <OutputType>Library</OutputType>
+    <OutputPath>..\..\..\..\..\AddIns\DisplayBindings\StrideGameStudio\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <!-- Override point: where the local stride port clone lives. -->
+    <StrideCheckoutRoot Condition="'$(StrideCheckoutRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\..\..\..\..\stride\</StrideCheckoutRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
+  </ItemGroup>
+  <!-- Stride editor assemblies from the local port clone (see
+       doc/technotes/stride-game-studio.md). Deliberately MINIMAL for the fusion skeleton:
+       only the asset core travels with the addin; scene-editor hosting layers join in later
+       slices. Private=true so they deploy next to this addin's dll. -->
+  <ItemGroup>
+    <Reference Include="Stride.Core">
+      <HintPath>$(StrideCheckoutRoot)sources\core\Stride.Core\bin\Debug\net10.0\Stride.Core.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Stride.Core.Assets">
+      <HintPath>$(StrideCheckoutRoot)sources\assets\Stride.Core.Assets\bin\Debug\net10.0\Stride.Core.Assets.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <!-- PackageVersion/UFile (touched by Meta.Version and AssetItem.Location) live here. -->
+    <Reference Include="Stride.Core.Design">
+      <HintPath>$(StrideCheckoutRoot)sources\assets\Stride.Core.Assets\bin\Debug\net10.0\Stride.Core.Design.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <!-- Transitive NuGet deps of the Stride asset core that MSBuild's reference resolution
+         does NOT copy (they are not project outputs). Stride.Core.Assets' module initializer
+         binds ServiceWire at first touch - missing it killed the view with a
+         TypeInitializationException on open. Keep in lock-step with stride's packages. -->
+    <Reference Include="ServiceWire">
+      <HintPath>$([System.IO.Path]::GetFullPath('$(NuGetPackageRoot)servicewire/5.6.0/lib/netstandard2.0/ServiceWire.dll'))</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+  <!-- Engine closure for the LIVE viewport (fusion milestone 2). The headless Game renders a
+       frame every tick; the presenter shows it. Private=true so they deploy next to this addin. -->
+  <ItemGroup>
+    <Reference Include="Stride.Engine"><HintPath>$(StrideCheckoutRoot)sources\engine\Stride.Engine\bin\Debug\net10.0\Stride.Engine.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Stride.Games"><HintPath>$(StrideCheckoutRoot)sources\engine\Stride.Engine\bin\Debug\net10.0\Stride.Games.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Stride.Graphics"><HintPath>$(StrideCheckoutRoot)sources\engine\Stride.Engine\bin\Debug\net10.0\Stride.Graphics.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Stride.Input"><HintPath>$(StrideCheckoutRoot)sources\engine\Stride.Engine\bin\Debug\net10.0\Stride.Input.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Stride.Rendering"><HintPath>$(StrideCheckoutRoot)sources\engine\Stride.Engine\bin\Debug\net10.0\Stride.Rendering.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Stride.Shaders"><HintPath>$(StrideCheckoutRoot)sources\engine\Stride.Engine\bin\Debug\net10.0\Stride.Shaders.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Stride.Shaders.Effects"><HintPath>$(StrideCheckoutRoot)sources\engine\Stride.Engine\bin\Debug\net10.0\Stride.Shaders.Effects.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Stride.Shaders.Compilers"><HintPath>$(StrideCheckoutRoot)sources\engine\Stride.Engine\bin\Debug\net10.0\Stride.Shaders.Compilers.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Stride.Shaders.Parsers"><HintPath>$(StrideCheckoutRoot)sources\engine\Stride.Engine\bin\Debug\net10.0\Stride.Shaders.Parsers.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Stride.Shaders.Spirv"><HintPath>$(StrideCheckoutRoot)sources\engine\Stride.Engine\bin\Debug\net10.0\Stride.Shaders.Spirv.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Stride.Core"><HintPath>$(StrideCheckoutRoot)sources\engine\Stride.Engine\bin\Debug\net10.0\Stride.Core.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Stride.Core.IO"><HintPath>$(StrideCheckoutRoot)sources\engine\Stride.Engine\bin\Debug\net10.0\Stride.Core.IO.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Stride.Core.Mathematics"><HintPath>$(StrideCheckoutRoot)sources\engine\Stride.Engine\bin\Debug\net10.0\Stride.Core.Mathematics.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Stride.Core.MicroThreading"><HintPath>$(StrideCheckoutRoot)sources\engine\Stride.Engine\bin\Debug\net10.0\Stride.Core.MicroThreading.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Stride.Core.Serialization"><HintPath>$(StrideCheckoutRoot)sources\engine\Stride.Engine\bin\Debug\net10.0\Stride.Core.Serialization.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Stride.Foundation"><HintPath>$(StrideCheckoutRoot)sources\engine\Stride.Engine\bin\Debug\net10.0\Stride.Foundation.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Stride.Audio"><HintPath>$(StrideCheckoutRoot)sources\engine\Stride.Engine\bin\Debug\net10.0\Stride.Audio.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Stride.VirtualReality"><HintPath>$(StrideCheckoutRoot)sources\engine\Stride.Engine\bin\Debug\net10.0\Stride.VirtualReality.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Vortice.Vulkan"><HintPath>$(HOME)/.nuget/packages/vortice.vulkan/3.0.3/lib/net9.0/Vortice.Vulkan.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Silk.NET.Core"><HintPath>$(HOME)/.nuget/packages/silk.net.core/2.23.0/lib/netstandard2.0/Silk.NET.Core.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="SixLabors.ImageSharp"><HintPath>$(HOME)/.nuget/packages/sixlabors.imagesharp/3.1.12/lib/net6.0/SixLabors.ImageSharp.dll</HintPath><Private>true</Private></Reference>
+  </ItemGroup>
+  <!-- Windowed viewport (supersedes the headless+readback route, see
+       doc/technotes/stride-game-studio.md "G4 viewport stability/perf investigation" and
+       "Composition-bridge probes"): GameContextSDL needs Silk.NET.SDL for SDL_GetWindowWMInfo,
+       and the LibreWPF-side Cocoa NSWindow is obtained via LibreWPF.ProGPU's public diagnostics
+       entry point (ProGpuWpfDiagnostics.TryGetWindowHost) + Silk.NET.Windowing's own
+       INativeWindow.Cocoa. -->
+  <ItemGroup>
+    <Reference Include="Silk.NET.SDL"><HintPath>$(StrideCheckoutRoot)sources\editor\Stride.GameStudio\bin\Debug\net10.0-windows\Silk.NET.SDL.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Silk.NET.Windowing.Common"><HintPath>$(HOME)/.nuget/packages/silk.net.windowing.common/2.23.0/lib/netstandard2.1/Silk.NET.Windowing.Common.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="ProGPU.Wpf"><HintPath>$(HOME)/.nuget/packages/librewpf.progpu/0.1.0-preview.45/lib/net10.0/ProGPU.Wpf.dll</HintPath><Private>true</Private></Reference>
+  </ItemGroup>
+  <Target Name="CopyStrideRuntimes" AfterTargets="Build">
+    <ItemGroup>
+      <StrideRt Include="$(StrideCheckoutRoot)sources\engine\Stride.Engine\bin\Debug\net10.0\runtimes\**\*" />
+      <!-- Native SDL2 isn't part of Stride's own runtimes output (it's a separate NuGet
+           package); GameContextSDL needs it at load time (see stride-game-studio.md's SDL
+           probes - Silk.NET.SDL.GetApi() fails without it on the load path). -->
+      <NativeSdl Include="$(HOME)/.nuget/packages/ultz.native.sdl/2.32.10/runtimes/osx/native/libSDL2-2.0.dylib" />
+    </ItemGroup>
+    <Copy SourceFiles="@(StrideRt)" DestinationFiles="@(StrideRt->'$(OutputPath)runtimes\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(NativeSdl)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+  </Target>
+  <ItemGroup><None Include="ICSharpCode.StrideGameStudio.addin" /></ItemGroup>
+</Project>
