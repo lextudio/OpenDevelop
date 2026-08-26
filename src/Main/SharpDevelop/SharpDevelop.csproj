@@ -31,7 +31,7 @@
          moment ILSpyAddIn.dll loads - align this app's own resolution to the same version so only
          one copy is ever in play. -->
     <PackageReference Include="System.Composition.AttributedModel" Version="10.0.10" />
-    <PackageReference Include="LeXtudio.DevFlow.Agent.LibreWpf" Version="0.2.2" Condition="'$(Configuration)' == 'Debug'" />
+    <PackageReference Include="LeXtudio.DevFlow.Agent.LibreWpf" Version="0.2.3-local2" Condition="'$(Configuration)' == 'Debug'" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="NuGet.Core">
