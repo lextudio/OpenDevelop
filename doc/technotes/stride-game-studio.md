@@ -2316,6 +2316,47 @@ Also: `scene-status` reported `running: false` for one round simply because it w
 `OnLoaded` fired. Both `Current` and the swapchain traffic need a moment after the tab opens; poll
 until `running` is true rather than sampling once.
 
+### Real OS input is verified end to end
+
+Everything above drove the simulated devices directly, bypassing WPF. A physical drag by the user
+closed the last gap - counters before/after, with a right-button look-around:
+
+```text
+wpfMoves 11 -> 185   wpfDowns 0 -> 1   simPresses 0 -> 1   seenButtonPresses 0 -> 1
+camera.yaw 0.7854 -> -19.5292        (pitch pinned at the service's -pi/2 clamp)
+```
+
+So the whole chain works: physical mouse → WPF element handlers → `MouseSimulated` →
+`InputManager` → `EditorGameEntityCameraService` → camera orientation.
+
+**DevFlow cannot inject a right-button drag.** `press`/`drag-move`/`release` accept a `button` field
+but ignore it - the response does not echo it, and sampling mid-drag shows `downNames: 'Left'`
+regardless. Since Stride's look-around is right-drag, rotation cannot be self-tested through DevFlow;
+an injected left-drag correctly reaches the camera service and is correctly declined
+(`controlling: false`, left being selection). Manual verification is required for rotation, or a
+DevFlow action that drives the right button.
+
+Also note `move` transforms the coordinates it is given while `press`/`drag-move`/`release` use them
+raw - only the latter are trustworthy for positioning.
+
+#### Two suspected bugs that were not bugs
+
+Both were mis-modelled measurements, the same failure mode as the `rotate`/position probe above.
+
+**`MouseDelta` reads zero.** It is *transient by design*: `MouseSimulated.SetPosition` →
+`MouseState.HandleMove` does accumulate `nextDelta += newPosition - Position`, and `Update()` copies
+it into `Delta` and immediately zeroes it. Reading at rest is therefore always zero; sampling
+mid-gesture shows the expected non-zero value. (A real hazard does exist in the locked-pointer path -
+`SetPosition` computes the delta against a `capturedPosition` that is never updated, so drags would
+accelerate - but nothing in the editor calls `LockPosition`, so it is unreachable.)
+
+**Vertical position looked mis-normalized.** Sweeping screen y inside one held drag and fitting three
+consecutive samples gives exactly the right slope (`40px / 188px = 0.2128` per step) on a clean linear
+mapping. The apparent error came from deriving the element's screen origin from the reported `frame`,
+which is the SDL overlay window in Cocoa's **bottom-left** coordinates, while `cliclick` uses
+**top-left**. First/last samples in a sweep also lag by one step, because the read can outrun the
+game tick that consumes the move - settle or discard the endpoints.
+
 Prime suspect is the source-tree fallback added earlier in `PackageSession.Dependencies.cs`:
 `FindSourceTreePackageFile("Stride.Engine")` *does* hit `sources/engine/Stride.Engine/Stride.Engine.sdpkg`,
 a different file with `AssetFolders: AssetPackage/Assets/Shared`, and it has a sibling `.csproj` - so
