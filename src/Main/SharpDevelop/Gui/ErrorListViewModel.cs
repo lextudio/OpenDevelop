@@ -82,6 +82,12 @@ internal sealed class ErrorListViewModel : ToolPaneModel
         errorView.MouseDoubleClick += ErrorViewMouseDoubleClick;
         errorView.CommandBindings.Add(new CommandBinding(ApplicationCommands.Copy, ExecuteCopy, CanExecuteCopy));
         errorView.CommandBindings.Add(new CommandBinding(ApplicationCommands.SelectAll, ExecuteSelectAll, CanExecuteSelectAll));
+        // The toolbar/style (column headers)/context menu live in EnsureSubscribed because
+        // ToolBarService etc. are not ready this early - but this pad defaults visible, so
+        // nothing ever calls Show() on it and the property getters are only reachable THROUGH
+        // the not-yet-created toolbar (circular). Entering the visual tree is the real
+        // "workbench is showing this pane" moment, so use it as the startup trigger.
+        contentPanel.Loaded += (_, _) => EnsureSubscribed();
         Content = contentPanel;
     }
 

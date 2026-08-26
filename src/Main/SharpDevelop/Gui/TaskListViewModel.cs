@@ -73,6 +73,9 @@ internal sealed class TaskListViewModel : ToolPaneModel
         Grid.SetRow(taskView, 1);
         taskView.ItemsSource = tasks;
         taskView.MouseDoubleClick += TaskViewMouseDoubleClick;
+        // Same startup trigger as ErrorListViewModel: this pad defaults visible so nothing calls
+        // Show(), and the toolbar/style live in EnsureSubscribed (services not ready in the ctor).
+        contentPanel.Loaded += (_, _) => EnsureSubscribed();
         Content = contentPanel;
     }
 
