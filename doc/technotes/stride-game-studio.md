@@ -823,6 +823,73 @@ Phase 2/3 slices don't accidentally port dead weight.
 | Debug/log pages (`EditorDebugTools.CreateLogDebugPage`) | Route Stride loggers into OpenDevelop's LoggingService/Error List instead of in-app debug pages; keep the logger plumbing, discard the page UI |
 | Engine-host isolation (LONG-TERM) | Today the editor runs the engine IN-process on background threads. OpenDevelop's designer red line says project/user assemblies never load into the IDE — and `EditorContentLoader` DOES load user game assemblies. Acceptable for the feasibility slice; end-state moves the `EditorGameController`+engine island out-of-process (same DDP direction as the other designers) |
 
+### Projects pad / Solution Explorer spec for a Stride project (2026-08-26)
+
+The concrete "what you see when you open a Stride project" contract for the Project model bridge
+row above. Decisions made during the CPS-fusion research (see the technote's Project model bridge
+analysis):
+
+**The tree.**
+
+```text
+GameMenu.Game (project — native CPS node)
+├── References                       ← normal CPS dependencies (packages/project refs)
+├── MyScript.cs …                    ← normal C# Compile items (game logic source)
+└── Assets                           ← VIRTUAL node, backed by the .sdpkg (NOT MSBuild items)
+    ├── <asset folders>              ← mirrors the .sdpkg's asset-folder hierarchy
+    │   ├── Game.sscene               scene asset (double-click → scene editor)
+    │   ├── Enemy.sprefab             prefab (→ prefab editor)
+    │   ├── Ground.smat               material (→ material editor)
+    │   ├── player.smodel             model
+    │   ├── texture.sdds              texture
+    │   └── …                         (per-asset-type icons)
+    └── (right-click Assets/folder: Import Asset, New Scene/Prefab/Material…, Rebuild Assets)
+```
+
+Platform entry projects in the same solution (e.g. `GameMenu.Game.Windows`) are ordinary projects
+that only reference the Game project — they carry NO asset tree. Assets belong exclusively to the
+project that owns the `.sdpkg`.
+
+**Key decisions (research conclusion, 2026-08-26).**
+
+1. The game csproj is fully native CPS — build/NuGet/config/capabilities all via CPS, no tree
+   surgery.
+2. The `.sdpkg` itself is NOT shown as a bare file node — its content is expanded into the
+   `Assets` subtree, matching Stride's own Game Studio (you see the asset view, never the package
+   file).
+3. Assets are VIRTUAL nodes derived from the `.sdpkg`, not MSBuild items — `.sdpkg` stays the
+   single source of truth; no `<StrideAsset Include=...>` items in the csproj (avoids dual-state
+   drift).
+4. Per-type icons; double-click routes to the owning asset-editor display binding (scene/prefab/
+   material/…); context-menu commands route to the kept asset-pipeline CLI (import/build/rebuild).
+5. On-disk asset source files appear only under "Show All Files" — the default tree is the
+   package-driven asset view, not the physical file view.
+
+**Explicitly NOT shown:** asset items in the csproj tree; a duplicated asset tree per project
+(only the `.sdpkg`-owning project has one); the `.sdpkg` as an orphan YAML file node.
+
+**Landing path.** `ProjectBrowserTreeBuilder` (`src/Main/SharpDevelop/Services/ProjectBrowserTree
+Builder.cs`) is today `internal static` and hardcodes `SharpDevelopProjectTreeProvider`; addins
+cannot inject virtual nodes. Add an addin-exportable seam, e.g.
+
+```csharp
+[Export] interface IProjectTreeContributor {
+    bool CanContribute(IProject project);          // gate: Stride capability / .sdpkg present
+    IReadOnlyList<IProjectTree> GetVirtualNodes(); // the .sdpkg asset subtree (CPS nodes)
+}
+```
+
+`ProjectBrowserTreeBuilder.BuildProjectNode` merges contributor nodes into the project subtree
+after the CPS tree. The existing `ConvertProjectTreeNode` already tolerates `FilePath == null`
+(virtual nodes) and recurses children, so virtual nodes flow through the converter unchanged.
+`.sdpkg` parsing reuses the in-process `Stride.Core.Assets` stack already loaded by
+`StridePackageView`; asset node identity maps stably to asset paths.
+
+**Acceptance checks to record.** (a) Stride SDK must tolerate CPS design-time build
+(`-p:DesignTimeBuild=true`, run on every keystroke) and still emit its generated asset sources so
+C# IntelliSense works; (b) opening a Stride project must not be blocked by the SDK's custom
+targets during restore/build.
+
 ### DISCARD — OpenDevelop already is that thing
 
 | Component | Why it goes |
@@ -2329,12 +2396,37 @@ camera.yaw 0.7854 -> -19.5292        (pitch pinned at the service's -pi/2 clamp)
 So the whole chain works: physical mouse → WPF element handlers → `MouseSimulated` →
 `InputManager` → `EditorGameEntityCameraService` → camera orientation.
 
-**DevFlow cannot inject a right-button drag.** `press`/`drag-move`/`release` accept a `button` field
-but ignore it - the response does not echo it, and sampling mid-drag shows `downNames: 'Left'`
-regardless. Since Stride's look-around is right-drag, rotation cannot be self-tested through DevFlow;
-an injected left-drag correctly reaches the camera service and is correctly declined
-(`controlling: false`, left being selection). Manual verification is required for rotation, or a
-DevFlow action that drives the right button.
+**DevFlow could not inject a right-button drag (fixed).** `press`/`drag-move`/`release` accepted a
+`button` field and ignored it - no echo in the response, and `downNames: 'Left'` mid-drag regardless.
+Since Stride's look-around is right-drag, rotation could not be self-tested at all; an injected
+left-drag reaches the camera service and is correctly declined (`controlling: false`, left being
+selection), which is indistinguishable from a broken right-drag.
+
+Two layers were missing, and the second hid behind the first:
+
+- **cliclick itself.** Its `dd`/`dm`/`du` press, drag and release the *left* button only, and it has
+  no middle button at all. The bundled `CliclickSharp` (a C# reimplementation, in wpf-labs at
+  `external/cliclick-sharp`) now adds `rdd`/`rdm`/`rdu`, `mdd`/`mdm`/`mdu` and `mc`. The subtle part
+  was that its humanized move loop hardcoded the left button, so a right-drag's *move* events would
+  have carried no button state and arrived as plain hovers.
+- **The bundled binary was never deployed.** DevFlow packs `CliclickSharp` under `build/`, which
+  MSBuild imports only for **direct** package references - and this app references
+  `Agent.LibreWpf`, which merely depends on `Agent.Core`. So the binary silently never arrived and
+  DevFlow used whatever `cliclick` was on `PATH`: Homebrew's original, left-only. Packing to
+  `buildTransitive/` as well fixes it. Until that was found, every right-button attempt failed for a
+  reason that had nothing to do with the code under test.
+
+DevFlow now takes `"button": "left" | "right" | "middle"`, **echoes the button actually used**, and
+rejects an unknown name instead of falling back to left. Verified end to end against the viewport:
+
+| stage       | `downNames` | `controlling` | `yaw`       |
+|-------------|-------------|---------------|-------------|
+| right press | `'Right'`   | **true**      | -2.3554     |
+| drag-moves  | `'Right'`   | true          | **-3.3218** |
+| release     | `''`        | true          | **-3.9795** |
+
+`controlling: true` had never once been observed before. Requires the locally packed
+`0.2.3-local2` (see `NuGet.config`); the published 0.2.2 cannot do this.
 
 Also note `move` transforms the coordinates it is given while `press`/`drag-move`/`release` use them
 raw - only the latter are trustworthy for positioning.
