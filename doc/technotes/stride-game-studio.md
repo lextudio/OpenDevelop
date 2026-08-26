@@ -2239,17 +2239,82 @@ So none of the package-lookup machinery was at fault; `FindSourceTreePackageFile
 dev-redirect path were never even reached. The nupkg-vs-source-tree question raised above is moot.
 
 Note this is a *user-facing* gap, not just a test-setup detail: opening an unrestored `.sdpkg`
-currently degrades silently into an asset with an unresolvable base. Either the addin should restore
-on open (Stride's `LoadMissingDependencies` exists for this and evidently did not run here) or it
-should say plainly that the project needs restoring.
+degraded silently into an asset with an unresolvable base. Both halves are now fixed - see below.
 
-#### Next: the scene editor is not being constructed
+#### Why restore silently did nothing, and the fix
 
-With a clean session, `od.stride.scene-status` still reports `running: false`, and the log shows no
-`"falling back to markers"` - so `StridePackageView.LoadSessionAsync` never even attempted
-`new StrideSceneEditorViewport(...)`, meaning `FindFirstScene` returned null. The 580 MoltenVK
-swapchain creations in the log are the *marker* viewport, not the real editor. The sample does have
-`MainScene.sdscene`, so the question is why no `SceneViewModel` shows up in `session.LocalPackages`.
+Two things were wrong, and the first hid the second.
+
+**The load's own warnings were never reported.** `EditorViewModel.OpenSession` dumped
+`sessionResult` only when the load returned failure. A load that "succeeded" while every
+`PackageReference` went unresolved therefore said nothing at all. It now logs any
+warning-or-worse messages on the success path too, which immediately named the real error:
+
+```text
+[Error] The target "Restore" does not exist in the project.
+[Error] Assets file '.../obj/project.assets.json' not found. Run a NuGet package restore...
+```
+
+**In-process restore cannot work in this host.** `VSProjectHelper.RestoreNugetPackages` drives
+MSBuild's API with `/t:Restore`. That target comes from the .NET SDK's NuGet targets, reached through
+MSBuild SDK resolution - which is not wired up here, so the project evaluates without them and the
+target genuinely does not exist. `PackageSessionPublicHelper.FindAndSetMSBuildVersion()` is called and
+is not enough. Rather than try to reconstruct SDK resolution inside the host, `RestoreNugetPackages`
+now checks `result.OverallResult` and falls back to the `dotnet` CLI, which brings its own SDK:
+
+```csharp
+var result = mainBuildManager.Build(parameters, request);
+if (result.OverallResult == BuildResultCode.Failure)
+    RestoreWithDotnetCli(logger, projectPath, tolerateDowngrade);
+```
+
+Verified from a deliberately unrestored sample (`rm obj/project.assets.json`): the app regenerates the
+restore graph itself, loads **`Packages: 11, local: 5`**, and reports **0** base failures and **0**
+asset-init failures. The in-process attempt still fails first and is still logged - that is the
+fallback working as designed, not a regression.
+
+The temporary `[dep]` probes are removed; `PackageSession.cs` is back to pristine and
+`PackageSession.Dependencies.cs` keeps only the real fixes.
+
+### The editor now runs, and camera input works end to end
+
+With the deadlock fixed and the sample restored, the fused editor came up healthy for the first time.
+`od.stride.scene-status`:
+
+```json
+{"running": true, "attached": true, "hasController": true, "sdlWindow": true,
+ "frame": {"w": 468, "h": 188}, "wpfSize": {"w": 468, "h": 188},
+ "windowNumber": 2293, "hostWindowNumber": 2274, "windowNumberAtCentre": 2274,
+ "input": {"gameFrames": 1400, "gameSystems": 15, "gameFaulted": false, "editorHidden": false,
+           "scriptSystem": "enabled=true,scheduled=12,states=[Running:12]",
+           "camera": {"svc": "EditorGameEntityCameraService", "available": true,
+                      "initialized": true, "active": true, "updateCalls": "1401"}}}
+```
+
+Every previously-broken signal is now good: `gameFaulted` false (the `SpirvTools`
+`DllNotFoundException` is gone), the **ScriptSystem is actually running 12 microthreads** so editor
+services are live rather than inert, `UpdateCamera` is called every frame (it was stuck at `2`),
+`frame` matches `wpfSize` exactly, and `windowNumberAtCentre == hostWindowNumber` confirms
+click-through to the WPF element.
+
+Driving `od.stride.simulate-gesture`:
+
+| gesture | button | position            | yaw / pitch                          |
+|---------|--------|---------------------|--------------------------------------|
+| rotate  | Right  | unchanged (correct) | `0.785 → -3.301`, `-0.262 → -1.571`  |
+| orbit   | Left   | unchanged           | `-3.301 → -12.347`                   |
+| zoom    | -      | `y 2.0 → -1.6`      | unchanged (correct)                  |
+
+`pitch` clamping at exactly `-1.5708` (−π/2) is the service's own limit, i.e. real camera code running.
+
+**A measurement trap worth remembering:** `rotate` looked broken for a whole round because
+`DescribeCamera` reported only `Position`, and a look-around drag changes *orientation*. The probe now
+reports `yaw`/`pitch` too. Same shape as the earlier input-plumbing dead end - *when a gesture appears
+to do nothing, first check that the probe can see the thing that gesture changes.*
+
+Also: `scene-status` reported `running: false` for one round simply because it was queried before
+`OnLoaded` fired. Both `Current` and the swapchain traffic need a moment after the tab opens; poll
+until `running` is true rather than sampling once.
 
 Prime suspect is the source-tree fallback added earlier in `PackageSession.Dependencies.cs`:
 `FindSourceTreePackageFile("Stride.Engine")` *does* hit `sources/engine/Stride.Engine/Stride.Engine.sdpkg`,

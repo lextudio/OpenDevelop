@@ -176,6 +176,15 @@ namespace ICSharpCode.StrideGameStudio
 				foreach (var asset in pkg.Assets)
 					if (asset is Stride.Assets.Presentation.ViewModel.SceneViewModel scene)
 						return scene;
+
+			// No SceneViewModel despite the package listing a SceneAsset means the asset got a generic
+			// view model - i.e. the Stride assets plugin's view-model type mapping never registered.
+			// Report what the scene assets actually came back as, so that is diagnosable from the log.
+			foreach (var pkg in session.LocalPackages)
+				foreach (var asset in pkg.Assets)
+					if (asset.AssetType?.Name == "SceneAsset")
+						ICSharpCode.Core.LoggingService.Warn(
+							$"[StrideGameStudio] scene asset '{asset.Url}' has view model type {asset.GetType().FullName}, not SceneViewModel");
 			return null;
 		}
 

@@ -420,6 +420,11 @@ namespace ICSharpCode.StrideGameStudio
 					if (posProp == null || posProp.PropertyType != typeof(Stride.Core.Mathematics.Vector3))
 						continue;
 					var pos = (Stride.Core.Mathematics.Vector3)posProp.GetValue(svc);
+					// A look-around drag changes orientation while leaving Position untouched, so position
+					// alone cannot distinguish "rotation worked" from "input was ignored".
+					var rotProp = svc.GetType().GetProperty("Yaw") != null ? svc.GetType() : null;
+					var yaw = (rotProp?.GetProperty("Yaw")?.GetValue(svc) as float?) ?? float.NaN;
+					var pitch = (rotProp?.GetProperty("Pitch")?.GetValue(svc) as float?) ?? float.NaN;
 					// IsControllingMouse / IsMouseAvailable say whether the service is running at all and
 					// whether it thinks it may act - the difference between "input never reached it" and
 					// "it saw the input and declined".
@@ -443,14 +448,16 @@ namespace ICSharpCode.StrideGameStudio
 					return string.Format(System.Globalization.CultureInfo.InvariantCulture,
 						"{{\"svc\":\"{0}\",\"x\":{1:F3},\"y\":{2:F3},\"z\":{3:F3},\"controlling\":{4}," +
 						"\"available\":{5},\"initialized\":{6},\"active\":{7},\"serviceCount\":{8}," +
-						"\"updateCalls\":\"{9}\",\"sawAnyBtn\":\"{10}\",\"sawRightBtn\":\"{11}\"}}",
+						"\"updateCalls\":\"{9}\",\"sawAnyBtn\":\"{10}\",\"sawRightBtn\":\"{11}\"," +
+						"\"yaw\":{12:F4},\"pitch\":{13:F4}}}",
 						svc.GetType().Name, pos.X, pos.Y, pos.Z,
 						controlling == true ? "true" : "false",
 						available == true ? "true" : "false",
 						initialized == true ? "true" : "false",
 						active == true ? "true" : "false",
 						serviceCount,
-						Diag("DiagUpdateCount"), Diag("DiagSawAnyButton"), Diag("DiagSawRightButton"));
+						Diag("DiagUpdateCount"), Diag("DiagSawAnyButton"), Diag("DiagSawRightButton"),
+						yaw, pitch);
 				}
 				return "{\"error\":\"no camera service\"}";
 			}
