@@ -525,6 +525,52 @@ RenderFrame {
 - The host's canvas presenter only knows `RenderFrame` + `ElementNode`. Any native presenter
   (HWND island on Windows, etc.) is an adapter-side presenter, not a second protocol.
 
+### Native-window / direct-present transport (future DDP mechanism, from the Stride work)
+
+The baseline is image frames (`RenderFrame`, above). A complementary mechanism — validated end to
+end for Stride's windowed game viewport running inside OpenDevelop/LibreWPF (see
+[`stride-game-studio.md`](stride-game-studio.md): "Composition-bridge probes", "fusion milestone 3")
+— removes the pixel transfer entirely: the design host owns a *native* GPU window and presents
+directly to it, and that window is embedded into the host IDE window via a native composition
+bridge. The GPU never crosses to the CPU, and the host never builds a bitmap.
+
+How it generalizes:
+
+1. The design host creates its OWN top-level native window with a graphics-API surface
+   (Stride/SDL + `CAMetalLayer`; the Windows equivalent is an HWND-backed swapchain, Linux a
+   GTK/x11 or EGL surface) and renders straight into it. This is NOT headless-render + CPU
+   readback — that path was measured unviable (leaking/crashing GPU→CPU copy on MoltenVK).
+2. The host extracts that window's native handle (`SDL_GetWindowWMInfo` → `NSWindow`) and embeds
+   it over the host IDE's viewport placeholder element. On macOS the proven bridge is Cocoa
+   `addChildWindow:` — deliberately NOT handing SDL a raw foreign `NSView` (the layer-class
+   mismatch makes MoltenVK deref-null and segfault). Windows/Linux equivalents are an
+   HwndHost/set-parent island and a GTK-native-view embed.
+3. The overlay is pinned to the placeholder element's on-screen rect on every layout change
+   (`setFrame:display:` on macOS — the same "keep a foreign render surface visually pinned to a
+   WPF layout rect" responsibility an `HwndHost` would carry). Anchoring to the window's CONTENT
+   area (not the full frame) keeps it aligned with the document content regardless of title-bar
+   height, and `NSWindowStyleMaskBorderless` strips the title bar and rounded corners.
+
+Protocol consequence: the RPC transport (model, element tree, input, commands, undo) is
+UNCHANGED — this is a *presenter* swap, not a new protocol. `RenderFrame`/`Surface`
+(`design/render`, `design/export-png`) remain for diagnostics/tests and as the fallback; a native
+presenter becomes the primary path where the host platform supports it. This is the concrete,
+validated instance of the note above ("a native presenter is an adapter-side presenter, not a
+second protocol").
+
+Known shape and limits carried from the validation:
+
+- Embedding is platform-specific (macOS `addChildWindow`; Windows HwndHost; Linux GTK/x11 embed).
+- The overlay is a child window pinned to the element rect: it reads as docked and tracks the host
+  window, but is clipped only by the host window frame (not by doc-pane/tab bounds) and can't
+  follow an element undocked to a separate window. True fusion — compositing the GPU surface into
+  the host's own composition tree — is a harder, still-open bridge.
+- The native engine's swapchain must not re-negotiate on every present (the Stride viewport churns
+  ~70–300 swapchain recreations/s; "settle after resize" is the follow-up perf item).
+- The child needs its native runtime + GPU-driver payload locatable (macOS: `libSDL2` + MoltenVK
+  via `DYLD_LIBRARY_PATH` / `VK_ICD_FILENAMES`; see the launch-requirement note in
+  stride-game-studio.md).
+
 ## Input
 
 Input is forwarded as normalized events, expressed in design DIPs:

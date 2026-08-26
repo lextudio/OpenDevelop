@@ -171,7 +171,12 @@ namespace ICSharpCode.UnitTesting
 				return 0;
 			var nestedTests = test.NestedTests;
 			if (nestedTests == null || nestedTests.Count == 0)
-				return 1;
+			{
+				// A container node that currently has no loaded children is an empty grouping, not
+				// a test - e.g. an empty "All Tests" root when no solution is open. Only a real
+				// test-method leaf (MtpTestMethod & friends) counts as 1 here.
+				return test is TestSolution or TestNamespace or TestProjectBase or ICSharpCode.UnitTesting.Mtp.MtpTestClass ? 0 : 1;
+			}
 			int count = 0;
 			foreach (var nestedTest in nestedTests) {
 				count += CountLeafTests(nestedTest);

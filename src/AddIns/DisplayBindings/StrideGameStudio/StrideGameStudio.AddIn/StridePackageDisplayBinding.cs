@@ -10,9 +10,10 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
@@ -39,13 +40,36 @@ namespace ICSharpCode.StrideGameStudio
 	/// </summary>
 	public sealed class StridePackageView : AbstractViewContent
 	{
-	readonly TextBlock text = new()
+	// A read-only TextBox rather than a TextBlock: this panel is where session-load failures and
+	// their stack traces surface, and a TextBlock's text cannot be selected, so there is no way to
+	// get a trace out of the tab and into a bug report. IsReadOnly keeps it non-editable while
+	// leaving selection and Ctrl+C working; the transparent chrome keeps it looking like a label.
+	readonly System.Windows.Controls.TextBox text = new()
 	{
 		Margin = new System.Windows.Thickness(12),
-		TextWrapping = TextWrapping.Wrap
+		TextWrapping = TextWrapping.Wrap,
+		IsReadOnly = true,
+		IsReadOnlyCaretVisible = true,
+		BorderThickness = new System.Windows.Thickness(0),
+		Background = System.Windows.Media.Brushes.Transparent,
+		// Keep the selection visible after focus moves to the Copy button.
+		IsInactiveSelectionHighlightEnabled = true
 	};
-	readonly StrideSdlViewport viewport = new();
-	readonly ScrollViewer scroll = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+
+	readonly System.Windows.Controls.Button copyButton = new()
+	{
+		Content = "Copy",
+		Margin = new System.Windows.Thickness(0, 8, 12, 0),
+		Padding = new System.Windows.Thickness(10, 2, 10, 2),
+		HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+		VerticalAlignment = System.Windows.VerticalAlignment.Top,
+		ToolTip = "Copy this panel's full text (including any stack trace) to the clipboard"
+	};
+	StrideSdlViewport markerViewport = new();
+	FrameworkElement activeViewport;
+	// Capped so a long stack trace scrolls inside the info bar instead of pushing the viewport
+	// (row 1) off the tab entirely.
+	readonly ScrollViewer scroll = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = 260 };
 	readonly System.Windows.Controls.Grid root = new();
 
 	public StridePackageView(OpenedFile file)
@@ -56,9 +80,27 @@ namespace ICSharpCode.StrideGameStudio
 		root.RowDefinitions.Add(new System.Windows.Controls.RowDefinition { Height = new System.Windows.GridLength(1, System.Windows.GridUnitType.Star) });
 		scroll.Content = text;
 		System.Windows.Controls.Grid.SetRow(scroll, 0);
-		System.Windows.Controls.Grid.SetRow(viewport, 1);
+		activeViewport = markerViewport;
+		System.Windows.Controls.Grid.SetRow(activeViewport, 1);
 		root.Children.Add(scroll);
-		root.Children.Add(viewport);
+		root.Children.Add(activeViewport);
+
+		// Overlaid on the same row as the text so it needs no extra layout row.
+		System.Windows.Controls.Grid.SetRow(copyButton, 0);
+		root.Children.Add(copyButton);
+		copyButton.Click += (_, _) =>
+		{
+			try
+			{
+				System.Windows.Clipboard.SetText(text.Text ?? string.Empty);
+			}
+			catch (Exception ex)
+			{
+				// Clipboard access can fail transiently (another process holding it). Never let the
+				// copy affordance itself throw out of a click handler and take the workbench down.
+				ICSharpCode.Core.LoggingService.Warn("[StrideGameStudio] copying panel text failed: " + ex);
+			}
+		};
 		text.Text = $"Stride package: {PrimaryFileName}\n\nLoading package details...";
 	}
 
@@ -66,14 +108,51 @@ namespace ICSharpCode.StrideGameStudio
 
 	public override void Load(OpenedFile file, Stream stream)
 	{
+		// Real PackageSession.Load runs on a background thread inside SessionViewModel.
+		// OpenSession (see StrideEditorHost) - kick it off here and hop back to the UI thread
+		// only to update the label, so this view's Load never blocks the UI thread (the lesson
+		// from the earlier "PackageSession.Load hangs on the UI thread" finding).
+		var dispatcher = Dispatcher.CurrentDispatcher;
+		var path = file.FileName.ToString();
+		_ = LoadSessionAsync(path, dispatcher);
+	}
+
+	async Task LoadSessionAsync(string path, Dispatcher dispatcher)
+	{
 		try
 		{
-			text.Text = Describe(stream);
+			var session = await StrideEditorHost.OpenSessionAsync(path);
+			var summary = Describe(session, path);
+			var sceneAsset = FindFirstScene(session);
+			var entities = SceneAssetReader.ReadFirstScene(session);
+			dispatcher.Invoke(() =>
+			{
+				text.Text = summary;
+				if (sceneAsset != null)
+				{
+					// Big step (gap 2): try the REAL SceneEditorController/EditorGameController
+					// first - real meshes/materials/render pipeline, not marker placeholders.
+					// Falls back to the marker viewport if it fails to start for any reason
+					// (never leave the view blank/broken - same rule as the text panel above).
+					try
+					{
+						SwapViewport(new StrideSceneEditorViewport(sceneAsset));
+						return;
+					}
+					catch (Exception ex)
+					{
+						ICSharpCode.Core.LoggingService.Error("[StrideGameStudio] real scene editor failed to start, falling back to markers: " + ex);
+					}
+				}
+				markerViewport.SetEntities(entities);
+			});
 		}
 		catch (Exception ex)
 		{
 			// Never leave the view blank - surface the failure inline.
-			text.Text = $"Stride package opened, but details failed:\n{ex}";
+			var message = $"Stride package opened, but loading the session failed:\n{ex}";
+			dispatcher.Invoke(() => text.Text = message);
+			ICSharpCode.Core.LoggingService.Error("[StrideGameStudio] session load failed: " + ex);
 		}
 	}
 
@@ -82,36 +161,43 @@ namespace ICSharpCode.StrideGameStudio
 			// Read-only skeleton slice; the real editors own saving later.
 		}
 
-		string Describe(Stream stream)
+		void SwapViewport(FrameworkElement newViewport)
 		{
-			// Lightweight, non-blocking package identification. The full PackageSession.Load
-			// (the real editor's entry) is heavy and can block on this host (it walks the
-			// solution and can handshake build/preview services), so it is deliberately NOT run
-			// inside a view's Load - that wedged the DevFlow action. This parses the .sdpkg YAML
-			// front matter directly; session loading joins when the scene editor is hosted off
-			// the UI thread with cancellation.
-			using var reader = new StreamReader(stream, leaveOpen: true);
-			var yaml = reader.ReadToEnd();
-			stream.Position = 0;
+			root.Children.Remove(activeViewport);
+			(activeViewport as IDisposable)?.Dispose();
+			activeViewport = newViewport;
+			System.Windows.Controls.Grid.SetRow(activeViewport, 1);
+			root.Children.Add(activeViewport);
+		}
 
-			var name = Regex.Match(yaml, @"^\s*Name:\s*(.+?)\s*$", RegexOptions.Multiline).Groups[1].Value;
-			var version = Regex.Match(yaml, @"^\s*Version:\s*(.+?)\s*$", RegexOptions.Multiline).Groups[1].Value;
-			var folders = Regex.Matches(yaml, @"Path:\s*!dir\s+(.+)$", RegexOptions.Multiline)
-				.Select(m => m.Groups[1].Value).ToList();
+		static Stride.Assets.Presentation.ViewModel.SceneViewModel FindFirstScene(Stride.Core.Assets.Editor.ViewModel.SessionViewModel session)
+		{
+			foreach (var pkg in session.LocalPackages)
+				foreach (var asset in pkg.Assets)
+					if (asset is Stride.Assets.Presentation.ViewModel.SceneViewModel scene)
+						return scene;
+			return null;
+		}
 
+		string Describe(Stride.Core.Assets.Editor.ViewModel.SessionViewModel session, string path)
+		{
 			var sb = new System.Text.StringBuilder();
-			sb.AppendLine("Stride package opened by the OpenDevelop fusion addin.");
-			sb.AppendLine($"  File: {PrimaryFileName}");
-			sb.AppendLine($"  Name: {name}");
-			sb.AppendLine($"  Version: {version}");
-			sb.AppendLine($"  Asset folders ({folders.Count}):");
-			foreach (var f in folders.Take(20))
-				sb.AppendLine($"    - {f}");
+			sb.AppendLine("Stride package opened by the OpenDevelop fusion addin (real session, not a YAML sniff).");
+			sb.AppendLine($"  File: {path}");
+			sb.AppendLine($"  Packages: {session.AllPackages.Count()}, local: {session.LocalPackages.Count()}");
+			foreach (var pkg in session.LocalPackages)
+			{
+				sb.AppendLine($"  Package '{pkg.Package.Meta.Name}' {pkg.Package.Meta.Version}: {pkg.Assets.Count()} assets");
+				foreach (var asset in pkg.Assets.Take(20))
+					sb.AppendLine($"    - {asset.Url} ({asset.AssetType.Name})");
+				if (pkg.Assets.Count() > 20)
+					sb.AppendLine($"    ... and {pkg.Assets.Count() - 20} more");
+			}
 			sb.AppendLine();
-			sb.AppendLine("Note: full PackageSession.Load is deferred to the scene-editor slice (not safe on the UI thread).");
-			sb.AppendLine();
-			sb.AppendLine($"Stride asset core present: {typeof(Stride.Core.Assets.Package).Assembly.GetName().Name} "
-				+ $"{typeof(Stride.Core.Assets.Package).Assembly.GetName().Version}");
+			sb.AppendLine("Note: this is real asset-session data (Stride.Core.Assets.Editor.SessionViewModel). " +
+				"The viewport below now renders real entity positions from the first scene asset found " +
+				"(markers, not meshes/materials - full interactive scene editing via SceneEditorController/" +
+				"EditorGameController is deferred, see doc/technotes/stride-game-studio.md).");
 
 			var summary = sb.ToString();
 			ICSharpCode.Core.LoggingService.Info("[StrideGameStudio] package view:\n" + summary);

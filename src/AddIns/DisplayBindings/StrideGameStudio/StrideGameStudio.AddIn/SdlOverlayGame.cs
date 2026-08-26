@@ -7,6 +7,7 @@
 // true) + Game.Tick(), not Game.Run()'s own blocking loop (see StrideSdlViewport.cs for why).
 
 using System;
+using System.Collections.Generic;
 
 using Stride.Core.Mathematics;
 using Stride.Engine;
@@ -22,11 +23,21 @@ namespace ICSharpCode.StrideGameStudio
 		SpriteBatch spriteBatch;
 		Texture whiteTex;
 
+		// Set from the UI thread (StrideSdlViewport, after StrideEditorHost.OpenSessionAsync
+		// completes) and read from Draw() - both run on the same WPF UI thread
+		// (CompositionTarget.Rendering drives both Tick() and any pending set here), so no lock
+		// is needed; a plain field is safe.
+		IReadOnlyList<SceneAssetReader.EntityMarker> entities;
+
 		public SdlOverlayGame(int width, int height)
 		{
 			initialWidth = Math.Max(1, width);
 			initialHeight = Math.Max(1, height);
 		}
+
+		/// <summary>Gap 2, small-first slice: swap the synthetic placeholder scene for markers
+		/// at the real entity positions read from the loaded session's scene asset.</summary>
+		public void SetEntities(IReadOnlyList<SceneAssetReader.EntityMarker> value) => entities = value;
 
 		protected override void Initialize()
 		{
@@ -88,40 +99,86 @@ namespace ICSharpCode.StrideGameStudio
 
 			spriteBatch.Begin(GraphicsContext, SpriteSortMode.Deferred, null);
 
-			const int cell = 40;
-			var cols = W / cell + 1;
-			var rows = H / cell + 1;
-			var scrollY = (int)(t * 20) % cell;
-			for (int gy = 0; gy < rows; gy++)
-			{
-				for (int gx = 0; gx < cols; gx++)
-				{
-					if ((gx + gy) % 2 != 0)
-						continue;
-					var shade = 0.14f + 0.04f * (float)Math.Sin((gx + gy) * 0.6);
-					DrawQuad(new RectangleF(gx * cell, gy * cell - scrollY, cell, cell), new Color4(shade, shade, shade + 0.03f, 1f));
-				}
-			}
-
 			var cx = W * 0.5f;
 			var cy = H * 0.55f;
-			var size = 90 + 12f * (float)Math.Sin(t * 2.0f);
 			var hue = (t * 0.6f) % 1f;
-			var rgb = HsvToRgb(hue, 0.75f, 1f);
-			DrawQuad(new RectangleF(cx - size / 2f, cy - size / 2f, size, size), rgb, t * 1.2f);
 
-			for (int i = 0; i < 5; i++)
+			if (entities is { Count: > 0 } realEntities)
 			{
-				var ang = t * 1.5f + i * (float)(Math.PI * 2 / 5);
-				var sx = cx + (float)Math.Cos(ang) * 120;
-				var sy = cy + (float)Math.Sin(ang) * 120 * 0.5f;
-				var s = 14;
-				var srgb = HsvToRgb((hue + i * 0.15f) % 1f, 0.9f, 1f);
-				DrawQuad(new RectangleF(sx - s / 2f, sy - s / 2f, s, s), srgb, ang);
+				// Real data from the loaded session's scene asset (SceneAssetReader), not the
+				// synthetic placeholder: a top-down (X, Z) projection of each entity's position,
+				// auto-scaled to fit the backbuffer. No meshes/materials yet (that needs the
+				// asset-compiler pipeline via EditorGameController - deferred, see the technote's
+				// threading-conflict finding) - just real positions driving real markers.
+				DrawEntityMarkers(realEntities, W, H, hue);
+			}
+			else
+			{
+				const int cell = 40;
+				var cols = W / cell + 1;
+				var rows = H / cell + 1;
+				var scrollY = (int)(t * 20) % cell;
+				for (int gy = 0; gy < rows; gy++)
+				{
+					for (int gx = 0; gx < cols; gx++)
+					{
+						if ((gx + gy) % 2 != 0)
+							continue;
+						var shade = 0.14f + 0.04f * (float)Math.Sin((gx + gy) * 0.6);
+						DrawQuad(new RectangleF(gx * cell, gy * cell - scrollY, cell, cell), new Color4(shade, shade, shade + 0.03f, 1f));
+					}
+				}
+
+				var size = 90 + 12f * (float)Math.Sin(t * 2.0f);
+				var rgb = HsvToRgb(hue, 0.75f, 1f);
+				DrawQuad(new RectangleF(cx - size / 2f, cy - size / 2f, size, size), rgb, t * 1.2f);
+
+				for (int i = 0; i < 5; i++)
+				{
+					var ang = t * 1.5f + i * (float)(Math.PI * 2 / 5);
+					var sx = cx + (float)Math.Cos(ang) * 120;
+					var sy = cy + (float)Math.Sin(ang) * 120 * 0.5f;
+					var s = 14;
+					var srgb = HsvToRgb((hue + i * 0.15f) % 1f, 0.9f, 1f);
+					DrawQuad(new RectangleF(sx - s / 2f, sy - s / 2f, s, s), srgb, ang);
+				}
 			}
 
 			spriteBatch.End();
 			base.Draw(gameTime);
+		}
+
+		void DrawEntityMarkers(IReadOnlyList<SceneAssetReader.EntityMarker> markers, int w, int h, float hue)
+		{
+			// Auto-fit: find the (X, Z) bounding box of all entity positions and scale/center it
+			// into the backbuffer, so scenes of any size show up regardless of world-unit scale.
+			float minX = float.MaxValue, maxX = float.MinValue;
+			float minZ = float.MaxValue, maxZ = float.MinValue;
+			foreach (var m in markers)
+			{
+				minX = Math.Min(minX, m.Position.X);
+				maxX = Math.Max(maxX, m.Position.X);
+				minZ = Math.Min(minZ, m.Position.Z);
+				maxZ = Math.Max(maxZ, m.Position.Z);
+			}
+
+			var spanX = Math.Max(1e-3f, maxX - minX);
+			var spanZ = Math.Max(1e-3f, maxZ - minZ);
+			var margin = 60f;
+			var scale = Math.Min((w - 2 * margin) / spanX, (h - 2 * margin) / spanZ);
+			if (float.IsInfinity(scale) || scale <= 0)
+				scale = 1f;
+
+			for (int i = 0; i < markers.Count; i++)
+			{
+				var m = markers[i];
+				var sx = margin + (m.Position.X - minX) * scale;
+				var sy = margin + (m.Position.Z - minZ) * scale;
+				var pulse = 1f + 0.15f * (float)Math.Sin(t * 3f + i);
+				var size = 16f * pulse;
+				var color = HsvToRgb((hue + i * 0.12f) % 1f, 0.8f, 1f);
+				DrawQuad(new RectangleF(sx - size / 2f, sy - size / 2f, size, size), color, t + i);
+			}
 		}
 
 		static Color4 HsvToRgb(float h, float s, float v)

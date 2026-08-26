@@ -37,6 +37,16 @@ namespace ICSharpCode.StrideGameStudio
 		bool attached;
 		bool running;
 		readonly Brush background = Brushes.Black;
+		System.Collections.Generic.IReadOnlyList<SceneAssetReader.EntityMarker> pendingEntities;
+
+		/// <summary>Gap 2, small-first slice: real entity markers from the loaded session's
+		/// scene asset, replacing the synthetic placeholder scene. Safe to call before or after
+		/// the game has started (queues until <see cref="StartGame"/> creates it).</summary>
+		public void SetEntities(System.Collections.Generic.IReadOnlyList<SceneAssetReader.EntityMarker> entities)
+		{
+			pendingEntities = entities;
+			game?.SetEntities(entities);
+		}
 
 		public StrideSdlViewport()
 		{
@@ -98,10 +108,16 @@ namespace ICSharpCode.StrideGameStudio
 			context = new GameContextSDL(sdlWindow, w, h, isUserManagingRun: true);
 			game = new SdlOverlayGame(w, h);
 			game.Run(context); // returns immediately: IsUserManagingRun defers the loop to us
+			if (pendingEntities != null)
+				game.SetEntities(pendingEntities);
 
 			sdlNsWindow = SdlNativeWindow.GetCocoaNsWindow(sdlWindow);
 			if (sdlNsWindow == IntPtr.Zero)
 				throw new InvalidOperationException("SDL_GetWindowWMInfo returned no Cocoa NSWindow handle.");
+
+			// Strip the macOS title bar / rounded corners so the overlay reads as a flat content
+			// pane inside the document tab, not a native window floating on top of it.
+			CocoaOverlayInterop.MakeBorderless(sdlNsWindow);
 		}
 
 		void AttachOverlay()
@@ -139,21 +155,23 @@ namespace ICSharpCode.StrideGameStudio
 			if (hostWindow == null)
 				return;
 
-			// WPF screen coordinates are top-left origin (like Win32); Cocoa's NSWindow.frame is
-			// bottom-left origin. Rather than reasoning about title-bar/chrome insets, take the
-			// DELTA between this element's screen origin and the host window's own screen origin
-			// in WPF's coordinate space, then apply that delta to the host's own Cocoa frame -
-			// this way title bar/chrome height is accounted for automatically.
-			var hostTopLeft = hostWindow.PointToScreen(new Point(0, 0));
+			// Compute this element's position WITHIN the host content area, in WPF client
+			// coordinates (title-bar independent - both points are the same PointToScreen space).
+			var hostClientTopLeft = hostWindow.PointToScreen(new Point(0, 0));
 			var viewportTopLeft = PointToScreen(new Point(0, 0));
-			var offsetX = viewportTopLeft.X - hostTopLeft.X;
-			var offsetY = viewportTopLeft.Y - hostTopLeft.Y;
+			var offsetX = viewportTopLeft.X - hostClientTopLeft.X;
+			var offsetY = viewportTopLeft.Y - hostClientTopLeft.Y;
 			var w = ActualWidth;
 			var h = ActualHeight;
 
-			var hostFrame = CocoaOverlayInterop.GetFrame(hostNsWindow);
-			var screenX = hostFrame.X + offsetX;
-			var screenY = hostFrame.Y + (hostFrame.H - offsetY - h);
+			// Anchor to the host's CONTENT view screen rect (excludes title bar), not the full
+			// window frame - using GetFrame's frame here would shift the overlay up by the title-bar
+			// height and cover the document-tab text above it.
+			var content = CocoaOverlayInterop.GetContentViewScreenRect(hostNsWindow);
+			if (content.W <= 0 || content.H <= 0)
+				return;
+			var screenX = content.X + offsetX;
+			var screenY = content.Y + (content.H - offsetY - h);
 
 			CocoaOverlayInterop.SetFrame(sdlNsWindow, screenX, screenY, w, h);
 			CocoaOverlayInterop.OrderFront(sdlNsWindow);

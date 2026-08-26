@@ -3425,6 +3425,15 @@ solution now brings the Projects pad to front (`WpfWorkbench` subscribes
 `SD.ProjectService.SolutionOpened` → `GetPad(typeof(ProjectBrowserPad)).BringPadToFront()`, which
 routes to the migrated `ProjectBrowserViewModel` via its `LegacyPadClass`).
 
+A later, opposite-direction fix to the same `CountLeafTests` (2026-08-25): a fresh, empty
+OpenDevelop (no solution, no project) showed `Total: 1` on the Unit Tests pad. Root cause: the
+`OpenSolution` getter lazily creates an empty `TestSolution` ("All Tests" root), and
+`CountLeafTests` returned `1` for any node with no loaded children — counting that empty root as a
+test. `CountLeafTests` now returns `0` for a container node (`TestSolution`/`TestNamespace`/
+`TestProjectBase`/`MtpTestClass`) with no children, and only `1` for a real test-method leaf.
+Verified live via DevFlow (`od.unit-test.pad-tree`/`od.solution.status` confirm no solution/project,
+and the UI status bar reads `Total: 0`).
+
 ## Legacy Pad migration, fifth slice: the Debugger.AddIn pads (2026-08-09)
 
 The seven Debugger.AddIn pads were the last unexamined legacy cluster: `BreakPointsPad` had been
