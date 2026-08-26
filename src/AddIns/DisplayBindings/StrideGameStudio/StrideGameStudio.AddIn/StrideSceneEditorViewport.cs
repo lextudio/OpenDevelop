@@ -661,9 +661,32 @@ namespace ICSharpCode.StrideGameStudio
 				? CocoaOverlayInterop.WindowNumberAtPoint(frame.X + frame.W / 2, frame.Y + frame.H / 2)
 				: 0;
 
+			// The `frame` above is the SDL overlay's Cocoa frame, whose origin is the BOTTOM-left of the
+			// screen - so its y cannot be used to aim pointer injection, which works in top-left screen
+			// coordinates. Report the WPF element's own rect too: PointToScreen already yields top-left
+			// screen coordinates, so `screenRect` is directly usable as an injection target, and its
+			// centre is the point to aim at. Deriving this from `frame` by hand costs several rounds of
+			// wrong-by-a-constant measurements (see the technote's input section).
+			var topLeft = new System.Windows.Point(0, 0);
+			var screenOk = false;
+			try
+			{
+				if (PresentationSource.FromVisual(this) != null)
+				{
+					topLeft = PointToScreen(topLeft);
+					screenOk = true;
+				}
+			}
+			catch (InvalidOperationException)
+			{
+				// Not connected to a presentation source yet; screenRect is reported as unavailable.
+			}
+
 			return string.Format(System.Globalization.CultureInfo.InvariantCulture,
 				"{{\"running\":{0},\"attached\":{1},\"hasController\":{2},\"sdlWindow\":{3}," +
 				"\"frame\":{{\"x\":{4},\"y\":{5},\"w\":{6},\"h\":{7}}}," +
+				"\"screenRect\":{{\"valid\":{19},\"x\":{20:F0},\"y\":{21:F0},\"w\":{10:F0},\"h\":{11:F0}," +
+				"\"centreX\":{22:F0},\"centreY\":{23:F0}}}," +
 				"\"isKeyWindow\":{8},\"isMainWindow\":{9},\"wpfSize\":{{\"w\":{10},\"h\":{11}}}," +
 				"\"ignoresMouseEvents\":{13},\"windowNumber\":{14},\"hostWindowNumber\":{15}," +
 				"\"windowNumberAtCentre\":{16},\"sdlFocused\":{17},\"sdlVisible\":{18},\"input\":{12}}}",
@@ -679,7 +702,10 @@ namespace ICSharpCode.StrideGameStudio
 				ignoresMouse ? "true" : "false",
 				myNum, hostNum, numAtCentre,
 				sdlFocused ? "true" : "false",
-				sdlVisible ? "true" : "false");
+				sdlVisible ? "true" : "false",
+				screenOk ? "true" : "false",
+				topLeft.X, topLeft.Y,
+				topLeft.X + ActualWidth / 2, topLeft.Y + ActualHeight / 2);
 		}
 
 		/// <summary>

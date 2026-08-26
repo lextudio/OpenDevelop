@@ -2350,12 +2350,31 @@ mid-gesture shows the expected non-zero value. (A real hazard does exist in the 
 `SetPosition` computes the delta against a `capturedPosition` that is never updated, so drags would
 accelerate - but nothing in the editor calls `LockPosition`, so it is unreachable.)
 
-**Vertical position looked mis-normalized.** Sweeping screen y inside one held drag and fitting three
-consecutive samples gives exactly the right slope (`40px / 188px = 0.2128` per step) on a clean linear
-mapping. The apparent error came from deriving the element's screen origin from the reported `frame`,
-which is the SDL overlay window in Cocoa's **bottom-left** coordinates, while `cliclick` uses
-**top-left**. First/last samples in a sweep also lag by one step, because the read can outrun the
-game tick that consumes the move - settle or discard the endpoints.
+**Vertical position looked mis-normalized.** It is not: normalization is exactly linear on both axes.
+The apparent error came from aiming injection using the reported `frame`, which is the SDL overlay's
+**Cocoa** frame - origin at the screen's bottom-left - while pointer injection works in **top-left**
+screen coordinates. The element's real top-left rect is `y 424..612`, not the `505..693` that `frame`
+suggests.
+
+Two rounds were wasted re-deriving that origin by curve-fitting, and worse, the wrong origin sent the
+test drags **out through the bottom of the element** - normalized y above 1.0, which `CaptureMouse`
+happily keeps delivering, so nothing looked obviously broken. (Credit to the user for spotting that
+the drag paths were leaving the overlay; the first "no bug" write-up here did not account for it.)
+
+So `DescribeForDevFlow` now reports the element's own rect alongside the Cocoa frame:
+
+```json
+"frame":      {"x": 303, "y": 505, "w": 468, "h": 188},
+"screenRect": {"valid": true, "x": 303, "y": 424, "w": 468, "h": 188,
+               "centreX": 537, "centreY": 518}
+```
+
+`screenRect` comes from `PointToScreen`, which is already top-left, so **aim injection at
+`screenRect.centreX/centreY` and never at `frame`**. Verified: injecting at the reported centre reads
+back exactly `(0.5000, 0.5000)`.
+
+Sweep readings also lag one step behind the injected position, because the status read can outrun the
+game tick that consumes the move - settle, or discard the endpoints.
 
 Prime suspect is the source-tree fallback added earlier in `PackageSession.Dependencies.cs`:
 `FindSourceTreePackageFile("Stride.Engine")` *does* hit `sources/engine/Stride.Engine/Stride.Engine.sdpkg`,
