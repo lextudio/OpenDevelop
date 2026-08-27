@@ -1057,6 +1057,25 @@ Known/expected friction to resolve when running for real (measured 2026-08-26, t
 
 ## Work log
 
+- **2026-08-26 (scene-asset display binding — `.sdscene` opens the fused scene editor)** — The
+  Projects pad's `.sdpkg` Assets subtree now double-clicks into a real editor: a
+  `StrideSceneAssetDisplayBinding` (`StrideSceneAssetView`) matches `\.sdscene$`, finds the owning
+  `.sdpkg`, opens (or reuses) the one Stride session, resolves the `SceneViewModel` by
+  `AssetItem.FullPath`, and drives `StrideSceneEditorViewport`. Verified live:
+  `samples/UI/GameMenu/Assets/Shared/MainScene.sdscene` → `scene-status` reports
+  `running/attached/hasController=true`. Two non-obvious fixes landed with it:
+  1. **First `.sdscene` open died with `TypeInitializationException: <Module>`** — the binding's
+     methods JIT-resolve Stride types (`SceneViewModel`, `StrideSceneEditorViewport`) before
+     `StrideEditorHost`'s bootstrap runs, so a Stride module initializer throws with no
+     assembly/native resolvers in place. Fix: force the bootstrap in the binding's static ctor via
+     `RuntimeHelpers.RunClassConstructor(typeof(StrideEditorHost).TypeHandle)` — **a bare
+     `typeof(StrideEditorHost)` does NOT run a static cctor** (measured; the first attempt still
+     failed until RunClassConstructor was used).
+  2. **`FindOwningPackage` missed sibling-directory packages.** Stride packages commonly sit in a
+     subdirectory while assets live in a parent (`AssetFolders: !dir ../Assets` from
+     `<pkg>/<pkg>.sdpkg` → `<parent>/Assets`), so a climb-for-`*.sdpkg` from the asset finds
+     nothing. It now searches each level's own AND subdirectory packages and confirms containment
+     against the package's resolved `AssetFolders`.
 - **2026-08-26 (scene overlay aspect-ratio bug — FIXED)** — The real scene
   editor's rendered frame came out squashed in the document tab. Diagnosed precisely with
   in-presenter logging (`SwapChainGraphicsPresenter.Vulkan.cs` `CreateSwapChain`):
