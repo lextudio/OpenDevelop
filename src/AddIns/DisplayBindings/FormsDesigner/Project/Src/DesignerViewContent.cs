@@ -650,6 +650,13 @@ namespace ICSharpCode.FormsDesigner
 				DesignerFileName = DesignerCodeFile?.FileName.ToString() ?? "",
 				Language = PrimaryFileName.ToString().EndsWith(".vb", StringComparison.OrdinalIgnoreCase) ? "VisualBasic" : "CSharp"
 			};
+			// Copy-local references are already built metadata. Passing them to the child lets it
+			// resolve a custom Control/Component selected in the toolbox without loading project
+			// assemblies in the IDE or synchronously invoking MSBuild reference resolution.
+			var outputDirectory = Path.GetDirectoryName(snapshot.ProjectAssemblyPath);
+			if (!string.IsNullOrEmpty(outputDirectory) && Directory.Exists(outputDirectory))
+				snapshot.ReferencedAssemblyPaths.AddRange(Directory.EnumerateFiles(outputDirectory, "*.dll")
+					.Where(path => !string.Equals(path, snapshot.ProjectAssemblyPath, StringComparison.OrdinalIgnoreCase)));
 			foreach (var source in SourceFiles) {
 				snapshot.Files.Add(new DesignerSourceFileSnapshot {
 					FileName = source.Key.FileName.ToString(),

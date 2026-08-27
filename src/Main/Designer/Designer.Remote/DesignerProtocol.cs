@@ -300,16 +300,53 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	{
 		public string Name { get; set; } = "";
 		public string TypeName { get; set; } = "Object";
+		public string Direction { get; set; } = "In";
 		public string DefaultValue { get; set; } = "";
 	}
 
-	/// <summary>Workflow variable projection for the root activity scope. Like arguments, this
+	/// <summary>Workflow variable projection for an activity scope. Like arguments, this
 	/// deliberately remains transport-only and never leaks CoreWF types to the addin.</summary>
 	public sealed class WorkflowVariableInfo
 	{
 		public string Name { get; set; } = "";
 		public string TypeName { get; set; } = "Object";
 		public string Scope { get; set; } = "Root activity";
+		/// <summary>Structural activity path for mutations (empty string is the root).</summary>
+		public string ScopeId { get; set; } = "";
+		public string DefaultValue { get; set; } = "";
+	}
+
+	/// <summary>Cross-process result of executing the current CoreWF document.</summary>
+	public sealed class WorkflowRunResult
+	{
+		public bool Succeeded { get; set; }
+		public string Message { get; set; } = "";
+		public Dictionary<string, string> Outputs { get; set; } = new();
+		public List<string> Trace { get; set; } = new();
+	}
+
+	/// <summary>Transport-only snapshot of a running CoreWF document. Element IDs are the same
+	/// structural paths used by the workflow designer tree, never CoreWF runtime objects.</summary>
+	public sealed class WorkflowDebugState
+	{
+		public bool IsRunning { get; set; }
+		public bool IsPaused { get; set; }
+		public string CurrentElementId { get; set; } = "";
+		public List<string> BreakpointElementIds { get; set; } = new();
+	}
+
+	/// <summary>Syntax-only validation result for a C# (<c>=</c>) or Visual Basic
+	/// (<c>=vb:</c>) workflow expression.</summary>
+	public sealed class WorkflowExpressionValidation
+	{
+		public bool IsValid { get; set; }
+		public List<string> Diagnostics { get; set; } = new();
+	}
+
+	/// <summary>Contextual symbols offered by the lightweight workflow expression editor.</summary>
+	public sealed class WorkflowExpressionCompletion
+	{
+		public List<string> Items { get; set; } = new();
 	}
 
 	/// <summary>Parse/layout diagnostic with source location.</summary>

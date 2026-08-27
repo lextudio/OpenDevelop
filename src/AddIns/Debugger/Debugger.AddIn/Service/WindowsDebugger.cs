@@ -239,7 +239,19 @@ namespace ICSharpCode.SharpDevelop.Services
 			if (targetPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
 				return targetPath;
 			string directory = Path.GetDirectoryName(targetPath);
-			string baseName = Path.GetFileNameWithoutExtension(targetPath);
+			string fileName = Path.GetFileName(targetPath);
+			// An apphost is "<AssemblyName>.exe" on Windows but EXTENSIONLESS "<AssemblyName>"
+			// elsewhere, so only ".exe" may be stripped. Path.GetFileNameWithoutExtension was wrong
+			// for the extensionless shape whenever AssemblyName itself contains a dot - a very
+			// ordinary name like "FirstPersonShooter.Desktop" had ".Desktop" stripped as if it were
+			// an extension, so this probed for a nonexistent "FirstPersonShooter.dll", found
+			// nothing, and returned the apphost unchanged. `dotnet <apphost>` then made the muxer
+			// treat the path as a command name: "Could not execute because the specified command or
+			// file was not found ... dotnet-<path> does not exist" - i.e. F5 was broken for every
+			// dotted-assembly-name project on macOS/Linux.
+			string baseName = fileName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+				? fileName.Substring(0, fileName.Length - ".exe".Length)
+				: fileName;
 			string candidate = Path.Combine(directory ?? string.Empty, baseName + ".dll");
 			return File.Exists(candidate) ? candidate : targetPath;
 		}

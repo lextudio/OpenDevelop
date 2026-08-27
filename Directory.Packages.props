@@ -42,6 +42,14 @@
     <PackageVersion Include="NUnit" Version="4.4.0" />
     <PackageVersion Include="NUnitLite" Version="4.4.0" />
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
+    <!-- Not directly used by app code - Microsoft.Build.NuGetSdkResolver.dll (from
+         Microsoft.Build.Runtime) loads this by reflection at a fixed version
+         (Version=7.6.0.0 as of Microsoft.Build 18.8.2) to resolve NuGet-based custom
+         MSBuild Sdks (e.g. Sdk="LibreWPF.Sdk") in-process. Without an explicit reference
+         it is never copied to output, so any in-process project open/evaluate that hits
+         such an Sdk throws "SDK Resolver Failure: ... Could not load file or assembly
+         'NuGet.Commands, Version=7.6.0.0...'" - see SharpDevelop.csproj's reference. -->
+    <PackageVersion Include="NuGet.Commands" Version="7.6.0" />
     <PackageVersion Include="NuGet.Protocol" Version="7.6.0" />
     <PackageVersion Include="ProGPU.System.Drawing.Common" Version="0.1.0-preview.55" />
     <PackageVersion Include="ProGPU.WinUI" Version="0.1.0-preview.55" />

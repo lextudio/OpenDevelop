@@ -77,7 +77,14 @@ internal sealed class CompilerMessageViewViewModel : ToolPaneModel, IOutputPad, 
     IOutputCategory GetOrCreateCategory(string displayName)
     {
         foreach (var cat in messageCategories) {
-            if (cat.DisplayCategory == displayName)
+            // Match the stable Category key too, not just DisplayCategory: categories created via
+            // MessageViewCategory.Create(ref, category, displayCategory) - the debugger's "Debug"
+            // channel among them - carry an unparsed "${res:...}" resource key as their
+            // DisplayCategory, so a lookup by the plain key never matched and silently created a
+            // SECOND, permanently empty "Debug" category. Anything reading output back that way
+            // (od.output-text, and therefore every integration test and manual diagnosis that used
+            // it) saw "" and concluded the debugger had printed nothing, hiding real adapter errors.
+            if (cat.DisplayCategory == displayName || cat.Category == displayName)
                 return cat;
         }
         var newcat = new MessageViewCategory(displayName, displayName);

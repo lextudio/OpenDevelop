@@ -1119,7 +1119,22 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			}
 			
 			if (!string.IsNullOrEmpty(projectPath)) {
-				SD.ProjectService.OpenSolutionOrProject(FileName.Create(projectPath));
+				// Only open when the project isn't already loaded. OpenSolutionOrProject on a bare
+				// .csproj builds an ad-hoc single-project solution and CLOSES the current one,
+				// which discards its breakpoint bookmarks - so "set a breakpoint, then debug this
+				// project" silently lost every breakpoint whenever the project was already part of
+				// the open solution. That is exactly the shape of a Stride game: the generated
+				// "<Game>.Desktop" launcher is added to the game's own solution and made the
+				// startup project, so debugging it by path threw away the breakpoints the
+				// developer had just set in the game's scripts and the session ran straight
+				// through. Reopening a solution that is already open is never what the caller
+				// wants here.
+				string fullProjectPath = Path.GetFullPath(projectPath);
+				bool alreadyLoaded = SD.ProjectService.CurrentSolution?.Projects
+					.Any(p => string.Equals(p.FileName.ToString(), fullProjectPath, StringComparison.OrdinalIgnoreCase)) ?? false;
+				if (!alreadyLoaded) {
+					SD.ProjectService.OpenSolutionOrProject(FileName.Create(projectPath));
+				}
 			}
 			
 			int stopSequence = GetIntProperty(debugger, "CurrentStopSequence");

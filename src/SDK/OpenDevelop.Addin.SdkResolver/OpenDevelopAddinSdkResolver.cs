@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Microsoft.Build.Framework;
 
@@ -12,14 +13,14 @@ public sealed class OpenDevelopAddinSdkResolver : Microsoft.Build.Framework.SdkR
     public override SdkResult Resolve(SdkReference sdkReference, SdkResolverContext context, SdkResultFactory factory)
     {
         if (!string.Equals(sdkReference.Name, "OpenDevelop.Addin.Sdk", StringComparison.OrdinalIgnoreCase))
-            return factory.IndicateFailure(null, null);
+            return factory.IndicateFailure(null, (IEnumerable<string>)null);
 
         // Installed layout: Contents/MacOS/SdkResolvers/<this resolver>/ followed by
         // Contents/MacOS/Sdks/OpenDevelop.Addin.Sdk/Sdk.
         var resolverDirectory = Path.GetDirectoryName(typeof(OpenDevelopAddinSdkResolver).Assembly.Location)!;
         var sdkPath = Path.GetFullPath(Path.Combine(resolverDirectory, "..", "..", "Sdks", "OpenDevelop.Addin.Sdk", "Sdk"));
         if (!Directory.Exists(sdkPath))
-            return factory.IndicateFailure($"Installed OpenDevelop Addin SDK was not found at '{sdkPath}'.", null);
+            return factory.IndicateFailure(new[] { $"Installed OpenDevelop Addin SDK was not found at '{sdkPath}'." }, null);
 
         return factory.IndicateSuccess(sdkPath, null, null);
     }

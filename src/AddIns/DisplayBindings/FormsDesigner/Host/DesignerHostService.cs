@@ -29,6 +29,7 @@ sealed class DesignerHostService : IDesignerChildService
 	DesignSurface? designSurface;
 	ProjectAssemblyLoadContext? projectLoadContext;
 	Assembly? projectAssembly;
+	readonly List<Assembly> referencedAssemblies = new();
 	Size? rootDesignSize;
 	SizeF? rootAutoScaleDimensions;
 	long frameSequence;
@@ -444,6 +445,7 @@ sealed class DesignerHostService : IDesignerChildService
 		projectLoadContext?.Unload();
 		projectLoadContext = null;
 		projectAssembly = null;
+		referencedAssemblies.Clear();
 		current = null;
 	}
 
@@ -701,7 +703,7 @@ sealed class DesignerHostService : IDesignerChildService
 	Type ResolveControlType(string name)
 	{
 		var fullName = name.Contains('.') ? name : "System.Windows.Forms." + name;
-		var type = projectAssembly?.GetType(fullName, false) ?? typeof(Control).Assembly.GetType(fullName, false)
+		var type = projectAssembly?.GetType(fullName, false) ?? referencedAssemblies.Select(assembly => assembly.GetType(fullName, false)).FirstOrDefault(candidate => candidate != null) ?? typeof(Control).Assembly.GetType(fullName, false)
 			?? AppDomain.CurrentDomain.GetAssemblies().Select(item => item.GetType(fullName, false)).FirstOrDefault(item => item != null);
 		if (type == null || !typeof(Control).IsAssignableFrom(type) || type.IsAbstract)
 			throw new NotSupportedException("Unsupported WinForms control type: " + name);
@@ -957,6 +959,7 @@ sealed class DesignerHostService : IDesignerChildService
 		projectLoadContext?.Unload();
 		projectLoadContext = null;
 		projectAssembly = null;
+		referencedAssemblies.Clear();
 		rootDesignSize = ReadRootDesignSize(snapshot);
 		rootAutoScaleDimensions = ReadRootAutoScaleDimensions(snapshot);
 		if (!String.IsNullOrWhiteSpace(snapshot.ProjectAssemblyPath) && File.Exists(snapshot.ProjectAssemblyPath)) {
@@ -967,6 +970,17 @@ sealed class DesignerHostService : IDesignerChildService
 			if (File.Exists(managedAssemblyPath)) {
 				projectLoadContext = new ProjectAssemblyLoadContext(managedAssemblyPath);
 				projectAssembly = projectLoadContext.LoadFromAssemblyPath(managedAssemblyPath);
+			}
+		}
+		var referencePaths = snapshot.ReferencedAssemblyPaths.Where(path => File.Exists(path) && !string.Equals(path, snapshot.ProjectAssemblyPath, StringComparison.OrdinalIgnoreCase)).ToArray();
+		// A referenced control library can be enough to design a form even before the owning
+		// project itself has produced an output. Root the collectible context at the first usable
+		// reference in that case, then resolve every supplied library in the same child process.
+		if (projectLoadContext == null && referencePaths.Length > 0)
+			projectLoadContext = new ProjectAssemblyLoadContext(Path.GetFullPath(referencePaths[0]));
+		if (projectLoadContext != null) {
+			foreach (var path in referencePaths) {
+				try { referencedAssemblies.Add(projectLoadContext.LoadFromAssemblyPath(Path.GetFullPath(path))); } catch { }
 			}
 		}
 		designSurface = new DesignSurface();

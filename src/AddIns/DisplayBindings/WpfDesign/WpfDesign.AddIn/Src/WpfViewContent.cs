@@ -174,9 +174,13 @@ namespace ICSharpCode.WpfDesign.AddIn
 			};
 			// Do not run MSBuild ResolveAssemblyReferences synchronously from LoadInternal. It can
 			// block the dispatcher indefinitely while project evaluation/build hosts are busy, which
-			// also makes every DevFlow request time out. The child resolves dependencies beside the
-			// project output; explicit reference paths are reserved for already-available metadata,
-			// never computed on the UI thread.
+			// also makes every DevFlow request time out. Copy-local DLLs beside an already-built
+			// output are available metadata: pass them to the child so referenced custom controls
+			// participate in its toolbox/type finder without loading a project assembly in the IDE.
+			var outputDirectory = Path.GetDirectoryName(snapshot.ProjectAssemblyPath);
+			if (!string.IsNullOrEmpty(outputDirectory) && Directory.Exists(outputDirectory))
+				snapshot.ReferencedAssemblyPaths.AddRange(Directory.EnumerateFiles(outputDirectory, "*.dll")
+					.Where(path => !string.Equals(path, snapshot.ProjectAssemblyPath, StringComparison.OrdinalIgnoreCase)));
 
 			_stream!.Position = 0;
 			using (var reader = new StreamReader(new UnclosableStream(_stream)))

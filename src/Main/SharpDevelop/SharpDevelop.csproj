@@ -24,6 +24,10 @@
     <PackageReference Include="Microsoft.Build" />
     <PackageReference Include="Microsoft.Build.Framework" />
     <PackageReference Include="Microsoft.Build.Runtime" />
+    <!-- See the matching comment on the NuGet.Commands PackageVersion in
+         Directory.Packages.props: this is not called directly, it just needs to land in
+         our own output so the in-process MSBuild engine's NuGet SDK resolver can load it. -->
+    <PackageReference Include="NuGet.Commands" />
     <PackageReference Include="System.CodeDom" />
     <PackageReference Include="log4net" />
     <!-- Without this, Microsoft.CodeAnalysis.CSharp.Features (Roslyn) only floors this app's own

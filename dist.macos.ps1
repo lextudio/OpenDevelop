@@ -25,6 +25,25 @@ $sln = Join-Path $repoRoot 'OpenDevelop.Mvp.slnx'
 $hostProject = Join-Path $repoRoot 'src/Main/SharpDevelop/SharpDevelop.csproj'
 $dotnet = Find-DotNetHost
 
+function Sync-LibreWpfTransportRuntime([string]$publishDir) {
+    # LibreWPF.Sdk supplies the compile-time reference surface, but the .NET runtime pack also
+    # contains assemblies with the same WPF simple names. Publish can therefore select the latter
+    # by basename even though LibreWPF.Transport is the resolved package. That produces a subtly
+    # mixed runtime (for example an old WindowsBase.dll without Dispatcher.NativeInputPump).
+    # Always overlay the exact managed transport payload that restore selected.
+    $assets = Join-Path $repoRoot 'src/Main/SharpDevelop/obj/project.assets.json'
+    if (-not (Test-Path $assets)) { throw "LibreWPF transport sync requires restore assets: $assets" }
+    $transportVersion = ((Get-Content $assets -Raw | ConvertFrom-Json).libraries.PSObject.Properties |
+        Where-Object { $_.Name -like 'LibreWPF.Transport/*' } |
+        Select-Object -First 1).Name -replace '^LibreWPF.Transport/', ''
+    if (-not $transportVersion) { throw 'LibreWPF.Transport was not resolved for the OpenDevelop host.' }
+    $nugetPackages = ((& $dotnet nuget locals global-packages --list) | Select-String '^global-packages: ').Line -replace '^global-packages:\s*', ''
+    $transportRuntime = Join-Path $nugetPackages "librewpf.transport/$transportVersion/lib/net10.0"
+    if (-not (Test-Path $transportRuntime)) { throw "LibreWPF transport runtime payload not found: $transportRuntime" }
+    Copy-Item -Path (Join-Path $transportRuntime '*') -Destination $publishDir -Recurse -Force
+    Write-Host "Synced LibreWPF.Transport $transportVersion runtime payload into publish output"
+}
+
 function New-TempDir {
     $p = Join-Path ([System.IO.Path]::GetTempPath()) ("opendevelop-" + [System.Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $p | Out-Null
@@ -81,6 +100,7 @@ if (-not $SkipPublish) {
     $nugetPackages = ($nugetPackagesLine.Line -replace '^global-packages:\s*', '')
     Invoke-Native python3 (Join-Path $repoRoot 'build/patch-librewinforms-deps.py') `
         (Join-Path $publishDir 'OpenDevelop.deps.json') $nugetPackages
+    Sync-LibreWpfTransportRuntime $publishDir
 
     # Some projects write to OpenDevelopHostPublishDir while computing their
     # distribution closure. Give that build a disposable copy so the verified host
@@ -107,6 +127,7 @@ if (-not $SkipPublish) {
     # only after every build has completed.
     Invoke-Native python3 (Join-Path $repoRoot 'build/patch-librewinforms-deps.py') `
         (Join-Path $publishDir 'OpenDevelop.deps.json') $nugetPackages
+    Sync-LibreWpfTransportRuntime $publishDir
 }
 else {
     Write-Host '==> Skipping publish (-SkipPublish)'

@@ -615,6 +615,22 @@ InputEvent {
   `ToolboxItemInfo { Name, DisplayName, Category, Template, XamlNamespace, TypeName }`. The
   child builds it by reflecting the *loaded* runtime assemblies. The host never inspects
   project assemblies (WPF is the remaining exception — see Part II).
+- **Project-defined toolbox types are a required capability, not a workflow-only feature**:
+  the parent supplies the managed project output and any already-resolved reference paths in the
+  document snapshot; the child loads or resolves those assemblies inside its own process and
+  contributes safe constructible types to the same catalog. The eligibility predicate is backend
+  specific: CoreWF uses `Activity`, WinForms uses `Control`/designable `Component`, WPF uses
+  `FrameworkElement`, WinUI/Uno uses `FrameworkElement`, and source-native GTK/MewUI backends use
+  their respective widget/control metadata. Entries must retain an assembly-qualified `TypeName`
+  (or markup `Template`) and a `Project`/`Referenced` category so a drop can materialize the exact
+  type without IDE-side reflection. A stock-only fallback catalog is permitted only when no usable
+  project output exists. When `ProjectCodeMode` is `Disabled`, the child must omit every
+  project/reference-derived entry and must not load any project assembly.
+- Parent adapters must not invoke MSBuild reference resolution synchronously while opening a
+  designer. They may pass copy-local managed DLLs already beside a built output as
+  `ReferencedAssemblyPaths`; WPF, WinForms and Workflow use this fast path so referenced custom
+  controls and activities are discoverable without freezing the workbench. A usable referenced
+  library can also be the child load-context root when the project output has not been built yet.
 - A toolbox drop is `design/add-element { ParentId, ToolboxItem, X, Y, BaseVersion }`; the
   child materializes and returns the new `SessionState`.
 - **Document Outline**: the shared `DocumentOutlineControl` (`ICSharpCode.SharpDevelop.Widgets`)

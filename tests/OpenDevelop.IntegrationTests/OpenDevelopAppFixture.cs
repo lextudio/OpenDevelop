@@ -52,27 +52,27 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 	// place that evidence ever lands). Override the directory with OD_TEST_LOG_DIR.
 	public string? AppLogPath => _appLogPath;
 
-    public string OpenDevelopProjectPath { get; } = LocateOpenDevelopProject();
-    public string FixtureSolutionPath { get; } = LocateFixtureProject();
-    public string CoverageFixtureSolutionPath { get; } = LocateCoverageFixture();
-    public string SolutionExplorerFixturePath { get; } = LocateSolutionExplorerFixture();
-    public string DebugTestProjectPath { get; } = LocateDebugTestProject();
+    public string OpenDevelopProjectPath => LocateOpenDevelopProject();
+    public string FixtureSolutionPath => LocateFixtureProject();
+    public string CoverageFixtureSolutionPath => LocateCoverageFixture();
+    public string SolutionExplorerFixturePath => LocateSolutionExplorerFixture();
+    public string DebugTestProjectPath => LocateDebugTestProject();
     // A template rather than a path used in place: the runtime-upgrade test rewrites the
     // project's TargetFramework, so it works on a per-test copy instead of this repo's tracked
     // fixture (same reasoning as the NuGet and Git fixtures).
-    public string RuntimeUpgradeTemplatePath { get; } = LocateRuntimeUpgradeTemplate();
-    public string SlnxFixturePath { get; } = LocateSlnxFixture();
-    public string WpfSampleSolutionPath { get; } = LocateWpfSampleSolution();
-    public string WinFormsSampleSolutionPath { get; } = LocateWinFormsSampleSolution();
-    public string UnoXamlSampleSolutionPath { get; } = LocateUnoXamlSampleSolution();
-    public string AspNetCoreSampleSolutionPath { get; } = LocateAspNetCoreSampleSolution();
-    public string GitFixtureTemplatePath { get; } = LocateGitFixtureTemplate();
-    public string FSharpFixtureSolutionPath { get; } = LocateFSharpFixture();
-    public string VBFixtureSolutionPath { get; } = LocateVBFixture();
-    public string VbWinFormsSampleSolutionPath { get; } = LocateVbWinFormsSample();
-    public string NuGetFixtureTemplatePath { get; } = LocateNuGetFixtureTemplate();
-    public string LocalNuGetFeedPath { get; } = LocateLocalNuGetFeed();
-    public string XmlFixtureFilePath { get; } = LocateXmlFixtureFile();
+    public string RuntimeUpgradeTemplatePath => LocateRuntimeUpgradeTemplate();
+    public string SlnxFixturePath => LocateSlnxFixture();
+    public string WpfSampleSolutionPath => LocateWpfSampleSolution();
+    public string WinFormsSampleSolutionPath => LocateWinFormsSampleSolution();
+    public string UnoXamlSampleSolutionPath => LocateUnoXamlSampleSolution();
+    public string AspNetCoreSampleSolutionPath => LocateAspNetCoreSampleSolution();
+    public string GitFixtureTemplatePath => LocateGitFixtureTemplate();
+    public string FSharpFixtureSolutionPath => LocateFSharpFixture();
+    public string VBFixtureSolutionPath => LocateVBFixture();
+    public string VbWinFormsSampleSolutionPath => LocateVbWinFormsSample();
+    public string NuGetFixtureTemplatePath => LocateNuGetFixtureTemplate();
+    public string LocalNuGetFeedPath => LocateLocalNuGetFeed();
+    public string XmlFixtureFilePath => LocateXmlFixtureFile();
 
     // The fixture is assembly-scoped, so one invocation owns exactly one app process. Keep the gate
     // as cross-instance protection for custom runners or accidental future collection fixtures:
@@ -294,15 +294,31 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     async Task StartAsync()
     {
         _appStartedUtc = DateTime.UtcNow;
-        var psi = new ProcessStartInfo(ResolveDotNetHost())
+        var installedApp = ResolveInstalledOpenDevelop();
+        ProcessStartInfo psi;
+        if (installedApp is null)
         {
-            WorkingDirectory = Path.GetDirectoryName(OpenDevelopProjectPath)!,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-        foreach (var a in new[] { "run", "--project", OpenDevelopProjectPath, "-f", "net10.0-windows", "--no-build" })
-            psi.ArgumentList.Add(a);
+            psi = new ProcessStartInfo(ResolveDotNetHost());
+        }
+        else
+        {
+            psi = new ProcessStartInfo(installedApp)
+            {
+                WorkingDirectory = Path.GetDirectoryName(installedApp)!,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+        }
+        if (installedApp is null)
+        {
+            psi.WorkingDirectory = Path.GetDirectoryName(OpenDevelopProjectPath)!;
+            psi.UseShellExecute = false;
+            psi.RedirectStandardOutput = true;
+            psi.RedirectStandardError = true;
+            foreach (var a in new[] { "run", "--project", OpenDevelopProjectPath, "-f", "net10.0-windows", "--no-build" })
+                psi.ArgumentList.Add(a);
+        }
         // Tells the app it is being driven by the integration-test agent: the main window shows
         // without activating (ShowActivated=false), so a test run never steals focus from whatever
         // the user is doing on the machine (measured annoyance - the WPF window grabs activation on
@@ -695,6 +711,23 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         }
         throw new FileNotFoundException(
             "Could not locate src/Main/SharpDevelop/SharpDevelop.csproj by walking up from " + AppContext.BaseDirectory);
+    }
+
+    static string? ResolveInstalledOpenDevelop()
+    {
+        var configured = Environment.GetEnvironmentVariable("OPENDEVELOP_APP_PATH");
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            if (!File.Exists(configured))
+                throw new FileNotFoundException("OPENDEVELOP_APP_PATH does not point to an executable OpenDevelop binary.", configured);
+            return configured;
+        }
+
+        if (!OperatingSystem.IsMacOS())
+            return null;
+
+        var defaultPath = "/Applications/OpenDevelop.app/Contents/MacOS/OpenDevelop";
+        return File.Exists(defaultPath) ? defaultPath : null;
     }
 
     static string LocateFixtureProject()
