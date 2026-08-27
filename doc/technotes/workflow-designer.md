@@ -140,15 +140,16 @@ Scope carried over from the earlier draft, still true:
    `WorkflowDesignerHostClient`/`WorkflowPropertyAdapter` are adapted directly from
    `MewUIDesignerHostClient`/`WpfSurfaceElementPropertyAdapter` rather than written fresh, and
    `WorkflowDesignerViewContent` renders nested boxes with a real toolbox add/delete round-trip
-   (Sequence-only container growth today). It also already adopted the shared-shell contracts
+   (collection containers plus single-child CoreWF slots such as `If.Then`/`Else` and
+   `While.Body`). It also already adopted the shared-shell contracts
    from designer-common.md's 2026-08-24 "push for more code reuse" pass —
    `DesignerSelectionController`'s ordered multi-selection, `DesignerPadController` for the
    Outline/Properties bridge, `DesignerMultiPropertyAdapter` for multi-select property editing,
    and `DesignerCommandController` for the Delete command — instead of the hand-rolled
    event-wiring an earlier draft of this file used, so it doesn't start life as a sixth
-   almost-identical copy of that plumbing. No undo/redo yet (`WorkflowDocument` has no history
-   stack — `DesignerSessionState.CanUndo`/`CanRedo` are left false), and no drag-and-drop from
-   the toolbox (double-click only) — both deferred to step 4, along with everything else there.
+   almost-identical copy of that plumbing. Versioned CoreWF XAML history powers standard
+   Undo/Redo, and toolbox insertion supports both double-click and drag/drop. Flowchart,
+   variables/arguments, custom-activity discovery and expression editing remain step 4 work.
 4. **Toolbox + additional activity shapes**: `If`/`Flowchart`/custom activities, drag-drop from a
    `ToolboxControl` populated from CoreWF + referenced activity-library assemblies (paralleling
    `ActivityLibraries/` in the upstream sample), and an expression editor (CoreWF supports C#
@@ -170,9 +171,10 @@ docs below. Concrete conventions to replicate, most-to-least load-bearing:
   a breadcrumb bar above the canvas, the canvas itself, and a shell bar below it with zoom in/out,
   fit-to-screen, and an overview map (a viewport rectangle over a thumbnail of the whole tree —
   the designer is virtualized, so undrawn regions show blank until scrolled into view once).
-  `WorkflowDesignerViewContent` today is just a `ScrollViewer` over a flat `StackPanel` of nested
-  boxes — no breadcrumb, no zoom, no overview map.
-- **Breadcrumb drill-in** ([`how-to-use-breadcrumb-navigation.md`](https://github.com/MicrosoftDocs/visualstudio-docs/blob/main/docs/workflow-designer/how-to-use-breadcrumb-navigation.md)):
+  `WorkflowDesignerViewContent` now supplies breadcrumb drill-in, in-place and global tree
+  expansion, shared zoom/fit chrome and a clickable activity-tree overview. The overview's
+  scroll viewport rectangle remains future work.
+- **Breadcrumb drill-in — implemented for activity trees** ([`how-to-use-breadcrumb-navigation.md`](https://github.com/MicrosoftDocs/visualstudio-docs/blob/main/docs/workflow-designer/how-to-use-breadcrumb-navigation.md)):
   double-click an activity to make it the new root (fully expanded, ancestors listed as breadcrumb
   buttons); click an ancestor to go back up; chevrons expand/collapse an activity in place, with
   global Expand All/Collapse All/Restore. `Flowchart`/`Switch`/`TryCatch` opt out of in-place
@@ -203,9 +205,8 @@ docs below. Concrete conventions to replicate, most-to-least load-bearing:
   (designer-common.md) — the closest in-repo equivalent to VS's shell-bar docs
   (`workflow-designer-shell-features.md`), reused as-is rather than building bespoke chrome.
   Gridlines/Theme/ShowNames/DesignSize are left off (`Capabilities = Zoom | Fit`) since none map
-  to an activity tree. The breadcrumb bar and overview map are still not implemented — those are
-  real new surface (drill-in root-swapping, a thumbnail-with-viewport control), not a toggle on
-  the shared canvas, and stay deferred to step 4.
+  to an activity tree. Breadcrumb drill-in and a clickable overview are implemented; coupling
+  the overview to a precise ScrollViewer viewport rectangle remains deferred.
 - **Keyboard shortcuts** ([`keyboard-shortcuts-in-the-workflow-designer.md`](https://github.com/MicrosoftDocs/visualstudio-docs/blob/main/docs/workflow-designer/keyboard-shortcuts-in-the-workflow-designer.md)):
   a full `Ctrl+E, <letter>` shortcut family (Arguments, Variables, expand/collapse, flowchart
   connect, next-item focus, ...). Worth adopting once the corresponding panels/features exist —
@@ -221,7 +222,5 @@ property surface and designer-specific behavior (e.g. `Flowchart`'s connector ge
    being Windows-gated, explicitly test load/render/edit/save on macOS (matching this repo's
    LibreWPF baseline) as part of accepting each phase above, not as an afterthought.
 
-Nothing above is implemented yet; this note exists to record the investigation and architecture
-decision before any code changes land, per the upstream issue's own framing ("after some initial
-investigation, I think it is possible... will also try to resolve #19 and #18 along the way if
-possible").
+The CoreWF host/addin baseline and the interaction slices recorded above are implemented; this
+note remains the architecture and phased roadmap for the unfinished workflow-specific features.

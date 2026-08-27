@@ -37,52 +37,86 @@ sealed class WorkflowDesignerHostService : IDesignerChildService
 		var file = snapshot.Files.FirstOrDefault(f => f.Kind == "Designer") ?? snapshot.Files.FirstOrDefault();
 		session.FileName = file?.FileName ?? snapshot.DesignerFileName;
 		session.Document.Reset(file?.Text ?? "");
+		session.Undo.Clear();
+		session.Redo.Clear();
 		return State(session);
 	}
 
 	[JsonRpcMethod("design/set-property")]
-	public DesignerSessionState SetProperty(string documentId, long baseVersion, string elementId, string propertyName, string value)
+	public DesignerSessionState SetProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string value)
 	{
+		documents.ValidateSession(sessionId);
 		var session = Get(documentId);
 		EnsureVersion(session, baseVersion);
+		var before = session.Document.ToXaml();
 		if (!session.Document.SetProperty(elementId, propertyName, value))
 			throw new InvalidOperationException("Workflow property mutation was rejected.");
-		session.Version++;
+		RecordMutation(session, before);
 		return State(session);
 	}
 
 	[JsonRpcMethod("design/rename")]
-	public DesignerSessionState Rename(string documentId, long baseVersion, string elementId, string newName)
-		=> SetProperty(documentId, baseVersion, elementId, "$displayName", newName);
+	public DesignerSessionState Rename(string sessionId, string documentId, long baseVersion, string elementId, string newName)
+		=> SetProperty(sessionId, documentId, baseVersion, elementId, "$displayName", newName);
 
 	[JsonRpcMethod("design/add-element")]
-	public DesignerSessionState AddElement(string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item)
+	public DesignerSessionState AddElement(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y)
 	{
+		documents.ValidateSession(sessionId);
 		var session = Get(documentId);
 		EnsureVersion(session, baseVersion);
+		var before = session.Document.ToXaml();
 		var addedId = session.Document.AddChild(parentId, string.IsNullOrEmpty(item.TypeName) ? item.Name : item.TypeName);
 		if (addedId == null) throw new InvalidOperationException("Workflow element insertion was rejected.");
-		session.Version++;
+		RecordMutation(session, before);
 		var state = State(session);
 		state.CreatedElementId = addedId;
 		return state;
 	}
 
 	[JsonRpcMethod("design/delete-elements")]
-	public DesignerSessionState DeleteElements(string documentId, long baseVersion, string[] elementIds)
+	public DesignerSessionState DeleteElements(string sessionId, string documentId, long baseVersion, string[] elementIds)
 	{
+		documents.ValidateSession(sessionId);
 		var session = Get(documentId);
 		EnsureVersion(session, baseVersion);
+		var before = session.Document.ToXaml();
 		foreach (var id in elementIds)
 			if (!session.Document.Remove(id))
 				throw new InvalidOperationException("Workflow element deletion was rejected: " + id);
+		RecordMutation(session, before);
+		return State(session);
+	}
+
+	[JsonRpcMethod("design/undo")]
+	public DesignerSessionState Undo(string sessionId, string documentId, long baseVersion) { documents.ValidateSession(sessionId); return RestoreHistory(Get(documentId), baseVersion, undo: true); }
+	[JsonRpcMethod("design/redo")]
+	public DesignerSessionState Redo(string sessionId, string documentId, long baseVersion) { documents.ValidateSession(sessionId); return RestoreHistory(Get(documentId), baseVersion, undo: false); }
+
+	DesignerSessionState RestoreHistory(DocumentSession session, long baseVersion, bool undo)
+	{
+		EnsureVersion(session, baseVersion);
+		var source = undo ? session.Undo : session.Redo;
+		var destination = undo ? session.Redo : session.Undo;
+		if (source.Count == 0) throw new InvalidOperationException(undo ? "Nothing to undo." : "Nothing to redo.");
+		destination.Push(session.Document.ToXaml());
+		session.Document.Reset(source.Pop());
+		if (!session.Document.LastParseSucceeded) throw new InvalidOperationException("Workflow history could not be restored.");
 		session.Version++;
 		return State(session);
 	}
 
-	[JsonRpcMethod("session/flush")]
-	public DesignerEditSet Flush(string documentId, long baseVersion)
+	static void RecordMutation(DocumentSession session, string before)
 	{
+		session.Undo.Push(before);
+		session.Redo.Clear();
+		session.Version++;
+	}
+
+	[JsonRpcMethod("session/flush")]
+	public DesignerEditSet Flush(string sessionId, string documentId, long baseVersion)
+	{
+		documents.ValidateSession(sessionId);
 		var session = Get(documentId);
 		EnsureVersion(session, baseVersion);
 		return new DesignerEditSet {
@@ -92,8 +126,9 @@ sealed class WorkflowDesignerHostService : IDesignerChildService
 	}
 
 	[JsonRpcMethod("session/close")]
-	public object Close(string documentId)
+	public object Close(string sessionId, string documentId)
 	{
+		documents.ValidateSession(sessionId);
 		documents.Remove(documentId, _ => { });
 		return new();
 	}
@@ -103,7 +138,7 @@ sealed class WorkflowDesignerHostService : IDesignerChildService
 		var root = session.Document.Root;
 		return new DesignerSessionState {
 			SessionId = sessionId, DocumentId = session.DocumentId, Version = session.Version,
-			Accepted = session.Document.LastParseSucceeded, Error = session.Document.Error,
+			Accepted = session.Document.LastParseSucceeded, Error = session.Document.Error, CanUndo = session.Undo.Count > 0, CanRedo = session.Redo.Count > 0,
 			RootType = root?.GetType().Name ?? "", ComponentCount = root == null ? 0 : Count(root),
 			Tree = root == null ? null : Node(session.Document, root, "")
 		};
@@ -143,5 +178,7 @@ sealed class WorkflowDesignerHostService : IDesignerChildService
 		public WorkflowDocument Document { get; } = new();
 		public string FileName = "";
 		public long Version;
+		public Stack<string> Undo { get; } = new();
+		public Stack<string> Redo { get; } = new();
 	}
 }

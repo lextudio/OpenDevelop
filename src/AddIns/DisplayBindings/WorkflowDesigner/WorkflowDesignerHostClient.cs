@@ -11,6 +11,7 @@ sealed class WorkflowDesignerHostClient : IDesignHostClient
 {
 	static readonly SharedDesignerHostBroker<Connection> broker = new(c => c.IsAlive, StartConnectionAsync);
 	readonly Connection connection;
+	readonly DesignerDocumentRpcClient document;
 	bool disposed;
 
 	public string DocumentId { get; } = Guid.NewGuid().ToString("N");
@@ -20,7 +21,7 @@ sealed class WorkflowDesignerHostClient : IDesignHostClient
 	public string SessionId => connection.SessionId;
 	public event EventHandler? HostExited { add => connection.HostExited += value; remove => connection.HostExited -= value; }
 
-	WorkflowDesignerHostClient(Connection connection) => this.connection = connection;
+	WorkflowDesignerHostClient(Connection connection) { this.connection = connection; document = new DesignerDocumentRpcClient(connection, SessionId, DocumentId); }
 
 	public static async Task<WorkflowDesignerHostClient> CreateAsync(CancellationToken token = default)
 		=> new(await broker.AcquireAsync(token).ConfigureAwait(false));
@@ -33,21 +34,22 @@ sealed class WorkflowDesignerHostClient : IDesignHostClient
 		return connection;
 	}
 
-	void Stamp(DesignerDocumentSnapshot snapshot) { snapshot.SessionId = SessionId; snapshot.DocumentId = DocumentId; }
-	public Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, CancellationToken token = default) { Stamp(snapshot); return connection.OpenAsync(snapshot, token); }
-	public Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, CancellationToken token = default) { Stamp(snapshot); return connection.UpdateAsync(snapshot, token); }
-	public Task<DesignerEditSet> FlushAsync(long baseVersion, CancellationToken token = default) => connection.FlushAsync(DocumentId, baseVersion, token);
+	public Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, CancellationToken token = default) => document.OpenAsync(snapshot, token);
+	public Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, CancellationToken token = default) => document.UpdateAsync(snapshot, token);
+	public Task<DesignerEditSet> FlushAsync(long baseVersion, CancellationToken token = default) => document.FlushAsync(baseVersion, token);
 	public Task<DesignerSessionState> SetPropertyAsync(long baseVersion, string elementId, string propertyName, string value, CancellationToken token = default)
-		=> connection.SetPropertyAsync(DocumentId, baseVersion, elementId, propertyName, value, token);
+		=> document.SetPropertyAsync(baseVersion, elementId, propertyName, value, token);
 	public Task<DesignerSessionState> RenameAsync(long baseVersion, string elementId, string newName, CancellationToken token = default)
-		=> connection.RenameAsync(DocumentId, baseVersion, elementId, newName, token);
+		=> document.RenameAsync(baseVersion, elementId, newName, token);
 	public Task<DesignerSessionState> AddElementAsync(long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, CancellationToken token = default)
-		=> connection.AddElementAsync(DocumentId, baseVersion, parentId, item, token);
+		=> document.AddElementAsync(baseVersion, parentId, item, proposedName, x, y, token);
 	public Task<DesignerSessionState> DeleteElementsAsync(long baseVersion, string[] elementIds, CancellationToken token = default)
-		=> connection.DeleteElementsAsync(DocumentId, baseVersion, elementIds, token);
+		=> document.DeleteElementsAsync(baseVersion, elementIds, token);
+	public Task<DesignerSessionState> UndoAsync(long baseVersion, CancellationToken token = default) => connection.InvokeAsync<DesignerSessionState>("design/undo", new { sessionId = SessionId, documentId = DocumentId, baseVersion }, token);
+	public Task<DesignerSessionState> RedoAsync(long baseVersion, CancellationToken token = default) => connection.InvokeAsync<DesignerSessionState>("design/redo", new { sessionId = SessionId, documentId = DocumentId, baseVersion }, token);
 
 	public Task PingAsync(CancellationToken token = default) => connection.PingAsync(token);
-	public Task ShutdownAsync(CancellationToken token = default) => connection.CloseDocumentAsync(DocumentId, token);
+	public Task ShutdownAsync(CancellationToken token = default) => document.CloseAsync(token);
 	public void TerminateHost() => connection.TerminateHost();
 
 	public Task<DesignerSessionState> SetEventAsync(long v, string id, string e, string h, CancellationToken t = default) => throw new NotSupportedException();

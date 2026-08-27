@@ -39,10 +39,14 @@ public sealed class WorkflowDesignerViewContent : AbstractViewContentHandlingLoa
 	readonly DesignerPadController pads;
 	readonly DesignerCommandController commands = new();
 	readonly Dictionary<string, Border> boxesById = new();
+	readonly StackPanel breadcrumbs = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 4, 8, 4) };
+	readonly Canvas overview = new() { Width = 150, Height = 72, Background = Brushes.Gainsboro, Margin = new Thickness(8, 2, 8, 2) };
+	readonly HashSet<string> collapsed = new();
 
 	WorkflowDesignerHostClient? host;
 	DesignerSessionState state = new();
 	DesignerElementNode? selected;
+	string drillRootId = "";
 	string loadedXamlText = "";
 	double zoom = 1;
 
@@ -52,12 +56,14 @@ public sealed class WorkflowDesignerViewContent : AbstractViewContentHandlingLoa
 		toolbox.ItemsSource = toolboxModel.VisibleItems;
 		toolbox.SelectionChanged += (_, _) => toolboxModel.Select((toolbox.SelectedItem as DesignerToolboxItemInfo)?.TypeName);
 		toolbox.MouseDoubleClick += (_, _) => { if (toolboxModel.SelectedItem is { } item) Add(item.TypeName); };
+		toolbox.PreviewMouseMove += (_, e) => { if (e.LeftButton == MouseButtonState.Pressed && toolboxModel.SelectedItem is { } item) DragDrop.DoDragDrop(toolbox, item, DragDropEffects.Copy); };
 
 		// Ordered multi-selection + shared pad/command bridge (designer-common.md's 2026-08-24
 		// "push for more code reuse" pass) - matches MewUI/GTK4 wiring instead of the hand-rolled
 		// TreeChanged/SelectionChanged subscriptions an earlier draft of this file used.
 		selection = new DesignerSelectionController(node => Adapter(node), nodes => new DesignerMultiPropertyAdapter(nodes.Select(node => (object)Adapter(node))));
-		commands.Register(DesignerCommandNames.Delete, () => selection.SelectedIds.Count > 0 && host?.IsAlive == true, DeleteSelectedCore);
+		commands.RegisterStandard(() => state.CanUndo && host?.IsAlive == true, Undo, () => state.CanRedo && host?.IsAlive == true, Redo,
+			() => selection.SelectedIds.Count > 0 && host?.IsAlive == true, DeleteSelectedCore);
 		pads = new DesignerPadController(selection, outline.SetRoots, value => properties.SelectedObject = value, outline.SelectNodeById, node => { selected = node; HighlightSelection(); });
 		outline.SelectionCommitted += (_, _) => pads.CommitOutlineSelection(outline.SelectedNode?.Id);
 
@@ -65,12 +71,18 @@ public sealed class WorkflowDesignerViewContent : AbstractViewContentHandlingLoa
 		TabPageText = "Design";
 		ConfigureCanvas();
 		var grid = new Grid();
+		grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 		grid.RowDefinitions.Add(new RowDefinition());
 		grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+		grid.Children.Add(breadcrumbs);
+		breadcrumbs.Children.Add(overview);
 		grid.Children.Add(canvas);
-		Grid.SetRow(diagnostic, 1);
+		Grid.SetRow(canvas, 1);
+		Grid.SetRow(diagnostic, 2);
 		grid.Children.Add(diagnostic);
 		grid.CommandBindings.Add(new CommandBinding(ApplicationCommands.Delete, (_, _) => DeleteSelected()));
+		grid.CommandBindings.Add(new CommandBinding(ApplicationCommands.Undo, (_, _) => commands.Execute(DesignerCommandNames.Undo)));
+		grid.CommandBindings.Add(new CommandBinding(ApplicationCommands.Redo, (_, _) => commands.Execute(DesignerCommandNames.Redo)));
 		UserContent = grid;
 	}
 
@@ -87,6 +99,9 @@ public sealed class WorkflowDesignerViewContent : AbstractViewContentHandlingLoa
 		canvas.ZoomChanged += (_, _) => { if (canvas.ZoomCombo.SelectedIndex > 0) Zoom = new[] { .5, .75, 1, 1.25, 1.5, 2 }[canvas.ZoomCombo.SelectedIndex - 1]; };
 		canvas.FitRequested += (_, _) => FitView();
 		scroller.Content = surface;
+		surface.AllowDrop = true;
+		surface.DragOver += (_, e) => { e.Effects = e.Data.GetDataPresent(typeof(DesignerToolboxItemInfo)) ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; };
+		surface.Drop += (_, e) => { if (e.Data.GetData(typeof(DesignerToolboxItemInfo)) is DesignerToolboxItemInfo item) Add(item.TypeName); e.Handled = true; };
 		canvas.ContentHost.Content = scroller;
 	}
 
@@ -108,14 +123,20 @@ public sealed class WorkflowDesignerViewContent : AbstractViewContentHandlingLoa
 	public int ElementCount => state.Tree == null ? 0 : Flatten(state.Tree).Count();
 	public int HostProcessId => host?.ProcessId ?? 0;
 
-	public bool Add(string type)
+	public bool Add(string type, string? targetParentId = null)
 	{
 		if (host == null || state.Tree == null) return false;
-		var parentId = selected?.Id ?? state.Tree.Id;
+		var parentId = targetParentId ?? selected?.Id ?? state.Tree.Id;
 		var before = Flatten(state.Tree).Select(n => n.Id).ToHashSet();
-		Mutate(() => host.AddElementAsync(state.Version, parentId, new DesignerToolboxItemInfo { Name = type, TypeName = type }, "", 0, 0).GetAwaiter().GetResult());
+		try {
+			Mutate(() => host.AddElementAsync(state.Version, parentId, new DesignerToolboxItemInfo { Name = type, TypeName = type }, "", 0, 0).GetAwaiter().GetResult());
+		} catch (Exception exception) {
+			diagnostic.Text = $"Cannot insert {type}: {exception.Message}";
+			return false;
+		}
 		var added = state.Tree == null ? null : Flatten(state.Tree).FirstOrDefault(n => !before.Contains(n.Id));
 		if (added != null) selection.Select(added);
+		else diagnostic.Text = $"Cannot insert {type}: the selected activity does not accept another child.";
 		return added != null;
 	}
 
@@ -140,6 +161,20 @@ public sealed class WorkflowDesignerViewContent : AbstractViewContentHandlingLoa
 		return true;
 	}
 
+	bool Undo()
+	{
+		if (host == null) return false;
+		Mutate(() => host.UndoAsync(state.Version).GetAwaiter().GetResult());
+		return true;
+	}
+
+	bool Redo()
+	{
+		if (host == null) return false;
+		Mutate(() => host.RedoAsync(state.Version).GetAwaiter().GetResult());
+		return true;
+	}
+
 	void Mutate(Func<DesignerSessionState> action)
 	{
 		state = action();
@@ -154,14 +189,52 @@ public sealed class WorkflowDesignerViewContent : AbstractViewContentHandlingLoa
 		pads.UpdateTree(state.Tree);
 		boxesById.Clear();
 		surface.Children.Clear();
-		if (state.Tree != null) surface.Children.Add(Box(state.Tree));
+		if (state.Tree != null) {
+			var root = Find(state.Tree, drillRootId) ?? state.Tree;
+			if (root == state.Tree) drillRootId = "";
+			BuildBreadcrumbs(state.Tree, root);
+			BuildOverview(state.Tree, root.Id);
+			surface.Children.Add(Box(root));
+		}
+	}
+
+	void BuildOverview(DesignerElementNode root, string currentId)
+	{
+		overview.Children.Clear();
+		var nodes = Flatten(root).ToArray();
+		for (var index = 0; index < nodes.Length; index++) {
+			var node = nodes[index];
+			var depth = node.Id.Length == 0 ? 0 : node.Id.Count(character => character == '.') + 1;
+			var rectangle = new Border { Width = Math.Max(18, 62 - depth * 8), Height = 7, Background = node.Id == currentId ? Brushes.SteelBlue : Brushes.SlateGray, ToolTip = node.Name };
+			Canvas.SetLeft(rectangle, 4 + depth * 12);
+			Canvas.SetTop(rectangle, 4 + (index * 10) % 64);
+			rectangle.MouseLeftButtonDown += (_, e) => { drillRootId = node.Id; Rebuild(); e.Handled = true; };
+			overview.Children.Add(rectangle);
+		}
+	}
+
+	static DesignerElementNode? Find(DesignerElementNode root, string id) => root.Id == id ? root : root.Children.Select(child => Find(child, id)).FirstOrDefault(value => value != null);
+
+	void BuildBreadcrumbs(DesignerElementNode root, DesignerElementNode current)
+	{
+		breadcrumbs.Children.Clear();
+		var path = current.Id.Length == 0 ? new[] { root } : new[] { root }.Concat(current.Id.Split('.').Select((_, i) => Find(root, string.Join('.', current.Id.Split('.').Take(i + 1)))!).Where(node => node != null));
+		foreach (var node in path) {
+			var button = new Button { Content = node.Name, Margin = new Thickness(2, 0, 2, 0), IsEnabled = node.Id != current.Id };
+			button.Click += (_, _) => { drillRootId = node.Id; Rebuild(); };
+			breadcrumbs.Children.Add(button);
+		}
+		var expand = new Button { Content = "Expand All", Margin = new Thickness(12, 0, 2, 0) }; expand.Click += (_, _) => { collapsed.Clear(); Rebuild(); }; breadcrumbs.Children.Add(expand);
+		var collapse = new Button { Content = "Collapse All", Margin = new Thickness(2, 0, 2, 0) }; collapse.Click += (_, _) => { foreach (var node in Flatten(current).Where(node => node.Children.Count > 0)) collapsed.Add(node.Id); Rebuild(); }; breadcrumbs.Children.Add(collapse);
+		var restore = new Button { Content = "Restore", Margin = new Thickness(2, 0, 2, 0) }; restore.Click += (_, _) => { drillRootId = ""; collapsed.Clear(); Rebuild(); }; breadcrumbs.Children.Add(restore);
+		breadcrumbs.Children.Add(overview);
 	}
 
 	/// <summary>Activity types with a child-activity collection (Sequence.Activities and
 	/// friends) - the ones whose empty body should show VS's "Drop activity here" hint text
 	/// rather than rendering as blank (how-to-add-activities-to-the-toolbox.md's toolbox
 	/// convention). Leaf activities (WriteLine, Delay, ...) never show it.</summary>
-	static bool IsContainer(string type) => type is "Sequence" or "Parallel" or "While" or "DoWhile" or "Flowchart";
+	static bool IsContainer(string type) => type is "Sequence" or "Parallel" or "While" or "DoWhile" or "If" or "TryCatch" or "Flowchart";
 
 	Border Box(DesignerElementNode node)
 	{
@@ -169,11 +242,14 @@ public sealed class WorkflowDesignerViewContent : AbstractViewContentHandlingLoa
 		stack.Children.Add(HeaderLabel(node));
 		if (node.Children.Count == 0 && IsContainer(node.Type))
 			stack.Children.Add(new TextBlock { Text = "Drop activity here", FontStyle = FontStyles.Italic, Foreground = Brushes.Gray, Margin = new Thickness(0, 4, 0, 0) });
-		foreach (var child in node.Children) stack.Children.Add(Box(child));
+		if (!collapsed.Contains(node.Id)) foreach (var child in node.Children) stack.Children.Add(Box(child));
 		var border = new Border {
 			BorderBrush = Brushes.SlateGray, BorderThickness = new Thickness(1.5), CornerRadius = new CornerRadius(4),
 			Background = Brushes.White, Margin = new Thickness(4), Padding = new Thickness(8), Child = stack
 		};
+		border.AllowDrop = true;
+		border.DragOver += (_, e) => { e.Effects = e.Data.GetDataPresent(typeof(DesignerToolboxItemInfo)) ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; };
+		border.Drop += (_, e) => { if (e.Data.GetData(typeof(DesignerToolboxItemInfo)) is DesignerToolboxItemInfo item) Add(item.TypeName, node.Id); e.Handled = true; };
 		border.MouseLeftButtonDown += (_, e) => {
 			var toggle = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
 			selection.Select(new[] { node }, toggle ? DesignerSelectionOperation.Toggle : DesignerSelectionOperation.Replace);
@@ -189,8 +265,14 @@ public sealed class WorkflowDesignerViewContent : AbstractViewContentHandlingLoa
 	FrameworkElement HeaderLabel(DesignerElementNode node)
 	{
 		var label = new TextBlock { Text = $"{node.Type}" + (string.IsNullOrEmpty(node.Name) || node.Name == node.Type ? "" : $" \"{node.Name}\""), FontWeight = FontWeights.Bold };
-		label.MouseLeftButtonDown += (_, e) => { if (e.ClickCount == 2) BeginEditHeader(node, label); };
-		return label;
+		label.MouseLeftButtonDown += (_, e) => { if (e.ClickCount == 2) { if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)) BeginEditHeader(node, label); else { drillRootId = node.Id; Rebuild(); } e.Handled = true; } };
+		if (node.Children.Count == 0) return label;
+		var header = new StackPanel { Orientation = Orientation.Horizontal };
+		var chevron = new Button { Content = collapsed.Contains(node.Id) ? "›" : "⌄", Width = 20, Height = 20, Padding = new Thickness(0), Margin = new Thickness(0, 0, 4, 0), ToolTip = collapsed.Contains(node.Id) ? "Expand" : "Collapse" };
+		chevron.Click += (_, _) => { if (!collapsed.Add(node.Id)) collapsed.Remove(node.Id); Rebuild(); };
+		header.Children.Add(chevron);
+		header.Children.Add(label);
+		return header;
 	}
 
 	void BeginEditHeader(DesignerElementNode node, TextBlock label)

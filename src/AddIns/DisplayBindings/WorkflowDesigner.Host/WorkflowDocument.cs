@@ -91,14 +91,24 @@ sealed class WorkflowDocument
 	{
 		var parent = Find(parentId);
 		if (parent == null) return null;
-		var collectionProperty = FindActivityCollectionProperty(parent.GetType());
-		if (collectionProperty == null) return null;
 		var childType = ResolveActivityType(typeName);
 		if (childType == null) return null;
 		if (Activator.CreateInstance(childType) is not Activity child) return null;
-		var collection = collectionProperty.GetValue(parent);
-		var addMethod = collectionProperty.PropertyType.GetMethod("Add", new[] { collectionProperty.PropertyType.GetGenericArguments()[0] });
-		addMethod?.Invoke(collection, new object[] { child });
+		var collectionProperty = FindActivityCollectionProperty(parent.GetType());
+		if (collectionProperty != null) {
+			var collection = collectionProperty.GetValue(parent);
+			var addMethod = collectionProperty.PropertyType.GetMethod("Add", new[] { collectionProperty.PropertyType.GetGenericArguments()[0] });
+			addMethod?.Invoke(collection, new object[] { child });
+		} else {
+			// Structured activities use writable Activity slots instead of a collection: If.Then/
+			// Else, While.Body and similar CoreWF shapes. Fill the first empty slot in declaration
+			// order, which mirrors the designer's natural "Then before Else" insertion behavior.
+			var slot = parent.GetType().GetProperties()
+				.FirstOrDefault(property => property.CanWrite && typeof(Activity).IsAssignableFrom(property.PropertyType)
+					&& property.GetValue(parent) == null);
+			if (slot == null) return null;
+			slot.SetValue(parent, child);
+		}
 		var index = WorkflowInspectionServices.GetActivities(parent).ToList().IndexOf(child);
 		if (index < 0) return null;
 		return parentId.Length == 0 ? index.ToString() : parentId + "." + index;
