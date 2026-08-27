@@ -26,7 +26,14 @@
     <StartProgram Condition="'$(StartProgram)' == '' And '$(OpenDevelopDebugHost)' != ''">$(OpenDevelopDebugHost)</StartProgram>
     <!-- No trailing separator on either path: SplashScreenForm.SetCommandLineArgs rewrites a
          trailing quote into a backslash, which would corrupt the directory. -->
-    <StartArguments Condition="'$(StartArguments)' == '' And '$(OpenDevelopDebugHost)' != ''">-addindir:"$(OutputPath.TrimEnd('\/'))" -configdir:"$(OpenDevelopDebugConfigDir.TrimEnd('\/'))" -devflow:off</StartArguments>
+    <!-- OutputPath is conventionally project-relative (and MSBuild evaluates relative paths in
+         property functions against the project's own directory), but the child instance's working
+         directory is OpenDevelopHostBin, not this project's directory - a relative -addindir: value
+         resolved a plain HintPath-style OutputPath (no explicit absolute OutputPath, e.g. a
+         freshly-generated addin from the project template) against the WRONG base and pointed at a
+         directory that doesn't exist. GetFullPath is a no-op on the Stride-addin-style case where
+         OutputPath is already absolute. -->
+    <StartArguments Condition="'$(StartArguments)' == '' And '$(OpenDevelopDebugHost)' != ''">-addindir:"$([System.IO.Path]::GetFullPath('$(OutputPath)').TrimEnd('\/'))" -configdir:"$(OpenDevelopDebugConfigDir.TrimEnd('\/'))" -devflow:off</StartArguments>
     <StartWorkingDirectory Condition="'$(StartWorkingDirectory)' == '' And '$(OpenDevelopHostBin)' != ''">$(OpenDevelopHostBin)</StartWorkingDirectory>
   </PropertyGroup>
   <ItemGroup Condition="'$(OpenDevelopAddin)' == 'true' And '@(OpenDevelopAddinManifest)' == ''">

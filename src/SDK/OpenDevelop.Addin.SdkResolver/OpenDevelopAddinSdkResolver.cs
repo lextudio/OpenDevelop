@@ -4,7 +4,7 @@ using Microsoft.Build.Framework;
 
 namespace OpenDevelop.Addin.SdkResolver;
 
-public sealed class OpenDevelopAddinSdkResolver : SdkResolver
+public sealed class OpenDevelopAddinSdkResolver : Microsoft.Build.Framework.SdkResolver
 {
     public override string Name => "OpenDevelop Addin SDK Resolver";
     public override int Priority => 5000;

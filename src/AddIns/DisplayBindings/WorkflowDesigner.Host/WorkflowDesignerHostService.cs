@@ -133,6 +133,82 @@ sealed class WorkflowDesignerHostService : IDesignerChildService
 		return new();
 	}
 
+	[JsonRpcMethod("workflow/get-arguments")]
+	public List<WorkflowArgumentInfo> GetArguments(string sessionId, string documentId)
+	{
+		documents.ValidateSession(sessionId);
+		return Get(documentId).Document.GetArguments().Select(argument => new WorkflowArgumentInfo {
+			Name = argument.Name, TypeName = argument.TypeName, DefaultValue = argument.DefaultValue
+		}).ToList();
+	}
+
+	[JsonRpcMethod("workflow/add-argument")]
+	public DesignerSessionState AddArgument(string sessionId, string documentId, long baseVersion, string name, string typeName, string defaultValue)
+	{
+		documents.ValidateSession(sessionId);
+		var session = Get(documentId);
+		EnsureVersion(session, baseVersion);
+		var before = session.Document.ToXaml();
+		if (!session.Document.AddArgument(name, typeName, defaultValue)) throw new InvalidOperationException("Workflow argument creation was rejected. Check its name, type and default value.");
+		RecordMutation(session, before);
+		return State(session);
+	}
+
+	[JsonRpcMethod("workflow/remove-argument")]
+	public DesignerSessionState RemoveArgument(string sessionId, string documentId, long baseVersion, string name)
+	{
+		documents.ValidateSession(sessionId);
+		var session = Get(documentId);
+		EnsureVersion(session, baseVersion);
+		var before = session.Document.ToXaml();
+		if (!session.Document.RemoveArgument(name)) throw new InvalidOperationException("Workflow argument removal was rejected.");
+		RecordMutation(session, before);
+		return State(session);
+	}
+
+	[JsonRpcMethod("workflow/update-argument")]
+	public DesignerSessionState UpdateArgument(string sessionId, string documentId, long baseVersion, string oldName, string newName, string typeName, string defaultValue)
+	{
+		documents.ValidateSession(sessionId);
+		var session = Get(documentId);
+		EnsureVersion(session, baseVersion);
+		var before = session.Document.ToXaml();
+		if (!session.Document.UpdateArgument(oldName, newName, typeName, defaultValue)) throw new InvalidOperationException("Workflow argument update was rejected. Check its name, type and default value.");
+		RecordMutation(session, before);
+		return State(session);
+	}
+
+	[JsonRpcMethod("workflow/get-variables")]
+	public List<WorkflowVariableInfo> GetVariables(string sessionId, string documentId)
+	{
+		documents.ValidateSession(sessionId);
+		return Get(documentId).Document.GetVariables().Select(variable => new WorkflowVariableInfo { Name = variable.Name, TypeName = variable.TypeName, Scope = variable.Scope }).ToList();
+	}
+
+	[JsonRpcMethod("workflow/add-variable")]
+	public DesignerSessionState AddVariable(string sessionId, string documentId, long baseVersion, string name, string typeName)
+	{
+		documents.ValidateSession(sessionId);
+		var session = Get(documentId);
+		EnsureVersion(session, baseVersion);
+		var before = session.Document.ToXaml();
+		if (!session.Document.AddVariable(name, typeName)) throw new InvalidOperationException("The current workflow root does not support that variable.");
+		RecordMutation(session, before);
+		return State(session);
+	}
+
+	[JsonRpcMethod("workflow/remove-variable")]
+	public DesignerSessionState RemoveVariable(string sessionId, string documentId, long baseVersion, string name)
+	{
+		documents.ValidateSession(sessionId);
+		var session = Get(documentId);
+		EnsureVersion(session, baseVersion);
+		var before = session.Document.ToXaml();
+		if (!session.Document.RemoveVariable(name)) throw new InvalidOperationException("Workflow variable removal was rejected.");
+		RecordMutation(session, before);
+		return State(session);
+	}
+
 	DesignerSessionState State(DocumentSession session)
 	{
 		var root = session.Document.Root;

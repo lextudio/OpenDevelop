@@ -21,7 +21,8 @@ namespace ICSharpCode.WorkflowDesigner;
 /// clear System.Activities.Design (the classic rehosted designer) has no path to .NET 10/
 /// cross-platform. Modeled on MewUIDesignerViewContent's shape (load/select/edit/save against
 /// an out-of-process host, DesignerSelectionController driving the Properties/Outline pads),
-/// with drag-drop/undo/redo left for a later pass - see the technote's phased plan, step 3.</summary>
+/// with shared command-driven undo/redo, toolbox drag/drop and workflow-level argument editing
+/// layered on top - see the technote's phased plan.</summary>
 public sealed class WorkflowDesignerViewContent : AbstractViewContentHandlingLoadErrors, IOutlineContentHost, IToolsHost, IHasPropertyContainer
 {
 	public static readonly string[] ToolNames = { "Sequence", "If", "WriteLine", "Assign", "Delay", "Parallel", "While" };
@@ -49,6 +50,7 @@ public sealed class WorkflowDesignerViewContent : AbstractViewContentHandlingLoa
 	string drillRootId = "";
 	string loadedXamlText = "";
 	double zoom = 1;
+	bool awaitingWorkflowShortcut;
 
 	public WorkflowDesignerViewContent(OpenedFile file) : base(file)
 	{
@@ -83,6 +85,10 @@ public sealed class WorkflowDesignerViewContent : AbstractViewContentHandlingLoa
 		grid.CommandBindings.Add(new CommandBinding(ApplicationCommands.Delete, (_, _) => DeleteSelected()));
 		grid.CommandBindings.Add(new CommandBinding(ApplicationCommands.Undo, (_, _) => commands.Execute(DesignerCommandNames.Undo)));
 		grid.CommandBindings.Add(new CommandBinding(ApplicationCommands.Redo, (_, _) => commands.Execute(DesignerCommandNames.Redo)));
+		grid.PreviewKeyDown += (_, e) => {
+			if (awaitingWorkflowShortcut) { awaitingWorkflowShortcut = false; if (e.Key == Key.A) { ShowArguments(); e.Handled = true; } else if (e.Key == Key.V) { ShowVariables(); e.Handled = true; } return; }
+			if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && e.Key == Key.E) { awaitingWorkflowShortcut = true; e.Handled = true; }
+		};
 		UserContent = grid;
 	}
 
@@ -207,7 +213,7 @@ public sealed class WorkflowDesignerViewContent : AbstractViewContentHandlingLoa
 			var depth = node.Id.Length == 0 ? 0 : node.Id.Count(character => character == '.') + 1;
 			var rectangle = new Border { Width = Math.Max(18, 62 - depth * 8), Height = 7, Background = node.Id == currentId ? Brushes.SteelBlue : Brushes.SlateGray, ToolTip = node.Name };
 			Canvas.SetLeft(rectangle, 4 + depth * 12);
-			Canvas.SetTop(rectangle, 4 + (index * 10) % 64);
+			Canvas.SetTop(rectangle, 4 + index * 62.0 / Math.Max(1, nodes.Length - 1));
 			rectangle.MouseLeftButtonDown += (_, e) => { drillRootId = node.Id; Rebuild(); e.Handled = true; };
 			overview.Children.Add(rectangle);
 		}
@@ -227,7 +233,58 @@ public sealed class WorkflowDesignerViewContent : AbstractViewContentHandlingLoa
 		var expand = new Button { Content = "Expand All", Margin = new Thickness(12, 0, 2, 0) }; expand.Click += (_, _) => { collapsed.Clear(); Rebuild(); }; breadcrumbs.Children.Add(expand);
 		var collapse = new Button { Content = "Collapse All", Margin = new Thickness(2, 0, 2, 0) }; collapse.Click += (_, _) => { foreach (var node in Flatten(current).Where(node => node.Children.Count > 0)) collapsed.Add(node.Id); Rebuild(); }; breadcrumbs.Children.Add(collapse);
 		var restore = new Button { Content = "Restore", Margin = new Thickness(2, 0, 2, 0) }; restore.Click += (_, _) => { drillRootId = ""; collapsed.Clear(); Rebuild(); }; breadcrumbs.Children.Add(restore);
+		var arguments = new Button { Content = "Arguments", Margin = new Thickness(8, 0, 2, 0) }; arguments.Click += (_, _) => ShowArguments(); breadcrumbs.Children.Add(arguments);
+		var variables = new Button { Content = "Variables", Margin = new Thickness(2, 0, 2, 0) }; variables.Click += (_, _) => ShowVariables(); breadcrumbs.Children.Add(variables);
 		breadcrumbs.Children.Add(overview);
+	}
+
+	void ShowArguments()
+	{
+		if (host == null) return;
+		var rows = host.GetArgumentsAsync().GetAwaiter().GetResult();
+		var grid = new DataGrid { ItemsSource = rows, IsReadOnly = true, AutoGenerateColumns = false, Margin = new Thickness(8) };
+		grid.Columns.Add(new DataGridTextColumn { Header = "Name", Binding = new System.Windows.Data.Binding(nameof(WorkflowArgumentInfo.Name)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
+		grid.Columns.Add(new DataGridTextColumn { Header = "Type", Binding = new System.Windows.Data.Binding(nameof(WorkflowArgumentInfo.TypeName)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
+		grid.Columns.Add(new DataGridTextColumn { Header = "Default", Binding = new System.Windows.Data.Binding(nameof(WorkflowArgumentInfo.DefaultValue)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
+		var name = new TextBox { Width = 130, Margin = new Thickness(4), ToolTip = "Argument name" };
+		var type = new TextBox { Width = 110, Margin = new Thickness(4), Text = "String", ToolTip = "Argument type" };
+		var defaultValue = new TextBox { Width = 110, Margin = new Thickness(4), ToolTip = "Literal default value (optional)" };
+		var add = new Button { Content = "Create Argument", Margin = new Thickness(4) };
+		var error = new TextBlock { Foreground = Brushes.OrangeRed, Margin = new Thickness(4), VerticalAlignment = VerticalAlignment.Center };
+		void Refresh() { rows = host.GetArgumentsAsync().GetAwaiter().GetResult(); grid.ItemsSource = rows; }
+		bool RunMutation(Func<DesignerSessionState> action) { try { error.Text = ""; Mutate(action); Refresh(); return true; } catch (Exception exception) { error.Text = exception.Message; diagnostic.Text = exception.Message; return false; } }
+		add.Click += (_, _) => { if (!string.IsNullOrWhiteSpace(name.Text) && RunMutation(() => host.AddArgumentAsync(state.Version, name.Text, type.Text, defaultValue.Text).GetAwaiter().GetResult())) { name.Clear(); defaultValue.Clear(); } };
+		var remove = new Button { Content = "Delete Selected", Margin = new Thickness(4) };
+		remove.Click += (_, _) => { if (grid.SelectedItem is WorkflowArgumentInfo argument) RunMutation(() => host.RemoveArgumentAsync(state.Version, argument.Name).GetAwaiter().GetResult()); };
+		var update = new Button { Content = "Update Selected", Margin = new Thickness(4) };
+		update.Click += (_, _) => { if (grid.SelectedItem is WorkflowArgumentInfo argument && !string.IsNullOrWhiteSpace(name.Text)) RunMutation(() => host.UpdateArgumentAsync(state.Version, argument.Name, name.Text, type.Text, defaultValue.Text).GetAwaiter().GetResult()); };
+		grid.SelectionChanged += (_, _) => { if (grid.SelectedItem is WorkflowArgumentInfo argument) { name.Text = argument.Name; type.Text = argument.TypeName; defaultValue.Text = argument.DefaultValue; } };
+		grid.PreviewKeyDown += (_, e) => { if (e.Key == Key.Delete && grid.SelectedItem is WorkflowArgumentInfo argument) { RunMutation(() => host.RemoveArgumentAsync(state.Version, argument.Name).GetAwaiter().GetResult()); e.Handled = true; } };
+		var panel = new DockPanel(); var bar = new StackPanel { Orientation = Orientation.Horizontal }; bar.Children.Add(name); bar.Children.Add(type); bar.Children.Add(defaultValue); bar.Children.Add(add); bar.Children.Add(update); bar.Children.Add(remove); bar.Children.Add(error); DockPanel.SetDock(bar, Dock.Top); panel.Children.Add(bar); panel.Children.Add(grid);
+		new Window { Title = "Workflow Arguments", Width = 540, Height = 320, Content = panel }.ShowDialog();
+	}
+
+	void ShowVariables()
+	{
+		if (host == null) return;
+		var rows = host.GetVariablesAsync().GetAwaiter().GetResult();
+		var grid = new DataGrid { ItemsSource = rows, IsReadOnly = true, AutoGenerateColumns = false, Margin = new Thickness(8) };
+		grid.Columns.Add(new DataGridTextColumn { Header = "Name", Binding = new System.Windows.Data.Binding(nameof(WorkflowVariableInfo.Name)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
+		grid.Columns.Add(new DataGridTextColumn { Header = "Type", Binding = new System.Windows.Data.Binding(nameof(WorkflowVariableInfo.TypeName)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
+		grid.Columns.Add(new DataGridTextColumn { Header = "Scope", Binding = new System.Windows.Data.Binding(nameof(WorkflowVariableInfo.Scope)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
+		var name = new TextBox { Width = 130, Margin = new Thickness(4), ToolTip = "Variable name" };
+		var type = new TextBox { Width = 110, Margin = new Thickness(4), Text = "String", ToolTip = "Variable type" };
+		var add = new Button { Content = "Create Variable", Margin = new Thickness(4) };
+		var remove = new Button { Content = "Delete Selected", Margin = new Thickness(4) };
+		var error = new TextBlock { Foreground = Brushes.OrangeRed, Margin = new Thickness(4), VerticalAlignment = VerticalAlignment.Center };
+		void Refresh() { rows = host.GetVariablesAsync().GetAwaiter().GetResult(); grid.ItemsSource = rows; }
+		bool RunMutation(Func<DesignerSessionState> action) { try { error.Text = ""; Mutate(action); Refresh(); return true; } catch (Exception exception) { error.Text = exception.Message; diagnostic.Text = exception.Message; return false; } }
+		add.Click += (_, _) => { if (!string.IsNullOrWhiteSpace(name.Text) && RunMutation(() => host.AddVariableAsync(state.Version, name.Text, type.Text).GetAwaiter().GetResult())) name.Clear(); };
+		remove.Click += (_, _) => { if (grid.SelectedItem is WorkflowVariableInfo variable) RunMutation(() => host.RemoveVariableAsync(state.Version, variable.Name).GetAwaiter().GetResult()); };
+		grid.SelectionChanged += (_, _) => { if (grid.SelectedItem is WorkflowVariableInfo variable) { name.Text = variable.Name; type.Text = variable.TypeName; } };
+		grid.PreviewKeyDown += (_, e) => { if (e.Key == Key.Delete && grid.SelectedItem is WorkflowVariableInfo variable) { RunMutation(() => host.RemoveVariableAsync(state.Version, variable.Name).GetAwaiter().GetResult()); e.Handled = true; } };
+		var panel = new DockPanel(); var bar = new StackPanel { Orientation = Orientation.Horizontal }; bar.Children.Add(name); bar.Children.Add(type); bar.Children.Add(add); bar.Children.Add(remove); bar.Children.Add(error); DockPanel.SetDock(bar, Dock.Top); panel.Children.Add(bar); panel.Children.Add(grid);
+		new Window { Title = "Workflow Variables (root scope)", Width = 540, Height = 320, Content = panel }.ShowDialog();
 	}
 
 	/// <summary>Activity types with a child-activity collection (Sequence.Activities and

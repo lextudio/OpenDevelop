@@ -20,6 +20,7 @@ sealed class WorkflowDocument
 	static readonly BindingFlags DeclaredPublicInstance = BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly;
 
 	public Activity? Root { get; private set; }
+	public ActivityBuilder? Builder { get; private set; }
 	public bool LastParseSucceeded { get; private set; }
 	public string Error { get; private set; } = "";
 
@@ -29,11 +30,13 @@ sealed class WorkflowDocument
 			using var stringReader = new StringReader(xamlText);
 			using var xmlReader = XmlReader.Create(stringReader);
 			var builderReader = ActivityXamlServices.CreateBuilderReader(new XamlXmlReader(xmlReader));
-			var loaded = (ActivityBuilder)XamlServices.Load(builderReader);
-			Root = loaded.Implementation;
+			Builder = (ActivityBuilder)XamlServices.Load(builderReader);
+			Root = Builder.Implementation;
 			LastParseSucceeded = true;
 			Error = "";
 		} catch (Exception ex) {
+			Builder = null;
+			Root = null;
 			LastParseSucceeded = false;
 			Error = ex.Message;
 		}
@@ -41,7 +44,7 @@ sealed class WorkflowDocument
 
 	public string ToXaml()
 	{
-		var builder = new ActivityBuilder { Implementation = Root };
+		var builder = Builder ?? new ActivityBuilder { Implementation = Root };
 		var stringWriter = new StringWriter();
 		using (var xmlWriter = XmlWriter.Create(stringWriter, new XmlWriterSettings { Indent = true })) {
 			var builderWriter = ActivityXamlServices.CreateBuilderWriter(new XamlXmlWriter(xmlWriter, new XamlSchemaContext()));
@@ -49,6 +52,127 @@ sealed class WorkflowDocument
 		}
 		return stringWriter.ToString();
 	}
+
+	/// <summary>Projects workflow-level ActivityBuilder arguments without exposing CoreWF types
+	/// outside the host process. The editor protocol can build its tabular Arguments surface from
+	/// this stable shape.</summary>
+	public IEnumerable<(string Name, string TypeName, string DefaultValue)> GetArguments()
+	{
+		if (Builder == null) yield break;
+		foreach (var property in Builder.Properties)
+			yield return (property.Name, property.Type?.Name ?? "Object", GetLiteralValue(property.Value));
+	}
+
+	public bool AddArgument(string name, string typeName, string defaultValue)
+	{
+		if (Builder == null || string.IsNullOrWhiteSpace(name) || Builder.Properties.Any(property => property.Name == name)) return false;
+		var type = ResolveArgumentType(typeName);
+		var propertyType = Builder.Properties.GetType().BaseType?.GetGenericArguments().LastOrDefault();
+		if (propertyType == null) return false;
+		var property = Activator.CreateInstance(propertyType);
+		if (property == null) return false;
+		propertyType.GetProperty("Name")?.SetValue(property, name);
+		propertyType.GetProperty("Type")?.SetValue(property, type);
+		if (!TrySetArgumentDefault(property, type, defaultValue)) return false;
+		var add = Builder.Properties.GetType().GetMethod("Add", new[] { propertyType });
+		if (add == null) return false;
+		add.Invoke(Builder.Properties, new[] { property });
+		return true;
+	}
+
+	public bool RemoveArgument(string name)
+	{
+		if (Builder == null || string.IsNullOrWhiteSpace(name)) return false;
+		var property = Builder.Properties.FirstOrDefault(item => item.Name == name);
+		if (property == null) return false;
+		Builder.Properties.Remove(property);
+		return true;
+	}
+
+	public bool UpdateArgument(string oldName, string newName, string typeName, string defaultValue)
+	{
+		if (Builder == null || string.IsNullOrWhiteSpace(oldName) || string.IsNullOrWhiteSpace(newName)) return false;
+		var property = Builder.Properties.FirstOrDefault(item => item.Name == oldName);
+		if (property == null || (oldName != newName && Builder.Properties.Any(item => item.Name == newName))) return false;
+		Builder.Properties.Remove(property);
+		var runtimeType = property.GetType();
+		runtimeType.GetProperty("Name")?.SetValue(property, newName);
+		var type = ResolveArgumentType(typeName);
+		runtimeType.GetProperty("Type")?.SetValue(property, type);
+		if (!TrySetArgumentDefault(property, type, defaultValue)) return false;
+		var add = Builder.Properties.GetType().GetMethods().FirstOrDefault(method => method.Name == "Add" && method.GetParameters() is { Length: 1 } parameters && parameters[0].ParameterType.IsAssignableFrom(runtimeType));
+		if (add == null) return false;
+		add.Invoke(Builder.Properties, new[] { property });
+		return true;
+	}
+
+	static bool TrySetArgumentDefault(object property, Type type, string value)
+	{
+		var valueProperty = property.GetType().GetProperty("Value");
+		if (valueProperty == null) return false;
+		if (string.IsNullOrWhiteSpace(value)) { valueProperty.SetValue(property, null); return true; }
+		try {
+			var literal = ConvertLiteral(value, type);
+			var argumentType = typeof(InArgument<>).MakeGenericType(type);
+			valueProperty.SetValue(property, Activator.CreateInstance(argumentType, literal));
+			return true;
+		} catch (Exception) { return false; }
+	}
+
+	static string GetLiteralValue(object? value)
+	{
+		var expression = value?.GetType().GetProperty("Expression")?.GetValue(value);
+		return expression?.GetType().GetProperty("Value")?.GetValue(expression)?.ToString() ?? "";
+	}
+
+	static object ConvertLiteral(string value, Type type)
+	{
+		if (type == typeof(string)) return value;
+		if (type == typeof(bool)) return bool.Parse(value);
+		if (type.IsEnum) return Enum.Parse(type, value, ignoreCase: true);
+		return Convert.ChangeType(value, type, System.Globalization.CultureInfo.InvariantCulture)!;
+	}
+
+	public IEnumerable<(string Name, string TypeName, string Scope)> GetVariables()
+	{
+		var variables = Root?.GetType().GetProperty("Variables")?.GetValue(Root) as System.Collections.IEnumerable;
+		if (variables == null) yield break;
+		foreach (var variable in variables.Cast<object>())
+			yield return ((string?)variable.GetType().GetProperty("Name")?.GetValue(variable) ?? "", (variable.GetType().GetProperty("Type")?.GetValue(variable) as Type)?.Name ?? "Object", Root!.GetType().Name);
+	}
+
+	public bool AddVariable(string name, string typeName)
+	{
+		if (Root == null || string.IsNullOrWhiteSpace(name)) return false;
+		var variables = Root.GetType().GetProperty("Variables")?.GetValue(Root);
+		if (variables is not System.Collections.IEnumerable existing || existing.Cast<object>().Any(variable => (string?)variable.GetType().GetProperty("Name")?.GetValue(variable) == name)) return false;
+		var variableType = typeof(Variable<>).MakeGenericType(ResolveArgumentType(typeName));
+		var variable = Activator.CreateInstance(variableType);
+		if (variable == null) return false;
+		variableType.GetProperty("Name")?.SetValue(variable, name);
+		var add = variables.GetType().GetMethods().FirstOrDefault(method => method.Name == "Add" && method.GetParameters() is { Length: 1 } parameters && parameters[0].ParameterType.IsAssignableFrom(variableType));
+		if (add == null) return false;
+		add.Invoke(variables, new[] { variable });
+		return true;
+	}
+
+	public bool RemoveVariable(string name)
+	{
+		if (Root == null || string.IsNullOrWhiteSpace(name)) return false;
+		var variables = Root.GetType().GetProperty("Variables")?.GetValue(Root);
+		if (variables is not System.Collections.IEnumerable existing) return false;
+		var variable = existing.Cast<object>().FirstOrDefault(item => (string?)item.GetType().GetProperty("Name")?.GetValue(item) == name);
+		if (variable == null) return false;
+		var remove = variables.GetType().GetMethods().FirstOrDefault(method => method.Name == "Remove" && method.GetParameters() is { Length: 1 } parameters && parameters[0].ParameterType.IsAssignableFrom(variable.GetType()));
+		if (remove == null) return false;
+		remove.Invoke(variables, new[] { variable });
+		return true;
+	}
+
+	static Type ResolveArgumentType(string name) => name.Trim().ToLowerInvariant() switch {
+		"string" => typeof(string), "int" or "int32" => typeof(int), "bool" or "boolean" => typeof(bool),
+		"double" => typeof(double), "decimal" => typeof(decimal), _ => Type.GetType(name) ?? typeof(object)
+	};
 
 	/// <summary>Finds an activity by its structural path id ("" for the root, "0.2.1" for the
 	/// second child of the third child of the root - dot-joined <see cref="WorkflowInspectionServices"/>

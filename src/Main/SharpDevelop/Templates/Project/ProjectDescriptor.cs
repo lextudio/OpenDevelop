@@ -60,6 +60,7 @@ namespace ICSharpCode.SharpDevelop.Templates
 		string name;
 		string defaultPlatform;
 		string relativePath;
+		string sdk;
 		
 		/// <summary>
 		/// The language of the project.
@@ -101,6 +102,13 @@ namespace ICSharpCode.SharpDevelop.Templates
 				ProjectTemplateImpl.WarnAttributeMissing(element, "language");
 			}
 			defaultPlatform = element.GetAttribute("defaultPlatform");
+			// Opt-in modern-project creation (see ProjectCreateInformation.Sdk / MSBuildBasedProject's
+			// create-new-project constructor): a template that sets this attribute gets a real
+			// <Project Sdk="..."> skeleton instead of the legacy ToolsVersion/ProjectGuid format.
+			// Absent (the default for every existing template), nothing changes.
+			if (element.HasAttribute("sdk")) {
+				sdk = element.GetAttribute("sdk");
+			}
 			
 			LoadElementChildren(element, fileSystem);
 		}
@@ -311,6 +319,8 @@ namespace ICSharpCode.SharpDevelop.Templates
 				FileName projectLocation = projectBasePath.CombineFile(newProjectName + descriptor.ProjectFileExtension);
 				ProjectCreateInformation info = new ProjectCreateInformation(parentSolution, projectLocation);
 				info.TargetFramework = projectCreateOptions.TargetFramework;
+				if (!string.IsNullOrEmpty(sdk))
+					info.Sdk = StringParser.Parse(sdk);
 				
 				StringBuilder standardNamespace = new StringBuilder();
 				// filter 'illegal' chars from standard namespace

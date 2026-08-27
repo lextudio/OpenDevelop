@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <Template originator = "Daniel Grunwald" created = "26/04/2005">
-	
+
 	<!-- Template Header -->
 	<TemplateConfiguration>
 		<Name>${res:Templates.Project.SharpDevelopAddin.Name}</Name>
@@ -8,70 +8,49 @@
 		<Subcategory>SharpDevelop</Subcategory>
 		<Icon>C#.Project.ControlLibrary</Icon>
 		<Description>${res:Templates.Project.SharpDevelopAddin.Description}</Description>
-		<SupportedTargetFrameworks>v4.0</SupportedTargetFrameworks>
 	</TemplateConfiguration>
-	
+
 	<!-- Actions -->
 	<Actions>
 		<Open filename = "${ProjectName}.addin"/>
 		<Open filename = "AddInWritingHelp.txt"/>
 	</Actions>
-	
-	<Project language = "C#">
-		<ProjectItems>
-			<Reference Include="System" />
-			<Reference Include="System.Data" />
-			<Reference Include="System.Drawing" />
-			<Reference Include="System.Windows.Forms" />
-			<Reference Include="System.Xml" />
-			<Reference Include="System.Xaml" />
-			<Reference Include="WindowsBase" />
-			<Reference Include="PresentationCore" />
-			<Reference Include="PresentationFramework" />
-		</ProjectItems>
-		
+
+	<!-- Modern SDK-style project (see ProjectCreateInformation.Sdk / MSBuildBasedProject's
+	     create-new-project constructor): matches the shape every real addin in this repo already
+	     uses (e.g. src/AddIns/Misc/SearchAndReplace). No <ProjectItems><Reference .../></ProjectItems>
+	     needed - the SDK's implicit framework references cover WPF/System.* already. -->
+	<Project language = "C#" sdk = "Microsoft.NET.Sdk">
 		<PropertyGroup>
+			<OpenDevelopAddin>true</OpenDevelopAddin>
+			<OpenDevelopAddinKind>InProcess</OpenDevelopAddinKind>
+			<TargetFramework>net10.0-windows</TargetFramework>
+			<EnableWindowsTargeting>true</EnableWindowsTargeting>
+			<UseWPF>true</UseWPF>
 			<OutputType>Library</OutputType>
 		</PropertyGroup>
-		
+
 		<Files>
 			<File name="${ProjectName}.addin" CopyToOutputDirectory="Always"><![CDATA[<AddIn name        = "${ProjectName}"
        author      = "${USER}"
        url         = ""
        description = "TODO: Put description here">
-	
+
 	<Manifest>
         <Identity name="${ProjectName}" />
     </Manifest>
-	
+
 	<Runtime>
 		<Import assembly = "${ProjectName}.dll"/>
 	</Runtime>
-	
-	<!-- Extend the SharpDevelop AddIn-Tree like this:
+
+	<!-- Extend the OpenDevelop AddIn-Tree like this:
 	<Path name = ...>
 		<.../>
 	</Path>
 	-->
 </AddIn>
 ]]></File>
-			<File name="${ProjectName}.nuspec"><![CDATA[<?xml version="1.0"?>
-<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
-  <metadata>
-    <id>${ProjectName}</id>
-    <version>1.0.0.0</version>
-    <authors>${USER}</authors>
-    <owners>${USER}</owners>
-    <projectUrl>TODO Put project web URL here</projectUrl>
-    <description>TODO: Put description here</description>
-    <tags>TODO: Put tags here</tags>
-  </metadata>
-  <files>
-    <file src="bin\Release\${ProjectName}.addin" target="" />
-  </files>
-</package>
-]]></File>
-			<File name="Configuration/AssemblyInfo.cs" src="DefaultAssemblyInfo.cs"/>
 			<File name="AddInWritingHelp.txt" src="..\AddInWritingHelp.txt"/>
 		</Files>
 	</Project>

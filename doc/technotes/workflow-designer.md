@@ -148,8 +148,12 @@ Scope carried over from the earlier draft, still true:
    and `DesignerCommandController` for the Delete command — instead of the hand-rolled
    event-wiring an earlier draft of this file used, so it doesn't start life as a sixth
    almost-identical copy of that plumbing. Versioned CoreWF XAML history powers standard
-   Undo/Redo, and toolbox insertion supports both double-click and drag/drop. Flowchart,
-   variables/arguments, custom-activity discovery and expression editing remain step 4 work.
+   Undo/Redo, and toolbox insertion supports both double-click and drag/drop. The workflow-level
+   Arguments panel is also live: it projects the `ActivityBuilder` properties, creates, deletes,
+   renames, retargets argument types and edits literal defaults through the host, and every mutation participates in the
+   same history. A root-scope Variables panel provides the same create/delete, versioned and
+   undoable baseline for activities that expose a CoreWF `Variables` collection. Nested scope,
+   default values, custom-activity discovery and expression editing remain step 4 work.
 4. **Toolbox + additional activity shapes**: `If`/`Flowchart`/custom activities, drag-drop from a
    `ToolboxControl` populated from CoreWF + referenced activity-library assemblies (paralleling
    `ActivityLibraries/` in the upstream sample), and an expression editor (CoreWF supports C#
@@ -183,10 +187,13 @@ docs below. Concrete conventions to replicate, most-to-least load-bearing:
   [`how-to-use-the-variable-designer.md`](https://github.com/MicrosoftDocs/visualstudio-docs/blob/main/docs/workflow-designer/how-to-use-the-variable-designer.md)):
   buttons in the canvas's lower-left corner open a tabular grid with a `Create Argument`/
   `Create Variable` blank row (name/direction/type/default, or name/type/scope/default); Delete
-  key removes the selected row. Nothing in `WorkflowDocument`/the host protocol represents
-  workflow-level arguments or variables yet — this is new surface, not a rendering change, and
-  belongs with the `If`/`Flowchart` work in step 4 since `Assign`/expression-bound activities need
-  variables to be meaningful at all.
+  key removes the selected row. The addin now exposes an **Arguments** panel from the breadcrumb
+  bar (and `Ctrl+E`, then `A`): it reads the workflow `ActivityBuilder` properties and supports
+  create, delete, rename, type changes and literal default-value changes, with each operation versioned and undoable. It currently
+  supports the common `String`, `Int32`, `Boolean`, `Double`, and `Decimal` types plus fully
+  qualified CLR type names. The adjacent **Variables** panel (and `Ctrl+E`, then `V`) provides
+  create/delete for the root activity's `Variables` collection and displays its scope; nested
+  scopes, CoreWF direction editing and expression-bound defaults remain step 4 work.
 - **Expression editor** ([`how-to-use-the-expression-editor.md`](https://github.com/MicrosoftDocs/visualstudio-docs/blob/main/docs/workflow-designer/how-to-use-the-expression-editor.md)):
   renders as a plain `TextBlock` until focused, then becomes a real (VB-syntax) expression editor
   with IntelliSense-in-VS-only, and is also reachable via an ellipsis button from the property
@@ -209,8 +216,9 @@ docs below. Concrete conventions to replicate, most-to-least load-bearing:
   the overview to a precise ScrollViewer viewport rectangle remains deferred.
 - **Keyboard shortcuts** ([`keyboard-shortcuts-in-the-workflow-designer.md`](https://github.com/MicrosoftDocs/visualstudio-docs/blob/main/docs/workflow-designer/keyboard-shortcuts-in-the-workflow-designer.md)):
   a full `Ctrl+E, <letter>` shortcut family (Arguments, Variables, expand/collapse, flowchart
-  connect, next-item focus, ...). Worth adopting once the corresponding panels/features exist —
-  no point binding `Ctrl+E, A` before there's an Arguments designer to show.
+  connect, next-item focus, ...). `Ctrl+E`, then `A` opens Arguments and `Ctrl+E`, then `V` opens
+  root-scope Variables; the remaining members should be bound when their matching panels/features
+  arrive.
 
 None of the per-activity-designer pages (`if-activity-designer.md`, `flowchart-activity-designer.md`,
 `assign-activity-designer.md`, etc.) are reproduced here; read the relevant one directly from the

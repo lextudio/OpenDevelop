@@ -88,23 +88,35 @@ namespace ICSharpCode.SharpDevelop.Project
 		protected CompilableProject(ProjectCreateInformation information)
 			: base(information)
 		{
+			bool sdkStyle = !string.IsNullOrEmpty(information.Sdk);
+
 			this.OutputType = OutputType.Exe;
 			SetProperty("RootNamespace", information.RootNamespace);
 			SetProperty("AssemblyName", information.ProjectName);
-			
+
 			if (information.TargetFramework != null) {
 				SetProperty(null, null, "TargetFrameworkVersion", information.TargetFramework.TargetFrameworkVersion, PropertyStorageLocations.Base, true);
 				if (!string.IsNullOrEmpty(information.TargetFramework.TargetFrameworkProfile)) {
 					SetProperty(null, null, "TargetFrameworkProfile", information.TargetFramework.TargetFrameworkProfile, PropertyStorageLocations.Base, true);
 				}
 			}
-			
+
+			if (sdkStyle) {
+				// None of OutputPath/DebugSymbols/DebugType/Optimize below - the SDK's own
+				// Debug/Release-conditioned defaults already cover all four, and writing them
+				// explicitly here is exactly the noise that made a real SDK-style project look
+				// legacy: no project in this repo that actually uses Sdk="..." has any of these
+				// four properties in its file.
+				LoadConfigurationPlatformNamesFromMSBuild();
+				return;
+			}
+
 			SetProperty("Debug", null, "OutputPath", @"bin\Debug\",
 			            PropertyStorageLocations.ConfigurationSpecific, true);
 			SetProperty("Release", null, "OutputPath", @"bin\Release\",
 			            PropertyStorageLocations.ConfigurationSpecific, true);
 			LoadConfigurationPlatformNamesFromMSBuild();
-			
+
 			SetProperty("Debug", null, "DebugSymbols", "True",
 			            PropertyStorageLocations.ConfigurationSpecific, true);
 			SetProperty("Release", null, "DebugSymbols", "False",

@@ -131,5 +131,16 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		public string RootNamespace { get; set; }
 		public TargetFramework TargetFramework { get; set; }
+
+		/// <summary>
+		/// Opt-in: when set, the new project is created as a modern SDK-style project
+		/// (&lt;Project Sdk="..."&gt;) instead of the legacy ToolsVersion/ProjectGuid/ProjectTypeGuids
+		/// skeleton every "new project" template has produced until now (see
+		/// MSBuildBasedProject's create-new-project constructor). The value is the literal Sdk
+		/// attribute content, e.g. "Microsoft.NET.Sdk" or "LibreWPF.Sdk;OpenDevelop.Addin.Sdk/0.1.0-preview.1".
+		/// Null (the default) preserves the exact existing behavior for every template that
+		/// doesn't request this.
+		/// </summary>
+		public string Sdk { get; set; }
 	}
 }

@@ -278,24 +278,50 @@ namespace ICSharpCode.SharpDevelop.Project
 			this.itemsCollection = new ProjectItemCollection(this);
 			this.configurationNames = new MSBuildConfigurationOrPlatformNameCollection(this, false);
 			this.platformNames = new MSBuildConfigurationOrPlatformNameCollection(this, true);
-			this.projectFile = ProjectRootElement.Create(MSBuildProjectCollection);
+			bool sdkStyle = !string.IsNullOrEmpty(information.Sdk);
+			// ProjectRootElement.Create's parameterless overload defaults to writing BOTH an XML
+			// declaration and an explicit ToolsVersion="Current" attribute on save
+			// (NewProjectFileOptions.IncludeXmlDeclaration|IncludeToolsVersion) - exactly the
+			// <?xml ...?>/ToolsVersion="Current"/xmlns=".../2003" noise that made a first attempt at
+			// this look like it hadn't gone SDK-style at all, even though Sdk was set correctly.
+			// None of it is on any real SDK-style project in this repo. NewProjectFileOptions.None
+			// suppresses both; the legacy path keeps the original defaults unchanged.
+			this.projectFile = sdkStyle
+				? ProjectRootElement.Create(MSBuildProjectCollection, Microsoft.Build.Evaluation.NewProjectFileOptions.None)
+				: ProjectRootElement.Create(MSBuildProjectCollection);
 			this.userProjectFile = ProjectRootElement.Create(MSBuildProjectCollection);
 			
 			projectFile.FullPath = information.FileName;
-			projectFile.ToolsVersion = "4.0";
-			projectFile.DefaultTargets = "Build";
 			userProjectFile.FullPath = information.FileName + ".user";
 			
-			projectFile.AddProperty(ProjectGuidPropertyName, IdGuid.ToString("B").ToUpperInvariant());
-			projectFile.AddProperty("ProjectTypeGuids", TypeGuid.ToString("B").ToUpperInvariant());
-			AddGuardedProperty("Configuration", information.ActiveProjectConfiguration.Configuration);
-			AddGuardedProperty("Platform", information.ActiveProjectConfiguration.Platform);
-			
-			string platform = information.ActiveProjectConfiguration.Platform;
-			if (ConfigurationAndPlatform.ConfigurationNameComparer.Equals(platform, "x86"))
-				SetProperty(null, platform, "PlatformTarget", "x86", PropertyStorageLocations.PlatformSpecific, false);
-			else
-				SetProperty(null, platform, "PlatformTarget", "AnyCPU", PropertyStorageLocations.PlatformSpecific, false);
+			if (sdkStyle) {
+				// Modern SDK-style skeleton: <Project Sdk="...">, nothing else. This is the exact
+				// shape every hand-authored/migrated modern project in this repo already has -
+				// zero ToolsVersion, ProjectGuid, ProjectTypeGuids, or PlatformTarget dance, all of
+				// which are legacy-project-format concerns the SDK's own implicit defaults replace.
+				// IdGuid/TypeGuid still exist on the in-memory IProject (used by the solution file
+				// writer), they are simply never written into the .csproj itself - matching how
+				// every real SDK-style project in this repo already looks on disk.
+				projectFile.Sdk = information.Sdk;
+				projectFile.DefaultTargets = null;
+			} else {
+				// Legacy skeleton - unchanged from before, so every existing template (25 C#
+				// templates alone) that doesn't opt in keeps generating byte-for-byte the same
+				// project file it always has.
+				projectFile.ToolsVersion = "4.0";
+				projectFile.DefaultTargets = "Build";
+				
+				projectFile.AddProperty(ProjectGuidPropertyName, IdGuid.ToString("B").ToUpperInvariant());
+				projectFile.AddProperty("ProjectTypeGuids", TypeGuid.ToString("B").ToUpperInvariant());
+				AddGuardedProperty("Configuration", information.ActiveProjectConfiguration.Configuration);
+				AddGuardedProperty("Platform", information.ActiveProjectConfiguration.Platform);
+				
+				string platform = information.ActiveProjectConfiguration.Platform;
+				if (ConfigurationAndPlatform.ConfigurationNameComparer.Equals(platform, "x86"))
+					SetProperty(null, platform, "PlatformTarget", "x86", PropertyStorageLocations.PlatformSpecific, false);
+				else
+					SetProperty(null, platform, "PlatformTarget", "AnyCPU", PropertyStorageLocations.PlatformSpecific, false);
+			}
 			LoadConfigurationPlatformNamesFromMSBuild();
 			isLoading = false;
 		}

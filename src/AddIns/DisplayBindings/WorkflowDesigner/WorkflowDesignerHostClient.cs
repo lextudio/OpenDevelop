@@ -1,27 +1,16 @@
-using System; using System.IO; using System.Threading; using System.Threading.Tasks; using ICSharpCode.SharpDevelop.Designer.Remote;
+using System; using System.Collections.Generic; using System.IO; using System.Threading; using System.Threading.Tasks; using ICSharpCode.SharpDevelop.Designer.Remote;
 namespace ICSharpCode.WorkflowDesigner;
 
 /// <summary>Owns one shared WorkflowDesigner.Host connection. Modeled directly on
-/// MewUIDesignerHostClient's shared-broker shape (designer-common.md), minus the
-/// undo/redo/reorder/host-recovery machinery that document isn't proven to need yet - CoreWF
-/// activities are plain CLR objects with no persistent host-side runtime state beyond the
-/// current document text, so a lost child can just be treated as a fresh document reopen for
-/// now.</summary>
-sealed class WorkflowDesignerHostClient : IDesignHostClient
+/// MewUIDesignerHostClient's shared-broker shape (designer-common.md). CoreWF activity trees are
+/// plain CLR objects, while versioned XAML snapshots provide undo/redo and resilient reopen.</summary>
+sealed class WorkflowDesignerHostClient : DesignerDocumentHostClient, IDesignHostClient
 {
 	static readonly SharedDesignerHostBroker<Connection> broker = new(c => c.IsAlive, StartConnectionAsync);
 	readonly Connection connection;
-	readonly DesignerDocumentRpcClient document;
 	bool disposed;
 
-	public string DocumentId { get; } = Guid.NewGuid().ToString("N");
-	public int ProcessId => connection.ProcessId;
-	public bool IsAlive => connection.IsAlive;
-	public string ChildLog => connection.ChildLog;
-	public string SessionId => connection.SessionId;
-	public event EventHandler? HostExited { add => connection.HostExited += value; remove => connection.HostExited -= value; }
-
-	WorkflowDesignerHostClient(Connection connection) { this.connection = connection; document = new DesignerDocumentRpcClient(connection, SessionId, DocumentId); }
+	WorkflowDesignerHostClient(Connection connection) : base(connection) => this.connection = connection;
 
 	public static async Task<WorkflowDesignerHostClient> CreateAsync(CancellationToken token = default)
 		=> new(await broker.AcquireAsync(token).ConfigureAwait(false));
@@ -34,23 +23,27 @@ sealed class WorkflowDesignerHostClient : IDesignHostClient
 		return connection;
 	}
 
-	public Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, CancellationToken token = default) => document.OpenAsync(snapshot, token);
-	public Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, CancellationToken token = default) => document.UpdateAsync(snapshot, token);
-	public Task<DesignerEditSet> FlushAsync(long baseVersion, CancellationToken token = default) => document.FlushAsync(baseVersion, token);
+	public Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, CancellationToken token = default) => Document.OpenAsync(snapshot, token);
+	public Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, CancellationToken token = default) => Document.UpdateAsync(snapshot, token);
+	public Task<DesignerEditSet> FlushAsync(long baseVersion, CancellationToken token = default) => Document.FlushAsync(baseVersion, token);
 	public Task<DesignerSessionState> SetPropertyAsync(long baseVersion, string elementId, string propertyName, string value, CancellationToken token = default)
-		=> document.SetPropertyAsync(baseVersion, elementId, propertyName, value, token);
+		=> Document.SetPropertyAsync(baseVersion, elementId, propertyName, value, token);
 	public Task<DesignerSessionState> RenameAsync(long baseVersion, string elementId, string newName, CancellationToken token = default)
-		=> document.RenameAsync(baseVersion, elementId, newName, token);
+		=> Document.RenameAsync(baseVersion, elementId, newName, token);
 	public Task<DesignerSessionState> AddElementAsync(long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, CancellationToken token = default)
-		=> document.AddElementAsync(baseVersion, parentId, item, proposedName, x, y, token);
+		=> Document.AddElementAsync(baseVersion, parentId, item, proposedName, x, y, token);
 	public Task<DesignerSessionState> DeleteElementsAsync(long baseVersion, string[] elementIds, CancellationToken token = default)
-		=> document.DeleteElementsAsync(baseVersion, elementIds, token);
+		=> Document.DeleteElementsAsync(baseVersion, elementIds, token);
 	public Task<DesignerSessionState> UndoAsync(long baseVersion, CancellationToken token = default) => connection.InvokeAsync<DesignerSessionState>("design/undo", new { sessionId = SessionId, documentId = DocumentId, baseVersion }, token);
 	public Task<DesignerSessionState> RedoAsync(long baseVersion, CancellationToken token = default) => connection.InvokeAsync<DesignerSessionState>("design/redo", new { sessionId = SessionId, documentId = DocumentId, baseVersion }, token);
+	public Task<List<WorkflowArgumentInfo>> GetArgumentsAsync(CancellationToken token = default) => connection.InvokeAsync<List<WorkflowArgumentInfo>>("workflow/get-arguments", new { sessionId = SessionId, documentId = DocumentId }, token);
+	public Task<DesignerSessionState> AddArgumentAsync(long baseVersion, string name, string typeName, string defaultValue, CancellationToken token = default) => connection.InvokeAsync<DesignerSessionState>("workflow/add-argument", new { sessionId = SessionId, documentId = DocumentId, baseVersion, name, typeName, defaultValue }, token);
+	public Task<DesignerSessionState> RemoveArgumentAsync(long baseVersion, string name, CancellationToken token = default) => connection.InvokeAsync<DesignerSessionState>("workflow/remove-argument", new { sessionId = SessionId, documentId = DocumentId, baseVersion, name }, token);
+	public Task<DesignerSessionState> UpdateArgumentAsync(long baseVersion, string oldName, string newName, string typeName, string defaultValue, CancellationToken token = default) => connection.InvokeAsync<DesignerSessionState>("workflow/update-argument", new { sessionId = SessionId, documentId = DocumentId, baseVersion, oldName, newName, typeName, defaultValue }, token);
+	public Task<List<WorkflowVariableInfo>> GetVariablesAsync(CancellationToken token = default) => connection.InvokeAsync<List<WorkflowVariableInfo>>("workflow/get-variables", new { sessionId = SessionId, documentId = DocumentId }, token);
+	public Task<DesignerSessionState> AddVariableAsync(long baseVersion, string name, string typeName, CancellationToken token = default) => connection.InvokeAsync<DesignerSessionState>("workflow/add-variable", new { sessionId = SessionId, documentId = DocumentId, baseVersion, name, typeName }, token);
+	public Task<DesignerSessionState> RemoveVariableAsync(long baseVersion, string name, CancellationToken token = default) => connection.InvokeAsync<DesignerSessionState>("workflow/remove-variable", new { sessionId = SessionId, documentId = DocumentId, baseVersion, name }, token);
 
-	public Task PingAsync(CancellationToken token = default) => connection.PingAsync(token);
-	public Task ShutdownAsync(CancellationToken token = default) => document.CloseAsync(token);
-	public void TerminateHost() => connection.TerminateHost();
 
 	public Task<DesignerSessionState> SetEventAsync(long v, string id, string e, string h, CancellationToken t = default) => throw new NotSupportedException();
 	public Task<DesignerSessionState> SetBoundsAsync(long v, string id, double x, double y, double w, double h, CancellationToken t = default) => throw new NotSupportedException();
@@ -60,7 +53,7 @@ sealed class WorkflowDesignerHostClient : IDesignHostClient
 	{
 		if (disposed) return;
 		disposed = true;
-		try { ShutdownAsync(CancellationToken.None).Wait(TimeSpan.FromSeconds(3)); } catch { }
+		try { base.ShutdownAsync(CancellationToken.None).Wait(TimeSpan.FromSeconds(3)); } catch { }
 		broker.Release(connection);
 	}
 

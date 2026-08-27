@@ -294,6 +294,24 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public string TypeName { get; set; } = "";
 	}
 
+	/// <summary>Workflow-level argument projection. It deliberately carries no CoreWF runtime
+	/// object so an out-of-process workflow host can expose its ActivityBuilder metadata safely.</summary>
+	public sealed class WorkflowArgumentInfo
+	{
+		public string Name { get; set; } = "";
+		public string TypeName { get; set; } = "Object";
+		public string DefaultValue { get; set; } = "";
+	}
+
+	/// <summary>Workflow variable projection for the root activity scope. Like arguments, this
+	/// deliberately remains transport-only and never leaks CoreWF types to the addin.</summary>
+	public sealed class WorkflowVariableInfo
+	{
+		public string Name { get; set; } = "";
+		public string TypeName { get; set; } = "Object";
+		public string Scope { get; set; } = "Root activity";
+	}
+
 	/// <summary>Parse/layout diagnostic with source location.</summary>
 	public sealed class DesignerDiagnostic
 	{
