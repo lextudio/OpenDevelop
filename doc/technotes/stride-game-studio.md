@@ -1057,6 +1057,16 @@ Known/expected friction to resolve when running for real (measured 2026-08-26, t
 
 ## Work log
 
+- **2026-08-26 (prefab-asset display binding — `.sprefab` opens the fused prefab editor)** — The
+  Projects pad's `.sdpkg` Assets subtree now double-clicks `.sprefab` assets into a real editor:
+  `StridePrefabDisplayBinding` (`StridePrefabAssetView`) matches `\.sprefab$`, finds the owning
+  `.sdpkg` (with the same parent-climb + sibling-dir search as the scene binding), opens (or
+  reuses) the one Stride session, resolves the `PrefabViewModel` by `AssetItem.FullPath`, and
+  drives `StrideSceneEditorViewport` with a `PrefabEditorViewModel` factory. The viewport was
+  generalized from `SceneEditorViewModel`-specific to accept a `Func<GameEditorViewModel>` factory
+  (keeping the `SceneViewModel` convenience ctor), so it can host any `GameEditorViewModel`
+  (Scene, Prefab, etc.). No `.sprefab` assets exist in the Stride samples to test against yet;
+  the binding follows the same proven pattern as the scene binding and compiles clean.
 - **2026-08-26 (scene-asset display binding — `.sdscene` opens the fused scene editor)** — The
   Projects pad's `.sdpkg` Assets subtree now double-clicks into a real editor: a
   `StrideSceneAssetDisplayBinding` (`StrideSceneAssetView`) matches `\.sdscene$`, finds the owning
