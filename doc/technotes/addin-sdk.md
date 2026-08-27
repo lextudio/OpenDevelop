@@ -68,6 +68,39 @@ The SDK also discovers and deploys `*.addin` beside the project, removing the re
 `CopyAddInManifest` target from individual projects. An explicit `OpenDevelopAddinManifest` item is
 supported for nonstandard layouts.
 
+### F5 / debugger loop for in-process addins
+
+An in-process addin is normally a class library, so it has no executable start target of its own.
+The SDK now makes it startable without a project-system special case. For a project with
+`OpenDevelopAddin=true` and `OpenDevelopAddinKind=InProcess`, it supplies the ordinary project
+start properties when the project has not already set them:
+
+| Property | SDK value | Purpose |
+|---|---|---|
+| `StartAction` | `Program` | Makes an addin library startable from Run/Debug. |
+| `StartProgram` | `$(OpenDevelopDebugHost)` | Starts a second OpenDevelop instance. The default resolves to `OpenDevelop` in `$(OpenDevelopHostBin)`. |
+| `StartWorkingDirectory` | `$(OpenDevelopHostBin)` | Gives the child its normal host probing context. |
+| `StartArguments` | `-addindir:<addin output> -configdir:<project>/.od-experimental-instance -devflow:off` | Loads the just-built addin, isolates the experimental profile, and avoids competing with the parent IDE's DevFlow port. |
+
+Consequently, opening an addin project and pressing F5 starts an isolated OpenDevelop child that
+loads the build output directly. Starting under the debugger also supports pending breakpoints in
+the addin: the debugger binds them when the child loads the addin assembly. This works for an
+addin living outside the OpenDevelop checkout as long as it supplies `OpenDevelopHostBin` (or the
+consuming repository's `Directory.Build.targets` supplies the equivalent host location).
+
+Every value is conditionally assigned. An addin may override `OpenDevelopDebugHost`,
+`OpenDevelopDebugConfigDir`, `StartProgram`, `StartArguments`, or `StartWorkingDirectory`; the SDK
+does not overwrite an explicit project choice. This loop intentionally applies only to
+`InProcess` addins: an `OutOfProcessHost` already has its own executable and launch contract.
+
+The real Stride addin exercises this path in
+`StrideGameStudioIntegrationTests.StrideAddInProject_IsStartable_AndDebuggingBreaksInsideTheAddIn`.
+The optional test opens the addin project, checks the evaluated start properties, sets a breakpoint
+in its autostart command before launching, and verifies that a debug session stops in the addin
+source. It skips when `STRIDE_CHECKOUT_ROOT` or the deployed Stride addin is absent; build
+`sources/tools/Stride.OpenDevelop.AddIn/ICSharpCode.StrideGameStudio.csproj` in that checkout to
+enable it.
+
 ### Baseline manifest
 
 The host build writes `$(TargetDir)OpenDevelop.host-assemblies.txt` — newline-separated filenames
@@ -138,6 +171,10 @@ scope until version unification and a shared probing path are proven.
   fails loudly.
 * In-process addin loading is exercised by nearly every suite fact (AddInTree parses
   every deployed `.addin` at startup; a missing assembly surfaces on first use).
+* `StrideAddInProject_IsStartable_AndDebuggingBreaksInsideTheAddIn` covers the SDK's development
+  loop against an out-of-repository addin: F5/debug starts an isolated child with `-addindir:`,
+  retains a separate config directory, and binds a pending breakpoint when the addin module loads.
+  It is conditional on the local Stride checkout and deployed addin being present.
 * Bisection hatch: `-p:OpenDevelopTrimAddinCopyLocal=false`.
 
 The focused build-level regression test is:
@@ -151,6 +188,23 @@ an addin-private DLL and runtime XML remain, the `.addin` manifest is deployed, 
 reference assemblies, and foreign native runtimes are removed. `dotnet pack
 src/SDK/OpenDevelop.Addin.Sdk/OpenDevelop.Addin.Sdk.csproj` additionally verifies the NuGet/MSBuild
 SDK package layout.
+
+## Coordinated macOS release
+
+`release.macos.ps1` (or `release.macos.sh`) releases a macOS DMG containing the local
+`OpenDevelop.Addin.Sdk`. It creates a GitHub **draft** release, uploads the DMG, and only then
+publishes the draft. The SDK is not pushed to NuGet.org: the installed application bundles both its
+SDK files and an MSBuild SDK resolver, so external projects can use `Sdk="OpenDevelop.Addin.Sdk"`
+against the matching installed IDE.
+
+```sh
+./release.macos.sh --version 0.1.0-preview.2 --prepare-only
+./release.macos.sh --version 0.1.0-preview.2
+```
+
+The first form performs no remote mutation. The second requires an authenticated `gh` session (or
+`GITHUB_TOKEN`). Releases reject a dirty worktree and an existing versioned artifact directory by
+default; use `-AllowDirtyWorktree` only for an explicit exception.
 
 ## macOS distribution acceptance (2026-08-22)
 

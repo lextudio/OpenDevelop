@@ -39,6 +39,7 @@ tests/fixtures/CoverageFixture/CoverageTests/CodeCoverage/coverage.xml
 *.app/
 .od/
 *.dmg
+/artifacts/
 
 # keep the macOS packaging scripts tracked
 /build/*

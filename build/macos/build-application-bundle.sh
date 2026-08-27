@@ -107,6 +107,21 @@ if [[ ! -d "$src" ]]; then
 fi
 cp -Rp "$src"/. "$bundle_macos/"
 
+# Make the Addin SDK part of the installed IDE rather than a separately published
+# NuGet package. The resolver is built as part of SharpDevelop's project graph.
+sdk_source="$repo_root/src/SDK/OpenDevelop.Addin.Sdk/Sdk"
+resolver_source="$repo_root/src/SDK/OpenDevelop.Addin.SdkResolver/bin/${config}/net10.0"
+if [[ ! -d "$sdk_source" || ! -f "$resolver_source/OpenDevelop.Addin.SdkResolver.dll" ]]; then
+  echo "OpenDevelop Addin SDK/resolver output was not built" >&2
+  exit 1
+fi
+mkdir -p "$bundle_macos/Sdks/OpenDevelop.Addin.Sdk" "$bundle_macos/SdkResolvers/OpenDevelop.Addin.SdkResolver"
+cp -Rp "$sdk_source" "$bundle_macos/Sdks/OpenDevelop.Addin.Sdk/"
+cp -p "$resolver_source"/*.dll "$bundle_macos/SdkResolvers/OpenDevelop.Addin.SdkResolver/"
+cat > "$bundle_macos/SdkResolvers/OpenDevelop.Addin.SdkResolver/OpenDevelop.Addin.SdkResolver.xml" <<'EOF'
+<SdkResolver><Path>OpenDevelop.Addin.SdkResolver.dll</Path></SdkResolver>
+EOF
+
 # LibreWPF builds one native Win32-compatibility shim and exposes it under the
 # P/Invoke library names used by WPF/AvalonDock. Its SDK target writes these to
 # TargetDir after Build, not to framework-dependent PublishDir. They are required

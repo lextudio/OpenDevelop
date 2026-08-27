@@ -339,6 +339,7 @@ Clone with submodules, or initialize them after cloning.
 ./launch.sh --build-only
 ./rebuild-all.sh       # full rebuild of the app and its dependencies
 ./dist.macos.sh        # produce a distributable bundle
+./release.macos.sh --version 0.1.0-preview.2 --prepare-only # prepare a DMG with the bundled Addin SDK
 ```
 
 The main application solution is:

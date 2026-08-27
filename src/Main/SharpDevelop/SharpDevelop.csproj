@@ -17,6 +17,9 @@
     <AssemblyOriginatorKeyFile>..\ICSharpCode.SharpDevelop.snk</AssemblyOriginatorKeyFile>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Build the resolver consumed by external addin projects; the macOS bundle copies its
+         output beside the other MSBuild SDK resolvers. It is not an app runtime reference. -->
+    <ProjectReference Include="..\..\SDK\OpenDevelop.Addin.SdkResolver\OpenDevelop.Addin.SdkResolver.csproj" ReferenceOutputAssembly="false" />
     <Compile Remove="Dom\TreeNodeFactoryService.cs" />
     <PackageReference Include="Microsoft.Build" />
     <PackageReference Include="Microsoft.Build.Framework" />

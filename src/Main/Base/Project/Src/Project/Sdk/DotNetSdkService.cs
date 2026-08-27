@@ -303,7 +303,13 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 			result["DOTNET_HOST_PATH"] = sdk.DotnetExecutablePath;
 			result["MSBuildSDKsPath"] = Path.Combine(sdkVersionDir, "Sdks");
 			result["MSBuildExtensionsPath"] = sdkVersionDir;
-			result["MSBUILDADDITIONALSDKRESOLVERSFOLDER_NET"] = Path.Combine(sdkVersionDir, "SdkResolvers");
+			// The installed application bundles OpenDevelop.Addin.SdkResolver beside a copy of
+			// the .NET resolvers. Prefer that combined folder so external addin projects can use
+			// Sdk="OpenDevelop.Addin.Sdk" without fetching a NuGet SDK package.
+			var bundledResolvers = Path.Combine(AppContext.BaseDirectory, "SdkResolvers");
+			result["MSBUILDADDITIONALSDKRESOLVERSFOLDER_NET"] = Directory.Exists(bundledResolvers)
+				? bundledResolvers
+				: Path.Combine(sdkVersionDir, "SdkResolvers");
 			result["MSBUILD_NUGET_PATH"] = sdkVersionDir;
 			return result;
 		}
