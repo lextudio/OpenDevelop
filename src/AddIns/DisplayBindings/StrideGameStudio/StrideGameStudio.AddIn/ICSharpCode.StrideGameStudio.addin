@@ -13,6 +13,9 @@
     <!-- Scene assets open in the fused scene editor (single-session/overlay: whichever scene was
          opened last owns the one native overlay window). -->
     <DisplayBinding id="StrideGameStudioScene" type="Primary" class="ICSharpCode.StrideGameStudio.StrideSceneAssetDisplayBinding" fileNamePattern="\.sdscene$" />
+    <!-- Prefab assets open in the fused prefab editor (reuses the scene editor viewport with a
+         PrefabEditorViewModel factory). -->
+    <DisplayBinding id="StrideGameStudioPrefab" type="Primary" class="ICSharpCode.StrideGameStudio.StridePrefabDisplayBinding" fileNamePattern="\.sprefab$" />
   </Path>
   <Path name="/SharpDevelop/Workbench/AutostartAfterWorkbenchInitialized">
     <Class id="ICSharpCode.StrideGameStudio.RegisterStrideProjectTreeContributorCommand"

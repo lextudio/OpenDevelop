@@ -22,6 +22,8 @@ using System.Windows.Threading;
 using Vector2 = Stride.Core.Mathematics.Vector2;
 
 using Stride.Assets.Presentation.AssetEditors.GameEditor.Services;
+using Stride.Assets.Presentation.AssetEditors.GameEditor.ViewModels;
+using Stride.Assets.Presentation.AssetEditors.PrefabEditor.ViewModels;
 using Stride.Assets.Presentation.AssetEditors.SceneEditor.ViewModels;
 using SdlWindow = Stride.Graphics.SDL.Window;
 
@@ -29,8 +31,8 @@ namespace ICSharpCode.StrideGameStudio
 {
 	public sealed class StrideSceneEditorViewport : FrameworkElement, IDisposable
 	{
-		readonly Stride.Assets.Presentation.ViewModel.SceneViewModel sceneAsset;
-		SceneEditorViewModel sceneEditor;
+		readonly Func<GameEditorViewModel> editorFactory;
+		GameEditorViewModel editor;
 		IEditorGameController controller;
 		SdlWindow sdlWindow;
 		IntPtr sdlNsWindow;
@@ -96,13 +98,18 @@ namespace ICSharpCode.StrideGameStudio
 		int tickCount;
 		readonly Brush background = Brushes.Black;
 
-		public StrideSceneEditorViewport(Stride.Assets.Presentation.ViewModel.SceneViewModel sceneAsset)
+		public StrideSceneEditorViewport(Func<GameEditorViewModel> editorFactory)
 		{
-			this.sceneAsset = sceneAsset ?? throw new ArgumentNullException(nameof(sceneAsset));
+			this.editorFactory = editorFactory ?? throw new ArgumentNullException(nameof(editorFactory));
 			Loaded += OnLoaded;
 			Unloaded += OnUnloaded;
 			SizeChanged += (_, _) => Reposition();
 			IsVisibleChanged += (_, _) => Reposition();
+		}
+
+		public StrideSceneEditorViewport(Stride.Assets.Presentation.ViewModel.SceneViewModel sceneAsset)
+			: this(() => new SceneEditorViewModel(sceneAsset))
+		{
 		}
 
 		protected override void OnRender(DrawingContext drawingContext)
@@ -120,11 +127,11 @@ namespace ICSharpCode.StrideGameStudio
 
 			try
 			{
-				// Constructing SceneEditorViewModel constructs SceneEditorController (and
-				// therefore EditorGameController) synchronously via the controller-factory
-				// closure - it does not start the game yet, StartGame() below does.
-				sceneEditor = new SceneEditorViewModel(sceneAsset);
-				controller = sceneEditor.Controller;
+				// Constructing the editor view model constructs its controller (and therefore
+				// EditorGameController) synchronously via the controller-factory closure - it does
+				// not start the game yet, StartGame() below does.
+				editor = editorFactory();
+				controller = editor.Controller;
 
 				// Initialize(), not StartGame(): StartGame only brings the game up. The editor's own
 				// sequence is StartGame -> await GameContentLoaded -> CreateScene -> OnGameContentLoaded,
@@ -136,8 +143,8 @@ namespace ICSharpCode.StrideGameStudio
 				// Must run on this thread (the WPF UI thread = process main thread): SDL/Cocoa window
 				// creation happens inside StartGame() on macOS - see the fork's
 				// EditorGameController.StartGame() implementation notes.
-				if (!await sceneEditor.Initialize())
-					throw new InvalidOperationException("SceneEditorViewModel.Initialize() reported failure.");
+				if (!await editor.Initialize())
+					throw new InvalidOperationException("EditorViewModel.Initialize() reported failure.");
 
 				sdlWindow = (SdlWindow)controller.SdlWindow
 					?? throw new InvalidOperationException("EditorGameController.StartGame() did not produce an SdlWindow.");
@@ -520,7 +527,7 @@ namespace ICSharpCode.StrideGameStudio
 
 			(controller as IDisposable)?.Dispose();
 			controller = null;
-			sceneEditor = null;
+			editor = null;
 			sdlWindow = null;
 			sdlNsWindow = IntPtr.Zero;
 			hostNsWindow = IntPtr.Zero;
@@ -770,7 +777,7 @@ namespace ICSharpCode.StrideGameStudio
 				gameFaulted = game.GetType().GetProperty("Faulted")?.GetValue(game) as bool? ?? false;
 				// EditorGameRecoveryService stores whatever faulted the game on the editor view model,
 				// which is the only place the exception survives - OnFault marks it handled.
-				if (gameFaulted && sceneEditor?.LastException is { } lastEx)
+				if (gameFaulted && editor?.LastException is { } lastEx)
 					lastFault = lastEx.ToString().Replace("\\", "/").Replace("\"", "'").Replace("\r", " ").Replace("\n", " | ");
 				var updateTime = game.GetType().GetProperty("UpdateTime")?.GetValue(game) as Stride.Games.GameTime;
 				gameFrameCount = (int)(updateTime?.FrameCount ?? 0);
