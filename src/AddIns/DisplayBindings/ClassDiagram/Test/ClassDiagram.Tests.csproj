@@ -10,8 +10,8 @@
     <NoWarn>$(NoWarn);CA1416</NoWarn>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="NUnit" Version="4.4.0" />
-    <PackageReference Include="NUnitLite" Version="4.4.0" />
+    <PackageReference Include="NUnit" />
+    <PackageReference Include="NUnitLite" />
     <ProjectReference Include="..\Core\ClassDiagram.Core.csproj" />
   </ItemGroup>
 </Project>

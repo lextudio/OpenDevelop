@@ -27,7 +27,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" Version="0.2.2" Condition="'$(Configuration)' == 'Debug'" />
+    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" Condition="'$(Configuration)' == 'Debug'" />
   </ItemGroup>
 
   <ItemGroup>

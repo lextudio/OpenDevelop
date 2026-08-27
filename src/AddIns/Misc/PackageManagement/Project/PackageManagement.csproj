@@ -20,7 +20,7 @@
       <HintPath>..\RequiredLibraries\NuGet.Core.dll</HintPath>
     </Reference>
     <ProjectReference Include="..\..\..\..\Libraries\ICSharpCode.TypeSystem.Abstractions\ICSharpCode.TypeSystem.Abstractions.csproj" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.6.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
     <!-- Real search engine (see NuGetPackageSearchService.cs): the legacy NuGet.Core repository's
          OData V2 client needs System.Data.Services.Client, which has no modern-.NET package - so
          remote (non-local-folder) sources cannot search through it at all on this runtime. Search
@@ -31,7 +31,7 @@
          resolver) - a different version here loads a byte-different NuGet.Protocol/NuGet.Common
          assembly with the same strong name, which the runtime rejects with a FileLoadException
          since the main app's own MSBuild internals already loaded the other copy first. -->
-    <PackageReference Include="NuGet.Protocol" Version="7.6.0" />
+    <PackageReference Include="NuGet.Protocol" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
@@ -42,7 +42,7 @@
     <ProjectReference Include="..\..\..\DisplayBindings\AvalonEdit.AddIn\AvalonEdit.AddIn.csproj" Private="false" />
     <ProjectReference Include="..\SharpDevelop.EnvDTE\SharpDevelop.EnvDTE.vbproj" Private="false" />
     <ProjectReference Include="..\..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj" Private="False" Condition="'$(Configuration)' == 'Debug' And Exists('..\..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj')" />
-    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" Version="0.2.2" Condition="'$(Configuration)' == 'Debug' And !Exists('..\..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj')" />
+    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" Condition="'$(Configuration)' == 'Debug' And !Exists('..\..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj')" />
     <!-- PowerShell Package Console pad (Microsoft.PowerShell.SDK is cross-platform - PowerShell 7/
          Core is embedded in-process, no external PowerShell install/detection needed). -->
     <ProjectReference Include="..\PowerShell\Project\PackageManagement.PowerShell.csproj" Private="false" />

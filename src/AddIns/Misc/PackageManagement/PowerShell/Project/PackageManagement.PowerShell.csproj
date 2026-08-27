@@ -11,10 +11,10 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.PowerShell.SDK" Version="7.4.0" />
+    <PackageReference Include="Microsoft.PowerShell.SDK" />
     <!-- Microsoft.PowerShell.SDK 7.4.0 pulls System.Data.SqlClient 4.8.5 (NU1903, GHSA-98g6-xh36-x2p7).
          Pin the patched 4.8.6 to override the transitive vulnerable version. -->
-    <PackageReference Include="System.Data.SqlClient" Version="4.8.6" />
+    <PackageReference Include="System.Data.SqlClient" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\BackendBindings\Scripting\Project\ICSharpCode.Scripting.csproj" Private="false" />

@@ -17,7 +17,6 @@
     <UseWPF>true</UseWPF>
     <SignAssembly>false</SignAssembly>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
-    <VSEditorApiVersion>17.14.249</VSEditorApiVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -25,9 +24,9 @@
          Microsoft.VisualStudio.Text.* family (vs-editor-api.md §38). Text.UI carries the
          non-WPF view contracts (ITextView/ITextCaret/ITextSelection/IViewScroller) - the
          WPF-only UI.Wpf package stays out (sections 5.1 and 36). -->
-    <PackageReference Include="Microsoft.VisualStudio.Text.Data" Version="$(VSEditorApiVersion)" />
-    <PackageReference Include="Microsoft.VisualStudio.Text.UI" Version="$(VSEditorApiVersion)" />
-    <PackageReference Include="Microsoft.VisualStudio.Text.Logic" Version="$(VSEditorApiVersion)" />
+    <PackageReference Include="Microsoft.VisualStudio.Text.Data" />
+    <PackageReference Include="Microsoft.VisualStudio.Text.UI" />
+    <PackageReference Include="Microsoft.VisualStudio.Text.Logic" />
   </ItemGroup>
 
   <ItemGroup>

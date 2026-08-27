@@ -7,7 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\Project\Src\OutOfProcess\FormsDesignerHostClient.cs" Link="FormsDesignerHostClient.cs" />
-    <PackageReference Include="StreamJsonRpc" Version="2.25.29" />
+    <PackageReference Include="StreamJsonRpc" />
     <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
     <ProjectReference Include="..\Host\FormsDesigner.Host.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" SkipGetTargetFrameworkProperties="true" />
   </ItemGroup>

@@ -35,7 +35,7 @@
   <ItemGroup>
     <!-- Resumes the debuggee's runtime after it was launched suspended (DapLaunchMode.AttachToSuspendedProcess) -
          see DapSession.ConfigurationDoneAsync. -->
-    <PackageReference Include="Microsoft.Diagnostics.NETCore.Client" Version="0.2.661903" />
+    <PackageReference Include="Microsoft.Diagnostics.NETCore.Client" />
   </ItemGroup>
 
   <ItemGroup>
@@ -101,10 +101,31 @@
           IgnoreExitCode="false" />
   </Target>
 
+  <!-- BeforeTargets is load-bearing: OpenDevelop.Addin.Sdk's OpenDevelopTrimAddinOutput also runs
+       AfterTargets="Build", and it deletes anything from this folder whose filename also exists in
+       the host bin. Without a declared order it ran AFTER this copy and stripped the adapter's
+       dependencies back out. -->
   <Target Name="CopySharpDbgToAddInOutput" AfterTargets="Build"
+          BeforeTargets="OpenDevelopTrimAddinOutput"
           Condition="Exists('$(SharpDbgBinDir)SharpDbg.Cli.dll')">
     <ItemGroup>
       <SharpDbgFiles Include="$(SharpDbgBinDir)**\*.*" />
+      <!-- SharpDbg.Cli is an OUT-OF-PROCESS program that happens to be deployed inside an
+           in-process addin's folder. It resolves its dependencies through its own deps.json, from
+           its own directory - it cannot fall back to the host's base directory the way an
+           in-process addin can. So every assembly in its closure must survive host trimming, even
+           though the host also ships a copy.
+           
+           This is not hypothetical: Newtonsoft.Json, Microsoft.CodeAnalysis(.CSharp) and two
+           Microsoft.Extensions.* assemblies were all being deleted, and the adapter died at
+           startup with "Could not load file or assembly 'Newtonsoft.Json'" before answering the
+           very first DAP "initialize" request - which surfaced in the IDE only as an
+           ObjectDisposedException from the torn-down client, so every debug session failed with
+           no usable diagnostic.
+           
+           Derived from the same item list that does the copy, so it stays correct as SharpDbg's
+           dependency closure changes. The SDK matches this list on %(Filename). -->
+      <OpenDevelopAlwaysCopy Include="@(SharpDbgFiles)" Condition="'%(Extension)' == '.dll'" />
     </ItemGroup>
     <Copy SourceFiles="@(SharpDbgFiles)"
           DestinationFolder="$(OutputPath)%(RecursiveDir)"

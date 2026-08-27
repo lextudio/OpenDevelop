@@ -7,7 +7,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="StreamJsonRpc" Version="2.25.29" />
+    <PackageReference Include="StreamJsonRpc" />
     <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
     <ProjectReference Include="..\WpfDesign.SurfaceHost\WpfDesign.SurfaceHost.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" SkipGetTargetFrameworkProperties="true" />
   </ItemGroup>

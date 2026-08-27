@@ -40,8 +40,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="TomsToolbox.Wpf.Styles" Version="2.24.0" />
-    <PackageReference Include="TomsToolbox.Composition.MicrosoftExtensions" Version="2.24.0" />
+    <PackageReference Include="TomsToolbox.Wpf.Styles" />
+    <PackageReference Include="TomsToolbox.Composition.MicrosoftExtensions" />
   </ItemGroup>
 
   <!--

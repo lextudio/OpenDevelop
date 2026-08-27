@@ -6,7 +6,7 @@ namespace ICSharpCode.SharpDevelop.Services;
 
 /// <summary>
 /// Addin-extensible source of extra Solution Explorer project-subtree nodes beyond what the
-/// project's own MSBuild items describe (doc/technotes/stride-game-studio.md "Projects pad /
+/// project's own MSBuild items describe (<stride>/sources/tools/Stride.OpenDevelop.AddIn/stride-game-studio.md "Projects pad /
 /// Solution Explorer spec for a Stride project"). A contributor is registered by an addin at
 /// load (Autostart command) into <see cref="ProjectTreeContributorRegistry"/> and consulted by
 /// <see cref="ICSharpCode.SharpDevelop.Services.ProjectBrowserTreeBuilder"/> when building a

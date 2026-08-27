@@ -18,7 +18,7 @@
     <ProjectReference Include="..\..\..\..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign.Designer\Project\WpfDesign.Designer.csproj" />
     <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
     <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Server\Designer.Server.csproj" />
-    <PackageReference Include="StreamJsonRpc" Version="2.25.29" />
+    <PackageReference Include="StreamJsonRpc" />
   </ItemGroup>
 
   <!-- Deploy this whole build output into a "Host" subfolder next to the deployed

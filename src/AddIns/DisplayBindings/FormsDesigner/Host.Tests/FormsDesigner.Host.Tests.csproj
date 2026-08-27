@@ -9,7 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
 	<Compile Remove="CustomControl\**\*.cs" />
-    <PackageReference Include="xunit.v3" Version="3.2.2" />
+    <PackageReference Include="xunit.v3" />
     <ProjectReference Include="..\Remote\FormsDesigner.Remote.csproj" />
 	<ProjectReference Include="..\..\..\..\Main\Designer\Designer.Server\Designer.Server.csproj" />
 	<ProjectReference Include="..\..\..\..\Main\Designer\Designer.Shell\Designer.Shell.csproj" />

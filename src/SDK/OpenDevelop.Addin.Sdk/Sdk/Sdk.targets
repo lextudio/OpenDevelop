@@ -6,6 +6,29 @@
     <OpenDevelopHostBin Condition="'$(OpenDevelopHostBin)' == '' And '$(OpenDevelopRepoRoot)' != ''">$(OpenDevelopRepoRoot)src/Main/SharpDevelop/bin/$(Configuration)/net10.0-windows/</OpenDevelopHostBin>
     <OpenDevelopHostManifest Condition="'$(OpenDevelopHostManifest)' == '' And '$(OpenDevelopHostBin)' != ''">$(OpenDevelopHostBin)OpenDevelop.host-assemblies.txt</OpenDevelopHostManifest>
   </PropertyGroup>
+  <!-- Run/Debug support: make the addin project startable so F5 launches a second OpenDevelop
+       with this addin loaded (what SharpDevelop's AddIn project template did historically - the
+       trailing-quote hack in SplashScreen.cs is a fossil of exactly that).
+       
+       These are the plain MSBuild properties DotNetStartBehavior reads via GetEvaluatedProperty,
+       and StartAction=Program makes IsStartable depend only on StartProgram being non-empty, so a
+       Library becomes startable without any project-system change. Everything is Condition-guarded
+       so a project can override any single piece.
+       
+       Set in .targets rather than .props because OpenDevelopHostBin is only known after the
+       consuming repo's Directory.Build.targets (or the project itself) has set OpenDevelopRoot. -->
+  <PropertyGroup Condition="'$(OpenDevelopAddin)' == 'true' And '$(OpenDevelopAddinKind)' == 'InProcess'">
+    <OpenDevelopDebugHost Condition="'$(OpenDevelopDebugHost)' == '' And '$(OpenDevelopHostBin)' != ''">$(OpenDevelopHostBin)OpenDevelop</OpenDevelopDebugHost>
+    <!-- Per-project, stable across runs so the experimental instance remembers its own layout,
+         and never the developer's real profile. -->
+    <OpenDevelopDebugConfigDir Condition="'$(OpenDevelopDebugConfigDir)' == ''">$(MSBuildProjectDirectory)/.od-experimental-instance</OpenDevelopDebugConfigDir>
+    <StartAction Condition="'$(StartAction)' == ''">Program</StartAction>
+    <StartProgram Condition="'$(StartProgram)' == '' And '$(OpenDevelopDebugHost)' != ''">$(OpenDevelopDebugHost)</StartProgram>
+    <!-- No trailing separator on either path: SplashScreenForm.SetCommandLineArgs rewrites a
+         trailing quote into a backslash, which would corrupt the directory. -->
+    <StartArguments Condition="'$(StartArguments)' == '' And '$(OpenDevelopDebugHost)' != ''">-addindir:"$(OutputPath.TrimEnd('\/'))" -configdir:"$(OpenDevelopDebugConfigDir.TrimEnd('\/'))" -devflow:off</StartArguments>
+    <StartWorkingDirectory Condition="'$(StartWorkingDirectory)' == '' And '$(OpenDevelopHostBin)' != ''">$(OpenDevelopHostBin)</StartWorkingDirectory>
+  </PropertyGroup>
   <ItemGroup Condition="'$(OpenDevelopAddin)' == 'true' And '@(OpenDevelopAddinManifest)' == ''">
     <OpenDevelopAddinManifest Include="$(MSBuildProjectDirectory)/*.addin" />
   </ItemGroup>

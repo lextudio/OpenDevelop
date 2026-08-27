@@ -16,7 +16,7 @@
     <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" />
     <ProjectReference Include="..\..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" />
     <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" />
-    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" Version="0.2.2" Condition="'$(Configuration)' == 'Debug'" />
+    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" Condition="'$(Configuration)' == 'Debug'" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />

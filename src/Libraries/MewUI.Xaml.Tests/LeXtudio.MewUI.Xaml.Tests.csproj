@@ -4,7 +4,7 @@
     <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings><IsTestProject>true</IsTestProject>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="xunit.v3" Version="3.2.2" />
+    <PackageReference Include="xunit.v3" />
     <ProjectReference Include="..\MewUI.Xaml\LeXtudio.MewUI.Xaml.csproj" />
   </ItemGroup>
 </Project>

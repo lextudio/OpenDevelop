@@ -17,6 +17,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Collections.Generic;
 using System.Configuration;
 using System.Diagnostics;
 using System.IO;
@@ -178,12 +179,41 @@ namespace ICSharpCode.SharpDevelop.Startup
 					startup.DomPersistencePath = null;
 				}
 				
-				startup.AddAddInsFromDirectory(Path.Combine(startup.ApplicationRootPath, "AddIns"));
+				// An experimental instance launched to test an in-development addin must not write
+				// into the developer's own settings, layout, recent files or code-completion cache
+				// - so -configdir: overrides the config directory chosen above, and the DOM cache
+				// follows it. AllowUserAddIns is turned off with it: an isolated instance should
+				// load the addin under test and the shipped ones, not whatever the developer has
+				// installed into their real profile.
+				foreach (string parameter in SplashScreenForm.GetParameterList()) {
+					if (parameter.StartsWith("configdir:", StringComparison.OrdinalIgnoreCase)) {
+						startup.ConfigDirectory = Path.GetFullPath(parameter.Substring("configdir:".Length));
+						startup.DomPersistencePath = Path.Combine(startup.ConfigDirectory, "dom");
+						startup.AllowUserAddIns = false;
+					}
+				}
+				
+				string hostAddInDirectory = Path.Combine(startup.ApplicationRootPath, "AddIns");
+				startup.AddAddInsFromDirectory(hostAddInDirectory);
 				
 				// allows testing addins without having to install them
+				//
+				// Deliberately skips a directory the host already scans (AddIns is scanned
+				// recursively): AddInTree.Load treats the same addin identity appearing twice as a
+				// conflict, shows a modal error and DISABLES the addin. An in-repo addin whose
+				// OutputPath is inside AddIns/ would hit that on every launch, which looks exactly
+				// like "my addin is broken" rather than "it was listed twice".
+				var addInDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+				addInDirectories.Add(NormalizeDirectory(hostAddInDirectory));
 				foreach (string parameter in SplashScreenForm.GetParameterList()) {
 					if (parameter.StartsWith("addindir:", StringComparison.OrdinalIgnoreCase)) {
-						startup.AddAddInsFromDirectory(parameter.Substring(9));
+						string directory = NormalizeDirectory(parameter.Substring("addindir:".Length));
+						if (IsSameOrBelow(directory, NormalizeDirectory(hostAddInDirectory))) {
+							LoggingService.Info("Ignoring -addindir:" + directory + " - already covered by " + hostAddInDirectory);
+							continue;
+						}
+						if (addInDirectories.Add(directory))
+							startup.AddAddInsFromDirectory(directory);
 					}
 				}
 				
@@ -212,6 +242,24 @@ namespace ICSharpCode.SharpDevelop.Startup
 			}
 		}
 
+		/// <summary>Full path with any trailing separator removed, for comparing directories.</summary>
+		static string NormalizeDirectory(string path)
+		{
+			if (string.IsNullOrEmpty(path))
+				return path;
+			// SplashScreenForm.SetCommandLineArgs rewrites a trailing quote into a backslash, so a
+			// quoted directory argument can arrive as "...\dir\" even on macOS.
+			return Path.GetFullPath(path.TrimEnd('\\', '/'));
+		}
+		
+		/// <summary>True when <paramref name="candidate"/> is <paramref name="root"/> or inside it.</summary>
+		static bool IsSameOrBelow(string candidate, string root)
+		{
+			if (string.Equals(candidate, root, StringComparison.OrdinalIgnoreCase))
+				return true;
+			return candidate.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+		}
+		
 		static string FindApplicationRootPath(string startDirectory)
 		{
 			DirectoryInfo directory = new DirectoryInfo(startDirectory);

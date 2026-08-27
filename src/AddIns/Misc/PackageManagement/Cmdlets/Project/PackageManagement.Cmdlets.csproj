@@ -15,7 +15,7 @@
     <Reference Include="NuGet.Core">
       <HintPath>..\..\RequiredLibraries\NuGet.Core.dll</HintPath>
     </Reference>
-    <PackageReference Include="Microsoft.PowerShell.SDK" Version="7.6.4" />
+    <PackageReference Include="Microsoft.PowerShell.SDK" VersionOverride="7.6.4" />
     <!-- Microsoft.PowerShell.SDK 7.6.x pulls System.Data.SqlClient 4.9.1 transitively, which is
          patched (no NU1903) - so the previous explicit 4.8.6 pin is no longer needed. -->
   </ItemGroup>

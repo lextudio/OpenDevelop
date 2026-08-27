@@ -815,6 +815,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		// Process, so a test can assert "still alive after N ms" and then kill it.
 		static readonly object runLock = new object();
 		static System.Diagnostics.Process runningProcess;
+		static string runningProcessOutputFile;
 
 		[DevFlowAction("od.run-project", Description = "Start the startup project (or a named project) without debugging, the same way the Debug > Start Without Debugging command does, and return the launched process id so it can be polled with od.run-status and stopped with od.stop-project")]
 		public static string RunProject(string projectName = null)
@@ -853,6 +854,12 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				return JsonSerializer.Serialize(new { success = false, error = $"Project '{project.Name}' produced no start info." });
 
 			psi.UseShellExecute = false;
+			// Capture the child's console output. For an addin project the child IS another
+			// OpenDevelop, and its startup log (which addins loaded, and any AddInTree conflict)
+			// is the only external evidence that the addin under test actually came up - the
+			// child runs with its DevFlow agent off, so it cannot be asked directly.
+			psi.RedirectStandardOutput = true;
+			psi.RedirectStandardError = true;
 
 			lock (runLock) {
 				if (runningProcess != null && !runningProcess.HasExited)
@@ -864,13 +871,18 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 					return JsonSerializer.Serialize(new { success = false, error = ex.Message });
 				}
 
+				runningProcessOutputFile = Path.Combine(Path.GetTempPath(),
+					"od-run-" + runningProcess.Id + ".log");
+				StartOutputPump(runningProcess, runningProcessOutputFile);
+
 				return JsonSerializer.Serialize(new {
 					success = true,
 					projectName = project.Name,
 					fileName = psi.FileName,
 					workingDirectory = psi.WorkingDirectory,
 					arguments = psi.Arguments,
-					processId = runningProcess.Id
+					processId = runningProcess.Id,
+					outputFile = runningProcessOutputFile
 				});
 			}
 		}
@@ -889,6 +901,57 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 					processId = runningProcess.Id,
 					exitCode = exited ? (int?)runningProcess.ExitCode : null
 				});
+			}
+		}
+
+		/// <summary>
+		/// Drains both redirected streams into one file. Both must be drained, or a chatty child
+		/// fills its pipe buffer and blocks forever - which would look exactly like the launched
+		/// app hanging on startup.
+		/// </summary>
+		static void StartOutputPump(System.Diagnostics.Process process, string outputFile)
+		{
+			var sync = new object();
+			Action<System.Diagnostics.DataReceivedEventArgs> append = e => {
+				if (e.Data == null)
+					return;
+				try {
+					lock (sync)
+						File.AppendAllText(outputFile, e.Data + Environment.NewLine);
+				} catch (IOException) {
+					// A full disk or a deleted temp file must not take down the debugged app.
+				}
+			};
+			process.OutputDataReceived += (_, e) => append(e);
+			process.ErrorDataReceived += (_, e) => append(e);
+			process.BeginOutputReadLine();
+			process.BeginErrorReadLine();
+		}
+
+		[DevFlowAction("od.run-output", Description = "Read the console output captured from the process started by od.run-project")]
+		public static string RunOutput()
+		{
+			string path;
+			lock (runLock)
+				path = runningProcessOutputFile;
+
+			if (string.IsNullOrEmpty(path))
+				return JsonSerializer.Serialize(new { success = true, started = false, text = string.Empty });
+
+			try {
+				// The pump still holds the file open for appending, so share both read and write.
+				using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+				using var reader = new StreamReader(stream);
+				return JsonSerializer.Serialize(new {
+					success = true,
+					started = true,
+					outputFile = path,
+					text = reader.ReadToEnd()
+				});
+			} catch (FileNotFoundException) {
+				return JsonSerializer.Serialize(new { success = true, started = true, outputFile = path, text = string.Empty });
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.Message });
 			}
 		}
 

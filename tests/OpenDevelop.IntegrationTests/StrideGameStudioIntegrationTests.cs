@@ -29,6 +29,7 @@ public sealed class StrideGameStudioIntegrationTests : IAsyncDisposable
 	readonly OpenDevelopAppFixture app;
 	readonly string gameProjectPath;
 	readonly string gameScriptPath;
+	readonly string addinProjectPath;
 
 	// Match the addin's StrideCheckoutRoot default (uno-tools/stride). Adjust if the clone lives
 	// elsewhere: pass via env var STRIDE_CHECKOUT_ROOT.
@@ -42,6 +43,8 @@ public sealed class StrideGameStudioIntegrationTests : IAsyncDisposable
 		var gameDir = Path.Combine(StrideRoot, "samples", "Templates", "FirstPersonShooter", "FirstPersonShooter", "FirstPersonShooter.Game");
 		gameProjectPath = Path.Combine(gameDir, "FirstPersonShooter.Game.csproj");
 		gameScriptPath = Path.Combine(gameDir, "Player", "PlayerController.cs");
+		addinProjectPath = Path.Combine(StrideRoot, "sources", "tools", "Stride.OpenDevelop.AddIn",
+			"ICSharpCode.StrideGameStudio.csproj");
 	}
 
 	/// <summary>The deployed addin manifest, which is what makes the .sdpkg bindings exist at all.</summary>
@@ -210,4 +213,120 @@ public sealed class StrideGameStudioIntegrationTests : IAsyncDisposable
 	}
 
 	public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+	/// <summary>
+	/// The Addin SDK's develop/run loop, exercised against the real Stride addin project now that
+	/// it lives in the Stride repo: opening the ADDIN project (not the game) must produce a
+	/// startable project, and starting it must bring up a second OpenDevelop that loads the addin.
+	///
+	/// This is the loop that makes an out-of-repo addin developable at all - without it the
+	/// relocated addin would have no way to be run from the IDE that hosts it.
+	///
+	/// Runs under the real debugger and breaks inside the addin's own source. That is the strongest
+	/// available evidence: the breakpoint is set before launch, in a module the debuggee has not
+	/// loaded yet and which lives outside the debuggee's own directory, so hitting it proves the
+	/// SDK-emitted start configuration launched the right host, the host loaded the addin from
+	/// -addindir:, and the debugger rebound a pending breakpoint when that module arrived.
+	/// </summary>
+	[Fact]
+	public async Task StrideAddInProject_IsStartable_AndDebuggingBreaksInsideTheAddIn()
+	{
+		if (!File.Exists(addinProjectPath))
+			Assert.Skip($"No Stride addin project at {addinProjectPath}; set STRIDE_CHECKOUT_ROOT to run the Stride suite.");
+
+		var opened = await app.ReopenSolutionAsync(addinProjectPath);
+		Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
+
+		// ── Addin SDK: the start configuration it emits ──────────────────────────────────────
+		// StartAction=Program is what makes IsStartable ignore OutputType, so an addin (a class
+		// library) becomes startable at all; the rest is what the child instance is told to do.
+		var props = await app.InvokeAsync("od.project.properties", "ICSharpCode.StrideGameStudio",
+			"StartAction,StartProgram,StartArguments,OpenDevelopAddin,OpenDevelopAddinKind");
+		Assert.True(props.GetProperty("success").GetBoolean(), props.ToString());
+		var values = props.GetProperty("properties");
+		Assert.Equal("true", values.GetProperty("OpenDevelopAddin").GetString());
+		Assert.Equal("InProcess", values.GetProperty("OpenDevelopAddinKind").GetString());
+		Assert.Equal("Program", values.GetProperty("StartAction").GetString());
+
+		var startProgram = values.GetProperty("StartProgram").GetString();
+		Assert.False(string.IsNullOrEmpty(startProgram), "The Addin SDK emitted no StartProgram, so F5 would do nothing.");
+		Assert.True(File.Exists(startProgram), $"StartProgram does not exist: {startProgram}");
+
+		var startArguments = values.GetProperty("StartArguments").GetString() ?? string.Empty;
+		Assert.Contains("-addindir:", startArguments);
+		// Instance isolation: the child must not write into the developer's own settings/layout,
+		// and must not fight this test's own app for the DevFlow port.
+		Assert.Contains("-configdir:", startArguments);
+		Assert.Contains("-devflow:off", startArguments);
+		var configDir = ExtractQuotedArgument(startArguments, "-configdir:");
+		Assert.False(string.IsNullOrEmpty(configDir), "No -configdir: value: the child would share the developer's profile.");
+
+		// ── Debug the second instance, breaking inside the addin ────────────────────────────
+		// The addin's autostart command runs while the child workbench initializes, so the
+		// breakpoint is reached without driving the child's UI (which would be impossible anyway:
+		// it runs with its DevFlow agent off so it cannot fight this test's app for the port).
+		var addinSource = Path.Combine(Path.GetDirectoryName(addinProjectPath)!,
+			"RegisterStrideProjectTreeContributorCommand.cs");
+		Assert.True(File.Exists(addinSource), $"Missing addin source {addinSource}");
+		var breakpointLine = FindLine(addinSource, "ProjectTreeContributorRegistry.Register(");
+
+		await app.InvokeAsync("od.open-file", addinSource);
+		await app.InvokeAsync("od.debug.clear-breakpoints");
+		var breakpoint = await app.InvokeAsync("od.debug.set-breakpoint", addinSource, breakpointLine);
+		Assert.True(breakpoint.GetProperty("success").GetBoolean(), breakpoint.ToString());
+
+		try
+		{
+			// A second full IDE start under a suspended-attach debug session is slow.
+			var start = await app.InvokeAsync("od.debug.start", addinProjectPath, true, 180);
+			Assert.True(start.GetProperty("stopped").GetBoolean(),
+				"Debugging the addin project never stopped at the breakpoint: " + start);
+			Assert.EndsWith("RegisterStrideProjectTreeContributorCommand.cs",
+				(start.GetProperty("currentFile").GetString() ?? string.Empty).Replace('\\', '/'));
+			Assert.Equal(breakpointLine, start.GetProperty("currentLine").GetInt32());
+
+			// The frame really is the addin's autostart command, not a same-named file elsewhere.
+			var stack = await app.InvokeAsync("od.debug.call-stack");
+			Assert.Contains(stack.EnumerateArray(),
+				f => (f.GetProperty("Name").GetString() ?? string.Empty).Contains("Run"));
+
+			// Instance isolation actually took effect on disk.
+			Assert.True(Directory.Exists(configDir),
+				$"The child did not use its isolated config directory {configDir}.");
+		}
+		finally
+		{
+			await app.InvokeAsync("od.debug.stop");
+			await app.InvokeAsync("od.debug.clear-breakpoints");
+		}
+	}
+
+	/// <summary>1-based line number of the first line containing <paramref name="marker"/>.</summary>
+	static int FindLine(string file, string marker)
+	{
+		var lines = File.ReadAllLines(file);
+		for (var i = 0; i < lines.Length; i++)
+		{
+			if (lines[i].Contains(marker, StringComparison.Ordinal))
+				return i + 1;
+		}
+		throw new InvalidOperationException($"No line containing '{marker}' in {file}");
+	}
+
+	/// <summary>Value of a <c>-name:"value"</c> style start argument.</summary>
+	static string ExtractQuotedArgument(string arguments, string name)
+	{
+		var index = arguments.IndexOf(name, StringComparison.Ordinal);
+		if (index < 0)
+			return string.Empty;
+		var rest = arguments.Substring(index + name.Length);
+		if (rest.StartsWith("\"", StringComparison.Ordinal))
+		{
+			var end = rest.IndexOf('"', 1);
+			return end > 0 ? rest.Substring(1, end - 1) : string.Empty;
+		}
+		var space = rest.IndexOf(' ');
+		return space > 0 ? rest.Substring(0, space) : rest;
+	}
+
 }

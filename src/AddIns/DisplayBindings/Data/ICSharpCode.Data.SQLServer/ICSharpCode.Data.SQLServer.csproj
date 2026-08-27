@@ -14,7 +14,7 @@
     <AssemblyOriginatorKeyFile>..\..\..\..\Main\ICSharpCode.SharpDevelop.snk</AssemblyOriginatorKeyFile>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.2" />
+    <PackageReference Include="Microsoft.Data.SqlClient" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" Private="false" />

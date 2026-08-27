@@ -13,19 +13,19 @@
   <ItemGroup>
     <ProjectReference Include="..\WinUIXamlDesigner.AddIn\ICSharpCode.WinUIXamlDesigner.csproj" Private="false" />
     <ProjectReference Include="..\XamlStudio.Toolkit.ProGPU\XamlStudio.Toolkit.ProGPU.csproj" />
-    <PackageReference Include="ProGPU.WinUI" Version="0.1.0-preview.55" />
+    <PackageReference Include="ProGPU.WinUI" />
     <!-- Packed locally from the same wieslawsoltes/ProGPU commit that produced the published
          preview.47 feed (bab4dbef); upstream marks these packable but never published them. -->
-    <PackageReference Include="ProGPU.WinUI.Designer" Version="0.1.0-preview.47" />
-    <PackageReference Include="ProGPU.Xaml" Version="0.1.0-preview.47" />
-    <PackageReference Include="ProGPU.Xaml.Roslyn" Version="0.1.0-preview.47" />
-    <PackageReference Include="ProGPU.Xaml.Workspaces" Version="0.1.0-preview.47" />
+    <PackageReference Include="ProGPU.WinUI.Designer" />
+    <PackageReference Include="ProGPU.Xaml" />
+    <PackageReference Include="ProGPU.Xaml.Roslyn" />
+    <PackageReference Include="ProGPU.Xaml.Workspaces" />
     <!-- Standard controls (Button, TextBlock, ...) resolve their default style via
          FrameworkElement.TryFindResource, which only ever finds one if a Fluent theme
          dictionary has been merged somewhere in the visual tree or into Application.Resources -
          ProGPU.WinUI ships no built-in fallback. Without this, every previewed control renders
          with no template/brush at all, which is indistinguishable from "nothing rendered": the
          page's own (default white) background is all that's visible. -->
-    <PackageReference Include="ProGPU.WinUI.Themes.Fluent" Version="0.1.0-preview.47" />
+    <PackageReference Include="ProGPU.WinUI.Themes.Fluent" />
   </ItemGroup>
 </Project>

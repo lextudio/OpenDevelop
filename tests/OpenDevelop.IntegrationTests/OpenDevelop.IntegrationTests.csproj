@@ -48,9 +48,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.Net.Http.Json" Version="11.0.0-preview.5.26302.115" />
-    <PackageReference Include="xunit.v3" Version="3.2.2" />
-    <PackageReference Include="AltCover" Version="9.0.102" />
+    <PackageReference Include="System.Net.Http.Json" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="AltCover" />
   </ItemGroup>
 
   <!-- These designers deploy outside the host app's output tree. Build them with the

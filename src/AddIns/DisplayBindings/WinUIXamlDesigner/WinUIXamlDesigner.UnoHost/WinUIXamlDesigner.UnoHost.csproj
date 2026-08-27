@@ -11,7 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
 	<ProjectReference Include="..\..\..\..\Main\Designer\Designer.Server\Designer.Server.csproj" />
-    <PackageReference Include="StreamJsonRpc" Version="2.25.29" />
+    <PackageReference Include="StreamJsonRpc" />
   </ItemGroup>
   <!-- Deploy the whole runnable child (dll + deps + runtimeconfig + native libs) into the addin's
        own folder, next to ICSharpCode.WinUIXamlDesigner.dll, so the WPF side can find and spawn

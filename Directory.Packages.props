@@ -1,0 +1,68 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <!-- Vendored UI libraries retain their upstream package policy. Avoid placing
+       configuration files inside their working trees/submodules. -->
+  <PropertyGroup Condition="$([System.String]::Copy('$(MSBuildProjectDirectory)').Replace('\\', '/').Contains('/src/Libraries/AvalonDock')) Or $([System.String]::Copy('$(MSBuildProjectDirectory)').Replace('\\', '/').Contains('/src/Libraries/AvalonEdit'))">
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageVersion Include="AltCover" Version="9.0.102" />
+    <PackageVersion Include="DataGridExtensions" Version="2.9.1" />
+    <PackageVersion Include="GirCore.Gtk-4.0" Version="0.8.1" />
+    <PackageVersion Include="GuiLabs.Language.Xml" Version="1.2.93" />
+    <PackageVersion Include="LeXtudio.DevFlow.Agent.Core" Version="0.2.3" />
+    <PackageVersion Include="LeXtudio.DevFlow.Agent.LibreWpf" Version="0.2.3" />
+    <PackageVersion Include="McMaster.Extensions.CommandLineUtils" Version="5.1.0" />
+    <PackageVersion Include="MessagePack" Version="3.1.8" />
+    <PackageVersion Include="Microsoft.Build" Version="18.8.2" />
+    <PackageVersion Include="Microsoft.Build.Framework" Version="18.8.2" />
+    <PackageVersion Include="Microsoft.Build.Runtime" Version="18.8.2" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.6.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Features" Version="5.6.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.6.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.VisualBasic" Version="5.6.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.VisualBasic.Workspaces" Version="5.6.0" />
+    <PackageVersion Include="Microsoft.Data.SqlClient" Version="7.0.2" />
+    <PackageVersion Include="Microsoft.Diagnostics.NETCore.Client" Version="0.2.661903" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Msagl" Version="1.1.6" />
+    <PackageVersion Include="Microsoft.PowerShell.SDK" Version="7.4.0" />
+    <PackageVersion Include="Microsoft.TemplateEngine.Abstractions" Version="10.0.302" />
+    <PackageVersion Include="Microsoft.TemplateEngine.Edge" Version="10.0.302" />
+    <PackageVersion Include="Microsoft.TemplateEngine.IDE" Version="10.0.302" />
+    <PackageVersion Include="Microsoft.TemplateEngine.Orchestrator.RunnableProjects" Version="10.0.302" />
+    <PackageVersion Include="Microsoft.TemplateEngine.Utils" Version="10.0.302" />
+    <PackageVersion Include="Microsoft.VisualStudio.Text.Data" Version="17.14.249" />
+    <PackageVersion Include="Microsoft.VisualStudio.Text.Logic" Version="17.14.249" />
+    <PackageVersion Include="Microsoft.VisualStudio.Text.UI" Version="17.14.249" />
+    <PackageVersion Include="Microsoft.Xaml.Behaviors.Wpf" Version="1.1.142" />
+    <PackageVersion Include="Mono.TextTemplating" Version="3.0.0" />
+    <PackageVersion Include="NUnit" Version="4.4.0" />
+    <PackageVersion Include="NUnitLite" Version="4.4.0" />
+    <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageVersion Include="NuGet.Protocol" Version="7.6.0" />
+    <PackageVersion Include="ProGPU.System.Drawing.Common" Version="0.1.0-preview.55" />
+    <PackageVersion Include="ProGPU.WinUI" Version="0.1.0-preview.55" />
+    <PackageVersion Include="ProGPU.WinUI.Designer" Version="0.1.0-preview.47" />
+    <PackageVersion Include="ProGPU.WinUI.Themes.Fluent" Version="0.1.0-preview.47" />
+    <PackageVersion Include="ProGPU.Xaml" Version="0.1.0-preview.47" />
+    <PackageVersion Include="ProGPU.Xaml.Roslyn" Version="0.1.0-preview.47" />
+    <PackageVersion Include="ProGPU.Xaml.Workspaces" Version="0.1.0-preview.47" />
+    <PackageVersion Include="StreamJsonRpc" Version="2.25.29" />
+    <PackageVersion Include="System.CodeDom" Version="10.0.10" />
+    <PackageVersion Include="System.Composition.AttributedModel" Version="10.0.10" />
+    <PackageVersion Include="System.Data.SqlClient" Version="4.8.6" />
+    <PackageVersion Include="System.IO.Packaging" Version="11.0.0-preview.5.26302.115" />
+    <PackageVersion Include="System.Net.Http.Json" Version="11.0.0-preview.5.26302.115" />
+    <PackageVersion Include="System.Windows.Extensions" Version="11.0.0-preview.5.26302.115" />
+    <PackageVersion Include="TomsToolbox.Composition.Analyzer" Version="2.24.0" />
+    <PackageVersion Include="TomsToolbox.Composition.MicrosoftExtensions" Version="2.24.0" />
+    <PackageVersion Include="TomsToolbox.Wpf.Composition.AttributedModel" Version="2.24.0" />
+    <PackageVersion Include="TomsToolbox.Wpf.Styles" Version="2.24.0" />
+    <PackageVersion Include="UiPath.Workflow" Version="6.0.3" />
+    <PackageVersion Include="log4net" Version="3.3.2" />
+    <PackageVersion Include="xunit.v3" Version="3.2.2" />
+  </ItemGroup>
+</Project>

@@ -6,6 +6,6 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="StreamJsonRpc" Version="2.25.29" />
+    <PackageReference Include="StreamJsonRpc" />
   </ItemGroup>
 </Project>

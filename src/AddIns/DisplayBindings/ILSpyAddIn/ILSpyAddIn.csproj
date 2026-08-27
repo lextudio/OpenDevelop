@@ -61,7 +61,7 @@
     <!-- DevFlow actions (od.ilspy.*) so tests/OpenDevelop.IntegrationTests can drive/inspect the
          hosted ILSpy pads without a native file dialog, mirroring WpfDesign.AddIn's DevFlow hooks. -->
     <ProjectReference Include="..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj" Private="false" Condition="'$(Configuration)' == 'Debug' And Exists('..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj')" />
-    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" Version="0.2.2" Condition="'$(Configuration)' == 'Debug' And !Exists('..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj')" />
+    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" Condition="'$(Configuration)' == 'Debug' And !Exists('..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj')" />
 
     <!-- Real ILSpy pane/composition source needs ILSpyX and its own AvalonDock fork identity. -->
     <ProjectReference Include="..\..\..\..\externals\ilspy\ICSharpCode.ILSpyX\ICSharpCode.ILSpyX.csproj" />
@@ -79,24 +79,24 @@
 
   <ItemGroup>
     <!-- Composition/pane hosting packages, mirroring externals/ilspy/ILSpy/ILSpy.csproj. -->
-    <PackageReference Include="TomsToolbox.Composition.MicrosoftExtensions" Version="2.24.0" />
-    <PackageReference Include="TomsToolbox.Wpf.Composition.AttributedModel" Version="2.24.0" />
-    <PackageReference Include="TomsToolbox.Wpf.Styles" Version="2.24.0" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
-    <PackageReference Include="DataGridExtensions" Version="2.9.1" />
-    <PackageReference Include="Microsoft.Xaml.Behaviors.Wpf" Version="1.1.142" />
+    <PackageReference Include="TomsToolbox.Composition.MicrosoftExtensions" />
+    <PackageReference Include="TomsToolbox.Wpf.Composition.AttributedModel" />
+    <PackageReference Include="TomsToolbox.Wpf.Styles" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="DataGridExtensions" />
+    <PackageReference Include="Microsoft.Xaml.Behaviors.Wpf" />
     <!-- AvalonEdit itself comes from the local ICSharpCode.AvalonEdit ProjectReference above;
          do not also pull the NuGet package, or the two assembly identities collide (CS0433). -->
-    <PackageReference Include="McMaster.Extensions.CommandLineUtils" Version="5.1.0" />
+    <PackageReference Include="McMaster.Extensions.CommandLineUtils" />
     <!-- ILSpy source uses `using System.Composition;` (Export/NonShared/etc.) without directly
          referencing the System.Composition NuGet package; upstream supplies those attribute
          types via this TomsToolbox source generator (wired as a GlobalPackageReference in
          externals/ilspy/Directory.Packages.props, which does not apply to this project). -->
-    <PackageReference Include="TomsToolbox.Composition.Analyzer" Version="2.24.0" PrivateAssets="all" />
+    <PackageReference Include="TomsToolbox.Composition.Analyzer" PrivateAssets="all" />
     <!-- OpenDevelop transitively requires 11.0.0-preview.5.26302.115 of these; pin explicitly to
          prevent NU1605 downgrade from versions pulled by other dependencies. -->
-    <PackageReference Include="System.Windows.Extensions" Version="11.0.0-preview.5.26302.115" />
-    <PackageReference Include="System.IO.Packaging" Version="11.0.0-preview.5.26302.115" />
+    <PackageReference Include="System.Windows.Extensions" />
+    <PackageReference Include="System.IO.Packaging" />
   </ItemGroup>
 
   <!--

@@ -21,7 +21,7 @@
          with other packages when actually imported; irrelevant here since we don't build with
          AltCover=true, but no reason to import it at all). GeneratePathProperty gives us
          $(PkgAltCover) below to locate the package's files without hardcoding a NuGet cache path. -->
-    <PackageReference Include="AltCover" Version="9.0.102" ExcludeAssets="all" GeneratePathProperty="true" />
+    <PackageReference Include="AltCover" ExcludeAssets="all" GeneratePathProperty="true" />
     <!-- coverlet.console is a DotnetTool-type package and cannot be a PackageReference.
          PackageDownload restores it into the NuGet cache so DeployCoverageTools can copy
          its tool payload into the same runtime tool layout as AltCover. -->

@@ -89,7 +89,7 @@ internal static class ProjectBrowserTreeBuilder
     }
 
     // Addin-contributed virtual nodes (IProjectTreeContributor, e.g. the Stride addin's "Assets"
-    // subtree backed by the project's .sdpkg - see doc/technotes/stride-game-studio.md). Each
+    // subtree backed by the project's .sdpkg - see <stride>/sources/tools/Stride.OpenDevelop.AddIn/stride-game-studio.md). Each
     // contributor runs guarded so a broken addin can never break the whole Solution Explorer.
     private static void AppendContributorNodes(ProjectBrowserNodeModel projectNode, string projectPath)
     {

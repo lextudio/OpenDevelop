@@ -8,7 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\WinUIXamlDesigner.UnoDesignHost\UnoDesignClient.cs" Link="UnoDesignClient.cs" />
-    <PackageReference Include="StreamJsonRpc" Version="2.25.29" />
+    <PackageReference Include="StreamJsonRpc" />
     <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
     <ProjectReference Include="..\WinUIXamlDesigner.UnoHost\WinUIXamlDesigner.UnoHost.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" SkipGetTargetFrameworkProperties="true" />
   </ItemGroup>

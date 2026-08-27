@@ -3,7 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
     <ProjectReference Include="..\..\..\Main\Designer\Designer.Server\Designer.Server.csproj" />
-    <PackageReference Include="UiPath.Workflow" Version="6.0.3" />
+    <PackageReference Include="UiPath.Workflow" />
   </ItemGroup>
   <Target Name="DeployToAddIns" AfterTargets="Build"><ItemGroup><HostOutput Include="$(TargetDir)**" /></ItemGroup><Copy SourceFiles="@(HostOutput)" SkipUnchangedFiles="true" DestinationFiles="@(HostOutput->'$(MSBuildProjectDirectory)\..\..\..\..\AddIns\DisplayBindings\WorkflowDesigner\Host\%(RecursiveDir)%(Filename)%(Extension)')" /></Target>
 </Project>

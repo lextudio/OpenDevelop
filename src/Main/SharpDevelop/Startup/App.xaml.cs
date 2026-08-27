@@ -35,7 +35,7 @@ namespace ICSharpCode.SharpDevelop.Startup
 		{
 			InitializeComponent();
 			#if !OPENDEVELOP_NO_DEVFLOW
-			if (Environment.GetEnvironmentVariable("DEVFLOW_DISABLE") != "1")
+			if (Environment.GetEnvironmentVariable("DEVFLOW_DISABLE") != "1" && !IsDevFlowDisabledByCommandLine())
 			{
 				this.AddWpfDevFlowAgent(new AgentOptions { Port = GetAgentPort() });
 			}
@@ -51,6 +51,29 @@ namespace ICSharpCode.SharpDevelop.Startup
 		}
 
 		#if !OPENDEVELOP_NO_DEVFLOW
+		/// <summary>
+		/// True when the process was started with <c>-devflow:off</c> (or <c>/devflow:off</c>).
+		///
+		/// A second IDE instance launched to test an in-development addin cannot bind the same
+		/// agent port as the parent that launched it, and the launcher has no way to set an
+		/// environment variable: the project's StartArguments are the only channel it controls,
+		/// and the debug path builds its own ProcessStartInfo and drops the caller's Environment
+		/// dictionary entirely. So this reads the raw command line rather than
+		/// SplashScreenForm's parsed list, which is not guaranteed to be populated before the
+		/// Application constructor runs.
+		/// </summary>
+		static bool IsDevFlowDisabledByCommandLine()
+		{
+			foreach (string arg in Environment.GetCommandLineArgs()) {
+				if (arg.Length < 2 || (arg[0] != '-' && arg[0] != '/'))
+					continue;
+				string parameter = arg.TrimStart('-', '/');
+				if (string.Equals(parameter, "devflow:off", StringComparison.OrdinalIgnoreCase))
+					return true;
+			}
+			return false;
+		}
+
 		/// <summary>
 		/// DevFlow agent port: the DEVFLOW_AGENT_PORT environment variable wins (mirrors the
 		/// LibreWpfDevFlowTestApp pattern), falling back to the pinned assembly metadata

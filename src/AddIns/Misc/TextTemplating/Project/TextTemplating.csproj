@@ -11,7 +11,7 @@
     <NoWarn>$(NoWarn);CA1416;WFO1000</NoWarn>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Mono.TextTemplating" Version="3.0.0" />
+    <PackageReference Include="Mono.TextTemplating" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" />
