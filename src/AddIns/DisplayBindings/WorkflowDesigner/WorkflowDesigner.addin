@@ -1,0 +1,7 @@
+<AddIn name="Workflow Designer" author="LeXtudio" description="Visual designer for Windows Workflow Foundation (CoreWF) activity files." addInManagerHidden="preinstalled">
+  <Manifest><Identity name="ICSharpCode.WorkflowDesigner" /></Manifest>
+  <Runtime><Import assembly="ICSharpCode.WorkflowDesigner.dll" /></Runtime>
+  <Path name="/SharpDevelop/Workbench/DisplayBindings">
+    <DisplayBinding id="WorkflowDesigner" type="Secondary" class="ICSharpCode.WorkflowDesigner.WorkflowDesignerDisplayBinding" fileNamePattern="\.xaml$" />
+  </Path>
+</AddIn>

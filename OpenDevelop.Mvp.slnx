@@ -74,6 +74,10 @@
     <Project Path="src/AddIns/DisplayBindings/GtkDesigner/GtkDesigner.csproj" />
     <Project Path="src/AddIns/DisplayBindings/GtkDesigner.Host/GtkDesigner.Host.csproj" />
   </Folder>
+  <Folder Name="/src/AddIns/DisplayBindings/WorkflowDesigner/">
+    <Project Path="src/AddIns/DisplayBindings/WorkflowDesigner/WorkflowDesigner.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/WorkflowDesigner.Host/WorkflowDesigner.Host.csproj" />
+  </Folder>
   <Folder Name="/src/AddIns/DisplayBindings/WinUIXamlDesigner/">
     <Project Path="src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.AddIn/ICSharpCode.WinUIXamlDesigner.csproj" />
     <Project Path="src/AddIns/DisplayBindings/WinUIXamlDesigner/XamlStudio.Toolkit.ProGPU/XamlStudio.Toolkit.ProGPU.csproj" />
