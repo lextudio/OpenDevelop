@@ -529,7 +529,7 @@ RenderFrame {
 
 The baseline is image frames (`RenderFrame`, above). A complementary mechanism — validated end to
 end for Stride's windowed game viewport running inside OpenDevelop/LibreWPF (see
-[`stride-game-studio.md`](stride-game-studio.md): "Composition-bridge probes", "fusion milestone 3")
+`stride-game-studio.md` (now in the Stride repo: `<stride>/sources/tools/Stride.OpenDevelop.AddIn/stride-game-studio.md`): "Composition-bridge probes", "fusion milestone 3")
 — removes the pixel transfer entirely: the design host owns a *native* GPU window and presents
 directly to it, and that window is embedded into the host IDE window via a native composition
 bridge. The GPU never crosses to the CPU, and the host never builds a bitmap.
@@ -569,7 +569,7 @@ Known shape and limits carried from the validation:
   ~70–300 swapchain recreations/s; "settle after resize" is the follow-up perf item).
 - The child needs its native runtime + GPU-driver payload locatable (macOS: `libSDL2` + MoltenVK
   via `DYLD_LIBRARY_PATH` / `VK_ICD_FILENAMES`; see the launch-requirement note in
-  stride-game-studio.md).
+  `<stride>/sources/tools/Stride.OpenDevelop.AddIn/stride-game-studio.md`).
 
 ## Input
 

@@ -10,13 +10,18 @@ namespace OpenDevelop.IntegrationTests;
 /// <summary>
 /// End-to-end Stride Game Studio integration: open a real Stride game project, see its .sdpkg
 /// Assets subtree in the Projects pad, edit a game script, inspect the tree/editor, and run the
-/// game. Driven entirely through DevFlow (see doc/technotes/stride-game-studio.md "Integration
+/// game. Driven entirely through DevFlow (see <stride>/sources/tools/Stride.OpenDevelop.AddIn/stride-game-studio.md "Integration
 /// test design" for the full case and per-phase blockers).
 ///
 /// Uses the Stride First-Person-Shooter template game IN PLACE (the local port clone, the same
-/// checkout the addin's $(StrideCheckoutRoot) defaults to) rather than a copied fixture, because
-/// the game's <c>ProjectReference</c>s point at shared Packs two levels above it; a temp copy
-/// would break those paths.
+/// checkout the addin's $(StrideRoot) resolves to) rather than a copied fixture, because the
+/// game's <c>ProjectReference</c>s point at shared Packs two levels above it; a temp copy would
+/// break those paths.
+///
+/// The addin itself no longer lives in this repo - it is built from the Stride checkout
+/// (<c>sources/tools/Stride.OpenDevelop.AddIn</c>) and deploys into this repo's
+/// <c>AddIns/DisplayBindings/StrideGameStudio/</c>. So this test SKIPS unless both the Stride
+/// checkout and a deployed addin are present, instead of failing on a machine that has neither.
 /// </summary>
 [Collection("30 Add-ins and specialized fixtures")]
 public sealed class StrideGameStudioIntegrationTests : IAsyncDisposable
@@ -39,9 +44,19 @@ public sealed class StrideGameStudioIntegrationTests : IAsyncDisposable
 		gameScriptPath = Path.Combine(gameDir, "Player", "PlayerController.cs");
 	}
 
+	/// <summary>The deployed addin manifest, which is what makes the .sdpkg bindings exist at all.</summary>
+	static string DeployedAddinManifest =>
+		Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+			"AddIns", "DisplayBindings", "StrideGameStudio", "ICSharpCode.StrideGameStudio.addin");
+
 	[Fact]
 	public async Task StrideGame_OpenEditInspectRun()
 	{
+		if (!Directory.Exists(StrideRoot))
+			Assert.Skip($"No Stride checkout at {StrideRoot}; set STRIDE_CHECKOUT_ROOT to run the Stride suite.");
+		if (!File.Exists(Path.GetFullPath(DeployedAddinManifest)))
+			Assert.Skip("The Stride addin is not deployed. Build sources/tools/Stride.OpenDevelop.AddIn from the Stride checkout first.");
+
 		// ── 1. OPEN — load the Stride game project ────────────────────────────────────────────
 		var opened = await app.ReopenSolutionAsync(gameProjectPath);
 		Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
