@@ -807,6 +807,112 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 
+		// The IDE's own "Start Without Debugging" (ICSharpCode.SharpDevelop.Project.Commands.Execute
+		// -> IProject.Start(false) -> SD.Debugger.StartWithoutDebugging) throws the launched
+		// Process away, so an automated caller can neither confirm the game came up nor stop it
+		// again. These actions reuse the SAME start info the menu command uses
+		// (IProject.CreateStartInfo(), which walks the project's behavior chain) but keep the
+		// Process, so a test can assert "still alive after N ms" and then kill it.
+		static readonly object runLock = new object();
+		static System.Diagnostics.Process runningProcess;
+
+		[DevFlowAction("od.run-project", Description = "Start the startup project (or a named project) without debugging, the same way the Debug > Start Without Debugging command does, and return the launched process id so it can be polled with od.run-status and stopped with od.stop-project")]
+		public static string RunProject(string projectName = null)
+		{
+			var solution = SD.ProjectService.CurrentSolution;
+			if (solution == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No solution is open." });
+
+			IProject project;
+			if (string.IsNullOrEmpty(projectName)) {
+				project = solution.StartupProject;
+				if (project == null)
+					return JsonSerializer.Serialize(new { success = false, error = "The solution has no startup project." });
+			} else {
+				project = solution.Projects.FirstOrDefault(p => string.Equals(p.Name, projectName, StringComparison.OrdinalIgnoreCase));
+				if (project == null)
+					return JsonSerializer.Serialize(new { success = false, error = $"No project named '{projectName}' in the current solution." });
+			}
+
+			if (!project.IsStartable)
+				return JsonSerializer.Serialize(new { success = false, error = $"Project '{project.Name}' is not startable (output type is not an executable, or no start program is configured)." });
+
+			// CreateStartInfo lives on AbstractProject, not IProject -- every real project
+			// implementation derives from it, so this cast is the supported way to reach the
+			// same start info the menu command builds.
+			if (project is not AbstractProject startable)
+				return JsonSerializer.Serialize(new { success = false, error = $"Project '{project.Name}' does not expose start information." });
+
+			System.Diagnostics.ProcessStartInfo psi;
+			try {
+				psi = startable.CreateStartInfo();
+			} catch (ProjectStartException ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.Message });
+			}
+			if (psi == null)
+				return JsonSerializer.Serialize(new { success = false, error = $"Project '{project.Name}' produced no start info." });
+
+			psi.UseShellExecute = false;
+
+			lock (runLock) {
+				if (runningProcess != null && !runningProcess.HasExited)
+					return JsonSerializer.Serialize(new { success = false, error = $"A process started by od.run-project is still running (pid {runningProcess.Id}); call od.stop-project first." });
+
+				try {
+					runningProcess = System.Diagnostics.Process.Start(psi);
+				} catch (Exception ex) {
+					return JsonSerializer.Serialize(new { success = false, error = ex.Message });
+				}
+
+				return JsonSerializer.Serialize(new {
+					success = true,
+					projectName = project.Name,
+					fileName = psi.FileName,
+					workingDirectory = psi.WorkingDirectory,
+					arguments = psi.Arguments,
+					processId = runningProcess.Id
+				});
+			}
+		}
+
+		[DevFlowAction("od.run-status", Description = "Report whether the process launched by od.run-project is still alive (and its exit code once it isn't)")]
+		public static string RunStatus()
+		{
+			lock (runLock) {
+				if (runningProcess == null)
+					return JsonSerializer.Serialize(new { success = true, running = false, started = false });
+				bool exited = runningProcess.HasExited;
+				return JsonSerializer.Serialize(new {
+					success = true,
+					started = true,
+					running = !exited,
+					processId = runningProcess.Id,
+					exitCode = exited ? (int?)runningProcess.ExitCode : null
+				});
+			}
+		}
+
+		[DevFlowAction("od.stop-project", Description = "Kill the process tree started by od.run-project")]
+		public static string StopProject()
+		{
+			lock (runLock) {
+				if (runningProcess == null)
+					return JsonSerializer.Serialize(new { success = true, stopped = false, reason = "Nothing was started by od.run-project." });
+
+				var process = runningProcess;
+				runningProcess = null;
+				try {
+					if (!process.HasExited)
+						process.Kill(entireProcessTree: true);
+				} catch (Exception ex) {
+					return JsonSerializer.Serialize(new { success = false, error = ex.Message });
+				} finally {
+					process.Dispose();
+				}
+				return JsonSerializer.Serialize(new { success = true, stopped = true });
+			}
+		}
+
 		[DevFlowAction("od.output-text", Description = "Get the full accumulated text of an Output pad category (default: 'Build')")]
 		public static string GetOutputText(string category = "Build")
 		{

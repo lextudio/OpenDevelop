@@ -1017,7 +1017,7 @@ Four phases, each asserting a distinct capability:
 | **1. Open** | `od.open-solution` on `FirstPersonShooter.Game.csproj`; `od.project-browser-state "FirstPersonShooter.Game"` | The project loads natively; the **virtual "Assets" node** (kind `Folder`, from the `.sdpkg` via the `IProjectTreeContributor` seam) appears under the project with `Folder`+`File` children mirroring the package's `AssetFolders` (`../Assets`, `Effects`) |
 | **2. Edit** | `od.open-file` on a game script (`Player/PlayerController.cs`); `od.active-view` | The game C# source opens in AvalonEdit (`isAvalonEdit=true`, `textLength>0`) and is the active view — the real game code is editable in the workbench |
 | **3. Inspect** | `od.project-browser-state` again; `od.active-view`; `od.solution-tree` | Tree (incl. Assets subtree) is stable after the edit; the script is still the active view; the solution reports the project's MSBuild items |
-| **4. Run** | Build the game (see below); then launch the built game executable and smoke-check it stays alive | The Stride SDK asset pipeline runs; the game binary can be launched. **Blocked today**: the "run a game" command (`od.run-game`-style) is the epic's open launcher item (DISCARD bucket: Game Studio's launcher was discarded, OpenDevelop's run command doesn't exist yet); the test launches the built exe directly as the smoke check, and reports "run not yet verifiable" (not a failure) when no built binary exists |
+| **4. Run** | Build the game (see below); then launch the built game executable and smoke-check it stays alive | The Stride SDK asset pipeline runs; the game binary can be launched. The run surface now exists (`od.run-project`/`od.run-status`/`od.stop-project`, 2026-08-26) and the test drives it first; `FirstPersonShooter.Game` is an asset/script library and is not startable, so the test falls back to launching the built platform-launcher binary directly and reports "run not yet verifiable" (not a failure) when this host has not produced one. **Still open**: which platform entry project a Stride game should start, and building it on macOS |
 
 DevFlow hooks relied on:
 
@@ -1057,6 +1057,121 @@ Known/expected friction to resolve when running for real (measured 2026-08-26, t
 
 ## Work log
 
+- **2026-08-26 (launcher implemented — `StrideLauncherService`, auto-scaffolded on solution open)** —
+  Steps 1-3 of the launcher design from the probe entry below are now real, in the Stride addin:
+  `StrideLauncherService.EnsureLauncher(ISolution)` finds the game project (the one owning a
+  `.sdpkg`), looks for a launcher that can actually run on THIS host (`*.Desktop` plus the host's
+  own `*.Windows`/`*.macOS`/`*.Linux` — a `.Windows` launcher is `net10.0-windows` and must never
+  be picked on macOS, which is the mis-pick that would make "run" look implemented and then fail),
+  falls back to a sibling on disk outside the solution, and otherwise **generates**
+  `<Game>.Desktop` (csproj in the measured shape + one-line `Program.cs`). It then
+  `AddExistingProject` + `Save()` and sets `StartupProject`. `RegisterStrideProjectTreeContributorCommand`
+  hooks `SD.ProjectService.SolutionOpened` and does this silently, logging to a "Stride" Output pad
+  category — a modal prompt on every solution open would be noise for a one-time, reversible
+  scaffold the user can delete. Also exposed as `od.stride.ensure-launcher`.
+
+  **Verified live end-to-end** (`OD_TEST_MODE=1`, DevFlow 9299, FirstPersonShooter sample): opening
+  `FirstPersonShooter.Game.csproj` auto-generated `FirstPersonShooter.Desktop`, wrote it into the
+  `.sln`, set it as startup project, and logged the reason to the Output pad — all before any
+  explicit call (the explicit `od.stride.ensure-launcher` then correctly reported
+  `already-present`). After `dotnet build` of the generated launcher, `od.run-project` started the
+  real game binary from `Bin/Desktop/Debug/FirstPersonShooter.Desktop` and `od.run-status` reported
+  it running.
+
+  **The game first aborted a few seconds in — the doubling defect above, and it is fixable from
+  the launcher.** Captured log: MoltenVK creates swapchain images at 10240x3912, then
+  `-[MTLTextureDescriptorInternal validateWithDevice:]` asserts
+  `width (20480) greater than the maximum allowed size of 16384` -> SIGABRT (exit 134) — exactly
+  the "MoltenVK surface pollutes SDL logical size" chain already diagnosed for our own viewport.
+  The generated launcher now sets `game.GraphicsDeviceManager.SkipBackBufferClampToWindow = true`
+  before `Run()`, and **that alone is enough**: measured on the FirstPersonShooter sample against
+  the stock Stride 4.4.0 NuGet packages, the swapchain locks at 1280x720 for the entire run (3704
+  recreations, one single distinct size, no growth), the game renders a real window, and it exits
+  cleanly (`Destroyed VkDevice`, exit 0) only when the user closes it. No engine fork, no
+  republished packages.
+
+  Two corrections to earlier claims in this note, both mine, both worth keeping so nobody repeats
+  them:
+
+  1. An earlier draft of this entry stated `SkipBackBufferClampToWindow` is **not** in the shipped
+     4.4.0 packages. **It is** — in `Stride.Games` and `Stride.Graphics` alike. The check was wrong,
+     not the packages: it searched the assemblies for the name UTF-16LE-encoded, which is where
+     *string literals* live (`#US` heap). **Member names live in the `#Strings` heap as UTF-8.**
+     The repo-wide note about UTF-16LE applies to string literals only; when probing for a type,
+     property, or field name, search UTF-8 (or just use `strings`). Getting this backwards turned
+     a one-line caller-side fix into a phantom "needs an engine fork" blocker.
+  2. The fix table above pairs the clamp switch with the fork's `Window.cs`
+     `SDL_Metal_GetDrawableSize` correction. The switch **on its own** is sufficient to stop the
+     crash and pin the size — the combination was never the minimum. What the `Window.cs` fix still
+     buys is efficiency: without it the presenter re-creates the swapchain on essentially every
+     frame (3704 recreations in one short run) instead of once. Correct-but-wasteful, and a real
+     item for whenever a game builds against the fork; not a blocker for running a game today.
+
+  The integration test's phase 4 was rewritten accordingly: it asserts the parts this seam owns —
+  launcher resolved/generated, file on disk, set as startup project, launcher builds, and
+  `od.run-project` starts a game process that is still alive on the next poll.
+
+- **2026-08-26 (launcher probe — a macOS launcher runs the FPS sample natively, no engine changes)** —
+  Measured, not assumed. The template's only entry project is `FirstPersonShooter.Windows`
+  (`net10.0-windows`, `WinExe`, `.ico`, `StridePlatform=Windows`) whose whole body is
+  `using var game = new Game(); game.Run();` — everything Windows-specific is MSBuild metadata,
+  not code. `Stride.Core.targets` (4.4.0) already derives `StridePlatform=macOS` from an `osx-*`
+  `RuntimeIdentifier`, and `Stride.Graphics` ships `runtimes/osx-arm64` natives. So a hand-written
+  sibling launcher:
+
+  ```xml
+  <TargetFramework>net10.0</TargetFramework>          <!-- no -windows -->
+  <OutputType>Exe</OutputType>
+  <RuntimeIdentifier>osx-arm64</RuntimeIdentifier>    <!-- drives StridePlatform=macOS -->
+  <SelfContained>false</SelfContained>
+  <OutputPath>..\Bin\macOS\$(Configuration)\</OutputPath>
+  <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+  <StrideCurrentPackagePath>$(MSBuildThisFileDirectory)..\FirstPersonShooter.sdpkg</StrideCurrentPackagePath>
+  <StridePlatform>macOS</StridePlatform>
+  ```
+
+  plus the same one-line `Program.cs`, **builds clean and runs**: the asset pipeline completed
+  1014/1014 steps (MoltenVK 1.4.2 / Vulkan 1.4.350 on an M1 Pro, `VkDevice` created and destroyed
+  during compilation), and the launched binary stayed alive compiling and running the real FPS
+  scene's shaders with no errors or exceptions in its log. Zero engine-fork changes were needed.
+  Probe artifacts were removed from the clone afterwards.
+
+  Two gotchas worth keeping: both `Append*ToOutputPath` must be `false`, otherwise the RID/TFM get
+  appended and `CompilableProject.OutputAssemblyFullPath` (which reads the evaluated `OutputPath`)
+  points at a path that doesn't exist, so `od.run-project` fails with a `ProjectStartException`
+  before ever launching; and `SelfContained=false` keeps a plain framework-dependent apphost
+  (a single extensionless binary, which `GetExtension` already expects on macOS).
+
+  **Design implication for the launcher item**: the missing piece is not engine work, it is
+  project-model work — (1) resolve a host-OS launcher project next to the game (`*.Desktop` /
+  `*.macOS` / `*.Windows` / `*.Linux` siblings of the `.sdpkg`), (2) generate one (csproj +
+  one-line `Program.cs`, exactly the shape above with the RID from `$(NETCoreSdkRuntimeIdentifier)`)
+  when the host OS has none, (3) make sure it is IN the opened solution and is the
+  `StartupProject`, then (4) hand off to the existing `od.run-project`. Preferring a single
+  cross-platform `<Game>.Desktop` launcher over per-OS triplication is the cleaner shape, since
+  `StridePlatform` already auto-derives from the RID.
+
+- **2026-08-26 (run surface implemented — `od.run-project` / `od.run-status` / `od.stop-project`)** —
+  Phase 4's "run not yet verifiable" gap is closed on the automation side. The IDE already had a
+  working launch path (Debug > Start Without Debugging → `IProject.Start(false)` →
+  `DefaultProjectBehavior.Start` → `SD.Debugger.StartWithoutDebugging` → `Process.Start`, with
+  `CompilableProject.GetExtension` already returning the extensionless macOS/Linux apphost name),
+  but it **throws the launched `Process` away**, so nothing could confirm the game came up or stop
+  it again. Added three DevFlow actions in `OpenDevelopDevFlowActions`: `od.run-project`
+  (startup project or a named one; reuses the SAME `AbstractProject.CreateStartInfo()` behavior
+  chain the menu command uses — `CreateStartInfo` is on `AbstractProject`, not `IProject`, hence
+  the cast — refuses to double-start, returns pid + resolved exe/workdir/args),
+  `od.run-status` (alive / exit code), `od.stop-project` (kills the process tree). Verified live
+  against a running app (`OD_TEST_MODE=1`, DevFlow 9299) on the `DebugTestApp` fixture: launch
+  returned the real apphost path and pid, status reported `running:false, exitCode:0` after the
+  short-lived app exited, a second launch succeeded, and stop cleared the slot. The Stride
+  integration test's phase 4 now drives `od.run-project` → `od.run-status` → `od.stop-project`
+  first and only falls back to launching the built binary directly (the previous behavior) when
+  the opened project is not startable — which is the case for `FirstPersonShooter.Game`, an asset/
+  script library whose runnable entry point is the platform launcher project. **Still open**: the
+  Stride-specific launcher story (which platform entry project a Stride game should start, and
+  building it on macOS) — the generic run surface is no longer the blocker.
 - **2026-08-26 (prefab-asset display binding — `.sprefab` opens the fused prefab editor)** — The
   Projects pad's `.sdpkg` Assets subtree now double-clicks `.sprefab` assets into a real editor:
   `StridePrefabDisplayBinding` (`StridePrefabAssetView`) matches `\.sprefab$`, finds the owning

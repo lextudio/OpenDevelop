@@ -13,6 +13,9 @@
 
 using System;
 using System.Globalization;
+using System.Text.Json;
+
+using ICSharpCode.SharpDevelop;
 
 using LeXtudio.DevFlow.Agent.Core;
 using Microsoft.Maui.DevFlow.Agent.Core;
@@ -73,6 +76,23 @@ namespace ICSharpCode.StrideGameStudio
 
 			viewport.ReassertOverlay();
 			return viewport.DescribeForDevFlow();
+		}
+
+		[DevFlowAction("od.stride.ensure-launcher", Description = "Resolve (or generate) the startable launcher project for the open Stride game solution and make it the startup project, so od.run-project can run the game")]
+		public static string EnsureLauncher()
+		{
+			var result = StrideLauncherService.EnsureLauncher(SD.ProjectService.CurrentSolution);
+			return JsonSerializer.Serialize(new {
+				success = result.Success,
+				status = result.Status,
+				gameProjectName = result.GameProjectName,
+				launcherProjectName = result.LauncherProjectName,
+				launcherProjectPath = result.LauncherProjectPath,
+				generated = result.Generated,
+				addedToSolution = result.AddedToSolution,
+				setAsStartupProject = result.SetAsStartupProject,
+				error = result.Error
+			});
 		}
 	}
 }

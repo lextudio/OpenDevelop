@@ -97,33 +97,44 @@ public sealed class StrideGameStudioIntegrationTests : IAsyncDisposable
 		var buildOutput = await BuildProjectAsync(gameProjectPath);
 		Assert.True(buildOutput.exitCode == 0, "Stride game build failed:\n" + buildOutput.output);
 
-		// Designed run step: start the built game executable and confirm the process is alive
-		// long enough to have actually started, then clean up. Skipped (reported, not failed) if
-		// the Windows entry project has not produced a runnable binary on this host yet.
-		var gameExe = FindGameExecutable();
-		if (gameExe == null)
-		{
-			// Not a failure of the integration seam - the run surface is the epic's open item.
-			// A test that reports "run not yet verifiable" is more honest than a red herring.
-			return;
-		}
+		// The game project is a class library and cannot be started; the addin's launcher service
+		// resolves or generates the startable "<Game>.Desktop" entry project, adds it to the
+		// solution, and makes it the startup project. That happens automatically on solution open;
+		// calling it explicitly makes the assertion independent of that hook's timing.
+		var launcher = await app.InvokeAsync("od.stride.ensure-launcher");
+		Assert.True(launcher.GetProperty("success").GetBoolean(), launcher.ToString());
+		var launcherPath = launcher.GetProperty("launcherProjectPath").GetString();
+		Assert.False(string.IsNullOrEmpty(launcherPath));
+		Assert.True(File.Exists(launcherPath), "Launcher project was not created at " + launcherPath);
+		Assert.True(launcher.GetProperty("setAsStartupProject").GetBoolean(),
+			"The launcher was not made the startup project, so Run/Debug still has nothing to start.");
 
-		var psi = new ProcessStartInfo(gameExe)
-		{
-			UseShellExecute = false,
-			RedirectStandardOutput = true,
-			RedirectStandardError = true,
-		};
-		using var gameProcess = Process.Start(psi);
+		// Building the launcher builds the game and its packs transitively and runs the Stride
+		// asset pipeline for the launcher's own platform.
+		var launcherBuild = await BuildProjectAsync(launcherPath!);
+		Assert.True(launcherBuild.exitCode == 0, "Stride launcher build failed:\n" + launcherBuild.output);
+
+		// Run through the IDE's own launch surface: od.run-project reuses IProject.CreateStartInfo
+		// (the behavior chain the Debug > Start Without Debugging command uses) but keeps the
+		// launched Process, so the smoke check can poll it and stop it again.
+		var run = await app.InvokeAsync("od.run-project");
+		Assert.True(run.GetProperty("success").GetBoolean(), run.ToString());
+		Assert.True(run.GetProperty("processId").GetInt32() > 0, run.ToString());
 		try
 		{
-			await Task.Delay(TimeSpan.FromSeconds(5));
-			Assert.False(gameProcess!.HasExited, "Game process exited during the run smoke test.");
+			// The generated launcher sets GraphicsDeviceManager.SkipBackBufferClampToWindow, which
+			// is what keeps this alive on macOS: without it the Vulkan presenter lets the Retina
+			// CAMetalLayer extent feed back into the backbuffer size until a texture descriptor
+			// exceeds Metal's 16384 cap and the game aborts within seconds (see technote). Staying
+			// alive here is therefore a real regression guard on that line, not just a liveness poll.
+			await Task.Delay(TimeSpan.FromSeconds(10));
+			var status = await app.InvokeAsync("od.run-status");
+			Assert.True(status.GetProperty("running").GetBoolean(),
+				"The launched game exited instead of running: " + status);
 		}
 		finally
 		{
-			if (!gameProcess!.HasExited)
-				gameProcess.Kill(entireProcessTree: true);
+			await app.InvokeAsync("od.stop-project");
 		}
 	}
 
@@ -152,15 +163,6 @@ public sealed class StrideGameStudioIntegrationTests : IAsyncDisposable
 			await Task.Delay(TimeSpan.FromMilliseconds(500));
 		}
 		return await app.InvokeAsync("od.active-view");
-	}
-
-	string? FindGameExecutable()
-	{
-		var windowsDir = Path.Combine(StrideRoot, "samples", "Templates", "FirstPersonShooter", "FirstPersonShooter", "FirstPersonShooter.Windows");
-		return Directory.Exists(windowsDir)
-			? Directory.EnumerateFiles(windowsDir, "FirstPersonShooter.Windows.exe", SearchOption.AllDirectories)
-				.FirstOrDefault(f => !f.Contains("obj", StringComparison.OrdinalIgnoreCase))
-			: null;
 	}
 
 	static JsonElement? FindNode(JsonElement root, Func<JsonElement, bool> predicate)
