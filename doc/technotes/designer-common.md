@@ -171,6 +171,24 @@ shutdown closes every remaining materialized session once, and all five existing
 tests continue to cover Outline, Properties, Toolbox and persistence. Backend rendering and
 source generation are explicit non-goals for the shared libraries.
 
+Implementation status (2026-08-27): `DesignerChildHost` now also has an explicit-method/
+runtime-loop overload. WinUI/Uno uses it, retaining only its Uno dispatcher and runtime-specific
+RPC map; it no longer owns loopback connection, ready logging, transport-completion shutdown or
+fatal-exit policy. WinForms and WPF continue to use the typed-service overload.
+
+`Designer.Remote.DesignerDocumentRpcClient` now owns the common document-scoped RPC envelope
+(`SessionId`, `DocumentId`, standard snapshot open/update, versioned flush/property/event/add/bounds/delete/rename/hit-test and close).
+The WPF, Uno and WinForms remote adapters are its first consumers. This is intentionally a composable helper rather
+than a backend base class: WinForms rounding and event semantics, and Uno's XAML/viewport
+open/update payload remain runtime-specific adapter responsibilities. Uno can adopt each stable
+operation independently as its wire shapes converge.
+
+`DesignerDocumentHostClient` now supplies the surrounding parent-side lease state for those
+three adapters: document identity, process status, host-exit forwarding and ping/close lifecycle.
+This leaves each adapter with only its pool compatibility key, release policy and runtime-specific
+RPCs. GTK4 and MewUI retain their older session-less mutation envelope for now; aligning that
+envelope is the prerequisite before they can use the same document helper and recovery plumbing.
+
 Implementation status (2026-08-24): `src/Main/Designer/Designer.Shell` now exists. Its first
 vertical slice, `DesignerSelectionController`, is used by all five designers as the stable-ID
 authority for outline trees and single selection. It preserves selection across fresh protocol

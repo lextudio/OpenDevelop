@@ -37,6 +37,22 @@
     <Error Condition="Exists('$(OutputPath)ref/Reference.dll')" Text="Reference asset was not pruned." />
     <Error Condition="Exists('$(OutputPath)runtimes/win-x64/native.dll')" Text="Foreign runtime asset was not pruned." />
     <Error Condition="!Exists('$(OutputPath)runtimes/osx/native.dylib')" Text="Current-platform runtime asset was incorrectly pruned." />
+
+    <!-- F5-debug support (see doc/technotes/stride-game-studio.md "Part 1"): the SDK must make an
+         InProcess addin startable by emitting the same Start* properties DotNetStartBehavior reads,
+         without requiring OutputType=Exe - a Library becomes startable purely because StartAction
+         is Program and StartProgram is non-empty; OutputType is never consulted. -->
+    <Error Condition="'$(StartAction)' != 'Program'" Text="StartAction was not set to Program; F5 would not know how to launch this addin ($(StartAction))." />
+    <Error Condition="'$(StartProgram)' == ''" Text="StartProgram is empty; F5 would launch nothing." />
+    <Error Condition="!$(StartProgram.EndsWith('OpenDevelop'))" Text="StartProgram did not resolve to the host apphost under OpenDevelopHostBin ($(StartProgram))." />
+    <Error Condition="!$(StartArguments.Contains('-addindir:'))" Text="StartArguments is missing -addindir:, so the child instance would never load this addin ($(StartArguments))." />
+    <Error Condition="!$(StartArguments.Contains('-configdir:'))" Text="StartArguments is missing -configdir:, so the child instance would clobber the developer's own profile ($(StartArguments))." />
+    <Error Condition="!$(StartArguments.Contains('-devflow:off'))" Text="StartArguments is missing -devflow:off, so the child instance would fight the parent for the DevFlow port ($(StartArguments))." />
+    <!-- The trailing-quote/backslash mangling SplashScreenForm.SetCommandLineArgs does on a
+         directory argument that ends in a separator (see SharpDevelopMain.cs) - StartArguments
+         must never hand it one. -->
+    <Error Condition="$(StartArguments.Contains('&quot;/&quot;')) or $(StartArguments.Contains('\&quot;'))" Text="A StartArguments directory value has a trailing separator before its closing quote, which SplashScreenForm mangles into a stray backslash ($(StartArguments))." />
+
     <Message Importance="high" Text="OpenDevelop Addin SDK deployment test passed." />
   </Target>
 </Project>

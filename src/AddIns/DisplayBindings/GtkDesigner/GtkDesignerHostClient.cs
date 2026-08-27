@@ -18,6 +18,7 @@ sealed class GtkDesignerHostClient : IDesignHostClient
 	static readonly HashSet<GtkDesignerHostClient> clients = new();
 
 	GtkDesignerHostConnection connection;
+	readonly DesignerDocumentRpcClient document;
 	DesignerDocumentSnapshot? recoverySnapshot;
 	DesignerSessionState? recoveredState;
 	bool disposed;
@@ -36,6 +37,7 @@ sealed class GtkDesignerHostClient : IDesignHostClient
 	GtkDesignerHostClient(GtkDesignerHostConnection connection)
 	{
 		this.connection = connection;
+		document = new DesignerDocumentRpcClient(connection, SessionId, DocumentId);
 		connection.HostExited += OnConnectionExited;
 		lock (clientsGate) clients.Add(this);
 	}
@@ -55,16 +57,14 @@ sealed class GtkDesignerHostClient : IDesignHostClient
 
 	public Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, CancellationToken token = default)
 	{
-		Stamp(snapshot);
 		recoverySnapshot = snapshot;
-		return connection.OpenAsync(snapshot, token);
+		return document.OpenAsync(snapshot, token);
 	}
 
 	public Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, CancellationToken token = default)
 	{
-		Stamp(snapshot);
 		recoverySnapshot = snapshot;
-		return connection.UpdateAsync(snapshot, token);
+		return document.UpdateAsync(snapshot, token);
 	}
 
 	void Stamp(DesignerDocumentSnapshot snapshot)
@@ -73,26 +73,26 @@ sealed class GtkDesignerHostClient : IDesignHostClient
 		snapshot.DocumentId = DocumentId;
 	}
 
-	public Task<DesignerEditSet> FlushAsync(long version, CancellationToken token = default) => connection.FlushAsync(DocumentId, version, token);
-	public Task<DesignerSessionState> SetPropertyAsync(long v, string id, string name, string value, CancellationToken token = default) => TrackAsync(connection.SetPropertyAsync(DocumentId, v, id, name, value, token), token);
-	public Task<DesignerSessionState> AddElementAsync(long v, string parent, DesignerToolboxItemInfo item, string name, double x, double y, CancellationToken token = default) => TrackAsync(connection.AddElementAsync(DocumentId, v, parent, item, name, x, y, token), token);
-	public Task<DesignerSessionState> DeleteElementsAsync(long v, string[] ids, CancellationToken token = default) => TrackAsync(connection.DeleteElementsAsync(DocumentId, v, ids, token), token);
-	public Task<DesignerSessionState> RenameAsync(long v, string id, string name, CancellationToken token = default) => TrackAsync(connection.RenameAsync(DocumentId, v, id, name, token), token);
+	public Task<DesignerEditSet> FlushAsync(long version, CancellationToken token = default) => document.FlushAsync(version, token);
+	public Task<DesignerSessionState> SetPropertyAsync(long v, string id, string name, string value, CancellationToken token = default) => TrackAsync(document.SetPropertyAsync(v, id, name, value, token), token);
+	public Task<DesignerSessionState> AddElementAsync(long v, string parent, DesignerToolboxItemInfo item, string name, double x, double y, CancellationToken token = default) => TrackAsync(document.AddElementAsync(v, parent, item, name, x, y, token), token);
+	public Task<DesignerSessionState> DeleteElementsAsync(long v, string[] ids, CancellationToken token = default) => TrackAsync(document.DeleteElementsAsync(v, ids, token), token);
+	public Task<DesignerSessionState> RenameAsync(long v, string id, string name, CancellationToken token = default) => TrackAsync(document.RenameAsync(v, id, name, token), token);
 	public Task<DesignerSessionState> UndoAsync(long v, CancellationToken token = default) => TrackAsync(connection.UndoAsync(DocumentId, v, token), token);
 	public Task<DesignerSessionState> RedoAsync(long v, CancellationToken token = default) => TrackAsync(connection.RedoAsync(DocumentId, v, token), token);
 	public Task PingAsync(CancellationToken token = default) => connection.PingAsync(token);
 	public Task ShutdownAsync(CancellationToken token = default) => connection.ShutdownAsync(token);
 	public void TerminateHost() => connection.TerminateHost();
-	public Task<DesignerSessionState> SetEventAsync(long v, string id, string e, string h, CancellationToken t = default) => TrackAsync(connection.SetEventAsync(DocumentId, v, id, e, h, t), t);
+	public Task<DesignerSessionState> SetEventAsync(long v, string id, string e, string h, CancellationToken t = default) => TrackAsync(document.SetEventAsync(v, id, e, h, t), t);
 	public Task<DesignerSessionState> ReorderAsync(long v, string id, int delta, CancellationToken t = default) => TrackAsync(connection.ReorderAsync(DocumentId, v, id, delta, t), t);
 	public Task<DesignerSessionState> SetBoundsAsync(long v, string id, double x, double y, double w, double h, CancellationToken t = default) => throw new NotSupportedException();
-	public Task<DesignerHitTestResult> HitTestAsync(long v, double x, double y, CancellationToken t = default) => connection.HitTestAsync(DocumentId, v, x, y, t);
+	public Task<DesignerHitTestResult> HitTestAsync(long v, double x, double y, CancellationToken t = default) => document.HitTestAsync(v, x, y, t);
 	public Task<DesignerSessionState> RenderAsync(long version, CancellationToken token = default) => connection.RenderAsync(DocumentId, version, token);
 
 	async Task<DesignerSessionState> TrackAsync(Task<DesignerSessionState> operation, CancellationToken token)
 	{
 		var result = await operation.ConfigureAwait(false);
-		var edit = await connection.FlushAsync(DocumentId, result.Version, token).ConfigureAwait(false);
+		var edit = await document.FlushAsync(result.Version, token).ConfigureAwait(false);
 		if (recoverySnapshot != null && edit.Files.Count > 0) {
 			recoverySnapshot.Version = result.Version;
 			recoverySnapshot.Files.Clear();
@@ -133,9 +133,9 @@ sealed class GtkDesignerHostClient : IDesignHostClient
 				var replacement = await broker.AcquireAsync(token).ConfigureAwait(false);
 				client.connection.HostExited -= client.OnConnectionExited;
 				client.connection = replacement;
+				client.document.ReplaceConnection(replacement);
 				replacement.HostExited += client.OnConnectionExited;
-				client.Stamp(client.recoverySnapshot);
-				client.recoveredState = await replacement.OpenAsync(client.recoverySnapshot, token).ConfigureAwait(false);
+				client.recoveredState = await client.document.OpenAsync(client.recoverySnapshot, token).ConfigureAwait(false);
 				client.RecoveryCount++;
 				client.Recovered?.Invoke(client, client.recoveredState);
 			}
@@ -145,7 +145,7 @@ sealed class GtkDesignerHostClient : IDesignHostClient
 	async Task TrackSnapshotAsync(CancellationToken token)
 	{
 		if (recoverySnapshot == null) return;
-		var edit = await connection.FlushAsync(DocumentId, recoverySnapshot.Version, token).ConfigureAwait(false);
+		var edit = await document.FlushAsync(recoverySnapshot.Version, token).ConfigureAwait(false);
 		if (edit.Files.Count == 0) return;
 		recoverySnapshot.Files.Clear();
 		foreach (var file in edit.Files) recoverySnapshot.Files.Add(file);
@@ -157,7 +157,7 @@ sealed class GtkDesignerHostClient : IDesignHostClient
 		disposed = true;
 		connection.HostExited -= OnConnectionExited;
 		lock (clientsGate) clients.Remove(this);
-		try { connection.CloseDocumentAsync(DocumentId, CancellationToken.None).Wait(TimeSpan.FromSeconds(3)); } catch { }
+		try { document.CloseAsync(CancellationToken.None).Wait(TimeSpan.FromSeconds(3)); } catch { }
 		broker.Release(connection);
 	}
 

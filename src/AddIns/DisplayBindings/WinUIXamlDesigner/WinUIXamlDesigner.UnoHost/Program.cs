@@ -1,7 +1,5 @@
 using System;
 using System.IO;
-using System.Net;
-using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Security.Cryptography;
@@ -43,44 +41,19 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 
 		static int Run(string[] args)
 		{
-			var port = ParsePort(args);
 			var appBin = ParseArgument(args, "--appbin");
-			var expectedToken = ParseArgument(args, "--token");
 
 			HeadlessDispatcher.Install();
 
 			PreloadProjectAssemblies(appBin);
 
-			// Connect BEFORE Application.Start: Application.Start installs Uno's
-			// SynchronizationContext, whose continuations are posted to the dispatcher
-			// queue - and that queue is only pumped once HeadlessDispatcher.Run starts
-			// below. Any await on this thread in between would deadlock.
-			using var tcp = new TcpClient();
-			using (var connectCts = new CancellationTokenSource(TimeSpan.FromSeconds(30)))
-			{
-				try
-				{
-					tcp.Connect(IPAddress.Loopback, port);
-				}
-				catch (OperationCanceledException)
-				{
-					Console.Error.WriteLine("UnoDesignHost: timed out connecting to parent port " + port);
-					return 1;
-				}
-				catch (SocketException e)
-				{
-					Console.Error.WriteLine("UnoDesignHost: cannot connect to parent port " + port + ": " + e.Message);
-					return 1;
-				}
-			}
+			return DesignerChildHost.Run(args, "UnoDesignHost", RegisterRpcMethods,
+				HeadlessDispatcher.Run, Shutdown,
+				afterConnect: () => Application.Start(args2 => _ = new HostApp()));
+		}
 
-			Application.Start(args2 => _ = new HostApp());
-			Console.Error.WriteLine("UnoDesignHost: Application.Start returned");
-
-			var stream = tcp.GetStream();
-			var formatter = new SystemTextJsonFormatter();
-			var handler = new HeaderDelimitedMessageHandler(stream, stream, formatter);
-			var rpc = new JsonRpc(handler);
+		static void RegisterRpcMethods(JsonRpc rpc, string expectedToken)
+		{
 			rpc.AddLocalRpcMethod("initialize", new Func<string, int, string, DesignerCapabilities>((token, protocolVersion, sessionId) => Initialize(expectedToken, token, protocolVersion, sessionId)));
 			rpc.AddLocalRpcMethod("design/load", new Func<string, double, double, double, DesignerSessionState>(LoadDesign));
 			rpc.AddLocalRpcMethod("design/layout", new Func<double, double, double, DesignerSessionState>(Layout));
@@ -100,29 +73,6 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			rpc.AddLocalRpcMethod("design/export-png", new Func<string, string, string, string>(ExportPng));
 			rpc.AddLocalRpcMethod("ping", new Action(Ping));
 			rpc.AddLocalRpcMethod("shutdown", new Action(Shutdown));
-			rpc.StartListening();
-			Console.Error.WriteLine("UnoDesignHost: listening");
-
-			Console.Error.WriteLine("UnoDesignHost: ready on " + port);
-
-			// The dispatcher pump runs the Uno UI thread; the RPC callbacks marshal
-			// into it. This thread exits when shutdown is requested.
-			HeadlessDispatcher.Run();
-
-			rpc.Dispose();
-			return 0;
-		}
-
-		static int ParsePort(string[] args)
-		{
-			for (var i = 0; i < args.Length - 1; i++)
-			{
-				if (args[i] == "--port" && int.TryParse(args[i + 1], out var port))
-				{
-					return port;
-				}
-			}
-			return 0;
 		}
 
 		static string ParseArgument(string[] args, string name)

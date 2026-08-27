@@ -144,7 +144,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 
 		/// <summary>Invokes a JSON-RPC method on the child with the shared timeout; a timeout
 		/// terminates the host (it can no longer be trusted to be responsive).</summary>
-		protected Task<T> InvokeAsync<T>(string method, object arguments, CancellationToken cancellationToken, TimeSpan? timeout = null)
+		public Task<T> InvokeAsync<T>(string method, object arguments, CancellationToken cancellationToken, TimeSpan? timeout = null)
 		{
 			if (!IsAlive)
 				throw new IOException("The designer host is not running.");

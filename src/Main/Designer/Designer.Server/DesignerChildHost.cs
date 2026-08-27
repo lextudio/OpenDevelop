@@ -8,10 +8,8 @@
 // client-side counterpart, which does the listening/dialing-out from the IDE side) but for the
 // child's side of the same handshake.
 //
-// WinUIXamlDesigner.UnoHost does NOT use this: its child process registers RPC methods
-// individually (AddLocalRpcMethod per method, not AddLocalRpcTarget(service)) and runs its own
-// UI dispatcher pump instead of a plain WaitHandle, so forcing it onto this exact shape would
-// obscure real differences rather than removing incidental duplication - see designer-common.md.
+// WinUIXamlDesigner.UnoHost uses the explicit-method overload below: it retains its Uno dispatcher
+// pump and RPC map while sharing connection, ready, disconnect and exit handling.
 
 using System;
 using System.Net;
@@ -40,6 +38,44 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	/// return (2 for a malformed command line, 0 on a clean shutdown).</summary>
 	public static class DesignerChildHost
 	{
+		/// <summary>
+		/// Variant for runtimes that need their own dispatcher loop or explicit RPC-method
+		/// registration (currently Uno). It owns the transport, ready signal, disconnect
+		/// handling and exception-to-exit-code policy; the runtime supplies only its RPC map
+		/// and UI-thread wait/shutdown hooks.
+		/// </summary>
+		public static int Run(string[] args, string readyMessagePrefix,
+			Action<JsonRpc, string> registerMethods, Action waitForShutdown,
+			Action onParentDisconnected, Action? afterShutdown = null, Action? afterConnect = null)
+		{
+			var port = GetArgument(args, "--port");
+			var token = GetArgument(args, "--token");
+			if (!int.TryParse(port, out var portNumber) || string.IsNullOrEmpty(token))
+				return 2;
+			try
+			{
+				using var tcp = new TcpClient();
+				tcp.Connect(IPAddress.Loopback, portNumber);
+				afterConnect?.Invoke();
+				using var rpc = new JsonRpc(new HeaderDelimitedMessageHandler(tcp.GetStream(), tcp.GetStream(), new SystemTextJsonFormatter()));
+				registerMethods(rpc, token);
+				rpc.StartListening();
+				Console.Error.WriteLine($"{readyMessagePrefix}: ready on {portNumber}");
+				_ = rpc.Completion.ContinueWith(_ => onParentDisconnected(),
+					System.Threading.CancellationToken.None,
+					System.Threading.Tasks.TaskContinuationOptions.ExecuteSynchronously,
+					System.Threading.Tasks.TaskScheduler.Default);
+				waitForShutdown();
+				afterShutdown?.Invoke();
+				return 0;
+			}
+			catch (Exception exception)
+			{
+				Console.Error.WriteLine($"{readyMessagePrefix}: fatal host error: {exception}");
+				return 1;
+			}
+		}
+
 		public static int Run(string[] args, string readyMessagePrefix,
 			Func<string, IDesignerChildService> createService, Action? afterShutdown = null)
 		{

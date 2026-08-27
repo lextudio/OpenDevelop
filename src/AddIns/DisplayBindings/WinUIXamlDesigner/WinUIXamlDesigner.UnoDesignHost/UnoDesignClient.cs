@@ -17,7 +17,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoDesignHost;
 /// The process lifecycle (spawn, token handshake, log pump, timeouts, shutdown) comes from
 /// <see cref="DesignerHostProcessClient"/>; the Uno-specific method mapping lives here.
 /// </summary>
-public sealed class UnoDesignClient : IDesignHostClient, IDesignHostTheme, IDesignHostExport, IDesignHostAppResources
+public sealed class UnoDesignClient : DesignerDocumentHostClient, IDesignHostClient, IDesignHostTheme, IDesignHostExport, IDesignHostAppResources
 {
 	static readonly SharedDesignerHostPool<CompatibilityKey, Connection> sharedPool = new(
 		(_, connection) => connection.IsAlive,
@@ -32,17 +32,12 @@ public sealed class UnoDesignClient : IDesignHostClient, IDesignHostTheme, IDesi
 	/// the client's life.</summary>
 	public string DocumentId { get; } = Guid.NewGuid().ToString("N");
 
-	UnoDesignClient(Connection connection, CompatibilityKey? poolKey)
+	UnoDesignClient(Connection connection, CompatibilityKey? poolKey) : base(connection)
 	{
 		this.connection = connection;
 		this.poolKey = poolKey;
 		capabilities = connection.Capabilities;
 	}
-	public int ProcessId => connection.ProcessId;
-	public bool IsAlive => connection.IsAlive;
-	public string ChildLog => connection.ChildLog;
-	public string SessionId => connection.SessionId;
-	public event EventHandler? HostExited { add => connection.HostExited += value; remove => connection.HostExited -= value; }
 
 	/// <summary>Path of the deployed child binary, or null when the addin tree lacks it.</summary>
 	public static string? LocateChildDll()
@@ -128,20 +123,17 @@ public sealed class UnoDesignClient : IDesignHostClient, IDesignHostTheme, IDesi
 	/// <summary>Stub: this host holds no independent child-side edit buffer, so this reports
 	/// the current XAML as the sole file - lands the wire shape now.</summary>
 	public Task<DesignerEditSet> FlushAsync(long baseVersion, CancellationToken cancellationToken = default)
-		=> connection.InvokeAsync<DesignerEditSet>("session/flush",
-			new { sessionId = SessionId, documentId = DocumentId, baseVersion }, cancellationToken);
+		=> Document.FlushAsync(baseVersion, cancellationToken);
 
 	/// <summary>Applies a single property change directly to the live element and re-renders,
 	/// without re-running the full XAML parse/load path.</summary>
 	public Task<DesignerSessionState> SetPropertyAsync(long baseVersion, string elementId, string propertyName, string value, CancellationToken cancellationToken = default)
-		=> connection.InvokeAsync<DesignerSessionState>("design/set-property",
-			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName, value }, cancellationToken);
+		=> Document.SetPropertyAsync(baseVersion, elementId, propertyName, value, cancellationToken);
 
 	/// <summary>Validates the element/event names exist; no live code-behind instance exists in
 	/// this design host, so no real wiring happens yet.</summary>
 	public Task<DesignerSessionState> SetEventAsync(long baseVersion, string elementId, string eventName, string handlerName, CancellationToken cancellationToken = default)
-		=> connection.InvokeAsync<DesignerSessionState>("design/set-event",
-			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, eventName, handlerName }, cancellationToken);
+		=> Document.SetEventAsync(baseVersion, elementId, eventName, handlerName, cancellationToken);
 
 	/// <summary>Parses the toolbox item's XAML template and inserts it as a child of the named
 	/// parent element, then re-renders without re-running the full document XAML parse.
@@ -154,18 +146,15 @@ public sealed class UnoDesignClient : IDesignHostClient, IDesignHostTheme, IDesi
 	/// <summary>Sets an element's width/height directly, and its Canvas position when its
 	/// parent is a Canvas, then re-renders.</summary>
 	public Task<DesignerSessionState> SetBoundsAsync(long baseVersion, string elementId, double x, double y, double width, double height, CancellationToken cancellationToken = default)
-		=> connection.InvokeAsync<DesignerSessionState>("design/set-bounds",
-			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, x, y, width, height }, cancellationToken);
+		=> Document.SetBoundsAsync(baseVersion, elementId, x, y, width, height, cancellationToken);
 
 	/// <summary>Removes each named element from its Panel parent, then re-renders.</summary>
 	public Task<DesignerSessionState> DeleteElementsAsync(long baseVersion, string[] elementIds, CancellationToken cancellationToken = default)
-		=> connection.InvokeAsync<DesignerSessionState>("design/delete-elements",
-			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementIds }, cancellationToken);
+		=> Document.DeleteElementsAsync(baseVersion, elementIds, cancellationToken);
 
 	/// <summary>Renames the live element, then re-renders.</summary>
 	public Task<DesignerSessionState> RenameAsync(long baseVersion, string elementId, string newName, CancellationToken cancellationToken = default)
-		=> connection.InvokeAsync<DesignerSessionState>("design/rename",
-			new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, newName }, cancellationToken);
+		=> Document.RenameAsync(baseVersion, elementId, newName, cancellationToken);
 
 	public Task<DesignerAppResourcesResult> SetAppResourcesAsync(string xaml, CancellationToken cancellationToken = default)
 		=> connection.InvokeAsync<DesignerAppResourcesResult>("app/resources",
@@ -187,17 +176,6 @@ public sealed class UnoDesignClient : IDesignHostClient, IDesignHostTheme, IDesi
 
 	/// <summary>True while the child process is running and not yet shut down.</summary>
 	public bool IsProcessAlive => IsAlive;
-
-	#region IDesignHostClient
-
-	public Task PingAsync(CancellationToken cancellationToken = default)
-		=> connection.InvokeAsync<object>("ping", null, cancellationToken);
-	public void TerminateHost() => connection.TerminateHost();
-
-	public Task ShutdownAsync(CancellationToken cancellationToken = default)
-		=> connection.InvokeAsync<object>("session/close", new { sessionId = SessionId, documentId = DocumentId }, cancellationToken, TimeSpan.FromSeconds(3));
-
-	#endregion
 
 	public void Dispose()
 	{
@@ -221,7 +199,6 @@ public sealed class UnoDesignClient : IDesignHostClient, IDesignHostTheme, IDesi
 			this.hostDllPath = hostDllPath;
 		}
 		public Task StartConnectionAsync(CancellationToken token) => StartAsync(token);
-		public new Task<T> InvokeAsync<T>(string method, object arguments, CancellationToken token, TimeSpan? timeout = null) => base.InvokeAsync<T>(method, arguments, token, timeout);
 		protected override string GetChildDllPath() => hostDllPath ?? throw new FileNotFoundException("The Uno design host child is not deployed.");
 		protected override string BuildCommandLine(string childDll, int port, string token)
 		{
