@@ -10,6 +10,9 @@
   <Path name="/SharpDevelop/Workbench/DisplayBindings">
     <!-- Primary: nothing else opens .sdpkg packages. Scene-asset bindings join in later slices. -->
     <DisplayBinding id="StrideGameStudioPackage" type="Primary" class="ICSharpCode.StrideGameStudio.StridePackageDisplayBinding" fileNamePattern="\.sdpkg$" />
+    <!-- Scene assets open in the fused scene editor (single-session/overlay: whichever scene was
+         opened last owns the one native overlay window). -->
+    <DisplayBinding id="StrideGameStudioScene" type="Primary" class="ICSharpCode.StrideGameStudio.StrideSceneAssetDisplayBinding" fileNamePattern="\.sdscene$" />
   </Path>
   <Path name="/SharpDevelop/Workbench/AutostartAfterWorkbenchInitialized">
     <Class id="ICSharpCode.StrideGameStudio.RegisterStrideProjectTreeContributorCommand"
