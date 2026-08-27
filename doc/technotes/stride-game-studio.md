@@ -1057,35 +1057,24 @@ Known/expected friction to resolve when running for real (measured 2026-08-26, t
 
 ## Work log
 
-- **2026-08-26 (scene overlay aspect-ratio bug — root-caused, not yet fixed)** — The real scene
+- **2026-08-26 (scene overlay aspect-ratio bug — FIXED)** — The real scene
   editor's rendered frame came out squashed in the document tab. Diagnosed precisely with
   in-presenter logging (`SwapChainGraphicsPresenter.Vulkan.cs` `CreateSwapChain`):
-  - The overlay window (Cocoa frame) is **468×188**, but the swapchain is created at
-    **`desc=468x354 skipClamp=True extent=936x708`**. So `SkipBackBufferClampToWindow` IS honored
-    (desc not overwritten by currentExtent), but the presenter's `Description.BackBufferWidth/
-    Height` is a stale **468×354** captured at device-init from the (polluted) drawable, and
-    `GraphicsDeviceManager.ApplyChanges()` does NOT re-derive `Description` from the new
-    `PreferredBackBuffer`.
-  - Attempts that did NOT change the swapchain: `EditorGameController.ResizeGame` (sets
-    `PreferredBackBuffer=468×188` + `ApplyChanges()` — the `before=512x512 set=468x188` diagnostic
-    confirmed it runs and sets the size, but desc stays 354), and
-    `StrideSceneEditorViewport` setting `sdlWindow.ClientSize=468×188` (SDL_SetWindowSize — the
-    drawable/currentExtent stays 936×708).
-  - Kept as genuine improvements: `ResizeGame(int,int)` added to `IEditorGameController` +
-    `EditorGameController` (sets PreferredBackBuffer + ApplyChanges; no-op on Windows), and
-    `GraphicsDeviceManager.SkipBackBufferClampToWindow = true` set in `EditorServiceGame.Initialize`
-    (before the device is created — setting it later in ResizeGame did not reach the built
-    presenter's Description).
-  - **Root cause**: the macOS SDL/MoltenVK drawable defect recorded earlier — the SDL window's
-    drawable/`currentExtent` reports a polluted height (354 = real → 708 @2x) instead of the
-    window's logical 188. `SkipBackBufferClampToWindow` stopped the doubling growth but left the
-    wrong size, and neither ApplyChanges nor SDL_SetWindowSize re-derives the presenter desc from
-    the preferred size for this embedded/child-window path. Fixing the aspect means either (a)
-    correcting the SDL window's drawable for a `SDL_WINDOW_VULKAN` child window (the open
-    drawable-doubling defect proper), or (b) forcing `Description.BackBufferWidth/Height` on the
-    presenter to the element size — both are engine/Stride SDL-layer work, not an addin-side one-
-    liner. Documented; parked pending a focused engine fix or a different presentation path.
-- **2026-08-26 (gap 2 CLOSED — full real-content path verified live end to end)** — The immediate
+  - The overlay window (Cocoa frame) is **468×188**, but the swapchain was created at
+    **`desc=468x354 skipClamp=True extent=936x708`** — the macOS SDL/MoltenVK drawable defect made
+    the engine hold a stale/polluted backbuffer height (354) while the host element was 188.
+  - `GraphicsDeviceManager.ApplyChanges()` (and `sdlWindow.ClientSize`/`SDL_SetWindowSize`) did NOT
+    resize the live swapchain: `ApplyChanges` only re-derives the presenter description from
+    `PreferredBackBuffer` on a full device re-init, never for a running swapchain.
+  - **THE FIX**: `EditorGameController.ResizeGame` now calls
+    `Game.GraphicsDevice.Presenter.Resize(w, h, format)` directly — `GraphicsPresenter.Resize`
+    writes `Description.BackBufferWidth/Height` itself and recreates the backbuffer at exactly that
+    size, bypassing the polluted `currentExtent`. Kept `PreferredBackBuffer` in sync so the
+    engine's own resize path agrees. **Verified live**: with the fusion addin driving
+    `ResizeGame(468,188)`, the swapchain locks to **468×188** (3040+ creations at that size,
+    matching the overlay, no growth/no drawable-doubling, no errors). Fork commit `1655bb384` +
+    `0b9743d40`.
+- **2026-08-26 (gap 2 CLOSED — full real-content path verified live end to end)**
   next step flagged at the end of the 2026-08-25 debugging arc (verify the full path:
   session load → `StrideSceneEditorViewport` → real `SceneEditorController`/`EditorGameController`,
   against a package that references a real `.csproj`) is now DONE, against the canonical case:
