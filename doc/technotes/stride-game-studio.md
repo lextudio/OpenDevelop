@@ -997,8 +997,56 @@ it, because it already consumes Stride assemblies the way that works (same-proce
 `Private=true` HintPath copies, no cross-RID dependency graph involved). **Remaining verification
 is therefore folded into step 6** (the live DevFlow smoke test), not a separate isolated spike —
 wire `GameSettingsProviderService`/`GameStudioBuilderService` registration into the real addin
-directly and let that smoke test be the runtime proof, rather than chasing another standalone
-probe.
+ directly and let that smoke test be the runtime proof, rather than chasing another standalone
+ probe.
+
+## Integration test design: open / edit / inspect / run a Stride game (2026-08-26)
+
+The end-to-end acceptance case for the fused addin, implemented as
+`tests/OpenDevelop.IntegrationTests/StrideGameStudioIntegrationTests.cs` (driven entirely through
+DevFlow against the real app, same pattern as the other designer integration tests). Game under
+test: the Stride **First-Person-Shooter template** (`samples/Templates/FirstPersonShooter/
+FirstPersonShooter/FirstPersonShooter.Game`) from the local port clone — used IN PLACE, not
+copied, because the game's `<ProjectReference>`s point two levels up to shared Packs
+(`samples/Packs/*`), which a temp copy would break.
+
+Four phases, each asserting a distinct capability:
+
+| Phase | Steps (DevFlow actions) | What it proves |
+|---|---|---|
+| **1. Open** | `od.open-solution` on `FirstPersonShooter.Game.csproj`; `od.project-browser-state "FirstPersonShooter.Game"` | The project loads natively; the **virtual "Assets" node** (kind `Folder`, from the `.sdpkg` via the `IProjectTreeContributor` seam) appears under the project with `Folder`+`File` children mirroring the package's `AssetFolders` (`../Assets`, `Effects`) |
+| **2. Edit** | `od.open-file` on a game script (`Player/PlayerController.cs`); `od.active-view` | The game C# source opens in AvalonEdit (`isAvalonEdit=true`, `textLength>0`) and is the active view — the real game code is editable in the workbench |
+| **3. Inspect** | `od.project-browser-state` again; `od.active-view`; `od.solution-tree` | Tree (incl. Assets subtree) is stable after the edit; the script is still the active view; the solution reports the project's MSBuild items |
+| **4. Run** | Build the game (see below); then launch the built game executable and smoke-check it stays alive | The Stride SDK asset pipeline runs; the game binary can be launched. **Blocked today**: the "run a game" command (`od.run-game`-style) is the epic's open launcher item (DISCARD bucket: Game Studio's launcher was discarded, OpenDevelop's run command doesn't exist yet); the test launches the built exe directly as the smoke check, and reports "run not yet verifiable" (not a failure) when no built binary exists |
+
+DevFlow hooks relied on:
+
+- `od.project-browser-state` — serializes the REAL hierarchical Projects-pad tree via
+  `SerializeProjectBrowserNode` (recursive `name`/`kind`/`children`), which INCLUDES the
+  addin-contributed virtual nodes (MSBuild-item-only actions like `od.solution-tree` cannot see
+  them — that is exactly why the browser-state probe is the right hook).
+- `od.build-solution` — runs the real build (Stride SDK asset pipeline included).
+
+Known/expected friction to resolve when running for real (measured 2026-08-26, test now PASSES):
+
+- The `.sdpkg` Assets subtree nests the asset files under a folder of the SAME name ("Assets" root
+  → "Assets" folder for `../Assets`) — assert on the whole subtree recursively, not on direct
+  children.
+- `od.build-solution` does NOT build the game's `ProjectReference` packs (mannequinModel/
+  VFXPackage/PrototypingBlocks/SamplesAssetPackage): it builds only the current single-project
+  solution, so CSC fails on the packs' missing `obj/Debug/net10.0/ref/*.dll`. This is a real
+  open build-integration item — a Stride game must be built through a solution that includes its
+  packs, or the build engine must resolve/build transitive references. The test builds the game
+  csproj via `dotnet build` (which DOES transitively build the packs) as the run-phase
+  prerequisite.
+- Restore: the template's `Stride.* 4.4.0` packages + the local `samples/Templates/Packs` project
+  references must restore; on a machine without the Stride feed cached this is slow/offline-
+  sensitive.
+- The `.sln` is created on first open in the sample dir (OpenDevelop behavior); running the test
+  against the clone is acceptable read-mostly, but a long-term fixture should copy the template +
+  Packs and rewrite the pack reference paths (a future cleanup).
+- Phase 4's asset-pipeline build and game launch on macOS are the least stable legs today — both
+  are explicit open items, not regressions of the seam this test primarily guards.
 
 ## Upstream interaction
 
@@ -1009,6 +1057,79 @@ probe.
 
 ## Work log
 
+- **2026-08-26 (scene overlay aspect-ratio bug — root-caused, not yet fixed)** — The real scene
+  editor's rendered frame came out squashed in the document tab. Diagnosed precisely with
+  in-presenter logging (`SwapChainGraphicsPresenter.Vulkan.cs` `CreateSwapChain`):
+  - The overlay window (Cocoa frame) is **468×188**, but the swapchain is created at
+    **`desc=468x354 skipClamp=True extent=936x708`**. So `SkipBackBufferClampToWindow` IS honored
+    (desc not overwritten by currentExtent), but the presenter's `Description.BackBufferWidth/
+    Height` is a stale **468×354** captured at device-init from the (polluted) drawable, and
+    `GraphicsDeviceManager.ApplyChanges()` does NOT re-derive `Description` from the new
+    `PreferredBackBuffer`.
+  - Attempts that did NOT change the swapchain: `EditorGameController.ResizeGame` (sets
+    `PreferredBackBuffer=468×188` + `ApplyChanges()` — the `before=512x512 set=468x188` diagnostic
+    confirmed it runs and sets the size, but desc stays 354), and
+    `StrideSceneEditorViewport` setting `sdlWindow.ClientSize=468×188` (SDL_SetWindowSize — the
+    drawable/currentExtent stays 936×708).
+  - Kept as genuine improvements: `ResizeGame(int,int)` added to `IEditorGameController` +
+    `EditorGameController` (sets PreferredBackBuffer + ApplyChanges; no-op on Windows), and
+    `GraphicsDeviceManager.SkipBackBufferClampToWindow = true` set in `EditorServiceGame.Initialize`
+    (before the device is created — setting it later in ResizeGame did not reach the built
+    presenter's Description).
+  - **Root cause**: the macOS SDL/MoltenVK drawable defect recorded earlier — the SDL window's
+    drawable/`currentExtent` reports a polluted height (354 = real → 708 @2x) instead of the
+    window's logical 188. `SkipBackBufferClampToWindow` stopped the doubling growth but left the
+    wrong size, and neither ApplyChanges nor SDL_SetWindowSize re-derives the presenter desc from
+    the preferred size for this embedded/child-window path. Fixing the aspect means either (a)
+    correcting the SDL window's drawable for a `SDL_WINDOW_VULKAN` child window (the open
+    drawable-doubling defect proper), or (b) forcing `Description.BackBufferWidth/Height` on the
+    presenter to the element size — both are engine/Stride SDL-layer work, not an addin-side one-
+    liner. Documented; parked pending a focused engine fix or a different presentation path.
+- **2026-08-26 (gap 2 CLOSED — full real-content path verified live end to end)** — The immediate
+  next step flagged at the end of the 2026-08-25 debugging arc (verify the full path:
+  session load → `StrideSceneEditorViewport` → real `SceneEditorController`/`EditorGameController`,
+  against a package that references a real `.csproj`) is now DONE, against the canonical case:
+  `samples/UI/GameMenu/GameMenu.Game/GameMenu.Game.sdpkg` opened in a single clean instance.
+  Result, via `od.stride.scene-status`:
+  - `running:true, attached:true, hasController:true, sdlWindow:true` — the REAL
+    `EditorGameController` is up (not the marker fallback), the SDL overlay is attached,
+    borderless, key, and input-transparent (`ignoresMouseEvents:true`, input routed through WPF
+    forwarding).
+  - Session load no longer blocked for a csproj-referencing package — the fixes from the
+    2026-08-25 arc (#5 STRIDE_SOURCE_ROOT, #6 NuGet.ProjectModel/AvalonDock AlwaysCopy +
+    GetFullyLoadedTypes + hoisted AssemblyResolve) hold.
+  - GPU live: MoltenVK 1.4.2 initializes and 467 swapchain creations streamed with NO
+    drawable-doubling (dominant stable size 468×354), no `StrideSceneEditorViewport` errors.
+  This is the milestone the whole gap-2 arc targeted: **a real Stride scene runs inside
+  OpenDevelop on macOS through the real editor controller**, not a placeholder.
+- **2026-08-26 (Projects pad CPS seam + .sdpkg Assets subtree + integration test design)** — Two
+  deliverables landed for the Project model bridge:
+  1. **`IProjectTreeContributor` seam** (`src/Main/Base/Project/Src/Services/ProjectBrowser/
+     IProjectTreeContributor.cs`): addin-exportable interface + neutral `ProjectBrowserContribution`
+     nodes + static `ProjectTreeContributorRegistry` (registration via Autostart, NOT MEF —
+     `OpenDevelopMefHost` only scans the main assembly). `ProjectBrowserTreeBuilder.BuildProjectNode`
+     merges contributor nodes into each project subtree; file-like nodes carry their real on-disk
+     path so double-click routes through the normal workbench open path into the owning asset
+     editor display binding (no special open routing needed).
+  2. **`StrideProjectTreeContributor`** (`StrideGameStudio.AddIn`): lightweight `.sdpkg` YAML
+     parse (only the `AssetFolders:` block — deliberately avoids heavy `PackageSession.Load`) →
+     virtual `Assets` subtree (folders/files with real paths). Registered by
+     `RegisterStrideProjectTreeContributorCommand` on
+     `/SharpDevelop/Workbench/AutostartAfterWorkbenchInitialized` — the plain `/SharpDevelop/
+     Autostart` runs BEFORE addin assemblies load (measured: "Running autostart commands…" logged
+     before "Loading addin Stride Game Studio integration"), so it never fires for lazy addins.
+     **Verified live**: with a single clean instance, opening the FPS template project shows the
+     `Assets` node under `FirstPersonShooter.Game` in the Projects pad (confirms seam + registration
+     + contribution end to end). Pitfall hit: stale orphaned `OpenDevelop` apphost processes from
+     `dotnet run` survive `pkill -f SharpDevelop.csproj` and keep port 9299, so a "fresh" launch
+     silently talked to the OLD binary — always `kill -9` both `dotnet run` parent AND the apphost
+     child before relaunching.
+  3. **Integration test design** ("Integration test design" section above) + skeleton
+     `tests/OpenDevelop.IntegrationTests/StrideGameStudioIntegrationTests.cs`: four phases
+     (open → Assets tree assertion via `od.project-browser-state`; edit → open `PlayerController.cs`
+     in AvalonEdit; inspect → tree/active-view stable; run → `od.build-solution` + launch built exe
+     smoke check), compiled clean; the run phase is the documented open item (no `od.run-game`
+     action yet).
 - **2026-08-24** — Technote created; upstream facts verified from master (.NET 10 SDK, WPF +
   WinForms editor, win-x64 pins, custom editor SDK, STA-on-main, per-API graphics layout);
   strategy and phases written. Phase 0 not yet started.

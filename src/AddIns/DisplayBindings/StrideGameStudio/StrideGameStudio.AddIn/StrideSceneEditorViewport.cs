@@ -160,6 +160,12 @@ namespace ICSharpCode.StrideGameStudio
 
 				AttachOverlay();
 				AttachInputForwarding();
+				// Size the SDL window (and therefore the engine's backbuffer) to this element up
+				// front, so even the first presented frame isn't the distorted default 4:3.
+				var iw = ActualWidth > 0 ? (int)ActualWidth : 640;
+				var ih = ActualHeight > 0 ? (int)ActualHeight : 360;
+				if (sdlWindow != null)
+					sdlWindow.ClientSize = new Stride.Core.Mathematics.Size2(iw, ih);
 				CompositionTarget.Rendering += OnRendering;
 				running = true;
 				Current = this;
@@ -353,6 +359,23 @@ namespace ICSharpCode.StrideGameStudio
 
 			CocoaOverlayInterop.SetFrame(sdlNsWindow, screenX, screenY, w, h);
 			CocoaOverlayInterop.OrderFront(sdlNsWindow);
+			// Tell the ENGINE the window is now w x h (via SDL_SetWindowSize) so its own
+			// ProcessClientSizeChanged path resizes the presenter backbuffer - the natural path
+			// that keeps the rendered frame's aspect ratio matching the overlay. Cocoa SetFrame
+			// above only repositions the native child window; without this the engine keeps its
+			// default 4:3 backbuffer and stretches it into the differently-shaped window (squashed).
+			if (sdlWindow != null)
+			{
+				try
+				{
+					sdlWindow.ClientSize = new Stride.Core.Mathematics.Size2((int)w, (int)h);
+				}
+				catch (Exception ex)
+				{
+					ICSharpCode.Core.LoggingService.Warn("[StrideSceneEditorViewport] SDL window resize failed: " + ex.Message);
+				}
+			}
+			controller?.ResizeGame((int)w, (int)h);
 		}
 
 		void OnRendering(object sender, EventArgs e)

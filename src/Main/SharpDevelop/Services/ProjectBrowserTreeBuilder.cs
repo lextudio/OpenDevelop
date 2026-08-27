@@ -82,8 +82,65 @@ internal static class ProjectBrowserTreeBuilder
             }
         }
 
+        AppendContributorNodes(projectNode, project.FileName.ToString());
+
         SortChildren(projectNode);
         return projectNode;
+    }
+
+    // Addin-contributed virtual nodes (IProjectTreeContributor, e.g. the Stride addin's "Assets"
+    // subtree backed by the project's .sdpkg - see doc/technotes/stride-game-studio.md). Each
+    // contributor runs guarded so a broken addin can never break the whole Solution Explorer.
+    private static void AppendContributorNodes(ProjectBrowserNodeModel projectNode, string projectPath)
+    {
+        foreach (var contributor in ProjectTreeContributorRegistry.GetContributors())
+        {
+            try
+            {
+                if (!contributor.CanContribute(projectPath))
+                    continue;
+                foreach (var contribution in contributor.GetContributions(projectPath))
+                {
+                    var node = ConvertContribution(contribution, projectPath);
+                    if (node != null) {
+                        projectNode.Children.Add(node);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ICSharpCode.Core.LoggingService.Warn("Project tree contributor failed for " + projectPath + ": " + ex);
+            }
+        }
+    }
+
+    private static ProjectBrowserNodeModel? ConvertContribution(ProjectBrowserContribution contribution, string projectPath)
+    {
+        if (string.IsNullOrWhiteSpace(contribution.Caption))
+            return null;
+
+        var kind = contribution.IsFolder ? ProjectBrowserNodeKind.Folder : ProjectBrowserNodeKind.File;
+        var node = new ProjectBrowserNodeModel(
+            contribution.Caption,
+            contribution.FullPath ?? string.Empty,
+            contribution.IsFolder,
+            kind,
+            boundItem: null,
+            boundProjectTree: null,
+            projectPathHint: projectPath,
+            includeHint: null,
+            isExpanded: false);
+
+        foreach (var child in contribution.Children)
+        {
+            var childNode = ConvertContribution(child, projectPath);
+            if (childNode != null) {
+                node.Children.Add(childNode);
+            }
+        }
+
+        SortChildren(node);
+        return node;
     }
     
     private static ProjectBrowserNodeModel? ConvertProjectTreeNode(IProjectTree tree, string projectPath, bool showAllFiles)
