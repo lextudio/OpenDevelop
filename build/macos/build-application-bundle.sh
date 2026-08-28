@@ -17,6 +17,31 @@ bundle_macos="$bundle_root/Contents/MacOS"
 rm -rf "$bundle_root"
 mkdir -p "$bundle_root/Contents/Resources" "$bundle_macos"
 cp "$script_dir/Info.plist" "$bundle_root/Contents"
+
+# Info.plist ships a placeholder version; stamp the real one so Finder, Spotlight and
+# "About This Mac > System Report" agree with the version inside the binaries. Both come from the
+# same source of truth as the assemblies - the git tag, via GitVersion (see GitVersion.yml) - read
+# here out of the generated GlobalAssemblyInfo.cs rather than recomputed, so the bundle can never
+# disagree with what was actually compiled.
+global_assembly_info="$repo_root/src/Main/GlobalAssemblyInfo.cs"
+if [[ -f "$global_assembly_info" ]]; then
+  read_const() { sed -n "s/.*public const string $1 = \"\([^\"]*\)\".*/\1/p" "$global_assembly_info" | head -1; }
+  major="$(read_const Major)"; minor="$(read_const Minor)"; build="$(read_const Build)"; revision="$(read_const Revision)"
+  if [[ -n "$major" && -n "$minor" && -n "$build" ]]; then
+    short_version="${major}.${minor}.${build}"
+    # CFBundleVersion must increase between releases of the same short version; the commit count
+    # since the tag is exactly that counter.
+    bundle_version="${short_version}.${revision:-0}"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${short_version}" \
+                            -c "Set :CFBundleVersion ${bundle_version}" \
+                            "$bundle_root/Contents/Info.plist"
+    echo "Stamped bundle version ${bundle_version} (short ${short_version})"
+  else
+    echo "warning: could not parse a version from ${global_assembly_info}; Info.plist keeps its placeholder" >&2
+  fi
+else
+  echo "warning: ${global_assembly_info} not found (build the host first); Info.plist keeps its placeholder" >&2
+fi
 if [[ -f "$script_dir/opendevelop.icns" ]]; then
   cp "$script_dir/opendevelop.icns" "$bundle_root/Contents/Resources"
 fi

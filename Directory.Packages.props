@@ -12,6 +12,8 @@
     <PackageVersion Include="DataGridExtensions" Version="2.9.1" />
     <PackageVersion Include="GirCore.Gtk-4.0" Version="0.8.1" />
     <PackageVersion Include="GuiLabs.Language.Xml" Version="1.2.93" />
+    <!-- Derives the assembly version from git tags; see GitVersion.yml. -->
+    <PackageVersion Include="GitVersion.MsBuild" Version="6.5.1" />
     <PackageVersion Include="LeXtudio.DevFlow.Agent.Core" Version="0.2.3" />
     <PackageVersion Include="LeXtudio.DevFlow.Agent.LibreWpf" Version="0.2.3" />
     <PackageVersion Include="McMaster.Extensions.CommandLineUtils" Version="5.1.0" />

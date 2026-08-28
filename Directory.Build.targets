@@ -51,5 +51,102 @@
                       Condition="@(_OpenDevelopHostManifestAssembly->Count()) &gt; 0" />
   </Target>
 
+  <!--
+    src/Main/GlobalAssemblyInfo.cs is linked into ~60 projects and is the single place the product
+    version reaches the binaries from. It used to be produced by src/Tools/UpdateAssemblyInfo from
+    GlobalAssemblyInfo.cs.template, whose Major/Minor/Build were LITERAL CONSTANTS ("5"/"2"/"0") -
+    so no git tag could ever change the version - and nothing in the build invoked that tool any
+    more, which is why the shipped version sat at 5.2.0.5347 indefinitely. Both are now retired:
+    the file is generated here from GitVersion (see GitVersion.yml), so `git tag v5.4.0` is what
+    decides the version.
+
+    Written with WriteOnlyWhenDifferent so the ~60 projects that link this one shared file do not
+    keep touching it and re-triggering each other's compile. The content is a pure function of the
+    git state, so every project computes byte-identical text and only the first build after a tag
+    or commit change actually writes.
+  -->
+  <!-- Every project, not just the host: src/Main/GlobalAssemblyInfo.cs is ONE shared file linked
+       by ~60 projects, so each of them must compute the SAME version text. Referencing GitVersion
+       only in the host made every other project fall back to 0.0.0/nogit and rewrite the file with
+       different content on every build, which flip-flopped a source file all 60 depend on and
+       broke parallel builds (missing *.g.cs / locked *.g.resources as projects re-ran mid-compile
+       against an input that kept changing). With the values identical everywhere the
+       WriteOnlyWhenDifferent below genuinely no-ops after the first write. -->
+  <!-- "Vendored" means a submodule under <repo>/externals (ilspy, vscode-wpf, wpftoolkit, ...).
+       Those carry their own central-package-management and lock files, so adding a PackageReference
+       there fails restore (NU1010/NU1004) - and they never link GlobalAssemblyInfo.cs anyway. Note
+       the check is anchored to the repo root: this repository is ITSELF checked out under a folder
+       called "externals", so a plain Contains('/externals/') matches every project in the tree. -->
+  <PropertyGroup>
+    <_OdRepoRootSlash>$([System.String]::Copy('$(OpenDevelopRepoRoot)').Replace('\','/'))</_OdRepoRootSlash>
+    <_OdProjectPathSlash>$([System.String]::Copy('$(MSBuildProjectFullPath)').Replace('\','/'))</_OdProjectPathSlash>
+    <_OdVendoredProject>false</_OdVendoredProject>
+    <_OdVendoredProject Condition="$(_OdProjectPathSlash.StartsWith('$(_OdRepoRootSlash)externals/'))">true</_OdVendoredProject>
+    <!-- src/Libraries/AvalonDock, src/Libraries/AvalonEdit and the samples deliberately opt out of
+         central package management (see Directory.Packages.props), where a versionless
+         PackageReference is an error (NU1015). None of them link GlobalAssemblyInfo.cs, so they
+         want neither GitVersion nor the generation below. Keeping both scoped to the SAME set is
+         what guarantees every project that does link the file computes identical text for it. -->
+    <_OdVersionedProject>true</_OdVersionedProject>
+    <_OdVersionedProject Condition="'$(_OdVendoredProject)' == 'true' Or '$(ManagePackageVersionsCentrally)' != 'true'">false</_OdVersionedProject>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(_OdVersionedProject)' == 'true'">
+    <PackageReference Include="GitVersion.MsBuild" PrivateAssets="all" />
+  </ItemGroup>
+
+  <Target Name="OpenDevelopGenerateGlobalAssemblyInfo"
+          BeforeTargets="CoreCompile"
+          Condition="'$(OpenDevelopSkipGlobalAssemblyInfo)' != 'true' And '$(_OdVersionedProject)' == 'true'">
+    <PropertyGroup>
+      <_OpenDevelopGlobalAssemblyInfo>$(MSBuildThisFileDirectory)src/Main/GlobalAssemblyInfo.cs</_OpenDevelopGlobalAssemblyInfo>
+      <!-- GitVersion is only wired into the host project (mirroring how the Roma project does it),
+           so every other project falls back to the tag-derived values passed down there. The
+           fallback keeps a plain `dotnet build <someproject>` working in a tree with no tags. -->
+      <_OdMajor Condition="'$(GitVersion_Major)' != ''">$(GitVersion_Major)</_OdMajor>
+      <_OdMajor Condition="'$(_OdMajor)' == ''">0</_OdMajor>
+      <_OdMinor Condition="'$(GitVersion_Minor)' != ''">$(GitVersion_Minor)</_OdMinor>
+      <_OdMinor Condition="'$(_OdMinor)' == ''">0</_OdMinor>
+      <_OdPatch Condition="'$(GitVersion_Patch)' != ''">$(GitVersion_Patch)</_OdPatch>
+      <_OdPatch Condition="'$(_OdPatch)' == ''">0</_OdPatch>
+      <_OdRevision Condition="'$(GitVersion_CommitsSinceVersionSource)' != ''">$(GitVersion_CommitsSinceVersionSource)</_OdRevision>
+      <_OdRevision Condition="'$(_OdRevision)' == ''">0</_OdRevision>
+      <_OdFullSemVer Condition="'$(GitVersion_FullSemVer)' != ''">$(GitVersion_FullSemVer)</_OdFullSemVer>
+      <_OdFullSemVer Condition="'$(_OdFullSemVer)' == ''">$(_OdMajor).$(_OdMinor).$(_OdPatch)</_OdFullSemVer>
+      <_OdSha Condition="'$(GitVersion_ShortSha)' != ''">$(GitVersion_ShortSha)</_OdSha>
+      <_OdSha Condition="'$(_OdSha)' == ''">nogit</_OdSha>
+    </PropertyGroup>
+    <ItemGroup>
+      <_OdAssemblyInfoLine Include="// &lt;auto-generated&gt; Generated by Directory.Build.targets from GitVersion (GitVersion.yml)." />
+      <_OdAssemblyInfoLine Include="// Do not edit, and do not check in: the version comes from the git tag." />
+      <_OdAssemblyInfoLine Include="using System.Resources%3B" />
+      <_OdAssemblyInfoLine Include="using System.Reflection%3B" />
+      <_OdAssemblyInfoLine Include="%20" />
+      <_OdAssemblyInfoLine Include="[assembly: System.Runtime.InteropServices.ComVisible(false)]" />
+      <_OdAssemblyInfoLine Include="[assembly: System.Runtime.Versioning.SupportedOSPlatform(&quot;windows&quot;)]" />
+      <_OdAssemblyInfoLine Include="[assembly: AssemblyCompany(&quot;ic#code&quot;)]" />
+      <_OdAssemblyInfoLine Include="[assembly: AssemblyProduct(&quot;SharpDevelop&quot;)]" />
+      <_OdAssemblyInfoLine Include="[assembly: AssemblyCopyright(&quot;2000-$([System.DateTime]::Now.Year) AlphaSierraPapa for the SharpDevelop Team&quot;)]" />
+      <_OdAssemblyInfoLine Include="[assembly: AssemblyVersion(RevisionClass.Major + &quot;.&quot; + RevisionClass.Minor + &quot;.&quot; + RevisionClass.Build + &quot;.&quot; + RevisionClass.Revision)]" />
+      <_OdAssemblyInfoLine Include="[assembly: AssemblyInformationalVersion(RevisionClass.FullVersion + &quot;+$(_OdSha)&quot;)]" />
+      <_OdAssemblyInfoLine Include="[assembly: NeutralResourcesLanguage(&quot;en-US&quot;)]" />
+      <_OdAssemblyInfoLine Include="%20" />
+      <_OdAssemblyInfoLine Include="[System.Diagnostics.CodeAnalysis.SuppressMessage(&quot;Microsoft.Usage&quot;, &quot;CA2243:AttributeStringLiteralsShouldParseCorrectly&quot;," />
+      <_OdAssemblyInfoLine Include="  Justification = &quot;AssemblyInformationalVersion does not need to be a parsable version&quot;)]" />
+      <_OdAssemblyInfoLine Include="internal static class RevisionClass" />
+      <_OdAssemblyInfoLine Include="{" />
+      <_OdAssemblyInfoLine Include="  public const string Major = &quot;$(_OdMajor)&quot;%3B" />
+      <_OdAssemblyInfoLine Include="  public const string Minor = &quot;$(_OdMinor)&quot;%3B" />
+      <_OdAssemblyInfoLine Include="  public const string Build = &quot;$(_OdPatch)&quot;%3B" />
+      <_OdAssemblyInfoLine Include="  public const string Revision = &quot;$(_OdRevision)&quot;%3B" />
+      <_OdAssemblyInfoLine Include="  public const string VersionName = null%3B" />
+      <_OdAssemblyInfoLine Include="  public const string FullVersion = &quot;$(_OdFullSemVer)&quot;%3B" />
+      <_OdAssemblyInfoLine Include="}" />
+    </ItemGroup>
+    <WriteLinesToFile File="$(_OpenDevelopGlobalAssemblyInfo)"
+                      Lines="@(_OdAssemblyInfoLine)"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true" />
+  </Target>
+
   <Import Project="$(MSBuildThisFileDirectory)src/SDK/OpenDevelop.Addin.Sdk/Sdk/Sdk.targets" />
 </Project>
