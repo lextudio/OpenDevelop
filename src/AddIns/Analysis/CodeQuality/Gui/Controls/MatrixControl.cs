@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing.Drawing2D;
+using System.Globalization;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -308,30 +309,18 @@ namespace ICSharpCode.CodeQuality.Gui
 			if (imgs.ContainsKey(text))
 				return imgs[text];
 			
-			var bmp = new System.Drawing.Bitmap(CellWidth, CellHeight);
-			var g = System.Drawing.Graphics.FromImage(bmp);
-			g.SmoothingMode = SmoothingMode.AntiAlias;
-			g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
-			
-			var fontObj = new System.Drawing.Font(font, fontSize);
-			
-			var size = g.MeasureString(text, fontObj);
-			
-			var spanWidth = (CellWidth - size.Width) / 2;
-			var spanHeight = (CellHeight - size.Height) / 2;
-			
-			g.DrawString(text, fontObj, System.Drawing.Brushes.Black, new PointF(spanWidth, spanHeight));
-			g.Dispose();
-			
-			var bitmap = bmp.GetHbitmap();
-			var img = Imaging.CreateBitmapSourceFromHBitmap(bitmap,
-			                                                IntPtr.Zero,
-			                                                Int32Rect.Empty,
-			                                                BitmapSizeOptions.FromWidthAndHeight(bmp.Width, bmp.Height));
+			// GetHbitmap/CreateBitmapSourceFromHBitmap is a Win32-only bridge. Render the
+			// cell label with WPF itself so the matrix works on LibreWPF too.
+			var formatted = new FormattedText(text, CultureInfo.CurrentCulture,
+				FlowDirection.LeftToRight, new Typeface(font), fontSize, Brushes.Black,
+				VisualTreeHelper.GetDpi(this).PixelsPerDip);
+			var visual = new DrawingVisual();
+			using (var context = visual.RenderOpen())
+				context.DrawText(formatted, new Point((CellWidth - formatted.Width) / 2, (CellHeight - formatted.Height) / 2));
+			var img = new RenderTargetBitmap(CellWidth, CellHeight, 96, 96, PixelFormats.Pbgra32);
+			img.Render(visual);
 			img.Freeze();
 			imgs.Add(text, img);
-			
-			Utils.DeleteObject(bitmap);
 			
 			return img;
 		}

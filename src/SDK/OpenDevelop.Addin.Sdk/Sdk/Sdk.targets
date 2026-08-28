@@ -22,6 +22,10 @@
     <!-- Per-project, stable across runs so the experimental instance remembers its own layout,
          and never the developer's real profile. -->
     <OpenDevelopDebugConfigDir Condition="'$(OpenDevelopDebugConfigDir)' == ''">$(MSBuildProjectDirectory)/.od-experimental-instance</OpenDevelopDebugConfigDir>
+	<!-- Test-only opt-in. Normal addin F5 remains DevFlow-off so it cannot collide with the
+	     developer's primary IDE; a caller can allocate a separate child endpoint explicitly. -->
+	<OpenDevelopDebugDevFlowArgument Condition="'$(OpenDevelopDebugDevFlowPort)' == ''">-devflow:off</OpenDevelopDebugDevFlowArgument>
+	<OpenDevelopDebugDevFlowArgument Condition="'$(OpenDevelopDebugDevFlowPort)' != ''">-devflow:$(OpenDevelopDebugDevFlowPort)</OpenDevelopDebugDevFlowArgument>
     <StartAction Condition="'$(StartAction)' == ''">Program</StartAction>
     <StartProgram Condition="'$(StartProgram)' == '' And '$(OpenDevelopDebugHost)' != ''">$(OpenDevelopDebugHost)</StartProgram>
     <!-- No trailing separator on either path: SplashScreenForm.SetCommandLineArgs rewrites a
@@ -33,7 +37,7 @@
          freshly-generated addin from the project template) against the WRONG base and pointed at a
          directory that doesn't exist. GetFullPath is a no-op on the Stride-addin-style case where
          OutputPath is already absolute. -->
-    <StartArguments Condition="'$(StartArguments)' == '' And '$(OpenDevelopDebugHost)' != ''">-addindir:"$([System.IO.Path]::GetFullPath('$(OutputPath)').TrimEnd('\/'))" -configdir:"$(OpenDevelopDebugConfigDir.TrimEnd('\/'))" -devflow:off</StartArguments>
+    <StartArguments Condition="'$(StartArguments)' == '' And '$(OpenDevelopDebugHost)' != ''">-addindir:"$([System.IO.Path]::GetFullPath('$(OutputPath)').TrimEnd('\/'))" -configdir:"$(OpenDevelopDebugConfigDir.TrimEnd('\/'))" $(OpenDevelopDebugDevFlowArgument)</StartArguments>
     <StartWorkingDirectory Condition="'$(StartWorkingDirectory)' == '' And '$(OpenDevelopHostBin)' != ''">$(OpenDevelopHostBin)</StartWorkingDirectory>
   </PropertyGroup>
   <ItemGroup Condition="'$(OpenDevelopAddin)' == 'true' And '@(OpenDevelopAddinManifest)' == ''">

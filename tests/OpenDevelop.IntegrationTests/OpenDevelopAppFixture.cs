@@ -324,6 +324,11 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         // the user is doing on the machine (measured annoyance - the WPF window grabs activation on
         // every fixture launch otherwise).
         psi.Environment["OD_TEST_MODE"] = "1";
+        // An external add-in project opened by this instance is evaluated in this child process.
+        // Forward the resolved installed app rather than requiring each add-in integration test to
+        // duplicate OPENDEVELOP_APP_PATH in its shell invocation.
+        if (installedApp is not null)
+            psi.Environment["OPENDEVELOP_APP_PATH"] = installedApp;
         // Forwards the outer test-runner's own OD_WINUI_RUNTIME (see RegisterDevFlowActionsCommand)
         // into the launched app, same pattern as DEVFLOW_AGENT_PORT above: one ambient override for
         // the whole test process, not a per-collection setting (xUnit constructs collection

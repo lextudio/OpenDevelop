@@ -18,11 +18,9 @@
 
 using System;
 using System.Windows;
-#if !OPENDEVELOP_NO_DEVFLOW
 using LeXtudio.DevFlow.Agent.Core;
 using LeXtudio.DevFlow.Agent.Wpf;
 using Microsoft.Maui.DevFlow.Agent.Core;
-#endif
 
 namespace ICSharpCode.SharpDevelop.Startup
 {
@@ -34,12 +32,10 @@ namespace ICSharpCode.SharpDevelop.Startup
 		public App()
 		{
 			InitializeComponent();
-			#if !OPENDEVELOP_NO_DEVFLOW
-			if (Environment.GetEnvironmentVariable("DEVFLOW_DISABLE") != "1" && !IsDevFlowDisabledByCommandLine())
+			if (IsDevFlowEnabled())
 			{
 				this.AddWpfDevFlowAgent(new AgentOptions { Port = GetAgentPort() });
 			}
-			#endif
 			// Log the exception that is about to terminate the app instead of dying silently:
 			// an unhandled dispatcher exception otherwise exits the process without a trace in
 			// the captured stdout/stderr (measured during integration-test debugging), making
@@ -50,7 +46,27 @@ namespace ICSharpCode.SharpDevelop.Startup
 			};
 		}
 
-		#if !OPENDEVELOP_NO_DEVFLOW
+		/// <summary>
+		/// Starts DevFlow in Debug builds, and in non-Debug builds only for an explicit
+		/// integration-test launch. This keeps the unauthenticated local test endpoint out of
+		/// ordinary release-app sessions while allowing the installed app to be the test target.
+		/// DEVFLOW_ENABLE=1 is also available for an intentional diagnostic launch.
+		/// </summary>
+		static bool IsDevFlowEnabled()
+		{
+			if (Environment.GetEnvironmentVariable("DEVFLOW_DISABLE") == "1" || IsDevFlowDisabledByCommandLine())
+				return false;
+			if (GetDevFlowPortFromCommandLine().HasValue)
+				return true;
+			if (Environment.GetEnvironmentVariable("DEVFLOW_ENABLE") == "1")
+				return true;
+#if DEBUG
+			return true;
+#else
+			return TestMode.IsActive;
+#endif
+		}
+
 		/// <summary>
 		/// True when the process was started with <c>-devflow:off</c> (or <c>/devflow:off</c>).
 		///
@@ -82,11 +98,34 @@ namespace ICSharpCode.SharpDevelop.Startup
 		/// </summary>
 		static int GetAgentPort()
 		{
+			var commandLinePort = GetDevFlowPortFromCommandLine();
+			if (commandLinePort.HasValue)
+				return commandLinePort.Value;
 			var portValue = Environment.GetEnvironmentVariable("DEVFLOW_AGENT_PORT");
 			if (int.TryParse(portValue, out var parsedPort) && parsedPort > 0)
 				return parsedPort;
 			return DevFlowAgentPortResolver.GetPortFromAssemblyMetadata() ?? AgentOptions.DefaultPort;
 		}
-		#endif
+
+		/// <summary>
+		/// Reads <c>-devflow:&lt;port&gt;</c> without depending on command-line parsing being ready
+		/// during the Application constructor. This lets an Addin SDK debug child expose a separate
+		/// test endpoint while its parent keeps the normal DevFlow port.
+		/// </summary>
+		static int? GetDevFlowPortFromCommandLine()
+		{
+			foreach (string arg in Environment.GetCommandLineArgs()) {
+				if (arg.Length < 2 || (arg[0] != '-' && arg[0] != '/'))
+					continue;
+				string parameter = arg.TrimStart('-', '/');
+				const string prefix = "devflow:";
+				if (!parameter.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+					continue;
+				var value = parameter.Substring(prefix.Length);
+				if (int.TryParse(value, out var port) && port > 0)
+					return port;
+			}
+			return null;
+		}
 	}
 }

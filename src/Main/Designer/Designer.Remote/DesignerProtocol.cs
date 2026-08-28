@@ -227,6 +227,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// which "Xaml"/"Reference" carry as constrained XAML text in the same <see cref="Value"/>
 		/// field rather than a runtime object.</summary>
 		public string Kind { get; set; } = "String";
+		/// <summary>Finite choices for a scalar property, currently used by the workflow
+		/// designer for enum-backed custom Activity properties.</summary>
+		public List<string> AllowedValues { get; set; } = new();
 		public bool IsNull { get; set; }
 		public bool IsReadOnly { get; set; }
 		public bool ShouldSerialize { get; set; }
@@ -331,8 +334,39 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	{
 		public bool IsRunning { get; set; }
 		public bool IsPaused { get; set; }
+		/// <summary>True when the instance is waiting for an external Bookmark rather than
+		/// executing or stopped at a debugger breakpoint.</summary>
+		public bool IsIdle { get; set; }
 		public string CurrentElementId { get; set; } = "";
 		public List<string> BreakpointElementIds { get; set; } = new();
+		/// <summary>Root workflow In/InOut arguments materialized for this run. CoreWF tracking does
+		/// not safely expose arbitrary lexical variables, so this is intentionally the reliable,
+		/// user-provided portion of the paused variable view.</summary>
+		public Dictionary<string, string> Inputs { get; set; } = new();
+		/// <summary>External bookmarks at which the current workflow instance is idle. These are
+		/// names/owners only; the addin can resume one without receiving a runtime Bookmark object.</summary>
+		public List<WorkflowBookmarkInfo> Bookmarks { get; set; } = new();
+		/// <summary>Activity tracking records observed so far in the active run. These are plain
+		/// strings so inspecting a paused workflow neither resumes it nor crosses the runtime boundary.</summary>
+		public List<string> Trace { get; set; } = new();
+		/// <summary>Designer-level activity stack for the current pause. This deliberately uses
+		/// stable document IDs rather than exposing CoreWF runtime objects over DDP.</summary>
+		public List<WorkflowDebugFrame> CallStack { get; set; } = new();
+	}
+
+	/// <summary>A transport-only workflow debugger frame. Virtual nodes such as a Switch case
+	/// are retained so the stack matches what the designer canvas displays.</summary>
+	public sealed class WorkflowDebugFrame
+	{
+		public string ElementId { get; set; } = "";
+		public string DisplayName { get; set; } = "";
+		public string TypeName { get; set; } = "";
+	}
+
+	public sealed class WorkflowBookmarkInfo
+	{
+		public string Name { get; set; } = "";
+		public string OwnerDisplayName { get; set; } = "";
 	}
 
 	/// <summary>Syntax-only validation result for a C# (<c>=</c>) or Visual Basic
@@ -341,6 +375,33 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	{
 		public bool IsValid { get; set; }
 		public List<string> Diagnostics { get; set; } = new();
+		/// <summary>Structured Roslyn diagnostics whose offsets are relative to the user-entered
+		/// expression (rather than the generated host wrapper).</summary>
+		public List<WorkflowExpressionDiagnostic> Details { get; set; } = new();
+	}
+
+	public sealed class WorkflowExpressionDiagnostic
+	{
+		public string Code { get; set; } = "";
+		public string Message { get; set; } = "";
+		public int Line { get; set; }
+		public int Column { get; set; }
+		public int Length { get; set; }
+	}
+
+	/// <summary>CoreWF model-validation result returned without executing a workflow.</summary>
+	public sealed class WorkflowValidationResult
+	{
+		public bool IsValid { get; set; }
+		public List<WorkflowValidationDiagnostic> Diagnostics { get; set; } = new();
+	}
+
+	public sealed class WorkflowValidationDiagnostic
+	{
+		public string Message { get; set; } = "";
+		public string ElementId { get; set; } = "";
+		public string PropertyName { get; set; } = "";
+		public bool IsWarning { get; set; }
 	}
 
 	/// <summary>Contextual symbols offered by the lightweight workflow expression editor.</summary>

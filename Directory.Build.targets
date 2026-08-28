@@ -1,7 +1,4 @@
 <Project>
-  <!-- DevFlow is test/developer instrumentation, not a shipped dependency. Remove
-       it from the distribution graph before restore/reference resolution and omit
-       action-only sources before compilation. -->
   <!--
     A distribution keeps shared runtime dependencies beside OpenDevelop itself.
     Remove those files from addin copy-local before they reach AddIns/. Regular

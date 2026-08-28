@@ -38,7 +38,9 @@
          moment ILSpyAddIn.dll loads - align this app's own resolution to the same version so only
          one copy is ever in play. -->
     <PackageReference Include="System.Composition.AttributedModel" />
-    <PackageReference Include="LeXtudio.DevFlow.Agent.LibreWpf" Condition="'$(Configuration)' == 'Debug'" />
+    <!-- The agent is present in release bundles too. Startup keeps it disabled there unless an
+         integration-test launch explicitly sets OD_TEST_MODE=1. -->
+    <PackageReference Include="LeXtudio.DevFlow.Agent.LibreWpf" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="NuGet.Core">

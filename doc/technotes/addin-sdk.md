@@ -93,13 +93,19 @@ Every value is conditionally assigned. An addin may override `OpenDevelopDebugHo
 does not overwrite an explicit project choice. This loop intentionally applies only to
 `InProcess` addins: an `OutOfProcessHost` already has its own executable and launch contract.
 
+For an integration suite that must drive the child, set `OpenDevelopDebugDevFlowPort` (the Stride
+suite supplies it through `OPENDEVELOP_ADDIN_TEST_DEVFLOW_PORT`). The SDK then emits
+`-devflow:<port>` instead of `-devflow:off`; the child instance uses that dedicated endpoint while
+the parent keeps its own port. This is an explicit test opt-in—ordinary F5 remains isolated and
+does not expose DevFlow.
+
 The real Stride addin exercises this path in
 `StrideGameStudioIntegrationTests.StrideAddInProject_IsStartable_AndDebuggingBreaksInsideTheAddIn`.
-The optional test opens the addin project, checks the evaluated start properties, sets a breakpoint
-in its autostart command before launching, and verifies that a debug session stops in the addin
-source. It skips when `STRIDE_CHECKOUT_ROOT` or the deployed Stride addin is absent; build
-`sources/tools/Stride.OpenDevelop.AddIn/ICSharpCode.StrideGameStudio.csproj` in that checkout to
-enable it.
+The test opens the addin project, checks the evaluated start properties, sets a breakpoint in its
+autostart command before launching, and verifies that a debug session stops in the addin source.
+It needs only the Stride checkout and an installed OpenDevelop selected by `OPENDEVELOP_APP_PATH`:
+the addin is deliberately **not** copied into the installed application's `AddIns` tree. The SDK
+passes the addin output to the debug child through `-addindir:`.
 
 ### Baseline manifest
 
@@ -174,7 +180,8 @@ scope until version unification and a shared probing path are proven.
 * `StrideAddInProject_IsStartable_AndDebuggingBreaksInsideTheAddIn` covers the SDK's development
   loop against an out-of-repository addin: F5/debug starts an isolated child with `-addindir:`,
   retains a separate config directory, and binds a pending breakpoint when the addin module loads.
-  It is conditional on the local Stride checkout and deployed addin being present.
+  It is conditional only on the local Stride checkout and installed OpenDevelop being available;
+  the installed host does not carry a Stride addin payload.
 * Bisection hatch: `-p:OpenDevelopTrimAddinCopyLocal=false`.
 
 The focused build-level regression test is:

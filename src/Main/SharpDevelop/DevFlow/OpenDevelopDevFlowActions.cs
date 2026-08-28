@@ -415,6 +415,21 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 
+		[DevFlowAction("od.activate-secondary-view", Description = "Activate a file's secondary view by its full CLR type name. This forces the selected designer's real LoadInternal lifecycle (including any OOP host startup) rather than merely creating the secondary tab.")]
+		public static string ActivateSecondaryView(string path, string typeName)
+		{
+			var viewContent = SD.FileService.GetOpenFile(FileName.Create(path)) ?? SD.FileService.OpenFile(FileName.Create(path));
+			var window = viewContent?.WorkbenchWindow;
+			if (window == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No workbench window for " + path });
+			var index = window.ViewContents.ToList().FindIndex(candidate => string.Equals(candidate.GetType().FullName, typeName, StringComparison.Ordinal));
+			if (index < 0)
+				return JsonSerializer.Serialize(new { success = false, error = "Secondary view was not found.", views = window.ViewContents.Select(candidate => candidate.GetType().FullName).ToArray() });
+			window.SwitchView(index);
+			window.SelectWindow();
+			return JsonSerializer.Serialize(new { success = true, typeName = window.ViewContents[index].GetType().FullName, viewCount = window.ViewContents.Count });
+		}
+
 		[DevFlowAction("od.activate", Description = "Bring the main workbench window to the front and give it real OS keyboard/mouse focus - needed before any test drives cliclick-based synthetic mouse input (od.ui/actions/press,drag-move,release), since OD_TEST_MODE=1 sets ShowActivated=false so a normal test run never steals focus from the developer's foreground app. Mirrors AvalonDock's own avd.activate action (src/Libraries/AvalonDock/source/TestApp/MainWindow.xaml.cs)")]
 		public static string ActivateMainWindow()
 		{

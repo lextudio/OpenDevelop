@@ -68,6 +68,7 @@ populate_repo_payload() {
     "DisplayBindings/WpfDesign/Host"
     "DisplayBindings/GtkDesigner/Host"
     "DisplayBindings/MewUIDesigner/Host"
+    "DisplayBindings/WorkflowDesigner/Host"
     "Debugger"
     "LanguageServices/XamlLanguageServer.Wpf"
   )
@@ -76,6 +77,9 @@ populate_repo_payload() {
     keep_args+=(--include="$folder/***")
   done
 
+  # WorkflowDesigner and StrideGameStudio are independently versioned external addins.
+  # Their repositories deploy them into a local installed IDE for their own tests; the
+  # base distribution must not carry either stale manifest or implementation.
   rsync -a \
     --exclude '*.pdb' \
     --exclude '**/ref/***' \
@@ -84,6 +88,8 @@ populate_repo_payload() {
     --exclude '**/runtimes/unix*/***' \
     --exclude 'LeXtudio.DevFlow.*' \
     --exclude 'CliclickSharp' \
+    --exclude 'DisplayBindings/WorkflowDesigner/***' \
+    --exclude 'DisplayBindings/StrideGameStudio/***' \
     "${keep_args[@]}" \
     --exclude-from "$exclude_file" \
     "$repo_root/AddIns/" "$macos/AddIns/"
