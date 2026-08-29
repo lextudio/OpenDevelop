@@ -29,7 +29,7 @@
 	url = https://github.com/lextudio/monodevelop-nuget-extensions
 [submodule "externals/vsmac-codecoverage"]
 	path = externals/vsmac-codecoverage
-	url = https://github.com/mrward/VSMac-CodeCoverage.git
+	url = https://github.com/lextudio/VSMac-CodeCoverage.git
 [submodule "externals/xamlstudio"]
 	path = externals/xamlstudio
 	url = https://github.com/lextudio/xamlstudio.git
