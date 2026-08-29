@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Microsoft-WPF build of externals/vscode-wpf WpfDesign.Designer (upstream
+       ICSharpCode.WpfDesign.Designer). Carries only the Designer source tree and references the
+       other two, mirroring upstream; see Core/MicrosoftWpfDesign.Core.csproj for why that split
+       is load-bearing rather than cosmetic. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AssemblyName>ICSharpCode.MicrosoftWpfDesign.Designer</AssemblyName>
+    <RootNamespace>ICSharpCode.WpfDesign.Designer</RootNamespace>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <NoWarn>$(NoWarn);CS1572;CS1573;CS1591</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="DesignerXamlAssemblyAttributes.cs" />
+    <Compile Include="..\..\..\..\..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign.Designer\Project\**\*.cs" Exclude="**\bin\**;**\obj\**;**\AssemblyInfo.cs;**\Configuration\**" LinkBase="WpfDesign.Designer" />
+    <!-- The XAML-backed controls (GridUnitSelector, PropertyContextMenu, FormatedTextEditor, ...)
+         must come in as Page + code-behind: other hand-written sources reference those types
+         directly, so dropping the .xaml.cs leaves them undefined (CS0246 / CS0234).
+         Microsoft.NET.Sdk's default Page glob is relative to THIS project directory and never sees
+         the linked-in tree, so the XAML is listed explicitly. LinkBase matches the Compile items
+         so each generated .g.cs lands beside its partial class. Only WpfDesign.Designer has XAML —
+         WpfDesign and WpfDesign.XamlDom are code-only. -->
+    <Page Include="..\..\..\..\..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign.Designer\Project\**\*.xaml" Exclude="**\bin\**;**\obj\**" LinkBase="WpfDesign.Designer" SubType="Designer" Generator="MSBuild:Compile" />
+    <Resource Include="..\..\..\..\..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign.Designer\Project\Images\*" Link="Images\%(Filename)%(Extension)" />
+    <ProjectReference Include="..\Core\MicrosoftWpfDesign.Core.csproj" />
+    <ProjectReference Include="..\XamlDom\MicrosoftWpfDesign.XamlDom.csproj" />
+  </ItemGroup>
+</Project>

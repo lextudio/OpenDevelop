@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Runs the EXACT test sources of WinUIXamlDesigner.UnoHost.Tests against the Microsoft WinUI 3
+       host. Nothing is duplicated: the .cs below is source-linked, and OPENDEVELOP_WINUIDESIGNER_HOST_DLL
+       (set by the runner) is the only difference - it redirects the suite's HostDll() to the
+       Microsoft child. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>ICSharpCode.WinUIXamlDesigner.UnoHost.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\WinUIXamlDesigner.UnoHost.Tests\*.cs" LinkBase="Shared" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <ProjectReference Include="..\WinUIXamlDesigner.MicrosoftHost.Remote\WinUIXamlDesigner.MicrosoftHost.Remote.csproj" />
+    <!-- Deliberately NO ProjectReference to the host. The host must be built by Visual Studio's
+         MSBuild (it needs the VS-only MrtCore PRI tasks - see its csproj); a build-only reference
+         here would drag it into `dotnet build` and fail with MSB4062, on top of clobbering the
+         VS-produced output. Build it first, then point OPENDEVELOP_WINUIDESIGNER_HOST_DLL at it:
+
+           & "$vs\MSBuild\Current\Bin\amd64\MSBuild.exe" WinUIXamlDesigner.MicrosoftHost.csproj `
+               -t:Build -p:Configuration=Debug -p:DisableGitVersionTask=true -restore -->
+  </ItemGroup>
+</Project>

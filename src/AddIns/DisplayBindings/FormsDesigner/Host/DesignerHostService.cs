@@ -1082,7 +1082,14 @@ sealed class DesignerHostService : IDesignerChildService
 					? accessibleName : component is Control namedControl && !String.IsNullOrEmpty(namedControl.Text)
 						? namedControl.Text : component.Site?.Name ?? "",
 				AccessibleDescription = PropertyText(component, "AccessibleDescription"),
+				// "Default" is AccessibleRole's own sentinel for "no explicit role assigned" - the
+				// effective role is only resolved later by the control's AccessibleObject - so it
+				// must fall through to the type name exactly like an empty value does. Microsoft
+				// WinForms reports that sentinel for an untouched Button (LibreWinForms reports
+				// nothing at all), which is why leaving it in surfaced a bogus role of "Default"
+				// instead of "Button" there and nowhere else.
 				AccessibleRole = PropertyText(component, "AccessibleRole") is { Length: > 0 } accessibleRole
+					&& accessibleRole != "Default"
 					? accessibleRole : component.GetType().Name,
 				X = component is Control boundsControl ? boundsControl.Left : 0,
 				Y = component is Control boundsControl2 ? boundsControl2.Top : 0,
@@ -1195,10 +1202,22 @@ sealed class DesignerHostService : IDesignerChildService
 		return result;
 	}
 
-	static Point SurfaceLocation(Control control)
+	/// <summary>Position relative to the ROOT design component, which is the coordinate space the
+	/// render frame and hit-testing both use.
+	///
+	/// Anchoring on the root explicitly rather than on "the first parentless control" matters
+	/// because the two runtimes parent the root differently: under LibreWinForms the root Form has
+	/// no parent, so the old walk stopped there by accident, but the Microsoft WinForms design
+	/// surface hosts the root inside its own frame control and positions it at an offset (15,15).
+	/// The old loop therefore folded that frame offset into every component, putting the reported
+	/// coordinates 15px off from the very bitmap and hit-test results they are meant to line up
+	/// with.</summary>
+	Point SurfaceLocation(Control control)
 	{
+		var root = (designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost)?.RootComponent as Control;
+		if (control == root) return Point.Empty;
 		var point = control.Location;
-		for (var parent = control.Parent; parent?.Parent != null; parent = parent.Parent)
+		for (var parent = control.Parent; parent != null && parent != root; parent = parent.Parent)
 			point.Offset(parent.Location);
 		return point;
 	}
@@ -1212,6 +1231,11 @@ sealed class DesignerHostService : IDesignerChildService
 		var renderSize = designSize ?? root.Size;
 		using var bitmap = new Bitmap(Math.Max(1, renderSize.Width), Math.Max(1, renderSize.Height));
 		using (var graphics = Graphics.FromImage(bitmap)) {
+#if MICROSOFT_WINFORMS
+			// The Microsoft child uses the native WinForms paint pipeline. The portable host keeps
+			// its software painter below because it has no HWND/GDI implementation to capture.
+			root.DrawToBitmap(bitmap, new Rectangle(Point.Empty, renderSize));
+#else
 			if (designSize.HasValue) {
 				PaintStandardControl(root, graphics, new Rectangle(Point.Empty, renderSize));
 				foreach (Control child in root.Controls) {
@@ -1221,6 +1245,7 @@ sealed class DesignerHostService : IDesignerChildService
 					graphics.Restore(state);
 				}
 			} else PaintControl(root, graphics);
+#endif
 		}
 		using var stream = new MemoryStream();
 		bitmap.Save(stream, ImageFormat.Png);
@@ -1238,6 +1263,9 @@ sealed class DesignerHostService : IDesignerChildService
 	static void PaintControl(Control control, Graphics graphics)
 	{
 		var bounds = new Rectangle(Point.Empty, control.Size);
+#if MICROSOFT_WINFORMS
+		PaintStandardControl(control, graphics, bounds);
+#else
 		if (control is IPortableWinFormsPaintSource paintSource && paintSource.SupportsPortablePainting) {
 			var args = new PaintEventArgs(graphics, bounds);
 			paintSource.PaintPortableBackground(args);
@@ -1249,6 +1277,7 @@ sealed class DesignerHostService : IDesignerChildService
 			PaintControl(child, graphics);
 			graphics.Restore(state);
 		}
+#endif
 	}
 
 	static void PaintStandardControl(Control control, Graphics graphics, Rectangle bounds)

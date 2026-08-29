@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Microsoft-WindowsDesktop build of the Host.Tests CustomControl fixture. Source-links the
+       SAME control so both runtimes exercise identical types. AssemblyName/RootNamespace
+       deliberately match the LibreWinForms fixture so the shared tests' snapshots need no variant. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AssemblyName>FormsDesigner.CustomControlFixture</AssemblyName>
+    <RootNamespace>FormsDesigner.CustomControlFixture</RootNamespace>
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- Opt out of src/Directory.Build.targets' LibreWinForms substitution, exactly as the
+         Microsoft host does; without it this fixture would be built against LibreWinForms and the
+         Microsoft child could not load it. -->
+    <UseMicrosoftDesktopRuntime>true</UseMicrosoftDesktopRuntime>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\..\Host.Tests\CustomControl\*.cs" LinkBase="CustomControl" />
+  </ItemGroup>
+</Project>

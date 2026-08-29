@@ -1,4 +1,4 @@
-# OpenDevelop build module — shared by launch.ps1 / dist.macos.ps1 (and usable from
+# OpenDevelop build module — shared by launch.ps1 / dist.ps1 (and usable from
 # a future Windows wrapper, e.g. launch.cmd). Ported from dotnet-env.sh + the inline
 # logic that used to live in launch.sh / dist.macos.sh; keep behavior in sync with
 # those thin shell wrappers' expectations.

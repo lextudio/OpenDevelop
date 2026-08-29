@@ -14,7 +14,7 @@
     does not import this one, and its WinForms test apps target Microsoft.NET.Sdk.WindowsDesktop
     rather than LibreWPF.Sdk, so they are unaffected either way.
   -->
-  <PropertyGroup Condition="'$(UseWindowsForms)' == 'true'">
+  <PropertyGroup Condition="'$(UseWindowsForms)' == 'true' And '$(UseMicrosoftDesktopRuntime)' != 'true'">
     <ProGpuWpfUsePortableWinFormsCompat>true</ProGpuWpfUsePortableWinFormsCompat>
     <ProGpuWpfUseLibreWinForms>true</ProGpuWpfUseLibreWinForms>
   </PropertyGroup>

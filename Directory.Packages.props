@@ -29,6 +29,7 @@
     <PackageVersion Include="Microsoft.Data.SqlClient" Version="7.0.2" />
     <PackageVersion Include="Microsoft.Diagnostics.NETCore.Client" Version="0.2.661903" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK" Version="1.7.250606001" />
     <PackageVersion Include="Microsoft.Msagl" Version="1.1.6" />
     <PackageVersion Include="Microsoft.PowerShell.SDK" Version="7.4.0" />
     <PackageVersion Include="Microsoft.TemplateEngine.Abstractions" Version="10.0.302" />
@@ -60,6 +61,10 @@
     <PackageVersion Include="ProGPU.Xaml" Version="0.1.0-preview.47" />
     <PackageVersion Include="ProGPU.Xaml.Roslyn" Version="0.1.0-preview.47" />
     <PackageVersion Include="ProGPU.Xaml.Workspaces" Version="0.1.0-preview.47" />
+    <!-- Only the Microsoft WinUI host references this explicitly; it pins the same version
+         Uno.Sdk already brings into WinUIXamlDesigner.UnoHost, so the DesignHost.cs both hosts
+         share encodes exported PNGs through one identical Skia build. -->
+    <PackageVersion Include="SkiaSharp" Version="3.119.1" />
     <PackageVersion Include="StreamJsonRpc" Version="2.25.29" />
     <PackageVersion Include="System.CodeDom" Version="10.0.10" />
     <PackageVersion Include="System.Composition.AttributedModel" Version="10.0.10" />

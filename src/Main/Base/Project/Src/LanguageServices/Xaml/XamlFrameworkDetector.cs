@@ -9,15 +9,27 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Xaml
 {
 	public enum XamlFrameworkKind { Unknown, Wpf, WinUI, Uno }
 
+	/// <summary>
+	/// The runtime that owns the project's UI type identities. This is deliberately separate
+	/// from <see cref="XamlFrameworkKind"/>: both LibreWPF and Microsoft WPF use WPF markup,
+	/// but their controls must never be loaded by the same design host.
+	/// </summary>
+	public enum XamlRuntimeKind { Unknown, LibreWpf, MicrosoftWpf, MicrosoftWinUI, Uno }
+
 	public sealed class XamlFrameworkContext
 	{
 		public XamlFrameworkContext(XamlFrameworkKind kind, string projectFileName, string evidence)
+			: this(kind, XamlRuntimeKind.Unknown, projectFileName, evidence) { }
+
+		public XamlFrameworkContext(XamlFrameworkKind kind, XamlRuntimeKind runtime, string projectFileName, string evidence)
 		{
 			Kind = kind;
+			Runtime = runtime;
 			ProjectFileName = projectFileName;
 			Evidence = evidence;
 		}
 		public XamlFrameworkKind Kind { get; }
+		public XamlRuntimeKind Runtime { get; }
 		public string ProjectFileName { get; }
 		public string Evidence { get; }
 	}
@@ -48,13 +60,14 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Xaml
 
 				bool HasPackage(string prefix) => packages.Any(p => p.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
 				if (sdk.Contains("Uno.Sdk", StringComparison.OrdinalIgnoreCase) || HasPackage("Uno.WinUI") || HasPackage("Uno.UI"))
-					return new XamlFrameworkContext(XamlFrameworkKind.Uno, projectFileName, "Uno SDK/package");
+					return new XamlFrameworkContext(XamlFrameworkKind.Uno, XamlRuntimeKind.Uno, projectFileName, "Uno SDK/package");
 				if (HasPackage("Microsoft.WindowsAppSDK") || HasPackage("Microsoft.UI.Xaml")
 				    || properties.TryGetValue("UseWinUI", out var useWinUI) && IsTrue(useWinUI))
-					return new XamlFrameworkContext(XamlFrameworkKind.WinUI, projectFileName, "Windows App SDK/WinUI property or package");
-				if (properties.TryGetValue("UseWPF", out var useWpf) && IsTrue(useWpf)
-				    || sdk.Contains("LibreWPF.Sdk", StringComparison.OrdinalIgnoreCase))
-					return new XamlFrameworkContext(XamlFrameworkKind.Wpf, projectFileName, "UseWPF/LibreWPF SDK");
+					return new XamlFrameworkContext(XamlFrameworkKind.WinUI, XamlRuntimeKind.MicrosoftWinUI, projectFileName, "Windows App SDK/WinUI property or package");
+				if (sdk.Contains("LibreWPF.Sdk", StringComparison.OrdinalIgnoreCase))
+					return new XamlFrameworkContext(XamlFrameworkKind.Wpf, XamlRuntimeKind.LibreWpf, projectFileName, "LibreWPF SDK");
+				if (properties.TryGetValue("UseWPF", out var useWpf) && IsTrue(useWpf))
+					return new XamlFrameworkContext(XamlFrameworkKind.Wpf, XamlRuntimeKind.MicrosoftWpf, projectFileName, "Microsoft WPF property");
 				return Unknown("Project has no recognized XAML framework marker", projectFileName);
 			} catch (Exception ex) {
 				return Unknown("Project parse failed: " + ex.Message, projectFileName);
@@ -65,6 +78,6 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Xaml
 			.Where(p => p.Directory != null && fileName.StartsWith(p.Directory.ToString(), StringComparison.OrdinalIgnoreCase))
 			.OrderByDescending(p => p.Directory.ToString().Length).FirstOrDefault();
 		static bool IsTrue(string value) => string.Equals(value?.Trim(), "true", StringComparison.OrdinalIgnoreCase);
-		static XamlFrameworkContext Unknown(string evidence, string project = null) => new(XamlFrameworkKind.Unknown, project, evidence);
+		static XamlFrameworkContext Unknown(string evidence, string project = null) => new(XamlFrameworkKind.Unknown, XamlRuntimeKind.Unknown, project, evidence);
 	}
 }

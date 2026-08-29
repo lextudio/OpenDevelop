@@ -41,7 +41,7 @@ them at all.
 ## Existing infrastructure (do not duplicate)
 
 `Directory.Build.targets` already contains `RemoveHostProvidedFilesFromAddInCopyLocal`,
-used by the DISTRIBUTION flow only (`dist.macos.ps1` passes
+used by the DISTRIBUTION flow only (`dist.ps1` passes
 `-p:OpenDevelopDistributionBuild=true -p:OpenDevelopHostPublishDir=<snapshot>`): while
 addin copy-local items are gathered, anything whose filename+extension matches the
 published app snapshot is removed. Semantics: **filename+extension match, version-blind,

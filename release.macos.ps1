@@ -33,7 +33,7 @@ try {
     Write-Host "==> Packaging macOS application ($Configuration)..."
     $distArgs = @{ Configuration = $Configuration }
     if ($SkipPublish) { $distArgs.SkipPublish = $true }
-    & (Join-Path $repoRoot 'dist.macos.ps1') @distArgs
+    & (Join-Path $repoRoot 'dist.ps1') @distArgs
 
     $dmg = Join-Path $repoRoot 'OpenDevelop-macos.dmg'
     if (-not (Test-Path $dmg)) { throw "macOS package was not produced: $dmg" }

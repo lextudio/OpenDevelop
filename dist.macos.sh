@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# dist.macos.sh — thin wrapper. All packaging logic lives in dist.macos.ps1 so the
+# dist.macos.sh — thin wrapper. All packaging logic lives in the cross-platform dist.ps1 so the
 # flow stays reviewable next to launch.ps1 and can later be shared with Windows.
 #
 # Usage: ./dist.macos.sh [--skip-publish] [--debug]
@@ -37,4 +37,4 @@ done
 # macOS's default bash (3.2) treats "${arr[@]}" on an EMPTY array as an unbound-variable
 # error under `set -u` - guard explicitly instead of relying on `${arr[@]:-}`-style
 # workarounds that read oddly for an array (same trick as rebuild-all.sh).
-exec "${pwsh_bin}" -NoProfile -File "${repo_root}/dist.macos.ps1" ${args[@]+"${args[@]}"}
+exec "${pwsh_bin}" -NoProfile -File "${repo_root}/dist.ps1" ${args[@]+"${args[@]}"}

@@ -24,8 +24,16 @@ public sealed class WpfSurfaceHostRpcTests
 		</Grid>
 		""";
 
-	static string HostDll() => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-		"../../../../WpfDesign.SurfaceHost/bin/Debug/net10.0-windows/WpfDesign.SurfaceHost.dll"));
+	/// <summary>The child host binary under test. Defaults to the LibreWPF host; setting
+	/// OPENDEVELOP_WPFSURFACEHOST_DLL points the very same suite at the Microsoft WPF host
+	/// (MicrosoftHost/SurfaceHost), which source-links this same host implementation. The DDP
+	/// contract is what is being verified and it is identical for both, so the tests are shared
+	/// rather than duplicated - only the child binary changes.</summary>
+	static string HostDll() =>
+		Environment.GetEnvironmentVariable("OPENDEVELOP_WPFSURFACEHOST_DLL") is { Length: > 0 } overridden
+			? Path.GetFullPath(overridden)
+			: Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+				"../../../../WpfDesign.SurfaceHost/bin/Debug/net10.0-windows/WpfDesign.SurfaceHost.dll"));
 
 	static DesignerDocumentSnapshot Snapshot(long version, string xaml, string projectAssemblyPath = "") => new() {
 		Version = version,
@@ -428,8 +436,15 @@ public sealed class WpfSurfaceHostRpcTests
 		return (pixels[offset], pixels[offset + 1], pixels[offset + 2], pixels[offset + 3]);
 	}
 
-	static string CustomControlFixtureDll() => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-		"../../../../WpfDesign.SurfaceHost.Tests/Fixtures/CustomControlFixture/bin/Debug/net10.0-windows/CustomControlFixture.dll"));
+	/// <summary>The fixture assembly whose types the CHILD must resolve. Overridable alongside
+	/// HostDll: the Microsoft WPF run needs the fixture compiled against Microsoft WindowsDesktop,
+	/// or the child cannot load it. Assembly name and namespace stay "CustomControlFixture" in
+	/// both builds, so the XAML in these tests is unchanged.</summary>
+	static string CustomControlFixtureDll() =>
+		Environment.GetEnvironmentVariable("OPENDEVELOP_WPF_CUSTOMCONTROLFIXTURE_DLL") is { Length: > 0 } overridden
+			? Path.GetFullPath(overridden)
+			: Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+				"../../../../WpfDesign.SurfaceHost.Tests/Fixtures/CustomControlFixture/bin/Debug/net10.0-windows/CustomControlFixture.dll"));
 
 	[Fact]
 	public async Task CustomControlType_IsResolvedOnlyInTheChild()

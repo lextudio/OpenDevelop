@@ -16,8 +16,16 @@ public sealed class UnoDesignHostRpcTests
 		</Grid>
 		""";
 
-	static string HostDll() => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-		"../../../../WinUIXamlDesigner.UnoHost/bin/Debug/net10.0-desktop/WinUIXamlDesigner.UnoHost.dll"));
+	/// <summary>The child host binary under test. Defaults to the Uno host; setting
+	/// OPENDEVELOP_WINUIDESIGNER_HOST_DLL points this same suite at the Microsoft WinUI 3 host,
+	/// which source-links the very same DesignHost/DesignRpc implementation. The DDP contract is
+	/// what is being verified and it is identical for both, so the tests are shared rather than
+	/// duplicated - only the child binary changes.</summary>
+	static string HostDll() =>
+		Environment.GetEnvironmentVariable("OPENDEVELOP_WINUIDESIGNER_HOST_DLL") is { Length: > 0 } overridden
+			? Path.GetFullPath(overridden)
+			: Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+				"../../../../WinUIXamlDesigner.UnoHost/bin/Debug/net10.0-desktop/WinUIXamlDesigner.UnoHost.dll"));
 
 	static Task<UnoDesignClient> StartAsync(CancellationToken cancellationToken)
 		=> UnoDesignClient.StartAsync("", "", cancellationToken, HostDll());

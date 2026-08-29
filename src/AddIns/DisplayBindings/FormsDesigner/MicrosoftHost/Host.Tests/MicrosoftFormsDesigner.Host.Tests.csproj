@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Runs the EXACT test sources of FormsDesigner.Host.Tests against the Microsoft WindowsDesktop
+       host. Nothing is duplicated: the .cs below is source-linked, and the two OPENDEVELOP_*
+       variables the runner sets are the only difference - they redirect the suite's
+       HostDll()/CustomControlFixtureDll() to the Microsoft binaries. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>ICSharpCode.FormsDesigner.Host.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- CustomControl is its own project with its own compilation and obj/; without this the
+         default **/*.cs glob would pull its sources and generated files in here. -->
+    <Compile Remove="CustomControl\**\*.cs" />
+    <Compile Include="..\..\Host.Tests\*.cs" LinkBase="Shared" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <ProjectReference Include="..\Remote\MicrosoftFormsDesigner.Remote.csproj" />
+    <ProjectReference Include="..\..\..\..\..\Main\Designer\Designer.Server\Designer.Server.csproj" />
+    <ProjectReference Include="..\..\..\..\..\Main\Designer\Designer.Shell\Designer.Shell.csproj" />
+    <!-- Build-only: the host must exist as a child process binary, never be loaded in-process. -->
+    <ProjectReference Include="..\Host\MicrosoftFormsDesigner.Host.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" />
+    <ProjectReference Include="CustomControl\MicrosoftFormsDesigner.CustomControlFixture.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" />
+  </ItemGroup>
+</Project>

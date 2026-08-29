@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Microsoft-WPF build of the out-of-process design surface host. Source-links the same host
+       implementation the LibreWPF host compiles (../../WpfDesign.SurfaceHost), so the two stay a
+       single implementation with two runtime targets. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>MicrosoftWpfDesign.SurfaceHost</AssemblyName>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Only the linked sources belong to this project; the default glob would otherwise pull in
+         whatever .cs happens to sit under this directory. -->
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DefineConstants>$(DefineConstants);MICROSOFT_WPF</DefineConstants>
+    <OpenDevelopAddin>true</OpenDevelopAddin>
+    <OpenDevelopAddinKind>OutOfProcessHost</OpenDevelopAddinKind>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\WpfDesign.SurfaceHost\Program.cs" Link="Program.cs" />
+    <Compile Include="..\..\WpfDesign.SurfaceHost\WpfHeadlessDispatcher.cs" Link="WpfHeadlessDispatcher.cs" />
+    <Compile Include="..\..\WpfDesign.SurfaceHost\WpfSurfaceHostService.cs" Link="WpfSurfaceHostService.cs" />
+    <Compile Include="..\..\WpfDesign.SurfaceHost\MultiDocumentWpfSurfaceHostService.cs" Link="MultiDocumentWpfSurfaceHostService.cs" />
+    <Compile Include="..\..\WpfDesign.SurfaceHost\SurfaceTypeFinder.cs" Link="SurfaceTypeFinder.cs" />
+    <ProjectReference Include="..\Engine\MicrosoftWpfDesign.Engine.csproj" />
+    <ProjectReference Include="..\..\..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
+    <ProjectReference Include="..\..\..\..\..\Main\Designer\Designer.Server\Designer.Server.csproj" />
+    <PackageReference Include="StreamJsonRpc" />
+  </ItemGroup>
+</Project>

@@ -6,12 +6,32 @@ namespace ICSharpCode.FormsDesigner.Host.Tests;
 
 public sealed class FormsDesignerHostClientTests
 {
+	/// <summary>The child host binary under test. Defaults to the LibreWinForms host; setting
+	/// OPENDEVELOP_FORMSDESIGNER_HOST_DLL points this same suite at the Microsoft WindowsDesktop
+	/// host (FormsDesigner/MicrosoftHost), which source-links the same host implementation. The
+	/// DDP contract is what is being verified and it is identical for both, so the tests are
+	/// shared rather than duplicated - only the child binary changes.</summary>
+	static string HostDll() =>
+		Environment.GetEnvironmentVariable("OPENDEVELOP_FORMSDESIGNER_HOST_DLL") is { Length: > 0 } overridden
+			? Path.GetFullPath(overridden)
+			: Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+				"../../../../Host/bin/Debug/net10.0-windows/FormsDesigner.Host.dll"));
+
+	/// <summary>The fixture assembly whose types the CHILD must resolve. Overridable alongside
+	/// HostDll: the Microsoft run needs the fixture compiled against Microsoft WindowsDesktop, or
+	/// the child cannot load it. The assembly name stays "FormsDesigner.CustomControlFixture" in
+	/// both builds, so the snapshots in these tests are unchanged.</summary>
+	static string CustomControlFixtureDll() =>
+		Environment.GetEnvironmentVariable("OPENDEVELOP_FORMSDESIGNER_FIXTURE_DLL") is { Length: > 0 } overridden
+			? Path.GetFullPath(overridden)
+			: Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+				"../../../../Host.Tests/CustomControl/bin/Debug/net10.0-windows/FormsDesigner.CustomControlFixture.dll"));
+
 	[Fact]
 	public async Task ChildHost_HandshakesRejectsStaleVersionsAndFlushesCurrentSnapshot()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-		var hostDll = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-			"../../../../Host/bin/Debug/net10.0-windows/FormsDesigner.Host.dll"));
+		var hostDll = HostDll();
 		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
 		Assert.True(client.IsAlive);
 		Assert.NotEqual(Environment.ProcessId, client.ProcessId);
@@ -51,8 +71,17 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Contains("Size = new System.Drawing.Size(420, 260);",
 			DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
 		var scaledRoot = await client.SetPropertyAsync(7, "Form1", "AutoScaleDimensions", "8, 16", timeout.Token);
-		Assert.Contains(scaledRoot.Components.Single(component => component.Name == "Form1").Properties,
-			property => property.Name == "AutoScaleDimensions" && property.Value == "8, 16");
+		Assert.True(scaledRoot.Accepted);
+		// The reported Properties are the property GRID's contents, so they follow each runtime's
+		// own [Browsable] decisions: Microsoft WinForms marks ContainerControl.AutoScaleDimensions
+		// Browsable(false) (hidden from the grid but still designer-serialized), LibreWinForms does
+		// not. Assert the value only where the runtime exposes it; the generated-designer-code
+		// assertion below is the runtime-neutral proof that the set actually took effect, and it
+		// runs unconditionally on both.
+		var scaledForm = scaledRoot.Components.Single(component => component.Name == "Form1");
+		if (scaledForm.Properties.Any(property => property.Name == "AutoScaleDimensions"))
+			Assert.Contains(scaledForm.Properties,
+				property => property.Name == "AutoScaleDimensions" && property.Value == "8, 16");
 		Assert.Contains("AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);",
 			DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
 
@@ -185,9 +214,16 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Contains(current.Components, component => component.Name == "button1" && component.Text == "button2");
 		Assert.Contains(current.Components.Single(component => component.Name == "button1").Properties,
 			property => property.Name == "Padding" && property.Value == "4, 3, 2, 1");
-		var loadedScale = Assert.Single(current.Components.Single(component => component.Name == "Form1").Properties,
-			property => property.Name == "AutoScaleDimensions");
-		Assert.Equal("7, 15", loadedScale.Value);
+		// Grid-visibility of AutoScaleDimensions is runtime-specific - see the note on the earlier
+		// AutoScaleDimensions assertion. Where the runtime exposes it, it must carry the value the
+		// updated designer code declares.
+		var loadedForm = current.Components.Single(component => component.Name == "Form1");
+		if (loadedForm.Properties.Any(property => property.Name == "AutoScaleDimensions"))
+		{
+			var loadedScale = Assert.Single(loadedForm.Properties,
+				property => property.Name == "AutoScaleDimensions");
+			Assert.Equal("7, 15", loadedScale.Value);
+		}
 		var edits = await client.FlushAsync(8, timeout.Token);
 		Assert.Equal(client.SessionId, edits.SessionId);
 		Assert.Equal(client.DocumentId, edits.DocumentId);
@@ -212,8 +248,7 @@ public sealed class FormsDesignerHostClientTests
 			property => property.Name == "Image" && !property.IsNull && property.Value == "[binary]");
 		Assert.Contains((await client.FlushAsync(9, timeout.Token)).Files, item => item.Kind == "Resource" && !String.IsNullOrEmpty(item.Base64));
 
-		var fixtureAssembly = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-			"../../../../Host.Tests/CustomControl/bin/Debug/net10.0-windows/FormsDesigner.CustomControlFixture.dll"));
+		var fixtureAssembly = CustomControlFixtureDll();
 		Assert.True(File.Exists(fixtureAssembly));
 		Assert.DoesNotContain(AppDomain.CurrentDomain.GetAssemblies(), assembly => assembly.GetName().Name == "FormsDesigner.CustomControlFixture");
 		var customSnapshot = Snapshot(10, "custom");
@@ -238,8 +273,7 @@ public sealed class FormsDesignerHostClientTests
 	public async Task ChildHost_BoundsSnapshotsAndSupportsIndependentLifetimes()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-		var hostDll = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-			"../../../../Host/bin/Debug/net10.0-windows/FormsDesigner.Host.dll"));
+		var hostDll = HostDll();
 		var first = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
 		var second = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
 		var firstPid = first.ProcessId;
@@ -268,8 +302,7 @@ public sealed class FormsDesignerHostClientTests
 	public async Task SharedHost_UsesOneProcessAndKeepsDocumentsIsolated()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-		var hostDll = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-			"../../../../Host/bin/Debug/net10.0-windows/FormsDesigner.Host.dll"));
+		var hostDll = HostDll();
 		var first = await FormsDesignerHostClient.AcquireSharedAsync("", "", timeout.Token, hostDll);
 		var second = await FormsDesignerHostClient.AcquireSharedAsync("", "", timeout.Token, hostDll);
 		try {
@@ -307,8 +340,7 @@ public sealed class FormsDesignerHostClientTests
 	public async Task ChildHost_VbSnapshot_RoundTripsDesignerEdits()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-		var hostDll = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-			"../../../../Host/bin/Debug/net10.0-windows/FormsDesigner.Host.dll"));
+		var hostDll = HostDll();
 		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
 
 		var opened = await client.OpenAsync(VbSnapshot(7, "button1"), timeout.Token);

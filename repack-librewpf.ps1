@@ -263,7 +263,7 @@ try {
     }
 
     # Re-extract the freshly-packed (and just cache-cleared) LibreWPF packages into OpenDevelop's
-    # restore graph. dist.windows.ps1 restores again anyway, but doing it here keeps this script
+    # restore graph. dist.ps1 restores again anyway, but doing it here keeps this script
     # correct when run standalone.
     Write-Host "==> Restoring OpenDevelop against the local feed..."
     & $dotnet restore (Join-Path $repoRoot 'OpenDevelop.Mvp.slnx') --force --no-cache

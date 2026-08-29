@@ -24,8 +24,10 @@ sealed class WpfHeadlessDispatcher
 		if (useCurrentThread) {
 			thread = Thread.CurrentThread;
 			dispatcher = Dispatcher.CurrentDispatcher;
+			#if !MICROSOFT_WPF
 			if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
 				Dispatcher.NativeInputPump ??= () => { };
+			#endif
 			return;
 		}
 		using var ready = new ManualResetEventSlim(false);
@@ -37,8 +39,10 @@ sealed class WpfHeadlessDispatcher
 			// breaks out on the very first empty check and Run() returns immediately,
 			// leaving nothing left to ever pump a later Invoke. A no-op pump keeps the idle
 			// loop alive via its own Thread.Sleep(1) polling path with no real window needed.
+			#if !MICROSOFT_WPF
 			if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
 				Dispatcher.NativeInputPump ??= () => { };
+			#endif
 			ready.Set();
 			Dispatcher.Run();
 		});

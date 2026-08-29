@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # launch.sh — thin wrapper. All build/run logic lives in launch.ps1 so Windows and
-# macOS share one implementation (see also dist.macos.sh / dist.macos.ps1).
+# macOS share one implementation (see also dist.macos.sh / dist.ps1).
 #
 # Usage:
 #   ./launch.sh                build OpenDevelop.Mvp.sln, then run OpenDevelop

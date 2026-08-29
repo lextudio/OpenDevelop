@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Runs the EXACT test sources of WpfDesign.SurfaceHost.Tests against the Microsoft WPF host.
+       Nothing is duplicated: the .cs below is source-linked, and the two OPENDEVELOP_* variables
+       set here are the only difference - they redirect the suite's HostDll()/CustomControlFixtureDll()
+       to the Microsoft binaries. That test project cannot simply be reused as-is because it is a
+       LibreWPF.Sdk project, which would drag LibreWPF into a run whose whole point is that the
+       Microsoft adaptation stands alone. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>WpfDesign.SurfaceHost.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Fixtures/CustomControlFixture is its own project with its own compilation; without these,
+         the default **/*.cs glob would compile its sources AND its obj/ generated files (duplicate
+         AssemblyInfo/GitVersionInformation -> CS0579/CS0101) into this project. Same guard the
+         original WpfDesign.SurfaceHost.Tests project carries. -->
+    <!-- A WindowsDesktop (UseWPF) project's implicit-usings set is narrower than the LibreWPF.Sdk
+         one the shared sources were written against - it omits System.IO - so Path/MemoryStream
+         would not resolve. Added explicitly rather than editing the shared sources. -->
+    <Using Include="System.IO" />
+    <Compile Remove="Fixtures\**\*.cs" />
+    <Page Remove="Fixtures\**\*.xaml" />
+    <Compile Include="..\..\WpfDesign.SurfaceHost.Tests\*.cs" LinkBase="Shared" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <ProjectReference Include="..\SurfaceHost.Remote\MicrosoftWpfDesign.SurfaceHost.Remote.csproj" />
+    <!-- Build-only: the host must exist as a child process binary, never be loaded in-process. -->
+    <ProjectReference Include="..\SurfaceHost\MicrosoftWpfDesign.SurfaceHost.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" />
+    <ProjectReference Include="Fixtures\CustomControlFixture\MicrosoftCustomControlFixture.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" />
+    <!-- Referenced normally: the theme test passes this fixture's own assembly location as
+         ProjectAssemblyPath. It is runtime-neutral (plain net10.0, embedded themes/*.xaml read as
+         text by the child), so the LibreWPF fixture project is reused directly. -->
+    <ProjectReference Include="..\..\WpfDesign.SurfaceHost.Tests\Fixtures\WpfThemeFixture\WpfThemeFixture.csproj" />
+  </ItemGroup>
+</Project>

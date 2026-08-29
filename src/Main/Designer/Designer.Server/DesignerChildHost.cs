@@ -76,8 +76,15 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 			}
 		}
 
+		/// <param name="rpcSynchronizationContext">When supplied, every incoming RPC invocation is
+		/// dispatched onto this context instead of the thread pool. Required by hosts whose UI
+		/// objects have real thread affinity AND need a running message pump - Microsoft WinForms
+		/// designers create genuine HWNDs (BehaviorService's AdornerWindow), so servicing a
+		/// session/open on an arbitrary pool thread leaves those windows without a pump and the
+		/// call never returns. Left null by hosts that own their entry thread instead (GTK, WPF).</param>
 		public static int Run(string[] args, string readyMessagePrefix,
-			Func<string, IDesignerChildService> createService, Action? afterShutdown = null)
+			Func<string, IDesignerChildService> createService, Action? afterShutdown = null,
+			System.Threading.SynchronizationContext? rpcSynchronizationContext = null)
 		{
 			var port = GetArgument(args, "--port");
 			var token = GetArgument(args, "--token");
@@ -85,7 +92,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 				return 2;
 			try
 			{
-				return RunCore(portNumber, token, readyMessagePrefix, createService, afterShutdown);
+				return RunCore(portNumber, token, readyMessagePrefix, createService, afterShutdown,
+					rpcSynchronizationContext);
 			}
 			catch (Exception exception)
 			{
@@ -99,13 +107,18 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		}
 
 		static int RunCore(int portNumber, string token, string readyMessagePrefix,
-			Func<string, IDesignerChildService> createService, Action? afterShutdown)
+			Func<string, IDesignerChildService> createService, Action? afterShutdown,
+			System.Threading.SynchronizationContext? rpcSynchronizationContext = null)
 		{
 			using var tcp = new TcpClient();
 			tcp.Connect(IPAddress.Loopback, portNumber);
 			var service = createService(token);
 			using var rpc = new JsonRpc(new HeaderDelimitedMessageHandler(tcp.GetStream(), tcp.GetStream(), new SystemTextJsonFormatter()));
 			rpc.AddLocalRpcTarget(service);
+			// Must be assigned before StartListening: StreamJsonRpc captures it when it begins
+			// dispatching, so setting it afterwards would race the first inbound request.
+			if (rpcSynchronizationContext != null)
+				rpc.SynchronizationContext = rpcSynchronizationContext;
 			rpc.StartListening();
 			Console.Error.WriteLine($"{readyMessagePrefix}: ready on {portNumber}");
 			// A parent killed by the OS cannot send the explicit shutdown RPC. Waiting only on the

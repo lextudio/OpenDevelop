@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Microsoft-WPF build of externals/vscode-wpf WpfDesign.XamlDom. See
+       Core/MicrosoftWpfDesign.Core.csproj for why the upstream assembly split and the
+       one-directory-per-project layout are both load-bearing rather than cosmetic. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AssemblyName>ICSharpCode.MicrosoftWpfDesign.XamlDom</AssemblyName>
+    <RootNamespace>ICSharpCode.WpfDesign.XamlDom</RootNamespace>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <NoWarn>$(NoWarn);CS1572;CS1573;CS1591</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\..\..\..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign.XamlDom\Project\**\*.cs" Exclude="**\bin\**;**\obj\**;**\AssemblyInfo.cs" LinkBase="WpfDesign.XamlDom" />
+    <ProjectReference Include="..\Core\MicrosoftWpfDesign.Core.csproj" />
+  </ItemGroup>
+</Project>

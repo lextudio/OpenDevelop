@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Microsoft-WPF build of externals/vscode-wpf WpfDesign (upstream ICSharpCode.WpfDesign).
+       Mirrors the upstream project one-for-one INSTEAD of merging all three source trees into a
+       single assembly: the WPF markup compiler's pass 1 resolves an XmlnsDefinition-mapped xmlns
+       only through REFERENCED assemblies, so with everything merged, PropertyGridView.xaml's
+       "http://sharpdevelop.net" -> Category lookup fails with MC3066. Keeping the upstream
+       assembly split is what makes that resolution work here exactly as it does upstream.
+
+       Each project under MicrosoftHost/ also gets its OWN directory. Several projects sharing one
+       directory share one obj/, and project.assets.json is not project-name-qualified, so the last
+       restore wins and every other project silently reads a foreign dependency graph. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AssemblyName>ICSharpCode.MicrosoftWpfDesign</AssemblyName>
+    <RootNamespace>ICSharpCode.WpfDesign</RootNamespace>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <NoWarn>$(NoWarn);CS1572;CS1573;CS1591</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="CoreXamlAssemblyAttributes.cs" />
+    <Compile Include="..\..\..\..\..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign\Project\**\*.cs" Exclude="**\bin\**;**\obj\**;**\AssemblyInfo.cs" LinkBase="WpfDesign" />
+  </ItemGroup>
+</Project>

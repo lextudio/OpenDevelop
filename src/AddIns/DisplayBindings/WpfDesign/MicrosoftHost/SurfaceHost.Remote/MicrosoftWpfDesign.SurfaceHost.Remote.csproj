@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Microsoft-side build of the WpfDesign.SurfaceHost.Remote client. Source-links the same
+       client implementation; the ONLY difference from the original project is that it drops that
+       project's build-only ProjectReference to the LibreWPF host binary. That reference exists
+       there purely to guarantee the child exists before a test run, but it resolves through
+       LibreWPF.Sdk and would pull LibreWPF into a run whose whole point is that the Microsoft
+       adaptation stands alone; the Microsoft test project references the Microsoft host instead. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>MicrosoftWpfDesign.SurfaceHost.Remote</AssemblyName>
+    <RootNamespace>ICSharpCode.WpfDesign.SurfaceHost</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\WpfDesign.SurfaceHost.Remote\**\*.cs" Exclude="**\bin\**;**\obj\**" LinkBase="Remote" />
+    <PackageReference Include="StreamJsonRpc" />
+    <ProjectReference Include="..\..\..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
+  </ItemGroup>
+</Project>

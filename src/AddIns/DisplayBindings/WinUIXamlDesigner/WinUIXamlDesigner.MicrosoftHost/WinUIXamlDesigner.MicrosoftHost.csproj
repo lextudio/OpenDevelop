@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <OutputType>WinExe</OutputType><UseWinUI>true</UseWinUI>
+    <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
+    <!-- An unpackaged WinUI 3 app must be built RID-specific. Without a RID the Windows App SDK's
+         native bootstrap stays under runtimes/<rid>/native/ and never lands next to the host, so
+         the auto-initializer's very first P/Invoke fails with DllNotFoundException
+         "Microsoft.WindowsAppRuntime.Bootstrap.dll ... The filename or extension is too long
+         (0x800700CE)" before Main runs at all. Defaulting to the SDK's own portable RID keeps this
+         correct on x64 and arm64 machines alike rather than hard-coding one. -->
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">$(NETCoreSdkPortableRuntimeIdentifier)</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <!-- A design child is launched by OpenDevelop, not packaged as an MSIX application. -->
+    <WindowsPackageType>None</WindowsPackageType>
+    <AppxPackage>false</AppxPackage>
+    <!-- PRI generation MUST stay on, even though this project owns no .xaml of its own.
+         HostApplication merges XamlControlsResources, and every control the designer instantiates
+         through XamlReader gets its default template from the WinUI framework's resources - all of
+         which live in resources.pri. Building without it produces a host that compiles and then
+         dies at startup inside the Application.Start callback with a bare WinRT stowed exception
+         (0xC000027B, no managed stack), which is far worse than a build error.
+
+         The consequence is a real toolchain constraint: MrtCore.PriGen.targets invokes MSBuild
+         tasks that ship ONLY with Visual Studio (Microsoft.Build.AppxPackage.dll,
+         Microsoft.Build.Packaging.Pri.Tasks.dll), and `dotnet build` looks for them under the
+         dotnet SDK root instead of the VS root, failing with MSB4062. This project therefore has
+         to be built with Visual Studio's MSBuild - see doc/technotes for the exact command. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>WinUIXamlDesigner.MicrosoftHost</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The designer implementation and the whole DDP surface are the Uno host's, source-linked
+         unchanged: both hosts target the same Microsoft.UI.Xaml API, so the only thing that has to
+         differ is the bootstrap (this project's own Program.cs) and the dispatcher shim
+         (HeadlessDispatcher.cs). Linking rather than reimplementing is what keeps the two WinUI
+         hosts a single implementation - see DesignRpc.cs's header. -->
+    <Compile Include="..\WinUIXamlDesigner.UnoHost\DesignHost.cs" Link="DesignHost.cs" />
+    <Compile Include="..\WinUIXamlDesigner.UnoHost\DesignProtocol.cs" Link="DesignProtocol.cs" />
+    <Compile Include="..\WinUIXamlDesigner.UnoHost\DesignRpc.cs" Link="DesignRpc.cs" />
+    <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
+    <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Server\Designer.Server.csproj" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" />
+    <PackageReference Include="SkiaSharp" />
+    <PackageReference Include="StreamJsonRpc" />
+  </ItemGroup>
+</Project>

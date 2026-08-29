@@ -23,9 +23,11 @@ using ICSharpCode.SharpDevelop.Designer.Remote;
 
 using StreamJsonRpc;
 
+#if !MICROSOFT_WPF
 using ProGPU.Backend;
 using Silk.NET.WebGPU;
 using GpuCompositionTarget = System.Windows.Media.ProGPU.ProGpuWpfCompositionTarget;
+#endif
 
 namespace ICSharpCode.WpfDesign.SurfaceHost
 {
@@ -55,12 +57,14 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		Dictionary<string, DesignItem> pathToItem = new(StringComparer.Ordinal);
 		double lastWidth = 800;
 		double lastHeight = 600;
+		#if !MICROSOFT_WPF
 		/// <summary>Created once, lazily, on first successful render and reused for the process's
 		/// life - matches every LibreWPF ProGPU test/harness, which all construct one
 		/// CreateHeadless() target and reuse it across frames rather than recreating the GPU
 		/// context per render.</summary>
 		GpuCompositionTarget? renderTarget;
 		bool renderUnavailable;
+		#endif
 
 		// Design-time theme resolution - resolved once per session/open from the project
 		// assembly, see ResolveThemes. Theme name (as shown in the designer's combo) to
@@ -305,6 +309,10 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					return null;
 				}
 
+				#if !MICROSOFT_WPF
+				// The GPU fast path exists only because headless LibreWPF cannot hit-test through
+				// VisualTreeHelper (see the summary above); renderTarget is declared only in that
+				// build. On Microsoft WPF the plain walk below is the correct - and only - path.
 				if (renderTarget != null &&
 					renderTarget.TryHitTestOwner(new System.Numerics.Vector2((float)x, (float)y), out var owner, out _) &&
 					owner is DependencyObject ownerVisual)
@@ -312,6 +320,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					hitItem = ResolveOwner(ownerVisual);
 				}
 				else
+				#endif
 				{
 					VisualTreeHelper.HitTest(root, null, hitResult => {
 						hitItem = ResolveOwner(hitResult.VisualHit as DependencyObject);
@@ -948,6 +957,31 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// and rendering is skipped rather than failing session/open, exactly as before.</summary>
 		unsafe DesignerRenderFrame? Render(FrameworkElement? element)
 		{
+#if MICROSOFT_WPF
+			if (element == null || element.ActualWidth <= 0 || element.ActualHeight <= 0)
+				return null;
+			var stopwatch = Stopwatch.StartNew();
+			var width = (int)Math.Ceiling(element.ActualWidth);
+			var height = (int)Math.Ceiling(element.ActualHeight);
+			try {
+				var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+				bitmap.Render(element);
+				var pixels = new byte[width * height * 4];
+				bitmap.CopyPixels(pixels, width * 4, 0);
+				using var stream = new MemoryStream();
+				using (var deflate = new DeflateStream(stream, CompressionLevel.Fastest, leaveOpen: true))
+					deflate.Write(pixels, 0, pixels.Length);
+				stream.Flush();
+				stopwatch.Stop();
+				return new DesignerRenderFrame {
+					Sequence = ++frameSequence, Width = width, Height = height, Dpi = 1,
+					Data = Convert.ToBase64String(stream.ToArray()), RenderMs = stopwatch.Elapsed.TotalMilliseconds
+				};
+			} catch (Exception e) {
+				Console.Error.WriteLine("WpfDesign.SurfaceHost: native WPF render failed: " + e);
+				return null;
+			}
+#else
 			if (element == null || element.ActualWidth <= 0 || element.ActualHeight <= 0 || renderUnavailable)
 				return null;
 			var stopwatch = Stopwatch.StartNew();
@@ -991,6 +1025,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				Data = Convert.ToBase64String(stream.ToArray()),
 				RenderMs = stopwatch.Elapsed.TotalMilliseconds
 			};
+#endif
 		}
 
 		long frameSequence;

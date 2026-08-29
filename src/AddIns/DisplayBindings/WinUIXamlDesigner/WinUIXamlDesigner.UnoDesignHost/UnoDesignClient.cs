@@ -27,10 +27,17 @@ public sealed class UnoDesignClient : DesignerDocumentHostClient, IDesignHostCli
 	DesignerCapabilities capabilities;
 	bool disposed;
 
-	/// <summary>Identifies the single document this client opens against its child. One
-	/// process/one document per host today (designer-common.md's starting point); stable for
-	/// the client's life.</summary>
-	public string DocumentId { get; } = Guid.NewGuid().ToString("N");
+	// DocumentId deliberately comes from DesignerDocumentHostClient and is NOT redeclared here.
+	//
+	// It used to be shadowed by an identically-named property carrying its own fresh Guid, which
+	// silently split every session in two: the RPCs written out inline below (session/open,
+	// session/update, design/add-element, ...) picked up this class's id, while everything routed
+	// through the base's Document client (session/flush, design/set-property, design/set-bounds,
+	// design/rename) carried the base's id - captured in the base constructor before the derived
+	// initializer even ran. The child's document registry keys on that id, so the two families of
+	// calls landed on two different DesignHost instances: open loaded the XAML into one, and flush
+	// then reported an empty document from the other while set-property mutated a host that had no
+	// root at all.
 
 	UnoDesignClient(Connection connection, CompatibilityKey? poolKey) : base(connection)
 	{

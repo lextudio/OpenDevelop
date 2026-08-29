@@ -28,6 +28,23 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			this.getXamlAssemblyPath = getXamlAssemblyPath;
 		}
 
+		/// <summary>
+		/// Optional hook letting a host keep the design root inside a live visual tree. Invoked as
+		/// (previous, next) on every root change - both may be null - so the host can swap exactly
+		/// this document's element without disturbing any other.
+		///
+		/// Uno leaves this null: its headless Skia dispatcher can measure, arrange and
+		/// RenderTargetBitmap-render an element that belongs to no window at all. Real WinUI 3
+		/// cannot - RenderAsync on an unparented element never completes, so session/open just
+		/// blocks until the client's timeout - which is why the Microsoft host installs a hook that
+		/// puts the root inside an offscreen window.
+		///
+		/// The pair-shaped signature is load-bearing for shared hosts: one process serves several
+		/// documents at once, so a hook that only knew "the current root" would evict the previous
+		/// document's element from the tree and silently break ITS rendering.
+		/// </summary>
+		public static Action<FrameworkElement?, FrameworkElement?>? HostVisualRoot;
+
 		FrameworkElement? root;
 
 		public DesignerCapabilities GetCapabilities()
@@ -177,7 +194,9 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		public void Close()
 		{
 			HeadlessDispatcher.Dispatch(() => {
+				var closedRoot = root;
 				root = null;
+				HostVisualRoot?.Invoke(closedRoot, null);
 				sessionId = null;
 				documentId = null;
 				lastXaml = "";
@@ -434,12 +453,16 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			{
 				lastXaml = request.Xaml;
 				var xaml = InjectDesignData(request.Xaml);
+				var previousRoot = root;
 				root = (FrameworkElement)Microsoft.UI.Xaml.Markup.XamlReader.Load(xaml);
+				HostVisualRoot?.Invoke(previousRoot, root);
 				return await FinishLayoutAsync(request.Width, request.Height, request.Dpi, snapshot);
 			}
 			catch (Exception e)
 			{
+				var failedRoot = root;
 				root = null;
+				HostVisualRoot?.Invoke(failedRoot, null);
 				snapshot.Diagnostics.Add(ToDiagnostic(e.GetBaseException()));
 				return snapshot;
 			}
