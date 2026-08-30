@@ -29,4 +29,11 @@
     <ProjectReference Include="..\..\..\..\..\Main\Designer\Designer.Server\Designer.Server.csproj" />
     <PackageReference Include="StreamJsonRpc" />
   </ItemGroup>
+  <Target Name="DeployToAddIns" AfterTargets="Build">
+    <ItemGroup>
+      <HostOutput Include="$(TargetDir)**" />
+    </ItemGroup>
+    <Copy SourceFiles="@(HostOutput)" SkipUnchangedFiles="true"
+          DestinationFiles="@(HostOutput->'$(MSBuildProjectDirectory)\..\..\..\..\..\..\AddIns\DisplayBindings\WpfDesign\MicrosoftHost\%(RecursiveDir)%(Filename)%(Extension)')" />
+  </Target>
 </Project>

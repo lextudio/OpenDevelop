@@ -32,8 +32,13 @@ public sealed class WpfSurfaceHostRpcTests
 	static string HostDll() =>
 		Environment.GetEnvironmentVariable("OPENDEVELOP_WPFSURFACEHOST_DLL") is { Length: > 0 } overridden
 			? Path.GetFullPath(overridden)
+		#if MICROSOFT_WPF_DESIGNER_HOST
+			: Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+				"../../../../SurfaceHost/bin/Debug/net10.0-windows/MicrosoftWpfDesign.SurfaceHost.dll"));
+		#else
 			: Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
 				"../../../../WpfDesign.SurfaceHost/bin/Debug/net10.0-windows/WpfDesign.SurfaceHost.dll"));
+		#endif
 
 	static DesignerDocumentSnapshot Snapshot(long version, string xaml, string projectAssemblyPath = "") => new() {
 		Version = version,
@@ -444,7 +449,11 @@ public sealed class WpfSurfaceHostRpcTests
 		Environment.GetEnvironmentVariable("OPENDEVELOP_WPF_CUSTOMCONTROLFIXTURE_DLL") is { Length: > 0 } overridden
 			? Path.GetFullPath(overridden)
 			: Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+			#if MICROSOFT_WPF_DESIGNER_HOST
+				"../../../../SurfaceHost.Tests/Fixtures/CustomControlFixture/bin/Debug/net10.0-windows/CustomControlFixture.dll"));
+			#else
 				"../../../../WpfDesign.SurfaceHost.Tests/Fixtures/CustomControlFixture/bin/Debug/net10.0-windows/CustomControlFixture.dll"));
+			#endif
 
 	[Fact]
 	public async Task CustomControlType_IsResolvedOnlyInTheChild()

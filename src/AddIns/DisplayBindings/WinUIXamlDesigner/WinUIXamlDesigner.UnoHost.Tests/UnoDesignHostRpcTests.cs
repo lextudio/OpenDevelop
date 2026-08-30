@@ -24,8 +24,34 @@ public sealed class UnoDesignHostRpcTests
 	static string HostDll() =>
 		Environment.GetEnvironmentVariable("OPENDEVELOP_WINUIDESIGNER_HOST_DLL") is { Length: > 0 } overridden
 			? Path.GetFullPath(overridden)
+		#if MICROSOFT_WINUI_DESIGNER_HOST
+			: MicrosoftHostDll();
+		#else
 			: Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
 				"../../../../WinUIXamlDesigner.UnoHost/bin/Debug/net10.0-desktop/WinUIXamlDesigner.UnoHost.dll"));
+		#endif
+
+	#if MICROSOFT_WINUI_DESIGNER_HOST
+	static string MicrosoftHostDll()
+	{
+		// Exercise the same deployed child the IDE probes.  Besides matching production, this
+		// avoids a Windows App SDK bootstrap failure from the much longer source/bin path.
+		var directory = new DirectoryInfo(AppContext.BaseDirectory);
+		while (directory != null && !string.Equals(directory.Name, "WinUIXamlDesigner", StringComparison.OrdinalIgnoreCase))
+			directory = directory.Parent;
+		if (directory == null)
+			throw new DirectoryNotFoundException("Could not locate the WinUIXamlDesigner source directory.");
+		var repository = directory.Parent?.Parent?.Parent?.Parent;
+		var deployed = repository == null ? null : Path.Combine(repository.FullName, "AddIns", "DisplayBindings", "WinUIXamlDesigner", "MicrosoftHost", "WinUIXamlDesigner.MicrosoftHost.dll");
+		if (deployed != null && File.Exists(deployed))
+			return deployed;
+
+		// Fallback is useful for a developer who built the host but has not deployed it yet.
+		return Directory.EnumerateFiles(Path.Combine(directory.FullName, "WinUIXamlDesigner.MicrosoftHost", "bin"),
+			"WinUIXamlDesigner.MicrosoftHost.dll", SearchOption.AllDirectories).FirstOrDefault()
+			?? throw new FileNotFoundException("Build WinUIXamlDesigner.MicrosoftHost before running its test suite.");
+	}
+	#endif
 
 	static Task<UnoDesignClient> StartAsync(CancellationToken cancellationToken)
 		=> UnoDesignClient.StartAsync("", "", cancellationToken, HostDll());

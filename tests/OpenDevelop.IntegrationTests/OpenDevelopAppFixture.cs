@@ -336,9 +336,14 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         // fixtures itself with no constructor-injection point for that). Tests that need a specific
         // WinUI backend (see ProGpuWinUIDesignerTests) are run as their own `dotnet test` invocation
         // with this set, rather than mixed into the same run as the default-backend suite.
-        var winUIRuntime = Environment.GetEnvironmentVariable("OD_WINUI_RUNTIME");
-        if (!string.IsNullOrEmpty(winUIRuntime))
-            psi.Environment["OD_WINUI_RUNTIME"] = winUIRuntime;
+		var winUIRuntime = Environment.GetEnvironmentVariable("OD_WINUI_RUNTIME");
+		if (!string.IsNullOrEmpty(winUIRuntime))
+			psi.Environment["OD_WINUI_RUNTIME"] = winUIRuntime;
+		foreach (var variable in new[] { "OD_FORMS_RUNTIME", "OD_WPF_RUNTIME" }) {
+			var value = Environment.GetEnvironmentVariable(variable);
+			if (!string.IsNullOrEmpty(value))
+				psi.Environment[variable] = value;
+		}
         ConfigureDotNetEnvironment(psi);
 
         _app = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start OpenDevelop");

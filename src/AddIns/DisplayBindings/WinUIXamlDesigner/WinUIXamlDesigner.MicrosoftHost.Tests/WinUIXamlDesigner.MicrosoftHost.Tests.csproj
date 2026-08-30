@@ -11,6 +11,7 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <RootNamespace>ICSharpCode.WinUIXamlDesigner.UnoHost.Tests</RootNamespace>
+    <DefineConstants>$(DefineConstants);MICROSOFT_WINUI_DESIGNER_HOST</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\WinUIXamlDesigner.UnoHost.Tests\*.cs" LinkBase="Shared" />

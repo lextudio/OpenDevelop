@@ -15,6 +15,7 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <RootNamespace>WpfDesign.SurfaceHost.Tests</RootNamespace>
+    <DefineConstants>$(DefineConstants);MICROSOFT_WPF_DESIGNER_HOST</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <!-- Fixtures/CustomControlFixture is its own project with its own compilation; without these,

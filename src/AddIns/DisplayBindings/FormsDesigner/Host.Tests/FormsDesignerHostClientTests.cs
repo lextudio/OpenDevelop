@@ -14,8 +14,13 @@ public sealed class FormsDesignerHostClientTests
 	static string HostDll() =>
 		Environment.GetEnvironmentVariable("OPENDEVELOP_FORMSDESIGNER_HOST_DLL") is { Length: > 0 } overridden
 			? Path.GetFullPath(overridden)
+		#if MICROSOFT_FORMS_DESIGNER_HOST
+			: Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+				"../../../../Host/bin/Debug/net10.0-windows/MicrosoftFormsDesigner.Host.dll"));
+		#else
 			: Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
 				"../../../../Host/bin/Debug/net10.0-windows/FormsDesigner.Host.dll"));
+		#endif
 
 	/// <summary>The fixture assembly whose types the CHILD must resolve. Overridable alongside
 	/// HostDll: the Microsoft run needs the fixture compiled against Microsoft WindowsDesktop, or
@@ -24,8 +29,13 @@ public sealed class FormsDesignerHostClientTests
 	static string CustomControlFixtureDll() =>
 		Environment.GetEnvironmentVariable("OPENDEVELOP_FORMSDESIGNER_FIXTURE_DLL") is { Length: > 0 } overridden
 			? Path.GetFullPath(overridden)
+		#if MICROSOFT_FORMS_DESIGNER_HOST
 			: Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
 				"../../../../Host.Tests/CustomControl/bin/Debug/net10.0-windows/FormsDesigner.CustomControlFixture.dll"));
+		#else
+			: Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+				"../../../../Host.Tests/CustomControl/bin/Debug/net10.0-windows/FormsDesigner.CustomControlFixture.dll"));
+		#endif
 
 	[Fact]
 	public async Task ChildHost_HandshakesRejectsStaleVersionsAndFlushesCurrentSnapshot()

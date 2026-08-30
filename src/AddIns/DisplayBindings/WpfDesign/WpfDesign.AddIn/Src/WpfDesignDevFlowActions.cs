@@ -24,6 +24,7 @@ using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Designer.Shell;
 using ICSharpCode.WpfDesign.AddIn.OutOfProcess;
+using ICSharpCode.WpfDesign.SurfaceHost;
 using LeXtudio.DevFlow.Agent.Core;
 using Microsoft.Maui.DevFlow.Agent.Core;
 using Xceed.Wpf.Toolkit.PropertyGrid;
@@ -68,6 +69,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 
 			return JsonSerializer.Serialize(new {
 				active = true,
+				backend = WpfSurfaceHostClient.SelectedBackend,
 				designerLoaded,
 				// state.RootType is the DDP wire contract's full CLR name (e.g.
 				// "System.Windows.Window" - see WpfSurfaceHostService.OpenCore and

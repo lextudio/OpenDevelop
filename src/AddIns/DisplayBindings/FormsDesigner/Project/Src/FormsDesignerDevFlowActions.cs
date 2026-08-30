@@ -16,6 +16,7 @@ using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Designer.Shell;
 using ICSharpCode.SharpDevelop.Workbench;
+using ICSharpCode.FormsDesigner.OutOfProcess;
 using LeXtudio.DevFlow.Agent.Core;
 using Microsoft.Maui.DevFlow.Agent.Core;
 using Xceed.Wpf.Toolkit.PropertyGrid;
@@ -142,6 +143,7 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 			return JsonSerializer.Serialize(new {
 				designerLoaded = true,
 				outOfProcess = true,
+				backend = FormsDesignerHostClient.SelectedBackend,
 				usesCodeDomLoader = false,
 				loaderType = "ICSharpCode.FormsDesigner.Host.SnapshotRoslynDesignerLoader",
 				hostProcessId = viewContent.RemoteDesignerProcessId,

@@ -37,9 +37,15 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			var directory = Path.GetDirectoryName(typeof(FormsDesignerHostClient).Assembly.Location);
 			if (String.IsNullOrEmpty(directory))
 				return null;
-			var path = Path.Combine(directory, "Host", "FormsDesigner.Host.dll");
+			var useMicrosoft = string.Equals(Environment.GetEnvironmentVariable("OD_FORMS_RUNTIME"), "microsoft", StringComparison.OrdinalIgnoreCase);
+			var path = useMicrosoft
+				? Path.Combine(directory, "MicrosoftHost", "MicrosoftFormsDesigner.Host.dll")
+				: Path.Combine(directory, "Host", "FormsDesigner.Host.dll");
 			return File.Exists(path) ? path : null;
 		}
+
+		public static string SelectedBackend => string.Equals(Environment.GetEnvironmentVariable("OD_FORMS_RUNTIME"), "microsoft", StringComparison.OrdinalIgnoreCase)
+			? "Microsoft WinForms" : "LibreWinForms";
 
 		public static async Task<FormsDesignerHostClient> StartAsync(
 			string runtimeConfigPath,

@@ -98,6 +98,30 @@ public sealed class AddInTests : IAsyncDisposable
         _vbFormsSolutionPath = Path.Combine(_vbFormsDir, Path.GetFileName(app.VbWinFormsSampleSolutionPath));
     }
 
+    static void AssertWinUIRenderedBySelectedBackend(JsonElement status)
+    {
+        var runtime = Environment.GetEnvironmentVariable("OD_WINUI_RUNTIME")?.Trim();
+        var expected = string.Equals(runtime, "microsoft", StringComparison.OrdinalIgnoreCase)
+            ? "Rendered by Microsoft WinUI design host"
+            : string.Equals(runtime, "progpu", StringComparison.OrdinalIgnoreCase)
+                ? "Rendered by ProGPU"
+                : "Rendered by Uno design host";
+        Assert.Contains(expected, status.GetProperty("status").GetString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    static void AssertDesignerBackend(JsonElement status, string environmentVariable, string microsoft, string defaultBackend)
+    {
+        var expected = string.Equals(Environment.GetEnvironmentVariable(environmentVariable), "microsoft", StringComparison.OrdinalIgnoreCase)
+            ? microsoft : defaultBackend;
+        Assert.Equal(expected, status.GetProperty("backend").GetString());
+    }
+
+    static void SkipUnoOnlyCaseWhenMicrosoftWinUIIsForced()
+    {
+        if (string.Equals(Environment.GetEnvironmentVariable("OD_WINUI_RUNTIME"), "microsoft", StringComparison.OrdinalIgnoreCase))
+            Assert.Skip("This case opens an Uno project. The Microsoft WinUI matrix intentionally has no Uno-host fallback.");
+    }
+
     [Fact]
     public async Task FSharpAddIn_IsLoaded()
     {
@@ -1000,6 +1024,7 @@ public sealed class AddInTests : IAsyncDisposable
     [Fact]
     public async Task OpenUnoXamlFile_UsesWinUIXamlDesignerInsteadOfWpfDesigner()
     {
+		SkipUnoOnlyCaseWhenMicrosoftWinUIIsForced();
         var openedSolution = await _app.ReopenSolutionAsync(_app.UnoXamlSampleSolutionPath);
         Assert.True(openedSolution.GetProperty("success").GetBoolean(), openedSolution.ToString());
         var xamlPath = Path.Combine(Path.GetDirectoryName(_app.UnoXamlSampleSolutionPath)!, "MainPage.xaml");
@@ -1025,7 +1050,7 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Equal(status.GetProperty("toolboxItemCount").GetInt32(), restoredTools.GetProperty("itemCount").GetInt32());
         // The preview must come from ProGPU's compiled WinUI pipeline. A WPF XamlReader renderer
         // impersonating a WinUI designer is explicitly not an acceptable pass.
-        Assert.Contains("Rendered by Uno design host", status.GetProperty("status").GetString(), StringComparison.OrdinalIgnoreCase);
+        AssertWinUIRenderedBySelectedBackend(status);
     }
 
     /// <summary>
@@ -1265,7 +1290,7 @@ public sealed class AddInTests : IAsyncDisposable
 
         // The preview must still be alive after all of that, not stuck on a stale/blank frame.
         status = await WaitForRenderedAsync();
-        Assert.Contains("Rendered by Uno design host", status.GetProperty("status").GetString(), StringComparison.OrdinalIgnoreCase);
+        AssertWinUIRenderedBySelectedBackend(status);
     }
 
     /// <summary>
@@ -1290,7 +1315,7 @@ public sealed class AddInTests : IAsyncDisposable
         // changed document; the designer must re-parse and re-render from it.
         var status = await WaitForRenderedAsync();
         Assert.Null(status.GetProperty("documentError").GetString());
-        Assert.Contains("Rendered by Uno design host", status.GetProperty("status").GetString(), StringComparison.OrdinalIgnoreCase);
+        AssertWinUIRenderedBySelectedBackend(status);
 
         await _app.InvokeAsync("od.file.save-all");
         var onDisk = await File.ReadAllTextAsync(_unoPagePath);
@@ -1375,7 +1400,7 @@ public sealed class AddInTests : IAsyncDisposable
 
         var recovered = await WaitForRenderedAsync();
         Assert.Null(recovered.GetProperty("documentError").GetString());
-        Assert.Contains("Rendered by Uno design host", recovered.GetProperty("status").GetString(), StringComparison.OrdinalIgnoreCase);
+        AssertWinUIRenderedBySelectedBackend(recovered);
     }
 
     /// <summary>
@@ -1926,6 +1951,7 @@ public sealed class AddInTests : IAsyncDisposable
 
     async Task<JsonElement> OpenUnoDesignerAsync()
     {
+		SkipUnoOnlyCaseWhenMicrosoftWinUIIsForced();
         var openedSolution = await _app.ReopenSolutionAsync(_unoSolutionPath);
         Assert.True(openedSolution.GetProperty("success").GetBoolean(), openedSolution.ToString());
         var opened = await _app.InvokeAsync("od.open-file", _unoPagePath);
@@ -1943,6 +1969,7 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
         var status = await WaitForRenderedAsync();
         Assert.Equal("WinUI", status.GetProperty("framework").GetString());
+		AssertWinUIRenderedBySelectedBackend(status);
         return status;
     }
 
@@ -2438,6 +2465,7 @@ public sealed class AddInTests : IAsyncDisposable
             var status = await _app.InvokeAsync("od.forms-designer.status");
             Assert.True(status.GetProperty("designerLoaded").GetBoolean(), status.ToString());
             Assert.False(status.GetProperty("usesCodeDomLoader").GetBoolean(), status.ToString());
+            AssertDesignerBackend(status, "OD_FORMS_RUNTIME", "Microsoft WinForms", "LibreWinForms");
             Assert.Contains("RoslynDesignerLoader", status.GetProperty("loaderType").GetString(), StringComparison.Ordinal);
             Assert.True(status.GetProperty("toolboxSearchHosted").GetBoolean(), status.ToString());
             var filteredTools = await _app.InvokeAsync("od.forms-designer.toolbox.filter", "button");
@@ -3189,6 +3217,7 @@ public sealed class AddInTests : IAsyncDisposable
     [Fact]
     public async Task WinUIXamlDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement()
     {
+		SkipUnoOnlyCaseWhenMicrosoftWinUIIsForced();
         // Drag a selected element's bottom-right resize handle and assert the shared-canvas
         // invariant: the selection outline always hugs the rendered element and the resize
         // handle stays at the element's bottom-right corner, before and after the drag.
@@ -3332,6 +3361,7 @@ public sealed class AddInTests : IAsyncDisposable
                 return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
             }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 500);
             Assert.True(loaded, "The WPF designer did not load. Status: " + status);
+            AssertDesignerBackend(status, "OD_WPF_RUNTIME", "Microsoft WPF", "LibreWPF");
 
             var sel = await _app.InvokeAsync("od.wpf-designer.select", "PaneStack");
             Assert.True(sel.GetProperty("success").GetBoolean(), sel.ToString());

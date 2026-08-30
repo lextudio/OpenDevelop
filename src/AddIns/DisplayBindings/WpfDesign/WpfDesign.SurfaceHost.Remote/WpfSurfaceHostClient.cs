@@ -46,9 +46,15 @@ public sealed class WpfSurfaceHostClient : DesignerDocumentHostClient, IDesignHo
 		var directory = Path.GetDirectoryName(typeof(WpfSurfaceHostClient).Assembly.Location);
 		if (string.IsNullOrEmpty(directory))
 			return null;
-		var path = Path.Combine(directory, "Host", "WpfDesign.SurfaceHost.dll");
+		var useMicrosoft = string.Equals(Environment.GetEnvironmentVariable("OD_WPF_RUNTIME"), "microsoft", StringComparison.OrdinalIgnoreCase);
+		var path = useMicrosoft
+			? Path.Combine(directory, "MicrosoftHost", "MicrosoftWpfDesign.SurfaceHost.dll")
+			: Path.Combine(directory, "Host", "WpfDesign.SurfaceHost.dll");
 		return File.Exists(path) ? path : null;
 	}
+
+	public static string SelectedBackend => string.Equals(Environment.GetEnvironmentVariable("OD_WPF_RUNTIME"), "microsoft", StringComparison.OrdinalIgnoreCase)
+		? "Microsoft WPF" : "LibreWPF";
 
 	public static async Task<WpfSurfaceHostClient> StartAsync(string? hostDllPath, CancellationToken cancellationToken, TimeSpan? operationTimeout = null)
 	{
