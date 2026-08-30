@@ -785,7 +785,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 
-		[DevFlowAction("od.build-solution", Description = "Build the current solution (or a single project by name) and return error/warning counts plus the individual diagnostics")]
+		[DevFlowAction("od.build-solution", Description = "Build the current solution (or a single project by name) and return error/warning counts, diagnostics, and the raw build log")]
 		public static async Task<string> BuildSolutionAsync(string projectName = null)
 		{
 			var solution = SD.ProjectService.CurrentSolution;
@@ -804,6 +804,8 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				results = await SD.BuildService.BuildAsync(project, options);
 			}
 
+			string buildLog = GetOutputCategoryText("Build");
+
 			return JsonSerializer.Serialize(new {
 				success = true,
 				result = results.Result.ToString(),
@@ -818,7 +820,8 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 					column = e.Column,
 					errorCode = e.ErrorCode,
 					errorText = e.ErrorText
-				}).ToArray()
+				}).ToArray(),
+				buildLog
 			});
 		}
 
@@ -2041,7 +2044,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 		
-		[DevFlowAction("od.unit-test.run", Description = "Run all tests in the open solution and wait for completion")]
+		[DevFlowAction("od.unit-test.run", Description = "Run all tests in the open solution and wait for completion, then return pass/fail/skip counts plus failed test details")]
 		public static async Task<string> RunUnitTestsAsync(int timeoutSeconds = 120)
 		{
 			var task = TryStartRunAllUnitTestsAsync(out var error);
@@ -2049,13 +2052,74 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				return JsonSerializer.Serialize(new { started = false, error });
 			var done = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(timeoutSeconds)));
 			bool completed = done == task;
+
+			int passed = 0, failed = 0, skipped = 0;
+			var failedTests = new List<object>();
+
+			if (completed)
+			{
+				var s = GetTestService();
+				var os = s?.GetType().GetProperty("OpenSolution")?.GetValue(s);
+				if (os != null)
+				{
+					var treeJson = JsonSerializer.Serialize(WalkTestNode(os));
+					using var doc = JsonDocument.Parse(treeJson);
+					CountResults(doc.RootElement, ref passed, ref failed, ref skipped);
+					CollectFailedTests(doc.RootElement, failedTests);
+				}
+			}
+
 			return JsonSerializer.Serialize(new {
 				started = true,
 				completed,
 				timedOut = !completed,
 				faulted = task.IsFaulted,
-				error = task.IsFaulted ? task.Exception?.InnerException?.Message : null
+				error = task.IsFaulted ? task.Exception?.InnerException?.Message : null,
+				passed,
+				failed,
+				skipped,
+				failedTests = failedTests.ToArray()
 			});
+		}
+
+		static void CountResults(JsonElement node, ref int passed, ref int failed, ref int skipped)
+		{
+			if (node.ValueKind != JsonValueKind.Object) return;
+			node.TryGetProperty("type", out var typeProp);
+			node.TryGetProperty("result", out var resultProp);
+			var type = typeProp.GetString();
+			var result = resultProp.GetString();
+			if (type == "method")
+			{
+				if (result == "Passed") passed++;
+				else if (result == "Failed" || result == "Failure") failed++;
+				else if (result == "Skipped" || result == "Ignored") skipped++;
+			}
+			if (node.TryGetProperty("nestedTests", out var nested) && nested.ValueKind == JsonValueKind.Array)
+			{
+				foreach (var child in nested.EnumerateArray())
+					CountResults(child, ref passed, ref failed, ref skipped);
+			}
+		}
+
+		static void CollectFailedTests(JsonElement node, List<object> failedTests)
+		{
+			if (node.ValueKind != JsonValueKind.Object) return;
+			node.TryGetProperty("type", out var typeProp);
+			node.TryGetProperty("result", out var resultProp);
+			node.TryGetProperty("displayName", out var nameProp);
+			var type = typeProp.GetString();
+			var result = resultProp.GetString();
+			var name = nameProp.GetString();
+			if (type == "method" && (result == "Failed" || result == "Failure") && !string.IsNullOrEmpty(name))
+			{
+				failedTests.Add(new { displayName = name, result });
+			}
+			if (node.TryGetProperty("nestedTests", out var nested) && nested.ValueKind == JsonValueKind.Array)
+			{
+				foreach (var child in nested.EnumerateArray())
+					CollectFailedTests(child, failedTests);
+			}
 		}
 		
 		[DevFlowAction("od.unit-test.run-start", Description = "Start running all tests in the open solution without waiting for completion")]
@@ -2067,6 +2131,126 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			_ = task.ContinueWith(t => LoggingService.Warn("DevFlow unit test run failed", t.Exception),
 				CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
 			return JsonSerializer.Serialize(new { started = true });
+		}
+
+		[DevFlowAction("od.unit-test.run-failed", Description = "Rerun only the tests that failed in the last run, and wait for completion")]
+		public static async Task<string> RunFailedTestsAsync(int timeoutSeconds = 120)
+		{
+			var s = GetTestService();
+			if (s == null)
+				return JsonSerializer.Serialize(new { started = false, error = "ITestService not available." });
+			var st = s.GetType();
+			var os = st.GetProperty("OpenSolution")?.GetValue(s);
+			if (os == null)
+				return JsonSerializer.Serialize(new { started = false, error = "No test solution open." });
+
+			var failedNodes = new List<object>();
+			CollectFailedTestNodes(os, failedNodes);
+			if (failedNodes.Count == 0)
+				return JsonSerializer.Serialize(new { started = false, error = "No failed tests found from last run." });
+
+			if (itestInterfaceType == null)
+				itestInterfaceType = Type.GetType("ICSharpCode.UnitTesting.ITest, UnitTesting", throwOnError: false);
+			var optType = Type.GetType("ICSharpCode.UnitTesting.TestExecutionOptions, UnitTesting", throwOnError: false);
+			var opts = optType != null ? Activator.CreateInstance(optType) : null;
+
+			var arr = Array.CreateInstance(itestInterfaceType ?? typeof(object), failedNodes.Count);
+			for (int i = 0; i < failedNodes.Count; i++)
+				arr.SetValue(failedNodes[i], i);
+
+			var run = st.GetMethods(BindingFlags.Instance | BindingFlags.Public)
+				.FirstOrDefault(m => m.Name == "RunTestsAsync" && m.GetParameters().Length == 2);
+			if (run == null)
+				return JsonSerializer.Serialize(new { started = false, error = "RunTestsAsync not found." });
+
+			var task = (Task)run.Invoke(s, new object[] { arr, opts });
+			var done = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(timeoutSeconds)));
+			bool completed = done == task;
+
+			int passed = 0, failed = 0, skipped = 0;
+			var newFailedTests = new List<object>();
+			if (completed)
+			{
+				var treeJson = JsonSerializer.Serialize(WalkTestNode(os));
+				using var doc = JsonDocument.Parse(treeJson);
+				CountResults(doc.RootElement, ref passed, ref failed, ref skipped);
+				CollectFailedTests(doc.RootElement, newFailedTests);
+			}
+
+			return JsonSerializer.Serialize(new {
+				started = true,
+				completed,
+				timedOut = !completed,
+				faulted = task.IsFaulted,
+				error = task.IsFaulted ? task.Exception?.InnerException?.Message : null,
+				reranCount = failedNodes.Count,
+				passed,
+				failed,
+				skipped,
+				failedTests = newFailedTests.ToArray()
+			});
+		}
+
+		static void CollectFailedTestNodes(object test, List<object> failedNodes)
+		{
+			if (test == null) return;
+			var t = test.GetType();
+			var res = t.GetProperty("Result")?.GetValue(test);
+			var resStr = res?.ToString();
+			if (resStr == "Failed" || resStr == "Failure")
+			{
+				failedNodes.Add(test);
+				return;
+			}
+			var nested = GetMostDerivedProperty(t, "NestedTests")?.GetValue(test) as System.Collections.IEnumerable;
+			if (nested == null) return;
+			foreach (var child in nested)
+				CollectFailedTestNodes(child, failedNodes);
+		}
+
+		[DevFlowAction("od.unit-test.refresh", Description = "Refresh the unit test tree by re-running test discovery on all test projects")]
+		public static async Task<string> RefreshUnitTestsAsync()
+		{
+			var s = GetTestService();
+			if (s == null)
+				return JsonSerializer.Serialize(new { success = false, error = "ITestService not available." });
+
+			var os = s.GetType().GetProperty("OpenSolution")?.GetValue(s);
+			if (os == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No test solution open." });
+
+			int refreshedCount = 0;
+			var errors = new List<string>();
+
+			var nestedTests = GetMostDerivedProperty(os.GetType(), "NestedTests")?.GetValue(os) as System.Collections.IEnumerable;
+			if (nestedTests != null)
+			{
+				foreach (var testProject in nestedTests)
+				{
+					var refreshMethod = testProject.GetType().GetMethod("RefreshAsync",
+						BindingFlags.Instance | BindingFlags.Public);
+					if (refreshMethod != null)
+					{
+						try
+						{
+							var task = (Task)refreshMethod.Invoke(testProject,
+								new object[] { CancellationToken.None });
+							await task;
+							refreshedCount++;
+						}
+						catch (Exception ex)
+						{
+							errors.Add(ex.InnerException?.Message ?? ex.Message);
+						}
+					}
+				}
+			}
+
+			return JsonSerializer.Serialize(new {
+				success = true,
+				refreshedProjects = refreshedCount,
+				errors = errors.Count > 0 ? errors.ToArray() : null
+			});
 		}
 		
 		static Task TryStartRunAllUnitTestsAsync(out string error)

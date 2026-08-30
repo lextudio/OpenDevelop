@@ -28,6 +28,7 @@ namespace ICSharpCode.UnitTesting
 		{
 			lastBuildTime = GetAssemblyLastWriteTime();
 			SD.BuildService.BuildFinished += OnBuildFinished;
+			FileUtility.FileSaved += OnFileSaved;
 		}
 
 		protected override void OnNestedTestsInitialized()
@@ -237,6 +238,20 @@ namespace ICSharpCode.UnitTesting
 			LoggingService.Debug($"[StreamDiag] MtpTestProject.OnBuildFinished triggering re-discovery (project={DisplayName}) t={DateTime.UtcNow:HH:mm:ss.fff}");
 			lastBuildTime = buildTime;
 			_ = TriggerDiscoveryAsync();
+		}
+
+		void OnFileSaved(object? sender, FileNameEventArgs e)
+		{
+			if (string.IsNullOrEmpty(e?.FileName))
+				return;
+
+			var savedFile = e.FileName;
+			var sourceFiles = GetCompileSourceFiles();
+			if (sourceFiles.Any(f => string.Equals(f, savedFile, StringComparison.OrdinalIgnoreCase)))
+			{
+				LoggingService.Debug($"[StreamDiag] MtpTestProject.OnFileSaved triggering approximate Roslyn scan for {savedFile}");
+				PopulateApproxTreeFromRoslyn();
+			}
 		}
 
 		sealed class DiscoverySuppression : IDisposable

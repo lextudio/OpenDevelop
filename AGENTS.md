@@ -2,6 +2,80 @@
 
 ## DevFlow Usage
 
+### Build and Test API Guide
+
+Use these actions for build → test workflows. All actions are invoked via `POST /api/v1/invoke/actions/{name}`.
+
+#### Build
+
+```
+od.build-solution → { success, result, errorCount, warningCount, diagnostics[], buildLog }
+```
+
+- Returns `result: "Success"|"Error"|"Cancelled"`, structured `diagnostics` array, and raw `buildLog` text.
+- Parse the JSON response; do **not** treat empty/silent output as success.
+- Use `od.output-text("Build")` to get the raw build log separately if needed.
+
+#### Test Execution
+
+```
+od.unit-test.run → { started, completed, timedOut, passed, failed, skipped, failedTests[] }
+```
+
+- **Always use this** instead of `od.unit-test.run-start` + polling. It waits for completion and returns pass/fail/skip counts plus `failedTests` array with display names.
+- Default timeout is 120 seconds; pass `timeoutSeconds` to extend.
+
+```
+od.unit-test.run-failed → { started, completed, reranCount, passed, failed, skipped, failedTests[] }
+```
+
+- Reruns only the tests that failed in the last run. Useful for debugging without re-running the full suite.
+
+```
+od.unit-test.run-start → { started }
+```
+
+- Starts tests without waiting. **Avoid** this for simple build→test→verify workflows; use `od.unit-test.run` instead.
+
+#### Test Inspection
+
+```
+od.unit-test.tree → { available, tests[] }
+```
+
+- Returns the full test tree with `displayName`, `result`, `type`, `nestedTests` for each node.
+- Use to find specific test names or check status of individual tests.
+
+```
+od.unit-test.output → { category, text }
+```
+
+- Returns the full UnitTesting output pad text (prose log of the test run).
+- Useful for extracting detailed error messages not available in the tree.
+
+#### Recommended Build→Test Workflow
+
+```bash
+# 1. Build and check result
+curl -s -X POST http://localhost:9299/api/v1/invoke/actions/od.build-solution \
+  -H "Content-Type: application/json" -d '{"args":[]}'
+# Parse JSON: check result=="Success", errorCount==0
+
+# 2. Run tests and get results
+curl -s -X POST http://localhost:9299/api/v1/invoke/actions/od.unit-test.run \
+  -H "Content-Type: application/json" -d '{"args":[]}'
+# Parse JSON: check completed==true, failed==0, failedTests is empty
+
+# 3. If tests failed, get detailed output
+curl -s -X POST http://localhost:9299/api/v1/invoke/actions/od.unit-test.output \
+  -H "Content-Type: application/json" -d '{"args":[]}'
+# Parse JSON: extract text field, search for error details
+
+# 4. Optionally rerun only failed tests
+curl -s -X POST http://localhost:9299/api/v1/invoke/actions/od.unit-test.run-failed \
+  -H "Content-Type: application/json" -d '{"args":[]}'
+```
+
 ### DevFlow UI Verification
 
 - Agent/API readiness does not mean WPF/AvalonDock has completed layout and arrange. Never diagnose a startup layout problem from a single early bounds sample.

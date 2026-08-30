@@ -18,7 +18,9 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using ICSharpCode.Core;
+using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.ILSpyX.TreeView;
 using ICSharpCode.ILSpy.Controls.TreeView;
@@ -81,6 +83,26 @@ namespace ICSharpCode.UnitTesting
 			if (treeView.Root != null) {
 				foreach (var n in treeView.Root.Descendants())
 					n.IsExpanded = false;
+			}
+		}
+	}
+
+	public class RefreshTestsCommand : AbstractMenuCommand
+	{
+		public override async void Run()
+		{
+			var testService = SD.Services.GetService(typeof(ITestService)) as ITestService;
+			if (testService?.OpenSolution == null)
+				return;
+
+			int refreshedCount = 0;
+			foreach (var test in testService.OpenSolution.NestedTests)
+			{
+				if (test is MtpTestProject mtpProject)
+				{
+					await mtpProject.RefreshAsync(CancellationToken.None);
+					refreshedCount++;
+				}
 			}
 		}
 	}

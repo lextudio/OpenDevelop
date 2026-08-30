@@ -115,6 +115,12 @@
 			             icon    = "Icons.16x16.Collection"
 			             tooltip = "${res:MainWindow.Windows.SearchResultPanel.CollapseAll.ToolTip}"
 			             class   = "ICSharpCode.UnitTesting.CollapseAllTestsCommand"/>
+			<ToolbarItem id      = "RefreshSeparator"
+			             type    = "Separator"/>
+			<ToolbarItem id      = "Refresh"
+			             icon    = "Icons.16x16.Refresh"
+			             tooltip = "Refresh Tests"
+			             class   = "ICSharpCode.UnitTesting.RefreshTestsCommand"/>
 		</Condition>
 	</Path>
 	
