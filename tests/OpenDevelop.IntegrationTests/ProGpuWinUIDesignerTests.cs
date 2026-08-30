@@ -48,8 +48,8 @@ public sealed class ProGpuWinUIDesignerTests : IDisposable
         // tests edit the page (toolbox insert, property edit), and must never mutate the repo's
         // tracked sample.
         _sampleDir = Path.Combine(Path.GetTempPath(), "ProGpuWinUIDesignerTests-" + Guid.NewGuid().ToString("N"));
-        CopyDirectory(Path.GetDirectoryName(app.UnoXamlSampleSolutionPath)!, _sampleDir);
-        _solutionPath = Path.Combine(_sampleDir, Path.GetFileName(app.UnoXamlSampleSolutionPath));
+        CopyDirectory(Path.GetDirectoryName(app.ProGpuWinUISampleSolutionPath)!, _sampleDir);
+        _solutionPath = Path.Combine(_sampleDir, Path.GetFileName(app.ProGpuWinUISampleSolutionPath));
         _pagePath = Path.Combine(_sampleDir, "MainPage.xaml");
     }
 

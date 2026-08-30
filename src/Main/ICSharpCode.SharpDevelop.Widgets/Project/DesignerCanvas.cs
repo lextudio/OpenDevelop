@@ -49,6 +49,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		readonly ToggleButton gridButton;
 		readonly ComboBox themeCombo;
 		readonly ToggleButton namesButton;
+		readonly TextBlock backendLabel;
 		bool syncingTheme;
 
 		public DesignerCanvas()
@@ -66,6 +67,13 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			themeCombo.Items.Add("Dark");
 			themeCombo.SelectedIndex = 0;
 			namesButton = CreateIconToggle("Icons.16x16.DisplayName", "Show control names on the selection outline");
+			backendLabel = new TextBlock {
+				Margin = new Thickness(6, 0, 4, 0),
+				VerticalAlignment = VerticalAlignment.Center,
+				FontSize = 11,
+				FontWeight = FontWeights.SemiBold,
+				Foreground = new SolidColorBrush(Color.FromRgb(0x60, 0x60, 0x60))
+			};
 			AutomationProperties.SetName(ZoomCombo, "Zoom");
 			AutomationProperties.SetName(fitButton, "Fit");
 			AutomationProperties.SetName(gridButton, "Gridlines");
@@ -73,6 +81,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			AutomationProperties.SetName(namesButton, "Show Names");
 			AutomationProperties.SetName(DesignSizeCombo, "Design Size");
 
+			toolbar.Children.Add(backendLabel);
 			toolbar.Children.Add(ZoomCombo);
 			toolbar.Children.Add(fitButton);
 			toolbar.Children.Add(gridButton);
@@ -183,6 +192,17 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		public bool ShowTheme { get => capabilities.HasFlag(DesignerCanvasCapabilities.Theme); set => SetCapability(DesignerCanvasCapabilities.Theme, value); }
 		public bool ShowNames { get => capabilities.HasFlag(DesignerCanvasCapabilities.ShowNames); set => SetCapability(DesignerCanvasCapabilities.ShowNames, value); }
 		void SetCapability(DesignerCanvasCapabilities capability, bool enabled) => Capabilities = enabled ? capabilities | capability : capabilities & ~capability;
+
+		/// <summary>Short backend label shown on the toolbar (e.g. "WinForms", "Uno", "LibreWPF").</summary>
+		public string BackendName
+		{
+			get => backendLabel.Text ?? "";
+			set
+			{
+				backendLabel.Text = value;
+				backendLabel.Visibility = string.IsNullOrEmpty(value) ? Visibility.Collapsed : Visibility.Visible;
+			}
+		}
 
 		/// <summary>Gridlines toggle state (checked = show grid).</summary>
 		public bool IsGridEnabled { get { return gridButton.IsChecked == true; } set { gridButton.IsChecked = value; } }

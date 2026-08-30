@@ -1,0 +1,18 @@
+<Project Sdk="LibreWPF.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+  <!-- The source is intentionally shared with the Microsoft fixture; its SDK and complete
+       reference graph are not. -->
+  <ItemGroup>
+    <Compile Include="..\WinFormsSample\Program.cs" Link="Program.cs" />
+    <Compile Include="..\WinFormsSample\Form1.cs" Link="Form1.cs" />
+    <Compile Include="..\WinFormsSample\Form1.Designer.cs" Link="Form1.Designer.cs" />
+    <FrameworkReference Remove="Microsoft.WindowsDesktop.App.WindowsForms" />
+  </ItemGroup>
+</Project>

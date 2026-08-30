@@ -78,9 +78,10 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 			var target = StripThis(assignment.Left.ToString());
 			if (!target.Contains('.') && assignment.Right is ObjectCreationExpressionSyntax creation) {
 				var type = ResolveType(creation.Type.ToString());
-				if (type != null && typeof(IComponent).IsAssignableFrom(type))
+				if (type != null && typeof(IComponent).IsAssignableFrom(type)) {
 					components[target] = LoaderHost.CreateComponent(type, target);
-				return;
+					return;
+				}
 			}
 			var separator = target.LastIndexOf('.');
 			var owner = separator < 0 ? components["this"] : ResolveObject(target[..separator]);
@@ -118,9 +119,10 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 			var target = StripMe(assignment.Left.ToString());
 			if (!target.Contains('.') && assignment.Right is VbSyntax.ObjectCreationExpressionSyntax creation) {
 				var type = ResolveType(creation.Type.ToString());
-				if (type != null && typeof(IComponent).IsAssignableFrom(type))
+				if (type != null && typeof(IComponent).IsAssignableFrom(type)) {
 					components[target] = LoaderHost.CreateComponent(type, target);
-				return;
+					return;
+				}
 			}
 			var separator = target.LastIndexOf('.');
 			var owner = separator < 0 ? components["this"] : ResolveObject(target[..separator]);

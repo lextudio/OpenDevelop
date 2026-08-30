@@ -123,9 +123,13 @@ internal sealed class PropertyPadViewModel : ToolPaneModel, IPropertyPadHost, ID
                 .Append(",content=").Append(content?.GetType().Name ?? "null")
                 .Append(") < ");
             if (dc is Xceed.Wpf.Toolkit.PropertyGrid.EventItem viaDataContext)
+            {
                 return BindEventItem(viaDataContext);
+            }
             if (content is Xceed.Wpf.Toolkit.PropertyGrid.EventItem eventItem)
+            {
                 return BindEventItem(eventItem);
+            }
             hit = VisualTreeHelper.GetParent(hit);
         }
         ICSharpCode.Core.LoggingService.Debug("[PropertyGrid] double-click not on an EventItem; chain: " + chain);

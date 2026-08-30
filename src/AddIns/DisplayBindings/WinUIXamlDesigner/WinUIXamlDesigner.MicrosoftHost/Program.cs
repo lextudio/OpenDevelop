@@ -114,5 +114,18 @@ sealed class HostApplication(string[] args, Action<int> reportExitCode) : Applic
 			if (previous != null) surface.Children.Remove(previous);
 			if (next != null) surface.Children.Add(next);
 		};
+
+		// NOTE on layout: this host deliberately does NOT install DesignHost.HostVisualLayout.
+		// Every attempt to take layout into our own hands here made rendering worse:
+		//   - Sizing this Grid (and/or the root) to the design size and calling UpdateLayout does
+		//     fix element positions, but the rendered bitmap comes back badly stretched -
+		//     confirmed on this child's own exported PNG, so it is the render, not the client.
+		//     RenderTargetBitmap rasterizes an element's CONTENT extent, and its sized overload
+		//     scales that content to fill the requested box, so a root arranged taller than its
+		//     children is stretched to fit.
+		//   - Detaching the root to arrange it unparented (the way the Uno host's headless tree
+		//     works) stops it being laid out at all here: the tree comes back with zero sizes.
+		// The window's own layout pass is therefore left to do its job, and DesignHost reads the
+		// element tree only after the render, once that pass has committed real offsets.
 	}
 }

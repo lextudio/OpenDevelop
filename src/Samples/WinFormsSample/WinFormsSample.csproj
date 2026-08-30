@@ -1,4 +1,4 @@
-<Project Sdk="LibreWPF.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -6,11 +6,11 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <UseWindowsForms>true</UseWindowsForms>
+    <!-- This is the native-Microsoft Forms integration fixture.  It must stay independent
+         from LibreWPF/LibreWinForms so the project tree, SDK resolution and designer host all
+         exercise the WindowsDesktop implementation selected by OD_FORMS_RUNTIME=microsoft. -->
+    <UseMicrosoftDesktopRuntime>true</UseMicrosoftDesktopRuntime>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
-
-  <ItemGroup>
-    <FrameworkReference Remove="Microsoft.WindowsDesktop.App.WindowsForms" />
-  </ItemGroup>
 
 </Project>

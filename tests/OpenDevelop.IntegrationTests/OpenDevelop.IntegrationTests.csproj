@@ -64,6 +64,15 @@
              Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true" />
   </Target>
 
+  <!-- One integration-test process owns one IDE process and drives all three Microsoft hosts.
+       Keep this entry point in the test project (rather than a sidecar script) so the same
+       fixture, artifacts and xUnit reporting are used in CI and locally. The backend choices
+       are strict: WinForms opens only WinForms fixtures, WPF only WPF fixtures and WinUI only
+       WinUI fixtures; none may fall back to Libre/Uno. -->
+  <Target Name="RunMicrosoftDesignerIntegration" DependsOnTargets="Build" Condition="'$(OS)' == 'Windows_NT'">
+    <Exec Command="set &quot;OD_FORMS_RUNTIME=microsoft&quot; &amp;&amp; set &quot;OD_WPF_RUNTIME=microsoft&quot; &amp;&amp; set &quot;OD_WINUI_RUNTIME=microsoft&quot; &amp;&amp; dotnet &quot;$(TargetPath)&quot; -trait &quot;DesignerBackend=Microsoft&quot;" />
+  </Target>
+
   <!-- Serialize test collections: every collection shares ONE assembly-scoped app process
        (port 9299) and the same on-disk fixture directories, so parallel collections race on
        both - e.g. one collection's od.build-solution observes another's ScratchBroken.cs, or

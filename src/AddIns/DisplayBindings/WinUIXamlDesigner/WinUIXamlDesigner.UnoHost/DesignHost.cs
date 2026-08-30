@@ -45,6 +45,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		/// </summary>
 		public static Action<FrameworkElement?, FrameworkElement?>? HostVisualRoot;
 
+
 		/// <summary>
 		/// Optional hook letting a host rewrite XAML text immediately before every
 		/// <c>XamlReader.Load</c> call in this class (document load, app resources, a
@@ -941,8 +942,25 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				var size = new Size(width, height);
 				root!.Measure(size);
 				root.Arrange(new Rect(0, 0, width, height));
-				snapshot.Tree = BuildTree(root, root, "");
+				// NOTE: do NOT call root.UpdateLayout() here to settle positions. In the Microsoft
+				// host the root is parented in a real (offscreen) window, so a framework layout
+				// pass re-arranges it to the WINDOW's size and discards the explicit design-size
+				// Arrange above - the render then comes back at a different size than the one the
+				// snapshot reports, and the presented bitmap is visibly stretched. BuildTree reads
+				// positions from ActualOffset instead, which this Arrange has already committed.
+				BoundsLog($"FinishLayout requested={width}x{height} dpi={dpi} rootActual={root.ActualWidth}x{root.ActualHeight} rootDesired={root.DesiredSize.Width}x{root.DesiredSize.Height}");
 				snapshot.Render = await RenderAsync(dpi);
+				// The tree is read AFTER the render, not before. In the Microsoft host the root
+				// lives in a real offscreen window, so the window owns its layout and the
+				// Measure/Arrange above is discarded - read at that point, every element still
+				// had ActualOffset and layout slot of zero, so the whole tree reported itself at
+				// (0,0) and the selection outline sat a whole row above the rendered control for
+				// anything but a panel's first child. Rendering is what drives that pending
+				// layout pass to completion, so by here the offsets are real. Uno is unaffected:
+				// its Measure/Arrange commit synchronously, so the values are the same either
+				// way, and rendering never invalidates them.
+				snapshot.Tree = BuildTree(root, root, "");
+				BoundsLog($"FinishLayout rendered={snapshot.Render?.Width}x{snapshot.Render?.Height} rootActualAfterRender={root.ActualWidth}x{root.ActualHeight}");
 			}
 			catch (Exception e)
 			{
@@ -989,12 +1007,19 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			}
 			else
 			{
+				// Careful with this overload: it does not merely set the bitmap's dimensions, it
+				// SCALES the element's content to fill them. Passing anything other than the
+				// element's own render size stretches the design - measured live, asking for
+				// 1280x720 while the page's content was ~51px tall smeared it across all 720 rows.
 				var scaled = new Size(root!.RenderSize.Width * dpi, root.RenderSize.Height * dpi);
 				await rtb.RenderAsync(root, (int)scaled.Width, (int)scaled.Height);
 			}
 			var pixels = await rtb.GetPixelsAsync();
 			var buffer = new byte[pixels.Length];
 			DataReader.FromBuffer(pixels).ReadBytes(buffer);
+			BoundsLog($"  render rtbPixels={rtb.PixelWidth}x{rtb.PixelHeight} rootRenderSize={root!.RenderSize.Width}x{root.RenderSize.Height}"
+				+ $" dpi={dpi} bufferBytes={buffer.Length} expectedBytes={(long)rtb.PixelWidth * rtb.PixelHeight * 4}"
+				+ $" impliedRows={(rtb.PixelWidth > 0 ? buffer.Length / (rtb.PixelWidth * 4) : -1)}");
 			// The frame travels as deflate-compressed BGRA (base64): a 2x design bitmap is
 			// tens of MB raw, and UI frames compress very well - typically 10-30x smaller
 			// over the RPC pipe. The parent decompresses before presenting.
@@ -1091,26 +1116,89 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		}
 
 		/// <summary>
-		/// An element's bounds in root coordinates, accumulated from each ancestor's layout
-		/// slot plus that element's own margin (WPF arranges an element at
-		/// slot + margin, so a margin'd child sits offset inside its slot). TransformToVisual
-		/// cannot be used in this headless host: elements are not in a live tree, so Uno's
-		/// GetTransform short-circuits to the identity matrix and every element reports its
-		/// local slot position, disagreeing with the rendered pixels.
+		/// An element's bounds in root coordinates, accumulated up the parent chain.
+		///
+		/// ActualOffset is the position Arrange assigned an element within its parent, and it is
+		/// committed synchronously by the explicit Measure/Arrange the design host performs - no
+		/// framework layout pass required. That matters because this host must NOT let a real
+		/// layout pass run: in the Microsoft host the root is parented in a live offscreen
+		/// window, and a pass there re-arranges it to the window's size, throwing away the
+		/// explicit design-size Arrange and stretching the presented bitmap.
+		///
+		/// TransformToVisual is unusable here for the same underlying reason on both hosts: it
+		/// reads committed visual transforms, which in Uno's headless tree short-circuit to the
+		/// identity matrix and in the Microsoft host are not committed until that forbidden
+		/// layout pass. LayoutInformation.GetLayoutSlot is populated under Uno but comes back as
+		/// an all-zero Rect in the Microsoft host, which collapsed every element onto the root's
+		/// origin - that is what drew the selection outline a whole row above the rendered
+		/// control for anything but a panel's first child (a StackPanel's second child reported
+		/// its parent's Y, not its own). The slot path is kept only as a fallback for a host
+		/// that leaves ActualOffset at zero, where it is the value that used to be correct.
 		/// </summary>
 		static Rect GetBoundsInRoot(FrameworkElement element, UIElement root)
 		{
 			var x = 0.0;
 			var y = 0.0;
+			var trace = BoundsLogEnabled ? new System.Text.StringBuilder() : null;
 			FrameworkElement current = element;
 			while (current is not null && !ReferenceEquals(current, root))
 			{
+				var offset = current.ActualOffset;
 				var slot = Microsoft.UI.Xaml.Controls.Primitives.LayoutInformation.GetLayoutSlot(current);
-				x += slot.X + current.Margin.Left;
-				y += slot.Y + current.Margin.Top;
+				var usedOffset = offset.X != 0f || offset.Y != 0f;
+				if (usedOffset)
+				{
+					x += offset.X;
+					y += offset.Y;
+				}
+				else
+				{
+					// WPF/WinUI arrange an element at slot + margin, so a margin'd child sits
+					// offset inside its own slot.
+					x += slot.X + current.Margin.Left;
+					y += slot.Y + current.Margin.Top;
+				}
+				trace?.Append($" [{current.GetType().Name}{(string.IsNullOrEmpty(current.Name) ? "" : ":" + current.Name)}"
+					+ $" actualOffset=({offset.X},{offset.Y}) slot=({slot.X},{slot.Y},{slot.Width},{slot.Height})"
+					+ $" margin=({current.Margin.Left},{current.Margin.Top}) used={(usedOffset ? "offset" : "slot")}"
+					+ $" -> running=({x},{y})]");
 				current = VisualTreeHelper.GetParent(current) as FrameworkElement;
 			}
-			return new Rect(x, y, element.ActualWidth, element.ActualHeight);
+			// WinUI's offscreen composition path can render the child before its public
+			// ActualWidth/ActualHeight are committed. Its DesiredSize is already the value
+			// used by the completed parent arrange (and is non-zero for the rendered child),
+			// so use it only for that transient zero-sized reporting case.
+			var width = element.ActualWidth > 0 ? element.ActualWidth : element.DesiredSize.Width;
+			var height = element.ActualHeight > 0 ? element.ActualHeight : element.DesiredSize.Height;
+			if (trace is not null)
+			{
+				BoundsLog($"  bounds {element.GetType().Name}{(string.IsNullOrEmpty(element.Name) ? "" : ":" + element.Name)}"
+					+ $" = ({x},{y}) {width}x{height} | actual={element.ActualWidth}x{element.ActualHeight}"
+					+ $" desired={element.DesiredSize.Width}x{element.DesiredSize.Height} |{trace}");
+			}
+			return new Rect(x, y, width, height);
+		}
+
+		/// <summary>Temporary positioning diagnostics: set OD_DESIGNHOST_BOUNDS_LOG=1 to append the
+		/// per-element ActualOffset/layout-slot walk that produces each reported design-space
+		/// rectangle. Off by default so a normal run pays nothing.</summary>
+		static readonly bool BoundsLogEnabled =
+			Environment.GetEnvironmentVariable("OD_DESIGNHOST_BOUNDS_LOG") == "1";
+
+		static void BoundsLog(string message)
+		{
+			if (!BoundsLogEnabled)
+				return;
+			try
+			{
+				System.IO.File.AppendAllText(
+					System.IO.Path.Combine(System.IO.Path.GetTempPath(), "opendevelop-designhost-bounds.log"),
+					$"[{DateTime.Now:HH:mm:ss.fff}] {message}{Environment.NewLine}");
+			}
+			catch
+			{
+				// Diagnostics must never break a design session.
+			}
 		}
 
 		DesignerHitTestResult HitTestCore(HitTestRequest request)

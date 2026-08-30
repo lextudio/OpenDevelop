@@ -196,6 +196,12 @@ static class FrameworkDefaultResources
 			return xaml;
 		}
 
+		// XamlReader.Load is a runtime parser, whereas x:Class is consumed only by
+		// generated InitializeComponent/LoadComponent code.  A design host has no
+		// generated partial for the user's page, so forwarding this directive makes
+		// every normal WinUI page fail with xClassCanOnlyBeUsedOnLoadComponent.
+		root.Attribute(X + "Class")?.Remove();
+
 		if (root.Name == Xaml + "ResourceDictionary")
 		{
 			var errors = new List<string>();

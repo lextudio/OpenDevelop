@@ -138,6 +138,7 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 			// one-at-a-time and stop at the first hit; here we want all of them).
 			string[] systemCandidates = {
 				Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + "/.dotnet",
+				Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "dotnet"),
 				"/usr/local/share/dotnet",
 				"/opt/homebrew/opt/dotnet/libexec",
 			};
@@ -176,7 +177,7 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 			foreach (var dir in pathVar.Split(Path.PathSeparator)) {
 				if (string.IsNullOrEmpty(dir))
 					continue;
-				string candidate = Path.Combine(dir, "dotnet");
+				string candidate = Path.Combine(dir, OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet");
 				if (!File.Exists(candidate))
 					continue;
 				string resolved;

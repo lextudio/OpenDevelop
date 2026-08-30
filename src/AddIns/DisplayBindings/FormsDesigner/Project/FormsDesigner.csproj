@@ -111,7 +111,21 @@
     <PackageReference Include="LeXtudio.DevFlow.Agent.Core" Condition="'$(Configuration)' == 'Debug'" />
     <ProjectReference Include="..\Remote\FormsDesigner.Remote.csproj" />
     <ProjectReference Include="..\Host\FormsDesigner.Host.csproj" ReferenceOutputAssembly="false" />
+    <!-- The Microsoft child is a separate WindowsDesktop executable.  It must be deployed
+         underneath the Forms add-in because FormsDesignerHostClient resolves it relative to
+         FormsDesigner.dll, not relative to the IDE executable. -->
+    <ProjectReference Include="..\MicrosoftHost\Host\MicrosoftFormsDesigner.Host.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
+
+  <Target Name="CopyMicrosoftFormsDesignerHost" AfterTargets="Build">
+    <ItemGroup>
+      <_MicrosoftFormsHostFiles Include="$(MSBuildThisFileDirectory)..\MicrosoftHost\Host\bin\$(Configuration)\net10.0-windows\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_MicrosoftFormsHostFiles)"
+          DestinationFiles="@(_MicrosoftFormsHostFiles->'$(OutputPath)MicrosoftHost\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="'@(_MicrosoftFormsHostFiles)' != ''" />
+  </Target>
 
   <ItemGroup>
     <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />

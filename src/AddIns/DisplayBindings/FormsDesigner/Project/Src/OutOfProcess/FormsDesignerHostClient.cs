@@ -41,11 +41,23 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			var path = useMicrosoft
 				? Path.Combine(directory, "MicrosoftHost", "MicrosoftFormsDesigner.Host.dll")
 				: Path.Combine(directory, "Host", "FormsDesigner.Host.dll");
-			return File.Exists(path) ? path : null;
+			var resolved = File.Exists(path) ? path : null;
+			WriteHostDiagnostic($"LocateChildDll backend={(useMicrosoft ? "microsoft" : "libre")} assemblyDirectory={directory} candidate={path} exists={resolved != null}");
+			return resolved;
+		}
+
+		internal static void WriteHostDiagnostic(string message)
+		{
+			try {
+				File.AppendAllText(Path.Combine(Path.GetTempPath(), "OpenDevelop.FormsDesigner.host.log"),
+					$"{DateTimeOffset.Now:O} pid={Environment.ProcessId} {message}{Environment.NewLine}");
+			} catch {
+				// Diagnostics must never make the designer unavailable.
+			}
 		}
 
 		public static string SelectedBackend => string.Equals(Environment.GetEnvironmentVariable("OD_FORMS_RUNTIME"), "microsoft", StringComparison.OrdinalIgnoreCase)
-			? "Microsoft WinForms" : "LibreWinForms";
+			? "WinForms" : "LibreWinForms";
 
 		public static async Task<FormsDesignerHostClient> StartAsync(
 			string runtimeConfigPath,
@@ -157,7 +169,17 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				this.depsFilePath = depsFilePath;
 				this.hostDllPath = hostDllPath;
 			}
-			public Task StartConnectionAsync(CancellationToken token) => StartAsync(token);
+			public async Task StartConnectionAsync(CancellationToken token)
+			{
+				WriteHostDiagnostic($"Starting child host dll={hostDllPath ?? "<null>"} runtimeconfig={runtimeConfigPath} deps={depsFilePath}");
+				try {
+					await StartAsync(token).ConfigureAwait(false);
+					WriteHostDiagnostic($"Child host connected dll={hostDllPath ?? "<null>"}");
+				} catch (Exception ex) {
+					WriteHostDiagnostic($"Child host failed dll={hostDllPath ?? "<null>"} exception={ex}");
+					throw;
+				}
+			}
 			protected override string GetChildDllPath() => hostDllPath;
 			protected override string BuildCommandLine(string childDll, int port, string token)
 			{

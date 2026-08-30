@@ -25,6 +25,11 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 	{
 		readonly FormsDesignerHostClient client;
 		readonly Grid designSurface = new Grid();
+		readonly Canvas scrollContent = new Canvas();
+		readonly ScrollViewer scroller = new() {
+			HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+			VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+		};
 		// Stretch.Fill (matching WpfSurfaceDesignerControl/UnoDesignSurfaceControl exactly): the
 		// bitmap must scale to fill framePresenter.Visual's Width/Height, which is all Resize()
 		// actually changes on zoom - Stretch.None would keep showing the bitmap at its native
@@ -45,6 +50,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		readonly SelectionAdornerLayer adornerLayer = new(Array.Empty<string>(), Brushes.DodgerBlue, showLabel: false);
 		readonly Rectangle marqueeBorder;
 		readonly Thumb moveThumb;
+		readonly Thumb resizeHitTarget;
 		readonly Thumb resizeThumb;
 		readonly Border disconnectedOverlay;
 		readonly TextBlock disconnectedText;
@@ -64,10 +70,15 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		double dragStartY;
 		double dragWidth;
 		double dragHeight;
+		// Kept next to the Forms overlay rather than in Designer.Presentation so the add-in
+		// never requires an ABI change in a host-provided shared presentation assembly.
+		Rect renderedSelection;
 		int selectedLocalX;
 		int selectedLocalY;
 		bool showTabOrder;
 		bool resizingDrag;
+		bool previewResizeDrag;
+		Point previewDragPoint;
 		bool marqueeSelecting;
 		bool marqueeExtendsSelection;
 		Point marqueeStart;
@@ -114,6 +125,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		{
 			this.client = client;
 			Focusable = true;
+			BackendName = FormsDesignerHostClient.SelectedBackend;
 			Capabilities = DesignerCanvasCapabilities.Zoom | DesignerCanvasCapabilities.Fit;
 			// The shared DesignerCanvas shell provides the dotted empty-canvas edge pattern and
 			// the common zoom toolbar; the design surface is transparent so the edge pattern
@@ -147,9 +159,19 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				Template = CreateTransparentThumbTemplate()
 			};
 			resizeThumb = new Thumb { Width = 8, Height = 8, Background = Brushes.White, BorderBrush = Brushes.DodgerBlue, BorderThickness = new Thickness(1), Cursor = Cursors.SizeNWSE, Visibility = Visibility.Collapsed };
+			// Keep the conventional 8px visual handle while providing a forgiving transparent
+			// input target around it.  At fractional DPI a real pointer can land one or two device
+			// pixels off the visible square; without this, ScrollViewer sees the gesture instead of
+			// the resize Thumb and scrolls the canvas rather than resizing the selected component.
+			resizeHitTarget = new Thumb {
+				Width = 20, Height = 20, Background = Brushes.Transparent,
+				Cursor = Cursors.SizeNWSE, Visibility = Visibility.Collapsed,
+				Template = CreateTransparentThumbTemplate()
+			};
 			adorners.Children.Add(marqueeBorder);
 			adorners.Children.Add(adornerLayer.Visual);
 			adorners.Children.Add(moveThumb);
+			adorners.Children.Add(resizeHitTarget);
 			adorners.Children.Add(resizeThumb);
 			designSurface.Children.Add(adorners);
 			disconnectedText = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) };
@@ -164,7 +186,12 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				Child = new StackPanel { Children = { disconnectedText, restartButton } }
 			};
 			designSurface.Children.Add(disconnectedOverlay);
-			ContentHost.Content = designSurface;
+			// A form can be resized beyond the visible design tab.  Hosting the surface in a
+			// ScrollViewer lets the canvas grow with it instead of clipping the bottom-right
+			// Thumb (and, consequently, releasing a resize drag outside the canvas).
+			scrollContent.Children.Add(designSurface);
+			scroller.Content = scrollContent;
+			ContentHost.Content = scroller;
 
 			// Only controls backed by this designer are visible. Editing commands remain in the
 			// IDE command system; grid/theme/name/device controls are not inert toolbar chrome.
@@ -187,12 +214,21 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			MouseLeftButtonDown += OnMouseLeftButtonDown;
 			MouseMove += OnMouseMove;
 			MouseLeftButtonUp += OnMouseLeftButtonUp;
+			// The ScrollViewer hosting the expandable canvas can consume bubbling mouse events.
+			// Preview handlers keep the root-form resize gesture reachable even after scrollbars
+			// appear, matching the WPF/WinUI designer surfaces' input-routing strategy.
+			PreviewMouseLeftButtonDown += OnPreviewMouseLeftButtonDown;
+			PreviewMouseMove += OnPreviewMouseMove;
+			PreviewMouseLeftButtonUp += OnPreviewMouseLeftButtonUp;
 			moveThumb.DragStarted += OnDragStarted;
 			moveThumb.DragDelta += OnMoveDragDelta;
 			moveThumb.DragCompleted += OnDragCompleted;
 			resizeThumb.DragStarted += OnDragStarted;
 			resizeThumb.DragDelta += OnResizeDragDelta;
 			resizeThumb.DragCompleted += OnDragCompleted;
+			resizeHitTarget.DragStarted += OnDragStarted;
+			resizeHitTarget.DragDelta += OnResizeDragDelta;
+			resizeHitTarget.DragCompleted += OnDragCompleted;
 			DragOver += OnDragOver;
 			Drop += OnDrop;
 			KeyDown += OnKeyDown;
@@ -219,7 +255,10 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 						selectedComponent.Width, selectedComponent.Height),
 					designSurface);
 			}
-			var handle = new Point(selection.X + selection.Width, selection.Y + selection.Height);
+			var resizeBounds = DesignerSurfaceGeometryProbe.ScreenBoundsOf(resizeThumb);
+			var handle = resizeBounds.IsEmpty
+				? new Point(selection.X + selection.Width, selection.Y + selection.Height)
+				: new Point(resizeBounds.X + resizeBounds.Width / 2, resizeBounds.Y + resizeBounds.Height / 2);
 			return new DesignerSurfaceGeometry(frame, selection, handle, selection);
 		}
 		public string[] SelectedComponentNames => String.IsNullOrEmpty(SelectedComponentName)
@@ -248,8 +287,12 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			disconnectedOverlay.Visibility = Visibility.Collapsed;
 			this.state = state;
 			version = state.Version;
-			if (state.Render == null || String.IsNullOrEmpty(state.Render.PngBase64)) return;
-			if (state.Render.Sequence > 0 && state.Render.Sequence <= lastFrameSequence) return;
+			if (state.Render == null || String.IsNullOrEmpty(state.Render.PngBase64)) {
+				return;
+			}
+			if (state.Render.Sequence > 0 && state.Render.Sequence <= lastFrameSequence) {
+				return;
+			}
 			lastFrameSequence = state.Render.Sequence;
 			var bitmap = new BitmapImage();
 			using (var stream = new MemoryStream(Convert.FromBase64String(state.Render.PngBase64))) {
@@ -280,8 +323,8 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			// through the viewport's own pan - so the frame bitmap, the guide overlay and every
 			// DesignToSurface-based adorner all move together and stay aligned (matches
 			// WpfSurfaceDesignerControl's identical CanvasPadding treatment).
-			var availableWidth = Math.Max(0, ContentHost.ActualWidth - 2 * CanvasMargin);
-			var availableHeight = Math.Max(0, ContentHost.ActualHeight - 2 * CanvasMargin);
+			var availableWidth = Math.Max(0, scroller.ViewportWidth - 2 * CanvasMargin);
+			var availableHeight = Math.Max(0, scroller.ViewportHeight - 2 * CanvasMargin);
 			if (fitMode)
 				viewport = DesignViewport.Fit(designWidth, designHeight, availableWidth, availableHeight, 1.0, CanvasMargin, CanvasMargin);
 			else
@@ -293,6 +336,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			framePresenter.Visual.Margin = new Thickness(
 				Math.Max(0, viewport.OriginX) + viewport.PanX,
 				Math.Max(0, viewport.OriginY) + viewport.PanY, 0, 0);
+			UpdateCanvasExtent();
 			UpdateDesignGuides();
 			if (selectedComponent != null)
 				UpdateAdorners();
@@ -416,7 +460,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			disconnectedText.Text = message;
 			disconnectedOverlay.Visibility = Visibility.Visible;
 			adornerLayer.ClearSelection();
-			moveThumb.Visibility = resizeThumb.Visibility = Visibility.Collapsed;
+			moveThumb.Visibility = resizeHitTarget.Visibility = resizeThumb.Visibility = Visibility.Collapsed;
 		}
 
 		public bool TryGetComponentScreenBounds(string componentName, out Rect bounds)
@@ -697,7 +741,14 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		void OnDragStarted(object sender, DragStartedEventArgs e)
 		{
 			if (selectedComponent == null || lockedComponentNames.Contains(selectedComponent.Name)) return;
-			resizingDrag = ReferenceEquals(sender, resizeThumb);
+			resizingDrag = ReferenceEquals(sender, resizeThumb) || ReferenceEquals(sender, resizeHitTarget);
+			BeginDrag();
+		}
+
+		void BeginDrag()
+		{
+			if (selectedComponent == null)
+				return;
 			dragX = selectedComponent.SurfaceX;
 			dragY = selectedComponent.SurfaceY;
 			dragStartX = dragX;
@@ -707,6 +758,85 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			dragWidth = selectedComponent.Width;
 			dragHeight = selectedComponent.Height;
 			SetSnapGuides(Array.Empty<(bool, double)>());
+		}
+
+		bool IsOverResizeHitTarget(Point point)
+		{
+			if (resizeHitTarget.Visibility != Visibility.Visible || !resizeHitTarget.IsEnabled)
+				return false;
+			// Compare in the root canvas's coordinate space rather than relying on Canvas.Left in
+			// the ScrollViewer child.  LibreWPF's composed ScrollViewer can apply its own transform
+			// between the two, whereas TranslatePoint follows the actual rendered visual chain.
+			var centre = resizeThumb.TranslatePoint(
+				new Point(resizeThumb.ActualWidth / 2, resizeThumb.ActualHeight / 2), this);
+			const double hitSlop = 16;
+			return Math.Abs(point.X - centre.X) <= hitSlop && Math.Abs(point.Y - centre.Y) <= hitSlop;
+		}
+
+		void OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+		{
+			if (selectedComponent == null || lockedComponentNames.Contains(selectedComponent.Name))
+				return;
+			var pt = e.GetPosition(this);
+			var hitTest = IsOverResizeHitTarget(pt);
+			var thumbCentre = resizeThumb.TranslatePoint(new Point(resizeThumb.ActualWidth / 2, resizeThumb.ActualHeight / 2), this);
+			if (!hitTest)
+				return;
+			resizingDrag = true;
+			previewResizeDrag = true;
+			previewDragPoint = e.GetPosition(this);
+			BeginDrag();
+			CaptureMouse();
+			e.Handled = true;
+		}
+
+		void OnPreviewMouseMove(object sender, MouseEventArgs e)
+		{
+			if (!previewResizeDrag)
+				return;
+			if (e.LeftButton != MouseButtonState.Pressed)
+			{
+				CompletePreviewResizeDrag(canceled: true);
+				return;
+			}
+			var point = e.GetPosition(this);
+			var scale = Math.Max(0.0001, viewport.Scale);
+			var deltaX = (point.X - previewDragPoint.X) / scale;
+			var deltaY = (point.Y - previewDragPoint.Y) / scale;
+			dragWidth = Math.Max(8, dragWidth + deltaX);
+			dragHeight = Math.Max(8, dragHeight + deltaY);
+			previewDragPoint = point;
+			UpdateCanvasExtent();
+			PositionAdorners();
+			ScrollResizeHandleIntoView();
+			e.Handled = true;
+		}
+
+		void OnPreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+		{
+			if (!previewResizeDrag)
+				return;
+			CompletePreviewResizeDrag(canceled: false);
+			e.Handled = true;
+		}
+
+		void CompletePreviewResizeDrag(bool canceled)
+		{
+			if (!previewResizeDrag)
+				return;
+			previewResizeDrag = false;
+			if (IsMouseCaptured)
+				ReleaseMouseCapture();
+			if (selectedComponent == null || canceled) {
+				return;
+			}
+			var selection = renderedSelection;
+			var selectionWidth = (int)Math.Round(selection.Width);
+			var selectionHeight = (int)Math.Round(selection.Height);
+			BoundsChanged?.Invoke(this, new RemoteBoundsChangedEventArgs(selectedComponent.Name,
+				selectedLocalX + (int)Math.Round(selection.X - selectedComponent.SurfaceX),
+				selectedLocalY + (int)Math.Round(selection.Y - selectedComponent.SurfaceY),
+				selectionWidth, selectionHeight));
 		}
 
 		void OnMoveDragDelta(object sender, DragDeltaEventArgs e)
@@ -788,7 +918,66 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			var scale = viewport.Scale;
 			dragWidth = Math.Max(8, dragWidth + e.HorizontalChange / scale);
 			dragHeight = Math.Max(8, dragHeight + e.VerticalChange / scale);
+			UpdateCanvasExtent();
 			PositionAdorners();
+			// PositionAdorners runs while a new frame/selection can still be in WPF's measure
+			// pass, when ScrollViewer.ViewportHeight is zero or stale.  Defer one dispatcher
+			// turn so the actual scrollbar viewport is known before deciding whether to scroll.
+			Dispatcher.BeginInvoke(new Action(() => {
+				// A bottom-right thumb is reached from the bottom-right canvas corner.  When an
+				// axis has a scrollbar, partial "just visible" scrolling still leaves the pointer
+				// competing with that bar; place both viewport axes at their real ends first.
+				scroller.ScrollToRightEnd();
+				scroller.ScrollToBottom();
+				ScrollResizeHandleIntoView();
+			}), System.Windows.Threading.DispatcherPriority.Loaded);
+		}
+
+		/// <summary>Expands the scrollable design surface enough to retain the selected item's
+		/// bottom-right resize handle and the normal empty-canvas margin.  It never shrinks while
+		/// a drag is active, which avoids the scrollbar moving underneath the captured pointer.</summary>
+		void UpdateCanvasExtent()
+		{
+			if (state?.Render == null)
+				return;
+			var dpi = Math.Max(1, state.Render.Dpi);
+			var designWidth = state.Render.Width / dpi;
+			var designHeight = state.Render.Height / dpi;
+			if (selectedComponent != null)
+			{
+				designWidth = Math.Max(designWidth, dragX + dragWidth);
+				designHeight = Math.Max(designHeight, dragY + dragHeight);
+			}
+			var (right, bottom) = viewport.DesignToSurface(designWidth, designHeight);
+			designSurface.Width = Math.Max(scroller.ViewportWidth, right + CanvasMargin);
+			designSurface.Height = Math.Max(scroller.ViewportHeight, bottom + CanvasMargin);
+			scrollContent.Width = designSurface.Width;
+			scrollContent.Height = designSurface.Height;
+		}
+
+		/// <summary>Keeps a live resize's handle inside the visible canvas.  This is deliberately
+		/// performed during the drag, rather than after completion, so a user can continue growing
+		/// a form without driving the pointer beyond the tab's edge.</summary>
+		void ScrollResizeHandleIntoView()
+		{
+			// Do not derive an offset from design coordinates here.  That used to scroll on the
+			// first drag sample (even while the handle was already visible), and the resulting
+			// ScrollViewer transform canceled the captured pointer's next relative movement.
+			// Instead, inspect the actual rendered handle in the viewport and scroll only after
+			// it reaches the visible edge.
+			if (scroller.ViewportWidth <= 0 || scroller.ViewportHeight <= 0)
+				return;
+			var handle = resizeThumb.TranslatePoint(
+				new Point(resizeThumb.ActualWidth / 2, resizeThumb.ActualHeight / 2), scroller);
+			const double edgeMargin = 24;
+			if (handle.X > scroller.ViewportWidth - edgeMargin)
+				scroller.ScrollToHorizontalOffset(scroller.HorizontalOffset + handle.X - (scroller.ViewportWidth - edgeMargin));
+			else if (handle.X < edgeMargin)
+				scroller.ScrollToHorizontalOffset(Math.Max(0, scroller.HorizontalOffset + handle.X - edgeMargin));
+			if (handle.Y > scroller.ViewportHeight - edgeMargin)
+				scroller.ScrollToVerticalOffset(scroller.VerticalOffset + handle.Y - (scroller.ViewportHeight - edgeMargin));
+			else if (handle.Y < edgeMargin)
+				scroller.ScrollToVerticalOffset(Math.Max(0, scroller.VerticalOffset + handle.Y - edgeMargin));
 		}
 
 		void OnDragCompleted(object sender, DragCompletedEventArgs e)
@@ -813,7 +1002,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			AutomationProperties.SetHelpText(this, selectedComponent?.AccessibleDescription ?? "");
 			var visible = selectedComponent != null;
 			var isRoot = visible && String.IsNullOrEmpty(selectedComponent.Parent);
-			resizeThumb.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+			resizeHitTarget.Visibility = resizeThumb.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
 			moveThumb.Visibility = visible && !isRoot ? Visibility.Visible : Visibility.Collapsed;
 			if (!visible) {
 				adornerLayer.ClearSelection();
@@ -821,7 +1010,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			}
 			var locked = lockedComponentNames.Contains(selectedComponent.Name);
 			moveThumb.IsEnabled = !locked;
-			resizeThumb.IsEnabled = isRoot || !locked;
+			resizeHitTarget.IsEnabled = resizeThumb.IsEnabled = isRoot || !locked;
 			adornerLayer.SelectionStroke = locked ? Brushes.DarkOrange : Brushes.DodgerBlue;
 			dragX = selectedComponent.SurfaceX;
 			dragY = selectedComponent.SurfaceY;
@@ -830,11 +1019,18 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			dragWidth = selectedComponent.Width;
 			dragHeight = selectedComponent.Height;
 			PositionAdorners();
+			// A root form can be selected with its bottom-right edge exactly behind the
+			// ScrollViewer's horizontal bar.  In that state no resize can start at all: the
+			// scrollbar consumes the initial press before the Thumb can capture it.  Keep the
+			// handle in the same safe viewport inset used while a resize is in progress.
+			// This runs only after selection/layout, never between drag samples.
+			ScrollResizeHandleIntoView();
 		}
 
 		void PositionAdorners()
 		{
-			adornerLayer.ShowSelection(new Rect(dragX, dragY, dragWidth, dragHeight), viewport);
+			renderedSelection = new Rect(dragX, dragY, dragWidth, dragHeight);
+			adornerLayer.ShowSelection(renderedSelection, viewport);
 			// Convert both design corners to surface coordinates so the move/resize handles
 			// track the (possibly zoomed) design rect exactly.
 			var (left, top) = viewport.DesignToSurface(dragX, dragY);
@@ -845,7 +1041,10 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			moveThumb.Height = Math.Max(1, bottom - top);
 			Canvas.SetLeft(resizeThumb, right - resizeThumb.Width / 2);
 			Canvas.SetTop(resizeThumb, bottom - resizeThumb.Height / 2);
-			Panel.SetZIndex(resizeThumb, 2);
+			Canvas.SetLeft(resizeHitTarget, right - resizeHitTarget.Width / 2);
+			Canvas.SetTop(resizeHitTarget, bottom - resizeHitTarget.Height / 2);
+			Panel.SetZIndex(resizeHitTarget, 99);
+			Panel.SetZIndex(resizeThumb, 100);
 		}
 
 		void OnDragOver(object sender, System.Windows.DragEventArgs e)

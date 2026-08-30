@@ -102,6 +102,29 @@
     </ItemGroup>
     <Copy SourceFiles="@(SharpDevelopAddIn)" DestinationFolder="$(MSBuildProjectDirectory)\..\..\..\AddIns" SkipUnchangedFiles="true" />
   </Target>
+  <!-- Microsoft.Build.Runtime copies the NuGet SDK-resolver manifest into SdkResolvers, but
+       the resolver DLL itself lives beside MSBuild.  The in-process project loader resolves
+       the manifest relative to the IDE executable, so deploy that DLL there as well.  Without
+       it, SDK-style projects (including the WinUI integration fixture) fail before a XAML
+       display binding can obtain their project context. -->
+  <Target Name="DeployNuGetSdkResolver" AfterTargets="Build">
+    <Copy SourceFiles="$(MSBuildToolsPath)\Microsoft.Build.NuGetSdkResolver.dll"
+          DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="true"
+          Condition="Exists('$(MSBuildToolsPath)\Microsoft.Build.NuGetSdkResolver.dll')" />
+  </Target>
+  <!-- Microsoft.CSharp.CurrentVersion.targets derives CSharpCoreTargetsPath from the hosted
+       engine's own tool directory. Ship the Roslyn targets/compiler closure beside that engine,
+       otherwise SDK project evaluation succeeds through the resolver but fails on its next
+       import before designers can obtain project metadata. -->
+  <Target Name="DeployRoslynBuildTools" AfterTargets="Build">
+    <ItemGroup>
+      <_RoslynBuildTools Include="$(MSBuildToolsPath)\Roslyn\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_RoslynBuildTools)"
+          DestinationFiles="@(_RoslynBuildTools->'$(OutDir)Roslyn\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
   <ItemGroup>
     <!-- Out of MVP scope: Mono.Cecil (real submodule) is not referenced by this exe - AssemblyParserService.cs/
          GlobalAssemblyCacheService.cs/Fusion.cs used real Mono.Cecil, out of scope per MVP policy 1. -->

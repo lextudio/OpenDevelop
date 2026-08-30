@@ -12,7 +12,6 @@
 	<Runtime>
 		<Import assembly = "ICSharpCode.VBBinding.dll"/>
 		<Import assembly = ":ICSharpCode.SharpDevelop"/>
-		<Import assembly = ":ICSharpCode.FormsDesigner"/>
 	</Runtime>
 
 	<Path name = "/SharpDevelop/Workbench/DisplayBindings">

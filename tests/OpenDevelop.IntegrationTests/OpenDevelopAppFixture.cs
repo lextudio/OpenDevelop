@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 
 using Xunit;
+using Xunit.Sdk;
 
 namespace OpenDevelop.IntegrationTests;
 
@@ -65,6 +66,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     public string WpfSampleSolutionPath => LocateWpfSampleSolution();
     public string WinFormsSampleSolutionPath => LocateWinFormsSampleSolution();
     public string UnoXamlSampleSolutionPath => LocateUnoXamlSampleSolution();
+    public string ProGpuWinUISampleSolutionPath => LocateProGpuWinUISampleSolution();
     public string WinUISampleSolutionPath => LocateWinUISampleSolution();
     public string AspNetCoreSampleSolutionPath => LocateAspNetCoreSampleSolution();
     public string GitFixtureTemplatePath => LocateGitFixtureTemplate();
@@ -694,12 +696,74 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     // ReleaseAsync) - screen coordinates, not app-relative. Callers get the coordinates from a
     // DevFlow action that computes real on-screen bounds for the element being pressed/dragged
     // onto (e.g. od.wpf-designer.toolbox.query-item-bounds), never hardcoded.
-    public Task<JsonElement> PressPointerAsync(double x, double y) => PostPointActionAsync("press", x, y);
+    public async Task<JsonElement> PressPointerAsync(double x, double y, bool ensureForeground = true)
+    {
+        // The click begins a real OS gesture. Bring the native OpenDevelop window to the actual
+        // foreground immediately before it, rather than relying on a designer test having
+        // activated it earlier (other windows/processes may have stolen focus while it waited).
+        if (ensureForeground)
+        {
+            JsonElement activation = default;
+            var foregrounded = false;
+            for (var attempt = 0; attempt < 3 && !foregrounded; attempt++)
+            {
+                activation = await InvokeAsync("od.activate");
+                foregrounded = activation.TryGetProperty("foregrounded", out var result)
+                    && result.ValueKind == JsonValueKind.True;
+                if (!foregrounded)
+                    await Task.Delay(100);
+            }
+            if (!foregrounded)
+                throw new InvalidOperationException("OpenDevelop could not be brought to the Windows foreground before pointer input: " + activation);
+        }
+        return await PostPointActionAsync("press", x, y);
+    }
     public Task<JsonElement> DragMovePointerAsync(double x, double y) => PostPointActionAsync("drag-move", x, y);
     public Task<JsonElement> ReleasePointerAsync(double x, double y) => PostPointActionAsync("release", x, y);
 
+    public async Task<JsonElement> DragPointerAsync(double fromX, double fromY, double toX, double toY, int steps = 6)
+    {
+        var body = JsonSerializer.Serialize(new { global = true, fromX, fromY, toX, toY, steps });
+        using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+        using var resp = await _http.PostAsync($"{BaseUrl}/api/v1/ui/actions/drag", content);
+        if (!resp.IsSuccessStatusCode)
+            throw new InvalidOperationException($"ui/actions/drag failed ({(int)resp.StatusCode}): {await resp.Content.ReadAsStringAsync()}");
+        return await resp.Content.ReadFromJsonAsync<JsonElement>();
+    }
+
+    public async Task<JsonElement> ClickPointerAsync(double x, double y, int clickCount = 1)
+    {
+        JsonElement activation = default;
+        var foregrounded = false;
+        for (var attempt = 0; attempt < 3 && !foregrounded; attempt++)
+        {
+            activation = await InvokeAsync("od.activate");
+            foregrounded = activation.TryGetProperty("foregrounded", out var result)
+                && result.ValueKind == JsonValueKind.True;
+            if (!foregrounded)
+                await Task.Delay(100);
+        }
+        if (!foregrounded)
+            throw new InvalidOperationException("OpenDevelop could not be brought to the Windows foreground before pointer input: " + activation);
+
+        var body = JsonSerializer.Serialize(new { x, y, global = true, clickCount });
+        using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+        using var resp = await _http.PostAsync($"{BaseUrl}/api/v1/ui/actions/click", content);
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync();
+            throw new InvalidOperationException($"ui/actions/click failed ({(int)resp.StatusCode}): {err}\n{DescribeAppFailureContext()}\nRecent app output:\n{GetRecentAppOutput()}");
+        }
+        return await resp.Content.ReadFromJsonAsync<JsonElement>();
+    }
+
     async Task<JsonElement> PostPointActionAsync(string action, double x, double y)
     {
+        // The DevFlow press/move/release endpoints feed the Windows native-input pump. Its
+        // default coordinate contract is the screen-space PointToScreen values returned by the
+        // designer queries above. In contrast, the one-shot drag endpoint accepts a separate
+        // global flag; adding that flag to this protocol prevents the embedded Forms HWND from
+        // receiving the mouse messages.
         var body = JsonSerializer.Serialize(new { x, y });
         using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
         using var resp = await _http.PostAsync($"{BaseUrl}/api/v1/ui/actions/{action}", content);
@@ -959,6 +1023,18 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         throw new FileNotFoundException("Could not locate src/Samples/WinUISample/WinUISample.slnx");
     }
 
+    static string LocateProGpuWinUISampleSolution()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir, "src", "Samples", "ProGpuWinUISample", "ProGpuWinUISample.slnx");
+            if (File.Exists(candidate)) return candidate;
+            dir = Path.GetDirectoryName(dir);
+        }
+        throw new FileNotFoundException("Could not locate src/Samples/ProGpuWinUISample/ProGpuWinUISample.slnx");
+    }
+
     static string LocateXmlFixtureFile()
     {
         var dir = AppContext.BaseDirectory;
@@ -986,6 +1062,17 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
             if (File.Exists(candidate) && DotNetHostResolvesSdk(candidate)) return candidate;
             dir = Path.GetDirectoryName(dir);
         }
+
+        // ConfigureDotNetEnvironment needs a concrete host path in order to derive DOTNET_ROOT
+        // and the SDK/MSBuild folders for the child IDE. On Windows a bare "dotnet" falls back
+        // to PATH successfully when launching, but File.Exists("dotnet") is false, so the
+        // environment setup used to silently no-op and SDK-style WinUI fixtures could not load.
+        var systemHost = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            "dotnet",
+            OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet");
+        if (File.Exists(systemHost) && DotNetHostResolvesSdk(systemHost))
+            return systemHost;
 
         return "dotnet";
     }

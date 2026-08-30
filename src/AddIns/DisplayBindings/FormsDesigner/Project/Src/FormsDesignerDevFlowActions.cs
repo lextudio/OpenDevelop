@@ -122,6 +122,10 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 			var outline = viewContent.OutlineContent as ICSharpCode.SharpDevelop.Widgets.DocumentOutlineControl;
 			if (outline == null)
 				return JsonSerializer.Serialize(new { success = false, error = "no outline control" });
+			// The native WinForms outline realizes its root node lazily.  Selecting only the
+			// unrealized node leaves the surface unchanged; drive the same component-selection
+			// path first, then synchronize the outline node.
+			viewContent.SelectRemoteComponents(name);
 			outline.SelectNodeById(name);
 			return JsonSerializer.Serialize(new {
 				success = true,
@@ -143,7 +147,7 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 			return JsonSerializer.Serialize(new {
 				designerLoaded = true,
 				outOfProcess = true,
-				backend = FormsDesignerHostClient.SelectedBackend,
+				backend = viewContent.BackendName,
 				usesCodeDomLoader = false,
 				loaderType = "ICSharpCode.FormsDesigner.Host.SnapshotRoslynDesignerLoader",
 				hostProcessId = viewContent.RemoteDesignerProcessId,

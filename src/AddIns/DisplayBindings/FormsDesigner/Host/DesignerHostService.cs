@@ -612,20 +612,23 @@ sealed class DesignerHostService : IDesignerChildService
 		var designerFile = CurrentDesignerFile();
 		var root = CSharpSyntaxTree.ParseText(designerFile.Text).GetCompilationUnitRoot();
 		var target = elementId + "." + descriptor.Name;
+		var isRootComponent = elementId == GetHost().RootComponent?.Site?.Name;
 		var existing = root.DescendantNodes().OfType<AssignmentExpressionSyntax>()
-			.FirstOrDefault(item => item.IsKind(SyntaxKind.AddAssignmentExpression) && NormalizeTarget(item.Left.ToString()) == target);
+			.FirstOrDefault(item => item.IsKind(SyntaxKind.AddAssignmentExpression)
+				&& EventTargetMatches(NormalizeTarget(item.Left.ToString()), target, descriptor.Name, isRootComponent));
 		if (String.IsNullOrEmpty(handlerName)) {
 			if (existing?.Parent is StatementSyntax statement)
 				designerFile.Text = root.RemoveNode(statement, SyntaxRemoveOptions.KeepNoTrivia)!.NormalizeWhitespace().ToFullString();
 			return;
 		}
-		var handlerExpression = SyntaxFactory.ParseExpression("this." + handlerName);
+		var handlerExpression = SyntaxFactory.ParseExpression(handlerName);
 		if (existing != null)
 			root = root.ReplaceNode(existing.Right, handlerExpression.WithTriviaFrom(existing.Right));
 		else {
 			var initialize = root.DescendantNodes().OfType<MethodDeclarationSyntax>()
 				.First(item => item.Identifier.ValueText == "InitializeComponent");
-			var statement = SyntaxFactory.ParseStatement($"this.{target} += this.{handlerName};\n");
+			var sourceTarget = isRootComponent ? "this." + descriptor.Name : "this." + target;
+			var statement = SyntaxFactory.ParseStatement($"{sourceTarget} += {handlerName};\n");
 			root = root.ReplaceNode(initialize, initialize.WithBody(initialize.Body!.AddStatements(statement)));
 		}
 		designerFile.Text = root.NormalizeWhitespace().ToFullString();
@@ -650,8 +653,10 @@ sealed class DesignerHostService : IDesignerChildService
 		var designerFile = CurrentDesignerFile();
 		var root = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(designerFile.Text).GetRoot();
 		var target = elementId + "." + descriptor.Name;
+		var isRootComponent = elementId == GetHost().RootComponent?.Site?.Name;
 		var existing = root.DescendantNodes().OfType<VbSyntax.AddRemoveHandlerStatementSyntax>()
-			.FirstOrDefault(item => item.IsKind(Vb.SyntaxKind.AddHandlerStatement) && NormalizeTarget(item.EventExpression.ToString()) == target);
+			.FirstOrDefault(item => item.IsKind(Vb.SyntaxKind.AddHandlerStatement)
+				&& EventTargetMatches(NormalizeTarget(item.EventExpression.ToString()), target, descriptor.Name, isRootComponent));
 		if (String.IsNullOrEmpty(handlerName)) {
 			if (existing != null)
 				designerFile.Text = root.RemoveNode(existing, SyntaxRemoveOptions.KeepNoTrivia)!.NormalizeWhitespace().ToFullString();
@@ -667,7 +672,8 @@ sealed class DesignerHostService : IDesignerChildService
 				.First(item => item.BlockStatement is VbSyntax.MethodStatementSyntax ms
 				&& ms.DeclarationKeyword.IsKind(Vb.SyntaxKind.SubKeyword)
 				&& ms.Identifier.ValueText == "InitializeComponent");
-			var statement = Vb.SyntaxFactory.ParseExecutableStatement($"AddHandler Me.{target}, AddressOf Me.{handlerName}");
+			var sourceTarget = isRootComponent ? "Me." + descriptor.Name : "Me." + target;
+			var statement = Vb.SyntaxFactory.ParseExecutableStatement($"AddHandler {sourceTarget}, AddressOf Me.{handlerName}");
 			designerFile.Text = root.ReplaceNode(initialize, initialize.WithStatements(initialize.Statements.Add(statement)))
 				.NormalizeWhitespace().ToFullString();
 		}
@@ -796,11 +802,11 @@ sealed class DesignerHostService : IDesignerChildService
 				.FirstOrDefault(item => NormalizeTarget(item.Left.ToString()) is "ClientSize" or "Size");
 			var vbValue = Vb.SyntaxFactory.ParseExpression($"New System.Drawing.Size({width}, {height})");
 			if (vbAssignment != null) {
-				// Keep the original target (ClientSize or Size): Form.Size is the outer frame,
-				// while the rendered design surface is the client area - swapping ClientSize for
-				// Size shifts every control by the frame border and mis-scales the bitmap.
+				// The selection outline and rendered bitmap use the outer Form bounds.  Persist
+				// those exact bounds to Form.Size rather than ClientSize; otherwise each drag
+				// adds the caption/border dimensions again when the host reloads the form.
 				var vbReplacement = Vb.SyntaxFactory.AssignmentStatement(Vb.SyntaxKind.SimpleAssignmentStatement,
-					vbAssignment.Left, Vb.SyntaxFactory.Token(Vb.SyntaxKind.EqualsToken), vbValue).WithTriviaFrom(vbAssignment);
+					Vb.SyntaxFactory.ParseExpression("Me.Size"), Vb.SyntaxFactory.Token(Vb.SyntaxKind.EqualsToken), vbValue).WithTriviaFrom(vbAssignment);
 				file.Text = vbRoot.ReplaceNode(vbAssignment, vbReplacement).ToFullString();
 				return;
 			}
@@ -818,11 +824,11 @@ sealed class DesignerHostService : IDesignerChildService
 			.FirstOrDefault(item => NormalizeTarget(item.Left.ToString()) is "ClientSize" or "Size");
 		var value = SyntaxFactory.ParseExpression($"new System.Drawing.Size({width}, {height})");
 		if (assignment != null) {
-			// Keep the original target (ClientSize or Size): Form.Size is the outer frame, while
-			// the rendered design surface is the client area - swapping ClientSize for Size
-			// shifts every control by the frame border and mis-scales the bitmap.
+			// The selection outline and rendered bitmap use the outer Form bounds. Persist
+			// those exact bounds to Form.Size rather than ClientSize; otherwise each drag
+			// adds the caption/border dimensions again when the host reloads the form.
 			var replacement = SyntaxFactory.AssignmentExpression(SyntaxKind.SimpleAssignmentExpression,
-				assignment.Left, value).WithTriviaFrom(assignment);
+				SyntaxFactory.ParseExpression("this.Size"), value).WithTriviaFrom(assignment);
 			file.Text = root.ReplaceNode(assignment, replacement).ToFullString();
 			return;
 		}
@@ -963,9 +969,6 @@ sealed class DesignerHostService : IDesignerChildService
 		rootDesignSize = ReadRootDesignSize(snapshot);
 		rootAutoScaleDimensions = ReadRootAutoScaleDimensions(snapshot);
 		if (!String.IsNullOrWhiteSpace(snapshot.ProjectAssemblyPath) && File.Exists(snapshot.ProjectAssemblyPath)) {
-			// OutputAssemblyFullPath may point at the apphost (an extensionless executable
-			// on Unix, or ".exe" on Windows) instead of the managed assembly; loading the
-			// apphost throws BadImageFormatException, so prefer the sibling ".dll".
 			var managedAssemblyPath = ResolveManagedAssemblyPath(snapshot.ProjectAssemblyPath);
 			if (File.Exists(managedAssemblyPath)) {
 				projectLoadContext = new ProjectAssemblyLoadContext(managedAssemblyPath);
@@ -973,21 +976,20 @@ sealed class DesignerHostService : IDesignerChildService
 			}
 		}
 		var referencePaths = snapshot.ReferencedAssemblyPaths.Where(path => File.Exists(path) && !string.Equals(path, snapshot.ProjectAssemblyPath, StringComparison.OrdinalIgnoreCase)).ToArray();
-		// A referenced control library can be enough to design a form even before the owning
-		// project itself has produced an output. Root the collectible context at the first usable
-		// reference in that case, then resolve every supplied library in the same child process.
 		if (projectLoadContext == null && referencePaths.Length > 0)
 			projectLoadContext = new ProjectAssemblyLoadContext(Path.GetFullPath(referencePaths[0]));
 		if (projectLoadContext != null) {
+			int loaded = 0;
 			foreach (var path in referencePaths) {
-				try { referencedAssemblies.Add(projectLoadContext.LoadFromAssemblyPath(Path.GetFullPath(path))); } catch { }
+				try { referencedAssemblies.Add(projectLoadContext.LoadFromAssemblyPath(Path.GetFullPath(path))); loaded++; } catch { }
 			}
 		}
 		designSurface = new DesignSurface();
 		designSurface.BeginLoad(new SnapshotDesignerLoader(snapshot, ResolveProjectType));
 		if (!designSurface.IsLoaded) {
 			var errors = designSurface.LoadErrors?.Cast<object>().Select(item => item?.ToString()).Where(item => !String.IsNullOrEmpty(item));
-			throw new InvalidOperationException("The child design surface failed to load: " + String.Join(" | ", errors ?? []));
+			var errStr = String.Join(" | ", errors ?? []);
+			throw new InvalidOperationException("The child design surface failed to load: " + errStr);
 		}
 		if (designSurface.View is Control view) {
 			view.CreateControl();
@@ -1095,8 +1097,23 @@ sealed class DesignerHostService : IDesignerChildService
 				Y = component is Control boundsControl2 ? boundsControl2.Top : 0,
 				SurfaceX = component is Control surfaceControl ? SurfaceLocation(surfaceControl).X : 0,
 				SurfaceY = component is Control surfaceControl2 ? SurfaceLocation(surfaceControl2).Y : 0,
-				Width = component == host.RootComponent && rootDesignSize.HasValue ? rootDesignSize.Value.Width : component is Control sizeControl ? sizeControl.Width : 0,
-				Height = component == host.RootComponent && rootDesignSize.HasValue ? rootDesignSize.Value.Height : component is Control sizeControl2 ? sizeControl2.Height : 0,
+				// Microsoft Form.DrawToBitmap includes the non-client frame (caption and borders),
+				// unlike the portable painter which renders only the client design surface. Keep
+				// the root metadata in the same coordinate space as the returned bitmap.
+				Width = component == host.RootComponent && rootDesignSize.HasValue
+#if MICROSOFT_WINFORMS
+					? (component as Control)?.Width ?? rootDesignSize.Value.Width
+#else
+					? rootDesignSize.Value.Width
+#endif
+					: component is Control sizeControl ? sizeControl.Width : 0,
+				Height = component == host.RootComponent && rootDesignSize.HasValue
+#if MICROSOFT_WINFORMS
+					? (component as Control)?.Height ?? rootDesignSize.Value.Height
+#else
+					? rootDesignSize.Value.Height
+#endif
+					: component is Control sizeControl2 ? sizeControl2.Height : 0,
 				Properties = properties,
 				Events = DescribeEvents(component)
 				};
@@ -1136,26 +1153,35 @@ sealed class DesignerHostService : IDesignerChildService
 	List<DesignerEventInfo> DescribeEvents(IComponent component)
 	{
 		var handlers = CurrentDesignerFile().Text;
+		// The root form is conventionally emitted as "this.Load += ..." rather
+		// than "Form1.Load += ...".  A component's site name is still Form1,
+		// so accept the root shorthand as well as the normal component target.
+		var isRootComponent = ReferenceEquals(component, GetHost().RootComponent);
 		return TypeDescriptor.GetEvents(component).Cast<EventDescriptor>().Where(item => item.IsBrowsable).Select(item => {
 			var target = (component.Site?.Name ?? "") + "." + item.Name;
 			var handler = "";
 			if (IsVisualBasic) {
 				var vbRoot = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(handlers).GetRoot();
 				var statement = vbRoot.DescendantNodes().OfType<VbSyntax.AddRemoveHandlerStatementSyntax>()
-					.FirstOrDefault(node => node.IsKind(Vb.SyntaxKind.AddHandlerStatement) && NormalizeTarget(node.EventExpression.ToString()) == target);
+					.FirstOrDefault(node => node.IsKind(Vb.SyntaxKind.AddHandlerStatement)
+						&& EventTargetMatches(NormalizeTarget(node.EventExpression.ToString()), target, item.Name, isRootComponent));
 				handler = statement?.DelegateExpression.ToString() ?? "";
 				if (handler.StartsWith("AddressOf Me.", StringComparison.Ordinal)) handler = handler["AddressOf ".Length..];
 				if (handler.StartsWith("Me.", StringComparison.Ordinal)) handler = handler[3..];
 			} else {
 				var root = CSharpSyntaxTree.ParseText(handlers).GetCompilationUnitRoot();
 				var assignment = root.DescendantNodes().OfType<AssignmentExpressionSyntax>()
-					.FirstOrDefault(node => node.IsKind(SyntaxKind.AddAssignmentExpression) && NormalizeTarget(node.Left.ToString()) == target);
+					.FirstOrDefault(node => node.IsKind(SyntaxKind.AddAssignmentExpression)
+						&& EventTargetMatches(NormalizeTarget(node.Left.ToString()), target, item.Name, isRootComponent));
 				handler = assignment?.Right.ToString() ?? "";
 				if (handler.StartsWith("this.", StringComparison.Ordinal)) handler = handler[5..];
 			}
 			return new DesignerEventInfo { Name = item.Name, Category = item.Category ?? "Action", HandlerTypeName = item.EventType?.FullName ?? item.EventType?.Name ?? "", Handler = handler };
 		}).ToList();
 	}
+
+	static bool EventTargetMatches(string normalizedTarget, string componentTarget, string eventName, bool isRootComponent)
+		=> normalizedTarget == componentTarget || (isRootComponent && normalizedTarget == eventName);
 
 	List<DesignerPropertyInfo> DescribeProperties(IComponent component)
 	{
@@ -1219,6 +1245,14 @@ sealed class DesignerHostService : IDesignerChildService
 		var point = control.Location;
 		for (var parent = control.Parent; parent != null && parent != root; parent = parent.Parent)
 			point.Offset(parent.Location);
+		// Native Form.DrawToBitmap paints the outer window. Child Locations are client-space,
+		// so translate them into bitmap coordinates before the parent draws selection adorners.
+#if MICROSOFT_WINFORMS
+		if (root is Form form) {
+			var border = Math.Max(0, (form.Width - form.ClientSize.Width) / 2);
+			point.Offset(border, Math.Max(border, form.Height - form.ClientSize.Height - border));
+		}
+#endif
 		return point;
 	}
 
@@ -1229,12 +1263,23 @@ sealed class DesignerHostService : IDesignerChildService
 		root.CreateControl();
 		root.PerformLayout();
 		var renderSize = designSize ?? root.Size;
+#if MICROSOFT_WINFORMS
+		// Do not crop the non-client frame that DrawToBitmap actually paints. Its dimensions
+		// must match the root selection rectangle and the child SurfaceLocation offsets above.
+		if (root is Form)
+			renderSize = root.Size;
+#endif
 		using var bitmap = new Bitmap(Math.Max(1, renderSize.Width), Math.Max(1, renderSize.Height));
 		using (var graphics = Graphics.FromImage(bitmap)) {
 #if MICROSOFT_WINFORMS
 			// The Microsoft child uses the native WinForms paint pipeline. The portable host keeps
 			// its software painter below because it has no HWND/GDI implementation to capture.
 			root.DrawToBitmap(bitmap, new Rectangle(Point.Empty, renderSize));
+			// DesignSurface Forms lack a real HWND so DrawToBitmap never paints the non-client
+			// frame.  Overlay a simulated title bar so the designer surface visually identifies
+			// the root component as a windowed form.
+			if (root is Form formForChrome)
+				PaintFormChrome(formForChrome, graphics, new Rectangle(Point.Empty, renderSize));
 #else
 			if (designSize.HasValue) {
 				PaintStandardControl(root, graphics, new Rectangle(Point.Empty, renderSize));
@@ -1385,6 +1430,57 @@ sealed class DesignerHostService : IDesignerChildService
 		var size = graphics.MeasureString(text, font);
 		graphics.DrawString(text, font, brush,
 			new PointF(Math.Max(2, (bounds.Width - size.Width) / 2), Math.Max(1, (bounds.Height - size.Height) / 2)));
+	}
+
+	static void PaintFormChrome(Form form, Graphics graphics, Rectangle bounds)
+	{
+		if (bounds.Width <= 0 || bounds.Height <= 0) return;
+		const int titleHeight = 30;
+		const int btnW = 12;
+		const int btnH = 12;
+		const int btnPad = 4;
+
+		using var titleBg = new SolidBrush(SystemColors.ActiveCaption);
+		using var titleText = new SolidBrush(SystemColors.ActiveCaptionText);
+		using var captionBorder = new Pen(SystemColors.ControlDark, 1);
+		using var btnFace = new SolidBrush(SystemColors.Control);
+		using var btnHighlight = new Pen(SystemColors.ControlLightLight, 1);
+		using var btnShadow = new Pen(SystemColors.ControlDark, 1);
+		using var closeRed = new SolidBrush(Color.FromArgb(196, 43, 28));
+		using var titleFont = new Font(SystemFonts.DefaultFont.FontFamily,
+			Math.Max(7, SystemFonts.DefaultFont.Size), FontStyle.Bold);
+
+		graphics.FillRectangle(titleBg, 0, 0, bounds.Width, Math.Min(titleHeight, bounds.Height));
+		graphics.DrawLine(captionBorder, 0, Math.Min(titleHeight, bounds.Height) - 1, bounds.Width - 1, Math.Min(titleHeight, bounds.Height) - 1);
+
+		if (!string.IsNullOrEmpty(form.Text)) {
+			var textRect = new RectangleF(6, 0, Math.Max(0, bounds.Width - (btnW + btnPad) * 3 - 16), titleHeight);
+			var fmt = new StringFormat { Trimming = StringTrimming.EllipsisCharacter, Alignment = StringAlignment.Near, LineAlignment = StringAlignment.Center };
+			graphics.DrawString(form.Text, titleFont, titleText, textRect, fmt);
+		}
+
+		var btnY = Math.Max(2, (titleHeight - btnH) / 2);
+		var btnX = bounds.Width - (btnW + btnPad);
+
+		graphics.FillRectangle(closeRed, btnX, btnY, btnW, btnH);
+		graphics.DrawRectangle(captionBorder, btnX, btnY, btnW, btnH);
+		var cx = btnX + btnW / 2;
+		var cy = btnY + btnH / 2;
+		graphics.DrawLine(Pens.White, cx - 3, cy - 3, cx + 3, cy + 3);
+		graphics.DrawLine(Pens.White, cx + 3, cy - 3, cx - 3, cy + 3);
+
+		btnX -= btnW + btnPad;
+		graphics.FillRectangle(btnFace, btnX, btnY, btnW, btnH);
+		graphics.DrawRectangle(captionBorder, btnX, btnY, btnW, btnH);
+		graphics.DrawRectangle(btnHighlight, btnX + 1, btnY + 1, Math.Max(0, btnW - 3), Math.Max(0, btnH - 3));
+		graphics.DrawLine(btnShadow, btnX + 3, btnY + btnH - 3, btnX + btnW - 3, btnY + btnH - 3);
+		graphics.DrawLine(btnShadow, btnX + btnW - 3, btnY + 3, btnX + btnW - 3, btnY + btnH - 3);
+
+		btnX -= btnW + btnPad;
+		graphics.FillRectangle(btnFace, btnX, btnY, btnW, btnH);
+		graphics.DrawRectangle(captionBorder, btnX, btnY, btnW, btnH);
+		graphics.DrawLine(btnShadow, btnX + btnW / 2, btnY + 4, btnX + btnW / 2, btnY + btnH - 4);
+		graphics.DrawLine(btnShadow, btnX + 3, btnY + btnH / 2, btnX + btnW - 3, btnY + btnH / 2);
 	}
 
 	static DesignerSessionState Accepted(long baseVersion) => new() { Version = baseVersion, Accepted = true };

@@ -96,6 +96,9 @@ namespace ICSharpCode.FormsDesigner
 		/// <summary>The currently selected component name on the remote design surface.</summary>
 		internal string RemoteDesignerSelectedComponent => remoteControl?.SelectedComponentName ?? "";
 
+		/// <summary>Short backend label for the toolbar ("WinForms" / "LibreWinForms").</summary>
+		internal string BackendName => remoteControl?.BackendName ?? FormsDesignerHostClient.SelectedBackend;
+
 		/// <summary>Surface geometry (frame/selection/handle/element) for integration tests.</summary>
 		internal DesignerSurfaceGeometry? RemoteSurfaceGeometry
 			=> remoteControl?.SurfaceGeometry();
@@ -175,8 +178,12 @@ namespace ICSharpCode.FormsDesigner
 		internal void SetRemoteBounds(string componentName, int x, int y, int width, int height)
 		{
 			EnsureRemoteDesignerLoaded();
-			ExecuteRemoteEdit(() => remoteClient.SetBoundsAsync(remoteDocumentVersion, componentName, x, y, width, height,
-				System.Threading.CancellationToken.None).GetAwaiter().GetResult());
+			ExecuteRemoteEdit(() => {
+				var result = remoteClient.SetBoundsAsync(remoteDocumentVersion, componentName, x, y, width, height,
+					System.Threading.CancellationToken.None).GetAwaiter().GetResult();
+				var rootComp = result.Components?.FirstOrDefault(c => c.Name == componentName);
+				return result;
+			});
 		}
 
 		internal void DeleteRemoteComponent(string componentName)
@@ -288,6 +295,7 @@ namespace ICSharpCode.FormsDesigner
 		{
 			if (!state.Accepted)
 				throw new FormsDesignerLoadException(state.Error);
+			var rootComp = state.Components?.FirstOrDefault(c => c.Name == remoteControl.SelectedComponentName);
 			remoteControl.Show(state);
 			UpdateOutline(state);
 			SynchronizeRemoteEdits();
@@ -835,7 +843,23 @@ namespace ICSharpCode.FormsDesigner
 				var source = SourceFiles.FirstOrDefault(item => FileUtility.IsEqualFileName(item.Key.FileName, edit.FileName));
 				if (source.Key == null)
 					throw new InvalidOperationException("The WinForms designer host returned an edit for an unknown file: " + edit.FileName);
-				source.Value.Text = edit.Text;
+				if (!String.Equals(source.Value.Text, edit.Text, StringComparison.Ordinal)) {
+					source.Value.Text = edit.Text;
+					// The Forms designer keeps its own source storage while the primary
+					// code tab owns a separate AvalonEdit document. Keep the live editor in
+					// sync too; otherwise saving Form1.cs after an event-handler generation
+					// serializes its stale editor text and silently loses the new method.
+					var editor = source.Key == primaryViewContent.PrimaryFile
+						? primaryViewContent.GetService<ITextEditor>()
+						: source.Key.CurrentView?.GetService<ITextEditor>();
+					if (editor != null && !String.Equals(editor.Document.Text, edit.Text, StringComparison.Ordinal))
+						editor.Document.Text = edit.Text;
+					// A host edit can modify both Form1.Designer.cs and the primary
+					// Form1.cs (for example when an Events-row double-click creates its
+					// handler).  Mark each affected OpenedFile dirty so Ctrl+S / Save All
+					// persists every changed source file, not only the designer document.
+					source.Key.MakeDirty();
+				}
 			}
 			return edits;
 		}

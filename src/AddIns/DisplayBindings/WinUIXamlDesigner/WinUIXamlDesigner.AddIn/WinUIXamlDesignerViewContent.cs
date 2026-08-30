@@ -91,6 +91,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 
 	public XamlFrameworkContext Framework { get; }
 	public string StatusText => status.Text;
+	public string BackendName => (previewHost.Content as ICSharpCode.SharpDevelop.Widgets.DesignerCanvas)?.BackendName ?? "";
 	public bool HasRenderedPreview => previewHost.HasRenderedPreview;
 	public object OutlineContent => outline;
 
@@ -497,7 +498,6 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		ApplyElementDeltas(deltas);
 		return $"nudged {deltas.Count} element(s)";
 	}
-
 	/// <summary>
 	/// A double-click on the design surface starts inline text editing for text-bearing
 	/// elements (TextBlock/TextBox/Button-like: Text or Content attribute); anything else

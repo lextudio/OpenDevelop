@@ -10,6 +10,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -456,14 +457,65 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				silk.TopMost = false;
 				nativeFocused = true;
 			}
+			bool foregrounded = false;
+			if (OperatingSystem.IsWindows()) {
+				var hwnd = new System.Windows.Interop.WindowInteropHelper(mainWindow).Handle;
+				if (hwnd != IntPtr.Zero) {
+					// SetForegroundWindow alone is commonly rejected by Windows when the DevFlow
+					// HTTP caller owns the current foreground thread. Temporarily make this native
+					// window topmost, bring it forward, then remove the topmost state: this is the
+					// standard non-invasive foreground sequence and is required before cliclick
+					// emits an OS-level drag.
+					var foreground = GetForegroundWindow();
+					var foregroundThread = foreground == IntPtr.Zero ? 0u : GetWindowThreadProcessId(foreground, out _);
+					var thisThread = GetWindowThreadProcessId(hwnd, out _);
+					var attached = foregroundThread != 0 && foregroundThread != thisThread
+						&& AttachThreadInput(foregroundThread, thisThread, true);
+					try {
+						SetWindowPos(hwnd, HwndTopmost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpShowWindow);
+						BringWindowToTop(hwnd);
+						SetForegroundWindow(hwnd);
+						SetWindowPos(hwnd, HwndNoTopmost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpShowWindow);
+					} finally {
+						if (attached)
+							AttachThreadInput(foregroundThread, thisThread, false);
+					}
+					foregrounded = GetForegroundWindow() == hwnd;
+				}
+			}
 
 			return JsonSerializer.Serialize(new {
 				success = true,
 				isActive = mainWindow.IsActive,
 				windowState = mainWindow.WindowState.ToString(),
-				nativeFocused
+				nativeFocused,
+				foregrounded
 			});
 		}
+
+		[DllImport("user32.dll")]
+		static extern bool SetForegroundWindow(IntPtr hWnd);
+
+		[DllImport("user32.dll")]
+		static extern IntPtr GetForegroundWindow();
+
+		static readonly IntPtr HwndTopmost = new(-1);
+		static readonly IntPtr HwndNoTopmost = new(-2);
+		const uint SwpNoSize = 0x0001;
+		const uint SwpNoMove = 0x0002;
+		const uint SwpShowWindow = 0x0040;
+
+		[DllImport("user32.dll")]
+		static extern bool BringWindowToTop(IntPtr hWnd);
+
+		[DllImport("user32.dll")]
+		static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
+
+		[DllImport("user32.dll")]
+		static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+		[DllImport("user32.dll", SetLastError = true)]
+		static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool attach);
 
 		[DevFlowAction("od.window.title", Description = "Inspect the main workbench window title - used to verify ILSpy's hosted panes don't rename the OpenDevelop window")]
 		public static string GetMainWindowTitle()
@@ -1687,7 +1739,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 
-		[DevFlowAction("od.file.set-caret-offset", Description = "Set an open file's primary text editor caret to a specific document offset - used to control exactly where AvalonEditViewContent.TextArea_Drop's XAML-toolbox drop (which inserts at the CURRENT caret offset, not the mouse drop point) will insert markup, since a synthetic drag can land the mouse anywhere over the TextArea without moving the caret itself")]
+		[DevFlowAction("od.file.set-caret-offset", Description = "Set an open file's primary text-editor caret to a document offset. Integration tests use this to prove an XAML toolbox drop follows the mouse position rather than the prior caret location.")]
 		public static string SetCaretOffset(string path, int offset)
 		{
 			var editor = ActivateTextEditorView(path);
@@ -1731,23 +1783,38 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			if (document == null || offset < 0 || offset > document.TextLength)
 				return JsonSerializer.Serialize(new { success = false, error = "Offset out of range: " + offset });
 
-			// The visual line for the target offset only exists once it has been laid out, so make
-			// sure it is scrolled into view first.
+			// The visual line for the target offset only exists once it has been laid out.  Merely
+			// assigning Caret.Offset does not guarantee that AvalonEdit scrolls it into the usable
+			// text viewport; it can leave the queried point beneath the horizontal scrollbar.
+			// Scroll explicitly before resolving its screen position so an OS-level toolbox drop
+			// targets text rather than a scrollbar.
 			var location = document.GetLocation(offset);
-			editor.Caret.Offset = offset;
+			// Keep the desired drop line safely inside the TextView rather than at its lower
+			// edge, where AvalonEdit's horizontal scrollbar overlaps the apparent position.
+			// The visual position below still addresses `location`; this only chooses the
+			// viewport's scroll origin.
+			editor.JumpTo(Math.Max(1, location.Line - 3), 1);
 			textView.EnsureVisualLines();
 
 			var visualPosition = textView.GetVisualPosition(
 				new ICSharpCode.AvalonEdit.TextViewPosition(location),
 				ICSharpCode.AvalonEdit.Rendering.VisualYPosition.TextMiddle) - textView.ScrollOffset;
 			var screen = textView.PointToScreen(visualPosition);
+			var textTopLeft = textView.PointToScreen(new Point(0, 0));
+			var textBottomRight = textView.PointToScreen(new Point(textView.ActualWidth, textView.ActualHeight));
 			return JsonSerializer.Serialize(new {
 				success = true,
 				offset,
 				line = location.Line,
 				column = location.Column,
 				x = screen.X,
-				y = screen.Y
+				y = screen.Y,
+				textArea = new {
+					x = textTopLeft.X,
+					y = textTopLeft.Y,
+					width = textBottomRight.X - textTopLeft.X,
+					height = textBottomRight.Y - textTopLeft.Y
+				}
 			});
 		}
 

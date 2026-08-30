@@ -38,6 +38,7 @@ public static class WinUIXamlDesignerDevFlowActions
 			active = true,
 			framework = view.Framework.Kind.ToString(),
 			evidence = view.Framework.Evidence,
+			backend = view.BackendName,
 			rendered = view.HasRenderedPreview,
 			status = view.StatusText,
 			documentError = view.DocumentError,

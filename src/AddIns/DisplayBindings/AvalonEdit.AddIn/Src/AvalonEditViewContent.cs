@@ -299,11 +299,28 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		void SetupXamlDragDrop()
 		{
 			var textArea = codeEditor.PrimaryTextEditor.TextArea;
+			// Toolbox drags are OLE drags originating outside AvalonEdit.  Subscribing
+			// to Drop alone is not sufficient: WPF will not route such a drop unless
+			// the target opts into it and advertises a permitted effect during the drag.
+			textArea.AllowDrop = true;
+			textArea.DragEnter += TextArea_XamlDragOver;
+			textArea.DragOver += TextArea_XamlDragOver;
 			textArea.Drop += TextArea_Drop;
+			XamlDropLog("Setup", textArea, null);
+		}
+
+		void TextArea_XamlDragOver(object sender, DragEventArgs e)
+		{
+			XamlDropLog("DragOver", (TextArea)sender, e);
+			if (e.Data.GetDataPresent("ComponentTypeName")) {
+				e.Effects = e.AllowedEffects & DragDropEffects.Copy;
+				e.Handled = true;
+			}
 		}
 
 		void TextArea_Drop(object sender, DragEventArgs e)
 		{
+			XamlDropLog("Drop", (TextArea)sender, e);
 			string typeName = e.Data.GetData("ComponentTypeName") as string;
 			if (typeName == null)
 				return;
@@ -312,12 +329,28 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			int lastDot = typeName.LastIndexOf('.');
 			string tagName = lastDot >= 0 ? typeName.Substring(lastDot + 1) : typeName;
 
-			string xaml = $"<{tagName} />";
-			int offset = GetDropOffset((TextArea)sender, e);
-			codeEditor.Document.Insert(offset, xaml);
-			// Leave the caret after the inserted markup, matching where a typed edit would end up.
-			codeEditor.PrimaryTextEditor.CaretOffset = offset + xaml.Length;
-			e.Handled = true;
+			try {
+				string xaml = $"<{tagName} />";
+				int offset = GetDropOffset((TextArea)sender, e);
+				XamlDropLog($"Insert offset={offset} len={codeEditor.Document.TextLength}", (TextArea)sender, e);
+				codeEditor.Document.Insert(offset, xaml);
+				// Leave the caret after the inserted markup, matching where a typed edit would end up.
+				codeEditor.PrimaryTextEditor.CaretOffset = offset + xaml.Length;
+				e.Handled = true;
+				XamlDropLog("Inserted", (TextArea)sender, e);
+			} catch (Exception ex) {
+				XamlDropLog("Insert failed: " + ex, (TextArea)sender, e);
+			}
+		}
+
+		static void XamlDropLog(string stage, TextArea textArea, DragEventArgs e)
+		{
+			try {
+				var type = e?.Data?.GetData("ComponentTypeName") as string ?? "<none>";
+				var position = e?.GetPosition(textArea) ?? new Point();
+				File.AppendAllText(Path.Combine(Path.GetTempPath(), "opendevelop-xaml-drop.log"),
+					$"[{DateTime.Now:HH:mm:ss.fff}] {stage} allowDrop={textArea.AllowDrop} type={type} pos=({position.X:F1},{position.Y:F1}) handled={e?.Handled}{Environment.NewLine}");
+			} catch { }
 		}
 
 		/// <summary>
