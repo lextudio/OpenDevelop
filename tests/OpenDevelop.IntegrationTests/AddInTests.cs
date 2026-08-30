@@ -55,6 +55,10 @@ public sealed class AddInTests : IAsyncDisposable
     readonly string _unoSolutionPath;
     readonly string _unoPagePath;
 
+    readonly string _winUISampleDir;
+    readonly string _winUISolutionPath;
+    readonly string _winUIPagePath;
+
     readonly string _vbFormsDir;
     readonly string _vbFormsSolutionPath;
 
@@ -63,31 +67,35 @@ public sealed class AddInTests : IAsyncDisposable
     public AddInTests(OpenDevelopAppFixture app)
     {
         _app = app;
-                _repoDir = Path.Combine(Path.GetTempPath(), "GitAddInTests-" + Guid.NewGuid().ToString("N"));
-                SetUpGitRepo();
-                // Installing a package mutates the .csproj on disk - copy the fixture to a temp dir so
-                // the test doesn't write a PackageReference into this repo's tracked fixture file on
-                // every run (the same reasoning as GitAddInTests' per-test temp git repo).
-                _projectDir = Path.Combine(Path.GetTempPath(), "NuGetAddInTests-" + Guid.NewGuid().ToString("N"));
-                CopyDirectory(app.NuGetFixtureTemplatePath, _projectDir);
-                if (File.Exists(IlSpySettingsPath))
-                {
-                    _ilSpySettingsBackup = Path.Combine(Path.GetTempPath(), "ILSpy.xml." + Guid.NewGuid().ToString("N"));
-                    File.Copy(IlSpySettingsPath, _ilSpySettingsBackup);
-                    File.Delete(IlSpySettingsPath);
-                }
-                _solutionDir = Path.Combine(Path.GetTempPath(), "RoslynRefactoringTests-" + Guid.NewGuid().ToString("N"));
-                CopyDirectoryOd(Path.GetDirectoryName(app.SolutionExplorerFixturePath)!, _solutionDir);
-                _solutionPath = Path.Combine(_solutionDir, Path.GetFileName(app.SolutionExplorerFixturePath));
-                _widgetPath = Path.Combine(_solutionDir, "SampleApp", "Models", "Widget.cs");
-                _widgetServicePath = Path.Combine(_solutionDir, "SampleApp", "Services", "WidgetService.cs");
-                _unoSampleDir = Path.Combine(Path.GetTempPath(), "WinUIDesignerTests-" + Guid.NewGuid().ToString("N"));
-                CopyDirectoryOd(Path.GetDirectoryName(app.UnoXamlSampleSolutionPath)!, _unoSampleDir);
-                _unoSolutionPath = Path.Combine(_unoSampleDir, Path.GetFileName(app.UnoXamlSampleSolutionPath));
-                _unoPagePath = Path.Combine(_unoSampleDir, "MainPage.xaml");
-                _vbFormsDir = Path.Combine(Path.GetTempPath(), "VbFormsDesignerTests-" + Guid.NewGuid().ToString("N"));
-                CopyDirectoryOd(Path.GetDirectoryName(app.VbWinFormsSampleSolutionPath)!, _vbFormsDir);
-                _vbFormsSolutionPath = Path.Combine(_vbFormsDir, Path.GetFileName(app.VbWinFormsSampleSolutionPath));
+        _repoDir = Path.Combine(Path.GetTempPath(), "GitAddInTests-" + Guid.NewGuid().ToString("N"));
+        SetUpGitRepo();
+        // Installing a package mutates the .csproj on disk - copy the fixture to a temp dir so
+        // the test doesn't write a PackageReference into this repo's tracked fixture file on
+        // every run (the same reasoning as GitAddInTests' per-test temp git repo).
+        _projectDir = Path.Combine(Path.GetTempPath(), "NuGetAddInTests-" + Guid.NewGuid().ToString("N"));
+        CopyDirectory(app.NuGetFixtureTemplatePath, _projectDir);
+        if (File.Exists(IlSpySettingsPath))
+        {
+            _ilSpySettingsBackup = Path.Combine(Path.GetTempPath(), "ILSpy.xml." + Guid.NewGuid().ToString("N"));
+            File.Copy(IlSpySettingsPath, _ilSpySettingsBackup);
+            File.Delete(IlSpySettingsPath);
+        }
+        _solutionDir = Path.Combine(Path.GetTempPath(), "RoslynRefactoringTests-" + Guid.NewGuid().ToString("N"));
+        CopyDirectoryOd(Path.GetDirectoryName(app.SolutionExplorerFixturePath)!, _solutionDir);
+        _solutionPath = Path.Combine(_solutionDir, Path.GetFileName(app.SolutionExplorerFixturePath));
+        _widgetPath = Path.Combine(_solutionDir, "SampleApp", "Models", "Widget.cs");
+        _widgetServicePath = Path.Combine(_solutionDir, "SampleApp", "Services", "WidgetService.cs");
+        _unoSampleDir = Path.Combine(Path.GetTempPath(), "WinUIDesignerTests-" + Guid.NewGuid().ToString("N"));
+        CopyDirectoryOd(Path.GetDirectoryName(app.UnoXamlSampleSolutionPath)!, _unoSampleDir);
+        _unoSolutionPath = Path.Combine(_unoSampleDir, Path.GetFileName(app.UnoXamlSampleSolutionPath));
+        _unoPagePath = Path.Combine(_unoSampleDir, "MainPage.xaml");
+        _winUISampleDir = Path.Combine(Path.GetTempPath(), "WinUIDesignerTests-" + Guid.NewGuid().ToString("N"));
+        CopyDirectoryOd(Path.GetDirectoryName(app.WinUISampleSolutionPath)!, _winUISampleDir);
+        _winUISolutionPath = Path.Combine(_winUISampleDir, Path.GetFileName(app.WinUISampleSolutionPath));
+        _winUIPagePath = Path.Combine(_winUISampleDir, "MainPage.xaml");
+        _vbFormsDir = Path.Combine(Path.GetTempPath(), "VbFormsDesignerTests-" + Guid.NewGuid().ToString("N"));
+        CopyDirectoryOd(Path.GetDirectoryName(app.VbWinFormsSampleSolutionPath)!, _vbFormsDir);
+        _vbFormsSolutionPath = Path.Combine(_vbFormsDir, Path.GetFileName(app.VbWinFormsSampleSolutionPath));
     }
 
     [Fact]
@@ -1710,6 +1718,212 @@ public sealed class AddInTests : IAsyncDisposable
         await OpenUnoDesignerAsync();
     }
 
+    // ========================================================================
+    // WinUI-only tests: exercise the WinUI designer against the WinUI sample
+    // project, coexisting with the Uno tests above. They reuse the same pad
+    // endpoints but open the WinUISample instead of UnoXamlSample.
+    // ========================================================================
+
+    [Fact]
+    public async Task WinUIOnly_DesignerOpensWinUIProject()
+    {
+        var status = await OpenWinUIDesignerAsync();
+        Assert.Equal("WinUI", status.GetProperty("framework").GetString());
+    }
+
+    [Fact]
+    public async Task WinUIOnly_ThemeSwitch_ChangesRenderedBackgroundPixels()
+    {
+        await OpenWinUIDesignerAsync();
+
+        await _app.InvokeAsync("od.winui-designer.theme", "Light");
+        var lightBaseline = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            var s = await _app.InvokeAsync("od.winui-designer.render-sample");
+            return s.GetProperty("sample").GetString()?.Contains("center=#EEEEEE") == true;
+        }, TimeSpan.FromSeconds(20));
+        Assert.True(lightBaseline, "Light theme should render the Light PageBackgroundBrush");
+
+        var set = await _app.InvokeAsync("od.winui-designer.theme", "Dark");
+        Assert.True(set.GetProperty("success").GetBoolean(), set.ToString());
+
+        JsonElement darkSample = default;
+        var darkArrived = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            darkSample = await _app.InvokeAsync("od.winui-designer.render-sample");
+            return darkSample.GetProperty("sample").GetString()?.Contains("center=#222222") == true;
+        }, TimeSpan.FromSeconds(20));
+        Assert.True(darkArrived, "Dark theme should re-render with #222222, got: " + darkSample);
+
+        await _app.InvokeAsync("od.winui-designer.theme", "Light");
+        var lightArrived = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            var s = await _app.InvokeAsync("od.winui-designer.render-sample");
+            return s.GetProperty("sample").GetString()?.Contains("center=#EEEEEE") == true;
+        }, TimeSpan.FromSeconds(20));
+        Assert.True(lightArrived, "Light theme should re-render with #EEEEEE");
+    }
+
+    [Fact]
+    public async Task WinUIOnly_DesignSizePresets_ResizeCanvas()
+    {
+        await OpenWinUIDesignerAsync();
+
+        var phone = await _app.InvokeAsync("od.winui-designer.design-size", "phone");
+        Assert.Equal("phone", phone.GetProperty("preset").GetString());
+        var phoneStatus = await WaitForStatusContainingAsync("390");
+        Assert.Contains("390", phoneStatus);
+
+        var tablet = await _app.InvokeAsync("od.winui-designer.design-size", "tablet");
+        Assert.Equal("tablet", tablet.GetProperty("preset").GetString());
+        var tabletStatus = await WaitForStatusContainingAsync("768");
+        Assert.Contains("768", tabletStatus);
+
+        var reset = await _app.InvokeAsync("od.winui-designer.design-size", "reset");
+        Assert.True(reset.GetProperty("success").GetBoolean(), reset.ToString());
+        var resetStatus = await WaitForStatusContainingAsync("1280");
+        Assert.Contains("1280", resetStatus);
+    }
+
+    [Fact]
+    public async Task WinUIOnly_SourceEditOutsideDesigner_RefreshesDesignSurface()
+    {
+        await OpenWinUIDesignerAsync();
+
+        var switched = await _app.InvokeAsync("od.winui-designer.switch-to-source");
+        Assert.True(switched.GetProperty("success").GetBoolean(), switched.ToString());
+
+        var edit = await _app.InvokeAsync("od.search.replace", "Hello WinUI", "Edited In Source", "solution");
+        Assert.True(edit.GetProperty("success").GetBoolean(), edit.ToString());
+
+        var status = await WaitForRenderedAsync();
+        Assert.Null(status.GetProperty("documentError").GetString());
+        Assert.Contains("Rendered by", status.GetProperty("status").GetString(), StringComparison.OrdinalIgnoreCase);
+
+        await _app.InvokeAsync("od.file.save-all");
+        var onDisk = await File.ReadAllTextAsync(_winUIPagePath);
+        Assert.Contains("Edited In Source", onDisk);
+    }
+
+    [Fact]
+    public async Task WinUIOnly_PropertiesPadEdit_UpdatesSourceAndRender()
+    {
+        await OpenWinUIDesignerAsync();
+
+        var selected = await _app.InvokeAsync("od.winui-designer.select", "PrimaryButton");
+        Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
+
+        var beforeBounds = (await _app.InvokeAsync("od.winui-designer.describe-element", "PrimaryButton"))
+            .GetProperty("description").GetString();
+
+        var edited = await WaitForWinUIPropertiesPadEditAsync("Content", "Changed through Properties", timeoutSeconds: 10);
+        Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
+        Assert.Equal("PrimaryButton", edited.GetProperty("selectedName").GetString());
+        Assert.Equal("Content", edited.GetProperty("propertyName").GetString());
+
+        var dirty = await _app.InvokeAsync("od.file.is-dirty", _winUIPagePath);
+        Assert.True(dirty.GetProperty("isDirty").GetBoolean(),
+            "Editing through the Properties pad should dirty the designer document");
+
+        var widened = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            var d = await _app.InvokeAsync("od.winui-designer.describe-element", "PrimaryButton");
+            return d.GetProperty("success").GetBoolean()
+                && d.GetProperty("description").GetString() != beforeBounds;
+        }, TimeSpan.FromSeconds(20), initialDelayMs: 100, maxDelayMs: 500);
+        Assert.True(widened,
+            "Expected the re-render to widen the button after the Properties pad edit");
+
+        var saved = await _app.InvokeAsync("od.file.save", _winUIPagePath);
+        Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+        var savedXaml = await File.ReadAllTextAsync(_winUIPagePath);
+        Assert.Contains("Content=\"Changed through Properties\"", savedXaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WinUIOnly_InvalidXamlReportsDiagnosticThenRecovers()
+    {
+        await OpenWinUIDesignerAsync();
+
+        Assert.True((await _app.InvokeAsync("od.winui-designer.switch-to-source")).GetProperty("success").GetBoolean());
+        await _app.InvokeAsync("od.file.edit-text", _winUIPagePath, "<Bad");
+
+        JsonElement broken = default;
+        var reported = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            broken = await _app.InvokeAsync("od.winui-designer.status");
+            return broken.TryGetProperty("active", out var active) && active.GetBoolean()
+                && broken.GetProperty("documentError").ValueKind != JsonValueKind.Null;
+        }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 500);
+        Assert.True(reported, "Expected malformed XAML to surface a diagnostic: " + broken);
+
+        Assert.True((await _app.InvokeAsync("od.addins")).TryGetProperty("addins", out _));
+
+        Assert.True((await _app.InvokeAsync("od.winui-designer.switch-to-source")).GetProperty("success").GetBoolean());
+        var repaired = await _app.InvokeAsync("od.search.replace", "<Bad", "", "solution");
+        Assert.True(repaired.GetProperty("success").GetBoolean(), repaired.ToString());
+
+        var recovered = await WaitForRenderedAsync();
+        Assert.Null(recovered.GetProperty("documentError").GetString());
+    }
+
+    [Fact]
+    public async Task WinUIOnly_ContextCommands_CopyPasteWrapDeleteLandAsSourceEdits()
+    {
+        await OpenWinUIDesignerAsync();
+
+        var copied = await _app.InvokeAsync("od.winui-designer.context", "copy", "TitleText");
+        Assert.True(copied.GetProperty("success").GetBoolean(), copied.ToString());
+        var pasted = await _app.InvokeAsync("od.winui-designer.context", "paste", "RootStack");
+        Assert.True(pasted.GetProperty("success").GetBoolean(), pasted.ToString());
+
+        var status = await WaitForRenderedAsync();
+        var names = status.GetProperty("elementNames").EnumerateArray().Select(n => n.GetString()).ToList();
+        Assert.Contains("TextBlock1", names);
+        Assert.True(status.GetProperty("isDirty").GetBoolean(), "Pasting must dirty the document");
+
+        var wrapped = await _app.InvokeAsync("od.winui-designer.context", "wrap-grid", "TextBlock1");
+        Assert.True(wrapped.GetProperty("success").GetBoolean(), wrapped.ToString());
+        status = await WaitForRenderedAsync();
+        names = status.GetProperty("elementNames").EnumerateArray().Select(n => n.GetString()).ToList();
+        Assert.Contains("Grid1", names);
+
+        var deleted = await _app.InvokeAsync("od.winui-designer.context", "delete", "TextBlock1");
+        Assert.True(deleted.GetProperty("success").GetBoolean(), deleted.ToString());
+        status = await WaitForRenderedAsync();
+        names = status.GetProperty("elementNames").EnumerateArray().Select(n => n.GetString()).ToList();
+        Assert.DoesNotContain("TextBlock1", names);
+        Assert.Contains("Grid1", names);
+    }
+
+    [Fact]
+    public async Task WinUIOnly_ClosingDocument_ReleasesRuntimeHostAndPreviewAssembly()
+    {
+        await OpenWinUIDesignerAsync();
+
+        var open = await _app.InvokeAsync("od.winui-designer.runtime-stats");
+        Assert.True(open.GetProperty("success").GetBoolean(), open.ToString());
+        Assert.True(open.GetProperty("childAlive").GetBoolean(),
+            "Expected the design host child to be alive while the document is open: " + open);
+
+        Assert.True((await _app.InvokeAsync("od.close-active-view")).GetProperty("success").GetBoolean());
+
+        JsonElement closed = default;
+        var released = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            closed = await _app.InvokeAsync("od.winui-designer.runtime-stats");
+            return closed.GetProperty("success").GetBoolean()
+                && !closed.GetProperty("childAlive").GetBoolean()
+                && closed.GetProperty("liveHosts").GetInt32() == 0;
+        }, TimeSpan.FromSeconds(30), initialDelayMs: 200, maxDelayMs: 1000);
+
+        Assert.True(released,
+            "Closing the document must dispose the designer host and let its collectible preview "
+            + "assembly be collected: " + closed);
+
+        await OpenWinUIDesignerAsync();
+    }
+
     async Task<JsonElement> OpenUnoDesignerAsync()
     {
         var openedSolution = await _app.ReopenSolutionAsync(_unoSolutionPath);
@@ -1718,6 +1932,17 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
         var status = await WaitForRenderedAsync();
         Assert.Equal("Uno", status.GetProperty("framework").GetString());
+        return status;
+    }
+
+    async Task<JsonElement> OpenWinUIDesignerAsync()
+    {
+        var openedSolution = await _app.ReopenSolutionAsync(_winUISolutionPath);
+        Assert.True(openedSolution.GetProperty("success").GetBoolean(), openedSolution.ToString());
+        var opened = await _app.InvokeAsync("od.open-file", _winUIPagePath);
+        Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+        var status = await WaitForRenderedAsync();
+        Assert.Equal("WinUI", status.GetProperty("framework").GetString());
         return status;
     }
 
@@ -4474,5 +4699,6 @@ EndGlobal
                 try { await _app.InvokeAsync("od.file.revert-all-dirty"); } catch { }
                 try { Directory.Delete(_solutionDir, recursive: true); } catch { }
                 try { Directory.Delete(_unoSampleDir, recursive: true); } catch { }
+                try { Directory.Delete(_winUISampleDir, recursive: true); } catch { }
     }
 }

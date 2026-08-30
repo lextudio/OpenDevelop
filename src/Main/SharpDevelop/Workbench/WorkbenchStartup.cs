@@ -79,7 +79,9 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			// Wired here (not in ProGPU.Wpf itself) because that project only compiles against a
 			// minimal WPF-shaped stub (external/ProGPU/src/WindowsBase) that has no
 			// System.Windows.Threading namespace at all - this project references the real one.
+#if LIBREWPF_CUSTOM_EXTENSIONS
 			Dispatcher.NativeInputPump = PumpActiveWindowHosts;
+#endif
 			SD.Services.AddService(typeof(IWorkbench), workbench);
 			// Registers SD.WinForms - see IWinFormsService.cs's Compile Remove/re-include comment in
 			// ICSharpCode.SharpDevelop.csproj. Needed by FormsDesigner's DesignerViewContent to embed
@@ -138,6 +140,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			};
 		}
 		
+#if LIBREWPF_CUSTOM_EXTENSIONS
 		static void PumpActiveWindowHosts()
 		{
 			foreach (var host in WpfPortableWindowActivation.GetActiveHosts()) {
@@ -152,6 +155,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				}
 			}
 		}
+#endif
 
 		static void ComponentDispatcher_ThreadIdle(object sender, EventArgs e)
 		{

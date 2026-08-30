@@ -68,9 +68,14 @@ public sealed class UnoDesignClient : DesignerDocumentHostClient, IDesignHostCli
 	/// <param name="hostDllPath">Explicit path to the child host dll, overriding the production
 	/// deployment lookup. Null falls back to <see cref="LocateChildDll"/> - used by tests that
 	/// point directly at a build-output copy of the child.</param>
-	public static async Task<UnoDesignClient> StartAsync(string runtimeConfigPath, string depsFilePath, CancellationToken cancellationToken, string? hostDllPath = null)
+	/// <param name="appBinPath">The designed app's output directory, preloaded by the child so
+	/// XamlReader can resolve its types. Normally implied by <paramref name="runtimeConfigPath"/>,
+	/// but passing it on its own is what makes the designer usable when the app and the host target
+	/// DIFFERENT frameworks: adopting the app's runtimeconfig pins the child to the app's framework
+	/// version, so an app on an older TFM than the IDE's host simply fails to launch it.</param>
+	public static async Task<UnoDesignClient> StartAsync(string runtimeConfigPath, string depsFilePath, CancellationToken cancellationToken, string? hostDllPath = null, string? appBinPath = null)
 	{
-		var connection = new Connection(runtimeConfigPath, depsFilePath, hostDllPath ?? LocateChildDll());
+		var connection = new Connection(runtimeConfigPath, depsFilePath, hostDllPath ?? LocateChildDll(), appBinPath);
 		await connection.StartConnectionAsync(cancellationToken).ConfigureAwait(false);
 		return new UnoDesignClient(connection, null);
 	}
@@ -198,23 +203,31 @@ public sealed class UnoDesignClient : DesignerDocumentHostClient, IDesignHostCli
 		readonly string runtimeConfigPath;
 		readonly string depsFilePath;
 		readonly string? hostDllPath;
+		readonly string? appBinPath;
 		public DesignerCapabilities Capabilities { get; private set; } = null!;
-		public Connection(string runtimeConfigPath, string depsFilePath, string? hostDllPath)
+		public Connection(string runtimeConfigPath, string depsFilePath, string? hostDllPath, string? appBinPath = null)
 		{
 			this.runtimeConfigPath = runtimeConfigPath;
 			this.depsFilePath = depsFilePath;
 			this.hostDllPath = hostDllPath;
+			this.appBinPath = appBinPath;
 		}
 		public Task StartConnectionAsync(CancellationToken token) => StartAsync(token);
 		protected override string GetChildDllPath() => hostDllPath ?? throw new FileNotFoundException("The Uno design host child is not deployed.");
 		protected override string BuildCommandLine(string childDll, int port, string token)
 		{
-			var arguments = $"exec \"{childDll}\" --port {port} --token {token}";
 			if (File.Exists(runtimeConfigPath) && File.Exists(depsFilePath)) {
-				var appBin = Path.GetDirectoryName(runtimeConfigPath);
-				arguments = $"exec --runtimeconfig \"{runtimeConfigPath}\" --depsfile \"{depsFilePath}\" \"{childDll}\" --port {port} --token {token} --appbin \"{appBin}\"";
+				// Full fidelity: run inside the app's own dependency graph. Only valid when the app
+				// does not target an OLDER framework than this host - its runtimeconfig pins the
+				// child's framework version too.
+				var appBin = appBinPath ?? Path.GetDirectoryName(runtimeConfigPath);
+				return $"exec --runtimeconfig \"{runtimeConfigPath}\" --depsfile \"{depsFilePath}\" \"{childDll}\" --port {port} --token {token} --appbin \"{appBin}\"";
 			}
-			return arguments;
+			// Host's own graph, but still preload the app's assemblies so its types resolve. This is
+			// the path taken when the app and the host target different frameworks.
+			return string.IsNullOrEmpty(appBinPath)
+				? $"exec \"{childDll}\" --port {port} --token {token}"
+				: $"exec \"{childDll}\" --port {port} --token {token} --appbin \"{appBinPath}\"";
 		}
 		protected override TimeSpan HandshakeTimeout => TimeSpan.FromSeconds(60);
 		protected override async Task OnConnectedAsync(JsonRpc rpc, string token, CancellationToken cancellationToken)

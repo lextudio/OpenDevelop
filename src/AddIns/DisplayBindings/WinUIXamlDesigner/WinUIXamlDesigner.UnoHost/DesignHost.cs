@@ -45,6 +45,24 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		/// </summary>
 		public static Action<FrameworkElement?, FrameworkElement?>? HostVisualRoot;
 
+		/// <summary>
+		/// Optional hook letting a host rewrite XAML text immediately before every
+		/// <c>XamlReader.Load</c> call in this class (document load, app resources, a
+		/// toolbox-inserted element's template).
+		///
+		/// Uno leaves this null: its native <c>XamlControlsResources</c> merge makes the Fluent v2
+		/// design tokens (colors, default text/control styles) available through the ordinary
+		/// Application.Resources fallback chain, the same way a real app gets them. The Microsoft
+		/// host cannot construct that type unpackaged (see FrameworkDefaultResources.cs), so it
+		/// installs the same tokens from plain XAML instead - but a `{StaticResource ...}`
+		/// reference resolves EAGERLY, at the parse that node belongs to, and does not reach into
+		/// Application.Resources the way `{ThemeResource ...}` does at live-tree lookup time later.
+		/// Merging the token dictionary into the SAME text being parsed - what this hook does - is
+		/// the only way a StaticResource reference to a Fluent v2 token resolves for a host that
+		/// cannot supply XamlControlsResources.
+		/// </summary>
+		public static Func<string, string>? TransformXamlBeforeLoad;
+
 		FrameworkElement? root;
 
 		public DesignerCapabilities GetCapabilities()
@@ -453,6 +471,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			{
 				lastXaml = request.Xaml;
 				var xaml = InjectDesignData(request.Xaml);
+				xaml = TransformXamlBeforeLoad?.Invoke(xaml) ?? xaml;
 				var previousRoot = root;
 				root = (FrameworkElement)Microsoft.UI.Xaml.Markup.XamlReader.Load(xaml);
 				HostVisualRoot?.Invoke(previousRoot, root);
@@ -739,7 +758,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			}
 			try
 			{
-				var newElement = (UIElement)Microsoft.UI.Xaml.Markup.XamlReader.Load(item.Template);
+				var newElement = (UIElement)Microsoft.UI.Xaml.Markup.XamlReader.Load(TransformXamlBeforeLoad?.Invoke(item.Template) ?? item.Template);
 				if (parent is Panel panel)
 				{
 					panel.Children.Add(newElement);

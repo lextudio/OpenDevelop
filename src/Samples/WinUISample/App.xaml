@@ -1,0 +1,17 @@
+<Application x:Class="WinUISample.App"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="PageBackgroundBrush" Color="#FFEEEEEE" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="PageBackgroundBrush" Color="#FF222222" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+            <SolidColorBrush x:Key="PrimaryButtonBrush" Color="#FF4488FF" />
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

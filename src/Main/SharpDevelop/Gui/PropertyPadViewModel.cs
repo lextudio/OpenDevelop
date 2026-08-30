@@ -239,7 +239,15 @@ internal sealed class PropertyPadViewModel : ToolPaneModel, IPropertyPadHost, ID
     void WorkbenchActiveContentChanged(object sender, EventArgs e)
     {
         var activeViewOrPad = SD.Workbench.ActiveContent;
-        IHasPropertyContainer c = (activeViewOrPad as IServiceProvider)?.GetService<IHasPropertyContainer>();
+        // Secondary designer views (WinUI, WPF and Forms) implement IHasPropertyContainer
+        // directly.  They are not IServiceProvider instances, so looking only through GetService
+        // loses their selection whenever ActiveContent is the view itself; the grid then retains
+        // the empty container even though the design surface has selected a control.
+        IHasPropertyContainer c = activeViewOrPad as IHasPropertyContainer
+            ?? (activeViewOrPad as IServiceProvider)?.GetService<IHasPropertyContainer>();
+        if (c == null) {
+            c = SD.Workbench.ActiveViewContent as IHasPropertyContainer;
+        }
         if (c == null) {
             if (previousContent == null) {
                 c = SD.GetActiveViewContentService<IHasPropertyContainer>();

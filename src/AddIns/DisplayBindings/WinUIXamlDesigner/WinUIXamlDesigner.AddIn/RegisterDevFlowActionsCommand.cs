@@ -19,6 +19,8 @@ public sealed class RegisterDevFlowActionsCommand : AbstractCommand
 		"ICSharpCode.WinUIXamlDesigner.ProGPUHost.ProGpuRuntimeHostBootstrap, ICSharpCode.WinUIXamlDesigner.ProGPUHost";
 	const string UnoBootstrap =
 		"ICSharpCode.WinUIXamlDesigner.UnoDesignHost.UnoDesignRuntimeHostBootstrap, ICSharpCode.WinUIXamlDesigner.UnoDesignHost";
+	const string MicrosoftWinUIBootstrap =
+		"ICSharpCode.WinUIXamlDesigner.UnoDesignHost.MicrosoftWinUIDesignRuntimeHostBootstrap, ICSharpCode.WinUIXamlDesigner.UnoDesignHost";
 
 	public override void Run()
 	{
@@ -38,16 +40,23 @@ public sealed class RegisterDevFlowActionsCommand : AbstractCommand
 			return;
 		}
 
+		if (string.Equals(selection, "microsoft", StringComparison.OrdinalIgnoreCase)) {
+			Register(MicrosoftWinUIBootstrap);
+			return;
+		}
+
 		if (!string.IsNullOrEmpty(selection)) {
 			LoggingService.Warn(
-				$"Ignoring unrecognized {RuntimeSelectionVariable}='{selection}' (expected 'uno' or 'progpu'); using the default runtime order.");
+				$"Ignoring unrecognized {RuntimeSelectionVariable}='{selection}' (expected 'microsoft', 'uno' or 'progpu'); using the default runtime order.");
 		}
 
 		// Default: ProGPU first, then the out-of-process Uno host - the registry tries factories
 		// in reverse registration order, so the Uno host becomes the default surface and ProGPU
-		// stays as the fallback when its child binary is not deployed.
+		// stays as the fallback when its child binary is not deployed. The Microsoft factory is
+		// registered last, but declines Uno projects and undeployed children.
 		Register(ProGpuBootstrap);
 		Register(UnoBootstrap);
+		Register(MicrosoftWinUIBootstrap);
 	}
 
 	static void Register(string bootstrapTypeName)

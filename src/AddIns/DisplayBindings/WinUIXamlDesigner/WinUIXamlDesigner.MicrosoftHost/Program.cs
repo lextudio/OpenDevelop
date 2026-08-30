@@ -4,6 +4,7 @@ using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Markup;
 using Windows.Graphics;
 
 namespace ICSharpCode.WinUIXamlDesigner.MicrosoftHost;
@@ -21,14 +22,37 @@ static class Program
 	[STAThread]
 	static int Main(string[] args)
 	{
+		// Must be the only statement here that runs before Run - see HostBootstrap's note on JIT
+		// timing. The client launches this child inside the designed app's dependency graph, so
+		// the host's own assemblies have to resolve from its own directory.
+		HostBootstrap.InstallOwnDependencyResolver();
+		return Run(args);
+	}
+
+	static int Run(string[] args)
+	{
+		// The app's own assemblies must be loaded before any XAML is parsed: XamlReader resolves
+		// local: types by scanning loaded assemblies. Without it almost no real page opens.
+		HostBootstrap.PreloadProjectAssemblies(HostBootstrap.ParseArgument(args, "--appbin"));
+
 		var exitCode = 0;
 		Application.Start(_ => new HostApplication(args, code => exitCode = code));
 		return exitCode;
 	}
 }
 
-sealed class HostApplication(string[] args, Action<int> reportExitCode) : Application
+// Implementing IXamlMetadataProvider is what makes XamlReader able to resolve anything beyond the
+// framework's small built-in core - see ReflectionXamlMetadata.cs. WinUI looks the provider up on
+// Application.Current, so it has to live on this class.
+sealed class HostApplication(string[] args, Action<int> reportExitCode) : Application, IXamlMetadataProvider
 {
+	readonly ReflectionXamlMetadataProvider metadata = new();
+
+	public IXamlType GetXamlType(Type type) => metadata.GetXamlType(type);
+	public IXamlType GetXamlType(string fullName) => metadata.GetXamlType(fullName);
+	public XmlnsDefinition[] GetXmlnsDefinitions() => metadata.GetXmlnsDefinitions();
+
+
 	// Everything here is deliberately in OnLaunched rather than the constructor: Application
 	// members are not usable until the framework has finished initializing the app object, and
 	// touching Resources from the constructor throws COMException 0x8000FFFF (E_UNEXPECTED) out of
@@ -36,15 +60,15 @@ sealed class HostApplication(string[] args, Action<int> reportExitCode) : Applic
 	// exit 0xC000027B, no stderr, no managed stack) and looks nothing like its cause.
 	protected override void OnLaunched(LaunchActivatedEventArgs launchArgs)
 	{
-		// NOTE: XamlControlsResources is deliberately NOT merged.
-		//
-		// The Uno host does merge it, but constructing it here throws
-		// "Cannot find a resource with the given key: AcrylicBackgroundFillColorDefaultBrush":
-		// unpackaged, this app's resources.pri carries only its own (empty) resources, and the
-		// WindowsAppSDK NuGet package ships no .pri to merge the framework theme resources from.
-		// Skipping it is correct rather than a workaround - WinUI resolves default control
-		// templates from the framework's own generic.xaml either way, and with the merge removed
-		// the child starts and completes the DDP handshake.
+		// NOTE: XamlControlsResources (the type real WinUI apps merge for the Fluent v2 palette) is
+		// deliberately NOT constructed here - unpackaged, it throws COMException 0x8000FFFF reading
+		// the WindowsAppSDK package's own resources.pri, before producing a single resource. The
+		// Uno host never hits this because its Skia backend doesn't go through that native path.
+		// FrameworkDefaultResources installs the same Fluent v2 tokens from plain, hand-authored
+		// XAML instead (vendored from microsoft-ui-xaml, no compiled-resource dependency) - see its
+		// own header and DefaultThemeResources/README.md for the full story. Must run before any
+		// document can open, since StaticResource references to these tokens resolve at parse time.
+		FrameworkDefaultResources.Install(Resources);
 		HeadlessDispatcher.Attach();
 		DesignRpc.LogPrefix = "WinUIXamlDesigner.MicrosoftHost";
 		InstallOffscreenVisualHost();

@@ -65,6 +65,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     public string WpfSampleSolutionPath => LocateWpfSampleSolution();
     public string WinFormsSampleSolutionPath => LocateWinFormsSampleSolution();
     public string UnoXamlSampleSolutionPath => LocateUnoXamlSampleSolution();
+    public string WinUISampleSolutionPath => LocateWinUISampleSolution();
     public string AspNetCoreSampleSolutionPath => LocateAspNetCoreSampleSolution();
     public string GitFixtureTemplatePath => LocateGitFixtureTemplate();
     public string FSharpFixtureSolutionPath => LocateFSharpFixture();
@@ -939,6 +940,18 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
             dir = Path.GetDirectoryName(dir);
         }
         throw new FileNotFoundException("Could not locate src/Samples/UnoXamlSample/UnoXamlSample.slnx");
+    }
+
+    static string LocateWinUISampleSolution()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir, "src", "Samples", "WinUISample", "WinUISample.slnx");
+            if (File.Exists(candidate)) return candidate;
+            dir = Path.GetDirectoryName(dir);
+        }
+        throw new FileNotFoundException("Could not locate src/Samples/WinUISample/WinUISample.slnx");
     }
 
     static string LocateXmlFixtureFile()

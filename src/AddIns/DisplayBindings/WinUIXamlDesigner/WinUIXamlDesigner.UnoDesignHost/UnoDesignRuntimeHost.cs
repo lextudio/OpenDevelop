@@ -39,6 +39,8 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 	readonly System.Windows.Threading.Dispatcher dispatcher;
 	readonly string projectDirectory;
 	readonly string documentFileName;
+	readonly string? hostDllPath;
+	readonly string hostDisplayName;
 	UnoDesignClient client;
 	Task connectTask;
 	DesignSnapshot lastSnapshot;
@@ -53,7 +55,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 	double? configuredDesignHeight;
 	bool disposed;
 
-	public UnoDesignRuntimeHost(XamlFrameworkContext framework, string documentFileName)
+	public UnoDesignRuntimeHost(XamlFrameworkContext framework, string documentFileName, string? hostDllPath = null, string? hostDisplayName = null)
 	{
 		// The host may be constructed on the UI thread but fed XAML from a background loader
 		// (AbstractViewContentHandlingLoadErrors.LoadInternal), and every async continuation
@@ -61,10 +63,12 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		// marshal all state/surface updates through it.
 		dispatcher = System.Windows.Threading.Dispatcher.CurrentDispatcher;
 		this.documentFileName = documentFileName;
+		this.hostDllPath = hostDllPath;
+		this.hostDisplayName = hostDisplayName ?? "Uno design host";
 		projectDirectory = framework?.ProjectFileName == null
 			? null
 			: Path.GetDirectoryName(framework.ProjectFileName);
-		StatusText = "Starting Uno design host…";
+		StatusText = "Starting " + this.hostDisplayName + "…";
 		surface.DesignThemeRequested += OnSurfaceThemeRequested;
 		surface.SizePresetRequested += OnSurfaceSizePresetRequested;
 		surface.ContextCommandRequested += OnSurfaceContextCommandRequested;
@@ -537,7 +541,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		try
 		{
 			var (runtimeConfig, depsFile) = ProjectDependencyContext();
-			client = await UnoDesignClient.AcquireSharedAsync(runtimeConfig, depsFile, CancellationToken.None);
+			client = await UnoDesignClient.AcquireSharedAsync(runtimeConfig, depsFile, CancellationToken.None, hostDllPath);
 			var capabilities = await client.GetCapabilitiesAsync();
 			Volatile.Write(ref catalogCache, capabilities.Toolbox
 				.Select(tool => new ToolboxItemInfo {
@@ -548,13 +552,13 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 					XamlNamespace = tool.XamlNamespace
 				}).ToList());
 			var appNote = await EnsureAppResourcesAsync();
-			SetStatus($"Uno design host ready ({capabilities.Runtime} {capabilities.Version}) for {kind}.{appNote}");
+			SetStatus($"{hostDisplayName} ready ({capabilities.Runtime} {capabilities.Version}) for {kind}.{appNote}");
 		}
 		catch (Exception e)
 		{
 			client?.Dispose();
 			client = null;
-			SetStatus("Uno design host failed to start: " + e.GetBaseException().Message);
+			SetStatus(hostDisplayName + " failed to start: " + e.GetBaseException().Message);
 		}
 	}
 
@@ -1156,7 +1160,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 			HasRenderedPreview = true;
 		}
 		StatusText = snapshot.Diagnostics.Count == 0
-			? $"Rendered by Uno design host ({FormatSize(snapshot.Render)})."
+			? $"Rendered by {hostDisplayName} ({FormatSize(snapshot.Render)})."
 			: string.Join(Environment.NewLine, snapshot.Diagnostics.Select(d => d.Message));
 		ApplyPersistedSettingsIfNeeded();
 		StateChanged?.Invoke(this, EventArgs.Empty);

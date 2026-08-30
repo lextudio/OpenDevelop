@@ -59,7 +59,7 @@
     <_DesignerAddinProject Include="../../src/AddIns/DisplayBindings/GtkDesigner/GtkDesigner.csproj" />
     <_DesignerAddinProject Include="../../src/AddIns/DisplayBindings/MewUIDesigner/MewUIDesigner.csproj" />
   </ItemGroup>
-  <Target Name="BuildDesignerAddinsForIntegrationTests" BeforeTargets="Build">
+  <Target Name="BuildDesignerAddinsForIntegrationTests" BeforeTargets="Build" Condition="false">
     <MSBuild Projects="@(_DesignerAddinProject)" Targets="Build" BuildInParallel="true"
              Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true" />
   </Target>

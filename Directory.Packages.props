@@ -3,8 +3,12 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <!-- Vendored UI libraries retain their upstream package policy. Avoid placing
-       configuration files inside their working trees/submodules. -->
-  <PropertyGroup Condition="$([System.String]::Copy('$(MSBuildProjectDirectory)').Replace('\\', '/').Contains('/src/Libraries/AvalonDock')) Or $([System.String]::Copy('$(MSBuildProjectDirectory)').Replace('\\', '/').Contains('/src/Libraries/AvalonEdit'))">
+       configuration files inside their working trees/submodules.
+
+       MSBuildProjectDirectory is not reliably set when Directory.Packages.props is
+       evaluated during NuGet SDK resolution, so we fall back to MSBuildProjectFullPath
+       (always available) and normalize path separators for cross-platform comparison. -->
+  <PropertyGroup Condition="$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)').Replace('\','/').Contains('/src/Libraries/AvalonDock')) Or $([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)').Replace('\','/').Contains('/src/Libraries/AvalonEdit'))">
     <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
@@ -56,11 +60,11 @@
     <PackageVersion Include="NuGet.Protocol" Version="7.6.0" />
     <PackageVersion Include="ProGPU.System.Drawing.Common" Version="0.1.0-preview.55" />
     <PackageVersion Include="ProGPU.WinUI" Version="0.1.0-preview.55" />
-    <PackageVersion Include="ProGPU.WinUI.Designer" Version="0.1.0-preview.47" />
-    <PackageVersion Include="ProGPU.WinUI.Themes.Fluent" Version="0.1.0-preview.47" />
-    <PackageVersion Include="ProGPU.Xaml" Version="0.1.0-preview.47" />
-    <PackageVersion Include="ProGPU.Xaml.Roslyn" Version="0.1.0-preview.47" />
-    <PackageVersion Include="ProGPU.Xaml.Workspaces" Version="0.1.0-preview.47" />
+    <PackageVersion Include="ProGPU.WinUI.Designer" Version="0.1.0-preview.55" />
+    <PackageVersion Include="ProGPU.WinUI.Themes.Fluent" Version="0.1.0-preview.55" />
+    <PackageVersion Include="ProGPU.Xaml" Version="0.1.0-preview.55" />
+    <PackageVersion Include="ProGPU.Xaml.Roslyn" Version="0.1.0-preview.55" />
+    <PackageVersion Include="ProGPU.Xaml.Workspaces" Version="0.1.0-preview.55" />
     <!-- Only the Microsoft WinUI host references this explicitly; it pins the same version
          Uno.Sdk already brings into WinUIXamlDesigner.UnoHost, so the DesignHost.cs both hosts
          share encodes exported PNGs through one identical Skia build. -->

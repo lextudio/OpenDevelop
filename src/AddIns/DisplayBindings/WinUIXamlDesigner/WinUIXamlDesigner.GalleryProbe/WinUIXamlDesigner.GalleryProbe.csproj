@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- A corpus probe, not a unit test: it drives the Microsoft WinUI design host over every .xaml
+       in a real third-party app (WinUI-Gallery) and reports what actually opens, so the designer's
+       coverage is measured against real markup rather than fixtures. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>WinUIXamlDesigner.GalleryProbe</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- AppResourceBuilder is the IDE-side half of app/resources: it is what turns the target
+         app's App.xaml into the self-contained ResourceDictionary XAML the client hands the child
+         over SetAppResourcesAsync. Without calling it, the probe never exercises that RPC at all,
+         which is exactly the gap that made ~110 WinUI-Gallery failures look like designer bugs
+         when they were really "the probe skipped a step every real IDE session performs". -->
+    <Compile Include="..\WinUIXamlDesigner.UnoDesignHost\AppResourceBuilder.cs" Link="AppResourceBuilder.cs" />
+    <ProjectReference Include="..\WinUIXamlDesigner.MicrosoftHost.Remote\WinUIXamlDesigner.MicrosoftHost.Remote.csproj" />
+  </ItemGroup>
+</Project>

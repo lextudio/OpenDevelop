@@ -110,7 +110,7 @@
   <Target Name="_PatchLibreWinFormsDepsJson"
           AfterTargets="GenerateBuildDependencyFile"
           Condition="'$(ProGpuWpfUseLibreWinForms)' == 'true' And ('$(OutputType)' == 'Exe' Or '$(OutputType)' == 'WinExe') And '$(NuGetPackageRoot)' != '' And Exists('$(ProjectDepsFilePath)')">
-    <Exec Command="python3 &quot;$(MSBuildThisFileDirectory)../build/patch-librewinforms-deps.py&quot; &quot;$(ProjectDepsFilePath)&quot; &quot;$(NuGetPackageRoot)&quot;" />
+    <Exec Command="pwsh -NoProfile -ExecutionPolicy Unrestricted -File &quot;$(MSBuildThisFileDirectory)../build/patch-librewinforms-deps.ps1&quot; -DepsPath &quot;$(ProjectDepsFilePath)&quot; -NuGetPackageRoot &quot;$(NuGetPackageRoot)&quot;" />
   </Target>
 
   <!--
