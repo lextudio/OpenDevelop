@@ -63,8 +63,12 @@ public sealed class LanguageServiceParserAdapter : IParserService
 	{
 		cancellationToken.ThrowIfCancellationRequested();
 		UpsertLanguageServiceDocument(fileName, fileContent, cancellationToken);
-		var unresolvedFile = CreateUnresolvedFile(fileName);
+		var unresolvedFile = CreateUnresolvedFile(fileName, fileContent, cancellationToken);
 		var parseInformation = new ParseInformation(unresolvedFile, fileContent?.Version, true);
+		if (fileContent == null && File.Exists(fileName))
+			fileContent = new ICSharpCode.AvalonEdit.Document.TextDocument(File.ReadAllText(fileName));
+		if (fileContent != null)
+			ExtractCommentTags(fileName, fileContent, parseInformation.TagComments);
 		RegisterParseInformation(fileName, parentProject, parseInformation);
 		return parseInformation;
 	}
@@ -82,6 +86,32 @@ public sealed class LanguageServiceParserAdapter : IParserService
 	public Task<IUnresolvedFile> ParseFileAsync(FileName fileName, ITextSource fileContent = null, IProject parentProject = null, CancellationToken cancellationToken = default)
 	{
 		return Task.Run(() => ParseFile(fileName, fileContent, parentProject, cancellationToken), cancellationToken);
+	}
+
+	static void ExtractCommentTags(FileName fileName, ITextSource fileContent, IList<TagComment> tagComments)
+	{
+		var tokens = SD.ParserService.TaskListTokens;
+		if (tokens == null || tokens.Count == 0)
+			return;
+		var text = fileContent.Text;
+		using var reader = new StringReader(text);
+		int line = 1;
+		string lineText;
+		while ((lineText = reader.ReadLine()) != null) {
+			int commentStart = lineText.IndexOf("//", StringComparison.Ordinal);
+			if (commentStart >= 0) {
+				string commentBody = lineText.Substring(commentStart + 2).TrimStart();
+				foreach (string token in tokens) {
+					if (commentBody.StartsWith(token, StringComparison.Ordinal)) {
+						int col = commentStart + 1;
+						string rest = commentBody.Substring(token.Length);
+						tagComments.Add(new TagComment(token, new DomRegion(fileName, line, col), rest));
+						break;
+					}
+				}
+			}
+			line++;
+		}
 	}
 
 	public ResolveResult Resolve(ITextEditor editor, TextLocation location, ICompilation compilation = null, CancellationToken cancellationToken = default)
@@ -180,7 +210,16 @@ public sealed class LanguageServiceParserAdapter : IParserService
 	{
 		if (unresolvedFile == null)
 			throw new ArgumentNullException(nameof(unresolvedFile));
-		RegisterParseInformation(fileName, project, new ParseInformation(unresolvedFile, null, false));
+		var parseInformation = new ParseInformation(unresolvedFile, null, false);
+		if (File.Exists(fileName)) {
+			try {
+				var text = File.ReadAllText(fileName);
+				var textSource = new ICSharpCode.AvalonEdit.Document.TextDocument(text);
+				ExtractCommentTags(fileName, textSource, parseInformation.TagComments);
+			} catch (IOException) {
+			}
+		}
+		RegisterParseInformation(fileName, project, parseInformation);
 	}
 
 	Snapshot GetCurrentSnapshot()
@@ -230,9 +269,61 @@ public sealed class LanguageServiceParserAdapter : IParserService
 		SD.MainThread.InvokeAsyncAndForget(() => ParseInformationUpdated(this, args));
 	}
 
-	static IUnresolvedFile CreateUnresolvedFile(FileName fileName)
+	// The first real (non-mock) IParser for .cs/.vb - see doc/technotes/csharp-roslyn.md, Phase 1.
+	// It talks to the real project/compilation (via RoslynWorkspaceHelper, itself fed from
+	// IProject.Items/GetEvaluatedProjectItems), so TopLevelTypeDefinitions here is real data, not
+	// a stub - this is what CodeEditor's QuickClassBrowser-creation gate and IconBarManager's
+	// class/member bookmarks both read.
+	//
+	// A dev-environment red herring during the investigation that led here: IProject.Items
+	// LOOKED permanently empty (FindProjectContainingFile returning null for every file), which
+	// briefly pointed at "the classic project-item model is dead, route through the outline API
+	// instead". It wasn't - a manually-launched dev instance was missing the MSBuild environment
+	// variables OpenDevelopAppFixture.ConfigureDotNetEnvironment sets for every test run
+	// (DOTNET_ROOT/MSBuildSDKsPath/MSBuildEnableWorkloadResolver=false), so EVERY project load
+	// failed with "ProjectLoadException: The SDK 'Microsoft.NET.Sdk' specified could not be
+	// found" and silently downgraded to an ErrorProject placeholder with no items at all. With
+	// that environment set up correctly, IProject.Items populates exactly as designed (755 items
+	// for a normal WinFormsSample project, confirmed live) and RoslynParser resolves real types.
+	static readonly ICSharpCode.SharpDevelop.Roslyn.RoslynParser roslynParser = new ICSharpCode.SharpDevelop.Roslyn.RoslynParser();
+
+	static IUnresolvedFile CreateUnresolvedFile(FileName fileName, ITextSource fileContent, CancellationToken cancellationToken)
 	{
+		if (IsCSharpOrVisualBasic(fileName)) {
+			try {
+				// ParseAsync runs this on a thread-pool thread, but fileContent can be a live,
+				// UI-thread-owned AvalonEdit TextDocument - reading .Text off-thread throws
+				// (RoslynParser.Parse does exactly that internally). Resolve a safe, detached
+				// snapshot first, same fallback-to-disk pattern UpsertLanguageServiceDocument
+				// already uses for the same reason.
+				var safeContent = ToThreadSafeTextSource(fileName, fileContent);
+				var roslynParseInfo = roslynParser.Parse(fileName, safeContent, true, null, cancellationToken);
+				if (roslynParseInfo?.UnresolvedFile != null)
+					return roslynParseInfo.UnresolvedFile;
+			} catch (OperationCanceledException) {
+				throw;
+			} catch (Exception ex) {
+				// Falls through to the plain empty file below - a missing class/member bar beats
+				// a parse that throws and leaves the editor without any ParseInformation at all.
+				LoggingService.Warn("RoslynParser fallback failed for " + fileName + ": " + ex.Message);
+			}
+		}
 		return new EmptyUnresolvedFile(fileName, File.Exists(fileName) ? File.GetLastWriteTimeUtc(fileName) : null);
+	}
+
+	static ITextSource ToThreadSafeTextSource(FileName fileName, ITextSource fileContent)
+	{
+		if (fileContent == null)
+			return null;
+		try {
+			return new StringTextSource(fileContent.Text);
+		} catch (InvalidOperationException) {
+			try {
+				return File.Exists(fileName) ? new StringTextSource(File.ReadAllText(fileName)) : null;
+			} catch (IOException) {
+				return null;
+			}
+		}
 	}
 
 	static bool IsCSharpOrVisualBasic(FileName fileName)

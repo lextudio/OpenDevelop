@@ -659,6 +659,39 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		});
 	}
 
+	[DevFlowAction("od.task-list.tokens", Description = "Get or set which comment tokens (TODO, FIXME, HACK, …) are displayed. Pass tokens as a JSON object {\"TODO\":true,\"FIXME\":false} to toggle; omit to query current state.")]
+	public static string TaskListTokens(string tokensJson = null)
+	{
+		var viewModel = OpenDevelopMefHost.ExportProvider.GetExportedValue<TaskListViewModel>();
+		if (!string.IsNullOrEmpty(tokensJson)) {
+			var update = JsonSerializer.Deserialize<Dictionary<string, bool>>(tokensJson);
+			if (update != null) {
+				foreach (var kv in update) {
+					if (viewModel.DisplayedTokens.ContainsKey(kv.Key))
+						viewModel.DisplayedTokens[kv.Key] = kv.Value;
+				}
+				viewModel.UpdateItems();
+			}
+		}
+		return JsonSerializer.Serialize(new {
+			tokens = viewModel.DisplayedTokens.ToDictionary(kv => kv.Key, kv => kv.Value)
+		});
+	}
+
+	[DevFlowAction("od.task-list.scope", Description = "Get or set the Task List scope filter: 0=Solution, 1=Project, 2=AllOpenedFiles, 3=CurrentFile, 4=Namespace, 5=CurrentClass. Pass an integer to change; omit to query.")]
+	public static string TaskListScope(int? scope = null)
+	{
+		var viewModel = OpenDevelopMefHost.ExportProvider.GetExportedValue<TaskListViewModel>();
+		if (scope.HasValue) {
+			viewModel.SelectedScopeIndex = scope.Value;
+			viewModel.UpdateItems();
+		}
+		return JsonSerializer.Serialize(new {
+			scope = viewModel.SelectedScopeIndex,
+			scopeNames = new[] { "Solution", "Project", "AllOpenedFiles", "CurrentFile", "Namespace", "CurrentClass" }
+		});
+	}
+
 	[DevFlowAction("od.parser.status", Description = "Check whether the shared ILanguageService (LanguageServiceRegistry) has a language service registered for a file's extension - the actual integration point GoToDefinition/completion/etc. use (see doc/technotes/language-services.md). Note: SD.ParserService.GetCompilationForFile is NOT checked here - for project-owned files it still routes through the old IProjectContent mock, not the Roslyn/LSP language service, regardless of language.")]
 		public static string GetParserStatus(string fileName)
 		{
