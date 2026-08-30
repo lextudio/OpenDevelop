@@ -23,6 +23,7 @@ using AvalonDock.Layout;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Debugging;
+using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Editor.Bookmarks;
@@ -690,6 +691,68 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			scope = viewModel.SelectedScopeIndex,
 			scopeNames = new[] { "Solution", "Project", "AllOpenedFiles", "CurrentFile", "Namespace", "CurrentClass" }
 		});
+	}
+
+	[DevFlowAction("od.task-list.reparse", Description = "Force a synchronous re-scan of all project source files for comment tokens (TODO, FIXME, HACK, …) and populate the TaskList pad. Call after od.open-solution to ensure comment tasks are available.")]
+	public static string ReparseCommentTasks()
+	{
+		int scanned = 0, tagged = 0;
+		var tokens = SD.ParserService.TaskListTokens;
+		if (tokens == null || tokens.Count == 0)
+			return JsonSerializer.Serialize(new { scanned, tagged, tokens = Array.Empty<string>(), error = "no tokens" });
+		var tokenSet = new HashSet<string>(tokens, StringComparer.Ordinal);
+		var solution = SD.ProjectService.CurrentSolution;
+		if (solution == null)
+			return JsonSerializer.Serialize(new { scanned, tagged, error = "no solution" });
+		foreach (var project in solution.Projects) {
+			if (project is not MSBuildBasedProject) continue;
+			foreach (var item in project.Items.OfType<FileProjectItem>()) {
+				var ext = System.IO.Path.GetExtension(item.FileName);
+				if (!string.Equals(ext, ".cs", StringComparison.OrdinalIgnoreCase) &&
+					!string.Equals(ext, ".vb", StringComparison.OrdinalIgnoreCase))
+					continue;
+				if (!File.Exists(item.FileName)) continue;
+				scanned++;
+				var tags = ScanFileForCommentTags(item.FileName, tokenSet);
+				if (tags.Count > 0) {
+					TaskService.UpdateCommentTags(item.FileName, tags);
+					tagged += tags.Count;
+				} else {
+					TaskService.UpdateCommentTags(item.FileName, Array.Empty<TagComment>());
+				}
+			}
+		}
+		var viewModel = OpenDevelopMefHost.ExportProvider.GetExportedValue<TaskListViewModel>();
+		viewModel.UpdateItems();
+		return JsonSerializer.Serialize(new { scanned, tagged, tokens });
+	}
+
+	static List<TagComment> ScanFileForCommentTags(FileName fileName, HashSet<string> tokenSet)
+	{
+		var result = new List<TagComment>();
+		try {
+			string text = File.ReadAllText(fileName);
+			using var reader = new StringReader(text);
+			int line = 1;
+			string lineText;
+			while ((lineText = reader.ReadLine()) != null) {
+				int commentStart = lineText.IndexOf("//", StringComparison.Ordinal);
+				if (commentStart >= 0) {
+					string commentBody = lineText.Substring(commentStart + 2).TrimStart();
+					foreach (string token in tokenSet) {
+						if (commentBody.StartsWith(token, StringComparison.Ordinal)) {
+							int col = commentStart + 1;
+							string rest = commentBody.Substring(token.Length);
+							result.Add(new TagComment(token, new DomRegion(fileName, line, col), rest));
+							break;
+						}
+					}
+				}
+				line++;
+			}
+		} catch (IOException) {
+		}
+		return result;
 	}
 
 	[DevFlowAction("od.parser.status", Description = "Check whether the shared ILanguageService (LanguageServiceRegistry) has a language service registered for a file's extension - the actual integration point GoToDefinition/completion/etc. use (see doc/technotes/language-services.md). Note: SD.ParserService.GetCompilationForFile is NOT checked here - for project-owned files it still routes through the old IProjectContent mock, not the Roslyn/LSP language service, regardless of language.")]

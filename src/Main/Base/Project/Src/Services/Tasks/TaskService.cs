@@ -165,7 +165,7 @@ namespace ICSharpCode.SharpDevelop
 			}
 		}
 		
-		static void UpdateCommentTags(FileName fileName, IEnumerable<TagComment> tagComments)
+		public static void UpdateCommentTags(FileName fileName, IEnumerable<TagComment> tagComments)
 		{
 			List<SDTask> newTasks = new List<SDTask>();
 			foreach (TagComment tag in tagComments) {
