@@ -23,6 +23,7 @@ using System.Collections.Specialized;
 
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.TypeSystem;
+using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Editor.Bookmarks;
 
 namespace ICSharpCode.AvalonEdit.AddIn
@@ -66,21 +67,31 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			if (parseInfo == null)
 				return;
 			foreach (var c in parseInfo.TopLevelTypeDefinitions) {
-				AddEntityBookmarks(c, document);
+				AddEntityBookmarks(c, document, parseInfo.FileName);
 			}
 		}
-		
-		void AddEntityBookmarks(IUnresolvedTypeDefinition c, IDocument document)
+
+		// A partial class's Members (and, in principle, NestedTypes) can span every file the type
+		// is declared across - e.g. a WinForms Form1's Members include InitializeComponent and the
+		// designer-generated fields declared in Form1.Designer.cs, not just the ones in Form1.cs.
+		// EntityBookmark.LineNumber falls back to the entity's own (unrelated) line number whenever
+		// it doesn't fit within the currently open document (EntityBookmark's constructor only
+		// clamps, it never rejects), so without this filter a member declared in a sibling file can
+		// still render its icon at whatever line number happens to coincide in the open document -
+		// observed as an extra/duplicate icon on Form1.cs at lines that are actually meaningless for
+		// that file. Only bookmark entities that are actually declared in the file being edited.
+		void AddEntityBookmarks(IUnresolvedTypeDefinition c, IDocument document, string fileName)
 		{
 			if (c.IsSynthetic) return;
-			if (!c.Region.IsEmpty) {
+			if (!c.Region.IsEmpty && FileUtility.IsEqualFileName(c.Region.FileName, fileName)) {
 				bookmarks.Add(new EntityBookmark(c, document));
 			}
 			foreach (var innerClass in c.NestedTypes) {
-				AddEntityBookmarks(innerClass, document);
+				AddEntityBookmarks(innerClass, document, fileName);
 			}
 			foreach (var m in c.Members) {
 				if (m.Region.IsEmpty || m.IsSynthetic) continue;
+				if (!FileUtility.IsEqualFileName(m.Region.FileName, fileName)) continue;
 				bookmarks.Add(new EntityBookmark(m, document));
 			}
 		}
