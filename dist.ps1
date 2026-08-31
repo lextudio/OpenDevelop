@@ -9,7 +9,8 @@
 # at the bottom:
 #
 #   macOS   -> OpenDevelop.app bundle, then OpenDevelop-macos.dmg
-#   Windows -> OpenDevelop-win/ payload directory, then OpenDevelop-windows.zip
+#   Windows -> one OpenDevelop-win-<rid>/ payload directory and OpenDevelop-windows-<rid>.zip PER
+#              RuntimeIdentifier (see -RuntimeIdentifiers below)
 #
 # Note the app runs on LibreWPF (portable WPF) on Windows too — SharpDevelop.csproj strips the
 # Microsoft.WindowsDesktop.App runtime framework on EVERY platform — which is why the LibreWinForms
@@ -18,9 +19,21 @@
 # LibreWPF.Sdk only on OSX/Linux and must NOT appear on Windows, where those names belong to the
 # real OS DLLs; that split is handled by OpenDevelopDistributionRidFamily, not here.
 #
-# Usage: ./dist.ps1 [-SkipPublish] [-Configuration Debug|Release]
+# Windows: one package per architecture, not "Any CPU". ProGPU/LibreWPF ship real native
+# libraries (glfw3.dll, wgpu_native.dll, vcruntime140_cor3.dll, DirectX/Vulkan interop shims, ...),
+# and a native DLL is inherently architecture-specific - there is no "Any CPU" for P/Invoke'd code.
+# Without an explicit -p:RuntimeIdentifier, the SDK implicitly resolves native assets for whatever
+# architecture the machine RUNNING this script happens to be (dotnet --info's own RID), which is
+# how a previous run on an ARM64 dev machine silently produced only a win-arm64 package. Passing
+# -RuntimeIdentifiers explicitly (default: both) makes the output deterministic regardless of the
+# build machine's own architecture, and produces a correct package for each target.
+#
+# Usage: ./dist.ps1 [-SkipPublish] [-Configuration Debug|Release] [-RuntimeIdentifiers win-x64,win-arm64]
 #   -SkipPublish            reuse existing publish output (faster iteration on packaging)
 #   -Configuration Debug    package the Debug configuration instead of Release.
+#   -RuntimeIdentifiers     Windows only; which architecture(s) to build. Defaults to both
+#                           win-x64 and win-arm64, producing one zip per RID. Ignored on macOS
+#                           (Invoke-MacPackaging always builds for the host's own architecture).
 #
 # On macOS this is normally reached through ./dist.macos.sh, which only locates pwsh.
 #
@@ -29,7 +42,9 @@
 param(
     [switch]$SkipPublish,
     [ValidateSet('Debug', 'Release')]
-    [string]$Configuration = 'Release'
+    [string]$Configuration = 'Release',
+    [ValidateSet('win-x64', 'win-arm64')]
+    [string[]]$RuntimeIdentifiers = @('win-x64', 'win-arm64')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -42,13 +57,17 @@ $tfm = 'net10.0-windows'
 $sln = Join-Path $repoRoot 'OpenDevelop.Mvp.slnx'
 $hostProject = Join-Path $repoRoot 'src/Main/SharpDevelop/SharpDevelop.csproj'
 $dotnet = Find-DotNetHost
-$publishDir = Join-Path $repoRoot "src/Main/SharpDevelop/bin/$config/$tfm/publish"
-$depsJson = Join-Path $publishDir 'OpenDevelop.deps.json'
 $patchScript = Join-Path $repoRoot 'build/patch-librewinforms-deps.ps1'
 
 # The Addin SDK's OpenDevelopPruneAddinDeploymentAssets target drops runtimes/win*, linux* and
 # unix* only for the 'osx' family; on Windows those win* assets are exactly what the payload needs.
+# This is an OS-family switch, unrelated to $RuntimeIdentifiers (OS+architecture) below - both
+# win-x64 and win-arm64 use ridFamily='win'.
 $ridFamily = if ($IsWindows) { 'win' } else { 'osx' }
+
+# macOS keeps building for the host's own architecture only (Invoke-MacPackaging), a single pass
+# with no RID suffix on the publish directory - $null here means "don't pass -p:RuntimeIdentifier".
+$ridsToBuild = if ($IsWindows) { $RuntimeIdentifiers } else { @($null) }
 
 function New-TempDir {
     $p = Join-Path ([System.IO.Path]::GetTempPath()) ("opendevelop-" + [System.Guid]::NewGuid().ToString('N'))
@@ -124,92 +143,21 @@ function Test-PackagedAppStartup {
 }
 
 # ---------------------------------------------------------------------------------------------
-# Shared pipeline
+# Shared pipeline (run once per RID in $ridsToBuild - see Invoke-DistributionPipeline below)
 # ---------------------------------------------------------------------------------------------
-
-# Restore the solution up front. The build below runs with --no-restore, so a stale or corrupt
-# project.assets.json left by an earlier restore (e.g. after a NuGet.config change or a restore
-# for a different RID/TFM combination) would otherwise surface as an obscure "ResolvePackageAssets"
-# NullReferenceException deep inside the build — exactly the failure mode seen for the AspNetCore
-# projects. Restore is incremental, so this stays cheap when nothing changed; it also fails fast
-# with a clear error instead of leaving a half-built tree. On Windows it additionally seeds
-# LibreWPF.Sdk resolution for the AvalonEdit submodule, whose own global.json has no
-# "msbuild-sdks" entry and shadows the repo-root one for every project beneath it (otherwise
-# MSB4236 "The SDK 'LibreWPF.Sdk' specified could not be found").
-Write-Host '==> Restoring solution...'
-Restore-Solution -DotNet $dotnet -Solution $sln
-
-# Ensure clean state for ICSharpCode.Core.Presentation — its .g.resources (WPF theme resource
-# blob) can otherwise stale-cross from a previous build and produce a 12-byte corrupt file that
-# crashes at boot with EndOfStreamException in FindResource / LoadThemedDictionary.
-$corePres = Join-Path $repoRoot 'src/Main/ICSharpCode.Core.Presentation'
-foreach ($sub in 'obj', 'bin') {
-    $dir = Join-Path $corePres "$sub/$config"
-    if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
-}
-
-if (-not $SkipPublish) {
-    # Clear the shared intermediate output so publish cannot reuse artifacts left by a previous
-    # build. This distribution intentionally remains framework-dependent and uses the installed
-    # .NET runtime; the SDK-generated apphost is only the native entry point and does not bundle
-    # that runtime.
-    Write-Host '==> Cleaning intermediate outputs...'
-    $hostObj = Join-Path $repoRoot "src/Main/SharpDevelop/obj/$config/$tfm"
-    if (Test-Path $hostObj) { Remove-Item -Recurse -Force $hostObj }
-
-    Write-Host "==> Publishing framework-dependent app ($config)..."
-    if (Test-Path $publishDir) { Remove-Item -Recurse -Force $publishDir }
-    Invoke-Native $dotnet publish $hostProject -c $config --self-contained false `
-        "-p:OpenDevelopDistributionBuild=true" `
-        "-p:PublishDir=$publishDir"
-
-    if (-not (Test-Path $publishDir)) {
-        throw "dist.ps1: host publish directory not found: $publishDir"
-    }
-
-    # NuGet conflict resolution omits LibreWinForms from the standard publish closure.
-    # Patch the final manifest and copy its matching runtime files.
-    $nugetPackagesLine = & $dotnet nuget locals global-packages --list | Select-String '^global-packages: '
-    if (-not $nugetPackagesLine) {
-        throw 'dist.ps1: cannot determine the NuGet global-packages directory'
-    }
-    $nugetPackages = ($nugetPackagesLine.Line -replace '^global-packages:\s*', '')
-    & $patchScript $depsJson $nugetPackages
-    Sync-LibreWpfTransportRuntime $publishDir
-
-    # Some projects write to OpenDevelopHostPublishDir while computing their distribution
-    # closure. Give that build a disposable copy so the verified host deployment above remains
-    # immutable.
-    $hostPublishSnapshot = New-TempDir
-    Copy-Item -Path (Join-Path $publishDir '*') -Destination $hostPublishSnapshot -Recurse -Force
-
-    Write-Host '==> Cleaning stale AddIn outputs...'
-    Get-ChildItem (Join-Path $repoRoot 'AddIns') -Recurse -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Extension -in '.dll', '.dylib', '.so', '.pdb' } |
-        Remove-Item -Force
-
-    Write-Host '==> Building distribution AddIns without shared runtime copies...'
-    Build-Solution -DotNet $dotnet -Solution $sln -Configuration $config -ExtraProperties @(
-        '-p:OpenDevelopDistributionBuild=true',
-        "-p:OpenDevelopDistributionRidFamily=$ridFamily",
-        "-p:OpenDevelopHostPublishDir=$hostPublishSnapshot",
-        '-p:ProGpuWpfCopyPackageRuntimeAssets=false'
-    )
-    Remove-Item -Recurse -Force $hostPublishSnapshot
-
-    # The solution traversal may copy reference assemblies over the original PublishDir through
-    # cached project state. Restore the authoritative package runtime payload only after every
-    # build has completed.
-    & $patchScript $depsJson $nugetPackages
-    Sync-LibreWpfTransportRuntime $publishDir
-}
-else {
-    Write-Host '==> Skipping publish (-SkipPublish)'
-}
-
-if (-not (Test-Path $publishDir)) {
-    throw "dist.ps1: framework-dependent publish directory not found: $publishDir"
-}
+#
+# Restore itself runs per-RID (inside Invoke-DistributionPipeline), NOT once up front here:
+# once any project's obj/project.assets.json gets an explicit -p:RuntimeIdentifier baked in by
+# one restore, a later --no-restore build/publish for a DIFFERENT (or no) RuntimeIdentifier fails
+# with NETSDK1047 ("doesn't have a target for ...") because that RID's target section was never
+# written. Passing the SAME -p:RuntimeIdentifier to restore that the matching build/publish call
+# will use keeps every pass self-consistent regardless of what a previous pass (or a previous
+# manual `dotnet build`/`publish` in this repo) last restored for. Restore is incremental, so
+# doing it twice (once per RID) stays cheap when little changed; it also fails fast with a clear
+# error instead of leaving a half-built tree. On Windows it additionally seeds LibreWPF.Sdk
+# resolution for the AvalonEdit submodule, whose own global.json has no "msbuild-sdks" entry and
+# shadows the repo-root one for every project beneath it (otherwise MSB4236 "The SDK
+# 'LibreWPF.Sdk' specified could not be found").
 
 # ---------------------------------------------------------------------------------------------
 # Platform packaging
@@ -238,13 +186,18 @@ function Invoke-MacPackaging {
 }
 
 function Invoke-WindowsPackaging {
-    $payloadRoot = Join-Path $repoRoot 'OpenDevelop-win'
-    $zipPath = Join-Path $repoRoot 'OpenDevelop-windows.zip'
+    # $rid names this pass's payload/zip (e.g. "OpenDevelop-win-arm64", "OpenDevelop-windows-arm64.zip")
+    # so building both architectures in one dist.ps1 run never has one overwrite the other.
+    param([Parameter(Mandatory)][string]$Rid, [Parameter(Mandatory)][string]$PublishDir)
 
-    Write-Host "==> Assembling distribution payload ($config)..."
+    # $Rid is a full RID like "win-x64"/"win-arm64" - do not prefix another "win-" onto it.
+    $payloadRoot = Join-Path $repoRoot "OpenDevelop-$Rid"
+    $zipPath = Join-Path $repoRoot "OpenDevelop-$Rid.zip"
+
+    Write-Host "==> Assembling distribution payload ($config, $Rid)..."
     if (Test-Path $payloadRoot) { Remove-Item -Recurse -Force $payloadRoot }
     New-Item -ItemType Directory -Path $payloadRoot | Out-Null
-    Copy-Item -Path (Join-Path $publishDir '*') -Destination $payloadRoot -Recurse -Force
+    Copy-Item -Path (Join-Path $PublishDir '*') -Destination $payloadRoot -Recurse -Force
 
     # OpenDevelop locates its addins and data at runtime by walking UP from the executable looking
     # for data/resources/languages/LanguageDefinition.xml (SharpDevelopMain.FindApplicationRootPath),
@@ -325,7 +278,109 @@ function Invoke-WindowsPackaging {
     return $zipPath
 }
 
-$artifact = if ($IsWindows) { Invoke-WindowsPackaging } else { Invoke-MacPackaging }
+function Invoke-DistributionPipeline([string]$Rid) {
+    # $Rid is $null on macOS (single host-architecture pass, no -p:RuntimeIdentifier override -
+    # matches the pre-multi-arch behavior exactly). On Windows it is one of $RuntimeIdentifiers.
+    $ridSuffix = if ($Rid) { "/$Rid" } else { '' }
+    $publishDir = Join-Path $repoRoot "src/Main/SharpDevelop/bin/$config/$tfm$ridSuffix/publish"
+    $depsJson = Join-Path $publishDir 'OpenDevelop.deps.json'
+    # Built with an explicit typed empty array + += (not "if (...) { @(...) } else { @() }"
+    # assigned directly) - the latter can degrade a single-element array into a bare string on
+    # assignment, which then splats one character per argument instead of the whole "-p:..." token.
+    [string[]]$ridArgs = @()
+    if ($Rid) { $ridArgs += "-p:RuntimeIdentifier=$Rid" }
+    $ridLabel = if ($Rid) { " ($Rid)" } else { '' }
+
+    Write-Host "==> Restoring solution$ridLabel..."
+    Restore-Solution -DotNet $dotnet -Solution $sln -ExtraProperties $ridArgs
+
+    if (-not $SkipPublish) {
+        # Clear the shared intermediate output so publish cannot reuse artifacts left by a
+        # previous build (of this RID, or of a differently-RID'd pass before this one). This
+        # distribution intentionally remains framework-dependent and uses the installed .NET
+        # runtime; the SDK-generated apphost is only the native entry point and does not bundle
+        # that runtime.
+        Write-Host "==> Cleaning intermediate outputs$ridLabel..."
+        $hostObj = Join-Path $repoRoot "src/Main/SharpDevelop/obj/$config/$tfm"
+        if (Test-Path $hostObj) { Remove-Item -Recurse -Force $hostObj }
+
+        # Ensure clean state for ICSharpCode.Core.Presentation — its .g.resources (WPF theme
+        # resource blob) can otherwise stale-cross from a previous build and produce a 12-byte
+        # corrupt file that crashes at boot with EndOfStreamException in
+        # FindResource/LoadThemedDictionary. Clear obj/ and bin/ entirely (not just the $config
+        # subfolder) since an explicit -p:RuntimeIdentifier can binplace this project's output
+        # under an additional RID-suffixed subfolder that the plain "$sub/$config" path misses.
+        $corePres = Join-Path $repoRoot 'src/Main/ICSharpCode.Core.Presentation'
+        foreach ($sub in 'obj', 'bin') {
+            $dir = Join-Path $corePres $sub
+            if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
+        }
+
+        Write-Host "==> Publishing framework-dependent app ($config)$ridLabel..."
+        if (Test-Path $publishDir) { Remove-Item -Recurse -Force $publishDir }
+        Invoke-Native $dotnet publish $hostProject -c $config --self-contained false `
+            "-p:OpenDevelopDistributionBuild=true" `
+            "-p:PublishDir=$publishDir" `
+            @ridArgs
+
+        if (-not (Test-Path $publishDir)) {
+            throw "dist.ps1: host publish directory not found: $publishDir"
+        }
+
+        # NuGet conflict resolution omits LibreWinForms from the standard publish closure.
+        # Patch the final manifest and copy its matching runtime files.
+        $nugetPackagesLine = & $dotnet nuget locals global-packages --list | Select-String '^global-packages: '
+        if (-not $nugetPackagesLine) {
+            throw 'dist.ps1: cannot determine the NuGet global-packages directory'
+        }
+        $nugetPackages = ($nugetPackagesLine.Line -replace '^global-packages:\s*', '')
+        & $patchScript $depsJson $nugetPackages
+        Sync-LibreWpfTransportRuntime $publishDir
+
+        # Some projects write to OpenDevelopHostPublishDir while computing their distribution
+        # closure. Give that build a disposable copy so the verified host deployment above
+        # remains immutable.
+        $hostPublishSnapshot = New-TempDir
+        Copy-Item -Path (Join-Path $publishDir '*') -Destination $hostPublishSnapshot -Recurse -Force
+
+        Write-Host '==> Cleaning stale AddIn outputs...'
+        Get-ChildItem (Join-Path $repoRoot 'AddIns') -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Extension -in '.dll', '.dylib', '.so', '.pdb' } |
+            Remove-Item -Force
+
+        Write-Host "==> Building distribution AddIns without shared runtime copies$ridLabel..."
+        Build-Solution -DotNet $dotnet -Solution $sln -Configuration $config -ExtraProperties (@(
+            '-p:OpenDevelopDistributionBuild=true',
+            "-p:OpenDevelopDistributionRidFamily=$ridFamily",
+            "-p:OpenDevelopHostPublishDir=$hostPublishSnapshot",
+            '-p:ProGpuWpfCopyPackageRuntimeAssets=false'
+        ) + $ridArgs)
+        Remove-Item -Recurse -Force $hostPublishSnapshot
+
+        # The solution traversal may copy reference assemblies over the original PublishDir
+        # through cached project state. Restore the authoritative package runtime payload only
+        # after every build has completed.
+        & $patchScript $depsJson $nugetPackages
+        Sync-LibreWpfTransportRuntime $publishDir
+    }
+    else {
+        Write-Host "==> Skipping publish$ridLabel (-SkipPublish)"
+    }
+
+    if (-not (Test-Path $publishDir)) {
+        throw "dist.ps1: framework-dependent publish directory not found: $publishDir"
+    }
+
+    if ($IsWindows) { Invoke-WindowsPackaging -Rid $Rid -PublishDir $publishDir }
+    else { Invoke-MacPackaging }
+}
+
+$artifacts = @()
+foreach ($rid in $ridsToBuild) {
+    $artifacts += Invoke-DistributionPipeline -Rid $rid
+}
 
 Write-Host ''
-Write-Host "Done: $artifact"
+foreach ($artifact in $artifacts) {
+    Write-Host "Done: $artifact"
+}

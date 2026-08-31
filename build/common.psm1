@@ -139,9 +139,21 @@ function Restore-Solution {
     # file's old content hash causes NU1403 even after the global package cache is
     # cleared. Re-evaluate lock files against the configured feeds, then keep actual
     # builds offline (--no-restore) so every project uses one consistent dependency graph.
-    param([Parameter(Mandatory)][string]$DotNet, [Parameter(Mandatory)][string]$Solution)
+    #
+    # ExtraProperties matters for RID consistency: once a project's obj/project.assets.json is
+    # restored for an EXPLICIT -p:RuntimeIdentifier, a later --no-restore build/publish for a
+    # DIFFERENT (or absent) RuntimeIdentifier fails with NETSDK1047 ("doesn't have a target for
+    # ...") because that RID's target section was never written. Callers doing a multi-RID
+    # matrix build (dist.ps1's -RuntimeIdentifiers) must pass the SAME -p:RuntimeIdentifier here
+    # that the matching Build-Solution/publish call for that pass will use, so restore always
+    # produces (or refreshes) the exact target the following --no-restore step expects.
+    param(
+        [Parameter(Mandatory)][string]$DotNet,
+        [Parameter(Mandatory)][string]$Solution,
+        [string[]]$ExtraProperties = @()
+    )
     Write-Host '==> Restoring packages and refreshing package content hashes...'
-    Invoke-Native $DotNet restore $Solution --force-evaluate -v minimal
+    Invoke-Native $DotNet restore $Solution --force-evaluate -v minimal @ExtraProperties
 }
 
 function Build-Solution {
