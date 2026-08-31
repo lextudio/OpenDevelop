@@ -48,6 +48,22 @@ namespace ICSharpCode.SharpDevelop.Startup
 				e.Handled = ICSharpCode.SharpDevelop.Logging.ExceptionBox.ShowErrorBox(
 					e.Exception, "Unhandled exception", allowContinue: true);
 			};
+
+			// An exception thrown on a bare ThreadPool thread (e.g. inside Task.Run, when nothing
+			// downstream observes the faulted Task) never reaches the Dispatcher at all - it goes
+			// straight to the CLR's own unhandled-exception handling, which previously meant a
+			// non-copyable native crash dialog with no trace of what actually happened. Log and
+			// show the same copyable dialog here too; IsTerminating is normally true by this point
+			// so the process still exits afterward, but at least the exception is visible and
+			// selectable first.
+			AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+			{
+				if (e.ExceptionObject is Exception ex)
+				{
+					ICSharpCode.Core.LoggingService.Fatal("Unhandled AppDomain exception.", ex);
+					ICSharpCode.SharpDevelop.Logging.ExceptionBox.ShowErrorBox(ex, "Unhandled exception");
+				}
+			};
 		}
 
 		/// <summary>

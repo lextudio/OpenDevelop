@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Threading;
 
 using ICSharpCode.Core;
+using ICSharpCode.SharpDevelop.Logging;
 
 namespace ICSharpCode.SharpDevelop.Services;
 
@@ -90,13 +91,27 @@ sealed class WpfMessageService : IMessageService
 	public void ShowException(Exception ex, string message = null)
 	{
 		LoggingService.Error(message, ex);
-		Show(CombineException(message, ex, includeDetails: true), "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+		ShowExceptionDialog(ex, message);
 	}
 
 	public void ShowHandledException(Exception ex, string message = null)
 	{
 		LoggingService.Warn(message, ex);
-		Show(CombineException(message, ex, includeDetails: false), "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+		ShowExceptionDialog(ex, message);
+	}
+
+	// Every ShowException/ShowHandledException call site throughout the app (command handlers,
+	// FireAndForget's fault continuation, background parse failures, ...) used to end up in a
+	// bare MessageBox.Show whose text cannot be selected or copied. Route them through the same
+	// copyable ExceptionBox the global unhandled-exception handlers use instead.
+	void ShowExceptionDialog(Exception ex, string message)
+	{
+		if (IsTestMode) {
+			LoggingService.Info($"OD_TEST_MODE: suppressed exception dialog ({StringParser.Parse(message ?? "")})");
+			return;
+		}
+		string caption = string.IsNullOrEmpty(message) ? "Error" : StringParser.Parse(message);
+		Invoke(() => ExceptionBox.ShowErrorBox(ex, caption));
 	}
 
 	static string CombineException(string message, Exception ex, bool includeDetails)

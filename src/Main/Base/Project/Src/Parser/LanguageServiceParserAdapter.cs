@@ -65,10 +65,14 @@ public sealed class LanguageServiceParserAdapter : IParserService
 		UpsertLanguageServiceDocument(fileName, fileContent, cancellationToken);
 		var unresolvedFile = CreateUnresolvedFile(fileName, fileContent, cancellationToken);
 		var parseInformation = new ParseInformation(unresolvedFile, fileContent?.Version, true);
-		if (fileContent == null && File.Exists(fileName))
-			fileContent = new ICSharpCode.AvalonEdit.Document.TextDocument(File.ReadAllText(fileName));
-		if (fileContent != null)
-			ExtractCommentTags(fileName, fileContent, parseInformation.TagComments);
+		// ParseAsync runs this on a thread-pool thread, but fileContent can be a live,
+		// UI-thread-owned AvalonEdit TextDocument - ExtractCommentTags reads .Text, which throws
+		// off-thread. Resolve the same safe, detached snapshot CreateUnresolvedFile already uses.
+		var commentSource = fileContent != null
+			? ToThreadSafeTextSource(fileName, fileContent)
+			: (File.Exists(fileName) ? new StringTextSource(File.ReadAllText(fileName)) : null);
+		if (commentSource != null)
+			ExtractCommentTags(fileName, commentSource, parseInformation.TagComments);
 		RegisterParseInformation(fileName, parentProject, parseInformation);
 		return parseInformation;
 	}
