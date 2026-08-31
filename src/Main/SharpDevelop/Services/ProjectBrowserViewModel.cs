@@ -139,6 +139,24 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
 
     ProjectBrowserNodeContext IProjectBrowserHost.SelectedNode => SelectedNode?.ToContext();
 
+    bool IProjectBrowserHost.IsShowingAllFiles => ShowAllFiles;
+
+    void IProjectBrowserHost.ShowPropertiesForNode(ProjectBrowserNodeContext node)
+    {
+        propertyContainer.SelectedObject = new ProjectBrowserNodeProperties(node);
+        SD.Workbench.GetPad(typeof(PropertyPad))?.BringPadToFront();
+    }
+
+    void IProjectBrowserHost.ToggleShowAllFiles()
+    {
+        ToggleShowAllFiles();
+    }
+
+    void IProjectBrowserHost.CollapseAll()
+    {
+        CollapseAllRequested?.Invoke(this, EventArgs.Empty);
+    }
+
     public void OpenSelected()
     {
         if (SelectedNode != null) {

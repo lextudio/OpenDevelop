@@ -101,6 +101,12 @@
          keeps the handful of RefreshViewAsync() call sites elsewhere in Base compiling; the small number of
          call sites that dereference deeper Solution-Explorer node types are excluded below too. -->
     <Compile Remove="Src\Gui\Pads\ProjectBrowser\**\*.cs" />
+    <!-- ToolbarCommands.cs's menu commands (EditProjectFile aside, which lives in
+         Src\Project\Commands instead) were rewritten to call ProjectBrowserPad's reflection
+         bridge into the modern WPF Project Browser's IProjectBrowserController, so - unlike the
+         rest of this legacy folder - it has no dependency on the excluded ExtTreeView node types
+         and can be compiled back in. -->
+    <Compile Include="Src\Gui\Pads\ProjectBrowser\Commands\ToolbarCommands.cs" />
     <Compile Remove="Src\Gui\Components\ExtTreeView\**\*.cs" />
     <Compile Remove="Src\Commands\FileTabStripCommands.cs" />
     <Compile Remove="Src\Commands\ViewInBrowser.cs" />

@@ -21,12 +21,16 @@ namespace ICSharpCode.SharpDevelop.Services;
 internal interface IProjectBrowserHost
 {
     ProjectBrowserNodeContext? SelectedNode { get; }
+    bool IsShowingAllFiles { get; }
     void RefreshSolutionTree();
     void OpenFileInWorkbench(string filePath);
     string? ShowInputBox(string title, string prompt, string defaultValue);
     bool ConfirmDelete(string name);
     void CloseViewsForPath(string path);
     void RetargetViewForRename(string oldPath, string newPath);
+    void ShowPropertiesForNode(ProjectBrowserNodeContext node);
+    void ToggleShowAllFiles();
+    void CollapseAll();
 }
 
 internal interface IProjectBrowserService
@@ -72,6 +76,10 @@ internal interface IProjectBrowserController
     void Cut(ProjectBrowserNodeContext? node = null);
     void Copy(ProjectBrowserNodeContext? node = null);
     void Paste(ProjectBrowserNodeContext? node = null);
+    void ShowPropertiesForNode(ProjectBrowserNodeContext? node = null);
+    void ToggleShowAll();
+    bool IsShowAllFilesEnabled { get; }
+    void CollapseAll();
 }
 
 /// <summary>Host-neutral result of the "Add New Item" dialog - see <see cref="ProjectBrowserControllerBase.ShowNewItemDialogAsync"/>.</summary>
@@ -114,6 +122,29 @@ internal abstract class ProjectBrowserControllerBase : IProjectBrowserController
     public void Refresh()
     {
         Host?.RefreshSolutionTree();
+    }
+
+    public void ShowPropertiesForNode(ProjectBrowserNodeContext? node = null)
+    {
+        var target = ResolveNode(node);
+        if (target is null)
+        {
+            return;
+        }
+
+        Host?.ShowPropertiesForNode(target);
+    }
+
+    public void ToggleShowAll()
+    {
+        Host?.ToggleShowAllFiles();
+    }
+
+    public bool IsShowAllFilesEnabled => Host?.IsShowingAllFiles ?? false;
+
+    public void CollapseAll()
+    {
+        Host?.CollapseAll();
     }
 
     public void Open(ProjectBrowserNodeContext? node = null)
