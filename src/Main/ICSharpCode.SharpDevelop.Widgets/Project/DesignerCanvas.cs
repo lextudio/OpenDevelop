@@ -60,10 +60,25 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			Background = Brushes.Transparent, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
 			MaxHeight = 200, FontSize = 11
 		};
+		// Shared "please wait" chrome for the async acquire/open/update round-trip every
+		// out-of-process designer backend performs (see doc/technotes/designer-common.md's
+		// Design-tab-activation convention) - lets a backend show feedback immediately instead of
+		// blocking the dispatcher until the child host responds, without each one building its own
+		// overlay control.
+		readonly TextBlock loadingText = new TextBlock {
+			Foreground = Brushes.White, FontSize = 13, TextWrapping = TextWrapping.Wrap, MaxWidth = 320,
+			HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
+		};
+		readonly Border loadingOverlay;
 		bool syncingTheme;
 
 		public DesignerCanvas()
 		{
+			loadingOverlay = new Border {
+				Background = new SolidColorBrush(Color.FromArgb(0xB0, 0, 0, 0)),
+				Visibility = Visibility.Collapsed,
+				Child = loadingText
+			};
 			AutomationProperties.SetName(this, "Designer canvas");
 			AutomationProperties.SetName(toolbar, "Designer toolbar");
 			fitButton = CreateIconButton("Icons.16x16.FitToScreen", "Fit the design to the surface");
@@ -105,9 +120,13 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 			Grid.SetRow(toolbar, 0);
 			Grid.SetRow(ContentHost, 1);
+			Grid.SetRow(loadingOverlay, 1);
 			Grid.SetRow(statusBar, 2);
 			root.Children.Add(toolbar);
 			root.Children.Add(ContentHost);
+			// Added after ContentHost so it paints on top of it (WPF Grid z-orders same-cell
+			// children by insertion order).
+			root.Children.Add(loadingOverlay);
 			root.Children.Add(statusBar);
 			Content = root;
 			statusBar.Visibility = Visibility.Collapsed;
@@ -228,6 +247,23 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		void UpdateStatusBarVisibility() =>
 			statusBar.Visibility = showStatusBarCapability && !string.IsNullOrEmpty(statusBar.Text)
 				? Visibility.Visible : Visibility.Collapsed;
+
+		/// <summary>
+		/// Shows or hides a semi-transparent "please wait" overlay over the design surface.
+		/// Every out-of-process designer backend's ViewContent must call this immediately before
+		/// starting an async acquire/open/update round-trip and clear it once the round-trip
+		/// completes (or fails) - see doc/technotes/designer-common.md's Design-tab-activation
+		/// convention. Doing this here means the loading experience is identical across backends
+		/// instead of each one building its own overlay control.
+		/// </summary>
+		public void SetLoading(bool isLoading, string message = null)
+		{
+			loadingText.Text = string.IsNullOrEmpty(message) ? "Loading design surface…" : message;
+			loadingOverlay.Visibility = isLoading ? Visibility.Visible : Visibility.Collapsed;
+		}
+
+		/// <summary>True while <see cref="SetLoading"/> is showing the overlay.</summary>
+		public bool IsLoading => loadingOverlay.Visibility == Visibility.Visible;
 
 		/// <summary>Short backend label shown on the toolbar (e.g. "WinForms", "Uno", "LibreWPF").</summary>
 		public string BackendName

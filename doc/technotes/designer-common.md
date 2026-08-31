@@ -1726,6 +1726,48 @@ acceptance check, so the list can be resumed by a fresh session at any point.
   the common property/multi-selection contract, but host-side event serialization remains an
   explicit backend gap rather than a shell exception.
 
+## Design-tab-activation convention (async load, no needless reload)
+
+Every out-of-process designer backend's `ViewContent.LoadInternal` follows the same shape when
+(re)activating the Design tab, so switching Source↔Design never freezes the dispatcher and never
+redoes work that didn't need redoing:
+
+1. **Skip entirely when nothing changed.** Compare the incoming source text against the text used
+   for the last successful load. If it's identical AND the out-of-process session is still alive,
+   just re-assign `UserContent` to the existing canvas and return - no RPC at all. This is the
+   fix for the common case of a user merely switching tabs back and forth without editing.
+2. **Never block the dispatcher on the acquire/open/update round-trip.** `LoadInternal` starts the
+   async chain and returns immediately; it must not call `.GetAwaiter().GetResult()` on the
+   acquire/open/update calls. Two ways to get the continuation back onto the dispatcher safely:
+   marshal explicitly via `SD.MainThread.InvokeAsyncAndForget(...)` (`FormsDesignerViewContent
+   .LoadRemoteDesigner`/`LoadRemoteDesignerAsync`), or simply omit `ConfigureAwait(false)` so the
+   continuation naturally resumes on the dispatcher's captured `SynchronizationContext`
+   (`WpfViewContent.LoadDesignerAsync`) - either is fine, pick whichever reads more naturally for
+   the backend; do not mix them within one method.
+3. **Show the shared loading chrome immediately**, before the round-trip starts, via
+   `DesignerCanvas.SetLoading(true, message)`. Reuse the existing canvas instance (dimmed under
+   the overlay) when one is already up from a previous load; only construct a bare placeholder
+   `DesignerCanvas` for this view's very first load, when no real surface control exists yet.
+   Clear it (`SetLoading(false)`) once the round-trip finishes, whether it succeeds or fails.
+4. **Guard every applied result with a monotonic load-generation token**, the same
+   compare-before-apply shape the codebase already uses for edit flushes
+   (`remoteDocumentVersion`/`BaseVersion` in `FormsDesignerViewContent`/`WpfViewContent`'s
+   `FlushAsync` calls). Increment a `long loadGeneration` field at the top of every load
+   attempt, capture it locally, and check it still matches the field before touching
+   `remoteControl`/`surfaceControl`/`UserContent` when the async work completes - a load that
+   was superseded by a newer one (the user switched files/tabs again, or edited the source, while
+   the previous acquire/open was still in flight) must discard its result instead of clobbering
+   newer state. The same check doubles as the Dispose-race guard (also check `IsDisposed`/
+   `disposing`).
+5. **No DDP wire-protocol change is needed for any of this.** `DesignerSessionState` has no
+   "still connecting" state and does not need one - loading is a pure client-side condition (an
+   in-flight `Task`), not something the child host needs to know about.
+
+`SharedDesignerHostBroker<T>`/`SharedDesignerHostPool<TKey,TConnection>` already keep one child
+process alive across file opens/closes independently of any single ViewContent (their own gate
+is re-entrancy-safe) - the reload-avoidance above is purely a ViewContent-layer concern; it does
+not change how the shared broker/pool behaves.
+
 ## References
 
 - [`winforms-designer.md`](winforms-designer.md), [`wpf-designer.md`](wpf-designer.md),

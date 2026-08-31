@@ -71,6 +71,11 @@ namespace ICSharpCode.FormsDesigner
 		FormsDesignerHostClient remoteClient;
 		RemoteFormsDesignerControl remoteControl;
 		long remoteDocumentVersion;
+		// Guards against a superseded async load applying stale state (e.g. the user switched
+		// tabs/files again, or edited the source, before an in-flight acquire+open completed) -
+		// see doc/technotes/designer-common.md's Design-tab-activation convention.
+		long loadGeneration;
+		Dictionary<string, string> lastLoadedTexts;
 		readonly Stack<Dictionary<string, string>> remoteUndo = new Stack<Dictionary<string, string>>();
 			readonly Stack<Dictionary<string, string>> remoteRedo = new Stack<Dictionary<string, string>>();
 			readonly DesignerCommandController commands = new DesignerCommandController();
@@ -426,11 +431,11 @@ namespace ICSharpCode.FormsDesigner
 				}
 				
 			} else if (file == this.PrimaryFile || this.sourceCodeStorage.ContainsFile(file)) {
-				
-				if (this.IsRemoteDesignerLoaded) {
-					this.UnloadRemoteDesigner();
-				}
-				
+
+				// Deciding whether a reload is actually needed (vs. reusing the live session)
+				// requires the NEW source text first - LoadRemoteDesigner() below makes that call
+				// itself once sourceCodeStorage has the fresh content, instead of unconditionally
+				// tearing the designer down here before we even know whether anything changed.
 				this.inMasterLoadOperation = true;
 				
 				try {
@@ -546,32 +551,111 @@ namespace ICSharpCode.FormsDesigner
 			// designer is handled inside the out-of-process host.
 		}
 
+		static bool RemoteDocumentsUnchanged(Dictionary<string, string> current, Dictionary<string, string> previous)
+		{
+			if (previous == null || current.Count != previous.Count)
+				return false;
+			foreach (var pair in current) {
+				if (!previous.TryGetValue(pair.Key, out var text) || !String.Equals(text, pair.Value, StringComparison.Ordinal))
+					return false;
+			}
+			return true;
+		}
+
+		/// <summary>
+		/// Starts (or reuses) the out-of-process WinForms design session. Never blocks the
+		/// dispatcher: if a live session already exists and nothing changed since the last
+		/// successful load, this returns immediately without any RPC; otherwise it shows the
+		/// shared "please wait" chrome (<see cref="DesignerCanvas.SetLoading"/>) and kicks
+		/// off the acquire+open round-trip in the background, applying the result only if this is
+		/// still the most recent load request when it completes. See
+		/// doc/technotes/designer-common.md's Design-tab-activation convention.
+		/// </summary>
 		void LoadRemoteDesigner()
 		{
-			UnloadRemoteDesigner();
-			remoteClient = FormsDesignerHostClient.AcquireSharedAsync("", "", System.Threading.CancellationToken.None).GetAwaiter().GetResult();
-			remoteClient.HostExited += RemoteHostExited;
+			var currentTexts = CaptureRemoteDocuments();
+			if (IsRemoteDesignerLoaded && RemoteDocumentsUnchanged(currentTexts, lastLoadedTexts)) {
+				base.UserContent = remoteControl;
+				return;
+			}
+
+			var myGeneration = ++loadGeneration;
+			// Keep showing the last-rendered canvas (dimmed by the loading overlay) across a
+			// reload when one already exists; only fall back to a bare placeholder on this view's
+			// very first load.
+			DesignerCanvas canvas = remoteControl;
+			if (canvas == null) {
+				canvas = new DesignerCanvas();
+				base.UserContent = canvas;
+			}
+			canvas.SetLoading(true, "Starting " + FormsDesignerHostClient.SelectedBackend + " design host…");
+
+			var oldClient = remoteClient;
+			remoteClient = null;
+			// Built here, synchronously, on the dispatcher: it reads AvalonEdit documents, which
+			// (like every WPF DependencyObject) can only be touched from the thread that owns
+			// them - the async continuation below resumes on a thread-pool thread
+			// (ConfigureAwait(false)), so it must not read dispatcher-affine state itself.
 			var snapshot = CreateRemoteSnapshot(++remoteDocumentVersion);
-			var state = remoteClient.OpenAsync(snapshot, System.Threading.CancellationToken.None).GetAwaiter().GetResult();
+			_ = LoadRemoteDesignerAsync(myGeneration, currentTexts, snapshot, canvas, oldClient);
+		}
+
+		async System.Threading.Tasks.Task LoadRemoteDesignerAsync(long generation, Dictionary<string, string> texts,
+			DesignerDocumentSnapshot snapshot, DesignerCanvas loadingCanvas, FormsDesignerHostClient oldClient)
+		{
+			oldClient?.Dispose();
+			FormsDesignerHostClient client;
+			DesignerSessionState state;
+			try {
+				client = await FormsDesignerHostClient.AcquireSharedAsync("", "", System.Threading.CancellationToken.None).ConfigureAwait(false);
+				state = await client.OpenAsync(snapshot, System.Threading.CancellationToken.None).ConfigureAwait(false);
+			} catch (Exception exception) {
+				SD.MainThread.InvokeAsyncAndForget(() => {
+					if (generation != loadGeneration || disposing) return;
+					LoggingService.Error(exception);
+					loadingCanvas.SetLoading(false);
+					loadingCanvas.ShowStatusBar = true;
+					loadingCanvas.StatusText = "The WinForms designer could not be started: " + exception.Message;
+				});
+				return;
+			}
+
+			SD.MainThread.InvokeAsyncAndForget(() => {
+				if (generation != loadGeneration || disposing) {
+					// A newer load (or the file/view closing) superseded this one while the
+					// out-of-process handshake was still in flight - discard the result.
+					client.Dispose();
+					return;
+				}
 				OutputChannel.Write("WinForms", "Design host opened for " + PrimaryFile.FileName);
-			if (!state.Accepted) throw new FormsDesignerLoadException(state.Error);
-			remoteControl = new RemoteFormsDesignerControl(remoteClient);
-			remoteControl.ToolboxDrop += RemoteToolboxDrop;
-			remoteControl.BoundsChanged += RemoteBoundsChanged;
-			remoteControl.SelectionMoveRequested += (sender, e) => {
-				try { MoveRemoteSelection(e.DeltaX, e.DeltaY); }
-				catch (Exception exception) { LoggingService.Error(exception); MessageService.ShowError(exception.Message); }
-			};
-			remoteControl.DeleteRequested += RemoteDeleteRequested;
-			remoteControl.DefaultEventRequested += RemoteDefaultEventRequested;
-			remoteControl.SelectionChanged += RemoteSelectionChanged;
-			remoteControl.RestartRequested += RemoteRestartRequested;
-			outline.SelectionCommitted += OnOutlineSelectionCommitted;
-			remoteControl.Show(state);
-			UpdateOutline(state);
-			ActivateOutlinePadOnce();
-			base.UserContent = remoteControl;
-			hasUnmergedChanges = false;
+				if (!state.Accepted) {
+					client.Dispose();
+					loadingCanvas.SetLoading(false);
+					loadingCanvas.ShowStatusBar = true;
+					loadingCanvas.StatusText = "Failed to load designer: " + state.Error;
+					return;
+				}
+				remoteClient = client;
+				remoteClient.HostExited += RemoteHostExited;
+				remoteControl = new RemoteFormsDesignerControl(remoteClient);
+				remoteControl.ToolboxDrop += RemoteToolboxDrop;
+				remoteControl.BoundsChanged += RemoteBoundsChanged;
+				remoteControl.SelectionMoveRequested += (sender, e) => {
+					try { MoveRemoteSelection(e.DeltaX, e.DeltaY); }
+					catch (Exception exception) { LoggingService.Error(exception); MessageService.ShowError(exception.Message); }
+				};
+				remoteControl.DeleteRequested += RemoteDeleteRequested;
+				remoteControl.DefaultEventRequested += RemoteDefaultEventRequested;
+				remoteControl.SelectionChanged += RemoteSelectionChanged;
+				remoteControl.RestartRequested += RemoteRestartRequested;
+				outline.SelectionCommitted += OnOutlineSelectionCommitted;
+				remoteControl.Show(state);
+				UpdateOutline(state);
+				ActivateOutlinePadOnce();
+				base.UserContent = remoteControl;
+				hasUnmergedChanges = false;
+				lastLoadedTexts = texts;
+			});
 		}
 
 		bool outlinePadActivated;

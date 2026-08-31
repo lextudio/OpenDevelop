@@ -71,6 +71,12 @@ namespace ICSharpCode.WpfDesign.AddIn
 		bool hasLoadedOnce;
 		bool wasChangedInDesigner;
 		MemoryStream? _stream;
+		// Guards a superseded async load from applying stale state, and lets LoadInternal skip
+		// the acquire/open/update round-trip entirely when nothing changed since the last
+		// successful load - see doc/technotes/designer-common.md's Design-tab-activation
+		// convention (same pattern as FormsDesignerViewContent.LoadRemoteDesigner).
+		long loadGeneration;
+		string? lastLoadedSourceText;
 
 		// Undo/redo: whole-document XAML text snapshot stacks, mirroring
 		// DesignerViewContent's own remoteUndo/remoteRedo pattern for the WinForms designer -
@@ -111,37 +117,81 @@ namespace ICSharpCode.WpfDesign.AddIn
 			_stream = new MemoryStream();
 			stream.CopyTo(_stream);
 			stream.Position = 0;
+
+			string sourceText;
+			_stream.Position = 0;
+			using (var reader = new StreamReader(new UnclosableStream(_stream)))
+				sourceText = reader.ReadToEnd();
+			_stream.Position = 0;
+
+			if (surfaceControl != null && hasLoadedOnce
+				&& String.Equals(sourceText, lastLoadedSourceText, StringComparison.Ordinal))
+			{
+				// Nothing changed since the last successful load (e.g. Source -> Design -> Source
+				// without editing) - reuse the live session instead of paying another RPC
+				// round-trip. See doc/technotes/designer-common.md's Design-tab-activation
+				// convention.
+				this.UserContent = surfaceControl;
+				return;
+			}
+
 			wasChangedInDesigner = false;
 			undoStack.Clear();
 			redoStack.Clear();
 			lastKnownGoodXaml = null;
 
-			if (surfaceControl == null)
-			{
-				LoggingService.Info("WPF designer: acquiring shared surface host");
-				client = WpfSurfaceHostClient.AcquireSharedAsync(null, CancellationToken.None).GetAwaiter().GetResult();
-				LoggingService.Info($"WPF designer: acquired surface host pid={client.ProcessId}");
-				surfaceControl = new WpfSurfaceDesignerControl(client);
-				surfaceControl.SelectionChanged += OnSelectionChanged;
-				surfaceControl.DocumentChanged += OnDocumentChanged;
-				surfaceControl.UndoRedoRequested += OnUndoRedoRequested;
-				InitPropertyEditor();
-				InitWpfToolbox();
-			}
-			this.UserContent = surfaceControl;
+			var myGeneration = ++loadGeneration;
+			// Keep showing the last-rendered surface (dimmed by the loading overlay) across a
+			// reload when one already exists; only fall back to a bare placeholder on this view's
+			// very first load.
+			DesignerCanvas canvas = (DesignerCanvas?)surfaceControl ?? new DesignerCanvas();
+			this.UserContent = canvas;
+			canvas.SetLoading(true, "Starting WPF design host…");
 
+			_ = LoadDesignerAsync(myGeneration, sourceText);
+		}
+
+		/// <summary>
+		/// Acquires the shared surface host (first load only) and opens/updates the document,
+		/// never blocking the dispatcher. Every <c>await</c> here resumes back on the dispatcher
+		/// (LoadInternal, which started this chain, runs on it, and no ConfigureAwait(false) is
+		/// used), so the UI-touching code after each await is safe to run directly - it is guarded
+		/// by <paramref name="generation"/> in case a newer load (or Dispose) superseded this one
+		/// while the round-trip was in flight.
+		/// </summary>
+		async System.Threading.Tasks.Task LoadDesignerAsync(long generation, string sourceText)
+		{
 			try
 			{
+				if (surfaceControl == null)
+				{
+					LoggingService.Info("WPF designer: acquiring shared surface host");
+					var acquiredClient = await WpfSurfaceHostClient.AcquireSharedAsync(null, CancellationToken.None);
+					LoggingService.Info($"WPF designer: acquired surface host pid={acquiredClient.ProcessId}");
+					if (generation != loadGeneration || IsDisposed) { acquiredClient.Dispose(); return; }
+					client = acquiredClient;
+					surfaceControl = new WpfSurfaceDesignerControl(client);
+					surfaceControl.SelectionChanged += OnSelectionChanged;
+					surfaceControl.DocumentChanged += OnDocumentChanged;
+					surfaceControl.UndoRedoRequested += OnUndoRedoRequested;
+					InitPropertyEditor();
+					InitWpfToolbox();
+				}
+
 				var snapshot = CreateSnapshot(++documentVersion);
 				LoggingService.Info($"WPF designer: opening document version={snapshot.Version}");
 				var state = hasLoadedOnce
-					? surfaceControl.UpdateAsync(snapshot).GetAwaiter().GetResult()
-					: surfaceControl.OpenAsync(snapshot).GetAwaiter().GetResult();
+					? await surfaceControl.UpdateAsync(snapshot)
+					: await surfaceControl.OpenAsync(snapshot);
 				LoggingService.Info($"WPF designer: document response accepted={state.Accepted}");
+
+				if (generation != loadGeneration || IsDisposed)
+					return; // a newer load (or Dispose) superseded this one while in flight
+
 				// OpenAsync/UpdateAsync deliberately do not render internally (see
-				// WpfSurfaceDesignerControl.Show's remarks) - GetResult() above resumed execution
-				// on this thread, which IS the dispatcher thread here (LoadInternal always runs on
-				// it), so calling Show() directly, synchronously, right here is correct and safe.
+				// WpfSurfaceDesignerControl.Show's remarks) - resuming here without
+				// ConfigureAwait(false) means this is still the dispatcher thread, so calling
+				// Show() directly, synchronously, right here is correct and safe.
 				surfaceControl.Show(state);
 				if (!state.Accepted)
 					throw new WpfDesignerLoadException(state.Error);
@@ -153,11 +203,14 @@ namespace ICSharpCode.WpfDesign.AddIn
 				// (not the not-yet-fetched post-mutation text) onto undoStack.
 				LoggingService.Info("WPF designer: flushing initial document baseline");
 				lastKnownGoodXaml = FlushCurrentXaml();
+				lastLoadedSourceText = sourceText;
+				this.UserContent = surfaceControl;
 				LoggingService.Info("WPF designer: initial document baseline ready");
 			}
 			catch (Exception e)
 			{
-				ShowDesignerError(e);
+				if (generation == loadGeneration && !IsDisposed)
+					ShowDesignerError(e);
 			}
 		}
 
