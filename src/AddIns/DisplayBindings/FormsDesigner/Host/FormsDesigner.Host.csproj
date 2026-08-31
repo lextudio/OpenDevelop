@@ -10,6 +10,20 @@
     <ProGpuWpfEnablePortableBootstrap>false</ProGpuWpfEnablePortableBootstrap>
     <OpenDevelopAddin>true</OpenDevelopAddin>
     <OpenDevelopAddinKind>OutOfProcessHost</OpenDevelopAddinKind>
+    <!-- dist.ps1 builds the whole distribution AddIn solution with
+         -p:ProGpuWpfCopyPackageRuntimeAssets=false, on the assumption that every AddIn loads
+         in-process and can resolve the shared LibreWPF/ProGPU runtime from files already sitting
+         beside OpenDevelop.exe. This project is the opposite: OpenDevelopAddinKind=OutOfProcessHost
+         means it runs as its own separate "dotnet exec" child process with its own working
+         directory, which cannot see the host's files at all - so it needs its complete own
+         runtime closure (PresentationFramework.dll, ProGPU.*.dll, System.Windows.Forms.dll, ...)
+         deployed alongside FormsDesigner.Host.dll. Without this override, the packaged
+         distribution's Host\ folder ends up with only ~5 files instead of the ~100 the child
+         process needs, so it crashes at startup before completing its handshake with the parent -
+         which surfaces as "System.TimeoutException: The operation has timed out" in
+         DesignerHostProcessClient.StartAsync, with no further detail (the child dies too fast for
+         its own stdout/stderr pump to catch anything useful). -->
+    <ProGpuWpfCopyPackageRuntimeAssets>true</ProGpuWpfCopyPackageRuntimeAssets>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />

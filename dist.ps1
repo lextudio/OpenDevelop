@@ -262,16 +262,38 @@ function Invoke-WindowsPackaging {
     $addInsSource = (Resolve-Path (Join-Path $repoRoot 'AddIns')).Path
     $addInsTarget = Join-Path $payloadRoot 'AddIns'
 
+    # OpenDevelopAddinKind=OutOfProcessHost projects (WinForms/WPF/WinUI design-surface hosts) run
+    # as their own separate "dotnet exec" child process with its own working directory - unlike an
+    # InProcess addin, they cannot resolve a same-named dependency from files sitting beside
+    # OpenDevelop.exe, so the by-name dedup below must not strip files out of their deployment
+    # folders. Missing this once (FormsDesigner's Host\ folder losing PresentationFramework.dll,
+    # every ProGPU.*.dll, System.Windows.Forms.dll, ...) made the WinForms designer's child host
+    # crash before completing its handshake, surfacing only as an opaque
+    # "System.TimeoutException: The operation has timed out" with no further detail. Keep this in
+    # sync with each OutOfProcessHost project's own DeployToAddIns destination.
+    $outOfProcessHostDirs = @(
+        'DisplayBindings\FormsDesigner\Host',
+        'DisplayBindings\FormsDesigner\MicrosoftHost',
+        'DisplayBindings\GtkDesigner\Host',
+        'DisplayBindings\MewUIDesigner\Host',
+        'DisplayBindings\WinUIXamlDesigner\UnoHost',
+        'DisplayBindings\WinUIXamlDesigner\MicrosoftHost',
+        'DisplayBindings\WpfDesign\Host',
+        'DisplayBindings\WpfDesign\MicrosoftHost'
+    )
+
     # Select first, then copy in a plain foreach. A ForEach-Object block runs in a child scope, so
     # a counter incremented inside one needs an explicit $script: qualifier — which silently
     # counted nothing once this loop moved inside a function. Keeping the copy in a normal loop
     # means the count and the filtering read the same way and cannot drift apart again.
     $addInFiles = Get-ChildItem -LiteralPath $addInsSource -Recurse -File | Where-Object {
         $name = $_.Name
+        $relativeDir = Split-Path -Parent ($_.FullName.Substring($addInsSource.Length).TrimStart('\', '/'))
+        $isOutOfProcessHost = $outOfProcessHostDirs | Where-Object { $relativeDir -eq $_ -or $relativeDir.StartsWith("$_\") }
         -not ($name -like '*.pdb') -and
         -not ($name -like 'LeXtudio.DevFlow.*') -and
         -not ($name -like 'CliclickSharp*') -and
-        -not $hostFiles.Contains($name)
+        (-not $hostFiles.Contains($name) -or $isOutOfProcessHost)
     }
 
     foreach ($file in $addInFiles) {
