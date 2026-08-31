@@ -125,6 +125,27 @@
           DestinationFiles="@(_RoslynBuildTools->'$(OutDir)Roslyn\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
   </Target>
+  <!-- dotnet publish does not mirror $(OutDir) - Publish only stages files explicitly marked
+       ResolvedFileToPublish, so the two AfterTargets="Build" copies above (consumed by a dev/debug
+       launch out of bin\) never reach a published app's own publish\ directory. Repeat both copies
+       into $(PublishDir) so a distributed build (dist.ps1's packaged OpenDevelop.exe, launched
+       without a dev launch's MSBuild environment variables pointing at the real installed SDK)
+       resolves SDK-style projects the same way a dev launch does, instead of silently failing to
+       an empty ErrorProject - the symptom was the Projects Pad showing no child nodes at all. -->
+  <Target Name="DeployNuGetSdkResolverToPublish" AfterTargets="Publish"
+          Condition="'$(PublishDir)' != '' And Exists('$(MSBuildToolsPath)\Microsoft.Build.NuGetSdkResolver.dll')">
+    <Copy SourceFiles="$(MSBuildToolsPath)\Microsoft.Build.NuGetSdkResolver.dll"
+          DestinationFolder="$(PublishDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="DeployRoslynBuildToolsToPublish" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
+    <ItemGroup>
+      <_RoslynBuildToolsPublish Include="$(MSBuildToolsPath)\Roslyn\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_RoslynBuildToolsPublish)"
+          DestinationFiles="@(_RoslynBuildToolsPublish->'$(PublishDir)Roslyn\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
   <ItemGroup>
     <!-- Out of MVP scope: Mono.Cecil (real submodule) is not referenced by this exe - AssemblyParserService.cs/
          GlobalAssemblyCacheService.cs/Fusion.cs used real Mono.Cecil, out of scope per MVP policy 1. -->

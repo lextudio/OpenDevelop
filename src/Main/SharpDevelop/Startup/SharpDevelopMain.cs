@@ -84,9 +84,8 @@ namespace ICSharpCode.SharpDevelop.Startup
 
 		static void HandleMainException(Exception ex)
 		{
-			// ExceptionBox (WinForms crash dialog) is out of MVP scope - fall back to a plain WPF message box.
 			LoggingService.Fatal(ex);
-			System.Windows.MessageBox.Show(ex.ToString(), "Unhandled exception terminated SharpDevelop");
+			ExceptionBox.ShowErrorBox(ex, "Unhandled exception terminated SharpDevelop");
 		}
 		
 		static void Run()

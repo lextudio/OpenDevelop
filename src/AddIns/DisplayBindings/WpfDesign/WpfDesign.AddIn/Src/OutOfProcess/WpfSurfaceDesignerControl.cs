@@ -238,7 +238,9 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			//    here (no document is open yet) and Show() reveals it once a project that
 			//    embeds themes is actually loaded.
 			Capabilities = DesignerCanvasCapabilities.Zoom | DesignerCanvasCapabilities.Fit |
-				DesignerCanvasCapabilities.Gridlines | DesignerCanvasCapabilities.ShowNames;
+				DesignerCanvasCapabilities.Gridlines | DesignerCanvasCapabilities.ShowNames |
+				DesignerCanvasCapabilities.StatusBar;
+			StatusText = "Starting WPF design host…";
 			foreach (var label in ZoomLabels)
 				ZoomCombo.Items.Add(label);
 			ZoomCombo.SelectedIndex = 4; // "100%"
@@ -338,6 +340,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			// confirming them again) shows and repopulates it.
 			Capabilities = DesignerCanvasCapabilities.Zoom | DesignerCanvasCapabilities.Fit |
 				DesignerCanvasCapabilities.Gridlines | DesignerCanvasCapabilities.ShowNames |
+				DesignerCanvasCapabilities.StatusBar |
 				(newState.DesignThemes.Length > 0 ? DesignerCanvasCapabilities.Theme : DesignerCanvasCapabilities.None);
 			if (Capabilities.HasFlag(DesignerCanvasCapabilities.Theme))
 			{
@@ -346,6 +349,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			var render = newState.Render;
 			if (render == null || string.IsNullOrEmpty(render.Data) || render.Width <= 0 || render.Height <= 0)
 			{
+				StatusText = "WPF design host: nothing rendered yet.";
 				framePresenter.Clear();
 				viewport = DesignViewport.Identity(0, 0);
 				adornerLayer.ClearSelection();
@@ -361,6 +365,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 
 			var pixels = DecodeFrame(render.Data);
 			framePresenter.SetSource(BitmapSource.Create(render.Width, render.Height, 96, 96, PixelFormats.Bgra32, null, pixels, render.Width * 4));
+			StatusText = $"Rendered by WPF design host ({render.Width}×{render.Height}).";
 			// The design is centered inside the canvas with at least CanvasPadding of empty space
 			// on every side, never flush against the top-left corner. Two reasons, both real:
 			// the ROOT element's own resize handles are drawn just outside its bounds, so with no

@@ -44,30 +44,7 @@ $hostProject = Join-Path $repoRoot 'src/Main/SharpDevelop/SharpDevelop.csproj'
 $dotnet = Find-DotNetHost
 $publishDir = Join-Path $repoRoot "src/Main/SharpDevelop/bin/$config/$tfm/publish"
 $depsJson = Join-Path $publishDir 'OpenDevelop.deps.json'
-$patchScript = Join-Path $repoRoot 'build/patch-librewinforms-deps.py'
-
-# The interpreter is named python3 on macOS and (usually) python on Windows; accept either rather
-# than branching on the platform for something this incidental.
-#
-# Presence is NOT enough on Windows: a machine without Python still has
-# %LocalAppData%\Microsoft\WindowsApps\python.exe and python3.exe, App Execution Alias stubs that
-# Get-Command resolves happily but that only print "Python was not found; run without arguments to
-# install from the Microsoft Store" and exit non-zero. Picking one of those would fail much later,
-# inside the deps-patch step, with an error that looks nothing like "Python is not installed". So
-# probe by actually running each candidate and keep the first that reports a version.
-$python = $null
-foreach ($candidate in 'python3', 'python') {
-    $resolved = (Get-Command $candidate -ErrorAction SilentlyContinue)?.Source
-    if (-not $resolved) { continue }
-    $version = & $resolved --version 2>&1
-    if ($LASTEXITCODE -eq 0 -and "$version" -match '^Python\s+\d') { $python = $resolved; break }
-}
-if (-not $python) {
-    throw "dist.ps1: no working python3/python found (needed for $patchScript). " +
-          'On Windows, %LocalAppData%\Microsoft\WindowsApps\python.exe may exist as a Microsoft ' +
-          'Store alias stub without Python actually being installed - install Python, or disable ' +
-          'that alias under Settings > Apps > Advanced app settings > App execution aliases.'
-}
+$patchScript = Join-Path $repoRoot 'build/patch-librewinforms-deps.ps1'
 
 # The Addin SDK's OpenDevelopPruneAddinDeploymentAssets target drops runtimes/win*, linux* and
 # unix* only for the 'osx' family; on Windows those win* assets are exactly what the payload needs.
@@ -197,7 +174,7 @@ if (-not $SkipPublish) {
         throw 'dist.ps1: cannot determine the NuGet global-packages directory'
     }
     $nugetPackages = ($nugetPackagesLine.Line -replace '^global-packages:\s*', '')
-    Invoke-Native $python $patchScript $depsJson $nugetPackages
+    & $patchScript $depsJson $nugetPackages
     Sync-LibreWpfTransportRuntime $publishDir
 
     # Some projects write to OpenDevelopHostPublishDir while computing their distribution
@@ -223,7 +200,7 @@ if (-not $SkipPublish) {
     # The solution traversal may copy reference assemblies over the original PublishDir through
     # cached project state. Restore the authoritative package runtime payload only after every
     # build has completed.
-    Invoke-Native $python $patchScript $depsJson $nugetPackages
+    & $patchScript $depsJson $nugetPackages
     Sync-LibreWpfTransportRuntime $publishDir
 }
 else {

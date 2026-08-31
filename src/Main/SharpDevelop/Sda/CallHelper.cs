@@ -72,8 +72,6 @@ namespace ICSharpCode.SharpDevelop.Sda
 			CoreStartup startup = new CoreStartup(properties.ApplicationName);
 			if (properties.UseSharpDevelopErrorHandler) {
 				this.useSharpDevelopErrorHandler = true;
-				// ExceptionBox (WinForms crash dialog) is out of MVP scope - unhandled exceptions
-				// terminating the workbench are rethrown as RunWorkbenchException below instead.
 			}
 			string configDirectory = properties.ConfigDirectory;
 			string dataDirectory = properties.DataDirectory;
@@ -265,7 +263,7 @@ namespace ICSharpCode.SharpDevelop.Sda
 				const string errorText = "Unhandled exception terminated the workbench";
 				LoggingService.Fatal(exception);
 				if (useSharpDevelopErrorHandler) {
-					System.Windows.MessageBox.Show(exception.ToString(), errorText);
+					ExceptionBox.ShowErrorBox(exception, errorText);
 				} else {
 					throw new RunWorkbenchException(errorText, exception);
 				}

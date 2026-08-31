@@ -36,13 +36,17 @@ namespace ICSharpCode.SharpDevelop.Startup
 			{
 				this.AddWpfDevFlowAgent(new AgentOptions { Port = GetAgentPort() });
 			}
-			// Log the exception that is about to terminate the app instead of dying silently:
-			// an unhandled dispatcher exception otherwise exits the process without a trace in
-			// the captured stdout/stderr (measured during integration-test debugging), making
-			// intermittent startup crashes impossible to diagnose.
+			// Log the exception instead of dying silently: an unhandled dispatcher exception
+			// otherwise exits the process without a trace in the captured stdout/stderr (measured
+			// during integration-test debugging), making intermittent startup crashes impossible
+			// to diagnose. Then show the copyable exception dialog and let the user decide whether
+			// to keep working - a single misbehaving command (e.g. a designer surface action that
+			// creates a control off its owning thread) would otherwise take down the whole session.
 			this.DispatcherUnhandledException += (_, e) =>
 			{
-				ICSharpCode.Core.LoggingService.Fatal("Unhandled dispatcher exception - app is terminating.", e.Exception);
+				ICSharpCode.Core.LoggingService.Fatal("Unhandled dispatcher exception.", e.Exception);
+				e.Handled = ICSharpCode.SharpDevelop.Logging.ExceptionBox.ShowErrorBox(
+					e.Exception, "Unhandled exception", allowContinue: true);
 			};
 		}
 

@@ -24,6 +24,14 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 		const string SelectedSdkRootPathKey = "SharpDevelop.Sdk.SelectedRootPath";
 		const string CustomRootsKey = "SharpDevelop.Sdk.CustomRoots";
 
+		/// <summary>The "dotnet" host executable's file name on this platform ("dotnet.exe" on
+		/// Windows). <see cref="File.Exists(string)"/> does no PATHEXT-style extension resolution
+		/// the way process launching does, so every root-description check below must use this
+		/// exact name - checking for a bare "dotnet" makes every SDK root candidate File.Exists
+		/// check fail on Windows, which silently disabled this entire service (DiscoverSdks()
+		/// always returning empty) for every Windows install, dev or packaged alike.</summary>
+		static readonly string DotnetExeFileName = OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet";
+
 		public static string SelectedSdkRootPath {
 			get { return PropertyService.Get(SelectedSdkRootPathKey, string.Empty); }
 			set { PropertyService.Set(SelectedSdkRootPathKey, value ?? string.Empty); }
@@ -65,7 +73,7 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 				error = $"The folder does not exist:\n{rootPath}";
 				return false;
 			}
-			if (!File.Exists(Path.Combine(normalized, "dotnet"))) {
+			if (!File.Exists(Path.Combine(normalized, DotnetExeFileName))) {
 				error = $"The selected folder is not a .NET SDK root because it does not contain the dotnet executable:\n{normalized}";
 				return false;
 			}
@@ -177,7 +185,7 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 			foreach (var dir in pathVar.Split(Path.PathSeparator)) {
 				if (string.IsNullOrEmpty(dir))
 					continue;
-				string candidate = Path.Combine(dir, OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet");
+				string candidate = Path.Combine(dir, DotnetExeFileName);
 				if (!File.Exists(candidate))
 					continue;
 				string resolved;
@@ -211,7 +219,7 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 
 		static DotNetSdkInfo TryDescribeRoot(string rootPath, string label, DotNetSdkOrigin origin)
 		{
-			string dotnetExe = Path.Combine(rootPath, "dotnet");
+			string dotnetExe = Path.Combine(rootPath, DotnetExeFileName);
 			string sdkDir = Path.Combine(rootPath, "sdk");
 			if (!File.Exists(dotnetExe) || !Directory.Exists(sdkDir))
 				return null;

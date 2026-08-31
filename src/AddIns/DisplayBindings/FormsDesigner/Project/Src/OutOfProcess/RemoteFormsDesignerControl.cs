@@ -126,7 +126,8 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			this.client = client;
 			Focusable = true;
 			BackendName = FormsDesignerHostClient.SelectedBackend;
-			Capabilities = DesignerCanvasCapabilities.Zoom | DesignerCanvasCapabilities.Fit;
+			Capabilities = DesignerCanvasCapabilities.Zoom | DesignerCanvasCapabilities.Fit | DesignerCanvasCapabilities.StatusBar;
+			StatusText = $"Starting {BackendName} design host…";
 			// The shared DesignerCanvas shell provides the dotted empty-canvas edge pattern and
 			// the common zoom toolbar; the design surface is transparent so the edge pattern
 			// shows around the rendered form bitmap.
@@ -294,6 +295,8 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				return;
 			}
 			lastFrameSequence = state.Render.Sequence;
+			var dpiForStatus = Math.Max(1, state.Render.Dpi);
+			StatusText = $"Rendered by {BackendName} design host ({state.Render.Width / dpiForStatus:0}×{state.Render.Height / dpiForStatus:0}).";
 			var bitmap = new BitmapImage();
 			using (var stream = new MemoryStream(Convert.FromBase64String(state.Render.PngBase64))) {
 				bitmap.BeginInit();
@@ -461,6 +464,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			disconnectedOverlay.Visibility = Visibility.Visible;
 			adornerLayer.ClearSelection();
 			moveThumb.Visibility = resizeHitTarget.Visibility = resizeThumb.Visibility = Visibility.Collapsed;
+			StatusText = message;
 		}
 
 		public bool TryGetComponentScreenBounds(string componentName, out Rect bounds)

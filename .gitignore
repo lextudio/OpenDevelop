@@ -44,7 +44,9 @@ tests/fixtures/CoverageFixture/CoverageTests/CodeCoverage/coverage.xml
 # keep the macOS packaging scripts tracked
 /build/*
 !/build/macos/
-!/build/patch-librewinforms-deps.py
+!/build/patch-librewinforms-deps.ps1
 # shared PowerShell module imported by launch.ps1 / dist.macos.ps1
 !/build/common.psm1
 tests/fixtures/SampleTestProject/CodeCoverage/
+/OpenDevelop-win/
+*.zip

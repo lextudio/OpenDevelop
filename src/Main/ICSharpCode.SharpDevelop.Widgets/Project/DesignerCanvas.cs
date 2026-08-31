@@ -38,7 +38,8 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		Theme = 8,
 		ShowNames = 16,
 		DesignSize = 32,
-		All = Zoom | Fit | Gridlines | Theme | ShowNames | DesignSize
+		StatusBar = 64,
+		All = Zoom | Fit | Gridlines | Theme | ShowNames | DesignSize | StatusBar
 	}
 
 	public class DesignerCanvas : ContentControl
@@ -50,6 +51,15 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		readonly ComboBox themeCombo;
 		readonly ToggleButton namesButton;
 		readonly TextBlock backendLabel;
+		// A TextBox (not a TextBlock) so a long diagnostic message can be selected/copied out of
+		// the app - the same reasoning WinUIXamlDesignerViewContent's own status control used to
+		// have before every backend's status bar was unified into this shared control.
+		readonly TextBox statusBar = new() {
+			Margin = new Thickness(8, 4, 8, 4), TextWrapping = TextWrapping.Wrap,
+			IsReadOnly = true, IsReadOnlyCaretVisible = true, BorderThickness = new Thickness(0),
+			Background = Brushes.Transparent, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+			MaxHeight = 200, FontSize = 11
+		};
 		bool syncingTheme;
 
 		public DesignerCanvas()
@@ -92,11 +102,15 @@ namespace ICSharpCode.SharpDevelop.Widgets
 
 			root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 			root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+			root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 			Grid.SetRow(toolbar, 0);
 			Grid.SetRow(ContentHost, 1);
+			Grid.SetRow(statusBar, 2);
 			root.Children.Add(toolbar);
 			root.Children.Add(ContentHost);
+			root.Children.Add(statusBar);
 			Content = root;
+			statusBar.Visibility = Visibility.Collapsed;
 
 			ZoomCombo.SelectionChanged += (_, _) => ZoomChanged?.Invoke(this, EventArgs.Empty);
 			DesignSizeCombo.SelectionChanged += (_, e) => {
@@ -134,6 +148,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			gridButton.SetResourceReference(Control.ForegroundProperty, "Foreground");
 			themeCombo.SetResourceReference(Control.ForegroundProperty, "Foreground");
 			namesButton.SetResourceReference(Control.ForegroundProperty, "Foreground");
+			statusBar.SetResourceReference(Control.ForegroundProperty, "Foreground");
 			ApplyDesignTheme(false);
 			// The empty-canvas edge follows the IDE theme via the semantic theme's "EdgePattern"
 			// key (Themes/Theme.Light.xaml / Theme.Dark.xaml each define their own), so a theme
@@ -167,8 +182,11 @@ namespace ICSharpCode.SharpDevelop.Widgets
 				themeCombo.Visibility = value.HasFlag(DesignerCanvasCapabilities.Theme) ? Visibility.Visible : Visibility.Collapsed;
 				namesButton.Visibility = value.HasFlag(DesignerCanvasCapabilities.ShowNames) ? Visibility.Visible : Visibility.Collapsed;
 				DesignSizeCombo.Visibility = value.HasFlag(DesignerCanvasCapabilities.DesignSize) ? Visibility.Visible : Visibility.Collapsed;
+				showStatusBarCapability = value.HasFlag(DesignerCanvasCapabilities.StatusBar);
+				UpdateStatusBarVisibility();
 			}
 		}
+		bool showStatusBarCapability;
 
 		public IReadOnlyList<string> VisibleToolbarItems
 		{
@@ -191,7 +209,25 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		public bool ShowGrid { get => capabilities.HasFlag(DesignerCanvasCapabilities.Gridlines); set => SetCapability(DesignerCanvasCapabilities.Gridlines, value); }
 		public bool ShowTheme { get => capabilities.HasFlag(DesignerCanvasCapabilities.Theme); set => SetCapability(DesignerCanvasCapabilities.Theme, value); }
 		public bool ShowNames { get => capabilities.HasFlag(DesignerCanvasCapabilities.ShowNames); set => SetCapability(DesignerCanvasCapabilities.ShowNames, value); }
+		public bool ShowStatusBar { get => capabilities.HasFlag(DesignerCanvasCapabilities.StatusBar); set => SetCapability(DesignerCanvasCapabilities.StatusBar, value); }
 		void SetCapability(DesignerCanvasCapabilities capability, bool enabled) => Capabilities = enabled ? capabilities | capability : capabilities & ~capability;
+
+		/// <summary>
+		/// One-line (wrapping) diagnostic/feedback text shared by every backend's status bar -
+		/// host lifecycle ("Starting…"/"X ready"/"X failed to start"), the last render result
+		/// ("Rendered by X (WxH)"), and transient action feedback (copy/paste/undo/redo/drop
+		/// results). Collapsed (no row space) while empty or while <see cref="ShowStatusBar"/>
+		/// is off, so a backend that never sets it costs nothing.
+		/// </summary>
+		public string StatusText
+		{
+			get => statusBar.Text ?? "";
+			set { statusBar.Text = value ?? ""; UpdateStatusBarVisibility(); }
+		}
+
+		void UpdateStatusBarVisibility() =>
+			statusBar.Visibility = showStatusBarCapability && !string.IsNullOrEmpty(statusBar.Text)
+				? Visibility.Visible : Visibility.Collapsed;
 
 		/// <summary>Short backend label shown on the toolbar (e.g. "WinForms", "Uno", "LibreWPF").</summary>
 		public string BackendName
