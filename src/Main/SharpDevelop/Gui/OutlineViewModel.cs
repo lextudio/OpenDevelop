@@ -3,7 +3,7 @@ using System.Composition;
 using System.Windows.Controls;
 
 using ICSharpCode.Core;
-using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
 
 namespace ICSharpCode.SharpDevelop.Gui;
@@ -28,7 +28,7 @@ internal sealed class OutlineViewModel : ToolPaneModel, IOutlinePadHost, IDispos
         ContentId = "Outline";
         IsVisible = false; // Matches the legacy Pad's `defaultPosition = "Left, Hidden"`.
         IsCloseable = true;
-        PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Left;
+        PreferredDockSide = ICSharpCode.ILSpy.ViewModels.PreferredDockSide.Left;
         LegacyPadClass = typeof(OutlinePad).FullName;
         Content = contentControl;
 		SD.Services.AddService(typeof(IOutlinePadHost), this);

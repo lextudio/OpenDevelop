@@ -22,21 +22,22 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("initialize")]
 	public HostHandshake Initialize(string token, int protocolVersion, string sessionId)
 	{
-		if (!CryptographicOperations.FixedTimeEquals(Convert.FromHexString(expectedToken), Convert.FromHexString(token))) throw new UnauthorizedAccessException();
-		if (protocolVersion != DesignerProtocol.Version) throw new NotSupportedException();
+		DesignerHostHandshakeValidator.Validate(expectedToken, token, protocolVersion);
 		documents.Initialize(sessionId);
 		this.sessionId = sessionId;
 		return new HostHandshake { ProtocolVersion = DesignerProtocol.Version, Runtime = "GTK 4 document model", ProcessId = Environment.ProcessId, SessionId = sessionId };
 	}
 
 	[JsonRpcMethod("session/open")]
-	public DesignerSessionState Open(DesignerDocumentSnapshot snapshot) => Load(snapshot);
+	public DesignerSessionState Open(DesignerDocumentSnapshot snapshot) => Load(snapshot, create: true);
 	[JsonRpcMethod("session/update")]
-	public DesignerSessionState Update(DesignerDocumentSnapshot snapshot) => Load(snapshot);
-	DesignerSessionState Load(DesignerDocumentSnapshot snapshot)
+	public DesignerSessionState Update(DesignerDocumentSnapshot snapshot) => Load(snapshot, create: false);
+	DesignerSessionState Load(DesignerDocumentSnapshot snapshot, bool create)
 	{
 		EnsureSession(snapshot.SessionId);
-		var session = GetOrCreate(snapshot.DocumentId);
+		var session = create
+			? GetOrCreate(snapshot.DocumentId)
+			: Get(snapshot.DocumentId);
 		session.Version = snapshot.Version; session.FileName = snapshot.PrimaryFileName;
 		session.Editor.Reset(snapshot.Files.FirstOrDefault()?.Text ?? "");
 		return State(session, true);
@@ -75,16 +76,16 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("design/set-event")]
 	public DesignerSessionState SetEvent(string sessionId, string documentId, long baseVersion, string elementId, string eventName, string handlerName) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Editor.SetSignal(elementId, eventName, handlerName)) throw new InvalidOperationException("GTK signal mutation was rejected."); session.Version++; return State(session, false); }
 	[JsonRpcMethod("design/reorder")]
-	public DesignerSessionState Reorder(string documentId, long baseVersion, string elementId, int delta) { var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Editor.Reorder(elementId, delta)) throw new InvalidOperationException("GTK reorder was rejected."); session.Version++; return State(session, false); }
+	public DesignerSessionState Reorder(string sessionId, string documentId, long baseVersion, string elementId, int delta) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Editor.Reorder(elementId, delta)) throw new InvalidOperationException("GTK reorder was rejected."); session.Version++; return State(session, false); }
 	[JsonRpcMethod("design/hit-test")]
 	public DesignerHitTestResult HitTest(string sessionId, string documentId, long baseVersion, double x, double y) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); var hit = session.NativeBounds.Where(p => x >= p.Value.X && y >= p.Value.Y && x <= p.Value.X + p.Value.Width && y <= p.Value.Y + p.Value.Height).OrderBy(p => p.Value.Width * p.Value.Height).FirstOrDefault(); return string.IsNullOrEmpty(hit.Key) ? new DesignerHitTestResult() : new DesignerHitTestResult { Hit = true, ComponentName = hit.Key, Chain = { hit.Key } }; }
 	[JsonRpcMethod("design/undo")]
-	public DesignerSessionState Undo(string documentId, long baseVersion) { var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Editor.Undo()) throw new InvalidOperationException("Nothing to undo."); session.Version++; return State(session, false); }
+	public DesignerSessionState Undo(string sessionId, string documentId, long baseVersion) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Editor.Undo()) throw new InvalidOperationException("Nothing to undo."); session.Version++; return State(session, false); }
 	[JsonRpcMethod("design/redo")]
-	public DesignerSessionState Redo(string documentId, long baseVersion) { var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Editor.Redo()) throw new InvalidOperationException("Nothing to redo."); session.Version++; return State(session, false); }
+	public DesignerSessionState Redo(string sessionId, string documentId, long baseVersion) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); if (!session.Editor.Redo()) throw new InvalidOperationException("Nothing to redo."); session.Version++; return State(session, false); }
 
 	[JsonRpcMethod("design/render")]
-	public DesignerSessionState RenderDocument(string documentId, long baseVersion) { var session = Get(documentId); EnsureVersion(session, baseVersion); return State(session, true); }
+	public DesignerSessionState RenderDocument(string sessionId, string documentId, long baseVersion) { EnsureSession(sessionId); var session = Get(documentId); EnsureVersion(session, baseVersion); return State(session, true); }
 
 	[JsonRpcMethod("session/flush")]
 	public DesignerEditSet Flush(string sessionId, string documentId, long baseVersion)
@@ -99,7 +100,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	public object Close(string sessionId, string documentId)
 	{
 		EnsureSession(sessionId);
-		documents.Remove(documentId, session => OnGtkThread(() => { session.DisposeNative(); return true; }));
+		documents.Remove(sessionId, documentId, session => OnGtkThread(() => { session.DisposeNative(); return true; }));
 		return new();
 	}
 
@@ -232,8 +233,8 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		return result!;
 	}
 	void EnsureSession(string candidate) => documents.ValidateSession(candidate);
-	DocumentSession GetOrCreate(string documentId) => documents.GetOrAdd(documentId, () => new DocumentSession(documentId));
-	DocumentSession Get(string documentId) => documents.Get(documentId);
+	DocumentSession GetOrCreate(string documentId) => documents.GetOrAdd(sessionId, documentId, () => new DocumentSession(documentId));
+	DocumentSession Get(string documentId) => documents.Get(sessionId, documentId);
 	static void EnsureVersion(DocumentSession session, long candidate) { if (candidate != session.Version) throw new InvalidOperationException($"Stale version {candidate}; current is {session.Version}."); }
 	[JsonRpcMethod("ping")] public object Ping() => new();
 	[JsonRpcMethod("shutdown")] public object Shutdown()

@@ -23,7 +23,8 @@ stale-update rejection, flush and bounded shutdown. The child creates and owns a
 materializes standard controls, properties, bounds and parent/child relationships from
 `InitializeComponent`; updates rebuild the child component graph and return a framework-neutral
 component snapshot. The child
-produces a portable-painted PNG frame and performs child-side coordinate hit-testing back to
+produces a portable-painted PNG frame (or the common deflate-BGRA frame when GPU readback is
+unavailable) and performs child-side coordinate hit-testing back to
 stable component names. A parent WPF adapter now presents that frame, forwards pointer hit tests,
 and exposes remote state through DevFlow. The first child-owned edit path changes an existing
 scalar property, refreshes the frame, rewrites its Roslyn assignment, and applies the
@@ -41,10 +42,11 @@ visually indistinguishable from the white canvas. Selecting a remote component n
 the Properties Pad with a parent-owned proxy for name/type, Text, X/Y and Width/Height; writes
 are converted back into versioned property/bounds RPC calls. Successful child edits are now
 immediately flushed into the parent-owned in-memory documents, so a later child failure cannot
-lose unsaved designer work. Unexpected process exit keeps the last frame visible under a
-diagnostic overlay and offers an explicit restart that reconstructs the session from those parent
-documents. RPC operations have a bounded timeout; a hung operation terminates the child process
-tree and enters the same recovery path. Project file, target framework and output assembly
+lose unsaved designer work. Unexpected process exit keeps the last frame visible while the common
+shared-host recovery coordinator rebinds every open compatible document and reconstructs it from
+those parent documents; the view then replaces the frame and Outline from the restored state. RPC
+operations have a bounded timeout; a hung operation terminates the child process tree and enters
+the same recovery path. Project file, target framework and output assembly
 metadata travel with each snapshot, and the child loads project/custom-control assemblies in a
 collectible dependency-resolving load context while keeping LibreWinForms/Drawing contracts in
 the host context. The VB backend is implemented in the same
@@ -55,7 +57,7 @@ fallback remains C#-only.
 
 | Component | Location | Current Status |
 |---|---|---|
-| WinForms Designer | `src/AddIns/DisplayBindings/FormsDesigner/` | The out-of-process LibreWinForms host is the default C# path on macOS. It owns the real `DesignSurface`, project controls and dependencies; renders to PNG; supports selection, nested Toolbox drops, Properties, events, move/resize/delete, Undo/Redo, resources, save, timeout/crash recovery and restart. The VB backend runs in the same child for `.vb` files. |
+| WinForms Designer | `src/AddIns/DisplayBindings/FormsDesigner/` | The out-of-process LibreWinForms host is the default C# path on macOS. It owns the real `DesignSurface`, project controls and dependencies; renders to PNG or the shared deflate-BGRA frame; supports selection, nested Toolbox drops, Properties, events, move/resize/delete, Undo/Redo, resources, save, timeout/crash recovery and restart. The VB backend runs in the same child for `.vb` files. |
 
 ## Actual State of WinForms Round-Trip and Toolbox
 

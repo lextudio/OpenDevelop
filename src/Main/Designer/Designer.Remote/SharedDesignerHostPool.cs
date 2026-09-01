@@ -30,18 +30,22 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		}
 
 		public Task<TConnection> AcquireAsync(TKey key, CancellationToken cancellationToken = default)
-			=> GetBroker(key).AcquireAsync(cancellationToken);
+			=> GetOrCreateBroker(key).AcquireAsync(cancellationToken);
 
 		public void Release(TKey key, TConnection connection)
-			=> GetBroker(key).Release(connection);
+			=> GetOrCreateBroker(key).Release(connection);
 
 		public void Invalidate(TKey key, TConnection connection)
-			=> GetBroker(key).Invalidate(connection);
+			=> GetOrCreateBroker(key).Invalidate(connection);
 
-		public int GetActiveLeaseCount(TKey key) => GetBroker(key).ActiveLeaseCount;
-		public long GetGeneration(TKey key) => GetBroker(key).Generation;
+		/// <summary>Returns the compatibility partition's broker so document-recovery coordination
+		/// can invalidate and reacquire the exact same shared lease set.</summary>
+		public SharedDesignerHostBroker<TConnection> GetBroker(TKey key) => GetOrCreateBroker(key);
 
-		SharedDesignerHostBroker<TConnection> GetBroker(TKey key)
+		public int GetActiveLeaseCount(TKey key) => GetOrCreateBroker(key).ActiveLeaseCount;
+		public long GetGeneration(TKey key) => GetOrCreateBroker(key).Generation;
+
+		SharedDesignerHostBroker<TConnection> GetOrCreateBroker(TKey key)
 		{
 			lock (gate) {
 				if (!brokers.TryGetValue(key, out var broker)) {

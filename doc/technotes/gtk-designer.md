@@ -557,6 +557,10 @@ double-click binding uses versioned `design/set-event`, updates the GtkBuilder `
 the tree and participates in undo/redo. Integration binds `clicked` through the actual selected
 Properties-pad object and verifies the conventional `runButton_clicked` handler in saved XML.
 
+GTK implements `IDesignHostHitTesting` from native measured widget bounds, but deliberately does
+not implement `IDesignHostBounds`: GtkBuilder containers own child layout and there is no
+framework-independent absolute move/resize operation to expose through DDP.
+
 ## Risks and non-goals
 
 - GTK 4 native runtime availability differs by operating system; installation diagnostics are a

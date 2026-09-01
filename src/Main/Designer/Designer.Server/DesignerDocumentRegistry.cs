@@ -35,19 +35,11 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		}
 
 		public TSession GetOrAdd(string requestSessionId, string documentId, Func<TSession> factory)
-			=> GetOrAddCore(requestSessionId, documentId, factory, validateRequestSession: true);
-
-		/// <summary>Gets a document for protocols whose authenticated connection, rather than each
-		/// operation, carries the session identity.</summary>
-		public TSession GetOrAdd(string documentId, Func<TSession> factory)
-			=> GetOrAddCore(null, documentId, factory, validateRequestSession: false);
-
-		TSession GetOrAddCore(string? requestSessionId, string documentId, Func<TSession> factory, bool validateRequestSession)
 		{
 			ArgumentException.ThrowIfNullOrWhiteSpace(documentId);
 			ArgumentNullException.ThrowIfNull(factory);
 			lock (gate) {
-				if (validateRequestSession) ValidateSessionCore(requestSessionId!); else ValidateInitializedCore();
+				ValidateSessionCore(requestSessionId);
 				if (documents.TryGetValue(documentId, out var existing)) return existing;
 				var created = factory() ?? throw new InvalidOperationException("The designer document factory returned null.");
 				documents.Add(documentId, created);
@@ -55,11 +47,14 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 			}
 		}
 
-		public TSession Get(string documentId)
+		/// <summary>Gets an already-open document after validating the caller's session identity.
+		/// Unlike <see cref="GetOrAdd(string,string,Func{TSession})"/>, this never creates a
+		/// document as a side effect of a read, mutation, or close-adjacent request.</summary>
+		public TSession Get(string requestSessionId, string documentId)
 		{
 			ArgumentException.ThrowIfNullOrWhiteSpace(documentId);
 			lock (gate) {
-				ValidateInitializedCore();
+				ValidateSessionCore(requestSessionId);
 				return documents.TryGetValue(documentId, out var existing)
 					? existing
 					: throw new InvalidOperationException("Unknown designer document.");
@@ -67,18 +62,12 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		}
 
 		public bool Remove(string requestSessionId, string documentId, Action<TSession> close)
-			=> RemoveCore(requestSessionId, documentId, close, validateRequestSession: true);
-
-		public bool Remove(string documentId, Action<TSession> close)
-			=> RemoveCore(null, documentId, close, validateRequestSession: false);
-
-		bool RemoveCore(string? requestSessionId, string documentId, Action<TSession> close, bool validateRequestSession)
 		{
 			ArgumentException.ThrowIfNullOrWhiteSpace(documentId);
 			ArgumentNullException.ThrowIfNull(close);
 			TSession? removed;
 			lock (gate) {
-				if (validateRequestSession) ValidateSessionCore(requestSessionId!); else ValidateInitializedCore();
+				ValidateSessionCore(requestSessionId);
 				if (!documents.Remove(documentId, out removed)) return false;
 			}
 			close(removed);

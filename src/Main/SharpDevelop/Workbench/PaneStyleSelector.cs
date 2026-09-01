@@ -2,7 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 
 using AvalonDock.Layout;
-using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 // Copyright (c) 2019 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this

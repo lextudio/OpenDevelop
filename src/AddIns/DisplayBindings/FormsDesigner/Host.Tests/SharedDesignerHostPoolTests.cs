@@ -87,6 +87,41 @@ public sealed class SharedDesignerHostPoolTests
 		lock (created) Assert.InRange(created.Count(connection => connection.Alive), 0, 1);
 	}
 
+	[Fact]
+	public async Task RecoveryCoordinatesOneInvalidationAndRestoresEveryRecoverableLease()
+	{
+		var token = TestContext.Current.CancellationToken;
+		var starts = 0;
+		var broker = new SharedDesignerHostBroker<FakeConnection>(
+			connection => connection.Alive,
+			_ => { Interlocked.Increment(ref starts); return Task.FromResult(new FakeConnection()); });
+		var failed = await broker.AcquireAsync(token);
+		Assert.Same(failed, await broker.AcquireAsync(token));
+		var first = new RecoveryClient(failed, true);
+		var second = new RecoveryClient(failed, true);
+		var unopened = new RecoveryClient(failed, false);
+		var recovery = new SharedDesignerHostRecovery<RecoveryClient, FakeConnection>(broker,
+			connection => new[] { first, second, unopened }.Where(client => ReferenceEquals(client.Connection, connection)).ToArray(),
+			client => client.HasSnapshot,
+			(client, _) => { client.CaptureCount++; return Task.CompletedTask; },
+			(client, replacement, _) => { client.Connection = replacement; client.RestoreCount++; return Task.CompletedTask; });
+
+		await recovery.RecoverAllAsync(failed, true, token);
+
+		Assert.False(failed.Alive);
+		Assert.Equal(2, starts);
+		Assert.Equal(1, first.CaptureCount);
+		Assert.Equal(1, second.CaptureCount);
+		Assert.Equal(0, unopened.CaptureCount);
+		Assert.Equal(1, first.RestoreCount);
+		Assert.Equal(1, second.RestoreCount);
+		Assert.Equal(0, unopened.RestoreCount);
+		Assert.Same(first.Connection, second.Connection);
+		Assert.Same(failed, unopened.Connection);
+		broker.Release(first.Connection);
+		broker.Release(second.Connection);
+	}
+
 	static async Task WaitUntilAsync(Func<bool> condition, CancellationToken cancellationToken)
 	{
 		using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -98,5 +133,14 @@ public sealed class SharedDesignerHostPoolTests
 	{
 		public bool Alive { get; private set; } = true;
 		public void Dispose() => Alive = false;
+	}
+
+	sealed class RecoveryClient
+	{
+		public RecoveryClient(FakeConnection connection, bool hasSnapshot) { Connection = connection; HasSnapshot = hasSnapshot; }
+		public FakeConnection Connection { get; set; }
+		public bool HasSnapshot { get; }
+		public int CaptureCount { get; set; }
+		public int RestoreCount { get; set; }
 	}
 }

@@ -78,6 +78,9 @@
          pieces live in Src/Updates/ and follow the same API shape: AppUpdateService.CurrentVersion,
          UpdateService.CheckForUpdatesIfEnabledAsync/GetLatestVersionAsync, UpdateSettings). -->
     <Compile Include="..\..\..\..\externals\ilspy\ILSpy\Updates\AvailableVersionInfo.cs" Link="Updates\AvailableVersionInfo.cs" />
+    <!-- PaneModel/ToolPaneModel come from ILSpy (single source of truth, not duplicated here). -->
+    <Compile Include="..\..\..\..\externals\ilspy\ILSpy\ViewModels\PaneModel.cs" Link="ViewModels\PaneModel.cs" />
+    <Compile Include="..\..\..\..\externals\ilspy\ILSpy\ViewModels\ToolPaneModel.cs" Link="ViewModels\ToolPaneModel.cs" />
   </ItemGroup>
   <ItemGroup>
     <!-- Out of MVP scope: deep NRefactory-era refactoring engine (type-graph) whose API shape
@@ -203,6 +206,11 @@
          it's IType/IEntity/ISymbol (SD mock)-shaped; AvalonEdit.AddIn's XmlDocTooltipProvider builds
          DocumentationUIBuilder input directly from Microsoft.CodeAnalysis.ISymbol instead. -->
     <Compile Remove="Editor\XmlDocFormatter.cs" />
+    <!-- PaneModel/ToolPaneModel replaced by ILSpy's canonical versions (linked above).
+         LegacyToolPaneModel stays in ILSpyAddIn (only ILSpy Docking code uses it). -->
+    <Compile Remove="ViewModels\PaneModel.cs" />
+    <Compile Remove="ViewModels\ToolPaneModel.cs" />
+    <Compile Remove="ViewModels\LegacyToolPaneModel.cs" />
     <!-- Out of MVP scope: implements AvalonEdit.CodeCompletion.ICompletionData against an older interface
          shape (explicit members no longer on the current ICompletionData) - no consumers outside itself. -->
     <Compile Remove="Editor\CodeCompletion\SnippetCompletionData.cs" />

@@ -1,4 +1,4 @@
-﻿// DevFlow actions used by tests/OpenDevelop.IntegrationTests to drive the app without a native
+// DevFlow actions used by tests/OpenDevelop.IntegrationTests to drive the app without a native
 // file-open dialog (which the WPF-embedded DevFlow agent can't see/control - see
 // doc/technotes/csharp-roslyn.md session notes). Static methods on a [DevFlowUIThread]-annotated
 // class are auto-discovered by LeXtudio.DevFlow.Agent.Core and dispatched to the UI thread.
@@ -31,6 +31,7 @@ using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Project.Sdk;
 using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.SharpDevelop.Widgets;
 using ICSharpCode.SharpDevelop.Workbench;
 using LeXtudio.DevFlow.Agent.Core;
@@ -398,7 +399,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			var window = SD.Workbench.ActiveViewContent?.WorkbenchWindow;
 			if (window == null)
 				return JsonSerializer.Serialize(new { success = false, error = "no active document" });
-			var command = (window as ICSharpCode.SharpDevelop.ViewModels.PaneModel)?.CloseCommand;
+			var command = (window as ICSharpCode.ILSpy.ViewModels.PaneModel)?.CloseCommand;
 			if (command == null)
 				return JsonSerializer.Serialize(new { success = false, error = "active view has no dock close command" });
 			if (!command.CanExecute(null))

@@ -18,7 +18,7 @@ using ICSharpCode.AvalonEdit.Search;
 using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
 using ICSharpCode.SharpDevelop.Gui.OptionPanels;
-using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.SharpDevelop.WinForms;
 using ICSharpCode.SharpDevelop.Workbench;
 
@@ -257,7 +257,7 @@ internal sealed class CompilerMessageViewViewModel : ToolPaneModel, IOutputPad, 
         IsVisible = true; // Matches the legacy Pad's `defaultPosition = "Bottom"`.
         IsCloseable = true;
         LegacyPadClass = typeof(CompilerMessageView).FullName;
-        PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Bottom; // Matches the legacy Pad's `defaultPosition = "Bottom"`.
+        PreferredDockSide = ICSharpCode.ILSpy.ViewModels.PreferredDockSide.Bottom; // Matches the legacy Pad's `defaultPosition = "Bottom"`.
         Content = panel;
 
         SD.Services.AddService(typeof(IOutputPad), this);

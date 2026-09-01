@@ -1,10 +1,10 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
-using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
 
 namespace FSharpBinding

@@ -274,6 +274,11 @@ attribute to canonical MXAML. `MewUIPropertyAdapter` supplies `IPropertyGridEven
 `IEventBindingHost`; integration binds `Loaded` through the real Properties-pad selected object and
 asserts the saved `Loaded="heading_Loaded"` source.
 
+MewUI intentionally implements neither `IDesignHostBounds` nor `IDesignHostHitTesting` today.
+Its host owns a canonical source model, not framework-native arranged geometry; advertising either
+operation would turn a missing layout contract into a runtime exception. The shell must
+feature-detect these optional capabilities until MewUI has authoritative design-space bounds.
+
 Current deliberate gaps: the preview is a safe WPF semantic projection rather than MewUI-native
 pixels. Fit is measured from the realized viewport and projected content. Child reorder is a
 Roslyn transformation of the canonical `Children(...)` relationship and is integration-covered;

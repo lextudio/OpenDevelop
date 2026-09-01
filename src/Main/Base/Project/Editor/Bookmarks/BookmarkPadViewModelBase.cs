@@ -20,7 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Controls;
 
-using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 
 namespace ICSharpCode.SharpDevelop.Editor.Bookmarks
 {

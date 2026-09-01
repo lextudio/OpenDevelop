@@ -15,7 +15,7 @@ static class Program
 	[STAThread]
 	static int Main(string[] args)
 	{
-#if MICROSOFT_WINFORMS
+	#if MICROSOFT_WINFORMS
 		// Microsoft WinForms designers need a pumping STA thread, which the DDP wait loop's own
 		// thread is not (StreamJsonRpc dispatches on the thread pool). Keep the pump on Main and
 		// move the wait loop to a worker, marshalling every RPC back here - the same split the WPF
@@ -29,8 +29,8 @@ static class Program
 		pump.Run();
 		host.GetAwaiter().GetResult();
 		return exitCode;
-#else
+	#else
 		return DesignerChildHost.Run(args, "FormsDesigner.Host", token => new MultiDocumentDesignerHostService(token));
-#endif
+	#endif
 	}
 }

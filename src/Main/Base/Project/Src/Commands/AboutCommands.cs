@@ -5,6 +5,7 @@ using System.Windows;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Updates;
 using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 
 namespace ICSharpCode.SharpDevelop.Commands
 {

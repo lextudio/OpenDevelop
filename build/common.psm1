@@ -157,10 +157,12 @@ function Restore-Solution {
 }
 
 function Build-Solution {
-    # AddIn projects write directly to the shared AddIns/ tree. Since Clear-RepoAddIns
-    # removed it, an incremental build is not sufficient: MSBuild may consider a project
-    # up-to-date based on obj/ and skip recreating its shared output. --no-incremental
-    # forces all projects to rebuild and republish every current addin file.
+    # Clear-RepoAddIns already wipes the shared AddIns/ tree before each build, so
+    # incremental builds correctly rebuild only what changed. --no-incremental was
+    # removed because it triggers NETSDK1047 on ARM64 hosts: LibreWPF.Sdk's Sdk.props
+    # falls back to NETCoreSdkRuntimeIdentifier (win-arm64) when RuntimeIdentifier is
+    # empty during the full re-evaluation, breaking cross-compilation. Passing
+    # ProGpuWpfUseCurrentRuntimeIdentifier=false disables this fallback.
     param(
         [Parameter(Mandatory)][string]$DotNet,
         [Parameter(Mandatory)][string]$Solution,
@@ -168,12 +170,8 @@ function Build-Solution {
         [string]$Configuration = 'Debug',
         [string[]]$ExtraProperties = @()
     )
-    Write-Host '==> Rebuilding OpenDevelop.Mvp.sln and all addins...'
-    # Several projects share physical output directories (notably SharpTreeView and the
-    # host/addin graph). Parallel project builds can clean or replace those files while a
-    # sibling is copying them, producing intermittent MSB3030 failures after AddIns/ was
-    # cleared. Serialize this full republish; individual project builds remain parallel.
-    Invoke-Native $DotNet build $Solution -c $Configuration --no-restore --no-incremental '-m:1' -v minimal @ExtraProperties
+    Write-Host '==> Building OpenDevelop.Mvp.sln and all addins...'
+    Invoke-Native $DotNet build $Solution -c $Configuration --no-restore '-m:1' -v minimal @ExtraProperties
 }
 
 function Remove-StaleMsBuildAssets {

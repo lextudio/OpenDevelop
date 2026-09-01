@@ -21,9 +21,7 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	[JsonRpcMethod("initialize")]
 	public HostHandshake Initialize(string token, int protocolVersion, string sessionId)
 	{
-		if (!CryptographicOperations.FixedTimeEquals(Convert.FromHexString(expectedToken), Convert.FromHexString(token)))
-			throw new UnauthorizedAccessException("Invalid designer-host token.");
-		if (protocolVersion != DesignerProtocol.Version) throw new NotSupportedException($"Protocol {protocolVersion} is not supported.");
+		DesignerHostHandshakeValidator.Validate(expectedToken, token, protocolVersion);
 		documents.Initialize(sessionId);
 		return new HostHandshake { ProtocolVersion = DesignerProtocol.Version, Runtime = RuntimeInformation.FrameworkDescription, ProcessId = Environment.ProcessId, SessionId = sessionId };
 	}
@@ -39,11 +37,11 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 
 	WpfSurfaceHostService Checked(string requestSessionId, string documentId)
 	{
-		return Get(requestSessionId, documentId);
+		return documents.Get(requestSessionId, documentId);
 	}
 
 	[JsonRpcMethod("session/open")]
-	public DesignerSessionState Open(DesignerDocumentSnapshot snapshot) => Checked(snapshot.SessionId, snapshot.DocumentId).Open(snapshot);
+	public DesignerSessionState Open(DesignerDocumentSnapshot snapshot) => Get(snapshot.SessionId, snapshot.DocumentId).Open(snapshot);
 	[JsonRpcMethod("session/update")]
 	public DesignerSessionState Update(DesignerDocumentSnapshot snapshot) => Checked(snapshot.SessionId, snapshot.DocumentId).Update(snapshot);
 	[JsonRpcMethod("session/flush")]

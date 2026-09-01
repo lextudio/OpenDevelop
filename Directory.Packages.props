@@ -13,6 +13,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="AltCover" Version="9.0.102" />
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageVersion Include="DataGridExtensions" Version="2.9.1" />
     <PackageVersion Include="GirCore.Gtk-4.0" Version="0.8.1" />
     <PackageVersion Include="GuiLabs.Language.Xml" Version="1.2.93" />

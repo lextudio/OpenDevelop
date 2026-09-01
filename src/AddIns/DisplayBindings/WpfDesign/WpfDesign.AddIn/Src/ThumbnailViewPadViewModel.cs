@@ -22,7 +22,7 @@ using System.Windows.Controls;
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
-using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 
 namespace ICSharpCode.WpfDesign.AddIn
 {
@@ -49,7 +49,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 			IsVisible = false; // Matches the legacy Pad's `defaultPosition = "Right, Hidden"`.
 			IsCloseable = true;
 			LegacyPadClass = typeof(ThumbnailViewPad).FullName;
-			PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Right;
+			PreferredDockSide = ICSharpCode.ILSpy.ViewModels.PreferredDockSide.Right;
 			Content = contentControl;
 
 			SD.Workbench.ActiveViewContentChanged += WorkbenchActiveViewContentChanged;

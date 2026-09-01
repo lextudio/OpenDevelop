@@ -322,13 +322,13 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		}
 		try
 		{
-			var bytes = RenderCodec.Decode(snapshot.Render.Data);
 			var w = snapshot.Render.Width;
 			var h = snapshot.Render.Height;
-			if (w <= 0 || h <= 0 || bytes.Length < w * h * 4)
+			if (w <= 0 || h <= 0)
 			{
 				return "bad frame";
 			}
+			var bytes = DesignerFrameCodec.DecodeBgra32(snapshot.Render);
 			static string Sample(byte[] px, int w, int h, double fx, double fy)
 			{
 				var i = ((int)(fy * h) * w + (int)(fx * w)) * 4;
@@ -545,6 +545,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		{
 			var (runtimeConfig, depsFile) = ProjectDependencyContext();
 			client = await UnoDesignClient.AcquireSharedAsync(runtimeConfig, depsFile, CancellationToken.None, hostDllPath);
+			client.Recovered += OnClientRecovered;
 			var capabilities = await client.GetCapabilitiesAsync();
 			Volatile.Write(ref catalogCache, capabilities.Toolbox
 				.Select(tool => new ToolboxItemInfo {
@@ -563,6 +564,20 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 			client = null;
 			SetStatus(hostDisplayName + " failed to start: " + e.GetBaseException().Message);
 		}
+	}
+
+	void OnClientRecovered(object? sender, DesignSnapshot state)
+	{
+		dispatcher.BeginInvoke(async () => {
+			if (disposed || !ReferenceEquals(sender, client)) return;
+			await EnsureAppResourcesAsync();
+			var text = Volatile.Read(ref lastLoadedText);
+			if (text != null) {
+				_ = RenderAsync(text, Interlocked.Increment(ref version));
+				return;
+			}
+			ApplySnapshot(state, Volatile.Read(ref version));
+		});
 	}
 
 	/// <summary>
@@ -1613,6 +1628,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		surface.SurfacePointerPressed -= OnSurfacePointerPressed;
 		nodesByName.Clear();
 		lastSnapshot = null;
+		if (client != null) client.Recovered -= OnClientRecovered;
 		client?.Dispose();
 		client = null;
 	}

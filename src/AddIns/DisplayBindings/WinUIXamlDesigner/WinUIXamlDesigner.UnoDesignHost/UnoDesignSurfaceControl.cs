@@ -10,6 +10,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 
 using ICSharpCode.SharpDevelop.Designer.Presentation;
+using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.Widgets;
 
 using RenderResult = ICSharpCode.SharpDevelop.Designer.Remote.DesignerRenderFrame;
@@ -351,9 +352,7 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 	{
 		if (string.IsNullOrEmpty(render?.Data))
 			return;
-		var bytes = RenderCodec.Decode(render.Data);
-		if (render.Width <= 0 || render.Height <= 0)
-			return;
+		var bytes = DesignerFrameCodec.DecodeBgra32(render);
 		var dpi = Math.Max(1.0, render.Dpi);
 		// The child sends raw BGRA32 (premultiplied) pixels from its RenderTargetBitmap - WPF's
 		// BitmapImage/BitmapDecoder is a native WIC codec (wpfgfx_cor3) that does not exist under

@@ -27,7 +27,7 @@ using Debugger.AddIn.Service.Dap;
 using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
 using ICSharpCode.SharpDevelop.Services;
-using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 
 namespace ICSharpCode.SharpDevelop.Gui.Pads
 {
@@ -49,7 +49,7 @@ namespace ICSharpCode.SharpDevelop.Gui.Pads
 			IsVisible = false; // Matches the legacy Pad's `defaultPosition = "Bottom, Hidden"`.
 			IsCloseable = true;
 			LegacyPadClass = typeof(ThreadsPad).FullName;
-			PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Bottom;
+			PreferredDockSide = ICSharpCode.ILSpy.ViewModels.PreferredDockSide.Bottom;
 
 			var res = new CommonResources();
 			res.InitializeComponent();

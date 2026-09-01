@@ -31,7 +31,7 @@ using System.Windows.Threading;
 using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
 using ICSharpCode.SharpDevelop.Gui;
-using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 
 namespace ICSharpCode.SharpDevelop.Workbench
 {

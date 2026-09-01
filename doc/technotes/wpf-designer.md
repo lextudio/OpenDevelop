@@ -34,6 +34,17 @@ the real-render SurfaceHost RPC test cover these fixes without a text-losing hea
 Current status: the WPF designer is the official WPF backend, added to the main solution and
 built on `LibreWPF.Sdk`.
 
+### Bounded portable frame rendering
+
+Some headless ProGPU adapters block during composition itself, before `ReadPixels()` can be
+timed out. Since that composition runs on the WPF dispatcher, it is not safely cancellable and
+must not be allowed to block `session/open`. The portable host therefore emits the common
+deflated-BGRA fallback frame by default and adds a warning diagnostic. Set
+`OPENDEVELOP_WPF_GPU_RENDER=1` only on a deployment where the headless adapter has been verified;
+that enables the higher-fidelity ProGPU path, whose readback is still bounded to two seconds and
+falls back permanently for that session if it fails. This keeps the DDP source/tree/edit surface
+responsive on unvalidated machines while retaining a controlled path to native rendering.
+
 ## Current Baseline
 
 | Component | Location | Current Status |
@@ -187,7 +198,8 @@ The following rules are mandatory:
 6. The child owns WpfDesigner selection, placement and gesture semantics. Host pads project that
    model through DTOs; they do not implement a second competing selection state machine.
 7. Process restart, rather than collectible `AssemblyLoadContext`, is the reliable unload boundary
-   after rebuilds, runtime changes, hangs or project-code faults.
+   after rebuilds, runtime changes, hangs or project-code faults. Compatible open documents share
+   a child and use the common recovery coordinator to rebind and reopen from host-owned snapshots.
 8. Surface presentation is replaceable. The protocol and remote model must not depend on HWND,
    PNG, shared memory or a particular compositor.
 
@@ -755,7 +767,9 @@ remain untouched.
   used, the same shape SetBounds already resizes after the fact if a caller wants something else.
   `design/set-event` remains deliberately unimplemented — it needs a child→host callback direction
   that doesn't exist yet (Phase 5 work per this technote's own notes), not a gap to fill
-  opportunistically alongside add-element.
+  opportunistically alongside add-element. It is therefore absent from the optional
+  `IDesignHostEventBinding` capability rather than exposed by the core client as a method that
+  throws; the Events UI must feature-detect that capability.
 - Final validation: `dotnet test src/AddIns/DisplayBindings/WpfDesign/WpfDesign.SurfaceHost.Tests
   --filter-query "/*/*/WpfSurfaceHostRpcTests/*"` → `total: 18, failed: 0, succeeded: 18` (the 9
   Phase 0 scenarios plus project-assembly, referenced-assembly, crash/restart, stale-version

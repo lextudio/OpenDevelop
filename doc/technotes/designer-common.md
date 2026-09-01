@@ -53,7 +53,9 @@ use separate pools for incompatible target frameworks, architectures, dependency
 native runtimes. Documents with the same pool key must reuse the connection.
 
 The common `SharedDesignerHostBroker` owns process acquisition, reference counting, idle
-retention, invalidation and restart coordination. A backend client is only a document lease. It
+retention and invalidation; `SharedDesignerHostRecovery<TClient,TConnection>` adds the serialized
+restart sequence: capture parent snapshots, invalidate once, acquire replacement leases and reopen
+each recoverable document. A backend client is only a document lease. It
 owns `DocumentId`, its recovery snapshot and view callbacks; disposing it sends `session/close`
 and releases the lease, but cannot shut down a process used by other documents.
 
@@ -90,6 +92,13 @@ to reconstruct source. Each view refreshes its recovery snapshot after load, acc
 designer mutation and flush. Dirty state remains in `OpenedFile`, so a child crash cannot clear it.
 
 ### Asynchronous latest-frame rendering
+
+`DesignerRenderFrame` deliberately has two interchangeable raster payloads: `PngBase64` for a
+PNG-producing host, and `Data` for a deflate-compressed BGRA32 frame. A presentation adapter must
+accept either shape (preferring `Data` when supplied); the choice is a host/runtime capability, not
+a designer identity. This lets a host degrade from a blocked native image encoder or GPU readback
+to a bounded software frame without changing its DDP session, document, selection or recovery
+contract.
 
 Model mutation and rendering are separate phases. `session/open`, `session/update` and design
 mutations return the accepted tree, properties, bounds/diagnostics and a monotonically increasing
@@ -186,8 +195,8 @@ operation independently as its wire shapes converge.
 `DesignerDocumentHostClient` now supplies the surrounding parent-side lease state for those
 three adapters: document identity, process status, host-exit forwarding and ping/close lifecycle.
 This leaves each adapter with only its pool compatibility key, release policy and runtime-specific
-RPCs. GTK4 and MewUI retain their older session-less mutation envelope for now; aligning that
-envelope is the prerequisite before they can use the same document helper and recovery plumbing.
+RPCs. GTK4 and MewUI now carry the common session/document envelope and use the same document
+helper and recovery plumbing; only their native/source-model operations remain backend-specific.
 
 Implementation status (2026-08-24): `src/Main/Designer/Designer.Shell` now exists. Its first
 vertical slice, `DesignerSelectionController`, is used by all five designers as the stable-ID
@@ -687,10 +696,11 @@ truth for this contract.
 - **Core interface**: lifecycle (`ProcessId`, `IsAlive`, `ChildLog`, `SessionId`, `DocumentId`,
   `HostExited`, `PingAsync`, `ShutdownAsync`, `TerminateHost`), document
   (`OpenAsync`/`UpdateAsync(DesignerDocumentSnapshot)`, `FlushAsync(baseVersion)`), and mutations
-  (`SetPropertyAsync`/`SetEventAsync`/`AddElementAsync`/`SetBoundsAsync`/`DeleteElementsAsync`/
-  `RenameAsync`/`HitTestAsync`, every one keyed by `baseVersion` first). Every backend must
-  implement all of it.
+  (`SetPropertyAsync`/`AddElementAsync`/`DeleteElementsAsync`/`RenameAsync`, every one keyed by
+  `baseVersion` first). Every backend must implement all of it.
 - **Optional capability interfaces**, feature-detected per backend: `IDesignHostPropertyReset`,
+  `IDesignHostEventBinding` (Forms, Uno, GTK and MewUI implement it; WPF intentionally does not),
+  `IDesignHostBounds` (Forms, WPF and Uno), `IDesignHostHitTesting` (Forms, WPF, Uno and GTK),
   `IDesignHostDefaultEvent`, `IDesignHostLayout` (WinForms implements these — a markup runtime has
   no defaults model or absolute-position layout commands to back them); `IDesignHostTheme`,
   `IDesignHostExport`, `IDesignHostAppResources` (WinUI/Uno implements these). The host disables
@@ -1239,9 +1249,9 @@ scaffolding, and DevFlow plumbing.
    `elementId`, `controlType` vs `itemXaml` vs `item`. "JSON field names are the contract" —
    then there are three contracts. Unify toward the superset; WinForms/Uno then converge into a
    shared template. (open)
-3. **WPF `SetEventAsync` throws** rather than declaring absence — express it as a capability
-   interface (`IDesignHostEventBinding`), matching the `IDesignHostPropertyReset` precedent, and
-   let the host disable the Events UI.
+3. ~~**WPF event-binding capability declaration.**~~ Done: `design/set-event` lives on the
+   optional `IDesignHostEventBinding`. Forms, Uno, GTK and MewUI opt in; WPF does not advertise
+   a callable operation until it has a real child-to-host event-binding implementation.
 4. **WinUI skips the handshake protocol-version check** (only echoes `SessionId`); WPF checks.
    Align on the DDP rule (reject mismatched version, report both ranges).
 
@@ -1348,11 +1358,9 @@ acceptance check, so the list can be resumed by a fresh session at any point.
 
 ### P1 — Wire and behavior parity leftovers
 
-3. **`design/hit-test` version parameter still diverges.** WPF sends
-   `baseVersion` and validates staleness; WinUI sends neither; WinForms sends `version`
-   (already renamed). Either unify on `baseVersion` everywhere (WinUI needs to start sending
-   it, WinForms already does) or document hit-test as intentionally version-free.
-   **Acceptance:** all three `IDesignHostClient.HitTestAsync` signatures agree.
+3. ~~**`design/hit-test` version parameter parity.**~~ Done: every backend now carries
+   `baseVersion` in the read-only hit-test envelope. The value correlates the query with the
+   caller's rendered document version; it does not itself mutate or reject a document.
 
 4. **Full three-designer integration regression run.** The RPC renames below are built and
    the WinUI child-process suite (`UnoDesignHostRpcTests`, 3/3 green) plus the WinForms
@@ -1375,16 +1383,17 @@ acceptance check, so the list can be resumed by a fresh session at any point.
    **Acceptance:** `DesignerCanvas` owns zoom state; WinForms keeps its fixed zoom bugs
    fixed (Part II "Known bugs and limits" stays green).
 
-7. **`FrameCodec` sharing.** WinForms and WPF each encode the rendered frame; WinUI uses a
-   Skia path in the child. One codec in `Designer.Presentation` for the two WPF-side ones.
-   **Acceptance:** no duplicated Png/Bitmap encoding code outside the shared project.
+7. ~~**`FrameCodec` sharing.**~~ Done: `Designer.Remote.DesignerFrameCodec` owns the
+   deflate-BGRA32 wire format and dimension validation. WinForms, WPF and WinUI/Uno children
+   emit it where appropriate, and WPF/WinUI/Forms presentation adapters decode the same frame
+   shape; PNG remains an allowed host capability rather than a parallel protocol.
 
-8. **Client boilerplate convergence.** The three `StartAsync`/`LocateChildDll`/ping/shutdown
-   wrappers around `DesignerHostProcessClient` collapse into one shared client (WinForms
-   `FormsDesignerHostClient` and WinUI `UnoDesignClient` become thin subclasses, WPF
-   `WpfSurfaceHostClient` the base shape).
-   **Acceptance:** one `DesignerHostProcessClient` subclass per backend, no copy-pasted
-   `InvokeAsync` mapping tables.
+8. ~~**Client boilerplate convergence.**~~ Done: `DesignerHostProcessClient` owns launch,
+   authenticated handshake, child-log pumping, timeout termination and shutdown. Its document
+   lease counterpart (`DesignerDocumentHostClient`/`RecoverableDesignerDocumentHostClient`) owns
+   identity, RPC rebinding and recovery snapshots. Forms, GTK, MewUI, WPF and WinUI/Uno retain
+   only runtime-specific RPCs and compatibility-key policy; `SharedDesignerHostRecovery` owns
+   restart ordering for all five.
 
 9. **Child-process DTO sharing policy.** `FormsDesigner.Host` and `WinUIXamlDesigner.UnoHost`
    each carry a hand-written DTO file (JSON is the contract, per `DesignProtocol`); the
@@ -1642,17 +1651,22 @@ acceptance check, so the list can be resumed by a fresh session at any point.
 - **`.Designer.cs`/`.Designer.vb` no longer open a design view** — both secondary display
   bindings reject `*.Designer.*` in `CanAttachTo`; the design view attaches only to the
   primary partial.
+- **Shared DDP transport/recovery primitives** (`Designer.Remote` and `Designer.Server`) —
+  `DesignerFrameCodec`, `DesignerHostLaunchSpec`, `DesignerHostHandshakeValidator`,
+  `DesignerDocumentRegistry`, `DesignerDocumentHostClient`,
+  `RecoverableDesignerDocumentHostClient` and `SharedDesignerHostRecovery` now replace the
+  former per-designer lifecycle copies. Contract tests cover codec, launch, handshake,
+  registry, pooling and recovery; Forms, WPF and Uno add spawned-child coverage.
 
 ## Priority
 
 1. P0-1 UI-tree bounds offset (~69 px) — unblocks `DoubleClickEventRow`; then the full
    three-designer integration regression (P1-4).
 2. ~~P0-2 event-binding navigation decision~~ — done, keep the jump (see above).
-3. P1-3 `design/hit-test` version parity.
-4. P2 `DesignViewport.BaseOrigin`, zoom state machine + gridlines in the shell (fixes the
-   WinForms zoom bugs as a side effect), `FrameCodec`/client boilerplate/child DTO policy.
-5. P3 `ResizeDragTestBase` + DevFlow plumbing.
-6. P4 TypeScript/JavaScript addin rebuilt on the TypeScript 7 Go LSP (drop the dead
+3. P2 `DesignViewport.BaseOrigin`, zoom state machine + gridlines in the shell (fixes the
+   WinForms zoom bugs as a side effect), and the remaining child DTO policy decision.
+4. P3 `ResizeDragTestBase` + DevFlow plumbing.
+5. P4 TypeScript/JavaScript addin rebuilt on the TypeScript 7 Go LSP (drop the dead
    `TypeScriptBinding`/`Scripting` from the solution first).
 
 ---

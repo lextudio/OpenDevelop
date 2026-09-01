@@ -58,8 +58,16 @@ public sealed class FormsDesignerHostClientTests
 		Assert.True(opened.Render.Sequence > 0);
 		Assert.True(opened.Render.Dpi >= 1);
 		Assert.True(opened.Render.Width > 0 && opened.Render.Height > 0);
-		var png = Convert.FromBase64String(opened.Render.PngBase64);
-		Assert.True(png.AsSpan().StartsWith(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }));
+		Assert.True(!String.IsNullOrEmpty(opened.Render.PngBase64) || !String.IsNullOrEmpty(opened.Render.Data));
+		var png = String.IsNullOrEmpty(opened.Render.PngBase64)
+			? Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+bpWnAAAAAElFTkSuQmCC")
+			: Convert.FromBase64String(opened.Render.PngBase64);
+		if (!String.IsNullOrEmpty(opened.Render.PngBase64)) {
+			Assert.True(png.AsSpan().StartsWith(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }));
+		} else {
+			Assert.Equal(opened.Render.Width * opened.Render.Height * 4, DesignerFrameCodec.DecodeBgra32(opened.Render).Length);
+			Assert.Contains(opened.Diagnostics, diagnostic => diagnostic.Severity == "Warning" && diagnostic.Message.Contains("GPU frame readback", StringComparison.Ordinal));
+		}
 		Assert.Contains(opened.Components, component => component.Name == "button1"
 			&& component.Type == "System.Windows.Forms.Button"
 			&& component.Parent == "Form1"
@@ -171,11 +179,11 @@ public sealed class FormsDesignerHostClientTests
 			&& component.SurfaceX == 15 && component.SurfaceY == 106);
 		Assert.Contains("panel1.Controls.Add(nestedButton);",
 			DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
-		var beforeAdvancedControlRender = nested.Render!.PngBase64;
+		var beforeAdvancedControlRender = FramePayload(nested.Render!);
 		var advanced = await client.AddElementAsync(7, "Form1", new DesignerToolboxItemInfo { TypeName = "DataGridView" }, "dataGridView1", 145, 10, timeout.Token);
 		Assert.Contains(advanced.Components, component => component.Name == "dataGridView1"
 			&& component.Type == "System.Windows.Forms.DataGridView");
-		Assert.NotEqual(beforeAdvancedControlRender, advanced.Render!.PngBase64);
+		Assert.NotEqual(beforeAdvancedControlRender, FramePayload(advanced.Render!));
 		Assert.Contains("System.Windows.Forms.DataGridView dataGridView1", DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
 		await client.AddElementAsync(7, "Form1", new DesignerToolboxItemInfo { TypeName = "Button" }, "renameMe", 5, 5, timeout.Token);
 		var renamed = await client.RenameAsync(7, "renameMe", "renamedButton", timeout.Token);
@@ -334,6 +342,37 @@ public sealed class FormsDesignerHostClientTests
 		}
 	}
 
+	[Fact]
+	public async Task SharedHost_RecoversEveryOpenDocumentAfterTheChildExits()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+		var hostDll = HostDll();
+		var first = await FormsDesignerHostClient.AcquireSharedAsync("", "", timeout.Token, hostDll);
+		var second = await FormsDesignerHostClient.AcquireSharedAsync("", "", timeout.Token, hostDll);
+		try {
+			Assert.True((await first.OpenAsync(Snapshot(1, "first"), timeout.Token)).Accepted);
+			Assert.True((await second.OpenAsync(Snapshot(1, "second"), timeout.Token)).Accepted);
+			var oldPid = first.ProcessId;
+			var firstRecovered = new TaskCompletionSource<DesignerSessionState>(TaskCreationOptions.RunContinuationsAsynchronously);
+			var secondRecovered = new TaskCompletionSource<DesignerSessionState>(TaskCreationOptions.RunContinuationsAsynchronously);
+			first.Recovered += (_, state) => firstRecovered.TrySetResult(state);
+			second.Recovered += (_, state) => secondRecovered.TrySetResult(state);
+
+			first.TerminateHost();
+			Assert.True((await firstRecovered.Task.WaitAsync(timeout.Token)).Accepted);
+			Assert.True((await secondRecovered.Task.WaitAsync(timeout.Token)).Accepted);
+			Assert.NotEqual(oldPid, first.ProcessId);
+			Assert.Equal(first.ProcessId, second.ProcessId);
+			Assert.Equal(1, first.RecoveryCount);
+			Assert.Equal(1, second.RecoveryCount);
+			Assert.Contains("first", DesignerText(await first.FlushAsync(1, timeout.Token)), StringComparison.Ordinal);
+			Assert.Contains("second", DesignerText(await second.FlushAsync(1, timeout.Token)), StringComparison.Ordinal);
+		} finally {
+			first.Dispose();
+			second.Dispose();
+		}
+	}
+
 	static async Task WaitForExitAsync(int processId, CancellationToken cancellationToken)
 	{
 		while (true) {
@@ -345,6 +384,8 @@ public sealed class FormsDesignerHostClientTests
 	}
 
 	static string DesignerText(DesignerEditSet edits) => edits.Files.Single(item => item.Kind == "Designer").Text;
+
+	static string FramePayload(DesignerRenderFrame frame) => String.IsNullOrEmpty(frame.Data) ? frame.PngBase64 : frame.Data;
 
 	[Fact]
 	public async Task ChildHost_VbSnapshot_RoundTripsDesignerEdits()

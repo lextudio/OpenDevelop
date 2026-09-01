@@ -20,7 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
-using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
 using Debugger.AddIn.Breakpoints;
 

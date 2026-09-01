@@ -157,8 +157,16 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 				return await rpc.InvokeWithParameterObjectAsync<T>(method, arguments, cancellationToken)
 					.WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
 			} catch (TimeoutException) {
+				var log = ChildLog;
 				TerminateHost();
-				throw new TimeoutException($"The designer host did not complete '{method}' within {timeout}.");
+				throw new TimeoutException($"The designer host did not complete '{method}' within {timeout}."
+					+ (String.IsNullOrWhiteSpace(log) ? "" : Environment.NewLine + "Child log:" + Environment.NewLine + log));
+			} catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested) {
+				var log = ChildLog;
+				if (!String.IsNullOrWhiteSpace(log))
+					throw new OperationCanceledException($"The designer host operation '{method}' was cancelled."
+						+ Environment.NewLine + "Child log:" + Environment.NewLine + log, exception, cancellationToken);
+				throw;
 			}
 		}
 

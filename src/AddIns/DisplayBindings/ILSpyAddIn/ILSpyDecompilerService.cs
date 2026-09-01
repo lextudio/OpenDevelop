@@ -288,7 +288,7 @@ namespace ICSharpCode.ILSpyAddIn
 		{
 			var output = new ReferenceTrackingTextOutput();
 			output.IndentationString = settings.CSharpFormattingOptions.IndentationString;
-			var tokenWriter = new TextTokenWriter(output, settings, decompiler.TypeSystem);
+			var tokenWriter = new TextTokenWriter(output, settings);
 			syntaxTree.AcceptVisitor(new CSharpOutputVisitor(tokenWriter, settings.CSharpFormattingOptions));
 			return new DecompiledTypeResult(output.ToString(), output.MemberLocations,
 				new Dictionary<string, DecompiledMethodDebugInfo>(), output.References);
@@ -406,8 +406,9 @@ namespace ICSharpCode.ILSpyAddIn
 				references.Add(new DecompiledReferenceSpan(offset, text.Length, FileName.Create(assemblyFileName), declaringType.ReflectionName, memberKey));
 			}
 
-			public void WriteLocalReference(string text, object reference, bool isDefinition = false) => Write(text);
+			public void WriteLocalReference(string text, object reference, bool isDefinition = false, bool isHoverOnly = false) => Write(text);
 			public void MarkFoldStart(string collapsedText = "...", bool defaultCollapsed = false, bool isDefinition = false) { }
+			public void MarkDefinitionStart() { }
 			public void MarkFoldEnd() { }
 		}
 		

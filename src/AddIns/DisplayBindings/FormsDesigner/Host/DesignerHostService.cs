@@ -34,6 +34,8 @@ sealed class DesignerHostService : IDesignerChildService
 	SizeF? rootAutoScaleDimensions;
 	long frameSequence;
 	bool initialized;
+	static volatile bool portableGpuReadbackUnavailable;
+	static readonly bool traceSessionOpen = String.Equals(Environment.GetEnvironmentVariable("OPENDEVELOP_DESIGNER_TRACE"), "1", StringComparison.Ordinal);
 
 	public DesignerHostService(string expectedToken) => this.expectedToken = expectedToken;
 
@@ -48,11 +50,7 @@ sealed class DesignerHostService : IDesignerChildService
 	[JsonRpcMethod("initialize")]
 	public HostHandshake Initialize(string token, int protocolVersion, string sessionId)
 	{
-		if (!CryptographicOperations.FixedTimeEquals(
-			Convert.FromHexString(expectedToken), Convert.FromHexString(token)))
-			throw new UnauthorizedAccessException("Invalid designer-host token.");
-		if (protocolVersion != ProtocolVersion)
-			throw new NotSupportedException($"Protocol {protocolVersion} is not supported.");
+		DesignerHostHandshakeValidator.Validate(expectedToken, token, protocolVersion);
 		initialized = true;
 		this.sessionId = sessionId;
 		return new HostHandshake { ProtocolVersion = ProtocolVersion, Runtime = RuntimeInformation.FrameworkDescription, ProcessId = Environment.ProcessId, SessionId = sessionId };
@@ -61,12 +59,22 @@ sealed class DesignerHostService : IDesignerChildService
 	[JsonRpcMethod("session/open")]
 	public DesignerSessionState Open(DesignerDocumentSnapshot snapshot)
 	{
+		Trace("session/open received");
 		EnsureInitialized();
 		EnsureOwnSession(snapshot);
+		Trace("session/open validated envelope");
 		Validate(snapshot);
+		Trace("session/open validated snapshot");
 		CreateDesignSurface(snapshot);
+		Trace("session/open created design surface");
 		current = snapshot;
 		return CurrentState(snapshot.Version);
+	}
+
+	static void Trace(string message)
+	{
+		if (traceSessionOpen)
+			Console.Error.WriteLine($"FormsDesigner.Host: {message}");
 	}
 
 	[JsonRpcMethod("session/update")]
@@ -961,6 +969,7 @@ sealed class DesignerHostService : IDesignerChildService
 
 	void CreateDesignSurface(DesignerDocumentSnapshot snapshot)
 	{
+		Trace("CreateDesignSurface disposing previous surface");
 		designSurface?.Dispose();
 		projectLoadContext?.Unload();
 		projectLoadContext = null;
@@ -984,16 +993,21 @@ sealed class DesignerHostService : IDesignerChildService
 				try { referencedAssemblies.Add(projectLoadContext.LoadFromAssemblyPath(Path.GetFullPath(path))); loaded++; } catch { }
 			}
 		}
+		Trace("CreateDesignSurface constructing DesignSurface");
 		designSurface = new DesignSurface();
+		Trace("CreateDesignSurface beginning loader");
 		designSurface.BeginLoad(new SnapshotDesignerLoader(snapshot, ResolveProjectType));
+		Trace("CreateDesignSurface loader completed");
 		if (!designSurface.IsLoaded) {
 			var errors = designSurface.LoadErrors?.Cast<object>().Select(item => item?.ToString()).Where(item => !String.IsNullOrEmpty(item));
 			var errStr = String.Join(" | ", errors ?? []);
 			throw new InvalidOperationException("The child design surface failed to load: " + errStr);
 		}
 		if (designSurface.View is Control view) {
+			Trace("CreateDesignSurface creating view control");
 			view.CreateControl();
 			view.PerformLayout();
+			Trace("CreateDesignSurface laid out view control");
 		}
 	}
 
@@ -1056,9 +1070,59 @@ sealed class DesignerHostService : IDesignerChildService
 
 	DesignerSessionState CurrentState(long baseVersion)
 	{
+		Trace("CurrentState resolving design host");
 		var host = designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost;
 		var rootControl = host?.RootComponent as Control;
+		Trace("CurrentState rendering frame");
 		var render = Render(rootControl, rootDesignSize);
+		Trace("CurrentState building element tree");
+		var tree = rootControl == null ? null : BuildElementTree(rootControl, "");
+		Trace("CurrentState describing components");
+		var components = host?.Container?.Components.Cast<IComponent>().Select(component => {
+			var properties = DescribeProperties(component);
+			if (component == host.RootComponent && rootAutoScaleDimensions.HasValue) {
+				var scale = properties.FirstOrDefault(item => item.Name == "AutoScaleDimensions");
+				if (scale != null)
+					scale.Value = $"{rootAutoScaleDimensions.Value.Width.ToString(CultureInfo.InvariantCulture)}, {rootAutoScaleDimensions.Value.Height.ToString(CultureInfo.InvariantCulture)}";
+			}
+			return new DesignerComponentInfo {
+			Name = component.Site?.Name ?? "",
+			Type = component.GetType().FullName ?? component.GetType().Name,
+			Parent = component is Control control ? control.Parent?.Site?.Name ?? "" : "",
+			Text = component is Control textControl ? textControl.Text ?? "" : "",
+			AccessibleName = PropertyText(component, "AccessibleName") is { Length: > 0 } accessibleName
+				? accessibleName : component is Control namedControl && !String.IsNullOrEmpty(namedControl.Text)
+					? namedControl.Text : component.Site?.Name ?? "",
+			AccessibleDescription = PropertyText(component, "AccessibleDescription"),
+			AccessibleRole = PropertyText(component, "AccessibleRole") is { Length: > 0 } accessibleRole
+				&& accessibleRole != "Default"
+				? accessibleRole : component.GetType().Name,
+			X = component is Control boundsControl ? boundsControl.Left : 0,
+			Y = component is Control boundsControl2 ? boundsControl2.Top : 0,
+			SurfaceX = component is Control surfaceControl ? SurfaceLocation(surfaceControl).X : 0,
+			SurfaceY = component is Control surfaceControl2 ? SurfaceLocation(surfaceControl2).Y : 0,
+			Width = component == host.RootComponent && rootDesignSize.HasValue
+#if MICROSOFT_WINFORMS
+				? (component as Control)?.Width ?? rootDesignSize.Value.Width
+#else
+				? rootDesignSize.Value.Width
+#endif
+				: component is Control sizeControl ? sizeControl.Width : 0,
+			Height = component == host.RootComponent && rootDesignSize.HasValue
+#if MICROSOFT_WINFORMS
+				? (component as Control)?.Height ?? rootDesignSize.Value.Height
+#else
+				? rootDesignSize.Value.Height
+#endif
+				: component is Control sizeControl2 ? sizeControl2.Height : 0,
+			Properties = properties,
+			Events = DescribeEvents(component)
+			};
+		}).ToList() ?? [];
+		Trace("CurrentState described components");
+		var diagnostics = new List<DesignerDiagnostic>();
+		if (portableGpuReadbackUnavailable)
+			diagnostics.Add(new DesignerDiagnostic { Severity = "Warning", Message = "GPU frame readback is unavailable; showing the bounded software fallback frame." });
 		return new DesignerSessionState {
 			SessionId = current?.SessionId ?? sessionId ?? "",
 			DocumentId = current?.DocumentId ?? "",
@@ -1067,57 +1131,9 @@ sealed class DesignerHostService : IDesignerChildService
 			RootType = host?.RootComponent?.GetType().FullName ?? "",
 			ComponentCount = host?.Container?.Components.Count ?? 0,
 			Render = render,
-			Tree = rootControl == null ? null : BuildElementTree(rootControl, ""),
-			Components = host?.Container?.Components.Cast<IComponent>().Select(component => {
-				var properties = DescribeProperties(component);
-				if (component == host.RootComponent && rootAutoScaleDimensions.HasValue) {
-					var scale = properties.FirstOrDefault(item => item.Name == "AutoScaleDimensions");
-					if (scale != null)
-						scale.Value = $"{rootAutoScaleDimensions.Value.Width.ToString(CultureInfo.InvariantCulture)}, {rootAutoScaleDimensions.Value.Height.ToString(CultureInfo.InvariantCulture)}";
-				}
-				return new DesignerComponentInfo {
-				Name = component.Site?.Name ?? "",
-				Type = component.GetType().FullName ?? component.GetType().Name,
-				Parent = component is Control control ? control.Parent?.Site?.Name ?? "" : "",
-				Text = component is Control textControl ? textControl.Text ?? "" : "",
-				AccessibleName = PropertyText(component, "AccessibleName") is { Length: > 0 } accessibleName
-					? accessibleName : component is Control namedControl && !String.IsNullOrEmpty(namedControl.Text)
-						? namedControl.Text : component.Site?.Name ?? "",
-				AccessibleDescription = PropertyText(component, "AccessibleDescription"),
-				// "Default" is AccessibleRole's own sentinel for "no explicit role assigned" - the
-				// effective role is only resolved later by the control's AccessibleObject - so it
-				// must fall through to the type name exactly like an empty value does. Microsoft
-				// WinForms reports that sentinel for an untouched Button (LibreWinForms reports
-				// nothing at all), which is why leaving it in surfaced a bogus role of "Default"
-				// instead of "Button" there and nowhere else.
-				AccessibleRole = PropertyText(component, "AccessibleRole") is { Length: > 0 } accessibleRole
-					&& accessibleRole != "Default"
-					? accessibleRole : component.GetType().Name,
-				X = component is Control boundsControl ? boundsControl.Left : 0,
-				Y = component is Control boundsControl2 ? boundsControl2.Top : 0,
-				SurfaceX = component is Control surfaceControl ? SurfaceLocation(surfaceControl).X : 0,
-				SurfaceY = component is Control surfaceControl2 ? SurfaceLocation(surfaceControl2).Y : 0,
-				// Microsoft Form.DrawToBitmap includes the non-client frame (caption and borders),
-				// unlike the portable painter which renders only the client design surface. Keep
-				// the root metadata in the same coordinate space as the returned bitmap.
-				Width = component == host.RootComponent && rootDesignSize.HasValue
-#if MICROSOFT_WINFORMS
-					? (component as Control)?.Width ?? rootDesignSize.Value.Width
-#else
-					? rootDesignSize.Value.Width
-#endif
-					: component is Control sizeControl ? sizeControl.Width : 0,
-				Height = component == host.RootComponent && rootDesignSize.HasValue
-#if MICROSOFT_WINFORMS
-					? (component as Control)?.Height ?? rootDesignSize.Value.Height
-#else
-					? rootDesignSize.Value.Height
-#endif
-					: component is Control sizeControl2 ? sizeControl2.Height : 0,
-				Properties = properties,
-				Events = DescribeEvents(component)
-				};
-			}).ToList() ?? []
+			Diagnostics = diagnostics,
+			Tree = tree,
+			Components = components
 		};
 	}
 
@@ -1191,12 +1207,23 @@ sealed class DesignerHostService : IDesignerChildService
 		var vbDesignerRoot = IsVisualBasic ? (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(CurrentDesignerFile().Text).GetRoot() : null;
 		foreach (PropertyDescriptor property in TypeDescriptor.GetProperties(component)) {
 			if (!property.IsBrowsable || property.Name is "Site" or "Container" or "Parent") continue;
+			var assignedInSource = IsVisualBasic
+				? vbDesignerRoot!.DescendantNodes().OfType<VbSyntax.AssignmentStatementSyntax>().Any(assignment =>
+					NormalizeTarget(assignment.Left.ToString()) == elementId + "." + property.Name)
+				: designerRoot!.DescendantNodes().OfType<AssignmentExpressionSyntax>().Any(assignment =>
+					assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)
+					&& NormalizeTarget(assignment.Left.ToString()) == elementId + "." + property.Name);
+			var isImageProperty = typeof(Image).IsAssignableFrom(property.PropertyType);
 			object? value;
 			string serialized;
 			try {
 				value = property.GetValue(component);
-				if (value == null) serialized = "";
-				else if (value is Image) serialized = "[binary]";
+				if (value == null) serialized = isImageProperty && assignedInSource ? "[binary]" : "";
+				// Portable resource loading can materialize an image entry as a byte-backed
+				// object rather than a concrete System.Drawing.Image. The property contract is
+				// still Image, so expose it as an opaque binary DDP value instead of leaking an
+				// implementation-specific converter string to the Properties pad.
+				else if (value is Image || isImageProperty) serialized = "[binary]";
 				else if (value is Padding padding) serialized = $"{padding.Left}, {padding.Top}, {padding.Right}, {padding.Bottom}";
 				else if (value is Font font) serialized = $"{font.Name}, {font.Size.ToString(CultureInfo.InvariantCulture)}, {font.Style}";
 				else if (value is SizeF size) serialized = $"{size.Width.ToString(CultureInfo.InvariantCulture)}, {size.Height.ToString(CultureInfo.InvariantCulture)}";
@@ -1210,18 +1237,13 @@ sealed class DesignerHostService : IDesignerChildService
 				Category = property.Category ?? "Misc",
 				TypeName = property.PropertyType.FullName ?? property.PropertyType.Name,
 				Value = serialized,
-				IsNull = value == null,
+				IsNull = value == null && !(isImageProperty && assignedInSource),
 				IsReadOnly = property.IsReadOnly || (!property.Converter.CanConvertFrom(typeof(string))
 					&& property.PropertyType != typeof(Padding) && property.PropertyType != typeof(Font)
 					&& property.PropertyType != typeof(SizeF)),
 				// The source assignment is authoritative. Some LibreWinForms
 				// descriptors keep returning true after ResetValue.
-				ShouldSerialize = IsVisualBasic
-					? vbDesignerRoot!.DescendantNodes().OfType<VbSyntax.AssignmentStatementSyntax>().Any(assignment =>
-						NormalizeTarget(assignment.Left.ToString()) == elementId + "." + property.Name)
-					: designerRoot!.DescendantNodes().OfType<AssignmentExpressionSyntax>().Any(assignment =>
-						assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)
-						&& NormalizeTarget(assignment.Left.ToString()) == elementId + "." + property.Name),
+				ShouldSerialize = assignedInSource,
 				IsEnum = property.PropertyType.IsEnum
 			});
 		}
@@ -1259,8 +1281,11 @@ sealed class DesignerHostService : IDesignerChildService
 	DesignerRenderFrame? Render(Control? root, Size? designSize)
 	{
 		if (root == null) return null;
+		Trace("Render sizing root");
 		if (root.Width <= 0 || root.Height <= 0) root.Size = new Size(300, 200);
+		Trace("Render creating root control");
 		root.CreateControl();
+		Trace("Render laying out root control");
 		root.PerformLayout();
 		var renderSize = designSize ?? root.Size;
 #if MICROSOFT_WINFORMS
@@ -1269,7 +1294,9 @@ sealed class DesignerHostService : IDesignerChildService
 		if (root is Form)
 			renderSize = root.Size;
 #endif
-		using var bitmap = new Bitmap(Math.Max(1, renderSize.Width), Math.Max(1, renderSize.Height));
+		Trace("Render creating bitmap");
+		var bitmap = new Bitmap(Math.Max(1, renderSize.Width), Math.Max(1, renderSize.Height));
+		Trace("Render creating graphics");
 		using (var graphics = Graphics.FromImage(bitmap)) {
 #if MICROSOFT_WINFORMS
 			// The Microsoft child uses the native WinForms paint pipeline. The portable host keeps
@@ -1281,6 +1308,7 @@ sealed class DesignerHostService : IDesignerChildService
 			if (root is Form formForChrome)
 				PaintFormChrome(formForChrome, graphics, new Rectangle(Point.Empty, renderSize));
 #else
+			Trace("Render painting portable frame");
 			if (designSize.HasValue) {
 				PaintStandardControl(root, graphics, new Rectangle(Point.Empty, renderSize));
 				foreach (Control child in root.Controls) {
@@ -1292,8 +1320,12 @@ sealed class DesignerHostService : IDesignerChildService
 			} else PaintControl(root, graphics);
 #endif
 		}
+		Trace("Render encoding PNG");
+#if MICROSOFT_WINFORMS
 		using var stream = new MemoryStream();
 		bitmap.Save(stream, ImageFormat.Png);
+		bitmap.Dispose();
+		Trace("Render encoded PNG");
 		return new DesignerRenderFrame {
 			Sequence = Interlocked.Increment(ref frameSequence),
 			Width = bitmap.Width,
@@ -1303,6 +1335,50 @@ sealed class DesignerHostService : IDesignerChildService
 			Dpi = 1,
 			PngBase64 = Convert.ToBase64String(stream.ToArray())
 		};
+#else
+		if (portableGpuReadbackUnavailable) {
+			bitmap.Dispose();
+			return FallbackFrame(root, renderSize);
+		}
+		var encoding = Task.Run(() => {
+			try {
+				using var stream = new MemoryStream();
+				bitmap.Save(stream, ImageFormat.Png);
+				return Convert.ToBase64String(stream.ToArray());
+			} finally {
+				bitmap.Dispose();
+			}
+		});
+		if (!encoding.Wait(TimeSpan.FromSeconds(2))) {
+			portableGpuReadbackUnavailable = true;
+			_ = encoding.ContinueWith(task => _ = task.Exception, TaskContinuationOptions.OnlyOnFaulted);
+			return FallbackFrame(root, renderSize);
+		}
+		Trace("Render encoded PNG");
+		return new DesignerRenderFrame {
+			Sequence = Interlocked.Increment(ref frameSequence), Width = renderSize.Width, Height = renderSize.Height, Dpi = 1,
+			PngBase64 = encoding.GetAwaiter().GetResult()
+		};
+#endif
+	}
+
+	DesignerRenderFrame FallbackFrame(Control root, Size size)
+	{
+		var pixels = new byte[checked(size.Width * size.Height * 4)];
+		for (var i = 0; i < pixels.Length; i += 4) { pixels[i] = SystemColors.Control.B; pixels[i + 1] = SystemColors.Control.G; pixels[i + 2] = SystemColors.Control.R; pixels[i + 3] = 255; }
+		PaintFallback(root, 0, 0, pixels, size.Width, size.Height);
+		return new DesignerRenderFrame { Sequence = Interlocked.Increment(ref frameSequence), Width = size.Width, Height = size.Height, Dpi = 1, Data = DesignerFrameCodec.EncodeDeflateBase64(pixels) };
+	}
+
+	static void PaintFallback(Control control, int offsetX, int offsetY, byte[] pixels, int width, int height)
+	{
+		var x = offsetX + control.Left; var y = offsetY + control.Top;
+		var right = Math.Min(width, x + Math.Max(1, control.Width)); var bottom = Math.Min(height, y + Math.Max(1, control.Height));
+		for (var yy = Math.Max(0, y); yy < bottom; yy++) for (var xx = Math.Max(0, x); xx < right; xx++) {
+			var i = (yy * width + xx) * 4; var border = xx == x || yy == y || xx == right - 1 || yy == bottom - 1;
+			pixels[i] = border ? (byte)96 : control.BackColor.B; pixels[i + 1] = border ? (byte)96 : control.BackColor.G; pixels[i + 2] = border ? (byte)96 : control.BackColor.R; pixels[i + 3] = 255;
+		}
+		foreach (Control child in control.Controls) PaintFallback(child, x, y, pixels, width, height);
 	}
 
 	static void PaintControl(Control control, Graphics graphics)

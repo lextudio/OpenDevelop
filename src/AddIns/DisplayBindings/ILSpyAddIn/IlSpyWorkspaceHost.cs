@@ -167,10 +167,10 @@ namespace ICSharpCode.ILSpyAddIn
 		/// The four pads this addin registers, for status/diagnostics (e.g. the
 		/// od.ilspy.status DevFlow action). Exposed after <see cref="EnsureInitialized"/>.
 		/// </summary>
-		public static IEnumerable<ICSharpCode.SharpDevelop.ViewModels.ToolPaneModel> Panes {
+		public static IEnumerable<ICSharpCode.ILSpy.ViewModels.ToolPaneModel> Panes {
 			get {
 				EnsureInitialized();
-				return new ICSharpCode.SharpDevelop.ViewModels.ToolPaneModel[] { assembliesPane, searchPane, analyzerPane };
+				return new ICSharpCode.ILSpy.ViewModels.ToolPaneModel[] { assembliesPane, searchPane, analyzerPane };
 			}
 		}
 

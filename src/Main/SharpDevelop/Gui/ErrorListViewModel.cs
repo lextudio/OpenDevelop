@@ -9,7 +9,7 @@ using System.Windows.Input;
 using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
 using ICSharpCode.SharpDevelop.Project;
-using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
 
 namespace ICSharpCode.SharpDevelop.Gui;
@@ -70,7 +70,7 @@ internal sealed class ErrorListViewModel : ToolPaneModel
         IsVisible = true; // Matches the legacy Pad's `defaultPosition = "Bottom"`.
         IsCloseable = true;
         LegacyPadClass = typeof(ErrorListPad).FullName;
-        PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Bottom;
+        PreferredDockSide = ICSharpCode.ILSpy.ViewModels.PreferredDockSide.Bottom;
         PreferredDockSize = 188; // Legacy AvalonPadContent bottom default; see DockWorkspace.AfterInsertAnchorable.
 
         // Build the UI structure EAGERLY so the pad has its toolbar and grid visible from

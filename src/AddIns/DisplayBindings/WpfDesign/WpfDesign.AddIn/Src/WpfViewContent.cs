@@ -170,6 +170,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 					LoggingService.Info($"WPF designer: acquired surface host pid={acquiredClient.ProcessId}");
 					if (generation != loadGeneration || IsDisposed) { acquiredClient.Dispose(); return; }
 					client = acquiredClient;
+					client.Recovered += OnHostRecovered;
 					surfaceControl = new WpfSurfaceDesignerControl(client);
 					surfaceControl.SelectionChanged += OnSelectionChanged;
 					surfaceControl.DocumentChanged += OnDocumentChanged;
@@ -381,6 +382,18 @@ namespace ICSharpCode.WpfDesign.AddIn
 			Console.Error.WriteLine("DIAG5 after MakeDirty isDirty=" + PrimaryFile.IsDirty);
 		}
 
+		void OnHostRecovered(object? sender, DesignerSessionState state)
+		{
+			SD.MainThread.InvokeAsyncAndForget(() => {
+				if (IsDisposed || !ReferenceEquals(sender, client) || surfaceControl == null) return;
+				surfaceControl.Show(state);
+				if (state.Accepted) {
+					UpdateTasks(state.Diagnostics);
+					UpdateOutline(state);
+				}
+			});
+		}
+
 		string FlushCurrentXaml()
 		{
 			var edit = client!.FlushAsync(documentVersion).GetAwaiter().GetResult();
@@ -490,6 +503,8 @@ namespace ICSharpCode.WpfDesign.AddIn
 				surfaceControl.DocumentChanged -= OnDocumentChanged;
 				surfaceControl.UndoRedoRequested -= OnUndoRedoRequested;
 			}
+			if (client != null)
+				client.Recovered -= OnHostRecovered;
 			outline.SelectionCommitted -= OnOutlineSelectionCommitted;
 			client?.Dispose();
 			client = null;

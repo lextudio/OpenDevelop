@@ -78,12 +78,17 @@ public sealed class UnoDesignHostRpcTests
 		using var client = await StartAsync(timeout.Token);
 		Assert.True(client.IsAlive);
 		Assert.NotEqual(Environment.ProcessId, client.ProcessId);
+		Assert.IsAssignableFrom<IDesignHostEventBinding>(client);
+		Assert.IsAssignableFrom<IDesignHostBounds>(client);
+		Assert.IsAssignableFrom<IDesignHostHitTesting>(client);
 
 		var opened = await client.OpenAsync(Document(client, Fixture("Hello")), timeout.Token);
 		Assert.True(opened.Accepted);
 		Assert.NotNull(opened.Tree);
 		Assert.NotNull(opened.Render);
 		Assert.False(string.IsNullOrEmpty(opened.Render!.Data));
+		var hit = await client.HitTestAsync(1, 4, 4, timeout.Token);
+		Assert.NotNull(hit);
 
 		var updated = await client.UpdateAsync(Document(client, Fixture("Updated"), 2), timeout.Token);
 		Assert.True(updated.Accepted);

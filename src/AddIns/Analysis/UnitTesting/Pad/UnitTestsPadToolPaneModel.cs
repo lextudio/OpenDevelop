@@ -17,7 +17,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using ICSharpCode.Core;
-using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 
 namespace ICSharpCode.UnitTesting
 {
@@ -40,7 +40,7 @@ namespace ICSharpCode.UnitTesting
 			IsVisible = true; // matches the legacy Pad's `defaultPosition = "Left"` (not Hidden)
 			IsCloseable = true;
 			LegacyPadClass = typeof(UnitTestsPad).FullName;
-			PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Left;
+			PreferredDockSide = ICSharpCode.ILSpy.ViewModels.PreferredDockSide.Left;
 			PreferredDockSize = 250; // EnsureDefaultPositionSize's left-pad width
 			Pad = new UnitTestsPad();
 			Content = Pad.Control;

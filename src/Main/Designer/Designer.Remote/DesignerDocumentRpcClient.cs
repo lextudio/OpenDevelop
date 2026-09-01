@@ -23,12 +23,15 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 			DocumentId = documentId ?? throw new ArgumentNullException(nameof(documentId));
 		}
 
-		public string SessionId { get; }
+		public string SessionId { get; private set; }
 		public string DocumentId { get; }
 
 		/// <summary>Rebinds a surviving document lease after its shared host was recovered.</summary>
 		public void ReplaceConnection(DesignerHostProcessClient replacement)
-			=> connection = replacement ?? throw new ArgumentNullException(nameof(replacement));
+		{
+			connection = replacement ?? throw new ArgumentNullException(nameof(replacement));
+			SessionId = replacement.SessionId;
+		}
 
 		public Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default)
 		{

@@ -6,7 +6,7 @@ using System.Windows.Media;
 using System.Runtime.CompilerServices;
 
 using ICSharpCode.Core;
-using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
 
 namespace ICSharpCode.SharpDevelop.Gui;
@@ -41,7 +41,7 @@ internal sealed class ToolsPadViewModel : ToolPaneModel, IToolsPadHost
         ContentId = "ToolsPad";
         IsVisible = true; // Matches the legacy Pad's `defaultPosition = "Left"`.
         IsCloseable = true;
-        PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Left;
+        PreferredDockSide = ICSharpCode.ILSpy.ViewModels.PreferredDockSide.Left;
         LegacyPadClass = typeof(ToolsPad).FullName;
         Content = contentControl;
         SD.Services.AddService(typeof(IToolsPadHost), this);

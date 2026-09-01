@@ -7,7 +7,7 @@ using System.Windows.Controls;
 
 using ICSharpCode.Core.Presentation;
 using ICSharpCode.SharpDevelop.Editor.Search;
-using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
 
 namespace ICSharpCode.SharpDevelop.Gui;
@@ -45,7 +45,7 @@ internal sealed class SearchResultsPadViewModel : ToolPaneModel, ISearchResultsH
         ContentId = "SearchResultsPad";
         IsVisible = false; // Matches the legacy Pad's `defaultPosition = "Bottom, Hidden"`.
         IsCloseable = true;
-        PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Bottom;
+        PreferredDockSide = ICSharpCode.ILSpy.ViewModels.PreferredDockSide.Bottom;
         LegacyPadClass = typeof(SearchResultsPad).FullName;
         PreferredDockSize = 188; // Legacy AvalonPadContent bottom default; see DockWorkspace.AfterInsertAnchorable.
         Content = contentPanel;

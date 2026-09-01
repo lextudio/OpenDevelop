@@ -87,6 +87,7 @@
     <PackageReference Include="Microsoft.Xaml.Behaviors.Wpf" />
     <!-- AvalonEdit itself comes from the local ICSharpCode.AvalonEdit ProjectReference above;
          do not also pull the NuGet package, or the two assembly identities collide (CS0433). -->
+    <PackageReference Include="CommunityToolkit.Mvvm" />
     <PackageReference Include="McMaster.Extensions.CommandLineUtils" />
     <!-- ILSpy source uses `using System.Composition;` (Export/NonShared/etc.) without directly
          referencing the System.Composition NuGet package; upstream supplies those attribute
@@ -210,10 +211,13 @@
          AssemblyTreeModel.cs (Category 1) references AppUpdateService/UpdateService. -->
     <Compile Include="$(ILSpySrc)\Updates\**\*.cs" Link="ILSpy\Updates\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="$(ILSpySrc)\Util\**\*.cs" Link="ILSpy\Util\%(RecursiveDir)%(Filename)%(Extension)" />
-    <!-- ViewModels/PaneModel.cs, ToolPaneModel.cs, Pane.cs are Category-2 shared-shell candidates
-         (see manifest note above); LegacyToolPaneModel.cs is untriaged. Both still linked as-is. -->
+    <!-- ViewModels/PaneModel.cs, ToolPaneModel.cs, LegacyToolPaneModel.cs: now live in the
+         SharpDevelop Base assembly (single source of truth). Exclude from linking here to avoid
+         duplicate-type errors (same source compiled into two assemblies). -->
+    <Compile Include="$(ILSpySrc)\Processes\**\*.cs" Link="ILSpy\Processes\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="$(ILSpySrc)\ViewModels\**\*.cs" Link="ILSpy\ViewModels\%(RecursiveDir)%(Filename)%(Extension)" />
-    <!-- CompareViewModel needs the (excluded) Views/CompareView.xaml dialog. -->
+    <Compile Remove="$(ILSpySrc)\ViewModels\PaneModel.cs" />
+    <Compile Remove="$(ILSpySrc)\ViewModels\ToolPaneModel.cs" />
     <Compile Remove="$(ILSpySrc)\ViewModels\CompareViewModel.cs" />
 
     <!-- Views/ dialogs used by linked ViewModels/Commands (ManageAssemblyListsViewModel,
@@ -333,6 +337,8 @@
     <Page Include="$(ILSpySrc)\Views\DebugSteps.xaml" Link="ILSpy\Views\DebugSteps.xaml" />
     <Page Include="$(ILSpySrc)\Views\ManageAssemblyListsDialog.xaml" Link="ILSpy\Views\ManageAssemblyListsDialog.xaml" />
     <Page Include="$(ILSpySrc)\Views\CreateListDialog.xaml" Link="ILSpy\Views\CreateListDialog.xaml" />
+    <Page Include="$(ILSpySrc)\Views\OpenFromProcessDialog.xaml" Link="ILSpy\Views\OpenFromProcessDialog.xaml" />
+    <Page Include="$(ILSpySrc)\Views\SetTargetFrameworkDialog.xaml" Link="ILSpy\Views\SetTargetFrameworkDialog.xaml" />
   </ItemGroup>
 
   <ItemGroup>
@@ -358,7 +364,7 @@
        a submodule bump that reshapes the tree is caught here rather than surfacing later as a
        missing-type or empty-pane regression. -->
   <ItemGroup>
-    <_ILSpyLinkedDir Include="Analyzers;AppEnv;AssemblyTree;AvalonEdit;Commands;Controls;Docking;Languages;Metadata;Options;Search;TextView;Themes;TreeNodes;Updates;Util;ViewModels;Views" />
+    <_ILSpyLinkedDir Include="Analyzers;AppEnv;AssemblyTree;AvalonEdit;Commands;Controls;Docking;Languages;Metadata;Options;Processes;Search;TextView;Themes;TreeNodes;Updates;Util;ViewModels;Views" />
   </ItemGroup>
   <Target Name="VerifyILSpyLinkedDirsExist" BeforeTargets="BeforeBuild">
     <ItemGroup>

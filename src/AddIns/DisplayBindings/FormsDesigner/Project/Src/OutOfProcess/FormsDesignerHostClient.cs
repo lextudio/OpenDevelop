@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,8 +12,9 @@ using ICSharpCode.SharpDevelop.Designer.Remote;
 namespace ICSharpCode.FormsDesigner.OutOfProcess
 {
 	/// <summary>Owns one isolated WinForms designer child process.</summary>
-	public sealed class FormsDesignerHostClient : DesignerDocumentHostClient, IDesignHostClient,
-		IDesignHostPropertyReset, IDesignHostDefaultEvent, IDesignHostLayout
+	public sealed class FormsDesignerHostClient : RecoverableDesignerDocumentHostClient, IDesignHostClient,
+		IDesignHostPropertyReset, IDesignHostEventBinding, IDesignHostBounds, IDesignHostHitTesting,
+		IDesignHostDefaultEvent, IDesignHostLayout
 	{
 		static readonly SharedDesignerHostPool<CompatibilityKey, Connection> sharedPool = new(
 			(_, connection) => connection.IsAlive,
@@ -20,7 +23,10 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				await connection.StartConnectionAsync(token).ConfigureAwait(false);
 				return connection;
 			});
-		readonly Connection connection;
+		static readonly object clientsGate = new();
+		static readonly HashSet<FormsDesignerHostClient> clients = new();
+		static readonly Dictionary<CompatibilityKey, SharedDesignerHostRecovery<FormsDesignerHostClient, Connection>> recoveries = new();
+		Connection connection;
 		readonly CompatibilityKey poolKey;
 		readonly bool shared;
 		bool disposed;
@@ -30,7 +36,14 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			this.connection = connection;
 			this.poolKey = poolKey;
 			this.shared = shared;
+			if (shared) {
+				connection.HostExited += OnConnectionExited;
+				lock (clientsGate) clients.Add(this);
+			}
 		}
+
+		public int RecoveryCount { get; private set; }
+		public event EventHandler<DesignerSessionState>? Recovered;
 
 		public static string LocateChildDll()
 		{
@@ -84,10 +97,10 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		static string Normalize(string path) => String.IsNullOrEmpty(path) ? "" : Path.GetFullPath(path);
 
 		public Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken)
-			=> Document.OpenAsync(snapshot, cancellationToken);
+			=> OpenRecoverableAsync(snapshot, cancellationToken);
 
 		public Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken)
-			=> Document.UpdateAsync(snapshot, cancellationToken);
+			=> UpdateRecoverableAsync(snapshot, cancellationToken);
 
 		public Task<DesignerEditSet> FlushAsync(long baseVersion, CancellationToken cancellationToken)
 			=> Document.FlushAsync(baseVersion, cancellationToken);
@@ -100,27 +113,27 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		static int Round(double value) => (int)Math.Round(value);
 
 		public Task<DesignerSessionState> SetPropertyAsync(long baseVersion, string elementId, string propertyName, string value, CancellationToken cancellationToken)
-			=> Document.SetPropertyAsync(baseVersion, elementId, propertyName, value, cancellationToken);
+			=> TrackMutationAsync(Document.SetPropertyAsync(baseVersion, elementId, propertyName, value, cancellationToken), cancellationToken);
 
 		public Task<DesignerSessionState> ResetPropertyAsync(long baseVersion, string elementId, string propertyName, CancellationToken cancellationToken)
-			=> connection.InvokeAsync<DesignerSessionState>("design/reset-property", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName }, cancellationToken);
+			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/reset-property", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, propertyName }, cancellationToken), cancellationToken);
 
 		public Task<DesignerSessionState> RenameAsync(long baseVersion, string elementId, string newName, CancellationToken cancellationToken)
-			=> Document.RenameAsync(baseVersion, elementId, newName, cancellationToken);
+			=> TrackMutationAsync(Document.RenameAsync(baseVersion, elementId, newName, cancellationToken), cancellationToken);
 
 		public Task<DesignerSessionState> SetEventAsync(long baseVersion, string elementId, string eventName, string handlerName, CancellationToken cancellationToken)
-			=> Document.SetEventAsync(baseVersion, elementId, eventName, handlerName, cancellationToken);
+			=> TrackMutationAsync(Document.SetEventAsync(baseVersion, elementId, eventName, handlerName, cancellationToken), cancellationToken);
 
 		public Task<DesignerSessionState> ActivateDefaultEventAsync(long baseVersion, string elementId, CancellationToken cancellationToken)
-			=> connection.InvokeAsync<DesignerSessionState>("design/activate-default-event", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId }, cancellationToken);
+			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/activate-default-event", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId }, cancellationToken), cancellationToken);
 
 		/// <summary>Inserts a control; the WinForms backend needs only the toolbox item's CLR type
 		/// name plus the proposed component name.</summary>
 		public Task<DesignerSessionState> AddElementAsync(long baseVersion, string parentId, DesignerToolboxItemInfo item, string elementId, double x, double y, CancellationToken cancellationToken)
-			=> connection.InvokeAsync<DesignerSessionState>("design/add-element", new { sessionId = SessionId, documentId = DocumentId, baseVersion, parentId, item, elementId, x = Round(x), y = Round(y) }, cancellationToken);
+			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/add-element", new { sessionId = SessionId, documentId = DocumentId, baseVersion, parentId, item, elementId, x = Round(x), y = Round(y) }, cancellationToken), cancellationToken);
 
 		public Task<DesignerSessionState> SetBoundsAsync(long baseVersion, string elementId, double x, double y, double width, double height, CancellationToken cancellationToken)
-			=> connection.InvokeAsync<DesignerSessionState>("design/set-bounds", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, x = Round(x), y = Round(y), width = Round(width), height = Round(height) }, cancellationToken);
+			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/set-bounds", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, x = Round(x), y = Round(y), width = Round(width), height = Round(height) }, cancellationToken), cancellationToken);
 
 		/// <summary>Deletes elements one RPC at a time: the child's <c>design/delete-elements</c>
 		/// takes a single name, and deletes do not bump the document version, so every call in
@@ -132,25 +145,68 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				foreach (var elementId in elementIds)
 					state = await DeleteComponentAsync(baseVersion, elementId, cancellationToken).ConfigureAwait(false);
 			}
-			return state;
+			return state == null ? null : await TrackMutationAsync(Task.FromResult(state), cancellationToken).ConfigureAwait(false);
 		}
 
 		Task<DesignerSessionState> DeleteComponentAsync(long baseVersion, string elementId, CancellationToken cancellationToken)
 			=> connection.InvokeAsync<DesignerSessionState>("design/delete-elements", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId }, cancellationToken);
 
 		public Task<DesignerSessionState> SetZOrderAsync(long baseVersion, string elementId, bool bringToFront, CancellationToken cancellationToken)
-			=> connection.InvokeAsync<DesignerSessionState>("design/set-z-order", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, bringToFront }, cancellationToken);
+			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/set-z-order", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, bringToFront }, cancellationToken), cancellationToken);
 
 		public Task<DesignerSessionState> ApplyLayoutAsync(long baseVersion, string operation, string[] elementIds, double deltaX, double deltaY, CancellationToken cancellationToken)
-			=> connection.InvokeAsync<DesignerSessionState>("design/apply-layout", new { sessionId = SessionId, documentId = DocumentId, baseVersion, operation, elementIds, deltaX = Round(deltaX), deltaY = Round(deltaY) }, cancellationToken);
+			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/apply-layout", new { sessionId = SessionId, documentId = DocumentId, baseVersion, operation, elementIds, deltaX = Round(deltaX), deltaY = Round(deltaY) }, cancellationToken), cancellationToken);
 
 		public Task DelayAsync(int milliseconds, CancellationToken cancellationToken)
 			=> connection.InvokeAsync<object>("diagnostics/delay", new { milliseconds }, cancellationToken, TimeSpan.FromMilliseconds(250));
+
+		static SharedDesignerHostRecovery<FormsDesignerHostClient, Connection> RecoveryFor(CompatibilityKey key)
+		{
+			lock (clientsGate) {
+				if (!recoveries.TryGetValue(key, out var recovery)) {
+					recovery = new SharedDesignerHostRecovery<FormsDesignerHostClient, Connection>(
+						sharedPool.GetBroker(key), failed => GetAffectedClients(key, failed),
+						client => client.RecoverySnapshot != null,
+						(client, token) => client.CaptureRecoverySnapshotAsync(client.RecoverySnapshot!.Version, token),
+						(client, replacement, token) => client.RestoreAsync(replacement, token));
+					recoveries.Add(key, recovery);
+				}
+				return recovery;
+			}
+		}
+
+		static FormsDesignerHostClient[] GetAffectedClients(CompatibilityKey key, Connection failed)
+		{
+			lock (clientsGate) return clients.Where(client => !client.disposed && Equals(client.poolKey, key)
+				&& ReferenceEquals(client.connection, failed)).ToArray();
+		}
+
+		async Task RestoreAsync(Connection replacement, CancellationToken cancellationToken)
+		{
+			connection.HostExited -= OnConnectionExited;
+			connection = replacement;
+			RebindConnection(replacement);
+			replacement.HostExited += OnConnectionExited;
+			var state = await Document.OpenAsync(RecoverySnapshot!, cancellationToken).ConfigureAwait(false);
+			RecoveryCount++;
+			Recovered?.Invoke(this, state);
+		}
+
+		void OnConnectionExited(object? sender, EventArgs e)
+		{
+			if (shared && !disposed)
+				_ = RecoveryFor(poolKey).RecoverAllAsync(connection, false, CancellationToken.None);
+		}
 
 		public void Dispose()
 		{
 			if (disposed) return;
 			disposed = true;
+			if (shared) {
+				connection.HostExited -= OnConnectionExited;
+				DetachHostConnection();
+				lock (clientsGate) clients.Remove(this);
+			}
 			try { ShutdownAsync(CancellationToken.None).Wait(TimeSpan.FromSeconds(3)); } catch { }
 			if (shared) sharedPool.Release(poolKey, connection); else connection.Dispose();
 		}
@@ -182,12 +238,8 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			}
 			protected override string GetChildDllPath() => hostDllPath;
 			protected override string BuildCommandLine(string childDll, int port, string token)
-			{
-				var arguments = $"exec \"{childDll}\" --port {port} --token {token}";
-				if (File.Exists(runtimeConfigPath) && File.Exists(depsFilePath))
-					arguments = $"exec --runtimeconfig \"{runtimeConfigPath}\" --depsfile \"{depsFilePath}\" \"{childDll}\" --port {port} --token {token}";
-				return arguments;
-			}
+				=> new DesignerHostLaunchSpec { RuntimeConfigPath = runtimeConfigPath, DepsFilePath = depsFilePath }
+					.BuildCommandLine(childDll, port, token);
 		}
 	}
 }

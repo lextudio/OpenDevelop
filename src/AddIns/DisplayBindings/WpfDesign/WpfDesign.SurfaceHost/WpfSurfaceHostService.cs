@@ -63,7 +63,14 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// CreateHeadless() target and reuse it across frames rather than recreating the GPU
 		/// context per render.</summary>
 		GpuCompositionTarget? renderTarget;
-		bool renderUnavailable;
+		// The ProGPU compositor can block inside composition (before its ReadPixels call) on
+		// a headless/unsupported adapter. That work executes on the WPF dispatcher and cannot
+		// be cancelled safely, so a timeout around ReadPixels alone cannot protect session/open.
+		// Keep the portable host responsive by default; deployments that have validated their
+		// adapter may explicitly enable the higher-fidelity path.
+		static readonly bool portableGpuRenderingEnabled = String.Equals(
+			Environment.GetEnvironmentVariable("OPENDEVELOP_WPF_GPU_RENDER"), "1", StringComparison.Ordinal);
+		bool renderUnavailable = !portableGpuRenderingEnabled;
 		#endif
 
 		// Design-time theme resolution - resolved once per session/open from the project
@@ -73,6 +80,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		Assembly? projectAssembly;
 		Dictionary<string, string>? themeSources;
 		ResourceDictionary? appliedThemeDictionary;
+		string? appliedThemeName;
 
 		public WpfSurfaceHostService(string expectedToken, WpfHeadlessDispatcher dispatcher)
 		{
@@ -90,11 +98,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		[JsonRpcMethod("initialize")]
 		public HostHandshake Initialize(string token, int protocolVersion, string sessionId)
 		{
-			if (!CryptographicOperations.FixedTimeEquals(
-				Convert.FromHexString(expectedToken), Convert.FromHexString(token)))
-				throw new UnauthorizedAccessException("Invalid designer-host token.");
-			if (protocolVersion != DesignerProtocol.Version)
-				throw new NotSupportedException($"Protocol {protocolVersion} is not supported.");
+			DesignerHostHandshakeValidator.Validate(expectedToken, token, protocolVersion);
 			initialized = true;
 			this.sessionId = sessionId;
 			return new HostHandshake {
@@ -149,6 +153,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				// from a clean slate rather than trying to remove a dictionary from the new root
 				// that was never actually added to it.
 				appliedThemeDictionary = null;
+				appliedThemeName = null;
 				// Merged after parse but before RebuildTreeAndRender runs layout, which is when
 				// implicit styles get applied - the headless stand-in for the live designer's
 				// DesignPanel.Resources (see ParseAppResources' remarks).
@@ -621,6 +626,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 						root.Resources.MergedDictionaries.Remove(appliedThemeDictionary);
 					root.Resources.MergedDictionaries.Add(dictionary);
 					appliedThemeDictionary = dictionary;
+					appliedThemeName = theme;
 				}
 				catch (Exception e)
 				{
@@ -685,6 +691,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				current = null;
 				pathToItem.Clear();
 				appliedThemeDictionary = null;
+				appliedThemeName = null;
 				themeSources = null;
 				projectAssembly = null;
 				documentId = null;
@@ -890,7 +897,14 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				root.UpdateLayout();
 			}
 			state.Tree = BuildNode(current.RootItem, current.RootItem, "");
-			state.Render = Render(current.RootItem.View as FrameworkElement);
+			state.Render = Render(current.RootItem.View as FrameworkElement, state.Tree);
+			#if !MICROSOFT_WPF
+			if (renderUnavailable)
+				state.Diagnostics.Add(new DesignerDiagnostic {
+					Severity = "Warning",
+					Message = "GPU rendering is unavailable or disabled; showing the bounded software fallback frame."
+				});
+			#endif
 			state.ComponentCount = pathToItem.Count;
 		}
 
@@ -955,7 +969,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// pixel at (0,0) as the background) revealed. If the underlying WebGPU backend itself is
 		/// genuinely unavailable, this fails the same way RenderTargetBitmap did - caught below
 		/// and rendering is skipped rather than failing session/open, exactly as before.</summary>
-		unsafe DesignerRenderFrame? Render(FrameworkElement? element)
+		unsafe DesignerRenderFrame? Render(FrameworkElement? element, DesignerElementNode? tree)
 		{
 #if MICROSOFT_WPF
 			if (element == null || element.ActualWidth <= 0 || element.ActualHeight <= 0)
@@ -968,35 +982,49 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				bitmap.Render(element);
 				var pixels = new byte[width * height * 4];
 				bitmap.CopyPixels(pixels, width * 4, 0);
-				using var stream = new MemoryStream();
-				using (var deflate = new DeflateStream(stream, CompressionLevel.Fastest, leaveOpen: true))
-					deflate.Write(pixels, 0, pixels.Length);
-				stream.Flush();
+				var data = DesignerFrameCodec.EncodeDeflateBase64(pixels);
 				stopwatch.Stop();
 				return new DesignerRenderFrame {
 					Sequence = ++frameSequence, Width = width, Height = height, Dpi = 1,
-					Data = Convert.ToBase64String(stream.ToArray()), RenderMs = stopwatch.Elapsed.TotalMilliseconds
+					Data = data, RenderMs = stopwatch.Elapsed.TotalMilliseconds
 				};
 			} catch (Exception e) {
 				Console.Error.WriteLine("WpfDesign.SurfaceHost: native WPF render failed: " + e);
 				return null;
 			}
 #else
-			if (element == null || element.ActualWidth <= 0 || element.ActualHeight <= 0 || renderUnavailable)
+			if (element == null || element.ActualWidth <= 0 || element.ActualHeight <= 0)
 				return null;
 			var stopwatch = Stopwatch.StartNew();
 			var width = (uint)Math.Ceiling(element.ActualWidth);
 			var height = (uint)Math.Ceiling(element.ActualHeight);
+			if (renderUnavailable)
+				return FallbackFrame(tree, (int)width, (int)height, stopwatch);
 			byte[] rgbaPixels;
 			try
 			{
 				renderTarget ??= GpuCompositionTarget.CreateHeadless();
-				using var texture = new GpuTexture(renderTarget.Context, width, height,
+				var texture = new GpuTexture(renderTarget.Context, width, height,
 					TextureFormat.Rgba8Unorm, TextureUsage.RenderAttachment | TextureUsage.CopySrc,
 					"WpfDesign.SurfaceHost render target");
 				renderTarget.ReplayVisualSubtree(element, width, height);
 				renderTarget.Render(width, height, width, height, 1f, texture.ViewPtr);
-				rgbaPixels = texture.ReadPixels();
+				// ProGPU's readback may poll an unavailable device for 30 seconds. Keep the
+				// dispatcher/RPC bounded: the GPU composition is still attempted, but an
+				// unresponsive readback falls back after a small, deterministic budget.
+				var readback = System.Threading.Tasks.Task.Run(() => {
+					try { return texture.ReadPixels(); }
+					finally { texture.Dispose(); }
+				});
+				if (!readback.Wait(TimeSpan.FromSeconds(2)))
+				{
+					renderUnavailable = true;
+					_ = readback.ContinueWith(task => _ = task.Exception,
+						System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
+					Console.Error.WriteLine("WpfDesign.SurfaceHost: ProGPU frame readback exceeded 2 seconds; using software fallback frames.");
+					return FallbackFrame(tree, (int)width, (int)height, stopwatch);
+				}
+				rgbaPixels = readback.GetAwaiter().GetResult();
 			}
 			catch (Exception e)
 			{
@@ -1004,29 +1032,121 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				// this is a different native backend (WebGPU/GPU driver) with its own unknown
 				// failure shapes on a machine without one - fail soft the same way regardless.
 				renderUnavailable = true;
-				Console.Error.WriteLine("WpfDesign.SurfaceHost: ProGPU render unavailable, disabling rendering for this process: " + e);
-				return null;
+				Console.Error.WriteLine("WpfDesign.SurfaceHost: ProGPU render unavailable, using software fallback frames: " + e);
+				return FallbackFrame(tree, (int)width, (int)height, stopwatch);
 			}
 			// ReadPixels returns RGBA byte order (Rgba8Unorm); DesignerRenderFrame.Data's
 			// established wire shape (matching WinUI/Uno) is BGRA - swap R/B in place rather than
 			// widen the protocol, since this is purely an encoding detail of this one backend.
 			for (var i = 0; i + 2 < rgbaPixels.Length; i += 4)
 				(rgbaPixels[i], rgbaPixels[i + 2]) = (rgbaPixels[i + 2], rgbaPixels[i]);
-			using var stream = new MemoryStream();
-			using (var deflate = new DeflateStream(stream, CompressionLevel.Fastest, leaveOpen: true))
-				deflate.Write(rgbaPixels, 0, rgbaPixels.Length);
-			stream.Flush();
+			var data = DesignerFrameCodec.EncodeDeflateBase64(rgbaPixels);
 			stopwatch.Stop();
 			return new DesignerRenderFrame {
 				Sequence = ++frameSequence,
 				Width = (int)width,
 				Height = (int)height,
 				Dpi = 1,
-				Data = Convert.ToBase64String(stream.ToArray()),
+				Data = data,
 				RenderMs = stopwatch.Elapsed.TotalMilliseconds
 			};
 #endif
 		}
+
+#if !MICROSOFT_WPF
+		/// <summary>Small managed fallback for hosts whose GPU backend cannot complete a pixel
+		/// readback. It intentionally uses the common BGRA frame format so the existing remote
+		/// presentation path needs no designer-specific transport branch.</summary>
+		DesignerRenderFrame FallbackFrame(DesignerElementNode? tree, int width, int height, Stopwatch stopwatch)
+		{
+			var pixels = new byte[checked(width * height * 4)];
+			var themeHash = appliedThemeName?.GetHashCode(StringComparison.Ordinal) ?? 0;
+			var tint = (byte)((version + themeHash) & 0x3f);
+			for (var i = 0; i < pixels.Length; i += 4)
+			{
+				pixels[i] = (byte)(235 - tint / 4);
+				pixels[i + 1] = (byte)(235 - tint / 8);
+				pixels[i + 2] = 235;
+				pixels[i + 3] = 255;
+			}
+			// Paint the actual laid-out element backgrounds in tree order. This is intentionally
+			// conservative (it does not attempt text, templates, or effects), but preserves the
+			// geometry and colour information that a remote surface needs when GPU composition is
+			// unavailable.
+			if (tree != null)
+				foreach (var node in Flatten(tree))
+					if (pathToItem.TryGetValue(node.Id, out var item) && item.View is FrameworkElement element
+						&& TryGetBackground(element, out var color))
+						PaintFallbackRect(pixels, width, height, node, color);
+
+			// Keep a visible frame edge and a version/theme-sensitive marker. The latter makes a
+			// successful mutation or design-theme switch observable without GPU readback.
+			for (var x = 0; x < width; x++)
+				PaintFallbackPixel(pixels, width, height, x, 0, 96, 96, 96);
+			for (var y = 0; y < height; y++)
+				PaintFallbackPixel(pixels, width, height, 0, y, 96, 96, 96);
+			var markerWidth = Math.Min(width - 1, 12 + (int)(version & 0x1f));
+			for (var x = 1; x <= markerWidth; x++)
+				for (var y = 1; y < Math.Min(height, 5); y++)
+					PaintFallbackPixel(pixels, width, height, x, y, 180, 110, 45);
+			stopwatch.Stop();
+			return new DesignerRenderFrame {
+				Sequence = ++frameSequence, Width = width, Height = height, Dpi = 1,
+				Data = DesignerFrameCodec.EncodeDeflateBase64(pixels), RenderMs = stopwatch.Elapsed.TotalMilliseconds
+			};
+		}
+
+		static bool TryGetBackground(FrameworkElement element, out System.Windows.Media.Color color)
+		{
+			Brush? brush = element switch {
+				Panel panel => panel.Background,
+				TextBlock text => text.Background,
+				Border border => border.Background,
+				// Template-generated Control backgrounds are deliberately omitted. In a headless
+				// tree they can be materialized as local values despite not being authored in the
+				// document, and would obscure sibling backgrounds with the wrong geometry.
+				_ => null
+			};
+			if (brush is SolidColorBrush solid)
+			{
+				color = solid.Color;
+				return true;
+			}
+			color = default;
+			return false;
+		}
+
+		static IEnumerable<DesignerElementNode> Flatten(DesignerElementNode node)
+		{
+			yield return node;
+			foreach (var child in node.Children)
+				foreach (var nested in Flatten(child))
+					yield return nested;
+		}
+
+		static void PaintFallbackRect(byte[] pixels, int width, int height, DesignerElementNode node,
+			System.Windows.Media.Color color)
+		{
+			var left = Math.Max(0, (int)Math.Floor(node.X));
+			var top = Math.Max(0, (int)Math.Floor(node.Y));
+			var right = Math.Min(width, (int)Math.Ceiling(node.X + node.Width));
+			var bottom = Math.Min(height, (int)Math.Ceiling(node.Y + node.Height));
+			for (var y = top; y < bottom; y++)
+				for (var x = left; x < right; x++)
+					PaintFallbackPixel(pixels, width, height, x, y, color.B, color.G, color.R);
+		}
+
+		static void PaintFallbackPixel(byte[] pixels, int width, int height, int x, int y, byte b, byte g, byte r)
+		{
+			if (x < 0 || y < 0 || x >= width || y >= height)
+				return;
+			var index = (y * width + x) * 4;
+			pixels[index] = b;
+			pixels[index + 1] = g;
+			pixels[index + 2] = r;
+			pixels[index + 3] = 255;
+		}
+#endif
 
 		long frameSequence;
 	}

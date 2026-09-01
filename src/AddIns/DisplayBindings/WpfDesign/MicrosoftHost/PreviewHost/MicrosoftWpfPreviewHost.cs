@@ -14,18 +14,20 @@ static class MicrosoftWpfPreviewProgram {
 sealed class Service(string expectedToken) : IDesignerChildService {
 	string? sessionId;
 	readonly ManualResetEventSlim shutdown = new(false);
+	readonly DesignerDocumentRegistry<object> documents = new();
 	[JsonRpcMethod("initialize")]
 	public HostHandshake Initialize(string token, int protocolVersion, string session) {
-		if (!CryptographicOperations.FixedTimeEquals(Convert.FromHexString(expectedToken), Convert.FromHexString(token))) throw new UnauthorizedAccessException();
-		if (protocolVersion != DesignerProtocol.Version) throw new NotSupportedException();
+		DesignerHostHandshakeValidator.Validate(expectedToken, token, protocolVersion);
+		documents.Initialize(session);
 		sessionId = session;
 		return new HostHandshake { ProtocolVersion = DesignerProtocol.Version, Runtime = "Microsoft WPF", ProcessId = Environment.ProcessId, SessionId = session };
 	}
-	[JsonRpcMethod("session/open")] public DesignerSessionState Open(DesignerDocumentSnapshot s) => Load(s);
-	[JsonRpcMethod("session/update")] public DesignerSessionState Update(DesignerDocumentSnapshot s) => Load(s);
-	DesignerSessionState Load(DesignerDocumentSnapshot s) {
+	[JsonRpcMethod("session/open")] public DesignerSessionState Open(DesignerDocumentSnapshot s) => Load(s, create: true);
+	[JsonRpcMethod("session/update")] public DesignerSessionState Update(DesignerDocumentSnapshot s) => Load(s, create: false);
+	DesignerSessionState Load(DesignerDocumentSnapshot s, bool create) {
 		try {
-			if (s.SessionId != sessionId) throw new InvalidOperationException("Wrong session.");
+			if (create) documents.GetOrAdd(s.SessionId, s.DocumentId, static () => new object());
+			else documents.Get(s.SessionId, s.DocumentId);
 			var xaml = s.Files.FirstOrDefault(f => f.FileName == s.PrimaryFileName)?.Text ?? s.Files.FirstOrDefault()?.Text ?? "";
 			var root = XamlReader.Parse(xaml) as FrameworkElement ?? throw new XamlParseException("Root is not a FrameworkElement.");
 			root.Measure(new Size(1280, 720)); root.Arrange(new Rect(root.DesiredSize)); root.UpdateLayout();
@@ -37,8 +39,9 @@ sealed class Service(string expectedToken) : IDesignerChildService {
 		for (var i = 0; i < VisualTreeHelper.GetChildrenCount(e); i++) if (VisualTreeHelper.GetChild(e, i) is FrameworkElement child) n.Children.Add(Tree(child, id.Length == 0 ? i.ToString() : id + "," + i));
 		return n;
 	}
+	[JsonRpcMethod("session/close")] public void Close(string session, string documentId) => documents.Remove(session, documentId, _ => { });
 	[JsonRpcMethod("ping")] public void Ping() { }
-	[JsonRpcMethod("shutdown")] public void Shutdown() => shutdown.Set();
+	[JsonRpcMethod("shutdown")] public void Shutdown() { documents.CloseAll(_ => { }); shutdown.Set(); }
 	public void WaitForShutdown() => shutdown.Wait();
 	public void OnParentDisconnected() => shutdown.Set();
 }

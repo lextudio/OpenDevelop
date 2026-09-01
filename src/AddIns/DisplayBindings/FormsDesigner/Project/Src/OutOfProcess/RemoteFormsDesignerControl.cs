@@ -288,7 +288,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			disconnectedOverlay.Visibility = Visibility.Collapsed;
 			this.state = state;
 			version = state.Version;
-			if (state.Render == null || String.IsNullOrEmpty(state.Render.PngBase64)) {
+			if (state.Render == null || (String.IsNullOrEmpty(state.Render.PngBase64) && String.IsNullOrEmpty(state.Render.Data))) {
 				return;
 			}
 			if (state.Render.Sequence > 0 && state.Render.Sequence <= lastFrameSequence) {
@@ -297,13 +297,22 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			lastFrameSequence = state.Render.Sequence;
 			var dpiForStatus = Math.Max(1, state.Render.Dpi);
 			StatusText = $"Rendered by {BackendName} design host ({state.Render.Width / dpiForStatus:0}×{state.Render.Height / dpiForStatus:0}).";
-			var bitmap = new BitmapImage();
-			using (var stream = new MemoryStream(Convert.FromBase64String(state.Render.PngBase64))) {
-				bitmap.BeginInit();
-				bitmap.CacheOption = BitmapCacheOption.OnLoad;
-				bitmap.StreamSource = stream;
-				bitmap.EndInit();
+			ImageSource bitmap;
+			if (!String.IsNullOrEmpty(state.Render.Data)) {
+				var pixels = DesignerFrameCodec.DecodeBgra32(state.Render);
+				bitmap = BitmapSource.Create(state.Render.Width, state.Render.Height, 96, 96,
+					PixelFormats.Bgra32, null, pixels, state.Render.Width * 4);
 				bitmap.Freeze();
+			} else {
+				var png = new BitmapImage();
+				using (var stream = new MemoryStream(Convert.FromBase64String(state.Render.PngBase64))) {
+					png.BeginInit();
+					png.CacheOption = BitmapCacheOption.OnLoad;
+					png.StreamSource = stream;
+					png.EndInit();
+					png.Freeze();
+				}
+				bitmap = png;
 			}
 			framePresenter.SetSource(bitmap);
 			ApplyViewport();

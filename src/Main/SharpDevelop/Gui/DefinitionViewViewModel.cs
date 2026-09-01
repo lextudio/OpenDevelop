@@ -11,7 +11,7 @@ using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.LanguageServices;
 using ICSharpCode.SharpDevelop.Parser;
-using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
 
 using TextLocation = ICSharpCode.AvalonEdit.Document.TextLocation;
@@ -42,7 +42,7 @@ internal sealed class DefinitionViewViewModel : ToolPaneModel, IDisposable
         ContentId = "DefinitionView";
         IsVisible = false; // Matches the legacy Pad's `defaultPosition = "Bottom, Hidden"`.
         IsCloseable = true;
-        PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Bottom;
+        PreferredDockSide = ICSharpCode.ILSpy.ViewModels.PreferredDockSide.Bottom;
         LegacyPadClass = typeof(DefinitionViewPad).FullName;
 
         ctl = Editor.AvalonEditTextEditorAdapter.CreateAvalonEditInstance();

@@ -4,7 +4,7 @@ using System.Windows.Controls;
 
 using ICSharpCode.Core.Presentation;
 using ICSharpCode.SharpDevelop.Editor.Bookmarks;
-using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 
 namespace ICSharpCode.SharpDevelop.Gui;
 
@@ -27,7 +27,7 @@ internal sealed class BookmarkPadViewModel : BookmarkPadViewModelBase
         ContentId = "BookmarkPad";
         IsVisible = false; // Matches the legacy Pad's `defaultPosition = "Bottom, Hidden"`.
         IsCloseable = true;
-        PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Bottom;
+        PreferredDockSide = ICSharpCode.ILSpy.ViewModels.PreferredDockSide.Bottom;
         LegacyPadClass = typeof(BookmarkPad).FullName;
     }
 

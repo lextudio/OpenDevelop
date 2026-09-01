@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,12 +19,16 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoDesignHost;
 /// The process lifecycle (spawn, token handshake, log pump, timeouts, shutdown) comes from
 /// <see cref="DesignerHostProcessClient"/>; the Uno-specific method mapping lives here.
 /// </summary>
-public sealed class UnoDesignClient : DesignerDocumentHostClient, IDesignHostClient, IDesignHostTheme, IDesignHostExport, IDesignHostAppResources
+public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDesignHostClient, IDesignHostEventBinding,
+	IDesignHostBounds, IDesignHostHitTesting, IDesignHostTheme, IDesignHostExport, IDesignHostAppResources
 {
 	static readonly SharedDesignerHostPool<CompatibilityKey, Connection> sharedPool = new(
 		(_, connection) => connection.IsAlive,
 		async (key, token) => { var connection = new Connection(key.RuntimeConfigPath, key.DepsFilePath, key.HostDllPath); await connection.StartConnectionAsync(token); return connection; });
-	readonly Connection connection;
+	static readonly object clientsGate = new();
+	static readonly HashSet<UnoDesignClient> clients = new();
+	static readonly Dictionary<CompatibilityKey, SharedDesignerHostRecovery<UnoDesignClient, Connection>> recoveries = new();
+	Connection connection;
 	readonly CompatibilityKey? poolKey;
 	DesignerCapabilities capabilities;
 	bool disposed;
@@ -44,7 +50,11 @@ public sealed class UnoDesignClient : DesignerDocumentHostClient, IDesignHostCli
 		this.connection = connection;
 		this.poolKey = poolKey;
 		capabilities = connection.Capabilities;
+		if (poolKey != null) { connection.HostExited += OnConnectionExited; lock (clientsGate) clients.Add(this); }
 	}
+
+	public int RecoveryCount { get; private set; }
+	public event EventHandler<DesignerSessionState>? Recovered;
 
 	/// <summary>Path of the deployed child binary, or null when the addin tree lacks it.</summary>
 	public static string? LocateChildDll()
@@ -123,14 +133,20 @@ public sealed class UnoDesignClient : DesignerDocumentHostClient, IDesignHostCli
 
 	/// <summary>First load for a session (session/open) - the initial render of a document.</summary>
 	public Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default)
-		=> connection.InvokeAsync<DesignerSessionState>("session/open",
+	{
+		SetRecoverySnapshot(snapshot);
+		return connection.InvokeAsync<DesignerSessionState>("session/open",
 			new { sessionId = SessionId, documentId = DocumentId, xaml = PrimaryText(snapshot), width = viewportWidth, height = viewportHeight, dpi = viewportDpi }, cancellationToken);
+	}
 
 	/// <summary>Subsequent full-document push for an already-open session (session/update) -
 	/// theme reloads, size-preset changes and any other full re-render after the first load.</summary>
 	public Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default)
-		=> connection.InvokeAsync<DesignerSessionState>("session/update",
+	{
+		SetRecoverySnapshot(snapshot);
+		return connection.InvokeAsync<DesignerSessionState>("session/update",
 			new { sessionId = SessionId, documentId = DocumentId, xaml = PrimaryText(snapshot), width = viewportWidth, height = viewportHeight, dpi = viewportDpi, baseVersion = snapshot?.Version ?? 0 }, cancellationToken);
+	}
 
 	/// <summary>Stub: this host holds no independent child-side edit buffer, so this reports
 	/// the current XAML as the sole file - lands the wire shape now.</summary>
@@ -140,33 +156,33 @@ public sealed class UnoDesignClient : DesignerDocumentHostClient, IDesignHostCli
 	/// <summary>Applies a single property change directly to the live element and re-renders,
 	/// without re-running the full XAML parse/load path.</summary>
 	public Task<DesignerSessionState> SetPropertyAsync(long baseVersion, string elementId, string propertyName, string value, CancellationToken cancellationToken = default)
-		=> Document.SetPropertyAsync(baseVersion, elementId, propertyName, value, cancellationToken);
+		=> TrackMutationAsync(Document.SetPropertyAsync(baseVersion, elementId, propertyName, value, cancellationToken), cancellationToken);
 
 	/// <summary>Validates the element/event names exist; no live code-behind instance exists in
 	/// this design host, so no real wiring happens yet.</summary>
 	public Task<DesignerSessionState> SetEventAsync(long baseVersion, string elementId, string eventName, string handlerName, CancellationToken cancellationToken = default)
-		=> Document.SetEventAsync(baseVersion, elementId, eventName, handlerName, cancellationToken);
+		=> TrackMutationAsync(Document.SetEventAsync(baseVersion, elementId, eventName, handlerName, cancellationToken), cancellationToken);
 
 	/// <summary>Parses the toolbox item's XAML template and inserts it as a child of the named
 	/// parent element, then re-renders without re-running the full document XAML parse.
 	/// <paramref name="proposedName"/> is ignored: this markup backend derives the element name
 	/// from the parsed XAML (which already carries x:Name).</summary>
 	public Task<DesignerSessionState> AddElementAsync(long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, CancellationToken cancellationToken = default)
-		=> connection.InvokeAsync<DesignerSessionState>("design/add-element",
-			new { sessionId = SessionId, documentId = DocumentId, baseVersion, parentId, item, x, y }, cancellationToken);
+		=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/add-element",
+			new { sessionId = SessionId, documentId = DocumentId, baseVersion, parentId, item, x, y }, cancellationToken), cancellationToken);
 
 	/// <summary>Sets an element's width/height directly, and its Canvas position when its
 	/// parent is a Canvas, then re-renders.</summary>
 	public Task<DesignerSessionState> SetBoundsAsync(long baseVersion, string elementId, double x, double y, double width, double height, CancellationToken cancellationToken = default)
-		=> Document.SetBoundsAsync(baseVersion, elementId, x, y, width, height, cancellationToken);
+		=> TrackMutationAsync(Document.SetBoundsAsync(baseVersion, elementId, x, y, width, height, cancellationToken), cancellationToken);
 
 	/// <summary>Removes each named element from its Panel parent, then re-renders.</summary>
 	public Task<DesignerSessionState> DeleteElementsAsync(long baseVersion, string[] elementIds, CancellationToken cancellationToken = default)
-		=> Document.DeleteElementsAsync(baseVersion, elementIds, cancellationToken);
+		=> TrackMutationAsync(Document.DeleteElementsAsync(baseVersion, elementIds, cancellationToken), cancellationToken);
 
 	/// <summary>Renames the live element, then re-renders.</summary>
 	public Task<DesignerSessionState> RenameAsync(long baseVersion, string elementId, string newName, CancellationToken cancellationToken = default)
-		=> Document.RenameAsync(baseVersion, elementId, newName, cancellationToken);
+		=> TrackMutationAsync(Document.RenameAsync(baseVersion, elementId, newName, cancellationToken), cancellationToken);
 
 	public Task<DesignerAppResourcesResult> SetAppResourcesAsync(string xaml, CancellationToken cancellationToken = default)
 		=> connection.InvokeAsync<DesignerAppResourcesResult>("app/resources",
@@ -180,19 +196,55 @@ public sealed class UnoDesignClient : DesignerDocumentHostClient, IDesignHostCli
 		=> connection.InvokeAsync<string>("design/export-png",
 			new { sessionId = SessionId, documentId = DocumentId, path }, cancellationToken);
 
-	/// <summary>Maps a surface point to the element chain under it. <paramref name="baseVersion"/>
-	/// is accepted for protocol uniformity but not sent: the Uno child validates session/document
-	/// identity on this call, not a per-call document version.</summary>
+	/// <summary>Maps a surface point to the element chain under it. The common version envelope is
+	/// carried even though hit testing is read-only, so all DDP adapters share one request shape.</summary>
 	public Task<DesignerHitTestResult> HitTestAsync(long baseVersion, double x, double y, CancellationToken cancellationToken = default)
-		=> connection.InvokeAsync<DesignerHitTestResult>("design/hit-test", new { sessionId = SessionId, documentId = DocumentId, x, y }, cancellationToken);
+		=> connection.InvokeAsync<DesignerHitTestResult>("design/hit-test", new { sessionId = SessionId, documentId = DocumentId, baseVersion, x, y }, cancellationToken);
 
 	/// <summary>True while the child process is running and not yet shut down.</summary>
 	public bool IsProcessAlive => IsAlive;
+
+	static SharedDesignerHostRecovery<UnoDesignClient, Connection> RecoveryFor(CompatibilityKey key)
+	{
+		lock (clientsGate) {
+			if (!recoveries.TryGetValue(key, out var recovery)) {
+				recovery = new SharedDesignerHostRecovery<UnoDesignClient, Connection>(sharedPool.GetBroker(key),
+					failed => GetAffectedClients(key, failed), client => client.RecoverySnapshot != null,
+					(client, token) => client.CaptureRecoverySnapshotAsync(client.RecoverySnapshot!.Version, token),
+					(client, replacement, token) => client.RestoreAsync(replacement, token));
+				recoveries.Add(key, recovery);
+			}
+			return recovery;
+		}
+	}
+
+	static UnoDesignClient[] GetAffectedClients(CompatibilityKey key, Connection failed)
+	{
+		lock (clientsGate) return clients.Where(client => !client.disposed && Equals(client.poolKey, key) && ReferenceEquals(client.connection, failed)).ToArray();
+	}
+
+	async Task RestoreAsync(Connection replacement, CancellationToken cancellationToken)
+	{
+		connection.HostExited -= OnConnectionExited;
+		connection = replacement;
+		capabilities = replacement.Capabilities;
+		RebindConnection(replacement);
+		replacement.HostExited += OnConnectionExited;
+		var state = await OpenAsync(RecoverySnapshot!, cancellationToken).ConfigureAwait(false);
+		RecoveryCount++;
+		Recovered?.Invoke(this, state);
+	}
+
+	void OnConnectionExited(object? sender, EventArgs e)
+	{
+		if (!disposed && poolKey != null) _ = RecoveryFor(poolKey).RecoverAllAsync(connection, false, CancellationToken.None);
+	}
 
 	public void Dispose()
 	{
 		if (disposed) return;
 		disposed = true;
+		if (poolKey != null) { connection.HostExited -= OnConnectionExited; DetachHostConnection(); lock (clientsGate) clients.Remove(this); }
 		try { ShutdownAsync().Wait(TimeSpan.FromSeconds(3)); } catch { }
 		if (poolKey != null) sharedPool.Release(poolKey, connection); else connection.Dispose();
 	}
@@ -215,20 +267,12 @@ public sealed class UnoDesignClient : DesignerDocumentHostClient, IDesignHostCli
 		public Task StartConnectionAsync(CancellationToken token) => StartAsync(token);
 		protected override string GetChildDllPath() => hostDllPath ?? throw new FileNotFoundException("The Uno design host child is not deployed.");
 		protected override string BuildCommandLine(string childDll, int port, string token)
-		{
-			if (File.Exists(runtimeConfigPath) && File.Exists(depsFilePath)) {
-				// Full fidelity: run inside the app's own dependency graph. Only valid when the app
-				// does not target an OLDER framework than this host - its runtimeconfig pins the
-				// child's framework version too.
-				var appBin = appBinPath ?? Path.GetDirectoryName(runtimeConfigPath);
-				return $"exec --runtimeconfig \"{runtimeConfigPath}\" --depsfile \"{depsFilePath}\" \"{childDll}\" --port {port} --token {token} --appbin \"{appBin}\"";
-			}
-			// Host's own graph, but still preload the app's assemblies so its types resolve. This is
-			// the path taken when the app and the host target different frameworks.
-			return string.IsNullOrEmpty(appBinPath)
-				? $"exec \"{childDll}\" --port {port} --token {token}"
-				: $"exec \"{childDll}\" --port {port} --token {token} --appbin \"{appBinPath}\"";
-		}
+			=> new DesignerHostLaunchSpec {
+				RuntimeConfigPath = runtimeConfigPath,
+				DepsFilePath = depsFilePath,
+				AppBinPath = appBinPath,
+				IncludeAppBin = true
+			}.BuildCommandLine(childDll, port, token);
 		protected override TimeSpan HandshakeTimeout => TimeSpan.FromSeconds(60);
 		protected override async Task OnConnectedAsync(JsonRpc rpc, string token, CancellationToken cancellationToken)
 		{

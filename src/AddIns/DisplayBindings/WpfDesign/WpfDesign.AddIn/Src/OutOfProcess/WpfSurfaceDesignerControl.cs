@@ -1,8 +1,6 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.IO.Compression;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -363,7 +361,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				return;
 			}
 
-			var pixels = DecodeFrame(render.Data);
+			var pixels = DesignerFrameCodec.DecodeBgra32(render);
 			framePresenter.SetSource(BitmapSource.Create(render.Width, render.Height, 96, 96, PixelFormats.Bgra32, null, pixels, render.Width * 4));
 			StatusText = $"Rendered by WPF design host ({render.Width}×{render.Height}).";
 			// The design is centered inside the canvas with at least CanvasPadding of empty space
@@ -430,20 +428,6 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		{
 			showGridlines = show;
 			gridOverlay.Update(framePresenter.Visual.Width, framePresenter.Visual.Height, viewport.Scale, showGridlines);
-		}
-
-		/// <summary>Deflate+base64 decode matching the wire shape every DDP backend's
-		/// <c>DesignerRenderFrame.Data</c> uses (see designer-common.md's Surface section) -
-		/// duplicated per backend by design (each backend also owns its own pixel format
-		/// decode), matching WinUI/Uno's <c>RenderCodec.Decode</c>.</summary>
-		static byte[] DecodeFrame(string data)
-		{
-			var compressed = Convert.FromBase64String(data);
-			using var input = new MemoryStream(compressed);
-			using var deflate = new DeflateStream(input, CompressionMode.Decompress);
-			using var output = new MemoryStream();
-			deflate.CopyTo(output);
-			return output.ToArray();
 		}
 
 		void OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)

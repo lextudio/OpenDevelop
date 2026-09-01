@@ -13,7 +13,7 @@ using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Parser;
 using ICSharpCode.SharpDevelop.Project;
-using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
 
 namespace ICSharpCode.SharpDevelop.Gui;
@@ -62,7 +62,7 @@ internal sealed class TaskListViewModel : ToolPaneModel
         ContentId = "TaskList";
         IsVisible = true; // Matches the legacy Pad's `defaultPosition = "Bottom"`.
         IsCloseable = true;
-        PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Bottom;
+        PreferredDockSide = ICSharpCode.ILSpy.ViewModels.PreferredDockSide.Bottom;
         LegacyPadClass = typeof(TaskListPad).FullName;
 
         // Build the UI structure EAGERLY so the pad has its toolbar and list visible from

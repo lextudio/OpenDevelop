@@ -20,7 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
 
 namespace ICSharpCode.SharpDevelop.Gui.Pads

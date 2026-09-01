@@ -20,7 +20,7 @@ using System;
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
-using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 
 namespace ICSharpCode.XmlEditor
 {
@@ -45,7 +45,7 @@ namespace ICSharpCode.XmlEditor
 			IsVisible = false; // Matches the legacy Pad's `defaultPosition = "Bottom, Hidden"`.
 			IsCloseable = true;
 			LegacyPadClass = typeof(XPathQueryPad).FullName;
-			PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Bottom;
+			PreferredDockSide = ICSharpCode.ILSpy.ViewModels.PreferredDockSide.Bottom;
 
 			xpathQueryControl = new XPathQueryControl();
 			Content = xpathQueryControl;

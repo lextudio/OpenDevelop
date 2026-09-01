@@ -18,6 +18,7 @@
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 
 namespace ICSharpCode.UnitTesting
 {

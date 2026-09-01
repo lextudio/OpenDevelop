@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -23,7 +23,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 
-using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
 using ICSharpCode.ILSpyX.TreeView;
 using ICSharpCode.ILSpyX.TreeView.PlatformAbstractions;

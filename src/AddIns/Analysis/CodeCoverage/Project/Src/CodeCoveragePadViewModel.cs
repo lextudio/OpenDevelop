@@ -20,7 +20,7 @@ using System;
 
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Project;
-using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 
 namespace ICSharpCode.CodeCoverage
 {
@@ -44,7 +44,7 @@ namespace ICSharpCode.CodeCoverage
 			IsVisible = false; // Matches the legacy Pad's `defaultPosition = "Bottom, Hidden"`.
 			IsCloseable = true;
 			LegacyPadClass = typeof(CodeCoveragePad).FullName;
-			PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Bottom;
+			PreferredDockSide = ICSharpCode.ILSpy.ViewModels.PreferredDockSide.Bottom;
 
 			codeCoverageControl = new CodeCoverageControl();
 			codeCoverageControl.UpdateToolbar();

@@ -199,7 +199,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				return "Export failed: " + e.GetBaseException().Message;
 			}
 		}
-		public DesignerHitTestResult HitTest(string sessionId, string documentId, double x, double y)
+		public DesignerHitTestResult HitTest(string sessionId, string documentId, long baseVersion, double x, double y)
 		{
 			EnsureOwnSession(sessionId, documentId);
 			return HeadlessDispatcher.Dispatch(() => HitTestCore(new HitTestRequest { X = x, Y = y }));
@@ -1023,21 +1023,16 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			// The frame travels as deflate-compressed BGRA (base64): a 2x design bitmap is
 			// tens of MB raw, and UI frames compress very well - typically 10-30x smaller
 			// over the RPC pipe. The parent decompresses before presenting.
-			using (var stream = new MemoryStream())
+			var data = DesignerFrameCodec.EncodeDeflateBase64(buffer);
+			stopwatch.Stop();
+			return new DesignerRenderFrame
 			{
-				using (var deflate = new System.IO.Compression.DeflateStream(stream, System.IO.Compression.CompressionLevel.Fastest, leaveOpen: true))
-					deflate.Write(buffer, 0, buffer.Length);
-				stream.Flush();
-				stopwatch.Stop();
-				return new DesignerRenderFrame
-				{
-					Width = rtb.PixelWidth,
-					Height = rtb.PixelHeight,
-					Dpi = Math.Max(1.0, dpi),
-					Data = Convert.ToBase64String(stream.ToArray()),
-					RenderMs = stopwatch.Elapsed.TotalMilliseconds
-				};
-			}
+				Width = rtb.PixelWidth,
+				Height = rtb.PixelHeight,
+				Dpi = Math.Max(1.0, dpi),
+				Data = data,
+				RenderMs = stopwatch.Elapsed.TotalMilliseconds
+			};
 		}
 
 		static bool TrySetRasterizationScale(FrameworkElement element, double dpi)

@@ -6,7 +6,7 @@ using System.Windows.Controls;
 using ICSharpCode.Data.Core.Interfaces;
 using ICSharpCode.Data.Core.UI.UserControls;
 using ICSharpCode.SharpDevelop;
-using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 
 namespace ICSharpCode.Data.Addin.Pad
 {
@@ -32,7 +32,7 @@ namespace ICSharpCode.Data.Addin.Pad
 			IsVisible = false;
 			IsCloseable = true;
 			LegacyPadClass = typeof(DatabasesTreeViewPad).FullName;
-			PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Bottom;
+			PreferredDockSide = ICSharpCode.ILSpy.ViewModels.PreferredDockSide.Bottom;
 			Content = _control = new DatabasesTreeViewUserControl();
 
 			_databasesTreeView = new DatabasesTreeView();

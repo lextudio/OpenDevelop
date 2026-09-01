@@ -6,7 +6,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 
 using ICSharpCode.SharpDevelop.Designer.Remote;
-using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
 
 using XceedPropertyGrid = Xceed.Wpf.Toolkit.PropertyGrid.PropertyGrid;
@@ -56,7 +56,7 @@ internal sealed class PropertyPadViewModel : ToolPaneModel, IPropertyPadHost, ID
         ContentId = "PropertyPad";
         IsVisible = true; // Matches the legacy Pad's `defaultPosition = "Right"`.
         IsCloseable = true;
-        PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Right;
+        PreferredDockSide = ICSharpCode.ILSpy.ViewModels.PreferredDockSide.Right;
         // Without a pixel DockSize the newly-docked right pane stays `1*` and AvalonDock's
         // OnFixChildrenDockLengths freezes it to the rendered star width on first layout - which
         // on the LibreWPF backend is the 25px DockMinWidth, collapsing the pad into a title-bar

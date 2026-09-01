@@ -72,10 +72,6 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <summary>Sets a property on an element (<c>design/set-property</c>).</summary>
 		Task<DesignerSessionState> SetPropertyAsync(long baseVersion, string elementId, string propertyName, string value, CancellationToken cancellationToken = default);
 
-		/// <summary>Binds or clears an event handler (<c>design/set-event</c>); an empty
-		/// <paramref name="handlerName"/> clears.</summary>
-		Task<DesignerSessionState> SetEventAsync(long baseVersion, string elementId, string eventName, string handlerName, CancellationToken cancellationToken = default);
-
 		/// <summary>
 		/// Inserts a new element under a parent (<c>design/add-element</c>). The backend picks
 		/// what it needs out of <paramref name="item"/>: a CLR-type backend (WinForms) uses
@@ -85,18 +81,11 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// </summary>
 		Task<DesignerSessionState> AddElementAsync(long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, CancellationToken cancellationToken = default);
 
-		/// <summary>Moves/resizes an element (<c>design/set-bounds</c>). Coordinates are design
-		/// units; backends with integer layout round on their own side.</summary>
-		Task<DesignerSessionState> SetBoundsAsync(long baseVersion, string elementId, double x, double y, double width, double height, CancellationToken cancellationToken = default);
-
 		/// <summary>Removes elements (<c>design/delete-elements</c>).</summary>
 		Task<DesignerSessionState> DeleteElementsAsync(long baseVersion, string[] elementIds, CancellationToken cancellationToken = default);
 
 		/// <summary>Renames an element and its source references (<c>design/rename</c>).</summary>
 		Task<DesignerSessionState> RenameAsync(long baseVersion, string elementId, string newName, CancellationToken cancellationToken = default);
-
-		/// <summary>Maps surface coordinates to an element (<c>design/hit-test</c>).</summary>
-		Task<DesignerHitTestResult> HitTestAsync(long baseVersion, double x, double y, CancellationToken cancellationToken = default);
 
 		#endregion
 	}
@@ -106,6 +95,29 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	public interface IDesignHostPropertyReset
 	{
 		Task<DesignerSessionState> ResetPropertyAsync(long baseVersion, string elementId, string propertyName, CancellationToken cancellationToken = default);
+	}
+
+	/// <summary>Optional: binding or clearing an event handler (<c>design/set-event</c>).
+	/// An empty <paramref name="handlerName"/> clears the binding. Backends without a code-behind
+	/// event model do not implement this interface, so the shell can disable event editing instead
+	/// of issuing a request that fails at runtime.</summary>
+	public interface IDesignHostEventBinding
+	{
+		Task<DesignerSessionState> SetEventAsync(long baseVersion, string elementId, string eventName, string handlerName, CancellationToken cancellationToken = default);
+	}
+
+	/// <summary>Optional: moving or resizing an element (<c>design/set-bounds</c>). Coordinates
+	/// are design units; backends with integer layout round on their own side.</summary>
+	public interface IDesignHostBounds
+	{
+		Task<DesignerSessionState> SetBoundsAsync(long baseVersion, string elementId, double x, double y, double width, double height, CancellationToken cancellationToken = default);
+	}
+
+	/// <summary>Optional: mapping surface coordinates to an element (<c>design/hit-test</c>).
+	/// Source-model-only backends do not implement this until they own authoritative geometry.</summary>
+	public interface IDesignHostHitTesting
+	{
+		Task<DesignerHitTestResult> HitTestAsync(long baseVersion, double x, double y, CancellationToken cancellationToken = default);
 	}
 
 	/// <summary>Optional: creating/navigating to the element's default event handler.</summary>

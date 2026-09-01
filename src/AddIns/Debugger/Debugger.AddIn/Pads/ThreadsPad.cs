@@ -21,7 +21,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 
 using Debugger.AddIn.Service.Dap;
-using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
 
 namespace ICSharpCode.SharpDevelop.Gui.Pads

@@ -21,6 +21,11 @@ pan, design-size changes, drag/resize source edits, inline text editing, unnamed
 and child-process lifecycle probing. The `WinUIDesigner_*` integration tests cover the shared
 source-edit/render path against `src/Samples/UnoXamlSample`.
 
+The Uno client explicitly implements the optional `IDesignHostEventBinding` DDP capability. Its
+versioned `design/set-event` validates the live element/event name and keeps the incremental
+preview synchronized; it does not create or compile a code-behind method, which remains a
+backend-specific source-edit concern.
+
 There are **three supported runtime profiles**, not two interchangeable names for one renderer:
 
 | Project/runtime profile | Renderer | Host model | Current state |
@@ -302,6 +307,11 @@ No child-side mutation protocol in the first milestone.
   runtimeconfig/depsfile and pass its project assembly. App.xaml and merged-resource preprocessing
   already exists; then validate DotUninstall-style custom types, converters, compiled resources, and code-behind, and
   finish line-addressable diagnostics plus a design-time unsupported-construct policy.
+
+Shared Uno hosts use the common DDP recovery coordinator. After a child exit, the runtime host
+rebinds each compatible document, reapplies App.xaml resources on its dispatcher, and rerenders
+the latest source using its current design viewport and a fresh render revision; a reconnect alone
+is not considered a restored preview.
 - **M4 - ProGPU routing.** Detect ProGPU.WinUI explicitly, route only that profile to
   `ProGpuRuntimeHost`, and add a ProGPU-targeted fixture so the Uno child cannot mask regressions.
 - **M5 - Windows-only native WinUI adapter.** Prototype `XamlReader.Load` in a child running the

@@ -19,7 +19,7 @@
 using System;
 using System.Windows.Threading;
 
-using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 
 namespace ICSharpCode.PackageManagement.Scripting
 {
@@ -43,7 +43,7 @@ namespace ICSharpCode.PackageManagement.Scripting
 			IsVisible = false; // Matches the legacy Pad's `defaultPosition = "Bottom, Hidden"`.
 			IsCloseable = true;
 			LegacyPadClass = typeof(PackageManagementConsolePad).FullName;
-			PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Bottom;
+			PreferredDockSide = ICSharpCode.ILSpy.ViewModels.PreferredDockSide.Bottom;
 
 			view = new PackageManagementConsoleView();
 			viewModel = view.DataContext as PackageManagementConsoleViewModel;

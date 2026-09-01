@@ -1,9 +1,9 @@
-﻿using System;
+using System;
 using System.Collections.ObjectModel;
 
 using ICSharpCode.Data.Core.Interfaces;
 using ICSharpCode.SharpDevelop;
-using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
 
 namespace ICSharpCode.Data.Addin.Pad

@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,11 +13,9 @@ namespace ICSharpCode.WpfDesign.SurfaceHost;
 /// <summary>Host-side DDP client for the WPF out-of-process design host, alongside
 /// FormsDesignerHostClient/UnoDesignClient (see doc/technotes/designer-common.md's adapter
 /// seam). Lives in its own WPF-free Remote project, mirroring FormsDesigner.Remote/
-/// WinUIXamlDesigner.UnoDesignHost.Remote, so it can be referenced both by tests and - once
-/// WpfViewContent.cs actually cuts over - by WpfDesign.AddIn without pulling in the child's own
-/// WPF/designer-engine dependencies. No IDE-side caller exists yet (WpfDesign.AddIn is still
-/// fully in-process); this class is otherwise real, not a test double.</summary>
-public sealed class WpfSurfaceHostClient : DesignerDocumentHostClient, IDesignHostClient
+/// WinUIXamlDesigner.UnoDesignHost.Remote, so it can be referenced by both tests and
+/// WpfDesign.AddIn without pulling in the child's own WPF/designer-engine dependencies.</summary>
+public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient, IDesignHostClient, IDesignHostBounds, IDesignHostHitTesting
 {
 	static readonly SharedDesignerHostPool<CompatibilityKey, Connection> sharedPool = new(
 		(_, connection) => connection.IsAlive,
@@ -27,7 +27,10 @@ public sealed class WpfSurfaceHostClient : DesignerDocumentHostClient, IDesignHo
 			await connection.StartConnectionAsync(token).ConfigureAwait(false);
 			return connection;
 		});
-	readonly Connection connection;
+	static readonly object clientsGate = new();
+	static readonly HashSet<WpfSurfaceHostClient> clients = new();
+	static readonly Dictionary<CompatibilityKey, SharedDesignerHostRecovery<WpfSurfaceHostClient, Connection>> recoveries = new();
+	Connection connection;
 	readonly CompatibilityKey? poolKey;
 	bool disposed;
 
@@ -35,7 +38,14 @@ public sealed class WpfSurfaceHostClient : DesignerDocumentHostClient, IDesignHo
 	{
 		this.connection = connection;
 		this.poolKey = poolKey;
+		if (poolKey != null) {
+			connection.HostExited += OnConnectionExited;
+			lock (clientsGate) clients.Add(this);
+		}
 	}
+
+	public int RecoveryCount { get; private set; }
+	public event EventHandler<DesignerSessionState>? Recovered;
 
 	/// <summary>Finds the deployed child under this assembly's own "Host" subfolder, matching
 	/// <c>FormsDesignerHostClient.LocateChildDll</c> exactly - <c>WpfDesign.SurfaceHost.csproj</c>'s
@@ -73,25 +83,22 @@ public sealed class WpfSurfaceHostClient : DesignerDocumentHostClient, IDesignHo
 	}
 
 	public Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default)
-		=> Document.OpenAsync(snapshot, cancellationToken);
+		=> OpenRecoverableAsync(snapshot, cancellationToken);
 
 	public Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default)
-		=> Document.UpdateAsync(snapshot, cancellationToken);
+		=> UpdateRecoverableAsync(snapshot, cancellationToken);
 
 	public Task<DesignerEditSet> FlushAsync(long baseVersion, CancellationToken cancellationToken = default)
 		=> Document.FlushAsync(baseVersion, cancellationToken);
 
 	public Task<DesignerSessionState> SetPropertyAsync(long baseVersion, string elementId, string propertyName, string value, CancellationToken cancellationToken = default)
-		=> Document.SetPropertyAsync(baseVersion, elementId, propertyName, value, cancellationToken);
-
-	public Task<DesignerSessionState> SetEventAsync(long baseVersion, string elementId, string eventName, string handlerName, CancellationToken cancellationToken = default)
-		=> throw new NotSupportedException("design/set-event is not implemented by this Phase 0 slice.");
+		=> TrackMutationAsync(Document.SetPropertyAsync(baseVersion, elementId, propertyName, value, cancellationToken), cancellationToken);
 
 	public Task<DesignerSessionState> AddElementAsync(long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, CancellationToken cancellationToken = default)
-		=> Document.AddElementAsync(baseVersion, parentId, item, proposedName, x, y, cancellationToken);
+		=> TrackMutationAsync(Document.AddElementAsync(baseVersion, parentId, item, proposedName, x, y, cancellationToken), cancellationToken);
 
 	public Task<DesignerSessionState> SetBoundsAsync(long baseVersion, string elementId, double x, double y, double width, double height, CancellationToken cancellationToken = default)
-		=> Document.SetBoundsAsync(baseVersion, elementId, x, y, width, height, cancellationToken);
+		=> TrackMutationAsync(Document.SetBoundsAsync(baseVersion, elementId, x, y, width, height, cancellationToken), cancellationToken);
 
 	/// <summary>Grid row/column drag guides (WPF-specific - not part of <see cref="IDesignHostClient"/>,
 	/// since Uno/WinUI implements the same user-facing feature off its own live XAML text editor
@@ -102,13 +109,13 @@ public sealed class WpfSurfaceHostClient : DesignerDocumentHostClient, IDesignHo
 
 	/// <summary>Commits one Grid row's/column's new pixel size (a completed divider drag).</summary>
 	public Task<DesignerSessionState> SetGridTrackSizeAsync(long baseVersion, string elementId, bool isRow, int index, double pixels, CancellationToken cancellationToken = default)
-		=> HostConnection.InvokeAsync<DesignerSessionState>("design/set-grid-track-size", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, isRow, index, pixels }, cancellationToken);
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/set-grid-track-size", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, isRow, index, pixels }, cancellationToken), cancellationToken);
 
 	public Task<DesignerSessionState> DeleteElementsAsync(long baseVersion, string[] elementIds, CancellationToken cancellationToken = default)
-		=> Document.DeleteElementsAsync(baseVersion, elementIds, cancellationToken);
+		=> TrackMutationAsync(Document.DeleteElementsAsync(baseVersion, elementIds, cancellationToken), cancellationToken);
 
 	public Task<DesignerSessionState> RenameAsync(long baseVersion, string elementId, string newName, CancellationToken cancellationToken = default)
-		=> Document.RenameAsync(baseVersion, elementId, newName, cancellationToken);
+		=> TrackMutationAsync(Document.RenameAsync(baseVersion, elementId, newName, cancellationToken), cancellationToken);
 
 	/// <summary>Switches the design-time theme by name - only has an effect for a project that
 	/// embeds <c>themes/*.xaml</c> resources; the response's <c>DesignThemes</c> tells the caller
@@ -119,10 +126,53 @@ public sealed class WpfSurfaceHostClient : DesignerDocumentHostClient, IDesignHo
 	public Task<DesignerHitTestResult> HitTestAsync(long baseVersion, double x, double y, CancellationToken cancellationToken = default)
 		=> Document.HitTestAsync(baseVersion, x, y, cancellationToken);
 
+	static SharedDesignerHostRecovery<WpfSurfaceHostClient, Connection> RecoveryFor(CompatibilityKey key)
+	{
+		lock (clientsGate) {
+			if (!recoveries.TryGetValue(key, out var recovery)) {
+				recovery = new SharedDesignerHostRecovery<WpfSurfaceHostClient, Connection>(
+					sharedPool.GetBroker(key), failed => GetAffectedClients(key, failed),
+					client => client.RecoverySnapshot != null,
+					(client, token) => client.CaptureRecoverySnapshotAsync(client.RecoverySnapshot!.Version, token),
+					(client, replacement, token) => client.RestoreAsync(replacement, token));
+				recoveries.Add(key, recovery);
+			}
+			return recovery;
+		}
+	}
+
+	static WpfSurfaceHostClient[] GetAffectedClients(CompatibilityKey key, Connection failed)
+	{
+		lock (clientsGate) return clients.Where(client => !client.disposed && Equals(client.poolKey, key)
+			&& ReferenceEquals(client.connection, failed)).ToArray();
+	}
+
+	async Task RestoreAsync(Connection replacement, CancellationToken cancellationToken)
+	{
+		connection.HostExited -= OnConnectionExited;
+		connection = replacement;
+		RebindConnection(replacement);
+		replacement.HostExited += OnConnectionExited;
+		var state = await Document.OpenAsync(RecoverySnapshot!, cancellationToken).ConfigureAwait(false);
+		RecoveryCount++;
+		Recovered?.Invoke(this, state);
+	}
+
+	void OnConnectionExited(object? sender, EventArgs e)
+	{
+		if (!disposed && poolKey != null)
+			_ = RecoveryFor(poolKey).RecoverAllAsync(connection, false, CancellationToken.None);
+	}
+
 	public void Dispose()
 	{
 		if (disposed) return;
 		disposed = true;
+		if (poolKey != null) {
+			connection.HostExited -= OnConnectionExited;
+			DetachHostConnection();
+			lock (clientsGate) clients.Remove(this);
+		}
 		try { ShutdownAsync().Wait(TimeSpan.FromSeconds(3)); } catch { }
 		if (poolKey != null) sharedPool.Release(poolKey, connection); else connection.Dispose();
 	}
@@ -134,7 +184,8 @@ public sealed class WpfSurfaceHostClient : DesignerDocumentHostClient, IDesignHo
 		public Connection(string hostDllPath, TimeSpan? operationTimeout) : base(operationTimeout) => this.hostDllPath = hostDllPath;
 		public Task StartConnectionAsync(CancellationToken token) => StartAsync(token);
 		protected override string GetChildDllPath() => hostDllPath;
-		protected override string BuildCommandLine(string childDll, int port, string token) => $"exec \"{childDll}\" --port {port} --token {token}";
+		protected override string BuildCommandLine(string childDll, int port, string token)
+			=> new DesignerHostLaunchSpec().BuildCommandLine(childDll, port, token);
 		protected override TimeSpan HandshakeTimeout => TimeSpan.FromSeconds(60);
 	}
 }

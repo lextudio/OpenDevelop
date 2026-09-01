@@ -19,9 +19,7 @@ sealed class MultiDocumentDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("initialize")]
 	public HostHandshake Initialize(string token, int protocolVersion, string sessionId)
 	{
-		if (!CryptographicOperations.FixedTimeEquals(Convert.FromHexString(expectedToken), Convert.FromHexString(token)))
-			throw new UnauthorizedAccessException("Invalid designer-host token.");
-		if (protocolVersion != ProtocolVersion) throw new NotSupportedException($"Protocol {protocolVersion} is not supported.");
+		DesignerHostHandshakeValidator.Validate(expectedToken, token, protocolVersion);
 		documents.Initialize(sessionId);
 		return new HostHandshake { ProtocolVersion = ProtocolVersion, Runtime = RuntimeInformation.FrameworkDescription, ProcessId = Environment.ProcessId, SessionId = sessionId };
 	}
@@ -38,9 +36,9 @@ sealed class MultiDocumentDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("session/open")]
 	public DesignerSessionState Open(DesignerDocumentSnapshot snapshot) => Get(snapshot.SessionId, snapshot.DocumentId).Open(snapshot);
 	[JsonRpcMethod("session/update")]
-	public DesignerSessionState Update(DesignerDocumentSnapshot snapshot) => Get(snapshot.SessionId, snapshot.DocumentId).Update(snapshot);
+	public DesignerSessionState Update(DesignerDocumentSnapshot snapshot) => GetChecked(snapshot.SessionId, snapshot.DocumentId).Update(snapshot);
 	[JsonRpcMethod("session/flush")]
-	public DesignerEditSet Flush(string sessionId, string documentId, long baseVersion) => Get(sessionId, documentId).Flush(sessionId, documentId, baseVersion);
+	public DesignerEditSet Flush(string sessionId, string documentId, long baseVersion) => GetChecked(sessionId, documentId).Flush(sessionId, documentId, baseVersion);
 	[JsonRpcMethod("session/close")]
 	public void Close(string sessionId, string documentId) => documents.Remove(sessionId, documentId, service => service.Close());
 	[JsonRpcMethod("design/hit-test")]
@@ -66,7 +64,7 @@ sealed class MultiDocumentDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("design/apply-layout")]
 	public DesignerSessionState ApplyLayout(string sessionId, string documentId, long baseVersion, string operation, string[] elementIds, int deltaX, int deltaY) => GetChecked(sessionId, documentId).ApplyLayout(sessionId, documentId, baseVersion, operation, elementIds, deltaX, deltaY);
 
-	DesignerHostService GetChecked(string requestSessionId, string documentId) => Get(requestSessionId, documentId);
+	DesignerHostService GetChecked(string requestSessionId, string documentId) => documents.Get(requestSessionId, documentId);
 
 	[JsonRpcMethod("ping")]
 	public void Ping() { }

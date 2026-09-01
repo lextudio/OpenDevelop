@@ -14,7 +14,7 @@ using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;
-using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 
 namespace ICSharpCode.SharpDevelop.Services;
 
@@ -46,7 +46,7 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
         PreferredDockSize = 280;
         // Matches the legacy Pad's `defaultPosition = "Left"`; used when a layout switch re-docks
         // this pane outside any persisted layout (AvalonDockLayout.LoadLayout, 2026-08-09).
-        PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Left;
+        PreferredDockSide = ICSharpCode.ILSpy.ViewModels.PreferredDockSide.Left;
         // Generalized from AvalonDockLayout's own hardcoded class-name check
         // (doc/technotes/ilspy.md "Docking and layout replacement", 2026-08-03) - same effective
         // mapping, just declared here instead of in the shell.

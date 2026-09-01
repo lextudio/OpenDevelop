@@ -27,7 +27,7 @@ using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Services;
-using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 using Debugger.AddIn.Pads.Controls;
 using Debugger.AddIn.Service.Dap;
 
@@ -54,7 +54,7 @@ namespace ICSharpCode.SharpDevelop.Gui.Pads
 			IsVisible = false; // Matches the legacy Pad's `defaultPosition = "Bottom, Hidden"`.
 			IsCloseable = true;
 			LegacyPadClass = typeof(ConsolePad).FullName;
-			PreferredDockSide = ICSharpCode.SharpDevelop.ViewModels.PreferredDockSide.Bottom;
+			PreferredDockSide = ICSharpCode.ILSpy.ViewModels.PreferredDockSide.Bottom;
 
 			core = new ConsolePadCore(() => "> ", AcceptCommand, AbstractConsolePadTextEntered, BuildToolBar);
 			Content = core.Content;

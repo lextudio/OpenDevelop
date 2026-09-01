@@ -353,7 +353,8 @@ function Invoke-DistributionPipeline([string]$Rid) {
             '-p:OpenDevelopDistributionBuild=true',
             "-p:OpenDevelopDistributionRidFamily=$ridFamily",
             "-p:OpenDevelopHostPublishDir=$hostPublishSnapshot",
-            '-p:ProGpuWpfCopyPackageRuntimeAssets=false'
+            '-p:ProGpuWpfCopyPackageRuntimeAssets=false',
+            '-p:ProGpuWpfUseCurrentRuntimeIdentifier=false'
         ) + $ridArgs)
         Remove-Item -Recurse -Force $hostPublishSnapshot
 

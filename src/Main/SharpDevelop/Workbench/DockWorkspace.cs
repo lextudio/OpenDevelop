@@ -18,6 +18,7 @@ using AvalonDock.Serializer.Xml;
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.ViewModels;
+using ICSharpCode.ILSpy.ViewModels;
 
 using TomsToolbox.Composition;
 

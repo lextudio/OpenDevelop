@@ -637,6 +637,7 @@ namespace ICSharpCode.FormsDesigner
 				}
 				remoteClient = client;
 				remoteClient.HostExited += RemoteHostExited;
+				remoteClient.Recovered += RemoteHostRecovered;
 				remoteControl = new RemoteFormsDesignerControl(remoteClient);
 				remoteControl.ToolboxDrop += RemoteToolboxDrop;
 				remoteControl.BoundsChanged += RemoteBoundsChanged;
@@ -800,6 +801,20 @@ namespace ICSharpCode.FormsDesigner
 				remoteControl.ShowDisconnected("The WinForms designer process exited unexpectedly."
 					+ (String.IsNullOrWhiteSpace(log) ? "" : Environment.NewLine + Environment.NewLine + log.Trim()));
 				propertyContainer.Clear();
+			});
+		}
+
+		void RemoteHostRecovered(object sender, DesignerSessionState state)
+		{
+			SD.MainThread.InvokeAsyncAndForget(() => {
+				if (disposing || !ReferenceEquals(sender, remoteClient) || remoteControl == null) return;
+				if (!state.Accepted) {
+					remoteControl.ShowDisconnected("The WinForms designer could not restore the document: " + state.Error);
+					return;
+				}
+				remoteControl.Show(state);
+				UpdateOutline(state);
+				OutputChannel.Write("WinForms", "Design host recovered for " + PrimaryFile.FileName);
 			});
 		}
 

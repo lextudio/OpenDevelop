@@ -7,5 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="StreamJsonRpc" />
+	<ProjectReference Include="..\Designer.Remote\Designer.Remote.csproj" />
   </ItemGroup>
 </Project>
