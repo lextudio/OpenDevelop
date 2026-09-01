@@ -32,6 +32,7 @@ using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.Designer.Shell;
+using ICSharpCode.SharpDevelop.LanguageServices.Xaml;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Widgets;
@@ -66,6 +67,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 		}
 
 		WpfSurfaceHostClient? client;
+		WpfSurfaceHostBackend backend;
 		WpfSurfaceDesignerControl? surfaceControl;
 		long documentVersion;
 		bool hasLoadedOnce;
@@ -98,6 +100,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 		/// Exposed for DevFlow probes (<c>WpfDesignDevFlowActions</c>) - real UI code should go
 		/// through this rather than reaching into <see cref="client"/> directly.</summary>
 		public WpfSurfaceDesignerControl? SurfaceControl => surfaceControl;
+		public string BackendName => surfaceControl?.BackendName ?? WpfSurfaceHostClient.GetBackendName(backend);
 
 		/// <summary>Surface geometry for the resize-drag smoke test: the rendered design bitmap
 		/// bounds (frame), the selected element's rendered bounds (element) and its selection
@@ -146,9 +149,11 @@ namespace ICSharpCode.WpfDesign.AddIn
 			// very first load.
 			DesignerCanvas canvas = (DesignerCanvas?)surfaceControl ?? new DesignerCanvas();
 			this.UserContent = canvas;
-			canvas.SetLoading(true, "Starting WPF design host…");
+			backend = WpfSurfaceHostClient.ResolveBackend(
+				XamlFrameworkDetector.Detect(PrimaryFile.FileName.ToString()).Runtime == XamlRuntimeKind.MicrosoftWpf);
+			canvas.SetLoading(true, "Starting " + WpfSurfaceHostClient.GetBackendName(backend) + " design host…");
 
-			_ = LoadDesignerAsync(myGeneration, sourceText);
+			_ = LoadDesignerAsync(myGeneration, sourceText, backend);
 		}
 
 		/// <summary>
@@ -159,19 +164,19 @@ namespace ICSharpCode.WpfDesign.AddIn
 		/// by <paramref name="generation"/> in case a newer load (or Dispose) superseded this one
 		/// while the round-trip was in flight.
 		/// </summary>
-		async System.Threading.Tasks.Task LoadDesignerAsync(long generation, string sourceText)
+		async System.Threading.Tasks.Task LoadDesignerAsync(long generation, string sourceText, WpfSurfaceHostBackend selectedBackend)
 		{
 			try
 			{
 				if (surfaceControl == null)
 				{
 					LoggingService.Info("WPF designer: acquiring shared surface host");
-					var acquiredClient = await WpfSurfaceHostClient.AcquireSharedAsync(null, CancellationToken.None);
+					var acquiredClient = await WpfSurfaceHostClient.AcquireSharedAsync(WpfSurfaceHostClient.LocateChildDll(selectedBackend), CancellationToken.None);
 					LoggingService.Info($"WPF designer: acquired surface host pid={acquiredClient.ProcessId}");
 					if (generation != loadGeneration || IsDisposed) { acquiredClient.Dispose(); return; }
 					client = acquiredClient;
 					client.Recovered += OnHostRecovered;
-					surfaceControl = new WpfSurfaceDesignerControl(client);
+					surfaceControl = new WpfSurfaceDesignerControl(client, WpfSurfaceHostClient.GetBackendName(selectedBackend));
 					surfaceControl.SelectionChanged += OnSelectionChanged;
 					surfaceControl.DocumentChanged += OnDocumentChanged;
 					surfaceControl.UndoRedoRequested += OnUndoRedoRequested;

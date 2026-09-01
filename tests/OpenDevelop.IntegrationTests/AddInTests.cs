@@ -117,12 +117,6 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Equal(expected, status.GetProperty("backend").GetString());
     }
 
-    static void SkipUnoOnlyCaseWhenMicrosoftWinUIIsForced()
-    {
-        if (string.Equals(Environment.GetEnvironmentVariable("OD_WINUI_RUNTIME"), "microsoft", StringComparison.OrdinalIgnoreCase))
-            Assert.Skip("This case opens an Uno project. The Microsoft WinUI matrix intentionally has no Uno-host fallback.");
-    }
-
     [Fact]
     public async Task FSharpAddIn_IsLoaded()
     {
@@ -984,19 +978,10 @@ public sealed class AddInTests : IAsyncDisposable
                     yield return descendant;
     }
 
-    [Fact]
-    [Trait("DesignerBackend", "Microsoft")]
-    public async Task OpenXamlFile_LoadsDesignerWithToolboxAndOutline()
-    {
-        await _app.EnsureSolutionOpenAsync(_app.WpfSampleSolutionPath);
-		// The Microsoft WPF host resolves local: controls from the project's compiled output.
-		// Build this fixture before opening MainWindow.xaml so the tree proves the native host
-		// can materialize SamplePane rather than silently omitting it from an unbuilt project.
-		if (string.Equals(Environment.GetEnvironmentVariable("OD_WPF_RUNTIME"), "microsoft", StringComparison.OrdinalIgnoreCase)) {
-			var build = await _app.InvokeAsync("od.build-solution");
-			if (build.GetProperty("result").GetString() != "Success")
-				Assert.Fail(await _app.DescribeBuildAsync(build));
-		}
+	[Fact]
+	public async Task OpenXamlFile_LoadsDesignerWithToolboxAndOutline()
+	{
+		await _app.EnsureSolutionOpenAsync(_app.WpfSampleSolutionPath);
 
         var xamlPath = Path.Combine(Path.GetDirectoryName(_app.WpfSampleSolutionPath)!, "MainWindow.xaml");
         var openFileResult = await _app.InvokeAsync("od.open-file", xamlPath);
@@ -1028,13 +1013,26 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.True(status.GetProperty("outlineChildCount").GetInt32() > 0,
             "Expected the Outline pad's root node to have at least one child");
         Assert.Contains("PrimaryButton", outlineNames);
-        Assert.Contains("MainPane", outlineNames);
-    }
+		Assert.Contains("MainPane", outlineNames);
+	}
+
+	[Fact]
+	[Trait("DesignerBackend", "Microsoft")]
+	public async Task MicrosoftWpfProject_UsesMicrosoftSurfaceHost()
+	{
+		var openedSolution = await _app.ReopenSolutionAsync(_app.MicrosoftWpfSampleSolutionPath);
+		Assert.True(openedSolution.GetProperty("success").GetBoolean(), openedSolution.ToString());
+		var xamlPath = Path.Combine(Path.GetDirectoryName(_app.MicrosoftWpfSampleSolutionPath)!, "MainWindow.xaml");
+		var opened = await _app.InvokeAsync("od.open-file", xamlPath);
+		Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+
+		var status = await WaitForWpfDesignerStatusAsync("Window", 45, xamlPath, "Microsoft WPF");
+		Assert.Contains("NativeButton", status.GetProperty("outlineNames").EnumerateArray().Select(item => item.GetString()));
+	}
 
     [Fact]
     public async Task OpenUnoXamlFile_UsesWinUIXamlDesignerInsteadOfWpfDesigner()
     {
-		SkipUnoOnlyCaseWhenMicrosoftWinUIIsForced();
         var openedSolution = await _app.ReopenSolutionAsync(_app.UnoXamlSampleSolutionPath);
         Assert.True(openedSolution.GetProperty("success").GetBoolean(), openedSolution.ToString());
         var xamlPath = Path.Combine(Path.GetDirectoryName(_app.UnoXamlSampleSolutionPath)!, "MainPage.xaml");
@@ -1968,7 +1966,6 @@ public sealed class AddInTests : IAsyncDisposable
 
     async Task<JsonElement> OpenUnoDesignerAsync()
     {
-		SkipUnoOnlyCaseWhenMicrosoftWinUIIsForced();
         var openedSolution = await _app.ReopenSolutionAsync(_unoSolutionPath);
         Assert.True(openedSolution.GetProperty("success").GetBoolean(), openedSolution.ToString());
         var opened = await _app.InvokeAsync("od.open-file", _unoPagePath);
@@ -3494,7 +3491,7 @@ public sealed class AddInTests : IAsyncDisposable
                 return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
             }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 500);
             Assert.True(loaded, "The WPF designer did not load. Status: " + status);
-            AssertDesignerBackend(status, "OD_WPF_RUNTIME", "Microsoft WPF", "LibreWPF");
+			Assert.Equal("LibreWPF", status.GetProperty("backend").GetString());
 
             var sel = await _app.InvokeAsync("od.wpf-designer.select", "PaneStack");
             Assert.True(sel.GetProperty("success").GetBoolean(), sel.ToString());
@@ -3712,7 +3709,8 @@ public sealed class AddInTests : IAsyncDisposable
     // own od.open-file returned. When the designer reports a different root than expected,
     // re-invoke od.open-file on the target document periodically: it calls SelectWindow on the
     // already-open view, which wins over the async restore activation.
-    async Task<JsonElement> WaitForWpfDesignerStatusAsync(string expectedRootItemType, int timeoutSeconds, string reactivatePath = null)
+	async Task<JsonElement> WaitForWpfDesignerStatusAsync(string expectedRootItemType, int timeoutSeconds,
+		string reactivatePath = null, string expectedBackend = "LibreWPF")
     {
         JsonElement status = default;
         var previousCount = -1;
@@ -3738,7 +3736,7 @@ public sealed class AddInTests : IAsyncDisposable
             }
             return false;
 		}, TimeSpan.FromSeconds(timeoutSeconds), initialDelayMs: 50, maxDelayMs: 250);
-		AssertDesignerBackend(status, "OD_WPF_RUNTIME", "Microsoft WPF", "LibreWPF");
+		Assert.Equal(expectedBackend, status.GetProperty("backend").GetString());
 		return status;
     }
 

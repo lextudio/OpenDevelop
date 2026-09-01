@@ -69,7 +69,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 
 			return JsonSerializer.Serialize(new {
 				active = true,
-				backend = WpfSurfaceHostClient.SelectedBackend,
+				backend = viewContent.BackendName,
 				designerLoaded,
 				// state.RootType is the DDP wire contract's full CLR name (e.g.
 				// "System.Windows.Window" - see WpfSurfaceHostService.OpenCore and

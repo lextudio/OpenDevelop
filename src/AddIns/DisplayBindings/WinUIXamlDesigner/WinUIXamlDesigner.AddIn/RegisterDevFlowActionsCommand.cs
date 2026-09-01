@@ -26,34 +26,31 @@ public sealed class RegisterDevFlowActionsCommand : AbstractCommand
 	{
 		var selection = Environment.GetEnvironmentVariable(RuntimeSelectionVariable)?.Trim();
 
-		// The registry tries factories in reverse registration order, so whatever is registered
-		// LAST wins and anything registered before it becomes the fallback.
-		if (string.Equals(selection, "progpu", StringComparison.OrdinalIgnoreCase)) {
-			// ProGPU only: no Uno factory registered at all, so a missing/blocked ProGPU host
-			// surfaces as a real failure instead of silently falling through to Uno.
-			Register(ProGpuBootstrap);
-			return;
-		}
-
-		if (string.Equals(selection, "uno", StringComparison.OrdinalIgnoreCase)) {
-			Register(UnoBootstrap);
-			return;
-		}
-
-		if (string.Equals(selection, "microsoft", StringComparison.OrdinalIgnoreCase)) {
-			Register(MicrosoftWinUIBootstrap);
-			return;
-		}
-
-		if (!string.IsNullOrEmpty(selection)) {
+		if (!string.IsNullOrEmpty(selection) && !string.Equals(selection, "progpu", StringComparison.OrdinalIgnoreCase)
+			&& !string.Equals(selection, "uno", StringComparison.OrdinalIgnoreCase)
+			&& !string.Equals(selection, "microsoft", StringComparison.OrdinalIgnoreCase)) {
 			LoggingService.Warn(
 				$"Ignoring unrecognized {RuntimeSelectionVariable}='{selection}' (expected 'microsoft', 'uno' or 'progpu'); using the default runtime order.");
 		}
 
-		// Default: ProGPU first, then the out-of-process Uno host - the registry tries factories
-		// in reverse registration order, so the Uno host becomes the default surface and ProGPU
-		// stays as the fallback when its child binary is not deployed. The Microsoft factory is
-		// registered last, but declines Uno projects and undeployed children.
+		// The preference only orders compatible implementations. All three factories remain
+		// registered so documents from another runtime family retain their correct host.
+		if (string.Equals(selection, "progpu", StringComparison.OrdinalIgnoreCase)) {
+			Register(UnoBootstrap);
+			Register(MicrosoftWinUIBootstrap);
+			Register(ProGpuBootstrap);
+			return;
+		}
+		if (string.Equals(selection, "uno", StringComparison.OrdinalIgnoreCase)) {
+			Register(ProGpuBootstrap);
+			Register(MicrosoftWinUIBootstrap);
+			Register(UnoBootstrap);
+			return;
+		}
+
+		// Always register every runtime family. Each factory declines projects outside its
+		// evaluated runtime family, so a process-wide test/debug preference can never route an
+		// Uno project to the Microsoft child (or a Microsoft WinUI project to Uno).
 		Register(ProGpuBootstrap);
 		Register(UnoBootstrap);
 		Register(MicrosoftWinUIBootstrap);

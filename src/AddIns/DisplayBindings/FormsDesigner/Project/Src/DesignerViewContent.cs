@@ -102,7 +102,7 @@ namespace ICSharpCode.FormsDesigner
 		internal string RemoteDesignerSelectedComponent => remoteControl?.SelectedComponentName ?? "";
 
 		/// <summary>Short backend label for the toolbar ("WinForms" / "LibreWinForms").</summary>
-		internal string BackendName => remoteControl?.BackendName ?? FormsDesignerHostClient.SelectedBackend;
+		internal string BackendName => remoteControl?.BackendName ?? FormsDesignerHostClient.GetBackendName(GetProjectBackend());
 
 		/// <summary>Surface geometry (frame/selection/handle/element) for integration tests.</summary>
 		internal DesignerSurfaceGeometry? RemoteSurfaceGeometry
@@ -526,6 +526,12 @@ namespace ICSharpCode.FormsDesigner
 		{
 			return SD.ProjectService.FindProjectContainingFile(this.DesignerCodeFile.FileName);
 		}
+
+		FormsDesignerBackend GetProjectBackend()
+		{
+			var project = GetProjectForFile() as MSBuildBasedProject;
+			return FormsDesignerHostClient.ResolveBackend(project?.GetEvaluatedProperty("UseMicrosoftDesktopRuntime"), "");
+		}
 		
 		bool hasUnmergedChanges;
 		
@@ -573,6 +579,7 @@ namespace ICSharpCode.FormsDesigner
 		/// </summary>
 		void LoadRemoteDesigner()
 		{
+			var backend = GetProjectBackend();
 			var currentTexts = CaptureRemoteDocuments();
 			if (IsRemoteDesignerLoaded && RemoteDocumentsUnchanged(currentTexts, lastLoadedTexts)) {
 				base.UserContent = remoteControl;
@@ -588,7 +595,7 @@ namespace ICSharpCode.FormsDesigner
 				canvas = new DesignerCanvas();
 				base.UserContent = canvas;
 			}
-			canvas.SetLoading(true, "Starting " + FormsDesignerHostClient.SelectedBackend + " design host…");
+			canvas.SetLoading(true, "Starting " + FormsDesignerHostClient.GetBackendName(backend) + " design host…");
 
 			var oldClient = remoteClient;
 			remoteClient = null;
@@ -597,17 +604,19 @@ namespace ICSharpCode.FormsDesigner
 			// them - the async continuation below resumes on a thread-pool thread
 			// (ConfigureAwait(false)), so it must not read dispatcher-affine state itself.
 			var snapshot = CreateRemoteSnapshot(++remoteDocumentVersion);
-			_ = LoadRemoteDesignerAsync(myGeneration, currentTexts, snapshot, canvas, oldClient);
+			_ = LoadRemoteDesignerAsync(myGeneration, currentTexts, snapshot, canvas, oldClient, backend);
 		}
 
 		async System.Threading.Tasks.Task LoadRemoteDesignerAsync(long generation, Dictionary<string, string> texts,
-			DesignerDocumentSnapshot snapshot, DesignerCanvas loadingCanvas, FormsDesignerHostClient oldClient)
+			DesignerDocumentSnapshot snapshot, DesignerCanvas loadingCanvas, FormsDesignerHostClient oldClient,
+			FormsDesignerBackend backend)
 		{
 			oldClient?.Dispose();
 			FormsDesignerHostClient client;
 			DesignerSessionState state;
 			try {
-				client = await FormsDesignerHostClient.AcquireSharedAsync("", "", System.Threading.CancellationToken.None).ConfigureAwait(false);
+				client = await FormsDesignerHostClient.AcquireSharedAsync("", "", System.Threading.CancellationToken.None,
+					FormsDesignerHostClient.LocateChildDll(backend)).ConfigureAwait(false);
 				state = await client.OpenAsync(snapshot, System.Threading.CancellationToken.None).ConfigureAwait(false);
 			} catch (Exception exception) {
 				SD.MainThread.InvokeAsyncAndForget(() => {
@@ -638,7 +647,7 @@ namespace ICSharpCode.FormsDesigner
 				remoteClient = client;
 				remoteClient.HostExited += RemoteHostExited;
 				remoteClient.Recovered += RemoteHostRecovered;
-				remoteControl = new RemoteFormsDesignerControl(remoteClient);
+				remoteControl = new RemoteFormsDesignerControl(remoteClient, FormsDesignerHostClient.GetBackendName(backend));
 				remoteControl.ToolboxDrop += RemoteToolboxDrop;
 				remoteControl.BoundsChanged += RemoteBoundsChanged;
 				remoteControl.SelectionMoveRequested += (sender, e) => {

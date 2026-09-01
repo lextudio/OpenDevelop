@@ -10,5 +10,9 @@ namespace WinFormsSample
         private void Form1_Load(System.Object sender, System.EventArgs e)
         {
         }
+
+        private void Form1_Shown(System.Object sender, System.EventArgs e)
+        {
+        }
     }
 }

@@ -1,0 +1,6 @@
+<Window x:Class="MicrosoftWpfSample.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Microsoft WPF Sample" Width="360" Height="220">
+  <Grid><Button x:Name="NativeButton" Content="Microsoft WPF" /></Grid>
+</Window>

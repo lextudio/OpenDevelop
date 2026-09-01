@@ -5,6 +5,10 @@
     <AssemblyName>OpenDevelop</AssemblyName>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <UseWPF>true</UseWPF>
+    <!-- LibreWPF's generated portable bootstrap is needed on non-Windows hosts only.  On
+         Windows its direct portable PresentationFramework reference is resolved before the
+         platform guard can return, so omit it and use the normal Windows startup path. -->
+    <ProGpuWpfEnablePortableBootstrap>false</ProGpuWpfEnablePortableBootstrap>
     <!-- WinForms\**\*.cs (WinFormsService/SDWindowsFormsHost/WinFormsMenuService/WinFormsToolbarService)
          needs the real LibreWinForms implementation, same as ICSharpCode.SharpDevelop.csproj -
          see that project's UseWindowsForms comment for why the WinForms bridge is back. -->

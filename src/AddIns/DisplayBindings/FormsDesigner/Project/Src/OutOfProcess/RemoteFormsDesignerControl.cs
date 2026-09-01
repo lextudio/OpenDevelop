@@ -121,11 +121,11 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			ApplyViewport();
 		}
 
-		public RemoteFormsDesignerControl(FormsDesignerHostClient client)
+		public RemoteFormsDesignerControl(FormsDesignerHostClient client, string backendName)
 		{
 			this.client = client;
 			Focusable = true;
-			BackendName = FormsDesignerHostClient.SelectedBackend;
+			BackendName = backendName;
 			Capabilities = DesignerCanvasCapabilities.Zoom | DesignerCanvasCapabilities.Fit | DesignerCanvasCapabilities.StatusBar;
 			StatusText = $"Starting {BackendName} design host…";
 			// The shared DesignerCanvas shell provides the dotted empty-canvas edge pattern and

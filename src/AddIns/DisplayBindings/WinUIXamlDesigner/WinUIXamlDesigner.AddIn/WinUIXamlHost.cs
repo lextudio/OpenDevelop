@@ -13,6 +13,9 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 {
 	IWinUIXamlRuntimeHost runtime;
 
+	/// <summary>Selected runtime identity, available even if the first document render fails.</summary>
+	public string BackendName => (runtime?.WpfSurface as ICSharpCode.SharpDevelop.Widgets.DesignerCanvas)?.BackendName ?? "";
+
 	public WinUIXamlHost(XamlFrameworkContext framework, string documentFileName)
 	{
 		Framework = framework ?? throw new ArgumentNullException(nameof(framework));

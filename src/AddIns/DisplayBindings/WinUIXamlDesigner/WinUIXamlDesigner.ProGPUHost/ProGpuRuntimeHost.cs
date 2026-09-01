@@ -32,7 +32,7 @@ public static class ProGpuRuntimeHostBootstrap
     }
 
     static IWinUIXamlRuntimeHost Create(XamlFrameworkContext framework, string documentFileName) =>
-        new ProGpuRuntimeHost(framework, documentFileName);
+        framework?.Runtime == XamlRuntimeKind.Uno ? new ProGpuRuntimeHost(framework, documentFileName) : null;
 }
 
 sealed class ProGpuRuntimeHost : IWinUIXamlRuntimeHost

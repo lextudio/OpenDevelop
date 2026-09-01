@@ -1,11 +1,11 @@
 <Page x:Class="WinUISample.MainPage"
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-      Background="{ThemeResource PageBackgroundBrush}">
+      Background="#FFEEEEEE">
     <Grid>
         <StackPanel x:Name="RootStack">
             <TextBlock x:Name="TitleText" Text="WinUI compatibility preview" />
-            <Button x:Name="PrimaryButton" Content="Hello WinUI" Background="{StaticResource PrimaryButtonBrush}" />
+            <Button x:Name="PrimaryButton" Content="Hello WinUI" Background="#FF4488FF" />
         </StackPanel>
     </Grid>
 </Page>

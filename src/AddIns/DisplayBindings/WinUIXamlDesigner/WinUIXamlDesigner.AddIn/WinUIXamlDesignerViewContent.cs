@@ -91,7 +91,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 
 	public XamlFrameworkContext Framework { get; }
 	public string StatusText => status.Text;
-	public string BackendName => (previewHost.Content as ICSharpCode.SharpDevelop.Widgets.DesignerCanvas)?.BackendName ?? "";
+	public string BackendName => previewHost.BackendName;
 	public bool HasRenderedPreview => previewHost.HasRenderedPreview;
 	public object OutlineContent => outline;
 

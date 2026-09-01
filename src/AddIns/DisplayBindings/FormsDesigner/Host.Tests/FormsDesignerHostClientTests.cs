@@ -6,6 +6,18 @@ namespace ICSharpCode.FormsDesigner.Host.Tests;
 
 public sealed class FormsDesignerHostClientTests
 {
+	[Theory]
+	[InlineData("true", "", FormsDesignerBackend.MicrosoftWinForms)]
+	[InlineData("false", "", FormsDesignerBackend.LibreWinForms)]
+	[InlineData("", "", FormsDesignerBackend.LibreWinForms)]
+	[InlineData("true", "libre", FormsDesignerBackend.LibreWinForms)]
+	[InlineData("false", "microsoft", FormsDesignerBackend.MicrosoftWinForms)]
+	public void ResolveBackend_UsesProjectPropertyUnlessExplicitlyOverridden(
+		string useMicrosoftDesktopRuntime, string runtimeOverride, FormsDesignerBackend expected)
+	{
+		Assert.Equal(expected, FormsDesignerHostClient.ResolveBackend(useMicrosoftDesktopRuntime, runtimeOverride));
+	}
+
 	/// <summary>The child host binary under test. Defaults to the LibreWinForms host; setting
 	/// OPENDEVELOP_FORMSDESIGNER_HOST_DLL points this same suite at the Microsoft WindowsDesktop
 	/// host (FormsDesigner/MicrosoftHost), which source-links the same host implementation. The

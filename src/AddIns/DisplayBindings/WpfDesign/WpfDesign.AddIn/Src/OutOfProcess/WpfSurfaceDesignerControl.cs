@@ -201,9 +201,10 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		bool gesturePending;
 		bool gestureActive;
 
-		public WpfSurfaceDesignerControl(WpfSurfaceHostClient client)
+		public WpfSurfaceDesignerControl(WpfSurfaceHostClient client, string backendName)
 		{
 			this.client = client ?? throw new ArgumentNullException(nameof(client));
+			BackendName = backendName;
 
 			designSurface.Children.Add(framePresenter.Visual);
 			// Between the frame and the adorners: gridlines draw over the design, selection

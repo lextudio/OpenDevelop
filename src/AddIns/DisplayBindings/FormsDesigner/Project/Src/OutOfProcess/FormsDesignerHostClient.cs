@@ -11,6 +11,13 @@ using ICSharpCode.SharpDevelop.Designer.Remote;
 
 namespace ICSharpCode.FormsDesigner.OutOfProcess
 {
+	/// <summary>The WinForms implementation required by a design project.</summary>
+	public enum FormsDesignerBackend
+	{
+		LibreWinForms,
+		MicrosoftWinForms
+	}
+
 	/// <summary>Owns one isolated WinForms designer child process.</summary>
 	public sealed class FormsDesignerHostClient : RecoverableDesignerDocumentHostClient, IDesignHostClient,
 		IDesignHostPropertyReset, IDesignHostEventBinding, IDesignHostBounds, IDesignHostHitTesting,
@@ -47,12 +54,38 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		/// <summary>Raised when this document cannot be reopened while sibling documents recover.</summary>
 		public event EventHandler<Exception>? RecoveryFailed;
 
+		/// <summary>
+		/// Selects the child runtime from the evaluated project property. A process-wide
+		/// override is retained solely for diagnostics and explicit test runs; it must not
+		/// decide the normal project route because Microsoft and Libre projects can be open
+		/// in the same IDE process.
+		/// </summary>
+		public static FormsDesignerBackend ResolveBackend(string useMicrosoftDesktopRuntime, string runtimeOverride = null)
+		{
+			var selectedOverride = runtimeOverride ?? Environment.GetEnvironmentVariable("OD_FORMS_RUNTIME");
+			if (string.Equals(selectedOverride, "microsoft", StringComparison.OrdinalIgnoreCase))
+				return FormsDesignerBackend.MicrosoftWinForms;
+			if (string.Equals(selectedOverride, "libre", StringComparison.OrdinalIgnoreCase))
+				return FormsDesignerBackend.LibreWinForms;
+			return bool.TryParse(useMicrosoftDesktopRuntime, out var useMicrosoft) && useMicrosoft
+				? FormsDesignerBackend.MicrosoftWinForms
+				: FormsDesignerBackend.LibreWinForms;
+		}
+
+		public static string GetBackendName(FormsDesignerBackend backend)
+			=> backend == FormsDesignerBackend.MicrosoftWinForms ? "WinForms" : "LibreWinForms";
+
 		public static string LocateChildDll()
+		{
+			return LocateChildDll(ResolveBackend(""));
+		}
+
+		public static string LocateChildDll(FormsDesignerBackend backend)
 		{
 			var directory = Path.GetDirectoryName(typeof(FormsDesignerHostClient).Assembly.Location);
 			if (String.IsNullOrEmpty(directory))
 				return null;
-			var useMicrosoft = string.Equals(Environment.GetEnvironmentVariable("OD_FORMS_RUNTIME"), "microsoft", StringComparison.OrdinalIgnoreCase);
+			var useMicrosoft = backend == FormsDesignerBackend.MicrosoftWinForms;
 			var path = useMicrosoft
 				? Path.Combine(directory, "MicrosoftHost", "MicrosoftFormsDesigner.Host.dll")
 				: Path.Combine(directory, "Host", "FormsDesigner.Host.dll");
@@ -71,8 +104,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			}
 		}
 
-		public static string SelectedBackend => string.Equals(Environment.GetEnvironmentVariable("OD_FORMS_RUNTIME"), "microsoft", StringComparison.OrdinalIgnoreCase)
-			? "WinForms" : "LibreWinForms";
+		public static string SelectedBackend => GetBackendName(ResolveBackend(""));
 
 		public static async Task<FormsDesignerHostClient> StartAsync(
 			string runtimeConfigPath,

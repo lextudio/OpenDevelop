@@ -15,7 +15,8 @@ public static class UnoDesignRuntimeHostBootstrap
 	public static string ChildPath => UnoDesignClient.LocateChildDll() ?? "";
 
 	static IWinUIXamlRuntimeHost Create(XamlFrameworkContext framework, string documentFileName) =>
-		ChildAvailable ? new UnoDesignRuntimeHost(framework, documentFileName) : null;
+		framework?.Runtime == XamlRuntimeKind.Uno && ChildAvailable
+			? new UnoDesignRuntimeHost(framework, documentFileName) : null;
 }
 
 /// <summary>
@@ -42,7 +43,7 @@ public static class MicrosoftWinUIDesignRuntimeHostBootstrap
 	static IWinUIXamlRuntimeHost? Create(XamlFrameworkContext framework, string documentFileName)
 	{
 		var child = ChildPath;
-		return framework?.Kind == XamlFrameworkKind.WinUI && child != null
+		return framework?.Runtime == XamlRuntimeKind.MicrosoftWinUI && child != null
 			? new UnoDesignRuntimeHost(framework, documentFileName, child, "Microsoft WinUI design host")
 			: null;
 	}

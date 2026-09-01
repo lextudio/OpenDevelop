@@ -10,6 +10,8 @@ using ICSharpCode.SharpDevelop.Designer.Remote;
 
 namespace ICSharpCode.WpfDesign.SurfaceHost;
 
+public enum WpfSurfaceHostBackend { LibreWpf, MicrosoftWpf }
+
 /// <summary>Host-side DDP client for the WPF out-of-process design host, alongside
 /// FormsDesignerHostClient/UnoDesignClient (see doc/technotes/designer-common.md's adapter
 /// seam). Lives in its own WPF-free Remote project, mirroring FormsDesigner.Remote/
@@ -53,20 +55,28 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	/// <c>FormsDesignerHostClient.LocateChildDll</c> exactly - <c>WpfDesign.SurfaceHost.csproj</c>'s
 	/// own <c>DeployToAddIns</c> target copies its build output there, next to the deployed
 	/// <c>WpfDesign.AddIn</c>/this Remote assembly.</summary>
+	public static WpfSurfaceHostBackend ResolveBackend(bool useMicrosoftWpf)
+		=> useMicrosoftWpf ? WpfSurfaceHostBackend.MicrosoftWpf : WpfSurfaceHostBackend.LibreWpf;
+
+	public static string GetBackendName(WpfSurfaceHostBackend backend)
+		=> backend == WpfSurfaceHostBackend.MicrosoftWpf ? "Microsoft WPF" : "LibreWPF";
+
 	public static string? LocateChildDll()
+		=> LocateChildDll(string.Equals(Environment.GetEnvironmentVariable("OD_WPF_RUNTIME"), "microsoft", StringComparison.OrdinalIgnoreCase)
+			? WpfSurfaceHostBackend.MicrosoftWpf : WpfSurfaceHostBackend.LibreWpf);
+
+	public static string? LocateChildDll(WpfSurfaceHostBackend backend)
 	{
 		var directory = Path.GetDirectoryName(typeof(WpfSurfaceHostClient).Assembly.Location);
 		if (string.IsNullOrEmpty(directory))
 			return null;
-		var useMicrosoft = string.Equals(Environment.GetEnvironmentVariable("OD_WPF_RUNTIME"), "microsoft", StringComparison.OrdinalIgnoreCase);
-		var path = useMicrosoft
+		var path = backend == WpfSurfaceHostBackend.MicrosoftWpf
 			? Path.Combine(directory, "MicrosoftHost", "MicrosoftWpfDesign.SurfaceHost.dll")
 			: Path.Combine(directory, "Host", "WpfDesign.SurfaceHost.dll");
 		return File.Exists(path) ? path : null;
 	}
 
-	public static string SelectedBackend => string.Equals(Environment.GetEnvironmentVariable("OD_WPF_RUNTIME"), "microsoft", StringComparison.OrdinalIgnoreCase)
-		? "Microsoft WPF" : "LibreWPF";
+	public static string SelectedBackend => GetBackendName(WpfSurfaceHostBackend.LibreWpf);
 
 	public static async Task<WpfSurfaceHostClient> StartAsync(string? hostDllPath, CancellationToken cancellationToken, TimeSpan? operationTimeout = null)
 	{

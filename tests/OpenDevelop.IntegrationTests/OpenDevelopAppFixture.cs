@@ -64,6 +64,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     public string RuntimeUpgradeTemplatePath => LocateRuntimeUpgradeTemplate();
     public string SlnxFixturePath => LocateSlnxFixture();
     public string WpfSampleSolutionPath => LocateWpfSampleSolution();
+    public string MicrosoftWpfSampleSolutionPath => LocateMicrosoftWpfSampleSolution();
     public string WinFormsSampleSolutionPath => LocateWinFormsSampleSolution();
     public string UnoXamlSampleSolutionPath => LocateUnoXamlSampleSolution();
     public string ProGpuWinUISampleSolutionPath => LocateProGpuWinUISampleSolution();
@@ -1021,6 +1022,18 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
             dir = Path.GetDirectoryName(dir);
         }
         throw new FileNotFoundException("Could not locate src/Samples/WinUISample/WinUISample.slnx");
+    }
+
+    static string LocateMicrosoftWpfSampleSolution()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir, "src", "Samples", "MicrosoftWpfSample", "MicrosoftWpfSample.slnx");
+            if (File.Exists(candidate)) return candidate;
+            dir = Path.GetDirectoryName(dir);
+        }
+        throw new FileNotFoundException("Could not locate src/Samples/MicrosoftWpfSample/MicrosoftWpfSample.slnx");
     }
 
     static string LocateProGpuWinUISampleSolution()
