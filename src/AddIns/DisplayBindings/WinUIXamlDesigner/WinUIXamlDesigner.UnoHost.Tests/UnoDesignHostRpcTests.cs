@@ -152,6 +152,40 @@ public sealed class UnoDesignHostRpcTests
 	}
 
 	[Fact]
+	public async Task StaleMutations_AreRejectedAndCannotOverwriteNewerSource()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await StartAsync(timeout.Token);
+		Assert.True((await client.OpenAsync(Document(client, Fixture("Hello")), timeout.Token)).Accepted);
+
+		var updated = await client.UpdateAsync(Document(client, Fixture("Newer"), 2), timeout.Token);
+		Assert.True(updated.Accepted, updated.Error);
+		var staleUpdate = await client.UpdateAsync(Document(client, Fixture("Older"), 1), timeout.Token);
+		Assert.False(staleUpdate.Accepted);
+		Assert.Contains("Stale base version", staleUpdate.Error, StringComparison.Ordinal);
+
+		// DDP's baseVersion is source authority, not merely a render hint. A delayed edit
+		// from version 1 must be rejected after session/update has accepted version 2.
+		foreach (var (name, stale) in new (string, DesignerSessionState)[] {
+			("set-property", await client.SetPropertyAsync(1, "greeting", "Text", "Clobbered", timeout.Token)),
+			("set-bounds", await client.SetBoundsAsync(1, "greeting", 0, 0, 11, 22, timeout.Token)),
+			("delete-elements", await client.DeleteElementsAsync(1, new[] { "greeting" }, timeout.Token)),
+			("rename", await client.RenameAsync(1, "greeting", "clobbered", timeout.Token)),
+		})
+		{
+			Assert.False(stale.Accepted, $"design/{name} accepted a stale base version");
+			Assert.Contains("Stale base version", stale.Error, StringComparison.Ordinal);
+		}
+
+		var flushed = await client.FlushAsync(2, timeout.Token);
+		var text = Assert.Single(flushed.Files).Text;
+		Assert.Contains("Newer", text, StringComparison.Ordinal);
+		Assert.DoesNotContain("Clobbered", text, StringComparison.Ordinal);
+		Assert.DoesNotContain("clobbered", text, StringComparison.Ordinal);
+		Assert.Contains("x:Name=\"greeting\"", text, StringComparison.Ordinal);
+	}
+
+	[Fact]
 	public async Task ChildHost_SupportsIndependentLifetimes()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
@@ -206,6 +240,28 @@ public sealed class UnoDesignHostRpcTests
 		}
 	}
 
+	[Fact]
+	public async Task SharedHost_RecoversEveryOpenDocumentAfterTheChildExits()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var first = await UnoDesignClient.AcquireSharedAsync("", "", timeout.Token, HostDll());
+		using var second = await UnoDesignClient.AcquireSharedAsync("", "", timeout.Token, HostDll());
+		Assert.True((await first.OpenAsync(Document(first, Fixture("First")), timeout.Token)).Accepted);
+		Assert.True((await second.OpenAsync(Document(second, Fixture("Second")), timeout.Token)).Accepted);
+		var failedProcessId = first.ProcessId;
+
+		first.TerminateHost();
+		await WaitUntilAsync(() => first.RecoveryCount > 0 && second.RecoveryCount > 0
+			&& first.IsAlive && second.IsAlive && first.ProcessId != failedProcessId, timeout.Token);
+
+		Assert.Equal(first.ProcessId, second.ProcessId);
+		Assert.NotEqual(failedProcessId, first.ProcessId);
+		Assert.Contains("First", Assert.Single((await first.FlushAsync(1, timeout.Token)).Files).Text, StringComparison.Ordinal);
+		var sibling = Assert.Single((await second.FlushAsync(1, timeout.Token)).Files).Text;
+		Assert.Contains("Second", sibling, StringComparison.Ordinal);
+		Assert.DoesNotContain("First", sibling, StringComparison.Ordinal);
+	}
+
 	static async Task WaitForExitAsync(int processId, CancellationToken cancellationToken)
 	{
 		while (true) {
@@ -214,5 +270,13 @@ public sealed class UnoDesignHostRpcTests
 			} catch (ArgumentException) { return; }
 			await Task.Delay(25, cancellationToken);
 		}
+	}
+
+	static async Task WaitUntilAsync(Func<bool> condition, CancellationToken cancellationToken)
+	{
+		using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+		wait.CancelAfter(TimeSpan.FromSeconds(30));
+		while (!condition())
+			await Task.Delay(25, wait.Token);
 	}
 }

@@ -388,6 +388,30 @@ public sealed class WpfSurfaceHostRpcTests
 	}
 
 	[Fact]
+	public async Task SharedClients_RecoverEveryOpenDocumentAfterTheChildExits()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var first = await WpfSurfaceHostClient.AcquireSharedAsync(HostDll(), timeout.Token);
+		using var second = await WpfSurfaceHostClient.AcquireSharedAsync(HostDll(), timeout.Token);
+		Assert.True((await first.OpenAsync(Snapshot(1, Xaml), timeout.Token)).Accepted);
+		Assert.True((await second.OpenAsync(Snapshot(1, Xaml.Replace("Hello", "Sibling")), timeout.Token)).Accepted);
+		var failedProcessId = first.ProcessId;
+
+		// This is the shared-pool failure mode: one killed child must be replaced once and
+		// each document must reopen from its own parent-owned recovery snapshot.
+		first.TerminateHost();
+		await WaitUntilAsync(() => first.RecoveryCount > 0 && second.RecoveryCount > 0
+			&& first.IsAlive && second.IsAlive && first.ProcessId != failedProcessId, timeout.Token);
+
+		Assert.Equal(first.ProcessId, second.ProcessId);
+		Assert.NotEqual(failedProcessId, first.ProcessId);
+		Assert.Contains("Hello", (await first.FlushAsync(1, timeout.Token)).Files.Single().Text, StringComparison.Ordinal);
+		var sibling = (await second.FlushAsync(1, timeout.Token)).Files.Single().Text;
+		Assert.Contains("Sibling", sibling, StringComparison.Ordinal);
+		Assert.DoesNotContain("Hello", sibling, StringComparison.Ordinal);
+	}
+
+	[Fact]
 	public async Task SessionOpen_RendersRealWpfContentIntoTheFrame()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
@@ -704,6 +728,14 @@ public sealed class WpfSurfaceHostRpcTests
 	}
 
 	static byte[] Inflate(string data) => DesignerFrameCodec.DecodeDeflateBase64(data);
+
+	static async Task WaitUntilAsync(Func<bool> condition, CancellationToken cancellationToken)
+	{
+		using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+		wait.CancelAfter(TimeSpan.FromSeconds(30));
+		while (!condition())
+			await Task.Delay(25, wait.Token);
+	}
 
 	static string WpfThemeFixtureDll() => typeof(FixtureMarker).Assembly.Location;
 

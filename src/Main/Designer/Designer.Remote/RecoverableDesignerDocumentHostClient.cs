@@ -23,18 +23,24 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 			RecoverySnapshot = snapshot ?? throw new System.ArgumentNullException(nameof(snapshot));
 		}
 
-		protected Task<DesignerSessionState> OpenRecoverableAsync(DesignerDocumentSnapshot snapshot,
+		protected async Task<DesignerSessionState> OpenRecoverableAsync(DesignerDocumentSnapshot snapshot,
 			CancellationToken cancellationToken = default)
 		{
-			SetRecoverySnapshot(snapshot);
-			return Document.OpenAsync(snapshot, cancellationToken);
+			var state = await Document.OpenAsync(snapshot, cancellationToken).ConfigureAwait(false);
+			if (state.Accepted)
+				SetRecoverySnapshot(snapshot);
+			return state;
 		}
 
-		protected Task<DesignerSessionState> UpdateRecoverableAsync(DesignerDocumentSnapshot snapshot,
+		protected async Task<DesignerSessionState> UpdateRecoverableAsync(DesignerDocumentSnapshot snapshot,
 			CancellationToken cancellationToken = default)
 		{
-			SetRecoverySnapshot(snapshot);
-			return Document.UpdateAsync(snapshot, cancellationToken);
+			var state = await Document.UpdateAsync(snapshot, cancellationToken).ConfigureAwait(false);
+			// A rejected stale/invalid source update must never become the next crash-recovery
+			// authority. Retain the last accepted snapshot until the child accepts a replacement.
+			if (state.Accepted)
+				SetRecoverySnapshot(snapshot);
+			return state;
 		}
 
 		protected async Task<DesignerSessionState> TrackMutationAsync(Task<DesignerSessionState> operation,

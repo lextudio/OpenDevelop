@@ -132,20 +132,24 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 	}
 
 	/// <summary>First load for a session (session/open) - the initial render of a document.</summary>
-	public Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default)
+	public async Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default)
 	{
-		SetRecoverySnapshot(snapshot);
-		return connection.InvokeAsync<DesignerSessionState>("session/open",
-			new { sessionId = SessionId, documentId = DocumentId, xaml = PrimaryText(snapshot), width = viewportWidth, height = viewportHeight, dpi = viewportDpi }, cancellationToken);
+		var state = await connection.InvokeAsync<DesignerSessionState>("session/open",
+			new { sessionId = SessionId, documentId = DocumentId, xaml = PrimaryText(snapshot), width = viewportWidth, height = viewportHeight, dpi = viewportDpi }, cancellationToken).ConfigureAwait(false);
+		if (state.Accepted)
+			SetRecoverySnapshot(snapshot);
+		return state;
 	}
 
 	/// <summary>Subsequent full-document push for an already-open session (session/update) -
 	/// theme reloads, size-preset changes and any other full re-render after the first load.</summary>
-	public Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default)
+	public async Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default)
 	{
-		SetRecoverySnapshot(snapshot);
-		return connection.InvokeAsync<DesignerSessionState>("session/update",
-			new { sessionId = SessionId, documentId = DocumentId, xaml = PrimaryText(snapshot), width = viewportWidth, height = viewportHeight, dpi = viewportDpi, baseVersion = snapshot?.Version ?? 0 }, cancellationToken);
+		var state = await connection.InvokeAsync<DesignerSessionState>("session/update",
+			new { sessionId = SessionId, documentId = DocumentId, xaml = PrimaryText(snapshot), width = viewportWidth, height = viewportHeight, dpi = viewportDpi, baseVersion = snapshot?.Version ?? 0 }, cancellationToken).ConfigureAwait(false);
+		if (state.Accepted)
+			SetRecoverySnapshot(snapshot);
+		return state;
 	}
 
 	/// <summary>Stub: this host holds no independent child-side edit buffer, so this reports

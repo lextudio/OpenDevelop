@@ -93,6 +93,8 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		public DesignerSessionState UpdateSession(string sessionId, string documentId, string xaml, double width, double height, double dpi, long baseVersion)
 		{
 			EnsureOwnSession(sessionId, documentId);
+			if (RejectIfStale(sessionId, documentId, baseVersion, allowNewerVersion: true) is { } stale)
+				return stale;
 			var snapshot = HeadlessDispatcher.DispatchAsync(() => LoadDesignAsync(new LoadDesignRequest {
 				SessionId = sessionId, DocumentId = documentId, Version = baseVersion, Xaml = xaml, Width = width, Height = height, Dpi = dpi
 			})).GetAwaiter().GetResult();
@@ -108,6 +110,8 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		public DesignerEditSet FlushSession(string sessionId, string documentId, long baseVersion)
 		{
 			EnsureOwnSession(sessionId, documentId);
+			if (baseVersion != version)
+				throw new InvalidOperationException($"Cannot flush stale version {baseVersion}; the open document is at version {version}.");
 			return new DesignerEditSet {
 				SessionId = sessionId,
 				DocumentId = documentId,
@@ -646,9 +650,31 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				throw new InvalidOperationException("The request's document id does not match the open document.");
 		}
 
+		/// <summary>Rejects an operation issued against an older parent-owned source snapshot.
+		/// Mutations must never revive source that <c>session/update</c> has already replaced;
+		/// this is the common DDP stale-operation rule used by every child backend.</summary>
+		DesignerSessionState? RejectIfStale(string requestSessionId, string requestDocumentId, long baseVersion,
+			bool allowNewerVersion = false)
+		{
+			if (baseVersion == version || allowNewerVersion && baseVersion > version)
+				return null;
+			var error = $"Stale base version {baseVersion}; the open document is at version {version}.";
+			var state = new DesignerSessionState {
+				SessionId = requestSessionId,
+				DocumentId = requestDocumentId,
+				Version = baseVersion,
+				Accepted = false,
+				Error = error
+			};
+			state.Diagnostics.Add(new DesignerDiagnostic { Message = error });
+			return state;
+		}
+
 		async Task<DesignerSessionState> SetPropertyAsync(string requestSessionId, string requestDocumentId, long baseVersion, string elementId, string propertyName, string value)
 		{
 			EnsureOwnSession(requestSessionId, requestDocumentId);
+			if (RejectIfStale(requestSessionId, requestDocumentId, baseVersion) is { } stale)
+				return stale;
 			var snapshot = new DesignerSessionState { SessionId = requestSessionId, DocumentId = requestDocumentId, Version = baseVersion, Accepted = true };
 			if (root is null)
 			{
@@ -710,6 +736,8 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		DesignerSessionState SetEventCore(string requestSessionId, string requestDocumentId, long baseVersion, string elementId, string eventName, string handlerName)
 		{
 			EnsureOwnSession(requestSessionId, requestDocumentId);
+			if (RejectIfStale(requestSessionId, requestDocumentId, baseVersion) is { } stale)
+				return stale;
 			var snapshot = new DesignerSessionState { SessionId = requestSessionId, DocumentId = requestDocumentId, Version = baseVersion, Accepted = true };
 			if (root is null)
 			{
@@ -741,6 +769,8 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		async Task<DesignerSessionState> AddElementAsync(string requestSessionId, string requestDocumentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, double x, double y)
 		{
 			EnsureOwnSession(requestSessionId, requestDocumentId);
+			if (RejectIfStale(requestSessionId, requestDocumentId, baseVersion) is { } stale)
+				return stale;
 			var snapshot = new DesignerSessionState { SessionId = requestSessionId, DocumentId = requestDocumentId, Version = baseVersion, Accepted = true };
 			if (root is null)
 			{
@@ -795,6 +825,8 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		async Task<DesignerSessionState> SetBoundsAsync(string requestSessionId, string requestDocumentId, long baseVersion, string elementId, double x, double y, double width, double height)
 		{
 			EnsureOwnSession(requestSessionId, requestDocumentId);
+			if (RejectIfStale(requestSessionId, requestDocumentId, baseVersion) is { } stale)
+				return stale;
 			var snapshot = new DesignerSessionState { SessionId = requestSessionId, DocumentId = requestDocumentId, Version = baseVersion, Accepted = true };
 			if (root is null)
 			{
@@ -842,6 +874,8 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		async Task<DesignerSessionState> DeleteElementsAsync(string requestSessionId, string requestDocumentId, long baseVersion, string[] elementIds)
 		{
 			EnsureOwnSession(requestSessionId, requestDocumentId);
+			if (RejectIfStale(requestSessionId, requestDocumentId, baseVersion) is { } stale)
+				return stale;
 			var snapshot = new DesignerSessionState { SessionId = requestSessionId, DocumentId = requestDocumentId, Version = baseVersion, Accepted = true };
 			if (root is null)
 			{
@@ -884,6 +918,8 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		async Task<DesignerSessionState> RenameAsync(string requestSessionId, string requestDocumentId, long baseVersion, string elementId, string newName)
 		{
 			EnsureOwnSession(requestSessionId, requestDocumentId);
+			if (RejectIfStale(requestSessionId, requestDocumentId, baseVersion) is { } stale)
+				return stale;
 			var snapshot = new DesignerSessionState { SessionId = requestSessionId, DocumentId = requestDocumentId, Version = baseVersion, Accepted = true };
 			if (root is null)
 			{
