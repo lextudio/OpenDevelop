@@ -18,7 +18,8 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 	static readonly SharedDesignerHostRecovery<GtkDesignerHostClient, GtkDesignerHostConnection> recovery = new(
 		broker, GetAffectedClients, client => client.RecoverySnapshot != null,
 		(client, token) => client.CaptureRecoverySnapshotAsync(client.RecoverySnapshot!.Version, token),
-		(client, replacement, token) => client.RestoreAsync(replacement, token));
+		(client, replacement, token) => client.RestoreAsync(replacement, token),
+		(client, exception) => client.OnRecoveryFailed(exception));
 
 	GtkDesignerHostConnection connection;
 	DesignerSessionState? recoveredState;
@@ -28,6 +29,7 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 	public static int ActiveLeaseCount { get { lock (clientsGate) return clients.Count; } }
 	public int RecoveryCount { get; private set; }
 	public event EventHandler<DesignerSessionState>? Recovered;
+	public event EventHandler<Exception>? RecoveryFailed;
 
 	GtkDesignerHostClient(GtkDesignerHostConnection connection) : base(connection)
 	{
@@ -116,6 +118,8 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 	{
 		_ = recovery.RecoverAllAsync(connection, false, CancellationToken.None);
 	}
+
+	void OnRecoveryFailed(Exception exception) => RecoveryFailed?.Invoke(this, exception);
 
 	sealed class GtkDesignerHostConnection : DesignerHostProcessClient
 	{

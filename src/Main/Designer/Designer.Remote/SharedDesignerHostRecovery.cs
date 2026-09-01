@@ -20,18 +20,21 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		readonly Func<TClient, bool> canRecover;
 		readonly Func<TClient, CancellationToken, Task> captureSnapshot;
 		readonly Func<TClient, TConnection, CancellationToken, Task> restore;
+		readonly Action<TClient, Exception>? recoveryFailed;
 		readonly SemaphoreSlim gate = new SemaphoreSlim(1, 1);
 
 		public SharedDesignerHostRecovery(SharedDesignerHostBroker<TConnection> broker,
 			Func<TConnection, TClient[]> getAffectedClients, Func<TClient, bool> canRecover,
 			Func<TClient, CancellationToken, Task> captureSnapshot,
-			Func<TClient, TConnection, CancellationToken, Task> restore)
+			Func<TClient, TConnection, CancellationToken, Task> restore,
+			Action<TClient, Exception>? recoveryFailed = null)
 		{
 			this.broker = broker ?? throw new ArgumentNullException(nameof(broker));
 			this.getAffectedClients = getAffectedClients ?? throw new ArgumentNullException(nameof(getAffectedClients));
 			this.canRecover = canRecover ?? throw new ArgumentNullException(nameof(canRecover));
 			this.captureSnapshot = captureSnapshot ?? throw new ArgumentNullException(nameof(captureSnapshot));
 			this.restore = restore ?? throw new ArgumentNullException(nameof(restore));
+			this.recoveryFailed = recoveryFailed;
 		}
 
 		/// <summary>Restores all documents on <paramref name="failed"/>. Explicit restarts first
@@ -53,8 +56,16 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 				broker.Invalidate(failed);
 				foreach (var client in clients) {
 					if (!canRecover(client)) continue;
-					var replacement = await broker.AcquireAsync(cancellationToken).ConfigureAwait(false);
-					await restore(client, replacement, cancellationToken).ConfigureAwait(false);
+					try {
+						var replacement = await broker.AcquireAsync(cancellationToken).ConfigureAwait(false);
+						await restore(client, replacement, cancellationToken).ConfigureAwait(false);
+					} catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+						throw;
+					} catch (Exception exception) {
+						// One malformed document or backend-specific load failure must not prevent
+						// the other leases of this shared child from becoming usable again.
+						try { recoveryFailed?.Invoke(client, exception); } catch { }
+					}
 				}
 			} finally { gate.Release(); }
 		}

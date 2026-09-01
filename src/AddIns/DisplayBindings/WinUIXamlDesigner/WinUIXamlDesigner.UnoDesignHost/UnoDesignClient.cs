@@ -55,6 +55,8 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 
 	public int RecoveryCount { get; private set; }
 	public event EventHandler<DesignerSessionState>? Recovered;
+	/// <summary>Raised when this document cannot be reopened while sibling documents recover.</summary>
+	public event EventHandler<Exception>? RecoveryFailed;
 
 	/// <summary>Path of the deployed child binary, or null when the addin tree lacks it.</summary>
 	public static string? LocateChildDll()
@@ -215,7 +217,8 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 				recovery = new SharedDesignerHostRecovery<UnoDesignClient, Connection>(sharedPool.GetBroker(key),
 					failed => GetAffectedClients(key, failed), client => client.RecoverySnapshot != null,
 					(client, token) => client.CaptureRecoverySnapshotAsync(client.RecoverySnapshot!.Version, token),
-					(client, replacement, token) => client.RestoreAsync(replacement, token));
+					(client, replacement, token) => client.RestoreAsync(replacement, token),
+					(client, exception) => client.OnRecoveryFailed(exception));
 				recoveries.Add(key, recovery);
 			}
 			return recovery;
@@ -243,6 +246,8 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 	{
 		if (!disposed && poolKey != null) _ = RecoveryFor(poolKey).RecoverAllAsync(connection, false, CancellationToken.None);
 	}
+
+	void OnRecoveryFailed(Exception exception) => RecoveryFailed?.Invoke(this, exception);
 
 	public void Dispose()
 	{

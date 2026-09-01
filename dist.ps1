@@ -142,6 +142,67 @@ function Test-PackagedAppStartup {
     Write-Host 'Packaged app startup smoke test passed'
 }
 
+function Test-WindowsPeArchitecture {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Rid)
+
+    $expectedMachine = if ($Rid -eq 'win-x64') { 0x8664 } elseif ($Rid -eq 'win-arm64') { 0xAA64 } else { throw "Unsupported Windows RID: $Rid" }
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+        $reader = [System.IO.BinaryReader]::new($stream)
+        $stream.Position = 0x3c
+        $peOffset = $reader.ReadInt32()
+        $stream.Position = $peOffset
+        if ($reader.ReadUInt32() -ne 0x00004550) { throw "Not a PE executable: $Path" }
+        $machine = $reader.ReadUInt16()
+        if ($machine -ne $expectedMachine) {
+            throw "Wrong executable architecture for ${Rid}: $Path has machine 0x$('{0:X4}' -f $machine), expected 0x$('{0:X4}' -f $expectedMachine)."
+        }
+    } finally { $stream.Dispose() }
+}
+
+function Test-WindowsDistributionPayload {
+    param([Parameter(Mandatory)][string]$PayloadRoot, [Parameter(Mandatory)][string]$Rid)
+
+    $exe = Join-Path $PayloadRoot 'OpenDevelop.exe'
+    if (-not (Test-Path -LiteralPath $exe)) { throw "Distribution payload has no OpenDevelop.exe: $PayloadRoot" }
+    Test-WindowsPeArchitecture -Path $exe -Rid $Rid
+    $addIns = Join-Path $PayloadRoot 'AddIns'
+    if (-not (Test-Path -LiteralPath $addIns)) { throw "Distribution payload has no AddIns directory: $PayloadRoot" }
+    if (@(Get-ChildItem -LiteralPath $addIns -Recurse -File -Filter '*.addin').Count -eq 0) { throw "Distribution payload has no addin manifests: $addIns" }
+
+    # PDBs, reference assemblies and foreign native assets are build-time artifacts. Their
+    # presence means either an SDK target or the staging copy regressed, and makes the final ZIP
+    # needlessly architecture/OS-agnostic rather than deployable.
+    $forbidden = Get-ChildItem -LiteralPath $PayloadRoot -Recurse -File | Where-Object {
+        $relative = $_.FullName.Substring($PayloadRoot.Length).Replace('\', '/').ToLowerInvariant()
+        $_.Extension -in '.pdb', '.dylib', '.so' -or
+        $relative -match '/ref/' -or
+        $relative -match '/runtimes/(linux|unix|osx)'
+    }
+    if ($forbidden) {
+        $sample = ($forbidden | Select-Object -First 12 -ExpandProperty FullName) -join [Environment]::NewLine
+        throw "Distribution payload contains build-only or foreign assets:$([Environment]::NewLine)$sample"
+    }
+}
+
+function Test-WindowsDistributionZip {
+    param([Parameter(Mandatory)][string]$ZipPath, [Parameter(Mandatory)][string]$Rid)
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
+    try {
+        $prefix = "OpenDevelop-$Rid/"
+        if (-not ($archive.Entries.FullName -contains "${prefix}OpenDevelop.exe")) { throw "ZIP lacks ${prefix}OpenDevelop.exe: $ZipPath" }
+        if (-not ($archive.Entries.FullName | Where-Object { $_ -like "${prefix}AddIns/*.addin" })) { throw "ZIP lacks addin manifests: $ZipPath" }
+        $forbidden = $archive.Entries.FullName | Where-Object {
+            $name = $_.ToLowerInvariant()
+            $name.EndsWith('.pdb') -or $name.EndsWith('.dylib') -or $name.EndsWith('.so') -or
+            $name -match '/ref/' -or $name -match '/runtimes/(linux|unix|osx)'
+        }
+        if ($forbidden) { throw "ZIP contains build-only or foreign assets:$([Environment]::NewLine)$(($forbidden | Select-Object -First 12) -join [Environment]::NewLine)" }
+    } finally { $archive.Dispose() }
+}
+
 # ---------------------------------------------------------------------------------------------
 # Shared pipeline (run once per RID in $ridsToBuild - see Invoke-DistributionPipeline below)
 # ---------------------------------------------------------------------------------------------
@@ -199,6 +260,19 @@ function Invoke-WindowsPackaging {
     New-Item -ItemType Directory -Path $payloadRoot | Out-Null
     Copy-Item -Path (Join-Path $PublishDir '*') -Destination $payloadRoot -Recurse -Force
 
+    # `dotnet publish` may preserve symbol/reference files from a Debug (and occasionally a
+    # cached Release) build. They are neither loaded by the framework-dependent app nor useful
+    # to an end user, but previously dominated the Windows archive. Do this in staging so the
+    # verified publish directory remains available for diagnostics and incremental builds.
+    $hostBuildOnlyFiles = Get-ChildItem -LiteralPath $payloadRoot -Recurse -File | Where-Object {
+        $relative = $_.FullName.Substring($payloadRoot.Length).Replace('\', '/').ToLowerInvariant()
+        $_.Extension -eq '.pdb' -or $relative -match '/ref/' -or
+        ($_.Extension -eq '.xml' -and (Test-Path -LiteralPath (Join-Path $_.DirectoryName "$($_.BaseName).dll")))
+    }
+    Remove-Item -LiteralPath $hostBuildOnlyFiles.FullName -Force -ErrorAction SilentlyContinue
+    $hostReferenceDirs = Get-ChildItem -LiteralPath $payloadRoot -Recurse -Directory -Filter ref -ErrorAction SilentlyContinue
+    foreach ($referenceDir in $hostReferenceDirs) { Remove-Item -LiteralPath $referenceDir.FullName -Recurse -Force }
+
     # OpenDevelop locates its addins and data at runtime by walking UP from the executable looking
     # for data/resources/languages/LanguageDefinition.xml (SharpDevelopMain.FindApplicationRootPath),
     # then loading *.addin from <root>/AddIns. The payload must therefore contain data/ and AddIns/
@@ -241,11 +315,16 @@ function Invoke-WindowsPackaging {
     # means the count and the filtering read the same way and cannot drift apart again.
     $addInFiles = Get-ChildItem -LiteralPath $addInsSource -Recurse -File | Where-Object {
         $name = $_.Name
-        $relativeDir = Split-Path -Parent ($_.FullName.Substring($addInsSource.Length).TrimStart('\', '/'))
+        $relative = $_.FullName.Substring($addInsSource.Length).TrimStart('\', '/')
+        $relativeDir = Split-Path -Parent $relative
         $isOutOfProcessHost = $outOfProcessHostDirs | Where-Object { $relativeDir -eq $_ -or $relativeDir.StartsWith("$_\") }
         -not ($name -like '*.pdb') -and
+        -not ($name -like '*.dylib') -and
+        -not ($name -like '*.so') -and
         -not ($name -like 'LeXtudio.DevFlow.*') -and
         -not ($name -like 'CliclickSharp*') -and
+        -not ($relative -match '(^|[\\/])(ref|runtimes[\\/](linux|unix|osx))([\\/]|$)') -and
+        -not ($_.Extension -eq '.xml' -and (Test-Path -LiteralPath (Join-Path $_.DirectoryName "$($_.BaseName).dll"))) -and
         (-not $hostFiles.Contains($name) -or $isOutOfProcessHost)
     }
 
@@ -262,10 +341,21 @@ function Invoke-WindowsPackaging {
 
     $exePath = Join-Path $payloadRoot 'OpenDevelop.exe'
     if (-not (Test-Path $exePath)) { throw "dist.ps1: packaged executable not found: $exePath" }
+    Test-WindowsDistributionPayload -PayloadRoot $payloadRoot -Rid $Rid
     Write-Host "Payload ready: $payloadRoot"
 
-    Write-Host '==> Smoke-testing packaged app...'
-    Test-PackagedAppStartup -ExePath $exePath -WorkingDirectory $payloadRoot
+    # A Windows ARM64 build machine can produce an x64 package, but does not necessarily have
+    # the x64 framework-dependent .NET/LibreWPF runtime installed. Validate that cross-RID
+    # package structurally (including its PE machine and ZIP contents) and reserve execution
+    # smoke tests for the package that can actually run on this host.
+    $hostArchitecture = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToLowerInvariant()
+    $hostRid = if ($hostArchitecture -eq 'x64') { 'win-x64' } elseif ($hostArchitecture -eq 'arm64') { 'win-arm64' } else { '' }
+    if ($Rid -eq $hostRid) {
+        Write-Host '==> Smoke-testing packaged app...'
+        Test-PackagedAppStartup -ExePath $exePath -WorkingDirectory $payloadRoot
+    } else {
+        Write-Host "==> Skipping execution smoke test for $Rid on $hostRid; PE and ZIP content checks still apply."
+    }
 
     Write-Host '==> Building .zip...'
     Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
@@ -274,6 +364,7 @@ function Invoke-WindowsPackaging {
         $payloadRoot, $zipPath,
         [System.IO.Compression.CompressionLevel]::Optimal,
         $true)
+    Test-WindowsDistributionZip -ZipPath $zipPath -Rid $Rid
 
     return $zipPath
 }
@@ -321,6 +412,7 @@ function Invoke-DistributionPipeline([string]$Rid) {
         Invoke-Native $dotnet publish $hostProject -c $config --self-contained false `
             "-p:OpenDevelopDistributionBuild=true" `
             "-p:PublishDir=$publishDir" `
+            "-p:ProGpuWpfUseCurrentRuntimeIdentifier=false" `
             @ridArgs
 
         if (-not (Test-Path $publishDir)) {
@@ -343,19 +435,23 @@ function Invoke-DistributionPipeline([string]$Rid) {
         $hostPublishSnapshot = New-TempDir
         Copy-Item -Path (Join-Path $publishDir '*') -Destination $hostPublishSnapshot -Recurse -Force
 
-        Write-Host '==> Cleaning stale AddIn outputs...'
-        Get-ChildItem (Join-Path $repoRoot 'AddIns') -Recurse -File -ErrorAction SilentlyContinue |
-            Where-Object { $_.Extension -in '.dll', '.dylib', '.so', '.pdb' } |
-            Remove-Item -Force
+        # AddIns/ is an ignored deployment directory, not source. A partial or cross-platform
+        # build used to leave .so/.dylib, ref/, package build props and stale assemblies here;
+        # later package runs then copied them even though the current solution never produced
+        # them. Start every distribution build with a genuinely empty deployment root.
+        Write-Host '==> Cleaning generated AddIn deployment root...'
+        $generatedAddIns = Join-Path $repoRoot 'AddIns'
+        if (Test-Path $generatedAddIns) { Remove-Item -LiteralPath $generatedAddIns -Recurse -Force }
+        New-Item -ItemType Directory -Path $generatedAddIns | Out-Null
 
         Write-Host "==> Building distribution AddIns without shared runtime copies$ridLabel..."
-        Build-Solution -DotNet $dotnet -Solution $sln -Configuration $config -ExtraProperties (@(
+        Build-Solution -DotNet $dotnet -Solution $sln -Configuration $config -ExtraProperties @(
             '-p:OpenDevelopDistributionBuild=true',
             "-p:OpenDevelopDistributionRidFamily=$ridFamily",
             "-p:OpenDevelopHostPublishDir=$hostPublishSnapshot",
             '-p:ProGpuWpfCopyPackageRuntimeAssets=false',
             '-p:ProGpuWpfUseCurrentRuntimeIdentifier=false'
-        ) + $ridArgs)
+        )
         Remove-Item -Recurse -Force $hostPublishSnapshot
 
         # The solution traversal may copy reference assemblies over the original PublishDir

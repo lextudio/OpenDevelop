@@ -46,6 +46,8 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 
 	public int RecoveryCount { get; private set; }
 	public event EventHandler<DesignerSessionState>? Recovered;
+	/// <summary>Raised when this document cannot be reopened while sibling documents recover.</summary>
+	public event EventHandler<Exception>? RecoveryFailed;
 
 	/// <summary>Finds the deployed child under this assembly's own "Host" subfolder, matching
 	/// <c>FormsDesignerHostClient.LocateChildDll</c> exactly - <c>WpfDesign.SurfaceHost.csproj</c>'s
@@ -134,7 +136,8 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 					sharedPool.GetBroker(key), failed => GetAffectedClients(key, failed),
 					client => client.RecoverySnapshot != null,
 					(client, token) => client.CaptureRecoverySnapshotAsync(client.RecoverySnapshot!.Version, token),
-					(client, replacement, token) => client.RestoreAsync(replacement, token));
+					(client, replacement, token) => client.RestoreAsync(replacement, token),
+					(client, exception) => client.OnRecoveryFailed(exception));
 				recoveries.Add(key, recovery);
 			}
 			return recovery;
@@ -163,6 +166,8 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 		if (!disposed && poolKey != null)
 			_ = RecoveryFor(poolKey).RecoverAllAsync(connection, false, CancellationToken.None);
 	}
+
+	void OnRecoveryFailed(Exception exception) => RecoveryFailed?.Invoke(this, exception);
 
 	public void Dispose()
 	{

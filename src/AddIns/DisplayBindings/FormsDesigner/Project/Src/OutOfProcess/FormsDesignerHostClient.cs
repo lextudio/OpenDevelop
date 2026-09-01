@@ -44,6 +44,8 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 
 		public int RecoveryCount { get; private set; }
 		public event EventHandler<DesignerSessionState>? Recovered;
+		/// <summary>Raised when this document cannot be reopened while sibling documents recover.</summary>
+		public event EventHandler<Exception>? RecoveryFailed;
 
 		public static string LocateChildDll()
 		{
@@ -168,7 +170,8 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 						sharedPool.GetBroker(key), failed => GetAffectedClients(key, failed),
 						client => client.RecoverySnapshot != null,
 						(client, token) => client.CaptureRecoverySnapshotAsync(client.RecoverySnapshot!.Version, token),
-						(client, replacement, token) => client.RestoreAsync(replacement, token));
+						(client, replacement, token) => client.RestoreAsync(replacement, token),
+						(client, exception) => client.OnRecoveryFailed(exception));
 					recoveries.Add(key, recovery);
 				}
 				return recovery;
@@ -196,6 +199,12 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		{
 			if (shared && !disposed)
 				_ = RecoveryFor(poolKey).RecoverAllAsync(connection, false, CancellationToken.None);
+		}
+
+		void OnRecoveryFailed(Exception exception)
+		{
+			WriteHostDiagnostic($"Document recovery failed document={DocumentId} exception={exception}");
+			RecoveryFailed?.Invoke(this, exception);
 		}
 
 		public void Dispose()

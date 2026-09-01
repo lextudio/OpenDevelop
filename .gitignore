@@ -48,5 +48,5 @@ tests/fixtures/CoverageFixture/CoverageTests/CodeCoverage/coverage.xml
 # shared PowerShell module imported by launch.ps1 / dist.macos.ps1
 !/build/common.psm1
 tests/fixtures/SampleTestProject/CodeCoverage/
-/OpenDevelop-win/
+/OpenDevelop-win*/
 *.zip

@@ -122,6 +122,40 @@ public sealed class SharedDesignerHostPoolTests
 		broker.Release(second.Connection);
 	}
 
+	[Fact]
+	public async Task RecoveryContinuesWhenOneDocumentCannotBeRestored()
+	{
+		var token = TestContext.Current.CancellationToken;
+		var broker = new SharedDesignerHostBroker<FakeConnection>(
+			connection => connection.Alive, _ => Task.FromResult(new FakeConnection()));
+		var failed = await broker.AcquireAsync(token);
+		Assert.Same(failed, await broker.AcquireAsync(token));
+		var broken = new RecoveryClient(failed, true);
+		var healthy = new RecoveryClient(failed, true);
+		Exception? reported = null;
+		var recovery = new SharedDesignerHostRecovery<RecoveryClient, FakeConnection>(broker,
+			connection => new[] { broken, healthy }.Where(client => ReferenceEquals(client.Connection, connection)).ToArray(),
+			client => client.HasSnapshot,
+			(_, _) => Task.CompletedTask,
+			(client, replacement, _) => {
+				client.Connection = replacement;
+				if (ReferenceEquals(client, broken)) throw new InvalidOperationException("Broken design document");
+				client.RestoreCount++;
+				return Task.CompletedTask;
+			},
+			(_, exception) => reported = exception);
+
+		await recovery.RecoverAllAsync(failed, false, token);
+
+		Assert.IsType<InvalidOperationException>(reported);
+		Assert.Equal(0, broken.RestoreCount);
+		Assert.Equal(1, healthy.RestoreCount);
+		Assert.NotSame(failed, healthy.Connection);
+		Assert.Same(broken.Connection, healthy.Connection);
+		broker.Release(broken.Connection);
+		broker.Release(healthy.Connection);
+	}
+
 	static async Task WaitUntilAsync(Func<bool> condition, CancellationToken cancellationToken)
 	{
 		using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

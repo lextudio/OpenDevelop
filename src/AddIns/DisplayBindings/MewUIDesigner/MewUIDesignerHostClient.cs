@@ -4,9 +4,9 @@ sealed class MewUIDesignerHostClient : RecoverableDesignerDocumentHostClient, ID
 {
 	static readonly SharedDesignerHostBroker<Connection> broker = new(c => c.IsAlive, StartConnectionAsync);
 	static readonly object clientsGate = new(); static readonly HashSet<MewUIDesignerHostClient> clients = new();
-	static readonly SharedDesignerHostRecovery<MewUIDesignerHostClient, Connection> recovery = new(broker, GetAffectedClients, client => client.RecoverySnapshot != null, (client, token) => client.CaptureRecoverySnapshotAsync(client.RecoverySnapshot!.Version, token), (client, replacement, token) => client.RestoreAsync(replacement, token));
+	static readonly SharedDesignerHostRecovery<MewUIDesignerHostClient, Connection> recovery = new(broker, GetAffectedClients, client => client.RecoverySnapshot != null, (client, token) => client.CaptureRecoverySnapshotAsync(client.RecoverySnapshot!.Version, token), (client, replacement, token) => client.RestoreAsync(replacement, token), (client, exception) => client.OnRecoveryFailed(exception));
 	Connection connection; DesignerSessionState? recoveredState; bool disposed;
-	public string PoolKey => "mewui"; public int RecoveryCount { get; private set; } public static int ActiveLeaseCount { get { lock (clientsGate) return clients.Count; } } public event EventHandler<DesignerSessionState>? Recovered;
+	public string PoolKey => "mewui"; public int RecoveryCount { get; private set; } public static int ActiveLeaseCount { get { lock (clientsGate) return clients.Count; } } public event EventHandler<DesignerSessionState>? Recovered; public event EventHandler<Exception>? RecoveryFailed;
 	MewUIDesignerHostClient(Connection connection) : base(connection) { this.connection = connection; connection.HostExited += OnHostExited; lock (clientsGate) clients.Add(this); }
 	public static async Task<MewUIDesignerHostClient> CreateAsync(CancellationToken token = default) => new(await broker.AcquireAsync(token).ConfigureAwait(false));
 	static async Task<Connection> StartConnectionAsync(CancellationToken token) { var path = Path.Combine(Path.GetDirectoryName(typeof(MewUIDesignerHostClient).Assembly.Location)!, "Host", "MewUIDesigner.Host.dll"); var connection = new Connection(path); await connection.StartConnectionAsync(token).ConfigureAwait(false); return connection; }
@@ -35,6 +35,7 @@ sealed class MewUIDesignerHostClient : RecoverableDesignerDocumentHostClient, ID
 	async Task RestoreAsync(Connection replacement, CancellationToken token) { connection.HostExited -= OnHostExited; connection = replacement; RebindConnection(replacement); replacement.HostExited += OnHostExited; recoveredState = await Document.OpenAsync(RecoverySnapshot!, token).ConfigureAwait(false); RecoveryCount++; Recovered?.Invoke(this, recoveredState); }
 	public void Dispose() { if (disposed) return; disposed = true; connection.HostExited -= OnHostExited; DetachHostConnection(); lock (clientsGate) clients.Remove(this); try { ShutdownAsync(CancellationToken.None).Wait(TimeSpan.FromSeconds(3)); } catch { } broker.Release(connection); }
 	void OnHostExited(object? sender, EventArgs e) { _ = recovery.RecoverAllAsync(connection, false, CancellationToken.None); }
+	void OnRecoveryFailed(Exception exception) => RecoveryFailed?.Invoke(this, exception);
 	sealed class Connection : DesignerHostProcessClient
 	{
 		readonly string hostDll; public Connection(string path) => hostDll = path; public Task StartConnectionAsync(CancellationToken token) => StartAsync(token); protected override string GetChildDllPath() => hostDll;

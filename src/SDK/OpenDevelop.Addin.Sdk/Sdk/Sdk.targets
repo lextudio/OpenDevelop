@@ -86,12 +86,19 @@
       <_OpenDevelopXmlDocumentation Include="@(_OpenDevelopDeploymentAssembly->'%(RootDir)%(Directory)%(Filename).xml')"
                                     Condition="Exists('%(Identity)')" />
       <_OpenDevelopReferenceAsset Include="$(OutputPath)**/ref/**/*" />
+      <!-- A distribution contains one OS family only. Keep Windows native payloads for both
+           win-x64 and win-arm64, but never carry macOS/Linux/Unix package payloads into either
+           Windows architecture. The converse preserves only the macOS family. -->
       <_OpenDevelopForeignRuntimeAsset Include="$(OutputPath)**/runtimes/win*/**/*;$(OutputPath)**/runtimes/linux*/**/*;$(OutputPath)**/runtimes/unix*/**/*"
                                        Condition="'$(OpenDevelopDistributionRidFamily)' == 'osx'" />
+      <_OpenDevelopForeignRuntimeAsset Include="$(OutputPath)**/runtimes/osx*/**/*;$(OutputPath)**/runtimes/linux*/**/*;$(OutputPath)**/runtimes/unix*/**/*"
+                                       Condition="'$(OpenDevelopDistributionRidFamily)' == 'win'" />
+      <_OpenDevelopForeignNativeAsset Include="$(OutputPath)**/*.dylib;$(OutputPath)**/*.so"
+                                       Condition="'$(OpenDevelopDistributionRidFamily)' == 'win'" />
     </ItemGroup>
-    <Delete Files="@(_OpenDevelopXmlDocumentation);@(_OpenDevelopReferenceAsset);@(_OpenDevelopForeignRuntimeAsset)" />
+    <Delete Files="@(_OpenDevelopXmlDocumentation);@(_OpenDevelopReferenceAsset);@(_OpenDevelopForeignRuntimeAsset);@(_OpenDevelopForeignNativeAsset)" />
     <Message Importance="normal"
-             Text="OpenDevelop Addin SDK: pruned @(_OpenDevelopXmlDocumentation->Count()) XML docs, @(_OpenDevelopReferenceAsset->Count()) reference assets, and @(_OpenDevelopForeignRuntimeAsset->Count()) foreign runtime assets from $(OutputPath)."
-             Condition="@(_OpenDevelopXmlDocumentation->Count()) &gt; 0 Or @(_OpenDevelopReferenceAsset->Count()) &gt; 0 Or @(_OpenDevelopForeignRuntimeAsset->Count()) &gt; 0" />
+             Text="OpenDevelop Addin SDK: pruned @(_OpenDevelopXmlDocumentation->Count()) XML docs, @(_OpenDevelopReferenceAsset->Count()) reference assets, @(_OpenDevelopForeignRuntimeAsset->Count()) foreign runtime assets, and @(_OpenDevelopForeignNativeAsset->Count()) foreign native assets from $(OutputPath)."
+             Condition="@(_OpenDevelopXmlDocumentation->Count()) &gt; 0 Or @(_OpenDevelopReferenceAsset->Count()) &gt; 0 Or @(_OpenDevelopForeignRuntimeAsset->Count()) &gt; 0 Or @(_OpenDevelopForeignNativeAsset->Count()) &gt; 0" />
   </Target>
 </Project>

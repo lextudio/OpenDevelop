@@ -373,6 +373,32 @@ public sealed class FormsDesignerHostClientTests
 		}
 	}
 
+	[Fact]
+	public async Task SharedHost_RpcTimeoutTerminatesTheChildAndRecoversEveryOpenDocument()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+		var hostDll = HostDll();
+		var first = await FormsDesignerHostClient.AcquireSharedAsync("", "", timeout.Token, hostDll);
+		var second = await FormsDesignerHostClient.AcquireSharedAsync("", "", timeout.Token, hostDll);
+		try {
+			Assert.True((await first.OpenAsync(Snapshot(1, "first timeout"), timeout.Token)).Accepted);
+			Assert.True((await second.OpenAsync(Snapshot(1, "second timeout"), timeout.Token)).Accepted);
+			var oldPid = first.ProcessId;
+
+			var error = await Assert.ThrowsAsync<TimeoutException>(() => first.DelayAsync(5000, timeout.Token));
+			Assert.Contains("diagnostics/delay", error.Message, StringComparison.Ordinal);
+			await WaitUntilAsync(() => first.RecoveryCount > 0 && second.RecoveryCount > 0
+				&& first.IsAlive && second.IsAlive && first.ProcessId != oldPid, timeout.Token);
+
+			Assert.Equal(first.ProcessId, second.ProcessId);
+			Assert.Contains("first timeout", DesignerText(await first.FlushAsync(1, timeout.Token)), StringComparison.Ordinal);
+			Assert.Contains("second timeout", DesignerText(await second.FlushAsync(1, timeout.Token)), StringComparison.Ordinal);
+		} finally {
+			first.Dispose();
+			second.Dispose();
+		}
+	}
+
 	static async Task WaitForExitAsync(int processId, CancellationToken cancellationToken)
 	{
 		while (true) {
@@ -381,6 +407,14 @@ public sealed class FormsDesignerHostClientTests
 			} catch (ArgumentException) { return; }
 			await Task.Delay(25, cancellationToken);
 		}
+	}
+
+	static async Task WaitUntilAsync(Func<bool> condition, CancellationToken cancellationToken)
+	{
+		using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+		wait.CancelAfter(TimeSpan.FromSeconds(30));
+		while (!condition())
+			await Task.Delay(25, wait.Token);
 	}
 
 	static string DesignerText(DesignerEditSet edits) => edits.Files.Single(item => item.Kind == "Designer").Text;

@@ -262,6 +262,32 @@ public sealed class UnoDesignHostRpcTests
 		Assert.DoesNotContain("First", sibling, StringComparison.Ordinal);
 	}
 
+	[Fact]
+	public async Task SharedHost_RecoveryKeepsTheLastAcceptedSnapshotAfterARejectedUpdate()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var first = await UnoDesignClient.AcquireSharedAsync("", "", timeout.Token, HostDll());
+		using var second = await UnoDesignClient.AcquireSharedAsync("", "", timeout.Token, HostDll());
+		Assert.True((await first.OpenAsync(Document(first, Fixture("Initial")), timeout.Token)).Accepted);
+		Assert.True((await first.UpdateAsync(Document(first, Fixture("Newer"), 2), timeout.Token)).Accepted);
+		var stale = await first.UpdateAsync(Document(first, Fixture("Older"), 1), timeout.Token);
+		Assert.False(stale.Accepted);
+		Assert.True((await second.OpenAsync(Document(second, Fixture("Sibling")), timeout.Token)).Accepted);
+		var failedProcessId = first.ProcessId;
+
+		first.TerminateHost();
+		await WaitUntilAsync(() => first.RecoveryCount > 0 && second.RecoveryCount > 0
+			&& first.IsAlive && second.IsAlive && first.ProcessId != failedProcessId, timeout.Token);
+
+		// session/open establishes a fresh child-side version sequence; the recovered source,
+		// rather than the new session's initial version number, is the authority under test.
+		var recovered = Assert.Single((await first.FlushAsync(1, timeout.Token)).Files).Text;
+		Assert.Contains("Newer", recovered, StringComparison.Ordinal);
+		Assert.DoesNotContain("Older", recovered, StringComparison.Ordinal);
+		Assert.Contains("Sibling", Assert.Single((await second.FlushAsync(1, timeout.Token)).Files).Text,
+			StringComparison.Ordinal);
+	}
+
 	static async Task WaitForExitAsync(int processId, CancellationToken cancellationToken)
 	{
 		while (true) {
