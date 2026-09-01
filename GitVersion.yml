@@ -2,16 +2,5 @@
 # src/Main/GlobalAssemblyInfo.cs.template + src/Tools/UpdateAssemblyInfo mechanism, whose
 # Major/Minor/Build were literal constants no tag could ever change.
 # Mirrors the configuration used by the Roma project.
-mode: ContinuousDelivery
+mode: ContinuousDeployment
 tag-prefix: 'v'
-
-branches:
-  master:
-    regex: master
-    increment: Patch
-  main:
-    regex: main
-    increment: Patch
-
-ignore:
-  sha: []
