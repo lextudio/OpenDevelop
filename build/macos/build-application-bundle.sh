@@ -157,7 +157,7 @@ EOF
 # P/Invoke library names used by WPF/AvalonDock. Its SDK target writes these to
 # TargetDir after Build, not to framework-dependent PublishDir. They are required
 # deployment assets, not duplicated AddIn dependencies.
-win32_shims=(kernel32 user32 gdi32 dwmapi uxtheme shell32 gdiplus comdlg32)
+win32_shims=(kernel32 user32 gdi32 dwmapi uxtheme shell32 gdiplus comdlg32 PresentationNative_cor3)
 for name in "${win32_shims[@]}"; do
   shim="$base_dir/$name.dll"
   if [[ ! -f "$shim" ]]; then
