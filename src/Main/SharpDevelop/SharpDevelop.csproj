@@ -7,8 +7,20 @@
     <UseWPF>true</UseWPF>
     <!-- LibreWPF's generated portable bootstrap is needed on non-Windows hosts only.  On
          Windows its direct portable PresentationFramework reference is resolved before the
-         platform guard can return, so omit it and use the normal Windows startup path. -->
-    <ProGpuWpfEnablePortableBootstrap>false</ProGpuWpfEnablePortableBootstrap>
+         platform guard can return, so omit it and use the normal Windows startup path.
+         This MUST stay on for a macOS/Linux build: the bootstrap is what calls
+         WpfPortableWindowActivation.TryRegisterPresentationFrameworkActivation(), and without
+         those callbacks registered Window.Show() never creates a ProGpuWpfWindowHost - the app
+         then runs with a Dock icon and no window at all, because nothing ever creates the real
+         native window behind the (otherwise perfectly happy) WPF Window. -->
+    <ProGpuWpfEnablePortableBootstrap Condition="!$([MSBuild]::IsOSPlatform('Windows'))">true</ProGpuWpfEnablePortableBootstrap>
+    <ProGpuWpfEnablePortableBootstrap Condition="'$(ProGpuWpfEnablePortableBootstrap)' == ''">false</ProGpuWpfEnablePortableBootstrap>
+    <!-- Gates the LibreWPF-only API use in WorkbenchStartup (Dispatcher.NativeInputPump,
+         WpfPortableWindowActivation) - neither exists in Microsoft's WPF, so it can only compile
+         against the LibreWPF portable references this SDK supplies. Undefined until now, which
+         silently compiled out the NativeInputPump wiring there and let Application.Run() return
+         the moment the dispatcher queue drained, exiting the app seconds after startup. -->
+    <DefineConstants Condition="!$([MSBuild]::IsOSPlatform('Windows'))">$(DefineConstants);LIBREWPF_CUSTOM_EXTENSIONS</DefineConstants>
     <!-- WinForms\**\*.cs (WinFormsService/SDWindowsFormsHost/WinFormsMenuService/WinFormsToolbarService)
          needs the real LibreWinForms implementation, same as ICSharpCode.SharpDevelop.csproj -
          see that project's UseWindowsForms comment for why the WinForms bridge is back. -->
