@@ -41,9 +41,10 @@ tests/fixtures/CoverageFixture/CoverageTests/CodeCoverage/coverage.xml
 *.dmg
 /artifacts/
 
-# keep the macOS packaging scripts tracked
+# keep the macOS and Windows packaging assets tracked
 /build/*
 !/build/macos/
+!/build/windows/
 !/build/patch-librewinforms-deps.ps1
 # shared PowerShell module imported by launch.ps1 / dist.macos.ps1
 !/build/common.psm1

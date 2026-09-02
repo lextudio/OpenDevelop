@@ -15,6 +15,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <OutputType>WinExe</OutputType>
+    <ApplicationIcon>..\..\..\build\windows\opendevelop.ico</ApplicationIcon>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <NoWarn>$(NoWarn);436;1591;CA1416;WFO1000</NoWarn>
     <SignAssembly>true</SignAssembly>
