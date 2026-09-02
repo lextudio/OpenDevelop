@@ -49,10 +49,8 @@
          ITextViewLine geometry (vs-editor-api.md sections 22/64) against the app's actual running
          Dispatcher - a bare in-process WPF Window/UpdateLayout() in a unit test process hangs on
          this repo's LibreWPF/macOS stack (no native message loop), so [DevFlowUIThread] is the
-         only way to force real layout deterministically. Same conditional dev-inner-loop pattern
-         as XamlBinding.csproj. -->
-    <ProjectReference Include="..\..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj" Private="False" Condition="'$(Configuration)' == 'Debug' And Exists('..\..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj')" />
-    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" Condition="'$(Configuration)' == 'Debug' And !Exists('..\..\..\..\..\..\wpf-labs\src\DevFlow\LeXtudio.DevFlow.Agent.Core\LeXtudio.DevFlow.Agent.Core.csproj')" />
+         only way to force real layout deterministically. -->
+    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />

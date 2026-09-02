@@ -19,8 +19,9 @@
     <PackageVersion Include="GuiLabs.Language.Xml" Version="1.2.93" />
     <!-- Derives the assembly version from git tags; see GitVersion.yml. -->
     <PackageVersion Include="GitVersion.MsBuild" Version="6.5.1" />
-    <PackageVersion Include="LeXtudio.DevFlow.Agent.Core" Version="0.2.4" />
-    <PackageVersion Include="LeXtudio.DevFlow.Agent.LibreWpf" Version="0.2.4" />
+    <PackageVersion Include="LeXtudio.DevFlow.Agent.Core" Version="0.2.5" />
+    <PackageVersion Include="LeXtudio.DevFlow.Agent.LibreWpf" Version="0.2.5" />
+    <PackageVersion Include="LeXtudio.DevFlow.Agent.Wpf" Version="0.2.5" />
     <PackageVersion Include="McMaster.Extensions.CommandLineUtils" Version="5.1.0" />
     <PackageVersion Include="MessagePack" Version="3.1.8" />
     <PackageVersion Include="Microsoft.Build" Version="18.8.2" />
@@ -59,13 +60,13 @@
          'NuGet.Commands, Version=7.6.0.0...'" - see SharpDevelop.csproj's reference. -->
     <PackageVersion Include="NuGet.Commands" Version="7.6.0" />
     <PackageVersion Include="NuGet.Protocol" Version="7.6.0" />
-    <PackageVersion Include="ProGPU.System.Drawing.Common" Version="0.1.0-preview.55" />
-    <PackageVersion Include="ProGPU.WinUI" Version="0.1.0-preview.55" />
-    <PackageVersion Include="ProGPU.WinUI.Designer" Version="0.1.0-preview.55" />
-    <PackageVersion Include="ProGPU.WinUI.Themes.Fluent" Version="0.1.0-preview.55" />
-    <PackageVersion Include="ProGPU.Xaml" Version="0.1.0-preview.55" />
-    <PackageVersion Include="ProGPU.Xaml.Roslyn" Version="0.1.0-preview.55" />
-    <PackageVersion Include="ProGPU.Xaml.Workspaces" Version="0.1.0-preview.55" />
+    <PackageVersion Include="ProGPU.System.Drawing.Common" Version="0.1.0-preview.48" />
+    <PackageVersion Include="ProGPU.WinUI" Version="0.1.0-preview.48" />
+    <PackageVersion Include="ProGPU.WinUI.Designer" Version="0.1.0-preview.48" />
+    <PackageVersion Include="ProGPU.WinUI.Themes.Fluent" Version="0.1.0-preview.48" />
+    <PackageVersion Include="ProGPU.Xaml" Version="0.1.0-preview.48" />
+    <PackageVersion Include="ProGPU.Xaml.Roslyn" Version="0.1.0-preview.48" />
+    <PackageVersion Include="ProGPU.Xaml.Workspaces" Version="0.1.0-preview.48" />
     <!-- Only the Microsoft WinUI host references this explicitly; it pins the same version
          Uno.Sdk already brings into WinUIXamlDesigner.UnoHost, so the DesignHost.cs both hosts
          share encodes exported PNGs through one identical Skia build. -->

@@ -67,7 +67,14 @@ $ridFamily = if ($IsWindows) { 'win' } else { 'osx' }
 
 # macOS keeps building for the host's own architecture only (Invoke-MacPackaging), a single pass
 # with no RID suffix on the publish directory - $null here means "don't pass -p:RuntimeIdentifier".
-$ridsToBuild = if ($IsWindows) { $RuntimeIdentifiers } else { @($null) }
+#
+# Built as an explicit statement, NOT "$ridsToBuild = if (...) { ... } else { @($null) }" - when an
+# if/else used as an EXPRESSION returns a single-element array whose only element is $null,
+# PowerShell's pipeline unwrapping silently collapses the assignment to an empty array. That made
+# $ridsToBuild.Count -eq 0 on macOS, so the foreach loop at the bottom of this script never ran -
+# dist.macos.sh exited 0 having done nothing, with no error and no output.
+[array]$ridsToBuild = @()
+if ($IsWindows) { $ridsToBuild = $RuntimeIdentifiers } else { $ridsToBuild = @($null) }
 
 function New-TempDir {
     $p = Join-Path ([System.IO.Path]::GetTempPath()) ("opendevelop-" + [System.Guid]::NewGuid().ToString('N'))

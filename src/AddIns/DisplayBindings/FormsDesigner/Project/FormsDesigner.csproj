@@ -108,7 +108,7 @@
          locally; that relative path doesn't hold from this AddIn's location, so use the package
          directly here instead. -->
     <ProjectReference Include="..\..\..\..\..\externals\wpftoolkit\ExtendedWPFToolkitSolution\Src\Xceed.Wpf.Toolkit\Xceed.Wpf.Toolkit.csproj" Private="false" />
-    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" Condition="'$(Configuration)' == 'Debug'" />
+    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" />
     <ProjectReference Include="..\Remote\FormsDesigner.Remote.csproj" />
     <ProjectReference Include="..\Host\FormsDesigner.Host.csproj" ReferenceOutputAssembly="false" />
     <!-- The Microsoft child is a separate WindowsDesktop executable.  It must be deployed
