@@ -18,6 +18,37 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Equal(expected, FormsDesignerHostClient.ResolveBackend(useMicrosoftDesktopRuntime, runtimeOverride));
 	}
 
+	/// <summary>
+	/// Regression test: opening a plain "Microsoft.NET.Sdk" WinForms project (e.g. JexusManager -
+	/// UseWindowsForms=true, TargetFramework net9.0-windows...) never sets the bespoke
+	/// UseMicrosoftDesktopRuntime property, which only three projects in this repo's own src/ tree
+	/// set. Before this fix, ResolveBackend defaulted every such project to LibreWinForms even on
+	/// Windows, contradicting doc/technotes/winforms-designer.md's documented "explicit by target
+	/// framework and platform" selection and routing real desktop projects through the portable
+	/// fork's out-of-process host, which has its own unrelated packaging gaps. On Windows, a TFM
+	/// that targets Windows specifically must resolve to the real Microsoft backend unless something
+	/// more specific overrides it; a TFM with no Windows suffix keeps the previous Libre default.
+	/// </summary>
+	[Theory]
+	[InlineData("net9.0-windows10.0.17763.0", FormsDesignerBackend.MicrosoftWinForms)]
+	[InlineData("net10.0-windows", FormsDesignerBackend.MicrosoftWinForms)]
+	[InlineData("net8.0", FormsDesignerBackend.LibreWinForms)]
+	[InlineData("", FormsDesignerBackend.LibreWinForms)]
+	public void ResolveBackend_WithNoExplicitChoice_PicksByTargetFrameworkOnWindows(
+		string targetFramework, FormsDesignerBackend expected)
+	{
+		Assert.Equal(expected, FormsDesignerHostClient.ResolveBackend("", "", targetFramework));
+	}
+
+	[Fact]
+	public void ResolveBackend_ExplicitPropertyOrOverrideStillWinsOverTargetFramework()
+	{
+		Assert.Equal(FormsDesignerBackend.LibreWinForms,
+			FormsDesignerHostClient.ResolveBackend("false", "", "net9.0-windows10.0.17763.0"));
+		Assert.Equal(FormsDesignerBackend.LibreWinForms,
+			FormsDesignerHostClient.ResolveBackend("", "libre", "net9.0-windows10.0.17763.0"));
+	}
+
 	/// <summary>The child host binary under test. Defaults to the LibreWinForms host; setting
 	/// OPENDEVELOP_FORMSDESIGNER_HOST_DLL points this same suite at the Microsoft WindowsDesktop
 	/// host (FormsDesigner/MicrosoftHost), which source-links the same host implementation. The

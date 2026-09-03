@@ -530,7 +530,9 @@ namespace ICSharpCode.FormsDesigner
 		FormsDesignerBackend GetProjectBackend()
 		{
 			var project = GetProjectForFile() as MSBuildBasedProject;
-			return FormsDesignerHostClient.ResolveBackend(project?.GetEvaluatedProperty("UseMicrosoftDesktopRuntime"), "");
+			return FormsDesignerHostClient.ResolveBackend(
+				project?.GetEvaluatedProperty("UseMicrosoftDesktopRuntime"), "",
+				project?.GetEvaluatedProperty("TargetFramework"));
 		}
 		
 		bool hasUnmergedChanges;

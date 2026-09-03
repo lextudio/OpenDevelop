@@ -60,17 +60,34 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		/// decide the normal project route because Microsoft and Libre projects can be open
 		/// in the same IDE process.
 		/// </summary>
-		public static FormsDesignerBackend ResolveBackend(string useMicrosoftDesktopRuntime, string runtimeOverride = null)
+		/// <param name="targetFramework">
+		/// The project's evaluated TargetFramework (e.g. "net9.0-windows10.0.17763.0"), used only
+		/// when neither an explicit override nor <paramref name="useMicrosoftDesktopRuntime"/> picks
+		/// a backend. Per doc/technotes/winforms-designer.md ("host selection is explicit by target
+		/// framework and platform"), LibreWinForms exists so WinForms design still works on macOS,
+		/// where no real System.Windows.Forms implementation exists at all - it was never meant to be
+		/// the default on Windows. A project whose TFM targets Windows specifically is an ordinary
+		/// desktop app - virtually every real-world WinForms project a user opens, including ones
+		/// with no idea OpenDevelop's bespoke UseMicrosoftDesktopRuntime property exists - and should
+		/// use the real, already-installed Microsoft WinForms rather than the portable fork.
+		/// </param>
+		public static FormsDesignerBackend ResolveBackend(string useMicrosoftDesktopRuntime, string runtimeOverride = null, string targetFramework = null)
 		{
 			var selectedOverride = runtimeOverride ?? Environment.GetEnvironmentVariable("OD_FORMS_RUNTIME");
 			if (string.Equals(selectedOverride, "microsoft", StringComparison.OrdinalIgnoreCase))
 				return FormsDesignerBackend.MicrosoftWinForms;
 			if (string.Equals(selectedOverride, "libre", StringComparison.OrdinalIgnoreCase))
 				return FormsDesignerBackend.LibreWinForms;
-			return bool.TryParse(useMicrosoftDesktopRuntime, out var useMicrosoft) && useMicrosoft
-				? FormsDesignerBackend.MicrosoftWinForms
-				: FormsDesignerBackend.LibreWinForms;
+			if (bool.TryParse(useMicrosoftDesktopRuntime, out var useMicrosoft))
+				return useMicrosoft ? FormsDesignerBackend.MicrosoftWinForms : FormsDesignerBackend.LibreWinForms;
+			if (OperatingSystem.IsWindows() && TargetsWindowsPlatform(targetFramework))
+				return FormsDesignerBackend.MicrosoftWinForms;
+			return FormsDesignerBackend.LibreWinForms;
 		}
+
+		static bool TargetsWindowsPlatform(string targetFramework)
+			=> !string.IsNullOrEmpty(targetFramework) &&
+			   targetFramework.IndexOf("-windows", StringComparison.OrdinalIgnoreCase) >= 0;
 
 		public static string GetBackendName(FormsDesignerBackend backend)
 			=> backend == FormsDesignerBackend.MicrosoftWinForms ? "WinForms" : "LibreWinForms";
