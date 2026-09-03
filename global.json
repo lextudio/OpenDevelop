@@ -4,7 +4,7 @@
     "rollForward": "latestMinor"
   },
   "msbuild-sdks": {
-    "LibreWPF.Sdk": "0.1.0-preview.48"
+    "LibreWPF.Sdk": "0.1.0-preview.55"
   },
   "test": {
     "runner": "Microsoft.Testing.Platform"
