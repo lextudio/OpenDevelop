@@ -34,6 +34,19 @@ for a in "$@"; do
   esac
 done
 
+# Ensure MSBuild subprocesses (GitVersion, etc.) can find the dotnet host.
+dotnet_bin="$(command -v dotnet 2>/dev/null || true)"
+if [[ -z "${dotnet_bin}" ]]; then
+  for c in /opt/homebrew/bin/dotnet /usr/local/share/dotnet/dotnet; do
+    if [[ -x "${c}" ]]; then dotnet_bin="${c}"; break; fi
+  done
+fi
+if [[ -n "${dotnet_bin}" ]]; then
+  dotnet_dir="$(cd "$(dirname "${dotnet_bin}")" && pwd)"
+  export PATH="${dotnet_dir}:${PATH}"
+  export DOTNET_ROOT="${dotnet_dir}"
+fi
+
 # macOS's default bash (3.2) treats "${arr[@]}" on an EMPTY array as an unbound-variable
 # error under `set -u` - guard explicitly instead of relying on `${arr[@]:-}`-style
 # workarounds that read oddly for an array (same trick as rebuild-all.sh).
