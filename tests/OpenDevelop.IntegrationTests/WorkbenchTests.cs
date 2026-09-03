@@ -178,6 +178,44 @@ public sealed class WorkbenchTests
     }
 
     [Fact]
+    public async Task OpenSlnx_WithEmptyFolderElement_DoesNotHang()
+    {
+        // Regression test for a hang reported when opening JexusManager's .slnx: it declares an
+        // empty placeholder folder (<Folder Name="/.nuget/" />, self-closing, no children), a
+        // common convention for a "Solution Items"-style folder. SlnxSolutionLoader.ReadFolderContents
+        // only advanced the XmlReader past a <Folder> when it had children; for a self-closing one it
+        // returned without moving the reader, so the caller's while loop kept re-reading the exact
+        // same node forever - allocating a brand new SolutionFolder on every iteration, on the UI
+        // thread, until the process ran out of memory. Worked on a copy since this rewrites the .slnx.
+        var workingDir = Path.Combine(Path.GetTempPath(), "SlnxEmptyFolderTests-" + Guid.NewGuid().ToString("N"));
+        CopyFixtureDirectory(Path.GetDirectoryName(_app.SlnxFixturePath)!, workingDir);
+        var slnxPath = Path.Combine(workingDir, Path.GetFileName(_app.SlnxFixturePath));
+
+        try
+        {
+            var original = File.ReadAllText(slnxPath);
+            var withEmptyFolder = original.Replace("<Solution>", "<Solution>\n  <Folder Name=\"/.nuget/\" />");
+            Assert.Contains("<Folder Name=\"/.nuget/\" />", withEmptyFolder);
+            File.WriteAllText(slnxPath, withEmptyFolder);
+
+            var result = await _app.ReopenSolutionAsync(slnxPath);
+
+            Assert.True(result.GetProperty("success").GetBoolean(), result.ToString());
+            Assert.Equal(slnxPath, result.GetProperty("currentSolution").GetString());
+
+            // The loader must have kept going past the empty folder and loaded the real project(s),
+            // not bailed out into an empty shell.
+            var tree = await _app.InvokeAsync("od.solution-tree");
+            Assert.Equal(slnxPath, tree.GetProperty("solutionFile").GetString());
+            Assert.NotEmpty(tree.GetProperty("projects").EnumerateArray().ToList());
+        }
+        finally
+        {
+            try { Directory.Delete(workingDir, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
     public async Task OpenSln_MigratesToSlnxAndOpensTheSlnx()
     {
         // Opening a classic .sln converts it to the XML .slnx format first and opens that, so the

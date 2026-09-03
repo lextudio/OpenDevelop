@@ -252,6 +252,14 @@ namespace ICSharpCode.SharpDevelop.Project
 					}
 				}
 			}
+			else
+			{
+				// Self-closing <Folder ... /> (e.g. an empty ".nuget" placeholder folder):
+				// the reader must still be advanced past this element, otherwise the caller's
+				// while loop re-reads the same node forever, allocating a new SolutionFolder
+				// on every iteration until memory is exhausted.
+				reader.Read();
+			}
 		}
 		
 		static ProjectLoadInformation PopulateProject(Solution solution, XmlReader reader)
