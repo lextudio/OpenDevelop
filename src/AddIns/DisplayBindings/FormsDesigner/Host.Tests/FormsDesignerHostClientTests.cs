@@ -80,6 +80,38 @@ public sealed class FormsDesignerHostClientTests
 				"../../../../Host.Tests/CustomControl/bin/Debug/net10.0-windows/FormsDesigner.CustomControlFixture.dll"));
 		#endif
 
+	/// <summary>
+	/// Regression test: a designer file that references an enum member through its fully-qualified
+	/// static path - "System.Drawing.FontStyle.Bold", the style VS/OpenDevelop's own generator and
+	/// most real-world hand-written .Designer.cs files use (e.g. JexusManager's MainForm.Designer.cs
+	/// line 416: <c>new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Bold)</c>)
+	/// - used to evaluate to null: EvaluateMember only recognized a MemberAccessExpressionSyntax
+	/// chain as a type once recursive evaluation bottomed out at an already-resolved Type, but each
+	/// intermediate segment ("System", "System.Drawing") is not a resolvable value, so the whole
+	/// chain silently evaluated to null. Activator.CreateInstance then received a null third
+	/// argument for Font's constructor and could not disambiguate between same-arity overloads that
+	/// differ only in that parameter's enum type (FontStyle vs GraphicsUnit), throwing
+	/// AmbiguousMatchException instead of loading the designer.
+	/// </summary>
+	[Fact]
+	public async Task ChildHost_ResolvesFullyQualifiedEnumMemberInObjectCreation()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		var hostDll = HostDll();
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
+
+		var snapshot = Snapshot(1, "button1");
+		var designer = snapshot.Files.Single(item => item.Kind == "Designer");
+		designer.Text = designer.Text.Replace("this.button1.Text = \"button1\";",
+			"this.button1.Text = \"button1\";\n        this.button1.Font = new System.Drawing.Font(\"Microsoft Sans Serif\", 8.25F, System.Drawing.FontStyle.Bold);",
+			StringComparison.Ordinal);
+
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted);
+		var button1 = Assert.Single(opened.Components, component => component.Name == "button1");
+		Assert.Contains(button1.Properties, property => property.Name == "Font" && !property.IsNull);
+	}
+
 	[Fact]
 	public async Task ChildHost_HandshakesRejectsStaleVersionsAndFlushesCurrentSnapshot()
 	{

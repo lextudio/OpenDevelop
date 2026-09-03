@@ -10,6 +10,7 @@ using VbSyntax = Microsoft.CodeAnalysis.VisualBasic.Syntax;
 using System.Windows.Forms;
 using System.Xml.Linq;
 using System.Drawing;
+using System.Reflection;
 
 namespace ICSharpCode.FormsDesigner.Host;
 
@@ -244,9 +245,20 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		_ => expression.ToString().Split('.').Last()
 	};
 
+	// access.Expression is often a fully-qualified static type name rather than a value-producing
+	// expression - e.g. "System.Drawing.FontStyle" in "System.Drawing.FontStyle.Bold". Evaluate()
+	// cannot resolve that on its own: it only recognizes a MemberAccessExpressionSyntax chain as a
+	// type once it bottoms out at an owner that is already a Type, but each intermediate segment
+	// ("System", "System.Drawing") is not itself a type name and evaluates to null, so the whole
+	// chain silently evaluates to null instead of the enum value. A null argument in an enum
+	// constructor-parameter slot doesn't just fail - it makes Activator.CreateInstance's binder
+	// unable to pick between same-arity overloads that differ only in that parameter's enum type
+	// (e.g. Font(string, float, FontStyle) vs Font(string, float, GraphicsUnit)), throwing
+	// AmbiguousMatchException. Try the qualified name as a type first; only fall back to evaluating
+	// it as a value when it isn't one (e.g. chained instance property access).
 	object? EvaluateMember(MemberAccessExpressionSyntax access)
 	{
-		var owner = Evaluate(access.Expression);
+		var owner = ResolveType(access.Expression.ToString()) ?? Evaluate(access.Expression);
 		if (owner is Type type)
 			return type.IsEnum ? Enum.Parse(type, access.Name.Identifier.ValueText) : type.GetField(access.Name.Identifier.ValueText)?.GetValue(null);
 		return owner == null ? null : TypeDescriptor.GetProperties(owner)[access.Name.Identifier.ValueText]?.GetValue(owner);
@@ -254,7 +266,7 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 
 	object? EvaluateMemberVisualBasic(VbSyntax.MemberAccessExpressionSyntax access)
 	{
-		var owner = EvaluateVisualBasic(access.Expression);
+		var owner = ResolveType(access.Expression.ToString()) ?? EvaluateVisualBasic(access.Expression);
 		if (owner is Type type)
 			return type.IsEnum ? Enum.Parse(type, access.Name.Identifier.ValueText) : type.GetField(access.Name.Identifier.ValueText)?.GetValue(null);
 		return owner == null ? null : TypeDescriptor.GetProperties(owner)[access.Name.Identifier.ValueText]?.GetValue(owner);
@@ -265,7 +277,7 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		var type = ResolveType(creation.Type.ToString());
 		if (type == null) return null;
 		var args = creation.ArgumentList?.Arguments.Select(a => Evaluate(a.Expression)).ToArray() ?? [];
-		return Activator.CreateInstance(type, args);
+		return CreateInstance(type, args);
 	}
 
 	object? CreateValueVisualBasic(VbSyntax.ObjectCreationExpressionSyntax creation)
@@ -273,7 +285,63 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		var type = ResolveType(creation.Type.ToString());
 		if (type == null) return null;
 		var args = creation.ArgumentList?.Arguments.Select(a => EvaluateVisualBasic(((VbSyntax.SimpleArgumentSyntax)a).Expression)).ToArray() ?? [];
+		return CreateInstance(type, args);
+	}
+
+	/// <summary>
+	/// Activator.CreateInstance(type, args) picks an overload by exact/coercible argument Type
+	/// identity, which breaks when the host process has two independently loaded assemblies each
+	/// defining a type with the same full name (the duplicate-System.Drawing-facade hazard;
+	/// ProGPU.Wpf.Sdk.targets' _ProGpuWpfSdkRemoveNetCoreSystemDrawingFacade documents the identical
+	/// problem elsewhere in this codebase): a resolved enum value's Type may not be reference-equal
+	/// to the target constructor parameter's Type even though both are "the same" enum by name -
+	/// e.g. resolving System.Drawing.FontStyle.Bold can hand back a FontStyle from a different
+	/// loaded System.Drawing than the one Font's own constructor parameter expects, throwing
+	/// MissingMethodException. Pick the constructor ourselves - matching each parameter by simple
+	/// type name once exact instance matching fails - and convert every argument to that
+	/// constructor's own parameter type via ConvertValue (Enum.ToObject converts across
+	/// distinct-but-same-named enum Types through their shared underlying integral value).
+	/// </summary>
+	static object? CreateInstance(Type type, object?[] args)
+	{
+		var ctor = FindConstructor(type, args);
+		if (ctor != null) return Invoke(ctor, args);
+
+		// System.Drawing.Font's well-known 3-arg convenience overload - new Font(familyName,
+		// emSize, style), exactly what VS/OpenDevelop's own designer-generated code and
+		// hand-written .Designer.cs files commonly emit for a non-default font - is implemented by
+		// real System.Drawing.Common as the 4-arg form with GraphicsUnit.Point. The portable
+		// reimplementation this host runs against when the project resolves to LibreWinForms
+		// (ProGPU.System.Drawing.Common) does not ship that convenience overload at all, only the
+		// explicit-unit ones, so widen once with that same default unit before giving up - the GDI+
+		// GraphicsUnit enum's values (World=0 ... Point=3) are stable and documented, so this does
+		// not depend on which assembly's copy of the enum type is loaded.
+		if (type.FullName == "System.Drawing.Font" && args.Length == 3) {
+			var widerCtor = type.GetConstructors().FirstOrDefault(c => {
+				var parameters = c.GetParameters();
+				return parameters.Length == 4 && parameters[3].ParameterType.Name == "GraphicsUnit";
+			});
+			if (widerCtor != null) {
+				var unit = Enum.ToObject(widerCtor.GetParameters()[3].ParameterType, 3); // GraphicsUnit.Point
+				return Invoke(widerCtor, [.. args, unit]);
+			}
+		}
 		return Activator.CreateInstance(type, args);
+	}
+
+	static ConstructorInfo? FindConstructor(Type type, object?[] args) =>
+		type.GetConstructors().Where(c => c.GetParameters().Length == args.Length)
+			.FirstOrDefault(c => c.GetParameters().Select((p, i) => (p, i)).All(pair =>
+				args[pair.i] == null || pair.p.ParameterType.IsInstanceOfType(args[pair.i])
+					|| pair.p.ParameterType.Name == args[pair.i]!.GetType().Name));
+
+	static object Invoke(ConstructorInfo ctor, object?[] args)
+	{
+		var parameters = ctor.GetParameters();
+		var converted = new object?[args.Length];
+		for (var i = 0; i < args.Length; i++)
+			converted[i] = args[i] == null ? null : ConvertValue(args[i]!, parameters[i].ParameterType);
+		return ctor.Invoke(converted);
 	}
 
 	object? ResolveObject(string name) => components.TryGetValue(StripMe(name), out var component) ? component : ResolveType(name);
@@ -295,8 +363,15 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		return projectTypeResolver(name) ?? AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name, false)).FirstOrDefault(t => t != null);
 	}
 
+	// Enum.ToObject(Type, object) only accepts the underlying integral primitive (Int32, Byte, ...);
+	// a boxed value that is itself an Enum of a different (but same-named) Type - the
+	// duplicate-System.Drawing-facade hazard described on CreateInstance - is not one of those
+	// primitives and throws ArgumentException, even though converting it is exactly the point.
+	// Unwrap through its underlying integral value first so cross-assembly enum-to-enum conversion
+	// works the same as int-to-enum.
 	static object? ConvertValue(object value, Type target) => target.IsInstanceOfType(value) ? value
-		: target.IsEnum ? Enum.ToObject(target, value) : Convert.ChangeType(value, target, CultureInfo.InvariantCulture);
+		: target.IsEnum ? Enum.ToObject(target, value is Enum enumValue ? Convert.ToInt64(enumValue, CultureInfo.InvariantCulture) : value)
+		: Convert.ChangeType(value, target, CultureInfo.InvariantCulture);
 	static object? Negate(object? value) => value switch { int n => -n, long n => -n, float n => -n, double n => -n, _ => value };
 	static string StripThis(string value) => value.StartsWith("this.", StringComparison.Ordinal) ? value[5..] : value;
 	static string StripMe(string value) => value.StartsWith("Me.", StringComparison.Ordinal) ? value[3..]
