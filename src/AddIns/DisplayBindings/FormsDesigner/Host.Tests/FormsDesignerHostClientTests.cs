@@ -433,6 +433,108 @@ public sealed class FormsDesignerHostClientTests
 		Assert.False(client.IsAlive);
 	}
 
+	/// <summary>
+	/// Regression test for the WinForms smart-tag/DesignerActionList popup and the ToolStrip
+	/// "insert item" chevron. Both are Microsoft-backend-only (LibreWinForms has no
+	/// System.ComponentModel.Design.DesignerActionService support), so the smart-tag assertions
+	/// are gated on MICROSOFT_FORMS_DESIGNER_HOST; add-toolstrip-item is asserted to at least fail
+	/// clearly on the Libre host instead of silently no-opping.
+	/// </summary>
+	[Fact]
+	public async Task ChildHost_SupportsSmartTagActionsAndToolStripItemInsertion()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		var hostDll = HostDll();
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
+
+		var snapshot = new DesignerDocumentSnapshot {
+			Version = 1,
+			PrimaryFileName = "/project/Form1.cs",
+			DesignerFileName = "/project/Form1.Designer.cs",
+			Files = {
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.cs", Kind = "Source",
+					Text = "namespace Sample; partial class Form1 { }"
+				},
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.Designer.cs", Kind = "Designer",
+					Text = """
+						namespace Sample;
+						partial class Form1
+						{
+						    private void InitializeComponent()
+						    {
+						        this.menuStrip1 = new System.Windows.Forms.MenuStrip();
+						        this.menuStrip1.Name = "menuStrip1";
+						        this.Controls.Add(this.menuStrip1);
+						    }
+						    private System.Windows.Forms.MenuStrip menuStrip1;
+						}
+						"""
+				}
+			}
+		};
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted);
+		Assert.Contains(opened.Components, component => component.Name == "menuStrip1");
+
+#if MICROSOFT_FORMS_DESIGNER_HOST
+		// menuStrip1's registered ToolStripActionList exposes "Insert Standard Items" (a method
+		// item) and RenderMode/Dock (property items) - real VS smart-tag content, not a fixture.
+		var actions = await client.ListSmartTagActionsAsync(1, "menuStrip1", timeout.Token);
+		Assert.True(actions.Accepted);
+		Assert.NotEmpty(actions.Items);
+		var insertStandardItems = Assert.Single(actions.Items,
+			item => item.Kind == "Method" && item.DisplayName.Contains("Insert Standard Items", StringComparison.OrdinalIgnoreCase));
+		var renderMode = Assert.Single(actions.Items, item => item.Kind == "Property" && item.MemberName == "RenderMode");
+		Assert.True(renderMode.IsEnum);
+
+		// Mechanical proof the method-item RPC path works end to end (a real
+		// DesignerActionMethodItem resolved by (listIndex, itemIndex) and invoked inside a
+		// transaction, no exception). This particular method
+		// (ToolStripActionList.InsertStandardItems) is itself a no-op in this headless host - real
+		// WinForms only actually populates items when a BehaviorService is present (VS's
+		// interactive chrome), which this offscreen DesignSurface deliberately never registers - so
+		// it is not asserted to add components; that would assert Microsoft's own internal
+		// implementation detail rather than this host's contract.
+		var afterInsert = await client.InvokeSmartTagMethodAsync(1, "menuStrip1", insertStandardItems.ListIndex, insertStandardItems.ItemIndex, timeout.Token);
+		Assert.True(afterInsert.Accepted);
+
+		// The property-item edit path: a smart-tag property (RenderMode) round-trips through the
+		// EXISTING design/set-property RPC via PropertyOwnerElementId + MemberName, proving the
+		// popup's inline editor needs no new "commit" RPC of its own.
+		var ownerElementId = String.IsNullOrEmpty(renderMode.PropertyOwnerElementId) ? "menuStrip1" : renderMode.PropertyOwnerElementId;
+		var renderModeSet = await client.SetPropertyAsync(1, ownerElementId, renderMode.MemberName, "Professional", timeout.Token);
+		Assert.True(renderModeSet.Accepted);
+		Assert.Contains(renderModeSet.Components.Single(c => c.Name == "menuStrip1").Properties,
+			property => property.Name == "RenderMode" && property.Value == "Professional");
+#endif
+
+#if MICROSOFT_FORMS_DESIGNER_HOST
+		var withItem = await client.AddToolStripItemAsync(1, "menuStrip1", "ToolStripMenuItem", "", "fileToolStripMenuItem", timeout.Token);
+		Assert.True(withItem.Accepted);
+		Assert.Contains(withItem.Components, component => component.Name == "fileToolStripMenuItem"
+			&& component.Type == "System.Windows.Forms.ToolStripMenuItem" && component.Parent == "menuStrip1");
+		var flushed = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Contains("fileToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();", flushed, StringComparison.Ordinal);
+		// Flush's ThisQualifierRewriter drops the redundant "this." prefix (same convention as
+		// every other RewriteAdded* helper in DesignerHostService.cs - see e.g. the plain
+		// "Controls.Add(label1);" assertions above), so the emitted statement has none either.
+		Assert.Contains("menuStrip1.Items.Add(fileToolStripMenuItem);", flushed, StringComparison.Ordinal);
+
+		// A submenu item nests into the parent's DropDownItems rather than the strip's own Items.
+		var withSubItem = await client.AddToolStripItemAsync(1, "menuStrip1", "ToolStripMenuItem", "fileToolStripMenuItem", "openToolStripMenuItem", timeout.Token);
+		Assert.Contains(withSubItem.Components, component => component.Name == "openToolStripMenuItem" && component.Parent == "fileToolStripMenuItem");
+		Assert.Contains("fileToolStripMenuItem.DropDownItems.Add(openToolStripMenuItem);",
+			DesignerText(await client.FlushAsync(1, timeout.Token)), StringComparison.Ordinal);
+#else
+		// LibreWinForms: fail clearly (a thrown NotSupportedException over RPC) instead of
+		// silently no-opping.
+		await Assert.ThrowsAnyAsync<Exception>(() =>
+			client.AddToolStripItemAsync(1, "menuStrip1", "ToolStripMenuItem", "", "fileToolStripMenuItem", timeout.Token));
+#endif
+	}
+
 	[Fact]
 	public async Task ChildHost_BoundsSnapshotsAndSupportsIndependentLifetimes()
 	{

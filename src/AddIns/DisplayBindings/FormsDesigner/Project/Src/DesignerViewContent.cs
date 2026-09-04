@@ -660,6 +660,8 @@ namespace ICSharpCode.FormsDesigner
 				remoteControl.DefaultEventRequested += RemoteDefaultEventRequested;
 				remoteControl.SelectionChanged += RemoteSelectionChanged;
 				remoteControl.RestartRequested += RemoteRestartRequested;
+				remoteControl.SmartTagRequested += RemoteSmartTagRequested;
+				remoteControl.ToolStripInsertRequested += RemoteToolStripInsertRequested;
 				outline.SelectionCommitted += OnOutlineSelectionCommitted;
 				remoteControl.Show(state);
 				UpdateOutline(state);
@@ -901,6 +903,220 @@ namespace ICSharpCode.FormsDesigner
 							FileService.JumpToFilePosition(primary.Key.FileName, line, 1);
 					}
 				}
+			} catch (Exception exception) {
+				LoggingService.Error(exception);
+				MessageService.ShowError(exception.Message);
+			}
+		}
+
+		/// <summary>Smart-tag chevron clicked: fetch the component's DesignerActionList items
+		/// (read-only - not an edit, so it does not go through <see cref="ExecuteRemoteEdit"/>)
+		/// and show them in a small popup anchored on the chevron glyph.</summary>
+		async void RemoteSmartTagRequested(object sender, RemoteSmartTagRequestedEventArgs e)
+		{
+			try {
+				var actions = await remoteClient.ListSmartTagActionsAsync(remoteDocumentVersion, e.ComponentName,
+					System.Threading.CancellationToken.None);
+				if (!actions.Accepted || actions.Items.Count == 0)
+					return;
+				ShowSmartTagPopup(e.Anchor, e.ComponentName, actions.Items);
+			} catch (Exception exception) {
+				LoggingService.Error(exception);
+				MessageService.ShowError(exception.Message);
+			}
+		}
+
+		/// <summary>The one smart-tag/toolstrip-insert popup currently open, if any. A
+		/// <c>Popup</c> with <c>StaysOpen=false</c> only auto-closes on a click OUTSIDE its own
+		/// bounds; leaving a previous instance open (each call here used to create a brand new
+		/// local <c>Popup</c> and never track or close the last one) left an invisible input-
+		/// capturing surface behind that ate the next click anywhere else in the IDE - including
+		/// the Outline pad - which read as "only the first/root item still responds". Explicitly
+		/// closing the previous popup before opening a new one, and clearing this field when a
+		/// popup closes itself, keeps at most one ever open.</summary>
+		System.Windows.Controls.Primitives.Popup activeDesignerPopup;
+
+		void CloseActiveDesignerPopup()
+		{
+			if (activeDesignerPopup != null) {
+				activeDesignerPopup.IsOpen = false;
+				activeDesignerPopup = null;
+			}
+		}
+
+		void ShowSmartTagPopup(System.Windows.FrameworkElement anchor, string componentName, IReadOnlyList<DesignerSmartTagActionInfo> items)
+		{
+			CloseActiveDesignerPopup();
+			var panel = new System.Windows.Controls.StackPanel { Margin = new Thickness(6) };
+			var popup = new System.Windows.Controls.Primitives.Popup {
+				PlacementTarget = anchor,
+				Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom,
+				StaysOpen = false,
+				AllowsTransparency = true,
+				Child = new System.Windows.Controls.Border {
+					Background = System.Windows.SystemColors.WindowBrush,
+					BorderBrush = System.Windows.SystemColors.ActiveBorderBrush,
+					BorderThickness = new Thickness(1),
+					Child = panel
+				}
+			};
+			foreach (var item in items) {
+				switch (item.Kind) {
+				case "Header":
+					panel.Children.Add(new System.Windows.Controls.TextBlock {
+						Text = item.DisplayName, FontWeight = System.Windows.FontWeights.Bold, Margin = new Thickness(2, 4, 2, 2) });
+					break;
+				case "Text":
+					panel.Children.Add(new System.Windows.Controls.TextBlock { Text = item.DisplayName, Margin = new Thickness(2) });
+					break;
+				case "Method": {
+					var button = new System.Windows.Controls.Button { Content = item.DisplayName, Margin = new Thickness(2), HorizontalContentAlignment = System.Windows.HorizontalAlignment.Left };
+					var captured = item;
+					button.Click += async (buttonSender, buttonArgs) => {
+						popup.IsOpen = false;
+						await InvokeSmartTagMethodAsync(componentName, captured);
+					};
+					panel.Children.Add(button);
+					break;
+				}
+				case "Property": {
+					var row = new System.Windows.Controls.DockPanel { Margin = new Thickness(2) };
+					row.Children.Add(new System.Windows.Controls.TextBlock {
+						Text = item.DisplayName, Width = 90, VerticalAlignment = System.Windows.VerticalAlignment.Center });
+					var owner = String.IsNullOrEmpty(item.PropertyOwnerElementId) ? componentName : item.PropertyOwnerElementId;
+					System.Windows.FrameworkElement editor;
+					if (item.TypeName == "System.Boolean") {
+						var check = new System.Windows.Controls.CheckBox { IsChecked = String.Equals(item.Value, "True", StringComparison.OrdinalIgnoreCase) };
+						check.Click += async (checkSender, checkArgs) =>
+							await CommitSmartTagPropertyAsync(owner, item.MemberName, check.IsChecked == true ? "True" : "False");
+						editor = check;
+					} else if (item.IsEnum && item.AllowedValues.Count > 0) {
+						var combo = new System.Windows.Controls.ComboBox { Width = 120 };
+						foreach (var allowed in item.AllowedValues) combo.Items.Add(allowed);
+						combo.SelectedItem = item.Value;
+						combo.SelectionChanged += async (comboSender, comboArgs) => {
+							if (combo.SelectedItem is string selected)
+								await CommitSmartTagPropertyAsync(owner, item.MemberName, selected);
+						};
+						editor = combo;
+					} else {
+						var text = new System.Windows.Controls.TextBox { Text = item.Value, Width = 120 };
+						text.LostFocus += async (textSender, textArgs) =>
+							await CommitSmartTagPropertyAsync(owner, item.MemberName, text.Text);
+						text.KeyDown += async (textSender, keyArgs) => {
+							if (keyArgs.Key == System.Windows.Input.Key.Enter)
+								await CommitSmartTagPropertyAsync(owner, item.MemberName, text.Text);
+						};
+						editor = text;
+					}
+					row.Children.Add(editor);
+					panel.Children.Add(row);
+					break;
+				}
+				}
+			}
+			popup.Closed += (popupSender, popupArgs) => { if (activeDesignerPopup == popup) activeDesignerPopup = null; };
+			activeDesignerPopup = popup;
+			popup.IsOpen = true;
+		}
+
+		async System.Threading.Tasks.Task InvokeSmartTagMethodAsync(string componentName, DesignerSmartTagActionInfo item)
+		{
+			try {
+				DesignerSessionState result = null;
+				ExecuteRemoteEdit(() => result = remoteClient.InvokeSmartTagMethodAsync(remoteDocumentVersion, componentName,
+					item.ListIndex, item.ItemIndex, System.Threading.CancellationToken.None).GetAwaiter().GetResult());
+			} catch (Exception exception) {
+				LoggingService.Error(exception);
+				MessageService.ShowError(exception.Message);
+			}
+		}
+
+		async System.Threading.Tasks.Task CommitSmartTagPropertyAsync(string ownerElementId, string propertyName, string value)
+		{
+			try {
+				ExecuteRemoteEdit(() => remoteClient.SetPropertyAsync(remoteDocumentVersion, ownerElementId, propertyName, value,
+					System.Threading.CancellationToken.None).GetAwaiter().GetResult());
+			} catch (Exception exception) {
+				LoggingService.Error(exception);
+				MessageService.ShowError(exception.Message);
+			}
+			await System.Threading.Tasks.Task.CompletedTask;
+		}
+
+		/// <summary>ToolStrip/StatusStrip/MenuStrip "insert new item" chevron clicked: show a small
+		/// dropdown of item type names appropriate to the strip kind.</summary>
+		void RemoteToolStripInsertRequested(object sender, RemoteToolStripInsertRequestedEventArgs e)
+		{
+			try {
+				CloseActiveDesignerPopup();
+				var itemTypes = e.ComponentType switch {
+					// Mirrors LibreWinForms/real WinForms System.Windows.Forms.Design.ToolStripDesignerUtils'
+					// s_newItemTypesForXxx lists exactly (order included - "default item is
+					// determined by being first in the list").
+					"System.Windows.Forms.MenuStrip" => new[] { "ToolStripMenuItem", "ToolStripComboBox", "ToolStripTextBox" },
+					"System.Windows.Forms.StatusStrip" => new[] { "ToolStripStatusLabel", "ToolStripProgressBar", "ToolStripDropDownButton", "ToolStripSplitButton" },
+					_ => new[] { "ToolStripButton", "ToolStripLabel", "ToolStripSplitButton", "ToolStripDropDownButton", "ToolStripSeparator", "ToolStripComboBox", "ToolStripTextBox", "ToolStripProgressBar" }
+				};
+				var panel = new System.Windows.Controls.StackPanel { Margin = new Thickness(4) };
+				var popup = new System.Windows.Controls.Primitives.Popup {
+					PlacementTarget = e.Anchor,
+					Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom,
+					StaysOpen = false,
+					AllowsTransparency = true,
+					Child = new System.Windows.Controls.Border {
+						Background = System.Windows.SystemColors.WindowBrush,
+						BorderBrush = System.Windows.SystemColors.ActiveBorderBrush,
+						BorderThickness = new Thickness(1),
+						Child = panel
+					}
+				};
+				foreach (var itemType in itemTypes) {
+					// Icon column + text column, matching the real WinForms designer's
+					// NewItemsContextMenuStrip (ToolStripDesignerUtils.GetNewItemDropDown) row
+					// shape - an icon-sized swatch stands in for the real per-type glyph, since
+					// this repo's VS2017 icon set (src/Main/ICSharpCode.Core.Presentation/
+					// Resources/VS2017/) has no Button/Label/SplitButton/etc. WinForms-item icons
+					// to resolve via PresentationResourceService.GetImageSource.
+					var row = new System.Windows.Controls.StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, Margin = new Thickness(2) };
+					row.Children.Add(new System.Windows.Controls.Border {
+						Width = 16, Height = 16, Margin = new Thickness(0, 0, 6, 0),
+						Child = new System.Windows.Shapes.Rectangle { Width = 9, Height = 9, Fill = System.Windows.Media.Brushes.SeaGreen }
+					});
+					row.Children.Add(new System.Windows.Controls.TextBlock { Text = ToolStripItemDisplayName(itemType), VerticalAlignment = System.Windows.VerticalAlignment.Center });
+					var button = new System.Windows.Controls.Button { Content = row, Margin = new Thickness(0), HorizontalContentAlignment = System.Windows.HorizontalAlignment.Left, Padding = new Thickness(4, 2, 8, 2) };
+					button.Click += (buttonSender, buttonArgs) => {
+						popup.IsOpen = false;
+						AddRemoteToolStripItem(e.ComponentName, itemType);
+					};
+					panel.Children.Add(button);
+				}
+				popup.Closed += (popupSender, popupArgs) => { if (activeDesignerPopup == popup) activeDesignerPopup = null; };
+				activeDesignerPopup = popup;
+				popup.IsOpen = true;
+			} catch (Exception exception) {
+				LoggingService.Error(exception);
+				MessageService.ShowError(exception.Message);
+			}
+		}
+
+		/// <summary>"ToolStripSplitButton" -&gt; "SplitButton", matching the real designer's
+		/// NewItemsContextMenuStrip row text (it labels by the CLR type name minus the
+		/// "ToolStrip" prefix - "MenuItem" also comes out this way for ToolStripMenuItem).</summary>
+		static string ToolStripItemDisplayName(string itemType) =>
+			itemType.StartsWith("ToolStrip", StringComparison.Ordinal) ? itemType["ToolStrip".Length..] : itemType;
+
+		void AddRemoteToolStripItem(string stripName, string itemType)
+		{
+			try {
+				var existing = new HashSet<string>((RemoteDesignerState?.Components ?? new List<DesignerComponentInfo>())
+					.Select(item => item.Name), StringComparer.Ordinal);
+				var baseName = Char.ToLowerInvariant(itemType[0]) + itemType.Substring(1);
+				var newItemId = baseName;
+				for (var index = 1; existing.Contains(newItemId); index++)
+					newItemId = baseName + index;
+				ExecuteRemoteEdit(() => remoteClient.AddToolStripItemAsync(remoteDocumentVersion, stripName, itemType, "", newItemId,
+					System.Threading.CancellationToken.None).GetAwaiter().GetResult());
 			} catch (Exception exception) {
 				LoggingService.Error(exception);
 				MessageService.ShowError(exception.Message);

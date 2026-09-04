@@ -54,6 +54,16 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		readonly Thumb resizeThumb;
 		readonly Border disconnectedOverlay;
 		readonly TextBlock disconnectedText;
+		// The VS "smart tag" chevron (DesignerActionList popup) and the ToolStrip/StatusStrip/
+		// MenuStrip "insert new item" chevron. Both are plain Borders (not Button - a Button's
+		// default theme chrome is exactly the opaque-rectangle trap moveThumb's own comment
+		// above describes) positioned by PositionAdorners like every other handle in this file.
+		readonly Border smartTagChevron;
+		readonly Border toolStripInsertChevron;
+		/// <summary>The ToolStrip/MenuStrip/StatusStrip the insert-item glyph currently targets -
+		/// either the selected component itself, or (when a child ToolStripItem is selected
+		/// instead, matching real VS behavior) that item's owning strip.  NULL hides the glyph.</summary>
+		DesignerComponentInfo toolStripHost;
 		long version;
 		DesignerSessionState state;
 		long lastFrameSequence;
@@ -76,6 +86,10 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		int selectedLocalX;
 		int selectedLocalY;
 		bool showTabOrder;
+		/// <summary>Whether each component's name is drawn on the selection outline - wired to
+		/// the shared design-canvas toolbar's "Show Names" toggle (DesignerCanvasCapabilities.
+		/// ShowNames/ShowNamesRequested), which this control did not previously enable.</summary>
+		bool showComponentLabels = true;
 		bool resizingDrag;
 		bool previewResizeDrag;
 		Point previewDragPoint;
@@ -126,7 +140,13 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			this.client = client;
 			Focusable = true;
 			BackendName = backendName;
-			Capabilities = DesignerCanvasCapabilities.Zoom | DesignerCanvasCapabilities.Fit | DesignerCanvasCapabilities.StatusBar;
+			Capabilities = DesignerCanvasCapabilities.Zoom | DesignerCanvasCapabilities.Fit
+				| DesignerCanvasCapabilities.StatusBar | DesignerCanvasCapabilities.ShowNames;
+			IsShowingNames = showComponentLabels;
+			ShowNamesRequested += (_, value) => {
+				showComponentLabels = value;
+				UpdateDesignGuides();
+			};
 			StatusText = $"Starting {BackendName} design host…";
 			// The shared DesignerCanvas shell provides the dotted empty-canvas edge pattern and
 			// the common zoom toolbar; the design surface is transparent so the edge pattern
@@ -174,6 +194,21 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			adorners.Children.Add(moveThumb);
 			adorners.Children.Add(resizeHitTarget);
 			adorners.Children.Add(resizeThumb);
+			smartTagChevron = CreateChevronGlyph("»", Brushes.Goldenrod);
+			smartTagChevron.MouseLeftButtonDown += (sender, args) => {
+				args.Handled = true;
+				if (selectedComponent != null)
+					SmartTagRequested?.Invoke(this, new RemoteSmartTagRequestedEventArgs(selectedComponent.Name, smartTagChevron));
+			};
+			toolStripInsertChevron = CreateToolStripInsertGlyph();
+			toolStripInsertChevron.MouseLeftButtonDown += (sender, args) => {
+				args.Handled = true;
+				if (toolStripHost != null)
+					ToolStripInsertRequested?.Invoke(this, new RemoteToolStripInsertRequestedEventArgs(
+						toolStripHost.Name, toolStripHost.Type, toolStripInsertChevron));
+			};
+			adorners.Children.Add(smartTagChevron);
+			adorners.Children.Add(toolStripInsertChevron);
 			designSurface.Children.Add(adorners);
 			disconnectedText = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) };
 			var restartButton = new Button { Content = "Restart designer", HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(12, 5, 12, 5) };
@@ -212,7 +247,12 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			FitRequested += (_, _) => { fitMode = true; RebuildViewport(); };
 
 			AllowDrop = true;
-			MouseLeftButtonDown += OnMouseLeftButtonDown;
+			// handledEventsToo, NOT a plain += handler: the ScrollViewer between the frame image
+			// and this control marks MouseLeftButtonDown handled on its way up, so a bubbling
+			// handler registered the normal way never ran at all and click-to-select on the canvas
+			// could never work (only the Document Outline could change the selection). The
+			// resize gesture already worked around the same swallowing with a Preview handler.
+			AddHandler(MouseLeftButtonDownEvent, new MouseButtonEventHandler(OnMouseLeftButtonDown), true);
 			MouseMove += OnMouseMove;
 			MouseLeftButtonUp += OnMouseLeftButtonUp;
 			// The ScrollViewer hosting the expandable canvas can consume bubbling mouse events.
@@ -280,6 +320,74 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		public event EventHandler<RemoteComponentEventArgs> DeleteRequested;
 		public event EventHandler<RemoteComponentEventArgs> DefaultEventRequested;
 		public event EventHandler RestartRequested;
+		/// <summary>The smart-tag chevron at the selection's top-right corner was clicked
+		/// (VS calls this the "smart tag" - the popup listing a component's
+		/// DesignerActionList items). The host owns the RPC round-trip and the popup itself
+		/// (matching how <see cref="DeleteRequested"/>/<see cref="BoundsChanged"/> keep the host
+		/// as the sole owner of remote mutation and undo/redo).</summary>
+		public event EventHandler<RemoteSmartTagRequestedEventArgs> SmartTagRequested;
+		/// <summary>The ToolStrip/StatusStrip/MenuStrip "insert new item" chevron was clicked.</summary>
+		public event EventHandler<RemoteToolStripInsertRequestedEventArgs> ToolStripInsertRequested;
+
+		/// <summary>A small (9x9, matching VS's own smart-tag glyph footprint) clickable glyph,
+		/// drawn as a plain Border rather than a Button - see moveThumb's template comment on why
+		/// a real Button/Thumb's default theme chrome cannot be trusted to stay transparent under
+		/// this app's dark theme.</summary>
+		static Border CreateChevronGlyph(string glyph, Brush foreground) => new Border {
+			Width = 9, Height = 9,
+			Background = Brushes.White,
+			BorderBrush = foreground,
+			BorderThickness = new Thickness(1),
+			Cursor = Cursors.Hand,
+			Visibility = Visibility.Collapsed,
+			Child = new TextBlock {
+				Text = glyph, FontSize = 7, Foreground = foreground,
+				HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+				Margin = new Thickness(0, -2, 0, 0)
+			}
+		};
+
+		/// <summary>Mimics the real WinForms designer's "insert new item" affordance
+		/// (LibreWinForms/dotnet-winforms <c>ToolStripTemplateNode.SetUpToolTemplateNode</c>):
+		/// there it is a real <c>ToolStripSplitButton</c> sited at the end of the strip, sized to
+		/// the strip's own item row (22px tall for a ToolStrip/StatusStrip, 19px for a
+		/// MenuStrip/ContextMenuStrip - <c>TOOLSTRIP_TEMPLATE_HEIGHT_ORIGINAL</c>/
+		/// <c>TEMPLATE_HEIGHT_ORIGINAL</c>), with <c>DisplayStyle=Image</c> plus its own built-in
+		/// split-button dropdown arrow cell (<c>DropDownButtonWidth</c>) - i.e. a small icon+▾
+		/// button drawn ON the strip's row, not a lone triangle floating past its bounds. This
+		/// draws the same two-cell shape (icon cell + narrow arrow cell) directly rather than
+		/// reflecting into the internal ToolStripSplitButton renderer.</summary>
+		static Border CreateToolStripInsertGlyph()
+		{
+			var icon = new Border {
+				Width = 14, Height = 18,
+				Background = new SolidColorBrush(Color.FromRgb(0xF3, 0xF3, 0xF3)),
+				Child = new System.Windows.Shapes.Rectangle {
+					Width = 8, Height = 8, Fill = Brushes.SeaGreen,
+					HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
+				}
+			};
+			var arrow = new Border {
+				Width = 9, Height = 18,
+				Background = new SolidColorBrush(Color.FromRgb(0xE4, 0xE4, 0xE4)),
+				Child = new TextBlock {
+					Text = "▾", FontSize = 8, Foreground = Brushes.Black,
+					HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+					Margin = new Thickness(0, -3, 0, 0)
+				}
+			};
+			var row = new StackPanel { Orientation = Orientation.Horizontal, Children = { icon, arrow } };
+			return new Border {
+				// 23x19: matches TOOLSTRIP_TEMPLATE_WIDTH/HEIGHT_ORIGINAL's proportions closely
+				// enough to read as "a strip item", not a decoration past the strip's edge.
+				Width = 23, Height = 19,
+				BorderBrush = Brushes.Gray, BorderThickness = new Thickness(1),
+				Cursor = Cursors.Hand,
+				Visibility = Visibility.Collapsed,
+				Child = row,
+				ToolTip = "Insert new item"
+			};
+		}
 
 		protected override AutomationPeer OnCreateAutomationPeer() => new RemoteDesignerAutomationPeer(this);
 
@@ -384,7 +492,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				Canvas.SetLeft(outline, surfaceX);
 				Canvas.SetTop(outline, surfaceY);
 				guides.Children.Add(outline);
-				if (component.Height >= 18 && component.Width >= 35) {
+				if (showComponentLabels && component.Height >= 18 && component.Width >= 35) {
 					var label = new TextBlock {
 						Text = component.Name, FontSize = 10, Foreground = Brushes.DimGray,
 						Background = new SolidColorBrush(Color.FromArgb(190, 255, 255, 255)),
@@ -450,11 +558,16 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 
 		/// <summary>Selects a single component by name (no-op when unknown), keeping the rest
 		/// of the selection machinery and the <see cref="SelectionChanged"/> event in sync.
-		/// Used by the Document Outline pad.</summary>
+		/// Used by the Document Outline pad. Deliberately does NOT move keyboard focus onto this
+		/// canvas: doing so used to steal focus away from the Outline pad's own TreeView on every
+		/// selection commit, breaking the Outline's own arrow-key navigation (the round trip is
+		/// Outline click/arrow -&gt; SelectionCommitted -&gt; here -&gt; SelectionChanged -&gt;
+		/// DesignerViewContent.RemoteSelectionChanged -&gt; outline.SelectNodeById, so a Focus()
+		/// here always fires on the very next keystroke the user makes in the Outline).</summary>
 		public void SelectComponent(string componentName)
 		{
 			if (componentName != null && state?.Components?.Any(item => item.Name == componentName) == true)
-				SelectSingleComponent(componentName);
+				SelectSingleComponent(componentName, takeFocus: false);
 		}
 
 		public void ToggleSelectedLocked()
@@ -493,9 +606,24 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			return true;
 		}
 
+		/// <summary>Whether the click originated on one of the adorner-layer glyphs (drag/resize
+		/// thumbs, smart tag, ToolStrip insert button), which handle their own clicks. Needed
+		/// because this handler is registered with handledEventsToo, so it also sees the presses
+		/// those glyphs already consumed.</summary>
+		bool IsAdornerSource(object source)
+		{
+			for (var node = source as DependencyObject; node != null; node = VisualTreeHelper.GetParent(node)) {
+				if (node == adorners) return true;
+				if (node == framePresenter.Visual) return false;
+			}
+			return false;
+		}
+
 		async void OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
 		{
 			try {
+				if (previewResizeDrag || resizingDrag || marqueeSelecting || IsAdornerSource(e.OriginalSource))
+					return;
 				var extendSelection = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) || Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
 				// GetPosition on the (possibly zoomed) frame image yields surface pixels;
 				// component bounds and the child's hit-testing are design-space.
@@ -532,7 +660,15 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 					DefaultEventRequested?.Invoke(this, new RemoteComponentEventArgs(SelectedComponentName));
 					e.Handled = true;
 				}
-			} catch { }
+			} catch (Exception exception) {
+				// Was a blanket empty catch - any exception here (including a HitTestAsync RPC
+				// fault) used to make a real click on a real control silently no-op instead of
+				// selecting anything, with no diagnostic trail at all.
+				try {
+					System.IO.File.AppendAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "OpenDevelop.FormsDesigner.host.log"),
+						$"{DateTimeOffset.Now:O} OnMouseLeftButtonDown failed: {exception}{Environment.NewLine}");
+				} catch { }
+			}
 		}
 
 		void OnMouseMove(object sender, MouseEventArgs e)
@@ -626,7 +762,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			return Int32.TryParse(value, out var result) ? result : Int32.MaxValue;
 		}
 
-		void SelectSingleComponent(string componentName)
+		void SelectSingleComponent(string componentName, bool takeFocus = true)
 		{
 			var component = state?.Components?.FirstOrDefault(item => item.Name == componentName);
 			if (component == null) return;
@@ -636,7 +772,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			selectedComponent = component;
 			UpdateDesignGuides();
 			UpdateAdorners();
-			Focus();
+			if (takeFocus) Focus();
 			SelectionChanged?.Invoke(this, EventArgs.Empty);
 		}
 
@@ -1017,6 +1153,21 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			var isRoot = visible && String.IsNullOrEmpty(selectedComponent.Parent);
 			resizeHitTarget.Visibility = resizeThumb.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
 			moveThumb.Visibility = visible && !isRoot ? Visibility.Visible : Visibility.Collapsed;
+			// The smart tag applies to (almost) any selected component - VS shows it even when
+			// a given component's own action-list turns out empty, so showing it eagerly here
+			// and only discovering "no actions" once the popup's own list-smart-tag-actions RPC
+			// comes back empty matches VS's own behavior closer than hiding it up front would
+			// (which would need a synchronous, per-selection RPC round-trip this control's
+			// SelectionChanged path does not otherwise make).
+			smartTagChevron.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+			// VS keeps the "insert new item" glyph visible next to the strip's last item even
+			// while a child ToolStripItem (not the strip itself) is selected - resolve the owning
+			// strip so selecting e.g. a StatusStrip's ProgressBar still shows the glyph.
+			toolStripHost = !visible ? null
+				: IsToolStripHost(selectedComponent.Type) ? selectedComponent
+				: state?.Components?.FirstOrDefault(item => item.Name == selectedComponent.Parent) is { } parent
+					&& IsToolStripHost(parent.Type) ? parent : null;
+			toolStripInsertChevron.Visibility = toolStripHost != null ? Visibility.Visible : Visibility.Collapsed;
 			if (!visible) {
 				adornerLayer.ClearSelection();
 				return;
@@ -1058,7 +1209,59 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			Canvas.SetTop(resizeHitTarget, bottom - resizeHitTarget.Height / 2);
 			Panel.SetZIndex(resizeHitTarget, 99);
 			Panel.SetZIndex(resizeThumb, 100);
+			// Smart tag: anchored at the selection's top-right corner, offset half outside the
+			// bounds - the same corner/offset VS's own smart-tag glyph uses.
+			Canvas.SetLeft(smartTagChevron, right - smartTagChevron.Width / 2);
+			Canvas.SetTop(smartTagChevron, top - smartTagChevron.Height / 2);
+			Panel.SetZIndex(smartTagChevron, 101);
+			// ToolStrip insert chevron: past the RIGHTMOST EXISTING ITEM, not the strip's own
+			// right edge - a Dock=Top strip is normally as wide as its parent, so anchoring to
+			// the control's own bounds would place the glyph off past the form's edge, outside
+			// the visible/rendered area, for any strip that isn't already full of items. Uses the
+			// HOST strip's own bounds/items - not the current selection's - since selecting a
+			// child ToolStripItem (e.g. a StatusStrip's ProgressBar) still shows this glyph
+			// anchored to its owning strip, matching real VS behavior.
+			// Unlike smartTagChevron/resizeThumb (fixed-size adorner HANDLES, deliberately
+			// screen-constant regardless of zoom - matching real drag-handle conventions), this
+			// glyph is meant to read as a real ToolStripItem drawn ON the strip's own bitmap, so
+			// it must scale with the strip the way real VS's actual sited ToolStripSplitButton
+			// item naturally does when its DesignSurface bitmap is zoomed. A RenderTransform
+			// leaves the logical Width/Height (used below for centering) unchanged, so the
+			// effective on-screen size is computed separately as scaledWidth/scaledHeight.
+			var scale = Math.Max(0.1, viewport.Scale);
+			toolStripInsertChevron.RenderTransformOrigin = new Point(0, 0);
+			toolStripInsertChevron.RenderTransform = new ScaleTransform(scale, scale);
+			var scaledHeight = toolStripInsertChevron.Height * scale;
+			var insertLeft = right;
+			var insertTop = top + (bottom - top - scaledHeight) / 2;
+			if (toolStripHost != null) {
+				var (hostLeft, hostTop) = viewport.DesignToSurface(toolStripHost.SurfaceX, toolStripHost.SurfaceY);
+				var (_, hostBottom) = viewport.DesignToSurface(toolStripHost.SurfaceX, toolStripHost.SurfaceY + toolStripHost.Height);
+				var lastItem = state?.Components?.Where(item => item.Parent == toolStripHost.Name)
+					.OrderByDescending(item => item.SurfaceX + item.Width).FirstOrDefault();
+				if (lastItem != null) {
+					var (itemRight, itemTop) = viewport.DesignToSurface(lastItem.SurfaceX + lastItem.Width, lastItem.SurfaceY);
+					var (_, itemBottom) = viewport.DesignToSurface(lastItem.SurfaceX, lastItem.SurfaceY + lastItem.Height);
+					insertLeft = itemRight;
+					insertTop = itemTop + (itemBottom - itemTop - scaledHeight) / 2;
+				} else {
+					// No real items yet: sit just past the strip's own left edge instead of its
+					// (typically much wider) right edge.
+					insertLeft = hostLeft + 4;
+					insertTop = hostTop + (hostBottom - hostTop - scaledHeight) / 2;
+				}
+			}
+			Canvas.SetLeft(toolStripInsertChevron, insertLeft + 2);
+			Canvas.SetTop(toolStripInsertChevron, insertTop);
+			Panel.SetZIndex(toolStripInsertChevron, 101);
 		}
+
+		/// <summary>Whether <paramref name="type"/> is a ToolStrip/StatusStrip/MenuStrip itself
+		/// (not one of its items) - the "insert new item" chevron is only drawn on the strip, not
+		/// per-item; adding a submenu item still works through the same RPC
+		/// (design/add-toolstrip-item's parentItemId), just not yet from this glyph.</summary>
+		static bool IsToolStripHost(string type) => type is "System.Windows.Forms.ToolStrip"
+			or "System.Windows.Forms.MenuStrip" or "System.Windows.Forms.StatusStrip";
 
 		void OnDragOver(object sender, System.Windows.DragEventArgs e)
 		{
@@ -1137,5 +1340,33 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 	{
 		public RemoteComponentEventArgs(string componentName) => ComponentName = componentName;
 		public string ComponentName { get; }
+	}
+
+	/// <summary>The smart-tag chevron was clicked. <see cref="Anchor"/> is the glyph itself, for
+	/// the popup's PlacementTarget.</summary>
+	sealed class RemoteSmartTagRequestedEventArgs : EventArgs
+	{
+		public RemoteSmartTagRequestedEventArgs(string componentName, FrameworkElement anchor)
+		{
+			ComponentName = componentName;
+			Anchor = anchor;
+		}
+		public string ComponentName { get; }
+		public FrameworkElement Anchor { get; }
+	}
+
+	/// <summary>The ToolStrip/StatusStrip/MenuStrip "insert new item" chevron was clicked.
+	/// <see cref="ComponentType"/> picks which item types the popup offers.</summary>
+	sealed class RemoteToolStripInsertRequestedEventArgs : EventArgs
+	{
+		public RemoteToolStripInsertRequestedEventArgs(string componentName, string componentType, FrameworkElement anchor)
+		{
+			ComponentName = componentName;
+			ComponentType = componentType;
+			Anchor = anchor;
+		}
+		public string ComponentName { get; }
+		public string ComponentType { get; }
+		public FrameworkElement Anchor { get; }
 	}
 }

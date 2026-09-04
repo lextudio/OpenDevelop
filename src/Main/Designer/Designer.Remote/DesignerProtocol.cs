@@ -425,4 +425,49 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public bool Success { get; set; }
 		public string Error { get; set; } = "";
 	}
+
+	/// <summary>One <c>DesignerActionItem</c> exposed by a component's smart tag
+	/// (<c>DesignerActionService.GetComponentActions</c>), serialized so the parent can render
+	/// a popup without ever holding the live <c>DesignerActionList</c>/<c>DesignerActionItem</c>
+	/// object (WinForms shape; Microsoft backend only - see
+	/// <c>design/list-smart-tag-actions</c>).</summary>
+	public sealed class DesignerSmartTagActionInfo
+	{
+		/// <summary>Index of the owning <c>DesignerActionList</c> within
+		/// <c>DesignerActionListCollection</c>, needed to re-locate the same item on a later
+		/// <c>design/invoke-smart-tag-method</c> call (the live list is never cached server-side
+		/// between calls).</summary>
+		public int ListIndex { get; set; }
+		/// <summary>Index of the item within <c>DesignerActionList.GetSortedActionItems()</c>.</summary>
+		public int ItemIndex { get; set; }
+		/// <summary>"Method" | "Property" | "Text" | "Header".</summary>
+		public string Kind { get; set; } = "Text";
+		public string DisplayName { get; set; } = "";
+		public string Description { get; set; } = "";
+		public string Category { get; set; } = "";
+		/// <summary>Backing member name for a Method or Property item (<c>MemberName</c>).</summary>
+		public string MemberName { get; set; } = "";
+		/// <summary>Current value for a Property item, invariant-string encoded like
+		/// <see cref="DesignerPropertyInfo.Value"/>. Empty for Method/Text/Header items.</summary>
+		public string Value { get; set; } = "";
+		public string TypeName { get; set; } = "";
+		public bool IsEnum { get; set; }
+		public bool IsNull { get; set; }
+		public bool IsReadOnly { get; set; }
+		/// <summary>Element id that owns <see cref="MemberName"/> for a Property item - almost
+		/// always the selected component's own element id, since the great majority of
+		/// <c>DesignerActionPropertyItem</c>s simply forward to a same-named property on the
+		/// component itself. Lets the client commit an edit through the existing
+		/// <c>design/set-property</c> RPC without a new "set smart tag property" method.</summary>
+		public string PropertyOwnerElementId { get; set; } = "";
+		public List<string> AllowedValues { get; set; } = new();
+	}
+
+	/// <summary>Response to <c>design/list-smart-tag-actions</c>.</summary>
+	public sealed class DesignerSmartTagActions
+	{
+		public bool Accepted { get; set; }
+		public string Error { get; set; } = "";
+		public List<DesignerSmartTagActionInfo> Items { get; set; } = new();
+	}
 }

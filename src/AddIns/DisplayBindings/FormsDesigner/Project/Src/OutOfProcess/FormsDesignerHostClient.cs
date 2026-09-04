@@ -211,6 +211,23 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		public Task DelayAsync(int milliseconds, CancellationToken cancellationToken)
 			=> connection.InvokeAsync<object>("diagnostics/delay", new { milliseconds }, cancellationToken, TimeSpan.FromMilliseconds(250));
 
+		/// <summary>Lists the smart-tag (DesignerActionList) items for a component - the popup
+		/// shown from the chevron button VS draws at a selected component's top-right corner.
+		/// Microsoft backend only; the Libre host returns <c>Accepted=false</c>.</summary>
+		public Task<DesignerSmartTagActions> ListSmartTagActionsAsync(long baseVersion, string elementId, CancellationToken cancellationToken)
+			=> connection.InvokeAsync<DesignerSmartTagActions>("design/list-smart-tag-actions", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId }, cancellationToken);
+
+		/// <summary>Invokes a <c>DesignerActionMethodItem</c> found by (listIndex, itemIndex) from
+		/// the most recent <see cref="ListSmartTagActionsAsync"/> call for the same element.</summary>
+		public Task<DesignerSessionState> InvokeSmartTagMethodAsync(long baseVersion, string elementId, int listIndex, int itemIndex, CancellationToken cancellationToken)
+			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/invoke-smart-tag-method", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, listIndex, itemIndex }, cancellationToken), cancellationToken);
+
+		/// <summary>Creates and appends a new ToolStripItem to a ToolStrip/StatusStrip/MenuStrip
+		/// (or to a submenu's DropDownItems when <paramref name="parentItemId"/> is non-empty) -
+		/// the "insert new item" chevron VS draws past a selected strip's last item.</summary>
+		public Task<DesignerSessionState> AddToolStripItemAsync(long baseVersion, string elementId, string itemTypeName, string parentItemId, string newItemId, CancellationToken cancellationToken)
+			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/add-toolstrip-item", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, itemTypeName, parentItemId = parentItemId ?? "", newItemId }, cancellationToken), cancellationToken);
+
 		static SharedDesignerHostRecovery<FormsDesignerHostClient, Connection> RecoveryFor(CompatibilityKey key)
 		{
 			lock (clientsGate) {

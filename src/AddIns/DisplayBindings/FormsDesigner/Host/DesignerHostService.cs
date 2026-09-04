@@ -117,7 +117,14 @@ sealed class DesignerHostService : IDesignerChildService
 		EnsureCurrentVersion(sessionId, documentId, baseVersion, "hit-test");
 		var host = designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost;
 		var root = host?.RootComponent as Control;
-		var hit = root == null ? null : FindDeepest(root, new Point(x, y));
+		// x/y arrive in surface (rendered bitmap) space; Control/ToolStripItem bounds are
+		// client-space, so strip the root form's non-client offset first.
+		var offset = RootClientOffset(root);
+		var hit = root == null ? null
+			: FindDeepest(root, new Point(x - offset.X, y - offset.Y), host?.Container)
+				// A press on the caption/border falls outside the client area entirely; treat it
+				// as selecting the form itself rather than clearing the selection.
+				?? (x >= 0 && y >= 0 && x < root.Width && y < root.Height ? root : null);
 		return new DesignerHitTestResult {
 			ComponentName = hit?.Site?.Name ?? "",
 			ComponentType = hit?.GetType().FullName ?? ""
@@ -396,6 +403,230 @@ sealed class DesignerHostService : IDesignerChildService
 		return CurrentState(baseVersion);
 	}
 
+#if MICROSOFT_WINFORMS
+	/// <summary>Generic smart-tag listing: works for any component with registered
+	/// DesignerActionLists (VS calls this the "smart tag" - the chevron button at a selected
+	/// component's top-right). LibreWinForms's portable fork has no
+	/// System.ComponentModel.Design.DesignerActionService support, so this whole feature is
+	/// Microsoft-backend only.</summary>
+	[JsonRpcMethod("design/list-smart-tag-actions")]
+	public DesignerSmartTagActions ListSmartTagActions(string sessionId, string documentId, long baseVersion, string elementId)
+	{
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "list smart tag actions for");
+		var host = GetHost();
+		var component = host.Container.Components[elementId]
+			?? throw new ArgumentException("Component not found: " + elementId, nameof(elementId));
+		var lists = GetActionLists(host, component);
+		var items = new List<DesignerSmartTagActionInfo>();
+		if (lists != null) {
+			for (var listIndex = 0; listIndex < lists.Count; listIndex++) {
+				var list = lists[listIndex];
+				var sorted = list.GetSortedActionItems();
+				for (var itemIndex = 0; itemIndex < sorted.Count; itemIndex++)
+					items.Add(DescribeSmartTagItem(list, sorted[itemIndex], listIndex, itemIndex, elementId));
+			}
+		}
+		return new DesignerSmartTagActions { Accepted = true, Items = items };
+	}
+
+	/// <summary>Smart-tag lists come from the component's own <c>ComponentDesigner.ActionLists</c>
+	/// (e.g. <c>ToolStripDesigner</c> overrides it to return <c>ToolStripActionList</c>) rather
+	/// than <c>DesignerActionService.GetComponentActions</c>: the latter only returns anything for
+	/// a component whose designer registered with the service during its own
+	/// <c>Initialize()</c>, which requires <c>DesignerActionService</c> to already be present in
+	/// the container at that moment - something only the VS shell's own designer loader sets up,
+	/// not the bare <see cref="DesignSurface"/> this host constructs. Reading <c>ActionLists</c>
+	/// directly needs no such service.</summary>
+	static DesignerActionListCollection? GetActionLists(IDesignerHost host, IComponent component)
+		=> (host.GetDesigner(component) as ComponentDesigner)?.ActionLists;
+
+	static DesignerSmartTagActionInfo DescribeSmartTagItem(DesignerActionList list, DesignerActionItem item, int listIndex, int itemIndex, string ownerElementId)
+	{
+		var info = new DesignerSmartTagActionInfo {
+			ListIndex = listIndex,
+			ItemIndex = itemIndex,
+			DisplayName = item.DisplayName ?? "",
+			Description = item.Description ?? "",
+			Category = item.Category ?? "",
+		};
+		switch (item) {
+		case DesignerActionMethodItem methodItem:
+			info.Kind = "Method";
+			info.MemberName = methodItem.MemberName ?? "";
+			break;
+		case DesignerActionPropertyItem propertyItem: {
+			info.Kind = "Property";
+			info.MemberName = propertyItem.MemberName ?? "";
+			info.PropertyOwnerElementId = ownerElementId;
+			var property = TypeDescriptor.GetProperties(list)[propertyItem.MemberName];
+			if (property != null) {
+				info.TypeName = property.PropertyType.FullName ?? property.PropertyType.Name;
+				info.IsEnum = property.PropertyType.IsEnum;
+				if (info.IsEnum) info.AllowedValues.AddRange(Enum.GetNames(property.PropertyType));
+				else if (property.PropertyType == typeof(bool)) info.AllowedValues.AddRange(["True", "False"]);
+				try {
+					var value = property.GetValue(list);
+					info.Value = value == null ? "" : (property.Converter.ConvertToInvariantString(value) ?? "");
+				} catch { info.Value = ""; }
+			}
+			break;
+		}
+		// DesignerActionHeaderItem derives from DesignerActionTextItem - check it first.
+		case DesignerActionHeaderItem: info.Kind = "Header"; break;
+		case DesignerActionTextItem: info.Kind = "Text"; break;
+		default: info.Kind = "Text"; break;
+		}
+		return info;
+	}
+
+	/// <summary>Invokes a <c>DesignerActionMethodItem</c> found by re-fetching the same smart
+	/// tag list (never cached between calls - the live <c>DesignerActionList</c> is not a
+	/// serializable DDP object). Many such methods (e.g. ToolStripActionList's "Insert Standard
+	/// Items") mutate the component's runtime child collection directly rather than through a
+	/// property this host already knows how to serialize, so - unlike every other mutation RPC
+	/// in this file - this one does not attempt to rewrite the designer source; the caller sees
+	/// the new state immediately via the returned <see cref="DesignerSessionState"/>, but a
+	/// subsequent Flush will not yet emit source for whatever the method added. Persisting
+	/// arbitrary smart-tag method side effects to source is a follow-up, not attempted here.</summary>
+	[JsonRpcMethod("design/invoke-smart-tag-method")]
+	public DesignerSessionState InvokeSmartTagMethod(string sessionId, string documentId, long baseVersion, string elementId, int listIndex, int itemIndex)
+	{
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "invoke smart tag method for");
+		var host = GetHost();
+		var component = host.Container.Components[elementId]
+			?? throw new ArgumentException("Component not found: " + elementId, nameof(elementId));
+		var lists = GetActionLists(host, component);
+		if (lists == null || listIndex < 0 || listIndex >= lists.Count)
+			throw new ArgumentException("Smart tag action list not found.", nameof(listIndex));
+		var sorted = lists[listIndex].GetSortedActionItems();
+		if (itemIndex < 0 || itemIndex >= sorted.Count || sorted[itemIndex] is not DesignerActionMethodItem methodItem)
+			throw new ArgumentException("Smart tag method item not found.", nameof(itemIndex));
+		using (var transaction = host.CreateTransaction("Invoke " + methodItem.DisplayName)) {
+			methodItem.Invoke();
+			transaction.Commit();
+		}
+		return CurrentState(baseVersion);
+	}
+
+	/// <summary>The ToolStrip/StatusStrip/MenuStrip "insert new item" chevron: creates a real
+	/// sited ToolStripItem via <c>host.CreateComponent</c> (so it is indistinguishable from a
+	/// hand-authored item, unlike the unsited scaffolding <c>BuildElementTree</c> already filters
+	/// out) and appends it to the strip's own Items, or to a submenu's DropDownItems when
+	/// <paramref name="parentItemId"/> names a drop-down item.</summary>
+	[JsonRpcMethod("design/add-toolstrip-item")]
+	public DesignerSessionState AddToolStripItem(string sessionId, string documentId, long baseVersion, string elementId, string itemTypeName, string parentItemId, string newItemId)
+	{
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
+		if (!IsValidIdentifier(newItemId))
+			throw new ArgumentException("A valid component name is required.", nameof(newItemId));
+		var host = GetHost();
+		if (host.Container.Components[newItemId] != null)
+			throw new ArgumentException("A component with that name already exists: " + newItemId, nameof(newItemId));
+		var strip = host.Container.Components[elementId] as ToolStrip
+			?? throw new ArgumentException("ToolStrip not found: " + elementId, nameof(elementId));
+		var parentDropDown = String.IsNullOrEmpty(parentItemId) ? null
+			: host.Container.Components[parentItemId] as ToolStripDropDownItem
+				?? throw new ArgumentException("Parent menu item not found: " + parentItemId, nameof(parentItemId));
+		var type = ResolveToolStripItemType(itemTypeName);
+		ToolStripItem item;
+		using (var transaction = host.CreateTransaction("Add " + newItemId)) {
+			item = (ToolStripItem)host.CreateComponent(type, newItemId);
+			var items = parentDropDown != null ? parentDropDown.DropDownItems : strip.Items;
+			items.Add(item);
+			transaction.Commit();
+		}
+		RewriteAddedToolStripItem(elementId, parentItemId, type, newItemId);
+		return CurrentState(baseVersion);
+	}
+
+	static Type ResolveToolStripItemType(string name) => name switch {
+		"Button" or "ToolStripButton" => typeof(ToolStripButton),
+		"Label" or "ToolStripLabel" => typeof(ToolStripLabel),
+		"SplitButton" or "ToolStripSplitButton" => typeof(ToolStripSplitButton),
+		"DropDownButton" or "ToolStripDropDownButton" => typeof(ToolStripDropDownButton),
+		"Separator" or "ToolStripSeparator" => typeof(ToolStripSeparator),
+		"ComboBox" or "ToolStripComboBox" => typeof(ToolStripComboBox),
+		"TextBox" or "ToolStripTextBox" => typeof(ToolStripTextBox),
+		"ProgressBar" or "ToolStripProgressBar" => typeof(ToolStripProgressBar),
+		"StatusLabel" or "ToolStripStatusLabel" => typeof(ToolStripStatusLabel),
+		"MenuItem" or "ToolStripMenuItem" => typeof(ToolStripMenuItem),
+		_ => throw new NotSupportedException("Unsupported ToolStripItem type: " + name)
+	};
+
+	void RewriteAddedToolStripItem(string stripId, string parentItemId, Type type, string elementId)
+	{
+		if (IsVisualBasic) { RewriteAddedToolStripItemVisualBasic(stripId, parentItemId, type, elementId); return; }
+		var file = current!.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))
+			?? current.Files.First();
+		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
+		var method = root.DescendantNodes().OfType<MethodDeclarationSyntax>()
+			.First(item => item.Identifier.ValueText == "InitializeComponent");
+		var className = method.Ancestors().OfType<ClassDeclarationSyntax>().First().Identifier.ValueText;
+		var collectionExpression = String.IsNullOrEmpty(parentItemId)
+			? $"this.{stripId}.Items" : $"this.{parentItemId}.DropDownItems";
+		var statements = new[] {
+			SyntaxFactory.ParseStatement($"this.{elementId} = new {type.FullName}();\n"),
+			SyntaxFactory.ParseStatement($"{collectionExpression}.Add(this.{elementId});\n")
+		};
+		var updatedMethod = method.WithBody(method.Body!.AddStatements(statements));
+		root = root.ReplaceNode(method, updatedMethod);
+		var declaration = root.DescendantNodes().OfType<ClassDeclarationSyntax>().First(item => item.Identifier.ValueText == className);
+		var field = (FieldDeclarationSyntax)SyntaxFactory.ParseMemberDeclaration($"private {type.FullName} {elementId};\n")!;
+		root = root.ReplaceNode(declaration, declaration.AddMembers(field));
+		file.Text = root.NormalizeWhitespace().ToFullString();
+	}
+
+	void RewriteAddedToolStripItemVisualBasic(string stripId, string parentItemId, Type type, string elementId)
+	{
+		var file = current!.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))
+			?? current.Files.First();
+		var root = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
+		var method = root.DescendantNodes().OfType<VbSyntax.MethodBlockSyntax>()
+			.First(item => item.BlockStatement is VbSyntax.MethodStatementSyntax ms
+				&& ms.DeclarationKeyword.IsKind(Vb.SyntaxKind.SubKeyword)
+				&& ms.Identifier.ValueText == "InitializeComponent");
+		var className = method.Ancestors().OfType<VbSyntax.ClassBlockSyntax>().First().BlockStatement.Identifier.ValueText;
+		var collectionExpression = String.IsNullOrEmpty(parentItemId)
+			? $"Me.{stripId}.Items" : $"Me.{parentItemId}.DropDownItems";
+		var statements = new[] {
+			Vb.SyntaxFactory.ParseExecutableStatement($"Me.{elementId} = New {type.FullName}()"),
+			Vb.SyntaxFactory.ParseExecutableStatement($"{collectionExpression}.Add(Me.{elementId})")
+		};
+		var updatedMethod = method.WithStatements(method.Statements.AddRange(statements));
+		root = root.ReplaceNode(method, updatedMethod);
+		var declaration = root.DescendantNodes().OfType<VbSyntax.ClassBlockSyntax>().First(item => item.BlockStatement.Identifier.ValueText == className);
+		var field = ParseMemberField($"Friend WithEvents {elementId} As {type.FullName}");
+		root = root.ReplaceNode(declaration, declaration.WithMembers(declaration.Members.Add(field)));
+		file.Text = root.NormalizeWhitespace().ToFullString();
+	}
+#else
+	/// <summary>LibreWinForms has no System.ComponentModel.Design.DesignerActionService support
+	/// (verified: its portable fork does not implement the smart-tag/action-list design-time
+	/// services at all, only the base TypeDescriptor property/event model this file already uses
+	/// elsewhere), so the smart-tag and ToolStrip-item-insertion features are Microsoft-backend
+	/// only. Fail clearly rather than silently no-op.</summary>
+	[JsonRpcMethod("design/list-smart-tag-actions")]
+	public DesignerSmartTagActions ListSmartTagActions(string sessionId, string documentId, long baseVersion, string elementId)
+	{
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "list smart tag actions for");
+		return new DesignerSmartTagActions { Accepted = false, Error = "Smart tag actions are only supported by the Microsoft WinForms designer host." };
+	}
+
+	[JsonRpcMethod("design/invoke-smart-tag-method")]
+	public DesignerSessionState InvokeSmartTagMethod(string sessionId, string documentId, long baseVersion, string elementId, int listIndex, int itemIndex)
+	{
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "invoke smart tag method for");
+		throw new NotSupportedException("Smart tag actions are only supported by the Microsoft WinForms designer host.");
+	}
+
+	[JsonRpcMethod("design/add-toolstrip-item")]
+	public DesignerSessionState AddToolStripItem(string sessionId, string documentId, long baseVersion, string elementId, string itemTypeName, string parentItemId, string newItemId)
+	{
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
+		throw new NotSupportedException("ToolStrip item insertion is only supported by the Microsoft WinForms designer host.");
+	}
+#endif
+
 	static int Snap(int value) => (int)Math.Round(value / 8d, MidpointRounding.AwayFromZero) * 8;
 
 	static void SpaceEqually(Control[] controls, bool horizontal)
@@ -427,14 +658,30 @@ sealed class DesignerHostService : IDesignerChildService
 		}
 	}
 
-	static Control? FindDeepest(Control control, Point point)
+	static IComponent? FindDeepest(Control control, Point point, IContainer? container = null)
 	{
 		for (var index = control.Controls.Count - 1; index >= 0; index--) {
 			var child = control.Controls[index];
 			if (!child.Visible || !child.Bounds.Contains(point)) continue;
-			return FindDeepest(child, new Point(point.X - child.Left, point.Y - child.Top));
+			return FindDeepest(child, new Point(point.X - child.Left, point.Y - child.Top), container);
 		}
-		return control.ClientRectangle.Contains(point) ? control : null;
+		if (!control.ClientRectangle.Contains(point))
+			return null;
+#if MICROSOFT_WINFORMS
+		// A click on a real ToolStrip/MenuStrip/StatusStrip should select the item under the
+		// pointer directly, the same way clicking a plain Control does - point is already in
+		// this control's own client space by the time we get here, which is the same space
+		// ToolStripItem.Bounds live in (both relative to the owning ToolStrip).
+		if (control is ToolStrip toolStrip) {
+			for (var index = toolStrip.Items.Count - 1; index >= 0; index--) {
+				var item = toolStrip.Items[index];
+				if (item.Visible && item.Bounds.Contains(point)
+					&& (container == null || container.Components.Cast<IComponent>().Contains(item)))
+					return item;
+			}
+		}
+#endif
+		return control;
 	}
 
 	[JsonRpcMethod("shutdown")]
@@ -1368,15 +1615,26 @@ sealed class DesignerHostService : IDesignerChildService
 		var point = control.Location;
 		for (var parent = control.Parent; parent != null && parent != root; parent = parent.Parent)
 			point.Offset(parent.Location);
-		// Native Form.DrawToBitmap paints the outer window. Child Locations are client-space,
-		// so translate them into bitmap coordinates before the parent draws selection adorners.
+		var offset = RootClientOffset(root);
+		point.Offset(offset.X, offset.Y);
+		return point;
+	}
+
+	/// <summary>How far the painted bitmap's origin sits outside the root form's client area:
+	/// native Form.DrawToBitmap paints the outer window (border + caption) while every child
+	/// Location is client-space. Surface (bitmap) coordinates therefore differ from client
+	/// coordinates by this much, in both directions - <see cref="SurfaceLocation"/> adds it when
+	/// reporting bounds, and <see cref="HitTest"/> must subtract it before comparing an incoming
+	/// surface point against client-space Control/ToolStripItem bounds.</summary>
+	static Point RootClientOffset(Control? root)
+	{
 #if MICROSOFT_WINFORMS
 		if (root is Form form) {
 			var border = Math.Max(0, (form.Width - form.ClientSize.Width) / 2);
-			point.Offset(border, Math.Max(border, form.Height - form.ClientSize.Height - border));
+			return new Point(border, Math.Max(border, form.Height - form.ClientSize.Height - border));
 		}
 #endif
-		return point;
+		return Point.Empty;
 	}
 
 	DesignerRenderFrame? Render(Control? root, Size? designSize)

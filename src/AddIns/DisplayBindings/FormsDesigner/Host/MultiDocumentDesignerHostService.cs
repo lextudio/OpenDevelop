@@ -63,6 +63,12 @@ sealed class MultiDocumentDesignerHostService : IDesignerChildService
 	public DesignerSessionState SetZOrder(string sessionId, string documentId, long baseVersion, string elementId, bool bringToFront) => GetChecked(sessionId, documentId).SetZOrder(sessionId, documentId, baseVersion, elementId, bringToFront);
 	[JsonRpcMethod("design/apply-layout")]
 	public DesignerSessionState ApplyLayout(string sessionId, string documentId, long baseVersion, string operation, string[] elementIds, int deltaX, int deltaY) => GetChecked(sessionId, documentId).ApplyLayout(sessionId, documentId, baseVersion, operation, elementIds, deltaX, deltaY);
+	[JsonRpcMethod("design/list-smart-tag-actions")]
+	public DesignerSmartTagActions ListSmartTagActions(string sessionId, string documentId, long baseVersion, string elementId) => GetChecked(sessionId, documentId).ListSmartTagActions(sessionId, documentId, baseVersion, elementId);
+	[JsonRpcMethod("design/invoke-smart-tag-method")]
+	public DesignerSessionState InvokeSmartTagMethod(string sessionId, string documentId, long baseVersion, string elementId, int listIndex, int itemIndex) => GetChecked(sessionId, documentId).InvokeSmartTagMethod(sessionId, documentId, baseVersion, elementId, listIndex, itemIndex);
+	[JsonRpcMethod("design/add-toolstrip-item")]
+	public DesignerSessionState AddToolStripItem(string sessionId, string documentId, long baseVersion, string elementId, string itemTypeName, string parentItemId, string newItemId) => GetChecked(sessionId, documentId).AddToolStripItem(sessionId, documentId, baseVersion, elementId, itemTypeName, parentItemId, newItemId);
 
 	DesignerHostService GetChecked(string requestSessionId, string documentId) => documents.Get(requestSessionId, documentId);
 
