@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Windows;
 
@@ -101,26 +102,119 @@ namespace ICSharpCode.WpfDesign.AddIn
 				onActivated: () => { ClearSelectedWinFormsTool(); SetCurrentTool(tool); });
 		}
 
-		// A small representative set, same spirit as Metadata.GetPopularControls() for WPF -
-		// dragged items are routed through the real System.Drawing.Design.IToolboxService
+		const string WinFormsDataCategory = "Windows Forms Data";
+		const string WinFormsComponentsCategory = "Windows Forms Components";
+		const string WinFormsPrintingCategory = "Windows Forms Printing";
+
+		// The full standard WinForms toolbox set, in the same categories and order the original
+		// SharpDevelop showed - it is literally the catalog shipped as
+		// data/options/SharpDevelopControlLibrary.sdcl, which this pad had never used: the pad
+		// used to hardcode ten "popular" controls, so MenuStrip/ToolStrip/StatusStrip, the
+		// dialogs, Timer/ImageList and the whole Data/Components/Printing groups were simply
+		// absent.
+		//
+		// Entries are TYPE NAMES, not typeof(...), on purpose: this process loads the portable
+		// LibreWinForms System.Windows.Forms, which implements a subset (DateTimePicker,
+		// MonthCalendar, NotifyIcon, BindingSource, ... are missing there), and several component
+		// entries live in optional runtime assemblies (System.IO.Ports, System.Diagnostics.EventLog,
+		// ...). A typeof() reference would not compile against the fork; resolving by name lets
+		// every entry the running framework actually provides show up and silently skips the rest,
+		// so the same list serves both backends.
+		//
+		// Dragged items are routed through the real System.Drawing.Design.IToolboxService
 		// (registered by FormsDesigner into SD.Services - see DesignerViewContent.cs's own doc
 		// comment) rather than WpfDesign's CreateComponentTool, since it's WinForms'
 		// ParentControlDesigner.OnDragEnter/OnDragDrop that actually creates the component on a
 		// WinForms DesignSurface. Each type gets its own System.Drawing.Design.ToolboxItem,
 		// created once and registered with the toolbox service up front (AddToolboxItem) - the
 		// drop side's DeserializeToolboxItem only accepts items it already knows about.
-		static readonly Type[] WinFormsPopularControls = {
-			typeof(System.Windows.Forms.Button),
-			typeof(System.Windows.Forms.Label),
-			typeof(System.Windows.Forms.TextBox),
-			typeof(System.Windows.Forms.CheckBox),
-			typeof(System.Windows.Forms.RadioButton),
-			typeof(System.Windows.Forms.ComboBox),
-			typeof(System.Windows.Forms.ListBox),
-			typeof(System.Windows.Forms.Panel),
-			typeof(System.Windows.Forms.GroupBox),
-			typeof(System.Windows.Forms.NumericUpDown),
+		static readonly (string Category, string TypeName)[] WinFormsToolboxCatalog = {
+			(WinFormsControlsCategory, "System.Windows.Forms.Button"),
+			(WinFormsControlsCategory, "System.Windows.Forms.CheckBox"),
+			(WinFormsControlsCategory, "System.Windows.Forms.ComboBox"),
+			(WinFormsControlsCategory, "System.Windows.Forms.Label"),
+			(WinFormsControlsCategory, "System.Windows.Forms.RadioButton"),
+			(WinFormsControlsCategory, "System.Windows.Forms.TextBox"),
+			(WinFormsControlsCategory, "System.Windows.Forms.CheckedListBox"),
+			(WinFormsControlsCategory, "System.Windows.Forms.DateTimePicker"),
+			(WinFormsControlsCategory, "System.Windows.Forms.DomainUpDown"),
+			(WinFormsControlsCategory, "System.Windows.Forms.FlowLayoutPanel"),
+			(WinFormsControlsCategory, "System.Windows.Forms.GroupBox"),
+			(WinFormsControlsCategory, "System.Windows.Forms.HScrollBar"),
+			(WinFormsControlsCategory, "System.Windows.Forms.LinkLabel"),
+			(WinFormsControlsCategory, "System.Windows.Forms.ListBox"),
+			(WinFormsControlsCategory, "System.Windows.Forms.ListView"),
+			(WinFormsControlsCategory, "System.Windows.Forms.MaskedTextBox"),
+			(WinFormsControlsCategory, "System.Windows.Forms.MonthCalendar"),
+			(WinFormsControlsCategory, "System.Windows.Forms.NumericUpDown"),
+			(WinFormsControlsCategory, "System.Windows.Forms.Panel"),
+			(WinFormsControlsCategory, "System.Windows.Forms.PictureBox"),
+			(WinFormsControlsCategory, "System.Windows.Forms.ProgressBar"),
+			(WinFormsControlsCategory, "System.Windows.Forms.PropertyGrid"),
+			(WinFormsControlsCategory, "System.Windows.Forms.RichTextBox"),
+			(WinFormsControlsCategory, "System.Windows.Forms.SplitContainer"),
+			(WinFormsControlsCategory, "System.Windows.Forms.TabControl"),
+			(WinFormsControlsCategory, "System.Windows.Forms.TableLayoutPanel"),
+			(WinFormsControlsCategory, "System.Windows.Forms.ToolTip"),
+			(WinFormsControlsCategory, "System.Windows.Forms.TrackBar"),
+			(WinFormsControlsCategory, "System.Windows.Forms.TreeView"),
+			(WinFormsControlsCategory, "System.Windows.Forms.VScrollBar"),
+			(WinFormsControlsCategory, "System.Windows.Forms.WebBrowser"),
+			(WinFormsControlsCategory, "System.Windows.Forms.ContextMenuStrip"),
+			(WinFormsControlsCategory, "System.Windows.Forms.MenuStrip"),
+			(WinFormsControlsCategory, "System.Windows.Forms.StatusStrip"),
+			(WinFormsControlsCategory, "System.Windows.Forms.ToolStrip"),
+			(WinFormsControlsCategory, "System.Windows.Forms.ToolStripContainer"),
+			(WinFormsControlsCategory, "System.Windows.Forms.ColorDialog"),
+			(WinFormsControlsCategory, "System.Windows.Forms.ErrorProvider"),
+			(WinFormsControlsCategory, "System.Windows.Forms.FontDialog"),
+			(WinFormsControlsCategory, "System.Windows.Forms.FolderBrowserDialog"),
+			(WinFormsControlsCategory, "System.Windows.Forms.ImageList"),
+			(WinFormsControlsCategory, "System.Windows.Forms.HelpProvider"),
+			(WinFormsControlsCategory, "System.Windows.Forms.OpenFileDialog"),
+			(WinFormsControlsCategory, "System.Windows.Forms.SaveFileDialog"),
+			(WinFormsControlsCategory, "System.Windows.Forms.Timer"),
+
+			(WinFormsDataCategory, "System.Windows.Forms.BindingNavigator"),
+			(WinFormsDataCategory, "System.Windows.Forms.BindingSource"),
+			(WinFormsDataCategory, "System.Windows.Forms.DataGridView"),
+			(WinFormsDataCategory, "System.Data.DataSet"),
+			(WinFormsDataCategory, "System.Data.DataView"),
+
+			(WinFormsComponentsCategory, "System.ComponentModel.BackgroundWorker"),
+			(WinFormsComponentsCategory, "System.Diagnostics.EventLog"),
+			(WinFormsComponentsCategory, "System.IO.FileSystemWatcher"),
+			(WinFormsComponentsCategory, "System.Windows.Forms.NotifyIcon"),
+			(WinFormsComponentsCategory, "System.Diagnostics.PerformanceCounter"),
+			(WinFormsComponentsCategory, "System.Diagnostics.Process"),
+			(WinFormsComponentsCategory, "System.IO.Ports.SerialPort"),
+
+			(WinFormsPrintingCategory, "System.Windows.Forms.PageSetupDialog"),
+			(WinFormsPrintingCategory, "System.Windows.Forms.PrintDialog"),
+			(WinFormsPrintingCategory, "System.Drawing.Printing.PrintDocument"),
+			(WinFormsPrintingCategory, "System.Windows.Forms.PrintPreviewControl"),
+			(WinFormsPrintingCategory, "System.Windows.Forms.PrintPreviewDialog"),
 		};
+
+		/// <summary>Resolves a catalog entry's type against the WinForms assembly this process
+		/// actually loaded (and, for the component entries, the rest of the loaded runtime),
+		/// returning NULL when the running framework does not provide it - see
+		/// <see cref="WinFormsToolboxCatalog"/> for why absence is expected and not an error.</summary>
+		static Type ResolveToolboxType(string typeName)
+		{
+			try {
+				return typeof(System.Windows.Forms.Control).Assembly.GetType(typeName, false)
+					?? Type.GetType(typeName, false)
+					?? AppDomain.CurrentDomain.GetAssemblies()
+						.Select(assembly => {
+							try { return assembly.GetType(typeName, false); } catch { return null; }
+						})
+						.FirstOrDefault(type => type != null);
+			} catch (Exception exception) {
+				LoggingService.Debug("WpfToolbox.ResolveToolboxType(" + typeName + "): " + exception.Message);
+				return null;
+			}
+		}
 
 		bool winFormsControlsAdded;
 
@@ -138,10 +232,22 @@ namespace ICSharpCode.WpfDesign.AddIn
 					icon: IconService.GetImageSource("Icons.16x16.FormsDesigner.PointerIcon"),
 					onActivated: () => { ClearSelectedWinFormsTool(); SetCurrentTool(null); })
 			};
-			foreach (Type t in WinFormsPopularControls) {
-				var toolboxItem = new System.Drawing.Design.ToolboxItem(t);
+			foreach (var (category, typeName) in WinFormsToolboxCatalog) {
+				var t = ResolveToolboxType(typeName);
+				if (t == null)
+					continue;
+				System.Drawing.Design.ToolboxItem toolboxItem;
+				try {
+					toolboxItem = new System.Drawing.Design.ToolboxItem(t);
+				} catch (Exception exception) {
+					// A type the running framework keeps only as an "unsupported" stub (the
+					// dotnet/winforms convention LibreWinForms mirrors) can resolve and still
+					// refuse to become a toolbox item. Skip it rather than losing the whole list.
+					LoggingService.Debug("WpfToolbox: skipping toolbox item " + typeName + ": " + exception.Message);
+					continue;
+				}
 				toolboxService.AddToolboxItem(toolboxItem);
-				winFormsItems.Add(new SharedToolboxItem(WinFormsControlsCategory, t.Name, WinFormsScope,
+				winFormsItems.Add(new SharedToolboxItem(category, t.Name, WinFormsScope,
 					// Real per-control WinForms toolbox icon. This process loads the LibreWinForms
 					// System.Windows.Forms (zero manifest resources), so ToolboxItem.Bitmap /
 					// ToolboxBitmapAttribute can never supply one here - the icon is read straight

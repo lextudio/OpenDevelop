@@ -59,8 +59,9 @@
     <Category name="Data" enabled="True">
       <ToolComponent class="System.Windows.Forms.BindingNavigator" assembly="0" enabled="True" />
       <ToolComponent class="System.Windows.Forms.BindingSource" assembly="0" enabled="True" />
-      <ToolComponent class="System.Windows.Forms.DataNavigator" assembly="0" enabled="True" />
-      <ToolComponent class="System.Windows.Forms.DataGrid" assembly="0" enabled="True" />
+      <!-- DataNavigator and DataGrid were removed entirely from .NET Core WinForms (no such
+           types exist under the modern runtime); DataGridView is their supported replacement
+           and was already listed here. -->
       <ToolComponent class="System.Windows.Forms.DataGridView" assembly="0" enabled="True" />
       <ToolComponent class="System.Data.DataSet" assembly="1" enabled="True" />
       <ToolComponent class="System.Data.DataView" assembly="1" enabled="True" />
