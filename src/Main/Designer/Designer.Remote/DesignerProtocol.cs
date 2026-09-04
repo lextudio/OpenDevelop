@@ -470,4 +470,18 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public string Error { get; set; } = "";
 		public List<DesignerSmartTagActionInfo> Items { get; set; } = new();
 	}
+
+	/// <summary>Response to <c>design/get-type-icon</c>: the real WinForms toolbox icon for a
+	/// CLR type (e.g. <c>System.Windows.Forms.Button</c>), the same 16x16 embedded-resource icon
+	/// real Visual Studio's Toolbox/smart-tag/insert-item UI uses
+	/// (<c>System.Drawing.ToolboxBitmapAttribute.GetImageFromResource</c>) - not a VS chrome icon
+	/// from the VS2017 Image Library. <see cref="PngBase64"/> is empty (with
+	/// <see cref="Accepted"/> still true) when the type has no such resource - the caller falls
+	/// back to its own placeholder rather than treating that as an error.</summary>
+	public sealed class DesignerTypeIconResult
+	{
+		public bool Accepted { get; set; }
+		public string Error { get; set; } = "";
+		public string PngBase64 { get; set; } = "";
+	}
 }

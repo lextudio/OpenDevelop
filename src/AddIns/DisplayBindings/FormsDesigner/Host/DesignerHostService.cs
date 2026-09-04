@@ -961,6 +961,52 @@ sealed class DesignerHostService : IDesignerChildService
 		return unit.DescendantNodes().OfType<VbSyntax.MethodBlockSyntax>().First();
 	}
 
+	readonly Dictionary<string, string> typeIconCache = new(StringComparer.Ordinal);
+
+	/// <summary>Real WinForms toolbox icon for a CLR type - the same embedded-resource lookup
+	/// (<c>System.Drawing.ToolboxBitmapAttribute.GetImageFromResource</c>) real Visual Studio's
+	/// Toolbox/smart-tag/insert-item UI relies on, walking up the type hierarchy when a type has
+	/// no explicit [ToolboxBitmap]. Works for both Control and ToolStripItem types (unlike
+	/// ResolveControlType, which requires Control assignability), so it can serve the smart-tag
+	/// popup's own type rows and the ToolStrip insert-item dropdown's item types alike. Cached
+	/// per type name since the embedded resource never changes within a session.</summary>
+	[JsonRpcMethod("design/get-type-icon")]
+	public DesignerTypeIconResult GetTypeIcon(string typeName)
+	{
+		if (typeIconCache.TryGetValue(typeName, out var cached))
+			return new DesignerTypeIconResult { Accepted = true, PngBase64 = cached };
+		try {
+			var type = ResolveTypeForIcon(typeName)
+				?? throw new NotSupportedException("Unknown type: " + typeName);
+			using var image = System.Drawing.ToolboxBitmapAttribute.GetImageFromResource(type, null, false);
+			var base64 = "";
+			if (image != null) {
+				using var stream = new MemoryStream();
+				image.Save(stream, ImageFormat.Png);
+				base64 = Convert.ToBase64String(stream.ToArray());
+			}
+			typeIconCache[typeName] = base64;
+			return new DesignerTypeIconResult { Accepted = true, PngBase64 = base64 };
+		} catch (Exception exception) {
+			// A missing/unsupported icon is not a client-visible error - the smart-tag/insert-item
+			// popups fall back to their own placeholder glyph when PngBase64 comes back empty.
+			// Only genuinely unexpected failures (bad type name) are reported as Accepted=false.
+			return new DesignerTypeIconResult { Accepted = false, Error = exception.Message };
+		}
+	}
+
+	/// <summary>Like <see cref="ResolveControlType"/> but for icon lookup only: no Control-
+	/// assignability requirement, since ToolStripItem (StatusStrip/MenuStrip items) is not a
+	/// Control but still has a real toolbox icon.</summary>
+	Type? ResolveTypeForIcon(string name)
+	{
+		var fullName = name.Contains('.') ? name : "System.Windows.Forms." + name;
+		return projectAssembly?.GetType(fullName, false)
+			?? referencedAssemblies.Select(assembly => assembly.GetType(fullName, false)).FirstOrDefault(candidate => candidate != null)
+			?? typeof(Control).Assembly.GetType(fullName, false)
+			?? AppDomain.CurrentDomain.GetAssemblies().Select(item => item.GetType(fullName, false)).FirstOrDefault(item => item != null);
+	}
+
 	Type ResolveControlType(string name)
 	{
 		var fullName = name.Contains('.') ? name : "System.Windows.Forms." + name;

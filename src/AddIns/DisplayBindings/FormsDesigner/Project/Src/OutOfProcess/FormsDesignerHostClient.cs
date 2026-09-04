@@ -228,6 +228,25 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		public Task<DesignerSessionState> AddToolStripItemAsync(long baseVersion, string elementId, string itemTypeName, string parentItemId, string newItemId, CancellationToken cancellationToken)
 			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/add-toolstrip-item", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, itemTypeName, parentItemId = parentItemId ?? "", newItemId }, cancellationToken), cancellationToken);
 
+		readonly Dictionary<string, string> typeIconCache = new(StringComparer.Ordinal);
+
+		/// <summary>The real WinForms toolbox icon (16x16 PNG, base64) for a CLR type name - the
+		/// same embedded-resource lookup (System.Drawing.ToolboxBitmapAttribute.GetImageFromResource)
+		/// real Visual Studio's Toolbox/smart-tag/insert-item UI uses, not a VS chrome icon.
+		/// Cached client-side per type name (in addition to the host's own per-session cache) so
+		/// popups with many rows of the same handful of types (Button/Label/Separator/...) make
+		/// one round trip per type, not one per row. Read-only - never goes through
+		/// TrackMutationAsync/ExecuteRemoteEdit.</summary>
+		public async Task<string> GetTypeIconAsync(string typeName, CancellationToken cancellationToken)
+		{
+			if (typeIconCache.TryGetValue(typeName, out var cached)) return cached;
+			var result = await connection.InvokeAsync<DesignerTypeIconResult>("design/get-type-icon",
+				new { sessionId = SessionId, documentId = DocumentId, typeName }, cancellationToken).ConfigureAwait(false);
+			var png = result.Accepted ? result.PngBase64 : "";
+			typeIconCache[typeName] = png;
+			return png;
+		}
+
 		static SharedDesignerHostRecovery<FormsDesignerHostClient, Connection> RecoveryFor(CompatibilityKey key)
 		{
 			lock (clientsGate) {

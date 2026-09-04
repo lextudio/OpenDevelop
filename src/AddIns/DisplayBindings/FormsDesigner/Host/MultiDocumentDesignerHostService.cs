@@ -69,6 +69,8 @@ sealed class MultiDocumentDesignerHostService : IDesignerChildService
 	public DesignerSessionState InvokeSmartTagMethod(string sessionId, string documentId, long baseVersion, string elementId, int listIndex, int itemIndex) => GetChecked(sessionId, documentId).InvokeSmartTagMethod(sessionId, documentId, baseVersion, elementId, listIndex, itemIndex);
 	[JsonRpcMethod("design/add-toolstrip-item")]
 	public DesignerSessionState AddToolStripItem(string sessionId, string documentId, long baseVersion, string elementId, string itemTypeName, string parentItemId, string newItemId) => GetChecked(sessionId, documentId).AddToolStripItem(sessionId, documentId, baseVersion, elementId, itemTypeName, parentItemId, newItemId);
+	[JsonRpcMethod("design/get-type-icon")]
+	public DesignerTypeIconResult GetTypeIcon(string sessionId, string documentId, string typeName) => GetChecked(sessionId, documentId).GetTypeIcon(typeName);
 
 	DesignerHostService GetChecked(string requestSessionId, string documentId) => documents.Get(requestSessionId, documentId);
 

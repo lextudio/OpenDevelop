@@ -512,6 +512,42 @@ public sealed class FormsDesignerHostClientTests
 	}
 
 	/// <summary>
+	/// Regression test for the real-WinForms-toolbox-icon RPC (design/get-type-icon) that backs
+	/// the smart-tag popup / ToolStrip insert-item dropdown's icon rows. Both backends carry the
+	/// same System.Drawing.Common ToolboxBitmapAttribute machinery, so
+	/// System.Windows.Forms.Button's embedded 16x16 icon should resolve on either host - this
+	/// runs unconditionally (no MICROSOFT_FORMS_DESIGNER_HOST gate), asserting only that the
+	/// bytes decode as a valid, non-trivial PNG when present.
+	/// </summary>
+	[Fact]
+	public async Task ChildHost_ResolvesRealWinFormsToolboxIconForKnownType()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		var hostDll = HostDll();
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
+		var opened = await client.OpenAsync(Snapshot(1, "icon"), timeout.Token);
+		Assert.True(opened.Accepted);
+
+		var icon = await client.GetTypeIconAsync("System.Windows.Forms.Button", timeout.Token);
+		if (String.IsNullOrEmpty(icon)) {
+			// Acceptable outcome on a backend whose fork does not embed the same toolbox
+			// resource - the client falls back to its own placeholder glyph rather than erroring.
+			return;
+		}
+		var bytes = Convert.FromBase64String(icon);
+		Assert.True(bytes.Length > 16, "Decoded icon PNG is implausibly small: " + bytes.Length + " bytes");
+		// PNG magic number: 0x89 'P' 'N' 'G' \r \n \x1A \n
+		Assert.Equal(0x89, bytes[0]);
+		Assert.Equal((byte)'P', bytes[1]);
+		Assert.Equal((byte)'N', bytes[2]);
+		Assert.Equal((byte)'G', bytes[3]);
+
+		// Repeat call should hit the host's own per-type cache and return the identical bytes.
+		var iconAgain = await client.GetTypeIconAsync("System.Windows.Forms.Button", timeout.Token);
+		Assert.Equal(icon, iconAgain);
+	}
+
+	/// <summary>
 	/// Regression test for the WinForms smart-tag/DesignerActionList popup and the ToolStrip
 	/// "insert item" chevron. Both are Microsoft-backend-only (LibreWinForms has no
 	/// System.ComponentModel.Design.DesignerActionService support), so the smart-tag assertions

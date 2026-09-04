@@ -1074,15 +1074,17 @@ namespace ICSharpCode.FormsDesigner
 				foreach (var itemType in itemTypes) {
 					// Icon column + text column, matching the real WinForms designer's
 					// NewItemsContextMenuStrip (ToolStripDesignerUtils.GetNewItemDropDown) row
-					// shape - an icon-sized swatch stands in for the real per-type glyph, since
-					// this repo's VS2017 icon set (src/Main/ICSharpCode.Core.Presentation/
-					// Resources/VS2017/) has no Button/Label/SplitButton/etc. WinForms-item icons
-					// to resolve via PresentationResourceService.GetImageSource.
+					// shape. The icon is the type's REAL embedded WinForms toolbox icon (VS's own
+					// convention, System.Drawing.ToolboxBitmapAttribute.GetImageFromResource via
+					// design/get-type-icon) - not a VS chrome icon from the VS2017 Image Library,
+					// which has no WinForms-control icons at all.
 					var row = new System.Windows.Controls.StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, Margin = new Thickness(2) };
-					row.Children.Add(new System.Windows.Controls.Border {
-						Width = 16, Height = 16, Margin = new Thickness(0, 0, 6, 0),
-						Child = new System.Windows.Shapes.Rectangle { Width = 9, Height = 9, Fill = System.Windows.Media.Brushes.SeaGreen }
-					});
+					var iconHost = new System.Windows.Controls.Border {
+					Width = 16, Height = 16, Margin = new Thickness(0, 0, 6, 0),
+					Child = new System.Windows.Shapes.Rectangle { Width = 9, Height = 9, Fill = System.Windows.Media.Brushes.SeaGreen }
+				};
+					row.Children.Add(iconHost);
+					_ = LoadTypeIconAsync("System.Windows.Forms." + itemType, iconHost);
 					row.Children.Add(new System.Windows.Controls.TextBlock { Text = ToolStripItemDisplayName(itemType), VerticalAlignment = System.Windows.VerticalAlignment.Center });
 					var button = new System.Windows.Controls.Button { Content = row, Margin = new Thickness(0), HorizontalContentAlignment = System.Windows.HorizontalAlignment.Left, Padding = new Thickness(4, 2, 8, 2) };
 					button.Click += (buttonSender, buttonArgs) => {
@@ -1105,6 +1107,35 @@ namespace ICSharpCode.FormsDesigner
 		/// "ToolStrip" prefix - "MenuItem" also comes out this way for ToolStripMenuItem).</summary>
 		static string ToolStripItemDisplayName(string itemType) =>
 			itemType.StartsWith("ToolStrip", StringComparison.Ordinal) ? itemType["ToolStrip".Length..] : itemType;
+
+		/// <summary>Fetches the real WinForms toolbox icon (design/get-type-icon) for
+		/// <paramref name="fullTypeName"/> and shows it inside <paramref name="host"/>. Leaves
+		/// the host's existing placeholder-swatch content in place (never clears it first) if the
+		/// RPC fails, returns no icon (e.g. unsupported on the Libre backend, or a type with no
+		/// embedded resource), or the popup closes before the fetch completes.</summary>
+		async System.Threading.Tasks.Task LoadTypeIconAsync(string fullTypeName, System.Windows.Controls.Border host)
+		{
+			try {
+				if (!IsRemoteDesignerLoaded) return;
+				var png = await remoteClient.GetTypeIconAsync(fullTypeName, System.Threading.CancellationToken.None);
+				if (String.IsNullOrEmpty(png)) return;
+				var bytes = Convert.FromBase64String(png);
+				var bitmap = new System.Windows.Media.Imaging.BitmapImage();
+				using (var stream = new MemoryStream(bytes)) {
+					bitmap.BeginInit();
+					bitmap.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+					bitmap.StreamSource = stream;
+					bitmap.EndInit();
+				}
+				bitmap.Freeze();
+				var image = new System.Windows.Controls.Image { Source = bitmap, Width = 16, Height = 16, SnapsToDevicePixels = true };
+				System.Windows.Media.RenderOptions.SetBitmapScalingMode(image, System.Windows.Media.BitmapScalingMode.NearestNeighbor);
+				host.Child = image;
+			} catch {
+				// Keep whatever placeholder the caller already put in `host` - a missing icon is
+				// cosmetic, never worth surfacing as an error dialog.
+			}
+		}
 
 		void AddRemoteToolStripItem(string stripName, string itemType)
 		{

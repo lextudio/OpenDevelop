@@ -20,6 +20,7 @@ using System;
 using System.Collections;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Xml;
 using ICSharpCode.SharpDevelop.Designer;
@@ -122,11 +123,38 @@ namespace ICSharpCode.FormsDesigner.Gui
 			if (HintPath != null) {
 				assembly = Assembly.LoadFrom(FileName);
 			} else {
-				assembly = Assembly.Load(AssemblyName);
+				assembly = LoadByNameTolerant(AssemblyName);
 			}
 			if (!TypeResolutionService.DesignerAssemblies.Contains(assembly))
 				TypeResolutionService.DesignerAssemblies.Add(assembly);
 			return assembly;
+		}
+
+		/// <summary>SharpDevelopControlLibrary.sdcl's &lt;Assembly&gt; entries hardcode .NET
+		/// Framework 2.0 assembly identities (Version=2.0.0.0, the original 2007-era
+		/// PublicKeyToken/version for System.Windows.Forms/System.Data/System/System.Drawing).
+		/// A strict <c>Assembly.Load(fullName)</c> against those exact identities fails outright
+		/// under modern .NET/.NET Core (different version entirely, no such assembly bound),
+		/// silently dropping most of the toolbox's standard control set rather than throwing
+		/// somewhere visible. Resolve by SIMPLE name instead - against already-loaded assemblies
+		/// first (System.Windows.Forms/System.Drawing are always loaded once any WinForms
+		/// designer session is active), then a plain <c>Assembly.Load(simpleName)</c> - so this
+		/// stops being version-string-fragile the same way DesignerHostService.ResolveControlType
+		/// already tolerates a toolbox item's TypeName without needing an exact assembly match.</summary>
+		static Assembly LoadByNameTolerant(string assemblyName)
+		{
+			var simpleName = assemblyName.Split(',')[0].Trim();
+			var loaded = AppDomain.CurrentDomain.GetAssemblies()
+				.FirstOrDefault(candidate => String.Equals(candidate.GetName().Name, simpleName, StringComparison.OrdinalIgnoreCase));
+			if (loaded != null) return loaded;
+			try {
+				return Assembly.Load(simpleName);
+			} catch {
+				// Last resort: the strict, original full-identity load - preserves the previous
+				// (working, for a HintPath-free custom assembly with a real matching identity)
+				// behavior instead of masking a genuinely different failure as "not found".
+				return Assembly.Load(assemblyName);
+			}
 		}
 		
 		public object Clone()
@@ -368,6 +396,22 @@ namespace ICSharpCode.FormsDesigner.Gui
 				}
 			}
 			if (b == null) {
+				// Neither of the in-process lookups (the [ToolboxBitmap] attribute above, or the
+				// legacy "<TypeFullName>.bmp" manifest-resource read below) can produce an icon
+				// for a standard WinForms control here: THIS process loads the LibreWinForms
+				// System.Windows.Forms, which carries zero manifest resources. Microsoft's real
+				// WinForms assembly does carry them (199 resources, named exactly the full type
+				// name with no extension, payload = ICO), so read them straight out of the
+				// installed Microsoft.WindowsDesktop.App copy without loading it - see
+				// WinFormsToolboxIconProvider for why an Assembly.Load would be wrong here.
+				var real = ICSharpCode.SharpDevelop.Gui.WinFormsToolboxIconProvider.GetIcon(component.FullName);
+				if (real != null) {
+					// Clone: the provider caches its bitmaps for the process lifetime, so callers
+					// must not own/dispose (or transparency-mutate) the cached instance.
+					b = new Bitmap(real);
+				}
+			}
+			if (b == null) {
 				try {
 					Stream imageStream = asm.GetManifestResourceStream(component.FullName + ".bmp");
 					if (imageStream != null) {
@@ -378,7 +422,7 @@ namespace ICSharpCode.FormsDesigner.Gui
 					ICSharpCode.Core.LoggingService.Warn("ComponentLibraryLoader.GetIcon: " + e.Message);
 				}
 			}
-			
+
 			// TODO: Maybe default icon needed ??!?!
 			return b;
 		}
