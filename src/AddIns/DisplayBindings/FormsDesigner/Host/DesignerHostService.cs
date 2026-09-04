@@ -1324,12 +1324,17 @@ sealed class DesignerHostService : IDesignerChildService
 #if MICROSOFT_WINFORMS
 		using var stream = new MemoryStream();
 		bitmap.Save(stream, ImageFormat.Png);
+		// Width/Height must be read before Dispose() - a disposed Bitmap's GDI+ handle is invalid,
+		// and querying either property throws ArgumentException("Parameter is not valid.") instead
+		// of returning the size it had a moment ago.
+		var bitmapWidth = bitmap.Width;
+		var bitmapHeight = bitmap.Height;
 		bitmap.Dispose();
 		Trace("Render encoded PNG");
 		return new DesignerRenderFrame {
 			Sequence = Interlocked.Increment(ref frameSequence),
-			Width = bitmap.Width,
-			Height = bitmap.Height,
+			Width = bitmapWidth,
+			Height = bitmapHeight,
 			// The portable renderer paints in WinForms logical pixels. ProGPU's
 			// Bitmap does not expose a device resolution on macOS.
 			Dpi = 1,
