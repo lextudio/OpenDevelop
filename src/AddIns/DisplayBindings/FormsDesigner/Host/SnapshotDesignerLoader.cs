@@ -104,13 +104,9 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		}
 		if (expression.Expression is InvocationExpressionSyntax invocationAdd
 			&& invocationAdd.Expression is MemberAccessExpressionSyntax memberAdd
-			&& memberAdd.Name.Identifier.ValueText == "Add") {
-			var target = StripThis(memberAdd.Expression.ToString());
-			if (!target.EndsWith("Controls", StringComparison.Ordinal)) return;
-			var parentName = target == "Controls" ? "this" : target[..^".Controls".Length];
-			var parent = ResolveObject(parentName) as Control;
-			var child = Evaluate(invocationAdd.ArgumentList.Arguments[0].Expression) as Control;
-			if (parent != null && child != null) parent.Controls.Add(child);
+			&& (memberAdd.Name.Identifier.ValueText == "Add" || memberAdd.Name.Identifier.ValueText == "AddRange")) {
+			AddToCollection(ResolveCollection(memberAdd.Expression),
+				memberAdd.Name.Identifier.ValueText == "AddRange", invocationAdd.ArgumentList.Arguments[0].Expression, Evaluate);
 		}
 	}
 
@@ -144,13 +140,9 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 				if (target != null && key != null) ApplyResources(target, key);
 				return;
 			}
-			if (member.Name.Identifier.ValueText == "Add") {
-				var target = StripMe(member.Expression.ToString());
-				if (!target.EndsWith("Controls", StringComparison.Ordinal)) return;
-				var parentName = target == "Controls" ? "this" : target[..^".Controls".Length];
-				var parent = ResolveObject(parentName) as Control;
-				var child = EvaluateVisualBasic(VbArgument(invocation, 0)) as Control;
-				if (parent != null && child != null) parent.Controls.Add(child);
+			if (member.Name.Identifier.ValueText == "Add" || member.Name.Identifier.ValueText == "AddRange") {
+				AddToCollectionVisualBasic(ResolveCollectionVisualBasic(member.Expression),
+					member.Name.Identifier.ValueText == "AddRange", VbArgument(invocation, 0));
 			}
 		}
 	}
@@ -270,6 +262,76 @@ sealed class SnapshotDesignerLoader : BasicDesignerLoader
 		if (owner is Type type)
 			return type.IsEnum ? Enum.Parse(type, access.Name.Identifier.ValueText) : type.GetField(access.Name.Identifier.ValueText)?.GetValue(null);
 		return owner == null ? null : TypeDescriptor.GetProperties(owner)[access.Name.Identifier.ValueText]?.GetValue(owner);
+	}
+
+	/// <summary>Resolves the left-hand side of an Add/AddRange call - "menuStrip1.Items",
+	/// "this.Controls", or a bare "Controls" (root-level statements the generator emits without a
+	/// "this."/"Me." prefix, e.g. plain "Controls.Add(statusStrip1);") - as the actual mutable
+	/// collection object via property access. Evaluate() cannot be reused directly here: its
+	/// ThisExpressionSyntax shortcut treats "this.Foo" as "the sited component named Foo" (the
+	/// common case, e.g. this.button1), which is the wrong lookup for a property access like
+	/// this.Controls/this.Items.</summary>
+	object? ResolveCollection(ExpressionSyntax expression)
+	{
+		if (expression is IdentifierNameSyntax identifier)
+			return TypeDescriptor.GetProperties(components["this"])[identifier.Identifier.ValueText]?.GetValue(components["this"]);
+		if (expression is not MemberAccessExpressionSyntax member) return null;
+		var owner = member.Expression is ThisExpressionSyntax ? components.GetValueOrDefault("this") : Evaluate(member.Expression);
+		return owner == null ? null : TypeDescriptor.GetProperties(owner)[member.Name.Identifier.ValueText]?.GetValue(owner);
+	}
+
+	object? ResolveCollectionVisualBasic(VbSyntax.ExpressionSyntax expression)
+	{
+		if (expression is VbSyntax.IdentifierNameSyntax identifier)
+			return TypeDescriptor.GetProperties(components["this"])[identifier.Identifier.ValueText]?.GetValue(components["this"]);
+		if (expression is not VbSyntax.MemberAccessExpressionSyntax member) return null;
+		var owner = member.Expression is VbSyntax.MeExpressionSyntax ? components.GetValueOrDefault("this") : EvaluateVisualBasic(member.Expression);
+		return owner == null ? null : TypeDescriptor.GetProperties(owner)[member.Name.Identifier.ValueText]?.GetValue(owner);
+	}
+
+	/// <summary>Adds each evaluated argument to a resolved collection property via reflection, so
+	/// this works uniformly for Control.ControlCollection.Add(Control) and
+	/// ToolStripItemCollection.Add(ToolStripItem)/DropDownItems alike. AddRange(new T[] { a, b, c })
+	/// is unwrapped to its array-initializer elements and each is added individually - neither
+	/// WinForms collection type implements a single AddRange(IEnumerable) overload that reflection
+	/// could call directly, and both Control.Controls.AddRange and ToolStripItemCollection.AddRange
+	/// only accept a strongly-typed array, not IEnumerable, so a generic reflective call would need
+	/// to materialize that array anyway.</summary>
+	void AddToCollection(object? collection, bool isRange, ExpressionSyntax argument, Func<ExpressionSyntax, object?> evaluate)
+	{
+		if (collection == null) return;
+		// GetMethod("Add", flags) throws AmbiguousMatchException whenever the collection type has
+		// more than one public single-parameter Add overload (e.g.
+		// TableLayoutColumnStyleCollection.Add(ColumnStyle) alongside its IList.Add(object)
+		// explicit-interface implementation) - pick the candidate whose parameter type actually
+		// matches each value instead of asking reflection to name-resolve a single method.
+		var addMethods = collection.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance)
+			.Where(m => m.Name == "Add" && m.GetParameters().Length == 1).ToArray();
+		if (addMethods.Length == 0) return;
+		var values = isRange && argument is ArrayCreationExpressionSyntax arrayCreation
+			? arrayCreation.Initializer?.Expressions.Select(evaluate) ?? []
+			: [evaluate(argument)];
+		foreach (var value in values) {
+			if (value == null) continue;
+			var method = addMethods.FirstOrDefault(m => m.GetParameters()[0].ParameterType.IsInstanceOfType(value)) ?? addMethods[0];
+			try { method.Invoke(collection, [value]); } catch { }
+		}
+	}
+
+	void AddToCollectionVisualBasic(object? collection, bool isRange, VbSyntax.ExpressionSyntax argument)
+	{
+		if (collection == null) return;
+		var addMethods = collection.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance)
+			.Where(m => m.Name == "Add" && m.GetParameters().Length == 1).ToArray();
+		if (addMethods.Length == 0) return;
+		var values = isRange && argument is VbSyntax.ArrayCreationExpressionSyntax arrayCreation
+			? (arrayCreation.Initializer as VbSyntax.CollectionInitializerSyntax)?.Initializers.Select(EvaluateVisualBasic) ?? []
+			: [EvaluateVisualBasic(argument)];
+		foreach (var value in values) {
+			if (value == null) continue;
+			var method = addMethods.FirstOrDefault(m => m.GetParameters()[0].ParameterType.IsInstanceOfType(value)) ?? addMethods[0];
+			try { method.Invoke(collection, [value]); } catch { }
+		}
 	}
 
 	object? CreateValue(ObjectCreationExpressionSyntax creation)

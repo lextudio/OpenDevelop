@@ -112,6 +112,77 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Contains(button1.Properties, property => property.Name == "Font" && !property.IsNull);
 	}
 
+	/// <summary>
+	/// Regression test: JexusManager's MainForm.Designer.cs populates its MenuStrip via
+	/// "menuStrip1.Items.AddRange(new ToolStripItem[] { fileToolStripMenuItem, ... });" and adds the
+	/// strip to the form via a bare "Controls.Add(menuStrip1);" (no "this."/"Me." prefix) - both
+	/// exact patterns Visual Studio's own WinForms designer emits, not something JexusManager wrote
+	/// by hand. SnapshotDesignerLoader.Execute only recognized single-item "x.Controls.Add(y)"
+	/// invocations; every AddRange call (Items, DropDownItems, Controls alike) was silently
+	/// dropped, so menuStrip1 loaded with zero menu items and, being a bare "Controls.Add" with no
+	/// owner prefix, never even got added to the form itself - both the flat Components list and
+	/// the Document Outline pad's Tree came back structurally wrong with no exception raised.
+	/// </summary>
+	[Fact]
+	public async Task ChildHost_AddRangeAndBareControlsAddPopulateComponentTree()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		var hostDll = HostDll();
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
+
+		var snapshot = new DesignerDocumentSnapshot {
+			Version = 1,
+			PrimaryFileName = "/project/Form1.cs",
+			DesignerFileName = "/project/Form1.Designer.cs",
+			Files = {
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.cs", Kind = "Source",
+					Text = "namespace Sample; partial class Form1 { }"
+				},
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.Designer.cs", Kind = "Designer",
+					Text = """
+						namespace Sample;
+						partial class Form1
+						{
+						    private void InitializeComponent()
+						    {
+						        this.menuStrip1 = new System.Windows.Forms.MenuStrip();
+						        this.fileToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+						        this.viewToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+						        this.menuStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { this.fileToolStripMenuItem, this.viewToolStripMenuItem });
+						        this.menuStrip1.Name = "menuStrip1";
+						        Controls.Add(menuStrip1);
+						    }
+						    private System.Windows.Forms.MenuStrip menuStrip1;
+						    private System.Windows.Forms.ToolStripMenuItem fileToolStripMenuItem;
+						    private System.Windows.Forms.ToolStripMenuItem viewToolStripMenuItem;
+						}
+						"""
+				}
+			}
+		};
+
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted);
+
+		// AddRange working is provable on both backends just by the items existing at all - before
+		// this fix, an unrecognized AddRange invocation was silently skipped, so the loader never
+		// created fileToolStripMenuItem/viewToolStripMenuItem in the first place and the bare
+		// "Controls.Add(menuStrip1)" (no owner prefix) never sited menuStrip1 under the form.
+		var menuStrip = Assert.Single(opened.Components, component => component.Name == "menuStrip1");
+		Assert.Contains(opened.Components, component => component.Name == "fileToolStripMenuItem");
+		Assert.Contains(opened.Components, component => component.Name == "viewToolStripMenuItem");
+#if MICROSOFT_FORMS_DESIGNER_HOST
+		// ToolStripItem.Owner/OwnerItem - and therefore Parent for the flat list - only exist on
+		// the real Microsoft WinForms backend (see FormsDesignerHostClient.cs's ToolStripItem
+		// gating); the portable LibreWinForms ToolStripItem does not expose them at all.
+		Assert.Equal("Form1", menuStrip.Parent);
+		Assert.Contains(opened.Components, component => component.Name == "fileToolStripMenuItem" && component.Parent == "menuStrip1");
+		Assert.Contains(opened.Components, component => component.Name == "viewToolStripMenuItem" && component.Parent == "menuStrip1");
+#endif
+	}
+
 	[Fact]
 	public async Task ChildHost_HandshakesRejectsStaleVersionsAndFlushesCurrentSnapshot()
 	{

@@ -1076,7 +1076,7 @@ sealed class DesignerHostService : IDesignerChildService
 		Trace("CurrentState rendering frame");
 		var render = Render(rootControl, rootDesignSize);
 		Trace("CurrentState building element tree");
-		var tree = rootControl == null ? null : BuildElementTree(rootControl, "");
+		var tree = rootControl == null ? null : BuildElementTree(rootControl, "", host?.Container);
 		Trace("CurrentState describing components");
 		var components = host?.Container?.Components.Cast<IComponent>().Select(component => {
 			var properties = DescribeProperties(component);
@@ -1088,8 +1088,18 @@ sealed class DesignerHostService : IDesignerChildService
 			return new DesignerComponentInfo {
 			Name = component.Site?.Name ?? "",
 			Type = component.GetType().FullName ?? component.GetType().Name,
-			Parent = component is Control control ? control.Parent?.Site?.Name ?? "" : "",
-			Text = component is Control textControl ? textControl.Text ?? "" : "",
+			Parent = component is Control control ? control.Parent?.Site?.Name ?? ""
+#if MICROSOFT_WINFORMS
+				: component is ToolStripItem toolStripItem ? ToolStripItemParentName(toolStripItem) : "",
+#else
+				: "",
+#endif
+			Text = component is Control textControl ? textControl.Text ?? ""
+#if MICROSOFT_WINFORMS
+				: component is ToolStripItem textItem ? textItem.Text ?? "" : "",
+#else
+				: "",
+#endif
 			AccessibleName = PropertyText(component, "AccessibleName") is { Length: > 0 } accessibleName
 				? accessibleName : component is Control namedControl && !String.IsNullOrEmpty(namedControl.Text)
 					? namedControl.Text : component.Site?.Name ?? "",
@@ -1097,24 +1107,50 @@ sealed class DesignerHostService : IDesignerChildService
 			AccessibleRole = PropertyText(component, "AccessibleRole") is { Length: > 0 } accessibleRole
 				&& accessibleRole != "Default"
 				? accessibleRole : component.GetType().Name,
-			X = component is Control boundsControl ? boundsControl.Left : 0,
-			Y = component is Control boundsControl2 ? boundsControl2.Top : 0,
-			SurfaceX = component is Control surfaceControl ? SurfaceLocation(surfaceControl).X : 0,
-			SurfaceY = component is Control surfaceControl2 ? SurfaceLocation(surfaceControl2).Y : 0,
+			X = component is Control boundsControl ? boundsControl.Left
+#if MICROSOFT_WINFORMS
+				: component is ToolStripItem boundsItem ? boundsItem.Bounds.X : 0,
+#else
+				: 0,
+#endif
+			Y = component is Control boundsControl2 ? boundsControl2.Top
+#if MICROSOFT_WINFORMS
+				: component is ToolStripItem boundsItem2 ? boundsItem2.Bounds.Y : 0,
+#else
+				: 0,
+#endif
+			SurfaceX = component is Control surfaceControl ? SurfaceLocation(surfaceControl).X
+#if MICROSOFT_WINFORMS
+				: component is ToolStripItem surfaceItem && surfaceItem.Owner != null
+					? SurfaceLocation(surfaceItem.Owner).X + surfaceItem.Bounds.X : 0,
+#else
+				: 0,
+#endif
+			SurfaceY = component is Control surfaceControl2 ? SurfaceLocation(surfaceControl2).Y
+#if MICROSOFT_WINFORMS
+				: component is ToolStripItem surfaceItem2 && surfaceItem2.Owner != null
+					? SurfaceLocation(surfaceItem2.Owner).Y + surfaceItem2.Bounds.Y : 0,
+#else
+				: 0,
+#endif
 			Width = component == host.RootComponent && rootDesignSize.HasValue
 #if MICROSOFT_WINFORMS
 				? (component as Control)?.Width ?? rootDesignSize.Value.Width
+				: component is Control sizeControl ? sizeControl.Width
+				: component is ToolStripItem sizeItem ? sizeItem.Bounds.Width : 0,
 #else
 				? rootDesignSize.Value.Width
-#endif
 				: component is Control sizeControl ? sizeControl.Width : 0,
+#endif
 			Height = component == host.RootComponent && rootDesignSize.HasValue
 #if MICROSOFT_WINFORMS
 				? (component as Control)?.Height ?? rootDesignSize.Value.Height
+				: component is Control sizeControl2 ? sizeControl2.Height
+				: component is ToolStripItem sizeItem2 ? sizeItem2.Bounds.Height : 0,
 #else
 				? rootDesignSize.Value.Height
-#endif
 				: component is Control sizeControl2 ? sizeControl2.Height : 0,
+#endif
 			Properties = properties,
 			Events = DescribeEvents(component)
 			};
@@ -1147,9 +1183,37 @@ sealed class DesignerHostService : IDesignerChildService
 	}
 
 	/// <summary>Builds the element tree for the Document Outline pad (the protocol's
-	/// <c>Tree</c> shape), mirroring the flat <c>Components</c> list's control hierarchy.</summary>
-	static DesignerElementNode BuildElementTree(Control control, string path)
+	/// <c>Tree</c> shape), mirroring the flat <c>Components</c> list's control hierarchy.
+	/// A ToolStrip/MenuStrip/StatusStrip's real children are ToolStripItems living in its
+	/// Items collection - Controls is empty (or holds only internal implementation controls
+	/// like the overflow button), so walking only Controls silently drops every menu item,
+	/// toolbar button and status label from the outline.
+	/// <paramref name="container"/> is the design host's own component container (null when no
+	/// host is active, e.g. before a document is open) - both Controls and Items must be filtered
+	/// to components it actually contains. Once an IDesignerHost/ToolStripDesigner is attached
+	/// (true for every open document, not just an edge case), .NET's own ToolStrip design-time
+	/// support injects live in-place-edit scaffolding - System.Windows.Forms.Design.
+	/// ToolStripTemplateNode's TransparentToolStrip overlay control, ItemTypeToolStripMenuItem
+	/// "choose item type" entries, DesignerToolStripControlHost - directly into the SAME runtime
+	/// Controls/Items collections as the real, user-added items. Unlike the flat Components list
+	/// below (built from host.Container.Components, which never contains this scaffolding because
+	/// it was never sited through it), a naive Controls/Items walk cannot tell them apart from
+	/// genuine children by type or position - only container membership distinguishes them.</summary>
+	static DesignerElementNode BuildElementTree(Control control, string path, IContainer? container)
 	{
+		var children = control.Controls.Cast<Control>()
+			.Where(child => container == null || container.Components.Cast<IComponent>().Contains(child))
+			.Select((child, index) => BuildElementTree(child, ChildPath(path, index), container));
+#if MICROSOFT_WINFORMS
+		// The portable LibreWinForms ToolStripItem does not expose Bounds/Owner/OwnerItem or
+		// ToolStripDropDownItem at all, so this walk only exists for the real Microsoft backend.
+		if (control is ToolStrip toolStrip) {
+			var offset = control.Controls.Count;
+			children = children.Concat(toolStrip.Items.Cast<ToolStripItem>()
+				.Where(item => container == null || container.Components.Cast<IComponent>().Contains(item))
+				.Select((item, index) => BuildToolStripItemNode(item, ChildPath(path, offset + index), container)));
+		}
+#endif
 		return new DesignerElementNode {
 			Id = control.Site?.Name ?? control.GetType().Name,
 			Name = control.Site?.Name,
@@ -1160,11 +1224,40 @@ sealed class DesignerHostService : IDesignerChildService
 			Height = control.Height,
 			Path = path,
 			IsDesignable = true,
-			Children = control.Controls.Cast<Control>()
-				.Select((child, index) => BuildElementTree(child, path.Length == 0 ? index.ToString(CultureInfo.InvariantCulture) : path + "," + index.ToString(CultureInfo.InvariantCulture)))
-				.ToList()
+			Children = children.ToList()
 		};
 	}
+
+	static string ChildPath(string path, int index) =>
+		path.Length == 0 ? index.ToString(CultureInfo.InvariantCulture) : path + "," + index.ToString(CultureInfo.InvariantCulture);
+
+#if MICROSOFT_WINFORMS
+	/// <summary>A ToolStripDropDownItem's own children (a menu item's submenu) live in
+	/// DropDownItems, not Items - only ToolStrip/MenuStrip/StatusStrip themselves use Items.
+	/// Same container-membership filtering as BuildElementTree: a submenu can carry the same
+	/// unsited ItemTypeToolStripMenuItem/DesignerToolStripControlHost design-time scaffolding.</summary>
+	static DesignerElementNode BuildToolStripItemNode(ToolStripItem item, string path, IContainer? container)
+	{
+		var children = item is ToolStripDropDownItem dropDown
+			? dropDown.DropDownItems.Cast<ToolStripItem>()
+				.Where(child => container == null || container.Components.Cast<IComponent>().Contains(child))
+				.Select((child, index) => BuildToolStripItemNode(child, ChildPath(path, index), container))
+				.ToList()
+			: [];
+		return new DesignerElementNode {
+			Id = item.Site?.Name ?? item.GetType().Name,
+			Name = item.Site?.Name,
+			Type = item.GetType().FullName ?? item.GetType().Name,
+			X = item.Bounds.X,
+			Y = item.Bounds.Y,
+			Width = item.Bounds.Width,
+			Height = item.Bounds.Height,
+			Path = path,
+			IsDesignable = true,
+			Children = children
+		};
+	}
+#endif
 
 	List<DesignerEventInfo> DescribeEvents(IComponent component)
 	{
@@ -1260,6 +1353,14 @@ sealed class DesignerHostService : IDesignerChildService
 	/// The old loop therefore folded that frame offset into every component, putting the reported
 	/// coordinates 15px off from the very bitmap and hit-test results they are meant to line up
 	/// with.</summary>
+#if MICROSOFT_WINFORMS
+	/// <summary>A ToolStripItem's logical parent for the Properties Pad / flat component list:
+	/// a submenu item's parent is the ToolStripDropDownItem that owns its dropdown (OwnerItem);
+	/// a top-level item's parent is the ToolStrip/MenuStrip/StatusStrip itself (Owner).</summary>
+	static string ToolStripItemParentName(ToolStripItem item) =>
+		item.OwnerItem?.Site?.Name ?? item.Owner?.Site?.Name ?? "";
+#endif
+
 	Point SurfaceLocation(Control control)
 	{
 		var root = (designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost)?.RootComponent as Control;
