@@ -253,8 +253,14 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			// could never work (only the Document Outline could change the selection). The
 			// resize gesture already worked around the same swallowing with a Preview handler.
 			AddHandler(MouseLeftButtonDownEvent, new MouseButtonEventHandler(OnMouseLeftButtonDown), true);
-			MouseMove += OnMouseMove;
-			MouseLeftButtonUp += OnMouseLeftButtonUp;
+			// Same handledEventsToo requirement as MouseLeftButtonDown above: the ScrollViewer
+			// swallows bubbling Move/Up too, so a plain += here left marqueeSelecting stuck true
+			// (and the mouse still captured) forever after the FIRST click that missed every
+			// known component's rect - silently breaking every subsequent click-to-select attempt,
+			// not just marquee-drag, since OnMouseLeftButtonDown's own early-return guard bails
+			// out whenever marqueeSelecting is still true.
+			AddHandler(MouseMoveEvent, new MouseEventHandler(OnMouseMove), true);
+			AddHandler(MouseLeftButtonUpEvent, new MouseButtonEventHandler(OnMouseLeftButtonUp), true);
 			// The ScrollViewer hosting the expandable canvas can consume bubbling mouse events.
 			// Preview handlers keep the root-form resize gesture reachable even after scrollbars
 			// appear, matching the WPF/WinUI designer surfaces' input-routing strategy.
@@ -606,6 +612,23 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			return true;
 		}
 
+		/// <summary>Whether the click originated somewhere in the toolbar/status-bar chrome
+		/// (base DesignerCanvas' own controls: Show Names, zoom combo, etc.) rather than on the
+		/// design surface itself (ContentHost's subtree). MUST be checked before anything else -
+		/// this handler is registered with handledEventsToo (see the constructor), so it also
+		/// sees every press already consumed by that unrelated chrome, including the resulting
+		/// e.GetPosition(framePresenter.Visual) computing some nonsense point far outside any
+		/// known component and starting a marquee-drag/mouse-capture that then hijacks the very
+		/// next mouse move as if it were panning the canvas - reported as "clicking the Show Names
+		/// button moves the canvas".</summary>
+		bool IsOutsideContentHost(object source)
+		{
+			for (var node = source as DependencyObject; node != null; node = VisualTreeHelper.GetParent(node)) {
+				if (node == ContentHost) return false;
+			}
+			return true;
+		}
+
 		/// <summary>Whether the click originated on one of the adorner-layer glyphs (drag/resize
 		/// thumbs, smart tag, ToolStrip insert button), which handle their own clicks. Needed
 		/// because this handler is registered with handledEventsToo, so it also sees the presses
@@ -622,6 +645,8 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		async void OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
 		{
 			try {
+				if (IsOutsideContentHost(e.OriginalSource))
+					return;
 				if (previewResizeDrag || resizingDrag || marqueeSelecting || IsAdornerSource(e.OriginalSource))
 					return;
 				var extendSelection = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) || Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
@@ -1183,12 +1208,14 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			dragWidth = selectedComponent.Width;
 			dragHeight = selectedComponent.Height;
 			PositionAdorners();
-			// A root form can be selected with its bottom-right edge exactly behind the
-			// ScrollViewer's horizontal bar.  In that state no resize can start at all: the
-			// scrollbar consumes the initial press before the Thumb can capture it.  Keep the
-			// handle in the same safe viewport inset used while a resize is in progress.
-			// This runs only after selection/layout, never between drag samples.
-			ScrollResizeHandleIntoView();
+			// Deliberately does NOT call ScrollResizeHandleIntoView() here: that used to force
+			// the canvas to jump/scroll to the selected component's resize handle on every plain
+			// selection (most jarring for the root Form, whose handle sits at its bottom-right
+			// corner - selecting it could scroll far away from wherever the user was looking).
+			// The handle-visibility problem this originally guarded against (a resize can't start
+			// if the handle is hidden behind a scrollbar) only actually matters once a resize
+			// drag is already in progress, where the OTHER two call sites (OnPreviewMouseMove/
+			// OnResizeDragDelta) still keep the handle in view without touching plain selection.
 		}
 
 		void PositionAdorners()

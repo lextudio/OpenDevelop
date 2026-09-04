@@ -183,6 +183,77 @@ public sealed class FormsDesignerHostClientTests
 #endif
 	}
 
+	/// <summary>
+	/// Regression test: a real click on the design surface sends SURFACE (rendered-bitmap)
+	/// coordinates to design/hit-test - the same space DesignerComponentInfo.SurfaceX/SurfaceY
+	/// report a component's position in. On the Microsoft backend, the rendered bitmap is the
+	/// whole native window (Form.DrawToBitmap paints border + caption too), so surface space and
+	/// each Control's own client-space Bounds differ by the root form's non-client offset.
+	/// HitTest compared an incoming surface point directly against client-space Bounds without
+	/// ever subtracting that offset, so every click landed on whatever control happened to sit
+	/// "offset pixels" above the real target - clicking a control near the bottom of a tall form
+	/// could select nothing, or the wrong control, while the Document Outline pad (which never
+	/// hit-tests) kept working, hiding the bug from every non-mouse test.
+	/// </summary>
+	[Fact]
+	public async Task ChildHost_HitTestAccountsForRootNonClientOffsetAtReportedSurfaceCoordinates()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		var hostDll = HostDll();
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
+
+		var snapshot = new DesignerDocumentSnapshot {
+			Version = 1,
+			PrimaryFileName = "/project/Form1.cs",
+			DesignerFileName = "/project/Form1.Designer.cs",
+			Files = {
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.cs", Kind = "Source",
+					Text = "namespace Sample; partial class Form1 { }"
+				},
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.Designer.cs", Kind = "Designer",
+					Text = """
+						namespace Sample;
+						partial class Form1
+						{
+						    private void InitializeComponent()
+						    {
+						        this.buttonTop = new System.Windows.Forms.Button();
+						        this.buttonTop.Location = new System.Drawing.Point(10, 10);
+						        this.buttonTop.Size = new System.Drawing.Size(80, 30);
+						        this.buttonBottom = new System.Windows.Forms.Button();
+						        this.buttonBottom.Location = new System.Drawing.Point(10, 260);
+						        this.buttonBottom.Size = new System.Drawing.Size(80, 30);
+						        this.ClientSize = new System.Drawing.Size(300, 320);
+						        this.Controls.Add(this.buttonTop);
+						        this.Controls.Add(this.buttonBottom);
+						    }
+						    private System.Windows.Forms.Button buttonTop;
+						    private System.Windows.Forms.Button buttonBottom;
+						}
+						"""
+				}
+			}
+		};
+
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted);
+		var bottom = Assert.Single(opened.Components, component => component.Name == "buttonBottom");
+
+		var centerX = bottom.SurfaceX + bottom.Width / 2;
+		var centerY = bottom.SurfaceY + bottom.Height / 2;
+		var hit = await client.HitTestAsync(1, centerX, centerY, timeout.Token);
+		Assert.Equal("buttonBottom", hit.ComponentName);
+#if MICROSOFT_FORMS_DESIGNER_HOST
+		// Guard against a vacuously-passing test: on the Microsoft backend the rendered bitmap
+		// includes the form's caption/border, so SurfaceY must differ from the client-space Y the
+		// designer source set (260) - if this ever reads equal, the offset stopped being applied
+		// at all and the assertion above would pass for the wrong reason.
+		Assert.NotEqual(260, bottom.SurfaceY);
+#endif
+	}
+
 	[Fact]
 	public async Task ChildHost_HandshakesRejectsStaleVersionsAndFlushesCurrentSnapshot()
 	{
@@ -226,7 +297,10 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Contains(openedButton.Properties, property => property.Name == "Text" && property.DisplayName == "Text"
 			&& property.TypeName == "System.String");
 		Assert.Contains(openedButton.Properties, property => property.Name == "Enabled" && property.TypeName == "System.Boolean");
-		var hit = await client.HitTestAsync(7, 20, 25, timeout.Token);
+		// design/hit-test takes SURFACE (rendered-bitmap) coordinates - openedButton.SurfaceX/Y,
+		// not its client-space X/Y (12, 20) - the two differ on the Microsoft backend by the root
+		// form's non-client border/caption offset (see ChildHost_HitTestAccountsFor... below).
+		var hit = await client.HitTestAsync(7, openedButton.SurfaceX + 8, openedButton.SurfaceY + 5, timeout.Token);
 		Assert.Equal("button1", hit.ComponentName);
 		Assert.Equal("System.Windows.Forms.Button", hit.ComponentType);
 		var resizedRoot = await client.SetBoundsAsync(7, "Form1", 0, 0, 420, 260, timeout.Token);
@@ -318,11 +392,15 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Contains("new System.Drawing.Point(40, 50)", movedSource, StringComparison.Ordinal);
 		Assert.Contains("new System.Drawing.Size(120, 35)", movedSource, StringComparison.Ordinal);
 
-		await client.AddElementAsync(7, "Form1", new DesignerToolboxItemInfo { TypeName = "Panel" }, "panel1", 10, 100, timeout.Token);
+		var withPanel = await client.AddElementAsync(7, "Form1", new DesignerToolboxItemInfo { TypeName = "Panel" }, "panel1", 10, 100, timeout.Token);
+		var panel1 = Assert.Single(withPanel.Components, component => component.Name == "panel1");
 		var nested = await client.AddElementAsync(7, "panel1", new DesignerToolboxItemInfo { TypeName = "Button" }, "nestedButton", 5, 6, timeout.Token);
+		// SurfaceX/Y are relative to panel1's own reported surface position (itself offset by the
+		// root form's non-client border on the Microsoft backend) plus the button's LOCAL (client,
+		// panel-relative) offset - not a value hardcoded against a zero root offset.
 		Assert.Contains(nested.Components, component => component.Name == "nestedButton"
 			&& component.Parent == "panel1" && component.X == 5 && component.Y == 6
-			&& component.SurfaceX == 15 && component.SurfaceY == 106);
+			&& component.SurfaceX == panel1.SurfaceX + 5 && component.SurfaceY == panel1.SurfaceY + 6);
 		Assert.Contains("panel1.Controls.Add(nestedButton);",
 			DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
 		var beforeAdvancedControlRender = FramePayload(nested.Render!);
