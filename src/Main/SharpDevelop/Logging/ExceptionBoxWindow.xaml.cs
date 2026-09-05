@@ -24,12 +24,24 @@ namespace ICSharpCode.SharpDevelop.Logging
 	{
 		public bool ContinueRunning { get; private set; }
 
-		public ExceptionBoxWindow(string message, string details, bool allowContinue)
+		/// <param name="title">Window title; defaults to the XAML's "Unhandled exception".</param>
+		/// <param name="dismissOnly">
+		/// Set for a reported error rather than a crash. The dialog is then purely informational,
+		/// so the closing button says "Close" instead of "Exit" - the caller carries on either way
+		/// and the "Exit" wording would wrongly suggest the app is about to terminate.
+		/// </param>
+		public ExceptionBoxWindow(string message, string details, bool allowContinue, string title = null, bool dismissOnly = false)
 		{
 			InitializeComponent();
+			if (!string.IsNullOrEmpty(title))
+				Title = title;
 			messageText.Text = message;
 			detailsTextBox.Text = details;
 			continueButton.Visibility = allowContinue ? Visibility.Visible : Visibility.Collapsed;
+			if (dismissOnly) {
+				exitButton.Content = "Close";
+				exitButton.IsDefault = true;
+			}
 		}
 
 		void CopyButton_Click(object sender, RoutedEventArgs e)

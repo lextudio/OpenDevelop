@@ -70,10 +70,30 @@ sealed class WpfMessageService : IMessageService
 		return owner;
 	}
 
+	// Errors are the messages users actually need to copy (to search for, or paste into a bug
+	// report), so they get the same selectable/copyable dialog as exceptions rather than a bare
+	// MessageBox.Show, whose text is an unselectable label. Warnings and informational messages
+	// below deliberately stay on MessageBox: they are short and transient, and the bigger dialog
+	// would overstate them.
 	public void ShowError(string message)
 	{
 		LoggingService.Error(message);
-		Show(message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+		if (IsTestMode) {
+			LoggingService.Info($"OD_TEST_MODE: suppressed error dialog ({StringParser.Parse(message)})");
+			return;
+		}
+		Invoke(() => {
+			string text = StringParser.Parse(message);
+			// The copyable dialog is a real WPF window, so it can only be used once the workbench
+			// owns the app's lifetime. Errors reported before the main window exists (add-in tree
+			// load failures) or while it is tearing down would otherwise be the only window
+			// around: dismissing one would shut the app down under WPF's default
+			// OnLastWindowClose mode, and showing it modally would block startup outright.
+			if (GetDialogOwner() is Window owner)
+				ExceptionBox.ShowCopyableError("An error occurred:", text, owner);
+			else
+				MessageBox.Show(text, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+		});
 	}
 
 	public void ShowWarning(string message)

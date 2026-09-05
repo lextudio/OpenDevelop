@@ -40,12 +40,53 @@ namespace ICSharpCode.SharpDevelop.Logging
 		public static bool ShowErrorBox(Exception exception, string caption, bool allowContinue = false)
 		{
 			string details = BuildDetailsText(exception);
-			var window = new ExceptionBoxWindow(caption, details, allowContinue);
 			try {
-				window.Owner = System.Windows.Application.Current?.MainWindow;
+				var window = new ExceptionBoxWindow(caption, details, allowContinue);
+				try {
+					window.Owner = System.Windows.Application.Current?.MainWindow;
+				} catch { }
+				window.ShowDialog();
+				return window.ContinueRunning;
+			} catch (Exception dialogFailure) {
+				// Building this window needs the WPF resource system (InitializeComponent ->
+				// Application.LoadComponent), which throws "The Application object is being shut
+				// down." once shutdown has started - precisely when a startup/shutdown failure is
+				// being reported. Letting that escape replaces the real error with a confusing
+				// secondary one and loses the original entirely, so fall back to a plain message
+				// box and make sure the text still reaches the log either way.
+				ICSharpCode.Core.LoggingService.Error("Could not show the exception dialog; original error follows.", dialogFailure);
+				ICSharpCode.Core.LoggingService.Error(details);
+				try {
+					System.Windows.MessageBox.Show(details, caption);
+				} catch {
+					// Even the fallback can fail this late in shutdown; the log above is then the
+					// only record, which is why it is written before this point.
+				}
+				return false;
+			}
+		}
+
+		/// <summary>
+		/// Shows a plain error message in the same read-only, selectable/copyable text box the
+		/// exception dialog uses. MessageBox.Show renders its text as a non-selectable label (a
+		/// native alert on macOS), so an error reported through it cannot be copied - which is
+		/// useless for anything the user then wants to search for or paste into a bug report.
+		/// </summary>
+		public static void ShowCopyableError(string caption, string message, System.Windows.Window owner)
+		{
+			// Only the message goes in the box: unlike a crash, a reported error has no stack and
+			// no need for the version/OS/log-tail preamble BuildDetailsText adds - that would bury
+			// a one-line message and make a routine error look like a crash report.
+			var window = new ExceptionBoxWindow(caption, message ?? string.Empty, allowContinue: false,
+			                                    title: "Error", dismissOnly: true);
+			// An owner is required, not optional: without one this dialog would be the app's only
+			// window while the workbench is still starting, and WPF's default OnLastWindowClose
+			// shutdown mode would then terminate the whole app the moment it is dismissed.
+			// WpfMessageService only takes this path once it has a real owner window.
+			try {
+				window.Owner = owner;
 			} catch { }
 			window.ShowDialog();
-			return window.ContinueRunning;
 		}
 
 		static string BuildDetailsText(Exception exception)
