@@ -184,6 +184,82 @@ public sealed class FormsDesignerHostClientTests
 	}
 
 	/// <summary>
+	/// The component tray's membership rule, ported from
+	/// System.Windows.Forms.Design.ComponentTray (CanCreateComponentFromTool plus
+	/// CanDisplayComponent): a component belongs in the tray when it is not a Control, OR is a
+	/// Control whose registered IDesigner is not a ControlDesigner, provided the type is
+	/// design-time visible. The second clause is the subtle one and the reason this test asserts
+	/// ContextMenuStrip specifically: it IS a Control, but its ToolStripDropDownDesigner derives
+	/// from ComponentDesigner, so real WinForms puts it in the tray - whereas MenuStrip's
+	/// ToolStripDesigner IS a ControlDesigner, so the strip stays on the design surface.
+	/// </summary>
+	[Fact]
+	public async Task ChildHost_ReportsTrayComponentsByDesignerKindNotJustControlness()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		var hostDll = HostDll();
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
+
+		var snapshot = new DesignerDocumentSnapshot {
+			Version = 1,
+			PrimaryFileName = "/project/Form1.cs",
+			DesignerFileName = "/project/Form1.Designer.cs",
+			Files = {
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.cs", Kind = "Source",
+					Text = "namespace Sample; partial class Form1 { }"
+				},
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.Designer.cs", Kind = "Designer",
+					Text = """
+						namespace Sample;
+						partial class Form1
+						{
+						    private System.ComponentModel.IContainer components;
+						    private void InitializeComponent()
+						    {
+						        this.components = new System.ComponentModel.Container();
+						        this.timer1 = new System.Windows.Forms.Timer(this.components);
+						        this.contextMenuStrip1 = new System.Windows.Forms.ContextMenuStrip(this.components);
+						        this.menuStrip1 = new System.Windows.Forms.MenuStrip();
+						        this.button1 = new System.Windows.Forms.Button();
+						        this.Controls.Add(this.menuStrip1);
+						        this.Controls.Add(this.button1);
+						    }
+						    private System.Windows.Forms.Timer timer1;
+						    private System.Windows.Forms.ContextMenuStrip contextMenuStrip1;
+						    private System.Windows.Forms.MenuStrip menuStrip1;
+						    private System.Windows.Forms.Button button1;
+						}
+						"""
+				}
+			}
+		};
+
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted);
+		// The root form is never a tray component, whatever its designer says.
+		Assert.All(opened.Components.Where(component => component.Name == "Form1"),
+			component => Assert.False(component.IsTrayComponent));
+#if MICROSOFT_FORMS_DESIGNER_HOST
+		// Not a Control at all -> tray.
+		Assert.Contains(opened.Components, component => component.Name == "timer1" && component.IsTrayComponent);
+		// A Control, but ToolStripDropDownDesigner is a ComponentDesigner -> tray.
+		Assert.Contains(opened.Components, component => component.Name == "contextMenuStrip1" && component.IsTrayComponent);
+		// A Control with a real ControlDesigner -> stays on the surface.
+		Assert.Contains(opened.Components, component => component.Name == "menuStrip1" && !component.IsTrayComponent);
+		Assert.Contains(opened.Components, component => component.Name == "button1" && !component.IsTrayComponent);
+#else
+		// The portable LibreWinForms fork ships none of the System.Windows.Forms.Design designer
+		// types these DesignerAttributes name, so the designer-kind half of the rule cannot be
+		// evaluated there: non-Controls still go to the tray, every Control stays on the surface.
+		Assert.Contains(opened.Components, component => component.Name == "timer1" && component.IsTrayComponent);
+		Assert.Contains(opened.Components, component => component.Name == "menuStrip1" && !component.IsTrayComponent);
+		Assert.Contains(opened.Components, component => component.Name == "button1" && !component.IsTrayComponent);
+#endif
+	}
+
+	/// <summary>
 	/// Regression test: a real click on the design surface sends SURFACE (rendered-bitmap)
 	/// coordinates to design/hit-test - the same space DesignerComponentInfo.SurfaceX/SurfaceY
 	/// report a component's position in. On the Microsoft backend, the rendered bitmap is the

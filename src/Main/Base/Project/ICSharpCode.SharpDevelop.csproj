@@ -22,6 +22,21 @@
     <DefineConstants>$(DefineConstants);OPOPENDEVELOP</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Toolbox/component-tray icons for the WinForms components whose icons modern .NET dropped.
+         Only System.Windows.Forms.dll still embeds toolbox icons; DataSet/DataView,
+         BackgroundWorker, EventLog, PerformanceCounter, Process, FileSystemWatcher, SerialPort and
+         PrintDocument lost theirs when their types moved out of System.dll/System.Data.dll/
+         System.Drawing.dll - verified by scanning every manifest resource of every assembly in
+         Microsoft.WindowsDesktop.App, Microsoft.NETCore.App and Microsoft.AspNetCore.App, plus all
+         10716 DLLs in the NuGet package cache: exactly one hit (System.Windows.Forms.Timer).
+         These .bmp files are those original icons, extracted from the .NET Framework assemblies
+         that ship with Windows, so OpenDevelop shows the same icons the original SharpDevelop did
+         without depending on .NET Framework being present at runtime.
+         LogicalName keeps the resource name equal to the file name, which is exactly the
+         "<TypeFullName>.bmp" key WinFormsToolboxIconProvider looks up. -->
+    <EmbeddedResource Include="Resources\WinFormsToolboxIcons\*.bmp" LogicalName="%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
     <!-- For NuGetPackageSearchService.cs (shared with UnoDevelop, doc/technotes/nuget.md) -->
     <PackageReference Include="NuGet.Protocol" />
     <PackageReference Include="Microsoft.Build" />

@@ -25,9 +25,24 @@ namespace ToolStripFixture
 		private System.Windows.Forms.ToolStrip tsTop;
 		private System.Windows.Forms.ToolStripButton toolStripButton1;
 		private System.Windows.Forms.ToolStripButton toolStripButton2;
+		// Component-tray members: non-visual components (Timer/ImageList/ToolTip) plus a
+		// ContextMenuStrip, which is a Control yet still belongs in the tray because its designer
+		// (ToolStripDropDownDesigner) is a ComponentDesigner rather than a ControlDesigner.
+		private System.Windows.Forms.Timer timer1;
+		private System.Windows.Forms.ImageList imageList1;
+		private System.Windows.Forms.ToolTip toolTip1;
+		private System.Windows.Forms.ContextMenuStrip contextMenuStrip1;
 
 		private void InitializeComponent()
 		{
+			this.components = new System.ComponentModel.Container();
+			this.timer1 = new System.Windows.Forms.Timer(this.components);
+			this.imageList1 = new System.Windows.Forms.ImageList(this.components);
+			this.toolTip1 = new System.Windows.Forms.ToolTip(this.components);
+			this.contextMenuStrip1 = new System.Windows.Forms.ContextMenuStrip(this.components);
+			this.timer1.Interval = 500;
+			this.imageList1.ImageSize = new System.Drawing.Size(16, 16);
+			this.contextMenuStrip1.Name = "contextMenuStrip1";
 			this.menuStrip1 = new System.Windows.Forms.MenuStrip();
 			this.fileToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
 			this.openToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();

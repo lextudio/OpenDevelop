@@ -197,6 +197,14 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public int SurfaceY { get; set; }
 		public int Width { get; set; }
 		public int Height { get; set; }
+		/// <summary>Whether this component belongs in the designer's component tray - the icon+name
+		/// strip below the design surface - rather than on the surface itself. Mirrors the real
+		/// WinForms rule (System.Windows.Forms.Design.ComponentTray's CanCreateComponentFromTool
+		/// plus CanDisplayComponent): anything that is not a Control, OR is a Control whose
+		/// designer is not a ControlDesigner, provided the type is design-time visible. That
+		/// second clause is why ContextMenuStrip and PrintPreviewDialog are tray components while
+		/// MenuStrip/ToolStrip/StatusStrip stay on the surface.</summary>
+		public bool IsTrayComponent { get; set; }
 		public List<DesignerPropertyInfo> Properties { get; set; } = new List<DesignerPropertyInfo>();
 		public List<DesignerEventInfo> Events { get; set; } = new List<DesignerEventInfo>();
 	}

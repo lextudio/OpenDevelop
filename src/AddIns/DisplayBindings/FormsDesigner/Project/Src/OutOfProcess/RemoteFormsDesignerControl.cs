@@ -47,6 +47,17 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		// change) so a live drag's guides aren't wiped by an unrelated redraw.
 		readonly Canvas snapGuideOverlay = new Canvas { IsHitTestVisible = false };
 		readonly List<Rectangle> snapGuides = new();
+		// The component tray - the icon+name strip below the design surface that holds every
+		// non-visual component (Timer/ImageList/ToolTip/dialogs) plus the Controls whose designer
+		// is not a ControlDesigner (ContextMenuStrip, PrintPreviewDialog). It is deliberately a
+		// SIBLING of the zoomable scroller rather than part of its content, mirroring how the real
+		// designer hosts System.Windows.Forms.Design.ComponentTray through
+		// ISplitWindowService.AddSplitWindow: the tray keeps its own scrollbar and its own fixed
+		// item size, unaffected by the canvas zoom.
+		readonly Border trayRegion;
+		readonly WrapPanel trayItems = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 3, 4, 3) };
+		/// <summary>The real designer's own default tray height (ComponentTray's _trayHeight).</summary>
+		const double TrayHeight = 80;
 		readonly SelectionAdornerLayer adornerLayer = new(Array.Empty<string>(), Brushes.DodgerBlue, showLabel: false);
 		readonly Rectangle marqueeBorder;
 		readonly Thumb moveThumb;
@@ -227,7 +238,29 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			// Thumb (and, consequently, releasing a resize drag outside the canvas).
 			scrollContent.Children.Add(designSurface);
 			scroller.Content = scrollContent;
-			ContentHost.Content = scroller;
+			trayRegion = new Border {
+				BorderThickness = new Thickness(0, 1, 0, 0),
+				BorderBrush = new SolidColorBrush(Color.FromRgb(0xC0, 0xC0, 0xC0)),
+				Background = new SolidColorBrush(Color.FromRgb(0xF5, 0xF5, 0xF5)),
+				Height = TrayHeight,
+				Visibility = Visibility.Collapsed,
+				// The tray's own scrollbar: item layout is fixed-size, so a form with many
+				// components scrolls the tray without touching the design surface's own scroll
+				// position or zoom.
+				Child = new ScrollViewer {
+					VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+					HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+					Content = trayItems
+				}
+			};
+			var contentLayout = new Grid();
+			contentLayout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+			contentLayout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+			Grid.SetRow(scroller, 0);
+			Grid.SetRow(trayRegion, 1);
+			contentLayout.Children.Add(scroller);
+			contentLayout.Children.Add(trayRegion);
+			ContentHost.Content = contentLayout;
 
 			// Only controls backed by this designer are visible. Editing commands remain in the
 			// IDE command system; grid/theme/name/device controls are not inert toolbar chrome.
@@ -402,6 +435,10 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			disconnectedOverlay.Visibility = Visibility.Collapsed;
 			this.state = state;
 			version = state.Version;
+			// Before the frame-freshness early-returns below: the tray's contents come from the
+			// component list, not from the rendered bitmap, so a state that carries no new frame
+			// (or no frame at all) still has to refresh it.
+			UpdateComponentTray();
 			if (state.Render == null || (String.IsNullOrEmpty(state.Render.PngBase64) && String.IsNullOrEmpty(state.Render.Data))) {
 				return;
 			}
@@ -466,6 +503,89 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			UpdateDesignGuides();
 			if (selectedComponent != null)
 				UpdateAdorners();
+		}
+
+		/// <summary>Rebuilds the component tray from the reported components. Each entry is the
+		/// component's real WinForms icon plus its name, sized independently of the canvas zoom
+		/// (the tray is not inside the zoomed surface), and selecting one routes through the same
+		/// single-selection path as the Document Outline so the Properties pad and the outline
+		/// follow along. Hidden entirely when the form has no tray components.</summary>
+		void UpdateComponentTray()
+		{
+			var trayComponents = state?.Components?.Where(item => item.IsTrayComponent).ToArray()
+				?? Array.Empty<DesignerComponentInfo>();
+			trayItems.Children.Clear();
+			trayRegion.Visibility = trayComponents.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+			foreach (var component in trayComponents) {
+				var content = new StackPanel { Orientation = Orientation.Horizontal };
+				var icon = TrayIconSource(component.Type);
+				if (icon != null) {
+					content.Children.Add(new Image {
+						Source = icon, Width = 16, Height = 16,
+						Margin = new Thickness(0, 0, 4, 0),
+						VerticalAlignment = VerticalAlignment.Center
+					});
+				}
+				content.Children.Add(new TextBlock {
+					Text = component.Name, VerticalAlignment = VerticalAlignment.Center
+				});
+				var entry = new Border {
+					Padding = new Thickness(4, 3, 6, 3),
+					Margin = new Thickness(0, 0, 4, 3),
+					CornerRadius = new CornerRadius(2),
+					BorderThickness = new Thickness(1),
+					Cursor = Cursors.Hand,
+					ToolTip = component.Type,
+					Tag = component.Name,
+					Child = content
+				};
+				var componentName = component.Name;
+				entry.MouseLeftButtonDown += (_, args) => {
+					args.Handled = true;
+					SelectSingleComponent(componentName, takeFocus: false);
+				};
+				trayItems.Children.Add(entry);
+			}
+			RefreshTrayHighlight();
+		}
+
+		/// <summary>Repaints just the tray entries' selected state. Split out of
+		/// <see cref="UpdateComponentTray"/> because UpdateAdorners runs on every drag sample -
+		/// rebuilding the entries (and re-decoding their icons) that often would be wasteful.</summary>
+		void RefreshTrayHighlight()
+		{
+			foreach (var child in trayItems.Children) {
+				if (child is not Border entry || entry.Tag is not string name)
+					continue;
+				var selected = selectedComponentNames.Contains(name);
+				entry.Background = selected ? new SolidColorBrush(Color.FromRgb(0xCC, 0xE4, 0xF7)) : Brushes.Transparent;
+				entry.BorderBrush = selected ? Brushes.DodgerBlue : Brushes.Transparent;
+			}
+		}
+
+		/// <summary>The tray entry's icon: the same real per-type WinForms toolbox icon the Toolbox
+		/// pad uses, read out of the installed Microsoft WinForms assembly (this process's own
+		/// System.Windows.Forms is the portable fork, which embeds no icon resources).</summary>
+		static ImageSource TrayIconSource(string typeName)
+		{
+			try {
+				var bitmap = ICSharpCode.SharpDevelop.Gui.WinFormsToolboxIconProvider.GetIcon(typeName);
+				if (bitmap == null) return null;
+				using var stream = new MemoryStream();
+				bitmap.Save(stream, System.Drawing.Imaging.ImageFormat.Png);
+				stream.Position = 0;
+				var image = new BitmapImage();
+				image.BeginInit();
+				image.CacheOption = BitmapCacheOption.OnLoad;
+				image.StreamSource = stream;
+				image.EndInit();
+				image.Freeze();
+				return image;
+			} catch (Exception exception) {
+				ICSharpCode.Core.LoggingService.Warn(
+					"RemoteFormsDesignerControl.TrayIconSource(" + typeName + "): " + exception.Message);
+				return null;
+			}
 		}
 
 		void UpdateDesignGuides()
@@ -612,19 +732,28 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			return true;
 		}
 
-		/// <summary>Whether the click originated somewhere in the toolbar/status-bar chrome
-		/// (base DesignerCanvas' own controls: Show Names, zoom combo, etc.) rather than on the
-		/// design surface itself (ContentHost's subtree). MUST be checked before anything else -
-		/// this handler is registered with handledEventsToo (see the constructor), so it also
-		/// sees every press already consumed by that unrelated chrome, including the resulting
-		/// e.GetPosition(framePresenter.Visual) computing some nonsense point far outside any
-		/// known component and starting a marquee-drag/mouse-capture that then hijacks the very
-		/// next mouse move as if it were panning the canvas - reported as "clicking the Show Names
-		/// button moves the canvas".</summary>
-		bool IsOutsideContentHost(object source)
+		/// <summary>Whether the press originated outside the design surface's own CONTENT - i.e.
+		/// anywhere in the surrounding chrome: the base DesignerCanvas' toolbar/status bar (Show
+		/// Names, zoom combo, ...), the component tray below the surface, or the hosting
+		/// ScrollViewer's own scrollbars. MUST be checked before anything else, because this
+		/// handler is registered with handledEventsToo (see the constructor), so it also sees every
+		/// press those unrelated controls already consumed. Without the check,
+		/// e.GetPosition(framePresenter.Visual) computes a nonsense point far outside any known
+		/// component and the handler starts a marquee-drag, whose zero-size completion then selects
+		/// the ROOT FORM and calls Focus() - which is how clicking the Show Names button appeared
+		/// to "move the canvas", how clicking a component-tray entry lost its selection a moment
+		/// later, and how clicking a canvas scrollbar jumped the selection to the form.
+		///
+		/// The boundary is deliberately `scrollContent` rather than `ContentHost` or `scroller`:
+		/// the tray is a sibling of the scroller inside ContentHost, and the scrollbars belong to
+		/// the ScrollViewer's own template rather than to its Content, so only the content subtree
+		/// is really "the surface". The empty canvas margin around the rendered form IS part of
+		/// that subtree (designSurface is sized to at least the viewport), so rubber-band
+		/// selection there keeps working.</summary>
+		bool IsOutsideDesignSurface(object source)
 		{
 			for (var node = source as DependencyObject; node != null; node = VisualTreeHelper.GetParent(node)) {
-				if (node == ContentHost) return false;
+				if (node == scrollContent) return false;
 			}
 			return true;
 		}
@@ -645,7 +774,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		async void OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
 		{
 			try {
-				if (IsOutsideContentHost(e.OriginalSource))
+				if (IsOutsideDesignSurface(e.OriginalSource))
 					return;
 				if (previewResizeDrag || resizingDrag || marqueeSelecting || IsAdornerSource(e.OriginalSource))
 					return;
@@ -1174,6 +1303,20 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			AutomationProperties.SetName(this, String.IsNullOrEmpty(selectedComponent?.AccessibleName)
 				? selectedComponent?.Name ?? "WinForms designer" : selectedComponent.AccessibleName);
 			AutomationProperties.SetHelpText(this, selectedComponent?.AccessibleDescription ?? "");
+			// A tray component (Timer, ImageList, ContextMenuStrip, ...) has no place on the
+			// surface, so it reports no meaningful bounds - drawing the selection outline, the
+			// move/resize thumbs or the smart-tag glyph for it would put them at (0,0) over
+			// whatever happens to be in the form's top-left corner. Reflect the selection in the
+			// tray instead (UpdateComponentTray highlights the entry) and keep the surface clean.
+			if (selectedComponent?.IsTrayComponent == true) {
+				adornerLayer.ClearSelection();
+				moveThumb.Visibility = resizeHitTarget.Visibility = resizeThumb.Visibility =
+					smartTagChevron.Visibility = toolStripInsertChevron.Visibility = Visibility.Collapsed;
+				toolStripHost = null;
+				RefreshTrayHighlight();
+				return;
+			}
+			RefreshTrayHighlight();
 			var visible = selectedComponent != null;
 			var isRoot = visible && String.IsNullOrEmpty(selectedComponent.Parent);
 			resizeHitTarget.Visibility = resizeThumb.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;

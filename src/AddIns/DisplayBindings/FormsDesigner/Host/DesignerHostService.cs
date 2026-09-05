@@ -1444,6 +1444,7 @@ sealed class DesignerHostService : IDesignerChildService
 				? rootDesignSize.Value.Height
 				: component is Control sizeControl2 ? sizeControl2.Height : 0,
 #endif
+			IsTrayComponent = IsTrayComponent(component),
 			Properties = properties,
 			Events = DescribeEvents(component)
 			};
@@ -1465,6 +1466,53 @@ sealed class DesignerHostService : IDesignerChildService
 			Components = components
 		};
 	}
+
+	/// <summary>Whether a component belongs in the component tray instead of on the design
+	/// surface. Ports System.Windows.Forms.Design.ComponentTray's own two rules verbatim:
+	/// CanCreateComponentFromTool - "not a Control, or a Control whose IDesigner is not a
+	/// ControlDesigner" - and CanDisplayComponent - "the type is DesignTimeVisible". The second
+	/// clause of the first rule is the interesting one: ContextMenuStrip and PrintPreviewDialog
+	/// ARE Controls yet still belong in the tray, because their designers
+	/// (ToolStripDropDownDesigner / ComponentDesigner) do not derive from ControlDesigner, while
+	/// MenuStrip/ToolStrip/StatusStrip use ToolStripDesigner (a ControlDesigner) and stay on the
+	/// surface.</summary>
+	static bool IsTrayComponent(IComponent component)
+	{
+		try {
+			if (component is Form) return false;
+			var attributes = TypeDescriptor.GetAttributes(component);
+			if (!attributes.Contains(DesignTimeVisibleAttribute.Yes)) return false;
+			if (component is not Control) return true;
+#if MICROSOFT_WINFORMS
+			return !IsControlDesigner(DeclaredDesignerType(component.GetType()));
+#else
+			// The portable LibreWinForms fork does not ship the System.Windows.Forms.Design
+			// designer types these attributes name, so the designer-kind half of the rule cannot
+			// be evaluated there; every Control simply stays on the surface, which is what this
+			// backend did before the tray existed.
+			return false;
+#endif
+		} catch {
+			return false;
+		}
+	}
+
+#if MICROSOFT_WINFORMS
+	/// <summary>The type named by the component type's DesignerAttribute registered against the
+	/// IDesigner base type, or NULL when it declares none / it cannot be loaded - the same lookup
+	/// ComponentTray.GetDesignerType performs.</summary>
+	static Type? DeclaredDesignerType(Type componentType)
+	{
+		foreach (var attribute in TypeDescriptor.GetAttributes(componentType).OfType<DesignerAttribute>()) {
+			if (Type.GetType(attribute.DesignerBaseTypeName, false) == typeof(IDesigner))
+				return Type.GetType(attribute.DesignerTypeName, false);
+		}
+		return null;
+	}
+
+	static bool IsControlDesigner(Type? designerType)
+		=> designerType != null && typeof(System.Windows.Forms.Design.ControlDesigner).IsAssignableFrom(designerType);
+#endif
 
 	static string PropertyText(IComponent component, string propertyName)
 	{
