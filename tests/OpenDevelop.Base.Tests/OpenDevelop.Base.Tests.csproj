@@ -25,6 +25,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" />
     <ProjectReference Include="..\..\src\AddIns\Analysis\UnitTesting\UnitTesting.csproj" />
+    <!-- Pure designer presentation logic (DesignSurfaceClickArbiter): shared by the WinForms,
+         WinUI and WPF design surfaces, and testable without booting any of them. -->
+    <ProjectReference Include="..\..\src\Main\Designer\Designer.Presentation\Designer.Presentation.csproj" />
   </ItemGroup>
 
   <Target Name="RemoveDesktopRuntimeFramework" AfterTargets="ProcessFrameworkReferences" BeforeTargets="FixupRuntimeFrameworkVersions">

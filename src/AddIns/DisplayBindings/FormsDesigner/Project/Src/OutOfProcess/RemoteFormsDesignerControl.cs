@@ -1261,6 +1261,17 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			return true;
 		}
 
+		/// <summary>This document's components as click candidates for
+		/// <see cref="DesignSurfaceClickArbiter"/> - surface-space bounds, plus the Parent/IsVisible
+		/// facts it needs to tell "drill into a child" from "drag what is already selected" and to
+		/// ignore controls sitting on a TabPage that is not currently showing.</summary>
+		IReadOnlyList<DesignSurfaceClickCandidate> ClickCandidates()
+			=> state?.Components?.Select(component => new DesignSurfaceClickCandidate(
+					component.Name, component.Parent,
+					new Rect(component.SurfaceX, component.SurfaceY, component.Width, component.Height),
+					component.IsVisible)).ToList()
+				?? (IReadOnlyList<DesignSurfaceClickCandidate>)Array.Empty<DesignSurfaceClickCandidate>();
+
 		/// <summary>Whether the click originated on one of the adorner-layer glyphs (drag/resize
 		/// thumbs, smart tag, ToolStrip insert button), which handle their own clicks. Needed
 		/// because this handler is registered with handledEventsToo, so it also sees the presses
@@ -1308,48 +1319,19 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				}
 				if (previewResizeDrag || resizingDrag || marqueeSelecting)
 					return;
-				// IsVisible everywhere below: a hidden page's children report bounds overlapping
-				// whichever page IS showing, so counting them here made a click land on a phantom
-				// (suppressing the marquee, or punching through an adorner) for a control that is
-				// not actually on screen. See DesignerComponentInfo.IsVisible.
-				var clickedComponentBounds = state.Components.Any(component => !String.IsNullOrEmpty(component.Parent)
-					&& component.IsVisible
-					&& new Rect(component.SurfaceX, component.SurfaceY, component.Width, component.Height).Contains(designPoint));
-				// moveThumb is drawn across the SELECTED component's whole bounds - if that
-				// component is a container (e.g. the TabControl whose page is now showing a child
-				// after a tab switch, or any other Panel-like control), moveThumb sits on top of
-				// every child inside it too. A click that actually lands on a DIFFERENT component's
-				// own bounds must still be able to select/drill into it (matching real VS: clicking
-				// a child inside an already-selected container selects the child, not the
-				// container's own move-drag) - but a click within the CURRENTLY selected
-				// component's OWN bounds is the normal way to start dragging IT via moveThumb, and
-				// must not be treated as a drill-through override, or moveThumb's mouse capture
-				// gets torn away before it ever sees a drag delta, breaking move-dragging entirely
-				// (a real regression this exact check caused once already).
-				// "Something MORE SPECIFIC than the current selection is under the pointer" - which
-				// is not the same as "some other component contains the point". Every ANCESTOR of
-				// the selection contains it too (a TabPage contains its button, the TabControl
-				// contains that page), and counting those made this true for the selected
-				// control's OWN drag-start, releasing moveThumb's capture and breaking
-				// move-dragging for every nested control while top-level ones - which have no
-				// containing ancestor other than the root form, itself excluded by the
-				// Parent check - kept working. Excluding the selection's own ancestor chain is what
-				// distinguishes "drill into a child" from "start dragging what is already selected".
-				var selectionAncestors = new HashSet<string>(StringComparer.Ordinal);
-				for (var walk = selectedComponent; walk != null && !String.IsNullOrEmpty(walk.Parent);
-					walk = state.Components.FirstOrDefault(item => item.Name == walk.Parent)) {
-					if (!selectionAncestors.Add(walk.Parent)) break;
-				}
-				var clickedOtherComponent = state.Components.Any(component => !String.IsNullOrEmpty(component.Parent)
-					&& component.Name != SelectedComponentName && component.IsVisible
-					&& !selectionAncestors.Contains(component.Name)
-					&& new Rect(component.SurfaceX, component.SurfaceY, component.Width, component.Height).Contains(designPoint));
-				if (IsAdornerSource(e.OriginalSource) && !clickedOtherComponent) {
+				// Who owns this press - an adorner glyph drawn on top, a component underneath it, or
+				// empty canvas - is decided by the shared DesignSurfaceClickArbiter rather than
+				// inline here. Three separate regressions came out of this arbitration when it lived
+				// in this method (tab headers unclickable, then move-drag broken outright, then
+				// move-drag broken for nested controls only); see that type's own remarks, and
+				// DesignSurfaceClickArbiterTests for the cases now pinned down.
+				var decision = DesignSurfaceClickArbiter.Decide(
+					ClickCandidates(), designPoint, SelectedComponentName, IsAdornerSource(e.OriginalSource));
+				if (decision.Action == DesignSurfaceClickAction.LetAdornerHandle)
 					return;
-				}
-				if (clickedOtherComponent && moveThumb.IsMouseCaptured)
+				if (decision.ReleaseAdornerCapture && moveThumb.IsMouseCaptured)
 					moveThumb.ReleaseMouseCapture();
-				if (!clickedComponentBounds) {
+				if (decision.Action == DesignSurfaceClickAction.StartMarquee) {
 					marqueeSelecting = true;
 					marqueeExtendsSelection = extendSelection;
 					marqueeStart = designPoint;
