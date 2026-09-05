@@ -1133,6 +1133,8 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				nodeInfo.Type = ue.GetType().Name;
 			}
 
+			nodeInfo.IsVisible = IsEffectivelyVisible(node, root);
+
 			var count = VisualTreeHelper.GetChildrenCount(node);
 			for (var i = 0; i < count; i++)
 			{
@@ -1144,6 +1146,28 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				}
 			}
 			return nodeInfo;
+		}
+
+		/// <summary>Whether this element is actually on screen - see DesignerElementNode.IsVisible
+		/// for why a client cannot safely draw coordinate-keyed overlays without it.
+		///
+		/// WinUI/Uno have no WPF-style <c>UIElement.IsVisible</c> (which folds the ancestor chain in
+		/// for you), only the element's own local <c>Visibility</c>, so the chain is folded here. A
+		/// collapsed element stays in the visual tree - collapsing is not removal - so its children
+		/// are still enumerated by the walk above and would otherwise be reported as on screen.
+		///
+		/// The root is deliberately excluded: a design host's root is not a normal displayed
+		/// element, and if it reported collapsed then EVERY node would come back invisible and a
+		/// client filtering on this would draw no overlays at all.</summary>
+		static bool IsEffectivelyVisible(DependencyObject node, UIElement root)
+		{
+			for (var current = node; current != null && current != root;
+				current = VisualTreeHelper.GetParent(current))
+			{
+				if (current is UIElement element && element.Visibility != Visibility.Visible)
+					return false;
+			}
+			return true;
 		}
 
 		/// <summary>

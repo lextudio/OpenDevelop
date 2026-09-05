@@ -1465,3 +1465,128 @@ Also worth noting: `IsAdornerSource`-style guards made the same class of mistake
 a click was attributed to an adorner drawn on top rather than to what the user was aiming at. The
 tab-header click fix and the drill-into-a-child fix are both instances of "the overlay is not the
 thing".
+
+## Click arbitration extracted and unit-tested (2026-09-05, later same day)
+
+Deciding who owns a left press on the design surface - an adorner glyph drawn over the selection, a
+component underneath it, or empty canvas - produced THREE regressions in a row in a single
+afternoon, each one caused by the fix for the previous:
+
+1. Bailing out on "the press came from an adorner" before checking for a tab-header hit made tab
+   headers unclickable once the TabControl was selected (its move thumb covers the header strip,
+   which is inside the control's own bounding rect).
+2. Fixing that by drilling through whenever the press landed on ANY component's bounds broke
+   move-dragging outright - the selected component's own bounds contain the press, so the arbiter
+   tore the move thumb's mouse capture away before it saw a single drag delta.
+3. Fixing THAT by ignoring only the selection itself still broke move-dragging for every NESTED
+   control, because each of the selection's ANCESTORS contains the press too. Only top-level
+   controls kept working, since their sole containing ancestor is the design root, which was
+   already excluded - which is precisely what made the bug look arbitrary in use.
+
+The common cause was not carelessness but the feedback loop: this logic lived inline in
+`RemoteFormsDesignerControl.OnMouseLeftButtonDown`, so the ONLY way to exercise any of it was
+build → deploy three layers → launch → click a specific pixel by hand. Nothing about it was
+reachable from a test.
+
+Extracted to `Designer.Presentation/DesignSurfaceClickArbiter.cs` as a pure function over a
+`DesignSurfaceClickCandidate` list (name, parent, bounds, visibility - projected from whatever
+component model the calling designer has, so WinUI/WPF surfaces can adopt it) returning
+`{ Action, ReleaseAdornerCapture }`. The distinction that actually matters, and that all three bugs
+missed, is **"is something MORE SPECIFIC than the current selection under the pointer?"** - i.e. a
+candidate that is neither the selection nor one of its ancestors - not "does some other component
+contain the point".
+
+Covered by 20 cases in `tests/OpenDevelop.Base.Tests/DesignSurfaceClickArbiterTests.cs`, which run
+in ~0.7s with no app boot: one per regression above, the overlapping-hidden-page cases that made
+these so hard to see by eye, plus degenerate input (stale/deleted selection name, cyclic Parent
+chain - which would hang the UI thread inside a mouse handler - empty candidate list, ordinal-vs-
+case-insensitive name matching). The fixture deliberately mirrors `tests/fixtures/TabControlFixture`
+with both pages sharing bounds, because that overlap is the whole difficulty.
+
+### Edge coverage added for the TabControl/strip RPCs
+
+`ChildHost_TabRpcs_ToleratePlausiblyStaleInputWithoutFaultingTheHost` pins the deliberate
+asymmetry between the two new RPCs: `design/select-tab` is FORGIVING (out-of-range index, negative
+index, an elementId that is not a TabControl at all → accepted no-op), because the client derives
+its tab index from `TabHeaderBounds` captured in an earlier frame and a click racing a tab
+add/remove legitimately arrives stale; `design/invoke-verb` is STRICT (bad index or unknown id →
+error), because its index comes from a `list-verbs` response the caller just made. It also asserts
+the child process stays usable after every rejection - it is shared by every open document in the
+session, so a fault there takes them all down.
+
+`ChildHost_ReorderToolStripItem_ClampsAnOutOfRangeDropIndex` pins `Math.Clamp` on the drop index
+(dropping past the last item is a normal gesture from an insertion-line drag, not an error) AND
+that the rewritten `Items.Add` order matches the clamped live order - an off-by-one there writes
+designer code that disagrees with what the user sees.
+
+`ChildHost_IsVisible_ReflectsTheRenderNotTheShadowedDesignTimeVisibleProperty` documents a
+distinction discovered by writing the test: setting `Visible=false` at design time does NOT hide a
+control on the surface, because WinForms designers SHADOW that property (recording it for runtime
+while keeping the control selectable - real VS behaviour), so `Control.Visible` still returns true
+and the control correctly keeps its designer overlays. A non-selected TabPage is genuinely
+different: the TabControl really hides that page's window. That is why phantom overlays appeared
+for tab pages and nowhere else, and why "fixing" `IsVisible` to read the shadowed property would
+silently drop overlays for every control a user set `Visible=false` on.
+
+### Two backend divergences the new IsVisible tests exposed
+
+Writing `ChildHost_IsVisible_ReflectsTheRenderNotTheShadowedDesignTimeVisibleProperty` found two
+real differences between the hosts, both invisible until a test asked the question on BOTH:
+
+1. **Design-time `Visible` shadowing is Microsoft-only.** Real WinForms' `ControlDesigner` shadows
+   `Visible`: setting it false records the value for runtime but leaves the control on the design
+   surface, selectable, with its overlays - real VS behaviour. LibreWinForms' portable fork has no
+   such shadowing, so the property takes effect immediately and the control genuinely vanishes from
+   the rendered frame, reachable only from the Document Outline pad. A real, user-visible parity
+   gap; the test now pins BOTH behaviours per backend rather than asserting one away, so whichever
+   side changes gets noticed. Closing the gap would mean implementing shadowing in the portable
+   fork's ControlDesigner - not attempted here.
+2. **`Control.Visible`'s getter does not fold in the parent chain on Libre.** Real WinForms'
+   getter recurses to the root (`GetVisibleCore`), so a control inside a hidden container reports
+   false without its own flag being touched. The portable fork returns only the control's own flag.
+   `IsEffectivelyVisible` originally leaned on that folding, which meant that on the Libre backend
+   every child of a hidden container still reported visible - i.e. the phantom-overlay bug was
+   still live there for any hidden container, even after being fixed for TabPages on Microsoft.
+   Fixed by walking the parent chain explicitly (up to but excluding the design root, whose own
+   flag says nothing about its children), which is correct on both hosts and removes a hidden
+   dependency on a WinForms implementation detail.
+
+Both were found in minutes by a test that simply ran the same assertion against both backends -
+after the same class of bug had cost hours to find by eye on one backend.
+
+## Cross-designer audit: the same phantom-overlay bug in WPF and WinUI (2026-09-05, later same day)
+
+Having established that the WinForms "wrong tab is rendered" saga was actually unfiltered CLIENT
+OVERLAYS drawn for components that are not on screen, the other two out-of-process surfaces were
+audited for the same defect. Both have the same architecture - a server-rendered bitmap with WPF
+adorners composited on top - so the bug class transfers directly.
+
+**Result: present in both, but confined to one place each** - their tab-order badge overlays
+(`WpfSurfaceDesignerControl.UpdateTabOrderOverlay`, `UnoDesignRuntimeHost.RefreshTabOrderBadges`).
+Each iterates every node of the reported element tree and positions a badge from that node's X/Y,
+with no visibility filter - and `DesignerElementNode` carried no visibility field at all, so the
+clients could not have filtered even if they had tried. Switch the tab-order view on over a
+`TabControl` and the hidden tabs' badges stack on top of the visible tab's, attributing tab indices
+to the wrong controls. Less severe than the WinForms case (an opt-in view rather than always-on
+outlines and name tags) but the same defect, and the same "the picture is lying to you" failure
+mode that made the WinForms one so expensive.
+
+**The other half of the audit came back negative, which is worth recording**: neither surface has
+an `IsAdornerSource`/move-thumb-over-the-selection construct, so there is nothing for
+`DesignSurfaceClickArbiter` to consolidate there and no duplicated arbitration to go wrong. The
+three click regressions were specific to the WinForms surface drawing a thumb across the whole
+selection; the others hit-test directly.
+
+Fix mirrors the WinForms one:
+- `DesignerElementNode.IsVisible` (default `true`, so a host that does not set it changes nothing).
+- Populated in all three element-tree builders. The two WPF hosts use `UIElement.IsVisible`, which
+  is already WPF's EFFECTIVE visibility - it folds in every ancestor's `Visibility` - so a
+  non-selected `TabItem`'s content reports false with no TabControl-specific code. The WinUI/Uno
+  host needs an explicit fold (`IsEffectivelyVisible` walking `VisualTreeHelper.GetParent`), because
+  WinUI has no `UIElement.IsVisible` and a collapsed element remains in the visual tree - the same
+  reason the WinForms host walks the chain rather than trusting a getter (see the Libre divergence
+  above).
+- Both badge loops skip invisible nodes.
+- `Tree_ReportsWhetherEachElementIsActuallyOnScreen` covers a collapsed container's child AND a
+  non-selected `TabItem`'s child, in the suite that runs against both the LibreWPF and Microsoft
+  WPF hosts.

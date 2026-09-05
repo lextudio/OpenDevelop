@@ -169,6 +169,18 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public string Path { get; set; } = "";
 		/// <summary>False for template parts / non-source nodes.</summary>
 		public bool IsDesignable { get; set; } = true;
+		/// <summary>Whether this element is actually on screen in the rendered frame right now -
+		/// false for anything inside a collapsed container or a non-selected TabItem/TabPage.
+		///
+		/// Clients MUST skip these when drawing overlays keyed off <see cref="X"/>/<see cref="Y"/>
+		/// (tab-order badges, outlines, name tags). Those coordinates still describe where the
+		/// element WOULD sit, and every tab of a tab control occupies the SAME rect, so an overlay
+		/// drawn for a hidden tab's child lands exactly on top of whichever sibling tab IS showing.
+		/// The WinForms surface shipped that bug in its always-on outlines and name tags, where it
+		/// read as "the designer is rendering the wrong tab's content" and cost hours to diagnose -
+		/// the bitmap was correct all along, the overlays were not. See the equivalent
+		/// DesignerComponentInfo.IsVisible and doc/technotes/winforms-designer.md.</summary>
+		public bool IsVisible { get; set; } = true;
 		public List<DesignerElementNode> Children { get; set; } = new List<DesignerElementNode>();
 		/// <summary>Optional per-node property list for the Properties pad, using the same
 		/// <see cref="DesignerPropertyInfo"/> shape <see cref="DesignerComponentInfo"/> already

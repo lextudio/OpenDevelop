@@ -1961,19 +1961,29 @@ sealed class DesignerHostService : IDesignerChildService
 	/// and excludes the strips, which is how this started out wrong.</summary>
 	/// <summary>Whether this component is actually on screen in the frame being rendered - see
 	/// DesignerComponentInfo.IsVisible's own doc comment for why the client cannot draw overlays or
-	/// hit-test locally without it. <c>Control.Visible</c>'s GETTER already folds in the whole
-	/// parent chain (GetVisibleCore walks up to the root), which is exactly what matters here: a
-	/// control on a non-selected TabPage reports false even though its own visibility was never
-	/// touched, and so does anything inside a hidden container.</summary>
+	/// hit-test locally without it.
+	///
+	/// The parent chain is walked EXPLICITLY rather than trusting <c>Control.Visible</c>'s getter to
+	/// fold it in. Real WinForms does fold it (GetVisibleCore recurses to the root), but
+	/// LibreWinForms' portable fork does not - its getter reports only the control's own flag, so
+	/// relying on it left every child of a hidden container reporting visible on that backend, i.e.
+	/// phantom overlays for controls that are not rendered. Walking here makes the answer correct on
+	/// both hosts and stops this depending on a WinForms implementation detail.</summary>
 	bool IsEffectivelyVisible(IComponent component)
 	{
 		try {
 			if (component is not Control control) return true;
+			var root = GetHost().RootComponent as Control;
 			// If the offscreen root form itself reports invisible, the flag carries no information
 			// at all - EVERY component would come back false and the client would stop drawing all
 			// of its overlays. Report true in that case, i.e. keep the pre-flag behaviour.
-			if (GetHost().RootComponent is Control root && !root.Visible) return true;
-			return control.Visible;
+			if (root != null && !root.Visible) return true;
+			// Up to but NOT including the root, whose own visibility was just handled: a design
+			// surface's root form is not a normal window and its flag says nothing about children.
+			for (var current = control; current != null && current != root; current = current.Parent) {
+				if (!current.Visible) return false;
+			}
+			return true;
 		} catch {
 			return true;
 		}

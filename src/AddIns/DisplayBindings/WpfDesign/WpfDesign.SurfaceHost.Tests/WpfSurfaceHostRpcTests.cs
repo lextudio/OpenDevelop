@@ -185,6 +185,62 @@ public sealed class WpfSurfaceHostRpcTests
 		Assert.Equal("Edited", editedGreeting.Properties.Single(p => p.Name == "Text").Value);
 	}
 
+	/// <summary>
+	/// Tree_ nodes must report whether they are actually ON SCREEN, because the AddIn draws
+	/// overlays (tab-order badges today) positioned from each node's X/Y. A hidden element still
+	/// reports the coordinates it WOULD occupy, and every tab of a TabControl occupies the SAME
+	/// rect - so without this an overlay for a hidden tab's child lands exactly on top of whichever
+	/// tab IS showing. The WinForms surface shipped precisely that bug in its always-on outlines
+	/// and name tags, where it read as "the designer renders the wrong tab" and cost hours to
+	/// diagnose before anyone checked which LAYER the wrong pixels came from.
+	///
+	/// Both cases here are the ones that actually occur: a collapsed container's child, and a
+	/// non-selected TabItem's child (whose own Visibility is never touched - WPF's
+	/// UIElement.IsVisible folds the ancestor chain in, which is why no TabControl-specific logic
+	/// is needed in the host).
+	/// </summary>
+	[Fact]
+	public async Task Tree_ReportsWhetherEachElementIsActuallyOnScreen()
+	{
+		const string HiddenAndTabbedXaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="400" Height="300">
+			  <StackPanel x:Name="shownPanel">
+			    <TextBlock x:Name="shownChild" Text="visible" Width="100" Height="20"/>
+			  </StackPanel>
+			  <StackPanel x:Name="collapsedPanel" Visibility="Collapsed">
+			    <TextBlock x:Name="hiddenChild" Text="hidden" Width="100" Height="20"/>
+			  </StackPanel>
+			  <TabControl x:Name="tabs" Width="200" Height="100">
+			    <TabItem x:Name="firstTab" Header="One">
+			      <TextBlock x:Name="onActiveTab" Text="active" Width="80" Height="20"/>
+			    </TabItem>
+			    <TabItem x:Name="secondTab" Header="Two">
+			      <TextBlock x:Name="onInactiveTab" Text="inactive" Width="80" Height="20"/>
+			    </TabItem>
+			  </TabControl>
+			</Grid>
+			""";
+
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, HiddenAndTabbedXaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+
+		Assert.True(FindByName(opened.Tree!, "shownPanel")!.IsVisible);
+		Assert.True(FindByName(opened.Tree!, "shownChild")!.IsVisible);
+
+		// A collapsed container, and its child - whose own Visibility is Visible.
+		Assert.False(FindByName(opened.Tree!, "collapsedPanel")!.IsVisible);
+		Assert.False(FindByName(opened.Tree!, "hiddenChild")!.IsVisible);
+
+		// The non-selected tab's content: the case that produced phantom overlays, since its
+		// reported bounds coincide with the selected tab's content.
+		if (FindByName(opened.Tree!, "onInactiveTab") is { } inactive)
+			Assert.False(inactive.IsVisible);
+		if (FindByName(opened.Tree!, "onActiveTab") is { } active)
+			Assert.True(active.IsVisible);
+	}
+
 	[Fact]
 	public async Task DesignSetProperty_OnABadElementId_IsRejected()
 	{

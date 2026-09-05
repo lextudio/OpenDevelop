@@ -922,6 +922,16 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			{
 				node.Width = element.ActualWidth;
 				node.Height = element.ActualHeight;
+				// See DesignerElementNode.IsVisible for why clients need this before drawing any
+				// overlay positioned from X/Y.
+				//
+				// Deliberately NOT UIElement.IsVisible, even though that is WPF's own effective
+				// visibility: it also requires the element to be connected to a live presentation
+				// source, which this OFFSCREEN design host never has - it reported false for the
+				// entire tree, including plainly visible elements, which would have suppressed
+				// every overlay. Folding Visibility up the chain works regardless of whether
+				// anything is being presented.
+				node.IsVisible = IsEffectivelyVisible(element, rootVisual);
 				try
 				{
 					var offset = element.TransformToAncestor(rootVisual).Transform(new Point(0, 0));
@@ -931,7 +941,11 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				catch (InvalidOperationException)
 				{
 					// Not connected to the root's visual tree (shouldn't happen post-layout, but
-					// don't let a geometry edge case fail the whole tree build).
+					// don't let a geometry edge case fail the whole tree build). It also means the
+					// element is not on screen - a TabControl realises only the selected tab's
+					// content, so an unselected tab's children land here - and its X/Y are
+					// therefore meaningless, exactly the case an overlay must skip.
+					node.IsVisible = false;
 				}
 			}
 			var contentProperty = item.ContentProperty;
@@ -954,6 +968,26 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				}
 			}
 			return node;
+		}
+
+		/// <summary>Whether an element is actually on screen, by folding <c>Visibility</c> up the
+		/// visual tree to (but excluding) the design root.
+		///
+		/// <c>UIElement.IsVisible</c> would be the obvious answer and is WRONG here: it additionally
+		/// requires connection to a live presentation source, which this offscreen host never has,
+		/// so it reports false for the whole tree - plainly visible elements included. The root is
+		/// excluded for a related reason: a design root is not a normally-presented element, and if
+		/// it reported collapsed then every node would come back invisible and a client filtering
+		/// on this would draw no overlays at all.</summary>
+		static bool IsEffectivelyVisible(DependencyObject element, DependencyObject root)
+		{
+			for (var current = element; current != null && current != root;
+				current = VisualTreeHelper.GetParent(current))
+			{
+				if (current is UIElement visual && visual.Visibility != Visibility.Visible)
+					return false;
+			}
+			return true;
 		}
 
 		/// <summary>Headless GPU-composited render (see wpf-designer.md's Phase 1 progress notes).

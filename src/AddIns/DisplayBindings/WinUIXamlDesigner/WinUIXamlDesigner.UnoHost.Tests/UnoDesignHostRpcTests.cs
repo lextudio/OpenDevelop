@@ -151,6 +151,61 @@ public sealed class UnoDesignHostRpcTests
 		Assert.True(newNameLookup.Accepted);
 	}
 
+	/// <summary>
+	/// Tree nodes must report whether they are actually ON SCREEN, because the AddIn positions
+	/// overlays (tab-order badges today) from each node's X/Y. A hidden element still reports the
+	/// coordinates it WOULD occupy, so an overlay drawn for one lands on top of whatever IS
+	/// showing there - and for a tab control, every tab's content occupies the same rect. The
+	/// WinForms surface shipped exactly that bug in its always-on outlines and name tags, where it
+	/// read as "the designer renders the wrong tab" and cost hours before anyone checked which
+	/// LAYER the wrong pixels came from. See DesignerElementNode.IsVisible.
+	///
+	/// WinUI has no WPF-style UIElement.IsVisible, so the host folds Visibility up the visual tree
+	/// itself; a collapsed element stays IN that tree (collapsing is not removal), which is exactly
+	/// why its children would otherwise be reported as on screen.
+	/// </summary>
+	[Fact]
+	public async Task Tree_ReportsWhetherEachElementIsActuallyOnScreen()
+	{
+		var xaml = $"""
+			<Grid xmlns="{Ns}" xmlns:x="{XNs}" x:Name="root">
+			    <StackPanel x:Name="shownPanel">
+			        <TextBlock x:Name="shownChild" Text="visible"/>
+			    </StackPanel>
+			    <StackPanel x:Name="collapsedPanel" Visibility="Collapsed">
+			        <TextBlock x:Name="hiddenChild" Text="hidden"/>
+			    </StackPanel>
+			</Grid>
+			""";
+
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await StartAsync(timeout.Token);
+		var opened = await client.OpenAsync(Document(client, xaml), timeout.Token);
+		Assert.True(opened.Accepted);
+		Assert.NotNull(opened.Tree);
+
+		Assert.True(FindByName(opened.Tree!, "shownPanel")!.IsVisible);
+		Assert.True(FindByName(opened.Tree!, "shownChild")!.IsVisible);
+
+		// The collapsed container...
+		Assert.False(FindByName(opened.Tree!, "collapsedPanel")!.IsVisible);
+		// ...and its child, whose OWN Visibility is Visible - the case that only an ancestor walk
+		// catches, and the one that produced phantom overlays.
+		Assert.False(FindByName(opened.Tree!, "hiddenChild")!.IsVisible);
+	}
+
+	static DesignerElementNode? FindByName(DesignerElementNode node, string name)
+	{
+		if (node.Name == name)
+			return node;
+		foreach (var child in node.Children)
+		{
+			if (FindByName(child, name) is { } found)
+				return found;
+		}
+		return null;
+	}
+
 	[Fact]
 	public async Task StaleMutations_AreRejectedAndCannotOverwriteNewerSource()
 	{

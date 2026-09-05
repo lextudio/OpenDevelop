@@ -35,9 +35,22 @@ sealed class Service(string expectedToken) : IDesignerChildService {
 		} catch (Exception e) { return new DesignerSessionState { Accepted = false, SessionId = sessionId!, DocumentId = s.DocumentId, Version = s.Version, Error = e.Message }; }
 	}
 	static DesignerElementNode Tree(FrameworkElement e, string id) {
-		var n = new DesignerElementNode { Id = id, Name = e.Name ?? "", Type = e.GetType().FullName ?? "", Width = e.ActualWidth, Height = e.ActualHeight };
+		// IsVisible folds Visibility up the chain rather than using UIElement.IsVisible, which also
+		// demands a live presentation source this offscreen host never has and so reports false for
+		// the entire tree. Clients need this before drawing any overlay keyed off X/Y - see
+		// DesignerElementNode.IsVisible.
+		var n = new DesignerElementNode { Id = id, Name = e.Name ?? "", Type = e.GetType().FullName ?? "", Width = e.ActualWidth, Height = e.ActualHeight, IsVisible = Visible(e) };
 		for (var i = 0; i < VisualTreeHelper.GetChildrenCount(e); i++) if (VisualTreeHelper.GetChild(e, i) is FrameworkElement child) n.Children.Add(Tree(child, id.Length == 0 ? i.ToString() : id + "," + i));
 		return n;
+	}
+	/// <summary>Effective visibility by folding Visibility up the visual tree - the whole subtree
+	/// under a Collapsed element is off screen even though each child's own Visibility is Visible.
+	/// This host's tree walk is itself a visual-tree walk, so an unrealised (unselected) tab's
+	/// content is simply absent rather than needing to be filtered.</summary>
+	static bool Visible(DependencyObject e) {
+		for (var current = e; current != null; current = VisualTreeHelper.GetParent(current))
+			if (current is UIElement visual && visual.Visibility != Visibility.Visible) return false;
+		return true;
 	}
 	[JsonRpcMethod("session/close")] public void Close(string session, string documentId) => documents.Remove(session, documentId, _ => { });
 	[JsonRpcMethod("ping")] public void Ping() { }

@@ -387,7 +387,12 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 			return;
 		}
 		var badges = nodesByName.Values
-			.Where(node => node.Name != null)
+			// IsVisible: a hidden element still reports the X/Y it WOULD sit at, and every tab of a
+			// tab control occupies the same rect - so badging one stacks it on top of the badge for
+			// whichever tab IS showing, misattributing tab indices to the wrong controls. See
+			// DesignerElementNode.IsVisible; the WinForms surface shipped this same bug in its
+			// always-on overlays, where it read as a rendering fault for hours.
+			.Where(node => node.Name != null && node.IsVisible)
 			.Select(node => (Name: node.Name!, node.X, node.Y,
 				TabIndex: node.Properties?.FirstOrDefault(p => p.Name == "TabIndex")?.Value))
 			.Where(item => !string.IsNullOrEmpty(item.TabIndex))

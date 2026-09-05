@@ -762,6 +762,13 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				return;
 			foreach (var node in FlattenTree(state.Tree))
 			{
+				// A hidden element still reports the X/Y it WOULD sit at, and every tab of a
+				// TabControl occupies the same rect - so badging one stacks it on top of the badge
+				// for whichever tab IS showing, misattributing tab indices to the wrong controls.
+				// See DesignerElementNode.IsVisible: the WinForms surface shipped this same bug in
+				// its always-on overlays, where it read as a rendering fault for hours.
+				if (!node.IsVisible)
+					continue;
 				var tabIndex = node.Properties?.FirstOrDefault(p => p.Name == "TabIndex")?.Value;
 				if (string.IsNullOrEmpty(tabIndex))
 					continue;

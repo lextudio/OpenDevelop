@@ -1,6 +1,7 @@
 using System.Windows;
 
 using ICSharpCode.SharpDevelop.Designer.Presentation;
+using Xunit;
 
 namespace OpenDevelop.Base.Tests;
 
@@ -70,15 +71,18 @@ public class DesignSurfaceClickArbiterTests
 	/// their sole containing ancestor is the root, which is never a candidate; that asymmetry is
 	/// exactly what made the bug look arbitrary.
 	/// </summary>
+	/// <param name="x">Deliberately a point inside the selection AND inside every one of its
+	/// ancestors, but NOT inside any deeper child of it - a press on a child is a drill-through by
+	/// design (covered below), so it cannot demonstrate anything about ancestors.</param>
 	[Theory]
-	[InlineData("button1")]   // nested two deep: parent tabPage1, grandparent tabControl1
-	[InlineData("tabPage1")]  // nested one deep
-	[InlineData("tabControl1")] // top level: only the root above it
-	public void PressOnAdornerOverTheSelection_IsNeverStolenByAnAncestorContainingThePoint(string selected)
+	[InlineData("button1", 60, 70)]      // nested two deep (parent tabPage1, grandparent tabControl1)
+	[InlineData("tabPage1", 300, 200)]   // nested one deep: page background, clear of button1
+	[InlineData("tabControl1", 14, 20)]  // top level: its own header strip, clear of any page
+	public void PressOnAdornerOverTheSelection_IsNeverStolenByAnAncestorContainingThePoint(
+		string selected, double x, double y)
 	{
-		// A point inside the selection AND inside all of its ancestors.
 		var decision = DesignSurfaceClickArbiter.Decide(
-			Fixture(), OnButton, selectedName: selected, pressOriginatedOnAdorner: true);
+			Fixture(), new Point(x, y), selectedName: selected, pressOriginatedOnAdorner: true);
 
 		Assert.Equal(DesignSurfaceClickAction.LetAdornerHandle, decision.Action);
 	}

@@ -1969,6 +1969,251 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Contains("Stale", stale.Error, StringComparison.Ordinal);
 	}
 
+	/// <summary>
+	/// Edge behaviour of the TabControl RPCs added alongside tab support - the cases a client can
+	/// reach by mis-aiming a click or replaying a stale index, none of which may take the child
+	/// process down (it is shared by every open designer document in the session).
+	///
+	/// design/select-tab is deliberately FORGIVING rather than throwing: the client derives its
+	/// tabIndex from TabHeaderBounds captured in an earlier frame, so a click racing a tab
+	/// add/remove can legitimately arrive with an index that no longer exists. It must be a no-op,
+	/// not an error dialog. design/invoke-verb is deliberately STRICT: its index comes from a
+	/// list-verbs response the caller just made, so a bad one is a caller bug worth surfacing.
+	/// </summary>
+	[Fact]
+	public async Task ChildHost_TabRpcs_ToleratePlausiblyStaleInputWithoutFaultingTheHost()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		var hostDll = HostDll();
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
+		var snapshot = new DesignerDocumentSnapshot {
+			Version = 1, PrimaryFileName = "/project/Form1.cs", DesignerFileName = "/project/Form1.Designer.cs",
+			Files = {
+				new DesignerSourceFileSnapshot { FileName = "/project/Form1.cs", Kind = "Source", Text = "namespace Sample; partial class Form1 { }" },
+				new DesignerSourceFileSnapshot { FileName = "/project/Form1.Designer.cs", Kind = "Designer", Text = """
+					namespace Sample;
+					partial class Form1
+					{
+					    private void InitializeComponent()
+					    {
+					        this.tabControl1 = new System.Windows.Forms.TabControl();
+					        this.tabPage1 = new System.Windows.Forms.TabPage();
+					        this.tabPage2 = new System.Windows.Forms.TabPage();
+					        this.button1 = new System.Windows.Forms.Button();
+					        this.tabControl1.Controls.Add(this.tabPage1);
+					        this.tabControl1.Controls.Add(this.tabPage2);
+					        this.tabControl1.Name = "tabControl1";
+					        this.tabControl1.SelectedIndex = 0;
+					        this.tabPage1.Name = "tabPage1";
+					        this.tabPage2.Name = "tabPage2";
+					        this.button1.Name = "button1";
+					        this.Controls.Add(this.tabControl1);
+					        this.Controls.Add(this.button1);
+					    }
+					    private System.Windows.Forms.TabControl tabControl1;
+					    private System.Windows.Forms.TabPage tabPage1;
+					    private System.Windows.Forms.TabPage tabPage2;
+					    private System.Windows.Forms.Button button1;
+					}
+					"""
+				}
+			}
+		};
+		Assert.True((await client.OpenAsync(snapshot, timeout.Token)).Accepted);
+
+#if MICROSOFT_FORMS_DESIGNER_HOST
+		// An index past the last page, and a negative one: both no-ops, and the still-correct
+		// active page must be reported as such (IsVisible is what the client draws overlays from,
+		// so a silent corruption here would resurrect the phantom-overlay bug).
+		foreach (var staleIndex in new[] { 2, 99, -1 }) {
+			var ignored = await client.SelectTabAsync(1, "tabControl1", staleIndex, timeout.Token);
+			Assert.True(ignored.Accepted);
+			Assert.True(ignored.Components.Single(item => item.Name == "tabPage1").IsVisible);
+			Assert.False(ignored.Components.Single(item => item.Name == "tabPage2").IsVisible);
+		}
+
+		// Aimed at something that is not a TabControl at all (a plain Button, and the root form) -
+		// the client hit-tests headers from reported bounds, so a near-miss lands on a neighbour.
+		foreach (var notATabControl in new[] { "button1", "Form1" }) {
+			var ignored = await client.SelectTabAsync(1, notATabControl, 1, timeout.Token);
+			Assert.True(ignored.Accepted);
+		}
+
+		// A component with no verbs of its own answers with an empty list, not an error - the
+		// client asks for EVERY selection to decide whether to offer any.
+		var buttonVerbs = await client.ListVerbsAsync(1, "button1", timeout.Token);
+		Assert.True(buttonVerbs.Accepted);
+		Assert.DoesNotContain(buttonVerbs.Items, item => item.Text.Contains("Tab", StringComparison.OrdinalIgnoreCase));
+
+		// Unknown ids and out-of-range verb indices are caller bugs: surfaced, not swallowed.
+		await Assert.ThrowsAnyAsync<Exception>(() => client.ListVerbsAsync(1, "noSuchComponent", timeout.Token));
+		var verbs = await client.ListVerbsAsync(1, "tabControl1", timeout.Token);
+		Assert.NotEmpty(verbs.Items);
+		await Assert.ThrowsAnyAsync<Exception>(() => client.InvokeVerbAsync(1, "tabControl1", verbs.Items.Count + 5, timeout.Token));
+		await Assert.ThrowsAnyAsync<Exception>(() => client.InvokeVerbAsync(1, "tabControl1", -1, timeout.Token));
+
+		// ...and the host is still healthy afterwards: every rejection above left the session usable.
+		var stillAlive = await client.SelectTabAsync(1, "tabControl1", 1, timeout.Token);
+		Assert.True(stillAlive.Accepted);
+		Assert.True(stillAlive.Components.Single(item => item.Name == "tabPage2").IsVisible);
+#else
+		// LibreWinForms has no DesignerVerb support - fail clearly rather than silently no-op.
+		var libreVerbs = await client.ListVerbsAsync(1, "tabControl1", timeout.Token);
+		Assert.False(libreVerbs.Accepted);
+		await Assert.ThrowsAnyAsync<Exception>(() => client.InvokeVerbAsync(1, "tabControl1", 0, timeout.Token));
+#endif
+	}
+
+	/// <summary>
+	/// IsVisible describes what is ACTUALLY RENDERED, which at design time is deliberately NOT the
+	/// same as the Visible property's value. Real WinForms designers shadow Visible (and Enabled):
+	/// setting it false records the value for runtime but leaves the control on the surface, so it
+	/// stays selectable and movable - the behaviour real VS has, and the reason
+	/// <c>Control.Visible</c>'s getter still returns true here.
+	///
+	/// So a hidden-at-runtime control MUST keep its outlines/name tag in the designer. The
+	/// TabControl case in
+	/// ChildHost_SelectTab_SwitchesActivePageWithoutPersistingOrCreatingAnUndoStep is the genuinely
+	/// different one: a non-selected TabPage's window really is hidden by the TabControl itself, not
+	/// by the shadowed property, which is exactly why phantom overlays appeared there and nowhere
+	/// else. This test pins the distinction, because "fixing" IsVisible to read the shadowed
+	/// property instead would silently drop every overlay for controls the user set Visible=false
+	/// at design time.
+	/// </summary>
+	[Fact]
+	public async Task ChildHost_IsVisible_ReflectsTheRenderNotTheShadowedDesignTimeVisibleProperty()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		var hostDll = HostDll();
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
+		var snapshot = new DesignerDocumentSnapshot {
+			Version = 1, PrimaryFileName = "/project/Form1.cs", DesignerFileName = "/project/Form1.Designer.cs",
+			Files = {
+				new DesignerSourceFileSnapshot { FileName = "/project/Form1.cs", Kind = "Source", Text = "namespace Sample; partial class Form1 { }" },
+				new DesignerSourceFileSnapshot { FileName = "/project/Form1.Designer.cs", Kind = "Designer", Text = """
+					namespace Sample;
+					partial class Form1
+					{
+					    private void InitializeComponent()
+					    {
+					        this.panel1 = new System.Windows.Forms.Panel();
+					        this.nestedButton = new System.Windows.Forms.Button();
+					        this.visibleButton = new System.Windows.Forms.Button();
+					        this.panel1.Controls.Add(this.nestedButton);
+					        this.panel1.Name = "panel1";
+					        this.panel1.Size = new System.Drawing.Size(200, 100);
+					        this.nestedButton.Name = "nestedButton";
+					        this.visibleButton.Name = "visibleButton";
+					        this.Controls.Add(this.panel1);
+					        this.Controls.Add(this.visibleButton);
+					    }
+					    private System.Windows.Forms.Panel panel1;
+					    private System.Windows.Forms.Button nestedButton;
+					    private System.Windows.Forms.Button visibleButton;
+					}
+					"""
+				}
+			}
+		};
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted);
+		Assert.True(opened.Components.Single(item => item.Name == "nestedButton").IsVisible);
+
+		var hidden = await client.SetPropertyAsync(1, "panel1", "Visible", "false", timeout.Token);
+		Assert.True(hidden.Accepted);
+#if MICROSOFT_FORMS_DESIGNER_HOST
+		// Real WinForms SHADOWS Visible at design time: the value is recorded for runtime but the
+		// control stays on the surface, so it - and its child - keep their designer overlays and
+		// stay selectable. This is the behaviour real VS has.
+		Assert.True(hidden.Components.Single(item => item.Name == "panel1").IsVisible);
+		Assert.True(hidden.Components.Single(item => item.Name == "nestedButton").IsVisible);
+#else
+		// PARITY GAP (LibreWinForms): the portable fork has no ControlDesigner Visible shadowing,
+		// so the property takes effect immediately at DESIGN time - the control really does
+		// disappear from the rendered surface, and with IsVisible false the client stops drawing
+		// its outline/name tag, leaving it selectable only from the Document Outline pad. Pinned
+		// here rather than asserted away: the divergence is real and user-visible, and if the
+		// portable fork ever gains shadowing this test is what will notice.
+		Assert.False(hidden.Components.Single(item => item.Name == "panel1").IsVisible);
+		// ...and it folds down the parent chain, which is the same mechanism that makes a
+		// non-selected TabPage's children report false.
+		Assert.False(hidden.Components.Single(item => item.Name == "nestedButton").IsVisible);
+#endif
+		// Either way an unrelated sibling is untouched - "everything reports false" would hide
+		// every overlay in the designer.
+		Assert.True(hidden.Components.Single(item => item.Name == "visibleButton").IsVisible);
+
+		// ...and either way the value is persisted, so the built app really does hide it.
+		Assert.Contains("panel1.Visible = false;", DesignerText(await client.FlushAsync(1, timeout.Token)),
+			StringComparison.Ordinal);
+	}
+
+	/// <summary>
+	/// design/reorder-toolstrip-item CLAMPS its target index (Math.Clamp) rather than rejecting it,
+	/// because the client computes drop indices from an insertion line hit-tested against item
+	/// bounds - dropping past the last item is a normal gesture, not an error. Pinned because the
+	/// rewritten source must stay consistent with the clamped live order: an off-by-one here writes
+	/// designer code whose Items.Add order disagrees with what the user sees.
+	/// </summary>
+	[Fact]
+	public async Task ChildHost_ReorderToolStripItem_ClampsAnOutOfRangeDropIndex()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		var hostDll = HostDll();
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
+		var snapshot = new DesignerDocumentSnapshot {
+			Version = 1, PrimaryFileName = "/project/Form1.cs", DesignerFileName = "/project/Form1.Designer.cs",
+			Files = {
+				new DesignerSourceFileSnapshot { FileName = "/project/Form1.cs", Kind = "Source", Text = "namespace Sample; partial class Form1 { }" },
+				new DesignerSourceFileSnapshot { FileName = "/project/Form1.Designer.cs", Kind = "Designer", Text = """
+					namespace Sample;
+					partial class Form1
+					{
+					    private void InitializeComponent()
+					    {
+					        this.toolStrip1 = new System.Windows.Forms.ToolStrip();
+					        this.toolStripButton1 = new System.Windows.Forms.ToolStripButton();
+					        this.toolStripButton2 = new System.Windows.Forms.ToolStripButton();
+					        this.toolStrip1.Items.Add(this.toolStripButton1);
+					        this.toolStrip1.Items.Add(this.toolStripButton2);
+					        this.toolStrip1.Name = "toolStrip1";
+					        this.toolStripButton1.Name = "toolStripButton1";
+					        this.toolStripButton2.Name = "toolStripButton2";
+					        this.Controls.Add(this.toolStrip1);
+					    }
+					    private System.Windows.Forms.ToolStrip toolStrip1;
+					    private System.Windows.Forms.ToolStripButton toolStripButton1;
+					    private System.Windows.Forms.ToolStripButton toolStripButton2;
+					}
+					"""
+				}
+			}
+		};
+		Assert.True((await client.OpenAsync(snapshot, timeout.Token)).Accepted);
+
+#if MICROSOFT_FORMS_DESIGNER_HOST
+		// Dropped way past the end: clamps to last, and the source order follows.
+		Assert.True((await client.ReorderToolStripItemAsync(1, "toolStripButton1", 99, timeout.Token)).Accepted);
+		var afterEnd = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.True(afterEnd.IndexOf("Items.Add(toolStripButton2)", StringComparison.Ordinal)
+			< afterEnd.IndexOf("Items.Add(toolStripButton1)", StringComparison.Ordinal),
+			"clamping to the end must put toolStripButton1 last in the rewritten Items.Add order");
+
+		// Dropped above the first item: clamps to front, and back it goes.
+		Assert.True((await client.ReorderToolStripItemAsync(1, "toolStripButton1", -7, timeout.Token)).Accepted);
+		var afterStart = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.True(afterStart.IndexOf("Items.Add(toolStripButton1)", StringComparison.Ordinal)
+			< afterStart.IndexOf("Items.Add(toolStripButton2)", StringComparison.Ordinal),
+			"clamping to the front must put toolStripButton1 first in the rewritten Items.Add order");
+
+		// A non-item target is still a hard error rather than a silent clamp.
+		await Assert.ThrowsAnyAsync<Exception>(() => client.ReorderToolStripItemAsync(1, "toolStrip1", 0, timeout.Token));
+		await Assert.ThrowsAnyAsync<Exception>(() => client.ReorderToolStripItemAsync(1, "noSuchItem", 0, timeout.Token));
+#else
+		await Assert.ThrowsAnyAsync<Exception>(() => client.ReorderToolStripItemAsync(1, "toolStripButton1", 0, timeout.Token));
+#endif
+	}
+
 	static DesignerDocumentSnapshot VbSnapshot(long version, string text) => new() {
 		Version = version,
 		PrimaryFileName = "/project/Form1.vb",
