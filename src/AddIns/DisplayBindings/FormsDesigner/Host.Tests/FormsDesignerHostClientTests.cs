@@ -185,13 +185,17 @@ public sealed class FormsDesignerHostClientTests
 
 	/// <summary>
 	/// The component tray's membership rule, ported from
-	/// System.Windows.Forms.Design.ComponentTray (CanCreateComponentFromTool plus
-	/// CanDisplayComponent): a component belongs in the tray when it is not a Control, OR is a
-	/// Control whose registered IDesigner is not a ControlDesigner, provided the type is
-	/// design-time visible. The second clause is the subtle one and the reason this test asserts
-	/// ContextMenuStrip specifically: it IS a Control, but its ToolStripDropDownDesigner derives
-	/// from ComponentDesigner, so real WinForms puts it in the tray - whereas MenuStrip's
-	/// ToolStripDesigner IS a ControlDesigner, so the strip stays on the design surface.
+	/// System.Windows.Forms.Design.DocumentDesigner.OnComponentAdded ("If the component is a
+	/// toolstrip or a top level form, we should add to the tray"): a component gets a tray entry
+	/// when its designer IS a ToolStripDesigner, OR its designer is not a ControlDesigner at all,
+	/// OR it is a top-level Form - provided the type is design-time visible.
+	///
+	/// Both clauses are asserted here because each has a counter-intuitive case: a MenuStrip gets
+	/// a tray entry even though it is a perfectly visible Control laid out on the surface (first
+	/// clause - real VS shows strips in both places), while a ContextMenuStrip gets one because
+	/// its ToolStripDropDownDesigner is a ComponentDesigner rather than a ControlDesigner (second
+	/// clause). A ToolStripContainer gets NO entry - its designer is a ControlDesigner that is not
+	/// a ToolStripDesigner - which is what keeps the first clause from over-matching.
 	/// </summary>
 	[Fact]
 	public async Task ChildHost_ReportsTrayComponentsByDesignerKindNotJustControlness()
@@ -222,13 +226,16 @@ public sealed class FormsDesignerHostClientTests
 						        this.timer1 = new System.Windows.Forms.Timer(this.components);
 						        this.contextMenuStrip1 = new System.Windows.Forms.ContextMenuStrip(this.components);
 						        this.menuStrip1 = new System.Windows.Forms.MenuStrip();
+						        this.toolStripContainer1 = new System.Windows.Forms.ToolStripContainer();
 						        this.button1 = new System.Windows.Forms.Button();
 						        this.Controls.Add(this.menuStrip1);
+						        this.Controls.Add(this.toolStripContainer1);
 						        this.Controls.Add(this.button1);
 						    }
 						    private System.Windows.Forms.Timer timer1;
 						    private System.Windows.Forms.ContextMenuStrip contextMenuStrip1;
 						    private System.Windows.Forms.MenuStrip menuStrip1;
+						    private System.Windows.Forms.ToolStripContainer toolStripContainer1;
 						    private System.Windows.Forms.Button button1;
 						}
 						"""
@@ -246,13 +253,20 @@ public sealed class FormsDesignerHostClientTests
 		Assert.Contains(opened.Components, component => component.Name == "timer1" && component.IsTrayComponent);
 		// A Control, but ToolStripDropDownDesigner is a ComponentDesigner -> tray.
 		Assert.Contains(opened.Components, component => component.Name == "contextMenuStrip1" && component.IsTrayComponent);
-		// A Control with a real ControlDesigner -> stays on the surface.
-		Assert.Contains(opened.Components, component => component.Name == "menuStrip1" && !component.IsTrayComponent);
+		// A visible Control laid out on the surface that STILL gets a tray entry, because its
+		// designer is a ToolStripDesigner. It keeps its surface presence too - Parent is set -
+		// which is what the client uses to decide it still deserves canvas adorners.
+		var trayMenuStrip = Assert.Single(opened.Components, component => component.Name == "menuStrip1");
+		Assert.True(trayMenuStrip.IsTrayComponent);
+		Assert.Equal("Form1", trayMenuStrip.Parent);
+		// A ControlDesigner that is NOT a ToolStripDesigner -> no tray entry (guards the first
+		// clause against over-matching every ToolStrip-adjacent control).
+		Assert.Contains(opened.Components, component => component.Name == "toolStripContainer1" && !component.IsTrayComponent);
 		Assert.Contains(opened.Components, component => component.Name == "button1" && !component.IsTrayComponent);
 #else
 		// The portable LibreWinForms fork ships none of the System.Windows.Forms.Design designer
-		// types these DesignerAttributes name, so the designer-kind half of the rule cannot be
-		// evaluated there: non-Controls still go to the tray, every Control stays on the surface.
+		// types these DesignerAttributes name, so the designer-kind clauses cannot be evaluated
+		// there: only "not a Control at all" reaches the tray, every Control stays on the surface.
 		Assert.Contains(opened.Components, component => component.Name == "timer1" && component.IsTrayComponent);
 		Assert.Contains(opened.Components, component => component.Name == "menuStrip1" && !component.IsTrayComponent);
 		Assert.Contains(opened.Components, component => component.Name == "button1" && !component.IsTrayComponent);

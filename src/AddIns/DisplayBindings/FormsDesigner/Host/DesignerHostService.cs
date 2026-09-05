@@ -1467,30 +1467,45 @@ sealed class DesignerHostService : IDesignerChildService
 		};
 	}
 
-	/// <summary>Whether a component belongs in the component tray instead of on the design
-	/// surface. Ports System.Windows.Forms.Design.ComponentTray's own two rules verbatim:
-	/// CanCreateComponentFromTool - "not a Control, or a Control whose IDesigner is not a
-	/// ControlDesigner" - and CanDisplayComponent - "the type is DesignTimeVisible". The second
-	/// clause of the first rule is the interesting one: ContextMenuStrip and PrintPreviewDialog
-	/// ARE Controls yet still belong in the tray, because their designers
-	/// (ToolStripDropDownDesigner / ComponentDesigner) do not derive from ControlDesigner, while
-	/// MenuStrip/ToolStrip/StatusStrip use ToolStripDesigner (a ControlDesigner) and stay on the
-	/// surface.</summary>
-	static bool IsTrayComponent(IComponent component)
+	/// <summary>Whether a component gets an entry in the component tray. Ports the rule from
+	/// System.Windows.Forms.Design.DocumentDesigner.OnComponentAdded, whose own comment reads
+	/// "If the component is a toolstrip or a top level form, we should add to the tray":
+	/// <code>
+	/// bool addControl = designer is ToolStripDesigner
+	///     || designer is not ControlDesigner cd
+	///     || (cd.Control is Form form &amp;&amp; form.TopLevel);
+	/// if (!addControl || !attributes.Contains(DesignTimeVisibleAttribute.Yes)) return;
+	/// </code>
+	/// The ToolStripDesigner clause is why every MenuStrip/ToolStrip/StatusStrip (and
+	/// BindingNavigator, whose designer derives from ToolStripDesigner) appears in the tray IN
+	/// ADDITION to being laid out on the surface, while ToolStripContainer - a ControlDesigner
+	/// that is not a ToolStripDesigner - does not. The "not a ControlDesigner" clause covers the
+	/// non-visual components (Timer/ImageList/ToolTip/dialogs) and the Controls whose designer is
+	/// a plain ComponentDesigner (ContextMenuStrip, PrintPreviewDialog).
+	///
+	/// NOTE this is deliberately NOT ComponentTray.CanCreateComponentFromTool: that predicate
+	/// answers a different question (may a toolbox item be created by dropping it ONTO the tray)
+	/// and excludes the strips, which is how this started out wrong.</summary>
+	bool IsTrayComponent(IComponent component)
 	{
 		try {
-			if (component is Form) return false;
-			var attributes = TypeDescriptor.GetAttributes(component);
-			if (!attributes.Contains(DesignTimeVisibleAttribute.Yes)) return false;
-			if (component is not Control) return true;
+			// The root component is the design surface itself, never a tray entry. Real WinForms
+			// gets this from its TopLevel check (a hosted root form has TopLevel=false), which
+			// does not hold for this out-of-process host's own root form.
+			if (component == (designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost)?.RootComponent)
+				return false;
+			if (!TypeDescriptor.GetAttributes(component).Contains(DesignTimeVisibleAttribute.Yes))
+				return false;
 #if MICROSOFT_WINFORMS
-			return !IsControlDesigner(DeclaredDesignerType(component.GetType()));
+			var designerType = DeclaredDesignerType(component.GetType());
+			if (IsToolStripDesigner(designerType)) return true;
+			if (!IsControlDesigner(designerType)) return true;
+			return component is Form { TopLevel: true };
 #else
 			// The portable LibreWinForms fork does not ship the System.Windows.Forms.Design
-			// designer types these attributes name, so the designer-kind half of the rule cannot
-			// be evaluated there; every Control simply stays on the surface, which is what this
-			// backend did before the tray existed.
-			return false;
+			// designer types these attributes name, so the designer-kind clauses cannot be
+			// evaluated there; only the "not a Control at all" case can be honored.
+			return component is not Control;
 #endif
 		} catch {
 			return false;
@@ -1512,6 +1527,19 @@ sealed class DesignerHostService : IDesignerChildService
 
 	static bool IsControlDesigner(Type? designerType)
 		=> designerType != null && typeof(System.Windows.Forms.Design.ControlDesigner).IsAssignableFrom(designerType);
+
+	/// <summary>The equivalent of DocumentDesigner's <c>designer is ToolStripDesigner</c> test.
+	/// Matched by name across the base chain because ToolStripDesigner is INTERNAL to
+	/// System.Windows.Forms.Design and cannot be referenced as a type - walking the chain still
+	/// catches the derived designers that must behave the same way (BindingNavigatorDesigner).</summary>
+	static bool IsToolStripDesigner(Type? designerType)
+	{
+		for (var type = designerType; type != null; type = type.BaseType) {
+			if (type.FullName == "System.Windows.Forms.Design.ToolStripDesigner")
+				return true;
+		}
+		return false;
+	}
 #endif
 
 	static string PropertyText(IComponent component, string propertyName)

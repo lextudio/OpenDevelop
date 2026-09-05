@@ -1303,12 +1303,18 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			AutomationProperties.SetName(this, String.IsNullOrEmpty(selectedComponent?.AccessibleName)
 				? selectedComponent?.Name ?? "WinForms designer" : selectedComponent.AccessibleName);
 			AutomationProperties.SetHelpText(this, selectedComponent?.AccessibleDescription ?? "");
-			// A tray component (Timer, ImageList, ContextMenuStrip, ...) has no place on the
-			// surface, so it reports no meaningful bounds - drawing the selection outline, the
-			// move/resize thumbs or the smart-tag glyph for it would put them at (0,0) over
-			// whatever happens to be in the form's top-left corner. Reflect the selection in the
-			// tray instead (UpdateComponentTray highlights the entry) and keep the surface clean.
-			if (selectedComponent?.IsTrayComponent == true) {
+			// A component that has a tray entry but NO place on the surface (Timer, ImageList,
+			// ToolTip, ContextMenuStrip, the dialogs) reports no meaningful bounds, so drawing the
+			// selection outline, the move/resize thumbs or the smart-tag glyph for it would put
+			// them at (0,0) over whatever happens to sit in the form's top-left corner. Reflect
+			// the selection in the tray instead and keep the surface clean.
+			//
+			// Being a tray component is NOT enough to suppress the adorners: every
+			// MenuStrip/ToolStrip/StatusStrip gets a tray entry too (DocumentDesigner adds
+			// anything with a ToolStripDesigner) while still being laid out on the surface, and
+			// those must keep their outline, thumbs, smart tag and insert-item chevron. A missing
+			// Parent is what actually distinguishes "tray only" here.
+			if (selectedComponent?.IsTrayComponent == true && String.IsNullOrEmpty(selectedComponent.Parent)) {
 				adornerLayer.ClearSelection();
 				moveThumb.Visibility = resizeHitTarget.Visibility = resizeThumb.Visibility =
 					smartTagChevron.Visibility = toolStripInsertChevron.Visibility = Visibility.Collapsed;
