@@ -111,6 +111,79 @@ sealed class DesignerHostService : IDesignerChildService
 		return new DesignerEditSet { SessionId = sessionId, DocumentId = documentId, BaseVersion = baseVersion, Files = current.Files };
 	}
 
+	/// <summary>Pushes the parent's selection into the child's REAL ISelectionService and returns a
+	/// freshly rendered state.
+	///
+	/// This is what activates the genuine design-time chrome instead of us redrawing it: the real
+	/// designers are all selection-driven. ToolStripDesigner keeps its template node
+	/// (`_editorNode`, a DesignerToolStripControlHost it already appended to ToolStrip.Items) at
+	/// Visible=false until its strip is selected; ToolStripMenuItemDesigner, on selection, calls
+	/// CreatetypeHereNode(), sets `MenuItem.DropDown.TopLevel = false` and `AutoClose = false`,
+	/// then ShowDropDown() - so the expanded dropdown becomes a CHILD CONTROL of the form (not a
+	/// floating window) and therefore lands in Form.DrawToBitmap's output, together with that
+	/// level's own "Type Here" node. Until this RPC existed the child's selection service was
+	/// never told anything, so none of that chrome ever appeared.</summary>
+	[JsonRpcMethod("design/set-selection")]
+	public DesignerSessionState SetSelection(string sessionId, string documentId, long baseVersion, string[] elementIds)
+	{
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "select in");
+		var host = GetHost();
+		if (designSurface?.GetService(typeof(ISelectionService)) is ISelectionService selection) {
+			var components = (elementIds ?? [])
+				.Select(id => host.Container.Components[id])
+				.Where(component => component != null)
+				.ToArray();
+			selection.SetSelectedComponents(components, SelectionTypes.Replace);
+		}
+#if MICROSOFT_WINFORMS
+		// The chrome the selection just triggered is created asynchronously by the designers:
+		// ToolStripMenuItemDesigner's ShowDropDown()/PerformLayout() and the template node's
+		// visibility change only settle once the pending messages are pumped. Rendering in the
+		// same call without this captured the frame BEFORE the expanded dropdown and the "Type
+		// Here" node had laid out, so their geometry was already reported correctly while their
+		// pixels were missing from the bitmap.
+		Application.DoEvents();
+		(GetHost().RootComponent as Control)?.PerformLayout();
+		Application.DoEvents();
+#endif
+		return CurrentState(baseVersion);
+	}
+
+	/// <summary>Hit-tests a point INSIDE one popup overlay's own local coordinate space (see
+	/// DesignerSessionState.Popups) and, if it lands on an item, selects that item through the
+	/// real ISelectionService - the same "let the real designer react" approach
+	/// <see cref="SetSelection"/> uses. A popup's dropdown is not reachable from the root form's
+	/// own Controls tree (it is parented into the designer's adorner window), so the ordinary
+	/// <see cref="HitTest"/>/root-relative path cannot be reused here; the owner element id tells
+	/// us which live ToolStripDropDown to test against instead of walking down from the root.</summary>
+	[JsonRpcMethod("design/hit-test-popup")]
+	public DesignerSessionState HitTestPopupAndSelect(string sessionId, string documentId, long baseVersion, string ownerElementId, int x, int y)
+	{
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "select in");
+#if MICROSOFT_WINFORMS
+		var host = GetHost();
+		var rootControl = host.RootComponent as Control;
+		var dropDown = rootControl == null ? null
+			: ExpandedDropDowns(rootControl).FirstOrDefault(entry => entry.OwnerElementId == ownerElementId).DropDown
+			// Not an owning ToolStripDropDownItem's submenu - ownerElementId may instead name a
+			// tray-only ContextMenuStrip's own overlay directly (see SelectedContextMenuStripPopups).
+			?? host.Container.Components[ownerElementId] as ToolStripDropDown;
+		IComponent? hit = null;
+		if (dropDown != null && designSurface?.GetService(typeof(ISelectionService)) is ISelectionService selection) {
+			// ToolStripDropDown IS-A ToolStrip, so the existing root hit-test walk already knows
+			// how to test its Items - it just needed a dropdown instead of the form to start from.
+			hit = FindDeepest(dropDown, new Point(x, y), host.Container);
+			if (hit != null)
+				selection.SetSelectedComponents(new IComponent[] { hit }, SelectionTypes.Replace);
+		}
+		var state = CurrentState(baseVersion);
+		state.PopupHitElementId = hit?.Site?.Name;
+		return state;
+#else
+		return CurrentState(baseVersion);
+#endif
+	}
+
 	[JsonRpcMethod("design/hit-test")]
 	public DesignerHitTestResult HitTest(string sessionId, string documentId, long baseVersion, int x, int y)
 	{
@@ -239,7 +312,12 @@ sealed class DesignerHostService : IDesignerChildService
 		if (component == host.RootComponent) throw new InvalidOperationException("The root component cannot be renamed here.");
 		if (host.Container.Components[newName] != null) throw new ArgumentException("A component with that name already exists: " + newName, nameof(newName));
 		RewriteComponentName(elementId, newName);
-		if (component is Control) RewriteProperty(newName, "Name", newName);
+		// Control.Name and ToolStripItem.Name are both real, separately-serialized design-time
+		// properties (a "foo.Name = "oldName";" statement, distinct from the field/identifier
+		// RewriteComponentName above already renamed) - not just Control's. Missing the
+		// ToolStripItem case left its Name property statement holding the stale OLD name as a
+		// string literal after every identifier reference had already moved to the new one.
+		if (component is Control or ToolStripItem) RewriteProperty(newName, "Name", newName);
 		CreateDesignSurface(current!);
 		return CurrentState(baseVersion);
 	}
@@ -539,7 +617,15 @@ sealed class DesignerHostService : IDesignerChildService
 		return CurrentState(baseVersion);
 	}
 
-	static Type ResolveToolStripItemType(string name) => name switch {
+	static Type ResolveToolStripItemType(string name) => ResolveToolStripItemTypeShortName(ShortTypeName(name));
+
+	static string ShortTypeName(string name)
+	{
+		var lastDot = name.LastIndexOf('.');
+		return lastDot < 0 ? name : name.Substring(lastDot + 1);
+	}
+
+	static Type ResolveToolStripItemTypeShortName(string name) => name switch {
 		"Button" or "ToolStripButton" => typeof(ToolStripButton),
 		"Label" or "ToolStripLabel" => typeof(ToolStripLabel),
 		"SplitButton" or "ToolStripSplitButton" => typeof(ToolStripSplitButton),
@@ -627,6 +713,142 @@ sealed class DesignerHostService : IDesignerChildService
 	}
 #endif
 
+#if MICROSOFT_WINFORMS
+	/// <summary>Drag-to-reorder for a ToolStrip/StatusStrip/MenuStrip item: moves it to
+	/// <paramref name="targetIndex"/> within whatever collection it is CURRENTLY in (the strip's
+	/// own Items, or a submenu's DropDownItems - resolved from the item's own Owner/OwnerItem, the
+	/// same way <see cref="ExpandedDropDowns"/>/<see cref="BelongsTo"/> do; this RPC never moves an
+	/// item to a DIFFERENT collection than the one it started in). Gated to Microsoft only, like
+	/// AddToolStripItem: unlike that RPC this needs no DesignerActionService/CreateComponent
+	/// machinery, but LibreWinForms' ToolStripItem does not expose Owner/OwnerItem at all.</summary>
+	[JsonRpcMethod("design/reorder-toolstrip-item")]
+	public DesignerSessionState ReorderToolStripItem(string sessionId, string documentId, long baseVersion, string elementId, int targetIndex)
+	{
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
+		var host = GetHost();
+		var item = host.Container.Components[elementId] as ToolStripItem
+			?? throw new ArgumentException("ToolStripItem not found: " + elementId, nameof(elementId));
+		var ownerItem = item.OwnerItem as ToolStripDropDownItem;
+		var collection = ownerItem != null ? ownerItem.DropDownItems : item.Owner?.Items
+			?? throw new ArgumentException("Item has no owning collection: " + elementId, nameof(elementId));
+		using (var transaction = host.CreateTransaction("Reorder " + elementId)) {
+			collection.Remove(item);
+			var clampedIndex = Math.Clamp(targetIndex, 0, collection.Count);
+			collection.Insert(clampedIndex, item);
+			transaction.Commit();
+		}
+		var stripId = (ownerItem != null ? (ownerItem.Owner ?? item.Owner) : item.Owner)?.Site?.Name ?? "";
+		RewriteReorderedToolStripItems(stripId, ownerItem?.Site?.Name ?? "", collection);
+		return CurrentState(baseVersion);
+	}
+
+	/// <summary>Reorders the designer source's own record of a strip's items to match the LIVE
+	/// collection's new order, after <see cref="ReorderToolStripItem"/> has already reordered the
+	/// real ToolStripItemCollection. Handles both shapes existing fixtures/tests use: a single
+	/// "collection.AddRange(new T[] { a, b, c })" call (its array elements are reordered in place)
+	/// and a sequence of separate "collection.Add(x)" statements (the STATEMENTS are reordered in
+	/// place, at the positions the original ones occupied) - anything else (an item that was only
+	/// ever added at runtime, never textually) is left untouched, since there is nothing to move.</summary>
+	void RewriteReorderedToolStripItems(string stripId, string parentItemId, ToolStripItemCollection collection)
+	{
+		if (String.IsNullOrEmpty(stripId)) return;
+		var orderedNames = collection.Cast<ToolStripItem>().Select(i => i.Site?.Name ?? "").Where(n => n.Length > 0).ToList();
+		if (orderedNames.Count < 2) return;
+		if (IsVisualBasic) { RewriteReorderedToolStripItemsVisualBasic(stripId, parentItemId, orderedNames); return; }
+		var file = current!.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))
+			?? current.Files.First();
+		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
+		var method = root.DescendantNodes().OfType<MethodDeclarationSyntax>()
+			.FirstOrDefault(item => item.Identifier.ValueText == "InitializeComponent");
+		if (method?.Body == null) return;
+
+		// Deliberately NOT a string match against a hardcoded "this.{stripId}.Items"/"Me.{...}":
+		// design/session-flush's ThisQualifierRewriter persistently drops the "this."/"Me."
+		// qualifier from current.Files' own text (not just its own returned copy), so a second
+		// reorder call after a Flush would silently find nothing if this matched by exact text.
+		var addRange = method.Body.DescendantNodes().OfType<InvocationExpressionSyntax>().FirstOrDefault(invocation =>
+			invocation.Expression is MemberAccessExpressionSyntax { Name.Identifier.ValueText: "AddRange" } access
+			&& IsTargetCollectionAccess(access.Expression, stripId, parentItemId));
+		if (addRange?.ArgumentList.Arguments is [{ Expression: ArrayCreationExpressionSyntax { Initializer: { } initializer } }]) {
+			var byName = initializer.Expressions.ToDictionary(SimpleTargetName, expression => expression);
+			var reordered = orderedNames.Where(byName.ContainsKey).Select(name => byName[name]);
+			var newArray = ((ArrayCreationExpressionSyntax)addRange.ArgumentList.Arguments[0].Expression)
+				.WithInitializer(initializer.WithExpressions(SyntaxFactory.SeparatedList(reordered)));
+			root = root.ReplaceNode(addRange.ArgumentList.Arguments[0].Expression, newArray);
+			file.Text = root.NormalizeWhitespace().ToFullString();
+			return;
+		}
+
+		var addStatements = method.Body.Statements.OfType<ExpressionStatementSyntax>().Where(statement =>
+			statement.Expression is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Add" } access, ArgumentList.Arguments: [var argument] }
+			&& IsTargetCollectionAccess(access.Expression, stripId, parentItemId)).ToList();
+		if (addStatements.Count < 2) return;
+		var statementsByName = addStatements.ToDictionary(
+			statement => SimpleTargetName(((InvocationExpressionSyntax)statement.Expression).ArgumentList.Arguments[0].Expression), statement => statement);
+		var reorderedStatements = orderedNames.Where(statementsByName.ContainsKey).Select(name => statementsByName[name]).ToList();
+		var bodyStatements = method.Body.Statements.ToList();
+		var positions = addStatements.Select(statement => bodyStatements.IndexOf(statement)).ToList();
+		for (var i = 0; i < positions.Count; i++)
+			bodyStatements[positions[i]] = reorderedStatements[i];
+		var updatedMethod = method.WithBody(method.Body.WithStatements(SyntaxFactory.List(bodyStatements)));
+		root = root.ReplaceNode(method, updatedMethod);
+		file.Text = root.NormalizeWhitespace().ToFullString();
+	}
+
+	/// <summary>Whether expression is "&lt;owner&gt;.Items"/"&lt;owner&gt;.DropDownItems" naming
+	/// exactly the strip/parent this reorder targets - regardless of a "this."/"Me." qualifier (or
+	/// none at all) on owner, since that qualifier is not stable across a Flush (see the caller's
+	/// own note).</summary>
+	static bool IsTargetCollectionAccess(ExpressionSyntax expression, string stripId, string parentItemId)
+	{
+		if (expression is not MemberAccessExpressionSyntax access) return false;
+		var wantMember = String.IsNullOrEmpty(parentItemId) ? "Items" : "DropDownItems";
+		var wantOwner = String.IsNullOrEmpty(parentItemId) ? stripId : parentItemId;
+		return access.Name.Identifier.ValueText == wantMember && SimpleTargetName(access.Expression) == wantOwner;
+	}
+
+	void RewriteReorderedToolStripItemsVisualBasic(string stripId, string parentItemId, List<string> orderedNames)
+	{
+		var file = current!.Files.FirstOrDefault(item => item.Kind.Equals("Designer", StringComparison.OrdinalIgnoreCase))
+			?? current.Files.First();
+		var root = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
+		var method = root.DescendantNodes().OfType<VbSyntax.MethodBlockSyntax>().FirstOrDefault(item =>
+			item.BlockStatement is VbSyntax.MethodStatementSyntax ms && ms.DeclarationKeyword.IsKind(Vb.SyntaxKind.SubKeyword)
+			&& ms.Identifier.ValueText == "InitializeComponent");
+		if (method == null) return;
+
+		var addStatements = method.Statements.OfType<VbSyntax.ExpressionStatementSyntax>().Where(statement =>
+			statement.Expression is VbSyntax.InvocationExpressionSyntax { Expression: VbSyntax.MemberAccessExpressionSyntax access, ArgumentList.Arguments.Count: 1 }
+			&& access.Name.Identifier.ValueText == "Add" && IsVbTargetCollectionAccess(access.Expression, stripId, parentItemId)).ToList();
+		if (addStatements.Count < 2) return;
+		var statementsByName = addStatements.ToDictionary(statement => VbSimpleTargetName(
+			((VbSyntax.InvocationExpressionSyntax)statement.Expression).ArgumentList.Arguments[0].GetExpression()), statement => statement);
+		var reorderedStatements = orderedNames.Where(statementsByName.ContainsKey).Select(name => statementsByName[name]).ToList();
+		var bodyStatements = method.Statements.ToList();
+		var positions = addStatements.Select(statement => bodyStatements.IndexOf(statement)).ToList();
+		for (var i = 0; i < positions.Count; i++)
+			bodyStatements[positions[i]] = reorderedStatements[i];
+		var updatedMethod = method.WithStatements(Vb.SyntaxFactory.List(bodyStatements));
+		root = root.ReplaceNode(method, updatedMethod);
+		file.Text = root.NormalizeWhitespace().ToFullString();
+	}
+
+	static bool IsVbTargetCollectionAccess(VbSyntax.ExpressionSyntax expression, string stripId, string parentItemId)
+	{
+		if (expression is not VbSyntax.MemberAccessExpressionSyntax access) return false;
+		var wantMember = String.IsNullOrEmpty(parentItemId) ? "Items" : "DropDownItems";
+		var wantOwner = String.IsNullOrEmpty(parentItemId) ? stripId : parentItemId;
+		return access.Name.Identifier.ValueText == wantMember && VbSimpleTargetName(access.Expression) == wantOwner;
+	}
+#else
+	[JsonRpcMethod("design/reorder-toolstrip-item")]
+	public DesignerSessionState ReorderToolStripItem(string sessionId, string documentId, long baseVersion, string elementId, int targetIndex)
+	{
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
+		throw new NotSupportedException("ToolStrip item reordering is only supported by the Microsoft WinForms designer host.");
+	}
+#endif
+
 	static int Snap(int value) => (int)Math.Round(value / 8d, MidpointRounding.AwayFromZero) * 8;
 
 	static void SpaceEqually(Control[] controls, bool horizontal)
@@ -663,6 +885,17 @@ sealed class DesignerHostService : IDesignerChildService
 		for (var index = control.Controls.Count - 1; index >= 0; index--) {
 			var child = control.Controls[index];
 			if (!child.Visible || !child.Bounds.Contains(point)) continue;
+			// Same container-membership filtering the ToolStrip.Items walk below already applies,
+			// extended to plain child Controls: a ToolStripTemplateNode's in-place editor
+			// (ToolStripTemplateNode.EnterInSituEdit's TextBox, hosted via a
+			// DesignerToolStripControlHost) becomes a REAL child Control of the ToolStrip/dropdown
+			// it lives in, but it is never sited in the designer's own IContainer - it is UI, not
+			// a component. Without this check, a click on it hit-tested as that raw TextBox and
+			// got passed to ISelectionService.SetSelectedComponents, which real WinForms then
+			// treated as "selection left" this dropdown's ownership and closed it - reported as
+			// "clicking Type Here makes the popup disappear".
+			if (container != null && !container.Components.Cast<IComponent>().Contains(child))
+				continue;
 			return FindDeepest(child, new Point(point.X - child.Left, point.Y - child.Top), container);
 		}
 		if (!control.ClientRectangle.Contains(point))
@@ -1140,14 +1373,40 @@ sealed class DesignerHostService : IDesignerChildService
 			.NormalizeWhitespace().ToFullString();
 	}
 
+	/// <summary>The bare identifier a "this.foo"/"Me.foo" member-access expression (or a plain
+	/// "foo" identifier) ultimately names - matches how AddToolStripItem's own generated statements
+	/// (and every existing designer-source fixture) reference a sited component.</summary>
+	static string SimpleTargetName(ExpressionSyntax expression) => expression switch {
+		MemberAccessExpressionSyntax access => access.Name.Identifier.ValueText,
+		IdentifierNameSyntax identifier => identifier.Identifier.ValueText,
+		_ => ""
+	};
+
+	static string VbSimpleTargetName(VbSyntax.ExpressionSyntax expression) => expression switch {
+		VbSyntax.MemberAccessExpressionSyntax access => access.Name.Identifier.ValueText,
+		VbSyntax.IdentifierNameSyntax identifier => identifier.Identifier.ValueText,
+		_ => ""
+	};
+
 	void RewriteDeletedComponent(string elementId)
 	{
 		var file = CurrentDesignerFile();
 		if (IsVisualBasic) {
 			var vbRoot = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(file.Text).GetRoot();
+			// Shrink a shared AddRange array in place first - see the C# branch's own note on why.
+			foreach (var arrayCreation in vbRoot.DescendantNodes().OfType<VbSyntax.ArrayCreationExpressionSyntax>().ToArray()) {
+				if (arrayCreation.Initializer is not { } initializer) continue;
+				var match = initializer.Initializers.FirstOrDefault(expression => VbSimpleTargetName(expression) == elementId);
+				if (match == null || initializer.Initializers.Count <= 1) continue;
+				var shrunk = initializer.WithInitializers(initializer.Initializers.Remove(match));
+				vbRoot = vbRoot.ReplaceNode(initializer, shrunk);
+			}
+			// MethodBlockSyntax (InitializeComponent's own included) IS a StatementSyntax in VB's
+			// model too - see the C# branch's own comment on why that must be excluded here.
 			var vbStatements = vbRoot.DescendantNodes().OfType<VbSyntax.StatementSyntax>()
-				.Where(statement => statement.DescendantNodesAndSelf().OfType<VbSyntax.IdentifierNameSyntax>()
-					.Any(identifier => identifier.Identifier.ValueText == elementId)).ToArray();
+				.Where(statement => statement is not VbSyntax.MethodBlockSyntax
+					&& statement.DescendantNodesAndSelf().OfType<VbSyntax.IdentifierNameSyntax>()
+						.Any(identifier => identifier.Identifier.ValueText == elementId)).ToArray();
 			vbRoot = vbRoot.RemoveNodes(vbStatements, SyntaxRemoveOptions.KeepNoTrivia)!;
 			var vbFields = vbRoot.DescendantNodes().OfType<VbSyntax.FieldDeclarationSyntax>()
 				.Where(field => field.Declarators.SelectMany(declarator => declarator.Names)
@@ -1157,9 +1416,29 @@ sealed class DesignerHostService : IDesignerChildService
 			return;
 		}
 		var root = CSharpSyntaxTree.ParseText(file.Text).GetCompilationUnitRoot();
+		// A deleted item that is one of SEVERAL elements in a shared "collection.AddRange(new
+		// T[] { a, b, c })" call (see RewriteReorderedToolStripItems' own note on this shape) must
+		// only lose ITS OWN array element - not the whole statement, which would silently drop
+		// every OTHER sibling in that same AddRange from the designer source too. Shrinking the
+		// array here, before the generic statement-removal pass below, means that pass no longer
+		// sees this identifier in the (now-shorter) array and leaves the statement alone.
+		foreach (var arrayCreation in root.DescendantNodes().OfType<ArrayCreationExpressionSyntax>().ToArray()) {
+			if (arrayCreation.Initializer is not { } initializer) continue;
+			var match = initializer.Expressions.FirstOrDefault(expression => SimpleTargetName(expression) == elementId);
+			if (match == null || initializer.Expressions.Count <= 1) continue;
+			var shrunk = initializer.WithExpressions(initializer.Expressions.Remove(match));
+			root = root.ReplaceNode(initializer, shrunk);
+		}
+		// BlockSyntax (a `{ ... }` body, InitializeComponent's own included) IS a StatementSyntax
+		// in Roslyn's model, so without excluding it here it always ends up in this list too -
+		// InitializeComponent's body mentions elementId somewhere by construction - and
+		// RemoveNodes drops an ANCESTOR before its own now-redundant descendants, silently wiping
+		// the WHOLE METHOD BODY (every other component's statements included) instead of just the
+		// deleted component's own few statements.
 		var statements = root.DescendantNodes().OfType<StatementSyntax>()
-			.Where(statement => statement.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>()
-				.Any(identifier => identifier.Identifier.ValueText == elementId)).ToArray();
+			.Where(statement => statement is not BlockSyntax
+				&& statement.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>()
+					.Any(identifier => identifier.Identifier.ValueText == elementId)).ToArray();
 		root = root.RemoveNodes(statements, SyntaxRemoveOptions.KeepNoTrivia)!;
 		var variables = root.DescendantNodes().OfType<VariableDeclaratorSyntax>()
 			.Where(variable => variable.Identifier.ValueText == elementId).ToArray();
@@ -1445,6 +1724,12 @@ sealed class DesignerHostService : IDesignerChildService
 				: component is Control sizeControl2 ? sizeControl2.Height : 0,
 #endif
 			IsTrayComponent = IsTrayComponent(component),
+			IsControl = component is Control,
+#if MICROSOFT_WINFORMS
+			IsDropDownItem = component is ToolStripItem { OwnerItem: not null },
+#endif
+			ItemInsertionStyle = ItemInsertionStyle(component),
+			NewItemTypeNames = NewItemTypeNames(component),
 			Properties = properties,
 			Events = DescribeEvents(component)
 			};
@@ -1463,8 +1748,57 @@ sealed class DesignerHostService : IDesignerChildService
 			Render = render,
 			Diagnostics = diagnostics,
 			Tree = tree,
-			Components = components
+			Components = components,
+#if MICROSOFT_WINFORMS
+			Popups = rootControl == null ? [] : CapturePopupFrames(rootControl)
+#endif
 		};
+	}
+
+	/// <summary>How this strip lets the user add items, mirroring the branch in
+	/// ToolStripTemplateNode.SetupNewEditNode: a MenuStrip (like any dropdown) gets the editable
+	/// "Type Here" cell built by SetUpMenuTemplateNode, while ToolStrip/StatusStrip and
+	/// ContextMenuStrip get the split button built by SetUpToolTemplateNode. Anything that is not
+	/// a strip gets None.</summary>
+	static string ItemInsertionStyle(IComponent component)
+	{
+#if MICROSOFT_WINFORMS
+		// A ToolStripDropDownItem (a menu item with its own submenu, like "File") is not itself a
+		// MenuStrip/ToolStripDropDown, but ToolStripDesignerUtils.GetToolStripFromComponent
+		// resolves ITS "ToolStrip" as item.DropDown - so it gets the same TypeHere style as the
+		// dropdown it owns, for the popup overlay this item's own expanded submenu needs.
+		if (component is MenuStrip or ToolStripDropDown or ToolStripDropDownItem)
+			return DesignerItemInsertionStyles.TypeHere;
+		if (component is ToolStrip)
+			return DesignerItemInsertionStyles.SplitButton;
+#endif
+		return DesignerItemInsertionStyles.None;
+	}
+
+	/// <summary>The item types this strip's template node offers, in
+	/// ToolStripDesignerUtils.GetStandardItemTypes' own order - its FIRST entry is what
+	/// CommitTextToDesigner falls back to when the user types a name without picking a type.
+	/// Reproduced here (rather than reflected out of the internal ToolStripDesignerUtils) so both
+	/// backends and the client agree on one list.</summary>
+	static List<string> NewItemTypeNames(IComponent component)
+	{
+#if MICROSOFT_WINFORMS
+		const string ns = "System.Windows.Forms.";
+		if (component is MenuStrip)
+			return [ns + "ToolStripMenuItem", ns + "ToolStripComboBox", ns + "ToolStripTextBox"];
+		// ToolStripDropDownItem: same list as ToolStripDropDown, for the reason ItemInsertionStyle
+		// above documents - GetToolStripFromComponent resolves this item's own "ToolStrip" as its
+		// DropDown, which is a ToolStripDropDownMenu (this list), not a plain ToolStripDropDown.
+		if (component is ToolStripDropDown or ToolStripDropDownItem)
+			return [ns + "ToolStripMenuItem", ns + "ToolStripComboBox", ns + "ToolStripSeparator", ns + "ToolStripTextBox"];
+		if (component is StatusStrip)
+			return [ns + "ToolStripStatusLabel", ns + "ToolStripProgressBar", ns + "ToolStripDropDownButton", ns + "ToolStripSplitButton"];
+		if (component is ToolStrip)
+			return [ns + "ToolStripButton", ns + "ToolStripLabel", ns + "ToolStripSplitButton",
+				ns + "ToolStripDropDownButton", ns + "ToolStripSeparator", ns + "ToolStripComboBox",
+				ns + "ToolStripTextBox", ns + "ToolStripProgressBar"];
+#endif
+		return [];
 	}
 
 	/// <summary>Whether a component gets an entry in the component tray. Ports the rule from
@@ -1734,13 +2068,170 @@ sealed class DesignerHostService : IDesignerChildService
 	{
 		var root = (designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost)?.RootComponent as Control;
 		if (control == root) return Point.Empty;
+		var offset = RootClientOffset(root);
+#if MICROSOFT_WINFORMS
+		// Measure against the root's SCREEN origin rather than by summing Locations up the parent
+		// chain. The chain walk cannot describe an expanded menu dropdown: the designer parents
+		// those into its own adorner window, so the loop below never reaches the root and sums
+		// unrelated ancestor offsets - which is exactly why the dropdown items' outlines and name
+		// labels landed away from the dropdown the designer had actually drawn. Screen-relative
+		// measurement is also the basis PaintExpandedDropDowns composites with, so the reported
+		// geometry and the painted pixels agree by construction.
+		if (root != null && root.IsHandleCreated && control.IsHandleCreated) {
+			try {
+				var origin = control.PointToScreen(Point.Empty);
+				var rootOrigin = root.PointToScreen(Point.Empty);
+				return new Point(origin.X - rootOrigin.X + offset.X, origin.Y - rootOrigin.Y + offset.Y);
+			} catch {
+				// Fall through to the Location walk below.
+			}
+		}
+#endif
 		var point = control.Location;
 		for (var parent = control.Parent; parent != null && parent != root; parent = parent.Parent)
 			point.Offset(parent.Location);
-		var offset = RootClientOffset(root);
 		point.Offset(offset.X, offset.Y);
 		return point;
 	}
+
+#if MICROSOFT_WINFORMS
+	/// <summary>Captures every menu dropdown the designer currently has expanded as ITS OWN
+	/// bitmap/frame, rather than compositing them into the root frame.
+	///
+	/// Needed because ToolStripMenuItemDesigner keeps a selected menu item's dropdown open
+	/// (TopLevel=false, AutoClose=false, ShowDropDown()), and it is parented into the designer's
+	/// own adorner window rather than the form, so Form.DrawToBitmap never sees it - the items'
+	/// geometry was already reported correctly while their pixels were missing. Reporting each as
+	/// an independent DesignerPopupFrame (rather than baking it into the shared bitmap) is what
+	/// lets the client host it as its own WPF overlay: pointer/keyboard input aimed at the popup
+	/// then hit-tests and drags against just that surface, never needing to reverse through the
+	/// root form's own coordinate space or fight the root frame's own adorners for z-order.</summary>
+	List<DesignerPopupFrame> CapturePopupFrames(Control root)
+	{
+		var frames = new List<DesignerPopupFrame>();
+		try {
+			// A ContextMenuStrip's own ToolStripDropDownDesigner.InitializeDropDown shows it
+			// UNCONDITIONALLY as soon as the component exists (not gated on selection - see
+			// SelectedContextMenuStripPopups), via a synthetic owner item ExpandedDropDowns'
+			// existing MenuStrip-oriented walk happens to discover it through - reported under
+			// that synthetic item's own (wrong, internal) element id, not the real strip's name.
+			// Every ContextMenuStrip reference is therefore excluded here and re-added, correctly
+			// named and selection-gated, by SelectedContextMenuStripPopups below.
+			var fromExpanded = ExpandedDropDowns(root).Where(entry => entry.DropDown is not ContextMenuStrip).ToList();
+			var fromContextMenus = SelectedContextMenuStripPopups().ToList();
+			foreach (var (ownerId, dropDown) in fromExpanded.Concat(fromContextMenus)) {
+				if (dropDown.Width <= 0 || dropDown.Height <= 0)
+					continue;
+				// SurfaceLocation, not a second copy of the offset math: this must be the same
+				// basis DesignerComponentInfo.SurfaceX/Y use, or the overlay lands in the wrong
+				// spot relative to everything else the client draws.
+				var origin = SurfaceLocation(dropDown);
+				using var bitmap = new Bitmap(dropDown.Width, dropDown.Height);
+				dropDown.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size));
+				using var stream = new MemoryStream();
+				bitmap.Save(stream, ImageFormat.Png);
+				frames.Add(new DesignerPopupFrame {
+					OwnerElementId = ownerId,
+					X = origin.X,
+					Y = origin.Y,
+					TypeHereBounds = FindTemplateNodeBounds(dropDown),
+					Render = new DesignerRenderFrame {
+						Sequence = Interlocked.Increment(ref frameSequence),
+						Width = bitmap.Width,
+						Height = bitmap.Height,
+						Dpi = 1,
+						PngBase64 = Convert.ToBase64String(stream.ToArray())
+					}
+				});
+			}
+		} catch (Exception exception) {
+			// A popup that cannot be captured must not cost us the whole frame.
+			Trace("CapturePopupFrames failed: " + exception.Message);
+		}
+		return frames;
+	}
+
+	/// <summary>The real "Type Here" template node's own bounds within a dropdown, or null when
+	/// it has none. Matched by type name (both "DesignerToolStripControlHost", the wrapper
+	/// ToolStripTemplateNode.EnterInSituEdit swaps in) rather than by reference, since
+	/// System.Windows.Forms.Design's template-node types are all internal and cannot be named
+	/// directly from this assembly - the same constraint <see cref="IsToolStripDesigner"/> already
+	/// works around for the designer TYPES themselves.</summary>
+	static DesignerRectangle? FindTemplateNodeBounds(ToolStripDropDown dropDown)
+	{
+		foreach (ToolStripItem item in dropDown.Items) {
+			if (item.GetType().Name is not ("DesignerToolStripControlHost" or "ToolStripControlHost"))
+				continue;
+			return new DesignerRectangle { X = item.Bounds.X, Y = item.Bounds.Y, Width = item.Bounds.Width, Height = item.Bounds.Height };
+		}
+		return null;
+	}
+
+	/// <summary>Every dropdown currently held open by the designer, outermost first so a client
+	/// that z-orders by list position still stacks nested submenus correctly. Paired with the
+	/// element id of the ToolStripDropDownItem that owns it (empty for a strip's own
+	/// ContextMenuStrip), which the client uses to keep the same overlay across frames.</summary>
+	static IEnumerable<(string OwnerElementId, ToolStripDropDown DropDown)> ExpandedDropDowns(Control root)
+	{
+		var strips = root.Controls.Cast<Control>().OfType<ToolStrip>().ToList();
+		var pending = new Queue<ToolStrip>(strips);
+		while (pending.Count > 0) {
+			var strip = pending.Dequeue();
+			foreach (var item in strip.Items.Cast<ToolStripItem>().OfType<ToolStripDropDownItem>()) {
+				if (item.DropDown is not { Visible: true } dropDown)
+					continue;
+				yield return (item.Site?.Name ?? "", dropDown);
+				pending.Enqueue(dropDown);
+			}
+		}
+	}
+
+	/// <summary>ContextMenuStrip is never parented into <c>root.Controls</c> - it lives only in the
+	/// tray - so <see cref="ExpandedDropDowns"/> never finds it. Unlike a MenuStrip submenu, the
+	/// real ContextMenuStripDesigner (ToolStripDropDownDesigner.InitializeDropDown) shows it
+	/// unconditionally as soon as the component exists, not gated on selection - so reusing that
+	/// designer's own Visible flag would make every ContextMenuStrip permanently overlay the
+	/// surface. OpenDevelop deliberately narrows this to "shown only while selected" (its own tray
+	/// icon, or one of its own items/submenu items), matching the "default hidden, click the tray
+	/// icon to edit like a main menu" UX asked for, rather than VS's always-on behaviour.</summary>
+	IEnumerable<(string OwnerElementId, ToolStripDropDown DropDown)> SelectedContextMenuStripPopups()
+	{
+		var host = GetHost();
+		if (designSurface?.GetService(typeof(ISelectionService)) is not ISelectionService selection)
+			yield break;
+		var selected = selection.GetSelectedComponents().Cast<IComponent>().ToHashSet();
+		foreach (var strip in host.Container.Components.Cast<IComponent>().OfType<ContextMenuStrip>()) {
+			if (strip.Width <= 0 || strip.Height <= 0)
+				continue;
+			var owns = selected.Contains(strip)
+				|| selected.OfType<ToolStripItem>().Any(item => BelongsTo(item, strip));
+			if (owns)
+				yield return (strip.Site?.Name ?? "", strip);
+		}
+	}
+
+	/// <summary>Whether item, or one of the (possibly several) submenu levels containing it,
+	/// belongs to this exact ContextMenuStrip - the same walk <c>PopupTypeHereEditor.Commit</c>
+	/// does client-side to find the real Control a template node's new item belongs to, mirrored
+	/// here server-side. Checks .Owner == strip at EVERY level and stops as soon as it matches,
+	/// rather than walking all the way up to whatever ToolStrip ultimately owns the chain: real
+	/// ContextMenuStripDesigner wires the strip's OWN OwnerItem to an internal synthetic item (so
+	/// ExpandedDropDowns' existing MenuStrip-oriented walk can discover it too, always-on rather
+	/// than selection-gated - see CapturePopupFrames/SelectedContextMenuStripPopups), so climbing
+	/// past a match here would walk right past the real strip into that internal plumbing and
+	/// never find it.</summary>
+	static bool BelongsTo(ToolStripItem item, ContextMenuStrip strip)
+	{
+		ToolStripItem? current = item;
+		var guard = 0;
+		while (current != null && guard++ < 32) {
+			if (current.Owner == strip)
+				return true;
+			current = (current.Owner as ToolStripDropDown)?.OwnerItem;
+		}
+		return false;
+	}
+#endif
 
 	/// <summary>How far the painted bitmap's origin sits outside the root form's client area:
 	/// native Form.DrawToBitmap paints the outer window (border + caption) while every child

@@ -656,12 +656,23 @@ namespace ICSharpCode.FormsDesigner
 					try { MoveRemoteSelection(e.DeltaX, e.DeltaY); }
 					catch (Exception exception) { LoggingService.Error(exception); MessageService.ShowError(exception.Message); }
 				};
+				remoteControl.ReorderRequested += (sender, e) => {
+					try {
+						ExecuteRemoteEdit(() => remoteClient.ReorderToolStripItemAsync(remoteDocumentVersion, e.ComponentName, e.TargetIndex,
+							System.Threading.CancellationToken.None).GetAwaiter().GetResult());
+					} catch (Exception exception) { LoggingService.Error(exception); MessageService.ShowError(exception.Message); }
+				};
+				remoteControl.RenameRequested += (sender, e) => {
+					try { RenameRemoteComponent(e.ComponentName, e.NewName); }
+					catch (Exception exception) { LoggingService.Error(exception); MessageService.ShowError(exception.Message); }
+				};
 				remoteControl.DeleteRequested += RemoteDeleteRequested;
 				remoteControl.DefaultEventRequested += RemoteDefaultEventRequested;
 				remoteControl.SelectionChanged += RemoteSelectionChanged;
 				remoteControl.RestartRequested += RemoteRestartRequested;
 				remoteControl.SmartTagRequested += RemoteSmartTagRequested;
 				remoteControl.ToolStripInsertRequested += RemoteToolStripInsertRequested;
+				remoteControl.ToolStripTypeHereCommitted += RemoteToolStripTypeHereCommitted;
 				outline.SelectionCommitted += OnOutlineSelectionCommitted;
 				remoteControl.Show(state);
 				UpdateOutline(state);
@@ -1154,6 +1165,58 @@ namespace ICSharpCode.FormsDesigner
 			}
 		}
 
+		/// <summary>A name typed into a MenuStrip's "Type Here" cell: create the item and give it
+		/// that text. Both RPCs run inside ONE ExecuteRemoteEdit so the pair is a single undo step,
+		/// the way committing the real template node is.</summary>
+		void RemoteToolStripTypeHereCommitted(object sender, RemoteToolStripTypeHereEventArgs e)
+		{
+			try {
+				var newItemId = NextRemoteComponentName(e.ItemTypeName);
+				ExecuteRemoteEdit(() => {
+					remoteClient.AddToolStripItemAsync(remoteDocumentVersion, e.ComponentName, e.ItemTypeName, e.ParentItemId,
+						newItemId, System.Threading.CancellationToken.None).GetAwaiter().GetResult();
+					return remoteClient.SetPropertyAsync(remoteDocumentVersion, newItemId, "Text", e.Text,
+						System.Threading.CancellationToken.None).GetAwaiter().GetResult();
+				});
+			} catch (Exception exception) {
+				LoggingService.Error(exception);
+				MessageService.ShowError(exception.Message);
+			}
+		}
+
+		/// <summary>An unused component name derived from the type's short name, matching the
+		/// designer's own "button1, button2, ..." convention.</summary>
+		string NextRemoteComponentName(string itemTypeName)
+		{
+			var existing = new HashSet<string>((RemoteDesignerState?.Components ?? new List<DesignerComponentInfo>())
+				.Select(item => item.Name), StringComparer.Ordinal);
+			var shortName = itemTypeName.Substring(itemTypeName.LastIndexOf('.') + 1);
+			var baseName = Char.ToLowerInvariant(shortName[0]) + shortName.Substring(1);
+			var name = baseName + "1";
+			for (var index = 2; existing.Contains(name); index++)
+				name = baseName + index;
+			return name;
+		}
+
+		/// <summary>Mirrors the selection into the child's real ISelectionService so the genuine
+		/// design-time chrome renders into the next frame (see
+		/// DesignerHostService.SetSelection). Deliberately NOT routed through ExecuteRemoteEdit:
+		/// selecting something is not a document edit and must not push an undo entry.</summary>
+		void SyncRemoteSelection(string[] elementIds)
+		{
+			if (!IsRemoteDesignerLoaded)
+				return;
+			try {
+				var state = remoteClient.SetSelectionAsync(remoteDocumentVersion, elementIds,
+					System.Threading.CancellationToken.None).GetAwaiter().GetResult();
+				if (state.Accepted)
+					remoteControl.Show(state);
+			} catch (Exception exception) {
+				// A failed selection mirror must not break selecting things in the IDE.
+				LoggingService.Warn("Forms designer: could not mirror selection into the child: " + exception.Message);
+			}
+		}
+
 		void RemoteSelectionChanged(object sender, EventArgs e)
 		{
 			var component = RemoteDesignerState?.Components.FirstOrDefault(item => item.Name == remoteControl.SelectedComponentName);
@@ -1168,6 +1231,9 @@ namespace ICSharpCode.FormsDesigner
 			// the outline->surface path (same element, no-op anyway).
 			outline.SelectNodeById(component.Name);
 			System.Windows.Input.CommandManager.InvalidateRequerySuggested();
+			// Last, because it re-renders: tell the child's real selection service, which is what
+			// brings up the genuine ToolStrip/menu editing chrome in the returned frame.
+			SyncRemoteSelection(remoteControl.SelectedComponentNames.ToArray());
 		}
 
 		public virtual void MergeFormChanges()

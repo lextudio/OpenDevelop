@@ -89,6 +89,14 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public DesignerElementNode? Tree { get; set; }
 		public List<DesignerDiagnostic> Diagnostics { get; set; } = new List<DesignerDiagnostic>();
 		public DesignerRenderFrame? Render { get; set; }
+		/// <summary>Every currently-expanded floating surface (a ToolStripDropDown the real
+		/// designer is holding open - a MenuStrip/ContextMenuStrip dropdown or a nested submenu),
+		/// captured as ITS OWN bitmap rather than baked into <see cref="Render"/>. The client hosts
+		/// each as an independent overlay positioned at X/Y (same surface-coordinate basis as
+		/// DesignerComponentInfo.SurfaceX/Y), so it can receive pointer/keyboard input directly -
+		/// hit-testing and dragging inside it never has to reverse through the root form's own
+		/// coordinate space, and it is not clipped or occluded by the root frame's own adorners.</summary>
+		public List<DesignerPopupFrame> Popups { get; set; } = new List<DesignerPopupFrame>();
 		/// <summary>History availability reported by the document authority after every mutation.</summary>
 		public bool CanUndo { get; set; }
 		public bool CanRedo { get; set; }
@@ -100,6 +108,14 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// look the result up by name afterward - not an option here, since a freshly toolbox-
 		/// dropped WPF element deliberately has no <c>x:Name</c> at all).</summary>
 		public string? CreatedElementId { get; set; }
+		/// <summary>The element id a <c>design/hit-test-popup</c> call just selected inside its
+		/// popup (see <see cref="Popups"/>), valid only on that RPC's own response - null for
+		/// every other response, and also null when the click did not land on an item. The
+		/// client's own selection state is tracked entirely client-side (SelectedComponentName),
+		/// so without this the child's real ISelectionService changing selection inside a popup -
+		/// which DOES happen, correctly, per DesignerHostService.HitTestPopupAndSelect - would
+		/// have no way to tell the client which component to adopt as the new selection.</summary>
+		public string? PopupHitElementId { get; set; }
 		/// <summary>Whether this session's project embeds any design-time theme (WPF shape only -
 		/// WinForms/WinUI have their own real theme mechanisms and never need this). True when
 		/// <see cref="DesignThemes"/> is non-empty.</summary>
@@ -181,6 +197,39 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public double RenderMs { get; set; }
 	}
 
+	/// <summary>One floating design-time surface the real designer is holding open (an expanded
+	/// ToolStripDropDown), captured as its own bitmap. See DesignerSessionState.Popups.</summary>
+	public sealed class DesignerPopupFrame
+	{
+		/// <summary>A stable id for this popup - the owning ToolStripDropDownItem's element id
+		/// (e.g. "fileToolStripMenuItem"), or "" for a strip's own ContextMenuStrip. Lets the
+		/// client match this frame to the same WPF overlay across updates instead of recreating
+		/// it (which would drop input focus/an in-progress drag).</summary>
+		public string OwnerElementId { get; set; } = "";
+		/// <summary>Surface-space position (same basis as DesignerComponentInfo.SurfaceX/Y: the
+		/// root form's own screen origin, so it composites with everything else without a second
+		/// coordinate system).</summary>
+		public int X { get; set; }
+		public int Y { get; set; }
+		public DesignerRenderFrame Render { get; set; } = new DesignerRenderFrame();
+		/// <summary>The real "Type Here" template node's own bounds, LOCAL to this popup (i.e.
+		/// relative to X/Y above, not to the root form) - null when this dropdown has none (rare,
+		/// but real WinForms can decline to create one). The client draws its own real WPF TextBox
+		/// over this rect on click: a screenshot-based render pipeline cannot show the real
+		/// control's blinking caret or accept keystrokes, so typing happens entirely client-side
+		/// and is committed through the existing design/add-toolstrip-item RPC (parentItemId =
+		/// this popup's OwnerElementId) rather than by focusing the real template node.</summary>
+		public DesignerRectangle? TypeHereBounds { get; set; }
+	}
+
+	public struct DesignerRectangle
+	{
+		public int X { get; set; }
+		public int Y { get; set; }
+		public int Width { get; set; }
+		public int Height { get; set; }
+	}
+
 	/// <summary>Flat component snapshot entry (WinForms shape).</summary>
 	public sealed class DesignerComponentInfo
 	{
@@ -205,8 +254,38 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// second clause is why ContextMenuStrip and PrintPreviewDialog are tray components while
 		/// MenuStrip/ToolStrip/StatusStrip stay on the surface.</summary>
 		public bool IsTrayComponent { get; set; }
+		/// <summary>Whether this component is a real Control - false for a ToolStripItem (a menu
+		/// item, a toolbar button) or any other non-visual component. design/set-bounds only
+		/// operates on Controls (`host.Container.Components[id] as Control`), so the client must
+		/// not show move/resize thumbs - which exist to drive that RPC - for anything this is
+		/// false for, or dragging one throws "Control not found".</summary>
+		public bool IsControl { get; set; } = true;
+		/// <summary>Whether this is a ToolStripItem living inside a dropdown (its OwnerItem is
+		/// another item) rather than directly on a strip. Those are drawn by the real designer's
+		/// own adorners once the dropdown is expanded, so the client must not overdraw its own
+		/// outline/name label on top of the rendered menu text.</summary>
+		public bool IsDropDownItem { get; set; }
+		/// <summary>For a ToolStrip/MenuStrip/StatusStrip: how new items are added to it in the
+		/// real designer, which differs per strip kind (see ToolStripTemplateNode's
+		/// SetupNewEditNode). "" for anything that is not a strip.</summary>
+		public string ItemInsertionStyle { get; set; } = "";
+		/// <summary>For a strip: the item types its template node offers, most-default first -
+		/// ToolStripDesignerUtils.GetStandardItemTypes' own order, whose FIRST entry is the type
+		/// committed when the user just types a name without picking one.</summary>
+		public List<string> NewItemTypeNames { get; set; } = new List<string>();
 		public List<DesignerPropertyInfo> Properties { get; set; } = new List<DesignerPropertyInfo>();
 		public List<DesignerEventInfo> Events { get; set; } = new List<DesignerEventInfo>();
+	}
+
+	/// <summary>How a strip's template node lets the user add items, mirroring
+	/// ToolStripTemplateNode.SetupNewEditNode's own branch: a MenuStrip (and any dropdown) gets an
+	/// editable "Type Here" cell, while ToolStrip/StatusStrip/ContextMenuStrip get a split button
+	/// with a type-picker dropdown.</summary>
+	public static class DesignerItemInsertionStyles
+	{
+		public const string None = "";
+		public const string TypeHere = "TypeHere";
+		public const string SplitButton = "SplitButton";
 	}
 
 	public sealed class DesignerEventInfo

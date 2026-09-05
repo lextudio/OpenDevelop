@@ -159,6 +159,20 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		public Task<DesignerHitTestResult> HitTestAsync(long baseVersion, double x, double y, CancellationToken cancellationToken)
 			=> connection.InvokeAsync<DesignerHitTestResult>("design/hit-test", new { sessionId = SessionId, documentId = DocumentId, baseVersion, x = Round(x), y = Round(y) }, cancellationToken);
 
+		/// <summary>Pushes the selection into the child's real ISelectionService, which is what
+		/// makes the genuine design-time chrome (ToolStrip template nodes, an expanded menu
+		/// dropdown with its own per-level "Type Here" node) appear in the next rendered frame -
+		/// see DesignerHostService.SetSelection for why that chrome is selection-driven.</summary>
+		public Task<DesignerSessionState> SetSelectionAsync(long baseVersion, string[] elementIds, CancellationToken cancellationToken)
+			=> connection.InvokeAsync<DesignerSessionState>("design/set-selection",
+				new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementIds = elementIds ?? [] }, cancellationToken);
+
+		/// <summary>Hit-tests a point inside one popup overlay's own local space (see
+		/// DesignerSessionState.Popups) and selects whatever item is under it.</summary>
+		public Task<DesignerSessionState> HitTestPopupAsync(long baseVersion, string ownerElementId, double x, double y, CancellationToken cancellationToken)
+			=> connection.InvokeAsync<DesignerSessionState>("design/hit-test-popup",
+				new { sessionId = SessionId, documentId = DocumentId, baseVersion, ownerElementId, x = Round(x), y = Round(y) }, cancellationToken);
+
 		/// <summary>The WinForms child lays out in integer device units; design-unit coordinates
 		/// round here so the wire contract stays unchanged.</summary>
 		static int Round(double value) => (int)Math.Round(value);
@@ -227,6 +241,13 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		/// the "insert new item" chevron VS draws past a selected strip's last item.</summary>
 		public Task<DesignerSessionState> AddToolStripItemAsync(long baseVersion, string elementId, string itemTypeName, string parentItemId, string newItemId, CancellationToken cancellationToken)
 			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/add-toolstrip-item", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, itemTypeName, parentItemId = parentItemId ?? "", newItemId }, cancellationToken), cancellationToken);
+
+		/// <summary>Drag-to-reorder: moves a ToolStrip/StatusStrip/MenuStrip item to targetIndex
+		/// within whatever collection it is currently in (its strip's own Items, or a submenu's
+		/// DropDownItems) - the same "drag items to reorder" gesture real VS supports for any
+		/// strip's items.</summary>
+		public Task<DesignerSessionState> ReorderToolStripItemAsync(long baseVersion, string elementId, int targetIndex, CancellationToken cancellationToken)
+			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/reorder-toolstrip-item", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, targetIndex }, cancellationToken), cancellationToken);
 
 		readonly Dictionary<string, string> typeIconCache = new(StringComparer.Ordinal);
 

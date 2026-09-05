@@ -43,6 +43,10 @@ sealed class MultiDocumentDesignerHostService : IDesignerChildService
 	public void Close(string sessionId, string documentId) => documents.Remove(sessionId, documentId, service => service.Close());
 	[JsonRpcMethod("design/hit-test")]
 	public DesignerHitTestResult HitTest(string sessionId, string documentId, long baseVersion, int x, int y) => GetChecked(sessionId, documentId).HitTest(sessionId, documentId, baseVersion, x, y);
+	[JsonRpcMethod("design/set-selection")]
+	public DesignerSessionState SetSelection(string sessionId, string documentId, long baseVersion, string[] elementIds) => GetChecked(sessionId, documentId).SetSelection(sessionId, documentId, baseVersion, elementIds);
+	[JsonRpcMethod("design/hit-test-popup")]
+	public DesignerSessionState HitTestPopupAndSelect(string sessionId, string documentId, long baseVersion, string ownerElementId, int x, int y) => GetChecked(sessionId, documentId).HitTestPopupAndSelect(sessionId, documentId, baseVersion, ownerElementId, x, y);
 	[JsonRpcMethod("design/set-property")]
 	public DesignerSessionState SetProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string value) => GetChecked(sessionId, documentId).SetProperty(sessionId, documentId, baseVersion, elementId, propertyName, value);
 	[JsonRpcMethod("design/reset-property")]
@@ -69,6 +73,8 @@ sealed class MultiDocumentDesignerHostService : IDesignerChildService
 	public DesignerSessionState InvokeSmartTagMethod(string sessionId, string documentId, long baseVersion, string elementId, int listIndex, int itemIndex) => GetChecked(sessionId, documentId).InvokeSmartTagMethod(sessionId, documentId, baseVersion, elementId, listIndex, itemIndex);
 	[JsonRpcMethod("design/add-toolstrip-item")]
 	public DesignerSessionState AddToolStripItem(string sessionId, string documentId, long baseVersion, string elementId, string itemTypeName, string parentItemId, string newItemId) => GetChecked(sessionId, documentId).AddToolStripItem(sessionId, documentId, baseVersion, elementId, itemTypeName, parentItemId, newItemId);
+	[JsonRpcMethod("design/reorder-toolstrip-item")]
+	public DesignerSessionState ReorderToolStripItem(string sessionId, string documentId, long baseVersion, string elementId, int targetIndex) => GetChecked(sessionId, documentId).ReorderToolStripItem(sessionId, documentId, baseVersion, elementId, targetIndex);
 	[JsonRpcMethod("design/get-type-icon")]
 	public DesignerTypeIconResult GetTypeIcon(string sessionId, string documentId, string typeName) => GetChecked(sessionId, documentId).GetTypeIcon(typeName);
 

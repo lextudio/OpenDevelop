@@ -39,6 +39,22 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		readonly DesignFramePresenter framePresenter = new(Stretch.Fill,
 			horizontalAlignment: HorizontalAlignment.Left, verticalAlignment: VerticalAlignment.Top);
 		readonly Canvas adorners;
+		/// <summary>One live overlay per currently-expanded menu dropdown (see
+		/// DesignerSessionState.Popups), keyed by OwnerElementId. Each is a real WPF Image that is
+		/// a child of <see cref="adorners"/> - which is why it needs no new click-suppression
+		/// guard in OnMouseLeftButtonDown: that handler already treats anything under adorners as
+		/// self-handling (see IsAdornerSource) - and receives its own MouseLeftButtonDown to
+		/// hit-test/select directly against that popup's own surface, without going through the
+		/// root form's coordinate space at all.</summary>
+		readonly Dictionary<string, Image> popupOverlays = new(StringComparer.Ordinal);
+		/// <summary>One real WPF edit cell per popup that reports a TypeHereBounds - the WPF
+		/// analogue of the real template node's own "Type Here" cell for THAT dropdown level,
+		/// keyed the same way as <see cref="popupOverlays"/>. A screenshot-based render pipeline
+		/// cannot show the real control's blinking caret or accept keystrokes aimed at it, so
+		/// typing happens entirely in this WPF TextBox and commits through the existing
+		/// design/add-toolstrip-item RPC (parentItemId = the popup's own OwnerElementId) rather
+		/// than by forwarding input to the real template node.</summary>
+		readonly Dictionary<string, PopupTypeHereEditor> popupEditors = new(StringComparer.Ordinal);
 		readonly Canvas guides;
 		// Drag-snap alignment guides (see SnapGuideCalculator): a vertical or horizontal line
 		// shown while a component is being dragged near another component's edge/centre,
@@ -63,6 +79,29 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		readonly Thumb moveThumb;
 		readonly Thumb resizeHitTarget;
 		readonly Thumb resizeThumb;
+		/// <summary>Drag-to-reorder for a selected ToolStripItem (never a Control, so moveThumb -
+		/// which drives design/set-bounds - is not applicable): covers the same bounds moveThumb
+		/// would, but only ever accumulates a horizontal offset and, on drop, asks the real
+		/// designer to move the item to a new INDEX among its siblings via
+		/// design/reorder-toolstrip-item, rather than a pixel position.</summary>
+		readonly Thumb reorderThumb;
+		double reorderDragDeltaX;
+		/// <summary>Drag-to-reorder for a selected item that is currently INSIDE an open popup
+		/// (a MenuStrip submenu/ContextMenuStrip's own items) rather than laid out on a root
+		/// strip - vertical, matching how a dropdown stacks its items top to bottom (the opposite
+		/// orientation from <see cref="reorderThumb"/>'s root-strip case). Positioned from the
+		/// same dragX/Y/Width/Height rect reorderThumb uses - a popup item's own SurfaceX/Y/Width/
+		/// Height are already reported in the same absolute basis a root item's are (see
+		/// OnPopupReorderDragCompleted's own note), so no separate coordinate source is needed.</summary>
+		readonly Thumb popupReorderThumb;
+		double popupReorderDeltaY;
+		/// <summary>Live drag feedback for both reorder gestures above: a thin line shown at the
+		/// CURRENT drop boundary while dragging (real VS shows the same insertion-line cue), not
+		/// just applied silently on drop. Vertical (a "|") for reorderThumb's horizontal drags,
+		/// horizontal (a "-") for popupReorderThumb's vertical ones - toggled by rotating Width/
+		/// Height between the two axes in <see cref="ShowReorderInsertionLine"/> rather than two
+		/// separate shapes.</summary>
+		readonly Rectangle insertionLine;
 		readonly Border disconnectedOverlay;
 		readonly TextBlock disconnectedText;
 		// The VS "smart tag" chevron (DesignerActionList popup) and the ToolStrip/StatusStrip/
@@ -71,12 +110,38 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		// above describes) positioned by PositionAdorners like every other handle in this file.
 		readonly Border smartTagChevron;
 		readonly Border toolStripInsertChevron;
+		// The MenuStrip flavour of the same affordance. ToolStripTemplateNode.SetupNewEditNode
+		// branches exactly this way: a MenuStrip (and any dropdown) gets SetUpMenuTemplateNode's
+		// editable "Type Here" cell, while ToolStrip/StatusStrip/ContextMenuStrip get
+		// SetUpToolTemplateNode's split button (toolStripInsertChevron above). Only one of the two
+		// is ever visible for a given strip.
+		/// <summary>F2's in-place rename editor, matching real VS's Properties-pad-adjacent
+		/// behavior: shown directly over the current selection (any component with a Parent - a
+		/// Control or a ToolStripItem alike, both report SurfaceX/Y/Width/Height), prefilled with
+		/// its current name. Enter/Tab commits via RenameRequested (which DesignerViewContent wires
+		/// to the SAME RenameRemoteComponent the Properties pad's "(Name)" row already uses); Esc
+		/// or losing focus cancels - matching typeHereEditor's own click-away-cancels behavior.</summary>
+		readonly TextBox renameEditor;
+		bool renaming;
+		readonly Border typeHereCell;
+		readonly TextBlock typeHereLabel;
+		/// <summary>The in-place editor swapped in for <see cref="typeHereLabel"/> while typing -
+		/// the WPF analogue of ToolStripTemplateNode swapping _centerLabel for _centerTextBox.</summary>
+		readonly TextBox typeHereEditor;
+		bool typeHereEditing;
+		/// <summary>Placeholder text of the "Type Here" cell, matching
+		/// SR.ToolStripDesignerTemplateNodeEnterText.</summary>
+		const string TypeHereText = "Type Here";
 		/// <summary>The ToolStrip/MenuStrip/StatusStrip the insert-item glyph currently targets -
 		/// either the selected component itself, or (when a child ToolStripItem is selected
 		/// instead, matching real VS behavior) that item's owning strip.  NULL hides the glyph.</summary>
 		DesignerComponentInfo toolStripHost;
-		long version;
-		DesignerSessionState state;
+		internal long version;
+		// internal, not private: PopupTypeHereEditor (a same-file, same-assembly sibling class,
+		// not nested - matching the existing convention every other Remote*EventArgs class here
+		// follows) needs the current state to resolve the strip that owns a popup's dropdown
+		// chain, walking Parent up from the item being edited.
+		internal DesignerSessionState state;
 		long lastFrameSequence;
 		// The design surface is unscaled; the shared canvas shell's zoom toolbar controls the
 		// presentation scale around it via DesignViewport - the same coordinate math
@@ -190,6 +255,21 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				Visibility = Visibility.Collapsed,
 				Template = CreateTransparentThumbTemplate()
 			};
+			reorderThumb = new Thumb {
+				Background = Brushes.Transparent,
+				Cursor = Cursors.SizeWE,
+				Visibility = Visibility.Collapsed,
+				Template = CreateTransparentThumbTemplate()
+			};
+			popupReorderThumb = new Thumb {
+				Background = Brushes.Transparent,
+				Cursor = Cursors.SizeNS,
+				Visibility = Visibility.Collapsed,
+				Template = CreateTransparentThumbTemplate()
+			};
+			insertionLine = new Rectangle {
+				Fill = Brushes.DodgerBlue, Visibility = Visibility.Collapsed, IsHitTestVisible = false
+			};
 			resizeThumb = new Thumb { Width = 8, Height = 8, Background = Brushes.White, BorderBrush = Brushes.DodgerBlue, BorderThickness = new Thickness(1), Cursor = Cursors.SizeNWSE, Visibility = Visibility.Collapsed };
 			// Keep the conventional 8px visual handle while providing a forgiving transparent
 			// input target around it.  At fractional DPI a real pointer can land one or two device
@@ -203,6 +283,9 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			adorners.Children.Add(marqueeBorder);
 			adorners.Children.Add(adornerLayer.Visual);
 			adorners.Children.Add(moveThumb);
+			adorners.Children.Add(reorderThumb);
+			adorners.Children.Add(popupReorderThumb);
+			adorners.Children.Add(insertionLine);
 			adorners.Children.Add(resizeHitTarget);
 			adorners.Children.Add(resizeThumb);
 			smartTagChevron = CreateChevronGlyph("»", Brushes.Goldenrod);
@@ -218,8 +301,44 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 					ToolStripInsertRequested?.Invoke(this, new RemoteToolStripInsertRequestedEventArgs(
 						toolStripHost.Name, toolStripHost.Type, toolStripInsertChevron));
 			};
+			typeHereLabel = new TextBlock {
+				Text = TypeHereText, FontSize = 11, Foreground = Brushes.DimGray,
+				VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 4, 0)
+			};
+			typeHereEditor = new TextBox {
+				FontSize = 11, BorderThickness = new Thickness(0), MinWidth = 60,
+				Padding = new Thickness(2, 0, 2, 0), Visibility = Visibility.Collapsed
+			};
+			typeHereCell = new Border {
+				Background = new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF)),
+				BorderBrush = Brushes.Gray,
+				BorderThickness = new Thickness(1),
+				Visibility = Visibility.Collapsed,
+				Cursor = Cursors.IBeam,
+				ToolTip = "Type a name to add a new item; Enter keeps adding, Tab commits, Esc cancels.",
+				Child = new Grid { Children = { typeHereLabel, typeHereEditor } }
+			};
+			// A click anywhere on the cell starts editing, mirroring CenterLabelClick.
+			typeHereCell.MouseLeftButtonDown += (sender, args) => {
+				args.Handled = true;
+				BeginTypeHereEdit();
+			};
+			// handledEventsToo: true - see the popup-level editor's own AddHandler for why.
+			typeHereEditor.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(OnTypeHereEditorKeyDown), true);
+			typeHereEditor.LostKeyboardFocus += (sender, args) => CommitTypeHere(TypeHereCommit.Cancel);
+			renameEditor = new TextBox {
+				FontSize = 11, BorderThickness = new Thickness(1), BorderBrush = Brushes.DodgerBlue,
+				Background = Brushes.White, Padding = new Thickness(2, 0, 2, 0), Visibility = Visibility.Collapsed
+			};
+			// handledEventsToo: true - see PopupTypeHereEditor's own note on why a plain += is not
+			// enough once an IME is active (it marks IME-routed keydowns Handled before a plain
+			// instance handler ever sees them).
+			renameEditor.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(OnRenameEditorKeyDown), true);
+			renameEditor.LostKeyboardFocus += (sender, args) => CancelRename();
 			adorners.Children.Add(smartTagChevron);
 			adorners.Children.Add(toolStripInsertChevron);
+			adorners.Children.Add(typeHereCell);
+			adorners.Children.Add(renameEditor);
 			designSurface.Children.Add(adorners);
 			disconnectedText = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) };
 			var restartButton = new Button { Content = "Restart designer", HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(12, 5, 12, 5) };
@@ -303,6 +422,12 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			moveThumb.DragStarted += OnDragStarted;
 			moveThumb.DragDelta += OnMoveDragDelta;
 			moveThumb.DragCompleted += OnDragCompleted;
+			reorderThumb.DragStarted += (_, _) => { reorderDragDeltaX = 0; ShowReorderInsertionLine(vertical: false, 0); };
+			reorderThumb.DragDelta += (_, e) => { reorderDragDeltaX += e.HorizontalChange; ShowReorderInsertionLine(vertical: false, reorderDragDeltaX); };
+			reorderThumb.DragCompleted += (sender, e) => { insertionLine.Visibility = Visibility.Collapsed; OnReorderDragCompleted(sender, e); };
+			popupReorderThumb.DragStarted += (_, _) => { popupReorderDeltaY = 0; ShowReorderInsertionLine(vertical: true, 0); };
+			popupReorderThumb.DragDelta += (_, e) => { popupReorderDeltaY += e.VerticalChange; ShowReorderInsertionLine(vertical: true, popupReorderDeltaY); };
+			popupReorderThumb.DragCompleted += (sender, e) => { insertionLine.Visibility = Visibility.Collapsed; OnPopupReorderDragCompleted(sender, e); };
 			resizeThumb.DragStarted += OnDragStarted;
 			resizeThumb.DragDelta += OnResizeDragDelta;
 			resizeThumb.DragCompleted += OnDragCompleted;
@@ -356,6 +481,8 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		public event EventHandler<RemoteToolboxDropEventArgs> ToolboxDrop;
 		public event EventHandler<RemoteBoundsChangedEventArgs> BoundsChanged;
 		public event EventHandler<RemoteSelectionMoveEventArgs> SelectionMoveRequested;
+		public event EventHandler<RemoteReorderRequestedEventArgs> ReorderRequested;
+		public event EventHandler<RemoteRenameRequestedEventArgs> RenameRequested;
 		public event EventHandler<RemoteComponentEventArgs> DeleteRequested;
 		public event EventHandler<RemoteComponentEventArgs> DefaultEventRequested;
 		public event EventHandler RestartRequested;
@@ -367,6 +494,11 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		public event EventHandler<RemoteSmartTagRequestedEventArgs> SmartTagRequested;
 		/// <summary>The ToolStrip/StatusStrip/MenuStrip "insert new item" chevron was clicked.</summary>
 		public event EventHandler<RemoteToolStripInsertRequestedEventArgs> ToolStripInsertRequested;
+		public event EventHandler<RemoteToolStripTypeHereEventArgs> ToolStripTypeHereCommitted;
+		/// <summary>Raises <see cref="ToolStripTypeHereCommitted"/> on behalf of
+		/// PopupTypeHereEditor: an event can only be raised from within its declaring type, even
+		/// when public, so that same-file/same-assembly sibling class needs this forwarder.</summary>
+		internal void RaiseToolStripTypeHereCommitted(RemoteToolStripTypeHereEventArgs e) => ToolStripTypeHereCommitted?.Invoke(this, e);
 
 		/// <summary>A small (9x9, matching VS's own smart-tag glyph footprint) clickable glyph,
 		/// drawn as a plain Border rather than a Button - see moveThumb's template comment on why
@@ -396,6 +528,143 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		/// button drawn ON the strip's row, not a lone triangle floating past its bounds. This
 		/// draws the same two-cell shape (icon cell + narrow arrow cell) directly rather than
 		/// reflecting into the internal ToolStripSplitButton renderer.</summary>
+		/// <summary>How a "Type Here" edit ended, which decides what happens next. Ported from
+		/// ToolStripTemplateNode.Commit's own enterKeyPressed/tabKeyPressed pair.</summary>
+		enum TypeHereCommit
+		{
+			/// <summary>Esc, or focus lost: discard the text, add nothing.</summary>
+			Cancel,
+			/// <summary>Enter: add the item and re-arm the cell so the next item can be typed
+			/// straight away.</summary>
+			EnterKey,
+			/// <summary>Tab: add the item and leave edit mode.</summary>
+			TabKey
+		}
+
+		void BeginTypeHereEdit()
+		{
+			if (typeHereEditing || toolStripHost == null)
+				return;
+			typeHereEditing = true;
+			typeHereLabel.Visibility = Visibility.Collapsed;
+			typeHereEditor.Text = "";
+			typeHereEditor.Visibility = Visibility.Visible;
+			typeHereEditor.Focus();
+			typeHereEditor.SelectAll();
+		}
+
+		void OnTypeHereEditorKeyDown(object sender, KeyEventArgs e)
+		{
+			// An active IME reports every keystroke - including Enter/Tab/Escape - as
+			// Key.ImeProcessed, with the real key only available via ImeProcessedKey.
+			switch (e.Key == Key.ImeProcessed ? e.ImeProcessedKey : e.Key) {
+				case Key.Enter:
+					e.Handled = true;
+					CommitTypeHere(TypeHereCommit.EnterKey);
+					break;
+				case Key.Tab:
+					e.Handled = true;
+					CommitTypeHere(TypeHereCommit.TabKey);
+					break;
+				case Key.Escape:
+					e.Handled = true;
+					CommitTypeHere(TypeHereCommit.Cancel);
+					break;
+				default:
+					// Everything else belongs to the editor, NOT to the canvas. Marking the key
+					// handled keeps the designer's own arrow/Delete handling (and the IDE's
+					// shortcuts) out of the way while typing - the job
+					// ISupportInSituService.IgnoreMessages does for the in-process designer.
+					e.Handled = true;
+					break;
+			}
+		}
+
+		/// <summary>Ends an in-place edit. Mirrors ToolStripTemplateNode.CommitTextToDesigner:
+		/// empty text adds nothing; a lone "-" in a dropdown becomes a separator; otherwise the
+		/// strip's default new-item type (the first entry of its reported list, which is
+		/// ToolStripDesignerUtils.GetStandardItemTypes' own order) is created with the typed
+		/// text.</summary>
+		void CommitTypeHere(TypeHereCommit commit)
+		{
+			if (!typeHereEditing)
+				return;
+			var text = typeHereEditor.Text?.Trim() ?? "";
+			var host = toolStripHost;
+			typeHereEditing = false;
+			typeHereEditor.Visibility = Visibility.Collapsed;
+			typeHereEditor.Text = "";
+			typeHereLabel.Visibility = Visibility.Visible;
+			if (commit == TypeHereCommit.Cancel || text.Length == 0 || host == null)
+				return;
+			var typeName = text == "-" && host.NewItemTypeNames.Contains("System.Windows.Forms.ToolStripSeparator")
+				? "System.Windows.Forms.ToolStripSeparator"
+				: host.NewItemTypeNames.FirstOrDefault();
+			if (String.IsNullOrEmpty(typeName))
+				return;
+			ToolStripTypeHereCommitted?.Invoke(this,
+				new RemoteToolStripTypeHereEventArgs(host.Name, typeName, text));
+			// Enter keeps the cell armed so a run of items can be typed without re-clicking, the
+			// same way the real template node stays in edit mode on Enter.
+			if (commit == TypeHereCommit.EnterKey)
+				Dispatcher.BeginInvoke(new Action(BeginTypeHereEdit), System.Windows.Threading.DispatcherPriority.Background);
+		}
+
+		/// <summary>F2: begins renaming the current selection in place, prefilled with its current
+		/// name and fully selected (matching real VS's own F2 behavior of selecting the whole
+		/// name, ready to be typed over).</summary>
+		void BeginRename()
+		{
+			if (renaming || selectedComponent == null) return;
+			renaming = true;
+			renameEditor.Text = selectedComponent.Name;
+			renameEditor.Visibility = Visibility.Visible;
+			PositionAdorners();
+			renameEditor.Focus();
+			renameEditor.SelectAll();
+		}
+
+		void CancelRename()
+		{
+			if (!renaming) return;
+			renaming = false;
+			renameEditor.Visibility = Visibility.Collapsed;
+		}
+
+		void CommitRename()
+		{
+			if (!renaming || selectedComponent == null) { CancelRename(); return; }
+			var newName = renameEditor.Text?.Trim() ?? "";
+			var oldName = selectedComponent.Name;
+			renaming = false;
+			renameEditor.Visibility = Visibility.Collapsed;
+			if (newName.Length == 0 || newName == oldName) return;
+			RenameRequested?.Invoke(this, new RemoteRenameRequestedEventArgs(oldName, newName));
+		}
+
+		void OnRenameEditorKeyDown(object sender, KeyEventArgs e)
+		{
+			// An active IME reports every keystroke - including Enter/Escape - as
+			// Key.ImeProcessed, with the real key only available via ImeProcessedKey (see
+			// PopupTypeHereEditor's own note on this).
+			switch (e.Key == Key.ImeProcessed ? e.ImeProcessedKey : e.Key) {
+				case Key.Enter:
+				case Key.Tab:
+					e.Handled = true;
+					CommitRename();
+					break;
+				case Key.Escape:
+					e.Handled = true;
+					CancelRename();
+					break;
+				default:
+					// Everything else belongs to the editor, not the canvas - same reasoning as
+					// OnTypeHereEditorKeyDown's own default case.
+					e.Handled = true;
+					break;
+			}
+		}
+
 		static Border CreateToolStripInsertGlyph()
 		{
 			var icon = new Border {
@@ -439,6 +708,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			// component list, not from the rendered bitmap, so a state that carries no new frame
 			// (or no frame at all) still has to refresh it.
 			UpdateComponentTray();
+			UpdatePopupOverlays(state);
 			if (state.Render == null || (String.IsNullOrEmpty(state.Render.PngBase64) && String.IsNullOrEmpty(state.Render.Data))) {
 				return;
 			}
@@ -501,8 +771,121 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				Math.Max(0, viewport.OriginY) + viewport.PanY, 0, 0);
 			UpdateCanvasExtent();
 			UpdateDesignGuides();
+			PositionPopupOverlays();
 			if (selectedComponent != null)
 				UpdateAdorners();
+		}
+
+		/// <summary>Reconciles the live <see cref="popupOverlays"/> against
+		/// <c>state.Popups</c>: keeps the same Image (and therefore any in-progress interaction)
+		/// for a popup that is still open, decodes and swaps in new PNG bytes when its frame
+		/// changed, adds a new Image for a popup that just opened, and removes one that closed.
+		/// Geometry is handled separately by <see cref="PositionPopupOverlays"/> since zoom/pan
+		/// changes need to reposition every popup without a new frame.</summary>
+		void UpdatePopupOverlays(DesignerSessionState state)
+		{
+			var seen = new HashSet<string>(StringComparer.Ordinal);
+			foreach (var popup in state.Popups ?? []) {
+				seen.Add(popup.OwnerElementId);
+				if (!popupOverlays.TryGetValue(popup.OwnerElementId, out var image)) {
+					image = new Image {
+						Stretch = Stretch.Fill,
+						HorizontalAlignment = HorizontalAlignment.Left,
+						VerticalAlignment = VerticalAlignment.Top,
+						Cursor = Cursors.Arrow
+					};
+					var ownerId = popup.OwnerElementId;
+					image.MouseLeftButtonDown += (sender, args) => {
+						args.Handled = true;
+						OnPopupClicked(ownerId, image, args);
+					};
+					popupOverlays[popup.OwnerElementId] = image;
+					adorners.Children.Add(image);
+					Panel.SetZIndex(image, 200);
+				}
+				if (!String.IsNullOrEmpty(popup.Render?.PngBase64)) {
+					using var stream = new MemoryStream(Convert.FromBase64String(popup.Render.PngBase64));
+					var png = new BitmapImage();
+					png.BeginInit();
+					png.CacheOption = BitmapCacheOption.OnLoad;
+					png.StreamSource = stream;
+					png.EndInit();
+					png.Freeze();
+					image.Source = png;
+				}
+				image.Tag = popup;
+				if (popup.TypeHereBounds is { } bounds) {
+					if (!popupEditors.TryGetValue(popup.OwnerElementId, out var editor)) {
+						editor = new PopupTypeHereEditor(this, popup.OwnerElementId);
+						popupEditors[popup.OwnerElementId] = editor;
+						adorners.Children.Add(editor.Cell);
+						Panel.SetZIndex(editor.Cell, 201);
+					}
+					editor.Bounds = bounds;
+				} else if (popupEditors.TryGetValue(popup.OwnerElementId, out var goneEditor)) {
+					// This dropdown lost its template node (rare, but real WinForms can decline to
+					// create one) - drop the editor along with it.
+					goneEditor.Cancel();
+					adorners.Children.Remove(goneEditor.Cell);
+					popupEditors.Remove(popup.OwnerElementId);
+				}
+			}
+			foreach (var staleId in popupOverlays.Keys.Where(id => !seen.Contains(id)).ToArray()) {
+				adorners.Children.Remove(popupOverlays[staleId]);
+				popupOverlays.Remove(staleId);
+			}
+			foreach (var staleId in popupEditors.Keys.Where(id => !seen.Contains(id)).ToArray()) {
+				popupEditors[staleId].Cancel();
+				adorners.Children.Remove(popupEditors[staleId].Cell);
+				popupEditors.Remove(staleId);
+			}
+			PositionPopupOverlays();
+		}
+
+		/// <summary>Places every live popup overlay at its reported surface position, sized by the
+		/// current zoom - the same DesignToSurface basis every other adorner uses, so a popup
+		/// stays visually attached to the strip it belongs to at any zoom level.</summary>
+		void PositionPopupOverlays()
+		{
+			foreach (var image in popupOverlays.Values) {
+				if (image.Tag is not DesignerPopupFrame popup || popup.Render == null)
+					continue;
+				var (left, top) = viewport.DesignToSurface(popup.X, popup.Y);
+				Canvas.SetLeft(image, left);
+				Canvas.SetTop(image, top);
+				var dpi = Math.Max(1, popup.Render.Dpi);
+				image.Width = popup.Render.Width / dpi * viewport.Scale;
+				image.Height = popup.Render.Height / dpi * viewport.Scale;
+				if (popupEditors.TryGetValue(popup.OwnerElementId, out var editor))
+					editor.Reposition(viewport, popup.X, popup.Y);
+			}
+		}
+
+		/// <summary>A click on a popup overlay: hit-test that popup's OWN surface directly (never
+		/// the root form's coordinate space) and select whatever item is under the pointer.</summary>
+		async void OnPopupClicked(string ownerElementId, Image image, MouseButtonEventArgs args)
+		{
+			try {
+				var point = args.GetPosition(image);
+				var designPoint = new Point(point.X / viewport.Scale, point.Y / viewport.Scale);
+				var result = await client.HitTestPopupAsync(version, ownerElementId, designPoint.X, designPoint.Y, CancellationToken.None);
+				if (!result.Accepted)
+					return;
+				// The child's real ISelectionService already moved (HitTestPopupAndSelect), but
+				// this control's own selection (SelectedComponentName et al.) is tracked entirely
+				// client-side and has no other way to learn what got hit inside the popup.
+				if (!String.IsNullOrEmpty(result.PopupHitElementId)) {
+					selectedComponentNames.Clear();
+					selectedComponentNames.Add(result.PopupHitElementId);
+					SelectedComponentName = result.PopupHitElementId;
+				}
+				Show(result);
+				if (!String.IsNullOrEmpty(result.PopupHitElementId))
+					SelectionChanged?.Invoke(this, EventArgs.Empty);
+			} catch (Exception exception) {
+				ICSharpCode.Core.LoggingService.Warn(
+					"RemoteFormsDesignerControl.OnPopupClicked(" + ownerElementId + "): " + exception.Message);
+			}
 		}
 
 		/// <summary>Rebuilds the component tray from the reported components. Each entry is the
@@ -604,7 +987,11 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			Canvas.SetLeft(formOutline, fx);
 			Canvas.SetTop(formOutline, fy);
 			guides.Children.Add(formOutline);
-			foreach (var component in state.Components.Where(item => !String.IsNullOrEmpty(item.Parent))) {
+			// Items inside an expanded dropdown are skipped: once the child pushes selection into
+			// the real designer, that dropdown is rendered by WinForms itself (with its own
+			// adorners), and drawing our dashed outline plus a name label on top of it just
+			// obscured the real menu text.
+			foreach (var component in state.Components.Where(item => !String.IsNullOrEmpty(item.Parent) && !item.IsDropDownItem)) {
 				var (surfaceX, surfaceY) = viewport.DesignToSurface(component.SurfaceX, component.SurfaceY);
 				var (surfaceX2, surfaceY2) = viewport.DesignToSurface(
 					component.SurfaceX + component.Width, component.SurfaceY + component.Height);
@@ -873,6 +1260,13 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			UpdateAdorners();
 			Focus();
 			SelectionChanged?.Invoke(this, EventArgs.Empty);
+			// SelectionChanged's own handlers (Properties pad, Outline pad) update their selected
+			// row/object as a result of this click - if either grabs WPF keyboard focus doing so
+			// (a common side effect of programmatically selecting a TreeView/grid row), it steals
+			// focus AWAY from the canvas immediately after the Focus() call above, silently
+			// breaking every canvas keyboard gesture (F2, Delete, Tab, arrows) for the rest of this
+			// click. Re-asserting focus here, after those handlers have already run, wins that race.
+			Focus();
 			e.Handled = true;
 		}
 
@@ -898,6 +1292,12 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			if (e.Key == Key.Delete && selectedComponent != null && !String.IsNullOrEmpty(selectedComponent.Parent)
 				&& !lockedComponentNames.Contains(selectedComponent.Name)) {
 				DeleteRequested?.Invoke(this, new RemoteComponentEventArgs(selectedComponent.Name));
+				e.Handled = true;
+				return;
+			}
+			if (e.Key == Key.F2 && selectedComponent != null && !String.IsNullOrEmpty(selectedComponent.Parent)
+				&& !lockedComponentNames.Contains(selectedComponent.Name)) {
+				BeginRename();
 				e.Handled = true;
 				return;
 			}
@@ -1298,8 +1698,109 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				(int)Math.Round(dragWidth), (int)Math.Round(dragHeight)));
 		}
 
+		/// <summary>Whether the current selection is an item inside a currently-open popup (a
+		/// MenuStrip submenu/ContextMenuStrip's own items), rather than laid out directly on a
+		/// root strip - i.e. its Parent names one of state.Popups' own OwnerElementId. Decides
+		/// which of reorderThumb (horizontal, root strips)/popupReorderThumb (vertical, popup
+		/// items) applies to the current selection; both drive the SAME design/reorder-toolstrip-
+		/// item RPC, since the server resolves the real owning collection from the item's own
+		/// live Owner/OwnerItem regardless of which gesture asked for the move.</summary>
+		bool SelectionIsInsideOpenPopup() => selectedComponent != null
+			&& (state?.Popups?.Any(popup => popup.OwnerElementId == selectedComponent.Parent) ?? false);
+
+		/// <summary>Shared by both reorder gestures (and their live insertion-line feedback): the
+		/// dragged item's siblings (same Parent), ordered along the relevant axis, the target
+		/// index (how many siblings now sit before the dragged item's current center), and the
+		/// design-space coordinate along that axis where an insertion line should be drawn to mark
+		/// that boundary - the midpoint between the two neighboring siblings' edges, or the single
+		/// neighbor's own outer edge at either end of the list.</summary>
+		(int TargetIndex, double LinePosition) ComputeReorderTarget(bool vertical, double delta)
+		{
+			if (selectedComponent == null) return (0, 0);
+			double Edge(DesignerComponentInfo item, bool trailing) => vertical
+				? item.SurfaceY + (trailing ? item.Height : 0)
+				: item.SurfaceX + (trailing ? item.Width : 0);
+			var siblings = (state?.Components ?? new List<DesignerComponentInfo>())
+				.Where(item => item.Parent == selectedComponent.Parent && item.Name != selectedComponent.Name)
+				.OrderBy(item => Edge(item, false)).ToList();
+			var draggedCenter = (vertical ? selectedComponent.SurfaceY + selectedComponent.Height / 2.0
+				: selectedComponent.SurfaceX + selectedComponent.Width / 2.0) + delta;
+			var targetIndex = siblings.Count(item => Edge(item, false) + (vertical ? item.Height : item.Width) / 2.0 < draggedCenter);
+			var linePosition = siblings.Count == 0 ? (vertical ? selectedComponent.SurfaceY : selectedComponent.SurfaceX)
+				: targetIndex == 0 ? Edge(siblings[0], false)
+				: targetIndex >= siblings.Count ? Edge(siblings[^1], true)
+				: (Edge(siblings[targetIndex - 1], true) + Edge(siblings[targetIndex], false)) / 2.0;
+			return (targetIndex, linePosition);
+		}
+
+		/// <summary>Live drag feedback for both reorder gestures: shows insertionLine at the
+		/// CURRENT drop boundary (see ComputeReorderTarget) while the drag is in progress, rotated
+		/// to a vertical "|" for a horizontal (root-strip) drag or a horizontal "-" for a vertical
+		/// (popup-item) one, spanning the dragged item's own cross-axis extent and positioned at
+		/// its own cross-axis origin (matching real VS's own insertion-line cue).</summary>
+		void ShowReorderInsertionLine(bool vertical, double delta)
+		{
+			if (selectedComponent == null) return;
+			var (_, linePosition) = ComputeReorderTarget(vertical, delta);
+			// 4, not 2: a 2 design-unit line survives a screenshot's own downscaling/compression
+			// poorly (confirmed with a temporary diagnostic dump of every computed coordinate -
+			// all were sane and well within the visible canvas, so the earlier "invisible in a
+			// screenshot" result was a thinness/compression artifact, not a positioning bug).
+			const double thickness = 4;
+			double left, top, lineWidth, lineHeight;
+			if (vertical) {
+				left = selectedComponent.SurfaceX; top = linePosition - thickness / 2;
+				lineWidth = selectedComponent.Width; lineHeight = thickness;
+			} else {
+				left = linePosition - thickness / 2; top = selectedComponent.SurfaceY;
+				lineWidth = thickness; lineHeight = selectedComponent.Height;
+			}
+			var (surfaceLeft, surfaceTop) = viewport.DesignToSurface(left, top);
+			Canvas.SetLeft(insertionLine, surfaceLeft);
+			Canvas.SetTop(insertionLine, surfaceTop);
+			insertionLine.Width = Math.Max(1, lineWidth * viewport.Scale);
+			insertionLine.Height = Math.Max(1, lineHeight * viewport.Scale);
+			Panel.SetZIndex(insertionLine, 203);
+			insertionLine.Visibility = Visibility.Visible;
+		}
+
+		/// <summary>Drops a dragged ToolStripItem among its siblings - see ComputeReorderTarget.
+		/// Horizontal-only: covers ToolStrip/StatusStrip/MenuStrip's own top-level items, which VS
+		/// itself only ever lays out in a row; a popup's own vertically-stacked items use the
+		/// analogous <see cref="OnPopupReorderDragCompleted"/> instead.</summary>
+		void OnReorderDragCompleted(object sender, DragCompletedEventArgs e)
+		{
+			var delta = reorderDragDeltaX;
+			reorderDragDeltaX = 0;
+			if (selectedComponent == null || e.Canceled || String.IsNullOrEmpty(selectedComponent.Parent) || Math.Abs(delta) < 1)
+				return;
+			var (targetIndex, _) = ComputeReorderTarget(vertical: false, delta);
+			ReorderRequested?.Invoke(this, new RemoteReorderRequestedEventArgs(selectedComponent.Name, targetIndex));
+		}
+
+		/// <summary>The vertical analogue of <see cref="OnReorderDragCompleted"/> for an item
+		/// inside an open popup: a popup item's own SurfaceX/Y/Width/Height are ALREADY reported
+		/// in the same absolute surface basis a popup's own DesignerPopupFrame.X/Y use (verified
+		/// against DesignerHostService.CurrentState's generic "component is ToolStripItem ...
+		/// SurfaceLocation(surfaceItem.Owner)" computation, which works for a dropdown Owner
+		/// exactly like it does for a root strip), so no separate per-popup-item protocol field is
+		/// needed here - only the axis (Y instead of X) differs from the root case.</summary>
+		void OnPopupReorderDragCompleted(object sender, DragCompletedEventArgs e)
+		{
+			var delta = popupReorderDeltaY;
+			popupReorderDeltaY = 0;
+			if (selectedComponent == null || e.Canceled || String.IsNullOrEmpty(selectedComponent.Parent) || Math.Abs(delta) < 1)
+				return;
+			var (targetIndex, _) = ComputeReorderTarget(vertical: true, delta);
+			ReorderRequested?.Invoke(this, new RemoteReorderRequestedEventArgs(selectedComponent.Name, targetIndex));
+		}
+
 		void UpdateAdorners()
 		{
+			// Selection just changed (a fresh call to Show/a new click) - any in-progress F2 edit
+			// belongs to the PREVIOUS selection and must not be left dangling over the new one.
+			if (renaming) CancelRename();
+			insertionLine.Visibility = Visibility.Collapsed;
 			AutomationProperties.SetName(this, String.IsNullOrEmpty(selectedComponent?.AccessibleName)
 				? selectedComponent?.Name ?? "WinForms designer" : selectedComponent.AccessibleName);
 			AutomationProperties.SetHelpText(this, selectedComponent?.AccessibleDescription ?? "");
@@ -1316,7 +1817,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			// Parent is what actually distinguishes "tray only" here.
 			if (selectedComponent?.IsTrayComponent == true && String.IsNullOrEmpty(selectedComponent.Parent)) {
 				adornerLayer.ClearSelection();
-				moveThumb.Visibility = resizeHitTarget.Visibility = resizeThumb.Visibility =
+				moveThumb.Visibility = reorderThumb.Visibility = popupReorderThumb.Visibility = resizeHitTarget.Visibility = resizeThumb.Visibility =
 					smartTagChevron.Visibility = toolStripInsertChevron.Visibility = Visibility.Collapsed;
 				toolStripHost = null;
 				RefreshTrayHighlight();
@@ -1325,8 +1826,22 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			RefreshTrayHighlight();
 			var visible = selectedComponent != null;
 			var isRoot = visible && String.IsNullOrEmpty(selectedComponent.Parent);
-			resizeHitTarget.Visibility = resizeThumb.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-			moveThumb.Visibility = visible && !isRoot ? Visibility.Visible : Visibility.Collapsed;
+			// The move/resize thumbs exist to drive design/set-bounds, which only ever operates on
+			// a real Control ("host.Container.Components[id] as Control"). A selected
+			// ToolStripItem (a menu item, a toolbar button) is never a Control, so showing these
+			// for one and dragging it used to throw "Control not found" straight out of the child.
+			var canResize = visible && selectedComponent.IsControl;
+			resizeHitTarget.Visibility = resizeThumb.Visibility = canResize ? Visibility.Visible : Visibility.Collapsed;
+			moveThumb.Visibility = canResize && !isRoot ? Visibility.Visible : Visibility.Collapsed;
+			// A selected ToolStripItem with a Parent (i.e. not tray-only) can be dragged to reorder
+			// among its siblings - design/reorder-toolstrip-item, index-based rather than
+			// pixel-based, so it needs no "Control not found" guard the move/resize thumbs do.
+			// Which of the two thumbs applies depends on whether the item is stacked vertically
+			// inside an open popup or laid out horizontally on a root strip.
+			var reorderable = visible && !selectedComponent.IsControl && !isRoot;
+			var inPopup = reorderable && SelectionIsInsideOpenPopup();
+			reorderThumb.Visibility = reorderable && !inPopup ? Visibility.Visible : Visibility.Collapsed;
+			popupReorderThumb.Visibility = inPopup ? Visibility.Visible : Visibility.Collapsed;
 			// The smart tag applies to (almost) any selected component - VS shows it even when
 			// a given component's own action-list turns out empty, so showing it eagerly here
 			// and only discovering "no actions" once the popup's own list-smart-tag-actions RPC
@@ -1341,13 +1856,22 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				: IsToolStripHost(selectedComponent.Type) ? selectedComponent
 				: state?.Components?.FirstOrDefault(item => item.Name == selectedComponent.Parent) is { } parent
 					&& IsToolStripHost(parent.Type) ? parent : null;
-			toolStripInsertChevron.Visibility = toolStripHost != null ? Visibility.Visible : Visibility.Collapsed;
+			// No client-drawn insertion affordance any more. Pushing the selection into the
+			// child's real ISelectionService (DesignerHostService.SetSelection) makes the genuine
+			// ToolStripTemplateNode visible - the "Type Here" cell for a MenuStrip, the split
+			// button for ToolStrip/StatusStrip - and it renders straight into the frame as a real
+			// item of the strip, together with the expanded dropdown and that level's own node.
+			// Keeping these overlays would simply double-draw on top of the real thing.
+			toolStripInsertChevron.Visibility = Visibility.Collapsed;
+			typeHereCell.Visibility = Visibility.Collapsed;
+			if (typeHereEditing)
+				CommitTypeHere(TypeHereCommit.Cancel);
 			if (!visible) {
 				adornerLayer.ClearSelection();
 				return;
 			}
 			var locked = lockedComponentNames.Contains(selectedComponent.Name);
-			moveThumb.IsEnabled = !locked;
+			moveThumb.IsEnabled = reorderThumb.IsEnabled = popupReorderThumb.IsEnabled = !locked;
 			resizeHitTarget.IsEnabled = resizeThumb.IsEnabled = isRoot || !locked;
 			adornerLayer.SelectionStroke = locked ? Brushes.DarkOrange : Brushes.DodgerBlue;
 			dragX = selectedComponent.SurfaceX;
@@ -1379,6 +1903,24 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			Canvas.SetTop(moveThumb, top);
 			moveThumb.Width = Math.Max(1, right - left);
 			moveThumb.Height = Math.Max(1, bottom - top);
+			Canvas.SetLeft(reorderThumb, left);
+			Canvas.SetTop(reorderThumb, top);
+			reorderThumb.Width = Math.Max(1, right - left);
+			reorderThumb.Height = Math.Max(1, bottom - top);
+			// Same rect as reorderThumb (a popup item's own SurfaceX/Y/Width/Height are already in
+			// the same absolute basis - see OnPopupReorderDragCompleted's own note), but a higher
+			// z-index: it must sit above the popup's own Image overlay (200) and its Type Here
+			// editor (201) to remain draggable once a popup is open.
+			Canvas.SetLeft(popupReorderThumb, left);
+			Canvas.SetTop(popupReorderThumb, top);
+			popupReorderThumb.Width = Math.Max(1, right - left);
+			popupReorderThumb.Height = Math.Max(1, bottom - top);
+			Panel.SetZIndex(popupReorderThumb, 202);
+			Canvas.SetLeft(renameEditor, left);
+			Canvas.SetTop(renameEditor, top);
+			renameEditor.Width = Math.Max(1, right - left);
+			renameEditor.Height = Math.Max(1, bottom - top);
+			Panel.SetZIndex(renameEditor, 102);
 			Canvas.SetLeft(resizeThumb, right - resizeThumb.Width / 2);
 			Canvas.SetTop(resizeThumb, bottom - resizeThumb.Height / 2);
 			Canvas.SetLeft(resizeHitTarget, right - resizeHitTarget.Width / 2);
@@ -1430,6 +1972,12 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			Canvas.SetLeft(toolStripInsertChevron, insertLeft + 2);
 			Canvas.SetTop(toolStripInsertChevron, insertTop);
 			Panel.SetZIndex(toolStripInsertChevron, 101);
+			// The "Type Here" cell occupies the same slot (the template node is the strip's last
+			// item either way), just sized like a menu cell rather than a square button.
+			Canvas.SetLeft(typeHereCell, insertLeft + 2);
+			Canvas.SetTop(typeHereCell, insertTop);
+			typeHereCell.MinHeight = toolStripInsertChevron.Height;
+			Panel.SetZIndex(typeHereCell, 101);
 		}
 
 		/// <summary>Whether <paramref name="type"/> is a ToolStrip/StatusStrip/MenuStrip itself
@@ -1512,6 +2060,20 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		public int DeltaY { get; }
 	}
 
+	sealed class RemoteReorderRequestedEventArgs : EventArgs
+	{
+		public RemoteReorderRequestedEventArgs(string componentName, int targetIndex) { ComponentName = componentName; TargetIndex = targetIndex; }
+		public string ComponentName { get; }
+		public int TargetIndex { get; }
+	}
+
+	sealed class RemoteRenameRequestedEventArgs : EventArgs
+	{
+		public RemoteRenameRequestedEventArgs(string componentName, string newName) { ComponentName = componentName; NewName = newName; }
+		public string ComponentName { get; }
+		public string NewName { get; }
+	}
+
 	sealed class RemoteComponentEventArgs : EventArgs
 	{
 		public RemoteComponentEventArgs(string componentName) => ComponentName = componentName;
@@ -1544,5 +2106,153 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		public string ComponentName { get; }
 		public string ComponentType { get; }
 		public FrameworkElement Anchor { get; }
+	}
+
+	/// <summary>A name typed into a MenuStrip's "Type Here" cell, already resolved to the item type
+	/// to create (the strip's default, or ToolStripSeparator for a lone "-").</summary>
+	sealed class RemoteToolStripTypeHereEventArgs : EventArgs
+	{
+		public RemoteToolStripTypeHereEventArgs(string componentName, string itemTypeName, string text, string parentItemId = "")
+		{
+			ComponentName = componentName;
+			ItemTypeName = itemTypeName;
+			Text = text;
+			ParentItemId = parentItemId;
+		}
+		/// <summary>The real ToolStrip the new item's design/add-toolstrip-item call names as
+		/// "elementId" - always a Control, never a ToolStripItem (see AddToolStripItem's own
+		/// "ToolStrip not found" cast). For a strip's own top-level Type Here this is the strip
+		/// itself; for a dropdown's Type Here (a popup overlay) it is the STRIP THAT OWNS the
+		/// dropdown chain, not the dropdown item being edited - <see cref="ParentItemId"/> is what
+		/// actually places the new item inside that item's own DropDownItems.</summary>
+		public string ComponentName { get; }
+		public string ItemTypeName { get; }
+		public string Text { get; }
+		/// <summary>"" to add directly to ComponentName's own Items (a strip's top-level Type
+		/// Here), or the owning ToolStripDropDownItem's element id to add to ITS DropDownItems
+		/// instead (a popup's own Type Here cell).</summary>
+		public string ParentItemId { get; }
+	}
+
+	/// <summary>One popup's own "Type Here" edit cell - the WPF analogue of that dropdown level's
+	/// real template node. Bundled into its own class (rather than a second copy of the
+	/// strip-level typeHereCell/typeHereEditor fields) because there can be one of these per
+	/// currently-open popup, at any nesting depth, appearing and disappearing as the user opens
+	/// and closes submenus.</summary>
+	sealed class PopupTypeHereEditor
+	{
+		readonly RemoteFormsDesignerControl owner;
+		readonly string ownerElementId;
+		readonly TextBlock label;
+		readonly TextBox editor;
+		bool editing;
+
+		public PopupTypeHereEditor(RemoteFormsDesignerControl owner, string ownerElementId)
+		{
+			this.owner = owner;
+			this.ownerElementId = ownerElementId;
+			label = new TextBlock {
+				Text = "Type Here", FontSize = 11, Foreground = Brushes.DimGray,
+				VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(3, 0, 3, 0)
+			};
+			editor = new TextBox {
+				FontSize = 11, BorderThickness = new Thickness(0), Padding = new Thickness(1, 0, 1, 0),
+				Visibility = Visibility.Collapsed
+			};
+			Cell = new Border {
+				Background = Brushes.White, BorderBrush = Brushes.Gray, BorderThickness = new Thickness(1),
+				Cursor = Cursors.IBeam,
+				ToolTip = "Type a name to add a new item here; Enter keeps adding, Tab commits, Esc cancels.",
+				Child = new Grid { Children = { label, editor } }
+			};
+			Cell.MouseLeftButtonDown += (_, args) => { args.Handled = true; Begin(); };
+			// handledEventsToo: true - with an IME active, TextBox's own class handler marks
+			// KeyDown Handled while routing composition, before a plain += handler would see it.
+			editor.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(OnKeyDown), true);
+			editor.LostKeyboardFocus += (_, _) => Commit(commitOnEnter: false, keepEditing: false);
+		}
+
+		/// <summary>The real template node's own bounds within its popup, local to that popup - see
+		/// DesignerPopupFrame.TypeHereBounds.</summary>
+		public DesignerRectangle Bounds { get; set; }
+		public Border Cell { get; }
+
+		public void Reposition(DesignViewport viewport, int popupX, int popupY)
+		{
+			var (left, top) = viewport.DesignToSurface(popupX + Bounds.X, popupY + Bounds.Y);
+			Canvas.SetLeft(Cell, left);
+			Canvas.SetTop(Cell, top);
+			Cell.Width = Math.Max(1, Bounds.Width * viewport.Scale);
+			Cell.Height = Math.Max(1, Bounds.Height * viewport.Scale);
+		}
+
+		void Begin()
+		{
+			if (editing) return;
+			editing = true;
+			label.Visibility = Visibility.Collapsed;
+			editor.Text = "";
+			editor.Visibility = Visibility.Visible;
+			editor.Focus();
+		}
+
+		public void Cancel()
+		{
+			if (!editing) return;
+			editing = false;
+			editor.Visibility = Visibility.Collapsed;
+			editor.Text = "";
+			label.Visibility = Visibility.Visible;
+		}
+
+		void OnKeyDown(object sender, KeyEventArgs e)
+		{
+			// An active IME reports every keystroke - including Enter/Tab/Escape - as
+			// Key.ImeProcessed, with the real key only available via ImeProcessedKey.
+			var key = e.Key == Key.ImeProcessed ? e.ImeProcessedKey : e.Key;
+			switch (key) {
+				case Key.Enter: e.Handled = true; Commit(commitOnEnter: true, keepEditing: true); break;
+				case Key.Tab: e.Handled = true; Commit(commitOnEnter: true, keepEditing: false); break;
+				case Key.Escape: e.Handled = true; Cancel(); break;
+				default: e.Handled = true; break;
+			}
+		}
+
+		/// <summary>Mirrors ToolStripTemplateNode.CommitTextToDesigner: empty text cancels; a lone
+		/// "-" becomes a separator when this dropdown's type list has one; otherwise the strip's
+		/// default new-item type (NewItemTypeNames' own first entry). The real ToolStrip to name
+		/// as design/add-toolstrip-item's "elementId" is resolved by walking Parent up from the
+		/// owning item until a real Control (a ToolStripItem never is one) - that Control is the
+		/// strip that owns the whole dropdown chain, while <paramref name="ownerElementId"/> stays
+		/// the immediate parent whose own DropDownItems the new item is inserted into.</summary>
+		void Commit(bool commitOnEnter, bool keepEditing)
+		{
+			if (!editing) return;
+			var text = editor.Text?.Trim() ?? "";
+			editing = false;
+			editor.Visibility = Visibility.Collapsed;
+			editor.Text = "";
+			label.Visibility = Visibility.Visible;
+			if (!commitOnEnter || text.Length == 0)
+				return;
+			var ownerInfo = owner.state?.Components?.FirstOrDefault(item => item.Name == ownerElementId);
+			if (ownerInfo == null)
+				return;
+			var strip = ownerInfo;
+			var guard = 0;
+			while (strip != null && !strip.IsControl && guard++ < 32)
+				strip = owner.state?.Components?.FirstOrDefault(item => item.Name == strip.Parent);
+			if (strip == null)
+				return;
+			var typeName = text == "-" && ownerInfo.NewItemTypeNames.Contains("System.Windows.Forms.ToolStripSeparator")
+				? "System.Windows.Forms.ToolStripSeparator"
+				: ownerInfo.NewItemTypeNames.FirstOrDefault();
+			if (String.IsNullOrEmpty(typeName))
+				return;
+			owner.RaiseToolStripTypeHereCommitted(
+				new RemoteToolStripTypeHereEventArgs(strip.Name, typeName, text, ownerElementId));
+			if (keepEditing)
+				owner.Dispatcher.BeginInvoke(new Action(Begin), System.Windows.Threading.DispatcherPriority.Background);
+		}
 	}
 }

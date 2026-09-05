@@ -184,6 +184,95 @@ public sealed class FormsDesignerHostClientTests
 	}
 
 	/// <summary>
+	/// Per-strip item-insertion style, mirroring ToolStripTemplateNode.SetupNewEditNode's own
+	/// branch: a MenuStrip (like any dropdown) gets SetUpMenuTemplateNode's editable "Type Here"
+	/// cell, while ToolStrip/StatusStrip - and ContextMenuStrip, which is easy to assume goes with
+	/// the menus but does not - get SetUpToolTemplateNode's split button. The reported type list
+	/// is ToolStripDesignerUtils.GetStandardItemTypes' own order, whose FIRST entry is what the
+	/// client commits when the user types a name without picking a type.
+	/// </summary>
+	[Fact]
+	public async Task ChildHost_ReportsPerStripItemInsertionStyleAndDefaultItemType()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		var hostDll = HostDll();
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
+
+		var snapshot = new DesignerDocumentSnapshot {
+			Version = 1,
+			PrimaryFileName = "/project/Form1.cs",
+			DesignerFileName = "/project/Form1.Designer.cs",
+			Files = {
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.cs", Kind = "Source",
+					Text = "namespace Sample; partial class Form1 { }"
+				},
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.Designer.cs", Kind = "Designer",
+					Text = """
+						namespace Sample;
+						partial class Form1
+						{
+						    private System.ComponentModel.IContainer components;
+						    private void InitializeComponent()
+						    {
+						        this.components = new System.ComponentModel.Container();
+						        this.menuStrip1 = new System.Windows.Forms.MenuStrip();
+						        this.toolStrip1 = new System.Windows.Forms.ToolStrip();
+						        this.statusStrip1 = new System.Windows.Forms.StatusStrip();
+						        this.contextMenuStrip1 = new System.Windows.Forms.ContextMenuStrip(this.components);
+						        this.button1 = new System.Windows.Forms.Button();
+						        this.Controls.Add(this.menuStrip1);
+						        this.Controls.Add(this.toolStrip1);
+						        this.Controls.Add(this.statusStrip1);
+						        this.Controls.Add(this.button1);
+						    }
+						    private System.Windows.Forms.MenuStrip menuStrip1;
+						    private System.Windows.Forms.ToolStrip toolStrip1;
+						    private System.Windows.Forms.StatusStrip statusStrip1;
+						    private System.Windows.Forms.ContextMenuStrip contextMenuStrip1;
+						    private System.Windows.Forms.Button button1;
+						}
+						"""
+				}
+			}
+		};
+
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted);
+		DesignerComponentInfo Component(string name) =>
+			Assert.Single(opened.Components, component => component.Name == name);
+		// A plain control has no insertion affordance at all.
+		Assert.Equal("", Component("button1").ItemInsertionStyle);
+		Assert.Empty(Component("button1").NewItemTypeNames);
+#if MICROSOFT_FORMS_DESIGNER_HOST
+		var menuStrip = Component("menuStrip1");
+		Assert.Equal(DesignerItemInsertionStyles.TypeHere, menuStrip.ItemInsertionStyle);
+		Assert.Equal("System.Windows.Forms.ToolStripMenuItem", menuStrip.NewItemTypeNames.First());
+
+		var toolStrip = Component("toolStrip1");
+		Assert.Equal(DesignerItemInsertionStyles.SplitButton, toolStrip.ItemInsertionStyle);
+		Assert.Equal("System.Windows.Forms.ToolStripButton", toolStrip.NewItemTypeNames.First());
+
+		var statusStrip = Component("statusStrip1");
+		Assert.Equal(DesignerItemInsertionStyles.SplitButton, statusStrip.ItemInsertionStyle);
+		Assert.Equal("System.Windows.Forms.ToolStripStatusLabel", statusStrip.NewItemTypeNames.First());
+
+		// ContextMenuStrip is a ToolStripDropDown, so it takes the "Type Here" branch like the
+		// menus - and its list is the dropdown one, which uniquely includes a separator (the type
+		// a lone "-" commits to).
+		var contextMenu = Component("contextMenuStrip1");
+		Assert.Equal(DesignerItemInsertionStyles.TypeHere, contextMenu.ItemInsertionStyle);
+		Assert.Contains("System.Windows.Forms.ToolStripSeparator", contextMenu.NewItemTypeNames);
+#else
+		// The portable fork's strips report no insertion affordance: the client's "Type Here" cell
+		// and split button are both Microsoft-backend features.
+		Assert.Equal("", Component("menuStrip1").ItemInsertionStyle);
+		Assert.Equal("", Component("toolStrip1").ItemInsertionStyle);
+#endif
+	}
+
+	/// <summary>
 	/// The component tray's membership rule, ported from
 	/// System.Windows.Forms.Design.DocumentDesigner.OnComponentAdded ("If the component is a
 	/// toolstrip or a top level form, we should add to the tray"): a component gets a tray entry
@@ -736,6 +825,722 @@ public sealed class FormsDesignerHostClientTests
 		// silently no-opping.
 		await Assert.ThrowsAnyAsync<Exception>(() =>
 			client.AddToolStripItemAsync(1, "menuStrip1", "ToolStripMenuItem", "", "fileToolStripMenuItem", timeout.Token));
+#endif
+	}
+
+	/// <summary>
+	/// Regression test for "Unsupported ToolStripItem type: System.Windows.Forms.ToolStripMenuItem":
+	/// design/add-toolstrip-item's ResolveToolStripItemType only matched SHORT type names
+	/// ("ToolStripMenuItem"), while DesignerComponentInfo.NewItemTypeNames - and therefore every
+	/// itemTypeName a real client actually sends back from its own reported metadata (as the WPF
+	/// popup Type Here editor does) - is fully qualified ("System.Windows.Forms.ToolStripMenuItem").
+	/// Every other test in this file happens to pass a short name explicitly, which is why this
+	/// gap went unnoticed; this test deliberately round-trips NewItemTypeNames' own value instead of
+	/// a hand-picked short name, so a future case that narrows the short-name switch again cannot
+	/// silently reintroduce the same bug.
+	/// </summary>
+	[Fact]
+	public async Task ChildHost_AddToolStripItem_AcceptsTheFullyQualifiedTypeNameItReportsItself()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		var hostDll = HostDll();
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
+
+		var snapshot = new DesignerDocumentSnapshot {
+			Version = 1,
+			PrimaryFileName = "/project/Form1.cs",
+			DesignerFileName = "/project/Form1.Designer.cs",
+			Files = {
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.cs", Kind = "Source",
+					Text = "namespace Sample; partial class Form1 { }"
+				},
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.Designer.cs", Kind = "Designer",
+					Text = """
+						namespace Sample;
+						partial class Form1
+						{
+						    private void InitializeComponent()
+						    {
+						        this.menuStrip1 = new System.Windows.Forms.MenuStrip();
+						        this.menuStrip1.Name = "menuStrip1";
+						        this.Controls.Add(this.menuStrip1);
+						    }
+						    private System.Windows.Forms.MenuStrip menuStrip1;
+						}
+						"""
+				}
+			}
+		};
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted);
+
+#if MICROSOFT_FORMS_DESIGNER_HOST
+		var menuStrip = Assert.Single(opened.Components, component => component.Name == "menuStrip1");
+		var typeName = menuStrip.NewItemTypeNames.First();
+		Assert.Equal("System.Windows.Forms.ToolStripMenuItem", typeName);
+
+		var withItem = await client.AddToolStripItemAsync(1, "menuStrip1", typeName, "", "fileToolStripMenuItem", timeout.Token);
+		Assert.True(withItem.Accepted);
+		Assert.Contains(withItem.Components, component => component.Name == "fileToolStripMenuItem"
+			&& component.Type == "System.Windows.Forms.ToolStripMenuItem" && component.Parent == "menuStrip1");
+#endif
+	}
+
+	/// <summary>
+	/// Selecting a MenuStrip item expands its own (possibly empty) dropdown in the REAL designer -
+	/// ToolStripMenuItemDesigner.OnSelectionChanged calls InitializeDropDown() unconditionally, see
+	/// doc/technotes/winforms-designer.md's "Selection forwarding makes the REAL chrome render".
+	/// DesignerSessionState.Popups should report that expanded dropdown as its own overlay, with
+	/// TypeHereBounds pointing at the real template node's in-place-edit cell (FindTemplateNodeBounds
+	/// in DesignerHostService.cs) - this is the geometry the WPF client's PopupTypeHereEditor anchors
+	/// its own real TextBox overlay to.
+	/// </summary>
+	[Fact]
+	public async Task ChildHost_SelectingMenuItem_ExpandsPopupWithTypeHereBounds()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		var hostDll = HostDll();
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
+
+		var snapshot = new DesignerDocumentSnapshot {
+			Version = 1,
+			PrimaryFileName = "/project/Form1.cs",
+			DesignerFileName = "/project/Form1.Designer.cs",
+			Files = {
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.cs", Kind = "Source",
+					Text = "namespace Sample; partial class Form1 { }"
+				},
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.Designer.cs", Kind = "Designer",
+					Text = """
+						namespace Sample;
+						partial class Form1
+						{
+						    private void InitializeComponent()
+						    {
+						        this.menuStrip1 = new System.Windows.Forms.MenuStrip();
+						        this.fileToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+						        this.menuStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { this.fileToolStripMenuItem });
+						        this.menuStrip1.Name = "menuStrip1";
+						        this.fileToolStripMenuItem.Name = "fileToolStripMenuItem";
+						        this.fileToolStripMenuItem.Text = "&File";
+						        this.Controls.Add(this.menuStrip1);
+						    }
+						    private System.Windows.Forms.MenuStrip menuStrip1;
+						    private System.Windows.Forms.ToolStripMenuItem fileToolStripMenuItem;
+						}
+						"""
+				}
+			}
+		};
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted);
+
+#if MICROSOFT_FORMS_DESIGNER_HOST
+		Assert.Empty(opened.Popups);
+
+		var selected = await client.SetSelectionAsync(1, new[] { "fileToolStripMenuItem" }, timeout.Token);
+		var popup = Assert.Single(selected.Popups, p => p.OwnerElementId == "fileToolStripMenuItem");
+		Assert.NotNull(popup.TypeHereBounds);
+		Assert.True(popup.TypeHereBounds!.Value.Width > 0);
+		Assert.True(popup.TypeHereBounds!.Value.Height > 0);
+		Assert.NotEmpty(popup.Render.PngBase64);
+
+		// Deselecting collapses the dropdown again - Popups mirrors real designer state, not a
+		// client-side cache the RPC could leave stale.
+		var deselected = await client.SetSelectionAsync(1, Array.Empty<string>(), timeout.Token);
+		Assert.Empty(deselected.Popups);
+#else
+		Assert.Empty(opened.Popups);
+		var selected = await client.SetSelectionAsync(1, new[] { "fileToolStripMenuItem" }, timeout.Token);
+		Assert.Empty(selected.Popups);
+#endif
+	}
+
+	/// <summary>
+	/// Clicking an item inside an expanded popup must select THAT item through the real
+	/// ISelectionService without collapsing the dropdown - this is the fix for "clicking Type Here
+	/// makes the popup disappear" (a container-membership gap in FindDeepest's Controls walk; see
+	/// doc/technotes/winforms-designer.md). Regression-covers both halves: hitting a real, sited
+	/// item selects it and keeps the popup open, and PopupHitElementId (which the client adopts as
+	/// its own SelectedComponentName, since the RPC response is otherwise the only way it learns
+	/// what was hit) reports the right name.
+	/// </summary>
+	[Fact]
+	public async Task ChildHost_HitTestPopup_SelectsNestedItemWithoutClosingPopup()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		var hostDll = HostDll();
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
+
+		var snapshot = new DesignerDocumentSnapshot {
+			Version = 1,
+			PrimaryFileName = "/project/Form1.cs",
+			DesignerFileName = "/project/Form1.Designer.cs",
+			Files = {
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.cs", Kind = "Source",
+					Text = "namespace Sample; partial class Form1 { }"
+				},
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.Designer.cs", Kind = "Designer",
+					Text = """
+						namespace Sample;
+						partial class Form1
+						{
+						    private void InitializeComponent()
+						    {
+						        this.menuStrip1 = new System.Windows.Forms.MenuStrip();
+						        this.fileToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+						        this.menuStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { this.fileToolStripMenuItem });
+						        this.menuStrip1.Name = "menuStrip1";
+						        this.fileToolStripMenuItem.Name = "fileToolStripMenuItem";
+						        this.fileToolStripMenuItem.Text = "&File";
+						        this.Controls.Add(this.menuStrip1);
+						    }
+						    private System.Windows.Forms.MenuStrip menuStrip1;
+						    private System.Windows.Forms.ToolStripMenuItem fileToolStripMenuItem;
+						}
+						"""
+				}
+			}
+		};
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted);
+
+#if MICROSOFT_FORMS_DESIGNER_HOST
+		var beforeAdd = Assert.Single((await client.SetSelectionAsync(1, new[] { "fileToolStripMenuItem" }, timeout.Token))
+			.Popups, p => p.OwnerElementId == "fileToolStripMenuItem");
+		Assert.NotNull(beforeAdd.TypeHereBounds);
+
+		// The added item occupies the space the template node previously reported BEFORE the add
+		// (the template node itself shifts down to make room for it); its own bounds are not
+		// reported directly (only the strip's own root Controls get SurfaceX/Y), so this hits the
+		// item using the SAME anchor the manual DevFlow verification in this session used: the
+		// template node's own pre-add position, a few pixels inside it.
+		var itemX = beforeAdd.TypeHereBounds!.Value.X + 5;
+		var itemY = beforeAdd.TypeHereBounds!.Value.Y + 5;
+		await client.AddToolStripItemAsync(
+			1, "menuStrip1", "System.Windows.Forms.ToolStripMenuItem", "fileToolStripMenuItem", "openToolStripMenuItem", timeout.Token);
+		var hit = await client.HitTestPopupAsync(1, "fileToolStripMenuItem", itemX, itemY, timeout.Token);
+		Assert.Equal("openToolStripMenuItem", hit.PopupHitElementId);
+		// The popup is still open - hitting a real, sited item must not collapse it.
+		Assert.Contains(hit.Popups, p => p.OwnerElementId == "fileToolStripMenuItem");
+
+		// Clicking the (now-shifted-down) unsited Type Here cell itself must be a safe no-op:
+		// no selection, and - critically - the popup stays open (the very bug this RPC exists to
+		// fix: an earlier FindDeepest gap treated the in-place-edit TextBox as a real hit and closed
+		// the dropdown when the real ISelectionService saw an unsited component).
+		var afterAdd = Assert.Single(hit.Popups, p => p.OwnerElementId == "fileToolStripMenuItem");
+		var typeHereHit = await client.HitTestPopupAsync(
+			1, "fileToolStripMenuItem", afterAdd.TypeHereBounds!.Value.X + 5, afterAdd.TypeHereBounds!.Value.Y + 5, timeout.Token);
+		Assert.True(String.IsNullOrEmpty(typeHereHit.PopupHitElementId));
+		Assert.Contains(typeHereHit.Popups, p => p.OwnerElementId == "fileToolStripMenuItem");
+#endif
+	}
+
+	/// <summary>
+	/// ContextMenuStrip is never parented into the form's Controls - it lives only in the tray -
+	/// so by default it must contribute no overlay at all (unlike the real ContextMenuStripDesigner,
+	/// which shows it unconditionally once initialized; OpenDevelop deliberately narrows this to
+	/// "shown only while its tray icon, or one of its own items, is selected", the same
+	/// select-to-edit workflow as a MenuStrip's own submenu). Covers SelectedContextMenuStripPopups
+	/// and design/hit-test-popup's ContextMenuStrip fallback (an owner id that names the strip
+	/// itself directly, not an owning ToolStripDropDownItem) in DesignerHostService.cs.
+	/// </summary>
+	[Fact]
+	public async Task ChildHost_ContextMenuStrip_OnlyOverlaysWhileSelected()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		var hostDll = HostDll();
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
+
+		var snapshot = new DesignerDocumentSnapshot {
+			Version = 1,
+			PrimaryFileName = "/project/Form1.cs",
+			DesignerFileName = "/project/Form1.Designer.cs",
+			Files = {
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.cs", Kind = "Source",
+					Text = "namespace Sample; partial class Form1 { }"
+				},
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.Designer.cs", Kind = "Designer",
+					Text = """
+						namespace Sample;
+						partial class Form1
+						{
+						    private System.ComponentModel.IContainer components;
+						    private void InitializeComponent()
+						    {
+						        this.components = new System.ComponentModel.Container();
+						        this.contextMenuStrip1 = new System.Windows.Forms.ContextMenuStrip(this.components);
+						        this.openToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+						        this.contextMenuStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { this.openToolStripMenuItem });
+						        this.contextMenuStrip1.Name = "contextMenuStrip1";
+						        this.openToolStripMenuItem.Name = "openToolStripMenuItem";
+						        this.openToolStripMenuItem.Text = "Open";
+						    }
+						    private System.Windows.Forms.ContextMenuStrip contextMenuStrip1;
+						    private System.Windows.Forms.ToolStripMenuItem openToolStripMenuItem;
+						}
+						"""
+				}
+			}
+		};
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted);
+		// Hidden by default: it is tray-only, and nothing has selected it yet.
+		Assert.Empty(opened.Popups);
+#if MICROSOFT_FORMS_DESIGNER_HOST
+		// IsTrayComponent's designer-kind clauses (see IsTrayComponent's own doc comment) are a
+		// Microsoft-only capability - the portable LibreWinForms fork can only ever tell "not a
+		// Control at all" apart, which is covered by ChildHost_ReportsTrayComponentsByDesignerKindNotJustControlness.
+		Assert.Contains(opened.Components, component => component.Name == "contextMenuStrip1" && component.IsTrayComponent);
+#endif
+
+#if MICROSOFT_FORMS_DESIGNER_HOST
+		// Selecting the tray icon itself expands its own dropdown as an overlay.
+		var selected = await client.SetSelectionAsync(1, new[] { "contextMenuStrip1" }, timeout.Token);
+		var popup = Assert.Single(selected.Popups, p => p.OwnerElementId == "contextMenuStrip1");
+		Assert.NotNull(popup.TypeHereBounds);
+
+		// Selecting one of its OWN items (not the strip) must keep the same overlay open - the
+		// same "selecting a leaf item still shows its owning dropdown" behavior real VS has for
+		// MenuStrip submenus (see doc/technotes/winforms-designer.md).
+		var itemSelected = await client.SetSelectionAsync(1, new[] { "openToolStripMenuItem" }, timeout.Token);
+		Assert.Contains(itemSelected.Popups, p => p.OwnerElementId == "contextMenuStrip1");
+
+		// Hit-testing works against the strip's own element id directly (it has no owning
+		// ToolStripDropDownItem - "OwnerElementId" IS the ContextMenuStrip itself).
+		var hit = await client.HitTestPopupAsync(1, "contextMenuStrip1", popup.TypeHereBounds!.Value.X - 5,
+			popup.TypeHereBounds!.Value.Y - popup.TypeHereBounds!.Value.Height / 2, timeout.Token);
+		Assert.Equal("openToolStripMenuItem", hit.PopupHitElementId);
+
+		// Deselecting entirely collapses it again.
+		var deselected = await client.SetSelectionAsync(1, Array.Empty<string>(), timeout.Token);
+		Assert.Empty(deselected.Popups);
+#else
+		var selected = await client.SetSelectionAsync(1, new[] { "contextMenuStrip1" }, timeout.Token);
+		Assert.Empty(selected.Popups);
+#endif
+	}
+
+	/// <summary>
+	/// Double-clicking a ToolStripItem (the WPF client's DefaultEventRequested, wired to
+	/// design/activate-default-event) must generate and wire up its default event handler exactly
+	/// like it already does for an ordinary Control - ToolStripItem's own real
+	/// `[DefaultEvent("Click")]` flows through the SAME generic TypeDescriptor-based code path
+	/// (ActivateDefaultEvent never special-cases Control), so this is a regression test for that
+	/// genericity rather than new functionality - confirmed working with no code changes needed by
+	/// a live DevFlow double-click on tests/fixtures/ToolStripFixture's own toolStripButton1 before
+	/// this test was added.
+	/// </summary>
+	[Fact]
+	public async Task ChildHost_ActivateDefaultEvent_WiresUpClickHandlerForToolStripItem()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		var hostDll = HostDll();
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
+
+		var snapshot = new DesignerDocumentSnapshot {
+			Version = 1,
+			PrimaryFileName = "/project/Form1.cs",
+			DesignerFileName = "/project/Form1.Designer.cs",
+			Files = {
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.cs", Kind = "Source",
+					Text = "namespace Sample; partial class Form1 { }"
+				},
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.Designer.cs", Kind = "Designer",
+					Text = """
+						namespace Sample;
+						partial class Form1
+						{
+						    private void InitializeComponent()
+						    {
+						        this.toolStrip1 = new System.Windows.Forms.ToolStrip();
+						        this.toolStripButton1 = new System.Windows.Forms.ToolStripButton();
+						        this.toolStrip1.Items.Add(this.toolStripButton1);
+						        this.toolStrip1.Name = "toolStrip1";
+						        this.toolStripButton1.Name = "toolStripButton1";
+						        this.Controls.Add(this.toolStrip1);
+						    }
+						    private System.Windows.Forms.ToolStrip toolStrip1;
+						    private System.Windows.Forms.ToolStripButton toolStripButton1;
+						}
+						"""
+				}
+			}
+		};
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted);
+		var button = Assert.Single(opened.Components, component => component.Name == "toolStripButton1");
+		Assert.Contains(button.Events, item => item.Name == "Click" && String.IsNullOrEmpty(item.Handler));
+
+		var activated = await client.ActivateDefaultEventAsync(1, "toolStripButton1", timeout.Token);
+		Assert.True(activated.Accepted);
+		Assert.Contains(activated.Components.Single(item => item.Name == "toolStripButton1").Events,
+			item => item.Name == "Click" && item.Handler == "toolStripButton1_Click");
+
+		var flushed = await client.FlushAsync(1, timeout.Token);
+		Assert.Contains("toolStripButton1.Click += toolStripButton1_Click;",
+			flushed.Files.Single(item => item.Kind == "Designer").Text, StringComparison.Ordinal);
+		Assert.Contains("private void toolStripButton1_Click(System.Object sender, System.EventArgs e)",
+			flushed.Files.Single(item => item.Kind == "Source").Text, StringComparison.Ordinal);
+	}
+
+	/// <summary>
+	/// Regression test for a Name-property-literal gap: design/rename's RewriteComponentName call
+	/// renames every IDENTIFIER reference generically (works for any component), but the separate
+	/// "elementId.Name = "oldName";" statement's STRING LITERAL argument is a different concern -
+	/// RenameComponent only ever refreshed it via RewriteProperty for `component is Control`,
+	/// leaving a ToolStripItem's own real Name property (a plain public property, same shape as
+	/// Control.Name) holding the stale old name as a literal after every identifier had already
+	/// moved to the new one.
+	/// </summary>
+	[Fact]
+	public async Task ChildHost_Rename_UpdatesNamePropertyLiteralForToolStripItem()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		var hostDll = HostDll();
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
+		var snapshot = new DesignerDocumentSnapshot {
+			Version = 1, PrimaryFileName = "/project/Form1.cs", DesignerFileName = "/project/Form1.Designer.cs",
+			Files = {
+				new DesignerSourceFileSnapshot { FileName = "/project/Form1.cs", Kind = "Source", Text = "namespace Sample; partial class Form1 { }" },
+				new DesignerSourceFileSnapshot { FileName = "/project/Form1.Designer.cs", Kind = "Designer", Text = """
+					namespace Sample;
+					partial class Form1
+					{
+					    private void InitializeComponent()
+					    {
+					        this.toolStrip1 = new System.Windows.Forms.ToolStrip();
+					        this.toolStripButton1 = new System.Windows.Forms.ToolStripButton();
+					        this.toolStrip1.Items.Add(this.toolStripButton1);
+					        this.toolStrip1.Name = "toolStrip1";
+					        this.toolStripButton1.Name = "toolStripButton1";
+					        this.Controls.Add(this.toolStrip1);
+					    }
+					    private System.Windows.Forms.ToolStrip toolStrip1;
+					    private System.Windows.Forms.ToolStripButton toolStripButton1;
+					}
+					"""
+				}
+			}
+		};
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted);
+
+		var renamed = await client.RenameAsync(1, "toolStripButton1", "renamedButton", timeout.Token);
+		Assert.True(renamed.Accepted);
+		Assert.Contains(renamed.Components, component => component.Name == "renamedButton");
+		Assert.Contains("renamedButton.Name = \"renamedButton\";",
+			DesignerText(await client.FlushAsync(1, timeout.Token)), StringComparison.Ordinal);
+	}
+
+	/// <summary>
+	/// Regression test for two compounding bugs in design/delete-elements' designer-source rewrite
+	/// (DesignerHostService.RewriteDeletedComponent), both found while adding ToolStripItem
+	/// support but NEITHER actually specific to ToolStripItem - both are general, pre-existing
+	/// defects that would affect deleting ANY component whose designer source happens to share a
+	/// statement or an AddRange array with another component:
+	///
+	/// 1. A `{ ... }` method body (InitializeComponent's own included) IS a StatementSyntax/
+	///    MethodBlockSyntax in Roslyn's C#/VB model, so the naive "remove every StatementSyntax
+	///    that mentions the deleted identifier" walk always matched the WHOLE METHOD BODY too
+	///    (since it mentions the identifier somewhere by construction) - and RemoveNodes drops an
+	///    ancestor before its own now-redundant descendants, silently wiping every OTHER
+	///    component's statements along with the deleted one's.
+	/// 2. A deleted item that is one of several elements in a single shared
+	///    "collection.AddRange(new T[] { a, b, c })" call lost the WHOLE STATEMENT (every sibling
+	///    in that same array along with it), rather than just its own array element.
+	///
+	/// This test's ToolStrip has two items declared via ONE shared AddRange (triggering bug 2) so
+	/// that deleting one exercises both fixes at once: if bug 1 regressed, toolStrip1's own
+	/// unrelated statements (and the WHOLE method body) would vanish too; if bug 2 regressed, the
+	/// surviving sibling would disappear from the AddRange array as well.
+	/// </summary>
+	[Fact]
+	public async Task ChildHost_Delete_PreservesSiblingStatementsAndAddRangeArrayElements()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		var hostDll = HostDll();
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
+		var snapshot = new DesignerDocumentSnapshot {
+			Version = 1, PrimaryFileName = "/project/Form1.cs", DesignerFileName = "/project/Form1.Designer.cs",
+			Files = {
+				new DesignerSourceFileSnapshot { FileName = "/project/Form1.cs", Kind = "Source", Text = "namespace Sample; partial class Form1 { }" },
+				new DesignerSourceFileSnapshot { FileName = "/project/Form1.Designer.cs", Kind = "Designer", Text = """
+					namespace Sample;
+					partial class Form1
+					{
+					    private void InitializeComponent()
+					    {
+					        this.toolStrip1 = new System.Windows.Forms.ToolStrip();
+					        this.toolStripButton1 = new System.Windows.Forms.ToolStripButton();
+					        this.toolStripButton2 = new System.Windows.Forms.ToolStripButton();
+					        this.toolStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { this.toolStripButton1, this.toolStripButton2 });
+					        this.toolStrip1.Name = "toolStrip1";
+					        this.toolStripButton1.Name = "toolStripButton1";
+					        this.toolStripButton2.Name = "toolStripButton2";
+					        this.Controls.Add(this.toolStrip1);
+					    }
+					    private System.Windows.Forms.ToolStrip toolStrip1;
+					    private System.Windows.Forms.ToolStripButton toolStripButton1;
+					    private System.Windows.Forms.ToolStripButton toolStripButton2;
+					}
+					"""
+				}
+			}
+		};
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted);
+
+		var deleted = await client.DeleteElementsAsync(1, new[] { "toolStripButton2" }, timeout.Token);
+		Assert.True(deleted.Accepted);
+		Assert.DoesNotContain(deleted.Components, component => component.Name == "toolStripButton2");
+		Assert.Contains(deleted.Components, component => component.Name == "toolStrip1");
+		Assert.Contains(deleted.Components, component => component.Name == "toolStripButton1");
+
+		var flushed = DesignerText(await client.FlushAsync(1, timeout.Token));
+		// Bug 2's regression signature: the whole AddRange statement gone, taking
+		// toolStripButton1 with it.
+		Assert.Contains("toolStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { toolStripButton1 })",
+			flushed, StringComparison.Ordinal);
+		// Bug 1's regression signature: every OTHER statement in InitializeComponent gone too.
+		Assert.Contains("toolStrip1.Name = \"toolStrip1\";", flushed, StringComparison.Ordinal);
+		Assert.Contains("toolStripButton1.Name = \"toolStripButton1\";", flushed, StringComparison.Ordinal);
+		Assert.Contains("Controls.Add(toolStrip1);", flushed, StringComparison.Ordinal);
+	}
+
+	/// <summary>
+	/// Drag-to-reorder on a ToolStrip whose items are declared as separate consecutive
+	/// "toolStrip1.Items.Add(x)" statements (the shape ChildHost_SupportsSmartTagActionsAndToolStripItemInsertion's
+	/// own AddToolStripItemAsync calls produce, and one of the two declaration shapes real designer
+	/// output uses). Moving the LAST item to the front must update both the live ToolStripItemCollection
+	/// order (so hit-testing/rendering reflect it immediately) and the designer source's own statement
+	/// order (so Flush - and a subsequent reopen - round-trips it), covering
+	/// DesignerHostService.ReorderToolStripItem/RewriteReorderedToolStripItems.
+	/// </summary>
+	[Fact]
+	public async Task ChildHost_ReorderToolStripItem_MovesItemAndRewritesAddStatementOrder()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		var hostDll = HostDll();
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
+
+		var snapshot = new DesignerDocumentSnapshot {
+			Version = 1,
+			PrimaryFileName = "/project/Form1.cs",
+			DesignerFileName = "/project/Form1.Designer.cs",
+			Files = {
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.cs", Kind = "Source",
+					Text = "namespace Sample; partial class Form1 { }"
+				},
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.Designer.cs", Kind = "Designer",
+					Text = """
+						namespace Sample;
+						partial class Form1
+						{
+						    private void InitializeComponent()
+						    {
+						        this.toolStrip1 = new System.Windows.Forms.ToolStrip();
+						        this.toolStripButton1 = new System.Windows.Forms.ToolStripButton();
+						        this.toolStripButton2 = new System.Windows.Forms.ToolStripButton();
+						        this.toolStripButton3 = new System.Windows.Forms.ToolStripButton();
+						        this.toolStrip1.Items.Add(this.toolStripButton1);
+						        this.toolStrip1.Items.Add(this.toolStripButton2);
+						        this.toolStrip1.Items.Add(this.toolStripButton3);
+						        this.toolStrip1.Name = "toolStrip1";
+						        this.toolStripButton1.Name = "toolStripButton1";
+						        this.toolStripButton2.Name = "toolStripButton2";
+						        this.toolStripButton3.Name = "toolStripButton3";
+						        this.Controls.Add(this.toolStrip1);
+						    }
+						    private System.Windows.Forms.ToolStrip toolStrip1;
+						    private System.Windows.Forms.ToolStripButton toolStripButton1;
+						    private System.Windows.Forms.ToolStripButton toolStripButton2;
+						    private System.Windows.Forms.ToolStripButton toolStripButton3;
+						}
+						"""
+				}
+			}
+		};
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted);
+
+#if MICROSOFT_FORMS_DESIGNER_HOST
+		// Drag toolStripButton3 (last) to index 0 (front).
+		var reordered = await client.ReorderToolStripItemAsync(1, "toolStripButton3", 0, timeout.Token);
+		Assert.True(reordered.Accepted);
+		var toolStrip = Assert.Single(reordered.Components, component => component.Name == "toolStrip1");
+		// The live model now reports children in the new order - Parent/Index bookkeeping is
+		// exercised by BuildElementTree's own existing tests; here it is the ORDER among siblings
+		// that must have moved, verified via the flushed source below.
+
+		var flushed = DesignerText(await client.FlushAsync(1, timeout.Token));
+		var button1Index = flushed.IndexOf("toolStrip1.Items.Add(toolStripButton1)", StringComparison.Ordinal);
+		var button2Index = flushed.IndexOf("toolStrip1.Items.Add(toolStripButton2)", StringComparison.Ordinal);
+		var button3Index = flushed.IndexOf("toolStrip1.Items.Add(toolStripButton3)", StringComparison.Ordinal);
+		Assert.True(button3Index >= 0 && button1Index >= 0 && button2Index >= 0);
+		Assert.True(button3Index < button1Index, "toolStripButton3's Add statement should now come first");
+		Assert.True(button1Index < button2Index, "toolStripButton1 and toolStripButton2 should keep their relative order");
+
+		// Moving it back to the end (index 2, since Remove already shifted the collection down to
+		// 2 remaining items before the Insert) restores the original statement order.
+		var restored = await client.ReorderToolStripItemAsync(1, "toolStripButton3", 2, timeout.Token);
+		Assert.True(restored.Accepted);
+		var restoredFlushed = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.True(restoredFlushed.IndexOf("toolStrip1.Items.Add(toolStripButton1)", StringComparison.Ordinal)
+			< restoredFlushed.IndexOf("toolStrip1.Items.Add(toolStripButton3)", StringComparison.Ordinal));
+#else
+		await Assert.ThrowsAnyAsync<Exception>(() =>
+			client.ReorderToolStripItemAsync(1, "toolStripButton1", 0, timeout.Token));
+#endif
+	}
+
+	/// <summary>
+	/// Same drag-to-reorder RPC, exercised against the OTHER declaration shape real designer output
+	/// uses - a StatusStrip whose items are declared via a single
+	/// "statusStrip1.Items.AddRange(new ToolStripItem[] { a, b })" call (see
+	/// ChildHost_AddRangeAndBareControlsAddPopulateComponentTree for the MenuStrip equivalent of this
+	/// shape). RewriteReorderedToolStripItems must reorder the ARRAY's elements in place rather than
+	/// looking for separate Add() statements, which do not exist here.
+	/// </summary>
+	[Fact]
+	public async Task ChildHost_ReorderToolStripItem_ReordersAddRangeArrayForStatusStrip()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		var hostDll = HostDll();
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
+
+		var snapshot = new DesignerDocumentSnapshot {
+			Version = 1,
+			PrimaryFileName = "/project/Form1.cs",
+			DesignerFileName = "/project/Form1.Designer.cs",
+			Files = {
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.cs", Kind = "Source",
+					Text = "namespace Sample; partial class Form1 { }"
+				},
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.Designer.cs", Kind = "Designer",
+					Text = """
+						namespace Sample;
+						partial class Form1
+						{
+						    private void InitializeComponent()
+						    {
+						        this.statusStrip1 = new System.Windows.Forms.StatusStrip();
+						        this.statusLabel1 = new System.Windows.Forms.ToolStripStatusLabel();
+						        this.progressBar1 = new System.Windows.Forms.ToolStripProgressBar();
+						        this.statusStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { this.statusLabel1, this.progressBar1 });
+						        this.statusStrip1.Name = "statusStrip1";
+						        this.statusLabel1.Name = "statusLabel1";
+						        this.progressBar1.Name = "progressBar1";
+						        this.Controls.Add(this.statusStrip1);
+						    }
+						    private System.Windows.Forms.StatusStrip statusStrip1;
+						    private System.Windows.Forms.ToolStripStatusLabel statusLabel1;
+						    private System.Windows.Forms.ToolStripProgressBar progressBar1;
+						}
+						"""
+				}
+			}
+		};
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted);
+
+#if MICROSOFT_FORMS_DESIGNER_HOST
+		// Drag progressBar1 (second) in front of statusLabel1.
+		var reordered = await client.ReorderToolStripItemAsync(1, "progressBar1", 0, timeout.Token);
+		Assert.True(reordered.Accepted);
+
+		var flushed = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Contains("new System.Windows.Forms.ToolStripItem[] { progressBar1, statusLabel1 }", flushed, StringComparison.Ordinal);
+#else
+		await Assert.ThrowsAnyAsync<Exception>(() =>
+			client.ReorderToolStripItemAsync(1, "statusLabel1", 0, timeout.Token));
+#endif
+	}
+
+	/// <summary>
+	/// The reorder RPC works the same for an item inside a POPUP's own DropDownItems collection
+	/// (not just a root strip's Items) - it resolves the real owning collection from the dragged
+	/// item's own live Owner/OwnerItem, so this needed no special-casing; this test's own purpose
+	/// is regression coverage, since every other reorder test only exercises a root strip's Items.
+	/// Also confirms a popup item's own SurfaceX/Y/Width/Height (which the WPF client's vertical
+	/// popupReorderThumb relies on to compute a drop target - see
+	/// RemoteFormsDesignerControl.OnPopupReorderDragCompleted) survive the reorder and correctly
+	/// swap, mirroring the client-side computation without needing a live WPF control to test it.
+	/// </summary>
+	[Fact]
+	public async Task ChildHost_ReorderToolStripItem_WorksForItemsInsideAnOpenPopup()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		var hostDll = HostDll();
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
+		var snapshot = new DesignerDocumentSnapshot {
+			Version = 1, PrimaryFileName = "/project/Form1.cs", DesignerFileName = "/project/Form1.Designer.cs",
+			Files = {
+				new DesignerSourceFileSnapshot { FileName = "/project/Form1.cs", Kind = "Source", Text = "namespace Sample; partial class Form1 { }" },
+				new DesignerSourceFileSnapshot { FileName = "/project/Form1.Designer.cs", Kind = "Designer", Text = """
+					namespace Sample;
+					partial class Form1
+					{
+					    private void InitializeComponent()
+					    {
+					        this.menuStrip1 = new System.Windows.Forms.MenuStrip();
+					        this.fileToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+					        this.openToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+					        this.exitToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+					        this.menuStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { this.fileToolStripMenuItem });
+					        this.fileToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] { this.openToolStripMenuItem, this.exitToolStripMenuItem });
+					        this.menuStrip1.Name = "menuStrip1";
+					        this.fileToolStripMenuItem.Name = "fileToolStripMenuItem";
+					        this.openToolStripMenuItem.Name = "openToolStripMenuItem";
+					        this.exitToolStripMenuItem.Name = "exitToolStripMenuItem";
+					        this.Controls.Add(this.menuStrip1);
+					    }
+					    private System.Windows.Forms.MenuStrip menuStrip1;
+					    private System.Windows.Forms.ToolStripMenuItem fileToolStripMenuItem;
+					    private System.Windows.Forms.ToolStripMenuItem openToolStripMenuItem;
+					    private System.Windows.Forms.ToolStripMenuItem exitToolStripMenuItem;
+					}
+					"""
+				}
+			}
+		};
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted);
+
+#if MICROSOFT_FORMS_DESIGNER_HOST
+		// Expand the dropdown (selection forwarding activates the real designer chrome) so the
+		// items report live surface bounds, the same precondition the WPF client's own gesture has.
+		var selected = await client.SetSelectionAsync(1, new[] { "fileToolStripMenuItem" }, timeout.Token);
+		var openBefore = selected.Components.Single(item => item.Name == "openToolStripMenuItem");
+		var exitBefore = selected.Components.Single(item => item.Name == "exitToolStripMenuItem");
+		Assert.True(openBefore.SurfaceY < exitBefore.SurfaceY, "openToolStripMenuItem should start above exitToolStripMenuItem");
+
+		// Drag exitToolStripMenuItem (second) above openToolStripMenuItem.
+		var reordered = await client.ReorderToolStripItemAsync(1, "exitToolStripMenuItem", 0, timeout.Token);
+		Assert.True(reordered.Accepted);
+		var exitAfter = reordered.Components.Single(item => item.Name == "exitToolStripMenuItem");
+		var openAfter = reordered.Components.Single(item => item.Name == "openToolStripMenuItem");
+		Assert.True(exitAfter.SurfaceY < openAfter.SurfaceY, "exitToolStripMenuItem should now be above openToolStripMenuItem");
+
+		Assert.Contains("fileToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] { exitToolStripMenuItem, openToolStripMenuItem });",
+			DesignerText(await client.FlushAsync(1, timeout.Token)), StringComparison.Ordinal);
+#else
+		await Assert.ThrowsAnyAsync<Exception>(() =>
+			client.ReorderToolStripItemAsync(1, "exitToolStripMenuItem", 0, timeout.Token));
 #endif
 	}
 
