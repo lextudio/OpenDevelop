@@ -171,6 +171,44 @@ namespace ICSharpCode.FormsDesigner
 				FileService.JumpToFilePosition(primary.Key.FileName, line, 1);
 		}
 
+		/// <summary>Direct RPC access to the smart-tag/verb pair for DevFlow - bypasses the
+		/// chevron glyph and Ctrl+. keyboard shortcut entirely, since both require driving real OS
+		/// mouse/keyboard input against a tiny/keyboard-focus-dependent target that proved
+		/// unreliable to hit blindly via synthetic screen coordinates (see the 2026-09-05 TabControl
+		/// technote entries). This gives tests and manual DevFlow sessions a direct way to exercise
+		/// Add Tab/Remove Tab (and any other smart-tag/verb feature) without any of that.</summary>
+		internal DesignerSmartTagActions ListRemoteSmartTagActions(string componentName)
+		{
+			if (!IsRemoteDesignerLoaded)
+				throw new InvalidOperationException("The out-of-process WinForms designer is not loaded.");
+			return remoteClient.ListSmartTagActionsAsync(remoteDocumentVersion, componentName,
+				System.Threading.CancellationToken.None).GetAwaiter().GetResult();
+		}
+
+		internal void InvokeRemoteSmartTagMethod(string componentName, int listIndex, int itemIndex)
+		{
+			if (!IsRemoteDesignerLoaded)
+				throw new InvalidOperationException("The out-of-process WinForms designer is not loaded.");
+			ExecuteRemoteEdit(() => remoteClient.InvokeSmartTagMethodAsync(remoteDocumentVersion, componentName,
+				listIndex, itemIndex, System.Threading.CancellationToken.None).GetAwaiter().GetResult());
+		}
+
+		internal DesignerVerbs ListRemoteVerbs(string componentName)
+		{
+			if (!IsRemoteDesignerLoaded)
+				throw new InvalidOperationException("The out-of-process WinForms designer is not loaded.");
+			return remoteClient.ListVerbsAsync(remoteDocumentVersion, componentName,
+				System.Threading.CancellationToken.None).GetAwaiter().GetResult();
+		}
+
+		internal void InvokeRemoteVerb(string componentName, int verbIndex)
+		{
+			if (!IsRemoteDesignerLoaded)
+				throw new InvalidOperationException("The out-of-process WinForms designer is not loaded.");
+			ExecuteRemoteEdit(() => remoteClient.InvokeVerbAsync(remoteDocumentVersion, componentName,
+				verbIndex, System.Threading.CancellationToken.None).GetAwaiter().GetResult());
+		}
+
 		internal void AddRemoteControl(string parentName, string controlType, string componentName, int x, int y)
 		{
 			if (!IsRemoteDesignerLoaded)
@@ -921,16 +959,23 @@ namespace ICSharpCode.FormsDesigner
 		}
 
 		/// <summary>Smart-tag chevron clicked: fetch the component's DesignerActionList items
-		/// (read-only - not an edit, so it does not go through <see cref="ExecuteRemoteEdit"/>)
-		/// and show them in a small popup anchored on the chevron glyph.</summary>
+		/// AND its designer verbs (both read-only fetches - not an edit, so neither goes through
+		/// <see cref="ExecuteRemoteEdit"/>) and show them together in a small popup anchored on the
+		/// chevron glyph. Verbs (e.g. TabControlDesigner's "Add Tab"/"Remove Tab") are real VS's
+		/// right-click context-menu items, not smart-tag content - this client has no separate
+		/// right-click menu of its own, so they are folded into the same popup rather than building
+		/// a whole second UI surface for a single component type.</summary>
 		async void RemoteSmartTagRequested(object sender, RemoteSmartTagRequestedEventArgs e)
 		{
 			try {
 				var actions = await remoteClient.ListSmartTagActionsAsync(remoteDocumentVersion, e.ComponentName,
 					System.Threading.CancellationToken.None);
-				if (!actions.Accepted || actions.Items.Count == 0)
+				var verbs = await remoteClient.ListVerbsAsync(remoteDocumentVersion, e.ComponentName,
+					System.Threading.CancellationToken.None);
+				var visibleVerbs = verbs.Accepted ? verbs.Items.Where(item => item.Visible).ToList() : new List<DesignerVerbInfo>();
+				if ((!actions.Accepted || actions.Items.Count == 0) && visibleVerbs.Count == 0)
 					return;
-				ShowSmartTagPopup(e.Anchor, e.ComponentName, actions.Items);
+				ShowSmartTagPopup(e.Anchor, e.ComponentName, actions.Accepted ? actions.Items : new List<DesignerSmartTagActionInfo>(), visibleVerbs);
 			} catch (Exception exception) {
 				LoggingService.Error(exception);
 				MessageService.ShowError(exception.Message);
@@ -955,7 +1000,7 @@ namespace ICSharpCode.FormsDesigner
 			}
 		}
 
-		void ShowSmartTagPopup(System.Windows.FrameworkElement anchor, string componentName, IReadOnlyList<DesignerSmartTagActionInfo> items)
+		void ShowSmartTagPopup(System.Windows.FrameworkElement anchor, string componentName, IReadOnlyList<DesignerSmartTagActionInfo> items, IReadOnlyList<DesignerVerbInfo> verbs)
 		{
 			CloseActiveDesignerPopup();
 			var panel = new System.Windows.Controls.StackPanel { Margin = new Thickness(6) };
@@ -1026,6 +1071,21 @@ namespace ICSharpCode.FormsDesigner
 				}
 				}
 			}
+			if (items.Count > 0 && verbs.Count > 0)
+				panel.Children.Add(new System.Windows.Controls.Separator { Margin = new Thickness(0, 4, 0, 4) });
+			foreach (var verb in verbs) {
+				var button = new System.Windows.Controls.Button {
+					Content = verb.Text, Margin = new Thickness(2), IsEnabled = verb.Enabled,
+					HorizontalContentAlignment = System.Windows.HorizontalAlignment.Left,
+					ToolTip = String.IsNullOrEmpty(verb.Description) ? null : verb.Description
+				};
+				var captured = verb;
+				button.Click += async (buttonSender, buttonArgs) => {
+					popup.IsOpen = false;
+					await InvokeVerbAsync(componentName, captured);
+				};
+				panel.Children.Add(button);
+			}
 			popup.Closed += (popupSender, popupArgs) => { if (activeDesignerPopup == popup) activeDesignerPopup = null; };
 			activeDesignerPopup = popup;
 			popup.IsOpen = true;
@@ -1037,6 +1097,18 @@ namespace ICSharpCode.FormsDesigner
 				DesignerSessionState result = null;
 				ExecuteRemoteEdit(() => result = remoteClient.InvokeSmartTagMethodAsync(remoteDocumentVersion, componentName,
 					item.ListIndex, item.ItemIndex, System.Threading.CancellationToken.None).GetAwaiter().GetResult());
+			} catch (Exception exception) {
+				LoggingService.Error(exception);
+				MessageService.ShowError(exception.Message);
+			}
+		}
+
+		async System.Threading.Tasks.Task InvokeVerbAsync(string componentName, DesignerVerbInfo verb)
+		{
+			try {
+				DesignerSessionState result = null;
+				ExecuteRemoteEdit(() => result = remoteClient.InvokeVerbAsync(remoteDocumentVersion, componentName,
+					verb.Index, System.Threading.CancellationToken.None).GetAwaiter().GetResult());
 			} catch (Exception exception) {
 				LoggingService.Error(exception);
 				MessageService.ShowError(exception.Message);

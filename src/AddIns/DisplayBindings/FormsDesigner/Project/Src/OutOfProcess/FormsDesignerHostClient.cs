@@ -167,6 +167,13 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			=> connection.InvokeAsync<DesignerSessionState>("design/set-selection",
 				new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementIds = elementIds ?? [] }, cancellationToken);
 
+		/// <summary>Switches a TabControl's real SelectedIndex - pure view state, like
+		/// SetSelectionAsync above: no undo step, no designer-source line (real VS's own
+		/// tab-header click does not persist which tab was active either).</summary>
+		public Task<DesignerSessionState> SelectTabAsync(long baseVersion, string elementId, int tabIndex, CancellationToken cancellationToken)
+			=> connection.InvokeAsync<DesignerSessionState>("design/select-tab",
+				new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, tabIndex }, cancellationToken);
+
 		/// <summary>Hit-tests a point inside one popup overlay's own local space (see
 		/// DesignerSessionState.Popups) and selects whatever item is under it.</summary>
 		public Task<DesignerSessionState> HitTestPopupAsync(long baseVersion, string ownerElementId, double x, double y, CancellationToken cancellationToken)
@@ -235,6 +242,19 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		/// the most recent <see cref="ListSmartTagActionsAsync"/> call for the same element.</summary>
 		public Task<DesignerSessionState> InvokeSmartTagMethodAsync(long baseVersion, string elementId, int listIndex, int itemIndex, CancellationToken cancellationToken)
 			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/invoke-smart-tag-method", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, listIndex, itemIndex }, cancellationToken), cancellationToken);
+
+		/// <summary>Lists the designer verbs (VS's right-click context-menu items) for a component -
+		/// e.g. <c>TabControlDesigner</c>'s "Add Tab"/"Remove Tab". Distinct from a smart-tag action
+		/// (<see cref="ListSmartTagActionsAsync"/>) - <c>ComponentDesigner.Verbs</c>, not
+		/// <c>ActionLists</c>. Microsoft backend only; the Libre host returns <c>Accepted=false</c>.</summary>
+		public Task<DesignerVerbs> ListVerbsAsync(long baseVersion, string elementId, CancellationToken cancellationToken)
+			=> connection.InvokeAsync<DesignerVerbs>("design/list-verbs", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId }, cancellationToken);
+
+		/// <summary>Invokes a <c>DesignerVerb</c> found by index from the most recent
+		/// <see cref="ListVerbsAsync"/> call for the same element (never cached server-side between
+		/// calls).</summary>
+		public Task<DesignerSessionState> InvokeVerbAsync(long baseVersion, string elementId, int verbIndex, CancellationToken cancellationToken)
+			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/invoke-verb", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, verbIndex }, cancellationToken), cancellationToken);
 
 		/// <summary>Creates and appends a new ToolStripItem to a ToolStrip/StatusStrip/MenuStrip
 		/// (or to a submenu's DropDownItems when <paramref name="parentItemId"/> is non-empty) -

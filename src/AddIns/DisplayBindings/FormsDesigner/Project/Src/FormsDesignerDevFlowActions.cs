@@ -528,5 +528,61 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 				return JsonSerializer.Serialize(new { success = false, error = exception.Message });
 			}
 		}
+
+		// The four actions below give DevFlow direct RPC access to the smart-tag/verb pair,
+		// bypassing the chevron glyph and Ctrl+. keyboard shortcut entirely - both require driving
+		// real OS mouse/keyboard input against a tiny/keyboard-focus-dependent target that proved
+		// unreliable to hit blindly via synthetic screen coordinates (see the 2026-09-05 TabControl
+		// technote entries). Useful for exercising Add Tab/Remove Tab (or any other smart-tag/verb
+		// feature, e.g. ToolStrip's "Insert Standard Items") without any of that.
+
+		[DevFlowAction("od.forms-designer.list-smart-tag-actions", Description = "List the smart-tag (DesignerActionList) items for a named component in the active out-of-process WinForms designer - Microsoft backend only")]
+		public static string ListSmartTagActions(string componentName)
+		{
+			var viewContent = FindFormsDesignerViewContent();
+			if (viewContent?.IsRemoteDesignerLoaded != true)
+				return Failure("The out-of-process WinForms designer is not loaded");
+			try {
+				var actions = viewContent.ListRemoteSmartTagActions(componentName);
+				return JsonSerializer.Serialize(new {
+					success = actions.Accepted, error = actions.Error,
+					items = actions.Items.Select(item => new {
+						item.ListIndex, item.ItemIndex, item.Kind, item.DisplayName, item.Description,
+						item.Category, item.MemberName
+					}).ToArray()
+				});
+			} catch (Exception exception) {
+				return Failure(exception.Message);
+			}
+		}
+
+		[DevFlowAction("od.forms-designer.invoke-smart-tag-method", Description = "Invoke a smart-tag method item (by listIndex/itemIndex from od.forms-designer.list-smart-tag-actions) for a named component - Microsoft backend only")]
+		public static string InvokeSmartTagMethod(string componentName, int listIndex, int itemIndex)
+		{
+			return InvokeRemote(view => view.InvokeRemoteSmartTagMethod(componentName, listIndex, itemIndex));
+		}
+
+		[DevFlowAction("od.forms-designer.list-verbs", Description = "List the designer verbs (right-click context-menu items, e.g. TabControlDesigner's Add Tab/Remove Tab) for a named component in the active out-of-process WinForms designer - Microsoft backend only")]
+		public static string ListVerbs(string componentName)
+		{
+			var viewContent = FindFormsDesignerViewContent();
+			if (viewContent?.IsRemoteDesignerLoaded != true)
+				return Failure("The out-of-process WinForms designer is not loaded");
+			try {
+				var verbs = viewContent.ListRemoteVerbs(componentName);
+				return JsonSerializer.Serialize(new {
+					success = verbs.Accepted, error = verbs.Error,
+					items = verbs.Items.Select(item => new { item.Index, item.Text, item.Description, item.Enabled, item.Visible }).ToArray()
+				});
+			} catch (Exception exception) {
+				return Failure(exception.Message);
+			}
+		}
+
+		[DevFlowAction("od.forms-designer.invoke-verb", Description = "Invoke a designer verb (by index from od.forms-designer.list-verbs) for a named component - Microsoft backend only")]
+		public static string InvokeVerb(string componentName, int verbIndex)
+		{
+			return InvokeRemote(view => view.InvokeRemoteVerb(componentName, verbIndex));
+		}
 	}
 }

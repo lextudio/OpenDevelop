@@ -45,6 +45,8 @@ sealed class MultiDocumentDesignerHostService : IDesignerChildService
 	public DesignerHitTestResult HitTest(string sessionId, string documentId, long baseVersion, int x, int y) => GetChecked(sessionId, documentId).HitTest(sessionId, documentId, baseVersion, x, y);
 	[JsonRpcMethod("design/set-selection")]
 	public DesignerSessionState SetSelection(string sessionId, string documentId, long baseVersion, string[] elementIds) => GetChecked(sessionId, documentId).SetSelection(sessionId, documentId, baseVersion, elementIds);
+	[JsonRpcMethod("design/select-tab")]
+	public DesignerSessionState SelectTab(string sessionId, string documentId, long baseVersion, string elementId, int tabIndex) => GetChecked(sessionId, documentId).SelectTab(sessionId, documentId, baseVersion, elementId, tabIndex);
 	[JsonRpcMethod("design/hit-test-popup")]
 	public DesignerSessionState HitTestPopupAndSelect(string sessionId, string documentId, long baseVersion, string ownerElementId, int x, int y) => GetChecked(sessionId, documentId).HitTestPopupAndSelect(sessionId, documentId, baseVersion, ownerElementId, x, y);
 	[JsonRpcMethod("design/set-property")]
@@ -71,6 +73,10 @@ sealed class MultiDocumentDesignerHostService : IDesignerChildService
 	public DesignerSmartTagActions ListSmartTagActions(string sessionId, string documentId, long baseVersion, string elementId) => GetChecked(sessionId, documentId).ListSmartTagActions(sessionId, documentId, baseVersion, elementId);
 	[JsonRpcMethod("design/invoke-smart-tag-method")]
 	public DesignerSessionState InvokeSmartTagMethod(string sessionId, string documentId, long baseVersion, string elementId, int listIndex, int itemIndex) => GetChecked(sessionId, documentId).InvokeSmartTagMethod(sessionId, documentId, baseVersion, elementId, listIndex, itemIndex);
+	[JsonRpcMethod("design/list-verbs")]
+	public DesignerVerbs ListVerbs(string sessionId, string documentId, long baseVersion, string elementId) => GetChecked(sessionId, documentId).ListVerbs(sessionId, documentId, baseVersion, elementId);
+	[JsonRpcMethod("design/invoke-verb")]
+	public DesignerSessionState InvokeVerb(string sessionId, string documentId, long baseVersion, string elementId, int verbIndex) => GetChecked(sessionId, documentId).InvokeVerb(sessionId, documentId, baseVersion, elementId, verbIndex);
 	[JsonRpcMethod("design/add-toolstrip-item")]
 	public DesignerSessionState AddToolStripItem(string sessionId, string documentId, long baseVersion, string elementId, string itemTypeName, string parentItemId, string newItemId) => GetChecked(sessionId, documentId).AddToolStripItem(sessionId, documentId, baseVersion, elementId, itemTypeName, parentItemId, newItemId);
 	[JsonRpcMethod("design/reorder-toolstrip-item")]

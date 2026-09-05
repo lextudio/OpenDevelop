@@ -10,6 +10,7 @@ using System.Windows.Automation.Provider;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Markup;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
@@ -74,7 +75,22 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		readonly WrapPanel trayItems = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 3, 4, 3) };
 		/// <summary>The real designer's own default tray height (ComponentTray's _trayHeight).</summary>
 		const double TrayHeight = 80;
-		readonly SelectionAdornerLayer adornerLayer = new(Array.Empty<string>(), Brushes.DodgerBlue, showLabel: false);
+		/// <summary>The same selection-blue WinUI's own UnoDesignSurfaceControl uses
+		/// (Color.FromRgb(0x00, 0x78, 0xD4)) - unifies the two designers' selection look, which
+		/// previously differed (this one used the brighter stock <c>Brushes.DodgerBlue</c>).</summary>
+		static readonly SolidColorBrush SelectionBrush = MakeFrozenBrush(0x00, 0x78, 0xD4);
+
+		static SolidColorBrush MakeFrozenBrush(byte r, byte g, byte b)
+		{
+			var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
+			brush.Freeze();
+			return brush;
+		}
+
+		// showLabel stays false: this designer already shows a per-component name label for EVERY
+		// control via UpdateDesignGuides' own "label" TextBlock (not just the selected one), so a
+		// second, selection-only label from this shared layer would be redundant/wrong.
+		readonly SelectionAdornerLayer adornerLayer = new(Array.Empty<string>(), SelectionBrush, showLabel: false);
 		readonly Rectangle marqueeBorder;
 		readonly Thumb moveThumb;
 		readonly Thumb resizeHitTarget;
@@ -234,8 +250,8 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			designSurface.Children.Add(snapGuideOverlay);
 			adorners = new Canvas { IsHitTestVisible = true };
 			marqueeBorder = new Rectangle {
-				Stroke = Brushes.DodgerBlue, StrokeThickness = 1,
-				Fill = new SolidColorBrush(Color.FromArgb(35, 30, 144, 255)),
+				Stroke = SelectionBrush, StrokeThickness = 1,
+				Fill = new SolidColorBrush(Color.FromArgb(35, 0x00, 0x78, 0xD4)),
 				StrokeDashArray = new DoubleCollection { 3, 2 }, IsHitTestVisible = false,
 				Visibility = Visibility.Collapsed
 			};
@@ -255,6 +271,19 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				Visibility = Visibility.Collapsed,
 				Template = CreateTransparentThumbTemplate()
 			};
+			// moveThumb is drawn across the SELECTED component's whole bounds - which, for a
+			// TabControl, includes its header strip (the header is visually part of the control's
+			// own bounding rect). A plain SizeAll cursor there would advertise "drag to move" over
+			// an area that actually switches tabs on click and never actually moves anything - so
+			// swap to a plain pointer whenever the mouse sits over one of the reported
+			// TabHeaderBounds, matching what a click there will really do.
+			moveThumb.MouseMove += (sender, args) => {
+				var point = args.GetPosition(framePresenter.Visual);
+				var designPoint = new Point(point.X / viewport.Scale, point.Y / viewport.Scale);
+				var overHeader = selectedComponent?.TabHeaderBounds.Any(rect =>
+					new Rect(rect.X, rect.Y, rect.Width, rect.Height).Contains(designPoint)) == true;
+				moveThumb.Cursor = overHeader ? Cursors.Arrow : Cursors.SizeAll;
+			};
 			reorderThumb = new Thumb {
 				Background = Brushes.Transparent,
 				Cursor = Cursors.SizeWE,
@@ -268,9 +297,9 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				Template = CreateTransparentThumbTemplate()
 			};
 			insertionLine = new Rectangle {
-				Fill = Brushes.DodgerBlue, Visibility = Visibility.Collapsed, IsHitTestVisible = false
+				Fill = SelectionBrush, Visibility = Visibility.Collapsed, IsHitTestVisible = false
 			};
-			resizeThumb = new Thumb { Width = 8, Height = 8, Background = Brushes.White, BorderBrush = Brushes.DodgerBlue, BorderThickness = new Thickness(1), Cursor = Cursors.SizeNWSE, Visibility = Visibility.Collapsed };
+			resizeThumb = new Thumb { Width = 8, Height = 8, Background = Brushes.White, BorderBrush = SelectionBrush, BorderThickness = new Thickness(1), Cursor = Cursors.SizeNWSE, Visibility = Visibility.Collapsed };
 			// Keep the conventional 8px visual handle while providing a forgiving transparent
 			// input target around it.  At fractional DPI a real pointer can land one or two device
 			// pixels off the visible square; without this, ScrollViewer sees the gesture instead of
@@ -288,7 +317,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			adorners.Children.Add(insertionLine);
 			adorners.Children.Add(resizeHitTarget);
 			adorners.Children.Add(resizeThumb);
-			smartTagChevron = CreateChevronGlyph("»", Brushes.Goldenrod);
+			smartTagChevron = CreateSmartTagGlyph();
 			smartTagChevron.MouseLeftButtonDown += (sender, args) => {
 				args.Handled = true;
 				if (selectedComponent != null)
@@ -327,7 +356,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			typeHereEditor.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(OnTypeHereEditorKeyDown), true);
 			typeHereEditor.LostKeyboardFocus += (sender, args) => CommitTypeHere(TypeHereCommit.Cancel);
 			renameEditor = new TextBox {
-				FontSize = 11, BorderThickness = new Thickness(1), BorderBrush = Brushes.DodgerBlue,
+				FontSize = 11, BorderThickness = new Thickness(1), BorderBrush = SelectionBrush,
 				Background = Brushes.White, Padding = new Thickness(2, 0, 2, 0), Visibility = Visibility.Collapsed
 			};
 			// handledEventsToo: true - see PopupTypeHereEditor's own note on why a plain += is not
@@ -500,10 +529,9 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		/// when public, so that same-file/same-assembly sibling class needs this forwarder.</summary>
 		internal void RaiseToolStripTypeHereCommitted(RemoteToolStripTypeHereEventArgs e) => ToolStripTypeHereCommitted?.Invoke(this, e);
 
-		/// <summary>A small (9x9, matching VS's own smart-tag glyph footprint) clickable glyph,
-		/// drawn as a plain Border rather than a Button - see moveThumb's template comment on why
-		/// a real Button/Thumb's default theme chrome cannot be trusted to stay transparent under
-		/// this app's dark theme.</summary>
+		/// <summary>A small clickable glyph, drawn as a plain Border rather than a Button - see
+		/// moveThumb's template comment on why a real Button/Thumb's default theme chrome cannot
+		/// be trusted to stay transparent under this app's dark theme.</summary>
 		static Border CreateChevronGlyph(string glyph, Brush foreground) => new Border {
 			Width = 9, Height = 9,
 			Background = Brushes.White,
@@ -517,6 +545,33 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				Margin = new Thickness(0, -2, 0, 0)
 			}
 		};
+
+		/// <summary>The smart-tag chevron, using the real VS "SmartTag" glyph (VS2017 Image
+		/// Library - the same source CLAUDE.md documents for this repo's VS chrome icons)
+		/// rather than a hand-drawn text glyph. Sized 16x16 (real VS's own DesignerActionGlyph
+		/// paints its chevron procedurally via GDI+, not from an embedded bitmap resource - checked
+		/// System.Windows.Forms.Design.dll's manifest resources directly, no such resource exists
+		/// there - so this Image Library icon is the closest available "real" asset, just larger
+		/// and more legible than the previous 9x9 hand-drawn one).</summary>
+		static Border CreateSmartTagGlyph()
+		{
+			FrameworkElement icon;
+			try {
+				using var stream = typeof(RemoteFormsDesignerControl).Assembly.GetManifestResourceStream("SmartTagGlyph.xaml")
+					?? throw new InvalidOperationException("SmartTagGlyph.xaml resource not found.");
+				icon = (FrameworkElement)XamlReader.Load(stream);
+			} catch {
+				// Fall back to the old hand-drawn glyph rather than leave the chevron entirely
+				// missing if the embedded resource is ever unavailable.
+				return CreateChevronGlyph("»", Brushes.Goldenrod);
+			}
+			return new Border {
+				Width = 16, Height = 16,
+				Cursor = Cursors.Hand,
+				Visibility = Visibility.Collapsed,
+				Child = icon
+			};
+		}
 
 		/// <summary>Mimics the real WinForms designer's "insert new item" affordance
 		/// (LibreWinForms/dotnet-winforms <c>ToolStripTemplateNode.SetUpToolTemplateNode</c>):
@@ -942,7 +997,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 					continue;
 				var selected = selectedComponentNames.Contains(name);
 				entry.Background = selected ? new SolidColorBrush(Color.FromRgb(0xCC, 0xE4, 0xF7)) : Brushes.Transparent;
-				entry.BorderBrush = selected ? Brushes.DodgerBlue : Brushes.Transparent;
+				entry.BorderBrush = selected ? SelectionBrush : Brushes.Transparent;
 			}
 		}
 
@@ -991,14 +1046,22 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			// the real designer, that dropdown is rendered by WinForms itself (with its own
 			// adorners), and drawing our dashed outline plus a name label on top of it just
 			// obscured the real menu text.
-			foreach (var component in state.Components.Where(item => !String.IsNullOrEmpty(item.Parent) && !item.IsDropDownItem)) {
+			// item.IsVisible: a control on a TabPage that is not its TabControl's SelectedTab still
+			// reports the SurfaceX/Y it WOULD sit at, and every TabPage occupies the same rect - so
+			// drawing its outline/name tag anyway put phantom overlays exactly on top of whichever
+			// page really was showing. That is what made a correctly-rendered TabControl look like
+			// it was painting the wrong page's content, and why clicking one of those phantoms
+			// selected the enclosing TabPage instead (the child's own hit-test correctly refuses to
+			// resolve to a hidden control). See DesignerComponentInfo.IsVisible.
+			foreach (var component in state.Components.Where(item => !String.IsNullOrEmpty(item.Parent)
+				&& !item.IsDropDownItem && item.IsVisible)) {
 				var (surfaceX, surfaceY) = viewport.DesignToSurface(component.SurfaceX, component.SurfaceY);
 				var (surfaceX2, surfaceY2) = viewport.DesignToSurface(
 					component.SurfaceX + component.Width, component.SurfaceY + component.Height);
 				var outline = new Rectangle {
 					Width = Math.Max(1, surfaceX2 - surfaceX), Height = Math.Max(1, surfaceY2 - surfaceY),
 					Stroke = lockedComponentNames.Contains(component.Name) ? Brushes.DarkOrange
-						: selectedComponentNames.Contains(component.Name) ? Brushes.DodgerBlue : new SolidColorBrush(Color.FromArgb(150, 80, 80, 80)),
+						: selectedComponentNames.Contains(component.Name) ? SelectionBrush : new SolidColorBrush(Color.FromArgb(150, 80, 80, 80)),
 					StrokeThickness = selectedComponentNames.Contains(component.Name) ? 2 : 1,
 					StrokeDashArray = selectedComponentNames.Contains(component.Name) ? null : new DoubleCollection { 3, 2 }
 				};
@@ -1006,13 +1069,23 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				Canvas.SetTop(outline, surfaceY);
 				guides.Children.Add(outline);
 				if (showComponentLabels && component.Height >= 18 && component.Width >= 35) {
+					// Outside/above the control's own bounds (matching WinUI's own out-of-process
+					// designer, whose selection/name label sits above the box rather than
+					// overlapping the control's content) - previously drawn INSIDE at
+					// (surfaceX + 2, surfaceY + 2), which covered up the control's own rendered
+					// content (e.g. a Button's Text) right where a user would look for it.
 					var label = new TextBlock {
-						Text = component.Name, FontSize = 10, Foreground = Brushes.DimGray,
-						Background = new SolidColorBrush(Color.FromArgb(190, 255, 255, 255)),
+						Text = component.Name, FontSize = 10, Foreground = Brushes.White,
+						Background = new SolidColorBrush(Color.FromArgb(190, 80, 80, 80)),
 						Padding = new Thickness(2, 0, 2, 0)
 					};
-					Canvas.SetLeft(label, surfaceX + 2);
-					Canvas.SetTop(label, surfaceY + 2);
+					Canvas.SetLeft(label, surfaceX);
+					// A TabPage is the one case where "above my own bounds" is never free: a page's
+					// rect starts immediately below its TabControl's tab strip, so a label placed
+					// above it covers the active tab's own header text (it hid the word "General"
+					// on this repo's TabControlFixture). Keep that one inside its own page body.
+					var labelSitsInside = component.Type == "System.Windows.Forms.TabPage";
+					Canvas.SetTop(label, labelSitsInside ? surfaceY + 2 : Math.Max(0, surfaceY - 15));
 					guides.Children.Add(label);
 				}
 				if (showTabOrder) {
@@ -1067,6 +1140,49 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			UpdateDesignGuides();
 			UpdateAdorners();
 			SelectionChanged?.Invoke(this, EventArgs.Empty);
+			if (selectedComponent != null) _ = EnsureAncestorTabActiveAsync(selectedComponent);
+		}
+
+		/// <summary>Real VS's Document Outline switches the active tab automatically when you
+		/// select a node nested inside a TabPage that isn't currently showing - selecting it
+		/// without doing so would draw the selection adorner over whatever page IS visible, not
+		/// over the actual (hidden) component. Best-effort and fire-and-forget: local selection
+		/// state is already committed synchronously by the caller, this only corrects which page
+		/// is showing afterward. A no-op when <paramref name="component"/> has no TabPage ancestor,
+		/// or that TabPage is already the active one (design/select-tab setting the same
+		/// SelectedIndex again is itself a harmless no-op server-side).</summary>
+		async System.Threading.Tasks.Task EnsureAncestorTabActiveAsync(DesignerComponentInfo component)
+		{
+			var current = component;
+			DesignerComponentInfo tabPage = null;
+			while (current != null && !String.IsNullOrEmpty(current.Parent)) {
+				var parent = state?.Components?.FirstOrDefault(item => item.Name == current.Parent);
+				if (parent?.Type == "System.Windows.Forms.TabPage") { tabPage = parent; break; }
+				current = parent;
+			}
+			if (tabPage == null || String.IsNullOrEmpty(tabPage.Parent)) return;
+			var tabControlName = tabPage.Parent;
+			// The flat Components list's order is container-registration order (declaration order
+			// in InitializeComponent), NOT necessarily TabPages/layout order - the hierarchical
+			// Tree's Children order IS guaranteed to match (see BuildElementTree, which walks
+			// control.Controls directly), so the tab index must come from there, not from indexing
+			// into Components.
+			var tabControlNode = FindTreeNode(state?.Tree, tabControlName);
+			var index = tabControlNode?.Children?.FindIndex(node => node.Name == tabPage.Name) ?? -1;
+			if (index < 0) return;
+			var result = await client.SelectTabAsync(version, tabControlName, index, CancellationToken.None);
+			if (result.Accepted) Show(result);
+		}
+
+		static DesignerElementNode FindTreeNode(DesignerElementNode node, string name)
+		{
+			if (node == null) return null;
+			if (node.Name == name) return node;
+			foreach (var child in node.Children ?? Enumerable.Empty<DesignerElementNode>()) {
+				var found = FindTreeNode(child, name);
+				if (found != null) return found;
+			}
+			return null;
 		}
 
 		/// <summary>Selects a single component by name (no-op when unknown), keeping the rest
@@ -1163,15 +1279,77 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			try {
 				if (IsOutsideDesignSurface(e.OriginalSource))
 					return;
-				if (previewResizeDrag || resizingDrag || marqueeSelecting || IsAdornerSource(e.OriginalSource))
-					return;
 				var extendSelection = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) || Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
 				// GetPosition on the (possibly zoomed) frame image yields surface pixels;
 				// component bounds and the child's hit-testing are design-space.
 				var point = e.GetPosition(framePresenter.Visual);
 				var designPoint = new Point(point.X / viewport.Scale, point.Y / viewport.Scale);
-				if (!state.Components.Any(component => !String.IsNullOrEmpty(component.Parent)
-					&& new Rect(component.SurfaceX, component.SurfaceY, component.Width, component.Height).Contains(designPoint))) {
+				// A tab HEADER is not a component of its own - it is painted by the TabControl
+				// itself - so a click on one can never be found by the generic hit-test below (that
+				// only ever resolves to a real component). Checked first, and deliberately BEFORE
+				// the IsAdornerSource bail-out below: when the TabControl itself is the current
+				// selection, moveThumb is drawn across its ENTIRE bounds - including the header
+				// strip, since that strip is part of the control's own bounding rect - so a plain
+				// IsAdornerSource(e.OriginalSource) check would see the click as landing on
+				// moveThumb (cursor shows the "move" SizeAll cursor there) and return before ever
+				// trying a header switch, no matter how many times the header was clicked. Real
+				// VS's TabControlDesigner intercepts a header click before anything else gets a
+				// chance to see it; this must too, even through an adorner drawn on top of it.
+				if (!extendSelection && !previewResizeDrag && !resizingDrag && !marqueeSelecting
+					&& await TrySwitchTabAsync(designPoint)) {
+					// moveThumb (a real WPF Thumb) may already have captured the mouse for its own
+					// drag gesture as this same event bubbled through it, before reaching here -
+					// release it, or the immediately-following near-zero-delta MouseMove/MouseUp
+					// would still start/complete a spurious move-drag of the TabControl right after
+					// switching tabs.
+					if (moveThumb.IsMouseCaptured) moveThumb.ReleaseMouseCapture();
+					e.Handled = true;
+					return;
+				}
+				if (previewResizeDrag || resizingDrag || marqueeSelecting)
+					return;
+				// IsVisible everywhere below: a hidden page's children report bounds overlapping
+				// whichever page IS showing, so counting them here made a click land on a phantom
+				// (suppressing the marquee, or punching through an adorner) for a control that is
+				// not actually on screen. See DesignerComponentInfo.IsVisible.
+				var clickedComponentBounds = state.Components.Any(component => !String.IsNullOrEmpty(component.Parent)
+					&& component.IsVisible
+					&& new Rect(component.SurfaceX, component.SurfaceY, component.Width, component.Height).Contains(designPoint));
+				// moveThumb is drawn across the SELECTED component's whole bounds - if that
+				// component is a container (e.g. the TabControl whose page is now showing a child
+				// after a tab switch, or any other Panel-like control), moveThumb sits on top of
+				// every child inside it too. A click that actually lands on a DIFFERENT component's
+				// own bounds must still be able to select/drill into it (matching real VS: clicking
+				// a child inside an already-selected container selects the child, not the
+				// container's own move-drag) - but a click within the CURRENTLY selected
+				// component's OWN bounds is the normal way to start dragging IT via moveThumb, and
+				// must not be treated as a drill-through override, or moveThumb's mouse capture
+				// gets torn away before it ever sees a drag delta, breaking move-dragging entirely
+				// (a real regression this exact check caused once already).
+				// "Something MORE SPECIFIC than the current selection is under the pointer" - which
+				// is not the same as "some other component contains the point". Every ANCESTOR of
+				// the selection contains it too (a TabPage contains its button, the TabControl
+				// contains that page), and counting those made this true for the selected
+				// control's OWN drag-start, releasing moveThumb's capture and breaking
+				// move-dragging for every nested control while top-level ones - which have no
+				// containing ancestor other than the root form, itself excluded by the
+				// Parent check - kept working. Excluding the selection's own ancestor chain is what
+				// distinguishes "drill into a child" from "start dragging what is already selected".
+				var selectionAncestors = new HashSet<string>(StringComparer.Ordinal);
+				for (var walk = selectedComponent; walk != null && !String.IsNullOrEmpty(walk.Parent);
+					walk = state.Components.FirstOrDefault(item => item.Name == walk.Parent)) {
+					if (!selectionAncestors.Add(walk.Parent)) break;
+				}
+				var clickedOtherComponent = state.Components.Any(component => !String.IsNullOrEmpty(component.Parent)
+					&& component.Name != SelectedComponentName && component.IsVisible
+					&& !selectionAncestors.Contains(component.Name)
+					&& new Rect(component.SurfaceX, component.SurfaceY, component.Width, component.Height).Contains(designPoint));
+				if (IsAdornerSource(e.OriginalSource) && !clickedOtherComponent) {
+					return;
+				}
+				if (clickedOtherComponent && moveThumb.IsMouseCaptured)
+					moveThumb.ReleaseMouseCapture();
+				if (!clickedComponentBounds) {
 					marqueeSelecting = true;
 					marqueeExtendsSelection = extendSelection;
 					marqueeStart = designPoint;
@@ -1212,6 +1390,34 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			}
 		}
 
+		/// <summary>If designPoint lands inside one of a TabControl's own reported
+		/// TabHeaderBounds (see DesignerComponentInfo's own doc comment - a header is not a
+		/// component, so this is the only way to hit-test one), switches that TabControl's real
+		/// SelectedIndex (design/select-tab, deliberately NOT design/set-property - see that RPC's
+		/// own doc comment on why this must not persist or become an undo step) and selects the
+		/// TabControl itself - matching real VS, where clicking a tab header both switches the
+		/// active page AND selects the TabControl (not the page, and not whatever used to be
+		/// selected). Returns false (a no-op) when the click did not land on any header, so the
+		/// caller falls through to its own generic hit-test.</summary>
+		async System.Threading.Tasks.Task<bool> TrySwitchTabAsync(Point designPoint)
+		{
+			var hit = state.Components.SelectMany(component => component.TabHeaderBounds
+				.Select((bounds, index) => (component, bounds, index)))
+				.FirstOrDefault(entry => new Rect(entry.bounds.X, entry.bounds.Y, entry.bounds.Width, entry.bounds.Height).Contains(designPoint));
+			if (hit.component == null)
+				return false;
+			var result = await client.SelectTabAsync(version, hit.component.Name, hit.index, CancellationToken.None);
+			if (!result.Accepted)
+				return false;
+			selectedComponentNames.Clear();
+			selectedComponentNames.Add(hit.component.Name);
+			SelectedComponentName = hit.component.Name;
+			Show(result);
+			Focus();
+			SelectionChanged?.Invoke(this, EventArgs.Empty);
+			return true;
+		}
+
 		void OnMouseMove(object sender, MouseEventArgs e)
 		{
 			if (!marqueeSelecting || e.LeftButton != MouseButtonState.Pressed) return;
@@ -1241,7 +1447,10 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			marqueeBorder.Visibility = Visibility.Collapsed;
 			if (!marqueeExtendsSelection) selectedComponentNames.Clear();
 			if (bounds.Width >= 3 || bounds.Height >= 3) {
-				foreach (var component in state.Components.Where(item => !String.IsNullOrEmpty(item.Parent))) {
+				// IsVisible: rubber-banding over a TabControl must not also select the controls
+				// sitting on its OTHER, hidden pages, whose reported bounds overlap the page that
+				// is showing - see DesignerComponentInfo.IsVisible.
+				foreach (var component in state.Components.Where(item => !String.IsNullOrEmpty(item.Parent) && item.IsVisible)) {
 					// The marquee rect is drawn in surface space; convert each component rect
 					// the same way before intersecting.
 					var (cx, cy) = viewport.DesignToSurface(component.SurfaceX, component.SurfaceY);
@@ -1274,6 +1483,15 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		{
 			if (e.Key == Key.Escape && selectedComponent != null && !String.IsNullOrEmpty(selectedComponent.Parent)) {
 				SelectSingleComponent(selectedComponent.Parent);
+				e.Handled = true;
+				return;
+			}
+			// Ctrl+. (real VS's own "Edit.ShowSmartTag" shortcut) opens the smart-tag/verb popup
+			// for the current selection without needing to hit the 9x9 chevron glyph - useful for
+			// any component whose selection bounds put the chevron somewhere awkward to click, and
+			// the only way to reach it at all via keyboard.
+			if (e.Key == Key.OemPeriod && Keyboard.Modifiers == ModifierKeys.Control && selectedComponent != null) {
+				SmartTagRequested?.Invoke(this, new RemoteSmartTagRequestedEventArgs(selectedComponent.Name, smartTagChevron));
 				e.Handled = true;
 				return;
 			}
@@ -1328,6 +1546,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			UpdateAdorners();
 			if (takeFocus) Focus();
 			SelectionChanged?.Invoke(this, EventArgs.Empty);
+			_ = EnsureAncestorTabActiveAsync(component);
 		}
 
 		sealed class RemoteDesignerAutomationPeer : FrameworkElementAutomationPeer, ISelectionProvider
@@ -1873,7 +2092,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			var locked = lockedComponentNames.Contains(selectedComponent.Name);
 			moveThumb.IsEnabled = reorderThumb.IsEnabled = popupReorderThumb.IsEnabled = !locked;
 			resizeHitTarget.IsEnabled = resizeThumb.IsEnabled = isRoot || !locked;
-			adornerLayer.SelectionStroke = locked ? Brushes.DarkOrange : Brushes.DodgerBlue;
+			adornerLayer.SelectionStroke = locked ? Brushes.DarkOrange : SelectionBrush;
 			dragX = selectedComponent.SurfaceX;
 			dragY = selectedComponent.SurfaceY;
 			selectedLocalX = selectedComponent.X;

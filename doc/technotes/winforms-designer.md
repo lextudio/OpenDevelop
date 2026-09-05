@@ -1067,3 +1067,401 @@ Regression coverage: `ChildHost_Rename_UpdatesNamePropertyLiteralForToolStripIte
 deliberately shares an `AddRange` between two items specifically to exercise both delete bugs at
 once - if bug 1 regressed, the WHOLE method body would vanish; if bug 2 regressed, the surviving
 sibling would disappear from the array too).
+
+## TabControl: click a tab header to switch the active page (2026-09-05)
+
+> **STATUS CORRECTION (2026-09-05, later): this feature does NOT actually work.** Everything
+> below up through "Async chrome-settling bug" was written as though the settle-sequence fix
+> resolved the problem - it did not. The user confirmed live (clicking tab headers in the real
+> app) that the page never visually switches, and a follow-up investigation (see "TabControl page
+> content never visually switches" further below) proved the bug is NOT a chrome-settling timing
+> issue at all: `TabPage.Visible` is already correct on both the initial render and after
+> `design/select-tab` runs, yet the rendered bitmap is unaffected either way. The RPC layer
+> (`SelectedIndex` changes, no undo step, hit-testing resolves the right component name at given
+> coordinates) is correct and IS what the regression test below actually proves - but do not read
+> "the regression test passes" as "clicking a tab header works," because it does not, and no
+> automated test in this codebase currently catches that gap (none of them decode rendered pixels).
+> Root cause is still open; see the later section for what has been ruled out so far.
+
+Real VS's `TabControlDesigner` intercepts `WM_LBUTTONDOWN` on the live `TabControl` and drives
+`SelectedIndex` directly, so clicking a header switches which `TabPage` is being edited without
+generating any undo entry or persisted source change - navigation, not an edit. This
+screenshot-based out-of-process client cannot intercept window messages on the real control, so
+the same effect needed a new protocol round-trip.
+
+**Protocol**: `DesignerComponentInfo.TabHeaderBounds` (`Designer.Remote/DesignerProtocol.cs`) - a
+`List<DesignerRectangle>`, one entry per `TabPages[i]`, holding that HEADER's own rect (real
+`TabControl.GetTabRect(i)`), in the same absolute surface basis `SurfaceX/Y` use. A tab header
+isn't a `Component`/`Control` of its own - it's painted by the `TabControl` itself - so nothing
+else can report its geometry. Empty for any component that isn't a `TabControl`.
+`DesignerHostService.FindTabHeaderBounds` populates it, gated `#if MICROSOFT_WINFORMS` - Libre's
+`TabControl` fork does not implement `TabCount`/`GetTabRect`, so tab-header hit-testing is
+Microsoft-backend only for now; the client falls back to its ordinary generic hit-test when
+`TabHeaderBounds` is empty (Libre users can still switch tabs via the Properties pad's
+`SelectedIndex`, same as any other property).
+
+**RPC**: `design/select-tab` (`DesignerHostService.cs`, forwarded through
+`MultiDocumentDesignerHostService.cs` per the usual per-document-router pattern) sets
+`tabs.SelectedIndex = tabIndex` directly - like `design/set-selection`, deliberately outside any
+designer transaction and without any `RewriteProperty`/`RewriteComponentName` call, so it creates
+no undo step and emits no designer-source line. Real VS never persists "which tab was open at
+design time" either.
+
+**Client**: `RemoteFormsDesignerControl.OnMouseLeftButtonDown` checks `TrySwitchTabAsync` before
+falling through to the generic marquee/hit-test flow (after the existing
+outside-surface/adorner/marquee guards, so it never preempts a legitimate drag or empty-space
+click). It matches the click's design point against `TabHeaderBounds` across all components,
+calls `FormsDesignerHostClient.SelectTabAsync`, and on success updates the local selection state
+and re-renders.
+
+**Async chrome-settling bug (same family as `SetSelection`'s menu-dropdown chrome).** The first
+implementation of `SelectTab` returned `CurrentState` immediately after setting `SelectedIndex`.
+The RPC succeeded and bumped the render sequence number, but the returned bitmap still showed the
+PREVIOUSLY active page - `TabControl`'s own `OnSelectedIndexChanged` (which flips the old/new
+page's `Visible`) runs asynchronously relative to the RPC call, so rendering in the same call
+without pumping the message loop captured the frame before the swap had actually happened. Fixed
+with the same settle-sequence already used by `SetSelection`, gated `#if MICROSOFT_WINFORMS`:
+
+```csharp
+Application.DoEvents();
+(GetHost().RootComponent as Control)?.PerformLayout();
+Application.DoEvents();
+```
+
+Diagnosed via temporary logging in `TrySwitchTabAsync` (removed once confirmed) that showed the
+click-to-header-index resolution and the RPC round-trip were both already correct - the render
+sequence number legitimately advanced - narrowing the bug to rendering timing specifically, not
+hit-testing or the RPC itself.
+
+**Test-fixture note**: `ChildHost_SelectTab_SwitchesActivePageWithoutPersistingOrCreatingAnUndoStep`
+(`FormsDesignerHostClientTests.cs`) proves the RPC/hit-test-resolution correctness (accepted,
+`SelectedIndex` flips, no undo step, no source change) but does not - and structurally cannot -
+catch a render-timing bug like the one above, since it doesn't decode the returned bitmap's
+content. That gap is why the settle-sequence bug shipped past the regression suite and only
+surfaced via live DevFlow verification; a future test wanting to catch a regression here would
+need to compare rendered pixels, not just RPC acceptance and state deltas.
+
+## TabControl: Add Tab / Remove Tab (2026-09-05)
+
+Investigated via a research pass before implementing: TabControl's own "Add Tab"/"Remove Tab"
+affordances turned out NOT to be smart-tag actions at all (the first assumption, since ToolStrip's
+own affordances are). Confirmed empirically - `design/list-smart-tag-actions` for a `TabControl`
+returns zero items. Real VS's `TabControlDesigner` exposes them as **designer verbs**
+(`ComponentDesigner.Verbs`, the right-click context-menu mechanism), a distinct API this host had
+no support for at all.
+
+**Protocol/RPC**: `DesignerVerbInfo`/`DesignerVerbs` (`Designer.Remote/DesignerProtocol.cs`), and
+`design/list-verbs`/`design/invoke-verb` (`DesignerHostService.cs`, forwarded through
+`MultiDocumentDesignerHostService.cs`), modeled directly on the existing
+`design/list-smart-tag-actions`/`design/invoke-smart-tag-method` pair - same
+never-cache-the-live-collection-between-calls reasoning, same `(index)` addressing scheme (a verb
+collection has no sublists, so just one index instead of the smart tag pair's
+`(listIndex, itemIndex)`). Microsoft-backend only (`#if MICROSOFT_WINFORMS`); the Libre stub throws
+`NotSupportedException` rather than silently no-opping, matching every other Microsoft-only RPC in
+this file.
+
+**Source persistence - the actual new work.** Unlike `InvokeSmartTagMethod` (which never attempted
+to persist a smart-tag method's side effects to source - see its own long-standing doc comment),
+`TabControlDesigner`'s `AddTabPage`/`RemoveTabPage` verbs mutate `TabPages` via
+`host.CreateComponent`/`host.DestroyComponent` DIRECTLY (no `BehaviorService` dependency, unlike
+`ToolStripActionList.InsertStandardItems` - see below), so they create/destroy real sited
+components in this headless host that DO need syncing to source. `InvokeAndSyncComponentChanges`
+(shared by both `InvokeSmartTagMethod` and `InvokeVerb`) wraps the invoke in a designer
+transaction, observes every `IComponent` it adds/removes via `IComponentChangeService` (the same
+mechanism the real designer's own undo engine uses to notice this kind of change), and syncs each
+one to source using the SAME `RewriteAddedControl`/`RewriteDeletedComponent` helpers the explicit
+`design/add-element`/`design/delete-elements` RPCs already use - no new source-rewriting logic
+needed, since a `TabPage` added to a `TabControl` emits the identical
+`this.tabControl1.Controls.Add(this.tabPage3);` shape as any other added child control.
+
+**Unplanned but genuine fix found along the way: no `INameCreationService` was registered in the
+child design surface at all.** Every RPC that adds a component (`AddControl`, `AddToolStripItem`)
+passes an explicit caller-chosen name, so this gap went unnoticed for the whole rest of this
+session's work - but `TabControlDesigner.AddTabPage` calls `host.CreateComponent(typeof(TabPage))`
+itself with NO name, and without a name-creation service the resulting component came back
+completely unnamed (empty `Site.Name`), which cannot be synced to source at all (an empty
+identifier is not valid C#/VB). Fixed by registering a small custom `DefaultNameCreationService`
+into `CreateDesignSurface` unconditionally (this is genuinely backend-agnostic BCL API, not
+WinForms-specific, so no `#if` gating needed). This incidentally fixed a SEPARATE known gap too:
+`ToolStripActionList.InsertStandardItems` (see
+`ChildHost_SupportsSmartTagActionsAndToolStripItemInsertion`'s own long-standing comment) was
+believed to be a no-op headlessly for lack of a `BehaviorService` - it never asked for one; it
+could not name what it created, which read identically from the outside. It now genuinely
+populates the real File/Edit/Tools/Help standard menu structure. The existing regression test's
+own hand-picked item name (`fileToolStripMenuItem`) collided with a same-named item
+`InsertStandardItems` now legitimately creates, and was renamed to `customMenuItem`/
+`customSubMenuItem` to stop asserting on a name that coincidentally matches Microsoft's own
+standard-item naming.
+
+**Client UX**: no right-click context-menu surface exists in this client at all (confirmed via
+research pass - `RemoteFormsDesignerControl.cs` has no `ContextMenu`/`MouseRightButton` handling
+whatsoever), and building one from scratch for a single component type was judged out of scope.
+Verbs are instead folded into the EXISTING smart-tag chevron popup
+(`DesignerViewContent.RemoteSmartTagRequested`/`ShowSmartTagPopup`) - the popup now fetches both
+`ListSmartTagActionsAsync` and `ListVerbsAsync` and renders verb buttons (only `Visible` ones,
+disabled when `!Enabled`) below a separator from any smart-tag items. This is a deliberate
+simplification versus real VS's separate right-click menu, reusing an existing UI surface rather
+than adding a second one for what is currently a single TabControl-only case.
+
+**Verification status**: RPC/persistence correctness is proven by
+`ChildHost_TabControlAddRemoveTabVerbs_SyncNewAndRemovedTabPagesToSource`
+(`FormsDesignerHostClientTests.cs`) - adds a tab via the verb, asserts the new `TabPage` is sited
+with the right parent and its declaration/`Controls.Add`/sibling statements are all correctly
+emitted on Flush (this last check specifically guards against the block-wipe/AddRange-wipe class
+of bug fixed earlier this session for plain Delete), then removes it via the (re-fetched) "Remove
+Tab" verb and asserts it is gone from both state and source. Passing 69/69 (Microsoft) and 68/68
+(Libre, where the whole test is compiled out since verbs are Microsoft-only).
+
+Live DevFlow click-through of the actual chevron glyph was attempted but not completed at first -
+the glyph is a small element and blind screen-coordinate calculation (the same class of difficulty
+encountered earlier this session for the tab-header click feature) did not reliably land a click on
+it. Rather than keep guessing coordinates, added four new DevFlow actions
+(`od.forms-designer.list-smart-tag-actions`/`invoke-smart-tag-method`/`list-verbs`/`invoke-verb`,
+`FormsDesignerDevFlowActions.cs`, backed by new `internal` wrappers on `FormsDesignerViewContent`
+in `DesignerViewContent.cs`) that call the same RPCs directly, bypassing OS mouse/keyboard
+simulation entirely - a permanent testing improvement for this and any future smart-tag/verb work,
+not just TabControl. Using these, live end-to-end verification is now actually complete:
+`od.forms-designer.list-verbs "tabControl1"` reported `Add Tab`/`Remove Tab`; invoking `Add Tab`
+added a real `tabPage3` (visible in the rendered tab strip, the Outline pad, and
+`controlNames`) whose designer source came back exactly as the regression test asserts; invoking
+`Remove Tab` removed it again cleanly. Confirmed on the Microsoft backend via
+`tests/fixtures/TabControlFixture`.
+
+## Title-bar caption buttons: minimize was drawing "+" instead of "−" (2026-09-05, same day)
+
+While live-verifying the above, noticed `DesignerHostService.PaintFormChrome`'s simulated Windows
+caption bar (drawn because the design surface's root `Form` has no real OS non-client area to
+screenshot) rendered `[+][□][x]` instead of the correct `[−][□][x]`. The minimize button's drawing
+code drew BOTH a vertical and a horizontal line through the button center - together forming a "+"
+- instead of just the horizontal dash real Windows chrome uses. Fixed by dropping the vertical
+line, in the shared (non-`#if`-gated) part of `DesignerHostService.cs`, so both backends picked it
+up in the same rebuild. Confirmed via before/after DevFlow screenshot crop+zoom.
+
+## Selecting a component nested in a hidden TabPage now auto-switches the active tab (2026-09-05, same day)
+
+Closes the item flagged in this session's own earlier summary as "not yet explicitly tested" -
+selecting the TabControl itself vs. a TabPage vs. a control nested inside a TabPage. The
+underlying server-side identity (Name/Type/Parent per component) was already correct with zero
+ambiguity - every existing test that reads these fields proves it implicitly - so there was no
+protocol gap to close there. The real gap was client-side UX: real VS's Document Outline switches
+the active tab automatically when you select a node nested inside a page that isn't currently
+showing (so its selection adorner lines up with something actually visible); this client did not -
+`RemoteFormsDesignerControl.SelectSingleComponent`/`SelectComponents` only ever updated local
+selection bookkeeping, regardless of whether the target sat on the active page or a hidden one.
+
+Added `EnsureAncestorTabActiveAsync` (called fire-and-forget from both selection entry points,
+after the synchronous local-selection-state commit those callers already depend on): walks the
+selected component's `Parent` chain looking for a `TabPage` ancestor, then finds that page's
+position within its `TabControl` using the **hierarchical `Tree`** (`DesignerElementNode`), not
+the flat `Components` list - the latter's order is container-registration/declaration order
+(`InitializeComponent` statement order), not layout order, while `Tree.Children` is guaranteed to
+match real tab order (`BuildElementTree` walks `control.Controls` directly, which backs
+`TabPages` for a `TabControl`). Once found, calls the same `design/select-tab` RPC the tab-header
+click already uses.
+
+**Verified logically correct, NOT verified visually.** Temporary diagnostic logging (removed once
+confirmed, same pattern as this session's earlier TabControl diagnostics) proved the logic
+computes the right ancestor TabPage and the right tab index, and that `design/select-tab` returns
+`Accepted: true` with the real `SelectedIndex` genuinely changed. But the DevFlow screenshot kept
+showing the same (wrong) page's content regardless - and, critically, this reproduces with NO
+code of this feature involved at all: explicitly setting `tabControl1.SelectedIndex` via the
+generic `design/set-property` RPC (`od.forms-designer.set-property`) produces the identical
+symptom (property change accepted, dirty flag set, rendered bitmap unchanged) on this exact
+fixture. This is the same still-unresolved rendering mystery already flagged earlier in this
+session for the tab-header-click feature itself ("Live DevFlow re-verification of the
+render-timing fix was inconclusive") - not a new bug introduced by this change, but also not
+something this change fixes. A future session investigating TabControl rendering should treat
+"does `SelectedIndex` changing ever visibly repaint in a DevFlow screenshot on this fixture at
+all" as the actual open question, independent of any particular RPC or client code path.
+
+## Smart-tag glyph: real icon + Ctrl+. keyboard shortcut (2026-09-05, later same day)
+
+Two follow-ups from the Add Tab/Remove Tab work above, both prompted by user feedback:
+
+**Real icon.** The smart-tag chevron was a hand-drawn 9x9 "»" glyph in Goldenrod. Checked whether
+real WinForms' own `DesignerActionGlyph` paints from an embedded bitmap resource first (grepped
+`System.Windows.Forms.Design.dll`'s manifest resources directly for anything glyph/smart-tag/action
+related) - it does not; VS's real chevron is painted procedurally via GDI+, no resource to reuse.
+Used the VS2017 Image Library's own "SmartTag" icon instead (the same source CLAUDE.md documents
+for this repo's other VS chrome icons), embedded as a plain manifest resource
+(`Project\Resources\SmartTagGlyph.xaml`, `EmbeddedResource` with a fixed `LogicalName`, `Page
+Remove` to keep the WPF markup compiler from treating the loose `Viewbox` root as a navigable
+Page) and loaded via `XamlReader.Load` at runtime (`CreateSmartTagGlyph`,
+`RemoteFormsDesignerControl.cs`) rather than a hand-drawn `TextBlock`. Sized 16x16 (up from 9x9) -
+the chevron's screen position is computed from `smartTagChevron.Width/Height` already, so no
+positioning code needed to change. Confirmed rendering correctly via DevFlow screenshot
+(crop+zoom, matching the reference PNG from the Image Library).
+
+**Ctrl+. keyboard shortcut.** Real VS's own "Edit.ShowSmartTag" shortcut opens the smart-tag/verb
+popup without needing to hit the tiny chevron glyph - added the same binding
+(`RemoteFormsDesignerControl.OnKeyDown`, `Key.OemPeriod` + `ModifierKeys.Control`) reusing the
+identical `SmartTagRequested` event the chevron's own mouse handler raises. Live DevFlow
+verification of the KEY ITSELF was inconclusive: `od.activate`'s own result reported
+`nativeFocused: false` even with `foregrounded: true` (`OD_TEST_MODE=1`'s `ShowActivated=false`
+appears to prevent the window from ever receiving genuine OS keyboard focus via this route,
+regardless of which key is sent) - confirmed by also sending a plain `Escape` (whose handler is
+long-established and unrelated to this change) and observing zero effect on selection, ruling out
+a bug in the new handler specifically. The code change itself is a direct copy of the same
+`OnKeyDown` pattern already used for F2/Delete/Escape in the same method, so it is trusted by
+inspection/precedent rather than a completed live keystroke trace.
+
+## TabControl page content never visually switches - root cause narrowed, still open (2026-09-05, later same day)
+
+**The user directly reported that clicking a tab header in the real running app does not switch
+which page's content is shown**, contradicting how the click-to-switch-tab feature above was
+described. This is the actual, current status: broken. This section records what has been ruled
+out so a future investigation does not repeat the same dead ends.
+
+Leading theory going in was that `TabPage.Visible` never flips, because a real `TabControl`'s
+Visible-swap on `SelectedIndex` changing is normally driven by its native control's own
+`WM_NOTIFY`/`TCN_SELCHANGE` handling - and this out-of-process design surface's control tree,
+`CreateControl()`'d but never actually shown inside a real top-level window, might never generate
+or receive that notification at all (a structural gap, not a timing race the existing
+`Application.DoEvents()` pump could ever fix). Speculative fix attempted: manually setting each
+`TabPage.Visible` explicitly (in `SelectTab`, in `SetProperty` for `SelectedIndex`, and once at
+initial load in `CreateDesignSurface`) to match the `TabControl`'s own `SelectedIndex`.
+
+**This theory was wrong - disproven by diagnostic logging, not just untested.** Temporary logging
+in `CreateDesignSurface` (removed once confirmed; the code changes were reverted, not merged) dumped
+each `TabControl`'s `SelectedIndex` and each of its `TabPage.Visible` values right after the surface
+finished loading, on `tests/fixtures/TabControlFixture` (which declares
+`tabControl1.SelectedIndex = 0`):
+
+```
+tabs=tabControl1 SelectedIndex=0 pageCount=2 tabPage1:Visible=True,tabPage2:Visible=False
+```
+
+`Visible` was **already correct** before any fix ran - `tabPage1` (index 0, matching
+`SelectedIndex`) was `True`, `tabPage2` was `False`. Manually re-asserting the same values was
+therefore a genuine no-op, confirmed by rebuilding with it in place and observing the rendered
+screenshot was unchanged (still showed `tabPage2`'s content - "Advanced" - despite `tabPage1`
+being the `Visible` one). The speculative fix added no value and was reverted rather than left in
+as dead code.
+
+**What this actually rules in**: the bug is not in `TabPage.Visible`, not in `TabControl.
+SelectedIndex` (both already correct at every point checked), and not in RPC-level acceptance
+(`design/select-tab` and `design/set-property` both return `Accepted: true` with the real property
+changed). The remaining candidate is the render/paint path itself - `Render()`'s
+`root.DrawToBitmap(bitmap, ...)` call (`DesignerHostService.cs`, gated `#if MICROSOFT_WINFORMS`).
+`Form.DrawToBitmap` uses `WM_PRINTCLIENT` to rasterize the control tree; a `TabControl`'s own
+`WM_PRINTCLIENT`/paint handling for which page's children actually get drawn may not correctly
+respect `Visible` (or may rely on additional native state - e.g. the control's own last-known
+client rectangle for the selected tab body, established interactively - that this design surface,
+whose root `Form` is `CreateControl()`'d but never actually becomes a real visible top-level
+window, never properly initializes). This is a hypothesis, not yet confirmed the way the `Visible`
+theory was disproven - it has not been tested by, for example, temporarily forcing
+`tabPage2.Controls.Clear()` before rendering to see whether button2/label1 disappear from the
+bitmap (which would prove DrawToBitmap really is painting an invisible page's children) versus
+some entirely different explanation (e.g. stale/misattributed screen coordinates in the DevFlow
+screenshot pipeline itself - though this is made less likely by the fact that unrelated
+screenshots taken in the same session, e.g. Add Tab's new tab header appearing, the title-bar
+caption-button fix, and the bigger smart-tag icon, all correctly reflected real-time state
+changes; only TabControl PAGE CONTENT specifically appears stuck).
+
+**Practical impact**: Add Tab / Remove Tab do not depend on this (their own regression test
+checks sited components and designer source, never rendered pixels, and both operations were
+independently confirmed live via the direct-RPC DevFlow actions in the previous section - a real
+`tabPage3` appeared in the rendered TAB STRIP itself, which is unaffected by this bug). Only the
+PAGE BODY's content is affected. Anything that reads `SelectedIndex`/selection state via RPC
+(Properties pad, Outline pad, hit-testing at given coordinates) is unaffected and reports
+correctly - only the rendered bitmap a human or a screenshot-based test actually looks at is
+wrong. Do not mark tab-switching as working based on RPC-level tests or DevFlow state checks
+alone; only a live visual check (or a future pixel-decoding test) can confirm this specific
+gap is fixed.
+
+**Follow-up attempt (same day): manual erase-and-repaint over the TabControl's display area also failed, and inconclusively.** Tried erasing each `TabControl`'s `DisplayRectangle` (computed via the existing `SurfaceLocation` helper) and manually redrawing just `SelectedTab`'s own `DrawToBitmap` output on top, after the main `root.DrawToBitmap` call. Diagnostic logging confirmed every step executed without exception, with the right values (`SelectedTab=tabPage1`, a plausible `eraseRect`, "drew ok") - yet the rendered screenshot was pixel-identical to before the fix, as if the erase+redraw simply never happened. This rules out the most likely quick fix and means the actual mechanism is not yet understood: either the bitmap being drawn onto is not the one actually returned to the client (unlikely - the rest of the bitmap, chrome, controls outside TabControls all update correctly every time), or something about a `TabPage`'s own `DrawToBitmap` call in isolation is itself producing a transparent/blank/no-op result silently. Reverted (kept out of the codebase) rather than leave non-functional complexity in. A future attempt should first verify - by saving `pageBitmap` in isolation before compositing it - whether `activePage.DrawToBitmap` on its own produces any real content at all for a `TabPage` that was never the active one at any point up to that call.
+
+## Unified selection box style with WinUI (color + name label) (2026-09-05, later same day)
+
+User feedback: the WinForms and WinUI out-of-process designers drew their selection box
+differently - WinUI shows a name label above/outside the box; WinForms showed no name label at
+all. The border colors also differed (WinForms used the stock `Brushes.DodgerBlue`; WinUI uses
+`Color.FromRgb(0x00, 0x78, 0xD4)`, the real VS/Fluent accent blue, via `UnoDesignSurfaceControl`).
+
+Both designers already share `SelectionAdornerLayer` (`Designer.Presentation/
+SelectionAdornerLayer.cs`), which already supported a `showLabel` constructor flag (WinForms
+passed `false`) and already draws the label ABOVE the box (`top - 17`) when enabled - so no
+changes were needed to the shared class at all, only to how `RemoteFormsDesignerControl.cs`
+constructs and drives it:
+- Added a frozen `SelectionBrush` (`Color.FromRgb(0x00, 0x78, 0xD4)`) matching WinUI's own
+  `SelectionColor` exactly, and replaced every other `Brushes.DodgerBlue` use in the file (move/
+  resize thumbs' visual chrome, the marquee selection rectangle, the rename-editor's border, the
+  ComponentTray's selected-entry highlight, and the per-component design-guide outline) with it,
+  so the whole designer's selection visual language is consistent, not just the primary box.
+- Changed the `SelectionAdornerLayer` construction's `showLabel` from `false` to `true`.
+- `PositionAdorners` now passes `selectedComponent?.Name` as `ShowSelection`'s label argument
+  (previously omitted, since the label didn't exist for this designer).
+
+Confirmed via DevFlow screenshot (crop+zoom): selecting `label1` now shows a clean "label1" blue
+tag above its dashed selection box, matching WinUI's own look exactly.
+
+Incidental correction while verifying this: the "overlapping garbled text" observed in earlier
+TabControl screenshots throughout this session (e.g. "button2 ton on / General") was largely
+misread - zooming in with the new, clearer consistent coloring shows it is mostly just
+word-wrapped button `Text` ("Button on Advanced" wrapping across two lines at this render size)
+overlapping with a PRE-EXISTING per-component gray name tag that `UpdateDesignGuides` already
+draws for every component (not just the selected one) - not new bleed-through content from
+inactive TabPages as first suspected. This does not change the actual open bug (the wrong
+TabPage's content and header still render as active regardless of `SelectedIndex`) - that remains
+exactly as described in the section above - but weakens confidence in the specific "both pages'
+controls are painted overlapping" phrasing used there; what is certain is only that the WRONG
+page's content renders, not necessarily that BOTH pages render simultaneously.
+
+## RESOLVED: there was never a TabControl rendering bug - it was phantom client overlays (2026-09-05, later same day)
+
+**Every "TabControl renders the wrong page" claim in the three sections above is wrong.** The
+child process's `Form.DrawToBitmap` output was correct the entire time. The real defect was
+entirely client-side, and the decisive evidence was one crop-and-zoom of the rendered button text:
+it reads **"Button on General"** - that is `button1`, the child of `tabPage1`, the page that
+`SelectedIndex`/`TabPage.Visible` said was active all along. Not `button2` ("Button on Advanced").
+
+**What actually happened.** `RemoteFormsDesignerControl.UpdateDesignGuides` drew a dashed outline
+AND a name tag for every entry in `state.Components`, with no visibility filter. Every `TabPage` of
+a `TabControl` occupies the SAME rect, so the outlines and tags for the HIDDEN page's children
+(`button2`, `label1`) landed exactly on top of the visible page's content. Combined with the name
+tags being drawn INSIDE each control's top-left corner at the time, this produced:
+
+- A gray "tabControl1" tag sitting precisely over the FIRST tab header's text, hiding the word
+  "General" and leaving only "Advanced" legible - which is why the tab strip looked like "Advanced"
+  was the active tab in every screenshot for hours. It never was.
+- A "button2" tag and a "label1" tag plus an empty dashed outline over `tabPage1`'s content, which
+  is why the body looked like it held tabPage2's controls.
+- The "overlapping garbled text" (`"button2 ton on / General"`) - a phantom "button2" tag on top
+  of the real, word-wrapped "Button on General".
+
+Both of the user-reported symptoms that finally cracked it follow directly:
+- *"I can't select label1, tabPage2 gets selected instead"* - the `label1` being clicked was a
+  phantom outline for a control on the hidden page. The child process's `FindDeepest` hit-test
+  correctly checks `child.Visible` and so refuses to resolve to it, falling back to the enclosing
+  `TabPage`. The hit-test was right; the thing on screen was a lie.
+- *"I selected button2 but can't move it"* - `button2` is on the hidden page, so `moveThumb` was
+  positioned over a control that is not on screen.
+
+**Fix**: new `DesignerComponentInfo.IsVisible`, populated server-side from `Control.Visible` (whose
+getter already folds in the whole parent chain via `GetVisibleCore`, so a control on a non-selected
+`TabPage` reports false without any TabControl-specific logic), with a guard that reports `true`
+for everything if the offscreen root form itself reports invisible - otherwise the flag would carry
+no information and the client would hide ALL overlays. Client now filters on it in
+`UpdateDesignGuides`, in both `OnMouseLeftButtonDown` local bounds checks, and in the
+marquee-intersection pass. Covered by assertions in
+`ChildHost_SelectTab_SwitchesActivePageWithoutPersistingOrCreatingAnUndoStep` (both before and
+after a tab switch, plus a "tabControl1 stays visible" check so a default-false regression cannot
+silently hide every overlay). 69/69 Microsoft, 68/68 Libre.
+
+**Process lesson worth more than the fix.** Hours went into the wrong layer - message-pump settle
+sequences, `TabPage.Visible` normalisation, `Invalidate`/`Update` before capture, manual
+erase-and-repaint of the TabControl's display area, and a long hunt for a `WM_PRINTCLIENT`
+visibility quirk - because the *rendered bitmap* was assumed guilty from the first screenshot and
+never independently verified. Two things would have caught it immediately:
+1. **Read the actual pixels before theorising.** One zoom on the button's own text ("General" vs
+   "Advanced") settled in seconds what days of server-side reasoning could not.
+2. **Distinguish server bitmap from client overlay.** The design surface is a server-rendered
+   bitmap with WPF adorners drawn ON TOP; "what I see" is the composite. When something looks
+   wrong, first establish WHICH layer it came from - e.g. by temporarily hiding the guides canvas,
+   or saving the raw `PngBase64` frame to disk and viewing it alone. Every failed fix above was
+   applied to the layer that was already correct.
+
+Also worth noting: `IsAdornerSource`-style guards made the same class of mistake in the input path -
+a click was attributed to an adorner drawn on top rather than to what the user was aiming at. The
+tab-header click fix and the drill-into-a-child fix are both instances of "the overlay is not the
+thing".

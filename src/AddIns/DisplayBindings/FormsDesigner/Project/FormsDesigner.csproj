@@ -140,6 +140,14 @@
     <EmbeddedResource Update="Src\Gui\ImageResourceEditorDialog.resx">
       <DependentUpon>ImageResourceEditorDialog.cs</DependentUpon>
     </EmbeddedResource>
+    <!-- The real VS "SmartTag" glyph (VS2017 Image Library) for the out-of-process designer's
+         smart-tag chevron - see CreateChevronGlyph's own note on why this is a plain manifest
+         resource loaded via XamlReader at runtime rather than a WPF Page/Resource build item
+         (avoids the markup compiler treating this loose Viewbox as a navigable Page). -->
+    <Page Remove="Resources\SmartTagGlyph.xaml" />
+    <EmbeddedResource Include="Resources\SmartTagGlyph.xaml">
+      <LogicalName>SmartTagGlyph.xaml</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <!--

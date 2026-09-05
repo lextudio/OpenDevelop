@@ -265,6 +265,21 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// own adorners once the dropdown is expanded, so the client must not overdraw its own
 		/// outline/name label on top of the rendered menu text.</summary>
 		public bool IsDropDownItem { get; set; }
+		/// <summary>Whether this component is actually on screen in the rendered frame right now -
+		/// false for anything on a TabPage that is not its TabControl's SelectedTab, inside a
+		/// hidden container, or explicitly Visible=false.
+		///
+		/// The client MUST skip these when drawing its own outlines/name tags and when hit-testing
+		/// clicks locally. <see cref="SurfaceX"/>/<see cref="SurfaceY"/> still describe where such a
+		/// component WOULD sit, and every TabPage of a TabControl occupies the SAME rect, so an
+		/// overlay drawn for a hidden page's child lands exactly on top of whichever sibling page IS
+		/// showing. That reads as "the designer rendered the wrong page's content" (it did not - the
+		/// bitmap is correct; the phantom overlay is not) and makes a click on what looks like a
+		/// control select its enclosing TabPage instead, since the child process's own hit-test
+		/// correctly honours visibility and never resolves to a hidden control. Both symptoms were
+		/// reported and misdiagnosed as a TabControl RENDERING bug before this flag existed - see
+		/// doc/technotes/winforms-designer.md.</summary>
+		public bool IsVisible { get; set; } = true;
 		/// <summary>For a ToolStrip/MenuStrip/StatusStrip: how new items are added to it in the
 		/// real designer, which differs per strip kind (see ToolStripTemplateNode's
 		/// SetupNewEditNode). "" for anything that is not a strip.</summary>
@@ -275,6 +290,14 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public List<string> NewItemTypeNames { get; set; } = new List<string>();
 		public List<DesignerPropertyInfo> Properties { get; set; } = new List<DesignerPropertyInfo>();
 		public List<DesignerEventInfo> Events { get; set; } = new List<DesignerEventInfo>();
+		/// <summary>For a TabControl only: each tab HEADER's own rect (real
+		/// TabControl.GetTabRect(i), one per TabPages[i] in order), in the same absolute surface
+		/// basis SurfaceX/Y use. A tab header is not a component of its own - it is painted by the
+		/// TabControl itself - so there is no other way for the client to hit-test a click on one
+		/// (real VS's TabControlDesigner does this by intercepting WM_LBUTTONDOWN on the real
+		/// control directly, which this screenshot-based client cannot do). Empty for anything that
+		/// is not a TabControl.</summary>
+		public List<DesignerRectangle> TabHeaderBounds { get; set; } = new List<DesignerRectangle>();
 	}
 
 	/// <summary>How a strip's template node lets the user add items, mirroring
@@ -556,6 +579,29 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public bool Accepted { get; set; }
 		public string Error { get; set; } = "";
 		public List<DesignerSmartTagActionInfo> Items { get; set; } = new();
+	}
+
+	/// <summary>One <c>DesignerVerb</c> (VS's right-click context-menu item for a selected
+	/// component - e.g. <c>TabControlDesigner</c>'s "Add Tab"/"Remove Tab" - distinct from a
+	/// smart-tag action, see <see cref="DesignerSmartTagActionInfo"/>).</summary>
+	public sealed class DesignerVerbInfo
+	{
+		/// <summary>Index within <c>ComponentDesigner.Verbs</c>, needed to re-locate the same verb
+		/// on a later <c>design/invoke-verb</c> call (the live collection is never cached
+		/// server-side between calls).</summary>
+		public int Index { get; set; }
+		public string Text { get; set; } = "";
+		public string Description { get; set; } = "";
+		public bool Enabled { get; set; } = true;
+		public bool Visible { get; set; } = true;
+	}
+
+	/// <summary>Response to <c>design/list-verbs</c>.</summary>
+	public sealed class DesignerVerbs
+	{
+		public bool Accepted { get; set; }
+		public string Error { get; set; } = "";
+		public List<DesignerVerbInfo> Items { get; set; } = new();
 	}
 
 	/// <summary>Response to <c>design/get-type-icon</c>: the real WinForms toolbox icon for a

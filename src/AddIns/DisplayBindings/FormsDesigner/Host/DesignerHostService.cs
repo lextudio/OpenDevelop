@@ -149,6 +149,35 @@ sealed class DesignerHostService : IDesignerChildService
 		return CurrentState(baseVersion);
 	}
 
+	/// <summary>Switches a TabControl's real SelectedIndex - the mechanism a click on a tab
+	/// HEADER drives client-side (RemoteFormsDesignerControl.TrySwitchTabAsync), since a header is
+	/// not a component the generic hit-test can ever resolve to. Deliberately NOT routed through
+	/// design/set-property: real VS's own tab-header click does not persist which tab was active
+	/// at design time (no "tabControl1.SelectedIndex = 1;" line ever appears in Designer.cs from
+	/// clicking around), and does not create an undo step either - it is pure view state, the same
+	/// reasoning design/set-selection already follows for the selection itself. No transaction, no
+	/// RewriteProperty; just moves the live property so the next render shows the right page.</summary>
+	[JsonRpcMethod("design/select-tab")]
+	public DesignerSessionState SelectTab(string sessionId, string documentId, long baseVersion, string elementId, int tabIndex)
+	{
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "select a tab in");
+		var host = GetHost();
+		if (host.Container.Components[elementId] is TabControl tabs && tabIndex >= 0 && tabIndex < tabs.TabPages.Count) {
+			tabs.SelectedIndex = tabIndex;
+#if MICROSOFT_WINFORMS
+			// Same reasoning as SetSelection's own note: TabControl's real OnSelectedIndexChanged
+			// (which flips the old/new TabPage's own Visible) is asynchronous relative to this
+			// call - rendering in the same call without pumping captured the frame BEFORE the
+			// swap had actually happened, so the reported SelectedIndex was already correct while
+			// the painted pixels still showed the PREVIOUS page.
+			Application.DoEvents();
+			(GetHost().RootComponent as Control)?.PerformLayout();
+			Application.DoEvents();
+#endif
+		}
+		return CurrentState(baseVersion);
+	}
+
 	/// <summary>Hit-tests a point INSIDE one popup overlay's own local coordinate space (see
 	/// DesignerSessionState.Popups) and, if it lands on an item, selects that item through the
 	/// real ISelectionService - the same "let the real designer react" approach
@@ -559,13 +588,16 @@ sealed class DesignerHostService : IDesignerChildService
 
 	/// <summary>Invokes a <c>DesignerActionMethodItem</c> found by re-fetching the same smart
 	/// tag list (never cached between calls - the live <c>DesignerActionList</c> is not a
-	/// serializable DDP object). Many such methods (e.g. ToolStripActionList's "Insert Standard
-	/// Items") mutate the component's runtime child collection directly rather than through a
-	/// property this host already knows how to serialize, so - unlike every other mutation RPC
-	/// in this file - this one does not attempt to rewrite the designer source; the caller sees
-	/// the new state immediately via the returned <see cref="DesignerSessionState"/>, but a
-	/// subsequent Flush will not yet emit source for whatever the method added. Persisting
-	/// arbitrary smart-tag method side effects to source is a follow-up, not attempted here.</summary>
+	/// serializable DDP object). Some such methods (e.g. <c>TabControlActionList</c>'s "Add Tab"/
+	/// "Remove Tab") mutate the component's runtime child collection directly via
+	/// <c>host.CreateComponent</c>/<c>host.DestroyComponent</c> rather than through a property this
+	/// host already knows how to serialize - so any <see cref="IComponent"/> the invoke itself adds
+	/// or removes (observed via <see cref="IComponentChangeService"/>, the same mechanism the real
+	/// designer's own undo engine uses to notice this) is synced to source afterward using the same
+	/// <see cref="RewriteAddedControl"/>/<see cref="RewriteDeletedComponent"/> helpers the explicit
+	/// add/delete RPCs use. Other methods (e.g. ToolStripActionList's "Insert Standard Items") rely
+	/// on a <c>BehaviorService</c> this headless host never registers and so are themselves no-ops
+	/// here - nothing to sync in that case.</summary>
 	[JsonRpcMethod("design/invoke-smart-tag-method")]
 	public DesignerSessionState InvokeSmartTagMethod(string sessionId, string documentId, long baseVersion, string elementId, int listIndex, int itemIndex)
 	{
@@ -579,10 +611,92 @@ sealed class DesignerHostService : IDesignerChildService
 		var sorted = lists[listIndex].GetSortedActionItems();
 		if (itemIndex < 0 || itemIndex >= sorted.Count || sorted[itemIndex] is not DesignerActionMethodItem methodItem)
 			throw new ArgumentException("Smart tag method item not found.", nameof(itemIndex));
-		using (var transaction = host.CreateTransaction("Invoke " + methodItem.DisplayName)) {
-			methodItem.Invoke();
-			transaction.Commit();
+		InvokeAndSyncComponentChanges(host, "Invoke " + methodItem.DisplayName, methodItem.Invoke);
+		return CurrentState(baseVersion);
+	}
+
+	/// <summary>Shared by <see cref="InvokeSmartTagMethod"/> and <see cref="InvokeVerb"/>: runs
+	/// <paramref name="invoke"/> inside a designer transaction, observes every
+	/// <see cref="IComponent"/> it adds or removes via <see cref="IComponentChangeService"/> (the
+	/// same mechanism the real designer's own undo engine uses to notice this), and syncs each one
+	/// to designer source using the same <see cref="RewriteAddedControl"/>/
+	/// <see cref="RewriteDeletedComponent"/> helpers the explicit add/delete RPCs use. A method or
+	/// verb that only mutates properties the host already knows how to serialize (or that no-ops
+	/// headlessly for lack of a BehaviorService, like ToolStripActionList's "Insert Standard
+	/// Items") simply has nothing to sync here.</summary>
+	void InvokeAndSyncComponentChanges(IDesignerHost host, string transactionName, Action invoke)
+	{
+		var changeService = host.GetService(typeof(IComponentChangeService)) as IComponentChangeService;
+		var added = new List<IComponent>();
+		var removed = new List<string>();
+		ComponentEventHandler onAdded = (s, e) => { if (e.Component != null) added.Add(e.Component); };
+		ComponentEventHandler onRemoved = (s, e) => { if (e.Component?.Site?.Name is { } name) removed.Add(name); };
+		if (changeService != null) { changeService.ComponentAdded += onAdded; changeService.ComponentRemoved += onRemoved; }
+		try {
+			using (var transaction = host.CreateTransaction(transactionName)) {
+				invoke();
+				transaction.Commit();
+			}
+		} finally {
+			if (changeService != null) { changeService.ComponentAdded -= onAdded; changeService.ComponentRemoved -= onRemoved; }
 		}
+		foreach (var name in removed)
+			RewriteDeletedComponent(name);
+		foreach (var newComponent in added) {
+			if (newComponent is not Control control || control.Site?.Name is not { } newElementId || newElementId.Length == 0) continue;
+			var parentId = control.Parent?.Site?.Name;
+			if (String.IsNullOrEmpty(parentId)) continue;
+			RewriteAddedControl(parentId, control.GetType(), newElementId, control.Left, control.Top, control.Width, control.Height);
+			if (!String.IsNullOrEmpty(control.Text))
+				RewriteProperty(newElementId, "Text", control.Text);
+		}
+	}
+
+	/// <summary>Generic designer-verb listing (VS's own right-click context menu for a selected
+	/// component - <c>TabControlDesigner</c>'s "Add Tab"/"Remove Tab" are exposed this way, NOT as
+	/// smart-tag actions: <c>ComponentDesigner.Verbs</c>, distinct from <c>ActionLists</c>).
+	/// LibreWinForms has no <c>System.ComponentModel.Design.DesignerVerb</c> support wired through
+	/// its designer host, so - like the smart-tag RPCs - this is Microsoft-backend only.</summary>
+	[JsonRpcMethod("design/list-verbs")]
+	public DesignerVerbs ListVerbs(string sessionId, string documentId, long baseVersion, string elementId)
+	{
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "list verbs for");
+		var host = GetHost();
+		var component = host.Container.Components[elementId]
+			?? throw new ArgumentException("Component not found: " + elementId, nameof(elementId));
+		var verbs = (host.GetDesigner(component) as ComponentDesigner)?.Verbs;
+		var items = new List<DesignerVerbInfo>();
+		if (verbs != null) {
+			for (var index = 0; index < verbs.Count; index++) {
+				var verb = verbs[index];
+				items.Add(new DesignerVerbInfo {
+					Index = index,
+					Text = verb.Text ?? "",
+					Description = verb.Description ?? "",
+					Enabled = verb.Enabled,
+					Visible = verb.Visible,
+				});
+			}
+		}
+		return new DesignerVerbs { Accepted = true, Items = items };
+	}
+
+	/// <summary>Invokes a <c>DesignerVerb</c> found by re-fetching the same verb collection (never
+	/// cached between calls, same reasoning as <see cref="ListSmartTagActions"/>'s own doc
+	/// comment), then syncs any component it added/removed to source - see
+	/// <see cref="InvokeAndSyncComponentChanges"/>.</summary>
+	[JsonRpcMethod("design/invoke-verb")]
+	public DesignerSessionState InvokeVerb(string sessionId, string documentId, long baseVersion, string elementId, int verbIndex)
+	{
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "invoke verb for");
+		var host = GetHost();
+		var component = host.Container.Components[elementId]
+			?? throw new ArgumentException("Component not found: " + elementId, nameof(elementId));
+		var verbs = (host.GetDesigner(component) as ComponentDesigner)?.Verbs;
+		if (verbs == null || verbIndex < 0 || verbIndex >= verbs.Count)
+			throw new ArgumentException("Verb not found.", nameof(verbIndex));
+		var verb = verbs[verbIndex];
+		InvokeAndSyncComponentChanges(host, "Invoke " + verb.Text, () => verb.Invoke());
 		return CurrentState(baseVersion);
 	}
 
@@ -710,6 +824,20 @@ sealed class DesignerHostService : IDesignerChildService
 	{
 		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
 		throw new NotSupportedException("ToolStrip item insertion is only supported by the Microsoft WinForms designer host.");
+	}
+
+	[JsonRpcMethod("design/list-verbs")]
+	public DesignerVerbs ListVerbs(string sessionId, string documentId, long baseVersion, string elementId)
+	{
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "list verbs for");
+		return new DesignerVerbs { Accepted = false, Error = "Designer verbs are only supported by the Microsoft WinForms designer host." };
+	}
+
+	[JsonRpcMethod("design/invoke-verb")]
+	public DesignerSessionState InvokeVerb(string sessionId, string documentId, long baseVersion, string elementId, int verbIndex)
+	{
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "invoke verb for");
+		throw new NotSupportedException("Designer verbs are only supported by the Microsoft WinForms designer host.");
 	}
 #endif
 
@@ -1575,6 +1703,15 @@ sealed class DesignerHostService : IDesignerChildService
 			var errStr = String.Join(" | ", errors ?? []);
 			throw new InvalidOperationException("The child design surface failed to load: " + errStr);
 		}
+		// host.CreateComponent(type) WITHOUT an explicit name (every RPC in this file that adds a
+		// component - AddControl, AddToolStripItem - passes one explicitly instead, so this gap
+		// went unnoticed until verbs/smart-tag methods like TabControlActionList's "Add Tab" call
+		// CreateComponent themselves with no name of their own) needs an INameCreationService to
+		// auto-generate one; without it the new component comes back completely unnamed, and every
+		// later RPC/rewrite that identifies components by name silently fails for it.
+		if (designSurface.GetService(typeof(IDesignerHost)) is IServiceContainer surfaceServices
+			&& surfaceServices.GetService(typeof(INameCreationService)) == null)
+			surfaceServices.AddService(typeof(INameCreationService), new DefaultNameCreationService());
 		if (designSurface.View is Control view) {
 			Trace("CreateDesignSurface creating view control");
 			view.CreateControl();
@@ -1724,6 +1861,7 @@ sealed class DesignerHostService : IDesignerChildService
 				: component is Control sizeControl2 ? sizeControl2.Height : 0,
 #endif
 			IsTrayComponent = IsTrayComponent(component),
+			IsVisible = IsEffectivelyVisible(component),
 			IsControl = component is Control,
 #if MICROSOFT_WINFORMS
 			IsDropDownItem = component is ToolStripItem { OwnerItem: not null },
@@ -1731,7 +1869,8 @@ sealed class DesignerHostService : IDesignerChildService
 			ItemInsertionStyle = ItemInsertionStyle(component),
 			NewItemTypeNames = NewItemTypeNames(component),
 			Properties = properties,
-			Events = DescribeEvents(component)
+			Events = DescribeEvents(component),
+			TabHeaderBounds = FindTabHeaderBounds(component)
 			};
 		}).ToList() ?? [];
 		Trace("CurrentState described components");
@@ -1820,6 +1959,26 @@ sealed class DesignerHostService : IDesignerChildService
 	/// NOTE this is deliberately NOT ComponentTray.CanCreateComponentFromTool: that predicate
 	/// answers a different question (may a toolbox item be created by dropping it ONTO the tray)
 	/// and excludes the strips, which is how this started out wrong.</summary>
+	/// <summary>Whether this component is actually on screen in the frame being rendered - see
+	/// DesignerComponentInfo.IsVisible's own doc comment for why the client cannot draw overlays or
+	/// hit-test locally without it. <c>Control.Visible</c>'s GETTER already folds in the whole
+	/// parent chain (GetVisibleCore walks up to the root), which is exactly what matters here: a
+	/// control on a non-selected TabPage reports false even though its own visibility was never
+	/// touched, and so does anything inside a hidden container.</summary>
+	bool IsEffectivelyVisible(IComponent component)
+	{
+		try {
+			if (component is not Control control) return true;
+			// If the offscreen root form itself reports invisible, the flag carries no information
+			// at all - EVERY component would come back false and the client would stop drawing all
+			// of its overlays. Report true in that case, i.e. keep the pre-flag behaviour.
+			if (GetHost().RootComponent is Control root && !root.Visible) return true;
+			return control.Visible;
+		} catch {
+			return true;
+		}
+	}
+
 	bool IsTrayComponent(IComponent component)
 	{
 		try {
@@ -2092,6 +2251,33 @@ sealed class DesignerHostService : IDesignerChildService
 			point.Offset(parent.Location);
 		point.Offset(offset.X, offset.Y);
 		return point;
+	}
+
+	/// <summary>For a TabControl: each tab HEADER's own rect (TabControl.GetTabRect(i), one per
+	/// TabPages[i] in order), in the same absolute surface basis SurfaceX/Y use - see
+	/// DesignerComponentInfo.TabHeaderBounds's own doc comment on why the client needs this (a tab
+	/// header is not a component of its own; nothing else reports its geometry). Empty for
+	/// anything that is not a TabControl, or if GetTabRect throws (an unlaid-out/headless control
+	/// can decline to report a rect - the same defensive posture CapturePopupFrames takes).</summary>
+	List<DesignerRectangle> FindTabHeaderBounds(IComponent component)
+	{
+		var result = new List<DesignerRectangle>();
+#if MICROSOFT_WINFORMS
+		if (component is not TabControl tabs) return result;
+		try {
+			var origin = SurfaceLocation(tabs);
+			for (var i = 0; i < tabs.TabCount; i++) {
+				var rect = tabs.GetTabRect(i);
+				result.Add(new DesignerRectangle { X = origin.X + rect.X, Y = origin.Y + rect.Y, Width = rect.Width, Height = rect.Height });
+			}
+		} catch (Exception exception) {
+			Trace("FindTabHeaderBounds failed: " + exception.Message);
+		}
+#endif
+		// LibreWinForms does not implement TabControl.TabCount/GetTabRect, so tab-header hit-
+		// testing (and therefore click-to-switch-tab) is Microsoft-backend only for now - the
+		// client falls back to its existing generic hit-test when this list is empty.
+		return result;
 	}
 
 #if MICROSOFT_WINFORMS
@@ -2529,11 +2715,13 @@ sealed class DesignerHostService : IDesignerChildService
 		graphics.DrawLine(btnShadow, btnX + 3, btnY + btnH - 3, btnX + btnW - 3, btnY + btnH - 3);
 		graphics.DrawLine(btnShadow, btnX + btnW - 3, btnY + 3, btnX + btnW - 3, btnY + btnH - 3);
 
+		// Minimize: a single horizontal dash ("_"), not a "+" - real Windows chrome never draws
+		// the vertical stroke here (that would read as a "restore"/maximize-adjacent glyph
+		// instead), only the maximize button (drawn above) gets an outlined square.
 		btnX -= btnW + btnPad;
 		graphics.FillRectangle(btnFace, btnX, btnY, btnW, btnH);
 		graphics.DrawRectangle(captionBorder, btnX, btnY, btnW, btnH);
-		graphics.DrawLine(btnShadow, btnX + btnW / 2, btnY + 4, btnX + btnW / 2, btnY + btnH - 4);
-		graphics.DrawLine(btnShadow, btnX + 3, btnY + btnH / 2, btnX + btnW - 3, btnY + btnH / 2);
+		graphics.DrawLine(btnShadow, btnX + 3, btnY + btnH - 4, btnX + btnW - 3, btnY + btnH - 4);
 	}
 
 	static DesignerSessionState Accepted(long baseVersion) => new() { Version = baseVersion, Accepted = true };
@@ -2570,5 +2758,34 @@ sealed class ProjectAssemblyLoadContext : AssemblyLoadContext
 		if (assemblyName.Name is "System.Windows.Forms" or "System.Drawing.Common" or "System.Drawing") return null;
 		var path = resolver.ResolveAssemblyToPath(assemblyName);
 		return path == null ? null : LoadFromAssemblyPath(path);
+	}
+}
+
+/// <summary>Minimal <see cref="INameCreationService"/> registered into the child design surface -
+/// see CreateDesignSurface's own note on why this is needed at all: RPCs that add a component
+/// always pass an explicit name, but a designer verb/smart-tag method (e.g. TabControlActionList's
+/// "Add Tab") calls <c>host.CreateComponent(type)</c> itself with none, and without this service
+/// registered the resulting component comes back completely unnamed.</summary>
+sealed class DefaultNameCreationService : INameCreationService
+{
+	public string CreateName(IContainer? container, Type dataType)
+	{
+		var baseName = Char.ToLowerInvariant(dataType.Name[0]) + dataType.Name.Substring(1);
+		if (container == null) return baseName + "1";
+		for (var index = 1; ; index++) {
+			var candidate = baseName + index;
+			if (container.Components[candidate] == null) return candidate;
+		}
+	}
+
+	public bool IsValidName(string name)
+	{
+		if (String.IsNullOrEmpty(name) || !(Char.IsLetter(name[0]) || name[0] == '_')) return false;
+		return name.All(character => Char.IsLetterOrDigit(character) || character == '_');
+	}
+
+	public void ValidateName(string name)
+	{
+		if (!IsValidName(name)) throw new ArgumentException("Invalid component name: " + name, nameof(name));
 	}
 }

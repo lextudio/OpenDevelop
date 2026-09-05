@@ -784,12 +784,15 @@ public sealed class FormsDesignerHostClientTests
 
 		// Mechanical proof the method-item RPC path works end to end (a real
 		// DesignerActionMethodItem resolved by (listIndex, itemIndex) and invoked inside a
-		// transaction, no exception). This particular method
-		// (ToolStripActionList.InsertStandardItems) is itself a no-op in this headless host - real
-		// WinForms only actually populates items when a BehaviorService is present (VS's
-		// interactive chrome), which this offscreen DesignSurface deliberately never registers - so
-		// it is not asserted to add components; that would assert Microsoft's own internal
-		// implementation detail rather than this host's contract.
+		// transaction, no exception). ToolStripActionList.InsertStandardItems genuinely populates
+		// real ToolStripMenuItems (File/Edit/Tools/Help, VS's own standard set) now that
+		// CreateDesignSurface registers an INameCreationService - added for TabControlActionList's
+		// "Add Tab"/"Remove Tab" verbs, but this method needed it too (not, as first assumed, a
+		// BehaviorService: it never asks for one, it just couldn't name what it created). Not
+		// asserting the exact standard-item set here, since that is Microsoft's own internal
+		// implementation detail rather than this host's contract - but see the next block's use of
+		// "customMenuItem"/"customSubMenuItem" rather than a name resembling a standard item, to
+		// avoid colliding with whatever this call just created.
 		var afterInsert = await client.InvokeSmartTagMethodAsync(1, "menuStrip1", insertStandardItems.ListIndex, insertStandardItems.ItemIndex, timeout.Token);
 		Assert.True(afterInsert.Accepted);
 
@@ -804,29 +807,122 @@ public sealed class FormsDesignerHostClientTests
 #endif
 
 #if MICROSOFT_FORMS_DESIGNER_HOST
-		var withItem = await client.AddToolStripItemAsync(1, "menuStrip1", "ToolStripMenuItem", "", "fileToolStripMenuItem", timeout.Token);
+		var withItem = await client.AddToolStripItemAsync(1, "menuStrip1", "ToolStripMenuItem", "", "customMenuItem", timeout.Token);
 		Assert.True(withItem.Accepted);
-		Assert.Contains(withItem.Components, component => component.Name == "fileToolStripMenuItem"
+		Assert.Contains(withItem.Components, component => component.Name == "customMenuItem"
 			&& component.Type == "System.Windows.Forms.ToolStripMenuItem" && component.Parent == "menuStrip1");
 		var flushed = DesignerText(await client.FlushAsync(1, timeout.Token));
-		Assert.Contains("fileToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();", flushed, StringComparison.Ordinal);
+		Assert.Contains("customMenuItem = new System.Windows.Forms.ToolStripMenuItem();", flushed, StringComparison.Ordinal);
 		// Flush's ThisQualifierRewriter drops the redundant "this." prefix (same convention as
 		// every other RewriteAdded* helper in DesignerHostService.cs - see e.g. the plain
 		// "Controls.Add(label1);" assertions above), so the emitted statement has none either.
-		Assert.Contains("menuStrip1.Items.Add(fileToolStripMenuItem);", flushed, StringComparison.Ordinal);
+		Assert.Contains("menuStrip1.Items.Add(customMenuItem);", flushed, StringComparison.Ordinal);
 
 		// A submenu item nests into the parent's DropDownItems rather than the strip's own Items.
-		var withSubItem = await client.AddToolStripItemAsync(1, "menuStrip1", "ToolStripMenuItem", "fileToolStripMenuItem", "openToolStripMenuItem", timeout.Token);
-		Assert.Contains(withSubItem.Components, component => component.Name == "openToolStripMenuItem" && component.Parent == "fileToolStripMenuItem");
-		Assert.Contains("fileToolStripMenuItem.DropDownItems.Add(openToolStripMenuItem);",
+		var withSubItem = await client.AddToolStripItemAsync(1, "menuStrip1", "ToolStripMenuItem", "customMenuItem", "customSubMenuItem", timeout.Token);
+		Assert.Contains(withSubItem.Components, component => component.Name == "customSubMenuItem" && component.Parent == "customMenuItem");
+		Assert.Contains("customMenuItem.DropDownItems.Add(customSubMenuItem);",
 			DesignerText(await client.FlushAsync(1, timeout.Token)), StringComparison.Ordinal);
 #else
 		// LibreWinForms: fail clearly (a thrown NotSupportedException over RPC) instead of
 		// silently no-opping.
 		await Assert.ThrowsAnyAsync<Exception>(() =>
-			client.AddToolStripItemAsync(1, "menuStrip1", "ToolStripMenuItem", "", "fileToolStripMenuItem", timeout.Token));
+			client.AddToolStripItemAsync(1, "menuStrip1", "ToolStripMenuItem", "", "customMenuItem", timeout.Token));
 #endif
 	}
+
+#if MICROSOFT_FORMS_DESIGNER_HOST
+	/// <summary>
+	/// Regression test for TabControl's "Add Tab"/"Remove Tab" - real VS's TabControlDesigner
+	/// exposes these as DESIGNER VERBS (ComponentDesigner.Verbs, the right-click context-menu
+	/// mechanism), NOT smart-tag actions (ActionLists) - confirmed empirically: ListSmartTagActions
+	/// returns zero items for a TabControl. design/list-verbs and design/invoke-verb are the generic
+	/// verb-equivalent of the smart-tag RPCs, with no TabControl-specific server code. Unlike
+	/// ToolStripActionList's "Insert Standard Items" (see
+	/// ChildHost_SupportsSmartTagActionsAndToolStripItemInsertion's own note), these methods mutate
+	/// TabPages via host.CreateComponent/host.DestroyComponent directly rather than needing a
+	/// BehaviorService, so they DO create/destroy real sited components in this headless host - and
+	/// design/invoke-verb must sync that to designer source, which is what this test actually
+	/// exercises (see InvokeAndSyncComponentChanges' own doc comment).
+	/// </summary>
+	[Fact]
+	public async Task ChildHost_TabControlAddRemoveTabVerbs_SyncNewAndRemovedTabPagesToSource()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		var hostDll = HostDll();
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
+
+		var snapshot = new DesignerDocumentSnapshot {
+			Version = 1,
+			PrimaryFileName = "/project/Form1.cs",
+			DesignerFileName = "/project/Form1.Designer.cs",
+			Files = {
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.cs", Kind = "Source",
+					Text = "namespace Sample; partial class Form1 { }"
+				},
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.Designer.cs", Kind = "Designer",
+					Text = """
+						namespace Sample;
+						partial class Form1
+						{
+						    private void InitializeComponent()
+						    {
+						        this.tabControl1 = new System.Windows.Forms.TabControl();
+						        this.tabPage1 = new System.Windows.Forms.TabPage();
+						        this.tabControl1.Controls.Add(this.tabPage1);
+						        this.tabControl1.Name = "tabControl1";
+						        this.tabPage1.Name = "tabPage1";
+						        this.tabPage1.Text = "Page1";
+						        this.Controls.Add(this.tabControl1);
+						    }
+						    private System.Windows.Forms.TabControl tabControl1;
+						    private System.Windows.Forms.TabPage tabPage1;
+						}
+						"""
+				}
+			}
+		};
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted);
+		Assert.Contains(opened.Components, component => component.Name == "tabControl1");
+
+		var verbs = await client.ListVerbsAsync(1, "tabControl1", timeout.Token);
+		Assert.True(verbs.Accepted);
+		var addTab = Assert.Single(verbs.Items, item => item.Text.Contains("Add", StringComparison.OrdinalIgnoreCase)
+			&& item.Text.Contains("Tab", StringComparison.OrdinalIgnoreCase));
+
+		var afterAdd = await client.InvokeVerbAsync(1, "tabControl1", addTab.Index, timeout.Token);
+		Assert.True(afterAdd.Accepted);
+		var newPage = Assert.Single(afterAdd.Components,
+			component => component.Type == "System.Windows.Forms.TabPage" && component.Name != "tabPage1");
+		Assert.Equal("tabControl1", newPage.Parent);
+
+		var flushedAfterAdd = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.Contains($"{newPage.Name} = new System.Windows.Forms.TabPage();", flushedAfterAdd, StringComparison.Ordinal);
+		Assert.Contains($"tabControl1.Controls.Add({newPage.Name});", flushedAfterAdd, StringComparison.Ordinal);
+		// The pre-existing sibling tab page must still be there - a regression here would mean the
+		// sync logic (or the underlying delete-statement walk it reuses) wiped unrelated siblings,
+		// the exact class of bug this session already fixed once for plain Delete (see
+		// ChildHost_Delete_PreservesSiblingStatementsAndAddRangeArrayElements).
+		Assert.Contains("tabPage1", flushedAfterAdd, StringComparison.Ordinal);
+
+		// TabControlDesigner's AddTabPage verb selects the page it just created, so "Remove Tab"
+		// removes THIS one - re-fetch the list fresh (never cached between calls, per ListVerbs'
+		// own doc comment) rather than reusing addTab's stale index.
+		var verbsAfterAdd = await client.ListVerbsAsync(1, "tabControl1", timeout.Token);
+		var removeTab = Assert.Single(verbsAfterAdd.Items, item => item.Text.Contains("Remove", StringComparison.OrdinalIgnoreCase)
+			&& item.Text.Contains("Tab", StringComparison.OrdinalIgnoreCase));
+		var afterRemove = await client.InvokeVerbAsync(1, "tabControl1", removeTab.Index, timeout.Token);
+		Assert.True(afterRemove.Accepted);
+		Assert.DoesNotContain(afterRemove.Components, component => component.Name == newPage.Name);
+
+		var flushedAfterRemove = DesignerText(await client.FlushAsync(1, timeout.Token));
+		Assert.DoesNotContain(newPage.Name, flushedAfterRemove, StringComparison.Ordinal);
+		Assert.Contains("tabPage1", flushedAfterRemove, StringComparison.Ordinal);
+	}
+#endif
 
 	/// <summary>
 	/// Regression test for "Unsupported ToolStripItem type: System.Windows.Forms.ToolStripMenuItem":
@@ -1541,6 +1637,117 @@ public sealed class FormsDesignerHostClientTests
 #else
 		await Assert.ThrowsAnyAsync<Exception>(() =>
 			client.ReorderToolStripItemAsync(1, "exitToolStripMenuItem", 0, timeout.Token));
+#endif
+	}
+
+	/// <summary>
+	/// TabControl support: (1) each tab HEADER's own rect is reported (a header is not a component
+	/// of its own - nothing else could report its geometry - see DesignerComponentInfo.
+	/// TabHeaderBounds's own doc comment), Microsoft-only since LibreWinForms does not implement
+	/// TabControl.GetTabRect/TabCount; (2) design/select-tab switches the real SelectedTab, which
+	/// is why button1 (on tabPage1) and button2 (on tabPage2, deliberately given the SAME bounds as
+	/// button1 to prove this is a visibility distinction, not a coordinate one) are hit-testable
+	/// one at a time depending on which page is currently active - matching how a real WinForms
+	/// TabControl only ever lays out/shows its SelectedTab's children; (3) unlike design/set-
+	/// property, select-tab must not persist (no "tabControl1.SelectedIndex = ...;" line - real VS
+	/// does not either) or count as an undo step (canUndo stays false).
+	/// </summary>
+	[Fact]
+	public async Task ChildHost_SelectTab_SwitchesActivePageWithoutPersistingOrCreatingAnUndoStep()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		var hostDll = HostDll();
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
+		var snapshot = new DesignerDocumentSnapshot {
+			Version = 1, PrimaryFileName = "/project/Form1.cs", DesignerFileName = "/project/Form1.Designer.cs",
+			Files = {
+				new DesignerSourceFileSnapshot { FileName = "/project/Form1.cs", Kind = "Source", Text = "namespace Sample; partial class Form1 { }" },
+				new DesignerSourceFileSnapshot { FileName = "/project/Form1.Designer.cs", Kind = "Designer", Text = """
+					namespace Sample;
+					partial class Form1
+					{
+					    private void InitializeComponent()
+					    {
+					        this.tabControl1 = new System.Windows.Forms.TabControl();
+					        this.tabPage1 = new System.Windows.Forms.TabPage();
+					        this.tabPage2 = new System.Windows.Forms.TabPage();
+					        this.button1 = new System.Windows.Forms.Button();
+					        this.button2 = new System.Windows.Forms.Button();
+					        this.tabControl1.Controls.Add(this.tabPage1);
+					        this.tabControl1.Controls.Add(this.tabPage2);
+					        this.tabControl1.Name = "tabControl1";
+					        this.tabControl1.SelectedIndex = 0;
+					        this.tabControl1.Size = new System.Drawing.Size(300, 200);
+					        this.tabPage1.Controls.Add(this.button1);
+					        this.tabPage1.Name = "tabPage1";
+					        this.tabPage1.Text = "Tab 1";
+					        this.tabPage2.Controls.Add(this.button2);
+					        this.tabPage2.Name = "tabPage2";
+					        this.tabPage2.Text = "Tab 2";
+					        this.button1.Location = new System.Drawing.Point(10, 10);
+					        this.button1.Name = "button1";
+					        this.button1.Size = new System.Drawing.Size(75, 23);
+					        this.button2.Location = new System.Drawing.Point(10, 10);
+					        this.button2.Name = "button2";
+					        this.button2.Size = new System.Drawing.Size(75, 23);
+					        this.Controls.Add(this.tabControl1);
+					    }
+					    private System.Windows.Forms.TabControl tabControl1;
+					    private System.Windows.Forms.TabPage tabPage1;
+					    private System.Windows.Forms.TabPage tabPage2;
+					    private System.Windows.Forms.Button button1;
+					    private System.Windows.Forms.Button button2;
+					}
+					"""
+				}
+			}
+		};
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted);
+		var button1 = opened.Components.Single(item => item.Name == "button1");
+
+#if MICROSOFT_FORMS_DESIGNER_HOST
+		var tabControl = opened.Components.Single(item => item.Name == "tabControl1");
+		Assert.Equal(2, tabControl.TabHeaderBounds.Count);
+		Assert.True(tabControl.TabHeaderBounds[0].Width > 0 && tabControl.TabHeaderBounds[0].Height > 0);
+		// Both headers sit on the same row, left to right.
+		Assert.True(tabControl.TabHeaderBounds[1].X > tabControl.TabHeaderBounds[0].X);
+
+		// tabPage1 (index 0) is active: button1 hit-testable, button2 (same bounds, tabPage2) is not.
+		var hitOnPage1 = await client.HitTestAsync(1, button1.SurfaceX + 8, button1.SurfaceY + 5, timeout.Token);
+		Assert.Equal("button1", hitOnPage1.ComponentName);
+
+		// IsVisible must distinguish the active page's children from the hidden page's. Both pages
+		// occupy the SAME rect, so button1 and button2 report overlapping SurfaceX/Y - without this
+		// flag the client cannot tell which of two components at the same spot is actually on
+		// screen, and drew outlines/name tags for BOTH (phantom overlays that read as "the wrong
+		// page is being rendered", and swallowed clicks aimed at what looked like a control).
+		// See DesignerComponentInfo.IsVisible.
+		Assert.True(opened.Components.Single(item => item.Name == "tabPage1").IsVisible);
+		Assert.True(opened.Components.Single(item => item.Name == "button1").IsVisible);
+		Assert.False(opened.Components.Single(item => item.Name == "tabPage2").IsVisible);
+		Assert.False(opened.Components.Single(item => item.Name == "button2").IsVisible);
+
+		var switched = await client.SelectTabAsync(1, "tabControl1", 1, timeout.Token);
+		Assert.True(switched.Accepted);
+		Assert.False(switched.CanUndo);
+		var button2 = switched.Components.Single(item => item.Name == "button2");
+		var hitOnPage2 = await client.HitTestAsync(1, button2.SurfaceX + 8, button2.SurfaceY + 5, timeout.Token);
+		Assert.Equal("button2", hitOnPage2.ComponentName);
+
+		// ...and it flips with the active page, so the client's overlays follow the tab switch.
+		Assert.False(switched.Components.Single(item => item.Name == "tabPage1").IsVisible);
+		Assert.False(switched.Components.Single(item => item.Name == "button1").IsVisible);
+		Assert.True(switched.Components.Single(item => item.Name == "tabPage2").IsVisible);
+		Assert.True(button2.IsVisible);
+		// The root form and a plain top-level control are always reported visible - a regression
+		// making IsVisible false by default would silently hide EVERY overlay in the designer.
+		Assert.True(switched.Components.Single(item => item.Name == "tabControl1").IsVisible);
+
+		// Switching back and forth is pure view state: no designer-source line, no undo step.
+		Assert.DoesNotContain("SelectedIndex = 1", DesignerText(await client.FlushAsync(1, timeout.Token)), StringComparison.Ordinal);
+#else
+		Assert.Empty(opened.Components.Single(item => item.Name == "tabControl1").TabHeaderBounds);
 #endif
 	}
 
