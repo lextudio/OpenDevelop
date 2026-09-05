@@ -194,9 +194,20 @@ internal static class ProjectBrowserTreeBuilder
     
     private static bool IsExpandedByDefault(IProjectTree tree)
     {
-        return tree.Flags.Contains(ProjectTreeFlags.Common.DependenciesFolder)
-            || tree.Flags.Contains(ProjectTreeFlags.Common.ReferencesFolder)
-            || tree.Flags.Contains(ProjectTreeFlags.Common.PackagesFolder);
+        // Nothing is force-expanded: every node starts collapsed, same as Visual Studio.
+        //
+        // Dependencies/References/Packages used to be expanded here, which meant opening any
+        // project immediately unfolded the whole reference graph - Dependencies -> Analyzers +
+        // Frameworks -> every analyzer and framework entry - and pushed the project's actual
+        // files off the visible area of the Projects pad. They are metadata the user opens on
+        // demand, so the space belongs to the source tree instead.
+        //
+        // All three kinds are treated the same on purpose: SDK-style projects surface them under
+        // "Dependencies" while older non-SDK projects use a top-level "References" node, and
+        // expanding one but not the other would be inconsistent between project types. To bring
+        // any single kind back, return true for just that flag.
+        _ = tree;
+        return false;
     }
 
     private static int GetSortOrder(ProjectBrowserNodeKind kind) => kind switch

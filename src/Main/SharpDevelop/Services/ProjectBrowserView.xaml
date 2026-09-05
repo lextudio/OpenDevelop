@@ -5,8 +5,9 @@
              xmlns:services="clr-namespace:ICSharpCode.SharpDevelop.Services"
              xmlns:automation="clr-namespace:System.Windows.Automation;assembly=PresentationCore">
     <UserControl.Resources>
-        <HierarchicalDataTemplate DataType="{x:Type services:ProjectBrowserNodeModel}"
-                                  ItemsSource="{Binding Children}">
+        <!-- One row's visuals, shared by the tree itself and the sticky header overlay below, so
+             a pinned row is pixel-identical to the real one it stands in for. -->
+        <DataTemplate x:Key="ProjectBrowserNodeRow">
             <StackPanel Orientation="Horizontal">
                 <Grid Width="16"
                       Height="16"
@@ -28,6 +29,11 @@
                 </Grid>
                 <TextBlock Text="{Binding Name}" />
             </StackPanel>
+        </DataTemplate>
+        <HierarchicalDataTemplate DataType="{x:Type services:ProjectBrowserNodeModel}"
+                                  ItemsSource="{Binding Children}">
+            <ContentPresenter Content="{Binding}"
+                              ContentTemplate="{StaticResource ProjectBrowserNodeRow}" />
         </HierarchicalDataTemplate>
     </UserControl.Resources>
     <Grid>
@@ -83,6 +89,26 @@
                 </Style>
             </TreeView.ItemContainerStyle>
         </TreeView>
+        <!-- Sticky headers: the solution/project rows the current scroll position sits under stay
+             pinned here so the tree never scrolls to a point where you cannot tell which project
+             the visible files belong to. Opaque, so real rows scroll underneath it. Only rows
+             whose own header has already scrolled off the top are pinned (see the view's
+             UpdateStickyHeaders), which is what keeps a row from being drawn twice. -->
+        <Border x:Name="stickyHeaderPanel"
+                Grid.Row="1"
+                VerticalAlignment="Top"
+                Background="{DynamicResource ToolWindowBackground}"
+                BorderBrush="{DynamicResource Border}"
+                BorderThickness="0,0,0,1"
+                Visibility="Collapsed">
+            <!-- Rows are plain UIElements built and Margin-assigned directly in code-behind
+                 (UpdateStickyHeaders), not through an ItemTemplate: binding Margin to a per-row
+                 Thickness property here left every row unindented (Margin stayed 0 regardless of
+                 the bound value), so the reliable fix is to skip data-binding for this property
+                 and set it as a plain CLR assignment on each row's own element instead. -->
+            <ItemsControl x:Name="stickyHeaders"
+                          PreviewMouseWheel="StickyHeadersOnPreviewMouseWheel" />
+        </Border>
         <TextBlock Grid.Row="1"
                    Margin="12"
                    HorizontalAlignment="Left"
