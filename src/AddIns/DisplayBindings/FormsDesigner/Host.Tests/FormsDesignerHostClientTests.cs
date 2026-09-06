@@ -2121,31 +2121,92 @@ public sealed class FormsDesignerHostClientTests
 
 		var hidden = await client.SetPropertyAsync(1, "panel1", "Visible", "false", timeout.Token);
 		Assert.True(hidden.Accepted);
-#if MICROSOFT_FORMS_DESIGNER_HOST
-		// Real WinForms SHADOWS Visible at design time: the value is recorded for runtime but the
-		// control stays on the surface, so it - and its child - keep their designer overlays and
-		// stay selectable. This is the behaviour real VS has.
+		// Visible is SHADOWED at design time on BOTH backends: the value is recorded for runtime,
+		// but the control stays on the surface so it - and its child - keep their designer overlays
+		// and stay selectable, which is what real VS does. Microsoft's ControlDesigner shadows it
+		// itself; LibreWinForms' portable fork has no such shadowing, so this host does it (see
+		// DesignerHostService.shadowedVisible). This assertion being backend-agnostic IS the point:
+		// it was split per backend while that gap existed.
 		Assert.True(hidden.Components.Single(item => item.Name == "panel1").IsVisible);
 		Assert.True(hidden.Components.Single(item => item.Name == "nestedButton").IsVisible);
-#else
-		// PARITY GAP (LibreWinForms): the portable fork has no ControlDesigner Visible shadowing,
-		// so the property takes effect immediately at DESIGN time - the control really does
-		// disappear from the rendered surface, and with IsVisible false the client stops drawing
-		// its outline/name tag, leaving it selectable only from the Document Outline pad. Pinned
-		// here rather than asserted away: the divergence is real and user-visible, and if the
-		// portable fork ever gains shadowing this test is what will notice.
-		Assert.False(hidden.Components.Single(item => item.Name == "panel1").IsVisible);
-		// ...and it folds down the parent chain, which is the same mechanism that makes a
-		// non-selected TabPage's children report false.
-		Assert.False(hidden.Components.Single(item => item.Name == "nestedButton").IsVisible);
-#endif
-		// Either way an unrelated sibling is untouched - "everything reports false" would hide
-		// every overlay in the designer.
+		// An unrelated sibling is untouched - "everything reports false" would hide every overlay.
 		Assert.True(hidden.Components.Single(item => item.Name == "visibleButton").IsVisible);
 
-		// ...and either way the value is persisted, so the built app really does hide it.
+		// The Properties pad must show the user's own edit, not the live on-surface true.
+		Assert.Equal("False", hidden.Components.Single(item => item.Name == "panel1")
+			.Properties.Single(property => property.Name == "Visible").Value);
+
+		// ...and the value is persisted, so the built app really does hide it.
 		Assert.Contains("panel1.Visible = false;", DesignerText(await client.FlushAsync(1, timeout.Token)),
 			StringComparison.Ordinal);
+	}
+
+	/// <summary>
+	/// The other half of Visible shadowing: a control that arrives ALREADY hidden from source must
+	/// still be shown and selectable on the surface, with the Properties pad reporting the source's
+	/// false. Without this, shadowing would only survive until the document was reopened - the
+	/// control would come back invisible and be unreachable except from the Document Outline.
+	///
+	/// The TabPage assertions guard the exclusion that makes this safe: a TabControl drives its
+	/// pages' Visible itself, so "restoring" an unselected page would show every page at once, and
+	/// the phantom-overlay bug would be back.
+	/// </summary>
+	[Fact]
+	public async Task ChildHost_AControlHiddenInSource_IsStillShownAndSelectableOnTheSurface()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		var hostDll = HostDll();
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, hostDll);
+		var snapshot = new DesignerDocumentSnapshot {
+			Version = 1, PrimaryFileName = "/project/Form1.cs", DesignerFileName = "/project/Form1.Designer.cs",
+			Files = {
+				new DesignerSourceFileSnapshot { FileName = "/project/Form1.cs", Kind = "Source", Text = "namespace Sample; partial class Form1 { }" },
+				new DesignerSourceFileSnapshot { FileName = "/project/Form1.Designer.cs", Kind = "Designer", Text = """
+					namespace Sample;
+					partial class Form1
+					{
+					    private void InitializeComponent()
+					    {
+					        this.hiddenPanel = new System.Windows.Forms.Panel();
+					        this.tabControl1 = new System.Windows.Forms.TabControl();
+					        this.tabPage1 = new System.Windows.Forms.TabPage();
+					        this.tabPage2 = new System.Windows.Forms.TabPage();
+					        this.tabControl1.Controls.Add(this.tabPage1);
+					        this.tabControl1.Controls.Add(this.tabPage2);
+					        this.hiddenPanel.Name = "hiddenPanel";
+					        this.hiddenPanel.Size = new System.Drawing.Size(120, 60);
+					        this.hiddenPanel.Visible = false;
+					        this.tabControl1.Name = "tabControl1";
+					        this.tabControl1.SelectedIndex = 0;
+					        this.tabPage1.Name = "tabPage1";
+					        this.tabPage2.Name = "tabPage2";
+					        this.Controls.Add(this.hiddenPanel);
+					        this.Controls.Add(this.tabControl1);
+					    }
+					    private System.Windows.Forms.Panel hiddenPanel;
+					    private System.Windows.Forms.TabControl tabControl1;
+					    private System.Windows.Forms.TabPage tabPage1;
+					    private System.Windows.Forms.TabPage tabPage2;
+					}
+					"""
+				}
+			}
+		};
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted);
+
+		// Shown on the surface (so it keeps its overlays and can be clicked)...
+		var panel = opened.Components.Single(item => item.Name == "hiddenPanel");
+		Assert.True(panel.IsVisible);
+		// ...while the Properties pad still reports what the source says.
+		Assert.Equal("False", panel.Properties.Single(property => property.Name == "Visible").Value);
+		// ...and the source keeps saying it, untouched by being shown.
+		Assert.Contains("hiddenPanel.Visible = false;", DesignerText(await client.FlushAsync(1, timeout.Token)),
+			StringComparison.Ordinal);
+
+		// A TabControl's own pages are NOT adopted: the selected one is visible, the other is not.
+		Assert.True(opened.Components.Single(item => item.Name == "tabPage1").IsVisible);
+		Assert.False(opened.Components.Single(item => item.Name == "tabPage2").IsVisible);
 	}
 
 	/// <summary>

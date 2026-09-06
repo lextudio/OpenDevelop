@@ -180,6 +180,44 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 			});
 		}
 
+		[DevFlowAction("od.forms-designer.describe-context-menu", Description = "Build the designer right-click menu for a component and report its item labels WITHOUT opening it - the only way to assert the menu's content, since a WPF ContextMenu is its own top-level window and appears in neither a screenshot nor the ui/tree")]
+		public static string DescribeContextMenu(string componentName)
+		{
+			var viewContent = FindFormsDesignerViewContent();
+			if (viewContent?.IsRemoteDesignerLoaded != true)
+				return JsonSerializer.Serialize(new { success = false, error = "The out-of-process WinForms designer is not loaded" });
+			try {
+				var labels = viewContent.DescribeContextMenu(componentName);
+				return JsonSerializer.Serialize(new { success = true, items = labels });
+			} catch (Exception exception) {
+				return JsonSerializer.Serialize(new { success = false, error = exception.Message });
+			}
+		}
+
+		[DevFlowAction("od.forms-designer.query-tab-header-screen-bounds", Description = "Get one tab HEADER's on-screen bounds (real TabControl.GetTabRect, translated by the same path as query-control-screen-bounds) so a synthetic click can be aimed at a tab strip precisely - a header is not a component, and a TabControl's own rect is a useless target because its pages cover nearly all of it")]
+		public static string QueryTabHeaderScreenBounds(string tabControlName, int tabIndex)
+		{
+			var viewContent = FindFormsDesignerViewContent();
+			if (viewContent?.IsRemoteDesignerLoaded != true)
+				return JsonSerializer.Serialize(new { success = false, error = "The out-of-process WinForms designer is not loaded" });
+
+			if (!viewContent.TryGetRemoteTabHeaderScreenBounds(tabControlName, tabIndex, out var bounds))
+				return JsonSerializer.Serialize(new {
+					success = false,
+					error = "No tab header " + tabIndex + " on " + tabControlName + " (not a TabControl, or the index is out of range)"
+				});
+			return JsonSerializer.Serialize(new {
+				success = true,
+				x = bounds.X,
+				y = bounds.Y,
+				width = bounds.Width,
+				height = bounds.Height,
+				// The point a synthetic click should actually use, so callers never re-derive it.
+				centerX = bounds.X + bounds.Width / 2,
+				centerY = bounds.Y + bounds.Height / 2
+			});
+		}
+
 		[DevFlowAction("od.forms-designer.set-property", Description = "Set a component property in the active out-of-process WinForms designer and refresh its rendered frame")]
 		public static string SetProperty(string componentName, string propertyName, string value)
 		{

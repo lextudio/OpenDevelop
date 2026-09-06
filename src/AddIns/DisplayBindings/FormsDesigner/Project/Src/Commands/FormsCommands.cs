@@ -135,47 +135,43 @@ namespace ICSharpCode.FormsDesigner.Commands
 		}
 	}
 	
+	/// <summary>
+	/// Contributes the selected component's designer verbs (TabControl's Add Tab/Remove Tab, a
+	/// strip's Edit Items, ...) to the designer context menus, at the position the .addin declares.
+	/// </summary>
+	/// <remarks>
+	/// Deliberately thin: it renders entries the view content has already prepared, and holds no
+	/// policy of its own. That policy - which components to gather verbs from, and how duplicate
+	/// verb names collapse - lives in DesignerVerbMenuPlanner, where it is unit tested. It has to
+	/// be tested there rather than through the menu, because a WPF ContextMenu is its own top-level
+	/// window and is invisible to both of DevFlow's observation channels.
+	///
+	/// The entries must be prepared BEFORE the menu is shown, because BuildItems is synchronous
+	/// while listing verbs is an RPC to the designer's child process. FormsDesignerViewContent's
+	/// right-click handler awaits that round trip and only then calls MenuService.ShowContextMenu.
+	/// </remarks>
 	public class DesignerVerbSubmenuBuilder : IMenuItemBuilder
 	{
 		public IEnumerable<object> BuildItems(Codon codon, object owner)
 		{
-			IMenuCommandService menuCommandService = (IMenuCommandService)owner;
-			
-			List<ToolStripItem> items = new List<ToolStripItem>();
-			
-			foreach (DesignerVerb verb in menuCommandService.Verbs) {
-				items.Add(new ContextMenuCommand(verb));
+			var entries = (owner as FormsDesignerViewContent)?.PendingVerbMenuEntries;
+			if (entries == null || entries.Count == 0)
+				return null;
+			var items = new List<object>();
+			foreach (var entry in entries) {
+				var captured = entry;
+				var item = new System.Windows.Controls.MenuItem {
+					Header = captured.Text,
+					IsEnabled = captured.Enabled,
+					ToolTip = String.IsNullOrEmpty(captured.Description) ? null : captured.Description
+				};
+				item.Click += (_, _) => captured.Invoke();
+				items.Add(item);
 			}
-			
-			// add separator at the end of custom designer verbs
-			if (items.Count > 0) {
-				items.Add(new MenuSeparator());
-			}
-			
+			// Separator after the verbs, so they read as their own group rather than running into
+			// the Cut/Copy/Paste block the .addin declares next.
+			items.Add(new System.Windows.Controls.Separator());
 			return items;
-		}
-		
-		class ContextMenuCommand : ICSharpCode.Core.WinForms.MenuCommand
-		{
-			DesignerVerb verb;
-			
-			public ContextMenuCommand(DesignerVerb verb) : base(verb.Text)
-			{
-				this.Enabled = verb.Enabled;
-//				this.Checked = verb.Checked;
-				
-				this.verb = verb;
-				Click += new EventHandler(InvokeCommand);
-			}
-			
-			void InvokeCommand(object sender, EventArgs e)
-			{
-				try {
-					verb.Invoke();
-				} catch (Exception ex) {
-					MessageService.ShowException(ex);
-				}
-			}
 		}
 	}
 	

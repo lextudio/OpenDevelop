@@ -466,6 +466,11 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			DragOver += OnDragOver;
 			Drop += OnDrop;
 			KeyDown += OnKeyDown;
+			// handledEventsToo, same reasoning as the left-button handler: an adorner glyph drawn
+			// over the selection would otherwise swallow the press before the canvas sees it, and
+			// right-clicking a selected TabControl - whose move thumb covers its whole bounds -
+			// is exactly how Add Tab/Remove Tab get reached.
+			AddHandler(MouseRightButtonDownEvent, new MouseButtonEventHandler(OnMouseRightButtonDown), true);
 		}
 
 		public string SelectedComponentName { get; private set; } = "";
@@ -514,6 +519,11 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		public event EventHandler<RemoteRenameRequestedEventArgs> RenameRequested;
 		public event EventHandler<RemoteComponentEventArgs> DeleteRequested;
 		public event EventHandler<RemoteComponentEventArgs> DefaultEventRequested;
+		/// <summary>A right-click landed on the design surface. <see cref="RemoteComponentEventArgs"/>
+		/// carries the component it resolved to (already selected by then, matching real VS, where
+		/// right-clicking both selects and opens the menu) - or an empty name for empty canvas, so
+		/// the handler can still offer surface-level commands.</summary>
+		public event EventHandler<RemoteComponentEventArgs> ContextMenuRequested;
 		public event EventHandler RestartRequested;
 		/// <summary>The smart-tag chevron at the selection's top-right corner was clicked
 		/// (VS calls this the "smart tag" - the popup listing a component's
@@ -1079,13 +1089,14 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 						Background = new SolidColorBrush(Color.FromArgb(190, 80, 80, 80)),
 						Padding = new Thickness(2, 0, 2, 0)
 					};
+					// No exceptions, TabPages included: a label always sits above its own bounds, so
+					// the surface reads consistently. A TabPage's label therefore lands on its
+					// TabControl's tab strip, which is fine - a design-time name tag overlapping a
+					// tab header is not worth a special case (an earlier attempt to special-case it,
+					// first by drawing it inside the page and then by sliding it past the last
+					// header, only made TabPages read differently from everything else).
 					Canvas.SetLeft(label, surfaceX);
-					// A TabPage is the one case where "above my own bounds" is never free: a page's
-					// rect starts immediately below its TabControl's tab strip, so a label placed
-					// above it covers the active tab's own header text (it hid the word "General"
-					// on this repo's TabControlFixture). Keep that one inside its own page body.
-					var labelSitsInside = component.Type == "System.Windows.Forms.TabPage";
-					Canvas.SetTop(label, labelSitsInside ? surfaceY + 2 : Math.Max(0, surfaceY - 15));
+					Canvas.SetTop(label, Math.Max(0, surfaceY - 15));
 					guides.Children.Add(label);
 				}
 				if (showTabOrder) {
@@ -1224,15 +1235,40 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			var component = state?.Components?.FirstOrDefault(item => item.Name == componentName);
 			if (component == null || !framePresenter.Visual.IsVisible)
 				return false;
-			// Both corners through DesignToSurface so the UIA peer bounds track the (possibly
-			// zoomed) design rect, then PointToScreen from the design surface grid.
-			var (x, y) = viewport.DesignToSurface(component.SurfaceX, component.SurfaceY);
-			var (x2, y2) = viewport.DesignToSurface(
-				component.SurfaceX + component.Width, component.SurfaceY + component.Height);
+			bounds = SurfaceRectToScreen(component.SurfaceX, component.SurfaceY, component.Width, component.Height);
+			return true;
+		}
+
+		/// <summary>Screen rect of one tab HEADER of a TabControl, for the same reason
+		/// <see cref="TryGetComponentScreenBounds"/> exists: a synthetic click has to be aimed at
+		/// real geometry. A header is not a component, so its rect cannot be obtained by name -
+		/// and it must NOT be guessed from the TabControl's own rect either, because a TabControl's
+		/// surface is almost entirely covered by its pages and its non-page chrome is only a few
+		/// pixels wide. Guessing "just inside the border" lands inside the selected TabPage
+		/// instead, which is exactly the kind of silently-wrong target this exists to prevent.
+		/// Returns false when the component is not a TabControl or the index has no header.</summary>
+		public bool TryGetTabHeaderScreenBounds(string tabControlName, int tabIndex, out Rect bounds)
+		{
+			bounds = Rect.Empty;
+			var component = state?.Components?.FirstOrDefault(item => item.Name == tabControlName);
+			if (component == null || !framePresenter.Visual.IsVisible)
+				return false;
+			if (tabIndex < 0 || tabIndex >= component.TabHeaderBounds.Count)
+				return false;
+			var header = component.TabHeaderBounds[tabIndex];
+			bounds = SurfaceRectToScreen(header.X, header.Y, header.Width, header.Height);
+			return true;
+		}
+
+		/// <summary>Both corners through DesignToSurface so the reported rect tracks the (possibly
+		/// zoomed) design rect, then PointToScreen from the design surface grid.</summary>
+		Rect SurfaceRectToScreen(double surfaceX, double surfaceY, double width, double height)
+		{
+			var (x, y) = viewport.DesignToSurface(surfaceX, surfaceY);
+			var (x2, y2) = viewport.DesignToSurface(surfaceX + width, surfaceY + height);
 			var topLeft = designSurface.PointToScreen(new Point(x, y));
 			var bottomRight = designSurface.PointToScreen(new Point(x2, y2));
-			bounds = new Rect(topLeft.X, topLeft.Y, bottomRight.X - topLeft.X, bottomRight.Y - topLeft.Y);
-			return true;
+			return new Rect(topLeft.X, topLeft.Y, bottomRight.X - topLeft.X, bottomRight.Y - topLeft.Y);
 		}
 
 		/// <summary>Whether the press originated outside the design surface's own CONTENT - i.e.
@@ -1398,6 +1434,45 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			Focus();
 			SelectionChanged?.Invoke(this, EventArgs.Empty);
 			return true;
+		}
+
+		/// <summary>Right-click: select whatever is under the pointer, then ask the host to show a
+		/// context menu for it. Real VS does both from one press, and selecting first is what makes
+		/// the menu's contents well-defined - designer verbs (Add Tab/Remove Tab) are a property of
+		/// the SELECTED component.
+		///
+		/// Deliberately routed through the same server hit-test as a left click rather than a local
+		/// bounds check: only the child process knows which component actually owns a pixel (it
+		/// honours visibility, container nesting and ToolStrip items), and disagreeing with it here
+		/// is what produced the "clicking label1 selects the tab page" class of bug.</summary>
+		async void OnMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+		{
+			try {
+				if (IsOutsideDesignSurface(e.OriginalSource) || previewResizeDrag || resizingDrag || marqueeSelecting)
+					return;
+				var point = e.GetPosition(framePresenter.Visual);
+				var designPoint = new Point(point.X / viewport.Scale, point.Y / viewport.Scale);
+				var hit = await client.HitTestAsync(version, (int)designPoint.X, (int)designPoint.Y, CancellationToken.None);
+				if (!String.IsNullOrEmpty(hit.ComponentName) && hit.ComponentName != SelectedComponentName) {
+					selectedComponentNames.Clear();
+					selectedComponentNames.Add(hit.ComponentName);
+					SelectedComponentName = hit.ComponentName;
+					selectedComponent = state?.Components?.FirstOrDefault(item => item.Name == hit.ComponentName);
+					UpdateDesignGuides();
+					UpdateAdorners();
+					SelectionChanged?.Invoke(this, EventArgs.Empty);
+				}
+				Focus();
+				e.Handled = true;
+				ContextMenuRequested?.Invoke(this, new RemoteComponentEventArgs(hit.ComponentName ?? ""));
+			} catch (Exception exception) {
+				// Same reasoning as OnMouseLeftButtonDown's own catch: a faulted hit-test RPC must
+				// not silently swallow the gesture with no diagnostic trail.
+				try {
+					System.IO.File.AppendAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "OpenDevelop.FormsDesigner.host.log"),
+						$"{DateTimeOffset.Now:O} OnMouseRightButtonDown failed: {exception}{Environment.NewLine}");
+				} catch { }
+			}
 		}
 
 		void OnMouseMove(object sender, MouseEventArgs e)

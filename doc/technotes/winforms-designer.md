@@ -1590,3 +1590,127 @@ Fix mirrors the WinForms one:
 - `Tree_ReportsWhetherEachElementIsActuallyOnScreen` covers a collapsed container's child AND a
   non-selected `TabItem`'s child, in the suite that runs against both the LibreWPF and Microsoft
   WPF hosts.
+
+## Closing the Libre Visible-shadowing gap - and a fourth unreliable visibility signal (2026-09-05, later same day)
+
+The parity gap recorded above is now closed. LibreWinForms itself could not be changed (it is an
+external package built from the librewpf checkout, not source in this repo), so the shadowing lives
+in THIS host instead, `#if !MICROSOFT_WINFORMS`-gated - on the Microsoft backend the framework's own
+`ControlDesigner` already shadows `Visible` and duplicating it would fight the real designer.
+
+Three parts, all of which are needed for the behaviour to be self-consistent:
+1. `SetProperty` records `Visible` into `shadowedVisible` and rewrites the source, WITHOUT applying
+   it to the live control - so the control stays on the surface and selectable, as in real VS.
+2. `AdoptVisibleShadowsFromLoadedSource` takes over controls that arrive already hidden from source
+   (shows them, shadows their value). Without this half, shadowing would survive only until the
+   document was reopened. `control.Visible == false` is an exact signal for "this control itself was
+   assigned false" here precisely BECAUSE the portable fork's getter does not fold the parent chain.
+3. `DescribeProperties` reports the shadowed value, or the Properties pad would show the user's own
+   `Visible=false` edit snapping straight back to `True`.
+
+`TabPage` and the design root are excluded from all of it: a TabControl drives its pages' `Visible`
+itself, so "restoring" an unselected page would show every page at once and bring the
+phantom-overlay bug straight back.
+
+**Writing the load-time test then exposed a FOURTH unreliable visibility signal**: LibreWinForms'
+`TabControl` never sets an unselected `TabPage`'s `Visible` flag at all (real WinForms clears it).
+So on that backend the unselected page and everything on it still claimed to be visible - meaning
+the phantom-overlay bug was STILL live there for tab controls, even after the parent-chain fix
+earlier today. `IsEffectivelyVisible` now asks the TabControl which page is selected
+(`TabPages.IndexOf` + `SelectedIndex`) instead of trusting the flag, which is true on both forks and
+needs no flag at all.
+
+Running tally of framework "is this visible" signals that could not be trusted in an out-of-process
+designer:
+
+| Host | Signal | Why it failed |
+|---|---|---|
+| WinForms (Libre) | `Control.Visible` | Getter does not fold the parent chain |
+| WinForms (Libre) | `TabPage.Visible` | Portable `TabControl` never sets it for unselected pages |
+| WPF (both) | `UIElement.IsVisible` | Also requires a live presentation source; offscreen ⇒ always false |
+| WinUI/Uno | *(none exists)* | No `IsVisible` at all |
+
+**The pleasing part**: the assertion that was split per backend when the gap existed is now merged
+back into a single backend-agnostic one, and its comment says so - that the assertion needs no
+`#if` IS the evidence the gap is closed. A new test covers the load-time half and pins the TabPage
+exclusion. 73/73 Microsoft.
+
+## The popup that could not be photographed (2026-09-05)
+
+A WPF `ContextMenu` / smart-tag popup is invisible to both of DevFlow's observation channels. The
+mechanics and the workflow rule now live in the repo `CLAUDE.md` ("DevFlow cannot see a WPF popup"),
+because they apply to any popup in this app, not just the designer's. What belongs here is what it
+cost and what it retroactively explained:
+
+- Hours were spent on the smart tag believing the synthetic click kept missing the 16x16 glyph. The
+  popup was never once in a screenshot, which is exactly what a *working* click also looks like. The
+  click was almost certainly fine all along.
+- The right-click menu was then declared unverifiable until the user simply looked at it and reported
+  "a Delete menu appeared" - a single human observation settled what no amount of automation could.
+- `list-verbs` is what actually explained that menu: `tabControl1` → `Add Tab`/`Remove Tab`,
+  `tabPage1` → **empty**. The right-click had resolved to the page, whose designer publishes no
+  verbs. That is a content question, and content questions never needed the popup.
+
+The rule this produced: **verify the content through an RPC and let a human confirm the popup
+appears.** Never infer "the popup opened" from a screenshot or a UI-tree node count.
+
+## The designer context menus were declared all along — just orphaned (2026-09-06)
+
+`FormsDesigner.addin` declares four designer context menus and has since the SharpDevelop days:
+`ContextMenus/SelectionMenu`, `ContainerMenu`, `TraySelectionMenu`, `ComponentTrayMenu`. Nothing
+built them any more — `grep "FormsDesigner/ContextMenus" src/ --include=*.cs` returned **zero
+results**. The move out of process orphaned them, and the hand-written menu that replaced them
+offered two items (verbs + Delete) against the 19 the declaration already described.
+
+Wiring them back up is a small change with a large payoff, because the commands were ready:
+`AbstractFormsDesignerCommand.Run()` already routes BringToFront / SendToBack / LockControls /
+`TryExecuteRemoteLayout` to the remote designer and only falls back to the in-process
+`IMenuCommandService` when none match. The right-click handler now calls
+`MenuService.ShowContextMenu(remoteControl, this, path)` with `SelectionMenu` for a component and
+`ContainerMenu` for the design root, and the AddIn extension point works again — an AddIn can
+contribute an item by declaring it.
+
+`DesignerVerbSubmenuBuilder` was the one piece needing a rewrite: it returned `ToolStripItem`s and
+read verbs straight off an in-process `IMenuCommandService`. It now renders WPF `MenuItem`s from
+entries the view content prepared. **The preparation must happen before the menu is shown**, because
+`ShowContextMenu` expands menu builders synchronously while listing verbs is an RPC.
+
+### Gather verbs from the component and its immediate container — not the whole chain
+
+Walking the full ancestor chain was the first implementation and it was wrong in a way only the live
+designer showed: right-clicking `button1` offered **Add Tab**, inherited from the `TabControl` two
+levels up. Real VS does not do that. `DesignerVerbMenuPlanner.ContainerDepth = 2` stops the walk at
+the immediate container, which matches VS exactly:
+
+| Right-clicked | Add Tab / Remove Tab |
+|---|---|
+| `tabControl1` | yes (its own) |
+| `tabPage1` | yes (from its container) |
+| `button1` | **no** |
+| `MainForm` | no (and gets ContainerMenu) |
+
+Some container walk is still required: `list-verbs` on `tabPage1` returns an **empty** list, so
+without it there is no way to add a tab by right-clicking the page area — the obvious gesture, since
+a TabControl's pages cover nearly all of its surface.
+
+## `od.forms-designer.describe-context-menu` — how to test an untestable menu
+
+A WPF `ContextMenu` is invisible to DevFlow (see the popup section above), so the menu is split at
+the popup boundary: `describe-context-menu <component>` builds it through **exactly the same path**
+the right-click uses, minus the opening, and returns the item labels. That is what caught the
+`button1`/"Add Tab" leak, which no amount of screenshotting could have shown.
+
+Building it hit two environment traps that are not designer-specific and are therefore written up in
+the repo `CLAUDE.md` instead: a DevFlow action deadlocking on `GetAwaiter().GetResult()` (actions run
+on the UI thread), and `ICSharpCode.Designer.Presentation.dll` existing in nine deployed copies so
+that a single-AddIn build leaves the app loading a stale one. Both cost a debugging round here; read
+those two `CLAUDE.md` sections before touching a shared Designer assembly or adding an action.
+
+### The name label has no TabPage special case — twice now
+
+A `TabPage`'s name label sits above its own bounds like every other component's, which puts it on the
+TabControl's tab strip, overlapping the active header's text. Two attempts to avoid that were both
+rejected as worse than the overlap: drawing it inside the page body (which is what the user noticed -
+"tabPage1 是唯一在它内部的"), then sliding it right past the last header. A design-time name tag
+overlapping a tab header is not worth a special case; consistency across components is what matters.
+The code says so at the placement site, so this does not get "fixed" a third time.

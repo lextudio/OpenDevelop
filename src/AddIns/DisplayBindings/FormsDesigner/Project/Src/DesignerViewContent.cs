@@ -114,6 +114,12 @@ namespace ICSharpCode.FormsDesigner
 			return remoteControl?.TryGetComponentScreenBounds(componentName, out bounds) == true;
 		}
 
+		internal bool TryGetRemoteTabHeaderScreenBounds(string tabControlName, int tabIndex, out System.Windows.Rect bounds)
+		{
+			bounds = System.Windows.Rect.Empty;
+			return remoteControl?.TryGetTabHeaderScreenBounds(tabControlName, tabIndex, out bounds) == true;
+		}
+
 		internal void SetRemoteProperty(string componentName, string propertyName, string value)
 		{
 			if (!IsRemoteDesignerLoaded)
@@ -709,6 +715,7 @@ namespace ICSharpCode.FormsDesigner
 				remoteControl.SelectionChanged += RemoteSelectionChanged;
 				remoteControl.RestartRequested += RemoteRestartRequested;
 				remoteControl.SmartTagRequested += RemoteSmartTagRequested;
+				remoteControl.ContextMenuRequested += RemoteContextMenuRequested;
 				remoteControl.ToolStripInsertRequested += RemoteToolStripInsertRequested;
 				remoteControl.ToolStripTypeHereCommitted += RemoteToolStripTypeHereCommitted;
 				outline.SelectionCommitted += OnOutlineSelectionCommitted;
@@ -1101,6 +1108,174 @@ namespace ICSharpCode.FormsDesigner
 				LoggingService.Error(exception);
 				MessageService.ShowError(exception.Message);
 			}
+		}
+
+		/// <summary>One designer verb as the context menu renders it, prepared here so
+		/// DesignerVerbSubmenuBuilder - which the AddIn tree calls synchronously - never has to make
+		/// the RPC itself.</summary>
+		internal sealed class VerbMenuEntry
+		{
+			public string Text { get; set; }
+			public string Description { get; set; }
+			public bool Enabled { get; set; }
+			public Action Invoke { get; set; }
+		}
+
+		/// <summary>Verbs for the component that was last right-clicked, read by
+		/// DesignerVerbSubmenuBuilder while the menu is being built.</summary>
+		internal IReadOnlyList<VerbMenuEntry> PendingVerbMenuEntries { get; private set; }
+
+		/// <summary>Right-click on the design surface: show the designer context menu the AddIn tree
+		/// declares, with the clicked component's designer verbs (TabControlDesigner's Add
+		/// Tab/Remove Tab, and whatever any other component's designer exposes) spliced in where
+		/// DesignerVerbSubmenuBuilder sits.
+		///
+		/// The menus at /SharpDevelop/FormsDesigner/ContextMenus/* were declared for the old
+		/// in-process designer and then orphaned by the move out of process - nothing built them any
+		/// more. Building them here rather than assembling a menu by hand is what brings back View
+		/// Code, Bring to Front/Send to Back, Align to Grid, Show Tab Order, Lock Controls,
+		/// Cut/Copy/Paste/Delete and Properties, all of which already have working commands, AND
+		/// restores the extension point: an AddIn can contribute an item by declaring it.
+		///
+		/// Verbs are a Microsoft-backend feature (design/list-verbs answers Accepted=false on the
+		/// portable fork), so on Libre the verb group is simply absent rather than an error.</summary>
+		async void RemoteContextMenuRequested(object sender, RemoteComponentEventArgs e)
+		{
+			try {
+				CloseActiveDesignerPopup();
+				var path = await PrepareContextMenuAsync(e.ComponentName);
+				// ShowContextMenu both builds and opens, and expands menu builders synchronously as
+				// it goes - which is why PrepareContextMenuAsync had to await the verbs first.
+				// Fully qualified: ICSharpCode.Core.WinForms has a MenuService of its own, and this
+				// file sees both.
+				ICSharpCode.Core.Presentation.MenuService.ShowContextMenu(remoteControl, this, path);
+			} catch (Exception exception) {
+				LoggingService.Error(exception);
+				MessageService.ShowError(exception.Message);
+			}
+		}
+
+		/// <summary>Prepares the verb entries for <paramref name="componentName"/> and returns which
+		/// declared menu applies to it.</summary>
+		/// <remarks>
+		/// Shared by the right-click handler and DescribeContextMenuAsync so the described menu is
+		/// the same menu that opens, not a reimplementation that could drift from it.
+		/// </remarks>
+		async System.Threading.Tasks.Task<string> PrepareContextMenuAsync(string componentName)
+		{
+			var components = RemoteDesignerState?.Components?.ToList();
+			PendingVerbMenuEntries = String.IsNullOrEmpty(componentName)
+				? null
+				: await GatherVerbMenuEntriesAsync(componentName, components);
+			return MenuPathFor(componentName, components);
+		}
+
+		/// <summary>Which declared menu a component gets. The root form gets the container menu,
+		/// matching real VS: no z-order or Cut/Copy on the thing that owns the surface.</summary>
+		static string MenuPathFor(string componentName, List<DesignerComponentInfo> components)
+		{
+			var clicked = String.IsNullOrEmpty(componentName) ? null
+				: components?.FirstOrDefault(item => item.Name == componentName);
+			var isRoot = clicked == null || String.IsNullOrEmpty(clicked.Parent);
+			return isRoot
+				? "/SharpDevelop/FormsDesigner/ContextMenus/ContainerMenu"
+				: "/SharpDevelop/FormsDesigner/ContextMenus/SelectionMenu";
+		}
+
+		/// <summary>Builds the context menu for a component WITHOUT opening it and reports the item
+		/// labels, so the menu's content can actually be asserted.</summary>
+		/// <remarks>
+		/// This exists because a WPF ContextMenu is its own top-level window and is therefore
+		/// invisible to both of DevFlow's observation channels - it appears in no screenshot and in
+		/// no ui/tree. Verifying it by opening it is impossible; only a human can see it. So the
+		/// feature is split at the popup boundary: this builds the menu through exactly the same
+		/// path the right-click uses, minus the opening, and returns what a viewer would read.
+		/// </remarks>
+		/// <remarks>
+		/// Synchronous on purpose. DevFlow dispatches actions ON the UI thread, so an action that
+		/// awaited the verb RPC and then blocked for the result would deadlock: the continuation
+		/// would be posted back to the very thread waiting on it. The RPC is therefore pushed to the
+		/// thread pool - where it has no SynchronizationContext to return to - and only the menu
+		/// construction, which must be on the UI thread, runs here. The right-click path keeps its
+		/// plain await instead, because there the continuation belongs on the UI thread and nothing
+		/// blocks it.
+		/// </remarks>
+		internal IReadOnlyList<string> DescribeContextMenu(string componentName)
+		{
+			var components = RemoteDesignerState?.Components?.ToList();
+			var entries = String.IsNullOrEmpty(componentName)
+				? null
+				: System.Threading.Tasks.Task.Run(
+					() => GatherVerbMenuEntriesAsync(componentName, components)).GetAwaiter().GetResult();
+			PendingVerbMenuEntries = entries;
+			var path = MenuPathFor(componentName, components);
+			var labels = new List<string>();
+			foreach (var item in ICSharpCode.Core.Presentation.MenuService.CreateMenuItems(remoteControl, this, path, "ContextMenu")) {
+				switch (item) {
+					case System.Windows.Controls.Separator:
+						labels.Add("---");
+						break;
+					case System.Windows.Controls.MenuItem menuItem:
+						labels.Add(StringParser.Parse(menuItem.Header?.ToString() ?? "?"));
+						break;
+					default:
+						// Menu items the AddIn tree produced that are neither - recorded by type so a
+						// regression shows up as an unexpected entry rather than a silent gap.
+						labels.Add("<" + item?.GetType().Name + ">");
+						break;
+				}
+			}
+			return labels;
+		}
+
+		/// <summary>Lists the clicked component's verbs and those of its containers, collapsed by
+		/// DesignerVerbMenuPlanner.</summary>
+		/// <remarks>
+		/// The container walk is the reason Add Tab is reachable at all: those verbs belong to the
+		/// TabControl's designer, but a TabControl's surface is almost entirely covered by its pages,
+		/// so right-clicking the page area - the obvious gesture for "add another tab" - resolves to
+		/// a TabPage, whose own designer publishes no verbs. Confirmed against the live designer:
+		/// list-verbs returns Add Tab/Remove Tab for tabControl1 and an empty list for tabPage1.
+		/// </remarks>
+		async System.Threading.Tasks.Task<IReadOnlyList<VerbMenuEntry>> GatherVerbMenuEntriesAsync(
+			string componentName, List<DesignerComponentInfo> components)
+		{
+			// Innermost-first, which is the order Plan needs to let the nearest owner win a
+			// duplicate verb name.
+			var gathered = new List<(string Owner, DesignerVerbInfo Verb)>();
+			var chain = DesignerVerbMenuPlanner.ComponentAndItsContainers(componentName,
+				name => components?.FirstOrDefault(item => item.Name == name)?.Parent);
+			foreach (var owner in chain) {
+				DesignerVerbs verbs = null;
+				try {
+					verbs = await remoteClient.ListVerbsAsync(remoteDocumentVersion, owner,
+						System.Threading.CancellationToken.None);
+				} catch (Exception exception) {
+					// A component whose designer refuses to enumerate verbs must still get a menu -
+					// everything else the .addin declares is still meaningful.
+					LoggingService.Warn("Forms designer: list-verbs failed for " + owner + ": " + exception.Message);
+				}
+				if (verbs?.Accepted != true)
+					continue;
+				foreach (var verb in verbs.Items.Where(item => item.Visible))
+					gathered.Add((owner, verb));
+			}
+			var entries = new List<VerbMenuEntry>();
+			foreach (var planned in DesignerVerbMenuPlanner.Plan(gathered
+				.Select(entry => new DesignerVerbCandidate(entry.Owner, entry.Verb.Text, entry.Verb.Index)))) {
+				var source = gathered.First(entry => entry.Owner == planned.OwnerName && entry.Verb.Text == planned.Text);
+				var capturedVerb = source.Verb;
+				var capturedOwner = planned.OwnerName;
+				entries.Add(new VerbMenuEntry {
+					Text = planned.Text,
+					Description = source.Verb.Description,
+					Enabled = source.Verb.Enabled,
+					// Invoking targets the OWNER, not what was right-clicked - the whole point of
+					// the container walk is that those differ.
+					Invoke = async () => await InvokeVerbAsync(capturedOwner, capturedVerb)
+				});
+			}
+			return entries;
 		}
 
 		async System.Threading.Tasks.Task InvokeVerbAsync(string componentName, DesignerVerbInfo verb)

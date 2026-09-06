@@ -32,6 +32,18 @@ sealed class DesignerHostService : IDesignerChildService
 	readonly List<Assembly> referencedAssemblies = new();
 	Size? rootDesignSize;
 	SizeF? rootAutoScaleDimensions;
+#if !MICROSOFT_WINFORMS
+	/// <summary>Design-time SHADOW for Visible, keyed by component name - the value the SOURCE says
+	/// (and the Properties pad shows) while the live control stays on screen.
+	///
+	/// Real WinForms' ControlDesigner shadows Visible itself: setting it false records the value for
+	/// runtime but leaves the control selectable on the design surface, which is what VS does.
+	/// LibreWinForms' portable fork has no such shadowing, so without this the control genuinely
+	/// disappeared from the surface the moment the property was set - reachable only from the
+	/// Document Outline pad. Hence Libre-only: on the Microsoft backend the framework already does
+	/// it, and duplicating it there would fight the real designer.</summary>
+	readonly Dictionary<string, bool> shadowedVisible = new(StringComparer.Ordinal);
+#endif
 	long frameSequence;
 	bool initialized;
 	static volatile bool portableGpuReadbackUnavailable;
@@ -252,6 +264,15 @@ sealed class DesignerHostService : IDesignerChildService
 		// Validate source serialization before mutating the live component. A
 		// failed complex-property serializer must not split live and source state.
 		_ = SerializeValue(converted);
+#if !MICROSOFT_WINFORMS
+		// Shadow Visible instead of applying it: record what the source will say, keep the control
+		// on the surface. See shadowedVisible for why this is Libre-only.
+		if (IsShadowedVisible(component, propertyName) && converted is bool visible) {
+			shadowedVisible[elementId] = visible;
+			RewriteProperty(elementId, propertyName, converted);
+			return CurrentState(baseVersion);
+		}
+#endif
 		using (var transaction = host.CreateTransaction($"Set {elementId}.{propertyName}")) {
 			property.SetValue(component, converted);
 			transaction.Commit();
@@ -259,6 +280,20 @@ sealed class DesignerHostService : IDesignerChildService
 		RewriteProperty(elementId, propertyName, converted);
 		return CurrentState(baseVersion);
 	}
+
+#if !MICROSOFT_WINFORMS
+	/// <summary>Whether this property assignment should be shadowed rather than applied.
+	///
+	/// A TabPage is excluded deliberately: its Visible is driven by the TabControl itself (that is
+	/// precisely what makes an unselected page's children report invisible), so shadowing it would
+	/// leave every page showing at once. The design root is excluded because hiding it is not a
+	/// meaningful design-time edit and the surface would have nothing to render.</summary>
+	bool IsShadowedVisible(IComponent component, string propertyName)
+		=> propertyName == "Visible"
+			&& component is Control control
+			&& control is not TabPage
+			&& !ReferenceEquals(component, GetHost().RootComponent);
+#endif
 
 	static object ConvertPropertyValue(PropertyDescriptor property, string value)
 	{
@@ -1718,7 +1753,42 @@ sealed class DesignerHostService : IDesignerChildService
 			view.PerformLayout();
 			Trace("CreateDesignSurface laid out view control");
 		}
+#if !MICROSOFT_WINFORMS
+		AdoptVisibleShadowsFromLoadedSource();
+#endif
 	}
+
+#if !MICROSOFT_WINFORMS
+	/// <summary>Takes over Visible for controls that arrived hidden from the loaded source, so they
+	/// are shown (and stay selectable) on the surface while the source keeps saying false - the
+	/// other half of the shadowing SetProperty does, without which reopening a document would drop
+	/// straight back to "the control is gone".
+	///
+	/// `control.Visible` is an exact signal here BECAUSE LibreWinForms' getter does not fold the
+	/// parent chain (unlike real WinForms' GetVisibleCore): it reports only this control's own
+	/// flag, so false means this control itself was assigned false - not that some ancestor was.
+	/// That is the same fork difference that made IsEffectivelyVisible walk parents explicitly.
+	///
+	/// TabPages are skipped: their Visible is the TabControl's own business (an unselected page IS
+	/// legitimately hidden), and "restoring" them would show every page at once.</summary>
+	void AdoptVisibleShadowsFromLoadedSource()
+	{
+		shadowedVisible.Clear();
+		try {
+			var host = designSurface?.GetService(typeof(IDesignerHost)) as IDesignerHost;
+			if (host?.Container == null) return;
+			foreach (var control in host.Container.Components.Cast<IComponent>().OfType<Control>()) {
+				if (control is TabPage || ReferenceEquals(control, host.RootComponent)) continue;
+				if (control.Site?.Name is not { Length: > 0 } name || control.Visible) continue;
+				shadowedVisible[name] = false;
+				control.Visible = true;
+			}
+		} catch {
+			// A fork that cannot report or set Visible must not take the whole session down; the
+			// worst case is the pre-shadowing behaviour for this document.
+		}
+	}
+#endif
 
 	static string VbArgumentText(VbSyntax.ObjectCreationExpressionSyntax creation, int index)
 		=> ((VbSyntax.SimpleArgumentSyntax)creation.ArgumentList!.Arguments[index]).Expression.ToString();
@@ -1982,6 +2052,16 @@ sealed class DesignerHostService : IDesignerChildService
 			// surface's root form is not a normal window and its flag says nothing about children.
 			for (var current = control; current != null && current != root; current = current.Parent) {
 				if (!current.Visible) return false;
+				// A TabPage that is not its TabControl's selected page is off screen even when the
+				// Visible FLAG says otherwise: real WinForms clears it, but LibreWinForms' portable
+				// TabControl never sets it, so on that backend the unselected page and everything
+				// on it claimed to be visible - i.e. the phantom-overlay bug was still live there
+				// for tab controls specifically, even after the parent-chain fix. Asking the
+				// TabControl which page is selected is true on both forks and needs no flag.
+				if (current is TabPage page && current.Parent is TabControl tabs) {
+					var index = tabs.TabPages.IndexOf(page);
+					if (index >= 0 && index != tabs.SelectedIndex) return false;
+				}
 			}
 			return true;
 		} catch {
@@ -2183,6 +2263,13 @@ sealed class DesignerHostService : IDesignerChildService
 			string serialized;
 			try {
 				value = property.GetValue(component);
+#if !MICROSOFT_WINFORMS
+				// A shadowed Visible reads back as what the SOURCE says, not the live control's
+				// on-surface true - otherwise the Properties pad would show the user's own
+				// Visible=false edit snapping straight back to True. See shadowedVisible.
+				if (property.Name == "Visible" && shadowedVisible.TryGetValue(elementId, out var shadowed))
+					value = shadowed;
+#endif
 				if (value == null) serialized = isImageProperty && assignedInSource ? "[binary]" : "";
 				// Portable resource loading can materialize an image entry as a byte-backed
 				// object rather than a concrete System.Drawing.Image. The property contract is

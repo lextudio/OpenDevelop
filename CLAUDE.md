@@ -115,6 +115,40 @@ To compare two elements rather than one, `od.winui-designer.describe-element <na
 `bounds=(x,y) WxH` straight from the reported tree — the fastest way to see a whole tree collapsed
 onto one origin.
 
+**Subtract the window origin before cropping.** The geometry actions (`surface-geometry`,
+`query-control-screen-bounds`, ...) report **screen** coordinates — they are meant for synthetic
+mouse input — while `/api/v1/ui/screenshot` is a bitmap of the main window alone. Cropping at the
+reported coordinates lands somewhere else entirely (in one case the status bar rather than the
+design surface, which looked like a rendering bug). Get the origin and subtract it:
+
+```powershell
+# GetWindowRect on (Get-Process OpenDevelop).MainWindowHandle -> e.g. L=42 T=200
+# crop at (screenX - L, screenY - T)
+```
+
+The window is not at 0,0 just because the screenshot's size matches the window's.
+
+**Synthetic clicks must be aimed with server geometry, never arithmetic.** "Just inside the border"
+computed from a parent's rect put a click one pixel inside the child that covers it — a `TabControl`
+is the worst case, since its pages cover nearly all of it. Ask for the real rect
+(`od.forms-designer.query-tab-header-screen-bounds` returns a tab header's own `GetTabRect` plus the
+`centerX`/`centerY` to click). Tab headers are sized to their text, so "divide the strip into N
+equal parts" is wrong on the first tab.
+
+### DevFlow cannot see a WPF popup — not in a screenshot, not in the UI tree
+
+A `ContextMenu`, a smart-tag popup, or any other WPF `Popup` is its own top-level window: it is
+outside the main window's render AND rooted in a separate `PopupRoot`, so it appears in neither
+`/api/v1/ui/screenshot` nor `/api/v1/ui/tree`. A right-click a human observer watched open a menu
+produced **zero** `ContextMenu` nodes in the tree. (The `MenuItem` count is a trap — it grows as the
+main menu bar builds lazily, and those nodes all have `text: null`.)
+
+Do not try to verify a popup by opening it. Split the feature at the popup boundary and assert the
+content through an action that builds the menu without showing it — see
+`od.forms-designer.describe-context-menu` and the fuller writeup in
+`doc/technotes/winforms-designer.md`. Whether the popup itself *appears* is something only a human
+can confirm; ask.
+
 ### Case study: the collapsed-tree selection offset (fixed 2026-08-30)
 
 Worth reading before touching designer positioning, because almost every intuition here was wrong.
@@ -163,6 +197,41 @@ now compares *two different elements* (`TitleText` vs `PrimaryButton`). Its pre-
 reported bounds, so they agree with each other even when that shared source is wrong for every
 element at once. **Any new designer-geometry assertion must compare independent elements** for the
 same reason.
+
+## Writing a DevFlow action: it runs ON the UI thread
+
+There is no marshalling in the action helpers because none is needed — actions are dispatched on the
+UI thread, so UI objects can be touched directly. The consequence is that **`GetAwaiter().GetResult()`
+in an action deadlocks**: it blocks the very thread the awaited continuation is posted back to, and
+the action just times out with no error. Push the async work to the thread pool
+(`Task.Run(() => ...).GetAwaiter().GetResult()` — inside `Task.Run` there is no
+`SynchronizationContext` to return to) and keep only the UI work on the calling thread.
+
+## Deploying a change to a shared assembly needs a FULL solution build
+
+`ICSharpCode.Designer.Presentation.dll` (and the other shared `Designer.*` assemblies) is copied
+into **every AddIn folder that references it** — nine copies for that one. Building a single AddIn
+csproj refreshes exactly one of them, and the app may load any, which surfaces as
+`TypeLoadException: Could not load type ...` for a type that is plainly there in the source. The
+same applies after an upstream rebase that touches Core: incremental per-project builds leave other
+AddIns compiled against the old Core, which surfaces as a `Cannot find class` modal dialog that
+blocks startup (process alive, log frozen early, DevFlow dead).
+
+```bash
+dotnet build OpenDevelop.Mvp.slnx -c Debug      # ~4-7 min
+```
+
+- **`SharpDevelop.sln` is stale** — it references projects that no longer exist (`Mono.Cecil`,
+  `ICSharpCode.Decompiler`, `SubversionAddIn`, ...) and fails with `MSB3202`. Use the `.slnx`.
+- To confirm a deploy actually landed, grep the deployed DLLs for a symbol you just added rather
+  than trusting timestamps: `for f in $(find AddIns -name ICSharpCode.Designer.Presentation.dll); do grep -q NewTypeName "$f" || echo "STALE: $f"; done`
+- Parallel full builds can race on `ICSharpCode.Core.Presentation.dll` (42x `MC1000`) and
+  `ICSharpCode.Data.Core.dll` (`CS0006`); building those two projects first breaks the race.
+- `LibreWPF.Sdk` occasionally fails to resolve (`MSB4236`) as a transient — retry once before
+  investigating.
+- Under `OD_TEST_MODE=1` a startup error dialog is suppressed and only logged, so a scripted run can
+  look clean while a manual run hits a modal dialog. Check the log for `TypeLoadException` /
+  `Cannot find class` even when the app appears to start fine.
 
 ## Building `WinUIXamlDesigner.MicrosoftHost`
 
