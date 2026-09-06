@@ -19,6 +19,7 @@ using System.Windows.Controls;
 using System.Windows.Media.ProGPU;
 
 using AvalonDock.Layout;
+using ICSharpCode.SharpDevelop.LanguageServices;
 
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.Core;
@@ -589,17 +590,39 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		}
 
 		/// <summary>
-		/// Upserts every currently-open file into <paramref name="service"/> so cross-file actions
-		/// (od.find-references / od.rename-symbol / od.extract-interface - the SymbolFinder /
-		/// rename / extraction passes all search the language service's WHOLE workspace) see the
-		/// full current solution state. Editors upsert their documents on attach asynchronously,
-		/// so a headless caller that opened N files and immediately searched raced that attach
-		/// pipeline and could miss the newest files - observed as FindReferences legitimately
-		/// reporting count=0 because the referencing document wasn't in the workspace yet.
-		/// Syncing here makes those actions deterministic for headless callers.
+		/// Ensures the containing project's compile items are loaded into the language service's
+		/// Roslyn workspace (via RefreshProjectAsync → LoadProjectAsync) and upserts every
+		/// currently-open file. Project-backed documents must be loaded BEFORE individual file
+		/// upserts — otherwise UpsertDocumentAsync creates a duplicate in the loose ad-hoc project.
+		/// Cross-file actions (od.go-to-definition / od.find-references / od.rename-symbol /
+		/// od.extract-interface) need the project-backed Roslyn project with metadata references
+		/// and all source files.
 		/// </summary>
 		static async Task SyncOpenDocumentsToLanguageServiceAsync(ICSharpCode.SharpDevelop.LanguageServices.ILanguageService service)
 		{
+			var seenProjects = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+			// Phase 1: Load project-backed documents first (before any loose UpsertDocumentAsync).
+			foreach (var openedFile in SD.FileService.OpenedFiles)
+			{
+				var project = SD.ProjectService.FindProjectContainingFile(openedFile.FileName);
+				if (project != null && seenProjects.Add(project.FileName.ToString()))
+				{
+					try
+					{
+						await service.RefreshProjectAsync(
+							new ICSharpCode.SharpDevelop.LanguageServices.DocumentId(openedFile.FileName.ToString()),
+							CancellationToken.None);
+					}
+					catch (Exception ex)
+					{
+						LoggingService.Warn("Failed to refresh project for language service: " + ex.Message);
+					}
+				}
+			}
+
+			// Phase 2: Upsert individual file buffers (picks up project-backed documents
+			// already registered in Phase 1 via the variants lookup, updating text in-place).
 			foreach (var openedFile in SD.FileService.OpenedFiles)
 			{
 				var openFileName = openedFile.FileName.ToString();
@@ -869,6 +892,436 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			File.WriteAllText(fileName, text);
 			var openedFile = SD.FileService.GetOpenedFile(FileName.Create(fileName));
 			openedFile?.SetData(System.Text.Encoding.UTF8.GetBytes(text));
+		}
+
+			[DevFlowAction("od.go-to-definition", Description = "Go to the definition of the symbol at file:line/column and return the target location(s)")]
+		public static async Task<string> GoToDefinitionAsync(string fileName, int line, int column)
+		{
+			try {
+				var resolved = await GetSyncedLanguageServiceAsync(fileName);
+				if (resolved == null)
+					return JsonSerializer.Serialize(new { count = 0, error = "no language service for file" });
+				var (service, id) = resolved.Value;
+
+				string text = SD.FileService.GetFileContent(FileName.Create(fileName)).Text;
+				int offset = GetOffset(text, line, column);
+				var targets = await service.GoToDefinitionAsync(id, offset, CancellationToken.None);
+				if (targets == null || targets.Count == 0)
+					return JsonSerializer.Serialize(new { count = 0, error = "no definition found" });
+
+				return JsonSerializer.Serialize(new {
+					count = targets.Count,
+					targets = targets.Select(t => new {
+						filePath = t.FileName,
+						line = t.Position.Line,
+						column = t.Position.Column,
+						spanStart = t.Span?.Start.Line,
+						spanEnd = t.Span?.End.Line
+					}).ToArray()
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { count = 0, error = ex.Message });
+			}
+		}
+
+		[DevFlowAction("od.completions", Description = "Get IntelliSense completions at file:line/column")]
+		public static async Task<string> GetCompletionsAsync(string fileName, int line, int column)
+		{
+			try {
+				var resolved = await GetSyncedLanguageServiceAsync(fileName);
+				if (resolved == null)
+					return JsonSerializer.Serialize(new { count = 0, error = "no language service for file" });
+				var (service, id) = resolved.Value;
+
+				string text = SD.FileService.GetFileContent(FileName.Create(fileName)).Text;
+				int offset = GetOffset(text, line, column);
+				var result = await service.GetCompletionsAsync(id, offset, CancellationToken.None);
+				if (result == null)
+					return JsonSerializer.Serialize(new { count = 0, error = "no completions available" });
+
+				return JsonSerializer.Serialize(new {
+					count = result.Items.Count,
+					replacementSpan = result.ReplacementSpan != null ? new {
+						startLine = result.ReplacementSpan.Value.Start.Line,
+						startColumn = result.ReplacementSpan.Value.Start.Column,
+						endLine = result.ReplacementSpan.Value.End.Line,
+						endColumn = result.ReplacementSpan.Value.End.Column
+					} : (object)null,
+					items = result.Items.Take(50).Select(i => new {
+						displayText = i.DisplayText,
+						insertionText = i.InsertionText,
+						description = i.Description,
+						glyph = i.Glyph
+					}).ToArray()
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { count = 0, error = ex.Message });
+			}
+		}
+
+		[DevFlowAction("od.format", Description = "Format the document or a range and return the text edits")]
+		public static async Task<string> FormatDocumentAsync(string fileName, int? startLine = null, int? startColumn = null, int? endLine = null, int? endColumn = null)
+		{
+			try {
+				var resolved = await GetSyncedLanguageServiceAsync(fileName);
+				if (resolved == null)
+					return JsonSerializer.Serialize(new { count = 0, error = "no language service for file" });
+				var (service, id) = resolved.Value;
+
+				ICSharpCode.SharpDevelop.LanguageServices.TextSpan? span = null;
+				if (startLine.HasValue && endLine.HasValue) {
+					span = new ICSharpCode.SharpDevelop.LanguageServices.TextSpan(
+						new ICSharpCode.SharpDevelop.LanguageServices.TextPosition(startLine.Value, startColumn ?? 1),
+						new ICSharpCode.SharpDevelop.LanguageServices.TextPosition(endLine.Value, endColumn ?? 1));
+				}
+
+				var edits = await service.FormatAsync(id, span, CancellationToken.None);
+				return JsonSerializer.Serialize(new {
+					count = edits.Count,
+					edits = edits.Select(e => new {
+						startLine = e.Span.Start.Line,
+						startColumn = e.Span.Start.Column,
+						endLine = e.Span.End.Line,
+						endColumn = e.Span.End.Column,
+						newText = e.NewText
+					}).ToArray()
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { count = 0, error = ex.Message });
+			}
+		}
+
+		[DevFlowAction("od.code-actions", Description = "List code actions (quick fixes/refactorings) available at file:line/column")]
+		public static async Task<string> GetCodeActionsAsync(string fileName, int startLine, int startColumn, int endLine, int endColumn)
+		{
+			try {
+				var resolved = await GetSyncedLanguageServiceAsync(fileName);
+				if (resolved == null)
+					return JsonSerializer.Serialize(new { count = 0, error = "no language service for file" });
+				var (service, id) = resolved.Value;
+
+				var span = new ICSharpCode.SharpDevelop.LanguageServices.TextSpan(
+					new ICSharpCode.SharpDevelop.LanguageServices.TextPosition(startLine, startColumn),
+					new ICSharpCode.SharpDevelop.LanguageServices.TextPosition(endLine, endColumn));
+				var actions = await service.GetCodeActionsAsync(id, span, CancellationToken.None);
+				if (actions == null)
+					return JsonSerializer.Serialize(new { count = 0, error = "no code actions available" });
+
+				return JsonSerializer.Serialize(new {
+					count = actions.Count,
+					actions = actions.Select(a => new {
+						id = a.Id,
+						title = a.Title,
+						isPreferred = a.IsPreferred
+					}).ToArray()
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { count = 0, error = ex.Message });
+			}
+		}
+
+		[DevFlowAction("od.apply-code-action", Description = "Apply a code action by its id (from od.code-actions) and return the resulting edits")]
+		public static async Task<string> ApplyCodeActionAsync(string fileName, string actionId)
+		{
+			try {
+				var resolved = await GetSyncedLanguageServiceAsync(fileName);
+				if (resolved == null)
+					return JsonSerializer.Serialize(new { count = 0, error = "no language service for file" });
+				var (service, id) = resolved.Value;
+
+				var editsByFile = await service.ApplyCodeActionAsync(id, actionId, CancellationToken.None);
+				if (editsByFile == null || editsByFile.Count == 0)
+					return JsonSerializer.Serialize(new { count = 0, error = "no edits produced" });
+
+				return JsonSerializer.Serialize(new {
+					count = editsByFile.Values.Sum(e => e.Count),
+					editsByFile = editsByFile.ToDictionary(
+						kvp => kvp.Key,
+						kvp => kvp.Value.Select(e => new {
+							startLine = e.Span.Start.Line,
+							startColumn = e.Span.Start.Column,
+							endLine = e.Span.End.Line,
+							endColumn = e.Span.End.Column,
+							newText = e.NewText
+						}).ToArray()
+					)
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { count = 0, error = ex.Message });
+			}
+		}
+
+		[DevFlowAction("od.quick-info", Description = "Get QuickInfo (hover tooltip) at file:line/column")]
+		public static async Task<string> GetQuickInfoAsync(string fileName, int line, int column)
+		{
+			try {
+				var resolved = await GetSyncedLanguageServiceAsync(fileName);
+				if (resolved == null)
+					return JsonSerializer.Serialize(new { found = false, error = "no language service for file" });
+				var (service, id) = resolved.Value;
+
+				string text = SD.FileService.GetFileContent(FileName.Create(fileName)).Text;
+				int offset = GetOffset(text, line, column);
+				var info = await service.GetQuickInfoAsync(id, offset, CancellationToken.None);
+				if (info == null)
+					return JsonSerializer.Serialize(new { found = false, error = "no quick info at location" });
+
+				return JsonSerializer.Serialize(new {
+					found = true,
+					text = info.Text,
+					span = info.Span != null ? new {
+						startLine = info.Span.Value.Start.Line,
+						startColumn = info.Span.Value.Start.Column,
+						endLine = info.Span.Value.End.Line,
+						endColumn = info.Span.Value.End.Column
+					} : (object)null
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { found = false, error = ex.Message });
+			}
+		}
+
+		[DevFlowAction("od.diagnostics", Description = "Get language diagnostics (compiler errors/warnings + analyzer diagnostics) for a file")]
+		public static async Task<string> GetDiagnosticsAsync(string fileName)
+		{
+			try {
+				var resolved = await GetSyncedLanguageServiceAsync(fileName);
+				if (resolved == null)
+					return JsonSerializer.Serialize(new { count = 0, error = "no language service for file" });
+				var (service, id) = resolved.Value;
+
+				var diagnostics = await service.GetDiagnosticsAsync(id, CancellationToken.None);
+				return JsonSerializer.Serialize(new {
+					count = diagnostics.Count,
+					diagnostics = diagnostics.Select(d => new {
+						id = d.Id,
+						message = d.Message,
+						severity = d.Severity.ToString(),
+						startLine = d.Span.Start.Line,
+						startColumn = d.Span.Start.Column,
+						endLine = d.Span.End.Line,
+						endColumn = d.Span.End.Column
+					}).ToArray()
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { count = 0, error = ex.Message });
+			}
+		}
+
+		[DevFlowAction("od.document-outline", Description = "Get the document outline (symbol tree) for a file")]
+		public static async Task<string> GetDocumentOutlineAsync(string fileName)
+		{
+			try {
+				var resolved = await GetSyncedLanguageServiceAsync(fileName);
+				if (resolved == null)
+					return JsonSerializer.Serialize(new { count = 0, error = "no language service for file" });
+				var (service, id) = resolved.Value;
+
+				var nodes = await service.GetDocumentOutlineAsync(id, CancellationToken.None);
+				return JsonSerializer.Serialize(new {
+					count = nodes.Count,
+					nodes = nodes.Select(n => SerializeOutlineNode(n)).ToArray()
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { count = 0, error = ex.Message });
+			}
+		}
+
+		static object SerializeOutlineNode(DocumentOutlineNode n) => new {
+			name = n.Name,
+			kind = n.Kind,
+			startLine = n.Span.Start.Line,
+			startColumn = n.Span.Start.Column,
+			endLine = n.Span.End.Line,
+			endColumn = n.Span.End.Column,
+			accessibility = n.Accessibility,
+			childCount = n.Children.Count,
+			children = n.Children.Select(c => SerializeOutlineNode(c)).ToArray()
+		};
+
+		[DevFlowAction("od.base-symbols", Description = "Get the base types/interfaces for the symbol at file:offset")]
+		public static async Task<string> GetBaseSymbolsAsync(string fileName, int offset)
+		{
+			try {
+				var resolved = await GetSyncedLanguageServiceAsync(fileName);
+				if (resolved == null)
+					return JsonSerializer.Serialize(new { subject = "", error = "no language service for file" });
+				var (service, id) = resolved.Value;
+
+				var result = await service.GetBaseSymbolsAsync(id, offset, CancellationToken.None);
+				if (result == null)
+					return JsonSerializer.Serialize(new { subject = "", nodes = Array.Empty<object>() });
+				return JsonSerializer.Serialize(new {
+					subject = result.Subject,
+					nodes = result.Nodes.Select(n => SerializeHierarchyNode(n)).ToArray()
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { subject = "", error = ex.Message });
+			}
+		}
+
+		[DevFlowAction("od.derived-symbols", Description = "Get the derived types/overrides for the symbol at file:offset")]
+		public static async Task<string> GetDerivedSymbolsAsync(string fileName, int offset)
+		{
+			try {
+				var resolved = await GetSyncedLanguageServiceAsync(fileName);
+				if (resolved == null)
+					return JsonSerializer.Serialize(new { subject = "", error = "no language service for file" });
+				var (service, id) = resolved.Value;
+
+				var result = await service.GetDerivedSymbolsAsync(id, offset, CancellationToken.None);
+				if (result == null)
+					return JsonSerializer.Serialize(new { subject = "", nodes = Array.Empty<object>() });
+				return JsonSerializer.Serialize(new {
+					subject = result.Subject,
+					nodes = result.Nodes.Select(n => SerializeHierarchyNode(n)).ToArray()
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { subject = "", error = ex.Message });
+			}
+		}
+
+		static object SerializeHierarchyNode(SymbolNavigationNode n) => new {
+			name = n.Name,
+			kind = n.Kind,
+			filePath = n.Target.FileName,
+			startLine = n.Target.Position.Line,
+			startColumn = n.Target.Position.Column,
+			container = n.Container,
+			childCount = n.Children.Count,
+			children = n.Children.Select(c => SerializeHierarchyNode(c)).ToArray()
+		};
+
+		[DevFlowAction("od.symbol-name", Description = "Get the symbol name at file:offset")]
+		public static async Task<string> GetSymbolNameAsync(string fileName, int offset)
+		{
+			try {
+				var resolved = await GetSyncedLanguageServiceAsync(fileName);
+				if (resolved == null)
+					return JsonSerializer.Serialize(new { success = false, error = "no language service for file" });
+				var (service, id) = resolved.Value;
+				var name = await service.GetSymbolNameAsync(id, offset, CancellationToken.None);
+				return JsonSerializer.Serialize(new { success = true, name = name ?? "" });
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.Message });
+			}
+		}
+
+		[DevFlowAction("od.valid-identifier", Description = "Check whether a name is a valid identifier in the file's language")]
+		public static async Task<string> IsValidIdentifierAsync(string fileName, string name)
+		{
+			try {
+				var resolved = await GetSyncedLanguageServiceAsync(fileName);
+				if (resolved == null)
+					return JsonSerializer.Serialize(new { success = false, error = "no language service for file" });
+				var (service, id) = resolved.Value;
+				var valid = await service.IsValidIdentifierAsync(id, name, CancellationToken.None);
+				return JsonSerializer.Serialize(new { success = true, isValid = valid });
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.Message });
+			}
+		}
+
+		[DevFlowAction("od.find-member", Description = "Find a type member by full type name and method name across the solution")]
+		public static async Task<string> FindMemberAsync(string typeFullName, string methodName, int? parameterCount = null)
+		{
+			try {
+				var registry = SD.GetService<ICSharpCode.SharpDevelop.LanguageServices.LanguageServiceRegistry>();
+				if (registry == null || !registry.TryGetService(".cs", out var service))
+					return JsonSerializer.Serialize(new { success = false, count = 0, error = "no language service available" });
+				var targets = await service.FindMemberAsync(typeFullName, methodName, parameterCount, CancellationToken.None);
+				return JsonSerializer.Serialize(new {
+					success = true,
+					count = targets.Count,
+					targets = targets.Select(t => new {
+						filePath = t.FileName,
+						startLine = t.Position.Line,
+						startColumn = t.Position.Column,
+						endLine = t.Span?.End.Line ?? t.Position.Line,
+						endColumn = t.Span?.End.Column ?? t.Position.Column
+					}).ToArray()
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, count = 0, error = ex.Message });
+			}
+		}
+
+		[DevFlowAction("od.symbol-kind", Description = "Get broad symbol-kind classification (isMember/isType/isNamespace/isLocal) at file:offset")]
+		public static async Task<string> GetSymbolKindAsync(string fileName, int offset)
+		{
+			try {
+				var resolved = await GetSyncedLanguageServiceAsync(fileName);
+				if (resolved == null)
+					return JsonSerializer.Serialize(new { success = false, error = "no language service for file" });
+				var (service, id) = resolved.Value;
+				var info = await service.GetSymbolKindAsync(id, offset, CancellationToken.None);
+				if (info == null)
+					return JsonSerializer.Serialize(new { success = true, isMember = false, isType = false, isNamespace = false, isLocal = false, hasSourceLocation = false });
+				return JsonSerializer.Serialize(new {
+					success = true,
+					isMember = info.IsMember,
+					isType = info.IsType,
+					isNamespace = info.IsNamespace,
+					isLocal = info.IsLocal,
+					hasSourceLocation = info.HasSourceLocation
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.Message });
+			}
+		}
+
+		[DevFlowAction("od.semantic-tokens", Description = "Get semantic tokens (reference types, value types, method calls, field accesses) for a file")]
+		public static async Task<string> GetSemanticTokensAsync(string fileName)
+		{
+			try {
+				var resolved = await GetSyncedLanguageServiceAsync(fileName);
+				if (resolved == null)
+					return JsonSerializer.Serialize(new { count = 0, error = "no language service for file" });
+				var (service, id) = resolved.Value;
+				var tokens = await service.GetSemanticTokensAsync(id, CancellationToken.None);
+				return JsonSerializer.Serialize(new {
+					count = tokens.Count,
+					tokens = tokens.Select(t => new {
+						startLine = t.Span.Start.Line,
+						startColumn = t.Span.Start.Column,
+						endLine = t.Span.End.Line,
+						endColumn = t.Span.End.Column,
+						type = t.Type
+					}).ToArray()
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { count = 0, error = ex.Message });
+			}
+		}
+
+		[DevFlowAction("od.help-keyword", Description = "Get the help keyword for the symbol at file:offset")]
+		public static async Task<string> GetHelpKeywordAsync(string fileName, int offset)
+		{
+			try {
+				var resolved = await GetSyncedLanguageServiceAsync(fileName);
+				if (resolved == null)
+					return JsonSerializer.Serialize(new { success = false, error = "no language service for file" });
+				var (service, id) = resolved.Value;
+				var keyword = await service.GetHelpKeywordAsync(id, offset, CancellationToken.None);
+				return JsonSerializer.Serialize(new { success = true, keyword = keyword ?? "" });
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.Message });
+			}
+		}
+
+		[DevFlowAction("od.containing-type", Description = "Get the containing type name for the symbol at file:offset")]
+		public static async Task<string> GetContainingTypeNameAsync(string fileName, int offset)
+		{
+			try {
+				var resolved = await GetSyncedLanguageServiceAsync(fileName);
+				if (resolved == null)
+					return JsonSerializer.Serialize(new { success = false, error = "no language service for file" });
+				var (service, id) = resolved.Value;
+				var typeName = await service.GetContainingTypeNameAsync(id, offset, CancellationToken.None);
+				return JsonSerializer.Serialize(new { success = true, typeName = typeName ?? "" });
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.Message });
+			}
 		}
 
 		[DevFlowAction("od.file.revert-all-dirty", Description = "Reverts every open dirty file to its on-disk content, discarding unsaved changes without prompting - lets a test that intentionally leaves files dirty (e.g. od.rename-symbol) clean up afterwards so a later od.open-solution in the same app session doesn't hit a blocking 'save changes?' dialog")]

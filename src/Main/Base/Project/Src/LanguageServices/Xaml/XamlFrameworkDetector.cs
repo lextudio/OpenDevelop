@@ -63,11 +63,21 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Xaml
 					return new XamlFrameworkContext(XamlFrameworkKind.Uno, XamlRuntimeKind.Uno, projectFileName, "Uno SDK/package");
 				if (HasPackage("Microsoft.WindowsAppSDK") || HasPackage("Microsoft.UI.Xaml")
 				    || properties.TryGetValue("UseWinUI", out var useWinUI) && IsTrue(useWinUI))
-					return new XamlFrameworkContext(XamlFrameworkKind.WinUI, XamlRuntimeKind.MicrosoftWinUI, projectFileName, "Windows App SDK/WinUI property or package");
+				{
+					// On macOS/Linux, Microsoft WinUI runtime is unavailable — map to Uno
+					// so the ProGPU in-process fallback (which accepts XamlRuntimeKind.Uno)
+					// can render the XAML without spawning a child process.
+					var runtime = OperatingSystem.IsWindows() ? XamlRuntimeKind.MicrosoftWinUI : XamlRuntimeKind.Uno;
+					return new XamlFrameworkContext(XamlFrameworkKind.WinUI, runtime, projectFileName, runtime == XamlRuntimeKind.Uno ? "WinUI property (Uno/ProGPU on non-Windows)" : "Windows App SDK/WinUI property or package");
+				}
 				if (sdk.Contains("LibreWPF.Sdk", StringComparison.OrdinalIgnoreCase))
 					return new XamlFrameworkContext(XamlFrameworkKind.Wpf, XamlRuntimeKind.LibreWpf, projectFileName, "LibreWPF SDK");
 				if (properties.TryGetValue("UseWPF", out var useWpf) && IsTrue(useWpf))
-					return new XamlFrameworkContext(XamlFrameworkKind.Wpf, XamlRuntimeKind.MicrosoftWpf, projectFileName, "Microsoft WPF property");
+				{
+					// On macOS/Linux, Microsoft WPF is unavailable — use LibreWPF instead.
+					var runtime = OperatingSystem.IsWindows() ? XamlRuntimeKind.MicrosoftWpf : XamlRuntimeKind.LibreWpf;
+					return new XamlFrameworkContext(XamlFrameworkKind.Wpf, runtime, projectFileName, runtime == XamlRuntimeKind.LibreWpf ? "WPF property (LibreWPF on non-Windows)" : "Microsoft WPF property");
+				}
 				return Unknown("Project has no recognized XAML framework marker", projectFileName);
 			} catch (Exception ex) {
 				return Unknown("Project parse failed: " + ex.Message, projectFileName);

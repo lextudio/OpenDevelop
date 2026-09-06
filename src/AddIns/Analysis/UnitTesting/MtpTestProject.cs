@@ -246,11 +246,18 @@ namespace ICSharpCode.UnitTesting
 				return;
 
 			var savedFile = e.FileName;
-			var sourceFiles = GetCompileSourceFiles();
-			if (sourceFiles.Any(f => string.Equals(f, savedFile, StringComparison.OrdinalIgnoreCase)))
+			try
 			{
-				LoggingService.Debug($"[StreamDiag] MtpTestProject.OnFileSaved triggering approximate Roslyn scan for {savedFile}");
-				PopulateApproxTreeFromRoslyn();
+				var sourceFiles = GetCompileSourceFiles();
+				if (sourceFiles.Any(f => string.Equals(f, savedFile, StringComparison.OrdinalIgnoreCase)))
+				{
+					LoggingService.Debug($"[StreamDiag] MtpTestProject.OnFileSaved triggering approximate Roslyn scan for {savedFile}");
+					PopulateApproxTreeFromRoslyn();
+				}
+			}
+			catch (ObjectDisposedException)
+			{
+				// Project was disposed during solution close — ignore.
 			}
 		}
 

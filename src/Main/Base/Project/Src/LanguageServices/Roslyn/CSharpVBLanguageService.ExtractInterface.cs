@@ -14,10 +14,9 @@ using RoslynAccessibility = Microsoft.CodeAnalysis.Accessibility;
 namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
 {
     // Extract Interface (doc/technotes/csharp-vb-binding.md), ported from the old
-    // RoslynWorkspaceHelper.ExtractInterfaceAsync/GetExtractInterfaceCandidateMembers (C# only, same
-    // as before - the syntax-construction half uses the C# SyntaxFactory directly). Split into its
-    // own partial-class file since it's a self-contained concern with its own cache, not because
-    // CSharpVBLanguageService.cs was reorganized.
+    // RoslynWorkspaceHelper.ExtractInterfaceAsync/GetExtractInterfaceCandidateMembers.
+    // Supports both C# and VB: language detection via document extension, with separate
+    // syntax-tree handling and source-text generation for each language.
     public sealed partial class CSharpVBLanguageService
     {
         // Last computed candidate-member list per document, keyed by the opaque
@@ -36,13 +35,16 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
                 .Where(m => (m is IMethodSymbol method && method.MethodKind == MethodKind.Ordinary) || m is IPropertySymbol || m is IEventSymbol)
                 .ToArray();
 
+            var isVB = IsVBDocument(documentId);
             var cache = new Dictionary<string, ISymbol>();
             var members = new List<ExtractInterfaceMember>(candidates.Length);
             for (int i = 0; i < candidates.Length; i++)
             {
                 var id = i.ToString();
                 cache[id] = candidates[i];
-                members.Add(new ExtractInterfaceMember(id, candidates[i].ToDisplayString(SymbolDisplayFormat.CSharpShortErrorMessageFormat)));
+                members.Add(new ExtractInterfaceMember(id, candidates[i].ToDisplayString(isVB
+                    ? SymbolDisplayFormat.MinimallyQualifiedFormat
+                    : SymbolDisplayFormat.CSharpShortErrorMessageFormat)));
             }
             _pendingExtractInterfaceMembersByDocument[documentId] = cache;
 
@@ -75,13 +77,41 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
                 ?? classSymbol.DeclaringSyntaxReferences.FirstOrDefault();
             if (classSyntaxRef is null)
                 return null;
+
+            var isVB = IsVBDocument(documentId);
+            ExtractInterfaceResult result;
+
+            if (isVB)
+                result = await ExtractInterfaceVB(classSyntaxRef, classSymbol, interfaceName, chosenMembers, addInterfaceToClass, includeComments, cancellationToken);
+            else
+                result = await ExtractInterfaceCSharp(classSyntaxRef, classSymbol, interfaceName, chosenMembers, addInterfaceToClass, includeComments, cancellationToken);
+
+            return result;
+        }
+
+        static bool IsVBDocument(DocumentId documentId)
+        {
+            return documentId.FileName.EndsWith(".vb", StringComparison.OrdinalIgnoreCase);
+        }
+
+        // ── C# path ───────────────────────────────────────────────────────────
+
+        async Task<ExtractInterfaceResult> ExtractInterfaceCSharp(
+            Microsoft.CodeAnalysis.SyntaxReference classSyntaxRef,
+            INamedTypeSymbol classSymbol,
+            string interfaceName,
+            ISymbol[] chosenMembers,
+            bool addInterfaceToClass,
+            bool includeComments,
+            CancellationToken cancellationToken)
+        {
             var classNode = await classSyntaxRef.GetSyntaxAsync(cancellationToken) as Microsoft.CodeAnalysis.CSharp.Syntax.ClassDeclarationSyntax;
             var root = await classSyntaxRef.SyntaxTree.GetRootAsync(cancellationToken) as Microsoft.CodeAnalysis.CSharp.Syntax.CompilationUnitSyntax;
             if (classNode is null || root is null)
-                return null;
+                return new ExtractInterfaceResult("", new Dictionary<string, IReadOnlyList<TextEdit>>());
 
             var usings = root.Usings.Select(u => u.ToString());
-            var interfaceText = BuildInterfaceSourceText(usings, classSymbol.ContainingNamespace, interfaceName, chosenMembers, includeComments);
+            var interfaceText = BuildCSharpInterfaceSourceText(usings, classSymbol.ContainingNamespace, interfaceName, chosenMembers, includeComments);
 
             var edits = new Dictionary<string, IReadOnlyList<TextEdit>>(StringComparer.OrdinalIgnoreCase);
             if (addInterfaceToClass)
@@ -101,14 +131,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             return new ExtractInterfaceResult(interfaceText, edits);
         }
 
-        static TextEdit WholeDocumentReplaceEdit(SourceText oldText, string newFullText)
-        {
-            var lastLine = oldText.Lines[oldText.Lines.Count - 1];
-            var end = new TextPosition(oldText.Lines.Count, lastLine.End - lastLine.Start + 1);
-            return new TextEdit(new TextSpan(new TextPosition(1, 1), end), newFullText);
-        }
-
-        static string BuildInterfaceSourceText(
+        static string BuildCSharpInterfaceSourceText(
             IEnumerable<string> usings, INamespaceSymbol? containingNamespace, string interfaceName, IReadOnlyList<ISymbol> members,
             bool includeComments)
         {
@@ -130,7 +153,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             sb.Append(indent).Append("public interface ").AppendLine(interfaceName);
             sb.Append(indent).AppendLine("{");
             foreach (var member in members)
-                sb.Append(indent).Append('\t').AppendLine(FormatInterfaceMember(member, includeComments));
+                sb.Append(indent).Append('\t').AppendLine(FormatCSharpInterfaceMember(member, includeComments));
             sb.Append(indent).AppendLine("}");
 
             if (hasNamespace)
@@ -139,7 +162,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             return sb.ToString();
         }
 
-        static string FormatInterfaceMember(ISymbol member, bool includeComments)
+        static string FormatCSharpInterfaceMember(ISymbol member, bool includeComments)
         {
             string signature;
             switch (member)
@@ -149,7 +172,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
                     var typeParams = method.TypeParameters.Length == 0
                         ? ""
                         : "<" + string.Join(", ", method.TypeParameters.Select(t => t.Name)) + ">";
-                    var parameters = string.Join(", ", method.Parameters.Select(FormatParameter));
+                    var parameters = string.Join(", ", method.Parameters.Select(FormatCSharpParameter));
                     var constraints = string.Join(" ", method.TypeParameters
                         .Select(FormatTypeParameterConstraints)
                         .Where(c => c != null));
@@ -175,7 +198,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             if (!includeComments)
                 return signature;
 
-            var comment = GetXmlDocComment(member);
+            var comment = GetCSharpXmlDocComment(member);
             return comment == null ? signature : comment + "\n\t" + signature;
         }
 
@@ -183,7 +206,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         /// Builds a `where T : ...` clause for a generic method's type parameter, or null if the
         /// parameter has no constraints. Roslyn's <see cref="ITypeParameterSymbol"/> only exposes
         /// constraint flags/types, not source text, so this has to be assembled by hand rather than
-        /// copied verbatim like <see cref="GetXmlDocComment"/> does for doc comments.
+        /// copied verbatim like <see cref="GetCSharpXmlDocComment"/> does for doc comments.
         /// </summary>
         static string? FormatTypeParameterConstraints(ITypeParameterSymbol typeParameter)
         {
@@ -208,7 +231,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         /// processed XML from GetDocumentationCommentXml()), so the extracted interface member keeps
         /// exactly what the author wrote on the class member.
         /// </summary>
-        static string? GetXmlDocComment(ISymbol member)
+        static string? GetCSharpXmlDocComment(ISymbol member)
         {
             var syntaxRef = member.DeclaringSyntaxReferences.FirstOrDefault();
             if (syntaxRef == null)
@@ -221,7 +244,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             return docTrivia?.ToFullString().Trim();
         }
 
-        static string FormatParameter(IParameterSymbol parameter)
+        static string FormatCSharpParameter(IParameterSymbol parameter)
         {
             var modifier = parameter.RefKind switch
             {
@@ -231,6 +254,150 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
                 _ => parameter.IsParams ? "params " : "",
             };
             return $"{modifier}{parameter.Type.ToDisplayString()} {parameter.Name}";
+        }
+
+        // ── VB path ───────────────────────────────────────────────────────────
+
+        async Task<ExtractInterfaceResult> ExtractInterfaceVB(
+            Microsoft.CodeAnalysis.SyntaxReference classSyntaxRef,
+            INamedTypeSymbol classSymbol,
+            string interfaceName,
+            ISymbol[] chosenMembers,
+            bool addInterfaceToClass,
+            bool includeComments,
+            CancellationToken cancellationToken)
+        {
+            var syntaxNode = await classSyntaxRef.GetSyntaxAsync(cancellationToken);
+            // SyntaxReference may point to ClassStatementSyntax (just "Class Foo") rather than
+            // ClassBlockSyntax ("Class Foo ... End Class"). Walk up to the parent block.
+            var classNode = syntaxNode as Microsoft.CodeAnalysis.VisualBasic.Syntax.ClassBlockSyntax
+                ?? syntaxNode?.Parent as Microsoft.CodeAnalysis.VisualBasic.Syntax.ClassBlockSyntax;
+            var root = await classSyntaxRef.SyntaxTree.GetRootAsync(cancellationToken) as Microsoft.CodeAnalysis.VisualBasic.Syntax.CompilationUnitSyntax;
+            if (classNode is null || root is null)
+                return new ExtractInterfaceResult("", new Dictionary<string, IReadOnlyList<TextEdit>>());
+
+            var imports = root.Imports.Select(i => i.ToString());
+            var interfaceText = BuildVBInterfaceSourceText(imports, classSymbol.ContainingNamespace, interfaceName, chosenMembers, includeComments);
+
+            var edits = new Dictionary<string, IReadOnlyList<TextEdit>>(StringComparer.OrdinalIgnoreCase);
+            if (addInterfaceToClass)
+            {
+                // VB: add "Implements IWidget" to the ClassBlock
+                var implementsStatement = Microsoft.CodeAnalysis.VisualBasic.SyntaxFactory.ImplementsStatement(
+                    Microsoft.CodeAnalysis.VisualBasic.SyntaxFactory.ParseTypeName(interfaceName));
+                var implementsList = Microsoft.CodeAnalysis.VisualBasic.SyntaxFactory.SingletonList(implementsStatement);
+                var newClassNode = classNode.WithImplements(implementsList).NormalizeWhitespace();
+                var newRoot = root.ReplaceNode(classNode, newClassNode);
+
+                var oldText = await classSyntaxRef.SyntaxTree.GetTextAsync(cancellationToken);
+                var newFullText = newRoot.ToFullString();
+                edits[classSyntaxRef.SyntaxTree.FilePath] = new[] { WholeDocumentReplaceEdit(oldText, newFullText) };
+            }
+
+            return new ExtractInterfaceResult(interfaceText, edits);
+        }
+
+        static string BuildVBInterfaceSourceText(
+            IEnumerable<string> imports, INamespaceSymbol? containingNamespace, string interfaceName, IReadOnlyList<ISymbol> members,
+            bool includeComments)
+        {
+            var sb = new System.Text.StringBuilder();
+            var importsList = imports.ToArray();
+            foreach (var i in importsList)
+                sb.AppendLine(i);
+            if (importsList.Length > 0)
+                sb.AppendLine();
+
+            bool hasNamespace = containingNamespace != null && !containingNamespace.IsGlobalNamespace;
+            string indent = hasNamespace ? "\t" : "";
+            if (hasNamespace)
+            {
+                sb.Append("Namespace ").AppendLine(containingNamespace!.ToDisplayString());
+            }
+
+            sb.Append(indent).Append("Public Interface ").AppendLine(interfaceName);
+            foreach (var member in members)
+                sb.Append(indent).Append('\t').AppendLine(FormatVBInterfaceMember(member, includeComments));
+            sb.Append(indent).AppendLine("End Interface");
+
+            if (hasNamespace)
+            {
+                sb.Append(indent).AppendLine("End Namespace");
+            }
+
+            return sb.ToString();
+        }
+
+        static string FormatVBInterfaceMember(ISymbol member, bool includeComments)
+        {
+            string signature;
+            switch (member)
+            {
+                case IMethodSymbol method:
+                {
+                    var typeParams = method.TypeParameters.Length == 0
+                        ? ""
+                        : "(Of " + string.Join(", ", method.TypeParameters.Select(t => t.Name)) + ")";
+                    var parameters = string.Join(", ", method.Parameters.Select(FormatVBParameter));
+                    signature = $"Function {method.Name}{typeParams}({parameters}) As {method.ReturnType.ToDisplayString()}";
+                    break;
+                }
+                case IPropertySymbol property:
+                {
+                    var readWrite = property.GetMethod != null && property.SetMethod != null ? "ReadWrite" : "";
+                    var readOnly = property.GetMethod != null && property.SetMethod == null ? "ReadOnly" : "";
+                    var writeOnly = property.GetMethod == null && property.SetMethod != null ? "WriteOnly" : "";
+                    var modifier = readWrite.Length > 0 ? readWrite + " " : readOnly.Length > 0 ? readOnly + " " : writeOnly.Length > 0 ? writeOnly + " " : "";
+                    signature = $"{modifier}Property {property.Name} As {property.Type.ToDisplayString()}";
+                    break;
+                }
+                case IEventSymbol evt:
+                    signature = $"Event {evt.Name} As {evt.Type.ToDisplayString()}";
+                    break;
+                default:
+                    signature = "' unsupported member kind: " + member.Name;
+                    break;
+                }
+
+            if (!includeComments)
+                return signature;
+
+            var comment = GetVBXmlDocComment(member);
+            return comment == null ? signature : comment + "\n\t" + signature;
+        }
+
+        static string? GetVBXmlDocComment(ISymbol member)
+        {
+            var syntaxRef = member.DeclaringSyntaxReferences.FirstOrDefault();
+            if (syntaxRef == null)
+                return null;
+            var node = syntaxRef.GetSyntax();
+            var docTrivia = node.GetLeadingTrivia()
+                .Select(t => t.GetStructure())
+                .OfType<Microsoft.CodeAnalysis.VisualBasic.Syntax.DocumentationCommentTriviaSyntax>()
+                .FirstOrDefault();
+            return docTrivia?.ToFullString().Trim();
+        }
+
+        static string FormatVBParameter(IParameterSymbol parameter)
+        {
+            var modifier = parameter.RefKind switch
+            {
+                RefKind.Ref => "ByRef ",
+                RefKind.Out => "ByRef ",
+                RefKind.In => "ByVal ",
+                _ => parameter.IsParams ? "ParamArray " : "ByVal ",
+            };
+            return $"{modifier}{parameter.Name} As {parameter.Type.ToDisplayString()}";
+        }
+
+        // ── Shared ─────────────────────────────────────────────────────────────
+
+        static TextEdit WholeDocumentReplaceEdit(SourceText oldText, string newFullText)
+        {
+            var lastLine = oldText.Lines[oldText.Lines.Count - 1];
+            var end = new TextPosition(oldText.Lines.Count, lastLine.End - lastLine.Start + 1);
+            return new TextEdit(new TextSpan(new TextPosition(1, 1), end), newFullText);
         }
     }
 }

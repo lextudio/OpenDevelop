@@ -799,11 +799,10 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
             return configured;
         }
 
-        if (!OperatingSystem.IsMacOS())
-            return null;
-
-        var defaultPath = "/Applications/OpenDevelop.app/Contents/MacOS/OpenDevelop";
-        return File.Exists(defaultPath) ? defaultPath : null;
+        // Tests must always use the Debug build via `dotnet run`, not the installed app.
+        // The installed app may lack latest DevFlow actions/code. To test the installed app,
+        // set OPENDEVELOP_APP_PATH=/Applications/OpenDevelop.app/Contents/MacOS/OpenDevelop.
+        return null;
     }
 
     static string LocateFixtureProject()
