@@ -180,8 +180,8 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 			});
 		}
 
-		[DevFlowAction("od.forms-designer.clipboard", Description = "Run Cut/Copy/Paste/Delete/SelectAll on the design surface through the WPF routed command, exactly as the menu item and the keyboard shortcut do - which is what exercises the surface's CommandBinding rather than calling IClipboardHandler directly. Reports whether the command was enabled; a keystroke cannot be used for this under OD_TEST_MODE, where the window does not take focus")]
-		public static string Clipboard(string commandName)
+		[DevFlowAction("od.forms-designer.routed-command", Description = "Run cut/copy/paste/delete/selectall/undo/redo/help on the design surface through the WPF routed command, exactly as the menu item and the keyboard shortcut do - which is what exercises the surface's CommandBinding rather than calling IClipboardHandler/IUndoHandler directly. Reports whether the command was enabled; a keystroke cannot be used for this under OD_TEST_MODE, where the window does not take focus and the key goes to another window")]
+		public static string RoutedCommand(string commandName)
 		{
 			var viewContent = FindFormsDesignerViewContent();
 			if (viewContent?.IsRemoteDesignerLoaded != true)
@@ -192,10 +192,13 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 				"paste" => System.Windows.Input.ApplicationCommands.Paste,
 				"delete" => System.Windows.Input.ApplicationCommands.Delete,
 				"selectall" => System.Windows.Input.ApplicationCommands.SelectAll,
+				"undo" => System.Windows.Input.ApplicationCommands.Undo,
+				"redo" => System.Windows.Input.ApplicationCommands.Redo,
+				"help" => System.Windows.Input.ApplicationCommands.Help,
 				_ => null
 			};
 			if (command == null)
-				return JsonSerializer.Serialize(new { success = false, error = "Unknown clipboard command: " + commandName });
+				return JsonSerializer.Serialize(new { success = false, error = "Unknown routed command: " + commandName });
 			try {
 				var target = viewContent.RemoteDesignSurface;
 				var canExecute = command.CanExecute(null, target);
@@ -207,14 +210,14 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 			}
 		}
 
-		[DevFlowAction("od.forms-designer.describe-context-menu", Description = "Build the designer right-click menu for a component and report its item labels WITHOUT opening it - the only way to assert the menu's content, since a WPF ContextMenu is its own top-level window and appears in neither a screenshot nor the ui/tree")]
-		public static string DescribeContextMenu(string componentName)
+		[DevFlowAction("od.forms-designer.describe-context-menu", Description = "Build the designer right-click menu for a component and report its item labels and enabled state WITHOUT opening it (pass tray=true for the component tray's own two menus) - the only way to assert the menu's content, since a WPF ContextMenu is its own top-level window and appears in neither a screenshot nor the ui/tree")]
+		public static string DescribeContextMenu(string componentName, bool tray = false)
 		{
 			var viewContent = FindFormsDesignerViewContent();
 			if (viewContent?.IsRemoteDesignerLoaded != true)
 				return JsonSerializer.Serialize(new { success = false, error = "The out-of-process WinForms designer is not loaded" });
 			try {
-				var labels = viewContent.DescribeContextMenu(componentName);
+				var labels = viewContent.DescribeContextMenu(componentName, tray);
 				return JsonSerializer.Serialize(new { success = true, items = labels });
 			} catch (Exception exception) {
 				return JsonSerializer.Serialize(new { success = false, error = exception.Message });

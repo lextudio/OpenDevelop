@@ -1750,18 +1750,98 @@ WinForms-era plumbing was attached, and a WPF replacement view silently loses al
 The first check was a synthetic `Ctrl+C`, and Paste stayed disabled - which looked like the binding
 had failed. It had not: under `OD_TEST_MODE=1` the window does not take focus, so the keystroke went
 somewhere else entirely. **Do not verify a command binding with synthetic keyboard input in test
-mode.** `od.forms-designer.clipboard <cut|copy|paste|delete|selectall>` instead executes the real
+mode.** `od.forms-designer.routed-command <cut|copy|paste|delete|selectall|undo|redo|help>` instead executes the real
 routed command against the surface, which is what exercises the binding:
 
 | Step | Result |
 |---|---|
 | select `button1` | Paste `(disabled)` - clipboard empty |
-| `clipboard copy` | `canExecute: true, executed: true` |
+| `routed-command copy` | `canExecute: true, executed: true` |
 | re-describe | **Paste now enabled** - proves Execute reached `IClipboardHandler.Copy` |
-| `clipboard paste` | `canExecute: true, executed: true` |
+| `routed-command paste` | `canExecute: true, executed: true` |
 | component tree | `button3` present under `tabPage1` |
 | `od.file.save-all` | source gains `private ... button3` and `button3 = new Button()` |
 
 The source check is only valid **after** a save: designer edits land in the in-memory document, so
 reading the file off disk before saving shows nothing and looks like a source-sync bug. (Remember to
 restore the fixture afterwards - this test leaves a `button3` in `TabControlFixture`.)
+
+### Auditing the rest of the bridge: Undo/Redo were dead too (2026-09-06)
+
+Having found the mechanism, the right next move was to read `SDWindowsFormsHost` and see what **else**
+it bridges, rather than waiting for the next symptom. It binds ten commands to four interfaces:
+
+| Commands | Interface | Implemented by FormsDesignerViewContent? |
+|---|---|---|
+| Cut, Copy, Paste, Delete, SelectAll | `IClipboardHandler` | yes — was dead, now bound |
+| **Undo, Redo** | `IUndoHandler` | **yes — was dead, now bound** |
+| Help | `IContextHelpProvider` | yes — was dead, now bound |
+| Print, PrintPreview | `IPrintable` | **no** — deliberately left unbound |
+
+So `Ctrl+Z` in the designer did nothing, even though `IUndoHandler` was implemented in full on top of
+its own `remoteUndo`/`remoteRedo` document-snapshot stacks. `Print` is left out on purpose: binding a
+command whose interface is not implemented would produce a live-looking menu item that cannot work.
+
+Verified through the routed command, which is what proves the binding rather than the handler:
+
+| Step | canExecute | Component tree |
+|---|---|---|
+| fresh designer, `undo` | **false** (nothing to undo) | — |
+| `copy`, then `paste` | true, executed | `button3` appears |
+| `undo` | **true** (state flipped correctly) | `button3` gone |
+| `redo` | true | `button3` back |
+| `undo` | true | `button3` gone — fixture clean again |
+
+The `canExecute` flipping false→true across the paste is the part that matters: it shows the binding
+is really consulting `EnableUndo` and not just reporting a constant.
+
+## The component tray's two menus, and the "has a parent" bug they exposed (2026-09-06)
+
+The last two orphaned menus - `ContextMenus/TraySelectionMenu` and `ContextMenus/ComponentTrayMenu` -
+are now built too, from a `TrayContextMenuRequested` event the tray raises. Tray components (Timer,
+ImageList, ToolTip - anything with no on-form representation) are reachable *only* there, so until
+now they had no context menu at all while every control on the surface had one. The entry handler
+selects first and then asks for the menu, matching the surface; the tray background gets its own menu
+(registered on `trayRegion`, so the empty space below a short row counts), and marks the event
+handled. The surface's own right-click handler sees the press too - it is registered with
+`handledEventsToo` - but bails on `IsOutsideDesignSurface`, which already treats the tray as chrome.
+
+### "Has a parent" is not the same test as "is not the design root"
+
+Building the menu immediately exposed a real bug behind it: on a tray component **Cut, Copy and
+Delete were all disabled**, and after fixing that, Delete reported `executed: true` and *did nothing*.
+
+Three predicates were written as `SelectedRemoteComponent()?.Parent?.Length > 0`, and a fourth as a
+`.Where(component => !String.IsNullOrEmpty(component.Parent))` filter inside
+`SelectedRemoteComponents()`. The intent in every case was "not the design root" - the form itself
+cannot be cut. But **a tray component has no parent control, because it is not on the form**, so the
+parent test excluded those as well. The enable predicates said "no" and, once they said "yes", the
+selection helper still filtered the component out and the delete silently became a no-op.
+
+Both now read `component.IsTrayComponent || component.Parent?.Length > 0`, via a single
+`SelectionIsRemovable` property so the four copies cannot drift apart again. Verified: select
+`timer1` → `routed-command delete` → tray drops to `imageList1, toolTip1` → `undo` → all three back.
+
+**The "executed: true but nothing happened" step is the lesson.** A command reporting success only
+means `CanExecute` passed and `Execute` ran without throwing. Always assert the *effect* - here the
+component tree - not the command's own return.
+
+### Two tray items were removed rather than left looking alive
+
+`ComponentTrayMenu` also declared "Line up icons" and "Show large icons". Both reach
+`System.Windows.Forms.Design.ComponentTray` through `FormsDesignerViewContent.Host`, which **returns
+null by design** out of process (the real `IDesignerHost` is in the child). So `ShowLargeIcons` did
+nothing, and `LineUpIcons` dereferenced that null - which `AbstractFormsDesignerCommand.Run`'s catch
+turned into an exception dialog. Neither means anything for the replacement tray either: it is a
+`WrapPanel`, already reflowing, with one icon size. Commented out `MVP: removed`-style with that
+reasoning, on the same principle that keeps `IPrintable` unbound - never offer a menu item that
+cannot work.
+
+`AbstractFormsDesignerCommand.Run` also gained a guard for the null `Host`, logging a warning instead
+of dereferencing it. That covers **every** declared command with no remote equivalent yet, not just
+this one, and turns a would-be crash dialog into a diagnosable log line.
+
+**Note that `describe-context-menu` reporting an item as enabled does NOT mean clicking it is safe.**
+`AbstractFormsDesignerCommand` derives enablement from the menu-command plumbing while executing down
+an entirely different path, so an item can read enabled and still fault. The enabled state proves a
+binding exists, nothing more.

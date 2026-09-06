@@ -99,7 +99,7 @@ namespace ICSharpCode.FormsDesigner
 		internal DesignerSessionState RemoteDesignerState => remoteControl?.State;
 
 		/// <summary>The design surface, as a routed-command target - it owns the clipboard
-		/// CommandBindings (see BindClipboardCommands).</summary>
+		/// CommandBindings (see BindHostedViewCommands).</summary>
 		internal System.Windows.IInputElement RemoteDesignSurface => remoteControl;
 
 		/// <summary>The currently selected component name on the remote design surface.</summary>
@@ -720,7 +720,8 @@ namespace ICSharpCode.FormsDesigner
 				remoteControl.RestartRequested += RemoteRestartRequested;
 				remoteControl.SmartTagRequested += RemoteSmartTagRequested;
 				remoteControl.ContextMenuRequested += RemoteContextMenuRequested;
-				BindClipboardCommands(remoteControl);
+				remoteControl.TrayContextMenuRequested += RemoteTrayContextMenuRequested;
+				BindHostedViewCommands(remoteControl);
 				remoteControl.ToolStripInsertRequested += RemoteToolStripInsertRequested;
 				remoteControl.ToolStripTypeHereCommitted += RemoteToolStripTypeHereCommitted;
 				outline.SelectionCommitted += OnOutlineSelectionCommitted;
@@ -1146,9 +1147,29 @@ namespace ICSharpCode.FormsDesigner
 		/// portable fork), so on Libre the verb group is simply absent rather than an error.</summary>
 		async void RemoteContextMenuRequested(object sender, RemoteComponentEventArgs e)
 		{
+			await ShowDesignerContextMenuAsync(e.ComponentName,
+				(name, components) => MenuPathFor(name, components, tray: false));
+		}
+
+		/// <summary>Right-click on the COMPONENT TRAY, which the AddIn tree gives its own two menus:
+		/// one for an entry, one for the tray's own background.</summary>
+		/// <remarks>
+		/// Tray components (Timers, BindingSources, ImageLists - anything with no on-form
+		/// representation) are only reachable here, so without this they had no context menu at all
+		/// while every control on the surface had one.
+		/// </remarks>
+		async void RemoteTrayContextMenuRequested(object sender, RemoteComponentEventArgs e)
+		{
+			await ShowDesignerContextMenuAsync(e.ComponentName,
+				(name, components) => MenuPathFor(name, components, tray: true));
+		}
+
+		async System.Threading.Tasks.Task ShowDesignerContextMenuAsync(
+			string componentName, Func<string, List<DesignerComponentInfo>, string> pathFor)
+		{
 			try {
 				CloseActiveDesignerPopup();
-				var path = await PrepareContextMenuAsync(e.ComponentName);
+				var path = await PrepareContextMenuAsync(componentName, pathFor);
 				// ShowContextMenu both builds and opens, and expands menu builders synchronously as
 				// it goes - which is why PrepareContextMenuAsync had to await the verbs first.
 				// Fully qualified: ICSharpCode.Core.WinForms has a MenuService of its own, and this
@@ -1160,22 +1181,32 @@ namespace ICSharpCode.FormsDesigner
 			}
 		}
 
-		/// <summary>Routes the WPF clipboard commands on the design surface to this view content's
-		/// own <see cref="IClipboardHandler"/> implementation.</summary>
+		/// <summary>Routes the WPF application commands on the design surface to this view content's
+		/// own handler implementations.</summary>
 		/// <remarks>
-		/// Without this the designer's Cut/Copy/Paste/Delete are dead. Items declared in the AddIn
-		/// tree with `command="Cut"` resolve to `ApplicationCommands.Cut` - a WPF RoutedUICommand -
-		/// and the only CommandBinding for those in the app lives on `SDWindowsFormsHost`, which
-		/// bridges them to `IClipboardHandler`. The old in-process designer was a WinForms control
-		/// hosted inside it, so it was covered for free; the out-of-process surface is plain WPF and
-		/// routes right past it, finding no binding and reporting CanExecute=false. The handler was
-		/// fully implemented on this class (remoteClipboard and all) - nothing was ever calling it.
+		/// Without this the designer's Cut/Copy/Paste/Delete, Undo/Redo and F1 help are all dead.
+		/// Menu items declared in the AddIn tree with `command="Cut"` resolve to
+		/// `ApplicationCommands.Cut` - a WPF RoutedUICommand, inert without a CommandBinding up the
+		/// tree - and Ctrl+Z/Ctrl+C reach the same commands through WPF's own input bindings. The
+		/// **only** place in the app that binds these is `SDWindowsFormsHost`, which bridges ten of
+		/// them to `IClipboardHandler` / `IUndoHandler` / `IContextHelpProvider` / `IPrintable`. The
+		/// old in-process designer was a WinForms control hosted inside that, so it was covered for
+		/// free; this surface is plain WPF and routes straight past it, finds no binding, and
+		/// reports CanExecute=false. Every handler was already implemented on this class - the
+		/// clipboard one down to a depth-ordered `remoteClipboard`, undo down to its own
+		/// document-snapshot stacks - and nothing was calling any of them.
+		///
+		/// **Any WinForms-era plumbing attached to `SDWindowsFormsHost` is a candidate for the same
+		/// bug**: a WPF replacement view silently inherits none of it.
+		///
+		/// `IPrintable` is deliberately absent: this class does not implement it, so binding Print
+		/// would produce a live-looking menu item that cannot work.
 		///
 		/// Verified with od.forms-designer.describe-context-menu, which reports each item's real
-		/// enabled state: those four items came back "(disabled)" while every other item in the same
-		/// menu was live. Any list of menu labels alone would have looked perfectly healthy.
+		/// enabled state: the clipboard items came back "(disabled)" while every other item in the
+		/// same menu was live. Any list of menu labels alone would have looked perfectly healthy.
 		/// </remarks>
-		void BindClipboardCommands(System.Windows.UIElement surface)
+		void BindHostedViewCommands(System.Windows.UIElement surface)
 		{
 			void Bind(System.Windows.Input.RoutedUICommand command, Action execute, Func<bool> canExecute)
 			{
@@ -1188,6 +1219,9 @@ namespace ICSharpCode.FormsDesigner
 			Bind(System.Windows.Input.ApplicationCommands.Paste, Paste, () => EnablePaste);
 			Bind(System.Windows.Input.ApplicationCommands.Delete, Delete, () => EnableDelete);
 			Bind(System.Windows.Input.ApplicationCommands.SelectAll, SelectAll, () => EnableSelectAll);
+			Bind(System.Windows.Input.ApplicationCommands.Undo, Undo, () => EnableUndo);
+			Bind(System.Windows.Input.ApplicationCommands.Redo, Redo, () => EnableRedo);
+			Bind(System.Windows.Input.ApplicationCommands.Help, ShowHelp, () => true);
 		}
 
 		/// <summary>Whether a built menu item would actually be clickable.</summary>
@@ -1212,25 +1246,32 @@ namespace ICSharpCode.FormsDesigner
 		/// Shared by the right-click handler and DescribeContextMenuAsync so the described menu is
 		/// the same menu that opens, not a reimplementation that could drift from it.
 		/// </remarks>
-		async System.Threading.Tasks.Task<string> PrepareContextMenuAsync(string componentName)
+		async System.Threading.Tasks.Task<string> PrepareContextMenuAsync(
+			string componentName, Func<string, List<DesignerComponentInfo>, string> pathFor)
 		{
 			var components = RemoteDesignerState?.Components?.ToList();
 			PendingVerbMenuEntries = String.IsNullOrEmpty(componentName)
 				? null
 				: await GatherVerbMenuEntriesAsync(componentName, components);
-			return MenuPathFor(componentName, components);
+			return pathFor(componentName, components);
 		}
 
-		/// <summary>Which declared menu a component gets. The root form gets the container menu,
-		/// matching real VS: no z-order or Cut/Copy on the thing that owns the surface.</summary>
-		static string MenuPathFor(string componentName, List<DesignerComponentInfo> components)
+		/// <summary>Maps the decision made by <see cref="DesignerContextMenuPolicy"/> onto the four
+		/// menus this AddIn declares - the single place those path names appear.</summary>
+		static string MenuPathFor(string componentName, List<DesignerComponentInfo> components, bool tray = false)
 		{
 			var clicked = String.IsNullOrEmpty(componentName) ? null
 				: components?.FirstOrDefault(item => item.Name == componentName);
-			var isRoot = clicked == null || String.IsNullOrEmpty(clicked.Parent);
-			return isRoot
-				? "/SharpDevelop/FormsDesigner/ContextMenus/ContainerMenu"
-				: "/SharpDevelop/FormsDesigner/ContextMenus/SelectionMenu";
+			// A name that resolves to nothing is treated as background: the component tree comes
+			// from a snapshot while the name comes from a live hit-test, so they can disagree.
+			var target = DesignerContextMenuPolicy.TargetFor(tray,
+				clicked == null ? null : componentName, clicked?.Parent);
+			return target switch {
+				DesignerContextMenuTarget.SurfaceComponent => "/SharpDevelop/FormsDesigner/ContextMenus/SelectionMenu",
+				DesignerContextMenuTarget.SurfaceRoot => "/SharpDevelop/FormsDesigner/ContextMenus/ContainerMenu",
+				DesignerContextMenuTarget.TrayComponent => "/SharpDevelop/FormsDesigner/ContextMenus/TraySelectionMenu",
+				_ => "/SharpDevelop/FormsDesigner/ContextMenus/ComponentTrayMenu"
+			};
 		}
 
 		/// <summary>Builds the context menu for a component WITHOUT opening it and reports the item
@@ -1251,7 +1292,7 @@ namespace ICSharpCode.FormsDesigner
 		/// plain await instead, because there the continuation belongs on the UI thread and nothing
 		/// blocks it.
 		/// </remarks>
-		internal IReadOnlyList<string> DescribeContextMenu(string componentName)
+		internal IReadOnlyList<string> DescribeContextMenu(string componentName, bool tray = false)
 		{
 			var components = RemoteDesignerState?.Components?.ToList();
 			var entries = String.IsNullOrEmpty(componentName)
@@ -1259,7 +1300,7 @@ namespace ICSharpCode.FormsDesigner
 				: System.Threading.Tasks.Task.Run(
 					() => GatherVerbMenuEntriesAsync(componentName, components)).GetAwaiter().GetResult();
 			PendingVerbMenuEntries = entries;
-			var path = MenuPathFor(componentName, components);
+			var path = MenuPathFor(componentName, components, tray);
 			var labels = new List<string>();
 			foreach (var item in ICSharpCode.Core.Presentation.MenuService.CreateMenuItems(remoteControl, this, path, "ContextMenu")) {
 				switch (item) {
@@ -1889,16 +1930,23 @@ namespace ICSharpCode.FormsDesigner
 		#endregion
 
 		#region IClipboardHandler implementation
-		public bool EnableCut {
+		/// <summary>Whether the selection is something the user may remove or duplicate. The rule
+		/// itself lives in <see cref="DesignerContextMenuPolicy.IsRemovable"/>, where it is unit
+		/// tested - it was wrong once, in four places at the same time.</summary>
+		bool SelectionIsRemovable {
 			get {
-				return IsRemoteDesignerLoaded && SelectedRemoteComponent()?.Parent?.Length > 0;
+				var component = SelectedRemoteComponent();
+				return IsRemoteDesignerLoaded && component != null
+					&& DesignerContextMenuPolicy.IsRemovable(component.IsTrayComponent, component.Parent);
 			}
 		}
 
+		public bool EnableCut {
+			get { return SelectionIsRemovable; }
+		}
+
 		public bool EnableCopy {
-			get {
-				return IsRemoteDesignerLoaded && SelectedRemoteComponent()?.Parent?.Length > 0;
-			}
+			get { return SelectionIsRemovable; }
 		}
 
 		const string ComponentClipboardFormat = "CF_DESIGNERCOMPONENTS";
@@ -1909,9 +1957,7 @@ namespace ICSharpCode.FormsDesigner
 		}
 
 		public bool EnableDelete {
-			get {
-				return IsRemoteDesignerLoaded && SelectedRemoteComponent()?.Parent?.Length > 0;
-			}
+			get { return SelectionIsRemovable; }
 		}
 
 		public bool EnableSelectAll {
@@ -1977,9 +2023,14 @@ namespace ICSharpCode.FormsDesigner
 				: RemoteDesignerState?.Components?.FirstOrDefault(component => component.Name == selectedName);
 		}
 
+		/// <summary>The selected components a clipboard or delete operation may act on - the same
+		/// rule <see cref="SelectionIsRemovable"/> reports, applied to the whole selection. Sharing
+		/// the predicate is the point: when these two disagreed, Delete passed its enabled check and
+		/// then silently did nothing.</summary>
 		List<DesignerComponentInfo> SelectedRemoteComponents() => remoteControl?.SelectedComponentNames
 			.Select(name => RemoteDesignerState.Components.FirstOrDefault(component => component.Name == name))
-			.Where(component => component != null && !String.IsNullOrEmpty(component.Parent)).ToList()
+			.Where(component => component != null
+				&& DesignerContextMenuPolicy.IsRemovable(component.IsTrayComponent, component.Parent)).ToList()
 			?? new List<DesignerComponentInfo>();
 
 		void DeleteRemoteComponents(List<DesignerComponentInfo> components)

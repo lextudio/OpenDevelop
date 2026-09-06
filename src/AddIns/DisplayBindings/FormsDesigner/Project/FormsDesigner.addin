@@ -160,6 +160,13 @@
 		          label = "${res:XML.MainMenu.EditMenu.Paste}"
 		          icon = "Icons.16x16.PasteIcon"
 		          command = "Paste"/>
+		<!-- MVP: removed - "Line up icons" and "Show large icons" are System.Windows.Forms.Design.ComponentTray
+		     features, and both reach it through FormsDesignerViewContent.Host, which returns null for the
+		     out-of-process designer (the real IDesignerHost lives in the child process). ShowLargeIcons
+		     therefore did nothing at all, and LineUpIcons dereferenced that null and surfaced as an
+		     exception dialog. Neither has a meaning for the replacement tray either: it is a WrapPanel, so
+		     it already reflows its entries and has a single icon size. Restore only alongside a tray that
+		     actually supports them.
 		<MenuItem id = "PasteSeparator" type = "Separator"/>
 		<MenuItem id          = "LineUpIcons"
 		          label       = "${res:XML.MainMenu.FormatMenu.LineUpIcons}"
@@ -167,6 +174,7 @@
 		<MenuItem id          = "ShowLargeIcons"
 		          label       = "${res:XML.MainMenu.FormatMenu.ShowLargeIcons}"
 		          class = "ICSharpCode.FormsDesigner.Commands.ShowLargeIcons"/>
+		-->
 	</Path>
 	
 	<Path name = "/SharpDevelop/Workbench/MainMenu">

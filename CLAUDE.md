@@ -289,3 +289,42 @@ MSBuild:
 - `-p:DisableGitVersionTask=true` avoids `MSB4216`: GitVersion wants an x86 .NET task host that
   isn't present.
 - The main app still builds normally with `dotnet build src/Main/SharpDevelop/SharpDevelop.csproj -c Debug`.
+
+### A full solution build overwrites the LibreWPF runtime payload
+
+`dotnet build OpenDevelop.Mvp.slnx` copies `librewpf.transport`'s `lib/net10.0/PresentationFramework.dll`
+into every output folder — and that file is a **5 KB type-forwarding facade**, not the ~6 MB
+implementation. The real payload lives in `runtimes/<rid>/lib/net10.0/` and is put in place by
+`dist.ps1` ("Always overlay the exact managed transport payload that restore selected"), not by a
+plain build. So a full build silently downgrades any output folder that had the good copy, and
+anything WPF launched from there dies at startup:
+
+```
+System.IO.FileNotFoundException: Could not load file or assembly 'PresentationFramework, Version=11.0.0.0'
+   at ProGPU.Wpf.Sdk.ProGpuWpfSdkPortableBootstrap.Initialize()
+# or, seen from a parent process driving the designer child:
+StreamJsonRpc.RemoteInvocationException : The type initializer for '<Module>' threw an exception.
+```
+
+**Check by size, not by presence** — the file is always there:
+
+```powershell
+Get-ChildItem <outdir> -Filter PresentationFramework.dll | Select-Object Length   # <100KB = facade = broken
+```
+
+Observed after one full build: `src/Main/SharpDevelop/bin` kept its good 6 MB copy (so the app itself
+still ran, and DevFlow verification stayed valid), while `FormsDesigner/Host/bin` and
+`tests/OpenDevelop.Base.Tests/bin` were downgraded — which broke **28 of 84** `Host.Tests` (every test
+that spawns the designer child process) and every test in a WPF-SDK test project. Rebuilding the
+project alone does not repair it: the build copies the facade again, and copying the good file in by
+hand is undone by the next build. Restoring the payload properly means running `dist.ps1`'s sync.
+
+Consequences for verification:
+
+- **A test failure of this shape is not your code.** Confirm by checking the payload size before
+  investigating a suspicious mass failure, and note that pure unit tests in the same project still
+  pass — only what needs the WPF runtime breaks. Splitting a rule into a non-WPF project (see
+  `DesignerContextMenuPolicy` in `Designer.Remote`, tested from `Host.Tests`) keeps it testable even
+  while the payload is broken.
+- Prefer building the specific projects you changed over a full solution build, and reserve the full
+  build for the version-mismatch case above, where it is genuinely required.

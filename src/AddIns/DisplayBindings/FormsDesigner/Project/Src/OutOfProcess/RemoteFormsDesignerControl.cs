@@ -401,6 +401,16 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 					Content = trayItems
 				}
 			};
+			// The tray's own background menu. Registered on trayRegion rather than on trayItems so
+			// the whole strip responds, including the empty space below a short row of entries, and
+			// it fires only when no entry handled the press first. The design surface's own
+			// right-click handler also sees this press (it is registered with handledEventsToo) but
+			// bails out on IsOutsideDesignSurface, which already counts the tray as chrome - so
+			// there is exactly one menu, not two.
+			trayRegion.MouseRightButtonDown += (_, args) => {
+				args.Handled = true;
+				TrayContextMenuRequested?.Invoke(this, new RemoteComponentEventArgs(String.Empty));
+			};
 			var contentLayout = new Grid();
 			contentLayout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 			contentLayout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -524,6 +534,11 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		/// right-clicking both selects and opens the menu) - or an empty name for empty canvas, so
 		/// the handler can still offer surface-level commands.</summary>
 		public event EventHandler<RemoteComponentEventArgs> ContextMenuRequested;
+		/// <summary>A right-click landed on the COMPONENT TRAY rather than the design surface, which
+		/// gets its own pair of declared menus. The component name is empty for a click on the
+		/// tray's own background - the tray is a real target even with nothing under the cursor,
+		/// since that is where Paste-a-component and the tray's own layout commands belong.</summary>
+		public event EventHandler<RemoteComponentEventArgs> TrayContextMenuRequested;
 		public event EventHandler RestartRequested;
 		/// <summary>The smart-tag chevron at the selection's top-right corner was clicked
 		/// (VS calls this the "smart tag" - the popup listing a component's
@@ -991,6 +1006,14 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				entry.MouseLeftButtonDown += (_, args) => {
 					args.Handled = true;
 					SelectSingleComponent(componentName, takeFocus: false);
+				};
+				// Right-click selects first, then asks for the menu - the same order as the design
+				// surface, and what real VS does. Handled stops it reaching the tray background's
+				// own handler, which would otherwise offer the empty-tray menu on top of an entry.
+				entry.MouseRightButtonDown += (_, args) => {
+					args.Handled = true;
+					SelectSingleComponent(componentName, takeFocus: false);
+					TrayContextMenuRequested?.Invoke(this, new RemoteComponentEventArgs(componentName));
 				};
 				trayItems.Children.Add(entry);
 			}

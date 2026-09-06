@@ -68,6 +68,18 @@ namespace ICSharpCode.FormsDesigner.Commands
 				}
 				if (formDesigner?.TryExecuteRemoteLayout(CommandID) == true)
 					return;
+				// The in-process fallback below is unreachable for the out-of-process designer:
+				// FormsDesignerViewContent.Host returns null by design (there is no local
+				// IDesignerHost - the real one lives in the child process). Without this guard the
+				// next line dereferences it and the catch turns a plain NullReferenceException into
+				// an exception dialog, so a command that merely has no remote equivalent yet looks
+				// like a crash. Logged rather than silent, because reaching here means a declared
+				// menu item is offering something this designer cannot do.
+				if (formDesigner != null && formDesigner.Host == null) {
+					LoggingService.Warn("Forms designer: no remote equivalent for command " + CommandID
+						+ "; the in-process IMenuCommandService path is not available out of process.");
+					return;
+				}
 				if (formDesigner != null && CanExecuteCommand(formDesigner.Host)) {
 					IMenuCommandService menuCommandService = (IMenuCommandService)formDesigner.Host.GetService(typeof(IMenuCommandService));
 					menuCommandService.GlobalInvoke(CommandID);
