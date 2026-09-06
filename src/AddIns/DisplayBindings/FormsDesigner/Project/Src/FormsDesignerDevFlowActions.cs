@@ -180,6 +180,33 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 			});
 		}
 
+		[DevFlowAction("od.forms-designer.clipboard", Description = "Run Cut/Copy/Paste/Delete/SelectAll on the design surface through the WPF routed command, exactly as the menu item and the keyboard shortcut do - which is what exercises the surface's CommandBinding rather than calling IClipboardHandler directly. Reports whether the command was enabled; a keystroke cannot be used for this under OD_TEST_MODE, where the window does not take focus")]
+		public static string Clipboard(string commandName)
+		{
+			var viewContent = FindFormsDesignerViewContent();
+			if (viewContent?.IsRemoteDesignerLoaded != true)
+				return JsonSerializer.Serialize(new { success = false, error = "The out-of-process WinForms designer is not loaded" });
+			var command = commandName?.ToLowerInvariant() switch {
+				"cut" => System.Windows.Input.ApplicationCommands.Cut,
+				"copy" => System.Windows.Input.ApplicationCommands.Copy,
+				"paste" => System.Windows.Input.ApplicationCommands.Paste,
+				"delete" => System.Windows.Input.ApplicationCommands.Delete,
+				"selectall" => System.Windows.Input.ApplicationCommands.SelectAll,
+				_ => null
+			};
+			if (command == null)
+				return JsonSerializer.Serialize(new { success = false, error = "Unknown clipboard command: " + commandName });
+			try {
+				var target = viewContent.RemoteDesignSurface;
+				var canExecute = command.CanExecute(null, target);
+				if (canExecute)
+					command.Execute(null, target);
+				return JsonSerializer.Serialize(new { success = true, canExecute, executed = canExecute });
+			} catch (Exception exception) {
+				return JsonSerializer.Serialize(new { success = false, error = exception.Message });
+			}
+		}
+
 		[DevFlowAction("od.forms-designer.describe-context-menu", Description = "Build the designer right-click menu for a component and report its item labels WITHOUT opening it - the only way to assert the menu's content, since a WPF ContextMenu is its own top-level window and appears in neither a screenshot nor the ui/tree")]
 		public static string DescribeContextMenu(string componentName)
 		{

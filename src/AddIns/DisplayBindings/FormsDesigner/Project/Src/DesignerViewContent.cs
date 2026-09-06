@@ -98,6 +98,10 @@ namespace ICSharpCode.FormsDesigner
 		internal int RemoteDesignerProcessId => remoteClient?.ProcessId ?? 0;
 		internal DesignerSessionState RemoteDesignerState => remoteControl?.State;
 
+		/// <summary>The design surface, as a routed-command target - it owns the clipboard
+		/// CommandBindings (see BindClipboardCommands).</summary>
+		internal System.Windows.IInputElement RemoteDesignSurface => remoteControl;
+
 		/// <summary>The currently selected component name on the remote design surface.</summary>
 		internal string RemoteDesignerSelectedComponent => remoteControl?.SelectedComponentName ?? "";
 
@@ -716,6 +720,7 @@ namespace ICSharpCode.FormsDesigner
 				remoteControl.RestartRequested += RemoteRestartRequested;
 				remoteControl.SmartTagRequested += RemoteSmartTagRequested;
 				remoteControl.ContextMenuRequested += RemoteContextMenuRequested;
+				BindClipboardCommands(remoteControl);
 				remoteControl.ToolStripInsertRequested += RemoteToolStripInsertRequested;
 				remoteControl.ToolStripTypeHereCommitted += RemoteToolStripTypeHereCommitted;
 				outline.SelectionCommitted += OnOutlineSelectionCommitted;
@@ -1155,6 +1160,52 @@ namespace ICSharpCode.FormsDesigner
 			}
 		}
 
+		/// <summary>Routes the WPF clipboard commands on the design surface to this view content's
+		/// own <see cref="IClipboardHandler"/> implementation.</summary>
+		/// <remarks>
+		/// Without this the designer's Cut/Copy/Paste/Delete are dead. Items declared in the AddIn
+		/// tree with `command="Cut"` resolve to `ApplicationCommands.Cut` - a WPF RoutedUICommand -
+		/// and the only CommandBinding for those in the app lives on `SDWindowsFormsHost`, which
+		/// bridges them to `IClipboardHandler`. The old in-process designer was a WinForms control
+		/// hosted inside it, so it was covered for free; the out-of-process surface is plain WPF and
+		/// routes right past it, finding no binding and reporting CanExecute=false. The handler was
+		/// fully implemented on this class (remoteClipboard and all) - nothing was ever calling it.
+		///
+		/// Verified with od.forms-designer.describe-context-menu, which reports each item's real
+		/// enabled state: those four items came back "(disabled)" while every other item in the same
+		/// menu was live. Any list of menu labels alone would have looked perfectly healthy.
+		/// </remarks>
+		void BindClipboardCommands(System.Windows.UIElement surface)
+		{
+			void Bind(System.Windows.Input.RoutedUICommand command, Action execute, Func<bool> canExecute)
+			{
+				surface.CommandBindings.Add(new System.Windows.Input.CommandBinding(command,
+					(_, args) => { execute(); args.Handled = true; },
+					(_, args) => { args.CanExecute = canExecute(); args.Handled = true; }));
+			}
+			Bind(System.Windows.Input.ApplicationCommands.Cut, Cut, () => EnableCut);
+			Bind(System.Windows.Input.ApplicationCommands.Copy, Copy, () => EnableCopy);
+			Bind(System.Windows.Input.ApplicationCommands.Paste, Paste, () => EnablePaste);
+			Bind(System.Windows.Input.ApplicationCommands.Delete, Delete, () => EnableDelete);
+			Bind(System.Windows.Input.ApplicationCommands.SelectAll, SelectAll, () => EnableSelectAll);
+		}
+
+		/// <summary>Whether a built menu item would actually be clickable.</summary>
+		/// <remarks>
+		/// `IsEnabled` alone is not the answer for a command-bound item: WPF leaves it true until
+		/// the command reports otherwise, and a RoutedCommand only reports once it has been asked.
+		/// So the command is queried directly, with the design surface as the target - the same
+		/// element the opened menu would route through.
+		/// </remarks>
+		bool IsMenuItemEnabled(System.Windows.Controls.MenuItem item)
+		{
+			if (item.Command is System.Windows.Input.RoutedCommand routed)
+				return routed.CanExecute(item.CommandParameter, remoteControl);
+			if (item.Command != null)
+				return item.Command.CanExecute(item.CommandParameter);
+			return item.IsEnabled;
+		}
+
 		/// <summary>Prepares the verb entries for <paramref name="componentName"/> and returns which
 		/// declared menu applies to it.</summary>
 		/// <remarks>
@@ -1216,7 +1267,12 @@ namespace ICSharpCode.FormsDesigner
 						labels.Add("---");
 						break;
 					case System.Windows.Controls.MenuItem menuItem:
-						labels.Add(StringParser.Parse(menuItem.Header?.ToString() ?? "?"));
+						// The enabled state matters as much as the label: an item declared with
+						// command="Cut" resolves to a WPF RoutedUICommand, which is dead unless
+						// something in the tree owns a CommandBinding for it. A greyed-out item
+						// looks identical to a working one in any list of labels.
+						var label = StringParser.Parse(menuItem.Header?.ToString() ?? "?");
+						labels.Add(IsMenuItemEnabled(menuItem) ? label : label + " (disabled)");
 						break;
 					default:
 						// Menu items the AddIn tree produced that are neither - recorded by type so a

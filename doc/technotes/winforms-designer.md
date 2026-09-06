@@ -1714,3 +1714,54 @@ rejected as worse than the overlap: drawing it inside the page body (which is wh
 "tabPage1 是唯一在它内部的"), then sliding it right past the last header. A design-time name tag
 overlapping a tab header is not worth a special case; consistency across components is what matters.
 The code says so at the placement site, so this does not get "fixed" a third time.
+
+## The designer's Cut/Copy/Paste/Delete were dead — a WPF surface misses the WinForms bridge (2026-09-06)
+
+Wiring up the declared context menus (above) delivered 19 items, of which **four did not work**.
+`od.forms-designer.describe-context-menu` was extended to report each item's real enabled state, and
+it named them immediately:
+
+```
+Cu_t (disabled)   _Copy (disabled)   _Paste (disabled)   _Delete (disabled)
+```
+
+Every other item in the same menu was live. **A list of menu labels alone looks perfectly healthy** -
+this is the argument for reporting enabled state in any menu-describing diagnostic.
+
+**Root cause.** Items declared with `command="Cut"` resolve through
+`MenuService.GetKnownCommand` to `ApplicationCommands.Cut`, a WPF `RoutedUICommand` (the dictionary is
+populated by reflecting over `ApplicationCommands`/`NavigationCommands`, so any property name there
+resolves). A RoutedCommand is inert without a `CommandBinding` somewhere up the tree, and the only
+binding for these in the whole app is in `SDWindowsFormsHost`, which bridges them to
+`IClipboardHandler`. The old in-process designer was a WinForms control hosted inside that, so it was
+covered for free. **The out-of-process surface is plain WPF and routes straight past it**, finds no
+binding, and reports `CanExecute = false`.
+
+`FormsDesignerViewContent` had implemented `IClipboardHandler` in full the whole time -
+`EnableCut`/`Cut`/`Copy`/`Paste`/`Delete` and a `remoteClipboard` that deep-copies components and
+orders them by depth on paste. Nothing was calling it. `BindClipboardCommands` now adds the five
+`CommandBinding`s to the design surface.
+
+**Anything that assumed `SDWindowsFormsHost` is a candidate for the same bug.** That host is where
+WinForms-era plumbing was attached, and a WPF replacement view silently loses all of it.
+
+### Verifying it needed a routed-command action, not a keystroke
+
+The first check was a synthetic `Ctrl+C`, and Paste stayed disabled - which looked like the binding
+had failed. It had not: under `OD_TEST_MODE=1` the window does not take focus, so the keystroke went
+somewhere else entirely. **Do not verify a command binding with synthetic keyboard input in test
+mode.** `od.forms-designer.clipboard <cut|copy|paste|delete|selectall>` instead executes the real
+routed command against the surface, which is what exercises the binding:
+
+| Step | Result |
+|---|---|
+| select `button1` | Paste `(disabled)` - clipboard empty |
+| `clipboard copy` | `canExecute: true, executed: true` |
+| re-describe | **Paste now enabled** - proves Execute reached `IClipboardHandler.Copy` |
+| `clipboard paste` | `canExecute: true, executed: true` |
+| component tree | `button3` present under `tabPage1` |
+| `od.file.save-all` | source gains `private ... button3` and `button3 = new Button()` |
+
+The source check is only valid **after** a save: designer edits land in the in-memory document, so
+reading the file off disk before saving shows nothing and looks like a source-sync bug. (Remember to
+restore the fixture afterwards - this test leaves a `button3` in `TabControlFixture`.)

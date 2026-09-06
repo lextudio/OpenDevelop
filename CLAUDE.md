@@ -207,31 +207,65 @@ the action just times out with no error. Push the async work to the thread pool
 (`Task.Run(() => ...).GetAwaiter().GetResult()` — inside `Task.Run` there is no
 `SynchronizationContext` to return to) and keep only the UI work on the calling thread.
 
-## Deploying a change to a shared assembly needs a FULL solution build
+## `Cannot find class` at startup means an assembly VERSION mismatch
 
-`ICSharpCode.Designer.Presentation.dll` (and the other shared `Designer.*` assemblies) is copied
-into **every AddIn folder that references it** — nine copies for that one. Building a single AddIn
-csproj refreshes exactly one of them, and the app may load any, which surfaces as
-`TypeLoadException: Could not load type ...` for a type that is plainly there in the source. The
-same applies after an upstream rebase that touches Core: incremental per-project builds leave other
-AddIns compiled against the old Core, which surfaces as a `Cannot find class` modal dialog that
-blocks startup (process alive, log frozen early, DevFlow dead).
+**Every git commit changes the assembly version, which invalidates everything built before it.**
+`GitVersion.yml` runs in `ContinuousDeployment` mode off git tags, so the revision is the commit
+count since the last tag: `git describe --tags --long` returning `v5.5.2-17-g08cce1ef` produces
+`5.5.3.17`. These assemblies are strong-named (`PublicKeyToken=f829da5c02be14ee`), so version
+binding is exact — a `FormsDesigner.dll` built at `.17` referencing `ICSharpCode.SharpDevelop,
+Version=5.5.3.17` **cannot** load against a shell built at `.16`. The whole AddIn fails to load and
+every class in it is reported missing:
+
+```
+ERROR Cannot find class: ICSharpCode.FormsDesigner.FormsDesignerViewContent
+WARN  WindowActiveCondition: cannot find Type ICSharpCode.FormsDesigner.FormsDesignerViewContent
+```
+
+Nothing in that message hints at versions, and the type really is in the deployed DLL — which is why
+this is easy to misdiagnose as stale output, a corrupt deploy, or build noise.
+
+**First tell the two causes of `Cannot find class` apart, by counting how many classes are missing:**
+
+| Missing | Cause |
+|---|---|
+| **Every** class of one AddIn (and its DevFlow actions answer "Action not found") | This one — a version mismatch stopped the whole assembly from loading. |
+| **One or a few** named classes | An `.addin` references a class whose sources are excluded from compilation. A real, unrelated bug — see `doc/technotes/solution-explorer.md`, which fixes several by redirecting the `class` attribute rather than deleting the declaration. |
+
+For the first case, **diagnose by comparing versions, not timestamps or symbols:**
+
+```powershell
+[System.Reflection.AssemblyName]::GetAssemblyName("$root\src\Main\SharpDevelop\bin\Debug\net10.0-windows\ICSharpCode.SharpDevelop.dll").Version
+[System.Reflection.Assembly]::LoadFrom("$root\AddIns\DisplayBindings\FormsDesigner\FormsDesigner.dll").GetReferencedAssemblies() |
+  Where-Object { $_.Name -eq "ICSharpCode.SharpDevelop" }   # must match the above exactly
+```
+
+So: **after any commit (yours or the user's), and after any change to a shared assembly, rebuild
+everything — the shell included.** A partial rebuild is what creates the mismatch.
 
 ```bash
-dotnet build OpenDevelop.Mvp.slnx -c Debug      # ~4-7 min
+dotnet build OpenDevelop.Mvp.slnx -c Debug                                   # ~4-7 min
+dotnet build src/Main/SharpDevelop/SharpDevelop.csproj -c Debug              # make sure the shell is at the same version
 ```
+
+The shared-assembly half of the problem compounds it: `ICSharpCode.Designer.Presentation.dll` is
+copied into **every AddIn folder that references it** — nine copies — and a single-AddIn build
+refreshes exactly one, so the app can load a stale one and report `TypeLoadException: Could not load
+type ...` for a type plainly present in the source.
 
 - **`SharpDevelop.sln` is stale** — it references projects that no longer exist (`Mono.Cecil`,
   `ICSharpCode.Decompiler`, `SubversionAddIn`, ...) and fails with `MSB3202`. Use the `.slnx`.
-- To confirm a deploy actually landed, grep the deployed DLLs for a symbol you just added rather
-  than trusting timestamps: `for f in $(find AddIns -name ICSharpCode.Designer.Presentation.dll); do grep -q NewTypeName "$f" || echo "STALE: $f"; done`
 - Parallel full builds can race on `ICSharpCode.Core.Presentation.dll` (42x `MC1000`) and
   `ICSharpCode.Data.Core.dll` (`CS0006`); building those two projects first breaks the race.
 - `LibreWPF.Sdk` occasionally fails to resolve (`MSB4236`) as a transient — retry once before
   investigating.
 - Under `OD_TEST_MODE=1` a startup error dialog is suppressed and only logged, so a scripted run can
-  look clean while a manual run hits a modal dialog. Check the log for `TypeLoadException` /
-  `Cannot find class` even when the app appears to start fine.
+  look clean while a manual run hits a modal dialog. **`grep -c "Cannot find class"` on the run log
+  after every launch** — the app otherwise appears to start fine, and its DevFlow actions simply
+  answer "Action not found" for the AddIn that failed to load.
+- `taskkill /F` on the app leaves `.git/index.lock` behind if GitAddIn was mid-operation. Do not
+  delete it reflexively — check for live `git.exe` processes first (the user's IDE has its own).
+  `git show HEAD:<path> > <path>` restores a file's content without touching the index.
 
 ## Building `WinUIXamlDesigner.MicrosoftHost`
 
