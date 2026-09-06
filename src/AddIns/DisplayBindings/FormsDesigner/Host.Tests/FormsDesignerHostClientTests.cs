@@ -1,3 +1,5 @@
+using System.ComponentModel.Design;
+
 using ICSharpCode.FormsDesigner.OutOfProcess;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using Xunit;
@@ -921,6 +923,84 @@ public sealed class FormsDesignerHostClientTests
 		var flushedAfterRemove = DesignerText(await client.FlushAsync(1, timeout.Token));
 		Assert.DoesNotContain(newPage.Name, flushedAfterRemove, StringComparison.Ordinal);
 		Assert.Contains("tabPage1", flushedAfterRemove, StringComparison.Ordinal);
+	}
+
+	/// <summary>
+	/// design/invoke-menu-command routes a <see cref="CommandID"/> through the child designer's own
+	/// IMenuCommandService, so a declared menu item needs neither its own RPC nor its own branch on
+	/// the parent side. The parent has no local IDesignerHost to invoke commands on -
+	/// FormsDesignerViewContent.Host returns null by design - so before this RPC existed such a
+	/// command either did nothing or dereferenced that null into an exception dialog.
+	///
+	/// **What this does NOT give us, and why the per-command RPCs stay.** A self-hosted
+	/// DesignSurface exposes no IMenuCommandService at all, and registering one does not help:
+	/// the registry starts empty, and the class that fills it with the StandardCommands set is
+	/// `System.Windows.Forms.Design.ControlCommandSet`, which is **internal** - only Visual Studio's
+	/// designer package constructs it. So align / size-to-grid / z-order / lock / tab-order can
+	/// never route through here, and TryExecuteRemoteLayout's per-command branches are a necessity
+	/// rather than debt. What this RPC does cover is every command a designer registers itself in
+	/// Initialize - third-party ControlDesigners included - plus a clean, diagnosable rejection
+	/// otherwise. Registering a MenuCommandService to change that is a trap: see
+	/// InvokeMenuCommand's own doc comment, and note that ChildHost_Rename_UpdatesNamePropertyLiteralForToolStripItem
+	/// is the test that fails when someone tries it.
+	///
+	/// Asserted here rather than through the menu because the menu is untestable: a WPF ContextMenu
+	/// is its own top-level window, invisible to both of DevFlow's observation channels. The test
+	/// drives the client RPC directly, which is exactly what the parent's TryInvokeRemoteMenuCommand
+	/// does once its purpose-built branches decline.
+	/// </summary>
+	[Fact]
+	public async Task ChildHost_InvokeMenuCommand_RejectsACommandNoDesignerRegistered()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var client = await FormsDesignerHostClient.StartAsync("", "", timeout.Token, HostDll());
+
+		var snapshot = new DesignerDocumentSnapshot {
+			Version = 1,
+			PrimaryFileName = "/project/Form1.cs",
+			DesignerFileName = "/project/Form1.Designer.cs",
+			Files = {
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.cs", Kind = "Source",
+					Text = "namespace Sample; partial class Form1 { }"
+				},
+				new DesignerSourceFileSnapshot {
+					FileName = "/project/Form1.Designer.cs", Kind = "Designer",
+					Text = """
+						namespace Sample;
+						partial class Form1
+						{
+						    private void InitializeComponent()
+						    {
+						        this.button1 = new System.Windows.Forms.Button();
+						        this.button1.Name = "button1";
+						        this.Controls.Add(this.button1);
+						    }
+						    private System.Windows.Forms.Button button1;
+						}
+						"""
+				}
+			}
+		};
+		var opened = await client.OpenAsync(snapshot, timeout.Token);
+		Assert.True(opened.Accepted);
+
+		// A CommandID nothing registered must come back as an explicit rejection, not a silent
+		// success: "it ran and had no visible effect" and "nothing handled it" have to be
+		// distinguishable, because TryInvokeRemoteMenuCommand turns the latter into "fall through"
+		// rather than reporting a failure to the user.
+		var unknown = await Assert.ThrowsAnyAsync<Exception>(() =>
+			client.InvokeMenuCommandAsync(1, Guid.NewGuid(), 12345, timeout.Token));
+		Assert.Contains("command", unknown.Message, StringComparison.OrdinalIgnoreCase);
+
+		// Same rejection for a real StandardCommand, and that is the POINT of this assertion rather
+		// than a limitation being papered over: it pins the fact that WinForms' ControlCommandSet is
+		// internal and unreachable from a self-hosted DesignSurface. If a future runtime ever does
+		// supply these, this assertion fails - which is exactly when someone should revisit whether
+		// TryExecuteRemoteLayout still needs its per-command branches.
+		var standard = await Assert.ThrowsAnyAsync<Exception>(() => client.InvokeMenuCommandAsync(1,
+			StandardCommands.LockControls.Guid, StandardCommands.LockControls.ID, timeout.Token));
+		Assert.Contains("command", standard.Message, StringComparison.OrdinalIgnoreCase);
 	}
 #endif
 

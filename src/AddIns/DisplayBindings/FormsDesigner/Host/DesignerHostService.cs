@@ -735,6 +735,61 @@ sealed class DesignerHostService : IDesignerChildService
 		return CurrentState(baseVersion);
 	}
 
+	/// <summary>Runs a <see cref="CommandID"/> through the real designer's own
+	/// <see cref="IMenuCommandService"/>, exactly as an in-process designer's menu item would.</summary>
+	/// <remarks>
+	/// This is the generic escape hatch for the whole <see cref="StandardCommands"/> surface -
+	/// AlignLeft, SizeToGrid, BringToFront, LockControls, ShowTabOrder and everything else a
+	/// component's designer registers. Without it each of those has to be re-implemented as its own
+	/// RPC on the parent side, because the parent has no local IDesignerHost to invoke them on
+	/// (FormsDesignerViewContent.Host returns null by design - the real host lives here).
+	///
+	/// Commands are routed by their GUID+ID rather than by name so that nothing needs to enumerate
+	/// or whitelist them: a CommandID the parent has never heard of still reaches the designer that
+	/// registered it. The invoke is wrapped in InvokeAndSyncComponentChanges for the same reason
+	/// verbs are - a command may add or remove components (Add Tab does), and those edits have to
+	/// reach the source file, not just the live design surface.
+	///
+	/// **Scope, and why the per-command RPCs elsewhere in this file stay.** A self-hosted
+	/// DesignSurface has no IMenuCommandService at all unless something registers one, and even
+	/// then the registry starts empty: the class that fills it with the StandardCommands set
+	/// (align, size-to-grid, z-order, lock, tab order) is
+	/// `System.Windows.Forms.Design.ControlCommandSet`, which is **internal** - only Visual Studio's
+	/// own designer package constructs it. So those commands can never route through here, and
+	/// TryExecuteRemoteLayout's per-command branches on the parent side are a necessity rather than
+	/// duplicated effort. What this RPC does reach is anything a designer registers for itself in
+	/// Initialize, third-party ControlDesigners included.
+	///
+	/// **Do not "fix" this by registering a MenuCommandService here.** That was tried: adding
+	/// `commandServices.AddService(typeof(IMenuCommandService), new MenuCommandService(designSurface))`
+	/// in CreateDesignSurface makes this service resolve, but it breaks renaming a component with
+	/// `The container cannot be disposed at design time.` (proven by
+	/// ChildHost_Rename_UpdatesNamePropertyLiteralForToolStripItem, which passes without the
+	/// registration and fails with it). The StandardCommands still would not work, because of the
+	/// internal ControlCommandSet above - so the registration buys nothing and costs a working
+	/// feature.
+	/// </remarks>
+	[JsonRpcMethod("design/invoke-menu-command")]
+	public DesignerSessionState InvokeMenuCommand(string sessionId, string documentId, long baseVersion, string commandGuid, int commandId)
+	{
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "invoke menu command for");
+		if (!Guid.TryParse(commandGuid, out var guid))
+			throw new ArgumentException("Not a CommandID GUID: " + commandGuid, nameof(commandGuid));
+		var host = GetHost();
+		var menuCommands = host.GetService(typeof(IMenuCommandService)) as IMenuCommandService
+			?? throw new NotSupportedException("The design surface exposes no IMenuCommandService.");
+		var command = new CommandID(guid, commandId);
+		// Report an unroutable command instead of silently doing nothing: GlobalInvoke returns false
+		// when no designer handled it, which is the difference between "this designer does not
+		// support that" and "it ran and had no visible effect".
+		var handled = false;
+		InvokeAndSyncComponentChanges(host, "Invoke " + command,
+			() => handled = menuCommands.GlobalInvoke(command));
+		if (!handled)
+			throw new NotSupportedException("No designer handled the command " + command + ".");
+		return CurrentState(baseVersion);
+	}
+
 	/// <summary>The ToolStrip/StatusStrip/MenuStrip "insert new item" chevron: creates a real
 	/// sited ToolStripItem via <c>host.CreateComponent</c> (so it is indistinguishable from a
 	/// hand-authored item, unlike the unsited scaffolding <c>BuildElementTree</c> already filters
@@ -873,6 +928,13 @@ sealed class DesignerHostService : IDesignerChildService
 	{
 		EnsureCurrentVersion(sessionId, documentId, baseVersion, "invoke verb for");
 		throw new NotSupportedException("Designer verbs are only supported by the Microsoft WinForms designer host.");
+	}
+
+	[JsonRpcMethod("design/invoke-menu-command")]
+	public DesignerSessionState InvokeMenuCommand(string sessionId, string documentId, long baseVersion, string commandGuid, int commandId)
+	{
+		EnsureCurrentVersion(sessionId, documentId, baseVersion, "invoke menu command for");
+		throw new NotSupportedException("Designer menu commands are only supported by the Microsoft WinForms designer host.");
 	}
 #endif
 
@@ -1753,10 +1815,73 @@ sealed class DesignerHostService : IDesignerChildService
 			view.PerformLayout();
 			Trace("CreateDesignSurface laid out view control");
 		}
+#if MICROSOFT_WINFORMS
+		TryInstallStandardCommandSet(designSurface);
+#endif
 #if !MICROSOFT_WINFORMS
 		AdoptVisibleShadowsFromLoadedSource();
 #endif
 	}
+
+#if MICROSOFT_WINFORMS
+	/// <summary>Keeps the installed command set alive for the lifetime of the surface: CommandSet
+	/// subscribes to selection/host events and would otherwise be collectible while its commands
+	/// remain registered.</summary>
+	IDisposable installedCommandSet;
+
+	/// <summary>Stands in for the part of Visual Studio's designer package that supplies the
+	/// WinForms <c>CommandSet</c>, so the whole StandardCommands surface (align, size-to-grid,
+	/// z-order, lock, tab order, Cut/Copy/Paste/Delete/SelectAll) is implemented by WinForms itself
+	/// rather than reimplemented per command on the parent side.</summary>
+	/// <remarks>
+	/// A self-hosted DesignSurface provides none of this: `ControlCommandSet` registers every
+	/// standard command into IMenuCommandService from its constructor, but nothing constructs it and
+	/// the service does not exist either. The three pieces it needs are all obtainable -
+	/// `EventHandlerService` and `MenuCommandService` are public types, and the ISite is the root
+	/// component's own - so only `ControlCommandSet` itself needs reflection, being internal.
+	///
+	/// Entirely best-effort: this reaches into an internal type, so a runtime update can remove or
+	/// rename it. Failure must leave the surface exactly as it was, with the parent's own per-command
+	/// RPCs still handling everything - which is why every step is guarded and the whole thing is
+	/// wrapped rather than allowed to fault CreateDesignSurface.
+	/// </remarks>
+	void TryInstallStandardCommandSet(DesignSurface designSurface)
+	{
+		try {
+			if (designSurface.GetService(typeof(IDesignerHost)) is not IDesignerHost host
+				|| designSurface.GetService(typeof(IDesignerHost)) is not IServiceContainer services)
+				return;
+			if (host.RootComponent?.Site is not ISite site)
+				return;
+			// Resolved by name rather than typeof: in the real WinForms IEventHandlerService is
+			// internal (the LibreWinForms fork happens to make it public), and the service has to be
+			// registered under that exact interface type because CommandSet looks it up by it.
+			var designAssembly = typeof(MenuCommandService).Assembly;
+			var eventHandlerServiceType = designAssembly.GetType("System.Windows.Forms.Design.EventHandlerService", throwOnError: false);
+			var eventHandlerInterface = designAssembly.GetType("System.Windows.Forms.Design.IEventHandlerService", throwOnError: false);
+			var commandSetType = designAssembly.GetType("System.Windows.Forms.Design.ControlCommandSet", throwOnError: false);
+			if (eventHandlerServiceType == null || eventHandlerInterface == null || commandSetType == null) {
+				Trace("TryInstallStandardCommandSet: this runtime does not expose the WinForms command set types");
+				return;
+			}
+			// A hard requirement: CommandSet's constructor asks for it with GetRequiredService and
+			// throws without it.
+			if (services.GetService(eventHandlerInterface) == null)
+				services.AddService(eventHandlerInterface,
+					Activator.CreateInstance(eventHandlerServiceType, host.RootComponent as Control));
+			if (services.GetService(typeof(IMenuCommandService)) == null)
+				services.AddService(typeof(IMenuCommandService), new MenuCommandService(designSurface));
+			installedCommandSet = Activator.CreateInstance(commandSetType,
+				BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+				null, new object[] { site }, null) as IDisposable;
+			Trace("TryInstallStandardCommandSet installed=" + (installedCommandSet != null));
+		} catch (Exception exception) {
+			// Never let this take the designer down - the parent's per-command RPCs remain the
+			// fallback, exactly as before this existed.
+			Trace("TryInstallStandardCommandSet failed: " + exception.Message);
+		}
+	}
+#endif
 
 #if !MICROSOFT_WINFORMS
 	/// <summary>Takes over Visible for controls that arrived hidden from the loaded source, so they

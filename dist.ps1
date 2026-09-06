@@ -82,12 +82,17 @@ function New-TempDir {
     return $p
 }
 
-function Sync-LibreWpfTransportRuntime([string]$publishDir) {
+function Sync-LibreWpfTransportRuntime([string]$publishDir, [string]$rid) {
     # LibreWPF.Sdk supplies the compile-time reference surface, but the .NET runtime pack also
     # contains assemblies with the same WPF simple names. Publish can therefore select the latter
     # by basename even though LibreWPF.Transport is the resolved package. That produces a subtly
     # mixed runtime (for example an old WindowsBase.dll without Dispatcher.NativeInputPump).
     # Always overlay the exact managed transport payload that restore selected.
+    #
+    # Architecture safety: the transport package's lib/net10.0/ may contain assemblies built
+    # for the wrong host architecture (e.g. ARM64 on an ARM64 build host, but the target is
+    # win-x64). We must never overwrite dotnet publish's correct-arch output with wrong-arch
+    # assemblies. Check each DLL's PE machine type before copying.
     $assets = Join-Path $repoRoot 'src/Main/SharpDevelop/obj/project.assets.json'
     if (-not (Test-Path $assets)) { throw "LibreWPF transport sync requires restore assets: $assets" }
     $transportVersion = ((Get-Content $assets -Raw | ConvertFrom-Json).libraries.PSObject.Properties |
@@ -95,10 +100,58 @@ function Sync-LibreWpfTransportRuntime([string]$publishDir) {
         Select-Object -First 1).Name -replace '^LibreWPF.Transport/', ''
     if (-not $transportVersion) { throw 'LibreWPF.Transport was not resolved for the OpenDevelop host.' }
     $nugetPackages = ((& $dotnet nuget locals global-packages --list) | Select-String '^global-packages: ').Line -replace '^global-packages:\s*', ''
-    $transportRuntime = Join-Path $nugetPackages "librewpf.transport/$transportVersion/lib/net10.0"
-    if (-not (Test-Path $transportRuntime)) { throw "LibreWPF transport runtime payload not found: $transportRuntime" }
-    Copy-Item -Path (Join-Path $transportRuntime '*') -Destination $publishDir -Recurse -Force
-    Write-Host "Synced LibreWPF.Transport $transportVersion runtime payload into publish output"
+    $transportRoot = Join-Path $nugetPackages "librewpf.transport/$transportVersion"
+
+    # Expected PE machine types per RID
+    $expectedMachine = switch ($rid) {
+        'win-x64'  { 0x8664 }
+        'win-arm64'{ 0xAA64 }
+        'win-x86'  { 0x014C }
+        default    { 0 }
+    }
+    function Test-DllArchMatch([string]$dllPath, [uint16]$target) {
+        $bytes = [System.IO.File]::ReadAllBytes($dllPath)
+        $peOffset = [BitConverter]::ToInt32($bytes, 0x3C)
+        $machine = [BitConverter]::ToUInt16($bytes, $peOffset + 4)
+        return $machine -eq $target
+    }
+
+    # Prefer the RID-specific managed payload when progpu-wpf-windows-managed-runtime.ps1
+    # has run — these are guaranteed correct-arch. Otherwise fall back to lib/net10.0/ with
+    # per-file arch filtering so wrong-arch assemblies do not overwrite dotnet publish output.
+    $ridManaged = Join-Path $transportRoot "runtimes/$rid/lib/net10.0"
+    $fallbackManaged = Join-Path $transportRoot "lib/net10.0"
+    $copied = 0
+    $skipped = 0
+
+    if ((Test-Path $ridManaged) -and (Get-ChildItem $ridManaged -File -ErrorAction SilentlyContinue)) {
+        # Overlay only the RID-specific managed payload (PresentationCore + DirectWriteForwarder).
+        # These two assemblies have per-architecture builds from progpu-wpf-windows-managed-runtime.ps1.
+        # All other assemblies in lib/net10.0/ have mixed host-architecture binaries and must NOT
+        # be copied — dotnet publish already placed the correct-arch versions from the .NET runtime
+        # pack or from the transport package's own restore selection.
+        Write-Host "Overlaying RID-specific transport payload from $ridManaged"
+        Copy-Item -Path (Join-Path $ridManaged '*') -Destination $publishDir -Recurse -Force
+        $copied = (Get-ChildItem $ridManaged -File).Count
+    } elseif (Test-Path $fallbackManaged) {
+        # Legacy path: filter each DLL by PE machine type to avoid corrupting the publish output
+        Write-Host "Filtering transport payload from lib/net10.0/ for $rid (expected machine 0x$($expectedMachine.ToString('X4')))"
+        foreach ($dll in (Get-ChildItem $fallbackManaged -Filter '*.dll')) {
+            if ($expectedMachine -eq 0 -or (Test-DllArchMatch $dll.FullName $expectedMachine)) {
+                Copy-Item $dll.FullName -Destination $publishDir -Force
+                $copied++
+            } else {
+                $skipped++
+            }
+        }
+        # Copy non-DLL assets (themes subdirs, PDBs not needed, satellite resource dirs)
+        foreach ($dir in (Get-ChildItem $fallbackManaged -Directory)) {
+            Copy-Item $dir.FullName -Destination $publishDir -Recurse -Force
+        }
+    } else {
+        throw "LibreWPF transport runtime payload not found at $transportRoot"
+    }
+    Write-Host "Synced LibreWPF.Transport $transportVersion runtime payload ($rid): $copied assemblies copied, $skipped wrong-arch skipped"
 }
 
 function Get-PinnedGitVersionProperties {
@@ -479,7 +532,7 @@ function Invoke-DistributionPipeline([string]$Rid) {
         }
         $nugetPackages = ($nugetPackagesLine.Line -replace '^global-packages:\s*', '')
         & $patchScript $depsJson $nugetPackages
-        Sync-LibreWpfTransportRuntime $publishDir
+        if ($Rid) { Sync-LibreWpfTransportRuntime $publishDir $Rid }
 
         # Some projects write to OpenDevelopHostPublishDir while computing their distribution
         # closure. Give that build a disposable copy so the verified host deployment above
@@ -515,7 +568,7 @@ function Invoke-DistributionPipeline([string]$Rid) {
         # through cached project state. Restore the authoritative package runtime payload only
         # after every build has completed.
         & $patchScript $depsJson $nugetPackages
-        Sync-LibreWpfTransportRuntime $publishDir
+        if ($Rid) { Sync-LibreWpfTransportRuntime $publishDir $Rid }
     }
     else {
         Write-Host "==> Skipping publish$ridLabel (-SkipPublish)"

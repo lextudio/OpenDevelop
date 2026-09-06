@@ -77,6 +77,8 @@ sealed class MultiDocumentDesignerHostService : IDesignerChildService
 	public DesignerVerbs ListVerbs(string sessionId, string documentId, long baseVersion, string elementId) => GetChecked(sessionId, documentId).ListVerbs(sessionId, documentId, baseVersion, elementId);
 	[JsonRpcMethod("design/invoke-verb")]
 	public DesignerSessionState InvokeVerb(string sessionId, string documentId, long baseVersion, string elementId, int verbIndex) => GetChecked(sessionId, documentId).InvokeVerb(sessionId, documentId, baseVersion, elementId, verbIndex);
+	[JsonRpcMethod("design/invoke-menu-command")]
+	public DesignerSessionState InvokeMenuCommand(string sessionId, string documentId, long baseVersion, string commandGuid, int commandId) => GetChecked(sessionId, documentId).InvokeMenuCommand(sessionId, documentId, baseVersion, commandGuid, commandId);
 	[JsonRpcMethod("design/add-toolstrip-item")]
 	public DesignerSessionState AddToolStripItem(string sessionId, string documentId, long baseVersion, string elementId, string itemTypeName, string parentItemId, string newItemId) => GetChecked(sessionId, documentId).AddToolStripItem(sessionId, documentId, baseVersion, elementId, itemTypeName, parentItemId, newItemId);
 	[JsonRpcMethod("design/reorder-toolstrip-item")]

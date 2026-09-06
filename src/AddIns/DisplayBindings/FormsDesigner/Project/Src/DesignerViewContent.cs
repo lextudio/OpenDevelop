@@ -255,6 +255,31 @@ namespace ICSharpCode.FormsDesigner
 				System.Threading.CancellationToken.None).GetAwaiter().GetResult());
 		}
 
+		/// <summary>Last-resort route for a <see cref="CommandID"/> with no purpose-built RPC: hands
+		/// it to the child designer's own <c>IMenuCommandService</c>.</summary>
+		/// <remarks>
+		/// This is what replaces the in-process fallback that <see cref="Host"/> can never satisfy
+		/// (it returns null by design - the real IDesignerHost lives in the child process). Before
+		/// this existed, every declared menu command needed its own RPC and its own branch in
+		/// AbstractFormsDesignerCommand.Run, and anything without one silently did nothing - or, once
+		/// the null Host was dereferenced, surfaced as an exception dialog.
+		///
+		/// Returns false rather than throwing when the child reports the command unroutable, so the
+		/// caller can tell "this designer does not implement that" from a genuine RPC failure.
+		/// </remarks>
+		internal bool TryInvokeRemoteMenuCommand(CommandID command)
+		{
+			if (!IsRemoteDesignerLoaded || command == null) return false;
+			try {
+				ExecuteRemoteEdit(() => remoteClient.InvokeMenuCommandAsync(remoteDocumentVersion,
+					command.Guid, command.ID, System.Threading.CancellationToken.None).GetAwaiter().GetResult());
+				return true;
+			} catch (NotSupportedException exception) {
+				LoggingService.Debug("Forms designer: the child designer does not handle " + command + ": " + exception.Message);
+				return false;
+			}
+		}
+
 		internal bool TryExecuteRemoteLayout(CommandID command)
 		{
 			if (!IsRemoteDesignerLoaded) return false;

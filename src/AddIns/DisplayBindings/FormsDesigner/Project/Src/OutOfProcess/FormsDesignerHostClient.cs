@@ -256,6 +256,17 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		public Task<DesignerSessionState> InvokeVerbAsync(long baseVersion, string elementId, int verbIndex, CancellationToken cancellationToken)
 			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/invoke-verb", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, verbIndex }, cancellationToken), cancellationToken);
 
+		/// <summary>Runs a <c>System.ComponentModel.Design.CommandID</c> through the child
+		/// designer's own <c>IMenuCommandService</c>.</summary>
+		/// <remarks>
+		/// The generic route for the whole StandardCommands surface (align, size-to-grid, z-order,
+		/// lock, tab order, ...). Passing the GUID and int rather than a name means a command this
+		/// side has never heard of still reaches whichever designer registered it, so a new
+		/// StandardCommand needs no protocol change - only a menu entry.
+		/// </remarks>
+		public Task<DesignerSessionState> InvokeMenuCommandAsync(long baseVersion, Guid commandGuid, int commandId, CancellationToken cancellationToken)
+			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/invoke-menu-command", new { sessionId = SessionId, documentId = DocumentId, baseVersion, commandGuid = commandGuid.ToString(), commandId }, cancellationToken), cancellationToken);
+
 		/// <summary>Creates and appends a new ToolStripItem to a ToolStrip/StatusStrip/MenuStrip
 		/// (or to a submenu's DropDownItems when <paramref name="parentItemId"/> is non-empty) -
 		/// the "insert new item" chevron VS draws past a selected strip's last item.</summary>

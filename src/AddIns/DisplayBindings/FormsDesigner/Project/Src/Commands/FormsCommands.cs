@@ -68,16 +68,19 @@ namespace ICSharpCode.FormsDesigner.Commands
 				}
 				if (formDesigner?.TryExecuteRemoteLayout(CommandID) == true)
 					return;
-				// The in-process fallback below is unreachable for the out-of-process designer:
-				// FormsDesignerViewContent.Host returns null by design (there is no local
-				// IDesignerHost - the real one lives in the child process). Without this guard the
-				// next line dereferences it and the catch turns a plain NullReferenceException into
-				// an exception dialog, so a command that merely has no remote equivalent yet looks
-				// like a crash. Logged rather than silent, because reaching here means a declared
-				// menu item is offering something this designer cannot do.
+				// Generic route for every CommandID with no purpose-built RPC above: hand it to the
+				// child designer's own IMenuCommandService. This is what the out-of-process designer
+				// has instead of the in-process fallback further down, which it can never reach -
+				// FormsDesignerViewContent.Host returns null by design, because the real
+				// IDesignerHost lives in the child process. Anything a designer registers
+				// (ShowTabOrder, SizeToGrid, a third-party ControlDesigner's own commands) therefore
+				// works without adding a branch here or a new RPC; before this, such a command
+				// either did nothing or dereferenced the null Host into an exception dialog.
+				if (formDesigner?.TryInvokeRemoteMenuCommand(CommandID) == true)
+					return;
 				if (formDesigner != null && formDesigner.Host == null) {
-					LoggingService.Warn("Forms designer: no remote equivalent for command " + CommandID
-						+ "; the in-process IMenuCommandService path is not available out of process.");
+					LoggingService.Warn("Forms designer: the child designer does not handle command "
+						+ CommandID + ", and there is no in-process IDesignerHost to fall back to.");
 					return;
 				}
 				if (formDesigner != null && CanExecuteCommand(formDesigner.Host)) {
