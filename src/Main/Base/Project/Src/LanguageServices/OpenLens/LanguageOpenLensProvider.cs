@@ -22,18 +22,19 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.OpenLens
 
 		readonly string extension;
 
-		// How often one item may come back UNRESOLVED because the service could not answer, before
-		// its count is published anyway. Deferring is what lets a genuine answer replace an early
-		// miss (see the references branch), but deferring without a bound makes the renderer retry
-		// the same reference search on every refresh forever: measured, that alone stretched the
-		// AddInTests run from 410s to 1845s and starved unrelated designer tests into their
-		// timeouts. A couple of retries is all the workspace needs to finish adopting a freshly
-		// opened document into its project.
-		const int MaxUnresolvedAttempts = 3;
+		// How long a document may keep its lens items UNRESOLVED while waiting to join its project.
+		//
+		// Bounded by TIME, not by a number of attempts. A retry only happens when a render/measure
+		// pass finds the item still unresolved, so "give up after N attempts" measures render
+		// activity, not elapsed time: three passes can all fire inside the first second, and the
+		// count then gets published from a workspace that is not ready yet. That is exactly how a
+		// wrong "0 references" used to get cached - permanently, since a resolved item is never
+		// recomputed.
+		static readonly TimeSpan UnresolvedBudget = TimeSpan.FromSeconds(30);
 
-		// Keyed per document+anchor+lens. Bounded by the anchors of the files actually opened, and
-		// entries are dropped as soon as an item resolves.
-		readonly Dictionary<string, int> unresolvedAttempts = new(StringComparer.Ordinal);
+		// First time each document deferred, so the budget above can be applied. Keyed by file name:
+		// the whole document settles at once, so per-item tracking would only multiply the entries.
+		readonly Dictionary<string, DateTime> firstDeferralUtc = new(StringComparer.OrdinalIgnoreCase);
 
 		public LanguageOpenLensProvider(string id, string extension, int order = 0)
 		{
@@ -76,32 +77,96 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.OpenLens
 			return Task.FromResult<IReadOnlyList<OpenLensItem>>(items);
 		}
 
-		static string UnresolvedKey(OpenLensDocumentContext context, OpenLensItem item) =>
-			context.FileName + "\u0000" + item.AnchorId + "\u0000" + item.LensId;
+		/// <summary>
+		/// Whether a count computed right now may be published as final, or the item should be left
+		/// unresolved for a later pass. Untrustworthy means either the service could not answer at
+		/// all, or the document is not yet part of its own project's compilation - a file opened
+		/// before its project finished loading is registered against the shared loose ad-hoc project
+		/// and adopted afterwards, and a search inside that window legitimately finds nothing while
+		/// returning a perfectly valid (non-null) empty result.
+		/// </summary>
+		/// <summary>
+		/// Last few resolutions, for diagnosis. Deducing what a lens saw from the outside does not
+		/// work: by the time anything can be asked about it, the workspace has moved on and answers
+		/// the same query correctly, which says nothing about the moment the cached count was
+		/// computed. Exposed through od.openlens.resolutions.
+		/// </summary>
+		public readonly record struct ResolutionRecord(
+			DateTime WhenUtc, string FileName, string LensId, int Offset, string Subject, int Count, bool ProjectBacked, bool Published);
 
-		/// <summary>True while this item may still be left unresolved for a later retry.</summary>
-		bool ShouldDeferUnresolved(OpenLensDocumentContext context, OpenLensItem item)
+		static readonly object resolutionLogLock = new();
+		static readonly Queue<ResolutionRecord> resolutionLog = new();
+		const int ResolutionLogCapacity = 64;
+
+		/// <summary>Anchor discovery outcomes, same ring buffer rationale as the resolutions.</summary>
+		public readonly record struct DiscoveryRecord(DateTime WhenUtc, string FileName, int OutlineTypes, int Anchors);
+
+		static readonly Queue<DiscoveryRecord> discoveryLog = new();
+
+		internal static void RecordDiscovery(string fileName, int outlineTypes, int anchors)
 		{
-			var key = UnresolvedKey(context, item);
-			lock (unresolvedAttempts)
+			lock (resolutionLogLock)
 			{
-				unresolvedAttempts.TryGetValue(key, out var attempts);
-				if (attempts >= MaxUnresolvedAttempts)
+				discoveryLog.Enqueue(new DiscoveryRecord(DateTime.UtcNow, fileName, outlineTypes, anchors));
+				while (discoveryLog.Count > ResolutionLogCapacity)
+					discoveryLog.Dequeue();
+			}
+		}
+
+		public static IReadOnlyList<DiscoveryRecord> GetDiscoveryLog()
+		{
+			lock (resolutionLogLock)
+				return discoveryLog.ToArray();
+		}
+
+		internal static void RecordResolution(ResolutionRecord record)
+		{
+			lock (resolutionLogLock)
+			{
+				resolutionLog.Enqueue(record);
+				while (resolutionLog.Count > ResolutionLogCapacity)
+					resolutionLog.Dequeue();
+			}
+		}
+
+		public static IReadOnlyList<ResolutionRecord> GetResolutionLog()
+		{
+			lock (resolutionLogLock)
+				return resolutionLog.ToArray();
+		}
+
+		bool CanPublish(ILanguageService languageService, OpenLensDocumentContext context, bool hasResult)
+		{
+			var settled = hasResult && IsDocumentInItsProject(languageService, context);
+			lock (firstDeferralUtc)
+			{
+				if (settled)
 				{
-					unresolvedAttempts.Remove(key);
+					firstDeferralUtc.Remove(context.FileName);
+					return true;
+				}
+				if (!firstDeferralUtc.TryGetValue(context.FileName, out var since))
+				{
+					firstDeferralUtc[context.FileName] = DateTime.UtcNow;
 					return false;
 				}
-				unresolvedAttempts[key] = attempts + 1;
+				// A file that belongs to no project never settles; the budget is what stops it from
+				// deferring for the whole session. Its lenses are then resolved against the loose
+				// project, which is the best answer available for such a file.
+				if (DateTime.UtcNow - since < UnresolvedBudget)
+					return false;
+				firstDeferralUtc.Remove(context.FileName);
 				return true;
 			}
 		}
 
-		void ClearUnresolvedAttempts(OpenLensDocumentContext context, OpenLensItem item)
+		static bool IsDocumentInItsProject(ILanguageService languageService, OpenLensDocumentContext context)
 		{
-			lock (unresolvedAttempts)
-			{
-				unresolvedAttempts.Remove(UnresolvedKey(context, item));
-			}
+			// Only the Roslyn backend distinguishes loose from project-backed documents; for any
+			// other service there is nothing to wait for.
+			if (languageService is not Roslyn.CSharpVBLanguageService roslyn)
+				return true;
+			return !string.IsNullOrEmpty(roslyn.TryGetProjectDocument(context.FileName)?.Project.FilePath);
 		}
 
 		public async Task<OpenLensItem> ResolveAsync(OpenLensDocumentContext context, OpenLensItem item, CancellationToken cancellationToken)
@@ -125,10 +190,14 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.OpenLens
 				// IsResolved: true, which is cached, so one early miss poisoned the row for the rest
 				// of the session. That is why OpenLens showed "0 references" for symbols with
 				// obvious callers only in a long batch run, where the workspace is slower to settle.
-				if (result == null && ShouldDeferUnresolved(context, item))
+				var publish = CanPublish(languageService, context, result != null);
+				RecordResolution(new ResolutionRecord(
+					DateTime.UtcNow, context.FileName, item.LensId, offset,
+					result?.Subject ?? "<null result>", result?.References.Count ?? -1,
+					IsDocumentInItsProject(languageService, context), publish));
+				if (!publish)
 					return item;
 				int count = result?.References.Count ?? 0;
-				ClearUnresolvedAttempts(context, item);
 				return item with {
 					Presentation = new OpenLensPresentation(FormatCount(count, "reference", "references")),
 					Command = new OpenLensCommand("OpenLens.ShowReferences", anchor),
@@ -140,10 +209,9 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.OpenLens
 				var result = await languageService.GetDerivedSymbolsAsync(context.DocumentId, offset, cancellationToken).ConfigureAwait(false);
 				// Same reasoning as the references branch above: do not cache a count derived from
 				// "the service could not answer".
-				if (result == null && ShouldDeferUnresolved(context, item))
+				if (!CanPublish(languageService, context, result != null))
 					return item;
 				int count = CountNodes(result?.Nodes);
-				ClearUnresolvedAttempts(context, item);
 				var (singular, plural) = item.LensId == OverridesLensId
 					? ("override", "overrides")
 					: ("implementation", "implementations");

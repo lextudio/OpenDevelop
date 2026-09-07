@@ -1,0 +1,57 @@
+name: Bug Report
+description: Report a crash or unexpected behavior
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open solution...
+        2. Click on...
+        3. Error occurs...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Designer backend
+      options:
+        - LibreWPF
+        - LibreWinForms
+        - ProGPU.WinUI
+        - Uno Platform
+        - Microsoft WPF (Windows-only)
+        - Microsoft WinForms (Windows-only)
+        - Microsoft WinUI (Windows-only)
+        - N/A
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      value: |
+        - OS: [e.g. macOS 15, Windows 11]
+        - OpenDevelop version: [e.g. git SHA or release]
+        - .NET SDK version selected in Tools | Options: [e.g. 8.0.100]
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: Paste any relevant crash logs, DevFlow output, or stack traces
+      render: shell

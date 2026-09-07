@@ -72,18 +72,13 @@ namespace ICSharpCode.SharpDevelop.Project
 		// process itself (see the type-level comment) - just needs its own consistent SDK/MSBuild
 		// toolset, which any selected installed SDK provides.
 
-		public IList<ReferenceProjectItem> ResolveAssemblyReferences(
-			MSBuildBasedProject baseProject,
-			ReferenceProjectItem[] additionalReferences = null, bool resolveOnlyAdditionalReferences = false,
-			bool logErrorsToOutputPad = true)
-		{
-			var results = new List<ReferenceProjectItem>();
-			if (additionalReferences != null)
-				results.AddRange(additionalReferences);
-			return results;
-		}
-
-		public async Task<bool> BuildAsync(IProject project, ProjectBuildOptions options, IBuildFeedbackSink feedbackSink, CancellationToken cancellationToken, IEnumerable<string> additionalTargetFiles = null)
+		/// <summary>
+		/// The child-process setup shared by <see cref="BuildAsync"/> and
+		/// <see cref="ResolveAssemblyReferences"/>: selected SDK, scrubbed environment, pinned
+		/// locale, and a working directory outside this repo. Both paths need exactly the same
+		/// treatment - see the comments inside - and having two copies of it is how they drift.
+		/// </summary>
+		static ProcessStartInfo CreateDotnetChildStartInfo()
 		{
 			var sdk = DotNetSdkService.ResolveEffectiveSdk();
 			var psi = new ProcessStartInfo(sdk.DotnetExecutablePath) {
@@ -129,6 +124,105 @@ namespace ICSharpCode.SharpDevelop.Project
 			// Determinism is already achieved by the explicit locale, without disabling ICU.
 			psi.EnvironmentVariables["LANG"] = "en_US.UTF-8";
 			psi.EnvironmentVariables["LC_ALL"] = "en_US.UTF-8";
+			return psi;
+		}
+
+		/// <summary>
+		/// Resolves a project's assembly references by running MSBuild's own `ResolveReferences`
+		/// target in a child process and reading back the `ReferencePath` items.
+		///
+		/// Out of process for the same load-bearing reason as <see cref="BuildAsync"/>: an
+		/// in-process MSBuild cannot run SDK tasks, because a hosted engine resolves SDKs and tasks
+		/// against the CURRENT process's runtime location, and this app's own
+		/// Microsoft.Build.Framework is older than the tasks the selected SDK ships
+		/// (MSB4062 - see doc/technotes/msbuild.md). Plain evaluation never executes a task, which
+		/// is why Solution Explorer's in-process evaluation has always worked and this has not.
+		///
+		/// This used to return only <paramref name="additionalReferences"/>, i.e. nothing, and the
+		/// consequences were not confined to the project browser: RoslynWorkspaceHelper falls back
+		/// to the host runtime's trusted platform assemblies when this comes back empty, so every
+		/// C#/VB project compiled against roughly three references. Measured on
+		/// tests/fixtures/SampleTestProject - 3 references instead of 179, every xunit type
+		/// reported as CS0246, and the resulting snapshot persisted to .od/roslyn-tfm-cache with
+		/// `References: []`, which then looked like a cache bug rather than a missing target.
+		/// </summary>
+		public IList<ReferenceProjectItem> ResolveAssemblyReferences(
+			MSBuildBasedProject baseProject,
+			ReferenceProjectItem[] additionalReferences = null, bool resolveOnlyAdditionalReferences = false,
+			bool logErrorsToOutputPad = true)
+		{
+			var results = new List<ReferenceProjectItem>();
+			if (additionalReferences != null)
+				results.AddRange(additionalReferences);
+			if (resolveOnlyAdditionalReferences || baseProject == null)
+				return results;
+
+			try {
+				foreach (var path in RunResolveReferences(baseProject.FileName.ToString(), logErrorsToOutputPad)) {
+					// Include is the assembly's simple name, matching what a hand-written
+					// <Reference Include="..."/> would carry; the resolved path goes in HintPath,
+					// which is what RoslynWorkspaceHelper.GetMetadataReferences reads.
+					var item = new ReferenceProjectItem(baseProject, Path.GetFileNameWithoutExtension(path)) {
+						HintPath = path
+					};
+					results.Add(item);
+				}
+			} catch (Exception ex) {
+				// Never throw out of reference resolution: an unresolvable project must degrade to
+				// "no references" (the previous behaviour) rather than break project loading.
+				LoggingService.Warn("ResolveAssemblyReferences failed for "
+					+ baseProject.FileName + ": " + ex.Message);
+			}
+			return results;
+		}
+
+		static IEnumerable<string> RunResolveReferences(string projectFileName, bool logErrorsToOutputPad)
+		{
+			var psi = CreateDotnetChildStartInfo();
+			psi.ArgumentList.Add("msbuild");
+			psi.ArgumentList.Add(projectFileName);
+			psi.ArgumentList.Add("--nologo");
+			psi.ArgumentList.Add("-m:1");
+			psi.ArgumentList.Add("-p:BuildingInsideVisualStudio=true");
+			psi.ArgumentList.Add("-t:ResolveReferences");
+			// -getItem makes MSBuild print the requested item list as JSON on stdout and suppresses
+			// normal build output, so no log parsing is involved.
+			psi.ArgumentList.Add("-getItem:ReferencePath");
+
+			using var process = Process.Start(psi);
+			if (process == null)
+				return Array.Empty<string>();
+			string stdout = process.StandardOutput.ReadToEnd();
+			string stderr = process.StandardError.ReadToEnd();
+			if (!process.WaitForExit(ResolveReferencesTimeoutMilliseconds)) {
+				try { process.Kill(entireProcessTree: true); } catch { }
+				LoggingService.Warn("ResolveAssemblyReferences timed out for " + projectFileName);
+				return Array.Empty<string>();
+			}
+			if (process.ExitCode != 0) {
+				// A project that has never been restored legitimately fails here. Warn rather than
+				// throw, and keep the message in the log where a "why are there no references"
+				// investigation will find it.
+				LoggingService.Warn("ResolveAssemblyReferences exited " + process.ExitCode + " for "
+					+ projectFileName + ". " + FirstLine(stderr.Length > 0 ? stderr : stdout));
+				return Array.Empty<string>();
+			}
+			return MSBuildGetItemOutput.ParseItemIdentities(stdout, "ReferencePath");
+		}
+
+		static string FirstLine(string text)
+		{
+			if (string.IsNullOrEmpty(text))
+				return string.Empty;
+			int newline = text.IndexOf('\n');
+			return (newline < 0 ? text : text.Substring(0, newline)).Trim();
+		}
+
+		const int ResolveReferencesTimeoutMilliseconds = 120_000;
+
+		public async Task<bool> BuildAsync(IProject project, ProjectBuildOptions options, IBuildFeedbackSink feedbackSink, CancellationToken cancellationToken, IEnumerable<string> additionalTargetFiles = null)
+		{
+			var psi = CreateDotnetChildStartInfo();
 			psi.ArgumentList.Add(TargetToVerb(options.Target));
 			psi.ArgumentList.Add(project.FileName.ToString());
 			psi.ArgumentList.Add("--nologo");

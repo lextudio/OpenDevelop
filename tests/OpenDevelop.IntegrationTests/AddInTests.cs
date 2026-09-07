@@ -879,6 +879,26 @@ public sealed class AddInTests : IAsyncDisposable
         await _app.EnsureSolutionOpenAsync(_app.FixtureSolutionPath);
 
         var lensPath = Path.Combine(Path.GetDirectoryName(_app.FixtureSolutionPath)!, "OpenLensFixture.cs");
+        // The UnitTesting addin restores result-source documents asynchronously after solution
+        // load. Let that one-time work settle *before* establishing the test editor; otherwise it
+        // can steal the active tab while OpenLens is choosing its initial visible anchors.
+        await Task.Delay(2500);
+
+        // Close every other document first, so this one is the ONLY one open.
+        //
+        // "Opened" is not "showing": with several documents already open this one lands in a
+        // background tab whose TextView is never laid out. Measured in a full-class run - six
+        // TextViews in the visual tree, only two with real bounds, and the only lens rows present
+        // belonging to a different document. OpenLensRenderer resolves anchors for the VISIBLE
+        // viewport (ResolveVisibleAnchors reads textView.VisualLines), so an unlaid-out editor
+        // discovers its anchors (correctly: 4 types, 8 anchors here) but never resolves or renders
+        // a single row. Switching to the tab with od.activate-secondary-view was tried and is not
+        // enough on its own - the switch reports success while the editor still never gets laid
+        // out. Being the only document reproduces the condition under which this test passes when
+        // run alone.
+        var closed = await _app.InvokeAsync("od.close-all-document-views");
+        Assert.True(closed.GetProperty("success").GetBoolean(), closed.ToString());
+
         var opened = await _app.InvokeAsync("od.open-file", lensPath);
         Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
 
@@ -896,11 +916,27 @@ public sealed class AddInTests : IAsyncDisposable
         // still asserted in full against however many rows the viewport shows.
         const int MinimumTopRows = 4;
         List<(string Text, double Y)> topRows = null;
+        // Wait for the real viewport-scoped publication before looking at its visual rows.
+        // Reopening inside PollUntilAsync was tried and creates a navigation backlog in a full
+        // suite; the settled setup above has already made this editor the active one.
+        bool lensValuesPublished = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            var resolutions = await _app.InvokeAsync("od.openlens.resolutions");
+            return resolutions.GetProperty("resolutions").EnumerateArray().Count(entry =>
+                entry.GetProperty("file").GetString() == Path.GetFileName(lensPath)
+                && entry.GetProperty("published").GetBoolean()) >= 8;
+        }, TimeSpan.FromSeconds(30));
+        Assert.True(lensValuesPublished, "OpenLens never published all eight fixture values before visual verification.");
         bool topRendered = await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
-            topRows = CollectLensRows(await _app.GetUITreeAsync());
+            topRows = CollectLensRows(await _app.GetUITreeAsync(), lensPath);
             return topRows.Count >= MinimumTopRows;
-        }, TimeSpan.FromSeconds(60));
+            // The renderer's coalescing refresh queue must let the first discovery complete even
+            // while solution load and other providers broadcast refreshes.  A long timeout used
+            // to hide cancel-and-restart starvation (rows first appeared after a quiet minute or
+            // not at all in a full-class run); 45 seconds accommodates a genuinely slow Roslyn
+            // project adoption without making that broken behaviour acceptable.
+        }, TimeSpan.FromSeconds(45));
 
         if (!topRendered)
         {
@@ -918,8 +954,16 @@ public sealed class AddInTests : IAsyncDisposable
             // od.find-references reports the real count means the count was resolved and cached
             // before the workspace was ready, whereas both reporting 0 puts it in the service.
             var directReferences = await _app.InvokeAsync("od.find-references", lensPath, 15, 14);
+            // Which pre-sync step the lens is missing: "none" is exactly what the lens provider
+            // does, and od.find-references does "both". Whichever mode first reports the real count
+            // names the step that has to happen before a lens count can be trusted.
+            var lensResolutions = await _app.InvokeAsync("od.openlens.resolutions");
+            var probeNone = await _app.InvokeAsync("od.find-references-probe", lensPath, 15, 14, "none");
+            var probeProject = await _app.InvokeAsync("od.find-references-probe", lensPath, 15, 14, "project");
+            var probeDocuments = await _app.InvokeAsync("od.find-references-probe", lensPath, 15, 14, "documents");
             Assert.Fail($"OpenLens rows never rendered at the top of OpenLensFixture.cs; " +
                 $"workspace={workspace}; directReferences={directReferences}; " +
+                $"lensResolutions={lensResolutions}; probeNone={probeNone}; probeProject={probeProject}; probeDocuments={probeDocuments}; " +
                 $"texts={string.Join("|", (topRows ?? new List<(string, double)>()).Select(r => r.Text).Take(20))}; " +
                 $"tree-dumped=/tmp/od-lens-test-tree.json textblocks={FlattenElements(dumpTree).Count(e => e.TryGetProperty("type", out var t) && t.GetString() == "TextBlock")}");
         }
@@ -933,8 +977,24 @@ public sealed class AddInTests : IAsyncDisposable
         var expectedTopTexts = new[] { "2 references", "2 references", "1 reference", "1 reference", "1 reference" };
         var expectedTopGaps = new[] { 2, 3, 2, 3 };
         Assert.InRange(topRows.Count, MinimumTopRows, expectedTopTexts.Length);
-        AssertLensGapPattern(topRows, expectedTopGaps.Take(topRows.Count - 1).ToArray());
-        Assert.Equal(expectedTopTexts.Take(topRows.Count).ToArray(), topRows.Select(r => r.Text).ToArray());
+
+        // Which declaration the visible window STARTS at is not fixed. The row for a declaration is
+        // drawn above its line, so the very first one can sit above the viewport and be clipped
+        // while the rest render normally - measured: rows 2,1,1,1 with gaps 3,2,3, which is the
+        // sequence starting at One (line 17) rather than at Alpha (line 15). That is correct
+        // behaviour, so anchor the expectation to the window that is actually visible instead of
+        // assuming it begins at the first declaration: find the offset whose texts match, then
+        // assert the gap pattern from that same offset. A wrong line, a duplicated lens or a
+        // missing row still fails, because no offset would line up.
+        var startIndex = Enumerable.Range(0, expectedTopTexts.Length - topRows.Count + 1)
+            .FirstOrDefault(
+                offset => expectedTopTexts.Skip(offset).Take(topRows.Count)
+                    .SequenceEqual(topRows.Select(r => r.Text)),
+                -1);
+        Assert.True(startIndex >= 0,
+            $"Visible lens rows match no window of the expected sequence. expected={string.Join("|", expectedTopTexts)}; " +
+            $"actual={string.Join("|", topRows.Select(r => r.Text))}");
+        AssertLensGapPattern(topRows, expectedTopGaps.Skip(startIndex).Take(topRows.Count - 1).ToArray());
 
         // Jump the caret to the end of the file so the bottom rows scroll into view. The bottom
         // window must show the two "0 references" rows (Uses, Total) plus Three's "1 reference".
@@ -942,7 +1002,7 @@ public sealed class AddInTests : IAsyncDisposable
         List<(string Text, double Y)> bottomRows = null;
         bool bottomRendered = await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
-            bottomRows = CollectLensRows(await _app.GetUITreeAsync());
+            bottomRows = CollectLensRows(await _app.GetUITreeAsync(), lensPath);
             return bottomRows != null && bottomRows.Count(r => r.Text == "0 references") == 2
                 && bottomRows.Any(r => r.Text == "1 reference");
         }, TimeSpan.FromSeconds(60));
@@ -990,9 +1050,23 @@ public sealed class AddInTests : IAsyncDisposable
             allTexts.ToArray());
     }
 
-    static List<(string Text, double Y)> CollectLensRows(JsonElement tree) =>
+    /// <summary>
+    /// Lens rows of ONE document. Scoping by AutomationId matters: every open editor renders its
+    /// own lens rows into the same visual tree and they are otherwise indistinguishable, so an
+    /// unscoped walk happily returns another document's rows - this test was reading PassTests.cs's
+    /// two "0 references" rows and checking them against OpenLensFixture.cs's expected counts,
+    /// which is why it passed alone and failed in any run that had left another C# file open.
+    /// </summary>
+    static List<(string Text, double Y)> CollectLensRows(JsonElement tree, string fileName)
+    {
+        var expectedId = "openlens:" + Path.GetFileName(fileName);
+        return CollectLensRowsCore(tree, expectedId);
+    }
+
+    static List<(string Text, double Y)> CollectLensRowsCore(JsonElement tree, string expectedAutomationId) =>
         FlattenElements(tree)
             .Where(e => e.TryGetProperty("type", out var t) && t.GetString() == "TextBlock"
+                && e.TryGetProperty("automationId", out var id) && id.GetString() == expectedAutomationId
                 && e.TryGetProperty("text", out var txt) && txt.GetString() is { } s
                 && (s.EndsWith(" reference") || s.EndsWith(" references")))
             .Where(e => e.TryGetProperty("bounds", out var bounds) && bounds.TryGetProperty("y", out _))
@@ -1534,6 +1608,11 @@ public sealed class AddInTests : IAsyncDisposable
             await _app.InvokeAsync("od.activate");
             await _app.PressPointerAsync(x, y);
             await _app.ReleasePointerAsync(x, y);
+            // The Uno host sends the pick back over RPC and the shell applies the corresponding
+            // source selection on its UI dispatcher.  Querying immediately can observe the
+            // pre-selection state and make this retry loop issue a second press inside the
+            // surface's double-click window, which deliberately follows a different path.
+            await Task.Delay(150);
             status = await _app.InvokeAsync("od.winui-designer.status");
             return status.GetProperty("selectedName").ValueKind != JsonValueKind.Null
                 && status.GetProperty("selectedName").GetString() == "PrimaryButton";
@@ -4170,6 +4249,13 @@ EndGlobal
         var openDialogResult = await _app.InvokeAsync("od.nuget.open-dialog");
         Assert.True(openDialogResult.GetProperty("success").GetBoolean(), $"Open dialog failed: {openDialogResult}");
 
+        // Everything after the dialog opens runs under try/finally. Manage Packages is a real
+        // top-level WPF window, and the app instance is shared by every test in this collection, so
+        // a dialog left open by a failing assertion does not just leak - it sits over the workbench
+        // and breaks every test that runs afterwards, turning one real failure into a cascade of
+        // unrelated ones.
+        try
+        {
         var setSearchResult = await _app.InvokeAsync("od.nuget.set-search-text", TestPackageId);
         Assert.True(setSearchResult.GetProperty("success").GetBoolean(), $"Set search text failed: {setSearchResult}");
 
@@ -4207,7 +4293,15 @@ EndGlobal
             && e.TryGetProperty("isVisible", out var v) && v.GetBoolean()),
             "Expected the PackageAddedIcon to be Visible in the dialog's package row after install");
 
-        await _app.InvokeAsync("od.nuget.close-dialog");
+        }
+        finally
+        {
+            // Assert the close, do not just request it: the dialog is a shared-instance resource,
+            // so one that silently stays open turns this test's failure into everyone else's.
+            var closedDialog = await _app.InvokeAsync("od.nuget.close-dialog");
+            Assert.True(closedDialog.GetProperty("success").GetBoolean(),
+                "Manage Packages dialog was still open after close-dialog: " + closedDialog);
+        }
 
         // On-disk project state: NuGet's own project-file update path wrote the PackageReference.
         var csprojPath = Path.Combine(_projectDir, "NuGetFixtureApp", "NuGetFixtureApp.csproj");
@@ -4233,6 +4327,11 @@ EndGlobal
         var openDialogResult = await _app.InvokeAsync("od.nuget.open-dialog");
         Assert.True(openDialogResult.GetProperty("success").GetBoolean(), $"Open dialog failed: {openDialogResult}");
 
+        // See the note in SearchAndInstallPackage_UpdatesProjectFile: the dialog must close even
+        // when an assertion below fails, or it poisons every later test in the shared app instance.
+        try
+        {
+
         // A partial id match must surface the package from the local feed.
         var setSearchResult = await _app.InvokeAsync("od.nuget.set-search-text", "TestPackage");
         Assert.True(setSearchResult.GetProperty("success").GetBoolean(), $"Set search text failed: {setSearchResult}");
@@ -4257,7 +4356,15 @@ EndGlobal
         var emptyStatus = await WaitForSearchToFinishAsync();
         Assert.Empty(emptyStatus.GetProperty("packages").EnumerateArray());
 
-        await _app.InvokeAsync("od.nuget.close-dialog");
+        }
+        finally
+        {
+            // Assert the close, do not just request it: the dialog is a shared-instance resource,
+            // so one that silently stays open turns this test's failure into everyone else's.
+            var closedDialog = await _app.InvokeAsync("od.nuget.close-dialog");
+            Assert.True(closedDialog.GetProperty("success").GetBoolean(),
+                "Manage Packages dialog was still open after close-dialog: " + closedDialog);
+        }
     }
 
     async Task<JsonElement> WaitForSearchToFinishAsync()

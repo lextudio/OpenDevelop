@@ -711,6 +711,81 @@ A test result update usually refreshes only the affected test anchors.
 
 A Git HEAD change refreshes Git lenses but not references or test status.
 
+### 13.1 The language lens should be a refresh CONSUMER too (PROPOSED - a naive wiring regressed)
+
+The refresh channel above is not only for providers whose data lives outside the language service.
+A reference count depends on the **workspace**, not only on the document's text, so an edit-driven
+invalidation is not sufficient for the language lens itself:
+
+- A file opened before its project has finished loading is registered against the shared loose
+  ad-hoc project and adopted into its own project shortly afterwards. A count computed inside that
+  window is legitimately zero.
+- Opening or closing a solution, (re)loading a project, or a build changing a project's references
+  all change the answer without touching the document.
+
+`OpenLensRenderer` only re-resolves an item that a later render/measure pass still finds
+**unresolved**, and once the editor settles there may be no such pass. So a count published inside
+that window is not "provisional, fixed on the next retry" - it is cached for the rest of the
+session.
+
+The natural shape is to make the Roslyn backend a refresh SOURCE, exactly like the coverage, Git
+and unit-testing providers:
+
+```text
+CSharpVBLanguageService.WorkspaceStructureChanged   (raised after project documents load,
+                                                     and after a solution closes; coalesced
+                                                     with a 500 ms debounce AT THE SOURCE)
+        -> RegisterCSharpOpenLensProvidersCommand
+        -> OpenLensProviderRegistry.RequestRefresh(new OpenLensRefreshEventArgs("CSharp"))
+        -> OpenLensRenderer.OnRefreshRequested  (drops that provider's cached items,
+                                                 re-runs discovery)
+```
+
+`DocumentId` is deliberately null - a workspace change can alter the count for any open file, not
+just the one that triggered it. Loading a solution registers each project in turn (22 of them in
+this repo's own fixture set), which is why the debounce is at the source: without it a consumer
+that invalidates caches would redo that work once per project during startup.
+
+### 13.2 Refresh delivery and coalescing (implemented)
+
+The earlier failed experiment exposed two host bugs, rather than a reason to suppress workspace
+refreshes:
+
+1. `RequestRefresh` may be raised by a `FileSystemWatcher`, build worker, or test worker. Calling
+   `Dispatcher.CurrentDispatcher` from that thread creates a new dispatcher which is never pumped;
+   its discovery callback therefore never executes. The renderer captures `textView.Dispatcher` at
+   construction and marshals every refresh to it before reading or changing renderer state.
+2. A cancel-and-restart debounce turns a normal startup burst into starvation. The host now uses a
+   coalescing queue: one 500 ms delayed pass runs, requests during its wait or execution set a
+   single follow-up flag, and at most one additional pass is queued. The lifetime cancellation token
+   is reserved for disposal, so an unrelated Git/test/coverage refresh cannot cancel a language
+   resolution already in flight.
+
+This is the required precondition for wiring `WorkspaceStructureChanged` as a language refresh
+source. The source still needs to coalesce its own project-load notifications, but consumers are
+now safe under a burst and all WPF/AvalonEdit state stays on the owning UI dispatcher.
+
+**Do not "wait for the workspace" inside `ResolveAsync` instead.** Resolution runs under a 2-slot
+throttle (`resolutionThrottle`), so blocking there starves every other lens on the document. This
+was measured: a 10 s settle-wait inside resolution left 6 of 8 anchors unresolved and made the two
+that did run time out and publish `0` anyway - strictly worse than publishing early.
+
+### 13.2 Cadence budget
+
+| Stage | Control | Where |
+| --- | --- | --- |
+| Text edit/provider refresh -> rediscovery | 500 ms coalescing queue; one follow-up after an in-flight pass | `OpenLensRenderer.ScheduleAnchorRefresh` |
+| Which anchors resolve | viewport + `PrefetchMargin` (4000 chars) only | `OpenLensRenderer.ResolveVisibleAnchors` |
+| Concurrent resolutions | 2 | `OpenLensRenderer.resolutionThrottle` |
+| Duplicate resolution | once-only guard per `(AnchorId, LensId)` | `OpenLensRenderer.resolving` |
+
+One known weakness remains:
+
+1. **Refresh flicker.** `OnRefreshRequested` removes the cached items, so a row briefly falls back
+   to its un-numbered placeholder before the new count arrives. A workspace change touches every
+   open document, which makes this visible. Marking entries stale while continuing to display the
+   previous value would avoid it.
+
 ---
 
 ## 14. Rendering architecture

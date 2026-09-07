@@ -79,6 +79,9 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		readonly SemaphoreSlim resolutionThrottle = new(2, 2);
 
 		readonly TextView textView;
+		// Registry refreshes can originate on a FileSystemWatcher or a test/build worker.  All of
+		// this renderer's state, and AvalonEdit itself, belong to the editor dispatcher.
+		readonly Dispatcher dispatcher;
 		readonly TextDocument document;
 		readonly string fileName;
 		readonly DocumentId documentId;
@@ -96,6 +99,8 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		readonly ConcurrentDictionary<(string AnchorId, string LensId), byte> resolving = new();
 
 		CancellationTokenSource refreshCancellation = new();
+		bool refreshQueued;
+		bool refreshAgain;
 		long documentVersion;
 		IReadOnlyList<OpenLensAnchor> anchors = Array.Empty<OpenLensAnchor>();
 		Dictionary<string, int> offsetByAnchorId = new();
@@ -120,6 +125,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		{
 			this.document = document;
 			this.textView = textView;
+			dispatcher = textView.Dispatcher;
 			this.fileName = fileName;
 			this.documentId = new DocumentId(fileName);
 			this.registry = registry;
@@ -148,6 +154,14 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		/// </summary>
 		void OnRefreshRequested(object sender, OpenLensRefreshEventArgs e)
 		{
+			// Do not let watcher/build threads mutate dictionaries or create an unpumped
+			// Dispatcher.CurrentDispatcher queue.  In particular, Git's FileSystemWatcher used to
+			// make an OpenLens discovery silently disappear in a full-suite run.
+			if (!dispatcher.CheckAccess()) {
+				dispatcher.BeginInvoke(DispatcherPriority.Background,
+					new Action(() => OnRefreshRequested(sender, e)));
+				return;
+			}
 			if (e.DocumentId != null && !e.DocumentId.Equals(documentId))
 				return;
 
@@ -202,11 +216,21 @@ namespace ICSharpCode.AvalonEdit.AddIn
 
 		void ScheduleAnchorRefresh()
 		{
-			refreshCancellation.Cancel();
-			refreshCancellation.Dispose();
-			refreshCancellation = new CancellationTokenSource();
+			if (!dispatcher.CheckAccess()) {
+				dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(ScheduleAnchorRefresh));
+				return;
+			}
+			// Discovery is a coalescing queue, not a cancel-and-restart debounce.  A full solution
+			// load legitimately emits a burst of provider refreshes; cancelling the only pass for a
+			// newly opened editor on every one starved it indefinitely.  Requests arriving while a
+			// pass is waiting or running are folded into exactly one subsequent pass.
+			if (refreshQueued) {
+				refreshAgain = true;
+				return;
+			}
+			refreshQueued = true;
 			var cancellationToken = refreshCancellation.Token;
-			_ = Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.Background, new Action(async () => {
+			_ = dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(async () => {
 				try {
 					await Task.Delay(500, cancellationToken);
 					// Snapshot now rather than clearing pendingEdits up front - if this attempt gets
@@ -225,6 +249,13 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				}
 				catch (OperationCanceledException) { }
 				catch (Exception ex) { LoggingService.Warn("OpenLens discovery failed for '" + fileName + "'. " + ex.Message); }
+				finally {
+					refreshQueued = false;
+					if (refreshAgain && !cancellationToken.IsCancellationRequested) {
+						refreshAgain = false;
+						ScheduleAnchorRefresh();
+					}
+				}
 			}));
 		}
 
@@ -512,12 +543,22 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				// One TextBlock per item (not one label + Runs) so each item's title is readable as
 				// TextBlock.Text - the visual-tree walker (and assistive tech) sees "0 references"
 				// instead of an empty text with a drawing surface of inlines.
+				//
+				// Each row also carries the document it belongs to as its AutomationId. Without it a
+				// lens row is anonymous in the visual tree, and every open editor's rows look alike:
+				// a walker collecting "N references" text blocks picks up rows from documents in
+				// background tabs as readily as from the one it means to inspect. That is not
+				// theoretical - AddInTests.OpenLens_RendersEachLensAboveItsDeclarationLine was
+				// reading PassTests.cs's two "0 references" rows and asserting them against
+				// OpenLensFixture.cs's expected counts, which is why it only ever failed in a run
+				// where some earlier test had left another C# file open.
 				var block = new TextBlock {
 					Text = item.Presentation.Title,
 					FontSize = ((double)textView.GetValue(TextBlock.FontSizeProperty)) * 0.85,
 					Foreground = Brushes.Gray,
 					VerticalAlignment = VerticalAlignment.Center,
 				};
+				System.Windows.Automation.AutomationProperties.SetAutomationId(block, OpenLensRowAutomationId(fileName));
 				if (item.Command != null) {
 					block.Cursor = Cursors.Hand;
 					var command = item.Command;
@@ -532,6 +573,16 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			}
 
 			return panel;
+		}
+
+		/// <summary>
+		/// AutomationId stamped on every lens row, so a visual-tree walker can tell one editor's
+		/// rows from another's. Public so tests can build the same value rather than hard-coding
+		/// the format.
+		/// </summary>
+		public static string OpenLensRowAutomationId(string fileName)
+		{
+			return "openlens:" + System.IO.Path.GetFileName(fileName);
 		}
 
 		static Image LoadIcon(string iconKey)

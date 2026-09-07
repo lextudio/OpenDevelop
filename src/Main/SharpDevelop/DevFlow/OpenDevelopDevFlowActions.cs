@@ -571,6 +571,19 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new { success = window != null });
 		}
 
+		[DevFlowAction("od.close-all-document-views", Description = "Close every open document window without prompting, leaving pads intact")]
+		public static string CloseAllDocumentViews()
+		{
+			// ActiveViewContent is a cache maintained by AvalonDock selection notifications.  During
+			// a large test run it can point at a just-closed tab while other document windows remain
+			// alive in background panes.  Iterate the workbench's authoritative window collection
+			// instead of repeatedly closing whichever cached window happens to be active.
+			var windows = SD.Workbench.WorkbenchWindowCollection.ToArray();
+			foreach (var window in windows)
+				window.CloseWindow(force: true);
+			return JsonSerializer.Serialize(new { success = true, closed = windows.Length });
+		}
+
 		[DevFlowAction("od.dock.close-document", Description = "Close the active document through its dock PaneModel.CloseCommand - the exact code path the document tab's X button uses (IPaneModelHost.Remove -> CloseWindow), unlike od.close-active-view which forces the close")]
 		public static string CloseDocumentViaDock()
 		{
@@ -947,6 +960,11 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 					documentCount = siblings?.Length ?? 0,
 					duplicateFileNames,
 					documentNames = siblings,
+					// Metadata references decide whether the file's own symbols BIND at all. A
+					// project registered before its references were resolvable produces a
+					// compilation where nothing binds, and a reference search over it legitimately
+					// returns nothing - which looks identical to "this symbol really has no callers".
+					metadataReferenceCount = document?.Project.MetadataReferences.Count ?? -1,
 					// Attribute each error to its file: a broken sibling and a broken THIS file need
 					// completely different fixes, and the message alone cannot tell them apart.
 					diagnosticSample = document?.Project.GetCompilationAsync().GetAwaiter().GetResult()?
@@ -1085,6 +1103,82 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				return JsonSerializer.Serialize(new { hasDocument = hasService });
 			} catch (Exception ex) {
 				return JsonSerializer.Serialize(new { hasDocument = false, error = ex.Message });
+			}
+		}
+
+		[DevFlowAction("od.openlens.resolutions", Description = "The last OpenLens reference/implementation resolutions, as the lens itself saw them: offset, resolved symbol, count, whether the document was in its own project at that instant, and whether the value was published (cached) or deferred. Use this instead of re-querying the language service after the fact - by then the workspace has settled and answers correctly, which says nothing about what the cached lens value was computed from.")]
+		public static string GetOpenLensResolutions()
+		{
+			var log = ICSharpCode.SharpDevelop.LanguageServices.OpenLens.LanguageOpenLensProvider.GetResolutionLog();
+			var discovery = ICSharpCode.SharpDevelop.LanguageServices.OpenLens.LanguageOpenLensProvider.GetDiscoveryLog();
+			return JsonSerializer.Serialize(new {
+				discoveries = discovery.Select(d => new {
+					whenUtc = d.WhenUtc.ToString("HH:mm:ss.fff"),
+					file = System.IO.Path.GetFileName(d.FileName),
+					outlineTypes = d.OutlineTypes,
+					anchors = d.Anchors
+				}).ToArray(),
+				count = log.Count,
+				resolutions = log.Select(r => new {
+					whenUtc = r.WhenUtc.ToString("HH:mm:ss.fff"),
+					file = System.IO.Path.GetFileName(r.FileName),
+					lens = r.LensId,
+					offset = r.Offset,
+					subject = r.Subject,
+					refCount = r.Count,
+					projectBacked = r.ProjectBacked,
+					published = r.Published
+				}).ToArray()
+			});
+		}
+
+		[DevFlowAction("od.find-references-probe", Description = "Diagnostic twin of od.find-references that runs the SAME search with a selectable amount of pre-sync, to identify which sync step a caller actually needs. mode: 'none' skips sync entirely (what OpenLens's provider does - it calls ILanguageService.FindReferencesAsync directly), 'project' reloads each open file's project only, 'documents' upserts each open file's buffer only, 'both' is what od.find-references does. A count that differs between modes names the missing step.")]
+		public static async Task<string> FindReferencesProbeAsync(string fileName, int line, int column, string mode)
+		{
+			try {
+				var registry = SD.GetService<ICSharpCode.SharpDevelop.LanguageServices.LanguageServiceRegistry>();
+				if (registry == null || !registry.TryGetService(fileName, out var service))
+					return JsonSerializer.Serialize(new { mode, count = -1, error = "no language service for file" });
+
+				bool syncProjects = mode is "project" or "both";
+				bool syncDocuments = mode is "documents" or "both";
+
+				if (syncProjects) {
+					var seenProjects = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+					foreach (var openedFile in SD.FileService.OpenedFiles) {
+						var project = SD.ProjectService.FindProjectContainingFile(openedFile.FileName);
+						if (project != null && seenProjects.Add(project.FileName.ToString())) {
+							try {
+								await service.RefreshProjectAsync(
+									new ICSharpCode.SharpDevelop.LanguageServices.DocumentId(openedFile.FileName.ToString()),
+									CancellationToken.None);
+							} catch (Exception ex) {
+								LoggingService.Warn("find-references-probe: project refresh failed: " + ex.Message);
+							}
+						}
+					}
+				}
+				if (syncDocuments) {
+					foreach (var openedFile in SD.FileService.OpenedFiles) {
+						var openFileName = openedFile.FileName.ToString();
+						await service.UpsertDocumentAsync(
+							new ICSharpCode.SharpDevelop.LanguageServices.DocumentId(openFileName),
+							SD.FileService.GetFileContent(openedFile.FileName).Text,
+							CancellationToken.None);
+					}
+				}
+
+				string text = SD.FileService.GetFileContent(FileName.Create(fileName)).Text;
+				int offset = GetOffset(text, line, column);
+				var id = new ICSharpCode.SharpDevelop.LanguageServices.DocumentId(fileName);
+				var result = await service.FindReferencesAsync(id, offset, CancellationToken.None);
+				return JsonSerializer.Serialize(new {
+					mode,
+					count = result?.References.Count ?? -1,
+					subject = result?.Subject
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { mode, count = -1, error = ex.Message });
 			}
 		}
 

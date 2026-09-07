@@ -227,3 +227,17 @@ The desired steady state is:
 - UI hosts remain thin and host-specific.
 
 This lets WPF OpenDevelop and UnoDevelop share IDE semantics while keeping backend implementation choices replaceable.
+
+## Running the Roslyn Backend Out of Process
+
+`roslyn-host-process.md` is a proposal for moving the Roslyn backend into its own process, shaped as
+a Roslyn-specific extension of LSP and reusing the designers' existing host infrastructure
+(`src/Main/Designer/`). It is worth reading alongside this document for two reasons even if the host
+is never built:
+
+- It depends on the layering rule above already holding, and it inventories the places where it does
+  not yet (a live Roslyn `Document` handed out by `TryGetProjectDocument`, `RoslynWorkspaceHelper`'s
+  `ISymbol`/`Solution` API, opaque code-action ids backed by live `CodeAction` objects).
+- Its first phase is a list of defects that exist in-process today - notably the language-service
+  calls that block the UI thread, and the absence of any "the workspace is not ready yet" state,
+  which lets a legitimately empty result be cached as a real answer.

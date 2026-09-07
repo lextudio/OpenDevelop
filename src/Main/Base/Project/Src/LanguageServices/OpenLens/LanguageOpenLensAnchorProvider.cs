@@ -49,6 +49,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.OpenLens
 				foreach (var member in type.Children)
 					AddAnchor(results, context, member, symbolKey: type.Name + "." + member.Name);
 			}
+			LanguageOpenLensProvider.RecordDiscovery(context.FileName, outline.Count, results.Count);
 			return results;
 		}
 

@@ -23,15 +23,28 @@ namespace ICSharpCode.PackageManagement
 {
 	public partial class ManagePackagesView : Window, IManagePackagesView
 	{
+		bool disposed;
+
 		public ManagePackagesView()
 		{
 			InitializeComponent();
+			Closed += (sender, e) => Dispose();
+		}
+
+		void CloseButton_Click(object sender, RoutedEventArgs e)
+		{
+			// IsCancel assigns DialogResult, which only works for ShowDialog(). DevFlow drives
+			// this same view with Show(), so use Close() to support both modal and non-modal hosts.
+			Close();
 		}
 		
 		public void Dispose()
 		{
+			if (disposed)
+				return;
+			disposed = true;
 			var viewModel = DataContext as ManagePackagesViewModel;
-			viewModel.Dispose();
+			viewModel?.Dispose();
 		}
 	}
 }

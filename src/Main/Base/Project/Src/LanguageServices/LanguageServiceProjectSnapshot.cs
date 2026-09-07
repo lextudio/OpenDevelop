@@ -135,8 +135,22 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
 
             var documents = GetCompileDocumentPaths(project, msbuildProject);
 
+            // Declared <Reference> items PLUS whatever MSBuild's ResolveReferences target resolves.
+            //
+            // The declared items alone are close to nothing for an SDK-style project: a
+            // <PackageReference> only becomes a concrete assembly path after RAR runs, so a project
+            // whose dependencies all come from NuGet contributed no references at all here. Roslyn
+            // then fell back to the host runtime's trusted platform assemblies
+            // (RoslynWorkspaceHelper.GetMetadataReferences) and compiled against ~3 references -
+            // measured on tests/fixtures/SampleTestProject, where every xunit type was reported as
+            // CS0246 and every symbol query over the project answered "found nothing" rather than
+            // failing. Both sources are unioned rather than one replacing the other: a hand-written
+            // <Reference HintPath="..."/> to a loose assembly is still legitimate, and RAR does not
+            // always run (an unrestored project resolves nothing and must degrade to the old
+            // behaviour, not to an exception).
             var references = project.GetItemsOfType(ItemType.Reference)
                 .Select(GetReferenceHintPath)
+                .Concat(ResolveReferencePaths(project))
                 .Where(path => !string.IsNullOrWhiteSpace(path) && File.Exists(path))
                 .Cast<string>()
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -285,6 +299,32 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
             return Path.IsPathRooted(item.EvaluatedInclude) ? item.EvaluatedInclude : null;
         }
 
+        /// <summary>
+        /// Assembly paths from MSBuild's own reference resolution, or nothing when it is
+        /// unavailable. Never throws: an unrestored or unresolvable project must degrade to the
+        /// declared references rather than break project loading for the whole solution.
+        /// </summary>
+        static IEnumerable<string?> ResolveReferencePaths(IProject project)
+        {
+            if (project is not MSBuildBasedProject msbuildProject)
+                return Array.Empty<string?>();
+            try
+            {
+                var engine = SD.GetService<IMSBuildEngine>();
+                if (engine == null)
+                    return Array.Empty<string?>();
+                return engine.ResolveAssemblyReferences(msbuildProject)
+                    .Select(GetReferenceHintPath)
+                    .ToArray();
+            }
+            catch (Exception ex)
+            {
+                ICSharpCode.Core.LoggingService.Warn(
+                    $"LanguageServiceProjectSnapshot: reference resolution failed for '{project.FileName}'. {ex.Message}");
+                return Array.Empty<string?>();
+            }
+        }
+
         static string? GetReferenceHintPath(ProjectItem item)
         {
             var hintPath = item.GetEvaluatedMetadata("HintPath");
@@ -361,6 +401,23 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
                         return null;
                     if (ProjectTreeChangedSince(Path.GetDirectoryName(projectFileName)!, File.GetLastWriteTimeUtc(path)))
                         return null;
+                    // An entry with no metadata references at all is never a legitimate evaluation
+                    // result - every C#/VB project resolves at least the framework reference set -
+                    // so it can only have been written from an evaluation that ran before MSBuild
+                    // could resolve anything (a project opened while a restore/build was still in
+                    // flight, typically). Serving it is worse than re-evaluating: the Roslyn project
+                    // it produces compiles nothing, so every symbol query over it answers "found
+                    // nothing" instead of failing, and the cache key (project-file and project-tree
+                    // write times) does not change afterwards, so the empty answer sticks for as
+                    // long as the file sits on disk. Measured: OpenLens rendered "0 references" for
+                    // symbols with obvious callers because SampleTestProject's cached entry held
+                    // References: [] and 5 documents.
+                    if (entry.References.Length == 0)
+                    {
+                        ICSharpCode.Core.LoggingService.Warn(
+                            $"LanguageServiceProjectSnapshot: discarding .od TFM cache for '{projectFileName}' ({targetFramework}) - it holds no metadata references, which cannot be a real evaluation. Re-evaluating.");
+                        return null;
+                    }
 
                     var language = string.Equals(Path.GetExtension(projectFileName), ".vbproj", StringComparison.OrdinalIgnoreCase)
                         ? "Visual Basic"

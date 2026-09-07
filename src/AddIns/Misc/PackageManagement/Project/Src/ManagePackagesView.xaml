@@ -68,7 +68,7 @@
 			<Button
 				Grid.Column="2"
 				Content="{core:Localize Global.CloseButtonText}"
-				IsCancel="True"/>
+				Click="CloseButton_Click"/>
 		</Grid>
 		<TabControl>
 			<TabItem Header="Available">

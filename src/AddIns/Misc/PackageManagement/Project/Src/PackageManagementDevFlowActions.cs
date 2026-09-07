@@ -48,9 +48,36 @@ namespace ICSharpCode.PackageManagement
 		[DevFlowAction("od.nuget.close-dialog", Description = "Close the Manage NuGet Packages dialog opened by od.nuget.open-dialog")]
 		public static string CloseDialog()
 		{
-			currentView?.Close();
+			// Close EVERY ManagePackagesView, not just the one this class happens to be holding, and
+			// report what actually happened instead of an unconditional success.
+			//
+			// The dialog is a real top-level window and the integration suite shares one application
+			// instance, so one left open sits over the workbench and breaks every test that runs
+			// after it. The previous version could leave one behind without saying so: it only ever
+			// touched `currentView`, so a dialog opened through the real UI command - or one whose
+			// reference was lost when a later OpenDialog replaced it - was never closed, and it
+			// returned success = true even when it had closed nothing at all. A caller could not
+			// tell the difference, which is exactly how a leak like this goes unnoticed.
+			var views = System.Windows.Application.Current?.Windows
+				.OfType<ManagePackagesView>()
+				.ToArray() ?? Array.Empty<ManagePackagesView>();
+			foreach (var view in views)
+			{
+				try
+				{
+					view.Close();
+				}
+				catch (Exception ex)
+				{
+					ICSharpCode.Core.LoggingService.Warn("od.nuget.close-dialog: closing a ManagePackagesView failed: " + ex.Message);
+				}
+			}
 			currentView = null;
-			return JsonSerializer.Serialize(new { success = true });
+
+			var remaining = System.Windows.Application.Current?.Windows
+				.OfType<ManagePackagesView>()
+				.Count() ?? 0;
+			return JsonSerializer.Serialize(new { success = remaining == 0, closed = views.Length, remaining });
 		}
 
 		static ManagePackagesViewModel CurrentViewModel()

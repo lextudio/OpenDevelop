@@ -63,9 +63,10 @@
     <_DesignerAddinProject Include="../../src/AddIns/DisplayBindings/GtkDesigner/GtkDesigner.csproj" />
     <_DesignerAddinProject Include="../../src/AddIns/DisplayBindings/MewUIDesigner/MewUIDesigner.csproj" />
   </ItemGroup>
-  <Target Name="BuildDesignerAddinsForIntegrationTests" BeforeTargets="Build">
+  <Target Name="BuildDesignerAddinsForIntegrationTests" BeforeTargets="Build"
+          DependsOnTargets="RestoreIntegrationRuntimeProjects">
     <MSBuild Projects="@(_DesignerAddinProject)" Targets="Build" BuildInParallel="true"
-             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true" />
+             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true;NoRestore=true" />
   </Target>
 
   <!-- Same deal for the language-service addins: FSharpBinding.csproj deploys its LSP-backed
@@ -97,9 +98,10 @@
          anything, for the same undeployed-addin reason as FSharpBinding above. -->
     <_LanguageAddinProject Include="../../src/AddIns/BackendBindings/VBBinding/Project/VBBinding.vbproj" />
   </ItemGroup>
-  <Target Name="BuildLanguageAddinsForIntegrationTests" BeforeTargets="Build">
+  <Target Name="BuildLanguageAddinsForIntegrationTests" BeforeTargets="Build"
+          DependsOnTargets="RestoreIntegrationRuntimeProjects">
     <MSBuild Projects="@(_LanguageAddinProject)" Targets="Build" BuildInParallel="true"
-             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true" />
+             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true;NoRestore=true" />
   </Target>
 
   <!-- The WinForms and WinUI/Uno designers render through out-of-process child hosts that are
@@ -116,9 +118,10 @@
     <_OutOfProcessHostProject Include="../../src/AddIns/DisplayBindings/FormsDesigner/Host/FormsDesigner.Host.csproj" />
     <_OutOfProcessHostProject Include="../../src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.UnoHost/WinUIXamlDesigner.UnoHost.csproj" />
   </ItemGroup>
-  <Target Name="BuildOutOfProcessHostsForIntegrationTests" BeforeTargets="Build">
+  <Target Name="BuildOutOfProcessHostsForIntegrationTests" BeforeTargets="Build"
+          DependsOnTargets="RestoreIntegrationRuntimeProjects">
     <MSBuild Projects="@(_OutOfProcessHostProject)" Targets="Build" BuildInParallel="true"
-             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true" />
+             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true;NoRestore=true" />
   </Target>
 
   <!-- The rest of the addins this suite's tests actually exercise, none referenced as
@@ -158,9 +161,32 @@
          like "this repo has no working debugger" rather than one more addin nobody built. -->
     <_CoreAddinProject Include="../../src/AddIns/Debugger/Debugger.AddIn/Debugger.AddIn.csproj" />
   </ItemGroup>
-  <Target Name="BuildCoreAddinsForIntegrationTests" BeforeTargets="Build">
+  <!-- Runtime-discovered addins are intentionally not ProjectReferences of SharpDevelop, so the
+       integration runner owns their preparation graph.  Restore the complete graph here, before
+       any of the per-group build targets run.  Calling MSBuild with Targets="Build" alone is not
+       sufficient on a clean checkout: RestorePackageAssets then fails before a plugin can deploy,
+       and a developer is forced to manually restore whichever project happened to fail first.
+       Keep the project list in this file as the single source of truth for the suite's runtime
+       prerequisites. -->
+  <ItemGroup>
+    <_IntegrationRuntimeProject Include="@(_DesignerAddinProject)" />
+    <_IntegrationRuntimeProject Include="@(_LanguageAddinProject)" />
+    <_IntegrationRuntimeProject Include="@(_OutOfProcessHostProject)" />
+    <_IntegrationRuntimeProject Include="@(_CoreAddinProject)" />
+  </ItemGroup>
+  <Target Name="RestoreIntegrationRuntimeProjects" BeforeTargets="Build">
+    <!-- These runtime addins share a large transitive project graph.  Parallel Restore lets two
+         MSBuild nodes write the same intermediate project.assets.json concurrently (especially
+         after a clean checkout), producing MSB4018/"file already exists" and defeating the
+         purpose of this project-owned preparation step.  Restore the graph serially; the later
+         Build targets remain parallel once every assets file is stable. -->
+    <MSBuild Projects="@(_IntegrationRuntimeProject)" Targets="Restore" BuildInParallel="false"
+             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true;RestoreDisableParallel=true" />
+  </Target>
+  <Target Name="BuildCoreAddinsForIntegrationTests" BeforeTargets="Build"
+          DependsOnTargets="RestoreIntegrationRuntimeProjects">
     <MSBuild Projects="@(_CoreAddinProject)" Targets="Build" BuildInParallel="true"
-             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true" />
+             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true;NoRestore=true" />
   </Target>
 
   <!-- Fixture apps that tests assert are ALREADY built (they run/decompile the real output rather

@@ -1722,12 +1722,26 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
 
         static IEnumerable<MetadataReference> CreateMetadataReferences(IReadOnlyList<string> referenceFileNames)
         {
-            return CreateDefaultMetadataReferences()
-                .Concat(referenceFileNames
-                    .Where(File.Exists)
-                    .Select(fileName => MetadataReference.CreateFromFile(fileName)))
+            var resolved = referenceFileNames
+                .Where(File.Exists)
+                .Select(fileName => MetadataReference.CreateFromFile(fileName))
                 .GroupBy(reference => reference.Display, StringComparer.OrdinalIgnoreCase)
-                .Select(group => group.First());
+                .Select(group => group.First())
+                .ToArray();
+
+            // The defaults are a FALLBACK, not a supplement. They are this host's own trusted
+            // platform assemblies - implementation assemblies for whatever runtime OpenDevelop
+            // itself is running on - whereas a resolved project brings the reference assemblies of
+            // the framework it actually targets. Merging the two hands the compiler two assemblies
+            // claiming identity System.Runtime, so it cannot settle on a corlib and reports every
+            // predefined type as missing: CS0518 "'System.Object' is not defined or imported",
+            // on a project whose references had just been resolved correctly (measured: 182
+            // references, every file in the project failing).
+            //
+            // So: use what the project resolved when it resolved anything, and fall back to the
+            // host's platform assemblies only when it did not - which is the case this fallback was
+            // added for (an unrestored project, or one whose reference resolution is unavailable).
+            return resolved.Length > 0 ? resolved : CreateDefaultMetadataReferences();
         }
 
         static async Task<CompletionItem> ConvertCompletionItemAsync(
