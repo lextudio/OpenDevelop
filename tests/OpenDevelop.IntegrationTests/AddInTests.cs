@@ -107,6 +107,19 @@ public sealed class AddInTests : IAsyncDisposable
         _vbFixtureSolutionPath = Path.Combine(_vbFixtureDir, Path.GetFileName(app.VBFixtureSolutionPath));
     }
 
+    /// <summary>
+    /// Gate for the [Trait("DesignerBackend", "Microsoft")] tests: the Microsoft WinForms/WPF/WinUI
+    /// designer backends are Windows-only, and WinUIXamlDesigner.MicrosoftHost cannot even be
+    /// built off Windows (its UseWinUI/PRI toolchain ships with Visual Studio). The csproj's
+    /// RunMicrosoftDesignerIntegration target has always been Windows-gated for that reason, but
+    /// nothing stopped a plain local run from executing them anyway - so on macOS/Linux they used
+    /// to contribute ~17 failures that only meant "wrong platform", drowning the real ones and
+    /// making the suite's failure count depend on remembering to pass
+    /// -trait- "DesignerBackend=Microsoft". Declaring the requirement here makes an unfiltered run
+    /// correct by construction on every platform.
+    /// </summary>
+    public static bool MicrosoftDesignerBackendsAvailable => OperatingSystem.IsWindows();
+
     static void AssertWinUIRenderedBySelectedBackend(JsonElement status)
     {
         var backend = status.TryGetProperty("backend", out var be) ? be.GetString() : "";
@@ -1025,7 +1038,7 @@ public sealed class AddInTests : IAsyncDisposable
 		Assert.Contains("MainPane", outlineNames);
 	}
 
-	[Fact]
+	[Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
 	[Trait("DesignerBackend", "Microsoft")]
 	public async Task MicrosoftWpfProject_UsesMicrosoftSurfaceHost()
 	{
@@ -1773,7 +1786,7 @@ public sealed class AddInTests : IAsyncDisposable
     // endpoints but open the WinUISample instead of UnoXamlSample.
     // ========================================================================
 
-    [Fact]
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
     public async Task WinUIOnly_DesignerOpensWinUIProject()
     {
@@ -1781,7 +1794,7 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Equal("WinUI", status.GetProperty("framework").GetString());
     }
 
-    [Fact]
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
     public async Task WinUIOnly_ThemeSwitch_ChangesRenderedBackgroundPixels()
     {
@@ -1809,7 +1822,7 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Equal("Light", restoredTheme.GetProperty("theme").GetString(), StringComparer.OrdinalIgnoreCase);
     }
 
-    [Fact]
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
     public async Task WinUIOnly_DesignSizePresets_ResizeCanvas()
     {
@@ -1829,7 +1842,7 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.True(resetQuery.GetProperty("success").GetBoolean(), resetQuery.ToString());
     }
 
-    [Fact]
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
     public async Task WinUIOnly_SourceEditOutsideDesigner_RefreshesDesignSurface()
     {
@@ -1850,7 +1863,7 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Contains("Edited In Source", onDisk);
     }
 
-    [Fact]
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
     public async Task WinUIOnly_PropertiesPadEdit_UpdatesSourceAndRender()
     {
@@ -1886,7 +1899,7 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Contains("Content=\"Changed through Properties\"", savedXaml, StringComparison.Ordinal);
     }
 
-    [Fact]
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
     public async Task WinUIOnly_InvalidXamlReportsDiagnosticThenRecovers()
     {
@@ -1914,7 +1927,7 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Null(recovered.GetProperty("documentError").GetString());
     }
 
-    [Fact]
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
     public async Task WinUIOnly_ContextCommands_CopyPasteWrapDeleteLandAsSourceEdits()
     {
@@ -1944,7 +1957,7 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Contains("Grid1", names);
     }
 
-    [Fact]
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
     public async Task WinUIOnly_ClosingDocument_ReleasesRuntimeHostAndPreviewAssembly()
     {
@@ -2069,7 +2082,7 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Equal(status.GetProperty("outlineNames").GetArrayLength(), padNames.Count);
     }
 
-    [Fact]
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
     public async Task OpenSamplePaneXaml_LoadsDesignerWithNestedControlTree()
     {
@@ -2102,7 +2115,7 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Contains("PaneListItemTwo", outlineNames);
     }
 
-    [Fact]
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
     public async Task SelectControl_EditingContentInPropertiesPad_UpdatesAndSavesXaml()
     {
@@ -2168,7 +2181,7 @@ public sealed class AddInTests : IAsyncDisposable
         }
     }
 
-    [Fact]
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
     public async Task DragToolboxItem_OntoDesignSurface_InsertsAndPersistsControl()
     {
@@ -2319,7 +2332,7 @@ public sealed class AddInTests : IAsyncDisposable
         }
     }
 
-    [Fact]
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
     public async Task DragToolboxItem_OntoXamlSourceEditor_InsertsMarkupAtDropPoint()
     {
@@ -2480,7 +2493,7 @@ public sealed class AddInTests : IAsyncDisposable
         }
     }
 
-    [Fact]
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
     public async Task DragToolboxItem_OntoWinFormsDesignSurface_AddsControlToForm()
     {
@@ -2642,7 +2655,7 @@ public sealed class AddInTests : IAsyncDisposable
         }
     }
 
-    [Fact]
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
     public async Task VbDesigner_OutOfProcess_RoundTripsEditsToDesignerFile()
     {
@@ -2706,7 +2719,7 @@ public sealed class AddInTests : IAsyncDisposable
             savedPrimary, StringComparison.Ordinal);
     }
 
-    [Fact]
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
     public async Task WinFormsDesigner_DocumentOutline_ShowsControlTreeAndSelects()
     {
@@ -2749,7 +2762,7 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Equal("dropPanel", selected.GetProperty("selected").GetString());
     }
 
-    [Fact]
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
     public async Task WinFormsDesigner_DoubleClickEventRow_CreatesAndBindsHandler()
     {
@@ -2880,7 +2893,7 @@ public sealed class AddInTests : IAsyncDisposable
     }
 }
 
-    [Fact]
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
     public async Task WinFormsDesigner_ResizeDrag_SelectionAndHandleTrackRenderedFrame()
     {
@@ -3024,7 +3037,7 @@ public sealed class AddInTests : IAsyncDisposable
         }
     }
 
-    [Fact]
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
     public async Task WinFormsDesigner_MultiSelectAlignNudgeUndoRedo_LandAsDesignerEdits()
     {
@@ -3145,7 +3158,7 @@ public sealed class AddInTests : IAsyncDisposable
         }
     }
 
-    [Fact]
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
     public async Task WinFormsDesigner_PadViewModeAndViewSwitching_RoundTrip()
     {
@@ -3197,7 +3210,7 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.True(toolbox.GetProperty("centerX").GetDouble() > 0, toolbox.ToString());
     }
 
-    [Fact]
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
     public async Task WpfDesigner_DeleteAndViewSwitching_AndUnsupportedSurfaceReports()
     {
@@ -3296,7 +3309,7 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Equal(length, result.GetProperty("text").GetString()!.Length);
     }
 
-    [Fact]
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
     public async Task WinUIXamlDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement()
     {
@@ -3480,7 +3493,7 @@ public sealed class AddInTests : IAsyncDisposable
             $"PrimaryButton's persisted Height ({persistedHeight}) should roughly match the rendered post-drag height ({afterHeight}).");
     }
 
-    [Fact]
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
     public async Task WpfDesigner_ResizeDrag_SelectionAndHandleTrackRenderedElement()
     {
@@ -3658,7 +3671,7 @@ public sealed class AddInTests : IAsyncDisposable
         return null;
     }
 
-    [Fact]
+    [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
     public async Task SelectControlOnSamplePane_ShowsSelectionInPropertiesPad()
     {
@@ -4912,7 +4925,11 @@ EndGlobal
 
         // Format lines 3-5 (the class declaration and opening brace).
         var result = await _app.InvokeAsync("od.format", _widgetPath, 3, 1, 5, 1);
-        Assert.True(result.GetProperty("success").GetBoolean(), result.ToString());
+        // od.format answers { count, edits } (or { count, error } when it can't run) - it has no
+        // "success" field, same as FormatDocument_ReturnsEdits above. A well-formatted range
+        // legitimately yields zero edits, so only the absence of an error is meaningful here.
+        Assert.False(result.TryGetProperty("error", out _), result.ToString());
+        Assert.True(result.GetProperty("count").GetInt32() >= 0, result.ToString());
     }
 
     [Fact]
@@ -4922,12 +4939,17 @@ EndGlobal
         Assert.True((await _app.InvokeAsync("od.open-file", _widgetServicePath)).GetProperty("opened").GetBoolean());
         Assert.True((await _app.InvokeAsync("od.open-file", _widgetPath)).GetProperty("opened").GetBoolean());
 
-        // "Widget" on line 4 in WidgetService.cs: "    public IEnumerable<Widget> GetAll()"
-        // Widget appears around column 30 on that line.
-        var result = await _app.InvokeAsync("od.go-to-definition", _widgetServicePath, 4, 30);
-        Assert.True(result.GetProperty("success").GetBoolean(), result.ToString());
-        var targetFile = result.GetProperty("filePath").GetString();
-        Assert.Contains("Widget.cs", targetFile, StringComparison.OrdinalIgnoreCase);
+        // The "Widget" inside IEnumerable<Widget> in WidgetService.cs - a usage in a DIFFERENT
+        // file than the declaration, which is the point of this test.
+        var (usageLine, usageColumn) = Locate(_widgetServicePath, "IEnumerable<Widget>", "Widget");
+        var result = await _app.InvokeAsync("od.go-to-definition", _widgetServicePath, usageLine, usageColumn);
+        // od.go-to-definition answers { count, targets[] } - there is no "success" flag and no
+        // top-level "filePath"; the file lives on each target, as in
+        // GoToDefinition_FindsTargetLocation above.
+        Assert.True(result.GetProperty("count").GetInt32() > 0, result.ToString());
+        var targets = result.GetProperty("targets").EnumerateArray().ToList();
+        Assert.Contains(targets, t => t.GetProperty("filePath").GetString()!
+            .Contains("Widget.cs", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -4935,14 +4957,16 @@ EndGlobal
     {
         Assert.True((await _app.InvokeAsync("od.open-solution", _solutionPath)).GetProperty("success").GetBoolean());
         Assert.True((await _app.InvokeAsync("od.open-file", _widgetPath)).GetProperty("opened").GetBoolean());
-        // The ILanguageService backend (Roslyn AdhocWorkspace for C#/VB) only knows about
-        // documents that were upserted (opened/synced). Open the referencing file too so
-        // cross-file lookup has both documents.
+        // Opening the referencing file is no longer REQUIRED for cross-file lookup - loading the
+        // solution registers the whole project, and a file opened before its project was loaded is
+        // now migrated out of the loose ad-hoc project instead of being stranded there
+        // (LoadProjectDocumentsAsync). GoToDefinition_FindsTargetLocation covers that case with
+        // only the referencing file open; this test keeps both open because that is the ordinary
+        // state when a user renames across files.
         Assert.True((await _app.InvokeAsync("od.open-file", _widgetServicePath)).GetProperty("opened").GetBoolean());
 
-        // "Widget" on the class declaration line: "    public sealed class Widget" (line 3, 1-based;
-        // "Widget" starts at column 25 - use column 27 to stay safely inside the identifier token).
-        var result = await _app.InvokeAsync("od.find-references", _widgetPath, 3, 27);
+        var (widgetLine, widgetColumn) = Locate(_widgetPath, "class Widget", "Widget");
+        var result = await _app.InvokeAsync("od.find-references", _widgetPath, widgetLine, widgetColumn);
 
         Assert.True(result.TryGetProperty("count", out var count), result.ToString());
         Assert.True(count.GetInt32() > 0, $"Expected at least one reference, got: {result}");
@@ -4960,11 +4984,12 @@ EndGlobal
     {
         Assert.True((await _app.InvokeAsync("od.open-solution", _solutionPath)).GetProperty("success").GetBoolean());
         Assert.True((await _app.InvokeAsync("od.open-file", _widgetPath)).GetProperty("opened").GetBoolean());
-        // Same as FindReferences: the Roslyn AdhocWorkspace backend only sees upserted documents,
-        // so open the referencing file before renaming or the cross-file edit is never computed.
+        // Same as FindReferences above: not required for the cross-file edit to be computed any
+        // more, kept because it is the ordinary state during a rename.
         Assert.True((await _app.InvokeAsync("od.open-file", _widgetServicePath)).GetProperty("opened").GetBoolean());
 
-        var renameResult = await _app.InvokeAsync("od.rename-symbol", _widgetPath, 3, 27, "Gadget");
+        var (widgetLine, widgetColumn) = Locate(_widgetPath, "class Widget", "Widget");
+        var renameResult = await _app.InvokeAsync("od.rename-symbol", _widgetPath, widgetLine, widgetColumn, "Gadget");
         Assert.True(renameResult.GetProperty("success").GetBoolean(), renameResult.ToString());
         Assert.Equal("Widget", renameResult.GetProperty("oldName").GetString());
 
@@ -4984,8 +5009,8 @@ EndGlobal
 
         var newInterfacePath = Path.Combine(Path.GetDirectoryName(_widgetPath)!, "IWidget.cs");
 
-        // "Widget" on the class declaration line, same location as the other two tests above.
-        var result = await _app.InvokeAsync("od.extract-interface", _widgetPath, 3, 27, "IWidget", newInterfacePath, true, "");
+        var (widgetLine, widgetColumn) = Locate(_widgetPath, "class Widget", "Widget");
+        var result = await _app.InvokeAsync("od.extract-interface", _widgetPath, widgetLine, widgetColumn, "IWidget", newInterfacePath, true, "");
         Assert.True(result.GetProperty("success").GetBoolean(), result.ToString());
 
         var members = result.GetProperty("members").EnumerateArray().Select(m => m.GetString()).ToList();
@@ -5075,9 +5100,18 @@ EndGlobal
 
         var result = await _app.InvokeAsync("od.diagnostics", vbPath);
         Assert.False(result.TryGetProperty("error", out _), result.ToString());
-        // In the batch run the workspace accumulates stale VB documents from earlier tests,
-        // which can cause false-positive duplicate-class errors. Verify the action runs
-        // and returns a well-formed diagnostics array; don't assert exact error counts.
+        // This used to only check "the action ran", because in a batch run the shared workspace
+        // accumulated stale VB documents from earlier tests and their duplicate type names
+        // produced false "already declared" errors. The service now drops a solution's documents
+        // when it closes (CSharpVBLanguageService.OnSolutionClosed), so a clean fixture file must
+        // report zero errors whether it runs alone or after every other VB test.
+        var errors = result.GetProperty("diagnostics").EnumerateArray()
+            .Where(d => string.Equals(d.TryGetProperty("severity", out var s) ? s.GetString() : "",
+                "error", StringComparison.OrdinalIgnoreCase))
+            .Select(d => d.ToString())
+            .ToList();
+        Assert.True(errors.Count == 0,
+            $"Expected zero errors for the clean VB fixture, got {errors.Count}: {string.Join("; ", errors)}");
     }
 
     [Fact]
@@ -5237,11 +5271,14 @@ EndGlobal
         Assert.True((await _app.InvokeAsync("od.open-solution", _solutionPath)).GetProperty("success").GetBoolean());
         Assert.True((await _app.InvokeAsync("od.open-file", _widgetPath)).GetProperty("opened").GetBoolean());
 
-        // "Widget" on line 3, column 27 — class declaration
-        var result = await _app.InvokeAsync("od.base-symbols", _widgetPath, /* line 3 col 27 offset */
-            await GetOffsetAsync(_widgetPath, 3, 27));
+        var result = await _app.InvokeAsync("od.base-symbols", _widgetPath,
+            await GetOffsetAsync(_widgetPath, WidgetClassLine, WidgetClassColumn));
         Assert.False(result.TryGetProperty("error", out _), result.ToString());
-        // May return empty subject if offset doesn't land exactly on a symbol — just verify it ran
+        // "subject" proves the offset actually resolved to the Widget symbol - the part that was
+        // silently broken. The method name's "WithInterface" is still aspirational: this fixture's
+        // Widget is a plain sealed class, so "nodes" is legitimately empty and asserting a
+        // non-empty base list would need a fixture type that really implements an interface.
+        Assert.Equal("Widget", result.GetProperty("subject").GetString());
     }
 
     [Fact]
@@ -5265,10 +5302,12 @@ EndGlobal
         Assert.True((await _app.InvokeAsync("od.open-solution", _solutionPath)).GetProperty("success").GetBoolean());
         Assert.True((await _app.InvokeAsync("od.open-file", _widgetPath)).GetProperty("opened").GetBoolean());
 
-        // "Widget" on line 3, column 27
         var result = await _app.InvokeAsync("od.derived-symbols", _widgetPath,
-            await GetOffsetAsync(_widgetPath, 3, 27));
+            await GetOffsetAsync(_widgetPath, WidgetClassLine, WidgetClassColumn));
         Assert.False(result.TryGetProperty("error", out _), result.ToString());
+        // Widget is sealed, so nothing derives from it - "subject" is what proves the symbol
+        // resolved at all, which is the part a bare "no error" assertion could not see.
+        Assert.Equal("Widget", result.GetProperty("subject").GetString());
     }
 
     [Fact]
@@ -5399,6 +5438,40 @@ EndGlobal
 
     // ── Helper: line/column → character offset ────────────────────────────────
 
+    /// <summary>
+    /// 1-based (line, column) pointing inside <paramref name="identifier"/>, on the first line of
+    /// <paramref name="filePath"/> that contains <paramref name="anchor"/>.
+    ///
+    /// Hardcoded fixture coordinates rot silently: commit e479c448 inserted two comment lines into
+    /// Widget.cs (so the TaskList pad had tokens to find) and dropped the class declaration's
+    /// indentation along the way, which moved "Widget" from (3,25) to (5,21). Every refactoring
+    /// test still aimed at (3,27) - by then a comment line, at a column past its end - and failed
+    /// with "no symbol at location", while the laxer symbol tests kept "passing" without asserting
+    /// anything. Deriving the position from the file keeps a fixture edit from doing that again.
+    /// </summary>
+    /// <summary>1-based line/column of the "Widget" class-declaration identifier in the fixture,
+    /// derived rather than hardcoded - see <see cref="Locate"/> for why.</summary>
+    int WidgetClassLine => Locate(_widgetPath, "class Widget", "Widget").Line;
+    int WidgetClassColumn => Locate(_widgetPath, "class Widget", "Widget").Column;
+
+    static (int Line, int Column) Locate(string filePath, string anchor, string identifier)
+    {
+        var lines = File.ReadAllLines(filePath);
+        for (var i = 0; i < lines.Length; i++) {
+            var anchorIndex = lines[i].IndexOf(anchor, StringComparison.Ordinal);
+            if (anchorIndex < 0) continue;
+            var identifierIndex = lines[i].IndexOf(identifier, anchorIndex, StringComparison.Ordinal);
+            Assert.True(identifierIndex >= 0,
+                $"'{identifier}' not found after '{anchor}' on line {i + 1} of {filePath}: {lines[i]}");
+            // +2, not +1: land one character INSIDE the identifier, so an off-by-one in either the
+            // action's or this helper's line/column-to-offset conversion cannot silently aim at the
+            // preceding token.
+            return (i + 1, identifierIndex + 2);
+        }
+        Assert.Fail($"'{anchor}' not found in {filePath}");
+        return default;
+    }
+
     async Task<int> GetOffsetAsync(string filePath, int line, int column)
     {
         var text = await _app.InvokeAsync("od.active-view");
@@ -5419,10 +5492,9 @@ EndGlobal
         Assert.True((await _app.InvokeAsync("od.open-solution", _solutionPath)).GetProperty("success").GetBoolean());
         Assert.True((await _app.InvokeAsync("od.open-file", _widgetPath)).GetProperty("opened").GetBoolean());
 
-        // "Widget" class name on line 3
-        var result = await _app.InvokeAsync("od.symbol-name", _widgetPath, await GetOffsetAsync(_widgetPath, 3, 27));
+        var result = await _app.InvokeAsync("od.symbol-name", _widgetPath, await GetOffsetAsync(_widgetPath, WidgetClassLine, WidgetClassColumn));
         Assert.True(result.GetProperty("success").GetBoolean(), result.ToString());
-        // Name may be empty if offset doesn't land on a symbol in the workspace — just verify it ran
+        Assert.Equal("Widget", result.GetProperty("name").GetString());
     }
 
     [Fact]
@@ -5475,10 +5547,13 @@ EndGlobal
         Assert.True((await _app.InvokeAsync("od.open-solution", _solutionPath)).GetProperty("success").GetBoolean());
         Assert.True((await _app.InvokeAsync("od.open-file", _widgetPath)).GetProperty("opened").GetBoolean());
 
-        // "Widget" class on line 3
-        var result = await _app.InvokeAsync("od.symbol-kind", _widgetPath, await GetOffsetAsync(_widgetPath, 3, 27));
+        var result = await _app.InvokeAsync("od.symbol-kind", _widgetPath, await GetOffsetAsync(_widgetPath, WidgetClassLine, WidgetClassColumn));
         Assert.True(result.GetProperty("success").GetBoolean(), result.ToString());
-        // May not be a type if offset is off — just verify it ran
+        // The point of the test (see its name): the class declaration resolves to a TYPE, not a
+        // member. Asserting only "it ran" let this pass for two commits while the offset actually
+        // pointed at a comment line - see Locate().
+        Assert.True(result.GetProperty("isType").GetBoolean(), result.ToString());
+        Assert.False(result.GetProperty("isMember").GetBoolean(), result.ToString());
     }
 
     [Fact]
@@ -5502,10 +5577,13 @@ EndGlobal
         Assert.True((await _app.InvokeAsync("od.open-solution", _solutionPath)).GetProperty("success").GetBoolean());
         Assert.True((await _app.InvokeAsync("od.open-file", _widgetPath)).GetProperty("opened").GetBoolean());
 
-        // Inside Widget class — "Name" property on line 5
-        var result = await _app.InvokeAsync("od.containing-type", _widgetPath, await GetOffsetAsync(_widgetPath, 5, 20));
+        // The Name property - a MEMBER, per this test's name; the previous hardcoded (5,20) had
+        // drifted onto the class declaration line itself.
+        var (nameLine, nameColumn) = Locate(_widgetPath, "string Name", "Name");
+        var result = await _app.InvokeAsync("od.containing-type", _widgetPath,
+            await GetOffsetAsync(_widgetPath, nameLine, nameColumn));
         Assert.True(result.GetProperty("success").GetBoolean(), result.ToString());
-        // typeName may be empty if offset doesn't land inside a type — just verify it ran
+        Assert.Equal("Widget", result.GetProperty("typeName").GetString());
     }
 
     [Fact]
@@ -5529,10 +5607,9 @@ EndGlobal
         Assert.True((await _app.InvokeAsync("od.open-solution", _solutionPath)).GetProperty("success").GetBoolean());
         Assert.True((await _app.InvokeAsync("od.open-file", _widgetPath)).GetProperty("opened").GetBoolean());
 
-        // "Widget" on line 3
-        var result = await _app.InvokeAsync("od.help-keyword", _widgetPath, await GetOffsetAsync(_widgetPath, 3, 27));
+        var result = await _app.InvokeAsync("od.help-keyword", _widgetPath, await GetOffsetAsync(_widgetPath, WidgetClassLine, WidgetClassColumn));
         Assert.True(result.GetProperty("success").GetBoolean(), result.ToString());
-        // keyword may be empty if no help mapping exists — just verify it runs
+        Assert.Equal("SampleApp.Models.Widget", result.GetProperty("keyword").GetString());
     }
 
     [Fact]

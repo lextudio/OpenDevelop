@@ -466,6 +466,15 @@ sealed class DesignerHostService : IDesignerChildService
 		var control = host.Container.Components[elementId] as Control
 			?? throw new ArgumentException("Control not found: " + elementId, nameof(elementId));
 		if (control == host.RootComponent) {
+#if !MICROSOFT_WINFORMS
+			// Incoming root bounds are OUTER bounds (that is what gets reported and what the
+			// selection/resize handle track). RewriteRootSize persists them into the designer
+			// file's Size/ClientSize slot, which ReadRootDesignSize reads back as the portable
+			// host's DESIGN size - so the simulated title bar has to come back off here, or every
+			// resize drag would add another PortableFormTitleBarHeight to the form.
+			if (control is Form)
+				height = Math.Max(1, height - PortableFormTitleBarHeight);
+#endif
 			RewriteRootSize(width, height);
 			CreateDesignSurface(current!);
 			return CurrentState(baseVersion);
@@ -2063,7 +2072,12 @@ sealed class DesignerHostService : IDesignerChildService
 				: component is Control sizeControl2 ? sizeControl2.Height
 				: component is ToolStripItem sizeItem2 ? sizeItem2.Bounds.Height : 0,
 #else
-				? rootDesignSize.Value.Height
+				// The Microsoft branch above reports the root's OUTER height (Form.Height already
+				// covers the native caption/border). The portable host has no non-client frame, so
+				// the simulated title bar Render() reserves and paints has to be added here too -
+				// otherwise the root's selection rectangle stops at the client area and no longer
+				// covers the frame that was actually rendered.
+				? rootDesignSize.Value.Height + (component is Form ? PortableFormTitleBarHeight : 0)
 				: component is Control sizeControl2 ? sizeControl2.Height : 0,
 #endif
 			IsTrayComponent = IsTrayComponent(component),

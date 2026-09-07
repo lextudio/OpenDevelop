@@ -67,10 +67,50 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             _projectsByKey = new Dictionary<string, RoslynProjectId>(StringComparer.OrdinalIgnoreCase);
             _targetFrameworksByProjectFileName = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
             _activeTargetFrameworkByProjectFileName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            SD.ProjectService.SolutionClosed += OnSolutionClosed;
+        }
+
+        /// <summary>
+        /// Drops the closed solution's documents from the shared workspace. This service is created
+        /// once per process (RegisterCSharpLanguageServiceCommand) and outlives every solution, so
+        /// without this the workspace only ever grows: documents of already-closed solutions stay
+        /// registered, and Roslyn - correctly, given what it was told - keeps treating them as part
+        /// of the compilation. Two ways that has bitten us:
+        ///
+        /// - A rename spans every document containing the symbol, so it emitted edits for stale
+        ///   documents too and wrote them to disk. In the integration suite that silently rewrote
+        ///   the tracked fixture file (SolutionExplorerFixture Widget.cs became "Gadget") even
+        ///   though the test itself only ever operated on its own temp copy.
+        /// - Duplicate type names across a closed and a freshly-opened copy of the same project
+        ///   produce false "type already defined" diagnostics.
+        ///
+        /// Documents registered without a project file (loose files opened outside any solution)
+        /// are deliberately kept: they do not belong to the solution being closed, and dropping
+        /// them would silently disable completion/diagnostics in an editor that stays open.
+        /// </summary>
+        void OnSolutionClosed(object sender, SolutionEventArgs e)
+        {
+            List<string> solutionOwnedFiles;
+            lock (_documentLock)
+            {
+                solutionOwnedFiles = _documentProjectFileNames
+                    .Where(pair => !string.IsNullOrEmpty(pair.Value))
+                    .Select(pair => pair.Key.FileName)
+                    .ToList();
+                _projectsByLanguage.Clear();
+                _projectsByKey.Clear();
+                _targetFrameworksByProjectFileName.Clear();
+                _activeTargetFrameworkByProjectFileName.Clear();
+            }
+            // Outside the lock: RemoveDocument takes it itself, and it is the single removal path
+            // that keeps the workspace and both document dictionaries consistent.
+            foreach (var fileName in solutionOwnedFiles)
+                RemoveDocument(fileName);
         }
 
         public void Dispose()
         {
+            SD.ProjectService.SolutionClosed -= OnSolutionClosed;
             _workspace.Dispose();
         }
 
@@ -246,13 +286,35 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var documentId = new DocumentId(fileName);
-                bool alreadyTracked;
+                // "Already tracked" has to mean "already tracked FOR THIS PROJECT". A file that was
+                // opened before its project was loaded has been upserted into the loose ad-hoc
+                // project (UpsertDocumentAsync passes an empty project file name), and a bare
+                // is-it-registered check treats that as done - stranding the file in a different
+                // Roslyn project from the rest of its own project forever. Nothing later moves it,
+                // because this is the only code path that would: every subsequent load skips it
+                // again. Cross-file symbol work then silently finds nothing, since the reference
+                // and the declaration live in unrelated projects with no compilation in common -
+                // which is exactly why go-to-definition/find-references only appeared to work when
+                // every file involved happened to be open before the first request.
+                bool alreadyTrackedForThisProject;
+                bool trackedForAnotherProject;
                 lock (_documentLock)
                 {
-                    alreadyTracked = _documentVariantsByTfm.TryGetValue(documentId, out var variants) && variants.ContainsKey(tfmKey);
+                    var hasVariant = _documentVariantsByTfm.TryGetValue(documentId, out var variants)
+                        && variants.ContainsKey(tfmKey);
+                    _documentProjectFileNames.TryGetValue(documentId, out var registeredProjectFileName);
+                    alreadyTrackedForThisProject = hasVariant
+                        && string.Equals(registeredProjectFileName ?? string.Empty, projectSnapshot.ProjectFileName ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+                    trackedForAnotherProject = hasVariant && !alreadyTrackedForThisProject;
                 }
-                if (alreadyTracked)
+                if (alreadyTrackedForThisProject)
                     continue;
+                // Re-register under the real project. Removing the variant first is what makes
+                // AddDocument create a project-backed document instead of updating the stale one:
+                // its "does it already exist" probe is scoped to the target projectId, so the
+                // loose copy would otherwise be left behind as a duplicate of the same file.
+                if (trackedForAnotherProject)
+                    RemoveDocumentVariant(documentId, tfmKey);
 
                 var text = await File.ReadAllTextAsync(fileName, cancellationToken);
                 AddDocument(projectId, projectSnapshot.ProjectFileName, documentId, text, tfmKey);

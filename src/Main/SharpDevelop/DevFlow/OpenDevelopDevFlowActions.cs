@@ -689,11 +689,17 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		/// <summary>
 		/// Ensures the containing project's compile items are loaded into the language service's
 		/// Roslyn workspace (via RefreshProjectAsync → LoadProjectAsync) and upserts every
-		/// currently-open file. Project-backed documents must be loaded BEFORE individual file
-		/// upserts — otherwise UpsertDocumentAsync creates a duplicate in the loose ad-hoc project.
-		/// Cross-file actions (od.go-to-definition / od.find-references / od.rename-symbol /
-		/// od.extract-interface) need the project-backed Roslyn project with metadata references
-		/// and all source files.
+		/// currently-open file. Cross-file actions (od.go-to-definition / od.find-references /
+		/// od.rename-symbol / od.extract-interface) need the project-backed Roslyn project with
+		/// metadata references and all source files.
+		///
+		/// The phase order below is kept because loading the project first is cheaper - it
+		/// registers each file once, project-backed, instead of registering it loose and then
+		/// migrating it. It is no longer load-bearing for correctness: this ordering could never
+		/// actually be guaranteed (a file's first od.* request usually happens while only that
+		/// file is open, so the loose registration won and the file stayed stranded in the ad-hoc
+		/// project, silently breaking every cross-file lookup). LoadProjectDocumentsAsync now
+		/// re-registers such a file under its real project instead of skipping it.
 		/// </summary>
 		static async Task SyncOpenDocumentsToLanguageServiceAsync(ICSharpCode.SharpDevelop.LanguageServices.ILanguageService service)
 		{

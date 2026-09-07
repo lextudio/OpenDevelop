@@ -285,6 +285,18 @@ namespace ICSharpCode.SharpDevelop.Debugging
 				attachedProcess.Start();
 				OnDebugStarted(EventArgs.Empty);
 			} catch (Exception) {
+				// Drop the half-built Process before reporting the failure. IsDebugging is just
+				// "attachedProcess != null", so leaving it set leaves the whole IDE permanently
+				// believing a debug session is live: Stop() then throws ("No process is associated
+				// with this object") instead of clearing it, and BaseDebuggerService's
+				// SolutionClosing handler cancels every later solution close - so one failed
+				// launch makes every subsequent solution open fail for the rest of the process.
+				var failed = attachedProcess;
+				attachedProcess = null;
+				if (failed != null) {
+					failed.Exited -= AttachedProcessExited;
+					failed.Dispose();
+				}
 				OnDebugStopped(EventArgs.Empty);
 				throw new ApplicationException("Can't execute \"" + processStartInfo.FileName + "\"\n");
 			}
@@ -319,8 +331,16 @@ namespace ICSharpCode.SharpDevelop.Debugging
 		{
 			if (attachedProcess != null) {
 				attachedProcess.Exited -= AttachedProcessExited;
-				attachedProcess.Kill();
-				attachedProcess.Close();
+				// Clear the field even when Kill() fails. The process may have exited on its own
+				// (or never started), and Process.Kill() then throws InvalidOperationException
+				// ("No process is associated with this object") - which used to escape before the
+				// field was reset, leaving Stop() unable to ever end the session it was called to
+				// end. Stopping something already stopped is success, not an error.
+				try {
+					attachedProcess.Kill();
+				} catch (InvalidOperationException) {
+				} catch (System.ComponentModel.Win32Exception) {
+				}
 				attachedProcess.Dispose();
 				attachedProcess = null;
 			}

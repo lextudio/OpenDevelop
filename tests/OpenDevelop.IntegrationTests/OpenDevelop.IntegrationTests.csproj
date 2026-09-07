@@ -54,12 +54,16 @@
   </ItemGroup>
 
   <!-- These designers deploy outside the host app's output tree. Build them with the
-       integration runner so a filtered designer test can never launch stale addin DLLs. -->
+       integration runner so a filtered designer test can never launch stale addin DLLs.
+       This used to be Condition="false"; while it was disabled the five GtkDesigner_*/
+       MewUIDesigner_* tests could only ever fail with od.gtk-designer.status /
+       od.mewui-designer.status 404 (the addin, and therefore its DevFlow actions, was never
+       deployed) - a symptom that reads like a missing action rather than a missing build. -->
   <ItemGroup>
     <_DesignerAddinProject Include="../../src/AddIns/DisplayBindings/GtkDesigner/GtkDesigner.csproj" />
     <_DesignerAddinProject Include="../../src/AddIns/DisplayBindings/MewUIDesigner/MewUIDesigner.csproj" />
   </ItemGroup>
-  <Target Name="BuildDesignerAddinsForIntegrationTests" BeforeTargets="Build" Condition="false">
+  <Target Name="BuildDesignerAddinsForIntegrationTests" BeforeTargets="Build">
     <MSBuild Projects="@(_DesignerAddinProject)" Targets="Build" BuildInParallel="true"
              Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true" />
   </Target>
@@ -137,10 +141,55 @@
     <_CoreAddinProject Include="../../src/AddIns/DisplayBindings/ILSpyAddIn/ILSpyAddIn.csproj" />
     <_CoreAddinProject Include="../../src/AddIns/Misc/PackageManagement/Project/PackageManagement.csproj" />
     <_CoreAddinProject Include="../../src/AddIns/BackendBindings/AspNetCore/Binding/AspNetCore.AddIn.csproj" />
+    <!-- XamlBinding owns od.xaml-outline.status (XamlOutlineDevFlowActions) and the XAML outline
+         the WPF/XAML tests inspect; undeployed, that action 404s rather than failing an
+         assertion. -->
+    <_CoreAddinProject Include="../../src/AddIns/BackendBindings/XamlBinding/XamlBinding/XamlBinding.csproj" />
+    <!-- SearchAndReplace owns od.search.find/od.search.replace, which the designer tests use to
+         edit XAML source from outside the designer. -->
+    <_CoreAddinProject Include="../../src/AddIns/Misc/SearchAndReplace/Project/SearchAndReplace.csproj" />
+    <!-- CodeCoverage provides ICodeCoverageService; undeployed, its three tests report
+         "CodeCoverage addin not available" rather than exercising a coverage run. -->
+    <_CoreAddinProject Include="../../src/AddIns/Analysis/CodeCoverage/Project/CodeCoverage.csproj" />
   </ItemGroup>
   <Target Name="BuildCoreAddinsForIntegrationTests" BeforeTargets="Build">
     <MSBuild Projects="@(_CoreAddinProject)" Targets="Build" BuildInParallel="true"
              Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true" />
+  </Target>
+
+  <!-- Fixture apps that tests assert are ALREADY built (they run/decompile the real output rather
+       than just reading source): DebugTestApp is loaded as an assembly by the ILSpy tests, and
+       SampleTestProject's test assembly is executed by the unit-test-runner tests. Nothing else
+       builds them, so on a fresh checkout those tests fail with "expected the fixture to already
+       be built" / "Can't execute ...dll" - which reads like a product bug rather than a missing
+       prerequisite. -->
+  <ItemGroup>
+    <_FixtureProject Include="../fixtures/DebugTestApp/DebugTestApp.csproj" />
+    <_FixtureProject Include="../fixtures/SampleTestProject/SampleTestProject.csproj" />
+  </ItemGroup>
+  <!-- Restored in its own MSBuild invocation before Build: unlike the addin projects above these
+       are standalone (deliberately outside the solution, since the IDE under test opens them as
+       user projects), so nothing has ever restored them and Build alone fails with NETSDK1004. -->
+  <Target Name="BuildFixturesForIntegrationTests" BeforeTargets="Build">
+    <MSBuild Projects="@(_FixtureProject)" Targets="Restore" BuildInParallel="true"
+             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true" />
+    <MSBuild Projects="@(_FixtureProject)" Targets="Build" BuildInParallel="true"
+             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true" />
+  </Target>
+
+  <!-- The NuGet addin tests install a package from an offline feed, which means the feed needs a
+       real .nupkg in it: OpenDevelopAppFixture.LocateLocalNuGetFeed looks for
+       tests/fixtures/LocalNuGetFeed/OpenDevelop.TestPackage.1.0.0.nupkg. Pack the fixture's own
+       source project straight into the feed directory - nothing else produces that file, so both
+       NuGet tests otherwise fail on a missing fixture rather than on the flow they test. -->
+  <Target Name="PackLocalNuGetFeedFixture" BeforeTargets="Build"
+          Inputs="../fixtures/LocalNuGetFeed/PackageSource/OpenDevelop.TestPackage.csproj"
+          Outputs="../fixtures/LocalNuGetFeed/OpenDevelop.TestPackage.1.0.0.nupkg">
+    <MSBuild Projects="../fixtures/LocalNuGetFeed/PackageSource/OpenDevelop.TestPackage.csproj"
+             Targets="Restore" Properties="RestoreIgnoreFailedSources=true" />
+    <MSBuild Projects="../fixtures/LocalNuGetFeed/PackageSource/OpenDevelop.TestPackage.csproj"
+             Targets="Pack"
+             Properties="Configuration=$(Configuration);PackageOutputPath=$(MSBuildProjectDirectory)/../fixtures/LocalNuGetFeed;RestoreIgnoreFailedSources=true" />
   </Target>
 
   <!-- One integration-test process owns one IDE process and drives all three Microsoft hosts.

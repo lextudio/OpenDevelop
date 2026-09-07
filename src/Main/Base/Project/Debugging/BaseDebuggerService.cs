@@ -108,6 +108,16 @@ namespace ICSharpCode.SharpDevelop.Debugging
 					Stop();
 					return;
 				}
+				// IMessageService answers the CANCEL button in test mode, which for this prompt
+				// means "no, don't stop" - i.e. cancel the solution close. That is the one answer
+				// that blocks the run: every solution open closes the current solution first, so a
+				// debug session left running would make every later open fail for the rest of the
+				// process. Behave like the !AllowCancel path instead and stop debugging.
+				if (TestMode.IsActive) {
+					LoggingService.Info("OD_TEST_MODE: suppressed \"stop debugging?\" prompt on solution close, stopping the debug session instead of cancelling the close");
+					Stop();
+					return;
+				}
 				string caption = StringParser.Parse("${res:XML.MainMenu.DebugMenu.Stop}");
 				string message = StringParser.Parse("${res:MainWindow.Windows.Debug.StopDebugging.Message}");
 				string[] buttonLabels = new string[] {

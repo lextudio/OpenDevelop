@@ -53,3 +53,18 @@ dotnet run --project tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationT
 ```
 
 Do not use `dotnet test` for this .NET 10 project.
+
+Building `SharpDevelop.csproj` is **not** sufficient on its own. The addins are runtime-discovered
+plugins, not ProjectReferences of the app, so building only the app leaves their `AddIns/...`
+folders empty - and an undeployed addin fails its tests with symptoms that read like product bugs
+("no language service for file", a DevFlow action returning 404, "runtime host is not installed",
+an empty `SimpleViewContent` instead of an editor). Building **this test project** deploys
+everything the suite needs: it builds the addins, the out-of-process designer hosts, the fixture
+apps that tests assume are prebuilt, and packs the local NuGet feed fixture. Prefer
+`dotnet build tests/OpenDevelop.IntegrationTests/...` over building the app alone.
+
+Tests carrying `[Trait("DesignerBackend", "Microsoft")]` exercise the Microsoft WinForms/WPF/WinUI
+backends, which only exist on Windows. They skip themselves elsewhere (see
+`AddInTests.MicrosoftDesignerBackendsAvailable`), so an unfiltered run is correct on every
+platform; on Windows, `RunMicrosoftDesignerIntegration` in the csproj runs them with the
+`OD_*_RUNTIME=microsoft` variables set.

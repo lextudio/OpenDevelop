@@ -9,6 +9,9 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <OutputPath>..\..\..\..\..\AddIns\BackendBindings\XamlBinding\</OutputPath>
+    <!-- The addin loader probes this exact directory; without this the whole output lands one
+         level deeper in a net10.0-windows\ subfolder and the addin is simply never found. -->
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <NoWarn>$(NoWarn);CA1416;WFO1000</NoWarn>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <EnableDefaultPageItems>false</EnableDefaultPageItems>

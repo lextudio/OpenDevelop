@@ -10,9 +10,11 @@ namespace ICSharpCode.SharpDevelop
 	/// there hangs the whole run until it times out. Code that would block on user input must
 	/// check this and fall back to a safe default instead. Note that <see cref="IMessageService"/>
 	/// already does this centrally (see WpfMessageService); this flag is for the handful of call
-	/// sites that deliberately bypass that service and call MessageBox.Show directly.
+	/// sites that deliberately bypass that service and call MessageBox.Show directly, plus the
+	/// ones where the service's generic "answer the cancel button" default is the wrong answer
+	/// because cancelling is what blocks the run (see BaseDebuggerService.OnSolutionClosing).
 	/// </summary>
-	static class TestMode
+	public static class TestMode
 	{
 		public static bool IsActive { get; } = Environment.GetEnvironmentVariable("OD_TEST_MODE") == "1";
 	}
