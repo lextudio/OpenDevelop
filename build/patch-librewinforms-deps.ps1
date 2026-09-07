@@ -142,7 +142,18 @@ if ($progpudrawingKey -and -not $libraries.ContainsKey($progpudrawingKey)) {
     $libraries[$progpudrawingKey] = @{ type = 'package'; serviceable = $true; sha512 = '' }
 }
 
-($deps | ConvertTo-Json -Depth 100) + "`n" | Set-Content -NoNewline -Encoding utf8 -Path $DepsPath
+# Write through a PROCESS-UNIQUE temp file and move it into place, rather than writing $DepsPath
+# directly. This target runs per project after GenerateBuildDependencyFile, and WPF's markup
+# compiler re-runs targets through its own temporary "*_wpftmp" project clones, so two pwsh
+# processes can be told to patch the same deps.json at once. Set-Content straight onto the real
+# path then interleaves them and leaves a file holding a TRUNCATED document immediately followed by
+# the start of a second one - observed repeatedly as an invalid deps.json breaking at exactly char
+# 1025 (a 1KB buffer boundary), which fails this script on the next build and, worse, makes the
+# CoreCLR host reject the manifest. A rename is atomic, so the loser of the race is simply
+# overwritten by an equally complete file.
+$depsTempPath = "$DepsPath.$PID.tmp"
+($deps | ConvertTo-Json -Depth 100) + "`n" | Set-Content -NoNewline -Encoding utf8 -Path $depsTempPath
+Move-Item -Force -Path $depsTempPath -Destination $DepsPath
 
 # Keep the physical deployment beside the dependency manifest in sync with the entries above.
 # Framework conflict resolution can remove these package files from both RuntimeCopyLocalItems

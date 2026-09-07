@@ -126,9 +126,20 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			catch (Exception e) { LogRpcError("design/rename", e); throw; }
 		}
 
+		/// <summary>
+		/// OpenHost, not ExistingHost: by protocol app/resources arrives BEFORE session/open
+		/// (initialize -> app/resources -> session/open, see WinUIXamlDesigner.GalleryProbe), and
+		/// that order is the point - the child needs the app's App.xaml dictionaries in place
+		/// before it parses a page that resolves StaticResource/ThemeResource against them.
+		/// Requiring an already-registered document made this call throw "Unknown designer
+		/// document" every single time, so app resources were never delivered: pages fell back to
+		/// framework defaults, and anything themed through App.xaml rendered wrong - e.g.
+		/// UnoXamlSample's PageBackgroundBrush never resolved and its surface rendered black
+		/// instead of #EEEEEE/#222222.
+		/// </summary>
 		static DesignerAppResourcesResult LoadAppResources(string sessionId, string documentId, string xaml)
 		{
-			try { return ExistingHost(sessionId, documentId).LoadAppResources(xaml); }
+			try { return OpenHost(sessionId, documentId).LoadAppResources(xaml); }
 			catch (Exception e) { LogRpcError("app/resources", e); throw; }
 		}
 		static DesignerSessionState SetTheme(string sessionId, string documentId, string theme)

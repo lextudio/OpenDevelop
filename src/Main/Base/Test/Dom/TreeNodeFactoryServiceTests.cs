@@ -60,18 +60,20 @@ namespace ICSharpCode.SharpDevelop.Dom
 			}
 		}
 		
-		class MockTreeNode : SharpTreeNode
+		// Implements OpenDevelop's ITreeNodeModelOwner instead of overriding a GetModel() on
+		// ILSpyX's SharpTreeNode: that member was an OpenDevelop patch to the ILSpy fork and no
+		// longer exists (see ITreeNodeModelOwner).
+		class MockTreeNode : SharpTreeNode, ITreeNodeModelOwner
 		{
-			object model;
+			readonly object model;
 			
 			public MockTreeNode(object model)
 			{
 				this.model = model;
 			}
 			
-			protected override object GetModel()
-			{
-				return model;
+			public object Model {
+				get { return model; }
 			}
 		}
 		

@@ -165,6 +165,86 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		[DevFlowAction("od.forms-designer.invoke-verb", Description = "Invoke a designer verb for a component in the WinForms designer")]
 		public static string FormsDesignerInvokeVerb(string componentName, int verbIndex) => InvokeFormsDesignerDevFlowAction("InvokeVerb", componentName, verbIndex);
 
+		// ── ILSpy forwarding stubs ────────────────────────────────────────────────────
+		// Same reason as the FormsDesigner stubs above: IlSpyDevFlowActions lives in
+		// ILSpyAddIn.dll, which the AddIn tree loads lazily - and by design, since
+		// SwitchToIlSpyLayout_ActivatesPanesWithoutPriorIlSpyInteraction exists precisely to prove
+		// the layout switch initializes the addin on its own. DevFlow scans [DevFlowAction] once
+		// in the App constructor (App.xaml.cs), long before that, so those attributes are never
+		// seen and every od.ilspy.* request answered 404. Only the actions the suite drives are
+		// forwarded; add one here when a test needs it.
+		//
+		// Async targets stay async all the way through rather than being blocked on: several of
+		// them await back onto the dispatcher (pane materialization, CompositionTarget.Rendering
+		// pumping), so a .GetAwaiter().GetResult() in the stub would deadlock against the very UI
+		// thread they need.
+		static MethodInfo FindIlSpyDevFlowMethod(string methodName)
+		{
+			var type = AppDomain.CurrentDomain.GetAssemblies()
+				.Select(assembly => assembly.GetType("ICSharpCode.ILSpyAddIn.IlSpyDevFlowActions", throwOnError: false))
+				.FirstOrDefault(candidate => candidate != null);
+			return type?.GetMethod(methodName, BindingFlags.Public | BindingFlags.Static);
+		}
+
+		static string IlSpyUnavailable() =>
+			JsonSerializer.Serialize(new { success = false, error = "ILSpy AddIn is unavailable" });
+
+		static string InvokeIlSpyDevFlowAction(string methodName, params object[] args)
+		{
+			var method = FindIlSpyDevFlowMethod(methodName);
+			return method == null ? IlSpyUnavailable() : (string)method.Invoke(null, args);
+		}
+
+		static async Task<string> InvokeIlSpyDevFlowActionAsync(string methodName, params object[] args)
+		{
+			var method = FindIlSpyDevFlowMethod(methodName);
+			if (method == null) return IlSpyUnavailable();
+			return await (Task<string>)method.Invoke(null, args);
+		}
+
+		[DevFlowAction("od.ilspy.open-assembly", Description = "Load an assembly into the hosted ILSpy Assemblies tree")]
+		public static Task<string> IlSpyOpenAssembly(string path) => InvokeIlSpyDevFlowActionAsync("OpenAssemblyAsync", path);
+
+		[DevFlowAction("od.ilspy.is-initialized", Description = "Whether IlSpyWorkspaceHost has been initialized")]
+		public static string IlSpyIsInitialized() => InvokeIlSpyDevFlowAction("IsInitialized");
+
+		[DevFlowAction("od.ilspy.status", Description = "Report the hosted ILSpy panes, tree selection and decompiled document state")]
+		public static string IlSpyStatus() => InvokeIlSpyDevFlowAction("GetStatus");
+
+		[DevFlowAction("od.ilspy.activate-pane", Description = "Activate a hosted ILSpy pane by title")]
+		public static string IlSpyActivatePane(string title) => InvokeIlSpyDevFlowAction("ActivatePane", title);
+
+		[DevFlowAction("od.ilspy.select-node", Description = "Select a node in the hosted ILSpy Assemblies tree by short name")]
+		public static string IlSpySelectNode(string shortName) => InvokeIlSpyDevFlowAction("SelectNode", shortName);
+
+		[DevFlowAction("od.ilspy.select-nodes", Description = "Select several Assemblies-tree nodes by comma-separated short names")]
+		public static string IlSpySelectNodes(string commaSeparatedShortNames) => InvokeIlSpyDevFlowAction("SelectNodes", commaSeparatedShortNames);
+
+		[DevFlowAction("od.ilspy.navigate-to-module", Description = "Open/reuse a decompiled document for a module by short name")]
+		public static string IlSpyNavigateToModule(string shortName) => InvokeIlSpyDevFlowAction("NavigateToModule", shortName);
+
+		[DevFlowAction("od.ilspy.toolbar-combos", Description = "Drive the hosted ILSpy toolbar dropdowns (e.g. Language, IL) as the user would")]
+		public static string IlSpyToolbarCombos(string comboType, string select) => InvokeIlSpyDevFlowAction("ToolbarCombos", comboType, select);
+
+		// Deliberately forwards to SearchAsync, not the same-named Search(string): both carry
+		// [DevFlowAction("od.ilspy.search")] inside the addin, so which one would win a real scan
+		// is undefined. SearchAsync is the one the suite needs - it waits for results and reports
+		// "results"/"count", where Search only sets SearchTerm and returns {success, term}.
+		[DevFlowAction("od.ilspy.search", Description = "Run a real ILSpy search and return the result rows once the Search pane has filled them")]
+		public static Task<string> IlSpySearch(string term) => InvokeIlSpyDevFlowActionAsync("SearchAsync", term);
+
+		[DevFlowAction("od.ilspy.search-activate", Description = "Activate a search result by index, jumping the Assemblies tree to it")]
+		public static Task<string> IlSpySearchActivate(int index) => InvokeIlSpyDevFlowActionAsync("SearchActivateAsync", index);
+
+		[DevFlowAction("od.ilspy.analyze-selected", Description = "Run Analyze on the current Assemblies-tree selection")]
+		public static Task<string> IlSpyAnalyzeSelected() => InvokeIlSpyDevFlowActionAsync("AnalyzeSelectedAsync");
+
+		[DevFlowAction("od.ilspy.navigate-history", Description = "Navigate the hosted ILSpy back/forward history")]
+		public static Task<string> IlSpyNavigateHistory(string direction) => InvokeIlSpyDevFlowActionAsync("NavigateHistoryAsync", direction);
+
+		[DevFlowAction("od.ilspy.click-reference", Description = "Click a reference hyperlink in the decompiled document by substring/occurrence")]
+		public static Task<string> IlSpyClickReference(string substring, int occurrence) => InvokeIlSpyDevFlowActionAsync("ClickReference", substring, occurrence);
+
 		[DevFlowAction("od.sdk.list", Description = "List discovered .NET SDKs and which one is currently selected/effective")]
 		public static string ListDotNetSdks()
 		{
@@ -531,6 +611,48 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new { success = true, typeName = window.ViewContents[index].GetType().FullName, viewCount = window.ViewContents.Count });
 		}
 
+		[DevFlowAction("od.pointer-target", Description = "Diagnose where a synthetic pointer at a SCREEN point will actually land: reports the WPF InputHitTest ancestor chain, the ProGPU GPU hit-test owner list with each owner's PortableVisualOwnerKind, and the owner ProGPU's own TrySelectPointerInputOwner picks as the input target. Use this whenever a press/click reports ok but the intended element never sees it - the two answers disagreeing is the signature of a shim-level pointer-targeting bug rather than a wrong coordinate.")]
+		public static string PointerTarget(double screenX, double screenY)
+		{
+			var mainWindow = System.Windows.Application.Current?.MainWindow;
+			if (mainWindow == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No main window" });
+
+			var rootPoint = mainWindow.PointFromScreen(new System.Windows.Point(screenX, screenY));
+			var wpfHit = mainWindow.InputHitTest(rootPoint) as System.Windows.DependencyObject;
+			var wpfChain = PointerAncestors(wpfHit).Take(10).Select(DescribePointerNode).ToArray();
+
+			if (!ProGpuWpfDiagnostics.TryHitTestOwners(mainWindow, rootPoint.X, rootPoint.Y, out var owners))
+				return JsonSerializer.Serialize(new { success = true, rootPoint = new { rootPoint.X, rootPoint.Y }, wpfChain, gpuOwners = (object)null, note = "ProGPU GPU hit-test is unavailable for this window" });
+
+			var gpuOwners = owners.Where(owner => owner != null).Select(DescribePointerNode).ToArray();
+			ProGpuWpfDiagnostics.TryHitTestInputOwner(mainWindow, rootPoint.X, rootPoint.Y, out var selected);
+			return JsonSerializer.Serialize(new {
+				success = true,
+				rootPoint = new { rootPoint.X, rootPoint.Y },
+				wpfChain,
+				gpuOwners,
+				selected = selected == null ? null : DescribePointerNode(selected),
+				// The tell: WPF says the point is inside X, but ProGPU hands the input to something
+				// that is not X nor any descendant of it.
+				selectedIsOnWpfChain = selected != null && PointerAncestors(wpfHit).Any(node => ReferenceEquals(node, selected))
+			});
+		}
+
+		static string DescribePointerNode(object node)
+		{
+			var kind = node is System.Windows.IPortableVisualOwnerHost host ? host.PortableVisualOwnerKind.ToString() : "n/a";
+			var name = node is System.Windows.FrameworkElement { Name.Length: > 0 } element ? "#" + element.Name : "";
+			return $"{node.GetType().Name}{name}[{kind}]";
+		}
+
+		static IEnumerable<System.Windows.DependencyObject> PointerAncestors(System.Windows.DependencyObject node)
+		{
+			for (var current = node; current != null;
+			     current = current is System.Windows.Media.Visual ? System.Windows.Media.VisualTreeHelper.GetParent(current) : null)
+				yield return current;
+		}
+
 		[DevFlowAction("od.activate", Description = "Bring the main workbench window to the front and give it real OS keyboard/mouse focus - needed before any test drives cliclick-based synthetic mouse input (od.ui/actions/press,drag-move,release), since OD_TEST_MODE=1 sets ShowActivated=false so a normal test run never steals focus from the developer's foreground app. Mirrors AvalonDock's own avd.activate action (src/Libraries/AvalonDock/source/TestApp/MainWindow.xaml.cs)")]
 		public static string ActivateMainWindow()
 		{
@@ -558,6 +680,16 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				nativeFocused = true;
 			}
 			bool foregrounded = false;
+			if (OperatingSystem.IsMacOS()) {
+				// GLFW/Silk Focus() above only asks the window server to focus our window; it does
+				// not make the PROCESS frontmost, and DevFlow's pointer actions inject through
+				// CGEventPost, which the OS routes to the frontmost application. That is why every
+				// synthetic-pointer test used to reach the designer with lastPick = "no click yet":
+				// the events were delivered to whatever app was actually in front. Activate the
+				// NSApplication itself, then verify with NSRunningApplication.isActive so
+				// "foregrounded" means the same verified thing here as it does on Windows.
+				foregrounded = MacActivateApplication();
+			}
 			if (OperatingSystem.IsWindows()) {
 				var hwnd = new System.Windows.Interop.WindowInteropHelper(mainWindow).Handle;
 				if (hwnd != IntPtr.Zero) {
@@ -591,6 +723,45 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				nativeFocused,
 				foregrounded
 			});
+		}
+
+		const string ObjectiveCRuntime = "/usr/lib/libobjc.dylib";
+
+		[DllImport(ObjectiveCRuntime, EntryPoint = "objc_getClass")]
+		static extern IntPtr ObjCGetClass([MarshalAs(UnmanagedType.LPUTF8Str)] string name);
+
+		[DllImport(ObjectiveCRuntime, EntryPoint = "sel_registerName")]
+		static extern IntPtr ObjCSelector([MarshalAs(UnmanagedType.LPUTF8Str)] string name);
+
+		[DllImport(ObjectiveCRuntime, EntryPoint = "objc_msgSend")]
+		static extern IntPtr ObjCSend(IntPtr receiver, IntPtr selector);
+
+		[DllImport(ObjectiveCRuntime, EntryPoint = "objc_msgSend")]
+		static extern void ObjCSendBool(IntPtr receiver, IntPtr selector, [MarshalAs(UnmanagedType.I1)] bool value);
+
+		[DllImport(ObjectiveCRuntime, EntryPoint = "objc_msgSend")]
+		[return: MarshalAs(UnmanagedType.I1)]
+		static extern bool ObjCSendReturningBool(IntPtr receiver, IntPtr selector);
+
+		/// <summary>
+		/// [NSApp activateIgnoringOtherApps:YES], then reports NSRunningApplication
+		/// .currentApplication.isActive. Returns false rather than throwing if any of the lookups
+		/// fail, so a non-AppKit host (or a future runtime change) degrades to "not foregrounded"
+		/// instead of breaking od.activate outright.
+		/// </summary>
+		static bool MacActivateApplication()
+		{
+			try {
+				var application = ObjCSend(ObjCGetClass("NSApplication"), ObjCSelector("sharedApplication"));
+				if (application == IntPtr.Zero)
+					return false;
+				ObjCSendBool(application, ObjCSelector("activateIgnoringOtherApps:"), true);
+				var running = ObjCSend(ObjCGetClass("NSRunningApplication"), ObjCSelector("currentApplication"));
+				return running != IntPtr.Zero && ObjCSendReturningBool(running, ObjCSelector("isActive"));
+			} catch (Exception ex) {
+				LoggingService.Warn("od.activate: NSApplication activation failed: " + ex.Message);
+				return false;
+			}
 		}
 
 		[DllImport("user32.dll")]
@@ -757,10 +928,33 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 					return JsonSerializer.Serialize(new { supported = false, tracked = true, reason = "non-Roslyn backend" });
 
 				var document = roslyn.TryGetProjectDocument(fileName);
+				// The sibling documents matter as much as the project identity: every LOOSE file
+				// (one belonging to no project) lands in a single shared ad-hoc project, so this is
+				// the only way to see whether that project has collected unrelated files - or
+				// several copies of the same file, which is what duplicate type definitions and
+				// therefore broken symbol resolution look like from the outside.
+				var siblings = document?.Project.Documents.Select(d => d.FilePath).Where(f => f != null).ToArray();
+				var duplicateFileNames = siblings?
+					.GroupBy(System.IO.Path.GetFileName, StringComparer.OrdinalIgnoreCase)
+					.Where(group => group.Count() > 1)
+					.Select(group => group.Key + " x" + group.Count())
+					.ToArray();
 				return JsonSerializer.Serialize(new {
 					supported = true,
 					tracked = document != null,
 					projectFile = document?.Project.FilePath,
+					projectName = document?.Project.Name,
+					documentCount = siblings?.Length ?? 0,
+					duplicateFileNames,
+					documentNames = siblings,
+					// Attribute each error to its file: a broken sibling and a broken THIS file need
+					// completely different fixes, and the message alone cannot tell them apart.
+					diagnosticSample = document?.Project.GetCompilationAsync().GetAwaiter().GetResult()?
+						.GetDiagnostics().Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error)
+						.Take(8)
+						.Select(d => System.IO.Path.GetFileName(d.Location.SourceTree?.FilePath ?? "<none>")
+							+ "(" + (d.Location.GetLineSpan().StartLinePosition.Line + 1) + ") " + d.Id)
+						.ToArray(),
 					trackedProjectCount = roslyn.GetWorkspaceStatus(fileName).TrackedProjectCount
 				});
 			} catch (Exception ex) {

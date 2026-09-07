@@ -3,7 +3,7 @@
     SharpTreeView duplicate resolution (2026-08-02, doc/technotes/ilspy.md). This project used to
     contain OpenDevelop's own SharpTreeNode/SharpTreeView implementation. It now instead:
       - references ICSharpCode.ILSpyX.TreeView (the extracted, dependency-light node/collection/
-        flattener/platform-abstraction model - see externals/ilspy/ICSharpCode.ILSpyX/TreeView/
+        flattener/platform-abstraction model, which ships inside the ICSharpCode.ILSpyX package -
         ICSharpCode.ILSpyX.TreeView.csproj) for the SharpTreeNode/SharpTreeNodeCollection model,
       - links ILSpy's Controls/TreeView/* WPF control layer (SharpTreeView/SharpTreeViewItem/
         SharpTreeNodeView/SharpGridView, plus automation-peer and type-to-search support that
@@ -30,13 +30,12 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
-  <PropertyGroup>
-    <ILSpySrc>..\..\..\..\externals\ilspy\ILSpy</ILSpySrc>
-  </PropertyGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" />
-    <ProjectReference Include="..\..\..\..\externals\ilspy\ICSharpCode.ILSpyX\TreeView\ICSharpCode.ILSpyX.TreeView.csproj" />
+    <!-- The SharpTreeNode/SharpTreeNodeCollection/TreeFlattener model comes from the published
+         ICSharpCode.ILSpyX package: ICSharpCode.ILSpyX.TreeView is compiled INTO it and is not
+         published separately. -->
+    <PackageReference Include="ICSharpCode.ILSpyX" />
   </ItemGroup>
 
   <ItemGroup>
@@ -45,19 +44,17 @@
   </ItemGroup>
 
   <!--
-    Linked ILSpy WPF control-layer source (not copied) - the "Controls/TreeView" fork this project
-    replaces OpenDevelop's own duplicate implementation with. Excludes nothing: unlike ILSpyAddIn's
-    broader Controls/** glob, every file here is the tree control itself, not app-shell UI.
+    The ILSpy WPF control-layer source now LIVES here (ILSpy/Controls/TreeView/**), it is no longer
+    linked out of an ILSpy checkout: this project is the owner of the tree control per
+    the 2026-08-02 duplicate-type decision, and keeping the files in the fork meant every
+    submodule update could silently move or delete them. Default SDK item globbing picks them up,
+    and the physical path is deliberately the old Link path so the compiled resource name stays
+    "ilspy/controls/treeview/sharptreeview.baml" - which is what Themes/Generic.xaml's qualified
+    "/ICSharpCode.TreeView;component/ILSpy/Controls/TreeView/SharpTreeView.xaml" resolves to.
+
+    ILSpy/NativeMethods.cs lives here too (SharpTreeViewTextSearch.cs needs
+    NativeMethods.GetDoubleClickTime()); ILSpyAddIn links this one copy rather than owning a second.
   -->
-  <ItemGroup Label="ILSpyLinkedTreeViewControl">
-    <Compile Include="$(ILSpySrc)\Controls\TreeView\*.cs" Link="ILSpy\Controls\TreeView\%(Filename)%(Extension)" />
-    <Page Include="$(ILSpySrc)\Controls\TreeView\SharpTreeView.xaml" Link="ILSpy\Controls\TreeView\SharpTreeView.xaml" />
-    <!-- EditTextBox/GeneralAdorner/InsertMarker styles used by SharpTreeView.xaml's SharpTreeNodeView
-         template live inline in that same file; nothing else to link. NativeMethods.cs is the one
-         root-level ILSpy file the control layer itself needs (SharpTreeViewTextSearch.cs calls
-         NativeMethods.GetDoubleClickTime()). -->
-    <Compile Include="$(ILSpySrc)\NativeMethods.cs" Link="ILSpy\NativeMethods.cs" />
-  </ItemGroup>
 
   <ItemGroup>
     <Compile Include="..\..\..\Main\GlobalAssemblyInfo.cs" Link="Properties\GlobalAssemblyInfo.cs" />

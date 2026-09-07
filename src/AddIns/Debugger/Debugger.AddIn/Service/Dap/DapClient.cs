@@ -42,6 +42,7 @@ namespace Debugger.AddIn.Service.Dap
 		// caller may occupy a given sequence-number slot's write-then-await span at once - a plain
 		// Interlocked.Increment for the sequence number was not enough on its own once reverse
 		// requests (below) started sharing the same writer from the read loop.
+		volatile bool isDisposed;
 		readonly SemaphoreSlim writeLock = new SemaphoreSlim(1, 1);
 		readonly SemaphoreSlim requestLock = new SemaphoreSlim(1, 1);
 		readonly Action<string> log;
@@ -65,6 +66,9 @@ namespace Debugger.AddIn.Service.Dap
 
 		public async Task<JsonObject> SendRequestAsync(string command, JsonObject arguments = null, CancellationToken cancellationToken = default)
 		{
+			// Report the CLIENT as disposed rather than letting a request fail from deep inside with
+			// the name of some internal primitive - a caller can act on "the debug session is gone".
+			ObjectDisposedException.ThrowIf(isDisposed, this);
 			await requestLock.WaitAsync(cancellationToken).ConfigureAwait(false);
 			try {
 				return await SendRequestCoreAsync(command, arguments, cancellationToken).ConfigureAwait(false);
@@ -115,6 +119,10 @@ namespace Debugger.AddIn.Service.Dap
 
 		async Task WriteMessageAsync(JsonObject message)
 		{
+			// A message queued as the session tears down has nowhere to go; dropping it is correct
+			// and keeps teardown from surfacing spurious errors on the read loop.
+			if (isDisposed)
+				return;
 			string json = message.ToJsonString();
 			log("SEND " + json);
 			byte[] body = Encoding.UTF8.GetBytes(json);
@@ -216,9 +224,16 @@ namespace Debugger.AddIn.Service.Dap
 
 		public void Dispose()
 		{
+			isDisposed = true;
 			cancellationTokenSource.Cancel();
-			requestLock.Dispose();
-			writeLock.Dispose();
+			// The two SemaphoreSlims are deliberately NOT disposed. Cancelling above does not
+			// unwind requests that are already inside SendRequestAsync/WriteMessageAsync, so
+			// disposing the semaphores here raced with their WaitAsync/Release and threw
+			// "ObjectDisposedException: System.Threading.SemaphoreSlim" out of the debug session -
+			// observed as AddInTests.DebugUnitTest_ReplacesStalePadNodeAndShowsSuccessIcon timing
+			// out with that exception as its debug output. SemaphoreSlim only needs disposing when
+			// its AvailableWaitHandle has been used (it never is here); otherwise letting the GC
+			// collect it is both correct and the documented way out of exactly this race.
 			writer.Dispose();
 			reader.Dispose();
 			cancellationTokenSource.Dispose();

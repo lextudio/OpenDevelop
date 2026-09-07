@@ -48,7 +48,7 @@
     <PackageReference Include="System.CodeDom" />
     <PackageReference Include="log4net" />
     <!-- Without this, Microsoft.CodeAnalysis.CSharp.Features (Roslyn) only floors this app's own
-         resolution of System.Composition.AttributedModel at 9.0.0, while externals/ilspy/
+         resolution of System.Composition.AttributedModel at 9.0.0, while the
          ICSharpCode.ILSpyX (used by ILSpyAddIn, hosted in-process) pins it exactly to 10.0.10. Two
          different versions of the same simple-named assembly loaded into one process throws
          FileLoadException ("manifest definition does not match the assembly reference") the

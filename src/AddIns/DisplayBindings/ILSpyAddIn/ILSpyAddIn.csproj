@@ -30,11 +30,6 @@
     <DefineConstants>$(DefineConstants);OPOPENDEVELOP</DefineConstants>
   </PropertyGroup>
 
-  <!-- Path to the real ILSpy source tree we link (not copy) files from. -->
-  <PropertyGroup>
-    <ILSpySrc>..\..\..\..\externals\ilspy\ILSpy</ILSpySrc>
-  </PropertyGroup>
-
   <ItemGroup>
     <Compile Remove="DebuggerTextOutput.cs" />
     <Compile Remove="ILSpySymbolSource.cs" />
@@ -49,7 +44,7 @@
   <ItemGroup>
     <!-- Existing legacy launcher-based addin references (untouched). -->
     <ProjectReference Include="..\..\..\Libraries\AvalonEdit\ICSharpCode.AvalonEdit\ICSharpCode.AvalonEdit.csproj" Private="false" />
-    <ProjectReference Include="..\..\..\..\externals\ilspy\ICSharpCode.Decompiler\ICSharpCode.Decompiler.csproj" />
+    <PackageReference Include="ICSharpCode.Decompiler" />
     <ProjectReference Include="..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
     <!-- ICSharpCode.SharpDevelop.ViewModels.ToolPaneModel/DockWorkspace (the pads structure we
          plug ILSpy's panes into) live in the OpenDevelop workbench assembly, not in the Core
@@ -63,7 +58,7 @@
     <PackageReference Include="LeXtudio.DevFlow.Agent.Core" />
 
     <!-- Real ILSpy pane/composition source needs ILSpyX and its own AvalonDock fork identity. -->
-    <ProjectReference Include="..\..\..\..\externals\ilspy\ICSharpCode.ILSpyX\ICSharpCode.ILSpyX.csproj" />
+    <PackageReference Include="ICSharpCode.ILSpyX" />
     <!-- SharpTreeView duplicate resolution (2026-08-02, doc/technotes/ilspy.md): the WPF tree
          control (SharpTreeView/SharpTreeViewItem/SharpTreeNodeView/SharpGridView) now lives in the
          shared src/Libraries/SharpTreeView/ICSharpCode.TreeView project (which itself links this
@@ -77,7 +72,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Composition/pane hosting packages, mirroring externals/ilspy/ILSpy/ILSpy.csproj. -->
+    <!-- Composition/pane hosting packages, mirroring upstream ILSpy's own ILSpy.csproj. -->
     <PackageReference Include="TomsToolbox.Composition.MicrosoftExtensions" />
     <PackageReference Include="TomsToolbox.Wpf.Composition.AttributedModel" />
     <PackageReference Include="TomsToolbox.Wpf.Styles" />
@@ -91,7 +86,7 @@
     <!-- ILSpy source uses `using System.Composition;` (Export/NonShared/etc.) without directly
          referencing the System.Composition NuGet package; upstream supplies those attribute
          types via this TomsToolbox source generator (wired as a GlobalPackageReference in
-         externals/ilspy/Directory.Packages.props, which does not apply to this project). -->
+         upstream ILSpy's own Directory.Packages.props, which this repo does not import). -->
     <PackageReference Include="TomsToolbox.Composition.Analyzer" PrivateAssets="all" />
     <!-- OpenDevelop transitively requires 11.0.0-preview.5.26302.115 of these; pin explicitly to
          prevent NU1605 downgrade from versions pulled by other dependencies. -->
@@ -156,35 +151,26 @@
     this assembly).
   -->
   <ItemGroup Label="ILSpyLinkedModel">
-    <Compile Include="$(ILSpySrc)\Analyzers\**\*.cs" Link="ILSpy\Analyzers\%(RecursiveDir)%(Filename)%(Extension)" />
     <!-- AppEnv/AppEnvironment.cs is Category 1; SingleInstance.cs/CommandLineArguments.cs/
          CommandLineTools.cs are Category-3-transitional (see manifest note above). All four stay
          linked as one unit for now since the transitional files are load-bearing. -->
-    <Compile Include="$(ILSpySrc)\AppEnv\**\*.cs" Link="ILSpy\AppEnv\%(RecursiveDir)%(Filename)%(Extension)" />
-    <Compile Include="$(ILSpySrc)\AssemblyTree\**\*.cs" Link="ILSpy\AssemblyTree\%(RecursiveDir)%(Filename)%(Extension)" />
-    <Compile Include="$(ILSpySrc)\AvalonEdit\**\*.cs" Link="ILSpy\AvalonEdit\%(RecursiveDir)%(Filename)%(Extension)" />
-    <Compile Include="$(ILSpySrc)\Commands\**\*.cs" Link="ILSpy\Commands\%(RecursiveDir)%(Filename)%(Extension)" />
     <!-- Commands/ViewModels tied to app-shell dialogs we deliberately do not host yet. -->
-    <Compile Remove="$(ILSpySrc)\Commands\CompareContextMenuEntry.cs" />
-    <Compile Remove="$(ILSpySrc)\Commands\ExitCommand.cs" />
-    <Compile Remove="$(ILSpySrc)\Commands\OpenFromGacCommand.cs" />
-    <Compile Remove="$(ILSpySrc)\Commands\Pdb2XmlCommand.cs" />
-    <Compile Include="$(ILSpySrc)\Controls\**\*.cs" Link="ILSpy\Controls\%(RecursiveDir)%(Filename)%(Extension)" />
-    <Compile Remove="$(ILSpySrc)\Controls\MainMenu.xaml.cs" />
-    <Compile Remove="$(ILSpySrc)\Controls\MainToolBar.xaml.cs" />
+    <Compile Remove="ILSpy\Commands\CompareContextMenuEntry.cs" />
+    <Compile Remove="ILSpy\Commands\ExitCommand.cs" />
+    <Compile Remove="ILSpy\Commands\OpenFromGacCommand.cs" />
+    <Compile Remove="ILSpy\Commands\Pdb2XmlCommand.cs" />
+    <Compile Remove="ILSpy\Controls\MainMenu.xaml.cs" />
+    <Compile Remove="ILSpy\Controls\MainToolBar.xaml.cs" />
     <!-- OpenDevelop is WPF-only (no WinForms/LibreWinForms compat layer). CustomDialog is a
          System.Windows.Forms.Form used only by ILSpyTraceListener's Fail() dialog (itself only
          used by the excluded App.xaml.cs) - drop it rather than adding a WinForms dependency for
          an unused Debug.Fail() corner case. ILSpyTraceListener.cs itself is excluded further below
          (its own explicit Compile Include is removed, not repeated here, since MSBuild Compile
          Remove/Include order matters and the explicit Include appears later in this file). -->
-    <Compile Remove="$(ILSpySrc)\Controls\CustomDialog.cs" />
+    <Compile Remove="ILSpy\Controls\CustomDialog.cs" />
     <!-- SharpTreeView duplicate resolution (2026-08-02): Controls/TreeView/** now compiles once,
          in the shared ICSharpCode.TreeView project (ProjectReference above), not here too. -->
-    <Compile Remove="$(ILSpySrc)\Controls\TreeView\**\*.cs" />
-    <Compile Include="$(ILSpySrc)\Docking\**\*.cs" Link="ILSpy\Docking\%(RecursiveDir)%(Filename)%(Extension)" />
-    <Compile Include="$(ILSpySrc)\Languages\**\*.cs" Link="ILSpy\Languages\%(RecursiveDir)%(Filename)%(Extension)" />
-    <Compile Include="$(ILSpySrc)\Metadata\**\*.cs" Link="ILSpy\Metadata\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Remove="ILSpy\Controls\TreeView\**\*.cs" />
     <!-- NOTE (known remaining build blocker, not resolved by exclusion): CoffHeaderTreeNode.cs
          and DebugTables/CustomDebugInformationTableTreeNode.cs each declare a
          DataTemplateSelector subclass overriding the protected
@@ -195,84 +181,79 @@
          MetadataTreeNode.cs/MetadataTablesTreeNode.cs/DebugMetadataTablesTreeNode.cs reference
          these two types by name, so excluding the files would just trade 4 CS0115 for several
          CS0246. Left linked and building red pending a LibreWPF DataTemplateSelector fix. -->
-    <Compile Include="$(ILSpySrc)\Options\**\*.cs" Link="ILSpy\Options\%(RecursiveDir)%(Filename)%(Extension)" />
-    <Compile Include="$(ILSpySrc)\Search\**\*.cs" Link="ILSpy\Search\%(RecursiveDir)%(Filename)%(Extension)" />
-    <Compile Include="$(ILSpySrc)\TextView\**\*.cs" Link="ILSpy\TextView\%(RecursiveDir)%(Filename)%(Extension)" />
     <!-- Themes/*.cs are Category-2 shared-shell candidates (see manifest note above); still linked
          as-is (Phase 3 work, not this pass). -->
-    <Compile Include="$(ILSpySrc)\Themes\**\*.cs" Link="ILSpy\Themes\%(RecursiveDir)%(Filename)%(Extension)" />
-    <Compile Include="$(ILSpySrc)\TreeNodes\**\*.cs" Link="ILSpy\TreeNodes\%(RecursiveDir)%(Filename)%(Extension)" />
     <!-- ImageListResourceEntryNode decodes the legacy System.Windows.Forms.ImageListStreamer
          .resx resource type - a WinForms-only corner case, unreferenced elsewhere, dropped rather
          than adding a WinForms dependency for it (OpenDevelop is WPF-only). -->
-    <Compile Remove="$(ILSpySrc)\TreeNodes\ResourceNodes\ImageListResourceEntryNode.cs" />
+    <Compile Remove="ILSpy\TreeNodes\ResourceNodes\ImageListResourceEntryNode.cs" />
     <!-- Updates/** is Category-3-transitional (see manifest note above): still linked because
          AssemblyTreeModel.cs (Category 1) references AppUpdateService/UpdateService. -->
-    <Compile Include="$(ILSpySrc)\Updates\**\*.cs" Link="ILSpy\Updates\%(RecursiveDir)%(Filename)%(Extension)" />
-    <Compile Include="$(ILSpySrc)\Util\**\*.cs" Link="ILSpy\Util\%(RecursiveDir)%(Filename)%(Extension)" />
     <!-- ViewModels/PaneModel.cs, ToolPaneModel.cs, LegacyToolPaneModel.cs: now live in the
          SharpDevelop Base assembly (single source of truth). Exclude from linking here to avoid
          duplicate-type errors (same source compiled into two assemblies). -->
-    <Compile Include="$(ILSpySrc)\Processes\**\*.cs" Link="ILSpy\Processes\%(RecursiveDir)%(Filename)%(Extension)" />
-    <Compile Include="$(ILSpySrc)\ViewModels\**\*.cs" Link="ILSpy\ViewModels\%(RecursiveDir)%(Filename)%(Extension)" />
-    <Compile Remove="$(ILSpySrc)\ViewModels\PaneModel.cs" />
-    <Compile Remove="$(ILSpySrc)\ViewModels\ToolPaneModel.cs" />
-    <Compile Remove="$(ILSpySrc)\ViewModels\CompareViewModel.cs" />
+    <Compile Remove="ILSpy\ViewModels\PaneModel.cs" />
+    <Compile Remove="ILSpy\ViewModels\ToolPaneModel.cs" />
+    <Compile Remove="ILSpy\ViewModels\CompareViewModel.cs" />
 
     <!-- Views/ dialogs used by linked ViewModels/Commands (ManageAssemblyListsViewModel,
          DebugStepsPaneModel via ILAstLanguage.DebugSteps.Options, ManageAssemblyListsCommand).
          CompareView is excluded along with its ViewModel/context-menu entry above; GAC/Update
          views are excluded along with the commands that launch them. -->
-    <Compile Include="$(ILSpySrc)\Views\**\*.cs" Link="ILSpy\Views\%(RecursiveDir)%(Filename)%(Extension)" />
-    <Compile Remove="$(ILSpySrc)\Views\CompareView.xaml.cs" />
-    <Compile Remove="$(ILSpySrc)\Views\OpenFromGacDialog.xaml.cs" />
-    <Compile Remove="$(ILSpySrc)\Views\UpdatePanel.xaml.cs" />
+    <Compile Remove="ILSpy\Views\CompareView.xaml.cs" />
+    <Compile Remove="ILSpy\Views\OpenFromGacDialog.xaml.cs" />
+    <Compile Remove="ILSpy\Views\UpdatePanel.xaml.cs" />
 
-    <Compile Include="$(ILSpySrc)\Properties\Resources.Designer.cs" Link="ILSpy\Properties\Resources.Designer.cs" />
     <!-- LogicalName forces the exact manifest resource name Resources.Designer.cs's generated
          ResourceManager looks up ("ICSharpCode.ILSpy.Properties.Resources") - without it, the
          Link path (relative to this project's RootNamespace, ICSharpCode.ILSpyAddIn) produces
          "ICSharpCode.ILSpyAddIn.ILSpy.Properties.Resources.resources" instead, and every call
          into Resources.* (e.g. AssemblyTreeModel's constructor) throws
          MissingManifestResourceException. -->
-    <EmbeddedResource Include="$(ILSpySrc)\Properties\Resources.resx" Link="ILSpy\Properties\Resources.resx" LogicalName="ICSharpCode.ILSpy.Properties.Resources.resources">
+    <!-- Now that this file lives in the project directory the SDK's default **\*.resx glob also
+         claims it, which is a NETSDK1022 duplicate against the explicit entry below - and the
+         explicit one has to win, because only it carries the LogicalName the generated
+         Resources.Designer.cs looks up. -->
+    <EmbeddedResource Remove="ILSpy\Properties\Resources.resx" />
+    <EmbeddedResource Include="ILSpy\Properties\Resources.resx" LogicalName="ICSharpCode.ILSpy.Properties.Resources.resources">
       <Generator>PublicResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
 
     <!-- Root-level supporting files (excluding App/MainWindow/AboutPage/Program). -->
-    <Compile Include="$(ILSpySrc)\ContextMenuEntry.cs" Link="ILSpy\ContextMenuEntry.cs" />
-    <Compile Include="$(ILSpySrc)\DecompilationOptions.cs" Link="ILSpy\DecompilationOptions.cs" />
-    <Compile Include="$(ILSpySrc)\EntityReference.cs" Link="ILSpy\EntityReference.cs" />
-    <Compile Include="$(ILSpySrc)\ExtensionMethods.cs" Link="ILSpy\ExtensionMethods.cs" />
-    <Compile Include="$(ILSpySrc)\GlobalUsings.cs" Link="ILSpy\GlobalUsings.cs" />
-    <Compile Include="$(ILSpySrc)\GuessFileType.cs" Link="ILSpy\GuessFileType.cs" />
-    <Compile Include="$(ILSpySrc)\ILSpySettingsFilePathProvider.cs" Link="ILSpy\ILSpySettingsFilePathProvider.cs" />
     <!-- ILSpyTraceListener.cs excluded: only used by App.xaml.cs (excluded) and CustomDialog.cs
          (excluded, System.Windows.Forms - see the Controls\CustomDialog.cs Remove above). -->
-    <Compile Include="$(ILSpySrc)\ISmartTextOutput.cs" Link="ILSpy\ISmartTextOutput.cs" />
-    <Compile Include="$(ILSpySrc)\LanguageSettings.cs" Link="ILSpy\LanguageSettings.cs" />
     <!-- NativeMethods.cs is `internal`, so it must be linked separately into every assembly that
          needs it - this project's own Themes/WindowStyleManagerBehavior.cs (linked below) uses it,
          and the shared ICSharpCode.TreeView project's SharpTreeViewTextSearch.cs links its own
          separate copy. The resulting cross-assembly CS0436 duplicate-type warning is harmless
          (both copies are structurally identical); removing this link outright breaks the build
          (confirmed - WindowStyleManagerBehavior.cs needs it), so it stays. -->
-    <Compile Include="$(ILSpySrc)\NativeMethods.cs" Link="ILSpy\NativeMethods.cs" />
-    <Compile Include="$(ILSpySrc)\NavigationHistory.cs" Link="ILSpy\NavigationHistory.cs" />
-    <Compile Include="$(ILSpySrc)\NavigationState.cs" Link="ILSpy\NavigationState.cs" />
-    <Compile Include="$(ILSpySrc)\SessionSettings.cs" Link="ILSpy\SessionSettings.cs" />
-    <Compile Include="$(ILSpySrc)\SmartTextOutputExtensions.cs" Link="ILSpy\SmartTextOutputExtensions.cs" />
-    <Compile Include="$(ILSpySrc)\SolutionWriter.cs" Link="ILSpy\SolutionWriter.cs" />
-    <Compile Include="$(ILSpySrc)\TaskHelper.cs" Link="ILSpy\TaskHelper.cs" />
 
     <!-- Icon enums (TypeIcon/MemberIcon/AccessOverlayIcon) are linked as usual, but Images.cs
          itself is NOT: real ILSpy's Images.cs loads vector icons via pack URIs resolved against
          the entry assembly (works for a standalone ILSpy.exe, not for a hosted addin - see
          doc/technotes/ilspy.md). OpenDevelop's own Images.cs (below) reimplements the same public
          field/method surface backed by icons embedded straight into this assembly (see Icons/). -->
-    <Compile Include="$(ILSpySrc)\Images\*.cs" Link="ILSpy\Images\%(Filename)%(Extension)" />
-    <Compile Remove="$(ILSpySrc)\Images\Images.cs" />
+    <Compile Remove="ILSpy\Images\Images.cs" />
+
+    <!-- Now that the ILSpy sources live in this project directory, default SDK/WPF item globbing
+         claims files the old explicit link manifest never included. Restore the previous surface:
+
+         - Properties\AssemblyInfo.cs + WPFAssemblyInfo.cs would add a second set of assembly-level
+           attributes on top of the generated ones (CS0579 "Duplicate 'AssemblyTitle' attribute").
+         - The five .xaml below are the views whose code-behind is Compile-Removed just above
+           (app-shell UI OpenDevelop supplies itself); compiling the XAML alone cannot work.
+         - Images\*.xaml are ILSpy's own icon dictionaries, never part of the linked set - this
+           addin gets its icons from its own Icons\*.xaml (EmbeddedResource, LogicalName Icons.*). -->
+    <Compile Remove="ILSpy\Properties\AssemblyInfo.cs" />
+    <Compile Remove="ILSpy\Properties\WPFAssemblyInfo.cs" />
+    <Page Remove="ILSpy\Views\CompareView.xaml" />
+    <Page Remove="ILSpy\Views\OpenFromGacDialog.xaml" />
+    <Page Remove="ILSpy\Views\UpdatePanel.xaml" />
+    <Page Remove="ILSpy\Controls\MainMenu.xaml" />
+    <Page Remove="ILSpy\Controls\MainToolBar.xaml" />
+    <Page Remove="ILSpy\Images\**\*.xaml" />
 
     <!-- Icons sourced from the VS2017 Image Library's own pre-converted XAML vector format
          (Microsoft's "AiToXaml" tool output - no SVG/PNG involved), loaded by VsIconLoader.cs. -->
@@ -293,29 +274,13 @@
          RegisterHighlighting call for THAT one specifically it's actually a name collision with
          AvalonEdit's own built-in "XML" definition for .xml/.baml, not a gap - only ILAsm/Asm use the
          local-resource path and are actually missing. -->
-    <EmbeddedResource Include="$(ILSpySrc)\TextView\ILAsm-Mode.xshd" LogicalName="ICSharpCode.ILSpy.TextView.ILAsm-Mode.xshd" />
-    <EmbeddedResource Include="$(ILSpySrc)\TextView\Asm-Mode.xshd" LogicalName="ICSharpCode.ILSpy.TextView.Asm-Mode.xshd" />
+    <EmbeddedResource Include="ILSpy\TextView\ILAsm-Mode.xshd" LogicalName="ICSharpCode.ILSpy.TextView.ILAsm-Mode.xshd" />
+    <EmbeddedResource Include="ILSpy\TextView\Asm-Mode.xshd" LogicalName="ICSharpCode.ILSpy.TextView.Asm-Mode.xshd" />
   </ItemGroup>
 
   <ItemGroup Label="ILSpyLinkedView">
     <!-- XAML views bound by the linked view-models above. -->
-    <Page Include="$(ILSpySrc)\AssemblyTree\AssemblyListPane.xaml" Link="ILSpy\AssemblyTree\AssemblyListPane.xaml" />
-    <Page Include="$(ILSpySrc)\Analyzers\AnalyzerTreeView.xaml" Link="ILSpy\Analyzers\AnalyzerTreeView.xaml" />
-    <Page Include="$(ILSpySrc)\Search\SearchPane.xaml" Link="ILSpy\Search\SearchPane.xaml" />
-    <Page Include="$(ILSpySrc)\TextView\DecompilerTextView.xaml" Link="ILSpy\TextView\DecompilerTextView.xaml" />
-    <Page Include="$(ILSpySrc)\Controls\SearchBoxStyle.xaml" Link="Controls\SearchBoxStyle.xaml" />
-    <Page Include="$(ILSpySrc)\Controls\ZoomScrollViewer.xaml" Link="Controls\ZoomScrollViewer.xaml" />
-    <Page Include="$(ILSpySrc)\Controls\ResourceObjectTable.xaml" Link="ILSpy\Controls\ResourceObjectTable.xaml" />
-    <Page Include="$(ILSpySrc)\Controls\ResourceStringTable.xaml" Link="ILSpy\Controls\ResourceStringTable.xaml" />
     <!-- SharpTreeView.xaml now compiles once, in the shared ICSharpCode.TreeView project. -->
-    <Page Include="$(ILSpySrc)\Metadata\FlagsFilterControl.xaml" Link="ILSpy\Metadata\FlagsFilterControl.xaml" />
-    <Page Include="$(ILSpySrc)\Metadata\FlagsTooltip.xaml" Link="ILSpy\Metadata\FlagsTooltip.xaml" />
-    <Page Include="$(ILSpySrc)\Metadata\HexFilterControl.xaml" Link="ILSpy\Metadata\HexFilterControl.xaml" />
-    <Page Include="$(ILSpySrc)\Metadata\MetadataTableViews.xaml" Link="ILSpy\Metadata\MetadataTableViews.xaml" />
-    <Page Include="$(ILSpySrc)\Options\DecompilerSettingsPanel.xaml" Link="ILSpy\Options\DecompilerSettingsPanel.xaml" />
-    <Page Include="$(ILSpySrc)\Options\DisplaySettingsPanel.xaml" Link="ILSpy\Options\DisplaySettingsPanel.xaml" />
-    <Page Include="$(ILSpySrc)\Options\MiscSettingsPanel.xaml" Link="ILSpy\Options\MiscSettingsPanel.xaml" />
-    <Page Include="$(ILSpySrc)\Options\OptionsDialog.xaml" Link="ILSpy\Options\OptionsDialog.xaml" />
     <!-- NOTE: theme resources are linked WITHOUT the "ILSpy\" path prefix on purpose. WPF's
          default-style lookup for a control type looks for "/themes/generic.xaml" in the control's
          own assembly, and ThemeManager loads themes via relative "/themes/Theme.*.xaml" pack URIs -
@@ -324,20 +289,17 @@
          control (SharpTreeView and friends) would render without its default template (empty
          panes). Keeping the link root at "Themes\" puts the BAML at exactly the expected
          resource names. -->
-    <Page Include="$(ILSpySrc)\Themes\Base.Dark.xaml" Link="Themes\Base.Dark.xaml" />
-    <Page Include="$(ILSpySrc)\Themes\Base.Light.xaml" Link="Themes\Base.Light.xaml" />
-    <Page Include="$(ILSpySrc)\Themes\Theme.Dark.xaml" Link="Themes\Theme.Dark.xaml" />
-    <Page Include="$(ILSpySrc)\Themes\Theme.Light.xaml" Link="Themes\Theme.Light.xaml" />
-    <Page Include="$(ILSpySrc)\Themes\Theme.RSharpDark.xaml" Link="Themes\Theme.RSharpDark.xaml" />
-    <Page Include="$(ILSpySrc)\Themes\Theme.RSharpLight.xaml" Link="Themes\Theme.RSharpLight.xaml" />
-    <Page Include="$(ILSpySrc)\Themes\Theme.VSCodeDarkPlus.xaml" Link="Themes\Theme.VSCodeDarkPlus.xaml" />
-    <Page Include="$(ILSpySrc)\Themes\Theme.VSCodeLightPlus.xaml" Link="Themes\Theme.VSCodeLightPlus.xaml" />
-    <Page Include="$(ILSpySrc)\Themes\generic.xaml" Link="Themes\generic.xaml" />
-    <Page Include="$(ILSpySrc)\Views\DebugSteps.xaml" Link="ILSpy\Views\DebugSteps.xaml" />
-    <Page Include="$(ILSpySrc)\Views\ManageAssemblyListsDialog.xaml" Link="ILSpy\Views\ManageAssemblyListsDialog.xaml" />
-    <Page Include="$(ILSpySrc)\Views\CreateListDialog.xaml" Link="ILSpy\Views\CreateListDialog.xaml" />
-    <Page Include="$(ILSpySrc)\Views\OpenFromProcessDialog.xaml" Link="ILSpy\Views\OpenFromProcessDialog.xaml" />
-    <Page Include="$(ILSpySrc)\Views\SetTargetFrameworkDialog.xaml" Link="ILSpy\Views\SetTargetFrameworkDialog.xaml" />
+    <!-- PaneModel/ToolPaneModel are compiled by the Base project only and consumed through the
+         ProjectReference above - they are Compile-Removed further down for exactly that reason, so
+         this project must NOT compile its own second copy (CS1503: two distinct
+         ICSharpCode.ILSpy.ViewModels.ToolPaneModel types). AvailableVersionInfo.cs is different:
+         this project did compile its own copy before the sources moved out of the submodule, so it
+         links Base's single copy to keep that surface identical. -->
+    <Compile Include="..\..\..\Main\Base\Project\ILSpy\Updates\AvailableVersionInfo.cs" Link="ILSpy\Updates\AvailableVersionInfo.cs" />
+    <!-- NativeMethods.cs is owned by the shared ICSharpCode.TreeView project (its
+         SharpTreeViewTextSearch needs GetDoubleClickTime); link that one copy instead of keeping a
+         second here, so the two assemblies cannot drift apart. -->
+    <Compile Include="..\..\..\Libraries\SharpTreeView\ICSharpCode.TreeView\ILSpy\NativeMethods.cs" Link="ILSpy\NativeMethods.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -360,16 +322,16 @@
   <!-- Phase 0 link-manifest audit guard (doc/technotes/ilspy.md): MSBuild globs silently match
        zero files if a directory is renamed/removed, so an ILSpy submodule update could quietly
        stop linking an entire category-1 directory without any build error. Fail fast instead, so
-       a submodule bump that reshapes the tree is caught here rather than surfacing later as a
+       a reshaping of the in-repo ILSpy tree is caught here rather than surfacing later as a
        missing-type or empty-pane regression. -->
   <ItemGroup>
     <_ILSpyLinkedDir Include="Analyzers;AppEnv;AssemblyTree;AvalonEdit;Commands;Controls;Docking;Languages;Metadata;Options;Processes;Search;TextView;Themes;TreeNodes;Updates;Util;ViewModels;Views" />
   </ItemGroup>
   <Target Name="VerifyILSpyLinkedDirsExist" BeforeTargets="BeforeBuild">
     <ItemGroup>
-      <_ILSpyLinkedDirMissing Include="@(_ILSpyLinkedDir)" Condition="!Exists('$(ILSpySrc)\%(Identity)')" />
+      <_ILSpyLinkedDirMissing Include="@(_ILSpyLinkedDir)" Condition="!Exists('ILSpy\%(Identity)')" />
     </ItemGroup>
-    <Error Text="Phase 0 link manifest (ILSpyAddIn.csproj) expects $(ILSpySrc)\%(_ILSpyLinkedDirMissing.Identity) to exist - the externals/ilspy submodule was likely updated and this directory was renamed/removed/moved. Update the categorized Compile Include globs and the doc/technotes/ilspy.md link-manifest audit note accordingly before rebuilding."
+    <Error Text="ILSpyAddIn.csproj expects ILSpy\%(_ILSpyLinkedDirMissing.Identity) to exist. These directories are OpenDevelop's OWN copy of the ILSpy WPF layer (they were moved in from the former externals/ilspy submodule, which no longer exists - only ICSharpCode.Decompiler and ICSharpCode.ILSpyX are consumed now, as NuGet packages), so a missing one means the directory was renamed/removed/moved in THIS repo. Update the categorized Compile Include globs and the doc/technotes/ilspy.md audit note accordingly before rebuilding."
            Condition="'@(_ILSpyLinkedDirMissing)' != ''" />
   </Target>
 

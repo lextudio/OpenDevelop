@@ -697,6 +697,27 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     // ReleaseAsync) - screen coordinates, not app-relative. Callers get the coordinates from a
     // DevFlow action that computes real on-screen bounds for the element being pressed/dragged
     // onto (e.g. od.wpf-designer.toolbox.query-item-bounds), never hardcoded.
+
+    /// <summary>
+    /// Whether od.activate actually put the window in front, per the reporting platform.
+    ///
+    /// "foregrounded" is verified only on Windows (GetForegroundWindow() == hwnd after the
+    /// SetForegroundWindow dance); od.activate never sets it off Windows, so requiring it made
+    /// every synthetic-pointer test fail on macOS/Linux before cliclick was even reached - which
+    /// looked like broken synthetic input rather than a Windows-only precondition. On those
+    /// platforms the equivalent signal is "nativeFocused": od.activate drives the real native
+    /// (GLFW/Silk) window's Focus()/TopMost there, which is what CGEventPost injection targets.
+    /// </summary>
+    static bool IsForegrounded(JsonElement activation)
+    {
+        if (activation.TryGetProperty("foregrounded", out var foreground)
+            && foreground.ValueKind == JsonValueKind.True)
+            return true;
+        return !OperatingSystem.IsWindows()
+            && activation.TryGetProperty("nativeFocused", out var native)
+            && native.ValueKind == JsonValueKind.True;
+    }
+
     public async Task<JsonElement> PressPointerAsync(double x, double y, bool ensureForeground = true)
     {
         // The click begins a real OS gesture. Bring the native OpenDevelop window to the actual
@@ -709,13 +730,12 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
             for (var attempt = 0; attempt < 3 && !foregrounded; attempt++)
             {
                 activation = await InvokeAsync("od.activate");
-                foregrounded = activation.TryGetProperty("foregrounded", out var result)
-                    && result.ValueKind == JsonValueKind.True;
+                foregrounded = IsForegrounded(activation);
                 if (!foregrounded)
                     await Task.Delay(100);
             }
             if (!foregrounded)
-                throw new InvalidOperationException("OpenDevelop could not be brought to the Windows foreground before pointer input: " + activation);
+                throw new InvalidOperationException("OpenDevelop could not be brought to the OS foreground before pointer input: " + activation);
         }
         return await PostPointActionAsync("press", x, y);
     }
@@ -739,13 +759,12 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         for (var attempt = 0; attempt < 3 && !foregrounded; attempt++)
         {
             activation = await InvokeAsync("od.activate");
-            foregrounded = activation.TryGetProperty("foregrounded", out var result)
-                && result.ValueKind == JsonValueKind.True;
+            foregrounded = IsForegrounded(activation);
             if (!foregrounded)
                 await Task.Delay(100);
         }
         if (!foregrounded)
-            throw new InvalidOperationException("OpenDevelop could not be brought to the Windows foreground before pointer input: " + activation);
+            throw new InvalidOperationException("OpenDevelop could not be brought to the OS foreground before pointer input: " + activation);
 
         var body = JsonSerializer.Serialize(new { x, y, global = true, clickCount });
         using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");

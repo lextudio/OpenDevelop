@@ -44,6 +44,10 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         readonly Dictionary<string, RoslynProjectId> _projectsByKey;
         readonly Dictionary<string, List<string>> _targetFrameworksByProjectFileName;
         readonly Dictionary<string, string> _activeTargetFrameworkByProjectFileName;
+
+        // Projects already re-loaded once by AdoptIntoContainingProject, so a file opened before its
+        // project's documents are in the workspace triggers that load exactly once.
+        readonly HashSet<string> _adoptedProjectFileNames;
         readonly IAnalyzerAssemblyLoader _analyzerAssemblyLoader = new DirectAnalyzerAssemblyLoader();
         // Serializes access to the dictionaries above (and the variants-check-then-add sequences
         // built on them). LoadProjectDocumentsAsync (background project load) and
@@ -67,6 +71,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             _projectsByKey = new Dictionary<string, RoslynProjectId>(StringComparer.OrdinalIgnoreCase);
             _targetFrameworksByProjectFileName = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
             _activeTargetFrameworkByProjectFileName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            _adoptedProjectFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             SD.ProjectService.SolutionClosed += OnSolutionClosed;
         }
 
@@ -90,17 +95,53 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         /// </summary>
         void OnSolutionClosed(object sender, SolutionEventArgs e)
         {
+            // Scope everything to the projects of the solution that is ACTUALLY closing. The
+            // previous version dropped every document that merely had some project file, and
+            // cleared the project maps wholesale, on any close - so a close could wipe a DIFFERENT,
+            // still-open solution's registrations. That is not hypothetical ordering paranoia:
+            // LoadProjectDocumentsAsync registers documents asynchronously, so in a long run
+            // (the integration suite opens and closes several solutions) a close event can land
+            // after the next solution's documents are already in the workspace and silently strip
+            // them. The symptom is a workspace that looks fine but answers every query with
+            // nothing - measured as AddInTests.OpenLens_RendersEachLensAboveItsDeclarationLine
+            // finding "0 references" for symbols that plainly have callers, only ever in a batch
+            // run and never when the test runs alone.
+            var closingProjectFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var project in e.Solution?.Projects ?? Enumerable.Empty<IProject>())
+            {
+                var fileName = project.FileName.ToString();
+                if (!string.IsNullOrEmpty(fileName))
+                    closingProjectFileNames.Add(fileName);
+            }
+
+            // Loose files that live INSIDE the closing solution's directory go too. They are not in
+            // any project, so the project-file test above cannot see them, yet they clearly belong
+            // to this solution - the fixture files the integration suite opens next to a .slnx are
+            // exactly this shape. Keeping them was not harmless: every loose document shares ONE
+            // ad-hoc Roslyn project, the suite runs each test against a fresh temp COPY of the same
+            // fixture, and so that single project accumulated several copies of the same file.
+            // Duplicate type definitions in one project break symbol resolution outright, which is
+            // why AddInTests.OpenLens_RendersEachLensAboveItsDeclarationLine reported "0
+            // references" for symbols with obvious callers in a full-class run yet passed on its
+            // own. Scoping by directory (rather than by "is an editor still open on it", which was
+            // tried and wrongly evicted project files that happened to be registered loose because
+            // they were opened before their project finished loading) keeps the documented promise
+            // to preserve loose files belonging to no solution.
+            var closingSolutionDirectory = e.Solution?.Directory.ToString();
+
             List<string> solutionOwnedFiles;
             lock (_documentLock)
             {
                 solutionOwnedFiles = _documentProjectFileNames
-                    .Where(pair => !string.IsNullOrEmpty(pair.Value))
+                    .Where(pair => string.IsNullOrEmpty(pair.Value)
+                        ? IsUnderDirectory(pair.Key.FileName, closingSolutionDirectory)
+                        : closingProjectFileNames.Contains(pair.Value))
                     .Select(pair => pair.Key.FileName)
                     .ToList();
-                _projectsByLanguage.Clear();
-                _projectsByKey.Clear();
-                _targetFrameworksByProjectFileName.Clear();
-                _activeTargetFrameworkByProjectFileName.Clear();
+                RemoveClosedSolutionProjects(closingProjectFileNames);
+                // Re-arm adoption: a later reopen of this solution must be able to load it again.
+                foreach (var projectFileName in closingProjectFileNames)
+                    _adoptedProjectFileNames.Remove(projectFileName);
             }
             // Outside the lock: RemoveDocument takes it itself, and it is the single removal path
             // that keeps the workspace and both document dictionaries consistent.
@@ -298,23 +339,45 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
                 // every file involved happened to be open before the first request.
                 bool alreadyTrackedForThisProject;
                 bool trackedForAnotherProject;
+                bool trackedAsLooseFile;
                 lock (_documentLock)
                 {
-                    var hasVariant = _documentVariantsByTfm.TryGetValue(documentId, out var variants)
-                        && variants.ContainsKey(tfmKey);
+                    var hasAnyVariant = _documentVariantsByTfm.TryGetValue(documentId, out var variants);
+                    var hasVariant = hasAnyVariant && variants.ContainsKey(tfmKey);
                     _documentProjectFileNames.TryGetValue(documentId, out var registeredProjectFileName);
                     alreadyTrackedForThisProject = hasVariant
                         && string.Equals(registeredProjectFileName ?? string.Empty, projectSnapshot.ProjectFileName ?? string.Empty, StringComparison.OrdinalIgnoreCase);
                     trackedForAnotherProject = hasVariant && !alreadyTrackedForThisProject;
+                    // The loose variant is keyed by TFM just like the project ones, and
+                    // UpsertDocumentAsync registers it under the NO-target-framework key. So for a
+                    // project WITH a target framework, tfmKey is e.g. "net10.0" and the checks above
+                    // never even see the loose variant: hasVariant is false, so it is neither
+                    // treated as done nor removed, and AddDocument then adds the project-backed
+                    // variant ALONGSIDE it. TryGetProjectDocument returns variants.Values.First(),
+                    // and the loose one was inserted first, so every lookup kept resolving to the
+                    // stranded ad-hoc copy - reported as projectFile=null by
+                    // od.language-workspace.status while trackedProjectCount showed a fully loaded
+                    // workspace, and observed as OpenLens rendering "0 references" for symbols with
+                    // real callers.
+                    trackedAsLooseFile = hasAnyVariant && string.IsNullOrEmpty(registeredProjectFileName);
                 }
                 if (alreadyTrackedForThisProject)
                     continue;
-                // Re-register under the real project. Removing the variant first is what makes
-                // AddDocument create a project-backed document instead of updating the stale one:
-                // its "does it already exist" probe is scoped to the target projectId, so the
-                // loose copy would otherwise be left behind as a duplicate of the same file.
-                if (trackedForAnotherProject)
+                // Re-register under the real project. Removing what is already there first is what
+                // makes AddDocument create a project-backed document instead of updating the stale
+                // one: its "does it already exist" probe is scoped to the target projectId, so the
+                // old copy would otherwise be left behind as a duplicate of the same file.
+                if (trackedAsLooseFile)
+                {
+                    // Every variant, whatever key it used - see the note above on why the loose one
+                    // is invisible to the tfmKey-scoped check. RemoveDocument takes _documentLock
+                    // itself, hence outside the lock above.
+                    RemoveDocument(fileName);
+                }
+                else if (trackedForAnotherProject)
+                {
                     RemoveDocumentVariant(documentId, tfmKey);
+                }
 
                 var text = await File.ReadAllTextAsync(fileName, cancellationToken);
                 AddDocument(projectId, projectSnapshot.ProjectFileName, documentId, text, tfmKey);
@@ -349,9 +412,78 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             if (hasVariants)
                 return Task.CompletedTask;
 
-            var projectId = EnsureProject(GetLanguage(documentId.FileName));
+            // Refuse what this service cannot compile. Loose documents all share ONE ad-hoc project
+            // per language, so a single unparsable document poisons the compilation for every other
+            // loose file in it - and the failure is invisible, because Roslyn still answers, just
+            // with nothing. Measured in the integration suite: the shared "UnoDevelop C#" project
+            // had collected Calc.fs/CalcService.fs (F# parsed as C# -> CS1003) alongside the real
+            // fixture, and OpenLens then rendered "0 references" for symbols with obvious callers.
+            if (!CanHostLooseDocument(documentId.FileName))
+                return Task.CompletedTask;
+
+            var projectId = EnsureLooseProject(GetLanguage(documentId.FileName), documentId.FileName);
             AddDocument(projectId, string.Empty, documentId, text, NoTargetFrameworkKey);
+            AdoptIntoContainingProject(documentId);
             return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// If the file just registered as loose actually belongs to a project, load that project in
+        /// the background so the document is re-registered where it belongs (see the
+        /// trackedAsLooseFile branch in LoadProjectDocumentsAsync, which replaces the loose copy
+        /// rather than duplicating it).
+        ///
+        /// Without this, a file opened at a moment when its project's documents are NOT in the
+        /// workspace stays loose forever: nothing else re-triggers a load, and a caller asking the
+        /// project service to "ensure the solution is open" gets a no-op when it already is. The
+        /// documents can be absent while the solution is open because OnSolutionClosed evicts them
+        /// when the solution is closed, and the integration suite opens and closes the same shared
+        /// fixture solution from several tests. Symptom: cross-file symbol work silently found
+        /// nothing (OpenLens showing "0 references") for a file whose own compilation was clean.
+        ///
+        /// Deliberately fire-and-forget: UpsertDocumentAsync is called synchronously from UI-thread
+        /// code paths (CodeEditorView, snippets, context actions) with GetAwaiter().GetResult(), so
+        /// awaiting a load here would block the thread the continuation needs and deadlock. The
+        /// loose registration above already makes the editor usable immediately; this only upgrades
+        /// it.
+        /// </summary>
+        void AdoptIntoContainingProject(DocumentId documentId)
+        {
+            IProject project;
+            try
+            {
+                project = SD.ProjectService?.FindProjectContainingFile(FileName.Create(documentId.FileName));
+            }
+            catch (Exception)
+            {
+                return; // No project service yet (early startup) - the file stays loose, as before.
+            }
+            if (project is null)
+                return;
+
+            var snapshot = LanguageServiceProjectSnapshot.FromProject(project);
+            // At most ONE adoption load per project. LoadProjectAsync reads every document of the
+            // project from disk, so doing it on each loose upsert is ruinous: unguarded, it turned a
+            // 410s AddInTests run into 1856s and starved the designer tests into their own timeouts.
+            // One load is all that is needed - it registers every document of the project, this file
+            // included - and re-arming on solution close keeps a later reopen able to adopt again.
+            lock (_documentLock)
+            {
+                if (!_adoptedProjectFileNames.Add(snapshot.ProjectFileName ?? string.Empty))
+                    return;
+            }
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await LoadProjectAsync(snapshot, CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    LoggingService.Warn("Adopting " + documentId.FileName + " into " + snapshot.ProjectFileName + " failed: " + ex.Message);
+                }
+            });
         }
 
         public async Task<CompletionResult> GetCompletionsAsync(DocumentId documentId, int offset, CancellationToken cancellationToken)
@@ -1051,26 +1183,76 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             }
         }
 
+        /// <summary>
+        /// Forgets only the bookkeeping for the projects of a solution that is closing. Callers hold
+        /// _documentLock.
+        ///
+        /// _projectsByKey is keyed by ProjectKey (the project file name, optionally suffixed with
+        /// "|targetFramework"), so the closing solution's entries are the ones whose file-name part
+        /// is in <paramref name="closingProjectFileNames"/>.
+        ///
+        /// _projectsByLanguage is deliberately left alone: it holds the ad-hoc project that backs
+        /// LOOSE files opened outside any solution, which no solution owns. Clearing it on every
+        /// close (as this used to) orphaned exactly the documents OnSolutionClosed's own contract
+        /// promises to keep - the loose documents stayed registered against a project the map no
+        /// longer knew, so the next loose file created a second ad-hoc project instead of joining
+        /// them, and nothing in the first one resolved against anything in the second.
+        /// </summary>
+        static bool IsUnderDirectory(string fileName, string directory)
+        {
+            if (string.IsNullOrEmpty(fileName) || string.IsNullOrEmpty(directory))
+                return false;
+            var prefix = directory.EndsWith(Path.DirectorySeparatorChar) ? directory : directory + Path.DirectorySeparatorChar;
+            return fileName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+        }
+
+        void RemoveClosedSolutionProjects(HashSet<string> closingProjectFileNames)
+        {
+            foreach (var key in _projectsByKey.Keys.ToList())
+            {
+                var separator = key.LastIndexOf('|');
+                var projectFileName = separator < 0 ? key : key.Substring(0, separator);
+                if (closingProjectFileNames.Contains(projectFileName))
+                    _projectsByKey.Remove(key);
+            }
+            foreach (var projectFileName in closingProjectFileNames)
+            {
+                _targetFrameworksByProjectFileName.Remove(projectFileName);
+                _activeTargetFrameworkByProjectFileName.Remove(projectFileName);
+            }
+        }
+
         RoslynProjectId EnsureProject(string language)
+        {
+            return EnsureProject(language, language);
+        }
+
+        /// <summary>
+        /// The ad-hoc project for loose documents. <paramref name="language"/> is the Roslyn
+        /// language name and must stay one of the real ones; <paramref name="projectKey"/> is what
+        /// separates DISTINCT ad-hoc projects of the same language (see EnsureLooseProject, which
+        /// keeps synthetic decompiler documents out of the compilation real sources share).
+        /// </summary>
+        RoslynProjectId EnsureProject(string language, string projectKey)
         {
             lock (_documentLock)
             {
-                if (_projectsByLanguage.TryGetValue(language, out var projectId))
+                if (_projectsByLanguage.TryGetValue(projectKey, out var projectId))
                     return projectId;
 
-                projectId = RoslynProjectId.CreateNewId("UnoDevelop " + language);
+                projectId = RoslynProjectId.CreateNewId("UnoDevelop " + projectKey);
                 var projectInfo = ProjectInfo.Create(
                     projectId,
                     VersionStamp.Create(),
-                    "UnoDevelop " + language,
-                    "UnoDevelop." + language,
+                    "UnoDevelop " + projectKey,
+                    "UnoDevelop." + projectKey.Replace(' ', '_').Replace('(', '_').Replace(')', '_'),
                     language,
                     metadataReferences: CreateDefaultMetadataReferences(),
                     compilationOptions: CreateCompilationOptions(language),
                     parseOptions: CreateParseOptions(language));
 
                 _workspace.AddProject(projectInfo);
-                _projectsByLanguage[language] = projectId;
+                _projectsByLanguage[projectKey] = projectId;
                 return projectId;
             }
         }
@@ -1438,6 +1620,41 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
                 return ToOutlineSpan(symbol);
 
             return ConvertLineSpan(syntaxTree.GetLineSpan(syntaxReference.Span));
+        }
+
+        /// <summary>
+        /// Whether a loose (project-less) file is real C#/VB source this service can put in a
+        /// compilation. GetLanguage below maps every non-.vb extension to C#, which is fine for
+        /// choosing between the two backends but is not a membership test: it also claims .fs, .fsx
+        /// and anything else that happens to be handed over.
+        /// </summary>
+        static bool CanHostLooseDocument(string fileName)
+        {
+            var extension = Path.GetExtension(fileName);
+            return extension.Equals(".cs", StringComparison.OrdinalIgnoreCase)
+                || extension.Equals(".csx", StringComparison.OrdinalIgnoreCase)
+                || extension.Equals(".vb", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// The ad-hoc project a loose document belongs to. Synthetic documents - the decompiler's
+        /// read-only pseudo-files, whose "paths" carry a scheme like "ilspy:" instead of being real
+        /// filesystem paths - get a project of their OWN rather than joining the shared one.
+        /// Decompiled output is not required to be compilable (a decompiled selection legitimately
+        /// has using directives part-way through a file, which is CS1529 for every one of them), and
+        /// sharing a compilation with real sources let that break symbol resolution for actual
+        /// project files that happened to be open at the same time.
+        /// </summary>
+        RoslynProjectId EnsureLooseProject(string language, string fileName)
+        {
+            return EnsureProject(language, IsSyntheticDocumentPath(fileName) ? language + " (synthetic)" : language);
+        }
+
+        static bool IsSyntheticDocumentPath(string fileName)
+        {
+            // A rooted filesystem path is a real file; anything else ("ilspy:/selection.cs") is a
+            // pseudo-path minted by a viewer.
+            return string.IsNullOrEmpty(fileName) || !Path.IsPathRooted(fileName);
         }
 
         static string GetLanguage(string fileName)

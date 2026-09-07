@@ -171,6 +171,11 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			remove { baseHighlighter.HighlightingStateChanged -= value; }
 		}
 		
+
+		/// <inheritdoc/>
+		public bool IsDisposed {
+			get { return baseHighlighter != null && baseHighlighter.IsDisposed; }
+		}
 		public void UpdateHighlightingState(int lineNumber)
 		{
 			baseHighlighter.UpdateHighlightingState(lineNumber);

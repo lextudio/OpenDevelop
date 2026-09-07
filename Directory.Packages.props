@@ -8,13 +8,31 @@
        MSBuildProjectDirectory is not reliably set when Directory.Packages.props is
        evaluated during NuGet SDK resolution, so we fall back to MSBuildProjectFullPath
        (always available) and normalize path separators for cross-platform comparison. -->
-  <PropertyGroup Condition="$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)').Replace('\','/').Contains('/src/Libraries/AvalonDock')) Or $([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)').Replace('\','/').Contains('/src/Libraries/AvalonEdit'))">
+  <PropertyGroup>
+    <!-- MSBuildProjectFullPath, per the note above: MSBuildProjectDirectory really is empty while
+         this file is evaluated during NuGet SDK resolution, and the condition below then failed to
+         match a vendored project - re-enabling central management for it, which breaks resolving
+         its Sdk="LibreWPF.Sdk" ("The NuGetSdkResolver did not resolve this SDK because there was no
+         version specified in the project or global.json", from the AvalonEdit submodule). That only
+         shows up once SDK resolution actually re-runs, e.g. after a forced restore, so an
+         incremental build kept working and hid it. -->
+    <_OpenDevelopEvaluatedProjectPath>$([MSBuild]::NormalizePath('$(MSBuildProjectFullPath)').Replace('\','/'))</_OpenDevelopEvaluatedProjectPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="$(_OpenDevelopEvaluatedProjectPath.Contains('/src/Libraries/AvalonDock')) Or $(_OpenDevelopEvaluatedProjectPath.Contains('/src/Libraries/AvalonEdit'))">
     <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="AltCover" Version="9.0.102" />
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageVersion Include="DataGridExtensions" Version="2.9.1" />
+    <!-- ILSpy's decompiler and its non-UI service layer, taken from the published packages instead
+         of from the externals/ilspy submodule. The two OpenDevelop patches that used to force a
+         source build now live on this side of the boundary: see Dom/ITreeNodeModelOwner.cs
+         (SharpTreeNode.Model/GetModel) and Controls/TreeView/RangeCollapsingItemsSource.cs
+         (TreeFlattener's ranged-notification fix). ICSharpCode.ILSpyX also carries the
+         ICSharpCode.ILSpyX.TreeView types, which are not published as a package of their own. -->
+    <PackageVersion Include="ICSharpCode.Decompiler" Version="11.0.0.9375" />
+    <PackageVersion Include="ICSharpCode.ILSpyX" Version="11.0.0.9375" />
     <PackageVersion Include="GirCore.Gtk-4.0" Version="0.8.1" />
     <PackageVersion Include="GuiLabs.Language.Xml" Version="1.2.93" />
     <!-- Derives the assembly version from git tags; see GitVersion.yml. -->
@@ -73,7 +91,13 @@
     <PackageVersion Include="SkiaSharp" Version="3.119.1" />
     <PackageVersion Include="StreamJsonRpc" Version="2.25.29" />
     <PackageVersion Include="System.CodeDom" Version="10.0.10" />
-    <PackageVersion Include="System.Composition.AttributedModel" Version="10.0.10" />
+    <!-- Must match what the ILSpy addin binds to. Transitive pinning is off, so ILSpyAddIn's
+         dependency chain (TomsToolbox.Composition) resolves 10.0.11 while this pin gave the shell
+         10.0.10. Both load into one process and the shell's output directory is the probing base,
+         so the addin's MEF composition died at startup with "Could not load ...
+         System.Composition.AttributedModel, Version=10.0.0.11" - surfacing as every od.ilspy.*
+         action failing inside ICSharpCode.ILSpy.App.Initialize(). -->
+    <PackageVersion Include="System.Composition.AttributedModel" Version="10.0.11" />
     <PackageVersion Include="System.Data.SqlClient" Version="4.8.6" />
     <PackageVersion Include="System.IO.Packaging" Version="11.0.0-preview.5.26302.115" />
     <PackageVersion Include="System.Net.Http.Json" Version="11.0.0-preview.5.26302.115" />

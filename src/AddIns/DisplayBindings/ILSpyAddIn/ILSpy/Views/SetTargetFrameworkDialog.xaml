@@ -1,0 +1,29 @@
+<Window x:Class="ICSharpCode.ILSpy.Views.SetTargetFrameworkDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ILSpy"
+        Width="360" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+    <Grid Margin="12,10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" x:Name="PromptText" Margin="0,0,0,6" TextWrapping="Wrap" />
+        <TextBox Grid.Row="1" x:Name="FrameworkBox" />
+        <ListBox Grid.Row="2" x:Name="PresetList" Height="150" Margin="0,6,0,0"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+        <TextBlock Grid.Row="3" x:Name="ErrorText" Margin="0,6,0,0"
+                   Foreground="Red" TextWrapping="Wrap" Visibility="Collapsed" />
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right"
+                    Margin="0,12,0,0">
+            <Button x:Name="OkButton" Content="OK" IsDefault="True" MinWidth="72" Margin="0,0,6,0" />
+            <Button x:Name="CancelButton" Content="Cancel" IsCancel="True" MinWidth="72" />
+        </StackPanel>
+    </Grid>
+</Window>

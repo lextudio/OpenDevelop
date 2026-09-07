@@ -93,6 +93,24 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			return line;
 		}
 		
+		/// <summary>
+		/// Disposed as soon as ANY nested highlighter is: driving the group would throw on that one,
+		/// so the whole composite must report itself unusable.
+		///
+		/// A plain loop over the array, not LINQ: HighlightingColorizer consults this per colorized
+		/// line on every render pass, and an Any() there allocates a delegate and an enumerator each
+		/// time on one of the editor's hottest paths.
+		/// </summary>
+		public bool IsDisposed {
+			get {
+				for (int i = 0; i < nestedHighlighters.Length; i++) {
+					if (nestedHighlighters[i].IsDisposed)
+						return true;
+				}
+				return false;
+			}
+		}
+
 		public void UpdateHighlightingState(int lineNumber)
 		{
 			foreach (var h in nestedHighlighters) {

@@ -120,6 +120,14 @@ public sealed class AddInTests : IAsyncDisposable
     /// </summary>
     public static bool MicrosoftDesignerBackendsAvailable => OperatingSystem.IsWindows();
 
+    /// <summary>
+    /// Asserts the document was rendered by the MICROSOFT WinUI child host. Only valid for a
+    /// WinUI-framework document (OpenWinUIDesignerAsync); an Uno document is served by the Uno
+    /// child and reports backend "Uno", so use AssertUnoRenderedBySelectedBackend for those.
+    /// Four WinUIDesigner_*/OpenUnoXamlFile_* tests used to call this on an Uno document and could
+    /// only ever fail with Expected "WinUI" / Actual "Uno" - contradicting the very helper
+    /// (OpenUnoDesignerAsync) that had just asserted framework == "Uno" for the same document.
+    /// </summary>
     static void AssertWinUIRenderedBySelectedBackend(JsonElement status)
     {
         var backend = status.TryGetProperty("backend", out var be) ? be.GetString() : "";
@@ -881,18 +889,37 @@ public sealed class AddInTests : IAsyncDisposable
         // which excludes the "M implementations" one. Adornments are only built for visual lines
         // in (or near) the viewport, so rows below the fold do not exist in the tree: collect the
         // rows visible at the top of the file, jump the caret to the end, and collect the rest.
+        // How many of the top declarations are actually in view depends on the window height -
+        // the bottom-window assertion below already accepts either a 3-row or a 4-row window for
+        // exactly that reason. A 4-row top window (Alpha/One/Beta/Two, with Gamma below the fold)
+        // is the same situation, so accept it here too: the row TEXTS and the gap pattern are
+        // still asserted in full against however many rows the viewport shows.
+        const int MinimumTopRows = 4;
         List<(string Text, double Y)> topRows = null;
         bool topRendered = await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             topRows = CollectLensRows(await _app.GetUITreeAsync());
-            return topRows.Count >= 5;
+            return topRows.Count >= MinimumTopRows;
         }, TimeSpan.FromSeconds(60));
 
         if (!topRendered)
         {
             var dumpTree = await _app.GetUITreeAsync();
             File.WriteAllText("/tmp/od-lens-test-tree.json", dumpTree.ToString());
+            // The lens rows can render with a count of "0 references" instead of not rendering at
+            // all, and the two look identical in the row texts alone. Report which project the
+            // Roslyn workspace has this file in: a real .csproj path means the reference search
+            // genuinely found nothing, whereas a null/ad-hoc project means the document is
+            // stranded outside its solution's compilation and could never have found callers.
+            var workspace = await _app.InvokeAsync("od.language-workspace.status", lensPath);
+            // Ask the language service the SAME question the lens asks, at Alpha's declaration
+            // (line 15, per the fixture's own header comment). This separates a lens/caching
+            // problem from a language-service one: the lens showing "0 references" while
+            // od.find-references reports the real count means the count was resolved and cached
+            // before the workspace was ready, whereas both reporting 0 puts it in the service.
+            var directReferences = await _app.InvokeAsync("od.find-references", lensPath, 15, 14);
             Assert.Fail($"OpenLens rows never rendered at the top of OpenLensFixture.cs; " +
+                $"workspace={workspace}; directReferences={directReferences}; " +
                 $"texts={string.Join("|", (topRows ?? new List<(string, double)>()).Select(r => r.Text).Take(20))}; " +
                 $"tree-dumped=/tmp/od-lens-test-tree.json textblocks={FlattenElements(dumpTree).Count(e => e.TryGetProperty("type", out var t) && t.GetString() == "TextBlock")}");
         }
@@ -903,10 +930,11 @@ public sealed class AddInTests : IAsyncDisposable
         // line, so consecutive rows are spaced by 2.9 or 3.9 line heights - a lens on the wrong
         // line (or two lenses on one line, or a missing row) breaks the 2.9/3.9 alternation and
         // this assertion fails. The first two rows must be Alpha's and One's "2 references".
-        AssertLensGapPattern(topRows, new[] { 2, 3, 2, 3 });
-        Assert.Equal(
-            new[] { "2 references", "2 references", "1 reference", "1 reference", "1 reference" },
-            topRows.Select(r => r.Text).ToArray());
+        var expectedTopTexts = new[] { "2 references", "2 references", "1 reference", "1 reference", "1 reference" };
+        var expectedTopGaps = new[] { 2, 3, 2, 3 };
+        Assert.InRange(topRows.Count, MinimumTopRows, expectedTopTexts.Length);
+        AssertLensGapPattern(topRows, expectedTopGaps.Take(topRows.Count - 1).ToArray());
+        Assert.Equal(expectedTopTexts.Take(topRows.Count).ToArray(), topRows.Select(r => r.Text).ToArray());
 
         // Jump the caret to the end of the file so the bottom rows scroll into view. The bottom
         // window must show the two "0 references" rows (Uses, Total) plus Three's "1 reference".
@@ -938,7 +966,13 @@ public sealed class AddInTests : IAsyncDisposable
         // expose exactly the eight declarations of the fixture; in the 4-row window Gamma's row
         // overlaps the top window, so drop that duplicate before comparing.
         var allTexts = topRows.Concat(bottomRows).Select(r => r.Text).ToList();
-        if (bottomRows.Count == 4)
+        // Gamma (line 25) is the only declaration that can appear in BOTH windows, and only when
+        // each window is big enough to reach it: a 5-row top window AND a 4-row bottom window.
+        // Dropping a "1 reference" whenever the bottom window has 4 rows was wrong on a shorter
+        // window, where the top shows 4 rows (Alpha/One/Beta/Two) and Gamma is reached only from
+        // the bottom - there it deleted a real row and shifted every later count by one.
+        var gammaCountedTwice = topRows.Count == 5 && bottomRows.Count == 4;
+        if (gammaCountedTwice)
             allTexts.Remove("1 reference");
         allTexts.Sort();
         Assert.Equal(
@@ -1080,7 +1114,7 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Equal(status.GetProperty("toolboxItemCount").GetInt32(), restoredTools.GetProperty("itemCount").GetInt32());
         // The preview must come from ProGPU's compiled WinUI pipeline. A WPF XamlReader renderer
         // impersonating a WinUI designer is explicitly not an acceptable pass.
-        AssertWinUIRenderedBySelectedBackend(status);
+        AssertUnoRenderedBySelectedBackend(status);
     }
 
     /// <summary>
@@ -1320,7 +1354,7 @@ public sealed class AddInTests : IAsyncDisposable
 
         // The preview must still be alive after all of that, not stuck on a stale/blank frame.
         status = await WaitForRenderedAsync();
-        AssertWinUIRenderedBySelectedBackend(status);
+        AssertUnoRenderedBySelectedBackend(status);
     }
 
     /// <summary>
@@ -1345,7 +1379,7 @@ public sealed class AddInTests : IAsyncDisposable
         // changed document; the designer must re-parse and re-render from it.
         var status = await WaitForRenderedAsync();
         Assert.Null(status.GetProperty("documentError").GetString());
-        AssertWinUIRenderedBySelectedBackend(status);
+        AssertUnoRenderedBySelectedBackend(status);
 
         await _app.InvokeAsync("od.file.save-all");
         var onDisk = await File.ReadAllTextAsync(_unoPagePath);
@@ -1430,7 +1464,7 @@ public sealed class AddInTests : IAsyncDisposable
 
         var recovered = await WaitForRenderedAsync();
         Assert.Null(recovered.GetProperty("documentError").GetString());
-        AssertWinUIRenderedBySelectedBackend(recovered);
+        AssertUnoRenderedBySelectedBackend(recovered);
     }
 
     /// <summary>
@@ -4080,7 +4114,10 @@ EndGlobal
         // The node Grid contains 3 Image elements: file icon (16x16), linked-file overlay
         // (16x16, null Source for non-linked files yields a zero-size bounds), and the
         // git-overlay badge (8x8). The overlay is the non-zero Image with the smallest width.
+        // Same null-bounds guard as the Assemblies-tree query below: an unrealized visual reports
+        // "bounds": null, and reading into a Null JsonElement throws instead of returning false.
         var overlayImage = images.Where(i => i.TryGetProperty("bounds", out var b)
+                && b.ValueKind == JsonValueKind.Object
                 && b.GetProperty("width").GetDouble() > 0)
             .OrderBy(i => i.GetProperty("bounds").GetProperty("width").GetDouble()).FirstOrDefault();
 
@@ -4401,7 +4438,12 @@ EndGlobal
         var treeNodes = allElements
             .Where(e => e.TryGetProperty("fullType", out var ft)
                 && ft.GetString() == "ICSharpCode.ILSpy.Controls.TreeView.SharpTreeNodeView"
-                && e.TryGetProperty("bounds", out var b)
+                // ValueKind check before reading into it: an element whose visual is not realized
+                // reports "bounds": null, and TryGetProperty on a Null JsonElement THROWS
+                // (InvalidOperationException "requires an element of type 'Object'") rather than
+                // returning false. Such elements only show up once other pads have been opened, so
+                // this failed in a full run while passing when the test ran alone.
+                && e.TryGetProperty("bounds", out var b) && b.ValueKind == JsonValueKind.Object
                 && b.TryGetProperty("width", out var w) && w.GetDouble() > 0
                 && b.TryGetProperty("height", out var h) && h.GetDouble() > 0)
             .ToList();

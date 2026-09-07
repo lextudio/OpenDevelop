@@ -25,8 +25,38 @@ using ICSharpCode.ILSpyX.TreeView;
 
 namespace ICSharpCode.SharpDevelop.Dom
 {
-	public abstract class ModelCollectionTreeNode : SharpTreeNode
+	public abstract class ModelCollectionTreeNode : SharpTreeNode, ITreeNodeModelOwner
 	{
+		/// <summary>
+		/// The model object this node represents. Declared HERE rather than on ILSpyX's
+		/// SharpTreeNode, which OpenDevelop used to patch for it - see
+		/// <see cref="ITreeNodeModelOwner"/> for why that patch had to move and what it cost.
+		/// </summary>
+		/// <remarks>
+		/// Reads through the virtual <see cref="GetModel"/> helper rather than being virtual itself,
+		/// so a derived node can re-declare Model with a more specific return type (UnitTestNode
+		/// does: `public new ITest Model`), which an override cannot express.
+		/// </remarks>
+		public object Model {
+			get { return GetModel(); }
+		}
+		
+		protected virtual object GetModel()
+		{
+			return null;
+		}
+		
+		/// <summary>
+		/// The model behind an arbitrary tree node, or null when that node represents none. Children
+		/// come from <see cref="ITreeNodeFactory.CreateTreeNode"/> and are only typed as
+		/// SharpTreeNode, so the model has to be asked for through the interface. Returning null for
+		/// a node that owns no model matches what the removed SharpTreeNode.GetModel() did.
+		/// </summary>
+		protected static object ModelOf(SharpTreeNode node)
+		{
+			return (node as ITreeNodeModelOwner)?.Model;
+		}
+
 		protected static readonly IComparer<SharpTreeNode> NodeTextComparer =
 			Comparer<SharpTreeNode>.Create((left, right) =>
 				StringComparer.OrdinalIgnoreCase.Compare(left?.Text?.ToString(), right?.Text?.ToString()));
@@ -86,8 +116,8 @@ namespace ICSharpCode.SharpDevelop.Dom
 		protected void SynchronizeModelChildren()
 		{
 			HashSet<object> set = new HashSet<object>(ModelChildren);
-			Children.RemoveAll(n => !set.Contains(n.Model));
-			set.ExceptWith(Children.Select(n => n.Model));
+			Children.RemoveAll(n => !set.Contains(ModelOf(n)));
+			set.ExceptWith(Children.Select(ModelOf));
 			InsertChildren(set);
 		}
 		
@@ -103,7 +133,7 @@ namespace ICSharpCode.SharpDevelop.Dom
 					EnsureLazyChildren();
 				return;
 			}
-			Children.RemoveAll(n => removedItems.Contains(n.Model));
+			Children.RemoveAll(n => removedItems.Contains(ModelOf(n)));
 			InsertChildren(addedItems);
 		}
 		

@@ -151,6 +151,12 @@
     <!-- CodeCoverage provides ICodeCoverageService; undeployed, its three tests report
          "CodeCoverage addin not available" rather than exercising a coverage run. -->
     <_CoreAddinProject Include="../../src/AddIns/Analysis/CodeCoverage/Project/CodeCoverage.csproj" />
+    <!-- Debugger.AddIn registers the real ICSharpCode.SharpDevelop.Services.WindowsDebugger (it is
+         already ported off the old Debugger.Core engine onto Microsoft.Diagnostics.NETCore.Client,
+         so nothing is missing). Undeployed, SD.Debugger stayed the fallback DebuggerService and
+         all seven DebuggerIntegrationTests/RuntimeUpgrade debugging journeys failed - which looked
+         like "this repo has no working debugger" rather than one more addin nobody built. -->
+    <_CoreAddinProject Include="../../src/AddIns/Debugger/Debugger.AddIn/Debugger.AddIn.csproj" />
   </ItemGroup>
   <Target Name="BuildCoreAddinsForIntegrationTests" BeforeTargets="Build">
     <MSBuild Projects="@(_CoreAddinProject)" Targets="Build" BuildInParallel="true"
@@ -166,6 +172,12 @@
   <ItemGroup>
     <_FixtureProject Include="../fixtures/DebugTestApp/DebugTestApp.csproj" />
     <_FixtureProject Include="../fixtures/SampleTestProject/SampleTestProject.csproj" />
+    <!-- The WPF designer sample (WpfSampleSolutionPath): its MainWindow.xaml hosts
+         <local:SamplePane x:Name="MainPane"/>, a control defined in this same project - so the
+         designer can only instantiate it, and the Outline pad can only show "MainPane", once the
+         sample assembly exists. Unbuilt, the element is silently dropped from the element tree and
+         the test failed as "MainPane not found in the outline", which reads like an outline bug. -->
+    <_FixtureProject Include="../../externals/vscode-wpf/sample/net6.0/sample.csproj" />
   </ItemGroup>
   <!-- Restored in its own MSBuild invocation before Build: unlike the addin projects above these
        are standalone (deliberately outside the solution, since the IDE under test opens them as

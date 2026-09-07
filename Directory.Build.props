@@ -1,0 +1,20 @@
+<Project>
+  <PropertyGroup>
+    <!--
+      LibreWPF.Sdk defaults every LibreWPF/LibreWinForms package it pulls in to its OWN package
+      version (see ProGPU.Wpf.Sdk.targets: ProGpuWpfManagedPackageVersion and
+      ProGpuWpfLibreWinFormsPackageVersion both fall back to ProGpuWpfSdkVersion). That coupling
+      means bumping the SDK forces a matching build of every one of those packages, even the ones
+      that did not change.
+
+      LibreWinForms is pinned back here so an SDK bump only requires rebuilding what actually
+      changed. openavalon's own ProGPU.* packages need no equivalent line: ProGpuPackageVersion is
+      already hardcoded in the SDK's targets rather than tracking the SDK version.
+
+      Keep this in step with global.json's LibreWPF.Sdk entry: raise it when a LibreWinForms change
+      is what a new SDK is being taken for, and delete the line once the two versions coincide
+      again.
+    -->
+    <ProGpuWpfLibreWinFormsPackageVersion>0.1.0-preview.55</ProGpuWpfLibreWinFormsPackageVersion>
+  </PropertyGroup>
+</Project>
