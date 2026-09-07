@@ -68,6 +68,103 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			if (method == null) return JsonSerializer.Serialize(new { designerLoaded = false, success = false, error = "Forms Designer AddIn is unavailable" });
 			return (string)method.Invoke(null, args);
 		}
+		// ── FormsDesigner forwarding stubs ────────────────────────────────────────────
+		// DevFlow discovers [DevFlowAction] attributes once at startup, before AddIn
+		// autostart commands load lazy assemblies.  FormsDesignerDevFlowActions lives in
+		// FormsDesigner.dll (loaded as an addin), so its attributes are never scanned.
+		// These thin stubs forward every od.forms-designer.* action via reflection,
+		// exactly like the original two stubs above.
+
+		[DevFlowAction("od.forms-designer.surface-geometry", Description = "Report the WinForms design surface geometry")]
+		public static string FormsDesignerSurfaceGeometry() => InvokeFormsDesignerDevFlowAction("GetSurfaceGeometry");
+
+		[DevFlowAction("od.forms-designer.toolbox.filter", Description = "Filter the active WinForms Toolbox by control or category name")]
+		public static string FormsDesignerToolboxFilter(string text) => InvokeFormsDesignerDevFlowAction("FilterToolbox", text);
+
+		[DevFlowAction("od.forms-designer.outline-status", Description = "Inspect the WinForms designer's Document Outline pad")]
+		public static string FormsDesignerOutlineStatus() => InvokeFormsDesignerDevFlowAction("GetOutlineStatus");
+
+		[DevFlowAction("od.forms-designer.outline-select", Description = "Select a control in the WinForms designer's Document Outline")]
+		public static string FormsDesignerOutlineSelect(string name) => InvokeFormsDesignerDevFlowAction("OutlineSelect", name);
+
+		[DevFlowAction("od.forms-designer.routed-command", Description = "Run cut/copy/paste/delete/selectall/undo/redo/help on the design surface")]
+		public static string FormsDesignerRoutedCommand(string commandName) => InvokeFormsDesignerDevFlowAction("RoutedCommand", commandName);
+
+		[DevFlowAction("od.forms-designer.describe-context-menu", Description = "Build the designer right-click menu for a component and report its items")]
+		public static string FormsDesignerDescribeContextMenu(string componentName, bool tray = false) => InvokeFormsDesignerDevFlowAction("DescribeContextMenu", componentName, tray);
+
+		[DevFlowAction("od.forms-designer.query-tab-header-screen-bounds", Description = "Get a tab header's on-screen bounds in the designer")]
+		public static string FormsDesignerQueryTabHeaderScreenBounds(string tabControlName, int tabIndex) => InvokeFormsDesignerDevFlowAction("QueryTabHeaderScreenBounds", tabControlName, tabIndex);
+
+		[DevFlowAction("od.forms-designer.set-property", Description = "Set a component property in the WinForms designer")]
+		public static string FormsDesignerSetProperty(string componentName, string propertyName, string value) => InvokeFormsDesignerDevFlowAction("SetProperty", componentName, propertyName, value);
+
+		[DevFlowAction("od.forms-designer.set-event", Description = "Bind a component event in the WinForms designer")]
+		public static string FormsDesignerSetEvent(string componentName, string eventName, string handlerName) => InvokeFormsDesignerDevFlowAction("SetEvent", componentName, eventName, handlerName);
+
+		[DevFlowAction("od.forms-designer.add-control", Description = "Create a standard control in the WinForms designer")]
+		public static string FormsDesignerAddControl(string parentName, string controlType, string componentName, int x, int y) => InvokeFormsDesignerDevFlowAction("AddControl", parentName, controlType, componentName, x, y);
+
+		[DevFlowAction("od.forms-designer.set-bounds", Description = "Move and resize a control in the WinForms designer")]
+		public static string FormsDesignerSetBounds(string componentName, int x, int y, int width, int height) => InvokeFormsDesignerDevFlowAction("SetBounds", componentName, x, y, width, height);
+
+		[DevFlowAction("od.forms-designer.delete-component", Description = "Delete a component in the WinForms designer")]
+		public static string FormsDesignerDeleteComponent(string componentName) => InvokeFormsDesignerDevFlowAction("DeleteComponent", componentName);
+
+		[DevFlowAction("od.forms-designer.select", Description = "Select a named component in the WinForms designer")]
+		public static string FormsDesignerSelect(string componentName) => InvokeFormsDesignerDevFlowAction("Select", componentName);
+
+		[DevFlowAction("od.forms-designer.multi-select", Description = "Set the design-surface selection to the named components")]
+		public static string FormsDesignerMultiSelect(string names) => InvokeFormsDesignerDevFlowAction("MultiSelect", names);
+
+		[DevFlowAction("od.forms-designer.undo", Description = "Undo the last WinForms designer edit")]
+		public static string FormsDesignerUndo() => InvokeFormsDesignerDevFlowAction("Undo");
+
+		[DevFlowAction("od.forms-designer.redo", Description = "Redo the last undone WinForms designer edit")]
+		public static string FormsDesignerRedo() => InvokeFormsDesignerDevFlowAction("Redo");
+
+		[DevFlowAction("od.forms-designer.delete", Description = "Delete the currently selected components in the WinForms designer")]
+		public static string FormsDesignerDelete() => InvokeFormsDesignerDevFlowAction("Delete");
+
+		[DevFlowAction("od.forms-designer.align", Description = "Align the selected components in the WinForms designer")]
+		public static string FormsDesignerAlign(string mode) => InvokeFormsDesignerDevFlowAction("Align", mode);
+
+		[DevFlowAction("od.forms-designer.distribute", Description = "Distribute the selected components evenly in the WinForms designer")]
+		public static string FormsDesignerDistribute(string axis) => InvokeFormsDesignerDevFlowAction("Distribute", axis);
+
+		[DevFlowAction("od.forms-designer.match-size", Description = "Match the selected components' size to the primary selection")]
+		public static string FormsDesignerMatchSize(string mode) => InvokeFormsDesignerDevFlowAction("MatchSize", mode);
+
+		[DevFlowAction("od.forms-designer.nudge", Description = "Nudge the selected components by dx,dy design units")]
+		public static string FormsDesignerNudge(double dx, double dy) => InvokeFormsDesignerDevFlowAction("Nudge", dx, dy);
+
+		[DevFlowAction("od.forms-designer.toolbox.query-item-bounds", Description = "Get the on-screen bounds of a Toolbox row in the shared toolbox")]
+		public static string FormsDesignerQueryToolboxItemBounds(string typeName) => InvokeFormsDesignerDevFlowAction("QueryToolboxItemBounds", typeName);
+
+		[DevFlowAction("od.forms-designer.properties-pad.edit", Description = "Edit a property through the shared Properties pad PropertyItem")]
+		public static string FormsDesignerEditPropertyThroughPropertiesPad(string propertyName, string value) => InvokeFormsDesignerDevFlowAction("EditPropertyThroughPropertiesPad", propertyName, value);
+
+		[DevFlowAction("od.forms-designer.pad-view-mode", Description = "Switch the shared Properties pad grid between Properties and Events views")]
+		public static string FormsDesignerPadViewMode(string mode, string handlerName = null) => InvokeFormsDesignerDevFlowAction("PadViewMode", mode, handlerName);
+
+		[DevFlowAction("od.forms-designer.activate-design", Description = "Switch the active document to its WinForms Design view")]
+		public static string FormsDesignerActivateDesign() => InvokeFormsDesignerDevFlowAction("ActivateDesign");
+
+		[DevFlowAction("od.forms-designer.switch-to-source", Description = "Switch the active document back to its primary Source view")]
+		public static string FormsDesignerSwitchToSource() => InvokeFormsDesignerDevFlowAction("SwitchToSource");
+
+		[DevFlowAction("od.forms-designer.list-smart-tag-actions", Description = "List the smart-tag items for a component in the WinForms designer")]
+		public static string FormsDesignerListSmartTagActions(string componentName) => InvokeFormsDesignerDevFlowAction("ListSmartTagActions", componentName);
+
+		[DevFlowAction("od.forms-designer.invoke-smart-tag-method", Description = "Invoke a smart-tag method item for a component")]
+		public static string FormsDesignerInvokeSmartTagMethod(string componentName, int listIndex, int itemIndex) => InvokeFormsDesignerDevFlowAction("InvokeSmartTagMethod", componentName, listIndex, itemIndex);
+
+		[DevFlowAction("od.forms-designer.list-verbs", Description = "List the designer verbs for a component in the WinForms designer")]
+		public static string FormsDesignerListVerbs(string componentName) => InvokeFormsDesignerDevFlowAction("ListVerbs", componentName);
+
+		[DevFlowAction("od.forms-designer.invoke-verb", Description = "Invoke a designer verb for a component in the WinForms designer")]
+		public static string FormsDesignerInvokeVerb(string componentName, int verbIndex) => InvokeFormsDesignerDevFlowAction("InvokeVerb", componentName, verbIndex);
+
 		[DevFlowAction("od.sdk.list", Description = "List discovered .NET SDKs and which one is currently selected/effective")]
 		public static string ListDotNetSdks()
 		{

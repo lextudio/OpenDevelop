@@ -118,9 +118,18 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 
 			TcpClient? tcp = null;
 			JsonRpc? rpc = null;
+			// Fail fast if the child process exits before connecting — don't wait the
+			// full 30 seconds on TCP accept when the child has already crashed.
+			using var childExitCts = new CancellationTokenSource();
+			process.Exited += (_, _) => {
+				try { childExitCts.Cancel(); } catch (ObjectDisposedException) { }
+			};
+			if (process.HasExited)
+				childExitCts.Cancel();
 			try {
-				tcp = await listener.AcceptTcpClientAsync(cancellationToken).AsTask()
-					.WaitAsync(TimeSpan.FromSeconds(30), cancellationToken).ConfigureAwait(false);
+				using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, childExitCts.Token);
+				tcp = await listener.AcceptTcpClientAsync(linkedCts.Token).AsTask()
+					.WaitAsync(TimeSpan.FromSeconds(30), linkedCts.Token).ConfigureAwait(false);
 				var stream = tcp.GetStream();
 				var handler = new HeaderDelimitedMessageHandler(stream, stream, new SystemTextJsonFormatter());
 				rpc = new JsonRpc(handler);
@@ -128,13 +137,20 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 				this.tcp = tcp;
 				this.rpc = rpc;
 				await OnConnectedAsync(rpc, token, cancellationToken).ConfigureAwait(false);
-			} catch {
+			} catch (Exception ex) {
 				rpc?.Dispose();
 				tcp?.Dispose();
-				if (!process.HasExited)
+				var childExited = process.HasExited;
+				var exitCode = childExited ? process.ExitCode : -1;
+				if (!childExited)
 					process.Kill(entireProcessTree: true);
+				var childLog = ChildLog;
 				process.Dispose();
 				started = false;
+				if (childExitCts.IsCancellationRequested && childExited)
+					throw new InvalidOperationException(
+						$"The designer host process exited before connecting (exit code {exitCode})." +
+						(string.IsNullOrEmpty(childLog) ? "" : $" Child log:{Environment.NewLine}{childLog}"), ex);
 				throw;
 			}
 		}

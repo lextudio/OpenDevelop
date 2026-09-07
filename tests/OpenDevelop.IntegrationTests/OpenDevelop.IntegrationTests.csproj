@@ -64,6 +64,85 @@
              Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true" />
   </Target>
 
+  <!-- Same deal for the language-service addins: FSharpBinding.csproj deploys its LSP-backed
+       backend to AddIns/BackendBindings/FSharpBinding/, and AvalonEdit.AddIn.csproj deploys the
+       generic text-editor DisplayBinding to AddIns/DisplayBindings/AvalonEdit/ (which is what
+       actually attaches any language service's completion/format/diagnostics binding to a real
+       editor view - without it, files fall back to an empty SimpleViewContent and every
+       language-service test looks like "the LSP isn't available" when it's really just an
+       undeployed addin). SharpDevelop.csproj doesn't reference either as a ProjectReference
+       since they're runtime-discovered plugins, not compile-time dependencies - so building
+       only the main app never produces them. Build them here so a filtered language-service
+       test run never launches against a stale/missing addin. -->
+  <ItemGroup>
+    <_LanguageAddinProject Include="../../src/AddIns/BackendBindings/FSharpBinding/FSharpBinding.csproj" />
+    <_LanguageAddinProject Include="../../src/AddIns/DisplayBindings/AvalonEdit.AddIn/AvalonEdit.AddIn.csproj" />
+    <!-- RegisterDevFlowActionsCommand (WinUIXamlDesigner.AddIn) resolves these two in-process
+         runtime-host bootstraps via Type.GetType("...,AssemblyName") at startup, which only
+         succeeds if the named assembly already sits deployed next to the addin's own DLL - and
+         WinUIXamlDesigner.AddIn.csproj does not reference either as a ProjectReference (they are
+         runtime-discovered plugins, exactly like FSharpBinding/AvalonEdit above). Without
+         ProGPUHost in particular, EVERY WinUI/Uno document fails with "runtime host is not
+         installed", including Uno ones - ProGPU is supposed to be the always-available fallback
+         when the out-of-process Uno/Microsoft children aren't deployed, but it can't fall back if
+         it was never registered in the first place. -->
+    <_LanguageAddinProject Include="../../src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.ProGPUHost/ICSharpCode.WinUIXamlDesigner.ProGPUHost.csproj" />
+    <_LanguageAddinProject Include="../../src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.UnoDesignHost/ICSharpCode.WinUIXamlDesigner.UnoDesignHost.csproj" />
+    <!-- VBBinding.vbproj deploys to AddIns/BackendBindings/VBBinding/ - without it, every VB.NET
+         language-service test fails with "no language service for file" instead of exercising
+         anything, for the same undeployed-addin reason as FSharpBinding above. -->
+    <_LanguageAddinProject Include="../../src/AddIns/BackendBindings/VBBinding/Project/VBBinding.vbproj" />
+  </ItemGroup>
+  <Target Name="BuildLanguageAddinsForIntegrationTests" BeforeTargets="Build">
+    <MSBuild Projects="@(_LanguageAddinProject)" Targets="Build" BuildInParallel="true"
+             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true" />
+  </Target>
+
+  <!-- The WinForms and WinUI/Uno designers render through out-of-process child hosts that are
+       separate deployables from their addin's own DLL (they self-copy into a subfolder next to
+       it via each project's own DeployToAddIns target). Without them, every designer test fails at
+       the point it waits for a real render - "The out-of-process WinForms designer is not loaded"
+       / "WinUI/Uno runtime host is not installed" - which reads like a runtime/rendering bug but
+       is really just a missing build step, exactly like the language addins above. The Microsoft
+       WinUI child (WinUIXamlDesigner.MicrosoftHost) is intentionally not built here - it requires
+       VS's MSBuild for its UseWinUI/PRI toolchain (see the repo's WinUI section for the
+       Windows-only build command) and only matters for WinUIOnly_*/DesignerBackend=Microsoft
+       tests, not the cross-platform Uno/LibreWinForms path this project builds by default. -->
+  <ItemGroup>
+    <_OutOfProcessHostProject Include="../../src/AddIns/DisplayBindings/FormsDesigner/Host/FormsDesigner.Host.csproj" />
+    <_OutOfProcessHostProject Include="../../src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.UnoHost/WinUIXamlDesigner.UnoHost.csproj" />
+  </ItemGroup>
+  <Target Name="BuildOutOfProcessHostsForIntegrationTests" BeforeTargets="Build">
+    <MSBuild Projects="@(_OutOfProcessHostProject)" Targets="Build" BuildInParallel="true"
+             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true" />
+  </Target>
+
+  <!-- The rest of the addins this suite's tests actually exercise, none referenced as
+       ProjectReferences by SharpDevelop.csproj for the same runtime-discovered-plugin reason as
+       every group above - on a checkout where only the main app was ever built, their tests fail
+       with symptoms that read like real bugs (e.g. "no language service for file" for C#,
+       AddInsList_ContainsGitAddIn / UnitTestingService_IsAvailable coming back empty, a WPF/ILSpy/
+       NuGet/ASP.NET Core pad never appearing) but are really just this same missing-deployment
+       problem. Deliberately NOT the whole solution: this repo also carries a number of legacy
+       net45-targeting addins (Reporting, Data/EDMDesigner, Profiler, MachineSpecifications,
+       CodeAnalysis, AspNet.Mvc, ...) that were never migrated and fail NU1201 against the
+       modernized net10.0 Core/Base projects - only add a project here once a test actually needs
+       it. -->
+  <ItemGroup>
+    <_CoreAddinProject Include="../../src/AddIns/BackendBindings/CSharpBinding/Project/CSharpBinding.csproj" />
+    <_CoreAddinProject Include="../../src/AddIns/VersionControl/GitAddIn/GitAddIn.csproj" />
+    <_CoreAddinProject Include="../../src/AddIns/Analysis/UnitTesting/UnitTesting.csproj" />
+    <_CoreAddinProject Include="../../src/AddIns/DisplayBindings/ClassDiagram/ClassDiagramAddin/ClassDiagramAddin.csproj" />
+    <_CoreAddinProject Include="../../src/AddIns/DisplayBindings/WpfDesign/WpfDesign.AddIn/WpfDesign.AddIn.csproj" />
+    <_CoreAddinProject Include="../../src/AddIns/DisplayBindings/ILSpyAddIn/ILSpyAddIn.csproj" />
+    <_CoreAddinProject Include="../../src/AddIns/Misc/PackageManagement/Project/PackageManagement.csproj" />
+    <_CoreAddinProject Include="../../src/AddIns/BackendBindings/AspNetCore/Binding/AspNetCore.AddIn.csproj" />
+  </ItemGroup>
+  <Target Name="BuildCoreAddinsForIntegrationTests" BeforeTargets="Build">
+    <MSBuild Projects="@(_CoreAddinProject)" Targets="Build" BuildInParallel="true"
+             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true" />
+  </Target>
+
   <!-- One integration-test process owns one IDE process and drives all three Microsoft hosts.
        Keep this entry point in the test project (rather than a sidecar script) so the same
        fixture, artifacts and xUnit reporting are used in CI and locally. The backend choices

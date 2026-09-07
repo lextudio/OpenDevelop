@@ -17,7 +17,14 @@ public sealed class FormsDesignerHostClientTests
 	public void ResolveBackend_UsesProjectPropertyUnlessExplicitlyOverridden(
 		string useMicrosoftDesktopRuntime, string runtimeOverride, FormsDesignerBackend expected)
 	{
-		Assert.Equal(expected, FormsDesignerHostClient.ResolveBackend(useMicrosoftDesktopRuntime, runtimeOverride));
+		// An explicit runtimeOverride ("libre"/"microsoft") always wins and is checked before the
+		// platform gate below, so those two cases hold on every OS. Without one, the project
+		// property alone can no longer pick MicrosoftWinForms on macOS/Linux - see the
+		// OperatingSystem.IsWindows() gate this expectation mirrors from
+		// ResolveBackend_WithNoExplicitChoice_PicksByTargetFrameworkOnWindows above.
+		var effectiveExpected = string.IsNullOrEmpty(runtimeOverride) && !OperatingSystem.IsWindows()
+			? FormsDesignerBackend.LibreWinForms : expected;
+		Assert.Equal(effectiveExpected, FormsDesignerHostClient.ResolveBackend(useMicrosoftDesktopRuntime, runtimeOverride));
 	}
 
 	/// <summary>
@@ -39,7 +46,11 @@ public sealed class FormsDesignerHostClientTests
 	public void ResolveBackend_WithNoExplicitChoice_PicksByTargetFrameworkOnWindows(
 		string targetFramework, FormsDesignerBackend expected)
 	{
-		Assert.Equal(expected, FormsDesignerHostClient.ResolveBackend("", "", targetFramework));
+		// The Microsoft WinForms runtime is only ever available on Windows - ResolveBackend forces
+		// LibreWinForms on macOS/Linux regardless of TFM (see its own doc comment), so a Windows-TFM
+		// case's "expected" only holds when actually running on Windows.
+		var effectiveExpected = OperatingSystem.IsWindows() ? expected : FormsDesignerBackend.LibreWinForms;
+		Assert.Equal(effectiveExpected, FormsDesignerHostClient.ResolveBackend("", "", targetFramework));
 	}
 
 	[Fact]

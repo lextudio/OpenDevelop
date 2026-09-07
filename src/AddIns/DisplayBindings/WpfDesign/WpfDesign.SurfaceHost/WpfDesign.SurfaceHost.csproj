@@ -19,6 +19,10 @@
     <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
     <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Server\Designer.Server.csproj" />
     <PackageReference Include="StreamJsonRpc" />
+    <!-- Ensure ProGPU.Wpf.Interop.dll is in the build output for the out-of-process host.
+         The SDK brings LibreWPF.Interop transitively, but the reference needs PrivateAssets=none
+         so the DLL is copied to output (not consumed at compile-only). -->
+    <PackageReference Update="LibreWPF.Interop" PrivateAssets="none" />
   </ItemGroup>
 
   <!-- Deploy this whole build output into a "Host" subfolder next to the deployed

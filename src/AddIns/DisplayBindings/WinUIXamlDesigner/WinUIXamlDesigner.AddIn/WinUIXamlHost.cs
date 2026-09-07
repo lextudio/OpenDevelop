@@ -381,8 +381,16 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 
 	public XamlFrameworkContext Framework { get; }
 	public bool HasRenderedPreview => runtime?.HasRenderedPreview == true;
-	public string StatusText => runtime?.StatusText ??
-		"WinUI/Uno runtime host is not installed. The WPF XamlReader compatibility renderer is disabled.";
+	// ProGPU (the WPF XamlReader-compatible fallback) only accepts XamlRuntimeKind.Uno, so a null
+	// runtime here is only ever reachable for a MicrosoftWinUI document whose out-of-process child
+	// host isn't deployed - never for Uno, which always has ProGPU as a safety net. Name the
+	// specific missing runtime instead of "WinUI/Uno", which wrongly implies either could be at
+	// fault.
+	public string StatusText => runtime?.StatusText ?? Framework.Runtime switch {
+		XamlRuntimeKind.MicrosoftWinUI => "Microsoft WinUI 3 runtime host is not installed.",
+		XamlRuntimeKind.Uno => "Uno runtime host is not installed. The WPF XamlReader compatibility renderer is disabled.",
+		_ => "No WinUI/Uno runtime host is available for this document."
+	};
 	public void LoadXaml(string text) => runtime?.LoadXaml(text ?? string.Empty);
 
 	/// <summary>Applies a single property change to the live render without a full XAML

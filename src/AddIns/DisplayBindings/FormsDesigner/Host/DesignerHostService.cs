@@ -234,11 +234,22 @@ sealed class DesignerHostService : IDesignerChildService
 		// x/y arrive in surface (rendered bitmap) space; Control/ToolStripItem bounds are
 		// client-space, so strip the root form's non-client offset first.
 		var offset = RootClientOffset(root);
+		// On MICROSOFT_WINFORMS, root.Height (Form.Height) is the native outer window height and
+		// already includes the non-client offset above. The portable host's root.Height is
+		// client-only (LibreWinForms has no real non-client frame), so the simulated title bar's
+		// height must be added on top of it to get the true painted bounds - otherwise a press in
+		// the bottom PortableFormTitleBarHeight pixels of a portable Form's visible client area
+		// (which FindDeepest legitimately found no child under) would be wrongly rejected here.
+#if MICROSOFT_WINFORMS
+		var maxY = root?.Height ?? 0;
+#else
+		var maxY = (root?.Height ?? 0) + offset.Y;
+#endif
 		var hit = root == null ? null
 			: FindDeepest(root, new Point(x - offset.X, y - offset.Y), host?.Container)
 				// A press on the caption/border falls outside the client area entirely; treat it
 				// as selecting the form itself rather than clearing the selection.
-				?? (x >= 0 && y >= 0 && x < root.Width && y < root.Height ? root : null);
+				?? (x >= 0 && y >= 0 && x < root.Width && y < maxY ? root : null);
 		return new DesignerHitTestResult {
 			ComponentName = hit?.Site?.Name ?? "",
 			ComponentType = hit?.GetType().FullName ?? ""
@@ -2641,12 +2652,20 @@ sealed class DesignerHostService : IDesignerChildService
 	}
 #endif
 
+	/// <summary>Height of the simulated title bar <see cref="PaintFormChrome"/> overlays on a
+	/// portable-host Form render, since LibreWinForms's Form.Size is client-only (no real HWND,
+	/// so no native non-client frame to leave room for). Shared with <see cref="RootClientOffset"/>
+	/// and <see cref="Render"/> so the reported hit-test/selection geometry always matches the
+	/// extra space actually reserved and painted.</summary>
+	const int PortableFormTitleBarHeight = 30;
+
 	/// <summary>How far the painted bitmap's origin sits outside the root form's client area:
 	/// native Form.DrawToBitmap paints the outer window (border + caption) while every child
 	/// Location is client-space. Surface (bitmap) coordinates therefore differ from client
 	/// coordinates by this much, in both directions - <see cref="SurfaceLocation"/> adds it when
 	/// reporting bounds, and <see cref="HitTest"/> must subtract it before comparing an incoming
-	/// surface point against client-space Control/ToolStripItem bounds.</summary>
+	/// surface point against client-space Control/ToolStripItem bounds. On the portable host this
+	/// is the simulated title bar's height instead of a native border (see PortableFormTitleBarHeight).</summary>
 	static Point RootClientOffset(Control? root)
 	{
 #if MICROSOFT_WINFORMS
@@ -2654,6 +2673,9 @@ sealed class DesignerHostService : IDesignerChildService
 			var border = Math.Max(0, (form.Width - form.ClientSize.Width) / 2);
 			return new Point(border, Math.Max(border, form.Height - form.ClientSize.Height - border));
 		}
+#else
+		if (root is Form)
+			return new Point(0, PortableFormTitleBarHeight);
 #endif
 		return Point.Empty;
 	}
@@ -2673,6 +2695,11 @@ sealed class DesignerHostService : IDesignerChildService
 		// must match the root selection rectangle and the child SurfaceLocation offsets above.
 		if (root is Form)
 			renderSize = root.Size;
+#else
+		// The portable Form has no native non-client frame to grow the bitmap for, so reserve the
+		// extra room ourselves - matching the RootClientOffset used for hit-testing/selection.
+		if (root is Form)
+			renderSize = new Size(renderSize.Width, renderSize.Height + PortableFormTitleBarHeight);
 #endif
 		Trace("Render creating bitmap");
 		var bitmap = new Bitmap(Math.Max(1, renderSize.Width), Math.Max(1, renderSize.Height));
@@ -2690,13 +2717,20 @@ sealed class DesignerHostService : IDesignerChildService
 #else
 			Trace("Render painting portable frame");
 			if (designSize.HasValue) {
-				PaintStandardControl(root, graphics, new Rectangle(Point.Empty, renderSize));
+				var titleBarHeight = root is Form ? PortableFormTitleBarHeight : 0;
+				var clientBounds = new Rectangle(0, titleBarHeight, renderSize.Width, Math.Max(0, renderSize.Height - titleBarHeight));
+				PaintStandardControl(root, graphics, clientBounds);
 				foreach (Control child in root.Controls) {
 					var state = graphics.Save();
-					graphics.TranslateTransform(child.Left, child.Top);
+					graphics.TranslateTransform(child.Left, child.Top + titleBarHeight);
 					PaintControl(child, graphics);
 					graphics.Restore(state);
 				}
+				// LibreWinForms Forms have no real HWND, so nothing paints the title bar the way
+				// DrawToBitmap's native non-client frame does for MICROSOFT_WINFORMS above - overlay
+				// the same simulated chrome so the root component still visually reads as a form.
+				if (root is Form formForChrome)
+					PaintFormChrome(formForChrome, graphics, new Rectangle(Point.Empty, renderSize));
 			} else PaintControl(root, graphics);
 #endif
 		}
@@ -2865,6 +2899,9 @@ sealed class DesignerHostService : IDesignerChildService
 			graphics.FillRectangle(new SolidBrush(SystemColors.Highlight), 2, 2, fill, Math.Max(0, bounds.Height - 4));
 		} else if (control is Label) {
 			graphics.DrawString(control.Text ?? "", font, foreground, new PointF(0, Math.Max(0, (bounds.Height - font.Height) / 2f)));
+		} else if (control is Form) {
+			// The Form's Text is shown in the simulated title bar (PaintFormChrome), not restated
+			// here as body text.
 		} else if (!String.IsNullOrEmpty(control.Text)) {
 			graphics.DrawString(control.Text, font, foreground, new PointF(3, 3));
 		}

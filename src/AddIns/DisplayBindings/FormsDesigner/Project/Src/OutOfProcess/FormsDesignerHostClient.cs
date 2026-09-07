@@ -78,9 +78,13 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				return FormsDesignerBackend.MicrosoftWinForms;
 			if (string.Equals(selectedOverride, "libre", StringComparison.OrdinalIgnoreCase))
 				return FormsDesignerBackend.LibreWinForms;
+			// On macOS/Linux, Microsoft WinForms runtime is unavailable — always use LibreWinForms
+			// regardless of project properties, unless an explicit env override was given above.
+			if (!OperatingSystem.IsWindows())
+				return FormsDesignerBackend.LibreWinForms;
 			if (bool.TryParse(useMicrosoftDesktopRuntime, out var useMicrosoft))
 				return useMicrosoft ? FormsDesignerBackend.MicrosoftWinForms : FormsDesignerBackend.LibreWinForms;
-			if (OperatingSystem.IsWindows() && TargetsWindowsPlatform(targetFramework))
+			if (TargetsWindowsPlatform(targetFramework))
 				return FormsDesignerBackend.MicrosoftWinForms;
 			return FormsDesignerBackend.LibreWinForms;
 		}
