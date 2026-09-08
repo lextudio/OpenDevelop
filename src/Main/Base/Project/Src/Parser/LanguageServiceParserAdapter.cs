@@ -289,11 +289,15 @@ public sealed class LanguageServiceParserAdapter : IParserService
 	// found" and silently downgraded to an ErrorProject placeholder with no items at all. With
 	// that environment set up correctly, IProject.Items populates exactly as designed (755 items
 	// for a normal WinFormsSample project, confirmed live) and RoslynParser resolves real types.
+	// This is strictly an in-process compatibility fallback. In OD_ROSLYN_HOST mode callers
+	// must consume language-service DTOs (outline, diagnostics, navigation, etc.); attempting the
+	// fallback would only throw because RoslynWorkspaceHelper correctly refuses to create a second
+	// workspace. Keeping that decision here avoids an exception/log entry for every parse request.
 	static readonly ICSharpCode.SharpDevelop.Roslyn.RoslynParser roslynParser = new ICSharpCode.SharpDevelop.Roslyn.RoslynParser();
 
 	static IUnresolvedFile CreateUnresolvedFile(FileName fileName, ITextSource fileContent, CancellationToken cancellationToken)
 	{
-		if (IsCSharpOrVisualBasic(fileName)) {
+		if (IsCSharpOrVisualBasic(fileName) && !ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.RemoteHostMode) {
 			try {
 				// ParseAsync runs this on a thread-pool thread, but fileContent can be a live,
 				// UI-thread-owned AvalonEdit TextDocument - reading .Text off-thread throws

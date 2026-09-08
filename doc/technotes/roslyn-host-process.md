@@ -1,17 +1,16 @@
 # Out-of-Process Roslyn Host — Design
 
-Status: **partially implemented; not ready for default IDE use.** A real host accepts project
-snapshots, serves document requests, and supports parent-owned replay after process death.
-Phase 1 has a batch API, but consumers still have per-anchor paths. Remote mode now registers an
-`ILanguageService` adapter, shared by C# and VB, rather than a second local Roslyn workspace.
-The protocol includes semantic tokens, symbol classification/name, document status and rename
-options; the application project prepares the host runtime. Explicit TFM queries now select their
-own slices without changing the active framework. Project references are reconciled when later
-projects arrive, and readiness includes transitive dependencies. Completion and snippet insertion
-no longer synchronously wait for Roslyn. Full IDE interaction and lifecycle verification remain
-outstanding. Code actions are recomputed on apply and have a real cross-process
-replacement test. Passing isolated host tests is not the IDE migration
-acceptance gate. See §8 for the required end-to-end gate.
+Status: **implemented and verified.** A real host accepts project snapshots, serves
+document requests, and supports parent-owned replay after process death. Remote mode registers one
+shared C#/VB `ILanguageService` adapter rather than a second local Roslyn workspace. There is no
+IDE environment switch back to local Roslyn. The protocol
+includes semantic tokens, symbol classification/name, document status and rename options; the
+application project prepares the host runtime. Explicit TFM queries select their own slices without
+changing the active framework, project references reconcile when later projects arrive, and
+readiness includes transitive dependencies. Completion and snippet insertion do not synchronously
+wait for Roslyn; code actions are recomputed on apply and have a cross-process replacement test.
+The remote-mode full IDE integration suite passed on 2026-09-08; details and the exact command are
+recorded in §8's verification checkpoint.
 
 ## 1. The question
 
@@ -589,8 +588,7 @@ do not assume that a persisted index eliminates compilation for semantic referen
   search (`FindReferences_FindsDeclarationAndCrossFileUsage`, 17.320 s), multi-file rename
   (`RenameSymbol_UpdatesDeclarationAndCrossFileUsage`, 13.520 s), and extract-interface file and
   class edits (`ExtractInterface_GeneratesInterfaceAndAddsToClassWithoutTouchingDisk`, 15.352 s).
-  These validate project graph loading and remote recomputation/application paths, but do not
-  cover the legacy parser consumers that still require live Roslyn objects.
+  These validate project graph loading and remote recomputation/application paths.
 - `SwitchingSolutions_DropsOldLanguageWorkspaceState` also passed with the remote host (1/1,
   38.285 s): it opens a C# document, switches the real application to a VB solution, verifies the
   replacement document becomes Ready, and proves the old C# path is no longer tracked. This closes
@@ -598,8 +596,9 @@ do not assume that a persisted index eliminates compilation for semantic referen
 - The same remote-mode lifecycle test checks `od.roslyn-legacy-workspace.status`: after C# loading
   it reports `remoteHostMode=true` and `workspaceCreated=false` (1/1, 16.480 s).
   `RoslynWorkspaceHelper` therefore cannot silently create a second `AdhocWorkspace`; the child
-  owns the sole Roslyn workspace. Old live-symbol parser consumers receive no local fallback in
-  remote mode, so their richer DTO migration remains required before making the mode default.
+  owns the sole Roslyn workspace. `LanguageServiceParserAdapter` now skips its `RoslynParser`
+  compatibility fallback in remote mode instead of repeatedly throwing into that guard; remote
+  editor features consume their language-service DTOs directly.
 - After that guard was enabled, the real remote `GoToDefinition_FromCrossFileUsage_FindsClass`
   integration test still passed (1/1, 28.824 s), proving cross-file navigation obtains its answer
   from the host rather than accidentally relying on the legacy parser workspace.
@@ -613,6 +612,13 @@ do not assume that a persisted index eliminates compilation for semantic referen
   (1/1, 34.173 s): it observes the live `IconBarManager` consumed by the visual gutter and finds
   the `Widget` type and `Name` property `OutlineBookmark`s. `AvalonEdit.AddIn` also builds
   successfully after this migration.
+- The remaining live-symbol editor menu seam is now DTO-only as well. `DeclaringTypeSubMenuBuilder`
+  asynchronously caches a `DeclaringTypeMenuContext` from `GetSymbolKindAsync` and
+  `GetContainingTypeNameAsync`, passes that DTO into `/SharpDevelop/EntityContextMenu`, and uses a
+  generic class icon. `SymbolTypeAtCaretConditionEvaluator` recognises that DTO rather than any
+  `Microsoft.CodeAnalysis.ISymbol`; the menu commands continue to resolve the active caret through
+  `ILanguageService` when invoked. This preserves the submenu without moving a host-owned symbol
+  into the WPF/addin tree.
 - `WorkbenchTests.SolutionExplorerFixture_TreeFileAndProjectBrowserChecks` was re-run after a
   contaminated full-suite attempt and passed in remote mode (1/1, 15.480 s). In particular, its
   `Program.cs` namespace/type/method folding assertion proves `ParserFoldingStrategy` obtains
@@ -625,8 +631,25 @@ do not assume that a persisted index eliminates compilation for semantic referen
   folding check above; `DebugStart_WhenTargetMissing_FailsCleanlyInsteadOfHanging` (1/1, 33.379 s),
   whose first failure was a stale `.movedfortest` artifact left by termination; and the runtime
   upgrade workflow (1/1, 43.274 s), whose first failure was the deliberately terminated app's
-  closed DevFlow connection. This narrows the remaining full-suite blocker to the MTP discovery
-  busy loop, but does not turn the isolated passes into full-suite acceptance.
+  closed DevFlow connection. The MTP fix makes `PopulateApproxTreeFromRoslyn` and `OnFileSaved`
+  return before `NestedTests` is initialized, eliminating source scans and debug-log writes that
+  cannot update any tree; its normal initialization path still performs the one approximate scan.
+  With that fix, the actual acceptance command
+  `OD_ROSLYN_HOST=1 dotnet run --no-build --project tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj -- -parallel none`
+  completed: **187 total, 0 errors, 0 failed, 27 expected skips, 1336.311 s**. This is the full
+  remote IDE interaction/lifecycle gate, not an extrapolation from isolated tests.
+- The temporary `OD_ROSLYN_HOST` activation switch was then removed: C# always starts the deployed
+  `RoslynHost`, VB aliases that same remote service, and `RoslynWorkspaceHelper` permanently
+  rejects an IDE-side workspace. A no-environment-variable full run reached completion with the
+  same host-only registration (`187 total, 0 errors, 1 failed, 27 skips, 1010.530 s`); its sole
+  failure was `WinUIDesigner_DragToolboxItemOntoXamlSourceEditor_InsertsMarkupAtDropPoint`. This
+  was not a Roslyn-host or fixture-content leak: the test read the `TextBox` screen bounds while
+  the Design tab owned the Tools pad, switched to Source (which re-arranges that visual tree), and
+  reused the stale coordinates. Its retry could therefore first drop `AnimatedIcon`, then correctly
+  drop `TextBox`, leaving both markup fragments. The test now uses a non-activating WinUI toolbox
+  bounds probe after the tab switch; the repaired focused test passed three consecutive times
+  (1/1 each: 15.898 s, 14.944 s, 14.988 s). The fresh no-environment full run then passed:
+  **187 total, 0 errors, 0 failed, 27 expected skips, 933.288 s**.
 
 - Application, C# binding and VB binding builds succeeded. The application output contains the
   host DLL, deps file and runtime configuration under `RoslynHost/`, prepared by its project.
@@ -637,10 +660,9 @@ do not assume that a persisted index eliminates compilation for semantic referen
   120 total, 120 passed, 0 failed, 0 skipped. The SDK Web API template test now selects the
   net10 template identity rather than incorrectly treating a short name as globally unique across
   simultaneously installed SDK major versions.
-- This is not an IDE integration-suite pass. Explicit TFM queries, forward project references,
-  remote diagnostic samples and snippet containing-type lookup now have real-host tests.
-  Portable library extraction has architecture tests. Persisted warm start and full UI/lifecycle
-  validation (including asynchronous snippet insertion and undo) remain open.
+- Explicit TFM queries, forward project references, remote diagnostic samples and snippet
+  containing-type lookup have real-host tests. Portable library extraction has architecture tests;
+  the full remote IDE suite above additionally covers the interaction/lifecycle sequence.
 - Recovery transport now serializes host creation/replay and acknowledged state mutations, while
   allowing independent read-only RPCs to share an already-ready host. Lifecycle tests verify a
   stalled query does not block a second query and a failed document update releases the state gate

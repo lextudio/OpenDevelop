@@ -182,6 +182,20 @@ public static class WinUIXamlDesignerDevFlowActions
 		// IToolsHost.ToolsContent - i.e. actually realize the WinUI toolbox - in the first place.
 		if (ActivateDesigner() == null)
 			return Failure("No WinUI/Uno designer is active");
+		return QueryRealizedToolboxItemBounds(controlName);
+	}
+
+	[DevFlowAction("od.winui-toolbox.query-item-bounds", Description = "Get the real on-screen bounds of a WinUI/Uno Toolbox row without changing the active view; use for a source-editor drop")]
+	public static string QueryToolboxItemBoundsWithoutActivatingDesigner(string controlName)
+	{
+		// The source view supplies this same singleton through IToolsHost. Do not call
+		// ActivateDesigner here: it replaces the Tools pad's visual tree and invalidates the
+		// returned screen coordinates as soon as a source-editor test switches back.
+		return QueryRealizedToolboxItemBounds(controlName);
+	}
+
+	static string QueryRealizedToolboxItemBounds(string controlName)
+	{
 
 		if (WinUIXamlToolbox.Instance.ToolboxControl is not System.Windows.Controls.ListBox list)
 			return Failure("Toolbox control is not a ListBox");

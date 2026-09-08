@@ -52,6 +52,15 @@ namespace ICSharpCode.UnitTesting
 		// did - this just seeds it with an approximate answer first instead of nothing.
 		void PopulateApproxTreeFromRoslyn()
 		{
+			// FileSaved can fire repeatedly while the workbench is opening/restoring documents.
+			// Before the Unit Tests tree has been expanded there is no collection to update; doing a
+			// full source scan followed by PopulateTree() merely returns immediately. In a full UI
+			// run that became a save/log feedback storm (millions of calls while initialized=false),
+			// starving unrelated DevFlow and language-service work. OnNestedTestsInitialized always
+			// invokes this method once the collection exists, so skipping this pre-initialization
+			// work loses neither the fast approximation nor the authoritative MTP pass.
+			if (!NestedTestsInitialized)
+				return;
 			try {
 				var candidates = RoslynTestScanner.ScanFiles(GetCompileSourceFiles());
 				if (candidates.Count == 0)
@@ -190,7 +199,6 @@ namespace ICSharpCode.UnitTesting
 
 		void PopulateTree()
 		{
-			LoggingService.Debug($"[StreamDiag] MtpTestProject.PopulateTree called (project={DisplayName}) initialized={NestedTestsInitialized} t={DateTime.UtcNow:HH:mm:ss.fff}");
 			if (!NestedTestsInitialized)
 				return;
 
@@ -242,6 +250,8 @@ namespace ICSharpCode.UnitTesting
 
 		void OnFileSaved(object? sender, FileNameEventArgs e)
 		{
+			if (!NestedTestsInitialized)
+				return;
 			if (string.IsNullOrEmpty(e?.FileName))
 				return;
 

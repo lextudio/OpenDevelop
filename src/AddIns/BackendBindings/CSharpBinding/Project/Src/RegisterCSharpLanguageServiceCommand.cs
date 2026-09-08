@@ -4,7 +4,6 @@ using System.Threading.Tasks;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.LanguageServices;
-using ICSharpCode.SharpDevelop.LanguageServices.Roslyn;
 using ICSharpCode.SharpDevelop.LanguageServices.Protocol;
 using ICSharpCode.SharpDevelop.Project;
 
@@ -23,23 +22,18 @@ namespace CSharpBinding
 		{
 			registry = SD.GetRequiredService<LanguageServiceRegistry>();
 			projectService = SD.GetRequiredService<IProjectService>();
-			if (Environment.GetEnvironmentVariable("OD_ROSLYN_HOST") == "1") {
-				var path = RoslynHostProcessTransport.TryResolveDefaultHostPath()
-					?? throw new InvalidOperationException("Roslyn host was not deployed. Rebuild the OpenDevelop application.");
-				var protocol = new RemoteRoslynLanguageProtocol(new RecoveringRoslynTransport(() => new RoslynHostProcessTransport(path)));
-				service = new RemoteLanguageService(protocol, async (document, token) => {
-					var project = projectService.FindProjectContainingFile(FileName.Create(document.FileName));
-					if (project != null)
-						foreach (var snapshot in LanguageServiceProjectSnapshotFactory.FromProjectAllTargetFrameworks(project))
-							await ((RemoteLanguageService)service).LoadProjectAsync(snapshot, token);
-				});
-			} else {
-				service = new CSharpVBLanguageService(fileName => {
-					var project = projectService.FindProjectContainingFile(FileName.Create(fileName));
-					return project == null ? Array.Empty<LanguageServiceProjectSnapshot>()
-						: LanguageServiceProjectSnapshotFactory.FromProjectAllTargetFrameworks(project);
-				});
-			}
+			// The IDE never owns a Roslyn workspace. The application project (and test projects that
+			// host this add-in) deploy RoslynHost/ through a project reference; failing this lookup is
+			// a packaging error, not a reason to silently instantiate an in-process fallback.
+			var path = RoslynHostProcessTransport.TryResolveDefaultHostPath()
+				?? throw new InvalidOperationException("Roslyn host was not deployed. Rebuild the OpenDevelop application.");
+			var protocol = new RemoteRoslynLanguageProtocol(new RecoveringRoslynTransport(() => new RoslynHostProcessTransport(path)));
+			service = new RemoteLanguageService(protocol, async (document, token) => {
+				var project = projectService.FindProjectContainingFile(FileName.Create(document.FileName));
+				if (project != null)
+					foreach (var snapshot in LanguageServiceProjectSnapshotFactory.FromProjectAllTargetFrameworks(project))
+						await ((RemoteLanguageService)service).LoadProjectAsync(snapshot, token);
+			});
 			registration = registry.RegisterExtension(".cs", service);
 			projectService.SolutionOpened += OnSolutionOpened;
 			projectService.SolutionClosed += OnSolutionClosed;
@@ -93,8 +87,6 @@ namespace CSharpBinding
 			try {
 				if (service is RemoteLanguageService remote)
 					await remote.CloseSolutionAsync(CancellationToken.None);
-				else if (service is CSharpVBLanguageService local)
-					await local.CloseSolutionAsync(solutionDirectory, CancellationToken.None);
 				else
 					await protocol.RoslynSolutionClosedAsync(CancellationToken.None);
 			} catch (Exception ex) {

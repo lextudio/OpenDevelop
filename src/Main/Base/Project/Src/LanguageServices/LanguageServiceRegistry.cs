@@ -75,7 +75,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
             if (service is Protocol.RemoteLanguageService remote)
                 return remote.Protocol;
             // The registry also contains external LSP implementations (TypeScript, XAML, HTML,
-            // ...). OD_ROSLYN_HOST selects where the Roslyn workspace lives; it must not turn an
+            // ...). A Roslyn host is only for the C#/VB remote service; it must not turn an
             // unrelated language server into a client of that workspace merely because both
             // implement ILanguageService.
             if (service is not Roslyn.CSharpVBLanguageService)

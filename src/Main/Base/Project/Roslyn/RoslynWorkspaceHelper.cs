@@ -47,10 +47,10 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 		static readonly Dictionary<string, string> liveOverrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
 		/// <summary>
-		/// Remote mode has exactly one Roslyn workspace: the child host. The legacy parser bridge
+		/// The IDE has exactly one Roslyn workspace: the child host. The legacy parser bridge
 		/// cannot be allowed to silently create a second AdhocWorkspace beside it.
 		/// </summary>
-		public static bool RemoteHostMode => Environment.GetEnvironmentVariable("OD_ROSLYN_HOST") == "1";
+		public static bool RemoteHostMode => true;
 		public static bool IsWorkspaceCreated => workspace != null;
 
 		public static void InvalidateProject(IProject project)
@@ -62,7 +62,7 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 		public static Solution GetSolution()
 		{
 			if (RemoteHostMode)
-				throw new InvalidOperationException("The legacy Roslyn workspace is unavailable while OD_ROSLYN_HOST is enabled.");
+				throw new InvalidOperationException("The legacy Roslyn workspace is unavailable in the IDE; use Roslyn.Host through ILanguageService.");
 			if (workspace == null)
 				workspace = new AdhocWorkspace();
 

@@ -1828,6 +1828,15 @@ public sealed class AddInTests : IAsyncDisposable
             var switched = await _app.InvokeAsync("od.winui-designer.switch-to-source");
             Assert.True(switched.GetProperty("success").GetBoolean(), switched.ToString());
 
+			// Switching tabs replaces/re-arranges the Tools pad's visual tree. The bounds read
+			// above are only valid while the Design tab is active: using them after this switch
+			// occasionally pressed the row now occupying TextBox's *old* coordinates (observed
+			// as an unexpected AnimatedIcon insertion), then a retry inserted TextBox as well.
+			// Query the Source-owned toolbox without re-activating Design, so the drag starts on
+			// the item we assert and the returned coordinates remain valid.
+			toolboxBounds = await _app.InvokeAsync("od.winui-toolbox.query-item-bounds", "TextBox");
+            Assert.True(toolboxBounds.GetProperty("success").GetBoolean(), toolboxBounds.ToString());
+
             // Target the position right before "<TextBlock" - a sibling position where a
             // self-closing "<TextBox />" is well-formed regardless of surrounding whitespace.
             // Anchoring on a narrow single character like "<StackPanel>"'s own closing '>' leaves

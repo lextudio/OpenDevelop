@@ -30,8 +30,6 @@ using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Editor.Dialogs;
 using ICSharpCode.SharpDevelop.Editor.Search;
 using ICSharpCode.SharpDevelop.LanguageServices;
-using ICSharpCode.SharpDevelop.Roslyn;
-using Microsoft.CodeAnalysis;
 using SemanticLanguageService = ICSharpCode.SharpDevelop.LanguageServices.ILanguageService;
 using TextLocation = ICSharpCode.AvalonEdit.Document.TextLocation;
 
@@ -118,7 +116,7 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 	/// <summary>
 	/// Renames the symbol at the caret across the whole solution, via the shared
 	/// <see cref="ILanguageService"/> contract (Roslyn for C#/VB, the equivalent LSP request for
-	/// other languages) rather than talking to Roslyn/<see cref="ISymbol"/> directly - the modern
+/// other languages) rather than talking to a live backend symbol directly - the modern
 	/// replacement for the deleted NRefactory-era ResolveResult-based RenameSymbolCommand/
 	/// FindReferenceService.RenameSymbol.
 	/// </summary>

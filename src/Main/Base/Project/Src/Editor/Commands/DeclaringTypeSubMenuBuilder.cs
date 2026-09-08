@@ -16,21 +16,23 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-// The live-editor-caret path is rewritten against Microsoft.CodeAnalysis directly (see
-// doc/technotes/csharp-roslyn.md, Phase 1 "option (b)"). The IMemberModel path is untouched -
+// The live-editor-caret path deliberately uses only language-service DTOs. In particular it must
+// never put an ISymbol into /SharpDevelop/EntityContextMenu: that menu is built on the IDE side
+// and therefore must work when Roslyn lives in Roslyn.Host. The IMemberModel path is untouched -
 // that's SharpDevelop's separate background project-content model (bookmarks etc.), not part of
-// the ParserService/IParser resolve flow this rewrite targets.
+// the editor/host boundary.
 
+using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Controls;
 
 using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
 using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Dom;
-using ICSharpCode.SharpDevelop.Roslyn;
-using Microsoft.CodeAnalysis;
-using ISymbol = Microsoft.CodeAnalysis.ISymbol;
+using ICSharpCode.SharpDevelop.LanguageServices;
 
 namespace ICSharpCode.SharpDevelop.Editor.Commands
 {
@@ -39,6 +41,30 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 	/// </summary>
 	public class DeclaringTypeSubMenuBuilder : IMenuItemBuilder
 	{
+		readonly struct CaretKey : IEquatable<CaretKey>
+		{
+			public CaretKey(string fileName, int offset, string version)
+			{
+				FileName = fileName;
+				Offset = offset;
+				Version = version;
+			}
+
+			public string FileName { get; }
+			public int Offset { get; }
+			public string Version { get; }
+			public bool Equals(CaretKey other) => Offset == other.Offset
+				&& string.Equals(FileName, other.FileName, StringComparison.OrdinalIgnoreCase)
+				&& string.Equals(Version, other.Version, StringComparison.Ordinal);
+			public override bool Equals(object obj) => obj is CaretKey other && Equals(other);
+			public override int GetHashCode() =>
+				(StringComparer.OrdinalIgnoreCase.GetHashCode(FileName ?? string.Empty), Offset, Version ?? string.Empty).GetHashCode();
+		}
+
+		static readonly object cacheLock = new object();
+		static readonly Dictionary<CaretKey, DeclaringTypeMenuContext> cache = new Dictionary<CaretKey, DeclaringTypeMenuContext>();
+		static readonly HashSet<CaretKey> inFlight = new HashSet<CaretKey>();
+
 		public IEnumerable<object> BuildItems(Codon codon, object parameter)
 		{
 			if (parameter is IMemberModel) {
@@ -46,35 +72,71 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 				return BuildItemsForEntityModelMember((IMemberModel)parameter);
 			}
 
-			ISymbol symbol = parameter as ISymbol;
-			if (symbol == null) {
-				var editor = parameter as ITextEditor ?? SD.GetActiveViewContentService<ITextEditor>();
-				symbol = editor != null ? RoslynWorkspaceHelper.GetSymbolAtCaret(editor) : null;
-			}
-
-			bool isMember = symbol is IMethodSymbol || symbol is IFieldSymbol || symbol is IPropertySymbol || symbol is IEventSymbol;
-			if (!isMember)
+			// This invocation is the recursive builder call made while creating the submenu. The DTO
+			// still lets the condition evaluator decide type/member visibility, without re-entering us.
+			if (parameter is DeclaringTypeMenuContext)
 				return null;
 
-			INamedTypeSymbol declaringType = symbol.ContainingType;
-			if (declaringType == null)
+			var editor = parameter as ITextEditor ?? SD.GetActiveViewContentService<ITextEditor>();
+			if (editor == null || editor.FileName == null)
 				return null;
-
-			var items = new List<object>();
-			var declaringTypeItem = new MenuItem {
-				Header = SD.ResourceService.GetString("SharpDevelop.Refactoring.DeclaringType") + ": " + declaringType.Name,
-				Icon = new Image { Source = RoslynSymbolIcons.GetImage(declaringType) }
-			};
-
-			var subItems = MenuService.CreateMenuItems(null, declaringType, "/SharpDevelop/EntityContextMenu");
-			if (subItems != null) {
-				foreach (var item in subItems) {
-					declaringTypeItem.Items.Add(item);
+			var key = new CaretKey(editor.FileName.ToString(), editor.Caret.Offset, editor.Document.Version?.ToString());
+			DeclaringTypeMenuContext context;
+			lock (cacheLock) {
+				if (!cache.TryGetValue(key, out context)) {
+					BeginPopulate(editor, key);
+					return null;
 				}
 			}
-			items.Add(declaringTypeItem);
+			return BuildItemsForContext(context);
+		}
 
-			return items;
+		static void BeginPopulate(ITextEditor editor, CaretKey key)
+		{
+			if (!inFlight.Add(key))
+				return;
+			var registry = SD.GetService<LanguageServiceRegistry>();
+			if (registry == null || !registry.TryGetService(editor.FileName, out var service)) {
+				inFlight.Remove(key);
+				return;
+			}
+			string text = editor.Document.Text;
+			Task.Run(async () => {
+				DeclaringTypeMenuContext result = null;
+				try {
+					var id = new DocumentId(key.FileName);
+					await service.UpsertDocumentAsync(id, text, CancellationToken.None).ConfigureAwait(false);
+					var kind = await service.GetSymbolKindAsync(id, key.Offset, CancellationToken.None).ConfigureAwait(false);
+					var typeName = kind?.IsMember == true
+						? await service.GetContainingTypeNameAsync(id, key.Offset, CancellationToken.None).ConfigureAwait(false)
+						: null;
+					if (!string.IsNullOrEmpty(typeName))
+						result = new DeclaringTypeMenuContext(typeName, kind);
+				} catch (Exception ex) {
+					LoggingService.Debug("DeclaringTypeSubMenu: language-service query failed. " + ex.Message);
+				} finally {
+					lock (cacheLock) {
+						inFlight.Remove(key);
+						if (result != null) {
+							if (cache.Count >= 64) cache.Clear();
+							cache[key] = result;
+						}
+					}
+				}
+			});
+		}
+
+		IEnumerable<object> BuildItemsForContext(DeclaringTypeMenuContext context)
+		{
+			var declaringTypeItem = new MenuItem {
+				Header = SD.ResourceService.GetString("SharpDevelop.Refactoring.DeclaringType") + ": " + context.Name,
+				Icon = SD.ResourceService.GetImage("Icons.16x16.Class").CreateImage()
+			};
+			var subItems = MenuService.CreateMenuItems(null, context, "/SharpDevelop/EntityContextMenu");
+			if (subItems != null)
+				foreach (var item in subItems)
+					declaringTypeItem.Items.Add(item);
+			return new object[] { declaringTypeItem };
 		}
 
 		IEnumerable<object> BuildItemsForEntityModelMember(IMemberModel memberModel)
@@ -100,5 +162,20 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 
 			return items;
 		}
+	}
+
+	/// <summary>
+	/// Serializable-in-spirit menu state: no backend object or Roslyn symbol crosses into the UI.
+	/// The commands in EntityContextMenu resolve the active caret through ILanguageService when run.
+	/// </summary>
+	public sealed class DeclaringTypeMenuContext
+	{
+		public DeclaringTypeMenuContext(string name, SymbolKindInfo symbolKind)
+		{
+			Name = name;
+			SymbolKind = symbolKind;
+		}
+		public string Name { get; }
+		public SymbolKindInfo SymbolKind { get; }
 	}
 }
