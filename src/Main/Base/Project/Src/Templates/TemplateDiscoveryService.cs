@@ -58,6 +58,10 @@ namespace ICSharpCode.SharpDevelop.Templates
             await EnsureSdkBundledTemplatesInstalledAsync(cancellationToken);
             var templates = await _bootstrapper.GetTemplatesAsync(cancellationToken);
 
+            // SDK previews and servicing installations can coexist in the template engine's
+            // package cache. They may expose the same template identity several times, although
+            // creation resolves that identity to one current winner. Do the same at our DTO
+            // boundary so a project picker never presents indistinguishable duplicate choices.
             return templates
                 .Select(template => new TemplateSummary(
                     template.Identity,
@@ -65,6 +69,11 @@ namespace ICSharpCode.SharpDevelop.Templates
                     template.Name,
                     template.Description,
                     template.TagsCollection ?? new Dictionary<string, string>()))
+                .GroupBy(summary => summary.Identity, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group
+                    .OrderBy(summary => summary.Name, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(summary => summary.ShortName, StringComparer.OrdinalIgnoreCase)
+                    .First())
                 .OrderBy(summary => summary.Name, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
         }

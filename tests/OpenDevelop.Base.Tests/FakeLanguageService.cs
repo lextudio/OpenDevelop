@@ -12,6 +12,22 @@ namespace OpenDevelop.Base.Tests;
 /// </summary>
 sealed class FakeLanguageService : ILanguageService
 {
+        /// <inheritdoc/>
+        public WorkspaceDocumentInfo? GetWorkspaceDocumentInfo(DocumentId documentId) => null;
+
+        /// <inheritdoc/>
+        public LensDocumentResult LensResult { get; set; } = new(DocumentReadiness.Ready, Array.Empty<LensAnchorResult>());
+        public int LensCalls { get; private set; }
+        public Task<LensDocumentResult> GetLensDocumentAsync(DocumentId documentId, CancellationToken cancellationToken)
+        {
+            LensCalls++;
+            return Task.FromResult(LensResult);
+        }
+
+        public DocumentReadiness GetDocumentReadiness(DocumentId documentId) => DocumentReadiness.Ready;
+        public long WorkspaceRevision { get; set; }
+        public long GetWorkspaceRevision() => WorkspaceRevision;
+
 	public IReadOnlyList<DocumentOutlineNode> Outline { get; set; } = Array.Empty<DocumentOutlineNode>();
 	public SymbolReferencesResult? References { get; set; }
 	public SymbolHierarchyResult? DerivedSymbols { get; set; }

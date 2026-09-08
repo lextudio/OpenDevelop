@@ -215,4 +215,26 @@
       <TransitiveFrameworkReference Remove="@(TransitiveFrameworkReference)" Condition="'%(TransitiveFrameworkReference.Identity)' == 'Microsoft.WindowsDesktop.App'" />
     </ItemGroup>
   </Target>
+  <ItemGroup>
+    <ProjectReference Include="..\LanguageServices\Roslyn.Host\Roslyn.Host.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+  <Target Name="CollectRoslynHostRuntime" DependsOnTargets="ResolveProjectReferences">
+    <MSBuild Projects="..\LanguageServices\Roslyn.Host\Roslyn.Host.csproj"
+             Targets="GetTargetPath" Properties="Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs" ItemName="_RoslynHostAssembly" />
+    </MSBuild>
+    <ItemGroup>
+      <_RoslynHostRuntime Include="%(_RoslynHostAssembly.RootDir)%(_RoslynHostAssembly.Directory)**\*" />
+    </ItemGroup>
+  </Target>
+  <Target Name="DeployRoslynHostRuntime" AfterTargets="Build" DependsOnTargets="CollectRoslynHostRuntime">
+    <Copy SourceFiles="@(_RoslynHostRuntime)"
+          DestinationFiles="@(_RoslynHostRuntime->'$(TargetDir)RoslynHost\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="PublishRoslynHostRuntime" AfterTargets="Publish" DependsOnTargets="CollectRoslynHostRuntime">
+    <Copy SourceFiles="@(_RoslynHostRuntime)"
+          DestinationFiles="@(_RoslynHostRuntime->'$(PublishDir)RoslynHost\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
 </Project>

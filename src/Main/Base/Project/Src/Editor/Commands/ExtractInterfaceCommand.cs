@@ -97,7 +97,7 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 					return;
 
 				File.WriteAllText(dialog.NewFileName, result.InterfaceFileContent);
-				RoslynWorkspaceHelper.OpenAndReplaceText(dialog.NewFileName, result.InterfaceFileContent);
+				EditorFileOperations.OpenAndReplaceText(dialog.NewFileName, result.InterfaceFileContent);
 				AddCompileItemIfNonSdkProject(fileName, dialog.NewFileName);
 
 				foreach (var pair in result.Edits)
@@ -137,7 +137,7 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 				text = text.Substring(0, start) + edit.NewText + text.Substring(end);
 			}
 
-			RoslynWorkspaceHelper.OpenAndReplaceText(fileName, text);
+			EditorFileOperations.OpenAndReplaceText(fileName, text);
 		}
 	}
 }

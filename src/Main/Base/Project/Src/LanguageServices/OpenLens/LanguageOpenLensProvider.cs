@@ -196,11 +196,76 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.OpenLens
 
 		static bool IsDocumentInItsProject(ILanguageService languageService, OpenLensDocumentContext context)
 		{
-			// Only the Roslyn backend distinguishes loose from project-backed documents; for any
-			// other service there is nothing to wait for.
-			if (languageService is not Roslyn.CSharpVBLanguageService roslyn)
-				return true;
-			return !string.IsNullOrEmpty(roslyn.TryGetProjectDocument(context.FileName)?.Project.FilePath);
+			// Readiness is part of ILanguageService now, so this no longer downcasts to the Roslyn
+			// service and no longer reaches through a live Roslyn Document
+			// (roslyn-host-process.md §5.3, §5.4). A service that reports Unknown has never seen
+			// the document; treat only Ready as safe to cache, which is the whole point of the
+			// distinction - an empty result from a Loading document is indistinguishable from a
+			// genuine zero, and caching it is the bug this prevents.
+			return languageService.GetDocumentReadiness(new DocumentId(context.FileName)) == DocumentReadiness.Ready;
+		}
+
+		/// <summary>
+		/// The last batched lens result per document, keyed by both the document version and the
+		/// service's semantic workspace revision. Reference counts can change when another file is
+		/// edited, so a document-only version is insufficient. See <see cref="TryGetBatchedAnchorAsync"/>.
+		/// </summary>
+		static readonly object lensBatchLock = new();
+		static readonly Dictionary<string, (WeakReference<ILanguageService> Service, DocumentId Document, long Version, long WorkspaceRevision, DocumentReadiness Readiness, Dictionary<TextPosition, LensAnchorResult> ByPosition)> lensBatchByFile =
+			new(StringComparer.OrdinalIgnoreCase);
+
+		/// <summary>
+		/// The counts for one anchor, taken from a single whole-document resolution shared by every
+		/// anchor of that document (roslyn-host-process.md §6).
+		///
+		/// The framework resolves lens items one at a time, so without this each anchor made its own
+		/// document load, semantic model and symbol lookup - and, more importantly, raced workspace
+		/// loading independently, so a document could end up with some anchors resolved against a
+		/// warm workspace and others against a cold one, all cached together (openlens.md §13.2).
+		/// One batch means one readiness for the whole set.
+		///
+		/// Returns null when the batch cannot answer for this anchor, and the caller falls back to
+		/// the per-anchor path; the batch is an optimisation of a correct path, not a replacement
+		/// that can strand a row.
+		/// </summary>
+		static async Task<(LensAnchorResult Anchor, DocumentReadiness Readiness)?> TryGetBatchedAnchorAsync(
+			ILanguageService languageService, OpenLensDocumentContext context, OpenLensAnchor anchor, CancellationToken cancellationToken)
+		{
+			var position = anchor.Range.Span.Start;
+			lock (lensBatchLock) {
+				if (lensBatchByFile.TryGetValue(context.FileName, out var cached)
+					&& cached.Service.TryGetTarget(out var owner) && ReferenceEquals(owner, languageService)
+					&& cached.Document.Equals(context.DocumentId)
+					&& cached.Version == anchor.DocumentVersion
+					&& cached.WorkspaceRevision == languageService.GetWorkspaceRevision()
+					&& cached.ByPosition.TryGetValue(position, out var hit))
+					return (hit, cached.Readiness);
+			}
+
+			LensDocumentResult batch;
+			try {
+				batch = await languageService.GetLensDocumentAsync(context.DocumentId, cancellationToken).ConfigureAwait(false);
+			} catch (Exception ex) when (ex is not OperationCanceledException) {
+				LoggingService.Debug("OpenLens: batched lens query failed for '" + context.FileName + "'. " + ex.Message);
+				return null;
+			}
+			if (batch == null || batch.Anchors.Count == 0)
+				return null;
+
+			var byPosition = new Dictionary<TextPosition, LensAnchorResult>();
+			foreach (var entry in batch.Anchors)
+				byPosition[entry.Range.Start] = entry;
+			lock (lensBatchLock) {
+				// Only one document's batch is kept: lens resolution is viewport-driven, so the
+				// working set is whichever document is on screen.
+				lensBatchByFile.Clear();
+				// An unresolved batch must be queried again after project loading advances,
+				// even when the editor text/version has not changed.
+				if (batch.Readiness == DocumentReadiness.Ready)
+					lensBatchByFile[context.FileName] = (new(languageService), context.DocumentId, anchor.DocumentVersion,
+						languageService.GetWorkspaceRevision(), batch.Readiness, byPosition);
+			}
+			return byPosition.TryGetValue(position, out var resolved) ? (resolved, batch.Readiness) : null;
 		}
 
 		public async Task<OpenLensItem> ResolveAsync(OpenLensDocumentContext context, OpenLensItem item, CancellationToken cancellationToken)
@@ -215,6 +280,24 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.OpenLens
 			int offset = context.ResolveOffset(anchor.Range.Span.Start);
 
 			if (item.LensId == ReferencesLensId) {
+				// Prefer the whole-document batch: one resolution shared by every anchor, with one
+				// readiness. Falls back to the per-anchor search when the batch cannot answer.
+				var batched = await TryGetBatchedAnchorAsync(languageService, context, anchor, cancellationToken).ConfigureAwait(false);
+				if (batched is { } batch && batch.Anchor.ReferenceCount >= 0) {
+					bool batchPublish = batch.Readiness == DocumentReadiness.Ready;
+					RecordResolution(new ResolutionRecord(
+						DateTime.UtcNow, context.FileName, item.LensId, offset,
+						batch.Anchor.DisplayName ?? "<batch>", batch.Anchor.ReferenceCount,
+						batch.Readiness == DocumentReadiness.Ready, batchPublish));
+					if (!batchPublish)
+						return item;
+					return item with {
+						Presentation = new OpenLensPresentation(FormatCount(batch.Anchor.ReferenceCount, "reference", "references")),
+						Command = new OpenLensCommand("OpenLens.ShowReferences", anchor),
+						IsResolved = true,
+					};
+				}
+
 				var result = await languageService.FindReferencesAsync(context.DocumentId, offset, cancellationToken).ConfigureAwait(false);
 				// A null result means the service could not answer - typically no symbol resolved at
 				// the offset yet, because the document is not in its project's compilation at this

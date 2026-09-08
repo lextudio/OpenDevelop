@@ -68,6 +68,18 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			if (method == null) return JsonSerializer.Serialize(new { designerLoaded = false, success = false, error = "Forms Designer AddIn is unavailable" });
 			return (string)method.Invoke(null, args);
 		}
+
+		[DevFlowAction("od.editor.icon-bar-bookmarks", Description = "Inspect the declaration bookmarks currently consumed by the active editor's Icon Bar gutter")]
+		public static string GetEditorIconBarBookmarks()
+		{
+			var type = AppDomain.CurrentDomain.GetAssemblies()
+				.Select(assembly => assembly.GetType("ICSharpCode.AvalonEdit.AddIn.VSEditorViewDevFlowActions", throwOnError: false))
+				.FirstOrDefault(candidate => candidate != null);
+			var method = type?.GetMethod("GetIconBarBookmarks", BindingFlags.Public | BindingFlags.Static);
+			if (method == null)
+				return JsonSerializer.Serialize(new { active = false, error = "AvalonEdit AddIn is unavailable" });
+			return (string)method.Invoke(null, null);
+		}
 		// ── FormsDesigner forwarding stubs ────────────────────────────────────────────
 		// DevFlow discovers [DevFlowAction] attributes once at startup, before AddIn
 		// autostart commands load lazy assemblies.  FormsDesignerDevFlowActions lives in
@@ -978,22 +990,21 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		}
 
 		[DevFlowAction("od.language-workspace.status", Description = "Report whether fileName is tracked in its language service's workspace (tracked=true means a document exists - loose bootstrap or real project). Diagnostic/readiness aid for cross-file actions (od.find-references / od.rename-symbol / od.extract-interface); those now sync all open documents themselves, so callers normally don't need to poll this")]
-		public static string GetLanguageWorkspaceStatus(string fileName)
+		public static async Task<string> GetLanguageWorkspaceStatus(string fileName)
 		{
 			try {
 				var registry = SD.GetService<ICSharpCode.SharpDevelop.LanguageServices.LanguageServiceRegistry>();
-				if (registry == null || !registry.TryGetService(fileName, out var service))
+				if (registry == null || !registry.TryGetProtocol(fileName, out var protocol))
 					return JsonSerializer.Serialize(new { supported = false, tracked = false, reason = "no language service for file" });
-				if (service is not ICSharpCode.SharpDevelop.LanguageServices.Roslyn.CSharpVBLanguageService roslyn)
-					return JsonSerializer.Serialize(new { supported = false, tracked = true, reason = "non-Roslyn backend" });
 
-				var document = roslyn.TryGetProjectDocument(fileName);
+				var document = await protocol.RoslynDocumentStatusAsync(
+					new ICSharpCode.SharpDevelop.LanguageServices.Protocol.TextDocumentIdentifier(fileName), CancellationToken.None, includeDiagnostics: true);
 				// The sibling documents matter as much as the project identity: every LOOSE file
 				// (one belonging to no project) lands in a single shared ad-hoc project, so this is
 				// the only way to see whether that project has collected unrelated files - or
 				// several copies of the same file, which is what duplicate type definitions and
 				// therefore broken symbol resolution look like from the outside.
-				var siblings = document?.Project.Documents.Select(d => d.FilePath).Where(f => f != null).ToArray();
+				var siblings = document?.SiblingFilePaths.ToArray();
 				var duplicateFileNames = siblings?
 					.GroupBy(System.IO.Path.GetFileName, StringComparer.OrdinalIgnoreCase)
 					.Where(group => group.Count() > 1)
@@ -1002,8 +1013,8 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				return JsonSerializer.Serialize(new {
 					supported = true,
 					tracked = document != null,
-					projectFile = document?.Project.FilePath,
-					projectName = document?.Project.Name,
+					projectFile = document?.ProjectFilePath,
+					projectName = document?.ProjectFilePath == null ? null : System.IO.Path.GetFileNameWithoutExtension(document.ProjectFilePath),
 					documentCount = siblings?.Length ?? 0,
 					duplicateFileNames,
 					documentNames = siblings,
@@ -1011,20 +1022,25 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 					// project registered before its references were resolvable produces a
 					// compilation where nothing binds, and a reference search over it legitimately
 					// returns nothing - which looks identical to "this symbol really has no callers".
-					metadataReferenceCount = document?.Project.MetadataReferences.Count ?? -1,
+					metadataReferenceCount = document?.MetadataReferenceCount,
 					// Attribute each error to its file: a broken sibling and a broken THIS file need
 					// completely different fixes, and the message alone cannot tell them apart.
-					diagnosticSample = document?.Project.GetCompilationAsync().GetAwaiter().GetResult()?
-						.GetDiagnostics().Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error)
-						.Take(8)
-						.Select(d => System.IO.Path.GetFileName(d.Location.SourceTree?.FilePath ?? "<none>")
-							+ "(" + (d.Location.GetLineSpan().StartLinePosition.Line + 1) + ") " + d.Id)
-						.ToArray(),
-					trackedProjectCount = roslyn.GetWorkspaceStatus(fileName).TrackedProjectCount
+					diagnosticSample = document?.DiagnosticSample,
+					trackedProjectCount = document?.TrackedProjectCount ?? 0,
+					readiness = document?.Readiness.ToString() ?? "Unknown"
 				});
 			} catch (Exception ex) {
 				return JsonSerializer.Serialize(new { supported = false, tracked = false, error = ex.Message });
 			}
+		}
+
+		[DevFlowAction("od.roslyn-legacy-workspace.status", Description = "Report whether the deprecated in-process Roslyn workspace exists; remote mode must keep this false.")]
+		public static string GetLegacyRoslynWorkspaceStatus()
+		{
+			return JsonSerializer.Serialize(new {
+				remoteHostMode = ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.RemoteHostMode,
+				workspaceCreated = ICSharpCode.SharpDevelop.Roslyn.RoslynWorkspaceHelper.IsWorkspaceCreated
+			});
 		}
 
 	

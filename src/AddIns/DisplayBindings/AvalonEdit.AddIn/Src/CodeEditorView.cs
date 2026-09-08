@@ -25,6 +25,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -207,7 +208,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				return true;
 			}
 			
-			public void Execute(object parameter)
+			public async void Execute(object parameter)
 			{
 				if (editor.SelectionLength == 0) {
 					int wordStart = DocumentUtilities.FindPrevWordStart(editor.Adapter.Document, editor.CaretOffset);
@@ -216,11 +217,10 @@ namespace ICSharpCode.AvalonEdit.AddIn
 						CodeSnippet snippet = SnippetManager.Instance.FindSnippet(Path.GetExtension(editor.Adapter.FileName),
 						                                                          word);
 						if (snippet != null) {
-							snippet.TrackUsage("CustomTabCommand");
-							
-							using (editor.Document.RunUpdate()) {
-								editor.Adapter.Document.Remove(wordStart, editor.CaretOffset - wordStart);
-								snippet.CreateAvalonEditSnippet(editor.Adapter).Insert(editor.TextArea);
+							try {
+								await snippet.InsertAsync(editor.Adapter, editor.TextArea, wordStart, editor.CaretOffset - wordStart, "CustomTabCommand");
+							} catch (Exception ex) {
+								LoggingService.Warn("Snippet expansion failed: " + ex.Message);
 							}
 							return;
 						}
@@ -252,12 +252,18 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		
 		public void ShowHelp()
 		{
+			// F1 must not block the UI thread on the language service (roslyn-host-process.md §5.1).
+			_ = ShowHelpAsync();
+		}
+
+		async Task ShowHelpAsync()
+		{
 			var registry = SD.GetService<LanguageServiceRegistry>();
-			if (registry == null || !registry.TryGetService(Adapter.FileName, out var service))
+			if (registry == null || !registry.TryGetProtocol(Adapter.FileName, out var protocol))
 				return;
-			var id = new ICSharpCode.SharpDevelop.LanguageServices.DocumentId(Adapter.FileName);
-			service.UpsertDocumentAsync(id, Adapter.Document.Text, CancellationToken.None).GetAwaiter().GetResult();
-			var keyword = service.GetHelpKeywordAsync(id, Adapter.Caret.Offset, CancellationToken.None).GetAwaiter().GetResult();
+			var document = new ICSharpCode.SharpDevelop.LanguageServices.Protocol.TextDocumentIdentifier(Adapter.FileName);
+			await protocol.TextDocumentDidChangeAsync(document, Adapter.Document.Text, CancellationToken.None);
+			var keyword = (await protocol.RoslynHelpKeywordAsync(document, Adapter.Caret.Offset, CancellationToken.None)).Value;
 			if (!string.IsNullOrEmpty(keyword))
 				HelpProvider.ShowHelp(keyword);
 		}
@@ -456,13 +462,19 @@ namespace ICSharpCode.AvalonEdit.AddIn
 
 		void GoToDefinition(TextLocation location)
 		{
+			// Ctrl+Click, same reason as F1 above.
+			_ = GoToDefinitionAsync(location);
+		}
+
+		async Task GoToDefinitionAsync(TextLocation location)
+		{
 			var registry = SD.GetService<LanguageServiceRegistry>();
-			if (registry == null || !registry.TryGetService(Adapter.FileName, out var service))
+			if (registry == null || !registry.TryGetProtocol(Adapter.FileName, out var protocol))
 				return;
-			var documentId = new ICSharpCode.SharpDevelop.LanguageServices.DocumentId(Adapter.FileName);
+			var document = new ICSharpCode.SharpDevelop.LanguageServices.Protocol.TextDocumentIdentifier(Adapter.FileName);
 			try {
-				service.UpsertDocumentAsync(documentId, Adapter.Document.Text, CancellationToken.None).GetAwaiter().GetResult();
-				var targets = service.GoToDefinitionAsync(documentId, Adapter.Document.GetOffset(location), CancellationToken.None).GetAwaiter().GetResult();
+				await protocol.TextDocumentDidChangeAsync(document, Adapter.Document.Text, CancellationToken.None);
+				var targets = (await protocol.TextDocumentDefinitionAsync(document, Adapter.Document.GetOffset(location), CancellationToken.None)).Value;
 				var target = targets.FirstOrDefault();
 				if (target != null)
 					FileService.JumpToFilePosition(ICSharpCode.Core.FileName.Create(target.FileName), target.Position.Line, target.Position.Column);

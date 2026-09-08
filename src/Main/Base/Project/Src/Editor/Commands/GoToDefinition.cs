@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
 using ICSharpCode.SharpDevelop.Editor.ContextActions;
@@ -14,14 +15,26 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 	{
 		public override void Run()
 		{
+			// Fire-and-forget onto RunAsync, the pattern FindReferencesCommand already uses here.
+			// F12 must not block the UI thread on the language service: in-process that is a stall
+			// for as long as Roslyn takes, and once the service moves out of process it becomes a
+			// cross-process round trip behind a keypress (roslyn-host-process.md §5.1).
+			_ = RunAsync();
+		}
+
+		async Task RunAsync()
+		{
 			var editor = SD.GetActiveViewContentService<ITextEditor>();
 			var registry = SD.GetService<LanguageServiceRegistry>();
-			if (editor == null || registry == null || !registry.TryGetService(editor.FileName, out var service))
+			// Routed through the protocol rather than ILanguageService directly: this call site is
+			// then already written against the surface that survives the language service moving
+			// out of process (roslyn-host-process.md Phase 2).
+			if (editor == null || registry == null || !registry.TryGetProtocol(editor.FileName, out var protocol))
 				return;
 
-			var id = new ICSharpCode.SharpDevelop.LanguageServices.DocumentId(editor.FileName);
-			service.UpsertDocumentAsync(id, editor.Document.Text, CancellationToken.None).GetAwaiter().GetResult();
-			var targets = service.GoToDefinitionAsync(id, editor.Caret.Offset, CancellationToken.None).GetAwaiter().GetResult();
+			var document = new ICSharpCode.SharpDevelop.LanguageServices.Protocol.TextDocumentIdentifier(editor.FileName);
+			await protocol.TextDocumentDidChangeAsync(document, editor.Document.Text, CancellationToken.None);
+			var targets = (await protocol.TextDocumentDefinitionAsync(document, editor.Caret.Offset, CancellationToken.None)).Value;
 			if (targets.Count == 1) {
 				Jump(targets[0]);
 			} else if (targets.Count > 1) {

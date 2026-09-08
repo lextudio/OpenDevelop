@@ -16,8 +16,7 @@ using Microsoft.CodeAnalysis.Host.Mef;
 using Microsoft.CodeAnalysis.QuickInfo;
 using Microsoft.CodeAnalysis.Rename;
 using Microsoft.CodeAnalysis.Text;
-using ICSharpCode.Core;
-using ICSharpCode.SharpDevelop.Project;
+using ICSharpCode.SharpDevelop.LanguageServices.Protocol;
 using RoslynCompletionItem = Microsoft.CodeAnalysis.Completion.CompletionItem;
 // Disambiguates against the COM interop "Accessibility" namespace (Accessibility.dll), now visible
 // transitively now that this project sets UseWindowsForms=true for the resurrected WinForms<->WPF
@@ -42,6 +41,9 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         readonly Dictionary<DocumentId, string> _documentProjectFileNames;
         readonly Dictionary<string, RoslynProjectId> _projectsByLanguage;
         readonly Dictionary<string, RoslynProjectId> _projectsByKey;
+        readonly Dictionary<string, LanguageServiceProjectSnapshot> _projectSnapshots = new(StringComparer.OrdinalIgnoreCase);
+        readonly HashSet<string> _loadedProjectSnapshots = new(StringComparer.OrdinalIgnoreCase);
+        readonly Dictionary<string, PersistentSyntaxIndex> _syntaxIndexes = new(StringComparer.Ordinal);
         readonly Dictionary<string, List<string>> _targetFrameworksByProjectFileName;
         readonly Dictionary<string, string> _activeTargetFrameworkByProjectFileName;
 
@@ -56,14 +58,19 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         // up orphaned - doubling every OpenLens reference count (and raising "concurrent update
         // performed on this collection" failures). No await happens while holding this lock.
         readonly object _documentLock = new();
+        long _workspaceRevision;
 
         // Last computed code-action list per document (externals/OpenDevelop/doc/technotes/language-services.md §8), keyed by
         // the opaque CodeActionInfo.Id GetCodeActionsAsync handed out. See
         // CSharpVBLanguageService.CodeActions.cs.
-        readonly Dictionary<DocumentId, Dictionary<string, CodeAction>> _pendingCodeActionsByDocument = new();
 
-        public CSharpVBLanguageService()
+        readonly Func<string, IReadOnlyList<LanguageServiceProjectSnapshot>>? snapshotProvider;
+
+        public CSharpVBLanguageService() : this(null) { }
+
+        public CSharpVBLanguageService(Func<string, IReadOnlyList<LanguageServiceProjectSnapshot>>? snapshotProvider)
         {
+            this.snapshotProvider = snapshotProvider;
             _workspace = new AdhocWorkspace(MefHostServices.DefaultHost);
             _documentVariantsByTfm = new Dictionary<DocumentId, Dictionary<string, RoslynDocumentId>>();
             _documentProjectFileNames = new Dictionary<DocumentId, string>();
@@ -72,86 +79,20 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             _targetFrameworksByProjectFileName = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
             _activeTargetFrameworkByProjectFileName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             _adoptedProjectFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            SD.ProjectService.SolutionClosed += OnSolutionClosed;
-        }
+            // Optional, so this service can be constructed outside the IDE.
+            //
+            // In the out-of-process host there is no SD service locator at all, and subscribing
+            // unconditionally made the constructor throw - which killed the child before its
+            // handshake and surfaced to the parent only as "the JSON-RPC connection was lost"
+            // (doc/technotes/roslyn-host-process.md §3a). The host is told when a solution closes
+            // over roslyn/solution/closed instead, so the event is an IDE convenience rather than
+            // something this service depends on.
+		}
 
-        /// <summary>
-        /// Drops the closed solution's documents from the shared workspace. This service is created
-        /// once per process (RegisterCSharpLanguageServiceCommand) and outlives every solution, so
-        /// without this the workspace only ever grows: documents of already-closed solutions stay
-        /// registered, and Roslyn - correctly, given what it was told - keeps treating them as part
-        /// of the compilation. Two ways that has bitten us:
-        ///
-        /// - A rename spans every document containing the symbol, so it emitted edits for stale
-        ///   documents too and wrote them to disk. In the integration suite that silently rewrote
-        ///   the tracked fixture file (SolutionExplorerFixture Widget.cs became "Gadget") even
-        ///   though the test itself only ever operated on its own temp copy.
-        /// - Duplicate type names across a closed and a freshly-opened copy of the same project
-        ///   produce false "type already defined" diagnostics.
-        ///
-        /// Documents registered without a project file (loose files opened outside any solution)
-        /// are deliberately kept: they do not belong to the solution being closed, and dropping
-        /// them would silently disable completion/diagnostics in an editor that stays open.
-        /// </summary>
-        void OnSolutionClosed(object sender, SolutionEventArgs e)
-        {
-            // Scope everything to the projects of the solution that is ACTUALLY closing. The
-            // previous version dropped every document that merely had some project file, and
-            // cleared the project maps wholesale, on any close - so a close could wipe a DIFFERENT,
-            // still-open solution's registrations. That is not hypothetical ordering paranoia:
-            // LoadProjectDocumentsAsync registers documents asynchronously, so in a long run
-            // (the integration suite opens and closes several solutions) a close event can land
-            // after the next solution's documents are already in the workspace and silently strip
-            // them. The symptom is a workspace that looks fine but answers every query with
-            // nothing - measured as AddInTests.OpenLens_RendersEachLensAboveItsDeclarationLine
-            // finding "0 references" for symbols that plainly have callers, only ever in a batch
-            // run and never when the test runs alone.
-            var closingProjectFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var project in e.Solution?.Projects ?? Enumerable.Empty<IProject>())
-            {
-                var fileName = project.FileName.ToString();
-                if (!string.IsNullOrEmpty(fileName))
-                    closingProjectFileNames.Add(fileName);
-            }
-
-            // Loose files that live INSIDE the closing solution's directory go too. They are not in
-            // any project, so the project-file test above cannot see them, yet they clearly belong
-            // to this solution - the fixture files the integration suite opens next to a .slnx are
-            // exactly this shape. Keeping them was not harmless: every loose document shares ONE
-            // ad-hoc Roslyn project, the suite runs each test against a fresh temp COPY of the same
-            // fixture, and so that single project accumulated several copies of the same file.
-            // Duplicate type definitions in one project break symbol resolution outright, which is
-            // why AddInTests.OpenLens_RendersEachLensAboveItsDeclarationLine reported "0
-            // references" for symbols with obvious callers in a full-class run yet passed on its
-            // own. Scoping by directory (rather than by "is an editor still open on it", which was
-            // tried and wrongly evicted project files that happened to be registered loose because
-            // they were opened before their project finished loading) keeps the documented promise
-            // to preserve loose files belonging to no solution.
-            var closingSolutionDirectory = e.Solution?.Directory.ToString();
-
-            List<string> solutionOwnedFiles;
-            lock (_documentLock)
-            {
-                solutionOwnedFiles = _documentProjectFileNames
-                    .Where(pair => string.IsNullOrEmpty(pair.Value)
-                        ? IsUnderDirectory(pair.Key.FileName, closingSolutionDirectory)
-                        : closingProjectFileNames.Contains(pair.Value))
-                    .Select(pair => pair.Key.FileName)
-                    .ToList();
-                RemoveClosedSolutionProjects(closingProjectFileNames);
-                // Re-arm adoption: a later reopen of this solution must be able to load it again.
-                foreach (var projectFileName in closingProjectFileNames)
-                    _adoptedProjectFileNames.Remove(projectFileName);
-            }
-            // Outside the lock: RemoveDocument takes it itself, and it is the single removal path
-            // that keeps the workspace and both document dictionaries consistent.
-            foreach (var fileName in solutionOwnedFiles)
-                RemoveDocument(fileName);
-        }
 
         public void Dispose()
         {
-            SD.ProjectService.SolutionClosed -= OnSolutionClosed;
+            _codeFixHost?.Dispose();
             _workspace.Dispose();
         }
 
@@ -162,9 +103,13 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
 
             lock (_documentLock)
             {
-                return _documentVariantsByTfm.ContainsKey(documentId);
+                return ResolveActiveRoslynDocumentId(documentId) != null;
             }
         }
+
+        public long GetWorkspaceRevision() => Interlocked.Read(ref _workspaceRevision);
+
+        void AdvanceWorkspaceRevision() => Interlocked.Increment(ref _workspaceRevision);
 
         /// <summary>
         /// All TFMs known for a multi-targeted project (empty for a single-targeted project —
@@ -213,7 +158,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         /// included under every TFM the project already has projects for — true for the common
         /// case (implicit globbing, no per-TFM `Condition` on the `Compile` item); a project with
         /// genuinely per-TFM-conditional individual file inclusion needs a full reload
-        /// (<see cref="LoadProjectAsync(IProject,CancellationToken)"/>) to pick that up correctly.
+        /// (<see cref="LoadProjectsAsync"/>) to pick that up correctly.
         /// No-ops if the project hasn't been loaded yet (nothing to add to).
         /// </summary>
         public async Task AddCompileDocumentAsync(string projectFileName, string fileName, CancellationToken cancellationToken)
@@ -280,10 +225,6 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             }
         }
 
-        public Task LoadProjectAsync(IProject project, CancellationToken cancellationToken)
-        {
-            return LoadProjectAsync(LanguageServiceProjectSnapshot.FromProject(project), cancellationToken);
-        }
 
         public async Task LoadProjectAsync(LanguageServiceProjectSnapshot projectSnapshot, CancellationToken cancellationToken)
         {
@@ -297,19 +238,103 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            foreach (var projectSnapshot in projectSnapshots)
-            {
-                EnsureProject(projectSnapshot);
-            }
+            AdvanceWorkspaceRevision();
 
             foreach (var projectSnapshot in projectSnapshots)
             {
-                ApplyProjectReferences(projectSnapshot);
+                lock (_documentLock)
+                {
+                    var key = ProjectKey(projectSnapshot.ProjectFileName, projectSnapshot.TargetFramework);
+                    _projectSnapshots[key] = projectSnapshot;
+                    _loadedProjectSnapshots.Remove(key);
+                    EnsureProject(projectSnapshot);
+                }
+            }
+
+            lock (_documentLock)
+            {
+                // A previous load may have arrived before its referenced projects. Reconcile
+                // every declared edge whenever the graph grows, not only the incoming node.
+                foreach (var snapshot in _projectSnapshots.Values)
+                    ApplyProjectReferences(snapshot);
             }
 
             foreach (var projectSnapshot in projectSnapshots)
             {
                 await LoadProjectDocumentsAsync(projectSnapshot, cancellationToken);
+                lock (_documentLock)
+                {
+                    var key = ProjectKey(projectSnapshot.ProjectFileName, projectSnapshot.TargetFramework);
+                    if (_projectSnapshots.TryGetValue(key, out var current) && ReferenceEquals(current, projectSnapshot))
+                        _loadedProjectSnapshots.Add(key);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Drops every project snapshot received from a remote parent. Loose editor buffers are
+        /// deliberately retained: they have no solution owner and continue to be useful after a
+        /// solution closes. This is the host-side counterpart of the IDE's SolutionClosed event.
+        /// </summary>
+        public Task CloseSolutionAsync(CancellationToken cancellationToken)
+            => CloseSolutionAsync(null, cancellationToken);
+
+        public Task CloseSolutionAsync(string? solutionDirectory, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            AdvanceWorkspaceRevision();
+            lock (_documentLock)
+            {
+                // The IDE supplies only a path, not an IProjectService. Preserve unrelated loose
+                // editors, but do not retain loose fixture/files owned by the closing solution.
+                if (solutionDirectory != null)
+                    foreach (var file in _documentProjectFileNames
+                        .Where(pair => string.IsNullOrEmpty(pair.Value) && IsUnderDirectory(pair.Key.FileName, solutionDirectory))
+                        .Select(pair => pair.Key.FileName).ToArray())
+                        RemoveDocument(file);
+                var projectIds = _projectsByKey.Values.ToArray();
+                var solution = _workspace.CurrentSolution;
+                foreach (var projectId in projectIds)
+                    solution = solution.RemoveProject(projectId);
+                _workspace.TryApplyChanges(solution);
+
+                var projectDocuments = _documentProjectFileNames
+                    .Where(pair => !string.IsNullOrEmpty(pair.Value))
+                    .Select(pair => pair.Key)
+                    .ToArray();
+                foreach (var documentId in projectDocuments)
+                {
+                    _documentVariantsByTfm.Remove(documentId);
+                    _documentProjectFileNames.Remove(documentId);
+                }
+                _projectsByKey.Clear();
+                _projectSnapshots.Clear();
+                _loadedProjectSnapshots.Clear();
+                _syntaxIndexes.Clear();
+                _targetFrameworksByProjectFileName.Clear();
+                _activeTargetFrameworkByProjectFileName.Clear();
+                _adoptedProjectFileNames.Clear();
+            }
+            return Task.CompletedTask;
+        }
+
+        /// <summary>Reports the readiness of each project currently supplied to this workspace.</summary>
+        public WorkspaceStatus GetWorkspaceStatus()
+        {
+            lock (_documentLock)
+            {
+                var statuses = _projectSnapshots
+                    .GroupBy(pair => pair.Value.ProjectFileName, StringComparer.OrdinalIgnoreCase)
+                    .Select(group => new ProjectStatus(
+                        group.Key,
+                        group.All(pair => IsProjectReady(pair.Key, new HashSet<string>(StringComparer.OrdinalIgnoreCase)))
+                            ? DocumentReadiness.Ready
+                            : DocumentReadiness.Loading))
+                    .ToArray();
+                return new WorkspaceStatus(statuses) {
+                    SyntaxIndexDiskHits = _syntaxIndexes.Values.Sum(index => index.DiskHits),
+                    SyntaxIndexBuilds = _syntaxIndexes.Values.Sum(index => index.Builds)
+                };
             }
         }
 
@@ -353,7 +378,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
                     // project WITH a target framework, tfmKey is e.g. "net10.0" and the checks above
                     // never even see the loose variant: hasVariant is false, so it is neither
                     // treated as done nor removed, and AddDocument then adds the project-backed
-                    // variant ALONGSIDE it. TryGetProjectDocument returns variants.Values.First(),
+                    // variant ALONGSIDE it. Active-document resolution then returned the first
                     // and the loose one was inserted first, so every lookup kept resolving to the
                     // stranded ad-hoc copy - reported as projectFile=null by
                     // od.language-workspace.status while trackedProjectCount showed a fully loaded
@@ -391,7 +416,11 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             if (text is null)
                 throw new ArgumentNullException(nameof(text));
 
+            // Editor buffers belong to a file; every framework slice sees the same text.
+            documentId = new DocumentId(documentId.FileName);
+
             cancellationToken.ThrowIfCancellationRequested();
+            AdvanceWorkspaceRevision();
 
             var sourceText = SourceText.From(text);
             bool hasVariants;
@@ -449,41 +478,15 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         /// </summary>
         void AdoptIntoContainingProject(DocumentId documentId)
         {
-            IProject project;
-            try
-            {
-                project = SD.ProjectService?.FindProjectContainingFile(FileName.Create(documentId.FileName));
-            }
-            catch (Exception)
-            {
-                return; // No project service yet (early startup) - the file stays loose, as before.
-            }
-            if (project is null)
-                return;
-
-            var snapshot = LanguageServiceProjectSnapshot.FromProject(project);
-            // At most ONE adoption load per project. LoadProjectAsync reads every document of the
-            // project from disk, so doing it on each loose upsert is ruinous: unguarded, it turned a
-            // 410s AddInTests run into 1856s and starved the designer tests into their own timeouts.
-            // One load is all that is needed - it registers every document of the project, this file
-            // included - and re-arming on solution close keeps a later reopen able to adopt again.
+            var snapshots = snapshotProvider?.Invoke(documentId.FileName);
+            if (snapshots == null || snapshots.Count == 0) return;
             lock (_documentLock)
-            {
-                if (!_adoptedProjectFileNames.Add(snapshot.ProjectFileName ?? string.Empty))
-                    return;
-            }
-
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await LoadProjectAsync(snapshot, CancellationToken.None);
-                }
-                catch (Exception ex)
-                {
-                    LoggingService.Warn("Adopting " + documentId.FileName + " into " + snapshot.ProjectFileName + " failed: " + ex.Message);
-                }
+                if (!_adoptedProjectFileNames.Add(snapshots[0].ProjectFileName)) return;
+            _ = Task.Run(async () => {
+                try { await LoadProjectsAsync(snapshots, CancellationToken.None).ConfigureAwait(false); }
+                catch (Exception ex) { System.Diagnostics.Trace.TraceWarning("Roslyn project adoption failed: " + ex.Message); }
             });
+
         }
 
         public async Task<CompletionResult> GetCompletionsAsync(DocumentId documentId, int offset, CancellationToken cancellationToken)
@@ -498,7 +501,11 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
 
             var completions = await completionService.GetCompletionsAsync(document, offset, cancellationToken: cancellationToken);
             if (completions is null)
-                return CompletionResult.Empty;
+            {
+                var resourceItems = new List<CompletionItem>();
+                await AddResourceKeyCompletionsAsync(document, offset, resourceItems, cancellationToken);
+                return new CompletionResult(resourceItems, null);
+            }
 
             var items = new List<CompletionItem>(completions.ItemsList.Count);
             foreach (var item in completions.ItemsList)
@@ -873,16 +880,22 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
 
         public async Task<string?> GetContainingTypeNameAsync(DocumentId documentId, int offset, CancellationToken cancellationToken)
         {
-            var symbol = await FindSymbolAsync(documentId, offset, cancellationToken);
+            var document = await GetOrLoadDocumentAsync(documentId, cancellationToken);
+            if (document == null) return null;
+            var text = await document.GetTextAsync(cancellationToken);
+            if (offset < 0 || offset > text.Length) return null;
+            var model = await document.GetSemanticModelAsync(cancellationToken);
+            // Snippet triggers are usually unresolved tokens (e.g. "ctor") or whitespace.
+            // Their containing lexical scope, not the symbol under the caret, owns ClassName.
+            var symbol = model?.GetEnclosingSymbol(offset, cancellationToken);
             return (symbol as INamedTypeSymbol ?? symbol?.ContainingType)?.Name;
         }
 
         public Task RefreshProjectAsync(DocumentId documentId, CancellationToken cancellationToken)
         {
-            var project = SD.ProjectService.FindProjectContainingFile(FileName.Create(documentId.FileName));
-            return project is null
-                ? Task.CompletedTask
-                : LoadProjectAsync(LanguageServiceProjectSnapshot.FromProject(project), cancellationToken);
+            var snapshots = snapshotProvider?.Invoke(documentId.FileName);
+            return snapshots == null ? Task.CompletedTask : LoadProjectsAsync(snapshots, cancellationToken);
+
         }
 
         static ISymbol? GetBaseMember(ISymbol member)
@@ -933,7 +946,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             }
             catch (Exception ex)
             {
-                LoggingService.Warn($"Rename failed for '{symbol.Value.Symbol.Name}' -> '{newName}': {ex.Message}");
+                System.Diagnostics.Trace.TraceWarning($"Rename failed for '{symbol.Value.Symbol.Name}' -> '{newName}': {ex.Message}");
                 return noEdits;
             }
 
@@ -1057,6 +1070,8 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             foreach (var project in _workspace.CurrentSolution.Projects)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (!await MayDeclareTypeAsync(project, typeFullName, cancellationToken).ConfigureAwait(false))
+                    continue;
                 var compilation = await project.GetCompilationAsync(cancellationToken);
                 var type = compilation?.GetTypeByMetadataName(typeFullName);
                 if (type is null)
@@ -1086,15 +1101,40 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             return Array.Empty<NavigationTarget>();
         }
 
+        async Task<bool> MayDeclareTypeAsync(Microsoft.CodeAnalysis.Project project, string fullName, CancellationToken token)
+        {
+            // A generator can declare a type absent from all source identifiers. Likewise,
+            // synthesized metadata names are not safe to rule out using a source-name index.
+            if (project.AnalyzerReferences.Count > 0) return true;
+            var simpleName = fullName.Split('.', '+').Last().Split('`')[0];
+            if (simpleName.Length == 0 || simpleName.Any(c => !char.IsLetterOrDigit(c) && c != '_')) return true;
+            PersistentSyntaxIndex index;
+            lock (_documentLock)
+            {
+                var key = _projectsByKey.FirstOrDefault(pair => pair.Value == project.Id).Key;
+                if (key == null || !_projectSnapshots.TryGetValue(key, out var snapshot) || snapshot.SolutionDirectory == null)
+                    return true;
+                var directory = Path.Combine(snapshot.SolutionDirectory, ".od", "roslyn-index", "v1");
+                if (!_syntaxIndexes.TryGetValue(directory, out index!))
+                    _syntaxIndexes[directory] = index = new PersistentSyntaxIndex(directory);
+            }
+            foreach (var document in project.Documents)
+                if (await index.MayContainAsync(document, simpleName, token).ConfigureAwait(false)) return true;
+            return false;
+        }
+
         // GetCodeActionsAsync/ApplyCodeActionAsync (externals/OpenDevelop/doc/technotes/language-services.md §8.3) are
         // implemented in CSharpVBLanguageService.CodeActions.cs.
 
         public void OnTextChanged(DocumentId documentId, TextChange change)
         {
+            documentId = new DocumentId(documentId.FileName);
             lock (_documentLock)
             {
                 if (!_documentVariantsByTfm.TryGetValue(documentId, out var variants))
                     return;
+
+                AdvanceWorkspaceRevision();
 
                 foreach (var roslynDocumentId in variants.Values.ToArray())
                 {
@@ -1119,6 +1159,11 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             if (roslynDocumentId is not null)
                 return _workspace.CurrentSolution.GetDocument(roslynDocumentId);
 
+            // An explicit, unavailable framework is not the active framework and must not
+            // reload disk text over a tracked unsaved buffer while trying to resolve it.
+            if (documentId.TargetFramework != null)
+                return null;
+
             if (!File.Exists(documentId.FileName))
                 return null;
 
@@ -1128,20 +1173,75 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             return roslynDocumentId is null ? null : _workspace.CurrentSolution.GetDocument(roslynDocumentId);
         }
 
-		/// <summary>
-		/// Returns the project-backed Roslyn document for IDE subsystems that must perform semantic,
-		/// analyzer-config-aware source transformations (for example the WinForms designer).
-		/// The returned document remains owned by this language service's workspace.
-		/// </summary>
-		public Task<Document?> GetProjectDocumentAsync(string fileName, CancellationToken cancellationToken = default) =>
-			GetOrLoadDocumentAsync(new DocumentId(fileName), cancellationToken);
-
-		/// <summary>Gets an already tracked project document without asynchronous loading.</summary>
-		public Document? TryGetProjectDocument(string fileName)
+		/// <inheritdoc/>
+		public WorkspaceDocumentInfo? GetWorkspaceDocumentInfo(DocumentId documentId)
 		{
-			var id = ResolveActiveRoslynDocumentId(new DocumentId(fileName));
-			return id == null ? null : _workspace.CurrentSolution.GetDocument(id);
+			var id = ResolveActiveRoslynDocumentId(documentId);
+			var document = id == null ? null : _workspace.CurrentSolution.GetDocument(id);
+			if (document == null)
+				return null;
+			return new WorkspaceDocumentInfo(
+				GetDocumentReadiness(documentId),
+				document.Project.FilePath,
+				document.Project.Documents.Select(d => d.FilePath).Where(f => f != null).ToArray()!) {
+				MetadataReferenceCount = document.Project.MetadataReferences.Count,
+				TrackedProjectCount = document.Project.Solution.ProjectIds.Count
+			};
 		}
+
+        public async Task<WorkspaceDocumentInfo?> GetWorkspaceDocumentDiagnosticsAsync(DocumentId documentId, CancellationToken cancellationToken)
+        {
+            var id = ResolveActiveRoslynDocumentId(documentId);
+            var document = id == null ? null : _workspace.CurrentSolution.GetDocument(id);
+            if (document == null) return null;
+            var compilation = await document.Project.GetCompilationAsync(cancellationToken).ConfigureAwait(false);
+            return new WorkspaceDocumentInfo(GetDocumentReadiness(documentId), document.Project.FilePath,
+                document.Project.Documents.Select(d => d.FilePath).Where(f => f != null).ToArray()!) {
+                MetadataReferenceCount = document.Project.MetadataReferences.Count,
+                TrackedProjectCount = document.Project.Solution.ProjectIds.Count,
+                DiagnosticSample = compilation?.GetDiagnostics(cancellationToken)
+                    .Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error)
+                    .Take(20).Select(d => d.ToString()).ToArray() ?? Array.Empty<string>()
+            };
+        }
+
+		/// <inheritdoc/>
+		public DocumentReadiness GetDocumentReadiness(DocumentId documentId)
+		{
+			var id = ResolveActiveRoslynDocumentId(documentId);
+			if (id == null)
+				return DocumentReadiness.Unknown;
+			var document = _workspace.CurrentSolution.GetDocument(id);
+			if (document == null)
+				return DocumentReadiness.Unknown;
+			// A document registered by UpsertDocumentAsync before its project finished loading
+			// lives in the shared loose bootstrap project, which has no FilePath. Cross-file
+			// answers (references, rename, derived symbols) are silently incomplete until it is
+			// adopted into its real project, so that state is Loading, not Ready.
+			lock (_documentLock)
+			{
+				var key = _projectsByKey.FirstOrDefault(pair => pair.Value == document.Project.Id).Key;
+				return key != null && IsProjectReady(key, new HashSet<string>(StringComparer.OrdinalIgnoreCase))
+					? DocumentReadiness.Ready : DocumentReadiness.Loading;
+			}
+		}
+
+        // Caller holds _documentLock. Readiness includes the transitive project graph: a
+        // complete source project with an unresolved dependency cannot certify an empty answer.
+        bool IsProjectReady(string key, HashSet<string> visited)
+        {
+            if (!_loadedProjectSnapshots.Contains(key) || !_projectSnapshots.TryGetValue(key, out var snapshot))
+                return false;
+            if (!visited.Add(key)) return true;
+            foreach (var reference in snapshot.ProjectReferenceFileNames)
+            {
+                var id = ResolveReferencedProjectId(reference, snapshot.TargetFramework);
+                if (id == null) return false;
+                var referenceKey = _projectsByKey.FirstOrDefault(pair => pair.Value == id).Key;
+                if (referenceKey == null || !IsProjectReady(referenceKey, visited)) return false;
+            }
+            return true;
+        }
 
 		/// <summary>
 		/// Readiness probe for headless callers (DevFlow tests): reports whether
@@ -1154,10 +1254,10 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
 		/// </summary>
 		public LanguageWorkspaceStatus GetWorkspaceStatus(string fileName)
 		{
-			var document = TryGetProjectDocument(fileName);
+			var document = GetWorkspaceDocumentInfo(new DocumentId(fileName));
 			return new LanguageWorkspaceStatus(
-				HasRealProject: document?.Project.FilePath is not null,
-				ProjectFileName: document?.Project.FilePath,
+				HasRealProject: document?.ProjectFilePath is not null,
+				ProjectFileName: document?.ProjectFilePath,
 				TrackedProjectCount: _workspace.CurrentSolution.Projects.Count());
 		}
 
@@ -1171,8 +1271,13 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         {
             lock (_documentLock)
             {
+                var requestedTargetFramework = documentId.TargetFramework;
+                documentId = new DocumentId(documentId.FileName);
                 if (!_documentVariantsByTfm.TryGetValue(documentId, out var variants) || variants.Count == 0)
                     return null;
+
+                if (requestedTargetFramework != null)
+                    return variants.TryGetValue(requestedTargetFramework, out var requestedId) ? requestedId : null;
 
                 var projectFileName = _documentProjectFileNames.TryGetValue(documentId, out var pf) ? pf : null;
                 var activeTargetFramework = projectFileName is not null ? GetActiveTargetFramework(projectFileName) : null;
@@ -1213,7 +1318,11 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
                 var separator = key.LastIndexOf('|');
                 var projectFileName = separator < 0 ? key : key.Substring(0, separator);
                 if (closingProjectFileNames.Contains(projectFileName))
+                {
                     _projectsByKey.Remove(key);
+                    _projectSnapshots.Remove(key);
+                    _loadedProjectSnapshots.Remove(key);
+                }
             }
             foreach (var projectFileName in closingProjectFileNames)
             {
@@ -1357,7 +1466,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
                 }
                 catch (Exception ex)
                 {
-                    LoggingService.Warn($"Failed to load analyzer/generator assembly '{path}': {ex.Message}");
+                    System.Diagnostics.Trace.TraceWarning($"Failed to load analyzer/generator assembly '{path}': {ex.Message}");
                 }
             }
 

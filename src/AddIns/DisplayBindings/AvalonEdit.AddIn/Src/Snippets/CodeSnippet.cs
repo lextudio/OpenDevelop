@@ -22,6 +22,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 
 using ICSharpCode.AvalonEdit.Snippets;
 using ICSharpCode.Core;
@@ -129,6 +130,13 @@ namespace ICSharpCode.AvalonEdit.AddIn.Snippets
 		
 		public static Snippet CreateAvalonEditSnippet(ITextEditor context, string snippetText)
 		{
+			// Synchronous construction is for previews. Actual insertion resolves semantic
+			// substitutions before editing through InsertAsync.
+			return CreateAvalonEditSnippet(context, snippetText, null);
+		}
+
+		static Snippet CreateAvalonEditSnippet(ITextEditor context, string snippetText, string className)
+		{
 			if (snippetText == null)
 				throw new ArgumentNullException("text");
 			var replaceableElements = new Dictionary<string, SnippetReplaceableTextElement>(StringComparer.OrdinalIgnoreCase);
@@ -147,7 +155,7 @@ namespace ICSharpCode.AvalonEdit.AddIn.Snippets
 					snippet.Elements.Add(new SnippetTextElement { Text = snippetText.Substring(pos, m.Index - pos) });
 					pos = m.Index;
 				}
-				snippet.Elements.Add(CreateElementForValue(context, replaceableElements, m.Groups[1].Value, m.Index, snippetText));
+				snippet.Elements.Add(CreateElementForValue(context, replaceableElements, m.Groups[1].Value, m.Index, snippetText, className));
 				pos = m.Index + m.Length;
 			}
 			if (pos < snippetText.Length) {
@@ -163,7 +171,7 @@ namespace ICSharpCode.AvalonEdit.AddIn.Snippets
 		
 		readonly static Regex functionPattern = new Regex(@"^([a-zA-Z]+)\(([^\)]*)\)$", RegexOptions.CultureInvariant);
 		
-		static SnippetElement CreateElementForValue(ITextEditor context, Dictionary<string, SnippetReplaceableTextElement> replaceableElements, string val, int offset, string snippetText)
+		static SnippetElement CreateElementForValue(ITextEditor context, Dictionary<string, SnippetReplaceableTextElement> replaceableElements, string val, int offset, string snippetText, string className)
 		{
 			SnippetReplaceableTextElement srte;
 			int equalsSign = val.IndexOf('=');
@@ -191,38 +199,61 @@ namespace ICSharpCode.AvalonEdit.AddIn.Snippets
 					string innerVal = m.Groups[2].Value;
 					if (replaceableElements.TryGetValue(innerVal, out srte))
 						return new FunctionBoundElement { TargetElement = srte, function = f };
-					string result2 = GetValue(context, innerVal);
+					string result2 = GetValue(innerVal, className);
 					if (result2 != null)
 						return new SnippetTextElement { Text = f(result2) };
 					else
 						return new SnippetTextElement { Text = f(innerVal) };
 				}
 			}
-			string result = GetValue(context, val);
+			string result = GetValue(val, className);
 			if (result != null)
 				return new SnippetTextElement { Text = result };
 			else
 				return new SnippetReplaceableTextElement { Text = val }; // ${unknown} -> replaceable element
 		}
 		
-		static string GetValue(ITextEditor editor, string propertyName)
+		static string GetValue(string propertyName, string className)
 		{
 			if ("ClassName".Equals(propertyName, StringComparison.OrdinalIgnoreCase)) {
-				var name = GetCurrentClassName(editor);
-				if (name != null)
-					return name;
+				if (className != null)
+					return className;
 			}
 			return Core.StringParser.GetValue(propertyName);
 		}
 		
-		static string GetCurrentClassName(ITextEditor editor)
+		public async Task<bool> InsertAsync(ITextEditor editor, ICSharpCode.AvalonEdit.Editing.TextArea textArea,
+			int start, int length, string activationMethod)
 		{
-			var registry = SD.GetService<LanguageServiceRegistry>();
-			if (registry == null || !registry.TryGetService(editor.FileName, out var service))
-				return null;
-			var id = new ICSharpCode.SharpDevelop.LanguageServices.DocumentId(editor.FileName);
-			service.UpsertDocumentAsync(id, editor.Document.Text, CancellationToken.None).GetAwaiter().GetResult();
-			return service.GetContainingTypeNameAsync(id, editor.Caret.Offset, CancellationToken.None).GetAwaiter().GetResult();
+			var document = editor.Document;
+			var text = document.Text;
+			var fileName = editor.FileName;
+			var caret = editor.Caret.Offset;
+			var selectionStart = editor.SelectionStart;
+			var selectionLength = editor.SelectionLength;
+			var snippetText = Text;
+			string className = null;
+			if (snippetText.IndexOf("ClassName", StringComparison.OrdinalIgnoreCase) >= 0) {
+				var registry = SD.GetService<LanguageServiceRegistry>();
+				if (registry != null && registry.TryGetService(fileName, out var service)) {
+					var id = new ICSharpCode.SharpDevelop.LanguageServices.DocumentId(fileName);
+					await service.UpsertDocumentAsync(id, text, CancellationToken.None);
+					className = await service.GetContainingTypeNameAsync(id, caret, CancellationToken.None);
+				}
+			}
+			// Never keep an undo transaction open over RPC, or remove the triggering word
+			// until the reply is known to belong to this unchanged editor state.
+			if (editor.Document != document || editor.FileName != fileName || document.Text != text
+				|| editor.Caret.Offset != caret || editor.SelectionStart != selectionStart
+				|| editor.SelectionLength != selectionLength)
+				return false;
+			var snippet = CreateAvalonEditSnippet(editor, snippetText, className);
+			using (document.OpenUndoGroup()) {
+				document.Remove(start, length);
+				snippet.Insert(textArea);
+			}
+			TrackUsage(activationMethod);
+			return true;
 		}
 		
 		static Func<string, string> GetFunction(ITextEditor context, string name)

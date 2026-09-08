@@ -6,8 +6,157 @@ using System.Threading.Tasks;
 
 namespace ICSharpCode.SharpDevelop.LanguageServices
 {
+    /// <summary>
+    /// How much of the state behind an answer about a document is actually in place.
+    ///
+    /// This exists because "not ready yet" and "genuinely nothing" were indistinguishable, and that
+    /// cost real correctness: a reference search run while a document was still registered against
+    /// the shared loose ad-hoc project returned a perfectly valid EMPTY result, which a caller then
+    /// cached forever (doc/technotes/openlens.md; roslyn-host-process.md §5.3).
+    ///
+    /// In-process that is a latent bug. Across a process boundary it becomes routine, because a
+    /// host starts cold and can answer before it is warm - so readiness has to be part of the
+    /// contract rather than something each caller sniffs out for itself by downcasting to a
+    /// concrete service.
+    /// </summary>
+    public enum DocumentReadiness
+    {
+        /// <summary>The service does not know this document at all.</summary>
+        Unknown,
+
+        /// <summary>
+        /// Known, but not yet part of its own project's compilation - typically a file opened
+        /// before its project finished loading, which lives in a shared loose project until it is
+        /// adopted. Answers are valid for what is loaded, and may be incomplete: a caller that
+        /// caches must NOT cache them.
+        /// </summary>
+        Loading,
+
+        /// <summary>Backed by its own project's compilation; answers are final.</summary>
+        Ready
+    }
+
+    /// <summary>
+    /// What the language service's workspace holds for one document, as data.
+    ///
+    /// The point is that it is data: the previous way to answer these questions was to hand out a
+    /// live Roslyn <c>Document</c> and let the caller walk <c>Project.Documents</c> itself
+    /// (roslyn-host-process.md §5.4). That cannot cross a process boundary, and it couples
+    /// diagnostics to one backend. Everything here is serialisable.
+    ///
+    /// <paramref name="SiblingFilePaths"/> is what makes loose-project problems visible: every file
+    /// belonging to no project lands in ONE shared ad-hoc project, so unrelated files - or several
+    /// copies of the same file, which is what duplicate type definitions and broken symbol
+    /// resolution look like from outside - show up as that project's siblings.
+    /// </summary>
+    public sealed record WorkspaceDocumentInfo(
+        DocumentReadiness Readiness,
+        string? ProjectFilePath,
+        IReadOnlyList<string> SiblingFilePaths)
+    {
+        public int? MetadataReferenceCount { get; init; }
+        public int? TrackedProjectCount { get; init; }
+        public IReadOnlyList<string>? DiagnosticSample { get; init; }
+    }
+
+    /// <summary>
+    /// A code-action id was issued against different document text than it is being applied to.
+    ///
+    /// Explicit rather than silent: the previous behaviour was to resolve a stale id to an empty
+    /// edit map, so the UI applied nothing and reported success (roslyn-host-process.md §5.2). A
+    /// caller should recompute the actions for the current text and let the user pick again.
+    /// </summary>
+    public sealed class StaleCodeActionException : System.Exception
+    {
+        public StaleCodeActionException(string actionId)
+            : base("The code action is no longer valid because the document changed. Recompute the available actions and try again.")
+        {
+            ActionId = actionId;
+        }
+
+        public string ActionId { get; }
+    }
+
+    /// <summary>An Extract Interface member selection was issued against different document text.</summary>
+    public sealed class StaleExtractInterfaceException : System.Exception
+    {
+        public StaleExtractInterfaceException(string memberId)
+            : base("The Extract Interface member selection is no longer valid because the document changed. Recompute the members and try again.")
+        {
+            MemberId = memberId;
+        }
+
+        public string MemberId { get; }
+    }
+
+    /// <summary>
+    /// Everything OpenLens needs about one declaration, resolved in the same pass as its siblings.
+    /// Counts are -1 when the backend does not compute that kind for this symbol.
+    /// </summary>
+    public sealed record LensAnchorResult(
+        string AnchorId,
+        TextSpan Range,
+        string? DisplayName,
+        string? SymbolKey,
+        SymbolOverridability Overridability,
+        int ReferenceCount,
+        int ImplementationCount,
+        int OverrideCount);
+
+    /// <summary>
+    /// Every lens value for one document, from ONE call.
+    ///
+    /// This replaces 1 outline call + N reference searches + M hierarchy searches, each previously
+    /// a separate round trip subject independently to the readiness problem
+    /// (roslyn-host-process.md §6). Batching matters for two reasons, and the second is the more
+    /// important one:
+    ///
+    /// - Performance: the backend answers the whole set from a single compilation.
+    /// - Correctness: one <see cref="Readiness"/> covers the whole set, so a caller can no longer
+    ///   cache some anchors resolved against a warm workspace and others against a cold one. That
+    ///   per-anchor race is the cadence problem class recorded in openlens.md §13.2.
+    ///
+    /// Worth having in-process on its own merits; it is also exactly the shape an out-of-process
+    /// host would expose as <c>roslyn/lens/document</c>.
+    /// </summary>
+    public sealed record LensDocumentResult(
+        DocumentReadiness Readiness,
+        IReadOnlyList<LensAnchorResult> Anchors);
+
     public interface ILanguageService
     {
+        /// <summary>
+        /// Workspace state for one document, as a DTO. Returns null when the service does not
+        /// track the document. Diagnostic aid; see <see cref="WorkspaceDocumentInfo"/>.
+        /// </summary>
+        WorkspaceDocumentInfo? GetWorkspaceDocumentInfo(DocumentId documentId);
+
+        /// <summary>
+        /// All of a document's lens anchors and their counts in one call; see
+        /// <see cref="LensDocumentResult"/>. Returns an empty anchor list (not null) when the
+        /// document has no declarations or the backend does not support lenses.
+        /// </summary>
+        Task<LensDocumentResult> GetLensDocumentAsync(DocumentId documentId, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Readiness of the state behind answers for this document. Callers that cache a result -
+        /// OpenLens above all - must check this and refuse to cache anything below
+        /// <see cref="DocumentReadiness.Ready"/>.
+        ///
+        /// Synchronous and cheap by contract: it reports state the service already holds, and must
+        /// never be implemented by doing work to find out. An out-of-process implementation answers
+        /// from status the host pushes, not with a round trip.
+        /// </summary>
+        DocumentReadiness GetDocumentReadiness(DocumentId documentId);
+
+        /// <summary>
+        /// Monotonically increases whenever semantic workspace state changes. UI caches whose
+        /// answer depends on other documents (notably OpenLens reference counts) must include
+        /// this value as well as their own document version.
+        /// This is local state in the IDE-facing service, so querying it never performs RPC.
+        /// </summary>
+        long GetWorkspaceRevision();
+
         Task UpsertDocumentAsync(DocumentId documentId, string text, CancellationToken cancellationToken);
         Task<CompletionResult> GetCompletionsAsync(DocumentId documentId, int offset, CancellationToken cancellationToken);
         Task<QuickInfo?> GetQuickInfoAsync(DocumentId documentId, int offset, CancellationToken cancellationToken);
@@ -71,11 +220,9 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
 
         /// <summary>
         /// Lists the code actions (quick fixes/refactorings) applicable at <paramref name="span"/>
-        /// (externals/OpenDevelop/doc/technotes/language-services.md §8). A computed action is short-lived backend-side state
-        /// (a Roslyn <c>CodeAction</c>, or an LSP action that may still need a
-        /// <c>codeAction/resolve</c> round trip) — it can't be handed back as plain data, so
-        /// <see cref="CodeActionInfo.Id"/> is an opaque token the backend caches against, valid
-        /// only until the next call to this method for the same document.
+        /// (externals/OpenDevelop/doc/technotes/language-services.md §8). The UI treats
+        /// <see cref="CodeActionInfo.Id"/> as opaque. Roslyn encodes the source version, range
+        /// and action identity and recomputes the action on apply, including after host recovery.
         /// </summary>
         Task<IReadOnlyList<CodeActionInfo>> GetCodeActionsAsync(DocumentId documentId, TextSpan span, CancellationToken cancellationToken);
 
@@ -83,7 +230,8 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
         /// Computes the edits for the action <paramref name="actionId"/> returned by a preceding
         /// <see cref="GetCodeActionsAsync"/> call on the same document, in the same shape
         /// <see cref="RenameSymbolAsync"/> returns (per absolute file path, not yet applied).
-        /// Returns an empty map for an unknown/stale id rather than throwing.
+        /// Roslyn rejects unknown or stale ids with <see cref="StaleCodeActionException"/>;
+        /// a failed action must not be presented as a successful empty edit.
         /// </summary>
         Task<IReadOnlyDictionary<string, IReadOnlyList<TextEdit>>> ApplyCodeActionAsync(
             DocumentId documentId, string actionId, CancellationToken cancellationToken);
@@ -262,19 +410,25 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
 
     public sealed class DocumentId : IEquatable<DocumentId>
     {
-        public DocumentId(string fileName)
+        public DocumentId(string fileName) : this(fileName, null) { }
+
+        [System.Text.Json.Serialization.JsonConstructor]
+        public DocumentId(string fileName, string? targetFramework)
         {
             FileName = fileName ?? throw new ArgumentNullException(nameof(fileName));
+            TargetFramework = targetFramework;
         }
 
         public string FileName { get; }
+        public string? TargetFramework { get; }
 
         public bool Equals(DocumentId? other) =>
-            other is not null && StringComparer.OrdinalIgnoreCase.Equals(FileName, other.FileName);
+            other is not null && StringComparer.OrdinalIgnoreCase.Equals(FileName, other.FileName)
+                && StringComparer.Ordinal.Equals(TargetFramework, other.TargetFramework);
 
         public override bool Equals(object? obj) => Equals(obj as DocumentId);
 
-        public override int GetHashCode() => StringComparer.OrdinalIgnoreCase.GetHashCode(FileName);
+        public override int GetHashCode() => HashCode.Combine(StringComparer.OrdinalIgnoreCase.GetHashCode(FileName), TargetFramework);
 
         public override string ToString() => FileName;
     }
@@ -406,6 +560,12 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
 
     public sealed class DocumentOutlineNode
     {
+        [System.Text.Json.Serialization.JsonConstructor]
+        public DocumentOutlineNode(string name, string kind, TextSpan span,
+            IReadOnlyList<DocumentOutlineNode> children, TextSpan extentSpan,
+            string? accessibility, SymbolOverridability overridability)
+            : this(name, kind, span, children, (TextSpan?)extentSpan, accessibility, overridability) { }
+
         public DocumentOutlineNode(
             string name,
             string kind,
@@ -467,6 +627,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
 
     public readonly struct TextSpan : IEquatable<TextSpan>
     {
+        [System.Text.Json.Serialization.JsonConstructor]
         public TextSpan(TextPosition start, TextPosition end)
         {
             Start = start;
@@ -483,6 +644,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
 
     public readonly struct TextPosition : IEquatable<TextPosition>
     {
+        [System.Text.Json.Serialization.JsonConstructor]
         public TextPosition(int line, int column)
         {
             if (line < 1)

@@ -36,6 +36,74 @@ public class LanguageOpenLensProvidersTests : IDisposable
 		new(new DocumentId(fileName), fileName, DocumentVersion: 0,
 			ResolveOffset: pos => (pos.Line - 1) * 100 + pos.Column);
 
+	[Fact]
+	public async Task Batch_RetriesLoadingWithoutTextChange_AndSeparatesSameLineDeclarations()
+	{
+		var provider = new LanguageOpenLensProvider("CSharp", ".cs");
+		var first = new TextSpan(new TextPosition(1, 1), new TextPosition(1, 4));
+		var second = new TextSpan(new TextPosition(1, 20), new TextPosition(1, 23));
+		var entries = new[] {
+			new LensAnchorResult("a", first, "Foo", null, SymbolOverridability.None, 2, -1, -1),
+			new LensAnchorResult("b", second, "Bar", null, SymbolOverridability.None, 3, -1, -1)
+		};
+		OpenLensItem Item(string id, TextSpan span) => new("CSharp", "references", id, 0,
+			new OpenLensPresentation("references"), null,
+			new OpenLensAnchor(id, new DocumentId("Batch.cs"), new OpenLensRange(span), OpenLensAnchorKind.Type, id, null, 0), false);
+		languageService.LensResult = new(DocumentReadiness.Loading, entries);
+		Assert.False((await provider.ResolveAsync(Context("Batch.cs"), Item("a", first), CancellationToken.None)).IsResolved);
+		languageService.LensResult = new(DocumentReadiness.Ready, entries);
+		Assert.Equal("2 references", (await provider.ResolveAsync(Context("Batch.cs"), Item("a", first), CancellationToken.None)).Presentation.Title);
+		Assert.Equal("3 references", (await provider.ResolveAsync(Context("Batch.cs"), Item("b", second), CancellationToken.None)).Presentation.Title);
+		Assert.Equal(2, languageService.LensCalls);
+	}
+
+	[Fact]
+	public async Task Batch_DoesNotReuseAnotherServiceOrTargetFramework()
+	{
+		var provider = new LanguageOpenLensProvider("CSharp", ".cs");
+		var span = new TextSpan(new TextPosition(1, 1), new TextPosition(1, 4));
+		LensDocumentResult Result(int count) => new(DocumentReadiness.Ready, new[] {
+			new LensAnchorResult("a", span, "Foo", null, SymbolOverridability.None, count, -1, -1)
+		});
+		async Task<string> Resolve(string tfm)
+		{
+			var document = new DocumentId("Identity.cs", tfm);
+			var context = new OpenLensDocumentContext(document, document.FileName, 0, _ => 0);
+			var anchor = new OpenLensAnchor("a", document, new OpenLensRange(span), OpenLensAnchorKind.Type, "Foo", null, 0);
+			var item = new OpenLensItem("CSharp", "references", "a", 0, new OpenLensPresentation("references"), null, anchor, false);
+			return (await provider.ResolveAsync(context, item, CancellationToken.None)).Presentation.Title;
+		}
+		languageService.LensResult = Result(2);
+		Assert.Equal("2 references", await Resolve("net8.0"));
+		languageService.LensResult = Result(3);
+		Assert.Equal("3 references", await Resolve("net10.0"));
+		var replacement = new FakeLanguageService { LensResult = Result(4) };
+		using var registration = registry.RegisterExtension(".cs", replacement);
+		Assert.Equal("4 references", await Resolve("net10.0"));
+		Assert.Equal(1, replacement.LensCalls);
+	}
+
+	[Fact]
+	public async Task Batch_InvalidatesWhenAnotherDocumentChangesTheWorkspace()
+	{
+		var provider = new LanguageOpenLensProvider("CSharp", ".cs");
+		var span = new TextSpan(new TextPosition(1, 1), new TextPosition(1, 4));
+		var document = new DocumentId("Declaration.cs");
+		var context = new OpenLensDocumentContext(document, document.FileName, 0, _ => 0);
+		var anchor = new OpenLensAnchor("Class:Foo", document, new OpenLensRange(span), OpenLensAnchorKind.Type, "Foo", null, 0);
+		var item = new OpenLensItem("CSharp", "references", anchor.AnchorId, 0, new OpenLensPresentation("references"), null, anchor, false);
+		LensDocumentResult Result(int count) => new(DocumentReadiness.Ready, new[] {
+			new LensAnchorResult(anchor.AnchorId, span, "Foo", null, SymbolOverridability.None, count, -1, -1)
+		});
+
+		languageService.LensResult = Result(1);
+		Assert.Equal("1 reference", (await provider.ResolveAsync(context, item, CancellationToken.None)).Presentation.Title);
+		languageService.WorkspaceRevision++;
+		languageService.LensResult = Result(2);
+		Assert.Equal("2 references", (await provider.ResolveAsync(context, item, CancellationToken.None)).Presentation.Title);
+		Assert.Equal(2, languageService.LensCalls);
+	}
+
 	static DocumentOutlineNode Node(string kind, string name, int line = 1, int column = 1, IReadOnlyList<DocumentOutlineNode>? children = null) =>
 		new(name, kind, new TextSpan(new TextPosition(line, column), new TextPosition(line, column + name.Length)), children ?? Array.Empty<DocumentOutlineNode>());
 

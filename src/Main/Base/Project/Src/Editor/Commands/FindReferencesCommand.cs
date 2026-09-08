@@ -150,13 +150,25 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 			if (oldName == null)
 				return;
 
-			var dialog = new RenameSymbolDialog(name => IsValidIdentifierAsync(service, id, name).GetAwaiter().GetResult()) {
+			// Per-keystroke validation must not call the language service: RenameSymbolDialog's
+			// validator is synchronous, so awaiting there means blocking the UI thread on every
+			// character typed - and a cross-process round trip once the service moves out
+			// (doc/technotes/roslyn-host-process.md §5.1). Shape is checked locally as you type;
+			// the authoritative check happens once, below, before anything is renamed.
+			var dialog = new RenameSymbolDialog(IsIdentifierShaped) {
 				Owner = SD.Workbench.MainWindow,
 				OldSymbolName = oldName,
 				NewSymbolName = oldName
 			};
 			if (dialog.ShowDialog() != true)
 				return;
+
+			// The real check, once, off the keystroke path: this is what rejects a language keyword
+			// or anything else the local shape test cannot know about.
+			if (!await IsValidIdentifierAsync(service, id, dialog.NewSymbolName)) {
+				SD.MessageService.ShowError("'" + dialog.NewSymbolName + "' is not a valid identifier in this language.");
+				return;
+			}
 
 			try {
 				var editsByFile = await service.RenameSymbolAsync(
@@ -169,6 +181,27 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 			}
 		}
 
+		/// <summary>
+		/// Whether <paramref name="name"/> has the shape of an identifier, decided locally so the
+		/// rename dialog can validate on every keystroke without calling the language service.
+		///
+		/// Deliberately not the full answer: it accepts language keywords, which the service-side
+		/// check above rejects. That split is the point - this one is on the typing path and must
+		/// be instant, while the exact answer is needed only once, before the rename runs.
+		/// </summary>
+		static bool IsIdentifierShaped(string name)
+		{
+			if (string.IsNullOrEmpty(name))
+				return false;
+			if (!char.IsLetter(name[0]) && name[0] != '_')
+				return false;
+			for (int i = 1; i < name.Length; i++) {
+				if (!char.IsLetterOrDigit(name[i]) && name[i] != '_')
+					return false;
+			}
+			return true;
+		}
+
 		static Task<bool> IsValidIdentifierAsync(SemanticLanguageService service, ICSharpCode.SharpDevelop.LanguageServices.DocumentId id, string name)
 		{
 			return string.IsNullOrEmpty(name) ? Task.FromResult(false) : service.IsValidIdentifierAsync(id, name, CancellationToken.None);
@@ -176,7 +209,7 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 
 		/// <summary>
 		/// Applies edits through the editor (in an open document) or straight to disk, matching
-		/// <see cref="RoslynWorkspaceHelper.OpenAndReplaceText"/>'s behavior - left dirty like any
+		/// <see cref="EditorFileOperations.OpenAndReplaceText"/>'s behavior - left dirty like any
 		/// other in-editor edit so a multi-file rename surfaces every touched file for the user to
 		/// review/undo/save.
 		/// </summary>
@@ -195,7 +228,7 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 				text = text.Substring(0, start) + edit.NewText + text.Substring(end);
 			}
 
-			RoslynWorkspaceHelper.OpenAndReplaceText(fileName, text);
+			EditorFileOperations.OpenAndReplaceText(fileName, text);
 		}
 	}
 }

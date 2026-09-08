@@ -20,11 +20,17 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows.Input;
 
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.TypeSystem;
 using ICSharpCode.Core;
+using ICSharpCode.Core.Presentation;
+using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor.Bookmarks;
+using ICSharpCode.SharpDevelop.LanguageServices;
 
 namespace ICSharpCode.AvalonEdit.AddIn
 {
@@ -35,6 +41,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 	public class IconBarManager : IBookmarkMargin
 	{
 		ObservableCollection<IBookmark> bookmarks = new ObservableCollection<IBookmark>();
+		long outlineRequestVersion;
 		
 		public IconBarManager()
 		{
@@ -69,6 +76,69 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			foreach (var c in parseInfo.TopLevelTypeDefinitions) {
 				AddEntityBookmarks(c, document, parseInfo.FileName);
 			}
+		}
+
+		/// <summary>
+		/// Remote parsers intentionally do not expose live type-system entities. Use the same
+		/// document-outline DTO as the navigation bar to retain declaration icons without creating
+		/// an in-process Roslyn workspace.
+		/// </summary>
+		public async Task UpdateLanguageServiceBookmarksAsync(FileName fileName, IDocument document, CancellationToken cancellationToken = default)
+		{
+			if (fileName == null || document == null)
+				return;
+			var requestVersion = Interlocked.Increment(ref outlineRequestVersion);
+			try {
+				var registry = SD.GetService<LanguageServiceRegistry>();
+				if (registry == null || !registry.TryGetService(fileName, out var service))
+					return;
+				var outline = await service.GetDocumentOutlineAsync(new DocumentId(fileName), cancellationToken).ConfigureAwait(false);
+				await SD.MainThread.InvokeAsync(() => {
+					if (requestVersion != Volatile.Read(ref outlineRequestVersion))
+						return;
+					for (int i = bookmarks.Count - 1; i >= 0; i--)
+						if (bookmarks[i] is OutlineBookmark)
+							bookmarks.RemoveAt(i);
+					foreach (var node in outline)
+						AddOutlineBookmarks(node, document);
+				});
+			} catch (OperationCanceledException) {
+			} catch (Exception ex) {
+				LoggingService.Warn("Language-service icon bar outline failed for '" + fileName + "': " + ex.Message);
+			}
+		}
+
+		void AddOutlineBookmarks(DocumentOutlineNode node, IDocument document)
+		{
+			if (node.Span.Start.Line >= 1 && node.Span.Start.Line <= document.LineCount)
+				bookmarks.Add(new OutlineBookmark(node));
+			foreach (var child in node.Children)
+				AddOutlineBookmarks(child, document);
+		}
+
+		sealed class OutlineBookmark : IBookmark
+		{
+			readonly DocumentOutlineNode node;
+			public OutlineBookmark(DocumentOutlineNode node) => this.node = node;
+			public int LineNumber => node.Span.Start.Line;
+			public IImage Image => node.Kind switch {
+				"Interface" => ClassBrowserIconService.Interface,
+				"Struct" or "Structure" => ClassBrowserIconService.Struct,
+				"Enum" => ClassBrowserIconService.Enum,
+				"Delegate" => ClassBrowserIconService.Delegate,
+				"Method" or "Function" or "Constructor" => ClassBrowserIconService.Method,
+				"Field" => ClassBrowserIconService.Field,
+				"Property" => ClassBrowserIconService.Property,
+				"Event" => ClassBrowserIconService.Event,
+				_ => ClassBrowserIconService.Class
+			};
+			public int ZOrder => -10;
+			public void MouseDown(MouseButtonEventArgs e) { }
+			public void MouseUp(MouseButtonEventArgs e) { }
+			public bool CanDragDrop => false;
+			public void Drop(int lineNumber) => throw new NotSupportedException();
+			public bool DisplaysTooltip => true;
+			public object CreateTooltipContent() => node.Name;
 		}
 
 		// A partial class's Members (and, in principle, NestedTypes) can span every file the type

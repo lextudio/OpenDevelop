@@ -30,8 +30,9 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.OpenLens
         /// <summary>
         /// Raised when a provider's underlying data changed for reasons the OpenLens host can't
         /// infer from document edits alone - a test run finishing, a Git HEAD change, a coverage run
-        /// completing (doc §13). A provider that isn't <see cref="OpenLensRefreshEventArgs.ProviderId"/>
-        /// should ignore the notification rather than recompute defensively.
+        /// completing (doc §13). A notification with a provider id targets that provider; a null
+        /// id invalidates every provider, used when a source edit may alter semantic results in
+        /// another open document.
         /// </summary>
         public event EventHandler<OpenLensRefreshEventArgs>? RefreshRequested;
 
@@ -106,14 +107,15 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.OpenLens
 
     public sealed class OpenLensRefreshEventArgs : EventArgs
     {
-        public OpenLensRefreshEventArgs(string providerId, DocumentId? documentId = null, IReadOnlyCollection<string>? anchorIds = null)
+        public OpenLensRefreshEventArgs(string? providerId = null, DocumentId? documentId = null, IReadOnlyCollection<string>? anchorIds = null)
         {
-            ProviderId = providerId ?? throw new ArgumentNullException(nameof(providerId));
             DocumentId = documentId;
             AnchorIds = anchorIds;
+            ProviderId = providerId;
         }
 
-        public string ProviderId { get; }
+        /// <summary>Null means every provider; otherwise only this provider is invalidated.</summary>
+        public string? ProviderId { get; }
         public DocumentId? DocumentId { get; }
 
         /// <summary>Null means "every anchor for this provider/document", not "no anchors".</summary>

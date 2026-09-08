@@ -27,6 +27,9 @@
 // EntityBookmark/GotoDialog), not part of the ParserService/IParser resolve flow this rewrite targets.
 
 using System.Threading;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+using System;
 using ICSharpCode.Core;
 using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Dom;
@@ -89,13 +92,84 @@ namespace ICSharpCode.SharpDevelop.Internal.ConditionEvaluators
 			if (registry == null || !registry.TryGetService(editor.FileName, out var service))
 				return null;
 
-			try {
-				var id = new DocumentId(editor.FileName.ToString());
-				service.UpsertDocumentAsync(id, editor.Document.Text, CancellationToken.None).GetAwaiter().GetResult();
-				return service.GetSymbolKindAsync(id, editor.Caret.Offset, CancellationToken.None).GetAwaiter().GetResult();
-			} catch {
-				return null;
+			var key = new CaretSymbolKey(editor.FileName.ToString(), editor.Caret.Offset, editor.Document.Version?.ToString());
+			lock (symbolKindCacheLock) {
+				if (symbolKindCache.TryGetValue(key, out var cached))
+					return cached;
 			}
+			// Not computed yet: answer "no symbol" now and compute it off the UI thread for next
+			// time. See the field comment for why this must never block here.
+			BeginComputeSymbolKind(service, key, editor.Document.Text);
+			return null;
+		}
+
+		/// <summary>
+		/// Symbol kind per (file, caret offset, document version), computed off the UI thread.
+		///
+		/// This evaluator runs on **every context-menu build**, synchronously, on the UI thread -
+		/// <see cref="IConditionEvaluator.IsValid"/> has no async form. It used to answer by
+		/// blocking on two language-service calls (a full document upsert, then the symbol query),
+		/// which is a freeze proportional to how long Roslyn takes, and would become a
+		/// cross-process round trip once the language service moves out
+		/// (doc/technotes/roslyn-host-process.md §5.1 names this the dominant risk).
+		///
+		/// Keying on the document version - not just the offset - is what keeps this correct: an
+		/// edit produces a new version, so a stale kind can never be served for changed text. The
+		/// cost of a miss is a menu item that stays hidden until the caret's kind has been
+		/// computed, which is recoverable; a frozen UI is not.
+		/// </summary>
+		readonly struct CaretSymbolKey : IEquatable<CaretSymbolKey>
+		{
+			public CaretSymbolKey(string fileName, int offset, string documentVersion)
+			{
+				FileName = fileName;
+				Offset = offset;
+				DocumentVersion = documentVersion;
+			}
+
+			public string FileName { get; }
+			public int Offset { get; }
+			public string DocumentVersion { get; }
+
+			public bool Equals(CaretSymbolKey other) =>
+				Offset == other.Offset
+				&& string.Equals(FileName, other.FileName, StringComparison.OrdinalIgnoreCase)
+				&& string.Equals(DocumentVersion, other.DocumentVersion, StringComparison.Ordinal);
+
+			public override bool Equals(object obj) => obj is CaretSymbolKey other && Equals(other);
+
+			public override int GetHashCode() =>
+				(StringComparer.OrdinalIgnoreCase.GetHashCode(FileName ?? string.Empty), Offset, DocumentVersion ?? string.Empty).GetHashCode();
+		}
+
+		static readonly object symbolKindCacheLock = new object();
+		static readonly Dictionary<CaretSymbolKey, SymbolKindInfo> symbolKindCache = new Dictionary<CaretSymbolKey, SymbolKindInfo>();
+		static readonly HashSet<CaretSymbolKey> symbolKindInFlight = new HashSet<CaretSymbolKey>();
+		const int SymbolKindCacheCapacity = 64;
+
+		static void BeginComputeSymbolKind(LanguageServices.ILanguageService service, CaretSymbolKey key, string documentText)
+		{
+			lock (symbolKindCacheLock) {
+				// One request per key: a context menu asks several conditions about the same caret.
+				if (!symbolKindInFlight.Add(key))
+					return;
+			}
+			Task.Run(async () => {
+				SymbolKindInfo kind = null;
+				try {
+					var id = new DocumentId(key.FileName);
+					await service.UpsertDocumentAsync(id, documentText, CancellationToken.None).ConfigureAwait(false);
+					kind = await service.GetSymbolKindAsync(id, key.Offset, CancellationToken.None).ConfigureAwait(false);
+				} catch (Exception ex) {
+					LoggingService.Debug("SymbolTypeAtCaret: background symbol-kind query failed. " + ex.Message);
+				}
+				lock (symbolKindCacheLock) {
+					symbolKindInFlight.Remove(key);
+					if (symbolKindCache.Count >= SymbolKindCacheCapacity)
+						symbolKindCache.Clear();
+					symbolKindCache[key] = kind;
+				}
+			});
 		}
 
 		static bool IsValidEntityModel(IEntityModel entityModel, Condition condition)

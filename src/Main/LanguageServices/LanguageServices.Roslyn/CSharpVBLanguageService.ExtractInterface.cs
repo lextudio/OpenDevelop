@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using ICSharpCode.Core;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 // See CSharpVBLanguageService.cs's alias comment: disambiguates against the COM interop
@@ -19,34 +18,27 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
     // syntax-tree handling and source-text generation for each language.
     public sealed partial class CSharpVBLanguageService
     {
-        // Last computed candidate-member list per document, keyed by the opaque
-        // ExtractInterfaceMember.Id GetExtractInterfaceInfoAsync handed out - same
-        // "valid until the next call for this document" convention as _pendingCodeActionsByDocument.
-        readonly Dictionary<DocumentId, Dictionary<string, ISymbol>> _pendingExtractInterfaceMembersByDocument = new();
-
         public async Task<ExtractInterfaceInfo?> GetExtractInterfaceInfoAsync(DocumentId documentId, int offset, CancellationToken cancellationToken)
         {
+            var document = await GetOrLoadDocumentAsync(documentId, cancellationToken);
+            if (document is null)
+                return null;
+            var documentVersion = ComputeDocumentVersion(await document.GetTextAsync(cancellationToken));
             var found = await FindSymbolAtAsync(documentId, offset, cancellationToken);
             if (found is not { Symbol: INamedTypeSymbol { TypeKind: TypeKind.Class } type })
                 return null;
 
-            var candidates = type.GetMembers()
-                .Where(m => m.DeclaredAccessibility == RoslynAccessibility.Public && !m.IsStatic)
-                .Where(m => (m is IMethodSymbol method && method.MethodKind == MethodKind.Ordinary) || m is IPropertySymbol || m is IEventSymbol)
-                .ToArray();
+            var candidates = GetExtractInterfaceCandidates(type);
 
             var isVB = IsVBDocument(documentId);
-            var cache = new Dictionary<string, ISymbol>();
             var members = new List<ExtractInterfaceMember>(candidates.Length);
             for (int i = 0; i < candidates.Length; i++)
             {
-                var id = i.ToString();
-                cache[id] = candidates[i];
+                var id = FormatExtractInterfaceMemberId(documentVersion, candidates[i], i);
                 members.Add(new ExtractInterfaceMember(id, candidates[i].ToDisplayString(isVB
                     ? SymbolDisplayFormat.MinimallyQualifiedFormat
                     : SymbolDisplayFormat.CSharpShortErrorMessageFormat)));
             }
-            _pendingExtractInterfaceMembersByDocument[documentId] = cache;
 
             return new ExtractInterfaceInfo(type.Name, members);
         }
@@ -55,15 +47,35 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             DocumentId documentId, int offset, string interfaceName, IReadOnlyList<string> memberIds,
             bool addInterfaceToClass, bool includeComments, CancellationToken cancellationToken)
         {
-            if (!_pendingExtractInterfaceMembersByDocument.TryGetValue(documentId, out var cache))
+            var document = await GetOrLoadDocumentAsync(documentId, cancellationToken);
+            if (document is null)
                 return null;
+            var documentVersion = ComputeDocumentVersion(await document.GetTextAsync(cancellationToken));
+
+            // Validate before resolving the class: an edit can remove or move the declaration,
+            // in which case symbol lookup would otherwise silently return null for a stale token.
+            foreach (var memberId in memberIds)
+            {
+                if (!memberId.StartsWith("v1|" + documentVersion + "|", StringComparison.Ordinal))
+                    throw new StaleExtractInterfaceException(memberId);
+            }
 
             var found = await FindSymbolAtAsync(documentId, offset, cancellationToken);
             if (found is not { Symbol: INamedTypeSymbol { TypeKind: TypeKind.Class } classSymbol })
                 return null;
 
-            var chosenMembers = memberIds.Select(id => cache.TryGetValue(id, out var m) ? m : null).OfType<ISymbol>().ToArray();
-            if (chosenMembers.Length == 0)
+            var candidates = GetExtractInterfaceCandidates(classSymbol);
+            var currentMembers = candidates
+                .Select((member, index) => new { Id = FormatExtractInterfaceMemberId(documentVersion, member, index), Member = member })
+                .ToDictionary(pair => pair.Id, pair => pair.Member, StringComparer.Ordinal);
+            var chosenMembers = new List<ISymbol>(memberIds.Count);
+            foreach (var memberId in memberIds)
+            {
+                if (!currentMembers.TryGetValue(memberId, out var member))
+                    throw new StaleExtractInterfaceException(memberId);
+                chosenMembers.Add(member);
+            }
+            if (chosenMembers.Count == 0)
                 return null;
 
             // Several AdhocWorkspace documents can declare the same type (same file name + same
@@ -82,9 +94,9 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             ExtractInterfaceResult result;
 
             if (isVB)
-                result = await ExtractInterfaceVB(classSyntaxRef, classSymbol, interfaceName, chosenMembers, addInterfaceToClass, includeComments, cancellationToken);
+                result = await ExtractInterfaceVB(classSyntaxRef, classSymbol, interfaceName, chosenMembers.ToArray(), addInterfaceToClass, includeComments, cancellationToken);
             else
-                result = await ExtractInterfaceCSharp(classSyntaxRef, classSymbol, interfaceName, chosenMembers, addInterfaceToClass, includeComments, cancellationToken);
+                result = await ExtractInterfaceCSharp(classSyntaxRef, classSymbol, interfaceName, chosenMembers.ToArray(), addInterfaceToClass, includeComments, cancellationToken);
 
             return result;
         }
@@ -92,6 +104,20 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         static bool IsVBDocument(DocumentId documentId)
         {
             return documentId.FileName.EndsWith(".vb", StringComparison.OrdinalIgnoreCase);
+        }
+
+        static ISymbol[] GetExtractInterfaceCandidates(INamedTypeSymbol type) =>
+            type.GetMembers()
+                .Where(m => m.DeclaredAccessibility == RoslynAccessibility.Public && !m.IsStatic)
+                .Where(m => (m is IMethodSymbol method && method.MethodKind == MethodKind.Ordinary) || m is IPropertySymbol || m is IEventSymbol)
+                .ToArray();
+
+        static string FormatExtractInterfaceMemberId(string documentVersion, ISymbol member, int ordinal)
+        {
+            var identity = member.GetDocumentationCommentId() ?? member.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            var bytes = System.Text.Encoding.UTF8.GetBytes(identity);
+            var fingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes), 0, 8);
+            return string.Concat("v1|", documentVersion, "|", ordinal.ToString(System.Globalization.CultureInfo.InvariantCulture), "|", fingerprint);
         }
 
         // ── C# path ───────────────────────────────────────────────────────────

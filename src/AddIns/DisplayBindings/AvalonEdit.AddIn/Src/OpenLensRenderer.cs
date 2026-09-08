@@ -143,7 +143,8 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		/// <see cref="OpenLensRefreshEventArgs.DocumentId"/> null means "every open document";
 		/// non-null is checked against this renderer's own <see cref="documentId"/>.
 		/// <see cref="OpenLensRefreshEventArgs.AnchorIds"/> null means "every anchor for this
-		/// provider" rather than "no anchors" (see its doc comment).
+		/// provider" rather than "no anchors" (see its doc comment). A null provider id means
+		/// every provider, which is required for cross-document semantic invalidation.
 		///
 		/// Drops the matching cache entries and re-runs full discovery rather than just re-resolving
 		/// them in place: a provider that computes its value directly in
@@ -166,7 +167,8 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				return;
 
 			var keysToInvalidate = resolvedItems
-				.Where(pair => pair.Value.ProviderId == e.ProviderId && (e.AnchorIds == null || e.AnchorIds.Contains(pair.Key.AnchorId)))
+				.Where(pair => (e.ProviderId == null || pair.Value.ProviderId == e.ProviderId)
+					&& (e.AnchorIds == null || e.AnchorIds.Contains(pair.Key.AnchorId)))
 				.Select(pair => pair.Key)
 				.ToArray();
 			foreach (var key in keysToInvalidate)
@@ -210,6 +212,12 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			pendingEdits.Add((e.Offset, Math.Max(e.InsertionLength, e.RemovalLength)));
 			documentVersion++;
 			ScheduleAnchorRefresh();
+			// A reference/implementation count for this file can depend on declarations or uses in
+			// any other open editor. Ask every renderer to drop its resolved values; their lazy,
+			// viewport-scoped pass will repopulate only what is visible. This is deliberately a
+			// registry refresh rather than a local cache-key tweak: a resolved row otherwise never
+			// calls its provider again.
+			registry.RequestRefresh(new OpenLensRefreshEventArgs());
 		}
 
 		void VisualLinesChanged(object sender, EventArgs e) => ResolveVisibleAnchors();

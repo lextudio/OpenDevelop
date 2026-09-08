@@ -1,6 +1,17 @@
 # Out-of-Process Roslyn Host — Design
 
-Status: **proposal**. Nothing described here is implemented.
+Status: **partially implemented; not ready for default IDE use.** A real host accepts project
+snapshots, serves document requests, and supports parent-owned replay after process death.
+Phase 1 has a batch API, but consumers still have per-anchor paths. Remote mode now registers an
+`ILanguageService` adapter, shared by C# and VB, rather than a second local Roslyn workspace.
+The protocol includes semantic tokens, symbol classification/name, document status and rename
+options; the application project prepares the host runtime. Explicit TFM queries now select their
+own slices without changing the active framework. Project references are reconciled when later
+projects arrive, and readiness includes transitive dependencies. Completion and snippet insertion
+no longer synchronously wait for Roslyn. Full IDE interaction and lifecycle verification remain
+outstanding. Code actions are recomputed on apply and have a real cross-process
+replacement test. Passing isolated host tests is not the IDE migration
+acceptance gate. See §8 for the required end-to-end gate.
 
 ## 1. The question
 
@@ -15,9 +26,9 @@ But the honest framing of the payoff is different from the one in the question:
 
 - **Out-of-process does not give persistence.** Persisting project state is a separate feature. It
   is possible today, in-process (§7).
-- **What out-of-process gives is a lifetime that is independent of the IDE window**, plus fault
-  isolation and a hard architectural boundary. Fast startup follows from the *lifetime*, not from
-  the process split as such.
+- **What out-of-process gives is fault isolation and an enforceable architectural boundary.**
+  Under the lifetime decision in §7b, the host exits with the IDE. Faster startup requires
+  separately validated caching/persistence, not merely a process split.
 - The dominant cost is not serialization. It is the ~15 call sites that block the UI thread on a
   language-service call today (§5.1). Those are a latent freeze in-process; across a process
   boundary they become a certain one.
@@ -126,8 +137,24 @@ These call `.GetAwaiter().GetResult()` on the UI thread:
 | `AvalonEdit.AddIn/Src/Snippets/CodeSnippet.cs:224-225`, `CodeEditorView.cs:259-260` | snippet expansion, F1 |
 
 A cross-process round trip behind a context-menu build or a per-keystroke validator is a visible
-freeze. **Prerequisite: none of these may block.** The two at the top are also the two that are
-indefensible in-process, so fix them first and independently.
+freeze. **Prerequisite: none of these may block.**
+
+**Snippet expansion and completion have different constraints.** Inspect the actual callers before
+assuming that every synchronous return value requires a synchronous language query:
+
+- `CodeSnippet.GetCurrentClassName` resolves `${ClassName}` while a snippet is being expanded, and
+  the string it returns is inserted into the user's code. A cache miss falls through to
+  `StringParser.GetValue`, so deferring it would silently insert the WRONG text - worse than a
+  brief stall, because the user may not notice.
+- `RoslynCodeCompletionBinding.ShowCompletion` is called by `HandleKeyPressed` **after** insertion.
+  Its bool only stops trying other completion bindings; it does not swallow the inserted character.
+  Completion can claim the request synchronously and display its result asynchronously, provided
+  stale responses are discarded when the caret or document changes.
+
+Completion now runs asynchronously, cancels superseded requests and verifies the document text,
+file and caret before showing results. Snippet insertion resolves the containing type before
+editing, then checks document, caret and selection before opening an undo group. Previews do not
+query Roslyn. These paths still require real UI integration coverage for stale replies and undo.
 
 ### 5.2 Opaque tokens backed by live Roslyn objects
 
@@ -241,8 +268,8 @@ impossible, but the lesson generalises: **persisted semantic state needs a valid
 a freshness key.** More persistence without that is more of this failure mode.
 
 What Roslyn state beyond project evaluation is worth persisting is a real question with a known
-answer shape (Roslyn's own persistent storage keeps a symbol index in SQLite). That is a
-substantial feature on its own and should not be smuggled in as a side effect of a process split.
+answer shape (Roslyn itself has a SQLite-backed persistent store). That remains a substantial
+feature in its own right, rather than an accidental consequence of a process split.
 
 **What the process split actually buys:**
 
@@ -283,18 +310,28 @@ Not the workspace. A Roslyn `Compilation` is an object graph holding metadata re
 been serializable, and syntax trees are cheap to re-parse. The durable, expensive-to-rebuild artefact
 is the **index**: which files declare and reference which symbol names, plus per-document checksums.
 
-Roslyn already ships this (`IPersistentStorageService`, SQLite-backed) and Visual Studio stores it in
-`.vs/<solution>/v17/`. **This is adoption, not invention.**
+Roslyn's source has a SQLite-backed store, but its relevant service and checksummed-storage
+interfaces are internal implementation details, not a supported public API a standalone host can
+instantiate. We must therefore not couple OpenDevelop to Roslyn internals or describe this as
+"adoption". The supported implementation is an OpenDevelop-owned, content-addressed index whose
+entries are independently versioned and disposable.
 
 That bounds the claim honestly:
 
 | Operation | Cold-start cost with a persisted index |
 | --- | --- |
-| Solution-wide find references, go to definition, symbol search | index-backed — fast without building any compilation |
+| Candidate declaration lookup | token-index-backed; semantic confirmation still builds the candidate project's compilation |
+| Solution-wide find references, go to definition | not yet index-backed; correctness still requires the current semantic model |
 | Completion, diagnostics, code actions | still needs a compilation **for that project** — but not for the whole solution |
 
-Shutdown is fast for a different reason: SQLite writes incrementally while idle, so exit has nothing
-to flush.
+The first implemented slice is deliberately narrow: `PersistentSyntaxIndex` stores only identifier
+tokens, keyed by source checksum, language/parse options (including TFM symbols) and compiler
+version. `FindMember` uses it only to skip projects that cannot declare the requested type; it
+never treats an index hit or miss as a semantic answer. Entries use a digest, a unique temporary
+file and atomic replace; malformed, incompatible or inaccessible files rebuild conservatively.
+Real-host tests cover a process replacement, broken JSON and a source change with its timestamp
+restored. Before broadening this index, measure cold/warm latency and add concurrent-writer and
+semantic-equivalence coverage.
 
 ### Store: `.od/`
 
@@ -308,9 +345,10 @@ Two rules it must follow, both learned the hard way in this repo:
    time plus a project-tree scan. That is what let a snapshot holding `References: []` be trusted
    forever: the key never changed again, so the empty answer stuck. Branch switching breaks
    timestamp keys outright (a checkout can move a file's mtime *backwards*). Roslyn's own storage
-   keys on checksums; copy that.
-2. **Two IDE windows can open one solution.** Two hosts, one `.od/`. Needs either a lock file or
-   per-instance subdirectories, or they overwrite each other's index. `.vs` uses the latter.
+   content identity and parse configuration are the durable key; copy that principle.
+2. **Two IDE windows can open one solution.** Two hosts, one `.od/`. Immutable checksum entries
+   make concurrent writers benign: each writer uses its own temporary name then atomically replaces
+   the same complete payload. Readers validate the digest and rebuild on any partial/corrupt file.
 
 ### Hard prerequisite: RAR first
 
@@ -320,7 +358,9 @@ measurement chain — RAR unimplemented → 3 metadata references → every xuni
 
 So the ordering in §7a is not a priority call, it is a **precondition**:
 
-> Implement `ResolveAssemblyReferences` out of process **before** any semantic index is persisted.
+> Implement `ResolveAssemblyReferences` out of process **before** any semantic index or cached
+> semantic answer is persisted. The current token-only candidate filter does not persist semantic
+> answers and remains conservative when project evaluation is incomplete.
 
 The zero-reference guard added to the TFM cache loader stays useful as a tripwire, but a tripwire is
 not an invalidation strategy.
@@ -391,10 +431,34 @@ interface" — **does not hold for the project model**:
 Microsoft.Build.Evaluation.ProjectCollection MSBuildProjectCollection { get; }
 ```
 
-An MSBuild type, on OpenDevelop's own core interface, with ~51 references across the tree. And the
-consumer set is far wider than Roslyn's: Solution Explorer, the build system, the designers (which
-need references and TFMs), PackageManagement (which *writes* project files — the NuGet install path
-mutates the csproj), and the AddIn system.
+An MSBuild type, on OpenDevelop's own core interface. And the consumer set is far wider than
+Roslyn's: Solution Explorer, the build system, the designers (which need references and TFMs),
+PackageManagement (which *writes* project files — the NuGet install path mutates the csproj), and
+the AddIn system.
+
+**Counted properly, though, the coupling is far smaller than the ~51 references a plain grep
+suggests, and that changes the verdict on this step.** Most of those hits are tests, `Fake*`/`Mock*`
+doubles, and PackageManagement's `IGlobalMSBuildProjectCollection` — a *different* collection, used
+for NuGet install scripts, that only shares the name. The production surface is:
+
+| Site | Count |
+|---|---|
+| `ISolution.MSBuildProjectCollection` (the declaration) | 1 |
+| `Solution.cs` (the implementation) | 1 |
+| `MSBuildBasedProject.cs` | ~11 |
+| `MSBuildEngine.cs` | 1 |
+
+and `MSBuildBasedProject.MSBuildProjectCollection` is `internal`, forwarding to the parent solution.
+Its uses collapse into just three operations:
+
+- `ProjectRootElement.Open/Create(..., collection)` — 7
+- `MSBuildInternals.LoadProject/UnloadProject(collection, ...)` — 3
+- the forwarding property itself — 1
+
+So the migration is not "51 call sites"; it is one interface member plus three operations behind a
+single `internal` property. An abstraction covering those three - created and owned wherever
+evaluation lives - removes `Microsoft.Build.Evaluation` from `ISolution` without touching any
+consumer that merely reads project data.
 
 Moving evaluation therefore requires either a projected read-model in the IDE fed by the host, or
 an RPC per property access. Only the first is viable. The good news is the shape already exists in
@@ -430,12 +494,17 @@ Independent of the phases in §8, and orderable on its own:
 1. **RAR out of process.** Fixes today's wrong references. No new architecture.
 2. **Stop leaking `ProjectCollection`.** Give `ISolution` a DTO-shaped surface, the way
    `ILanguageService` already has one. This is the prerequisite that makes everything after it
-   possible, and the one with ~51 call sites to migrate.
+   possible.
 3. **Move evaluation into the build host** that already exists, and have it produce
    `LanguageServiceProjectSnapshot` for both the IDE's read-model and the Roslyn host.
 
-Step 2 is the real cost and it is worth being honest that it is comparable in size to the whole
-Roslyn host proposal. Step 1 is worth doing this week.
+Step 1 is worth doing this week (and is now done — see §7a).
+
+Step 2 was sized here as "comparable to the whole Roslyn host proposal" on the strength of a raw
+grep. That was wrong: counting only production code, it is one interface member, one implementation
+and three operations behind an `internal` property (§7a). It is a contained, mechanical change and
+should be reordered accordingly - it is the cheap prerequisite, not the expensive one. Step 3
+remains the large piece.
 
 ## 8. Migration plan
 
@@ -462,8 +531,121 @@ The host owns the state listed in `CSharpVBLanguageService.cs:33-73`; there is n
 untangle (all statics in that folder are immutable helpers). The IDE keeps owning MSBuild evaluation
 and pushes `LanguageServiceProjectSnapshot` over `roslyn/project/load`.
 
-**Phase 4 — decouple host lifetime from the IDE window**, which is the only thing that makes startup
-faster. Requires Phase 0's readiness model to be honest about a warm-but-stale host.
+**Phase 3a — host-agnostic libraries, implemented.** `src/Main/LanguageServices` now contains:
+
+- `LanguageServices.Contracts`: DTOs, snapshot data and protocol declarations; plain `net10.0`,
+  no Roslyn, IDE, MSBuild or windowing references.
+- `LanguageServices.Roslyn`: the workspace implementation, resource-reference helpers and local
+  protocol adapter/dispatcher; plain `net10.0`. Local IDE use injects a snapshot-provider callback.
+- `Roslyn.Host`: process bootstrap/RPC wiring referencing these libraries. No linked source,
+  duplicated snapshot DTO, fake IDE logging service or `ROSLYN_HOST` conditional compilation.
+
+Project evaluation remains in the IDE's `LanguageServiceProjectSnapshotFactory`. Lifecycle
+notifications carry paths rather than IDE project objects. Base forwards the moved public types
+for existing add-in type references. `ResourceFiles` uses the standard .NET SDK so it no longer
+pulls LibreWPF transitively into the host. Architecture tests inspect both assembly references
+and the deployed host's dependency manifest; a direct-reference check alone missed that SDK leak.
+
+**Phase 4 — persisted warm start, with IDE-owned host lifetime (§7b).** Do not introduce a daemon.
+First verify which storage APIs are usable by this standalone host and measure a cold-start
+baseline. Persist only checksum-validated state, with concurrent-instance isolation and recovery
+from corrupt or incompatible caches. Verify identical semantic results for cold and warm starts;
+do not assume that a persisted index eliminates compilation for semantic reference searches.
+
+### IDE migration acceptance gate
+
+- Remote mode creates no local Roslyn workspace. All language consumers, including completion,
+  semantic coloring, navigation, diagnostics, refactorings and OpenLens, use the remote service.
+- The application project build/deployment prepares the host and its runtime dependencies;
+  tests must not succeed by finding a host left in another project's output directory.
+- Project references and TFM selection work across files/projects, including unsaved editor text.
+- Killing the host and then querying recovers the parent-owned state. Ordinary business errors
+  do not restart a healthy host. Closing/switching solutions cannot resurrect old state or leave
+  a child process behind.
+- Actual IDE interaction tests and the full relevant suite pass, with no synchronous UI RPC
+  waits. Isolated transport tests alone do not satisfy this gate.
+
+### Verification checkpoint (2026-09-08)
+
+- Follow-up provider regression run: `LanguageOpenLensProvidersTests`, 9 passed, no failures
+  or skips. Batch lookup distinguishes service identity, explicit TFM, declaration start position
+  (not just line), and the language service's monotonic workspace revision. The revision advances
+  for IDE-side remote document updates, project loads and solution closes, and for the equivalent
+  local Roslyn mutations, so an edit to a reference file cannot reuse a cached batch for an
+  unchanged declaration file. The OpenLens renderer additionally broadcasts a provider-wide
+  refresh on a source edit, dropping already-resolved rows in every open document and lazily
+  repopulating only visible rows; without that renderer step, a cache-key change could not update
+  a row that had already been published. Non-ready batches are not retained across retries.
+- `PersistentSyntaxIndexTests`, 2 passed, no failures or skips. It exercises four simultaneous
+  real host processes writing one immutable checksum entry, then verifies a fifth host reads that
+  entry without rebuilding; it also covers process replacement, corrupt JSON and same-timestamp
+  source changes.
+- With `OD_ROSLYN_HOST=1`, `AddInTests.OpenLens_RendersEachLensAboveItsDeclarationLine` passed
+  against the real application (latest 1 total, 1 passed, 0 failed/skipped; 40.727 s). This covers
+  deployed-host startup, remote C# registration, project loading, OpenLens value publication and
+  its rendered declaration-line placement. It is a focused IDE gate, not a replacement for the
+  remaining full interaction suite.
+- Also with `OD_ROSLYN_HOST=1`, focused real-application C# tests passed for cross-file reference
+  search (`FindReferences_FindsDeclarationAndCrossFileUsage`, 17.320 s), multi-file rename
+  (`RenameSymbol_UpdatesDeclarationAndCrossFileUsage`, 13.520 s), and extract-interface file and
+  class edits (`ExtractInterface_GeneratesInterfaceAndAddsToClassWithoutTouchingDisk`, 15.352 s).
+  These validate project graph loading and remote recomputation/application paths, but do not
+  cover the legacy parser consumers that still require live Roslyn objects.
+- `SwitchingSolutions_DropsOldLanguageWorkspaceState` also passed with the remote host (1/1,
+  38.285 s): it opens a C# document, switches the real application to a VB solution, verifies the
+  replacement document becomes Ready, and proves the old C# path is no longer tracked. This closes
+  the old-state-resurrection case for ordinary solution switching.
+- The same remote-mode lifecycle test checks `od.roslyn-legacy-workspace.status`: after C# loading
+  it reports `remoteHostMode=true` and `workspaceCreated=false` (1/1, 16.480 s).
+  `RoslynWorkspaceHelper` therefore cannot silently create a second `AdhocWorkspace`; the child
+  owns the sole Roslyn workspace. Old live-symbol parser consumers receive no local fallback in
+  remote mode, so their richer DTO migration remains required before making the mode default.
+- After that guard was enabled, the real remote `GoToDefinition_FromCrossFileUsage_FindsClass`
+  integration test still passed (1/1, 28.824 s), proving cross-file navigation obtains its answer
+  from the host rather than accidentally relying on the legacy parser workspace.
+- `QuickClassBrowser_RendersForLanguageServiceOutline` passed in remote mode (1/1, 14.480 s).
+  Its creation gate now recognises a registered language service even though the compatibility
+  parser has no live unresolved types; the UI obtains class/member navigation from the host's
+  asynchronous document-outline DTO instead.
+- The editor icon bar now likewise derives type/member declaration markers from the asynchronous
+  outline DTO, with a request generation guard so a delayed response cannot overwrite bookmarks
+  after a file switch. `IconBar_RendersLanguageServiceDeclarationBookmarks` passed in remote mode
+  (1/1, 34.173 s): it observes the live `IconBarManager` consumed by the visual gutter and finds
+  the `Widget` type and `Name` property `OutlineBookmark`s. `AvalonEdit.AddIn` also builds
+  successfully after this migration.
+- `WorkbenchTests.SolutionExplorerFixture_TreeFileAndProjectBrowserChecks` was re-run after a
+  contaminated full-suite attempt and passed in remote mode (1/1, 15.480 s). In particular, its
+  `Program.cs` namespace/type/method folding assertion proves `ParserFoldingStrategy` obtains
+  full-declaration `ExtentSpan`s from the host outline; it does not need a compatibility parser
+  workspace. The preceding full run did **not** satisfy the acceptance gate: it stalled while the
+  UnitTesting MTP discovery repeatedly called `PopulateTree`, then was deliberately terminated;
+  its folding failure is therefore treated as timing evidence, not as a functional regression.
+- The same interrupted 187-test run reported 3 failures and 27 expected platform skips in
+  1044.213 s. All three failures pass independently in a fresh remote-host application: the
+  folding check above; `DebugStart_WhenTargetMissing_FailsCleanlyInsteadOfHanging` (1/1, 33.379 s),
+  whose first failure was a stale `.movedfortest` artifact left by termination; and the runtime
+  upgrade workflow (1/1, 43.274 s), whose first failure was the deliberately terminated app's
+  closed DevFlow connection. This narrows the remaining full-suite blocker to the MTP discovery
+  busy loop, but does not turn the isolated passes into full-suite acceptance.
+
+- Application, C# binding and VB binding builds succeeded. The application output contains the
+  host DLL, deps file and runtime configuration under `RoslynHost/`, prepared by its project.
+- The real-host service test exercises registry identity, project-backed readiness, cross-file
+  definition, symbol name/kind, semantic tokens, identifier validation, OpenLens, rename comment
+  options, unsaved incremental text, and clearing parent-side status on solution close.
+- `dotnet run --project tests/OpenDevelop.Base.Tests/OpenDevelop.Base.Tests.csproj -- -parallel none`:
+  120 total, 120 passed, 0 failed, 0 skipped. The SDK Web API template test now selects the
+  net10 template identity rather than incorrectly treating a short name as globally unique across
+  simultaneously installed SDK major versions.
+- This is not an IDE integration-suite pass. Explicit TFM queries, forward project references,
+  remote diagnostic samples and snippet containing-type lookup now have real-host tests.
+  Portable library extraction has architecture tests. Persisted warm start and full UI/lifecycle
+  validation (including asynchronous snippet insertion and undo) remain open.
+- Recovery transport now serializes host creation/replay and acknowledged state mutations, while
+  allowing independent read-only RPCs to share an already-ready host. Lifecycle tests verify a
+  stalled query does not block a second query and a failed document update releases the state gate
+  for recovery. This is transport concurrency only; host-side semantic work and UI scheduling still
+  need their own latency measurements.
 
 ## 9. What would make me stop
 

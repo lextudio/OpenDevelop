@@ -33,7 +33,7 @@ using ICSharpCode.TypeSystem.Utils;
 
 namespace ICSharpCode.SharpDevelop.Project
 {
-	class Solution : SolutionFolder, ISolution
+	class Solution : SolutionFolder, IMSBuildSolution
 	{
 		static Solution()
 		{

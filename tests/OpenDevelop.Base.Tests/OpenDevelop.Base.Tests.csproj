@@ -24,11 +24,25 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" />
+    <ProjectReference Include="..\..\src\Main\LanguageServices\Roslyn.Host\Roslyn.Host.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\src\AddIns\Analysis\UnitTesting\UnitTesting.csproj" />
     <!-- Pure designer presentation logic (DesignSurfaceClickArbiter): shared by the WinForms,
          WinUI and WPF design surfaces, and testable without booting any of them. -->
     <ProjectReference Include="..\..\src\Main\Designer\Designer.Presentation\Designer.Presentation.csproj" />
   </ItemGroup>
+
+  <Target Name="PrepareRoslynTestHost" AfterTargets="Build">
+    <MSBuild Projects="..\..\src\Main\LanguageServices\Roslyn.Host\Roslyn.Host.csproj"
+             Targets="GetTargetPath" Properties="Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs" ItemName="_RoslynTestHostAssembly" />
+    </MSBuild>
+    <ItemGroup>
+      <_RoslynTestHostFiles Include="%(_RoslynTestHostAssembly.RootDir)%(_RoslynTestHostAssembly.Directory)**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_RoslynTestHostFiles)"
+          DestinationFiles="@(_RoslynTestHostFiles->'$(TargetDir)RoslynHost\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
 
   <Target Name="RemoveDesktopRuntimeFramework" AfterTargets="ProcessFrameworkReferences" BeforeTargets="FixupRuntimeFrameworkVersions">
     <ItemGroup>

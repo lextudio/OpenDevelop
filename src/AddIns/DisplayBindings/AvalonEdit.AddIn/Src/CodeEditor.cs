@@ -42,6 +42,7 @@ using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor.Bookmarks;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Editor.CodeCompletion;
+using ICSharpCode.SharpDevelop.LanguageServices;
 using LeXtudio.OpenDevelop.VSEditor;
 using Microsoft.VisualStudio.Text;
 using ICSharpCode.SharpDevelop.Parser;
@@ -747,9 +748,15 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		public void ParseInformationUpdated(ParseInformation parseInfo)
 		{
 			if (parseInfo != null && CodeEditorOptions.Instance.EnableQuickClassBrowser) {
-				// don't create quickClassBrowser for files that don't have any classes
-				// (but do keep the quickClassBrowser when the last class is removed from a file)
-				if (quickClassBrowser != null || parseInfo.UnresolvedFile.TopLevelTypeDefinitions.Count > 0) {
+				// The language-service parser deliberately has no live Roslyn/NRefactory types in
+				// remote mode. The navigation bar obtains its real items asynchronously from the
+				// document-outline DTO, so using TopLevelTypeDefinitions as its creation gate would
+				// hide it forever even though the host can answer. Keep the old populated-parser
+				// path for other parsers, but also create it for a registered language service.
+				var languageServices = SD.GetService<LanguageServiceRegistry>();
+				bool hasOutlineService = this.FileName != null && languageServices != null
+					&& languageServices.TryGetService(this.FileName, out _);
+				if (quickClassBrowser != null || parseInfo.UnresolvedFile.TopLevelTypeDefinitions.Count > 0 || hasOutlineService) {
 					if (quickClassBrowser == null) {
 						quickClassBrowser = new QuickClassBrowser();
 						quickClassBrowser.JumpAction = (line, col) => ActiveTextEditor.JumpTo(line, col);
@@ -766,6 +773,9 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				}
 			}
 			iconBarManager.UpdateClassMemberBookmarks(parseInfo != null ? parseInfo.UnresolvedFile : null, document);
+			// The remote parser has no live IUnresolvedEntity instances. Its outline refresh is
+			// asynchronous and owns the corresponding lightweight icon-bar bookmarks.
+			_ = iconBarManager.UpdateLanguageServiceBookmarksAsync(this.FileName, document);
 			primaryTextEditor.UpdateParseInformationForFolding(parseInfo);
 		}
 		

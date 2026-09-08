@@ -19,6 +19,7 @@
 using System;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.LanguageServices;
 
@@ -34,12 +35,19 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 		/// </summary>
 		public override void Run()
 		{
+			// Formatting must not block the UI thread on the language service; see
+			// roslyn-host-process.md §5.1 and the same pattern in FindReferencesCommand.
+			_ = RunAsync();
+		}
+
+		async Task RunAsync()
+		{
 			ITextEditor editor = SD.GetActiveViewContentService<ITextEditor>();
 			if (editor == null)
 				return;
 			
 			var registry = SD.GetService<LanguageServiceRegistry>();
-			if (registry == null || !registry.TryGetService(editor.FileName, out var service)) {
+			if (registry == null || !registry.TryGetProtocol(editor.FileName, out var protocol)) {
 				editor.Language.FormattingStrategy.FormatLines(editor);
 				return;
 			}
@@ -55,8 +63,9 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 			}
 
 			try {
-				service.UpsertDocumentAsync(documentId, editor.Document.Text, CancellationToken.None).GetAwaiter().GetResult();
-				var edits = service.FormatAsync(documentId, selection, CancellationToken.None).GetAwaiter().GetResult();
+				var document = new ICSharpCode.SharpDevelop.LanguageServices.Protocol.TextDocumentIdentifier(editor.FileName);
+				await protocol.TextDocumentDidChangeAsync(document, editor.Document.Text, CancellationToken.None);
+				var edits = (await protocol.TextDocumentFormattingAsync(document, selection, CancellationToken.None)).Value;
 				foreach (var edit in edits.OrderByDescending(e => e.Span.Start.Line).ThenByDescending(e => e.Span.Start.Column)) {
 					int startOffset = editor.Document.GetOffset(edit.Span.Start.Line, edit.Span.Start.Column);
 					int endOffset = editor.Document.GetOffset(edit.Span.End.Line, edit.Span.End.Column);

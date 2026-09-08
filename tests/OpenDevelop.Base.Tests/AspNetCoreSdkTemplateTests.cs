@@ -11,8 +11,9 @@ public sealed class AspNetCoreSdkTemplateTests
         using var service = new TemplateDiscoveryService();
         var cancellationToken = TestContext.Current.CancellationToken;
         var templates = await service.GetInstalledTemplatesAsync(cancellationToken);
-        var webApi = Assert.Single(templates, t => t.ShortName == "webapi" &&
-            t.Tags.TryGetValue("language", out var language) && language.Equals("C#", StringComparison.OrdinalIgnoreCase));
+        // Short names intentionally span SDK major versions when several targeting packs are
+        // installed. This test runs on net10.0, so select its concrete template identity.
+        var webApi = Assert.Single(templates, t => t.Identity == "Microsoft.Web.WebApi.CSharp.10.0");
         var directory = Path.Combine(Path.GetTempPath(), "opendevelop-webapi-template-" + Guid.NewGuid().ToString("N"));
         try
         {

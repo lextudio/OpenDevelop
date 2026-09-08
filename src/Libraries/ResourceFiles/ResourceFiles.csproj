@@ -1,6 +1,6 @@
-<Project Sdk="LibreWPF.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>LeXtudio.OpenDevelop.ResourceFiles</RootNamespace>
     <AssemblyName>LeXtudio.OpenDevelop.ResourceFiles</AssemblyName>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>

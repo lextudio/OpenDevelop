@@ -41,8 +41,10 @@ namespace ICSharpCode.SharpDevelop.Project
 	/// </remarks>
 	public interface ISolution : ISolutionFolder, ICanBeDirty, IConfigurable, IDisposable
 	{
-		Microsoft.Build.Evaluation.ProjectCollection MSBuildProjectCollection { get; }
-		
+		// MSBuildProjectCollection used to live here. It is an MSBuild type on the interface every
+		// consumer of a solution sees, while only MSBuild evaluation itself ever needed it - see
+		// IMSBuildSolution, which now carries it.
+
 		/// <summary>
 		/// Gets the full path of the .sln file.
 		/// </summary>

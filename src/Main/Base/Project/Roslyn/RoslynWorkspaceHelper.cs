@@ -46,6 +46,13 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 		/// </summary>
 		static readonly Dictionary<string, string> liveOverrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
+		/// <summary>
+		/// Remote mode has exactly one Roslyn workspace: the child host. The legacy parser bridge
+		/// cannot be allowed to silently create a second AdhocWorkspace beside it.
+		/// </summary>
+		public static bool RemoteHostMode => Environment.GetEnvironmentVariable("OD_ROSLYN_HOST") == "1";
+		public static bool IsWorkspaceCreated => workspace != null;
+
 		public static void InvalidateProject(IProject project)
 		{
 			if (project != null)
@@ -54,6 +61,8 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 
 		public static Solution GetSolution()
 		{
+			if (RemoteHostMode)
+				throw new InvalidOperationException("The legacy Roslyn workspace is unavailable while OD_ROSLYN_HOST is enabled.");
 			if (workspace == null)
 				workspace = new AdhocWorkspace();
 
@@ -139,7 +148,7 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 
 			if (dirtyProjects.Remove(project)) {
 				var targetFramework = ProjectTargetFrameworkService.GetActiveTargetFramework(project);
-				var snapshot = LanguageServiceProjectSnapshot.FromProject(project, targetFramework);
+				var snapshot = LanguageServiceProjectSnapshotFactory.FromProject(project, targetFramework);
 				SyncReferences(project, projectId, snapshot);
 				SyncCompilationOptions(projectId, snapshot);
 				SyncDocumentList(projectId, snapshot);
@@ -335,14 +344,14 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 		/// </summary>
 		public static ISymbol GetSymbolAtCaret(ITextEditor editor)
 		{
-			if (editor == null)
+			if (RemoteHostMode || editor == null)
 				return null;
 			return GetSymbolAt(editor, editor.Caret.Location);
 		}
 
 		public static ISymbol GetSymbolAt(ITextEditor editor, ICSharpCode.AvalonEdit.Document.TextLocation location)
 		{
-			if (editor == null || editor.FileName == null)
+			if (RemoteHostMode || editor == null || editor.FileName == null)
 				return null;
 
 			var document = FindDocument(editor.FileName, editor.Document.Text);
@@ -351,6 +360,8 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 
 		public static Microsoft.CodeAnalysis.Document FindDocument(string filePath)
 		{
+			if (RemoteHostMode)
+				return null;
 			return GetSolution().Projects
 				.SelectMany(p => p.Documents)
 				.FirstOrDefault(d => string.Equals(d.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
@@ -363,6 +374,8 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 		/// </summary>
 		public static Microsoft.CodeAnalysis.Document FindDocument(string filePath, string liveText)
 		{
+			if (RemoteHostMode)
+				return null;
 			if (liveText != null) {
 				string onDisk;
 				try {
@@ -380,6 +393,8 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 
 		public static ISymbol GetSymbolAt(Microsoft.CodeAnalysis.Document document, ICSharpCode.AvalonEdit.Document.TextLocation location)
 		{
+			if (RemoteHostMode || document == null)
+				return null;
 			var text = document.GetTextAsync().Result;
 			if (location.Line < 1 || location.Line > text.Lines.Count)
 				return null;
@@ -518,16 +533,7 @@ namespace ICSharpCode.SharpDevelop.Roslyn
 		/// </summary>
 		public static void OpenAndReplaceText(string filePath, string newText)
 		{
-			var viewContent = SD.FileService.OpenFile(FileName.Create(filePath));
-			var editor = viewContent?.GetService<ITextEditor>();
-			if (editor != null) {
-				using (editor.Document.OpenUndoGroup()) {
-					editor.Document.Text = newText;
-				}
-			} else {
-				// No text editor available for this file (e.g. a non-text view) - nothing to leave dirty.
-				File.WriteAllText(filePath, newText);
-			}
+			Editor.EditorFileOperations.OpenAndReplaceText(filePath, newText);
 		}
 
 		/// <summary>

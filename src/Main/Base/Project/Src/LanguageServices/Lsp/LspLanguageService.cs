@@ -208,6 +208,22 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Lsp
             return Task.FromResult(diagnostics);
         }
 
+		/// <inheritdoc/>
+		/// <remarks>
+		/// An LSP server owns its own project model and does not expose the loose-vs-adopted
+		/// distinction that motivates this state, so a document it tracks is reported Ready.
+		/// </remarks>
+		/// <inheritdoc/>
+		public WorkspaceDocumentInfo? GetWorkspaceDocumentInfo(DocumentId documentId) =>
+			new WorkspaceDocumentInfo(GetDocumentReadiness(documentId), null, System.Array.Empty<string>());
+
+		/// <inheritdoc/>
+		public Task<LensDocumentResult> GetLensDocumentAsync(DocumentId documentId, CancellationToken cancellationToken) =>
+			Task.FromResult(new LensDocumentResult(GetDocumentReadiness(documentId), Array.Empty<LensAnchorResult>()));
+
+		public DocumentReadiness GetDocumentReadiness(DocumentId documentId) => DocumentReadiness.Ready;
+		public long GetWorkspaceRevision() => 0;
+
 		public async Task<IReadOnlyList<SemanticToken>> GetSemanticTokensAsync(DocumentId documentId, CancellationToken cancellationToken)
 		{
 			var uri = ToUri(documentId.FileName);

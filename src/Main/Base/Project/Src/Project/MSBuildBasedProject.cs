@@ -53,7 +53,10 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// The project collection that contains this project.
 		/// </summary>
 		internal ProjectCollection MSBuildProjectCollection {
-			get { return ParentSolution.MSBuildProjectCollection; }
+			// An MSBuild-based project can only be evaluated by a solution that evaluates MSBuild
+			// in-process; a cast failure here means one was constructed under a solution that does
+			// not, which is a programming error rather than a runtime condition to handle.
+			get { return ((IMSBuildSolution)ParentSolution).MSBuildProjectCollection; }
 		}
 		
 		/// <summary>

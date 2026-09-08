@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>ICSharpCode.LanguageServices.Roslyn</AssemblyName>
+    <RootNamespace>ICSharpCode.SharpDevelop.LanguageServices</RootNamespace>
+    <Nullable>enable</Nullable>
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>../../ICSharpCode.SharpDevelop.snk</AssemblyOriginatorKeyFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../LanguageServices.Contracts/LanguageServices.Contracts.csproj" />
+    <ProjectReference Include="../../../Libraries/ResourceFiles/ResourceFiles.csproj" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Features" />
+    <PackageReference Include="Microsoft.CodeAnalysis.VisualBasic.Workspaces" />
+  </ItemGroup>
+</Project>

@@ -5051,6 +5051,39 @@ EndGlobal
     }
 
     [Fact]
+    public async Task QuickClassBrowser_RendersForLanguageServiceOutline()
+    {
+        Assert.True((await _app.ReopenSolutionAsync(_solutionPath)).GetProperty("success").GetBoolean());
+        Assert.True((await _app.InvokeAsync("od.open-file", _widgetPath)).GetProperty("opened").GetBoolean());
+
+        // LanguageServiceParserAdapter intentionally exposes no live Roslyn unresolved types in
+        // remote mode. The navigation bar must therefore be created from service availability and
+        // populate itself from GetDocumentOutlineAsync, not be gated on parser types.
+        await AssertRenderedWithNonZeroSizeAsync("ICSharpCode.AvalonEdit.AddIn.QuickClassBrowser");
+    }
+
+    [Fact]
+    public async Task IconBar_RendersLanguageServiceDeclarationBookmarks()
+    {
+        Assert.True((await _app.ReopenSolutionAsync(_solutionPath)).GetProperty("success").GetBoolean());
+        Assert.True((await _app.InvokeAsync("od.open-file", _widgetPath)).GetProperty("opened").GetBoolean());
+
+        JsonElement snapshot = default;
+        var rendered = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            snapshot = await _app.InvokeAsync("od.editor.icon-bar-bookmarks");
+            return snapshot.TryGetProperty("bookmarks", out var bookmarks)
+                && bookmarks.EnumerateArray().Any(bookmark =>
+                    bookmark.GetProperty("type").GetString() == "OutlineBookmark"
+                    && bookmark.GetProperty("tooltip").GetString() == "Widget")
+                && bookmarks.EnumerateArray().Any(bookmark =>
+                    bookmark.GetProperty("type").GetString() == "OutlineBookmark"
+                    && bookmark.GetProperty("tooltip").GetString() == "Name");
+        }, TimeSpan.FromSeconds(30));
+
+        Assert.True(rendered, $"Expected remote language-service declaration bookmarks in the Icon Bar, got: {snapshot}");
+    }
+
+    [Fact]
     public async Task GetCompletions_ReturnsItems()
     {
         Assert.True((await _app.InvokeAsync("od.open-solution", _solutionPath)).GetProperty("success").GetBoolean());
@@ -5255,6 +5288,39 @@ EndGlobal
         // not through the live editor (same ApplyEditsToFile convention as od.rename-symbol).
         var onDiskClassText = File.ReadAllText(_widgetPath);
         Assert.Contains("class Widget : IWidget", onDiskClassText);
+    }
+
+    [Fact]
+    public async Task SwitchingSolutions_DropsOldLanguageWorkspaceState()
+    {
+        Assert.True((await _app.ReopenSolutionAsync(_solutionPath)).GetProperty("success").GetBoolean());
+        Assert.True((await _app.InvokeAsync("od.open-file", _widgetPath)).GetProperty("opened").GetBoolean());
+
+        var initiallyTracked = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            var status = await _app.InvokeAsync("od.language-workspace.status", _widgetPath);
+            return status.TryGetProperty("tracked", out var tracked) && tracked.GetBoolean()
+                && status.TryGetProperty("readiness", out var readiness) && readiness.GetString() == "Ready";
+        }, TimeSpan.FromSeconds(30));
+        Assert.True(initiallyTracked, "The initial C# document never joined its project workspace.");
+
+        var legacyWorkspace = await _app.InvokeAsync("od.roslyn-legacy-workspace.status");
+        if (legacyWorkspace.GetProperty("remoteHostMode").GetBoolean())
+            Assert.False(legacyWorkspace.GetProperty("workspaceCreated").GetBoolean(), legacyWorkspace.ToString());
+
+        Assert.True((await _app.ReopenSolutionAsync(_vbFixtureSolutionPath)).GetProperty("success").GetBoolean());
+        var vbPath = Path.Combine(_vbFixtureDir, "Class1.vb");
+        Assert.True((await _app.InvokeAsync("od.open-file", vbPath)).GetProperty("opened").GetBoolean());
+        var vbTracked = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            var status = await _app.InvokeAsync("od.language-workspace.status", vbPath);
+            return status.TryGetProperty("tracked", out var tracked) && tracked.GetBoolean()
+                && status.TryGetProperty("readiness", out var readiness) && readiness.GetString() == "Ready";
+        }, TimeSpan.FromSeconds(30));
+        Assert.True(vbTracked, "The replacement solution did not load into the language workspace.");
+
+        var oldStatus = await _app.InvokeAsync("od.language-workspace.status", _widgetPath);
+        Assert.True(oldStatus.TryGetProperty("tracked", out var oldTracked) && !oldTracked.GetBoolean(), oldStatus.ToString());
     }
 
     // ── VB.NET language service tests ──────────────────────────────────────────

@@ -10,6 +10,17 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
     {
         public static NoOpLanguageService Instance { get; } = new();
 
+        /// <inheritdoc/>
+        /// <remarks>This service answers nothing, so no document is ever backed by real state.</remarks>
+        public WorkspaceDocumentInfo? GetWorkspaceDocumentInfo(DocumentId documentId) => null;
+
+        /// <inheritdoc/>
+        public Task<LensDocumentResult> GetLensDocumentAsync(DocumentId documentId, CancellationToken cancellationToken) =>
+        	Task.FromResult(new LensDocumentResult(GetDocumentReadiness(documentId), Array.Empty<LensAnchorResult>()));
+
+        public DocumentReadiness GetDocumentReadiness(DocumentId documentId) => DocumentReadiness.Unknown;
+        public long GetWorkspaceRevision() => 0;
+
         NoOpLanguageService()
         {
         }

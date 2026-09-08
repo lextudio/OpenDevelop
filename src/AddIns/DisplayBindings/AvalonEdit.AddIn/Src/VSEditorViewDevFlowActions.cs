@@ -84,6 +84,30 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			}
 		}
 
+		/// <summary>
+		/// Reports the actual bookmark objects consumed by <see cref="IconBarMargin"/> for the
+		/// active editor. This deliberately observes the rendered gutter's manager rather than a
+		/// parser or an outline response, so remote-host integration tests catch a regression that
+		/// leaves declaration icons absent from the visual editor.
+		/// </summary>
+		public static string GetIconBarBookmarks()
+		{
+			var editor = SD.Workbench.ActiveViewContent?.GetService(typeof(ITextEditor)) as ITextEditor;
+			var adapter = editor as AvalonEditTextEditorAdapter;
+			var codeEditor = adapter?.TextEditor?.TextArea?.TextView.Services.GetService(typeof(CodeEditor)) as CodeEditor;
+			if (codeEditor == null)
+				return JsonSerializer.Serialize(new { active = false });
+
+			var bookmarks = codeEditor.IconBarManager.Bookmarks
+				.Select(bookmark => new {
+					line = bookmark.LineNumber,
+					type = bookmark.GetType().Name,
+					tooltip = bookmark.DisplaysTooltip ? bookmark.CreateTooltipContent()?.ToString() : null,
+				})
+				.ToArray();
+			return JsonSerializer.Serialize(new { active = true, count = bookmarks.Length, bookmarks });
+		}
+
 		[DevFlowAction("od.vseditor.fold-and-geometry", Description = "Fold a document span (via AvalonEdit's FoldingManager) then report ITextViewLine geometry, to verify a folded VisualLine (FirstDocumentLine != LastDocumentLine) still maps to the correct combined Extent")]
 		public static string FoldAndGetLineGeometry(int foldStart, int foldEnd)
 		{

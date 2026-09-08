@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
 using ICSharpCode.SharpDevelop;
@@ -14,7 +15,14 @@ namespace ICSharpCode.AvalonEdit.AddIn.ContextActions
 	{
 		public override void Run()
 		{
-			var result = Query();
+			// Expanding a context action must not block the UI thread on the language service
+			// (roslyn-host-process.md §5.1); the popup is opened once the query completes.
+			_ = RunAsync();
+		}
+
+		async Task RunAsync()
+		{
+			var result = await QueryAsync();
 			if (result == null) {
 				MessageService.ShowError("${res:ICSharpCode.Refactoring.NoClassOrOverridableSymbolUnderCursorError}");
 				return;
@@ -26,15 +34,15 @@ namespace ICSharpCode.AvalonEdit.AddIn.ContextActions
 			new ContextActionsPopup { Actions = model }.OpenAtCaretAndFocus();
 		}
 
-		static SymbolHierarchyResult Query()
+		static async Task<SymbolHierarchyResult> QueryAsync()
 		{
 			ITextEditor editor = SD.GetActiveViewContentService<ITextEditor>();
 			var registry = SD.GetService<LanguageServiceRegistry>();
-			if (editor == null || registry == null || !registry.TryGetService(editor.FileName, out var service))
+			if (editor == null || registry == null || !registry.TryGetProtocol(editor.FileName, out var protocol))
 				return null;
-			var id = new ICSharpCode.SharpDevelop.LanguageServices.DocumentId(editor.FileName);
-			service.UpsertDocumentAsync(id, editor.Document.Text, CancellationToken.None).GetAwaiter().GetResult();
-			return service.GetDerivedSymbolsAsync(id, editor.Caret.Offset, CancellationToken.None).GetAwaiter().GetResult();
+			var document = new ICSharpCode.SharpDevelop.LanguageServices.Protocol.TextDocumentIdentifier(editor.FileName);
+			await protocol.TextDocumentDidChangeAsync(document, editor.Document.Text, CancellationToken.None);
+			return (await protocol.TypeHierarchySubtypesAsync(document, editor.Caret.Offset, CancellationToken.None)).Value;
 		}
 	}
 }

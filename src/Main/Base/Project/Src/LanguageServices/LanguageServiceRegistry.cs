@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.CompilerServices;
 
 namespace ICSharpCode.SharpDevelop.LanguageServices
 {
@@ -39,6 +40,51 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
             var entry = new RegistrationEntry(languageServiceResolver);
             _servicesByExtension[normalizedExtension] = entry;
             return new Registration(this, normalizedExtension, entry);
+        }
+
+        // One protocol per service instance. Remote services return their existing connection;
+        // resolving the protocol must never create a second workspace beside the registered one.
+        readonly ConditionalWeakTable<ILanguageService, Protocol.IRoslynLanguageProtocol> _protocolsByService = new();
+
+        /// <summary>
+        /// The wire-shaped protocol for a file's language service
+        /// (doc/technotes/roslyn-host-process.md Phase 2).
+        ///
+        /// Callers should prefer this over <see cref="TryGetService"/>: it is the surface that
+        /// survives the language service moving out of process, so anything written against it
+        /// needs no change when that happens - only what this method hands back does.
+        /// </summary>
+        public bool TryGetProtocol(string fileNameOrExtension, out Protocol.IRoslynLanguageProtocol protocol)
+        {
+            if (!TryGetService(fileNameOrExtension, out var service))
+            {
+                protocol = null!;
+                return false;
+            }
+            protocol = _protocolsByService.GetValue(service, CreateProtocol);
+            return true;
+        }
+
+        /// <summary>
+        /// Returns the protocol of the registered service. Process selection happens when the
+        /// language binding creates that service, so old and protocol-based consumers agree on
+        /// workspace ownership. Local Roslyn adapters also receive project/lifecycle callbacks.
+        /// </summary>
+        static Protocol.IRoslynLanguageProtocol CreateProtocol(ILanguageService service)
+        {
+            if (service is Protocol.RemoteLanguageService remote)
+                return remote.Protocol;
+            // The registry also contains external LSP implementations (TypeScript, XAML, HTML,
+            // ...). OD_ROSLYN_HOST selects where the Roslyn workspace lives; it must not turn an
+            // unrelated language server into a client of that workspace merely because both
+            // implement ILanguageService.
+            if (service is not Roslyn.CSharpVBLanguageService)
+                return new Protocol.InProcessRoslynLanguageProtocol(service);
+
+            var roslyn = (Roslyn.CSharpVBLanguageService)service;
+            return new Protocol.InProcessRoslynLanguageProtocol(service,
+                projectLoad: roslyn.LoadProjectAsync, solutionClosed: roslyn.CloseSolutionAsync,
+                workspaceStatusProvider: roslyn.GetWorkspaceStatus);
         }
 
         public bool TryGetService(string fileNameOrExtension, out ILanguageService languageService)

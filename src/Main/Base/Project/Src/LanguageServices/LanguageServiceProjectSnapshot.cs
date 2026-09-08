@@ -10,53 +10,8 @@ using ICSharpCode.SharpDevelop.Project;
 
 namespace ICSharpCode.SharpDevelop.LanguageServices
 {
-    public sealed class LanguageServiceProjectSnapshot
+    public static class LanguageServiceProjectSnapshotFactory
     {
-        public LanguageServiceProjectSnapshot(
-            string projectFileName,
-            string language,
-            IReadOnlyList<string> documentFileNames,
-            IReadOnlyList<string> metadataReferenceFileNames,
-            IReadOnlyList<string> projectReferenceFileNames,
-            IReadOnlyList<string> preprocessorSymbols,
-            string? languageVersion,
-            string? nullableContext,
-            string? targetFramework = null,
-            IReadOnlyList<string>? analyzerAssemblyFileNames = null)
-        {
-            ProjectFileName = projectFileName ?? throw new ArgumentNullException(nameof(projectFileName));
-            Language = language ?? throw new ArgumentNullException(nameof(language));
-            DocumentFileNames = documentFileNames ?? throw new ArgumentNullException(nameof(documentFileNames));
-            MetadataReferenceFileNames = metadataReferenceFileNames ?? throw new ArgumentNullException(nameof(metadataReferenceFileNames));
-            ProjectReferenceFileNames = projectReferenceFileNames ?? throw new ArgumentNullException(nameof(projectReferenceFileNames));
-            PreprocessorSymbols = preprocessorSymbols ?? throw new ArgumentNullException(nameof(preprocessorSymbols));
-            LanguageVersion = languageVersion;
-            NullableContext = nullableContext;
-            TargetFramework = targetFramework;
-            AnalyzerAssemblyFileNames = analyzerAssemblyFileNames ?? Array.Empty<string>();
-        }
-
-        public string ProjectFileName { get; }
-        public string Language { get; }
-        public IReadOnlyList<string> DocumentFileNames { get; }
-        public IReadOnlyList<string> MetadataReferenceFileNames { get; }
-        public IReadOnlyList<string> ProjectReferenceFileNames { get; }
-        public IReadOnlyList<string> PreprocessorSymbols { get; }
-        public string? LanguageVersion { get; }
-        public string? NullableContext { get; }
-
-        /// <summary>
-        /// The TFM this snapshot slice was evaluated for, or <see langword="null"/> for a
-        /// single-targeted project (no slicing needed). See
-        /// <see cref="FromProjectAllTargetFrameworks"/> for multi-targeted projects.
-        /// </summary>
-        public string? TargetFramework { get; }
-
-        /// <summary>
-        /// Resolved paths of `Analyzer` items — third-party Roslyn analyzer/source-generator
-        /// assemblies from `PackageReference` analyzer assets (externals/OpenDevelop/doc/technotes/language-services.md §2.3).
-        /// </summary>
-        public IReadOnlyList<string> AnalyzerAssemblyFileNames { get; }
 
         public static IReadOnlyList<LanguageServiceProjectSnapshot> FromSolution(ISolution solution)
         {
@@ -65,6 +20,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
 
             return solution.Projects
                 .SelectMany(FromProjectAllTargetFrameworks)
+                .Select(snapshot => snapshot.WithSolutionDirectory(solution.Directory.ToString()))
                 .ToArray();
         }
 
@@ -79,9 +35,10 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
                 throw new ArgumentNullException(nameof(project));
 
             var targetFrameworks = GetTargetFrameworks(project);
-            return targetFrameworks.Count <= 1
+            var snapshots = targetFrameworks.Count <= 1
                 ? new[] { FromProject(project) }
                 : targetFrameworks.Select(targetFramework => FromProject(project, targetFramework)).ToArray();
+            return snapshots.Select(snapshot => snapshot.WithSolutionDirectory(project.ParentSolution?.Directory.ToString())).ToArray();
         }
 
         /// <summary>

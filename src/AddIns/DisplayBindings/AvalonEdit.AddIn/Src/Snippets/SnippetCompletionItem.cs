@@ -75,22 +75,21 @@ namespace ICSharpCode.AvalonEdit.AddIn.Snippets
 			}
 		}
 		
-		public void Complete(CompletionContext context)
+		public async void Complete(CompletionContext context)
 		{
 			if (context.Editor != this.textEditor)
 				throw new ArgumentException("wrong editor");
 			
 			CodeCompletionDataUsageCache.IncrementUsage("snippet" + codeSnippet.Name);
 			
-			using (context.Editor.Document.OpenUndoGroup()) {
+			try {
 				if (context.CompletionChar == '\t' || AlwaysInsertSnippet) {
-					codeSnippet.TrackUsage("SnippetCompletionItem");
-					
-					context.Editor.Document.Remove(context.StartOffset, context.Length);
-					CreateSnippet().Insert(textArea);
+					await codeSnippet.InsertAsync(textEditor, textArea, context.StartOffset, context.Length, "SnippetCompletionItem");
 				} else {
 					context.Editor.Document.Replace(context.StartOffset, context.Length, this.Text);
 				}
+			} catch (Exception ex) {
+				LoggingService.Warn("Snippet expansion failed: " + ex.Message);
 			}
 		}
 		
