@@ -43,6 +43,59 @@ in the app log is the tell that an icon needs to be added, not a real error to c
 4. Verify live: open the feature in the running app and check the app log for the "Could not load
    XAML icon" warning — its absence confirms the resource was actually found and loaded.
 
+## `/api/v1/ui/tree` bounds are WINDOW coordinates — add the content origin before injecting
+
+Measured on macOS: the `bounds` in the UI tree are relative to the window's content area, **not**
+screen coordinates, even though the pointer actions (`/api/v1/ui/actions/{click,press,drag-move,
+release}`) take screen coordinates. Feeding a tree rect straight into a click therefore lands
+65px above the intended target vertically, which looks exactly like "synthetic input is broken":
+the call returns ok, no exception is raised, and the app logs no input at all because the event
+went somewhere else.
+
+The mapping is a pure translation (scale 1.0) by the window's content origin:
+
+```text
+screen = treeBounds + (windowContentOriginX, windowContentOriginY)
+```
+
+For a window at CGWindowList `X=10, Y=33` with a 32px title bar the origin is `(10, 65)`, and
+three injections confirmed the offset is constant:
+
+| injected screen | WPF actually received (window) |
+|---|---|
+| (510, 310) | (500, 245) |
+| (510, 355) | (500, 290) |
+| (510, 400) | (500, 335) |
+
+Closed-loop check: a TabItem whose tree centre is `(98.0, 538.5)` is hit by injecting at
+`(108.0, 603.5)`, and WPF then reports the press at `(98.0, 539.0)` — the tree value back again.
+
+**Diagnose this with `od.pointer-events`, not by inference.** It records every mouse-down the main
+window really received, synchronously, as `windowX,windowY element`; pass `reset=true` before each
+injection so a reading can never be a stale one. No entry at all means the event never reached the
+window; an entry at an unexpected point means the coordinate conversion is wrong rather than the
+input path. Do NOT try to settle this with `od.pointer-target` or a geometry action alone — those
+derive from the same `PointToScreen` the tree does, so they agree with each other while both being
+wrong, which is what makes a wrong coordinate look like a delivery failure. The independent source
+that breaks the tie is `/api/v1/ui/screenshot` plus CGWindowList's real window rect.
+
+`od.winui-designer.query-element-screen-bounds` has the same defect and it is NOT in LibreWPF.
+Measured in one instance at one moment (never compare across two app launches - window positions
+differ and that mistake produces contradictory readings):
+
+| measurement | value |
+|---|---|
+| `mainWindow.PointToScreen(0,0)` | (10, 65) — correct, matches the real content origin |
+| `query-element-screen-bounds` centre of PrimaryButton | (380.86, 260.16) |
+| injecting at that reported centre | **no pointer event at all** |
+| injecting at centre + (10, 65) | lands on the button |
+
+So the shim's conversion is right and the designer's is wrong by exactly the client origin.
+`WinUIXamlHost.QueryElementScreenBounds` goes through `IWinUIXamlDesignView.DesignToScreenPoint`
+-> `UnoDesignSurfaceControl.SurfacePointToScreen` -> `scroller.PointToScreen`, and the most likely
+cause is that the surface hangs off its own `PresentationSource` whose `ClientOrigin` is still
+(0,0). Confirm that before changing anything - do not "fix" it by adding a constant offset.
+
 ## Driving the WinUI/Uno designer canvas manually via DevFlow
 
 OpenDevelop.exe embeds its own DevFlow agent, separate from the UnoRichText sample's — pinned to

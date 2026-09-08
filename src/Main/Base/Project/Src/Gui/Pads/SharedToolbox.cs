@@ -105,6 +105,10 @@ namespace ICSharpCode.SharpDevelop.Gui
 		// of the drag it just started (real OLE's native modal loop on Windows never delivers
 		// those moves here, which is why this guard was never needed there).
 		bool isDragging;
+		// Setting ListBox.SelectedItem from SelectionChanged raises SelectionChanged again. Keep
+		// this tiny guard separate from isDragging so the recovery assignment itself neither
+		// notifies a facade nor recursively tries to restore the same row.
+		bool restoringDragSelection;
 
 		public event EventHandler<SharedToolboxItem> SelectionChanged;
 
@@ -137,7 +141,12 @@ namespace ICSharpCode.SharpDevelop.Gui
 			toolbox.GroupStyle.Add(CreateGroupStyle());
 			toolbox.SelectionChanged += OnSelectionChanged;
 			toolbox.PreviewMouseLeftButtonDown += OnPreviewMouseLeftButtonDown;
-			toolbox.PreviewMouseMove += OnPreviewMouseMove;
+			// Listen even when a Selector class handler has already handled the tunneled move.
+			// This instance handler runs on the ListBox before the event reaches the row under
+			// the pointer, so handling it while dragging prevents that row from acquiring the
+			// Selector hover/selection visual.
+			toolbox.AddHandler(UIElement.PreviewMouseMoveEvent,
+				new MouseEventHandler(OnPreviewMouseMove), handledEventsToo: true);
 		}
 
 		/// <summary>The shared WPF control - the same instance every caller gets back, filtered
@@ -264,7 +273,24 @@ namespace ICSharpCode.SharpDevelop.Gui
 			// routing every subsequent MouseMove through WPF's normal event system, so the
 			// Selector goes on reassigning SelectedItem for the ENTIRE remaining duration of the
 			// drag - ignore its opinion until the drag ends; dragStartItem is authoritative.
-			if (isDragging)
+			if (isDragging) {
+				// Ignoring the event is not sufficient: Selector has already assigned the item
+				// under the pointer to SelectedItem by the time this handler runs. Consumers such
+				// as a designer's drop target read SelectedItem directly, so they would create the
+				// control currently under the pointer rather than the one the user grabbed. Restore
+				// the latched item synchronously and suppress the resulting nested notification.
+				if (!restoringDragSelection && dragStartItem != null
+					&& !ReferenceEquals(toolbox.SelectedItem, dragStartItem)) {
+					restoringDragSelection = true;
+					try {
+						toolbox.SelectedItem = dragStartItem;
+					} finally {
+						restoringDragSelection = false;
+					}
+				}
+				return;
+			}
+			if (restoringDragSelection)
 				return;
 			(toolbox.SelectedItem as SharedToolboxItem)?.OnActivated?.Invoke();
 			SelectionChanged?.Invoke(this, toolbox.SelectedItem as SharedToolboxItem);
@@ -299,7 +325,14 @@ namespace ICSharpCode.SharpDevelop.Gui
 
 		void OnPreviewMouseMove(object sender, MouseEventArgs e)
 		{
-			if (isDragging || e.LeftButton != MouseButtonState.Pressed)
+			if (isDragging) {
+				// Portable DragDrop pumps ordinary mouse input through the source control. Do
+				// not merely return here: an unhandled routed move reaches Selector's normal
+				// mouse handling and visually selects the row beneath the pointer.
+				e.Handled = true;
+				return;
+			}
+			if (e.LeftButton != MouseButtonState.Pressed)
 				return;
 
 			var position = e.GetPosition(toolbox);
@@ -320,6 +353,17 @@ namespace ICSharpCode.SharpDevelop.Gui
 			item.PackDragData?.Invoke(data);
 
 			isDragging = true;
+			// Do NOT clear IsHitTestVisible here to keep the dragged row visibly selected. It
+			// stops the whole gesture under LibreWPF: the portable drag loop
+			// (PortableDragDropOperation.RunCore) tracks the drag by pumping pointer events
+			// through ProGPU's hit-test index, and that index only contains hit-testable owners,
+			// so removing the source makes the drag die immediately rather than merely stopping
+			// the hover visual. Real Windows OLE runs its own native modal loop and never consults
+			// that index, which is why the same line is harmless there and fatal here.
+			//
+			// The hover/selection problem it was aimed at is already handled twice over, without
+			// touching hit testing: OnPreviewMouseMove marks moves handled while isDragging, and
+			// OnSelectionChanged restores dragStartItem if Selector reassigns it anyway.
 			try {
 				DragDrop.DoDragDrop(toolbox, data, DragDropEffects.Copy);
 			} finally {

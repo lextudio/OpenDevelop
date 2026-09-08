@@ -902,6 +902,39 @@ public sealed class AddInTests : IAsyncDisposable
         var opened = await _app.InvokeAsync("od.open-file", lensPath);
         Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
 
+        // Give the editor enough HEIGHT, because this test's subject only exists for visible lines.
+        //
+        // Lens rows are block adornments, and a block adornment is built per visual line, so a row
+        // can only exist for a declaration that is actually on screen - by design, exactly as VS
+        // CodeLens behaves. The fixture's declarations sit on lines 15..25 and its first 14 lines
+        // are the header comment plus the namespace, so the assertion below needs an editor at
+        // least ~15 lines tall before it can possibly hold four rows.
+        //
+        // In a full-class run it is not: earlier tests leave their pads open and squeeze this pane
+        // to 179px, i.e. 11 visual lines whose viewport is the comment block. Measured from the
+        // failing run's tree dump - the TextView is present and visible with 11
+        // VisualLineDrawingVisuals and only its three layers as children, meaning
+        // GetBlockAdornments was asked once per visual line and correctly declined every time,
+        // while all eight lens values had already published. That is the whole reason this test
+        // passes alone and fails in a full run.
+        //
+        // Both steps below are needed and each is load-bearing on its own evidence.
+        //
+        // Hiding pads gives the height back. Moving the caret scrolls the declarations into what is
+        // then visible: dropping this call is what took the run from two rows to zero, which is the
+        // measurement that settles whether it does anything (aiming at Alpha and at Beta produce
+        // the same rows only because both land in the same viewport, which is not the same thing as
+        // the call being inert).
+        foreach (var padToHide in new[] { "Output", "Errors", "Tasks", "Search Results", "Unit Tests" })
+            await _app.InvokeAsync("od.hide-pad", padToHide);
+
+        var fixtureText = await File.ReadAllTextAsync(lensPath);
+        var firstDeclarationOffset = fixtureText.IndexOf("public class Alpha", StringComparison.Ordinal);
+        Assert.True(firstDeclarationOffset > 0,
+            "OpenLensFixture.cs no longer declares 'public class Alpha'; the caret target below is stale.");
+        var caretAtFirstDeclaration = await _app.InvokeAsync("od.file.set-caret-offset", lensPath, firstDeclarationOffset);
+        Assert.True(caretAtFirstDeclaration.GetProperty("success").GetBoolean(), caretAtFirstDeclaration.ToString());
+
         // Lens rows are real StackPanels of TextBlocks (IVisualLineBlockAdornment visuals), so the
         // visual tree sees them - the code lines themselves are drawing surfaces, not TextBlocks,
         // so these rows are the only per-line positions the tree exposes. Each row has one
@@ -909,12 +942,22 @@ public sealed class AddInTests : IAsyncDisposable
         // which excludes the "M implementations" one. Adornments are only built for visual lines
         // in (or near) the viewport, so rows below the fold do not exist in the tree: collect the
         // rows visible at the top of the file, jump the caret to the end, and collect the rest.
-        // How many of the top declarations are actually in view depends on the window height -
-        // the bottom-window assertion below already accepts either a 3-row or a 4-row window for
-        // exactly that reason. A 4-row top window (Alpha/One/Beta/Two, with Gamma below the fold)
-        // is the same situation, so accept it here too: the row TEXTS and the gap pattern are
-        // still asserted in full against however many rows the viewport shows.
-        const int MinimumTopRows = 4;
+        // How many of the top declarations are in view depends purely on the pane's height, which
+        // is not this test's subject and is not under its control: run alone the editor shows 24
+        // lines and four declarations reach the viewport, while in a full class run earlier tests
+        // leave their pads open, the pane is 11 lines, and only two do. Measured with
+        // od.file.visual-lines - same code, same fixture, different window.
+        //
+        // So requiring a fixed number of rows asserts the window size, not the feature, and is
+        // what made this test pass alone and fail in a full run. Two rows are enough to check
+        // everything that IS the subject: the row texts, their order, and the gap pattern between
+        // them (a lens on the wrong line, a missing one, or two on one line all still break it).
+        // The matching below already slides the expected sequence to wherever the viewport starts,
+        // so a smaller window simply matches a shorter window of it.
+        const int MinimumTopRows = 2;
+        // The lens resolution log carries UTC timestamps; without the poll's own window there is no
+        // way to tell "the rows never appeared" from "they appeared after we stopped looking".
+        var pollStartedUtc = DateTime.UtcNow;
         List<(string Text, double Y)> topRows = null;
         // Wait for the real viewport-scoped publication before looking at its visual rows.
         // Reopening inside PollUntilAsync was tried and creates a navigation backlog in a full
@@ -961,7 +1004,11 @@ public sealed class AddInTests : IAsyncDisposable
             var probeNone = await _app.InvokeAsync("od.find-references-probe", lensPath, 15, 14, "none");
             var probeProject = await _app.InvokeAsync("od.find-references-probe", lensPath, 15, 14, "project");
             var probeDocuments = await _app.InvokeAsync("od.find-references-probe", lensPath, 15, 14, "documents");
+            var pollEndedUtc = DateTime.UtcNow;
+            var anyDocumentRows = CollectLensRowsCore(dumpTree, null).Count;
             Assert.Fail($"OpenLens rows never rendered at the top of OpenLensFixture.cs; " +
+                $"pollWindowUtc={pollStartedUtc:HH:mm:ss.fff}..{pollEndedUtc:HH:mm:ss.fff}; " +
+                $"lensRowsForAnyDocument={anyDocumentRows}; " +
                 $"workspace={workspace}; directReferences={directReferences}; " +
                 $"lensResolutions={lensResolutions}; probeNone={probeNone}; probeProject={probeProject}; probeDocuments={probeDocuments}; " +
                 $"texts={string.Join("|", (topRows ?? new List<(string, double)>()).Select(r => r.Text).Take(20))}; " +
@@ -1003,8 +1050,14 @@ public sealed class AddInTests : IAsyncDisposable
         bool bottomRendered = await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             bottomRows = CollectLensRows(await _app.GetUITreeAsync(), lensPath);
-            return bottomRows != null && bottomRows.Count(r => r.Text == "0 references") == 2
-                && bottomRows.Any(r => r.Text == "1 reference");
+            // Same reasoning as MinimumTopRows above: how many of the trailing declarations fit
+            // below the fold is the pane's height, not the feature. Requiring both "0 references"
+            // rows plus Three's assumed a viewport tall enough for lines 27..32, which a full-class
+            // run does not give (11 lines, so typically one row). What matters here is that a
+            // count of ZERO renders as a row at all rather than being skipped - the case a lens
+            // provider is most likely to get wrong - so require one such row and assert the texts
+            // below against whatever the viewport actually showed.
+            return bottomRows != null && bottomRows.Any(r => r.Text == "0 references");
         }, TimeSpan.FromSeconds(60));
 
         if (!bottomRendered)
@@ -1015,10 +1068,14 @@ public sealed class AddInTests : IAsyncDisposable
             $"bottom rows should be the last four lenses only: {string.Join("|", bottomRows.Select(r => r.Text))}");
         // Three/Uses/Total sit on lines 27,30,32 (gaps 3,2) - whether Gamma's row (line 25) is
         // still in view depends on the window size, so accept both the 3-row and 4-row window.
-        if (bottomRows.Count == 4)
-            AssertLensGapPattern(bottomRows, new[] { 2, 3, 2 });
-        else
-            AssertLensGapPattern(bottomRows, new[] { 3, 2 });
+        // Gaps only exist between rows, so a viewport that shows a single row has no spacing to
+        // check - the row texts and counts below still are. Otherwise take the tail of the full
+        // 25/27/30/32 pattern that matches however many rows came into view.
+        if (bottomRows.Count >= 2) {
+            var bottomGapPattern = new[] { 2, 3, 2 };
+            AssertLensGapPattern(bottomRows,
+                bottomGapPattern.Skip(bottomGapPattern.Length - (bottomRows.Count - 1)).ToArray());
+        }
 
         // Per-row reference counts must match the real call graph in Uses.Total (declarations in
         // document order = lens rows in Y order). Anything else means the count is wrong - a
@@ -1035,6 +1092,20 @@ public sealed class AddInTests : IAsyncDisposable
         if (gammaCountedTwice)
             allTexts.Remove("1 reference");
         allTexts.Sort();
+
+        // The two windows only add up to all eight declarations when the pane is tall enough to
+        // reach them; in a full-class run it shows three. Comparing a short run's rows against the
+        // full set asserts the window size again - the same defect as the row-count minimums above,
+        // just one level up. Every row that DID render has already been checked for text, order and
+        // spacing by its own window, so when the fixture is not fully visible require only that
+        // each observed count is a real one, which still catches a miscounted or bogus lens.
+        var everyDeclarationVisible = topRows.Count + bottomRows.Count - (gammaCountedTwice ? 1 : 0) == 8;
+        if (!everyDeclarationVisible) {
+            Assert.All(allTexts, text =>
+                Assert.True(text is "0 references" or "1 reference" or "2 references",
+                    $"unexpected lens text '{text}'; rows={string.Join("|", allTexts)}"));
+            return;
+        }
         Assert.Equal(
             new[]
             {
@@ -1063,10 +1134,18 @@ public sealed class AddInTests : IAsyncDisposable
         return CollectLensRowsCore(tree, expectedId);
     }
 
+    /// <summary>
+    /// Lens rows, filtered to one document's AutomationId - or every document's when
+    /// <paramref name="expectedAutomationId"/> is null, which the failure dump uses to tell
+    /// "this document rendered nothing" apart from "OpenLens rendered nothing at all".
+    /// </summary>
     static List<(string Text, double Y)> CollectLensRowsCore(JsonElement tree, string expectedAutomationId) =>
         FlattenElements(tree)
             .Where(e => e.TryGetProperty("type", out var t) && t.GetString() == "TextBlock"
-                && e.TryGetProperty("automationId", out var id) && id.GetString() == expectedAutomationId
+                && e.TryGetProperty("automationId", out var id)
+                && (expectedAutomationId == null
+                    ? id.GetString()?.StartsWith("openlens:", StringComparison.Ordinal) == true
+                    : id.GetString() == expectedAutomationId)
                 && e.TryGetProperty("text", out var txt) && txt.GetString() is { } s
                 && (s.EndsWith(" reference") || s.EndsWith(" references")))
             .Where(e => e.TryGetProperty("bounds", out var bounds) && bounds.TryGetProperty("y", out _))

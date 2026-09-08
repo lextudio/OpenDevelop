@@ -119,6 +119,40 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.OpenLens
 				return discoveryLog.ToArray();
 		}
 
+		/// <summary>
+		/// One <c>IVisualLineBlockAdornmentGenerator.GetBlockAdornments</c> call, recorded by the
+		/// renderer itself. Publication succeeding tells you nothing about whether a row exists:
+		/// between a published value and a visible row sit visual-line construction, an anchor
+		/// lookup keyed by line number, and visual creation, and a failure in any of them looks
+		/// identical from outside (no row in the UI tree). An empty log means the generator was
+		/// never asked at all - i.e. the editor's TextView never built a visual line - which is a
+		/// different bug from being asked and declining. Exposed through od.openlens.resolutions.
+		/// </summary>
+		public readonly record struct AdornmentRecord(
+			DateTime WhenUtc, string FileName, int LineNumber, bool AnchorFound, int ItemCount, bool VisualCreated);
+
+		static readonly Queue<AdornmentRecord> adornmentLog = new();
+
+		/// <summary>
+		/// Public, unlike the sibling recorders: the renderer lives in the AvalonEdit.AddIn
+		/// assembly, not in Base.
+		/// </summary>
+		public static void RecordAdornment(string fileName, int lineNumber, bool anchorFound, int itemCount, bool visualCreated)
+		{
+			lock (resolutionLogLock)
+			{
+				adornmentLog.Enqueue(new AdornmentRecord(DateTime.UtcNow, fileName, lineNumber, anchorFound, itemCount, visualCreated));
+				while (adornmentLog.Count > ResolutionLogCapacity)
+					adornmentLog.Dequeue();
+			}
+		}
+
+		public static IReadOnlyList<AdornmentRecord> GetAdornmentLog()
+		{
+			lock (resolutionLogLock)
+				return adornmentLog.ToArray();
+		}
+
 		internal static void RecordResolution(ResolutionRecord record)
 		{
 			lock (resolutionLogLock)

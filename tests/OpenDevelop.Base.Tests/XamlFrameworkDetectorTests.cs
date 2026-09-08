@@ -18,13 +18,20 @@ public sealed class XamlFrameworkDetectorTests
 	}
 
 	[Theory]
-	[InlineData("<Project Sdk=\"Uno.Sdk\"><PropertyGroup><UseWPF>true</UseWPF></PropertyGroup></Project>", XamlFrameworkKind.Uno, XamlRuntimeKind.Uno)]
-	[InlineData("<Project Sdk=\"Microsoft.NET.Sdk\"><ItemGroup><PackageReference Include=\"Uno.WinUI\" /></ItemGroup></Project>", XamlFrameworkKind.Uno, XamlRuntimeKind.Uno)]
-	[InlineData("<Project Sdk=\"Microsoft.NET.Sdk\"><ItemGroup><PackageReference Include=\"Microsoft.WindowsAppSDK\" /></ItemGroup></Project>", XamlFrameworkKind.WinUI, XamlRuntimeKind.MicrosoftWinUI)]
-	[InlineData("<Project Sdk=\"LibreWPF.Sdk\"><PropertyGroup><UseWPF>true</UseWPF></PropertyGroup></Project>", XamlFrameworkKind.Wpf, XamlRuntimeKind.LibreWpf)]
-	[InlineData("<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><UseWPF>true</UseWPF></PropertyGroup></Project>", XamlFrameworkKind.Wpf, XamlRuntimeKind.MicrosoftWpf)]
-	[InlineData("<Project Sdk=\"Microsoft.NET.Sdk\" />", XamlFrameworkKind.Unknown, XamlRuntimeKind.Unknown)]
-	public void DetectProjectFile_UsesOrderedFrameworkEvidence(string projectXml, XamlFrameworkKind expected, XamlRuntimeKind expectedRuntime)
+	[InlineData("<Project Sdk=\"Uno.Sdk\"><PropertyGroup><UseWPF>true</UseWPF></PropertyGroup></Project>", XamlFrameworkKind.Uno, XamlRuntimeKind.Uno, XamlRuntimeKind.Uno)]
+	[InlineData("<Project Sdk=\"Microsoft.NET.Sdk\"><ItemGroup><PackageReference Include=\"Uno.WinUI\" /></ItemGroup></Project>", XamlFrameworkKind.Uno, XamlRuntimeKind.Uno, XamlRuntimeKind.Uno)]
+	// The two Microsoft runtimes below are Windows-only *by design*: XamlFrameworkDetector
+	// substitutes LibreWPF for Microsoft WPF, and Uno for Microsoft WinUI, on macOS/Linux where the
+	// Microsoft implementations do not exist. Asserting the Windows answer unconditionally made
+	// these two cases permanently red off Windows, which reads as a detector bug and is not one -
+	// so the expectation follows the same platform switch the detector uses. The LibreWPF.Sdk and
+	// Uno.Sdk cases need no switch: those are chosen from explicit evidence in the project file
+	// rather than from what the host platform can run.
+	[InlineData("<Project Sdk=\"Microsoft.NET.Sdk\"><ItemGroup><PackageReference Include=\"Microsoft.WindowsAppSDK\" /></ItemGroup></Project>", XamlFrameworkKind.WinUI, XamlRuntimeKind.MicrosoftWinUI, XamlRuntimeKind.Uno)]
+	[InlineData("<Project Sdk=\"LibreWPF.Sdk\"><PropertyGroup><UseWPF>true</UseWPF></PropertyGroup></Project>", XamlFrameworkKind.Wpf, XamlRuntimeKind.LibreWpf, XamlRuntimeKind.LibreWpf)]
+	[InlineData("<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><UseWPF>true</UseWPF></PropertyGroup></Project>", XamlFrameworkKind.Wpf, XamlRuntimeKind.MicrosoftWpf, XamlRuntimeKind.LibreWpf)]
+	[InlineData("<Project Sdk=\"Microsoft.NET.Sdk\" />", XamlFrameworkKind.Unknown, XamlRuntimeKind.Unknown, XamlRuntimeKind.Unknown)]
+	public void DetectProjectFile_UsesOrderedFrameworkEvidence(string projectXml, XamlFrameworkKind expected, XamlRuntimeKind expectedRuntimeOnWindows, XamlRuntimeKind expectedRuntimeElsewhere)
 	{
 		var directory = Directory.CreateTempSubdirectory("od-xaml-detect-");
 		try {
@@ -32,7 +39,9 @@ public sealed class XamlFrameworkDetectorTests
 			File.WriteAllText(project, projectXml);
 			var result = XamlFrameworkDetector.DetectProjectFile(project);
 			Assert.Equal(expected, result.Kind);
-			Assert.Equal(expectedRuntime, result.Runtime);
+			Assert.Equal(
+				OperatingSystem.IsWindows() ? expectedRuntimeOnWindows : expectedRuntimeElsewhere,
+				result.Runtime);
 		} finally { directory.Delete(true); }
 	}
 }

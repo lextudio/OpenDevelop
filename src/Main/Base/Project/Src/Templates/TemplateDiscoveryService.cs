@@ -55,6 +55,7 @@ namespace ICSharpCode.SharpDevelop.Templates
         /// </summary>
         public async Task<IReadOnlyList<TemplateSummary>> GetInstalledTemplatesAsync(CancellationToken cancellationToken)
         {
+            await EnsureSdkBundledTemplatesInstalledAsync(cancellationToken);
             var templates = await _bootstrapper.GetTemplatesAsync(cancellationToken);
 
             return templates
@@ -176,6 +177,93 @@ namespace ICSharpCode.SharpDevelop.Templates
                 cancellationToken);
 
             return results.Count > 0 && results[0].Success;
+        }
+
+        bool _sdkTemplatesChecked;
+
+        /// <summary>
+        /// Registers the template packages bundled with the .NET SDK (console, classlib, webapi,
+        /// wpf, winforms, ...) into this host's settings store.
+        ///
+        /// This is NOT done by <see cref="Bootstrapper"/>, despite what the loadDefaultComponents
+        /// flag suggests: that flag registers the *components* that can read template packages, not
+        /// any packages. <c>dotnet new</c> gets the built-ins by scanning the SDK's own
+        /// <c>templates/&lt;version&gt;</c> folder, and a host that does not do the same sees only
+        /// whatever the user explicitly installed. The symptom is badly misleading - discovery
+        /// succeeds and returns a plausible list (here: 42 templates, all Avalonia/MAUI/macOS from
+        /// past explicit installs) with every Microsoft template silently absent, so a New Project
+        /// dialog looks populated while missing its entire default catalogue.
+        ///
+        /// Idempotent and cheap after the first call: the engine skips packages already present in
+        /// the store, and this only re-scans once per instance. Failures are deliberately
+        /// swallowed - a missing or unreadable SDK template folder must degrade to "only the
+        /// user's own templates", never break discovery outright.
+        /// </summary>
+        async Task EnsureSdkBundledTemplatesInstalledAsync(CancellationToken cancellationToken)
+        {
+            if (_sdkTemplatesChecked)
+                return;
+            _sdkTemplatesChecked = true;
+
+            try
+            {
+                var packages = EnumerateSdkTemplatePackages().ToArray();
+                if (packages.Length == 0)
+                    return;
+
+                await _bootstrapper.InstallTemplatePackagesAsync(
+                    packages.Select(p => new InstallRequest(p)).ToArray(),
+                    InstallationScope.Global,
+                    cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // See above: discovery must still return the user's own templates.
+            }
+        }
+
+        /// <summary>
+        /// The <c>.nupkg</c>s under the running SDK's <c>templates/&lt;version&gt;</c> folder.
+        /// </summary>
+        static IEnumerable<string> EnumerateSdkTemplatePackages()
+        {
+            var root = FindDotnetRoot();
+            if (root is null)
+                return Array.Empty<string>();
+
+            var templatesRoot = Path.Combine(root, "templates");
+            if (!Directory.Exists(templatesRoot))
+                return Array.Empty<string>();
+
+            // One folder per SDK feature band; take them all rather than trying to match the
+            // running SDK's version string, whose format has changed between releases.
+            return Directory.EnumerateDirectories(templatesRoot)
+                .SelectMany(d => Directory.EnumerateFiles(d, "*.nupkg"));
+        }
+
+        /// <summary>
+        /// The directory holding the SDK's shared folders (<c>sdk</c>, <c>templates</c>, ...).
+        /// DOTNET_ROOT wins when set; otherwise this walks up from the runtime directory, which
+        /// sits at <c>&lt;root&gt;/shared/Microsoft.NETCore.App/&lt;version&gt;</c>. Deriving it
+        /// from the process path does not work for a host launched by anything other than
+        /// <c>dotnet</c>, and on Homebrew the <c>dotnet</c> on PATH is a symlink into
+        /// <c>libexec</c>, so the resolved runtime location is the dependable anchor.
+        /// </summary>
+        static string? FindDotnetRoot()
+        {
+            var fromEnvironment = Environment.GetEnvironmentVariable("DOTNET_ROOT");
+            if (!string.IsNullOrEmpty(fromEnvironment) && Directory.Exists(fromEnvironment))
+                return fromEnvironment;
+
+            var directory = new DirectoryInfo(System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory());
+            for (var i = 0; i < 3 && directory is not null; i++)
+                directory = directory.Parent;
+
+            return directory?.Exists == true ? directory.FullName : null;
         }
 
         async Task<ITemplateInfo?> FindTemplateAsync(string identity, CancellationToken cancellationToken)

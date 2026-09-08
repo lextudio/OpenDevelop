@@ -452,11 +452,20 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		/// </summary>
 		public IReadOnlyList<IVisualLineBlockAdornment> GetBlockAdornments(TextView view, DocumentLine documentLine)
 		{
-			if (!anchorByLineNumber.TryGetValue(documentLine.LineNumber, out var anchor))
+			// Recorded on every path, including the two declines. A published lens value that never
+			// becomes a visible row can fail here (no anchor for this line, or an anchor with no
+			// items) or never reach here at all, and those are different bugs that look identical
+			// from outside; see LanguageOpenLensProvider.AdornmentRecord.
+			if (!anchorByLineNumber.TryGetValue(documentLine.LineNumber, out var anchor)) {
+				LanguageOpenLensProvider.RecordAdornment(fileName, documentLine.LineNumber, anchorFound: false, itemCount: 0, visualCreated: false);
 				return null;
+			}
 			var items = itemsByAnchorId[anchor.AnchorId].OrderBy(i => i.Order).ToArray();
-			if (items.Length == 0)
+			if (items.Length == 0) {
+				LanguageOpenLensProvider.RecordAdornment(fileName, documentLine.LineNumber, anchorFound: true, itemCount: 0, visualCreated: false);
 				return null;
+			}
+			LanguageOpenLensProvider.RecordAdornment(fileName, documentLine.LineNumber, anchorFound: true, itemCount: items.Length, visualCreated: true);
 			// Align the row with the code line's own indentation (the first non-whitespace column)
 			// like Visual Studio's CodeLens rows - the anchor's range spans the declaration's
 			// *name* token, which sits further right than the line's indent.

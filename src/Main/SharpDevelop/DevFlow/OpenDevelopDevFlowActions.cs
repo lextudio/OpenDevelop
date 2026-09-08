@@ -624,6 +624,53 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new { success = true, typeName = window.ViewContents[index].GetType().FullName, viewCount = window.ViewContents.Count });
 		}
 
+		// Every mouse-down the main window actually receives, newest last. Recorded synchronously in
+		// the handler, so unlike a "last pick" field owned by some feature there is no staleness and
+		// no chance of reading the previous gesture's value.
+		//
+		// What makes it worth having: it pairs the SCREEN point a caller injected at with the point
+		// WPF really saw. Any systematic error between the two - the reason a press can be reported
+		// as delivered while the intended element never sees it - is then a simple subtraction
+		// rather than a guess, and two entries are enough to separate a translation from a scale.
+		static readonly List<string> pointerEvents = new();
+		static bool pointerEventHookInstalled;
+
+		[DevFlowAction("od.pointer-events", Description = "Every mouse-down the main window has received since the last reset, as 'windowX,windowY element' - the point WPF actually saw, recorded synchronously in a PreviewMouseDown handler. Pass reset=true to clear the log first (do that before each injection so a reading can never be a stale one). Use with a known injected SCREEN point to measure the screen-to-window mapping directly: if an injection produces no entry at all it never reached the window, and if it produces an entry at an unexpected point the coordinate conversion is wrong rather than the input path.")]
+		public static string PointerEvents(bool reset)
+		{
+			var mainWindow = System.Windows.Application.Current?.MainWindow;
+			if (mainWindow == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No main window" });
+
+			if (!pointerEventHookInstalled) {
+				mainWindow.PreviewMouseDown += (_, e) => {
+					var point = e.GetPosition(mainWindow);
+					pointerEvents.Add($"{point.X:F1},{point.Y:F1} {(e.OriginalSource as System.Windows.DependencyObject)?.GetType().Name ?? "<none>"}");
+					while (pointerEvents.Count > 64)
+						pointerEvents.RemoveAt(0);
+				};
+				pointerEventHookInstalled = true;
+			}
+
+			if (reset) {
+				pointerEvents.Clear();
+				return JsonSerializer.Serialize(new { success = true, reset = true, events = Array.Empty<string>() });
+			}
+			// PointToScreen(0,0) IS the client origin the screen<->window conversion applies. Reported
+			// alongside the events so one call shows both what the conversion claims and what an
+			// injection actually produced: if the events say a press at screen S arrived at window W,
+			// then this must equal S - W, and any disagreement is the conversion's error, measured
+			// rather than inferred.
+			var origin = mainWindow.PointToScreen(new System.Windows.Point(0, 0));
+			return JsonSerializer.Serialize(new {
+				success = true,
+				count = pointerEvents.Count,
+				clientOrigin = new { origin.X, origin.Y },
+				windowLeftTop = new { mainWindow.Left, mainWindow.Top },
+				events = pointerEvents.ToArray()
+			});
+		}
+
 		[DevFlowAction("od.pointer-target", Description = "Diagnose where a synthetic pointer at a SCREEN point will actually land: reports the WPF InputHitTest ancestor chain, the ProGPU GPU hit-test owner list with each owner's PortableVisualOwnerKind, and the owner ProGPU's own TrySelectPointerInputOwner picks as the input target. Use this whenever a press/click reports ok but the intended element never sees it - the two answers disagreeing is the signature of a shim-level pointer-targeting bug rather than a wrong coordinate.")]
 		public static string PointerTarget(double screenX, double screenY)
 		{
@@ -1111,6 +1158,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		{
 			var log = ICSharpCode.SharpDevelop.LanguageServices.OpenLens.LanguageOpenLensProvider.GetResolutionLog();
 			var discovery = ICSharpCode.SharpDevelop.LanguageServices.OpenLens.LanguageOpenLensProvider.GetDiscoveryLog();
+			var adornments = ICSharpCode.SharpDevelop.LanguageServices.OpenLens.LanguageOpenLensProvider.GetAdornmentLog();
 			return JsonSerializer.Serialize(new {
 				discoveries = discovery.Select(d => new {
 					whenUtc = d.WhenUtc.ToString("HH:mm:ss.fff"),
@@ -1128,6 +1176,19 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 					refCount = r.Count,
 					projectBacked = r.ProjectBacked,
 					published = r.Published
+				}).ToArray(),
+				// The step between "value published" and "row on screen". adornmentCount == 0 means
+				// the renderer's generator was never invoked at all, which is a TextView/layout
+				// problem rather than a language-service one.
+				adornmentCount = adornments.Count,
+				adornmentsCreated = adornments.Count(a => a.VisualCreated),
+				adornments = adornments.Select(a => new {
+					whenUtc = a.WhenUtc.ToString("HH:mm:ss.fff"),
+					file = System.IO.Path.GetFileName(a.FileName),
+					line = a.LineNumber,
+					anchorFound = a.AnchorFound,
+					itemCount = a.ItemCount,
+					visualCreated = a.VisualCreated
 				}).ToArray()
 			});
 		}
@@ -2277,6 +2338,20 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		{
 			var modules = await InvokeEnumerableTaskAsync(SD.Debugger, "GetModulesAsync");
 			return JsonSerializer.Serialize(modules.Select(ToPropertyDictionary).ToArray());
+		}
+
+		[DevFlowAction("od.hide-pad", Description = "Hide a workbench pad by title or class name (IWorkbenchLayout.HidePad), giving its space back to the document area. The counterpart to od.show-pad. Needed by tests whose assertion depends on how much of a document is actually ON SCREEN: adornments and other viewport-scoped rendering only exist for visible lines, so a pad layout that squeezes the editor down to a handful of lines makes such a test fail for reasons that have nothing to do with the feature under test - and makes it pass alone while failing in a full run, where earlier tests have left more pads open.")]
+		public static string HidePad(string padName)
+		{
+			var pad = FindPad(padName);
+			if (pad == null)
+				return JsonSerializer.Serialize(new { found = false, padName });
+			// WorkbenchLayout is on the concrete workbench, not the IWorkbench interface.
+			var layout = (SD.Workbench as ICSharpCode.SharpDevelop.Workbench.WpfWorkbench)?.WorkbenchLayout;
+			if (layout == null)
+				return JsonSerializer.Serialize(new { found = true, hidden = false, error = "No workbench layout" });
+			layout.HidePad(pad);
+			return JsonSerializer.Serialize(new { found = true, hidden = true, padName = pad.Title });
 		}
 
 		[DevFlowAction("od.show-pad", Description = "Activate/bring-to-front a workbench pad by title or class name so AvalonDock actually creates and renders its content (needed before inspecting some pads via od.ui.tree, since an un-activated pad's content is never realized)")]
