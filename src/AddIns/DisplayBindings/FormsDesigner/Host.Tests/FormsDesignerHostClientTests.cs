@@ -270,6 +270,10 @@ public sealed class FormsDesignerHostClientTests
 		var statusStrip = Component("statusStrip1");
 		Assert.Equal(DesignerItemInsertionStyles.SplitButton, statusStrip.ItemInsertionStyle);
 		Assert.Equal("System.Windows.Forms.ToolStripStatusLabel", statusStrip.NewItemTypeNames.First());
+		var selectedStatus = await client.SetSelectionAsync(1, new[] { "statusStrip1" }, timeout.Token);
+		var insertionBounds = selectedStatus.Components.Single(item => item.Name == "statusStrip1").ItemInsertionBounds;
+		Assert.NotNull(insertionBounds);
+		Assert.True(insertionBounds.Value.Width > 0 && insertionBounds.Value.Height > 0);
 
 		// ContextMenuStrip is a ToolStripDropDown, so it takes the "Type Here" branch like the
 		// menus - and its list is the dropdown one, which uniquely includes a separator (the type
@@ -277,6 +281,8 @@ public sealed class FormsDesignerHostClientTests
 		var contextMenu = Component("contextMenuStrip1");
 		Assert.Equal(DesignerItemInsertionStyles.TypeHere, contextMenu.ItemInsertionStyle);
 		Assert.Contains("System.Windows.Forms.ToolStripSeparator", contextMenu.NewItemTypeNames);
+		snapshot.Version = 2;
+		Assert.True((await client.UpdateAsync(snapshot, timeout.Token)).Accepted);
 #else
 		// The portable fork's strips report no insertion affordance: the client's "Type Here" cell
 		// and split button are both Microsoft-backend features.

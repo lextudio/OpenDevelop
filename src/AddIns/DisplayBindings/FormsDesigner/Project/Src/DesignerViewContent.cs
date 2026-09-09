@@ -750,6 +750,7 @@ namespace ICSharpCode.FormsDesigner
 				BindHostedViewCommands(remoteControl);
 				remoteControl.ToolStripInsertRequested += RemoteToolStripInsertRequested;
 				remoteControl.ToolStripTypeHereCommitted += RemoteToolStripTypeHereCommitted;
+				remoteControl.ItemTextCommitted += (sender, e) => SetRemoteProperty(e.ComponentName, "Text", e.NewName);
 				outline.SelectionCommitted += OnOutlineSelectionCommitted;
 				remoteControl.Show(state);
 				UpdateOutline(state);
@@ -1030,6 +1031,25 @@ namespace ICSharpCode.FormsDesigner
 		/// closing the previous popup before opening a new one, and clearing this field when a
 		/// popup closes itself, keeps at most one ever open.</summary>
 		System.Windows.Controls.Primitives.Popup activeDesignerPopup;
+		readonly List<(string TypeName, System.Windows.Controls.Button Button)> activeInsertionButtons = new();
+
+		/// <summary>Read-only geometry of the real WPF item-type popup. This is intentionally
+		/// exposed for integration tests so they can click its actual button rather than bypassing
+		/// the UI through <see cref="AddRemoteToolStripItem"/>.</summary>
+		internal object ItemInsertionPopupStatus {
+			get {
+				if (activeDesignerPopup?.IsOpen != true || activeInsertionButtons.Count == 0)
+					return new { open = false, items = Array.Empty<object>() };
+				return new {
+					open = true,
+					items = activeInsertionButtons.Where(item => item.Button.IsVisible).Select(item => {
+						var origin = item.Button.PointToScreen(new System.Windows.Point(0, 0));
+						var end = item.Button.PointToScreen(new System.Windows.Point(item.Button.ActualWidth, item.Button.ActualHeight));
+						return new { typeName = item.TypeName, x = origin.X, y = origin.Y, width = end.X - origin.X, height = end.Y - origin.Y };
+					}).ToArray()
+				};
+			}
+		}
 
 		void CloseActiveDesignerPopup()
 		{
@@ -1037,6 +1057,7 @@ namespace ICSharpCode.FormsDesigner
 				activeDesignerPopup.IsOpen = false;
 				activeDesignerPopup = null;
 			}
+			activeInsertionButtons.Clear();
 		}
 
 		void ShowSmartTagPopup(System.Windows.FrameworkElement anchor, string componentName, IReadOnlyList<DesignerSmartTagActionInfo> items, IReadOnlyList<DesignerVerbInfo> verbs)
@@ -1472,11 +1493,22 @@ namespace ICSharpCode.FormsDesigner
 						popup.IsOpen = false;
 						AddRemoteToolStripItem(e.ComponentName, itemType);
 					};
+					activeInsertionButtons.Add((itemType, button));
 					panel.Children.Add(button);
 				}
-				popup.Closed += (popupSender, popupArgs) => { if (activeDesignerPopup == popup) activeDesignerPopup = null; };
+				popup.Closed += (popupSender, popupArgs) => {
+					if (activeDesignerPopup == popup) activeDesignerPopup = null;
+					activeInsertionButtons.Clear();
+				};
 				activeDesignerPopup = popup;
-				popup.IsOpen = true;
+				// This request originates in a mouse-down on the bitmap proxy. Opening a
+				// StaysOpen=false WPF Popup during that same input route makes Popup consume
+				// the corresponding mouse-up as an outside click and immediately close. Queue
+				// it after the gesture instead, so the next real click selects an item type.
+				System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(new Action(() => {
+					if (activeDesignerPopup == popup)
+						popup.IsOpen = true;
+				}), System.Windows.Threading.DispatcherPriority.Background);
 			} catch (Exception exception) {
 				LoggingService.Error(exception);
 				MessageService.ShowError(exception.Message);

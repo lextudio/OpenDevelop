@@ -72,6 +72,57 @@ namespace ICSharpCode.FormsDesigner.DevFlow
 			return JsonSerializer.Serialize(DesignerSurfaceGeometryProbe.ToJson(g));
 		}
 
+		[DevFlowAction("od.forms-designer.item-editor-status", Description = "Inspect the inline item editor's selection, visibility, focus and text without changing the designer")]
+		public static string GetItemEditorStatus()
+		{
+			var viewContent = FindFormsDesignerViewContent();
+			return JsonSerializer.Serialize((viewContent?.RemoteDesignSurface as RemoteFormsDesignerControl)?.ItemEditorStatus);
+		}
+
+		[DevFlowAction("od.forms-designer.component-tray-status", Description = "Inspect the names currently rendered in the WinForms component tray")]
+		public static string GetComponentTrayStatus()
+		{
+			var viewContent = FindFormsDesignerViewContent();
+			return JsonSerializer.Serialize((viewContent?.RemoteDesignSurface as RemoteFormsDesignerControl)?.ComponentTrayStatus);
+		}
+
+		[DevFlowAction("od.forms-designer.item-insertion-popup-status", Description = "Report the screen bounds of the real item-type buttons opened from a ToolStrip or StatusStrip insertion node, for pointer-driven integration tests")]
+		public static string GetItemInsertionPopupStatus()
+		{
+			return JsonSerializer.Serialize(FindFormsDesignerViewContent()?.ItemInsertionPopupStatus ?? new { open = false, items = Array.Empty<object>() });
+		}
+
+		[DevFlowAction("od.forms-designer.item-editor-input", Description = "Replace text in the already focused inline editor and route Enter or Escape through its actual key handler; fails unless pointer input opened and focused the editor")]
+		public static string InputItemEditor(string text, bool cancel = false)
+		{
+			var view = FindFormsDesignerViewContent();
+			if (view?.RemoteDesignSurface is not RemoteFormsDesignerControl surface
+				|| System.Windows.Input.Keyboard.FocusedElement is not System.Windows.Controls.TextBox editor
+				|| !surface.IsKeyboardFocusWithin)
+				return JsonSerializer.Serialize(new { success = false });
+			editor.SelectAll();
+			editor.SelectedText = text;
+			editor.RaiseEvent(new System.Windows.Input.KeyEventArgs(System.Windows.Input.Keyboard.PrimaryDevice,
+				PresentationSource.FromVisual(editor), Environment.TickCount,
+				cancel ? System.Windows.Input.Key.Escape : System.Windows.Input.Key.Enter) {
+				RoutedEvent = System.Windows.Input.Keyboard.KeyDownEvent
+			});
+			return JsonSerializer.Serialize(new { success = true });
+		}
+
+		[DevFlowAction("od.forms-designer.popup-type-here-status", Description = "Report popup Type Here cells' actual screen bounds and focus state, for pointer-driven MenuStrip and ContextMenuStrip integration tests")]
+		public static string GetPopupTypeHereStatus()
+		{
+			return JsonSerializer.Serialize((FindFormsDesignerViewContent()?.RemoteDesignSurface as RemoteFormsDesignerControl)?.PopupTypeHereStatus ?? new { items = Array.Empty<object>() });
+		}
+
+		[DevFlowAction("od.forms-designer.popup-type-here-input", Description = "Replace text in the pointer-focused popup Type Here editor and route Enter or Escape through that editor's actual key handler")]
+		public static string InputPopupTypeHere(string text, bool cancel = false)
+		{
+			var success = (FindFormsDesignerViewContent()?.RemoteDesignSurface as RemoteFormsDesignerControl)?.InputPopupTypeHere(text, cancel) == true;
+			return JsonSerializer.Serialize(new { success });
+		}
+
 		[DevFlowAction("od.forms-designer.toolbox.filter", Description = "Filter the active WinForms Toolbox by control or category name")]
 		public static string FilterToolbox(string text)
 		{

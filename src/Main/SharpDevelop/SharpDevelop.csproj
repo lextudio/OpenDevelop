@@ -119,6 +119,24 @@
     </ItemGroup>
     <Copy SourceFiles="@(SharpDevelopAddIn)" DestinationFolder="$(MSBuildProjectDirectory)\..\..\..\AddIns" SkipUnchangedFiles="true" />
   </Target>
+  <!-- LibreWPF.Transport has generic managed assets as well as RID-specific versions of
+       PresentationCore and DirectWriteForwarder.  The SDK restores the generic transport
+       payload late in the build, which is correct for the rest of WPF but overwrites these
+       architecture-specific binaries.  Restore therefore records the selected RID in
+       RuntimeIdentifier; copy just those two assets last so an ordinary app build is runnable
+       on ARM64, x64, and x86 without a launcher-side DLL list. -->
+  <Target Name="RestoreLibreWpfArchitectureRuntimeAssets" AfterTargets="Build"
+          Condition="'$(RuntimeIdentifier)' != '' And '$(NuGetPackageRoot)' != '' And '$(ProGpuWpfManagedPackageVersion)' != ''">
+    <ItemGroup>
+      <_LibreWpfArchitectureRuntimeAsset Include="$(NuGetPackageRoot)librewpf.transport\$(ProGpuWpfManagedPackageVersion)\runtimes\$(RuntimeIdentifier)\lib\net10.0\PresentationCore.dll"
+                                            Condition="Exists('$(NuGetPackageRoot)librewpf.transport\$(ProGpuWpfManagedPackageVersion)\runtimes\$(RuntimeIdentifier)\lib\net10.0\PresentationCore.dll')" />
+      <_LibreWpfArchitectureRuntimeAsset Include="$(NuGetPackageRoot)librewpf.transport\$(ProGpuWpfManagedPackageVersion)\runtimes\$(RuntimeIdentifier)\lib\net10.0\DirectWriteForwarder.dll"
+                                            Condition="Exists('$(NuGetPackageRoot)librewpf.transport\$(ProGpuWpfManagedPackageVersion)\runtimes\$(RuntimeIdentifier)\lib\net10.0\DirectWriteForwarder.dll')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_LibreWpfArchitectureRuntimeAsset)"
+          DestinationFolder="$(TargetDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
   <!-- Microsoft.Build.Runtime copies the NuGet SDK-resolver manifest into SdkResolvers, but
        the resolver DLL itself lives beside MSBuild.  The in-process project loader resolves
        the manifest relative to the IDE executable, so deploy that DLL there as well.  Without

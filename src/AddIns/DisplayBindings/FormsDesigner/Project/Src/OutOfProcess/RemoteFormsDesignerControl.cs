@@ -111,6 +111,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		/// OnPopupReorderDragCompleted's own note), so no separate coordinate source is needed.</summary>
 		readonly Thumb popupReorderThumb;
 		double popupReorderDeltaY;
+		bool popupReorderPointerDown;
 		/// <summary>Live drag feedback for both reorder gestures above: a thin line shown at the
 		/// CURRENT drop boundary while dragging (real VS shows the same insertion-line cue), not
 		/// just applied silently on drop. Vertical (a "|") for reorderThumb's horizontal drags,
@@ -139,6 +140,45 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		/// or losing focus cancels - matching typeHereEditor's own click-away-cancels behavior.</summary>
 		readonly TextBox renameEditor;
 		bool renaming;
+		string renameComponentName;
+		internal object ItemEditorStatus {
+			get {
+				// The template node can be at the bottom of a small canvas (most notably a
+				// StatusStrip).  Return coordinates only after it has been brought into the
+				// actual ScrollViewer viewport, so automation and a real user click the same
+				// visible glyph rather than an off-screen/stale position.
+				EnsureToolStripInsertionNodeVisible();
+				return new {
+					selectedName = SelectedComponentName,
+					editing = renaming,
+					componentName = renameComponentName,
+					visible = renameEditor.IsVisible,
+					focused = renameEditor.IsKeyboardFocusWithin,
+					text = renameEditor.Text,
+					selectedText = selectedComponent?.Text,
+					popupOwners = state?.Popups?.Select(popup => popup.OwnerElementId).ToArray(),
+					insertion = InsertionNodeStatus()
+				};
+			}
+		}
+		internal object PopupTypeHereStatus => new {
+			items = popupEditors.Select(entry => entry.Value.Status(entry.Key)).Where(item => item != null).ToArray()
+		};
+		/// <summary>Names currently rendered in the component tray. Kept separate from the
+		/// document component list so integration tests can assert the tray ownership rule.</summary>
+		internal object ComponentTrayStatus => new {
+			visible = trayRegion.Visibility == Visibility.Visible,
+			items = trayItems.Children.OfType<Border>().Select(item => item.Tag as string)
+				.Where(name => !String.IsNullOrEmpty(name)).ToArray()
+		};
+		internal bool InputPopupTypeHere(string text, bool cancel) => popupEditors.Values.Any(editor => editor.Input(text, cancel));
+		object InsertionNodeStatus()
+		{
+			if (!toolStripInsertChevron.IsVisible) return null;
+			var origin = toolStripInsertChevron.PointToScreen(new Point(0, 0));
+			var end = toolStripInsertChevron.PointToScreen(new Point(toolStripInsertChevron.ActualWidth, toolStripInsertChevron.ActualHeight));
+			return new { x = origin.X, y = origin.Y, width = end.X - origin.X, height = end.Y - origin.Y };
+		}
 		readonly Border typeHereCell;
 		readonly TextBlock typeHereLabel;
 		/// <summary>The in-place editor swapped in for <see cref="typeHereLabel"/> while typing -
@@ -249,6 +289,12 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			designSurface.Children.Add(guides);
 			designSurface.Children.Add(snapGuideOverlay);
 			adorners = new Canvas { IsHitTestVisible = true };
+			// A native ToolStrip template node is rendered into the bitmap, while this
+			// transparent WPF proxy is only an input target. Route by its transformed bounds
+			// at the adorner root as well: an invisible Border can lose the ordinary bubbling
+			// hit test when a selected strip's Thumb overlaps it.
+			adorners.AddHandler(UIElement.PreviewMouseLeftButtonDownEvent,
+				new MouseButtonEventHandler(OnAdornerPreviewMouseLeftButtonDown), true);
 			marqueeBorder = new Rectangle {
 				Stroke = SelectionBrush, StrokeThickness = 1,
 				Fill = new SolidColorBrush(Color.FromArgb(35, 0x00, 0x78, 0xD4)),
@@ -324,12 +370,10 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 					SmartTagRequested?.Invoke(this, new RemoteSmartTagRequestedEventArgs(selectedComponent.Name, smartTagChevron));
 			};
 			toolStripInsertChevron = CreateToolStripInsertGlyph();
-			toolStripInsertChevron.MouseLeftButtonDown += (sender, args) => {
-				args.Handled = true;
-				if (toolStripHost != null)
-					ToolStripInsertRequested?.Invoke(this, new RemoteToolStripInsertRequestedEventArgs(
-						toolStripHost.Name, toolStripHost.Type, toolStripInsertChevron));
-			};
+			// The native template node supplies the pixels; this border supplies input only.
+			toolStripInsertChevron.Child = null;
+			toolStripInsertChevron.Background = Brushes.Transparent;
+			toolStripInsertChevron.BorderThickness = new Thickness(0);
 			typeHereLabel = new TextBlock {
 				Text = TypeHereText, FontSize = 11, Foreground = Brushes.DimGray,
 				VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 4, 0)
@@ -464,6 +508,16 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			reorderThumb.DragStarted += (_, _) => { reorderDragDeltaX = 0; ShowReorderInsertionLine(vertical: false, 0); };
 			reorderThumb.DragDelta += (_, e) => { reorderDragDeltaX += e.HorizontalChange; ShowReorderInsertionLine(vertical: false, reorderDragDeltaX); };
 			reorderThumb.DragCompleted += (sender, e) => { insertionLine.Visibility = Visibility.Collapsed; OnReorderDragCompleted(sender, e); };
+			popupReorderThumb.PreviewMouseLeftButtonDown += (_, _) => popupReorderPointerDown = true;
+			popupReorderThumb.PreviewMouseLeftButtonUp += (_, _) => {
+				if (!popupReorderPointerDown || Math.Abs(popupReorderDeltaY) >= SystemParameters.MinimumVerticalDragDistance)
+					return;
+				popupReorderPointerDown = false;
+				// A selected popup item has a drag Thumb above the bitmap. Thumb does not
+				// reliably raise DragCompleted for a zero-distance SendInput click, so route
+				// that plain click to the same inline edit path as the bitmap below it.
+				Dispatcher.BeginInvoke(new Action(BeginRename), System.Windows.Threading.DispatcherPriority.Input);
+			};
 			popupReorderThumb.DragStarted += (_, _) => { popupReorderDeltaY = 0; ShowReorderInsertionLine(vertical: true, 0); };
 			popupReorderThumb.DragDelta += (_, e) => { popupReorderDeltaY += e.VerticalChange; ShowReorderInsertionLine(vertical: true, popupReorderDeltaY); };
 			popupReorderThumb.DragCompleted += (sender, e) => { insertionLine.Visibility = Visibility.Collapsed; OnPopupReorderDragCompleted(sender, e); };
@@ -481,6 +535,19 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			// right-clicking a selected TabControl - whose move thumb covers its whole bounds -
 			// is exactly how Add Tab/Remove Tab get reached.
 			AddHandler(MouseRightButtonDownEvent, new MouseButtonEventHandler(OnMouseRightButtonDown), true);
+		}
+
+		void OnAdornerPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs args)
+		{
+			if (toolStripHost == null || toolStripInsertChevron.Visibility != Visibility.Visible)
+				return;
+			var bounds = toolStripInsertChevron.TransformToAncestor(adorners).TransformBounds(
+				new Rect(0, 0, toolStripInsertChevron.ActualWidth, toolStripInsertChevron.ActualHeight));
+			if (!bounds.Contains(args.GetPosition(adorners)))
+				return;
+			args.Handled = true;
+			ToolStripInsertRequested?.Invoke(this, new RemoteToolStripInsertRequestedEventArgs(
+				toolStripHost.Name, toolStripHost.Type, toolStripInsertChevron));
 		}
 
 		public string SelectedComponentName { get; private set; } = "";
@@ -527,6 +594,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		public event EventHandler<RemoteSelectionMoveEventArgs> SelectionMoveRequested;
 		public event EventHandler<RemoteReorderRequestedEventArgs> ReorderRequested;
 		public event EventHandler<RemoteRenameRequestedEventArgs> RenameRequested;
+		public event EventHandler<RemoteRenameRequestedEventArgs> ItemTextCommitted;
 		public event EventHandler<RemoteComponentEventArgs> DeleteRequested;
 		public event EventHandler<RemoteComponentEventArgs> DefaultEventRequested;
 		/// <summary>A right-click landed on the design surface. <see cref="RemoteComponentEventArgs"/>
@@ -697,7 +765,8 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		{
 			if (renaming || selectedComponent == null) return;
 			renaming = true;
-			renameEditor.Text = selectedComponent.Name;
+			renameComponentName = selectedComponent.Name;
+			renameEditor.Text = selectedComponent.IsControl ? selectedComponent.Name : selectedComponent.Text;
 			renameEditor.Visibility = Visibility.Visible;
 			PositionAdorners();
 			renameEditor.Focus();
@@ -709,6 +778,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			if (!renaming) return;
 			renaming = false;
 			renameEditor.Visibility = Visibility.Collapsed;
+			renameEditor.Text = "";
 		}
 
 		void CommitRename()
@@ -718,6 +788,11 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			var oldName = selectedComponent.Name;
 			renaming = false;
 			renameEditor.Visibility = Visibility.Collapsed;
+			if (!selectedComponent.IsControl) {
+				if (newName != selectedComponent.Text)
+					ItemTextCommitted?.Invoke(this, new RemoteRenameRequestedEventArgs(oldName, newName));
+				return;
+			}
 			if (newName.Length == 0 || newName == oldName) return;
 			RenameRequested?.Invoke(this, new RemoteRenameRequestedEventArgs(oldName, newName));
 		}
@@ -946,6 +1021,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		async void OnPopupClicked(string ownerElementId, Image image, MouseButtonEventArgs args)
 		{
 			try {
+				Focus();
 				var point = args.GetPosition(image);
 				var designPoint = new Point(point.X / viewport.Scale, point.Y / viewport.Scale);
 				var result = await client.HitTestPopupAsync(version, ownerElementId, designPoint.X, designPoint.Y, CancellationToken.None);
@@ -962,6 +1038,14 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				Show(result);
 				if (!String.IsNullOrEmpty(result.PopupHitElementId))
 					SelectionChanged?.Invoke(this, EventArgs.Empty);
+				if (!String.IsNullOrEmpty(result.PopupHitElementId) && selectedComponent?.IsControl == false) {
+					var clickedName = result.PopupHitElementId;
+					// Finish selection mirroring and the current pointer event before taking
+					// keyboard focus. A popup bitmap cannot host the native designer's editor.
+					Dispatcher.BeginInvoke(new Action(() => {
+						if (SelectedComponentName == clickedName) BeginRename();
+					}), System.Windows.Threading.DispatcherPriority.Background);
+				}
 			} catch (Exception exception) {
 				ICSharpCode.Core.LoggingService.Warn(
 					"RemoteFormsDesignerControl.OnPopupClicked(" + ownerElementId + "): " + exception.Message);
@@ -972,10 +1056,12 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		/// component's real WinForms icon plus its name, sized independently of the canvas zoom
 		/// (the tray is not inside the zoomed surface), and selecting one routes through the same
 		/// single-selection path as the Document Outline so the Properties pad and the outline
-		/// follow along. Hidden entirely when the form has no tray components.</summary>
+		/// follow along.  A ToolStripItem belongs to its owning strip/dropdown, not to the tray:
+		/// only strip-level controls and root non-visual components are listed here.</summary>
 		void UpdateComponentTray()
 		{
-			var trayComponents = state?.Components?.Where(item => item.IsTrayComponent).ToArray()
+			var trayComponents = state?.Components?.Where(item => item.IsTrayComponent
+				&& (item.IsControl || String.IsNullOrEmpty(item.Parent))).ToArray()
 				?? Array.Empty<DesignerComponentInfo>();
 			trayItems.Children.Clear();
 			trayRegion.Visibility = trayComponents.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
@@ -1100,7 +1186,10 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				};
 				Canvas.SetLeft(outline, surfaceX);
 				Canvas.SetTop(outline, surfaceY);
-				guides.Children.Add(outline);
+				// Ordinary controls already appear in the host bitmap. Only selection needs
+				// an extra outline; outlining every control obscures the designed UI.
+				if (selectedComponentNames.Contains(component.Name))
+					guides.Children.Add(outline);
 				if (showComponentLabels && component.Height >= 18 && component.Width >= 35) {
 					// Outside/above the control's own bounds (matching WinUI's own out-of-process
 					// designer, whose selection/name label sits above the box rather than
@@ -1344,10 +1433,21 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			return false;
 		}
 
+		bool IsPopupSource(object source)
+		{
+			for (var node = source as DependencyObject; node != null; node = VisualTreeHelper.GetParent(node)) {
+				if (ReferenceEquals(node, renameEditor) || ReferenceEquals(node, popupReorderThumb)) return true;
+				if (popupOverlays.Values.Any(image => ReferenceEquals(image, node))
+					|| popupEditors.Values.Any(editor => ReferenceEquals(editor.Cell, node)))
+					return true;
+			}
+			return false;
+		}
+
 		async void OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
 		{
 			try {
-				if (IsOutsideDesignSurface(e.OriginalSource))
+				if (IsPopupSource(e.OriginalSource) || IsOutsideDesignSurface(e.OriginalSource))
 					return;
 				var extendSelection = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) || Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
 				// GetPosition on the (possibly zoomed) frame image yields surface pixels;
@@ -1777,6 +1877,8 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 
 		void OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
 		{
+			if (IsPopupSource(e.OriginalSource))
+				return;
 			if (selectedComponent == null || lockedComponentNames.Contains(selectedComponent.Name))
 				return;
 			var pt = e.GetPosition(this);
@@ -1982,6 +2084,36 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				scroller.ScrollToVerticalOffset(Math.Max(0, scroller.VerticalOffset + handle.Y - edgeMargin));
 		}
 
+		/// <summary>Keeps the native ToolStrip template node usable when the strip falls outside
+		/// the canvas viewport.  Use rendered WPF coordinates rather than design coordinates: the
+		/// latter omit zoom, pan, and the ScrollViewer's current transform.</summary>
+		void EnsureToolStripInsertionNodeVisible()
+		{
+			if (!toolStripInsertChevron.IsVisible || scroller.ViewportWidth <= 0 || scroller.ViewportHeight <= 0)
+				return;
+			var topLeft = toolStripInsertChevron.TranslatePoint(new Point(0, 0), scroller);
+			var bottomRight = toolStripInsertChevron.TranslatePoint(
+				new Point(toolStripInsertChevron.ActualWidth, toolStripInsertChevron.ActualHeight), scroller);
+			const double margin = 12;
+			var horizontalOffset = scroller.HorizontalOffset;
+			var verticalOffset = scroller.VerticalOffset;
+			if (topLeft.X < margin)
+				horizontalOffset = Math.Max(0, horizontalOffset + topLeft.X - margin);
+			else if (bottomRight.X > scroller.ViewportWidth - margin)
+				horizontalOffset += bottomRight.X - (scroller.ViewportWidth - margin);
+			if (topLeft.Y < margin)
+				verticalOffset = Math.Max(0, verticalOffset + topLeft.Y - margin);
+			else if (bottomRight.Y > scroller.ViewportHeight - margin)
+				verticalOffset += bottomRight.Y - (scroller.ViewportHeight - margin);
+			if (horizontalOffset != scroller.HorizontalOffset || verticalOffset != scroller.VerticalOffset) {
+				scroller.ScrollToHorizontalOffset(horizontalOffset);
+				scroller.ScrollToVerticalOffset(verticalOffset);
+				// PointToScreen must observe the new viewport transform before an automation
+				// client receives the insertion-node coordinates below.
+				scroller.UpdateLayout();
+			}
+		}
+
 		void OnDragCompleted(object sender, DragCompletedEventArgs e)
 		{
 			SetSnapGuides(Array.Empty<(bool, double)>());
@@ -2088,8 +2220,15 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		{
 			var delta = popupReorderDeltaY;
 			popupReorderDeltaY = 0;
-			if (selectedComponent == null || e.Canceled || String.IsNullOrEmpty(selectedComponent.Parent) || Math.Abs(delta) < 1)
+			popupReorderPointerDown = false;
+			if (selectedComponent == null || e.Canceled || String.IsNullOrEmpty(selectedComponent.Parent))
 				return;
+			if (Math.Abs(delta) < SystemParameters.MinimumVerticalDragDistance) {
+				// The selected item's Thumb sits above the popup image. A plain click
+				// therefore comes here, not through OnPopupClicked.
+				Dispatcher.BeginInvoke(new Action(BeginRename), System.Windows.Threading.DispatcherPriority.Input);
+				return;
+			}
 			var (targetIndex, _) = ComputeReorderTarget(vertical: true, delta);
 			ReorderRequested?.Invoke(this, new RemoteReorderRequestedEventArgs(selectedComponent.Name, targetIndex));
 		}
@@ -2098,7 +2237,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		{
 			// Selection just changed (a fresh call to Show/a new click) - any in-progress F2 edit
 			// belongs to the PREVIOUS selection and must not be left dangling over the new one.
-			if (renaming) CancelRename();
+			if (renaming && renameComponentName != selectedComponent?.Name) CancelRename();
 			insertionLine.Visibility = Visibility.Collapsed;
 			AutomationProperties.SetName(this, String.IsNullOrEmpty(selectedComponent?.AccessibleName)
 				? selectedComponent?.Name ?? "WinForms designer" : selectedComponent.AccessibleName);
@@ -2155,13 +2294,11 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				: IsToolStripHost(selectedComponent.Type) ? selectedComponent
 				: state?.Components?.FirstOrDefault(item => item.Name == selectedComponent.Parent) is { } parent
 					&& IsToolStripHost(parent.Type) ? parent : null;
-			// No client-drawn insertion affordance any more. Pushing the selection into the
-			// child's real ISelectionService (DesignerHostService.SetSelection) makes the genuine
-			// ToolStripTemplateNode visible - the "Type Here" cell for a MenuStrip, the split
-			// button for ToolStrip/StatusStrip - and it renders straight into the frame as a real
-			// item of the strip, together with the expanded dropdown and that level's own node.
-			// Keeping these overlays would simply double-draw on top of the real thing.
-			toolStripInsertChevron.Visibility = Visibility.Collapsed;
+			// The native template node renders into the bitmap, but bitmap pixels cannot
+			// receive input. Place a transparent input surface at its reported bounds.
+			toolStripInsertChevron.Visibility = toolStripHost?.ItemInsertionBounds != null
+				&& toolStripHost.ItemInsertionStyle == DesignerItemInsertionStyles.SplitButton
+				? Visibility.Visible : Visibility.Collapsed;
 			typeHereCell.Visibility = Visibility.Collapsed;
 			if (typeHereEditing)
 				CommitTypeHere(TypeHereCommit.Cancel);
@@ -2180,6 +2317,9 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			dragWidth = selectedComponent.Width;
 			dragHeight = selectedComponent.Height;
 			PositionAdorners();
+			// Unlike resize handles, this is an explicit insertion affordance.  Selecting its
+			// owning strip must make it reachable, including a StatusStrip below a short canvas.
+			EnsureToolStripInsertionNodeVisible();
 			// Deliberately does NOT call ScrollResizeHandleIntoView() here: that used to force
 			// the canvas to jump/scroll to the selected component's resize handle on every plain
 			// selection (most jarring for the root Form, whose handle sits at its bottom-right
@@ -2219,7 +2359,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			Canvas.SetTop(renameEditor, top);
 			renameEditor.Width = Math.Max(1, right - left);
 			renameEditor.Height = Math.Max(1, bottom - top);
-			Panel.SetZIndex(renameEditor, 102);
+			Panel.SetZIndex(renameEditor, 302);
 			Canvas.SetLeft(resizeThumb, right - resizeThumb.Width / 2);
 			Canvas.SetTop(resizeThumb, bottom - resizeThumb.Height / 2);
 			Canvas.SetLeft(resizeHitTarget, right - resizeHitTarget.Width / 2);
@@ -2271,6 +2411,14 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			Canvas.SetLeft(toolStripInsertChevron, insertLeft + 2);
 			Canvas.SetTop(toolStripInsertChevron, insertTop);
 			Panel.SetZIndex(toolStripInsertChevron, 101);
+			if (toolStripHost?.ItemInsertionBounds is { } insertionBounds) {
+				var (nodeLeft, nodeTop) = viewport.DesignToSurface(
+					toolStripHost.SurfaceX + insertionBounds.X, toolStripHost.SurfaceY + insertionBounds.Y);
+				Canvas.SetLeft(toolStripInsertChevron, nodeLeft);
+				Canvas.SetTop(toolStripInsertChevron, nodeTop);
+				toolStripInsertChevron.Width = Math.Max(1, insertionBounds.Width);
+				toolStripInsertChevron.Height = Math.Max(1, insertionBounds.Height);
+			}
 			// The "Type Here" cell occupies the same slot (the template node is the strip's last
 			// item either way), just sized like a menu cell rather than a square button.
 			Canvas.SetLeft(typeHereCell, insertLeft + 2);
@@ -2476,6 +2624,28 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		public DesignerRectangle Bounds { get; set; }
 		public Border Cell { get; }
 
+		public object Status(string popupOwnerId)
+		{
+			if (!Cell.IsVisible) return null;
+			var origin = Cell.PointToScreen(new Point(0, 0));
+			var end = Cell.PointToScreen(new Point(Cell.ActualWidth, Cell.ActualHeight));
+			return new {
+				ownerId = popupOwnerId, x = origin.X, y = origin.Y,
+				width = end.X - origin.X, height = end.Y - origin.Y,
+				editing, focused = editor.IsKeyboardFocusWithin, text = editor.Text
+			};
+		}
+
+		public bool Input(string text, bool cancel)
+		{
+			if (!editing || !editor.IsKeyboardFocusWithin) return false;
+			editor.SelectAll();
+			editor.SelectedText = text;
+			editor.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(editor), Environment.TickCount,
+				cancel ? Key.Escape : Key.Enter) { RoutedEvent = Keyboard.KeyDownEvent });
+			return true;
+		}
+
 		public void Reposition(DesignViewport viewport, int popupX, int popupY)
 		{
 			var (left, top) = viewport.DesignToSurface(popupX + Bounds.X, popupY + Bounds.Y);
@@ -2537,9 +2707,13 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			var ownerInfo = owner.state?.Components?.FirstOrDefault(item => item.Name == ownerElementId);
 			if (ownerInfo == null)
 				return;
+			// ContextMenuStrip is itself a ToolStrip but, unlike MenuStrip/StatusStrip, is
+			// not a Control.  Its root popup's owner is therefore already the strip: do not
+			// walk to an empty Parent and discard the commit.
+			var isRootContextMenu = ownerInfo.Type == "System.Windows.Forms.ContextMenuStrip";
 			var strip = ownerInfo;
 			var guard = 0;
-			while (strip != null && !strip.IsControl && guard++ < 32)
+			while (strip != null && !strip.IsControl && !isRootContextMenu && guard++ < 32)
 				strip = owner.state?.Components?.FirstOrDefault(item => item.Name == strip.Parent);
 			if (strip == null)
 				return;
@@ -2549,7 +2723,8 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			if (String.IsNullOrEmpty(typeName))
 				return;
 			owner.RaiseToolStripTypeHereCommitted(
-				new RemoteToolStripTypeHereEventArgs(strip.Name, typeName, text, ownerElementId));
+				new RemoteToolStripTypeHereEventArgs(strip.Name, typeName, text,
+					isRootContextMenu ? "" : ownerElementId));
 			if (keepEditing)
 				owner.Dispatcher.BeginInvoke(new Action(Begin), System.Windows.Threading.DispatcherPriority.Background);
 		}

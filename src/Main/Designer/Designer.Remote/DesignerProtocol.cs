@@ -245,6 +245,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 	/// <summary>Flat component snapshot entry (WinForms shape).</summary>
 	public sealed class DesignerComponentInfo
 	{
+		/// <summary>Designer-only insertion node bounds, local to this strip; never serialized as a user item.</summary>
+		public DesignerRectangle? ItemInsertionBounds { get; set; }
 		public string Name { get; set; } = "";
 		public string Type { get; set; } = "";
 		public string Parent { get; set; } = "";

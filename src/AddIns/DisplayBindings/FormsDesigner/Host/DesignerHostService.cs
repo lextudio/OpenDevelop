@@ -1171,9 +1171,33 @@ sealed class DesignerHostService : IDesignerChildService
 	public void WaitForShutdown() => shutdown.Wait();
 	public void OnParentDisconnected() => shutdown.Set();
 
+	void DisposeDesignSurface()
+	{
+#if MICROSOFT_WINFORMS
+		if (designSurface?.GetService(typeof(IMenuCommandService)) is DesignerMenuCommandService commands)
+			commands.DisposingSurface = true;
+#endif
+		designSurface?.Dispose();
+	}
+
+#if MICROSOFT_WINFORMS
+	sealed class DesignerMenuCommandService(IServiceProvider provider) : MenuCommandService(provider)
+	{
+		public bool DisposingSurface { get; set; }
+		public override void RemoveCommand(MenuCommand command)
+		{
+			// The headless tray is initialized before our command service exists. Its
+			// Arrange/Lineup/LargeIcons commands are consequently absent. During teardown
+			// there is nothing to unregister for them; preserve normal validation otherwise.
+			if (DisposingSurface && command is null) return;
+			base.RemoveCommand(command);
+		}
+	}
+#endif
+
 	internal void Close()
 	{
-		designSurface?.Dispose();
+		DisposeDesignSurface();
 		designSurface = null;
 		projectLoadContext?.Unload();
 		projectLoadContext = null;
@@ -1787,7 +1811,7 @@ sealed class DesignerHostService : IDesignerChildService
 	void CreateDesignSurface(DesignerDocumentSnapshot snapshot)
 	{
 		Trace("CreateDesignSurface disposing previous surface");
-		designSurface?.Dispose();
+		DisposeDesignSurface();
 		projectLoadContext?.Unload();
 		projectLoadContext = null;
 		projectAssembly = null;
@@ -1890,7 +1914,7 @@ sealed class DesignerHostService : IDesignerChildService
 				services.AddService(eventHandlerInterface,
 					Activator.CreateInstance(eventHandlerServiceType, host.RootComponent as Control));
 			if (services.GetService(typeof(IMenuCommandService)) == null)
-				services.AddService(typeof(IMenuCommandService), new MenuCommandService(designSurface));
+				services.AddService(typeof(IMenuCommandService), new DesignerMenuCommandService(designSurface));
 			installedCommandSet = Activator.CreateInstance(commandSetType,
 				BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
 				null, new object[] { site }, null) as IDisposable;
@@ -2095,6 +2119,7 @@ sealed class DesignerHostService : IDesignerChildService
 			IsControl = component is Control,
 #if MICROSOFT_WINFORMS
 			IsDropDownItem = component is ToolStripItem { OwnerItem: not null },
+			ItemInsertionBounds = component is ToolStrip insertionStrip ? FindTemplateNodeBounds(insertionStrip) : null,
 #endif
 			ItemInsertionStyle = ItemInsertionStyle(component),
 			NewItemTypeNames = NewItemTypeNames(component),
@@ -2525,6 +2550,22 @@ sealed class DesignerHostService : IDesignerChildService
 		// labels landed away from the dropdown the designer had actually drawn. Screen-relative
 		// measurement is also the basis PaintExpandedDropDowns composites with, so the reported
 		// geometry and the painted pixels agree by construction.
+		// Context menus are floating editors anchored at the canvas origin. Use the same
+		// translation for their items and nested dropdowns so adorners and hit tests agree.
+		if (control is ContextMenuStrip)
+			return Point.Empty;
+		if (control is ToolStripDropDown nested && nested.OwnerItem is { Owner: { } owner }) {
+			var contextOwner = owner;
+			for (var depth = 0; depth < 32 && contextOwner is ToolStripDropDown parentDropDown; depth++) {
+				if (parentDropDown is ContextMenuStrip) {
+					var nestedOrigin = control.PointToScreen(Point.Empty);
+					var menuOrigin = parentDropDown.PointToScreen(Point.Empty);
+					return new Point(nestedOrigin.X - menuOrigin.X, nestedOrigin.Y - menuOrigin.Y);
+				}
+				if (parentDropDown.OwnerItem?.Owner is not { } nextOwner) break;
+				contextOwner = nextOwner;
+			}
+		}
 		if (root != null && root.IsHandleCreated && control.IsHandleCreated) {
 			try {
 				var origin = control.PointToScreen(Point.Empty);
@@ -2632,9 +2673,12 @@ sealed class DesignerHostService : IDesignerChildService
 	/// System.Windows.Forms.Design's template-node types are all internal and cannot be named
 	/// directly from this assembly - the same constraint <see cref="IsToolStripDesigner"/> already
 	/// works around for the designer TYPES themselves.</summary>
-	static DesignerRectangle? FindTemplateNodeBounds(ToolStripDropDown dropDown)
+	static DesignerRectangle? FindTemplateNodeBounds(ToolStrip dropDown)
 	{
 		foreach (ToolStripItem item in dropDown.Items) {
+			// Popup visibility is temporarily suppressed during root bitmap capture;
+			// its template still belongs to the separately rendered popup frame.
+			if (dropDown is not ToolStripDropDown && !item.Visible) continue;
 			if (item.GetType().Name is not ("DesignerToolStripControlHost" or "ToolStripControlHost"))
 				continue;
 			return new DesignerRectangle { X = item.Bounds.X, Y = item.Bounds.Y, Width = item.Bounds.Width, Height = item.Bounds.Height };
@@ -2666,9 +2710,10 @@ sealed class DesignerHostService : IDesignerChildService
 	/// real ContextMenuStripDesigner (ToolStripDropDownDesigner.InitializeDropDown) shows it
 	/// unconditionally as soon as the component exists, not gated on selection - so reusing that
 	/// designer's own Visible flag would make every ContextMenuStrip permanently overlay the
-	/// surface. OpenDevelop deliberately narrows this to "shown only while selected" (its own tray
-	/// icon, or one of its own items/submenu items), matching the "default hidden, click the tray
-	/// icon to edit like a main menu" UX asked for, rather than VS's always-on behaviour.</summary>
+	/// surface. OpenDevelop deliberately narrows this to "shown only while its tray icon, or one
+	/// of its own items, is selected", matching the "default hidden, select the tray icon to
+	/// edit" UX rather than VS's always-on behaviour. Keeping it visible for an item selection is
+	/// necessary to edit its text, properties, and nested submenus in the floating surface.</summary>
 	IEnumerable<(string OwnerElementId, ToolStripDropDown DropDown)> SelectedContextMenuStripPopups()
 	{
 		var host = GetHost();
@@ -2685,16 +2730,9 @@ sealed class DesignerHostService : IDesignerChildService
 		}
 	}
 
-	/// <summary>Whether item, or one of the (possibly several) submenu levels containing it,
-	/// belongs to this exact ContextMenuStrip - the same walk <c>PopupTypeHereEditor.Commit</c>
-	/// does client-side to find the real Control a template node's new item belongs to, mirrored
-	/// here server-side. Checks .Owner == strip at EVERY level and stops as soon as it matches,
-	/// rather than walking all the way up to whatever ToolStrip ultimately owns the chain: real
-	/// ContextMenuStripDesigner wires the strip's OWN OwnerItem to an internal synthetic item (so
-	/// ExpandedDropDowns' existing MenuStrip-oriented walk can discover it too, always-on rather
-	/// than selection-gated - see CapturePopupFrames/SelectedContextMenuStripPopups), so climbing
-	/// past a match here would walk right past the real strip into that internal plumbing and
-	/// never find it.</summary>
+	/// <summary>Whether an item, or a nested submenu item, belongs to this exact
+	/// ContextMenuStrip. The walk stops at the first owning strip so it does not escape through
+	/// the designer's internal synthetic owner item.</summary>
 	static bool BelongsTo(ToolStripItem item, ContextMenuStrip strip)
 	{
 		ToolStripItem? current = item;
@@ -2706,6 +2744,26 @@ sealed class DesignerHostService : IDesignerChildService
 		}
 		return false;
 	}
+
+	/// <summary>Clips designer-only surrogate menu strips out of the form bitmap without
+	/// closing dropdowns. Toggling Visible fires Closed and destroys native editing nodes.</summary>
+	List<(Control Control, Region? Region)> ClipContextMenuDesignerHelpers(Control root)
+	{
+		var restore = new List<(Control, Region?)>();
+		// Context menus themselves live in the designer's adorner window, not root.Controls.
+		// Their selection-gated popup frames are captured separately; don't hide/close them.
+		var menus = GetHost().Container.Components.Cast<IComponent>().OfType<ContextMenuStrip>().ToArray();
+		foreach (var strip in root.Controls.Cast<Control>().OfType<ToolStrip>().ToArray()) {
+			if (strip.Visible && strip.Items.Cast<ToolStripItem>().OfType<ToolStripDropDownItem>()
+				.Any(item => menus.Contains(item.DropDown))) {
+				if (GetHost().Container.Components.Cast<IComponent>().Contains(strip)) continue;
+				restore.Add((strip, strip.Region?.Clone()));
+				strip.Region = new Region(Rectangle.Empty);
+			}
+		}
+		return restore;
+	}
+
 #endif
 
 	/// <summary>Height of the simulated title bar <see cref="PaintFormChrome"/> overlays on a
@@ -2764,7 +2822,13 @@ sealed class DesignerHostService : IDesignerChildService
 #if MICROSOFT_WINFORMS
 			// The Microsoft child uses the native WinForms paint pipeline. The portable host keeps
 			// its software painter below because it has no HWND/GDI implementation to capture.
-			root.DrawToBitmap(bitmap, new Rectangle(Point.Empty, renderSize));
+			var hiddenContextMenus = ClipContextMenuDesignerHelpers(root);
+			try {
+				root.DrawToBitmap(bitmap, new Rectangle(Point.Empty, renderSize));
+			} finally {
+				foreach (var (control, region) in hiddenContextMenus)
+					control.Region = region;
+			}
 			// DesignSurface Forms lack a real HWND so DrawToBitmap never paints the non-client
 			// frame.  Overlay a simulated title bar so the designer surface visually identifies
 			// the root component as a windowed form.
