@@ -426,7 +426,7 @@ sealed class DesignerHostService : IDesignerChildService
 		var descriptor = String.IsNullOrEmpty(eventName) ? null : TypeDescriptor.GetEvents(component)[eventName];
 		if (descriptor == null)
 			throw new InvalidOperationException($"Component {elementId} has no default event.");
-		var existing = DescribeEvents(component).FirstOrDefault(item => item.Name == descriptor.Name)?.Handler;
+		var existing = DescribeEvents(component, BuildEventHandlerIndex()).FirstOrDefault(item => item.Name == descriptor.Name)?.Handler;
 		RewriteEvent(elementId, descriptor, String.IsNullOrEmpty(existing) ? elementId + "_" + descriptor.Name : existing);
 		return CurrentState(baseVersion);
 	}
@@ -2002,8 +2002,18 @@ sealed class DesignerHostService : IDesignerChildService
 		Trace("CurrentState building element tree");
 		var tree = rootControl == null ? null : BuildElementTree(rootControl, "", host?.Container);
 		Trace("CurrentState describing components");
+		// Parse the designer file and index every "target.Property" assignment ONCE per
+		// CurrentState call, not once per component/property. DescribeProperties used to
+		// re-parse the whole designer file and re-walk its entire syntax tree for EVERY
+		// browsable property of EVERY component - fine for the small sample fixtures this
+		// was tested against, but O(components x properties x fileSize) blows past the 30s
+		// session/open timeout on a real-world form with ~200 components (e.g. JexusManager's
+		// MainForm.cs), which is exactly why that hung: the trace showed every earlier stage
+		// completing and the process dying silently inside this very step.
+		var assignedTargets = BuildAssignedTargetIndex();
+		var eventHandlers = BuildEventHandlerIndex();
 		var components = host?.Container?.Components.Cast<IComponent>().Select(component => {
-			var properties = DescribeProperties(component);
+			var properties = DescribeProperties(component, assignedTargets);
 			if (component == host.RootComponent && rootAutoScaleDimensions.HasValue) {
 				var scale = properties.FirstOrDefault(item => item.Name == "AutoScaleDimensions");
 				if (scale != null)
@@ -2089,7 +2099,7 @@ sealed class DesignerHostService : IDesignerChildService
 			ItemInsertionStyle = ItemInsertionStyle(component),
 			NewItemTypeNames = NewItemTypeNames(component),
 			Properties = properties,
-			Events = DescribeEvents(component),
+			Events = DescribeEvents(component, eventHandlers),
 			TabHeaderBounds = FindTabHeaderBounds(component)
 			};
 		}).ToList() ?? [];
@@ -2361,32 +2371,51 @@ sealed class DesignerHostService : IDesignerChildService
 	}
 #endif
 
-	List<DesignerEventInfo> DescribeEvents(IComponent component)
+	/// <summary>Parses the current designer file once and indexes every "target.Event" (or bare
+	/// root-shorthand "Event") handler assignment it contains, so <see cref="DescribeEvents"/>
+	/// can do an O(1) lookup per event instead of re-parsing the file and re-walking its whole
+	/// syntax tree for EVERY browsable event of EVERY component - the same
+	/// O(components x events x fileSize) blowup <see cref="BuildAssignedTargetIndex"/> fixes for
+	/// properties, just worse here because the old code didn't even hoist the parse out of the
+	/// per-event closure.</summary>
+	Dictionary<string, string> BuildEventHandlerIndex()
 	{
-		var handlers = CurrentDesignerFile().Text;
+		var handlers = new Dictionary<string, string>(StringComparer.Ordinal);
+		if (IsVisualBasic) {
+			var vbRoot = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(CurrentDesignerFile().Text).GetRoot();
+			foreach (var statement in vbRoot.DescendantNodes().OfType<VbSyntax.AddRemoveHandlerStatementSyntax>()) {
+				if (!statement.IsKind(Vb.SyntaxKind.AddHandlerStatement)) continue;
+				var key = NormalizeTarget(statement.EventExpression.ToString());
+				if (handlers.ContainsKey(key)) continue;
+				var handler = statement.DelegateExpression.ToString();
+				if (handler.StartsWith("AddressOf Me.", StringComparison.Ordinal)) handler = handler["AddressOf ".Length..];
+				if (handler.StartsWith("Me.", StringComparison.Ordinal)) handler = handler[3..];
+				handlers[key] = handler;
+			}
+		} else {
+			var root = CSharpSyntaxTree.ParseText(CurrentDesignerFile().Text).GetCompilationUnitRoot();
+			foreach (var assignment in root.DescendantNodes().OfType<AssignmentExpressionSyntax>()) {
+				if (!assignment.IsKind(SyntaxKind.AddAssignmentExpression)) continue;
+				var key = NormalizeTarget(assignment.Left.ToString());
+				if (handlers.ContainsKey(key)) continue;
+				var handler = assignment.Right.ToString();
+				if (handler.StartsWith("this.", StringComparison.Ordinal)) handler = handler[5..];
+				handlers[key] = handler;
+			}
+		}
+		return handlers;
+	}
+
+	List<DesignerEventInfo> DescribeEvents(IComponent component, Dictionary<string, string> handlerIndex)
+	{
 		// The root form is conventionally emitted as "this.Load += ..." rather
 		// than "Form1.Load += ...".  A component's site name is still Form1,
 		// so accept the root shorthand as well as the normal component target.
 		var isRootComponent = ReferenceEquals(component, GetHost().RootComponent);
 		return TypeDescriptor.GetEvents(component).Cast<EventDescriptor>().Where(item => item.IsBrowsable).Select(item => {
 			var target = (component.Site?.Name ?? "") + "." + item.Name;
-			var handler = "";
-			if (IsVisualBasic) {
-				var vbRoot = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(handlers).GetRoot();
-				var statement = vbRoot.DescendantNodes().OfType<VbSyntax.AddRemoveHandlerStatementSyntax>()
-					.FirstOrDefault(node => node.IsKind(Vb.SyntaxKind.AddHandlerStatement)
-						&& EventTargetMatches(NormalizeTarget(node.EventExpression.ToString()), target, item.Name, isRootComponent));
-				handler = statement?.DelegateExpression.ToString() ?? "";
-				if (handler.StartsWith("AddressOf Me.", StringComparison.Ordinal)) handler = handler["AddressOf ".Length..];
-				if (handler.StartsWith("Me.", StringComparison.Ordinal)) handler = handler[3..];
-			} else {
-				var root = CSharpSyntaxTree.ParseText(handlers).GetCompilationUnitRoot();
-				var assignment = root.DescendantNodes().OfType<AssignmentExpressionSyntax>()
-					.FirstOrDefault(node => node.IsKind(SyntaxKind.AddAssignmentExpression)
-						&& EventTargetMatches(NormalizeTarget(node.Left.ToString()), target, item.Name, isRootComponent));
-				handler = assignment?.Right.ToString() ?? "";
-				if (handler.StartsWith("this.", StringComparison.Ordinal)) handler = handler[5..];
-			}
+			var handler = handlerIndex.TryGetValue(target, out var direct) ? direct
+				: isRootComponent && handlerIndex.TryGetValue(item.Name, out var bare) ? bare : "";
 			return new DesignerEventInfo { Name = item.Name, Category = item.Category ?? "Action", HandlerTypeName = item.EventType?.FullName ?? item.EventType?.Name ?? "", Handler = handler };
 		}).ToList();
 	}
@@ -2394,20 +2423,33 @@ sealed class DesignerHostService : IDesignerChildService
 	static bool EventTargetMatches(string normalizedTarget, string componentTarget, string eventName, bool isRootComponent)
 		=> normalizedTarget == componentTarget || (isRootComponent && normalizedTarget == eventName);
 
-	List<DesignerPropertyInfo> DescribeProperties(IComponent component)
+	/// <summary>Parses the current designer file once and indexes every "target.Property"
+	/// assignment it contains, so <see cref="DescribeProperties"/> can do an O(1) lookup per
+	/// property instead of re-parsing the file and re-walking its whole syntax tree for each
+	/// one. See the call site in <see cref="CurrentState"/> for why this matters.</summary>
+	HashSet<string> BuildAssignedTargetIndex()
+	{
+		var targets = new HashSet<string>(StringComparer.Ordinal);
+		if (IsVisualBasic) {
+			var vbRoot = (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(CurrentDesignerFile().Text).GetRoot();
+			foreach (var assignment in vbRoot.DescendantNodes().OfType<VbSyntax.AssignmentStatementSyntax>())
+				targets.Add(NormalizeTarget(assignment.Left.ToString()));
+		} else {
+			var root = CSharpSyntaxTree.ParseText(CurrentDesignerFile().Text).GetCompilationUnitRoot();
+			foreach (var assignment in root.DescendantNodes().OfType<AssignmentExpressionSyntax>())
+				if (assignment.IsKind(SyntaxKind.SimpleAssignmentExpression))
+					targets.Add(NormalizeTarget(assignment.Left.ToString()));
+		}
+		return targets;
+	}
+
+	List<DesignerPropertyInfo> DescribeProperties(IComponent component, HashSet<string> assignedTargets)
 	{
 		var result = new List<DesignerPropertyInfo>();
 		var elementId = component.Site?.Name ?? "";
-		var designerRoot = IsVisualBasic ? null : CSharpSyntaxTree.ParseText(CurrentDesignerFile().Text).GetCompilationUnitRoot();
-		var vbDesignerRoot = IsVisualBasic ? (VbSyntax.CompilationUnitSyntax)Vb.VisualBasicSyntaxTree.ParseText(CurrentDesignerFile().Text).GetRoot() : null;
 		foreach (PropertyDescriptor property in TypeDescriptor.GetProperties(component)) {
 			if (!property.IsBrowsable || property.Name is "Site" or "Container" or "Parent") continue;
-			var assignedInSource = IsVisualBasic
-				? vbDesignerRoot!.DescendantNodes().OfType<VbSyntax.AssignmentStatementSyntax>().Any(assignment =>
-					NormalizeTarget(assignment.Left.ToString()) == elementId + "." + property.Name)
-				: designerRoot!.DescendantNodes().OfType<AssignmentExpressionSyntax>().Any(assignment =>
-					assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)
-					&& NormalizeTarget(assignment.Left.ToString()) == elementId + "." + property.Name);
+			var assignedInSource = assignedTargets.Contains(elementId + "." + property.Name);
 			var isImageProperty = typeof(Image).IsAssignableFrom(property.PropertyType);
 			object? value;
 			string serialized;

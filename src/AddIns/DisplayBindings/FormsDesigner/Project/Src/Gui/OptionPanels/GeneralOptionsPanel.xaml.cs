@@ -67,11 +67,26 @@ namespace ICSharpCode.FormsDesigner.Gui.OptionPanels
 				PropertyService.Set("FormsDesigner.DesignerOptions.GenerateVisualStudioStyleEventHandlers", value);
 			}
 		}
-		
-		
+
+		/// <summary>How long the IDE waits for the out-of-process WinForms designer host to
+		/// answer session/open or session/update before treating it as hung and restarting it
+		/// (<see cref="ICSharpCode.SharpDevelop.Designer.Remote.DesignerHostProcessClient"/>'s
+		/// default is a fixed 30s). Large real-world forms with hundreds of components can
+		/// legitimately need longer than that, so this is user-configurable rather than a
+		/// silent hard-coded ceiling.</summary>
+		public static int LoadingTimeoutSeconds {
+			get {
+				return PropertyService.Get("FormsDesigner.DesignerOptions.LoadingTimeoutSeconds", 30);
+			}
+			set {
+				PropertyService.Set("FormsDesigner.DesignerOptions.LoadingTimeoutSeconds", value);
+			}
+		}
+
+
 		public override bool SaveOptions()
 		{
-			
+
 			PropertyService.Set("FormsDesigner.DesignerOptions.PropertyGridSortAlphabetical", sortAlphabeticalCheckBox.IsChecked);
 			PropertyService.Set("FormsDesigner.DesignerOptions.UseOptimizedCodeGeneration", optimizedCodeGenerationCheckBox.IsChecked);
 			SmartTagAutoShow = (bool)this.smartTagAutoShowCheckBox.IsChecked;
@@ -79,17 +94,19 @@ namespace ICSharpCode.FormsDesigner.Gui.OptionPanels
 			UseSmartTags = (bool)useSmartTagsCheckBox.IsChecked;
 			InsertTodoComment = (bool)insertTodoCommentCheckBox.IsChecked;
 			GenerateVisualStudioStyleEventHandlers = (bool)generateVSStyleHandlersCheckBox.IsChecked;
-			
+			if (int.TryParse(loadingTimeoutTextBox.Text, out var timeoutSeconds) && timeoutSeconds > 0)
+				LoadingTimeoutSeconds = timeoutSeconds;
+
 			return true;
 		}
-		
-		
+
+
 		public override void LoadOptions()
 		{
 			base.LoadOptions();
 			Initialize();
 		}
-		
+
 		private void Initialize()
 		{
 			this.sortAlphabeticalCheckBox.IsChecked =  PropertyService.Get("FormsDesigner.DesignerOptions.PropertyGridSortAlphabetical", false);
@@ -99,6 +116,7 @@ namespace ICSharpCode.FormsDesigner.Gui.OptionPanels
 			this.useSmartTagsCheckBox.IsChecked            = UseSmartTags;
 			this.insertTodoCommentCheckBox.IsChecked       = InsertTodoComment;
 			this.generateVSStyleHandlersCheckBox.IsChecked = GenerateVisualStudioStyleEventHandlers;
+			this.loadingTimeoutTextBox.Text                = LoadingTimeoutSeconds.ToString();
 		}
 	}
 }

@@ -690,8 +690,9 @@ namespace ICSharpCode.FormsDesigner
 			FormsDesignerHostClient client;
 			DesignerSessionState state;
 			try {
+				var loadingTimeout = TimeSpan.FromSeconds(Gui.OptionPanels.GeneralOptionsPanel.LoadingTimeoutSeconds);
 				client = await FormsDesignerHostClient.AcquireSharedAsync("", "", System.Threading.CancellationToken.None,
-					FormsDesignerHostClient.LocateChildDll(backend)).ConfigureAwait(false);
+					FormsDesignerHostClient.LocateChildDll(backend), loadingTimeout).ConfigureAwait(false);
 				state = await client.OpenAsync(snapshot, System.Threading.CancellationToken.None).ConfigureAwait(false);
 			} catch (Exception exception) {
 				SD.MainThread.InvokeAsyncAndForget(() => {
