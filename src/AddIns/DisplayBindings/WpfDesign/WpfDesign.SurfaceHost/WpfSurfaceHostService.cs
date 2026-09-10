@@ -12,6 +12,7 @@ using System.Security.Cryptography;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Xml;
@@ -405,6 +406,20 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					if (operation == null)
 						return NotFound(state, "The parent element does not accept a new child here.");
 					operation.Commit();
+					// A blank WPF Menu has no visible/designable entry point.  Match the menu-strip
+					// designer experience: dropping a Menu immediately gives the author one editable
+					// placeholder item, rather than requiring a separate unavailable MenuItem toolbox
+					// entry before a simple menu can be authored.
+					if (typeof(Menu).IsAssignableFrom(type))
+					{
+						var menuItem = CreateComponentTool.CreateItem(current, typeof(MenuItem));
+						var menuOperation = PlacementOperation.TryStartInsertNewComponents(
+							created, new[] { menuItem }, new[] { new Rect(0, 0, DefaultElementSize, DefaultElementSize) }, PlacementType.AddItem);
+						if (menuOperation != null) {
+							menuOperation.Commit();
+							menuItem.Properties["Header"].SetValue("Type Here");
+						}
+					}
 					if (!string.IsNullOrEmpty(proposedName))
 						created.Name = proposedName;
 				}
@@ -419,6 +434,136 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				// (see DesignerSessionState.CreatedElementId's own doc comment for why a name isn't
 				// an option here, unlike WinForms/WinUI).
 				state.CreatedElementId = pathToItem.FirstOrDefault(entry => entry.Value == created).Key;
+				state.Accepted = true;
+				return state;
+			});
+
+		/// <summary>Appends one more <see cref="MenuItem"/> sibling under an existing
+		/// <see cref="Menu"/>, <see cref="ContextMenu"/> or <see cref="MenuItem"/> (a submenu), with
+		/// its Header set directly rather than left as "Type Here" - the "Type Here" placeholder
+		/// text is purely a client-side affordance (see WpfSurfaceDesignerControl's trailing tray/
+		/// canvas slot), matching how <see cref="AddElement"/>'s own one-time Menu-drop placeholder
+		/// already behaves. <paramref name="header"/> is expected to have already been resolved
+		/// through <see cref="StripTypeHereCommit.Resolve"/> by the caller - an empty/whitespace
+		/// value here is rejected rather than silently creating a blank item, since a client bug that
+		/// forgot to resolve it should surface immediately.</summary>
+		[JsonRpcMethod("design/add-menu-item")]
+		public DesignerSessionState AddMenuItem(long baseVersion, string parentId, string header)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (string.IsNullOrWhiteSpace(header))
+					return NotFound(state, "A MenuItem needs non-empty Header text.");
+				if (!pathToItem.TryGetValue(parentId, out var parent))
+					return NotFound(state, "Parent element not found: " + parentId);
+				if (parent.ComponentType == null
+					|| !(typeof(Menu).IsAssignableFrom(parent.ComponentType)
+						|| typeof(ContextMenu).IsAssignableFrom(parent.ComponentType)
+						|| typeof(MenuItem).IsAssignableFrom(parent.ComponentType)))
+					return NotFound(state, "Parent does not accept a new MenuItem: " + parentId);
+				DesignItem menuItem;
+				try
+				{
+					menuItem = CreateComponentTool.CreateItem(current, typeof(MenuItem));
+					var operation = PlacementOperation.TryStartInsertNewComponents(
+						parent, new[] { menuItem }, new[] { new Rect(0, 0, DefaultElementSize, DefaultElementSize) }, PlacementType.AddItem);
+					if (operation == null)
+						return NotFound(state, "The parent element does not accept a new child here.");
+					operation.Commit();
+					menuItem.Properties["Header"].SetValue(header);
+				}
+				catch (Exception e)
+				{
+					return NotFound(state, e.GetBaseException().Message);
+				}
+				RebuildTreeAndRender(state);
+				state.CreatedElementId = pathToItem.FirstOrDefault(entry => entry.Value == menuItem).Key;
+				state.Accepted = true;
+				return state;
+			});
+
+		/// <summary>Moves an element by <paramref name="delta"/> positions among its siblings in its
+		/// parent's collection property (e.g. -1 = swap with the previous sibling, +1 = swap with
+		/// the next). Generic over any collection-parented item - not menu-specific - but the only
+		/// caller today is the tray's reorder-arrow UI for MenuItem reordering (WinForms drag-reorder
+		/// parity's deliberately simpler stand-in, see WpfSurfaceDesignerControl). Goes through the
+		/// same <see cref="DesignItem.ParentProperty"/>.CollectionElements list
+		/// <see cref="DesignItem.Remove"/> itself uses, so it participates in the same undo
+		/// tracking as every other structural edit.</summary>
+		[JsonRpcMethod("design/move-element")]
+		public DesignerSessionState MoveElement(long baseVersion, string elementId, int delta)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (!pathToItem.TryGetValue(elementId, out var item))
+					return NotFound(state, "Element not found: " + elementId);
+				var parentProperty = item.ParentProperty;
+				if (parentProperty == null || !parentProperty.IsCollection)
+					return NotFound(state, "Element's parent does not support reordering: " + elementId);
+				var siblings = parentProperty.CollectionElements;
+				var index = siblings.IndexOf(item);
+				var newIndex = index + delta;
+				if (index < 0 || newIndex < 0 || newIndex >= siblings.Count)
+					return NotFound(state, "Cannot move the element past the start/end of its siblings.");
+				try
+				{
+					siblings.RemoveAt(index);
+					siblings.Insert(newIndex, item);
+				}
+				catch (Exception e)
+				{
+					return NotFound(state, e.GetBaseException().Message);
+				}
+				RebuildTreeAndRender(state);
+				state.Accepted = true;
+				return state;
+			});
+
+		/// <summary>Appends one more item under an existing <see cref="StatusBar"/> or
+		/// <see cref="ToolBar"/> - the "Type Here" insertion-node commit action for those two strip
+		/// types (mirroring WinForms' StatusStrip insertion node), analogous to
+		/// <see cref="AddMenuItem"/> for Menu/ContextMenu/MenuItem. Item shape differs by container,
+		/// matching each control's own natural child type: a StatusBar gets a
+		/// <see cref="StatusBarItem"/> with its Content set to <paramref name="text"/>; a ToolBar
+		/// gets a <see cref="Separator"/> when <paramref name="text"/> is exactly "-" (matching
+		/// WinForms' own Type-Here "-" convention for a ToolStripSeparator), otherwise a
+		/// <see cref="Button"/> with its Content set to <paramref name="text"/>.</summary>
+		[JsonRpcMethod("design/add-strip-item")]
+		public DesignerSessionState AddStripItem(long baseVersion, string parentId, string text)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				if (string.IsNullOrWhiteSpace(text))
+					return NotFound(state, "A strip item needs non-empty text.");
+				if (!pathToItem.TryGetValue(parentId, out var parent))
+					return NotFound(state, "Parent element not found: " + parentId);
+				bool isStatusBar = parent.ComponentType != null && typeof(StatusBar).IsAssignableFrom(parent.ComponentType);
+				bool isToolBar = parent.ComponentType != null && typeof(ToolBar).IsAssignableFrom(parent.ComponentType);
+				if (!isStatusBar && !isToolBar)
+					return NotFound(state, "Parent does not accept a new strip item: " + parentId);
+				DesignItem newItem;
+				try
+				{
+					var itemType = isStatusBar ? typeof(StatusBarItem)
+						: text.Trim() == "-" ? typeof(Separator) : typeof(Button);
+					newItem = CreateComponentTool.CreateItem(current, itemType);
+					var operation = PlacementOperation.TryStartInsertNewComponents(
+						parent, new[] { newItem }, new[] { new Rect(0, 0, DefaultElementSize, DefaultElementSize) }, PlacementType.AddItem);
+					if (operation == null)
+						return NotFound(state, "The parent element does not accept a new child here.");
+					operation.Commit();
+					if (itemType != typeof(Separator))
+						newItem.Properties["Content"].SetValue(text);
+				}
+				catch (Exception e)
+				{
+					return NotFound(state, e.GetBaseException().Message);
+				}
+				RebuildTreeAndRender(state);
+				state.CreatedElementId = pathToItem.FirstOrDefault(entry => entry.Value == newItem).Key;
 				state.Accepted = true;
 				return state;
 			});
@@ -967,7 +1112,32 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					node.Children.Add(BuildNode(contentProperty.Value, root, childPath));
 				}
 			}
+			AppendAttachedContextMenu(item, root, path, node);
 			return node;
+		}
+
+		/// <summary>Adds the one detached strip that WPF deliberately keeps outside an owner's
+		/// visual/content tree. An assigned <see cref="ContextMenu"/> is a regular design item
+		/// (and its <see cref="MenuItem"/> children therefore have editable Header values), but it
+		/// is reached through the owner's ContextMenu property rather than ContentProperty. Without
+		/// this explicit edge it is invisible to the designer Outline and Properties pads. This is
+		/// intentionally limited to ContextMenu; it is not a general traversal of object-valued
+		/// properties.</summary>
+		void AppendAttachedContextMenu(DesignItem item, DesignItem root, string path, DesignerElementNode node)
+		{
+			DesignItem? contextMenu;
+			try
+			{
+				contextMenu = item.Properties["ContextMenu"]?.Value;
+			}
+			catch (Exception)
+			{
+				return;
+			}
+			if (contextMenu?.ComponentType == null || !typeof(ContextMenu).IsAssignableFrom(contextMenu.ComponentType))
+				return;
+			var contextMenuPath = path.Length == 0 ? "@context-menu" : path + ",@context-menu";
+			node.Children.Add(BuildNode(contextMenu, root, contextMenuPath));
 		}
 
 		/// <summary>Whether an element is actually on screen, by folding <c>Visibility</c> up the

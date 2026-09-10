@@ -43,6 +43,31 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			return JsonSerializer.Serialize(DesignerSurfaceGeometryProbe.ToJson(viewContent.SurfaceGeometry()));
 		}
 
+		[DevFlowAction("od.wpf-designer.inline-editor-status", Description = "Inspect WPF's on-canvas Text/Content/Header editor without changing the document")]
+		public static string GetInlineEditorStatus()
+		{
+			return JsonSerializer.Serialize(FindWpfViewContent()?.SurfaceControl?.InlineEditorStatus);
+		}
+
+		[DevFlowAction("od.wpf-designer.inline-editor-input", Description = "Replace text in the already pointer-opened WPF inline editor and route Enter or Escape through its real key handler")]
+		public static string InputInlineEditor(string text, bool cancel = false)
+		{
+			var surface = FindWpfViewContent()?.SurfaceControl;
+			return JsonSerializer.Serialize(new { success = surface?.InputInlineEditor(text, cancel) == true });
+		}
+
+		[DevFlowAction("od.wpf-designer.context-menu-tray-status", Description = "Inspect the selected WPF ContextMenu design tray and its pointer targets without changing the document")]
+		public static string GetContextMenuTrayStatus()
+		{
+			return JsonSerializer.Serialize(FindWpfViewContent()?.SurfaceControl?.ContextMenuTrayStatus);
+		}
+
+		[DevFlowAction("od.wpf-designer.menu-type-here-status", Description = "Inspect the selected top-level WPF Menu's trailing \"Type Here\" hotspot (visibility, owning Menu id, screen center) without changing the document")]
+		public static string GetMenuTypeHereHotspotStatus()
+		{
+			return JsonSerializer.Serialize(FindWpfViewContent()?.SurfaceControl?.MenuTypeHereHotspotStatus);
+		}
+
 		[DevFlowAction("od.wpf-designer.status", Description = "Inspect the active WPF designer view: whether the design surface loaded, the toolbox's item/group counts, and the outline pad's element tree")]
 		public static string GetDesignerStatus()
 		{
@@ -106,6 +131,10 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			SharedToolbox.Instance.Filter(text);
 			return DesignerDevFlowResults.ToolboxFilter(true, SharedToolbox.Instance.FilterText, SharedToolbox.Instance.VisibleItemCount);
 		}
+
+		[DevFlowAction("od.wpf-designer.toolbox.drag-diagnostics", Description = "Report the last real Toolbox mouse/drag transition for WPF designer drag-drop diagnosis")]
+		public static string GetToolboxDragDiagnostics()
+			=> JsonSerializer.Serialize(new { diagnostic = SharedToolbox.Instance.DragDiagnostic });
 
 		[DevFlowAction("od.wpf-designer.tab-order", Description = "Toggle the tab-order badge overlay - shows each element's TabIndex, matching the WinForms designer's own tab-order view")]
 		public static string SetTabOrder(bool show)

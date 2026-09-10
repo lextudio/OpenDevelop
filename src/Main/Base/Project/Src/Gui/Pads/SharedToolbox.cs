@@ -105,6 +105,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 		// of the drag it just started (real OLE's native modal loop on Windows never delivers
 		// those moves here, which is why this guard was never needed there).
 		bool isDragging;
+		public string DragDiagnostic { get; private set; } = "idle";
 		// Setting ListBox.SelectedItem from SelectionChanged raises SelectionChanged again. Keep
 		// this tiny guard separate from isDragging so the recovery assignment itself neither
 		// notifies a facade nor recursively tries to restore the same row.
@@ -309,6 +310,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 			// row, a group header, or the empty area below the last item).
 			var pressedItem = ResolveItemFromEventSource(e.OriginalSource);
 			dragStartItem = pressedItem?.IsDraggable == true ? pressedItem : toolbox.SelectedItem as SharedToolboxItem;
+			DragDiagnostic = "down: item=" + (dragStartItem?.DisplayName ?? "<none>");
 		}
 
 		static SharedToolboxItem ResolveItemFromEventSource(object originalSource)
@@ -344,7 +346,10 @@ namespace ICSharpCode.SharpDevelop.Gui
 			// OnPreviewMouseLeftButtonDown's own comment on why the live selection is unreliable.
 			var item = dragStartItem;
 			if (item?.IsDraggable != true)
+			{
+				DragDiagnostic = "threshold: no draggable item";
 				return;
+			}
 
 			toolbox.SelectedItem = item;
 			item.OnActivated?.Invoke();
@@ -353,6 +358,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 			item.PackDragData?.Invoke(data);
 
 			isDragging = true;
+			DragDiagnostic = "drag-start: " + item.DisplayName;
 			// Do NOT clear IsHitTestVisible here to keep the dragged row visibly selected. It
 			// stops the whole gesture under LibreWPF: the portable drag loop
 			// (PortableDragDropOperation.RunCore) tracks the drag by pumping pointer events
@@ -365,7 +371,11 @@ namespace ICSharpCode.SharpDevelop.Gui
 			// touching hit testing: OnPreviewMouseMove marks moves handled while isDragging, and
 			// OnSelectionChanged restores dragStartItem if Selector reassigns it anyway.
 			try {
-				DragDrop.DoDragDrop(toolbox, data, DragDropEffects.Copy);
+				var effect = DragDrop.DoDragDrop(toolbox, data, DragDropEffects.Copy);
+				DragDiagnostic = "drag-complete: " + item.DisplayName + " effect=" + effect;
+			} catch (Exception ex) {
+				DragDiagnostic = "drag-error: " + ex.GetBaseException().Message;
+				throw;
 			} finally {
 				isDragging = false;
 				ResetSelection();

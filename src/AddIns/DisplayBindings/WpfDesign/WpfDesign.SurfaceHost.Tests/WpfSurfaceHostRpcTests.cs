@@ -158,6 +158,171 @@ public sealed class WpfSurfaceHostRpcTests
 	}
 
 	[Fact]
+	public async Task MenuItem_Header_IsAnEditablePlainStringAndRoundTrips()
+	{
+		const string menuXaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="240" Height="80">
+			  <Menu><MenuItem x:Name="fileItem" Header="File" /></Menu>
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, menuXaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var item = FindByName(opened.Tree!, "fileItem")!;
+		var header = item.Properties.Single(property => property.Name == "Header");
+		Assert.Equal("String", header.Kind);
+		Assert.Equal("File", header.Value);
+		Assert.False(header.IsReadOnly);
+
+		var edited = await client.SetPropertyAsync(1, item.Id, "Header", "Project", timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		var flushed = await client.FlushAsync(1, timeout.Token);
+		Assert.Contains("Header=\"Project\"", flushed.Files.Single().Text, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task AttachedContextMenu_IsExposedInTheDesignTree_AndItsMenuItemHeaderRoundTrips()
+	{
+		const string contextMenuXaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="240" Height="80">
+			  <Button x:Name="owner" Content="Open">
+			    <Button.ContextMenu><ContextMenu x:Name="actions"><MenuItem x:Name="rename" Header="Rename" /></ContextMenu></Button.ContextMenu>
+			  </Button>
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, contextMenuXaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var contextMenu = FindByName(opened.Tree!, "actions");
+		var item = FindByName(opened.Tree!, "rename");
+		Assert.NotNull(contextMenu);
+		Assert.Equal("ContextMenu", contextMenu!.Type);
+		Assert.NotNull(item);
+		Assert.Equal("Rename", item!.Properties.Single(property => property.Name == "Header").Value);
+
+		var edited = await client.SetPropertyAsync(1, item.Id, "Header", "Delete", timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		var flushed = await client.FlushAsync(1, timeout.Token);
+		Assert.Contains("Header=\"Delete\"", flushed.Files.Single().Text, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task AddMenuItem_AppendsASiblingUnderAnExistingMenu_WithTheGivenHeader()
+	{
+		const string menuXaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="240" Height="80">
+			  <Menu x:Name="mainMenu"><MenuItem x:Name="fileItem" Header="File" /></Menu>
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, menuXaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var menu = FindByName(opened.Tree!, "mainMenu")!;
+		Assert.Single(menu.Children);
+
+		var added = await client.AddMenuItemAsync(1, menu.Id, "Edit", timeout.Token);
+		Assert.True(added.Accepted, added.Error);
+		Assert.NotNull(added.CreatedElementId);
+		var flushed = await client.FlushAsync(1, timeout.Token);
+		Assert.Contains("Header=\"Edit\"", flushed.Files.Single().Text, StringComparison.Ordinal);
+
+		var reopened = await client.UpdateAsync(Snapshot(2, flushed.Files.Single().Text), timeout.Token);
+		var mainMenuAfter = FindByName(reopened.Tree!, "mainMenu")!;
+		Assert.Equal(2, mainMenuAfter.Children.Count);
+	}
+
+	[Fact]
+	public async Task AddMenuItem_AppendsASiblingUnderAnExistingContextMenu_WithTheGivenHeader()
+	{
+		const string contextMenuXaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="240" Height="80">
+			  <Button x:Name="owner" Content="Open">
+			    <Button.ContextMenu><ContextMenu x:Name="actions"><MenuItem x:Name="rename" Header="Rename" /></ContextMenu></Button.ContextMenu>
+			  </Button>
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, contextMenuXaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var contextMenu = FindByName(opened.Tree!, "actions")!;
+
+		var added = await client.AddMenuItemAsync(1, contextMenu.Id, "Delete", timeout.Token);
+		Assert.True(added.Accepted, added.Error);
+		var flushed = await client.FlushAsync(1, timeout.Token);
+		Assert.Contains("Header=\"Delete\"", flushed.Files.Single().Text, StringComparison.Ordinal);
+		// The original item is untouched - this appended a sibling, not replaced the tray.
+		Assert.Contains("Header=\"Rename\"", flushed.Files.Single().Text, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task AddMenuItem_CreatesTheFirstNestedSubmenuItem_UnderAChildlessMenuItem()
+	{
+		const string menuXaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="240" Height="80">
+			  <Menu x:Name="mainMenu"><MenuItem x:Name="fileItem" Header="File" /></Menu>
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, menuXaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var fileItem = FindByName(opened.Tree!, "fileItem")!;
+		Assert.Empty(fileItem.Children);
+
+		var added = await client.AddMenuItemAsync(1, fileItem.Id, "Open", timeout.Token);
+		Assert.True(added.Accepted, added.Error);
+		Assert.NotNull(added.CreatedElementId);
+		var flushed = await client.FlushAsync(1, timeout.Token);
+		Assert.Contains("Header=\"Open\"", flushed.Files.Single().Text, StringComparison.Ordinal);
+
+		var reopened = await client.UpdateAsync(Snapshot(2, flushed.Files.Single().Text), timeout.Token);
+		var fileItemAfter = FindByName(reopened.Tree!, "fileItem")!;
+		Assert.Single(fileItemAfter.Children);
+		Assert.Equal("MenuItem", fileItemAfter.Children[0].Type);
+
+		// A second nested item appends as a sibling of "Open" under the same (now non-empty) submenu.
+		var addedSecond = await client.AddMenuItemAsync(2, fileItemAfter.Id, "Save", timeout.Token);
+		Assert.True(addedSecond.Accepted, addedSecond.Error);
+		var flushedSecond = await client.FlushAsync(2, timeout.Token);
+		Assert.Contains("Header=\"Save\"", flushedSecond.Files.Single().Text, StringComparison.Ordinal);
+		Assert.Contains("Header=\"Open\"", flushedSecond.Files.Single().Text, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task AddMenuItem_WithEmptyHeader_IsRejected()
+	{
+		const string menuXaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="240" Height="80">
+			  <Menu x:Name="mainMenu"><MenuItem x:Name="fileItem" Header="File" /></Menu>
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, menuXaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var menu = FindByName(opened.Tree!, "mainMenu")!;
+
+		var result = await client.AddMenuItemAsync(1, menu.Id, "   ", timeout.Token);
+		Assert.False(result.Accepted);
+	}
+
+	[Fact]
+	public async Task AddMenuItem_UnderANonMenuParent_IsRejected()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, Xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+
+		var result = await client.AddMenuItemAsync(1, opened.Tree!.Id, "New Item", timeout.Token);
+		Assert.False(result.Accepted);
+	}
+
+	[Fact]
 	public async Task Tree_CarriesRealPropertyValuesForTheAddInsPropertiesPad()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
@@ -300,6 +465,190 @@ public sealed class WpfSurfaceHostRpcTests
 	}
 
 	[Fact]
+	public async Task DesignDeleteElements_RemovesAMenuItem_LeavingItsSiblingsIntact()
+	{
+		const string menuXaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="240" Height="80">
+			  <Menu x:Name="mainMenu">
+			    <MenuItem x:Name="fileItem" Header="File" />
+			    <MenuItem x:Name="editItem" Header="Edit" />
+			  </Menu>
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, menuXaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var editItem = FindByName(opened.Tree!, "editItem")!;
+
+		var deleted = await client.DeleteElementsAsync(1, new[] { editItem.Id }, timeout.Token);
+		Assert.True(deleted.Accepted, deleted.Error);
+		var flushed = await client.FlushAsync(1, timeout.Token);
+		var text = flushed.Files.Single().Text;
+		Assert.DoesNotContain("x:Name=\"editItem\"", text, StringComparison.Ordinal);
+		Assert.Contains("x:Name=\"fileItem\"", text, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task AddStripItem_AppendsAStatusBarItem_WithTheGivenText()
+	{
+		const string statusBarXaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="240" Height="80">
+			  <StatusBar x:Name="statusBar"><StatusBarItem x:Name="readyItem" Content="Ready" /></StatusBar>
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, statusBarXaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var statusBar = FindByName(opened.Tree!, "statusBar")!;
+
+		var added = await client.AddStripItemAsync(1, statusBar.Id, "Line 1, Col 1", timeout.Token);
+		Assert.True(added.Accepted, added.Error);
+		Assert.NotNull(added.CreatedElementId);
+		var flushed = await client.FlushAsync(1, timeout.Token);
+		var text = flushed.Files.Single().Text;
+		Assert.Contains("Content=\"Line 1, Col 1\"", text, StringComparison.Ordinal);
+		Assert.Contains("Content=\"Ready\"", text, StringComparison.Ordinal);
+
+		var reopened = await client.UpdateAsync(Snapshot(2, text), timeout.Token);
+		Assert.Equal(2, FindByName(reopened.Tree!, "statusBar")!.Children.Count(c => c.Type == "StatusBarItem"));
+	}
+
+	[Fact]
+	public async Task AddStripItem_AppendsAButton_UnderAnExistingToolBar()
+	{
+		const string toolBarXaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="240" Height="80">
+			  <ToolBar x:Name="mainToolBar" />
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, toolBarXaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var toolBar = FindByName(opened.Tree!, "mainToolBar")!;
+		Assert.Empty(toolBar.Children);
+
+		var added = await client.AddStripItemAsync(1, toolBar.Id, "Save", timeout.Token);
+		Assert.True(added.Accepted, added.Error);
+		var flushed = await client.FlushAsync(1, timeout.Token);
+		Assert.Contains("Content=\"Save\"", flushed.Files.Single().Text, StringComparison.Ordinal);
+
+		var reopened = await client.UpdateAsync(Snapshot(2, flushed.Files.Single().Text), timeout.Token);
+		var toolBarAfter = FindByName(reopened.Tree!, "mainToolBar")!;
+		Assert.Single(toolBarAfter.Children);
+		Assert.Equal("Button", toolBarAfter.Children[0].Type);
+	}
+
+	[Fact]
+	public async Task AddStripItem_WithDashText_CreatesASeparator_UnderAToolBar()
+	{
+		const string toolBarXaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="240" Height="80">
+			  <ToolBar x:Name="mainToolBar"><Button x:Name="saveButton" Content="Save" /></ToolBar>
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, toolBarXaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var toolBar = FindByName(opened.Tree!, "mainToolBar")!;
+
+		var added = await client.AddStripItemAsync(1, toolBar.Id, "-", timeout.Token);
+		Assert.True(added.Accepted, added.Error);
+		var toolBarAfter = FindByName(added.Tree!, "mainToolBar")!;
+		Assert.Equal(2, toolBarAfter.Children.Count);
+		Assert.Equal("Separator", toolBarAfter.Children[1].Type);
+	}
+
+	[Fact]
+	public async Task AddStripItem_WithEmptyText_IsRejected()
+	{
+		const string toolBarXaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="240" Height="80">
+			  <ToolBar x:Name="mainToolBar" />
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, toolBarXaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var toolBar = FindByName(opened.Tree!, "mainToolBar")!;
+
+		Assert.False((await client.AddStripItemAsync(1, toolBar.Id, "   ", timeout.Token)).Accepted);
+	}
+
+	[Fact]
+	public async Task AddStripItem_UnderANonStripParent_IsRejected()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, Xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+
+		Assert.False((await client.AddStripItemAsync(1, opened.Tree!.Id, "New Item", timeout.Token)).Accepted);
+	}
+
+	[Fact]
+	public async Task MoveElement_ReordersAMenuItem_AmongItsSiblings()
+	{
+		const string menuXaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="240" Height="80">
+			  <Menu x:Name="mainMenu">
+			    <MenuItem x:Name="fileItem" Header="File" />
+			    <MenuItem x:Name="editItem" Header="Edit" />
+			    <MenuItem x:Name="viewItem" Header="View" />
+			  </Menu>
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, menuXaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var mainMenu = FindByName(opened.Tree!, "mainMenu")!;
+		Assert.Equal(new[] { "fileItem", "editItem", "viewItem" }, mainMenu.Children.Select(c => c.Name));
+		var editItem = FindByName(opened.Tree!, "editItem")!;
+
+		// Move "editItem" one step earlier: File, Edit, View -> Edit, File, View.
+		var moved = await client.MoveElementAsync(1, editItem.Id, -1, timeout.Token);
+		Assert.True(moved.Accepted, moved.Error);
+		var mainMenuAfterFirstMove = FindByName(moved.Tree!, "mainMenu")!;
+		Assert.Equal(new[] { "editItem", "fileItem", "viewItem" }, mainMenuAfterFirstMove.Children.Select(c => c.Name));
+
+		// Move it two steps later: Edit, File, View -> File, View, Edit.
+		var editItemAfter = FindByName(moved.Tree!, "editItem")!;
+		var movedAgain = await client.MoveElementAsync(moved.Version, editItemAfter.Id, 2, timeout.Token);
+		Assert.True(movedAgain.Accepted, movedAgain.Error);
+		var flushed = await client.FlushAsync(movedAgain.Version, timeout.Token);
+		var editIndex = flushed.Files.Single().Text.IndexOf("Header=\"Edit\"", StringComparison.Ordinal);
+		var viewIndex = flushed.Files.Single().Text.IndexOf("Header=\"View\"", StringComparison.Ordinal);
+		Assert.True(viewIndex < editIndex, "Edit should now come after View in the saved XAML");
+	}
+
+	[Fact]
+	public async Task MoveElement_PastTheStartOrEndOfItsSiblings_IsRejected()
+	{
+		const string menuXaml = """
+			<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="240" Height="80">
+			  <Menu x:Name="mainMenu">
+			    <MenuItem x:Name="fileItem" Header="File" />
+			    <MenuItem x:Name="editItem" Header="Edit" />
+			  </Menu>
+			</Grid>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, menuXaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var fileItem = FindByName(opened.Tree!, "fileItem")!;
+		var editItem = FindByName(opened.Tree!, "editItem")!;
+
+		Assert.False((await client.MoveElementAsync(1, fileItem.Id, -1, timeout.Token)).Accepted);
+		Assert.False((await client.MoveElementAsync(1, editItem.Id, 1, timeout.Token)).Accepted);
+	}
+
+	[Fact]
 	public async Task DesignAddElement_InsertsANewStockControl()
 	{
 		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
@@ -322,6 +671,53 @@ public sealed class WpfSurfaceHostRpcTests
 		var text = flushed.Files.Single().Text;
 		Assert.Contains("CheckBox", text, StringComparison.Ordinal);
 		Assert.Contains("x:Name=\"added\"", text, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public async Task DesignAddElement_Menu_KeepsARenderableCanvas()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, Xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		Assert.NotNull(opened.Render);
+
+		var menu = new DesignerToolboxItemInfo {
+			TypeName = "Menu",
+			XamlNamespace = "http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+		};
+		var added = await client.AddElementAsync(1, opened.Tree!.Id, menu, "menu", 0, 0, timeout.Token);
+		Assert.True(added.Accepted, added.Error);
+		Assert.NotNull(FindByName(added.Tree!, "menu"));
+		Assert.NotNull(added.Render);
+		Assert.False(string.IsNullOrEmpty(added.Render!.Data));
+		Assert.True(added.Render.Width > 0);
+		Assert.True(added.Render.Height > 0);
+	}
+
+	[Fact]
+	public async Task DesignAddElement_Menu_InAWindowContentGrid_KeepsARenderableCanvas()
+	{
+		const string windowXaml = """
+			<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="800" Height="450">
+			  <Grid x:Name="content"><Button x:Name="button" Content="Button" Width="239" Height="51" /></Grid>
+			</Window>
+			""";
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await WpfSurfaceHostClient.StartAsync(HostDll(), timeout.Token);
+		var opened = await client.OpenAsync(Snapshot(1, windowXaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var grid = FindByName(opened.Tree!, "content")!;
+		var menu = new DesignerToolboxItemInfo {
+			TypeName = "Menu",
+			XamlNamespace = "http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+		};
+		var added = await client.AddElementAsync(1, grid.Id, menu, "menu", 0, 0, timeout.Token);
+		Assert.True(added.Accepted, added.Error);
+		Assert.NotNull(added.Render);
+		Assert.False(string.IsNullOrEmpty(added.Render!.Data));
+		Assert.True(added.Render.Width > 0);
+		Assert.True(added.Render.Height > 0);
 	}
 
 	[Fact]

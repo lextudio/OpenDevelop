@@ -372,6 +372,10 @@ namespace ICSharpCode.WpfDesign.AddIn
 			Console.Error.WriteLine("DIAG5 OnDocumentChanged accepted=" + state.Accepted + " file=" + PrimaryFile.FileName + " isDirtyBefore=" + PrimaryFile.IsDirty);
 			if (!state.Accepted)
 				return;
+			// Update structural UI before any persistence work. Flush can involve a child RPC and
+			// must never leave the Outline stale when a Toolbox drop already returned a new tree.
+			UpdateTasks(state.Diagnostics);
+			UpdateOutline(state);
 			// Undo/redo bookkeeping: the text as of just before this mutation becomes the entry
 			// Undo restores; a fresh mutation always invalidates the redo stack. Skipped when
 			// lastKnownGoodXaml is itself null, which only happens if a mutation somehow lands
@@ -384,6 +388,9 @@ namespace ICSharpCode.WpfDesign.AddIn
 			lastKnownGoodXaml = FlushCurrentXaml();
 			wasChangedInDesigner = true;
 			this.PrimaryFile.MakeDirty();
+			// Structural mutations (notably a Toolbox Menu drop) return a fresh DDP tree.
+			// Keeping the old Outline here made the canvas and Outline disagree until a complete
+			// reload, even though the drop had already committed successfully.
 			Console.Error.WriteLine("DIAG5 after MakeDirty isDirty=" + PrimaryFile.IsDirty);
 		}
 

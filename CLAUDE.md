@@ -1,5 +1,24 @@
 # Repo-specific notes
 
+## Testing conventions — run tests yourself, don't defer to the user
+
+Claude should run the tests relevant to whatever it just changed and report the actual pass/fail
+result, rather than describing changes as untested and leaving verification to the user. This repo
+does not have a blanket "let the user run tests" policy — that rule belongs to a different, unrelated
+project's CLAUDE.md (the WXSG generator workspace one level up) and does not apply here. Conflating
+the two once led to skipping verification that was actually possible.
+
+- Plain xUnit unit-test projects (e.g. `WpfDesign.SurfaceHost.Tests`) run normally with
+  `dotnet test <project.csproj>`.
+- `tests/OpenDevelop.IntegrationTests` is the one project with a real constraint: see
+  `tests/OpenDevelop.IntegrationTests/TESTING.md` — never use `dotnet test` there (build the test
+  project itself first, since it deploys the addins/designer hosts the suite needs, then run via the
+  xUnit v3 in-process runner: `dotnet run --project tests/OpenDevelop.IntegrationTests/... -- -class
+  <FullyQualifiedClassName>` or `-method <FQN>`).
+- Only fall back to reporting "compiles, not run" when a test genuinely cannot run in this
+  environment (e.g. it needs a live Windows UI session this sandbox doesn't have) — say so
+  explicitly and why, rather than defaulting to it out of caution.
+
 ## Finding and adding VS toolbar/menu icons
 
 Source library: `/Users/lextm/Downloads/VS2017 Image Library/VS2017/<IconName>/` — one folder per

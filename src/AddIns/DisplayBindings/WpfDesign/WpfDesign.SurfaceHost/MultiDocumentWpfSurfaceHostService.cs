@@ -54,6 +54,12 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	public DesignerSessionState SetProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string value) => Checked(sessionId, documentId).SetProperty(baseVersion, elementId, propertyName, value);
 	[JsonRpcMethod("design/add-element")]
 	public DesignerSessionState AddElement(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y) => Checked(sessionId, documentId).AddElement(baseVersion, parentId, item, proposedName, x, y);
+	[JsonRpcMethod("design/add-menu-item")]
+	public DesignerSessionState AddMenuItem(string sessionId, string documentId, long baseVersion, string parentId, string header) => Checked(sessionId, documentId).AddMenuItem(baseVersion, parentId, header);
+	[JsonRpcMethod("design/move-element")]
+	public DesignerSessionState MoveElement(string sessionId, string documentId, long baseVersion, string elementId, int delta) => Checked(sessionId, documentId).MoveElement(baseVersion, elementId, delta);
+	[JsonRpcMethod("design/add-strip-item")]
+	public DesignerSessionState AddStripItem(string sessionId, string documentId, long baseVersion, string parentId, string text) => Checked(sessionId, documentId).AddStripItem(baseVersion, parentId, text);
 	[JsonRpcMethod("design/set-bounds")]
 	public DesignerSessionState SetBounds(string sessionId, string documentId, long baseVersion, string elementId, double x, double y, double width, double height) => Checked(sessionId, documentId).SetBounds(baseVersion, elementId, x, y, width, height);
 	[JsonRpcMethod("design/query-grid-guides")]

@@ -29,11 +29,28 @@
        WpfDesign.AddIn, mirroring FormsDesigner.Host.csproj's own DeployToAddIns target
        exactly - WpfSurfaceHostClient's LocateChildDll() looks for it at that same
        relative path. -->
-  <Target Name="DeployToAddIns" AfterTargets="Build">
+  <Target Name="DeployToAddIns" AfterTargets="Build" Condition="'$(OpenDevelopSkipAddInDeploy)' != 'true'">
     <ItemGroup>
       <_HostOutput Include="$(TargetDir)**" />
     </ItemGroup>
     <Copy SourceFiles="@(_HostOutput)" SkipUnchangedFiles="true"
           DestinationFiles="@(_HostOutput->'$(MSBuildProjectDirectory)\..\..\..\..\..\AddIns\DisplayBindings\WpfDesign\Host\%(RecursiveDir)%(Filename)%(Extension)')" />
+  </Target>
+  <!-- LibreWPF.Transport restores generic managed assets after the RID-specific payload. The
+       child host is an executable in its own right, so it needs the same final architecture
+       asset repair as SharpDevelop.exe; otherwise DirectWriteForwarder resolves to the generic
+       build and the child exits before JSON-RPC can connect on ARM64. -->
+  <!-- This must complete before DeployToAddIns snapshots TargetDir.  Merely using
+       AfterTargets=Build leaves the order between this target and DeployToAddIns undefined,
+       which can deploy the generic DirectWriteForwarder and make the child host crash on ARM64. -->
+  <Target Name="RestoreLibreWpfArchitectureRuntimeAssets" AfterTargets="Build" BeforeTargets="DeployToAddIns"
+          Condition="'$(RuntimeIdentifier)' != '' And '$(NuGetPackageRoot)' != '' And '$(ProGpuWpfManagedPackageVersion)' != ''">
+    <ItemGroup>
+      <_LibreWpfArchitectureRuntimeAsset Include="$(NuGetPackageRoot)librewpf.transport\$(ProGpuWpfManagedPackageVersion)\runtimes\$(RuntimeIdentifier)\lib\net10.0\PresentationCore.dll"
+                                            Condition="Exists('$(NuGetPackageRoot)librewpf.transport\$(ProGpuWpfManagedPackageVersion)\runtimes\$(RuntimeIdentifier)\lib\net10.0\PresentationCore.dll')" />
+      <_LibreWpfArchitectureRuntimeAsset Include="$(NuGetPackageRoot)librewpf.transport\$(ProGpuWpfManagedPackageVersion)\runtimes\$(RuntimeIdentifier)\lib\net10.0\DirectWriteForwarder.dll"
+                                            Condition="Exists('$(NuGetPackageRoot)librewpf.transport\$(ProGpuWpfManagedPackageVersion)\runtimes\$(RuntimeIdentifier)\lib\net10.0\DirectWriteForwarder.dll')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_LibreWpfArchitectureRuntimeAsset)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
   </Target>
 </Project>

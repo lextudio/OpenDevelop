@@ -168,6 +168,131 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		Rect textEditRect;
 		string? textEditElementId;
 		string? textEditPropertyName;
+		bool textEditIsContextMenuTray;
+		Rect contextMenuTrayTextEditRect;
+		/// <summary>Non-null while editing a "Type Here" slot rather than an existing element's
+		/// Header: the id of the Menu/ContextMenu/MenuItem the committed text should be added to as a
+		/// brand-new sibling MenuItem, instead of being written back as an existing element's
+		/// property. See <see cref="BeginNewMenuItemEdit"/>/<see cref="EndTextEdit"/>.</summary>
+		string? textEditNewItemParentId;
+		/// <summary>The element Type of <see cref="textEditNewItemParentId"/>'s container, deciding
+		/// which RPC <see cref="EndTextEdit"/> commits a new item through.</summary>
+		string? textEditNewItemContainerType;
+
+		// WPF ContextMenu is detached from its owner's visual tree, so it cannot be clicked in
+		// the rendered frame. When the strip itself is selected from Outline, expose its items in
+		// this deliberately narrow design-time tray. It is not a general HeaderedControl overlay.
+		readonly Border contextMenuTray = new() {
+			Visibility = Visibility.Collapsed,
+			Background = Brushes.White,
+			BorderBrush = Brushes.DodgerBlue,
+			BorderThickness = new Thickness(1),
+			Padding = new Thickness(2),
+			HorizontalAlignment = HorizontalAlignment.Left,
+			VerticalAlignment = VerticalAlignment.Top
+		};
+		readonly StackPanel contextMenuTrayItems = new();
+		string? contextMenuTrayRootId;
+		/// <summary>Each real item's reorder-arrow visuals, keyed by element id, so
+		/// <see cref="ContextMenuTrayStatus"/> can report their screen centers for pointer-driven
+		/// integration tests without changing the shape of the existing per-row status entries.</summary>
+		readonly Dictionary<string, (Border Up, Border Down)> contextMenuTrayMoveButtons = new(StringComparer.Ordinal);
+		/// <summary>The tray's own trailing "Type Here" slot and the ContextMenu it belongs to, kept
+		/// so a re-arm after committing a new item (see <see cref="EndTextEdit"/>'s reopen branch)
+		/// can re-open editing on the freshly-rebuilt slot without re-deriving it from scratch.</summary>
+		FrameworkElement? contextMenuTrayNewItemVisual;
+		DesignerElementNode? contextMenuTrayContextMenuNode;
+
+		/// <summary>A top-level <see cref="Menu"/>, <see cref="StatusBar"/> or <see cref="ToolBar"/>
+		/// renders its items directly in the frame bitmap (unlike a detached <see cref="ContextMenu"/>
+		/// or MenuItem submenu popup), so adding another item needs only one small floating "Type
+		/// Here" hotspot placed just past the container's own bounds, not a whole tray duplicating
+		/// items that are already visible and (for Menu) already editable in place via
+		/// double-click.</summary>
+		readonly Border menuTypeHereHotspot = new() {
+			Visibility = Visibility.Collapsed,
+			Background = Brushes.White,
+			BorderBrush = Brushes.DodgerBlue,
+			BorderThickness = new Thickness(1),
+			Padding = new Thickness(6, 2, 6, 2),
+			Child = new TextBlock { Text = "Type Here", FontStyle = FontStyles.Italic, Foreground = Brushes.Gray },
+			HorizontalAlignment = HorizontalAlignment.Left,
+			VerticalAlignment = VerticalAlignment.Top
+		};
+		string? menuTypeHereHotspotMenuId;
+		/// <summary>The element Type of <see cref="menuTypeHereHotspotMenuId"/>'s container - decides
+		/// which RPC a commit through this hotspot uses (see <see cref="BeginNewMenuItemEdit"/>).</summary>
+		string? menuTypeHereHotspotContainerType;
+		/// <summary>State of the real on-canvas text editor, exposed only for pointer-driven
+		/// integration tests. This distinguishes a selected menu item from one actually being
+		/// edited.</summary>
+		internal object InlineEditorStatus {
+			get {
+				// Screen coordinates, not just visible/focused booleans - the tray/hotspot "Type
+				// Here" flow has a real class of bug where the editor is functionally focused and
+				// editable but visually mispositioned (e.g. jumping to the design surface's own
+				// origin instead of following its anchor - see BeginNewMenuItemEdit's own doc
+				// comment), which a boolean-only status would never catch.
+				var center = textEditor.PointToScreen(
+					new Point(textEditor.ActualWidth / 2, textEditor.ActualHeight / 2));
+				return new {
+					editing = textEditing,
+					visible = textEditor.IsVisible,
+					focused = textEditor.IsKeyboardFocusWithin,
+					elementId = textEditElementId,
+					propertyName = textEditPropertyName,
+					text = textEditor.Text,
+					screenCenterX = center.X,
+					screenCenterY = center.Y
+				};
+			}
+		}
+		internal bool InputInlineEditor(string text, bool cancel)
+		{
+			if (!textEditing || !textEditor.IsKeyboardFocusWithin)
+				return false;
+			textEditor.SelectAll();
+			textEditor.SelectedText = text;
+			textEditor.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(textEditor),
+				Environment.TickCount, cancel ? Key.Escape : Key.Enter) { RoutedEvent = Keyboard.KeyDownEvent });
+			return true;
+		}
+		/// <summary>Read-only geometry for the ContextMenu tray's pointer-driven integration test.
+		/// Production selection and editing still go through the actual WPF routed mouse events.</summary>
+		internal object ContextMenuTrayStatus => new {
+			visible = contextMenuTray.IsVisible,
+			contextMenuId = contextMenuTrayRootId,
+			items = contextMenuTrayItems.Children.OfType<FrameworkElement>().Select(item => {
+				var center = item.PointToScreen(new Point(item.ActualWidth / 2, item.ActualHeight / 2));
+				var elementId = item.Tag as string;
+				var moveButtons = elementId != null && contextMenuTrayMoveButtons.TryGetValue(elementId, out var buttons) ? buttons : ((Border Up, Border Down)?)null;
+				return new {
+					elementId,
+					centerX = center.X,
+					centerY = center.Y,
+					canMoveUp = moveButtons?.Up.IsEnabled,
+					canMoveDown = moveButtons?.Down.IsEnabled,
+					moveUpCenterX = MoveButtonCenter(moveButtons?.Up)?.X,
+					moveUpCenterY = MoveButtonCenter(moveButtons?.Up)?.Y,
+					moveDownCenterX = MoveButtonCenter(moveButtons?.Down)?.X,
+					moveDownCenterY = MoveButtonCenter(moveButtons?.Down)?.Y
+				};
+			}).ToArray()
+		};
+
+		static Point? MoveButtonCenter(Border? button) => button == null || !button.IsEnabled
+			? null : button.PointToScreen(new Point(button.ActualWidth / 2, button.ActualHeight / 2));
+
+		/// <summary>Read-only geometry for the top-level Menu "Type Here" hotspot's pointer-driven
+		/// integration test - mirrors <see cref="ContextMenuTrayStatus"/> for the ContextMenu tray's
+		/// own trailing slot.</summary>
+		internal object MenuTypeHereHotspotStatus {
+			get {
+				var center = menuTypeHereHotspot.PointToScreen(
+					new Point(menuTypeHereHotspot.ActualWidth / 2, menuTypeHereHotspot.ActualHeight / 2));
+				return new { visible = menuTypeHereHotspot.IsVisible, menuId = menuTypeHereHotspotMenuId, centerX = center.X, centerY = center.Y };
+			}
+		}
 
 		// Grid row/column drag guides (design/query-grid-guides, design/set-grid-track-size):
 		// shown whenever the current selection is a Grid, refreshed on every selection change and
@@ -216,6 +341,14 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			designSurface.Children.Add(adornerLayer.Visual);
 			marqueeOverlay.Children.Add(marqueeBorder);
 			designSurface.Children.Add(marqueeOverlay);
+			contextMenuTray.Child = contextMenuTrayItems;
+			designSurface.Children.Add(contextMenuTray);
+			menuTypeHereHotspot.MouseLeftButtonDown += (_, e) => {
+				if (menuTypeHereHotspotMenuId is { } menuId && menuTypeHereHotspotContainerType is { } containerType)
+					BeginNewMenuItemEdit(menuId, containerType, menuTypeHereHotspot);
+				e.Handled = true;
+			};
+			designSurface.Children.Add(menuTypeHereHotspot);
 			textEditor.KeyDown += OnTextEditorKeyDown;
 			textEditor.LostKeyboardFocus += OnTextEditorLostFocus;
 			designSurface.Children.Add(textEditor);
@@ -331,6 +464,16 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		/// waiting for a captured-context continuation, which none of these four ever are).</summary>
 		internal void Show(DesignerSessionState newState)
 		{
+			// A rejected mutation deliberately has no Render payload: the child did not change its
+			// document, so it must not spend time re-rendering the old one.  Treating that response
+			// as a new document state used to clear a perfectly valid canvas after, for example,
+			// dropping a Toolbox item on a Button (which cannot contain children).  Keep the last
+			// accepted frame and surface the rejection as status instead.
+			if (!newState.Accepted && state?.Render is { Data.Length: > 0 })
+			{
+				StatusText = "WPF design host: " + (newState.Error ?? "operation was rejected.");
+				return;
+			}
 			state = newState;
 			// Reflects whatever THIS document reported, every time - a session/open for a
 			// The theme combo lists exactly the themes the project's assembly embeds (its
@@ -357,6 +500,10 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				gridOverlay.Update(0, 0, viewport.Scale, showGridlines);
 				SetSnapGuides(Array.Empty<(bool, double)>());
 				tabOrderOverlay.Children.Clear();
+				HideContextMenuTray();
+				menuTypeHereHotspot.Visibility = Visibility.Collapsed;
+				menuTypeHereHotspotMenuId = null;
+				menuTypeHereHotspotContainerType = null;
 				EndTextEdit(commit: false);
 				SetGridGuideOverlay(null, default, Array.Empty<double>(), Array.Empty<double>());
 				return;
@@ -409,6 +556,8 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			LayoutGridGuides();
 
 			RestoreSelection();
+			UpdateContextMenuTray();
+			UpdateMenuTypeHereHotspot();
 		}
 
 		/// <summary>Re-derives the viewport from the current toolbar Zoom/Fit selection and
@@ -435,6 +584,10 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		{
 			if (state is not { } currentState)
 				return;
+			// The tray owns its clicks. Letting this surface-level Preview handler continue would
+			// hit-test the frame underneath the detached popup and clear the selected menu item.
+			if (IsWithinContextMenuTray(e.OriginalSource as DependencyObject))
+				return;
 			var point = e.GetPosition(designSurface);
 			// These are Preview (tunneling) handlers on the whole control, so they also see presses
 			// on the shared toolbar sitting above the design surface. Ignore those outright:
@@ -454,7 +607,13 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			if (e.ClickCount == 2)
 			{
 				var hit = client.HitTestAsync(currentState.Version, designX, designY).GetAwaiter().GetResult();
-				if (hit.Hit && state?.Tree != null && FindNodeByPath(state.Tree, hit.PickPath) is { } hitNode
+				var hitNode = hit.Hit && state?.Tree != null ? FindNodeByPath(state.Tree, hit.PickPath) : null;
+				// MenuItem is rendered inside its Menu's fallback/host visual, which commonly wins
+				// the child-side hit test.  When the user has explicitly selected a MenuItem, retain
+				// that intent for a double-click in the same bounds so Header remains editable.
+				if (ResolveTextPropertyName(hitNode) == null && SelectedNode?.Type == "MenuItem")
+					hitNode = SelectedNode;
+				if (hitNode != null
 					&& ResolveTextPropertyName(hitNode) is { } propertyName)
 				{
 					var currentValue = hitNode.Properties.First(p => p.Name == propertyName).Value;
@@ -938,10 +1097,11 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		#region Inline text editing (double-click)
 
 		/// <summary>The element's Text/Content property, if it holds a plain string value safe to
-		/// edit inline - "Text" is preferred (TextBlock/TextBox/etc.), then "Content" only when
-		/// its <see cref="DesignerPropertyInfo.Kind"/> is "String" (never when Content holds a
-		/// nested visual/DesignItem, which a ContentControl's Content commonly does). Returns null
-		/// (silently no-op on double-click) when neither applies, e.g. a layout panel.</summary>
+		/// edit inline - "Text" is preferred (TextBlock/TextBox/etc.), then "Content", then the
+		/// string "Header" of a MenuItem. MenuItem is the WPF counterpart of a WinForms menu-strip
+		/// or ContextMenuStrip item. Deliberately do not generalize Header to every HeaderedControl:
+		/// TabItem, TreeViewItem, Expander and GroupBox have distinct editing semantics and are
+		/// outside the strip-editor scope. Returns null when none applies, e.g. a layout panel.</summary>
 		static string? ResolveTextPropertyName(DesignerElementNode node)
 		{
 			bool IsEditableString(DesignerPropertyInfo p) => !p.IsReadOnly && p.Kind == "String";
@@ -949,6 +1109,9 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				return "Text";
 			if (node.Properties.FirstOrDefault(p => p.Name == "Content" && IsEditableString(p)) != null)
 				return "Content";
+			if (node.Type == "MenuItem"
+				&& node.Properties.FirstOrDefault(p => p.Name == "Header" && IsEditableString(p)) != null)
+				return "Header";
 			return null;
 		}
 
@@ -957,6 +1120,9 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		/// UnoDesignSurfaceControl's own BeginTextEdit/EndTextEdit.</summary>
 		void BeginTextEdit(string elementId, string propertyName, double x, double y, double width, double height, string text)
 		{
+			textEditIsContextMenuTray = false;
+			textEditNewItemParentId = null;
+			textEditNewItemContainerType = null;
 			textEditElementId = elementId;
 			textEditPropertyName = propertyName;
 			textEditRect = new Rect(x, y, width, height);
@@ -972,6 +1138,14 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		{
 			if (!textEditing)
 				return;
+			if (textEditIsContextMenuTray)
+			{
+				textEditor.Margin = new Thickness(contextMenuTrayTextEditRect.X, contextMenuTrayTextEditRect.Y, 0, 0);
+				textEditor.Width = contextMenuTrayTextEditRect.Width;
+				textEditor.Height = contextMenuTrayTextEditRect.Height;
+				textEditor.FontSize = 14;
+				return;
+			}
 			var scale = viewport.Scale;
 			textEditor.Margin = new Thickness(
 				framePresenter.Visual.Margin.Left + textEditRect.X * scale,
@@ -981,11 +1155,71 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			textEditor.FontSize = 14 * scale;
 		}
 
+		void BeginContextMenuTrayTextEdit(DesignerElementNode item, FrameworkElement itemVisual)
+		{
+			var header = item.Properties.FirstOrDefault(p => p.Name == "Header" && !p.IsReadOnly && p.Kind == "String");
+			if (header == null)
+				return;
+			var origin = itemVisual.TranslatePoint(new Point(0, 0), designSurface);
+			contextMenuTrayTextEditRect = new Rect(origin.X, origin.Y,
+				Math.Max(48, itemVisual.ActualWidth), Math.Max(20, itemVisual.ActualHeight));
+			textEditIsContextMenuTray = true;
+			textEditNewItemParentId = null;
+			textEditNewItemContainerType = null;
+			textEditElementId = item.Id;
+			textEditPropertyName = "Header";
+			textEditing = true;
+			textEditor.Text = header.Value ?? "";
+			textEditor.Visibility = Visibility.Visible;
+			LayoutTextEditor();
+			textEditor.Focus();
+			textEditor.SelectAll();
+		}
+
+		/// <summary>Opens the "Type Here" editor for a brand-new sibling MenuItem under
+		/// <paramref name="parentId"/> (a Menu, ContextMenu, MenuItem, StatusBar or ToolBar),
+		/// anchored over <paramref name="anchorVisual"/> - either the ContextMenu tray's own trailing
+		/// slot, the top-level Menu's <see cref="menuTypeHereHotspot"/>, or the same hotspot reused
+		/// for a StatusBar/ToolBar. Both anchor kinds live outside the design root's own coordinate
+		/// space (a floating tray / a canvas-level overlay respectively), so this reuses the tray's
+		/// screen-space text-edit layout rather than the plain design-rect one
+		/// <see cref="BeginTextEdit"/> uses for elements rendered inside the frame bitmap.
+		/// <paramref name="containerType"/> is <paramref name="parentId"/>'s element Type - it
+		/// decides which RPC <see cref="EndTextEdit"/> commits through (design/add-menu-item for
+		/// Menu/ContextMenu/MenuItem, design/add-strip-item for StatusBar/ToolBar) and only cosmetically
+		/// affects <see cref="textEditPropertyName"/> here (Header vs Content) for
+		/// <see cref="InlineEditorStatus"/>'s benefit - a brand-new item has no property to edit yet.</summary>
+		void BeginNewMenuItemEdit(string parentId, string containerType, FrameworkElement anchorVisual)
+		{
+			// The re-arm path calls this synchronously right after UpdateContextMenuTray() just
+			// added anchorVisual to the tray's StackPanel (or UpdateMenuTypeHereHotspot() just
+			// repositioned the Menu hotspot) - without a forced layout pass here, TranslatePoint/
+			// ActualWidth still report the pre-arrange (0,0)/zero-size state, and the editor visibly
+			// jumps to the design surface's own origin instead of following the "Type Here" slot.
+			// UpdateLayout() on their common ancestor makes WPF measure/arrange both before we read
+			// either.
+			designSurface.UpdateLayout();
+			var origin = anchorVisual.TranslatePoint(new Point(0, 0), designSurface);
+			contextMenuTrayTextEditRect = new Rect(origin.X, origin.Y,
+				Math.Max(48, anchorVisual.ActualWidth), Math.Max(20, anchorVisual.ActualHeight));
+			textEditIsContextMenuTray = true;
+			textEditElementId = null;
+			textEditNewItemParentId = parentId;
+			textEditNewItemContainerType = containerType;
+			textEditPropertyName = containerType is "StatusBar" or "ToolBar" ? "Content" : "Header";
+			textEditing = true;
+			textEditor.Text = "";
+			textEditor.Visibility = Visibility.Visible;
+			LayoutTextEditor();
+			textEditor.Focus();
+			textEditor.SelectAll();
+		}
+
 		void OnTextEditorKeyDown(object sender, KeyEventArgs e)
 		{
 			if (e.Key == Key.Enter)
 			{
-				EndTextEdit(commit: true);
+				EndTextEdit(commit: true, reopenIfNewItem: true);
 				e.Handled = true;
 			}
 			else if (e.Key == Key.Escape)
@@ -1002,23 +1236,60 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		}
 
 		/// <summary>Blocking for the same reason <see cref="CommitBounds"/> is - see its own doc
-		/// comment.</summary>
-		void EndTextEdit(bool commit)
+		/// comment. <paramref name="reopenIfNewItem"/> only matters for a "Type Here" slot (never for
+		/// editing an existing element's property) and only when committed via Enter (not on focus
+		/// loss) - matching RemoteFormsDesignerControl.CommitTypeHere's own commit-via-Enter re-arm,
+		/// so typing several sibling MenuItems back-to-back needs no re-click between them.</summary>
+		void EndTextEdit(bool commit, bool reopenIfNewItem = false)
 		{
 			if (!textEditing)
 				return;
 			var text = textEditor.Text;
-			var elementId = textEditElementId!;
+			var elementId = textEditElementId;
 			var propertyName = textEditPropertyName!;
+			var newItemParentId = textEditNewItemParentId;
+			var newItemContainerType = textEditNewItemContainerType;
+			var refreshContextMenuTray = textEditIsContextMenuTray;
 			textEditing = false;
+			textEditIsContextMenuTray = false;
 			textEditElementId = null;
 			textEditPropertyName = null;
+			textEditNewItemParentId = null;
+			textEditNewItemContainerType = null;
 			textEditor.Visibility = Visibility.Collapsed;
 			if (!commit || state == null)
 				return;
-			var result = client.SetPropertyAsync(RequireVersion(), elementId, propertyName, text).GetAwaiter().GetResult();
+			DesignerSessionState result;
+			if (newItemParentId != null)
+			{
+				// Empty/whitespace text or an explicit Cancel is a no-op, matching WinForms'
+				// CommitTypeHere - Cancel never reaches here (the Escape branch above returns
+				// commit: false), so only the empty-text case applies.
+				var newText = StripTypeHereCommit.Resolve(text, cancelled: false);
+				if (newText == null)
+					return;
+				result = newItemContainerType is "StatusBar" or "ToolBar"
+					? client.AddStripItemAsync(RequireVersion(), newItemParentId, newText).GetAwaiter().GetResult()
+					: client.AddMenuItemAsync(RequireVersion(), newItemParentId, newText).GetAwaiter().GetResult();
+			}
+			else
+			{
+				result = client.SetPropertyAsync(RequireVersion(), elementId!, propertyName, text).GetAwaiter().GetResult();
+			}
+			if (refreshContextMenuTray)
+				contextMenuTrayRootId = null;
 			Show(result);
 			DocumentChanged?.Invoke(this, result);
+			if (reopenIfNewItem && newItemParentId != null && newItemContainerType != null && result.Accepted)
+			{
+				// Show() just rebuilt the tray/hotspot fresh - re-derive the trailing slot's new
+				// visual rather than reusing the one captured before the commit, which Show()/
+				// UpdateContextMenuTray already discarded.
+				if (contextMenuTrayContextMenuNode?.Id == newItemParentId && contextMenuTrayNewItemVisual != null)
+					BeginNewMenuItemEdit(newItemParentId, newItemContainerType, contextMenuTrayNewItemVisual);
+				else if (menuTypeHereHotspotMenuId == newItemParentId && menuTypeHereHotspot.Visibility == Visibility.Visible)
+					BeginNewMenuItemEdit(newItemParentId, newItemContainerType, menuTypeHereHotspot);
+			}
 		}
 
 		#endregion
@@ -1122,8 +1393,45 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		void CommitDrop(DesignerToolboxItemInfo item, double designX, double designY)
 		{
 			var hit = client.HitTestAsync(state!.Version, designX, designY).GetAwaiter().GetResult();
-			var parentId = string.IsNullOrEmpty(hit.PickPath) ? OutlineRoot?.Id ?? "" : hit.PickPath;
-			var result = AddElementAsync(parentId, item, proposedName: "", designX, designY).GetAwaiter().GetResult();
+			var initialParentId = string.IsNullOrEmpty(hit.PickPath) ? OutlineRoot?.Id ?? "" : hit.PickPath;
+			// The visual hit is commonly a leaf (TextBlock inside a Button, for example), not the
+			// panel onto which the user visually dropped.  Try that hit first, then each structural
+			// ancestor.  PlacementOperation remains the authority on whether a candidate accepts the
+			// child; this merely gives it the same useful container fallback a designer user expects.
+			var candidateParents = new List<string>();
+			for (var candidate = initialParentId; ;)
+			{
+				if (!candidateParents.Contains(candidate))
+					candidateParents.Add(candidate);
+				var separator = candidate.LastIndexOf(',');
+				if (separator < 0)
+					break;
+				candidate = candidate.Substring(0, separator);
+			}
+			// Panels without a Background are transparent to WPF's visual hit testing.  A Window
+			// whose Content is such a Grid therefore reports the Window itself for an empty-canvas
+			// drop, even though that Grid is the element the user clearly means to add to.  The DDP
+			// tree already contains each design item's arranged bounds, so use it as a second hit
+			// source and append every containing node from deepest to shallowest.  The child still
+			// validates each candidate with PlacementOperation; this only avoids losing transparent
+			// layout containers before that validation can happen.
+			AppendLayoutDropCandidates(OutlineRoot, designX, designY, candidateParents);
+			var rootId = OutlineRoot?.Id ?? "";
+			if (!candidateParents.Contains(rootId))
+				candidateParents.Add(rootId);
+
+			DesignerSessionState? result = null;
+			foreach (var parentId in candidateParents)
+			{
+				result = AddElementAsync(parentId, item, proposedName: "", designX, designY).GetAwaiter().GetResult();
+				if (result.Accepted)
+					break;
+			}
+			if (result == null || !result.Accepted)
+			{
+				StatusText = "WPF design host: " + (result?.Error ?? "drop was rejected.");
+				return;
+			}
 			Show(result);
 			// A toolbox drop should select the element it just created, matching what a real drop
 			// onto every other designer backend already does (and what a real end user dragging a
@@ -1131,11 +1439,22 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			// extra click). CreatedElementId is only meaningful on this exact response - see its
 			// own doc comment for why WPF can't just look the element up by name afterward like
 			// WinForms/WinUI do.
-			if (result.Accepted && result.CreatedElementId != null)
+			if (result.CreatedElementId != null)
 				selectedPath = result.CreatedElementId;
 			secondarySelection.Clear();
 			SelectionChanged?.Invoke(this, EventArgs.Empty);
 			DocumentChanged?.Invoke(this, result);
+		}
+
+		static void AppendLayoutDropCandidates(DesignerElementNode? node, double x, double y, List<string> candidates)
+		{
+			if (node == null || node.Width <= 0 || node.Height <= 0
+				|| x < node.X || y < node.Y || x > node.X + node.Width || y > node.Y + node.Height)
+				return;
+			foreach (var child in node.Children)
+				AppendLayoutDropCandidates(child, x, y, candidates);
+			if (!candidates.Contains(node.Id))
+				candidates.Add(node.Id);
 		}
 
 		static DesignerToolboxItemInfo? ToolboxItemOf(IDataObject data)
@@ -1170,6 +1489,195 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 					node.Name ?? node.Type);
 			UpdateSecondarySelectionAdorners();
 			RefreshGridGuides(node);
+			UpdateContextMenuTray();
+			UpdateMenuTypeHereHotspot();
+		}
+
+		void UpdateContextMenuTray()
+		{
+			var contextMenu = TrayContainerForSelection();
+			if (contextMenu == null)
+			{
+				HideContextMenuTray();
+				return;
+			}
+			if (contextMenuTrayRootId == contextMenu.Id && contextMenuTray.IsVisible)
+				return;
+			contextMenuTrayRootId = contextMenu.Id;
+			contextMenuTrayItems.Children.Clear();
+			contextMenuTrayMoveButtons.Clear();
+			var menuItems = contextMenu.Children.Where(c => c.Type == "MenuItem").ToList();
+			for (var i = 0; i < menuItems.Count; i++)
+			{
+				var child = menuItems[i];
+				var header = child.Properties.FirstOrDefault(p => p.Name == "Header")?.Value ?? child.Name ?? "MenuItem";
+				var row = new Grid();
+				row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+				row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+				row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+				var text = new TextBlock { Text = header, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(14, 4, 8, 4) };
+				Grid.SetColumn(text, 0);
+				row.Children.Add(text);
+				// Reorder arrows: WinForms' drag-anywhere strip reordering's deliberately simpler
+				// stand-in for this pass (see design/move-element's own doc comment) - a real drag
+				// gesture over a StackPanel-laid-out tray is real added complexity for the same end
+				// result. Disabled (not hidden) at either end so the row's width stays consistent.
+				var upButton = MakeMoveButton("▲", i > 0);
+				var downButton = MakeMoveButton("▼", i < menuItems.Count - 1);
+				Grid.SetColumn(upButton, 1);
+				Grid.SetColumn(downButton, 2);
+				row.Children.Add(upButton);
+				row.Children.Add(downButton);
+				var itemVisual = new Border { Background = Brushes.White, Child = row, Tag = child.Id };
+				itemVisual.MouseEnter += (_, _) => itemVisual.Background = Brushes.AliceBlue;
+				itemVisual.MouseLeave += (_, _) => itemVisual.Background = Brushes.White;
+				itemVisual.MouseLeftButtonDown += (_, e) => {
+					if (e.ClickCount == 2)
+						BeginContextMenuTrayTextEdit(child, itemVisual);
+					SelectElementId(child.Id);
+					e.Handled = true;
+				};
+				if (i > 0)
+					upButton.MouseLeftButtonDown += (_, e) => { CommitMoveMenuItem(child.Id, -1); e.Handled = true; };
+				if (i < menuItems.Count - 1)
+					downButton.MouseLeftButtonDown += (_, e) => { CommitMoveMenuItem(child.Id, 1); e.Handled = true; };
+				contextMenuTrayMoveButtons[child.Id] = (upButton, downButton);
+				contextMenuTrayItems.Children.Add(itemVisual);
+			}
+			// One trailing "Type Here" slot after the real items, always present, so adding another
+			// MenuItem never needs a separate command - matching a freshly-dropped MenuStrip's own
+			// always-available insertion cell. Tagged "@type-here" (not a real element id) so
+			// ContextMenuTrayStatus's pointer-driven test hook can find it the same way it finds real
+			// items, by elementId.
+			var typeHereVisual = new Border {
+				Background = Brushes.White,
+				Padding = new Thickness(14, 4, 32, 4),
+				Child = new TextBlock {
+					Text = "Type Here", FontStyle = FontStyles.Italic, Foreground = Brushes.Gray,
+					VerticalAlignment = VerticalAlignment.Center
+				},
+				Tag = "@type-here"
+			};
+			typeHereVisual.MouseEnter += (_, _) => typeHereVisual.Background = Brushes.AliceBlue;
+			typeHereVisual.MouseLeave += (_, _) => typeHereVisual.Background = Brushes.White;
+			typeHereVisual.MouseLeftButtonDown += (_, e) => {
+				BeginNewMenuItemEdit(contextMenu.Id, contextMenu.Type, typeHereVisual);
+				e.Handled = true;
+			};
+			contextMenuTrayItems.Children.Add(typeHereVisual);
+			contextMenuTrayNewItemVisual = typeHereVisual;
+			contextMenuTrayContextMenuNode = contextMenu;
+			Canvas.SetLeft(contextMenuTray, framePresenter.Visual.Margin.Left);
+			Canvas.SetTop(contextMenuTray, framePresenter.Visual.Margin.Top);
+			contextMenuTray.Visibility = Visibility.Visible;
+		}
+
+		void HideContextMenuTray()
+		{
+			contextMenuTrayRootId = null;
+			contextMenuTrayItems.Children.Clear();
+			contextMenuTrayMoveButtons.Clear();
+			contextMenuTrayNewItemVisual = null;
+			contextMenuTrayContextMenuNode = null;
+			contextMenuTray.Visibility = Visibility.Collapsed;
+		}
+
+		static Border MakeMoveButton(string glyph, bool enabled) => new() {
+			Background = Brushes.WhiteSmoke,
+			BorderBrush = Brushes.LightGray,
+			BorderThickness = new Thickness(1),
+			Padding = new Thickness(4, 2, 4, 2),
+			Margin = new Thickness(2, 0, 2, 0),
+			IsEnabled = enabled,
+			Child = new TextBlock { Text = glyph, Foreground = enabled ? Brushes.Black : Brushes.LightGray }
+		};
+
+		/// <summary>Commits one reorder-arrow click (<c>design/move-element</c>). Blocking for the
+		/// same reason <see cref="CommitBounds"/> is - see its own doc comment. Forces a tray rebuild
+		/// even though the selected container itself hasn't changed - <see cref="UpdateContextMenuTray"/>'s
+		/// short-circuit otherwise skips rebuilding when <c>contextMenuTrayRootId</c> is unchanged,
+		/// which would leave the row order stale after a successful move.</summary>
+		void CommitMoveMenuItem(string elementId, int delta)
+		{
+			if (state == null)
+				return;
+			var result = client.MoveElementAsync(RequireVersion(), elementId, delta).GetAwaiter().GetResult();
+			if (result.Accepted)
+				contextMenuTrayRootId = null;
+			Show(result);
+			DocumentChanged?.Invoke(this, result);
+		}
+
+		/// <summary>Positions the "Type Here" hotspot just past a selected top-level Menu's own
+		/// rendered bounds (its Width already spans every current item), or hides it when the
+		/// selection isn't a Menu or one of its MenuItems. Uses the same screen-space Margin
+		/// convention as the rendered frame itself (see <see cref="Show"/>'s framePresenter.Visual.Margin),
+		/// since this control, like the ContextMenu tray, floats over the frame rather than being part
+		/// of the design-coordinate content it depicts. Coexists with the tray
+		/// (<see cref="TrayContainerForSelection"/>) when a top-level MenuItem is selected: this adds
+		/// a SIBLING at the Menu bar's own level, while the tray (showing that same item's own
+		/// children) adds the first item INSIDE its dropdown - two different, simultaneously useful
+		/// operations on the same selection.</summary>
+		static bool IsHotspotContainerType(string? type) => type is "Menu" or "StatusBar" or "ToolBar";
+
+		void UpdateMenuTypeHereHotspot()
+		{
+			var selected = SelectedNode;
+			var container = IsHotspotContainerType(selected?.Type) ? selected : null;
+			if (container == null && selected != null && selectedPath != null && state?.Tree != null
+				&& FindParentByPath(state.Tree, selectedPath) is { } parent && IsHotspotContainerType(parent.Type))
+			{
+				container = parent;
+			}
+			if (container == null)
+			{
+				menuTypeHereHotspot.Visibility = Visibility.Collapsed;
+				menuTypeHereHotspotMenuId = null;
+				menuTypeHereHotspotContainerType = null;
+				return;
+			}
+			menuTypeHereHotspotMenuId = container.Id;
+			menuTypeHereHotspotContainerType = container.Type;
+			var scale = viewport.Scale;
+			menuTypeHereHotspot.Margin = new Thickness(
+				framePresenter.Visual.Margin.Left + (container.X + container.Width) * scale,
+				framePresenter.Visual.Margin.Top + container.Y * scale, 0, 0);
+			menuTypeHereHotspot.Visibility = Visibility.Visible;
+		}
+
+		/// <summary>The element whose direct MenuItem children the tray should show: a selected
+		/// ContextMenu (its top-level items) or a selected MenuItem (its own submenu, empty or not -
+		/// selecting a childless item and using the trailing "Type Here" slot is how a submenu gets
+		/// its first item, turning a plain leaf item into one with children). A WPF submenu, like a
+		/// ContextMenu, is a detached popup invisible to hit-testing, so any MenuItem's own children
+		/// need this same tray treatment regardless of nesting depth or which kind of owner (Menu vs
+		/// ContextMenu vs another MenuItem) it ultimately sits under - only the top-level Menu bar's
+		/// own direct items are handled separately, by <see cref="UpdateMenuTypeHereHotspot"/>, since
+		/// those render inline rather than inside a popup.</summary>
+		DesignerElementNode? TrayContainerForSelection()
+		{
+			var selected = SelectedNode;
+			return selected?.Type is "ContextMenu" or "MenuItem" ? selected : null;
+		}
+
+		static DesignerElementNode? FindParentByPath(DesignerElementNode node, string path)
+		{
+			foreach (var child in node.Children)
+			{
+				if (child.Path == path)
+					return node;
+				if (FindParentByPath(child, path) is { } parent)
+					return parent;
+			}
+			return null;
+		}
+
+		bool IsWithinContextMenuTray(DependencyObject? source)
+		{
+			for (var current = source; current != null; current = VisualTreeHelper.GetParent(current))
+				if (ReferenceEquals(current, contextMenuTray))
+					return true;
+			return false;
 		}
 
 		void UpdateSecondarySelectionAdorners()

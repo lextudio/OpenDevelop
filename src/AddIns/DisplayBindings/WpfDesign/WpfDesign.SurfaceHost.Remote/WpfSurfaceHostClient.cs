@@ -112,6 +112,26 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	public Task<DesignerSessionState> SetBoundsAsync(long baseVersion, string elementId, double x, double y, double width, double height, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(Document.SetBoundsAsync(baseVersion, elementId, x, y, width, height, cancellationToken), cancellationToken);
 
+	/// <summary>Appends one more MenuItem sibling under an existing Menu/ContextMenu/MenuItem - the
+	/// WPF-specific "Type Here" insertion slot's commit action (see WpfSurfaceDesignerControl and
+	/// StripTypeHereCommit.Resolve, which the caller runs on the typed text before calling this).
+	/// Not part of IDesignHostClient, matching QueryGridGuidesAsync/SetGridTrackSizeAsync above:
+	/// WinForms/WinUI have no equivalent RPC shape to share it with.</summary>
+	public Task<DesignerSessionState> AddMenuItemAsync(long baseVersion, string parentId, string header, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/add-menu-item", new { sessionId = SessionId, documentId = DocumentId, baseVersion, parentId, header }, cancellationToken), cancellationToken);
+
+	/// <summary>Appends one more item under an existing StatusBar or ToolBar - the "Type Here"
+	/// insertion-node commit action for those two strip types, mirroring
+	/// <see cref="AddMenuItemAsync"/> for Menu/ContextMenu/MenuItem.</summary>
+	public Task<DesignerSessionState> AddStripItemAsync(long baseVersion, string parentId, string text, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/add-strip-item", new { sessionId = SessionId, documentId = DocumentId, baseVersion, parentId, text }, cancellationToken), cancellationToken);
+
+	/// <summary>Moves an element by <paramref name="delta"/> positions among its siblings (e.g. -1 to
+	/// swap with the previous one, +1 with the next) - the tray's reorder-arrow UI's commit action.
+	/// Not part of IDesignHostClient, matching AddMenuItemAsync above.</summary>
+	public Task<DesignerSessionState> MoveElementAsync(long baseVersion, string elementId, int delta, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/move-element", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, delta }, cancellationToken), cancellationToken);
+
 	/// <summary>Grid row/column drag guides (WPF-specific - not part of <see cref="IDesignHostClient"/>,
 	/// since Uno/WinUI implements the same user-facing feature off its own live XAML text editor
 	/// instead, and WinForms has no equivalent Grid concept at all). Read-only; see
