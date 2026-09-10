@@ -154,8 +154,9 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			namesButton.Unchecked += (_, _) => { UpdateButtonHighlight(namesButton); ShowNamesRequested?.Invoke(this, false); };
 
 			Capabilities = DesignerCanvasCapabilities.All;
-			// Pressed = show names, matching today's existing behavior by default.
-			IsShowingNames = true;
+			// Unpressed = names hidden by default (the user found the always-on labels noisy on
+			// a crowded surface); toggle the button to opt back in.
+			IsShowingNames = false;
 			// The toolbar chrome follows the IDE theme (not the design theme): toolbar background
 			// and the combo/button text use the semantic ToolWindowBackground/Foreground keys so
 			// they switch with the IDE. The design theme only drives the checked-button highlight

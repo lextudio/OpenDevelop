@@ -7,18 +7,28 @@
 		Background="#DDD"
 		BorderBrush="#999"
 		BorderThickness="2"
-		Width="500"
-		VerticalAlignment="Center"
-		MaxHeight="380">
+		MaxWidth="900"
+		Margin="24">
 		<Border.Effect>
 			<DropShadowEffect
 				BlurRadius="15"
 				Color="#777"
 				ShadowDepth="2" />
 		</Border.Effect>
-		<StackPanel
-			Orientation="Vertical">
+		<Grid>
+			<Grid.RowDefinitions>
+				<RowDefinition Height="Auto" />
+				<RowDefinition Height="Auto" />
+				<RowDefinition Height="Auto" />
+				<RowDefinition Height="Auto" />
+				<!-- The additional-information box is the only row that should absorb extra
+				     height as the window grows - a long stack trace needs room to actually show
+				     more lines (and stay comfortably mouse-selectable) rather than being capped to
+				     a fixed handful of lines regardless of how large the window is. -->
+				<RowDefinition Height="*" MinHeight="120" />
+			</Grid.RowDefinitions>
 			<StackPanel
+				Grid.Row="0"
 				Orientation="Horizontal"
 				Height="50"
 				HorizontalAlignment="Left">
@@ -39,13 +49,17 @@
 					HorizontalAlignment="Left" />
 			</StackPanel>
 			<Line
+				Grid.Row="1"
 				Y1="5"
 				Y2="5"
 				X1="50"
 				X2="450"
 				Stroke="#444"
-				StrokeThickness="0.5" />
+				StrokeThickness="0.5"
+				HorizontalAlignment="Stretch"
+				Stretch="Fill" />
 			<TextBlock
+				Grid.Row="2"
 				TextWrapping="Wrap"
 				Text="The document contains errors which should be fixed so that the designer can load. Switch to XAML Tab to fix the errors."
 				VerticalAlignment="Top"
@@ -54,14 +68,16 @@
 				HorizontalAlignment="Left"
 				Margin="50,10,10,10" />
 			<TextBlock
+				Grid.Row="3"
 				HorizontalAlignment="Left"
-				VerticalAlignment="Bottom"
-				Margin="50,10,10,10">
+				VerticalAlignment="Top"
+				Margin="50,0,10,10">
 				<Hyperlink
 					Foreground="Black"
 					Click="ViewXaml">View XAML</Hyperlink>
 			</TextBlock>
 			<GroupBox
+				Grid.Row="4"
 				x:Name="additionalInfoBox"
 				Header="Additional information"
 				Margin="50,10,10,20">
@@ -71,8 +87,10 @@
 					VerticalScrollBarVisibility="Auto"
 					x:Name="additionalInfo"
 					IsReadOnly="True"
-					MinLines="10" />
+					TextWrapping="NoWrap"
+					VerticalAlignment="Stretch"
+					HorizontalAlignment="Stretch" />
 			</GroupBox>
-		</StackPanel>
+		</Grid>
 	</Border>
 </UserControl>

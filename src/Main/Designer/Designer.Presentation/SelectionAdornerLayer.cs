@@ -33,7 +33,10 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 		readonly Dictionary<string, Rectangle> secondaryBoxes = new(StringComparer.Ordinal);
 		Rect designSelection;
 		string? selectionName;
-		bool showNameLabel = true;
+		// Off by default, matching DesignerCanvas's own "Show Names" toggle now starting
+		// unchecked - a real toggle-button click still flips this via ShowNamesRequested
+		// regardless of this initial value.
+		bool showNameLabel;
 
 		/// <summary>Whether the name label is shown at all, independent of whether a name was
 		/// supplied. <see cref="selectionName"/> itself keeps gating <see cref="HandleAt"/> even

@@ -212,10 +212,16 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		readonly Border menuTypeHereHotspot = new() {
 			Visibility = Visibility.Collapsed,
 			Background = Brushes.White,
-			BorderBrush = Brushes.DodgerBlue,
+			// Gray border, plain (non-italic) 11pt DimGray text, I-beam cursor: matches
+			// RemoteFormsDesignerControl's own typeHereCell exactly, rather than this control's
+			// earlier ad hoc DodgerBlue/italic styling - the two designers' "Type Here" affordance
+			// should look like the same feature, not two different ones.
+			BorderBrush = Brushes.Gray,
 			BorderThickness = new Thickness(1),
 			Padding = new Thickness(6, 2, 6, 2),
-			Child = new TextBlock { Text = "Type Here", FontStyle = FontStyles.Italic, Foreground = Brushes.Gray },
+			Cursor = Cursors.IBeam,
+			ToolTip = "Type a name to add a new item; Enter keeps adding, Esc cancels.",
+			Child = new TextBlock { Text = "Type Here", FontSize = 11, Foreground = Brushes.DimGray },
 			HorizontalAlignment = HorizontalAlignment.Left,
 			VerticalAlignment = VerticalAlignment.Top
 		};
@@ -1552,8 +1558,12 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			var typeHereVisual = new Border {
 				Background = Brushes.White,
 				Padding = new Thickness(14, 4, 32, 4),
+				Cursor = Cursors.IBeam,
+				ToolTip = "Type a name to add a new item; Enter keeps adding, Esc cancels.",
+				// Plain (non-italic) 11pt DimGray text, matching RemoteFormsDesignerControl's own
+				// typeHereCell/typeHereLabel exactly - see menuTypeHereHotspot's own comment on why.
 				Child = new TextBlock {
-					Text = "Type Here", FontStyle = FontStyles.Italic, Foreground = Brushes.Gray,
+					Text = "Type Here", FontSize = 11, Foreground = Brushes.DimGray,
 					VerticalAlignment = VerticalAlignment.Center
 				},
 				Tag = "@type-here"

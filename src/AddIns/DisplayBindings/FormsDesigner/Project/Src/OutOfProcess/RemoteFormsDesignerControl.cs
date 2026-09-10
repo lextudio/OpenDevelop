@@ -157,7 +157,15 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 					text = renameEditor.Text,
 					selectedText = selectedComponent?.Text,
 					popupOwners = state?.Popups?.Select(popup => popup.OwnerElementId).ToArray(),
-					insertion = InsertionNodeStatus()
+					insertion = InsertionNodeStatus(),
+					// The MenuStrip/ContextMenuStrip "Type Here" cell (typeHereCell/typeHereEditor)
+					// had no status surface at all before - the bug where it was never shown, then
+					// the bug where clicking it lost focus almost immediately, both had to be found
+					// by manual reasoning about the code instead of an automated check. Exposed here
+					// so a pointer-driven integration test can assert this cell's own visibility,
+					// bounds and focus the same way insertion/PopupTypeHereStatus already do for the
+					// other two "Type Here" surfaces.
+					typeHereCell = TypeHereCellStatus()
 				};
 			}
 		}
@@ -172,6 +180,20 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				.Where(name => !String.IsNullOrEmpty(name)).ToArray()
 		};
 		internal bool InputPopupTypeHere(string text, bool cancel) => popupEditors.Values.Any(editor => editor.Input(text, cancel));
+		object TypeHereCellStatus()
+		{
+			if (!typeHereCell.IsVisible) return null;
+			var origin = typeHereCell.PointToScreen(new Point(0, 0));
+			var end = typeHereCell.PointToScreen(new Point(typeHereCell.ActualWidth, typeHereCell.ActualHeight));
+			return new {
+				x = origin.X, y = origin.Y, width = end.X - origin.X, height = end.Y - origin.Y,
+				editing = typeHereEditing,
+				editorVisible = typeHereEditor.IsVisible,
+				editorFocused = typeHereEditor.IsKeyboardFocusWithin,
+				text = typeHereEditor.Text
+			};
+		}
+
 		object InsertionNodeStatus()
 		{
 			if (!toolStripInsertChevron.IsVisible) return null;
@@ -221,7 +243,12 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		/// <summary>Whether each component's name is drawn on the selection outline - wired to
 		/// the shared design-canvas toolbar's "Show Names" toggle (DesignerCanvasCapabilities.
 		/// ShowNames/ShowNamesRequested), which this control did not previously enable.</summary>
-		bool showComponentLabels = true;
+		// Off by default, matching DesignerCanvas's own "Show Names" toggle now starting unchecked
+		// (see its own comment) - WinForms keeps this as its own separate field (rather than
+		// SelectionAdornerLayer.ShowNameLabel, which this backend never uses - it passes
+		// showLabel:false when constructing adornerLayer) because it drives the design-guide
+		// label drawn near a component, not a selection-outline label.
+		bool showComponentLabels;
 		bool resizingDrag;
 		bool previewResizeDrag;
 		Point previewDragPoint;
@@ -1436,7 +1463,20 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		bool IsPopupSource(object source)
 		{
 			for (var node = source as DependencyObject; node != null; node = VisualTreeHelper.GetParent(node)) {
-				if (ReferenceEquals(node, renameEditor) || ReferenceEquals(node, popupReorderThumb)) return true;
+				// typeHereCell (the MenuStrip/ContextMenuStrip top-level "Type Here" cell) needs the
+				// exact same unconditional protection renameEditor already gets here - without it,
+				// OnMouseLeftButtonDown's handledEventsToo:true handler still runs on every press
+				// inside the cell (including ones after BeginTypeHereEdit already focused
+				// typeHereEditor), and DesignSurfaceClickArbiter's drill-through rule - meant for
+				// clicking through a resize handle onto a genuinely more specific nested control -
+				// has no way to know this is an active text-input surface, not a passive adorner
+				// glyph. When the click point also happens to overlap a real sibling MenuItem's
+				// bounds (the cell sits right past the strip's last item), drillThrough comes back
+				// true, the arbiter falls through to SelectComponent, and this method's own
+				// unconditional Focus() call (after its own await) steals keyboard focus back from
+				// typeHereEditor moments after it was focused - which reads as "the box loses focus
+				// almost immediately and you can't type into it," a real reported bug.
+				if (ReferenceEquals(node, renameEditor) || ReferenceEquals(node, popupReorderThumb) || ReferenceEquals(node, typeHereCell)) return true;
 				if (popupOverlays.Values.Any(image => ReferenceEquals(image, node))
 					|| popupEditors.Values.Any(editor => ReferenceEquals(editor.Cell, node)))
 					return true;
@@ -2299,7 +2339,14 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			toolStripInsertChevron.Visibility = toolStripHost?.ItemInsertionBounds != null
 				&& toolStripHost.ItemInsertionStyle == DesignerItemInsertionStyles.SplitButton
 				? Visibility.Visible : Visibility.Collapsed;
-			typeHereCell.Visibility = Visibility.Collapsed;
+			// The MenuStrip/ContextMenuStrip/dropdown-item flavour of the same affordance (see
+			// ItemInsertionStyle's own doc comment) - this branch was previously missing entirely,
+			// so typeHereCell was built, wired and positioned (see PositionAdorners below) but
+			// never actually shown: selecting a MenuStrip left its top-level "Type Here" cell
+			// permanently collapsed, silently doing nothing on click.
+			typeHereCell.Visibility = toolStripHost != null
+				&& toolStripHost.ItemInsertionStyle == DesignerItemInsertionStyles.TypeHere
+				? Visibility.Visible : Visibility.Collapsed;
 			if (typeHereEditing)
 				CommitTypeHere(TypeHereCommit.Cancel);
 			if (!visible) {
@@ -2425,6 +2472,20 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			Canvas.SetTop(typeHereCell, insertTop);
 			typeHereCell.MinHeight = toolStripInsertChevron.Height;
 			Panel.SetZIndex(typeHereCell, 101);
+			// Snap to the backend's own rendered template-node bounds when it reports them, exactly
+			// like toolStripInsertChevron above - without this, typeHereCell only ever used the
+			// "last item" heuristic above, which is narrower than and does not align with the real
+			// native cell painted into the bitmap underneath it (a real reported bug: the two boxes
+			// visibly did not overlap).
+			if (toolStripHost?.ItemInsertionBounds is { } typeHereBounds) {
+				var (cellLeft, cellTop) = viewport.DesignToSurface(
+					toolStripHost.SurfaceX + typeHereBounds.X, toolStripHost.SurfaceY + typeHereBounds.Y);
+				Canvas.SetLeft(typeHereCell, cellLeft);
+				Canvas.SetTop(typeHereCell, cellTop);
+				typeHereCell.Width = Math.Max(1, typeHereBounds.Width);
+				typeHereCell.Height = Math.Max(1, typeHereBounds.Height);
+				typeHereCell.MinHeight = 0;
+			}
 		}
 
 		/// <summary>Whether <paramref name="type"/> is a ToolStrip/StatusStrip/MenuStrip itself
