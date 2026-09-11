@@ -192,13 +192,44 @@ namespace ICSharpCode.SharpDevelop.Project
 			using var process = Process.Start(psi);
 			if (process == null)
 				return Array.Empty<string>();
-			string stdout = process.StandardOutput.ReadToEnd();
-			string stderr = process.StandardError.ReadToEnd();
-			if (!process.WaitForExit(ResolveReferencesTimeoutMilliseconds)) {
+
+			// Both redirected pipes have to be drained CONCURRENTLY, and the timeout has to cover
+			// the draining - not just the exit.
+			//
+			// This used to read stdout to EOF, then stderr to EOF, and only then call
+			// WaitForExit(timeout). Both halves of that are wrong:
+			//
+			//  - Sequential ReadToEnd() on two pipes is the textbook child-process deadlock. The
+			//    pipe buffer is finite (64 KB), so a child that writes more than that to stderr
+			//    while this side is still blocked draining stdout gets stuck in write(); this side
+			//    stays stuck in read(); neither ever moves. A failing SDK target is exactly the
+			//    case that produces a large stderr - see doc/technotes/msbuild.md.
+			//  - The timeout could never fire, because WaitForExit was only reached AFTER both
+			//    reads had already returned. Whatever it was protecting against, it was protecting
+			//    against it only once the danger had passed.
+			//
+			// ReadToEndAsync starts both reads on the thread pool. Task.WaitAll - rather than
+			// awaiting each task in turn with GetAwaiter().GetResult() - is what makes the timeout
+			// bound the reads. That is safe to block on even from the UI thread despite the warning
+			// in CLAUDE.md, because StreamReader's async path uses ConfigureAwait(false) internally
+			// and so posts no continuation back to the dispatcher; it is still slow, which is why
+			// callers on the UI thread are a bug in their own right (see the doc technote).
+			// One deadline covers both waits, so the total stays the documented timeout rather than
+			// twice it. Once both pipes reach EOF the child has all but exited, so the second wait
+			// normally returns immediately; the remaining budget is only there to keep it bounded.
+			var deadline = Stopwatch.StartNew();
+			int Remaining() => Math.Max(0, ResolveReferencesTimeoutMilliseconds - (int)deadline.ElapsedMilliseconds);
+
+			var stdoutTask = process.StandardOutput.ReadToEndAsync();
+			var stderrTask = process.StandardError.ReadToEndAsync();
+			if (!Task.WaitAll(new Task[] { stdoutTask, stderrTask }, Remaining())
+				|| !process.WaitForExit(Remaining())) {
 				try { process.Kill(entireProcessTree: true); } catch { }
 				LoggingService.Warn("ResolveAssemblyReferences timed out for " + projectFileName);
 				return Array.Empty<string>();
 			}
+			string stdout = stdoutTask.Result;
+			string stderr = stderrTask.Result;
 			if (process.ExitCode != 0) {
 				// A project that has never been restored legitimately fails here. Warn rather than
 				// throw, and keep the message in the log where a "why are there no references"

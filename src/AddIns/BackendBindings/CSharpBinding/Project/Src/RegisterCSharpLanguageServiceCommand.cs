@@ -58,7 +58,27 @@ namespace CSharpBinding
 			if (solution == null || !registry.TryGetProtocol(".cs", out var protocol))
 				return;
 			try {
-				foreach (var snapshot in LanguageServiceProjectSnapshotFactory.FromSolution(solution)) {
+				// Task.Run, because building the snapshots is seconds of blocking work and this
+				// method would otherwise do all of it on the UI thread.
+				//
+				// PushSolutionAsync is async, but `await previous` completes synchronously whenever
+				// the previous push has already finished - which it has, on the first solution open
+				// of a session - so everything up to the first real await runs inline on whatever
+				// thread called QueueSolution. That caller is SolutionOpened, raised from
+				// SDProjectService.OpenSolutionInternal on the dispatcher. FromSolution then runs
+				// MSBuild's ResolveReferences target in a child dotnet process, once per project
+				// (MinimalMSBuildEngine.RunResolveReferences), and blocks reading its output.
+				//
+				// Measured on tests/fixtures/DebugTestApp: ~9s of a completely frozen window per
+				// project, long enough that macOS filed a spin report and the app looked like it
+				// had crashed. A project whose reference resolution fails is the slow case, so the
+				// freeze is worst exactly when there is least to show for it. See
+				// doc/technotes/msbuild.md.
+				//
+				// Only the snapshot construction moves off the dispatcher; there is deliberately no
+				// ConfigureAwait(false), so the loop below resumes on the UI thread as before.
+				var snapshots = await Task.Run(() => LanguageServiceProjectSnapshotFactory.FromSolution(solution));
+				foreach (var snapshot in snapshots) {
 					if (generation != Volatile.Read(ref solutionGeneration))
 						return;
 					if (service is RemoteLanguageService remote)

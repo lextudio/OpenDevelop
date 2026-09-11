@@ -140,6 +140,101 @@ one was invisible from a normal terminal test and only reproduced when the build
 
 All four are applied in `MinimalMSBuildEngine.BuildAsync` before `Process.Start`.
 
+### Reference resolution runs MSBuild too - and it is synchronous
+
+`MinimalMSBuildEngine.ResolveAssemblyReferences` resolves a project's references by running
+MSBuild's own `ResolveReferences` target in a child `dotnet` process
+(`RunResolveReferences`, `-t:ResolveReferences -getItem:ReferencePath`), for the same reason
+`BuildAsync` is out-of-process: a hosted in-process engine cannot run SDK tasks.
+
+The consequence that is easy to miss: **`IMSBuildEngine.ResolveAssemblyReferences` is a synchronous
+API that spawns a process and blocks for seconds.** Every caller inherits that cost on whatever
+thread it happens to be on, and several callers are on the dispatcher. Treat a call to it from the
+UI thread as a bug.
+
+#### Case study: File > Open Solution froze the IDE (fixed 2026-09-10)
+
+**Symptom.** Opening `tests/fixtures/DebugTestApp` from File > Open Solution froze the whole window
+for ~9 seconds. macOS filed a *spin* report (`/Library/Logs/DiagnosticReports/OpenDevelop_*.spin`),
+not a crash report, and the app looked to the user like it had crashed. `tests/fixtures/CoverageFixture`
+opened fine, which made it look fixture-specific rather than structural.
+
+**Root cause.** A synchronous, multi-second, out-of-process call reached the dispatcher through an
+`async` method that never actually yielded before doing its work:
+
+```text
+SDProjectService.OpenSolutionInternal          (UI thread)
+  SolutionOpened
+    RegisterCSharpLanguageServiceCommand.QueueSolution
+      PushSolutionAsync                        <- async, but `await previous` completed synchronously
+        LanguageServiceProjectSnapshotFactory.FromSolution
+          ...FromProject -> ResolveReferencePaths
+            MinimalMSBuildEngine.ResolveAssemblyReferences
+              RunResolveReferences -> StreamReader.ReadToEnd   <- blocked here, 100% of samples
+```
+
+`PushSolutionAsync` begins with `await previous`. On the first solution open of a session `previous`
+is already complete, and awaiting a completed task continues **synchronously on the same thread** -
+so the entire snapshot build ran in the async method's synchronous prefix, on the dispatcher.
+An `async` signature is not evidence that anything runs off the UI thread.
+
+Fix: `await Task.Run(() => LanguageServiceProjectSnapshotFactory.FromSolution(solution))`. Only the
+snapshot construction moves; there is deliberately no `ConfigureAwait(false)`, so the loop that
+pushes each snapshot resumes on the UI thread as before. This is safe because everything
+`FromProject` touches (`GetEvaluatedProperty`, `GetItemsOfType`, `ResolveAssemblyReferences`) is
+read-only and unguarded - the `SD.MainThread.VerifyAccess()` calls in `AbstractProject`/
+`MSBuildBasedProject` are all on *mutating* members - and `ProjectContentContainer.DoResolveReferences`
+already calls `ResolveAssemblyReferences` from a background thread.
+
+**Why DebugTestApp and not CoverageFixture.** Nothing about the freeze was fixture-specific; the
+fixture only controlled how *long* it lasted. DebugTestApp had a stale `obj/project.assets.json`
+(`libraries: 0`) disagreeing with a local `.nuget/NuGet.Config`, so its child MSBuild failed slowly
+with `MSB4018: The "ResolvePackageAssets" task failed unexpectedly` /
+`NullReferenceException at NuGet.ProjectModel.LockFile.GetTarget`. The freeze was worst exactly when
+there was least to show for it. A stale `obj/` is enough to trigger it; `rm -rf obj && dotnet restore`
+clears that half.
+
+**Diagnosing this class of bug.** A `.spin` report names the blocking syscall but leaves the managed
+frames as `???`. Get the managed stack instead - it names the exact call chain in one shot:
+
+```bash
+dotnet-stack report -p $(pgrep -f OpenDevelop | head -1)
+```
+
+The tell for "wrong thread" is the bottom of the stack, not the top: `Dispatcher.ProcessQueue` /
+`Application.Run` means the UI thread; `ThreadPoolWorkQueue.Dispatch` /
+`PortableThreadPool+WorkerThread.WorkerThreadStart` means the pool. Sample repeatedly in a loop
+while reproducing - the window can be short.
+
+#### The pipe reads deadlock, and the timeout that never fired
+
+`RunResolveReferences` also had a latent bug that the freeze investigation surfaced. It read the
+child's stdout to EOF, *then* stderr to EOF, and only then called `WaitForExit(timeout)`:
+
+```csharp
+string stdout = process.StandardOutput.ReadToEnd();   // deadlocks if the child fills stderr
+string stderr = process.StandardError.ReadToEnd();
+if (!process.WaitForExit(ResolveReferencesTimeoutMilliseconds)) { ... }   // unreachable in time
+```
+
+Two independent defects:
+
+- **Sequential `ReadToEnd()` on two pipes is the textbook child-process deadlock.** The pipe buffer
+  is finite (64 KB). A child that writes more than that to stderr while this side is still draining
+  stdout blocks in `write()`; this side stays blocked in `read()`; neither ever moves. A *failing*
+  SDK target is precisely the case that produces a large stderr, so the deadlock is most likely
+  when the build is already going wrong. (The DebugTestApp failure measured 5,148 bytes - under the
+  buffer, which is why it hung for 9s rather than forever.)
+- **The timeout could never fire**, because `WaitForExit` was only reached after both reads had
+  already returned. It guarded the one part of the operation that was never at risk.
+
+Both pipes are now drained concurrently with `ReadToEndAsync`, and `Task.WaitAll(..., timeout)` -
+rather than awaiting each task in turn - is what makes the timeout actually bound the reads.
+`Task.WaitAll` is safe to block on even from the UI thread, despite the general warning about
+`GetAwaiter().GetResult()` in `CLAUDE.md`: `StreamReader`'s async path uses `ConfigureAwait(false)`
+internally and posts no continuation back to the dispatcher. It is still *slow* from the UI thread,
+which is a separate problem - see above.
+
 ### Output parsing
 
 `dotnet build`'s console output is parsed line-by-line with a regex matching the standard MSBuild
@@ -209,11 +304,16 @@ unresolvable outside Windows, which makes WPF's `TextFormatter` fall through to
 
 ## Known gaps / non-goals
 
-- `IMSBuildEngine.ResolveAssemblyReferences` returns only `additionalReferences` (a no-op for the
-  real MSBuild-based resolution) - real resolution would need the same out-of-process treatment as
-  `BuildAsync`. Not yet needed: `RoslynWorkspaceHelper.GetMetadataReferences` already falls back to
-  the host runtime's trusted platform assemblies when this comes back empty (see
-  `doc/technotes/csharp-roslyn.md`).
+- `IMSBuildEngine.ResolveAssemblyReferences` no longer returns only `additionalReferences`; it runs
+  MSBuild's `ResolveReferences` target out of process, like `BuildAsync` (see "Reference resolution
+  runs MSBuild too" above). What remains a gap is that it is **uncached**: every caller pays a fresh
+  child-process round trip for the same project, and there is no invalidation hook to hang a cache
+  off. Reducing the cost of the calls would matter less than not making them from the UI thread,
+  which is the actual hazard.
+- Several callers still invoke it on the dispatcher (`GacReferencePanel`, `MyTypeFinder`,
+  `WpfToolbox`, `TypeResolutionService`). Each one freezes the window for the duration of a child
+  MSBuild. `WpfViewContent.LoadInternal` already sidesteps it deliberately (it reads copy-local DLLs
+  beside the built output instead); the rest have not been revisited.
 - `BuildTarget.Rebuild` maps to a plain `dotnet build` (no separate clean-then-build step) since
   `dotnet build` has no single "rebuild" verb; output is still correct, just not force-rebuilt from
   clean.
