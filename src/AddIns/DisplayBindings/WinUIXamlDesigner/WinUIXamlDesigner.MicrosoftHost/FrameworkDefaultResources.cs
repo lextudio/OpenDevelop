@@ -59,6 +59,44 @@ static class FrameworkDefaultResources
 		DesignHost.TransformXamlBeforeLoad = Transform;
 	}
 
+	/// <summary>
+	/// Gives every <c>&lt;AutoSuggestBox&gt;</c> in a document a design-time <c>Template</c> that
+	/// omits the framework default's <c>Popup</c>.
+	///
+	/// AutoSuggestBox's DEFAULT template hosts a Popup, and creating that popup takes the child down
+	/// with a native fault - <c>renderDiagnostics</c> stays empty and there is no managed exception,
+	/// so it cannot be caught, only avoided. A bare <c>&lt;AutoSuggestBox/&gt;</c> reproduces it (no
+	/// app types, no bindings); the same element with this template renders (measured 1365x32). The
+	/// element itself is untouched - selection, outline and the Properties pad still target it - and
+	/// it renders as a text input bound to Text/PlaceholderText, which is the right design-surface
+	/// approximation (the suggestion list is a runtime popup the design surface never shows anyway).
+	///
+	/// This has to rewrite the DOCUMENT rather than add an implicit Style to Application.Resources:
+	/// measured, an implicit style merged into Application.Resources at startup is not applied to
+	/// these elements, while the same implicit style in Page.Resources is. Rewriting the element's
+	/// own Template property is the highest-precedence form and works.
+	/// </summary>
+	static void ApplyDesignTimeControlTemplates(XElement root)
+	{
+		foreach (var element in root.DescendantsAndSelf().ToList())
+		{
+			if (element.Name.LocalName != "AutoSuggestBox")
+				continue;
+			var ns = element.Name.Namespace;
+			var templateProperty = ns + "AutoSuggestBox.Template";
+			// Never override a Template the document already sets.
+			if (element.Elements(templateProperty).Any())
+				continue;
+			element.Add(new XElement(templateProperty,
+				new XElement(ns + "ControlTemplate",
+					new XAttribute("TargetType", "AutoSuggestBox"),
+					new XElement(ns + "TextBox",
+						new XAttribute(X + "Name", "TextBox"),
+						new XAttribute("Text", "{TemplateBinding Text}"),
+						new XAttribute("PlaceholderText", "{TemplateBinding PlaceholderText}")))));
+		}
+	}
+
 	static string? Build()
 	{
 		var assembly = typeof(FrameworkDefaultResources).Assembly;
@@ -305,6 +343,7 @@ static class FrameworkDefaultResources
 			return merged ?? xaml;
 		}
 
+		ApplyDesignTimeControlTemplates(root);
 		return InjectIntoElementResources(root);
 	}
 

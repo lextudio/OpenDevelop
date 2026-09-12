@@ -69,6 +69,10 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     public string UnoXamlSampleSolutionPath => LocateUnoXamlSampleSolution();
     public string ProGpuWinUISampleSolutionPath => LocateProGpuWinUISampleSolution();
     public string WinUISampleSolutionPath => LocateWinUISampleSolution();
+    // Null when no WinUI-Gallery checkout is present. The Gallery corpus tests
+    // (WinUIGalleryDesignerTests) are optional and skip rather than fail in that case - the real
+    // Gallery is a large external repo, not a fixture this repository can vendor.
+    public string? WinUIGalleryRoot => TryLocateWinUIGalleryRoot();
     public string AspNetCoreSampleSolutionPath => LocateAspNetCoreSampleSolution();
     public string GitFixtureTemplatePath => LocateGitFixtureTemplate();
     public string FSharpFixtureSolutionPath => LocateFSharpFixture();
@@ -1040,6 +1044,25 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
             dir = Path.GetDirectoryName(dir);
         }
         throw new FileNotFoundException("Could not locate src/Samples/WinUISample/WinUISample.slnx");
+    }
+
+    // The real WinUI-Gallery checkout is optional. Order: explicit OD_WINUI_GALLERY_ROOT, then a
+    // sibling "WinUI-Gallery" directory at any ancestor of the test binary (the usual layout is
+    // <repos>/WinUI-Gallery next to <repos>/wpf-tools/OpenDevelop).
+    static string? TryLocateWinUIGalleryRoot()
+    {
+        var configured = Environment.GetEnvironmentVariable("OD_WINUI_GALLERY_ROOT");
+        if (!string.IsNullOrWhiteSpace(configured))
+            return File.Exists(Path.Combine(configured, "WinUIGallery.slnx")) ? configured : null;
+
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir, "WinUI-Gallery");
+            if (File.Exists(Path.Combine(candidate, "WinUIGallery.slnx"))) return candidate;
+            dir = Path.GetDirectoryName(dir);
+        }
+        return null;
     }
 
     static string LocateMicrosoftWpfSampleSolution()

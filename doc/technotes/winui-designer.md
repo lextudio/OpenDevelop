@@ -1059,3 +1059,83 @@ When a batch result looks uniformly bad, re-check one page by hand through
   IDE side (only the child dll and display name differ), so seeing "Uno" in a stack or a file name
   does not mean a document was routed to the Uno child. `od.winui-designer.status`'s `backend` field
   is the reliable answer.
+
+## WinUI-Gallery integration corpus (2026-09-12)
+
+`tests/OpenDevelop.IntegrationTests/WinUIGalleryDesignerTests.cs` turns the manual
+investigation above into a standing regression suite. It opens the **real** WinUI-Gallery
+checkout (not a vendored copy) with the Microsoft WinUI child and asserts each page's outcome.
+Verified 2026-09-12: 17/17 cases pass.
+
+Gating (the suite skips, never silently passes, when its prerequisites are absent):
+
+- `OD_WINUI_RUNTIME=microsoft` is required - the Gallery is a Windows App SDK app and must run on
+  the Microsoft child, per the runtime-routing decision above.
+- A Gallery checkout must be present: `OD_WINUI_GALLERY_ROOT`, or a sibling `WinUI-Gallery`
+  directory at any ancestor of the test binary (`OpenDevelopAppFixture.WinUIGalleryRoot`).
+- The Gallery must already be built for the configuration/platform under test. Defaults are
+  `Debug-Unpackaged` and (on arm64) `ARM64`; override with `OD_WINUI_GALLERY_CONFIGURATION` /
+  `OD_WINUI_GALLERY_PLATFORM`. Set `OD_WINUI_GALLERY_BUILD=1` to build it through
+  `od.build-solution` first.
+
+**Each page is opened in a fresh design host.** The out-of-process child does not survive being
+handed one Gallery document after another - the second and later opens crash it natively
+mid-render - which is exactly why the standalone `GalleryProbe` starts a new client per file. The
+suite reproduces that isolation by calling `od.close-all-document-views` and waiting for
+`runtime-stats.childAlive == false` before opening the next page, so each page repeats the ~30s
+theme build on a clean child instead of crashing the shared one.
+
+Assertion contract, deliberately matching what the investigation learned to distrust:
+
+- Every "renders" case asserts `framework == "WinUI"`, `backend == "WinUI"`, `rendered: true`,
+  **and a non-zero rendered size parsed from `od.winui-designer.status`'s `status` text** - because
+  `rendered: true` alone can be a 0x0 frame (see "Measuring this is its own hazard"). It then
+  checks the document's `elementNames` and, where the page names an inner control, a non-zero
+  `od.winui-designer.query-element-screen-bounds` - a live-tree proof, not just a namescope echo.
+- Failures do **not** arrive via `documentError` (that field is reserved for source-model errors):
+  the host puts the reason in the user-visible `status` text. An abstract-root page shows
+  `Cannot preview this page: its root element 'ItemsPageBase' is an abstract class…`.
+
+The corpus covers two verified outcomes:
+
+- **Renders with real content**: Button, CheckBox, ComboBox, Slider, ToggleSwitch, ProgressBar,
+  RadioButton, Expander, TreeView, AppBarButton, TextBox, Pivot, AutoSuggestBox, NavigationView.
+- **Abstract-root failure** (`ListView`/`GridView`, root `ItemsPageBase`): no render, explicit
+  explanation, child stays alive.
+
+AutoSuggestBox and NavigationView used to be a third outcome - a native crash that took the child
+down and made the host give up after three restarts. That is now fixed host-side.
+
+### AutoSuggestBox's Popup crashed the Microsoft host (fixed 2026-09-12)
+
+A bare `<AutoSuggestBox/>` - no app types, no bindings - took the child down with a **pure native
+fault**: `renderDiagnostics` stayed empty and there was no managed exception, so it could not be
+caught (unlike Pivot/NavigationView's COMException path). Bisecting the Gallery's
+`NavigationViewPage` isolated it: removing only `NavigationView.AutoSuggestBox` made the whole page
+render, and a one-element page proved the control, not the page, was the trigger. The `.NET`
+runtime's dump-on-crash did not fire either, confirming the fault never passes through the CLR.
+
+Cause: AutoSuggestBox's framework default template hosts a `Popup`, and creating that popup faults
+in this offscreen host. WinUI's own guard for the no-island case
+(`AutoSuggestBox::OnPropertyChanged2` for `IsSuggestionListOpen`) does not cover template
+construction/load, which is where this dies.
+
+Fix: `FrameworkDefaultResources.ApplyDesignTimeControlTemplates` rewrites every `<AutoSuggestBox>`
+in the combined document with an explicit, `Popup`-free design-time `Template` rendering a
+`TextBox` bound to `Text`/`PlaceholderText`. It rewrites the element's own `Template` property
+rather than adding an implicit `Style` to `Application.Resources` because - measured - an implicit
+style merged into `Application.Resources` at startup is *not* applied to these offscreen elements,
+while the same implicit style in `Page.Resources` is; the element-local property is the
+highest-precedence form and works. The element itself is untouched, so selection, outline and the
+Properties pad still target it.
+
+Verified: a bare `AutoSuggestBox` went from a native crash to `rendered: true` (1365x32), and the
+Gallery's `AutoSuggestBoxPage` and `NavigationViewPage` now render in the corpus.
+
+The class carries `[Trait("DesignerBackend", "Microsoft")]` so it runs with the existing
+`RunMicrosoftDesignerIntegration` target alongside the `WinUIOnly_*` tests.
+
+Prerequisite note: the integration test project deliberately does **not** build
+`WinUIXamlDesigner.MicrosoftHost` (it needs VS's MSBuild for the `UseWinUI`/PRI toolchain). Build
+and deploy that host first, exactly as for any `DesignerBackend=Microsoft` run; otherwise the
+suite's `OD_WINUI_RUNTIME=microsoft` gate is satisfied but the child is not present.
