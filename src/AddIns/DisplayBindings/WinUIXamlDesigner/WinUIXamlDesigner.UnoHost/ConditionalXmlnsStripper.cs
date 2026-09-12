@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text.RegularExpressions;
 
 namespace ICSharpCode.WinUIXamlDesigner.UnoHost
@@ -38,19 +39,61 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 	{
 		// Matches an xmlns declaration's value up to (not including) "?cond:", inside a quoted
 		// attribute value. Deliberately anchored on "xmlns" (not just any attribute) so a `?cond:`
-		// substring appearing in ordinary text content is never touched.
+		// substring appearing in ordinary text content is never touched. Capture 1 is the prefix
+		// name, so the same pass can also find that prefix's attribute usages below.
 		static readonly Regex Pattern = new(
-			"(xmlns(?::\\w+)?\\s*=\\s*\"[^\"?]*)\\?cond:[^\"]*(\")",
+			"xmlns(?::(\\w+))?\\s*=\\s*\"[^\"?]*\\?cond:[^\"]*\"",
 			RegexOptions.Compiled);
 
 		/// <summary>Returns <paramref name="xaml"/> with every conditional namespace declaration's
-		/// query string removed, or unchanged when none is present.</summary>
+		/// query string removed, and every conditional-prefixed ATTRIBUTE dropped, or unchanged when
+		/// none is present.</summary>
 		public static string Strip(string xaml, out int stripped)
 		{
 			var count = 0;
-			var result = Pattern.Replace(xaml, match => { count++; return match.Groups[1].Value + match.Groups[2].Value; });
+			var prefixes = new List<string>();
+			foreach (Match match in Pattern.Matches(xaml))
+			{
+				if (match.Groups[1].Success)
+				{
+					prefixes.Add(match.Groups[1].Value);
+				}
+				count++;
+			}
+
+			var result = Pattern.Replace(xaml, match => match.Groups[1].Success
+				? "xmlns:" + match.Groups[1].Value + "=\"" + PlainNamespaceOf(match.Value) + "\""
+				: "xmlns=\"" + PlainNamespaceOf(match.Value) + "\"");
+
+			// Conditional ATTRIBUTES (newExp:Background, legacy:Background, ...) cannot be evaluated by
+			// a runtime parser, and once the namespace rewrite above collapses both conditions onto the
+			// SAME presentation namespace, two mutually-exclusive conditions on one element become a
+			// DUPLICATE attribute name - which fails the whole document before any other repair runs
+			// (measured: WinUI-Gallery's CustomXamlConditionalsPage). Drop them the way x:Bind is
+			// dropped: show the structure, not the compile-time evaluation. Conditional ELEMENTS
+			// (newExp:InfoBar, legacy:Setter) are kept by the namespace rewrite. The prefix is matched
+			// only at an attribute position (preceded by whitespace inside a tag), so an element name
+			// like <newExp:InfoBar> is not touched.
+			foreach (var prefix in prefixes.Distinct(StringComparer.Ordinal))
+			{
+				var attributePattern = new Regex(
+					"\\s+" + Regex.Escape(prefix) + ":[A-Za-z_][\\w.-]*\\s*=\\s*\"[^\"]*\"",
+					RegexOptions.Compiled);
+				result = attributePattern.Replace(result, _ => { count++; return ""; });
+			}
+
 			stripped = count;
 			return result;
+		}
+
+		/// <summary>Ends at the first '?', then trims the trailing quote - the plain namespace URI the
+		/// conditional query string was decorating.</summary>
+		static string PlainNamespaceOf(string declaration)
+		{
+			var equals = declaration.IndexOf('=');
+			var value = declaration.Substring(equals + 1).Trim().Trim('"');
+			var query = value.IndexOf('?');
+			return query < 0 ? value : value.Substring(0, query);
 		}
 	}
 }

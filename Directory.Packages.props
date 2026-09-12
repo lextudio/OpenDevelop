@@ -53,7 +53,7 @@
     <PackageVersion Include="Microsoft.Data.SqlClient" Version="7.0.2" />
     <PackageVersion Include="Microsoft.Diagnostics.NETCore.Client" Version="0.2.661903" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
-    <PackageVersion Include="Microsoft.WindowsAppSDK" Version="1.7.250606001" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK" Version="2.4.0" />
     <PackageVersion Include="Microsoft.Msagl" Version="1.1.6" />
     <PackageVersion Include="Microsoft.PowerShell.SDK" Version="7.4.0" />
     <PackageVersion Include="Microsoft.TemplateEngine.Abstractions" Version="10.0.302" />

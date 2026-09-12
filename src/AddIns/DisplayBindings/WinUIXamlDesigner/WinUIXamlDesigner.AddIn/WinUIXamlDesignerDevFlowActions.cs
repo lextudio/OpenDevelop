@@ -47,6 +47,7 @@ public static class WinUIXamlDesignerDevFlowActions
 			toolboxFilterText = SharedToolbox.Instance.FilterText,
 			toolboxSearchHosted = (SD.Services.GetService(typeof(IToolsPadHost)) as IToolsPadHost)?.HasToolboxSearch == true,
 			outlineChildCount = view.OutlineChildCount,
+			outlineNames = view.OutlineNames(),
 			elementNames = view.ElementNames(),
 			selectedName = view.SelectedElementName,
 			resolvedNameCount = view.ResolvedNameCount,

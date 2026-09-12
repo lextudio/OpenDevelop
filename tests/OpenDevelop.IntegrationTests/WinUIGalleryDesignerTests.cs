@@ -92,6 +92,22 @@ public sealed class WinUIGalleryDesignerTests
         // template (FrameworkDefaultResources.ApplyDesignTimeControlTemplates), so they render.
         { "WinUIGallery/Samples/AutoSuggestBox/AutoSuggestBoxPage.xaml", "Control1,Control2", "Control1" },
         { "WinUIGallery/Samples/NavigationView/NavigationViewPage.xaml", "nvSample,contentFrame", "contentFrame" },
+        // Fixed by the Windows App SDK 2.4.0 upgrade (SplitMenuFlyoutItem / SystemBackdropElement
+        // do not exist before 2.x).
+        { "WinUIGallery/Samples/MenuFlyout/MenuFlyoutPage.xaml", "Example1,Control1", "" },
+        { "WinUIGallery/Samples/SystemBackdropElement/SystemBackdropElementPage.xaml", "Example1,DynamicBackdropHost", "" },
+        // Fixed by the accent-palette work (FrameworkDefaultResources.ApplyAccentPalette): the page
+        // resolves AccentAcrylicBackgroundFillColorDefaultBrush, whose TintColor used to fail.
+        { "WinUIGallery/Samples/XamlStyles/XamlStylesPage.xaml", "", "" },
+        // Fixed by InjectDesignData dropping design-time (d:/mc:) markup by namespace: the surviving
+        // d:Source used to make the combined document unparseable and surface as a bogus x:Class error.
+        { "WinUIGallery/Samples/SemanticZoom/SemanticZoomPage.xaml", "Example1,cvsGroups", "" },
+        // Fixed by ConditionalXmlnsStripper dropping conditional attributes (two mutually-exclusive
+        // conditions collapsed to the same attribute name and failed the parse).
+        { "WinUIGallery/Samples/CustomXamlConditionals/CustomXamlConditionalsPage.xaml", "", "" },
+        // Fixed by the RefreshContainer design-time template (its default template presented nothing
+        // offscreen, so the page measured 0x0).
+        { "WinUIGallery/Samples/PullToRefresh/PullToRefreshPage.xaml", "Example1,rc,lv", "lv" },
     };
 
     // Root element is the app's abstract ItemsPageBase; XamlReader constructs the root's own type
@@ -113,7 +129,8 @@ public sealed class WinUIGalleryDesignerTests
     {
         if (_skip) { Assert.Skip(_skipReason); return; }
 
-        var status = await OpenDesignerAsync(relativePage, SplitNames(expectedNames).First(), DesignerExpectation.Rendered);
+        var signature = SplitNames(expectedNames).FirstOrDefault() ?? string.Empty;
+        var status = await OpenDesignerAsync(relativePage, signature, DesignerExpectation.Rendered);
 
         Assert.Equal("WinUI", status.GetProperty("framework").GetString());
         Assert.Equal("WinUI", status.GetProperty("backend").GetString());

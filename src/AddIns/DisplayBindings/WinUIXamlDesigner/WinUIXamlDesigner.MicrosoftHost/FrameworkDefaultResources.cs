@@ -60,40 +60,64 @@ static class FrameworkDefaultResources
 	}
 
 	/// <summary>
-	/// Gives every <c>&lt;AutoSuggestBox&gt;</c> in a document a design-time <c>Template</c> that
-	/// omits the framework default's <c>Popup</c>.
+	/// Gives the framework controls whose DEFAULT TEMPLATE natively crashes this host a design-time
+	/// <c>Template</c> instead.
 	///
-	/// AutoSuggestBox's DEFAULT template hosts a Popup, and creating that popup takes the child down
-	/// with a native fault - <c>renderDiagnostics</c> stays empty and there is no managed exception,
-	/// so it cannot be caught, only avoided. A bare <c>&lt;AutoSuggestBox/&gt;</c> reproduces it (no
-	/// app types, no bindings); the same element with this template renders (measured 1365x32). The
-	/// element itself is untouched - selection, outline and the Properties pad still target it - and
-	/// it renders as a text input bound to Text/PlaceholderText, which is the right design-surface
-	/// approximation (the suggestion list is a runtime popup the design surface never shows anyway).
+	/// Two are known, both measured: a bare <c>&lt;AutoSuggestBox/&gt;</c> (default template hosts a
+	/// <c>Popup</c>) and a bare <c>&lt;MapControl/&gt;</c> each take the child down with a native
+	/// fault - <c>renderDiagnostics</c> stays empty and there is no managed exception, so they
+	/// cannot be caught, only avoided. The replacement element-specific template renders instead
+	/// (both measured at 1365xN). The element itself is untouched - selection, outline and the
+	/// Properties pad still target it - and it renders as the designer-appropriate approximation.
 	///
-	/// This has to rewrite the DOCUMENT rather than add an implicit Style to Application.Resources:
-	/// measured, an implicit style merged into Application.Resources at startup is not applied to
-	/// these elements, while the same implicit style in Page.Resources is. Rewriting the element's
-	/// own Template property is the highest-precedence form and works.
+	/// This has to rewrite the DOCUMENT rather than add an implicit Style to
+	/// Application.Resources: measured, an implicit style merged into Application.Resources at
+	/// startup is not applied to these elements, while the same implicit style in Page.Resources
+	/// is. Rewriting the element's own Template property is the highest-precedence form and works.
 	/// </summary>
 	static void ApplyDesignTimeControlTemplates(XElement root)
 	{
+		// Diagnostic switch (same shape as OD_DESIGNHOST_NO_SUBSTITUTE): disables the workaround so
+		// the raw framework default templates run, which is how we check whether a newer
+		// Windows App SDK fixed the native crash instead of masking it.
+		if (Environment.GetEnvironmentVariable("OD_DESIGNHOST_NO_DESIGN_TEMPLATES") == "1")
+			return;
 		foreach (var element in root.DescendantsAndSelf().ToList())
 		{
-			if (element.Name.LocalName != "AutoSuggestBox")
-				continue;
+			var name = element.Name.LocalName;
 			var ns = element.Name.Namespace;
-			var templateProperty = ns + "AutoSuggestBox.Template";
+			var content = name switch
+			{
+				// Design surface shows the typed text / placeholder, not the runtime suggestion popup.
+				"AutoSuggestBox" => new XElement(ns + "TextBox",
+					new XAttribute(X + "Name", "TextBox"),
+					new XAttribute("Text", "{TemplateBinding Text}"),
+					new XAttribute("PlaceholderText", "{TemplateBinding PlaceholderText}")),
+				// A map needs a service token and network; the design surface shows a neutral placeholder.
+				"MapControl" => new XElement(ns + "Border",
+					new XAttribute("Background", "#FFE5E5E5"),
+					new XElement(ns + "TextBlock",
+						new XAttribute("Text", "Map (design-time placeholder)"),
+						new XAttribute("HorizontalAlignment", "Center"),
+						new XAttribute("VerticalAlignment", "Center"),
+						new XAttribute("Foreground", "#FF808080"))),
+				// RefreshContainer's default template presents nothing offscreen (an empty pull-to-
+				// refresh gesture surface), so its content measured 0x0. A passthrough presenter makes
+				// the content - eg WinUI-Gallery's 200px list - actually appear.
+				"RefreshContainer" => new XElement(ns + "ContentPresenter",
+					new XAttribute("Content", "{TemplateBinding Content}")),
+				_ => null,
+			};
+			if (content is null)
+				continue;
+			var templateProperty = ns + name + ".Template";
 			// Never override a Template the document already sets.
 			if (element.Elements(templateProperty).Any())
 				continue;
 			element.Add(new XElement(templateProperty,
 				new XElement(ns + "ControlTemplate",
-					new XAttribute("TargetType", "AutoSuggestBox"),
-					new XElement(ns + "TextBox",
-						new XAttribute(X + "Name", "TextBox"),
-						new XAttribute("Text", "{TemplateBinding Text}"),
-						new XAttribute("PlaceholderText", "{TemplateBinding PlaceholderText}")))));
+					new XAttribute("TargetType", name),
+					content)));
 		}
 	}
 
@@ -135,7 +159,7 @@ static class FrameworkDefaultResources
 				return null;
 			}
 			xaml = PruneUnresolvableTargetTypes(xaml);
-			xaml = AddMissingSystemAccentColors(xaml);
+			xaml = ApplyAccentPalette(xaml);
 			Console.Error.WriteLine($"design-host: built default theme resources from {names.Length} file(s).");
 			return xaml;
 		}
@@ -210,66 +234,113 @@ static class FrameworkDefaultResources
 	}
 
 	/// <summary>
-	/// Defines <c>SystemAccentColor</c> and its Light1-3/Dark1-3 shades, which the vendored theme
-	/// files REFERENCE (eight of them do) but none of them DEFINE.
+	/// Resolves the OS accent palette (<c>SystemAccentColor</c> + Light1-3/Dark1-3) and bakes it
+	/// into the vendored theme markup.
 	///
-	/// They are not ordinary static resources: on a real device the framework merges the OS's
-	/// current accent colour into Application.Resources at startup (UISettings), which is exactly
-	/// why a generic.xaml-style file only ever references them. A design host has no such live
-	/// accent colour, so the keys simply do not exist here.
+	/// The vendored theme files REFERENCE these seven keys (eight of them do) but none DEFINES
+	/// them: on a real device the framework merges the OS's current accent colour into
+	/// Application.Resources at startup, which is why a generic.xaml-style file only ever
+	/// references them. This host deliberately does not use the framework's own resource
+	/// pipeline (XamlControlsResources throws 0x8000FFFF unpackaged - see the class header), so
+	/// the framework never performs that merge. Reading the palette back through
+	/// <c>UISettings</c> is the honest fix: it exposes exactly these seven slots, so the design
+	/// surface shows the user's real accent rather than a guess.
 	///
-	/// Why this is not merely cosmetic, and why only ONE page in 125 ever noticed: a
-	/// ResourceDictionary entry is instantiated LAZILY, when something looks its key up (see
-	/// CResourceDictionary2's deferred-resource machinery in the WinUI sources). The accent
-	/// AcrylicBrushes that carry <c>TintColor="{ThemeResource SystemAccentColorLight3}"</c> are
-	/// therefore never built - and never fail - until a page actually asks for one.
-	/// WinUI-Gallery's XamlStylesPage is the one page that does
-	/// (<c>Background="{ThemeResource AccentAcrylicBackgroundFillColorDefaultBrush}"</c>), and it
-	/// failed with "Failed to assign to property '...AcrylicBrush.TintColor'" - the missing colour
-	/// surfacing as an assignment failure on the brush being constructed.
+	/// They are not merely cosmetic, and only ONE page in 125 ever noticed: a ResourceDictionary
+	/// entry is instantiated LAZILY, so the accent AcrylicBrushes that carry
+	/// <c>TintColor="{ThemeResource SystemAccentColorDark1}"</c> are never built - and never
+	/// fail - until a page asks for one. WinUI-Gallery's XamlStylesPage is the one page that does
+	/// (<c>Background="{ThemeResource AccentAcrylicBackgroundFillColorDefaultBrush}"</c>); with
+	/// the references unresolved it failed with "Failed to assign to property
+	/// '...AcrylicBrush.TintColor'" - the missing colour surfacing as an assignment failure on
+	/// the brush being constructed.
 	///
-	/// PLACEMENT IS LOAD-BEARING. These go in as the first CONTENT items, after any property
-	/// element (<c>&lt;ResourceDictionary.ThemeDictionaries&gt;</c>, which <see cref="Finish"/>'s
-	/// counterpart emits first). XAML does not allow a property element once content has started,
-	/// so inserting them with a plain AddFirst - ahead of ThemeDictionaries - makes the WHOLE
-	/// merged dictionary unparseable. That failure is silent in the worst way: Install swallows it
-	/// and logs, Application.Resources ends up with no framework tokens at all, and every page in
-	/// the corpus then breaks with the very error this method exists to fix. Measured: 119 pages
-	/// that rendered fine regressed to the identical TintColor failure until the placement was
-	/// corrected.
+	/// PLACEMENT IS LOAD-BEARING. The key definitions go in as the first CONTENT items, after any
+	/// property element (<c>&lt;ResourceDictionary.ThemeDictionaries&gt;</c>). XAML does not allow
+	/// a property element once content has started, so inserting them ahead of ThemeDictionaries
+	/// makes the WHOLE merged dictionary unparseable. That failure is silent in the worst way:
+	/// Install swallows it and logs, Application.Resources ends up with no framework tokens at
+	/// all, and every page in the corpus then breaks with the very error this method exists to
+	/// fix. Measured: 119 pages that rendered fine regressed to the identical TintColor failure
+	/// until the placement was corrected.
 	/// </summary>
-	static string AddMissingSystemAccentColors(string xaml)
+	static string ApplyAccentPalette(string xaml)
 	{
 		XDocument document;
 		try { document = XDocument.Parse(xaml); }
 		catch { return xaml; }
 
-		var root = document.Root!;
-		var added = DefineAccentColorsIn(root);
+		var palette = ResolveAccentPalette();
 
-		// AND inside every per-theme dictionary. This is the half that actually fixes the failure:
-		// the accent AcrylicBrushes live INSIDE <ResourceDictionary.ThemeDictionaries>, and a
-		// {ThemeResource SystemAccentColorLight3} evaluated while one of them is being constructed
-		// resolves against its OWN theme dictionary - it does not fall back to the parent
-		// dictionary's top-level entries (measured: defining them only at top level left the exact
-		// same "Failed to assign to property '...AcrylicBrush.TintColor'" in place). Scoping them
-		// per theme is also what the real framework does, since the shades ARE theme-dependent.
+		// 1. Bake every accent reference into a literal. Resource entries are instantiated LAZILY,
+		//    so an accent AcrylicBrush is only built when a page asks for it; resolving the
+		//    {ThemeResource} while that brush is being constructed is brittle across SDK versions -
+		//    Windows App SDK 2.4 reports "Failed to assign to property '...AcrylicBrush.TintColor'"
+		//    even though the key is declared in the same theme dictionary. A design host needs the
+		//    value, not the indirection, so the literal removes the failure mode entirely.
+		var rewritten = 0;
+		foreach (var attribute in document.Descendants().Attributes())
+		{
+			foreach (var key in SystemAccentColorKeys)
+			{
+				if (attribute.Value == "{ThemeResource " + key + "}" || attribute.Value == "{StaticResource " + key + "}")
+				{
+					attribute.Value = palette[key];
+					rewritten++;
+					break;
+				}
+			}
+		}
+
+		// 2. Also define the keys (as Color) in the root and every per-theme dictionary, for
+		//    anything that looks them up by key rather than through a rewritten attribute.
+		var root = document.Root!;
+		var added = DefineAccentColorsIn(root, palette);
 		foreach (var themeDictionary in root.Elements(Xaml + "ResourceDictionary.ThemeDictionaries")
 			.Elements(Xaml + "ResourceDictionary"))
 		{
-			added += DefineAccentColorsIn(themeDictionary);
+			added += DefineAccentColorsIn(themeDictionary, palette);
 		}
 
-		if (added == 0) return xaml;
-		Console.Error.WriteLine($"design-host: defined {added} SystemAccentColor* fallback(s)"
-			+ " that the vendored theme files reference but never declare (no live OS accent colour here).");
+		if (rewritten == 0 && added == 0) return xaml;
+		Console.Error.WriteLine($"design-host: accent palette applied ({rewritten} reference(s) resolved, {added} key(s) defined).");
 		return document.ToString(SaveOptions.DisableFormatting);
 	}
+
+	/// <summary>The OS accent palette, keyed by the seven SystemAccentColor* names. Falls back to
+	/// WinUI's default accent when UISettings is unavailable (some host contexts have no settings
+	/// service), so the markup is always complete.</summary>
+	static Dictionary<string, string> ResolveAccentPalette()
+	{
+		var palette = new Dictionary<string, string>(StringComparer.Ordinal);
+		try
+		{
+			var settings = new Windows.UI.ViewManagement.UISettings();
+			palette["SystemAccentColor"] = FormatColor(settings.GetColorValue(Windows.UI.ViewManagement.UIColorType.Accent));
+			palette["SystemAccentColorLight1"] = FormatColor(settings.GetColorValue(Windows.UI.ViewManagement.UIColorType.AccentLight1));
+			palette["SystemAccentColorLight2"] = FormatColor(settings.GetColorValue(Windows.UI.ViewManagement.UIColorType.AccentLight2));
+			palette["SystemAccentColorLight3"] = FormatColor(settings.GetColorValue(Windows.UI.ViewManagement.UIColorType.AccentLight3));
+			palette["SystemAccentColorDark1"] = FormatColor(settings.GetColorValue(Windows.UI.ViewManagement.UIColorType.AccentDark1));
+			palette["SystemAccentColorDark2"] = FormatColor(settings.GetColorValue(Windows.UI.ViewManagement.UIColorType.AccentDark2));
+			palette["SystemAccentColorDark3"] = FormatColor(settings.GetColorValue(Windows.UI.ViewManagement.UIColorType.AccentDark3));
+		}
+		catch (Exception e)
+		{
+			Console.Error.WriteLine($"design-host: UISettings accent unavailable ({e.GetBaseException().Message}); using the default accent.");
+		}
+		foreach (var key in SystemAccentColorKeys)
+		{
+			if (!palette.ContainsKey(key)) palette[key] = DefaultAccentColor;
+		}
+		return palette;
+	}
+
+	static string FormatColor(Windows.UI.Color color) => $"#{color.A:X2}{color.R:X2}{color.G:X2}{color.B:X2}";
 
 	/// <summary>Adds any missing accent key to one dictionary scope, as its first CONTENT item -
 	/// after every property element, never before one (see the caller's remarks on why that
 	/// ordering is load-bearing).</summary>
-	static int DefineAccentColorsIn(XElement dictionary)
+	static int DefineAccentColorsIn(XElement dictionary, IReadOnlyDictionary<string, string> palette)
 	{
 		var existing = dictionary.Elements()
 			.Select(e => (string?)e.Attribute(X + "Key"))
@@ -282,7 +353,7 @@ static class FrameworkDefaultResources
 		foreach (var key in SystemAccentColorKeys.Reverse())
 		{
 			if (existing.Contains(key)) continue;
-			var entry = new XElement(Xaml + "Color", new XAttribute(X + "Key", key), DefaultAccentColor);
+			var entry = new XElement(Xaml + "Color", new XAttribute(X + "Key", key), palette[key]);
 			if (lastPropertyElement is null) dictionary.AddFirst(entry);
 			else lastPropertyElement.AddAfterSelf(entry);
 			added++;
@@ -329,10 +400,15 @@ static class FrameworkDefaultResources
 		}
 
 		// XamlReader.Load is a runtime parser, whereas x:Class is consumed only by
-		// generated InitializeComponent/LoadComponent code.  A design host has no
-		// generated partial for the user's page, so forwarding this directive makes
-		// every normal WinUI page fail with xClassCanOnlyBeUsedOnLoadComponent.
-		root.Attribute(X + "Class")?.Remove();
+		// generated InitializeComponent/LoadComponent code. A design host has no generated partial
+		// for the user's page, so forwarding this directive makes every normal WinUI page fail with
+		// xClassCanOnlyBeUsedOnLoadComponent. Strip it from the WHOLE document, not just the root:
+		// a nested x:Class (or one that arrives on a merged dictionary's root) triggers the same
+		// parser error, and the directive means nothing to a runtime parse wherever it appears.
+		foreach (var element in root.DescendantsAndSelf())
+		{
+			element.Attribute(X + "Class")?.Remove();
+		}
 
 		if (root.Name == Xaml + "ResourceDictionary")
 		{

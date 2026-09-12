@@ -143,6 +143,25 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	public int OutlineChildCount =>
 		outline.Items.Count == 0 ? 0 : ((TreeViewItem)outline.Items[0]).Items.Count;
 
+	/// <summary>Flattened names of the Design-view outline nodes - the named, visible source
+	/// elements the surface lets the user select (see <see cref="RebuildOutline"/>). Exposed for
+	/// DevFlow so tests can assert what the Outline actually shows, not just how many rows.</summary>
+	public IReadOnlyList<string> OutlineNames()
+	{
+		var names = new List<string>();
+		foreach (var root in shellSelection.Roots)
+			CollectOutlineNames(root, names);
+		return names;
+	}
+
+	static void CollectOutlineNames(DesignerElementNode node, List<string> names)
+	{
+		if (!string.IsNullOrEmpty(node.Name))
+			names.Add(node.Name!);
+		foreach (var child in node.Children)
+			CollectOutlineNames(child, names);
+	}
+
 	/// <summary>Surface geometry (frame/selection/handle/element) for resize-drag tests.</summary>
 	public DesignerSurfaceGeometry SurfaceGeometry()
 		=> previewHost.SurfaceGeometry();
@@ -418,6 +437,10 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	void OnPreviewStateChanged(object sender, EventArgs e)
 	{
 		status.Text = previewHost.StatusText;
+		// The runtime tree only exists once a render has settled, and it is the authoritative
+		// Design-view Outline source (see RebuildOutline). Rebuild here so the initial, pre-render
+		// source-tree outline is replaced by the real runtime projection instead of lingering.
+		RebuildOutline();
 		// A settled render may have moved or resized the selected element; re-apply the
 		// outline from the freshly indexed tree.
 		if (SelectedElementName != null)
@@ -1251,12 +1274,30 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	/// back to the source document's element tree (the classic XAML outline, available even
 	/// before/without the child runtime). Both are projected onto the protocol's
 	/// <see cref="DesignerElementNode"/> model consumed by <see cref="DocumentOutlineControl"/>.
+	///
+	/// The Outline is the DESIGN view's navigation tree, so it shows only what the user can see
+	/// and edit on the design surface: resource definitions are never shown; framework template
+	/// parts and other runtime-only nodes (which have no source counterpart) are folded into their
+	/// nearest kept ancestor; and elements the source marks not-visible (Visibility=Collapsed or
+	/// x:Load=False) are omitted with their subtree. The Code view's outline still shows the whole
+	/// document, resources included.
 	/// </summary>
 	void RebuildOutline()
 	{
 		var previouslySelected = SelectedElementName;
 		var sourceRoot = editor.Document?.Root;
-		shellSelection.UpdateTree(previewHost.ElementTree ?? (sourceRoot == null ? null : XmlOutlineNode(sourceRoot)));
+		var runtimeTree = previewHost.ElementTree;
+		DesignerElementNode? outlineRoot = null;
+		if (runtimeTree != null)
+		{
+			outlineRoot = CopyOutlineNode(runtimeTree);
+			outlineRoot.Children = ProjectOutlineChildren(runtimeTree.Children);
+		}
+		else if (sourceRoot != null)
+		{
+			outlineRoot = XmlOutlineNode(sourceRoot);
+		}
+		shellSelection.UpdateTree(outlineRoot);
 		outline.SetRoots(shellSelection.Roots);
 		// DocumentOutlineControl.SetRoot clears Items then re-selects the previous id via
 		// SelectNodeById - but under LibreWPF, TreeView.SelectedItemChanged for a freshly-added
@@ -1275,9 +1316,65 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		}
 	}
 
+	/// <summary>Projects runtime children onto the Design-view outline. An element the source
+	/// declares (by x:Name) is kept with its projected subtree; anything else - a framework
+	/// template part, a generated item container - is folded away with its kept descendants
+	/// promoted; a node whose source element is not visible drops its whole subtree.</summary>
+	List<DesignerElementNode> ProjectOutlineChildren(IEnumerable<DesignerElementNode> nodes)
+	{
+		var result = new List<DesignerElementNode>();
+		foreach (var node in nodes)
+		{
+			if (IsHiddenInSource(node.Name))
+				continue;
+			if (!IsNamedInSource(node.Name))
+			{
+				result.AddRange(ProjectOutlineChildren(node.Children));
+				continue;
+			}
+			var kept = CopyOutlineNode(node);
+			kept.Children = ProjectOutlineChildren(node.Children);
+			result.Add(kept);
+		}
+		return result;
+	}
+
+	bool IsNamedInSource(string? name)
+		=> !string.IsNullOrEmpty(name) && editor.FindElement(name) != null;
+
+	/// <summary>True when the source element is marked not-visible on the design surface: either
+	/// <c>Visibility="Collapsed"</c> (removed from layout, nothing drawn) or <c>x:Load="False"</c>
+	/// (not instantiated). A value supplied through a Style/ThemeResource cannot be seen here, so
+	/// only an explicit literal on the element counts.</summary>
+	bool IsHiddenInSource(string? name)
+	{
+		if (string.IsNullOrEmpty(name) || editor.FindElement(name) is not { } element)
+			return false;
+		if (string.Equals((string?)element.Attribute("Visibility"), "Collapsed", StringComparison.OrdinalIgnoreCase))
+			return true;
+		return string.Equals(
+			(string?)element.Attribute(XName.Get("Load", "http://schemas.microsoft.com/winfx/2006/xaml")),
+			"False", StringComparison.OrdinalIgnoreCase);
+	}
+
+	static DesignerElementNode CopyOutlineNode(DesignerElementNode node)
+		=> new() {
+			Id = node.Id,
+			Name = node.Name,
+			Type = node.Type,
+			Path = node.Path,
+			X = node.X,
+			Y = node.Y,
+			Width = node.Width,
+			Height = node.Height,
+			IsDesignable = node.IsDesignable
+		};
+
 	/// <summary>Projects a source XAML element onto the protocol outline node model. The id is
 	/// the element's x:Name (the selection contract with the surface); unnamed elements are
-	/// not individually selectable, matching the runtime's name-based picking.</summary>
+	/// not individually selectable, matching the runtime's name-based picking. Resource
+	/// definitions are not visual elements and elements the source marks not-visible are not on
+	/// the design surface, so neither is part of the design outline.</summary>
 	static DesignerElementNode XmlOutlineNode(XElement element)
 	{
 		var name = (string)element.Attribute(WinUIXamlDocumentEditor.NameDirective);
@@ -1286,8 +1383,23 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			Name = name,
 			Type = element.Name.LocalName,
 			IsDesignable = true,
-			Children = element.Elements().Select(XmlOutlineNode).ToList()
+			Children = element.Elements()
+				.Where(child => !IsResourceDefinitionElement(child) && !IsHiddenSourceElement(child))
+				.Select(XmlOutlineNode).ToList()
 		};
+	}
+
+	static bool IsResourceDefinitionElement(XElement element)
+		=> element.Name.LocalName.EndsWith(".Resources", StringComparison.Ordinal)
+			|| element.Name.LocalName == "ResourceDictionary";
+
+	static bool IsHiddenSourceElement(XElement element)
+	{
+		if (string.Equals((string?)element.Attribute("Visibility"), "Collapsed", StringComparison.OrdinalIgnoreCase))
+			return true;
+		return string.Equals(
+			(string?)element.Attribute(XName.Get("Load", "http://schemas.microsoft.com/winfx/2006/xaml")),
+			"False", StringComparison.OrdinalIgnoreCase);
 	}
 
 	void SelectOutlineNode(string name)

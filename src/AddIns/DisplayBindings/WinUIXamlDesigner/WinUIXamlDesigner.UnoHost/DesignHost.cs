@@ -596,7 +596,9 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			{
 				return xaml;
 			}
-			var xns = "http://schemas.microsoft.com/winfx/2006/xaml";
+			const string xns = "http://schemas.microsoft.com/winfx/2006/xaml";
+			const string blendNamespace = "http://schemas.microsoft.com/expression/blend/2008";
+			const string compatibilityNamespace = "http://schemas.openxmlformats.org/markup-compatibility/2006";
 			var document = System.Xml.Linq.XDocument.Parse(xaml, System.Xml.Linq.LoadOptions.PreserveWhitespace);
 			foreach (var element in document.Descendants()
 				.Where(e => e.Attributes().Any(a => a.Name.LocalName == "DesignData")).ToList())
@@ -627,17 +629,34 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 					element.Add(new System.Xml.Linq.XElement(System.Xml.Linq.XName.Get("String", xns), label));
 				}
 			}
+
+			// Drop design-time-only markup by NAMESPACE, not by regex. A runtime XAML parser cannot
+			// resolve the blend (`d:`) / markup-compatibility (`mc:`) prefixes, and stripping only
+			// their xmlns declarations leaves any remaining d:-prefixed attribute with an UNDECLARED
+			// prefix. WinUI-Gallery's SemanticZoomPage has d:Source="{Binding ..., Source={d:DesignData
+			// ...}}", and removing xmlns:d while it survived made the whole document unparseable in
+			// Combine - which then returned the page unchanged and surfaced as the misleading
+			// "xClassCanOnlyBeUsedOnLoadComponent". Removing every attribute in those namespaces
+			// (and their xmlns declarations) is what actually leaves parseable markup.
+			foreach (var element in document.Root!.DescendantsAndSelf().ToList())
+			{
+				foreach (var attribute in element.Attributes().ToList())
+				{
+					var isDesignTimeNamespaceDeclaration = attribute.IsNamespaceDeclaration
+						&& (attribute.Value.Contains("expression/blend", StringComparison.Ordinal)
+							|| attribute.Value.Contains("openxmlformats", StringComparison.Ordinal));
+					if (isDesignTimeNamespaceDeclaration
+						|| attribute.Name.NamespaceName == blendNamespace
+						|| attribute.Name.NamespaceName == compatibilityNamespace)
+					{
+						attribute.Remove();
+					}
+				}
+			}
+
 			using var writer = new StringWriter();
 			document.Save(writer, System.Xml.Linq.SaveOptions.DisableFormatting);
-			xaml = writer.ToString();
-			// Strip the design-time namespace declarations and attributes at the text level.
-			xaml = System.Text.RegularExpressions.Regex.Replace(xaml,
-				@"\s+xmlns:\w+=""[^""]*(expression/blend|openxmlformats)[^""]*""", "");
-			xaml = System.Text.RegularExpressions.Regex.Replace(xaml,
-				@"\s+\w+:Ignorable=""[^""]*""", "");
-			xaml = System.Text.RegularExpressions.Regex.Replace(xaml,
-				@"\s+\w+:DesignData=""[^""]*""", "");
-			return xaml;
+			return writer.ToString();
 		}
 
 		/// <summary>Builds a diagnostic from a XAML load exception, extracting the line/position
