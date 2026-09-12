@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
+using ICSharpCode.SharpDevelop.Designer;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using StreamJsonRpc;
 
@@ -22,9 +23,23 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoDesignHost;
 public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDesignHostClient, IDesignHostEventBinding,
 	IDesignHostBounds, IDesignHostHitTesting, IDesignHostTheme, IDesignHostExport, IDesignHostAppResources
 {
+	/// <summary>The Output pad channel this designer's children report into. Named as the user knows
+	/// the designer, per <see cref="DesignerOutput"/>'s convention.</summary>
+	internal const string OutputChannelName = "WinUI Designer";
+
 	static readonly SharedDesignerHostPool<CompatibilityKey, Connection> sharedPool = new(
 		(_, connection) => connection.IsAlive,
-		async (key, token) => { var connection = new Connection(key.RuntimeConfigPath, key.DepsFilePath, key.HostDllPath); await connection.StartConnectionAsync(token); return connection; });
+		async (key, token) => { var connection = new Connection(key.RuntimeConfigPath, key.DepsFilePath, key.HostDllPath, key.AppBinPath); RouteOutput(connection); await connection.StartConnectionAsync(token); return connection; });
+
+	/// <summary>
+	/// Sends a child's output to the designer's Output pad channel.
+	///
+	/// Wired per CONNECTION, not per document: one child is shared by every document with the same
+	/// compatibility key, so subscribing per document would print each line once per open document.
+	/// </summary>
+	static void RouteOutput(Connection connection)
+		=> connection.OutputLineReceived += (_, line)
+			=> DesignerOutput.AppendLine(DesignerOutput.Channel(OutputChannelName), line);
 	static readonly object clientsGate = new();
 	static readonly HashSet<UnoDesignClient> clients = new();
 	static readonly Dictionary<CompatibilityKey, SharedDesignerHostRecovery<UnoDesignClient, Connection>> recoveries = new();
@@ -58,6 +73,21 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 	/// <summary>Raised when this document cannot be reopened while sibling documents recover.</summary>
 	public event EventHandler<Exception>? RecoveryFailed;
 
+	// A document whose content crashes the child NATIVELY during session/open (no managed
+	// exception - the host dies before the RPC call can reply) never reaches RestoreAsync's
+	// "RecoveryCount++": OpenAsync itself throws, so SharedDesignerHostRecovery reports it via
+	// RecoveryFailed and moves on - but the FRESH child it just spawned then dies too on its own
+	// HostExited, which re-enters OnConnectionExited with no memory of any of this, spawning
+	// another child, forever. Measured against a real reproducer (WinUI-Gallery's
+	// AccessibilityScreenReaderPage): 25+ child processes in well under a minute, until the
+	// preload-vs-crash race started silently losing, at which point the app's own types stopped
+	// resolving for the NEXT document opened in this same host - one bad page took down
+	// everything else sharing its child. This counter is what breaks the cycle: it only ever
+	// climbs on a failed recovery attempt and resets to 0 the moment one succeeds, so an isolated
+	// crash still recovers silently and only a genuine loop trips the breaker.
+	int consecutiveFailedRecoveries;
+	const int MaxConsecutiveFailedRecoveries = 3;
+
 	/// <summary>Path of the deployed child binary, or null when the addin tree lacks it.</summary>
 	public static string? LocateChildDll()
 	{
@@ -88,14 +118,21 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 	public static async Task<UnoDesignClient> StartAsync(string runtimeConfigPath, string depsFilePath, CancellationToken cancellationToken, string? hostDllPath = null, string? appBinPath = null)
 	{
 		var connection = new Connection(runtimeConfigPath, depsFilePath, hostDllPath ?? LocateChildDll(), appBinPath);
+		RouteOutput(connection);
 		await connection.StartConnectionAsync(cancellationToken).ConfigureAwait(false);
 		return new UnoDesignClient(connection, null);
 	}
 
-	public static async Task<UnoDesignClient> AcquireSharedAsync(string runtimeConfigPath, string depsFilePath, CancellationToken cancellationToken, string? hostDllPath = null)
+	/// <param name="appBinPath">The designed app's output directory, preloaded by the child so
+	/// XamlReader can resolve its types. Pass it WITHOUT a runtimeconfig/depsfile when the app
+	/// targets an older framework than the host: adopting the app's runtime graph pins the child
+	/// to the app's framework version, and a net10.0 host then cannot load at all - see
+	/// <see cref="StartAsync"/>. Part of the pool key, so documents from different projects never
+	/// share a child that preloaded the wrong app.</param>
+	public static async Task<UnoDesignClient> AcquireSharedAsync(string runtimeConfigPath, string depsFilePath, CancellationToken cancellationToken, string? hostDllPath = null, string? appBinPath = null)
 	{
 		var host = Path.GetFullPath(hostDllPath ?? LocateChildDll() ?? throw new FileNotFoundException("The Uno design host child is not deployed."));
-		var key = new CompatibilityKey(Normalize(runtimeConfigPath), Normalize(depsFilePath), host, RuntimeInformation.ProcessArchitecture);
+		var key = new CompatibilityKey(Normalize(runtimeConfigPath), Normalize(depsFilePath), host, RuntimeInformation.ProcessArchitecture, Normalize(appBinPath));
 		return new UnoDesignClient(await sharedPool.AcquireAsync(key, cancellationToken).ConfigureAwait(false), key);
 	}
 	static string Normalize(string path) => string.IsNullOrEmpty(path) ? "" : Path.GetFullPath(path);
@@ -238,13 +275,27 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 		RebindConnection(replacement);
 		replacement.HostExited += OnConnectionExited;
 		var state = await OpenAsync(RecoverySnapshot!, cancellationToken).ConfigureAwait(false);
+		Volatile.Write(ref consecutiveFailedRecoveries, 0);
 		RecoveryCount++;
 		Recovered?.Invoke(this, state);
 	}
 
 	void OnConnectionExited(object? sender, EventArgs e)
 	{
-		if (!disposed && poolKey != null) _ = RecoveryFor(poolKey).RecoverAllAsync(connection, false, CancellationToken.None);
+		if (disposed || poolKey == null) return;
+		if (Interlocked.Increment(ref consecutiveFailedRecoveries) > MaxConsecutiveFailedRecoveries)
+		{
+			// Stop feeding this document to a new child - see consecutiveFailedRecoveries' remarks.
+			// The document stays exactly as it was on the last successful render (RenderAsync's own
+			// "process exited" message already covers that), so this only needs to explain WHY
+			// automatic recovery gave up.
+			OnRecoveryFailed(new InvalidOperationException(
+				$"The design host crashed {MaxConsecutiveFailedRecoveries} times in a row while" +
+				" loading this document; giving up on automatic recovery to avoid spawning child" +
+				" processes indefinitely. Fix or replace the document's content, then reopen it."));
+			return;
+		}
+		_ = RecoveryFor(poolKey).RecoverAllAsync(connection, false, CancellationToken.None);
 	}
 
 	void OnRecoveryFailed(Exception exception) => RecoveryFailed?.Invoke(this, exception);
@@ -258,7 +309,7 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 		if (poolKey != null) sharedPool.Release(poolKey, connection); else connection.Dispose();
 	}
 
-	sealed record CompatibilityKey(string RuntimeConfigPath, string DepsFilePath, string HostDllPath, Architecture Architecture);
+	sealed record CompatibilityKey(string RuntimeConfigPath, string DepsFilePath, string HostDllPath, Architecture Architecture, string AppBinPath = "");
 	sealed class Connection : DesignerHostProcessClient
 	{
 		readonly string runtimeConfigPath;
@@ -275,6 +326,29 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 		}
 		public Task StartConnectionAsync(CancellationToken token) => StartAsync(token);
 		protected override string GetChildDllPath() => hostDllPath ?? throw new FileNotFoundException("The Uno design host child is not deployed.");
+
+		/// <summary>
+		/// Runs the child FROM the designed app's output directory.
+		///
+		/// This is what lets the app's compiled XAML load. A control declared in XAML calls
+		/// <c>LoadComponent(ms-appx:///Controls/Example.xaml)</c>, and the framework first probes
+		/// for the compiled <c>.xbf</c> beside it; when MRT holds no such virtualized resource it
+		/// falls back to a physical file path, resolved relative to the process. An unpackaged app
+		/// keeps those .xbf files loose in its output directory, so running there is what makes them
+		/// findable - and the compiled form is the one that matters, because only it carries
+		/// <c>x:Bind</c> as generated code the runtime parser never has to understand.
+		///
+		/// Chosen over copying the .xbf files next to this host: the deployment directory is shared
+		/// by every child, so copies from two different projects would overwrite each other, while
+		/// a working directory is per-process and costs nothing.
+		/// </summary>
+		protected override void ConfigureChildProcess(ProcessStartInfo startInfo)
+		{
+			if (!string.IsNullOrEmpty(appBinPath) && Directory.Exists(appBinPath))
+			{
+				startInfo.WorkingDirectory = appBinPath;
+			}
+		}
 		protected override string BuildCommandLine(string childDll, int port, string token)
 			=> new DesignerHostLaunchSpec {
 				RuntimeConfigPath = runtimeConfigPath,

@@ -33,7 +33,10 @@ static class Program
 	{
 		// The app's own assemblies must be loaded before any XAML is parsed: XamlReader resolves
 		// local: types by scanning loaded assemblies. Without it almost no real page opens.
-		HostBootstrap.PreloadProjectAssemblies(HostBootstrap.ParseArgument(args, "--appbin"));
+		var appBin = HostBootstrap.ParseArgument(args, "--appbin");
+		HostBootstrap.PreloadProjectAssemblies(appBin);
+		// Before Application.Start, so the framework's first resource probe already sees them.
+		CompiledXamlMirror.Refresh(appBin);
 
 		var exitCode = 0;
 		Application.Start(_ => new HostApplication(args, code => exitCode = code));
@@ -44,9 +47,24 @@ static class Program
 // Implementing IXamlMetadataProvider is what makes XamlReader able to resolve anything beyond the
 // framework's small built-in core - see ReflectionXamlMetadata.cs. WinUI looks the provider up on
 // Application.Current, so it has to live on this class.
-sealed class HostApplication(string[] args, Action<int> reportExitCode) : Application, IXamlMetadataProvider
+sealed class HostApplication : Application, IXamlMetadataProvider
 {
 	readonly ReflectionXamlMetadataProvider metadata = new();
+	readonly string[] args;
+	readonly Action<int> reportExitCode;
+
+	public HostApplication(string[] args, Action<int> reportExitCode)
+	{
+		this.args = args;
+		this.reportExitCode = reportExitCode;
+		// ResourceManagerRequested has to be subscribed HERE, not in OnLaunched. The MRT resource
+		// manager is created lazily (CCoreServices::GetResourceManager) but the framework's own
+		// initialization is what touches it first, and the event is raised only on that one
+		// creation - by OnLaunched it has already come and gone. This mirrors the shape a real app
+		// uses: subscribe, then InitializeComponent. Only the event subscription belongs here;
+		// anything touching Resources must stay in OnLaunched (see its note).
+		AppResourceManagerProvider.Attach(this, HostBootstrap.ParseArgument(args, "--appbin"));
+	}
 
 	public IXamlType GetXamlType(Type type) => metadata.GetXamlType(type);
 	public IXamlType GetXamlType(string fullName) => metadata.GetXamlType(fullName);

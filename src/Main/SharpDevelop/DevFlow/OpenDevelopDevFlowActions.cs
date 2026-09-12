@@ -349,10 +349,56 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			}
 		}
 
+		[DevFlowAction("od.project.dependency-context", Description = "Diagnostic: mirrors UnoDesignRuntimeHost.ProjectDependencyContext for a given source file - the owning project, its OutputAssemblyFullPath, and whether the derived runtimeconfig/deps files exist on disk")]
+		public static string ProjectDependencyContext(string fileName)
+		{
+			try {
+				var project = SD.ProjectService.FindProjectContainingFile(ICSharpCode.Core.FileName.Create(fileName));
+				if (project == null)
+					return JsonSerializer.Serialize(new { success = true, projectFound = false });
+				var outputAssembly = project.OutputAssemblyFullPath?.ToString();
+				string runtimeConfig = null, depsFile = null;
+				bool runtimeConfigExists = false, depsFileExists = false;
+				if (!string.IsNullOrEmpty(outputAssembly)) {
+					runtimeConfig = System.IO.Path.ChangeExtension(outputAssembly, ".runtimeconfig.json");
+					depsFile = System.IO.Path.ChangeExtension(outputAssembly, ".deps.json");
+					runtimeConfigExists = System.IO.File.Exists(runtimeConfig);
+					depsFileExists = System.IO.File.Exists(depsFile);
+				}
+				return JsonSerializer.Serialize(new {
+					success = true,
+					projectFound = true,
+					projectName = project.Name,
+					outputAssembly,
+					outputAssemblyExists = !string.IsNullOrEmpty(outputAssembly) && System.IO.File.Exists(outputAssembly),
+					runtimeConfig,
+					runtimeConfigExists,
+					depsFile,
+					depsFileExists
+				});
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
+			}
+		}
+
 		[DevFlowAction("od.solution.status", Description = "Get the currently open solution's file path (null when no solution is open)")]
 		public static string GetSolutionStatus()
 		{
 			return JsonSerializer.Serialize(new { path = SD.ProjectService.CurrentSolution?.FileName?.ToString() });
+		}
+
+		[DevFlowAction("od.solution.set-configuration", Description = "Set the solution's active configuration/platform (e.g. 'Debug-Unpackaged', 'ARM64'), the same effect as the Standard toolbar's configuration/platform combos - each project's own build type/platform then follows the solution's per-project mapping")]
+		public static string SetSolutionConfiguration(string configuration, string platform)
+		{
+			var solution = SD.ProjectService.CurrentSolution;
+			if (solution == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No solution is open." });
+			try {
+				solution.ActiveConfiguration = new ICSharpCode.SharpDevelop.Project.ConfigurationAndPlatform(configuration, platform);
+				return JsonSerializer.Serialize(new { success = true, activeConfiguration = solution.ActiveConfiguration.ToString() });
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
+			}
 		}
 
 		[DevFlowAction("od.solution-tree", Description = "Get the current solution's project/file tree, as seen by Solution Explorer")]

@@ -42,6 +42,20 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public string ChildLog { get { lock (childLog) return childLog.ToString(); } }
 		public event EventHandler? HostExited;
 
+		/// <summary>
+		/// Raised for each line the child writes to stdout/stderr, as it arrives.
+		///
+		/// The accumulated <see cref="ChildLog"/> is only reachable on demand, which is no use for
+		/// something the user should see while working - a child reports what it had to repair or
+		/// give up on, and that context is what explains the one error the design surface shows.
+		/// This project deliberately has no IDE reference, so it only surfaces the lines; where they
+		/// are displayed is the IDE side's decision (see DesignerOutput).
+		///
+		/// Raised on the log-pump thread, so handlers must be thread-safe, and a throwing handler is
+		/// swallowed rather than killing the pump.
+		/// </summary>
+		public event EventHandler<string>? OutputLineReceived;
+
 		/// <summary>Host-chosen identity for this child process, minted before launch and
 		/// confirmed by the child's handshake echo. Stable for the child's life; every
 		/// document opened against this child shares it (see designer-common.md's
@@ -131,8 +145,9 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 				tcp = await listener.AcceptTcpClientAsync(linkedCts.Token).AsTask()
 					.WaitAsync(TimeSpan.FromSeconds(30), linkedCts.Token).ConfigureAwait(false);
 				var stream = tcp.GetStream();
-				var handler = new HeaderDelimitedMessageHandler(stream, stream, new SystemTextJsonFormatter());
+				var handler = new HeaderDelimitedMessageHandler(stream, stream, DesignerJsonRpc.CreateFormatter());
 				rpc = new JsonRpc(handler);
+				DesignerJsonRpc.AttachDiagnosticTracing(rpc);
 				rpc.StartListening();
 				this.tcp = tcp;
 				this.rpc = rpc;
@@ -183,6 +198,16 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 					throw new OperationCanceledException($"The designer host operation '{method}' was cancelled."
 						+ Environment.NewLine + "Child log:" + Environment.NewLine + log, exception, cancellationToken);
 				throw;
+			} catch (ObjectDisposedException) {
+				// StreamJsonRpc disposes itself as soon as the underlying pipe breaks, which can win
+				// the race against this.IsAlive noticing the child has exited (e.g. a native crash
+				// closes the pipe before Process.Exited fires). Left as ObjectDisposedException, this
+				// surfaces to the user as "Cannot access a disposed object. Object name: 'JsonRpc'." -
+				// true, but useless: it names the wrong thing. Normalize it to the same
+				// "host is gone" shape as every other exit path, with the child's own log attached.
+				var log = ChildLog;
+				throw new IOException($"The designer host process is no longer running ('{method}' could not be sent)."
+					+ (String.IsNullOrWhiteSpace(log) ? "" : Environment.NewLine + "Child log:" + Environment.NewLine + log));
 			}
 		}
 
@@ -198,6 +223,12 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 			try {
 				while (await reader.ReadLineAsync().ConfigureAwait(false) is { } line) {
 					lock (childLog) childLog.AppendLine(line);
+					try {
+						OutputLineReceived?.Invoke(this, line);
+					} catch {
+						// A subscriber's failure must not stop draining the child's pipes: that buffer
+						// is finite, and a full one blocks the child on its own Console.Write.
+					}
 				}
 			} catch { }
 		}

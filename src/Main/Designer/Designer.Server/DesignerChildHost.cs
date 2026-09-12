@@ -57,7 +57,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 				using var tcp = new TcpClient();
 				tcp.Connect(IPAddress.Loopback, portNumber);
 				afterConnect?.Invoke();
-				using var rpc = new JsonRpc(new HeaderDelimitedMessageHandler(tcp.GetStream(), tcp.GetStream(), new SystemTextJsonFormatter()));
+				using var rpc = new JsonRpc(new HeaderDelimitedMessageHandler(tcp.GetStream(), tcp.GetStream(), DesignerJsonRpc.CreateFormatter()));
+				DesignerJsonRpc.AttachDiagnosticTracing(rpc);
 				registerMethods(rpc, token);
 				rpc.StartListening();
 				Console.Error.WriteLine($"{readyMessagePrefix}: ready on {portNumber}");
@@ -113,7 +114,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 			using var tcp = new TcpClient();
 			tcp.Connect(IPAddress.Loopback, portNumber);
 			var service = createService(token);
-			using var rpc = new JsonRpc(new HeaderDelimitedMessageHandler(tcp.GetStream(), tcp.GetStream(), new SystemTextJsonFormatter()));
+			using var rpc = new JsonRpc(new HeaderDelimitedMessageHandler(tcp.GetStream(), tcp.GetStream(), DesignerJsonRpc.CreateFormatter()));
+			DesignerJsonRpc.AttachDiagnosticTracing(rpc);
 			rpc.AddLocalRpcTarget(service);
 			// Must be assigned before StartListening: StreamJsonRpc captures it when it begins
 			// dispatching, so setting it afterwards would race the first inbound request.

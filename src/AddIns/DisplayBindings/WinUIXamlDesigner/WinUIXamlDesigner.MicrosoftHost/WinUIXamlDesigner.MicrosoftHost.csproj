@@ -40,6 +40,15 @@
     <Compile Include="..\WinUIXamlDesigner.UnoHost\DesignProtocol.cs" Link="DesignProtocol.cs" />
     <Compile Include="..\WinUIXamlDesigner.UnoHost\DesignRpc.cs" Link="DesignRpc.cs" />
     <Compile Include="..\WinUIXamlDesigner.UnoHost\HostBootstrap.cs" Link="HostBootstrap.cs" />
+    <!-- Markup-level repairs, shared for the same reason DesignHost is: they correct what the XAML
+         rules require but a runtime parser does not do, which is identical on both runtimes. -->
+    <Compile Include="..\WinUIXamlDesigner.UnoHost\XamlDocumentRepair.cs" Link="XamlDocumentRepair.cs" />
+    <Compile Include="..\WinUIXamlDesigner.UnoHost\XamlPrefixNormalizer.cs" Link="XamlPrefixNormalizer.cs" />
+    <Compile Include="..\WinUIXamlDesigner.UnoHost\AttachedPropertyQualifier.cs" Link="AttachedPropertyQualifier.cs" />
+    <Compile Include="..\WinUIXamlDesigner.UnoHost\CompiledXamlControlSubstituter.cs" Link="CompiledXamlControlSubstituter.cs" />
+    <Compile Include="..\WinUIXamlDesigner.UnoHost\CompileTimeBindingStripper.cs" Link="CompileTimeBindingStripper.cs" />
+    <Compile Include="..\WinUIXamlDesigner.UnoHost\EventHandlerAttributeStripper.cs" Link="EventHandlerAttributeStripper.cs" />
+    <Compile Include="..\WinUIXamlDesigner.UnoHost\ConditionalXmlnsStripper.cs" Link="ConditionalXmlnsStripper.cs" />
     <!-- AppResourceBuilder's merge engine (same one App.xaml resources go through) is what turns
          DefaultThemeResources/*.xaml into one loadable dictionary - see FrameworkDefaultResources.cs. -->
     <Compile Include="..\WinUIXamlDesigner.UnoDesignHost\AppResourceBuilder.cs" Link="AppResourceBuilder.cs" />

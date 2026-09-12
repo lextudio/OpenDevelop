@@ -477,8 +477,37 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				lastXaml = request.Xaml;
 				var xaml = InjectDesignData(request.Xaml);
 				xaml = TransformXamlBeforeLoad?.Invoke(xaml) ?? xaml;
+				// After the host-specific transform, never before: that step is what merges/injects
+				// other documents in, and the repairs are for problems that only exist once markup
+				// from several sources shares one namespace scope. See XamlDocumentRepair.
+				xaml = XamlDocumentRepair.Apply(xaml);
 				var previousRoot = root;
-				root = (FrameworkElement)Microsoft.UI.Xaml.Markup.XamlReader.Load(xaml);
+				var loaded = Microsoft.UI.Xaml.Markup.XamlReader.Load(xaml);
+				if (loaded is not FrameworkElement)
+				{
+					// Not every .xaml file in a project has a visual root: WinUI's equivalent of
+					// WPF's Generic.xaml - a plain <ResourceDictionary> holding a custom control's
+					// default Style/ControlTemplate (WinUI-Gallery's CounterControl.xaml is exactly
+					// this shape) - parses to a real object, just not one this designer can show.
+					// The naive `(FrameworkElement)XamlReader.Load(xaml)` cast used to surface this
+					// as a bare "Unable to cast object of type 'ResourceDictionary' to type
+					// 'FrameworkElement'" - true, but it names a symptom of opening the file, not
+					// the reason: there is nothing wrong with the file, it simply has no design
+					// surface. Checking the loaded object's type (rather than parsing the source a
+					// second time, the way DescribeUninstantiableRoot has to for an exception
+					// already thrown) means this never needs the parser to fail first.
+					root = null;
+					HostVisualRoot?.Invoke(previousRoot, null);
+					snapshot.Diagnostics.Add(new DesignerDiagnostic {
+						Message = $"This file has no visual root to preview: its top-level element"
+							+ $" is '{loaded?.GetType().Name ?? "null"}', not a page, control, or"
+							+ " other FrameworkElement. Files like this (a plain ResourceDictionary"
+							+ " holding a control's default Style/ControlTemplate) define resources"
+							+ " for another file to use rather than something to render on their own."
+					});
+					return snapshot;
+				}
+				root = (FrameworkElement)loaded;
 				HostVisualRoot?.Invoke(previousRoot, root);
 				return await FinishLayoutAsync(request.Width, request.Height, request.Dpi, snapshot);
 			}
@@ -487,8 +516,68 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				var failedRoot = root;
 				root = null;
 				HostVisualRoot?.Invoke(failedRoot, null);
-				snapshot.Diagnostics.Add(ToDiagnostic(e.GetBaseException()));
+				var diagnostic = ToDiagnostic(e.GetBaseException());
+				// A page whose root element is its own abstract base class fails with WinRT's bare
+				// "No matching constructor found on type 'X'", which reads like a XAML authoring
+				// mistake. Name the real, unfixable-in-XAML reason instead.
+				if (DescribeUninstantiableRoot(request.Xaml) is { } explanation)
+					diagnostic.Message = explanation;
+				snapshot.Diagnostics.Add(diagnostic);
 				return snapshot;
+			}
+		}
+
+		/// <summary>
+		/// Explains a load failure caused by a root element that no runtime XAML parser can create,
+		/// or null when the root is instantiable (and the failure is therefore something else).
+		///
+		/// The common shape is a page declaring its own abstract base class as the root element and
+		/// the concrete class in <c>x:Class</c> (<c>&lt;local:ItemsPageBase x:Class="...HomePage"&gt;</c>).
+		/// The XAML compiler generates <c>HomePage : ItemsPageBase</c> and instantiates that, but
+		/// <c>XamlReader.Load</c> ignores <c>x:Class</c> entirely and constructs the root element's
+		/// own type - which is abstract, so there is nothing to call.
+		/// </summary>
+		static string DescribeUninstantiableRoot(string xaml)
+		{
+			try
+			{
+				var root = System.Xml.Linq.XDocument.Parse(xaml).Root;
+				if (root == null)
+					return null;
+				// Only custom (app-declared) roots can be abstract; the framework's own namespaces
+				// are always instantiable, and resolving them here would be pointless work.
+				var declaredNamespace = root.Name.NamespaceName;
+				string typeNamespace = null;
+				if (declaredNamespace.StartsWith("using:", StringComparison.Ordinal))
+					typeNamespace = declaredNamespace.Substring("using:".Length);
+				else if (declaredNamespace.StartsWith("clr-namespace:", StringComparison.Ordinal))
+					typeNamespace = declaredNamespace.Substring("clr-namespace:".Length).Split(';')[0];
+				if (string.IsNullOrEmpty(typeNamespace))
+					return null;
+				var fullName = typeNamespace + "." + root.Name.LocalName;
+				var type = AppDomain.CurrentDomain.GetAssemblies()
+					.Select(assembly => { try { return assembly.GetType(fullName, false); } catch (Exception) { return null; } })
+					.FirstOrDefault(candidate => candidate != null);
+				if (type == null)
+					return null;
+				var reason = type.IsAbstract ? "an abstract class"
+					: type.GetConstructor(Type.EmptyTypes) == null ? "a class with no public parameterless constructor"
+					: null;
+				if (reason == null)
+					return null;
+				var xClass = root.Attributes()
+					.FirstOrDefault(a => a.Name.LocalName == "Class" && a.Name.NamespaceName.EndsWith("/xaml", StringComparison.Ordinal))
+					?.Value;
+				return $"Cannot preview this page: its root element '{root.Name.LocalName}' is {reason},"
+					+ " so the design-time XAML parser cannot create it."
+					+ (string.IsNullOrEmpty(xClass)
+						? " Only the compiled app can instantiate the class that derives from it."
+						: $" The compiled app instantiates '{xClass}' (from x:Class) instead, which the design-time parser does not use.");
+			}
+			catch (Exception)
+			{
+				// Malformed XAML: the original parser error is the better message.
+				return null;
 			}
 		}
 
@@ -761,7 +850,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			}
 			// No live code-behind instance exists in this design host - the event/handler
 			// names are validated but nothing is actually wired up here.
-			snapshot.Tree = BuildTree(root, root, "");
+			snapshot.Tree = BuildTree(root, root, "", 0);
 			snapshot.Accepted = true;
 			return snapshot;
 		}
@@ -995,7 +1084,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				// layout pass to completion, so by here the offsets are real. Uno is unaffected:
 				// its Measure/Arrange commit synchronously, so the values are the same either
 				// way, and rendering never invalidates them.
-				snapshot.Tree = BuildTree(root, root, "");
+				snapshot.Tree = BuildTree(root, root, "", 0);
 				BoundsLog($"FinishLayout rendered={snapshot.Render?.Width}x{snapshot.Render?.Height} rootActualAfterRender={root.ActualWidth}x{root.ActualHeight}");
 			}
 			catch (Exception e)
@@ -1102,7 +1191,33 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		/// coordinates. Template parts are included; the parent maps a pick back to the
 		/// nearest named ancestor, matching the document namescope rule.
 		/// </summary>
-		static DesignerElementNode BuildTree(DependencyObject node, UIElement root, string path)
+		// System.Text.Json refuses to write an object graph past 64 levels deep - not because it
+		// detects a real reference cycle, but as a generic guard against one (see
+		// JsonSerializerOptions.MaxDepth). A visual tree can legitimately get that deep without any
+		// cycle at all: WinUI-Gallery's AnimatedIconPage reproducibly does, because AnimatedIcon's
+		// own default template nests ContentPresenter/Viewbox/Grid layers per visual STATE, and
+		// VisualTreeHelper walks every one of them, not just the source XAML's own nesting. That
+		// failed with "An error occured during serialization" and, critically, NO detail beyond that
+		// literal string - StreamJsonRpc does not attach the inner JsonException as an
+		// InnerException, so DesignerJsonRpc.AttachDiagnosticTracing (which routes JsonRpc's own
+		// TraceSource to stderr, and from there to the Output pad) is what actually surfaced "A
+		// possible object cycle was detected... Path: $.Tree.Children.Children...".
+		//
+		// Capping the walk is the right fix independent of whether any one page is a true cycle:
+		// nothing past a couple dozen levels is fruitful for a design surface (hit-testing, the
+		// Properties pad and the outline tree all work off the SOURCE element a user can select, not
+		// framework template internals many levels deep), and a hard cap makes a genuine cycle - if
+		// WinUI's own template ever produced one - degrade to a truncated tree instead of taking the
+		// whole render down.
+		// Each BuildTree recursion level costs TWO units of System.Text.Json's own depth counter,
+		// not one - a List<DesignerElementNode> array plus the object inside it - and the outer
+		// envelope (JsonRpcResult -> DesignerSessionState -> Tree -> root node) already spends a
+		// handful before Children even starts. A cap of 48 CALLS still hit the JsonException at the
+		// framework's hard limit of 64; this value was chosen by suffering through that math wrong
+		// once, not by hope - keep it well clear of 64/2.
+		const int MaxTreeDepth = 24;
+
+		static DesignerElementNode BuildTree(DependencyObject node, UIElement root, string path, int depth)
 		{
 			var nodeInfo = new DesignerElementNode {
 				Path = path
@@ -1135,6 +1250,14 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 
 			nodeInfo.IsVisible = IsEffectivelyVisible(node, root);
 
+			if (depth >= MaxTreeDepth)
+			{
+				if (VisualTreeHelper.GetChildrenCount(node) > 0)
+					Console.Error.WriteLine($"design-host: element tree truncated at depth {MaxTreeDepth}"
+						+ $" (at '{nodeInfo.Type}', path {path}) - see BuildTree's MaxTreeDepth remarks.");
+				return nodeInfo;
+			}
+
 			var count = VisualTreeHelper.GetChildrenCount(node);
 			for (var i = 0; i < count; i++)
 			{
@@ -1142,7 +1265,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				if (child is UIElement)
 				{
 					var childPath = path.Length == 0 ? i.ToString() : path + "," + i;
-					nodeInfo.Children.Add(BuildTree(child, root, childPath));
+					nodeInfo.Children.Add(BuildTree(child, root, childPath, depth + 1));
 				}
 			}
 			return nodeInfo;

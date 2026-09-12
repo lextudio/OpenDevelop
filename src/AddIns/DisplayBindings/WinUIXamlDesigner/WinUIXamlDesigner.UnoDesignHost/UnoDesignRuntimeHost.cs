@@ -12,6 +12,7 @@ using System.Windows.Media;
 using System.Xml.Linq;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
+using ICSharpCode.SharpDevelop.Designer;
 using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.LanguageServices.Xaml;
@@ -417,7 +418,18 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		}
 		try
 		{
-			var result = client.HitTestAsync(Volatile.Read(ref version), design.X, design.Y).GetAwaiter().GetResult();
+			// Called from the pointer-pressed handler, i.e. ON the UI thread, so this wait freezes
+			// the whole IDE window - not just the design surface - for as long as it lasts. The
+			// transport's own limit is the 30s operation timeout, which is an eternity to sit on a
+			// click: an unresponsive child made the main window look hung. Give up quickly instead
+			// and treat it as "nothing picked"; the next click issues a fresh request.
+			var pending = client.HitTestAsync(Volatile.Read(ref version), design.X, design.Y);
+			if (!pending.Wait(TimeSpan.FromSeconds(2)))
+			{
+				lastPickDiagnostic = "hit-test did not answer within 2s";
+				return (null, null);
+			}
+			var result = pending.GetAwaiter().GetResult();
 			lastPickDiagnostic = $"point={design.X:F0},{design.Y:F0} chain=[{string.Join(",", result.Chain)}]";
 			foreach (var name in result.Chain)
 			{
@@ -548,9 +560,10 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 	{
 		try
 		{
-			var (runtimeConfig, depsFile) = ProjectDependencyContext();
-			client = await UnoDesignClient.AcquireSharedAsync(runtimeConfig, depsFile, CancellationToken.None, hostDllPath);
+			var (runtimeConfig, depsFile, appBin) = ProjectDependencyContext();
+			client = await UnoDesignClient.AcquireSharedAsync(runtimeConfig, depsFile, CancellationToken.None, hostDllPath, appBin);
 			client.Recovered += OnClientRecovered;
+			client.RecoveryFailed += OnClientRecoveryFailed;
 			var capabilities = await client.GetCapabilitiesAsync();
 			Volatile.Write(ref catalogCache, capabilities.Toolbox
 				.Select(tool => new ToolboxItemInfo {
@@ -567,7 +580,11 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		{
 			client?.Dispose();
 			client = null;
-			SetStatus(hostDisplayName + " failed to start: " + e.GetBaseException().Message);
+			var failure = hostDisplayName + " failed to start: " + e.GetBaseException().Message;
+			SetStatus(failure);
+			// Host process lifecycle is not specific to one designer, so it goes to the shared IDE
+			// channel; the child's own output stays on the designer's channel.
+			DesignerOutput.AppendLine(DesignerOutput.Ide, failure);
 		}
 	}
 
@@ -582,6 +599,20 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 				return;
 			}
 			ApplySnapshot(state, Volatile.Read(ref version));
+		});
+	}
+
+	/// <summary>Automatic recovery gave up (UnoDesignClient.consecutiveFailedRecoveries) rather
+	/// than keep spawning child processes for a document that crashes every one of them. This is
+	/// the only place that message reaches the user - the raw HostExited/RecoverAllAsync failure
+	/// path otherwise has no user-visible surface at all.</summary>
+	void OnClientRecoveryFailed(object? sender, Exception exception)
+	{
+		dispatcher.BeginInvoke(() => {
+			if (disposed || !ReferenceEquals(sender, client)) return;
+			var message = $"{hostDisplayName}: " + exception.Message;
+			SetStatus(message);
+			DesignerOutput.AppendLine(DesignerOutput.Channel(UnoDesignClient.OutputChannelName), message);
 		});
 	}
 
@@ -635,29 +666,133 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 	}
 
 	/// <summary>
-	/// The designed project's runtimeconfig.json and deps.json, so the child runs inside the
-	/// project's own dependency graph (its real Uno version, custom controls, converters).
-	/// Returns nulls when the owning project is unknown or was never built - the child then
-	/// falls back to its own deployment.
+	/// Reports a designer-level decision: to the log for support, and to the designer's own Output
+	/// pad channel so the user can see it while working. These lines are the context that explains
+	/// the single error the design surface shows - without them a missing launch argument reads as
+	/// a plain XAML "type not found".
 	/// </summary>
-	(string RuntimeConfig, string DepsFile) ProjectDependencyContext()
+	static void ReportDesigner(string message, Exception e = null)
+	{
+		if (e == null)
+			LoggingService.Warn(message);
+		else
+			LoggingService.Warn(message, e);
+		DesignerOutput.AppendLine(DesignerOutput.Channel(UnoDesignClient.OutputChannelName), message);
+	}
+
+	/// <summary>
+	/// The designed project's runtimeconfig.json and deps.json, so the child runs inside the
+	/// project's own dependency graph (its real Uno version, custom controls, converters), plus
+	/// its output directory for assembly preloading.
+	///
+	/// The runtime graph is adopted only when the app's framework is one this host can actually
+	/// run on: <c>dotnet exec --runtimeconfig</c> pins the child to the version that file names, so
+	/// an app on an OLDER major (a net9.0 app, a net10.0 host) kills the child before Main with
+	/// "Could not load file or assembly 'System.Runtime, Version=10.0.0.0'". The app directory is
+	/// still handed over on its own in that case - preloading the app's assemblies is what makes
+	/// its <c>local:</c> types resolve, and a newer runtime loads assemblies built against an older
+	/// one. Every "no graph" path is logged, because the designer otherwise reports a plain
+	/// "type not found" XAML error for what is really a missing launch argument.
+	/// </summary>
+	(string RuntimeConfig, string DepsFile, string AppBin) ProjectDependencyContext()
 	{
 		try
 		{
 			var project = SD.ProjectService.FindProjectContainingFile(FileName.Create(documentFileName));
-			var outputAssembly = project?.OutputAssemblyFullPath;
+			if (project == null)
+			{
+				ReportDesigner("WinUI designer: no project contains '" + documentFileName
+					+ "'; the child runs without the app's dependency graph, so the app's own types will not resolve.");
+				return (null, null, null);
+			}
+			var outputAssembly = project.OutputAssemblyFullPath;
 			if (string.IsNullOrEmpty(outputAssembly))
 			{
-				return (null, null);
+				ReportDesigner("WinUI designer: project '" + project.Name
+					+ "' reports no output assembly; the child runs without the app's dependency graph.");
+				return (null, null, null);
 			}
 			var runtimeConfig = Path.ChangeExtension(outputAssembly, ".runtimeconfig.json");
 			var depsFile = Path.ChangeExtension(outputAssembly, ".deps.json");
-			return (File.Exists(runtimeConfig) ? runtimeConfig : null,
-				File.Exists(depsFile) ? depsFile : null);
+			var appBin = Path.GetDirectoryName(outputAssembly);
+			if (!File.Exists(runtimeConfig) || !File.Exists(depsFile))
+			{
+				ReportDesigner("WinUI designer: '" + project.Name + "' has no built output for the active"
+					+ " configuration (looked for " + runtimeConfig + " and " + depsFile
+					+ "); build the project so the child can resolve its types.");
+				return (null, null, Directory.Exists(appBin) ? appBin : null);
+			}
+			if (!CanHostRunOnAppFramework(runtimeConfig, out var appVersion))
+			{
+				ReportDesigner("WinUI designer: '" + project.Name + "' pins .NET " + appVersion
+					+ " which this design host (.NET " + Environment.Version.Major + ") cannot run on;"
+					+ " preloading the app's assemblies from " + appBin + " without adopting its runtime graph.");
+				return (null, null, appBin);
+			}
+			return (runtimeConfig, depsFile, appBin);
 		}
-		catch
+		catch (Exception e)
 		{
-			return (null, null);
+			ReportDesigner("WinUI designer: could not determine the project dependency context for '"
+				+ documentFileName + "'.", e);
+			return (null, null, null);
+		}
+	}
+
+	/// <summary>
+	/// Whether this host can actually run on the framework the app's runtimeconfig pins.
+	///
+	/// Two ways it cannot. A SELF-CONTAINED app (<c>includedFrameworks</c>) ships its own runtime
+	/// in its output folder, and adopting its config runs the child on that copy - never the
+	/// shared runtime this host was built for. A framework-dependent app on an older major
+	/// (<c>framework</c>/<c>frameworks</c> naming 9.x while this process is 10.x) fails the same
+	/// way. Either kills the child before Main with "Could not load file or assembly
+	/// 'System.Runtime, Version=10.0.0.0'", so the graph has to be declined rather than tried.
+	/// An unreadable or framework-less runtimeconfig is treated as usable, preserving the
+	/// previous behaviour.
+	/// </summary>
+	static bool CanHostRunOnAppFramework(string runtimeConfigPath, out string appVersion)
+	{
+		appVersion = "unknown";
+		try
+		{
+			using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(runtimeConfigPath));
+			if (!document.RootElement.TryGetProperty("runtimeOptions", out var options))
+				return true;
+			// A runtimeconfig names its frameworks as a single "framework", a "frameworks" array (an
+			// app on both Microsoft.NETCore.App and Microsoft.WindowsDesktop.App), or
+			// "includedFrameworks" when the app is self-contained. The lowest version any of them
+			// names is what the host would have to run on.
+			var versions = new List<string>();
+			var selfContained = false;
+			if (options.TryGetProperty("framework", out var single) && single.TryGetProperty("version", out var singleVersion))
+				versions.Add(singleVersion.GetString());
+			foreach (var property in new[] { "frameworks", "includedFrameworks" })
+			{
+				if (!options.TryGetProperty(property, out var many) || many.ValueKind != System.Text.Json.JsonValueKind.Array)
+					continue;
+				selfContained |= property == "includedFrameworks";
+				foreach (var framework in many.EnumerateArray())
+					if (framework.TryGetProperty("version", out var manyVersion))
+						versions.Add(manyVersion.GetString());
+			}
+			var named = versions.Where(v => !string.IsNullOrEmpty(v)).ToList();
+			if (named.Count > 0)
+				appVersion = string.Join(", ", named.Distinct());
+			else if (options.TryGetProperty("tfm", out var tfm))
+				appVersion = tfm.GetString() ?? appVersion;
+			if (selfContained)
+				return false;
+			var majors = named
+				.Select(v => Version.TryParse(v, out var parsed) ? parsed.Major : -1)
+				.Where(major => major > 0)
+				.ToList();
+			return majors.Count == 0 || majors.Min() >= Environment.Version.Major;
+		}
+		catch (Exception)
+		{
+			// Unreadable runtimeconfig: let the launch decide rather than silently dropping the graph.
+			return true;
 		}
 	}
 
@@ -792,7 +927,26 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		{
 			if (disposed || Volatile.Read(ref version) != requested)
 				return;
-			SetStatus("Uno render failed: " + e.GetBaseException().Message);
+			// IsProcessAlive alone races the child's own process.Exited event: StreamJsonRpc can
+			// report the pipe severed (ConnectionLostException, or the ObjectDisposedException that
+			// DesignerHostProcessClient normalizes to IOException) slightly before HasExited flips,
+			// so a message-based check catches the same "the child just died" case reliably too.
+			var childGone = client is { IsProcessAlive: false }
+				|| e is StreamJsonRpc.ConnectionLostException
+				|| e.GetBaseException().Message.Contains("connection with the remote party was lost", StringComparison.OrdinalIgnoreCase)
+				|| e.GetBaseException().Message.Contains("no longer running", StringComparison.OrdinalIgnoreCase);
+			var message = childGone
+				// A crashed child (a native crash in a framework control, e.g. NavigationView/Pivot -
+				// see doc/technotes/winui-designer.md) is not this document's fault. Recovery is
+				// already under way (UnoDesignClient.OnConnectionExited); if it succeeds,
+				// OnClientRecovered re-renders with lastLoadedText automatically, so this status is
+				// transient. Say so instead of surfacing the raw disposal/IO exception text, which
+				// names the wrong failure (a JsonRpc/pipe detail, not "the page you're viewing").
+				? $"{hostDisplayName} process exited while rendering (likely a native crash in the" +
+					" page's content); attempting to restart the host automatically…"
+				: $"{hostDisplayName} render failed: " + e.GetBaseException().Message;
+			SetStatus(message);
+			DesignerOutput.AppendLine(DesignerOutput.Channel(UnoDesignClient.OutputChannelName), message);
 			return;
 		}
 		if (disposed || Volatile.Read(ref version) != requested)
@@ -1633,7 +1787,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		surface.SurfacePointerPressed -= OnSurfacePointerPressed;
 		nodesByName.Clear();
 		lastSnapshot = null;
-		if (client != null) client.Recovered -= OnClientRecovered;
+		if (client != null) { client.Recovered -= OnClientRecovered; client.RecoveryFailed -= OnClientRecoveryFailed; }
 		client?.Dispose();
 		client = null;
 	}

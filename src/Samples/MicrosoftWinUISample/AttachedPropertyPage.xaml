@@ -1,0 +1,34 @@
+<!-- Regression probe: an unprefixed attached property in a document that also binds a `using:`
+     prefix. This combination is ordinary, compile-clean XAML, and it used to fail to render.
+
+     Per the XAML rules `AnimatedIcon.State` carries no prefix and so belongs to the default xmlns -
+     the framework's AnimatedIcon. Two things went wrong once the design host combined this page
+     with the ~3MB of injected default theme resources, and BOTH are invisible in any single input
+     document, which is why they took so long to find:
+
+       1. The theme markup has unprefixed attached properties of its own. Standing alone it binds no
+          CLR prefix, so they resolved correctly; injected under this page they INHERITED the
+          xmlns:local below and started resolving against MicrosoftWinUISample.Controls.
+       2. The injected elements re-declare their own xmlns:local="using:Microsoft.UI.Xaml.Controls",
+          so one prefix meant two different namespaces in one document. The parser resolved a
+          property element's owner through the outer binding and reported
+          "The attachable property 'FallbackIconSource' was not found in type 'AnimatedIcon'" -
+          naming a real, ordinary property of a real type as a missing attached one.
+
+     Both are repaired on the COMBINED document (see FrameworkDefaultResources.RepairCombinedDocument):
+     unprefixed attached properties are qualified against the default xmlns, and ambiguous prefixes
+     are renamed. Keep the xmlns:local below even though nothing here uses it - it is the trigger,
+     and without it this page exercises nothing that MainPage.xaml does not already cover. -->
+<Page x:Class="MicrosoftWinUISample.AttachedPropertyPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:local="using:MicrosoftWinUISample.Controls">
+  <Grid>
+    <StackPanel x:Name="RootStack" Margin="24" Spacing="12">
+      <TextBlock x:Name="TitleText" Text="Unprefixed attached property" />
+      <Grid x:Name="StateHost" AnimatedIcon.State="Normal">
+        <TextBlock x:Name="StateText" Text="AnimatedIcon.State is set on my parent Grid" />
+      </Grid>
+    </StackPanel>
+  </Grid>
+</Page>

@@ -1,0 +1,12 @@
+<Page x:Class="MicrosoftWinUISample.MainPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Grid>
+    <StackPanel x:Name="RootStack" Margin="24" Spacing="12">
+      <TextBlock x:Name="TitleText" Text="Microsoft WinUI design host preview" FontSize="20" />
+      <Button x:Name="PrimaryButton" Content="Hello WinUI" />
+      <CheckBox x:Name="AgreeCheck" Content="A templated control (default style must resolve)" />
+      <Slider x:Name="ValueSlider" Minimum="0" Maximum="100" Value="42" />
+    </StackPanel>
+  </Grid>
+</Page>

@@ -177,13 +177,10 @@ static class FrameworkDefaultResources
 	/// builds always are one) merges directly; anything else (a page, a toolbox item's element
 	/// template) gets the tokens injected as a MergedDictionaries entry under its own
 	/// `&lt;Root.Resources&gt;`.</summary>
-	static string Transform(string xaml)
-	{
-		if (mergedXaml is null)
-		{
-			return xaml;
-		}
+	static string Transform(string xaml) => Combine(xaml);
 
+	static string Combine(string xaml)
+	{
 		XElement root;
 		try
 		{
@@ -193,6 +190,11 @@ static class FrameworkDefaultResources
 		{
 			// Let the real XamlReader.Load report the parse error - do not mask it with a
 			// different exception from here.
+			return xaml;
+		}
+
+		if (mergedXaml is null)
+		{
 			return xaml;
 		}
 

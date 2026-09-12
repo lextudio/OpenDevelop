@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- Fixture for the MICROSOFT WinUI 3 design host, the counterpart to
+         ProGpuWinUISample (Uno). XamlFrameworkDetector selects the runtime by reading this
+         file's XML only, so UseWinUI alone is enough to route a document here - and carrying
+         no PackageReference keeps the fixture restorable with no feed access, which matters
+         because the real Windows App SDK packages are what a designer repro must NOT depend on.
+
+         Deliberately has no App.xaml: a document whose project supplies no application
+         resources is what isolates "can the host render at all" from "can it merge this app's
+         resource dictionaries", and those two failed indistinguishably before this existed. -->
+    <UseWinUI>true</UseWinUI>
+  </PropertyGroup>
+</Project>

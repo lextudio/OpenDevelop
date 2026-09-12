@@ -746,3 +746,316 @@ details; this section records the Uno-side specifics).
   pad engine (`Base/Project/Src/Gui/Pads/SharedToolbox.cs`), preserving its `ToolboxControl`/
   `DragDataFormat`/`FindItem` surface; a WinUI document's Tools pad shows only WinUI categories
   via the shared ListBox's per-scope filter.
+
+## Real WinUI-Gallery preview: seven stacked causes (2026-09-11)
+
+Opening WinUI-Gallery under `OD_WINUI_RUNTIME=microsoft` failed on every page. It turned out to be
+seven independent problems in a row, each hidden behind the previous one. The order below is the
+order they had to be fixed in; none of them could be seen before the one above it was gone.
+
+### Where this landed (2026-09-11)
+
+12 of 13 sampled WinUI-Gallery pages render with real content, measured through
+`od.winui-designer.status` (`rendered: true` plus a non-zero size): Pivot, ComboBox, Slider, Button,
+CheckBox, TextBox, ToggleSwitch, ProgressBar, AppBarButton, RadioButton, Expander, TreeView. For
+comparison, the note above this one records a corpus run that rendered 9 of 187. The one remaining
+failure, NavigationView, fails gracefully with the child alive (section 7).
+
+Of the failures seen at that point, ListView and GridView are the KNOWN abstract-root limitation
+(they derive from `ItemsPageBase`; see "An abstract root element cannot be previewed" below) and now
+say so explicitly. Pivot and NavigationView were something else entirely - they were CRASHING the
+child, which section 7 covers.
+
+Two items are deliberately left open:
+
+- **`CompiledXamlMirror`'s location is measured, not derived.** The `.xbf` files have to sit next to
+  the host; the WinUI sources point at a different base. Written up in 5.
+- **Substitution is still the fallback path.** With the app's resources served, the app's own
+  controls construct for real, so the substituter should fire less and less. It has not been
+  re-measured with substitution disabled across a wide corpus - `OD_DESIGNHOST_NO_SUBSTITUTE=1` is
+  there for exactly that comparison.
+
+### Why this took so long: the error messages point at the wrong things
+
+Recorded first because it cost the most time. In this stack a diagnostic was misleading more often
+than not:
+
+| Reported | Actually |
+|---|---|
+| `The type 'AnimatedIcon' was not found` | The name SEARCHED for was `WinUIGallery.Controls.AnimatedIcon`; the message prints the name as WRITTEN in markup. Those differ exactly when the failure is interesting. |
+| `The attachable property 'FallbackIconSource' was not found in type 'AnimatedIcon'` | It is a real, ordinary instance property of a real type. The owner's namespace had been resolved through the wrong prefix. |
+| `Cannot create instance of type 'ControlExample'` | The real cause (a generic type failing to resolve) appears NOWHERE in the message. |
+| `[Line: 49 Position: 114807]` | Sometimes exact (the AnimatedIcon case), sometimes meaningless: when the exception comes from a CONSTRUCTOR rather than from parsing, the position is wherever the parser happened to be. It pointed at unrelated theme markup twice. |
+| `rendered: true` | Not proof that anything was drawn - a page can report success at `0x0`. Always check the reported size. |
+
+Two switches are what actually settled it, and both are worth reaching for early:
+
+- `OD_XAMLMETA_TRACE=<type name>` - logs every type/member the parser asks the metadata provider
+  for, which `IXamlType` instance it got back, and each `GetMember` result. This is what proved the
+  parser asks for qualified names (never bare ones) and that member lookup was succeeding.
+- `OD_DESIGNHOST_XAML_DUMP=<dir>` - writes the exact text handed to `XamlReader`. A reported position
+  indexes into THAT text and into no file on disk (page + ~3MB of injected theme resources, then
+  rewritten by the repairs below), so reading a position without it is guesswork. It runs last in
+  `XamlDocumentRepair`, so the dump is byte-for-byte what the parser sees.
+
+### 1. Architecture mismatch (build, not code)
+
+`WinUIXamlDesigner.MicrosoftHost` built for the wrong RID dies with
+`FileLoadException: The assembly architecture is not compatible with the current process architecture`,
+which surfaces in the IDE as `Microsoft WinUI design host failed to start: A task was canceled`.
+
+Do NOT infer the RID from `uname -m` or `PROCESSOR_ARCHITECTURE` - both report x64 under emulation on
+an arm64 machine. The RID from `dotnet --info` is authoritative.
+
+### 2. Launch arguments: the app's runtime graph is often unusable
+
+`UnoDesignRuntimeHost.ProjectDependencyContext` decides what the child is launched with, and two
+cases must NOT adopt the app's runtimeconfig. `dotnet exec --runtimeconfig` pins the child to the
+framework that file names, and a net10.0 host then cannot load at all
+(`Could not load file or assembly 'System.Runtime, Version=10.0.0.0'`):
+
+- **Self-contained apps** declare `includedFrameworks` rather than `framework`/`frameworks`. A check
+  that only looks at the latter two finds no version, assumes compatible, and kills the child.
+- **Older-major apps** (a net9.0 app against a net10.0 host).
+
+Both still get `--appbin` on its own, which is what `HostBootstrap.PreloadProjectAssemblies` needs.
+`AcquireSharedAsync` therefore takes `appBinPath` and folds it into `CompatibilityKey`, so documents
+from different projects never share a child that preloaded the wrong app.
+
+Also: the shared-pool path silently returned `(null, null)` in every one of these cases, and the
+child's preload returned silently too, so "none of the app's types resolve" looked like a XAML
+authoring error. Both paths now log.
+
+### 3. Three repairs that only apply to the COMBINED document
+
+`XamlDocumentRepair` (shared by both children, called from `DesignHost.LoadDesignAsync` AFTER the
+host-specific transform) fixes problems that exist in no single input file - which is why verifying
+`AppResourceBuilder`'s output, the theme dictionary and the metadata provider each "checked out
+fine" while the render still failed:
+
+- **Ambiguous xmlns prefixes** (`XamlPrefixNormalizer`). The theme markup re-declares
+  `xmlns:local="using:Microsoft.UI.Xaml.Controls"` on its elements; a page declares
+  `xmlns:local="using:TheApp.Controls"`. One prefix, two namespaces, one document. XML says the
+  inner declaration wins and XLinq serializes exactly that, but WinUI's parser resolved a property
+  element's owner through the OUTER binding. Renaming the re-declarations removes the ambiguity.
+  Attribute VALUES have to be rewritten too (`TargetType="local:Foo"`) - XLinq only tracks names.
+- **Unprefixed attached properties** (`AttachedPropertyQualifier`). `AnimatedIcon.State="Normal"`
+  names no namespace anywhere, so by the XAML rules it belongs to the default xmlns. The parser
+  instead qualifies it with whatever `using:` prefix happens to be in scope. Standing alone the
+  theme resolves these correctly (it binds no CLR prefix); injected under a page that binds one,
+  they start resolving against the app's namespace. Minimal repro:
+  `src/Samples/MicrosoftWinUISample/AttachedPropertyPage.xaml` - deleting its one `xmlns:local`
+  line makes the same page render.
+- **Uninstantiable app controls** (`CompiledXamlControlSubstituter`) - see 5.
+
+Correcting the second one inside the metadata provider does NOT work: answering the misqualified
+name with the framework type requires reporting a `FullName` that does not match the request, and
+that aliased entry then stands in for the type itself and breaks later correctly-qualified lookups
+on it. Rewriting the markup keeps the provider honest.
+
+### 4. Metadata-provider gaps a real corpus hits immediately
+
+All in `ReflectionXamlMetadata.cs`:
+
+- `IReference<T>` projects to `Nullable<T>` - neither an enum nor convertible. Unwrap it first or
+  both `EasingMode="EaseOut"` and `Duration="0:0:0.4"` fail. Several types XAML routinely writes as
+  text (`TimeSpan` above all, in every animation) implement no `IConvertible` and need explicit
+  parsing.
+- XAML spells a closed generic `Ns.Type`2<A, B>` (what `x:TypeArguments` produces) while
+  reflection wants `Ns.Type`2[[A],[B]]`. Without translating, CommunityToolkit's
+  `Animation`2<String, Vector3>` is unresolvable, which is what actually made
+  `ControlExample` uninstantiable.
+- `IsCollection` accepts `ICollection<T>`, but `AddToVector` cast to the non-generic `IList` -
+  reported as `Cannot add instance of 'OffsetAnimation' to a collection of 'ImplicitAnimationSet'`,
+  which reads like a content-model rejection.
+
+### 5. ms-appx: serving the app's own resources (the real fix, not a workaround)
+
+A control declared in XAML gets a generated `InitializeComponent` calling
+`LoadComponent(ms-appx:///Controls/Example.xaml)`. That resolves through MRT against the RUNNING
+process's app resources, so it threw `Cannot locate resource from 'ms-appx:///...'` and failed every
+Gallery page (every sample is wrapped in `ControlExample`).
+
+**WinUI supports this scenario directly.** `ModernResourceProvider::Create` asks the app for a
+replacement resource manager ("Give the app a chance to provide its own ResourceManager to handle
+app resources" - microsoft-ui-xaml, `src/dxaml/xcp/components/mrt/ModernResourceProvider.cpp:159`),
+surfaced as `Application.ResourceManagerRequested` ->
+`ResourceManagerRequestedEventArgs.CustomResourceManager`. Implemented in
+`AppResourceManagerProvider`. Three details are load-bearing:
+
+- **Subscribe in the Application CONSTRUCTOR.** The resource manager is created lazily
+  (`CCoreServices::GetResourceManager`), but the framework's own initialization touches it first and
+  the event fires only on that one creation. Subscribing in `OnLaunched` registers a handler that is
+  never called - indistinguishable from the API not working.
+- **Construct MRT Core's `ResourceManager` from a FILE PATH.** `Windows.Storage` cannot open these
+  files in an unpackaged process: `StorageFile.GetFileFromPathAsync` fails with `0x80070002` for a
+  path `File.Exists` confirms. That is what rules out the otherwise obvious
+  `ResourceManager.Current.LoadPriFiles`.
+- **The framework's own resources keep working** - they are served by a separate framework-package
+  resource manager that this does not touch. The host declares no XAML of its own, so handing the
+  app's resources over wholesale costs nothing.
+
+**The .pri is only half of it.** `TryLoadXamlResourceHelper` probes for the compiled `.xbf` first
+(`XamlNodeStreamCacheManager::GetBinaryResourceForXamlUri` swaps the extension) and only falls back
+to `.xaml`. Only the compiled form is usable at design time: it carries `x:Bind` as references into
+generated code (which lives in the app assembly the host preloads), whereas the `.xaml` fallback
+still contains `{x:Bind}` markup and a runtime parser reports `The type 'Bind' was not found`. An
+unpackaged app keeps its `.xbf` files LOOSE in the output directory rather than inside its .pri, so
+serving the .pri alone lands on the `.xaml` fallback.
+
+`CompiledXamlMirror` copies them next to the host. **Where they must go was established by
+experiment and contradicts the sources**: copied into the host's own directory the app's controls
+construct and render, while setting the child's working directory to the app's output changes
+nothing. The only base findable in the WinUI sources is `CommonResourceProvider`'s
+`GetModuleFileName(NULL)`, which for a `dotnet exec` child is the dotnet host's directory - so some
+other path resolves these and the mechanism is NOT fully traced. If this ever needs revisiting,
+those two measurements are the ones to repeat. Known limitation: that directory is shared by every
+child, so two WinUI projects designed at once overwrite each other's `.xbf`; stale copies are
+cleared on each start, which keeps a single project always correct.
+
+`CompiledXamlControlSubstituter` stays as the fallback for when no compiled XAML is available. It
+keeps the replaced control's children INCLUDING the children of its property elements - dropping
+property elements wholesale is the obvious reading and it silently emptied pages, because
+WinUI-Gallery assigns the real content through `<ControlExample.Example>`; the result rendered as
+`0x0` while still reporting success.
+
+### 6. x:Bind in the page under design - the single biggest blocker
+
+Found last and affects the most pages: **75 of WinUI-Gallery's 120 sample pages use `x:Bind` in
+their own markup** (SliderPage alone has 14). `x:Bind` is a COMPILE-TIME feature - the XAML compiler
+turns each expression into generated code in the page's partial class - so a runtime parser reading
+the page's SOURCE sees a markup extension named `Bind` and fails the whole page with
+`The type 'Bind' was not found`.
+
+Note the asymmetry with 5, which is easy to conflate (and was, for several rounds):
+
+- The app's own **controls** have a compiled form (`.xbf`) that CAN be loaded, so their `x:Bind`
+  works as generated code. That is why serving the app's resources is a real fix.
+- The **page being designed** has no usable compiled form - the file being edited IS the source, and
+  a `.xbf` on disk is from the last build, not from what the user is looking at. There is also
+  nothing for a compiled binding to resolve against at design time: no page instance, no
+  code-behind state.
+
+`CompileTimeBindingStripper` therefore drops `{x:Bind ...}` attributes before parsing, leaving the
+property at its default. This is standard designer behaviour: show the structure, do not evaluate
+compiled bindings. Only `{x:Bind}` is touched - `{Binding}` is a runtime expression the parser
+handles by itself and degrades to an empty value without failing.
+
+Attributing a `Bind` failure to the app's controls is the trap: with substitution active the log
+showed `substituted a panel for ... ControlExample`, which means it was never constructed, so the
+`Bind` error could not have come from it. Check whether the PAGE uses `x:Bind` before looking
+further.
+
+### 7. Resolving framework template parts CRASHES the host (2026-09-11)
+
+`PivotPage` and `NavigationViewPage` did not fail to parse - they killed the child process. The IDE
+only sees `The JSON-RPC connection with the remote party was lost before the request could
+complete`, `od.winui-designer.runtime-stats` reports `childAlive: false`, and the child's log ends
+mid-render with no managed exception, because the crash is native.
+
+The cause is the provider's own namespace fallback. The parser qualifies default-xmlns names with a
+candidate list that omits `Controls.Primitives`, so it asks for
+`Microsoft.UI.Xaml.Controls.PivotPanel` when the type is
+`Microsoft.UI.Xaml.Controls.Primitives.PivotPanel`. Answering that retry with the relocated type
+lets the control's default template be built against this reflection metadata - and constructing a
+framework-internal template part that way takes the process down.
+
+So the fallback is kept, but **never for a `UIElement`**. Left unresolved, the theme builder drops
+that single default Style (the existing "dropping default Style for unresolvable TargetType" path)
+and the control renders untemplated: visibly plain, but alive. Helpers, converters and brushes found
+the same way (`ComboBoxHelper`, `CornerRadiusFilterConverter`, `AcrylicBrush`) are never instantiated
+as visuals and DO need resolving.
+
+Measured over the same 13 Gallery pages, which is the only reason the rule is where it is:
+
+| fallback | rendered | failed | crashed |
+|---|---|---|---|
+| all types | 11 | 2 | 2 (Pivot, NavigationView) |
+| disabled entirely | 11 | 4 | 0 |
+| **excluding UIElement** | **12** | **1** | **0** |
+
+`OD_DESIGNHOST_NO_NS_FALLBACK=1` disables it outright; that switch is what made the three-way
+comparison possible and is worth keeping for the next time a control crashes the host.
+
+`src/Samples/MicrosoftWinUISample/CrashProbePage.xaml` is the isolated repro - a bare `<Pivot>` with
+no app types, no bindings and no content. It crashed identically to the Gallery page, which is what
+separated "this control's default template" from "something in that page".
+
+Two things this corrected, both of which had been recorded as fact:
+
+- **Not every remaining failure was the abstract-root limitation.** Of the four, only ListView and
+  GridView derive from `ItemsPageBase`; NavigationView and Pivot do not, and were crashes. The
+  earlier claim came from confirming ONE page and generalising.
+- **A crash is not a render failure.** They were counted together, which is precisely what let a
+  process death sit disguised as a known limitation. Count them separately.
+
+`NavigationViewPage` still fails, now gracefully: `Catastrophic failure` (COMException 0x8000FFFF)
+with the child alive. That is the same HRESULT the host's own notes record for WinAppSDK's native
+resource paths when unpackaged.
+
+### Substituted content must be filtered to visuals
+
+`CompiledXamlControlSubstituter` keeps the replaced control's children including those of its
+property elements (dropping property elements wholesale renders `0x0` - WinUI-Gallery assigns real
+content through `<ControlExample.Example>`). But a property element can also hold DATA objects:
+`<ControlExample.Substitutions>` carries `ControlExampleSubstitution`, a Key/Value pair. Lifting one
+into a panel fails with
+`Cannot add instance of type 'ControlExampleSubstitution' to a collection of type 'UIElementCollection'`.
+Only elements that resolve to a `UIElement` (or whose type does not resolve as an app type at all -
+i.e. framework markup, where the page's real content lives) are lifted.
+
+### Measuring this is its own hazard
+
+Four separate wrong conclusions in this investigation came from the measurement, not the code:
+
+- `rendered: true` says a render completed, NOT that anything is visible. A page can report success
+  at `0x0` - which is exactly what a substitution that dropped all content produced. Always assert
+  the reported size too, and distinguish "failed" from "rendered empty".
+- The size in `od.winui-designer.status` is `W×H` with `×` JSON-escaped, so a naive
+  `grep 'host ([0-9]*x[0-9]*)'` silently matches nothing and reports every page as failed. Extract
+  the digits with a tolerant separator.
+- Shell quoting in the pass condition mis-scored a whole run as 0/6 when it was really 4/6.
+- Too short a wait after `activate-design` reports failures for pages that simply had not rendered
+  yet; the child needs ~25-30s on first use because the default theme dictionary is ~3MB.
+
+When a batch result looks uniformly bad, re-check one page by hand through
+`od.winui-designer.status`/`diagnostics` before believing the batch.
+
+### Two things that must not be reintroduced
+
+- **Do not probe constructibility by constructing.** Replacing the substituter's static check with
+  `Activator.CreateInstance` reads better on paper and hung the designer: these constructors run on
+  the XAML parse thread and reach for a live dispatcher, so one of them never returned. A wrong
+  substitution costs some fidelity; a hang costs the whole session.
+- **Do not wait synchronously on the child from the UI thread.** `ResolveNameAtWithPath` runs in the
+  pointer-pressed handler, so its `GetAwaiter().GetResult()` froze the entire IDE window - not just
+  the design surface - for the transport's full 30s operation timeout whenever the child was
+  unresponsive. It now gives up after 2s and treats it as "nothing picked". The repo's
+  `GetAwaiter().GetResult()` deadlock warning applies to designer-host calls, not only to DevFlow
+  actions.
+
+### Configuration and fixtures
+
+- **The active configuration must match what was actually built.** The designer resolves the app's
+  output through `project.OutputAssemblyFullPath`, which follows the ACTIVE configuration.
+  WinUI-Gallery had only ever been built as `Debug-Unpackaged/ARM64` while the IDE defaulted to
+  `Debug`, so the entire dependency context came back empty. `od.solution.set-configuration` and
+  `od.project.dependency-context` were added to drive and inspect this.
+- **The dependency context is read ONCE, when the document opens.** Changing the configuration or
+  building does not refresh an already-open designer - the document has to be reopened. A document
+  restored from the previous session's layout captures the state from before any change, which is
+  easy to mistake for the change not working.
+- **`src/Samples/MicrosoftWinUISample`** is the Microsoft-backend fixture (the pre-existing
+  `ProGpuWinUISample` is Uno, so it exercises a different child). `XamlFrameworkDetector` reads only
+  the csproj XML, so `<UseWinUI>true</UseWinUI>` alone routes documents there with no
+  PackageReference and no restore - which matters because a designer repro must not depend on the
+  real Windows App SDK packages. `MainPage.xaml` renders; `AttachedPropertyPage.xaml` is the
+  prefix/attached-property probe.
+- **An abstract root element cannot be previewed.** `<local:ItemsPageBase x:Class="...HomePage">` is
+  ordinary compiled XAML (the generated `HomePage : ItemsPageBase` is what the app instantiates),
+  but `XamlReader` ignores `x:Class` and constructs the ROOT ELEMENT's own type. `DesignHost` now
+  says so explicitly instead of surfacing WinRT's bare "No matching constructor found".
+- **Naming trap**: the Microsoft backend reuses `UnoDesignRuntimeHost` and `UnoDesignClient` on the
+  IDE side (only the child dll and display name differ), so seeing "Uno" in a stack or a file name
+  does not mean a document was routed to the Uno child. `od.winui-designer.status`'s `backend` field
+  is the reliable answer.

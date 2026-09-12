@@ -1,0 +1,23 @@
+<!-- Probe for controls whose DEFAULT TEMPLATE crashes the design host rather than failing to parse.
+     WinUI-Gallery's PivotPage and NavigationViewPage killed the child outright - no managed
+     exception, only "The JSON-RPC connection with the remote party was lost" on the IDE side - so
+     the failure had to be isolated from whatever else those pages contain. Everything here is a
+     bare framework control with no content, no bindings and no app types.
+
+     Comment controls in or out to bisect. A crash takes the whole child with it, so probe ONE at a
+     time when hunting a new one. -->
+<Page x:Class="MicrosoftWinUISample.CrashProbePage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <StackPanel Margin="16" Spacing="8">
+    <TextBlock Text="Crash probe" />
+    <Pivot>
+      <PivotItem Header="One">
+        <TextBlock Text="first" />
+      </PivotItem>
+      <PivotItem Header="Two">
+        <TextBlock Text="second" />
+      </PivotItem>
+    </Pivot>
+  </StackPanel>
+</Page>

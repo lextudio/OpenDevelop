@@ -60,6 +60,12 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		{
 			if (string.IsNullOrEmpty(appBin) || !Directory.Exists(appBin))
 			{
+				// Reported for the same reason the success path is: with no app directory the app's
+				// own types cannot resolve, and the designer then shows a plain "type not found"
+				// XAML error that looks nothing like a missing --appbin argument.
+				Console.Error.WriteLine("design-host: no project output directory to preload"
+					+ (string.IsNullOrEmpty(appBin) ? " (--appbin not passed)" : $" ('{appBin}' does not exist)")
+					+ "; the app's own types will not resolve.");
 				return;
 			}
 			var loaded = 0;
