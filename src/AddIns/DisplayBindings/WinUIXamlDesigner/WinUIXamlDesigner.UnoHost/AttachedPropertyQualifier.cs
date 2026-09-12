@@ -61,6 +61,19 @@ static class AttachedPropertyQualifier
         }
         var prefixes = new Dictionary<string, string>(StringComparer.Ordinal);
         var qualified = 0;
+
+        string EnsurePrefix(string clrNamespace)
+        {
+            if (!prefixes.TryGetValue(clrNamespace, out var prefix))
+            {
+                // Underscored to stay clear of any prefix the document itself declares.
+                prefix = "__wux" + prefixes.Count.ToString();
+                prefixes.Add(clrNamespace, prefix);
+                root.Add(new XAttribute(XNamespace.Xmlns + prefix, "using:" + clrNamespace));
+            }
+            return prefix;
+        }
+
         foreach (var element in root.DescendantsAndSelf())
         {
             // Materialized first: the loop replaces attributes on the element it is reading.
@@ -77,21 +90,49 @@ static class AttachedPropertyQualifier
                 {
                     continue;
                 }
-                if (!prefixes.TryGetValue(clrNamespace, out var prefix))
-                {
-                    // Underscored to stay clear of any prefix the document itself declares.
-                    prefix = "__wux" + prefixes.Count.ToString();
-                    prefixes.Add(clrNamespace, prefix);
-                    root.Add(new XAttribute(XNamespace.Xmlns + prefix, "using:" + clrNamespace));
-                }
+                EnsurePrefix(clrNamespace);
                 var value = attribute.Value;
                 attribute.Remove();
                 element.Add(new XAttribute(XName.Get(name, "using:" + clrNamespace), value));
                 qualified++;
             }
         }
+
+        // The same misqualification, in the one place an attribute NAME never reaches: a
+        // VisualState setter addresses an attached property through a PATH STRING,
+        // <c>Target="ContentPresenter.(AnimatedIcon.State)"</c>. The parser resolves the
+        // parenthesised owner exactly like an attached property's declaring type, so it
+        // misqualifies it against the app's `using:` prefix in precisely the same way - and the
+        // loop above cannot see it, because here the name lives in an attribute's VALUE.
+        //
+        // WinUI-Gallery's Controls/CopyButton.xaml is the real case: it writes
+        // AnimatedIcon.State BOTH as an attribute name (handled above) and three times as a
+        // setter target (handled here). Its dictionary is merged into every page's app
+        // resources, so the unfixed half failed unrelated pages - IconographyPage and
+        // CustomXamlConditionalsPage among them - with "The type 'AnimatedIcon' was not found",
+        // pointing at markup those pages do not even contain.
+        foreach (var setter in root.DescendantsAndSelf().Where(e => e.Name.LocalName == "Setter"))
+        {
+            if (setter.Attribute("Target") is not { } target) continue;
+            var rewritten = AttachedPropertyInPath.Replace(target.Value, match =>
+            {
+                var owner = match.Groups["owner"].Value;
+                if (FindFrameworkType(owner)?.Namespace is not { } ns) return match.Value;
+                return "(" + EnsurePrefix(ns) + ":" + owner + "." + match.Groups["property"].Value + ")";
+            });
+            if (rewritten == target.Value) continue;
+            target.Value = rewritten;
+            qualified++;
+        }
         return qualified;
     }
+
+    /// <summary>An UNPREFIXED attached property inside a setter target path: <c>(Owner.Property)</c>.
+    /// A path that already carries a prefix (<c>(local:Owner.Property)</c>) is deliberately not
+    /// matched - it says what it means already.</summary>
+    static readonly System.Text.RegularExpressions.Regex AttachedPropertyInPath = new(
+        @"\((?<owner>[A-Za-z_][A-Za-z0-9_]*)\.(?<property>[A-Za-z_][A-Za-z0-9_]*)\)",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
 
     /// <summary>Whether any element binds a prefix to a CLR namespace - the precondition for the
     /// parser misqualifying an unprefixed name.</summary>

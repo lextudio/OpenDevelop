@@ -97,6 +97,7 @@ static class FrameworkDefaultResources
 				return null;
 			}
 			xaml = PruneUnresolvableTargetTypes(xaml);
+			xaml = AddMissingSystemAccentColors(xaml);
 			Console.Error.WriteLine($"design-host: built default theme resources from {names.Length} file(s).");
 			return xaml;
 		}
@@ -169,6 +170,97 @@ static class FrameworkDefaultResources
 		}
 		return dropped == 0 ? xaml : document.ToString(SaveOptions.DisableFormatting);
 	}
+
+	/// <summary>
+	/// Defines <c>SystemAccentColor</c> and its Light1-3/Dark1-3 shades, which the vendored theme
+	/// files REFERENCE (eight of them do) but none of them DEFINE.
+	///
+	/// They are not ordinary static resources: on a real device the framework merges the OS's
+	/// current accent colour into Application.Resources at startup (UISettings), which is exactly
+	/// why a generic.xaml-style file only ever references them. A design host has no such live
+	/// accent colour, so the keys simply do not exist here.
+	///
+	/// Why this is not merely cosmetic, and why only ONE page in 125 ever noticed: a
+	/// ResourceDictionary entry is instantiated LAZILY, when something looks its key up (see
+	/// CResourceDictionary2's deferred-resource machinery in the WinUI sources). The accent
+	/// AcrylicBrushes that carry <c>TintColor="{ThemeResource SystemAccentColorLight3}"</c> are
+	/// therefore never built - and never fail - until a page actually asks for one.
+	/// WinUI-Gallery's XamlStylesPage is the one page that does
+	/// (<c>Background="{ThemeResource AccentAcrylicBackgroundFillColorDefaultBrush}"</c>), and it
+	/// failed with "Failed to assign to property '...AcrylicBrush.TintColor'" - the missing colour
+	/// surfacing as an assignment failure on the brush being constructed.
+	///
+	/// PLACEMENT IS LOAD-BEARING. These go in as the first CONTENT items, after any property
+	/// element (<c>&lt;ResourceDictionary.ThemeDictionaries&gt;</c>, which <see cref="Finish"/>'s
+	/// counterpart emits first). XAML does not allow a property element once content has started,
+	/// so inserting them with a plain AddFirst - ahead of ThemeDictionaries - makes the WHOLE
+	/// merged dictionary unparseable. That failure is silent in the worst way: Install swallows it
+	/// and logs, Application.Resources ends up with no framework tokens at all, and every page in
+	/// the corpus then breaks with the very error this method exists to fix. Measured: 119 pages
+	/// that rendered fine regressed to the identical TintColor failure until the placement was
+	/// corrected.
+	/// </summary>
+	static string AddMissingSystemAccentColors(string xaml)
+	{
+		XDocument document;
+		try { document = XDocument.Parse(xaml); }
+		catch { return xaml; }
+
+		var root = document.Root!;
+		var added = DefineAccentColorsIn(root);
+
+		// AND inside every per-theme dictionary. This is the half that actually fixes the failure:
+		// the accent AcrylicBrushes live INSIDE <ResourceDictionary.ThemeDictionaries>, and a
+		// {ThemeResource SystemAccentColorLight3} evaluated while one of them is being constructed
+		// resolves against its OWN theme dictionary - it does not fall back to the parent
+		// dictionary's top-level entries (measured: defining them only at top level left the exact
+		// same "Failed to assign to property '...AcrylicBrush.TintColor'" in place). Scoping them
+		// per theme is also what the real framework does, since the shades ARE theme-dependent.
+		foreach (var themeDictionary in root.Elements(Xaml + "ResourceDictionary.ThemeDictionaries")
+			.Elements(Xaml + "ResourceDictionary"))
+		{
+			added += DefineAccentColorsIn(themeDictionary);
+		}
+
+		if (added == 0) return xaml;
+		Console.Error.WriteLine($"design-host: defined {added} SystemAccentColor* fallback(s)"
+			+ " that the vendored theme files reference but never declare (no live OS accent colour here).");
+		return document.ToString(SaveOptions.DisableFormatting);
+	}
+
+	/// <summary>Adds any missing accent key to one dictionary scope, as its first CONTENT item -
+	/// after every property element, never before one (see the caller's remarks on why that
+	/// ordering is load-bearing).</summary>
+	static int DefineAccentColorsIn(XElement dictionary)
+	{
+		var existing = dictionary.Elements()
+			.Select(e => (string?)e.Attribute(X + "Key"))
+			.Where(k => k != null)
+			.ToHashSet(StringComparer.Ordinal);
+		var lastPropertyElement = dictionary.Elements()
+			.LastOrDefault(e => e.Name.LocalName.Contains('.', StringComparison.Ordinal));
+
+		var added = 0;
+		foreach (var key in SystemAccentColorKeys.Reverse())
+		{
+			if (existing.Contains(key)) continue;
+			var entry = new XElement(Xaml + "Color", new XAttribute(X + "Key", key), DefaultAccentColor);
+			if (lastPropertyElement is null) dictionary.AddFirst(entry);
+			else lastPropertyElement.AddAfterSelf(entry);
+			added++;
+		}
+		return added;
+	}
+
+	/// <summary>WinUI's own default accent. Only its EXISTENCE matters at design time - the real
+	/// shade-derivation algorithm is not reproduced, so all seven keys share this one value.</summary>
+	const string DefaultAccentColor = "#FF0078D4";
+
+	static readonly string[] SystemAccentColorKeys = {
+		"SystemAccentColor",
+		"SystemAccentColorLight1", "SystemAccentColorLight2", "SystemAccentColorLight3",
+		"SystemAccentColorDark1", "SystemAccentColorDark2", "SystemAccentColorDark3",
+	};
 
 	static readonly XNamespace X = "http://schemas.microsoft.com/winfx/2006/xaml";
 

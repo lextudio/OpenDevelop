@@ -42,6 +42,7 @@ static class CompiledXamlControlSubstituter
     public static List<string> Substitute(XElement root)
     {
         var substituted = new List<string>();
+        var substitutedTypes = new HashSet<Type>();
         // Materialized first: elements are replaced while walking.
         foreach (var element in root.DescendantsAndSelf().ToList())
         {
@@ -72,8 +73,81 @@ static class CompiledXamlControlSubstituter
             }
             element.ReplaceWith(replacement);
             substituted.Add(type.FullName ?? type.Name);
+            substitutedTypes.Add(type);
         }
+        DropSettersForSubstitutedTypes(root, substitutedTypes);
         return substituted;
+    }
+
+    /// <summary>
+    /// Removes the Setters a substituted control's own API declares, from Styles that target it.
+    ///
+    /// Substituting drops the control's ATTRIBUTES along with the element, but a
+    /// <c>&lt;Style TargetType="controls:SampleCodePresenter"&gt;</c> is not an element of that
+    /// type, so it survives the walk above untouched - and it still addresses the control's
+    /// properties, one Setter at a time. The properties a custom control declares are registered by
+    /// its own static initializer, which only runs when the control is constructed; since nothing
+    /// constructs it any more, the parser has no DependencyProperty to bind the Setter to and fails
+    /// the whole document with "The property 'SampleType' was not found in type
+    /// 'WinUIGallery.Controls.SampleCodePresenter'". Setters for INHERITED framework properties
+    /// (Background, MinHeight, ...) resolve normally and are left alone, which is why only some
+    /// Styles hit this.
+    ///
+    /// The Style element itself is kept rather than deleted: it carries an x:Key that
+    /// <c>{StaticResource}</c> references elsewhere in the document, and a missing key is a parse
+    /// failure of its own. An emptied Style is harmless - no element of the target type is left for
+    /// it to apply to.
+    /// </summary>
+    static void DropSettersForSubstitutedTypes(XElement root, HashSet<Type> substitutedTypes)
+    {
+        if (substitutedTypes.Count == 0)
+        {
+            return;
+        }
+        foreach (var style in root.DescendantsAndSelf().Where(e => e.Name.LocalName == "Style").ToList())
+        {
+            if (style.Attribute("TargetType")?.Value is not { Length: > 0 } targetType
+                || ResolveTypeToken(style, targetType) is not { } target
+                || !substitutedTypes.Contains(target))
+            {
+                continue;
+            }
+            foreach (var setter in style.Elements().Where(e => e.Name.LocalName == "Setter").ToList())
+            {
+                if (setter.Attribute("Property")?.Value is not { Length: > 0 } property)
+                {
+                    continue;
+                }
+                // Declared by the app's own control (or unresolvable) - the framework knows nothing
+                // about it. Anything inherited from a framework base stays.
+                var declaring = target.GetProperty(property,
+                    BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy)?.DeclaringType;
+                if (declaring is null || !IsFrameworkType(declaring))
+                {
+                    setter.Remove();
+                }
+            }
+        }
+    }
+
+    static bool IsFrameworkType(Type type)
+        => type.Namespace is { } ns
+            && (ns.StartsWith("Microsoft.UI", StringComparison.Ordinal)
+                || ns.StartsWith("Windows.", StringComparison.Ordinal));
+
+    /// <summary>Resolves a <c>prefix:Name</c> token written in an ATTRIBUTE VALUE (a Style's
+    /// TargetType), which carries no xmlns of its own - the prefix has to be looked up in the
+    /// scope of the element that wrote it.</summary>
+    static Type? ResolveTypeToken(XElement scope, string token)
+    {
+        var separator = token.IndexOf(':', StringComparison.Ordinal);
+        if (separator < 0)
+        {
+            // No prefix means the default xmlns, which is the framework - never a substituted type.
+            return null;
+        }
+        var ns = scope.GetNamespaceOfPrefix(token.Substring(0, separator));
+        return ns is null ? null : ResolveClrType(ns + token.Substring(separator + 1));
     }
 
     /// <summary>
@@ -123,8 +197,48 @@ static class CompiledXamlControlSubstituter
     /// No <c>x:</c> intrinsic is ever a UIElement, so this namespace is excluded up front.</summary>
     static bool IsVisual(XElement element)
         => element.Name.Namespace != X
-            && (ResolveClrType(element.Name) is not { } type
+            && ((ResolveClrType(element.Name) ?? ResolveFrameworkType(element.Name)) is not { } type
                 || typeof(Microsoft.UI.Xaml.UIElement).IsAssignableFrom(type));
+
+    /// <summary>Resolves an element name in the DEFAULT (framework) xmlns, which declares no CLR
+    /// namespace of its own. Without this every framework element read as "unresolved, so keep it",
+    /// and a property element's non-visual framework content was lifted into the stand-in panel -
+    /// WinUI-Gallery's &lt;controls:ControlExample.Styles&gt; holds a &lt;Style&gt;, which fails with
+    /// "Cannot add instance of type 'Microsoft.UI.Xaml.Style' to a collection of type
+    /// 'UIElementCollection'". The CLR namespace is not written down anywhere, so the framework's
+    /// own namespaces are searched by short name, exactly as the parser does.</summary>
+    static Type? ResolveFrameworkType(XName name)
+    {
+        if (name.Namespace != Xaml)
+        {
+            return null;
+        }
+        foreach (var clrNamespace in FrameworkNamespaces)
+        {
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                try
+                {
+                    if (assembly.GetType(clrNamespace + "." + name.LocalName, throwOnError: false) is { } found)
+                    {
+                        return found;
+                    }
+                }
+                catch { /* a broken or partially-loaded assembly must not fail the whole lookup */ }
+            }
+        }
+        return null;
+    }
+
+    static readonly string[] FrameworkNamespaces = [
+        "Microsoft.UI.Xaml.Controls",
+        "Microsoft.UI.Xaml",
+        "Microsoft.UI.Xaml.Shapes",
+        "Microsoft.UI.Xaml.Controls.Primitives",
+        "Microsoft.UI.Xaml.Documents",
+        "Microsoft.UI.Xaml.Media",
+        "Microsoft.UI.Xaml.Media.Animation",
+    ];
 
     /// <summary>Resolves an element name whose xmlns is a CLR namespace declaration; framework
     /// namespaces (the default xmlns) are not CLR-declared and return null, so only the app's own
