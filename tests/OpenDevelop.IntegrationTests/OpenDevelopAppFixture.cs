@@ -73,6 +73,11 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     // (WinUIGalleryDesignerTests) are optional and skip rather than fail in that case - the real
     // Gallery is a large external repo, not a fixture this repository can vendor.
     public string? WinUIGalleryRoot => TryLocateWinUIGalleryRoot();
+    // Null when no WPF-Samples checkout is present. WpfGalleryDesignerTests is the WPF-designer
+    // counterpart of WinUIGalleryDesignerTests and is optional/skips the same way - the WPFGallery
+    // sample app (part of the official microsoft/WPF-Samples repo) is a large external checkout,
+    // not a fixture this repository vendors.
+    public string? WpfGalleryRoot => TryLocateWpfGalleryRoot();
     public string AspNetCoreSampleSolutionPath => LocateAspNetCoreSampleSolution();
     public string GitFixtureTemplatePath => LocateGitFixtureTemplate();
     public string FSharpFixtureSolutionPath => LocateFSharpFixture();
@@ -1060,6 +1065,30 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         {
             var candidate = Path.Combine(dir, "WinUI-Gallery");
             if (File.Exists(Path.Combine(candidate, "WinUIGallery.slnx"))) return candidate;
+            dir = Path.GetDirectoryName(dir);
+        }
+        return null;
+    }
+
+    // The real WPF-Samples checkout (microsoft/WPF-Samples) is optional. Order: explicit
+    // OD_WPF_GALLERY_ROOT (pointing directly at the "Sample Applications/WPFGallery" folder), then
+    // a sibling "WPF-Samples" directory at any ancestor of the test binary (the usual layout is
+    // <repos>/WPF-Samples next to <repos>/wpf-tools/OpenDevelop) - same discovery pattern as
+    // TryLocateWinUIGalleryRoot.
+    static string? TryLocateWpfGalleryRoot()
+    {
+        const string RelativeGalleryProject = "WPFGallery.csproj";
+        var relativeGalleryDir = Path.Combine("Sample Applications", "WPFGallery");
+
+        var configured = Environment.GetEnvironmentVariable("OD_WPF_GALLERY_ROOT");
+        if (!string.IsNullOrWhiteSpace(configured))
+            return File.Exists(Path.Combine(configured, RelativeGalleryProject)) ? configured : null;
+
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir, "WPF-Samples", relativeGalleryDir);
+            if (File.Exists(Path.Combine(candidate, RelativeGalleryProject))) return candidate;
             dir = Path.GetDirectoryName(dir);
         }
         return null;

@@ -387,7 +387,7 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 	// specific missing runtime instead of "WinUI/Uno", which wrongly implies either could be at
 	// fault.
 	public string StatusText => runtime?.StatusText ?? Framework.Runtime switch {
-		XamlRuntimeKind.MicrosoftWinUI => "Microsoft WinUI 3 runtime host is not installed.",
+		XamlRuntimeKind.MicrosoftWinUI => "WinUI 3 runtime host is not installed.",
 		XamlRuntimeKind.Uno => "Uno runtime host is not installed. The WPF XamlReader compatibility renderer is disabled.",
 		_ => "No WinUI/Uno runtime host is available for this document."
 	};

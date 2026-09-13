@@ -66,7 +66,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		this.documentFileName = documentFileName;
 		this.hostDllPath = hostDllPath;
 		this.hostDisplayName = hostDisplayName ?? "Uno design host";
-		surface.BackendName = this.hostDisplayName.Contains("Microsoft", StringComparison.OrdinalIgnoreCase) ? "WinUI"
+		surface.BackendName = this.hostDisplayName.Contains("WinUI", StringComparison.OrdinalIgnoreCase) ? "WinUI"
 			: this.hostDisplayName.Contains("ProGPU", StringComparison.OrdinalIgnoreCase) ? "ProGPU"
 			: "Uno";
 		projectDirectory = framework?.ProjectFileName == null

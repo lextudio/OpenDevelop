@@ -59,7 +59,7 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 		=> useMicrosoftWpf ? WpfSurfaceHostBackend.MicrosoftWpf : WpfSurfaceHostBackend.LibreWpf;
 
 	public static string GetBackendName(WpfSurfaceHostBackend backend)
-		=> backend == WpfSurfaceHostBackend.MicrosoftWpf ? "Microsoft WPF" : "LibreWPF";
+		=> backend == WpfSurfaceHostBackend.MicrosoftWpf ? "WPF" : "LibreWPF";
 
 	public static string? LocateChildDll()
 		=> LocateChildDll(string.Equals(Environment.GetEnvironmentVariable("OD_WPF_RUNTIME"), "microsoft", StringComparison.OrdinalIgnoreCase)

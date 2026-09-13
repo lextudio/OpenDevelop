@@ -44,7 +44,7 @@ public static class MicrosoftWinUIDesignRuntimeHostBootstrap
 	{
 		var child = ChildPath;
 		return framework?.Runtime == XamlRuntimeKind.MicrosoftWinUI && child != null
-			? new UnoDesignRuntimeHost(framework, documentFileName, child, "Microsoft WinUI design host")
+			? new UnoDesignRuntimeHost(framework, documentFileName, child, "WinUI design host")
 			: null;
 	}
 }

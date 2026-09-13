@@ -76,7 +76,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Xaml
 				{
 					// On macOS/Linux, Microsoft WPF is unavailable — use LibreWPF instead.
 					var runtime = OperatingSystem.IsWindows() ? XamlRuntimeKind.MicrosoftWpf : XamlRuntimeKind.LibreWpf;
-					return new XamlFrameworkContext(XamlFrameworkKind.Wpf, runtime, projectFileName, runtime == XamlRuntimeKind.LibreWpf ? "WPF property (LibreWPF on non-Windows)" : "Microsoft WPF property");
+					return new XamlFrameworkContext(XamlFrameworkKind.Wpf, runtime, projectFileName, runtime == XamlRuntimeKind.LibreWpf ? "WPF property (LibreWPF on non-Windows)" : "WPF property");
 				}
 				return Unknown("Project has no recognized XAML framework marker", projectFileName);
 			} catch (Exception ex) {

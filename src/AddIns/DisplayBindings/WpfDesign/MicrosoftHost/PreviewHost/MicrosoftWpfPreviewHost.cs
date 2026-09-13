@@ -20,7 +20,7 @@ sealed class Service(string expectedToken) : IDesignerChildService {
 		DesignerHostHandshakeValidator.Validate(expectedToken, token, protocolVersion);
 		documents.Initialize(session);
 		sessionId = session;
-		return new HostHandshake { ProtocolVersion = DesignerProtocol.Version, Runtime = "Microsoft WPF", ProcessId = Environment.ProcessId, SessionId = session };
+		return new HostHandshake { ProtocolVersion = DesignerProtocol.Version, Runtime = "WPF", ProcessId = Environment.ProcessId, SessionId = session };
 	}
 	[JsonRpcMethod("session/open")] public DesignerSessionState Open(DesignerDocumentSnapshot s) => Load(s, create: true);
 	[JsonRpcMethod("session/update")] public DesignerSessionState Update(DesignerDocumentSnapshot s) => Load(s, create: false);
