@@ -199,6 +199,41 @@ public sealed class WinUIGalleryDesignerTests
         Assert.True(dependency.GetProperty("outputAssemblyExists").GetBoolean(), dependency.ToString());
     }
 
+    /// <summary>
+    /// Acceptance gate for the application-metadata native WinUI preview.  This is deliberately
+    /// separate from <see cref="RenderPages"/>: those rows document the legacy loose-XAML path,
+    /// which can claim a rendered frame after rewriting a control or its resources.  SettingsPage
+    /// uses CommunityToolkit SettingsCard, whose real compiled template exercises both the app's
+    /// generated metadata and the package's compiled resources.
+    ///
+    /// The test requires positive app-metadata and PRI markers so a future fallback cannot
+    /// silently satisfy the visual assertions using the old proxy mechanism.
+    /// </summary>
+    [Fact]
+    public async Task GallerySettingsPage_UsesApplicationMetadataAndRendersRealToolkitControl()
+    {
+        if (_skip) { Assert.Skip(_skipReason); return; }
+
+        const string page = "WinUIGallery/Pages/SettingsPage.xaml";
+        var status = await OpenDesignerAsync(page, "SpatialAudioCard", DesignerExpectation.Rendered);
+
+        Assert.True(IsRendered(status), page + ": did not render. status=" + status);
+        var size = ParseRenderedSize(GetStatusText(status));
+        Assert.True(size is { Width: > 0, Height: > 0 }, page + ": zero/invalid frame. status=" + status);
+        var names = ReadElementNames(status);
+        Assert.Contains("SpatialAudioCard", names);
+        Assert.Contains("spatialSoundBox", names);
+
+        var child = await _app.InvokeAsync("od.winui-designer.child-log");
+        var log = child.TryGetProperty("log", out var text) ? text.GetString() ?? "" : child.ToString();
+        Assert.Contains("design-host: using application XAML metadata from WinUIGallery before framework metadata.", log, StringComparison.Ordinal);
+        Assert.Contains("design-host: serving app resources from WinUIGallery.pri.", log, StringComparison.Ordinal);
+        Assert.DoesNotContain("SettingsControls element(s) with safe design proxies", log, StringComparison.Ordinal);
+        Assert.DoesNotContain("AnimatedIcon.State theme setter", log, StringComparison.Ordinal);
+
+        await AssertDesignHostChildAliveAsync(page);
+    }
+
     async Task EnsureGalleryOpenAsync()
     {
         await _app.EnsureSolutionOpenAsync(Path.Combine(_galleryRoot!, SolutionFileName));

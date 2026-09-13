@@ -1,5 +1,246 @@
 # WinUI Designer Runtimes: Uno, Windows App SDK, and ProGPU
 
+## Native WinUI long-term loading contract: research correction (2026-09-13)
+
+This section supersedes earlier claims that removing `AnimatedIcon.State`, replacing toolkit
+controls, or rendering a substituted page establishes a correct native WinUI loader. The
+SettingsPage root cause was application-generated metadata being bypassed by the framework
+provider; the production fix and its no-workaround acceptance test are documented below.
+
+### Verified source and temporary-project evidence
+
+Source inspected: local `../ms-ui-xaml-upstream`, commit
+`25d2cb1c6e4086dd14b387a4a149cce0649dbe17`. This identifies the inspected upstream source,
+not the exact source revision of the Gallery's installed native binaries.
+
+- `src/controls/dev/AnimatedIcon/AnimatedIcon.idl` publicly declares `StateProperty`,
+  `SetState(DependencyObject, String)` and `GetState(DependencyObject)`.
+- `src/controls/dev/Generated/AnimatedIcon.properties.cpp` registers `State` with
+  `true /* isAttached */`; its accessors call the target's `SetValue`/`GetValue`.
+- `src/controls/dev/AnimatedIcon/APITests/AnimatedIconTests.cs` exercises state on parent
+  elements and directly on AnimatedIcon. Therefore State is a real runtime attached dependency
+  property. Calling it a compiler-only property unsupported by definition is incorrect.
+
+A temporary, independent .NET console project was created and executed at
+`C:\Users\lextudio\AppData\Local\Temp\WinUIDesignerResearch\TreeProbe.csproj`:
+
+```powershell
+dotnet run --project C:\Users\lextudio\AppData\Local\Temp\WinUIDesignerResearch\TreeProbe.csproj
+```
+
+It reproduces the current substitution algorithm using three nested SettingsCard XML nodes:
+
+```text
+Parent-first: reported replacements=3, live SettingsCard remaining=2
+Child-first: reported replacements=3, live SettingsCard remaining=0
+```
+
+LINQ to XML copies a node added to another parent while the original still has a parent.
+The precomputed traversal subsequently edits detached originals, not the copies in the live
+document. This explains how a replacement count can exceed the number actually replaced.
+It disproves the inference that residual controls necessarily came from a later resource merge.
+The temporary project verifies XML transformation semantics only: it does **not** run WinUI,
+prove a native crash cause, or validate SettingsPage rendering.
+
+### Architecture decision
+
+**Native experiment update:** A real temporary WinUI project now exists at
+`C:\Users\lextudio\AppData\Local\Temp\WinUINativeProbe\Probe.csproj`. It uses
+Windows App SDK 2.1.3, net9.0-windows10.0.22621.0, win-arm64, unpackaged,
+WindowsAppSDKSelfContained=true and SelfContained=false. Built successfully using VS 18
+MSBuild `/restore /t:Build`, then executed its generated Probe.exe directly.
+
+Controlled A/B result (same C# loader and runtime settings):
+
+| App.xaml input | Framework resources | Direct SetState/GetState | Loose XamlReader State |
+|---|---|---|---|
+| Only XamlControlsResources | Success | Normal | State not found, line 1 position 116 |
+| Also a keyed Grid with controls:AnimatedIcon.State="Normal" | Success | Normal | Normal |
+
+The second build's `obj/Debug/net9.0-windows10.0.22621.0/win-arm64/XamlTypeInfo.g.cs`
+contains an AnimatedIcon type entry with `userType.AddMemberName("State")` and generated
+accessors. Logs are in the corresponding `bin/.../win-arm64/probe.log` (append-only).
+This proves that **compiler-generated application metadata coverage changes whether loose
+XAML can load this attached property**, even though the runtime API works in both cases.
+It also proves standard unpackaged self-contained framework-resource initialization works
+in this minimal app. It does not yet establish the cause of the separate native crash.
+
+Concrete new solution to pursue: generate a preview application with metadata coverage for
+the designed markup, and expose that application's generated provider as the primary provider.
+The current host's owning-assembly-only selection is insufficient as a general strategy:
+the application compiler generates metadata for members of types owned by other assemblies.
+Returning a non-null framework IXamlType does not prove it describes every required member.
+Validate provider ordering/coverage with this A/B case before removing production workarounds.
+
+Use a **project-specific, compiled preview application running out of process**, with a small
+designer bootstrap and the project's evaluated dependency/resource graph. Keep the IDE side
+responsible for source editing, selection and IPC. The native child owns WinUI objects, the
+UI thread, window/XamlRoot, metadata, resource lookup and rendering. No native WinUI object
+crosses into the WPF shell.
+
+The preview application should be generated into a disposable cache from evaluated MSBuild
+inputs. Its identity includes TFM, RID, configuration, Windows App SDK package graph, deployment
+mode, relevant compiler inputs and referenced outputs. Build it with the actual WinUI XAML/PRI
+toolchain. Do not substitute a newer bundled SDK merely because it resolves more type names;
+log the actual loaded managed and native module paths/versions to verify the selected graph.
+
+The preview Application should use generated metadata and normal framework resources, including
+XamlControlsResources, in a valid initialized WinUI lifecycle. Resolve app and library compiled
+resources with their original URI identity and resource context. A host-local XamlControlsResources
+failure is a bootstrap/resource defect to investigate, not evidence that unpackaged WinUI generally
+cannot use it. Avoid cloning megabytes of a different framework version's theme source into every
+page or extracting XBF into guessed paths as the normal resource mechanism.
+
+Use two explicitly different loading paths inside that application:
+
+1. **Loose XAML preview** for edits representable by XamlReader, with generated-provider lookup
+   and valid application resources. Reflection is a deliberate fallback for missing metadata,
+   not a replacement for the full framework/provider contract. Trace provider identity and
+   GetMember/IsAttachable results before adding any member-specific workaround.
+2. **Compiled preview** for x:Class, x:Bind and other compilation-dependent behavior. Generate
+   and compile a preview page/component with the WinUI toolchain, load its generated component
+   and matching resources, and replace/restart the child when assembly/resource generations
+   cannot safely coexist. Define code-behind execution and design-data policy explicitly;
+   merely calling the user's Application/Main is not a safe or sufficient preview bootstrap.
+
+Link reusable original host/protocol C# into this generated application, consistent with the
+existing source-link approach. Place framework-neutral project fingerprinting, build/cache and
+child-process coordination in designer common; WinUI compiler, IXamlMetadataProvider, PRI and
+XamlRoot handling remain in the WinUI adapter. Do not put a toolkit-specific Border substitution
+in framework-neutral common code or assume it applies identically to Uno.
+
+### Native experiment gates still required
+
+**Compiled preview path verified:** `WinUINativeProbe/PreviewPage.xaml` now declares a
+StackPanel with `AnimatedIcon.State="Normal"` and a named real SettingsCard containing a
+ToggleSwitch. Its partial Page calls generated InitializeComponent. The application creates
+that Page, reads State and the named card through code-behind, attaches it to the offscreen
+Window and renders the Page. VS MSBuild succeeded and Probe.exe exited 0 with:
+
+```text
+compiled state=Normal; card=CommunityToolkit.WinUI.Controls.SettingsCard
+layout=1365x70; template=True; children=1
+render=1365x70
+```
+
+The independent loose State probe also succeeds again because the preview Page participates
+in application metadata generation. This verifies the core proposed path end-to-end in the
+temporary app: XAML compilation → generated component/metadata/resources → real third-party
+template → offscreen render. The research has identified and demonstrated a new solution;
+this is not a claim that the production designer or Gallery SettingsPage has been fixed.
+
+Recommended implementation sequence:
+
+1. Generate a disposable preview project from the evaluated target project and compile the
+   preview Page and resource inputs with its matching toolchain. Keep original files untouched.
+2. Link the existing RPC/bootstrap-independent C# into that child, with normal generated
+   Application metadata and resources replacing the reflection-first bootstrap.
+3. Bring in Gallery resource dependencies one at a time, preserving library PRI/XBF identities;
+   validate SettingsPage with actual named controls through DevFlow before enabling the path.
+4. Remove the now-unnecessary State stripping, toolkit proxies and framework-theme copying
+   only after their corresponding real-control cases pass. Surface unsupported previews as
+   diagnostics rather than silently reporting a substituted control as faithful rendering.
+
+**Additional control experiment:** Removing the explicit State declaration from App.xaml
+while keeping the Toolkit package makes loose `<Grid c:AnimatedIcon.State="Normal"/>`
+fail again. Catching that failure separately and continuing in the same process still loads
+and renders the real SettingsCard at 1365x70 with its default template. Process exit is 0.
+Thus the library's compiled template and arbitrary loose member lookup are different paths;
+SettingsCard's template is not inherently incompatible with this unpackaged/offscreen host.
+The generated application's OtherProviders list includes the framework and SettingsControls
+providers, yet package aggregation alone does not give arbitrary loose markup full coverage.
+
+Implementation consequence: generate/compile the preview document (including its resource
+dependencies) so its required members participate in application metadata generation, or build
+an explicitly validated equivalent metadata bridge. Merely generating an empty application
+and referencing packages is insufficient. Preserve library compiled resources instead of
+flattening those templates into loose XAML. This is the experimentally supported new approach;
+integration into OpenDevelop and diagnosis of its separate native exception remain follow-up work.
+
+**Third-party follow-up verified:** The same temporary Probe.csproj now references
+`CommunityToolkit.WinUI.Controls.SettingsControls` 8.2.251219 (the Gallery version).
+Its loose XAML creates a real SettingsCard with Header, Description and a ToggleSwitch.
+No SettingsCard declaration was added to compiled App.xaml; the referenced library's generated
+provider participates through normal generated application metadata. The AnimatedIcon.State
+compiled declaration from the preceding experiment remains present.
+
+After activating a real Window, moving it to (-32000,-32000), waiting for layout and calling
+RenderTargetBitmap.RenderAsync on the card, the process exited with code 0 and logged:
+
+```text
+resources initialized
+direct=Normal
+loose=Normal
+card=CommunityToolkit.WinUI.Controls.SettingsCard
+layout=1365x70; template=True; children=1
+render=1365x70
+```
+
+No app-PRI disable switch, reflection metadata provider, vendored theme dictionary, State
+stripping or control proxy is used. No screenshot was captured or image file saved; the
+renderer was exercised and only dimensions logged. This establishes an executable proof
+of the proposed bootstrap/metadata/resource approach for the specific third-party control
+and an offscreen rendering lifecycle. It does not prove the full Gallery SettingsPage or
+all interactive template states. Port this working baseline into the designer adapter before
+adding Gallery's resource graph incrementally; preserve this project as the control case.
+
+The architecture above is the proposed long-term direction, not a proven implementation. The
+next temporary **WinUI** project must run the following controlled cases with the Gallery's
+evaluated SDK/RID/deployment mode, without string stripping or control substitution:
+
+| Case | Required evidence |
+|---|---|
+| Normal compiled Application + XamlControlsResources | Successful initialization; loaded native module paths |
+| Grid + AnimatedIcon.SetState/GetState | Round-trip `Normal` on the UI thread |
+| Loose XAML using explicitly qualified AnimatedIcon.State | Successful load and state read-back, or exact provider/member trace |
+| Same markup compiled by WinUI | Compare compiled and loose results under the same runtime graph |
+| Real SettingsCard with standard resources | Actual CLR type, template application and nonzero layout |
+| App/library PRI and SettingsPage | Resource identities, live named controls and nonzero rendered frame |
+
+Change one input at a time between the normal generated application and the designer bootstrap.
+If a native exception occurs, record its first relevant stack/stowed exception and the last
+metadata/resource request. A JSON-RPC disconnect, changed parse position, or disappearance of
+one log message is not a native root cause. A different earlier parser error does not prove the
+original later error has been eliminated.
+
+Completion requires the real SettingsPage in OpenDevelop via DevFlow, valid frame dimensions
+and live control geometry, with diagnostic PRI-disable and substitution switches absent. It also
+requires a documented response to compilation-dependent markup and resource reloads. Temporary
+proxies can only be an explicit degraded-preview mode; they cannot satisfy that acceptance gate.
+
+The State stripping and SettingsControls substitutions described by earlier investigation notes
+were removed after the production path below rendered the real control. Previous claims of SDK
+incompatibility or template crash causes should be treated as historical hypotheses, not facts.
+
+### Application metadata precedence fix (2026-09-13)
+
+The host now identifies the designed executable from its output directory's runtimeconfig file
+and prefers that application's generated `IXamlMetadataProvider` before the provider from the
+CLR assembly that owns each requested type. This is necessary because application XAML compilation
+can generate a member overlay for a framework type; resolving `AnimatedIcon` directly from the
+framework provider loses the application's `State` member metadata.
+
+Verified through DevFlow against real `WinUIGallery/Pages/SettingsPage.xaml`, ARM64
+Debug-Unpackaged, with neither `OD_DESIGNHOST_NO_DESIGN_TEMPLATES` nor
+`OD_DESIGNHOST_NO_APP_PRI` set:
+
+```text
+Rendered by WinUI design host (1208×729).
+SpatialAudioCard and spatialSoundBox exist in the resolved name tree; child process remains alive.
+design-host: application metadata assembly is WinUIGallery.
+design-host: serving app resources from WinUIGallery.pri.
+design-host: using application XAML metadata from WinUIGallery before framework metadata.
+```
+
+Both SettingsControls proxy paths and all AnimatedIcon.State stripping have been removed from
+the final document and vendored framework theme. `GallerySettingsPage_UsesApplicationMetadataAndRendersRealToolkitControl`
+is the regression gate: it requires a nonzero rendered frame, real named SettingsCard content,
+the application metadata and PRI log markers, and absence of the old proxy/state-rewrite markers.
+It passed on 2026-09-13 against Gallery ARM64 Debug-Unpackaged (one test, 32.8 seconds).
+The complete `WinUIGalleryDesignerTests` Microsoft-host corpus then passed 25/25 in 10 minutes
+18 seconds: 21 rendered pages, two intentional abstract-root diagnostics, backend routing, and
+this real SettingsCard acceptance case.
+
 This technote is the dedicated home for the WinUI-family designer: architecture decisions, the
 XAML Studio/ProGPU integration boundary, packaging workflow, the current state, and the
 real-world preview problem catalog (updated 2026-08-15). The cross-designer roadmap (WinForms + WPF +
@@ -1310,3 +1551,193 @@ expected failures: FlipView, GridView, ItemsRepeater, ItemsView, ListView, Paral
   ~106 previously-rendering pages did not regress.
 - Temporary tooling: `WinUIGallerySweep.cs` and `WinUIGalleryProbe.cs` are gated diagnostic tests,
   not part of the normal suite.
+
+### Coordinate investigation: independent raster oracle (2026-09-13)
+
+Status: investigation and proposed contract, NOT a verified fix for Gallery SettingsPage.
+The earlier frame/root width-ratio compensation is not validated and must not be described as
+a reliable solution. A different returned bitmap size alone does not establish the capture
+origin, clipping or scaling. Do not ship further positional compensation based on those sizes.
+
+Confirmed source findings:
+
+- `ShowSelection` and `QueryElementBounds` both read `nodesByName`. DevFlow's agreement between
+  selection and element rectangles therefore cannot establish agreement with rendered pixels.
+- `GetBoundsInRoot` accumulates ActualOffset/layout slots and ignores RenderTransform and other
+  visual transforms. Zero ActualOffset is not a missing-value sentinel; a slot fallback can
+  also add a position which is not the rendered position.
+- The recent BuildTree scaling is absent from CollectHits and SetEventCore's tree rebuild.
+  Consequently selection, hit testing and event-only updates can use different units.
+- UnoDesignSurfaceControl.ShowFrame divides frame dimensions by Render.Dpi and positions
+  overlays in logical design units. Changing only tree coordinates to physical pixels violates
+  that existing client contract at non-unit DPI.
+- RenderAsync computes its requested size before awaiting native rendering, while the tree
+  is read afterwards. A later tree read does not prove it describes the captured layout epoch.
+
+Experiment added: `UnoDesignHostRpcTests.ChildHost_GeometryMatchesRasterPixels`. A white
+320x240 Grid contains a magenta 60x40 Border at Canvas position (110,70). The test decodes
+the ordinary RPC BGRA frame with DesignerFrameCodec and independently scans magenta pixels;
+it does not call screenshot/export endpoints or take an OS screenshot. It compares all four
+pixel edges with the reported node, with a one-pixel tolerance.
+
+| Experiment | Observed raster edges L,T,R,B | Reported tree edges | Result |
+| --- | --- | --- | --- |
+| No transform | 110,70,170,110 | 110,70,170,110 | Pass |
+| TranslateTransform(23,17) | 133,87,193,127 | 110,70,170,110 | Fail; max error 23 px |
+
+These two cases ran against the legacy standalone deployed MicrosoftHost DLL at
+`AddIns/DisplayBindings/WinUIXamlDesigner/MicrosoftHost/WinUIXamlDesigner.MicrosoftHost.dll`.
+This proves a flaw in the manual bounds method, not the exact cause of the Gallery buttons.
+The explicit newer `MicrosoftHost/net10.0` run produced no frame: without an app metadata
+context it failed on AnimatedIcon.State in framework resources. Both cases failed before
+geometry measurement; this is not evidence for or against their positional accuracy.
+
+Reproduction (Microsoft.Testing.Platform, not VSTest arguments):
+
+```powershell
+dotnet test src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.MicrosoftHost.Tests/WinUIXamlDesigner.MicrosoftHost.Tests.csproj -- --filter-method '*ChildHost_GeometryMatchesRasterPixels' --no-progress
+```
+
+The standalone Remote project now defines DESIGNER_STANDALONE_CLIENT so shared client log
+output goes to stderr instead of depending on the IDE Output pad. The pixel regression is
+intentionally currently failing for the transformed case; it is a reproduction, not a green
+acceptance result. The earlier root-size equality assertions are insufficient: matching root
+size cannot detect this failure and assumes pixel units not supported by the current client.
+
+Proposed reliable contract and implementation sequence:
+
+1. Keep element local/layout bounds separate from the four visual corners in design-root DIPs.
+   Obtain the latter through the backend's committed visual transform (WinUI TransformToVisual),
+   including ancestor transforms and scrolling. Test this after settled native layout; do not
+   assume Uno and Microsoft WinUI have identical commit semantics. A transformed control may
+   need a quadrilateral; an axis-aligned bounding box loses rotation information. Report clipping
+   separately. ToggleSwitch layout/hit bounds may legitimately exceed its painted track.
+2. Capture an explicit, fixed-size design surface with a defined origin and background. Let its
+   parent layout settle. Record requested capture rectangle, actual raster dimensions and the
+   full DesignToRaster affine transform, including origin translation; never derive this matrix
+   from a width ratio alone. Validate it with at least three non-collinear colored markers plus
+   a fourth held-out marker. Marker disagreement means the proposed capture mapping is wrong.
+3. Publish image, geometry, clipping and transforms together with SessionId, document version,
+   monotonically increasing FrameId and layout epoch. During capture, detect layout changes and
+   retry rather than combine old pixels with new geometry. Freeze animations for deterministic
+   diagnostics; a dispatcher delay alone is not a composition completion fence.
+4. The frontend composes DesignToRaster with RasterToCanvas and CanvasToScreen. Image and
+   overlays must share this mapping. Pointer input uses its inverse and includes FrameId.
+   Reject or explicitly remap stale input. SetBounds remains in layout DIPs; raster coordinates
+   must never silently become XAML Width/Height/Margin. Event-only updates retain the same
+   geometry epoch or request a complete fresh frame.
+5. Put matrix math, frame identity, coordinate validation and structured diagnostics in designer
+   common. Keep framework visual transforms, layout fencing, capture and native hit testing in
+   each isolated host. No runtime visual objects cross RPC.
+
+Diagnostic record per selected element/frame: actual loaded host path/hash, runtime and SDK,
+source name and visual ancestry, layout bounds, visual corners, ancestor scroll/transform/clip,
+capture rect, DesignToRaster, raster size, RasterToCanvas, canvas viewport/zoom/pan, display DPI,
+CanvasToScreen, predicted screen polygon, independently measured marker edges and residuals.
+DevFlow should expose these in one atomic response, not return two aliases of node bounds.
+
+Layered acceptance:
+
+- Backend-only: compare raster marker edges against native visual geometry at several positions,
+  nested margins/padding, transforms, scroll offsets, clipping, and DPR 1/1.25/1.5/2. Include roots
+  larger than the native window. Require <=1 physical-pixel edge error for axis-aligned markers.
+- Frontend-only: feed a known frame plus known marker geometry, vary fit/zoom/pan/display DPI,
+  and compare actual image visual mapping with overlay visual mapping. Round only at rasterization.
+- End-to-end: use the actual Gallery .NET 9/ARM64/Windows App SDK 2.1.3 graph; probe soundToggle,
+  ClearRecentBtn and UnfavoriteBtn in the same frame. For real templates use a diagnostic copy
+  with a native-local marker/controlled brush change that does not alter layout, retaining the
+  original full control bounds policy. Verify independent raster position, overlay and pointer
+  hit result, then repeat after scrolling, resizing and frame updates. Do not declare Gallery
+  fixed on the basis of the synthetic experiment or a matching pair of DevFlow rectangles.
+
+Reference: Microsoft documents that RenderAsync's sized overload can change aspect ratio and
+that TransformToVisual accounts for rendering transforms:
+[RenderAsync](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.media.imaging.rendertargetbitmap.renderasync),
+[coordinate transforms](https://learn.microsoft.com/en-us/windows/apps/develop/platform/xaml/transforms).
+
+### Implemented Microsoft geometry correction and validation (2026-09-13 follow-up)
+
+This supersedes the failing-experiment status above for the Microsoft host. The Uno fallback
+has not been upgraded or validated for arbitrary transforms.
+
+Implementation:
+
+- The shared DesignHost exposes native-host hooks for committing layout, obtaining visual
+  bounds, choosing the capture root and awaiting a composition frame. Microsoft uses
+  TransformToVisual relative to its capture container for BOTH tree geometry and hit testing.
+  The previous frame/root ratio scaling was removed; all geometry remains in design DIPs.
+- Each document has its own fixed-size Grid capture container with a white background. Capturing
+  the Page directly allowed blank content edges to be excluded before the sized RenderAsync
+  overload scaled the bitmap. The opaque container establishes the complete capture extent.
+  Transparent page areas now show the white design backdrop; alpha-preserving export is not
+  implemented by this change.
+- Commit native layout before reading RenderSize for the sized capture. A 2x experiment had
+  previously returned 320x240 pixels while advertising DPI=2; it now matches the DIP geometry.
+- Install DispatcherQueueSynchronizationContext in the custom WinUI bootstrap. Without it,
+  an ordinary awaited task can resume off the UI thread. ConfigureAwait(true) alone cannot
+  create a synchronization context.
+- Await actual CompositionTarget.Rendering events and require three consecutive equal image
+  payloads AND geometry snapshots before publishing. The settling window is bounded at two
+  seconds; each composition wait is also bounded. Continuously changing content produces a
+  diagnostic rather than a misleading selection frame. This is a bounded static-preview
+  policy, not an animation playback contract or proof that a later animation cannot begin.
+  Published frames receive an increasing Sequence within the design session.
+
+Evidence from the full SettingsPage diagnostic copy:
+
+1. Visual transforms alone: ClearRecentBtn raster edges (912,370,1038,400), reported
+   (896,360,1016,390). The capture still altered position and width.
+2. Fixed capture container: raster (896,382,1016,412), reported (896,360,1016,390).
+   Horizontal distortion disappeared but the presentation had not settled.
+3. Removing the page's ChildrenTransitions did NOT fix that residual 22px error. Changing
+   the transform target to the capture container and simply rendering twice did not fix it
+   either. Those observations do not support attributing the 22px error to that transition
+   or to the root's offset. The attempted transition suppression was removed.
+4. With the UI synchronization context installed, a diagnostic one-second wait did eliminate
+   the residual error. The shipped candidate replaces that timing guess with the bounded
+   composition/image/geometry settling check. No fixed one-second delay remains.
+
+Validation completed:
+
+- Six raster-oracle cases passed: plain marker, translated marker, 1280-wide surface, 2x DPI,
+  actual SettingsCard with two buttons at 1x and 2x. All also hit-test the measured pixel centre
+  converted to DIPs and require the expected named control in the result.
+- Explicit GallerySettings_ButtonsMatchRasterPixels passed. It loads the FULL SettingsPage.xaml
+  in memory, tests ClearRecentBtn and UnfavoriteBtn independently at DPI 1 and 2, and scans their
+  diagnostic magenta background/border. It preserves border thickness/layout; only brushes and
+  corner radius change. It does not alter the Gallery source file or use screenshot endpoints.
+- The seven-test run passed. After restoring/building the matching SDK variant, the full-page
+  test also passed against the actual deployed net9.0-windowsappsdk2.1.3 host DLL.
+- The debug IDE was restarted and SettingsPage opened via DevFlow under Debug-Unpackaged|ARM64.
+  It reports a 1280x753 frame, no document error, and 43 resolved names; the child process was
+  checked to use net9.0-windowsappsdk2.1.3. DevFlow bounds are a presentation consistency check;
+  the independent raster tests above remain the evidence for pixel alignment.
+- Follow-up validation built the Microsoft host into the isolated `geometry-probe` deployment
+  directory while the user-facing IDE child held the normal deployment DLL open. Against that
+  isolated build and the real Gallery runtime/dependency graph,
+  `GallerySettings_ButtonsMatchRasterPixels` passed (one explicit test, zero failures, 22.8s).
+  That single test contains all four independently checked cases: ClearRecentBtn and
+  UnfavoriteBtn at 1x and 2x DPI. This avoids treating a successful process exit, a frontend
+  rectangle, or a same-source tree comparison as evidence of pixel alignment.
+- The companion `ChildHost_GeometryMatchesRasterPixels` matrix also passed 6/6 (zero failures,
+  24.3s) against that same isolated Microsoft build: untransformed and translated marker,
+  normal and 1280-DIP widths, 1x and 2x DPI, plus the SettingsCard fixture. Test stdout is
+  intentionally retained only as a temporary run artifact; this record contains the durable
+  result and its exact host/dependency prerequisites.
+
+To reproduce against the Gallery runtime, set `OD_GEOMETRY_RUNTIME_CONFIG` and
+`OD_GEOMETRY_DEPS_FILE` to its built runtimeconfig/deps paths; set
+`OD_GEOMETRY_APP_BIN` to that same output directory (so its custom controls and packages are
+preloaded); set `OPENDEVELOP_WINUIDESIGNER_HOST_DLL` to the exact deployed Microsoft host DLL;
+and set `OD_GEOMETRY_GALLERY_PAGE` to the full SettingsPage.xaml path. These variables are
+deliberate: without them the shared test project defaults to the Uno host, whose transform
+geometry and Gallery dependency graph are not the subject of this Microsoft-host regression test.
+
+```powershell
+dotnet test src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.UnoHost.Tests/WinUIXamlDesigner.UnoHost.Tests.csproj -- --filter-method '*ChildHost_GeometryMatchesRasterPixels' '*GallerySettings_ButtonsMatchRasterPixels' --explicit on --no-progress
+```
+
+Remaining scope: arbitrary animated content, rotated selection polygons, fully clipped hit tests,
+and frame-scoped stale pointer rejection need the broader protocol work described above. The
+current transform hook returns an axis-aligned visual bounding box. This change does not claim
+to complete that broader protocol or to have rerun the entire Gallery acceptance suite.

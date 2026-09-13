@@ -1,8 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <!-- A compiled WinUI control's generated metadata and native XAML resources must execute
+         inside the designed app's CLR/runtime graph. Build one child per supported CLR major;
+         MicrosoftWinUIDesignRuntimeHostBootstrap selects it from the app runtimeconfig. -->
+    <TargetFrameworks>net9.0-windows10.0.19041.0;net10.0-windows10.0.19041.0</TargetFrameworks>
+    <HostRuntimeDirectory Condition="'$(TargetFramework)' == 'net9.0-windows10.0.19041.0'">net9.0</HostRuntimeDirectory>
+    <HostRuntimeDirectory Condition="'$(HostRuntimeDirectory)' == ''">net10.0</HostRuntimeDirectory>
+    <!-- Normally inherited from central package management.  A compatible child may override
+         this at build time so a self-contained designed app runs against its own Windows App SDK
+         ABI rather than the IDE's registered runtime. -->
+    <WindowsAppSdkHostVersion Condition="'$(WindowsAppSdkHostVersion)' == ''">2.4.0</WindowsAppSdkHostVersion>
+	<WindowsAppSdkHostSelfContained Condition="'$(WindowsAppSdkHostSelfContained)' == ''">false</WindowsAppSdkHostSelfContained>
     <OutputType>WinExe</OutputType><UseWinUI>true</UseWinUI>
-    <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
+    <WindowsAppSDKSelfContained>$(WindowsAppSdkHostSelfContained)</WindowsAppSDKSelfContained>
     <!-- An unpackaged WinUI 3 app must be built RID-specific. Without a RID the Windows App SDK's
          native bootstrap stays under runtimes/<rid>/native/ and never lands next to the host, so
          the auto-initializer's very first P/Invoke fails with DllNotFoundException
@@ -59,7 +69,7 @@
     <EmbeddedResource Include="DefaultThemeResources\**\*.xaml" />
     <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
     <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Server\Designer.Server.csproj" />
-    <PackageReference Include="Microsoft.WindowsAppSDK" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" VersionOverride="$(WindowsAppSdkHostVersion)" />
     <PackageReference Include="SkiaSharp" />
     <PackageReference Include="StreamJsonRpc" />
   </ItemGroup>
@@ -70,6 +80,6 @@
       <HostOutput Include="$(TargetDir)**" />
     </ItemGroup>
     <Copy SourceFiles="@(HostOutput)" SkipUnchangedFiles="true"
-          DestinationFiles="@(HostOutput->'$(MSBuildProjectDirectory)\..\..\..\..\..\AddIns\DisplayBindings\WinUIXamlDesigner\MicrosoftHost\%(RecursiveDir)%(Filename)%(Extension)')" />
+          DestinationFiles="@(HostOutput->'$(MSBuildProjectDirectory)\..\..\..\..\..\AddIns\DisplayBindings\WinUIXamlDesigner\MicrosoftHost\$(HostRuntimeDirectory)\%(RecursiveDir)%(Filename)%(Extension)')" />
   </Target>
 </Project>

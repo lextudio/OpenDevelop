@@ -10,6 +10,7 @@
     <RootNamespace>ICSharpCode.WinUIXamlDesigner.UnoDesignHost</RootNamespace>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <Nullable>enable</Nullable>
+    <DefineConstants>$(DefineConstants);DESIGNER_STANDALONE_CLIENT</DefineConstants>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>

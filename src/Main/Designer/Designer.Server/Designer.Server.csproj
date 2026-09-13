@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <!-- See Designer.Remote: this code is the child-side protocol bootstrap, not IDE UI. -->
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
     <AssemblyName>ICSharpCode.Designer.Server</AssemblyName>
     <RootNamespace>ICSharpCode.SharpDevelop.Designer.Remote</RootNamespace>
     <Nullable>enable</Nullable>

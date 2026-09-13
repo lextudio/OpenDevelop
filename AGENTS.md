@@ -85,6 +85,45 @@ curl -s -X POST http://localhost:9299/api/v1/invoke/actions/od.unit-test.run-fai
 - Prefer semantic DevFlow actions (live layout model, visibility, selection, pane position) as corroborating evidence, but do not substitute a generic side/position result for the target pane's measured visual bounds.
 - Do not call screenshot endpoints or trigger operating-system screenshots during test or diagnostic runs unless the user explicitly requests a screenshot.
 
+### WinUI XAML Designer: Third-party controls and native exits
+
+For a WinUI design load that reports a missing third-party control, renders blank, or loses its
+JSON-RPC connection, read the designer's Output pad and the isolated host log *before* changing
+XAML or attempting a native-debugger session:
+
+```powershell
+# The Output pad contains the complete sequence across host restarts.
+Invoke-RestMethod -Method Post `
+  -Uri http://localhost:9299/api/v1/invoke/actions/od.output-text `
+  -ContentType application/json -Body '{"args":["WinUI Designer"]}'
+
+# The child log is the current host's stderr tail, useful while narrowing a single load.
+Invoke-RestMethod -Method Post `
+  -Uri http://localhost:9299/api/v1/invoke/actions/od.winui-designer.child-log `
+  -ContentType application/json -Body '{"args":[]}'
+```
+
+- Treat `SettingsCard`/other type-not-found errors as two distinct stages: CLR tag resolution and
+  compiled-XAML template/materialisation. A package-generated `IXamlMetadataProvider` is required
+  for the latter; a reflection-only provider may parse the tag and then fail or exit natively while
+  loading the package's `.xbf` resources.
+- Before loading an app assembly or its generated XAML metadata, compare the designed project's
+  target runtime, RID, Windows App SDK version and runtime graph with the isolated host. A .NET 9
+  app preloaded into a .NET 10 host is not a compatible runtime graph merely because the CLR DLLs
+  load. This mismatch can surface only when a third-party compiled control materialises its native
+  WinUI template.
+- The host must therefore be selected/launched by target TFM and RID (and compatible Windows App
+  SDK graph). Do not mask a runtime-graph incompatibility by replacing the real control with a
+  synthetic template; that hides the fault and loses designer fidelity.
+- Use WinDbg after the Output sequence identifies the triggering control and only on the actual
+  out-of-process Microsoft host (ARM64 target → ARM64 WinDbg). Attach before re-triggering the
+  design load, capture the exception code and crashing-thread stack, then correlate it with the
+  final Output/child-log line. The parent IDE's JSON-RPC disconnect is a consequence, not the
+  crash site.
+- Put framework-neutral reflection/discovery code (for example, finding a public parameterless
+  metadata-provider implementation in a loaded assembly) in `Designer.Remote`; keep WinUI's
+  `IXamlMetadataProvider` adaptation and per-assembly cache in the Microsoft Host.
+
 ### Drag/Drop and Pointer Input Debugging
 
 Drag/drop and resize gestures are the most fragile integration-test surface. Every step must be verified individually — a single missed detail causes silent failure.

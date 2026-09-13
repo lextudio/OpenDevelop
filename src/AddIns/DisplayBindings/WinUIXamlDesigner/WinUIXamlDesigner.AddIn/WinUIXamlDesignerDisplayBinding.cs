@@ -7,7 +7,11 @@ namespace ICSharpCode.WinUIXamlDesigner;
 
 public sealed class WinUIXamlDesignerDisplayBinding : ISecondaryDisplayBinding
 {
-	public bool ReattachWhenParserServiceIsReady => false;
+	// WinUI project evaluation (especially a solution using .slnx plus imported props) can finish
+	// after the source view is first opened.  The initial detector result is then Unknown and no
+	// secondary Design view is attached; opting into the parser-ready reattach is what lets the
+	// already-open document acquire its WinUI designer once project evidence is available.
+	public bool ReattachWhenParserServiceIsReady => true;
 	public bool CanAttachTo(IViewContent content)
 	{
 		if (!string.Equals(Path.GetExtension(content?.PrimaryFileName), ".xaml", StringComparison.OrdinalIgnoreCase)) return false;

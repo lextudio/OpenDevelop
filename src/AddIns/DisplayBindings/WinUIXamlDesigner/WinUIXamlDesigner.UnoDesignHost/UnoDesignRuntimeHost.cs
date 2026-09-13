@@ -41,6 +41,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 	readonly string projectDirectory;
 	readonly string documentFileName;
 	readonly string? hostDllPath;
+	readonly Func<string?>? hostDllPathLocator;
 	readonly string hostDisplayName;
 	UnoDesignClient client;
 	Task connectTask;
@@ -56,7 +57,8 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 	double? configuredDesignHeight;
 	bool disposed;
 
-	public UnoDesignRuntimeHost(XamlFrameworkContext framework, string documentFileName, string? hostDllPath = null, string? hostDisplayName = null)
+	public UnoDesignRuntimeHost(XamlFrameworkContext framework, string documentFileName, string? hostDllPath = null,
+		string? hostDisplayName = null, Func<string?>? hostDllPathLocator = null)
 	{
 		// The host may be constructed on the UI thread but fed XAML from a background loader
 		// (AbstractViewContentHandlingLoadErrors.LoadInternal), and every async continuation
@@ -65,6 +67,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		dispatcher = System.Windows.Threading.Dispatcher.CurrentDispatcher;
 		this.documentFileName = documentFileName;
 		this.hostDllPath = hostDllPath;
+		this.hostDllPathLocator = hostDllPathLocator;
 		this.hostDisplayName = hostDisplayName ?? "Uno design host";
 		surface.BackendName = this.hostDisplayName.Contains("WinUI", StringComparison.OrdinalIgnoreCase) ? "WinUI"
 			: this.hostDisplayName.Contains("ProGPU", StringComparison.OrdinalIgnoreCase) ? "ProGPU"
@@ -560,8 +563,24 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 	{
 		try
 		{
-			var (runtimeConfig, depsFile, appBin) = ProjectDependencyContext();
-			client = await UnoDesignClient.AcquireSharedAsync(runtimeConfig, depsFile, CancellationToken.None, hostDllPath, appBin);
+			var (runtimeConfig, depsFile, appBin, dependencyError) = ProjectDependencyContext();
+			// Native WinUI's XamlReader must run with the designed executable's dependency graph.
+			// Starting the generic child when the selected configuration has no output makes every
+			// third-party control look like an unrelated XAML type-resolution error (for example
+			// SettingsCard was not found). Unlike the Uno compatibility renderer, that fallback
+			// cannot produce a faithful Microsoft WinUI preview, so give the user an actionable
+			// configuration/build prompt and do not start a misleading child process.
+			if (hostDisplayName.Contains("WinUI", StringComparison.OrdinalIgnoreCase)
+				&& (string.IsNullOrEmpty(runtimeConfig) || string.IsNullOrEmpty(depsFile)))
+			{
+				SetStatus(dependencyError ?? "WinUI designer requires a built project output for the active configuration. Select a buildable Windows App SDK configuration and build it, then close and reopen this document.");
+				return;
+			}
+			// Project evaluation finishes after the display binding constructs this host. Resolve a
+			// versioned Microsoft child here, beside dependency-context discovery, rather than
+			// freezing the IDE's net10 default during factory registration.
+			var child = hostDllPath ?? hostDllPathLocator?.Invoke();
+			client = await UnoDesignClient.AcquireSharedAsync(runtimeConfig, depsFile, CancellationToken.None, child, appBin);
 			client.Recovered += OnClientRecovered;
 			client.RecoveryFailed += OnClientRecoveryFailed;
 			var capabilities = await client.GetCapabilitiesAsync();
@@ -694,60 +713,65 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 	/// one. Every "no graph" path is logged, because the designer otherwise reports a plain
 	/// "type not found" XAML error for what is really a missing launch argument.
 	/// </summary>
-	(string RuntimeConfig, string DepsFile, string AppBin) ProjectDependencyContext()
+	(string? RuntimeConfig, string? DepsFile, string? AppBin, string? Error) ProjectDependencyContext()
 	{
 		try
 		{
 			var project = SD.ProjectService.FindProjectContainingFile(FileName.Create(documentFileName));
 			if (project == null)
 			{
-				ReportDesigner("WinUI designer: no project contains '" + documentFileName
-					+ "'; the child runs without the app's dependency graph, so the app's own types will not resolve.");
-				return (null, null, null);
+				var error = "WinUI designer cannot find the project for '" + documentFileName
+					+ "'. Open the solution, select a buildable Windows App SDK configuration, and close then reopen this document.";
+				ReportDesigner(error);
+				return (null, null, null, error);
 			}
 			var outputAssembly = project.OutputAssemblyFullPath;
 			if (string.IsNullOrEmpty(outputAssembly))
 			{
-				ReportDesigner("WinUI designer: project '" + project.Name
-					+ "' reports no output assembly; the child runs without the app's dependency graph.");
-				return (null, null, null);
+				var active = SD.ProjectService.CurrentSolution?.ActiveConfiguration.ToString() ?? "the active configuration";
+				var error = "WinUI designer cannot preview '" + project.Name + "' because " + active
+					+ " has no project output. Select a buildable Windows App SDK configuration (for WinUI Gallery: Debug-Unpackaged|ARM64), build it, then close and reopen this document.";
+				ReportDesigner(error);
+				return (null, null, null, error);
 			}
 			var runtimeConfig = Path.ChangeExtension(outputAssembly, ".runtimeconfig.json");
 			var depsFile = Path.ChangeExtension(outputAssembly, ".deps.json");
 			var appBin = Path.GetDirectoryName(outputAssembly);
 			if (!File.Exists(runtimeConfig) || !File.Exists(depsFile))
 			{
-				ReportDesigner("WinUI designer: '" + project.Name + "' has no built output for the active"
-					+ " configuration (looked for " + runtimeConfig + " and " + depsFile
-					+ "); build the project so the child can resolve its types.");
-				return (null, null, Directory.Exists(appBin) ? appBin : null);
+				var error = "WinUI designer cannot preview '" + project.Name + "' because the active configuration is not built"
+					+ " (missing " + Path.GetFileName(runtimeConfig) + " or " + Path.GetFileName(depsFile)
+					+ "). Select a buildable Windows App SDK configuration, build it, then close and reopen this document.";
+				ReportDesigner(error);
+				return (null, null, Directory.Exists(appBin) ? appBin : null, error);
 			}
 			if (!CanHostRunOnAppFramework(runtimeConfig, out var appVersion))
 			{
 				ReportDesigner("WinUI designer: '" + project.Name + "' pins .NET " + appVersion
 					+ " which this design host (.NET " + Environment.Version.Major + ") cannot run on;"
 					+ " preloading the app's assemblies from " + appBin + " without adopting its runtime graph.");
-				return (null, null, appBin);
+				return (null, null, appBin, "WinUI designer cannot run this configuration's runtime graph; select a compatible built configuration, then close and reopen this document.");
 			}
-			return (runtimeConfig, depsFile, appBin);
+			return (runtimeConfig, depsFile, appBin, null);
 		}
 		catch (Exception e)
 		{
 			ReportDesigner("WinUI designer: could not determine the project dependency context for '"
 				+ documentFileName + "'.", e);
-			return (null, null, null);
+			return (null, null, null, "WinUI designer could not determine the active project's output. Select a buildable Windows App SDK configuration, build it, then close and reopen this document.");
 		}
 	}
 
 	/// <summary>
 	/// Whether this host can actually run on the framework the app's runtimeconfig pins.
 	///
-	/// Two ways it cannot. A SELF-CONTAINED app (<c>includedFrameworks</c>) ships its own runtime
-	/// in its output folder, and adopting its config runs the child on that copy - never the
-	/// shared runtime this host was built for. A framework-dependent app on an older major
-	/// (<c>framework</c>/<c>frameworks</c> naming 9.x while this process is 10.x) fails the same
-	/// way. Either kills the child before Main with "Could not load file or assembly
-	/// 'System.Runtime, Version=10.0.0.0'", so the graph has to be declined rather than tried.
+	/// A host built for a different CLR major cannot run on an app's graph: a self-contained app
+	/// (<c>includedFrameworks</c>) carries that CLR beside its executable, while a
+	/// framework-dependent app names it through <c>framework</c>/<c>frameworks</c>.  In contrast,
+	/// a self-contained graph whose major matches the selected child is not only valid but required:
+	/// it supplies the app's Windows App SDK native DLLs and PRI resources.  Dropping that graph
+	/// makes WinUI bind to the IDE host's Windows App SDK instead, which can stow a native XAML
+	/// parse exception while materializing a third-party control template.
 	/// An unreadable or framework-less runtimeconfig is treated as usable, preserving the
 	/// previous behaviour.
 	/// </summary>
@@ -781,8 +805,12 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 				appVersion = string.Join(", ", named.Distinct());
 			else if (options.TryGetProperty("tfm", out var tfm))
 				appVersion = tfm.GetString() ?? appVersion;
+			// The Microsoft WinUI factory selected a child from this same runtimeconfig before this
+			// method runs.  Do not compare a self-contained app to the IDE process (which is net10):
+			// it is the selected child, not this WPF parent, that dotnet exec will load.  Its app-local
+			// Windows App SDK graph is mandatory for compiled XAML resources.
 			if (selfContained)
-				return false;
+				return true;
 			var majors = named
 				.Select(v => Version.TryParse(v, out var parsed) ? parsed.Major : -1)
 				.Where(major => major > 0)

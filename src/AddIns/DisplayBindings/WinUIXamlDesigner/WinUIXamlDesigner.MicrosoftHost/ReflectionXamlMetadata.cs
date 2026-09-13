@@ -1,5 +1,7 @@
 using System.Collections;
 using System.Reflection;
+using ICSharpCode.SharpDevelop.Designer.Remote;
+using ICSharpCode.WinUIXamlDesigner.UnoHost;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Markup;
 
@@ -24,6 +26,9 @@ sealed class ReflectionXamlMetadataProvider : IXamlMetadataProvider
 {
 	readonly Dictionary<string, IXamlType?> byName = new(StringComparer.Ordinal);
 	readonly Dictionary<Type, IXamlType> byType = new();
+	readonly Dictionary<Assembly, IXamlMetadataProvider?> generatedProviders = new();
+	IXamlMetadataProvider? applicationProvider;
+	bool applicationProviderResolved;
 
 	/// <summary>Opt-in trace of every type/member the parser asks for, filtered to one type name
 	/// (OD_XAMLMETA_TRACE=AnimatedIcon). The parser reports failures using the name as WRITTEN in
@@ -83,11 +88,59 @@ sealed class ReflectionXamlMetadataProvider : IXamlMetadataProvider
 		lock (byType)
 		{
 			if (byType.TryGetValue(type, out var cached)) return cached;
+			// The generated application provider has first refusal. The WinUI compiler can emit a
+			// member overlay for a framework type used by application markup (AnimatedIcon.State is
+			// the concrete case); asking only the framework assembly's provider loses that overlay.
+			if (GetApplicationProvider()?.GetXamlType(type) is { } applicationType)
+			{
+				byType[type] = applicationType;
+				return applicationType;
+			}
+			// A WinUI class library which contains XAML ships the compiler-generated
+			// IXamlMetadataProvider beside its CLR types.  Its IXamlType is not merely
+			// a reflection description: compiled .xbf dictionaries use its type/member
+			// identities while materialising default control templates.  Returning our
+			// reflection wrapper for SettingsCard let the element tag parse, then made
+			// SettingsCard's Generic.xbf fail in native XAML with 0x802B000A.  Prefer
+			// the owning assembly's generated provider and retain reflection only for
+			// app assemblies/libraries that genuinely have no XAML metadata.
+			if (GetGeneratedProvider(type.Assembly)?.GetXamlType(type) is { } generated)
+			{
+				byType[type] = generated;
+				return generated;
+			}
 			// Insert before populating: a type's own members can reference the type itself
 			// (ContentProperty, ItemType), and re-entering here would otherwise recurse forever.
 			var xamlType = new ReflectionXamlType(this, type);
 			byType[type] = xamlType;
 			return xamlType;
+		}
+	}
+
+	IXamlMetadataProvider? GetApplicationProvider()
+	{
+		lock (generatedProviders)
+		{
+			if (applicationProviderResolved) return applicationProvider;
+			applicationProviderResolved = true;
+			var assembly = HostBootstrap.DesignedApplicationAssembly;
+			applicationProvider = assembly is null ? null : DesignerAssemblyProviderFactory.CreateFirst<IXamlMetadataProvider>(assembly);
+			if (applicationProvider != null)
+				Console.Error.WriteLine($"design-host: using application XAML metadata from {assembly!.GetName().Name} before framework metadata.");
+			return applicationProvider;
+		}
+	}
+
+	IXamlMetadataProvider? GetGeneratedProvider(Assembly assembly)
+	{
+		lock (generatedProviders)
+		{
+			if (generatedProviders.TryGetValue(assembly, out var cached)) return cached;
+			var provider = DesignerAssemblyProviderFactory.CreateFirst<IXamlMetadataProvider>(assembly);
+			generatedProviders[assembly] = provider;
+			if (provider != null)
+				Console.Error.WriteLine($"design-host: using generated XAML metadata from {assembly.GetName().Name}.");
+			return provider;
 		}
 	}
 

@@ -197,20 +197,25 @@ calls `AcquireSharedAsync(WpfSurfaceHostClient.LocateChildDll(selectedBackend), 
 *parameterless* overload, which ignores `selectedBackend` entirely and picks LibreWPF (since
 `OD_WPF_RUNTIME` is unset) - so the session silently connects to the real LibreWPF child. But
 `WpfViewContent.BackendName` and `od.wpf-designer.status`'s `"backend"` field still report
-`GetBackendName(backend)` using the *originally detected* enum value ("Microsoft WPF"), which was
-never corrected against what actually got connected. The tell that gave this away: the LibreWPF
-child's `#if !MICROSOFT_WPF`-guarded diagnostic in `WpfSurfaceHostService.RebuildTreeAndRender`
-("GPU rendering is unavailable or disabled; showing the bounded software fallback frame." - see
-"Bounded portable frame rendering" above) showed up in the Error List and in a live screenshot (a
-correctly-sized but completely blank design canvas) for a document whose `od.wpf-designer.status`
-claimed backend `"Microsoft WPF"` - a message that specific build configuration should be incapable
-of emitting. Confirmed directly: no `MicrosoftHost/MicrosoftWpfDesign.SurfaceHost.dll` existed
-anywhere under the repo at the time. **Not fixed yet** - `BackendName`/the status action need to
-report the backend actually behind `client`/`surfaceControl` (or `AcquireSharedAsync` needs to
-return which one it connected), not the pre-connection `selectedBackend` guess. Anyone driving a
-"Microsoft WPF" designer session that renders a suspiciously blank frame should check for this
-mislabeling before assuming the Microsoft host itself is broken - the `MicrosoftHost/` folder's
-absence is the fast way to confirm it.
+`GetBackendName(backend)` using the *originally detected* enum value, which was never corrected
+against what actually got connected (at the time this was measured, `GetBackendName` returned
+"Microsoft WPF"/"LibreWPF"; a later, unrelated commit renamed the Microsoft label to plain "WPF" -
+that rename does not touch this bug, it only changes what the wrong label prints as). The tell that
+gave this away: the LibreWPF child's `#if !MICROSOFT_WPF`-guarded diagnostic in
+`WpfSurfaceHostService.RebuildTreeAndRender` ("GPU rendering is unavailable or disabled; showing the
+bounded software fallback frame." - see "Bounded portable frame rendering" above) showed up in the
+Error List and in a live screenshot (a correctly-sized but completely blank design canvas) for a
+document whose `od.wpf-designer.status` claimed the Microsoft backend - a message that specific
+build configuration should be incapable of emitting. Confirmed directly: no
+`MicrosoftHost/MicrosoftWpfDesign.SurfaceHost.dll` existed anywhere under the repo at the time.
+**Not fixed yet** - `BackendName`/the status action need to report the backend actually behind
+`client`/`surfaceControl` (or `AcquireSharedAsync` needs to return which one it connected), not the
+pre-connection `selectedBackend` guess. Anyone driving a Microsoft-WPF designer session that renders
+a suspiciously blank frame should check for this mislabeling before assuming the Microsoft host
+itself is broken - the `MicrosoftHost/` folder's absence is the fast way to confirm it. (Once the
+Microsoft host actually is built and deployed, as it was for the next finding below, this
+mislabeling path no longer triggers - real blank-canvas reports from a *deployed* Microsoft host
+have a different cause, see below.)
 
 **An unbuilt target project makes the WPF designer look like it "loaded" while showing none of the
 document's real content - a silent false-green trap.** Before `WPFGallery.csproj` had ever been
@@ -241,6 +246,78 @@ documents the current behavior explicitly (asserts the outline stops where it st
 either asserting a false-passing generic check or silently excluding the page - anyone fixing this
 should expect that fact to start failing, and can then move `MenuPage.xaml` into the regular
 `RenderPages` corpus with leaf `"MenuItem"`.
+
+### Root-caused and fixed: Microsoft-WPF backend rendered a blank canvas for every Window-rooted document (2026-09-13)
+
+Once the Microsoft-WPF host was actually built and deployed (closing the mislabeling gap above),
+every document under that backend still rendered a completely blank frame - confirmed with zero
+ambiguity by dumping the child's pixel buffer directly (`RenderTargetBitmap.CopyPixels` byte sum):
+`0` for the whole bitmap, for a document (`MicrosoftWpfSample/MainWindow.xaml`, a plain `Window` with
+one `Button`) simple enough to rule out project-specific causes. Real Windows, real GPU tier 2
+confirmed present (a standalone `RenderTargetBitmap` probe outside OpenDevelop entirely rendered a
+`Button` correctly on this exact machine) - not an environment/GPU limitation.
+
+**Root cause.** Every `Window`-rooted document is designed through `WindowClone`
+(`externals/vscode-wpf/.../WpfDesign.Designer/Project/Controls/WindowClone.cs`), a `ContentControl`
+whose visual appearance comes entirely from an implicit style in that assembly's own
+`themes/generic.xaml` (`[ThemeInfo(ResourceDictionaryLocation.None, ResourceDictionaryLocation
+.SourceAssembly)]`). Dumping the actual `WindowClone` instance at render time showed
+`Content` correctly set to the real `Grid` (the design engine wired the document's content
+correctly) but `Style=null` and `Template=null` - so the control had nothing to project that
+`Content` into, and rendered nothing at all. `Application.GetResourceStream(pack://application:,,,
+/ICSharpCode.MicrosoftWpfDesign.Designer;component/themes/generic.xaml)` threw `System.IO.IOException:
+Cannot locate resource 'themes/generic.xaml'` - the exact same failure shape as this app's own
+long-standing, already-tolerated "Could not load XAML icon ... Cannot locate resource" warnings
+(`PresentationResourceService`), which made it look at first like a systemic pack-URI defect in this
+.NET 10 preview SDK. It is not: a fully standalone, from-scratch probe project (a separate library
+assembly with its own `themes/generic.xaml`, referenced by a bare console app) resolved the exact
+same kind of pack URI correctly on this same machine - ruling out any environment/SDK-level cause and
+pointing back at this repo's own build configuration.
+
+**The actual bug**: `MicrosoftWpfDesign.Engine.csproj` (`src/AddIns/DisplayBindings/WpfDesign/
+MicrosoftHost/Engine/`) builds `ICSharpCode.MicrosoftWpfDesign.Designer.dll` by linking in the
+upstream `WpfDesign.Designer` source tree wholesale (`<Compile Include="...\WpfDesign.Designer\
+Project\**\*.cs" ... LinkBase="WpfDesign.Designer" />`), and the matching `<Page Include="...\**\
+*.xaml">` item used the **same** `LinkBase="WpfDesign.Designer"`. For `Compile` items `LinkBase` is
+purely a Solution Explorer/`obj` organizational detail. For `Page` items it is not: it becomes part
+of the **logical name baked into the compiled `.g.resources`**, and therefore part of the
+`pack://application:,,,/AssemblyName;component/<path>` URI any code must use to find it. Confirmed by
+dumping the built assembly's manifest resource names directly: they came back as
+`wpfdesign.designer/themes/generic.baml` / `wpfdesign.designer/controls/controlstyles.baml` -
+prefixed with an extra `wpfdesign.designer/` segment that does not exist in the *original*,
+non-source-shared `WpfDesign.Designer.csproj` (which builds these same files straight from its own
+directory, with no `Link` at all, and has therefore always worked correctly for the LibreWPF
+backend). `WindowClone`'s `[ThemeInfo(..., ResourceDictionaryLocation.SourceAssembly)]` and every
+other WPF convention expect the unprefixed, conventional `themes/generic.xaml` path - so the
+resource genuinely could not be found, `Style`/`Template` came back null, and `WindowClone` rendered
+nothing, for every single Window-rooted document under the Microsoft-WPF backend.
+
+**The fix**: give the `Page` item `Link="%(RecursiveDir)%(Filename)%(Extension)"` instead of
+`LinkBase="WpfDesign.Designer"` - this reconstructs each file's path relative to the glob's own base
+folder (i.e. its real path under upstream's `WpfDesign.Designer/Project/`, e.g. `themes\generic.xaml`,
+`Controls\ControlStyles.xaml`), with no extra segment, matching how the original project has always
+compiled them. A `--no-incremental` rebuild was required to see the corrected manifest names - the
+`Page`/BAML generator caches based on the prior `Link` metadata. Verified end to end: dumping the
+manifest again showed clean `themes/generic.baml` / `controls/controlstyles.baml`; re-opening
+`MainWindow.xaml` showed `Template=ControlTemplate`, `visualChildren=1`, a non-zero pixel sum, and a
+real screenshot with the window's title bar, chrome, and its `Button` all rendering correctly.
+
+**A second, unrelated, NOT-a-bug finding along the way**: `Page`-rooted documents (every WPFGallery
+page) go through the sibling `PageClone` (same folder) instead of `WindowClone` - but `PageClone` is
+a plain `FrameworkElement` with **no** `DefaultStyleKey`/`themes/generic.xaml` dependency at all (it
+manually implements `MeasureOverride`/`ArrangeOverride`/`GetVisualChild` around a hand-built
+`ContentPresenter`), so the bug above never touched it. A purpose-built minimal `Page` document
+(`<Page><Grid><Button/></Grid></Page>`, no themed resources) rendered correctly end to end
+(non-zero pixel sum) both through `PageClone` and through its inner `ContentPresenter` rendered in
+isolation - proving the Microsoft-WPF `Page`/`PageClone` rendering pipeline itself is sound. WPFGallery
+pages still render blank because their real content depends on `controls:ControlExample` and other
+WPF-UI/Fluent-themed controls whose appearance comes from **App-level merged resource dictionaries**
+(WPF-UI's theme), not from any assembly's own `themes/generic.xaml` - and `ParseAppResources` (this
+file, `OpenCore`) is deliberately narrow (its own doc comment: "no StartupUri, no code-behind, no
+theme or merged-dictionary URI resolution"). Those custom controls therefore get no template at all
+and render nothing, the same *symptom* as the `WindowClone` bug (`Style`/`Template` null) but a
+different, pre-existing, accepted scope limitation rather than a regression - lifting it would mean
+implementing real theme/merged-dictionary resolution in the headless host, not a one-line fix.
 
 ## Out-of-process / Surface Isolation decision (2026-08-16)
 

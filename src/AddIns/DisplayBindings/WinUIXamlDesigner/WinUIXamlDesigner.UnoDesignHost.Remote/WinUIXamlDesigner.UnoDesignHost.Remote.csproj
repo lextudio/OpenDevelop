@@ -5,6 +5,8 @@
     <RootNamespace>ICSharpCode.WinUIXamlDesigner.UnoDesignHost</RootNamespace>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <Nullable>enable</Nullable>
+    <!-- The linked client also builds outside the IDE for host-RPC tests. -->
+    <DefineConstants>$(DefineConstants);DESIGNER_STANDALONE_CLIENT</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\WinUIXamlDesigner.UnoDesignHost\UnoDesignClient.cs" Link="UnoDesignClient.cs" />

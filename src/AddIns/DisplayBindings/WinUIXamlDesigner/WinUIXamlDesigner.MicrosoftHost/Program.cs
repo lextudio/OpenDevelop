@@ -114,6 +114,35 @@ sealed class HostApplication : Application, IXamlMetadataProvider
 	/// </summary>
 	void InstallOffscreenVisualHost()
 	{
+		DesignHost.HostVisualBounds = (element, root) => {
+			var capture = (UIElement)Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(root);
+			var bounds = element.TransformToVisual(capture).TransformBounds(new Windows.Foundation.Rect(0, 0, element.ActualWidth, element.ActualHeight));
+			if (Environment.GetEnvironmentVariable("OD_GEOMETRY_TRACE") == "1" && element.Name == "ClearRecentBtn") {
+				for (FrameworkElement? current = element; current != null; current = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(current) as FrameworkElement) {
+					var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(current);
+					Console.Error.WriteLine($"geometry {current.GetType().Name}:{current.Name} actual={current.ActualWidth},{current.ActualHeight} offset={current.ActualOffset} compositionOffset={visual.Offset} matrix={visual.TransformMatrix} root={current.TransformToVisual(capture).TransformPoint(new Windows.Foundation.Point(0,0))}");
+				}
+			}
+			return bounds;
+		};
+		DesignHost.HostCommitLayout = element => {
+			var capture = (Grid)Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(element);
+			capture.Width = element.Width;
+			capture.Height = element.Height;
+			capture.UpdateLayout();
+		};
+		DesignHost.HostCaptureRoot = element => (FrameworkElement)Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(element);
+		DesignHost.HostAwaitFrame = async () => {
+			var completion = new TaskCompletionSource();
+			EventHandler<object>? handler = null;
+			handler = (_, _) => {
+				Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= handler;
+				completion.TrySetResult();
+			};
+			Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += handler;
+			try { await completion.Task.WaitAsync(TimeSpan.FromSeconds(2)); }
+			finally { Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= handler; }
+		};
 		// A Grid, not a single-child container: a shared host serves several documents in one
 		// process, and every one of their roots has to stay in the tree simultaneously. Overlapping
 		// them is fine - nothing is ever displayed, and each root is measured and arranged
@@ -129,21 +158,21 @@ sealed class HostApplication : Application, IXamlMetadataProvider
 		AppWindow.GetFromWindowId(id).Move(new PointInt32(-32000, -32000));
 
 		DesignHost.HostVisualRoot = (previous, next) => {
-			if (previous != null) surface.Children.Remove(previous);
-			if (next != null) surface.Children.Add(next);
+			if (previous != null) surface.Children.Remove((UIElement)Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(previous));
+			if (next != null) {
+				var capture = new Grid {
+					Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White),
+					HorizontalAlignment = HorizontalAlignment.Left,
+					VerticalAlignment = VerticalAlignment.Top
+				};
+				capture.Children.Add(next);
+				surface.Children.Add(capture);
+			}
 		};
 
-		// NOTE on layout: this host deliberately does NOT install DesignHost.HostVisualLayout.
-		// Every attempt to take layout into our own hands here made rendering worse:
-		//   - Sizing this Grid (and/or the root) to the design size and calling UpdateLayout does
-		//     fix element positions, but the rendered bitmap comes back badly stretched -
-		//     confirmed on this child's own exported PNG, so it is the render, not the client.
-		//     RenderTargetBitmap rasterizes an element's CONTENT extent, and its sized overload
-		//     scales that content to fill the requested box, so a root arranged taller than its
-		//     children is stretched to fit.
-		//   - Detaching the root to arrange it unparented (the way the Uno host's headless tree
-		//     works) stops it being laid out at all here: the tree comes back with zero sizes.
-		// The window's own layout pass is therefore left to do its job, and DesignHost reads the
-		// element tree only after the render, once that pass has committed real offsets.
+		// The opaque capture background establishes the full design extent. Rendering the Page
+		// itself can trim empty margins before the sized overload scales its content, making
+		// correct visual coordinates disagree with the bitmap (SettingsPage pixel regression).
 	}
+
 }

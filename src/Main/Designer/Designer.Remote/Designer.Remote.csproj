@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <!-- Isolated markup hosts must run on the designed app's CLR major. Keep the shared,
+         runtime-neutral protocol usable by the net9 and net10 Microsoft WinUI children. -->
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
     <AssemblyName>ICSharpCode.Designer.Remote</AssemblyName>
     <RootNamespace>ICSharpCode.SharpDevelop.Designer.Remote</RootNamespace>
     <Nullable>enable</Nullable>

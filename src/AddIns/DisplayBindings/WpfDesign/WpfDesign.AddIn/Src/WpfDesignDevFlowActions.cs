@@ -196,6 +196,34 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			});
 		}
 
+		[DevFlowAction("od.wpf-designer.child-log", Description = "TEMPORARY diagnostic: return the out-of-process WPF design host's captured stderr log")]
+		public static string GetChildLog()
+		{
+			var viewContent = FindWpfViewContent();
+			var field = viewContent == null ? null : typeof(WpfViewContent).GetField("client",
+				System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+			var hostClient = field?.GetValue(viewContent) as IDesignHostClient;
+			return JsonSerializer.Serialize(new { childLog = hostClient?.ChildLog ?? "" });
+		}
+
+		[DevFlowAction("od.wpf-designer.export-frame", Description = "TEMPORARY diagnostic: write the current WPF design render frame to a PNG file")]
+		public static string ExportFrame(string path)
+		{
+			var state = FindWpfViewContent()?.SurfaceControl?.State;
+			var render = state?.Render;
+			if (render == null || string.IsNullOrEmpty(render.Data))
+				return JsonSerializer.Serialize(new { success = false, error = "no render data" });
+			var pixels = ICSharpCode.SharpDevelop.Designer.Remote.DesignerFrameCodec.DecodeBgra32(render);
+			var bitmap = System.Windows.Media.Imaging.BitmapSource.Create(
+				render.Width, render.Height, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null,
+				pixels, render.Width * 4);
+			var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+			encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+			using (var stream = System.IO.File.Create(path))
+				encoder.Save(stream);
+			return JsonSerializer.Serialize(new { success = true, path, width = render.Width, height = render.Height });
+		}
+
 		[DevFlowAction("od.wpf-designer.toolbox.query-item-bounds", Description = "Get the real on-screen bounds of a Toolbox row for a given control type, for driving a synthetic mouse drag")]
 		public static string QueryToolboxItemBounds(string typeName)
 		{

@@ -39,7 +39,11 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 	/// </summary>
 	static void RouteOutput(Connection connection)
 		=> connection.OutputLineReceived += (_, line)
+			#if DESIGNER_STANDALONE_CLIENT
+			=> Console.Error.WriteLine(line);
+			#else
 			=> DesignerOutput.AppendLine(DesignerOutput.Channel(OutputChannelName), line);
+			#endif
 	static readonly object clientsGate = new();
 	static readonly HashSet<UnoDesignClient> clients = new();
 	static readonly Dictionary<CompatibilityKey, SharedDesignerHostRecovery<UnoDesignClient, Connection>> recoveries = new();

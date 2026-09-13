@@ -102,6 +102,14 @@ static class FrameworkDefaultResources
 			}
 			var content = name switch
 			{
+				// ScrollView's Fluent template creates the internal ScrollPresenter.  That
+				// type is deliberately not constructed by the reflection metadata fallback:
+				// doing so terminates the unpackaged WinUI child natively.  Keep the real
+				// ScrollView element (and therefore its designer identity/properties), but
+				// show its content through a non-scrolling template.
+				"ScrollView" => new XElement(ns + "ContentPresenter",
+					new XAttribute("Content", "{TemplateBinding Content}"),
+					new XAttribute("Padding", "{TemplateBinding Padding}")),
 				// Design surface shows the typed text / placeholder, not the runtime suggestion popup.
 				"AutoSuggestBox" => new XElement(ns + "TextBox",
 					new XAttribute(X + "Name", "TextBox"),
@@ -129,9 +137,7 @@ static class FrameworkDefaultResources
 			if (element.Elements(templateProperty).Any())
 				continue;
 			element.Add(new XElement(templateProperty,
-				new XElement(ns + "ControlTemplate",
-					new XAttribute("TargetType", name),
-					content)));
+				new XElement(Xaml + "ControlTemplate", new XAttribute("TargetType", name), content)));
 		}
 	}
 
@@ -433,8 +439,22 @@ static class FrameworkDefaultResources
 			return merged ?? xaml;
 		}
 
-		ApplyDesignTimeControlTemplates(root);
-		return InjectIntoElementResources(root);
+		// InjectIntoElementResources serializes and re-parses a combined tree.  Do the unsafe-control
+		// substitution *after* that final composition: otherwise a page contributed by a late app
+		// resource merge can reintroduce SettingsCard after it was already proxied.
+		var combined = InjectIntoElementResources(root);
+		try
+		{
+			root = XDocument.Parse(combined).Root!;
+			ApplyDesignTimeControlTemplates(root);
+			combined = root.Document!.ToString(SaveOptions.DisableFormatting);
+		}
+		catch
+		{
+			// Preserve the original input so XamlReader remains responsible for reporting syntax
+			// errors rather than turning a diagnostic workaround into a load failure.
+		}
+		return combined;
 	}
 
 	/// <summary>

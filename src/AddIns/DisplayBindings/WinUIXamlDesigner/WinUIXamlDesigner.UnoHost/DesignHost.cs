@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using Windows.Foundation;
@@ -44,6 +45,10 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		/// document's element from the tree and silently break ITS rendering.
 		/// </summary>
 		public static Action<FrameworkElement?, FrameworkElement?>? HostVisualRoot;
+		public static Func<FrameworkElement, UIElement, Rect>? HostVisualBounds;
+		public static Action<FrameworkElement>? HostCommitLayout;
+		public static Func<FrameworkElement, FrameworkElement>? HostCaptureRoot;
+		public static Func<Task>? HostAwaitFrame;
 
 
 		/// <summary>
@@ -65,6 +70,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		public static Func<string, string>? TransformXamlBeforeLoad;
 
 		FrameworkElement? root;
+		long frameSequence;
 
 		public DesignerCapabilities GetCapabilities()
 			=> HeadlessDispatcher.Dispatch(() => BuildCapabilities());
@@ -483,6 +489,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				// other documents in, and the repairs are for problems that only exist once markup
 				// from several sources shares one namespace scope. See XamlDocumentRepair.
 				xaml = XamlDocumentRepair.Apply(xaml);
+				WaitForNativeDebuggerIfRequested();
 				var previousRoot = root;
 				var loaded = Microsoft.UI.Xaml.Markup.XamlReader.Load(xaml);
 				if (loaded is not FrameworkElement)
@@ -519,6 +526,12 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				var failedRoot = root;
 				root = null;
 				HostVisualRoot?.Invoke(failedRoot, null);
+				// WinUI's native XAML parser often maps a useful HRESULT to the entirely
+				// unhelpful E_UNKNOWN_ERROR text.  Preserve the complete managed exception
+				// chain in the child log: its HRESULT and inner exceptions are the only
+				// evidence available for deciding whether a failure is type resolution,
+				// a component PRI lookup, or a control-template resource failure.
+				LogXamlLoadException(e);
 				var diagnostic = ToDiagnostic(e.GetBaseException());
 				// A page whose root element is its own abstract base class fails with WinRT's bare
 				// "No matching constructor found on type 'X'", which reads like a XAML authoring
@@ -528,6 +541,18 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				snapshot.Diagnostics.Add(diagnostic);
 				return snapshot;
 			}
+		}
+
+		static void WaitForNativeDebuggerIfRequested()
+		{
+			if (!string.Equals(Environment.GetEnvironmentVariable("OD_WINUI_WAIT_FOR_DEBUGGER"), "1", StringComparison.Ordinal)) return;
+			Console.Error.WriteLine("design-host: waiting up to 30 seconds for a native debugger before XamlReader.Load.");
+			var deadline = DateTime.UtcNow.AddSeconds(30);
+			while (!System.Diagnostics.Debugger.IsAttached && DateTime.UtcNow < deadline)
+				Thread.Sleep(100);
+			Console.Error.WriteLine(System.Diagnostics.Debugger.IsAttached
+				? "design-host: debugger attached; loading XAML."
+				: "design-host: debugger wait elapsed; loading XAML.");
 		}
 
 		/// <summary>
@@ -699,6 +724,15 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 					diagnostic.Column = Math.Max(1, column);
 			}
 			return diagnostic;
+		}
+
+		static void LogXamlLoadException(Exception exception)
+		{
+			for (var current = exception; current != null; current = current.InnerException)
+			{
+				Console.Error.WriteLine($"design-host: XamlReader.Load exception "
+					+ $"{current.GetType().FullName} (0x{current.HResult:X8}): {current.Message}");
+			}
 		}
 
 		async Task<DesignerSessionState> LayoutAsync(LayoutRequest request)
@@ -1131,24 +1165,35 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				root.Height = renderHeight;
 				root.Measure(new Size(renderWidth, renderHeight));
 				root.Arrange(new Rect(0, 0, renderWidth, renderHeight));
-				// NOTE: do NOT call root.UpdateLayout() here to settle positions. In the Microsoft
-				// host the root is parented in a real (offscreen) window, so a framework layout
-				// pass re-arranges it to the WINDOW's size and discards the explicit design-size
-				// Arrange above - the render then comes back at a different size than the one the
-				// snapshot reports, and the presented bitmap is visibly stretched. BuildTree reads
-				// positions from ActualOffset instead, which this Arrange has already committed.
+				HostCommitLayout?.Invoke(root);
+				// Microsoft commits layout inside a fixed-size capture container before RenderSize
+				// is used to request raster dimensions. Uno commits its headless arrange directly.
 				BoundsLog($"FinishLayout requested={width}x{height} dpi={dpi} rootActual={root.ActualWidth}x{root.ActualHeight} rootDesired={root.DesiredSize.Width}x{root.DesiredSize.Height}");
 				snapshot.Render = await RenderAsync(dpi);
-				// The tree is read AFTER the render, not before. In the Microsoft host the root
-				// lives in a real offscreen window, so the window owns its layout and the
-				// Measure/Arrange above is discarded - read at that point, every element still
-				// had ActualOffset and layout slot of zero, so the whole tree reported itself at
-				// (0,0) and the selection outline sat a whole row above the rendered control for
-				// anything but a panel's first child. Rendering is what drives that pending
-				// layout pass to completion, so by here the offsets are real. Uno is unaffected:
-				// its Measure/Arrange commit synchronously, so the values are the same either
-				// way, and rendering never invalidates them.
+				if (HostAwaitFrame != null) {
+					var stableFrames = 0;
+					var previousGeometry = System.Text.Json.JsonSerializer.Serialize(BuildTree(root, root, "", 0));
+					var settle = System.Diagnostics.Stopwatch.StartNew();
+					while (stableFrames < 3 && settle.Elapsed < TimeSpan.FromSeconds(2)) {
+						await HostAwaitFrame();
+						HostCommitLayout?.Invoke(root);
+						var nextFrame = await RenderAsync(dpi);
+						var nextGeometry = System.Text.Json.JsonSerializer.Serialize(BuildTree(root, root, "", 0));
+						stableFrames = nextFrame.Width == snapshot.Render.Width && nextFrame.Height == snapshot.Render.Height
+							&& nextFrame.Data == snapshot.Render.Data && nextGeometry == previousGeometry ? stableFrames + 1 : 0;
+						previousGeometry = nextGeometry;
+						snapshot.Render = nextFrame;
+					}
+					if (stableFrames < 3) {
+						snapshot.Render = null;
+						throw new InvalidOperationException("The design preview did not settle within two seconds; its content may be animated.");
+					}
+				}
+				// Read committed visual geometry after capture.
+				// Geometry stays in design DIPs, including hit testing and event-only updates.
+				// Bitmap dimensions alone cannot establish a capture-space transformation.
 				snapshot.Tree = BuildTree(root, root, "", 0);
+				snapshot.Render.Sequence = ++frameSequence;
 				BoundsLog($"FinishLayout rendered={snapshot.Render?.Width}x{snapshot.Render?.Height} rootActualAfterRender={root.ActualWidth}x{root.ActualHeight}");
 			}
 			catch (Exception e)
@@ -1181,6 +1226,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 
 		async Task<DesignerRenderFrame> RenderAsync(double dpi)
 		{
+			var captureRoot = HostCaptureRoot?.Invoke(root!) ?? root!;
 			var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 			var rtb = new RenderTargetBitmap();
 			// The headless visual tree has no display, so its system scale is 1.0 and an
@@ -1192,7 +1238,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			// so the root visual's own scale stays untouched (no double scaling).
 			if (dpi > 0 && Math.Abs(dpi - 1.0) > 0.001 && TrySetRasterizationScale(root, dpi))
 			{
-				await rtb.RenderAsync(root);
+				await rtb.RenderAsync(captureRoot);
 			}
 			else
 			{
@@ -1200,8 +1246,8 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				// SCALES the element's content to fill them. Passing anything other than the
 				// element's own render size stretches the design - measured live, asking for
 				// 1280x720 while the page's content was ~51px tall smeared it across all 720 rows.
-				var scaled = new Size(root!.RenderSize.Width * dpi, root.RenderSize.Height * dpi);
-				await rtb.RenderAsync(root, (int)scaled.Width, (int)scaled.Height);
+				var scaled = new Size(captureRoot.RenderSize.Width * dpi, captureRoot.RenderSize.Height * dpi);
+				await rtb.RenderAsync(captureRoot, (int)scaled.Width, (int)scaled.Height);
 			}
 			var pixels = await rtb.GetPixelsAsync();
 			var buffer = new byte[pixels.Length];
@@ -1358,27 +1404,14 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		}
 
 		/// <summary>
-		/// An element's bounds in root coordinates, accumulated up the parent chain.
-		///
-		/// ActualOffset is the position Arrange assigned an element within its parent, and it is
-		/// committed synchronously by the explicit Measure/Arrange the design host performs - no
-		/// framework layout pass required. That matters because this host must NOT let a real
-		/// layout pass run: in the Microsoft host the root is parented in a live offscreen
-		/// window, and a pass there re-arranges it to the window's size, throwing away the
-		/// explicit design-size Arrange and stretching the presented bitmap.
-		///
-		/// TransformToVisual is unusable here for the same underlying reason on both hosts: it
-		/// reads committed visual transforms, which in Uno's headless tree short-circuit to the
-		/// identity matrix and in the Microsoft host are not committed until that forbidden
-		/// layout pass. LayoutInformation.GetLayoutSlot is populated under Uno but comes back as
-		/// an all-zero Rect in the Microsoft host, which collapsed every element onto the root's
-		/// origin - that is what drew the selection outline a whole row above the rendered
-		/// control for anything but a panel's first child (a StackPanel's second child reported
-		/// its parent's Y, not its own). The slot path is kept only as a fallback for a host
-		/// that leaves ActualOffset at zero, where it is the value that used to be correct.
+		/// Bounds in design-surface DIPs. Microsoft supplies committed TransformToVisual bounds
+		/// relative to its capture container. The legacy offset walk remains only for Uno's
+		/// headless backend; it does not account for arbitrary render transforms.
 		/// </summary>
 		static Rect GetBoundsInRoot(FrameworkElement element, UIElement root)
 		{
+			if (HostVisualBounds != null)
+				return HostVisualBounds(element, root);
 			var x = 0.0;
 			var y = 0.0;
 			var trace = BoundsLogEnabled ? new System.Text.StringBuilder() : null;

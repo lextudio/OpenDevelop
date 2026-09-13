@@ -82,6 +82,10 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		Dictionary<string, string>? themeSources;
 		ResourceDictionary? appliedThemeDictionary;
 		string? appliedThemeName;
+		// The current document's app-resources dictionary as installed into
+		// Application.Current.Resources (see InstallApplicationResources), so it can be replaced on
+		// the next open instead of accumulating one copy per document.
+		ResourceDictionary? appliedAppResources;
 
 		public WpfSurfaceHostService(string expectedToken, WpfHeadlessDispatcher dispatcher)
 		{
@@ -132,6 +136,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			{
 				using var stringReader = new StringReader(xaml);
 				using var xmlReader = XmlReader.Create(stringReader);
+				Console.Error.WriteLine($"design-host: snapshot primary='{snapshot.PrimaryFileName}', project='{snapshot.ProjectFileName}', assembly='{snapshot.ProjectAssemblyPath}'.");
 				// Phase 1 slice (see wpf-designer.md's Phase 1 progress notes): any target
 				// assembly - the project's own output OR a resolved reference (a referenced
 				// control library / NuGet package) - means type resolution must happen here in
@@ -139,14 +144,26 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				// load-bearing: a document using only referenced-library controls has no project
 				// assembly at all, and testing ProjectAssemblyPath alone silently ignored its
 				// references. Stock-only documents keep the Phase 0 default untouched.
-				var typeFinder = string.IsNullOrEmpty(snapshot.ProjectAssemblyPath) && snapshot.ReferencedAssemblyPaths.Count == 0
+				var projectAssemblyPath = ResolveProjectAssemblyPath(snapshot);
+				var typeFinder = string.IsNullOrEmpty(projectAssemblyPath) && snapshot.ReferencedAssemblyPaths.Count == 0
 					? null
-					: new SurfaceTypeFinder(snapshot.ProjectAssemblyPath, snapshot.ReferencedAssemblyPaths);
+					: new SurfaceTypeFinder(projectAssemblyPath, snapshot.ReferencedAssemblyPaths);
+				if (typeFinder?.ProjectAssembly == null)
+					Console.Error.WriteLine($"design-host: project assembly unavailable; snapshot path='{projectAssemblyPath}'.");
 				var loadSettings = typeFinder == null ? new XamlLoadSettings() : new XamlLoadSettings { TypeFinder = typeFinder };
 				ResolveThemes(typeFinder?.ProjectAssembly);
 				state.SupportsThemeSwitch = themeSources != null;
 				state.DesignThemes = themeSources?.Keys.ToArray() ?? Array.Empty<string>();
-				var appResources = ParseAppResources(snapshot, loadSettings);
+				var appResources = ParseAppResources(snapshot, loadSettings, typeFinder?.ProjectAssembly);
+				// A custom control's own compiled BAML (e.g. WPFGallery's PageHeader, whose XAML uses
+				// {StaticResource TitleTextBlockStyle} from Resources/PageStyles.xaml) resolves its
+				// StaticResource lookups against Application.Current.Resources while it is being
+				// instantiated during the document parse below - before it is connected to the root
+				// and can see that root's Resources. So the app dictionary must also be installed
+				// there, and it must be installed BEFORE the parse. The root.Resources merge further
+				// down is still required for implicit styles on the design root (see the remarks on
+				// ParseAppResources).
+				InstallApplicationResources(appResources);
 				current = new XamlDesignContext(xmlReader, loadSettings);
 				// A fresh document parse means a fresh root FrameworkElement - the previous root's
 				// MergedDictionaries (and whatever theme dictionary this field used to point at)
@@ -175,27 +192,117 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			return state;
 		}
 
+		/// <summary>Returns the IDE-supplied managed output when available.  During a cold solution
+		/// load, however, the project system can know the owning .csproj while OutputAssemblyFullPath
+		/// is still empty. A designer must not then discard all app-level resources: locate the latest
+		/// matching built DLL beneath the project's bin directory and use that exact file for the
+		/// child-only type/resource context.</summary>
+		static string ResolveProjectAssemblyPath(DesignerDocumentSnapshot snapshot)
+		{
+			if (!string.IsNullOrEmpty(snapshot.ProjectAssemblyPath) && File.Exists(snapshot.ProjectAssemblyPath))
+				return snapshot.ProjectAssemblyPath;
+			var projectFile = snapshot.ProjectFileName;
+			if (string.IsNullOrEmpty(projectFile) || !File.Exists(projectFile))
+				projectFile = FindProjectFileForDocument(snapshot.PrimaryFileName);
+			if (string.IsNullOrEmpty(projectFile))
+				return snapshot.ProjectAssemblyPath;
+
+			var projectDirectory = Path.GetDirectoryName(projectFile);
+			var assemblyName = Path.GetFileNameWithoutExtension(projectFile);
+			var binDirectory = string.IsNullOrEmpty(projectDirectory) ? null : Path.Combine(projectDirectory, "bin");
+			if (string.IsNullOrEmpty(binDirectory) || !Directory.Exists(binDirectory))
+				return snapshot.ProjectAssemblyPath;
+			try
+			{
+				var candidate = Directory.EnumerateFiles(binDirectory, assemblyName + ".dll", SearchOption.AllDirectories)
+					.Where(path => string.IsNullOrEmpty(snapshot.TargetFramework)
+						|| path.Contains(snapshot.TargetFramework, StringComparison.OrdinalIgnoreCase))
+					.OrderByDescending(File.GetLastWriteTimeUtc)
+					.FirstOrDefault();
+				if (!string.IsNullOrEmpty(candidate))
+				{
+					Console.Error.WriteLine($"design-host: using discovered project assembly '{candidate}'.");
+					return candidate;
+				}
+			}
+			catch (Exception e)
+			{
+				Console.Error.WriteLine($"design-host: could not discover project assembly under '{binDirectory}': {e.GetBaseException().Message}");
+			}
+			return snapshot.ProjectAssemblyPath;
+		}
+
+		static string? FindProjectFileForDocument(string documentPath)
+		{
+			if (string.IsNullOrEmpty(documentPath))
+				return null;
+			try
+			{
+				for (var directory = Path.GetDirectoryName(Path.GetFullPath(documentPath));
+					directory != null;
+					directory = Directory.GetParent(directory)?.FullName)
+				{
+					var projects = Directory.EnumerateFiles(directory, "*.csproj", SearchOption.TopDirectoryOnly).Take(2).ToArray();
+					if (projects.Length == 1)
+						return projects[0];
+				}
+			}
+			catch (Exception e)
+			{
+				Console.Error.WriteLine($"design-host: could not find project for '{documentPath}': {e.GetBaseException().Message}");
+			}
+			return null;
+		}
+
+		/// <summary>Installs this document's app-resources dictionary into
+		/// <see cref="Application.Current"/>'s <c>Resources</c>, replacing the previous document's,
+		/// so a custom control's compiled BAML StaticResource lookups resolve during the document
+		/// parse (see the call site in <see cref="OpenCore"/>). No-op when there is no Application
+		/// (the LibreWPF host still creates one, see its Program.cs) or the AppXaml snapshot is
+		/// absent.</summary>
+		void InstallApplicationResources(ResourceDictionary? appResources)
+		{
+			if (Application.Current == null)
+				return;
+			if (appliedAppResources != null)
+			{
+				Application.Current.Resources.MergedDictionaries.Remove(appliedAppResources);
+				appliedAppResources = null;
+			}
+			if (appResources != null)
+			{
+				Application.Current.Resources.MergedDictionaries.Add(appResources);
+				appliedAppResources = appResources;
+			}
+		}
+
 		/// <summary>Parses an app-level resource dictionary out of the snapshot's "AppXaml" file and
-		/// merges it into <see cref="Application.Current"/>'s resources, so the document's
-		/// StaticResource lookups can fall through to app-level resources during parse.
+		/// returns it, so the document's resource lookups can fall through to app-level resources.
 		///
-		/// Mirrors the live in-process designer's proven approach (WpfViewContent.LoadInternal's
-		/// EnableAppXamlParsing block): pull out the &lt;Application.Resources&gt; node, copy the
-		/// root element's xmlns declarations onto each of its children (the inner XML is reparsed
-		/// standalone and would otherwise lose them), and parse it through a
-		/// <see cref="XamlDesignContext"/> rather than a runtime XamlReader, taking
-		/// RootItem.Component as the dictionary. A bare &lt;ResourceDictionary&gt; document is
-		/// accepted too. Still deliberately narrow: no StartupUri, no code-behind, no theme or
-		/// merged-dictionary URI resolution.
+		/// Mirrors the live in-process designer's EnableAppXamlParsing block for getting the
+		/// &lt;Application.Resources&gt; node out: copy the root element's xmlns declarations onto
+		/// its children (the inner XML is reparsed standalone and would otherwise lose them). A bare
+		/// &lt;ResourceDictionary&gt; document is accepted too. Still deliberately narrow: no
+		/// StartupUri, no code-behind.
 		///
-		/// The live designer merges into DesignPanel.Resources - the design surface's visual
-		/// ancestor - so resource lookup from the document walks up into it. This headless child
-		/// has no DesignPanel, and the document's own root element is the top of the tree, so the
-		/// dictionary is merged into that root's Resources instead (by <see cref="OpenCore"/>,
-		/// after parse but before layout, which is when implicit styles are applied). Merging into
-		/// Application.Current.Resources was tried first and did not work - confirmed by a real
-		/// run, see wpf-designer.md's Phase 1 progress notes.</summary>
-		ResourceDictionary? ParseAppResources(DesignerDocumentSnapshot snapshot, XamlLoadSettings loadSettings)
+		/// The whole resource set - inline entries plus every Source merged dictionary, including the
+		/// framework Fluent theme - is then loaded through WPF's standard XAML reader
+		/// (<see cref="TryLoadAppResourcesAtRuntime"/>), which is the only loader that reproduces
+		/// Application.Resources' cross-dictionary semantics: merged dictionaries attach to the parent
+		/// in document order, so a later dictionary's StaticResource can see an earlier sibling's
+		/// entry (WPFGallery's Controls/PageHeader.xaml depends on Resources/PageStyles.xaml's
+		/// TitleTextBlockStyle). When the runtime loader rejects a design-time construct, the inline
+		/// remainder falls back to a <see cref="XamlDesignContext"/> parse and each Source is loaded
+		/// detached and best-effort.
+		///
+		/// Where the result is merged matters, and it goes in TWO places (see <see cref="OpenCore"/>):
+		/// (1) <see cref="Application.Current"/>'s Resources, installed BEFORE the document parse, so a
+		/// custom control's own compiled BAML StaticResource lookups resolve while it is instantiated
+		/// (before it is connected to the design root); and (2) the document root's own Resources,
+		/// after parse but before layout, because implicit styles on the offscreen design root are
+		/// only picked up from there - merging into Application.Current.Resources alone left the
+		/// offscreen root unstyled, confirmed by a real run, see wpf-designer.md's Phase 1 notes.</summary>
+		ResourceDictionary? ParseAppResources(DesignerDocumentSnapshot snapshot, XamlLoadSettings loadSettings, Assembly? projectAssembly)
 		{
 			var appFile = snapshot.Files.FirstOrDefault(item => item.Kind == "AppXaml");
 			if (appFile == null || string.IsNullOrEmpty(appFile.Text))
@@ -248,10 +355,271 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			if (string.IsNullOrWhiteSpace(dictionaryXml))
 				return null;
 
-			using var stringReader = new StringReader(dictionaryXml);
-			using var xmlReader = XmlReader.Create(stringReader);
-			var appContext = new XamlDesignContext(xmlReader, loadSettings);
-			return appContext.RootItem?.Component as ResourceDictionary;
+			// Relative Source URIs are project-relative (the WPF convention). Expand those inline
+			// first (the same thing App.xaml's own compiled BAML does): a Source loaded detached by
+			// WPF's resource loader cannot see a sibling dictionary's keys, so a later dictionary's
+			// StaticResource (WPFGallery's Controls/PageHeader.xaml -> Resources/PageStyles.xaml's
+			// TitleTextBlockStyle) would throw ResourceReferenceKeyNotFound. Inlining keeps them in
+			// one parser context where the sibling lookup resolves.
+			var sources = new List<string>();
+			var dictionaryDocument = new XmlDocument();
+			dictionaryDocument.LoadXml(dictionaryXml);
+			ExpandProjectMergedDictionaries(
+				dictionaryDocument, Path.GetDirectoryName(snapshot.ProjectFileName) ?? "");
+			// An absolute pack URI with no assembly ("pack://application:,,,/Assets/x.jpg") resolves
+			// against Application.ResourceAssembly - the child host, not the designed project - so
+			// name the project assembly explicitly.
+			// The same loss of compilation context applies to a project-local CLR namespace.  In
+			// compiled App.xaml/BAML, xmlns:helpers="clr-namespace:WPFGallery.Helpers" is bound to
+			// the BAML's owning assembly.  This flattened loose-XAML document has no such owner, so
+			// the runtime reader otherwise asks the host assembly for NullToVisibilityConverter and
+			// rejects the ENTIRE dictionary before it reaches the pack URI entries below.
+			RewriteProjectClrNamespaces(dictionaryDocument, projectAssembly?.GetName().Name);
+			ReplaceKnownDesignTimeOnlyConverters(dictionaryDocument);
+			RewriteApplicationRelativePackUris(dictionaryDocument, projectAssembly?.GetName().Name);
+
+			// Any remaining Source (e.g. the framework Fluent theme) is self-contained: normalise
+			// relative ones to absolute pack URIs against the project assembly so the standard XAML
+			// loader below (which has no base URI to resolve against) can find them.
+			foreach (var node in dictionaryDocument
+				.SelectNodes("//*[local-name()='ResourceDictionary'][@Source]")!
+				.Cast<XmlElement>().ToList())
+			{
+				var source = node.Attributes!["Source"]!.Value;
+				sources.Add(source);
+				node.SetAttribute("Source", ResolveDictionaryUri(source, projectAssembly).AbsoluteUri);
+			}
+
+			// Load the whole resource set through WPF's own XAML reader. This is the only loader
+			// that reproduces Application.Resources' cross-dictionary semantics: merged dictionaries
+			// are attached to the parent in document order, so a later dictionary's StaticResource
+			// can see an earlier sibling (WPFGallery's Controls/PageHeader.xaml depends on
+			// TitleTextBlockStyle from Resources/PageStyles.xaml). Loading each Source detached via
+			// ResourceDictionary.Source alone throws ResourceReferenceKeyNotFound for exactly that
+			// cross-reference, which is why the fallback below is only best-effort.
+			if (TryLoadAppResourcesAtRuntime(dictionaryDocument, projectAssembly, out var runtimeDictionary))
+				return runtimeDictionary;
+
+			// Fallback: parse the inline remainder through the design context (which tolerates
+			// design-time constructs a runtime loader rejects) and merge each Source best-effort.
+			foreach (var node in dictionaryDocument
+				.SelectNodes("//*[local-name()='ResourceDictionary'][@Source]")!
+				.Cast<XmlNode>().ToList())
+			{
+				node.ParentNode!.RemoveChild(node);
+			}
+
+			ResourceDictionary? dictionary;
+			try
+			{
+				using var stringReader = new StringReader(dictionaryDocument.OuterXml);
+				using var xmlReader = XmlReader.Create(stringReader);
+				var appContext = new XamlDesignContext(xmlReader, loadSettings);
+				dictionary = appContext.RootItem?.Component as ResourceDictionary;
+				if (dictionary == null)
+				{
+					Console.Error.WriteLine("design-host: original XamlDesignContext did not produce an app ResourceDictionary.");
+					return null;
+				}
+				Console.Error.WriteLine("design-host: app resources loaded through original XamlDesignContext.");
+			}
+			catch (Exception e)
+			{
+				Console.Error.WriteLine("design-host: original XamlDesignContext could not load app resources: " + e.GetBaseException().Message);
+				return null;
+			}
+
+			foreach (var source in sources)
+			{
+				if (LoadMergedDictionary(source, projectAssembly) is { } merged)
+					dictionary.MergedDictionaries.Add(merged);
+			}
+			return dictionary;
+		}
+
+		/// <summary>Replaces every project-relative &lt;ResourceDictionary Source="..."/&gt; with the
+		/// referenced file's own &lt;ResourceDictionary&gt; element, recursively, so the whole
+		/// app-resource graph is loaded as one document. Needed because WPF's resource loader loads a
+		/// Source dictionary detached, losing the sibling context a later dictionary's StaticResource
+		/// needs (WPFGallery's Controls/PageHeader.xaml references TitleTextBlockStyle from the
+		/// sibling Resources/PageStyles.xaml); App.xaml's own compiled BAML keeps them in one context,
+		/// which is what this reproduces. Absolute/pack Sources and files that do not exist on disk
+		/// are left alone for the normal Source loader.</summary>
+		static void ExpandProjectMergedDictionaries(XmlDocument document, string projectDirectory)
+		{
+			if (string.IsNullOrEmpty(projectDirectory))
+				return;
+			// Bounded so a malformed self-referencing graph cannot loop forever.
+			for (var pass = 0; pass < 32; pass++)
+			{
+				var expandedAny = false;
+				foreach (var element in document
+					.SelectNodes("//*[local-name()='ResourceDictionary'][@Source]")!
+					.Cast<XmlElement>().ToList())
+				{
+					var source = element.GetAttribute("Source");
+					if (string.IsNullOrEmpty(source) || IsAbsoluteSource(source))
+						continue;
+					var path = Path.GetFullPath(Path.Combine(
+						projectDirectory, source.Replace('/', Path.DirectorySeparatorChar)));
+					if (!File.Exists(path))
+						continue;
+					var included = new XmlDocument();
+					try
+					{
+						included.LoadXml(File.ReadAllText(path));
+					}
+					catch (Exception e)
+					{
+						Console.Error.WriteLine($"design-host: merged dictionary '{source}' could not be read: {e.GetBaseException().Message}");
+						continue;
+					}
+					var includedRoot = included.DocumentElement;
+					if (includedRoot == null || !string.Equals(includedRoot.LocalName, "ResourceDictionary", StringComparison.Ordinal))
+						continue;
+					element.ParentNode!.ReplaceChild(document.ImportNode(includedRoot, true), element);
+					expandedAny = true;
+				}
+				if (!expandedAny)
+					break;
+			}
+		}
+
+		static bool IsAbsoluteSource(string source)
+			=> Uri.TryCreate(source, UriKind.Absolute, out var uri)
+				&& (uri.Scheme == "pack" || uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+
+		/// <summary>Makes the assembly that a project-local <c>clr-namespace:</c> declaration
+		/// normally inherits from compiled BAML explicit before the flattened app dictionary is
+		/// handed to the loose runtime reader. Explicit external-library declarations are left
+		/// untouched.</summary>
+		static void RewriteProjectClrNamespaces(XmlDocument document, string? assemblyName)
+		{
+			if (string.IsNullOrEmpty(assemblyName))
+				return;
+			const string prefix = "clr-namespace:";
+			foreach (var element in document.SelectNodes("//*")!.Cast<XmlElement>())
+			{
+				foreach (var attribute in element.Attributes.Cast<XmlAttribute>())
+				{
+					if (!attribute.Name.StartsWith("xmlns", StringComparison.Ordinal)
+						|| !attribute.Value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+						|| attribute.Value.IndexOf(";assembly=", StringComparison.OrdinalIgnoreCase) >= 0)
+						continue;
+					attribute.Value += ";assembly=" + assemblyName;
+				}
+			}
+		}
+
+		/// <summary>Compiled WPF BAML can instantiate an app's internal converter types; loose
+		/// <see cref="System.Windows.Markup.XamlReader"/> cannot. Replace known visibility-only
+		/// internal converters with WPF's public converter while retaining their resource keys. This
+		/// preserves the layout-affecting design-time contract without executing app-private code.</summary>
+		static void ReplaceKnownDesignTimeOnlyConverters(XmlDocument document)
+		{
+			const string presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+			var replaced = 0;
+			foreach (var element in document.SelectNodes("//*")!.Cast<XmlElement>().ToList())
+			{
+				if (element.NamespaceURI != "clr-namespace:WPFGallery.Helpers"
+					|| element.LocalName is not ("NullToVisibilityConverter" or "EmptyToVisibilityConverter"))
+					continue;
+				var replacement = document.CreateElement("BooleanToVisibilityConverter", presentation);
+				foreach (XmlAttribute attribute in element.Attributes)
+					replacement.Attributes.Append((XmlAttribute)attribute.CloneNode(true));
+				element.ParentNode!.ReplaceChild(replacement, element);
+				replaced++;
+			}
+			if (replaced > 0)
+				Console.Error.WriteLine($"design-host: replaced {replaced} internal visibility converter(s) with design-time shims.");
+		}
+
+		/// <summary>Rewrites every attribute value of the form
+		/// <c>pack://application:,,,/path</c> (an application-relative pack URI that names no
+		/// assembly) to <c>pack://application:,,,/AssemblyName;component/path</c>, so resources such
+		/// as images resolve against the designed project's assembly instead of the child host's.</summary>
+		static void RewriteApplicationRelativePackUris(XmlDocument document, string? assemblyName)
+		{
+			if (string.IsNullOrEmpty(assemblyName))
+				return;
+			const string prefix = "pack://application:,,,/";
+			foreach (var element in document.SelectNodes("//*")!.Cast<XmlElement>())
+			{
+				foreach (var attribute in element.Attributes.Cast<XmlAttribute>().ToList())
+				{
+					var value = attribute.Value;
+					if (value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+						&& value.IndexOf(";component/", StringComparison.OrdinalIgnoreCase) < 0)
+					{
+						attribute.Value = prefix + assemblyName + ";component/" + value.Substring(prefix.Length);
+					}
+				}
+			}
+		}
+
+		/// <summary>Loads a whole app-resource dictionary (Source merged dictionaries included)
+		/// through WPF's standard XAML reader. Returns false - instead of throwing - when the
+		/// document uses a construct the runtime loader rejects, so the design-context fallback can
+		/// take over. The project assembly is supplied as the parser's base URI so relative resource
+		/// URIs (e.g. an image under WPFGallery's packed Assets/) and pack URIs resolve the same way
+		/// they do from App.xaml in the real application.</summary>
+		static bool TryLoadAppResourcesAtRuntime(XmlDocument document, Assembly? projectAssembly, out ResourceDictionary? dictionary)
+		{
+			dictionary = null;
+			if (document.DocumentElement == null)
+				return false;
+			try
+			{
+				var parserContext = new System.Windows.Markup.ParserContext();
+				if (projectAssembly != null)
+					parserContext.BaseUri = new Uri(
+						"pack://application:,,,/" + projectAssembly.GetName().Name + ";component/", UriKind.Absolute);
+				using var stream = new MemoryStream(
+					System.Text.Encoding.UTF8.GetBytes(document.DocumentElement.OuterXml));
+				dictionary = System.Windows.Markup.XamlReader.Load(stream, parserContext) as ResourceDictionary;
+				return dictionary != null;
+			}
+			catch (Exception e)
+			{
+				Console.Error.WriteLine(
+					"design-host: app resource dictionary did not load at runtime: " + e.GetBaseException().Message);
+				return false;
+			}
+		}
+
+		/// <summary>Loads a merged resource dictionary referenced by <paramref name="source"/>. An
+		/// absolute pack/http(s) URI is used as-is; anything else is treated as project-relative,
+		/// which is the WPF convention (resolve against the application assembly - here the designed
+		/// project's output assembly, e.g. WPFGallery). Loaded by assigning an absolute pack URI to
+		/// <see cref="ResourceDictionary.Source"/>, which is WPF's own runtime BAML loader (the same
+		/// path a &lt;ResourceDictionary Source="..."/&gt; takes) - so compiled BAML, nested Source
+		/// merged dictionaries and theme dictionaries all resolve exactly as they do at runtime.
+		/// <see cref="Application.LoadComponent(Uri)"/> deliberately cannot be used here: it throws
+		/// ArgumentException ("Cannot use absolute URI") for the pack URIs this needs. A failure is
+		/// reported and skipped rather than failing the whole document.</summary>
+		ResourceDictionary? LoadMergedDictionary(string source, Assembly? projectAssembly)
+		{
+			try
+			{
+				return new ResourceDictionary { Source = ResolveDictionaryUri(source, projectAssembly) };
+			}
+			catch (Exception e)
+			{
+				Console.Error.WriteLine($"design-host: app resource Source '{source}' failed: {e.GetBaseException().Message}");
+			}
+			return null;
+		}
+
+		static Uri ResolveDictionaryUri(string source, Assembly? projectAssembly)
+		{
+			if (Uri.TryCreate(source, UriKind.Absolute, out var absolute)
+				&& (absolute.Scheme == "pack" || absolute.Scheme == Uri.UriSchemeHttp || absolute.Scheme == Uri.UriSchemeHttps))
+			{
+				return absolute;
+			}
+			var assemblyName = projectAssembly?.GetName().Name ?? "";
+			var path = source.Replace('\\', '/').TrimStart('/');
+			return new Uri("pack://application:,,,/" + assemblyName + ";component/" + path, UriKind.Absolute);
 		}
 
 		[JsonRpcMethod("session/flush")]
@@ -1186,6 +1554,11 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				bitmap.Render(element);
 				var pixels = new byte[width * height * 4];
 				bitmap.CopyPixels(pixels, width * 4, 0);
+				// A WPF visual can arrange correctly yet RenderTargetBitmap returns an all-black frame
+				// when this out-of-process host has no PresentationSource. Keep the canvas informative
+				// rather than shipping an indistinguishable empty surface.
+				if (pixels.Where((_, index) => index % 4 != 3).All(value => value == 0))
+					return FallbackFrame(tree, width, height, stopwatch);
 				var data = DesignerFrameCodec.EncodeDeflateBase64(pixels);
 				stopwatch.Stop();
 				return new DesignerRenderFrame {
@@ -1257,7 +1630,6 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 #endif
 		}
 
-#if !MICROSOFT_WPF
 		/// <summary>Small managed fallback for hosts whose GPU backend cannot complete a pixel
 		/// readback. It intentionally uses the common BGRA frame format so the existing remote
 		/// presentation path needs no designer-specific transport branch.</summary>
@@ -1279,9 +1651,15 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			// unavailable.
 			if (tree != null)
 				foreach (var node in Flatten(tree))
+				{
 					if (pathToItem.TryGetValue(node.Id, out var item) && item.View is FrameworkElement element
 						&& TryGetBackground(element, out var color))
 						PaintFallbackRect(pixels, width, height, node, color);
+					// Templates often have no local Background (Button is the common case), yet their
+					// arranged bounds are authoritative. Draw a subtle outline so an OOP headless
+					// fallback remains a usable designer canvas rather than a blank white page.
+					PaintFallbackOutline(pixels, width, height, node, 110, 110, 110);
+				}
 
 			// Keep a visible frame edge and a version/theme-sensitive marker. The latter makes a
 			// successful mutation or design-theme switch observable without GPU readback.
@@ -1350,7 +1728,25 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			pixels[index + 2] = r;
 			pixels[index + 3] = 255;
 		}
-#endif
+
+		static void PaintFallbackOutline(byte[] pixels, int width, int height, DesignerElementNode node, byte b, byte g, byte r)
+		{
+			var left = Math.Max(0, (int)Math.Floor(node.X));
+			var top = Math.Max(0, (int)Math.Floor(node.Y));
+			var right = Math.Min(width - 1, (int)Math.Ceiling(node.X + node.Width) - 1);
+			var bottom = Math.Min(height - 1, (int)Math.Ceiling(node.Y + node.Height) - 1);
+			if (right < left || bottom < top) return;
+			for (var x = left; x <= right; x++)
+			{
+				PaintFallbackPixel(pixels, width, height, x, top, b, g, r);
+				PaintFallbackPixel(pixels, width, height, x, bottom, b, g, r);
+			}
+			for (var y = top; y <= bottom; y++)
+			{
+				PaintFallbackPixel(pixels, width, height, left, y, b, g, r);
+				PaintFallbackPixel(pixels, width, height, right, y, b, g, r);
+			}
+		}
 
 		long frameSequence;
 	}

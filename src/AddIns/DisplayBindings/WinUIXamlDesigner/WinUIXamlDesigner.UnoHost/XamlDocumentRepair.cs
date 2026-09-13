@@ -61,6 +61,10 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			var unbound = CompileTimeBindingStripper.Strip(root);
 			var events = EventHandlerAttributeStripper.Strip(root);
 			var substituted = CompiledXamlControlSubstituter.Substitute(root);
+			// Keep runtime attached properties intact. Application-generated metadata can legitimately
+			// describe members of framework types used by the app's compiled markup (for example
+			// AnimatedIcon.State), so deleting them here would turn a metadata defect into a silent
+			// fidelity loss.
 			if (renamed > 0 || qualified > 0 || unbound > 0 || events > 0 || conditions > 0 || substituted.Count > 0)
 			{
 				Report(renamed, qualified, unbound, events, conditions, substituted);

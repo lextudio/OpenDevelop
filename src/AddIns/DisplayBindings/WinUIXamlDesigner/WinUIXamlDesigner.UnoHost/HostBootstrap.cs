@@ -11,12 +11,19 @@
 
 using System;
 using System.IO;
+using System.Linq;
+using System.Reflection;
 using System.Runtime.Loader;
 
 namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 {
 	static class HostBootstrap
 	{
+		/// <summary>The designed executable's assembly, when it could be identified from the
+		/// output directory. Its generated XAML provider is application-level metadata: unlike a
+		/// provider owned by Microsoft.UI.Xaml, it can describe extra members of framework types
+		/// that the application's compiled markup uses.</summary>
+		public static Assembly? DesignedApplicationAssembly { get; private set; }
 		/// <summary>
 		/// Must be called from Main's first line, and Main must do nothing else inline: the JIT
 		/// resolves a method's assembly references (StreamJsonRpc) when that method is first
@@ -68,6 +75,11 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 					+ "; the app's own types will not resolve.");
 				return;
 			}
+			var applicationName = Directory.EnumerateFiles(appBin, "*.runtimeconfig.json")
+				.Select(Path.GetFileNameWithoutExtension)
+				.Select(name => name?.EndsWith(".runtimeconfig", StringComparison.OrdinalIgnoreCase) == true
+					? name.Substring(0, name.Length - ".runtimeconfig".Length) : null)
+				.FirstOrDefault(name => !string.IsNullOrEmpty(name));
 			var loaded = 0;
 			var skipped = 0;
 			string? firstFailure = null;
@@ -75,7 +87,9 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			{
 				try
 				{
-					AssemblyLoadContext.Default.LoadFromAssemblyPath(dll);
+					var assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(dll);
+					if (string.Equals(assembly.GetName().Name, applicationName, StringComparison.OrdinalIgnoreCase))
+						DesignedApplicationAssembly = assembly;
 					loaded++;
 				}
 				catch (Exception e)
@@ -89,6 +103,8 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			// own types do not resolve" - indistinguishable from a XAML authoring error.
 			Console.Error.WriteLine($"design-host: preloaded {loaded} assemblies from {appBin} ({skipped} skipped)"
 				+ (firstFailure is null ? "" : $"; first skip: {firstFailure}"));
+			if (DesignedApplicationAssembly != null)
+				Console.Error.WriteLine($"design-host: application metadata assembly is {DesignedApplicationAssembly.GetName().Name}.");
 		}
 	}
 }

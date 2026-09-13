@@ -41,6 +41,11 @@ static class AppResourceManagerProvider
     /// any Resources access; safe to call with no app directory (then nothing is served).</summary>
     public static void Attach(Application application, string? appBin)
     {
+		if (string.Equals(Environment.GetEnvironmentVariable("OD_DESIGNHOST_NO_APP_PRI"), "1", StringComparison.Ordinal))
+		{
+			Console.Error.WriteLine("design-host: app PRI provider disabled by OD_DESIGNHOST_NO_APP_PRI.");
+			return;
+		}
         appPriPath = LocateAppPri(appBin);
         if (appPriPath is null)
         {

@@ -54,7 +54,12 @@ public sealed class UnoDesignHostRpcTests
 	#endif
 
 	static Task<UnoDesignClient> StartAsync(CancellationToken cancellationToken)
-		=> UnoDesignClient.StartAsync("", "", cancellationToken, HostDll());
+		=> UnoDesignClient.StartAsync(
+			Environment.GetEnvironmentVariable("OD_GEOMETRY_RUNTIME_CONFIG") ?? "",
+			Environment.GetEnvironmentVariable("OD_GEOMETRY_DEPS_FILE") ?? "",
+			cancellationToken,
+			HostDll(),
+			Environment.GetEnvironmentVariable("OD_GEOMETRY_APP_BIN"));
 
 	/// <summary>Wraps fixture XAML as a single-file document snapshot (the DDP document shape);
 	/// the surface size/DPI is presentation state and goes through SetViewport instead.</summary>
@@ -69,6 +74,88 @@ public sealed class UnoDesignHostRpcTests
 			Language = "",
 			Files = { new DesignerSourceFileSnapshot { FileName = "MainPage.xaml", Kind = "Source", Text = xaml } }
 		};
+	}
+
+	[Theory]
+	[InlineData(0, 0, 320, 1.0)]
+	[InlineData(23, 17, 320, 1.0)]
+	[InlineData(23, 17, 1280, 1.0)]
+	[InlineData(23, 17, 320, 2.0)]
+	[InlineData(0, 0, 1280, 1.0, true)]
+	[InlineData(0, 0, 1280, 2.0, true)]
+	public async Task ChildHost_GeometryMatchesRasterPixels(int translateX, int translateY, int designWidth, double dpi, bool settingsCard = false, string? galleryTarget = null)
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		using var client = await StartAsync(timeout.Token);
+		var xaml = $"""
+		<Grid xmlns="{Ns}" xmlns:x="{XNs}" Background="White" Width="{designWidth}" Height="240">
+		    <Canvas>
+		        <Border x:Name="marker" Canvas.Left="110" Canvas.Top="70" Width="60" Height="40" Background="#FFFF00FF">
+		            <Border.RenderTransform><TranslateTransform X="{translateX}" Y="{translateY}"/></Border.RenderTransform>
+		        </Border>
+		    </Canvas>
+		</Grid>
+		""";
+		if (settingsCard) xaml = $"""
+		<Grid xmlns="{Ns}" xmlns:x="{XNs}" xmlns:toolkit="using:CommunityToolkit.WinUI.Controls" Background="White" Width="{designWidth}" Height="753">
+		    <ScrollView Margin="0,62,0,0">
+		        <Border Padding="36,0">
+		            <StackPanel MaxWidth="1064" Spacing="4">
+		                <Border Height="274"/>
+		                <toolkit:SettingsCard Header="Manage samples" Description="Clear your recent or favorite samples">
+		                    <StackPanel Orientation="Horizontal" Spacing="8">
+		                        <Button MinWidth="120" Content="Clear recents"/>
+		                        <Button x:Name="marker" MinWidth="120" Content="Remove favorites" Background="#FFFF00FF" BorderThickness="0" CornerRadius="0"/>
+		                    </StackPanel>
+		                </toolkit:SettingsCard>
+		            </StackPanel>
+		        </Border>
+		    </ScrollView>
+		</Grid>
+		""";
+		if (galleryTarget != null) {
+			var path = Environment.GetEnvironmentVariable("OD_GEOMETRY_GALLERY_PAGE");
+			Assert.True(File.Exists(path), "Set OD_GEOMETRY_GALLERY_PAGE to SettingsPage.xaml.");
+			var xml = System.Xml.Linq.XDocument.Load(path!);
+			if (Environment.GetEnvironmentVariable("OD_GEOMETRY_NO_TRANSITIONS") == "1")
+				foreach (var transition in xml.Descendants().Where(e => e.Name.LocalName.EndsWith(".ChildrenTransitions", StringComparison.Ordinal)).ToArray()) transition.Remove();
+			var target = xml.Descendants().Single(e => (string?)e.Attribute(System.Xml.Linq.XName.Get("Name", XNs)) == galleryTarget);
+			target.SetAttributeValue("Background", "#FFFF00FF");
+			target.SetAttributeValue("BorderBrush", "#FFFF00FF");
+			target.SetAttributeValue("CornerRadius", "0");
+			xaml = xml.ToString();
+		}
+		var document = Document(client, xaml);
+		client.SetViewport(designWidth, 240, dpi);
+		var state = await client.OpenAsync(document, timeout.Token);
+		Assert.True(state.Accepted, state.Error);
+		Assert.NotNull(state.Render);
+		var frame = state.Render!;
+		var pixels = DesignerFrameCodec.DecodeBgra32(frame);
+		var left = frame.Width; var top = frame.Height; var right = -1; var bottom = -1;
+		for (var y = 0; y < frame.Height; y++)
+			for (var x = 0; x < frame.Width; x++) {
+				var i = (y * frame.Width + x) * 4;
+				if (pixels[i] > 240 && pixels[i + 1] < 15 && pixels[i + 2] > 240 && pixels[i + 3] > 240) {
+					left = Math.Min(left, x); top = Math.Min(top, y);
+					right = Math.Max(right, x); bottom = Math.Max(bottom, y);
+				}
+			}
+		Assert.True(right >= left, "Rendered frame contains no magenta marker.");
+		var node = FindByName(state.Tree!, galleryTarget ?? "marker")!;
+		var error = Math.Max(Math.Max(Math.Abs(node.X * dpi - left), Math.Abs(node.Y * dpi - top)),
+			Math.Max(Math.Abs((node.X + node.Width) * dpi - right - 1), Math.Abs((node.Y + node.Height) * dpi - bottom - 1)));
+		Assert.True(error <= 1, $"Frame={frame.Width}x{frame.Height}; raster=({left},{top},{right + 1},{bottom + 1}); tree=({node.X},{node.Y},{node.X + node.Width},{node.Y + node.Height}); max edge error={error}");
+		var hit = await client.HitTestAsync(1, (left + right + 1) / (2 * dpi), (top + bottom + 1) / (2 * dpi), timeout.Token);
+		Assert.Contains(galleryTarget ?? "marker", hit.Chain);
+	}
+
+	[Fact(Explicit = true)]
+	public async Task GallerySettings_ButtonsMatchRasterPixels()
+	{
+		foreach (var target in new[] { "ClearRecentBtn", "UnfavoriteBtn" })
+			foreach (var dpi in new[] { 1.0, 2.0 })
+				await ChildHost_GeometryMatchesRasterPixels(0, 0, 1280, dpi, galleryTarget: target);
 	}
 
 	[Fact]

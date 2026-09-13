@@ -25,8 +25,12 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 
 		/// <summary>Captures the UI thread's queue. Must be called ON that thread (from
 		/// Application.Start's callback) before any RPC can arrive.</summary>
-		public static void Attach() => queue = DispatcherQueue.GetForCurrentThread()
-			?? throw new InvalidOperationException("No DispatcherQueue on the current thread.");
+		public static void Attach()
+		{
+			queue = DispatcherQueue.GetForCurrentThread()
+				?? throw new InvalidOperationException("No DispatcherQueue on the current thread.");
+			SynchronizationContext.SetSynchronizationContext(new DispatcherQueueSynchronizationContext(queue));
+		}
 
 		/// <summary>Blocks until <see cref="RequestExit"/>. Handed to DesignerChildHost as its
 		/// wait-for-shutdown hook; unlike the Uno original this does not pump, because

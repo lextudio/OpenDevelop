@@ -54,9 +54,10 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					projectAssembly = Assembly.LoadFrom(projectAssemblyPath);
 					RegisterAssembly(projectAssembly);
 				}
-				catch (Exception)
+				catch (Exception e)
 				{
 					projectAssembly = null;
+					Console.Error.WriteLine($"design-host: could not load project assembly '{projectAssemblyPath}': {e.GetBaseException().Message}");
 				}
 			}
 		}
