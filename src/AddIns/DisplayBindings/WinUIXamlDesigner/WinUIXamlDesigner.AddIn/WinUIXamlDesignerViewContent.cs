@@ -437,10 +437,6 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	void OnPreviewStateChanged(object sender, EventArgs e)
 	{
 		status.Text = previewHost.StatusText;
-		// The runtime tree only exists once a render has settled, and it is the authoritative
-		// Design-view Outline source (see RebuildOutline). Rebuild here so the initial, pre-render
-		// source-tree outline is replaced by the real runtime projection instead of lingering.
-		RebuildOutline();
 		// A settled render may have moved or resized the selected element; re-apply the
 		// outline from the freshly indexed tree.
 		if (SelectedElementName != null)

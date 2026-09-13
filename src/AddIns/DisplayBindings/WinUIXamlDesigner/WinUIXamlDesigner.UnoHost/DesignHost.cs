@@ -1113,16 +1113,24 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				lastWidth = width;
 				lastHeight = height;
 				lastDpi = dpi;
-				var size = new Size(width, height);
-				// A document-declared d:DesignWidth/d:DesignHeight is applied as the root's explicit
-				// size: the offscreen window owns layout and would otherwise discard the
-				// Measure/Arrange below, so the declaration has to live on the element to survive.
-				if (designWidthOverride is { } declaredWidth) root!.Width = declaredWidth;
-				else if (!double.IsNaN(root!.Width)) root.ClearValue(FrameworkElement.WidthProperty);
-				if (designHeightOverride is { } declaredHeight) root.Height = declaredHeight;
-				else if (!double.IsNaN(root.Height)) root.ClearValue(FrameworkElement.HeightProperty);
-				root!.Measure(size);
-				root.Arrange(new Rect(0, 0, width, height));
+				// The offscreen window's Grid stretches the root to the WINDOW, which spread narrow
+				// pages (AppBarButtonPage is 76px) across the whole surface and made the reported size
+				// nondeterministic (the window's layout pass races the explicit Measure/Arrange).
+				// Measure at the DESIGN WIDTH so content wraps there, then pin an explicit size:
+				// design-width x CONTENT-HEIGHT. That is stable (no oscillation), does not stretch
+				// vertically, and does not let unconstrained text run thousands of pixels wide (an
+				// infinite-width measure did exactly that to CustomXamlConditionalsPage). A document's
+				// d:DesignWidth/d:DesignHeight overrides the size.
+				root!.HorizontalAlignment = HorizontalAlignment.Left;
+				root.VerticalAlignment = VerticalAlignment.Top;
+				root.Measure(new Size(width, double.PositiveInfinity));
+				var natural = root.DesiredSize;
+				var renderWidth = designWidthOverride ?? width;
+				var renderHeight = designHeightOverride ?? (natural.Height > 0 ? natural.Height : height);
+				root.Width = renderWidth;
+				root.Height = renderHeight;
+				root.Measure(new Size(renderWidth, renderHeight));
+				root.Arrange(new Rect(0, 0, renderWidth, renderHeight));
 				// NOTE: do NOT call root.UpdateLayout() here to settle positions. In the Microsoft
 				// host the root is parented in a real (offscreen) window, so a framework layout
 				// pass re-arranges it to the WINDOW's size and discards the explicit design-size

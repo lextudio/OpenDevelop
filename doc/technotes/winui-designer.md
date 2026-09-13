@@ -1216,9 +1216,10 @@ abstract-root ones, so a re-sweep is expected to report 114 / 6 / 0 / 0 / 0.
   SDK 2.4.0 does **not** fix it (re-verified). `ApplyDesignTimeControlTemplates` handles them without
   touching the element: AutoSuggestBox gets a Popup-free `TextBox` template;
   MapControl gets a neutral placeholder `Border`.
-- **Render-size guard.** `DesignHost.RenderAsync` renders once into a throwaway bitmap if the root's
-  `RenderSize` is still 0, then falls back to `DesiredSize` if it remains 0 - a 0-sized bitmap is
-  never useful.
+- **0x0 frames were not a render-size problem.** A throwaway-render guard was tried in
+  `DesignHost.RenderAsync` while chasing ConnectedAnimation's 0x0, then **reverted**: the real cause
+  was the empty `Frame` (above), and the throwaway pass only made the render size jump to the window
+  size.
 
 ### Design-time document features
 
@@ -1236,6 +1237,28 @@ abstract-root ones, so a re-sweep is expected to report 114 / 6 / 0 / 0 / 0.
   `Application.Resources` at startup is not applied to the offscreen elements, while the same style
   in `Page.Resources`, or a `Template` set directly on the element, works. `ApplyDesignTimeControlTemplates`
   therefore rewrites the element's own `Template` property / element name rather than adding an app-level style.
+
+### Microsoft host content sizing and the ComboBoxPage "jitter" (2026-09-12)
+
+After the Windows App SDK 2.4.0 upgrade the offscreen window's Grid stretched its child (the design
+root) to the WINDOW size, so every page reported the window size (1365x663) regardless of content.
+Two visible bugs followed: a narrow page (AppBarButtonPage's content is 76px wide) had its content
+spread across the whole surface, and the reported size was **nondeterministic between runs** - the
+window's layout pass races `DesignHost`'s explicit `Measure`/`Arrange`. On pages like ComboBoxPage
+the size also appeared to jitter.
+
+Fixed in `DesignHost.FinishLayoutAsync`: measure the root at the **design width** (so text wraps
+there), then pin explicit `Width = design width` and `Height = content height`. Measured:
+AppBarButtonPage 68x348, ComboBoxPage 1284x272, CustomXamlConditionalsPage 1280x295,
+AppNotificationPage 1284x445 - the same across repeated runs and repeated reads. Note the two wrong
+turns worth avoiding: measuring at **infinite width** lets text run thousands of pixels wide
+(CustomXamlConditionalsPage became 1970px), and letting the window content-size the root is
+nondeterministic. `d:DesignWidth`/`d:DesignHeight` still override both dimensions.
+
+Separately, an **outline rebuild on every render** (added to make the Outline runtime-sourced) was
+removed: `outline.SetRoots` re-selects, which re-triggers `ShowSelection` and therefore another
+render - a feedback loop that showed up as the page flashing. The Outline is rebuilt on document
+load and on source edits as before.
 
 ### Document Outline (Design view)
 
