@@ -139,9 +139,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		{
 			InitializeMSBuildEnvironment();
 			lock (SolutionProjectCollectionLock) {
-				string toolsVersion = rootElement.ToolsVersion;
-				if (string.IsNullOrEmpty(toolsVersion))
-					toolsVersion = projectCollection.DefaultToolsVersion;
+				string toolsVersion = ResolveSupportedToolsVersion(projectCollection, rootElement);
 #if HAS_UNO
 				// SDK resolvers (e.g. NuGet → Uno.Sdk) may not be available in-process.
 				// IgnoreMissingImports lets us read static XML properties (AssemblyName,
@@ -158,11 +156,28 @@ namespace ICSharpCode.SharpDevelop.Project
 		{
 			InitializeMSBuildEnvironment();
 			lock (SolutionProjectCollectionLock) {
-				string toolsVersion = rootElement.ToolsVersion;
-				if (string.IsNullOrEmpty(toolsVersion))
-					toolsVersion = projectCollection.DefaultToolsVersion;
+				string toolsVersion = ResolveSupportedToolsVersion(projectCollection, rootElement);
 				return new ProjectInstance(rootElement, globalProps, toolsVersion, projectCollection);
 			}
+		}
+
+		/// <summary>
+		/// Evaluates legacy project XML with the installed MSBuild toolset. Modern dotnet MSBuild
+		/// intentionally exposes only <c>Current</c>; passing an old XML attribute such as 4.0 or
+		/// 12.0 explicitly therefore fails before project evaluation, even though the same project
+		/// can normally be built by current MSBuild. Preserve the attribute on disk, but don't let
+		/// it select a nonexistent toolset at runtime.
+		/// </summary>
+		static string ResolveSupportedToolsVersion(MSBuild.Evaluation.ProjectCollection projectCollection, ProjectRootElement rootElement)
+		{
+			string requested = rootElement.ToolsVersion;
+			if (string.IsNullOrEmpty(requested))
+				return projectCollection.DefaultToolsVersion;
+			if (projectCollection.Toolsets.Any(toolset => string.Equals(toolset.ToolsVersion, requested, StringComparison.OrdinalIgnoreCase)))
+				return requested;
+			LoggingService.InfoFormatted("MSBuild ToolsVersion '{0}' from '{1}' is unavailable; evaluating with Current.",
+				requested, rootElement.FullPath);
+			return "Current";
 		}
 		
 		public static void AddMSBuildSolutionProperties(ISolution solution, IDictionary<string, string> propertyDict)
