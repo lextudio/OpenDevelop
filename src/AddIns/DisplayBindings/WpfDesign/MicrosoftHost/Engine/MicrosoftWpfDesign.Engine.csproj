@@ -22,10 +22,27 @@
          must come in as Page + code-behind: other hand-written sources reference those types
          directly, so dropping the .xaml.cs leaves them undefined (CS0246 / CS0234).
          Microsoft.NET.Sdk's default Page glob is relative to THIS project directory and never sees
-         the linked-in tree, so the XAML is listed explicitly. LinkBase matches the Compile items
-         so each generated .g.cs lands beside its partial class. Only WpfDesign.Designer has XAML —
-         WpfDesign and WpfDesign.XamlDom are code-only. -->
-    <Page Include="..\..\..\..\..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign.Designer\Project\**\*.xaml" Exclude="**\bin\**;**\obj\**" LinkBase="WpfDesign.Designer" SubType="Designer" Generator="MSBuild:Compile" />
+         the linked-in tree, so the XAML is listed explicitly.
+
+         Deliberately NOT LinkBase="WpfDesign.Designer" here, unlike the Compile items above: for a
+         Page item, the Link path becomes the LOGICAL NAME baked into the compiled .g.resources
+         (and therefore the pack://application:,,,/AssemblyName;component/<path> URI other code
+         must use to find it) - not just a cosmetic Solution Explorer folder the way it is for
+         Compile items. A LinkBase prefix here would compile themes/generic.xaml to
+         "WpfDesign.Designer/themes/generic.xaml", silently breaking the WPF convention (and this
+         file's own [ThemeInfo(..., ResourceDictionaryLocation.SourceAssembly)] assembly attribute)
+         that a control's default style lives at the conventional "themes/generic.xaml" - which is
+         exactly what happened here: WindowClone (every Window-rooted document's design root) ended
+         up with Style=null/Template=null and rendered nothing, while Application.GetResourceStream
+         for "pack://application:,,,/ICSharpCode.MicrosoftWpfDesign.Designer;component/themes/generic.xaml"
+         threw "Cannot locate resource" - confirmed directly by dumping the built assembly's
+         manifest resource names (they came back prefixed "wpfdesign.designer/themes/generic.baml"
+         instead of "themes/generic.baml"). %(RecursiveDir)%(Filename)%(Extension) reconstructs each
+         file's path relative to the glob's own base folder, i.e. its real path under upstream's
+         WpfDesign.Designer/Project/ with no extra segment - matching how the original,
+         non-source-shared WpfDesign.Designer.csproj (built directly from its own directory, no
+         Link at all) has always compiled these same files for the LibreWPF backend. -->
+    <Page Include="..\..\..\..\..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign.Designer\Project\**\*.xaml" Exclude="**\bin\**;**\obj\**" Link="%(RecursiveDir)%(Filename)%(Extension)" SubType="Designer" Generator="MSBuild:Compile" />
     <Resource Include="..\..\..\..\..\..\externals\vscode-wpf\external\WpfDesigner\WpfDesign.Designer\Project\Images\*" Link="Images\%(Filename)%(Extension)" />
     <ProjectReference Include="..\Core\MicrosoftWpfDesign.Core.csproj" />
     <ProjectReference Include="..\XamlDom\MicrosoftWpfDesign.XamlDom.csproj" />

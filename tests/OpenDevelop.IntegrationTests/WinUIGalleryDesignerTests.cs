@@ -327,7 +327,7 @@ public sealed class WinUIGalleryDesignerTests
     {
         if (string.IsNullOrEmpty(statusText))
             return null;
-        // "Rendered by Microsoft WinUI (800×600 @ 1x)." - the multiplication sign is a real character
+        // "Rendered by WinUI design host (800×600 @ 1x)." - the multiplication sign is a real character
         // in the payload; accept x/X too so the same parser works against either host.
         var match = Regex.Match(statusText, @"(\d+)\s*[×xX]\s*(\d+)");
         if (!match.Success)

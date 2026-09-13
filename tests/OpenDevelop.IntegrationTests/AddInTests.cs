@@ -1235,7 +1235,7 @@ public sealed class AddInTests : IAsyncDisposable
 		var opened = await _app.InvokeAsync("od.open-file", xamlPath);
 		Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
 
-		var status = await WaitForWpfDesignerStatusAsync("Window", 45, xamlPath, "Microsoft WPF");
+		var status = await WaitForWpfDesignerStatusAsync("Window", 45, xamlPath, "WPF");
 		Assert.Contains("NativeButton", status.GetProperty("outlineNames").EnumerateArray().Select(item => item.GetString()));
 	}
 
@@ -2720,7 +2720,7 @@ public sealed class AddInTests : IAsyncDisposable
             var status = await _app.InvokeAsync("od.forms-designer.status");
             Assert.True(status.GetProperty("designerLoaded").GetBoolean(), status.ToString());
             Assert.False(status.GetProperty("usesCodeDomLoader").GetBoolean(), status.ToString());
-            AssertDesignerBackend(status, "OD_FORMS_RUNTIME", "Microsoft WinForms", "LibreWinForms");
+            AssertDesignerBackend(status, "OD_FORMS_RUNTIME", "WinForms", "LibreWinForms");
             Assert.Contains("RoslynDesignerLoader", status.GetProperty("loaderType").GetString(), StringComparison.Ordinal);
             Assert.True(status.GetProperty("toolboxSearchHosted").GetBoolean(), status.ToString());
             var filteredTools = await _app.InvokeAsync("od.forms-designer.toolbox.filter", "button");

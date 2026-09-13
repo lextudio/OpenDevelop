@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using System.Windows;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 
 namespace ICSharpCode.WpfDesign.SurfaceHost;
@@ -16,6 +17,12 @@ static class Program
 			// soon as a real control template queries SystemParameters. Keep WPF on Main and move the
 			// socket/RPC wait loop to a worker instead.
 			var dispatcher = new WpfHeadlessDispatcher(useCurrentThread: true);
+			// A live Application instance registers WPF's "pack" URI scheme handler, which
+			// Application.GetResourceStream (and therefore a custom control's implicit
+			// themes/generic.xaml default-style lookup) relies on even outside a GUI app. No
+			// MainWindow, no Run() - this process pumps its own dispatcher loop below.
+			if (Application.Current == null)
+				new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
 			var host = Task.Run(() => DesignerChildHost.Run(args, "WpfDesign.SurfaceHost",
 				token => new MultiDocumentWpfSurfaceHostService(token, dispatcher),
 				afterShutdown: dispatcher.Shutdown));

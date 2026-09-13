@@ -167,6 +167,81 @@ launch with `OD_TEST_MODE=1`, and drive the gesture over DevFlow. Notes that cos
 - Repeatedly calling `od.open-file` in a wait loop can leave the workbench in a state where the drag
   never reaches the design panel at all. Open once, then poll `od.wpf-designer.status`.
 
+### WPFGallery corpus test and two findings behind it (2026-09-12)
+
+`tests/OpenDevelop.IntegrationTests/WpfGalleryDesignerTests.cs` drives the WPF designer against the
+real WPFGallery sample from the official `microsoft/WPF-Samples` repo (optional; skips unless a
+checkout is found via `OD_WPF_GALLERY_ROOT` or a sibling `WPF-Samples` directory - the WPF
+counterpart of `WinUIGalleryDesignerTests`/`winui-designer.md`). Getting it green surfaced two
+things worth recording so nobody re-derives them.
+
+**Backend selection is per-document and content-driven, not `OD_WPF_RUNTIME`.**
+`WpfViewContent.LoadInternal` calls `WpfSurfaceHostClient.ResolveBackend(XamlFrameworkDetector
+.Detect(...).Runtime == XamlRuntimeKind.MicrosoftWpf)` for every document - `OD_WPF_RUNTIME` only
+supplies the *default* inside `WpfSurfaceHostClient.LocateChildDll()`'s parameterless overload (used
+as a fallback, see next finding), it does not itself pick the backend for a real document. WPFGallery
+is a plain SDK-style `net10.0-windows`/`UseWPF=true` project with no LibreWPF (`librewpf.transport`)
+reference, so every page in it is correctly *detected* as `MicrosoftWpf` - do not assume "LibreWPF"
+is the WPF designer's universal default the way it is for this repo's other WPF fixtures
+(`WpfSample`), which are deliberately built against the LibreWPF transport package instead.
+
+**A real bug found while writing this test: an undeployed Microsoft-WPF host silently reconnects to
+the LibreWPF child, but keeps reporting "Microsoft WPF".** In this environment,
+`AddIns/DisplayBindings/WpfDesign/` only ever had a `Host/` subfolder (the LibreWPF child,
+`WpfDesign.SurfaceHost.exe`) - no `MicrosoftHost/` subfolder, because
+`MicrosoftWpfDesign.SurfaceHost.csproj` was never built/deployed. `WpfViewContent.LoadDesignerAsync`
+calls `AcquireSharedAsync(WpfSurfaceHostClient.LocateChildDll(selectedBackend), ...)` -
+`LocateChildDll(WpfSurfaceHostBackend.MicrosoftWpf)` returns `null` because
+`MicrosoftHost/MicrosoftWpfDesign.SurfaceHost.dll` doesn't exist on disk, and
+`AcquireSharedAsync`'s own `hostDllPath ??= LocateChildDll()` fallback then re-resolves it using the
+*parameterless* overload, which ignores `selectedBackend` entirely and picks LibreWPF (since
+`OD_WPF_RUNTIME` is unset) - so the session silently connects to the real LibreWPF child. But
+`WpfViewContent.BackendName` and `od.wpf-designer.status`'s `"backend"` field still report
+`GetBackendName(backend)` using the *originally detected* enum value ("Microsoft WPF"), which was
+never corrected against what actually got connected. The tell that gave this away: the LibreWPF
+child's `#if !MICROSOFT_WPF`-guarded diagnostic in `WpfSurfaceHostService.RebuildTreeAndRender`
+("GPU rendering is unavailable or disabled; showing the bounded software fallback frame." - see
+"Bounded portable frame rendering" above) showed up in the Error List and in a live screenshot (a
+correctly-sized but completely blank design canvas) for a document whose `od.wpf-designer.status`
+claimed backend `"Microsoft WPF"` - a message that specific build configuration should be incapable
+of emitting. Confirmed directly: no `MicrosoftHost/MicrosoftWpfDesign.SurfaceHost.dll` existed
+anywhere under the repo at the time. **Not fixed yet** - `BackendName`/the status action need to
+report the backend actually behind `client`/`surfaceControl` (or `AcquireSharedAsync` needs to
+return which one it connected), not the pre-connection `selectedBackend` guess. Anyone driving a
+"Microsoft WPF" designer session that renders a suspiciously blank frame should check for this
+mislabeling before assuming the Microsoft host itself is broken - the `MicrosoftHost/` folder's
+absence is the fast way to confirm it.
+
+**An unbuilt target project makes the WPF designer look like it "loaded" while showing none of the
+document's real content - a silent false-green trap.** Before `WPFGallery.csproj` had ever been
+built, opening any of its pages reported `designerLoaded: true` with the expected root name present
+in `outlineNames`, yet the outline silently stopped four levels down
+(`Page > ContentPagePane > ScrollViewer > StackPanel`) - none of the page's actual sample controls
+(`controls:ControlExample`, `Button`, `CheckBox`, ...) appeared, because the design host cannot
+resolve a custom XAML type without the project's compiled assembly. A test that only asserts
+`designerLoaded` and the presence of the outer container name (as an earlier version of
+`WpfGalleryDesignerTests` did) passes in exactly this broken state. The fix in the test: every
+`RenderPages` row also names one control TYPE that only shows up once the real content resolves
+(e.g. `"Button"` for `ButtonPage.xaml`, `"TreeViewItem"` for `TreeViewPage.xaml`), and the assertion
+requires it - `OD_WPF_GALLERY_BUILD=1` builds the Gallery once through DevFlow before the corpus
+runs, the same opt-in `WinUIGalleryDesignerTests` uses for its own Gallery checkout.
+
+**One page in the corpus is a real, reproducible outline limitation, not a build/timing gap:**
+`Views/Navigation/MenuPage.xaml`'s outline stably stops at
+`Page > ContentPagePane > PageHeader > ScrollViewer > Grid > ControlExample` and never descends into
+that `ControlExample`'s `Menu`/`MenuItem` content - held steady across 30s of polling with no
+document-level error beyond the routine GPU-fallback diagnostic above, so it is not the same
+"unbuilt project" cause as the previous finding (every other corpus page, including other
+`ItemsControl`s like `TreeView`/`ListBox`, resolved correctly against the same build). The likely
+culprit: this is the only corpus page whose `ControlExample` wraps a
+`<Style TargetType="MenuItem">` carrying an `EventSetter Event="Click" Handler="MenuItem_Click"` -
+no other page combines a `Style` resource with an `EventSetter` referencing a code-behind handler.
+Not investigated further or fixed. `WpfGalleryDesignerTests.MenuPage_OutlineStopsAtTheFirstControlExample`
+documents the current behavior explicitly (asserts the outline stops where it stops today) instead of
+either asserting a false-passing generic check or silently excluding the page - anyone fixing this
+should expect that fact to start failing, and can then move `MenuPage.xaml` into the regular
+`RenderPages` corpus with leaf `"MenuItem"`.
+
 ## Out-of-process / Surface Isolation decision (2026-08-16)
 
 This section records the review of
