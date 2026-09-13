@@ -12,6 +12,11 @@ static class Program
 	{
 		try
 		{
+			#if MICROSOFT_WPF
+			Console.Error.WriteLine("WpfDesign.SurfaceHost: runtime=MicrosoftWpf (isolated MicrosoftHost payload).");
+			#else
+			Console.Error.WriteLine("WpfDesign.SurfaceHost: runtime=LibreWPF (isolated Host payload).");
+			#endif
 			// GLFW/ProGPU display initialization must happen on the macOS process main thread. A
 			// background WPF dispatcher works for small headless fixtures but deadlocks in glfwInit as
 			// soon as a real control template queries SystemParameters. Keep WPF on Main and move the

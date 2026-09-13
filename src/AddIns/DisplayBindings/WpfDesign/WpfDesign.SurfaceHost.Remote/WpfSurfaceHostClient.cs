@@ -19,10 +19,15 @@ public enum WpfSurfaceHostBackend { LibreWpf, MicrosoftWpf }
 /// WpfDesign.AddIn without pulling in the child's own WPF/designer-engine dependencies.</summary>
 public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient, IDesignHostClient, IDesignHostBounds, IDesignHostHitTesting
 {
+	/// <summary>IDE-owned sink for a child's stdout/stderr. The Remote assembly deliberately does
+	/// not reference the workbench, so WpfViewContent supplies the Output-pad implementation.</summary>
+	public static Action<string>? OutputLineSink { get; set; }
+
 	static readonly SharedDesignerHostPool<CompatibilityKey, Connection> sharedPool = new(
 		(_, connection) => connection.IsAlive,
 		async (key, token) => {
 			var connection = new Connection(key.HostDllPath, key.OperationTimeout);
+			RouteOutput(connection);
 			// AcquireSharedAsync is also called synchronously by WpfViewContent.LoadInternal on the
 			// dispatcher. Never capture that SynchronizationContext here or the handshake continuation
 			// deadlocks against LoadInternal's GetResult().
@@ -83,6 +88,7 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 		hostDllPath ??= LocateChildDll() ?? throw new InvalidOperationException(
 			"Could not locate WpfDesign.SurfaceHost.dll under this assembly's Host subfolder.");
 		var connection = new Connection(hostDllPath, operationTimeout);
+		RouteOutput(connection);
 		await connection.StartConnectionAsync(cancellationToken).ConfigureAwait(false);
 		return new WpfSurfaceHostClient(connection, null);
 	}
@@ -93,6 +99,9 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 		var key = new CompatibilityKey(Path.GetFullPath(hostDllPath), operationTimeout ?? TimeSpan.FromSeconds(30), RuntimeInformation.ProcessArchitecture);
 		return new WpfSurfaceHostClient(await sharedPool.AcquireAsync(key, cancellationToken).ConfigureAwait(false), key);
 	}
+
+	static void RouteOutput(Connection connection)
+		=> connection.OutputLineReceived += (_, line) => OutputLineSink?.Invoke(line);
 
 	public Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken = default)
 		=> OpenRecoverableAsync(snapshot, cancellationToken);
@@ -221,6 +230,19 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 		protected override string GetChildDllPath() => hostDllPath;
 		protected override string BuildCommandLine(string childDll, int port, string token)
 			=> new DesignerHostLaunchSpec().BuildCommandLine(childDll, port, token);
+		protected override void ConfigureChildProcess(System.Diagnostics.ProcessStartInfo startInfo)
+		{
+			// The two WPF implementations must never probe each other's payload.  dotnet resolves
+			// managed assemblies from this host's deps/runtimeconfig, while this working directory
+			// keeps relative pack/resource probing confined to its deployed runtime folder too.
+			// MicrosoftHost and Host are deliberately disjoint sibling directories.
+			var hostDirectory = Path.GetDirectoryName(hostDllPath);
+			if (!string.IsNullOrEmpty(hostDirectory) && Directory.Exists(hostDirectory))
+				startInfo.WorkingDirectory = hostDirectory;
+			startInfo.Environment["OPENDEVELOP_WPF_HOST_RUNTIME"] = hostDllPath.Contains(
+				Path.DirectorySeparatorChar + "MicrosoftHost" + Path.DirectorySeparatorChar,
+				StringComparison.OrdinalIgnoreCase) ? "microsoft" : "librewpf";
+		}
 		protected override TimeSpan HandshakeTimeout => TimeSpan.FromSeconds(60);
 	}
 }

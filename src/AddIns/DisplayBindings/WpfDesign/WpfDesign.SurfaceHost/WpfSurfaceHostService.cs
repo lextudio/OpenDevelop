@@ -15,6 +15,10 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+
+#if MICROSOFT_WPF
+using System.Windows.Interop;
+#endif
 using System.Xml;
 
 using ICSharpCode.WpfDesign;
@@ -58,6 +62,14 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		Dictionary<string, DesignItem> pathToItem = new(StringComparer.Ordinal);
 		double lastWidth = 800;
 		double lastHeight = 600;
+		#if MICROSOFT_WPF
+		// Native WPF's RenderTargetBitmap can return an all-black frame for a visual that has
+		// never been connected to a PresentationSource.  This is a child-process-only hidden HWND;
+		// it gives the native compositor a real source without ever putting a project visual in the
+		// IDE process or showing a window to the user.
+		HwndSource? renderPresentationSource;
+		Visual? renderPresentationRoot;
+		#endif
 		#if !MICROSOFT_WPF
 		/// <summary>Created once, lazily, on first successful render and reused for the process's
 		/// life - matches every LibreWPF ProGPU test/harness, which all construct one
@@ -1389,6 +1401,9 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			pathToItem = new Dictionary<string, DesignItem>(StringComparer.Ordinal);
 			if (current.RootItem.View is FrameworkElement root)
 			{
+				#if MICROSOFT_WPF
+				EnsureNativePresentationSource(root);
+				#endif
 				// Measure against the viewport, then arrange at the root's OWN desired size - not
 				// at the viewport rect. Arranging a root that declares an explicit Width/Height
 				// (or otherwise desires less than the viewport) into the larger viewport rect is
@@ -1420,6 +1435,29 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			#endif
 			state.ComponentCount = pathToItem.Count;
 		}
+
+		#if MICROSOFT_WPF
+		void EnsureNativePresentationSource(FrameworkElement root)
+		{
+			if (ReferenceEquals(renderPresentationRoot, root))
+				return;
+			if (renderPresentationSource == null)
+			{
+				// Off-screen popup/tool window: it participates in WPF composition but is neither
+				// visible nor taskbar-addressable. Its 4096px client area exceeds normal designer
+				// roots; the root is still measured/arranged at its own desired size below.
+				var parameters = new HwndSourceParameters("OpenDevelop WPF Design Render") {
+					PositionX = -32000, PositionY = -32000, Width = 4096, Height = 4096,
+					WindowStyle = unchecked((int)0x80000000), // WS_POPUP
+					ExtendedWindowStyle = 0x00000080 // WS_EX_TOOLWINDOW
+				};
+				renderPresentationSource = new HwndSource(parameters);
+			}
+			renderPresentationSource.RootVisual = root;
+			renderPresentationRoot = root;
+			Console.Error.WriteLine("WpfDesign.SurfaceHost: attached design root to isolated native WPF presentation source.");
+		}
+		#endif
 
 		DesignerElementNode BuildNode(DesignItem item, DesignItem root, string path)
 		{
@@ -1554,17 +1592,20 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				bitmap.Render(element);
 				var pixels = new byte[width * height * 4];
 				bitmap.CopyPixels(pixels, width * 4, 0);
-				// A WPF visual can arrange correctly yet RenderTargetBitmap returns an all-black frame
-				// when this out-of-process host has no PresentationSource. Keep the canvas informative
-				// rather than shipping an indistinguishable empty surface.
-				if (pixels.Where((_, index) => index % 4 != 3).All(value => value == 0))
-					return FallbackFrame(tree, width, height, stopwatch);
+				// A black native frame is not a valid design preview. Never substitute the synthetic
+				// wireframe fallback here: it conceals a Microsoft-WPF compositor failure and makes
+				// users believe their page loaded. Let session/open surface the real error instead.
+				if (pixels.Where((_, index) => index % 4 != 3).All(value => value == 0)) {
+					throw new NativeWpfRenderFailure("Native WPF RenderTargetBitmap returned an all-black frame.");
+				}
 				var data = DesignerFrameCodec.EncodeDeflateBase64(pixels);
 				stopwatch.Stop();
 				return new DesignerRenderFrame {
 					Sequence = ++frameSequence, Width = width, Height = height, Dpi = 1,
 					Data = data, RenderMs = stopwatch.Elapsed.TotalMilliseconds
 				};
+			} catch (NativeWpfRenderFailure) {
+				throw;
 			} catch (Exception e) {
 				Console.Error.WriteLine("WpfDesign.SurfaceHost: native WPF render failed: " + e);
 				return null;
@@ -1629,6 +1670,13 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			};
 #endif
 		}
+
+#if MICROSOFT_WPF
+		sealed class NativeWpfRenderFailure : Exception
+		{
+			public NativeWpfRenderFailure(string message) : base(message) { }
+		}
+#endif
 
 		/// <summary>Small managed fallback for hosts whose GPU backend cannot complete a pixel
 		/// readback. It intentionally uses the common BGRA frame format so the existing remote

@@ -82,8 +82,4 @@
 		             class = "ICSharpCode.WpfDesign.AddIn.Options.WpfEditorOptionPanel" />
 	</Path>
 
-	<Path name="/SharpDevelop/Autostart">
-		<Class id="ICSharpCode.WpfDesign.AddIn.RegisterDevFlowActionsCommand"
-		       class="ICSharpCode.WpfDesign.AddIn.RegisterDevFlowActionsCommand"/>
-	</Path>
 </AddIn>

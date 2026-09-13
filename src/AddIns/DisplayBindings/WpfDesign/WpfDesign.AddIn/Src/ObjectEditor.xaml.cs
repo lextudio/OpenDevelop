@@ -35,7 +35,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 			get { return DataContext as PropertyNode; }
 		}
 
-		protected override void OnClick()
+		void OnClick(object sender, RoutedEventArgs e)
 		{
 			var s = PropertyNode.Services.GetService<ChooseClassServiceBase>();
 			if (s != null) {

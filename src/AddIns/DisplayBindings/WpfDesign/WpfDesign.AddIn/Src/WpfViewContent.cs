@@ -29,6 +29,7 @@ using System.Windows.Threading;
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
+using ICSharpCode.SharpDevelop.Designer;
 using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.Designer.Shell;
@@ -57,6 +58,8 @@ namespace ICSharpCode.WpfDesign.AddIn
 	/// </summary>
 	public class WpfViewContent : AbstractViewContentHandlingLoadErrors, IToolsHost, IOutlineContentHost, IHasPropertyContainer
 	{
+		const string OutputChannelName = "WPF Designer";
+
 		public WpfViewContent(OpenedFile file) : base(file)
 		{
 			commands.RegisterStandard(() => undoStack.Count > 0 && client != null && surfaceControl != null, UndoCore,
@@ -149,8 +152,15 @@ namespace ICSharpCode.WpfDesign.AddIn
 			// very first load.
 			DesignerCanvas canvas = (DesignerCanvas?)surfaceControl ?? new DesignerCanvas();
 			this.UserContent = canvas;
+			var framework = XamlFrameworkDetector.Detect(PrimaryFile.FileName.ToString());
+			// A Windows WPF document must stay in the native Microsoft WPF host.  In particular,
+			// detection can be Unknown while a loose XAML file is opened before its solution has
+			// finished loading; treating that transient state as LibreWPF silently swaps the runtime
+			// and produces LibreWPF's intentionally skeletal fallback surface instead of WPF design.
+			// LibreWPF is selected only when the project explicitly identifies that runtime (or on a
+			// non-Windows host where Microsoft WPF cannot run).
 			backend = WpfSurfaceHostClient.ResolveBackend(
-				XamlFrameworkDetector.Detect(PrimaryFile.FileName.ToString()).Runtime == XamlRuntimeKind.MicrosoftWpf);
+				OperatingSystem.IsWindows() && framework.Runtime != XamlRuntimeKind.LibreWpf);
 			canvas.SetLoading(true, "Starting " + WpfSurfaceHostClient.GetBackendName(backend) + " design host…");
 
 			_ = LoadDesignerAsync(myGeneration, sourceText, backend);
@@ -168,6 +178,12 @@ namespace ICSharpCode.WpfDesign.AddIn
 		{
 			try
 			{
+				// One shared child may serve many documents. Route at connection creation (in the
+				// Remote client), not per document, so each host line appears once in this channel.
+				WpfSurfaceHostClient.OutputLineSink ??= line =>
+					DesignerOutput.AppendLine(DesignerOutput.Channel(OutputChannelName), line);
+				DesignerOutput.AppendLine(DesignerOutput.Channel(OutputChannelName),
+					"Opening " + PrimaryFile.FileName + " with " + WpfSurfaceHostClient.GetBackendName(selectedBackend) + " host.");
 				if (surfaceControl == null)
 				{
 					LoggingService.Info("WPF designer: acquiring shared surface host");

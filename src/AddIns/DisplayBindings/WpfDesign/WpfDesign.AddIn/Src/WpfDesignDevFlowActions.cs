@@ -169,6 +169,32 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			});
 		}
 
+		[DevFlowAction("od.wpf-designer.outline-select", Description = "Select a named WPF element through the live Document Outline control and report the resulting canvas selection")]
+		public static string SelectOutlineElement(string elementName)
+		{
+			var viewContent = FindWpfViewContent();
+			var surface = viewContent?.SurfaceControl;
+			if (surface?.State?.Accepted != true)
+				return Failure("WPF designer is not loaded");
+			var node = surface.FindNodeByName(elementName);
+			if (node == null)
+				return Failure("Designer element not found: " + elementName);
+			var outline = viewContent!.OutlineContent as ICSharpCode.SharpDevelop.Widgets.DocumentOutlineControl;
+			if (outline == null)
+				return Failure("WPF Document Outline is unavailable");
+
+			// Do not call surface.SelectElementId here: this must exercise the same
+			// Outline SelectionCommitted -> WpfViewContent -> adorner path as a user click.
+			outline.SelectNodeById(node.Id);
+			var selected = surface.SelectedElementId;
+			return JsonSerializer.Serialize(new {
+				success = StringComparer.Ordinal.Equals(selected, node.Id),
+				outlineSelectedId = outline.SelectedNode?.Id,
+				surfaceSelectedId = selected,
+				selectedName = surface.FindNodeByName(elementName)?.Name
+			});
+		}
+
 		/// <summary>
 		/// Real screen bounds for a Toolbox row, computed the same way AvalonDock's own
 		/// avd.query.bounds DevFlow action does (plain UIElement.PointToScreen - works reliably

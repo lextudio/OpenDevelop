@@ -35,6 +35,13 @@ namespace ICSharpCode.Core
 			lock (assemblies) {
 				if (initialized)
 					return;
+				// Add-ins are loaded with Assembly.LoadFrom. Its dependency bind can fall back to
+				// AppDomain.AssemblyResolve, but the host assemblies (ICSharpCode.SharpDevelop,
+				// ICSharpCode.Core, ...) were normally loaded *before* this locator subscribed to
+				// AssemblyLoad. Seed the cache so a subsequently loaded add-in can bind to those
+				// already-present host assemblies instead of reporting its classes as missing.
+				foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+					assemblies[assembly.FullName] = assembly;
 				initialized = true;
 				AppDomain.CurrentDomain.AssemblyLoad += CurrentDomain_AssemblyLoad;
 				AppDomain.CurrentDomain.AssemblyResolve += CurrentDomain_AssemblyResolve;

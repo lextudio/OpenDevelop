@@ -48,6 +48,14 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 	{
 		readonly WpfSurfaceHostClient client;
 		readonly Grid designSurface = new Grid();
+		// A 100% design may be larger than the tab.  A bare ContentControl arranges its child
+		// to the viewport and clips the excess, so the page became unreachable with no scrollbars.
+		// Keep the actual design Grid as the ScrollViewer content; its explicit extent is updated
+		// after every frame/zoom change below.
+		readonly ScrollViewer scroller = new() {
+			HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+			VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+		};
 		// Stretch.Fill (like UnoDesignSurfaceControl, the other backend with working zoom), NOT
 		// Stretch.None: DesignFramePresenter.Resize sets the Image's Width/Height to
 		// DesignWidth/Height * viewport.Scale, but with Stretch.None the Image draws the bitmap at
@@ -358,7 +366,8 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			textEditor.KeyDown += OnTextEditorKeyDown;
 			textEditor.LostKeyboardFocus += OnTextEditorLostFocus;
 			designSurface.Children.Add(textEditor);
-			ContentHost.Content = designSurface;
+			scroller.Content = designSurface;
+			ContentHost.Content = scroller;
 
 			// Zoom, Fit and gridlines are all really implemented for this backend (zoomScale/
 			// fitMode/showGridlines and Show()'s viewport + overlay sizing below), following
@@ -393,6 +402,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				RebuildViewport();
 			};
 			FitRequested += (_, _) => { fitMode = true; RebuildViewport(); };
+			scroller.SizeChanged += (_, _) => RebuildViewport();
 			GridRequested += (_, enabled) => SetGridlines(enabled);
 			ShowNamesRequested += (_, enabled) => adornerLayer.ShowNameLabel = enabled;
 			// ThemeRequested carries the chosen theme name directly; CommitTheme is blocking
@@ -534,6 +544,11 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				? DesignViewport.Fit(render.Width, render.Height, availableWidth, availableHeight, 1.0, CanvasPadding, CanvasPadding)
 				: DesignViewport.Zoom(render.Width, render.Height, availableWidth, availableHeight, zoomScale, CanvasPadding, CanvasPadding);
 			framePresenter.Resize(viewport);
+			// Make the ScrollViewer's extent cover the frame plus the surrounding design-space
+			// padding. At 100% this is what lets a 800x450 page scroll in a smaller editor tab;
+			// at Fit it remains no smaller than the viewport, preserving the edge-pattern area.
+			designSurface.Width = Math.Max(ContentHost.ActualWidth, framePresenter.Visual.Width + 2 * CanvasPadding);
+			designSurface.Height = Math.Max(ContentHost.ActualHeight, framePresenter.Visual.Height + 2 * CanvasPadding);
 			// The rendered frame must sit at the viewport's own base (origin + pan) - exactly where
 			// the DesignToSurface-based adorners/hit-testing already assume it is - otherwise the
 			// selection outline and the bitmap drift apart the moment Scale/Origin isn't the
@@ -588,6 +603,10 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 
 		void OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
 		{
+			// Preview handlers on this control see events from the ScrollViewer template too.
+			// A ScrollBar's Thumb drag must never become a design-element move/resize gesture.
+			if (IsWithinScrollerChrome(e.OriginalSource as DependencyObject))
+				return;
 			if (state is not { } currentState)
 				return;
 			// The tray owns its clicks. Letting this surface-level Preview handler continue would
@@ -1321,6 +1340,8 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 
 		void OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
 		{
+			if (IsWithinScrollerChrome(e.OriginalSource as DependencyObject) && !IsMouseCaptured)
+				return;
 			if (gridGuideDragPending)
 			{
 				var (gx, gy) = viewport.SurfaceToDesign(e.GetPosition(designSurface).X, e.GetPosition(designSurface).Y);
@@ -1687,6 +1708,21 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			for (var current = source; current != null; current = VisualTreeHelper.GetParent(current))
 				if (ReferenceEquals(current, contextMenuTray))
 					return true;
+			return false;
+		}
+
+		bool IsWithinScrollerChrome(DependencyObject? source)
+		{
+			// Do not broadly exclude descendants of scroller: the design surface is one too.
+			// Only a real ScrollBar (or its template children, such as Thumb/Track/RepeatButton)
+			// is chrome; all design content continues through the normal hit-test path.
+			for (var current = source; current != null; current = VisualTreeHelper.GetParent(current))
+			{
+				if (current is ScrollBar)
+					return true;
+				if (ReferenceEquals(current, designSurface))
+					return false;
+			}
 			return false;
 		}
 
