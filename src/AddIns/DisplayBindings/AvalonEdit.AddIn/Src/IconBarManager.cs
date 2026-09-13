@@ -87,6 +87,19 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		{
 			if (fileName == null || document == null)
 				return;
+			// These gutter icons are a CODE navigation affordance - the same class/method/field
+			// glyphs the navigation bar shows. A XAML/XML document's outline is its ELEMENT tree,
+			// whose kind names ("Page", "Grid", ...) fall through to the default Class icon, so the
+			// breakpoint gutter filled with class icons that mean nothing there. Only a code file
+			// has members to mark; clear any outline bookmarks and skip everything else.
+			if (!IsCodeFile(fileName)) {
+				await SD.MainThread.InvokeAsync(() => {
+					for (int i = bookmarks.Count - 1; i >= 0; i--)
+						if (bookmarks[i] is OutlineBookmark)
+							bookmarks.RemoveAt(i);
+				});
+				return;
+			}
 			var requestVersion = Interlocked.Increment(ref outlineRequestVersion);
 			try {
 				var registry = SD.GetService<LanguageServiceRegistry>();
@@ -105,6 +118,25 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			} catch (OperationCanceledException) {
 			} catch (Exception ex) {
 				LoggingService.Warn("Language-service icon bar outline failed for '" + fileName + "': " + ex.Message);
+			}
+		}
+
+		/// <summary>The languages whose outline is a member tree, so the gutter's class/method
+		/// glyphs are meaningful. Deliberately a fixed list rather than "anything with an outline":
+		/// XAML/XML/HTML also register outline providers, but theirs describe markup, not members.
+		/// A .xaml.cs code-behind is .cs and keeps the icons.</summary>
+		static bool IsCodeFile(FileName fileName)
+		{
+			switch (System.IO.Path.GetExtension(fileName.ToString()).ToLowerInvariant()) {
+				case ".cs":
+				case ".csx":
+				case ".vb":
+				case ".fs":
+				case ".fsi":
+				case ".fsx":
+					return true;
+				default:
+					return false;
 			}
 		}
 

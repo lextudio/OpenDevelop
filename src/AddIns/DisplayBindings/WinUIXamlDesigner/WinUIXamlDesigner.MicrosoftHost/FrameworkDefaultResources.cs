@@ -86,6 +86,20 @@ static class FrameworkDefaultResources
 		{
 			var name = element.Name.LocalName;
 			var ns = element.Name.Namespace;
+			// An empty Frame (no Source, no visual content) makes the whole offscreen render come
+			// back 0x0: measured on WinUI-Gallery's ConnectedAnimationPage, whose four samples are
+			// bare Frames - the page's elements lay out fine (pageRoot 1365x663, frames up to 750px)
+			// yet RenderTargetBitmap returned 0x0 until the Frames were replaced with Borders. A
+			// design-time template did NOT help (the fault is in the Frame's own offscreen
+			// behaviour, not its template), so replace the element instead. A Frame with a Source or
+			// with content is left alone - it renders normally.
+			if (name == "Frame" && ns.NamespaceName == Xaml.NamespaceName
+				&& element.Attribute("Source") is null
+				&& !element.Elements().Any(child => !child.Name.LocalName.Contains('.')))
+			{
+				element.Name = ns + "Border";
+				continue;
+			}
 			var content = name switch
 			{
 				// Design surface shows the typed text / placeholder, not the runtime suggestion popup.

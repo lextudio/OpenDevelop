@@ -475,7 +475,9 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			try
 			{
 				lastXaml = request.Xaml;
-				var xaml = InjectDesignData(request.Xaml);
+				var xaml = InjectDesignData(request.Xaml, out var designWidth, out var designHeight);
+				designWidthOverride = designWidth;
+				designHeightOverride = designHeight;
 				xaml = TransformXamlBeforeLoad?.Invoke(xaml) ?? xaml;
 				// After the host-specific transform, never before: that step is what merges/injects
 				// other documents in, and the repairs are for problems that only exist once markup
@@ -509,7 +511,8 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				}
 				root = (FrameworkElement)loaded;
 				HostVisualRoot?.Invoke(previousRoot, root);
-				return await FinishLayoutAsync(request.Width, request.Height, request.Dpi, snapshot);
+				// A document's own d:DesignWidth/DesignHeight wins over the session viewport.
+				return await FinishLayoutAsync(designWidth ?? request.Width, designHeight ?? request.Height, request.Dpi, snapshot);
 			}
 			catch (Exception e)
 			{
@@ -590,9 +593,14 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		/// cleanup is done on the serialized text (removing xmlns declarations via
 		/// XAttribute.Remove is fragile when the document was just re-enumerated).
 		/// </summary>
-		static string InjectDesignData(string xaml)
+		static string InjectDesignData(string xaml, out double? designWidth, out double? designHeight)
 		{
-			if (string.IsNullOrEmpty(xaml) || !xaml.Contains("DesignData", StringComparison.Ordinal))
+			designWidth = null;
+			designHeight = null;
+			if (string.IsNullOrEmpty(xaml)
+				|| (!xaml.Contains("DesignData", StringComparison.Ordinal)
+					&& !xaml.Contains("DesignWidth", StringComparison.Ordinal)
+					&& !xaml.Contains("DesignHeight", StringComparison.Ordinal)))
 			{
 				return xaml;
 			}
@@ -600,6 +608,11 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			const string blendNamespace = "http://schemas.microsoft.com/expression/blend/2008";
 			const string compatibilityNamespace = "http://schemas.openxmlformats.org/markup-compatibility/2006";
 			var document = System.Xml.Linq.XDocument.Parse(xaml, System.Xml.Linq.LoadOptions.PreserveWhitespace);
+			// d:DesignWidth / d:DesignHeight set the design surface's content size (the Blend
+			// convention). Capture them before the design-time markup is stripped below, and let the
+			// caller use them as the layout size.
+			designWidth = ReadDesignLength(document.Root!, blendNamespace, "DesignWidth");
+			designHeight = ReadDesignLength(document.Root!, blendNamespace, "DesignHeight");
 			foreach (var element in document.Descendants()
 				.Where(e => e.Attributes().Any(a => a.Name.LocalName == "DesignData")).ToList())
 			{
@@ -657,6 +670,18 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			using var writer = new StringWriter();
 			document.Save(writer, System.Xml.Linq.SaveOptions.DisableFormatting);
 			return writer.ToString();
+		}
+
+		/// <summary>Reads a positive design-time length (d:DesignWidth / d:DesignHeight) from the
+		/// document root, or null when absent/invalid.</summary>
+		static double? ReadDesignLength(System.Xml.Linq.XElement root, string blendNamespace, string localName)
+		{
+			var value = (string?)root.Attribute(System.Xml.Linq.XName.Get(localName, blendNamespace));
+			return value != null
+				&& double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var parsed)
+				&& parsed > 0
+				? parsed
+				: (double?)null;
 		}
 
 		/// <summary>Builds a diagnostic from a XAML load exception, extracting the line/position
@@ -746,6 +771,11 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		double lastWidth;
 		double lastHeight;
 		double lastDpi;
+		// d:DesignWidth / d:DesignHeight declared on the document root, if any. The offscreen window
+		// owns the root's layout, so passing a size to Measure/Arrange is discarded; an explicit
+		// Width/Height on the root is what actually sticks.
+		double? designWidthOverride;
+		double? designHeightOverride;
 		string? sessionId;
 		string? documentId;
 		long version;
@@ -1084,6 +1114,13 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				lastHeight = height;
 				lastDpi = dpi;
 				var size = new Size(width, height);
+				// A document-declared d:DesignWidth/d:DesignHeight is applied as the root's explicit
+				// size: the offscreen window owns layout and would otherwise discard the
+				// Measure/Arrange below, so the declaration has to live on the element to survive.
+				if (designWidthOverride is { } declaredWidth) root!.Width = declaredWidth;
+				else if (!double.IsNaN(root!.Width)) root.ClearValue(FrameworkElement.WidthProperty);
+				if (designHeightOverride is { } declaredHeight) root.Height = declaredHeight;
+				else if (!double.IsNaN(root.Height)) root.ClearValue(FrameworkElement.HeightProperty);
 				root!.Measure(size);
 				root.Arrange(new Rect(0, 0, width, height));
 				// NOTE: do NOT call root.UpdateLayout() here to settle positions. In the Microsoft
@@ -1138,13 +1175,18 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		{
 			var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 			var rtb = new RenderTargetBitmap();
-			// The headless visual tree has no display, so its system scale is 1.0 and an
-			// unscaled render would be soft on a Retina display. Uno's RenderTargetBitmap
-			// rasterizes at renderSize * GetEffectiveRasterizationScale(), and that scale
-			// honors RootScale._testOverrideScale - set it reflectively (same pattern as
-			// HeadlessDispatcher) to get a crisp, native-resolution bitmap. The override
-			// only feeds GetEffectiveRasterizationScale; it does not trigger ApplyScale,
-			// so the root visual's own scale stays untouched (no double scaling).
+			// The offscreen window owns the root's layout, and its first pass may not have run yet
+			// when this is called. Measured: WinUI-Gallery's ConnectedAnimationPage reported
+			// rootActual 0x0 and produced a 0x0 bitmap even though its content lays out fine once
+			// rendering drives the pending pass. A throwaway render commits that pass, so read
+			// RenderSize afterwards instead of rendering whatever size happened to be committed.
+			if (root!.RenderSize.Width <= 0 || root.RenderSize.Height <= 0)
+			{
+				// A SEPARATE bitmap: reusing `rtb` for a throwaway pass and then the real render
+				// measured 0x0 both times (the reuse left it empty), while a fresh one commits the
+				// pending layout pass and the real render below then succeeds.
+				await new RenderTargetBitmap().RenderAsync(root);
+			}
 			if (dpi > 0 && Math.Abs(dpi - 1.0) > 0.001 && TrySetRasterizationScale(root, dpi))
 			{
 				await rtb.RenderAsync(root);
@@ -1155,7 +1197,10 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				// SCALES the element's content to fill them. Passing anything other than the
 				// element's own render size stretches the design - measured live, asking for
 				// 1280x720 while the page's content was ~51px tall smeared it across all 720 rows.
-				var scaled = new Size(root!.RenderSize.Width * dpi, root.RenderSize.Height * dpi);
+				// Fall back to DesiredSize only if RenderSize is STILL zero; a 0-sized bitmap is
+				// never useful, and the tree read after the render reports the real bounds either way.
+				var size = root.RenderSize.Width > 0 && root.RenderSize.Height > 0 ? root.RenderSize : root.DesiredSize;
+				var scaled = new Size(size.Width * dpi, size.Height * dpi);
 				await rtb.RenderAsync(root, (int)scaled.Width, (int)scaled.Height);
 			}
 			var pixels = await rtb.GetPixelsAsync();

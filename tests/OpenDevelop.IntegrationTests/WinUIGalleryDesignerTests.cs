@@ -108,6 +108,9 @@ public sealed class WinUIGalleryDesignerTests
         // Fixed by the RefreshContainer design-time template (its default template presented nothing
         // offscreen, so the page measured 0x0).
         { "WinUIGallery/Samples/PullToRefresh/PullToRefreshPage.xaml", "Example1,rc,lv", "lv" },
+        // Fixed by renaming an empty Frame (no Source) to a Border: bare Frames made the whole
+        // offscreen render return 0x0 even though the page lays out.
+        { "WinUIGallery/Samples/ConnectedAnimation/ConnectedAnimationPage.xaml", "CollectionContentFrame,CardFrame", "CollectionContentFrame" },
     };
 
     // Root element is the app's abstract ItemsPageBase; XamlReader constructs the root's own type

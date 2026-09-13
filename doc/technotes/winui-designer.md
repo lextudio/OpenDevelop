@@ -1139,3 +1139,151 @@ Prerequisite note: the integration test project deliberately does **not** build
 `WinUIXamlDesigner.MicrosoftHost` (it needs VS's MSBuild for the `UseWinUI`/PRI toolchain). Build
 and deploy that host first, exactly as for any `DesignerBackend=Microsoft` run; otherwise the
 suite's `OD_WINUI_RUNTIME=microsoft` gate is satisfied but the child is not present.
+
+## Full-corpus campaign (2026-09-12): 120-page sweep, fixes, current state
+
+The curated corpus above was extended into a full sweep of every WinUI-Gallery catalog page, and
+each failure class it exposed was fixed. This section is the authoritative record of that campaign.
+
+### Windows App SDK upgrade: 1.7 -> 2.4.0
+
+`Directory.Packages.props` moved `Microsoft.WindowsAppSDK` from `1.7.250606001` to **`2.4.0`**
+(kept in lockstep for the Microsoft host; the Gallery is on `2.1.3`). The upgrade was required, not
+cosmetic:
+
+- Microsoft's lifecycle: 1.7 (released 2025-03-18) is **out of support since 2026-03-18**; 1.8's
+  end of servicing was 2026-09-09. The current supported stable line is 2.x (latest patch 2.4.0,
+  supported to 2027-04-29). Staying on 1.7 means no security/compat fixes.
+- Correctness: `SplitMenuFlyoutItem` and `SystemBackdropElement` do not exist in the 1.7 runtime at
+  all, so any page (or theme file) referencing them failed to parse. 2.4.0 resolves them and fixed
+  MenuFlyoutPage, XamlStylesPage and SystemBackdropElementPage. The deployed host's
+  `Microsoft.WinUI.dll` is now `3.0.0.2608`.
+
+### Sweep methodology
+
+`tests/OpenDevelop.IntegrationTests/WinUIGallerySweep.cs` (gated on `OD_WINUI_GALLERY_SWEEP=1`)
+enumerates `WinUIGallery/Samples/**/*Page.xaml`, opens each with a **fresh** design host (the child
+does not survive one Gallery document after another), and appends a row to `%TEMP%\od-gallery-sweep.tsv`
+classified as `RENDER` / `EMPTY` (rendered but 0x0) / `ABSTRACT` / `CRASH` / `FAIL` / `TIMEOUT` /
+`EXCEPTION`. `WinUIGalleryProbe.cs` (gated on `OD_PROBE_PAGE`) is the single-page triage tool; it
+dumps status, surface geometry, per-element screen bounds, render diagnostics, icon-bar bookmarks
+and the child log for one page.
+
+Results over the 120 catalog pages:
+
+| Sweep | SDK | RENDER | ABSTRACT | FAIL | EMPTY | CRASH |
+|---|---|---|---|---|---|---|
+| r1 | 1.7 | 106 | 6 | 5 | 2 | 1 |
+| r3 | 2.4.0 + all fixes below | 113 | 6 | 0 | 1 | 0 |
+
+After the empty-`Frame` fix (ConnectedAnimation, below) the only non-render pages are the six
+abstract-root ones, so a re-sweep is expected to report 114 / 6 / 0 / 0 / 0.
+
+### Fixes by failure class
+
+- **XamlStylesPage ("Failed to assign to property 'AcrylicBrush.TintColor'").** The vendored Fluent
+  theme references `SystemAccentColor*` keys that only a real device's UISettings merge supplies.
+  `FrameworkDefaultResources.ApplyAccentPalette` now reads the seven colours from
+  `Windows.UI.ViewManagement.UISettings` (Accent / AccentLight1-3 / AccentDark1-3) and **bakes every
+  `{ThemeResource|StaticResource SystemAccentColor*}` reference into a literal** (86 references),
+  then still defines the keys for key-based consumers. The literal rewrite is load-bearing: under
+  2.4.0 the per-theme-dictionary key definitions are not honoured when the accent AcrylicBrush is
+  constructed, so only the literal works. Falls back to WinUI's default accent if UISettings is
+  unavailable. This replaced an earlier hardcoded fallback.
+- **SemanticZoomPage ("xClassCanOnlyBeUsedOnLoadComponent", a red herring).** `InjectDesignData` used
+  to strip the blend/markup-compatibility namespaces with regexes; on this page it removed `xmlns:d`
+  while `d:Source="{Binding ..., Source={d:DesignData ...}}"` survived, so the combined document no
+  longer parsed and `Combine` silently returned the page unchanged - which surfaced as the bogus
+  `x:Class` error. It now removes design-time markup **by namespace** (every attribute in the blend
+  or markup-compatibility namespace, plus their xmlns declarations), which leaves parseable markup.
+- **CustomXamlConditionalsPage ("The type 'AnimatedIcon' was not found").** Conditional attributes
+  (`newExp:Background` / `legacy:Background`) collapse to the same expanded attribute name after
+  the conditional URI is stripped, which is a duplicate-attribute parse failure; `XamlDocumentRepair`
+  then bailed and the prefix normalizer never ran, so the injected theme's `controls:AnimatedIcon`
+  stayed mis-qualified. `ConditionalXmlnsStripper` now drops conditional-prefixed **attributes**
+  (like x:Bind: show the structure, not the compile-time evaluation); conditional **elements** are
+  still kept via the namespace rewrite.
+- **PullToRefreshPage (0x0).** `RefreshContainer`'s default template presents nothing offscreen.
+  `ApplyDesignTimeControlTemplates` gives it `<ContentPresenter Content="{TemplateBinding Content}"/>`;
+  the page now renders 200x200.
+- **ConnectedAnimationPage (0x0).** Four bare `<Frame>` elements (no `Source`) make
+  `RenderTargetBitmap` return 0x0 for the whole surface even though the page's elements lay out
+  correctly (measured: `pageRoot` 1365x663, frames up to 750px, no render exception). A design-time
+  **template** did not help - the fault is in `Frame`'s own offscreen behaviour - so
+  `ApplyDesignTimeControlTemplates` **renames an empty `Frame` to a `Border`** (a `Frame` with a
+  `Source` or content is left untouched). The page now renders 1365x663.
+- **MapControlPage and AutoSuggestBox (native crashes).** Both crash the child natively; Windows App
+  SDK 2.4.0 does **not** fix it (re-verified). `ApplyDesignTimeControlTemplates` handles them without
+  touching the element: AutoSuggestBox gets a Popup-free `TextBox` template;
+  MapControl gets a neutral placeholder `Border`.
+- **Render-size guard.** `DesignHost.RenderAsync` renders once into a throwaway bitmap if the root's
+  `RenderSize` is still 0, then falls back to `DesiredSize` if it remains 0 - a 0-sized bitmap is
+  never useful.
+
+### Design-time document features
+
+- **`d:DesignWidth` / `d:DesignHeight`.** `InjectDesignData` captures them from the document root
+  before stripping design-time markup, and `DesignHost` applies them as the root's **explicit**
+  `Width`/`Height`. Explicit size is required because the offscreen window owns layout and discards
+  the `Measure`/`Arrange` arguments; passing them to layout alone was measured to have no effect
+  (the surface stayed at the viewport size). Verified: a page with `d:DesignWidth="800"
+  d:DesignHeight="600"` renders 800x600 instead of 1365x663.
+- **`x:Class` is stripped from the WHOLE document**, not just the root (a nested directive triggers
+  the same `xClassCanOnlyBeUsedOnLoadComponent`). This was a defensive change made while chasing
+  SemanticZoom; the real fix there was the design-time-markup removal above.
+- **Why an implicit `Style` in `Application.Resources` does not work but in `Page.Resources` does.**
+  Measured while fixing the empty-`Frame`/AutoSuggestBox workarounds: a style merged into
+  `Application.Resources` at startup is not applied to the offscreen elements, while the same style
+  in `Page.Resources`, or a `Template` set directly on the element, works. `ApplyDesignTimeControlTemplates`
+  therefore rewrites the element's own `Template` property / element name rather than adding an app-level style.
+
+### Document Outline (Design view)
+
+`WinUIXamlDesignerViewContent.RebuildOutline` shows the **runtime visual tree** (projected onto the
+outline model) and is now rebuilt on render-complete (`previewHost.StateChanged`), so the initial
+source-tree outline is replaced by the real one. The design-view outline now:
+
+- never shows resource definitions (`*.Resources` / `ResourceDictionary` subtrees are dropped);
+- folds runtime-only nodes (framework template parts, generated item containers) into their nearest
+  source-backed ancestor, so only elements the source declares (by `x:Name`) remain;
+- omits elements the source marks not-visible (`Visibility="Collapsed"` / `x:Load="False"`).
+
+`od.winui-designer.status` gained an `outlineNames` field for tests. Code view's outline
+(`XamlOutlineContentHost`) still shows the whole document, resources included.
+
+### Breakpoint-gutter icons removed for XAML/XML
+
+`AvalonEdit.AddIn`'s `IconBarManager` drew declaration icons in the breakpoint gutter for **any**
+file with a language-service outline; XAML/XML's outline is its element tree, whose kinds fell
+through to the default Class icon. `UpdateLanguageServiceBookmarksAsync` now only adds
+`OutlineBookmark`s for code files (`.cs`/`.csx`/`.vb`/`.fs`/`.fsi`/`.fsx`) and clears them otherwise.
+Verified: a XAML source view reports `icon-bar-bookmarks` `{count:0}`, a C# file still gets them,
+and a `.xaml.cs` code-behind keeps them.
+
+### Known limitation: abstract-root pages (intentional)
+
+Six pages root as `<pages:ItemsPageBase x:Class="...Page">` - a page whose root element is an
+**abstract** `Page` subclass. `XamlReader` ignores `x:Class` and constructs the root's own type, so
+it cannot instantiate them. They fail with the explicit message "Cannot preview this page: its root
+element 'ItemsPageBase' is an abstract class...". A rewrite to the nearest instantiable base was
+implemented and then **deliberately reverted** (product decision, 2026-09-12); these six stay as
+expected failures: FlipView, GridView, ItemsRepeater, ItemsView, ListView, ParallaxView.
+
+### Diagnostic switches added/used
+
+- `OD_DESIGNHOST_NO_DESIGN_TEMPLATES=1` - disables `ApplyDesignTimeControlTemplates`, to test whether
+  a newer SDK fixed a crash (it did not, for AutoSuggestBox/MapControl).
+- `OD_DESIGNHOST_BOUNDS_LOG=1` - writes root/render sizes to `%TEMP%\opendevelop-designhost-bounds.log`.
+- `OD_DESIGNHOST_XAML_DUMP=<dir>` - dumps the exact text handed to `XamlReader`.
+- `OD_DESIGNHOST_NO_REPAIR=1`, `OD_DESIGNHOST_NO_SUBSTITUTE=1`, `OD_DESIGNHOST_NO_NS_FALLBACK=1` - as before.
+
+### Residual risks / follow-ups
+
+- The expanded `WinUIGalleryDesignerTests` covers 23 pages; a re-sweep after the empty-`Frame` fix
+  should report 114 RENDER / 6 ABSTRACT / 0 EMPTY. The committed curated corpus should be extended
+  to pin every page a sweep classifies as renderable.
+- Promiscuous, corpus-wide changes (2.4.0 upgrade, accent literal rewrite, design-time templates,
+  design-time-markup removal) are exercised per-class but only the whole-corpus sweep verifies the
+  ~106 previously-rendering pages did not regress.
+- Temporary tooling: `WinUIGallerySweep.cs` and `WinUIGalleryProbe.cs` are gated diagnostic tests,
+  not part of the normal suite.
