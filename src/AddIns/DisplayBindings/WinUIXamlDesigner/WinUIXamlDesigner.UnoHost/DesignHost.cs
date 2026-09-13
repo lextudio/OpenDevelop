@@ -1175,18 +1175,13 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		{
 			var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 			var rtb = new RenderTargetBitmap();
-			// The offscreen window owns the root's layout, and its first pass may not have run yet
-			// when this is called. Measured: WinUI-Gallery's ConnectedAnimationPage reported
-			// rootActual 0x0 and produced a 0x0 bitmap even though its content lays out fine once
-			// rendering drives the pending pass. A throwaway render commits that pass, so read
-			// RenderSize afterwards instead of rendering whatever size happened to be committed.
-			if (root!.RenderSize.Width <= 0 || root.RenderSize.Height <= 0)
-			{
-				// A SEPARATE bitmap: reusing `rtb` for a throwaway pass and then the real render
-				// measured 0x0 both times (the reuse left it empty), while a fresh one commits the
-				// pending layout pass and the real render below then succeeds.
-				await new RenderTargetBitmap().RenderAsync(root);
-			}
+			// The headless visual tree has no display, so its system scale is 1.0 and an
+			// unscaled render would be soft on a Retina display. Uno's RenderTargetBitmap
+			// rasterizes at renderSize * GetEffectiveRasterizationScale(), and that scale
+			// honors RootScale._testOverrideScale - set it reflectively (same pattern as
+			// HeadlessDispatcher) to get a crisp, native-resolution bitmap. The override
+			// only feeds GetEffectiveRasterizationScale; it does not trigger ApplyScale,
+			// so the root visual's own scale stays untouched (no double scaling).
 			if (dpi > 0 && Math.Abs(dpi - 1.0) > 0.001 && TrySetRasterizationScale(root, dpi))
 			{
 				await rtb.RenderAsync(root);
@@ -1197,10 +1192,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				// SCALES the element's content to fill them. Passing anything other than the
 				// element's own render size stretches the design - measured live, asking for
 				// 1280x720 while the page's content was ~51px tall smeared it across all 720 rows.
-				// Fall back to DesiredSize only if RenderSize is STILL zero; a 0-sized bitmap is
-				// never useful, and the tree read after the render reports the real bounds either way.
-				var size = root.RenderSize.Width > 0 && root.RenderSize.Height > 0 ? root.RenderSize : root.DesiredSize;
-				var scaled = new Size(size.Width * dpi, size.Height * dpi);
+				var scaled = new Size(root!.RenderSize.Width * dpi, root.RenderSize.Height * dpi);
 				await rtb.RenderAsync(root, (int)scaled.Width, (int)scaled.Height);
 			}
 			var pixels = await rtb.GetPixelsAsync();
