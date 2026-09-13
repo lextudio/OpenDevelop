@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -431,6 +432,17 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		}
 
 		public DesignerSessionState? State => state;
+
+		/// <summary>
+		/// Read-only viewport diagnostics for integration tests.  Keeping this at the surface
+		/// boundary makes the scrollbar regression observable without exporting a screenshot or
+		/// reaching into the ScrollViewer template (whose visual shape changes with the theme).
+		/// </summary>
+		public WpfSurfaceScrollStatus ScrollStatus => new(
+			scroller.ExtentWidth, scroller.ExtentHeight,
+			scroller.ViewportWidth, scroller.ViewportHeight,
+			scroller.HorizontalOffset, scroller.VerticalOffset,
+			scroller.ScrollableWidth, scroller.ScrollableHeight);
 
 		/// <summary>Opens a document from a host-owned snapshot. Does NOT render the returned
 		/// frame itself - see the note on <see cref="Show"/> for why every caller of this and the
@@ -2188,4 +2200,15 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 
 		#endregion
 	}
+
+	/// <summary>Logical scroll metrics of the WPF designer canvas, in surface pixels.</summary>
+	public sealed record WpfSurfaceScrollStatus(
+		double ExtentWidth,
+		double ExtentHeight,
+		double ViewportWidth,
+		double ViewportHeight,
+		double HorizontalOffset,
+		double VerticalOffset,
+		double ScrollableWidth,
+		double ScrollableHeight);
 }

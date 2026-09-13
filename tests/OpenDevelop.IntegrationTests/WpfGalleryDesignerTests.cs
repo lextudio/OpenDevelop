@@ -118,6 +118,12 @@ public sealed class WpfGalleryDesignerTests
         Assert.True(
             status.TryGetProperty("designerLoaded", out var loaded) && loaded.GetBoolean(),
             relativePage + ": designer did not load. status=" + status);
+        Assert.True(
+            status.TryGetProperty("hasRenderFrame", out var hasFrame) && hasFrame.GetBoolean(),
+            relativePage + ": designer built an outline but produced no real render frame. status=" + status);
+        Assert.True(status.GetProperty("renderWidth").GetInt32() > 0
+            && status.GetProperty("renderHeight").GetInt32() > 0,
+            relativePage + ": invalid render dimensions. status=" + status);
 
         var names = ReadOutlineNames(status);
         Assert.True(names.Contains(rootName),
@@ -197,6 +203,80 @@ public sealed class WpfGalleryDesignerTests
         var dependency = await _app.InvokeAsync("od.project.dependency-context", pagePath);
         Assert.True(dependency.TryGetProperty("projectFound", out var found) && found.GetBoolean(), dependency.ToString());
         Assert.Equal("WPFGallery", dependency.GetProperty("projectName").GetString());
+    }
+
+    /// <summary>
+    /// Regression for the native-WPF black-frame incident. A loaded outline alone is not enough:
+    /// before the isolated HwndSource presentation target was introduced, SettingsPage parsed and
+    /// produced a complete tree but RenderTargetBitmap returned all black and the host substituted
+    /// a deceptive wireframe. The test asserts the real native compositor path recorded in the
+    /// user-visible WPF Designer output, and then drives the actual Document Outline selection
+    /// event path for two elements whose bounds differ substantially.
+    /// </summary>
+    [Fact]
+    public async Task SettingsPage_UsesNativePresentationSourceAndOutlineSelectionTracksRealBounds()
+    {
+        if (_skip) { Assert.Skip(_skipReason); return; }
+
+        await OpenDesignerAsync("Views/SettingsPage.xaml", "Change_ThemeMode", "AppIcon");
+
+        var output = await _app.InvokeAsync("od.output-text", "WPF Designer");
+        var text = output.GetProperty("text").GetString() ?? "";
+        Assert.Contains("runtime=MicrosoftWpf (isolated MicrosoftHost payload)", text);
+        Assert.Contains("attached design root to isolated native WPF presentation source", text);
+        Assert.DoesNotContain("all-black frame", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("software fallback frame", text, StringComparison.OrdinalIgnoreCase);
+
+        foreach (var name in new[] { "AppIcon", "Change_ThemeMode" })
+        {
+            // This action selects through DocumentOutlineControl.SelectionCommitted, rather than
+            // bypassing the UI by selecting directly on the canvas.
+            var selected = await _app.InvokeAsync("od.wpf-designer.outline-select", name);
+            Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
+
+            var geometry = await _app.InvokeAsync("od.wpf-designer.surface-geometry");
+            var outline = geometry.GetProperty("selection");
+            var element = geometry.GetProperty("element");
+            Assert.True(outline.GetProperty("width").GetDouble() > 0 && outline.GetProperty("height").GetDouble() > 0,
+                name + ": selection outline is empty: " + geometry);
+            Assert.Equal(element.GetProperty("x").GetDouble(), outline.GetProperty("x").GetDouble(), 3);
+            Assert.Equal(element.GetProperty("y").GetDouble(), outline.GetProperty("y").GetDouble(), 3);
+            Assert.Equal(element.GetProperty("width").GetDouble(), outline.GetProperty("width").GetDouble(), 3);
+            Assert.Equal(element.GetProperty("height").GetDouble(), outline.GetProperty("height").GetDouble(), 3);
+        }
+    }
+
+    /// <summary>
+    /// Opt-in broad compatibility gate.  The representative theory above gives quick diagnostic
+    /// coverage of the important control families; this pass opens every current page below
+    /// WPFGallery/Views so a newly-added gallery page automatically becomes a design-host test.
+    /// It intentionally asserts the accepted render payload as well as the tree, which catches
+    /// a parse-success/black-frame regression without comparing unstable pixels.
+    /// </summary>
+    [Fact]
+    public async Task Gallery_AllViewPages_BuildOutlineAndNativeRenderFrame()
+    {
+        if (_skip) { Assert.Skip(_skipReason); return; }
+        if (!string.Equals(Environment.GetEnvironmentVariable("OD_WPF_GALLERY_FULL"), "1", StringComparison.Ordinal))
+        {
+            Assert.Skip("Full WPFGallery sweep is opt-in; set OD_WPF_GALLERY_FULL=1.");
+            return;
+        }
+
+        var pages = Directory.EnumerateFiles(Path.Combine(_galleryRoot!, "Views"), "*.xaml", SearchOption.AllDirectories)
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .ToArray();
+        Assert.NotEmpty(pages);
+
+        foreach (var page in pages)
+        {
+            var relative = Path.GetRelativePath(_galleryRoot!, page).Replace(Path.DirectorySeparatorChar, '/');
+            var status = await OpenDesignerAsync(relative, "Page");
+            Assert.Equal(ExpectedBackend, status.GetProperty("backend").GetString());
+            Assert.True(status.GetProperty("hasRenderFrame").GetBoolean(), relative + ": no native render frame: " + status);
+            Assert.True(status.GetProperty("renderWidth").GetInt32() > 0 && status.GetProperty("renderHeight").GetInt32() > 0,
+                relative + ": non-positive render size: " + status);
+        }
     }
 
     static bool _builtOnce;

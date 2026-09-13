@@ -43,6 +43,25 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			return JsonSerializer.Serialize(DesignerSurfaceGeometryProbe.ToJson(viewContent.SurfaceGeometry()));
 		}
 
+		[DevFlowAction("od.wpf-designer.scroll-status", Description = "Report the WPF design canvas ScrollViewer extent, viewport and offsets without inspecting its theme-specific visual template")]
+		public static string GetScrollStatus()
+		{
+			var surface = FindWpfViewContent()?.SurfaceControl;
+			if (surface?.State?.Accepted != true)
+				return Failure("WPF designer is not loaded");
+			return JsonSerializer.Serialize(new {
+				available = true,
+				surface.ScrollStatus.ExtentWidth,
+				surface.ScrollStatus.ExtentHeight,
+				surface.ScrollStatus.ViewportWidth,
+				surface.ScrollStatus.ViewportHeight,
+				surface.ScrollStatus.HorizontalOffset,
+				surface.ScrollStatus.VerticalOffset,
+				surface.ScrollStatus.ScrollableWidth,
+				surface.ScrollStatus.ScrollableHeight
+			});
+		}
+
 		[DevFlowAction("od.wpf-designer.inline-editor-status", Description = "Inspect WPF's on-canvas Text/Content/Header editor without changing the document")]
 		public static string GetInlineEditorStatus()
 		{
@@ -96,6 +115,13 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				active = true,
 				backend = viewContent.BackendName,
 				designerLoaded,
+				// A non-empty outline is not proof the renderer succeeded: the historical native
+				// all-black-frame failure built the complete tree before returning a deceptive
+				// fallback image. Report the accepted frame metadata so gallery tests can assert
+				// that every page really reached the compositor without exporting its pixels.
+				hasRenderFrame = state?.Render is { Data.Length: > 0, Width: > 0, Height: > 0 },
+				renderWidth = state?.Render?.Width ?? 0,
+				renderHeight = state?.Render?.Height ?? 0,
 				// state.RootType is the DDP wire contract's full CLR name (e.g.
 				// "System.Windows.Window" - see WpfSurfaceHostService.OpenCore and
 				// WpfSurfaceHostRpcTests, which assert the full name); this action's own
