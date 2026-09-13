@@ -1592,12 +1592,23 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				bitmap.Render(element);
 				var pixels = new byte[width * height * 4];
 				bitmap.CopyPixels(pixels, width * 4, 0);
-				// A black native frame is not a valid design preview. Never substitute the synthetic
-				// wireframe fallback here: it conceals a Microsoft-WPF compositor failure and makes
-				// users believe their page loaded. Let session/open surface the real error instead.
-				if (pixels.Where((_, index) => index % 4 != 3).All(value => value == 0)) {
-					throw new NativeWpfRenderFailure("Native WPF RenderTargetBitmap returned an all-black frame.");
+				// Do not confuse transparent WPF content with a black compositor failure.  Pbgra32
+				// stores transparent pixels as (0,0,0,0), and a page which intentionally paints only
+				// black text/lines over a transparent Page has RGB==0 for every pixel while still being
+				// a perfectly valid preview.  The old RGB-only test rejected exactly that shape.
+				// A genuine RenderTargetBitmap black frame is opaque black everywhere (A=255 too).
+				var opaqueBlack = true;
+				var nonTransparentPixels = 0;
+				for (var i = 0; i < pixels.Length; i += 4) {
+					if (pixels[i + 3] != 0)
+						nonTransparentPixels++;
+					if (pixels[i] != 0 || pixels[i + 1] != 0 || pixels[i + 2] != 0 || pixels[i + 3] != 255) {
+						opaqueBlack = false;
+					}
 				}
+				if (opaqueBlack)
+					throw new NativeWpfRenderFailure("Native WPF RenderTargetBitmap returned an opaque all-black frame.");
+				Console.Error.WriteLine($"WpfDesign.SurfaceHost: native frame {width}x{height}, non-transparent pixels={nonTransparentPixels}.");
 				var data = DesignerFrameCodec.EncodeDeflateBase64(pixels);
 				stopwatch.Stop();
 				return new DesignerRenderFrame {
