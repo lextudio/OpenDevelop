@@ -201,11 +201,30 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			VerticalAlignment = VerticalAlignment.Top
 		};
 		readonly StackPanel contextMenuTrayItems = new();
+		// A Grid, not contextMenuTray.Border.Child = contextMenuTrayItems directly, so
+		// contextMenuTrayInsertionLine can float above the rows during a drag - a Border only
+		// supports one child.
+		readonly Grid contextMenuTrayRoot = new();
+		readonly Border contextMenuTrayInsertionLine = new() {
+			Height = 2,
+			Background = Brushes.DodgerBlue,
+			HorizontalAlignment = HorizontalAlignment.Stretch,
+			VerticalAlignment = VerticalAlignment.Top,
+			IsHitTestVisible = false,
+			Visibility = Visibility.Collapsed
+		};
 		string? contextMenuTrayRootId;
-		/// <summary>Each real item's reorder-arrow visuals, keyed by element id, so
+		/// <summary>Each real item's reorder-grip visual, keyed by element id, so
 		/// <see cref="ContextMenuTrayStatus"/> can report their screen centers for pointer-driven
 		/// integration tests without changing the shape of the existing per-row status entries.</summary>
-		readonly Dictionary<string, (Border Up, Border Down)> contextMenuTrayMoveButtons = new(StringComparer.Ordinal);
+		readonly Dictionary<string, Border> contextMenuTrayReorderGrips = new(StringComparer.Ordinal);
+		// Drag-to-reorder state (mirrors RemoteFormsDesignerControl's reorderThumb/
+		// reorderDragDeltaX gesture, ported through ReorderGestureCalculator's shared axis-agnostic
+		// math instead of a second bespoke index calculation - see that class's own doc comment).
+		bool trayReorderPending;
+		string? trayReorderElementId;
+		int trayReorderOriginalIndex;
+		double trayReorderStartY;
 		/// <summary>The tray's own trailing "Type Here" slot and the ContextMenu it belongs to, kept
 		/// so a re-arm after committing a new item (see <see cref="EndTextEdit"/>'s reopen branch)
 		/// can re-open editing on the freshly-rebuilt slot without re-deriving it from scratch.</summary>
@@ -280,23 +299,17 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			items = contextMenuTrayItems.Children.OfType<FrameworkElement>().Select(item => {
 				var center = item.PointToScreen(new Point(item.ActualWidth / 2, item.ActualHeight / 2));
 				var elementId = item.Tag as string;
-				var moveButtons = elementId != null && contextMenuTrayMoveButtons.TryGetValue(elementId, out var buttons) ? buttons : ((Border Up, Border Down)?)null;
+				var grip = elementId != null && contextMenuTrayReorderGrips.TryGetValue(elementId, out var g) ? g : null;
+				var gripCenter = grip != null ? grip.PointToScreen(new Point(grip.ActualWidth / 2, grip.ActualHeight / 2)) : (Point?)null;
 				return new {
 					elementId,
 					centerX = center.X,
 					centerY = center.Y,
-					canMoveUp = moveButtons?.Up.IsEnabled,
-					canMoveDown = moveButtons?.Down.IsEnabled,
-					moveUpCenterX = MoveButtonCenter(moveButtons?.Up)?.X,
-					moveUpCenterY = MoveButtonCenter(moveButtons?.Up)?.Y,
-					moveDownCenterX = MoveButtonCenter(moveButtons?.Down)?.X,
-					moveDownCenterY = MoveButtonCenter(moveButtons?.Down)?.Y
+					reorderGripCenterX = gripCenter?.X,
+					reorderGripCenterY = gripCenter?.Y
 				};
 			}).ToArray()
 		};
-
-		static Point? MoveButtonCenter(Border? button) => button == null || !button.IsEnabled
-			? null : button.PointToScreen(new Point(button.ActualWidth / 2, button.ActualHeight / 2));
 
 		/// <summary>Read-only geometry for the top-level Menu "Type Here" hotspot's pointer-driven
 		/// integration test - mirrors <see cref="ContextMenuTrayStatus"/> for the ContextMenu tray's
@@ -356,7 +369,9 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			designSurface.Children.Add(adornerLayer.Visual);
 			marqueeOverlay.Children.Add(marqueeBorder);
 			designSurface.Children.Add(marqueeOverlay);
-			contextMenuTray.Child = contextMenuTrayItems;
+			contextMenuTrayRoot.Children.Add(contextMenuTrayItems);
+			contextMenuTrayRoot.Children.Add(contextMenuTrayInsertionLine);
+			contextMenuTray.Child = contextMenuTrayRoot;
 			designSurface.Children.Add(contextMenuTray);
 			menuTypeHereHotspot.MouseLeftButtonDown += (_, e) => {
 				if (menuTypeHereHotspotMenuId is { } menuId && menuTypeHereHotspotContainerType is { } containerType)
@@ -625,6 +640,20 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			// hit-test the frame underneath the detached popup and clear the selected menu item.
 			if (IsWithinContextMenuTray(e.OriginalSource as DependencyObject))
 				return;
+			// Same reasoning as the tray above: this Preview (tunneling) handler runs BEFORE the
+			// hotspot's own bubbling MouseLeftButtonDown handler (which calls BeginNewMenuItemEdit).
+			// Falling through here hit-tests whatever sits under the hotspot in the design frame -
+			// when that resolves to nothing, it starts a marquee-select (CaptureMouse +
+			// marqueePending = true); the hotspot's own handler then still opens the inline editor
+			// and focuses it, but the marquee is still pending, so its own MouseLeftButtonUp handler
+			// calls FinishMarquee on release, clearing the selection and stealing focus right back -
+			// closing the editor before anything can observe it as open. Confirmed live: reproduces
+			// for the StatusBar hotspot (positioned past the frame's real content, hit-tests nothing)
+			// but not the ToolBar one (positioned over the frame, hit-tests a real element and takes
+			// a different branch below) - same missing-exclusion bug as the double-click fix above,
+			// just for a different anchor.
+			if (IsWithinMenuTypeHereHotspot(e.OriginalSource as DependencyObject))
+				return;
 			var point = e.GetPosition(designSurface);
 			// These are Preview (tunneling) handlers on the whole control, so they also see presses
 			// on the shared toolbar sitting above the design surface. Ignore those outright:
@@ -655,6 +684,16 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				{
 					var currentValue = hitNode.Properties.First(p => p.Name == propertyName).Value;
 					BeginTextEdit(hitNode.Id, propertyName, hitNode.X, hitNode.Y, hitNode.Width, hitNode.Height, currentValue);
+					// Without this, the routed MouseLeftButtonDown event keeps tunneling/bubbling
+					// past this handler to the design canvas's own ScrollViewer, whose default
+					// focus-on-press behavior steals keyboard focus back from the textEditor we
+					// just focused above - within milliseconds, on the SAME click. That fires
+					// OnTextEditorLostFocus -> EndTextEdit(commit: true), silently closing the
+					// editor we just opened before anything can observe it as open. Confirmed by
+					// tracing focus transitions live: BeginTextEdit reported IsKeyboardFocusWithin
+					// = true, then ~5ms later OnTextEditorLostFocus fired with newFocus =
+					// ScrollViewer, with no user input in between.
+					e.Handled = true;
 				}
 				return;
 			}
@@ -1544,29 +1583,32 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				return;
 			contextMenuTrayRootId = contextMenu.Id;
 			contextMenuTrayItems.Children.Clear();
-			contextMenuTrayMoveButtons.Clear();
+			contextMenuTrayReorderGrips.Clear();
 			var menuItems = contextMenu.Children.Where(c => c.Type == "MenuItem").ToList();
 			for (var i = 0; i < menuItems.Count; i++)
 			{
 				var child = menuItems[i];
 				var header = child.Properties.FirstOrDefault(p => p.Name == "Header")?.Value ?? child.Name ?? "MenuItem";
 				var row = new Grid();
-				row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-				row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+				// Star, not Auto, for the text column: once every row is stretched to a shared
+				// uniform Width below, an Auto column stays at its own natural (unstretched) size
+				// and leaves the extra width as blank space AFTER the grip column instead of before
+				// it - the grip ends up flush against a short row's own text but with a gap to a
+				// longer row's text, i.e. NOT right-aligned across rows. A star column absorbs all
+				// the row's extra width itself, so the grip (Auto) always sits flush against the
+				// row's actual right edge regardless of that row's own header length.
+				row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 				row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 				var text = new TextBlock { Text = header, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(14, 4, 8, 4) };
 				Grid.SetColumn(text, 0);
 				row.Children.Add(text);
-				// Reorder arrows: WinForms' drag-anywhere strip reordering's deliberately simpler
-				// stand-in for this pass (see design/move-element's own doc comment) - a real drag
-				// gesture over a StackPanel-laid-out tray is real added complexity for the same end
-				// result. Disabled (not hidden) at either end so the row's width stays consistent.
-				var upButton = MakeMoveButton("▲", i > 0);
-				var downButton = MakeMoveButton("▼", i < menuItems.Count - 1);
-				Grid.SetColumn(upButton, 1);
-				Grid.SetColumn(downButton, 2);
-				row.Children.Add(upButton);
-				row.Children.Add(downButton);
+				// Drag-to-reorder grip, replacing the earlier pair of up/down move buttons - those
+				// were a deliberately simpler stand-in for a real drag gesture (see design/move-element's
+				// own doc comment) and, unlike this grip, forced every row to a different width
+				// depending on which end-of-list buttons were enabled/disabled at each position.
+				var grip = MakeReorderGrip();
+				Grid.SetColumn(grip, 1);
+				row.Children.Add(grip);
 				var itemVisual = new Border { Background = Brushes.White, Child = row, Tag = child.Id };
 				itemVisual.MouseEnter += (_, _) => itemVisual.Background = Brushes.AliceBlue;
 				itemVisual.MouseLeave += (_, _) => itemVisual.Background = Brushes.White;
@@ -1576,18 +1618,45 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 					SelectElementId(child.Id);
 					e.Handled = true;
 				};
-				if (i > 0)
-					upButton.MouseLeftButtonDown += (_, e) => { CommitMoveMenuItem(child.Id, -1); e.Handled = true; };
-				if (i < menuItems.Count - 1)
-					downButton.MouseLeftButtonDown += (_, e) => { CommitMoveMenuItem(child.Id, 1); e.Handled = true; };
-				contextMenuTrayMoveButtons[child.Id] = (upButton, downButton);
+				var capturedIndex = i;
+				grip.MouseLeftButtonDown += (_, e) => {
+					trayReorderPending = true;
+					trayReorderElementId = child.Id;
+					trayReorderOriginalIndex = capturedIndex;
+					trayReorderStartY = e.GetPosition(contextMenuTrayItems).Y;
+					grip.CaptureMouse();
+					ShowTrayInsertionLine(capturedIndex);
+					e.Handled = true;
+				};
+				grip.MouseMove += (_, e) => {
+					if (!trayReorderPending || trayReorderElementId != child.Id)
+						return;
+					var dragDelta = e.GetPosition(contextMenuTrayItems).Y - trayReorderStartY;
+					ShowTrayInsertionLine(ComputeTrayReorderTargetIndex(dragDelta));
+				};
+				grip.MouseLeftButtonUp += (_, e) => {
+					if (!trayReorderPending || trayReorderElementId != child.Id)
+						return;
+					trayReorderPending = false;
+					grip.ReleaseMouseCapture();
+					var dragDelta = e.GetPosition(contextMenuTrayItems).Y - trayReorderStartY;
+					var targetIndex = ComputeTrayReorderTargetIndex(dragDelta);
+					HideTrayInsertionLine();
+					var delta = targetIndex - trayReorderOriginalIndex;
+					var elementId = trayReorderElementId;
+					trayReorderElementId = null;
+					if (delta != 0)
+						CommitMoveMenuItem(elementId, delta);
+				};
+				contextMenuTrayReorderGrips[child.Id] = grip;
 				contextMenuTrayItems.Children.Add(itemVisual);
 			}
 			// One trailing "Type Here" slot after the real items, always present, so adding another
 			// MenuItem never needs a separate command - matching a freshly-dropped MenuStrip's own
 			// always-available insertion cell. Tagged "@type-here" (not a real element id) so
 			// ContextMenuTrayStatus's pointer-driven test hook can find it the same way it finds real
-			// items, by elementId.
+			// items, by elementId. Not itself reorderable (no grip) - matching WinForms' own
+			// insertion cell, which likewise never participates in the drag-reorder gesture.
 			var typeHereVisual = new Border {
 				Background = Brushes.White,
 				Padding = new Thickness(14, 4, 32, 4),
@@ -1610,6 +1679,16 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			contextMenuTrayItems.Children.Add(typeHereVisual);
 			contextMenuTrayNewItemVisual = typeHereVisual;
 			contextMenuTrayContextMenuNode = contextMenu;
+			// Uniform width across every row (including the "Type Here" slot) - each row previously
+			// auto-sized to its OWN header text (Grid ColumnDefinitions="Auto"), so a tray mixing a
+			// short "A" with a long "Properties" produced visibly different-width rows. Measuring
+			// after every row is built and applying the widest row's natural width to all of them
+			// keeps the tray's right edge (and the grip column) aligned regardless of content.
+			contextMenuTrayItems.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+			var maxRowWidth = contextMenuTrayItems.Children.OfType<FrameworkElement>()
+				.Select(c => c.DesiredSize.Width).DefaultIfEmpty(0.0).Max();
+			foreach (var rowVisual in contextMenuTrayItems.Children.OfType<FrameworkElement>())
+				rowVisual.Width = maxRowWidth;
 			Canvas.SetLeft(contextMenuTray, framePresenter.Visual.Margin.Left);
 			Canvas.SetTop(contextMenuTray, framePresenter.Visual.Margin.Top);
 			contextMenuTray.Visibility = Visibility.Visible;
@@ -1619,21 +1698,62 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		{
 			contextMenuTrayRootId = null;
 			contextMenuTrayItems.Children.Clear();
-			contextMenuTrayMoveButtons.Clear();
+			contextMenuTrayReorderGrips.Clear();
 			contextMenuTrayNewItemVisual = null;
 			contextMenuTrayContextMenuNode = null;
 			contextMenuTray.Visibility = Visibility.Collapsed;
+			trayReorderPending = false;
+			trayReorderElementId = null;
 		}
 
-		static Border MakeMoveButton(string glyph, bool enabled) => new() {
-			Background = Brushes.WhiteSmoke,
-			BorderBrush = Brushes.LightGray,
-			BorderThickness = new Thickness(1),
-			Padding = new Thickness(4, 2, 4, 2),
-			Margin = new Thickness(2, 0, 2, 0),
-			IsEnabled = enabled,
-			Child = new TextBlock { Text = glyph, Foreground = enabled ? Brushes.Black : Brushes.LightGray }
+		static Border MakeReorderGrip() => new() {
+			Width = 20,
+			Background = Brushes.Transparent,
+			Cursor = Cursors.SizeNS,
+			ToolTip = "Drag to reorder",
+			Child = new TextBlock {
+				Text = "⋮⋮", // two vertical-dots glyphs side by side, a conventional drag-grip affordance
+				FontSize = 12,
+				Foreground = Brushes.Gray,
+				HorizontalAlignment = HorizontalAlignment.Center,
+				VerticalAlignment = VerticalAlignment.Center
+			}
 		};
+
+		/// <summary>Real (non-"Type Here") rows' current top-to-bottom extents along the tray's
+		/// drag axis, in <see cref="contextMenuTrayItems"/>'s own coordinate space - the shared,
+		/// axis-agnostic input <see cref="ReorderGestureCalculator"/> needs regardless of whether a
+		/// future caller's list runs vertically (this tray) or horizontally (a WinForms-style strip).</summary>
+		List<(double Start, double Length)> TrayReorderableRowExtents()
+			=> contextMenuTrayItems.Children.OfType<Border>()
+				.Where(b => b.Tag is string tag && tag != "@type-here")
+				.Select(b => (b.TranslatePoint(new Point(0, 0), contextMenuTrayItems).Y, b.ActualHeight))
+				.ToList();
+
+		int ComputeTrayReorderTargetIndex(double dragDelta)
+		{
+			var extents = TrayReorderableRowExtents();
+			if (trayReorderOriginalIndex >= extents.Count)
+				return trayReorderOriginalIndex;
+			return ReorderGestureCalculator.ComputeTargetIndex(extents, trayReorderOriginalIndex, dragDelta);
+		}
+
+		void ShowTrayInsertionLine(int targetIndex)
+		{
+			var extents = TrayReorderableRowExtents();
+			if (extents.Count == 0)
+			{
+				contextMenuTrayInsertionLine.Visibility = Visibility.Collapsed;
+				return;
+			}
+			var y = targetIndex < extents.Count
+				? extents[targetIndex].Start
+				: extents[^1].Start + extents[^1].Length;
+			contextMenuTrayInsertionLine.Margin = new Thickness(0, y - 1, 0, 0);
+			contextMenuTrayInsertionLine.Visibility = Visibility.Visible;
+		}
+
+		void HideTrayInsertionLine() => contextMenuTrayInsertionLine.Visibility = Visibility.Collapsed;
 
 		/// <summary>Commits one reorder-arrow click (<c>design/move-element</c>). Blocking for the
 		/// same reason <see cref="CommitBounds"/> is - see its own doc comment. Forces a tray rebuild
@@ -1651,16 +1771,28 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			DocumentChanged?.Invoke(this, result);
 		}
 
-		/// <summary>Positions the "Type Here" hotspot just past a selected top-level Menu's own
-		/// rendered bounds (its Width already spans every current item), or hides it when the
-		/// selection isn't a Menu or one of its MenuItems. Uses the same screen-space Margin
+		/// <summary>Positions the "Type Here" hotspot just past the LAST rendered child of a
+		/// selected top-level Menu/StatusBar/ToolBar, or hides it when the selection isn't one of
+		/// those or one of a Menu's MenuItems. Uses the same screen-space Margin
 		/// convention as the rendered frame itself (see <see cref="Show"/>'s framePresenter.Visual.Margin),
 		/// since this control, like the ContextMenu tray, floats over the frame rather than being part
 		/// of the design-coordinate content it depicts. Coexists with the tray
 		/// (<see cref="TrayContainerForSelection"/>) when a top-level MenuItem is selected: this adds
 		/// a SIBLING at the Menu bar's own level, while the tray (showing that same item's own
 		/// children) adds the first item INSIDE its dropdown - two different, simultaneously useful
-		/// operations on the same selection.</summary>
+		/// operations on the same selection.
+		///
+		/// The container's OWN reported Width is NOT usable for this - a top-level Menu/StatusBar/
+		/// ToolBar stretches to fill its parent's available width regardless of how many items it
+		/// actually has, so container.X + container.Width lands the hotspot at the far edge of the
+		/// window rather than just after the real content. Confirmed live: for a Menu with zero
+		/// items this placed the hotspot entirely outside the clipped design frame, so clicks on it
+		/// never reached the Border at all (editor never opened); for a Menu with one item it still
+		/// landed wrong, just close enough to the frame that the click reached SOME element instead
+		/// (BeginNewMenuItemEdit still computed the right position from the item itself, producing a
+		/// visible mismatch between the clickable hotspot and where the editor then opened). Using
+		/// the rightmost edge of the container's actual children (or the container's own left edge
+		/// when it has none) fixes both.</summary>
 		static bool IsHotspotContainerType(string? type) => type is "Menu" or "StatusBar" or "ToolBar";
 
 		void UpdateMenuTypeHereHotspot()
@@ -1682,8 +1814,11 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			menuTypeHereHotspotMenuId = container.Id;
 			menuTypeHereHotspotContainerType = container.Type;
 			var scale = viewport.Scale;
+			var rightEdge = container.Children.Count > 0
+				? container.Children.Max(c => c.X + c.Width)
+				: container.X;
 			menuTypeHereHotspot.Margin = new Thickness(
-				framePresenter.Visual.Margin.Left + (container.X + container.Width) * scale,
+				framePresenter.Visual.Margin.Left + rightEdge * scale,
 				framePresenter.Visual.Margin.Top + container.Y * scale, 0, 0);
 			menuTypeHereHotspot.Visibility = Visibility.Visible;
 		}
@@ -1719,6 +1854,14 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		{
 			for (var current = source; current != null; current = VisualTreeHelper.GetParent(current))
 				if (ReferenceEquals(current, contextMenuTray))
+					return true;
+			return false;
+		}
+
+		bool IsWithinMenuTypeHereHotspot(DependencyObject? source)
+		{
+			for (var current = source; current != null; current = VisualTreeHelper.GetParent(current))
+				if (ReferenceEquals(current, menuTypeHereHotspot))
 					return true;
 			return false;
 		}

@@ -793,8 +793,16 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					if (typeof(Menu).IsAssignableFrom(type))
 					{
 						var menuItem = CreateComponentTool.CreateItem(current, typeof(MenuItem));
+						// NaN width/height, not DefaultElementSize: DefaultPlacementBehavior.SetPosition
+						// resizes every AddItem placement to the given Rect's size via ModelTools.Resize,
+						// which treats NaN as "leave unset" (Reset()) rather than an explicit value (see
+						// its own doc comment). A MenuItem should size to its Header text like every other
+						// menu item, not get a fixed 75x75 square baked in as explicit Width/Height -
+						// that square size is right for a freeform control dropped on a design canvas
+						// (this method's other TryStartInsertNewComponents call, just above), not for an
+						// item inside an ItemsControl-based menu/strip.
 						var menuOperation = PlacementOperation.TryStartInsertNewComponents(
-							created, new[] { menuItem }, new[] { new Rect(0, 0, DefaultElementSize, DefaultElementSize) }, PlacementType.AddItem);
+							created, new[] { menuItem }, new[] { new Rect(0, 0, double.NaN, double.NaN) }, PlacementType.AddItem);
 						if (menuOperation != null) {
 							menuOperation.Commit();
 							menuItem.Properties["Header"].SetValue("Type Here");
@@ -846,8 +854,10 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				try
 				{
 					menuItem = CreateComponentTool.CreateItem(current, typeof(MenuItem));
+					// NaN, not DefaultElementSize - see AddElement's Menu-placeholder call for why a
+					// fixed 75x75 square must not be baked in as this MenuItem's explicit Width/Height.
 					var operation = PlacementOperation.TryStartInsertNewComponents(
-						parent, new[] { menuItem }, new[] { new Rect(0, 0, DefaultElementSize, DefaultElementSize) }, PlacementType.AddItem);
+						parent, new[] { menuItem }, new[] { new Rect(0, 0, double.NaN, double.NaN) }, PlacementType.AddItem);
 					if (operation == null)
 						return NotFound(state, "The parent element does not accept a new child here.");
 					operation.Commit();
@@ -930,8 +940,11 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					var itemType = isStatusBar ? typeof(StatusBarItem)
 						: text.Trim() == "-" ? typeof(Separator) : typeof(Button);
 					newItem = CreateComponentTool.CreateItem(current, itemType);
+					// NaN, not DefaultElementSize - same reasoning as AddMenuItem: a StatusBarItem/
+					// Button/Separator inside a StatusBar/ToolBar should size to its own content,
+					// not get a fixed 75x75 square baked in as explicit Width/Height.
 					var operation = PlacementOperation.TryStartInsertNewComponents(
-						parent, new[] { newItem }, new[] { new Rect(0, 0, DefaultElementSize, DefaultElementSize) }, PlacementType.AddItem);
+						parent, new[] { newItem }, new[] { new Rect(0, 0, double.NaN, double.NaN) }, PlacementType.AddItem);
 					if (operation == null)
 						return NotFound(state, "The parent element does not accept a new child here.");
 					operation.Commit();

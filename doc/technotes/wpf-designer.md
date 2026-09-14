@@ -34,6 +34,95 @@ the real-render SurfaceHost RPC test cover these fixes without a text-losing hea
 Current status: the WPF designer is the official WPF backend, added to the main solution and
 built on `LibreWPF.Sdk`.
 
+### Two real LibreWPF inline-editing regressions, found and fixed by running `WpfStripEditingTests` (2026-09-13)
+
+Prompted by a status check across the three "Libre" (open-source) designer backends - LibreWPF,
+LibreWinForms, Uno - actually running their integration tests rather than reading code. Result:
+LibreWinForms (`FormsMenuEditingTests`, 6 facts) and Uno (`AddInTests`'s `WinUIDesigner_*`/
+`OpenUnoXamlFile_*` facts, sampled 5) were both clean. LibreWPF's `WpfStripEditingTests` (menu/strip
+inline editing) started at 3 of 5 failing; two were root-caused and fixed here.
+
+**Bug 1 - a double-click that starts inline text editing loses focus to a ScrollViewer within
+milliseconds, on the same click, silently committing an empty edit.** `WpfSurfaceDesignerControl
+.OnMouseLeftButtonDown`'s `e.ClickCount == 2` branch calls `BeginTextEdit(...)` (which calls
+`textEditor.Focus()`) and then just `return;` - unlike every other early-exit branch in this method
+(scroller chrome, context-menu tray), it never sets `e.Handled = true`. Since this handler is
+registered as a `Preview` (tunneling) handler, the *same* routed `MouseLeftButtonDown` event keeps
+travelling down to the design canvas's own `ScrollViewer`, whose default focus-on-press behavior
+steals keyboard focus straight back from the just-focused `textEditor` - confirmed by tracing focus
+transitions live: `BeginTextEdit` logged `IsKeyboardFocusWithin=True` immediately after `Focus()`,
+then ~5ms later (same input, no user action in between) `OnTextEditorLostFocus` fired with
+`newFocus=ScrollViewer`, which calls `EndTextEdit(commit: true)` - closing the editor before
+anything (a human or a test) can ever observe it open. **Fix**: add `e.Handled = true;` right after
+`BeginTextEdit(...)` in that branch. Verified: `MenuItem_DoubleClick_InlineEditsHeader_AndUndoRestoresIt`
+now passes.
+
+**Bug 2 - `OnMouseLeftButtonDown` had no exclusion for clicks on `menuTypeHereHotspot` (the on-canvas
+"Type Here" affordance for a top-level Menu/StatusBar/ToolBar), unlike its existing exclusions for
+scroller chrome and the context-menu tray.** Because this handler runs (as a `Preview`/tunneling
+handler) *before* the hotspot's own bubbling `MouseLeftButtonDown` handler (the one that calls
+`BeginNewMenuItemEdit` and correctly sets `e.Handled = true`), a click that lands on the hotspot
+first runs the surface's own hit-test/selection logic. When the hotspot's screen position happens to
+sit over nothing in the rendered frame (reproduced for the `StatusBar` hotspot; NOT for the `ToolBar`
+one, which happens to sit over a real element and takes a different branch) that falls through to
+the marquee-select path (`CaptureMouse()` + `marqueePending = true`), and the pending marquee's own
+`MouseLeftButtonUp` handler (`FinishMarquee`) then clears the selection on release - stealing focus
+back from the editor `BeginNewMenuItemEdit` had just opened, same end effect as Bug 1 for a
+different anchor. **First fix attempt was itself wrong and instructive**: excluding by
+`ReferenceEquals(e.OriginalSource, menuTypeHereHotspot)` never matched, because
+`menuTypeHereHotspot` is a `Border` wrapping a child `TextBlock` ("Type Here") - a click's
+`OriginalSource` is almost always that `TextBlock`, not the `Border`. **Real fix**: walk up the
+visual tree the same way the existing `IsWithinContextMenuTray` does (added
+`IsWithinMenuTypeHereHotspot`, an ancestor walk, not a direct reference check). Verified:
+`StatusBarAndToolBar_TypeHere_AddsAnItem_AndUndoRemovesIt` now passes.
+
+**Bug 3 - fixed (2026-09-13): the top-level Menu "Type Here" hotspot used the container's own
+(stretched) `Width`, not its actual content extent.** `UpdateMenuTypeHereHotspot` positioned the
+hotspot at `container.X + container.Width` on the theory that "its Width already spans every
+current item" - false. A top-level `Menu`/`StatusBar`/`ToolBar` stretches to fill its parent's
+available width (`HorizontalAlignment.Stretch` is the default for a `DockPanel`-docked child)
+regardless of how many items it actually holds, so `container.Width` is the full window-content
+width, not the rendered extent of its children. Two visible symptoms, same root cause:
+- **A Menu with zero items** (the "build a menu from scratch" scenario -
+  `MenuItem_CreateTopLevelThenNestChild_ViaTypeHereBothLevels_AndUndoRestoresBoth`): the hotspot
+  landed entirely outside the clipped design frame, so clicks on it never reached the `Border` at
+  all - the inline editor never opened, confirmed via `od.wpf-designer.menu-type-here-status` +
+  `surface-geometry` (hotspot `centerX=781` vs. frame right edge at `771`).
+- **A Menu with one existing item** (`fileItem`,
+  `MenuItem_TypeHere_ClicksAddNewSiblings_AndUndoRemovesThem`): the click still landed on *some*
+  element close enough to the frame to register, so the editor opened - but at the position
+  `BeginNewMenuItemEdit` computed from the item itself (correct), not the hotspot's own drawn
+  position (wrong), producing the `AssertNear` mismatch this note previously recorded as a "where
+  it's drawn, not does it work" open issue. The earlier ~2x-scale hypothesis for that mismatch was
+  wrong (retracted above); this was the real cause.
+
+**Fix**: compute the hotspot's X from the rightmost edge of the container's actual `Children`
+(`container.Children.Max(c => c.X + c.Width)`), falling back to `container.X` when there are none,
+instead of `container.X + container.Width`. Both symptoms share this one fix since both go through
+the same `UpdateMenuTypeHereHotspot` call. Verified live via `od.wpf-designer.menu-type-here-status`
++ manual click before and after: previously `centerX=781` (off-frame or wrong), after the fix
+`centerX=420` for a single-item Menu, exactly matching the position `BeginNewMenuItemEdit` opens the
+editor at (`screenCenterX=420` too - the mismatch is gone). Confirmed by rerunning both facts.
+
+Reproducing this by hand requires the same fixture shape the automated tests use in
+`externals/vscode-wpf/sample/net6.0/MainWindow.xaml`, which is tracked (part of the `vscode-wpf`
+submodule) - **use the test's own write-then-restore-in-`finally` pattern (or a scratch copy outside
+the submodule), never edit it directly and leave it modified**; doing so by hand once during this
+investigation briefly broke the build for every other WPF-fixture test until reverted
+(`git checkout -- sample/net6.0/MainWindow.xaml` from inside the `externals/vscode-wpf` checkout),
+and a *test process* left it modified a second time this same round after being force-killed
+mid-run (before its own `finally` could restore it) - same recovery.
+
+**A separate, real flake surfaced while verifying this fix, not a regression from it**: the very
+first synthetic click after a `select` immediately following an `undo`/`undo` pair occasionally
+lands with no WPF element receiving it at all (`inline-editor-status` reports `editing:false`
+after clicking exactly at the hotspot's own reported center) - a second click at the identical
+coordinate then succeeds. `ClickPointerAsync` already retries `od.activate` until it reports
+foregrounded before posting the click, so this is a narrower, rarer race than that retry loop
+covers (window activation succeeding without the click actually being delivered to the newly
+foregrounded window yet) - worth revisiting if `MenuItem_TypeHere_ClicksAddNewSiblings_AndUndoRemovesThem`
+is seen to flake again, but out of scope for this hotspot-position fix.
+
 ### Bounded portable frame rendering
 
 Some headless ProGPU adapters block during composition itself, before `ReadPixels()` can be

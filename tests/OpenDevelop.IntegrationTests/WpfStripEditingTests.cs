@@ -194,12 +194,23 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
                 hotspot = await app.InvokeAsync("od.wpf-designer.menu-type-here-status");
                 return hotspot.GetProperty("visible").GetBoolean();
             }, TimeSpan.FromSeconds(10)), hotspot.ToString());
-            Assert.True((await app.ClickPointerAsync(hotspot.GetProperty("centerX").GetDouble(),
-                hotspot.GetProperty("centerY").GetDouble())).GetProperty("ok").GetBoolean());
-            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
-                editor = await app.InvokeAsync("od.wpf-designer.inline-editor-status");
-                return editor.GetProperty("editing").GetBoolean() && editor.GetProperty("focused").GetBoolean();
-            }, TimeSpan.FromSeconds(10)), editor.ToString());
+            // The very first synthetic click after a select immediately following two undos
+            // occasionally lands with no WPF element receiving it at all (a narrower race than
+            // ClickPointerAsync's own retry-activate loop covers - the window reports itself
+            // foregrounded before the click is actually deliverable) - a second click at the exact
+            // same position then succeeds, confirmed live. Retry once rather than treat it as the
+            // hotspot-position bug this fact otherwise guards (see wpf-designer.md, Bug 3).
+            var opened = false;
+            for (var attempt = 0; attempt < 2 && !opened; attempt++)
+            {
+                Assert.True((await app.ClickPointerAsync(hotspot.GetProperty("centerX").GetDouble(),
+                    hotspot.GetProperty("centerY").GetDouble())).GetProperty("ok").GetBoolean());
+                opened = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                    editor = await app.InvokeAsync("od.wpf-designer.inline-editor-status");
+                    return editor.GetProperty("editing").GetBoolean() && editor.GetProperty("focused").GetBoolean();
+                }, TimeSpan.FromSeconds(attempt == 0 ? 3 : 10));
+            }
+            Assert.True(opened, editor.ToString());
             AssertNear(hotspot.GetProperty("centerX").GetDouble(), editor.GetProperty("screenCenterX").GetDouble());
             AssertNear(hotspot.GetProperty("centerY").GetDouble(), editor.GetProperty("screenCenterY").GetDouble());
             Assert.True((await app.InvokeAsync("od.wpf-designer.inline-editor-input", "Edit", false))
@@ -210,6 +221,105 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
             Assert.True((await app.InvokeAsync("od.wpf-designer.undo")).GetProperty("success").GetBoolean());
             await app.InvokeAsync("od.file.save", xamlPath);
             Assert.DoesNotContain("Header=\"Edit\"", await File.ReadAllTextAsync(xamlPath), StringComparison.Ordinal);
+
+            await app.InvokeAsync("od.close-active-view");
+        } finally {
+            await File.WriteAllTextAsync(xamlPath, originalXaml);
+        }
+    }
+
+    /// <summary>The full "build a menu from scratch" journey the other two Type-Here facts each
+    /// only cover one level of: create the Menu's very FIRST top-level item via its on-canvas
+    /// hotspot (starting from a Menu with zero items, not one pre-seeded in the fixture XAML),
+    /// then immediately use that freshly-created item's own tray to give IT a first nested child -
+    /// proving an item just created via Type-Here is instantly usable as a container for further
+    /// Type-Here editing, not just as a stepping stone for adding more siblings next to it.</summary>
+    [Fact]
+    public async Task MenuItem_CreateTopLevelThenNestChild_ViaTypeHereBothLevels_AndUndoRestoresBoth()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var sample = Path.GetDirectoryName(app.WpfSampleSolutionPath)!;
+        var xamlPath = Path.Combine(sample, "MainWindow.xaml");
+        var originalXaml = await File.ReadAllTextAsync(xamlPath);
+        try {
+            // mainMenu starts genuinely empty - no MenuItems at all - unlike every other
+            // Type-Here fact in this file, which all start from a Menu/ContextMenu that already
+            // has at least one item.
+            await File.WriteAllTextAsync(xamlPath, """
+            <Window x:Class="sample.MainWindow"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    Width="420" Height="220" Title="Build Menu From Scratch">
+              <Menu x:Name="mainMenu" />
+            </Window>
+            """);
+            Assert.True((await app.ReopenSolutionAsync(app.WpfSampleSolutionPath)).GetProperty("success").GetBoolean());
+            Assert.True((await app.InvokeAsync("od.open-file", xamlPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await app.InvokeAsync("od.wpf-designer.status");
+                return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(90)), status.ToString());
+            await app.InvokeAsync("od.activate");
+
+            // --- Level 1: create the Menu's first top-level item via its on-canvas hotspot ---
+            Assert.True((await app.InvokeAsync("od.wpf-designer.select", "mainMenu")).GetProperty("success").GetBoolean());
+            JsonElement hotspot = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                hotspot = await app.InvokeAsync("od.wpf-designer.menu-type-here-status");
+                return hotspot.GetProperty("visible").GetBoolean();
+            }, TimeSpan.FromSeconds(10)), hotspot.ToString());
+            Assert.True((await app.ClickPointerAsync(hotspot.GetProperty("centerX").GetDouble(),
+                hotspot.GetProperty("centerY").GetDouble())).GetProperty("ok").GetBoolean());
+            JsonElement editor = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                editor = await app.InvokeAsync("od.wpf-designer.inline-editor-status");
+                return editor.GetProperty("editing").GetBoolean() && editor.GetProperty("focused").GetBoolean();
+            }, TimeSpan.FromSeconds(10)), editor.ToString());
+            Assert.True((await app.InvokeAsync("od.wpf-designer.inline-editor-input", "File", false))
+                .GetProperty("success").GetBoolean());
+            await app.InvokeAsync("od.file.save", xamlPath);
+            Assert.Contains("Header=\"File\"", await File.ReadAllTextAsync(xamlPath), StringComparison.Ordinal);
+
+            // --- Level 2: select that SAME freshly-created item (Type-Here assigns no x:Name, so
+            // it is the only unnamed MenuItem in the tree and resolvable by type), then use ITS
+            // OWN tray to create its first nested child. ---
+            Assert.True((await app.InvokeAsync("od.wpf-designer.select", "MenuItem")).GetProperty("success").GetBoolean());
+            JsonElement tray = default;
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                tray = await app.InvokeAsync("od.wpf-designer.context-menu-tray-status");
+                // The item has zero children of its own yet - just the trailing "Type Here" slot.
+                return tray.GetProperty("visible").GetBoolean() && tray.GetProperty("items").GetArrayLength() == 1;
+            }, TimeSpan.FromSeconds(10)), tray.ToString());
+            var typeHere = tray.GetProperty("items")[0];
+            Assert.Equal("@type-here", typeHere.GetProperty("elementId").GetString());
+            Assert.True((await app.ClickPointerAsync(typeHere.GetProperty("centerX").GetDouble(),
+                typeHere.GetProperty("centerY").GetDouble())).GetProperty("ok").GetBoolean());
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                editor = await app.InvokeAsync("od.wpf-designer.inline-editor-status");
+                return editor.GetProperty("editing").GetBoolean() && editor.GetProperty("focused").GetBoolean();
+            }, TimeSpan.FromSeconds(10)), editor.ToString());
+            Assert.True((await app.InvokeAsync("od.wpf-designer.inline-editor-input", "Open", false))
+                .GetProperty("success").GetBoolean());
+            await app.InvokeAsync("od.file.save", xamlPath);
+            var afterBothLevels = await File.ReadAllTextAsync(xamlPath);
+            Assert.Contains("Header=\"Open\"", afterBothLevels, StringComparison.Ordinal);
+            // "Open" is nested INSIDE the "File" MenuItem, not a sibling next to it at the Menu's
+            // own top level - the whole point of this fact.
+            Assert.Matches(new System.Text.RegularExpressions.Regex(
+                "MenuItem[^>]*Header=\"File\"[^>]*>.*Header=\"Open\"", System.Text.RegularExpressions.RegexOptions.Singleline), afterBothLevels);
+
+            // Undo twice: first removes "Open" (level 2), then removes "File" itself (level 1),
+            // restoring the Menu to its original, genuinely empty state.
+            Assert.True((await app.InvokeAsync("od.wpf-designer.undo")).GetProperty("success").GetBoolean());
+            await app.InvokeAsync("od.file.save", xamlPath);
+            var afterFirstUndo = await File.ReadAllTextAsync(xamlPath);
+            Assert.DoesNotContain("Header=\"Open\"", afterFirstUndo, StringComparison.Ordinal);
+            Assert.Contains("Header=\"File\"", afterFirstUndo, StringComparison.Ordinal);
+
+            Assert.True((await app.InvokeAsync("od.wpf-designer.undo")).GetProperty("success").GetBoolean());
+            await app.InvokeAsync("od.file.save", xamlPath);
+            Assert.DoesNotContain("Header=\"File\"", await File.ReadAllTextAsync(xamlPath), StringComparison.Ordinal);
 
             await app.InvokeAsync("od.close-active-view");
         } finally {
@@ -337,14 +447,21 @@ public sealed class WpfStripEditingTests(OpenDevelopAppFixture app)
                 return tray.GetProperty("visible").GetBoolean() && tray.GetProperty("items").GetArrayLength() == 4;
             }, TimeSpan.FromSeconds(10)), tray.ToString());
 
-            // First row is "renameItem" - the first real item never has a move-up arrow.
+            // Move "renameItem" down one step by dragging its reorder grip onto "deleteItem"'s row:
+            // Rename, Delete, Properties -> Delete, Rename, Properties.
             var rename = tray.GetProperty("items")[0];
-            Assert.False(rename.GetProperty("canMoveUp").GetBoolean());
-            Assert.True(rename.GetProperty("canMoveDown").GetBoolean());
-
-            // Move "renameItem" down one step: Rename, Delete, Properties -> Delete, Rename, Properties.
-            Assert.True((await app.ClickPointerAsync(rename.GetProperty("moveDownCenterX").GetDouble(),
-                rename.GetProperty("moveDownCenterY").GetDouble())).GetProperty("ok").GetBoolean());
+            var deleteRowBeforeMove = tray.GetProperty("items")[1];
+            await app.InvokeAsync("od.activate");
+            var gripX = rename.GetProperty("reorderGripCenterX").GetDouble();
+            var gripY = rename.GetProperty("reorderGripCenterY").GetDouble();
+            var targetY = deleteRowBeforeMove.GetProperty("centerY").GetDouble();
+            Assert.True((await app.PressPointerAsync(gripX, gripY)).GetProperty("ok").GetBoolean());
+            for (int step = 1; step <= 4; step++)
+            {
+                var t = step / 4.0;
+                Assert.True((await app.DragMovePointerAsync(gripX, gripY + (targetY - gripY) * t)).GetProperty("ok").GetBoolean());
+            }
+            Assert.True((await app.ReleasePointerAsync(gripX, targetY)).GetProperty("ok").GetBoolean());
             await app.InvokeAsync("od.file.save", xamlPath);
             var afterMove = await File.ReadAllTextAsync(xamlPath);
             Assert.True(afterMove.IndexOf("Header=\"Delete\"", StringComparison.Ordinal)
