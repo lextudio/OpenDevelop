@@ -481,17 +481,54 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			try
 			{
 				lastXaml = request.Xaml;
-				var xaml = InjectDesignData(request.Xaml, out var designWidth, out var designHeight);
+				var source = InjectDesignData(request.Xaml, out var designWidth, out var designHeight);
 				designWidthOverride = designWidth;
 				designHeightOverride = designHeight;
-				xaml = TransformXamlBeforeLoad?.Invoke(xaml) ?? xaml;
-				// After the host-specific transform, never before: that step is what merges/injects
-				// other documents in, and the repairs are for problems that only exist once markup
-				// from several sources shares one namespace scope. See XamlDocumentRepair.
-				xaml = XamlDocumentRepair.Apply(xaml);
 				WaitForNativeDebuggerIfRequested();
 				var previousRoot = root;
-				var loaded = Microsoft.UI.Xaml.Markup.XamlReader.Load(xaml);
+
+				// Try the document as written first, and only if its ROOT turns out not to be
+				// renderable, design its content instead (see UnrenderableRootUnwrapper). Deciding
+				// this by outcome rather than by inspecting the root's type keeps it working for
+				// any such root - Window, a custom Window subclass, a Flyout - without this code
+				// having to know any of them. The whole transform pipeline is re-run on the
+				// unwrapped content because the resource merge inside it targets the ROOT element,
+				// which is exactly the element being replaced.
+				object loaded = null;
+				Exception firstFailure = null;
+				try
+				{
+					loaded = Microsoft.UI.Xaml.Markup.XamlReader.Load(Prepare(source));
+				}
+				catch (Exception e)
+				{
+					firstFailure = e;
+				}
+				if (loaded is not FrameworkElement
+					&& UnrenderableRootUnwrapper.TryUnwrapContentRoot(source, out var contentSource))
+				{
+					try
+					{
+						var unwrapped = Microsoft.UI.Xaml.Markup.XamlReader.Load(Prepare(contentSource));
+						if (unwrapped is FrameworkElement)
+						{
+							Console.Error.WriteLine("design-host: the document root cannot be rendered;"
+								+ " previewing its content instead - see UnrenderableRootUnwrapper.");
+							loaded = unwrapped;
+							firstFailure = null;
+						}
+					}
+					catch (Exception e)
+					{
+						// Report the ORIGINAL failure: it is about the document the user actually
+						// has, whereas this one is about a rewrite they never wrote.
+						Console.Error.WriteLine("design-host: previewing the root's content failed too: " + e.Message);
+					}
+				}
+				if (firstFailure != null)
+				{
+					throw firstFailure;
+				}
 				if (loaded is not FrameworkElement)
 				{
 					// Not every .xaml file in a project has a visual root: WinUI's equivalent of
@@ -522,6 +559,13 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				HostVisualRoot?.Invoke(previousRoot, root);
 				// A document's own d:DesignWidth/DesignHeight wins over the session viewport.
 				return await FinishLayoutAsync(designWidth ?? request.Width, designHeight ?? request.Height, request.Dpi, snapshot);
+
+				// The repairs run AFTER the host-specific transform, never before: that step is what
+				// merges/injects other documents in, and the repairs address problems that only
+				// exist once markup from several sources shares one namespace scope. See
+				// XamlDocumentRepair.
+				string Prepare(string markup)
+					=> XamlDocumentRepair.Apply(TransformXamlBeforeLoad?.Invoke(markup) ?? markup);
 			}
 			catch (Exception e)
 			{
