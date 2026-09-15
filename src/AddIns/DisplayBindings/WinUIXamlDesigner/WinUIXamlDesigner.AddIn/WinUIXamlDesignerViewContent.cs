@@ -844,22 +844,55 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	}
 
 	/// <summary>
-	/// A pick on an element without an x:Name: map its tree path back to the source, auto-assign
-	/// a unique name (like VS does), and select it - so the Properties pad works for any control,
-	/// not only pre-named ones.
+	/// A pick on an element the document never named: map its tree path back to the source and
+	/// select it as-is.
+	///
+	/// Two things here were wrong and are worth naming, because between them nothing unnamed could
+	/// ever be selected. The chain is walked INNERMOST FIRST: it arrives root-first, and taking the
+	/// first entry that resolves therefore selected the outermost element every time - click a
+	/// TextBlock inside a card, get the page's root Grid. And the element is NOT auto-named any
+	/// more: this used to write a fresh x:Name into the user's markup just because they clicked
+	/// something, so merely looking at a page dirtied the document and littered it with Grid1,
+	/// ScrollView1, ... Selection is identified by tree path (see GetPickChain), which needs no
+	/// name, and the Properties pad binds to the XElement rather than to a name anyway.
 	/// </summary>
 	void OnElementPathPickedOnSurface(object sender, string path)	{
 		if (string.IsNullOrEmpty(path))
 			return;
-		foreach (var (type, typeIndex) in previewHost.GetPickChain(path))		{
+		var chain = previewHost.GetPickChain(path);
+		for (var i = chain.Count - 1; i >= 0; i--)
+		{
+			var (type, typeIndex, nodePath) = chain[i];
 			if (FindNthSourceElement(type, typeIndex) is { } element)
 			{
-				var name = editor.UniqueName(type);
-				editor.SetAttribute(element, WinUIXamlDocumentEditor.NameDirective, name);
-				ApplyDocumentChange();
-				SelectElement(name);
+				SelectSourceElement(element, nodePath ?? path);
 				return;
 			}
+		}
+	}
+
+	/// <summary>Selects a source element that may have no x:Name, keyed by its tree
+	/// <paramref name="path"/>. The name-keyed <see cref="SelectElement(string)"/> is used when the
+	/// element does have one, so named elements keep the outline/multi-select behaviour they
+	/// already had.</summary>
+	void SelectSourceElement(XElement element, string path)
+	{
+		var name = (string)element.Attribute(WinUIXamlDocumentEditor.NameDirective);
+		if (!string.IsNullOrEmpty(name))
+		{
+			SelectElement(name);
+			return;
+		}
+		if (syncingSelection)
+			return;
+		syncingSelection = true;
+		try {
+			SelectedElementName = null;
+			propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor);
+			previewHost.ShowSelectionAtPath(path, element.Name.LocalName);
+		}
+		finally {
+			syncingSelection = false;
 		}
 	}
 
@@ -1312,18 +1345,25 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		}
 	}
 
-	/// <summary>Projects runtime children onto the Design-view outline. An element the source
-	/// declares (by x:Name) is kept with its projected subtree; anything else - a framework
-	/// template part, a generated item container - is folded away with its kept descendants
-	/// promoted; a node whose source element is not visible drops its whole subtree.</summary>
+	/// <summary>Projects runtime children onto the Design-view outline. An element the SOURCE
+	/// DOCUMENT declares is kept with its projected subtree; anything else - a framework template
+	/// part, a generated item container - is folded away with its kept descendants promoted; a
+	/// node that is not visible drops its whole subtree.
+	///
+	/// "Declares" means <see cref="DesignerElementNode.IsDesignable"/>, not "has an x:Name". Gating
+	/// on the name folded away every unnamed element, so a page whose markup names only a handful
+	/// of controls showed an outline of just those few - the SettingsCards, StackPanels, Borders
+	/// and TextBlocks the user can plainly see on the surface were simply absent. It was only ever
+	/// invisible because this projection runs against the RUNTIME tree, and the outline silently
+	/// falls back to the full source-XML projection whenever the page fails to render.</summary>
 	List<DesignerElementNode> ProjectOutlineChildren(IEnumerable<DesignerElementNode> nodes)
 	{
 		var result = new List<DesignerElementNode>();
 		foreach (var node in nodes)
 		{
-			if (IsHiddenInSource(node.Name))
+			if (IsHiddenInSource(node.Name) || !node.IsVisible)
 				continue;
-			if (!IsNamedInSource(node.Name))
+			if (!node.IsDesignable)
 			{
 				result.AddRange(ProjectOutlineChildren(node.Children));
 				continue;
@@ -1363,7 +1403,8 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			Y = node.Y,
 			Width = node.Width,
 			Height = node.Height,
-			IsDesignable = node.IsDesignable
+			IsDesignable = node.IsDesignable,
+			IsVisible = node.IsVisible
 		};
 
 	/// <summary>Projects a source XAML element onto the protocol outline node model. The id is

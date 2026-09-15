@@ -517,6 +517,8 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 					return snapshot;
 				}
 				root = (FrameworkElement)loaded;
+				// Before any tree is built from it: BuildTree stamps IsDesignable off this set.
+				RefreshSourceBackedElements();
 				HostVisualRoot?.Invoke(previousRoot, root);
 				// A document's own d:DesignWidth/DesignHeight wins over the session viewport.
 				return await FinishLayoutAsync(designWidth ?? request.Width, designHeight ?? request.Height, request.Dpi, snapshot);
@@ -933,7 +935,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			}
 			// No live code-behind instance exists in this design host - the event/handler
 			// names are validated but nothing is actually wired up here.
-			snapshot.Tree = BuildTree(root, root, "", 0);
+			snapshot.Tree = BuildTree(root, root, "", 0, sourceBackedElements);
 			snapshot.Accepted = true;
 			return snapshot;
 		}
@@ -1172,13 +1174,13 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				snapshot.Render = await RenderAsync(dpi);
 				if (HostAwaitFrame != null) {
 					var stableFrames = 0;
-					var previousGeometry = System.Text.Json.JsonSerializer.Serialize(BuildTree(root, root, "", 0));
+					var previousGeometry = System.Text.Json.JsonSerializer.Serialize(BuildTree(root, root, "", 0, sourceBackedElements));
 					var settle = System.Diagnostics.Stopwatch.StartNew();
 					while (stableFrames < 3 && settle.Elapsed < TimeSpan.FromSeconds(2)) {
 						await HostAwaitFrame();
 						HostCommitLayout?.Invoke(root);
 						var nextFrame = await RenderAsync(dpi);
-						var nextGeometry = System.Text.Json.JsonSerializer.Serialize(BuildTree(root, root, "", 0));
+						var nextGeometry = System.Text.Json.JsonSerializer.Serialize(BuildTree(root, root, "", 0, sourceBackedElements));
 						stableFrames = nextFrame.Width == snapshot.Render.Width && nextFrame.Height == snapshot.Render.Height
 							&& nextFrame.Data == snapshot.Render.Data && nextGeometry == previousGeometry ? stableFrames + 1 : 0;
 						previousGeometry = nextGeometry;
@@ -1192,7 +1194,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				// Read committed visual geometry after capture.
 				// Geometry stays in design DIPs, including hit testing and event-only updates.
 				// Bitmap dimensions alone cannot establish a capture-space transformation.
-				snapshot.Tree = BuildTree(root, root, "", 0);
+				snapshot.Tree = BuildTree(root, root, "", 0, sourceBackedElements);
 				snapshot.Render.Sequence = ++frameSequence;
 				BoundsLog($"FinishLayout rendered={snapshot.Render?.Width}x{snapshot.Render?.Height} rootActualAfterRender={root.ActualWidth}x{root.ActualHeight}");
 			}
@@ -1327,10 +1329,113 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		// once, not by hope - keep it well clear of 64/2.
 		const int MaxTreeDepth = 24;
 
-		static DesignerElementNode BuildTree(DependencyObject node, UIElement root, string path, int depth)
+		/// <summary>
+		/// The elements that came from the document's own markup, as opposed to the parts a
+		/// control's template generated. Recomputed on every load, and the only thing that makes
+		/// <see cref="DesignerElementNode.IsDesignable"/> meaningful for this backend.
+		///
+		/// WinUI has no <c>FrameworkElement.TemplatedParent</c> (that is WPF-only), so a template
+		/// part cannot be recognised by asking it. What distinguishes the two is reachability: a
+		/// source element is always the VALUE OF A PROPERTY of its parent (Panel.Children,
+		/// ContentControl.Content, Border.Child, Expander.Header, SettingsCard.Description, ...),
+		/// whereas a template part is created by the template and is never exposed as one. Walking
+		/// property values therefore yields exactly the source elements, without needing to know
+		/// any particular control's content property by name - which matters because third-party
+		/// controls (WinUI-Gallery leans on CommunityToolkit's SettingsCard/SettingsExpander) carry
+		/// their own.
+		/// </summary>
+		readonly HashSet<DependencyObject> sourceBackedElements = new();
+
+		void RefreshSourceBackedElements()
+		{
+			sourceBackedElements.Clear();
+			if (root is not null)
+				CollectSourceBacked(root, sourceBackedElements, 0);
+		}
+
+		static void CollectSourceBacked(DependencyObject node, HashSet<DependencyObject> into, int depth)
+		{
+			if (node is null || depth >= MaxTreeDepth || !into.Add(node))
+				return;
+			foreach (var child in EnumerateMarkupChildren(node))
+				CollectSourceBacked(child, into, depth + 1);
+		}
+
+		/// <summary>Children of <paramref name="node"/> that its markup could have declared.</summary>
+		static IEnumerable<DependencyObject> EnumerateMarkupChildren(DependencyObject node)
+		{
+			// Panel.Children first and directly: it is by far the common case, and reading it
+			// through reflection would pay for a property scan on every Grid/StackPanel.
+			if (node is Panel panel)
+			{
+				foreach (var child in panel.Children)
+					if (child is DependencyObject dependencyChild)
+						yield return dependencyChild;
+			}
+
+			foreach (var property in node.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
+			{
+				if (property.GetIndexParameters().Length != 0 || !property.CanRead)
+					continue;
+				// Reading these either walks back up (re-entering the walk from the wrong end) or
+				// forces item materialisation / template inflation as a side effect.
+				if (property.Name is "Parent" or "XamlRoot" or "Resources" or "Template"
+					or "ContentTemplate" or "ItemTemplate" or "HeaderTemplate" or "FooterTemplate"
+					or "ItemsPanel" or "ItemContainerStyle" or "Style" or "DataContext"
+					or "TemplateSettings" or "Transitions")
+					continue;
+				// A DependencyObject-typed property can hold a child; `object`-typed ones (Content,
+				// Header, Description, ...) hold one only sometimes, so they are value-checked. Any
+				// other declared type cannot produce one and is skipped without being read at all.
+				if (!typeof(DependencyObject).IsAssignableFrom(property.PropertyType)
+					&& property.PropertyType != typeof(object)
+					&& !typeof(System.Collections.IEnumerable).IsAssignableFrom(property.PropertyType))
+					continue;
+
+				object? value;
+				// A property getter on a control in a headless design host can throw (an unset
+				// dependency property, a value that needs a XamlRoot). One bad getter must not
+				// cost the whole subtree its designability.
+				try { value = property.GetValue(node); }
+				catch { continue; }
+
+				if (value is DependencyObject single)
+				{
+					yield return single;
+				}
+				else if (value is System.Collections.IEnumerable sequence and not string)
+				{
+					System.Collections.IEnumerator enumerator;
+					try { enumerator = sequence.GetEnumerator(); }
+					catch { continue; }
+					while (true)
+					{
+						object? item;
+						try
+						{
+							if (!enumerator.MoveNext()) break;
+							item = enumerator.Current;
+						}
+						catch { break; }
+						if (item is DependencyObject element)
+							yield return element;
+					}
+				}
+			}
+		}
+
+		static DesignerElementNode BuildTree(DependencyObject node, UIElement root, string path, int depth,
+			HashSet<DependencyObject> sourceBacked)
 		{
 			var nodeInfo = new DesignerElementNode {
-				Path = path
+				Path = path,
+				// The identity every client keys off. It is the PATH, not the x:Name, because most
+				// elements in a real page have no name and must still be selectable, outlined and
+				// reported individually.
+				Id = path,
+				// A template part is visible and hit-testable but is not in the user's document, so
+				// it must never become the selection - see sourceBackedElements.
+				IsDesignable = sourceBacked.Contains(node)
 			};
 			if (node is FrameworkElement fe)
 			{
@@ -1375,7 +1480,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				if (child is UIElement)
 				{
 					var childPath = path.Length == 0 ? i.ToString() : path + "," + i;
-					nodeInfo.Children.Add(BuildTree(child, root, childPath, depth + 1));
+					nodeInfo.Children.Add(BuildTree(child, root, childPath, depth + 1, sourceBacked));
 				}
 			}
 			return nodeInfo;
@@ -1499,13 +1604,23 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 					result.Chain.Add(name);
 				}
 			}
-			if (paths.Count > 0)
+			// The innermost hit that the user's own markup actually declared. `hits`/`paths` are
+			// innermost-first and include control-template parts, which are visible and
+			// hit-testable but are not in the document and must never become the selection.
+			//
+			// Reporting the innermost HIT here instead (as this did) is what made every click on
+			// an unnamed element select the page root: the shell scans Chain for the first name it
+			// can select, ResolveName walks UP from each hit to the nearest named ancestor, and the
+			// root almost always has an x:Name - so an unnamed SettingsCard resolved to RootGrid and
+			// the path fallback below was never reached.
+			for (var i = 0; i < hits.Count; i++)
 			{
-				// Always report the innermost hit's tree path alongside the chain: template parts
-				// can leak names (e.g. a ScrollViewer's internal "Root") that are not backed by
-				// the source, so the shell decides whether the chain yields a selectable name or
-				// falls back to auto-naming the picked element.
-				result.PickPath = paths[0];
+				if (sourceBackedElements.Contains(hits[i]))
+				{
+					result.PickPath = paths[i];
+					result.Hit = true;
+					break;
+				}
 			}
 			return result;
 		}

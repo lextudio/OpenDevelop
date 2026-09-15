@@ -199,6 +199,51 @@ function Get-PinnedGitVersionProperties {
     )
 }
 
+function Build-MicrosoftDesignerHosts {
+    <#
+      Builds the genuine-Microsoft-framework designer backends that are NOT referenced by
+      OpenDevelop.Mvp.slnx and therefore never get built by Build-Solution:
+        - FormsDesigner\MicrosoftHost\Host (Windows Forms against the .NET Desktop Runtime)
+        - WinUIXamlDesigner.MicrosoftHost  (real WinUI 3, multi-targets net9.0/net10.0)
+
+      Each one is its own DeployToAddIns target (AfterTargets="Build") that copies straight into
+      the shared AddIns/ tree, mirroring how the solution-referenced AddIns deploy themselves - so
+      building these two projects on the side, before the AddIns copy step, is sufficient; nothing
+      else needs to know they exist.
+
+      WinUIXamlDesigner.MicrosoftHost specifically CANNOT be built by `dotnet build`: UseWinUI
+      pulls in MrtCore.PriGen.targets, whose tasks ship only with Visual Studio (MSB4062
+      otherwise) - see "Building WinUIXamlDesigner.MicrosoftHost" in CLAUDE.md. Per the project's
+      own standing convention, both projects here are built with Visual Studio's MSBuild.exe
+      rather than `dotnet build`, even though FormsDesigner's host does not strictly require it.
+
+      $Rid matters only for the WinUI host: an unpackaged WinUI 3 app is built RID-specific, and
+      its DeployToAddIns target copies $(TargetDir) - the RID subfolder - so a missing/incorrect
+      -p:RuntimeIdentifier here silently ships the wrong (or build-host-default) architecture,
+      exactly the trap RuntimeIdentifier's own doc comment above describes for the main app.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$RepoRoot,
+        [ValidateSet('Debug', 'Release')]
+        [string]$Configuration = 'Debug',
+        [string]$Rid,
+        [string[]]$PinnedGitVersionProperties = @()
+    )
+
+    $msbuild = Find-VsMsBuild
+    Write-Host "==> Using Visual Studio MSBuild for Microsoft designer hosts: $msbuild"
+
+    $formsDesignerHost = Join-Path $RepoRoot 'src/AddIns/DisplayBindings/FormsDesigner/MicrosoftHost/Host/MicrosoftFormsDesigner.Host.csproj'
+    Write-Host '==> Building Microsoft Windows Forms design host...'
+    Invoke-Native $msbuild $formsDesignerHost '-restore' "-p:Configuration=$Configuration" '-p:DisableGitVersionTask=true' '-v:m' @PinnedGitVersionProperties
+
+    $winUiHost = Join-Path $RepoRoot 'src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.MicrosoftHost/WinUIXamlDesigner.MicrosoftHost.csproj'
+    Write-Host "==> Building Microsoft WinUI design host (RuntimeIdentifier=$Rid)..."
+    $winUiArgs = @('-restore', "-p:Configuration=$Configuration", '-p:DisableGitVersionTask=true', '-v:m') + $PinnedGitVersionProperties
+    if ($Rid) { $winUiArgs += "-p:RuntimeIdentifier=$Rid" }
+    Invoke-Native $msbuild $winUiHost @winUiArgs
+}
+
 function Test-PackagedAppStartup {
     <#
       Launch the packaged app and require it to STAY up. A distribution that is missing or
@@ -296,6 +341,34 @@ function Test-WindowsDistributionPayload {
         }
     }
 
+    # The Windows Forms and WinUI designers each have their own genuine-Microsoft-framework
+    # backend, neither referenced by OpenDevelop.Mvp.slnx (WinForms.MicrosoftHost needs the
+    # .NET Desktop Runtime; WinUIXamlDesigner.MicrosoftHost additionally needs UseWinUI's
+    # MrtCore.PriGen.targets, which only ships with Visual Studio - see "Building
+    # WinUIXamlDesigner.MicrosoftHost" in CLAUDE.md). Both are built by a dedicated
+    # Build-MicrosoftDesignerHosts step, not the normal solution build, so verify their output
+    # lands in the payload the same way the WPF check above does - a silent gap here is exactly
+    # how this backend went unbuilt/unshipped before.
+    $formsDesignerHostExe = Join-Path $addIns 'DisplayBindings\FormsDesigner\MicrosoftHost\MicrosoftFormsDesigner.Host.exe'
+    if (-not (Test-Path -LiteralPath $formsDesignerHostExe)) {
+        throw "Distribution payload is missing the Microsoft Windows Forms design host: $formsDesignerHostExe. " +
+            "Check that Build-MicrosoftDesignerHosts built " +
+            "src/AddIns/DisplayBindings/FormsDesigner/MicrosoftHost/Host/MicrosoftFormsDesigner.Host.csproj."
+    }
+    # Deployed under a per-TFM subfolder (net9.0 / net10.0) picked at runtime by
+    # MicrosoftWinUIDesignRuntimeHostBootstrap based on the designed app's own runtimeconfig -
+    # both must be present, not just whichever one a plain build happened to produce last.
+    $winUiHostRoot = Join-Path $addIns 'DisplayBindings\WinUIXamlDesigner\MicrosoftHost'
+    foreach ($tfmDir in 'net9.0', 'net10.0') {
+        $winUiHostExe = Join-Path $winUiHostRoot "$tfmDir\WinUIXamlDesigner.MicrosoftHost.exe"
+        if (-not (Test-Path -LiteralPath $winUiHostExe)) {
+            throw "Distribution payload is missing the Microsoft WinUI design host ($tfmDir): $winUiHostExe. " +
+                "Check that Build-MicrosoftDesignerHosts built " +
+                "src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.MicrosoftHost/WinUIXamlDesigner.MicrosoftHost.csproj " +
+                "with Visual Studio's own MSBuild.exe (dotnet build cannot build UseWinUI projects)."
+        }
+    }
+
     # PDBs, reference assemblies and foreign native assets are build-time artifacts. Their
     # presence means either an SDK target or the staging copy regressed, and makes the final ZIP
     # needlessly architecture/OS-agnostic rather than deployable.
@@ -324,7 +397,10 @@ function Test-WindowsDistributionZip {
         # must survive the staging/zip round-trip, not just be present in the staged payload dir.
         foreach ($hostSpec in @(
             @{ Path = "${prefix}AddIns/DisplayBindings/WpfDesign/Host/WpfDesign.SurfaceHost.exe";          Backend = 'LibreWPF' },
-            @{ Path = "${prefix}AddIns/DisplayBindings/WpfDesign/MicrosoftHost/MicrosoftWpfDesign.SurfaceHost.exe"; Backend = 'Microsoft WPF' }
+            @{ Path = "${prefix}AddIns/DisplayBindings/WpfDesign/MicrosoftHost/MicrosoftWpfDesign.SurfaceHost.exe"; Backend = 'Microsoft WPF' },
+            @{ Path = "${prefix}AddIns/DisplayBindings/FormsDesigner/MicrosoftHost/MicrosoftFormsDesigner.Host.exe"; Backend = 'Microsoft Windows Forms' },
+            @{ Path = "${prefix}AddIns/DisplayBindings/WinUIXamlDesigner/MicrosoftHost/net9.0/WinUIXamlDesigner.MicrosoftHost.exe"; Backend = 'Microsoft WinUI (net9.0)' },
+            @{ Path = "${prefix}AddIns/DisplayBindings/WinUIXamlDesigner/MicrosoftHost/net10.0/WinUIXamlDesigner.MicrosoftHost.exe"; Backend = 'Microsoft WinUI (net10.0)' }
         )) {
             if (-not ($archive.Entries.FullName -contains $hostSpec.Path)) {
                 throw "ZIP is missing the $($hostSpec.Backend) design host: $($hostSpec.Path) ($ZipPath)"
@@ -593,6 +669,12 @@ function Invoke-DistributionPipeline([string]$Rid) {
             '-p:ProGpuWpfCopyPackageRuntimeAssets=false',
             '-p:ProGpuWpfUseCurrentRuntimeIdentifier=false'
         ) + $pinnedGitVersionProperties)
+
+        if ($IsWindows) {
+            Write-Host "==> Building Microsoft-framework designer hosts (VS MSBuild)$ridLabel..."
+            Build-MicrosoftDesignerHosts -RepoRoot $repoRoot -Configuration $config -Rid $Rid `
+                -PinnedGitVersionProperties $pinnedGitVersionProperties
+        }
         Remove-Item -Recurse -Force $hostPublishSnapshot
 
         # The solution traversal may copy reference assemblies over the original PublishDir

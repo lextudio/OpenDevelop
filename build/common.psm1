@@ -39,6 +39,23 @@ function Find-DotNetHost {
     throw "cannot find dotnet (checked well-known locations and PATH)"
 }
 
+function Find-VsMsBuild {
+    # Locate Visual Studio's own MSBuild.exe via vswhere. Some AddIn projects cannot be built by
+    # `dotnet build` at all - WinUIXamlDesigner.MicrosoftHost's UseWinUI pulls in
+    # MrtCore.PriGen.targets, whose tasks (Microsoft.Build.Packaging.Pri.Tasks.dll) ship only with
+    # Visual Studio (MSB4062 otherwise). Windows-only; do not call this from macOS packaging.
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+    if (-not (Test-Path $vswhere)) {
+        throw "cannot find vswhere.exe at $vswhere - is Visual Studio installed?"
+    }
+    $msbuild = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild/**/Bin/MSBuild.exe' |
+        Select-Object -First 1
+    if (-not $msbuild -or -not (Test-Path $msbuild)) {
+        throw "vswhere could not locate MSBuild.exe - is the 'MSBuild component' installed with Visual Studio?"
+    }
+    return $msbuild
+}
+
 function Resolve-Symlink {
     # readlink -f equivalent: follow symlink chains to the final target.
     param([Parameter(Mandatory)][string]$Path)
@@ -192,6 +209,7 @@ function Remove-StaleMsBuildAssets {
 
 Export-ModuleMember -Function @(
     'Find-DotNetHost',
+    'Find-VsMsBuild',
     'Invoke-Native',
     'Resolve-Symlink',
     'Set-DotNetEnv',

@@ -175,6 +175,13 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 			overlay.ShowSelection(name);
 	}
 
+	/// <summary>Outlines the element at a tree path, for elements with no x:Name.</summary>
+	public void ShowSelectionAtPath(string path, string label)
+	{
+		if (runtime is IWinUIXamlSelectionOverlay overlay)
+			overlay.ShowSelectionAtPath(path, label);
+	}
+
 	public void ClearSelection()
 	{
 		if (runtime is IWinUIXamlSelectionOverlay overlay)
@@ -245,8 +252,8 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 		=> UndoRedoRequested?.Invoke(this, undo);
 
 	/// <summary>The picked element's chain (with same-type indexes), for mapping an unnamed pick to the source.</summary>
-	public IReadOnlyList<(string Type, int TypeIndex)> GetPickChain(string path)
-		=> runtime is IWinUIXamlPathPick pick ? pick.GetPickChain(path) : Array.Empty<(string, int)>();
+	public IReadOnlyList<(string Type, int TypeIndex, string Path)> GetPickChain(string path)
+		=> runtime is IWinUIXamlPathPick pick ? pick.GetPickChain(path) : Array.Empty<(string, int, string)>();
 
 	/// <summary>Switches the design's Light/Dark theme, when the runtime supports it.</summary>
 	public void SetDesignTheme(string theme)
@@ -654,7 +661,7 @@ public interface IWinUIXamlPathPick
 	event EventHandler<string> ElementPathPicked;
 	/// <summary>The element at the given tree path, plus each ancestor, with each node's index
 	/// among same-type nodes in tree order (root first).</summary>
-	IReadOnlyList<(string Type, int TypeIndex)> GetPickChain(string path);
+	IReadOnlyList<(string Type, int TypeIndex, string Path)> GetPickChain(string path);
 }
 
 /// <summary>
@@ -793,6 +800,9 @@ public interface IWinUIXamlTextEditing
 public interface IWinUIXamlSelectionOverlay
 {
 	void ShowSelection(string name);
+	/// <summary>Outlines the element at a tree path - the only way to show a selection for an
+	/// element the document never named, which is most of a real page.</summary>
+	void ShowSelectionAtPath(string path, string label);
 	void ClearSelection();
 }
 

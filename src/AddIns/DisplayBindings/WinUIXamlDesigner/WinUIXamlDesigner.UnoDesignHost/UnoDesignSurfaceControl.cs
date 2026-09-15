@@ -329,7 +329,8 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 		var thisOrigin = PointToScreen(new Point(0, 0));
 		var scrollerOrigin = scroller.PointToScreen(new Point(0, 0));
 		var frameOrigin = framePresenter.Visual is FrameworkElement fe ? fe.PointToScreen(new Point(0, 0)) : new Point(double.NaN, double.NaN);
-		return $"this=({thisOrigin.X},{thisOrigin.Y}) scroller=({scrollerOrigin.X},{scrollerOrigin.Y}) framePresenter=({frameOrigin.X},{frameOrigin.Y}) scrollOffset=({scroller.HorizontalOffset},{scroller.VerticalOffset})";
+		var viewport = CurrentViewport();
+		return $"this=({thisOrigin.X},{thisOrigin.Y}) scroller=({scrollerOrigin.X},{scrollerOrigin.Y}) framePresenter=({frameOrigin.X},{frameOrigin.Y}) scrollOffset=({scroller.HorizontalOffset},{scroller.VerticalOffset}) scrollerViewport=({scroller.ViewportWidth},{scroller.ViewportHeight}) pixelSize=({pixelWidth},{pixelHeight}) zoomFactor={zoomFactor} pan=({panX},{panY}) scale={viewport.Scale} origin=({viewport.OriginX},{viewport.OriginY})";
 	}
 
 	/// <summary>A DESIGN-space point (the same space <c>QueryElementBounds</c>/<c>nodesByName</c>

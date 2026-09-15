@@ -142,6 +142,38 @@ curl -s -X POST http://localhost:9299/api/v1/invoke/actions/od.winui-designer.se
 curl -s -X POST http://localhost:9299/api/v1/invoke/actions/od.winui-designer.surface-geometry -d '{"args":[]}'
 ```
 
+### A WinUI project needs an **Unpackaged** profile, and the document must be CLOSED and REOPENED
+
+Two separate steps, and skipping the second one is what makes this look like a build problem:
+
+1. A Windows App SDK project must be on an **Unpackaged** configuration (WinUI-Gallery's are named
+   `Debug-Unpackaged` / `Release-Unpackaged`, with `WindowsPackageType=None`; the plain
+   `Debug`/`Release` ones are MSIX and the designer cannot preview them), and that configuration
+   must actually be built.
+2. **After switching the build profile, close the .xaml document and reopen it.** The design view
+   binds the child host to the project's evaluated output at the moment the document is opened, so
+   a document that was already open keeps the pre-switch state. `od.winui-designer.status` then
+   keeps reporting *"cannot preview ... because the active configuration is not built (missing
+   `X.runtimeconfig.json` or `X.deps.json`)"* even though those files are sitting on disk.
+
+```bash
+curl -s -X POST http://localhost:9299/api/v1/invoke/actions/od.solution.set-configuration -d '{"args":["Debug-Unpackaged","ARM64"]}'
+curl -s -X POST http://localhost:9299/api/v1/invoke/actions/od.close-all-document-views -d '{"args":[]}'   # NOT od.close-file - no such action
+curl -s -X POST http://localhost:9299/api/v1/invoke/actions/od.open-file -d '{"args":["<path>/SettingsPage.xaml"]}'
+curl -s -X POST http://localhost:9299/api/v1/invoke/actions/od.winui-designer.activate-design -d '{"args":[]}'
+```
+
+**Check every DevFlow response's `success` field — a wrong action name is not an error you will
+otherwise notice.** Learned the hard way: `od.close-file` does not exist, the agent answered
+`{"success":false,"error":"Action 'od.close-file' not found"}`, that reply was not read, and the
+following `od.open-file` merely re-focused the still-open tab. The unchanged "not built" status was
+then misread as a genuine build failure, which led to rebuilding the sample app and **deleting
+NuGet global-cache packages that could not be re-downloaded** (WinUI-Gallery's `nuget.config` does
+`<clear />` on `packageSources` and leaves only a private Azure feed that 401s for
+`Microsoft.NETCore.App.Host.*`). Nothing was wrong with the build; only the tab had not been
+reopened. Never run a destructive cache/cleanup step off a diagnosis whose evidence is a status
+string you have not re-derived after a *verified* state change.
+
 ### `od.winui-designer.view "zoom panX panY"` is NOT a literal zoom percentage
 
 This was the actual trap: `od.winui-designer.view "1 0 0"` looks like "100%, no pan" but is
@@ -374,6 +406,44 @@ MSBuild:
 - `-p:DisableGitVersionTask=true` avoids `MSB4216`: GitVersion wants an x86 .NET task host that
   isn't present.
 - The main app still builds normally with `dotnet build src/Main/SharpDevelop/SharpDevelop.csproj -c Debug`.
+
+### Changing the WinUI designer CLIENT — build `UnoDesignHost`, not the AddIn project
+
+`UnoDesignSurfaceControl.cs` / `UnoDesignRuntimeHost.cs` (the WPF-side canvas, viewport math,
+selection overlay and RPC client shared by BOTH out-of-process WinUI backends) live in
+`WinUIXamlDesigner.UnoDesignHost`, whose csproj **builds straight into the deployed AddIn folder**
+via `<OutputPath>..\..\..\..\..\AddIns\DisplayBindings\WinUIXamlDesigner\</OutputPath>`. The
+dependency edge runs `UnoDesignHost -> WinUIXamlDesigner.AddIn`, i.e. **the opposite** of what the
+folder layout suggests, so:
+
+- `dotnet build .../WinUIXamlDesigner.AddIn/ICSharpCode.WinUIXamlDesigner.csproj` **does not rebuild
+  or redeploy `ICSharpCode.WinUIXamlDesigner.UnoDesignHost.dll`** — it is not a dependency of the
+  AddIn. Building only the AddIn leaves an hours-old client DLL in place while every source file you
+  edited compiles cleanly, so the running app keeps the old behaviour and the change looks like it
+  had no effect.
+- Build `.../WinUIXamlDesigner.UnoDesignHost/ICSharpCode.WinUIXamlDesigner.UnoDesignHost.csproj`
+  instead. That cascades into the AddIn project too, so it covers both.
+- Kill the running app first. That build's copy step targets the deployed folder directly, so a live
+  OpenDevelop holds a lock and the build fails with `MSB3027`/`MSB3021` **after** having compiled
+  successfully — and the failure names `ICSharpCode.WinUIXamlDesigner.dll` (the AddIn's output), not
+  the file you were actually trying to refresh, which reads like an unrelated error.
+- Confirm the deployed DLL really contains your change before drawing conclusions from a repro.
+  `grep` on the DLL does **not** work — .NET string literals are UTF-16 in the `#US` heap:
+
+  ```powershell
+  $b = [IO.File]::ReadAllBytes("AddIns\DisplayBindings\WinUIXamlDesigner\ICSharpCode.WinUIXamlDesigner.UnoDesignHost.dll")
+  [Text.Encoding]::Unicode.GetString($b).Contains("<a string literal you just added>")
+  ```
+
+### Keep the Uno and WinUI backends separate at the csproj level
+
+The two out-of-process backends must be **fully separate projects**, sharing code only through
+`<Compile Include="..." Link="..." />` source links (the pattern `WpfSurfaceHostService.cs` already
+uses for LibreWPF vs Microsoft WPF) — not by having one project/class serve both. Today
+`MicrosoftWinUIDesignRuntimeHostBootstrap` and `UnoDesignRuntimeHostBootstrap` both instantiate the
+same `UnoDesignRuntimeHost` class out of the `UnoDesignHost` project and differ only in which child
+DLL they locate, which is why "the Uno host" and "the WinUI host" keep getting conflated when
+diagnosing, and why a client-side change silently affects both.
 
 ## Changing the WPF designer host — rebuild THREE separate places, not one
 

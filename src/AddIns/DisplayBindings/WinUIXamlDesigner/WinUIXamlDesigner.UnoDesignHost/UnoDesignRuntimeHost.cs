@@ -433,7 +433,23 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 				return (null, null);
 			}
 			var result = pending.GetAwaiter().GetResult();
-			lastPickDiagnostic = $"point={design.X:F0},{design.Y:F0} chain=[{string.Join(",", result.Chain)}]";
+			lastPickDiagnostic = $"point={design.X:F0},{design.Y:F0} chain=[{string.Join(",", result.Chain)}]"
+				+ $" pickPath={result.PickPath}";
+			// PickPath is the innermost element the DOCUMENT itself declares - the host skips
+			// control-template parts - so it, not the chain, is what the user aimed at. The chain
+			// is only consulted for a backend that reports no path at all, because its entries come
+			// from walking UP to the nearest NAMED ancestor: with a named page root (the usual
+			// case), scanning it first made every click on an unnamed element select that root.
+			if (result.Hit || !string.IsNullOrEmpty(result.PickPath))
+			{
+				var picked = FindNodeByPath(result.PickPath);
+				// Prefer the element's own name when it has one: selection, the Properties pad,
+				// the outline and multi-select are all keyed by name, and an already-named element
+				// needs none of the path handling.
+				return picked?.Name is { Length: > 0 } pickedName && selectableNames.Contains(pickedName)
+					? (pickedName, null)
+					: (null, result.PickPath);
+			}
 			foreach (var name in result.Chain)
 			{
 				if (selectableNames.Contains(name))
@@ -441,10 +457,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 					return (name, null);
 				}
 			}
-			// The chain may still carry names that are not backed by the source (e.g. template
-			// parts like a ScrollViewer's internal "Root"); when nothing selectable is under the
-			// point, hand the pick path over so the shell can auto-name the element.
-			return (null, result.PickPath);
+			return (null, null);
 		}
 		catch (Exception e)
 		{
@@ -453,59 +466,97 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		}
 	}
 
-	/// <summary>Returns the element at the given tree path plus its ancestors (root first),
-	/// each with its index among same-type nodes in tree order.</summary>
-	public IReadOnlyList<(string Type, int TypeIndex)> GetPickChain(string path)
+	/// <summary>The snapshot node whose own <see cref="ElementNode.Path"/> equals
+	/// <paramref name="path"/>, or null. Matches on the stored Path rather than re-deriving child
+	/// indices, because the host numbers a path by VISUAL child index while a node's Children list
+	/// holds only the UIElement ones - the two disagree wherever a non-UIElement child was skipped.
+	/// The document root's path is the empty string.</summary>
+	ElementNode FindNodeByPath(string path)
 	{
-		var result = new List<(string, int)>();
-		if (lastSnapshot?.Tree is not { } root)
+		if (lastSnapshot?.Tree is not { } root || path == null)
+		{
+			return null;
+		}
+		return Find(root);
+
+		ElementNode Find(ElementNode node)
+		{
+			if (string.Equals(node.Path, path, StringComparison.Ordinal))
+			{
+				return node;
+			}
+			// Paths are built by appending to the parent's, so only a prefix can contain it.
+			if (path.Length != 0 && node.Path.Length != 0 && !path.StartsWith(node.Path + ",", StringComparison.Ordinal))
+			{
+				return null;
+			}
+			foreach (var child in node.Children)
+			{
+				if (Find(child) is { } found)
+				{
+					return found;
+				}
+			}
+			return null;
+		}
+	}
+
+	/// <summary>
+	/// The element at <paramref name="path"/> and its ancestors, ROOT FIRST, each as its tag name
+	/// plus that tag's occurrence index - the pair the shell maps back to the source document with
+	/// <c>FindNthSourceElement</c>. Template parts are left out entirely, so the occurrence index
+	/// counts the same elements the document does.
+	///
+	/// Both of those properties are corrections. The previous version re-derived the path by
+	/// comparing child indices while walking, keeping one `ancestors` buffer indexed by depth and
+	/// shared across sibling branches: any unrelated subtree whose child indices happened to match
+	/// the path prefix wrote into that buffer, which produced wrong chains and, once a branch was
+	/// shallower than the path, an IndexOutOfRangeException straight out of a mouse click. Matching
+	/// each node's own stored Path removes the guesswork. It also counted occurrences over every
+	/// visual node, template parts included, so the index handed to the source lookup was inflated
+	/// by however many same-tag elements the control templates happened to contribute.
+	/// </summary>
+	public IReadOnlyList<(string Type, int TypeIndex, string Path)> GetPickChain(string path)
+	{
+		var result = new List<(string, int, string)>();
+		if (lastSnapshot?.Tree is not { } root || path == null)
 		{
 			return result;
 		}
-		var parts = path.Split(',').Select(p => int.TryParse(p, out var i) ? i : -1).ToArray();
-		if (parts.Length == 0 || parts.Any(i => i < 0))
-		{
-			return result;
-		}
+		// Pre-order == document order, and every ancestor is visited before the target, so the
+		// counts are complete for the whole chain by the time the target is reached.
 		var counts = new Dictionary<string, int>(StringComparer.Ordinal);
-		var ancestors = new List<ElementNode>();
-		var found = false;
-		Walk(root, depth: 0, indexInParent: -1);
+		var ancestors = new List<(string Type, int TypeIndex, string Path)>();
+		Walk(root);
 		return result;
 
-		void Walk(ElementNode node, int depth, int indexInParent)
+		bool Walk(ElementNode node)
 		{
-			if (found)
+			var counted = false;
+			if (node.IsDesignable && !string.IsNullOrEmpty(node.Type))
 			{
-				return;
+				counts.TryGetValue(node.Type, out var seen);
+				counts[node.Type] = seen + 1;
+				ancestors.Add((node.Type, seen, node.Path));
+				counted = true;
 			}
-			counts.TryGetValue(node.Type, out var c);
-			counts[node.Type] = c + 1;
-			var onPath = depth == 0 || (depth <= parts.Length && indexInParent == parts[depth - 1]);
-			if (onPath)
+			if (string.Equals(node.Path, path, StringComparison.Ordinal))
 			{
-				if (depth < ancestors.Count)
+				result.AddRange(ancestors);
+				return true;
+			}
+			foreach (var child in node.Children)
+			{
+				if (Walk(child))
 				{
-					ancestors[depth] = node;
-				}
-				else
-				{
-					ancestors.Add(node);
-				}
-				if (depth == parts.Length)
-				{
-					for (var d = 0; d <= depth; d++)
-					{
-						result.Add((ancestors[d].Type, counts[ancestors[d].Type] - 1));
-					}
-					found = true;
-					return;
+					return true;
 				}
 			}
-			for (var i = 0; i < node.Children.Count; i++)
+			if (counted)
 			{
-				Walk(node.Children[i], depth + 1, i);
+				ancestors.RemoveAt(ancestors.Count - 1);
 			}
+			return false;
 		}
 	}
 
@@ -1692,6 +1743,21 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 			return;
 		}
 		surface.ShowSelection(node.X, node.Y, node.Width, node.Height, name);
+	}
+
+	/// <summary>Draws the selection outline over the element at <paramref name="path"/>. The
+	/// name-keyed overload above cannot serve an element the document never named, which is most
+	/// of a real page - see GetPickChain for why selection is path-keyed at all.</summary>
+	public void ShowSelectionAtPath(string path, string label)
+	{
+		if (FindNodeByPath(path) is not { } node)
+		{
+			surface.ClearSelection();
+			return;
+		}
+		SelectedElementName = null;
+		multiSelectionNames.Clear();
+		surface.ShowSelection(node.X, node.Y, node.Width, node.Height, label ?? node.Type ?? "");
 	}
 
 	/// <summary>Selects a single element (from outline/properties/actions), resetting any multi-selection.</summary>
