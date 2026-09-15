@@ -66,10 +66,6 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	public static string GetBackendName(WpfSurfaceHostBackend backend)
 		=> backend == WpfSurfaceHostBackend.MicrosoftWpf ? "WPF" : "LibreWPF";
 
-	public static string? LocateChildDll()
-		=> LocateChildDll(string.Equals(Environment.GetEnvironmentVariable("OD_WPF_RUNTIME"), "microsoft", StringComparison.OrdinalIgnoreCase)
-			? WpfSurfaceHostBackend.MicrosoftWpf : WpfSurfaceHostBackend.LibreWpf);
-
 	public static string? LocateChildDll(WpfSurfaceHostBackend backend)
 	{
 		var directory = Path.GetDirectoryName(typeof(WpfSurfaceHostClient).Assembly.Location);
@@ -81,21 +77,25 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 		return File.Exists(path) ? path : null;
 	}
 
-	public static string SelectedBackend => GetBackendName(WpfSurfaceHostBackend.LibreWpf);
-
-	public static async Task<WpfSurfaceHostClient> StartAsync(string? hostDllPath, CancellationToken cancellationToken, TimeSpan? operationTimeout = null)
+	/// <summary>Requires an explicit, already-resolved host path. There is deliberately no
+	/// fallback to a different backend here - a caller that cannot locate its requested
+	/// backend's host must fail loudly (see <see cref="LocateChildDll"/>), never silently run
+	/// a WPF project's design surface under the LibreWPF host or vice versa.</summary>
+	public static async Task<WpfSurfaceHostClient> StartAsync(string hostDllPath, CancellationToken cancellationToken, TimeSpan? operationTimeout = null)
 	{
-		hostDllPath ??= LocateChildDll() ?? throw new InvalidOperationException(
-			"Could not locate WpfDesign.SurfaceHost.dll under this assembly's Host subfolder.");
+		if (string.IsNullOrEmpty(hostDllPath))
+			throw new ArgumentException("A resolved host DLL path is required.", nameof(hostDllPath));
 		var connection = new Connection(hostDllPath, operationTimeout);
 		RouteOutput(connection);
 		await connection.StartConnectionAsync(cancellationToken).ConfigureAwait(false);
 		return new WpfSurfaceHostClient(connection, null);
 	}
 
-	public static async Task<WpfSurfaceHostClient> AcquireSharedAsync(string? hostDllPath, CancellationToken cancellationToken, TimeSpan? operationTimeout = null)
+	/// <summary>Requires an explicit, already-resolved host path - see the <see cref="StartAsync"/> remarks.</summary>
+	public static async Task<WpfSurfaceHostClient> AcquireSharedAsync(string hostDllPath, CancellationToken cancellationToken, TimeSpan? operationTimeout = null)
 	{
-		hostDllPath ??= LocateChildDll() ?? throw new InvalidOperationException("Could not locate WpfDesign.SurfaceHost.dll under this assembly's Host subfolder.");
+		if (string.IsNullOrEmpty(hostDllPath))
+			throw new ArgumentException("A resolved host DLL path is required.", nameof(hostDllPath));
 		var key = new CompatibilityKey(Path.GetFullPath(hostDllPath), operationTimeout ?? TimeSpan.FromSeconds(30), RuntimeInformation.ProcessArchitecture);
 		return new WpfSurfaceHostClient(await sharedPool.AcquireAsync(key, cancellationToken).ConfigureAwait(false), key);
 	}

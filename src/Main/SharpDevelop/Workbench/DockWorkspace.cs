@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
@@ -17,6 +18,7 @@ using AvalonDock.Layout;
 using AvalonDock.Serializer.Xml;
 
 using ICSharpCode.Core;
+using ICSharpCode.Core.Presentation;
 using ICSharpCode.SharpDevelop.ViewModels;
 using ICSharpCode.ILSpy.ViewModels;
 
@@ -207,6 +209,73 @@ internal sealed class DockWorkspace : ObservableObjectBase, ILayoutUpdateStrateg
     {
         dockingManager.SetBinding(DockingManager.AnchorablesSourceProperty, new Binding(nameof(ToolPanes)) { Source = this });
         dockingManager.SetBinding(DockingManager.DocumentsSourceProperty, new Binding(nameof(Documents)) { Source = this });
+        HookDocumentTabContextMenu();
+    }
+
+    // AvalonDock's DockingManager.DocumentContextMenu is a single ContextMenu instance shared by
+    // every document tab (see AvalonDock's generic.xaml "DocumentContextMenu" resource and
+    // LayoutDocumentTabItem's ControlTemplate: DropDownControlArea swaps DataContext to that tab's
+    // LayoutItem.Model and reopens the SAME ContextMenu on every right-click - it is never rebuilt
+    // per tab). Before the AvalonDock port (commit 4cb15dbe9f), AvalonWorkbenchWindow.OnApplyTemplate
+    // attached a fresh MenuService-built ContextMenu straight to its own tab header element; that
+    // code was deleted during the port and nothing replaced it, silently orphaning the
+    // "/SharpDevelop/Workbench/OpenFileTab/ContextMenu" addin path (Copy file path/name, Open
+    // containing folder, ...) behind AvalonDock's built-in Close/Float/Dock menu. Re-attach it here
+    // by appending our addin items to the shared menu on every Opened, keyed off whichever
+    // AvalonWorkbenchWindow the menu's DataContext resolves to for that click.
+    const string DocumentTabContextMenuPath = "/SharpDevelop/Workbench/OpenFileTab/ContextMenu";
+    static readonly object DocumentTabContextMenuItemTag = new object();
+
+    void HookDocumentTabContextMenu()
+    {
+        if (dockingManager.DocumentContextMenu is ContextMenu menu) {
+            menu.Opened += DocumentContextMenu_Opened;
+        } else {
+            // The default value comes from a Style Setter (AvalonDock's generic.xaml), which is
+            // only guaranteed to have been applied once the control has been through layout.
+            dockingManager.Loaded += DockingManager_LoadedForDocumentContextMenu;
+        }
+    }
+
+    void DockingManager_LoadedForDocumentContextMenu(object sender, RoutedEventArgs e)
+    {
+        dockingManager.Loaded -= DockingManager_LoadedForDocumentContextMenu;
+        if (dockingManager.DocumentContextMenu is ContextMenu menu)
+            menu.Opened += DocumentContextMenu_Opened;
+    }
+
+    void DocumentContextMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        var menu = (ContextMenu)sender;
+        for (int i = menu.Items.Count - 1; i >= 0; i--) {
+            if (menu.Items[i] is FrameworkElement existing && ReferenceEquals(existing.Tag, DocumentTabContextMenuItemTag))
+                menu.Items.RemoveAt(i);
+        }
+
+        // DropDownControlArea sets DataContext to the tab's LayoutItem wrapper (see
+        // LayoutDocumentTabItem's ControlTemplate binding "LayoutItem"), not directly to the
+        // AvalonWorkbenchWindow - LayoutItem.Model (set from LayoutContent.Content in
+        // AvalonDock.Controls.LayoutItem) is what actually holds it.
+        if (menu.DataContext is not AvalonDock.Controls.LayoutItem layoutItem ||
+            layoutItem.Model is not AvalonWorkbenchWindow window)
+            return;
+
+        IList items;
+        try {
+            items = MenuService.CreateMenuItems(menu, window, DocumentTabContextMenuPath);
+        } catch (Exception ex) {
+            LoggingService.Warn("Failed to build document tab context menu extensions", ex);
+            return;
+        }
+        if (items == null || items.Count == 0)
+            return;
+
+        menu.Items.Add(new Separator { Tag = DocumentTabContextMenuItemTag });
+        foreach (object item in items) {
+            if (item is FrameworkElement element)
+                element.Tag = DocumentTabContextMenuItemTag;
+            menu.Items.Add(item);
+        }
     }
 
     /// <summary>

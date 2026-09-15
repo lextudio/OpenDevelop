@@ -1180,6 +1180,7 @@
 			</Not>
 			<MenuItem id = "CopyPathName"
 			          label = "${res:OpenFileTabEventHandler.CopyPathName}"
+			          icon  = "Icons.16x16.Copy"
 			          class = "ICSharpCode.SharpDevelop.Commands.TabStrip.CopyPathName"/>
 			<MenuItem id = "NavigateToFileInProjectBrowser"
 			          label = "${res:ICSharpCode.SharpDevelop.Commands.TabStrip.NavigateToFileInProjectBrowser}"
@@ -1187,6 +1188,7 @@
 			          class = "ICSharpCode.SharpDevelop.Commands.TabStrip.NavigateToFileInProjectBrowser"/>
 			<MenuItem id = "OpenFolderContainingFileFromTab"
 			          label = "${res:OpenFileTabEventHandler.FileContainingFolderInExplorer}"
+			          icon  = "Icons.16x16.FolderOpen"
 			          class = "ICSharpCode.SharpDevelop.Commands.TabStrip.OpenFolderContainingFile"/>
 			<MenuItem id = "OpenCommandPromptHereFromTab"
 			          label = "${res:OpenFileTabEventHandler.OpenCommandPromptHere}"

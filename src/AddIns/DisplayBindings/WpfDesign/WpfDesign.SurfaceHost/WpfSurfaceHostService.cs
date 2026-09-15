@@ -146,8 +146,6 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			var state = new DesignerSessionState { SessionId = snapshot.SessionId, DocumentId = snapshot.DocumentId, Version = snapshot.Version };
 			try
 			{
-				using var stringReader = new StringReader(xaml);
-				using var xmlReader = XmlReader.Create(stringReader);
 				Console.Error.WriteLine($"design-host: snapshot primary='{snapshot.PrimaryFileName}', project='{snapshot.ProjectFileName}', assembly='{snapshot.ProjectAssemblyPath}'.");
 				// Phase 1 slice (see wpf-designer.md's Phase 1 progress notes): any target
 				// assembly - the project's own output OR a resolved reference (a referenced
@@ -166,7 +164,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				ResolveThemes(typeFinder?.ProjectAssembly);
 				state.SupportsThemeSwitch = themeSources != null;
 				state.DesignThemes = themeSources?.Keys.ToArray() ?? Array.Empty<string>();
-				var appResources = ParseAppResources(snapshot, loadSettings, typeFinder?.ProjectAssembly);
+				var (appResources, appResourcesXml) = ParseAppResources(snapshot, loadSettings, typeFinder?.ProjectAssembly);
 				// A custom control's own compiled BAML (e.g. WPFGallery's PageHeader, whose XAML uses
 				// {StaticResource TitleTextBlockStyle} from Resources/PageStyles.xaml) resolves its
 				// StaticResource lookups against Application.Current.Resources while it is being
@@ -176,6 +174,20 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				// down is still required for implicit styles on the design root (see the remarks on
 				// ParseAppResources).
 				InstallApplicationResources(appResources);
+				// XamlDesignContext's own StaticResource resolution never falls back to
+				// Application.Current.Resources the way real WPF's XamlReader/BAML pipeline does
+				// (wpf-designer.md, "App-level StaticResource not resolved by XamlDesignContext",
+				// 2026-09-14) - a page-level {StaticResource SymbolThemeFontFamily} silently resolves
+				// to the property's CLR default instead of throwing. Installing appResources into
+				// Application.Current above, and merging it into the parsed root's own Resources
+				// below, both happen too late for that: the merge-into-root step runs AFTER parsing,
+				// once every markup extension in the document (including on the root itself) has
+				// already been evaluated. Inject the same flattened dictionary text as the page's own
+				// root-level Resources BEFORE parsing instead, so XamlDesignContext's normal
+				// (document-local) StaticResource walk finds it during the parse.
+				var effectiveXaml = PreparePageXaml(xaml, appResourcesXml, typeFinder?.ProjectAssembly?.GetName().Name);
+				using var stringReader = new StringReader(effectiveXaml);
+				using var xmlReader = XmlReader.Create(stringReader);
 				current = new XamlDesignContext(xmlReader, loadSettings);
 				// A fresh document parse means a fresh root FrameworkElement - the previous root's
 				// MergedDictionaries (and whatever theme dictionary this field used to point at)
@@ -186,7 +198,9 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				appliedThemeName = null;
 				// Merged after parse but before RebuildTreeAndRender runs layout, which is when
 				// implicit styles get applied - the headless stand-in for the live designer's
-				// DesignPanel.Resources (see ParseAppResources' remarks).
+				// DesignPanel.Resources (see ParseAppResources' remarks). Distinct from (and still
+				// needed alongside) the pre-parse XAML-text injection above: this one is for implicit
+				// styles at layout time, that one is for StaticResource at parse time.
 				if (appResources != null && current.RootItem?.View is FrameworkElement appResourceRoot)
 					appResourceRoot.Resources.MergedDictionaries.Add(appResources);
 				version = snapshot.Version;
@@ -314,17 +328,101 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// after parse but before layout, because implicit styles on the offscreen design root are
 		/// only picked up from there - merging into Application.Current.Resources alone left the
 		/// offscreen root unstyled, confirmed by a real run, see wpf-designer.md's Phase 1 notes.</summary>
-		ResourceDictionary? ParseAppResources(DesignerDocumentSnapshot snapshot, XamlLoadSettings loadSettings, Assembly? projectAssembly)
+		const string PresentationNamespace = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+
+		/// <summary>Normalizes the page XAML text before it reaches <see cref="XamlDesignContext"/>:
+		/// (1) rewrites the page's OWN application-relative pack URIs
+		/// (<c>pack://application:,,,/Assets/...</c>, e.g. an <c>Image.Source</c>) to name the
+		/// designed project's assembly explicitly - the same rewrite <see cref="ParseAppResources"/>
+		/// already applies to the App.xaml-derived dictionary, but which never used to reach the
+		/// page itself, leaving an <c>Image</c> resolving against the child host's own assembly
+		/// (which has no such embedded resource) and rendering blank; (2) when app resources were
+		/// found, splices the flattened dictionary XML into the page's own root-level
+		/// <c>&lt;Root.Resources&gt;</c> as the FIRST entry of its
+		/// <c>ResourceDictionary.MergedDictionaries</c> (creating that whole node if the page
+		/// declares no Resources of its own), so <see cref="XamlDesignContext"/>'s document-local
+		/// <c>StaticResource</c> walk - which never falls back to
+		/// <see cref="Application.Current"/>.Resources, unlike real WPF - can see the app's keys
+		/// while it parses the page, not only after (see wpf-designer.md, "App-level StaticResource
+		/// not resolved by XamlDesignContext", 2026-09-14). Inserted first (lowest precedence) so
+		/// the page's own merged dictionaries still win on a duplicate key, matching how
+		/// Application resources are the last resort in real WPF's lookup order.</summary>
+		static string PreparePageXaml(string pageXaml, string? appResourcesXml, string? assemblyName)
+		{
+			var pageDoc = new XmlDocument();
+			pageDoc.LoadXml(pageXaml);
+			var root = pageDoc.DocumentElement;
+			if (root == null)
+				return pageXaml;
+
+			RewriteApplicationRelativePackUris(pageDoc, assemblyName);
+
+			if (appResourcesXml != null)
+			{
+				var appDoc = new XmlDocument();
+				appDoc.LoadXml(appResourcesXml);
+				if (appDoc.DocumentElement != null)
+				{
+					var importedAppDictionary = pageDoc.ImportNode(appDoc.DocumentElement, true);
+
+					var resourcesNode = root.ChildNodes.Cast<XmlNode>()
+						.FirstOrDefault(node => node.LocalName.EndsWith(".Resources", StringComparison.Ordinal)) as XmlElement;
+
+					XmlElement dictionaryElement;
+					if (resourcesNode == null)
+					{
+						resourcesNode = pageDoc.CreateElement(root.Prefix, root.LocalName + ".Resources", root.NamespaceURI);
+						root.PrependChild(resourcesNode);
+						dictionaryElement = pageDoc.CreateElement(null, "ResourceDictionary", PresentationNamespace);
+						resourcesNode.AppendChild(dictionaryElement);
+					}
+					else
+					{
+						var existingChildren = resourcesNode.ChildNodes.OfType<XmlElement>().ToList();
+						if (existingChildren.Count == 1 && existingChildren[0].LocalName == "ResourceDictionary")
+						{
+							dictionaryElement = existingChildren[0];
+						}
+						else
+						{
+							// The page's own Resources lists entries directly (no explicit
+							// ResourceDictionary wrapper) - wrap them so there is somewhere to add
+							// MergedDictionaries.
+							dictionaryElement = pageDoc.CreateElement(null, "ResourceDictionary", PresentationNamespace);
+							foreach (var child in existingChildren)
+							{
+								resourcesNode.RemoveChild(child);
+								dictionaryElement.AppendChild(child);
+							}
+							resourcesNode.AppendChild(dictionaryElement);
+						}
+					}
+
+					var mergedNode = dictionaryElement.ChildNodes.OfType<XmlElement>()
+						.FirstOrDefault(node => node.LocalName == "ResourceDictionary.MergedDictionaries");
+					if (mergedNode == null)
+					{
+						mergedNode = pageDoc.CreateElement(null, "ResourceDictionary.MergedDictionaries", PresentationNamespace);
+						dictionaryElement.PrependChild(mergedNode);
+					}
+					mergedNode.PrependChild(importedAppDictionary);
+				}
+			}
+
+			return pageDoc.OuterXml;
+		}
+
+		(ResourceDictionary? Dictionary, string? FlattenedXml) ParseAppResources(DesignerDocumentSnapshot snapshot, XamlLoadSettings loadSettings, Assembly? projectAssembly)
 		{
 			var appFile = snapshot.Files.FirstOrDefault(item => item.Kind == "AppXaml");
 			if (appFile == null || string.IsNullOrEmpty(appFile.Text))
-				return null;
+				return (null, null);
 
 			var document = new XmlDocument();
 			document.LoadXml(appFile.Text);
 			var root = document.DocumentElement;
 			if (root == null)
-				return null;
+				return (null, null);
 
 			string dictionaryXml;
 			if (string.Equals(root.LocalName, "ResourceDictionary", StringComparison.Ordinal))
@@ -340,7 +438,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				var resourcesNode = root.ChildNodes.Cast<XmlNode>()
 					.FirstOrDefault(node => node.LocalName.EndsWith(".Resources", StringComparison.Ordinal));
 				if (resourcesNode == null)
-					return null;
+					return (null, null);
 				// The children are about to be reparsed detached from this root, so they need the
 				// root's namespace declarations copied onto them (same fix-up the live designer does).
 				foreach (var attribute in root.Attributes.Cast<XmlAttribute>().ToList())
@@ -365,7 +463,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 						+ resourcesNode.InnerXml + "</ResourceDictionary>";
 			}
 			if (string.IsNullOrWhiteSpace(dictionaryXml))
-				return null;
+				return (null, null);
 
 			// Relative Source URIs are project-relative (the WPF convention). Expand those inline
 			// first (the same thing App.xaml's own compiled BAML does): a Source loaded detached by
@@ -409,8 +507,15 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			// TitleTextBlockStyle from Resources/PageStyles.xaml). Loading each Source detached via
 			// ResourceDictionary.Source alone throws ResourceReferenceKeyNotFound for exactly that
 			// cross-reference, which is why the fallback below is only best-effort.
+			// Captured before either loader runs: this is the text form OpenCore injects into the
+			// page's own root Resources so XamlDesignContext's StaticResource lookup - which never
+			// consults Application.Current.Resources, see wpf-designer.md's 2026-09-14 entry - can
+			// see these keys DURING its parse of the page, not just after (too late for markup
+			// extensions already evaluated).
+			var flattenedXml = dictionaryDocument.OuterXml;
+
 			if (TryLoadAppResourcesAtRuntime(dictionaryDocument, projectAssembly, out var runtimeDictionary))
-				return runtimeDictionary;
+				return (runtimeDictionary, flattenedXml);
 
 			// Fallback: parse the inline remainder through the design context (which tolerates
 			// design-time constructs a runtime loader rejects) and merge each Source best-effort.
@@ -431,14 +536,14 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				if (dictionary == null)
 				{
 					Console.Error.WriteLine("design-host: original XamlDesignContext did not produce an app ResourceDictionary.");
-					return null;
+					return (null, null);
 				}
 				Console.Error.WriteLine("design-host: app resources loaded through original XamlDesignContext.");
 			}
 			catch (Exception e)
 			{
 				Console.Error.WriteLine("design-host: original XamlDesignContext could not load app resources: " + e.GetBaseException().Message);
-				return null;
+				return (null, null);
 			}
 
 			foreach (var source in sources)
@@ -446,7 +551,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				if (LoadMergedDictionary(source, projectAssembly) is { } merged)
 					dictionary.MergedDictionaries.Add(merged);
 			}
-			return dictionary;
+			return (dictionary, flattenedXml);
 		}
 
 		/// <summary>Replaces every project-relative &lt;ResourceDictionary Source="..."/&gt; with the
@@ -1532,6 +1637,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				}
 			}
 			AppendAttachedContextMenu(item, root, path, node);
+			AppendHeaderContent(item, root, path, node);
 			return node;
 		}
 
@@ -1557,6 +1663,48 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				return;
 			var contextMenuPath = path.Length == 0 ? "@context-menu" : path + ",@context-menu";
 			node.Children.Add(BuildNode(contextMenu, root, contextMenuPath));
+		}
+
+		/// <summary>Adds a <see cref="HeaderedContentControl"/>/<see cref="HeaderedItemsControl"/>'s
+		/// object-valued <c>Header</c> as an outline child, under a synthetic "Header" grouping node.
+		/// <c>Header</c> is a separate property from <see cref="DesignItem.ContentProperty"/> (which
+		/// for <c>Expander</c> et al. is <c>Content</c>, not <c>Header</c>) and unrelated to a
+		/// header/expander's collapsed state - it is always realized in the visual tree regardless -
+		/// so an element-valued Header (e.g. an <c>&lt;Expander.Header&gt;</c> containing an
+		/// <c>Image</c>, as in WPFGallery's SettingsPage.xaml About section) was structurally
+		/// excluded from <see cref="BuildNode"/>'s traversal, same shape of gap as
+		/// <see cref="AppendAttachedContextMenu"/> fixes for ContextMenu. A plain string/data-template
+		/// Header (the common case) has no DesignItem value and is skipped here exactly like a null
+		/// ContentProperty.Value.
+		///
+		/// Unlike ContextMenu (whose own node is already self-explanatory), Header content is
+		/// typically ordinary elements (a Grid, a TextBlock) that look identical to the owner's real
+		/// Content sitting right next to it in the flattened tree - without a label there is no way
+		/// to tell which is which. The grouping node has no backing DesignItem (deliberately absent
+		/// from <c>pathToItem</c> - every RPC that resolves an element id already reports "not found"
+		/// gracefully for an unknown id, so selecting this node client-side is harmless), just a type
+		/// label the Outline pad renders like any other unnamed node.</summary>
+		void AppendHeaderContent(DesignItem item, DesignItem root, string path, DesignerElementNode node)
+		{
+			DesignItem? header;
+			try
+			{
+				header = item.Properties["Header"]?.Value;
+			}
+			catch (Exception)
+			{
+				return;
+			}
+			if (header == null)
+				return;
+			var headerPath = path.Length == 0 ? "@header" : path + ",@header";
+			var headerGroupNode = new DesignerElementNode {
+				Id = headerPath + "-group",
+				Type = "Header",
+				Path = headerPath,
+			};
+			headerGroupNode.Children.Add(BuildNode(header, root, headerPath));
+			node.Children.Add(headerGroupNode);
 		}
 
 		/// <summary>Whether an element is actually on screen, by folding <c>Visibility</c> up the

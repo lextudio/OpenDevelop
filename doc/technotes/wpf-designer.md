@@ -1965,6 +1965,147 @@ Same batch as the theme work, all shared-shell or WPF-side:
   (`DesignerGridTrackInfo` cumulative offsets + sizes) for draggable divider guides — the WPF
   analogue of Uno's Grid-guide overlay.
 
+## App-level `StaticResource` not resolved by `XamlDesignContext` (2026-09-14)
+
+**Symptom.** A `TextBlock` using `FontFamily="{StaticResource SymbolThemeFontFamily}"` (WPFGallery's
+`SettingsPage.xaml` `AppIcon` glyph, `SymbolThemeFontFamily` coming from the merged
+`PresentationFramework.Fluent` theme in `App.xaml`) renders as a tofu box in our WPF design surface,
+while the same page renders the glyph correctly both in the real running app and via a plain
+`RenderTargetBitmap` capture of an equivalent `FontFamily` built directly in C#.
+
+**Root cause, proven with an isolated repro** (a throwaway console app referencing
+`ICSharpCode.WpfDesign`/`.XamlDom`/`.Designer` directly, run outside SharpDevelop entirely):
+`XamlDesignContext` (`ICSharpCode.WpfDesign.XamlDom`, vendored from icsharpcode's
+[WpfDesigner](https://github.com/icsharpcode/WpfDesigner) under
+`externals/vscode-wpf/external/WpfDesigner/`) resolves `{StaticResource ...}` only against the
+document's own resource-dictionary chain (the element and its ancestors *as parsed*). It never
+falls back to `Application.Current.Resources` the way real WPF's `System.Windows.Markup.XamlReader`/
+compiled BAML pipeline does. Confirmed directly:
+
+```
+SymbolThemeFontFamily via Application.Current.TryFindResource: Segoe Fluent Icons, Segoe MDL2 Assets   (correct)
+Design-time TextBlock.FontFamily after XamlDesignContext parse:  Segoe UI                                (wrong - default fallback)
+Design-time TextBlock.Text codepoint:                            E790                                    (correct - not an encoding bug)
+```
+
+`WpfSurfaceHostService.ParseAppResources`/`OpenCore` (`WpfDesign.SurfaceHost/WpfSurfaceHostService.cs`)
+already does the right thing on the *outside*: it installs the app's flattened resource dictionary
+into both `Application.Current.Resources` (before parse) and the parsed root's own `.Resources`
+(after parse, for implicit styles). Neither helps here: the `Application.Current` install happens
+before parsing but `XamlDesignContext` never consults it, and the root-level merge happens *after*
+parsing has already evaluated every `StaticResource` markup extension in the document (including on
+the root itself), so anything that could only be satisfied by the app-level dictionary has already
+silently fallen back to the property's CLR default by the time that merge runs.
+
+**Diagnosing this took two wrong turns worth remembering** (see the conversation this technote entry
+was extracted from for the full trace): first suspected the resource-merging fallback path in
+`ParseAppResources` swallowing an exception (ruled out - `od.wpf-designer.child-log` showed no error,
+the primary `TryLoadAppResourcesAtRuntime` path succeeded cleanly); then suspected LibreWPF's ProGPU
+rendering pipeline mishandling the Fluent icon font specifically in offscreen/`RenderTargetBitmap`
+rendering (ruled out with a side-by-side repro - LibreWPF renders the exact same `FontFamily` fine,
+both alone and in fallback-list form, both on-screen and via `RenderTargetBitmap`). Neither theory
+survived an actual isolated repro; only instrumenting the real `XamlDesignContext` parse path (with
+the DataContext/type mismatches that entailed, see below) found the real gap. Moral: for a
+design-time-only rendering bug, reproduce through the *exact* parser class in isolation before
+theorizing about the rendering backend - the two are easy to conflate because both sit between
+"resource declared correctly" and "pixel on screen."
+
+**Repro gotchas** (useful if this needs revisiting): this machine's native RID is `win-arm64`
+(`PROCESSOR_ARCHITECTURE=AMD64`/`OSArchitecture=X64` only reflects the x64-emulation layer;
+`dotnet --info` reports the true native RID) - a throwaway project must target `win-arm64` to match
+the vendored `WpfDesigner` projects' default build output, or `ICSharpCode.WpfDesign.Designer`
+fails to load with a plain `FileNotFoundException` that has nothing to do with the real bug. Also,
+referencing an `XamlDesignContext`-typed local directly inside a `try`/`catch` block in the same
+method as other unrelated logic can surface a missing-assembly failure as an *unhandled* exception
+bypassing that same method's own `catch` (JIT compiles the whole method eagerly, including local
+variable types, before the method body starts executing) - move any such construction into its own
+small method so the call site's `try`/`catch` actually catches it.
+
+**Fix applied (2026-09-14):** option 1 below, implemented in `WpfSurfaceHostService.cs`. `ParseAppResources`
+now also returns the flattened app-dictionary XML text (`FlattenedXml`, captured right before
+`TryLoadAppResourcesAtRuntime`/the fallback path, whichever succeeds). `OpenCore` no longer feeds
+the page's raw `xaml` straight to `XamlDesignContext`; it first runs it through a new
+`PreparePageXaml(pageXaml, appResourcesXml, assemblyName)`, which (a) splices the flattened app
+dictionary into the page's own root-level `<Root.Resources><ResourceDictionary.MergedDictionaries>`
+as the FIRST entry (so `StaticResource` on any element, including the root, sees it during
+`XamlDesignContext`'s own parse - the whole point, since the page's own root-level Resources merge
+was previously being added only *after* parsing), and (b) - a bystander bug this same repro
+surfaced - also runs the page through the SAME `RewriteApplicationRelativePackUris` rewrite
+`ParseAppResources` already applied only to the App.xaml dictionary, since the page's own elements
+(e.g. `SettingsPage.xaml`'s `<Image Source="pack://application:,,,/Assets/AppIcons/...">`) need the
+identical assembly-qualifying rewrite and were rendering blank without it. Verified against the
+real `SettingsPage.xaml` in the running (Microsoft-WPF-backend) design surface: the `AppIcon` glyph
+and the About-section `Image` both now render identically to the real app.
+
+Two deploy gotchas hit while verifying, worth remembering for next time:
+1. **Two build targets, not one.** `WpfSurfaceHostService.cs` is source-linked into BOTH
+   `WpfDesign.SurfaceHost.csproj` (LibreWPF/non-Microsoft) and
+   `MicrosoftHost/SurfaceHost/MicrosoftWpfDesign.SurfaceHost.csproj` (compiled with
+   `MICROSOFT_WPF` defined) - which one is actually loaded depends on which backend is active
+   (`od.wpf-designer.status`'s `backend` field, or the child-log's `runtime=...` line). Rebuilding
+   only one leaves the other stale; rebuild whichever matches the backend under test (both, if
+   unsure).
+2. **The design host is a real OS child process, not in-process** (a generic-looking `dotnet.exe`/
+   ".NET Host" entry in Task Manager, not named after the project - `tasklist` by image name alone
+   misses it). It keeps the deployed DLL open for its whole lifetime, so a rebuild's `DeployToAddIns`
+   copy fails with `MSB3021`/`MSB3027` ("used by another process") unless that child - and usually
+   the parent `OpenDevelop.exe`, which can respawn it - are both killed first.
+
+**Two possible fixes, by size:**
+
+1. **Small, targeted (planned next):** teach `XamlDom`'s `StaticResourceExtension`/resource-lookup
+   code (or `WpfSurfaceHostService`, by inlining the flattened app dictionary directly into the
+   page's own root-level `.Resources` XAML node *before* handing it to `XamlDesignContext`, rather
+   than merging after parse) to fall back to `Application.Current.Resources` when the document's own
+   chain has nothing - mirrors real WPF's lookup order, touches only the resource-resolution path,
+   and leaves the rest of the vendored designer engine untouched.
+2. **Large, structural (not planned, recorded for future reference):** WPF is open source, so in
+   principle the whole hand-rolled `WpfDesign.XamlDom` parser could be replaced with the real
+   `System.Xaml` services (`XamlObjectWriter`/`XamlSchemaContext`) - this is architecturally what
+   Visual Studio/Blend's own Cider designer engine does, and would fix this class of gap for free
+   (real WPF's `StaticResource` resolution, including the `Application.Current.Resources` fallback,
+   would just work). The reason `XamlDom` exists as a separate hand-rolled parser at all, though, is
+   that a design surface needs a **bidirectional mapping between the live object graph and XAML
+   source text spans** - property-grid edits must localize back to a specific text range for
+   incremental rewrite (not whole-document re-serialization), and Undo/Redo needs to target specific
+   XAML nodes. Swapping the underlying parser to `System.Xaml` would mean rebuilding that
+   text-position mapping layer underneath `DesignItem`/`DesignItemProperty` from scratch - a rewrite
+   of the whole engine's foundation, not a parser swap. Worth revisiting only if this class of
+   "design-time resource/markup-extension semantics don't match runtime WPF" bug keeps recurring
+   often enough to justify the cost.
+
+## Outline pad missing `HeaderedContentControl.Header` content (2026-09-14)
+
+Found immediately after the fix above, in the same `SettingsPage.xaml`: the About section's
+`<Expander>` renders its `<Expander.Header>` (a `Grid` containing the now-fixed `Image` plus text)
+correctly on the design surface, but that whole subtree never appeared in the Outline pad.
+
+**Root cause.** `WpfSurfaceHostService.BuildNode` (same file) builds the outline strictly from each
+`DesignItem`'s `ContentProperty` (for `Expander`, that's `Content`, not `Header`) plus one existing
+special case, `AppendAttachedContextMenu`, for `ContextMenu` (which WPF also keeps outside the
+normal content tree). `Header` is a distinct property that `BuildNode` never walked at all -
+unrelated to `IsExpanded`/collapsed state, since a `HeaderedContentControl`'s header is always
+realized regardless of whether its Content area is expanded. So an element-valued Header was
+structurally invisible to the outline, independent of the pack-URI rendering bug above (rendering
+walks the real visual tree; the outline walks the DesignItem/logical tree - two separate code
+paths, which is why fixing one didn't touch the other).
+
+**Fix.** Added `AppendHeaderContent`, mirroring `AppendAttachedContextMenu`'s shape: reads
+`item.Properties["Header"]?.Value`, and when it's an element (not the far more common
+plain-string/DataTemplate header, which has no `DesignItem` value and is skipped), adds it as a
+child. Unlike ContextMenu, though, Header content is typically ordinary elements (`Grid`,
+`TextBlock`) indistinguishable at a glance from the owner's real Content sitting right next to it
+once flattened into the same tree - so this wraps the header's `BuildNode` result in a synthetic
+"Header"-typed grouping node first, giving the Outline pad something to label. That grouping node
+has no backing `DesignItem` and is deliberately left out of `pathToItem`; every RPC that resolves an
+element id (`SetProperty`, etc.) already reports "not found" gracefully for an unmapped id, so a
+user selecting the synthetic node client-side is harmless, not a crash.
+
+Verified against the real file via `od.wpf-designer.status`'s `outlineNames`: the About section's
+subtree now reads `..., Expander, ..., Header, Grid, Image, StackPanel, TextBlock, TextBlock` -
+`Header` distinguishing that `Grid` from the Content-side `Grid` two entries earlier in the same
+list, `Image` present as its child.
+
 ## Reference record for the isolation decision
 
 The links below are intentionally annotated and revision-pinned where possible. Public Microsoft

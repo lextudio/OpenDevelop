@@ -69,6 +69,18 @@
     <Project Path="src/AddIns/DisplayBindings/WpfDesign/WpfDesign.SurfaceHost.Remote/WpfDesign.SurfaceHost.Remote.csproj" />
     <Project Path="src/AddIns/DisplayBindings/WpfDesign/WpfDesign.SurfaceHost/WpfDesign.SurfaceHost.csproj" />
   </Folder>
+  <Folder Name="/src/AddIns/DisplayBindings/WpfDesign/MicrosoftHost/">
+    <!-- The genuine Microsoft-WPF design host (runs against the real, installed .NET Desktop
+         Runtime, never LibreWPF). Must be in this solution so dist.ps1's Build-Solution step
+         builds and deploys it via its own DeployToAddIns target - otherwise a packaged
+         distribution ships the LibreWPF host only, and a Microsoft-WPF project has no backend
+         to run under (see WpfSurfaceHostClient.LocateChildDll/StartAsync, which deliberately
+         fail rather than fall back to a different backend's host). -->
+    <Project Path="src/AddIns/DisplayBindings/WpfDesign/MicrosoftHost/Core/MicrosoftWpfDesign.Core.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/WpfDesign/MicrosoftHost/XamlDom/MicrosoftWpfDesign.XamlDom.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/WpfDesign/MicrosoftHost/Engine/MicrosoftWpfDesign.Engine.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/WpfDesign/MicrosoftHost/SurfaceHost/MicrosoftWpfDesign.SurfaceHost.csproj" />
+  </Folder>
   <Folder Name="/src/AddIns/DisplayBindings/MewUIDesigner/">
     <Project Path="src/AddIns/DisplayBindings/MewUIDesigner/MewUIDesigner.csproj" />
     <Project Path="src/AddIns/DisplayBindings/MewUIDesigner.Host/MewUIDesigner.Host.csproj" />

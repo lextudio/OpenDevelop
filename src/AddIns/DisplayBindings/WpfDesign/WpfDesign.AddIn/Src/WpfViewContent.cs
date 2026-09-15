@@ -187,7 +187,14 @@ namespace ICSharpCode.WpfDesign.AddIn
 				if (surfaceControl == null)
 				{
 					LoggingService.Info("WPF designer: acquiring shared surface host");
-					var acquiredClient = await WpfSurfaceHostClient.AcquireSharedAsync(WpfSurfaceHostClient.LocateChildDll(selectedBackend), CancellationToken.None);
+					// No fallback to a different backend: a WPF project must never be designed by
+					// the LibreWPF host, and vice versa - fail loudly instead of silently swapping.
+					var hostDllPath = WpfSurfaceHostClient.LocateChildDll(selectedBackend)
+						?? throw new InvalidOperationException(
+							$"Could not locate the {WpfSurfaceHostClient.GetBackendName(selectedBackend)} design host under this assembly's " +
+							$"{(selectedBackend == WpfSurfaceHostBackend.MicrosoftWpf ? "MicrosoftHost" : "Host")} subfolder. " +
+							"It must be built and deployed there before this backend can be used.");
+					var acquiredClient = await WpfSurfaceHostClient.AcquireSharedAsync(hostDllPath, CancellationToken.None);
 					LoggingService.Info($"WPF designer: acquired surface host pid={acquiredClient.ProcessId}");
 					if (generation != loadGeneration || IsDisposed) { acquiredClient.Dispose(); return; }
 					client = acquiredClient;

@@ -275,6 +275,27 @@ function Test-WindowsDistributionPayload {
     if (-not (Test-Path -LiteralPath $addIns)) { throw "Distribution payload has no AddIns directory: $PayloadRoot" }
     if (@(Get-ChildItem -LiteralPath $addIns -Recurse -File -Filter '*.addin').Count -eq 0) { throw "Distribution payload has no addin manifests: $addIns" }
 
+    # The WPF designer ships two mutually-exclusive out-of-process hosts - LibreWPF's own
+    # portable runtime (Host\) and the genuine Microsoft WPF host that runs against the
+    # machine's installed .NET Desktop Runtime (MicrosoftHost\). WpfSurfaceHostClient
+    # deliberately refuses to fall back from one to the other at runtime (see
+    # WpfSurfaceHostClient.StartAsync/AcquireSharedAsync), so a distribution missing either one
+    # would leave that backend's projects unable to open a designer at all - fail the package
+    # build now instead of shipping that silently.
+    $wpfDesignRoot = Join-Path $addIns 'DisplayBindings\WpfDesign'
+    foreach ($hostSpec in @(
+        @{ SubDir = 'Host';          Exe = 'WpfDesign.SurfaceHost.exe';          Backend = 'LibreWPF' },
+        @{ SubDir = 'MicrosoftHost'; Exe = 'MicrosoftWpfDesign.SurfaceHost.exe'; Backend = 'Microsoft WPF' }
+    )) {
+        $hostExe = Join-Path $wpfDesignRoot "$($hostSpec.SubDir)\$($hostSpec.Exe)"
+        if (-not (Test-Path -LiteralPath $hostExe)) {
+            throw "Distribution payload is missing the $($hostSpec.Backend) design host: $hostExe. " +
+                "Both WPF designer backends must be built and deployed - check that every " +
+                "src/AddIns/DisplayBindings/WpfDesign/MicrosoftHost/*.csproj project is referenced " +
+                "by OpenDevelop.Mvp.slnx."
+        }
+    }
+
     # PDBs, reference assemblies and foreign native assets are build-time artifacts. Their
     # presence means either an SDK target or the staging copy regressed, and makes the final ZIP
     # needlessly architecture/OS-agnostic rather than deployable.
@@ -299,6 +320,16 @@ function Test-WindowsDistributionZip {
         $prefix = "OpenDevelop-$Rid/"
         if (-not ($archive.Entries.FullName -contains "${prefix}OpenDevelop.exe")) { throw "ZIP lacks ${prefix}OpenDevelop.exe: $ZipPath" }
         if (-not ($archive.Entries.FullName | Where-Object { $_ -like "${prefix}AddIns/*.addin" })) { throw "ZIP lacks addin manifests: $ZipPath" }
+        # Mirror the WPF designer host check in Test-WindowsDistributionPayload - both backends
+        # must survive the staging/zip round-trip, not just be present in the staged payload dir.
+        foreach ($hostSpec in @(
+            @{ Path = "${prefix}AddIns/DisplayBindings/WpfDesign/Host/WpfDesign.SurfaceHost.exe";          Backend = 'LibreWPF' },
+            @{ Path = "${prefix}AddIns/DisplayBindings/WpfDesign/MicrosoftHost/MicrosoftWpfDesign.SurfaceHost.exe"; Backend = 'Microsoft WPF' }
+        )) {
+            if (-not ($archive.Entries.FullName -contains $hostSpec.Path)) {
+                throw "ZIP is missing the $($hostSpec.Backend) design host: $($hostSpec.Path) ($ZipPath)"
+            }
+        }
         $forbidden = $archive.Entries.FullName | Where-Object {
             $name = $_.ToLowerInvariant()
             $name.EndsWith('.pdb') -or $name.EndsWith('.dylib') -or $name.EndsWith('.so') -or
