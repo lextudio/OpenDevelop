@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 
 using ICSharpCode.Core;
 
@@ -144,9 +145,25 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 			// Other well-known system install locations, for visibility/selection even when they
 			// aren't the PATH default (same candidates MinimalMSBuildEngine used to probe
 			// one-at-a-time and stop at the first hit; here we want all of them).
+			//
+			// "dotnet\x64" (and, symmetrically, "dotnet\arm64") is where the .NET SDK installer puts
+			// a side-by-side SDK of a DIFFERENT architecture than the machine's native one - e.g.
+			// `winget install Microsoft.DotNet.SDK.10 --architecture x64` on this ARM64 machine
+			// installed to "Program Files\dotnet\x64\sdk\...", not under the native
+			// "Program Files\dotnet\sdk\..." picked up by the plain candidate above. This is exactly
+			// the root ResolveEffectiveSdkForInProcessHosting() needs when the native SDK's
+			// architecture doesn't match this process's own (see [[nugetsdkresolver-arch-mismatch]]) -
+			// without probing it explicitly, a side-by-side install like that is invisible to
+			// DiscoverSdks() entirely, even though `dotnet --list-sdks` (which walks a registered-
+			// install-location manifest, not just these fixed paths) does find it. See
+			// MSBuildInternals.NoCompatibleInProcessSdkFound for the consumer that needed this.
+			string programFilesDotnet = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "dotnet");
 			string[] systemCandidates = {
 				Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + "/.dotnet",
-				Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "dotnet"),
+				programFilesDotnet,
+				Path.Combine(programFilesDotnet, "x64"),
+				Path.Combine(programFilesDotnet, "arm64"),
+				Path.Combine(programFilesDotnet, "x86"),
 				"/usr/local/share/dotnet",
 				"/opt/homebrew/opt/dotnet/libexec",
 			};
@@ -242,8 +259,48 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 				DotnetExecutablePath = dotnetExe,
 				InstalledSdkVersions = versions,
 				HighestSdkVersion = versions[versions.Count - 1],
-				Origin = origin
+				Origin = origin,
+				Architecture = DetectHostArchitecture(dotnetExe)
 			};
+		}
+
+		/// <summary>
+		/// Reads a PE file's Machine field straight out of its header (offset given by the
+		/// e_lfanew pointer at 0x3C, PE signature + IMAGE_FILE_HEADER.Machine 4 bytes later) rather
+		/// than trusting file size/timestamp or assuming AnyCPU - the .NET host executable itself,
+		/// and some of the assemblies an SDK ships (e.g. Microsoft.Build.NuGetSdkResolver.dll,
+		/// built ReadyToRun), are architecture-specific even though most managed SDK assemblies are
+		/// portable IL. Returns null for an unrecognized/unreadable machine value rather than
+		/// guessing - callers must treat that as "unknown", not as a match.
+		/// </summary>
+		internal static Architecture? DetectHostArchitecture(string peFilePath)
+		{
+			try {
+				using var stream = File.OpenRead(peFilePath);
+				using var reader = new BinaryReader(stream);
+				if (stream.Length < 0x40)
+					return null;
+				stream.Position = 0x3C;
+				int peHeaderOffset = reader.ReadInt32();
+				if (peHeaderOffset <= 0 || peHeaderOffset + 6 > stream.Length)
+					return null;
+				stream.Position = peHeaderOffset + 4;
+				ushort machine = reader.ReadUInt16();
+				switch (machine) {
+					case 0x8664: // IMAGE_FILE_MACHINE_AMD64
+						return System.Runtime.InteropServices.Architecture.X64;
+					case 0xAA64: // IMAGE_FILE_MACHINE_ARM64
+						return System.Runtime.InteropServices.Architecture.Arm64;
+					case 0x014c: // IMAGE_FILE_MACHINE_I386
+						return System.Runtime.InteropServices.Architecture.X86;
+					case 0x01c4: // IMAGE_FILE_MACHINE_ARMNT
+						return System.Runtime.InteropServices.Architecture.Arm;
+					default:
+						return null;
+				}
+			} catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) {
+				return null;
+			}
 		}
 
 		/// <summary>
@@ -293,6 +350,52 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 				HighestSdkVersion = null,
 				Origin = DotNetSdkOrigin.System
 			};
+		}
+
+		/// <summary>
+		/// Like <see cref="ResolveEffectiveSdk()"/>, but restricted to SDKs whose host architecture
+		/// matches this OpenDevelop process's own (<see cref="RuntimeInformation.ProcessArchitecture"/>).
+		/// Use this - never <see cref="ResolveEffectiveSdk()"/> - for anything the IDE loads directly
+		/// into its own process (the embedded MSBuild engine's SdkResolvers, in particular): an
+		/// out-of-process "dotnet build" child can run under a different architecture than this
+		/// process just fine (it's a separate OS process), but a resolver DLL loaded in-process
+		/// cannot - a mismatched one is a ReadyToRun image the OS loader rejects outright, not a
+		/// slower/JIT fallback. Returns null when no discovered SDK matches this process's
+		/// architecture at all, which callers must treat as "no usable SDK" and surface to the user
+		/// rather than falling back to a mismatched one that will crash every SDK-style project load.
+		/// </summary>
+		public static DotNetSdkInfo ResolveEffectiveSdkForInProcessHosting()
+		{
+			return ResolveEffectiveSdkForInProcessHosting(DiscoverSdks());
+		}
+
+		internal static DotNetSdkInfo ResolveEffectiveSdkForInProcessHosting(IReadOnlyList<DotNetSdkInfo> discovered)
+		{
+			if (discovered == null)
+				throw new ArgumentNullException(nameof(discovered));
+
+			var processArchitecture = RuntimeInformation.ProcessArchitecture;
+			var compatible = discovered.Where(s => s.Architecture == processArchitecture).ToList();
+			if (compatible.Count == 0)
+				return null;
+
+			string selected = SelectedSdkRootPath;
+			if (!string.IsNullOrEmpty(selected)) {
+				var match = compatible.FirstOrDefault(s => string.Equals(s.RootPath, NormalizeRoot(selected), StringComparison.OrdinalIgnoreCase));
+				if (match != null)
+					return match;
+			}
+
+			var systemDefault = compatible
+				.Where(s => s.Origin == DotNetSdkOrigin.System)
+				.OrderByDescending(s => Version.TryParse(s.HighestSdkVersion?.Split('-')[0], out var v) ? v : new Version(0, 0))
+				.FirstOrDefault();
+			if (systemDefault != null)
+				return systemDefault;
+
+			return compatible
+				.OrderByDescending(s => Version.TryParse(s.HighestSdkVersion?.Split('-')[0], out var v) ? v : new Version(0, 0))
+				.First();
 		}
 
 		/// <summary>

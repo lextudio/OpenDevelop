@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Project.Sdk;
 using Microsoft.Build.Construction;
@@ -46,6 +47,16 @@ namespace ICSharpCode.SharpDevelop.Project
 		public readonly static StringComparer ConfigurationNameComparer = ConfigurationAndPlatform.ConfigurationNameComparer;
 		static bool msbuildEnvironmentInitialized;
 		
+		/// <summary>
+		/// Set once <see cref="InitializeMSBuildEnvironment"/> has run and found no .NET SDK whose
+		/// host architecture matches this process's own (<see cref="RuntimeInformation.ProcessArchitecture"/>).
+		/// Every SDK-style project load will fail in that state (there is no in-process-loadable
+		/// Microsoft.Build.NuGetSdkResolver.dll at all) - callers that open solutions/projects
+		/// should check this once and surface it to the user instead of letting it manifest only as
+		/// a buried "SDK resolver assembly ... could not be loaded" build-channel message.
+		/// </summary>
+		public static bool NoCompatibleInProcessSdkFound { get; private set; }
+
 		public static void InitializeMSBuildEnvironment()
 		{
 			if (msbuildEnvironmentInitialized)
@@ -65,9 +76,26 @@ namespace ICSharpCode.SharpDevelop.Project
 			// Homebrew split correctly; route through the single shared SDK-resolution service
 			// instead of this file's own, incomplete copy of the same logic (matching
 			// MinimalMSBuildEngine, which already made this switch).
-			var sdk = DotNetSdkService.ResolveEffectiveSdk();
-			if (sdk?.RootPath == null || sdk.HighestSdkVersion == null)
+			//
+			// Use the architecture-restricted resolver, not ResolveEffectiveSdk(): everything below
+			// (MSBuildToolsPath, and especially the SdkResolvers copy further down) gets loaded
+			// directly into THIS process, so an SDK whose own host is a different architecture is
+			// worse than useless here - Microsoft.Build.NuGetSdkResolver.dll is a ReadyToRun image
+			// built for that SDK's own architecture, and loading a mismatched one crashes every
+			// SDK-style project load ("Format of the executable (.exe) or library (.dll) is
+			// invalid") instead of merely failing to resolve. This was exactly how dist.ps1's
+			// cross-published OpenDevelop-win-x64 ended up shipping an ARM64 resolver DLL when
+			// built on this ARM64 dev machine - see the SharpDevelop.csproj comment on the (now
+			// removed) DeployNuGetSdkResolver*/ targets this replaces.
+			var sdk = DotNetSdkService.ResolveEffectiveSdkForInProcessHosting();
+			if (sdk?.RootPath == null || sdk.HighestSdkVersion == null) {
+				NoCompatibleInProcessSdkFound = true;
+				LoggingService.Error(
+					$"No installed .NET SDK matches this process's architecture ({RuntimeInformation.ProcessArchitecture}). " +
+					"SDK-style project loading (open/evaluate) will fail for every project until a matching-architecture " +
+					".NET SDK 10 (or newer) is installed - see the setup instructions.");
 				return;
+			}
 
 			foreach (var kv in DotNetSdkService.GetEnvironmentVariablesFor(sdk))
 				Environment.SetEnvironmentVariable(kv.Key, kv.Value);
@@ -101,6 +129,21 @@ namespace ICSharpCode.SharpDevelop.Project
 				Environment.GetEnvironmentVariable("MSBuildSDKsPath"),
 				Environment.GetEnvironmentVariable("MSBUILDADDITIONALSDKRESOLVERSFOLDER_NET"));
 
+			// MSBuild's SdkResolverLoader looks for "SdkResolvers\<name>\<name>.dll" next to whichever
+			// Microsoft.Build.dll is actually loaded in this process (this app's own bin/publish
+			// directory for the embedded engine) - not relative to $(MSBuildToolsPath)/DOTNET_ROOT -
+			// so the resolver DLL and its dependency closure still need to land there. Deploying
+			// this at runtime, from the architecture-matched `sdk` resolved above, replaces the old
+			// SharpDevelop.csproj build-time DeployNuGetSdkResolver*/ targets: those copied whatever
+			// $(MSBuildToolsPath) happened to be on the machine that BUILT/PUBLISHED OpenDevelop,
+			// which is only correct when that machine's own architecture happens to match the
+			// published RuntimeIdentifier - copying here instead, from the SDK this process itself
+			// resolved as architecture-compatible, is correct on every machine unconditionally and
+			// needs no packaging-time knowledge of the eventual RuntimeIdentifier at all.
+			//
+			// Always overwrite rather than skip-if-exists: a stale copy from an earlier run (e.g.
+			// before the user installed a newer, or a now-matching-architecture, SDK) must not win
+			// over the one this run just resolved as correct.
 			string binDir = Path.GetDirectoryName(typeof(MSBuildInternals).Assembly.Location);
 			if (!string.IsNullOrEmpty(binDir)) {
 				foreach (string dependency in new[] {
@@ -115,8 +158,16 @@ namespace ICSharpCode.SharpDevelop.Project
 				}) {
 					string source = Path.Combine(latestSdk, dependency);
 					string destination = Path.Combine(binDir, dependency);
-					if (!File.Exists(destination) && File.Exists(source))
-						File.Copy(source, destination);
+					if (!File.Exists(source))
+						continue;
+					try {
+						File.Copy(source, destination, overwrite: true);
+					} catch (IOException) {
+						// Destination locked (e.g. a previous OpenDevelop instance/child process
+						// still has it loaded) - keep whatever is already there rather than fail
+						// MSBuild environment init over a cosmetic refresh.
+					} catch (UnauthorizedAccessException) {
+					}
 				}
 			}
 		}

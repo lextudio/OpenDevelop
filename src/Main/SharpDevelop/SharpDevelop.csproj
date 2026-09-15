@@ -137,17 +137,21 @@
           DestinationFolder="$(TargetDir)"
           SkipUnchangedFiles="true" />
   </Target>
-  <!-- Microsoft.Build.Runtime copies the NuGet SDK-resolver manifest into SdkResolvers, but
-       the resolver DLL itself lives beside MSBuild.  The in-process project loader resolves
-       the manifest relative to the IDE executable, so deploy that DLL there as well.  Without
-       it, SDK-style projects (including the WinUI integration fixture) fail before a XAML
-       display binding can obtain their project context. -->
-  <Target Name="DeployNuGetSdkResolver" AfterTargets="Build">
-    <Copy SourceFiles="$(MSBuildToolsPath)\Microsoft.Build.NuGetSdkResolver.dll"
-          DestinationFolder="$(OutDir)"
-          SkipUnchangedFiles="true"
-          Condition="Exists('$(MSBuildToolsPath)\Microsoft.Build.NuGetSdkResolver.dll')" />
-  </Target>
+  <!-- Microsoft.Build.NuGetSdkResolver.dll is NOT bundled by this build/publish anymore - see
+       ICSharpCode.SharpDevelop.Project.MSBuildInternals.InitializeMSBuildEnvironment(). It is a
+       ReadyToRun image built for the architecture of whichever SDK produced it, so a copy taken at
+       build/publish time (from $(MSBuildToolsPath) on THIS machine) is only correct when this
+       machine's own architecture happens to match the eventual $(RuntimeIdentifier) - cross-
+       publishing the win-x64 distribution from an ARM64 dev machine (as dist.ps1 does) shipped the
+       ARM64 copy, which crashes every SDK-style project load at runtime with "The SDK resolver
+       assembly ... could not be loaded ... Format of the executable (.exe) or library (.dll) is
+       invalid" (a mismatched R2R image fails the OS loader outright - no IL/JIT fallback). Instead,
+       InitializeMSBuildEnvironment() deploys this DLL itself at first run, sourced from a .NET SDK
+       it has confirmed matches the actually-running process's architecture
+       (DotNetSdkService.ResolveEffectiveSdkForInProcessHosting()) - correct on every machine
+       unconditionally, with no packaging-time knowledge of the eventual RuntimeIdentifier needed.
+       When no architecture-matching SDK is installed at all, that same code logs
+       NoCompatibleInProcessSdkFound instead of shipping something that would crash. -->
   <!-- Microsoft.CSharp.CurrentVersion.targets derives CSharpCoreTargetsPath from the hosted
        engine's own tool directory. Ship the Roslyn targets/compiler closure beside that engine,
        otherwise SDK project evaluation succeeds through the resolver but fails on its next
@@ -161,18 +165,11 @@
           SkipUnchangedFiles="true" />
   </Target>
   <!-- dotnet publish does not mirror $(OutDir) - Publish only stages files explicitly marked
-       ResolvedFileToPublish, so the two AfterTargets="Build" copies above (consumed by a dev/debug
-       launch out of bin\) never reach a published app's own publish\ directory. Repeat both copies
-       into $(PublishDir) so a distributed build (dist.ps1's packaged OpenDevelop.exe, launched
-       without a dev launch's MSBuild environment variables pointing at the real installed SDK)
-       resolves SDK-style projects the same way a dev launch does, instead of silently failing to
-       an empty ErrorProject - the symptom was the Projects Pad showing no child nodes at all. -->
-  <Target Name="DeployNuGetSdkResolverToPublish" AfterTargets="Publish"
-          Condition="'$(PublishDir)' != '' And Exists('$(MSBuildToolsPath)\Microsoft.Build.NuGetSdkResolver.dll')">
-    <Copy SourceFiles="$(MSBuildToolsPath)\Microsoft.Build.NuGetSdkResolver.dll"
-          DestinationFolder="$(PublishDir)"
-          SkipUnchangedFiles="true" />
-  </Target>
+       ResolvedFileToPublish, so the AfterTargets="Build" Roslyn copy above (consumed by a dev/debug
+       launch out of bin\) never reaches a published app's own publish\ directory. Repeat it into
+       $(PublishDir) so a distributed build (dist.ps1's packaged OpenDevelop.exe) resolves SDK-style
+       projects the same way a dev launch does. (The matching NuGetSdkResolver copy used to live
+       here too - see the comment above DeployRoslynBuildTools for why that one moved to runtime.) -->
   <Target Name="DeployRoslynBuildToolsToPublish" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
     <ItemGroup>
       <_RoslynBuildToolsPublish Include="$(MSBuildToolsPath)\Roslyn\**\*" />

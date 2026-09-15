@@ -179,12 +179,35 @@ namespace ICSharpCode.SharpDevelop.Project
 			fileName = MigrateToSlnxIfPossible(fileName);
 			ISolution solution;
 			using (var progress = SD.StatusBar.CreateProgressMonitor()) {
-				
+
 				solution = LoadSolutionFile(fileName, progress);
-				
+
 				this.CurrentSolution = solution;
 			}
+			WarnOnceIfNoCompatibleInProcessSdk();
 			OnSolutionOpened(solution);
+		}
+
+		static bool warnedAboutMissingCompatibleSdk;
+
+		/// <summary>
+		/// Every SDK-style project silently ends up with no children/items in this state - see
+		/// MSBuildInternals.NoCompatibleInProcessSdkFound - and the only trace otherwise is a build-
+		/// channel message easy to miss ("The SDK resolver assembly ... could not be loaded").
+		/// Surface it once per session, at the point a user actually notices (opening a solution),
+		/// rather than as an early-startup popup before they even have a solution open.
+		/// </summary>
+		void WarnOnceIfNoCompatibleInProcessSdk()
+		{
+			if (!MSBuildInternals.NoCompatibleInProcessSdkFound || warnedAboutMissingCompatibleSdk)
+				return;
+			warnedAboutMissingCompatibleSdk = true;
+			MessageService.ShowWarningFormatted(
+				"No installed .NET SDK matches this application's own architecture ({0}). " +
+				"SDK-style projects (most modern .csproj/.vbproj files) will show no items until a " +
+				"matching-architecture .NET SDK 10 (or newer) is installed side-by-side with any " +
+				"SDKs already on this machine.",
+				System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture);
 		}
 		
 		/// <summary>
