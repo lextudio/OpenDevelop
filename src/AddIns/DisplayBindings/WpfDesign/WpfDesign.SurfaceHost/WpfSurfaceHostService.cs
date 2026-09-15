@@ -15,6 +15,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 
 #if MICROSOFT_WPF
 using System.Windows.Interop;
@@ -60,6 +61,15 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 
 		XamlDesignContext? current;
 		Dictionary<string, DesignItem> pathToItem = new(StringComparer.Ordinal);
+		/// <summary>Expanders <see cref="Select"/> forced open because the current selection sits
+		/// inside them while they were authored collapsed (Blend's "selecting inside a collapsed
+		/// Expander temporarily opens it" behavior) - keyed by DesignItem so the override survives a
+		/// selection change even though the element has no path-based identity of its own beyond
+		/// that. Reverted to the recorded original value (always <c>false</c> - only ever populated
+		/// for an Expander this method itself found collapsed) on every subsequent call, before
+		/// applying the new selection's own overrides, so leftover state from the previous selection
+		/// never lingers past one round trip.</summary>
+		readonly Dictionary<DesignItem, bool> forcedExpansions = new();
 		double lastWidth = 800;
 		double lastHeight = 600;
 		#if MICROSOFT_WPF
@@ -854,6 +864,152 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				return state;
 			});
 
+		/// <summary>Notifies the child of the current selection so it can temporarily expand any
+		/// collapsed <see cref="Expander"/> ancestor of the selected element (including the element
+		/// itself, if it is one) - the design-time-only equivalent of Blend's "selecting inside a
+		/// collapsed Expander auto-expands it" behavior. The reverse happens automatically on the
+		/// very next call: every override from the PREVIOUS selection is undone first, before this
+		/// selection's own overrides are applied, so moving the selection elsewhere (or clearing it,
+		/// <paramref name="elementId"/> null) always restores whatever was force-expanded. Mutates
+		/// only the live CLR <c>Expander.IsExpanded</c> property directly - never
+		/// <c>DesignItem.Properties["IsExpanded"]</c> - so this never touches the XAML text, marks
+		/// the document dirty, or creates an undo entry; it is purely a design-time render aid.
+		/// A no-op re-render (Accepted=true, unchanged Render) when nothing needed to change.</summary>
+		[JsonRpcMethod("design/select")]
+		public DesignerSessionState Select(long baseVersion, string? elementId)
+			=> dispatcher.Dispatch(() => {
+				if (RejectIfStale(baseVersion) is { } stale)
+					return stale;
+				var state = NewState(baseVersion);
+				var changed = RevertForcedExpansions();
+				if (elementId != null && pathToItem.TryGetValue(elementId, out var item))
+					changed |= ExpandCollapsedAncestors(item);
+				if (changed)
+				{
+					// The Fluent Expander style's collapse transition is genuinely animated: its
+					// content Border's Visibility only flips Visible -> Collapsed via a
+					// DiscreteObjectKeyFrame at KeyTime=0:0:0.2 (its paired width-collapse animation
+					// runs 0:0:0.333 total) - expand, by contrast, snaps to Visible at KeyTime=0.
+					// Setting IsExpanded synchronously above starts that trigger's Storyboard but does
+					// not complete it: a Measure/Arrange/UpdateLayout pass (what RebuildTreeAndRender
+					// does below) reflects layout, not media-timeline progress, so a render taken
+					// immediately after collapsing caught the animation mid-flight (still expanded)
+					// even though the property change and forcedExpansions bookkeeping were both
+					// already correct - confirmed by tracing forcedExpansions across two live
+					// selections rather than guessing from the style XAML alone. Pumping the
+					// dispatcher for longer than that animation's total duration lets its real
+					// wall-clock-driven media clock actually finish before the frame is captured.
+					// This deliberately blocks the RPC response by that long - acceptable for a
+					// design-time selection aid, matching Blend's own visible (non-instant)
+					// expand/collapse transition.
+					PumpDispatcherFor(TimeSpan.FromMilliseconds(400));
+					RebuildTreeAndRender(state);
+				}
+				state.Accepted = true;
+				return state;
+			});
+
+		/// <summary>Blocks the calling thread for <paramref name="duration"/> while still pumping
+		/// this thread's <see cref="Dispatcher"/> message queue (so this dispatcher's own composition/
+		/// media-timeline work - the WPF thing that actually advances a running Storyboard's clock -
+		/// keeps running), unlike a plain <see cref="Thread.Sleep(TimeSpan)"/> which would freeze this
+		/// thread's own dispatcher and starve the very animation being waited on.</summary>
+		static void PumpDispatcherFor(TimeSpan duration)
+		{
+			var frame = new DispatcherFrame();
+			var timer = new DispatcherTimer(DispatcherPriority.Background) { Interval = duration };
+			timer.Tick += (_, _) => {
+				timer.Stop();
+				frame.Continue = false;
+			};
+			timer.Start();
+			Dispatcher.PushFrame(frame);
+		}
+
+		/// <summary>Restores every Expander this method previously forced open back to collapsed
+		/// (the only value ever recorded - see <see cref="forcedExpansions"/>) and clears the set.
+		/// Returns whether anything was actually reverted, so <see cref="Select"/> knows whether a
+		/// re-render is needed even when the new selection introduces no override of its own.</summary>
+		bool RevertForcedExpansions()
+		{
+			if (forcedExpansions.Count == 0)
+				return false;
+			foreach (var expanderItem in forcedExpansions.Keys)
+			{
+				if (expanderItem.View is Expander expander)
+					expander.IsExpanded = false;
+			}
+			forcedExpansions.Clear();
+			RestoreRootSizeOverride();
+			return true;
+		}
+
+		/// <summary>Walks from <paramref name="item"/> up through its DesignItem ancestor chain
+		/// (<see cref="DesignItem.Parent"/>, which crosses an <c>Expander.Header</c> exactly like it
+		/// crosses <c>Content</c> - both are ordinary XAML parent/child relationships regardless of
+		/// which property holds the child), force-expanding every collapsed <see cref="Expander"/>
+		/// found along the way (the item itself included, so selecting a collapsed Expander directly
+		/// also expands it). Records each one in <see cref="forcedExpansions"/> for
+		/// <see cref="RevertForcedExpansions"/> to undo later.</summary>
+		bool ExpandCollapsedAncestors(DesignItem item)
+		{
+			var changed = false;
+			for (var current = item; current != null; current = current.Parent)
+			{
+				if (current.View is Expander { IsExpanded: false } expander)
+				{
+					expander.IsExpanded = true;
+					forcedExpansions[current] = false;
+					changed = true;
+				}
+			}
+			if (changed)
+				OverrideRootSizeForExpansion();
+			return changed;
+		}
+
+		double? savedRootHeight;
+
+		/// <summary>Temporarily clears the design root's own explicit <c>Height</c> (to
+		/// <see cref="double.NaN"/>, i.e. WPF's "Auto") for as long as something is force-expanded.
+		/// Needed because the root is not a bare Page/UserControl/Window - the vendored
+		/// <c>PageClone</c>/<c>WindowClone</c> wrapper copies the document's <c>d:DesignWidth</c>/
+		/// <c>d:DesignHeight</c> hints (WPFGallery's SettingsPage.xaml declares
+		/// <c>d:DesignHeight="450"</c>) onto the root as literal, EXPLICIT <c>Height</c>/<c>Width</c>
+		/// values. An element with an explicit size always reports exactly that size as its own
+		/// DesiredSize from Measure, for ANY available-size constraint including
+		/// <see cref="double.PositiveInfinity"/> - so no amount of "measure unconstrained to learn
+		/// the natural size" in <see cref="RebuildTreeAndRender"/> could ever see past it: the probe
+		/// this method makes possible was already correct, it just needed the root to not have an
+		/// explicit size fighting it. Confirmed live via a temporary diagnostic before landing this -
+		/// the probe reported exactly the pinned d:DesignHeight/Width every time, never the taller
+		/// content actually rendered.
+		///
+		/// Height only, deliberately - clearing Width too was tried and reverted: an unconstrained
+		/// probe measure on the WIDTH axis let non-wrapping content (a Focusable="False" TextBox
+		/// showing a literal git-clone command, in SettingsPage's own case) report an enormous
+		/// natural width nothing actually needed, ballooning the render to ~1470px wide from a
+		/// nominal 800. Expanding an Expander is a vertical-growth scenario in every real case seen
+		/// so far - Width stays pinned to its own d:DesignWidth throughout.</summary>
+		void OverrideRootSizeForExpansion()
+		{
+			if (savedRootHeight != null)
+				return;
+			if (current?.RootItem?.View is not FrameworkElement root)
+				return;
+			savedRootHeight = root.Height;
+			root.Height = double.NaN;
+		}
+
+		void RestoreRootSizeOverride()
+		{
+			if (savedRootHeight == null)
+				return;
+			if (current?.RootItem?.View is FrameworkElement root)
+				root.Height = savedRootHeight!.Value;
+			savedRootHeight = null;
+		}
+
 		/// <summary>Default size for a newly added element - DesignerToolboxItemInfo carries no
 		/// size and IDesignHostClient.AddElementAsync's signature has no width/height parameters
 		/// either (matching WinForms/WinUI, which use their own runtime's default-size
@@ -1535,11 +1691,39 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				// Arranging at DesiredSize keeps the root's offset at (0,0), which is also what
 				// a design surface wants: show the design at its natural/declared size and let
 				// the host's own canvas letterbox around it (DesignViewport/DesignerCanvas).
-				root.Measure(new Size(lastWidth, lastHeight));
+				//
+				// A page/UserControl/Window root has no natural HEIGHT of its own - Measure at
+				// (lastWidth, lastHeight) always reports DesiredSize.Height == that constraint,
+				// because a Stretch-aligned root (and any ScrollViewer inside it) just fills whatever
+				// vertical space it is given rather than growing to fit its content. That is normally
+				// fine (a design surface showing "the declared/nominal size" is the point), but it
+				// means content that only needs MORE room at this exact moment - e.g. Select's
+				// Expander auto-expand just added a tall child inside SettingsPage's own
+				// <ScrollViewer> - gets silently clipped by that ScrollViewer's internal scrolling
+				// instead of ever reaching the rendered bitmap at all: no amount of scrolling the
+				// IDE's own design canvas can reveal pixels that were never rendered in the first
+				// place. Probe with an unconstrained-height Measure first to learn how tall the
+				// content genuinely wants to be right now (a ScrollViewer given infinite available
+				// height has no need to clip, so it reports its child's real DesiredSize.Height
+				// instead of virtualizing it), and only grow past the nominal lastHeight when that
+				// probe says the content actually needs more - so an ordinary, nothing-expanded
+				// render measures identically to before.
+				//
+				// Width is NOT probed the same way - see OverrideRootSizeForExpansion's own doc
+				// comment for why an unconstrained WIDTH probe is actively harmful (non-wrapping
+				// content reporting an enormous natural width nothing needed). Width stays pinned to
+				// lastWidth unconditionally; only Select's temporary Height override
+				// (OverrideRootSizeForExpansion) ever lets this probe see past the root's own
+				// explicit d:DesignHeight-derived size.
+				root.Measure(new Size(lastWidth, double.PositiveInfinity));
+				var natural = root.DesiredSize;
+				var effectiveHeight = double.IsInfinity(natural.Height) || double.IsNaN(natural.Height)
+					? lastHeight : Math.Max(lastHeight, natural.Height);
+				root.Measure(new Size(lastWidth, effectiveHeight));
 				var desired = root.DesiredSize;
 				root.Arrange(new Rect(0, 0,
 					desired.Width > 0 ? desired.Width : lastWidth,
-					desired.Height > 0 ? desired.Height : lastHeight));
+					desired.Height > 0 ? desired.Height : effectiveHeight));
 				root.UpdateLayout();
 			}
 			state.Tree = BuildNode(current.RootItem, current.RootItem, "");

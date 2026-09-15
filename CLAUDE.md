@@ -375,6 +375,46 @@ MSBuild:
   isn't present.
 - The main app still builds normally with `dotnet build src/Main/SharpDevelop/SharpDevelop.csproj -c Debug`.
 
+## Changing the WPF designer host — rebuild THREE separate places, not one
+
+A change to `WpfSurfaceHostService.cs` (out-of-process WPF design host) or
+`WpfSurfaceDesignerControl.cs`/`WpfSurfaceHostClient.cs` (client side) needs a rebuild of every
+piece it touches — `dotnet build src/Main/SharpDevelop/SharpDevelop.csproj` alone silently misses
+most of them. Confirmed the hard way adding a new `design/select` RPC end to end: each of the four
+traps below looked like a different bug (`RemoteMethodNotFoundException`, a build that "succeeds"
+against stale output, a client change with no visible effect) until diagnosed one at a time.
+
+1. **`WpfSurfaceHostService.cs` is compiled into two separate assemblies** — source-linked into
+   both `WpfDesign.SurfaceHost.csproj` (LibreWPF/non-Microsoft) and
+   `MicrosoftHost/SurfaceHost/MicrosoftWpfDesign.SurfaceHost.csproj` (`MICROSOFT_WPF` defined).
+   Check `od.wpf-designer.status`'s `backend` field or the child-log's `runtime=...` line to know
+   which one is actually loaded, and rebuild that one (both, if unsure).
+2. **`MultiDocumentWpfSurfaceHostService.cs` is a third, hand-maintained whitelist wrapper** in
+   front of `WpfSurfaceHostService` — it forwards each RPC name to the per-document instance one
+   method at a time. A new `[JsonRpcMethod]` added only to `WpfSurfaceHostService` compiles clean
+   and even reflects correctly off that class directly, but StreamJsonRpc's actual
+   `AddLocalRpcTarget` target is the *wrapper*, so the method is invisible to real callers
+   (`RemoteMethodNotFoundException`) until a matching one-line forwarding method is added there too.
+3. **The design host is a genuine separate OS process, not in-process** — a generic `dotnet.exe`/
+   ".NET Host" Task Manager entry, not named after the project, kept alive across app restarts by a
+   `SharedDesignerHostPool` keyed by (host DLL path, timeout, architecture). It does **not** restart
+   just because `OpenDevelop.exe` was killed and relaunched, and does not reload its DLL just
+   because the file on disk changed. Kill every lingering `dotnet.exe` (not just the visible
+   `OpenDevelop.exe`) before trusting that a rebuild actually reached the running host — a
+   subsequent build's `MSB3021`/`MSB3027` "file in use" error is a useful tell (it names the exact
+   locking PID), but the build can also *succeed* against a stale deploy if nothing currently locks
+   that file, which reads exactly like an incremental-build cache bug.
+4. **The client addin (`WpfDesign.AddIn.csproj`, `OpenDevelopAddinKind=InProcess`) is not
+   referenced by `SharpDevelop.csproj` at all** — it's deployed to `AddIns/` and loaded as a plugin
+   at runtime. Rebuilding the shell (or the `*.SurfaceHost*` projects) never touches it; a
+   client-side change (`WpfSurfaceDesignerControl.cs`, `WpfSurfaceHostClient.cs`,
+   `WpfViewContent.cs`) needs its own explicit `dotnet build
+   src/AddIns/DisplayBindings/WpfDesign/WpfDesign.AddIn/WpfDesign.AddIn.csproj`.
+
+When a fix seems to have "no effect" after a clean rebuild, verify all four independently rather
+than guessing which one is stale — cheapest check: kill every `dotnet.exe`, rebuild the specific
+project that owns the changed file, relaunch, and re-test before touching anything else.
+
 ### A bad `librewpf.transport` package breaks WPF startup — two distinct failure shapes
 
 Everything the app loads for WPF comes from the `librewpf.transport` package. A build only copies

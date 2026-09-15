@@ -54,10 +54,23 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		// A TextBox (not a TextBlock) so a long diagnostic message can be selected/copied out of
 		// the app - the same reasoning WinUIXamlDesignerViewContent's own status control used to
 		// have before every backend's status bar was unified into this shared control.
+		// Background is NOT Transparent (as it once was): this row shares `root`'s Grid cell
+		// stack with the empty-canvas EdgePattern (see the constructor's own comment on
+		// SetResourceReference(Panel.BackgroundProperty, "EdgePattern") below), which now that it
+		// actually renders (see wpf-designer.md's 2026-09-14 EdgePattern entry) would otherwise show
+		// its dot pattern straight through this status strip - IDE chrome, not part of the design
+		// canvas, so it should look like the toolbar above it, not like the canvas backdrop.
+		//
+		// The 8/4px spacing is Padding, NOT Margin: a Margin sits OUTSIDE the TextBox's own
+		// rendered bounds (and therefore outside its Background), leaving a thin strip of the
+		// Grid cell - still row 2, still painted by `root`'s EdgePattern behind it - uncovered
+		// around every edge of the text. Padding is drawn inside the control's own Border/
+		// Background, so the TextBox (Stretch-aligned by default, same as any Control) now fully
+		// covers its Grid cell edge to edge with no gap left for the pattern to show through.
 		readonly TextBox statusBar = new() {
-			Margin = new Thickness(8, 4, 8, 4), TextWrapping = TextWrapping.Wrap,
+			Padding = new Thickness(8, 4, 8, 4), TextWrapping = TextWrapping.Wrap,
 			IsReadOnly = true, IsReadOnlyCaretVisible = true, BorderThickness = new Thickness(0),
-			Background = Brushes.Transparent, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+			VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
 			MaxHeight = 200, FontSize = 11
 		};
 		// Shared "please wait" chrome for the async acquire/open/update round-trip every
@@ -162,6 +175,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			// they switch with the IDE. The design theme only drives the checked-button highlight
 			// below (ApplyDesignTheme).
 			toolbar.SetResourceReference(Panel.BackgroundProperty, "ToolWindowBackground");
+			statusBar.SetResourceReference(Control.BackgroundProperty, "ToolWindowBackground");
 			ZoomCombo.SetResourceReference(Control.ForegroundProperty, "Foreground");
 			DesignSizeCombo.SetResourceReference(Control.ForegroundProperty, "Foreground");
 			fitButton.SetResourceReference(Control.ForegroundProperty, "Foreground");
@@ -173,7 +187,16 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			// The empty-canvas edge follows the IDE theme via the semantic theme's "EdgePattern"
 			// key (Themes/Theme.Light.xaml / Theme.Dark.xaml each define their own), so a theme
 			// switch is picked up automatically by the DynamicResource.
-			SetResourceReference(BackgroundProperty, "EdgePattern");
+			//
+			// Set on `root` (the actual Grid), NOT on `this.Background` - DesignerCanvas is a plain
+			// ContentControl with no ControlTemplate of its own, so it renders with WPF's built-in
+			// default template (essentially just a bare ContentPresenter, no Border reading
+			// Background via TemplateBinding). Control.Background only has any visual effect when
+			// some template element is actually bound to it; the default one isn't, so setting it on
+			// `this` was a silent no-op - the resource resolved fine, nothing ever painted it. A
+			// Panel's own Background (Grid included) is drawn directly by the panel itself, template
+			// or not, which is why moving the same reference here actually shows the pattern.
+			root.SetResourceReference(Panel.BackgroundProperty, "EdgePattern");
 		}
 
 		/// <summary>Where the backend mounts its rendered surface (frame + selection + gestures).</summary>

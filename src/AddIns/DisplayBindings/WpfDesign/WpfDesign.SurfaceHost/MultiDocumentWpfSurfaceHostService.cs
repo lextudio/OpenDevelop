@@ -72,6 +72,8 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	public DesignerSessionState Rename(string sessionId, string documentId, long baseVersion, string elementId, string newName) => Checked(sessionId, documentId).Rename(baseVersion, elementId, newName);
 	[JsonRpcMethod("design/theme")]
 	public DesignerSessionState SetTheme(string sessionId, string documentId, long baseVersion, string theme) => Checked(sessionId, documentId).SetTheme(baseVersion, theme);
+	[JsonRpcMethod("design/select")]
+	public DesignerSessionState Select(string sessionId, string documentId, long baseVersion, string? elementId) => Checked(sessionId, documentId).Select(baseVersion, elementId);
 
 	[JsonRpcMethod("ping")]
 	public void Ping() { }

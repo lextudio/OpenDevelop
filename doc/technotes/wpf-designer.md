@@ -2106,6 +2106,191 @@ subtree now reads `..., Expander, ..., Header, Grid, Image, StackPanel, TextBloc
 `Header` distinguishing that `Grid` from the Content-side `Grid` two entries earlier in the same
 list, `Image` present as its child.
 
+## Blend-style "select inside a collapsed Expander auto-expands it" (2026-09-14)
+
+Requested directly: Blend temporarily expands a collapsed `Expander` when the selection lands
+inside it (or on it directly), and collapses it again once selection moves elsewhere, so its
+contents can be edited without a separate manual expand/collapse step. Implemented end to end for
+WPF's out-of-process design host as a first pass, scoped to `Expander` only per the request (not
+generalized to `TabControl`'s "auto-switch to the tab holding the selection" yet, which has the
+same underlying shape - see the "Case study" entry above for that control's own collapsed-content
+gap).
+
+**Design.** New `design/select` RPC (`WpfSurfaceHostService.Select`): reverts every `Expander` the
+*previous* call force-expanded back to collapsed, then walks the newly-selected `DesignItem`'s
+ancestor chain (`DesignItem.Parent` - crosses an `Expander.Header` exactly like it crosses
+`Content`, both being ordinary XAML parent/child links regardless of which property holds the
+child) force-expanding any collapsed `Expander` found (the selected item itself included, so
+selecting the `Expander` directly also expands it). Mutates only the live CLR
+`Expander.IsExpanded` property - never `DesignItem.Properties["IsExpanded"]` - so it never touches
+XAML text, marks the document dirty, or creates an undo entry; purely a render aid, tracked in a
+`Dictionary<DesignItem, bool> forcedExpansions` keyed by DesignItem (its only recorded value is
+always `false`, the one state a reverted Expander returns to).
+
+Client-side, every existing `SelectionChanged` raise site (marquee-select, Ctrl-click,
+`HitTestAndSelect`, toolbox-drop, the Outline pad, `SetMultiSelection`, property-pad edits,
+`CommitDelete` - eight sites total in `WpfSurfaceDesignerControl.cs`) now funnels through one new
+`NotifySelectionChanged()` instead of invoking the event directly, which raises it as before and
+then blocking-round-trips the new selection to `design/select` (matching `CommitBounds`/
+`HitTestAndSelect`'s own established reasoning for why a blocking call, not an awaited
+continuation, is required from a WPF dispatcher-thread caller here - see their doc comments).
+Deliberately NOT hooked into `RestoreSelection` itself: `Show()` calls that after every render for
+reasons unrelated to a selection change (a bounds drag, a property edit), so hooking there would
+round-trip needlessly on every one of those, and `Select`'s own re-render would re-enter `Show`,
+which calls `RestoreSelection` again - unbounded recursion. A no-op response (no `Render` payload -
+the common case, since most selections touch no Expander) is deliberately never passed to `Show`,
+which would otherwise misread the absence of a Render payload as "nothing rendered yet" and clear
+the canvas.
+
+**Three real bugs found only by testing the actual round trip, each invisible from reading the code
+in isolation:**
+
+1. **`WpfSurfaceHostService.cs` is compiled into TWO separate assemblies** (source-linked into both
+   `WpfDesign.SurfaceHost.csproj` - LibreWPF/non-Microsoft - and
+   `MicrosoftHost/SurfaceHost/MicrosoftWpfDesign.SurfaceHost.csproj`, `MICROSOFT_WPF` defined) -
+   already known from the earlier `PreparePageXaml` entry, but this feature needed the SECOND
+   independent lesson: **`MultiDocumentWpfSurfaceHostService.cs` is a third, hand-maintained
+   whitelist wrapper** in front of `WpfSurfaceHostService` that forwards each RPC name to the
+   matching per-document instance one method at a time. Adding a new `[JsonRpcMethod]` to
+   `WpfSurfaceHostService` alone compiles clean and even logs correctly from a diagnostic placed in
+   its own constructor - but the actual `AddLocalRpcTarget` target StreamJsonRpc attaches to is the
+   *wrapper*, so the new method is invisible to callers (`RemoteMethodNotFoundException`) until a
+   matching forwarding method is added there too.
+2. **The out-of-process design host is a genuine separate OS process** (a generic `dotnet.exe`/
+   ".NET Host" Task Manager entry, not named after the project) held alive by a
+   `SharedDesignerHostPool` keyed by (host DLL path, timeout, architecture) - it does **not**
+   restart just because `OpenDevelop.exe` (the parent) was killed and relaunched, and does not
+   reload its DLL just because the file on disk changed. A `MSB3021`/`MSB3027` "file in use" copy
+   failure during the NEXT build is actually useful here - it names the exact locking PID - but the
+   build can also *succeed* against a stale deploy if nothing currently holds that specific file
+   locked, which is what made this so easy to misdiagnose as an incremental-build cache bug at
+   first. Kill every lingering `dotnet.exe` (not just the visible `OpenDevelop.exe`) before trusting
+   a rebuild actually reached the running host.
+3. **The client addin (`WpfDesign.AddIn.csproj`, `OpenDevelopAddinKind=InProcess`) is not referenced
+   by `SharpDevelop.csproj` at all** - it is deployed to `AddIns/` and loaded as a plugin at
+   runtime, so rebuilding the main shell project (or `AddIns/DisplayBindings/WpfDesign/*.SurfaceHost*`
+   projects) never touches it. A client-side change (`WpfSurfaceDesignerControl.cs`,
+   `WpfSurfaceHostClient.cs`) needs its own explicit build of `WpfDesign.AddIn.csproj`.
+
+**A fourth issue was a real product bug, not a build/deploy trap**, and needed live evidence to
+even see: after fixing all three of the above, expanding worked but the reverse - selecting
+something outside the Expander - visibly **expanded** it instead of collapsing it, and selecting
+the Expander itself collapsed it: fully inverted from the intended behavior. Tracing
+`forcedExpansions.Count` before/after across a live two-step selection sequence (temporary
+`Console.Error.WriteLine`s in `Select`, and `LoggingService.Warn` around the client's
+`SelectAsync`/`Show` call) showed the server-side bookkeeping was completely correct every time
+(count went 1 -> 0 on the reverting call, `RebuildTreeAndRender` genuinely ran, the client received
+`hasRender=true` and called `Show`) - yet the exported frame still showed the pre-revert
+(expanded) state. The mismatch was real but had nothing to do with any of this method's own logic:
+**the Fluent `Expander` style's collapse transition is a genuine, running animation**
+(`PresentationFramework.Fluent/Styles/Expander.xaml`: `MultiTrigger.ExitActions` plays a Storyboard
+whose `ObjectAnimationUsingKeyFrames` on the content `Border`'s `Visibility` holds `Visible` until
+`KeyTime="0:0:0.2"` before switching to `Collapsed`, alongside a paired width-collapse animation
+running `0:0:0.333` total) - while the *expand* trigger's own Storyboard snaps `Visibility` to
+`Visible` at `KeyTime="0"`. Setting `IsExpanded` starts that Storyboard but a synchronous
+`Measure`/`Arrange`/`UpdateLayout` pass reflects layout, not elapsed wall-clock media-timeline time,
+so a render taken immediately after collapsing catches the animation still mid-flight - while
+expanding, whose own trigger has no such delay, looks instant by comparison. This asymmetry (instant
+show, delayed hide) is a common toolkit convention (WinUI's `SettingsExpander` does the same), not a
+one-off; expect it again in any future design-time-render-immediately-after-a-property-change
+feature.
+
+**Fix**: `PumpDispatcherFor(TimeSpan)` in `WpfSurfaceHostService.cs` - blocks the calling thread for
+a fixed duration (400ms, comfortably past the animation's 333ms) via a `DispatcherFrame`/
+`DispatcherTimer` pair rather than `Thread.Sleep`, specifically because `Thread.Sleep` would freeze
+this thread's own `Dispatcher` and starve the very media clock the wait exists to let finish. Called
+only when `changed` is true (an Expander actually toggled), right before `RebuildTreeAndRender`, so
+a selection change that touches no Expander pays no extra latency at all.
+
+## Follow-ups on the Expander auto-expand: clipped content, and a truly-invisible EdgePattern (2026-09-14)
+
+Three more issues surfaced immediately from actually using the feature above, each with its own
+non-obvious root cause.
+
+### Expanded content clipped by the design root's own `d:DesignHeight`
+
+Once expand/collapse worked, the newly-revealed content (a `TextBox` well below the fold) was
+silently clipped - not scrolled-but-hidden, genuinely never rendered, confirmed by exporting the
+raw frame directly and seeing it cut off at exactly 450px regardless of what expanded above it.
+
+The design root is not a bare `Page` - the vendored `WpfDesign.Designer`'s
+`PageCloneExtension`/`PageClone.cs` wraps it in a `PageClone`, and something in that construction
+path copies the document's `d:DesignWidth`/`d:DesignHeight` hints (WPFGallery's SettingsPage.xaml
+declares `d:DesignHeight="450"`) onto the wrapper as literal, **explicit** `Height`/`Width`
+properties. An element with an explicit size always reports exactly that size as its own
+`DesiredSize` from `Measure`, for **any** available-size constraint including
+`double.PositiveInfinity` - so the first attempt at a fix (probe-measure the root unconstrained in
+`RebuildTreeAndRender` to learn the content's real height, already a reasonable idea given
+`SettingsPage`'s own `<ScrollViewer>` reports back exactly whatever it's given rather than growing)
+could never see past it: the probe reported exactly 450 every time, confirmed via a temporary
+`Console.Error.WriteLine` printing `root.Height`/`root.GetType().Name` right after the probe.
+
+**Fix, in two parts, both in `WpfSurfaceHostService.cs`:**
+1. `OverrideRootSizeForExpansion`/`RestoreRootSizeOverride` temporarily clear the root's explicit
+   `Height` to `double.NaN` ("Auto") for as long as `forcedExpansions` is non-empty, called from
+   `ExpandCollapsedAncestors`/`RevertForcedExpansions` respectively - the same lifecycle as the
+   Expander override itself, so it self-heals the moment selection moves elsewhere.
+2. With the root's Height no longer pinned, `RebuildTreeAndRender`'s existing unconstrained probe
+   (`root.Measure(new Size(lastWidth, double.PositiveInfinity))`) finally works as designed.
+
+**Width deliberately excluded** - tried first, reverted fast: clearing `root.Width` too let an
+unconstrained-width probe measure a `Focusable="False"` `TextBox` displaying a literal git-clone
+command (non-wrapping content) as needing ~1470px, ballooning the whole render from a nominal 800
+wide for no real reason. Every real case of this feature so far is vertical growth (an Expander's
+content stacks downward); Width stays pinned to its own `d:DesignWidth` unconditionally.
+
+### `EdgePattern` (the empty-canvas backdrop) was rendering nowhere, ever - not just for this feature
+
+Investigated because the newly-enlarged canvas (from the fix above) made the missing backdrop much
+more obvious, but this bug predates the Expander feature entirely and affects every visual designer
+using `DesignerCanvas` (WinForms/WPF/WinUI-Uno/GTK4/MewUI alike).
+
+**Root cause**: `DesignerCanvas` (`src/Main/ICSharpCode.SharpDevelop.Widgets/Project/DesignerCanvas.cs`)
+is a plain `ContentControl` with no `ControlTemplate`/`Style` of its own anywhere in the codebase,
+so it renders with WPF's built-in default `ContentControl` template - essentially a bare
+`ContentPresenter`, with no `Border` (or anything else) reading `Background` via `TemplateBinding`.
+`Control.Background` only has any visual effect when some element in the *applied template* reads
+it; the default one doesn't, so the constructor's `SetResourceReference(BackgroundProperty,
+"EdgePattern")` was a silent no-op from day one - the resource resolved fine (confirmed:
+`Theme.Light.xaml`/`Theme.Dark.xaml` genuinely define it, `IdeThemeService` genuinely merges those
+into `Application.Current.Resources` at startup), the value was genuinely set, nothing ever painted
+it. A real screenshot at 100% zoom in a maximized window (needed to get the page smaller than the
+viewport so any backdrop would even be visible) confirmed uniform flat white everywhere - not a
+resource-lookup or z-order bug, a plain missing-template gap.
+
+**Fix**: moved the same `SetResourceReference` call onto `root` (the private `Grid` that is
+`DesignerCanvas`'s actual `Content`) instead of `this` - a `Panel`'s own `Background` **is** drawn
+directly by the panel, template or not, which is why this one line change made the pattern actually
+appear for the first time.
+
+### The now-visible pattern showed through the page itself, not just the surrounding margin
+
+A direct consequence of the previous fix finally working: `DesignFramePresenter.Visual`
+(`src/Main/Designer/Designer.Presentation/DesignFramePresenter.cs`) is a bare `Image` whose source
+is a `Pbgra32` (alpha-capable) bitmap. A `Page`/`UserControl`/`Window` has no `Background` of its
+own unless the design explicitly sets one, so any area the design's own content doesn't paint is
+genuinely transparent in that bitmap - previously invisible (transparent showed plain white from
+whatever sat behind it, indistinguishable from the page's own likely-white content), but once
+`EdgePattern` actually painted behind it, those transparent gaps let the dot pattern show through
+**inside** what the user reasonably read as "the page", not just around it.
+
+**Fix**: added `frameBackground`, a plain white `Border` in `WpfSurfaceDesignerControl.cs`, added to
+`designSurface` immediately before `framePresenter.Visual` (so it paints behind it) and kept sized/
+positioned identically (`Width`/`Height`/`Margin` mirrored every frame in `Show()`, including the
+"nothing rendered yet" branch, which zeroes it out same as `framePresenter.Clear()`). This gives the
+page itself a guaranteed-opaque backdrop exactly matching its own footprint - no bigger, so it
+doesn't eat into the surrounding `EdgePattern` margin either.
+
+### The dot pattern replaced a crosshatch grid, once it was actually visible enough to judge
+
+With `EdgePattern` finally rendering, the existing crosshatch-lines version (added specifically
+*instead of* an earlier 1px-dot version, per that version's own comment, because "the old 1px dots
+... vanished in dark mode") read as busy/unattractive once actually seen at scale. Replaced with a
+1.4px-radius dot grid (`Theme.Light.xaml`/`Theme.Dark.xaml`'s `EdgePattern` `DrawingBrush`) - bigger
+than the original hairline dot specifically to avoid regressing into the exact failure that
+motivated the crosshatch lines in the first place, while staying far less visually busy than full
+grid lines (the Blend/Photoshop-canvas convention this was modeled on).
+
 ## Reference record for the isolation decision
 
 The links below are intentionally annotated and revision-pinned where possible. Public Microsoft

@@ -167,6 +167,16 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	public Task<DesignerHitTestResult> HitTestAsync(long baseVersion, double x, double y, CancellationToken cancellationToken = default)
 		=> Document.HitTestAsync(baseVersion, x, y, cancellationToken);
 
+	/// <summary>Tells the child which element is now selected (null to clear), so it can
+	/// temporarily expand a collapsed <c>Expander</c> ancestor of the selection - see
+	/// <c>WpfSurfaceHostService.Select</c>'s own doc comment for the full behavior. Deliberately
+	/// NOT part of <see cref="IDesignHostClient"/>: WinForms/WinUI have no equivalent concept, and
+	/// unlike every other call through <see cref="TrackMutationAsync{T}"/>, a rejected/no-op
+	/// response here is completely ordinary (most selections touch no Expander at all), not a sign
+	/// of anything wrong.</summary>
+	public Task<DesignerSessionState> SelectAsync(long baseVersion, string? elementId, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(HostConnection.InvokeAsync<DesignerSessionState>("design/select", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId }, cancellationToken), cancellationToken);
+
 	static SharedDesignerHostRecovery<WpfSurfaceHostClient, Connection> RecoveryFor(CompatibilityKey key)
 	{
 		lock (clientsGate) {

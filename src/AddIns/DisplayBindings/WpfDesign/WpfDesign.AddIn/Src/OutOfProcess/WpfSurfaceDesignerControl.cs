@@ -67,6 +67,18 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		// changes behavior once zoom/fit is actually used.
 		readonly DesignFramePresenter framePresenter = new(Stretch.Fill,
 			horizontalAlignment: HorizontalAlignment.Left, verticalAlignment: VerticalAlignment.Top);
+		// Sits directly behind framePresenter.Visual, sized and positioned identically (see Show()),
+		// so the page always reads as a solid rect even where its own rendered content is
+		// transparent (a WPF Page/UserControl/Window has no Background of its own unless the design
+		// explicitly sets one). Without this, DesignerCanvas's EdgePattern (painted on `root`, behind
+		// everything in ContentHost) showed straight through those gaps - visually indistinguishable
+		// from "the pattern leaking into the page", when what was actually missing was an opaque
+		// backdrop specifically the size of the page, not the whole padded canvas.
+		readonly Border frameBackground = new() {
+			Background = Brushes.White,
+			HorizontalAlignment = HorizontalAlignment.Left,
+			VerticalAlignment = VerticalAlignment.Top
+		};
 		// All eight handles, like the WinUI/Uno surface - the WPF backend supports a real
 		// container-aware move/resize through design/set-bounds (PlacementOperation on the child
 		// side), unlike WinForms which only ever shows "se". The label must be non-empty for
@@ -359,6 +371,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			this.client = client ?? throw new ArgumentNullException(nameof(client));
 			BackendName = backendName;
 
+			designSurface.Children.Add(frameBackground);
 			designSurface.Children.Add(framePresenter.Visual);
 			// Between the frame and the adorners: gridlines draw over the design, selection
 			// outlines/handles draw over the gridlines.
@@ -536,6 +549,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			{
 				StatusText = "WPF design host: nothing rendered yet.";
 				framePresenter.Clear();
+				frameBackground.Width = frameBackground.Height = 0;
 				viewport = DesignViewport.Identity(0, 0);
 				adornerLayer.ClearSelection();
 				adornerLayer.ClearSecondarySelection();
@@ -584,6 +598,11 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			framePresenter.Visual.Margin = new Thickness(
 				Math.Max(0, viewport.OriginX) + viewport.PanX,
 				Math.Max(0, viewport.OriginY) + viewport.PanY, 0, 0);
+			// Exactly the frame's own footprint, nothing more - see frameBackground's own doc
+			// comment for why this needs to exist at all.
+			frameBackground.Width = framePresenter.Visual.Width;
+			frameBackground.Height = framePresenter.Visual.Height;
+			frameBackground.Margin = framePresenter.Visual.Margin;
 			// Gridlines cover exactly the rendered frame (same size and placement), and their cell
 			// size follows the current zoom.
 			gridOverlay.Visual.Width = framePresenter.Visual.Width;
@@ -902,7 +921,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			selectedPath = matches.Count > 0 ? matches[0] : null;
 			for (var i = 1; i < matches.Count; i++)
 				secondarySelection.Add(matches[i]);
-			SelectionChanged?.Invoke(this, EventArgs.Empty);
+			NotifySelectionChanged();
 			RestoreSelection();
 		}
 
@@ -931,7 +950,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			{
 				secondarySelection.Add(path);
 			}
-			SelectionChanged?.Invoke(this, EventArgs.Empty);
+			NotifySelectionChanged();
 			RestoreSelection();
 		}
 
@@ -1520,7 +1539,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			if (result.CreatedElementId != null)
 				selectedPath = result.CreatedElementId;
 			secondarySelection.Clear();
-			SelectionChanged?.Invoke(this, EventArgs.Empty);
+			NotifySelectionChanged();
 			DocumentChanged?.Invoke(this, result);
 		}
 
@@ -1553,7 +1572,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			// A plain (non-marquee, non-Ctrl) click always replaces the whole selection, matching
 			// every other designer's click semantics.
 			secondarySelection.Clear();
-			SelectionChanged?.Invoke(this, EventArgs.Empty);
+			NotifySelectionChanged();
 			RestoreSelection();
 		}
 
@@ -2005,7 +2024,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		void OnPropertyEdited(DesignerSessionState newState)
 		{
 			Show(newState);
-			SelectionChanged?.Invoke(this, EventArgs.Empty);
+			NotifySelectionChanged();
 			DocumentChanged?.Invoke(this, newState);
 		}
 
@@ -2022,6 +2041,42 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		}
 
 		public event EventHandler? SelectionChanged;
+
+		/// <summary>Raises <see cref="SelectionChanged"/> and round-trips the new selection to the
+		/// child (<c>design/select</c>) so a collapsed <c>Expander</c> ancestor of the selection
+		/// temporarily expands - Blend's "select inside a collapsed Expander" behavior (see
+		/// <c>WpfSurfaceHostService.Select</c>). Every raise site of <see cref="SelectionChanged"/>
+		/// goes through this now instead of invoking the event directly, so the behavior is uniform
+		/// across canvas clicks, marquee/Ctrl-click, the Outline pad, multi-select, and deletion -
+		/// deliberately NOT hooked into <see cref="RestoreSelection"/> itself, which
+		/// <see cref="Show"/> also calls after every render for reasons unrelated to a selection
+		/// change (a bounds drag, a property edit) - hooking there would round-trip on every one of
+		/// those, and <see cref="Select"/>'s own re-render would re-enter <see cref="Show"/>, which
+		/// calls <see cref="RestoreSelection"/> again: unbounded recursion.
+		///
+		/// Blocking, matching <see cref="CommitBounds"/>/<c>HitTestAndSelect</c>'s own reasoning for
+		/// why an awaited continuation is not safe here. A no-op response (no <c>Render</c> payload -
+		/// the common case, since most selections touch no Expander at all) is deliberately NOT
+		/// passed to <see cref="Show"/>, which would otherwise misread the absence of a Render
+		/// payload as "nothing rendered yet" and clear the canvas. Any failure (including simply not
+		/// having an open document yet) is swallowed - this is a design-time convenience affordance,
+		/// never something a selection change should be blocked or broken by.</summary>
+		void NotifySelectionChanged()
+		{
+			SelectionChanged?.Invoke(this, EventArgs.Empty);
+			if (state == null)
+				return;
+			try
+			{
+				var newState = client.SelectAsync(RequireVersion(), selectedPath).GetAwaiter().GetResult();
+				if (newState.Render != null)
+					Show(newState);
+			}
+			catch (Exception)
+			{
+				// Best-effort design-time affordance - see this method's own doc comment.
+			}
+		}
 
 		/// <summary>Raised after an actual accepted mutation (bounds/add/delete/rename/property
 		/// edit) commits and renders - distinct from <see cref="SelectionChanged"/>, which also
@@ -2071,7 +2126,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		{
 			selectedPath = id;
 			secondarySelection.Clear();
-			SelectionChanged?.Invoke(this, EventArgs.Empty);
+			NotifySelectionChanged();
 			RestoreSelection();
 		}
 
@@ -2092,7 +2147,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			secondarySelection.Clear();
 			for (var i = 1; i < paths.Count; i++)
 				secondarySelection.Add(paths[i]);
-			SelectionChanged?.Invoke(this, EventArgs.Empty);
+			NotifySelectionChanged();
 			RestoreSelection();
 		}
 
@@ -2207,7 +2262,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			var result = DeleteSelectedAsync().GetAwaiter().GetResult();
 			if (result == null)
 				return;
-			SelectionChanged?.Invoke(this, EventArgs.Empty);
+			NotifySelectionChanged();
 			Show(result);
 			DocumentChanged?.Invoke(this, result);
 		}

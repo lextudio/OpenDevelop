@@ -19,19 +19,18 @@
     <!-- AvalonDock VS2013 document-pane background (the template binds LayoutDocumentPaneControl
          to this key; LibreWPF resolves it to the light palette's white unless overridden). -->
     <SolidColorBrush x:Key="{ComponentResourceKey TypeInTargetAssembly={x:Type reskeys:ResourceKeys}, ResourceId=TabBackground}" Color="#FF2D2D30" />
-    <!-- Dotted edge pattern around the design bitmap in every visual designer (DesignerCanvas).
-         A fine grid is more legible than the old 1px dots (which vanished in dark mode). -->
+    <!-- Empty-canvas backdrop around the design bitmap in every visual designer (DesignerCanvas) -
+         a soft dot grid (Blend/Photoshop-canvas style), less busy than the earlier crosshatch
+         lines. The dot is 1.4px radius, not the original 1px hairline that "vanished in dark mode"
+         (this same note used to justify the crosshatch lines instead) - a slightly bigger dot stays
+         visible under anti-aliasing without needing to fall back to full grid lines. -->
     <DrawingBrush x:Key="EdgePattern" TileMode="Tile" Viewport="0,0,16,16" ViewportUnits="Absolute">
       <DrawingBrush.Drawing>
         <DrawingGroup>
-          <GeometryDrawing Brush="#FF2D2D30"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,16,16"/></GeometryDrawing.Geometry></GeometryDrawing>
-          <GeometryDrawing>
-            <GeometryDrawing.Pen><Pen Brush="#FF43434A" Thickness="1"/></GeometryDrawing.Pen>
+          <GeometryDrawing Brush="#FF2A2A2E"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,16,16"/></GeometryDrawing.Geometry></GeometryDrawing>
+          <GeometryDrawing Brush="#FF4B4B53">
             <GeometryDrawing.Geometry>
-              <GeometryGroup>
-                <LineGeometry StartPoint="0,0" EndPoint="16,0"/>
-                <LineGeometry StartPoint="0,0" EndPoint="0,16"/>
-              </GeometryGroup>
+              <EllipseGeometry Center="1,1" RadiusX="1.4" RadiusY="1.4" />
             </GeometryDrawing.Geometry>
           </GeometryDrawing>
         </DrawingGroup>
