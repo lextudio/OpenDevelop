@@ -28,6 +28,13 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <OutputType>WinExe</OutputType>
     <ApplicationIcon>..\..\..\build\windows\opendevelop.ico</ApplicationIcon>
+    <!-- One platform-neutral Windows distribution: the app is started with the user's own `dotnet`
+         ("dotnet OpenDevelop.dll"), so no per-architecture native apphost is shipped. The apphost is
+         the ONLY file dotnet publish emits for a specific architecture; everything else is AnyCPU IL
+         plus the runtimes/<rid>/ native tree, which one payload can carry for every CPU.
+         macOS still keeps its apphost: it is the .app bundle's Contents/MacOS launcher today, and
+         replacing it with an architecture-neutral launcher script is tracked separately. -->
+    <UseAppHost Condition="!$([MSBuild]::IsOSPlatform('OSX'))">false</UseAppHost>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <NoWarn>$(NoWarn);436;1591;CA1416;WFO1000</NoWarn>
     <SignAssembly>true</SignAssembly>

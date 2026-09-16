@@ -88,7 +88,12 @@
     <ItemGroup>
       <HostOutput Include="$(TargetDir)**" />
     </ItemGroup>
+    <!-- Deployed under MicrosoftHost\<CLR major>\<rid>\ so ONE platform-neutral distribution can
+         carry both win-x64 and win-arm64 children; MicrosoftWinUIDesignRuntimeHostBootstrap picks
+         the one matching the running process (and falls back to the flat <CLR major>\ layout an
+         older deployment used). This host is a real unpackaged WinUI 3 app, so it cannot be
+         RID-agnostic. -->
     <Copy SourceFiles="@(HostOutput)" SkipUnchangedFiles="true"
-          DestinationFiles="@(HostOutput->'$(MSBuildProjectDirectory)\..\..\..\..\..\AddIns\DisplayBindings\WinUIXamlDesigner\MicrosoftHost\$(HostRuntimeDirectory)\%(RecursiveDir)%(Filename)%(Extension)')" />
+          DestinationFiles="@(HostOutput->'$(MSBuildProjectDirectory)\..\..\..\..\..\AddIns\DisplayBindings\WinUIXamlDesigner\MicrosoftHost\$(HostRuntimeDirectory)\$(RuntimeIdentifier)\%(RecursiveDir)%(Filename)%(Extension)')" />
   </Target>
 </Project>

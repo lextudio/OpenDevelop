@@ -313,6 +313,19 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         {
             psi = new ProcessStartInfo(ResolveDotNetHost());
         }
+        else if (installedApp.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+        {
+            // An apphost-free, platform-neutral payload (SharpDevelop.csproj UseAppHost=false, see
+            // dist.ps1) is started with a dotnet host rather than a bundled native executable.
+            psi = new ProcessStartInfo(ResolveDotNetHost())
+            {
+                WorkingDirectory = Path.GetDirectoryName(installedApp)!,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            psi.ArgumentList.Add(installedApp);
+        }
         else
         {
             psi = new ProcessStartInfo(installedApp)

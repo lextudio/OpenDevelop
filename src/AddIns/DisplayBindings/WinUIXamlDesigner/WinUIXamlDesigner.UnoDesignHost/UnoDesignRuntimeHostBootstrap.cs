@@ -59,6 +59,18 @@ public static class MicrosoftWinUIDesignRuntimeHostBootstrap
 		var root = Path.Combine(directory, "MicrosoftHost");
 		var runtime = RuntimeDirectoryFor(documentFileName);
 		var appSdk = WindowsAppSdkVersionFor(documentFileName);
+		var architecture = ArchitectureFolder();
+		// A platform-neutral distribution carries one child per architecture under
+		// <CLR major>\<rid>\; prefer the one matching this process before the flat fallbacks.
+		if (architecture != null) {
+			if (!string.IsNullOrEmpty(appSdk)) {
+				var compatibleArch = Path.Combine(root, runtime + "-windowsappsdk" + appSdk, architecture,
+					"WinUIXamlDesigner.MicrosoftHost.dll");
+				if (File.Exists(compatibleArch)) return compatibleArch;
+			}
+			var archCandidate = Path.Combine(root, runtime, architecture, "WinUIXamlDesigner.MicrosoftHost.dll");
+			if (File.Exists(archCandidate)) return archCandidate;
+		}
 		if (!string.IsNullOrEmpty(appSdk)) {
 			var compatible = Path.Combine(root, runtime + "-windowsappsdk" + appSdk,
 				"WinUIXamlDesigner.MicrosoftHost.dll");
@@ -71,6 +83,18 @@ public static class MicrosoftWinUIDesignRuntimeHostBootstrap
 		// layout as a backwards-compatible fallback for an incremental add-in update.
 		candidate = Path.Combine(root, "WinUIXamlDesigner.MicrosoftHost.dll");
 		return File.Exists(candidate) ? candidate : null;
+	}
+
+	/// <summary>RID folder for the running process ("win-x64"/"win-arm64"/"win-x86"), or null on a
+	/// platform where no native WinUI child exists.</summary>
+	static string? ArchitectureFolder()
+	{
+		return System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture switch {
+			System.Runtime.InteropServices.Architecture.X64 => "win-x64",
+			System.Runtime.InteropServices.Architecture.Arm64 => "win-arm64",
+			System.Runtime.InteropServices.Architecture.X86 => "win-x86",
+			_ => null
+		};
 	}
 
 	static string RuntimeDirectoryFor(string? documentFileName)

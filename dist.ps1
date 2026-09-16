@@ -28,12 +28,9 @@
 # -RuntimeIdentifiers explicitly (default: both) makes the output deterministic regardless of the
 # build machine's own architecture, and produces a correct package for each target.
 #
-# Usage: ./dist.ps1 [-SkipPublish] [-Configuration Debug|Release] [-RuntimeIdentifiers win-x64,win-arm64]
+# Usage: ./dist.ps1 [-SkipPublish] [-Configuration Debug|Release]
 #   -SkipPublish            reuse existing publish output (faster iteration on packaging)
 #   -Configuration Debug    package the Debug configuration instead of Release.
-#   -RuntimeIdentifiers     Windows only; which architecture(s) to build. Defaults to both
-#                           win-x64 and win-arm64, producing one zip per RID. Ignored on macOS
-#                           (Invoke-MacPackaging always builds for the host's own architecture).
 #
 # On macOS this is normally reached through ./dist.macos.sh, which only locates pwsh.
 #
@@ -42,9 +39,7 @@
 param(
     [switch]$SkipPublish,
     [ValidateSet('Debug', 'Release')]
-    [string]$Configuration = 'Release',
-    [ValidateSet('win-x64', 'win-arm64')]
-    [string[]]$RuntimeIdentifiers = @('win-x64', 'win-arm64')
+    [string]$Configuration = 'Release'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -61,20 +56,7 @@ $patchScript = Join-Path $repoRoot 'build/patch-librewinforms-deps.ps1'
 
 # The Addin SDK's OpenDevelopPruneAddinDeploymentAssets target drops runtimes/win*, linux* and
 # unix* only for the 'osx' family; on Windows those win* assets are exactly what the payload needs.
-# This is an OS-family switch, unrelated to $RuntimeIdentifiers (OS+architecture) below - both
-# win-x64 and win-arm64 use ridFamily='win'.
 $ridFamily = if ($IsWindows) { 'win' } else { 'osx' }
-
-# macOS keeps building for the host's own architecture only (Invoke-MacPackaging), a single pass
-# with no RID suffix on the publish directory - $null here means "don't pass -p:RuntimeIdentifier".
-#
-# Built as an explicit statement, NOT "$ridsToBuild = if (...) { ... } else { @($null) }" - when an
-# if/else used as an EXPRESSION returns a single-element array whose only element is $null,
-# PowerShell's pipeline unwrapping silently collapses the assignment to an empty array. That made
-# $ridsToBuild.Count -eq 0 on macOS, so the foreach loop at the bottom of this script never ran -
-# dist.macos.sh exited 0 having done nothing, with no error and no output.
-[array]$ridsToBuild = @()
-if ($IsWindows) { $ridsToBuild = $RuntimeIdentifiers } else { $ridsToBuild = @($null) }
 
 function New-TempDir {
     $p = Join-Path ([System.IO.Path]::GetTempPath()) ("opendevelop-" + [System.Guid]::NewGuid().ToString('N'))
@@ -82,77 +64,6 @@ function New-TempDir {
     return $p
 }
 
-function Sync-LibreWpfTransportRuntime([string]$publishDir, [string]$rid) {
-    # LibreWPF.Sdk supplies the compile-time reference surface, but the .NET runtime pack also
-    # contains assemblies with the same WPF simple names. Publish can therefore select the latter
-    # by basename even though LibreWPF.Transport is the resolved package. That produces a subtly
-    # mixed runtime (for example an old WindowsBase.dll without Dispatcher.NativeInputPump).
-    # Always overlay the exact managed transport payload that restore selected.
-    #
-    # Architecture safety: the transport package's lib/net10.0/ may contain assemblies built
-    # for the wrong host architecture (e.g. ARM64 on an ARM64 build host, but the target is
-    # win-x64). We must never overwrite dotnet publish's correct-arch output with wrong-arch
-    # assemblies. Check each DLL's PE machine type before copying.
-    $assets = Join-Path $repoRoot 'src/Main/SharpDevelop/obj/project.assets.json'
-    if (-not (Test-Path $assets)) { throw "LibreWPF transport sync requires restore assets: $assets" }
-    $transportVersion = ((Get-Content $assets -Raw | ConvertFrom-Json).libraries.PSObject.Properties |
-        Where-Object { $_.Name -like 'LibreWPF.Transport/*' } |
-        Select-Object -First 1).Name -replace '^LibreWPF.Transport/', ''
-    if (-not $transportVersion) { throw 'LibreWPF.Transport was not resolved for the OpenDevelop host.' }
-    $nugetPackages = ((& $dotnet nuget locals global-packages --list) | Select-String '^global-packages: ').Line -replace '^global-packages:\s*', ''
-    $transportRoot = Join-Path $nugetPackages "librewpf.transport/$transportVersion"
-
-    # Expected PE machine types per RID
-    $expectedMachine = switch ($rid) {
-        'win-x64'  { 0x8664 }
-        'win-arm64'{ 0xAA64 }
-        'win-x86'  { 0x014C }
-        default    { 0 }
-    }
-    function Test-DllArchMatch([string]$dllPath, [uint16]$target) {
-        $bytes = [System.IO.File]::ReadAllBytes($dllPath)
-        $peOffset = [BitConverter]::ToInt32($bytes, 0x3C)
-        $machine = [BitConverter]::ToUInt16($bytes, $peOffset + 4)
-        return $machine -eq $target
-    }
-
-    # Prefer the RID-specific managed payload when progpu-wpf-windows-managed-runtime.ps1
-    # has run — these are guaranteed correct-arch. Otherwise fall back to lib/net10.0/ with
-    # per-file arch filtering so wrong-arch assemblies do not overwrite dotnet publish output.
-    $ridManaged = Join-Path $transportRoot "runtimes/$rid/lib/net10.0"
-    $fallbackManaged = Join-Path $transportRoot "lib/net10.0"
-    $copied = 0
-    $skipped = 0
-
-    if ((Test-Path $ridManaged) -and (Get-ChildItem $ridManaged -File -ErrorAction SilentlyContinue)) {
-        # Overlay only the RID-specific managed payload (PresentationCore + DirectWriteForwarder).
-        # These two assemblies have per-architecture builds from progpu-wpf-windows-managed-runtime.ps1.
-        # All other assemblies in lib/net10.0/ have mixed host-architecture binaries and must NOT
-        # be copied — dotnet publish already placed the correct-arch versions from the .NET runtime
-        # pack or from the transport package's own restore selection.
-        Write-Host "Overlaying RID-specific transport payload from $ridManaged"
-        Copy-Item -Path (Join-Path $ridManaged '*') -Destination $publishDir -Recurse -Force
-        $copied = (Get-ChildItem $ridManaged -File).Count
-    } elseif (Test-Path $fallbackManaged) {
-        # Legacy path: filter each DLL by PE machine type to avoid corrupting the publish output
-        Write-Host "Filtering transport payload from lib/net10.0/ for $rid (expected machine 0x$($expectedMachine.ToString('X4')))"
-        foreach ($dll in (Get-ChildItem $fallbackManaged -Filter '*.dll')) {
-            if ($expectedMachine -eq 0 -or (Test-DllArchMatch $dll.FullName $expectedMachine)) {
-                Copy-Item $dll.FullName -Destination $publishDir -Force
-                $copied++
-            } else {
-                $skipped++
-            }
-        }
-        # Copy non-DLL assets (themes subdirs, PDBs not needed, satellite resource dirs)
-        foreach ($dir in (Get-ChildItem $fallbackManaged -Directory)) {
-            Copy-Item $dir.FullName -Destination $publishDir -Recurse -Force
-        }
-    } else {
-        throw "LibreWPF transport runtime payload not found at $transportRoot"
-    }
-    Write-Host "Synced LibreWPF.Transport $transportVersion runtime payload ($rid): $copied assemblies copied, $skipped wrong-arch skipped"
-}
 
 function Get-PinnedGitVersionProperties {
     <#
@@ -213,20 +124,18 @@ function Build-MicrosoftDesignerHosts {
 
       WinUIXamlDesigner.MicrosoftHost specifically CANNOT be built by `dotnet build`: UseWinUI
       pulls in MrtCore.PriGen.targets, whose tasks ship only with Visual Studio (MSB4062
-      otherwise) - see "Building WinUIXamlDesigner.MicrosoftHost" in CLAUDE.md. Per the project's
-      own standing convention, both projects here are built with Visual Studio's MSBuild.exe
-      rather than `dotnet build`, even though FormsDesigner's host does not strictly require it.
+      otherwise) - see "Building WinUIXamlDesigner.MicrosoftHost" in CLAUDE.md. Both projects are
+      therefore built with Visual Studio's MSBuild.exe.
 
-      $Rid matters only for the WinUI host: an unpackaged WinUI 3 app is built RID-specific, and
-      its DeployToAddIns target copies $(TargetDir) - the RID subfolder - so a missing/incorrect
-      -p:RuntimeIdentifier here silently ships the wrong (or build-host-default) architecture,
-      exactly the trap RuntimeIdentifier's own doc comment above describes for the main app.
+      The Forms host is an ordinary managed child launched via "dotnet exec", so it builds RID-less.
+      The WinUI host is a real unpackaged WinUI 3 app and cannot: one platform-neutral distribution
+      must therefore carry a child per supported Windows architecture, each deployed under
+      MicrosoftHost\<CLR major>\<rid>\ and selected by MicrosoftWinUIDesignRuntimeHostBootstrap.
     #>
     param(
         [Parameter(Mandatory)][string]$RepoRoot,
         [ValidateSet('Debug', 'Release')]
         [string]$Configuration = 'Debug',
-        [string]$Rid,
         [string[]]$PinnedGitVersionProperties = @()
     )
 
@@ -234,25 +143,29 @@ function Build-MicrosoftDesignerHosts {
     Write-Host "==> Using Visual Studio MSBuild for Microsoft designer hosts: $msbuild"
 
     $formsDesignerHost = Join-Path $RepoRoot 'src/AddIns/DisplayBindings/FormsDesigner/MicrosoftHost/Host/MicrosoftFormsDesigner.Host.csproj'
-    Write-Host '==> Building Microsoft Windows Forms design host...'
-    Invoke-Native $msbuild $formsDesignerHost '-restore' "-p:Configuration=$Configuration" '-p:DisableGitVersionTask=true' '-v:m' @PinnedGitVersionProperties
+    Write-Host '==> Building Microsoft Windows Forms design host (RID-less)...'
+    Invoke-Native $msbuild $formsDesignerHost '-restore' "-p:Configuration=$Configuration" '-p:DisableGitVersionTask=true' '-p:ProGpuWpfUseCurrentRuntimeIdentifier=false' '-v:m' @PinnedGitVersionProperties
 
     $winUiHost = Join-Path $RepoRoot 'src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.MicrosoftHost/WinUIXamlDesigner.MicrosoftHost.csproj'
-    Write-Host "==> Building Microsoft WinUI design host (RuntimeIdentifier=$Rid)..."
-    $winUiArgs = @('-restore', "-p:Configuration=$Configuration", '-p:DisableGitVersionTask=true', '-v:m') + $PinnedGitVersionProperties
-    if ($Rid) { $winUiArgs += "-p:RuntimeIdentifier=$Rid" }
-    Invoke-Native $msbuild $winUiHost @winUiArgs
+    foreach ($rid in 'win-x64', 'win-arm64') {
+        Write-Host "==> Building Microsoft WinUI design host (RuntimeIdentifier=$rid)..."
+        $winUiArgs = @('-restore', "-p:Configuration=$Configuration", '-p:DisableGitVersionTask=true', "-p:RuntimeIdentifier=$rid", '-v:m') + $PinnedGitVersionProperties
+        Invoke-Native $msbuild $winUiHost @winUiArgs
+    }
 }
 
 function Test-PackagedAppStartup {
     <#
       Launch the packaged app and require it to STAY up. A distribution that is missing or
       mismatching a runtime assembly does not fail the build — it throws at boot, which is exactly
-      what the deps.json patch and the transport overlay above exist to prevent. Dump the captured
-      output on an early exit so the cause is visible without re-running by hand.
+      what the deps.json patch exists to prevent. Dump the captured output on an early exit so the
+      cause is visible without re-running by hand.
+
+      The payload is apphost-free, so callers pass the user's dotnet host and the app dll.
     #>
     param(
-        [Parameter(Mandatory)][string]$ExePath,
+        [Parameter(Mandatory)][string]$FilePath,
+        [string[]]$ArgumentList = @(),
         [string]$WorkingDirectory
     )
     $tag = [System.Guid]::NewGuid().ToString('N')
@@ -261,11 +174,12 @@ function Test-PackagedAppStartup {
     $errLog = Join-Path ([System.IO.Path]::GetTempPath()) "opendevelop-smoke-$tag.err.log"
 
     $startArgs = @{
-        FilePath               = $ExePath
+        FilePath               = $FilePath
         RedirectStandardOutput = $outLog
         RedirectStandardError  = $errLog
         PassThru               = $true
     }
+    if ($ArgumentList.Count -gt 0) { $startArgs.ArgumentList = $ArgumentList }
     if ($WorkingDirectory) { $startArgs.WorkingDirectory = $WorkingDirectory }
     $proc = Start-Process @startArgs
 
@@ -292,102 +206,26 @@ function Test-PackagedAppStartup {
     Write-Host 'Packaged app startup smoke test passed'
 }
 
-function Test-WindowsPeArchitecture {
-    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Rid)
-
-    $expectedMachine = if ($Rid -eq 'win-x64') { 0x8664 } elseif ($Rid -eq 'win-arm64') { 0xAA64 } else { throw "Unsupported Windows RID: $Rid" }
-    $stream = [System.IO.File]::OpenRead($Path)
-    try {
-        $reader = [System.IO.BinaryReader]::new($stream)
-        $stream.Position = 0x3c
-        $peOffset = $reader.ReadInt32()
-        $stream.Position = $peOffset
-        if ($reader.ReadUInt32() -ne 0x00004550) { throw "Not a PE executable: $Path" }
-        $machine = $reader.ReadUInt16()
-        if ($machine -ne $expectedMachine) {
-            throw "Wrong executable architecture for ${Rid}: $Path has machine 0x$('{0:X4}' -f $machine), expected 0x$('{0:X4}' -f $expectedMachine)."
-        }
-    } finally { $stream.Dispose() }
-}
-
-function Test-WindowsPayloadAssemblyArchitecture {
-    # Test-WindowsPeArchitecture above only ever checked OpenDevelop.exe - but the apphost is the
-    # ONE file dotnet publish always emits for the requested RID, so it is the one file that could
-    # never be wrong. Everything actually at risk is a managed assembly: most are AnyCPU IL (machine
-    # 0x014C, loadable anywhere and correctly ignored here), while ReadyToRun-compiled ones carry a
-    # real target machine and will not load at all in a process of another architecture
-    # ("The assembly architecture is not compatible with the current process architecture", or for a
-    # native-loaded dependency "Format of the executable (.exe) or library (.dll) is invalid").
-    #
-    # A stale per-project bin/obj from a build at a different RID is enough to slip such an assembly
-    # into the payload: dotnet publish reports success and only warns (CS8012 "targets a different
-    # processor"), so nothing fails until a user launches the app and it dies on startup. Fail the
-    # package build here instead - checking every assembly, since which projects emit R2R output
-    # varies with configuration.
-    param([Parameter(Mandatory)][string]$PayloadRoot, [Parameter(Mandatory)][string]$Rid)
-
-    $expectedMachine = if ($Rid -eq 'win-x64') { 0x8664 } elseif ($Rid -eq 'win-arm64') { 0xAA64 } else { throw "Unsupported Windows RID: $Rid" }
-    $anyCpu = 0x014C
-    $mismatched = @()
-
-    # Known, accepted exception. Every other child process in this payload is launched as
-    # "dotnet exec <dll>" and has its apphost suppressed (UseAppHost=false, see
-    # Directory.Build.targets), which is what keeps the payload architecture-clean. This one
-    # apphost cannot be suppressed the same way: its project lives under
-    # externals/vscode-wpf/external/wxsg/external/XamlToCSharpGenerator/, which carries its own
-    # Directory.Build.targets and therefore never sees this repo's. The apphost is unused - the
-    # language server is started from its .dll - so a wrong-architecture copy is inert rather than
-    # broken. Remove this entry if that submodule ever adopts the setting, or if the file stops
-    # being published.
-    $knownForeignApphosts = @('XamlToCSharpGenerator.LanguageServer.exe')
-
-    foreach ($file in Get-ChildItem -LiteralPath $PayloadRoot -Recurse -File -Include '*.dll', '*.exe') {
-        # Anything under a runtimes/<rid>/ folder is SUPPOSED to be architecture-specific: that is the
-        # standard .NET layout for shipping several architectures side by side, and the host picks the
-        # matching one at startup via deps.json runtimeTargets. A win-arm64 native library inside a
-        # win-x64 payload's runtimes/win-arm64/ is correct, not a defect - flagging it would make this
-        # check impossible to satisfy.
-        if ($file.FullName -like '*\runtimes\*') { continue }
-
-        $stream = $null
-        try {
-            $stream = [System.IO.File]::OpenRead($file.FullName)
-            if ($stream.Length -lt 0x40) { continue }
-            $reader = [System.IO.BinaryReader]::new($stream)
-            $stream.Position = 0x3c
-            $peOffset = $reader.ReadInt32()
-            if ($peOffset -le 0 -or ($peOffset + 6) -gt $stream.Length) { continue }
-            $stream.Position = $peOffset
-            if ($reader.ReadUInt32() -ne 0x00004550) { continue }   # not PE (native resource, etc.)
-            $machine = $reader.ReadUInt16()
-            if ($machine -ne $expectedMachine -and $machine -ne $anyCpu -and
-                $knownForeignApphosts -notcontains $file.Name) {
-                $relative = $file.FullName.Substring($PayloadRoot.Length).TrimStart('\', '/')
-                $mismatched += "  $relative (machine 0x$('{0:X4}' -f $machine))"
-            }
-        } catch {
-            # An unreadable/locked file is the packaging checks' problem elsewhere, not this one.
-        } finally {
-            if ($stream) { $stream.Dispose() }
-        }
-    }
-
-    if ($mismatched) {
-        throw "Distribution payload for $Rid contains assemblies built for another architecture " +
-            "(expected 0x$('{0:X4}' -f $expectedMachine) or AnyCPU 0x014C):$([Environment]::NewLine)" +
-            (($mismatched | Sort-Object | Select-Object -First 20) -join [Environment]::NewLine) +
-            "$([Environment]::NewLine)This usually means a per-project bin/obj still holds output from a build at a " +
-            "different RuntimeIdentifier - clean those projects and re-publish."
-    }
-}
 
 function Test-WindowsDistributionPayload {
-    param([Parameter(Mandatory)][string]$PayloadRoot, [Parameter(Mandatory)][string]$Rid)
+    param([Parameter(Mandatory)][string]$PayloadRoot)
 
-    $exe = Join-Path $PayloadRoot 'OpenDevelop.exe'
-    if (-not (Test-Path -LiteralPath $exe)) { throw "Distribution payload has no OpenDevelop.exe: $PayloadRoot" }
-    Test-WindowsPeArchitecture -Path $exe -Rid $Rid
-    Test-WindowsPayloadAssemblyArchitecture -PayloadRoot $PayloadRoot -Rid $Rid
+    $app = Join-Path $PayloadRoot 'OpenDevelop.dll'
+    if (-not (Test-Path -LiteralPath $app)) { throw "Distribution payload has no OpenDevelop.dll: $PayloadRoot" }
+    # AnyCPU and apphost-free: the app is started as "dotnet OpenDevelop.dll" with the user's own
+    # .NET host. An apphost is the one file a build emits for a single architecture, so its presence
+    # means the payload is no longer platform-neutral.
+    if (Test-Path -LiteralPath (Join-Path $PayloadRoot 'OpenDevelop.exe')) {
+        throw "Distribution payload contains an architecture-specific apphost (OpenDevelop.exe): $PayloadRoot"
+    }
+    # Every supported architecture's native WPF runtime must be present side by side; the host picks
+    # the matching one from deps.json runtimeTargets at startup.
+    foreach ($rid in 'win-x64', 'win-arm64') {
+        $native = Join-Path $PayloadRoot "runtimes\$rid\native\PresentationNative_cor3.dll"
+        if (-not (Test-Path -LiteralPath $native)) {
+            throw "Distribution payload is missing the $rid WPF native runtime: $native"
+        }
+    }
     $addIns = Join-Path $PayloadRoot 'AddIns'
     if (-not (Test-Path -LiteralPath $addIns)) { throw "Distribution payload has no AddIns directory: $PayloadRoot" }
     if (@(Get-ChildItem -LiteralPath $addIns -Recurse -File -Filter '*.addin').Count -eq 0) { throw "Distribution payload has no addin manifests: $addIns" }
@@ -430,17 +268,19 @@ function Test-WindowsDistributionPayload {
             "Check that Build-MicrosoftDesignerHosts built " +
             "src/AddIns/DisplayBindings/FormsDesigner/MicrosoftHost/Host/MicrosoftFormsDesigner.Host.csproj."
     }
-    # Deployed under a per-TFM subfolder (net9.0 / net10.0) picked at runtime by
-    # MicrosoftWinUIDesignRuntimeHostBootstrap based on the designed app's own runtimeconfig -
-    # both must be present, not just whichever one a plain build happened to produce last.
+    # The real WinUI 3 child is architecture-specific, so the single payload must carry one per
+    # supported Windows RID under MicrosoftHost\<CLR major>\<rid>\. The bootstrap picks by CLR major
+    # (from the designed app's runtimeconfig) and then by process architecture.
     $winUiHostRoot = Join-Path $addIns 'DisplayBindings\WinUIXamlDesigner\MicrosoftHost'
     foreach ($tfmDir in 'net9.0', 'net10.0') {
-        $winUiHostExe = Join-Path $winUiHostRoot "$tfmDir\WinUIXamlDesigner.MicrosoftHost.exe"
-        if (-not (Test-Path -LiteralPath $winUiHostExe)) {
-            throw "Distribution payload is missing the Microsoft WinUI design host ($tfmDir): $winUiHostExe. " +
-                "Check that Build-MicrosoftDesignerHosts built " +
-                "src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.MicrosoftHost/WinUIXamlDesigner.MicrosoftHost.csproj " +
-                "with Visual Studio's own MSBuild.exe (dotnet build cannot build UseWinUI projects)."
+        foreach ($rid in 'win-x64', 'win-arm64') {
+            $winUiHostExe = Join-Path $winUiHostRoot "$tfmDir\$rid\WinUIXamlDesigner.MicrosoftHost.dll"
+            if (-not (Test-Path -LiteralPath $winUiHostExe)) {
+                throw "Distribution payload is missing the Microsoft WinUI design host ($tfmDir/$rid): $winUiHostExe. " +
+                    "Check that Build-MicrosoftDesignerHosts built " +
+                    "src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.MicrosoftHost/WinUIXamlDesigner.MicrosoftHost.csproj " +
+                    "with Visual Studio's own MSBuild.exe (dotnet build cannot build UseWinUI projects) for both win-x64 and win-arm64."
+            }
         }
     }
 
@@ -460,25 +300,30 @@ function Test-WindowsDistributionPayload {
 }
 
 function Test-WindowsDistributionZip {
-    param([Parameter(Mandatory)][string]$ZipPath, [Parameter(Mandatory)][string]$Rid)
+    param([Parameter(Mandatory)][string]$ZipPath)
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $archive = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
     try {
-        $prefix = "OpenDevelop-$Rid/"
-        if (-not ($archive.Entries.FullName -contains "${prefix}OpenDevelop.exe")) { throw "ZIP lacks ${prefix}OpenDevelop.exe: $ZipPath" }
+        $prefix = "OpenDevelop-win/"
+        if (-not ($archive.Entries.FullName -contains "${prefix}OpenDevelop.dll")) { throw "ZIP lacks ${prefix}OpenDevelop.dll: $ZipPath" }
+        if ($archive.Entries.FullName -contains "${prefix}OpenDevelop.exe") { throw "ZIP contains an architecture-specific apphost: $ZipPath" }
         if (-not ($archive.Entries.FullName | Where-Object { $_ -like "${prefix}AddIns/*.addin" })) { throw "ZIP lacks addin manifests: $ZipPath" }
-        # Mirror the WPF designer host check in Test-WindowsDistributionPayload - both backends
-        # must survive the staging/zip round-trip, not just be present in the staged payload dir.
-        foreach ($hostSpec in @(
-            @{ Path = "${prefix}AddIns/DisplayBindings/WpfDesign/Host/WpfDesign.SurfaceHost.dll";          Backend = 'LibreWPF' },
-            @{ Path = "${prefix}AddIns/DisplayBindings/WpfDesign/MicrosoftHost/MicrosoftWpfDesign.SurfaceHost.dll"; Backend = 'Microsoft WPF' },
-            @{ Path = "${prefix}AddIns/DisplayBindings/FormsDesigner/MicrosoftHost/MicrosoftFormsDesigner.Host.dll"; Backend = 'Microsoft Windows Forms' },
-            @{ Path = "${prefix}AddIns/DisplayBindings/WinUIXamlDesigner/MicrosoftHost/net9.0/WinUIXamlDesigner.MicrosoftHost.exe"; Backend = 'Microsoft WinUI (net9.0)' },
-            @{ Path = "${prefix}AddIns/DisplayBindings/WinUIXamlDesigner/MicrosoftHost/net10.0/WinUIXamlDesigner.MicrosoftHost.exe"; Backend = 'Microsoft WinUI (net10.0)' }
-        )) {
-            if (-not ($archive.Entries.FullName -contains $hostSpec.Path)) {
-                throw "ZIP is missing the $($hostSpec.Backend) design host: $($hostSpec.Path) ($ZipPath)"
+        # Mirror the designer-host checks in Test-WindowsDistributionPayload - they must survive the
+        # staging/zip round-trip, not just be present in the staged payload dir.
+        $expected = @(
+            "${prefix}AddIns/DisplayBindings/WpfDesign/Host/WpfDesign.SurfaceHost.dll",
+            "${prefix}AddIns/DisplayBindings/WpfDesign/MicrosoftHost/MicrosoftWpfDesign.SurfaceHost.dll",
+            "${prefix}AddIns/DisplayBindings/FormsDesigner/MicrosoftHost/MicrosoftFormsDesigner.Host.dll"
+        )
+        foreach ($tfmDir in 'net9.0', 'net10.0') {
+            foreach ($rid in 'win-x64', 'win-arm64') {
+                $expected += "${prefix}AddIns/DisplayBindings/WinUIXamlDesigner/MicrosoftHost/$tfmDir/$rid/WinUIXamlDesigner.MicrosoftHost.dll"
+            }
+        }
+        foreach ($path in $expected) {
+            if (-not ($archive.Entries.FullName -contains $path)) {
+                throw "ZIP is missing a designer host: $path ($ZipPath)"
             }
         }
         $forbidden = $archive.Entries.FullName | Where-Object {
@@ -491,21 +336,14 @@ function Test-WindowsDistributionZip {
 }
 
 # ---------------------------------------------------------------------------------------------
-# Shared pipeline (run once per RID in $ridsToBuild - see Invoke-DistributionPipeline below)
+# Shared pipeline (one AnyCPU pass - see Invoke-DistributionPipeline below)
 # ---------------------------------------------------------------------------------------------
 #
-# Restore itself runs per-RID (inside Invoke-DistributionPipeline), NOT once up front here:
-# once any project's obj/project.assets.json gets an explicit -p:RuntimeIdentifier baked in by
-# one restore, a later --no-restore build/publish for a DIFFERENT (or no) RuntimeIdentifier fails
-# with NETSDK1047 ("doesn't have a target for ...") because that RID's target section was never
-# written. Passing the SAME -p:RuntimeIdentifier to restore that the matching build/publish call
-# will use keeps every pass self-consistent regardless of what a previous pass (or a previous
-# manual `dotnet build`/`publish` in this repo) last restored for. Restore is incremental, so
-# doing it twice (once per RID) stays cheap when little changed; it also fails fast with a clear
-# error instead of leaving a half-built tree. On Windows it additionally seeds LibreWPF.Sdk
-# resolution for the AvalonEdit submodule, whose own global.json has no "msbuild-sdks" entry and
-# shadows the repo-root one for every project beneath it (otherwise MSB4236 "The SDK
-# 'LibreWPF.Sdk' specified could not be found").
+# Restore runs up front inside Invoke-DistributionPipeline with
+# -p:ProGpuWpfUseCurrentRuntimeIdentifier=false, so every project's obj/project.assets.json has a
+# RID-less target. On Windows this also seeds LibreWPF.Sdk resolution for the AvalonEdit submodule,
+# whose own global.json has no "msbuild-sdks" entry and shadows the repo-root one for every project
+# beneath it (otherwise MSB4236 "The SDK 'LibreWPF.Sdk' specified could not be found").
 
 # ---------------------------------------------------------------------------------------------
 # Platform packaging
@@ -518,7 +356,7 @@ function Invoke-MacPackaging {
     if ($LASTEXITCODE -ne 0) { throw "build-application-bundle.sh exited with code $LASTEXITCODE" }
 
     Write-Host '==> Smoke-testing packaged app...'
-    Test-PackagedAppStartup -ExePath (Join-Path $repoRoot 'OpenDevelop.app/Contents/MacOS/OpenDevelop')
+    Test-PackagedAppStartup -FilePath $dotnet -ArgumentList @((Join-Path $repoRoot 'OpenDevelop.app/Contents/MacOS/OpenDevelop.dll'))
 
     Write-Host '==> Building .dmg...'
     Push-Location $repoRoot
@@ -534,15 +372,14 @@ function Invoke-MacPackaging {
 }
 
 function Invoke-WindowsPackaging {
-    # $rid names this pass's payload/zip (e.g. "OpenDevelop-win-arm64", "OpenDevelop-windows-arm64.zip")
-    # so building both architectures in one dist.ps1 run never has one overwrite the other.
-    param([Parameter(Mandatory)][string]$Rid, [Parameter(Mandatory)][string]$PublishDir)
+    param([Parameter(Mandatory)][string]$PublishDir)
 
-    # $Rid is a full RID like "win-x64"/"win-arm64" - do not prefix another "win-" onto it.
-    $payloadRoot = Join-Path $repoRoot "OpenDevelop-$Rid"
-    $zipPath = Join-Path $repoRoot "OpenDevelop-$Rid.zip"
+    # ONE platform-neutral payload/zip: the app is AnyCPU and apphost-free, and every
+    # architecture's native/runtime assets live under runtimes/<rid>/ in the same tree.
+    $payloadRoot = Join-Path $repoRoot 'OpenDevelop-win'
+    $zipPath = Join-Path $repoRoot 'OpenDevelop-win.zip'
 
-    Write-Host "==> Assembling distribution payload ($config, $Rid)..."
+    Write-Host "==> Assembling the platform-neutral distribution payload ($config)..."
     if (Test-Path $payloadRoot) { Remove-Item -Recurse -Force $payloadRoot }
     New-Item -ItemType Directory -Path $payloadRoot | Out-Null
     Copy-Item -Path (Join-Path $PublishDir '*') -Destination $payloadRoot -Recurse -Force
@@ -559,6 +396,19 @@ function Invoke-WindowsPackaging {
     Remove-Item -LiteralPath $hostBuildOnlyFiles.FullName -Force -ErrorAction SilentlyContinue
     $hostReferenceDirs = Get-ChildItem -LiteralPath $payloadRoot -Recurse -Directory -Filter ref -ErrorAction SilentlyContinue
     foreach ($referenceDir in $hostReferenceDirs) { Remove-Item -LiteralPath $referenceDir.FullName -Recurse -Force }
+    # A build still emits an apphost for the build machine's architecture; drop it so the payload
+    # stays architecture-neutral (the app is started as "dotnet OpenDevelop.dll").
+    Remove-Item -LiteralPath (Join-Path $payloadRoot 'OpenDevelop.exe') -Force -ErrorAction SilentlyContinue
+
+    # A RID-less publish carries EVERY platform's native tree (linux/osx/unix) as well as Windows.
+    # The other platforms are dead weight in the Windows package, so drop everything except the
+    # Windows RIDs (win, win-x64, win-x86, win-arm64) before validating/zipping.
+    foreach ($runtimesDir in Get-ChildItem -LiteralPath $payloadRoot -Recurse -Directory -Filter 'runtimes' -ErrorAction SilentlyContinue) {
+        foreach ($ridDir in Get-ChildItem -LiteralPath $runtimesDir.FullName -Directory -ErrorAction SilentlyContinue) {
+            if ($ridDir.Name -eq 'win' -or $ridDir.Name -like 'win-*') { continue }
+            Remove-Item -LiteralPath $ridDir.FullName -Recurse -Force
+        }
+    }
 
     # OpenDevelop locates its addins and data at runtime by walking UP from the executable looking
     # for data/resources/languages/LanguageDefinition.xml (SharpDevelopMain.FindApplicationRootPath),
@@ -578,11 +428,11 @@ function Invoke-WindowsPackaging {
 
     # OpenDevelopAddinKind=OutOfProcessHost projects (WinForms/WPF/WinUI design-surface hosts) run
     # as their own separate "dotnet exec" child process with its own working directory - unlike an
-    # InProcess addin, they cannot resolve a same-named dependency from files sitting beside
-    # OpenDevelop.exe, so the by-name dedup below must not strip files out of their deployment
-    # folders. Missing this once (FormsDesigner's Host\ folder losing PresentationFramework.dll,
-    # every ProGPU.*.dll, System.Windows.Forms.dll, ...) made the WinForms designer's child host
-    # crash before completing its handshake, surfacing only as an opaque
+    # InProcess addin, they cannot resolve a same-named dependency from files sitting beside the
+    # app dll, so the by-name dedup below must not strip files out of their deployment folders.
+    # Missing this once (FormsDesigner's Host\ folder losing PresentationFramework.dll, every
+    # ProGPU.*.dll, System.Windows.Forms.dll, ...) made the WinForms designer's child host crash
+    # before completing its handshake, surfacing only as an opaque
     # "System.TimeoutException: The operation has timed out" with no further detail. Keep this in
     # sync with each OutOfProcessHost project's own DeployToAddIns destination.
     $outOfProcessHostDirs = @(
@@ -626,23 +476,13 @@ function Invoke-WindowsPackaging {
     }
     Write-Host "    AddIn files copied: $(@($addInFiles).Count)"
 
-    $exePath = Join-Path $payloadRoot 'OpenDevelop.exe'
-    if (-not (Test-Path $exePath)) { throw "dist.ps1: packaged executable not found: $exePath" }
-    Test-WindowsDistributionPayload -PayloadRoot $payloadRoot -Rid $Rid
+    $appPath = Join-Path $payloadRoot 'OpenDevelop.dll'
+    if (-not (Test-Path $appPath)) { throw "dist.ps1: packaged app not found: $appPath" }
+    Test-WindowsDistributionPayload -PayloadRoot $payloadRoot
     Write-Host "Payload ready: $payloadRoot"
 
-    # A Windows ARM64 build machine can produce an x64 package, but does not necessarily have
-    # the x64 framework-dependent .NET/LibreWPF runtime installed. Validate that cross-RID
-    # package structurally (including its PE machine and ZIP contents) and reserve execution
-    # smoke tests for the package that can actually run on this host.
-    $hostArchitecture = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToLowerInvariant()
-    $hostRid = if ($hostArchitecture -eq 'x64') { 'win-x64' } elseif ($hostArchitecture -eq 'arm64') { 'win-arm64' } else { '' }
-    if ($Rid -eq $hostRid) {
-        Write-Host '==> Smoke-testing packaged app...'
-        Test-PackagedAppStartup -ExePath $exePath -WorkingDirectory $payloadRoot
-    } else {
-        Write-Host "==> Skipping execution smoke test for $Rid on $hostRid; PE and ZIP content checks still apply."
-    }
+    Write-Host '==> Smoke-testing packaged app...'
+    Test-PackagedAppStartup -FilePath $dotnet -ArgumentList @($appPath) -WorkingDirectory $payloadRoot
 
     Write-Host '==> Building .zip...'
     Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
@@ -651,26 +491,19 @@ function Invoke-WindowsPackaging {
         $payloadRoot, $zipPath,
         [System.IO.Compression.CompressionLevel]::Optimal,
         $true)
-    Test-WindowsDistributionZip -ZipPath $zipPath -Rid $Rid
+    Test-WindowsDistributionZip -ZipPath $zipPath
 
     return $zipPath
 }
 
-function Invoke-DistributionPipeline([string]$Rid) {
-    # $Rid is $null on macOS (single host-architecture pass, no -p:RuntimeIdentifier override -
-    # matches the pre-multi-arch behavior exactly). On Windows it is one of $RuntimeIdentifiers.
-    $ridSuffix = if ($Rid) { "/$Rid" } else { '' }
-    $publishDir = Join-Path $repoRoot "src/Main/SharpDevelop/bin/$config/$tfm$ridSuffix/publish"
+function Invoke-DistributionPipeline {
+    # One AnyCPU pass: no -p:RuntimeIdentifier anywhere, so the output is a single RID-less
+    # (platform-neutral) payload that carries every architecture's assets under runtimes/.
+    $publishDir = Join-Path $repoRoot "src/Main/SharpDevelop/bin/$config/$tfm/publish"
     $depsJson = Join-Path $publishDir 'OpenDevelop.deps.json'
-    # Built with an explicit typed empty array + += (not "if (...) { @(...) } else { @() }"
-    # assigned directly) - the latter can degrade a single-element array into a bare string on
-    # assignment, which then splats one character per argument instead of the whole "-p:..." token.
-    [string[]]$ridArgs = @()
-    if ($Rid) { $ridArgs += "-p:RuntimeIdentifier=$Rid" }
-    $ridLabel = if ($Rid) { " ($Rid)" } else { '' }
 
-    Write-Host "==> Restoring solution$ridLabel..."
-    Restore-Solution -DotNet $dotnet -Solution $sln -ExtraProperties $ridArgs
+    Write-Host '==> Restoring solution...'
+    Restore-Solution -DotNet $dotnet -Solution $sln -ExtraProperties @('-p:ProGpuWpfUseCurrentRuntimeIdentifier=false')
 
     if (-not $SkipPublish) {
         # Clear the shared intermediate output so publish cannot reuse artifacts left by a
@@ -678,7 +511,7 @@ function Invoke-DistributionPipeline([string]$Rid) {
         # distribution intentionally remains framework-dependent and uses the installed .NET
         # runtime; the SDK-generated apphost is only the native entry point and does not bundle
         # that runtime.
-        Write-Host "==> Cleaning intermediate outputs$ridLabel..."
+        Write-Host '==> Cleaning intermediate outputs...'
         $hostObj = Join-Path $repoRoot "src/Main/SharpDevelop/obj/$config/$tfm"
         if (Test-Path $hostObj) { Remove-Item -Recurse -Force $hostObj }
 
@@ -694,13 +527,12 @@ function Invoke-DistributionPipeline([string]$Rid) {
             if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
         }
 
-        Write-Host "==> Publishing framework-dependent app ($config)$ridLabel..."
+        Write-Host "==> Publishing framework-dependent AnyCPU app ($config)..."
         if (Test-Path $publishDir) { Remove-Item -Recurse -Force $publishDir }
         Invoke-Native $dotnet publish $hostProject -c $config --self-contained false `
             "-p:OpenDevelopDistributionBuild=true" `
             "-p:PublishDir=$publishDir" `
-            "-p:ProGpuWpfUseCurrentRuntimeIdentifier=false" `
-            @ridArgs
+            "-p:ProGpuWpfUseCurrentRuntimeIdentifier=false"
 
         if (-not (Test-Path $publishDir)) {
             throw "dist.ps1: host publish directory not found: $publishDir"
@@ -714,7 +546,6 @@ function Invoke-DistributionPipeline([string]$Rid) {
         }
         $nugetPackages = ($nugetPackagesLine.Line -replace '^global-packages:\s*', '')
         & $patchScript $depsJson $nugetPackages
-        if ($Rid) { Sync-LibreWpfTransportRuntime $publishDir $Rid }
 
         # Some projects write to OpenDevelopHostPublishDir while computing their distribution
         # closure. Give that build a disposable copy so the verified host deployment above
@@ -736,7 +567,7 @@ function Invoke-DistributionPipeline([string]$Rid) {
         $globalAssemblyInfo = Join-Path $repoRoot 'src/Main/GlobalAssemblyInfo.cs'
         $pinnedGitVersionProperties = Get-PinnedGitVersionProperties -GlobalAssemblyInfoPath $globalAssemblyInfo
 
-        Write-Host "==> Building distribution AddIns without shared runtime copies$ridLabel..."
+        Write-Host '==> Building distribution AddIns without shared runtime copies...'
         Build-Solution -DotNet $dotnet -Solution $sln -Configuration $config -ExtraProperties (@(
             '-p:OpenDevelopDistributionBuild=true',
             "-p:OpenDevelopDistributionRidFamily=$ridFamily",
@@ -746,8 +577,8 @@ function Invoke-DistributionPipeline([string]$Rid) {
         ) + $pinnedGitVersionProperties)
 
         if ($IsWindows) {
-            Write-Host "==> Building Microsoft-framework designer hosts (VS MSBuild)$ridLabel..."
-            Build-MicrosoftDesignerHosts -RepoRoot $repoRoot -Configuration $config -Rid $Rid `
+            Write-Host '==> Building Microsoft-framework designer hosts (VS MSBuild)...'
+            Build-MicrosoftDesignerHosts -RepoRoot $repoRoot -Configuration $config `
                 -PinnedGitVersionProperties $pinnedGitVersionProperties
         }
         Remove-Item -Recurse -Force $hostPublishSnapshot
@@ -756,26 +587,20 @@ function Invoke-DistributionPipeline([string]$Rid) {
         # through cached project state. Restore the authoritative package runtime payload only
         # after every build has completed.
         & $patchScript $depsJson $nugetPackages
-        if ($Rid) { Sync-LibreWpfTransportRuntime $publishDir $Rid }
     }
     else {
-        Write-Host "==> Skipping publish$ridLabel (-SkipPublish)"
+        Write-Host '==> Skipping publish (-SkipPublish)'
     }
 
     if (-not (Test-Path $publishDir)) {
         throw "dist.ps1: framework-dependent publish directory not found: $publishDir"
     }
 
-    if ($IsWindows) { Invoke-WindowsPackaging -Rid $Rid -PublishDir $publishDir }
+    if ($IsWindows) { Invoke-WindowsPackaging -PublishDir $publishDir }
     else { Invoke-MacPackaging }
 }
 
-$artifacts = @()
-foreach ($rid in $ridsToBuild) {
-    $artifacts += Invoke-DistributionPipeline -Rid $rid
-}
+$artifact = Invoke-DistributionPipeline
 
 Write-Host ''
-foreach ($artifact in $artifacts) {
-    Write-Host "Done: $artifact"
-}
+Write-Host "Done: $artifact"
