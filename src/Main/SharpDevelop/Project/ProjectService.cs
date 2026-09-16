@@ -21,12 +21,14 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Dom;
 using ICSharpCode.SharpDevelop.Gui;
+using ICSharpCode.SharpDevelop.Project.Sdk;
 using ICSharpCode.SharpDevelop.Workbench;
 using Microsoft.Build.Exceptions;
 
@@ -192,22 +194,59 @@ namespace ICSharpCode.SharpDevelop.Project
 
 		/// <summary>
 		/// Every SDK-style project silently ends up with no children/items in this state - see
-		/// MSBuildInternals.NoCompatibleInProcessSdkFound - and the only trace otherwise is a build-
+		/// MSBuildInternals.NoCompatibleInProcessSdkFound - and the only other trace is a build-
 		/// channel message easy to miss ("The SDK resolver assembly ... could not be loaded").
-		/// Surface it once per session, at the point a user actually notices (opening a solution),
-		/// rather than as an early-startup popup before they even have a solution open.
+		/// Report it once per session, at the point a user actually notices (opening a solution).
+		///
+		/// Deliberately the Output pad's Build category - the same channel ErrorProject.ProjectLoaded
+		/// uses for a project that failed to load - and NOT a MessageBox: this text names SDK paths
+		/// and a command the user has to act on, and a native modal dialog can neither be copied out
+		/// of nor left open beside the Projects Pad while fixing the problem. Diagnostics belong in a
+		/// pad that can be scrolled back to, not in a popup that must be dismissed to see the tree it
+		/// is describing.
 		/// </summary>
 		void WarnOnceIfNoCompatibleInProcessSdk()
 		{
 			if (!MSBuildInternals.NoCompatibleInProcessSdkFound || warnedAboutMissingCompatibleSdk)
 				return;
 			warnedAboutMissingCompatibleSdk = true;
-			MessageService.ShowWarningFormatted(
-				"No installed .NET SDK matches this application's own architecture ({0}). " +
-				"SDK-style projects (most modern .csproj/.vbproj files) will show no items until a " +
-				"matching-architecture .NET SDK 10 (or newer) is installed side-by-side with any " +
-				"SDKs already on this machine.",
-				System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture);
+			
+			var architecture = RuntimeInformation.ProcessArchitecture;
+			var category = SD.OutputPad.BuildCategory;
+			category.Activate(bringPadToFront: true);
+			category.AppendLine(string.Empty);
+			category.AppendLine($"No installed .NET SDK matches this application's own architecture ({architecture}).");
+			category.AppendLine(
+				"SDK-style projects (most modern .csproj/.vbproj files) load with no items until an SDK of that architecture "
+				+ "is installed. The NuGet SDK resolver this IDE loads in-process is an architecture-specific (ReadyToRun) "
+				+ "assembly, so an SDK of a different architecture cannot supply it - even though 'dotnet build' on the "
+				+ "command line works fine with that same SDK, because that runs as its own separate process.");
+			category.AppendLine("Searched these .NET SDK roots:");
+			foreach (var candidate in DotNetSdkService.DiscoverSdks()) {
+				category.AppendLine(
+					$"  {candidate.RootPath}  (.NET SDK {candidate.HighestSdkVersion}, "
+					+ $"{candidate.Architecture?.ToString() ?? "unknown architecture"})");
+			}
+			category.AppendLine(
+				$"To fix: install the {ArchitectureInstallerName(architecture)} .NET SDK 10 (or newer) side-by-side - "
+				+ $"\"winget install Microsoft.DotNet.SDK.10 --architecture {ArchitectureInstallerName(architecture)}\" - "
+				+ "then restart OpenDevelop. An SDK added under Tools > Options > .NET SDK is picked up the same way.");
+			category.AppendLine(string.Empty);
+		}
+		
+		/// <summary>The spelling the .NET installers and winget use for an architecture.</summary>
+		static string ArchitectureInstallerName(Architecture architecture)
+		{
+			switch (architecture) {
+				case Architecture.X64:
+					return "x64";
+				case Architecture.X86:
+					return "x86";
+				case Architecture.Arm64:
+					return "arm64";
+				default:
+					return architecture.ToString().ToLowerInvariant();
+			}
 		}
 		
 		/// <summary>

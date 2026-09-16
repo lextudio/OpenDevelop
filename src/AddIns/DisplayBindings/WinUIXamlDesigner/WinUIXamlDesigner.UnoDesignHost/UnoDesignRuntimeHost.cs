@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -16,6 +17,7 @@ using ICSharpCode.SharpDevelop.Designer;
 using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.LanguageServices.Xaml;
+using ICSharpCode.SharpDevelop.Project.Sdk;
 
 using DesignSnapshot = ICSharpCode.SharpDevelop.Designer.Remote.DesignerSessionState;
 using ElementNode = ICSharpCode.SharpDevelop.Designer.Remote.DesignerElementNode;
@@ -796,6 +798,17 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 				ReportDesigner(error);
 				return (null, null, Directory.Exists(appBin) ? appBin : null, error);
 			}
+			if (!CanHostRunOnAppArchitecture(appBin, out var appArchitecture))
+			{
+				var error = "WinUI designer cannot preview '" + project.Name + "' because that configuration's output is "
+					+ appArchitecture + " while OpenDevelop is running as " + RuntimeInformation.ProcessArchitecture
+					+ ". A self-contained app carries its own native runtime (hostpolicy.dll, coreclr.dll) and the design"
+					+ " host cannot load one built for another architecture. Select a "
+					+ RuntimeInformation.ProcessArchitecture + " configuration, build it, then close and reopen this"
+					+ " document - or run the " + appArchitecture + " build of OpenDevelop.";
+				ReportDesigner(error);
+				return (null, null, null, error);
+			}
 			if (!CanHostRunOnAppFramework(runtimeConfig, out var appVersion))
 			{
 				ReportDesigner("WinUI designer: '" + project.Name + "' pins .NET " + appVersion
@@ -811,6 +824,48 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 				+ documentFileName + "'.", e);
 			return (null, null, null, "WinUI designer could not determine the active project's output. Select a buildable Windows App SDK configuration, build it, then close and reopen this document.");
 		}
+	}
+
+	/// <summary>
+	/// Whether this host can actually load the app's output, architecture-wise - the companion to
+	/// <see cref="CanHostRunOnAppFramework"/>, which asks the same question about the CLR version.
+	///
+	/// A self-contained app (WinUI Gallery's Debug-Unpackaged, and any
+	/// <c>WindowsAppSdkSelfContained</c>/<c>PublishSingleFile</c> configuration) ships its own
+	/// native runtime next to its managed output, built for that configuration's Platform. Adopting
+	/// such a graph from a design host of another architecture kills the child process before it
+	/// can report anything useful - the .NET host just prints
+	/// "Failed to load [...\win-arm64\hostpolicy.dll], HRESULT: 0x800700C1". Detect it from the
+	/// native host library actually sitting in the output directory rather than from the RID in the
+	/// path, which is only a naming convention.
+	///
+	/// A framework-dependent app has no native runtime of its own in its output, so there is
+	/// nothing to mismatch here and it is reported as usable.
+	/// </summary>
+	static bool CanHostRunOnAppArchitecture(string? appBin, out string appArchitecture)
+	{
+		appArchitecture = "an unknown architecture";
+		if (string.IsNullOrEmpty(appBin))
+			return true;
+
+		// hostpolicy.dll is the file the .NET host fails on first; coreclr.dll is checked too so a
+		// trimmed/odd layout still gets diagnosed instead of silently passing.
+		foreach (var nativeHostLibrary in new[] { "hostpolicy.dll", "coreclr.dll" })
+		{
+			var path = Path.Combine(appBin, nativeHostLibrary);
+			if (!File.Exists(path))
+				continue;
+			var architecture = DotNetSdkService.DetectHostArchitecture(path);
+			if (architecture == null)
+				continue;
+			if (architecture == RuntimeInformation.ProcessArchitecture)
+				return true;
+			appArchitecture = architecture.ToString()!;
+			return false;
+		}
+
+		// No native runtime in the output: framework-dependent, nothing architecture-specific to adopt.
+		return true;
 	}
 
 	/// <summary>

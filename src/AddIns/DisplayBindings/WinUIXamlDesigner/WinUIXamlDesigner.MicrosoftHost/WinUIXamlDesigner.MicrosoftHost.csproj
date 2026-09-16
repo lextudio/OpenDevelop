@@ -76,7 +76,15 @@
   </ItemGroup>
   <!-- Keep the native Windows App SDK child next to the addin just like the Uno child.  The
        parent deliberately probes this deployed location, never a developer-only build output. -->
-  <Target Name="DeployToAddIns" AfterTargets="Build">
+  <!-- Inner build only. This project multi-targets, so Build runs once per TargetFramework AND once
+       for the outer build that dispatches them. In that outer pass $(TargetFramework) is empty, so
+       $(TargetDir) does not point at an output directory - "$(TargetDir)**" then degenerates to "**"
+       and matches the ENTIRE project directory, copying bin/ and obj/ (both configurations, both
+       TFMs, apphost.exe, refint/ intermediates) into the AddIns tree. That shipped 788 files /
+       342 MB of build tree - 30% of the whole distribution payload - into every release.
+       $(HostRuntimeDirectory) also falls back to its net10.0 default in that pass, which is why the
+       junk all landed under MicrosoftHost\net10.0\. -->
+  <Target Name="DeployToAddIns" AfterTargets="Build" Condition="'$(TargetFramework)' != '' And '$(TargetDir)' != ''">
     <ItemGroup>
       <HostOutput Include="$(TargetDir)**" />
     </ItemGroup>

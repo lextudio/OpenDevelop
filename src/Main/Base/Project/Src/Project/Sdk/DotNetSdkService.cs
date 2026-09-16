@@ -273,7 +273,7 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 		/// portable IL. Returns null for an unrecognized/unreadable machine value rather than
 		/// guessing - callers must treat that as "unknown", not as a match.
 		/// </summary>
-		internal static Architecture? DetectHostArchitecture(string peFilePath)
+		public static Architecture? DetectHostArchitecture(string peFilePath)
 		{
 			try {
 				using var stream = File.OpenRead(peFilePath);

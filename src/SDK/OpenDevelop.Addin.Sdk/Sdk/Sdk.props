@@ -5,5 +5,19 @@
     <OpenDevelopPruneDeploymentAssets Condition="'$(OpenDevelopPruneDeploymentAssets)' == ''">true</OpenDevelopPruneDeploymentAssets>
     <OpenDevelopAddinKind Condition="'$(OpenDevelopAddinKind)' == ''">InProcess</OpenDevelopAddinKind>
     <AppendTargetFrameworkToOutputPath Condition="'$(AppendTargetFrameworkToOutputPath)' == ''">false</AppendTargetFrameworkToOutputPath>
+
+    <!-- AddIns must be AnyCPU. OpenDevelop ships one payload that has to load in whichever
+         architecture the user's dotnet host runs as, so an AddIn compiled for a single architecture
+         either fails to load or silently restricts the IDE to one platform.
+
+         LibreWPF.Sdk defaults ProGpuWpfUseCurrentRuntimeIdentifier to true, which quietly sets
+         RuntimeIdentifier to the BUILD MACHINE's RID ($(NETCoreSdkRuntimeIdentifier)). An AddIn
+         built on an ARM64 machine then emits ARM64 assemblies that cannot load in an x64 IDE - and
+         nothing in the build says so, because a RID-specific build is perfectly legal. Turning it
+         off here makes "no RuntimeIdentifier" actually mean AnyCPU.
+
+         Set it to true in your project only if you genuinely ship per-architecture builds; you must
+         then also set OpenDevelopAllowRidSpecificAddin=true to acknowledge the consequence. -->
+    <ProGpuWpfUseCurrentRuntimeIdentifier Condition="'$(ProGpuWpfUseCurrentRuntimeIdentifier)' == ''">false</ProGpuWpfUseCurrentRuntimeIdentifier>
   </PropertyGroup>
 </Project>

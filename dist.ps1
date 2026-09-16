@@ -310,12 +310,84 @@ function Test-WindowsPeArchitecture {
     } finally { $stream.Dispose() }
 }
 
+function Test-WindowsPayloadAssemblyArchitecture {
+    # Test-WindowsPeArchitecture above only ever checked OpenDevelop.exe - but the apphost is the
+    # ONE file dotnet publish always emits for the requested RID, so it is the one file that could
+    # never be wrong. Everything actually at risk is a managed assembly: most are AnyCPU IL (machine
+    # 0x014C, loadable anywhere and correctly ignored here), while ReadyToRun-compiled ones carry a
+    # real target machine and will not load at all in a process of another architecture
+    # ("The assembly architecture is not compatible with the current process architecture", or for a
+    # native-loaded dependency "Format of the executable (.exe) or library (.dll) is invalid").
+    #
+    # A stale per-project bin/obj from a build at a different RID is enough to slip such an assembly
+    # into the payload: dotnet publish reports success and only warns (CS8012 "targets a different
+    # processor"), so nothing fails until a user launches the app and it dies on startup. Fail the
+    # package build here instead - checking every assembly, since which projects emit R2R output
+    # varies with configuration.
+    param([Parameter(Mandatory)][string]$PayloadRoot, [Parameter(Mandatory)][string]$Rid)
+
+    $expectedMachine = if ($Rid -eq 'win-x64') { 0x8664 } elseif ($Rid -eq 'win-arm64') { 0xAA64 } else { throw "Unsupported Windows RID: $Rid" }
+    $anyCpu = 0x014C
+    $mismatched = @()
+
+    # Known, accepted exception. Every other child process in this payload is launched as
+    # "dotnet exec <dll>" and has its apphost suppressed (UseAppHost=false, see
+    # Directory.Build.targets), which is what keeps the payload architecture-clean. This one
+    # apphost cannot be suppressed the same way: its project lives under
+    # externals/vscode-wpf/external/wxsg/external/XamlToCSharpGenerator/, which carries its own
+    # Directory.Build.targets and therefore never sees this repo's. The apphost is unused - the
+    # language server is started from its .dll - so a wrong-architecture copy is inert rather than
+    # broken. Remove this entry if that submodule ever adopts the setting, or if the file stops
+    # being published.
+    $knownForeignApphosts = @('XamlToCSharpGenerator.LanguageServer.exe')
+
+    foreach ($file in Get-ChildItem -LiteralPath $PayloadRoot -Recurse -File -Include '*.dll', '*.exe') {
+        # Anything under a runtimes/<rid>/ folder is SUPPOSED to be architecture-specific: that is the
+        # standard .NET layout for shipping several architectures side by side, and the host picks the
+        # matching one at startup via deps.json runtimeTargets. A win-arm64 native library inside a
+        # win-x64 payload's runtimes/win-arm64/ is correct, not a defect - flagging it would make this
+        # check impossible to satisfy.
+        if ($file.FullName -like '*\runtimes\*') { continue }
+
+        $stream = $null
+        try {
+            $stream = [System.IO.File]::OpenRead($file.FullName)
+            if ($stream.Length -lt 0x40) { continue }
+            $reader = [System.IO.BinaryReader]::new($stream)
+            $stream.Position = 0x3c
+            $peOffset = $reader.ReadInt32()
+            if ($peOffset -le 0 -or ($peOffset + 6) -gt $stream.Length) { continue }
+            $stream.Position = $peOffset
+            if ($reader.ReadUInt32() -ne 0x00004550) { continue }   # not PE (native resource, etc.)
+            $machine = $reader.ReadUInt16()
+            if ($machine -ne $expectedMachine -and $machine -ne $anyCpu -and
+                $knownForeignApphosts -notcontains $file.Name) {
+                $relative = $file.FullName.Substring($PayloadRoot.Length).TrimStart('\', '/')
+                $mismatched += "  $relative (machine 0x$('{0:X4}' -f $machine))"
+            }
+        } catch {
+            # An unreadable/locked file is the packaging checks' problem elsewhere, not this one.
+        } finally {
+            if ($stream) { $stream.Dispose() }
+        }
+    }
+
+    if ($mismatched) {
+        throw "Distribution payload for $Rid contains assemblies built for another architecture " +
+            "(expected 0x$('{0:X4}' -f $expectedMachine) or AnyCPU 0x014C):$([Environment]::NewLine)" +
+            (($mismatched | Sort-Object | Select-Object -First 20) -join [Environment]::NewLine) +
+            "$([Environment]::NewLine)This usually means a per-project bin/obj still holds output from a build at a " +
+            "different RuntimeIdentifier - clean those projects and re-publish."
+    }
+}
+
 function Test-WindowsDistributionPayload {
     param([Parameter(Mandatory)][string]$PayloadRoot, [Parameter(Mandatory)][string]$Rid)
 
     $exe = Join-Path $PayloadRoot 'OpenDevelop.exe'
     if (-not (Test-Path -LiteralPath $exe)) { throw "Distribution payload has no OpenDevelop.exe: $PayloadRoot" }
     Test-WindowsPeArchitecture -Path $exe -Rid $Rid
+    Test-WindowsPayloadAssemblyArchitecture -PayloadRoot $PayloadRoot -Rid $Rid
     $addIns = Join-Path $PayloadRoot 'AddIns'
     if (-not (Test-Path -LiteralPath $addIns)) { throw "Distribution payload has no AddIns directory: $PayloadRoot" }
     if (@(Get-ChildItem -LiteralPath $addIns -Recurse -File -Filter '*.addin').Count -eq 0) { throw "Distribution payload has no addin manifests: $addIns" }
@@ -327,10 +399,13 @@ function Test-WindowsDistributionPayload {
     # WpfSurfaceHostClient.StartAsync/AcquireSharedAsync), so a distribution missing either one
     # would leave that backend's projects unable to open a designer at all - fail the package
     # build now instead of shipping that silently.
+    # Checked as .dll, not .exe: out-of-process hosts no longer generate an apphost (UseAppHost=false
+    # in Directory.Build.targets) because DesignerHostProcessClient launches them as
+    # "dotnet exec <host>.dll". The managed assembly is what actually has to be present.
     $wpfDesignRoot = Join-Path $addIns 'DisplayBindings\WpfDesign'
     foreach ($hostSpec in @(
-        @{ SubDir = 'Host';          Exe = 'WpfDesign.SurfaceHost.exe';          Backend = 'LibreWPF' },
-        @{ SubDir = 'MicrosoftHost'; Exe = 'MicrosoftWpfDesign.SurfaceHost.exe'; Backend = 'Microsoft WPF' }
+        @{ SubDir = 'Host';          Exe = 'WpfDesign.SurfaceHost.dll';          Backend = 'LibreWPF' },
+        @{ SubDir = 'MicrosoftHost'; Exe = 'MicrosoftWpfDesign.SurfaceHost.dll'; Backend = 'Microsoft WPF' }
     )) {
         $hostExe = Join-Path $wpfDesignRoot "$($hostSpec.SubDir)\$($hostSpec.Exe)"
         if (-not (Test-Path -LiteralPath $hostExe)) {
@@ -349,7 +424,7 @@ function Test-WindowsDistributionPayload {
     # Build-MicrosoftDesignerHosts step, not the normal solution build, so verify their output
     # lands in the payload the same way the WPF check above does - a silent gap here is exactly
     # how this backend went unbuilt/unshipped before.
-    $formsDesignerHostExe = Join-Path $addIns 'DisplayBindings\FormsDesigner\MicrosoftHost\MicrosoftFormsDesigner.Host.exe'
+    $formsDesignerHostExe = Join-Path $addIns 'DisplayBindings\FormsDesigner\MicrosoftHost\MicrosoftFormsDesigner.Host.dll'
     if (-not (Test-Path -LiteralPath $formsDesignerHostExe)) {
         throw "Distribution payload is missing the Microsoft Windows Forms design host: $formsDesignerHostExe. " +
             "Check that Build-MicrosoftDesignerHosts built " +
@@ -396,9 +471,9 @@ function Test-WindowsDistributionZip {
         # Mirror the WPF designer host check in Test-WindowsDistributionPayload - both backends
         # must survive the staging/zip round-trip, not just be present in the staged payload dir.
         foreach ($hostSpec in @(
-            @{ Path = "${prefix}AddIns/DisplayBindings/WpfDesign/Host/WpfDesign.SurfaceHost.exe";          Backend = 'LibreWPF' },
-            @{ Path = "${prefix}AddIns/DisplayBindings/WpfDesign/MicrosoftHost/MicrosoftWpfDesign.SurfaceHost.exe"; Backend = 'Microsoft WPF' },
-            @{ Path = "${prefix}AddIns/DisplayBindings/FormsDesigner/MicrosoftHost/MicrosoftFormsDesigner.Host.exe"; Backend = 'Microsoft Windows Forms' },
+            @{ Path = "${prefix}AddIns/DisplayBindings/WpfDesign/Host/WpfDesign.SurfaceHost.dll";          Backend = 'LibreWPF' },
+            @{ Path = "${prefix}AddIns/DisplayBindings/WpfDesign/MicrosoftHost/MicrosoftWpfDesign.SurfaceHost.dll"; Backend = 'Microsoft WPF' },
+            @{ Path = "${prefix}AddIns/DisplayBindings/FormsDesigner/MicrosoftHost/MicrosoftFormsDesigner.Host.dll"; Backend = 'Microsoft Windows Forms' },
             @{ Path = "${prefix}AddIns/DisplayBindings/WinUIXamlDesigner/MicrosoftHost/net9.0/WinUIXamlDesigner.MicrosoftHost.exe"; Backend = 'Microsoft WinUI (net9.0)' },
             @{ Path = "${prefix}AddIns/DisplayBindings/WinUIXamlDesigner/MicrosoftHost/net10.0/WinUIXamlDesigner.MicrosoftHost.exe"; Backend = 'Microsoft WinUI (net10.0)' }
         )) {

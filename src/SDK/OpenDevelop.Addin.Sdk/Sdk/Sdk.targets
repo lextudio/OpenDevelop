@@ -46,7 +46,36 @@
   <Target Name="OpenDevelopValidateAddin" BeforeTargets="Build" Condition="'$(OpenDevelopAddin)' == 'true'">
     <Error Condition="'$(OpenDevelopAddinKind)' != 'InProcess' And '$(OpenDevelopAddinKind)' != 'InProcessDependency' And '$(OpenDevelopAddinKind)' != 'OutOfProcessHost'" Text="OpenDevelopAddinKind must be InProcess, InProcessDependency, or OutOfProcessHost, not '$(OpenDevelopAddinKind)'." />
     <Error Condition="'$(OpenDevelopAddinKind)' == 'InProcess' And '@(OpenDevelopAddinManifest)' == ''" Text="No .addin manifest was found. Add one beside the project or declare OpenDevelopAddinManifest explicitly." />
+    <!-- A RuntimeIdentifier makes the compiler stamp the output for one architecture; OpenDevelop
+         loads AddIns into a process whose architecture follows the user's dotnet host, so such an
+         assembly throws "The assembly architecture is not compatible with the current process
+         architecture" - at load time, on the user's machine, never on the build machine that
+         produced it. Checking this input beats inspecting PE headers afterwards, because the
+         message can say what to do.
+
+         Error only for a distribution build; warn otherwise. In THIS repo most AddIn projects use
+         Sdk="LibreWPF.Sdk" directly and are merely recognised as AddIns by Directory.Build.targets,
+         so they get these targets but not this SDK's props - and LibreWPF.Sdk assigns
+         RuntimeIdentifier = $(NETCoreSdkRuntimeIdentifier) by default. Erroring unconditionally
+         therefore breaks every ordinary `dotnet build` (it did: StartPage.csproj and others). What
+         actually has to be clean is what gets packaged, and dist.ps1 additionally verifies the PE
+         machine of every assembly in the payload. Third-party AddIns that do consume this SDK get
+         ProGpuWpfUseCurrentRuntimeIdentifier=false from its props, so a RID there is deliberate and
+         the warning is accurate for them too. -->
+    <Error Condition="'$(RuntimeIdentifier)' != '' And '$(OpenDevelopAllowRidSpecificAddin)' != 'true' And '$(OpenDevelopDistributionBuild)' == 'true'"
+           Text="This AddIn is being packaged for RuntimeIdentifier '$(RuntimeIdentifier)', so its output will only load in a $(RuntimeIdentifier) process. OpenDevelop AddIns must be AnyCPU: remove RuntimeIdentifier, or pass -p:ProGpuWpfUseCurrentRuntimeIdentifier=false if LibreWPF.Sdk supplied it. If this AddIn genuinely ships per-architecture builds, set OpenDevelopAllowRidSpecificAddin=true and deploy one copy per architecture." />
+    <Warning Condition="'$(RuntimeIdentifier)' != '' And '$(OpenDevelopAllowRidSpecificAddin)' != 'true' And '$(OpenDevelopDistributionBuild)' != 'true'"
+             Text="This AddIn is being built for RuntimeIdentifier '$(RuntimeIdentifier)', so its output only loads in a $(RuntimeIdentifier) process. That is fine for local development, but a distribution build will reject it. See doc/technotes/addin-sdk.md, 'Architecture: addins are AnyCPU'." />
   </Target>
+
+  <PropertyGroup>
+    <!-- Out-of-process hosts are started as "dotnet exec <host>.dll", never through an apphost (see
+         DesignerHostProcessClient). The generated .exe would be the only architecture-specific file
+         such a project produces, so suppressing it is what keeps an OutOfProcessHost AnyCPU.
+         Set unconditionally: the .NET SDK's props default UseAppHost to true long before this file
+         is imported, so an "only if unset" guard would never fire. -->
+    <UseAppHost Condition="'$(OpenDevelopAddinKind)' == 'OutOfProcessHost'">false</UseAppHost>
+  </PropertyGroup>
   <Target Name="OpenDevelopDeployAddinManifest" AfterTargets="Build" DependsOnTargets="OpenDevelopValidateAddin" Condition="'$(OpenDevelopAddin)' == 'true' And '$(OpenDevelopAddinKind)' == 'InProcess'">
     <Copy SourceFiles="@(OpenDevelopAddinManifest)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
   </Target>

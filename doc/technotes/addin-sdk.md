@@ -162,6 +162,60 @@ child is deployed; reference-pack DLLs are not executable substitutes, and a chi
 resolve them from the parent application's base directory. Cross-host assembly dedup stays out of
 scope until version unification and a shared probing path are proven.
 
+### Architecture: addins are AnyCPU, and the SDK enforces it
+
+OpenDevelop ships one payload that must run in whichever architecture the user's `dotnet` host
+happens to be. An addin compiled for a single architecture therefore fails at **load** time, on the
+user's machine — `System.IO.FileLoadException: … The assembly architecture is not compatible with
+the current process architecture` — and never on the machine that built it. The build is perfectly
+happy: a RID-specific build is legal, just wrong here.
+
+Two traps produce such an addin without anyone asking for one:
+
+* **`LibreWPF.Sdk` sets `RuntimeIdentifier` for you.** It defaults
+  `ProGpuWpfUseCurrentRuntimeIdentifier` to `true`, which assigns
+  `RuntimeIdentifier = $(NETCoreSdkRuntimeIdentifier)` — the *build machine's* RID. A plain
+  `dotnet build` on an ARM64 machine is thus **not** a RID-less build, and emits ARM64 assemblies.
+  `OpenDevelop.Addin.Sdk` sets the property to `false` so that "no RuntimeIdentifier" means AnyCPU.
+* **The apphost is architecture-specific even when the assembly is not.** An `OutOfProcessHost` is
+  launched as `dotnet exec <host>.dll` by `DesignerHostProcessClient`, so its generated `.exe` is
+  never executed — but it is the one architecture-stamped file the project produces. The SDK sets
+  `UseAppHost=false` for that kind. Note this must be set unconditionally: the .NET SDK's own props
+  default `UseAppHost` to `true` long before an SDK's `.targets` are imported, so an
+  "only if unset" guard silently never fires.
+
+`OpenDevelopValidateAddin` fails the build when `RuntimeIdentifier` is non-empty. Checking that
+input beats inspecting PE headers after the fact, because the diagnostic can name the fix. An addin
+that genuinely ships per-architecture builds opts out with
+`OpenDevelopAllowRidSpecificAddin=true` and must then deploy one copy per architecture.
+
+**Diagnosing a suspect assembly** — read the PE header rather than trusting the path or file size.
+The `Machine` field sits four bytes past the PE signature, whose offset is the `e_lfanew` pointer at
+`0x3C`:
+
+| Value | Meaning |
+|---|---|
+| `0x014C` | AnyCPU / IL-only — correct for an addin |
+| `0x8664` | x64 |
+| `0xAA64` | ARM64 |
+
+```powershell
+$fs = [IO.File]::OpenRead($dll); $br = [IO.BinaryReader]::new($fs)
+$fs.Position = 0x3C; $fs.Position = $br.ReadInt32() + 4
+'0x{0:X4}' -f $br.ReadUInt16(); $fs.Dispose()
+```
+
+`dist.ps1`'s `Test-WindowsPayloadAssemblyArchitecture` runs this over every `.dll`/`.exe` in a
+packaged payload and fails the package build on anything that is neither AnyCPU nor the target RID.
+Files under a `runtimes/<rid>/` folder are exempt: that layout exists precisely to carry several
+architectures side by side, and the host selects the right one at startup through `deps.json`
+`runtimeTargets`.
+
+One caveat that bit this repo: a stale `bin/`/`obj/` from an earlier build at a different RID is
+enough to reintroduce a wrong-architecture assembly, because an incremental build sees the project
+as up to date and copy-locals yesterday's output. If the payload check reports an assembly you
+believe is AnyCPU, clean that project before investigating anything else.
+
 ## Rollout
 
 | Phase | Scope | Expected effect |

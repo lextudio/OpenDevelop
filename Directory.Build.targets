@@ -36,6 +36,29 @@
     <OpenDevelopAddinKind Condition="'$(OpenDevelopAddin)' == 'true' And '$(OpenDevelopAddinKind)' == ''">InProcessDependency</OpenDevelopAddinKind>
     <OpenDevelopAddinKind Condition="'$(OpenDevelopAddin)' == 'true' And $([System.String]::Copy('$(OutputPath)').Replace('\','/').ToLower().Contains('/host/'))">OutOfProcessHost</OpenDevelopAddinKind>
     <OpenDevelopTrimHostAssemblies Condition="'$(OpenDevelopTrimAddinCopyLocal)' != ''">$(OpenDevelopTrimAddinCopyLocal)</OpenDevelopTrimHostAssemblies>
+    <!-- Out-of-process hosts are never started through their apphost. Every one of them is launched
+         by DesignerHostProcessClient as "dotnet exec <host>.dll" (see GetChildDllPath), so the
+         generated .exe is dead weight - and worse, it is the one file in such a project that is
+         architecture-specific. Building the distribution on an ARM64 machine therefore put ~25 ARM64
+         apphosts into the win-x64 payload; none could ever have run there, which is why that payload
+         was broken beyond its main process. Suppressing the apphost removes the whole class of
+         defect at the source rather than trying to pass the right RID everywhere.
+         Deliberately NOT applied to the IDE itself (double-click launching) or to genuine CLI tools.
+         Set unconditionally for this kind rather than only when UseAppHost is empty: the .NET SDK's
+         own props already default it to true long before this file is imported, so a
+         "only if unset" guard never fires. A host project that genuinely needs an apphost should
+         declare a different OpenDevelopAddinKind. -->
+    <UseAppHost Condition="'$(OpenDevelopAddinKind)' == 'OutOfProcessHost'">false</UseAppHost>
+    <!-- Same rule, same reason, for three child processes that live in submodules and so cannot
+         carry the OpenDevelopAddinKind marker in their own csproj. Each is started by path as a
+         managed dll, never through its apphost:
+           SharpDbg.Cli                        - DapSession.cs resolves "SharpDbg.Cli.dll"
+           XamlLanguageServer.Wpf              - RegisterXamlLanguageServiceCommand resolves "wpf-xaml-ls.dll"
+           XamlToCSharpGenerator.LanguageServer- launched the same way by the WXSG language client
+         Setting this here rather than in the submodules keeps the change inside this repo. -->
+    <UseAppHost Condition="'$(MSBuildProjectName)' == 'SharpDbg.Cli'
+                        Or '$(MSBuildProjectName)' == 'XamlLanguageServer.Wpf'
+                        Or '$(MSBuildProjectName)' == 'XamlToCSharpGenerator.LanguageServer'">false</UseAppHost>
   </PropertyGroup>
 
   <Target Name="OpenDevelopGenerateHostAssemblyManifest"

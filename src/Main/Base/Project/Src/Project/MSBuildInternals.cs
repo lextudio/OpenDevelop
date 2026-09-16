@@ -141,13 +141,21 @@ namespace ICSharpCode.SharpDevelop.Project
 			// resolved as architecture-compatible, is correct on every machine unconditionally and
 			// needs no packaging-time knowledge of the eventual RuntimeIdentifier at all.
 			//
-			// Always overwrite rather than skip-if-exists: a stale copy from an earlier run (e.g.
-			// before the user installed a newer, or a now-matching-architecture, SDK) must not win
-			// over the one this run just resolved as correct.
+			// The NuGet.*.dll set is deliberately NOT overwritten: those are also the assemblies
+			// this app's own NuGet integration (NuGetPackageSearchService and friends) compiled
+			// against, at the version Directory.Packages.props pins - while the SDK ships its own,
+			// often newer, set. Overwriting them mixes two versions of one strongly-named closure
+			// (an SDK NuGet.Common next to the app's NuGet.Commands) and the process then dies at
+			// startup with "Could not load file or assembly 'NuGet.Common, Version=...'". Only fill
+			// in what is genuinely missing, exactly as before.
+			//
+			// The resolver DLL itself is the one file that must track THIS process's architecture
+			// rather than whatever a previous run or a packaging step left behind, so it is
+			// replaced whenever the deployed copy is not loadable here - that is the actual bug
+			// this whole code path exists to fix.
 			string binDir = Path.GetDirectoryName(typeof(MSBuildInternals).Assembly.Location);
 			if (!string.IsNullOrEmpty(binDir)) {
 				foreach (string dependency in new[] {
-					"Microsoft.Build.NuGetSdkResolver.dll",
 					"NuGet.Common.dll",
 					"NuGet.Configuration.dll",
 					"NuGet.Frameworks.dll",
@@ -158,20 +166,66 @@ namespace ICSharpCode.SharpDevelop.Project
 				}) {
 					string source = Path.Combine(latestSdk, dependency);
 					string destination = Path.Combine(binDir, dependency);
-					if (!File.Exists(source))
-						continue;
-					try {
-						File.Copy(source, destination, overwrite: true);
-					} catch (IOException) {
-						// Destination locked (e.g. a previous OpenDevelop instance/child process
-						// still has it loaded) - keep whatever is already there rather than fail
-						// MSBuild environment init over a cosmetic refresh.
-					} catch (UnauthorizedAccessException) {
-					}
+					if (!File.Exists(destination) && File.Exists(source))
+						File.Copy(source, destination);
 				}
+				PointNuGetSdkResolverManifestAtSdk(latestSdk, binDir);
 			}
 		}
 
+		/// <summary>
+		/// Points this app's own NuGet SDK-resolver manifest at the resolver inside
+		/// <paramref name="latestSdk"/>, instead of copying that resolver (and its NuGet.*
+		/// dependency closure) in beside this assembly.
+		///
+		/// An SdkResolver manifest's &lt;Path&gt; may be absolute - MSBuild's SdkResolverLoader only
+		/// rebases it against the manifest's own folder when it is relative - so the resolver can
+		/// simply be loaded where it already lives. That matters for two reasons this code learned
+		/// the hard way:
+		/// - Microsoft.Build.NuGetSdkResolver.dll is a ReadyToRun image tied to its SDK's
+		///   architecture. A copy taken at packaging time is only right when the building machine's
+		///   architecture happened to match the published RuntimeIdentifier; cross-publishing
+		///   win-x64 from an ARM64 machine baked in an ARM64 resolver, and every SDK-style project
+		///   then failed to load ("Format of the executable (.exe) or library (.dll) is invalid").
+		/// - The resolver's NuGet.* dependencies resolve from the resolver's own directory. Copying
+		///   those in here instead would put the SDK's NuGet version next to the (different,
+		///   Directory.Packages.props-pinned) one this app's own NuGet integration compiled
+		///   against, and mixing one strongly-named closure like that kills the process at startup
+		///   with "Could not load file or assembly 'NuGet.Common, Version=...'".
+		///
+		/// Loading it in place sidesteps both: the resolver is always the one belonging to the SDK
+		/// this process already established is architecture-compatible, with its own matching
+		/// dependencies beside it, and nothing about the app's own payload changes.
+		/// </summary>
+		static void PointNuGetSdkResolverManifestAtSdk(string latestSdk, string binDir)
+		{
+			const string resolverName = "Microsoft.Build.NuGetSdkResolver";
+			string resolverAssembly = Path.Combine(latestSdk, resolverName + ".dll");
+			if (!File.Exists(resolverAssembly)) {
+				LoggingService.Warn($"{resolverName}.dll not found in {latestSdk}; NuGet-based MSBuild Sdks will not resolve.");
+				return;
+			}
+
+			string manifestPath = Path.Combine(binDir, "SdkResolvers", resolverName, resolverName + ".xml");
+			string manifest = "<SdkResolver>" + Environment.NewLine
+				+ "  <Path>" + System.Security.SecurityElement.Escape(resolverAssembly) + "</Path>" + Environment.NewLine
+				+ "</SdkResolver>" + Environment.NewLine;
+
+			try {
+				// Rewrite only on change: the common case is an unchanged SDK selection, and this
+				// runs on the startup path.
+				if (File.Exists(manifestPath) && File.ReadAllText(manifestPath) == manifest)
+					return;
+				Directory.CreateDirectory(Path.GetDirectoryName(manifestPath));
+				File.WriteAllText(manifestPath, manifest);
+				LoggingService.Info($"Pointed {resolverName} manifest at {resolverAssembly} ({RuntimeInformation.ProcessArchitecture}).");
+			} catch (IOException ex) {
+				LoggingService.Warn($"Could not update the {resolverName} manifest at {manifestPath}.", ex);
+			} catch (UnauthorizedAccessException ex) {
+				LoggingService.Warn($"Could not update the {resolverName} manifest at {manifestPath}.", ex);
+			}
+		}
+		
 		static string latestSdkPath;
 		
 		internal static string GetLatestSdkPath()

@@ -152,13 +152,31 @@
        unconditionally, with no packaging-time knowledge of the eventual RuntimeIdentifier needed.
        When no architecture-matching SDK is installed at all, that same code logs
        NoCompatibleInProcessSdkFound instead of shipping something that would crash. -->
-  <!-- Microsoft.CSharp.CurrentVersion.targets derives CSharpCoreTargetsPath from the hosted
-       engine's own tool directory. Ship the Roslyn targets/compiler closure beside that engine,
-       otherwise SDK project evaluation succeeds through the resolver but fails on its next
-       import before designers can obtain project metadata. -->
+  <!-- Microsoft.CSharp.CurrentVersion.targets derives CSharpCoreTargetsPath from the hosted engine's
+       own tool directory, and that really is this app's directory: MSBuild resolves
+       $(MSBuildToolsPath) from its own toolset, which outranks the environment variable
+       MSBuildInternals sets. (Measured: with Roslyn\ removed the import fails naming
+       "<app dir>\Roslyn\Microsoft.CSharp.Core.targets", never the SDK's copy.) So the Roslyn
+       .targets do have to sit beside the engine.
+
+       What does NOT have to ship is Roslyn\bincore\ - 46.24 MB of compiler binaries (csc, vbc,
+       VBCSCompiler, Microsoft.CodeAnalysis.*). The in-process engine only EVALUATES projects; it
+       cannot run SDK tasks at all (see MinimalMSBuildEngine's type comment), and real builds go
+       out-of-process through the selected SDK, which brings its own compiler. Those binaries were
+       also the single largest source of wrong-architecture files in the payload, since
+       $(MSBuildToolsPath) here is the BUILD machine's SDK: a win-x64 package cross-published from
+       an ARM64 machine shipped an ARM64 csc.dll - and, caught one packaging round later, an ARM64
+       Microsoft.Build.Tasks.CodeAnalysis.dll (the Csc/Vbc task assembly, which sits in Roslyn's
+       root rather than in bincore and so survived an exclusion aimed at bincore alone).
+
+       Hence the selection below is *.targets/*.props ONLY: plain text, no architecture, nothing to
+       get wrong. That makes the whole class of mistake unrepresentable, instead of relying on an
+       exclusion list that must enumerate every binary. A UsingTask naming an assembly that is not
+       deployed costs evaluation nothing - it is resolved only when the task actually runs, which in
+       this engine never happens. -->
   <Target Name="DeployRoslynBuildTools" AfterTargets="Build">
     <ItemGroup>
-      <_RoslynBuildTools Include="$(MSBuildToolsPath)\Roslyn\**\*" />
+      <_RoslynBuildTools Include="$(MSBuildToolsPath)\Roslyn\**\*.targets;$(MSBuildToolsPath)\Roslyn\**\*.props" />
     </ItemGroup>
     <Copy SourceFiles="@(_RoslynBuildTools)"
           DestinationFiles="@(_RoslynBuildTools->'$(OutDir)Roslyn\%(RecursiveDir)%(Filename)%(Extension)')"
@@ -172,7 +190,8 @@
        here too - see the comment above DeployRoslynBuildTools for why that one moved to runtime.) -->
   <Target Name="DeployRoslynBuildToolsToPublish" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
     <ItemGroup>
-      <_RoslynBuildToolsPublish Include="$(MSBuildToolsPath)\Roslyn\**\*" />
+      <!-- Same targets/props-only selection as DeployRoslynBuildTools - see its comment. -->
+      <_RoslynBuildToolsPublish Include="$(MSBuildToolsPath)\Roslyn\**\*.targets;$(MSBuildToolsPath)\Roslyn\**\*.props" />
     </ItemGroup>
     <Copy SourceFiles="@(_RoslynBuildToolsPublish)"
           DestinationFiles="@(_RoslynBuildToolsPublish->'$(PublishDir)Roslyn\%(RecursiveDir)%(Filename)%(Extension)')"

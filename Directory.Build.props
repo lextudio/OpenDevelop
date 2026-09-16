@@ -16,5 +16,28 @@
       again.
     -->
     <ProGpuWpfLibreWinFormsPackageVersion>0.1.0-preview.55</ProGpuWpfLibreWinFormsPackageVersion>
+
+    <!--
+      Do NOT try to set ProGpuWpfUseCurrentRuntimeIdentifier here - it has no effect, and the
+      attempt was measured rather than assumed:
+      `dotnet msbuild <proj> -getProperty:ProGpuWpfUseCurrentRuntimeIdentifier` still reported
+      `true` with such a line present, because LibreWPF.Sdk's own Sdk.props sets it (guarded on
+      empty) and SDK props are imported BEFORE Directory.Build.props.
+
+      Why anyone would want to: that flag makes LibreWPF.Sdk assign
+      RuntimeIdentifier = $(NETCoreSdkRuntimeIdentifier), so a plain `dotnet build` is NOT a RID-less
+      build - on an ARM64 machine it silently emits ARM64 assemblies. dist.ps1 passes
+      -p:ProGpuWpfUseCurrentRuntimeIdentifier=false, so dev builds and distribution builds disagree
+      while sharing one bin/, and an incremental build copy-locals whichever ran last. That is how an
+      ARM64 WpfDesign.dll from an overnight dev build reached four AddIn folders inside a win-x64
+      package. dist.ps1's Test-WindowsPayloadAssemblyArchitecture now catches that at packaging time.
+
+      A repo-root Directory.Build.rsp DOES override it (response-file arguments behave as command
+      line, which outranks SDK props) and yields a genuinely RID-less build - but the resulting app
+      does not start: LibreWPF's transport assemblies are copied to the output yet omitted from
+      deps.json, so the host fails with "Could not load file or assembly 'ProGPU.Wpf.Interop'".
+      The cause is in LibreWPF.Sdk, not here - see doc/technotes/addin-sdk.md.
+    -->
+
   </PropertyGroup>
 </Project>
