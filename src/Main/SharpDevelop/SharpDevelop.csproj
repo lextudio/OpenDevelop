@@ -72,6 +72,16 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <!-- Embedded so WpfWorkbench.xaml can set Window.Icon explicitly. Without an explicit Icon, a
+         WPF window falls back to its HOSTING PROCESS's own exe icon - which used to be this same
+         opendevelop.ico automatically (the app hosted itself, via UseAppHost). Now that the app is
+         launched as "dotnet exec OpenDevelop.dll" (by OpenDevelop.Launcher's apphost, or by hand),
+         the hosting process is dotnet.exe, and the taskbar/Alt-Tab icon would otherwise be
+         dotnet.exe's generic one. Embedding the icon here and setting it explicitly makes the
+         running window's icon correct regardless of which process hosts it. -->
+    <Resource Include="..\..\..\build\windows\opendevelop.ico" Link="Resources\opendevelop.ico" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\Libraries\AvalonDock\source\Components\AvalonDock.Core\AvalonDock.Core.csproj" />
     <ProjectReference Include="..\..\Libraries\AvalonDock\source\Components\AvalonDock\AvalonDock.csproj" />
     <ProjectReference Include="..\..\Libraries\AvalonDock\source\Components\AvalonDock.Serializer.Xml\AvalonDock.Serializer.Xml.csproj" />

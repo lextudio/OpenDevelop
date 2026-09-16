@@ -6,6 +6,7 @@
 	xmlns:core = "http://icsharpcode.net/sharpdevelop/core"
 	xmlns:wb = "clr-namespace:ICSharpCode.SharpDevelop.Workbench"
 	Title = "{core:Localize MainWindow.DialogName}"
+	Icon = "pack://application:,,,/Resources/opendevelop.ico"
 	WindowStartupLocation = "Manual"
 	Width = "1024"
 	Height = "768"

@@ -110,6 +110,67 @@ function Get-PinnedGitVersionProperties {
     )
 }
 
+function Build-Launchers {
+    <#
+      The distribution payload is AnyCPU/apphost-free - OpenDevelop.dll is started as
+      "dotnet exec OpenDevelop.dll" - EXCEPT for the one file that unavoidably has to be
+      architecture-specific: the native apphost the user actually double-clicks. src/Main/
+      OpenDevelop.Launcher is exactly that: a tiny apphost whose only job is to hand off to
+      "dotnet exec OpenDevelop.dll" using a dotnet.exe guaranteed to match its own architecture
+      (see that project's Program.cs header comment for why no path-guessing is needed - hostfxr
+      already solved that just by starting this very process).
+
+      Built twice, once per Windows architecture, and only the resulting .exe is kept per pass -
+      renaming an apphost after publish is safe (verified empirically: the companion
+      .dll/.deps.json/.runtimeconfig.json paths are baked in at publish time, not re-derived from
+      the exe's own on-disk filename at runtime), so the win-x64 pass becomes OpenDevelop.exe and
+      the win-arm64 pass becomes OpenDevelopARM64.exe. The companion trio itself (named
+      OpenDevelop.Bootstrap.* - deliberately not "OpenDevelop", which is already the real IDE's own
+      managed entry point sitting in the same folder) is copied from just ONE pass: the launcher
+      project has zero PackageReferences, so there is nothing RID-conditional that could differ
+      between the two builds' copies.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$RepoRoot,
+        [Parameter(Mandatory)][string]$DotNet,
+        [ValidateSet('Debug', 'Release')]
+        [string]$Configuration = 'Release',
+        [Parameter(Mandatory)][string]$PayloadRoot
+    )
+
+    $launcherProject = Join-Path $RepoRoot 'src/Main/OpenDevelop.Launcher/OpenDevelop.Launcher.csproj'
+    $ridToExeName = [ordered]@{ 'win-x64' = 'OpenDevelop.exe'; 'win-arm64' = 'OpenDevelopARM64.exe' }
+    $companionCopied = $false
+
+    foreach ($rid in $ridToExeName.Keys) {
+        $publishDir = New-TempDir
+        try {
+            Write-Host "==> Building launcher ($rid)..."
+            Invoke-Native $DotNet publish $launcherProject -c $Configuration --self-contained false `
+                "-r" $rid "-o" $publishDir
+
+            $builtExe = Join-Path $publishDir 'OpenDevelop.Bootstrap.exe'
+            if (-not (Test-Path -LiteralPath $builtExe)) {
+                throw "Build-Launchers: expected launcher apphost not found: $builtExe"
+            }
+            Copy-Item -LiteralPath $builtExe -Destination (Join-Path $PayloadRoot $ridToExeName[$rid]) -Force
+
+            if (-not $companionCopied) {
+                foreach ($companionExtension in '.dll', '.deps.json', '.runtimeconfig.json') {
+                    $companionFile = Join-Path $publishDir "OpenDevelop.Bootstrap$companionExtension"
+                    if (-not (Test-Path -LiteralPath $companionFile)) {
+                        throw "Build-Launchers: expected launcher companion file not found: $companionFile"
+                    }
+                    Copy-Item -LiteralPath $companionFile -Destination $PayloadRoot -Force
+                }
+                $companionCopied = $true
+            }
+        } finally {
+            Remove-Item -Recurse -Force $publishDir -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 function Build-MicrosoftDesignerHosts {
     <#
       Builds the genuine-Microsoft-framework designer backends that are NOT referenced by
@@ -161,12 +222,18 @@ function Test-PackagedAppStartup {
       what the deps.json patch exists to prevent. Dump the captured output on an early exit so the
       cause is visible without re-running by hand.
 
-      The payload is apphost-free, so callers pass the user's dotnet host and the app dll.
+      The payload is apphost-free, so callers pass the user's dotnet host and the app dll - EXCEPT
+      when testing a launcher (OpenDevelop.exe/OpenDevelopARM64.exe): that process itself spawns a
+      CHILD "dotnet exec OpenDevelop.dll" and waits on it, so $FilePath's own window (if any) is
+      not where the real WPF window/file locks live. Pass -KillProcessTree in that case so cleanup
+      (below) reaches the child too - otherwise it becomes an orphan still holding the payload's
+      files open, which corrupts the same .zip step this function's own file-lock comment is about.
     #>
     param(
         [Parameter(Mandatory)][string]$FilePath,
         [string[]]$ArgumentList = @(),
-        [string]$WorkingDirectory
+        [string]$WorkingDirectory,
+        [switch]$KillProcessTree
     )
     $tag = [System.Guid]::NewGuid().ToString('N')
     # Start-Process rejects using ONE file for both streams; keep two.
@@ -201,7 +268,15 @@ function Test-PackagedAppStartup {
     # locks; on Windows a still-locked payload can otherwise be captured half-written by the .zip.
     try { $proc.CloseMainWindow() | Out-Null } catch {}
     Start-Sleep -Seconds 2
-    if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
+    if (-not $proc.HasExited) {
+        if ($KillProcessTree) {
+            # taskkill /T reaches the whole tree (the launcher AND the "dotnet exec" child it
+            # spawned and is blocked on); Stop-Process alone only ever touches $proc.Id itself.
+            & taskkill /PID $proc.Id /T /F | Out-Null
+        } else {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+        }
+    }
     Remove-Item -Force $outLog, $errLog -ErrorAction SilentlyContinue
     Write-Host 'Packaged app startup smoke test passed'
 }
@@ -212,11 +287,38 @@ function Test-WindowsDistributionPayload {
 
     $app = Join-Path $PayloadRoot 'OpenDevelop.dll'
     if (-not (Test-Path -LiteralPath $app)) { throw "Distribution payload has no OpenDevelop.dll: $PayloadRoot" }
-    # AnyCPU and apphost-free: the app is started as "dotnet OpenDevelop.dll" with the user's own
-    # .NET host. An apphost is the one file a build emits for a single architecture, so its presence
-    # means the payload is no longer platform-neutral.
-    if (Test-Path -LiteralPath (Join-Path $PayloadRoot 'OpenDevelop.exe')) {
-        throw "Distribution payload contains an architecture-specific apphost (OpenDevelop.exe): $PayloadRoot"
+    # OpenDevelop.dll itself is AnyCPU and apphost-free: it is started as "dotnet exec OpenDevelop.dll".
+    # The launcher (Build-Launchers) supplies the ONE file that is unavoidably architecture-specific -
+    # the native apphost the user double-clicks - as two separate files, one per Windows
+    # architecture, so the platform-neutral payload can still be a single download. Verify both are
+    # present and actually built for the architecture their name promises: a launcher of the wrong
+    # PE machine type would fail with a bare "not a valid Win32 application" and no other clue.
+    foreach ($launcherSpec in @(
+        @{ Name = 'OpenDevelop.exe'; ExpectedMachine = 0x8664 },
+        @{ Name = 'OpenDevelopARM64.exe'; ExpectedMachine = 0xAA64 }
+    )) {
+        $launcherPath = Join-Path $PayloadRoot $launcherSpec.Name
+        if (-not (Test-Path -LiteralPath $launcherPath)) {
+            throw "Distribution payload is missing the launcher: $launcherPath"
+        }
+        $stream = [System.IO.File]::OpenRead($launcherPath)
+        try {
+            $reader = [System.IO.BinaryReader]::new($stream)
+            $stream.Position = 0x3c
+            $peOffset = $reader.ReadInt32()
+            $stream.Position = $peOffset
+            if ($reader.ReadUInt32() -ne 0x00004550) { throw "Not a PE executable: $launcherPath" }
+            $machine = $reader.ReadUInt16()
+            if ($machine -ne $launcherSpec.ExpectedMachine) {
+                throw "Wrong launcher architecture: $launcherPath has machine 0x$('{0:X4}' -f $machine), expected 0x$('{0:X4}' -f $launcherSpec.ExpectedMachine)."
+            }
+        } finally { $stream.Dispose() }
+    }
+    foreach ($companionExtension in '.dll', '.deps.json', '.runtimeconfig.json') {
+        $companionPath = Join-Path $PayloadRoot "OpenDevelop.Bootstrap$companionExtension"
+        if (-not (Test-Path -LiteralPath $companionPath)) {
+            throw "Distribution payload is missing the launcher's companion file: $companionPath"
+        }
     }
     # Every supported architecture's native WPF runtime must be present side by side; the host picks
     # the matching one from deps.json runtimeTargets at startup.
@@ -307,7 +409,17 @@ function Test-WindowsDistributionZip {
     try {
         $prefix = "OpenDevelop-win/"
         if (-not ($archive.Entries.FullName -contains "${prefix}OpenDevelop.dll")) { throw "ZIP lacks ${prefix}OpenDevelop.dll: $ZipPath" }
-        if ($archive.Entries.FullName -contains "${prefix}OpenDevelop.exe") { throw "ZIP contains an architecture-specific apphost: $ZipPath" }
+        foreach ($launcherName in 'OpenDevelop.exe', 'OpenDevelopARM64.exe') {
+            if (-not ($archive.Entries.FullName -contains "${prefix}${launcherName}")) {
+                throw "ZIP is missing the launcher ${launcherName}: $ZipPath"
+            }
+        }
+        foreach ($companionExtension in '.dll', '.deps.json', '.runtimeconfig.json') {
+            $companionPath = "${prefix}OpenDevelop.Bootstrap$companionExtension"
+            if (-not ($archive.Entries.FullName -contains $companionPath)) {
+                throw "ZIP is missing the launcher's companion file ${companionPath}: $ZipPath"
+            }
+        }
         if (-not ($archive.Entries.FullName | Where-Object { $_ -like "${prefix}AddIns/*.addin" })) { throw "ZIP lacks addin manifests: $ZipPath" }
         # Mirror the designer-host checks in Test-WindowsDistributionPayload - they must survive the
         # staging/zip round-trip, not just be present in the staged payload dir.
@@ -396,9 +508,14 @@ function Invoke-WindowsPackaging {
     Remove-Item -LiteralPath $hostBuildOnlyFiles.FullName -Force -ErrorAction SilentlyContinue
     $hostReferenceDirs = Get-ChildItem -LiteralPath $payloadRoot -Recurse -Directory -Filter ref -ErrorAction SilentlyContinue
     foreach ($referenceDir in $hostReferenceDirs) { Remove-Item -LiteralPath $referenceDir.FullName -Recurse -Force }
-    # A build still emits an apphost for the build machine's architecture; drop it so the payload
-    # stays architecture-neutral (the app is started as "dotnet OpenDevelop.dll").
+    # The main publish step still emits an apphost for the build machine's architecture; drop it -
+    # OpenDevelop.dll itself stays architecture-neutral (started as "dotnet exec OpenDevelop.dll").
+    # It is deliberately NOT what the user double-clicks; that is OpenDevelop.exe /
+    # OpenDevelopARM64.exe, built fresh below by Build-Launchers.
     Remove-Item -LiteralPath (Join-Path $payloadRoot 'OpenDevelop.exe') -Force -ErrorAction SilentlyContinue
+
+    Write-Host '==> Building launchers (one native apphost per Windows architecture)...'
+    Build-Launchers -RepoRoot $repoRoot -DotNet $dotnet -Configuration $config -PayloadRoot $payloadRoot
 
     # A RID-less publish carries EVERY platform's native tree (linux/osx/unix) as well as Windows.
     # The other platforms are dead weight in the Windows package, so drop everything except the
@@ -483,6 +600,13 @@ function Invoke-WindowsPackaging {
 
     Write-Host '==> Smoke-testing packaged app...'
     Test-PackagedAppStartup -FilePath $dotnet -ArgumentList @($appPath) -WorkingDirectory $payloadRoot
+
+    # Also exercise the ACTUAL double-click path end to end, not just "dotnet exec": the launcher
+    # matching this build machine's own architecture is the one this machine can run directly.
+    $hostArchitectureLauncher = if ([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture -eq
+        [System.Runtime.InteropServices.Architecture]::Arm64) { 'OpenDevelopARM64.exe' } else { 'OpenDevelop.exe' }
+    Write-Host "==> Smoke-testing the $hostArchitectureLauncher launcher..."
+    Test-PackagedAppStartup -FilePath (Join-Path $payloadRoot $hostArchitectureLauncher) -WorkingDirectory $payloadRoot -KillProcessTree
 
     Write-Host '==> Building .zip...'
     Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue

@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!--
+      This is the native apphost the user actually double-clicks. Everything else in the
+      distribution is AnyCPU/apphost-free (see SharpDevelop.csproj's UseAppHost comment) -
+      the apphost itself is unavoidably architecture-specific (it's a native PE stub), so it is
+      built twice by dist.ps1, once per -p:RuntimeIdentifier, and each pass's .exe is renamed into
+      the shared payload as OpenDevelop.exe (win-x64) / OpenDevelopARM64.exe (win-arm64).
+
+      Renaming the apphost file after publish is safe and was verified empirically before relying
+      on it here: the companion .dll/.deps.json/.runtimeconfig.json paths are baked into the
+      apphost at publish time and are NOT re-derived from the exe's own on-disk filename at
+      runtime, so a copy of e.g. "OpenDevelop.Bootstrap.exe" renamed to "Renamed.exe" still finds
+      and loads "OpenDevelop.Bootstrap.dll" correctly. Only ONE copy of the companion trio needs
+      to ship (either RID pass's copy - a project with zero PackageReferences has nothing
+      RID-conditional to differ between them).
+
+      AssemblyName is deliberately NOT "OpenDevelop": that name is already the real IDE's managed
+      entry point (OpenDevelop.dll) sitting in the very same payload folder, with its own
+      OpenDevelop.deps.json/OpenDevelop.runtimeconfig.json that this project must not collide
+      with and overwrite.
+    -->
+    <AssemblyName>OpenDevelop.Bootstrap</AssemblyName>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Framework-dependent: this is the whole point - the app is launched with whichever
+         architecture-matching .NET runtime the user already has installed (see doc/technotes/
+         addin-sdk.md's "Architecture: addins are AnyCPU" for the broader project convention this
+         follows, and MSBuildInternals.InitializeMSBuildEnvironment for the IDE's own equivalent
+         architecture-matched SDK resolution once it is running). -->
+    <SelfContained>false</SelfContained>
+    <!-- Without this, the .NET SDK implicitly sets PlatformTarget to match -p:RuntimeIdentifier
+         for an OutputType=Exe project - which stamps the MANAGED dll's own PE header with that
+         architecture too, not just the native apphost. Verified: a framework-dependent win-x64
+         publish produced an x64-tagged OpenDevelop.Bootstrap.dll (PE machine 0x8664), so the
+         win-arm64 launcher (which shares that one companion dll - see Build-Launchers' comment on
+         why only one pass's copy ships) failed to load it with "The assembly architecture is not
+         compatible with the current process architecture". Forcing AnyCPU here keeps the managed
+         dll genuinely platform-neutral regardless of which RID the apphost itself is built for. -->
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <ApplicationIcon>..\..\..\build\windows\opendevelop.ico</ApplicationIcon>
+    <!-- Not an OpenDevelop AddIn - this ships at the payload root, not under AddIns/, and
+         Directory.Build.targets' path-based auto-detection (OutputPath contains "addins/") does
+         not fire for it. No OpenDevelopAddinKind is set. -->
+  </PropertyGroup>
+</Project>
