@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 
 using ICSharpCode.SharpDevelop.Designer;
 using ICSharpCode.SharpDevelop.Designer.Remote;
-using ICSharpCode.SharpDevelop.Project.Sdk;
 using StreamJsonRpc;
 
 namespace ICSharpCode.WinUIXamlDesigner.UnoDesignHost;
@@ -122,8 +121,10 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 	/// version, so an app on an older TFM than the IDE's host simply fails to launch it.</param>
 	/// <param name="dotnetHostPath">An explicit "dotnet" executable to launch the child under,
 	/// overriding this process's own. Required when <paramref name="appBinPath"/> is a
-	/// self-contained app built for a DIFFERENT architecture than this process - see
-	/// <see cref="ICSharpCode.SharpDevelop.Project.Sdk.DotNetSdkService.ResolveDotnetHostForArchitecture"/>.</param>
+	/// self-contained app built for a DIFFERENT architecture than this process - resolved by the
+	/// caller (see UnoDesignRuntimeHost.CanHostRunOnAppArchitecture), never here: this project
+	/// links into a Base-free standalone test build (WinUIXamlDesigner.UnoDesignHost.Remote), so it
+	/// cannot reference DotNetSdkService (in the Base project) itself.</param>
 	public static async Task<UnoDesignClient> StartAsync(string runtimeConfigPath, string depsFilePath, CancellationToken cancellationToken, string? hostDllPath = null, string? appBinPath = null, string? dotnetHostPath = null)
 	{
 		var connection = new Connection(runtimeConfigPath, depsFilePath, hostDllPath ?? LocateChildDll(), appBinPath, dotnetHostPath);
@@ -140,14 +141,15 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 	/// share a child that preloaded the wrong app.</param>
 	/// <param name="dotnetHostPath">An explicit "dotnet" executable to launch the child under, when
 	/// the app is self-contained for a different architecture than this process (see
-	/// <see cref="StartAsync"/>'s remarks). Also folded into the pool key via the resolved
-	/// architecture, so apps of different architectures never share a child.</param>
-	public static async Task<UnoDesignClient> AcquireSharedAsync(string runtimeConfigPath, string depsFilePath, CancellationToken cancellationToken, string? hostDllPath = null, string? appBinPath = null, string? dotnetHostPath = null)
+	/// <see cref="StartAsync"/>'s remarks).</param>
+	/// <param name="dotnetHostArchitecture">The architecture of <paramref name="dotnetHostPath"/>,
+	/// already known to the caller - folded into the pool key so apps of different architectures
+	/// never share a child. Defaults to this process's own when <paramref name="dotnetHostPath"/>
+	/// is null.</param>
+	public static async Task<UnoDesignClient> AcquireSharedAsync(string runtimeConfigPath, string depsFilePath, CancellationToken cancellationToken, string? hostDllPath = null, string? appBinPath = null, string? dotnetHostPath = null, Architecture? dotnetHostArchitecture = null)
 	{
 		var host = Path.GetFullPath(hostDllPath ?? LocateChildDll() ?? throw new FileNotFoundException("The Uno design host child is not deployed."));
-		var architecture = !string.IsNullOrEmpty(dotnetHostPath)
-			? DotNetSdkService.DetectHostArchitecture(dotnetHostPath) ?? RuntimeInformation.ProcessArchitecture
-			: RuntimeInformation.ProcessArchitecture;
+		var architecture = dotnetHostArchitecture ?? RuntimeInformation.ProcessArchitecture;
 		var key = new CompatibilityKey(Normalize(runtimeConfigPath), Normalize(depsFilePath), host, architecture, Normalize(appBinPath), dotnetHostPath);
 		return new UnoDesignClient(await sharedPool.AcquireAsync(key, cancellationToken).ConfigureAwait(false), key);
 	}
