@@ -265,13 +265,24 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 		}
 
 		/// <summary>
-		/// Reads a PE file's Machine field straight out of its header (offset given by the
-		/// e_lfanew pointer at 0x3C, PE signature + IMAGE_FILE_HEADER.Machine 4 bytes later) rather
-		/// than trusting file size/timestamp or assuming AnyCPU - the .NET host executable itself,
-		/// and some of the assemblies an SDK ships (e.g. Microsoft.Build.NuGetSdkResolver.dll,
-		/// built ReadyToRun), are architecture-specific even though most managed SDK assemblies are
-		/// portable IL. Returns null for an unrecognized/unreadable machine value rather than
-		/// guessing - callers must treat that as "unknown", not as a match.
+		/// Reads a native executable's architecture straight out of its own header rather than
+		/// trusting file size/timestamp or assuming AnyCPU - the .NET host executable itself, and
+		/// some of the assemblies an SDK ships (e.g. Microsoft.Build.NuGetSdkResolver.dll, built
+		/// ReadyToRun), are architecture-specific even though most managed SDK assemblies are
+		/// portable IL. Returns null for an unrecognized/unreadable image rather than guessing -
+		/// callers must treat that as "unknown", not as a match.
+		///
+		/// All three host formats have to be understood, not just PE: this originally read the PE
+		/// IMAGE_FILE_HEADER.Machine field only, so on macOS (where "dotnet" is a Mach-O binary)
+		/// and Linux (ELF) every discovered SDK came back with a null Architecture. That made
+		/// <see cref="ResolveEffectiveSdkForInProcessHosting()"/> - which keeps only SDKs whose
+		/// Architecture equals this process's - return null on every non-Windows machine, so
+		/// MSBuildInternals.InitializeMSBuildEnvironment() bailed out at
+		/// NoCompatibleInProcessSdkFound before it ever pointed the NuGet SDK-resolver manifest at
+		/// a real resolver. The shipped manifest then still held the NuGet package's own relative
+		/// &lt;Path&gt;, naming a DLL this app deliberately does not bundle, and every SDK-style
+		/// project load failed with "Could not load SDK Resolver. A manifest file exists, but the
+		/// path to the SDK Resolver DLL file could not be found."
 		/// </summary>
 		public static Architecture? DetectHostArchitecture(string peFilePath)
 		{
@@ -280,27 +291,114 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 				using var reader = new BinaryReader(stream);
 				if (stream.Length < 0x40)
 					return null;
+				uint magic = reader.ReadUInt32();
+				switch (magic) {
+					case 0xFEEDFACF: // MH_MAGIC_64 (little-endian host - every Mach-O we care about)
+					case 0xFEEDFACE: // MH_MAGIC (32-bit)
+						return MachOArchitecture(reader.ReadUInt32());
+					case 0xBEBAFECA: // FAT_MAGIC, stored big-endian - a universal binary
+					case 0xBFBAFECA: // FAT_MAGIC_64
+						return FatMachOArchitecture(stream, reader);
+					case 0x464C457F: // "\x7FELF"
+						return ElfArchitecture(stream, reader);
+				}
 				stream.Position = 0x3C;
 				int peHeaderOffset = reader.ReadInt32();
 				if (peHeaderOffset <= 0 || peHeaderOffset + 6 > stream.Length)
 					return null;
-				stream.Position = peHeaderOffset + 4;
-				ushort machine = reader.ReadUInt16();
-				switch (machine) {
-					case 0x8664: // IMAGE_FILE_MACHINE_AMD64
-						return System.Runtime.InteropServices.Architecture.X64;
-					case 0xAA64: // IMAGE_FILE_MACHINE_ARM64
-						return System.Runtime.InteropServices.Architecture.Arm64;
-					case 0x014c: // IMAGE_FILE_MACHINE_I386
-						return System.Runtime.InteropServices.Architecture.X86;
-					case 0x01c4: // IMAGE_FILE_MACHINE_ARMNT
-						return System.Runtime.InteropServices.Architecture.Arm;
-					default:
-						return null;
-				}
-			} catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) {
+				stream.Position = peHeaderOffset;
+				if (reader.ReadUInt32() != 0x00004550) // "PE\0\0"
+					return null;
+				return PEArchitecture(reader.ReadUInt16());
+			} catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is EndOfStreamException) {
 				return null;
 			}
+		}
+
+		static Architecture? PEArchitecture(ushort machine)
+		{
+			switch (machine) {
+				case 0x8664: // IMAGE_FILE_MACHINE_AMD64
+					return Architecture.X64;
+				case 0xAA64: // IMAGE_FILE_MACHINE_ARM64
+					return Architecture.Arm64;
+				case 0x014c: // IMAGE_FILE_MACHINE_I386
+					return Architecture.X86;
+				case 0x01c4: // IMAGE_FILE_MACHINE_ARMNT
+					return Architecture.Arm;
+				default:
+					return null;
+			}
+		}
+
+		static Architecture? MachOArchitecture(uint cpuType)
+		{
+			switch (cpuType) {
+				case 0x01000007: // CPU_TYPE_X86_64
+					return Architecture.X64;
+				case 0x0100000C: // CPU_TYPE_ARM64
+					return Architecture.Arm64;
+				case 0x00000007: // CPU_TYPE_X86
+					return Architecture.X86;
+				case 0x0000000C: // CPU_TYPE_ARM
+					return Architecture.Arm;
+				default:
+					return null;
+			}
+		}
+
+		/// <summary>
+		/// A universal binary contains several slices; report this process's own architecture when
+		/// one of them provides it (that is the slice macOS would actually run here), otherwise the
+		/// first slice we recognize.
+		/// </summary>
+		static Architecture? FatMachOArchitecture(Stream stream, BinaryReader reader)
+		{
+			// The fat header and its arch entries are big-endian regardless of the slices.
+			uint count = ReadUInt32BigEndian(reader);
+			if (count == 0 || count > 64)
+				return null;
+			Architecture? first = null;
+			for (uint i = 0; i < count; i++) {
+				if (stream.Position + 4 > stream.Length)
+					break;
+				var arch = MachOArchitecture(ReadUInt32BigEndian(reader));
+				if (arch != null && arch == RuntimeInformation.ProcessArchitecture)
+					return arch;
+				if (first == null)
+					first = arch;
+				// Skip the rest of the fat_arch entry (cpusubtype, offset, size, align).
+				stream.Position += 16;
+			}
+			return first;
+		}
+
+		static Architecture? ElfArchitecture(Stream stream, BinaryReader reader)
+		{
+			stream.Position = 5;
+			bool littleEndian = reader.ReadByte() != 2; // EI_DATA: 2 = ELFDATA2MSB
+			stream.Position = 0x12;
+			ushort machine = reader.ReadUInt16();
+			if (!littleEndian)
+				machine = (ushort)((machine >> 8) | (machine << 8));
+			switch (machine) {
+				case 0x3E: // EM_X86_64
+					return Architecture.X64;
+				case 0xB7: // EM_AARCH64
+					return Architecture.Arm64;
+				case 0x03: // EM_386
+					return Architecture.X86;
+				case 0x28: // EM_ARM
+					return Architecture.Arm;
+				default:
+					return null;
+			}
+		}
+
+		static uint ReadUInt32BigEndian(BinaryReader reader)
+		{
+			return ((uint)reader.ReadByte() << 24) | ((uint)reader.ReadByte() << 16)
+				| ((uint)reader.ReadByte() << 8) | reader.ReadByte();
 		}
 
 		/// <summary>
