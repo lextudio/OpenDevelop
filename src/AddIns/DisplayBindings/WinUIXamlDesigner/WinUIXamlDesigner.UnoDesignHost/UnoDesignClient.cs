@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 
 using ICSharpCode.SharpDevelop.Designer;
 using ICSharpCode.SharpDevelop.Designer.Remote;
+using ICSharpCode.SharpDevelop.Project.Sdk;
 using StreamJsonRpc;
 
 namespace ICSharpCode.WinUIXamlDesigner.UnoDesignHost;
@@ -29,7 +30,7 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 
 	static readonly SharedDesignerHostPool<CompatibilityKey, Connection> sharedPool = new(
 		(_, connection) => connection.IsAlive,
-		async (key, token) => { var connection = new Connection(key.RuntimeConfigPath, key.DepsFilePath, key.HostDllPath, key.AppBinPath); RouteOutput(connection); await connection.StartConnectionAsync(token); return connection; });
+		async (key, token) => { var connection = new Connection(key.RuntimeConfigPath, key.DepsFilePath, key.HostDllPath, key.AppBinPath, key.DotnetHostPath); RouteOutput(connection); await connection.StartConnectionAsync(token); return connection; });
 
 	/// <summary>
 	/// Sends a child's output to the designer's Output pad channel.
@@ -119,9 +120,13 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 	/// but passing it on its own is what makes the designer usable when the app and the host target
 	/// DIFFERENT frameworks: adopting the app's runtimeconfig pins the child to the app's framework
 	/// version, so an app on an older TFM than the IDE's host simply fails to launch it.</param>
-	public static async Task<UnoDesignClient> StartAsync(string runtimeConfigPath, string depsFilePath, CancellationToken cancellationToken, string? hostDllPath = null, string? appBinPath = null)
+	/// <param name="dotnetHostPath">An explicit "dotnet" executable to launch the child under,
+	/// overriding this process's own. Required when <paramref name="appBinPath"/> is a
+	/// self-contained app built for a DIFFERENT architecture than this process - see
+	/// <see cref="ICSharpCode.SharpDevelop.Project.Sdk.DotNetSdkService.ResolveDotnetHostForArchitecture"/>.</param>
+	public static async Task<UnoDesignClient> StartAsync(string runtimeConfigPath, string depsFilePath, CancellationToken cancellationToken, string? hostDllPath = null, string? appBinPath = null, string? dotnetHostPath = null)
 	{
-		var connection = new Connection(runtimeConfigPath, depsFilePath, hostDllPath ?? LocateChildDll(), appBinPath);
+		var connection = new Connection(runtimeConfigPath, depsFilePath, hostDllPath ?? LocateChildDll(), appBinPath, dotnetHostPath);
 		RouteOutput(connection);
 		await connection.StartConnectionAsync(cancellationToken).ConfigureAwait(false);
 		return new UnoDesignClient(connection, null);
@@ -133,10 +138,17 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 	/// to the app's framework version, and a net10.0 host then cannot load at all - see
 	/// <see cref="StartAsync"/>. Part of the pool key, so documents from different projects never
 	/// share a child that preloaded the wrong app.</param>
-	public static async Task<UnoDesignClient> AcquireSharedAsync(string runtimeConfigPath, string depsFilePath, CancellationToken cancellationToken, string? hostDllPath = null, string? appBinPath = null)
+	/// <param name="dotnetHostPath">An explicit "dotnet" executable to launch the child under, when
+	/// the app is self-contained for a different architecture than this process (see
+	/// <see cref="StartAsync"/>'s remarks). Also folded into the pool key via the resolved
+	/// architecture, so apps of different architectures never share a child.</param>
+	public static async Task<UnoDesignClient> AcquireSharedAsync(string runtimeConfigPath, string depsFilePath, CancellationToken cancellationToken, string? hostDllPath = null, string? appBinPath = null, string? dotnetHostPath = null)
 	{
 		var host = Path.GetFullPath(hostDllPath ?? LocateChildDll() ?? throw new FileNotFoundException("The Uno design host child is not deployed."));
-		var key = new CompatibilityKey(Normalize(runtimeConfigPath), Normalize(depsFilePath), host, RuntimeInformation.ProcessArchitecture, Normalize(appBinPath));
+		var architecture = !string.IsNullOrEmpty(dotnetHostPath)
+			? DotNetSdkService.DetectHostArchitecture(dotnetHostPath) ?? RuntimeInformation.ProcessArchitecture
+			: RuntimeInformation.ProcessArchitecture;
+		var key = new CompatibilityKey(Normalize(runtimeConfigPath), Normalize(depsFilePath), host, architecture, Normalize(appBinPath), dotnetHostPath);
 		return new UnoDesignClient(await sharedPool.AcquireAsync(key, cancellationToken).ConfigureAwait(false), key);
 	}
 	static string Normalize(string path) => string.IsNullOrEmpty(path) ? "" : Path.GetFullPath(path);
@@ -313,23 +325,26 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 		if (poolKey != null) sharedPool.Release(poolKey, connection); else connection.Dispose();
 	}
 
-	sealed record CompatibilityKey(string RuntimeConfigPath, string DepsFilePath, string HostDllPath, Architecture Architecture, string AppBinPath = "");
+	sealed record CompatibilityKey(string RuntimeConfigPath, string DepsFilePath, string HostDllPath, Architecture Architecture, string AppBinPath = "", string? DotnetHostPath = null);
 	sealed class Connection : DesignerHostProcessClient
 	{
 		readonly string runtimeConfigPath;
 		readonly string depsFilePath;
 		readonly string? hostDllPath;
 		readonly string? appBinPath;
+		readonly string? dotnetHostPath;
 		public DesignerCapabilities Capabilities { get; private set; } = null!;
-		public Connection(string runtimeConfigPath, string depsFilePath, string? hostDllPath, string? appBinPath = null)
+		public Connection(string runtimeConfigPath, string depsFilePath, string? hostDllPath, string? appBinPath = null, string? dotnetHostPath = null)
 		{
 			this.runtimeConfigPath = runtimeConfigPath;
 			this.depsFilePath = depsFilePath;
 			this.hostDllPath = hostDllPath;
 			this.appBinPath = appBinPath;
+			this.dotnetHostPath = dotnetHostPath;
 		}
 		public Task StartConnectionAsync(CancellationToken token) => StartAsync(token);
 		protected override string GetChildDllPath() => hostDllPath ?? throw new FileNotFoundException("The Uno design host child is not deployed.");
+		protected override string? DotnetHostPath => dotnetHostPath;
 
 		/// <summary>
 		/// Runs the child FROM the designed app's output directory.

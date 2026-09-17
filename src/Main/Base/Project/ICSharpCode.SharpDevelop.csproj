@@ -135,7 +135,13 @@
          and can be compiled back in. -->
     <Compile Include="Src\Gui\Pads\ProjectBrowser\Commands\ToolbarCommands.cs" />
     <Compile Remove="Src\Gui\Components\ExtTreeView\**\*.cs" />
-    <Compile Remove="Src\Commands\FileTabStripCommands.cs" />
+    <!-- Out of MVP scope: NavigateToFileInProjectBrowser depends on the legacy WinForms
+         ExtTreeView-based Solution Explorer (ProjectBrowserPad.Instance/.Control,
+         ProjectBrowserPanel, ProjectBrowserControl), which is excluded above and has no
+         equivalent members on the MVP stub (ProjectBrowserPadStub.cs). The rest of
+         FileTabStripCommands.cs (CopyPathName, CloseFileTab, ...) has no such dependency
+         and compiles fine. -->
+    <Compile Remove="Src\Commands\NavigateToFileInProjectBrowserCommand.cs" />
     <Compile Remove="Src\Commands\ViewInBrowser.cs" />
     <Compile Remove="Src\Internal\ConditionEvaluators\ViewInBrowserConditionEvaluator.cs" />
     <Compile Remove="Src\Project\Converter\LanguageConverter.cs" />

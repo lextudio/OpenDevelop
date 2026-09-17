@@ -560,7 +560,8 @@ function Invoke-WindowsPackaging {
         'DisplayBindings\WinUIXamlDesigner\UnoHost',
         'DisplayBindings\WinUIXamlDesigner\MicrosoftHost',
         'DisplayBindings\WpfDesign\Host',
-        'DisplayBindings\WpfDesign\MicrosoftHost'
+        'DisplayBindings\WpfDesign\MicrosoftHost',
+        'LanguageServices\XamlLanguageServer.Wpf'
     )
 
     # Select first, then copy in a plain foreach. A ForEach-Object block runs in a child scope, so

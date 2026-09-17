@@ -66,6 +66,24 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		protected abstract string GetChildDllPath();
 
 		/// <summary>
+		/// Overrides the "dotnet" host executable used to launch the child. Null (the default)
+		/// keeps <see cref="FindDotnetHost"/>'s behavior of reusing whatever "dotnet" this process
+		/// itself resolves to - correct as long as the child adopts a runtime graph of the same
+		/// architecture as this process.
+		///
+		/// A subclass that adopts a designed app's own runtimeconfig/deps (via
+		/// <c>dotnet exec --runtimeconfig ...</c>) must override this when that app is
+		/// self-contained for a DIFFERENT architecture than this process: a self-contained app
+		/// carries its own native host (hostpolicy.dll/coreclr.dll) built for one specific
+		/// architecture, and launching it through a "dotnet" of another architecture fails before
+		/// the child can report anything useful. The out-of-process/JSON-RPC design here has no
+		/// same-architecture requirement of its own - only the muxer this returns does - so
+		/// resolving a matching one (see DotNetSdkService.ResolveDotnetHostForArchitecture) is
+		/// enough to preview a project built for another architecture than this IDE process.
+		/// </summary>
+		protected virtual string? DotnetHostPath => null;
+
+		/// <summary>
 		/// Builds the <c>dotnet exec</c> command line (without the <c>dotnet</c> host itself),
 		/// e.g. <c>exec --runtimeconfig &lt;project&gt;.runtimeconfig.json --depsfile
 		/// &lt;project&gt;.deps.json host.dll --port N --token T</c>. Subclasses add the
@@ -107,7 +125,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 			listener.Start();
 			var port = ((IPEndPoint)listener.LocalEndpoint).Port;
 
-			var startInfo = new ProcessStartInfo(FindDotnetHost(), BuildCommandLine(childDll, port, token)) {
+			var startInfo = new ProcessStartInfo(DotnetHostPath ?? FindDotnetHost(), BuildCommandLine(childDll, port, token)) {
 				UseShellExecute = false,
 				RedirectStandardOutput = true,
 				RedirectStandardError = true,

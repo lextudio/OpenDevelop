@@ -399,6 +399,27 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 		}
 
 		/// <summary>
+		/// Resolves a "dotnet" host executable matching a specific target architecture - which need
+		/// NOT be this process's own (<see cref="RuntimeInformation.ProcessArchitecture"/>). Unlike
+		/// <see cref="ResolveEffectiveSdkForInProcessHosting"/>, this is for launching an
+		/// out-of-process CHILD (a separate OS process, e.g. an out-of-process designer host
+		/// adopting a self-contained app's runtime graph): the .NET installer's side-by-side layout
+		/// (<c>%ProgramFiles%\dotnet</c>, plus <c>\x64</c>/<c>\arm64</c>/<c>\x86</c> siblings for
+		/// other architectures - see <see cref="DiscoverSdks"/>'s systemCandidates) commonly makes
+		/// more than one architecture's SDK available on the same machine, e.g. an ARM64 Windows
+		/// install carries an x64 side install for exactly this kind of cross-architecture launch.
+		/// Returns null when no installed SDK of that architecture is found.
+		/// </summary>
+		public static string ResolveDotnetHostForArchitecture(Architecture targetArchitecture)
+		{
+			return DiscoverSdks()
+				.Where(s => s.Architecture == targetArchitecture)
+				.OrderByDescending(s => Version.TryParse(s.HighestSdkVersion?.Split('-')[0], out var v) ? v : new Version(0, 0))
+				.Select(s => s.DotnetExecutablePath)
+				.FirstOrDefault();
+		}
+
+		/// <summary>
 		/// Builds the same set of environment variables launch.sh sets for this app's own process,
 		/// but pointed at the given SDK - so a build/debug/test child process gets a fully
 		/// deterministic, self-consistent SDK/MSBuild toolset regardless of what the parent

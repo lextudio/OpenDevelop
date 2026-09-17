@@ -616,7 +616,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 	{
 		try
 		{
-			var (runtimeConfig, depsFile, appBin, dependencyError) = ProjectDependencyContext();
+			var (runtimeConfig, depsFile, appBin, dependencyError, dotnetHostPath) = ProjectDependencyContext();
 			// Native WinUI's XamlReader must run with the designed executable's dependency graph.
 			// Starting the generic child when the selected configuration has no output makes every
 			// third-party control look like an unrelated XAML type-resolution error (for example
@@ -633,7 +633,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 			// versioned Microsoft child here, beside dependency-context discovery, rather than
 			// freezing the IDE's net10 default during factory registration.
 			var child = hostDllPath ?? hostDllPathLocator?.Invoke();
-			client = await UnoDesignClient.AcquireSharedAsync(runtimeConfig, depsFile, CancellationToken.None, child, appBin);
+			client = await UnoDesignClient.AcquireSharedAsync(runtimeConfig, depsFile, CancellationToken.None, child, appBin, dotnetHostPath);
 			client.Recovered += OnClientRecovered;
 			client.RecoveryFailed += OnClientRecoveryFailed;
 			var capabilities = await client.GetCapabilitiesAsync();
@@ -766,7 +766,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 	/// one. Every "no graph" path is logged, because the designer otherwise reports a plain
 	/// "type not found" XAML error for what is really a missing launch argument.
 	/// </summary>
-	(string? RuntimeConfig, string? DepsFile, string? AppBin, string? Error) ProjectDependencyContext()
+	(string? RuntimeConfig, string? DepsFile, string? AppBin, string? Error, string? DotnetHostPath) ProjectDependencyContext()
 	{
 		try
 		{
@@ -776,7 +776,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 				var error = "WinUI designer cannot find the project for '" + documentFileName
 					+ "'. Open the solution, select a buildable Windows App SDK configuration, and close then reopen this document.";
 				ReportDesigner(error);
-				return (null, null, null, error);
+				return (null, null, null, error, null);
 			}
 			var outputAssembly = project.OutputAssemblyFullPath;
 			if (string.IsNullOrEmpty(outputAssembly))
@@ -785,7 +785,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 				var error = "WinUI designer cannot preview '" + project.Name + "' because " + active
 					+ " has no project output. Select a buildable Windows App SDK configuration (for WinUI Gallery: Debug-Unpackaged|ARM64), build it, then close and reopen this document.";
 				ReportDesigner(error);
-				return (null, null, null, error);
+				return (null, null, null, error, null);
 			}
 			var runtimeConfig = Path.ChangeExtension(outputAssembly, ".runtimeconfig.json");
 			var depsFile = Path.ChangeExtension(outputAssembly, ".deps.json");
@@ -796,33 +796,35 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 					+ " (missing " + Path.GetFileName(runtimeConfig) + " or " + Path.GetFileName(depsFile)
 					+ "). Select a buildable Windows App SDK configuration, build it, then close and reopen this document.";
 				ReportDesigner(error);
-				return (null, null, Directory.Exists(appBin) ? appBin : null, error);
+				return (null, null, Directory.Exists(appBin) ? appBin : null, error, null);
 			}
-			if (!CanHostRunOnAppArchitecture(appBin, out var appArchitecture))
+			if (!CanHostRunOnAppArchitecture(appBin, out var appArchitecture, out var dotnetHostPath))
 			{
 				var error = "WinUI designer cannot preview '" + project.Name + "' because that configuration's output is "
-					+ appArchitecture + " while OpenDevelop is running as " + RuntimeInformation.ProcessArchitecture
-					+ ". A self-contained app carries its own native runtime (hostpolicy.dll, coreclr.dll) and the design"
-					+ " host cannot load one built for another architecture. Select a "
-					+ RuntimeInformation.ProcessArchitecture + " configuration, build it, then close and reopen this"
-					+ " document - or run the " + appArchitecture + " build of OpenDevelop.";
+					+ appArchitecture + ", OpenDevelop is running as " + RuntimeInformation.ProcessArchitecture
+					+ ", and no installed .NET SDK for " + appArchitecture + " was found on this machine to launch the"
+					+ " design host under instead. A self-contained app carries its own native runtime (hostpolicy.dll,"
+					+ " coreclr.dll), so the design host must run under a matching-architecture \"dotnet\" to load it."
+					+ " Install a " + appArchitecture + " .NET SDK (side-by-side installs are supported, e.g."
+					+ " \"dotnet-install -Architecture " + appArchitecture.ToLowerInvariant() + "\"), or select a "
+					+ RuntimeInformation.ProcessArchitecture + " configuration, build it, then close and reopen this document.";
 				ReportDesigner(error);
-				return (null, null, null, error);
+				return (null, null, null, error, null);
 			}
 			if (!CanHostRunOnAppFramework(runtimeConfig, out var appVersion))
 			{
 				ReportDesigner("WinUI designer: '" + project.Name + "' pins .NET " + appVersion
 					+ " which this design host (.NET " + Environment.Version.Major + ") cannot run on;"
 					+ " preloading the app's assemblies from " + appBin + " without adopting its runtime graph.");
-				return (null, null, appBin, "WinUI designer cannot run this configuration's runtime graph; select a compatible built configuration, then close and reopen this document.");
+				return (null, null, appBin, "WinUI designer cannot run this configuration's runtime graph; select a compatible built configuration, then close and reopen this document.", null);
 			}
-			return (runtimeConfig, depsFile, appBin, null);
+			return (runtimeConfig, depsFile, appBin, null, dotnetHostPath);
 		}
 		catch (Exception e)
 		{
 			ReportDesigner("WinUI designer: could not determine the project dependency context for '"
 				+ documentFileName + "'.", e);
-			return (null, null, null, "WinUI designer could not determine the active project's output. Select a buildable Windows App SDK configuration, build it, then close and reopen this document.");
+			return (null, null, null, "WinUI designer could not determine the active project's output. Select a buildable Windows App SDK configuration, build it, then close and reopen this document.", null);
 		}
 	}
 
@@ -841,10 +843,23 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 	///
 	/// A framework-dependent app has no native runtime of its own in its output, so there is
 	/// nothing to mismatch here and it is reported as usable.
+	///
+	/// The design host itself runs entirely out-of-process, bridged to this IDE process over
+	/// loopback JSON-RPC (see <see cref="ICSharpCode.SharpDevelop.Designer.Remote.DesignerHostProcessClient"/>),
+	/// so nothing about that bridge requires the child to share this process's architecture - only
+	/// the "dotnet" muxer used to launch it does, because THAT process is what loads the app's
+	/// native hostpolicy/coreclr. When the app's architecture differs from this process, look for
+	/// an installed .NET SDK of the app's own architecture (<see
+	/// cref="DotNetSdkService.ResolveDotnetHostForArchitecture"/>) - the .NET installer's
+	/// side-by-side layout (<c>dotnet\x64</c>, <c>dotnet\arm64</c>, ...) makes exactly this
+	/// available on a machine with more than one architecture's SDK installed, e.g. Windows on
+	/// ARM64 commonly carries an x64 side install. Only when no matching-architecture SDK can be
+	/// found at all is this reported as a real mismatch.
 	/// </summary>
-	static bool CanHostRunOnAppArchitecture(string? appBin, out string appArchitecture)
+	static bool CanHostRunOnAppArchitecture(string? appBin, out string appArchitecture, out string? dotnetHostPath)
 	{
 		appArchitecture = "an unknown architecture";
+		dotnetHostPath = null;
 		if (string.IsNullOrEmpty(appBin))
 			return true;
 
@@ -859,6 +874,9 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 			if (architecture == null)
 				continue;
 			if (architecture == RuntimeInformation.ProcessArchitecture)
+				return true;
+			dotnetHostPath = DotNetSdkService.ResolveDotnetHostForArchitecture(architecture.Value);
+			if (dotnetHostPath != null)
 				return true;
 			appArchitecture = architecture.ToString()!;
 			return false;

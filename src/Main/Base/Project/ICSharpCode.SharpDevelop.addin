@@ -1182,10 +1182,8 @@
 			          label = "${res:OpenFileTabEventHandler.CopyPathName}"
 			          icon  = "Icons.16x16.Copy"
 			          class = "ICSharpCode.SharpDevelop.Commands.TabStrip.CopyPathName"/>
-			<MenuItem id = "NavigateToFileInProjectBrowser"
-			          label = "${res:ICSharpCode.SharpDevelop.Commands.TabStrip.NavigateToFileInProjectBrowser}"
-			          shortcut = "Alt|Shift|L"
-			          class = "ICSharpCode.SharpDevelop.Commands.TabStrip.NavigateToFileInProjectBrowser"/>
+			<!-- Out of MVP scope: depends on the legacy WinForms Solution Explorer, see
+			     NavigateToFileInProjectBrowserCommand.cs exclusion in ICSharpCode.SharpDevelop.csproj. -->
 			<MenuItem id = "OpenFolderContainingFileFromTab"
 			          label = "${res:OpenFileTabEventHandler.FileContainingFolderInExplorer}"
 			          icon  = "Icons.16x16.FolderOpen"

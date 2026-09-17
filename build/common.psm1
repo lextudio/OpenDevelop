@@ -75,13 +75,58 @@ function Resolve-Symlink {
 function Invoke-Native {
     # Run a native command; throw on non-zero exit (set -e semantics).
     # Usage: Invoke-Native <exe> <args...>
+    #
+    # Runs via Start-Process with output captured to temp log files rather than a plain
+    # "& $exe @rest": every caller sets $ErrorActionPreference = 'Stop' (dist.ps1:45), and merging a
+    # native command's stderr into the pipeline (`2>&1`) under that preference turns each stderr
+    # LINE into a terminating error the moment PowerShell reads it - dotnet/MSBuild routinely write
+    # informational text to stderr, so that combination can abort the script on ordinary output, not
+    # only on a real failure. Start-Process's redirection captures raw bytes to a file with no such
+    # conversion, so it cannot misfire this way.
+    #
+    # The tradeoff is no live streaming while the command runs - acceptable here since every caller
+    # already runs at "-v minimal"/"-v:m" (near-silent until the command finishes or fails). On
+    # failure, the captured log is scanned for lines mentioning "error" and printed inline, so the
+    # actual dotnet/MSBuild diagnostic is visible immediately instead of only a bare
+    # "exited with code 1" - which is what happened when this just threw the exit code and the
+    # console history that would have shown the real error had already scrolled away.
     $exe = $args[0]
     $rest = @()
     if ($args.Count -gt 1) { $rest = $args[1..($args.Count - 1)] }
-    & $exe @rest
-    if ($LASTEXITCODE -ne 0) {
-        throw "'$exe $($rest -join ' ') ' exited with code $LASTEXITCODE"
+
+    $tag = [System.Guid]::NewGuid().ToString('N')
+    $outLog = Join-Path ([System.IO.Path]::GetTempPath()) "opendevelop-native-$tag.out.log"
+    $errLog = Join-Path ([System.IO.Path]::GetTempPath()) "opendevelop-native-$tag.err.log"
+
+    $proc = Start-Process -FilePath $exe -ArgumentList $rest -WorkingDirectory (Get-Location).Path `
+        -RedirectStandardOutput $outLog -RedirectStandardError $errLog -PassThru -Wait -NoNewWindow
+    $exitCode = $proc.ExitCode
+
+    if ($exitCode -ne 0) {
+        Write-Host ''
+        Write-Host "dist: '$exe $($rest -join ' ')' failed (exit $exitCode)." -ForegroundColor Red
+        $errorLines = @()
+        foreach ($log in $outLog, $errLog) {
+            if (Test-Path $log) {
+                $errorLines += Select-String -Path $log -Pattern 'error' -SimpleMatch -CaseSensitive:$false -ErrorAction SilentlyContinue
+            }
+        }
+        if ($errorLines) {
+            Write-Host 'Error lines from the command output:' -ForegroundColor Red
+            $errorLines | Select-Object -First 60 | ForEach-Object { Write-Host "  $($_.Line.Trim())" -ForegroundColor Red }
+        } else {
+            Write-Host "No line containing 'error' was found; showing the last 40 lines of output instead:" -ForegroundColor Yellow
+            foreach ($log in $outLog, $errLog) {
+                if (Test-Path $log) { Get-Content $log -Tail 40 | ForEach-Object { Write-Host "  $_" } }
+            }
+        }
+        Write-Host 'Full output kept at:' -ForegroundColor Yellow
+        Write-Host "  stdout: $outLog"
+        Write-Host "  stderr: $errLog"
+        throw "'$exe $($rest -join ' ')' exited with code $exitCode. Full output: $outLog / $errLog"
     }
+
+    Remove-Item -Force $outLog, $errLog -ErrorAction SilentlyContinue
 }
 
 function Set-DotNetEnv {
