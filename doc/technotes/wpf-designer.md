@@ -2291,6 +2291,83 @@ than the original hairline dot specifically to avoid regressing into the exact f
 motivated the crosshatch lines in the first place, while staying far less visually busy than full
 grid lines (the Blend/Photoshop-canvas convention this was modeled on).
 
+## Caption buttons rendered as empty boxes: three stacked bugs (2026-09-17)
+
+**Symptom.** WPF-Samples' `WPFGallery/MainWindow.xaml` in the WPF design surface: the
+`MinimizeButton`/`MaximizeButton`/`CloseButton` in the app's own custom title bar showed as blank
+white boxes, while the `BackButton` right next to them - same `{StaticResource SymbolThemeFontFamily}`
+glyph font, same style - rendered fine. The obvious reading ("the icon font is not resolving") was
+wrong, and so was the second one ("the 2026-09-14 app-resource fix regressed").
+
+**Measure, do not infer.** Three separate readings, each of which killed a plausible theory:
+
+| Reading | Result | Theory it killed |
+| --- | --- | --- |
+| `BackButton` renders `E72B` from the *same* `SymbolThemeFontFamily` | glyph correct | "the icon font is missing" |
+| `od.wpf-designer.query-element-screen-bounds` | caption buttons **14x44**, not ~46x32 | "it is a paint/colour problem" |
+| Pixel probe of the exported frame | `A=0` everywhere in the button rect | "they are white-on-white" (they were *transparent*) |
+
+14px is exactly the glyph's advance width, i.e. the buttons had collapsed to bare content size -
+their `MinWidth`/`Background`/`Template` were missing, so the style was not applied at all.
+
+**Three independent defects, found by instrumenting the real parse path** (`Console.Error` in the
+child host, read back with `od.wpf-designer.child-log` - the same "reproduce through the exact class,
+do not theorize about the backend" lesson as the 2026-09-14 entry):
+
+1. **`XamlTypeResolverProvider.FindResource` had no application-scope fallback.** It walked each
+   element's own `Resources` and returned null otherwise, so a `{StaticResource}` naming an app/theme
+   key (`ControlCornerRadius`, from the merged Fluent theme) resolved to null inside a `Setter`.
+   Fixed by mirroring WPF's last lookup step: `Application.Current.Resources`, which is exactly where
+   `WpfSurfaceHostService.InstallApplicationResources` puts the designed app's dictionary.
+2. **The same resolver never looked at the `ResourceDictionary` currently being built.**
+   `BasedOn="{StaticResource BorderlessButtonStyle}"` is resolved while `Window.Resources` is still
+   being populated, so the owning element does not exist yet and the walk found nothing - every
+   derived style silently lost its base. Fixed by also probing a `ResourceDictionary` instance found
+   on the `XamlObject` parent chain.
+3. **WPF refuses to apply a Style whose trigger bindings are null, and XamlDom produces exactly
+   that.** `MultiDataTrigger`'s `Condition.Binding` came back `BINDING-NULL` for every condition, so
+   applying the style threw (`Must have non-null value for 'Binding'`, or `ArgumentNullException`
+   for `key`) *inside the `StyleProperty` change callback*, where it is swallowed. The local value
+   stays set while `FrameworkElement`'s internal style cache is never filled - the tell-tale state is
+   `ReadLocalValue(StyleProperty)` returning a `Style` while `.Style` reads `null`.
+   `WpfSurfaceHostService.RepairUnappliedStyles` detects exactly that pair and re-applies a rebuilt
+   style with the unusable trigger conditions dropped.
+
+**Why rebuild rather than edit the Style:** both `Style.Triggers` and its `TriggerCollection` are
+already sealed by the time the failed application returns, so removing the bad trigger in place
+throws *"After a 'TriggerCollection' is in use (sealed), it cannot be modified"*. Re-assigning the
+same instance is also useless - it is a no-op, so the change callback that applies the style never
+runs. The repair clones the style (and its `BasedOn` chain), re-using the sealed setters and the
+surviving triggers, then does `ClearValue` + assign to force a real transition.
+
+**A fourth bug the first three were hiding: the root arranged 200px narrower than it rendered.**
+With the styles fixed the buttons were correctly 48x32 but still painted nothing, because the
+rendered content stopped at x=799 in a 1000px frame. `RebuildTreeAndRender` measured the root with
+only `lastWidth` (default 800) available, and **WPF clamps `DesiredSize` to `availableSize`**, so a
+root carrying `d:DesignWidth="1000"` as an explicit `Width` reported 800, arranged at 800, and still
+advertised `ActualWidth=1000`. Everything laid out past the arrange slot - the caption buttons at
+x>=843 - was simply never painted. Fixed by measuring with the root's own design width when it
+exceeds `lastWidth`. This is *not* the harmful unconstrained-width probe that
+`OverrideRootSizeForExpansion`'s comment warns about: the width comes from the document, not from
+letting content measure itself against infinity.
+
+**The designer's own emulated chrome had the same class of bug.** `WindowClone`'s template
+(`ControlStyles.xaml`) drew its caption buttons with the Marlett `"r"`/`"1"`/`"0"` characters, which
+rendered as the literal letter and digits. Replacing them with a glyph font was rejected on review:
+Marlett, Segoe MDL2 Assets and Segoe Fluent Icons are **all Windows-only**, and this designer also
+runs on macOS/Linux under LibreWPF, where any of them tofus identically. They are now three vector
+primitives (line, square outline, X), which need no font anywhere. They also needed an explicit
+`WindowCloneCaptionButtonStyle`: the host installs the *designed app's* theme into
+`Application.Current.Resources`, so WPFGallery's Fluent implicit `Button` style was applying to the
+designer's own 25x17 chrome buttons and its 11,5,11,6 padding clipped the glyphs to a sliver, a dot
+and the bottom half of an X. An explicit style beats an implicit one.
+
+**Verification loop.** `./build.ps1 MicrosoftWpfDesign.SurfaceHost -ForDistribution -Configuration Release`
+plus `./dist.ps1 -Phase payload -Kill` turns one edit into a re-verified payload in ~4 minutes; the
+render was checked with `od.wpf-designer.export-frame` and a `System.Drawing` pixel probe, never by
+eye alone - "white" in the first screenshots was actually `A=0` transparency, which is what sent the
+early theories in the wrong direction.
+
 ## Reference record for the isolation decision
 
 The links below are intentionally annotated and revision-pinned where possible. Public Microsoft

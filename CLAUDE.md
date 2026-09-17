@@ -534,3 +534,81 @@ Two consequences worth knowing:
 
 Prefer building the specific projects you changed over a full solution build, and reserve the full
 build for the version-mismatch case above, where it is genuinely required.
+
+## Fast inner loop: `build.ps1` (one project) and `dist.ps1 -Phase` (one publish step)
+
+A full `dist.windows.bat` is ~15 minutes. Two tools exist so you almost never need it while
+iterating. **Never hand-copy a DLL into `OpenDevelop-win/` instead** — that skips the payload's
+by-name dedup and its out-of-process-host exemptions, and has repeatedly produced a payload that
+looks patched but crashes (see the two traps below, both hit for real).
+
+### `./build.ps1 <target>` — build one project, correctly
+
+```bash
+./build.ps1 shell                              # the IDE host
+./build.ps1 base -Then shell                   # a shared assembly, then the host, one pinned pass
+./build.ps1 unodesignhost -Kill                # one AddIn, killing file locks first
+./build.ps1 winui -List                        # what does this fuzzy name match?
+./build.ps1 unodesignhost -ForDistribution -Configuration Release
+```
+
+Fuzzy names resolve against every `*.csproj` under `src/`, preferring a name that *ends with* what
+you typed (so `unodesignhost` picks the project, not its `.Remote`/`.Tests` siblings).
+
+It is not a wrapper around `dotnet build` for convenience — it exists because a bare
+`dotnet build <csproj>` silently produces a **broken** assembly in this repo, in three ways:
+
+1. **GitVersion drift** — the version-mismatch trap documented above. `build.ps1` pins
+   `-p:GitVersion_*` to the values already in `src/Main/GlobalAssemblyInfo.cs`, so a targeted
+   rebuild stays binary-compatible with everything else on disk.
+2. **Architecture stamping** — without `-p:ProGpuWpfUseCurrentRuntimeIdentifier=false`,
+   LibreWPF.Sdk falls back to the build machine's own RID and emits an architecture-stamped
+   assembly. It loads on the machine that built it, then throws *"The assembly architecture is not
+   compatible with the current process architecture"* elsewhere — including in the x64 OpenDevelop
+   process on an ARM64 machine, where it takes the app down at startup. Passed by default;
+   `-NativeRid` opts out.
+3. **Projects `dotnet build` cannot build at all** — anything under `MicrosoftHost` is routed to
+   Visual Studio's MSBuild automatically, RID-specific for the WinUI child (both architectures) and
+   RID-less for the Forms host, mirroring `Build-MicrosoftDesignerHosts`.
+
+**`-ForDistribution` is required if the output will go into a payload.** It adds
+`OpenDevelopDistributionBuild`/`OpenDevelopDistributionRidFamily`/`ProGpuWpfCopyPackageRuntimeAssets`,
+without which the AddIn SDK's `OpenDevelopPruneAddinDeploymentAssets` target does not strip other
+platforms' native assets and leaves `runtimes/linux-*/native/libglfw.so.3` in `AddIns/`. The payload
+phase then fails validation with *"Distribution payload contains build-only or foreign assets"*.
+
+### `./dist.ps1 -Phase <names>` — run part of the publish pipeline
+
+`dist.ps1` runs as ordered phases: `restore`, `host`, `addins`, `designer-hosts` (Windows only),
+`payload`, `smoke`, `zip`. Running it with no phase arguments behaves exactly as before.
+
+```bash
+./dist.ps1 -ListPhases                  # phases for this platform, plus worked examples
+./dist.ps1 -Phase payload               # re-assemble OpenDevelop-win from what is already built
+./dist.ps1 -Phase payload,smoke         # ...and verify it actually starts
+./dist.ps1 -From payload                # payload, smoke and zip
+./dist.ps1 -Phase addins,payload        # rebuild all AddIns, then re-assemble
+```
+
+`dist.windows.bat --phase payload` works too (the wrapper forwards flags). `-SkipPublish` is kept
+as a synonym for `-From payload`.
+
+**The patch workflow**, replacing hand-copying entirely — about 1 minute instead of 15:
+
+```bash
+./build.ps1 unodesignhost -ForDistribution -Configuration Release
+./dist.ps1 -Phase payload,smoke -Kill
+```
+
+`-Kill` matters more than it looks: the `smoke` phase leaves a `dotnet exec OpenDevelop.dll`
+behind if it did not shut down cleanly, and the out-of-process designer hosts outlive the IDE by
+design, so the *next* `payload` run dies on `Access to the path ...\CodeCoverage.dll is denied`.
+Without `-Kill` that now fails with an explanation instead of a bare access-denied.
+
+The `payload` phase compiles nothing but the launchers; it re-derives the whole payload from the
+existing host publish output and `AddIns/` tree, so the dedup rules and
+`Test-WindowsDistributionPayload` run every time. That validator is load-bearing: it is what caught
+the foreign-asset bug in trap 3 above, on a payload that had otherwise assembled cleanly.
+
+Phases that consume earlier artifacts fail with an actionable message (`Run './dist.ps1 -Phase host'
+first`) rather than assembling a payload around a missing host.

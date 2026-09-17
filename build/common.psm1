@@ -76,57 +76,53 @@ function Invoke-Native {
     # Run a native command; throw on non-zero exit (set -e semantics).
     # Usage: Invoke-Native <exe> <args...>
     #
-    # Runs via Start-Process with output captured to temp log files rather than a plain
-    # "& $exe @rest": every caller sets $ErrorActionPreference = 'Stop' (dist.ps1:45), and merging a
-    # native command's stderr into the pipeline (`2>&1`) under that preference turns each stderr
-    # LINE into a terminating error the moment PowerShell reads it - dotnet/MSBuild routinely write
-    # informational text to stderr, so that combination can abort the script on ordinary output, not
-    # only on a real failure. Start-Process's redirection captures raw bytes to a file with no such
-    # conversion, so it cannot misfire this way.
+    # Streams live exactly like the original plain "& $exe @rest" - a Start-Process-based rewrite
+    # tried here first was reverted because it hung a `dotnet build -m:1` invocation outright: an
+    # MSBuild.exe worker node it spawned sat at 0% CPU for 5+ minutes with no progress, apparently
+    # because Start-Process's different process-creation flags (new process group, no inherited
+    # console) broke MSBuild's node-reuse pipe/console handshake. Piping through "&" itself, which
+    # is how this always worked, does not have that problem.
     #
-    # The tradeoff is no live streaming while the command runs - acceptable here since every caller
-    # already runs at "-v minimal"/"-v:m" (near-silent until the command finishes or fails). On
-    # failure, the captured log is scanned for lines mentioning "error" and printed inline, so the
-    # actual dotnet/MSBuild diagnostic is visible immediately instead of only a bare
-    # "exited with code 1" - which is what happened when this just threw the exit code and the
-    # console history that would have shown the real error had already scrolled away.
+    # STDOUT is additionally teed to a log file so a failure's actual error text survives long after
+    # it has scrolled out of the visible console history - the reason this exists at all is a build
+    # that failed with nothing but "'dotnet build ...' exited with code 1" because the real MSBuild
+    # error had already scrolled away by the time anyone looked. STDERR is deliberately left
+    # un-teed (no "2>&1"): every caller sets $ErrorActionPreference = 'Stop' (dist.ps1:45), and
+    # merging a native command's stderr into the PowerShell pipeline under that preference converts
+    # each stderr LINE into a terminating error the moment it's read - dotnet/MSBuild routinely
+    # write informational text to stderr, so that combination can abort the script on ordinary
+    # output, not only a real failure. Leaving stderr unredirected means it still reaches the real
+    # console exactly as before; nothing meaningful is lost from the log because MSBuild/dotnet's
+    # default console logger writes its diagnostics, errors included, to stdout.
     $exe = $args[0]
     $rest = @()
     if ($args.Count -gt 1) { $rest = $args[1..($args.Count - 1)] }
 
-    $tag = [System.Guid]::NewGuid().ToString('N')
-    $outLog = Join-Path ([System.IO.Path]::GetTempPath()) "opendevelop-native-$tag.out.log"
-    $errLog = Join-Path ([System.IO.Path]::GetTempPath()) "opendevelop-native-$tag.err.log"
-
-    $proc = Start-Process -FilePath $exe -ArgumentList $rest -WorkingDirectory (Get-Location).Path `
-        -RedirectStandardOutput $outLog -RedirectStandardError $errLog -PassThru -Wait -NoNewWindow
-    $exitCode = $proc.ExitCode
+    $logPath = Join-Path ([System.IO.Path]::GetTempPath()) ("opendevelop-native-" + [System.Guid]::NewGuid().ToString('N') + ".log")
+    # Write-Host, not a bare pipeline and not Out-Host. A bare pipeline leaves Tee-Object's
+    # pass-through in the SUCCESS stream, where it becomes part of the calling function's return
+    # value (a function ending in "return $payloadRoot" then hands back the whole build transcript
+    # plus the path). Out-Host fixes that but writes straight to the console, so "dist.ps1 *> log"
+    # captures nothing. Write-Host goes to the information stream: still shown live, still captured
+    # by a redirect, and never part of the success stream.
+    & $exe @rest | Tee-Object -FilePath $logPath | ForEach-Object { Write-Host $_ }
+    $exitCode = $LASTEXITCODE
 
     if ($exitCode -ne 0) {
         Write-Host ''
         Write-Host "dist: '$exe $($rest -join ' ')' failed (exit $exitCode)." -ForegroundColor Red
-        $errorLines = @()
-        foreach ($log in $outLog, $errLog) {
-            if (Test-Path $log) {
-                $errorLines += Select-String -Path $log -Pattern 'error' -SimpleMatch -CaseSensitive:$false -ErrorAction SilentlyContinue
-            }
-        }
+        $errorLines = if (Test-Path $logPath) { Select-String -Path $logPath -Pattern 'error' -SimpleMatch -CaseSensitive:$false -ErrorAction SilentlyContinue } else { $null }
         if ($errorLines) {
-            Write-Host 'Error lines from the command output:' -ForegroundColor Red
+            Write-Host 'Error lines from the captured stdout:' -ForegroundColor Red
             $errorLines | Select-Object -First 60 | ForEach-Object { Write-Host "  $($_.Line.Trim())" -ForegroundColor Red }
         } else {
-            Write-Host "No line containing 'error' was found; showing the last 40 lines of output instead:" -ForegroundColor Yellow
-            foreach ($log in $outLog, $errLog) {
-                if (Test-Path $log) { Get-Content $log -Tail 40 | ForEach-Object { Write-Host "  $_" } }
-            }
+            Write-Host "No line containing 'error' was found in the captured stdout (the failure may be on stderr, printed above)." -ForegroundColor Yellow
         }
-        Write-Host 'Full output kept at:' -ForegroundColor Yellow
-        Write-Host "  stdout: $outLog"
-        Write-Host "  stderr: $errLog"
-        throw "'$exe $($rest -join ' ')' exited with code $exitCode. Full output: $outLog / $errLog"
+        Write-Host "Full stdout kept at: $logPath" -ForegroundColor Yellow
+        throw "'$exe $($rest -join ' ')' exited with code $exitCode. Full stdout: $logPath"
     }
 
-    Remove-Item -Force $outLog, $errLog -ErrorAction SilentlyContinue
+    Remove-Item -Force $logPath -ErrorAction SilentlyContinue
 }
 
 function Set-DotNetEnv {
@@ -236,6 +232,54 @@ function Build-Solution {
     Invoke-Native $DotNet build $Solution -c $Configuration --no-restore '-m:1' -v minimal @ExtraProperties
 }
 
+function Get-PinnedGitVersionProperties {
+    <#
+      src/Main/GlobalAssemblyInfo.cs is regenerated by Directory.Build.targets'
+      OpenDevelopGenerateGlobalAssemblyInfo target, which invokes the GitVersion.MsBuild task
+      independently IN EVERY PROJECT THAT LINKS THE FILE (~60 of them), including inside the
+      later solution-wide "Build-Solution" AddIns pass. GitVersion.MsBuild is not immune to
+      producing a different CommitsSinceVersionSource between two separate top-level `dotnet`
+      invocations a few seconds apart (observed: host published as revision 1, then the AddIns
+      build silently rewrote the shared GlobalAssemblyInfo.cs to revision 2 partway through -
+      WriteOnlyWhenDifferent still overwrites when the content DOES differ). Since the host DLL
+      was already compiled and published against the OLD value, any AddIn compiled against the
+      NEW value references a host assembly version that no longer exists on disk, throwing
+      FileNotFoundException at runtime (e.g. GitAddIn's "ICSharpCode.SharpDevelop, Version=X"),
+      which used to cascade into a hard crash showing the error dialog.
+      Fix: read back the exact values already committed to disk, and pass them as explicit
+      -p:GitVersion_* MSBuild global properties. Global properties set via the command line
+      cannot be overridden by a property assignment inside the build (GitVersion.MsBuild's own
+      output is silently ignored once these are set), so every one of the ~60 projects is
+      guaranteed to compute byte-identical text and the shared file is never rewritten
+      mid-pipeline.
+
+      Used by dist.ps1 (pinning to what the host publish just wrote) and by build.ps1 (pinning a
+      single targeted rebuild to whatever the rest of the tree was already built against).
+    #>
+    param([Parameter(Mandatory)][string]$GlobalAssemblyInfoPath)
+
+    if (-not (Test-Path $GlobalAssemblyInfoPath)) {
+        throw "cannot pin GitVersion - $GlobalAssemblyInfoPath does not exist (build the host once first)"
+    }
+    $content = Get-Content -LiteralPath $GlobalAssemblyInfoPath -Raw
+    $extract = { param($name)
+        $m = [regex]::Match($content, "public const string $name = `"([^`"]*)`"")
+        if (-not $m.Success) { throw "cannot find RevisionClass.$name in $GlobalAssemblyInfoPath" }
+        return $m.Groups[1].Value
+    }
+    $shaMatch = [regex]::Match($content, 'AssemblyInformationalVersion\(RevisionClass\.FullVersion \+ "\+([^"]*)"\)')
+    if (-not $shaMatch.Success) { throw "cannot find the informational-version sha suffix in $GlobalAssemblyInfoPath" }
+
+    return @(
+        "-p:GitVersion_Major=$(& $extract 'Major')",
+        "-p:GitVersion_Minor=$(& $extract 'Minor')",
+        "-p:GitVersion_Patch=$(& $extract 'Build')",
+        "-p:GitVersion_CommitsSinceVersionSource=$(& $extract 'Revision')",
+        "-p:GitVersion_FullSemVer=$(& $extract 'FullVersion')",
+        "-p:GitVersion_ShortSha=$($shaMatch.Groups[1].Value)"
+    )
+}
+
 function Remove-StaleMsBuildAssets {
     # Microsoft.Build.Runtime 18.0.2 copies MSBuild .targets/.props files to every
     # project's output directory via contentFiles/CopyToOutputDirectory=PreserveNewest.
@@ -261,5 +305,6 @@ Export-ModuleMember -Function @(
     'Clear-RepoAddIns',
     'Restore-Solution',
     'Build-Solution',
+    'Get-PinnedGitVersionProperties',
     'Remove-StaleMsBuildAssets'
 )

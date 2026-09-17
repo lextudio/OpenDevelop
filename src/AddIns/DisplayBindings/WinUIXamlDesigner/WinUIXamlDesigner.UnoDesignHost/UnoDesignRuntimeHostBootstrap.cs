@@ -35,13 +35,13 @@ public static class MicrosoftWinUIDesignRuntimeHostBootstrap
 	/// <summary>Default (current-runtime) child path, retained for callers that do not have a
 	/// document yet. Actual designer creation uses <see cref="LocateChildDll"/> so it can match
 	/// the designed app's runtimeconfig.</summary>
-	public static string? ChildPath => LocateChildDll(null);
+	public static string? ChildPath => LocateChildDll(null, null);
 
 	static IWinUIXamlRuntimeHost? Create(XamlFrameworkContext framework, string documentFileName)
 	{
-		return framework?.Runtime == XamlRuntimeKind.MicrosoftWinUI && LocateChildDll(documentFileName) != null
+		return framework?.Runtime == XamlRuntimeKind.MicrosoftWinUI && LocateChildDll(documentFileName, null) != null
 			? new UnoDesignRuntimeHost(framework, documentFileName, null, "WinUI design host",
-				() => LocateChildDll(documentFileName))
+				targetArchitecture => LocateChildDll(documentFileName, targetArchitecture))
 			: null;
 	}
 
@@ -52,16 +52,27 @@ public static class MicrosoftWinUIDesignRuntimeHostBootstrap
 	/// with incompatible generated XAML metadata.  Both cases are avoided by keeping host slices
 	/// side by side.
 	/// </summary>
-	static string? LocateChildDll(string? documentFileName)
+	/// <param name="targetArchitecture">The architecture of the "dotnet" that will actually launch
+	/// this child (see UnoDesignRuntimeHost.CanHostRunOnAppArchitecture/DotnetHostPath) - null when
+	/// it matches this IDE process's own. This host is one of the few AddIn components NOT built
+	/// AnyCPU (see doc/technotes/addin-sdk.md): it hosts the real Windows App SDK/WinUI3 runtime,
+	/// whose native WinRT/COM interop is architecture-specific, so dist.ps1 ships a win-x64 AND a
+	/// win-arm64 build side by side. Selecting by THIS PROCESS's architecture instead of the
+	/// launching dotnet's is exactly backwards once those two can differ (a cross-architecture
+	/// preview): it loads a win-x64 host DLL through an ARM64 "dotnet exec", which fails before
+	/// Main with "the assembly architecture is not compatible with the current process
+	/// architecture" - a plain FileLoadException, since node reuse/RID selection happens at the
+	/// native host level, not in managed code that could report anything more specific.</param>
+	static string? LocateChildDll(string? documentFileName, System.Runtime.InteropServices.Architecture? targetArchitecture)
 	{
 		var directory = Path.GetDirectoryName(typeof(UnoDesignRuntimeHost).Assembly.Location);
 		if (string.IsNullOrEmpty(directory)) return null;
 		var root = Path.Combine(directory, "MicrosoftHost");
 		var runtime = RuntimeDirectoryFor(documentFileName);
 		var appSdk = WindowsAppSdkVersionFor(documentFileName);
-		var architecture = ArchitectureFolder();
+		var architecture = ArchitectureFolder(targetArchitecture);
 		// A platform-neutral distribution carries one child per architecture under
-		// <CLR major>\<rid>\; prefer the one matching this process before the flat fallbacks.
+		// <CLR major>\<rid>\; prefer the one matching the launching dotnet before the flat fallbacks.
 		if (architecture != null) {
 			if (!string.IsNullOrEmpty(appSdk)) {
 				var compatibleArch = Path.Combine(root, runtime + "-windowsappsdk" + appSdk, architecture,
@@ -85,11 +96,12 @@ public static class MicrosoftWinUIDesignRuntimeHostBootstrap
 		return File.Exists(candidate) ? candidate : null;
 	}
 
-	/// <summary>RID folder for the running process ("win-x64"/"win-arm64"/"win-x86"), or null on a
-	/// platform where no native WinUI child exists.</summary>
-	static string? ArchitectureFolder()
+	/// <summary>RID folder for the given architecture ("win-x64"/"win-arm64"/"win-x86"), or this IDE
+	/// process's own when null - the correct default for every call site except the one that has
+	/// already resolved a different-architecture "dotnet" to actually launch the child under.</summary>
+	static string? ArchitectureFolder(System.Runtime.InteropServices.Architecture? architecture)
 	{
-		return System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture switch {
+		return (architecture ?? System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture) switch {
 			System.Runtime.InteropServices.Architecture.X64 => "win-x64",
 			System.Runtime.InteropServices.Architecture.Arm64 => "win-arm64",
 			System.Runtime.InteropServices.Architecture.X86 => "win-x86",

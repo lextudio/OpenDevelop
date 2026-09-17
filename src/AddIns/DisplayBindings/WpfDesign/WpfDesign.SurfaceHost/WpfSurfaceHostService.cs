@@ -214,6 +214,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				if (appResources != null && current.RootItem?.View is FrameworkElement appResourceRoot)
 					appResourceRoot.Resources.MergedDictionaries.Add(appResources);
 				version = snapshot.Version;
+				RepairUnappliedStyles(current.RootItem?.View as FrameworkElement);
 				RebuildTreeAndRender(state);
 				state.Accepted = true;
 				state.RootType = current.RootItem?.ComponentType?.FullName ?? "";
@@ -288,6 +289,115 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				Console.Error.WriteLine($"design-host: could not find project for '{documentPath}': {e.GetBaseException().Message}");
 			}
 			return null;
+		}
+
+		/// <summary>
+		/// Re-applies any Style that XamlDom assigned but WPF refused to apply.
+		///
+		/// XamlDom does not build the <c>Binding</c> of a <c>MultiDataTrigger</c>/<c>DataTrigger</c>
+		/// condition, so those arrive as null. WPF validates them when the Style is applied and
+		/// throws ("Must have non-null value for 'Binding'", or an ArgumentNullException for 'key'
+		/// from the condition's resource lookup). The exception happens inside the StyleProperty
+		/// change callback, where XamlDom swallows it: the local value stays set, but
+		/// FrameworkElement's internal style cache is never filled, so the element renders
+		/// COMPLETELY UNSTYLED with no error anywhere.
+		///
+		/// WPFGallery's MainWindow is the reproducer: BorderlessButtonStyle carries a HighContrast
+		/// MultiDataTrigger, so every caption button lost MinWidth/Background/Template, collapsed to
+		/// the bare glyph width (14px) and painted nothing - the "white boxes" bug. Detect it by the
+		/// tell-tale state (local value is a Style, but the Style property reads null), drop only
+		/// the unusable trigger conditions, and force a real re-assignment so the callback runs.
+		/// A design surface loses nothing that matters: those triggers are HighContrast/hover state.
+		/// </summary>
+		static void RepairUnappliedStyles(FrameworkElement? root)
+		{
+			if (root == null)
+				return;
+			try
+			{
+				var rebuilt = new Dictionary<Style, Style?>();
+				var repaired = 0;
+				foreach (var element in EnumerateLogicalTree(root))
+				{
+					var local = element.ReadLocalValue(FrameworkElement.StyleProperty);
+					if (local is not Style style || element.Style != null)
+						continue;
+					var replacement = RebuildStyleWithoutUnusableTriggers(style, rebuilt);
+					if (replacement == null)
+						continue;
+					try
+					{
+						// Assigning the value that is ALREADY the local value is a no-op, so the
+						// change callback (the thing that actually applies the style) would not run.
+						element.ClearValue(FrameworkElement.StyleProperty);
+						element.Style = replacement;
+						if (element.Style != null)
+							repaired++;
+					}
+					catch (Exception applyError)
+					{
+						Console.Error.WriteLine("design-host: could not re-apply style on " +
+							element.GetType().Name + ": " + applyError.GetBaseException().Message);
+					}
+				}
+				if (repaired > 0)
+					Console.Error.WriteLine($"design-host: re-applied {repaired} style(s) that WPF had rejected (unusable trigger bindings).");
+			}
+			catch (Exception e)
+			{
+				Console.Error.WriteLine("design-host: style repair pass failed: " + e.GetBaseException().Message);
+			}
+		}
+
+		/// <summary>
+		/// Returns a copy of <paramref name="style"/> (and of its BasedOn chain) that omits the
+		/// triggers WPF cannot validate. A copy rather than an edit because both Style.Triggers and
+		/// its TriggerCollection are already sealed by the time the failed application returns
+		/// ("After a 'TriggerCollection' is in use (sealed), it cannot be modified"). Setters and
+		/// the surviving triggers are re-used as-is: they are immutable once sealed.
+		/// Returns null when there is nothing to repair.
+		/// </summary>
+		static Style? RebuildStyleWithoutUnusableTriggers(Style? style, Dictionary<Style, Style?> cache)
+		{
+			if (style == null)
+				return null;
+			if (cache.TryGetValue(style, out var cached))
+				return cached;
+			// Guard against a cyclic BasedOn chain before recursing.
+			cache[style] = null;
+
+			var repairedBase = RebuildStyleWithoutUnusableTriggers(style.BasedOn, cache);
+			var unusable = style.Triggers.Where(IsUnusableTrigger).ToList();
+			if (unusable.Count == 0 && repairedBase == null)
+				return null;
+
+			var clone = new Style(style.TargetType, repairedBase ?? style.BasedOn);
+			foreach (SetterBase setter in style.Setters)
+				clone.Setters.Add(setter);
+			foreach (TriggerBase trigger in style.Triggers)
+			{
+				if (!IsUnusableTrigger(trigger))
+					clone.Triggers.Add(trigger);
+			}
+			foreach (var key in style.Resources.Keys)
+				clone.Resources[key] = style.Resources[key];
+
+			cache[style] = clone;
+			return clone;
+		}
+
+		static bool IsUnusableTrigger(TriggerBase trigger) => trigger switch {
+			System.Windows.MultiDataTrigger multi => multi.Conditions.Any(c => c.Binding == null),
+			System.Windows.DataTrigger data => data.Binding == null,
+			_ => false
+		};
+
+		static IEnumerable<FrameworkElement> EnumerateLogicalTree(FrameworkElement root)
+		{
+			yield return root;
+			foreach (var child in System.Windows.LogicalTreeHelper.GetChildren(root).OfType<FrameworkElement>())
+				foreach (var nested in EnumerateLogicalTree(child))
+					yield return nested;
 		}
 
 		/// <summary>Installs this document's app-resources dictionary into
@@ -1715,14 +1825,30 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				// lastWidth unconditionally; only Select's temporary Height override
 				// (OverrideRootSizeForExpansion) ever lets this probe see past the root's own
 				// explicit d:DesignHeight-derived size.
-				root.Measure(new Size(lastWidth, double.PositiveInfinity));
+				// The root carries the document's d:DesignWidth as an EXPLICIT Width (PageClone/
+				// WindowClone copies it - see OverrideRootSizeForExpansion). Measuring with only
+				// lastWidth available then clamps DesiredSize.Width down to lastWidth, because WPF
+				// clamps DesiredSize to availableSize - and the Arrange below uses that clamped
+				// width. The root's ActualWidth still reports the explicit design width, so the
+				// bitmap comes out at the full size while the content was arranged narrower, and
+				// everything laid out beyond the arrange slot is silently never painted.
+				// WPFGallery's MainWindow is the reproducer: d:DesignWidth="1000" against a default
+				// lastWidth of 800 arranged the window at 800, putting its caption buttons (x>=843)
+				// outside the arranged area - they rendered as nothing at all.
+				// This is NOT the harmful unconstrained-width probe the comment above warns about:
+				// the width comes from the document's own design hint, not from letting content
+				// measure itself against infinity.
+				var effectiveWidth = double.IsNaN(root.Width) || root.Width <= 0
+					? lastWidth
+					: Math.Max(lastWidth, root.Width);
+				root.Measure(new Size(effectiveWidth, double.PositiveInfinity));
 				var natural = root.DesiredSize;
 				var effectiveHeight = double.IsInfinity(natural.Height) || double.IsNaN(natural.Height)
 					? lastHeight : Math.Max(lastHeight, natural.Height);
-				root.Measure(new Size(lastWidth, effectiveHeight));
+				root.Measure(new Size(effectiveWidth, effectiveHeight));
 				var desired = root.DesiredSize;
 				root.Arrange(new Rect(0, 0,
-					desired.Width > 0 ? desired.Width : lastWidth,
+					desired.Width > 0 ? desired.Width : effectiveWidth,
 					desired.Height > 0 ? desired.Height : effectiveHeight));
 				root.UpdateLayout();
 			}

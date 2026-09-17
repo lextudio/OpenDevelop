@@ -43,7 +43,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 	readonly string projectDirectory;
 	readonly string documentFileName;
 	readonly string? hostDllPath;
-	readonly Func<string?>? hostDllPathLocator;
+	readonly Func<Architecture?, string?>? hostDllPathLocator;
 	readonly string hostDisplayName;
 	UnoDesignClient client;
 	Task connectTask;
@@ -60,7 +60,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 	bool disposed;
 
 	public UnoDesignRuntimeHost(XamlFrameworkContext framework, string documentFileName, string? hostDllPath = null,
-		string? hostDisplayName = null, Func<string?>? hostDllPathLocator = null)
+		string? hostDisplayName = null, Func<Architecture?, string?>? hostDllPathLocator = null)
 	{
 		// The host may be constructed on the UI thread but fed XAML from a background loader
 		// (AbstractViewContentHandlingLoadErrors.LoadInternal), and every async continuation
@@ -632,7 +632,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 			// Project evaluation finishes after the display binding constructs this host. Resolve a
 			// versioned Microsoft child here, beside dependency-context discovery, rather than
 			// freezing the IDE's net10 default during factory registration.
-			var child = hostDllPath ?? hostDllPathLocator?.Invoke();
+			var child = hostDllPath ?? hostDllPathLocator?.Invoke(dotnetHostArchitecture);
 			client = await UnoDesignClient.AcquireSharedAsync(runtimeConfig, depsFile, CancellationToken.None, child, appBin, dotnetHostPath, dotnetHostArchitecture);
 			client.Recovered += OnClientRecovered;
 			client.RecoveryFailed += OnClientRecoveryFailed;
