@@ -35,7 +35,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoDesignHost;
 /// XamlReader, lays it out and renders it to a PNG that is displayed here. All state
 /// crossings are JSON over loopback TCP - no WinUI type ever enters this process.
 /// </summary>
-sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverlay, IWinUIXamlDesignView, IWinUIXamlDirectManipulation, IWinUIXamlTextEditing, IWinUIXamlToolboxCatalog, IWinUIXamlLifecycleProbe, IWinUIXamlPathPick, IWinUIXamlTheme, IWinUIXamlMultiSelection, IWinUIXamlContextCommands, IWinUIXamlGridGuides, IWinUIXamlDiagnostics, IWinUIXamlIncrementalRender
+sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOverlay, IWinUIXamlDesignView, IWinUIXamlDirectManipulation, IWinUIXamlTextEditing, IWinUIXamlToolboxCatalog, IWinUIXamlLifecycleProbe, IWinUIXamlPathPick, IWinUIXamlTheme, IWinUIXamlVisualStates, IWinUIXamlMultiSelection, IWinUIXamlContextCommands, IWinUIXamlGridGuides, IWinUIXamlDiagnostics, IWinUIXamlIncrementalRender
 {
 	readonly UnoDesignSurfaceControl surface = new();
 	readonly HashSet<string> selectableNames = new(StringComparer.Ordinal);
@@ -79,6 +79,7 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 			: Path.GetDirectoryName(framework.ProjectFileName);
 		StatusText = "Starting " + this.hostDisplayName + "…";
 		surface.DesignThemeRequested += OnSurfaceThemeRequested;
+		surface.DesignVisualStateRequested += OnSurfaceVisualStateRequested;
 		surface.SizePresetRequested += OnSurfaceSizePresetRequested;
 		surface.ContextCommandRequested += OnSurfaceContextCommandRequested;
 		surface.NudgeRequested += OnSurfaceNudgeRequested;
@@ -118,6 +119,38 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 
 	void OnSurfaceThemeRequested(object sender, string theme)
 		=> SetDesignTheme(theme);
+
+	void OnSurfaceVisualStateRequested(object sender, (string Group, string? State) request)
+		=> GoToVisualState(request.Group, request.State);
+
+	/// <summary>The groups reported by the last snapshot, for the toolbar and for DevFlow.</summary>
+	public IReadOnlyList<(string Group, IReadOnlyList<string> States, string CurrentState)> GetVisualStateGroups()
+		=> lastSnapshot?.VisualStateGroups
+			?.Select(g => (g.Name, (IReadOnlyList<string>)g.States, g.CurrentState ?? ""))
+			.ToList()
+			?? (IReadOnlyList<(string, IReadOnlyList<string>, string)>)Array.Empty<(string, IReadOnlyList<string>, string)>();
+
+	/// <summary>Previews a VisualState on the design surface. A null state stops forcing that
+	/// group. Fire-and-forget like the other surface commands: the resulting snapshot flows back
+	/// through ApplySnapshot, which also re-syncs the combos.</summary>
+	public void GoToVisualState(string group, string? state)
+	{
+		if (client == null || string.IsNullOrEmpty(group))
+			return;
+		var requested = Volatile.Read(ref version);
+		_ = Task.Run(async () => {
+			try
+			{
+				var snapshot = await client.GoToStateAsync(group, state);
+				dispatcher.BeginInvoke(() => ApplySnapshot(snapshot, requested));
+			}
+			catch (Exception e)
+			{
+				dispatcher.BeginInvoke(() => SetStatus("WinUI designer could not apply visual state '"
+					+ (state ?? "(none)") + "': " + e.GetBaseException().Message));
+			}
+		});
+	}
 
 	/// <summary>Raised with a design-surface context-menu command and the primary selection.</summary>
 	public event EventHandler<(string Command, string Name)> ContextCommandRequested;
@@ -1485,6 +1518,12 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 			return;
 		lastSnapshot = snapshot;
 		nodesByName = IndexTree(snapshot.Tree);
+		// Only snapshots that actually describe the document carry the groups. An early-return
+		// error snapshot (no Tree) has an empty list that means "nothing to say", not "this
+		// document has no states" - repopulating from one of those blanked the whole states panel
+		// the moment any state failed to apply.
+		if (snapshot.Tree != null || snapshot.VisualStateGroups.Count > 0)
+			surface.SetVisualStateGroups(snapshot.VisualStateGroups);
 		if (showTabOrder)
 			RefreshTabOrderBadges();
 		if (snapshot.Render != null)

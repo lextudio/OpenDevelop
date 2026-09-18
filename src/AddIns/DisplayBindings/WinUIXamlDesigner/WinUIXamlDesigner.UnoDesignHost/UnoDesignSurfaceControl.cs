@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using System.Windows;
 using System.Windows.Controls;
@@ -119,6 +120,7 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 		DesignSizeCombo.SelectionChanged += OnSizePresetSelected;
 		FitRequested += (_, _) => FitView();
 		ThemeRequested += OnThemeSelected;
+		VisualStateRequested += (_, request) => DesignVisualStateRequested?.Invoke(this, request);
 		GridRequested += (_, enabled) => SetGridlines(enabled);
 		ShowNamesRequested += (_, enabled) => adornerLayer.ShowNameLabel = enabled;
 		textEditor.KeyDown += OnTextEditorKeyDown;
@@ -247,6 +249,16 @@ public sealed class UnoDesignSurfaceControl : DesignerCanvas
 
 	/// <summary>Raised when the user toggles the Light/Dark theme, with "Light" or "Dark".</summary>
 	public event EventHandler<string> DesignThemeRequested;
+
+	/// <summary>Raised when the user picks a VisualState to preview; State is null for "(none)".</summary>
+	public event EventHandler<(string Group, string? State)> DesignVisualStateRequested;
+
+	/// <summary>Repopulates the toolbar's per-group state combos from the latest snapshot. The
+	/// panel hides itself when the document declares no groups, which is the common case.</summary>
+	public void SetVisualStateGroups(IReadOnlyList<DesignerVisualStateGroup> groups)
+		=> SetVisualStateGroups((groups ?? Array.Empty<DesignerVisualStateGroup>())
+			.Select(g => (g.Name, (IReadOnlyList<string>)g.States, g.CurrentState))
+			.ToList());
 
 	/// <summary>Syncs the theme toggle with the runtime (e.g. after the design reloads).
 	/// The button reads as the theme a click would switch TO, so its text and chrome

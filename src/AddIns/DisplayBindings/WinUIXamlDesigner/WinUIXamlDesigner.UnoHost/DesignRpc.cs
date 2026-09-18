@@ -33,6 +33,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			rpc.AddLocalRpcMethod("design/delete-elements", new Func<string, string, long, string[], DesignerSessionState>(DeleteElements));
 			rpc.AddLocalRpcMethod("design/rename", new Func<string, string, long, string, string, DesignerSessionState>(Rename));
 			rpc.AddLocalRpcMethod("design/theme", new Func<string, string, string, DesignerSessionState>(SetTheme));
+			rpc.AddLocalRpcMethod("design/go-to-state", new Func<string, string, string, string, DesignerSessionState>(GoToState));
 			rpc.AddLocalRpcMethod("app/resources", new Func<string, string, string, DesignerAppResourcesResult>(LoadAppResources));
 			rpc.AddLocalRpcMethod("design/hit-test", new Func<string, string, long, double, double, DesignerHitTestResult>(HitTest));
 			rpc.AddLocalRpcMethod("design/export-png", new Func<string, string, string, string>(ExportPng));
@@ -148,6 +149,13 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			try { return ExistingHost(sessionId, documentId).SetTheme(theme); }
 			catch (Exception e) { LogRpcError("design/theme", e); throw; }
 		}
+		static DesignerSessionState GoToState(string sessionId, string documentId, string group, string state)
+		{
+			Console.Error.WriteLine($"{LogPrefix}: design/go-to-state received (group={group}, state={(string.IsNullOrEmpty(state) ? "(none)" : state)})");
+			try { return ExistingHost(sessionId, documentId).GoToState(group, state); }
+			catch (Exception e) { LogRpcError("design/go-to-state", e); throw; }
+		}
+
 		static DesignerHitTestResult HitTest(string sessionId, string documentId, long baseVersion, double x, double y)
 		{
 			try { return ExistingHost(sessionId, documentId).HitTest(sessionId, documentId, baseVersion, x, y); }

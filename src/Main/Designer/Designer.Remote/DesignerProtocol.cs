@@ -126,6 +126,31 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// designer's theme combo, mirroring how the WinUI shape enumerates the app's
 		/// ThemeDictionaries keys. Empty when no theme is embedded.</summary>
 		public string[] DesignThemes { get; set; } = Array.Empty<string>();
+
+		/// <summary>The document's <c>VisualStateManager.VisualStateGroups</c>, so the designer can
+		/// offer them for preview. Empty for the overwhelming majority of documents, which is what
+		/// collapses the toolbar's states panel entirely.</summary>
+		public List<DesignerVisualStateGroup> VisualStateGroups { get; set; } = new List<DesignerVisualStateGroup>();
+	}
+
+	/// <summary>
+	/// One <c>VisualStateGroup</c> from the designed document.
+	///
+	/// Reported per GROUP rather than as one flat list of states because groups are orthogonal: a
+	/// page can be in <c>WideLayout</c> AND <c>NoResultsFound</c> at the same time (WinUI-Gallery's
+	/// SearchResultsPage is exactly that), so a single "current state" for the whole document would
+	/// be wrong by construction.
+	/// </summary>
+	public sealed class DesignerVisualStateGroup
+	{
+		public string Name { get; set; } = "";
+
+		/// <summary>State names in declaration order.</summary>
+		public List<string> States { get; set; } = new List<string>();
+
+		/// <summary>The state the designer is currently forcing, or null when the document is left
+		/// in whatever state it naturally loads in.</summary>
+		public string? CurrentState { get; set; }
 	}
 
 	/// <summary>One Grid row/column's current pixel geometry (<c>design/query-grid-guides</c>),

@@ -253,6 +253,12 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 		=> connection.InvokeAsync<DesignerSessionState>("design/theme",
 			new { sessionId = SessionId, documentId = DocumentId, theme }, cancellationToken);
 
+	/// <summary>Previews one VisualState. A null <paramref name="state"/> stops forcing that group
+	/// and returns it to however the document naturally loads.</summary>
+	public Task<DesignerSessionState> GoToStateAsync(string group, string? state, CancellationToken cancellationToken = default)
+		=> connection.InvokeAsync<DesignerSessionState>("design/go-to-state",
+			new { sessionId = SessionId, documentId = DocumentId, group, state = state ?? "" }, cancellationToken);
+
 	public Task<string> ExportPngAsync(string path, CancellationToken cancellationToken = default)
 		=> connection.InvokeAsync<string>("design/export-png",
 			new { sessionId = SessionId, documentId = DocumentId, path }, cancellationToken);

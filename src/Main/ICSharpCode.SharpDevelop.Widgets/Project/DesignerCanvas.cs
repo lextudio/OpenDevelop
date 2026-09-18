@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -39,7 +40,8 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		ShowNames = 16,
 		DesignSize = 32,
 		StatusBar = 64,
-		All = Zoom | Fit | Gridlines | Theme | ShowNames | DesignSize | StatusBar
+		VisualStates = 128,
+		All = Zoom | Fit | Gridlines | Theme | ShowNames | DesignSize | StatusBar | VisualStates
 	}
 
 	public class DesignerCanvas : ContentControl
@@ -50,6 +52,10 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		readonly ToggleButton gridButton;
 		readonly ComboBox themeCombo;
 		readonly ToggleButton namesButton;
+		/// <summary>Holds one combo per VisualStateGroup; collapsed whenever the document declares
+		/// none, which is the overwhelmingly common case.</summary>
+		readonly StackPanel statesPanel = new StackPanel { Orientation = Orientation.Horizontal };
+		bool syncingStates;
 		readonly TextBlock backendLabel;
 		// A TextBox (not a TextBlock) so a long diagnostic message can be selected/copied out of
 		// the app - the same reasoning WinUIXamlDesignerViewContent's own status control used to
@@ -124,6 +130,12 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			toolbar.Children.Add(fitButton);
 			toolbar.Children.Add(gridButton);
 			toolbar.Children.Add(themeCombo);
+			// Next to the theme combo on purpose: both answer "which variant of this design am I
+			// looking at". Starts collapsed - SetVisualStateGroups shows it only when there is
+			// something to show.
+			AutomationProperties.SetName(statesPanel, "Visual States");
+			statesPanel.Visibility = Visibility.Collapsed;
+			toolbar.Children.Add(statesPanel);
 			toolbar.Children.Add(namesButton);
 			// The design-size preset combo sits on its own at the far right.
 			toolbar.Children.Add(DesignSizeCombo);
@@ -202,6 +214,71 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		/// <summary>Where the backend mounts its rendered surface (frame + selection + gestures).</summary>
 		public ContentControl ContentHost { get; } = new ContentControl();
 
+		/// <summary>Raised when the user picks a state to preview. The second item is null for the
+		/// "(none)" entry, meaning "stop forcing a state in this group".</summary>
+		public event EventHandler<(string Group, string? State)> VisualStateRequested;
+
+		/// <summary>The label used for "do not force a state in this group".</summary>
+		public const string NoVisualState = "(none)";
+
+		/// <summary>
+		/// Rebuilds the states panel: one combo per group, because groups are orthogonal - a page
+		/// can be in WideLayout AND NoResultsFound at once, so a single combo for the whole
+		/// document could not express the real model. Passing an empty list collapses the panel,
+		/// which is what keeps the toolbar unchanged for the documents (most of them) that declare
+		/// no visual states at all.
+		/// </summary>
+		public void SetVisualStateGroups(IReadOnlyList<(string Name, IReadOnlyList<string> States, string? CurrentState)> groups)
+		{
+			syncingStates = true;
+			try
+			{
+				statesPanel.Children.Clear();
+				foreach (var group in groups ?? Array.Empty<(string, IReadOnlyList<string>, string?)>())
+				{
+					if (group.States == null || group.States.Count == 0)
+						continue;
+					var combo = new ComboBox {
+						Width = 132,
+						Margin = new Thickness(0, 2, 4, 2),
+						ToolTip = "Preview a state from visual state group '" + group.Name + "'",
+						Tag = group.Name
+					};
+					AutomationProperties.SetName(combo, "Visual State " + group.Name);
+					combo.Items.Add(NoVisualState);
+					foreach (var state in group.States)
+						combo.Items.Add(state);
+					combo.SelectedItem = group.CurrentState is { } current && group.States.Contains(current)
+						? current
+						: NoVisualState;
+					combo.SetResourceReference(Control.ForegroundProperty, "Foreground");
+					combo.SelectionChanged += OnVisualStateComboChanged;
+					statesPanel.Children.Add(combo);
+				}
+				statesPanel.Visibility = statesPanel.Children.Count > 0 && capabilities.HasFlag(DesignerCanvasCapabilities.VisualStates)
+					? Visibility.Visible
+					: Visibility.Collapsed;
+			}
+			finally
+			{
+				syncingStates = false;
+			}
+		}
+
+		void OnVisualStateComboChanged(object sender, SelectionChangedEventArgs e)
+		{
+			if (syncingStates || sender is not ComboBox combo || combo.Tag is not string group)
+				return;
+			var state = combo.SelectedItem as string;
+			VisualStateRequested?.Invoke(this, (group, state == NoVisualState ? null : state));
+		}
+
+		/// <summary>The state each group's combo currently shows, for tests/DevFlow.</summary>
+		public IReadOnlyList<(string Group, string? State)> VisualStateSelection =>
+			statesPanel.Children.OfType<ComboBox>()
+				.Select(c => ((string)c.Tag, c.SelectedItem as string is { } s && s != NoVisualState ? s : null))
+				.ToList();
+
 		/// <summary>Zoom preset labels ("Fit", "100%", ...). Index 0 is "Fit".</summary>
 		public ComboBox ZoomCombo { get; } = new ComboBox { Width = 84, Margin = new Thickness(4, 2, 4, 2) };
 
@@ -224,6 +301,11 @@ namespace ICSharpCode.SharpDevelop.Widgets
 				gridButton.Visibility = value.HasFlag(DesignerCanvasCapabilities.Gridlines) ? Visibility.Visible : Visibility.Collapsed;
 				themeCombo.Visibility = value.HasFlag(DesignerCanvasCapabilities.Theme) ? Visibility.Visible : Visibility.Collapsed;
 				namesButton.Visibility = value.HasFlag(DesignerCanvasCapabilities.ShowNames) ? Visibility.Visible : Visibility.Collapsed;
+				// Never shown on capability alone: the panel also needs the current document to
+				// actually declare a group (see SetVisualStateGroups).
+				statesPanel.Visibility = value.HasFlag(DesignerCanvasCapabilities.VisualStates) && statesPanel.Children.Count > 0
+					? Visibility.Visible
+					: Visibility.Collapsed;
 				DesignSizeCombo.Visibility = value.HasFlag(DesignerCanvasCapabilities.DesignSize) ? Visibility.Visible : Visibility.Collapsed;
 				showStatusBarCapability = value.HasFlag(DesignerCanvasCapabilities.StatusBar);
 				UpdateStatusBarVisibility();
@@ -241,6 +323,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 				if (capabilities.HasFlag(DesignerCanvasCapabilities.Gridlines)) result.Add("Gridlines");
 				if (capabilities.HasFlag(DesignerCanvasCapabilities.Theme)) result.Add("Theme");
 				if (capabilities.HasFlag(DesignerCanvasCapabilities.ShowNames)) result.Add("Show Names");
+				if (capabilities.HasFlag(DesignerCanvasCapabilities.VisualStates) && statesPanel.Children.Count > 0) result.Add("Visual States");
 				if (capabilities.HasFlag(DesignerCanvasCapabilities.DesignSize)) result.Add("Design Size");
 				return result;
 			}

@@ -600,6 +600,12 @@ as a synonym for `-From payload`.
 ./dist.ps1 -Phase payload,smoke -Kill
 ```
 
+**A shared widget is not an AddIn.** `DesignerCanvas` and friends live in
+`ICSharpCode.SharpDevelop.Widgets`, which reaches the payload through the **host publish**, not
+through `AddIns/`. `./build.ps1 <addin>` therefore cannot refresh it: the app then starts fine and
+dies at document-open with a signature-level `MissingMethodException` (observed:
+`DesignerCanvas.add_VisualStateRequested`). Changing a shared widget needs `./dist.ps1 -From host`.
+
 `-Kill` matters more than it looks: the `smoke` phase leaves a `dotnet exec OpenDevelop.dll`
 behind if it did not shut down cleanly, and the out-of-process designer hosts outlive the IDE by
 design, so the *next* `payload` run dies on `Access to the path ...\CodeCoverage.dll is denied`.

@@ -52,25 +52,15 @@ namespace ICSharpCode.XamlBinding
 
 			editor.Document.TextChanged += OnDocumentChanged;
 			RefreshAsync();
-			ActivateOutlinePad();
+			// Deliberately does NOT bring the Outline pad to front. Opening a .xaml file is not a
+			// request to rearrange the user's pad layout, and doing it on every open stole focus
+			// from whatever pad they had chosen to keep there. The outline still populates; it is
+			// simply shown when the user opens the pad themselves (View > Outline, or the
+			// designer's own Outline command).
 		}
 
 		public object OutlineContent {
 			get { return outline; }
-		}
-
-		/// <summary>
-		/// Shows the Document Outline pad once, mirroring the WinForms designer's behavior
-		/// (FormsDesignerViewContent.ActivateOutlinePadOnce): a .xaml code editor is expected to
-		/// show its element tree without the user opening the pad manually.
-		/// </summary>
-		void ActivateOutlinePad()
-		{
-			try {
-				SD.Workbench.GetPad("ICSharpCode.SharpDevelop.Gui.OutlinePad")?.BringPadToFront();
-			} catch (Exception ex) {
-				LoggingService.Debug("XamlOutlineContentHost: could not activate the Outline pad: " + ex.Message);
-			}
 		}
 
 		void OnDocumentChanged(object sender, EventArgs e)

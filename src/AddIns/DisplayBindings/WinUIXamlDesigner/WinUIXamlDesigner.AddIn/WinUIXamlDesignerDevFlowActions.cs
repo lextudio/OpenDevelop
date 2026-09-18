@@ -260,6 +260,23 @@ public static class WinUIXamlDesignerDevFlowActions
 		return JsonSerializer.Serialize(new { success = true, name, description = view.DescribeElementState(name) });
 	}
 
+	[DevFlowAction("od.winui-designer.visual-state", Description = "Preview a VisualState. No args lists the document's VisualStateGroups with their states and whichever state the designer is currently forcing; '<group> <state>' forces one; '<group>' alone (empty state) releases that group back to the document's natural state")]
+	public static string VisualState(string group = "", string state = "")
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		if (string.IsNullOrEmpty(group))
+		{
+			var groups = view.GetVisualStateGroups()
+				.Select(g => new { group = g.Group, states = g.States, current = string.IsNullOrEmpty(g.CurrentState) ? null : g.CurrentState })
+				.ToList();
+			return JsonSerializer.Serialize(new { success = true, groups });
+		}
+		view.GoToVisualState(group, state);
+		return JsonSerializer.Serialize(new { success = true, group, state = string.IsNullOrEmpty(state) ? null : state });
+	}
+
 	[DevFlowAction("od.winui-designer.switch-to-source",Description = "Switch the active XAML document back to its primary Source view, so a Source-then-Design round trip can be driven the way a user clicking the tabs would")]
 	public static string SwitchToSource()
 	{

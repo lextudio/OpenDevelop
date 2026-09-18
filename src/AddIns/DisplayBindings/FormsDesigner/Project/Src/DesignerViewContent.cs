@@ -754,30 +754,15 @@ namespace ICSharpCode.FormsDesigner
 				outline.SelectionCommitted += OnOutlineSelectionCommitted;
 				remoteControl.Show(state);
 				UpdateOutline(state);
-				ActivateOutlinePadOnce();
 				base.UserContent = remoteControl;
 				hasUnmergedChanges = false;
 				lastLoadedTexts = texts;
 			});
 		}
 
-		bool outlinePadActivated;
-
-		/// <summary>
-		/// Shows the Document Outline pad the first time a form is designed, so the control
-		/// tree is visible without the user having to open the pad manually.
-		/// </summary>
-		void ActivateOutlinePadOnce()
-		{
-			if (outlinePadActivated)
-				return;
-			outlinePadActivated = true;
-			try {
-				SD.Workbench.GetPad("ICSharpCode.SharpDevelop.Gui.OutlinePad")?.BringPadToFront();
-			} catch (Exception ex) {
-				LoggingService.Debug("Forms designer: could not activate the Outline pad: " + ex.Message);
-			}
-		}
+		// Designing a form deliberately does NOT bring the Outline pad to front any more: opening a
+		// view is not a request to rearrange the user's pad layout. The outline is still kept up to
+		// date (UpdateOutline); the user opens the pad when they want it.
 
 		readonly DocumentOutlineControl outline = new DocumentOutlineControl();
 		readonly DesignerSelectionController shellSelection = new DesignerSelectionController();

@@ -118,6 +118,11 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 
 	public Rect? QueryElementScreenBounds(string name) => previewHost.QueryElementScreenBounds(name);
 	public string DescribeElementState(string name) => previewHost.DescribeElementState(name);
+
+	public IReadOnlyList<(string Group, IReadOnlyList<string> States, string CurrentState)> GetVisualStateGroups()
+		=> previewHost.GetVisualStateGroups();
+
+	public void GoToVisualState(string group, string state) => previewHost.GoToVisualState(group, state);
 	public int ResolvedNameCount => previewHost.ResolvedNameCount;
 	public string LastPickDiagnostic => previewHost.LastPickDiagnostic;
 
@@ -1421,7 +1426,9 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			Type = element.Name.LocalName,
 			IsDesignable = true,
 			Children = element.Elements()
-				.Where(child => !IsResourceDefinitionElement(child) && !IsHiddenSourceElement(child))
+				.Where(child => !IsResourceDefinitionElement(child)
+					&& !IsVisualStateElement(child)
+					&& !IsHiddenSourceElement(child))
 				.Select(XmlOutlineNode).ToList()
 		};
 	}
@@ -1429,6 +1436,20 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	static bool IsResourceDefinitionElement(XElement element)
 		=> element.Name.LocalName.EndsWith(".Resources", StringComparison.Ordinal)
 			|| element.Name.LocalName == "ResourceDictionary";
+
+	/// <summary>
+	/// <c>VisualStateManager.VisualStateGroups</c> and its whole subtree - the groups, their states,
+	/// and those states' Setters/StateTriggers.
+	///
+	/// None of it is in the visual tree: a VisualState has no bounds and can never be selected on
+	/// the surface, so listing it in an outline whose entire contract is "click a node, select that
+	/// element on the canvas" only produces nodes that cannot honour it. (It shows up here at all
+	/// because this XML projection is the fallback used before the first render lands, and it
+	/// filtered only resource dictionaries.) The states are offered for PREVIEW through the
+	/// toolbar's per-group state combos instead - see winui-designer.md, "Visual state preview".
+	/// </summary>
+	static bool IsVisualStateElement(XElement element)
+		=> element.Name.LocalName.EndsWith(".VisualStateGroups", StringComparison.Ordinal);
 
 	static bool IsHiddenSourceElement(XElement element)
 	{

@@ -308,6 +308,17 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 
 	public string DescribeElementState(string name) => runtime?.DescribeElementState(name) ?? "no runtime";
 
+	public IReadOnlyList<(string Group, IReadOnlyList<string> States, string CurrentState)> GetVisualStateGroups()
+		=> runtime is IWinUIXamlVisualStates states
+			? states.GetVisualStateGroups()
+			: Array.Empty<(string, IReadOnlyList<string>, string)>();
+
+	public void GoToVisualState(string group, string state)
+	{
+		if (runtime is IWinUIXamlVisualStates states)
+			states.GoToVisualState(group, state);
+	}
+
 	public string ResolveNameAt(System.Numerics.Vector2 point) => runtime?.ResolveNameAt(point);
 
 	public int ResolvedNameCount => runtime?.ResolvedNameCount ?? 0;
@@ -599,6 +610,22 @@ public interface IWinUIXamlTheme
 {
 	void SetDesignTheme(string theme);
 	string GetDesignTheme();
+}
+
+/// <summary>
+/// Preview of the document's <c>VisualStateManager.VisualStateGroups</c>. Separate from
+/// <see cref="IWinUIXamlTheme"/> because groups are orthogonal to each other AND to the theme: a
+/// page can hold one state per group at the same time, so this is not a single "current variant".
+/// </summary>
+public interface IWinUIXamlVisualStates
+{
+	/// <summary>The document's groups, their states, and whichever state the designer is forcing
+	/// in each (null when it is left at the document's natural state).</summary>
+	IReadOnlyList<(string Group, IReadOnlyList<string> States, string CurrentState)> GetVisualStateGroups();
+
+	/// <summary>Forces one state, or stops forcing the group when <paramref name="state"/> is null
+	/// or empty.</summary>
+	void GoToVisualState(string group, string state);
 }
 
 /// <summary>

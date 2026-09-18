@@ -164,6 +164,9 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		public DesignerSessionState SetTheme(string theme)
 			=> HeadlessDispatcher.DispatchAsync(() => SetThemeAsync(theme)).GetAwaiter().GetResult();
 
+		public DesignerSessionState GoToState(string group, string state)
+			=> HeadlessDispatcher.DispatchAsync(() => GoToStateAsync(group, state)).GetAwaiter().GetResult();
+
 		public DesignerAppResourcesResult LoadAppResources(string xaml)
 			=> HeadlessDispatcher.Dispatch(() => LoadAppResourcesCore(xaml));
 
@@ -798,6 +801,285 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		/// instead the application-level explicit theme is set through the same internal
 		/// route Application.RequestedTheme would take (blocked post-initialization), and the
 		/// design is reloaded so {ThemeResource} values resolve under the new active theme.</summary>
+		/// <summary>
+		/// The element <c>VisualStateManager</c> works against for a page-level state: the framework
+		/// reads the groups off the state owner's FIRST CHILD, not off the control itself, so both
+		/// the enumeration below and <see cref="GoToStateAsync"/> have to agree on which element
+		/// that is. Returns null when the document declares no groups at all.
+		/// </summary>
+		FrameworkElement? FindVisualStateOwner()
+		{
+			if (root is null)
+				return null;
+			// The root itself when the groups are attached to it, otherwise its first child - the
+			// usual shape, where the groups sit on the Page's root layout panel.
+			if (VisualStateManager.GetVisualStateGroups(root).Count > 0)
+				return root;
+			if (root is Panel { Children.Count: > 0 } panel && panel.Children[0] is FrameworkElement first
+				&& VisualStateManager.GetVisualStateGroups(first).Count > 0)
+				return first;
+			if (root is UserControl { Content: FrameworkElement content }
+				&& VisualStateManager.GetVisualStateGroups(content).Count > 0)
+				return content;
+			return null;
+		}
+
+		List<DesignerVisualStateGroup> CollectVisualStateGroups()
+		{
+			var result = new List<DesignerVisualStateGroup>();
+			try
+			{
+				if (FindVisualStateOwner() is not { } owner)
+					return result;
+				foreach (var group in VisualStateManager.GetVisualStateGroups(owner))
+				{
+					var info = new DesignerVisualStateGroup {
+						Name = string.IsNullOrEmpty(group.Name) ? "(unnamed)" : group.Name,
+						CurrentState = group.CurrentState?.Name
+					};
+					foreach (var state in group.States)
+						info.States.Add(state.Name ?? "");
+					// Forced states are tracked here rather than read back from CurrentState alone:
+					// GoToState on a group whose state was never entered leaves CurrentState null
+					// even though the designer is deliberately holding that state.
+					if (forcedVisualStates.TryGetValue(info.Name, out var forced))
+						info.CurrentState = forced;
+					result.Add(info);
+				}
+			}
+			catch (Exception e)
+			{
+				Console.Error.WriteLine("design-host: could not enumerate visual state groups: " + e.GetBaseException().Message);
+			}
+			return result;
+		}
+
+		/// <summary>States the designer is currently forcing, by group name.</summary>
+		readonly Dictionary<string, string> forcedVisualStates = new Dictionary<string, string>(StringComparer.Ordinal);
+
+		/// <summary>
+		/// Previews one visual state. A null/empty <paramref name="state"/> means "stop forcing this
+		/// group", which reloads the document: VisualStateManager has no "leave state" operation, so
+		/// re-running the load is the only way back to however the document naturally starts.
+		/// Transitions are deliberately skipped - a design surface wants the settled end state, and
+		/// FinishLayoutAsync's frame-stability check would otherwise time out on the animation.
+		/// </summary>
+		async Task<DesignerSessionState> GoToStateAsync(string group, string? state)
+		{
+			var snapshot = new DesignerSessionState { Accepted = true };
+			if (root is null)
+			{
+				snapshot.Diagnostics.Add(new DesignerDiagnostic { Message = "No design loaded." });
+				return snapshot;
+			}
+			try
+			{
+				if (string.IsNullOrEmpty(state))
+					forcedVisualStates.Remove(group);
+				else
+					forcedVisualStates[group] = state;
+
+				// ALWAYS reload before applying. A state's setters are plain property writes, and
+				// nothing un-writes them when the group moves to another state, so switching
+				// NarrowLayout -> WideLayout would otherwise keep narrow's margins. Reloading gives
+				// a clean document, after which every state still held is applied on top. It also
+				// makes "(none)" fall out for free: nothing left to apply for that group.
+				var reloaded = await LoadDesignAsync(new LoadDesignRequest {
+					Xaml = lastXaml, Width = lastWidth, Height = lastHeight, Dpi = lastDpi
+				});
+				if (forcedVisualStates.Count == 0)
+					return reloaded;
+
+				var failures = new List<string>();
+				foreach (var held in forcedVisualStates.ToList())
+				{
+					if (ApplyVisualState(held.Key, held.Value) is { Length: > 0 } failure)
+					{
+						failures.Add(failure);
+						forcedVisualStates.Remove(held.Key);
+					}
+				}
+				var result = await FinishLayoutAsync(lastWidth, lastHeight, lastDpi,
+					new DesignerSessionState { Accepted = failures.Count == 0 });
+				foreach (var failure in failures)
+					result.Diagnostics.Add(new DesignerDiagnostic { Message = failure });
+				return result;
+			}
+			catch (Exception e)
+			{
+				snapshot.Diagnostics.Add(new DesignerDiagnostic { Message = e.GetBaseException().Message });
+				return snapshot;
+			}
+		}
+
+		/// <summary>Applies a state; returns an empty string on success or the reason it failed.</summary>
+		string ApplyVisualState(string group, string state)
+		{
+			if (FindVisualStateOwner() is not { } owner)
+				return "This document declares no visual state groups.";
+			var target = VisualStateManager.GetVisualStateGroups(owner)
+				.FirstOrDefault(g => string.Equals(g.Name, group, StringComparison.Ordinal));
+			if (target == null)
+				return $"Visual state group '{group}' was not found.";
+			if (target.States.All(s => !string.Equals(s.Name, state, StringComparison.Ordinal)))
+				return $"Visual state '{state}' was not found in group '{group}'.";
+			var definition = target.States.First(s => string.Equals(s.Name, state, StringComparison.Ordinal));
+			// GoToState first, so a document whose root IS a properly templated Control still gets
+			// the framework's own behaviour (transitions aside); the setter path covers the rest.
+			if (TryEnterState(owner, state) || TryApplyStateSetters(owner, definition))
+				return "";
+			// A state can legitimately declare nothing at all - WinUI-Gallery's WideLayout is pure
+			// StateTriggers, and IS the un-modified arrangement. Since every apply reloads the
+			// document first, "apply nothing" already produces exactly that state's appearance.
+			if (definition.Setters.Count == 0 && definition.Storyboard == null)
+				return "";
+			return $"Visual state '{state}' of group '{group}' could not be applied.";
+		}
+
+		/// <summary>
+		/// Enters a state on the element that actually HOLDS the groups.
+		///
+		/// <c>GoToState</c> alone is not enough: it resolves the groups from the CONTROL's template
+		/// root, and the common XAML shape attaches the groups to the page's content panel instead
+		/// (WinUI-Gallery's SearchResultsPage puts them on the Grid inside its ItemsPageBase). At
+		/// design time that Grid is not the page's template root, so GoToState finds no group and
+		/// returns false - which this code used to report as "state not found", blaming the
+		/// document for what was really a lookup mismatch.
+		///
+		/// <c>GoToElementState</c> takes the state-groups root directly, which is exactly what
+		/// <see cref="FindVisualStateOwner"/> returns. It is reached reflectively because it is not
+		/// on every XAML flavour's public surface (the same reason SetApplicationThemeReflectively
+		/// exists), with GoToState over the enclosing Controls kept as the fallback.
+		/// </summary>
+		/// <summary>
+		/// Applies a state's own <c>Setters</c> (and Storyboard, jumped straight to its end) without
+		/// going through VisualStateManager.
+		///
+		/// Needed because the design host frequently previews a document's CONTENT rather than its
+		/// root - WinUI-Gallery's SearchResultsPage has an ItemsPageBase root the host cannot
+		/// render, so the design root becomes the inner Grid (see UnrenderableRootUnwrapper). The
+		/// groups are attached to that Grid, but GoToState resolves groups from a CONTROL's template
+		/// root, and an unwrapped Panel root has no Control anywhere above it. The setters are the
+		/// entire visible effect of these states anyway; StateTriggers are irrelevant here because
+		/// forcing a state is precisely overriding them.
+		/// </summary>
+		static bool TryApplyStateSetters(FrameworkElement scope, VisualState state)
+		{
+			var applied = false;
+			foreach (var setterBase in state.Setters)
+			{
+				if (setterBase is not Setter setter)
+					continue;
+				var path = setter.Target?.Path?.Path;
+				if (string.IsNullOrEmpty(path))
+					continue;
+
+				// Two shapes reach here. When the parser resolved Target="element.Property" it hands
+				// back the ELEMENT in Target.Target and leaves Path as the bare property name
+				// ("Visibility"); when it could not, Target.Target is null and Path still carries
+				// the whole "element.Property" string. Splitting unconditionally - as this first
+				// did - silently skipped every setter of the resolved (i.e. normal) shape.
+				var target = setter.Target?.Target as DependencyObject;
+				string propertyName;
+				if (target != null)
+				{
+					propertyName = path.Trim('(', ')', ' ');
+				}
+				else
+				{
+					var separator = path.LastIndexOf('.');
+					if (separator <= 0 || separator == path.Length - 1)
+						continue;
+					target = scope.FindName(path.Substring(0, separator).Trim('(', ')', ' ')) as DependencyObject;
+					propertyName = path.Substring(separator + 1).Trim(')', ' ');
+					if (target == null)
+					{
+						Console.Error.WriteLine($"design-host: visual state setter target '{path}' could not be resolved.");
+						continue;
+					}
+				}
+
+				var clrProperty = target.GetType().GetProperty(propertyName);
+				if (clrProperty == null || !clrProperty.CanWrite)
+				{
+					Console.Error.WriteLine($"design-host: visual state setter property '{propertyName}' is not writable on {target.GetType().Name}.");
+					continue;
+				}
+				try
+				{
+					clrProperty.SetValue(target, CoerceSetterValue(setter.Value, clrProperty.PropertyType));
+					applied = true;
+				}
+				catch (Exception e)
+				{
+					Console.Error.WriteLine($"design-host: visual state setter '{path}' failed: {e.GetBaseException().Message}");
+				}
+			}
+			if (state.Storyboard != null)
+			{
+				try
+				{
+					state.Storyboard.Begin();
+					state.Storyboard.SkipToFill();
+					applied = true;
+				}
+				catch (Exception e)
+				{
+					Console.Error.WriteLine("design-host: visual state storyboard failed: " + e.GetBaseException().Message);
+				}
+			}
+			return applied;
+		}
+
+		/// <summary>
+		/// Brings a Setter's value to the target property's type. The XAML parser has usually
+		/// already done this - but for an enum property it hands back the underlying Int32
+		/// (Visibility.Collapsed arrives as 1), which a plain reflection SetValue rejects.
+		/// </summary>
+		static object? CoerceSetterValue(object? value, Type propertyType)
+		{
+			if (value == null || propertyType.IsInstanceOfType(value))
+				return value;
+			var target = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
+			if (target.IsEnum)
+			{
+				return value is string name
+					? Enum.Parse(target, name, ignoreCase: true)
+					: Enum.ToObject(target, value);
+			}
+			if (value is string text)
+				return Microsoft.UI.Xaml.Markup.XamlBindingHelper.ConvertValue(target, text);
+			return value is IConvertible ? Convert.ChangeType(value, target) : value;
+		}
+
+		static bool TryEnterState(FrameworkElement owner, string state)
+		{
+			var goToElementState = typeof(VisualStateManager).GetMethod(
+				"GoToElementState",
+				System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
+				null,
+				new[] { typeof(FrameworkElement), typeof(string), typeof(bool) },
+				null);
+			if (goToElementState != null)
+			{
+				try
+				{
+					if (goToElementState.Invoke(null, new object[] { owner, state, false }) is true)
+						return true;
+				}
+				catch (Exception e)
+				{
+					Console.Error.WriteLine("design-host: GoToElementState failed: " + e.GetBaseException().Message);
+				}
+			}
+			for (DependencyObject? node = owner; node != null; node = VisualTreeHelper.GetParent(node))
+			{
+				if (node is Control control && VisualStateManager.GoToState(control, state, false))
+					return true;
+			}
+			return false;
+		}
+
 		async Task<DesignerSessionState> SetThemeAsync(string theme)
 		{
 			var snapshot = new DesignerSessionState { Accepted = true };
@@ -1239,6 +1521,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				// Geometry stays in design DIPs, including hit testing and event-only updates.
 				// Bitmap dimensions alone cannot establish a capture-space transformation.
 				snapshot.Tree = BuildTree(root, root, "", 0, sourceBackedElements);
+				snapshot.VisualStateGroups = CollectVisualStateGroups();
 				snapshot.Render.Sequence = ++frameSequence;
 				BoundsLog($"FinishLayout rendered={snapshot.Render?.Width}x{snapshot.Render?.Height} rootActualAfterRender={root.ActualWidth}x{root.ActualHeight}");
 			}

@@ -1741,3 +1741,95 @@ Remaining scope: arbitrary animated content, rotated selection polygons, fully c
 and frame-scoped stale pointer rejection need the broader protocol work described above. The
 current transform hook returns an axis-aligned visual bounding box. This change does not claim
 to complete that broader protocol or to have rerun the entire Gallery acceptance suite.
+
+## Visual state preview (2026-09-17)
+
+**Why.** A document's `VisualStateManager.VisualStateGroups` never render in the designer: the
+surface only ever shows whatever state the page naturally loads in, so states like WinUI-Gallery
+`SearchResultsPage.xaml`'s `NoResultsFound` or `NarrowLayout` were unreachable. The request started
+as "should the Outline pad show the groups?" and the answer was no - the Outline is a visual-tree
+browser whose nodes must be selectable on the canvas and have bounds, and a `VisualState` has
+neither, so putting them there breaks the outline-to-surface contract the selection and geometry
+code depends on. Listing them was never the problem; **previewing** them was.
+
+**UI shape: one combo per group, not one combo for the document.** Visual state groups are
+orthogonal - `SearchResultsPage` can be in `WideLayout` AND `NoResultsFound` simultaneously - so a
+single "current state" picker would be wrong by construction. The shared `DesignerCanvas` toolbar
+(all five designers) now hosts a `statesPanel` next to the theme combo, holding one `ComboBox` per
+group, each offering `(none)` plus that group's states. `(none)` means "do not force this group".
+The panel collapses entirely when the document declares no groups, which is almost every document,
+so the toolbar is unchanged for normal work. Gated by `DesignerCanvasCapabilities.VisualStates` as
+well, so a backend that cannot preview states never shows it.
+
+**Protocol.** `DesignerSessionState.VisualStateGroups` (a `DesignerVisualStateGroup` per group:
+name, states, currently-forced state) is populated in `DesignHost.FinishLayoutAsync` - the single
+funnel every snapshot passes through, so the combos follow document switches and reloads with no
+extra round trip. The new `design/go-to-state` RPC mirrors `design/theme` end to end
+(`UnoDesignClient.GoToStateAsync` -> `DesignRpc` -> `DesignHost.GoToStateAsync`).
+
+**`GoToState` cannot carry this on its own, and finding out why took three wrong turns.**
+`VisualStateManager.GoToState(control, ...)` resolves the groups from a CONTROL's template root. The
+design host, however, routinely previews a document's CONTENT rather than its root: WinUI-Gallery's
+`SearchResultsPage` has an `ItemsPageBase` root the host cannot render, so
+`UnrenderableRootUnwrapper` makes the inner `Grid` the design root. The groups are attached to that
+Grid, and an unwrapped `Panel` root has no `Control` anywhere above it - so `GoToState` returns
+false for every state. The first error message blamed the document ("Visual state 'WideLayout' was
+not found in group 'LayoutVisualStates'") when the state was plainly there and the combo had been
+populated from it; `GoToElementState`, which takes the state-groups root directly, is not on this
+XAML flavour's public surface either.
+
+So the host applies the state itself: `GoToState` is still tried first (documents whose root really
+is a templated Control get the framework's own behaviour), and `TryApplyStateSetters` writes the
+state's `VisualState.Setters` otherwise. **Read the setter shape from the runtime, not from the
+XAML** - instrumentation showed the parser hands back something quite different from the markup:
+
+```
+XAML:    <Setter Target="resultsNavView.Visibility" Value="Collapsed" />
+Runtime: path='Visibility'  Target.Target=NavigationView  Value=1 (Int32)
+```
+
+The element is already resolved into `Target.Target`, `Path` is the BARE property name, and an enum
+value arrives as its underlying `Int32`. Splitting the path on `.` unconditionally - the obvious
+reading of the markup - therefore skipped every setter of the normal, resolved shape, and even once
+that was fixed a plain reflection `SetValue` rejected `1` for a `Visibility` property (hence
+`CoerceSetterValue`). Both shapes are handled: resolved target + bare property, or null target +
+`"element.Property"` resolved through the owner's `FindName`.
+
+**Every apply reloads the document first.** Setters are one-way property writes with nothing to
+un-write them, so switching `NarrowLayout` -> `WideLayout` would otherwise keep narrow's margins.
+`GoToStateAsync` reloads, then re-applies every state still held in `forcedVisualStates`, which also
+makes "(none)" fall out for free and keeps the groups independent (releasing one leaves the other
+held - verified). `forcedVisualStates` is tracked rather than trusting
+`VisualStateGroup.CurrentState`, which stays null for a state that was never entered naturally.
+
+**A state that applies nothing is a success, not a failure.** `WideLayout` is pure `StateTriggers`
+with no setters at all, and IS the unmodified arrangement - the reload alone already produces it.
+
+Transitions are skipped: a design surface wants the settled end state, and `FinishLayoutAsync`'s
+frame-stability loop would otherwise time out against a running animation with "The design preview
+did not settle within two seconds".
+
+**An error snapshot must still carry the groups.** The client repopulates its combos from every
+snapshot, so an early-return error snapshot with an empty list blanked the whole states panel the
+moment anything failed - the second symptom reported from the first build. The host now fills
+`VisualStateGroups` on the failure path too, and the client only repopulates from a snapshot that
+actually describes the document (`Tree != null`, or a non-empty group list).
+
+**The Outline pad no longer lists the state machinery.** It used to show `ResultStates`,
+`WideLayout` and the rest as ordinary nodes, because `XmlOutlineNode` - the source projection used
+until the first render lands - filtered only resource dictionaries and happily walked into
+`VisualStateManager.VisualStateGroups`. Those nodes cannot honour the outline's contract (click a
+node, select that element on the canvas): a VisualState has no bounds and is not in the visual tree.
+`IsVisualStateElement` now drops that subtree. The runtime projection never had the problem -
+`BuildTree` only adds `UIElement` children, and a `VisualStateGroup` is not one.
+
+**Driving it:** `od.winui-designer.visual-state` with no arguments lists the groups, their states
+and whatever is currently forced; `<group> <state>` forces one; `<group>` with an empty state
+releases it.
+
+**Build gotcha this surfaced.** `DesignerCanvas` lives in `ICSharpCode.SharpDevelop.Widgets`, which
+ships from the HOST PUBLISH, not from the AddIns tree. Rebuilding only the designer AddIn projects
+left a stale Widgets assembly in the payload and the app failed at document-open with
+`MissingMethodException: DesignerCanvas.add_VisualStateRequested` - a signature-level mismatch, not
+a logic bug. Any change to a shared widget needs `./dist.ps1 -From host` (or a full build), not just
+`./build.ps1 <addin>`.
