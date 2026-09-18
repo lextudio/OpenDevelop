@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -232,6 +233,114 @@ public sealed class WinUIGalleryDesignerTests
         Assert.DoesNotContain("AnimatedIcon.State theme setter", log, StringComparison.Ordinal);
 
         await AssertDesignHostChildAliveAsync(page);
+    }
+
+    /// <summary>
+    /// The designer lists every VisualStateGroup a page declares, with its states - one toolbar
+    /// combo per group. This is a page-level feature: before it, the designer could only ever show
+    /// a page in its default state.
+    /// </summary>
+    [Fact]
+    public async Task VisualStates_AreListedForAPageThatDeclaresThem()
+    {
+        if (_skip) { Assert.Skip(_skipReason); return; }
+
+        const string page = "WinUIGallery/Pages/HomePage.xaml";
+        var status = await OpenDesignerAsync(page, "", DesignerExpectation.Rendered);
+        Assert.True(IsRendered(status), page + ": did not render. status=" + status);
+
+        var groups = await ReadVisualStatesAsync();
+        Assert.Contains(groups, g => g.Name == "FavoritesVisibilityStates"
+            && g.States.Contains("Favorites") && g.States.Contains("NoFavorites"));
+        Assert.Contains(groups, g => g.Name == "RecentVisibilityStates"
+            && g.States.Contains("Recent") && g.States.Contains("NoRecent"));
+    }
+
+    /// <summary>
+    /// Switching a VisualState both applies it and shows the shared "please wait" chrome while the
+    /// async round-trip is in flight - a state change is a full child re-render, so without the
+    /// overlay the canvas just sat on the old frame and then snapped with no feedback.
+    ///
+    /// Asserted against <c>visualStateLoads</c> (a monotonic count of overlays shown), NOT the
+    /// transient <c>isLoading</c> flag: the switch can complete between two DevFlow round-trips, so
+    /// polling for isLoading would be racy while the count cannot be missed. The end state and the
+    /// overlay clearing are then checked separately.
+    /// </summary>
+    [Fact]
+    public async Task VisualStateSwitch_AppliesStateAndShowsLoadingChrome()
+    {
+        if (_skip) { Assert.Skip(_skipReason); return; }
+
+        const string page = "WinUIGallery/Pages/HomePage.xaml";
+        var status = await OpenDesignerAsync(page, "", DesignerExpectation.Rendered);
+        Assert.True(IsRendered(status), page + ": did not render. status=" + status);
+
+        var groups = await ReadVisualStatesAsync();
+        var group = groups.FirstOrDefault(g => g.States.Count > 0);
+        Assert.NotNull(group);
+        var state = group!.States.First(s => !string.Equals(s, group.Current, StringComparison.Ordinal));
+
+        var loadsBefore = status.GetProperty("visualStateLoads").GetInt32();
+        var switched = await _app.InvokeAsync("od.winui-designer.visual-state", group.Name, state);
+        Assert.True(switched.TryGetProperty("success", out var ok) && ok.GetBoolean(), switched.ToString());
+
+        // The overlay went up for this switch...
+        var shown = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            var current = await _app.InvokeAsync("od.winui-designer.status");
+            return current.GetProperty("visualStateLoads").GetInt32() > loadsBefore;
+        }, TimeSpan.FromSeconds(30), initialDelayMs: 10, maxDelayMs: 200);
+        Assert.True(shown, group.Name + "/" + state + ": the switch never showed the loading chrome.");
+
+        // ...and came back down once the new frame arrived.
+        var cleared = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            var current = await _app.InvokeAsync("od.winui-designer.status");
+            return !current.GetProperty("isLoading").GetBoolean();
+        }, TimeSpan.FromSeconds(30), initialDelayMs: 50, maxDelayMs: 500);
+        Assert.True(cleared, group.Name + "/" + state + ": the loading chrome never cleared.");
+
+        // ...and the state is really applied, not just requested: the host reports it as current.
+        var applied = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+            (await ReadVisualStatesAsync()).Any(g => g.Name == group.Name && g.Current == state),
+            TimeSpan.FromSeconds(30), initialDelayMs: 100, maxDelayMs: 500);
+        Assert.True(applied, group.Name + ": state '" + state + "' was never reported as applied.");
+
+        // Releasing the group must also work and must go through the same chrome.
+        var releaseLoadsBefore = (await _app.InvokeAsync("od.winui-designer.status")).GetProperty("visualStateLoads").GetInt32();
+        var released = await _app.InvokeAsync("od.winui-designer.visual-state", group.Name, "");
+        Assert.True(released.TryGetProperty("success", out var releaseOk) && releaseOk.GetBoolean(), released.ToString());
+        var releaseShown = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            var current = await _app.InvokeAsync("od.winui-designer.status");
+            return current.GetProperty("visualStateLoads").GetInt32() > releaseLoadsBefore;
+        }, TimeSpan.FromSeconds(30), initialDelayMs: 10, maxDelayMs: 200);
+        Assert.True(releaseShown, group.Name + ": releasing the state never showed the loading chrome.");
+
+        await AssertDesignHostChildAliveAsync(page);
+    }
+
+    sealed record VisualStateGroupInfo(string Name, IReadOnlyList<string> States, string? Current);
+
+    /// <summary>Reads od.winui-designer.visual-state's listing (group / states / current).</summary>
+    async Task<IReadOnlyList<VisualStateGroupInfo>> ReadVisualStatesAsync()
+    {
+        var listed = await _app.InvokeAsync("od.winui-designer.visual-state");
+        var result = new List<VisualStateGroupInfo>();
+        if (listed.TryGetProperty("groups", out var groups) && groups.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var g in groups.EnumerateArray())
+            {
+                var name = g.TryGetProperty("group", out var n) ? n.GetString() ?? "" : "";
+                var states = new List<string>();
+                if (g.TryGetProperty("states", out var s) && s.ValueKind == JsonValueKind.Array)
+                    foreach (var item in s.EnumerateArray())
+                        if (item.GetString() is { Length: > 0 } st)
+                            states.Add(st);
+                var current = g.TryGetProperty("current", out var c) && c.ValueKind == JsonValueKind.String
+                    ? c.GetString()
+                    : null;
+                result.Add(new VisualStateGroupInfo(name, states, current));
+            }
+        }
+        return result;
     }
 
     async Task EnsureGalleryOpenAsync()

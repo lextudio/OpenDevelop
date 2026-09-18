@@ -40,6 +40,8 @@ public static class WinUIXamlDesignerDevFlowActions
 			evidence = view.Framework.Evidence,
 			backend = view.BackendName,
 			rendered = view.HasRenderedPreview,
+			isLoading = view.IsLoading,
+			visualStateLoads = view.VisualStateLoadingShownCount,
 			status = view.StatusText,
 			documentError = view.DocumentError,
 			toolboxItemCount = toolbox.ItemCount,

@@ -93,6 +93,8 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	public string StatusText => status.Text;
 	public string BackendName => previewHost.BackendName;
 	public bool HasRenderedPreview => previewHost.HasRenderedPreview;
+	public bool IsLoading => previewHost.IsLoading;
+	public int VisualStateLoadingShownCount => previewHost.VisualStateLoadingShownCount;
 	public object OutlineContent => outline;
 
 	/// <summary>WinUI/Uno shares the shell's Toolbox pad rather than hosting ProGPU's own chrome.</summary>

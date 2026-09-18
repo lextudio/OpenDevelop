@@ -16,6 +16,15 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 	/// <summary>Selected runtime identity, available even if the first document render fails.</summary>
 	public string BackendName => (runtime?.WpfSurface as ICSharpCode.SharpDevelop.Widgets.DesignerCanvas)?.BackendName ?? "";
 
+	/// <summary>Whether the canvas is currently showing its shared "please wait" chrome (a design
+	/// load or a VisualState switch). Exposed for DevFlow/tests, which cannot screenshot.</summary>
+	public bool IsLoading => (runtime?.WpfSurface as ICSharpCode.SharpDevelop.Widgets.DesignerCanvas)?.IsLoading == true;
+
+	/// <summary>Monotonic count of VisualState-switch overlays shown (see DesignerCanvas). A switch
+	/// can complete between two status polls, so this count - not <see cref="IsLoading"/> - is what
+	/// a test asserts against.</summary>
+	public int VisualStateLoadingShownCount => (runtime?.WpfSurface as ICSharpCode.SharpDevelop.Widgets.DesignerCanvas)?.VisualStateLoadingShownCount ?? 0;
+
 	public WinUIXamlHost(XamlFrameworkContext framework, string documentFileName)
 	{
 		Framework = framework ?? throw new ArgumentNullException(nameof(framework));

@@ -138,16 +138,29 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		if (client == null || string.IsNullOrEmpty(group))
 			return;
 		var requested = Volatile.Read(ref version);
+		// The switch is an async round-trip to the child, so show the shared "please wait" chrome
+		// (the same overlay a first design load shows) instead of letting the canvas sit on the
+		// old frame and then snap to the new one with no feedback.
+		dispatcher.BeginInvoke(() => surface.BeginVisualStateLoading(group, state));
 		_ = Task.Run(async () => {
 			try
 			{
 				var snapshot = await client.GoToStateAsync(group, state);
-				dispatcher.BeginInvoke(() => ApplySnapshot(snapshot, requested));
+				dispatcher.BeginInvoke(() => {
+					ApplySnapshot(snapshot, requested);
+					// ApplySnapshot can decline a stale snapshot; end the overlay either way so a
+					// superseded switch can never leave the canvas stuck behind it.
+					surface.EndVisualStateLoading();
+				});
 			}
 			catch (Exception e)
 			{
-				dispatcher.BeginInvoke(() => SetStatus("WinUI designer could not apply visual state '"
-					+ (state ?? "(none)") + "': " + e.GetBaseException().Message));
+				dispatcher.BeginInvoke(() => {
+					// No snapshot is coming, so nothing else will end the overlay.
+					surface.EndVisualStateLoading();
+					SetStatus("WinUI designer could not apply visual state '"
+						+ (state ?? "(none)") + "': " + e.GetBaseException().Message);
+				});
 			}
 		});
 	}

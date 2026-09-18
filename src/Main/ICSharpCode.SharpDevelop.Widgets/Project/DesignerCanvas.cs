@@ -56,6 +56,12 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		/// none, which is the overwhelmingly common case.</summary>
 		readonly StackPanel statesPanel = new StackPanel { Orientation = Orientation.Horizontal };
 		bool syncingStates;
+		// True while the overlay below belongs to a VisualState switch rather than a design load,
+		// so the switch's own snapshot can end it without disturbing a load in progress.
+		bool loadingForVisualState;
+		// Monotonic count of VisualState-switch overlays shown. A switch can complete between two
+		// status polls, but this counter can never be missed - see VisualStateLoadingShownCount.
+		int visualStateLoadingShown;
 		readonly TextBlock backendLabel;
 		// A TextBox (not a TextBlock) so a long diagnostic message can be selected/copied out of
 		// the app - the same reasoning WinUIXamlDesignerViewContent's own status control used to
@@ -262,6 +268,9 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			finally
 			{
 				syncingStates = false;
+				// The snapshot a state switch produced has arrived (its groups are what we just
+				// rebuilt), so the "please wait" chrome has done its job.
+				EndVisualStateLoading();
 			}
 		}
 
@@ -371,6 +380,36 @@ namespace ICSharpCode.SharpDevelop.Widgets
 
 		/// <summary>True while <see cref="SetLoading"/> is showing the overlay.</summary>
 		public bool IsLoading => loadingOverlay.Visibility == Visibility.Visible;
+
+		/// <summary>Shows the shared "please wait" chrome for a VisualState switch. The switch is an
+		/// async round-trip to the out-of-process child, so without this the canvas would keep
+		/// showing the previous frame and then snap to the new one with no sign anything happened.
+		/// Deliberately the same overlay the first design load shows, so the two read alike.</summary>
+		public void BeginVisualStateLoading(string group, string? state)
+		{
+			loadingForVisualState = true;
+			visualStateLoadingShown++;
+			SetLoading(true, state is null
+				? $"Restoring the default '{group}' state…"
+				: $"Switching to '{state}'…");
+		}
+
+		/// <summary>Ends the VisualState switch overlay. Called when the switch's snapshot has been
+		/// applied (see <see cref="SetVisualStateGroups"/>) or when it failed and no snapshot is
+		/// coming. A no-op when no VisualState switch is in flight, so it can never clear the
+		/// design-load overlay a backend set for its own Open/Update round-trip.</summary>
+		public void EndVisualStateLoading()
+		{
+			if (!loadingForVisualState)
+				return;
+			loadingForVisualState = false;
+			SetLoading(false);
+		}
+
+		/// <summary>Monotonic count of VisualState-switch overlays shown. Exposed for tests/DevFlow,
+		/// which cannot screenshot: a switch usually completes between two status polls, so
+		/// <see cref="IsLoading"/> alone is racy, while this count never is.</summary>
+		public int VisualStateLoadingShownCount => visualStateLoadingShown;
 
 		/// <summary>Short backend label shown on the toolbar (e.g. "WinForms", "Uno", "LibreWPF").</summary>
 		public string BackendName
