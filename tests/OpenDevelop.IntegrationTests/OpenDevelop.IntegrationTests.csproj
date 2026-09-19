@@ -110,10 +110,10 @@
        the point it waits for a real render - "The out-of-process WinForms designer is not loaded"
        / "WinUI/Uno runtime host is not installed" - which reads like a runtime/rendering bug but
        is really just a missing build step, exactly like the language addins above. The Microsoft
-       WinUI child (WinUIXamlDesigner.MicrosoftHost) is intentionally not built here - it requires
-       VS's MSBuild for its UseWinUI/PRI toolchain (see the repo's WinUI section for the
-       Windows-only build command) and only matters for WinUIOnly_*/DesignerBackend=Microsoft
-       tests, not the cross-platform Uno/LibreWinForms path this project builds by default. -->
+       hosts (WPF/WinUI/WinForms) are intentionally NOT built here - they need Visual Studio's
+       MSBuild (see BuildMicrosoftDesignerHostsForIntegrationTests below) and only matter for
+       DesignerBackend=Microsoft tests, not the cross-platform Uno/LibreWinForms path this default
+       Build builds. -->
   <ItemGroup>
     <_OutOfProcessHostProject Include="../../src/AddIns/DisplayBindings/FormsDesigner/Host/FormsDesigner.Host.csproj" />
     <_OutOfProcessHostProject Include="../../src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.UnoHost/WinUIXamlDesigner.UnoHost.csproj" />
@@ -122,6 +122,46 @@
           DependsOnTargets="RestoreIntegrationRuntimeProjects">
     <MSBuild Projects="@(_OutOfProcessHostProject)" Targets="Build" BuildInParallel="true"
              Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true;NoRestore=true" />
+  </Target>
+
+  <!-- The three Microsoft-backend out-of-process design hosts (WPF, WinUI, WinForms) cannot be
+       built by a plain `dotnet build`/`MSBuild` invocation of this project - each needs Visual
+       Studio's own MSBuild for a toolchain `dotnet build` does not carry (WinUI's UseWinUI/PRI
+       resource generation; the WinForms designer's VS-only design-time APIs). Skipping this step
+       is NOT a "these tests are unsupported" situation the way the missing-fixture guards
+       elsewhere in this file are: every DesignerBackend=Microsoft test still runs and fails, at
+       first render, with "Could not locate the [WPF/WinUI/WinForms] design host under this
+       assembly's MicrosoftHost subfolder" - which reads exactly like a real designer regression,
+       not a missing prerequisite. Confirmed the hard way: a full suite run against a build where
+       only `dotnet build tests/...` had ever been run failed EVERY WPF/WinUI/WinForms
+       DesignerBackend=Microsoft test this same way at once, across all three backends
+       simultaneously - that "everything in one whole category, all with the identical error" shape
+       is the tell that it is one missing build step, not three independent product bugs.
+       Delegates to the repo's own build.ps1 rather than re-implementing VS-MSBuild/vswhere
+       discovery here: it already knows how to find Visual Studio's MSBuild and route a
+       MicrosoftHost-named project through it (see build.ps1's Test-NeedsVsMsBuild), so this stays
+       the one place that logic lives. Runs via task batching (%(_MicrosoftHostProject.Identity)),
+       once per project name, each a separate build.ps1 invocation. -->
+  <ItemGroup>
+    <_MicrosoftHostProject Include="MicrosoftWpfDesign.SurfaceHost" />
+    <_MicrosoftHostProject Include="WinUIXamlDesigner.MicrosoftHost" />
+    <_MicrosoftHostProject Include="MicrosoftFormsDesigner.Host" />
+    <!-- The WinUI designer sample (WinUISampleSolutionPath): the Microsoft WinUI backend adopts
+         the designed app's OWN runtimeconfig.json/deps.json rather than running framework-
+         agnostic like the Uno/ProGPU backends do, so every WinUIOnly_* test needs a real build
+         output here, not just source. It is a real UseWinUI app (PRI generation), so it needs
+         Visual Studio's MSBuild exactly like the three hosts above - build.ps1 routes it there
+         via Test-NeedsVsMsBuild. It cannot live in the cross-platform _FixtureProject group above:
+         a plain `dotnet build`/non-Windows MSBuild fails it with MSB4062 (PRI tasks ship only with
+         Visual Studio), which broke the default cross-platform test build on this project.
+         Passed as a full path relative to the repo root - build.ps1's own WorkingDirectory below -
+         not a fuzzy name: "WinUISample" also matches MicrosoftWinUISample/ProGpuWinUISample (both
+         end with the same substring). -->
+    <_MicrosoftHostProject Include="src/Samples/WinUISample/WinUISample.csproj" />
+  </ItemGroup>
+  <Target Name="BuildMicrosoftDesignerHostsForIntegrationTests" Condition="'$(OS)' == 'Windows_NT'">
+    <Exec Command="pwsh -NoProfile -File &quot;$(MSBuildThisFileDirectory)..\..\build.ps1&quot; &quot;%(_MicrosoftHostProject.Identity)&quot; -Configuration $(Configuration)"
+          WorkingDirectory="$(MSBuildThisFileDirectory)..\.." />
   </Target>
 
   <!-- The rest of the addins this suite's tests actually exercise, none referenced as
@@ -234,8 +274,14 @@
        Keep this entry point in the test project (rather than a sidecar script) so the same
        fixture, artifacts and xUnit reporting are used in CI and locally. The backend choices
        are strict: WinForms opens only WinForms fixtures, WPF only WPF fixtures and WinUI only
-       WinUI fixtures; none may fall back to Libre/Uno. -->
-  <Target Name="RunMicrosoftDesignerIntegration" DependsOnTargets="Build" Condition="'$(OS)' == 'Windows_NT'">
+       WinUI fixtures; none may fall back to Libre/Uno.
+       DependsOnTargets includes BuildMicrosoftDesignerHostsForIntegrationTests so this single
+       target is a complete, fresh-checkout-safe entry point: `dotnet msbuild ... -t:
+       RunMicrosoftDesignerIntegration` alone builds everything DesignerBackend=Microsoft tests
+       need (Visual Studio installed is still an actual prerequisite - there is no way around that
+       for a WinUI/PRI toolchain - but no separate manual build.ps1 step is). -->
+  <Target Name="RunMicrosoftDesignerIntegration"
+          DependsOnTargets="Build;BuildMicrosoftDesignerHostsForIntegrationTests" Condition="'$(OS)' == 'Windows_NT'">
     <Exec Command="set &quot;OD_FORMS_RUNTIME=microsoft&quot; &amp;&amp; set &quot;OD_WPF_RUNTIME=microsoft&quot; &amp;&amp; set &quot;OD_WINUI_RUNTIME=microsoft&quot; &amp;&amp; dotnet &quot;$(TargetPath)&quot; -trait &quot;DesignerBackend=Microsoft&quot;" />
   </Target>
 

@@ -56,10 +56,26 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	/// <summary>Raised when this document cannot be reopened while sibling documents recover.</summary>
 	public event EventHandler<Exception>? RecoveryFailed;
 
-	/// <summary>Finds the deployed child under this assembly's own "Host" subfolder, matching
-	/// <c>FormsDesignerHostClient.LocateChildDll</c> exactly - <c>WpfDesign.SurfaceHost.csproj</c>'s
-	/// own <c>DeployToAddIns</c> target copies its build output there, next to the deployed
-	/// <c>WpfDesign.AddIn</c>/this Remote assembly.</summary>
+	/// <summary>Finds the deployed child under this assembly's own "Host"/"MicrosoftHost" subfolder,
+	/// matching <c>FormsDesignerHostClient.LocateChildDll</c>'s general shape - each host project's
+	/// own <c>DeployToAddIns</c> target copies its build output next to the deployed
+	/// <c>WpfDesign.AddIn</c>/this Remote assembly.
+	///
+	/// That assembly-relative lookup is correct for the LibreWpf host, which deploys to exactly one
+	/// place. It is NOT reliable for the Microsoft host: this very assembly
+	/// (<c>WpfDesign.SurfaceHost.Remote.dll</c>) is a shared dependency that ends up copied into
+	/// every addin folder that transitively references <c>ICSharpCode.WpfDesign.AddIn</c> - not
+	/// just <c>DisplayBindings/WpfDesign</c>, but also XamlBinding, AvalonEdit, Decompiler,
+	/// XmlEditor, PackageManagement and CodeCoverage's own addin folders (confirmed: seven identical
+	/// copies on disk). <c>MicrosoftWpfDesign.SurfaceHost.csproj</c>'s <c>DeployToAddIns</c> only
+	/// populates the one under <c>DisplayBindings/WpfDesign</c>, so whichever of those seven copies
+	/// the .NET assembly resolver happens to load this type from determines whether the sibling
+	/// "MicrosoftHost" folder is found - a fresh build failed this exact way after rebuilding only
+	/// the Microsoft host (build order changed which copy loaded first), producing "Could not
+	/// locate the WPF design host" for a host that was right there, one addin folder over. Probe
+	/// the one true deployed location directly as a fallback, exactly like
+	/// RegisterXamlLanguageServiceCommand does for wpf-xaml-ls.dll, so this is correct regardless of
+	/// assembly-load order.</summary>
 	public static WpfSurfaceHostBackend ResolveBackend(bool useMicrosoftWpf)
 		=> useMicrosoftWpf ? WpfSurfaceHostBackend.MicrosoftWpf : WpfSurfaceHostBackend.LibreWpf;
 
@@ -68,13 +84,48 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 
 	public static string? LocateChildDll(WpfSurfaceHostBackend backend)
 	{
+		var subfolder = backend == WpfSurfaceHostBackend.MicrosoftWpf ? "MicrosoftHost" : "Host";
+		var fileName = backend == WpfSurfaceHostBackend.MicrosoftWpf
+			? "MicrosoftWpfDesign.SurfaceHost.dll"
+			: "WpfDesign.SurfaceHost.dll";
+
 		var directory = Path.GetDirectoryName(typeof(WpfSurfaceHostClient).Assembly.Location);
-		if (string.IsNullOrEmpty(directory))
+		if (!string.IsNullOrEmpty(directory)) {
+			var path = Path.Combine(directory, subfolder, fileName);
+			if (File.Exists(path))
+				return path;
+		}
+
+		// AppContext.BaseDirectory is the deployed AddIns/DisplayBindings/WpfDesign folder itself
+		// only in a packaged distribution, where OpenDevelop.exe sits next to AddIns/. In a dev/test
+		// run (dotnet run/exec from src/Main/SharpDevelop/bin/...), it is several levels below the
+		// checkout root that actually holds AddIns/ - SharpDevelopMain.FindApplicationRootPath walks
+		// up from the exe's own directory to find it, so the fallback here must do the same, not
+		// treat AppContext.BaseDirectory as if it already were that root (confirmed the hard way: a
+		// full integration test run still failed every Microsoft-backend WPF test with "Could not
+		// locate the WPF design host" after this fallback was deployed everywhere, because
+		// AppContext.BaseDirectory/AddIns never existed in that layout).
+		var root = FindOpenDevelopRoot(AppContext.BaseDirectory) ?? FindOpenDevelopRoot(Environment.CurrentDirectory);
+		if (root == null)
 			return null;
-		var path = backend == WpfSurfaceHostBackend.MicrosoftWpf
-			? Path.Combine(directory, "MicrosoftHost", "MicrosoftWpfDesign.SurfaceHost.dll")
-			: Path.Combine(directory, "Host", "WpfDesign.SurfaceHost.dll");
-		return File.Exists(path) ? path : null;
+
+		var wellKnown = Path.Combine(root, "AddIns", "DisplayBindings", "WpfDesign", subfolder, fileName);
+		return File.Exists(wellKnown) ? wellKnown : null;
+	}
+
+	static string? FindOpenDevelopRoot(string startDirectory)
+	{
+		if (string.IsNullOrEmpty(startDirectory))
+			return null;
+
+		var directory = new DirectoryInfo(startDirectory);
+		while (directory != null) {
+			if (Directory.Exists(Path.Combine(directory.FullName, "externals", "vscode-wpf")) &&
+				Directory.Exists(Path.Combine(directory.FullName, "src", "Main", "Base")))
+				return directory.FullName;
+			directory = directory.Parent;
+		}
+		return null;
 	}
 
 	/// <summary>Requires an explicit, already-resolved host path. There is deliberately no

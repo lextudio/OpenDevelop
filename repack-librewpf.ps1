@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-  Windows port of repack-librewpf.sh: build LibreWPF/ProGPU from the local openwpf checkout,
+  Windows port of repack-librewpf.sh: build LibreWPF/ProGPU from the local openavalon checkout,
   pack it into the "local-librewpf" feed, and re-restore OpenDevelop against it.
 
 .DESCRIPTION
@@ -13,7 +13,7 @@
   must be cleared for each repacked id or restore just reuses the already-extracted published
   copy. That cache clearing is done below.
 
-  openwpf/global.json pins an 11.x preview SDK, so - exactly like the macOS script - every dotnet
+  openavalon/global.json pins an 11.x preview SDK, so - exactly like the macOS script - every dotnet
   command runs with OpenDevelop's repo root as the working directory and an absolute project
   path, letting OpenDevelop's global.json pin SDK resolution to 10.x.
 
@@ -23,8 +23,9 @@
   if anything under src/Microsoft.DotNet.Wpf/src changed, do NOT use this.
 
 .PARAMETER LibreWpfRoot
-  The openwpf checkout. Defaults to a sibling wpf-tools/openwpf next to the uno-tools workspace,
-  matching the relative "local-librewpf" feed path in NuGet.config.
+  The LibreWPF checkout (the sibling `openavalon`; older clones may still call it `openwpf`).
+  Overrides the auto-detection, which matches the relative "local-librewpf" feed path in
+  NuGet.config.
 
 .EXAMPLE
   ./repack-librewpf.ps1
@@ -50,10 +51,19 @@ $dotnet = (Get-Command dotnet -ErrorAction SilentlyContinue)?.Source
 if (-not $dotnet) { Fail 'cannot find dotnet on PATH' }
 
 if (-not $LibreWpfRoot) {
-    $LibreWpfRoot = Join-Path $repoRoot '..\..\..\..\wpf-tools\openwpf'
+    # The provider checkout is the sibling `openavalon` (it used to be called `openwpf`); accept
+    # either name and both the sibling and the older nested layout before failing.
+    foreach ($candidate in @(
+        (Join-Path $repoRoot '..\openavalon'),
+        (Join-Path $repoRoot '..\openwpf'),
+        (Join-Path $repoRoot '..\..\..\..\wpf-tools\openavalon'),
+        (Join-Path $repoRoot '..\..\..\..\wpf-tools\openwpf')
+    )) {
+        if (Test-Path -LiteralPath $candidate) { $LibreWpfRoot = $candidate; break }
+    }
 }
 if (-not (Test-Path -LiteralPath $LibreWpfRoot)) {
-    Fail "openwpf checkout not found: $LibreWpfRoot (pass -LibreWpfRoot to override)"
+    Fail "LibreWPF checkout not found (pass -LibreWpfRoot): $LibreWpfRoot"
 }
 $LibreWpfRoot = (Resolve-Path -LiteralPath $LibreWpfRoot).Path
 
@@ -76,7 +86,10 @@ if (-not $progpuVersion) { Fail "cannot read the ProGpuPackageVersion default ou
 $wpfVersion = $sdkVersion
 Write-Host "==> LibreWPF.ProGPU/.Transport = $wpfVersion, LibreWPF.Interop/ProGPU.* = $progpuVersion"
 
-$packageOutput = Join-Path $LibreWpfRoot 'artifacts\packages\Release\NonShipping'
+# Pack into the feed OpenDevelop's NuGet.config actually maps ("librewpf-local" ->
+# ../openavalon/artifacts/local-feed, the same feed openavalon/dist.local.sh writes). Packing into
+# artifacts/packages/Release/NonShipping used to leave restore looking at an untouched folder.
+$packageOutput = Join-Path $LibreWpfRoot 'artifacts\local-feed'
 New-Item -ItemType Directory -Path $packageOutput -Force | Out-Null
 
 $wpfSrc = Join-Path $LibreWpfRoot 'src\Microsoft.DotNet.Wpf\src'
@@ -193,7 +206,7 @@ function Test-TransportStaleness {
 }
 
 # Run everything from OpenDevelop's repo root so its global.json (SDK 10.x) wins over
-# openwpf/global.json (11.x preview).
+# openavalon/global.json (11.x preview).
 Push-Location $repoRoot
 try {
     foreach ($item in $subsidiary) {

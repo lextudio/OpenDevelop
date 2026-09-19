@@ -50,12 +50,18 @@ The fixture exposes:
   `tests/fixtures/*` resolved by walking up from `AppContext.BaseDirectory`. Add one of these
   `LocateXxx()` static methods + property when a new test needs its own fixture project.
 
-Prerequisites before running anything in this project:
+Prerequisites before running anything in this project (the build scripts this summarises are
+documented in [build-from-source.md](build-from-source.md) - keep the two in sync):
 
 ```bash
+# App + shared assemblies (equivalent to ./launch.ps1 -BuildOnly):
 dotnet build src/Main/SharpDevelop/SharpDevelop.csproj -c Debug
 dotnet build tests/fixtures/SampleTestProject/SampleTestProject.csproj
 ```
+
+Tests that assert the **Microsoft** designer backends additionally need those hosts built, which
+`dotnet build`/`launch.ps1` do not produce - use `./dist.ps1 -Phase designer-hosts` (Windows) or
+`./build.ps1 <MicrosoftHost project>`.
 
 Some test classes need their own fixture also built first (e.g. `IlSpyAddInTests` needs
 `tests/fixtures/DebugTestApp/DebugTestApp.csproj` built) - check the prerequisites comment at the

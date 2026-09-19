@@ -66,5 +66,23 @@ apps that tests assume are prebuilt, and packs the local NuGet feed fixture. Pre
 Tests carrying `[Trait("DesignerBackend", "Microsoft")]` exercise the Microsoft WinForms/WPF/WinUI
 backends, which only exist on Windows. They skip themselves elsewhere (see
 `AddInTests.MicrosoftDesignerBackendsAvailable`), so an unfiltered run is correct on every
-platform; on Windows, `RunMicrosoftDesignerIntegration` in the csproj runs them with the
-`OD_*_RUNTIME=microsoft` variables set.
+platform. On Windows, run them via the csproj's own MSBuild target - not `dotnet run` with the
+runtime variables set by hand:
+
+```powershell
+dotnet msbuild tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj -t:RunMicrosoftDesignerIntegration
+```
+
+That target is a complete, fresh-checkout-safe entry point (Visual Studio installed is the one
+real prerequisite it cannot route around - a WinUI/PRI toolchain genuinely needs it). It first
+builds the three Microsoft out-of-process design hosts (WPF/WinUI/WinForms) via Visual Studio's own
+MSBuild - `dotnet build`/`dotnet run` on this project deliberately never touches them, the same way
+it deliberately skips `WinUIXamlDesigner.MicrosoftHost` for the default cross-platform run - then
+sets `OD_FORMS_RUNTIME`/`OD_WPF_RUNTIME`/`OD_WINUI_RUNTIME=microsoft` and runs the
+`DesignerBackend=Microsoft`-traited tests. Skipping that first step does not skip the tests: every
+one of them still runs and fails at first render with "Could not locate the ... design host under
+this assembly's MicrosoftHost subfolder" - which reads exactly like a real designer regression, not
+a missing prerequisite. The tell that it is the latter: it fails every WPF/WinUI/WinForms
+`DesignerBackend=Microsoft` test at once, all with the identical error, the moment any of them opens
+a designer - one missing build step presenting as three simultaneous "backends", not three
+independent bugs.

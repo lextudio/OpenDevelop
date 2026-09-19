@@ -96,6 +96,19 @@ public sealed class AddInTests : IAsyncDisposable
         CopyDirectoryOd(Path.GetDirectoryName(app.WinUISampleSolutionPath)!, _winUISampleDir);
         _winUISolutionPath = Path.Combine(_winUISampleDir, Path.GetFileName(app.WinUISampleSolutionPath));
         _winUIPagePath = Path.Combine(_winUISampleDir, "MainPage.xaml");
+        // Unlike the Uno-backed fixtures above, the Microsoft WinUI backend adopts the designed
+        // app's OWN runtimeconfig.json/deps.json (see UnoDesignRuntimeHost's "active configuration
+        // is not built" check) instead of compiling on the fly, so CopyDirectoryOd's bin/obj
+        // exclusion - correct for every other fixture, which the designer compiles live - would
+        // leave this one permanently unbuildable: nothing in OpenWinUIDesignerAsync builds the
+        // copy (unlike WpfGalleryDesignerTests.EnsureGalleryOpenAsync's opt-in od.build-solution),
+        // and UseWinUI's PRI generation needs Visual Studio's MSBuild anyway, which a DevFlow
+        // od.build-solution call cannot route to. Copy the source tree's own bin/ (built once by
+        // BuildMicrosoftDesignerHostsForIntegrationTests, exactly like the three Microsoft design
+        // hosts) alongside the source so the copy is immediately previewable.
+        CopyDirectoryRawOd(
+            Path.Combine(Path.GetDirectoryName(app.WinUISampleSolutionPath)!, "bin"),
+            Path.Combine(_winUISampleDir, "bin"));
         _vbFormsDir = Path.Combine(Path.GetTempPath(), "VbFormsDesignerTests-" + Guid.NewGuid().ToString("N"));
         CopyDirectoryOd(Path.GetDirectoryName(app.VbWinFormsSampleSolutionPath)!, _vbFormsDir);
         _vbFormsSolutionPath = Path.Combine(_vbFormsDir, Path.GetFileName(app.VbWinFormsSampleSolutionPath));
@@ -2232,8 +2245,13 @@ public sealed class AddInTests : IAsyncDisposable
         // App.xaml uses <Application> as root, which the WPF designer's secondary binding
         // explicitly excludes (CanAttachTo returns false for "Application"), so only the text
         // editor opens. The XamlBinding addin's XamlOutlineContentHost registers itself on the
-        // TextView services via XamlTextEditorExtension.Attach, making the OutlinePad show a
+        // TextView services via XamlTextEditorExtension.Attach, populating the OutlinePad with a
         // XAML element tree instead of the designer's IOutlineNode tree.
+        //
+        // Opening the file no longer force-shows the pad (XamlOutlineContentHost used to call
+        // BringPadToFront on construction): stealing the user's current pad on every file open was
+        // the actual complaint this removed. The pad still gets fed the right content; a user (or
+        // this test) opens it explicitly to see it.
         await _app.EnsureSolutionOpenAsync(_app.WpfSampleSolutionPath);
 
         var appXamlPath = Path.Combine(Path.GetDirectoryName(_app.WpfSampleSolutionPath)!, "App.xaml");
@@ -2257,12 +2275,20 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Contains("Application", outlineNames);
         Assert.Contains("Application.Resources", outlineNames);
 
-        // The code editor's outline is the shared DocumentOutlineControl and the pad auto-opens
-        // (XamlOutlineContentHost.ActivateOutlinePad), same as the designers' outline behavior.
+        // The code editor's outline is the shared DocumentOutlineControl, and it is mounted for
+        // the XAML text editor whether or not the pad is currently on screen.
         Assert.True(status.GetProperty("padPresent").GetBoolean(),
             "Expected the shared DocumentOutlineControl to be mounted for the XAML text editor");
-        Assert.True(status.GetProperty("padVisible").GetBoolean(),
-            "Expected the Outline pad to be visible (auto-opened) for the XAML text editor");
+
+        // Opening a file must NOT force the Outline pad open any more
+        // (XamlOutlineContentHost used to call ActivateOutlinePad on construction): that stole
+        // whatever pad the user actually had open every time they opened a .xaml file. The
+        // content is fed regardless; the user (or, below, the test) opens the pad to see it.
+        Assert.False(status.GetProperty("padVisible").GetBoolean(),
+            "Expected opening App.xaml to leave the Outline pad exactly where the user left it, not auto-show it");
+
+        var shown = await _app.InvokeAsync("od.show-pad", "ICSharpCode.SharpDevelop.Gui.OutlinePad");
+        Assert.True(shown.GetProperty("found").GetBoolean(), shown.ToString());
 
         // Regression guard (LSP outline flattening): the language service must return ONE root
         // carrying the full hierarchy, not one flat top-level entry per element - the old
@@ -2927,9 +2953,13 @@ public sealed class AddInTests : IAsyncDisposable
         // The Document Outline pad is the shared control (ICSharpCode.SharpDevelop.Widgets.
         // DocumentOutlineControl) fed by the out-of-process protocol's element tree
         // (DesignerSessionState.Tree, built by the child from the real control hierarchy).
-        // Opening a form in the designer must auto-show the pad
-        // (FormsDesignerViewContent.ActivateOutlinePadOnce) with the control tree, and picking a
-        // node must route into the same selection path as a surface click.
+        // Opening a form in the designer mounts the outline control and picking a node must
+        // route into the same selection path as a surface click.
+        //
+        // Loading a form no longer auto-shows the pad (FormsDesignerViewContent used to call
+        // ActivateOutlinePadOnce) - that stole the user's current pad on every first designer
+        // load in a session. The outline is still populated regardless; a user (or, below, the
+        // test) opens the pad to see it.
         var formCodePath = Path.Combine(Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!, "Form1.cs");
 
         var openSolutionResult = await _app.ReopenSolutionAsync(_app.WinFormsSampleSolutionPath);
@@ -2937,16 +2967,21 @@ public sealed class AddInTests : IAsyncDisposable
         var openFileResult = await _app.InvokeAsync("od.open-file", formCodePath);
         Assert.True(openFileResult.GetProperty("opened").GetBoolean());
 
-        // The outline control mounts into the shared Outline pad when the designer view becomes
-        // active; the pad auto-opens on first designer load. Poll for present+visible.
+        // Poll for the outline control being mounted (present); do not require visible here -
+        // that is exactly the auto-show behavior that was removed.
         JsonElement outline = default;
-        var shown = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        var mounted = await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             outline = await _app.InvokeAsync("od.forms-designer.outline-status");
-            return outline.GetProperty("present").GetBoolean()
-                && outline.GetProperty("visible").GetBoolean();
+            return outline.GetProperty("present").GetBoolean();
         }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 1000);
-        Assert.True(shown, "The Document Outline pad did not show for the WinForms designer. Status: " + outline);
+        Assert.True(mounted, "The Document Outline control did not mount for the WinForms designer. Status: " + outline);
+        Assert.False(outline.GetProperty("visible").GetBoolean(),
+            "Expected loading a form to leave the Outline pad exactly where the user left it, not auto-show it");
+
+        var shownPad = await _app.InvokeAsync("od.show-pad", "ICSharpCode.SharpDevelop.Gui.OutlinePad");
+        Assert.True(shownPad.GetProperty("found").GetBoolean(), shownPad.ToString());
+        outline = await _app.InvokeAsync("od.forms-designer.outline-status");
 
         // The tree is the child-reported control hierarchy: Form1 (root) with its children.
         Assert.Equal("Form1", outline.GetProperty("root").GetString());
@@ -3932,9 +3967,15 @@ public sealed class AddInTests : IAsyncDisposable
     // own od.open-file returned. When the designer reports a different root than expected,
     // re-invoke od.open-file on the target document periodically: it calls SelectWindow on the
     // already-open view, which wins over the async restore activation.
+	// A plain WPF project (no explicit LibreWPF SDK marker) resolves to the native Microsoft WPF
+	// host by default on Windows - see XamlFrameworkDetector.DetectProjectFile's "WPF property"
+	// branch and WpfViewContent.LoadInternal's comment on why LibreWPF requires an explicit opt-in.
+	// LibreWPF is therefore only the actual default on non-Windows hosts, where Microsoft WPF
+	// cannot run at all.
 	async Task<JsonElement> WaitForWpfDesignerStatusAsync(string expectedRootItemType, int timeoutSeconds,
-		string reactivatePath = null, string expectedBackend = "LibreWPF")
+		string reactivatePath = null, string expectedBackend = null)
     {
+		expectedBackend ??= OperatingSystem.IsWindows() ? "WPF" : "LibreWPF";
         JsonElement status = default;
         var previousCount = -1;
         await OpenDevelopAppFixture.PollUntilAsync(async () =>
@@ -5041,6 +5082,19 @@ EndGlobal
                 continue;
             File.Copy(file, file.Replace(sourceDir, destDir), overwrite: true);
         }
+    }
+
+    // Unlike CopyDirectoryOd, does not exclude bin/obj/.od - for fixtures whose PREBUILT output
+    // the test itself depends on (see the WinUISample bin copy above), not just their source.
+    static void CopyDirectoryRawOd(string sourceDir, string destDir)
+    {
+        if (!Directory.Exists(sourceDir))
+            return;
+        Directory.CreateDirectory(destDir);
+        foreach (var dir in Directory.GetDirectories(sourceDir, "*", SearchOption.AllDirectories))
+            Directory.CreateDirectory(dir.Replace(sourceDir, destDir));
+        foreach (var file in Directory.GetFiles(sourceDir, "*", SearchOption.AllDirectories))
+            File.Copy(file, file.Replace(sourceDir, destDir), overwrite: true);
     }
 
     [Fact]

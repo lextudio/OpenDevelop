@@ -2,9 +2,23 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-librewpf_root="/Users/lextm/uno-tools/librewpf"
+# The provider checkout: the sibling `openavalon` (it used to be called `openwpf`). LIBREWPF_ROOT
+# wins, then the sibling layout under either name, then the historical absolute path.
+librewpf_root="${LIBREWPF_ROOT:-}"
+if [[ -z "${librewpf_root}" ]]; then
+  for _candidate in "${repo_root}/../openavalon" "${repo_root}/../openwpf" "/Users/lextm/uno-tools/librewpf"; do
+    if [[ -d "${_candidate}/src/Microsoft.DotNet.Wpf/src" ]]; then librewpf_root="${_candidate}"; break; fi
+  done
+fi
+if [[ -z "${librewpf_root}" || ! -d "${librewpf_root}/src/Microsoft.DotNet.Wpf/src" ]]; then
+  echo "repack-librewpf.sh: cannot find the LibreWPF checkout; set LIBREWPF_ROOT to it" >&2
+  exit 1
+fi
+librewpf_root="$(cd "${librewpf_root}" && pwd)"
 dotnet="$(readlink -f "$(command -v dotnet)")"
-package_output="${librewpf_root}/artifacts/packages/Release/NonShipping"
+# Pack into the feed OpenDevelop's NuGet.config actually maps ("librewpf-local" ->
+# ../openavalon/artifacts/local-feed, the same feed openavalon/dist.local.sh writes).
+package_output="${librewpf_root}/artifacts/local-feed"
 dev_version="11.0.0-dev"
 
 # LibreWPF now targets net10.0/net10.0-windows, so use the system .NET 10 SDK for both packing

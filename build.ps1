@@ -138,8 +138,10 @@ function Test-NeedsVsMsBuild {
     param([Parameter(Mandatory)][string]$ProjectPath)
     # WinUI 3 (UseWinUI -> MrtCore.PriGen.targets) and the Microsoft WinForms design host are the
     # projects dotnet build cannot produce correctly; see Build-MicrosoftDesignerHosts in dist.ps1.
+    # WinUISample is also a real UseWinUI app (the WinUI designer's Microsoft-backend fixture) -
+    # same PRI-generation constraint, just not named "MicrosoftHost".
     $normalized = $ProjectPath.Replace('\', '/')
-    return $normalized -match 'MicrosoftHost'
+    return $normalized -match 'MicrosoftHost' -or $normalized -match 'WinUISample'
 }
 
 function Test-IsRidSpecific {
