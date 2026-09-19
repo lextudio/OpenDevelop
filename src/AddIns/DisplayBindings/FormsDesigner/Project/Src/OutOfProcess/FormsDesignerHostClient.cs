@@ -64,12 +64,16 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		/// The project's evaluated TargetFramework (e.g. "net9.0-windows10.0.17763.0"), used only
 		/// when neither an explicit override nor <paramref name="useMicrosoftDesktopRuntime"/> picks
 		/// a backend. Per doc/technotes/winforms-designer.md ("host selection is explicit by target
-		/// framework and platform"), LibreWinForms exists so WinForms design still works on macOS,
-		/// where no real System.Windows.Forms implementation exists at all - it was never meant to be
-		/// the default on Windows. A project whose TFM targets Windows specifically is an ordinary
+		/// framework and platform"), a project whose TFM targets Windows specifically is an ordinary
 		/// desktop app - virtually every real-world WinForms project a user opens, including ones
-		/// with no idea OpenDevelop's bespoke UseMicrosoftDesktopRuntime property exists - and should
-		/// use the real, already-installed Microsoft WinForms rather than the portable fork.
+		/// with no idea OpenDevelop's bespoke UseMicrosoftDesktopRuntime property exists - and is
+		/// served ONLY by the real Microsoft WinForms backend. It is never re-routed through the
+		/// portable LibreWinForms fork merely because Microsoft WinForms cannot run on this
+		/// platform; LibreWinForms serves projects that explicitly select it (the
+		/// UseMicrosoftDesktopRuntime=false property or the "libre" runtime override), which is what
+		/// makes WinForms design possible at all on macOS. When the selected backend's child host is
+		/// not deployed the designer reports that backend as unavailable rather than substituting
+		/// the other one.
 		/// </param>
 		public static FormsDesignerBackend ResolveBackend(string useMicrosoftDesktopRuntime, string runtimeOverride = null, string targetFramework = null)
 		{
@@ -77,10 +81,6 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			if (string.Equals(selectedOverride, "microsoft", StringComparison.OrdinalIgnoreCase))
 				return FormsDesignerBackend.MicrosoftWinForms;
 			if (string.Equals(selectedOverride, "libre", StringComparison.OrdinalIgnoreCase))
-				return FormsDesignerBackend.LibreWinForms;
-			// On macOS/Linux, Microsoft WinForms runtime is unavailable — always use LibreWinForms
-			// regardless of project properties, unless an explicit env override was given above.
-			if (!OperatingSystem.IsWindows())
 				return FormsDesignerBackend.LibreWinForms;
 			if (bool.TryParse(useMicrosoftDesktopRuntime, out var useMicrosoft))
 				return useMicrosoft ? FormsDesignerBackend.MicrosoftWinForms : FormsDesignerBackend.LibreWinForms;

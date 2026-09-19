@@ -685,17 +685,37 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				return activeWpfViewContent;
 
 			var window = active.WorkbenchWindow;
-			if (window == null)
-				return null;
-
-			for (int i = 0; i < window.ViewContents.Count; i++) {
-				if (window.ViewContents[i] is WpfViewContent wpfViewContent) {
-					window.SwitchView(i);
-					return wpfViewContent;
+			if (window != null) {
+				for (int i = 0; i < window.ViewContents.Count; i++) {
+					if (window.ViewContents[i] is WpfViewContent wpfViewContent) {
+						window.SwitchView(i);
+						return wpfViewContent;
+					}
 				}
 			}
 
-			return null;
+			// The active document can be a DIFFERENT file the designer itself opened while loading
+			// the WPF application definition (App.xaml): that window has no design view of its own,
+			// so searching only the active window reported the designer as absent even though its
+			// design view was open and loaded. Callers that recovered by reopening the document
+			// then drove an open/reload cycle (each reload re-activates App.xaml), so the status
+			// never settled - see OpenXamlFile_LoadsDesignerWithToolboxAndOutline's 30s poll
+			// timeout in a full-suite run, which passed in isolation. Fall back to the open design
+			// view when there is exactly one, which is unambiguous.
+			var openDesignViews = SD.Workbench.ViewContentCollection.OfType<WpfViewContent>().ToArray();
+			if (openDesignViews.Length != 1)
+				return null;
+
+			var owner = openDesignViews[0].WorkbenchWindow;
+			if (owner != null) {
+				for (int i = 0; i < owner.ViewContents.Count; i++) {
+					if (ReferenceEquals(owner.ViewContents[i], openDesignViews[0])) {
+						owner.SwitchView(i);
+						break;
+					}
+				}
+			}
+			return openDesignViews[0];
 		}
 
 		static readonly System.Reflection.PropertyInfo UserContentProperty =

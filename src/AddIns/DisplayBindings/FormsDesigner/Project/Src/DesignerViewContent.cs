@@ -687,12 +687,28 @@ namespace ICSharpCode.FormsDesigner
 			FormsDesignerBackend backend)
 		{
 			oldClient?.Dispose();
+			// The project's backend is fixed by ResolveBackend (TFM/property), never substituted
+			// for a different one: a Microsoft WinForms project opened on macOS keeps the Microsoft
+			// backend, whose child host is simply not deployed there. Say so plainly instead of
+			// silently designing with LibreWinForms (the old behavior) or surfacing the
+			// ArgumentNullException a null host path would produce from AcquireSharedAsync.
+			var childDll = FormsDesignerHostClient.LocateChildDll(backend);
+			if (String.IsNullOrEmpty(childDll)) {
+				var backendName = FormsDesignerHostClient.GetBackendName(backend);
+				SD.MainThread.InvokeAsyncAndForget(() => {
+					if (generation != loadGeneration || disposing) return;
+					loadingCanvas.SetLoading(false);
+					loadingCanvas.ShowStatusBar = true;
+					loadingCanvas.StatusText = backendName + " design host is not deployed on this platform.";
+				});
+				return;
+			}
 			FormsDesignerHostClient client;
 			DesignerSessionState state;
 			try {
 				var loadingTimeout = TimeSpan.FromSeconds(Gui.OptionPanels.GeneralOptionsPanel.LoadingTimeoutSeconds);
 				client = await FormsDesignerHostClient.AcquireSharedAsync("", "", System.Threading.CancellationToken.None,
-					FormsDesignerHostClient.LocateChildDll(backend), loadingTimeout).ConfigureAwait(false);
+					childDll, loadingTimeout).ConfigureAwait(false);
 				state = await client.OpenAsync(snapshot, System.Threading.CancellationToken.None).ConfigureAwait(false);
 			} catch (Exception exception) {
 				SD.MainThread.InvokeAsyncAndForget(() => {

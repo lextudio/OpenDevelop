@@ -64,11 +64,13 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Xaml
 				if (HasPackage("Microsoft.WindowsAppSDK") || HasPackage("Microsoft.UI.Xaml")
 				    || properties.TryGetValue("UseWinUI", out var useWinUI) && IsTrue(useWinUI))
 				{
-					// On macOS/Linux, Microsoft WinUI runtime is unavailable — map to Uno
-					// so the ProGPU in-process fallback (which accepts XamlRuntimeKind.Uno)
-					// can render the XAML without spawning a child process.
-					var runtime = OperatingSystem.IsWindows() ? XamlRuntimeKind.MicrosoftWinUI : XamlRuntimeKind.Uno;
-					return new XamlFrameworkContext(XamlFrameworkKind.WinUI, runtime, projectFileName, runtime == XamlRuntimeKind.Uno ? "WinUI property (Uno/ProGPU on non-Windows)" : "Windows App SDK/WinUI property or package");
+					// A WinUI document is served only by the Microsoft WinUI runtime host. It is
+					// never re-identified as Uno just because Microsoft WinUI cannot run on this
+					// platform: doing so silently swapped the framework identity and rendered a
+					// native WinUI page through the Uno/ProGPU compatibility host. When the WinUI
+					// host is unavailable the designer must say exactly that (see
+					// WinUIXamlHost.StatusText) instead of falling back to another runtime.
+					return new XamlFrameworkContext(XamlFrameworkKind.WinUI, XamlRuntimeKind.MicrosoftWinUI, projectFileName, "Windows App SDK/WinUI property or package");
 				}
 				if (sdk.Contains("LibreWPF.Sdk", StringComparison.OrdinalIgnoreCase))
 					return new XamlFrameworkContext(XamlFrameworkKind.Wpf, XamlRuntimeKind.LibreWpf, projectFileName, "LibreWPF SDK");

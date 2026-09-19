@@ -17,40 +17,32 @@ public sealed class FormsDesignerHostClientTests
 	public void ResolveBackend_UsesProjectPropertyUnlessExplicitlyOverridden(
 		string useMicrosoftDesktopRuntime, string runtimeOverride, FormsDesignerBackend expected)
 	{
-		// An explicit runtimeOverride ("libre"/"microsoft") always wins and is checked before the
-		// platform gate below, so those two cases hold on every OS. Without one, the project
-		// property alone can no longer pick MicrosoftWinForms on macOS/Linux - see the
-		// OperatingSystem.IsWindows() gate this expectation mirrors from
-		// ResolveBackend_WithNoExplicitChoice_PicksByTargetFrameworkOnWindows above.
-		var effectiveExpected = string.IsNullOrEmpty(runtimeOverride) && !OperatingSystem.IsWindows()
-			? FormsDesignerBackend.LibreWinForms : expected;
-		Assert.Equal(effectiveExpected, FormsDesignerHostClient.ResolveBackend(useMicrosoftDesktopRuntime, runtimeOverride));
+		// An explicit runtimeOverride ("libre"/"microsoft") always wins. Without one, the project
+		// property is authoritative on every platform: a Microsoft WinForms project is never
+		// silently re-routed through LibreWinForms on macOS just because the Microsoft runtime
+		// cannot run there - the missing child host is reported as unavailable instead.
+		Assert.Equal(expected, FormsDesignerHostClient.ResolveBackend(useMicrosoftDesktopRuntime, runtimeOverride));
 	}
 
 	/// <summary>
 	/// Regression test: opening a plain "Microsoft.NET.Sdk" WinForms project (e.g. JexusManager -
 	/// UseWindowsForms=true, TargetFramework net9.0-windows...) never sets the bespoke
 	/// UseMicrosoftDesktopRuntime property, which only three projects in this repo's own src/ tree
-	/// set. Before this fix, ResolveBackend defaulted every such project to LibreWinForms even on
-	/// Windows, contradicting doc/technotes/winforms-designer.md's documented "explicit by target
-	/// framework and platform" selection and routing real desktop projects through the portable
-	/// fork's out-of-process host, which has its own unrelated packaging gaps. On Windows, a TFM
-	/// that targets Windows specifically must resolve to the real Microsoft backend unless something
-	/// more specific overrides it; a TFM with no Windows suffix keeps the previous Libre default.
+	/// set. ResolveBackend must route every such project to the real Microsoft backend from its
+	/// TFM alone, on every platform; the portable fork is never substituted for it. On macOS/Linux
+	/// the Microsoft child host is simply not deployed, and the designer reports that backend as
+	/// unavailable (see FormsDesignerViewContent.LoadRemoteDesignerAsync) rather than swapping in
+	/// LibreWinForms. A TFM with no Windows suffix keeps the previous Libre default.
 	/// </summary>
 	[Theory]
 	[InlineData("net9.0-windows10.0.17763.0", FormsDesignerBackend.MicrosoftWinForms)]
 	[InlineData("net10.0-windows", FormsDesignerBackend.MicrosoftWinForms)]
 	[InlineData("net8.0", FormsDesignerBackend.LibreWinForms)]
 	[InlineData("", FormsDesignerBackend.LibreWinForms)]
-	public void ResolveBackend_WithNoExplicitChoice_PicksByTargetFrameworkOnWindows(
+	public void ResolveBackend_WithNoExplicitChoice_PicksByTargetFramework(
 		string targetFramework, FormsDesignerBackend expected)
 	{
-		// The Microsoft WinForms runtime is only ever available on Windows - ResolveBackend forces
-		// LibreWinForms on macOS/Linux regardless of TFM (see its own doc comment), so a Windows-TFM
-		// case's "expected" only holds when actually running on Windows.
-		var effectiveExpected = OperatingSystem.IsWindows() ? expected : FormsDesignerBackend.LibreWinForms;
-		Assert.Equal(effectiveExpected, FormsDesignerHostClient.ResolveBackend("", "", targetFramework));
+		Assert.Equal(expected, FormsDesignerHostClient.ResolveBackend("", "", targetFramework));
 	}
 
 	[Fact]

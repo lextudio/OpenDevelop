@@ -177,6 +177,86 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		[DevFlowAction("od.forms-designer.invoke-verb", Description = "Invoke a designer verb for a component in the WinForms designer")]
 		public static string FormsDesignerInvokeVerb(string componentName, int verbIndex) => InvokeFormsDesignerDevFlowAction("InvokeVerb", componentName, verbIndex);
 
+		// ── WPF Designer forwarding stubs ─────────────────────────────────────────────
+		// Same reason as the FormsDesigner stubs: WpfDesignDevFlowActions lives in
+		// WpfDesign.AddIn.dll, loaded as an addin after DevFlow discovers actions.
+
+		static string InvokeWpfDesignerDevFlowAction(string methodName, params object[] args)
+		{
+			var type = AppDomain.CurrentDomain.GetAssemblies()
+				.Select(assembly => assembly.GetType("ICSharpCode.WpfDesign.AddIn.DevFlow.WpfDesignDevFlowActions", throwOnError: false))
+				.FirstOrDefault(candidate => candidate != null);
+			var method = type?.GetMethod(methodName, BindingFlags.Public | BindingFlags.Static);
+			if (method == null) return JsonSerializer.Serialize(new { designerLoaded = false, success = false, error = "WPF Designer AddIn is unavailable" });
+			return (string)method.Invoke(null, args);
+		}
+
+		[DevFlowAction("od.wpf-designer.status", Description = "Inspect the active WPF designer view")]
+		public static string WpfDesignerStatus() => InvokeWpfDesignerDevFlowAction("GetDesignerStatus");
+
+		[DevFlowAction("od.wpf-designer.surface-geometry", Description = "Report the WPF design surface geometry")]
+		public static string WpfDesignerSurfaceGeometry() => InvokeWpfDesignerDevFlowAction("GetSurfaceGeometry");
+
+		[DevFlowAction("od.wpf-designer.toolbox.filter", Description = "Filter the active WPF Toolbox by control or category name")]
+		public static string WpfDesignerToolboxFilter(string text) => InvokeWpfDesignerDevFlowAction("FilterToolbox", text);
+
+		[DevFlowAction("od.wpf-designer.toolbox.query-item-bounds", Description = "Get the on-screen bounds of a Toolbox row for a given control type")]
+		public static string WpfDesignerQueryToolboxItemBounds(string typeName) => InvokeWpfDesignerDevFlowAction("QueryToolboxItemBounds", typeName);
+
+		[DevFlowAction("od.wpf-toolbox.query-item-bounds", Description = "Get Toolbox bounds without switching to Design view")]
+		public static string WpfToolboxQueryItemBounds(string typeName) => InvokeWpfDesignerDevFlowAction("QueryToolboxItemBoundsWithoutActivatingDesigner", typeName);
+
+		[DevFlowAction("od.wpf-designer.select", Description = "Select a named element in the WPF designer")]
+		public static string WpfDesignerSelect(string elementName) => InvokeWpfDesignerDevFlowAction("SelectElement", elementName);
+
+		[DevFlowAction("od.wpf-designer.outline-select", Description = "Select a named WPF element through Document Outline")]
+		public static string WpfDesignerOutlineSelect(string elementName) => InvokeWpfDesignerDevFlowAction("SelectOutlineElement", elementName);
+
+		[DevFlowAction("od.wpf-designer.query-element-screen-bounds", Description = "Get the on-screen bounds of a named element in the WPF designer")]
+		public static string WpfDesignerQueryElementScreenBounds(string elementName) => InvokeWpfDesignerDevFlowAction("QueryElementScreenBounds", elementName);
+
+		[DevFlowAction("od.wpf-designer.flush-pending-transaction", Description = "No-op under the out-of-process WPF designer")]
+		public static string WpfDesignerFlushPendingTransaction() => InvokeWpfDesignerDevFlowAction("FlushPendingTransaction");
+
+		[DevFlowAction("od.wpf-designer.properties-pad.edit", Description = "Edit a property through the Properties pad")]
+		public static string WpfDesignerEditPropertyThroughPropertiesPad(string propertyName, string value) => InvokeWpfDesignerDevFlowAction("EditPropertyThroughPropertiesPad", propertyName, value);
+
+		[DevFlowAction("od.wpf-designer.delete", Description = "Delete the currently selected element in the WPF designer")]
+		public static string WpfDesignerDelete() => InvokeWpfDesignerDevFlowAction("Delete");
+
+		[DevFlowAction("od.wpf-designer.activate-design", Description = "Switch to the WPF Design view")]
+		public static string WpfDesignerActivateDesign() => InvokeWpfDesignerDevFlowAction("ActivateDesign");
+
+		[DevFlowAction("od.wpf-designer.switch-to-source", Description = "Switch back to the Source view")]
+		public static string WpfDesignerSwitchToSource() => InvokeWpfDesignerDevFlowAction("SwitchToSource");
+
+		[DevFlowAction("od.wpf-designer.undo", Description = "Undo the last WPF designer edit")]
+		public static string WpfDesignerUndo() => InvokeWpfDesignerDevFlowAction("Undo");
+
+		[DevFlowAction("od.wpf-designer.redo", Description = "Redo the last undone WPF designer edit")]
+		public static string WpfDesignerRedo() => InvokeWpfDesignerDevFlowAction("Redo");
+
+		[DevFlowAction("od.wpf-designer.multi-select", Description = "Set the selection to the named elements")]
+		public static string WpfDesignerMultiSelect(string names) => InvokeWpfDesignerDevFlowAction("MultiSelect", names);
+
+		[DevFlowAction("od.wpf-designer.align", Description = "Align selected elements in the WPF designer")]
+		public static string WpfDesignerAlign(string mode) => InvokeWpfDesignerDevFlowAction("Align", mode);
+
+		[DevFlowAction("od.wpf-designer.distribute", Description = "Distribute selected elements in the WPF designer")]
+		public static string WpfDesignerDistribute(string axis) => InvokeWpfDesignerDevFlowAction("Distribute", axis);
+
+		[DevFlowAction("od.wpf-designer.match-size", Description = "Match selected elements' size to primary selection")]
+		public static string WpfDesignerMatchSize(string mode) => InvokeWpfDesignerDevFlowAction("MatchSize", mode);
+
+		[DevFlowAction("od.wpf-designer.nudge", Description = "Nudge selected elements in the WPF designer")]
+		public static string WpfDesignerNudge(double dx, double dy) => InvokeWpfDesignerDevFlowAction("Nudge", dx, dy);
+
+		[DevFlowAction("od.wpf-designer.set-theme", Description = "Switch the WPF designer between Light/Dark theme")]
+		public static string WpfDesignerSetTheme(string theme) => InvokeWpfDesignerDevFlowAction("SetTheme", theme);
+
+		[DevFlowAction("od.wpf-designer.tab-order", Description = "Toggle the tab-order badge overlay")]
+		public static string WpfDesignerTabOrder(bool show) => InvokeWpfDesignerDevFlowAction("SetTabOrder", show);
+
 		// ── ILSpy forwarding stubs ────────────────────────────────────────────────────
 		// Same reason as the FormsDesigner stubs above: IlSpyDevFlowActions lives in
 		// ILSpyAddIn.dll, which the AddIn tree loads lazily - and by design, since
