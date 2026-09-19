@@ -16,6 +16,7 @@
       again.
     -->
     <ProGpuWpfLibreWinFormsPackageVersion>0.1.0-preview.55</ProGpuWpfLibreWinFormsPackageVersion>
+    <ProGpuWpfUseCanonicalLibreWinForms>true</ProGpuWpfUseCanonicalLibreWinForms>
 
     <!--
       Do NOT try to set ProGpuWpfUseCurrentRuntimeIdentifier here - it has no effect, and the

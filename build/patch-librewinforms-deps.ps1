@@ -52,11 +52,17 @@ function Get-VersionSortKey([string]$versionDir) {
     return ,($stable.Split('.') | ForEach-Object { if ($_ -match '^\d+$') { [int]$_ } else { 0 } })
 }
 
-function Find-Net10Asset([string]$nugetPackageRoot, [string]$packageIdLower, [string]$filename) {
+function Find-Net10Asset([string]$nugetPackageRoot, [string]$packageIdLower, [string]$filename, [string]$version = $null) {
     # Returns @{ Version = <version>; RelativeDir = <relative dir under the version folder> } for
     # the best match, or $null. relativeDirCandidates is tried in order per platform.
     $relativeDirCandidates = if ($IsWindows) { @('runtimes/win/lib/net10.0', 'lib/net10.0') } else { @('lib/net10.0') }
     foreach ($relativeDir in $relativeDirCandidates) {
+        if ($version) {
+            $path = Join-Path $nugetPackageRoot "$packageIdLower/$version/$relativeDir/$filename"
+            if (Test-Path $path) { return @{ Version = $version; RelativeDir = $relativeDir } }
+            continue
+        }
+
         $depth = $relativeDir.Split('/').Count + 1 # + 1 for the version folder itself
         $pattern = Join-Path $nugetPackageRoot "$packageIdLower/10.*/$relativeDir/$filename"
         $candidates = Get-ChildItem -Path $pattern -File -ErrorAction SilentlyContinue
@@ -69,6 +75,16 @@ function Find-Net10Asset([string]$nugetPackageRoot, [string]$packageIdLower, [st
         } | Sort-Object -Property @{ Expression = { , (Get-VersionSortKey $_.VersionDir) } } | Select-Object -Last 1
 
         return @{ Version = $best.VersionDir; RelativeDir = $relativeDir }
+    }
+    return $null
+}
+
+function Find-DependencyVersion([hashtable]$deps, [string]$packageId) {
+    $prefix = "$packageId/"
+    foreach ($key in $deps['libraries'].Keys) {
+        if ($key.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {
+            return $key.Substring($prefix.Length)
+        }
     }
     return $null
 }
@@ -96,9 +112,37 @@ $sysformsKey = "$sysformsPkgId/$sysformsVersion"
 $winintKey = if ($winintVersion) { "$winintPkgId/$winintVersion" } else { $null }
 $progpudrawingKey = if ($progpudrawingVersion) { "$progpudrawingPkgId/$progpudrawingVersion" } else { $null }
 
+# These assemblies are copied beside portable apps below. They must also appear in
+# deps.json: the CoreCLR host does not probe an otherwise-present DLL which has no
+# runtime asset declaration.
+$net10Assets = @(
+    @{ Id = 'system.configuration.configurationmanager'; PackageId = 'System.Configuration.ConfigurationManager'; File = 'System.Configuration.ConfigurationManager.dll' },
+    @{ Id = 'system.formats.nrbf'; PackageId = 'System.Formats.Nrbf'; File = 'System.Formats.Nrbf.dll' },
+    @{ Id = 'system.io.packaging'; PackageId = 'System.IO.Packaging'; File = 'System.IO.Packaging.dll' },
+    @{ Id = 'system.security.cryptography.xml'; PackageId = 'System.Security.Cryptography.Xml'; File = 'System.Security.Cryptography.Xml.dll' },
+    @{ Id = 'system.security.permissions'; PackageId = 'System.Security.Permissions'; File = 'System.Security.Permissions.dll' },
+    @{ Id = 'system.windows.extensions'; PackageId = 'System.Windows.Extensions'; File = 'System.Windows.Extensions.dll' }
+)
+$net10RuntimeAssets = @(
+    foreach ($asset in $net10Assets) {
+        $version = Find-DependencyVersion $deps $asset.PackageId
+        $found = Find-Net10Asset $NugetPackageRoot $asset.Id $asset.File $version
+        if ($found) {
+            @{ Id = $asset.Id; PackageId = $asset.PackageId; Version = $found.Version; RelativeDir = $found.RelativeDir; File = $asset.File }
+        }
+    }
+)
+
 if (-not $deps.ContainsKey('targets')) { $deps['targets'] = @{} }
 foreach ($tfm in @($deps['targets'].Keys)) {
     $libs = $deps['targets'][$tfm]
+
+    foreach ($asset in $net10RuntimeAssets) {
+        $legacyPrefix = "$($asset.Id)/"
+        foreach ($key in @($libs.Keys)) {
+            if ($key.StartsWith($legacyPrefix, [StringComparison]::Ordinal)) { $libs.Remove($key) }
+        }
+    }
 
     if (-not $libs.ContainsKey($sysformsKey)) { $libs[$sysformsKey] = @{} }
     if (-not $libs[$sysformsKey].ContainsKey('runtime')) { $libs[$sysformsKey]['runtime'] = @{} }
@@ -128,6 +172,13 @@ foreach ($tfm in @($deps['targets'].Keys)) {
         if (-not $libs[$progpudrawingKey].ContainsKey('runtime')) { $libs[$progpudrawingKey]['runtime'] = @{} }
         $libs[$progpudrawingKey]['runtime']['lib/net10.0/System.Drawing.Common.dll'] = @{}
     }
+
+    foreach ($asset in $net10RuntimeAssets) {
+        $key = "$($asset.PackageId)/$($asset.Version)"
+        if (-not $libs.ContainsKey($key)) { $libs[$key] = @{} }
+        if (-not $libs[$key].ContainsKey('runtime')) { $libs[$key]['runtime'] = @{} }
+        $libs[$key]['runtime']["$($asset.RelativeDir)/$($asset.File)"] = @{}
+    }
 }
 
 if (-not $deps.ContainsKey('libraries')) { $deps['libraries'] = @{} }
@@ -140,6 +191,16 @@ if ($winintKey -and -not $libraries.ContainsKey($winintKey)) {
 }
 if ($progpudrawingKey -and -not $libraries.ContainsKey($progpudrawingKey)) {
     $libraries[$progpudrawingKey] = @{ type = 'package'; serviceable = $true; sha512 = '' }
+}
+foreach ($asset in $net10RuntimeAssets) {
+    $key = "$($asset.PackageId)/$($asset.Version)"
+    if (-not $libraries.ContainsKey($key)) {
+        $libraries[$key] = @{ type = 'package'; serviceable = $true; sha512 = '' }
+    }
+    $legacyPrefix = "$($asset.Id)/"
+    foreach ($legacyKey in @($libraries.Keys)) {
+        if ($legacyKey.StartsWith($legacyPrefix, [StringComparison]::Ordinal)) { $libraries.Remove($legacyKey) }
+    }
 }
 
 # Write through a PROCESS-UNIQUE temp file and move it into place, rather than writing $DepsPath
@@ -170,22 +231,11 @@ foreach ($asset in $runtimeAssets) {
     if (Test-Path $source) { Copy-Item -Force $source (Join-Path $outputDir $asset.File) }
 }
 
-# LibreWPF's reference-pack substitution records these assemblies in deps.json as *.Reference
-# libraries, but RID-less publish conflict resolution can leave only their XML documentation in
-# PublishDir. They are real runtime dependencies on macOS, so restore the matching package
-# implementation beside the app.
-$net10Assets = @(
-    @{ Id = 'system.configuration.configurationmanager'; File = 'System.Configuration.ConfigurationManager.dll' },
-    @{ Id = 'system.formats.nrbf'; File = 'System.Formats.Nrbf.dll' },
-    @{ Id = 'system.io.packaging'; File = 'System.IO.Packaging.dll' },
-    @{ Id = 'system.security.cryptography.xml'; File = 'System.Security.Cryptography.Xml.dll' },
-    @{ Id = 'system.security.permissions'; File = 'System.Security.Permissions.dll' },
-    @{ Id = 'system.windows.extensions'; File = 'System.Windows.Extensions.dll' }
-)
-foreach ($asset in $net10Assets) {
-    $found = Find-Net10Asset $NugetPackageRoot $asset.Id $asset.File
-    if (-not $found) { continue }
-    $source = Join-Path $NugetPackageRoot "$($asset.Id)/$($found.Version)/$($found.RelativeDir)/$($asset.File)"
+# LibreWPF's reference-pack substitution records these assemblies as *.Reference libraries,
+# but RID-less publish conflict resolution can leave only their XML documentation in PublishDir.
+# Keep the physical output in sync with the runtime entries written above.
+foreach ($asset in $net10RuntimeAssets) {
+    $source = Join-Path $NugetPackageRoot "$($asset.Id)/$($asset.Version)/$($asset.RelativeDir)/$($asset.File)"
     if (Test-Path $source) { Copy-Item -Force $source (Join-Path $outputDir $asset.File) }
 }
 

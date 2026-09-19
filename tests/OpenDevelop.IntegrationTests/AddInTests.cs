@@ -736,6 +736,8 @@ public sealed class AddInTests : IAsyncDisposable
             result = await _app.InvokeAsync("od.unit-test.debug-one", "AlwaysPasses", 60);
         }
 
+        await _app.InvokeAsync("od.debug.stop");
+
         Assert.True(result.GetProperty("completed").GetBoolean(), result.ToString());
         Assert.False(result.GetProperty("faulted").GetBoolean(), result.ToString());
         var padNode = result.GetProperty("padNode");
@@ -5060,7 +5062,30 @@ EndGlobal
         return result.TryGetProperty("error", out var error) ? error.GetString() : null;
     }
 
-    public ValueTask InitializeAsync() => default;
+    public async ValueTask InitializeAsync()
+    {
+        var repo = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(_app.OpenDevelopProjectPath)!, "..", "..", ".."));
+        var projectPath = Path.Combine(_vbFixtureDir, "VBFixture.vbproj");
+        var start = new ProcessStartInfo("dotnet") {
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+            WorkingDirectory = _vbFixtureDir
+        };
+        start.ArgumentList.Add("restore");
+        start.ArgumentList.Add(projectPath);
+        start.ArgumentList.Add("--configfile");
+        start.ArgumentList.Add(Path.Combine(repo, "NuGet.config"));
+        start.ArgumentList.Add("--verbosity");
+        start.ArgumentList.Add("quiet");
+        using var process = Process.Start(start)!;
+        var outputTask = process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
+        var errorTask = process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
+        await process.WaitForExitAsync(TestContext.Current.CancellationToken);
+        var output = await outputTask;
+        var error = await errorTask;
+        Assert.True(process.ExitCode == 0, "VB fixture restore failed:\n" + output + error);
+    }
 
 
     static void CopyDirectoryOd(string sourceDir, string destDir)

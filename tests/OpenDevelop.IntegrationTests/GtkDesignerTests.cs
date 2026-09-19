@@ -4,7 +4,7 @@ using Xunit;
 namespace OpenDevelop.IntegrationTests;
 
 [Collection("30 Add-ins and specialized fixtures")]
-public sealed class GtkDesignerTests : IAsyncDisposable
+public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 {
 	readonly OpenDevelopAppFixture app; readonly string workDir; readonly string projectPath; readonly string uiPath; readonly string settingsUiPath;
 	public GtkDesignerTests(OpenDevelopAppFixture app)
@@ -14,6 +14,30 @@ public sealed class GtkDesignerTests : IAsyncDisposable
 		var fixture = Path.Combine(repo, "tests", "fixtures", "GtkDesignerFixture");
 		workDir = Path.Combine(Path.GetTempPath(), "GtkDesignerTests-" + Guid.NewGuid().ToString("N"));
 		CopyDirectory(fixture, workDir); projectPath = Path.Combine(workDir, "GtkDesignerFixture.csproj"); uiPath = Path.Combine(workDir, "Windows", "MainWindow.ui"); settingsUiPath = Path.Combine(workDir, "Windows", "SettingsWindow.ui");
+	}
+
+	public async ValueTask InitializeAsync()
+	{
+		var repo = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(app.OpenDevelopProjectPath)!, "..", "..", ".."));
+		var start = new System.Diagnostics.ProcessStartInfo("dotnet") {
+			RedirectStandardError = true,
+			RedirectStandardOutput = true,
+			UseShellExecute = false,
+			WorkingDirectory = workDir
+		};
+		start.ArgumentList.Add("restore");
+		start.ArgumentList.Add(projectPath);
+		start.ArgumentList.Add("--configfile");
+		start.ArgumentList.Add(Path.Combine(repo, "NuGet.config"));
+		start.ArgumentList.Add("--verbosity");
+		start.ArgumentList.Add("quiet");
+		using var process = System.Diagnostics.Process.Start(start)!;
+		var outputTask = process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
+		var errorTask = process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
+		await process.WaitForExitAsync(TestContext.Current.CancellationToken);
+		var output = await outputTask;
+		var error = await errorTask;
+		Assert.True(process.ExitCode == 0, "GTK designer fixture restore failed:\n" + output + error);
 	}
 
 	[Fact]

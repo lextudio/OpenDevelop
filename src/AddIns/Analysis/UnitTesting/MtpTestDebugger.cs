@@ -114,17 +114,43 @@ namespace ICSharpCode.UnitTesting
 
 			var lines = outputText.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
 			var summary = lines.FirstOrDefault(line => line.TrimStart().StartsWith("Test run summary:", StringComparison.Ordinal));
-			if (summary == null)
-				return TestResultType.None;
+			if (summary != null) {
+				message = summary.Trim();
+				if (summary.IndexOf("Passed!", StringComparison.OrdinalIgnoreCase) >= 0)
+					return TestResultType.Success;
+				if (summary.IndexOf("Skipped!", StringComparison.OrdinalIgnoreCase) >= 0)
+					return TestResultType.Ignored;
+				if (summary.IndexOf("Failed!", StringComparison.OrdinalIgnoreCase) >= 0)
+					return TestResultType.Failure;
+			}
 
-			message = summary.Trim();
-			if (summary.IndexOf("Passed!", StringComparison.OrdinalIgnoreCase) >= 0)
+			var mtpSummary = lines.LastOrDefault(line => line.Contains("Total:", StringComparison.Ordinal)
+				&& line.Contains("Errors:", StringComparison.Ordinal)
+				&& line.Contains("Failed:", StringComparison.Ordinal));
+			if (mtpSummary != null) {
+				message = mtpSummary.Trim();
+				if (ReadSummaryCount(mtpSummary, "Failed:") > 0 || ReadSummaryCount(mtpSummary, "Errors:") > 0)
+					return TestResultType.Failure;
+				if (ReadSummaryCount(mtpSummary, "Skipped:") >= ReadSummaryCount(mtpSummary, "Total:"))
+					return TestResultType.Ignored;
 				return TestResultType.Success;
-			if (summary.IndexOf("Skipped!", StringComparison.OrdinalIgnoreCase) >= 0)
-				return TestResultType.Ignored;
-			if (summary.IndexOf("Failed!", StringComparison.OrdinalIgnoreCase) >= 0)
-				return TestResultType.Failure;
+			}
+
 			return TestResultType.None;
+		}
+
+		static int ReadSummaryCount(string summary, string label)
+		{
+			int start = summary.IndexOf(label, StringComparison.Ordinal);
+			if (start < 0)
+				return 0;
+			start += label.Length;
+			while (start < summary.Length && char.IsWhiteSpace(summary[start]))
+				start++;
+			int end = start;
+			while (end < summary.Length && char.IsDigit(summary[end]))
+				end++;
+			return int.TryParse(summary.Substring(start, end - start), out var value) ? value : 0;
 		}
 
 		static List<string> CollectFullyQualifiedNames(IEnumerable<ITest> tests)

@@ -4,7 +4,7 @@ using Xunit;
 namespace OpenDevelop.IntegrationTests;
 
 [Collection("30 Add-ins and specialized fixtures")]
-public sealed class MewUIDesignerTests : IAsyncDisposable
+public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 {
 	readonly OpenDevelopAppFixture app;
 	readonly string workDir;
@@ -35,6 +35,30 @@ public sealed class MewUIDesignerTests : IAsyncDisposable
 		sourcePath = Path.Combine(workDir, "Windows", "MainWindow.mxaml.cs");
 		designerPath = Path.Combine(workDir, "Windows", "MainWindow.mxaml");
 		settingsSourcePath = Path.Combine(workDir, "Windows", "SettingsWindow.mxaml");
+	}
+
+	public async ValueTask InitializeAsync()
+	{
+		var repo = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(app.OpenDevelopProjectPath)!, "..", "..", ".."));
+		var start = new System.Diagnostics.ProcessStartInfo("dotnet") {
+			RedirectStandardError = true,
+			RedirectStandardOutput = true,
+			UseShellExecute = false,
+			WorkingDirectory = workDir
+		};
+		start.ArgumentList.Add("restore");
+		start.ArgumentList.Add(projectPath);
+		start.ArgumentList.Add("--configfile");
+		start.ArgumentList.Add(Path.Combine(repo, "NuGet.config"));
+		start.ArgumentList.Add("--verbosity");
+		start.ArgumentList.Add("quiet");
+		using var process = System.Diagnostics.Process.Start(start)!;
+		var outputTask = process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
+		var errorTask = process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
+		await process.WaitForExitAsync(TestContext.Current.CancellationToken);
+		var output = await outputTask;
+		var error = await errorTask;
+		Assert.True(process.ExitCode == 0, "MewUI designer fixture restore failed:\n" + output + error);
 	}
 
 	[Fact]

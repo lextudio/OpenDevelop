@@ -1,0 +1,120 @@
+<Solution>
+  <Folder Name="/AddIns/" />
+  <Folder Name="/AddIns/Analysis/">
+    <Project Path="src/AddIns/Analysis/CodeAnalysis/CodeAnalysis.csproj" />
+    <Project Path="src/AddIns/Analysis/CodeCoverage/Project/CodeCoverage.csproj" />
+    <Project Path="src/AddIns/Analysis/CodeQuality/CodeQuality.csproj">
+      <Platform Project="x86" />
+    </Project>
+    <Project Path="src/AddIns/Analysis/MachineSpecifications/MachineSpecifications/MachineSpecifications.csproj" />
+    <Project Path="src/AddIns/Analysis/SourceAnalysis/SourceAnalysis.csproj" />
+    <Project Path="src/AddIns/Analysis/UnitTesting/UnitTesting.csproj" />
+  </Folder>
+  <Folder Name="/AddIns/Analysis/Profiler/">
+    <Project Path="src/AddIns/Analysis/Profiler/Controller/Profiler.Controller.csproj" />
+    <Project Path="src/AddIns/Analysis/Profiler/Frontend/AddIn/Profiler.AddIn.csproj" />
+    <Project Path="src/AddIns/Analysis/Profiler/Frontend/Controls/Profiler.Controls.csproj" />
+    <Project Path="src/AddIns/Analysis/Profiler/X64Converter/Profiler.X64Converter.csproj" />
+  </Folder>
+  <Folder Name="/AddIns/Debugger/">
+    <Project Path="src/AddIns/Debugger/Debugger.AddIn/Debugger.AddIn.csproj" />
+    <Project Path="src/AddIns/Debugger/Debugger.Core/Debugger.Core.csproj" />
+  </Folder>
+  <Folder Name="/AddIns/Display Bindings/">
+    <Project Path="src/AddIns/DisplayBindings/AvalonEdit.AddIn/AvalonEdit.AddIn.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/ClassDiagram/ClassDiagramAddin/ClassDiagramAddin.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/ClassDiagram/Core/ClassDiagram.Core.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/FormsDesigner/Project/FormsDesigner.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/HexEditor/Project/HexEditor.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/IconEditor/IconEditor.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/ILSpyAddIn/ILSpyAddIn.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/ResourceEditor/Project/ResourceEditor.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/SettingsEditor/Project/SettingsEditor.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/XmlEditor/Project/XmlEditor.csproj" />
+  </Folder>
+  <Folder Name="/AddIns/Display Bindings/Data/">
+    <Project Path="src/AddIns/DisplayBindings/Data/ICSharpCode.Data.Addin/ICSharpCode.Data.Addin.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/Data/ICSharpCode.Data.Core.UI/ICSharpCode.Data.Core.UI.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/Data/ICSharpCode.Data.Core/ICSharpCode.Data.Core.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/Data/ICSharpCode.Data.EDMDesigner.Core.UI/ICSharpCode.Data.EDMDesigner.Core.UI.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/Data/ICSharpCode.Data.EDMDesigner.Core/ICSharpCode.Data.EDMDesigner.Core.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/Data/ICSharpCode.Data.SQLServer/ICSharpCode.Data.SQLServer.csproj" />
+  </Folder>
+  <Folder Name="/AddIns/Display Bindings/WpfDesign/">
+    <Project Path="externals/vscode-wpf/external/WpfDesigner/WpfDesign.Designer/Project/WpfDesign.Designer.csproj" />
+    <Project Path="externals/vscode-wpf/external/WpfDesigner/WpfDesign.XamlDom/Project/WpfDesign.XamlDom.csproj" />
+    <Project Path="externals/vscode-wpf/external/WpfDesigner/WpfDesign/Project/WpfDesign.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/WpfDesign/WpfDesign.AddIn/WpfDesign.AddIn.csproj" />
+  </Folder>
+  <Folder Name="/AddIns/Language Bindings/">
+    <Project Path="src/AddIns/BackendBindings/AspNet.Mvc/Project/AspNet.Mvc.csproj" />
+    <Project Path="src/AddIns/BackendBindings/CppBinding/CppBinding/CppBinding.csproj" />
+    <Project Path="src/AddIns/BackendBindings/CSharpBinding/Project/CSharpBinding.csproj" />
+    <Project Path="src/AddIns/BackendBindings/FSharpBinding/FSharpBinding.csproj" />
+    <Project Path="src/AddIns/BackendBindings/Scripting/Project/ICSharpCode.Scripting.csproj" />
+    <Project Path="src/AddIns/BackendBindings/TypeScript/Project/TypeScriptBinding.csproj" />
+    <Project Path="src/AddIns/BackendBindings/VBBinding/Project/VBBinding.vbproj" />
+    <Project Path="src/AddIns/BackendBindings/WixBinding/Project/WixBinding.csproj" />
+    <Project Path="src/AddIns/BackendBindings/XamlBinding/XamlBinding/XamlBinding.csproj" />
+  </Folder>
+  <Folder Name="/AddIns/Misc/">
+    <Project Path="src/AddIns/Misc/AddInManager2/Project/AddInManager2.csproj" />
+    <Project Path="src/AddIns/Misc/AddinScout/Project/AddinScout.csproj" />
+    <Project Path="src/AddIns/Misc/AndroidDeviceManager/Project/AndroidDeviceManager.csproj" />
+    <Project Path="src/AddIns/Misc/AndroidSdkManager/Project/AndroidSdkManager.csproj" />
+    <Project Path="src/AddIns/Misc/FiletypeRegisterer/Project/FiletypeRegisterer.csproj" />
+    <Project Path="src/AddIns/Misc/HelpViewer/HelpViewer.csproj" />
+    <Project Path="src/AddIns/Misc/RegExpTk/Project/RegExpTk.csproj" />
+    <Project Path="src/AddIns/Misc/SearchAndReplace/Project/SearchAndReplace.csproj" />
+    <Project Path="src/AddIns/Misc/StartPage/Project/StartPage.csproj" />
+    <Project Path="src/AddIns/Misc/TextTemplating/Project/TextTemplating.csproj" />
+  </Folder>
+  <Folder Name="/AddIns/Misc/PackageManagement/">
+    <Project Path="src/AddIns/Misc/PackageManagement/Cmdlets/Project/PackageManagement.Cmdlets.csproj">
+      <Platform Project="x86" />
+    </Project>
+    <Project Path="src/AddIns/Misc/PackageManagement/PowerShell/Project/PackageManagement.PowerShell.csproj" />
+    <Project Path="src/AddIns/Misc/PackageManagement/Project/PackageManagement.csproj">
+      <Platform Project="x86" />
+    </Project>
+    <Project Path="src/AddIns/Misc/PackageManagement/SharpDevelop.EnvDTE/SharpDevelop.EnvDTE.vbproj" />
+  </Folder>
+  <Folder Name="/AddIns/Misc/Reports/">
+    <Project Path="src/AddIns/Misc/Reporting/ICSharpCode.Reporting.Addin/ICSharpCode.Reporting.Addin.csproj" />
+    <Project Path="src/AddIns/Misc/Reporting/ICSharpCode.Reporting/ICSharpCode.Reporting.csproj" />
+  </Folder>
+  <Folder Name="/AddIns/Misc/UsageDataCollector/">
+    <Project Path="src/AddIns/Misc/UsageDataCollector/UsageDataCollector.AddIn/UsageDataCollector.AddIn.csproj" />
+    <Project Path="src/AddIns/Misc/UsageDataCollector/UsageDataCollector/UsageDataCollector.csproj" />
+  </Folder>
+  <Folder Name="/AddIns/Version Control/">
+    <Project Path="src/AddIns/VersionControl/GitAddIn/GitAddIn.csproj" />
+    <Project Path="src/AddIns/VersionControl/SubversionAddIn/SubversionAddIn.csproj" />
+  </Folder>
+  <Folder Name="/Libraries/">
+    <Project Path="src/Libraries/AvalonDock/source/Components/AvalonDock/AvalonDock.csproj" />
+    <Project Path="src/Libraries/AvalonEdit/ICSharpCode.AvalonEdit/ICSharpCode.AvalonEdit.csproj">
+      <Platform Project="WithNRefactory" />
+    </Project>
+    <Project Path="src/Libraries/cecil/Mono.Cecil.csproj">
+      <BuildType Solution="Debug|*" Project="net_4_0_Debug" />
+      <BuildType Solution="Release|*" Project="net_4_0_Release" />
+    </Project>
+    <Project Path="src/Libraries/ICSharpCode.Build.Tasks/Project/ICSharpCode.Build.Tasks.csproj" />
+    <Project Path="src/Libraries/ICSharpCode.Decompiler/ICSharpCode.Decompiler.csproj" />
+    <Project Path="src/Libraries/SharpTreeView/ICSharpCode.TreeView/ICSharpCode.TreeView.csproj" />
+  </Folder>
+  <Folder Name="/Main/">
+    <Project Path="src/Main/Base/Project/ICSharpCode.SharpDevelop.csproj" />
+    <Project Path="src/Main/Core/Project/ICSharpCode.Core.csproj" />
+    <Project Path="src/Main/ICSharpCode.Core.Presentation/ICSharpCode.Core.Presentation.csproj" />
+    <Project Path="src/Main/ICSharpCode.Core.WinForms/ICSharpCode.Core.WinForms.csproj" />
+    <Project Path="src/Main/ICSharpCode.SharpDevelop.BuildWorker/ICSharpCode.SharpDevelop.BuildWorker.csproj" />
+    <Project Path="src/Main/ICSharpCode.SharpDevelop.BuildWorker120/ICSharpCode.SharpDevelop.BuildWorker120.csproj" />
+    <Project Path="src/Main/ICSharpCode.SharpDevelop.BuildWorker140/ICSharpCode.SharpDevelop.BuildWorker140.csproj" />
+    <Project Path="src/Main/ICSharpCode.SharpDevelop.BuildWorker35/ICSharpCode.SharpDevelop.BuildWorker35.csproj" />
+    <Project Path="src/Main/ICSharpCode.SharpDevelop.Widgets/Project/ICSharpCode.SharpDevelop.Widgets.csproj" />
+    <Project Path="src/Main/SharpDevelop/SharpDevelop.csproj" />
+  </Folder>
+  <Project Path="src/Tools/Tools.build" />
+</Solution>
