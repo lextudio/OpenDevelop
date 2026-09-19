@@ -24,7 +24,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using System.Windows.Interop;
-using System.Windows.Media;
 using System.Windows.Media.ProGPU;
 using System.Windows.Threading;
 
@@ -234,8 +233,6 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			});
 
 			// finally run the workbench window ...
-			if (OperatingSystem.IsMacOS())
-				TextOptions.SetTextFormattingMode(SD.Workbench.MainWindow, TextFormattingMode.Ideal);
 			app.Run(SD.Workbench.MainWindow);
 			
 			// save the workbench memento in the ide properties
