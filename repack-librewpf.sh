@@ -2,11 +2,15 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# The provider checkout: the sibling `openavalon` (it used to be called `openwpf`). LIBREWPF_ROOT
-# wins, then the sibling layout under either name, then the historical absolute path.
+# The provider checkout: the sibling `openavalon` (it used to be called `openwpf`), either as the
+# repo itself at that path or, on a workspace layout, its nested `LibreWPF` checkout. LIBREWPF_ROOT
+# wins, then the sibling layouts under either name, then the historical absolute path.
 librewpf_root="${LIBREWPF_ROOT:-}"
 if [[ -z "${librewpf_root}" ]]; then
-  for _candidate in "${repo_root}/../openavalon" "${repo_root}/../openwpf" "/Users/lextm/uno-tools/librewpf"; do
+  for _candidate in \
+    "${repo_root}/../openavalon" "${repo_root}/../openwpf" \
+    "${repo_root}/../openavalon/LibreWPF" "${repo_root}/../openwpf/LibreWPF" \
+    "/Users/lextm/uno-tools/librewpf"; do
     if [[ -d "${_candidate}/src/Microsoft.DotNet.Wpf/src" ]]; then librewpf_root="${_candidate}"; break; fi
   done
 fi
@@ -17,8 +21,11 @@ fi
 librewpf_root="$(cd "${librewpf_root}" && pwd)"
 dotnet="$(readlink -f "$(command -v dotnet)")"
 # Pack into the feed OpenDevelop's NuGet.config actually maps ("librewpf-local" ->
-# ../openavalon/artifacts/local-feed, the same feed openavalon/dist.local.sh writes).
-package_output="${librewpf_root}/artifacts/local-feed"
+# ../openavalon/artifacts/local-feed, the same feed openavalon/dist.local.sh writes). On the flat
+# layout (the repo IS ../openavalon) that is the repo's own artifacts/local-feed; on the workspace
+# layout it sits above the nested LibreWPF checkout, so try the mapped sibling location first.
+package_output="${repo_root}/../openavalon/artifacts/local-feed"
+[[ -d "${package_output}" ]] || package_output="${librewpf_root}/artifacts/local-feed"
 dev_version="11.0.0-dev"
 
 # LibreWPF now targets net10.0/net10.0-windows, so use the system .NET 10 SDK for both packing
