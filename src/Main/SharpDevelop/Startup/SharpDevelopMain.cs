@@ -211,9 +211,6 @@ namespace ICSharpCode.SharpDevelop.Startup
 				
 				string[] fileList = SplashScreenForm.GetRequestedFileList();
 				
-				// SplashScreenForm.SplashScreen is always null in this MVP build (WinForms splash screen
-				// removed) - nothing to dispose here.
-				
 				WorkbenchSettings workbenchSettings = new WorkbenchSettings();
 				workbenchSettings.RunOnNewThread = false;
 				for (int i = 0; i < fileList.Length; i++) {
