@@ -127,12 +127,16 @@ is seen to flake again, but out of scope for this hotspot-position fix.
 
 Some headless ProGPU adapters block during composition itself, before `ReadPixels()` can be
 timed out. Since that composition runs on the WPF dispatcher, it is not safely cancellable and
-must not be allowed to block `session/open`. The portable host therefore emits the common
-deflated-BGRA fallback frame by default and adds a warning diagnostic. Set
-`OPENDEVELOP_WPF_GPU_RENDER=1` only on a deployment where the headless adapter has been verified;
-that enables the higher-fidelity ProGPU path, whose readback is still bounded to two seconds and
-falls back permanently for that session if it fails. This keeps the DDP source/tree/edit surface
-responsive on unvalidated machines while retaining a controlled path to native rendering.
+must not be allowed to block `session/open`.
+
+GPU composition is the **default** - it is what renders the real design frame (verified working on
+macOS). Its readback is bounded to two seconds and falls back permanently for that session if it
+fails. Because a composition block cannot be timed out, every GPU step writes a line to stderr,
+which the parent routes to OpenDevelop's **Output pad**, and the
+`GPU composition starting (WxH); if this is the last Output-pad line, composition is blocking.`
+line is written *before* the blocking call. If the designer hangs, the Output pad's last line
+therefore names the exact stage; restart with `OPENDEVELOP_WPF_GPU_RENDER=0` to force the bounded
+software fallback frame (`0`/`false`/`off`/`no` all disable it).
 
 ## Current Baseline
 

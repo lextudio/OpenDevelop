@@ -89,11 +89,24 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		// The ProGPU compositor can block inside composition (before its ReadPixels call) on
 		// a headless/unsupported adapter. That work executes on the WPF dispatcher and cannot
 		// be cancelled safely, so a timeout around ReadPixels alone cannot protect session/open.
-		// Keep the portable host responsive by default; deployments that have validated their
-		// adapter may explicitly enable the higher-fidelity path.
-		static readonly bool portableGpuRenderingEnabled = String.Equals(
-			Environment.GetEnvironmentVariable("OPENDEVELOP_WPF_GPU_RENDER"), "1", StringComparison.Ordinal);
+		// GPU rendering is nonetheless the default - it is what produces the real design frame,
+		// and the "GPU composition starting" line below (written BEFORE the blocking call, to
+		// stderr, which is routed to OpenDevelop's Output pad) is the diagnostic that survives a
+		// hang: if the designer stops responding, its Output pad names the exact stage that
+		// stalled. Set OPENDEVELOP_WPF_GPU_RENDER=0 to force the bounded software fallback frame.
+		static readonly bool portableGpuRenderingEnabled = !IsGpuRenderingDisabledByEnvironment();
+		static bool IsGpuRenderingDisabledByEnvironment()
+		{
+			var value = Environment.GetEnvironmentVariable("OPENDEVELOP_WPF_GPU_RENDER");
+			if (string.IsNullOrEmpty(value))
+				return false;
+			return value == "0"
+				|| String.Equals(value, "false", StringComparison.OrdinalIgnoreCase)
+				|| String.Equals(value, "off", StringComparison.OrdinalIgnoreCase)
+				|| String.Equals(value, "no", StringComparison.OrdinalIgnoreCase);
+		}
 		bool renderUnavailable = !portableGpuRenderingEnabled;
+		bool fallbackAnnounced;
 		#endif
 
 		// Design-time theme resolution - resolved once per session/open from the project
@@ -2099,16 +2112,32 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			var width = (uint)Math.Ceiling(element.ActualWidth);
 			var height = (uint)Math.Ceiling(element.ActualHeight);
 			if (renderUnavailable)
+			{
+				if (!fallbackAnnounced)
+				{
+					fallbackAnnounced = true;
+					Console.Error.WriteLine(portableGpuRenderingEnabled
+						? "WpfDesign.SurfaceHost: GPU rendering already failed this session; emitting bounded software fallback frames."
+						: "WpfDesign.SurfaceHost: GPU rendering disabled by OPENDEVELOP_WPF_GPU_RENDER; emitting bounded software fallback frames.");
+				}
 				return FallbackFrame(tree, (int)width, (int)height, stopwatch);
+			}
 			byte[] rgbaPixels;
 			try
 			{
+				// Written BEFORE the compositor calls. Composition runs synchronously on this
+				// (dispatcher) thread and can block on an unvalidated headless adapter, so this
+				// line is the diagnostic that survives a hang: if it is the LAST line in
+				// OpenDevelop's Output pad, GPU composition is what stalled - restart with
+				// OPENDEVELOP_WPF_GPU_RENDER=0 to use the bounded software fallback instead.
+				Console.Error.WriteLine($"WpfDesign.SurfaceHost: GPU composition starting ({width}x{height}); if this is the last Output-pad line, composition is blocking.");
 				renderTarget ??= GpuCompositionTarget.CreateHeadless();
 				var texture = new GpuTexture(renderTarget.Context, width, height,
 					TextureFormat.Rgba8Unorm, TextureUsage.RenderAttachment | TextureUsage.CopySrc,
 					"WpfDesign.SurfaceHost render target");
 				renderTarget.ReplayVisualSubtree(element, width, height);
 				renderTarget.Render(width, height, width, height, 1f, texture.ViewPtr);
+				Console.Error.WriteLine("WpfDesign.SurfaceHost: GPU composition submitted; awaiting readback (bounded to 2s).");
 				// ProGPU's readback may poll an unavailable device for 30 seconds. Keep the
 				// dispatcher/RPC bounded: the GPU composition is still attempted, but an
 				// unresponsive readback falls back after a small, deterministic budget.
@@ -2125,6 +2154,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					return FallbackFrame(tree, (int)width, (int)height, stopwatch);
 				}
 				rgbaPixels = readback.GetAwaiter().GetResult();
+				Console.Error.WriteLine($"WpfDesign.SurfaceHost: GPU frame ready {width}x{height} in {stopwatch.ElapsedMilliseconds} ms.");
 			}
 			catch (Exception e)
 			{
