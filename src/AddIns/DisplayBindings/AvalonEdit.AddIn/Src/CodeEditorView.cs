@@ -276,9 +276,6 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		
 		void TextEditorMouseHover(object sender, MouseEventArgs e)
 		{
-			if (OperatingSystem.IsMacOS())
-				return;
-
 			// LibreWPF's hover timer can deliver a queued tick after the editor view and its
 			// DocumentHighlighter have been disposed during a rapid source/design/close switch.
 			// Never force visual-line construction for that detached document.
