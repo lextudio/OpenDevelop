@@ -17,6 +17,7 @@ using ICSharpCode.SharpDevelop.Designer;
 using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.LanguageServices.Xaml;
+using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Project.Sdk;
 
 using DesignSnapshot = ICSharpCode.SharpDevelop.Designer.Remote.DesignerSessionState;
@@ -662,6 +663,17 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 	{
 		try
 		{
+			var designProject = SD.ProjectService.FindProjectContainingFile(FileName.Create(documentFileName));
+			if (designProject != null)
+			{
+				var build = await DesignerBuildCoordinator.EnsureBuiltAsync(designProject, requireRuntimeGraph: true,
+					report: message => { SetStatus(message); ReportDesigner(message); });
+				if (!build.IsUsable)
+				{
+					SetStatus("WinUI designer cannot use the active build: " + build.Error);
+					return;
+				}
+			}
 			var (runtimeConfig, depsFile, appBin, dependencyError, dotnetHostPath, dotnetHostArchitecture) = ProjectDependencyContext();
 			// Native WinUI's XamlReader must run with the designed executable's dependency graph.
 			// Starting the generic child when the selected configuration has no output makes every

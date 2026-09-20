@@ -82,10 +82,6 @@ namespace ICSharpCode.WpfDesign.AddIn
 		// convention (same pattern as FormsDesignerViewContent.LoadRemoteDesigner).
 		long loadGeneration;
 		string? lastLoadedSourceText;
-		// Set once the containing project has been built for this view (see
-		// BuildProjectForDesignerAsync): the build is a one-shot per document view, not per
-		// source/design switch or reload.
-		bool projectBuildAttempted;
 
 		// Undo/redo: whole-document XAML text snapshot stacks, mirroring
 		// DesignerViewContent's own remoteUndo/remoteRedo pattern for the WinForms designer -
@@ -176,30 +172,25 @@ namespace ICSharpCode.WpfDesign.AddIn
 		/// compiled assembly, so that assembly has to exist - and be current - before the first
 		/// frame is composed; otherwise the child reports "project assembly unavailable" and the
 		/// design falls back to unresolved DynamicResource brushes. Build the containing project
-		/// once here, on the dispatcher, before the host is asked to open the document; MSBuild's
-		/// own incremental up-to-date check keeps this cheap when nothing changed. A build failure
-		/// is reported (Error List/this Output channel) and design still proceeds with whatever
-		/// the child can resolve from source alone.
+		/// when the shared coordinator observes that the active MSBuild target graph is stale. A
+		/// source-only XAML update deliberately does not cause a build. A failed unchanged input
+		/// fingerprint is not retried on every Design-tab activation.
 		/// </summary>
 		async System.Threading.Tasks.Task BuildProjectForDesignerAsync()
 		{
-			if (projectBuildAttempted)
-				return;
-			projectBuildAttempted = true;
-
 			var project = SD.ProjectService.FindProjectContainingFile(PrimaryFile.FileName);
 			if (project == null || project.FileName == null || !File.Exists(project.FileName.ToString()))
 				return;
 
 			try {
-				if (UserContent is DesignerCanvas loadingCanvas)
-					loadingCanvas.SetLoading(true, "Building " + project.Name + "…");
-				DesignerOutput.AppendLine(DesignerOutput.Channel(OutputChannelName),
-					"Building " + project.Name + " so the design host can resolve its assembly.");
-				var results = await SD.BuildService.BuildAsync(project, new BuildOptions(BuildTarget.Build));
-				LoggingService.Info($"WPF designer: built {project.Name}: {results.Result}, errors={results.ErrorCount}, warnings={results.WarningCount}");
-				DesignerOutput.AppendLine(DesignerOutput.Channel(OutputChannelName),
-					$"Built {project.Name}: {results.Result} (errors={results.ErrorCount}, warnings={results.WarningCount}).");
+				var outcome = await DesignerBuildCoordinator.EnsureBuiltAsync(project, report: message => {
+					if (UserContent is DesignerCanvas loadingCanvas)
+						loadingCanvas.SetLoading(true, message);
+					DesignerOutput.AppendLine(DesignerOutput.Channel(OutputChannelName), message);
+				});
+				LoggingService.Info($"WPF designer: build gate for {project.Name}: started={outcome.BuildStarted}, usable={outcome.IsUsable}, error={outcome.Error}");
+				if (!outcome.IsUsable)
+					DesignerOutput.AppendLine(DesignerOutput.Channel(OutputChannelName), "Designer build unavailable: " + outcome.Error);
 			} catch (Exception exception) {
 				LoggingService.Warn("WPF designer: building " + project.Name + " failed: " + exception.Message);
 				DesignerOutput.AppendLine(DesignerOutput.Channel(OutputChannelName),

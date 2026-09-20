@@ -857,6 +857,22 @@ FormsDesigner.Host (child)
 
 ### Capabilities (protocol)
 
+### Build gate for design hosts
+
+`DesignerBuildCoordinator` is the common preflight for a designer that needs compiled project
+code. Its cache key is the evaluated MSBuild target identity (project, solution configuration,
+TFM, RID and target output), not the UI framework. It compares the oldest required output against
+the project's compile inputs, `MSBuildAllProjects`, `project.assets.json`, and the recursive
+`ProjectReference` closure; only then does it invoke the normal incremental `BuildService` build.
+
+The remote Roslyn workspace revision invalidates only the coordinator's decision cache: unsaved
+C#/VB buffers are not buildable, so it must not by itself trigger compilation. Plain XAML updates
+are sent through the DDP source snapshot and do not enter that input set. A
+failed unchanged fingerprint is remembered, preventing a source/design tab switch from repeatedly
+starting the same failing build. A framework only declares whether it needs the full runtime graph
+(`.deps.json` and `.runtimeconfig.json`, required by WinUI) or merely a current output assembly
+(WPF). The coordinator serializes concurrent requests from multiple design views.
+
 ### Non-visual component tray (DDP)
 
 `DesignerSessionState.TrayComponents` is the backend-neutral DDP contract for objects that can
