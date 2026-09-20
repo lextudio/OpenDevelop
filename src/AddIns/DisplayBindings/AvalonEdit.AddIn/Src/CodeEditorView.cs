@@ -305,6 +305,19 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				if (popupToolTip != null) {
 					var popupPosition = GetPopupPosition(e);
 					popupToolTip.Closed += ToolTipClosed;
+					// GetPopupPosition returns SCREEN device-independent units (PointToScreen +
+					// TransformFromDevice), so Absolute keeps exactly the previous coordinate meaning
+					// while giving the popup an owner. Without an owner this is an "unhosted" popup:
+					// legal on Windows (a top-level popup window positioned by the offsets), but
+					// LibreWPF's portable popup path requires the owner's presentation source and
+					// throws PlatformNotSupportedException rather than falling back to one - which is
+					// what turned hovering in the editor into a crash (measured: Popup.BuildWindow ->
+					// TryCreatePortablePopupSource). ILSpy's fork of this handler instead uses
+					// Placement.Relative with target-relative offsets; adopting that here would
+					// reinterpret these screen coordinates and place the tooltip off by the editor's
+					// own screen origin, hence Absolute + PlacementTarget.
+					popupToolTip.Placement = PlacementMode.Absolute;
+					popupToolTip.PlacementTarget = this;
 					popupToolTip.HorizontalOffset = popupPosition.X;
 					popupToolTip.VerticalOffset = popupPosition.Y;
 					popupToolTip.StaysOpen = true;  // We will close it ourselves
