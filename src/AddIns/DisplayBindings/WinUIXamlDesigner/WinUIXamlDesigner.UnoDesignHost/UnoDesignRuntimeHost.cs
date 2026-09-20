@@ -1536,7 +1536,10 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 		// document has no states" - repopulating from one of those blanked the whole states panel
 		// the moment any state failed to apply.
 		if (snapshot.Tree != null || snapshot.VisualStateGroups.Count > 0)
+		{
 			surface.SetVisualStateGroups(snapshot.VisualStateGroups);
+		}
+			surface.SetComponentTray(snapshot.TrayComponents.Select(item => (item.Id, item.Name, item.Type)));
 		if (showTabOrder)
 			RefreshTabOrderBadges();
 		if (snapshot.Render != null)

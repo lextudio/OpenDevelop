@@ -41,7 +41,8 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		DesignSize = 32,
 		StatusBar = 64,
 		VisualStates = 128,
-		All = Zoom | Fit | Gridlines | Theme | ShowNames | DesignSize | StatusBar | VisualStates
+		ComponentTray = 256,
+		All = Zoom | Fit | Gridlines | Theme | ShowNames | DesignSize | StatusBar | VisualStates | ComponentTray
 	}
 
 	public class DesignerCanvas : ContentControl
@@ -85,6 +86,8 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
 			MaxHeight = 200, FontSize = 11
 		};
+		readonly Border componentTray = new() { BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(6, 4, 6, 4) };
+		readonly WrapPanel componentTrayItems = new() { Orientation = Orientation.Horizontal };
 		// Shared "please wait" chrome for the async acquire/open/update round-trip every
 		// out-of-process designer backend performs (see doc/technotes/designer-common.md's
 		// Design-tab-activation convention) - lets a backend show feedback immediately instead of
@@ -130,6 +133,8 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			AutomationProperties.SetName(themeCombo, "Theme");
 			AutomationProperties.SetName(namesButton, "Show Names");
 			AutomationProperties.SetName(DesignSizeCombo, "Design Size");
+			AutomationProperties.SetName(componentTray, "Component tray");
+			componentTray.Child = componentTrayItems;
 
 			toolbar.Children.Add(backendLabel);
 			toolbar.Children.Add(ZoomCombo);
@@ -149,18 +154,22 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 			root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 			root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+			root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 			Grid.SetRow(toolbar, 0);
 			Grid.SetRow(ContentHost, 1);
 			Grid.SetRow(loadingOverlay, 1);
-			Grid.SetRow(statusBar, 2);
+			Grid.SetRow(componentTray, 2);
+			Grid.SetRow(statusBar, 3);
 			root.Children.Add(toolbar);
 			root.Children.Add(ContentHost);
 			// Added after ContentHost so it paints on top of it (WPF Grid z-orders same-cell
 			// children by insertion order).
 			root.Children.Add(loadingOverlay);
+			root.Children.Add(componentTray);
 			root.Children.Add(statusBar);
 			Content = root;
 			statusBar.Visibility = Visibility.Collapsed;
+			componentTray.Visibility = Visibility.Collapsed;
 
 			ZoomCombo.SelectionChanged += (_, _) => ZoomChanged?.Invoke(this, EventArgs.Empty);
 			DesignSizeCombo.SelectionChanged += (_, e) => {
@@ -201,6 +210,8 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			themeCombo.SetResourceReference(Control.ForegroundProperty, "Foreground");
 			namesButton.SetResourceReference(Control.ForegroundProperty, "Foreground");
 			statusBar.SetResourceReference(Control.ForegroundProperty, "Foreground");
+			componentTray.SetResourceReference(Border.BackgroundProperty, "ToolWindowBackground");
+			componentTray.SetResourceReference(Border.BorderBrushProperty, "ToolWindowBorder");
 			ApplyDesignTheme(false);
 			// The empty-canvas edge follows the IDE theme via the semantic theme's "EdgePattern"
 			// key (Themes/Theme.Light.xaml / Theme.Dark.xaml each define their own), so a theme
@@ -219,6 +230,34 @@ namespace ICSharpCode.SharpDevelop.Widgets
 
 		/// <summary>Where the backend mounts its rendered surface (frame + selection + gestures).</summary>
 		public ContentControl ContentHost { get; } = new ContentControl();
+
+		/// <summary>Raised when the shared component tray selects a non-visual object. Backends use
+		/// the item's normal DDP identity to synchronize their existing selection model.</summary>
+		public event EventHandler<string> ComponentTraySelectionRequested;
+
+		/// <summary>Replaces the non-visual component tray. An empty list removes the row completely,
+		/// preserving the canvas size for designers that do not expose non-visual objects.</summary>
+		public void SetComponentTray(IEnumerable<(string Id, string Name, string Type)> items)
+		{
+			componentTrayItems.Children.Clear();
+			var materialized = (items ?? Enumerable.Empty<(string Id, string Name, string Type)>())
+				.Where(item => !string.IsNullOrEmpty(item.Id)).ToArray();
+			if (!capabilities.HasFlag(DesignerCanvasCapabilities.ComponentTray) || materialized.Length == 0)
+			{
+				componentTray.Visibility = Visibility.Collapsed;
+				return;
+			}
+			foreach (var item in materialized)
+			{
+				var button = new Button { Content = string.IsNullOrEmpty(item.Name) ? item.Type : item.Name,
+					ToolTip = string.IsNullOrEmpty(item.Type) ? item.Name : item.Type,
+					Tag = item.Id, Margin = new Thickness(0, 0, 4, 0), Padding = new Thickness(6, 2, 6, 2) };
+				AutomationProperties.SetName(button, "Component " + (string.IsNullOrEmpty(item.Name) ? item.Type : item.Name));
+				button.Click += (_, _) => ComponentTraySelectionRequested?.Invoke(this, item.Id);
+				componentTrayItems.Children.Add(button);
+			}
+			componentTray.Visibility = Visibility.Visible;
+		}
 
 		/// <summary>Raised when the user picks a state to preview. The second item is null for the
 		/// "(none)" entry, meaning "stop forcing a state in this group".</summary>
@@ -317,6 +356,8 @@ namespace ICSharpCode.SharpDevelop.Widgets
 					: Visibility.Collapsed;
 				DesignSizeCombo.Visibility = value.HasFlag(DesignerCanvasCapabilities.DesignSize) ? Visibility.Visible : Visibility.Collapsed;
 				showStatusBarCapability = value.HasFlag(DesignerCanvasCapabilities.StatusBar);
+				if (!value.HasFlag(DesignerCanvasCapabilities.ComponentTray))
+					componentTray.Visibility = Visibility.Collapsed;
 				UpdateStatusBarVisibility();
 			}
 		}

@@ -1866,6 +1866,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				root.UpdateLayout();
 			}
 			state.Tree = BuildNode(current.RootItem, current.RootItem, "");
+			state.TrayComponents = BuildTrayComponents(state.Tree);
 			state.Render = Render(current.RootItem.View as FrameworkElement, state.Tree);
 			#if !MICROSOFT_WPF
 			if (renderUnavailable)
@@ -1875,6 +1876,20 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				});
 			#endif
 			state.ComponentCount = pathToItem.Count;
+		}
+
+		static List<DesignerTrayItem> BuildTrayComponents(DesignerElementNode root)
+		{
+			var result = new List<DesignerTrayItem>();
+			void Visit(DesignerElementNode node)
+			{
+				if (node.IsTrayComponent)
+					result.Add(new DesignerTrayItem { Id = node.Id, Name = node.Name ?? "", Type = node.Type });
+				foreach (var child in node.Children)
+					Visit(child);
+			}
+			Visit(root);
+			return result;
 		}
 
 		#if MICROSOFT_WPF
@@ -1985,7 +2000,11 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			if (contextMenu?.ComponentType == null || !typeof(ContextMenu).IsAssignableFrom(contextMenu.ComponentType))
 				return;
 			var contextMenuPath = path.Length == 0 ? "@context-menu" : path + ",@context-menu";
-			node.Children.Add(BuildNode(contextMenu, root, contextMenuPath));
+			var contextMenuNode = BuildNode(contextMenu, root, contextMenuPath);
+			// ContextMenu is detached from its owner's visual tree. It is therefore exposed through
+			// the common component tray while retaining its existing tree/menu-editor representation.
+			contextMenuNode.IsTrayComponent = true;
+			node.Children.Add(contextMenuNode);
 		}
 
 		/// <summary>Adds a <see cref="HeaderedContentControl"/>/<see cref="HeaderedItemsControl"/>'s

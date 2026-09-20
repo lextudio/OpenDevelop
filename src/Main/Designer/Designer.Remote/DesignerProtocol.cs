@@ -87,6 +87,11 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public List<DesignerComponentInfo> Components { get; set; } = new List<DesignerComponentInfo>();
 		/// <summary>Element tree snapshot (WinUI/WPF shape).</summary>
 		public DesignerElementNode? Tree { get; set; }
+		/// <summary>Non-visual design objects exposed by the backend. Unlike the legacy
+		/// WinForms-only <see cref="DesignerComponentInfo.IsTrayComponent"/> flag, this is the
+		/// common DDP representation consumed by every designer front end. Items are selectable
+		/// by <see cref="DesignerTrayItem.Id"/>, but have no surface bounds.</summary>
+		public List<DesignerTrayItem> TrayComponents { get; set; } = new List<DesignerTrayItem>();
 		public List<DesignerDiagnostic> Diagnostics { get; set; } = new List<DesignerDiagnostic>();
 		public DesignerRenderFrame? Render { get; set; }
 		/// <summary>Every currently-expanded floating surface (a ToolStripDropDown the real
@@ -206,6 +211,11 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// the bitmap was correct all along, the overlays were not. See the equivalent
 		/// DesignerComponentInfo.IsVisible and doc/technotes/winforms-designer.md.</summary>
 		public bool IsVisible { get; set; } = true;
+		/// <summary>True when this source-backed object has no design-surface representation and is
+		/// additionally published in <see cref="DesignerSessionState.TrayComponents"/>. This stays
+		/// on the tree node so an Outline can describe the object in its structural context; clients
+		/// must not infer tray membership from visibility or zero-sized bounds.</summary>
+		public bool IsTrayComponent { get; set; }
 		public List<DesignerElementNode> Children { get; set; } = new List<DesignerElementNode>();
 		/// <summary>Optional per-node property list for the Properties pad, using the same
 		/// <see cref="DesignerPropertyInfo"/> shape <see cref="DesignerComponentInfo"/> already
@@ -217,6 +227,16 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public List<DesignerPropertyInfo> Properties { get; set; } = new List<DesignerPropertyInfo>();
 		/// <summary>Events/signals supported by this element and their current handler names.</summary>
 		public List<DesignerEventInfo> Events { get; set; } = new List<DesignerEventInfo>();
+	}
+
+	/// <summary>A non-visual object presented below the design surface. The identifier uses the
+	/// backend's normal selection identity (tree path for XAML designers, component name for
+	/// WinForms), so selecting an item does not need a tray-specific RPC.</summary>
+	public sealed class DesignerTrayItem
+	{
+		public string Id { get; set; } = "";
+		public string Name { get; set; } = "";
+		public string Type { get; set; } = "";
 	}
 
 	/// <summary>One rendered frame. PngBase64 (WinForms) or Data/RenderMs (WinUI) may be

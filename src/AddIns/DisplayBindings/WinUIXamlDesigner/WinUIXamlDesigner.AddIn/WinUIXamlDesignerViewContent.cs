@@ -1411,7 +1411,8 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			Width = node.Width,
 			Height = node.Height,
 			IsDesignable = node.IsDesignable,
-			IsVisible = node.IsVisible
+			IsVisible = node.IsVisible,
+			IsTrayComponent = node.IsTrayComponent
 		};
 
 	/// <summary>Projects a source XAML element onto the protocol outline node model. The id is

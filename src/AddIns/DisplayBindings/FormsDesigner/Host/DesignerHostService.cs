@@ -2143,6 +2143,8 @@ sealed class DesignerHostService : IDesignerChildService
 			Diagnostics = diagnostics,
 			Tree = tree,
 			Components = components,
+			TrayComponents = components.Where(component => component.IsTrayComponent)
+				.Select(component => new DesignerTrayItem { Id = component.Name, Name = component.Name, Type = component.Type }).ToList(),
 #if MICROSOFT_WINFORMS
 			Popups = rootControl == null ? [] : CapturePopupFrames(rootControl)
 #endif

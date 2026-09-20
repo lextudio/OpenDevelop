@@ -857,6 +857,22 @@ FormsDesigner.Host (child)
 
 ### Capabilities (protocol)
 
+### Non-visual component tray (DDP)
+
+`DesignerSessionState.TrayComponents` is the backend-neutral DDP contract for objects that can
+be selected and edited but do not have a rectangle in the rendered design surface. Each
+`DesignerTrayItem` carries the backend's normal selection id plus a display name and type. The
+shared `DesignerCanvas` owns the row below the canvas and raises that id back to its host; it does
+not introduce a tray-only selection RPC.
+
+`DesignerElementNode.IsTrayComponent` preserves the same fact in an Outline's structural tree.
+It must be set explicitly by a host: neither `IsVisible == false` nor zero geometry means an
+object is non-visual. WPF currently publishes detached `ContextMenu` instances through this
+contract. WinUI/Uno consumes the list already; its host needs an explicit resource/non-visual
+object enumeration before it can publish further items. WinForms keeps its richer existing tray
+editor for this MVP and now also maps `DesignerComponentInfo.IsTrayComponent` entries to this
+list, so protocol consumers no longer need to understand the WinForms-only component shape.
+
 - Implements the full `IDesignHostClient` core plus the optional
   `IDesignHostPropertyReset` / `IDesignHostDefaultEvent` / `IDesignHostLayout`
   (alignment/spacing/z-order — only an absolute-positioned CLR backend can back these).

@@ -439,6 +439,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			// comment: this runs on the UI thread already inside a routed event, so a plain
 			// blocking call is simpler and safe here).
 			ThemeRequested += (_, theme) => CommitTheme(theme);
+			ComponentTraySelectionRequested += (_, id) => SelectElementId(id);
 
 			Focusable = true;
 			AllowDrop = true;
@@ -531,6 +532,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				return;
 			}
 			state = newState;
+			SetComponentTray(newState.TrayComponents.Select(item => (item.Id, item.Name, item.Type)));
 			// Reflects whatever THIS document reported, every time - a session/open for a
 			// The theme combo lists exactly the themes the project's assembly embeds (its
 			// themes/*.xaml resources); a project without any embedded theme hides the combo.
