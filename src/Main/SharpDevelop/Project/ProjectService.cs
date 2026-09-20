@@ -26,6 +26,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using ICSharpCode.Core;
+using ICSharpCode.ILSpy.Util;
 using ICSharpCode.SharpDevelop.Dom;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project.Sdk;
@@ -61,6 +62,8 @@ namespace ICSharpCode.SharpDevelop.Project
 		volatile static ISolution currentSolution;
 		readonly SimpleModelCollection<ISolution> allSolutions;
 		readonly IModelCollection<IProject> allProjects;
+		ISolution configurationObservedSolution;
+		long lifecycleRevision;
 		
 		public event PropertyChangedEventHandler<ISolution> CurrentSolutionChanged = delegate { };
 		
@@ -102,6 +105,7 @@ namespace ICSharpCode.SharpDevelop.Project
 					LoggingService.Info("CurrentProject changed to " + (value == null ? "null" : value.Name));
 					currentProject = value;
 					CurrentProjectChanged(this, new PropertyChangedEventArgs<IProject>(oldValue, value));
+					MessageBus.Send(this, new ActiveProjectChangedMessageEventArgs(oldValue, value, NextLifecycleRevision()));
 					CommandManager.InvalidateRequerySuggested();
 				}
 			}
@@ -348,6 +352,8 @@ namespace ICSharpCode.SharpDevelop.Project
 			foreach (var project in solution.Projects)
 				project.ProjectLoaded();
 			SolutionOpened(this, new SolutionEventArgs(solution));
+			ObserveConfigurationChanges(solution);
+			MessageBus.Send(this, new SolutionOpenedMessageEventArgs(solution, NextLifecycleRevision()));
 			SD.FileService.RecentOpen.AddRecentProject(solution.FileName);
 			Project.Converter.UpgradeViewContent.ShowIfRequired(solution);
 			foreach (var project in solution.Projects.OfType<ErrorProject>()) {
@@ -457,10 +463,40 @@ namespace ICSharpCode.SharpDevelop.Project
 			
 			CurrentProject = null;
 			
+			StopObservingConfigurationChanges(solution);
 			this.CurrentSolution = null; // this will fire the CurrentSolutionChanged event
 			SolutionClosed(this, new SolutionEventArgs(solution));
+			MessageBus.Send(this, new SolutionClosedMessageEventArgs(solution, NextLifecycleRevision()));
 			solution.Dispose();
 			return true;
+		}
+
+		long NextLifecycleRevision() => ++lifecycleRevision;
+
+		void ObserveConfigurationChanges(ISolution solution)
+		{
+			if (ReferenceEquals(configurationObservedSolution, solution))
+				return;
+			if (configurationObservedSolution != null)
+				configurationObservedSolution.ActiveConfigurationChanged -= ActiveConfigurationChanged;
+			configurationObservedSolution = solution;
+			solution.ActiveConfigurationChanged += ActiveConfigurationChanged;
+		}
+
+		void StopObservingConfigurationChanges(ISolution solution)
+		{
+			if (!ReferenceEquals(configurationObservedSolution, solution))
+				return;
+			solution.ActiveConfigurationChanged -= ActiveConfigurationChanged;
+			configurationObservedSolution = null;
+		}
+
+		void ActiveConfigurationChanged(object sender, EventArgs e)
+		{
+			var solution = sender as ISolution;
+			if (solution == null || !ReferenceEquals(solution, CurrentSolution))
+				return;
+			MessageBus.Send(this, new SolutionConfigurationChangedMessageEventArgs(solution, solution.ActiveConfiguration, NextLifecycleRevision()));
 		}
 		#endregion
 		

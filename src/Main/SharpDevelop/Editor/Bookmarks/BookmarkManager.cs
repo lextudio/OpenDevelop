@@ -28,6 +28,8 @@ using ICSharpCode.SharpDevelop.Editor.Bookmarks;
 using TextLocation = ICSharpCode.AvalonEdit.Document.TextLocation;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.AvalonEdit.Document;
+using ICSharpCode.ILSpy.Util;
+using ICSharpCode.SharpDevelop.Project;
 
 namespace ICSharpCode.SharpDevelop.Editor.Bookmarks
 {
@@ -35,7 +37,7 @@ namespace ICSharpCode.SharpDevelop.Editor.Bookmarks
 	{
 		public BookmarkManager()
 		{
-			SD.ProjectService.SolutionClosed += delegate { Clear(); };
+			MessageBus<SolutionClosedMessageEventArgs>.Subscribers += delegate { Clear(); };
 		}
 		
 		List<SDBookmark> bookmarks = new List<SDBookmark>();

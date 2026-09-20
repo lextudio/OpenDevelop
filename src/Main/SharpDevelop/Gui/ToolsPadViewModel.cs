@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Runtime.CompilerServices;
 
 using ICSharpCode.Core;
+using ICSharpCode.ILSpy.Util;
 using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
 
@@ -74,7 +75,7 @@ internal sealed class ToolsPadViewModel : ToolPaneModel, IToolsPadHost
             return;
         subscribed = true;
 
-        SD.Workbench.ActiveViewContentChanged += WorkbenchActiveContentChanged;
+        MessageBus<WorkbenchContextChangedEventArgs>.Subscribers += WorkbenchActiveContentChanged;
         WorkbenchActiveContentChanged(null, null);
     }
 
@@ -86,7 +87,9 @@ internal sealed class ToolsPadViewModel : ToolPaneModel, IToolsPadHost
 
     void WorkbenchActiveContentChanged(object sender, EventArgs e)
     {
-        IToolsHost th = SD.GetActiveViewContentService<IToolsHost>();
+        var context = e as WorkbenchContextChangedEventArgs;
+        var view = context?.ActiveViewContent ?? SD.Workbench.ActiveViewContent;
+        IToolsHost th = view?.GetService<IToolsHost>();
         hostedContent = th?.ToolsContent;
         if (hostedContent is FrameworkElement element && element.Tag is IFilterableToolbox filterable)
             contentControl.Content = CreateSearchableToolbox(element, filterable);

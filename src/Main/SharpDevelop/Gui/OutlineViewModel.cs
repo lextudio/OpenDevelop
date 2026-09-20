@@ -3,6 +3,7 @@ using System.Composition;
 using System.Windows.Controls;
 
 using ICSharpCode.Core;
+using ICSharpCode.ILSpy.Util;
 using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
 
@@ -62,8 +63,7 @@ internal sealed class OutlineViewModel : ToolPaneModel, IOutlinePadHost, IDispos
         if (subscribed || SD.Services.GetService(typeof(IWorkbench)) == null)
             return;
         subscribed = true;
-        SD.Workbench.ActiveViewContentChanged += WorkbenchActiveContentChanged;
-		SD.Workbench.ActiveContentChanged += WorkbenchActiveContentChanged;
+        MessageBus<WorkbenchContextChangedEventArgs>.Subscribers += WorkbenchActiveContentChanged;
         WorkbenchActiveContentChanged(null, null);
     }
 
@@ -79,7 +79,10 @@ internal sealed class OutlineViewModel : ToolPaneModel, IOutlinePadHost, IDispos
         // workbench's cached ActiveViewContent can remain on the previous document even though
         // the dock already displays the new designer (the same condition handled by
         // od.active-view). Reading the layout first keeps the pad attached to what is visible.
-        var view = (SD.Workbench as WpfWorkbench)?.WorkbenchLayout?.ActiveContent as IViewContent
+        var context = e as WorkbenchContextChangedEventArgs;
+        var view = context?.ActiveDockContent as IViewContent
+            ?? context?.ActiveViewContent
+            ?? SD.Workbench.ActiveDockContent as IViewContent
             ?? SD.Workbench.ActiveViewContent;
         var host = view?.GetService(typeof(IOutlineContentHost)) as IOutlineContentHost;
         contentControl.Content = host != null
@@ -91,8 +94,7 @@ internal sealed class OutlineViewModel : ToolPaneModel, IOutlinePadHost, IDispos
     {
         if (subscribed)
         {
-            SD.Workbench.ActiveViewContentChanged -= WorkbenchActiveContentChanged;
-			SD.Workbench.ActiveContentChanged -= WorkbenchActiveContentChanged;
+            MessageBus<WorkbenchContextChangedEventArgs>.Subscribers -= WorkbenchActiveContentChanged;
 		}
     }
 }

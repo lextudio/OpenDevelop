@@ -22,6 +22,7 @@ using System.Collections.Generic;
 using System.Windows.Input;
 
 using ICSharpCode.Core;
+using ICSharpCode.ILSpy.Util;
 using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Parser;
@@ -88,7 +89,7 @@ namespace ICSharpCode.SharpDevelop
 				SD.Workbench.ActiveViewContentChanged += ActiveViewContentChanged;
 				
 				SD.FileService.FileRenamed += FileService_FileRenamed;
-				SD.ProjectService.SolutionClosed += ProjectService_SolutionClosed;
+				MessageBus<SolutionClosedMessageEventArgs>.Subscribers += ProjectService_SolutionClosed;
 				serviceInitialized = true;
 			}
 		}

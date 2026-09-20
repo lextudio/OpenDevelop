@@ -27,6 +27,7 @@ using System.Windows.Input;
 using System.Windows.Threading;
 
 using ICSharpCode.Core;
+using ICSharpCode.ILSpy.Util;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Gui;
@@ -54,6 +55,7 @@ namespace ICSharpCode.AvalonEdit.AddIn.ContextActions
 		/// Delays the available actions resolution so that it does not get called too often when user holds an arrow.
 		/// </summary>
 		DispatcherTimer delayMoveTimer;
+		readonly IDisposable workbenchContextSubscription;
 		const int delayMoveMilliseconds = 500;
 		
 		public ContextActionsRenderer(CodeEditorView editor)
@@ -71,12 +73,12 @@ namespace ICSharpCode.AvalonEdit.AddIn.ContextActions
 			this.delayMoveTimer = new DispatcherTimer() { Interval = TimeSpan.FromMilliseconds(delayMoveMilliseconds) };
 			this.delayMoveTimer.Stop();
 			this.delayMoveTimer.Tick += TimerMoveTick;
-			SD.Workbench.ActiveViewContentChanged += WorkbenchSingleton_Workbench_ActiveViewContentChanged;
+			workbenchContextSubscription = MessageBus<WorkbenchContextChangedEventArgs>.Subscribe(WorkbenchSingleton_Workbench_ActiveViewContentChanged);
 		}
 		
 		public void Dispose()
 		{
-			SD.Workbench.ActiveViewContentChanged -= WorkbenchSingleton_Workbench_ActiveViewContentChanged;
+			workbenchContextSubscription.Dispose();
 			ClosePopup();
 		}
 		

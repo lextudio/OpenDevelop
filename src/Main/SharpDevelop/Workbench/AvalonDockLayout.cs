@@ -32,7 +32,6 @@ using AvalonDock.Layout;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.ViewModels;
-using ICSharpCode.ILSpy.Util;
 using ICSharpCode.ILSpy.ViewModels;
 
 namespace ICSharpCode.SharpDevelop.Workbench
@@ -93,13 +92,6 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		void dockingManager_ActiveContentChanged(object sender, EventArgs e)
 		{
 			WpfWorkbench.FocusDebug("AvalonDock: ActiveContent changed to {0}", WpfWorkbench.GetElementName(dockingManager.ActiveContent));
-			// Broadcast the docking layer's own raw active content on the shared MessageBus so any
-			// subscriber (in this assembly or any AddIn) can react to a TOOL PANE becoming active -
-			// the ActiveContentChanged event below is the layout's own contract, but a subscriber
-			// would have to know the concrete AvalonDockLayout (and its DockingManager) to read the
-			// value out of it. Sent before the events so subscribers see the same state they would
-			// have read themselves.
-			MessageBus.Send(this, new ActiveDockContentChangedEventArgs(ActiveDockContent));
 			if (ActiveContentChanged != null)
 				ActiveContentChanged(this, e);
 			if (ActiveWorkbenchWindowChanged != null)

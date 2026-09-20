@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using ICSharpCode.Core;
+using ICSharpCode.ILSpy.Util;
 using ICSharpCode.NRefactory.CSharp;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Project;
@@ -74,8 +75,8 @@ namespace CSharpBinding.FormattingStrategy
 			// Handlers for solution loading/unloading
 			var projectService = SD.GetService<IProjectService>();
 			if (projectService != null) {
-				SD.ProjectService.SolutionOpened += SolutionOpened;
-				SD.ProjectService.SolutionClosed += SolutionClosed;
+				MessageBus<SolutionOpenedMessageEventArgs>.Subscribers += SolutionOpened;
+				MessageBus<SolutionClosedMessageEventArgs>.Subscribers += SolutionClosed;
 			}
 		}
 		
@@ -124,7 +125,7 @@ namespace CSharpBinding.FormattingStrategy
 			return SolutionOptions ?? GlobalOptions;
 		}
 		
-		void SolutionOpened(object sender, SolutionEventArgs e)
+		void SolutionOpened(object sender, SolutionOpenedMessageEventArgs e)
 		{
 			// Load solution settings
 			SolutionOptions = new CSharpFormattingPolicy(
@@ -136,7 +137,7 @@ namespace CSharpBinding.FormattingStrategy
 			SolutionOptions.Load();
 		}
 		
-		void SolutionClosed(object sender, SolutionEventArgs e)
+		void SolutionClosed(object sender, SolutionClosedMessageEventArgs e)
 		{
 			SolutionOptions.FormattingPolicyUpdated -= OnFormattingPolicyUpdated;
 			SolutionOptions = null;

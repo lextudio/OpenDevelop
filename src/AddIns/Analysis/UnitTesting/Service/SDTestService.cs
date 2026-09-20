@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using ICSharpCode.ILSpy.Util;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;
@@ -33,8 +34,8 @@ namespace ICSharpCode.UnitTesting
 	{
 		public SDTestService()
 		{
-			SD.ProjectService.SolutionOpened += ProjectServiceSolutionChanged;
-			SD.ProjectService.SolutionClosed += ProjectServiceSolutionChanged;
+			MessageBus<SolutionOpenedMessageEventArgs>.Subscribers += ProjectServiceSolutionChanged;
+			MessageBus<SolutionClosedMessageEventArgs>.Subscribers += ProjectServiceSolutionChanged;
 		}
 
 		#region Test Framework Management

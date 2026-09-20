@@ -7,7 +7,8 @@ is a minimal, per-type static publish/subscribe bus:
 public static class MessageBus<T> where T : EventArgs
 {
     public static event EventHandler<T> Subscribers;
-    public static void Send(object sender, T e) => Subscribers?.Invoke(sender, e);
+    public static IDisposable Subscribe(EventHandler<T> handler);
+    public static void Send(object sender, T e);
 }
 ```
 
@@ -164,3 +165,154 @@ that the message belongs at the higher layer and lower-layer code cannot subscri
   qualifying it everywhere - the existing ~80 call sites all rely on that global using, and a new
   one added elsewhere (e.g. `SharpDevelop.csproj`) should add its own `using ICSharpCode.ILSpy.Util;`
   rather than reinventing another bus.
+
+## OpenDevelop refactoring plan and status (2026-09)
+
+The first implementation slice is in place:
+
+- P0 publishes `WorkbenchContextChangedEventArgs` from `WpfWorkbench`; the Property, Tools,
+  Outline, Task List, WPF Designer Thumbnail, XPath Query, and AvalonEdit context-action
+  consumers consume that snapshot instead of separately reconciling dock and workbench events.
+- P1 publishes completed `SolutionOpened`, `SolutionClosed`, active-project, and solution-
+  configuration facts from `ProjectService`. Unit Testing, Code Coverage, Projects, Task List,
+  Error List, Git OpenLens, and the C# language-service registration are the first consumers
+  migrated to those facts.
+- P1 publishes completed document open, close, rename, and view-set-change facts from
+  `FileService`. A document is announced only after its initial view is shown, so temporary load
+  objects do not leak into the application event stream.
+- The bus has an `IDisposable` subscription token for long-lived components with a disposal
+  boundary. Event-style subscription remains supported for compatibility.
+
+The remainder below is the controlled migration plan, not a mandate to replace every existing
+event at once.
+
+### MVP compatibility boundary
+
+The MVP does not preserve legacy activation and completed project-lifecycle events as supported
+integration contracts. `IWorkbench.ActiveViewContentChanged`, `IWorkbench.ActiveContentChanged`,
+`IProjectService.SolutionOpened`, `IProjectService.SolutionClosed`, and
+`IProjectService.CurrentProjectChanged` are marked `Obsolete` and point callers at their message
+contracts. Projects outside the MVP scope may continue to compile with the resulting warning, but
+must not receive a new adapter or compatibility migration solely to silence it.
+
+### Goals and non-goals
+
+The goal is not to replace every C# event with `MessageBus<T>`. Use the bus only for
+application facts that cross module boundaries, have multiple independent subscribers, or cannot
+be expressed through a dependency in the correct direction. Local UI notifications remain normal
+events or method calls; operations needing a result remain service or command-handler calls.
+
+The desired end state is stable, testable Shell facts that AddIns can consume without reconstructing
+state from several implementation layers. Do not bus-ify control events, designer JSON-RPC and host
+callbacks, pointer/drag flows, or open/save/build/dialog commands. Do not make the first migration
+a rewrite of all source-linked upstream ILSpy messages.
+
+### Current priorities
+
+| Priority | Boundary | Current problem | Target |
+| --- | --- | --- | --- |
+| P0 | Workbench activation context | `WpfWorkbench`, `AvalonDockLayout`, Property, Tools, and Outline use several active-content signals and infer precedence themselves. | One Shell-published immutable activation snapshot. |
+| P1 | Solution / project lifecycle | Project, test, build, and browser components independently observe partially overlapping lifecycle events. | Explicit completed lifecycle facts from `ProjectService`, with legacy adapters during migration. |
+| P1 | Document and view lifecycle | `FileService`, `OpenedFile`, windows, and Workbench expose separate implementation-specific signals. | Completed cross-AddIn document facts only. |
+| P2 | Bus governance | Static synchronous weak subscriptions mix facts and commands, with implicit thread and failure behavior. | Defined ownership, threading, lifetime, diagnostics, and command boundaries. |
+| P2 | ILSpy legacy messages | Valid navigation/fact messages coexist with global command messages. | Preserve compatible facts; migrate commands incrementally to explicit owners. |
+
+### P0: unified workbench activation context
+
+This is the first and only immediate large migration. The existing Property pad subscribes to two
+Workbench events plus a Dock message and then decides whether tool-pane, document, or view state
+wins. Dock owns raw activation, Workbench owns document tracking, and consumers should not compose
+those semantics.
+
+1. Define `WorkbenchContextChangedEventArgs` in Base's `Workbench` contract layer. It must not
+   expose WPF, AvalonDock, or concrete AddIn types. Its snapshot contains active workbench window,
+   active view, raw dock content, a reason, and a monotonic revision.
+2. Make `WpfWorkbench` the sole publisher, after its public active properties are updated and on
+   the UI thread. `AvalonDockLayout` reports raw changes to its owner through its direct event; it
+   does not publish globally.
+3. Migrate `PropertyPadViewModel`, `ToolsPadViewModel`, `OutlineViewModel`, and every consumer
+   that only follows the current document/tool window through `Active*Changed`. A late subscriber
+   reads the current Workbench snapshot rather than waiting for another activation.
+4. Retain `IWorkbench.ActiveContentChanged`, `ActiveViewContentChanged`, and
+   `ActiveDockContentChangedEventArgs` as legacy compatibility surfaces initially. Prohibit new
+   subscriptions and remove or adapt them only after the migration inventory is empty.
+
+Acceptance: document, tool-pane, designer, and layout-restore transitions produce one logical
+context change. Property, Tools, and Outline no longer implement competing precedence rules.
+DevFlow integration tests compare every emitted snapshot with actual active view and dock state.
+
+### P1: solution/project lifecycle
+
+Define the state machine before adding messages:
+
+```text
+NoSolution → Opening → Open
+Open → ConfigurationChanging → Open
+Open → Closing → NoSolution
+Open → Reloading → Open | NoSolution
+```
+
+Publish completed facts such as `SolutionOpened`, `SolutionClosed`, `ActiveProjectChanged`, and
+`SolutionConfigurationChanged`. Cancellable or asynchronous
+operations keep service methods/cancellable events; the bus reports accepted or completed results.
+Payloads include old/new stable identity, configuration, platform, reason, and revision so
+subscribers do not reread mutable `SD.ProjectService` state. Migrate cross-AddIn consumers first:
+`SDTestService`, Class Browser, Compiler Message, and `BuildModifiedProjectsOnlyService`.
+Compare legacy event and message count/order in tests during the transition.
+
+### P1: completed document and view facts
+
+Make `FileService` the source of truth. After an audit, add only messages that have real
+cross-module subscribers:
+
+- `DocumentOpened`, after the initial view is shown;
+- `DocumentClosed`, after the last view has closed;
+- `DocumentRenamed`, with old/new `FileName` and document identity;
+- `DocumentViewsChanged`, for substantive changes to one document's view set.
+
+Do not publish caret, dirty-state, edit-buffer, or tab-selection changes. Their owners remain the
+editor or designer document model. Do not add a competing `DocumentActivated`: P0's workbench
+context already expresses activation.
+
+### P2: bus contract and observability
+
+New Shell messages require these rules:
+
+1. Completed facts use names such as `...Changed`, `...Opened`, and `...Closed`; requests use
+   `...Requested` and have one explicit handler. Prefer services or `ICommand` for commands.
+2. Every message declares either UI-thread-only or background-permitted delivery. The bus never
+   switches threads implicitly.
+3. Record message type, sender, subscriber, and correlation/revision when a subscriber fails.
+   Decide exception isolation with dedicated tests; do not silently change synchronous behavior.
+4. Keep weak subscriptions for short-lived UI. Long-lived Shell subscriptions explicitly unsubscribe.
+   Evolve new subscriptions toward an `IDisposable` token while retaining event-style compatibility.
+5. In development/DevFlow mode only, retain a privacy-safe ring buffer of message type, time,
+   thread, revision, and sender name to diagnose sequence errors.
+
+### ILSpy treatment
+
+Keep valid fact and navigation messages such as `NavigateToReferenceEventArgs`,
+`SettingsChangedEventArgs`, `CurrentAssemblyListChangedEventArgs`, and
+`AssemblyTreeSelectionChangedEventArgs`, preserving their source-linked identity and synchronous
+behavior. Audit command-style messages individually: `ShowAboutPageEventArgs`,
+`ShowSearchPageEventArgs`, `ResetLayoutEventArgs`, and `CheckIfUpdateAvailableEventArgs`.
+Assign each an explicit command owner, add its direct service/handler, let the legacy handler
+forward temporarily, then migrate senders. New Core contracts must not carry ILSpy-only
+`TabPageModel`, `ViewState`, or `SessionSettings` types.
+
+### Sequencing, gates, and rollback
+
+1. Maintain an inventory for every message: owner, sender, subscriber, thread, payload,
+   fact/command category, and test. Do not add messages outside that inventory.
+2. Complete P0 with adapters and migrate all Shell pad/view-model consumers in one release.
+3. Add DevFlow switch-sequence tests and unit tests for payload, revision, threading, and legacy
+   adapter order.
+4. Implement solution/project, then document lifecycle, as independent PRs with per-domain
+   compatibility adapters or feature flags.
+5. Handle ILSpy command messages and subscription tokens last. Before deleting legacy surfaces,
+   prove production migration with `rg` and retain a release cycle of integration-test evidence.
+
+The rollback unit is a domain adapter: consumers return to the existing service/event without
+publishers maintaining two independent states. Any payload requiring concrete WPF, AvalonDock,
+ILSpy, or designer-host private types should instead use an owning-layer adapter contract or a
+direct interface.

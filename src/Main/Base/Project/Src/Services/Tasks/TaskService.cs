@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using ICSharpCode.Core;
+using ICSharpCode.ILSpy.Util;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Parser;
 using ICSharpCode.SharpDevelop.Project;
@@ -94,8 +95,8 @@ namespace ICSharpCode.SharpDevelop
 			// avoid trouble with double initialization
 			SD.ParserService.ParseInformationUpdated -= ParserService_ParseInformationUpdated;
 			SD.ParserService.ParseInformationUpdated += ParserService_ParseInformationUpdated;
-			SD.ProjectService.SolutionClosed -= ProjectServiceSolutionClosed;
-			SD.ProjectService.SolutionClosed += ProjectServiceSolutionClosed;
+			MessageBus<SolutionClosedMessageEventArgs>.Subscribers -= ProjectServiceSolutionClosed;
+			MessageBus<SolutionClosedMessageEventArgs>.Subscribers += ProjectServiceSolutionClosed;
 		}
 		
 		static void ParserService_ParseInformationUpdated(object sender, ParseInformationEventArgs e)

@@ -91,6 +91,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			#if DEBUG
 			view.Disposed += ViewDisposed;
 			#endif
+			fileService.OpenedFileViewsChanged(this);
 		}
 		
 		public override void UnregisterView(IViewContent view)
@@ -108,6 +109,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			
 			registeredViews.Remove(view);
 			if (registeredViews.Count > 0) {
+				fileService.OpenedFileViewsChanged(this);
 				if (currentView == view) {
 					SaveCurrentView();
 					currentView = null;

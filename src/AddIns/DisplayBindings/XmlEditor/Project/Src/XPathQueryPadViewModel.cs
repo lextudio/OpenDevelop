@@ -19,7 +19,9 @@
 using System;
 
 using ICSharpCode.Core;
+using ICSharpCode.ILSpy.Util;
 using ICSharpCode.SharpDevelop;
+using ICSharpCode.SharpDevelop.Workbench;
 using ICSharpCode.ILSpy.ViewModels;
 
 namespace ICSharpCode.XmlEditor
@@ -36,6 +38,7 @@ namespace ICSharpCode.XmlEditor
 		public const string XPathQueryControlProperties = "XPathQueryControl.Options";
 
 		readonly XPathQueryControl xpathQueryControl;
+		readonly IDisposable workbenchContextSubscription;
 		bool disposed;
 
 		public XPathQueryPadViewModel()
@@ -50,7 +53,7 @@ namespace ICSharpCode.XmlEditor
 			xpathQueryControl = new XPathQueryControl();
 			Content = xpathQueryControl;
 
-			SD.Workbench.ActiveViewContentChanged += ActiveViewContentChanged;
+			workbenchContextSubscription = MessageBus<WorkbenchContextChangedEventArgs>.Subscribe(ActiveViewContentChanged);
 			Properties properties = PropertyService.NestedProperties(XPathQueryControlProperties);
 			xpathQueryControl.SetMemento(properties);
 		}
@@ -59,7 +62,7 @@ namespace ICSharpCode.XmlEditor
 		{
 			if (!disposed) {
 				disposed = true;
-				SD.Workbench.ActiveViewContentChanged -= ActiveViewContentChanged;
+				workbenchContextSubscription.Dispose();
 				Properties properties = xpathQueryControl.CreateMemento();
 				PropertyService.SetNestedProperties(XPathQueryControlProperties, properties);
 			}

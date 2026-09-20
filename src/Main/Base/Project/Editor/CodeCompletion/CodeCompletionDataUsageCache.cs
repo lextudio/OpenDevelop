@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.IO;
 
 using ICSharpCode.Core;
+using ICSharpCode.ILSpy.Util;
 using ICSharpCode.SharpDevelop.Project;
 
 namespace ICSharpCode.SharpDevelop.Editor.CodeCompletion
@@ -72,7 +73,7 @@ namespace ICSharpCode.SharpDevelop.Editor.CodeCompletion
 		static void LoadCache()
 		{
 			dict = new Dictionary<string, UsageStruct>();
-			SD.ProjectService.SolutionClosed += delegate { SaveCache(); };
+			MessageBus<SolutionClosedMessageEventArgs>.Subscribers += delegate { SaveCache(); };
 			string cacheFileName = CodeCompletionDataUsageCache.CacheFilename;
 			if (string.IsNullOrEmpty(cacheFileName) || !File.Exists(cacheFileName))
 				return;

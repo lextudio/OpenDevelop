@@ -25,6 +25,7 @@ using System.Threading;
 
 using ICSharpCode.AvalonEdit.Utils;
 using ICSharpCode.Core;
+using ICSharpCode.ILSpy.Util;
 using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Gui;
@@ -175,6 +176,8 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		#region OpenedFile
 		Dictionary<FileName, OpenedFile> openedFileDict = new Dictionary<FileName, OpenedFile>();
+		readonly HashSet<OpenedFile> publishedDocuments = new HashSet<OpenedFile>();
+		long documentLifecycleRevision;
 		
 		/// <inheritdoc/>
 		public IReadOnlyList<OpenedFile> OpenedFiles {
@@ -254,6 +257,8 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			}
 			openedFileDict.Remove(oldName);
 			openedFileDict[newName] = file;
+			if (publishedDocuments.Contains(file))
+				MessageBus.Send(this, new DocumentRenamedMessageEventArgs(file, oldName, newName, NextDocumentLifecycleRevision()));
 		}
 		
 		/// <summary>Called by OpenedFile.UnregisterView to update the dictionary.</summary>
@@ -265,7 +270,29 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			
 			openedFileDict.Remove(file.FileName);
 			LoggingService.Debug("OpenedFileClosed: " + file.FileName);
+			if (publishedDocuments.Remove(file))
+				MessageBus.Send(this, new DocumentClosedMessageEventArgs(file, file.FileName, NextDocumentLifecycleRevision()));
 		}
+
+		/// <summary>Called after the registered view set of an open document changes.</summary>
+		internal void OpenedFileViewsChanged(OpenedFile file)
+		{
+			if (!publishedDocuments.Contains(file))
+				return;
+
+			MessageBus.Send(this, new DocumentViewsChangedMessageEventArgs(
+				file,
+				file.RegisteredViewContents.ToArray(),
+				NextDocumentLifecycleRevision()));
+		}
+
+		void PublishDocumentOpened(OpenedFile file, IViewContent initialView)
+		{
+			if (publishedDocuments.Add(file))
+				MessageBus.Send(this, new DocumentOpenedMessageEventArgs(file, initialView, NextDocumentLifecycleRevision()));
+		}
+
+		long NextDocumentLifecycleRevision() => ++documentLifecycleRevision;
 		#endregion
 		
 		#region CheckFileName
@@ -323,7 +350,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			if (binding == null) {
 				binding = new ErrorFallbackBinding("Could not find any display binding for " + Path.GetFileName(fileName));
 			}
-			if (FileUtility.ObservedLoad(new NamedFileOperationDelegate(new LoadFileWrapper(binding, switchToOpenedView).Invoke), fileName) == FileOperationResult.OK) {
+			if (FileUtility.ObservedLoad(new NamedFileOperationDelegate(new LoadFileWrapper(this, binding, switchToOpenedView).Invoke), fileName) == FileOperationResult.OK) {
 				RecentOpen.AddRecentFile(fileName);
 			}
 			return GetOpenFile(fileName);
@@ -334,7 +361,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		{
 			if (displayBinding == null)
 				throw new ArgumentNullException("displayBinding");
-			if (FileUtility.ObservedLoad(new NamedFileOperationDelegate(new LoadFileWrapper(displayBinding, switchToOpenedView).Invoke), fileName) == FileOperationResult.OK) {
+			if (FileUtility.ObservedLoad(new NamedFileOperationDelegate(new LoadFileWrapper(this, displayBinding, switchToOpenedView).Invoke), fileName) == FileOperationResult.OK) {
 				RecentOpen.AddRecentFile(fileName);
 			}
 			return GetOpenFile(fileName);
@@ -342,23 +369,26 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		sealed class LoadFileWrapper
 		{
+			readonly FileService fileService;
 			readonly IDisplayBinding binding;
 			readonly bool switchToOpenedView;
 			
-			public LoadFileWrapper(IDisplayBinding binding, bool switchToOpenedView)
+			public LoadFileWrapper(FileService fileService, IDisplayBinding binding, bool switchToOpenedView)
 			{
+				this.fileService = fileService;
 				this.binding = binding;
 				this.switchToOpenedView = switchToOpenedView;
 			}
 			
 			public void Invoke(FileName fileName)
 			{
-				OpenedFile file = SD.FileService.GetOrCreateOpenedFile(fileName);
+				OpenedFile file = fileService.GetOrCreateOpenedFile(fileName);
 				try {
 					IViewContent newContent = binding.CreateContentForFile(file);
 					if (newContent != null) {
 						SD.DisplayBindingService.AttachSubWindows(newContent, false);
 						SD.Workbench.ShowView(newContent, switchToOpenedView);
+						fileService.PublishDocumentOpened(file, newContent);
 					}
 				} finally {
 					file.CloseIfAllViewsClosed();
@@ -398,6 +428,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			displayBindingService.AttachSubWindows(newContent, false);
 			
 			SD.Workbench.ShowView(newContent);
+			PublishDocumentOpened(file, newContent);
 			return newContent;
 		}
 		

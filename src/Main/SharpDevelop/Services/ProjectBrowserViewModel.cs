@@ -14,6 +14,7 @@ using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;
+using ICSharpCode.ILSpy.Util;
 using ICSharpCode.ILSpy.ViewModels;
 
 namespace ICSharpCode.SharpDevelop.Services;
@@ -39,6 +40,8 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
     private bool disposed;
     private int treeRefreshVersion;
     private Task currentTreeRefresh = Task.CompletedTask;
+    private readonly IDisposable solutionOpenedSubscription;
+    private readonly IDisposable solutionClosedSubscription;
 
     public ProjectBrowserViewModel()
     {
@@ -66,8 +69,8 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
 
         controller.BindHost(this);
 
-        SD.ProjectService.SolutionOpened += ProjectServiceChanged;
-        SD.ProjectService.SolutionClosed += ProjectServiceChanged;
+        solutionOpenedSubscription = MessageBus<SolutionOpenedMessageEventArgs>.Subscribe(ProjectServiceChanged);
+        solutionClosedSubscription = MessageBus<SolutionClosedMessageEventArgs>.Subscribe(ProjectServiceChanged);
         SD.ProjectService.ProjectItemAdded += ProjectServiceChanged;
         SD.ProjectService.ProjectItemRemoved += ProjectServiceChanged;
         ProjectTargetFrameworkService.ActiveTargetFrameworkChanged += ProjectTargetFrameworkChanged;
@@ -186,8 +189,8 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
     {
         disposed = true;
         Interlocked.Increment(ref treeRefreshVersion);
-        SD.ProjectService.SolutionOpened -= ProjectServiceChanged;
-        SD.ProjectService.SolutionClosed -= ProjectServiceChanged;
+        solutionOpenedSubscription.Dispose();
+        solutionClosedSubscription.Dispose();
         SD.ProjectService.ProjectItemAdded -= ProjectServiceChanged;
         SD.ProjectService.ProjectItemRemoved -= ProjectServiceChanged;
         ProjectTargetFrameworkService.ActiveTargetFrameworkChanged -= ProjectTargetFrameworkChanged;

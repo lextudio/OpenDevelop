@@ -50,11 +50,16 @@ namespace ICSharpCode.ILSpy.Search
 			ShortcutKey = new(Key.F, ModifierKeys.Control | ModifierKeys.Shift);
 			IsCloseable = true;
 
-			MessageBus<ShowSearchPageEventArgs>.Subscribers += (_, e) => {
-				SearchTerm = e.SearchTerm;
-				Show();
-			};
+			// Compatibility adapter for upstream callers. New local callers invoke ShowSearch()
+			// directly because this pane is the one concrete owner of the command.
+			MessageBus<ShowSearchPageEventArgs>.Subscribers += (_, e) => ShowSearch(e.SearchTerm);
 			MessageBus<ApplySessionSettingsEventArgs>.Subscribers += ApplySessionSettings;
+		}
+
+		public void ShowSearch(string? searchTerm)
+		{
+			SearchTerm = searchTerm;
+			Show();
 		}
 
 		private void ApplySessionSettings(object sender, ApplySessionSettingsEventArgs e)

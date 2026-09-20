@@ -9,6 +9,7 @@ using System.Windows.Input;
 using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
 using ICSharpCode.SharpDevelop.Project;
+using ICSharpCode.ILSpy.Util;
 using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
 
@@ -116,8 +117,8 @@ internal sealed class ErrorListViewModel : ToolPaneModel
         };
 
         SD.BuildService.BuildFinished += ProjectServiceEndBuild;
-        SD.ProjectService.SolutionOpened += OnSolutionOpen;
-        SD.ProjectService.SolutionClosed += OnSolutionClosed;
+        MessageBus<SolutionOpenedMessageEventArgs>.Subscribers += OnSolutionOpen;
+        MessageBus<SolutionClosedMessageEventArgs>.Subscribers += OnSolutionClosed;
         foreach (SDTask t in TaskService.Tasks.Where(t => t.TaskType != TaskType.Comment))
             errors.Add(t);
 
@@ -150,7 +151,7 @@ internal sealed class ErrorListViewModel : ToolPaneModel
         }
     }
 
-    void OnSolutionOpen(object sender, SolutionEventArgs e)
+    void OnSolutionOpen(object sender, EventArgs e)
     {
         errors.Clear();
         MenuService.UpdateText(toolBar.Items);

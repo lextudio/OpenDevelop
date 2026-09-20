@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using ICSharpCode.ILSpy.Util;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Gui;
@@ -46,7 +47,7 @@ namespace ICSharpCode.CodeCoverage
 			// the process - so this must not touch SD.Workbench directly. TryHookViewOpened()
 			// completes the subscription lazily, retried from CodeCoverageHighlighted (touched
 			// repeatedly via menu IsChecked checks) once IWorkbench actually exists.
-			SD.ProjectService.SolutionOpened += SolutionLoaded;
+			MessageBus<SolutionOpenedMessageEventArgs>.Subscribers += SolutionLoaded;
 			TryHookViewOpened();
 		}
 
@@ -195,7 +196,7 @@ namespace ICSharpCode.CodeCoverage
 			}
 		}
 		
-		static void SolutionLoaded(object sender, SolutionEventArgs e)
+		static void SolutionLoaded(object sender, SolutionOpenedMessageEventArgs e)
 		{
 			var solutionCodeCoverageResults = new SolutionCodeCoverageResults(e.Solution);
 			foreach (CodeCoverageResults results in solutionCodeCoverageResults.GetCodeCoverageResultsForAllProjects()) {

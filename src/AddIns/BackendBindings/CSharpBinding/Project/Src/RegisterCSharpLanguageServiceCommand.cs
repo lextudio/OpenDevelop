@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using ICSharpCode.Core;
+using ICSharpCode.ILSpy.Util;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.LanguageServices;
 using ICSharpCode.SharpDevelop.LanguageServices.Protocol;
@@ -13,6 +14,8 @@ namespace CSharpBinding
 	{
 		ICSharpCode.SharpDevelop.LanguageServices.ILanguageService service;
 		IDisposable registration;
+		IDisposable solutionOpenedSubscription;
+		IDisposable solutionClosedSubscription;
 		IProjectService projectService;
 		LanguageServiceRegistry registry;
 		long solutionGeneration;
@@ -35,13 +38,13 @@ namespace CSharpBinding
 						await ((RemoteLanguageService)service).LoadProjectAsync(snapshot, token);
 			});
 			registration = registry.RegisterExtension(".cs", service);
-			projectService.SolutionOpened += OnSolutionOpened;
-			projectService.SolutionClosed += OnSolutionClosed;
+			solutionOpenedSubscription = MessageBus<SolutionOpenedMessageEventArgs>.Subscribe(OnSolutionOpened);
+			solutionClosedSubscription = MessageBus<SolutionClosedMessageEventArgs>.Subscribe(OnSolutionClosed);
 			if (projectService.CurrentSolution != null)
 				QueueSolution(projectService.CurrentSolution);
 		}
 
-		void OnSolutionOpened(object sender, SolutionEventArgs e) =>
+		void OnSolutionOpened(object sender, SolutionOpenedMessageEventArgs e) =>
 			QueueSolution(e.Solution);
 
 		void QueueSolution(ISolution solution)
@@ -91,7 +94,7 @@ namespace CSharpBinding
 			}
 		}
 
-		void OnSolutionClosed(object sender, SolutionEventArgs e)
+		void OnSolutionClosed(object sender, SolutionClosedMessageEventArgs e)
 		{
 			Interlocked.Increment(ref solutionGeneration);
 			solutionSync = CloseSolutionAsync(solutionSync, e.Solution?.Directory.ToString());
@@ -117,10 +120,8 @@ namespace CSharpBinding
 		public void Dispose()
 		{
 			Interlocked.Increment(ref solutionGeneration);
-			if (projectService != null) {
-				projectService.SolutionOpened -= OnSolutionOpened;
-				projectService.SolutionClosed -= OnSolutionClosed;
-			}
+			solutionOpenedSubscription?.Dispose();
+			solutionClosedSubscription?.Dispose();
 			registration?.Dispose();
 			(service as IDisposable)?.Dispose();
 		}

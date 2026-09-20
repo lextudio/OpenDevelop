@@ -36,6 +36,7 @@ using System.Windows.Threading;
 
 using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
+using ICSharpCode.ILSpy.Util;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Parser;
 using ICSharpCode.SharpDevelop.Project;
@@ -526,6 +527,11 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		}
 		
 		IWorkbenchWindow activeWorkbenchWindow;
+		object lastPublishedDockContent;
+		IWorkbenchWindow lastPublishedWorkbenchWindow;
+		IViewContent lastPublishedViewContent;
+		IServiceProvider lastPublishedContent;
+		long workbenchContextRevision;
 		
 		public IWorkbenchWindow ActiveWorkbenchWindow {
 			get {
@@ -564,6 +570,8 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				
 				// update ActiveContent
 				this.ActiveContent = workbenchLayout.ActiveContent;
+				PublishWorkbenchContextIfChanged(workbenchLayout.ActiveDockContent,
+					WorkbenchContextChangeReason.ViewActivation);
 			}
 		}
 		
@@ -578,15 +586,16 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			// update got dropped, and SD.Workbench.ActiveViewContent stayed stuck on an older
 			// document for the rest of the test while the dock itself was correct. The trailing
 			// re-read makes the eventual value converge regardless of event ordering.
-			UpdateActiveTracking();
-			_ = Dispatcher.BeginInvoke(new Action(UpdateActiveTracking));
+			UpdateActiveTracking(WorkbenchContextChangeReason.DockActivation);
+			_ = Dispatcher.BeginInvoke(new Action(() => UpdateActiveTracking(WorkbenchContextChangeReason.DockActivation)));
 		}
 
-		void UpdateActiveTracking()
+		void UpdateActiveTracking(WorkbenchContextChangeReason reason)
 		{
 			if (workbenchLayout == null) {
 				this.ActiveContent = null;
 				this.ActiveWorkbenchWindow = null;
+				PublishWorkbenchContextIfChanged(null, reason);
 				return;
 			}
 			// Only a *window* (document) activation updates the tracked active workbench window.
@@ -600,6 +609,24 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				this.ActiveContent = workbenchLayout.ActiveContent;
 				this.ActiveWorkbenchWindow = doc;
 			}
+			PublishWorkbenchContextIfChanged(workbenchLayout.ActiveDockContent, reason);
+		}
+
+		void PublishWorkbenchContextIfChanged(object activeDockContent, WorkbenchContextChangeReason reason)
+		{
+			if (ReferenceEquals(lastPublishedDockContent, activeDockContent)
+				&& ReferenceEquals(lastPublishedWorkbenchWindow, activeWorkbenchWindow)
+				&& ReferenceEquals(lastPublishedViewContent, activeViewContent)
+				&& ReferenceEquals(lastPublishedContent, activeContent))
+				return;
+
+			lastPublishedDockContent = activeDockContent;
+			lastPublishedWorkbenchWindow = activeWorkbenchWindow;
+			lastPublishedViewContent = activeViewContent;
+			lastPublishedContent = activeContent;
+			MessageBus.Send(this, new WorkbenchContextChangedEventArgs(
+				activeWorkbenchWindow, activeViewContent, activeContent, activeDockContent,
+				reason, ++workbenchContextRevision));
 		}
 		
 		IViewContent activeViewContent;
@@ -637,6 +664,13 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				}
 			}
 		}
+
+		public object ActiveDockContent {
+			get {
+				SD.MainThread.VerifyAccess();
+				return workbenchLayout?.ActiveDockContent;
+			}
+		}
 		
 		IWorkbenchLayout workbenchLayout;
 		
@@ -656,7 +690,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 					value.ActiveContentChanged += OnActiveWindowChanged;
 				}
 				workbenchLayout = value;
-				OnActiveWindowChanged(null, null);
+				UpdateActiveTracking(WorkbenchContextChangeReason.LayoutAttached);
 			}
 		}
 		

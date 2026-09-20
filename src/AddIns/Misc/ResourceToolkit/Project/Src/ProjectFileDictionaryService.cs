@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 
 using ICSharpCode.Core;
+using ICSharpCode.ILSpy.Util;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Project;
 
@@ -42,7 +43,7 @@ namespace Hornung.ResourceToolkit
 				}
 			};
 			// Clear cache when solution is closed
-			SD.ProjectService.SolutionClosed += delegate { files.Clear(); };
+			MessageBus<SolutionClosedMessageEventArgs>.Subscribers += delegate { files.Clear(); };
 		}
 		
 		/// <summary>

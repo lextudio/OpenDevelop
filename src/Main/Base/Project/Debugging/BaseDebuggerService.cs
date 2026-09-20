@@ -18,6 +18,7 @@
 using System;
 using System.Diagnostics;
 using ICSharpCode.Core;
+using ICSharpCode.ILSpy.Util;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;
@@ -28,7 +29,7 @@ namespace ICSharpCode.SharpDevelop.Debugging
 	{
 		protected BaseDebuggerService()
 		{
-			SD.ProjectService.SolutionOpened += delegate {
+			MessageBus<SolutionOpenedMessageEventArgs>.Subscribers += delegate {
 				ClearDebugMessages();
 			};
 			SD.ProjectService.SolutionClosing += OnSolutionClosing;

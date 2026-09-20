@@ -18,6 +18,7 @@
 
 using System;
 using ICSharpCode.Core;
+using ICSharpCode.ILSpy.Util;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.LanguageServices.OpenLens;
 using ICSharpCode.SharpDevelop.Project;
@@ -35,6 +36,8 @@ namespace ICSharpCode.GitAddIn
 	{
 		OpenLensProviderRegistry registry;
 		IDisposable registration;
+		IDisposable solutionOpenedSubscription;
+		IDisposable solutionClosedSubscription;
 		GitHeadWatcher headWatcher;
 
 		public override void Run()
@@ -42,16 +45,16 @@ namespace ICSharpCode.GitAddIn
 			registry = SD.GetRequiredService<OpenLensProviderRegistry>();
 			registration = registry.RegisterProvider(new GitOpenLensProvider());
 
-			SD.ProjectService.SolutionOpened += OnSolutionOpened;
-			SD.ProjectService.SolutionClosed += OnSolutionClosed;
+			solutionOpenedSubscription = MessageBus<SolutionOpenedMessageEventArgs>.Subscribe(OnSolutionOpened);
+			solutionClosedSubscription = MessageBus<SolutionClosedMessageEventArgs>.Subscribe(OnSolutionClosed);
 			FileUtility.FileSaved += OnFileSaved;
 			if (SD.ProjectService.CurrentSolution != null)
 				CreateWatcherFor(SD.ProjectService.CurrentSolution.Directory);
 		}
 
-		void OnSolutionOpened(object sender, SolutionEventArgs e) => CreateWatcherFor(e.Solution.Directory);
+		void OnSolutionOpened(object sender, SolutionOpenedMessageEventArgs e) => CreateWatcherFor(e.Solution.Directory);
 
-		void OnSolutionClosed(object sender, SolutionEventArgs e) => DisposeWatcher();
+		void OnSolutionClosed(object sender, SolutionClosedMessageEventArgs e) => DisposeWatcher();
 
 		void CreateWatcherFor(DirectoryName solutionDirectory)
 		{
@@ -87,8 +90,8 @@ namespace ICSharpCode.GitAddIn
 
 		public void Dispose()
 		{
-			SD.ProjectService.SolutionOpened -= OnSolutionOpened;
-			SD.ProjectService.SolutionClosed -= OnSolutionClosed;
+			solutionOpenedSubscription?.Dispose();
+			solutionClosedSubscription?.Dispose();
 			FileUtility.FileSaved -= OnFileSaved;
 			DisposeWatcher();
 			registration?.Dispose();

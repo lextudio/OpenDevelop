@@ -13,6 +13,7 @@ using ICSharpCode.TypeSystem;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Parser;
 using ICSharpCode.SharpDevelop.Project;
+using ICSharpCode.ILSpy.Util;
 using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
 
@@ -101,15 +102,15 @@ internal sealed class TaskListViewModel : ToolPaneModel
 
         InitializePadContent();
 
-        SD.Workbench.ActiveViewContentChanged += WorkbenchActiveViewContentChanged;
+        MessageBus<WorkbenchContextChangedEventArgs>.Subscribers += WorkbenchActiveViewContentChanged;
         if (SD.Workbench.ActiveViewContent != null) {
             UpdateItems();
             WorkbenchActiveViewContentChanged(null, null);
         }
 
-        SD.ProjectService.SolutionOpened += OnSolutionOpen;
-        SD.ProjectService.SolutionClosed += OnSolutionClosed;
-        SD.ProjectService.CurrentProjectChanged += ProjectServiceCurrentProjectChanged;
+        MessageBus<SolutionOpenedMessageEventArgs>.Subscribers += OnSolutionOpen;
+        MessageBus<SolutionClosedMessageEventArgs>.Subscribers += OnSolutionClosed;
+        MessageBus<ActiveProjectChangedMessageEventArgs>.Subscribers += ProjectServiceCurrentProjectChanged;
     }
 
     public override void Show()
@@ -268,7 +269,7 @@ internal sealed class TaskListViewModel : ToolPaneModel
         return null;
     }
 
-    void OnSolutionOpen(object sender, SolutionEventArgs e) => tasks.Clear();
+    void OnSolutionOpen(object sender, EventArgs e) => tasks.Clear();
 
     void OnSolutionClosed(object sender, EventArgs e) => tasks.Clear();
 

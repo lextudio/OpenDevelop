@@ -25,6 +25,7 @@ using AvalonDock;
 using AvalonDock.Layout;
 using AvalonDock.Layout.Serialization;
 
+using ICSharpCode.ILSpy.AssemblyTree;
 using ICSharpCode.ILSpy.Analyzers;
 using ICSharpCode.ILSpy.Search;
 using ICSharpCode.ILSpy.ViewModels;
@@ -98,7 +99,11 @@ namespace ICSharpCode.ILSpy.Docking
 			sessionSettings.DockLayout.Reset();
 			InitializeLayout();
 
-			App.Current.Dispatcher.BeginInvoke(DispatcherPriority.Background, () => MessageBus.Send(this, new ResetLayoutEventArgs()));
+			// This has exactly one owner: rebuilding the layout invalidates the AssemblyTreeModel's
+			// decompiled presentation. Call that owner directly rather than broadcasting a global
+			// command. AssemblyTreeModel retains its legacy bus handler for upstream compatibility.
+			App.Current.Dispatcher.BeginInvoke(DispatcherPriority.Background,
+				() => exportProvider.GetExportedValue<AssemblyTreeModel>().RefreshDecompiledView());
 		}
 
 		static readonly PropertyInfo previousContainerProperty = typeof(LayoutContent).GetProperty("PreviousContainer", BindingFlags.NonPublic | BindingFlags.Instance);

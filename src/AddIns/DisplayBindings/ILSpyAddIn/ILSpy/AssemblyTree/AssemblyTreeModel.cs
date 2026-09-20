@@ -39,6 +39,7 @@ using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.ILSpy.AppEnv;
 using ICSharpCode.ILSpy.Docking;
 using ICSharpCode.ILSpy.Properties;
+using ICSharpCode.ILSpy.Search;
 using ICSharpCode.ILSpy.TextView;
 using ICSharpCode.ILSpy.TreeNodes;
 using ICSharpCode.ILSpy.Updates;
@@ -166,7 +167,7 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 
 			if (args.Search != null)
 			{
-				MessageBus.Send(this, new ShowSearchPageEventArgs(args.Search));
+				exportProvider.GetExportedValue<SearchPaneModel>().ShowSearch(args.Search);
 			}
 		}
 

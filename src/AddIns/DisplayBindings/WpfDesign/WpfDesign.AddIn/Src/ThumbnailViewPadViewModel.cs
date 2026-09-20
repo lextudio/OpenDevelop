@@ -21,7 +21,9 @@ using System.Windows;
 using System.Windows.Controls;
 
 using ICSharpCode.Core;
+using ICSharpCode.ILSpy.Util;
 using ICSharpCode.SharpDevelop;
+using ICSharpCode.SharpDevelop.Workbench;
 using ICSharpCode.ILSpy.ViewModels;
 
 namespace ICSharpCode.WpfDesign.AddIn
@@ -52,7 +54,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 			PreferredDockSide = ICSharpCode.ILSpy.ViewModels.PreferredDockSide.Right;
 			Content = contentControl;
 
-			SD.Workbench.ActiveViewContentChanged += WorkbenchActiveViewContentChanged;
+			MessageBus<WorkbenchContextChangedEventArgs>.Subscribers += WorkbenchActiveViewContentChanged;
 			WorkbenchActiveViewContentChanged(null, null);
 		}
 

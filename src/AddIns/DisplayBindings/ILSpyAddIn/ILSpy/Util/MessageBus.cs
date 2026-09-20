@@ -17,6 +17,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Threading;
 
 using TomsToolbox.Essentials;
 
@@ -58,6 +59,19 @@ namespace ICSharpCode.ILSpy.Util
 	{
 		private static readonly WeakEventSource<T> subscriptions = new();
 
+		/// <summary>
+		/// Subscribes a handler and returns a deterministic unsubscription token. Prefer this for
+		/// long-lived Shell/AddIn objects that have a well-defined disposal boundary; the event
+		/// syntax remains available for compatibility with the upstream ILSpy sources.
+		/// </summary>
+		public static IDisposable Subscribe(EventHandler<T> handler)
+		{
+			if (handler == null)
+				throw new ArgumentNullException(nameof(handler));
+			subscriptions.Subscribe(handler);
+			return new Subscription(handler);
+		}
+
 		public static event EventHandler<T> Subscribers {
 			add => subscriptions.Subscribe(value);
 			remove => subscriptions.Unsubscribe(value);
@@ -66,6 +80,20 @@ namespace ICSharpCode.ILSpy.Util
 		public static void Send(object? sender, T e)
 		{
 			subscriptions.Raise(sender!, e);
+		}
+
+		sealed class Subscription : IDisposable
+		{
+			EventHandler<T>? handler;
+
+			public Subscription(EventHandler<T> handler) => this.handler = handler;
+
+			public void Dispose()
+			{
+				var value = Interlocked.Exchange(ref handler, null);
+				if (value != null)
+					subscriptions.Unsubscribe(value);
+			}
 		}
 	}
 }

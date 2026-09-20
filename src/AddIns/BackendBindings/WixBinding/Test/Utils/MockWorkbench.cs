@@ -87,6 +87,8 @@ namespace WixBinding.Tests.Utils
 		}
 		
 		public IViewContent ActiveViewContent { get; set; }
+
+		public object ActiveDockContent => ActiveContent;
 		
 		public IServiceProvider ActiveContent { get; set; }
 		

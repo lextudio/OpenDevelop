@@ -22,16 +22,9 @@ using System.Collections.Generic;
 namespace ICSharpCode.SharpDevelop.Workbench
 {
 	/// <summary>
-	/// Broadcast via <see cref="ICSharpCode.ILSpy.Util.MessageBus{T}"/> (the primitive is
-	/// source-linked into ICSharpCode.Core - see that project - so the shell publishes without
-	/// referencing the ILSpy AddIn, which references the shell) whenever the docking layer's own
-	/// raw active content changes - a tool pane (e.g. the Projects pad's <c>ToolPaneModel</c>) or a
-	/// document window, whichever the user last focused. Unlike <see cref="IWorkbenchLayout.ActiveContent"/>
-	/// (gated by WpfWorkbench.UpdateActiveTracking to only ever reflect a DOCUMENT, so that
-	/// ActiveViewContent survives switching focus to a tool pad - see its doc comment), this always
-	/// reflects the true dock-level value, letting any subscriber (in this assembly or any AddIn
-	/// that references it, without depending on the concrete workbench-layout implementation) react
-	/// to a tool pane becoming active too.
+	/// Legacy payload formerly published directly by <c>AvalonDockLayout</c>. The workbench now
+	/// owns publication and uses <see cref="WorkbenchContextChangedEventArgs"/> so one snapshot
+	/// includes the dock, document and view state together.
 	/// </summary>
 	public sealed class ActiveDockContentChangedEventArgs : EventArgs
 	{
@@ -79,11 +72,9 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		/// <see cref="ActiveContent"/> (deliberately document-gated, see its doc comment), this
 		/// reflects a focused tool pane too.
 		///
-		/// Exposed as a readable property as well as via the
-		/// <see cref="ICSharpCode.ILSpy.Util.MessageBus{T}"/> broadcast (ActiveDockContentChangedEventArgs)
-		/// because a consumer that starts caring about the active content *after* the user already
-		/// activated the pane would otherwise never see a change notification at all - the broadcast
-		/// only fires on a change, so it cannot answer "what is active right now?".
+		/// Cross-module consumers should use <see cref="IWorkbench.ActiveDockContent"/> and the
+		/// <see cref="WorkbenchContextChangedEventArgs"/> message instead of depending on this
+		/// layout-level implementation detail.
 		/// </summary>
 		object ActiveDockContent {
 			get;

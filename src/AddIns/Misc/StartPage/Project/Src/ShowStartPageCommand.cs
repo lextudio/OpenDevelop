@@ -19,6 +19,7 @@
 using System;
 using System.Linq;
 using ICSharpCode.Core;
+using ICSharpCode.ILSpy.Util;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;
@@ -30,7 +31,7 @@ namespace ICSharpCode.StartPage
 	{
 		static ShowStartPageCommand()
 		{
-			SD.ProjectService.SolutionOpened += delegate {
+			MessageBus<SolutionOpenedMessageEventArgs>.Subscribers += delegate {
 				// close all start pages when loading a solution
 				foreach (IViewContent v in SD.Workbench.ViewContentCollection.ToArray()) {
 					if (v is StartPageViewContent) {

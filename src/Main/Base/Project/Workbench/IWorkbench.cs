@@ -99,6 +99,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		/// <summary>
 		/// Is called, when the active view content has changed.
 		/// </summary>
+		[Obsolete("Use MessageBus<WorkbenchContextChangedEventArgs> instead.")]
 		event EventHandler ActiveViewContentChanged;
 		
 		/// <summary>
@@ -109,10 +110,20 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		IServiceProvider ActiveContent {
 			get;
 		}
+
+		/// <summary>
+		/// The raw content most recently activated by the docking layer. Unlike
+		/// <see cref="ActiveContent"/>, this can be a tool-pane model and is not limited to an
+		/// <see cref="IServiceProvider"/>.
+		/// </summary>
+		object ActiveDockContent {
+			get;
+		}
 		
 		/// <summary>
 		/// Is called, when the active content has changed.
 		/// </summary>
+		[Obsolete("Use MessageBus<WorkbenchContextChangedEventArgs> instead.")]
 		event EventHandler ActiveContentChanged;
 		
 		/// <summary>

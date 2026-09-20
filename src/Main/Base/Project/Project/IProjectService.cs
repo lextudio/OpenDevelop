@@ -45,6 +45,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// <summary>
 		/// This event is raised after a solution is opened.
 		/// </summary>
+		[Obsolete("Use MessageBus<SolutionOpenedMessageEventArgs> instead.")]
 		event EventHandler<SolutionEventArgs> SolutionOpened;
 		
 		/// <summary>
@@ -55,6 +56,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// <summary>
 		/// This event is raised after a solution is closed.
 		/// </summary>
+		[Obsolete("Use MessageBus<SolutionClosedMessageEventArgs> instead.")]
 		event EventHandler<SolutionEventArgs> SolutionClosed;
 		
 		/// <summary>
@@ -65,6 +67,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// </remarks>
 		IProject CurrentProject { get; set; }
 		
+		[Obsolete("Use MessageBus<ActiveProjectChangedMessageEventArgs> instead.")]
 		event PropertyChangedEventHandler<IProject> CurrentProjectChanged;
 		
 		/// <summary>

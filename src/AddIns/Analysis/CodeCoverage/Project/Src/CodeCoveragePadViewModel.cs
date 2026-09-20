@@ -20,6 +20,7 @@ using System;
 
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Project;
+using ICSharpCode.ILSpy.Util;
 using ICSharpCode.ILSpy.ViewModels;
 
 namespace ICSharpCode.CodeCoverage
@@ -36,6 +37,8 @@ namespace ICSharpCode.CodeCoverage
 	{
 		bool disposed;
 		readonly CodeCoverageControl codeCoverageControl;
+		readonly IDisposable solutionClosedSubscription;
+		readonly IDisposable solutionOpenedSubscription;
 
 		public CodeCoveragePadViewModel()
 		{
@@ -50,8 +53,8 @@ namespace ICSharpCode.CodeCoverage
 			codeCoverageControl.UpdateToolbar();
 			Content = codeCoverageControl;
 
-			SD.ProjectService.SolutionClosed += SolutionClosed;
-			SD.ProjectService.SolutionOpened += SolutionLoaded;
+			solutionClosedSubscription = MessageBus<SolutionClosedMessageEventArgs>.Subscribe(SolutionClosed);
+			solutionOpenedSubscription = MessageBus<SolutionOpenedMessageEventArgs>.Subscribe(SolutionLoaded);
 
 			ShowSourceCodePanel = CodeCoverageOptions.ShowSourceCodePanel;
 			ShowVisitCountPanel = CodeCoverageOptions.ShowVisitCountPanel;
@@ -61,8 +64,8 @@ namespace ICSharpCode.CodeCoverage
 		{
 			if (!disposed) {
 				disposed = true;
-				SD.ProjectService.SolutionClosed -= SolutionClosed;
-				SD.ProjectService.SolutionOpened -= SolutionLoaded;
+				solutionClosedSubscription.Dispose();
+				solutionOpenedSubscription.Dispose();
 				// CodeCoverageControl is a plain WPF UserControl now (no ElementHost/WinForms
 				// child controls needing an explicit Dispose() the way the old version did).
 			}
