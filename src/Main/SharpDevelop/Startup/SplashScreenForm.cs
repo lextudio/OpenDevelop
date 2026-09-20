@@ -3,6 +3,7 @@
 // screen UI itself is a no-op in this MVP build (ShowSplashScreen()/SplashScreen do nothing/return null).
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace ICSharpCode.SharpDevelop.Startup
 {
@@ -37,7 +38,12 @@ namespace ICSharpCode.SharpDevelop.Startup
 
 			foreach (string arg in args) {
 				if (arg.Length == 0) continue;
-				if (arg[0] == '-' || arg[0] == '/') {
+				// A leading '/' marks a switch on Windows only: on Unix an absolute path starts
+				// with '/' as well, so an argument that names an existing file or directory is a
+				// requested file, not a switch. Without this, 'OpenDevelop /path/to/x.slnx'
+				// silently started with nothing open - the path went to the parameter list and was
+				// never handed to the workbench.
+				if ((arg[0] == '-' || arg[0] == '/') && !File.Exists(arg) && !Directory.Exists(arg)) {
 					int markerLength = 1;
 
 					if (arg.Length >= 2 && arg[0] == '-' && arg[1] == '-') {
