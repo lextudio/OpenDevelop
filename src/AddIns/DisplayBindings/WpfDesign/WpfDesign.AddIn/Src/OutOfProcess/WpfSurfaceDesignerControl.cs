@@ -568,7 +568,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 
 			var pixels = DesignerFrameCodec.DecodeBgra32(render);
 			framePresenter.SetSource(BitmapSource.Create(render.Width, render.Height, 96, 96, PixelFormats.Bgra32, null, pixels, render.Width * 4));
-			StatusText = $"Rendered by WPF design host ({render.Width}×{render.Height}).";
+			StatusText = $"Rendered by {BackendName} design host ({render.Width}×{render.Height}).";
 			// The design is centered inside the canvas with at least CanvasPadding of empty space
 			// on every side, never flush against the top-left corner. Two reasons, both real:
 			// the ROOT element's own resize handles are drawn just outside its bounds, so with no
