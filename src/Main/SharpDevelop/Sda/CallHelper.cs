@@ -138,6 +138,7 @@ namespace ICSharpCode.SharpDevelop.Sda
 			}
 
 			LoggingService.Info("Looking for AddIns...");
+			ICSharpCode.Core.StartupProgress.Report("Looking for add-ins\u2026");
 			foreach (string file in properties.addInFiles) {
 				startup.AddAddInFile(file);
 			}
@@ -154,6 +155,7 @@ namespace ICSharpCode.SharpDevelop.Sda
 			}
 			
 			LoggingService.Info("Loading AddInTree...");
+			ICSharpCode.Core.StartupProgress.Report("Loading add-in tree\u2026");
 			startup.RunInitialization();
 
 			if (SD.Services.GetService(typeof(IParserService)) == null) {
@@ -199,6 +201,7 @@ namespace ICSharpCode.SharpDevelop.Sda
 			FileUtility.FileSaved  += delegate(object sender, FileNameEventArgs e) { this.callback.FileSaved(e.FileName); };
 			
 			LoggingService.Info("InitSharpDevelop finished");
+			ICSharpCode.Core.StartupProgress.Report("OpenDevelop core ready");
 		}
 		#endregion
 		
@@ -228,19 +231,11 @@ namespace ICSharpCode.SharpDevelop.Sda
 			
 			LoggingService.Info("Starting workbench...");
 			Exception exception = null;
-			// finally start the workbench.
-			try {
-				callback.BeforeRunWorkbench();
-				if (Debugger.IsAttached) {
-					wbc.Run(wbSettings.InitialFileList);
-				} else {
-					try {
-						wbc.Run(wbSettings.InitialFileList);
-					} catch (Exception ex) {
-						exception = ex;
-					}
-				}
-			} finally {
+			bool unloaded = false;
+			void Unload()
+			{
+				if (unloaded) return;
+				unloaded = true;
 				LoggingService.Info("Unloading services...");
 				try {
 					// see IShutdownService.Shutdown for a description of the shut down procedure
@@ -257,6 +252,35 @@ namespace ICSharpCode.SharpDevelop.Sda
 					}
 				}
 			}
+			// finally start the workbench.
+			try {
+				callback.BeforeRunWorkbench();
+				if (WorkbenchStartup.ExternalRunLoop) {
+					// The startup splash owns the run loop: WorkbenchStartup.Run only reveals the
+					// workbench window and returns (app.Run can only be called once), so the unload
+					// and the closed notification belong to that loop's exit instead of the finally.
+					if (System.Windows.Application.Current != null)
+						System.Windows.Application.Current.Exit += (_, _) => {
+							Unload();
+							LoggingService.Info("Finished running workbench.");
+							callback.WorkbenchClosed();
+						};
+					wbc.Run(wbSettings.InitialFileList);
+				} else if (Debugger.IsAttached) {
+					wbc.Run(wbSettings.InitialFileList);
+				} else {
+					try {
+						wbc.Run(wbSettings.InitialFileList);
+					} catch (Exception ex) {
+						exception = ex;
+					}
+				}
+			} finally {
+				if (!WorkbenchStartup.ExternalRunLoop)
+					Unload();
+			}
+			if (WorkbenchStartup.ExternalRunLoop)
+				return; // reported from the loop owner's exit handler above
 			LoggingService.Info("Finished running workbench.");
 			callback.WorkbenchClosed();
 			if (exception != null) {

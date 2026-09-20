@@ -3,7 +3,7 @@
 	x:Class="ICSharpCode.StartPage.StartPageControl" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:gui="clr-namespace:ICSharpCode.SharpDevelop.Gui;assembly=ICSharpCode.SharpDevelop" xmlns:core="http://icsharpcode.net/sharpdevelop/core"
 	Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
 	<ScrollViewer
-		VerticalScrollBarVisibility="Visible"
+		VerticalScrollBarVisibility="Auto"
 		HorizontalScrollBarVisibility="Disabled">
 		<Grid MinWidth="200"> <!-- use minimum width to avoid the text wrapping from getting ridiculous -->
 			<Grid.RowDefinitions>

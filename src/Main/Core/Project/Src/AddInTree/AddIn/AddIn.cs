@@ -121,6 +121,7 @@ namespace ICSharpCode.Core
 			// so "bool dependenciesLoaded" must be volatile and set only at the very end of this method.
 			if (!dependenciesLoaded) {
 				LoggingService.Info("Loading addin " + this.Name);
+				StartupProgress.Report("Loading " + this.Name);
 				
 				AssemblyLocator.Init();
 				foreach (AddInReference r in manifest.Dependencies) {

@@ -47,10 +47,14 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		const string workbenchMemento = "WorkbenchMemento";
 		const string activeContentState = "Workbench.ActiveContent";
 		App app;
+		/// <summary>Set by SharpDevelopMain.RunApplication when the startup splash owns the WPF run
+		/// loop: the Application already exists (Application.Current) and Run() must leave that loop
+		/// running rather than calling app.Run, which can only be called once per process.</summary>
+		internal static bool ExternalRunLoop;
 		
 		public void InitializeWorkbench()
 		{
-			app = new App();
+			app = ExternalRunLoop && System.Windows.Application.Current is App current ? current : new App();
 			// WindowsFormsHost.EnableWindowsFormsInterop() removed - no WinForms interop in this MVP build.
 			ComponentDispatcher.ThreadIdle -= ComponentDispatcher_ThreadIdle; // ensure we don't register twice
 			ComponentDispatcher.ThreadIdle += ComponentDispatcher_ThreadIdle;
@@ -233,7 +237,16 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			});
 
 			// finally run the workbench window ...
-			app.Run(SD.Workbench.MainWindow);
+			if (ExternalRunLoop) {
+				// The startup splash owns the run loop (SharpDevelopMain.RunApplication started it
+				// with the splash as the first window); reveal the workbench and let the caller
+				// keep the loop - app.Run can only be called once per process.
+				var mainWindow = SD.Workbench.MainWindow;
+				app.MainWindow = mainWindow;
+				mainWindow.Show();
+			} else {
+				app.Run(SD.Workbench.MainWindow);
+			}
 			
 			// save the workbench memento in the ide properties
 			try {

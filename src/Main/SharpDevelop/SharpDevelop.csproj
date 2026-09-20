@@ -80,6 +80,9 @@
          dotnet.exe's generic one. Embedding the icon here and setting it explicitly makes the
          running window's icon correct regardless of which process hosts it. -->
     <Resource Include="..\..\..\build\windows\opendevelop.ico" Link="Resources\opendevelop.ico" />
+    <!-- Startup splash artwork (Startup/SplashScreenForm.xaml), embedded so a packaged app carries it
+         without an external images/ folder. -->
+    <Resource Include="..\..\..\images\social.png" Link="Startup\social.png" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\Libraries\AvalonDock\source\Components\AvalonDock.Core\AvalonDock.Core.csproj" />
@@ -244,8 +247,8 @@
          out of scope per docs/opendevelop.md). Not needed to boot an empty WPF workbench window; real build
          integration is deferred (R6+). -->
     <Compile Remove="Project\Build\MSBuildEngine\**\*.cs" />
-    <!-- Out of MVP scope: WinForms Form-based splash screen; replaced by Startup\SplashScreenForm.cs (a
-         plain static class keeping only the pure command-line-parsing logic SharpDevelopMain.cs needs). -->
+    <!-- The WinForms Form-based splash screen, rewritten as Startup\SplashScreenForm.xaml
+         (same type name, SplashScreenForm). -->
     <Compile Remove="Startup\SplashScreen.cs" />
   </ItemGroup>
   <!--

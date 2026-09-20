@@ -97,21 +97,14 @@ namespace ICSharpCode.SharpDevelop.Startup
 			// We want to show the SplashScreen while those libraries are loading, so
 			// don't call LoggingService.
 			
-			bool noLogo = false;
-
 			SplashScreenForm.SetCommandLineArgs(commandLineArgs);
-
-			foreach (string parameter in SplashScreenForm.GetParameterList()) {
-				if ("nologo".Equals(parameter, StringComparison.OrdinalIgnoreCase))
-					noLogo = true;
-			}
 
 			if (!CheckEnvironment())
 				return;
 
-			if (!noLogo) {
-				SplashScreenForm.ShowSplashScreen();
-			}
+			// The splash (SplashScreenForm, the WPF rewrite of the old WinForms one) is shown by
+			// RunApplication, which also decides - via SplashScreenForm.IsLogoSuppressed() - whether
+			// to use the splash-first startup path at all.
 			RunApplication();
 		}
 
@@ -216,15 +209,7 @@ namespace ICSharpCode.SharpDevelop.Startup
 					}
 				}
 				
-				SharpDevelopHost host = new SharpDevelopHost(AppDomain.CurrentDomain, startup);
-				
 				string[] fileList = SplashScreenForm.GetRequestedFileList();
-				if (fileList.Length > 0) {
-					if (LoadFilesInPreviousInstance(fileList)) {
-						LoggingService.Info("Aborting startup, arguments will be handled by previous instance");
-						return;
-					}
-				}
 				
 				// SplashScreenForm.SplashScreen is always null in this MVP build (WinForms splash screen
 				// removed) - nothing to dispose here.
@@ -235,10 +220,66 @@ namespace ICSharpCode.SharpDevelop.Startup
 					workbenchSettings.InitialFileList.Add(fileList[i]);
 				}
 				SDTraceListener.Install();
-				host.RunWorkbench(workbenchSettings);
+
+				if (SplashScreenForm.IsLogoSuppressed()) {
+					// No splash (-nologo, or the integration-test harness with OD_TEST_MODE=1): keep
+					// the original single-pass startup - build the host and workbench here, then let
+					// RunWorkbench block in app.Run until shutdown.
+					SharpDevelopHost host = new SharpDevelopHost(AppDomain.CurrentDomain, startup);
+					if (fileList.Length > 0 && LoadFilesInPreviousInstance(fileList)) {
+						LoggingService.Info("Aborting startup, arguments will be handled by previous instance");
+						return;
+					}
+					host.RunWorkbench(workbenchSettings);
+				} else {
+					RunWithSplash(startup, fileList, workbenchSettings);
+				}
 			} finally {
 				LoggingService.Info("Leaving RunApplication()");
 			}
+		}
+
+		/// <summary>
+		/// Splash-first startup. The splash has to be the WPF application's FIRST window: LibreWPF
+		/// only maps a window while the run loop is running, so starting the loop with the splash
+		/// and building the host/addin tree/workbench from inside it is what makes the splash
+		/// actually visible during the (long) core + addin load - a Show() before app.Run creates
+		/// the window but never puts it on screen. <see cref="WorkbenchStartup.ExternalRunLoop"/>
+		/// makes the workbench reuse this loop instead of starting its own, and CallHelper moves its
+		/// unload cleanup to application exit.
+		/// </summary>
+		static void RunWithSplash(StartupSettings startup, string[] fileList, WorkbenchSettings workbenchSettings)
+		{
+			var app = new App();
+			var splash = new SplashScreenForm();
+			WorkbenchStartup.ExternalRunLoop = true;
+			LoggingService.Info("Startup splash: starting the run loop with the splash as the first window");
+			// The splash is the only window until the workbench is up; the default
+			// OnLastWindowClose would exit the process the moment the splash closes.
+			app.ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown;
+			app.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() => {
+				try {
+					ICSharpCode.Core.StartupProgress.Report("Starting OpenDevelop core…");
+					SharpDevelopHost host = new SharpDevelopHost(AppDomain.CurrentDomain, startup);
+					if (fileList.Length > 0 && LoadFilesInPreviousInstance(fileList)) {
+						LoggingService.Info("Aborting startup, arguments will be handled by previous instance");
+						return;
+					}
+					host.RunWorkbench(workbenchSettings);
+				} catch (Exception ex) {
+					LoggingService.Fatal("OpenDevelop startup failed", ex);
+				} finally {
+					var mainWindow = SD.Workbench != null ? SD.Workbench.MainWindow : null;
+					if (mainWindow == null) {
+						app.Shutdown();
+					} else {
+						app.MainWindow = mainWindow;
+						app.ShutdownMode = System.Windows.ShutdownMode.OnMainWindowClose;
+					}
+					try { splash.Close(); } catch { /* the splash must never affect startup */ }
+				}
+			}));
+			app.Run(splash);
 		}
 
 		/// <summary>Full path with any trailing separator removed, for comparing directories.</summary>

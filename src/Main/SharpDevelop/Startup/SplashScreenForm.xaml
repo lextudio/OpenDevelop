@@ -1,0 +1,21 @@
+<Window x:Class="ICSharpCode.SharpDevelop.Startup.SplashScreenForm"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="OpenDevelop"
+        WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False"
+        Width="640" Height="456" WindowStartupLocation="CenterScreen"
+        Background="#FF16123A">
+	<!-- The WPF rewrite of the original WinForms splash (Startup/SplashScreen.cs, excluded via
+	     <Compile Remove>): same type name (SplashScreenForm), so the port is obvious at a glance.
+	     Artwork on top, live core/addin progress docked at the bottom. -->
+	<DockPanel>
+		<StackPanel DockPanel.Dock="Bottom" Margin="18,0,18,16">
+			<TextBlock x:Name="Status" Foreground="White" FontSize="13" TextWrapping="NoWrap"
+			           TextTrimming="CharacterEllipsis" Text="Starting OpenDevelop…" />
+			<TextBlock x:Name="Recent" Margin="0,6,0,0" Foreground="#FFB9B6D6" FontSize="11"
+			           Height="76" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+		</StackPanel>
+		<Image x:Name="Artwork" Stretch="Uniform" Margin="0"
+		       Source="pack://application:,,,/OpenDevelop;component/Startup/social.png" />
+	</DockPanel>
+</Window>
