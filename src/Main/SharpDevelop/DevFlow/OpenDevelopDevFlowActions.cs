@@ -2585,6 +2585,18 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 
+		[DevFlowAction("od.property-pad.selected-object", Description = "Report the shared Properties pad's actual live-bound SelectedObject (the Xceed grid's own property, not any pad-internal model) - proves whether the pad is really showing something for the currently active pad/view, e.g. after selecting a Projects pad node (regression cover for IHasPropertyContainer wiring)")]
+		public static string GetPropertyPadSelectedObject()
+		{
+			var viewModel = OpenDevelopMefHost.ExportProvider.GetExportedValue<PropertyPadViewModel>();
+			var selected = viewModel.Grid.SelectedObject;
+			return JsonSerializer.Serialize(new {
+				success = true,
+				hasSelection = selected != null,
+				typeName = selected?.GetType().FullName
+			});
+		}
+
 		[DevFlowAction("od.workbench.switch-layout", Description = "Switch the active named workbench layout (Default/Debug/Plain, or an AddIn-contributed one e.g. ILSpy via ILayoutTemplateProvider) by driving LayoutConfiguration.CurrentLayoutName directly - bypasses ChooseLayoutComboBox's UI (which the WPF-embedded DevFlow agent can't reliably drive through its popup), so tests can verify AddIn layout-activation (ILayoutTemplateProvider.OnActivating) deterministically")]
 		public static string SwitchLayout(string layoutName)
 		{

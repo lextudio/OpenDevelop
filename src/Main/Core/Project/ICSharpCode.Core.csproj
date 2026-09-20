@@ -14,5 +14,18 @@
   <ItemGroup>
     <!-- GlobalAssemblyInfo.cs is outside project dir, must be linked explicitly -->
     <Compile Include="..\..\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
+    <!-- MessageBus/MessageBus<T> (the generic publish/subscribe primitive only - the ILSpy-specific
+         message payloads are a separate file) is shared with ILSpyAddIn by source-linking rather
+         than by referencing that AddIn, which would be circular: ILSpyAddIn references THIS assembly.
+         The file stays in ILSpy's own tree because that is where the primitive came from, and
+         ILSpyAddIn.csproj Compile-Removes it, so the one type identity lives here and both the shell
+         and the AddIn publish/subscribe on the same static bus. -->
+    <Compile Include="..\..\..\AddIns\DisplayBindings\ILSpyAddIn\ILSpy\Util\MessageBus.cs" Link="MessageBus\MessageBus.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- WeakEventSource<T>, used by the linked MessageBus<T>: subscriptions are weak because
+         ILSpy's tree nodes and document views subscribe per-instance from their constructors, so a
+         plain strong event would keep every closed node alive. -->
+    <PackageReference Include="TomsToolbox.Essentials" />
   </ItemGroup>
 </Project>

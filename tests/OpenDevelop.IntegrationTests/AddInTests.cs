@@ -4067,6 +4067,14 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.NotEqual(default, classDiagramAddIn.ValueKind);
         Assert.True(classDiagramAddIn.GetProperty("enabled").GetBoolean(), classDiagramAddIn.ToString());
 
+        // Activate the Projects pad first so it becomes the workbench's ActiveContent - the
+        // Properties pad only follows a pad's selection while that pad is active
+        // (PropertyPadViewModel.WorkbenchActiveContentChanged). This is what regressed when
+        // ProjectBrowserViewModel stopped implementing IHasPropertyContainer: selecting any
+        // Projects pad node left the Properties pad empty no matter what.
+        var shown = await _app.InvokeAsync("od.show-pad", "Projects");
+        Assert.True(shown.GetProperty("found").GetBoolean(), shown.ToString());
+
         var menu = await _app.InvokeAsync("od.project-context-menu", "SampleApp");
 
         Assert.True(menu.GetProperty("success").GetBoolean(), menu.TryGetProperty("error", out var error) ? error.GetString() : null);
@@ -4074,6 +4082,13 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Equal("SampleApp", menu.GetProperty("descendantCurrentProject").GetString());
         var labels = menu.GetProperty("labels").EnumerateArray().Select(item => item.GetString()).ToArray();
         Assert.Contains("Class Diagram", labels);
+
+        // od.project-context-menu's own SelectedNode assignment (used above to build the menu)
+        // is also a real Projects pad selection - the Properties pad must reflect it.
+        var propertyPadSelection = await _app.InvokeAsync("od.property-pad.selected-object");
+        Assert.True(propertyPadSelection.GetProperty("hasSelection").GetBoolean(), propertyPadSelection.ToString());
+        Assert.Equal("ICSharpCode.SharpDevelop.Services.ProjectBrowserNodeProperties",
+            propertyPadSelection.GetProperty("typeName").GetString());
 
         var model = await _app.InvokeAsync("od.class-diagram-project-model", "SampleApp");
         Assert.True(model.GetProperty("success").GetBoolean(), model.TryGetProperty("error", out error) ? error.GetString() : null);

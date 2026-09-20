@@ -6,6 +6,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 
 using ICSharpCode.SharpDevelop.Designer.Remote;
+using ICSharpCode.ILSpy.Util;
 using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.SharpDevelop.Workbench;
 
@@ -200,6 +201,17 @@ internal sealed class PropertyPadViewModel : ToolPaneModel, IPropertyPadHost, ID
         subscribed = true;
         SD.Workbench.ActiveContentChanged += WorkbenchActiveContentChanged;
         SD.Workbench.ActiveViewContentChanged += WorkbenchActiveContentChanged;
+        // SD.Workbench.ActiveContentChanged (above) only fires for DOCUMENT activation -
+        // WpfWorkbench.UpdateActiveTracking deliberately freezes SD.Workbench.ActiveContent at the
+        // last document while a tool pane (e.g. the Projects pad) is focused, so that
+        // ActiveViewContent survives switching focus away from the editor. That means a tool
+        // pane's own IHasPropertyContainer (e.g. ProjectBrowserViewModel, selecting a Projects pad
+        // node) never reaches this handler through the events above. The docking layer broadcasts
+        // its own raw active content on the shared MessageBus (AvalonDockLayout publishes it), so
+        // subscribe there too - see the priority check in WorkbenchActiveContentChanged. The bus is
+        // used rather than the layout's ActiveContentChanged event so this pad stays independent of
+        // the concrete workbench-layout type.
+        MessageBus<ActiveDockContentChangedEventArgs>.Subscribers += WorkbenchActiveContentChanged;
         WorkbenchActiveContentChanged(null, null);
     }
 
@@ -242,12 +254,26 @@ internal sealed class PropertyPadViewModel : ToolPaneModel, IPropertyPadHost, ID
 
     void WorkbenchActiveContentChanged(object sender, EventArgs e)
     {
+        // Raw dock-level active content (the ItemsSource-bound ToolPaneModel for a focused tool
+        // pane, or an AvalonWorkbenchWindow for a focused document), checked first because
+        // SD.Workbench.ActiveContent below never reflects a tool pane (see EnsureSubscribed).
+        // Push: the MessageBus broadcast carries the value whenever the dock's active content
+        // changes. Pull: fall back to reading it back off the layout, because a pane that was
+        // ALREADY active before this pad subscribed never produces a change broadcast at all -
+        // without the pull the pad would sit on the empty container forever (measured: activating
+        // the Projects pad while a document was docked active worked, re-activating the pad that
+        // was already active did not).
+        IHasPropertyContainer c = (e as ActiveDockContentChangedEventArgs)?.Content as IHasPropertyContainer;
+        if (c == null && SD.Workbench is WpfWorkbench wpfWorkbench) {
+            c = wpfWorkbench.WorkbenchLayout?.ActiveDockContent as IHasPropertyContainer;
+        }
+
         var activeViewOrPad = SD.Workbench.ActiveContent;
         // Secondary designer views (WinUI, WPF and Forms) implement IHasPropertyContainer
         // directly.  They are not IServiceProvider instances, so looking only through GetService
         // loses their selection whenever ActiveContent is the view itself; the grid then retains
         // the empty container even though the design surface has selected a control.
-        IHasPropertyContainer c = activeViewOrPad as IHasPropertyContainer
+        c = c ?? activeViewOrPad as IHasPropertyContainer
             ?? (activeViewOrPad as IServiceProvider)?.GetService<IHasPropertyContainer>();
         if (c == null) {
             c = SD.Workbench.ActiveViewContent as IHasPropertyContainer;
@@ -273,5 +299,6 @@ internal sealed class PropertyPadViewModel : ToolPaneModel, IPropertyPadHost, ID
             return;
         SD.Workbench.ActiveContentChanged -= WorkbenchActiveContentChanged;
         SD.Workbench.ActiveViewContentChanged -= WorkbenchActiveContentChanged;
+        MessageBus<ActiveDockContentChangedEventArgs>.Subscribers -= WorkbenchActiveContentChanged;
     }
 }

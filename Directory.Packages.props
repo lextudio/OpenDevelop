@@ -103,6 +103,11 @@
     <PackageVersion Include="System.Net.Http.Json" Version="11.0.0-preview.5.26302.115" />
     <PackageVersion Include="System.Windows.Extensions" Version="11.0.0-preview.5.26302.115" />
     <PackageVersion Include="TomsToolbox.Composition.Analyzer" Version="2.24.0" />
+    <!-- ICSharpCode.Core references this directly for MessageBus<T>'s WeakEventSource<T> (moved
+         from ILSpyAddIn's own MessageBus.cs, which used the same package transitively via
+         TomsToolbox.Wpf) - it's a dependency-free, non-WPF module, safe for the foundational Core
+         project. Pinned to match the sibling TomsToolbox.* packages below. -->
+    <PackageVersion Include="TomsToolbox.Essentials" Version="2.24.0" />
     <PackageVersion Include="TomsToolbox.Composition.MicrosoftExtensions" Version="2.24.0" />
     <PackageVersion Include="TomsToolbox.Wpf.Composition.AttributedModel" Version="2.24.0" />
     <PackageVersion Include="TomsToolbox.Wpf.Styles" Version="2.24.0" />

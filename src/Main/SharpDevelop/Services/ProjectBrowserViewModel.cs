@@ -21,11 +21,17 @@ namespace ICSharpCode.SharpDevelop.Services;
 [Export(typeof(ProjectBrowserViewModel))]
 [Export("ToolPane", typeof(ToolPaneModel))]
 [Shared]
-internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHost, IDisposable
+internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHost, IHasPropertyContainer, IDisposable
 {
     private readonly IProjectBrowserController controller = ServiceSingleton.GetRequiredService<IProjectBrowserController>();
     private readonly IProjectBrowserOverlayService overlayService = ServiceSingleton.ServiceProvider.GetService<IProjectBrowserOverlayService>();
     private readonly PropertyContainer propertyContainer = new PropertyContainer();
+
+    // Legacy ProjectBrowserPad implemented IHasPropertyContainer so PropertyPadViewModel could
+    // discover its PropertyContainer when this pad became the active content; this ToolPaneModel
+    // replacement never picked up the interface, so the Properties pad stayed empty for every
+    // selection (doc/technotes/ilspy.md docking migration).
+    public PropertyContainer PropertyContainer => propertyContainer;
     private readonly SemaphoreSlim treeBuildGate = new SemaphoreSlim(1, 1);
     private ProjectBrowserNodeModel selectedNode;
     private bool showAllFiles;

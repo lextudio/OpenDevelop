@@ -33,6 +33,13 @@
   <ItemGroup>
     <Compile Remove="DebuggerTextOutput.cs" />
     <Compile Remove="ILSpySymbolSource.cs" />
+    <!-- MessageBus/MessageBus<T> is source-linked into ICSharpCode.Core (see that project's
+         <Compile Include ... Link>) and compiled ONLY there. This addin references ICSharpCode.Core,
+         so it consumes that one shared static bus; compiling its own copy here would create a second,
+         independent MessageBus<T> that never sees the shell's Sends (or vice versa) - the classic
+         same-source-in-two-assemblies duplicate. The ILSpy-specific message payloads live in the
+         sibling MessageBusMessages.cs and DO stay in this assembly. -->
+    <Compile Remove="ILSpy\Util\MessageBus.cs" />
     <!-- OpenDevelop is migrating fully to WPF (no WinForms/LibreWinForms compat layer). The
          legacy "launch external ILSpy.exe" flow (LaunchILSpy/*) used System.Windows.Forms
          (SetILSpyPathDialog, an OpenFileDialog-based path picker) and is superseded anyway by

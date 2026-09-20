@@ -17,12 +17,6 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Collections.Specialized;
-using System.ComponentModel;
-using System.Windows.Navigation;
-
-using ICSharpCode.ILSpy.TextView;
-using ICSharpCode.ILSpy.ViewModels;
 
 using TomsToolbox.Essentials;
 
@@ -30,6 +24,22 @@ using TomsToolbox.Essentials;
 
 namespace ICSharpCode.ILSpy.Util
 {
+	// The generic publish/subscribe primitive on its own. This file is SOURCE-LINKED: it is compiled
+	// into ICSharpCode.Core (see ICSharpCode.Core.csproj's <Compile Include ... Link>) and
+	// Compile-Removed from ILSpyAddIn.csproj, so exactly one MessageBus/MessageBus<T> identity exists
+	// in the process. Two copies would be two independent static buses: a Send from the shell (which
+	// references ICSharpCode.Core) would never reach a Subscriber registered by this AddIn, and vice
+	// versa - a silent, per-message-instance kind of wrong.
+	//
+	// It stays here, in ILSpy's own tree, because this is where the primitive came from; the
+	// ILSpy-SPECIFIC message types deliberately do NOT live here any more - they are in
+	// MessageBusMessages.cs, which is not linked into Core (they reference TabPageModel,
+	// SessionSettings, ViewState, ... and would drag ILSpy into the shell).
+	//
+	// Subscriptions are weak (TomsToolbox.Essentials' WeakEventSource<T>) because ILSpy's tree nodes
+	// and document views subscribe per-instance from their constructors - a plain strong event would
+	// keep every closed node alive for the lifetime of the process.
+
 	public static class MessageBus
 	{
 		public static void Send<T>(object? sender, T e)
@@ -57,70 +67,5 @@ namespace ICSharpCode.ILSpy.Util
 		{
 			subscriptions.Raise(sender!, e);
 		}
-	}
-
-	public abstract class WrappedEventArgs<T> : EventArgs
-	{
-		private readonly T inner;
-
-		protected WrappedEventArgs(T inner)
-		{
-			this.inner = inner;
-		}
-
-		public static implicit operator T(WrappedEventArgs<T> outer)
-		{
-			return outer.inner;
-		}
-	}
-
-	public class CurrentAssemblyListChangedEventArgs(NotifyCollectionChangedEventArgs e) : WrappedEventArgs<NotifyCollectionChangedEventArgs>(e);
-	public class TabPagesCollectionChangedEventArgs(NotifyCollectionChangedEventArgs e) : WrappedEventArgs<NotifyCollectionChangedEventArgs>(e);
-
-	public class SettingsChangedEventArgs(PropertyChangedEventArgs e) : WrappedEventArgs<PropertyChangedEventArgs>(e);
-
-	public class NavigateToReferenceEventArgs(object reference, object? source = null, bool inNewTabPage = false) : EventArgs
-	{
-		public object Reference { get; } = reference;
-		public object? Source { get; } = source;
-		public bool InNewTabPage { get; } = inNewTabPage;
-	}
-
-	public class NavigateToEventArgs(RequestNavigateEventArgs request, bool inNewTabPage = false) : EventArgs
-	{
-		public RequestNavigateEventArgs Request { get; } = request;
-
-		public bool InNewTabPage { get; } = inNewTabPage;
-	}
-
-	public class AssemblyTreeSelectionChangedEventArgs() : EventArgs;
-
-	public class ApplySessionSettingsEventArgs(SessionSettings sessionSettings) : EventArgs
-	{
-		public SessionSettings SessionSettings { get; } = sessionSettings;
-	}
-
-	public class MainWindowLoadedEventArgs() : EventArgs;
-
-	public class ActiveTabPageChangedEventArgs(ViewState? viewState) : EventArgs
-	{
-		public ViewState? ViewState { get; } = viewState;
-	}
-
-	public class ResetLayoutEventArgs : EventArgs;
-
-	public class ShowAboutPageEventArgs(TabPageModel tabPage) : EventArgs
-	{
-		public TabPageModel TabPage { get; } = tabPage;
-	}
-
-	public class ShowSearchPageEventArgs(string? searchTerm) : EventArgs
-	{
-		public string? SearchTerm { get; } = searchTerm;
-	}
-
-	public class CheckIfUpdateAvailableEventArgs(bool notify = false) : EventArgs
-	{
-		public bool Notify { get; } = notify;
 	}
 }
