@@ -124,7 +124,48 @@ namespace ICSharpCode.SharpDevelop.Project
 			// Determinism is already achieved by the explicit locale, without disabling ICU.
 			psi.EnvironmentVariables["LANG"] = "en_US.UTF-8";
 			psi.EnvironmentVariables["LC_ALL"] = "en_US.UTF-8";
+			// The LibreWPF SDK compiles a tiny native Win32-compat shim with `cc` on macOS. With no
+			// SDKROOT, clang falls back to its own SDK search order and picks the CommandLineTools
+			// SDK, which on this toolchain carries architectures the installed linker rejects
+			// ("MacOSX27.0.sdk ... error: unknown architecture") - so every LibreWPF.Sdk project's
+			// build failed at that final shim step (the assembly itself is written earlier, which is
+			// why the failure was easy to miss). Point the build child at Xcode's macOS SDK, the
+			// same one `xcrun --sdk macosx --show-sdk-path` reports, so an in-IDE build matches a
+			// shell `dotnet build` with SDKROOT exported. Only when the caller hasn't chosen one.
+			if (OperatingSystem.IsMacOS()
+				&& !(psi.Environment.TryGetValue("SDKROOT", out var existingSdkRoot) && !string.IsNullOrEmpty(existingSdkRoot))) {
+				var xcodeSdkRoot = MacOsSdkRoot.Value;
+				if (!string.IsNullOrEmpty(xcodeSdkRoot))
+					psi.Environment["SDKROOT"] = xcodeSdkRoot;
+			}
 			return psi;
+		}
+
+		static readonly Lazy<string> MacOsSdkRoot = new(TryGetMacOsSdkRoot);
+
+		/// <summary>Xcode's current macOS SDK path, or null when xcrun/SDK are unavailable.</summary>
+		static string TryGetMacOsSdkRoot()
+		{
+			try {
+				var psi = new ProcessStartInfo("xcrun") {
+					UseShellExecute = false,
+					RedirectStandardOutput = true,
+					RedirectStandardError = true,
+					CreateNoWindow = true
+				};
+				psi.ArgumentList.Add("--sdk");
+				psi.ArgumentList.Add("macosx");
+				psi.ArgumentList.Add("--show-sdk-path");
+				using var process = Process.Start(psi);
+				if (process == null)
+					return null;
+				var output = process.StandardOutput.ReadToEnd().Trim();
+				process.StandardError.ReadToEnd();
+				process.WaitForExit(5000);
+				return process.ExitCode == 0 && Directory.Exists(output) ? output : null;
+			} catch {
+				return null;
+			}
 		}
 
 		/// <summary>
