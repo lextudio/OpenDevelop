@@ -39,8 +39,11 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload.Wpf
 				return false;
 			}
 
-			if (LocateAgent() == null) {
-				diagnostic = "The WPF Hot Reload agent was not found next to the IDE.";
+			// Both LibreWPF and Microsoft WPF use WPF markup, but each needs the agent built
+			// against its own runtime. Route on the detected runtime, and refuse when the matching
+			// agent is not deployed rather than hand a Microsoft WPF debuggee the portable agent.
+			if (LocateAgent(framework.Runtime) == null) {
+				diagnostic = $"The {Describe(framework.Runtime)} Hot Reload agent was not found next to the IDE.";
 				return false;
 			}
 
@@ -68,8 +71,10 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload.Wpf
 			if (startInfo == null)
 				throw new ArgumentNullException(nameof(startInfo));
 
-			var agent = LocateAgent()
-				?? throw new InvalidOperationException("The WPF Hot Reload agent was not found next to the IDE.");
+			var runtime = RuntimeOf(context);
+			var agent = LocateAgent(runtime)
+				?? throw new InvalidOperationException(
+					$"The {Describe(runtime)} Hot Reload agent was not found next to the IDE.");
 
 			// Unguessable per-launch name: the agent's pipe is an unauthenticated local endpoint,
 			// so the name is the only thing keeping another process off this session.
@@ -99,21 +104,44 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload.Wpf
 		}
 
 		/// <summary>
-		/// The agent ships next to the IDE. It is a plain assembly loaded by the target runtime, so
-		/// it only has to exist on disk - it is never loaded into the IDE itself.
+		/// The runtime this launch targets. Selection only needs the project; the test path (and a
+		/// manual launch) has none, so default to the portable agent - the one a macOS/Linux host
+		/// can actually run. On Windows a Microsoft.NET.Sdk + UseWPF project is detected as
+		/// <see cref="XamlRuntimeKind.MicrosoftWpf"/> and gets the Windows Desktop agent instead.
 		/// </summary>
-		internal static string LocateAgent()
+		static XamlRuntimeKind RuntimeOf(HotReloadLaunchContext context)
+		{
+			var project = context?.Project;
+			if (project == null)
+				return XamlRuntimeKind.LibreWpf;
+			return XamlFrameworkDetector.DetectProjectFile(project.FileName).Runtime;
+		}
+
+		static string SubdirectoryFor(XamlRuntimeKind runtime)
+			=> runtime == XamlRuntimeKind.MicrosoftWpf ? "microsoft" : "librewpf";
+
+		static string Describe(XamlRuntimeKind runtime)
+			=> runtime == XamlRuntimeKind.MicrosoftWpf ? "Microsoft WPF" : "LibreWPF";
+
+		/// <summary>
+		/// The agent ships next to the IDE, one build per runtime under HotReload/&lt;runtime&gt;/.
+		/// It is a plain assembly loaded by the target runtime, so it only has to exist on disk - it
+		/// is never loaded into the IDE itself.
+		/// </summary>
+		internal static string LocateAgent(XamlRuntimeKind runtime)
 		{
 			// OD_WPF_HOTRELOAD_AGENT first so a host that is not the IDE - a test runner, above all
-			// - can point at the deployed agent instead of needing a copy of its own.
+			// - can point at a specific deployed agent instead of needing a copy of its own.
 			var configured = Environment.GetEnvironmentVariable("OD_WPF_HOTRELOAD_AGENT");
 			if (!string.IsNullOrEmpty(configured) && File.Exists(configured))
 				return configured;
 
 			var baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
 			foreach (var candidate in new[] {
-				Path.Combine(baseDirectory, "WpfHotReload.Agent.dll"),
+				Path.Combine(baseDirectory, "HotReload", SubdirectoryFor(runtime), "WpfHotReload.Agent.dll"),
+				// Pre-variant layout, kept so an older deployment still resolves.
 				Path.Combine(baseDirectory, "HotReload", "WpfHotReload.Agent.dll"),
+				Path.Combine(baseDirectory, "WpfHotReload.Agent.dll"),
 			}) {
 				if (File.Exists(candidate))
 					return candidate;

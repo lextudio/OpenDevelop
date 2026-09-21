@@ -66,6 +66,27 @@ Two mechanics worth knowing before driving the pipe from a test:
 commands and output channel (`HotReloadCommands.cs`), and the WPF adapter under
 `HotReload/Wpf/`. Adapters are contributed at `/SharpDevelop/HotReload/Adapters`.
 
+#### Agent variants: LibreWPF vs Microsoft WPF
+
+The agent is source-linked once (`src/Main/HotReload/WpfHotReload.Agent.Shared.props`) and built
+twice, because the two runtimes need their own assembly even though the agent source is identical:
+
+| Variant | SDK | Deployed to | Runs on |
+| --- | --- | --- | --- |
+| `WpfHotReload.Agent` | `LibreWPF.Sdk` | `HotReload/librewpf/` | LibreWPF (macOS/Linux, and Windows) |
+| `WpfHotReload.Agent.Microsoft` | `Microsoft.NET.Sdk` | `HotReload/microsoft/` | Windows Desktop (Microsoft WPF) |
+
+`WpfApplicationHotReloadAdapter` routes on `XamlFrameworkDetector`'s `Runtime`
+(`XamlRuntimeKind.LibreWpf` / `MicrosoftWpf`) and refuses (`CanHandle` → false) when the matching
+agent is not deployed, so a Microsoft WPF debuggee is never handed the portable agent.
+
+The Microsoft variant sets `EnableWindowsTargeting` so it restores and **compiles** on macOS,
+catching compile errors locally - but running it needs Windows, and the end-to-end test is the only
+thing that proves that path. The current E2E run (`WpfHotReloadEndToEndTests`) exercises the
+LibreWPF variant on macOS; a Windows run against a `Microsoft.NET.Sdk` fixture is still outstanding
+and must live in CI, not on a macOS dev machine.
+
+
 The abstraction's acceptance test is met: `grep UnoHotReloadService src/Main/Base/Project/Src/`
 returns nothing, and `DefaultProjectBehavior` names no framework.
 

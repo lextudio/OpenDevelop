@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Microsoft WPF (Windows Desktop) variant of the WPF Hot Reload agent. Same linked sources and
+       assembly as the LibreWPF variant (see WpfHotReload.Agent.Shared.props); the only differences
+       are the SDK and the deploy subdirectory, so WpfApplicationHotReloadAdapter can hand the right
+       one to a Windows Desktop debuggee. -->
+  <PropertyGroup>
+    <HotReloadAgentRuntime>microsoft</HotReloadAgentRuntime>
+    <!-- Lets a non-Windows dev machine restore and compile this variant (pulling the WindowsDesktop
+         reference packs) so compile errors are caught locally. Running it still requires Windows:
+         the end-to-end test is the only thing that proves the Microsoft WPF path, and that runs in
+         Windows CI. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <Import Project="..\WpfHotReload.Agent.Shared.props" />
+
+</Project>

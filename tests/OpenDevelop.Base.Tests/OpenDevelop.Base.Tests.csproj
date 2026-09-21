@@ -67,6 +67,16 @@
              Targets="Build" Properties="Configuration=$(Configuration)" />
   </Target>
 
+  <!-- The Microsoft WPF agent variant. Nothing else builds it, so a Windows run of the Hot Reload
+       journey would otherwise find no agent to inject. Gated to Windows: on macOS/Linux only the
+       LibreWPF variant can actually run, and building the Windows Desktop one there adds nothing
+       (it still compiles locally via EnableWindowsTargeting when built directly). -->
+  <Target Name="BuildMicrosoftHotReloadAgentForTests" BeforeTargets="Build"
+          Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <MSBuild Projects="$(MSBuildThisFileDirectory)../../src/Main/HotReload/WpfHotReload.Agent.Microsoft/WpfHotReload.Agent.Microsoft.csproj"
+             Targets="Build" Properties="Configuration=$(Configuration)" />
+  </Target>
+
   <Target Name="RemoveDesktopRuntimeFramework" AfterTargets="ProcessFrameworkReferences" BeforeTargets="FixupRuntimeFrameworkVersions">
     <ItemGroup>
       <RuntimeFramework Remove="@(RuntimeFramework)" Condition="'%(RuntimeFramework.Identity)' == 'Microsoft.WindowsDesktop.App'" />

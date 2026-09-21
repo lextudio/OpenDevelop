@@ -1,38 +1,13 @@
 <Project Sdk="LibreWPF.Sdk">
+
+  <!-- LibreWPF (macOS/Linux) variant of the WPF Hot Reload agent. Everything shared - the linked
+       agent sources, assembly identity and compile settings - lives in WpfHotReload.Agent.Shared.props;
+       this project only chooses the SDK and the deploy subdirectory. The Microsoft WPF variant is
+       the sibling project WpfHotReload.Agent.Microsoft. -->
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
-    <RootNamespace>WpfHotReload.Runtime</RootNamespace>
-    <AssemblyName>WpfHotReload.Agent</AssemblyName>
-    <UseWPF>true</UseWPF>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <!-- StartupHook must sit in the default namespace with this exact name: the runtime
-         looks for a type literally called "StartupHook" with a static Initialize(). -->
-    <NoWarn>$(NoWarn);CS8632</NoWarn>
+    <HotReloadAgentRuntime>librewpf</HotReloadAgentRuntime>
   </PropertyGroup>
 
-  <!-- The agent itself is vscode-wpf's; it is source-linked rather than copied so it keeps its
-       own licence and dependency boundary, and so a fix on either side stays in one place.
-       It only needs the WPF diagnostic APIs, which it resolves by reflection, so the same
-       source compiles against LibreWPF for macOS/Linux as against Microsoft WPF. -->
-  <ItemGroup>
-    <Compile Include="..\..\..\..\externals\vscode-wpf\src\WpfHotReload.Runtime\WpfHotReloadAgent.cs" Link="WpfHotReloadAgent.cs" />
-    <Compile Include="..\..\..\..\externals\vscode-wpf\src\WpfHotReload.Runtime\StartupHook.cs" Link="StartupHook.cs" />
-  </ItemGroup>
+  <Import Project="..\WpfHotReload.Agent.Shared.props" />
 
-  <!-- Deploy next to the IDE, where WpfApplicationHotReloadAdapter.LocateAgent looks for it.
-       The agent is never loaded into the IDE: it is only handed to the debuggee's runtime
-       through DOTNET_STARTUP_HOOKS, so it just has to exist on disk at a known path. That is
-       also why this is a plain copy and not a ProjectReference - referencing it would pull the
-       agent's assembly into the IDE's own load context for no reason. -->
-  <Target Name="DeployAgentToShell" AfterTargets="Build">
-    <PropertyGroup>
-      <_ShellHotReloadDir>$(MSBuildThisFileDirectory)..\..\SharpDevelop\bin\$(Configuration)\$(TargetFramework)\HotReload\</_ShellHotReloadDir>
-    </PropertyGroup>
-    <ItemGroup>
-      <_AgentPayload Include="$(TargetDir)$(TargetName).dll" />
-      <_AgentPayload Include="$(TargetDir)$(TargetName).pdb" Condition="Exists('$(TargetDir)$(TargetName).pdb')" />
-    </ItemGroup>
-    <Copy SourceFiles="@(_AgentPayload)" DestinationFolder="$(_ShellHotReloadDir)" SkipUnchangedFiles="true" />
-  </Target>
 </Project>
