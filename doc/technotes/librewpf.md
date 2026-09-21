@@ -83,7 +83,7 @@ Clearing the NuGet cache isn't the only staleness trap — an OpenDevelop projec
 can also go stale and MSBuild won't notice, because incremental build only tracks source-file
 timestamps, not the *identity* of the SDK or packages a project builds against. Concretely: after
 `ICSharpCode.Core.Presentation.csproj`'s `Sdk=` attribute was switched from `ProGPU.Wpf.Sdk/11.0.0-dev`
-to `LibreWPF.Sdk/11.0.0-dev` (and a batch of `Resources/VS2017/*.png` icons were added in the same
+to `LibreWPF.Sdk/11.0.0-dev` (and a batch of `Resources/VS2026/*.png` icons were added in the same
 commit), the project kept silently reusing an `obj/.../ICSharpCode.Core.Presentation.g.resources`
 built *before* that change — no icons embedded — for who knows how many sessions afterward,
 producing a wall of `Could not load PNG icon '...' — Cannot locate resource '...'` warnings at

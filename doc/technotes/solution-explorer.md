@@ -39,7 +39,7 @@ Fixed instead, surgically, leaving every `<Path>`/`<Include>` structure untouche
   `ICSharpCode.SharpDevelop.ProjectBrowser.addin`.
 - `Icons.22x22.Browser` had no matching resource file and no entry in
   `PresentationResourceService`'s alias dictionary, so it always fell through to a literal
-  `Resources/VS2017/Browser/Browser_16x.xaml` lookup that doesn't exist. Added an alias to
+  `Resources/VS2026/Browser/Browser_16x.xaml` lookup that doesn't exist. Added an alias to
   `Application` (same icon already used for the analogous `Icons.16x16.BrowserWindow`), rather than
   authoring a new icon asset for MVP.
 

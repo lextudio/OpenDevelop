@@ -630,7 +630,7 @@ public sealed class ClassDiagramViewContent : AbstractViewContent
     }
 
     // Icon-only toolbar button (VS2017 Image Library icons via PresentationResourceService -
-    // "ClassDiagram.X" resolves to Resources/VS2017/X/X_16x.xaml). Falls back to a text button if
+    // "ClassDiagram.X" resolves to Resources/VS2026/X/X_16x.xaml). Falls back to a text button if
     // the icon is unavailable so the command stays discoverable.
     static Button CreateIconButton(string iconName, string toolTip, Thickness margin)
     {

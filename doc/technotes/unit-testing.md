@@ -31,7 +31,7 @@ the remaining tests have not run, while any failure makes every ancestor red.
 
 The icons are the Test Explorer status glyphs from the VS2017 Image Library. As with the other
 important IDE icons, their original XAML files and filenames live under
-`ICSharpCode.Core.Presentation/Resources/VS2017`, and `PresentationResourceService` exposes stable
+`ICSharpCode.Core.Presentation/Resources/VS2026`, and `PresentationResourceService` exposes stable
 Unit Testing resource keys for them:
 
 - `StatusCriticalError_16x` for failed;

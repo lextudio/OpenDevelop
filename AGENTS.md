@@ -190,13 +190,15 @@ the two once led to skipping verification that was actually possible.
 
 ### Finding and adding VS toolbar/menu icons
 
-Source library: `/Users/lextm/Downloads/VS2017 Image Library/VS2017/<IconName>/` — one folder per
-icon, each containing `<IconName>_16x.xaml` (+ `.png`/`.svg`/`.bmp` variants at other sizes). This
-is the official Visual Studio 2017 Image Library; search it by folder name for a concept (e.g.
-`Label`, `DisplayName`, `ShowTemplateRegionLabel`, `AlignLefts`).
+Source library: `/Users/lextm/Downloads/Visual Studio 2026 Image Library/images/` — a **flat**
+directory, one `<IconName>.xaml` per icon (plus unused `.png`/`.svg`/`.ico` renders). This is the
+official Visual Studio 2026 Image Library and supersedes the old folder-per-icon VS2017 library.
+The `.xaml` is the current VS format (`<Viewbox><Canvas><Path Data Fill/></Canvas></Viewbox>`);
+`PresentationResourceService` loads both that and the legacy VS2017 `DrawingBrush` format, so
+icons copied straight out of this library render without conversion.
 
 ```bash
-find "/Users/lextm/Downloads/VS2017 Image Library/VS2017" -maxdepth 1 -iname "*label*"
+ls "/Users/lextm/Downloads/Visual Studio 2026 Image Library/images" | grep -i label
 ```
 
 #### How an icon gets resolved at runtime
@@ -208,12 +210,23 @@ resource path by, in order:
 2. An explicit entry in `xamlResourceAliases` (`<Key>` → a plain icon name, still goes through step 3).
 3. **The default convention**: take the last `.`-separated segment of `<Key>`, strip a trailing
    `Icon` suffix if present, and look up
-   `Resources/VS2017/<IconName>/<IconName>_16x.xaml` embedded in the
+   `Resources/VS2026/<IconName>/<IconName>_16x.xaml` embedded in the
    `ICSharpCode.Core.Presentation` assembly.
 
 So `"Icons.16x16.FormsDesigner.AlignLefts"` → icon name `AlignLefts` → embedded resource
-`Resources/VS2017/AlignLefts/AlignLefts_16x.xaml` — no alias entry needed for a straightforward
+`Resources/VS2026/AlignLefts/AlignLefts_16x.xaml` — no alias entry needed for a straightforward
 name; only add one when the desired `<Key>` doesn't already end in the real icon folder's name.
+
+Icons with **no VS2026 equivalent yet** stay in the legacy `Resources/VS2017/<IconName>/`
+folder (embedded too) and are reachable only through an explicit `xamlResourceMap` entry, because
+the default convention above always points at `Resources/VS2026`.
+
+**Theming:** VS2026 glyphs are exported with a grayscale base (`#202020`) that the host is meant to
+recolor; left as-is they vanish on the dark theme. `PresentationResourceService` maps dark grays to
+the theme's `Foreground` and mid grays to `MutedForeground`, keeps light counters and saturated
+accents, and leaves such images **unfrozen** so the shared brushes can repaint in place. After
+swapping the theme dictionary, `IdeThemeService.Apply` calls
+`PresentationResourceService.RefreshThemeColors()` to re-read those colors.
 
 A missing/unregistered icon does **not** throw — `GetImageSource` just returns `null` (blank
 icon), logged as a `WARN "Could not load XAML icon ... Cannot locate resource ..."`. That warning
@@ -221,10 +234,11 @@ in the app log is the tell that an icon needs to be added, not a real error to c
 
 #### Adding a new icon
 
-1. Copy the whole icon folder (just the `_16x.xaml` is required; the rest is unused) from the VS
-   Image Library into `src/Main/ICSharpCode.Core.Presentation/Resources/VS2017/<IconName>/`.
+1. Copy the icon's `.xaml` from the VS 2026 Image Library into
+   `src/Main/ICSharpCode.Core.Presentation/Resources/VS2026/<IconName>/<IconName>_16x.xaml`
+   (folder/file name = the original icon name, so existing references keep working).
 2. No csproj change needed — `ICSharpCode.Core.Presentation.csproj` already globs the whole
-   `Resources\VS2017\**\*.xaml` folder as embedded `<Resource>` items.
+   `Resources\VS2026\**\*.xaml` folder as embedded `<Resource>` items.
 3. Reference it as `"Icons.16x16.<IconName>"` (or any key whose last segment/alias resolves to
    `<IconName>`) via `IconService.GetImageSource(...)` /
    `PresentationResourceService.GetImageSource(...)`.

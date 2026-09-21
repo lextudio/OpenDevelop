@@ -105,6 +105,10 @@ namespace ICSharpCode.SharpDevelop.Workbench
 					break;
 			}
 			ApplySemanticTheme(theme == Dark ? DarkSemanticThemeUri : LightSemanticThemeUri);
+			// VS2026 Image Library glyphs borrow the theme's Foreground/Muted
+			// colors for their monochrome base; re-read them so already-loaded
+			// icons repaint for the new theme.
+			ICSharpCode.Core.Presentation.PresentationResourceService.RefreshThemeColors();
 		}
 
 		// "Blue" maps to the Light semantic dictionary for now - the doc only asks for Light/Dark

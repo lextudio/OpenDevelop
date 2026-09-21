@@ -15,6 +15,11 @@
     <Compile Include="..\GlobalAssemblyInfo.cs" Link="Properties\GlobalAssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Remove="Resources\VS2026\**\*.xaml" />
+    <Page Remove="Resources\VS2026\**\*.xaml" />
+    <Resource Include="Resources\VS2026\**\*.xaml" />
+    <!-- Icons with no VS2026 equivalent yet: kept in the legacy folder and
+         referenced through explicit xamlResourceMap entries. -->
     <None Remove="Resources\VS2017\**\*.xaml" />
     <Page Remove="Resources\VS2017\**\*.xaml" />
     <Resource Include="Resources\VS2017\**\*.xaml" />

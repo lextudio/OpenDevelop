@@ -114,7 +114,7 @@
     </EmbeddedResource>
     <!-- BitmapResources.resources was removed in favour of the pngResourceMap
          in ICSharpCode.Core.Presentation/PresentationResourceService.cs, which
-         resolves icons via pack: URIs from Resources/VS2017/*.png -->
+         resolves icons via pack: URIs from Resources/VS2026/*.png -->
   </ItemGroup>
   <!-- SharpDevelopMain.FindApplicationRootPath walks UP from the exe's own output
        directory looking for data\resources\languages\LanguageDefinition.xml, and

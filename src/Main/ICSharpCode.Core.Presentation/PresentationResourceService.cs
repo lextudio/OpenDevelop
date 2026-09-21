@@ -33,6 +33,42 @@ namespace ICSharpCode.Core.Presentation
 	public static class PresentationResourceService
 	{
 		static readonly Dictionary<string, ImageSource> imageCache = new Dictionary<string, ImageSource>();
+
+		// VS2026 Image Library glyphs are exported with a monochrome base
+		// (#202020 and friends) that the host is expected to recolor from the
+		// active theme; left as-is they are invisible on the dark theme.
+		//
+		// Every recoloured glyph gets its OWN brushes, registered here so a theme switch can
+		// repaint them in place. Two earlier attempts each failed one half of the problem:
+		// sharing two mutable brushes across all glyphs died as soon as any icon was frozen,
+		// because freezing an object freezes its whole Freezable subgraph and the shared
+		// brushes went read-only ("Cannot set a property on object '#FF000000' ...");
+		// rebuilding icons from cache on a theme switch could not repaint anything already on
+		// screen, because a menu or toolbar holds its ImageSource and never asks again, so
+		// Dark -> Light left most of the UI with unreadable dark glyphs. Per-icon brushes give
+		// both: nothing is shared, so one frozen icon cannot poison another, and the instances
+		// stay alive in the visual tree, so updating their Color repaints what the user sees.
+		static Color themedForegroundColor = Colors.Black;
+		static Color themedMutedColor = Colors.Gray;
+		static bool themeColorsResolved;
+
+		// Weak so an icon that is no longer cached or displayed can be collected.
+		static readonly List<(WeakReference<SolidColorBrush> Brush, bool Muted)> themedBrushes =
+			new List<(WeakReference<SolidColorBrush>, bool)>();
+
+		static SolidColorBrush RegisterThemedBrush(bool muted)
+		{
+			var brush = new SolidColorBrush(muted ? themedMutedColor : themedForegroundColor);
+			lock (themedBrushes)
+				themedBrushes.Add((new WeakReference<SolidColorBrush>(brush), muted));
+			return brush;
+		}
+
+		/// <summary>Count of registered brushes, used to tell whether a glyph was recoloured.</summary>
+		static int ThemedBrushCount {
+			get { lock (themedBrushes) return themedBrushes.Count; }
+		}
+
 		static readonly IReadOnlyDictionary<string, string> xamlResourceAliases = new Dictionary<string, string> {
 			{ "Icons.16x16.Error", "BuildErrorList" },
 			{ "Icons.16x16.Warning", "StatusWarning" },
@@ -105,196 +141,196 @@ namespace ICSharpCode.Core.Presentation
 			{ "ILSpy", "Assembly" }
 		};
 		static readonly IReadOnlyDictionary<string, string> xamlResourceMap = new Dictionary<string, string> {
-			{ "ProjectBrowser.LinkedFileOverlay", "Resources/VS2017/Shortcut/Shortcut_cyanOverlay_16x.xaml" },
+			{ "ProjectBrowser.LinkedFileOverlay", "Resources/VS2026/Shortcut/Shortcut_cyanOverlay_16x.xaml" },
 			// Unit Tests Pad result icons (Visual Studio Test Explorer semantics).
-			{ "UnitTesting.Status.NotRun", "Resources/VS2017/StatusAlert/StatusAlertOutline_16x.xaml" },
-			{ "UnitTesting.Status.Passed", "Resources/VS2017/StatusOK/StatusOK_16x.xaml" },
-			{ "UnitTesting.Status.Failed", "Resources/VS2017/StatusCriticalError/StatusCriticalError_16x.xaml" },
-			{ "UnitTesting.Status.Skipped", "Resources/VS2017/StatusWarning/StatusWarning_16x.xaml" },
+			{ "UnitTesting.Status.NotRun", "Resources/VS2026/StatusAlert/StatusAlertOutline_16x.xaml" },
+			{ "UnitTesting.Status.Passed", "Resources/VS2026/StatusOK/StatusOK_16x.xaml" },
+			{ "UnitTesting.Status.Failed", "Resources/VS2026/StatusCriticalError/StatusCriticalError_16x.xaml" },
+			{ "UnitTesting.Status.Skipped", "Resources/VS2026/StatusWarning/StatusWarning_16x.xaml" },
 			// Shared widgets.
-			{ "Widgets.ZoomIn", "Resources/VS2017/ZoomIn/ZoomIn_16x.xaml" },
-			{ "Widgets.ZoomOut", "Resources/VS2017/ZoomOut/ZoomOut_16x.xaml" },
+			{ "Widgets.ZoomIn", "Resources/VS2026/ZoomIn/ZoomIn_16x.xaml" },
+			{ "Widgets.ZoomOut", "Resources/VS2026/ZoomOut/ZoomOut_16x.xaml" },
 			// Designer and editor affordances.
-			{ "WpfDesigner.StatusCriticalError", "Resources/VS2017/StatusCriticalError/StatusCriticalError_16x.xaml" },
-			{ "AvalonEdit.ContextActions", "Resources/VS2017/Lightbulb/Lightbulb_16x.xaml" },
+			{ "WpfDesigner.StatusCriticalError", "Resources/VS2026/StatusCriticalError/StatusCriticalError_16x.xaml" },
+			{ "AvalonEdit.ContextActions", "Resources/VS2026/Lightbulb/Lightbulb_16x.xaml" },
 			// AddIn Manager.
-			{ "AddInManager.Installed", "Resources/VS2017/StatusOK/StatusOK_16x.xaml" },
-			{ "AddInManager.Warning", "Resources/VS2017/StatusWarning/StatusWarning_16x.xaml" },
-			{ "AddInManager.Search", "Resources/VS2017/Search/Search_16x.xaml" },
-			{ "AddInManager.Previous", "Resources/VS2017/Previous/Previous_16x.xaml" },
-			{ "AddInManager.Next", "Resources/VS2017/Next/Next_16x.xaml" },
-			{ "AddInManager.Package", "Resources/VS2017/Package/Package_16x.xaml" },
-			{ "AddInManager.AddIn", "Resources/VS2017/AddIn/AddIn_16x.xaml" },
-			{ "AddInManager.Extension", "Resources/VS2017/Extension/Extension_16x.xaml" },
+			{ "AddInManager.Installed", "Resources/VS2026/StatusOK/StatusOK_16x.xaml" },
+			{ "AddInManager.Warning", "Resources/VS2026/StatusWarning/StatusWarning_16x.xaml" },
+			{ "AddInManager.Search", "Resources/VS2026/Search/Search_16x.xaml" },
+			{ "AddInManager.Previous", "Resources/VS2026/Previous/Previous_16x.xaml" },
+			{ "AddInManager.Next", "Resources/VS2026/Next/Next_16x.xaml" },
+			{ "AddInManager.Package", "Resources/VS2026/Package/Package_16x.xaml" },
+			{ "AddInManager.AddIn", "Resources/VS2026/AddIn/AddIn_16x.xaml" },
+			{ "AddInManager.Extension", "Resources/VS2026/Extension/Extension_16x.xaml" },
 			// Data tools.
-			{ "Data.Error", "Resources/VS2017/StatusCriticalError/StatusCriticalError_16x.xaml" },
-			{ "Data.Warning", "Resources/VS2017/StatusWarning/StatusWarning_16x.xaml" },
-			{ "Data.Refresh", "Resources/VS2017/Refresh/Refresh_16x.xaml" },
-			{ "Data.Database", "Resources/VS2017/Database/Database_16x.xaml" },
-			{ "Data.ConnectToDatabase", "Resources/VS2017/ConnectToDatabase/ConnectToDatabase_16x.xaml" },
-			{ "Data.Table", "Resources/VS2017/Table/Table_16x.xaml" },
-			{ "Data.Column", "Resources/VS2017/DatabaseColumn/DatabaseColumn_16x.xaml" },
-			{ "Data.ForeignKey", "Resources/VS2017/ForeignKey/ForeignKey_16x.xaml" },
-			{ "Data.Key", "Resources/VS2017/Key/Key_16x.xaml" },
-			{ "Data.StoredProcedure", "Resources/VS2017/DatabaseStoredProcedure/DatabaseStoredProcedure_16x.xaml" },
+			{ "Data.Error", "Resources/VS2026/StatusCriticalError/StatusCriticalError_16x.xaml" },
+			{ "Data.Warning", "Resources/VS2026/StatusWarning/StatusWarning_16x.xaml" },
+			{ "Data.Refresh", "Resources/VS2026/Refresh/Refresh_16x.xaml" },
+			{ "Data.Database", "Resources/VS2026/Database/Database_16x.xaml" },
+			{ "Data.ConnectToDatabase", "Resources/VS2026/ConnectToDatabase/ConnectToDatabase_16x.xaml" },
+			{ "Data.Table", "Resources/VS2026/Table/Table_16x.xaml" },
+			{ "Data.Column", "Resources/VS2026/DatabaseColumn/DatabaseColumn_16x.xaml" },
+			{ "Data.ForeignKey", "Resources/VS2026/ForeignKey/ForeignKey_16x.xaml" },
+			{ "Data.Key", "Resources/VS2026/Key/Key_16x.xaml" },
+			{ "Data.StoredProcedure", "Resources/VS2026/DatabaseStoredProcedure/DatabaseStoredProcedure_16x.xaml" },
 			// QuickClassBrowser icons (RoslynSymbolIcons).
-			{ "Icons.16x16.Class", "Resources/VS2017/Class/Class_16x.xaml" },
-			{ "Icons.16x16.Interface", "Resources/VS2017/Interface/Interface_16x.xaml" },
-			{ "Icons.16x16.Struct", "Resources/VS2017/Structure/Structure_16x.xaml" },
+			{ "Icons.16x16.Class", "Resources/VS2026/Class/Class_16x.xaml" },
+			{ "Icons.16x16.Interface", "Resources/VS2026/Interface/Interface_16x.xaml" },
+			{ "Icons.16x16.Struct", "Resources/VS2026/Structure/Structure_16x.xaml" },
 			{ "Icons.16x16.Enum", "Resources/VS2017/Enumerator/Enumerator_16x.xaml" },
-			{ "Icons.16x16.Delegate", "Resources/VS2017/Delegate/Delegate_16x.xaml" },
-			{ "Icons.16x16.Method", "Resources/VS2017/Method/Method_16x.xaml" },
-			{ "Icons.16x16.ExtensionMethod", "Resources/VS2017/ExtensionMethod/ExtensionMethod_16x.xaml" },
-			{ "Icons.16x16.Operator", "Resources/VS2017/Operator/Operator_16x.xaml" },
-			{ "Icons.16x16.Property", "Resources/VS2017/Property/Property_16x.xaml" },
-			{ "Icons.16x16.GroupBy", "Resources/VS2017/GroupBy/GroupBy_16x.xaml" },
-			{ "Icons.16x16.SortAscending", "Resources/VS2017/SortAscending/SortAscending_16x.xaml" },
-			{ "Icons.16x16.Settings", "Resources/VS2017/Settings/Settings_16x.xaml" },
-			{ "Icons.16x16.Filter", "Resources/VS2017/Filter/Filter_12x_16x.xaml" },
-			{ "Icons.16x16.Clear", "Resources/VS2017/Close/Close_16x.xaml" },
-			{ "Icons.16x16.Search", "Resources/VS2017/Search/Search_16x.xaml" },
-			{ "Icons.16x16.FitToScreen", "Resources/VS2017/FitToScreen/FitToScreen_16x.xaml" },
-			{ "Icons.16x16.GridGuide", "Resources/VS2017/GridGuide/GridGuide_16x.xaml" },
-			{ "Icons.16x16.DarkTheme", "Resources/VS2017/DarkTheme/DarkTheme_16x.xaml" },
-			{ "Icons.16x16.Field", "Resources/VS2017/Field/Field_16x.xaml" },
-			{ "Icons.16x16.Event", "Resources/VS2017/Event/Event_16x.xaml" },
-			{ "Icons.16x16.Parameter", "Resources/VS2017/Parameter/Parameter_16x.xaml" },
-			{ "Icons.16x16.Local", "Resources/VS2017/LocalVariable/LocalVariable_16x.xaml" },
-			{ "Icons.16x16.NameSpace", "Resources/VS2017/Namespace/Namespace_16x.xaml" },
+			{ "Icons.16x16.Delegate", "Resources/VS2026/Delegate/Delegate_16x.xaml" },
+			{ "Icons.16x16.Method", "Resources/VS2026/Method/Method_16x.xaml" },
+			{ "Icons.16x16.ExtensionMethod", "Resources/VS2026/ExtensionMethod/ExtensionMethod_16x.xaml" },
+			{ "Icons.16x16.Operator", "Resources/VS2026/Operator/Operator_16x.xaml" },
+			{ "Icons.16x16.Property", "Resources/VS2026/Property/Property_16x.xaml" },
+			{ "Icons.16x16.GroupBy", "Resources/VS2026/GroupBy/GroupBy_16x.xaml" },
+			{ "Icons.16x16.SortAscending", "Resources/VS2026/SortAscending/SortAscending_16x.xaml" },
+			{ "Icons.16x16.Settings", "Resources/VS2026/Settings/Settings_16x.xaml" },
+			{ "Icons.16x16.Filter", "Resources/VS2026/Filter/Filter_12x_16x.xaml" },
+			{ "Icons.16x16.Clear", "Resources/VS2026/Close/Close_16x.xaml" },
+			{ "Icons.16x16.Search", "Resources/VS2026/Search/Search_16x.xaml" },
+			{ "Icons.16x16.FitToScreen", "Resources/VS2026/FitToScreen/FitToScreen_16x.xaml" },
+			{ "Icons.16x16.GridGuide", "Resources/VS2026/GridGuide/GridGuide_16x.xaml" },
+			{ "Icons.16x16.DarkTheme", "Resources/VS2026/DarkTheme/DarkTheme_16x.xaml" },
+			{ "Icons.16x16.Field", "Resources/VS2026/Field/Field_16x.xaml" },
+			{ "Icons.16x16.Event", "Resources/VS2026/Event/Event_16x.xaml" },
+			{ "Icons.16x16.Parameter", "Resources/VS2026/Parameter/Parameter_16x.xaml" },
+			{ "Icons.16x16.Local", "Resources/VS2026/LocalVariable/LocalVariable_16x.xaml" },
+			{ "Icons.16x16.NameSpace", "Resources/VS2026/Namespace/Namespace_16x.xaml" },
 			{ "Icons.16x16.Indexer", "Resources/VS2017/Indexer/Indexer_16x.xaml" },
-			{ "Icons.16x16.Literal", "Resources/VS2017/Literal/Literal_16x.xaml" },
-			{ "Icons.16x16.Keyword", "Resources/VS2017/IntelliSenseKeyword/IntelliSenseKeyword_16x.xaml" },
+			{ "Icons.16x16.Literal", "Resources/VS2026/Literal/Literal_16x.xaml" },
+			{ "Icons.16x16.Keyword", "Resources/VS2026/IntelliSenseKeyword/IntelliSenseKeyword_16x.xaml" },
 
 			{ "Icons.16x16.NewDocumentIcon", "Resources/VS2017/NewFile/NewFile_16x.xaml" },
-			{ "Icons.16x16.NewProjectIcon", "Resources/VS2017/CS/CS_ProjectSENode_16x.xaml" },
-			{ "Icons.16x16.SolutionIcon", "Resources/VS2017/SolutionFolderSwitch/SolutionFolderSwitch_16x.xaml" },
-			{ "Icons.16x16.MiscFiles", "Resources/VS2017/Document/Document_16x.xaml" },
-			{ "Icons.16x16.OpenFileIcon", "Resources/VS2017/OpenFile/OpenFile_16x.xaml" },
-			{ "Icons.16x16.OpenProjectIcon", "Resources/VS2017/ProjectFolderOpen/ProjectFolderOpen_16x.xaml" },
-			{ "Icons.16x16.SaveIcon", "Resources/VS2017/Save/Save_16x.xaml" },
-			{ "Icons.16x16.SaveAllIcon", "Resources/VS2017/SaveAll/SaveAll_16x.xaml" },
-			{ "Icons.16x16.CutIcon", "Resources/VS2017/Cut/Cut_16x.xaml" },
-			{ "Icons.16x16.CopyIcon", "Resources/VS2017/Copy/Copy_16x.xaml" },
-			{ "Icons.16x16.PasteIcon", "Resources/VS2017/Paste/Paste_16x.xaml" },
-			{ "Icons.16x16.DeleteIcon", "Resources/VS2017/Remove/Remove_16x.xaml" },
-			{ "Icons.16x16.UndoIcon", "Resources/VS2017/Undo/Undo_16x.xaml" },
-			{ "Icons.16x16.RedoIcon", "Resources/VS2017/Redo/Redo_16x.xaml" },
-			{ "Icons.16x16.BuildCombine", "Resources/VS2017/BuildSolution/BuildSolution_16x.xaml" },
-			{ "Icons.16x16.BuildCurrentSelectedProject", "Resources/VS2017/BuildSelection/BuildSelection_16x.xaml" },
-			{ "Icons.16x16.RunProgramIcon", "Resources/VS2017/Run/Run_16x.xaml" },
-			{ "Icons.16x16.RunAllIcon", "Resources/VS2017/RunTest/RunTest_16x.xaml" },
-			{ "Icons.16x16.Debug.Bug", "Resources/VS2017/Bug/Bug_16x.xaml" },
+			{ "Icons.16x16.NewProjectIcon", "Resources/VS2026/CS/CS_ProjectSENode_16x.xaml" },
+			{ "Icons.16x16.SolutionIcon", "Resources/VS2026/SolutionFolderSwitch/SolutionFolderSwitch_16x.xaml" },
+			{ "Icons.16x16.MiscFiles", "Resources/VS2026/Document/Document_16x.xaml" },
+			{ "Icons.16x16.OpenFileIcon", "Resources/VS2026/OpenFile/OpenFile_16x.xaml" },
+			{ "Icons.16x16.OpenProjectIcon", "Resources/VS2026/ProjectFolderOpen/ProjectFolderOpen_16x.xaml" },
+			{ "Icons.16x16.SaveIcon", "Resources/VS2026/Save/Save_16x.xaml" },
+			{ "Icons.16x16.SaveAllIcon", "Resources/VS2026/SaveAll/SaveAll_16x.xaml" },
+			{ "Icons.16x16.CutIcon", "Resources/VS2026/Cut/Cut_16x.xaml" },
+			{ "Icons.16x16.CopyIcon", "Resources/VS2026/Copy/Copy_16x.xaml" },
+			{ "Icons.16x16.PasteIcon", "Resources/VS2026/Paste/Paste_16x.xaml" },
+			{ "Icons.16x16.DeleteIcon", "Resources/VS2026/Remove/Remove_16x.xaml" },
+			{ "Icons.16x16.UndoIcon", "Resources/VS2026/Undo/Undo_16x.xaml" },
+			{ "Icons.16x16.RedoIcon", "Resources/VS2026/Redo/Redo_16x.xaml" },
+			{ "Icons.16x16.BuildCombine", "Resources/VS2026/BuildSolution/BuildSolution_16x.xaml" },
+			{ "Icons.16x16.BuildCurrentSelectedProject", "Resources/VS2026/BuildSelection/BuildSelection_16x.xaml" },
+			{ "Icons.16x16.RunProgramIcon", "Resources/VS2026/Run/Run_16x.xaml" },
+			{ "Icons.16x16.RunAllIcon", "Resources/VS2026/RunTest/RunTest_16x.xaml" },
+			{ "Icons.16x16.Debug.Bug", "Resources/VS2026/Bug/Bug_16x.xaml" },
 			{ "Icons.16x16.Debug.StartWithoutDebugging", "Resources/VS2017/StartWithoutDebug/StartWithoutDebug_16x.xaml" },
-			{ "Icons.16x16.Debug.Continue", "Resources/VS2017/Run/Run_16x.xaml" },
-			{ "Icons.16x16.Debug.Break", "Resources/VS2017/Pause/Pause_16x.xaml" },
-			{ "Icons.16x16.Debug.StopProcess", "Resources/VS2017/Stop/Stop_16x.xaml" },
-			{ "Icons.16x16.StopProcess", "Resources/VS2017/Stop/Stop_16x.xaml" },
-			{ "Icons.16x16.Debug.StepOver", "Resources/VS2017/StepOver/StepOver_16x.xaml" },
-			{ "Icons.16x16.Debug.StepInto", "Resources/VS2017/StepIn/StepIn_16x.xaml" },
-			{ "Icons.16x16.Debug.StepOut", "Resources/VS2017/StepOut/StepOut_16x.xaml" },
-			{ "Icons.16x16.NavigateBack", "Resources/VS2017/Backward/Backward_16x.xaml" },
-			{ "Icons.16x16.NavigateForward", "Resources/VS2017/Forward/Forward_16x.xaml" },
-			{ "Icons.16x16.FindIcon", "Resources/VS2017/FindinFiles/FindinFiles_16x.xaml" },
-			{ "Icons.16x16.FindInFiles", "Resources/VS2017/FindinFiles/FindinFiles_16x.xaml" },
-			{ "Icons.16x16.BrowserRefresh", "Resources/VS2017/Refresh/Refresh_16x.xaml" },
-			{ "Icons.16x16.PropertiesIcon", "Resources/VS2017/Property/Property_16x.xaml" },
-			{ "ProjectBrowser.Toolbar.ShowHiddenFiles", "Resources/VS2017/ShowAllFiles/ShowAllFiles_16x.xaml" },
-			{ "Icons.16x16.NewFolderIcon", "Resources/VS2017/Folder/Folder_16x.xaml" },
-			{ "Icons.16x16.ClosedFolderBitmap", "Resources/VS2017/Folder/Folder_16x.xaml" },
-			{ "Icons.16x16.OpenFolderBitmap", "Resources/VS2017/FolderOpen/FolderOpen_16x.xaml" },
-			{ "Icons.16x16.HelpIcon", "Resources/VS2017/HelpApplication/HelpApplication_16x.xaml" },
-			{ "Icons.16x16.CloseFileIcon", "Resources/VS2017/Close/Close_16x.xaml" },
-			{ "Icons.16x16.CloseAllDocuments", "Resources/VS2017/Close/Close_16x.xaml" },
-			{ "Icons.16x16.FullScreen", "Resources/VS2017/ExtendToFullScreen/ExtendToFullScreen_16x.xaml" },
-			{ "Icons.16x16.NextWindowIcon", "Resources/VS2017/NewWindow/NewWindow_16x.xaml" },
-			{ "Icons.16x16.PrevWindowIcon", "Resources/VS2017/NewWindow/NewWindow_16x.xaml" },
-			{ "Icons.16x16.AboutIcon", "Resources/VS2017/UIAboutBox/UIAboutBox_16x.xaml" },
-			{ "Icons.16x16.LowerToUpperCase", "Resources/VS2017/TextFile/TextFile_16x.xaml" },
-			{ "Icons.16x16.UpperToLowerCase", "Resources/VS2017/TextFile/TextFile_16x.xaml" },
-			{ "Icons.16x16.ArrowUp", "Resources/VS2017/PreviousBookmark/PreviousBookmark_16x.xaml" },
-			{ "Icons.16x16.ArrowDown", "Resources/VS2017/NextBookmark/NextBookmark_16x.xaml" },
-			{ "Icons.16x16.CombineIcon", "Resources/VS2017/SolutionFolderSwitch/SolutionFolderSwitch_16x.xaml" },
-			{ "Icons.16x16.Workspace", "Resources/VS2017/SolutionFolderSwitch/SolutionFolderSwitch_16x.xaml" },
-			{ "Icons.16x16.AssemblyError", "Resources/VS2017/Assembly/Assembly_16x.xaml" },
-			{ "Icons.16x16.AssemblyUnpinned", "Resources/VS2017/Assembly/Assembly_16x.xaml" },
+			{ "Icons.16x16.Debug.Continue", "Resources/VS2026/Run/Run_16x.xaml" },
+			{ "Icons.16x16.Debug.Break", "Resources/VS2026/Pause/Pause_16x.xaml" },
+			{ "Icons.16x16.Debug.StopProcess", "Resources/VS2026/Stop/Stop_16x.xaml" },
+			{ "Icons.16x16.StopProcess", "Resources/VS2026/Stop/Stop_16x.xaml" },
+			{ "Icons.16x16.Debug.StepOver", "Resources/VS2026/StepOver/StepOver_16x.xaml" },
+			{ "Icons.16x16.Debug.StepInto", "Resources/VS2026/StepIn/StepIn_16x.xaml" },
+			{ "Icons.16x16.Debug.StepOut", "Resources/VS2026/StepOut/StepOut_16x.xaml" },
+			{ "Icons.16x16.NavigateBack", "Resources/VS2026/Backward/Backward_16x.xaml" },
+			{ "Icons.16x16.NavigateForward", "Resources/VS2026/Forward/Forward_16x.xaml" },
+			{ "Icons.16x16.FindIcon", "Resources/VS2026/FindinFiles/FindinFiles_16x.xaml" },
+			{ "Icons.16x16.FindInFiles", "Resources/VS2026/FindinFiles/FindinFiles_16x.xaml" },
+			{ "Icons.16x16.BrowserRefresh", "Resources/VS2026/Refresh/Refresh_16x.xaml" },
+			{ "Icons.16x16.PropertiesIcon", "Resources/VS2026/Property/Property_16x.xaml" },
+			{ "ProjectBrowser.Toolbar.ShowHiddenFiles", "Resources/VS2026/ShowAllFiles/ShowAllFiles_16x.xaml" },
+			{ "Icons.16x16.NewFolderIcon", "Resources/VS2026/Folder/Folder_16x.xaml" },
+			{ "Icons.16x16.ClosedFolderBitmap", "Resources/VS2026/Folder/Folder_16x.xaml" },
+			{ "Icons.16x16.OpenFolderBitmap", "Resources/VS2026/FolderOpen/FolderOpen_16x.xaml" },
+			{ "Icons.16x16.HelpIcon", "Resources/VS2026/HelpApplication/HelpApplication_16x.xaml" },
+			{ "Icons.16x16.CloseFileIcon", "Resources/VS2026/Close/Close_16x.xaml" },
+			{ "Icons.16x16.CloseAllDocuments", "Resources/VS2026/Close/Close_16x.xaml" },
+			{ "Icons.16x16.FullScreen", "Resources/VS2026/ExtendToFullScreen/ExtendToFullScreen_16x.xaml" },
+			{ "Icons.16x16.NextWindowIcon", "Resources/VS2026/NewWindow/NewWindow_16x.xaml" },
+			{ "Icons.16x16.PrevWindowIcon", "Resources/VS2026/NewWindow/NewWindow_16x.xaml" },
+			{ "Icons.16x16.AboutIcon", "Resources/VS2026/UIAboutBox/UIAboutBox_16x.xaml" },
+			{ "Icons.16x16.LowerToUpperCase", "Resources/VS2026/TextFile/TextFile_16x.xaml" },
+			{ "Icons.16x16.UpperToLowerCase", "Resources/VS2026/TextFile/TextFile_16x.xaml" },
+			{ "Icons.16x16.ArrowUp", "Resources/VS2026/PreviousBookmark/PreviousBookmark_16x.xaml" },
+			{ "Icons.16x16.ArrowDown", "Resources/VS2026/NextBookmark/NextBookmark_16x.xaml" },
+			{ "Icons.16x16.CombineIcon", "Resources/VS2026/SolutionFolderSwitch/SolutionFolderSwitch_16x.xaml" },
+			{ "Icons.16x16.Workspace", "Resources/VS2026/SolutionFolderSwitch/SolutionFolderSwitch_16x.xaml" },
+			{ "Icons.16x16.AssemblyError", "Resources/VS2026/Assembly/Assembly_16x.xaml" },
+			{ "Icons.16x16.AssemblyUnpinned", "Resources/VS2026/Assembly/Assembly_16x.xaml" },
 
 			// Solution Explorer file-type icons (SolutionExplorerIconService). Folder names here
 			// match the VS2017 Image Library / UnoDevelop's Icons/*.svg base names 1:1.
-			{ "Icons.16x16.CSFile", "Resources/VS2017/CSFile/CSFile_16x.xaml" },
-			{ "Icons.16x16.CSSourceFile", "Resources/VS2017/CSSourceFile/CSSourceFile_16x.xaml" },
-			{ "Icons.16x16.Control", "Resources/VS2017/Control/Control_16x.xaml" },
-			{ "Icons.16x16.JSONFile", "Resources/VS2017/JSONFile/JSONFile_16x.xaml" },
-			{ "Icons.16x16.XMLFile", "Resources/VS2017/XMLFile/XMLFile_16x.xaml" },
-			{ "Icons.16x16.HTMLFile", "Resources/VS2017/HTMLFile/HTMLFile_16x.xaml" },
-			{ "Icons.16x16.StyleSheet", "Resources/VS2017/StyleSheet/StyleSheet_16x.xaml" },
-			{ "Icons.16x16.JSScript", "Resources/VS2017/JSScript/JSScript_16x.xaml" },
-			{ "Icons.16x16.MarkdownFile", "Resources/VS2017/MarkdownFile/MarkdownFile_16x.xaml" },
+			{ "Icons.16x16.CSFile", "Resources/VS2026/CSFile/CSFile_16x.xaml" },
+			{ "Icons.16x16.CSSourceFile", "Resources/VS2026/CSSourceFile/CSSourceFile_16x.xaml" },
+			{ "Icons.16x16.Control", "Resources/VS2026/Control/Control_16x.xaml" },
+			{ "Icons.16x16.JSONFile", "Resources/VS2026/JSONFile/JSONFile_16x.xaml" },
+			{ "Icons.16x16.XMLFile", "Resources/VS2026/XMLFile/XMLFile_16x.xaml" },
+			{ "Icons.16x16.HTMLFile", "Resources/VS2026/HTMLFile/HTMLFile_16x.xaml" },
+			{ "Icons.16x16.StyleSheet", "Resources/VS2026/StyleSheet/StyleSheet_16x.xaml" },
+			{ "Icons.16x16.JSScript", "Resources/VS2026/JSScript/JSScript_16x.xaml" },
+			{ "Icons.16x16.MarkdownFile", "Resources/VS2026/MarkdownFile/MarkdownFile_16x.xaml" },
 			{ "Icons.16x16.SQLFile", "Resources/VS2017/SQLFile/SQLFile_16x.xaml" },
-			{ "Icons.16x16.ResourceSymbols", "Resources/VS2017/ResourceSymbols/ResourceSymbols_16x.xaml" },
-			{ "Icons.16x16.SettingsFile", "Resources/VS2017/SettingsFile/SettingsFile_16x.xaml" },
-			{ "Icons.16x16.TextFile", "Resources/VS2017/TextFile/TextFile_16x.xaml" },
-			{ "Icons.16x16.Image", "Resources/VS2017/Image/Image_16x.xaml" },
-			{ "Icons.16x16.CSRazorFile", "Resources/VS2017/CSRazorFile/CSRazorFile_16x.xaml" },
-			{ "Icons.16x16.ASPXFile", "Resources/VS2017/ASPXFile/ASPXFile_16x.xaml" },
-			{ "Icons.16x16.MasterPage", "Resources/VS2017/MasterPage/MasterPage_16x.xaml" },
-			{ "Icons.16x16.SkinFile", "Resources/VS2017/SkinFile/SkinFile_16x.xaml" },
-			{ "Icons.16x16.Manifest", "Resources/VS2017/Manifest/Manifest_16x.xaml" },
-			{ "Icons.16x16.BinaryFile", "Resources/VS2017/BinaryFile/BinaryFile_16x.xaml" },
-			{ "Icons.16x16.VBFile", "Resources/VS2017/VB/VB_16x.xaml" },
-			{ "Icons.16x16.FSFile", "Resources/VS2017/FS/FS_FileSENode_16x.xaml" },
-			{ "Icons.16x16.CPPSourceFile", "Resources/VS2017/CPPSourceFile/CPPSourceFile_16x.xaml" },
-			{ "Icons.16x16.CPPHeaderFile", "Resources/VS2017/CPPHeaderFile/CPPHeaderFile_16x.xaml" },
-			{ "Icons.16x16.CSClassLibrary", "Resources/VS2017/CSClassLibrary/CSClassLibrary_16x.xaml" },
-			{ "Icons.16x16.SolutionFolderSwitch", "Resources/VS2017/SolutionFolderSwitch/SolutionFolderSwitch_16x.xaml" },
+			{ "Icons.16x16.ResourceSymbols", "Resources/VS2026/ResourceSymbols/ResourceSymbols_16x.xaml" },
+			{ "Icons.16x16.SettingsFile", "Resources/VS2026/SettingsFile/SettingsFile_16x.xaml" },
+			{ "Icons.16x16.TextFile", "Resources/VS2026/TextFile/TextFile_16x.xaml" },
+			{ "Icons.16x16.Image", "Resources/VS2026/Image/Image_16x.xaml" },
+			{ "Icons.16x16.CSRazorFile", "Resources/VS2026/CSRazorFile/CSRazorFile_16x.xaml" },
+			{ "Icons.16x16.ASPXFile", "Resources/VS2026/ASPXFile/ASPXFile_16x.xaml" },
+			{ "Icons.16x16.MasterPage", "Resources/VS2026/MasterPage/MasterPage_16x.xaml" },
+			{ "Icons.16x16.SkinFile", "Resources/VS2026/SkinFile/SkinFile_16x.xaml" },
+			{ "Icons.16x16.Manifest", "Resources/VS2026/Manifest/Manifest_16x.xaml" },
+			{ "Icons.16x16.BinaryFile", "Resources/VS2026/BinaryFile/BinaryFile_16x.xaml" },
+			{ "Icons.16x16.VBFile", "Resources/VS2026/VB/VB_16x.xaml" },
+			{ "Icons.16x16.FSFile", "Resources/VS2026/FS/FS_FileSENode_16x.xaml" },
+			{ "Icons.16x16.CPPSourceFile", "Resources/VS2026/CPPSourceFile/CPPSourceFile_16x.xaml" },
+			{ "Icons.16x16.CPPHeaderFile", "Resources/VS2026/CPPHeaderFile/CPPHeaderFile_16x.xaml" },
+			{ "Icons.16x16.CSClassLibrary", "Resources/VS2026/CSClassLibrary/CSClassLibrary_16x.xaml" },
+			{ "Icons.16x16.SolutionFolderSwitch", "Resources/VS2026/SolutionFolderSwitch/SolutionFolderSwitch_16x.xaml" },
 
 			// Solution Explorer CPS/reference-tree node icons.
-			{ "Icons.16x16.Reference", "Resources/VS2017/Reference/Reference_16x.xaml" },
-			{ "Icons.16x16.Library", "Resources/VS2017/Library/Library_16x.xaml" },
-			{ "Icons.16x16.Assembly", "Resources/VS2017/Assembly/Assembly_16x.xaml" },
-			{ "Icons.16x16.Analyzers", "Resources/VS2017/CodeAnalysisWindow/CodeAnalysisWindow_16x.xaml" },
-			{ "Icons.16x16.Frameworks", "Resources/VS2017/MSNETFrameworkDependencies/MSNETFrameworkDependencies_16x.xaml" },
-			{ "Icons.16x16.Application", "Resources/VS2017/Application/Application_16x.xaml" },
-			{ "Icons.16x16.Component", "Resources/VS2017/Component/Component_16x.xaml" },
+			{ "Icons.16x16.Reference", "Resources/VS2026/Reference/Reference_16x.xaml" },
+			{ "Icons.16x16.Library", "Resources/VS2026/Library/Library_16x.xaml" },
+			{ "Icons.16x16.Assembly", "Resources/VS2026/Assembly/Assembly_16x.xaml" },
+			{ "Icons.16x16.Analyzers", "Resources/VS2026/CodeAnalysisWindow/CodeAnalysisWindow_16x.xaml" },
+			{ "Icons.16x16.Frameworks", "Resources/VS2026/MSNETFrameworkDependencies/MSNETFrameworkDependencies_16x.xaml" },
+			{ "Icons.16x16.Application", "Resources/VS2026/Application/Application_16x.xaml" },
+			{ "Icons.16x16.Component", "Resources/VS2026/Component/Component_16x.xaml" },
 
 			// Output Pad toolbar icons.
-			{ "OutputPad.Toolbar.ClearOutputWindow", "Resources/VS2017/ClearWindowContent/ClearWindowContent_16x.xaml" },
-			{ "OutputPad.Toolbar.ToggleWordWrap", "Resources/VS2017/WordWrap/WordWrap_16x.xaml" },
+			{ "OutputPad.Toolbar.ClearOutputWindow", "Resources/VS2026/ClearWindowContent/ClearWindowContent_16x.xaml" },
+			{ "OutputPad.Toolbar.ToggleWordWrap", "Resources/VS2026/WordWrap/WordWrap_16x.xaml" },
 
 			// Unit Tests Pad toolbar icons.
-			{ "Icons.16x16.OpenCollection", "Resources/VS2017/ExpandAll/ExpandAll_16x.xaml" },
-			{ "Icons.16x16.Collection", "Resources/VS2017/CollapseAll/CollapseAll_16x.xaml" },
-			{ "Icons.16x16.Options", "Resources/VS2017/Settings/Settings_16x.xaml" },
-			{ "PadIcons.NUnitTest", "Resources/VS2017/Test/Test_16x.xaml" },
+			{ "Icons.16x16.OpenCollection", "Resources/VS2026/ExpandAll/ExpandAll_16x.xaml" },
+			{ "Icons.16x16.Collection", "Resources/VS2026/CollapseAll/CollapseAll_16x.xaml" },
+			{ "Icons.16x16.Options", "Resources/VS2026/Settings/Settings_16x.xaml" },
+			{ "PadIcons.NUnitTest", "Resources/VS2026/Test/Test_16x.xaml" },
 
 			// Code Coverage Pad icons.
-			{ "CodeCoverage.Icons.16x16.Pad", "Resources/VS2017/CodeCoverage/CodeCoverage_16x.xaml" },
-			{ "CodeCoverage.Icons.16x16.File", "Resources/VS2017/CodeCoverage/CodeCoverage_16x.xaml" },
-			{ "CodeCoverage.Icons.16x16.Run", "Resources/VS2017/CodeCoverage/CodeCoverage_16x.xaml" },
+			{ "CodeCoverage.Icons.16x16.Pad", "Resources/VS2026/CodeCoverage/CodeCoverage_16x.xaml" },
+			{ "CodeCoverage.Icons.16x16.File", "Resources/VS2026/CodeCoverage/CodeCoverage_16x.xaml" },
+			{ "CodeCoverage.Icons.16x16.Run", "Resources/VS2026/CodeCoverage/CodeCoverage_16x.xaml" },
 
 			// Version control context-menu icons.
-			{ "Svn.Commit", "Resources/VS2017/Commit/Commit_16x.xaml" },
+			{ "Svn.Commit", "Resources/VS2026/Commit/Commit_16x.xaml" },
 			{ "Svn.Diff", "Resources/VS2017/Compare/Compare_16x.xaml" },
 
 			// IconBarMargin/Bookmark margin icons (breakpoints, bookmarks).
 			// Mapped via "Bookmarks.*" resource name used by BreakpointBookmark / BookmarkBase.
-			{ "Bookmarks.Breakpoint", "Resources/VS2017/Breakpoint/BreakpointEnable_16x.xaml" },
-			{ "Bookmarks.BreakpointConditional", "Resources/VS2017/Breakpoint/BreakpointEnable_16x.xaml" },
-			{ "Bookmarks.DisabledBreakpoint", "Resources/VS2017/Breakpoint/BreakpointDisable_16x.xaml" },
-			{ "Bookmarks.UnhealthyBreakpoint", "Resources/VS2017/BreakpointBound/BreakpointBound_16x.xaml" },
-			{ "Bookmarks.UnhealthyBreakpointConditional", "Resources/VS2017/BreakpointBound/BreakpointBound_16x.xaml" },
-			{ "Bookmarks.CurrentLine", "Resources/VS2017/NextError/NextError_16x.xaml" },
-			{ "Bookmarks.PrevBreakpoint", "Resources/VS2017/Bookmark/PreviousBookmark_16x.xaml" },
-			{ "Bookmarks.NextBreakpoint", "Resources/VS2017/Bookmark/NextBookmark_16x.xaml" },
-			{ "Bookmarks.EnableDisableAll", "Resources/VS2017/Breakpoint/BreakpointDisable_16x.xaml" },
-			{ "Bookmarks.DisableAllBreakpoints", "Resources/VS2017/Breakpoint/BreakpointDisable_16x.xaml" },
-			{ "Bookmarks.DeleteMark", "Resources/VS2017/Bookmark/ClearBookmark_16x.xaml" },
-			{ "Bookmarks.DeleteAllMarks", "Resources/VS2017/Bookmark/ClearBookmark_16x.xaml" },
-			{ "Bookmarks.DeleteAllBreakpoints", "Resources/VS2017/Bookmark/ClearBookmark_16x.xaml" },
-			{ "Bookmarks.ToggleMark", "Resources/VS2017/Bookmark/Bookmark_16x.xaml" },
-			{ "Bookmarks.GotoPrevInFile", "Resources/VS2017/Bookmark/PreviousBookmark_16x.xaml" },
-			{ "Bookmarks.GotoNextInFile", "Resources/VS2017/Bookmark/NextBookmark_16x.xaml" },
-			{ "Bookmarks.ClearAll", "Resources/VS2017/Bookmark/ClearBookmark_16x.xaml" },
-			{ "PadIcons.BreakPoints", "Resources/VS2017/Breakpoint/BreakpointEnable_16x.xaml" }
+			{ "Bookmarks.Breakpoint", "Resources/VS2026/Breakpoint/BreakpointEnable_16x.xaml" },
+			{ "Bookmarks.BreakpointConditional", "Resources/VS2026/Breakpoint/BreakpointEnable_16x.xaml" },
+			{ "Bookmarks.DisabledBreakpoint", "Resources/VS2026/Breakpoint/BreakpointDisable_16x.xaml" },
+			{ "Bookmarks.UnhealthyBreakpoint", "Resources/VS2026/BreakpointBound/BreakpointBound_16x.xaml" },
+			{ "Bookmarks.UnhealthyBreakpointConditional", "Resources/VS2026/BreakpointBound/BreakpointBound_16x.xaml" },
+			{ "Bookmarks.CurrentLine", "Resources/VS2026/NextError/NextError_16x.xaml" },
+			{ "Bookmarks.PrevBreakpoint", "Resources/VS2026/Bookmark/PreviousBookmark_16x.xaml" },
+			{ "Bookmarks.NextBreakpoint", "Resources/VS2026/Bookmark/NextBookmark_16x.xaml" },
+			{ "Bookmarks.EnableDisableAll", "Resources/VS2026/Breakpoint/BreakpointDisable_16x.xaml" },
+			{ "Bookmarks.DisableAllBreakpoints", "Resources/VS2026/Breakpoint/BreakpointDisable_16x.xaml" },
+			{ "Bookmarks.DeleteMark", "Resources/VS2026/Bookmark/ClearBookmark_16x.xaml" },
+			{ "Bookmarks.DeleteAllMarks", "Resources/VS2026/Bookmark/ClearBookmark_16x.xaml" },
+			{ "Bookmarks.DeleteAllBreakpoints", "Resources/VS2026/Bookmark/ClearBookmark_16x.xaml" },
+			{ "Bookmarks.ToggleMark", "Resources/VS2026/Bookmark/Bookmark_16x.xaml" },
+			{ "Bookmarks.GotoPrevInFile", "Resources/VS2026/Bookmark/PreviousBookmark_16x.xaml" },
+			{ "Bookmarks.GotoNextInFile", "Resources/VS2026/Bookmark/NextBookmark_16x.xaml" },
+			{ "Bookmarks.ClearAll", "Resources/VS2026/Bookmark/ClearBookmark_16x.xaml" },
+			{ "PadIcons.BreakPoints", "Resources/VS2026/Breakpoint/BreakpointEnable_16x.xaml" }
 		};
 		static readonly IResourceService resourceService;
 		
@@ -369,6 +405,7 @@ namespace ICSharpCode.Core.Presentation
 				return false;
 			}
 			
+			var themedBrushesBeforeLoad = ThemedBrushCount;
 			try {
 				using (Stream stream = OpenXamlIconStream(resourcePath)) {
 					if (stream == null) {
@@ -379,7 +416,12 @@ namespace ICSharpCode.Core.Presentation
 				}
 				if (imageSource == null)
 					return false;
-				imageSource.Freeze();
+				// An icon holding theme brushes must stay mutable, or the brushes freeze with it
+				// and can never follow a theme switch. Whether this glyph was recoloured is
+				// decided by whether loading it registered any brush - exact, unlike walking the
+				// drawing tree looking for them, which missed cases such as an OpacityMask.
+				if (ThemedBrushCount == themedBrushesBeforeLoad)
+					imageSource.Freeze();
 				return true;
 			} catch (Exception ex) {
 				LoggingService.Warn("Could not load XAML icon '" + name + "' from '" + resourcePath + "'.", ex);
@@ -413,7 +455,7 @@ namespace ICSharpCode.Core.Presentation
 		{
 			if (string.IsNullOrWhiteSpace(iconName))
 				return null;
-			return "Resources/VS2017/" + iconName + "/" + iconName + "_16x.xaml";
+			return "Resources/VS2026/" + iconName + "/" + iconName + "_16x.xaml";
 		}
 
 		static string GetIconNameFromResourceName(string name)
@@ -464,28 +506,134 @@ namespace ICSharpCode.Core.Presentation
 			return start >= 0 ? start : xaml.Length;
 		}
 
+		/// <summary>
+		/// Converts a loaded XAML element into an ImageSource, supporting both the
+		/// legacy VS2017 Image Library format (a Shape whose Fill is a
+		/// DrawingBrush) and the current VS2026 format
+		/// (&lt;Viewbox&gt;&lt;Canvas&gt;&lt;Path Data Fill/&gt;&lt;/Canvas&gt;&lt;/Viewbox&gt;,
+		/// where each Shape carries a plain Brush fill and/or stroke).
+		/// </summary>
 		static ImageSource GetImageSource(DependencyObject element)
+		{
+			var drawing = GetDrawing(element);
+			return drawing == null ? null : new DrawingImage(drawing);
+		}
+
+		static Drawing GetDrawing(DependencyObject element)
 		{
 			if (element == null)
 				return null;
 			var shape = element as System.Windows.Shapes.Shape;
 			if (shape != null) {
+				// Legacy VS2017 format: the geometry lives inside a DrawingBrush.
+				// Its colors are already baked for the active theme, so leave it
+				// untouched.
 				var drawingBrush = shape.Fill as DrawingBrush;
-				if (drawingBrush != null)
-					return new DrawingImage(drawingBrush.Drawing);
+				if (drawingBrush != null && drawingBrush.Drawing != null)
+					return drawingBrush.Drawing;
+				// VS2026 format: a real Shape with a geometry and a plain brush.
+				Geometry geometry = shape is System.Windows.Shapes.Path path ? path.Data : null;
+				if (geometry == null) {
+					try { geometry = shape.RenderedGeometry; } catch { geometry = null; }
+				}
+				if (geometry == null)
+					return null;
+				var fill = ThemedBrush(shape.Fill);
+				var strokeBrush = ThemedBrush(shape.Stroke);
+				var pen = strokeBrush == null ? null : new Pen(strokeBrush, shape.StrokeThickness);
+				if (fill == null && pen == null)
+					return null;
+				return new GeometryDrawing(fill, pen, geometry);
 			}
 			var decorator = element as Decorator;
 			if (decorator != null)
-				return GetImageSource(decorator.Child);
+				return GetDrawing(decorator.Child);
 			var panel = element as Panel;
 			if (panel != null) {
+				// A VS2026 Canvas can hold several Paths; combine every child
+				// instead of stopping at the first (the old behavior).
+				var group = new DrawingGroup();
 				foreach (UIElement child in panel.Children) {
-					var imageSource = GetImageSource(child);
-					if (imageSource != null)
-						return imageSource;
+					var childDrawing = GetDrawing(child);
+					if (childDrawing != null)
+						group.Children.Add(childDrawing);
 				}
+				return group.Children.Count > 0 ? group : null;
 			}
 			return null;
 		}
+
+		/// <summary>
+		/// VS2026 glyphs use a grayscale base color (dominantly #202020) as a
+		/// placeholder the host recolors from the theme. Map those grays onto the
+		/// shared theme brushes - dark to <c>Foreground</c>, mid to
+		/// <c>MutedForeground</c> - and leave light grays (counters/holes) and
+		/// saturated accent colors alone. Legacy VS2017 glyphs never reach this.
+		/// </summary>
+		static Brush ThemedBrush(Brush brush)
+		{
+			if (brush is SolidColorBrush solid
+			    && solid.Color.R == solid.Color.G && solid.Color.G == solid.Color.B) {
+				EnsureThemeColors();
+				byte luminance = solid.Color.R;
+				if (luminance <= 0x60)
+					return RegisterThemedBrush(muted: false);
+				if (luminance <= 0xB0)
+					return RegisterThemedBrush(muted: true);
+			}
+			return brush;
+		}
+
+		static void EnsureThemeColors()
+		{
+			if (themeColorsResolved)
+				return;
+			themeColorsResolved = true;
+			ApplyThemeColors();
+		}
+
+		static void ApplyThemeColors()
+		{
+			themedForegroundColor = ResolveThemeColor("Foreground", Colors.Black);
+			themedMutedColor = ResolveThemeColor("MutedForeground", themedForegroundColor);
+
+			// Repaint the glyphs that are already loaded - including the ones currently on
+			// screen, which is the whole point of keeping their brush instances.
+			lock (themedBrushes) {
+				for (var i = themedBrushes.Count - 1; i >= 0; i--) {
+					if (!themedBrushes[i].Brush.TryGetTarget(out var brush)) {
+						themedBrushes.RemoveAt(i);
+						continue;
+					}
+					// A frozen brush belongs to an icon something else froze; it can no longer
+					// follow the theme, so drop it and let a reload replace that icon.
+					if (brush.IsFrozen) {
+						themedBrushes.RemoveAt(i);
+						continue;
+					}
+					brush.Color = themedBrushes[i].Muted ? themedMutedColor : themedForegroundColor;
+				}
+			}
+		}
+
+		static Color ResolveThemeColor(string key, Color fallback)
+		{
+			if (Application.Current != null
+			    && Application.Current.TryFindResource(key) is SolidColorBrush brush)
+				return brush.Color;
+			return fallback;
+		}
+
+		/// <summary>
+		/// Re-reads the theme's Foreground/MutedForeground and repaints every loaded glyph in
+		/// place, including the ones already on screen. Call after swapping the application
+		/// theme dictionary (see <c>IdeThemeService.Apply</c>).
+		/// </summary>
+		public static void RefreshThemeColors()
+		{
+			themeColorsResolved = true;
+			ApplyThemeColors();
+		}
+
 	}
 }
