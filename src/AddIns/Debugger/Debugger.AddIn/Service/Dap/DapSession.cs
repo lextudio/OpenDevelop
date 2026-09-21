@@ -112,7 +112,8 @@ namespace Debugger.AddIn.Service.Dap
 
 		public async Task StartAsync(string targetPath, string workingDirectory, bool breakAtBeginning,
 			IEnumerable<string> arguments = null,
-			DapLaunchMode launchMode = DapLaunchMode.Launch, CancellationToken cancellationToken = default)
+			DapLaunchMode launchMode = DapLaunchMode.Launch, CancellationToken cancellationToken = default,
+			IEnumerable<KeyValuePair<string, string>> launchEnvironment = null)
 		{
 			var argumentList = arguments != null ? arguments.ToList() : new List<string>();
 			string adapterDll = ResolveAdapterDll();
@@ -148,7 +149,7 @@ namespace Debugger.AddIn.Service.Dap
 			Capabilities = ParseCapabilities(initializeResponse);
 
 			if (launchMode == DapLaunchMode.AttachToSuspendedProcess) {
-				debuggeeProcess = LaunchDebuggeeSuspended(targetPath, workingDirectory, argumentList);
+				debuggeeProcess = LaunchDebuggeeSuspended(targetPath, workingDirectory, argumentList, launchEnvironment);
 				await client.SendRequestAsync("attach", new JsonObject {
 					["processId"] = debuggeeProcess.Id,
 					["console"] = "internalConsole",
@@ -202,7 +203,8 @@ namespace Debugger.AddIn.Service.Dap
 			}, cancellationToken).ConfigureAwait(false);
 		}
 
-		Process LaunchDebuggeeSuspended(string targetDll, string workingDirectory, IEnumerable<string> arguments)
+		Process LaunchDebuggeeSuspended(string targetDll, string workingDirectory, IEnumerable<string> arguments,
+			IEnumerable<KeyValuePair<string, string>> launchEnvironment)
 		{
 			var processStartInfo = new ProcessStartInfo {
 				FileName = ResolveDotNetHost(),
@@ -230,6 +232,14 @@ namespace Debugger.AddIn.Service.Dap
 				"DOTNET_gcServer", "_NO_DEBUG_HEAP"
 			}) {
 				processStartInfo.Environment.Remove(envVar);
+			}
+			// Apply explicit per-launch values after debugger sanitisation. In particular,
+			// Uno Hot Reload requires DOTNET_MODIFIABLE_ASSEMBLIES=debug, which is otherwise
+			// intentionally removed above to avoid leaking an IDE-wide setting into debuggees.
+			if (launchEnvironment != null) {
+				foreach (var variable in launchEnvironment) {
+					processStartInfo.Environment[variable.Key] = variable.Value;
+				}
 			}
 
 			var process = new Process { StartInfo = processStartInfo, EnableRaisingEvents = true };

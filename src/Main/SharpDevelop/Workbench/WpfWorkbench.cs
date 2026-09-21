@@ -1020,6 +1020,42 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		protected override void OnPreviewKeyDown(KeyEventArgs e)
 		{
 		base.OnPreviewKeyDown(e);
+		// LibreWPF's portable native host forwards ordinary text shortcuts to the
+		// window InputBindings, but function-key gestures can arrive here without
+		// ever consulting them. Keep the regular menu bindings as the primary path;
+		// this only restores the same commands when that path left the event
+		// unhandled. It makes the Visual Studio F5 / Ctrl+F5 / Shift+F5 journey
+		// available on the portable hosts as well as Windows MIL.
+		// The portable host reports synthetic function keys as Key.System with the
+		// physical function key in SystemKey (instead of Key.F5 directly).
+		var physicalKey = e.Key == Key.System ? e.SystemKey : e.Key;
+		if (!e.Handled && physicalKey == Key.F5) {
+			if (e.KeyboardDevice.Modifiers == ModifierKeys.None) {
+				new ICSharpCode.SharpDevelop.Project.Commands.ContinueDebuggingCommand().Run();
+				e.Handled = true;
+				return;
+			}
+			if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) {
+				new ICSharpCode.SharpDevelop.Project.Commands.ExecuteWithoutDebugger().Run();
+				e.Handled = true;
+				return;
+			}
+			if (e.KeyboardDevice.Modifiers == ModifierKeys.Shift && SD.Debugger.IsDebugging) {
+				new ICSharpCode.SharpDevelop.Project.Commands.StopDebuggingCommand().Run();
+				e.Handled = true;
+				return;
+			}
+		}
+		// Save, restored explicitly the same way as the F5 family above. Note for anyone driving
+		// this from a test on macOS: the gesture that reaches here is Cmd+S, not Ctrl+S. The
+		// portable host maps the macOS Command key onto ModifierKeys.Control, while a literal
+		// Ctrl+S never arrives at all - macOS consumes it as a system shortcut (it opens Siri),
+		// so an automated "Ctrl+S" looks like a silently ignored save rather than a swallowed key.
+		if (!e.Handled && e.Key == Key.S && e.KeyboardDevice.Modifiers == ModifierKeys.Control) {
+			new ICSharpCode.SharpDevelop.Commands.SaveFile().Run();
+			e.Handled = true;
+			return;
+		}
 		if (!e.Handled && e.Key == Key.D && e.KeyboardDevice.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift | ModifierKeys.Alt)) {
 		enableFocusDebugOutput = !enableFocusDebugOutput;
 				

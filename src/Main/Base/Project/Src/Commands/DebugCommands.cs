@@ -24,12 +24,14 @@ using ICSharpCode.SharpDevelop.Editor.Bookmarks;
 using ICSharpCode.SharpDevelop.Debugging;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Gui;
+using ICSharpCode.SharpDevelop.Project.HotReload;
 
 namespace ICSharpCode.SharpDevelop.Project.Commands
 {
 	public class Execute : AbstractMenuCommand
 	{
 		protected bool withDebugger = true;
+		protected bool withHotReload;
 		
 		public override void Run()
 		{
@@ -39,7 +41,16 @@ namespace ICSharpCode.SharpDevelop.Project.Commands
 					IProject startupProject = ProjectService.OpenSolution.StartupProject;
 					if (startupProject != null) {
 						LoggingService.Info("Debugger Command: Start (withDebugger=" + withDebugger + ")");
-						startupProject.Start(withDebugger);
+						// F5 is the normal Visual Studio XAML Hot Reload journey. Keep the
+						// explicit command for users who want to opt in from the menu, but
+						// automatically configure the supported Uno launch adapter here so
+						// the actual F5 command, build-before-run and debugger lifecycle are
+						// all part of the same session.
+						bool useHotReload = withHotReload || HotReloadService.IsSupported(startupProject);
+						if (useHotReload)
+							startupProject.StartWithHotReload(withDebugger);
+						else
+							startupProject.Start(withDebugger);
 					} else {
 						MessageService.ShowError("${res:BackendBindings.ExecutionManager.CantExecuteDLLError}");
 					}
@@ -54,6 +65,20 @@ namespace ICSharpCode.SharpDevelop.Project.Commands
 		public override void Run()
 		{
 			withDebugger = false;
+			base.Run();
+		}
+	}
+
+	/// <summary>
+	/// Starts the startup project in the explicit Hot Reload launch mode. This intentionally does
+	/// not change the behaviour of Run, F5, or Start Without Debugging.
+	/// </summary>
+	public class ExecuteWithHotReload : Execute
+	{
+		public override void Run()
+		{
+			withDebugger = false;
+			withHotReload = true;
 			base.Run();
 		}
 	}

@@ -1,0 +1,17 @@
+<Project Sdk="Uno.Sdk/6.6.42">
+  <PropertyGroup>
+    <TargetFramework>net10.0-desktop</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>UnoHotReloadFixture</RootNamespace>
+    <AssemblyName>UnoHotReloadFixture</AssemblyName>
+    <UnoSingleProject>true</UnoSingleProject>
+    <ApplicationTitle>Uno Hot Reload Fixture</ApplicationTitle>
+    <ApplicationId>com.opendevelop.unohotreloadfixture</ApplicationId>
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <ApplicationVersion>1</ApplicationVersion>
+    <UnoFeatures>SkiaRenderer;</UnoFeatures>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(Configuration)' == 'Debug'">
+    <PackageReference Include="LeXtudio.DevFlow.Agent.Uno" Version="0.2.2" />
+  </ItemGroup>
+</Project>

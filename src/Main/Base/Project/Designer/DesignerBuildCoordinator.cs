@@ -60,6 +60,16 @@ namespace ICSharpCode.SharpDevelop.Project
 					lock (successfulBuilds) successfulBuilds[current.Identity] = current;
 					return new DesignerBuildResult(false, true, null);
 				}
+				// BuildOptions.BuildOnExecute is normally read only by Commands.BuildBeforeExecute
+				// (the F5/Run build-before-launch gate). An automated journey that sets it to
+				// DoNotBuild - e.g. an integration test isolating keyboard/debugger/Hot Reload
+				// coverage from build-before-run responsiveness - expects NO build to happen at
+				// all for the duration, but opening a designer-backed document used to start this
+				// coordinator's own build regardless, silently consuming the run's time budget.
+				// Honor the same override here: report the existing (possibly stale) output as
+				// unusable rather than starting a real build behind the caller's back.
+				if (BuildOptions.BuildOnExecute == BuildDetection.DoNotBuild)
+					return new DesignerBuildResult(false, current.HasOutput, current.HasOutput ? null : "Designer build skipped (BuildOnExecute=DoNotBuild) and no prior output exists.");
 				report?.Invoke("Building " + project.Name + " for the designer…");
 				var results = await SD.BuildService.BuildAsync(project, new BuildOptions(BuildTarget.Build)).ConfigureAwait(true);
 				var after = CreateStamp(project, requireRuntimeGraph);

@@ -238,6 +238,10 @@
   <ItemGroup>
     <_FixtureProject Include="../fixtures/DebugTestApp/DebugTestApp.csproj" />
     <_FixtureProject Include="../fixtures/SampleTestProject/SampleTestProject.csproj" />
+	<_FixtureProject Include="../fixtures/UnoHotReloadFixture/UnoHotReloadFixture.csproj" />
+    <!-- The WPF Hot Reload journey launches this fixture for real and hot-reloads it, so the test
+         needs its built output, not just its source. -->
+    <_FixtureProject Include="../fixtures/WpfHotReloadFixture/WpfHotReloadFixture.csproj" />
     <!-- The WPF designer sample (WpfSampleSolutionPath): its MainWindow.xaml hosts
          <local:SamplePane x:Name="MainPane"/>, a control defined in this same project - so the
          designer can only instantiate it, and the Outline pad can only show "MainPane", once the

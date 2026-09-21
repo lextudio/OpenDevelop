@@ -74,6 +74,12 @@ namespace ICSharpCode.SharpDevelop.Project
 			if (this.next != null)
 				next.Start(withDebugging);
 		}
+
+		public virtual void StartWithHotReload(bool withDebugging)
+		{
+			if (this.next != null)
+				next.StartWithHotReload(withDebugging);
+		}
 		
 		public virtual ProcessStartInfo CreateStartInfo()
 		{

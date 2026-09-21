@@ -33,6 +33,8 @@
 			<ConditionEvaluator name="IsTextSelected" class="ICSharpCode.SharpDevelop.Editor.TextSelectedCondition"/>
 			<!-- MVP: removed ConditionEvaluator name="ViewInBrowser" class="ICSharpCode.SharpDevelop.ViewInBrowserConditionEvaluator"/ - its only consumer (the "View in Browser" MenuItem further below) is disabled the same way; the new WPF pad's ViewInBrowserProjectBrowserCommand checks the file extension itself instead, see ICSharpCode.SharpDevelop.ProjectBrowser.addin -->
 			<ConditionEvaluator name="ProjectBehaviorSupported" class="ICSharpCode.SharpDevelop.Project.ProjectBehaviorSupportedConditionEvaluator"/>
+			<ConditionEvaluator name="HotReloadSupported" class="ICSharpCode.SharpDevelop.HotReloadSupportedConditionEvaluator"/>
+			<ConditionEvaluator name="HotReloadSessionActive" class="ICSharpCode.SharpDevelop.Project.HotReload.HotReloadSessionActiveConditionEvaluator"/>
 			<ConditionEvaluator name="SymbolTypeAtCaret" class="ICSharpCode.SharpDevelop.Internal.ConditionEvaluators.SymbolTypeAtCaretConditionEvaluator"/>
 			<!-- MVP: removed ConditionEvaluator name="IsAssemblyUnpinned" class="ICSharpCode.SharpDevelop.Dom.ClassBrowser.IsAssemblyUnpinnedConditionEvaluator"/ -->
 			
@@ -57,6 +59,12 @@
 		</Import>
 	</Runtime>
 	
+	<!-- Hot Reload adapters, in the order they are offered a project. A new UI framework
+	     contributes here instead of editing the shared launch path. -->
+	<Path name="/SharpDevelop/HotReload/Adapters">
+		<Class id="WPF" class="ICSharpCode.SharpDevelop.Project.HotReload.Wpf.WpfApplicationHotReloadAdapter"/>
+	</Path>
+
 	<Path name="/SharpDevelop/Services">
 		<Service id="ICSharpCode.SharpDevelop.Parser.IGlobalAssemblyCacheService"
 		         class="ICSharpCode.SharpDevelop.Parser.GlobalAssemblyCacheService"/>
@@ -1020,6 +1028,12 @@
 						             tooltip = "${res:XML.MainMenu.DebugMenu.RunWithoutDebug.Description}"
 						             class   = "ICSharpCode.SharpDevelop.Project.Commands.ExecuteWithoutDebugger"/>
 					</Condition>
+					<Condition name="HotReloadSupported" action="Disable">
+						<ToolbarItem id      = "StartHotReload"
+						             icon    = "Icons.16x16.HotReload"
+						             tooltip = "${res:XML.MainMenu.DebugMenu.StartHotReload.Description}"
+						             class   = "ICSharpCode.SharpDevelop.Project.Commands.ExecuteWithHotReload"/>
+					</Condition>
 				</Condition>
 			</Condition>
 		</ComplexCondition>
@@ -1663,6 +1677,32 @@
 						          icon     = "Icons.16x16.Debug.StartWithoutDebugging"
 						          shortcut = "Control|F5"
 						          class    = "ICSharpCode.SharpDevelop.Project.Commands.ExecuteWithoutDebugger"/>
+					</Condition>
+				</Condition>
+			</Condition>
+
+			<Condition name = "SolutionOpen" action="Disable">
+				<Condition name="IsProcessRunning" isdebugging="False" action="Disable">
+					<Condition name="HotReloadSupported" action="Disable">
+						<MenuItem id       = "StartHotReload"
+						          label    = "${res:XML.MainMenu.DebugMenu.StartHotReload}"
+						          icon     = "Icons.16x16.HotReload"
+						          class    = "ICSharpCode.SharpDevelop.Project.Commands.ExecuteWithHotReload"/>
+					</Condition>
+				</Condition>
+			</Condition>
+			<Condition name="HotReloadSessionActive" action="Disable">
+				<MenuItem id       = "ApplyHotReload"
+				          label    = "${res:XML.MainMenu.DebugMenu.ApplyHotReload}"
+				          icon     = "Icons.16x16.HotReload"
+				          class    = "ICSharpCode.SharpDevelop.Project.HotReload.ApplyHotReloadCommand"/>
+				<MenuItem id       = "StopHotReload"
+				          label    = "${res:XML.MainMenu.DebugMenu.StopHotReload}"
+				          class    = "ICSharpCode.SharpDevelop.Project.HotReload.StopHotReloadCommand"/>
+			</Condition>
+			<Condition name = "SolutionOpen" action="Disable">
+				<Condition name="IsProcessRunning" isdebugging="False" action="Disable">
+					<Condition name="HotReloadSupported" action="Disable">
 					</Condition>
 				</Condition>
 			</Condition>

@@ -35,6 +35,9 @@ public sealed class FixtureTestCaseOrderer : ITestCaseOrderer
         if (testName.Contains("CodeCoverageTests", StringComparison.Ordinal)) return 40;
         if (testName.Contains("DebuggerIntegrationTests", StringComparison.Ordinal)) return 50;
         if (testName.Contains("RuntimeUpgradeIntegrationTests", StringComparison.Ordinal)) return 60;
+        // Launches and hot-reloads its own application, so it runs after the debugger journeys
+        // that own the debug session.
+        if (testName.Contains("WpfHotReloadJourneyTests", StringComparison.Ordinal)) return 70;
         return 1000;
     }
 

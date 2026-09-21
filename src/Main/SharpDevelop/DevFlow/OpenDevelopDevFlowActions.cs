@@ -9,6 +9,8 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -2021,6 +2023,16 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 
+		[DevFlowAction("od.build.set-on-execute", Description = "Set the Build on Execute preference for an isolated integration journey and return its previous value")]
+		public static string SetBuildOnExecute(string detection)
+		{
+			if (!Enum.TryParse<BuildDetection>(detection, ignoreCase: true, out var parsed))
+				return JsonSerializer.Serialize(new { success = false, error = "Unknown BuildDetection value: " + detection });
+			var previous = BuildOptions.BuildOnExecute;
+			BuildOptions.BuildOnExecute = parsed;
+			return JsonSerializer.Serialize(new { success = true, previous = previous.ToString(), current = parsed.ToString() });
+		}
+
 		// The IDE's own "Start Without Debugging" (ICSharpCode.SharpDevelop.Project.Commands.Execute
 		// -> IProject.Start(false) -> SD.Debugger.StartWithoutDebugging) throws the launched
 		// Process away, so an automated caller can neither confirm the game came up nor stop it
@@ -2030,6 +2042,142 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		static readonly object runLock = new object();
 		static System.Diagnostics.Process runningProcess;
 		static string runningProcessOutputFile;
+
+		/// <summary>
+		/// Reports whether the Uno DevServer has finished loading its Roslyn workspace and is
+		/// actually watching the project for changes.
+		/// A DevServer that is merely listening is not yet able to hot reload anything: it first
+		/// loads the whole compilation workspace, and only then logs that it is "Observing ...
+		/// project directories for metadata changes". An edit saved before that point is simply
+		/// never seen, which looks exactly like a hot reload that silently did nothing.
+		/// </summary>
+		[DevFlowAction("od.hot-reload.status", Description = "Report whether the Uno DevServer for the current solution has finished loading and is watching for changes, plus its log file")]
+		public static string GetHotReloadStatus()
+		{
+			var project = SD.ProjectService.CurrentSolution?.StartupProject;
+			var logFile = ICSharpCode.SharpDevelop.Project.HotReload.UnoHotReloadService.GetDevServerLogFile(project);
+			if (logFile == null || !File.Exists(logFile))
+				return JsonSerializer.Serialize(new { running = false, watching = false, logFile });
+
+			string log;
+			try {
+				using var stream = new FileStream(logFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+				using var reader = new StreamReader(stream);
+				log = reader.ReadToEnd();
+			} catch (IOException ex) {
+				return JsonSerializer.Serialize(new { running = true, watching = false, logFile, error = ex.Message });
+			}
+
+			return JsonSerializer.Serialize(new {
+				running = true,
+				watching = log.Contains("project directories for metadata changes", StringComparison.Ordinal),
+				metadataUpdater = log.Contains("Metadata updater initialized", StringComparison.Ordinal),
+				logFile
+			});
+		}
+
+		/// <summary>
+		/// Runs the very command the Start Hot Reload toolbar button and menu item run, so a test
+		/// covers the real journey - adapter selection, build-before-run, launch configuration and
+		/// debugger lifecycle - rather than a hand-built ProcessStartInfo that exercises none of it.
+		/// </summary>
+		[DevFlowAction("od.hot-reload.start-command", Description = "Run the Start Hot Reload command exactly as the toolbar button does")]
+		public static string RunStartHotReloadCommand()
+		{
+			new ICSharpCode.SharpDevelop.Project.Commands.ExecuteWithHotReload().Run();
+			return JsonSerializer.Serialize(new { success = true });
+		}
+
+		/// <summary>Runs the Apply Hot Reload command, the per-document gesture.</summary>
+		[DevFlowAction("od.hot-reload.apply-command", Description = "Run the Apply Hot Reload command for the active document")]
+		public static string RunApplyHotReloadCommand()
+		{
+			var command = new ICSharpCode.SharpDevelop.Project.HotReload.ApplyHotReloadCommand();
+			if (!command.IsEnabled)
+				return JsonSerializer.Serialize(new { success = false, error = "The Apply Hot Reload command is disabled." });
+			command.Run();
+			return JsonSerializer.Serialize(new { success = true });
+		}
+
+		/// <summary>Runs the Stop Hot Reload command, ending the session without touching the app.</summary>
+		[DevFlowAction("od.hot-reload.stop-command", Description = "Run the Stop Hot Reload command, ending the session without stopping the application")]
+		public static string RunStopHotReloadCommand()
+		{
+			new ICSharpCode.SharpDevelop.Project.HotReload.StopHotReloadCommand().Run();
+			return JsonSerializer.Serialize(new { success = true });
+		}
+
+		/// <summary>Reports the live Hot Reload session: framework, state and adapter diagnostics.</summary>
+		[DevFlowAction("od.hot-reload.session", Description = "Report the current Hot Reload session - framework, state, capabilities and adapter diagnostics such as its endpoint")]
+		public static string GetHotReloadSession()
+		{
+			var session = ICSharpCode.SharpDevelop.Project.HotReload.HotReloadService.CurrentSession;
+			if (session == null)
+				return JsonSerializer.Serialize(new { active = false });
+
+			return JsonSerializer.Serialize(new {
+				active = true,
+				framework = session.Framework,
+				state = session.State.ToString(),
+				canApplyFromIde = session.Capabilities.CanApplyFromIde,
+				requiresSavedFile = session.Capabilities.RequiresSavedFile,
+				applyAction = ICSharpCode.SharpDevelop.Project.HotReload.HotReloadWorkflow
+					.DecideApplyAction(session).ToString(),
+				diagnostics = session.GetDiagnostics(),
+			});
+		}
+
+		[DevFlowAction("od.hot-reload.start", Description = "Start the startup project through OpenDevelop's explicit Uno Hot Reload launch path and return the sample DevFlow probe port.")]
+		public static string StartHotReloadProject()
+		{
+			var project = SD.ProjectService.CurrentSolution?.StartupProject;
+			if (project is not AbstractProject startable)
+				return JsonSerializer.Serialize(new { success = false, error = "The solution has no startable startup project." });
+
+			System.Diagnostics.ProcessStartInfo psi;
+			try {
+				psi = startable.CreateStartInfo();
+			} catch (ProjectStartException ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.Message });
+			}
+			if (!ICSharpCode.SharpDevelop.Project.HotReload.UnoHotReloadService.TryConfigureLaunch(project, psi))
+				return JsonSerializer.Serialize(new { success = false, error = "Hot Reload could not be configured for the startup project." });
+
+			var probePort = AllocateLoopbackPort();
+			var probeStartupFile = Path.Combine(Path.GetTempPath(), "od-hot-reload-probe-" + Guid.NewGuid().ToString("N") + ".log");
+			psi.Environment["OD_UNO_HOT_RELOAD_DEVFLOW_PORT"] = probePort.ToString(System.Globalization.CultureInfo.InvariantCulture);
+			psi.Environment["OD_UNO_HOT_RELOAD_PROBE_STARTUP_FILE"] = probeStartupFile;
+			psi.UseShellExecute = false;
+			psi.RedirectStandardOutput = true;
+			psi.RedirectStandardError = true;
+			lock (runLock) {
+				if (runningProcess != null && !runningProcess.HasExited)
+					return JsonSerializer.Serialize(new { success = false, error = $"A process started by OpenDevelop is still running (pid {runningProcess.Id}); call od.stop-project first." });
+				try {
+					runningProcess = System.Diagnostics.Process.Start(psi);
+				} catch (Exception ex) {
+					return JsonSerializer.Serialize(new { success = false, error = ex.Message });
+				}
+				runningProcessOutputFile = Path.Combine(Path.GetTempPath(), "od-hot-reload-" + runningProcess.Id + ".log");
+				StartOutputPump(runningProcess, runningProcessOutputFile);
+				return JsonSerializer.Serialize(new {
+					success = true,
+					projectName = project.Name,
+					processId = runningProcess.Id,
+					probePort,
+					probeStartupFile,
+					devServerLogFile = ICSharpCode.SharpDevelop.Project.HotReload.UnoHotReloadService.GetDevServerLogFile(project),
+					outputFile = runningProcessOutputFile
+				});
+			}
+		}
+
+		static int AllocateLoopbackPort()
+		{
+			using var listener = new TcpListener(IPAddress.Loopback, 0);
+			listener.Start();
+			return ((IPEndPoint)listener.LocalEndpoint).Port;
+		}
 
 		[DevFlowAction("od.run-project", Description = "Start the startup project (or a named project) without debugging, the same way the Debug > Start Without Debugging command does, and return the launched process id so it can be polled with od.run-status and stopped with od.stop-project")]
 		public static string RunProject(string projectName = null)
@@ -2376,6 +2524,38 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 		
+		/// <summary>
+		/// Runs the very command object a keyboard gesture is bound to, so a test can cover the
+		/// real Run/Stop journey - build-before-run, Hot Reload adapter selection and debugger
+		/// lifecycle all included - without depending on synthetic OS keystrokes.
+		/// Native key injection is not a reliable substitute on this host: macOS only delivers an
+		/// ordinary keyDown to its key window, and a DevFlow-activated window is frequently not
+		/// key (od.activate reports isActive=false), so the keystroke is silently dropped with no
+		/// event and no error. Only the OS input leg is skipped here; everything the gesture
+		/// actually triggers inside the IDE still runs.
+		/// </summary>
+		[DevFlowAction("od.workbench.invoke-shortcut", Description = "Run the command bound to a keyboard shortcut (F5, Ctrl+F5, Shift+F5, Ctrl+S) through the same command object the key binding uses")]
+		public static string InvokeShortcut(string gesture)
+		{
+			switch ((gesture ?? "").Trim().ToLowerInvariant()) {
+				case "f5":
+					new ICSharpCode.SharpDevelop.Project.Commands.ContinueDebuggingCommand().Run();
+					break;
+				case "ctrl+f5":
+					new ICSharpCode.SharpDevelop.Project.Commands.ExecuteWithoutDebugger().Run();
+					break;
+				case "shift+f5":
+					new ICSharpCode.SharpDevelop.Project.Commands.StopDebuggingCommand().Run();
+					break;
+				case "ctrl+s":
+					new ICSharpCode.SharpDevelop.Commands.SaveFile().Run();
+					break;
+				default:
+					return JsonSerializer.Serialize(new { success = false, error = "Unsupported gesture: " + gesture });
+			}
+			return JsonSerializer.Serialize(new { success = true, gesture });
+		}
+
 		[DevFlowAction("od.debug.stop", Description = "Stop the current debug session")]
 		public static string StopDebug()
 		{
@@ -2529,6 +2709,47 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			}
 
 			return JsonSerializer.Serialize(new { found = true, title = pad.Title, className = pad.Class });
+		}
+
+		/// <summary>
+		/// Reports the colours a loaded icon is actually painted with, by walking the drawing it
+		/// ended up with. Used to verify that a theme switch repaints the glyphs that are already
+		/// loaded - the cached ImageSource instance is the same one the UI is displaying, so if its
+		/// brush colours changed, what the user sees changed too.
+		/// </summary>
+		[DevFlowAction("od.icon.colors", Description = "Report the brush colours of a loaded icon's drawing, to verify theme recolouring")]
+		public static string GetIconColors(string iconKey)
+		{
+			var image = ICSharpCode.Core.Presentation.PresentationResourceService.GetImageSource(iconKey);
+			if (image == null)
+				return JsonSerializer.Serialize(new { found = false, iconKey });
+
+			var colors = new List<string>();
+			if (image is System.Windows.Media.DrawingImage drawingImage)
+				CollectBrushColors(drawingImage.Drawing, colors);
+
+			return JsonSerializer.Serialize(new {
+				found = true,
+				iconKey,
+				isFrozen = image.IsFrozen,
+				instanceId = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(image),
+				colors = colors.ToArray(),
+			});
+		}
+
+		static void CollectBrushColors(System.Windows.Media.Drawing drawing, List<string> colors)
+		{
+			if (drawing is System.Windows.Media.DrawingGroup group) {
+				foreach (var child in group.Children)
+					CollectBrushColors(child, colors);
+				return;
+			}
+			if (drawing is System.Windows.Media.GeometryDrawing geometry) {
+				if (geometry.Brush is System.Windows.Media.SolidColorBrush fill)
+					colors.Add(fill.Color.ToString());
+				if (geometry.Pen?.Brush is System.Windows.Media.SolidColorBrush stroke)
+					colors.Add(stroke.Color.ToString());
+			}
 		}
 
 		[DevFlowAction("od.workbench.set-theme", Description = "Set the IDE theme (Light/Dark/Blue) via IdeThemeService.SetTheme - drives the same code path as the Options panel's theme combo, raising IdeThemeService.ThemeChanged so subscribers (e.g. ILSpyAddIn's theme bridge) can be tested deterministically")]
@@ -2858,6 +3079,21 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			editor.Document.Insert(editor.Document.TextLength, text);
 			var file = SD.FileService.GetOpenedFile(fileName);
 			return JsonSerializer.Serialize(new { success = true, isDirty = file?.IsDirty ?? false });
+		}
+
+		[DevFlowAction("od.file.replace-text", Description = "Replace an exact text fragment in an open editor document and leave it dirty for a subsequent od.file.save.")]
+		public static string ReplaceFileText(string path, string oldText, string newText)
+		{
+			var fileName = FileName.Create(path);
+			var viewContent = SD.FileService.GetOpenFile(fileName) ?? SD.FileService.OpenFile(fileName);
+			var editor = viewContent?.GetService<ITextEditor>();
+			if (editor == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No text editor for " + path });
+			var offset = editor.Document.Text.IndexOf(oldText, StringComparison.Ordinal);
+			if (offset < 0)
+				return JsonSerializer.Serialize(new { success = false, error = "The requested text was not found." });
+			editor.Document.Replace(offset, oldText.Length, newText);
+			return JsonSerializer.Serialize(new { success = true, isDirty = SD.FileService.GetOpenedFile(fileName)?.IsDirty ?? false });
 		}
 
 		/// <summary>

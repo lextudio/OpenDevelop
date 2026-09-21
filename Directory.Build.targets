@@ -172,4 +172,27 @@
   </Target>
 
   <Import Project="$(MSBuildThisFileDirectory)src/SDK/OpenDevelop.Addin.Sdk/Sdk/Sdk.targets" />
+
+  <!--
+    LibreWPF builds a small native Win32-compatibility shim for portable macOS
+    builds.  On macOS 27, /usr/bin/cc can be the Xcode compiler while its
+    implicit SDK is CommandLineTools/MacOSX.sdk.  That SDK advertises the new
+    arm64e.x1 architecture, which the Xcode linker used by the compiler does
+    not yet parse ("tapi error: unknown architecture").  Use Xcode's matching
+    SDK only for this native-shim invocation.  This deliberately does not set
+    SDKROOT globally: managed compilation and other native package targets keep
+    their normal SDK selection.
+
+    The condition preserves the usual LibreWPF behaviour on installations that
+    have only Command Line Tools or a differently located Xcode.
+  -->
+  <Target Name="OpenDevelopUseMatchingXcodeSdkForProGpuWin32Compat"
+          BeforeTargets="_ProGpuWpfSdkBuildWin32CompatShim"
+          Condition="$([MSBuild]::IsOSPlatform('OSX'))
+                     And Exists('/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk')">
+    <PropertyGroup>
+      <_OpenDevelopXcodeMacOsSdk>/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk</_OpenDevelopXcodeMacOsSdk>
+      <_ProGpuWpfWin32CompatCompileCommand>SDKROOT=&quot;$(_OpenDevelopXcodeMacOsSdk)&quot; &quot;$(ProGpuWpfWin32CompatCompiler)&quot; -dynamiclib -O2 -fvisibility=hidden -o &quot;$(_ProGpuWpfWin32CompatOutput)&quot; &quot;$(_ProGpuWpfWin32CompatSource)&quot;</_ProGpuWpfWin32CompatCompileCommand>
+    </PropertyGroup>
+  </Target>
 </Project>

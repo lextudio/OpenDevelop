@@ -28,6 +28,7 @@ using ICSharpCode.SharpDevelop.Debugging;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Gui.OptionPanels;
 using ICSharpCode.SharpDevelop.Project.Converter;
+using ICSharpCode.SharpDevelop.Project.HotReload;
 
 namespace ICSharpCode.SharpDevelop.Project
 {
@@ -49,6 +50,16 @@ namespace ICSharpCode.SharpDevelop.Project
 		}
 		
 		public override void Start(bool withDebugging)
+		{
+			StartCore(withDebugging, enableHotReload: false);
+		}
+
+		public override void StartWithHotReload(bool withDebugging)
+		{
+			StartCore(withDebugging, enableHotReload: true);
+		}
+
+		void StartCore(bool withDebugging, bool enableHotReload)
 		{
 			ProcessStartInfo psi;
 			try {
@@ -74,6 +85,10 @@ namespace ICSharpCode.SharpDevelop.Project
 #else
 				MessageService.ShowError(ex.Message);
 #endif
+				return;
+			}
+			if (enableHotReload && !HotReloadService.TryConfigureLaunch(Project, psi, withDebugging)) {
+				MessageService.ShowError("Hot Reload could not be enabled for the selected project. See the application log for details.");
 				return;
 			}
 #if !HAS_UNO

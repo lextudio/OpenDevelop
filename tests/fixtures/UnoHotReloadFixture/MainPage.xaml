@@ -1,0 +1,7 @@
+<Page x:Class="UnoHotReloadFixture.MainPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Grid Background="Black">
+    <TextBlock x:Name="ProbeText" Text="Before hot reload" Foreground="White" FontSize="24" />
+  </Grid>
+</Page>

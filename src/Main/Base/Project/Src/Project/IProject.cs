@@ -212,6 +212,12 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// </summary>
 		/// <param name="withDebugging">True, if a debugger should be used for the project.</param>
 		void Start(bool withDebugging);
+
+		/// <summary>
+		/// Starts the project with the explicitly requested runtime Hot Reload launch mode.
+		/// Normal <see cref="Start"/> calls never enable Hot Reload implicitly.
+		/// </summary>
+		void StartWithHotReload(bool withDebugging);
 		
 		/// <summary>
 		/// Creates a new ProjectItem for the passed MSBuild item.

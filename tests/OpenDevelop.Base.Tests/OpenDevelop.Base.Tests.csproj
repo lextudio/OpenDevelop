@@ -44,6 +44,29 @@
           SkipUnchangedFiles="true" />
   </Target>
 
+  <!-- The WPF Hot Reload test launches this fixture for real and hot-reloads it, so it needs the
+       built application, not just its source. It is standalone (outside the solution) and nothing
+       else builds it, so without this the test can only skip - and a test that silently never runs
+       is worse than no test. Restored in its own invocation because a standalone project has never
+       been restored and Build alone then fails with NETSDK1004. -->
+  <ItemGroup>
+    <_HotReloadFixtureProject Include="../fixtures/WpfHotReloadFixture/WpfHotReloadFixture.csproj" />
+  </ItemGroup>
+  <Target Name="BuildHotReloadFixture" BeforeTargets="Build">
+    <MSBuild Projects="@(_HotReloadFixtureProject)" Targets="Restore"
+             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true" />
+    <MSBuild Projects="@(_HotReloadFixtureProject)" Targets="Build"
+             Properties="Configuration=$(Configuration);RestoreIgnoreFailedSources=true" />
+  </Target>
+
+  <!-- The agent the test injects into the fixture. Built here rather than copied so the test runs
+       against the same assembly the IDE deploys; it is handed to the fixture's runtime through
+       DOTNET_STARTUP_HOOKS and is never loaded into the test host itself. -->
+  <Target Name="BuildHotReloadAgentForTests" BeforeTargets="Build">
+    <MSBuild Projects="$(MSBuildThisFileDirectory)../../src/Main/HotReload/WpfHotReload.Agent/WpfHotReload.Agent.csproj"
+             Targets="Build" Properties="Configuration=$(Configuration)" />
+  </Target>
+
   <Target Name="RemoveDesktopRuntimeFramework" AfterTargets="ProcessFrameworkReferences" BeforeTargets="FixupRuntimeFrameworkVersions">
     <ItemGroup>
       <RuntimeFramework Remove="@(RuntimeFramework)" Condition="'%(RuntimeFramework.Identity)' == 'Microsoft.WindowsDesktop.App'" />

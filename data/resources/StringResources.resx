@@ -7628,6 +7628,21 @@ The resources files have been renamed/moved accordingly.</value>
   <data name="XML.MainMenu.DebugMenu.RunWithoutDebug.Description" xml:space="preserve">
     <value>Runs the program without attached debugger.</value>
   </data>
+  <data name="XML.MainMenu.DebugMenu.ApplyHotReload" xml:space="preserve">
+    <value>Apply Hot Reload Changes</value>
+  </data>
+  <data name="XML.MainMenu.DebugMenu.SaveForHotReload" xml:space="preserve">
+    <value>Save for Hot Reload</value>
+  </data>
+  <data name="XML.MainMenu.DebugMenu.StopHotReload" xml:space="preserve">
+    <value>Stop Hot Reload</value>
+  </data>
+  <data name="XML.MainMenu.DebugMenu.StartHotReload" xml:space="preserve">
+    <value>Start Hot Reload</value>
+  </data>
+  <data name="XML.MainMenu.DebugMenu.StartHotReload.Description" xml:space="preserve">
+    <value>Starts the application with Hot Reload enabled.</value>
+  </data>
   <data name="XML.MainMenu.DebugMenu.StepInto" xml:space="preserve">
     <value>Step into</value>
   </data>

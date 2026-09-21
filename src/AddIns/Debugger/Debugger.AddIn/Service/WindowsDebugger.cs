@@ -206,8 +206,13 @@ namespace ICSharpCode.SharpDevelop.Services
 
 					bool breakAtBeginning = BreakAtBeginning;
 					BreakAtBeginning = false;
+					var hotReloadEnvironment = processStartInfo.Environment
+						.Where(variable => variable.Key.StartsWith("UNO_DEV_SERVER_", StringComparison.Ordinal)
+							|| string.Equals(variable.Key, "DOTNET_MODIFIABLE_ASSEMBLIES", StringComparison.Ordinal))
+						.Select(variable => new KeyValuePair<string, string>(variable.Key, variable.Value))
+						.ToArray();
 					await CurrentSession.StartAsync(targetPath, processStartInfo.WorkingDirectory, breakAtBeginning, arguments,
-						DapLaunchMode.AttachToSuspendedProcess).ConfigureAwait(false);
+						DapLaunchMode.AttachToSuspendedProcess, default, hotReloadEnvironment).ConfigureAwait(false);
 
 				// Breakpoints must be sent after "launch" but before "configurationDone" -
 				// most DAP adapters (including SharpDbg) ignore breakpoints set any later.

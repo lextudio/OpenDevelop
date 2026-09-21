@@ -58,6 +58,8 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     public string CoverageFixtureSolutionPath => LocateCoverageFixture();
     public string SolutionExplorerFixturePath => LocateSolutionExplorerFixture();
     public string DebugTestProjectPath => LocateDebugTestProject();
+	public string UnoHotReloadFixturePath => LocateUnoHotReloadFixture();
+	public string WpfHotReloadFixturePath => LocateWpfHotReloadFixture();
     // A template rather than a path used in place: the runtime-upgrade test rewrites the
     // project's TargetFramework, so it works on a per-test copy instead of this repo's tracked
     // fixture (same reasoning as the NuGet and Git fixtures).
@@ -211,7 +213,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     // poisoned input: a single stray rename of Widget.cs was measured to fail 4-8 otherwise
     // unrelated tests on the following run, which is why this suite's failure set kept changing
     // between runs. Silent contamination is the problem, so this reports the damage against the
-    // run that caused it, and restores the tree so the next run is clean regardless.
+    // run that observed it. Preserve edits: developers may be changing fixtures concurrently.
     string? _fixtureBaseline;
 
     void CaptureFixtureBaseline() => _fixtureBaseline = ReadFixtureStatus();
@@ -225,18 +227,16 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
             return;
 
         var diff = RunGit("diff -- tests/fixtures") ?? "(diff unavailable)";
-        RunGit("checkout -- tests/fixtures");
 
         // Deliberately reported, not thrown. Throwing from an assembly fixture's disposal makes
         // xUnit attribute a "Test Assembly Cleanup Failure" to every test in the assembly, which
         // turned an 81-test run into 162 results with 82 failures and buried the one real failure.
-        // Restoring the tree is what actually stops the damage from reaching the next run; this
-        // message is here so the run that caused it still says so.
+        // Report the change without discarding either pre-existing or concurrent developer edits.
         var banner = new StringBuilder();
         banner.AppendLine();
         banner.AppendLine("################ FIXTURE CONTAMINATION ################");
-        banner.AppendLine("A test mutated tracked files under tests/fixtures. They have been restored so");
-        banner.AppendLine("the next run starts clean, but the mutation itself is a real defect - either the");
+        banner.AppendLine("Tracked files under tests/fixtures changed during this run. Changes were preserved.");
+        banner.AppendLine("Concurrent developer edits must never be overwritten by test cleanup. If a test caused this,");
         banner.AppendLine("test must work on a temp copy, or the app wrote outside the solution it was told");
         banner.AppendLine("to change.");
         banner.AppendLine("git status before: " + _fixtureBaseline);
@@ -910,6 +910,30 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         throw new FileNotFoundException(
             "Could not locate tests/fixtures/DebugTestApp/DebugTestApp.csproj by walking up from " + AppContext.BaseDirectory);
     }
+
+	static string LocateUnoHotReloadFixture()
+	{
+		var dir = AppContext.BaseDirectory;
+		while (dir is not null)
+		{
+			var candidate = Path.Combine(dir, "tests", "fixtures", "UnoHotReloadFixture", "UnoHotReloadFixture.slnx");
+			if (File.Exists(candidate)) return candidate;
+			dir = Path.GetDirectoryName(dir);
+		}
+		throw new FileNotFoundException("Could not locate tests/fixtures/UnoHotReloadFixture/UnoHotReloadFixture.slnx by walking up from " + AppContext.BaseDirectory);
+	}
+
+	static string LocateWpfHotReloadFixture()
+	{
+		var dir = AppContext.BaseDirectory;
+		while (dir is not null)
+		{
+			var candidate = Path.Combine(dir, "tests", "fixtures", "WpfHotReloadFixture", "WpfHotReloadFixture.slnx");
+			if (File.Exists(candidate)) return candidate;
+			dir = Path.GetDirectoryName(dir);
+		}
+		throw new FileNotFoundException("Could not locate tests/fixtures/WpfHotReloadFixture/WpfHotReloadFixture.slnx by walking up from " + AppContext.BaseDirectory);
+	}
 
 	static string LocateAspNetCoreSampleSolution()
 	{

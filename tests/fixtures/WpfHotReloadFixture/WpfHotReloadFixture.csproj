@@ -1,0 +1,32 @@
+<Project Sdk="LibreWPF.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>sample</RootNamespace>
+    <AssemblyName>WpfHotReloadFixture</AssemblyName>
+  </PropertyGroup>
+
+  <!-- vscode-wpf's own WPF sample, source-linked rather than copied. WpfHotReloadAgent's built-in
+       queries (PaneTitle.Text, PaneBody.Text, PrimaryButton.Background, PaneList.SelectedIndex)
+       name the elements in exactly these files, so a copy would drift away from the agent that
+       reads it. The only thing this project adds is the SDK: the sample targets Microsoft.NET.Sdk
+       and so needs the Windows Desktop runtime, while the Hot Reload test has to run the
+       application for real on macOS, which LibreWPF.Sdk makes possible from the same sources. -->
+  <PropertyGroup>
+    <_SampleDir>$(MSBuildThisFileDirectory)..\..\..\externals\vscode-wpf\sample\net6.0\</_SampleDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ApplicationDefinition Include="$(_SampleDir)App.xaml" Link="App.xaml" />
+    <Page Include="$(_SampleDir)MainWindow.xaml" Link="MainWindow.xaml" />
+    <Page Include="$(_SampleDir)SamplePane.xaml" Link="SamplePane.xaml" />
+    <Compile Include="$(_SampleDir)App.xaml.cs" Link="App.xaml.cs" />
+    <Compile Include="$(_SampleDir)MainWindow.xaml.cs" Link="MainWindow.xaml.cs" />
+    <Compile Include="$(_SampleDir)SamplePane.xaml.cs" Link="SamplePane.xaml.cs" />
+  </ItemGroup>
+
+</Project>

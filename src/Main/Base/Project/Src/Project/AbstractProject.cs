@@ -404,6 +404,11 @@ namespace ICSharpCode.SharpDevelop.Project
 		{
 			GetOrCreateBehavior().Start(withDebugging);
 		}
+
+		public virtual void StartWithHotReload(bool withDebugging)
+		{
+			GetOrCreateBehavior().StartWithHotReload(withDebugging);
+		}
 		
 		/// <summary>
 		/// Creates the start info used to start the project.
