@@ -15,7 +15,7 @@
       is what a new SDK is being taken for, and delete the line once the two versions coincide
       again.
     -->
-    <ProGpuWpfLibreWinFormsPackageVersion>0.1.0-preview.55</ProGpuWpfLibreWinFormsPackageVersion>
+    <ProGpuWpfLibreWinFormsPackageVersion>0.1.0-preview.57</ProGpuWpfLibreWinFormsPackageVersion>
     <ProGpuWpfUseCanonicalLibreWinForms>true</ProGpuWpfUseCanonicalLibreWinForms>
 
     <!--
