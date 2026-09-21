@@ -21,7 +21,9 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory, Position = 0)][string]$DepsPath,
-    [Parameter(Mandatory, Position = 1)][string]$NugetPackageRoot
+    [Parameter(Mandatory, Position = 1)][string]$NugetPackageRoot,
+    [string]$WindowsX64PackageRoot,
+    [string]$WindowsArm64PackageRoot
 )
 
 $ErrorActionPreference = 'Stop'
@@ -93,6 +95,7 @@ $sysformsPkgId = 'LibreWinForms.System.Windows.Forms'
 $winintPkgId = 'LibreWinForms.WindowsFormsIntegration'
 $progpudrawingPkgId = 'ProGPU.System.Drawing.Common'
 $transportPkgId = 'LibreWPF.Transport'
+$interopPkgId = 'LibreWPF.Interop'
 
 $sysformsVersion = Find-PackageVersion $NugetPackageRoot $sysformsPkgId.ToLowerInvariant()
 if (-not $sysformsVersion) {
@@ -105,12 +108,14 @@ if (-not $sysformsVersion) {
 $winintVersion = Find-PackageVersion $NugetPackageRoot $winintPkgId.ToLowerInvariant()
 $progpudrawingVersion = Find-PackageVersion $NugetPackageRoot $progpudrawingPkgId.ToLowerInvariant()
 $transportVersion = Find-PackageVersion $NugetPackageRoot $transportPkgId.ToLowerInvariant()
+$interopVersion = Find-PackageVersion $NugetPackageRoot $interopPkgId.ToLowerInvariant()
 
 $deps = Get-Content -Raw -Path $DepsPath | ConvertFrom-Json -AsHashtable
 
 $sysformsKey = "$sysformsPkgId/$sysformsVersion"
 $winintKey = if ($winintVersion) { "$winintPkgId/$winintVersion" } else { $null }
 $progpudrawingKey = if ($progpudrawingVersion) { "$progpudrawingPkgId/$progpudrawingVersion" } else { $null }
+$transportKey = if ($transportVersion) { "$transportPkgId/$transportVersion" } else { $null }
 
 # These assemblies are copied beside portable apps below. They must also appear in
 # deps.json: the CoreCLR host does not probe an otherwise-present DLL which has no
@@ -147,6 +152,31 @@ foreach ($tfm in @($deps['targets'].Keys)) {
     if (-not $libs.ContainsKey($sysformsKey)) { $libs[$sysformsKey] = @{} }
     if (-not $libs[$sysformsKey].ContainsKey('runtime')) { $libs[$sysformsKey]['runtime'] = @{} }
     $libs[$sysformsKey]['runtime']['lib/net10.0/System.Windows.Forms.dll'] = @{}
+    # The current LibreWinForms payload carries the v11 portable WPF core.  Transport's
+    # older convenience copy is v10, and restoring it after build makes the host reject
+    # assemblies compiled against the v11 contract at startup.
+    $libs[$sysformsKey]['runtime']['lib/net10.0/System.Private.Windows.Core.dll'] = @{
+        assemblyVersion = '11.0.0.0'
+        fileVersion = '42.42.42.42424'
+    }
+
+    if ($transportKey -and $libs.ContainsKey($transportKey)) {
+        $transportEntry = $libs[$transportKey]
+        if ($transportEntry.ContainsKey('runtime') -and $transportEntry['runtime'].ContainsKey('lib/net10.0/System.Private.Windows.Core.dll')) {
+            $transportEntry['runtime']['lib/net10.0/System.Private.Windows.Core.dll'] = @{
+                assemblyVersion = '11.0.0.0'
+                fileVersion = '42.42.42.42424'
+            }
+        }
+        if ($transportEntry.ContainsKey('runtimeTargets')) {
+            foreach ($assetPath in @($transportEntry['runtimeTargets'].Keys)) {
+                if ($assetPath.EndsWith('/System.Private.Windows.Core.dll', [StringComparison]::OrdinalIgnoreCase)) {
+                    $transportEntry['runtimeTargets'][$assetPath]['assemblyVersion'] = '11.0.0.0'
+                    $transportEntry['runtimeTargets'][$assetPath]['fileVersion'] = '42.42.42.42424'
+                }
+            }
+        }
+    }
 
     if ($winintKey) {
         # RAR/GenerateDepsFile conflict resolution can drop this package from deps.json's
@@ -203,19 +233,6 @@ foreach ($asset in $net10RuntimeAssets) {
     }
 }
 
-# Write through a PROCESS-UNIQUE temp file and move it into place, rather than writing $DepsPath
-# directly. This target runs per project after GenerateBuildDependencyFile, and WPF's markup
-# compiler re-runs targets through its own temporary "*_wpftmp" project clones, so two pwsh
-# processes can be told to patch the same deps.json at once. Set-Content straight onto the real
-# path then interleaves them and leaves a file holding a TRUNCATED document immediately followed by
-# the start of a second one - observed repeatedly as an invalid deps.json breaking at exactly char
-# 1025 (a 1KB buffer boundary), which fails this script on the next build and, worse, makes the
-# CoreCLR host reject the manifest. A rename is atomic, so the loser of the race is simply
-# overwritten by an equally complete file.
-$depsTempPath = "$DepsPath.$PID.tmp"
-($deps | ConvertTo-Json -Depth 100) + "`n" | Set-Content -NoNewline -Encoding utf8 -Path $depsTempPath
-Move-Item -Force -Path $depsTempPath -Destination $DepsPath
-
 # Keep the physical deployment beside the dependency manifest in sync with the entries above.
 # Framework conflict resolution can remove these package files from both RuntimeCopyLocalItems
 # and a RID-less PublishDir.
@@ -248,6 +265,140 @@ if ($transportVersion) {
         Copy-Item -Force $_.FullName (Join-Path $outputDir $_.Name)
     }
 }
+
+# Transport also carries an interop copy for convenience, but it can be older than the explicit
+# LibreWPF.Interop package selected by the local feed.  The portable WPF implementation calls
+# into that explicit surface during module initialization, so restore it last rather than letting
+# Transport silently overwrite it.
+if ($interopVersion) {
+    $interopDll = Join-Path $NugetPackageRoot "$($interopPkgId.ToLowerInvariant())/$interopVersion/lib/net10.0/ProGPU.Wpf.Interop.dll"
+    if (Test-Path $interopDll) {
+        Copy-Item -Force $interopDll (Join-Path $outputDir 'ProGPU.Wpf.Interop.dll')
+        # LibreWPF.Transport also carries architecture-specific overlay directories. The host
+        # selects one of those ahead of the root asset, so repair every Windows overlay too.
+        Get-ChildItem -Path (Join-Path $outputDir 'runtimes/win-*/lib/net10.0') -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+            Copy-Item -Force $interopDll (Join-Path $_.FullName 'ProGPU.Wpf.Interop.dll')
+        }
+    }
+}
+
+# LibreWPF.Transport currently includes a v10 copy of System.Private.Windows.Core.  The
+# LibreWinForms package selected by this feed supplies the matching v11 implementation;
+# overwrite both the root and RID overlays after restoring Transport.
+$portableCore = Join-Path $NugetPackageRoot "$($sysformsPkgId.ToLowerInvariant())/$sysformsVersion/lib/net10.0/System.Private.Windows.Core.dll"
+if (Test-Path $portableCore) {
+    Copy-Item -Force $portableCore (Join-Path $outputDir 'System.Private.Windows.Core.dll')
+    Get-ChildItem -Path (Join-Path $outputDir 'runtimes/win-*/lib/net10.0') -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+        Copy-Item -Force $portableCore (Join-Path $_.FullName 'System.Private.Windows.Core.dll')
+    }
+}
+
+# The ProGPU packages are built for the active native architecture.  Publish can retain an older
+# package's root asset (or the transport-provided overlay) even after restore selects the local
+# feed, which makes an ARM64 host attempt to load an x64 managed/native bridge.  Restore the
+# selected portable runtime payload after all other copy-local processing, both at the root and
+# in every Windows RID overlay.
+$portableProGpuPackageIds = @(
+    'ProGPU.Backend',
+    'ProGPU.Compute',
+    'ProGPU.DirectX',
+    'ProGPU.Scene',
+    'ProGPU.SkiaSharp',
+    'ProGPU.System.Drawing.Common',
+    'ProGPU.Text',
+    'ProGPU.Text.Shaping',
+    'ProGPU.Transpiler',
+    'ProGPU.Vector',
+    'ProGPU.WinRT'
+)
+foreach ($packageId in $portableProGpuPackageIds) {
+    $packageIdLower = $packageId.ToLowerInvariant()
+    $packageVersion = Find-PackageVersion $NugetPackageRoot $packageIdLower
+    if (-not $packageVersion) { continue }
+
+    $runtimeDir = Join-Path $NugetPackageRoot "$packageIdLower/$packageVersion/lib/net10.0"
+    Get-ChildItem -Path (Join-Path $runtimeDir '*.dll') -ErrorAction SilentlyContinue | ForEach-Object {
+        $sourceDll = $_
+        Copy-Item -Force $sourceDll.FullName (Join-Path $outputDir $sourceDll.Name)
+        Get-ChildItem -Path (Join-Path $outputDir 'runtimes/win-*/lib/net10.0') -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+            Copy-Item -Force $sourceDll.FullName (Join-Path $_.FullName $sourceDll.Name)
+        }
+    }
+}
+
+function Copy-PackageLibAsset([string]$packageRoot, [string]$packageId, [string]$version, [string]$fileName, [string]$destination) {
+    if (-not $packageRoot) { return $false }
+    $packagePath = Join-Path $packageRoot "$packageId.$version.nupkg"
+    if (-not (Test-Path -LiteralPath $packagePath)) { return $false }
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($packagePath)
+    try {
+        $entry = $archive.GetEntry("lib/net10.0/$fileName")
+        if (-not $entry) { return $false }
+        $destinationDir = Split-Path -Parent $destination
+        New-Item -ItemType Directory -Path $destinationDir -Force | Out-Null
+        $input = $entry.Open()
+        try {
+            $output = [System.IO.File]::Open($destination, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write)
+            try { $input.CopyTo($output) } finally { $output.Dispose() }
+        }
+        finally { $input.Dispose() }
+        return $true
+    }
+    finally { $archive.Dispose() }
+}
+
+function Add-RidRuntimeTargets([hashtable]$deps, [string]$packageId, [string]$version, [string]$fileName) {
+    $libraryKey = "$packageId/$version"
+    foreach ($targetName in $deps.targets.Keys) {
+        $target = $deps.targets[$targetName]
+        if (-not $target.ContainsKey($libraryKey)) { continue }
+        $entry = $target[$libraryKey]
+        if (-not $entry.ContainsKey('runtimeTargets')) { $entry['runtimeTargets'] = @{} }
+        foreach ($rid in 'win-x64', 'win-arm64') {
+            $entry['runtimeTargets']["runtimes/$rid/lib/net10.0/$fileName"] = @{ rid = $rid; assetType = 'runtime' }
+        }
+    }
+}
+
+# A single Windows ZIP serves x64 and ARM64. These mixed-mode ProGPU/WinForms assemblies cannot
+# sit at one RID-neutral lib/ path: CoreCLR must select a matching runtimeTarget.  The two
+# canonical feeds are intentionally kept separate while packing; stage their matching assets here
+# and declare both selections in deps.json.
+if ($WindowsX64PackageRoot -and $WindowsArm64PackageRoot) {
+    $ridPackageIds = @($portableProGpuPackageIds + $interopPkgId + $winintPkgId)
+    foreach ($packageId in $ridPackageIds) {
+        $version = Find-DependencyVersion $deps $packageId
+        if (-not $version) { continue }
+        $packageFileName = "$packageId.$version.nupkg"
+        $x64Package = Join-Path $WindowsX64PackageRoot $packageFileName
+        $armPackage = Join-Path $WindowsArm64PackageRoot $packageFileName
+        if (-not (Test-Path -LiteralPath $x64Package) -or -not (Test-Path -LiteralPath $armPackage)) { continue }
+
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $x64Archive = [System.IO.Compression.ZipFile]::OpenRead($x64Package)
+        try {
+            $dllNames = @($x64Archive.Entries | Where-Object { $_.FullName -match '^lib/net10\.0/[^/]+\.dll$' } | ForEach-Object Name)
+        }
+        finally { $x64Archive.Dispose() }
+        foreach ($dllName in $dllNames) {
+            $x64Destination = Join-Path $outputDir "runtimes/win-x64/lib/net10.0/$dllName"
+            $armDestination = Join-Path $outputDir "runtimes/win-arm64/lib/net10.0/$dllName"
+            if ((Copy-PackageLibAsset $WindowsX64PackageRoot $packageId $version $dllName $x64Destination) -and
+                (Copy-PackageLibAsset $WindowsArm64PackageRoot $packageId $version $dllName $armDestination)) {
+                Add-RidRuntimeTargets $deps $packageId $version $dllName
+            }
+        }
+    }
+}
+
+# Write through a PROCESS-UNIQUE temp file and move it into place, rather than writing $DepsPath
+# directly. A rename is atomic, so concurrent WPF temporary-project invocations cannot leave a
+# truncated dependency manifest behind.
+$depsTempPath = "$DepsPath.$PID.tmp"
+($deps | ConvertTo-Json -Depth 100) + "`n" | Set-Content -NoNewline -Encoding utf8 -Path $depsTempPath
+Move-Item -Force -Path $depsTempPath -Destination $DepsPath
 
 $summary = "patch-librewinforms-deps.ps1: patched $DepsPath ($sysformsKey"
 if ($winintKey) { $summary += ", $winintKey" }

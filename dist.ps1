@@ -70,6 +70,9 @@ $sln = Join-Path $repoRoot 'OpenDevelop.Mvp.slnx'
 $hostProject = Join-Path $repoRoot 'src/Main/SharpDevelop/SharpDevelop.csproj'
 $dotnet = Find-DotNetHost
 $patchScript = Join-Path $repoRoot 'build/patch-librewinforms-deps.ps1'
+$openAvalonRoot = Join-Path (Split-Path -Parent $repoRoot) 'openavalon'
+$windowsX64CanonicalFeed = Join-Path $openAvalonRoot 'artifacts/canonical-winforms-feed-x64'
+$windowsArm64CanonicalFeed = Join-Path $openAvalonRoot 'artifacts/canonical-winforms-feed'
 
 # The Addin SDK's OpenDevelopPruneAddinDeploymentAssets target drops runtimes/win*, linux* and
 # unix* only for the 'osx' family; on Windows those win* assets are exactly what the payload needs.
@@ -87,7 +90,10 @@ function Get-NuGetGlobalPackages {
     # Needed by both the host publish and the AddIns build when they run as separate phases.
     $line = & $dotnet nuget locals global-packages --list | Select-String '^global-packages: '
     if (-not $line) { throw 'dist.ps1: cannot determine the NuGet global-packages directory' }
-    return ($line.Line -replace '^global-packages:\s*', '')
+    # A trailing directory separator escapes the closing quote when this value is forwarded to
+    # the external dependency-patching script on Windows. Keep it as a canonical directory path
+    # without a terminal separator.
+    return (($line.Line -replace '^global-packages:\s*', '').Trim().TrimEnd([char[]]@('\', '/')))
 }
 
 function Assert-HostPublished {
@@ -608,6 +614,18 @@ function Invoke-WindowsPayload {
     }
     Write-Host "    AddIn files copied: $(@($addInFiles).Count)"
 
+    # Out-of-process AddIns have their own deps.json and their own application base directory.
+    # Patch every staged dependency manifest, not only OpenDevelop.deps.json, so the Forms/WPF
+    # designer hosts and language-service children also select the matching x64/ARM64 mixed-mode
+    # LibreWPF and ProGPU runtime assemblies.
+    Get-ChildItem -LiteralPath $payloadRoot -Recurse -File -Filter '*.deps.json' | Where-Object {
+        $relative = $_.FullName.Substring($payloadRoot.Length).TrimStart('\', '/')
+        $relative -eq 'OpenDevelop.deps.json' -or
+        ($outOfProcessHostDirs | Where-Object { $relative.StartsWith("$_\", [System.StringComparison]::OrdinalIgnoreCase) })
+    } | ForEach-Object {
+        & $patchScript $_.FullName (Get-NuGetGlobalPackages) -WindowsX64PackageRoot $windowsX64CanonicalFeed -WindowsArm64PackageRoot $windowsArm64CanonicalFeed
+    }
+
     $appPath = Join-Path $payloadRoot 'OpenDevelop.dll'
     if (-not (Test-Path $appPath)) { throw "dist.ps1: packaged app not found: $appPath" }
     Test-WindowsDistributionPayload -PayloadRoot $payloadRoot
@@ -653,6 +671,18 @@ function Invoke-WindowsArchive {
 function Invoke-RestorePhase {
     Write-Host '==> Restoring solution...'
     Restore-Solution -DotNet $dotnet -Solution $sln -ExtraProperties @('-p:ProGpuWpfUseCurrentRuntimeIdentifier=false')
+
+    # The hot-reload agents are built through the IDE's deployment targets rather than being
+    # solution entries.  The later distribution build deliberately uses --no-restore, so make
+    # their assets explicit here instead of allowing a missing project.assets.json to fail the
+    # AddIns phase.
+    $hotReloadAgent = Join-Path $repoRoot 'src/Main/HotReload/WpfHotReload.Agent/WpfHotReload.Agent.csproj'
+    Write-Host '==> Restoring LibreWPF hot-reload agent...'
+    Invoke-Native $dotnet restore $hotReloadAgent '-p:ProGpuWpfUseCurrentRuntimeIdentifier=false'
+
+    $microsoftHotReloadAgent = Join-Path $repoRoot 'src/Main/HotReload/WpfHotReload.Agent.Microsoft/WpfHotReload.Agent.Microsoft.csproj'
+    Write-Host '==> Restoring Microsoft WPF hot-reload agent...'
+    Invoke-Native $dotnet restore $microsoftHotReloadAgent '-p:ProGpuWpfUseCurrentRuntimeIdentifier=false'
 }
 
 function Invoke-HostPhase {
@@ -692,11 +722,20 @@ function Invoke-HostPhase {
 
     # NuGet conflict resolution omits LibreWinForms from the standard publish closure.
     # Patch the final manifest and copy its matching runtime files.
-    & $patchScript $depsJson (Get-NuGetGlobalPackages)
+    & $patchScript $depsJson (Get-NuGetGlobalPackages) -WindowsX64PackageRoot $windowsX64CanonicalFeed -WindowsArm64PackageRoot $windowsArm64CanonicalFeed
 }
 
 function Invoke-AddInsPhase {
     Assert-HostPublished
+
+    # The developer solution deliberately contains test projects. Their Build hooks compile
+    # independent sample applications (including a second, incompatible Uno SDK graph), none of
+    # which belong in a distributable payload. Build a short-lived filtered solution rather than
+    # letting those test-only hooks contaminate the release closure.
+    $distributionSolution = Join-Path $repoRoot ".opendevelop-distribution-$([guid]::NewGuid().ToString('N')).slnx"
+    $solutionText = Get-Content -LiteralPath $sln -Raw
+    $solutionText = [regex]::Replace($solutionText, '(?m)^\s*<Project Path="tests/OpenDevelop\.(?:IntegrationTests|Base\.Tests)/OpenDevelop\.[^"]+\.csproj" />\s*\r?\n', '')
+    Set-Content -LiteralPath $distributionSolution -Value $solutionText -NoNewline
 
     # Some projects write to OpenDevelopHostPublishDir while computing their distribution
     # closure. Give that build a disposable copy so the verified host deployment remains
@@ -714,7 +753,7 @@ function Invoke-AddInsPhase {
         New-Item -ItemType Directory -Path $generatedAddIns | Out-Null
 
         Write-Host '==> Building distribution AddIns without shared runtime copies...'
-        Build-Solution -DotNet $dotnet -Solution $sln -Configuration $config -ExtraProperties (@(
+        Build-Solution -DotNet $dotnet -Solution $distributionSolution -Configuration $config -ExtraProperties (@(
             '-p:OpenDevelopDistributionBuild=true',
             "-p:OpenDevelopDistributionRidFamily=$ridFamily",
             "-p:OpenDevelopHostPublishDir=$hostPublishSnapshot",
@@ -724,11 +763,12 @@ function Invoke-AddInsPhase {
     }
     finally {
         Remove-Item -Recurse -Force $hostPublishSnapshot -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $distributionSolution -Force -ErrorAction SilentlyContinue
     }
 
     # The solution traversal may copy reference assemblies over the original PublishDir through
     # cached project state. Restore the authoritative package runtime payload after the build.
-    & $patchScript $depsJson (Get-NuGetGlobalPackages)
+    & $patchScript $depsJson (Get-NuGetGlobalPackages) -WindowsX64PackageRoot $windowsX64CanonicalFeed -WindowsArm64PackageRoot $windowsArm64CanonicalFeed
 }
 
 function Invoke-DesignerHostsPhase {
@@ -739,7 +779,7 @@ function Invoke-DesignerHostsPhase {
 
     # These build straight into AddIns/ too, so re-assert the authoritative deps payload for the
     # same reason the AddIns phase does.
-    & $patchScript $depsJson (Get-NuGetGlobalPackages)
+    & $patchScript $depsJson (Get-NuGetGlobalPackages) -WindowsX64PackageRoot $windowsX64CanonicalFeed -WindowsArm64PackageRoot $windowsArm64CanonicalFeed
 }
 
 function Get-DistributionPhases {

@@ -67,11 +67,6 @@
       <ReferencePathWithRefAssemblies Remove="@(ReferencePathWithRefAssemblies)"
                      Condition="'%(ReferencePathWithRefAssemblies.NuGetPackageId)' == 'Microsoft.WindowsDesktop.App.Ref' And ('%(ReferencePathWithRefAssemblies.Filename)' == 'System.Windows.Forms' Or '%(ReferencePathWithRefAssemblies.Filename)' == 'System.Drawing.Common' Or '%(ReferencePathWithRefAssemblies.Filename)' == 'System.Windows.Forms.Design' Or '%(ReferencePathWithRefAssemblies.Filename)' == 'System.Windows.Forms.Design.Editors' Or '%(ReferencePathWithRefAssemblies.Filename)' == 'System.Windows.Forms.Primitives')" />
 
-      <_RealLibreWinFormsSystemWindowsForms Include="$(NuGetPackageRoot)librewinforms.system.windows.forms/*/lib/net10.0/System.Windows.Forms.dll" />
-      <ReferencePath Include="@(_RealLibreWinFormsSystemWindowsForms)" Condition="'@(_RealLibreWinFormsSystemWindowsForms)' != ''">
-        <NuGetPackageId>LibreWinForms.System.Windows.Forms</NuGetPackageId>
-      </ReferencePath>
-
       <_RemainingSystemDrawingCommon Include="@(ReferencePath)" Condition="'%(ReferencePath.Filename)' == 'System.Drawing.Common'" />
     </ItemGroup>
 
@@ -83,7 +78,7 @@
       the two equally-real assemblies.
     -->
     <ItemGroup Condition="'@(_RemainingSystemDrawingCommon)' == ''">
-      <_RealProGpuSystemDrawingCommon Include="$(NuGetPackageRoot)progpu.system.drawing.common/*/lib/net10.0/System.Drawing.Common.dll" />
+      <_RealProGpuSystemDrawingCommon Include="$(NuGetPackageRoot)progpu.system.drawing.common/$(ProGpuPackageVersion)/lib/net10.0/System.Drawing.Common.dll" />
       <ReferencePath Include="@(_RealProGpuSystemDrawingCommon)" Condition="'@(_RealProGpuSystemDrawingCommon)' != ''">
         <NuGetPackageId>ProGPU.System.Drawing.Common</NuGetPackageId>
       </ReferencePath>

@@ -2928,11 +2928,11 @@ sealed class DesignerHostService : IDesignerChildService
 #if MICROSOFT_WINFORMS
 		PaintStandardControl(control, graphics, bounds);
 #else
-		if (control is IPortableWinFormsPaintSource paintSource && paintSource.SupportsPortablePainting) {
-			var args = new PaintEventArgs(graphics, bounds);
-			paintSource.PaintPortableBackground(args);
-			paintSource.PaintPortable(args);
-		} else PaintStandardControl(control, graphics, bounds);
+		// The canonical LibreWinForms package provides the standard Control surface, but its
+		// paint-source extension is deliberately not part of the published reference contract.
+		// Keep the designer host consumable from the local package feed by using the same stable
+		// fallback renderer as ordinary controls.
+		PaintStandardControl(control, graphics, bounds);
 		foreach (Control child in control.Controls) {
 			var state = graphics.Save();
 			graphics.TranslateTransform(child.Left, child.Top);

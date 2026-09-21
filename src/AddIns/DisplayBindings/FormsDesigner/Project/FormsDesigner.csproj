@@ -150,48 +150,4 @@
     </EmbeddedResource>
   </ItemGroup>
 
-  <!--
-    Services/ToolboxService.cs implements System.ComponentModel.Design.IToolboxService, whose
-    CategoryNames property is typed System.Drawing.Design.CategoryNameCollection - a type that
-    LibreWinForms.System.Windows.Forms.dll bundles directly (it merges what upstream .NET splits
-    into System.Windows.Forms.Design), while the real netcore System.Drawing.Common (needed
-    elsewhere in this project, unrelated to WinForms) happens to define an identically-named,
-    identically-shaped type too. Referencing the DLL a second time under an extern alias lets
-    ToolboxService.cs disambiguate which CategoryNameCollection it means (see the extern alias at
-    the top of that file) without affecting every other unaliased, unambiguous use of
-    System.Windows.Forms types throughout this project.
-  -->
-  <Target Name="_AddAliasedLibreWinFormsReference" AfterTargets="ResolveAssemblyReferences" BeforeTargets="GenerateTemporaryTargetAssembly;CoreCompile"
-          Condition="'$(NuGetPackageRoot)' != ''">
-    <ItemGroup>
-      <_AliasedLibreWinFormsSystemWindowsForms Include="$(NuGetPackageRoot)librewinforms.system.windows.forms/*/lib/net10.0/System.Windows.Forms.dll" />
-      <ReferencePath Include="@(_AliasedLibreWinFormsSystemWindowsForms)" Condition="'@(_AliasedLibreWinFormsSystemWindowsForms)' != ''">
-        <Aliases>LibreWinForms</Aliases>
-      </ReferencePath>
-    </ItemGroup>
-  </Target>
-
-  <!--
-    Font/Image/Icon/Graphics/Bitmap/ContentAlignment members reached through the real
-    LibreWinForms Control/Form/etc. API (e.g. Control.Font, PictureBox.Image) are typed in terms
-    of the ProGPU.System.Drawing.Common (0.0.0.0) that LibreWinForms.System.Windows.Forms.dll was
-    itself built against - not the real netcore System.Drawing.Common (10.0.9) that ends up on
-    this project's ReferencePath purely transitively, via ICSharpCode.SharpDevelop.Widgets'
-    PackageReference (used there for its own, WPF-side icon rendering; nothing in FormsDesigner's
-    own source touches it directly). Swap it out the same way _ReplaceWindowsDesktopRefPackWinFormsFacades
-    (Directory.Build.targets) already does for other projects, just without that target's
-    "only if nothing else resolved one" guard - safe here specifically because this project's own
-    code never needs the real one.
-  -->
-  <Target Name="_ReplaceTransitiveRealSystemDrawingCommon" AfterTargets="ResolveAssemblyReferences" BeforeTargets="GenerateTemporaryTargetAssembly;CoreCompile"
-          Condition="'$(NuGetPackageRoot)' != ''">
-    <ItemGroup>
-      <ReferencePath Remove="@(ReferencePath)" Condition="'%(ReferencePath.Filename)' == 'System.Drawing.Common' And '%(ReferencePath.NuGetPackageId)' == 'System.Drawing.Common'" />
-      <ReferencePathWithRefAssemblies Remove="@(ReferencePathWithRefAssemblies)" Condition="'%(ReferencePathWithRefAssemblies.Filename)' == 'System.Drawing.Common' And '%(ReferencePathWithRefAssemblies.NuGetPackageId)' == 'System.Drawing.Common'" />
-      <_RealProGpuSystemDrawingCommonForFormsDesigner Include="$(NuGetPackageRoot)progpu.system.drawing.common/*/lib/net10.0/System.Drawing.Common.dll" />
-      <ReferencePath Include="@(_RealProGpuSystemDrawingCommonForFormsDesigner)" Condition="'@(_RealProGpuSystemDrawingCommonForFormsDesigner)' != ''">
-        <NuGetPackageId>ProGPU.System.Drawing.Common</NuGetPackageId>
-      </ReferencePath>
-    </ItemGroup>
-  </Target>
 </Project>
