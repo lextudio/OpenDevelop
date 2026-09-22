@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -38,7 +39,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					continue;
 				try
 				{
-					RegisterAssembly(Assembly.LoadFrom(path));
+					RegisterAssembly(LoadWithoutLocking(path));
 				}
 				catch (Exception)
 				{
@@ -51,7 +52,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			{
 				try
 				{
-					projectAssembly = Assembly.LoadFrom(projectAssemblyPath);
+					projectAssembly = LoadWithoutLocking(projectAssemblyPath);
 					RegisterAssembly(projectAssembly);
 				}
 				catch (Exception e)
@@ -74,7 +75,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			{
 				try
 				{
-					return Assembly.LoadFrom(path);
+					return LoadWithoutLocking(path);
 				}
 				catch (Exception)
 				{
@@ -90,6 +91,29 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			var copy = new SurfaceTypeFinder(projectAssemblyPath, referencedAssemblyPaths);
 			copy.ImportFrom(this);
 			return copy;
+		}
+
+		// Assembly.LoadFrom keeps the file open for as long as this process lives, and this host is
+		// deliberately long-lived: SharedDesignerHostPool reuses it across documents and even across
+		// IDE restarts. That left the project's OWN output locked after previewing a page, so the
+		// next build of that project died with MSB3027/MSB3021 "The file is locked by: .NET Host",
+		// which reads like a stale lock rather than the designer still holding the assembly it was
+		// asked to reflect over. Read the bytes and let the handle close instead - the same thing
+		// the in-process designer already does (Base/Project/Designer/TypeResolutionService.cs).
+		//
+		// Assembly.Load(byte[]) does not deduplicate the way LoadFrom does: loading one file twice
+		// produces two assemblies whose types do not unify, and Clone() rebuilds a finder from the
+		// same paths, so the cache has to be process-wide rather than per-instance. Keying on the
+		// file's identity-and-stamp means a rebuilt assembly is picked up as a new load instead of
+		// being served stale from the cache.
+		static readonly ConcurrentDictionary<string, Assembly> loadedAssemblies =
+			new ConcurrentDictionary<string, Assembly>(StringComparer.OrdinalIgnoreCase);
+
+		static Assembly LoadWithoutLocking(string path)
+		{
+			var info = new FileInfo(path);
+			var key = info.FullName + "|" + info.LastWriteTimeUtc.Ticks + "|" + info.Length;
+			return loadedAssemblies.GetOrAdd(key, _ => Assembly.Load(File.ReadAllBytes(info.FullName)));
 		}
 	}
 }
