@@ -83,6 +83,73 @@ public sealed class WpfHotReloadJourneyTests
 		}
 	}
 
+	/// <summary>
+	/// A full apply must survive a DynamicResource on a DependencyProperty.
+	///
+	/// The agent parses the incoming XAML itself with XamlXmlReader/XamlObjectWriter. With a plain
+	/// XamlSchemaContext the writer hands markup extensions CLR property members, so
+	/// IProvideValueTarget.TargetProperty is not a DependencyProperty and DynamicResourceExtension
+	/// throws "A 'DynamicResourceExtension' cannot be set on the 'X' property of type 'Y'" - which
+	/// aborted the whole parse. The apply still reported success, because the XML fallback had
+	/// already updated the named properties it could reach, and the real failure was only visible
+	/// as "full apply skipped: ..." in the output channel.
+	///
+	/// So this asserts the mechanism, not just an effect: the probe is a NEW named element. The
+	/// fallback only writes properties of elements that already exist in the live tree, so an
+	/// element that appears at all proves the tree was rebuilt by a real full apply.
+	/// </summary>
+	[Fact]
+	public async Task Apply_WithDynamicResourceOnDependencyProperty_StillRunsFullApply()
+	{
+		var solution = _app.WpfHotReloadFixturePath;
+		var xaml = Path.Combine(RepositoryRoot(), "externals", "vscode-wpf", "sample", "net6.0", "SamplePane.xaml");
+		Assert.True(File.Exists(xaml), $"The linked sample XAML must exist: {xaml}");
+
+		var opened = await _app.ReopenSolutionAsync(solution);
+		Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
+		Assert.True((await _app.InvokeAsync("od.open-file", xaml)).GetProperty("opened").GetBoolean());
+
+		var originalXaml = await File.ReadAllTextAsync(xaml);
+		try {
+			var started = await _app.InvokeAsync("od.hot-reload.start-command");
+			Assert.True(started.GetProperty("success").GetBoolean(), started.ToString());
+
+			var session = await WaitForSessionAsync("Ready", TimeSpan.FromSeconds(90));
+			var endpoint = session.GetProperty("diagnostics").GetProperty("endpoint").GetString();
+			Assert.False(string.IsNullOrWhiteSpace(endpoint));
+
+			// The element must not exist yet, or its later presence would prove nothing.
+			Assert.Null(await QueryAgentAsync(endpoint!, "PaneDynamicProbe.Text"));
+
+			// Background is a DependencyProperty, so this is the exact shape that used to abort the
+			// parse. The key deliberately does not exist: DynamicResource resolves lazily and an
+			// unresolved key is not an error, which keeps the test about the parse, not the lookup.
+			var withDynamicResource = await _app.InvokeAsync("od.file.replace-text", xaml,
+				"Background=\"LightBlue\"",
+				"Background=\"{DynamicResource SampleHotReloadBrush}\"");
+			Assert.True(withDynamicResource.GetProperty("success").GetBoolean(), withDynamicResource.ToString());
+
+			var withNewElement = await _app.InvokeAsync("od.file.replace-text", xaml,
+				"<TextBlock x:Name=\"PaneBody\"",
+				"<TextBlock x:Name=\"PaneDynamicProbe\" Text=\"Full apply ran\" />\n      <TextBlock x:Name=\"PaneBody\"");
+			Assert.True(withNewElement.GetProperty("success").GetBoolean(), withNewElement.ToString());
+
+			var applied = await _app.InvokeAsync("od.hot-reload.apply-command");
+			Assert.True(applied.GetProperty("success").GetBoolean(), applied.ToString());
+
+			// Only a rebuilt tree can contain an element the previous tree never had.
+			await WaitForAgentValueAsync(endpoint!, "PaneDynamicProbe.Text", "Full apply ran",
+				TimeSpan.FromSeconds(30));
+		} finally {
+			await File.WriteAllTextAsync(xaml, originalXaml);
+			await _app.InvokeAsync("od.hot-reload.stop-command");
+			var status = await _app.InvokeAsync("od.debug.service-info");
+			if (status.TryGetProperty("isDebugging", out var debugging) && debugging.GetBoolean())
+				await _app.InvokeAsync("od.debug.stop");
+			await _app.InvokeAsync("od.stop-project");
+		}
+	}
+
 	static string RepositoryRoot()
 	{
 		var directory = AppContext.BaseDirectory;
