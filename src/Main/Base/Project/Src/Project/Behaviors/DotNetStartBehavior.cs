@@ -122,7 +122,35 @@ namespace ICSharpCode.SharpDevelop.Project
 			if (!System.IO.Directory.Exists(psi.WorkingDirectory)) {
 				throw new ProjectStartException("Working directory " + psi.WorkingDirectory + " does not exist; the process cannot be started. You can specify the working directory in the project options.");
 			}
+			RemoveHostBuildEnvironment(psi);
 			return psi;
+		}
+
+		/// <summary>
+		/// The IDE exports DOTNET_ROOT and a set of MSBuild* variables for its own IN-PROCESS
+		/// MSBuild hosting (build/common.psm1's Set-DotNetEnv, and dotnet-env.sh). A launched
+		/// application inherits that environment, and on a machine with both an ARM64 and an x64
+		/// .NET installed it is actively wrong: OpenDevelop runs ARM64, so DOTNET_ROOT points at
+		/// the ARM64 install, and an x64 apphost pointed there dies before Main with
+		/// "Failed to load hostfxr.dll, HRESULT: 0x800700C1 - Ensure the library matches the
+		/// current process architecture". That message goes to the IDE's stdout, so from the UI
+		/// the launch simply does nothing - Hot Reload reports a successful build and no window
+		/// ever appears.
+		///
+		/// Clearing these lets the apphost resolve the runtime its normal way, which selects the
+		/// install matching its own bitness. PATH is deliberately left alone: the app may depend
+		/// on it, and its ordering only matters to a child that shells out to `dotnet` itself.
+		/// </summary>
+		static void RemoveHostBuildEnvironment(ProcessStartInfo psi)
+		{
+			psi.Environment.Remove("DOTNET_ROOT");
+			psi.Environment.Remove("DOTNET_ROOT(x86)");
+			psi.Environment.Remove("DOTNET_HOST_PATH");
+			psi.Environment.Remove("MSBuildSDKsPath");
+			psi.Environment.Remove("MSBuildExtensionsPath");
+			psi.Environment.Remove("MSBUILDADDITIONALSDKRESOLVERSFOLDER_NET");
+			psi.Environment.Remove("MSBUILD_NUGET_PATH");
+			psi.Environment.Remove("MSBuildEnableWorkloadResolver");
 		}
 		
 		public override void ProjectCreationComplete()
