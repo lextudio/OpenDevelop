@@ -80,6 +80,7 @@ public sealed class WpfHotReloadJourneyTests
 			if (status.TryGetProperty("isDebugging", out var debugging) && debugging.GetBoolean())
 				await _app.InvokeAsync("od.debug.stop");
 			await _app.InvokeAsync("od.stop-project");
+			await WaitForSessionInactiveAsync();
 		}
 	}
 
@@ -94,9 +95,12 @@ public sealed class WpfHotReloadJourneyTests
 	/// already updated the named properties it could reach, and the real failure was only visible
 	/// as "full apply skipped: ..." in the output channel.
 	///
-	/// So this asserts the mechanism, not just an effect: the probe is a NEW named element. The
-	/// fallback only writes properties of elements that already exist in the live tree, so an
-	/// element that appears at all proves the tree was rebuilt by a real full apply.
+	/// Asserting this through the live tree is not possible: the agent answers only a fixed set of
+	/// named queries (PaneTitle.Text, PaneBody.Text, PaneList.SelectedIndex,
+	/// PrimaryButton.Background) and returns null for anything else, so a probe element the test
+	/// introduces is invisible to it. The failure is only ever reported in one place - the
+	/// "Hot Reload" output category, as "full apply skipped: ..." appended to an apply that still
+	/// reports success - so that is what this reads.
 	/// </summary>
 	[Fact]
 	public async Task Apply_WithDynamicResourceOnDependencyProperty_StillRunsFullApply()
@@ -118,9 +122,6 @@ public sealed class WpfHotReloadJourneyTests
 			var endpoint = session.GetProperty("diagnostics").GetProperty("endpoint").GetString();
 			Assert.False(string.IsNullOrWhiteSpace(endpoint));
 
-			// The element must not exist yet, or its later presence would prove nothing.
-			Assert.Null(await QueryAgentAsync(endpoint!, "PaneDynamicProbe.Text"));
-
 			// Background is a DependencyProperty, so this is the exact shape that used to abort the
 			// parse. The key deliberately does not exist: DynamicResource resolves lazily and an
 			// unresolved key is not an error, which keeps the test about the parse, not the lookup.
@@ -129,17 +130,24 @@ public sealed class WpfHotReloadJourneyTests
 				"Background=\"{DynamicResource SampleHotReloadBrush}\"");
 			Assert.True(withDynamicResource.GetProperty("success").GetBoolean(), withDynamicResource.ToString());
 
-			var withNewElement = await _app.InvokeAsync("od.file.replace-text", xaml,
-				"<TextBlock x:Name=\"PaneBody\"",
-				"<TextBlock x:Name=\"PaneDynamicProbe\" Text=\"Full apply ran\" />\n      <TextBlock x:Name=\"PaneBody\"");
-			Assert.True(withNewElement.GetProperty("success").GetBoolean(), withNewElement.ToString());
+			// Also change a property the agent can read back, so a silently inert apply cannot pass.
+			var retitled = await _app.InvokeAsync("od.file.replace-text", xaml,
+				"Text=\"Sample pane\"", "Text=\"Dynamic resource applied\"");
+			Assert.True(retitled.GetProperty("success").GetBoolean(), retitled.ToString());
 
 			var applied = await _app.InvokeAsync("od.hot-reload.apply-command");
 			Assert.True(applied.GetProperty("success").GetBoolean(), applied.ToString());
 
-			// Only a rebuilt tree can contain an element the previous tree never had.
-			await WaitForAgentValueAsync(endpoint!, "PaneDynamicProbe.Text", "Full apply ran",
+			await WaitForAgentValueAsync(endpoint!, "PaneTitle.Text", "Dynamic resource applied",
 				TimeSpan.FromSeconds(30));
+
+			// The regression itself. apply-command returns {success:true} either way, because the
+			// XML fallback still updates the named properties it can reach; only the output text
+			// distinguishes a full apply from a parse that aborted on the DynamicResource.
+			var output = await _app.InvokeAsync("od.output-text", "Hot Reload");
+			var text = output.GetProperty("text").GetString() ?? string.Empty;
+			Assert.Contains("Applied", text);
+			Assert.DoesNotContain("full apply skipped", text);
 		} finally {
 			await File.WriteAllTextAsync(xaml, originalXaml);
 			await _app.InvokeAsync("od.hot-reload.stop-command");
@@ -147,8 +155,43 @@ public sealed class WpfHotReloadJourneyTests
 			if (status.TryGetProperty("isDebugging", out var debugging) && debugging.GetBoolean())
 				await _app.InvokeAsync("od.debug.stop");
 			await _app.InvokeAsync("od.stop-project");
+			await WaitForSessionInactiveAsync();
 		}
 	}
+
+	/// <summary>
+	/// Both tests share one IDE instance, and the cleanup above returns before the application it
+	/// launched has exited. The next test's Hot Reload build then fails - the still-running process
+	/// holds its own output - and the workbench reports {"active":false} until the 90s timeout, so
+	/// the second test fails for a reason unrelated to what it asserts, and only when the two run
+	/// together. Waiting on the session state alone is not enough: that goes inactive as soon as
+	/// stop-command is acknowledged, well before the process is gone.
+	/// </summary>
+	async Task WaitForSessionInactiveAsync()
+	{
+		var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(60);
+		while (DateTime.UtcNow < deadline) {
+			var session = await _app.InvokeAsync("od.hot-reload.session");
+			var inactive = !session.TryGetProperty("active", out var active) || !active.GetBoolean();
+			if (inactive && FixtureProcesses().Length == 0)
+				return;
+			await Task.Delay(500);
+		}
+
+		// The build that follows would fail on a locked file with a message that names neither this
+		// test nor the process holding it, so end the stalemate here where the cause is obvious.
+		foreach (var process in FixtureProcesses()) {
+			try {
+				process.Kill(entireProcessTree: true);
+				process.WaitForExit(10_000);
+			} catch {
+				// Already gone between the enumeration and the kill; nothing to clean up.
+			}
+		}
+	}
+
+	static System.Diagnostics.Process[] FixtureProcesses() =>
+		System.Diagnostics.Process.GetProcessesByName("WpfHotReloadFixture");
 
 	static string RepositoryRoot()
 	{

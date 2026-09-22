@@ -221,6 +221,96 @@ $fs.Position=0x3C; $o=$br.ReadInt32(); $fs.Position=$o+4; '0x{0:X4}' -f $br.Read
 Known still-offending (separate fix): the canonical WinForms graph emits arm64
 `WindowsFormsIntegration.dll` and `ProGPU.DirectX.dll`.
 
+## The same trap in two folders the original audit did not look at
+
+> The full picture — why one payload serves both x64 and ARM64, which assets belong in `lib/`,
+> `ref/` and `runtimes/<rid>/`, and how to rebase openavalon onto upstream without losing any of
+> it — is in [dual-architecture-packaging.md](dual-architecture-packaging.md). This section is the
+> short version.
+
+`lib/` is not the only place an architecture can be promised and not delivered. Two more folders
+have their own rule, both were violated by the same `Platform=x64` LibreWPF build, and neither is
+visible from the symptom:
+
+| folder | rule | how a violation shows up |
+|---|---|---|
+| `lib/<tfm>/` | AnyCPU only | `FileNotFoundException` at run time, naming a file that is present |
+| `ref/<tfm>/` | AnyCPU only | **`CS8012: Referenced assembly 'X' targets a different processor`** at *compile* time |
+| `runtimes/<rid>/lib/<tfm>/` | AnyCPU or that RID's own architecture | `FileNotFoundException` on the other architectures |
+
+The `ref/` one is the nastiest, because `CS8012` is only a warning in most projects — so a feed
+rebuild that stamps `ref/` for x64 looks completely harmless until it reaches a project with
+`TreatWarningsAsErrors`. In this repo that is `src/Libraries/AvalonDock/source/Directory.Build.props`,
+so an x64 `ref/` tree in `LibreWPF.Transport` fails `AvalonDock.Themes.VS` with four `CS8012`
+errors and nothing else in the solution complains. It also stays latent: projects already built
+against the previous package do not recompile until something else invalidates them.
+
+The `runtimes/<rid>/` one comes from `StageLibreWpfRidManagedTransportPayload` in
+`packaging/Microsoft.DotNet.Wpf.GitHub/Microsoft.DotNet.Wpf.GitHub.ArchNeutral.csproj`, which
+deliberately duplicates ONE managed payload into all three RID folders so a RID-less build gets a
+complete RID-filtered asset set. That is correct only while that payload is AnyCPU: an
+architecture-stamped file in it lands in two folders where it cannot load.
+
+`dist.local.sh`'s audit (now "Checking payload architectures") covers all three folders and prints
+`arch-stamped:` or `wrong-arch for <rid>:` per entry.
+
+**The producing-side fix is in `eng/WpfArcadeSdk/Sdk/Sdk.props`, not in the pack step.** That file
+already forced `PlatformTarget=AnyCPU` for a whitelist of transport assemblies, which is why
+`lib/` was clean while `ref/` was not — the whitelist lists *implementation* names, and the
+reference projects are `src/Microsoft.DotNet.Wpf/src/*/ref/<name>-ref.csproj`, so
+`MSBuildProjectName` is `WindowsBase-ref` and never matched. Reference assemblies are now AnyCPU
+unconditionally, matched by the `-ref` suffix; `Microsoft.Win32.SystemEvents`, which was simply
+missing from the whitelist, was added to it. Nothing about `run_wpf_msbuild`'s
+`-property:Platform=x64` had to change — the native and C++/CLI projects still need a real
+platform, and `PlatformTarget` overrides it per project for exactly the managed ones.
+
+## The consumer half: the SDK must prefer `runtimes/<rid>/` over `lib/`
+
+`ProGPU.Wpf.Sdk.targets` copies the transport's managed payload to the output folder itself, in
+`_ProGpuWpfSdkCopyManagedTransportRuntimeAssets`. That target runs **after** NuGet has already
+placed the correct `runtimes/<rid>` assets, so copying `lib/` wholesale silently overwrote them:
+the build log showed the arm64 `DirectWriteForwarder` copied first and the x64 one copied over it
+moments later, which took down the whole ARM64 test host with a load failure for a file plainly
+present in `bin`.
+
+Both branches now prefer `runtimes/<effective rid>/` for any file that exists there — the explicit
+`RuntimeIdentifier` when set, otherwise `NETCoreSdkRuntimeIdentifier`. Two things about that fix
+are worth knowing, because each one made it look like it had not worked:
+
+- Guarding it on `'$(RuntimeIdentifier)' == ''` covers almost nothing here. OpenDevelop's projects
+  evaluate to `RuntimeIdentifier=win-arm64`, so the RID branch — the one that copied `lib/`
+  wholesale — was exactly the branch the guard skipped.
+- The per-RID root cannot be composed from `PkgLibreWPF_Transport` or a NuGet package root alone.
+  Neither is necessarily set in that target; the `lib/` root is commonly reached instead through
+  the `ref/`→`lib/` path rewrite. With both empty the composed path is empty, the preference does
+  nothing, and `lib/` is copied anyway with no diagnostic. The reliable form derives the sibling
+  tree from whichever `lib/` root was actually resolved.
+
+Confirm it landed by reading the PE machine of `DirectWriteForwarder.dll` in the consumer's `bin`,
+not by reading the targets file — a stale `librewpf.sdk` in the global cache will keep the old
+behaviour. Clear `~/.nuget/packages/librewpf.sdk/<version>` after every repack.
+
+**`PlatformTarget` is not the right signal for that preference, tempting as it looks.** It is
+nominally the output's architecture, but a project with `ProGpuWpfUseCurrentRuntimeIdentifier=true`
+derives its RID from the architecture of the *building process*. Building `WpfHotReloadFixture`
+from the x64 IDE on an ARM64 machine produces an **x64 apphost** while `PlatformTarget` still
+evaluates to `arm64` from the command line — so preferring it puts an arm64 `DirectWriteForwarder`
+next to an x64 `.exe`, which is the very failure the preference exists to prevent. That mismatch is
+a separate, still-open bug in how the IDE-driven build chooses its RID; it is not fixable in the
+copy target.
+
+Its symptom is worth recognising, because the IDE reports nothing: the Hot Reload session sits at
+`state: "Connecting"` forever, `od.hot-reload.session` shows an empty `lastError`, and the agent
+log named in `diagnostics.agentLog` is **never created**. The real message is in the IDE's own
+stdout, in `%TEMP%\od-test-logs\od-app-*.log`, as an `[stderr] Unhandled exception` from the
+launched application. Two distinct causes produced exactly that same "Connecting" state:
+
+- `Startup hook assembly 'WpfHotReload.Agent.dll' failed to load ... The assembly architecture is
+  not compatible with the current process architecture` — the agent had been built with a bare
+  `dotnet build` instead of `./build.ps1`, so it was stamped arm64 instead of AnyCPU. Rebuild it
+  with `./build.ps1 WpfHotReload.Agent` and check the PE machine is `0x014C`.
+- `Could not load file or assembly 'DirectWriteForwarder'` — the apphost/asset mismatch above.
+
 ## A seventh trap: `librewinforms-pack.sh` demands an output directory of its own
 
 It validates that its output folder holds **exactly** the LibreWinForms preview bundle and

@@ -43,7 +43,9 @@ public sealed class WpfDesignerAssemblyLockTests
 		var initial = await _app.InvokeAsync("od.build-solution");
 		Assert.Equal("Success", initial.GetProperty("result").GetString());
 
-		var xaml = Path.Combine(Path.GetDirectoryName(solution)!, "MainWindow.xaml");
+		// The fixture is only an SDK wrapper: every XAML it builds is <Page Include="..." Link="..."/>
+		// from vscode-wpf's sample, so the file to open lives there rather than next to the solution.
+		var xaml = Path.Combine(RepositoryRoot(), "externals", "vscode-wpf", "sample", "net6.0", "MainWindow.xaml");
 		Assert.True(File.Exists(xaml), $"The fixture's window XAML must exist: {xaml}");
 		Assert.True((await _app.InvokeAsync("od.open-file", xaml)).GetProperty("opened").GetBoolean());
 
@@ -66,5 +68,14 @@ public sealed class WpfDesignerAssemblyLockTests
 		Assert.DoesNotContain("MSB3021", log);
 		Assert.DoesNotContain("locked by", log);
 		Assert.Equal("Success", rebuild.GetProperty("result").GetString());
+	}
+
+	static string RepositoryRoot()
+	{
+		var directory = AppContext.BaseDirectory;
+		while (directory is not null && !Directory.Exists(Path.Combine(directory, "externals", "vscode-wpf")))
+			directory = Path.GetDirectoryName(directory);
+		Assert.NotNull(directory);
+		return directory!;
 	}
 }
