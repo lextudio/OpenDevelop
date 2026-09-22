@@ -8,7 +8,13 @@
         <!-- One row's visuals, shared by the tree itself and the sticky header overlay below, so
              a pinned row is pixel-identical to the real one it stands in for. -->
         <DataTemplate x:Key="ProjectBrowserNodeRow">
-            <StackPanel Orientation="Horizontal">
+            <!-- The 2px vertical margin is what separates the rows: the icons are 16px and the
+                 text is no taller, so without it the row pitch equals the icon height and every
+                 icon touches the one above it. Putting it on the shared row template rather than
+                 on TreeViewItem.Padding keeps the pinned sticky-header rows (built from this same
+                 template in code-behind) identical to the real rows they stand in for. -->
+            <StackPanel Orientation="Horizontal"
+                        Margin="0,2">
                 <Grid Width="16"
                       Height="16"
                       Margin="0,0,4,0">
