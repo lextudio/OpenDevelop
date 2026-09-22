@@ -103,12 +103,21 @@ namespace ICSharpCode.SharpDevelop.Project
 			foreach (string name in new[] {
 				"DOTNET_ROOT", "DOTNET_ROOT(x86)", "DOTNET_HOST_PATH", "DOTNET_MULTILEVEL_LOOKUP",
 				"MSBuildSDKsPath", "MSBuildExtensionsPath", "MSBuildExtensionsPath32", "MSBuildExtensionsPath64",
+				"MSBuildToolsPath", "MSBuildToolsVersion", "MSBuildEnableWorkloadResolver",
 				"MSBUILDADDITIONALSDKRESOLVERSFOLDER_NET", "MSBUILD_NUGET_PATH", "MSBUILD_EXE_PATH"
 			}) {
 				psi.EnvironmentVariables.Remove(name);
 			}
-			foreach (var kv in DotNetSdkService.GetEnvironmentVariablesFor(sdk))
-				psi.EnvironmentVariables[kv.Key] = kv.Value;
+			foreach (var kv in DotNetSdkService.GetEnvironmentVariablesFor(sdk)) {
+				// Only propagate variables the dotnet muxer itself requires. The remaining
+				// entries are in-process MSBuild settings. In particular, this application's
+				// bundled SdkResolvers folder contains the ARM64 NuGet resolver; exposing it
+				// to an x64 child makes WinUI builds fail with MSB4244.
+				if (string.Equals(kv.Key, "DOTNET_ROOT", StringComparison.OrdinalIgnoreCase)
+					|| string.Equals(kv.Key, "DOTNET_HOST_PATH", StringComparison.OrdinalIgnoreCase)
+					|| string.Equals(kv.Key, "MSBuildSDKsPath", StringComparison.OrdinalIgnoreCase))
+					psi.EnvironmentVariables[kv.Key] = kv.Value;
+			}
 			// This app's own process may be running under a non-invariant/non-English OS locale
 			// (LANG/LC_ALL inherited from the desktop session), and some MSBuild tasks parse
 			// culture-sensitive content internally; pinning the build child to en_US.UTF-8 makes

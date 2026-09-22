@@ -1,78 +1,90 @@
 # Packing LibreWPF locally for OpenDevelop
 
-OpenDevelop doesn't reference LibreWPF (`librewpf` repo, the portable/cross-platform WPF fork
-that ProGPU.Wpf renders through) via ProjectReference — it consumes it as NuGet packages from a
-local feed, pinned to a single floating dev version (`11.0.0-dev`). This means every time you
-change LibreWPF source, you must repack it and refresh OpenDevelop's copy before the change is
-visible.
+OpenDevelop doesn't reference LibreWPF (the portable/cross-platform WPF fork that ProGPU.Wpf
+renders through, checked out at `wpf-tools/openavalon/LibreWPF`) via ProjectReference — it
+consumes it as NuGet packages from a local feed. This means every time you change LibreWPF
+source, you must repack it and refresh OpenDevelop's copy before the change is visible.
 
-## Fast path — don't use `eng/progpu-wpf-sdk-ci.sh`
+## Two version tracks, and they are not the same number
 
-`librewpf` ships a "do everything" script, `eng/progpu-wpf-sdk-ci.sh`, that rebuilds every
-ProGPU/WPF package from scratch and runs a battery of smoke-test harnesses before packing anything.
-**It takes 15-20 minutes per run** and, as of this writing, one of its harness steps
-(`ProGPU.Wpf.RealApplicationRunHarness`) fails on an unrelated pre-existing reflection signature
-mismatch — so it doesn't even reliably finish. Don't reach for it while iterating.
+The feed carries **two independent preview versions**, and conflating them is the most common
+way to produce a feed nothing consumes:
 
-Instead, `dotnet pack` **only the specific project(s) whose source you changed**, directly, and
-skip straight to clearing the cache and restoring. This takes on the order of **15-30 seconds**
-total for a one-project change (`ProGPU.Wpf` alone builds+packs in ~3s once its dependencies are
-already built once):
+| Track | Default | Packages |
+|---|---|---|
+| LibreWPF layer (`PROGPU_WPF_DEV_PACKAGE_VERSION`) | `0.1.0-preview.57` | `LibreWPF.Transport`, `LibreWPF.ProGPU`, `LibreWPF.Sdk`, the `LibreWinForms.*` dev packages |
+| ProGPU layer (`PROGPU_WPF_PROGPU_PACKAGE_VERSION`) | `0.1.0-preview.62` | every `ProGPU.*` package **and** `LibreWPF.Interop` |
+
+`OpenDevelop/global.json` pins only the first one, as the `LibreWPF.Sdk` MSBuild SDK version; the
+SDK itself carries the ProGPU version it wants (`ProGpuRuntimePackageVersion` in
+`packaging/ProGPU.Wpf.Sdk/ProGPU.Wpf.Sdk.ArchNeutral.csproj`). Bump them as one coherent graph —
+see `openavalon/AGENTS.md`, which is the authoritative note on the local feed.
+
+Historical note: the feed used to use a single floating `11.0.0-dev` version for everything. That
+scheme is gone. The assemblies inside the packages are still stamped `11.0.0.0` — assembly
+version and package version are deliberately unrelated here, so don't "fix" one to match the
+other.
+
+## How to repack: `openavalon/dist.local.sh` owns the feed
+
+Build the feed from the provider repo, not by hand:
 
 ```bash
-cd /Users/lextm/uno-tools/OpenDevelop
-dotnet="$(readlink -f "$(command -v dotnet)")"
-librewpf_root="/Users/lextm/uno-tools/librewpf"
-package_output="${librewpf_root}/artifacts/packages/Release/NonShipping"
-
-rm -f "${package_output}/LibreWPF.ProGPU.11.0.0-dev.nupkg" "${package_output}/LibreWPF.ProGPU.11.0.0-dev.snupkg"
-"${dotnet}" pack "${librewpf_root}/src/ProGPU.Wpf/ProGPU.Wpf.csproj" -c Release -o "${package_output}" -v:minimal
-
-rm -rf ~/.nuget/packages/librewpf.progpu
+bash ../openavalon/dist.local.sh          # the whole package graph, ~25 min on this workstation
 ```
 
-Then restore + relaunch OpenDevelop (step 4/5 below). The full multi-project workflow further down
-is only for when you've changed several LibreWPF projects at once, or want to run the test suite
-before packing — reach for it, not the CI script.
+It builds and packs everything in one coherent pass — the ProGPU packages, the ProGPU projects
+`LibreWPF.Sdk` depends on, the LibreWPF transport/bridge/SDK, and the canonical LibreWinForms
+integration — and writes it all to `openavalon/artifacts/local-feed`.
 
-`eng/progpu-wpf-sdk-ci.sh` still has its place: run it (accepting the ~20 min cost, and ignoring
-the one known-broken harness) before landing a change for real, since it's the only thing that
-exercises the full package/SDK surface end-to-end. Don't use it as your everyday inner loop.
+From OpenDevelop's side, `./repack-librewpf.sh` is a thin wrapper: it calls `dist.local.sh`, then
+does the consumer-side half the provider deliberately skips — dropping the stale
+`~/.nuget/packages/librewpf.*` + `progpu.*` entries and re-restoring `OpenDevelop.Mvp.slnx`.
+`./rebuild-all.sh` chains that with the build + launch step.
+
+Do **not** re-introduce a hand-rolled per-project `dotnet pack` loop here. That is what the old
+version of `repack-librewpf.sh` did, with its own hardcoded version string, and it silently
+produced a feed of packages nothing consumed once the provider's version scheme moved on.
 
 ## How the local feed is wired up
 
-`OpenDevelop/NuGet.config` has a package source pointing at LibreWPF's own build output:
+`OpenDevelop/nuget.config` maps the feed by a **relative** path, so the same entry works on every
+machine and on both the flat and workspace layouts:
 
 ```xml
-<add key="local-librewpf" value="/Users/lextm/uno-tools/librewpf/artifacts/packages/Release/NonShipping" />
+<add key="librewpf-local" value="../openavalon/artifacts/local-feed" />
 ```
 
-`SharpDevelop.csproj` (and other OpenDevelop projects) pull in LibreWPF through the
-`LibreWPF.Sdk/11.0.0-dev` MSBuild SDK, which in turn depends on a handful of `LibreWPF.*` /
-`ProGPU.*` packages, all built from `librewpf` at the same fixed dev version. The packages you'll
-touch most often when iterating on LibreWPF:
+Forward slashes matter here — a backslash is not a separator on macOS/Linux, and NuGet then
+reports "No packages exist with this id in source(s): librewpf-local" instead of saying the folder
+is missing. The `nuget.config` comment block spells this out.
+
+`SharpDevelop.csproj` (and other OpenDevelop projects) pull in LibreWPF through the `LibreWPF.Sdk`
+MSBuild SDK — declared as a bare `<Project Sdk="LibreWPF.Sdk">`, with the version supplied by
+`global.json`, never pinned per project. The packages you'll touch most often
+(paths relative to `openavalon/LibreWPF`):
 
 | Package ID | Built from | Contains |
 |---|---|---|
-| `LibreWPF.ProGPU` | `librewpf/src/ProGPU.Wpf/ProGPU.Wpf.csproj` | `ProGpuWpfWindowHost`, `WpfPortableWindowActivation`, `WpfPortablePopupActivation`, the Silk.NET-backed windowing/render/input layer |
-| `LibreWPF.Transport` | `librewpf/packaging/Microsoft.DotNet.Wpf.GitHub/Microsoft.DotNet.Wpf.GitHub.ArchNeutral.csproj` | The real WPF assemblies (`PresentationFramework.dll`, `PresentationCore.dll`, `WindowsBase.dll`, ...) — this is where `Popup.cs`, `PortableWindowActivationService.cs`, `MenuItem.cs`, etc. live |
-| `LibreWPF.Interop` | `librewpf/external/ProGPU/src/ProGPU.Wpf.Interop/ProGPU.Wpf.Interop.csproj` | The portable service-registration contracts (`PortablePopupActivationCallbacks`, `PortableWindowActivationCallbacks`, ...) that bridge the two layers above without a circular assembly reference |
-| `LibreWPF.Sdk` | `librewpf/packaging/ProGPU.Wpf.Sdk/ProGPU.Wpf.Sdk.ArchNeutral.csproj` | The MSBuild SDK itself (rarely needs repacking — only if the SDK's own targets/props change) |
+| `LibreWPF.ProGPU` | `src/ProGPU.Wpf/ProGPU.Wpf.csproj` | `ProGpuWpfWindowHost`, `WpfPortableWindowActivation`, `WpfPortablePopupActivation`, the Silk.NET-backed windowing/render/input layer |
+| `LibreWPF.Transport` | `packaging/Microsoft.DotNet.Wpf.GitHub/Microsoft.DotNet.Wpf.GitHub.ArchNeutral.csproj` | The real WPF assemblies (`PresentationFramework.dll`, `PresentationCore.dll`, `WindowsBase.dll`, ...) — this is where `Popup.cs`, `PortableWindowActivationService.cs`, `MenuItem.cs`, etc. live |
+| `LibreWPF.Interop` | `external/ProGPU/src/ProGPU.Wpf.Interop/ProGPU.Wpf.Interop.csproj` | The portable service-registration contracts (`PortablePopupActivationCallbacks`, `PortableWindowActivationCallbacks`, ...) that bridge the two layers above without a circular assembly reference. **Versioned on the ProGPU track**, not the LibreWPF one |
+| `LibreWPF.Sdk` | `packaging/ProGPU.Wpf.Sdk/ProGPU.Wpf.Sdk.ArchNeutral.csproj` | The MSBuild SDK itself (rarely needs repacking — only if the SDK's own targets/props change) |
 
-Only repack the package(s) whose *source* you actually changed. If you only touched files under
-`librewpf/src/Microsoft.DotNet.Wpf/...`, you only need `LibreWPF.Transport`. If you only touched
-`librewpf/src/ProGPU.Wpf/...`, you only need `LibreWPF.ProGPU`. If you touched
-`librewpf/external/ProGPU/src/ProGPU.Wpf.Interop/...` (e.g. changing a callback delegate
-signature), you need `LibreWPF.Interop` — and because `LibreWPF.ProGPU` and `LibreWPF.Transport`
-both consume it, a signature change there usually means repacking all three.
+`LibreWPF.ProGPU` and `LibreWPF.Transport` both consume `LibreWPF.Interop`, so a callback
+signature change there ripples through all three. `dist.local.sh` rebuilds the graph as a unit
+precisely so you never have to reason about which subset is enough.
 
 ## The trap: NuGet's global package cache
 
-`~/.nuget/packages/<id>/11.0.0-dev/` caches whatever was restored the **first time** that exact
+`~/.nuget/packages/<id>/<version>/` caches whatever was restored the **first time** that exact
 version string was ever pulled down, and normal `dotnet restore` will happily keep serving that
-stale copy forever since the version number never changes. Repacking the `.nupkg` in the local
-feed is not enough by itself — you must also delete the matching folder(s) under
-`~/.nuget/packages/` before OpenDevelop's next restore, or it won't pick up your changes.
+stale copy forever. Because the local feed rebuilds the *same* preview version over and over
+(`0.1.0-preview.57` / `0.1.0-preview.62`) rather than bumping it, this bites on every repack.
+Repacking the `.nupkg` in the local feed is not enough by itself — you must also delete the
+matching folder(s) under `~/.nuget/packages/` before OpenDevelop's next restore, or it won't pick
+up your changes. `repack-librewpf.sh` does this for you (by package ID, so it stays correct
+across version bumps).
 
 Cache folder names are the NuGet package ID lowercased with dots kept as-is, e.g.
 `LibreWPF.ProGPU` → `~/.nuget/packages/librewpf.progpu/`.
@@ -82,8 +94,8 @@ Cache folder names are the NuGet package ID lowercased with dots kept as-is, e.g
 Clearing the NuGet cache isn't the only staleness trap — an OpenDevelop project's own `obj`/`bin`
 can also go stale and MSBuild won't notice, because incremental build only tracks source-file
 timestamps, not the *identity* of the SDK or packages a project builds against. Concretely: after
-`ICSharpCode.Core.Presentation.csproj`'s `Sdk=` attribute was switched from `ProGPU.Wpf.Sdk/11.0.0-dev`
-to `LibreWPF.Sdk/11.0.0-dev` (and a batch of `Resources/VS2026/*.png` icons were added in the same
+`ICSharpCode.Core.Presentation.csproj`'s `Sdk=` attribute was switched from `ProGPU.Wpf.Sdk`
+to `LibreWPF.Sdk` (and a batch of `Resources/VS2026/*.png` icons were added in the same
 commit), the project kept silently reusing an `obj/.../ICSharpCode.Core.Presentation.g.resources`
 built *before* that change — no icons embedded — for who knows how many sessions afterward,
 producing a wall of `Could not load PNG icon '...' — Cannot locate resource '...'` warnings at
@@ -99,17 +111,17 @@ looks correct on inspection.
 **Fix:** delete `obj`/`bin` for the affected project(s) — or, if unsure which one, nuke them all:
 
 ```bash
-cd /Users/lextm/uno-tools/OpenDevelop
+cd <repo-root>
 find src -maxdepth 3 -type d \( -name obj -o -name bin \) -print0 | xargs -0 rm -rf
-./launch.sh
+./launch.ps1
 ```
 
-This is slower than an incremental `launch.sh` (everything rebuilds from scratch), so reach for it
+This is slower than an incremental `launch.ps1` (everything rebuilds from scratch), so reach for it
 specifically when a fix "should have landed" and hasn't — not as routine practice.
 
 ## A third trap: `dotnet pack` ships **Release**, but plain `dotnet build` builds **Debug**
 
-The `LibreWPF.*` packages are packed with `-c Release` (see the Fast path section above), so
+The `LibreWPF.*` packages are packed with `-c Release` (see "How to repack" above), so
 `dotnet pack` bundles the assemblies from `artifacts/bin/<Project>/Release/net10.0/`. A bare
 `dotnet build src/.../PresentationFramework.csproj` (no `-c`) builds the **Debug** configuration
 into `artifacts/bin/<Project>/Debug/...` and leaves the Release output **untouched**. So this
@@ -128,7 +140,7 @@ show up in `strings`, unlike string *literals* which are UTF-16 and won't):
 
 ```bash
 strings artifacts/bin/PresentationFramework/Release/net10.0/PresentationFramework.dll | grep -x YourNewMethodName
-strings ~/.nuget/packages/librewpf.transport/11.0.0-dev/lib/net10.0/PresentationFramework.dll | grep -x YourNewMethodName
+strings ~/.nuget/packages/librewpf.transport/0.1.0-preview.57/lib/net10.0/PresentationFramework.dll | grep -x YourNewMethodName
 ```
 
 **Rule:** always build the **same configuration you pack** — either build with `-c Release`
@@ -139,51 +151,109 @@ For `LibreWPF.Transport` specifically, note it aggregates several assemblies
 `PresentationFramework.csproj -c Release` pulls the whole dependency chain, so prefer that over
 building a single leaf project.
 
-## Full repack + relaunch workflow
+## A fourth trap: the arch-neutral pack is a silent no-op under an architecture `Platform`
 
-Use the system-installed .NET 10 SDK. LibreWPF now supports `net10.0`, and OpenDevelop targets
-`net10.0-windows`, so there is no longer a reason to build through `librewpf/.dotnet/dotnet`.
-When running commands from `/Users/lextm/uno-tools/OpenDevelop`, its `global.json` pins SDK
-resolution to 10.x even if the LibreWPF checkout still has an older preview-oriented
-`global.json`.
+`packaging/Directory.Build.props` turns `IsPackable` **off** when `$(Platform)` is an
+architecture (x64/arm64) and `$(CreateArchNeutralPackage)` is true, so that a multi-architecture
+build emits the bait-and-switch packages exactly once, on the AnyCPU/x86 pass. `LibreWPF.Transport`
+and `LibreWPF.Sdk` are both `*.ArchNeutral.csproj`, so packing them with `-p:Platform=x64`
+produces **nothing** — and `dotnet pack` still exits 0, because a skipped target is not an error.
+
+`dist.local.sh` deletes the previous `.nupkg` before packing, so for a while this combination
+quietly *removed* `LibreWPF.Transport` and `LibreWPF.Sdk` from the feed instead of refreshing
+them. `pack_wpf_project` now selects `AnyCPU` for `*ArchNeutral.csproj` and asserts the artifact
+exists afterwards rather than trusting the exit code. Keep both halves of that guard.
+
+## A fifth trap: the transport staging folder is additive-only
+
+`LibreWPF.Transport` is not packed from a project's build output — it zips a staging tree at
+`artifacts/packaging/Release/LibreWPF.Transport/`, which the *build* phase populates. Its cleanup
+target (`RemoveStaleLibreWpfTransportPayload`) deliberately **excludes** the current TFM's folder,
+so anything that lands in `lib/net10.0/` and later stops being copied just stays there forever
+and keeps getting shipped.
+
+That is not hypothetical: `ProGPU.Wpf.Interop.dll`, `System.Private.Windows.Core.dll` and
+`Accessibility.dll` sat there for two weeks after the rest of the payload moved on, so the package
+shipped a `PresentationFramework.dll` that called an interop API the bundled
+`ProGPU.Wpf.Interop.dll` did not have. OpenDevelop then died at startup inside
+`ProGpuWpfSdkPortableBootstrap.Initialize()` with
+`MissingMethodException: ... PortableWpfServiceRegistry.add_NativeInputPumpChanged`, which reads
+like a version-pin problem and is not one.
+
+**Diagnose it by date, not by version**: list the staging folder and look for files older than
+the rest.
 
 ```bash
-cd /Users/lextm/uno-tools/OpenDevelop
-dotnet="$(readlink -f "$(command -v dotnet)")"
-librewpf_root="/Users/lextm/uno-tools/librewpf"
-package_output="${librewpf_root}/artifacts/packages/Release/NonShipping"
-
-# 1. Build only the project(s) you changed (skip ones you didn't touch)
-"${dotnet}" build "${librewpf_root}/src/ProGPU.Wpf/ProGPU.Wpf.csproj" -c Release -v:minimal
-"${dotnet}" build "${librewpf_root}/src/Microsoft.DotNet.Wpf/src/PresentationFramework/PresentationFramework.csproj" -c Release -v:minimal
-
-# (optional but recommended) run the test suite for whatever you touched
-(cd "${librewpf_root}/src/ProGPU.Wpf.Tests" && "${dotnet}" test)
-
-# 2. Repack — delete the old nupkg first so a failed/partial pack can't leave a stale one behind
-rm -f "${package_output}/LibreWPF.ProGPU.11.0.0-dev.nupkg" "${package_output}/LibreWPF.ProGPU.11.0.0-dev.snupkg"
-"${dotnet}" pack "${librewpf_root}/src/ProGPU.Wpf/ProGPU.Wpf.csproj" -c Release -o "${package_output}" -v:minimal
-
-rm -f "${package_output}/LibreWPF.Transport.11.0.0-dev.nupkg" "${package_output}/LibreWPF.Transport.11.0.0-dev.snupkg"
-"${dotnet}" pack "${librewpf_root}/packaging/Microsoft.DotNet.Wpf.GitHub/Microsoft.DotNet.Wpf.GitHub.ArchNeutral.csproj" -c Release -o "${package_output}" -v:minimal
-
-# If you touched external/ProGPU/src/ProGPU.Wpf.Interop:
-rm -f "${package_output}/LibreWPF.Interop.11.0.0-dev.nupkg" "${package_output}/LibreWPF.Interop.11.0.0-dev.snupkg"
-"${dotnet}" pack "${librewpf_root}/external/ProGPU/src/ProGPU.Wpf.Interop/ProGPU.Wpf.Interop.csproj" -c Release -o "${package_output}" -v:minimal
-
-# 3. Blow away the matching global cache entries so OpenDevelop's restore can't serve stale copies
-rm -rf ~/.nuget/packages/librewpf.progpu ~/.nuget/packages/librewpf.transport ~/.nuget/packages/librewpf.interop
-
-# 4. Force OpenDevelop to re-pull from the local feed
-"${dotnet}" restore OpenDevelop.Mvp.slnx --force --no-cache
-
-# 5. Relaunch (launch.sh kills any stale instance and frees DevFlow's port 9223 first)
-pkill -f "SharpDevelop" 2>/dev/null
-./launch.sh
+cd <openavalon>/LibreWPF/artifacts/packaging/Release/LibreWPF.Transport/lib/net10.0
+find . -maxdepth 1 -type f ! -newermt "$(date +%Y-%m-%d)" -printf "%f\n"   # stale leftovers
 ```
 
-For the scripted version of the same flow, use `./repack-librewpf.sh` or `./rebuild-all.sh`.
-Both scripts now use the system .NET 10 SDK.
+Anything listed there that the current build no longer produces must be deleted before packing.
+
+## A sixth trap: an architecture-stamped assembly in a RID-neutral `lib/` folder
+
+A managed assembly under `lib/<tfm>/` is RID-neutral and **must be AnyCPU**. The CLR does not
+JIT its way around a wrong-architecture managed assembly — the load simply fails, and the
+exception names a file that is sitting right there on disk:
+
+```
+FileNotFoundException: Could not load file or assembly 'ProGPU.Wpf, Version=0.1.0.0, ...'.
+The system cannot find the file specified.
+   at ProGPU.Wpf.Sdk.ProGpuWpfSdkPortableBootstrap.Initialize()
+```
+
+`dist.local.sh` used to pass a hardcoded `-p:Platform=x64` to every pack, which on an ARM64
+workstation shipped an **x64** `ProGPU.Wpf.dll` inside `LibreWPF.ProGPU/lib/net10.0`. It now packs
+AnyCPU and runs a feed-wide audit ("Checking RID-neutral payload is AnyCPU") that lists any
+`lib/**/*.dll` whose PE machine field is not `0x014C`.
+
+Genuinely architecture-specific payload is fine — it belongs under `runtimes/<rid>/`, which is how
+`PresentationCore` and the C++/CLI `DirectWriteForwarder` ship, and why
+`Sync-LibreWpfDevelopmentRuntime` copies exactly those two from the RID folder last.
+
+**Check it directly** (0x014C = AnyCPU, 0x8664 = x64, 0xAA64 = arm64):
+
+```powershell
+$fs=[IO.File]::OpenRead($dll); $br=New-Object IO.BinaryReader($fs)
+$fs.Position=0x3C; $o=$br.ReadInt32(); $fs.Position=$o+4; '0x{0:X4}' -f $br.ReadUInt16()
+```
+
+Known still-offending (separate fix): the canonical WinForms graph emits arm64
+`WindowsFormsIntegration.dll` and `ProGPU.DirectX.dll`.
+
+## A seventh trap: `librewinforms-pack.sh` demands an output directory of its own
+
+It validates that its output folder holds **exactly** the LibreWinForms preview bundle and
+rejects anything else ("Unexpected current-version package artifact: ..."). That is a reasonable
+purity gate for a release bundle, but it cannot be pointed at the shared dev feed, which by that
+point also holds `LibreWPF.Transport`/`ProGPU`/`Sdk`. `dist.local.sh` gives it a private
+`artifacts/librewinforms-feed` and copies the result into `local-feed` afterwards.
+
+Two more things it checks, both of which bite when they are wrong:
+
+- `LIBREWINFORMS_CANONICAL_WFI_COMMIT` must be the **LibreWPF** commit, not the LibreWinForms one.
+  WindowsFormsIntegration is built from the LibreWPF tree, so SourceLink records LibreWPF's HEAD.
+- LibreWinForms must pin the **same ProGPU submodule commit** LibreWPF does, or the canonical
+  integration gate aborts before WindowsFormsIntegration is ever built.
+
+Both of these abort *after* the script has already deleted the packages it was about to
+republish, so a failure here leaves the feed **missing** `LibreWPF.Interop` and
+`LibreWinForms.WindowsFormsIntegration` — and OpenDevelop's next restore fails with NU1101 for
+packages that were there an hour ago. If you see that, re-run the pack; do not go hunting for a
+NuGet source problem.
+
+## Full repack + relaunch workflow
+
+```bash
+cd <repo-root>
+./repack-librewpf.sh     # dist.local.sh + cache clear + restore
+./launch.ps1             # or ./rebuild-all.sh to chain repack + build + run
+```
+
+`repack-librewpf.sh` is a wrapper around `openavalon/dist.local.sh`; see
+"How to repack" above. Use the system-installed .NET 10 SDK for OpenDevelop — `global.json` pins
+SDK resolution to 10.x. (`dist.local.sh` internally uses LibreWPF's own pinned
+`.dotnet/dotnet`, which is required for the 11.0-preview parts of that build; don't override it.)
 
 ## Use the system .NET 10 SDK
 
@@ -191,10 +261,10 @@ The old workflow used `librewpf/.dotnet/dotnet` because LibreWPF temporarily req
 11.0-preview SDK. That is obsolete now: use the system-installed .NET 10 SDK for LibreWPF pack,
 OpenDevelop restore, and OpenDevelop build/run.
 
-One caveat remains: .NET resolves `global.json` from the current working directory. If the
-LibreWPF checkout still has a preview-pinned `global.json`, run the commands from
-`/Users/lextm/uno-tools/OpenDevelop` and pass absolute LibreWPF project paths, or update the
-LibreWPF checkout's `global.json` to a 10.x SDK.
+One caveat remains: .NET resolves `global.json` from the current working directory. The LibreWPF
+checkout *is* preview-pinned (it needs its own `.dotnet/dotnet`, an 11.0-preview SDK, for the
+native/transport build), so run OpenDevelop-side commands from the OpenDevelop repo root and let
+`dist.local.sh` use LibreWPF's pinned SDK for the provider side.
 
 ## Faster iteration: skip OpenDevelop entirely with a throwaway repro app
 
@@ -211,7 +281,7 @@ the full OpenDevelop solution — no AvalonDock/addin tree to restore or build. 
   </config>
   <packageSources>
     <clear />
-    <add key="ProGPUWpfLocalArtifacts" value="/Users/lextm/uno-tools/librewpf/artifacts/packages/Release/NonShipping" />
+    <add key="ProGPUWpfLocalArtifacts" value="../openavalon/artifacts/local-feed" />
     <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
   </packageSources>
 </configuration>

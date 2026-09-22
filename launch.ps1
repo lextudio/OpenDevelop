@@ -64,13 +64,51 @@ function Sync-LibreWpfDevelopmentRuntime {
     $managedDir = Join-Path $transportDir 'lib/net10.0'
     $runtimeDir = Join-Path $transportDir "runtimes/$rid/lib/net10.0"
     $outputDir = Join-Path $repoRoot "src/Main/SharpDevelop/bin/$Configuration/net10.0-windows"
+    # Reassert the transport payload, but never DOWNGRADE an assembly restore already placed at a
+    # higher version. System.Private.Windows.Core is the case that matters: LibreWinForms'
+    # System.Windows.Forms is built against v11 while LibreWPF's PresentationCore is built against
+    # v10, and both packages ship a copy. NuGet resolves the conflict in favour of v11 (it logs
+    # MSB3243 "Choosing 11.0.0.0"); copying the transport payload over it unconditionally put v10
+    # back and the app died at startup with
+    # "Could not load file or assembly 'System.Private.Windows.Core, Version=11.0.0.0'".
+    # Assembly binding rolls FORWARD but not back, so keeping the higher version satisfies both
+    # references. A file that is not a managed assembly (or that is absent) just gets copied.
     Get-ChildItem -LiteralPath $managedDir -Filter '*.dll' -File | ForEach-Object {
-        Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $outputDir $_.Name) -Force
+        $destination = Join-Path $outputDir $_.Name
+        if (Test-Path -LiteralPath $destination) {
+            $sourceVersion = $null
+            $destinationVersion = $null
+            try { $sourceVersion = [System.Reflection.AssemblyName]::GetAssemblyName($_.FullName).Version } catch { }
+            try { $destinationVersion = [System.Reflection.AssemblyName]::GetAssemblyName($destination).Version } catch { }
+            if ($sourceVersion -and $destinationVersion -and $destinationVersion -gt $sourceVersion) {
+                Write-Host "    keeping $($_.Name) $destinationVersion (transport ships $sourceVersion)"
+                return
+            }
+        }
+        Copy-Item -LiteralPath $_.FullName -Destination $destination -Force
     }
+    # The RID-specific copies are installed last, on purpose. They are also the easiest place for
+    # the payload to go stale: runtimes/<rid>/ is filled from LibreWPF's artifacts/windows-managed-
+    # runtime, which only eng/progpu-wpf-windows-managed-runtime.ps1 produces - and that script
+    # refuses to run when the repo's .dotnet host is not x64, so on an ARM64 workstation it quietly
+    # stops being regenerated. Installing a months-old PresentationCore over the freshly built one
+    # paired it with a newer PresentationFramework and broke every TextBox with
+    # "MissingMethodException: InputManager.get_UsesPortableInput()".
+    # Only take the RID copy when it is not older than the RID-neutral one it would replace.
     foreach ($assembly in 'PresentationCore.dll', 'DirectWriteForwarder.dll') {
         $source = Join-Path $runtimeDir $assembly
         if (-not (Test-Path -LiteralPath $source)) {
             throw "LibreWPF runtime assembly not found: $source"
+        }
+        $neutral = Join-Path $managedDir $assembly
+        if (Test-Path -LiteralPath $neutral) {
+            $ridStamp = (Get-Item -LiteralPath $source).LastWriteTimeUtc
+            $neutralStamp = (Get-Item -LiteralPath $neutral).LastWriteTimeUtc
+            if ($neutralStamp -gt $ridStamp) {
+                Write-Host "    keeping RID-neutral $assembly ($neutralStamp) over stale $rid copy ($ridStamp)"
+                Copy-Item -LiteralPath $neutral -Destination (Join-Path $outputDir $assembly) -Force
+                continue
+            }
         }
         Copy-Item -LiteralPath $source -Destination (Join-Path $outputDir $assembly) -Force
     }

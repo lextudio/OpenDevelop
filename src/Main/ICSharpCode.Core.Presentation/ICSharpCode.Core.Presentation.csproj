@@ -23,5 +23,10 @@
     <None Remove="Resources\VS2017\**\*.xaml" />
     <Page Remove="Resources\VS2017\**\*.xaml" />
     <Resource Include="Resources\VS2017\**\*.xaml" />
+    <!-- Icons we draw ourselves, kept out of the vendored library folders above so that
+         re-copying from the VS Image Library cannot clobber them. -->
+    <None Remove="Resources\OpenDevelop\**\*.xaml" />
+    <Page Remove="Resources\OpenDevelop\**\*.xaml" />
+    <Resource Include="Resources\OpenDevelop\**\*.xaml" />
   </ItemGroup>
 </Project>

@@ -5,10 +5,11 @@
 # The pipeline has two halves that MUST run in order and were previously two separate scripts you
 # had to remember to chain by hand:
 #   1. repack-librewpf.sh  — build + pack LibreWPF (WPF fork + ProGPU) into the local feed
-#                            (/Users/lextm/uno-tools/librewpf/artifacts/packages/Release/NonShipping,
-#                            registered in NuGet.config as "local-librewpf"), clear the stale
-#                            ~/.nuget/packages/librewpf.* + progpu.* caches, then restore
-#                            OpenDevelop against the fresh packages. Uses the system .NET 10 SDK.
+#                            (../openavalon/artifacts/local-feed, registered in nuget.config as
+#                            "librewpf-local"), clear the stale ~/.nuget/packages/librewpf.* +
+#                            progpu.* caches, then restore OpenDevelop against the fresh packages.
+#                            Uses the system .NET 10 SDK. For a full, canonical feed rebuild
+#                            (including LibreWinForms) use openavalon/dist.local.sh instead.
 #   2. launch.sh           — build OpenDevelop.Mvp.slnx and run SharpDevelop. Also uses the
 #                            system .NET 10 SDK.
 #
@@ -18,7 +19,8 @@
 #
 # Usage:
 #   ./rebuild-all.sh                full LibreWPF repack + restore + build OpenDevelop + run
-#   ./rebuild-all.sh --fast         fast (ProGPU-only) repack, otherwise identical
+#   ./rebuild-all.sh --fast         accepted for compatibility, but no longer partial: the feed
+#                                   is built by openavalon/dist.local.sh as one package graph
 #   ./rebuild-all.sh --no-repack    skip repack; just build + run (equivalent to ./launch.sh)
 #   ./rebuild-all.sh --build-only   repack + build, but do NOT launch (for the integration tests,
 #                                   which start their own app instance via --no-build)

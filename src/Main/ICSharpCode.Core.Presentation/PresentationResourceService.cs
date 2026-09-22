@@ -141,7 +141,7 @@ namespace ICSharpCode.Core.Presentation
 			{ "ILSpy", "Assembly" }
 		};
 		static readonly IReadOnlyDictionary<string, string> xamlResourceMap = new Dictionary<string, string> {
-			{ "ProjectBrowser.LinkedFileOverlay", "Resources/VS2026/Shortcut/Shortcut_cyanOverlay_16x.xaml" },
+			{ "ProjectBrowser.LinkedFileOverlay", "Resources/OpenDevelop/LinkedFileBadge_16x.xaml" },
 			// Unit Tests Pad result icons (Visual Studio Test Explorer semantics).
 			{ "UnitTesting.Status.NotRun", "Resources/VS2026/StatusAlert/StatusAlertOutline_16x.xaml" },
 			{ "UnitTesting.Status.Passed", "Resources/VS2026/StatusOK/StatusOK_16x.xaml" },

@@ -57,7 +57,7 @@ Both dependency families are out of scope for OpenDevelop's MVP build:
 `ResourceToolkit.csproj`:
 
 ```xml
-<Project Sdk="LibreWPF.Sdk/11.0.0-dev">
+<Project Sdk="LibreWPF.Sdk">
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>

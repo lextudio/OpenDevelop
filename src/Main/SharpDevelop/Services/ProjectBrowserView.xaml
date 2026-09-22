@@ -15,8 +15,13 @@
                     <Image Width="16"
                            Height="16"
                            Source="{Binding Icon}" />
-                    <Image Width="16"
-                           Height="16"
+                    <!-- Badge size, not icon size. Both overlay assets are authored on a full
+                         16x16 canvas (the git badge is an ellipse centred at 8,8 with radius 7.5;
+                         Shortcut_cyanOverlay_16x is a rounded box spanning x/y 2..14), so they are
+                         scaled down here to sit in a corner. Rendered at 16x16 the link overlay
+                         covered the whole file icon instead of badging it. -->
+                    <Image Width="8"
+                           Height="8"
                            HorizontalAlignment="Right"
                            VerticalAlignment="Bottom"
                            Source="{Binding LinkedFileOverlayIcon}" />
