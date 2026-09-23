@@ -310,6 +310,14 @@ The project intentionally develops these pieces in the open so that individual c
 
 ## Screenshots
 
+### WinUI visual designer
+
+![WinUI visual designer](images/winui-designer.png)
+
+### WinForms visual designer
+
+![WinForms visual designer](images/winforms-designer.png)
+
 ### ILSpy integration
 
 ![ILSpy decompiler layout](images/ilspy-layout.png)
@@ -321,6 +329,18 @@ The project intentionally develops these pieces in the open so that individual c
 ### Class diagrams
 
 ![Class diagram](images/class-diagram.png)
+
+### CoreWF visual designer
+
+![CoreWF visual designer](images/corewf-designer.png)
+
+> Note that [this designer is shipped in a separate repo](https://github.com/lextudio/CoreWF/tree/develop/src/OpenDevelop.AddIn/WorkflowDesigner).
+
+### Stride Game Studio
+
+![Stride Game Studio](images/stride-designer.png)
+
+> Note that [Stride Game Studio is shipped in a separate repo](https://github.com/lextudio/stride/tree/librewpf-port/sources/tools/Stride.OpenDevelop.AddIn).
 
 ## Building OpenDevelop
 
@@ -405,5 +425,5 @@ OpenDevelop stands on more than two decades of work by the .NET open-source deve
 
 The SharpDevelop project was initiated by Mike Krüger in 2000 and developed for many years by the SharpDevelop team. OpenDevelop also incorporates ideas and technology created by contributors to MonoDevelop and Visual Studio for Mac, ILSpy, AvalonEdit, AvalonDock, Roslyn, the .NET Project System, XAML Studio, NuGet, Microsoft Testing Platform, SharpDbg, LibreWPF, and many other projects.
 
-Copyright © 2002-2016 AlphaSierraPapa for the SharpDevelop team.  
-Copyright © 2026 LeXtudio Inc.
+- Copyright © 2002-2016 AlphaSierraPapa for the SharpDevelop team.  
+- Copyright © 2026 LeXtudio Inc.
