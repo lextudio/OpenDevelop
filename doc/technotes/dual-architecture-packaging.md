@@ -235,19 +235,96 @@ a launched application:
   `./build.ps1 WpfHotReload.Agent` and confirm `0x014C`. This is the same trap
   [build-from-source.md](build-from-source.md) documents for every other project.
 
-## Known violations, still open
+## What a real package looks like (verified 2026-09-22)
 
-`dist.local.sh`'s audit reports these today. They are producer-side bugs in packages that ship
-**only** `lib/net10.0` and therefore have no correct architecture to fall back to:
+A full `dist.windows.bat` run — all seven phases, 0 errors — produces `OpenDevelop-win.zip`
+(~294 MB) and **both launchers pass the startup smoke test**, which is the only end-to-end proof
+that one payload serves both architectures:
 
-| package | file | stamped |
+```
+==> Smoke-testing packaged app...            Packaged app startup smoke test passed
+==> Smoke-testing the OpenDevelopARM64.exe launcher...   Packaged app startup smoke test passed
+```
+
+The per-RID trees come out correct, and this is where the `Sdk.props` whitelist fix is visible:
+
+| file | `runtimes/win-x64/lib/net10.0` | `runtimes/win-arm64/lib/net10.0` |
 |---|---|---|
-| `ProGPU.DirectX` | `lib/net10.0/ProGPU.DirectX.dll` | arm64 |
-| `ProGPU.Avalonia`, `ProGPU.Backend.Dawn`, `ProGPU.Layout`, `ProGPU.Media`, `ProGPU.Media.Scene`, `ProGPU.Virtualization`, `ProGPU.WinUI` | `lib/net10.0/*.dll` | x64 |
-| `LibreWinForms.WindowsFormsIntegration` | `lib/` and `ref/` | arm64 |
+| `DirectWriteForwarder.dll` | `0x8664` | `0xAA64` |
+| `PresentationCore.dll` | `0x014C` | `0x014C` |
+| `Microsoft.Win32.SystemEvents.dll` | `0x014C` | `0x014C` |
 
-Each will fail on the architecture it was not built for. The fix is the same in every case: pack
-from the project's AnyCPU output (`bin/Release/net10.0/`), not from `bin/x64/` or `bin/ARM64/`.
+**The payload root is the check that matters.** Of the 179 managed assemblies flattened onto the
+app base, exactly **one** is now architecture-stamped:
+
+| file at payload root | stamped | per-RID copies in the payload |
+|---|---|---|
+| `DirectWriteForwarder.dll` | arm64 | yes — `win-x64` `0x8664`, `win-arm64` `0xAA64` |
+
+That one is C++/CLI and cannot be AnyCPU; it is resolved per-RID by design, and its flat copy
+exists only so a RID-neutral restore resolves the reference at all. It started as four —
+`ProGPU.DirectX`, `ProGPU.Backend.Dawn` and `WindowsFormsIntegration` were the other three, and
+all three are fixed at the package level (see below).
+
+**Getting from four to one took two packaging runs, and the reason is worth remembering.** After
+the packages were corrected, the audit was clean and the payload was still wrong: `--skip-publish`
+reuses the existing host publish and `AddIns/` trees, so it cannot pick up a corrected package,
+and even a full run restored the **stale extracted copies** from `~/.nuget/packages` rather than
+the fixed `.nupkg` files. Evicting 24 stale cache entries and rebuilding is what actually moved
+the number. A clean feed audit says nothing about what a consumer will load — see the NuGet cache
+section above, and run the scan below rather than inferring:
+
+```powershell
+Get-ChildItem OpenDevelop-win\*.dll | ForEach-Object {
+  $fs=[IO.File]::OpenRead($_.FullName); $br=New-Object IO.BinaryReader($fs)
+  if($br.ReadUInt16() -eq 0x5a4d){ $fs.Position=0x3C; $o=$br.ReadInt32(); $fs.Position=$o
+    if($br.ReadUInt32() -eq 0x00004550){ $m=$br.ReadUInt16()
+      if($m -ne 0x14C){ '{0,-44} 0x{1:X4}' -f $_.Name,$m } } }
+  $fs.Close()
+}
+```
+
+A passing smoke test does not clear this: it only proves the assemblies needed *during startup*
+resolved correctly on the machine that ran it.
+
+## The ProGPU and WindowsFormsIntegration packages (fixed 2026-09-22)
+
+Ten entries used to fail the audit. All ten are fixed; the audit now reports
+*"lib/, ref/ and every runtimes/<rid>/lib/ entry carry a loadable architecture."* Both causes are
+worth keeping, because neither was what the symptom suggested.
+
+**Eight ProGPU packages** (`ProGPU.DirectX` arm64; `ProGPU.Avalonia`, `ProGPU.Backend.Dawn`,
+`ProGPU.Layout`, `ProGPU.Media`, `ProGPU.Media.Scene`, `ProGPU.Virtualization`, `ProGPU.WinUI`
+x64). These ship **only** `lib/net10.0` — no `runtimes/` tree at all — so an architecture stamp
+leaves no correct copy anywhere.
+
+The projects were never at fault: every one of them already had a correct AnyCPU assembly at
+`bin/Release/net10.0/`, and a clean `dotnet pack` reproduces it. `progpu-pack.sh` passed no
+`Platform` at all, which looks safe and is not — each project *also* has `bin/x64` and `bin/ARM64`
+outputs left by the LibreWPF graph builds, and an ambient `Platform`/`PlatformTarget` inherited
+from a parent build silently redirects pack to one of those. That is why the same feed contained a
+correct AnyCPU `ProGPU.Backend` beside an arm64 `ProGPU.DirectX`. The fix is to stop depending on
+ambient state: `progpu-pack.sh` now pins `-p:Platform=AnyCPU -p:PlatformTarget=AnyCPU`, and
+`progpu-verify-packages.sh` fails the pack if any `lib/**/*.dll` is not `0x014C`.
+
+**`LibreWinForms.WindowsFormsIntegration`** (`lib/` and `ref/`, arm64) was believed to be
+genuinely architecture-specific — the reason `artifacts/canonical-winforms-feed` and
+`canonical-winforms-feed-x64` exist as separate feeds, and why `librewinforms-pack.sh` copies a
+pre-built canonical package rather than packing one. It is not. The two canonical packages held
+**byte-identical** assemblies (87040 bytes in `lib/`, 32256 in `ref/`) differing only in the
+machine field, which is precisely the "no architecture-specific IL" test the whole
+`LibreWpfArchNeutralTransportAssemblies` property group rests on. Adding `WindowsFormsIntegration`
+to that whitelist produces one AnyCPU assembly that serves both; the dual feeds now carry the same
+bytes instead of encoding a difference that never existed.
+
+Regenerating it means re-running `eng/progpu-wpf-canonical-winforms-integration.sh`, which
+rebuilds the whole LibreWinForms + WPF dependency chain — budget well over an hour — and then
+copying the result into `artifacts/local-feed`, `canonical-winforms-feed` and
+`canonical-winforms-feed-x64`.
+
+`ProGPU` is a third-level repository (`lextudio/ProGPU`, nested under
+`openavalon/LibreWPF/external/ProGPU`), so its two script changes commit separately from LibreWPF
+and openavalon.
 
 ## Rebasing openavalon onto upstream
 
