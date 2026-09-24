@@ -51,7 +51,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		}
 
 		/// <summary>
-		/// Provides the VS2017 icons the Xceed PropertyGrid template references
+		/// Provides the VS2026 icons the Xceed PropertyGrid template references
 		/// (<c>{DynamicResource Xceed.Icons.*}</c>) as real <see cref="System.Windows.Media.ImageSource"/>
 		/// objects - the template cannot load them itself, because a pack URI string pointing at a
 		/// .xaml icon is not an image format the ImageSource converter understands. The values are
@@ -64,6 +64,8 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			SetIcon(resources, "Xceed.Icons.SortAscending", "Icons.16x16.SortAscending");
 			SetIcon(resources, "Xceed.Icons.Settings", "Icons.16x16.Settings");
 			SetIcon(resources, "Xceed.Icons.Event", "Icons.16x16.Event");
+			SetIcon(resources, "Xceed.Icons.Properties", "Icons.16x16.Property");
+			SetIcon(resources, "Xceed.Icons.Events", "Icons.16x16.Event");
 			SetIcon(resources, "Xceed.Icons.Clear", "Icons.16x16.Clear");
 			SetIcon(resources, "Xceed.Icons.Search", "Icons.16x16.Search");
 		}
