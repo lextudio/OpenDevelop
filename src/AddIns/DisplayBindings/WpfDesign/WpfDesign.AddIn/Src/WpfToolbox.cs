@@ -248,11 +248,9 @@ namespace ICSharpCode.WpfDesign.AddIn
 				}
 				toolboxService.AddToolboxItem(toolboxItem);
 				winFormsItems.Add(new SharedToolboxItem(category, t.Name, WinFormsScope,
-					// Real per-control WinForms toolbox icon. This process loads the LibreWinForms
-					// System.Windows.Forms (zero manifest resources), so ToolboxItem.Bitmap /
-					// ToolboxBitmapAttribute can never supply one here - the icon is read straight
-					// out of the installed Microsoft WinForms assembly instead, without loading it
-					// (see ICSharpCode.FormsDesigner.Gui.WinFormsToolboxIconProvider).
+					// Real per-control WinForms toolbox icon, read from the loaded LibreWinForms
+					// assembly or the installed Microsoft one (see
+					// ICSharpCode.SharpDevelop.Gui.WinFormsToolboxIconProvider).
 					icon: WinFormsToolboxIconSource(t),
 					payload: toolboxItem,
 					packDragData: data => data.SetData(typeof(System.Drawing.Design.ToolboxItem), toolboxItem),
@@ -270,25 +268,7 @@ namespace ICSharpCode.WpfDesign.AddIn
 		/// pad then simply shows no icon, as before) when it cannot be resolved.</summary>
 		static System.Windows.Media.ImageSource WinFormsToolboxIconSource(Type controlType)
 		{
-			try {
-				// NOT disposed: the provider caches its bitmaps for the process lifetime.
-				var bitmap = ICSharpCode.SharpDevelop.Gui.WinFormsToolboxIconProvider.GetIcon(controlType.FullName);
-				if (bitmap == null)
-					return null;
-				using var stream = new System.IO.MemoryStream();
-				bitmap.Save(stream, System.Drawing.Imaging.ImageFormat.Png);
-				stream.Position = 0;
-				var image = new System.Windows.Media.Imaging.BitmapImage();
-				image.BeginInit();
-				image.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
-				image.StreamSource = stream;
-				image.EndInit();
-				image.Freeze();
-				return image;
-			} catch (Exception exception) {
-				LoggingService.Warn("WpfToolbox.WinFormsToolboxIconSource(" + controlType.FullName + "): " + exception.Message);
-				return null;
-			}
+			return ICSharpCode.SharpDevelop.Gui.WinFormsToolboxIconProvider.GetImageSource(controlType.FullName);
 		}
 
 		static bool IsControl(Type t)

@@ -32,6 +32,11 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		/// <summary>Optional per-node context menu factory (e.g. designer-specific commands).</summary>
 		public Func<DesignerElementNode, ContextMenu> ContextMenuFactory { get; set; }
 
+		/// <summary>Picks each row's icon. Defaults to the VS Image Library glyph for the element
+		/// type (<see cref="DocumentOutlineIcons"/>); a designer with its own icon set (WinForms'
+		/// toolbox icons) replaces it. Set before the first <see cref="SetRoots"/>.</summary>
+		public Func<DesignerElementNode, ImageSource> IconSelector { get; set; } = DocumentOutlineIcons.GetIcon;
+
 		public DocumentOutlineControl()
 		{
 			// A selection change is the single commit path, whether the user clicked a node or
@@ -105,20 +110,22 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			if (ContextMenuFactory != null)
 				item.ContextMenu = ContextMenuFactory(node);
 
-			// Name in regular weight, type in gray small text next to it (like the Xceed
-			// events row); unnamed elements show only their type.
+			// Visual Studio's Document Outline row: the element type's glyph, then the element's name,
+			// or "[Type]" when it has none. The type itself is the tooltip.
 			var header = new StackPanel { Orientation = Orientation.Horizontal };
-			if (!string.IsNullOrEmpty(node.Name)) {
-				header.Children.Add(new TextBlock { Text = node.Name, VerticalAlignment = VerticalAlignment.Center });
-				header.Children.Add(new TextBlock {
-					Text = "  " + node.Type,
-					VerticalAlignment = VerticalAlignment.Center,
-					FontSize = 11,
-					Foreground = Brushes.Gray
+			var icon = IconSelector?.Invoke(node);
+			if (icon != null) {
+				header.Children.Add(new Image {
+					Source = icon,
+					Width = 16,
+					Height = 16,
+					Margin = new Thickness(0, 0, 4, 0),
+					VerticalAlignment = VerticalAlignment.Center
 				});
-			} else {
-				header.Children.Add(new TextBlock { Text = node.Type, VerticalAlignment = VerticalAlignment.Center, Foreground = Brushes.Gray });
 			}
+			header.Children.Add(new TextBlock { Text = GetDisplayText(node), VerticalAlignment = VerticalAlignment.Center });
+			if (!string.IsNullOrEmpty(node.Type))
+				header.ToolTip = node.Type;
 			item.Header = header;
 
 			foreach (var child in node.Children) {
@@ -127,6 +134,16 @@ namespace ICSharpCode.SharpDevelop.Widgets
 				item.Items.Add(CreateItem(child));
 			}
 			return item;
+		}
+
+		/// <summary>A row's text as Visual Studio shows it: the element's name, or its bare type in
+		/// brackets ("[Button]") when it has none.</summary>
+		public static string GetDisplayText(DesignerElementNode node)
+		{
+			if (!string.IsNullOrEmpty(node.Name))
+				return node.Name;
+			var type = DocumentOutlineIcons.GetElementTypeName(node.Type);
+			return "[" + (type.Length > 0 ? type : node.Type) + "]";
 		}
 
 		static TreeViewItem FindNode(TreeViewItem item, string id)

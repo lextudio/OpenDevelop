@@ -102,9 +102,9 @@ namespace ICSharpCode.XamlBinding
 		{
 			if (!(outline.SelectedNode is { } node))
 				return;
-			// Jump to the first source node with the same name (names are unique per
-			// namescope in practice; the LSP tree's own ordering is authoritative).
-			var match = Walk(lastNodes).FirstOrDefault(n => n.Name == node.Name);
+			// Jump to the first source node with the same symbol name (the row's Id; names are
+			// unique per namescope in practice; the LSP tree's own ordering is authoritative).
+			var match = Walk(lastNodes).FirstOrDefault(n => n.Name == node.Id);
 			if (match != null)
 				editor.JumpTo(match.Span.Start.Line, match.Span.Start.Column);
 		}
@@ -130,13 +130,27 @@ namespace ICSharpCode.XamlBinding
 	internal static class XamlOutlineNodeExtensions
 	{
 		/// <summary>Projects a language-service outline node onto the shared Document Outline
-		/// model (name + kind as the gray type hint).</summary>
+		/// model, the way the designers fill it: an element symbol's name is its XAML type, with
+		/// its x:Name appended in brackets ("Button [okButton]"), so it is split back into
+		/// Type="Button" and Name="okButton" - the row then reads "okButton" or "[Button]" with the
+		/// Button glyph, exactly like the designer's outline. Id keeps the symbol name, which is what
+		/// selection jumps by.</summary>
 		public static DesignerElementNode ToElementNode(this DocumentOutlineNode node)
 		{
+			string name = node.Name, type = node.Kind;
+			if (node.Kind == "Object") {
+				type = node.Name;
+				name = null;
+				var bracket = node.Name.IndexOf(" [", StringComparison.Ordinal);
+				if (bracket > 0 && node.Name.EndsWith("]", StringComparison.Ordinal)) {
+					type = node.Name.Substring(0, bracket);
+					name = node.Name.Substring(bracket + 2, node.Name.Length - bracket - 3);
+				}
+			}
 			return new DesignerElementNode {
 				Id = node.Name,
-				Name = node.Name,
-				Type = node.Kind,
+				Name = name,
+				Type = type,
 				IsDesignable = true,
 				Children = node.Children.Select(ToElementNode).ToList()
 			};

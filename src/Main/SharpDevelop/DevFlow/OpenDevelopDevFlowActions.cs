@@ -4472,6 +4472,23 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		/// so the Design tab showed the XAML text symbol list, and no designer-side assertion
 		/// could have caught it.
 		/// </summary>
+		[DevFlowAction("od.designer-canvas.status", Description = "Report the active view's shared DesignerCanvas: whether it shows a document as unavailable (e.g. a Microsoft WPF/WinForms/WinUI project on a non-Windows OS) and its status text")]
+		public static string GetDesignerCanvasStatus()
+		{
+			var viewContent = SD.Workbench.ActiveViewContent;
+			var control = viewContent?.Control as DependencyObject;
+			var canvas = control as DesignerCanvas
+				?? FindLogicalDescendants<DesignerCanvas>(control).FirstOrDefault()
+				?? FindVisualDescendant<DesignerCanvas>(control);
+			return JsonSerializer.Serialize(new {
+				view = viewContent?.GetType().FullName,
+				found = canvas != null,
+				unavailable = canvas?.IsUnavailable ?? false,
+				loading = canvas?.IsLoading ?? false,
+				statusText = canvas?.StatusText
+			});
+		}
+
 		[DevFlowAction("od.outline-pad.content", Description = "Report the element tree the Outline pad is actually displaying (walks the live DocumentOutlineControl, not any designer's internal model)")]
 		public static string GetOutlinePadContent()
 		{
@@ -4490,8 +4507,9 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 
 			var names = new List<string>();
 			var labels = new List<string>();
+			var icons = new List<string>();
 			foreach (TreeViewItem root in outline.Items.OfType<TreeViewItem>())
-				CollectOutlineItems(root, names, labels);
+				CollectOutlineItems(root, names, labels, icons);
 
 			return JsonSerializer.Serialize(new {
 				available = true,
@@ -4499,22 +4517,27 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				// Name ?? Type per node, depth-first - the same flattened shape the designers'
 				// own status actions report, so a test can compare the two directly.
 				names = names.ToArray(),
-				// What the row literally renders (name + gray type), for a stricter check that
+				// What the row literally renders (name, or "[Type]" when unnamed), for a stricter check that
 				// the pad is showing designed elements rather than, say, source symbols.
 				labels = labels.ToArray(),
+				// Each row's glyph: "vector" (a VS Image Library DrawingImage), "bitmap" (e.g. a
+				// WinForms toolbox icon), or null when the row has none.
+				icons = icons.ToArray(),
 				selected = (outline.SelectedItem as TreeViewItem)?.Tag is DesignerElementNode selectedNode
 					? selectedNode.Name ?? selectedNode.Type
 					: null
 			});
 		}
 
-		static void CollectOutlineItems(TreeViewItem item, List<string> names, List<string> labels)
+		static void CollectOutlineItems(TreeViewItem item, List<string> names, List<string> labels, List<string> icons)
 		{
 			if (item.Tag is DesignerElementNode node)
 				names.Add(string.IsNullOrEmpty(node.Name) ? node.Type : node.Name);
 			labels.Add(string.Join("", DescendantTextBlocks(item).Select(text => text.Text)).Trim());
+			var glyph = (item.Header as Panel)?.Children.OfType<Image>().FirstOrDefault()?.Source;
+			icons.Add(glyph is System.Windows.Media.DrawingImage ? "vector" : glyph != null ? "bitmap" : null);
 			foreach (TreeViewItem child in item.Items.OfType<TreeViewItem>())
-				CollectOutlineItems(child, names, labels);
+				CollectOutlineItems(child, names, labels, icons);
 		}
 
 		/// <summary>The TextBlocks of one outline row's own header, stopping before nested rows so

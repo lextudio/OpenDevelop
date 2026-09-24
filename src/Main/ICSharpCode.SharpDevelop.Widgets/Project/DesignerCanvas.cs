@@ -249,7 +249,13 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			}
 			foreach (var item in materialized)
 			{
-				var button = new Button { Content = string.IsNullOrEmpty(item.Name) ? item.Type : item.Name,
+				// The object's Document Outline glyph before its name.
+				var content = new StackPanel { Orientation = Orientation.Horizontal };
+				var icon = DocumentOutlineIcons.GetIcon(item.Type, DocumentOutlineIcons.ComponentFallbackIconName);
+				if (icon != null)
+					content.Children.Add(new Image { Source = icon, Width = 16, Height = 16, Margin = new Thickness(0, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center });
+				content.Children.Add(new TextBlock { Text = string.IsNullOrEmpty(item.Name) ? item.Type : item.Name, VerticalAlignment = VerticalAlignment.Center });
+				var button = new Button { Content = content,
 					ToolTip = string.IsNullOrEmpty(item.Type) ? item.Name : item.Type,
 					Tag = item.Id, Margin = new Thickness(0, 0, 4, 0), Padding = new Thickness(6, 2, 6, 2) };
 				AutomationProperties.SetName(button, "Component " + (string.IsNullOrEmpty(item.Name) ? item.Type : item.Name));
@@ -415,12 +421,38 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		/// </summary>
 		public void SetLoading(bool isLoading, string message = null)
 		{
+			IsUnavailable = false;
 			loadingText.Text = string.IsNullOrEmpty(message) ? "Loading design surface…" : message;
 			loadingOverlay.Visibility = isLoading ? Visibility.Visible : Visibility.Collapsed;
 		}
 
 		/// <summary>True while <see cref="SetLoading"/> is showing the overlay.</summary>
-		public bool IsLoading => loadingOverlay.Visibility == Visibility.Visible;
+		public bool IsLoading => loadingOverlay.Visibility == Visibility.Visible && !IsUnavailable;
+
+		/// <summary>True after <see cref="ShowUnavailable"/>: this document cannot be designed here.</summary>
+		public bool IsUnavailable { get; private set; }
+
+		/// <summary>
+		/// Replaces the design surface with a single explanation of why this document cannot be
+		/// designed here (e.g. <see cref="UnsupportedOnThisOSMessage"/>), shown both over the surface
+		/// and in the status bar. No design host is started for such a document.
+		/// </summary>
+		public void ShowUnavailable(string message)
+		{
+			IsUnavailable = true;
+			loadingText.Text = message;
+			loadingOverlay.Visibility = Visibility.Visible;
+			ShowStatusBar = true;
+			StatusText = message;
+		}
+
+		/// <summary>The shared wording for a project whose runtime cannot run on this OS: every
+		/// designer serves a project only with its own runtime and never substitutes the portable one
+		/// (<paramref name="runtimeName"/> "Microsoft WPF" vs <paramref name="portableRuntimeName"/>
+		/// "LibreWPF", WinForms vs LibreWinForms, WinUI vs Uno Platform).</summary>
+		public static string UnsupportedOnThisOSMessage(string runtimeName, string portableRuntimeName)
+			=> "This project uses " + runtimeName + ", which runs only on Windows, so its design view is not supported on this OS. "
+				+ portableRuntimeName + " projects can be designed here.";
 
 		/// <summary>Shows the shared "please wait" chrome for a VisualState switch. The switch is an
 		/// async round-trip to the out-of-process child, so without this the canvas would keep

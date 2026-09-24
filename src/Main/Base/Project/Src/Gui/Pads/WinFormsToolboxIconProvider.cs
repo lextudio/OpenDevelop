@@ -2,14 +2,14 @@
 //
 // Real per-control Toolbox icons for the WinForms toolbox pad.
 //
-// Why this exists at all: the PARENT process (OpenDevelop.exe / this add-in) loads the
+// Where the icons come from: the PARENT process (OpenDevelop.exe / this add-in) loads the
 // LibreWinForms build of System.Windows.Forms (assembly identity "System.Windows.Forms
-// v0.1.0.0", from the librewinforms.system.windows.forms package), and that assembly carries
-// ZERO manifest resources - so neither the legacy "<TypeFullName>.bmp" manifest-resource lookup
-// nor System.Drawing.ToolboxBitmapAttribute.GetImageFromResource can ever produce an icon in
-// this process, no matter how the lookup is written. Microsoft's real WinForms assembly DOES
-// carry them (199 manifest resources), so the icons are read straight out of the installed
-// Microsoft.WindowsDesktop.App copy of System.Windows.Forms.dll instead.
+// v0.1.0.0", from the librewinforms.system.windows.forms package). Its current builds embed the
+// same 199 toolbox icons as Microsoft's assembly (Resources/System/Windows/Forms/*.ico, named
+// after the type), so they are read from that already-loaded assembly first - which is also the
+// only source on macOS, where no Microsoft.WindowsDesktop.App is installed. Older LibreWinForms
+// builds carried ZERO manifest resources, so the installed Microsoft.WindowsDesktop.App copy of
+// System.Windows.Forms.dll remains the next source, read without loading it.
 //
 // Two details that the old code got wrong and this deliberately handles:
 //   * Naming: in modern .NET the resources are named EXACTLY the full type name with NO extension
@@ -52,8 +52,9 @@ using System.Reflection.PortableExecutable;
 
 namespace ICSharpCode.SharpDevelop.Gui
 {
-	/// <summary>Reads per-type Toolbox icons out of the installed Microsoft WinForms assembly
-	/// without loading it, and caches them for the lifetime of the process.</summary>
+	/// <summary>Reads per-type Toolbox icons out of the loaded LibreWinForms assembly (or, failing
+	/// that, the installed Microsoft WinForms assembly without loading it), and caches them for the
+	/// lifetime of the process.</summary>
 	public static class WinFormsToolboxIconProvider
 	{
 		static readonly object gate = new object();
@@ -62,8 +63,8 @@ namespace ICSharpCode.SharpDevelop.Gui
 		static readonly Dictionary<string, Bitmap> iconCache = new Dictionary<string, Bitmap>(StringComparer.Ordinal);
 
 		/// <summary>The real Toolbox icon for <paramref name="typeFullName"/> (e.g.
-		/// "System.Windows.Forms.Button"), or null when the Microsoft WinForms assembly is not
-		/// installed, carries no resource for that type, or the payload cannot be decoded - in
+		/// "System.Windows.Forms.Button"), or null when neither the loaded LibreWinForms assembly
+		/// nor an installed Microsoft WinForms assembly carries a resource for that type, or the payload cannot be decoded - in
 		/// which case the caller keeps its own placeholder/fallback behavior.</summary>
 		public static Bitmap GetIcon(string typeFullName)
 		{
@@ -74,7 +75,11 @@ namespace ICSharpCode.SharpDevelop.Gui
 					return cached;
 				Bitmap bitmap = null;
 				try {
-					var map = LoadResources();
+					// The LibreWinForms build loaded in this process embeds the same toolbox icons
+					// (Resources/System/Windows/Forms/*.ico, named after the type). Reading them
+					// from there needs no Microsoft WinForms install, so it also works on macOS.
+					bitmap = LoadLoadedWinFormsIcon(typeFullName);
+					var map = bitmap == null ? LoadResources() : null;
 					// Modern .NET names the resource after the type with no suffix; the .NET
 					// Framework assemblies use the legacy "<TypeFullName>.bmp" spelling.
 					if (map != null
@@ -92,6 +97,50 @@ namespace ICSharpCode.SharpDevelop.Gui
 				iconCache[typeFullName] = bitmap;
 				return bitmap;
 			}
+		}
+
+		/// <summary>The toolbox icon as a frozen WPF ImageSource (for the Toolbox pad and the
+		/// Document Outline), or null when <see cref="GetIcon"/> has none.</summary>
+		public static System.Windows.Media.ImageSource GetImageSource(string typeFullName)
+		{
+			try {
+				// NOT disposed: GetIcon caches its bitmaps for the process lifetime.
+				var bitmap = GetIcon(typeFullName);
+				if (bitmap == null)
+					return null;
+				lock (gate) {
+					using var stream = new MemoryStream();
+					bitmap.Save(stream, System.Drawing.Imaging.ImageFormat.Png);
+					stream.Position = 0;
+					var image = new System.Windows.Media.Imaging.BitmapImage();
+					image.BeginInit();
+					image.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+					image.StreamSource = stream;
+					image.EndInit();
+					image.Freeze();
+					return image;
+				}
+			} catch (Exception exception) {
+				ICSharpCode.Core.LoggingService.Warn("WinFormsToolboxIconProvider.GetImageSource(" + typeFullName + "): " + exception.Message);
+				return null;
+			}
+		}
+
+		/// <summary>The icon embedded in the System.Windows.Forms assembly already loaded in this
+		/// process (the LibreWinForms build), or null when it is not loaded or has no such
+		/// resource. Never loads the assembly itself.</summary>
+		static Bitmap LoadLoadedWinFormsIcon(string typeFullName)
+		{
+			var forms = AppDomain.CurrentDomain.GetAssemblies()
+				.FirstOrDefault(assembly => assembly.GetName().Name == "System.Windows.Forms");
+			if (forms == null)
+				return null;
+			using var stream = forms.GetManifestResourceStream(typeFullName);
+			if (stream == null)
+				return null;
+			using var buffer = new MemoryStream();
+			stream.CopyTo(buffer);
+			return buffer.Length > 0 ? Decode(buffer.ToArray()) : null;
 		}
 
 		/// <summary>Decodes a toolbox-icon payload, normalized to the 16x16 the toolbox rows and

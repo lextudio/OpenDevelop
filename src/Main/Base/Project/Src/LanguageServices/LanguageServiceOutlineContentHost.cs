@@ -42,6 +42,9 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
 		{
 			this.editor = editor;
 
+			// Symbol kinds get their VS2026 symbol glyph (Class, Method, ...); a kind without one
+			// shows no icon rather than the designers' generic control glyph.
+			outline.IconSelector = node => DocumentOutlineIcons.GetIcon(node.Type, null);
 			outline.SelectionCommitted += OnSelectionCommitted;
 
 			editor.Document.TextChanged += OnDocumentChanged;
@@ -94,8 +97,9 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
 			// node" (see WpfSurfaceDesignerControl's own root-id handling).
 			var root = new DesignerElementNode {
 				Id = "",
-				Name = null,
-				Type = System.IO.Path.GetFileName(editor.FileName) ?? "",
+				// The file name is the row's text; an empty Type keeps it out of the "[Type]" form.
+				Name = System.IO.Path.GetFileName(editor.FileName) ?? "",
+				Type = "",
 				IsDesignable = true,
 				Children = nodes.Select(n => n.ToElementNode()).ToList()
 			};
@@ -138,7 +142,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
 	static class LanguageServiceOutlineNodeExtensions
 	{
 		/// <summary>Projects a language-service outline node onto the shared Document Outline
-		/// model (name + kind as the gray type hint).</summary>
+		/// model (name as the row text, kind as its glyph and tooltip).</summary>
 		public static DesignerElementNode ToElementNode(this DocumentOutlineNode node)
 		{
 			return new DesignerElementNode {

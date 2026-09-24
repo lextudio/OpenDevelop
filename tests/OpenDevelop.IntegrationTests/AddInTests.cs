@@ -2309,6 +2309,15 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Contains("Application", padNames);
         Assert.Contains("Application.Resources", padNames);
         Assert.Equal(status.GetProperty("outlineNames").GetArrayLength(), padNames.Count);
+
+        // Rows read like Visual Studio's Document Outline: an unnamed element shows "[Type]" with
+        // its VS Image Library glyph, not the language server's "Object" symbol kind.
+        var padLabels = padContent.GetProperty("labels").EnumerateArray().Select(n => n.GetString()).ToList();
+        var padIcons = padContent.GetProperty("icons").EnumerateArray()
+            .Select(n => n.ValueKind == JsonValueKind.Null ? null : n.GetString()).ToList();
+        var rootRow = padLabels.IndexOf("[Application]");
+        Assert.True(rootRow >= 0, "Expected the App.xaml root row to read [Application]; labels: " + string.Join(", ", padLabels));
+        Assert.Equal("vector", padIcons[rootRow]);
     }
 
     [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
@@ -2993,6 +3002,16 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Contains("Form1", nodeNames);
         Assert.Contains("dropPanel", nodeNames);
         Assert.Contains(nodeNames, name => name != null && name != "Form1"); // has real children
+
+        // WinForms rows carry the WinForms Toolbox icon (a bitmap from System.Windows.Forms'
+        // own resources), not a VS Image Library glyph.
+        var padContent = await _app.InvokeAsync("od.outline-pad.content");
+        var padLabels = padContent.GetProperty("labels").EnumerateArray().Select(n => n.GetString()).ToList();
+        var padIcons = padContent.GetProperty("icons").EnumerateArray()
+            .Select(n => n.ValueKind == JsonValueKind.Null ? null : n.GetString()).ToList();
+        var formRow = padLabels.IndexOf("Form1");
+        Assert.True(formRow >= 0, "Expected a Form1 row; labels: " + string.Join(", ", padLabels));
+        Assert.Equal("bitmap", padIcons[formRow]);
 
         // Outline -> surface selection uses the same single-selection path as a click.
         var selected = await _app.InvokeAsync("od.forms-designer.outline-select", "dropPanel");
