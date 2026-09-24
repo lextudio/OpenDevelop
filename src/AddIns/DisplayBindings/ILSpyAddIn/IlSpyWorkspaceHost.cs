@@ -305,13 +305,16 @@ namespace ICSharpCode.ILSpyAddIn
 
 			// "Switching to the ILSpy layout": make the hosted pads visible/active as a group
 			// rather than leaving them registered-but-hidden.
-			assembliesPane.Show();
+			// Assemblies is the entry point of the layout, so it ends up in front: showing the other
+			// two after it would otherwise leave whichever was shown last active.
 			searchPane.Show();
 			analyzerPane.Show();
+			assembliesPane.Show();
+			assembliesPane.IsActive = true;
 
-			// Decompiled output opens as a document tab (a read-only, virtual file), not a pad.
-			decompiledCodeView = new DecompiledCodeViewContent(decompilerTextView);
-			SD.Workbench.ShowView(decompiledCodeView);
+			// The bespoke decompiled-code document is opened lazily (RefreshDecompiledViewAsync),
+			// not here: opening it eagerly put an empty "Decompiling" tab on screen the moment the
+			// layout was activated, before anything had been selected to decompile.
 
 			MessageBus<AssemblyTreeSelectionChangedEventArgs>.Subscribers += (sender, e) => lastDecompile = OnSelectionChangedAsync();
 
@@ -501,6 +504,11 @@ namespace ICSharpCode.ILSpyAddIn
 			if (nodes.Length == 0)
 				return Task.CompletedTask;
 
+			if (decompiledCodeView == null) {
+				// Decompiled output opens as a document tab (a read-only, virtual file), not a pad.
+				decompiledCodeView = new DecompiledCodeViewContent(decompilerTextView);
+				SD.Workbench.ShowView(decompiledCodeView);
+			}
 			return decompilerTextView.DecompileAsync(languageService.Language, nodes, null, options);
 		}
 	}
