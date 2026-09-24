@@ -31,7 +31,9 @@ internal static class ProjectBrowserIconService
             ProjectBrowserNodeKind.File
                 or ProjectBrowserNodeKind.LinkedFile
                 or ProjectBrowserNodeKind.MissingFile
-                or ProjectBrowserNodeKind.GhostFile => GetFileIconKey(node.FullPath),
+                or ProjectBrowserNodeKind.GhostFile
+                or ProjectBrowserNodeKind.SolutionItem => GetFileIconKey(node.FullPath),
+            ProjectBrowserNodeKind.SolutionFolder => "Icons.16x16.ClosedFolderBitmap",
             _ => node.IsDirectory ? "Icons.16x16.ClosedFolderBitmap" : "Icons.16x16.MiscFiles"
         };
     }

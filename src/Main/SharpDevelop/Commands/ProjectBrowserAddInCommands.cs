@@ -152,6 +152,11 @@ internal sealed class RefreshProjectBrowserCommand : ProjectBrowserCommandBase
     public override void Run() => Controller.Refresh();
 }
 
+internal sealed class CollapseAllProjectBrowserCommand : ProjectBrowserCommandBase
+{
+    public override void Run() => Controller.CollapseAll();
+}
+
 internal sealed class OpenProjectBrowserItemCommand : ProjectBrowserCommandBase
 {
     public override void Run() => Controller.Open(OwnerNode);
@@ -202,7 +207,9 @@ internal sealed class RemoveFromProjectProjectBrowserCommand : ProjectBrowserCom
     public override bool IsEnabled => OwnerNode is not null
         && (OwnerNode.Kind == ProjectBrowserNodeKind.Project
             || OwnerNode.Kind == ProjectBrowserNodeKind.File
-            || OwnerNode.Kind == ProjectBrowserNodeKind.Folder);
+            || OwnerNode.Kind == ProjectBrowserNodeKind.Folder
+            || OwnerNode.Kind == ProjectBrowserNodeKind.SolutionFolder
+            || OwnerNode.Kind == ProjectBrowserNodeKind.SolutionItem);
 
     public override void Run() => Controller.RemoveFromProject(OwnerNode);
 }
@@ -252,6 +259,48 @@ internal sealed class CopyPathProjectBrowserCommand : ProjectBrowserCommandBase
 internal sealed class OpenFolderProjectBrowserCommand : ProjectBrowserCommandBase
 {
     public override void Run() => Controller.OpenFolder(OwnerNode);
+}
+
+internal sealed class OpenTerminalProjectBrowserCommand : ProjectBrowserCommandBase
+{
+    public override void Run() => Controller.OpenTerminal(OwnerNode);
+}
+
+internal sealed class AddReferenceProjectBrowserCommand : ProjectBrowserCommandBase
+{
+    public override void Run() => Controller.AddReference(OwnerNode);
+}
+
+internal sealed class RunProjectProjectBrowserCommand : ProjectBrowserCommandBase
+{
+    public override void Run() => Controller.RunProject(OwnerNode, withDebugging: true);
+}
+
+internal sealed class RunProjectWithoutDebuggerProjectBrowserCommand : ProjectBrowserCommandBase
+{
+    public override void Run() => Controller.RunProject(OwnerNode, withDebugging: false);
+}
+
+internal sealed class AddExistingProjectProjectBrowserCommand : ProjectBrowserCommandBase
+{
+    public override void Run() => Controller.AddExistingProject(OwnerNode);
+}
+
+internal sealed class NewSolutionFolderProjectBrowserCommand : ProjectBrowserCommandBase
+{
+    public override void Run() => Controller.NewSolutionFolder(OwnerNode);
+}
+
+internal sealed class AddSolutionItemsProjectBrowserCommand : ProjectBrowserCommandBase
+{
+    public override void Run() => Controller.AddSolutionItems(OwnerNode);
+}
+
+internal sealed class RunCustomToolProjectBrowserCommand : ProjectBrowserCommandBase
+{
+    public override bool IsEnabled => Controller.CanRunCustomTool(OwnerNode);
+
+    public override void Run() => Controller.RunCustomTool(OwnerNode);
 }
 
 internal sealed class SetStartupProjectProjectBrowserCommand : ProjectBrowserCommandBase

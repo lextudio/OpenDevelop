@@ -54,7 +54,11 @@ internal enum ProjectBrowserNodeKind
     LinkedFile,
     MissingFile,
     GhostFile,
-    GhostFolder
+    GhostFolder,
+    /// <summary>A solution folder (virtual; exists only in the .sln/.slnx).</summary>
+    SolutionFolder,
+    /// <summary>A file listed in a solution folder ("solution item"), not part of any project.</summary>
+    SolutionItem
 }
 
 // GitFileStatus now lives in the Base layer (Main/Base/Project/Src/Services/ProjectBrowser/
@@ -81,6 +85,9 @@ internal sealed record ProjectBrowserNodeContext(
             or ProjectBrowserNodeKind.MissingFile
             or ProjectBrowserNodeKind.GhostFile;
 
+    /// <summary>Nodes that stand for one file on disk, including solution items (which are not project items).</summary>
+    public bool IsFileNode => IsFileLike || Kind == ProjectBrowserNodeKind.SolutionItem;
+
     public bool IsProjectItemLike =>
         IsFileLike
             || Kind is ProjectBrowserNodeKind.Reference
@@ -101,6 +108,8 @@ internal sealed record ProjectBrowserNodeContext(
             ProjectBrowserNodeKind.File or ProjectBrowserNodeKind.LinkedFile => ProjectBrowserNodeState.File | ProjectBrowserNodeState.Openable | ProjectBrowserNodeState.Renameable | ProjectBrowserNodeState.Deletable | ProjectBrowserNodeState.RemovableFromSolution | ProjectBrowserNodeState.OpenWith | ProjectBrowserNodeState.ExcludeFromProject | ProjectBrowserNodeState.InProject,
             ProjectBrowserNodeKind.MissingFile => ProjectBrowserNodeState.File | ProjectBrowserNodeState.RemovableFromSolution | ProjectBrowserNodeState.Missing,
             ProjectBrowserNodeKind.GhostFile => ProjectBrowserNodeState.File | ProjectBrowserNodeState.Openable | ProjectBrowserNodeState.OpenWith | ProjectBrowserNodeState.IncludeInProject | ProjectBrowserNodeState.None,
+            ProjectBrowserNodeKind.SolutionFolder => ProjectBrowserNodeState.CreateChild | ProjectBrowserNodeState.Renameable | ProjectBrowserNodeState.RemovableFromSolution,
+            ProjectBrowserNodeKind.SolutionItem => ProjectBrowserNodeState.File | ProjectBrowserNodeState.Openable | ProjectBrowserNodeState.OpenWith | ProjectBrowserNodeState.RemovableFromSolution,
             _ => ProjectBrowserNodeState.NoState
         });
 
@@ -116,7 +125,8 @@ internal sealed record ProjectBrowserNodeContext(
             ProjectBrowserNodeKind.ProjectReference => "ms-appx:///Icons/Application_16x.svg",
             ProjectBrowserNodeKind.PackageReference => "ms-appx:///Icons/Library_16x.svg",
             ProjectBrowserNodeKind.Folder or ProjectBrowserNodeKind.GhostFolder => IsDirectory ? "ms-appx:///Icons/Folder_16x.svg" : ResolveFileIcon(FullPath),
-            ProjectBrowserNodeKind.File or ProjectBrowserNodeKind.LinkedFile or ProjectBrowserNodeKind.MissingFile or ProjectBrowserNodeKind.GhostFile => ResolveFileIcon(FullPath),
+            ProjectBrowserNodeKind.File or ProjectBrowserNodeKind.LinkedFile or ProjectBrowserNodeKind.MissingFile or ProjectBrowserNodeKind.GhostFile or ProjectBrowserNodeKind.SolutionItem => ResolveFileIcon(FullPath),
+            ProjectBrowserNodeKind.SolutionFolder => "ms-appx:///Icons/Folder_16x.svg",
             _ => "ms-appx:///Icons/CSFile_16x.svg"
         };
 
@@ -171,6 +181,8 @@ internal sealed record ProjectBrowserNodeContext(
             ProjectBrowserNodeKind.Reference or ProjectBrowserNodeKind.ProjectReference => "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/ReferenceNode",
             ProjectBrowserNodeKind.PackageReference => "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/PackageReferenceNode",
             ProjectBrowserNodeKind.File or ProjectBrowserNodeKind.LinkedFile or ProjectBrowserNodeKind.MissingFile or ProjectBrowserNodeKind.GhostFile => "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/FileNode",
+            ProjectBrowserNodeKind.SolutionFolder => "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/SolutionFolderNode",
+            ProjectBrowserNodeKind.SolutionItem => "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/SolutionItemNode",
             _ => "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/UnknownNode"
         };
 

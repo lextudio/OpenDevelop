@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -131,12 +132,62 @@ namespace ICSharpCode.SharpDevelop.Workbench
 
 		TabControl viewTabControl;
 
+		// Side-by-side layout (spike): instead of a TabControl switching between the primary
+		// (source) and secondary (designer) views, host both in a Grid divided by a GridSplitter
+		// — Visual Studio's designer-on-top / XAML-below arrangement. The secondary view is only
+		// lazily loaded when it becomes the active view (see OpenedFile.SwitchedToView), exactly
+		// as with the tabs, so a click in a pane is what activates it.
+		Grid splitHost;
+		ContentControl splitTopHost;
+		ContentControl splitBottomHost;
+		FrameworkElement splitBar;
+		bool splitActive;
+		int splitActiveIndex;
+		// Split-bar state, changed by the little VS-style buttons on the bar.
+		bool splitHorizontal = true;   // stacked (designer above source) vs side by side
+		bool splitSwapped;             // exchange the two panes' positions
+		Window splitFloatWindow;       // non-null while the source is popped out into its own window
+
+		/// <summary>
+		/// Whether the secondary view is shown side by side with the primary instead of as a tab.
+		/// Spike switch: set <c>OD_XAML_SPLIT=1</c> in the environment, or toggle live with the
+		/// DevFlow action <c>od.editor.toggle-split</c>. Off by default: the save authority and
+		/// live edit sync are not yet split-aware, so this is for evaluating the layout only.
+		/// </summary>
+		public static bool SplitViewEnabled { get; set; } =
+			Environment.GetEnvironmentVariable("OD_XAML_SPLIT") == "1";
+
+		/// <summary>Turns the side-by-side layout on/off for this window (needs two views).</summary>
+		public void SetSplitView(bool enabled)
+		{
+			SplitViewEnabled = enabled;
+			if (!enabled && splitFloatWindow != null) {
+				splitFloatWindow.Close();   // re-docks through its Closed handler
+				return;
+			}
+			RebuildContent();
+			UpdateActiveViewContent();
+		}
+
+		// Probes for the DevFlow action od.editor.split-status / integration tests.
+		internal bool SplitViewActive => splitActive && splitHost != null;
+		internal bool SplitViewFloating => splitFloatWindow != null;
+		internal bool SplitViewHorizontal => splitHorizontal;
+		internal int SplitViewIndex => splitActiveIndex;
+		internal FrameworkElement SplitViewBar => splitBar;
+		internal ContentControl SplitViewTopHost => splitTopHost;
+		internal ContentControl SplitViewBottomHost => splitBottomHost;
+
 		/// <summary>
 		/// The current view content which is shown inside this window.
 		/// </summary>
 		public IViewContent ActiveViewContent {
 			get {
 				SD.MainThread.VerifyAccess();
+				if (splitActive && splitHost != null
+				    && splitActiveIndex >= 0 && splitActiveIndex < ViewContents.Count) {
+					return ViewContents[splitActiveIndex];
+				}
 				if (viewTabControl != null && viewTabControl.SelectedIndex >= 0 && viewTabControl.SelectedIndex < ViewContents.Count) {
 					return ViewContents[viewTabControl.SelectedIndex];
 				} else if (ViewContents.Count == 1) {
@@ -186,7 +237,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				}
 
 				base.ClearItems();
-				window.ClearContent();
+				window.RebuildContent();
 				window.UpdateActiveViewContent();
 			}
 
@@ -195,27 +246,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				base.InsertItem(index, item);
 
 				window.RegisterNewContent(item);
-
-				if (Count == 1) {
-					window.Content = item.Control;
-				} else {
-					if (Count == 2) {
-						window.CreateViewTabControl();
-						IViewContent oldItem = this[0];
-						if (oldItem == item) oldItem = this[1];
-
-						TabItem oldPage = new TabItem();
-						oldPage.Header = StringParser.Parse(oldItem.TabPageText);
-						oldPage.Content = oldItem.Control;
-						window.viewTabControl.Items.Add(oldPage);
-					}
-
-				TabItem newPage = new TabItem();
-				newPage.Header = StringParser.Parse(item.TabPageText);
-				newPage.Content = item.Control;
-
-					window.viewTabControl.Items.Insert(index, newPage);
-				}
+				window.RebuildContent();
 				window.UpdateActiveViewContent();
 			}
 
@@ -225,14 +256,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 
 				base.RemoveItem(index);
 
-				if (Count < 2) {
-					window.ClearContent();
-					if (Count == 1) {
-						window.Content = this[0].Control;
-					}
-				} else {
-					window.viewTabControl.Items.RemoveAt(index);
-				}
+				window.RebuildContent();
 				window.UpdateActiveViewContent();
 			}
 
@@ -243,15 +267,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				base.SetItem(index, item);
 
 				window.RegisterNewContent(item);
-
-				if (Count == 1) {
-					window.ClearContent();
-					window.Content = item.Control;
-				} else {
-					TabItem page = (TabItem)window.viewTabControl.Items[index];
-					page.Content = item.Control;
-					page.Header = StringParser.Parse(item.TabPageText);
-				}
+				window.RebuildContent();
 				window.UpdateActiveViewContent();
 			}
 		}
@@ -272,6 +288,17 @@ namespace ICSharpCode.SharpDevelop.Workbench
 
 		public void SwitchView(int viewNumber)
 		{
+			if (splitActive && splitHost != null) {
+				if (viewNumber < 0 || viewNumber >= ViewContents.Count)
+					return;
+				splitActiveIndex = viewNumber;
+				UpdateActiveViewContent();
+
+				IViewContent splitView = this.ActiveViewContent;
+				if (splitView != null && this.IsActive)
+					SetFocus(() => splitView.InitiallyFocusedControl as IInputElement);
+				return;
+			}
 			if (viewTabControl != null) {
 				this.viewTabControl.SelectedIndex = viewNumber;
 				this.viewTabControl.UpdateLayout();
@@ -354,28 +381,380 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			}
 		}
 
-		private void CreateViewTabControl()
+		/// <summary>
+		/// (Re)builds the window body from the current view contents: a bare control for a single
+		/// view, the tab control, or the side-by-side split host. Rebuilds from scratch so a view
+		/// control is never parented in two places when the layout mode changes.
+		/// </summary>
+		void RebuildContent()
 		{
-			if (viewTabControl == null) {
-				viewTabControl = new TabControlWithModifiedShortcuts(this);
-				viewTabControl.TabStripPlacement = System.Windows.Controls.Dock.Bottom;
-				this.Content = viewTabControl;
+			int previousActive = splitActive ? splitActiveIndex
+				: (viewTabControl != null ? viewTabControl.SelectedIndex : 0);
 
-				viewTabControl.SelectionChanged += delegate {
-					UpdateActiveViewContent();
-				};
+			DetachContentHosts();
+
+			if (ViewContents.Count == 0) {
+				this.Content = null;
+				return;
+			}
+			if (ViewContents.Count == 1) {
+				splitActive = false;
+				splitActiveIndex = 0;
+				this.Content = ViewContents[0].Control;
+				return;
+			}
+
+			// The source pane is floating in its own window; the document shows the designer alone.
+			if (splitFloatWindow != null) {
+				splitActive = false;
+				this.Content = ViewContents[ViewContents.Count - 1].Control;
+				return;
+			}
+
+			// Side-by-side only makes sense for WPF-hostable controls; WinForms designer views
+			// (hosted through a WindowsFormsHost) fall back to tabs.
+			splitActive = SplitViewEnabled && ViewContents.All(vc => vc.Control is UIElement);
+			if (splitActive) {
+				splitActiveIndex = Math.Min(Math.Max(previousActive, 0), ViewContents.Count - 1);
+				BuildSplitContent();
+			} else {
+				BuildTabContent(previousActive);
 			}
 		}
 
-		void ClearContent()
+		void DetachContentHosts()
 		{
 			this.Content = null;
+
 			if (viewTabControl != null) {
 				foreach (TabItem page in viewTabControl.Items) {
 					page.Content = null;
 				}
+				viewTabControl.Items.Clear();
 				viewTabControl = null;
 			}
+			if (splitHost != null) {
+				if (splitTopHost != null) splitTopHost.Content = null;
+				if (splitBottomHost != null) splitBottomHost.Content = null;
+				splitHost.Children.Clear();
+				splitHost = null;
+				splitTopHost = null;
+				splitBottomHost = null;
+				splitBar = null;
+			}
+		}
+
+		void BuildTabContent(int selectedIndex)
+		{
+			viewTabControl = new TabControlWithModifiedShortcuts(this);
+			viewTabControl.TabStripPlacement = System.Windows.Controls.Dock.Bottom;
+			foreach (IViewContent vc in ViewContents) {
+				viewTabControl.Items.Add(new TabItem {
+					Header = StringParser.Parse(vc.TabPageText),
+					Content = vc.Control
+				});
+			}
+			if (selectedIndex >= 0 && selectedIndex < viewTabControl.Items.Count)
+				viewTabControl.SelectedIndex = selectedIndex;
+
+			viewTabControl.SelectionChanged += delegate {
+				UpdateActiveViewContent();
+			};
+			this.Content = viewTabControl;
+		}
+
+		void BuildSplitContent()
+		{
+			// Visual Studio's convention: the designer (secondary view, added last) starts above
+			// the XAML source; the split-bar buttons can swap them or switch to side by side.
+			int designerIndex = ViewContents.Count - 1;
+			const int sourceIndex = 0;
+			int firstIndex = splitSwapped ? sourceIndex : designerIndex;
+			int secondIndex = splitSwapped ? designerIndex : sourceIndex;
+
+			splitHost = new Grid();
+			splitTopHost = CreateSplitPane(ViewContents[firstIndex].Control, firstIndex);
+			splitBottomHost = CreateSplitPane(ViewContents[secondIndex].Control, secondIndex);
+			splitBar = BuildSplitBar();
+
+			if (splitHorizontal) {
+				splitHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+				splitHost.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+				splitHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+				Grid.SetRow(splitTopHost, 0);
+				Grid.SetRow(splitBar, 1);
+				Grid.SetRow(splitBottomHost, 2);
+			} else {
+				splitHost.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+				splitHost.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+				splitHost.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+				Grid.SetColumn(splitTopHost, 0);
+				Grid.SetColumn(splitBar, 1);
+				Grid.SetColumn(splitBottomHost, 2);
+			}
+
+			splitHost.Children.Add(splitTopHost);
+			splitHost.Children.Add(splitBar);
+			splitHost.Children.Add(splitBottomHost);
+
+			this.Content = splitHost;
+		}
+
+		/// <summary>
+		/// The bar between the two panes, built like Visual Studio's XAML design/source split:
+		/// a slim header carrying the two view labels on the leading side and small icon buttons
+		/// (orientation, swap, pop out, close) on the trailing side, with a faint separator line
+		/// against the pane it divides. The <see cref="GridSplitter"/> underneath makes the whole
+		/// bar draggable; the labels and buttons sit on top of it.
+		/// </summary>
+		FrameworkElement BuildSplitBar()
+		{
+			var bar = new Grid { Background = ThemeBrush("ToolWindowBackground", Brushes.Transparent) };
+			bar.Children.Add(new GridSplitter {
+				HorizontalAlignment = HorizontalAlignment.Stretch,
+				VerticalAlignment = VerticalAlignment.Stretch,
+				ResizeDirection = splitHorizontal ? GridResizeDirection.Rows : GridResizeDirection.Columns,
+				ResizeBehavior = GridResizeBehavior.PreviousAndNext,
+				Background = Brushes.Transparent
+			});
+
+			int designerIndex = ViewContents.Count - 1;
+			const int sourceIndex = 0;
+
+			// Three sections along the bar: the designer label, the central grip, then the
+			// markup label together with the remaining buttons.
+			var content = new Grid {
+				Margin = splitHorizontal ? new Thickness(6, 0, 6, 0) : new Thickness(0, 6, 0, 6)
+			};
+			if (splitHorizontal) {
+				content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+				content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+				content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+			} else {
+				content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+				content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+				content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+			}
+
+			splitLabelHosts.Clear();
+
+			TextBlock designerLabel = CreateSplitLabel(ViewContents[designerIndex], designerIndex);
+			Place(content, designerLabel, 0);
+
+			// The grip: two diagonal lines with the swap button between them, the detail Visual
+			// Studio puts at the middle of the design/source splitter.
+			var grip = new StackPanel {
+				Orientation = splitHorizontal ? Orientation.Horizontal : Orientation.Vertical,
+				HorizontalAlignment = HorizontalAlignment.Center,
+				VerticalAlignment = VerticalAlignment.Center
+			};
+			grip.Children.Add(CreateSplitGripLine(true));
+			Button swapButton = CreateSplitButton("Swap the designer and source panes",
+				"SwitchSourceOrTarget", SwapSplitPanes);
+			RotateIfVertical(swapButton.Content as FrameworkElement);
+			grip.Children.Add(swapButton);
+			grip.Children.Add(CreateSplitGripLine(false));
+			Place(content, grip, 1);
+
+			var trailing = new StackPanel {
+				Orientation = splitHorizontal ? Orientation.Horizontal : Orientation.Vertical,
+				HorizontalAlignment = splitHorizontal ? HorizontalAlignment.Right : HorizontalAlignment.Center,
+				VerticalAlignment = splitHorizontal ? VerticalAlignment.Center : VerticalAlignment.Bottom
+			};
+			trailing.Children.Add(CreateSplitLabel(ViewContents[sourceIndex], sourceIndex));
+			trailing.Children.Add(new Border {
+				BorderBrush = ThemeBrush("Border", Brushes.Gray),
+				BorderThickness = splitHorizontal ? new Thickness(1, 0, 0, 0) : new Thickness(0, 1, 0, 0),
+				Margin = new Thickness(3, 3, 3, 3),
+				Width = splitHorizontal ? 1 : double.NaN,
+				Height = splitHorizontal ? double.NaN : 1
+			});
+			trailing.Children.Add(CreateSplitButton(
+				splitHorizontal ? "Switch to a side-by-side (vertical) split" : "Switch to a stacked (horizontal) split",
+				splitHorizontal ? "SplitScreenVertically" : "SplitScreenHorizontally",
+				ToggleSplitOrientation));
+			trailing.Children.Add(CreateSplitButton("Move the source to a separate window",
+				"PopOut", PopOutSourcePane));
+			trailing.Children.Add(CreateSplitButton("Close the split (back to tabs)",
+				"Close", () => SetSplitView(false)));
+			Place(content, trailing, 2);
+
+			bar.Children.Add(content);
+			RefreshSplitLabels();
+
+			if (splitHorizontal)
+				bar.Height = 22;
+			else
+				bar.Width = 22;
+			return bar;
+		}
+
+		static void Place(Grid grid, UIElement child, int index)
+		{
+			if (grid.ColumnDefinitions.Count > 0)
+				Grid.SetColumn(child, index);
+			else
+				Grid.SetRow(child, index);
+			grid.Children.Add(child);
+		}
+
+		/// <summary>One diagonal line of the splitter grip (the two lines straddle the swap button).</summary>
+		FrameworkElement CreateSplitGripLine(bool forward)
+		{
+			var line = new System.Windows.Shapes.Path {
+				Data = Geometry.Parse(forward ? "M0,7 L5,1" : "M0,1 L5,7"),
+				Stroke = ThemeBrush("MutedForeground", Brushes.Gray),
+				StrokeThickness = 1,
+				Margin = new Thickness(4, 0, 4, 0),
+				HorizontalAlignment = HorizontalAlignment.Center,
+				VerticalAlignment = VerticalAlignment.Center
+			};
+			RotateIfVertical(line);
+			return line;
+		}
+
+		/// <summary>A vertical bar is only ~22px wide, so its labels and glyphs are turned
+		/// sideways to stay legible. Rotating counter-clockwise (-90°) keeps the text reading
+		/// left-to-right (bottom-to-top), the usual convention for a vertical label.</summary>
+		void RotateIfVertical(FrameworkElement element)
+		{
+			if (!splitHorizontal && element != null)
+				element.LayoutTransform = new RotateTransform(-90);
+		}
+
+		readonly List<(TextBlock Label, int Index)> splitLabelHosts = new List<(TextBlock, int)>();
+
+		TextBlock CreateSplitLabel(IViewContent view, int index)
+		{
+			// The split bar mirrors Visual Studio's "Design | XAML" tabs: the primary (text)
+			// view of a XAML file reads "XAML", not the generic "Source".
+			string text = StringParser.Parse(view.TabPageText);
+			string extension = view.PrimaryFile != null
+				? Path.GetExtension(view.PrimaryFile.FileName.ToString()) : null;
+			if (index == 0 && string.Equals(extension, ".xaml", StringComparison.OrdinalIgnoreCase))
+				text = "XAML";
+
+			var label = new TextBlock {
+				Text = text,
+				Margin = new Thickness(6, 0, 6, 0),
+				VerticalAlignment = VerticalAlignment.Center,
+				HorizontalAlignment = HorizontalAlignment.Center,
+				Cursor = Cursors.Hand
+			};
+			RotateIfVertical(label);
+			label.MouseLeftButtonDown += delegate { ActivateSplitPane(index); };
+			splitLabelHosts.Add((label, index));
+			return label;
+		}
+
+		void RefreshSplitLabels()
+		{
+			var active = ThemeBrush("Foreground", Brushes.Black);
+			var inactive = ThemeBrush("MutedForeground", Brushes.Gray);
+			foreach (var (label, index) in splitLabelHosts)
+				label.Foreground = index == splitActiveIndex ? active : inactive;
+		}
+
+		Button CreateSplitButton(string tooltip, string iconName, Action action)
+		{
+			var button = new Button {
+				Width = 18,
+				Height = 18,
+				Padding = new Thickness(0),
+				Margin = new Thickness(1),
+				BorderThickness = new Thickness(0),
+				Background = Brushes.Transparent,
+				Focusable = false,
+				ToolTip = tooltip,
+				Content = new Image {
+					Source = PresentationResourceService.GetImageSource("Icons.16x16." + iconName),
+					Width = 14,
+					Height = 14,
+					Stretch = Stretch.Uniform
+				}
+			};
+			var hover = new Style(typeof(Button));
+			hover.Setters.Add(new Setter(Control.BackgroundProperty, Brushes.Transparent));
+			hover.Setters.Add(new Setter(Border.BorderThicknessProperty, new Thickness(0)));
+			var over = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+			over.Setters.Add(new Setter(Control.BackgroundProperty, ThemeBrush("Border", Brushes.LightGray)));
+			hover.Triggers.Add(over);
+			button.Style = hover;
+			button.Click += delegate { action(); };
+			return button;
+		}
+
+		static Brush ThemeBrush(string key, Brush fallback)
+		{
+			if (Application.Current != null && Application.Current.TryFindResource(key) is Brush brush)
+				return brush;
+			return fallback;
+		}
+
+		internal void ToggleSplitOrientation()
+		{
+			splitHorizontal = !splitHorizontal;
+			RebuildContent();
+		}
+
+		internal void SwapSplitPanes()
+		{
+			splitSwapped = !splitSwapped;
+			RebuildContent();
+		}
+
+		internal void PopOutSourcePane()
+		{
+			if (splitFloatWindow != null) {
+				splitFloatWindow.Activate();
+				return;
+			}
+			// The source is ViewContents[0]; whichever host currently holds it is detached and
+			// re-parented into a floating window.
+			object sourceControl = ViewContents[0].Control;
+			ContentControl host = ReferenceEquals(splitTopHost?.Content, sourceControl) ? splitTopHost
+				: ReferenceEquals(splitBottomHost?.Content, sourceControl) ? splitBottomHost
+				: null;
+			if (host == null)
+				return;
+			host.Content = null;
+
+			var window = new Window {
+				Title = ViewContents[0].TitleName,
+				Width = 720,
+				Height = 520,
+				Owner = Application.Current != null ? Application.Current.MainWindow : null,
+				Content = sourceControl,
+				ShowInTaskbar = true
+			};
+			splitFloatWindow = window;
+			window.Closed += delegate {
+				window.Content = null;
+				splitFloatWindow = null;
+				RebuildContent();
+			};
+			window.Show();
+			RebuildContent();   // the document now shows the designer pane alone
+		}
+
+		ContentControl CreateSplitPane(object control, int index)
+		{
+			var pane = new ContentControl { Content = control };
+			// The window's active view drives the designer's lazy Load (OpenedFile.SwitchedToView)
+			// and the save owner, so clicking or focusing a pane activates its view — the same
+			// contract the tabs use, just without a tab switch.
+			pane.PreviewMouseDown += delegate { ActivateSplitPane(index); };
+			pane.GotKeyboardFocus += delegate { ActivateSplitPane(index); };
+			return pane;
+		}
+
+		void ActivateSplitPane(int index)
+		{
+			if (!splitActive || splitActiveIndex == index)
+				return;
+			splitActiveIndex = index;
+			RefreshSplitLabels();
+			UpdateActiveViewContent();
 		}
 
 		void OnTitleNameChanged(object sender, EventArgs e)

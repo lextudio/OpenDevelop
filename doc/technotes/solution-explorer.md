@@ -370,6 +370,42 @@ UnoDevelop or its submodules from OpenDevelop):
   UnoDevelop doesn't confirm having this either, so no reference implementation
   to lean on.
 
+### Legacy menu codons that still point at excluded classes (GitHub issue 10)
+
+`MenuService.CreateContextMenu` builds **every** codon under a node's path, from both
+`ICSharpCode.SharpDevelop.addin` (legacy) and `ICSharpCode.SharpDevelop.ProjectBrowser.addin`
+(new), and same-id submenus share one child node (`AddInTreeNode.BuildChildItems`). So a legacy
+`MenuItem` whose class sits in the excluded `Src\Gui\Pads\ProjectBrowser\**` is not dormant - it is
+shown, and clicking it raises `Cannot find class`. Issue 10 was the folder node's legacy
+"Add > Existing Folder" (`AddExistingFolderToProject`).
+
+The paths the WPF pad actually opens are the six in `ProjectBrowserNodeContext.ContextMenuPath`
+(SolutionNode, ProjectNode, FolderNode, FileNode, ReferenceNode, PackageReferenceNode) plus
+whatever they `Include` (ProjectActions, CutCopyPasteDeleteRename, CutPasteRemoveRename,
+FolderNode/Add, SolutionNode/CollapseAll) and the main menu. Every other legacy node path
+(WebReference*, ServiceReference*, SolutionItemNode, ...) is only reached by the excluded WinForms
+tree nodes. Rule applied to each broken codon on a reachable path:
+
+- the new addin already offers it on that node -> commented out `MVP: removed` (keeping it would be
+  a duplicate even once fixed);
+- a new command exists but that node lacks it -> `class` redirected (Rename, Set Startup Project,
+  Collapse All, File > New > Project, Run, Add Reference on the main Project menu);
+- no replacement -> commented out.
+
+Legacy entries that *work* still duplicate new ones (two "Add", "Cut", "Paste", "Rename" on a
+project node); removing those is a separate dedup pass. To re-check after a change, compare each
+`.addin` `class=` against the TypeDefinitions of the built assemblies (the `#US`-heap caveat does
+not apply - type names are in `#Strings`) and keep only hits on the reachable paths above.
+
+Replacements written for the WPF pad (`ProjectBrowserAddInCommands.cs` ->
+`ProjectBrowserControllerBase`): `CollapseAll`, `OpenTerminal` ("Open in Terminal" in
+Common/Open and SolutionNode), `RunProject`/`RunProjectWithoutDebugger`, and `AddReference`
+with a WPF `AddReferenceWindow` (solution projects + browsed assembly files only; NuGet stays in
+Manage Packages, GAC/COM/Service/Web references are not offered). `ShowAddReferenceDialogAsync` is
+`virtual`, not abstract, so the other host sharing the base class is not forced to implement it.
+A `ProjectReference` is written with its `Project`/`Name` metadata removed - SDK-style projects
+resolve it by path.
+
 ## Non-goals for this pass
 
 - Full VS MEF composition fidelity beyond what UnoDevelop's shim already does

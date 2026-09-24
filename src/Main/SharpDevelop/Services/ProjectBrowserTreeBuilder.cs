@@ -37,12 +37,51 @@ internal static class ProjectBrowserTreeBuilder
             boundItem: solution,
             isExpanded: true);
 
-        foreach (var project in solution.Projects.CreateSnapshot().OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
+        AddSolutionItems(root, solution, showAllFiles);
+        return root;
+    }
+
+    // Mirrors the solution's own structure: solution folders (virtual, .sln/.slnx only) contain
+    // projects, nested folders and solution items (loose files). Folders sort first, then projects
+    // and files by name, as in Visual Studio.
+    private static void AddSolutionItems(ProjectBrowserNodeModel parent, ISolutionFolder folder, bool showAllFiles)
+    {
+        var folders = new List<ProjectBrowserNodeModel>();
+        var others = new List<ProjectBrowserNodeModel>();
+        foreach (var item in folder.Items.CreateSnapshot())
         {
-            root.Children.Add(BuildProjectNode(project, showAllFiles));
+            switch (item)
+            {
+                case ISolutionFolder subFolder:
+                    var folderNode = new ProjectBrowserNodeModel(
+                        subFolder.Name,
+                        string.Empty,
+                        isDirectory: true,
+                        ProjectBrowserNodeKind.SolutionFolder,
+                        boundItem: subFolder,
+                        isExpanded: true);
+                    AddSolutionItems(folderNode, subFolder, showAllFiles);
+                    folders.Add(folderNode);
+                    break;
+                case IProject project:
+                    others.Add(BuildProjectNode(project, showAllFiles));
+                    break;
+                case ISolutionFileItem file:
+                    others.Add(new ProjectBrowserNodeModel(
+                        Path.GetFileName(file.FileName.ToString()),
+                        file.FileName.ToString(),
+                        isDirectory: false,
+                        ProjectBrowserNodeKind.SolutionItem,
+                        boundItem: file));
+                    break;
+            }
         }
 
-        return root;
+        foreach (var node in folders.OrderBy(n => n.Name, StringComparer.OrdinalIgnoreCase)
+                     .Concat(others.OrderBy(n => n.Name, StringComparer.OrdinalIgnoreCase)))
+        {
+            parent.Children.Add(node);
+        }
     }
 
     internal static string[] GetGitStatusRoots(ISolution solution)

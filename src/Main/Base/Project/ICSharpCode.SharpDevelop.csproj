@@ -202,7 +202,6 @@
          fail at click time with "Cannot find class ... DebuggingCommand". -->
     <Compile Remove="Src\Commands\HelpCommands.cs" />
 
-    <Compile Remove="Src\Editor\Commands\ShowColorDialog.cs" />
     <!-- Out of MVP scope: WinForms SideBar (ToolsPad content), FileScout, and PropertyPad WinForms PropertyGrid
          hosting - no WPF equivalent yet; consumers of SD.WinForms.SetContent()/.MenuService/.ToolbarService
          that would otherwise need the removed IWinFormsService surface reimplemented. -->
@@ -249,7 +248,7 @@
     <Compile Remove="Editor\CodeCompletion\SnippetCompletionData.cs" />
     <!-- Out of MVP scope: uses the excluded SharpTreeView-based IClassBrowser directly; no consumers. -->
     <Compile Remove="Parser\DefaultAssemblySearcher.cs" />
-    <!-- Out of MVP scope: WordCount is a WinForms WordCountDialog launcher and is the only class in this file. -->
+    <!-- WinForms WordCountDialog launcher; replaced by Src\Commands\WordCountCommand.cs (same class name). -->
     <Compile Remove="Src\Commands\EditCommands.cs" />
   </ItemGroup>
 </Project>

@@ -52,6 +52,16 @@ internal sealed class ProjectBrowserController : ProjectBrowserControllerBase
             new Dictionary<string, string?>(dialog.AdditionalParameters, StringComparer.OrdinalIgnoreCase));
     }
 
+    protected override Task<AddReferenceDialogOutcome?> ShowAddReferenceDialogAsync(string projectName, IReadOnlyList<ReferenceCandidate> candidates)
+    {
+        var owner = System.Windows.Application.Current.MainWindow;
+        var dialog = AddReferenceWindow.Show(projectName,
+            candidates.Select(c => new AddReferenceWindow.ProjectCandidate(c.Name, c.ProjectPath)).ToArray(), owner);
+        return Task.FromResult(dialog is null
+            ? null
+            : new AddReferenceDialogOutcome(dialog.SelectedProjectPaths, dialog.SelectedAssemblyPaths));
+    }
+
     protected override void CopyTextToClipboard(string text)
     {
         System.Windows.Clipboard.SetText(text);

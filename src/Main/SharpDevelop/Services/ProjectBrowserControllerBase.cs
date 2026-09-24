@@ -70,6 +70,14 @@ internal interface IProjectBrowserController
     void OpenWith(ProjectBrowserNodeContext? node = null);
     void CopyPath(ProjectBrowserNodeContext? node = null);
     void OpenFolder(ProjectBrowserNodeContext? node = null);
+    void OpenTerminal(ProjectBrowserNodeContext? node = null);
+    void AddReference(ProjectBrowserNodeContext? node = null);
+    void RunProject(ProjectBrowserNodeContext? node = null, bool withDebugging = true);
+    void AddExistingProject(ProjectBrowserNodeContext? node = null);
+    void NewSolutionFolder(ProjectBrowserNodeContext? node = null);
+    void AddSolutionItems(ProjectBrowserNodeContext? node = null);
+    bool CanRunCustomTool(ProjectBrowserNodeContext? node = null);
+    void RunCustomTool(ProjectBrowserNodeContext? node = null);
     void SetStartupProject(ProjectBrowserNodeContext? node = null);
     bool CanCutOrCopy(ProjectBrowserNodeContext? node = null);
     bool CanPaste(ProjectBrowserNodeContext? node = null);
@@ -87,6 +95,12 @@ internal sealed record NewItemDialogOutcome(TemplateSummary SelectedTemplate, st
 
 /// <summary>Host-neutral result of the "Add New Project" dialog - see <see cref="ProjectBrowserControllerBase.ShowNewProjectDialogAsync"/>.</summary>
 internal sealed record NewProjectDialogOutcome(TemplateSummary SelectedTemplate, string ProjectName, string Location, IReadOnlyDictionary<string, string?> AdditionalParameters);
+
+/// <summary>A solution project that can be offered by the "Add Reference" dialog.</summary>
+internal sealed record ReferenceCandidate(string Name, string ProjectPath);
+
+/// <summary>Host-neutral result of the "Add Reference" dialog - see <see cref="ProjectBrowserControllerBase.ShowAddReferenceDialogAsync"/>.</summary>
+internal sealed record AddReferenceDialogOutcome(IReadOnlyList<string> ProjectPaths, IReadOnlyList<string> AssemblyPaths);
 
 /// <summary>
 /// Shared Project Browser command surface (see doc/technotes/solution-explorer.md) - every command
@@ -110,6 +124,11 @@ internal abstract class ProjectBrowserControllerBase : IProjectBrowserController
 
     /// <summary>Shows the host's native "Add New Project" dialog/window. Null return means the user cancelled.</summary>
     protected abstract Task<NewProjectDialogOutcome?> ShowNewProjectDialogAsync(TemplateDiscoveryService service, string defaultLocation);
+
+    /// <summary>Shows the host's "Add Reference" dialog. Null return means the user cancelled or the
+    /// host has no such dialog; virtual rather than abstract so a host can opt in later.</summary>
+    protected virtual Task<AddReferenceDialogOutcome?> ShowAddReferenceDialogAsync(string projectName, IReadOnlyList<ReferenceCandidate> candidates)
+        => Task.FromResult<AddReferenceDialogOutcome?>(null);
 
     /// <summary>Puts <paramref name="text"/> on the host's native clipboard.</summary>
     protected abstract void CopyTextToClipboard(string text);
@@ -150,7 +169,7 @@ internal abstract class ProjectBrowserControllerBase : IProjectBrowserController
     public void Open(ProjectBrowserNodeContext? node = null)
     {
         var target = ResolveNode(node);
-        if (target is null || !target.IsFileLike || target.Kind == ProjectBrowserNodeKind.MissingFile)
+        if (target is null || !target.IsFileNode || target.Kind == ProjectBrowserNodeKind.MissingFile)
         {
             return;
         }
@@ -452,6 +471,12 @@ internal abstract class ProjectBrowserControllerBase : IProjectBrowserController
     public void Rename(ProjectBrowserNodeContext? node = null)
     {
         var target = ResolveNode(node);
+        if (target?.Kind == ProjectBrowserNodeKind.SolutionFolder && target.BoundItem is ISolutionFolder solutionFolder)
+        {
+            RenameSolutionFolder(solutionFolder);
+            return;
+        }
+
         if (target is null || IsVirtualProjectFile(target) || (!target.IsFileLike && target.Kind != ProjectBrowserNodeKind.Folder))
         {
             return;
@@ -527,6 +552,12 @@ internal abstract class ProjectBrowserControllerBase : IProjectBrowserController
                 return;
             }
 
+            if (target.Kind is ProjectBrowserNodeKind.SolutionFolder or ProjectBrowserNodeKind.SolutionItem)
+            {
+                RemoveFromSolution(target);
+                return;
+            }
+
             if (target.Kind != ProjectBrowserNodeKind.Project)
             {
                 return;
@@ -537,6 +568,8 @@ internal abstract class ProjectBrowserControllerBase : IProjectBrowserController
                 return;
             }
 
+            // TryRemoveProject only edits the in-memory model; the solution file has to be written.
+            SD.ProjectService.CurrentSolution?.Save();
             Host?.RefreshSolutionTree();
         }, "Failed to remove project from solution.");
     }
@@ -675,7 +708,7 @@ internal abstract class ProjectBrowserControllerBase : IProjectBrowserController
             return;
         }
 
-        var directory = target.IsFileLike
+        var directory = target.IsFileNode
             ? Path.GetDirectoryName(target.FullPath)
             : target.FullPath;
         if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
@@ -696,6 +729,374 @@ internal abstract class ProjectBrowserControllerBase : IProjectBrowserController
         {
             ServiceSingleton.GetRequiredService<IMessageService>().ShowException(ex, "Failed to open folder.");
         }
+    }
+
+    public void OpenTerminal(ProjectBrowserNodeContext? node = null)
+    {
+        var target = ResolveNode(node);
+        if (target is null)
+        {
+            return;
+        }
+
+        var directory = target.IsFileNode
+            ? Path.GetDirectoryName(target.FullPath)
+            : target.FullPath;
+        if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+        {
+            return;
+        }
+
+        try
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                try
+                {
+                    // Windows Terminal when installed; the App Execution Alias throws when it is not.
+                    Process.Start(new ProcessStartInfo("wt.exe", "-d \"" + directory + "\"") { UseShellExecute = true });
+                }
+                catch (System.ComponentModel.Win32Exception)
+                {
+                    Process.Start(new ProcessStartInfo("cmd.exe") { WorkingDirectory = directory, UseShellExecute = true });
+                }
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                Process.Start(new ProcessStartInfo("open", "-a Terminal \"" + directory + "\"") { UseShellExecute = false });
+            }
+            else
+            {
+                Process.Start(new ProcessStartInfo("x-terminal-emulator") { WorkingDirectory = directory, UseShellExecute = false });
+            }
+        }
+        catch (Exception ex)
+        {
+            ServiceSingleton.GetRequiredService<IMessageService>().ShowException(ex, "Failed to open a terminal.");
+        }
+    }
+
+    public async void AddReference(ProjectBrowserNodeContext? node = null)
+    {
+        try
+        {
+            var project = ResolveProject(ResolveNode(node));
+            var solution = SD.ProjectService.CurrentSolution;
+            if (project is null || solution is null)
+            {
+                return;
+            }
+
+            var alreadyReferenced = new HashSet<string>(
+                project.Items.OfType<ProjectReferenceProjectItem>()
+                    .Select(item => item.FileName?.ToString())
+                    .Where(path => !string.IsNullOrEmpty(path))!,
+                StringComparer.OrdinalIgnoreCase);
+            var candidates = solution.Projects
+                .Where(p => p != project && !alreadyReferenced.Contains(p.FileName.ToString()))
+                .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(p => new ReferenceCandidate(p.Name, p.FileName.ToString()))
+                .ToArray();
+
+            var outcome = await ShowAddReferenceDialogAsync(project.Name, candidates);
+            if (outcome is null)
+            {
+                return;
+            }
+
+            foreach (var projectPath in outcome.ProjectPaths)
+            {
+                var referenced = solution.Projects.FirstOrDefault(p =>
+                    string.Equals(p.FileName.ToString(), projectPath, StringComparison.OrdinalIgnoreCase));
+                if (referenced is null)
+                {
+                    continue;
+                }
+
+                var item = new ProjectReferenceProjectItem(project, referenced);
+                // SDK-style projects resolve a ProjectReference by path alone; the GUID/name metadata
+                // the legacy constructor writes is only noise in the project file.
+                item.RemoveMetadata("Project");
+                item.RemoveMetadata("Name");
+                ProjectServiceCompat.AddProjectItem(project, item);
+            }
+
+            var failed = new List<string>();
+            foreach (var assemblyPath in outcome.AssemblyPaths)
+            {
+                System.Reflection.AssemblyName assemblyName;
+                try
+                {
+                    assemblyName = System.Reflection.AssemblyName.GetAssemblyName(assemblyPath);
+                }
+                catch (Exception ex) when (ex is BadImageFormatException or IOException)
+                {
+                    failed.Add(Path.GetFileName(assemblyPath));
+                    continue;
+                }
+
+                var item = new ReferenceProjectItem(project, assemblyName.Name ?? Path.GetFileNameWithoutExtension(assemblyPath))
+                {
+                    HintPath = FileUtility.GetRelativePath(project.Directory, FileName.Create(assemblyPath))
+                };
+                ProjectServiceCompat.AddProjectItem(project, item);
+            }
+
+            project.Save();
+            Host?.RefreshSolutionTree();
+
+            if (failed.Count > 0)
+            {
+                ServiceSingleton.GetRequiredService<IMessageService>().ShowError(
+                    "These files are not .NET assemblies and were not added:\n" + string.Join("\n", failed));
+            }
+        }
+        catch (Exception ex)
+        {
+            ServiceSingleton.GetRequiredService<IMessageService>().ShowException(ex, "Failed to add reference.");
+        }
+    }
+
+    public void RunProject(ProjectBrowserNodeContext? node = null, bool withDebugging = true)
+    {
+        var project = ResolveProject(ResolveNode(node));
+        if (project is null)
+        {
+            return;
+        }
+
+        if (!project.IsStartable)
+        {
+            ServiceSingleton.GetRequiredService<IMessageService>().ShowError("${res:BackendBindings.ExecutionManager.CantExecuteDLLError}");
+            return;
+        }
+
+        var build = new ICSharpCode.SharpDevelop.Project.Commands.BuildProjectBeforeExecute(project);
+        build.BuildComplete += delegate
+        {
+            if (build.LastBuildResults.ErrorCount == 0)
+            {
+                project.Start(withDebugging);
+            }
+        };
+        build.Run();
+    }
+
+    public async void AddExistingProject(ProjectBrowserNodeContext? node = null)
+    {
+        try
+        {
+            var solution = SD.ProjectService.CurrentSolution;
+            if (solution is null)
+            {
+                return;
+            }
+
+            var paths = await FileDialogService.PickFilesAsync(
+                "Project files (*.csproj;*.vbproj;*.fsproj)|*.csproj;*.vbproj;*.fsproj|All files (*.*)|*.*");
+            var added = false;
+            foreach (var path in paths)
+            {
+                if (solution.Projects.Any(p => string.Equals(p.FileName.ToString(), path, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                TargetSolutionFolder(ResolveNode(node), solution).AddExistingProject(FileName.Create(path));
+                added = true;
+            }
+
+            if (added)
+            {
+                solution.Save();
+                Host?.RefreshSolutionTree();
+            }
+        }
+        catch (Exception ex)
+        {
+            ServiceSingleton.GetRequiredService<IMessageService>().ShowException(ex, "Failed to add the project to the solution.");
+        }
+    }
+
+    public void NewSolutionFolder(ProjectBrowserNodeContext? node = null)
+    {
+        var solution = SD.ProjectService.CurrentSolution;
+        if (solution is null)
+        {
+            return;
+        }
+
+        var parent = TargetSolutionFolder(ResolveNode(node), solution);
+        var name = Host?.ShowInputBox("New Solution Folder", "Folder name:", UniqueFolderName(parent, "New Folder"))?.Trim();
+        if (string.IsNullOrEmpty(name))
+        {
+            return;
+        }
+
+        if (FindChildFolder(parent, name) is not null)
+        {
+            ServiceSingleton.GetRequiredService<IMessageService>().ShowError("'" + parent.Name + "' already contains a folder named '" + name + "'.");
+            return;
+        }
+
+        ExecuteFileSystemAction(() =>
+        {
+            parent.CreateFolder(name);
+            solution.Save();
+            Host?.RefreshSolutionTree();
+        }, "Failed to create the solution folder.");
+    }
+
+    public async void AddSolutionItems(ProjectBrowserNodeContext? node = null)
+    {
+        try
+        {
+            var solution = SD.ProjectService.CurrentSolution;
+            if (solution is null)
+            {
+                return;
+            }
+
+            var paths = await FileDialogService.PickFilesAsync("All files|*.*");
+            if (paths.Length == 0)
+            {
+                return;
+            }
+
+            // A solution item has to live in a solution folder (.slnx has no top-level <File>), so
+            // items added on the solution node go to "Solution Items", as in Visual Studio.
+            var target = ResolveNode(node);
+            var folder = target?.Kind == ProjectBrowserNodeKind.SolutionFolder && target.BoundItem is ISolutionFolder selected
+                ? selected
+                : FindChildFolder(solution, "Solution Items") ?? solution.CreateFolder("Solution Items");
+            foreach (var path in paths)
+            {
+                if (!folder.Items.OfType<ISolutionFileItem>().Any(f => string.Equals(f.FileName.ToString(), path, StringComparison.OrdinalIgnoreCase)))
+                {
+                    folder.AddFile(FileName.Create(path));
+                }
+            }
+
+            solution.Save();
+            Host?.RefreshSolutionTree();
+        }
+        catch (Exception ex)
+        {
+            ServiceSingleton.GetRequiredService<IMessageService>().ShowException(ex, "Failed to add solution items.");
+        }
+    }
+
+    void RenameSolutionFolder(ISolutionFolder folder)
+    {
+        var newName = Host?.ShowInputBox("Rename", "Enter new name:", folder.Name)?.Trim();
+        if (string.IsNullOrEmpty(newName) || string.Equals(newName, folder.Name, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (folder.ParentFolder is not null && FindChildFolder(folder.ParentFolder, newName) is { } existing && existing != folder)
+        {
+            ServiceSingleton.GetRequiredService<IMessageService>().ShowError("'" + folder.ParentFolder.Name + "' already contains a folder named '" + newName + "'.");
+            return;
+        }
+
+        ExecuteFileSystemAction(() =>
+        {
+            folder.Name = newName;
+            SD.ProjectService.CurrentSolution?.Save();
+            Host?.RefreshSolutionTree();
+        }, "Failed to rename the solution folder.");
+    }
+
+    void RemoveFromSolution(ProjectBrowserNodeContext target)
+    {
+        if (target.BoundItem is not { ParentFolder: { } parent } item)
+        {
+            return;
+        }
+
+        // Removing a folder takes its projects out of the solution with it (their files stay on
+        // disk), so say so before doing it - as Visual Studio does.
+        if (item is ISolutionFolder folder)
+        {
+            var projectCount = CountProjects(folder);
+            var question = projectCount == 0
+                ? "Remove the solution folder '" + folder.Name + "'?"
+                : "Remove the solution folder '" + folder.Name + "' and the " + projectCount + " project(s) in it from the solution?\n\nNo files are deleted.";
+            if (!ServiceSingleton.GetRequiredService<IMessageService>().AskQuestion(question, "Remove Solution Folder"))
+            {
+                return;
+            }
+        }
+
+        parent.Items.Remove(item);
+        SD.ProjectService.CurrentSolution?.Save();
+        Host?.RefreshSolutionTree();
+    }
+
+    static int CountProjects(ISolutionFolder folder) =>
+        folder.Items.OfType<IProject>().Count() + folder.Items.OfType<ISolutionFolder>().Sum(CountProjects);
+
+    /// <summary>The solution folder a solution-level command applies to: the selected solution folder, else the solution itself.</summary>
+    static ISolutionFolder TargetSolutionFolder(ProjectBrowserNodeContext? target, ISolution solution) =>
+        target?.Kind == ProjectBrowserNodeKind.SolutionFolder && target.BoundItem is ISolutionFolder folder ? folder : solution;
+
+    static ISolutionFolder? FindChildFolder(ISolutionFolder parent, string name) =>
+        parent.Items.OfType<ISolutionFolder>().FirstOrDefault(f => string.Equals(f.Name, name, StringComparison.OrdinalIgnoreCase));
+
+    static string UniqueFolderName(ISolutionFolder parent, string baseName)
+    {
+        var name = baseName;
+        for (var i = 2; FindChildFolder(parent, name) is not null; i++)
+        {
+            name = baseName + " " + i;
+        }
+        return name;
+    }
+
+    public bool CanRunCustomTool(ProjectBrowserNodeContext? node = null)
+        => !string.IsNullOrEmpty(FindFileItem(ResolveNode(node))?.CustomTool);
+
+    public void RunCustomTool(ProjectBrowserNodeContext? node = null)
+    {
+        var item = FindFileItem(ResolveNode(node));
+        if (item is null || string.IsNullOrEmpty(item.CustomTool))
+        {
+            return;
+        }
+
+        CustomToolsService.RunCustomTool(item, true);
+    }
+
+    static FileProjectItem? FindFileItem(ProjectBrowserNodeContext? target)
+    {
+        if (target is null || !target.IsFileLike || string.IsNullOrWhiteSpace(target.FullPath))
+        {
+            return null;
+        }
+
+        return ResolveProject(target)?.FindFile(FileName.Create(target.FullPath));
+    }
+
+    /// <summary>The project a node belongs to (the project itself for a project node), falling back to
+    /// the current project when the command was not raised from a Project Browser node.</summary>
+    static IProject? ResolveProject(ProjectBrowserNodeContext? target)
+    {
+        var solution = SD.ProjectService.CurrentSolution;
+        var hint = target?.Kind == ProjectBrowserNodeKind.Project
+            ? target.FullPath
+            : target?.BoundProjectTree?.Root?.FilePath ?? target?.ProjectPathHint;
+        if (solution is not null && !string.IsNullOrWhiteSpace(hint))
+        {
+            var byHint = solution.Projects.FirstOrDefault(p =>
+                string.Equals(p.FileName.ToString(), hint, StringComparison.OrdinalIgnoreCase));
+            if (byHint is not null)
+            {
+                return byHint;
+            }
+        }
+
+        return SD.ProjectService.CurrentProject;
     }
 
     public void SetStartupProject(ProjectBrowserNodeContext? node = null)

@@ -15,6 +15,12 @@
     <!-- StartupHook must sit in the default namespace with this exact name: the runtime looks for
          a type literally called "StartupHook" with a static Initialize(). -->
     <NoWarn>$(NoWarn);CS8632</NoWarn>
+    <!-- LibreWPF.Sdk targets the host RID (osx-arm64 on Apple silicon) when it builds, so restore
+         must write the matching RID-specific target too. Without this the solution's RID-less
+         restore omits it and the following no-restore build fails with NETSDK1047 ("doesn't have a
+         target for 'net10.0-windows/osx-arm64'"). Declaring the RIDs here keeps restore and build
+         consistent on every host; the SDK still picks one at build time. -->
+    <RuntimeIdentifiers>osx-arm64;osx-x64;linux-x64;linux-arm64;win-x64;win-arm64</RuntimeIdentifiers>
   </PropertyGroup>
 
   <!-- vscode-wpf's own agent, source-linked rather than copied so it keeps its own licence and

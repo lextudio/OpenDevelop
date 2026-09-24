@@ -1,0 +1,73 @@
+<Window x:Class="ICSharpCode.SharpDevelop.Services.AddReferenceWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Add Reference"
+        Width="520" Height="440"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize">
+  <Grid Margin="12">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+
+    <TabControl x:Name="Tabs" Grid.Row="0" Margin="0,0,0,8">
+      <TabItem Header="Projects">
+        <Grid Margin="4">
+          <ListBox x:Name="ProjectList" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" Checked="OnSelectionChanged" Unchecked="OnSelectionChanged">
+                  <StackPanel>
+                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding Path}" Foreground="Gray"
+                               TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                  </StackPanel>
+                </CheckBox>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+          <TextBlock x:Name="NoProjectsText"
+                     Text="No other projects in this solution can be referenced."
+                     Foreground="Gray"
+                     HorizontalAlignment="Center" VerticalAlignment="Center"
+                     Visibility="Collapsed" />
+        </Grid>
+      </TabItem>
+      <TabItem Header="Browse">
+        <Grid Margin="4">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+          </Grid.RowDefinitions>
+          <ListBox x:Name="AssemblyList" Grid.Row="0" SelectionMode="Extended" Margin="0,0,0,8"
+                   ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+          <StackPanel Grid.Row="1" Orientation="Horizontal">
+            <Button Content="Browse..." Click="OnBrowseClick" Padding="12,4" Margin="0,0,8,0" />
+            <Button Content="Remove" Click="OnRemoveClick" Padding="12,4" />
+          </StackPanel>
+        </Grid>
+      </TabItem>
+    </TabControl>
+
+    <TextBlock x:Name="StatusText"
+               Grid.Row="1"
+               Foreground="Gray"
+               Margin="0,0,0,8" />
+
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+      <Button x:Name="AddButton"
+              Content="Add"
+              IsEnabled="False"
+              IsDefault="True"
+              Click="OnAddClick"
+              Margin="0,0,8,0"
+              Padding="12,4" />
+      <Button Content="Cancel"
+              IsCancel="True"
+              Click="OnCancelClick"
+              Padding="12,4" />
+    </StackPanel>
+  </Grid>
+</Window>

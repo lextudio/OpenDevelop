@@ -52,6 +52,14 @@
          Directory.Packages.props: this is not called directly, it just needs to land in
          our own output so the in-process MSBuild engine's NuGet SDK resolver can load it. -->
     <PackageReference Include="NuGet.Commands" />
+    <!-- Not called directly. NuGet 7.6.0 drags in DependencyModel 9.0.x, and this process
+         binds that simple name before any add-in code runs. An in-process add-in that was built
+         against .NET 10 (Stride's editor stack, for one) then asks for 10.0.x, which the runtime
+         cannot satisfy - a request ABOVE the already-loaded version always fails, and the
+         correct file sitting in the add-in folder is rejected with COR_E_FILELOAD. Pinning the
+         whole graph to 10.0.6 means one version is loaded process-wide and both sides agree;
+         NuGet's own 9.0.9 references are satisfied by the higher loaded version. -->
+    <PackageReference Include="Microsoft.Extensions.DependencyModel" />
     <PackageReference Include="System.CodeDom" />
     <PackageReference Include="log4net" />
     <!-- Without this, Microsoft.CodeAnalysis.CSharp.Features (Roslyn) only floors this app's own

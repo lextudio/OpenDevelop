@@ -68,6 +68,7 @@
     <PackageVersion Include="Mono.TextTemplating" Version="3.0.0" />
     <PackageVersion Include="NUnit" Version="4.4.0" />
     <PackageVersion Include="NUnitLite" Version="4.4.0" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyModel" Version="10.0.6" />
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
     <!-- Not directly used by app code - Microsoft.Build.NuGetSdkResolver.dll (from
          Microsoft.Build.Runtime) loads this by reflection at a fixed version

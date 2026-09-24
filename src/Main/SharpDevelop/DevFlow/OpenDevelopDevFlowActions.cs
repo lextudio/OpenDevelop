@@ -764,6 +764,127 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new { success = true, typeName = window.ViewContents[index].GetType().FullName, viewCount = window.ViewContents.Count });
 		}
 
+		[DevFlowAction("od.editor.toggle-split", Description = "Spike: show the secondary view (designer) side by side with the primary source view (designer on top, source below) instead of as tabs. Rebuilds every open window; pass enabled=false to restore the tabs.")]
+		public static string ToggleSplit(bool enabled)
+		{
+			ICSharpCode.SharpDevelop.Workbench.AvalonWorkbenchWindow.SplitViewEnabled = enabled;
+			var windows = SD.Workbench.ViewContentCollection
+				.Select(vc => vc.WorkbenchWindow)
+				.Where(w => w != null)
+				.Distinct()
+				.OfType<ICSharpCode.SharpDevelop.Workbench.AvalonWorkbenchWindow>()
+				.ToList();
+			foreach (var window in windows)
+				window.SetSplitView(enabled);
+			return JsonSerializer.Serialize(new {
+				success = true,
+				enabled,
+				windows = windows.Count,
+				viewCounts = windows.Select(w => w.ViewContents.Count).ToArray()
+			});
+		}
+
+		[DevFlowAction("od.editor.split-status", Description = "Spike: report the side-by-side source/designer split for the active document - whether it is active, which view is focused, and the screen rectangles of the designer pane, the splitter and the source pane.")]
+		public static string SplitStatus()
+		{
+			var window = SD.Workbench.ViewContentCollection
+				.Select(vc => vc.WorkbenchWindow)
+				.Where(w => w != null)
+				.Distinct()
+				.OfType<ICSharpCode.SharpDevelop.Workbench.AvalonWorkbenchWindow>()
+				.FirstOrDefault(w => w.SplitViewActive || w.SplitViewFloating);
+			if (window == null)
+				return JsonSerializer.Serialize(new { success = false, error = "no window is in split view" });
+
+			object? Rect(System.Windows.FrameworkElement? element)
+			{
+				if (element == null || !element.IsVisible)
+					return null;
+				var topLeft = element.PointToScreen(new System.Windows.Point(0, 0));
+				return new {
+					x = Math.Round(topLeft.X),
+					y = Math.Round(topLeft.Y),
+					width = Math.Round(element.ActualWidth),
+					height = Math.Round(element.ActualHeight)
+				};
+			}
+
+			return JsonSerializer.Serialize(new {
+				success = true,
+				splitActive = window.SplitViewActive,
+				floating = window.SplitViewFloating,
+				horizontal = window.SplitViewHorizontal,
+				activeIndex = window.SplitViewIndex,
+				viewCount = window.ViewContents.Count,
+				designerPane = Rect(window.SplitViewTopHost),
+				splitter = Rect(window.SplitViewBar),
+				sourcePane = Rect(window.SplitViewBottomHost),
+				designerType = window.SplitViewTopHost?.Content?.GetType().FullName,
+				sourceType = window.SplitViewBottomHost?.Content?.GetType().FullName
+			});
+		}
+
+		[DevFlowAction("od.editor.split-command", Description = "Invoke one of the split-bar buttons for the active document: 'orient' (toggle stacked/side-by-side), 'swap' (exchange the panes), 'popout' (move the source to its own window), 'close' (back to tabs). Same code path the VS-style split-bar buttons run.")]
+		public static string SplitCommand(string command)
+		{
+			var window = SD.Workbench.ViewContentCollection
+				.Select(vc => vc.WorkbenchWindow)
+				.Where(w => w != null)
+				.Distinct()
+				.OfType<ICSharpCode.SharpDevelop.Workbench.AvalonWorkbenchWindow>()
+				.FirstOrDefault(w => w.SplitViewActive || w.SplitViewFloating);
+			if (window == null)
+				return JsonSerializer.Serialize(new { success = false, error = "no window is in split view" });
+
+			switch ((command ?? "").Trim().ToLowerInvariant())
+			{
+				case "orient": window.ToggleSplitOrientation(); break;
+				case "swap": window.SwapSplitPanes(); break;
+				case "popout": window.PopOutSourcePane(); break;
+				case "close": window.SetSplitView(false); break;
+				default:
+					return JsonSerializer.Serialize(new { success = false, error = "unknown command: " + command, known = new[] { "orient", "swap", "popout", "close" } });
+			}
+			return JsonSerializer.Serialize(new {
+				success = true,
+				command,
+				splitActive = window.SplitViewActive,
+				floating = window.SplitViewFloating,
+				horizontal = window.SplitViewHorizontal
+			});
+		}
+
+		[DevFlowAction("od.editor.navigation-bar", Description = "Report whether the active editor shows the type/member navigation combo (QuickClassBrowser) - it must be absent for XAML markup files.")]
+		public static string NavigationBar()
+		{
+			var control = SD.Workbench.ActiveViewContent?.Control as System.Windows.DependencyObject;
+			if (control == null)
+				return JsonSerializer.Serialize(new { success = false, error = "no active editor control" });
+
+			string? found = null;
+			var queue = new Queue<System.Windows.DependencyObject>();
+			queue.Enqueue(control);
+			while (queue.Count > 0 && found == null)
+			{
+				var node = queue.Dequeue();
+				if (node.GetType().Name.Contains("QuickClassBrowser", StringComparison.Ordinal))
+				{
+					found = node.GetType().FullName;
+					break;
+				}
+				var count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(node);
+				for (int i = 0; i < count; i++)
+					queue.Enqueue(System.Windows.Media.VisualTreeHelper.GetChild(node, i));
+			}
+
+			return JsonSerializer.Serialize(new {
+				success = true,
+				file = SD.Workbench.ActiveViewContent?.PrimaryFile?.FileName?.ToString(),
+				controller = SD.Workbench.ActiveViewContent?.GetType().FullName,
+				navigationBar = found
+			});
+		}
+
 		// Every mouse-down the main window actually receives, newest last. Recorded synchronously in
 		// the handler, so unlike a "last pick" field owned by some feature there is no staleness and
 		// no chance of reading the previous gesture's value.

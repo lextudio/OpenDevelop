@@ -416,7 +416,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			Capabilities = DesignerCanvasCapabilities.Zoom | DesignerCanvasCapabilities.Fit |
 				DesignerCanvasCapabilities.Gridlines | DesignerCanvasCapabilities.ShowNames |
 				DesignerCanvasCapabilities.StatusBar;
-			StatusText = "Starting WPF design host…";
+			StatusText = $"Starting {BackendName} design host…";
 			foreach (var label in ZoomLabels)
 				ZoomCombo.Items.Add(label);
 			ZoomCombo.SelectedIndex = 4; // "100%"
@@ -528,7 +528,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			// accepted frame and surface the rejection as status instead.
 			if (!newState.Accepted && state?.Render is { Data.Length: > 0 })
 			{
-				StatusText = "WPF design host: " + (newState.Error ?? "operation was rejected.");
+				StatusText = $"{BackendName} design host: " + (newState.Error ?? "operation was rejected.");
 				return;
 			}
 			state = newState;
@@ -549,7 +549,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			var render = newState.Render;
 			if (render == null || string.IsNullOrEmpty(render.Data) || render.Width <= 0 || render.Height <= 0)
 			{
-				StatusText = "WPF design host: nothing rendered yet.";
+				StatusText = $"{BackendName} design host: nothing rendered yet.";
 				framePresenter.Clear();
 				frameBackground.Width = frameBackground.Height = 0;
 				viewport = DesignViewport.Identity(0, 0);
@@ -1528,7 +1528,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			}
 			if (result == null || !result.Accepted)
 			{
-				StatusText = "WPF design host: " + (result?.Error ?? "drop was rejected.");
+				StatusText = $"{BackendName} design host: " + (result?.Error ?? "drop was rejected.");
 				return;
 			}
 			Show(result);

@@ -344,6 +344,14 @@ namespace ICSharpCode.SharpDevelop.Project
 		{
 			try {
 				changeWatcher.Disable();
+				if (fileName.HasExtension(".slnx")) {
+					// SolutionWriter only knows the classic text format; writing it into a .slnx
+					// destroys the file (and everything the model does not carry, e.g. per-project
+					// configuration rules).
+					SlnxSolutionWriter.Write(this);
+					changeWatcher.Enable();
+					return;
+				}
 				using (var solutionWriter = new SolutionWriter(fileName)) {
 					var version = ComputeSolutionVersion();
 					solutionWriter.WriteFormatHeader(version);

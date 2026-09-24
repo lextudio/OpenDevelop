@@ -164,6 +164,20 @@ namespace ICSharpCode.AvalonEdit.AddIn
 					return AvalonContentTypeRegistry.Text;
 			}
 		}
+
+		/// <summary>The type/member navigation combo is a code-editor affordance; markup files
+		/// (XAML and its variants) do not show it, matching Visual Studio's XAML editor.</summary>
+		static bool HidesNavigationBar(FileName fileName)
+		{
+			switch (fileName.GetExtension().ToLowerInvariant()) {
+				case ".xaml":
+				case ".axaml":
+				case ".mxaml":
+					return true;
+				default:
+					return false;
+			}
+		}
 		
 		void UpdateSyntaxHighlighting(FileName fileName)
 		{
@@ -747,7 +761,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		
 		public void ParseInformationUpdated(ParseInformation parseInfo)
 		{
-			if (parseInfo != null && CodeEditorOptions.Instance.EnableQuickClassBrowser) {
+			if (parseInfo != null && CodeEditorOptions.Instance.EnableQuickClassBrowser && !HidesNavigationBar(this.FileName)) {
 				// The language-service parser deliberately has no live Roslyn/NRefactory types in
 				// remote mode. The navigation bar obtains its real items asynchronously from the
 				// document-outline DTO, so using TopLevelTypeDefinitions as its creation gate would

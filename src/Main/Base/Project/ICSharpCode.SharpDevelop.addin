@@ -197,12 +197,14 @@
 		     class    = "ICSharpCode.SharpDevelop.Gui.PropertyPad"
 		     defaultPosition = "Right" />
 
+		<!-- MVP: removed - Pad FileScout: Src/Gui/Pads/FileScout.cs is excluded from compilation (WinForms pad); no replacement in the WPF Project Browser yet.
 		<Pad id       = "FileScout"
 		     category = "Tools"
 		     title    = "${res:MainWindow.Windows.FileScoutLabel}"
 		     icon     = "PadIcons.FileBrowser"
 		     class    = "ICSharpCode.SharpDevelop.Gui.FileScout"
 		     defaultPosition = "Left, Hidden" />
+		-->
 		
 		<Pad id       = "SearchResults"
 		     category = "Tools"
@@ -287,6 +289,7 @@
 		          class = "ICSharpCode.SharpDevelop.Project.Commands.Clean"/>
 		<MenuItem id = "CombineBuildGroupSeparator" type = "Separator"/>
 		
+		<!-- MVP: removed - CombineAddMenu (AddNewProjectToSolution, AddExistingProjectToSolution, AddExistingItemToSolution, AddNewSolutionFolderToSolution): SolutionNodeCommands.cs is excluded from compilation; New Project is superseded by the equivalent entry ICSharpCode.SharpDevelop.ProjectBrowser.addin adds to this same node.
 		<Condition name="WriteableSolution" action="Disable">
 			<MenuItem id = "CombineAddMenu" label = "${res:ProjectComponent.ContextMenu.AddMenu}" type = "Menu">
 				<MenuItem id    = "AddNewProjectToSolution"
@@ -306,18 +309,21 @@
 				          class = "ICSharpCode.SharpDevelop.Project.Commands.AddNewSolutionFolderToSolution"/>
 			</MenuItem>
 		</Condition>
+		-->
 		
 		<MenuItem id = "AddSeparator" type = "Separator"/>
+		<!-- MVP: removed - OpenFolderContainingFile / OpenCommandPromptHere: DefaultFileNodeCommands.cs is excluded from compilation; Open Folder is superseded by the equivalent entry ICSharpCode.SharpDevelop.ProjectBrowser.addin adds to this same node.
 		<MenuItem id = "OpenFolderContainingFile"
 		          label = "${res:Gui.ProjectBrowser.OpenFolderInExplorer}"
 		          class = "ICSharpCode.SharpDevelop.Project.Commands.OpenFolderContainingFile"/>
 		<MenuItem id = "OpenCommandPromptHere"
 		          label = "${res:OpenFileTabEventHandler.OpenCommandPromptHere}"
 		          class = "ICSharpCode.SharpDevelop.Project.Commands.OpenCommandPromptHere"/>
+		-->
 		<MenuItem id = "OpenSeparator" type = "Separator"/>
 		<MenuItem id    = "CollapseAll"
 		          label = "${res:ProjectComponent.ContextMenu.CollapseAll}"
-		          class = "ICSharpCode.SharpDevelop.Project.Commands.CollapseAll"/>
+		          class = "ICSharpCode.SharpDevelop.Commands.CollapseAllProjectBrowserCommand"/>
 		<MenuItem id    = "Paste"
 		          label = "${res:XML.MainMenu.EditMenu.Paste}"
 		          icon  = "Icons.16x16.PasteIcon"
@@ -326,7 +332,7 @@
 		<MenuItem id       = "Rename"
 		          label    = "${res:ProjectComponent.ContextMenu.Rename}"
 		          shortcut = "F2"
-		          class    = "ICSharpCode.SharpDevelop.Project.Commands.RenameEntryEvent"/>
+		          class    = "ICSharpCode.SharpDevelop.Commands.RenameProjectBrowserItemCommand"/>
 		<MenuItem id = "Separator3" type = "Separator"/>
 		<MenuItem id    = "Properties"
 		          icon  = "Icons.16x16.PropertiesIcon"
@@ -335,15 +341,19 @@
 	</Path>
 	
 	<Path path = "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/SolutionFolderNode">
+		<!-- MVP: removed - CombineAddMenu (its SolutionNode item is commented out above) and CutPasteRemoveRename:
+		     the WPF Project Browser's Add/Rename/Remove for solution folders live in ContextMenu/SolutionFolderNode
+		     of ICSharpCode.SharpDevelop.ProjectBrowser.addin.
 		<Include id = "CombineAddMenu" item="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/SolutionNode/CombineAddMenu"/>
-		
-		<Include id = "CollapseAll" item="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/SolutionNode/CollapseAll"/>
-		
 		<MenuItem id = "AddSeparator" type = "Separator"/>
 		<Include id="CutPasteRemoveRename" path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/CutPasteRemoveRename"/>
+		-->
+		<Include id = "CollapseAll" item="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/SolutionNode/CollapseAll"/>
 	</Path>
 	
 	<Path path = "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/SolutionItemNode">
+		<!-- MVP: removed - DefaultFileNodeCommands.cs is excluded from compilation; the WPF Project Browser's
+		     entries for solution items live in ContextMenu/SolutionItemNode of ICSharpCode.SharpDevelop.ProjectBrowser.addin.
 		<MenuItem id = "OpenFile"
 		          label = "${res:ProjectComponent.ContextMenu.Open}"
 		          icon  = "Icons.16x16.OpenFileIcon"
@@ -359,6 +369,7 @@
 		          class = "ICSharpCode.SharpDevelop.Project.Commands.OpenCommandPromptHere"/>
 		<MenuItem id = "OpenSeparator" type = "Separator" />
 		<Include id="CutCopyRemoveRename" path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/CutCopyRemoveRename"/>
+		-->
 	</Path>
 	
 	<Path path = "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/ProjectNode">
@@ -378,10 +389,13 @@
 		<MenuItem id = "CombineBuildGroupSeparator" type = "Separator"/>
 		
 		<Condition name="WriteableProject" action="Disable">
+			<!-- MVP: removed - ProjectAddMenu: duplicates the entry ICSharpCode.SharpDevelop.ProjectBrowser.addin adds to this node (Add); the main Project menu keeps its own ProjectAddMenu.
 			<MenuItem id = "ProjectAddMenu" label = "${res:ProjectComponent.ContextMenu.AddMenu}" type = "Menu" >
 				<Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/FolderNode/Add"/>
 			</MenuItem>
+			-->
 			
+			<!-- MVP: removed - AddReference / AddServiceReference / AddWebReference: ReferenceFolderNodeCommands.cs is excluded from compilation; no replacement in the WPF Project Browser yet.
 			<MenuItem id    = "AddReference"
 			          label = "${res:ProjectComponent.ContextMenu.AddReference}"
 			          class = "ICSharpCode.SharpDevelop.Project.Commands.AddReferenceToProject"/>
@@ -391,14 +405,17 @@
 			<MenuItem id    = "AddWebReference"
 			          label = "${res:ProjectComponent.ContextMenu.AddWebReference}"
 			          class = "ICSharpCode.SharpDevelop.Project.Commands.AddWebReferenceToProject"/>
+			-->
 			<MenuItem id = "AddSeparator" type = "Separator"/>
 		</Condition>
 		
 		<Include id = "CollapseAll" item="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/SolutionNode/CollapseAll"/>
 		
+		<!-- MVP: removed - OpenProjectWith: DefaultFileNodeCommands.cs is excluded from compilation; Open With is superseded by the equivalent entry ICSharpCode.SharpDevelop.ProjectBrowser.addin adds to this same node.
 		<MenuItem id    = "OpenProjectWith"
 		          label = "${res:Gui.ProjectBrowser.OpenWith}"
 		          class = "ICSharpCode.SharpDevelop.Project.Commands.OpenFileFromProjectBrowserWith"/>
+		-->
 		
 		<MenuItem id    = "EditProjectFile"
 		          label = "${res:ProjectComponent.ContextMenu.EditProjectFile}"
@@ -406,7 +423,9 @@
 		
 		<Include id = "ProjectActions" path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/ProjectActions"/>
 		<MenuItem id = "Separator2" type = "Separator"/>
+		<!-- MVP: removed - Cut/Paste/Remove/Rename: duplicates the entry ICSharpCode.SharpDevelop.ProjectBrowser.addin adds to this node (Common/Edit).
 		<Include id="inc" path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/CutPasteRemoveRename"/>
+		-->
 		<MenuItem id = "CutCopyPasteSeparator" type = "Separator"/>
 		<MenuItem id    = "Properties"
 		          icon  = "Icons.16x16.PropertiesIcon"
@@ -434,25 +453,30 @@
 		<MenuItem id = "OpenProjectOutputFolder"
 		          label = "${res:ProjectComponent.ContextMenu.OpenProjectOutputFolder}"
 		          class = "ICSharpCode.SharpDevelop.Project.Commands.OpenProjectOutputFolder"/>
+		<!-- MVP: removed - OpenCommandPromptHere: DefaultFileNodeCommands.cs is excluded from compilation; superseded by
+		     "Open in Terminal" in ContextMenu/Common/Open of ICSharpCode.SharpDevelop.ProjectBrowser.addin.
 		<MenuItem id = "OpenCommandPromptHere"
 		          label = "${res:OpenFileTabEventHandler.OpenCommandPromptHere}"
 		          class = "ICSharpCode.SharpDevelop.Project.Commands.OpenCommandPromptHere"/>
+		-->
 		<Condition name="IsProcessRunning" isprocessrunning="False" isdebugging="False" action="Disable">
 			<MenuItem id          = "Run"
 			          label       = "${res:ProjectComponent.ContextMenu.RunProject}"
 			          icon        = "Icons.16x16.RunProgramIcon"
-			          class       = "ICSharpCode.SharpDevelop.Project.Commands.RunProject"/>
+			          class       = "ICSharpCode.SharpDevelop.Commands.RunProjectProjectBrowserCommand"/>
 		</Condition>
 		<MenuItem id          = "RunWithoutDebugger"
 		          label       = "${res:ProjectComponent.ContextMenu.RunProjectWithoutDebugger}"
 		          icon        = "Icons.16x16.Debug.StartWithoutDebugging"
-		          class       = "ICSharpCode.SharpDevelop.Project.Commands.RunProjectWithoutDebugger"/>
+		          class       = "ICSharpCode.SharpDevelop.Commands.RunProjectWithoutDebuggerProjectBrowserCommand"/>
 		<MenuItem id    = "SetAsStartupProject"
 		          label = "${res:ProjectComponent.ContextMenu.SetAsStartupProject}"
-		          class = "ICSharpCode.SharpDevelop.Project.Commands.SetAsStartupProject"/>
+		          class = "ICSharpCode.SharpDevelop.Commands.SetStartupProjectProjectBrowserCommand"/>
+		<!-- MVP: removed - GenerateDocumentation: GenerateProjectDocumentation has no compiled implementation; no replacement in the WPF Project Browser yet.
 		<MenuItem id = "GenerateDocumentation"
 		          label = "${res:ProjectComponent.ContextMenu.GenerateDocumentation}"
 		          class = "ICSharpCode.SharpDevelop.Project.Commands.GenerateProjectDocumentation"/>
+		-->
 	</Path>
 	
 	<Path name = "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/ReferenceFolderNode">
@@ -470,6 +494,7 @@
 	</Path>
 	
 	<Path name = "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/FileNode">
+		<!-- MVP: removed - OpenFile / OpenFileWith / OpenFolderContainingFile / OpenCommandPromptHere: DefaultFileNodeCommands.cs is excluded from compilation; Open, Open With and Open Folder are superseded by the equivalent entry ICSharpCode.SharpDevelop.ProjectBrowser.addin adds to this same node.
 		<ComplexCondition>
 			<Not>
 				<Condition name = "Ownerstate" ownerstate = "Missing"/>
@@ -488,6 +513,7 @@
 			          label = "${res:OpenFileTabEventHandler.OpenCommandPromptHere}"
 			          class = "ICSharpCode.SharpDevelop.Project.Commands.OpenCommandPromptHere"/>
 		</ComplexCondition>
+		-->
 		<Condition name = "Ownerstate" ownerstate = "Missing">
 			<MenuItem id = "Remove"
 			          label = "${res:Global.RemoveButtonText}"
@@ -505,6 +531,7 @@
 				<Condition name = "Ownerstate" ownerstate = "InProject">
 					<MenuItem id = "Add" label = "${res:ProjectComponent.ContextMenu.AddMenu}" type="Menu">
 						<Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/FolderNode/Add"/>
+						<!-- MVP: removed - NewDependentItem / ExistingItemAsDependent: DefaultFileNodeCommands.cs is excluded from compilation; no replacement in the WPF Project Browser yet.
 						<MenuItem id    = "AddDependentSeparator"
 						          type  = "Separator" />
 						<MenuItem id    = "NewDependentItem"
@@ -515,11 +542,13 @@
 						          label = "${res:ProjectComponent.ContextMenu.ExistingItemAsDependent}"
 						          icon  = "ProjectBrowser.CodeBehind"
 						          class = "ICSharpCode.SharpDevelop.Project.Commands.AddExistingItemsToProjectAsDependent"/>
+						-->
 					</MenuItem>
 					<MenuItem id = "AddSeparator" type = "Separator"  />
 				</Condition>
 			</Condition>
 			
+			<!-- MVP: removed - ExcludeFile / ExecuteCustomTool / IncludeFile: DefaultFileNodeCommands.cs is excluded and ExecuteCustomToolCommand is not compiled; Include/Exclude are superseded by the equivalent entry ICSharpCode.SharpDevelop.ProjectBrowser.addin adds to this same node (Common/Membership).
 			<ComplexCondition>
 				<Or>
 					<Condition name = "Ownerstate" ownerstate = "InProject"/>
@@ -548,6 +577,7 @@
 				</Condition>
 				<MenuItem id = "ExcludeSeparator" type = "Separator" />
 			</ComplexCondition>
+			-->
 			
 			<!-- MVP: removed ComplexCondition wrapping MenuItem id="ViewInBrowser" class="ICSharpCode.SharpDevelop.Project.Commands.ViewInBrowser" -
 			     that class's source (Src/Commands/ViewInBrowser.cs) is excluded from compilation (legacy
@@ -556,7 +586,9 @@
 			     ContextMenu/FileNode path in ICSharpCode.SharpDevelop.ProjectBrowser.addin, whose command
 			     checks the .htm/.html extension itself instead of relying on a ConditionEvaluator. -->
 
+			<!-- MVP: removed - Cut/Copy/Paste/Delete/Rename: duplicates the entry ICSharpCode.SharpDevelop.ProjectBrowser.addin adds to this node (Common/Edit).
 			<Include id="CutCopyPasteDeleteRename" path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/CutCopyPasteDeleteRename"/>
+			-->
 			<MenuItem id = "RenameSeparator" type = "Separator" />
 			<MenuItem id    = "Properties"
 			          icon  = "Icons.16x16.PropertiesIcon"
@@ -590,7 +622,7 @@
 			<MenuItem id = "Rename"
 			          label    = "${res:ProjectComponent.ContextMenu.Rename}"
 			          shortcut = "F2"
-			          class    = "ICSharpCode.SharpDevelop.Project.Commands.RenameEntryEvent"/>
+			          class    = "ICSharpCode.SharpDevelop.Commands.RenameProjectBrowserItemCommand"/>
 		</Condition>
 	</Path>
 	
@@ -619,7 +651,7 @@
 			<MenuItem id = "Rename"
 			          label    = "${res:ProjectComponent.ContextMenu.Rename}"
 			          shortcut = "F2"
-			          class    = "ICSharpCode.SharpDevelop.Project.Commands.RenameEntryEvent"/>
+			          class    = "ICSharpCode.SharpDevelop.Commands.RenameProjectBrowserItemCommand"/>
 		</Condition>
 	</Path>
 	
@@ -654,27 +686,30 @@
 			<MenuItem id = "Rename"
 			          label    = "${res:ProjectComponent.ContextMenu.Rename}"
 			          shortcut = "F2"
-			          class    = "ICSharpCode.SharpDevelop.Project.Commands.RenameEntryEvent"/>
+			          class    = "ICSharpCode.SharpDevelop.Commands.RenameProjectBrowserItemCommand"/>
 		</Condition>
 	</Path>
 	
 	<Path name = "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/FolderNode">
 		<Condition name = "Ownerstate" ownerstate = "Missing">
+			<!-- MVP: removed - CreateMissing: FolderNodeCommands.cs is excluded from compilation; no replacement in the WPF Project Browser yet.
 			<MenuItem id = "CreateMissing"
 			          label = "${res:ProjectComponent.ContextMenu.NewFolder}"
 			          type  = "Item"
 			          icon  = "Icons.16x16.NewFolderIcon"
 			          class = "ICSharpCode.SharpDevelop.Project.Commands.CreateMissingCommand"/>
+			-->
 			<MenuItem id = "RemoveMissing"
 			          label = "${res:Global.RemoveButtonText}"
 			          type  = "Item"
 			          icon  = "Icons.16x16.DeleteIcon"
-			          class = "ICSharpCode.SharpDevelop.Project.Commands.ExcludeFileFromProject"/>
+			          class = "ICSharpCode.SharpDevelop.Commands.RemoveFromProjectProjectBrowserCommand"/>
 		</Condition>
 		<ComplexCondition>
 			<Not>
 				<Condition name = "Ownerstate" ownerstate = "Missing"/>
 			</Not>
+			<!-- MVP: removed - Add submenu (AddNewItemsToProject, AddExistingItemsToProject, AddNewFolderToProject, AddExistingFolderToProject): FolderNodeCommands.cs is excluded from compilation, so every item failed with Cannot find class (GitHub issue 10). The FolderNode/Add node itself survives - the Add codon in ICSharpCode.SharpDevelop.ProjectBrowser.addin fills it from Common/Add - so the Includes of FolderNode/Add (ProjectNode, FileNode, Project main menu) keep working.
 			<MenuItem id = "Add" label = "${res:ProjectComponent.ContextMenu.AddMenu}" type="Menu">
 				<MenuItem id    = "New Item"
 				          label = "${res:ProjectComponent.ContextMenu.NewItem}"
@@ -691,14 +726,18 @@
 				          label = "${res:ProjectComponent.ContextMenu.ExistingFolder}"
 				          class = "ICSharpCode.SharpDevelop.Project.Commands.AddExistingFolderToProject"/>
 			</MenuItem>
+			-->
 			<MenuItem id = "AddSeparator" type = "Separator"  />
 			<Include id = "CollapseAll" item="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/SolutionNode/CollapseAll"/>
+			<!-- MVP: removed - OpenFolder / OpenCommandPromptHere: DefaultFileNodeCommands.cs is excluded from compilation; Open Folder is superseded by the equivalent entry ICSharpCode.SharpDevelop.ProjectBrowser.addin adds to this same node.
 			<MenuItem id = "OpenFolder"
 			          label = "${res:Gui.ProjectBrowser.OpenFolderInExplorer}"
 			          class = "ICSharpCode.SharpDevelop.Project.Commands.OpenFolder"/>
 			<MenuItem id = "OpenCommandPromptHere"
 			          label = "${res:OpenFileTabEventHandler.OpenCommandPromptHere}"
 			          class = "ICSharpCode.SharpDevelop.Project.Commands.OpenCommandPromptHere"/>
+			-->
+			<!-- MVP: removed - ExcludeFile / IncludeFile: DefaultFileNodeCommands.cs is excluded from compilation; no replacement in the WPF Project Browser yet for folders.
 			<ComplexCondition>
 				<Or>
 					<Condition name = "Ownerstate" ownerstate = "InProject"/>
@@ -718,8 +757,11 @@
 				
 				<MenuItem id = "ExcludeSeparator" type = "Separator" />
 			</ComplexCondition>
+			-->
 			
+			<!-- MVP: removed - Cut/Copy/Paste/Delete/Rename: duplicates the entry ICSharpCode.SharpDevelop.ProjectBrowser.addin adds to this node (Common/Edit).
 			<Include id="CutCopyPasteDeleteRename" path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/CutCopyPasteDeleteRename"/>
+			-->
 		</ComplexCondition>
 	</Path>
 	
@@ -747,7 +789,7 @@
 			<MenuItem id = "Rename"
 			          label    = "${res:ProjectComponent.ContextMenu.Rename}"
 			          shortcut = "F2"
-			          class    = "ICSharpCode.SharpDevelop.Project.Commands.RenameEntryEvent"/>
+			          class    = "ICSharpCode.SharpDevelop.Commands.RenameProjectBrowserItemCommand"/>
 		</ComplexCondition>
 	</Path>
 	
@@ -776,7 +818,7 @@
 			<MenuItem id = "Rename"
 			          label    = "${res:ProjectComponent.ContextMenu.Rename}"
 			          shortcut = "F2"
-			          class    = "ICSharpCode.SharpDevelop.Project.Commands.RenameEntryEvent"/>
+			          class    = "ICSharpCode.SharpDevelop.Commands.RenameProjectBrowserItemCommand"/>
 			<MenuItem id = "PropertiesSeparator" type = "Separator" />
 			<MenuItem id = "Properties"
 			          icon  = "Icons.16x16.PropertiesIcon"
@@ -808,7 +850,7 @@
 			<MenuItem id       = "Rename"
 			          label    = "${res:ProjectComponent.ContextMenu.Rename}"
 			          shortcut = "F2"
-			          class    = "ICSharpCode.SharpDevelop.Project.Commands.RenameEntryEvent"/>
+			          class    = "ICSharpCode.SharpDevelop.Commands.RenameProjectBrowserItemCommand"/>
 		</ComplexCondition>
 	</Path>
 	
@@ -832,7 +874,7 @@
 			<MenuItem id = "Rename"
 			          label    = "${res:ProjectComponent.ContextMenu.Rename}"
 			          shortcut = "F2"
-			          class    = "ICSharpCode.SharpDevelop.Project.Commands.RenameEntryEvent"/>
+			          class    = "ICSharpCode.SharpDevelop.Commands.RenameProjectBrowserItemCommand"/>
 			<MenuItem id = "PropertiesSeparator" type = "Separator" />
 			<MenuItem id = "Properties"
 			          icon  = "Icons.16x16.PropertiesIcon"
@@ -842,16 +884,20 @@
 	</Path>
 	
 	<Path name = "/SharpDevelop/Pads/ProjectBrowser/ContextMenu/ReferenceNode">
+		<!-- MVP: removed - RefreshReference: ReferenceFolderNodeCommands.cs is excluded from compilation; no replacement in the WPF Project Browser yet.
 		<MenuItem id    = "RefreshReference"
 		          icon  = "Icons.16x16.BrowserRefresh"
 		          label = "${res:Global.Refresh}"
 		          class = "ICSharpCode.SharpDevelop.Project.Commands.RefreshReference"/>
+		-->
+		<!-- MVP: removed - Remove: duplicates the entry ICSharpCode.SharpDevelop.ProjectBrowser.addin adds to this node (RemoveReference).
 		<Condition name="WriteableProject" action="Disable">
 			<MenuItem id    = "Remove"
 			          label = "${res:Global.RemoveButtonText}"
 			          icon  = "Icons.16x16.DeleteIcon"
 			          class = "ICSharpCode.SharpDevelop.Commands.DeleteProjectBrowserItemCommand"/>
 		</Condition>
+		-->
 		<MenuItem id = "RemoveSeparator" type = "Separator" />
 		<MenuItem id    = "Properties"
 		          icon  = "Icons.16x16.PropertiesIcon"
@@ -1358,7 +1404,7 @@
 					<MenuItem id          = "Project"
 					          label       = "${res:XML.MainMenu.FileMenu.New.Project}"
 					          icon        = "Icons.16x16.NewProjectIcon"
-					          class       = "ICSharpCode.SharpDevelop.Project.Commands.AddNewProjectToSolution"/>
+					          class       = "ICSharpCode.SharpDevelop.Commands.NewProjectProjectBrowserCommand"/>
 				</Condition>
 				
 				<MenuItem id          = "Solution"
@@ -1585,13 +1631,15 @@
 				</MenuItem>
 				<MenuItem id    = "AddReference"
 				          label = "${res:ProjectComponent.ContextMenu.AddReference}"
-				          class = "ICSharpCode.SharpDevelop.Project.Commands.AddReferenceToProject"/>
+				          class = "ICSharpCode.SharpDevelop.Commands.AddReferenceProjectBrowserCommand"/>
+				<!-- MVP: removed - AddServiceReference / AddWebReference: ReferenceFolderNodeCommands.cs is excluded from compilation; WCF/ASMX references are not offered.
 				<MenuItem id    = "AddServiceReference"
 				          label = "${res:ProjectComponent.ContextMenu.AddServiceReference}"
 				          class = "ICSharpCode.SharpDevelop.Project.Commands.AddServiceReferenceToProject"/>
 				<MenuItem id    = "AddWebReference"
 				          label = "${res:ProjectComponent.ContextMenu.AddWebReference}"
 				          class = "ICSharpCode.SharpDevelop.Project.Commands.AddWebReferenceToProject"/>
+				-->
 				<MenuItem id = "AddSeparator" type = "Separator"/>
 				<Include id = "ProjectActions" path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/ProjectActions"/>
 				<MenuItem id = "Separator2" type = "Separator" />

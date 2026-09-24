@@ -52,6 +52,11 @@
 
   <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Add">
     <MenuItem id="NewProject" label="New Project..." class="ICSharpCode.SharpDevelop.Commands.NewProjectProjectBrowserCommand" />
+    <Condition name="Ownerstate" ownerstate="Solution">
+      <MenuItem id="ExistingProject" label="Existing Project..." class="ICSharpCode.SharpDevelop.Commands.AddExistingProjectProjectBrowserCommand" />
+      <MenuItem id="NewSolutionFolder" label="New Solution Folder..." class="ICSharpCode.SharpDevelop.Commands.NewSolutionFolderProjectBrowserCommand" />
+      <MenuItem id="AddSolutionItems" label="Existing Item..." class="ICSharpCode.SharpDevelop.Commands.AddSolutionItemsProjectBrowserCommand" />
+    </Condition>
     <MenuItem id="NewItem" label="New Item..." class="ICSharpCode.SharpDevelop.Commands.NewItemProjectBrowserCommand" />
     <MenuItem id="NewFolder" label="New Folder" class="ICSharpCode.SharpDevelop.Commands.NewFolderProjectBrowserCommand" />
     <MenuItem id="NewFile" label="New File" class="ICSharpCode.SharpDevelop.Commands.NewFileProjectBrowserCommand" />
@@ -70,7 +75,14 @@
     <MenuItem id="OpenWith" label="Open With" class="ICSharpCode.SharpDevelop.Commands.OpenWithProjectBrowserCommand">
       <Condition name="Ownerstate" ownerstate="OpenWith" />
     </MenuItem>
-    <MenuItem id="OpenFolder" label="Open Folder" class="ICSharpCode.SharpDevelop.Commands.OpenFolderProjectBrowserCommand" />
+    <!-- A project node already gets "Open Folder in Explorer" from ContextMenu/ProjectActions. -->
+    <ComplexCondition>
+      <Not>
+        <Condition name="Ownerstate" ownerstate="Project" />
+      </Not>
+      <MenuItem id="OpenFolder" label="Open Folder" class="ICSharpCode.SharpDevelop.Commands.OpenFolderProjectBrowserCommand" />
+    </ComplexCondition>
+    <MenuItem id="OpenTerminal" label="Open in Terminal" class="ICSharpCode.SharpDevelop.Commands.OpenTerminalProjectBrowserCommand" />
   </Path>
 
   <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Edit">
@@ -107,6 +119,28 @@
     <MenuItem id="Separator1" type="Separator" />
     <MenuItem id="CopyPath" label="Copy Path" class="ICSharpCode.SharpDevelop.Commands.CopyPathProjectBrowserCommand" />
     <MenuItem id="OpenFolder" label="Open Folder" class="ICSharpCode.SharpDevelop.Commands.OpenFolderProjectBrowserCommand" />
+    <MenuItem id="OpenTerminal" label="Open in Terminal" class="ICSharpCode.SharpDevelop.Commands.OpenTerminalProjectBrowserCommand" />
+  </Path>
+
+  <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/SolutionFolderNode">
+    <MenuItem id="Add" label="Add" type="Menu">
+      <MenuItem id="ExistingProject" label="Existing Project..." class="ICSharpCode.SharpDevelop.Commands.AddExistingProjectProjectBrowserCommand" />
+      <MenuItem id="NewSolutionFolder" label="New Solution Folder..." class="ICSharpCode.SharpDevelop.Commands.NewSolutionFolderProjectBrowserCommand" />
+      <MenuItem id="AddSolutionItems" label="Existing Item..." class="ICSharpCode.SharpDevelop.Commands.AddSolutionItemsProjectBrowserCommand" />
+    </MenuItem>
+    <MenuItem id="Separator1" type="Separator" />
+    <MenuItem id="Rename" label="Rename" class="ICSharpCode.SharpDevelop.Commands.RenameProjectBrowserItemCommand" />
+    <MenuItem id="RemoveFromSolution" label="Remove" class="ICSharpCode.SharpDevelop.Commands.RemoveFromProjectProjectBrowserCommand" />
+  </Path>
+
+  <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/SolutionItemNode">
+    <MenuItem id="Open" label="Open" class="ICSharpCode.SharpDevelop.Commands.OpenProjectBrowserItemCommand" />
+    <MenuItem id="OpenWith" label="Open With" class="ICSharpCode.SharpDevelop.Commands.OpenWithProjectBrowserCommand" />
+    <MenuItem id="OpenFolder" label="Open Folder" class="ICSharpCode.SharpDevelop.Commands.OpenFolderProjectBrowserCommand" />
+    <MenuItem id="OpenTerminal" label="Open in Terminal" class="ICSharpCode.SharpDevelop.Commands.OpenTerminalProjectBrowserCommand" />
+    <MenuItem id="Separator1" type="Separator" />
+    <MenuItem id="CopyPath" label="Copy Path" class="ICSharpCode.SharpDevelop.Commands.CopyPathProjectBrowserCommand" />
+    <MenuItem id="RemoveFromSolution" label="Remove" class="ICSharpCode.SharpDevelop.Commands.RemoveFromProjectProjectBrowserCommand" />
   </Path>
 
   <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/ProjectNode">
@@ -116,9 +150,9 @@
     <MenuItem id="Add" label="Add" type="Menu">
       <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Add" />
     </MenuItem>
-    <MenuItem id="SetStartup" label="Set Startup Project" class="ICSharpCode.SharpDevelop.Commands.SetStartupProjectProjectBrowserCommand">
-      <Condition name="Ownerstate" ownerstate="StartupProject" />
-    </MenuItem>
+    <MenuItem id="AddReferenceDialog" label="Add Reference..." class="ICSharpCode.SharpDevelop.Commands.AddReferenceProjectBrowserCommand" />
+    <!-- Set Startup Project comes from ContextMenu/ProjectActions in ICSharpCode.SharpDevelop.addin, which the
+         main Project menu shares, so it is not repeated here. -->
     <MenuItem id="Separator2" type="Separator" />
     <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Edit" />
   </Path>
@@ -138,6 +172,7 @@
     <MenuItem id="ViewInBrowser" label="View in Browser" icon="Icons.22x22.Browser" class="ICSharpCode.SharpDevelop.Commands.ViewInBrowserProjectBrowserCommand" />
     <MenuItem id="Separator1" type="Separator" />
     <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Membership" />
+    <MenuItem id="RunCustomTool" label="Run Custom Tool" class="ICSharpCode.SharpDevelop.Commands.RunCustomToolProjectBrowserCommand" />
     <MenuItem id="Separator2" type="Separator" />
     <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Edit" />
   </Path>
