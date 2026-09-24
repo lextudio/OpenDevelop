@@ -153,14 +153,24 @@ namespace ICSharpCode.WpfDesign.AddIn
 			DesignerCanvas canvas = (DesignerCanvas?)surfaceControl ?? new DesignerCanvas();
 			this.UserContent = canvas;
 			var framework = XamlFrameworkDetector.Detect(PrimaryFile.FileName.ToString());
-			// A Windows WPF document must stay in the native Microsoft WPF host.  In particular,
-			// detection can be Unknown while a loose XAML file is opened before its solution has
-			// finished loading; treating that transient state as LibreWPF silently swaps the runtime
-			// and produces LibreWPF's intentionally skeletal fallback surface instead of WPF design.
-			// LibreWPF is selected only when the project explicitly identifies that runtime (or on a
-			// non-Windows host where Microsoft WPF cannot run).
-			backend = WpfSurfaceHostClient.ResolveBackend(
-				OperatingSystem.IsWindows() && framework.Runtime != XamlRuntimeKind.LibreWpf);
+			// Microsoft WPF and LibreWPF are fully isolated: the project file alone picks the host
+			// (XamlFrameworkDetector), on every OS. A Microsoft WPF project is never designed by
+			// LibreWPF because Microsoft WPF cannot run here, and a project whose runtime cannot be
+			// determined is not guessed at - either way no design host is started.
+			if (framework.Runtime == XamlRuntimeKind.Unknown) {
+				canvas.BackendName = "WPF";
+				canvas.ShowUnavailable("The design view needs this file's project to tell Microsoft WPF from LibreWPF. "
+					+ "Open the solution whose project contains it (" + framework.Evidence + ").");
+				return;
+			}
+			backend = WpfSurfaceHostClient.ResolveBackend(framework.Runtime == XamlRuntimeKind.MicrosoftWpf);
+			// Name the backend on the toolbar before the host starts, so it is shown whether the
+			// host then loads, fails, or cannot run on this OS at all.
+			canvas.BackendName = WpfSurfaceHostClient.GetBackendName(backend);
+			if (!XamlFrameworkDetector.IsRuntimeSupportedOnThisOS(framework.Runtime)) {
+				canvas.ShowUnavailable(DesignerCanvas.UnsupportedOnThisOSMessage("Microsoft WPF", "LibreWPF"));
+				return;
+			}
 			canvas.SetLoading(true, "Starting " + WpfSurfaceHostClient.GetBackendName(backend) + " design host…");
 
 			_ = LoadDesignerAsync(myGeneration, sourceText, backend);

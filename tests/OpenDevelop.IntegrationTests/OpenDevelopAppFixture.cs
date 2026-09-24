@@ -65,7 +65,14 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     // fixture (same reasoning as the NuGet and Git fixtures).
     public string RuntimeUpgradeTemplatePath => LocateRuntimeUpgradeTemplate();
     public string SlnxFixturePath => LocateSlnxFixture();
-    public string WpfSampleSolutionPath => LocateWpfSampleSolution();
+    // The generic WPF designer fixture. Designers serve a project only with its own runtime
+    // (XamlFrameworkDetector), and Microsoft WPF runs only on Windows, so off Windows these tests
+    // exercise the LibreWPF copy of the same sample instead of the Microsoft project.
+    public string WpfSampleSolutionPath => OperatingSystem.IsWindows() ? LocateWpfSampleSolution() : LibreWpfSampleSolutionPath;
+    public string LibreWpfSampleSolutionPath => LocateLibreWpfSampleSolution();
+    // LibreWinForms counterpart of WinFormsSample (LibreWPF.Sdk + UseWindowsForms). Its Form1 sources
+    // are links to WinFormsSample's, which the WinForms designer attributes to this project.
+    public string LibreWinFormsSampleSolutionPath => LocateSample(Path.Combine("src", "Samples", "LibreWinFormsSample", "LibreWinFormsSample.slnx"));
     public string MicrosoftWpfSampleSolutionPath => LocateMicrosoftWpfSampleSolution();
     public string WinFormsSampleSolutionPath => LocateWinFormsSampleSolution();
     public string UnoXamlSampleSolutionPath => LocateUnoXamlSampleSolution();
@@ -1049,6 +1056,31 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         }
         throw new FileNotFoundException(
             "Could not locate externals/vscode-wpf/sample/net6.0/sample.sln by walking up from " + AppContext.BaseDirectory);
+    }
+
+    static string LocateSample(string relativePath)
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir, relativePath);
+            if (File.Exists(candidate)) return candidate;
+            dir = Path.GetDirectoryName(dir);
+        }
+        throw new FileNotFoundException("Could not locate " + relativePath + " by walking up from " + AppContext.BaseDirectory);
+    }
+
+    static string LocateLibreWpfSampleSolution()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir, "src", "Samples", "LibreWpfSample", "LibreWpfSample.slnx");
+            if (File.Exists(candidate)) return candidate;
+            dir = Path.GetDirectoryName(dir);
+        }
+        throw new FileNotFoundException(
+            "Could not locate src/Samples/LibreWpfSample/LibreWpfSample.slnx by walking up from " + AppContext.BaseDirectory);
     }
 
     static string LocateWinFormsSampleSolution()

@@ -1,0 +1,28 @@
+<UserControl x:Class="sample.SamplePane"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d">
+  <Border x:Name="PaneBorder"
+          Padding="12"
+          Background="LightBlue"
+          CornerRadius="8">
+    <StackPanel x:Name="PaneStack">
+      <TextBlock x:Name="PaneTitle"
+                 FontSize="18"
+                 FontWeight="SemiBold"
+                 Text="Sample pane" />
+      <TextBlock x:Name="PaneBody"
+                 Text="Nested control for hot reload smoke tests." />
+      <ListBox x:Name="PaneList"
+               SelectedIndex="1"
+               Margin="0,12,0,0">
+        <TextBlock x:Name="PaneListItemOne"
+                   Text="First item" />
+        <TextBlock x:Name="PaneListItemTwo"
+                   Text="Second item" />
+      </ListBox>
+    </StackPanel>
+  </Border>
+</UserControl>

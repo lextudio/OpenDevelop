@@ -7,7 +7,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
-    <ProGpuWpfEnablePortableBootstrap>false</ProGpuWpfEnablePortableBootstrap>
+    <!-- Same rule as SharpDevelop.csproj. Off Windows the LibreWPF.Sdk module initializer is what
+         registers the LibreWinForms platform backend (ProGpuPlatform.Register); without it the
+         first Form construction fails with "No LibreWinForms platform backend is registered".
+         Program.Main then runs the WinForms pump that backend needs (WinFormsHeadlessPump). -->
+    <ProGpuWpfEnablePortableBootstrap Condition="!$([MSBuild]::IsOSPlatform('Windows'))">true</ProGpuWpfEnablePortableBootstrap>
+    <ProGpuWpfEnablePortableBootstrap Condition="'$(ProGpuWpfEnablePortableBootstrap)' == ''">false</ProGpuWpfEnablePortableBootstrap>
     <OpenDevelopAddin>true</OpenDevelopAddin>
     <OpenDevelopAddinKind>OutOfProcessHost</OpenDevelopAddinKind>
     <!-- dist.ps1 builds the whole distribution AddIn solution with

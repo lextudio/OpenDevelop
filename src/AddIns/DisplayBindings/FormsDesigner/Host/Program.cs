@@ -15,12 +15,19 @@ static class Program
 	[STAThread]
 	static int Main(string[] args)
 	{
-	#if MICROSOFT_WINFORMS
 		// Microsoft WinForms designers need a pumping STA thread, which the DDP wait loop's own
 		// thread is not (StreamJsonRpc dispatches on the thread pool). Keep the pump on Main and
 		// move the wait loop to a worker, marshalling every RPC back here - the same split the WPF
-		// surface host uses. See WinFormsHeadlessPump for the full reasoning.
-		using var pump = new MicrosoftHost.WinFormsHeadlessPump();
+		// surface host uses. LibreWinForms needs the same off Windows, where its ProGPU platform
+		// backend binds every control to its creating thread. See WinFormsHeadlessPump.
+	#if MICROSOFT_WINFORMS
+		const bool usePump = true;
+	#else
+		var usePump = !OperatingSystem.IsWindows();
+	#endif
+		if (!usePump)
+			return DesignerChildHost.Run(args, "FormsDesigner.Host", token => new MultiDocumentDesignerHostService(token));
+		using var pump = new WinFormsHeadlessPump();
 		var exitCode = 0;
 		var host = Task.Run(() => exitCode = DesignerChildHost.Run(args, "FormsDesigner.Host",
 			token => new MultiDocumentDesignerHostService(token),
@@ -29,8 +36,5 @@ static class Program
 		pump.Run();
 		host.GetAwaiter().GetResult();
 		return exitCode;
-	#else
-		return DesignerChildHost.Run(args, "FormsDesigner.Host", token => new MultiDocumentDesignerHostService(token));
-	#endif
 	}
 }

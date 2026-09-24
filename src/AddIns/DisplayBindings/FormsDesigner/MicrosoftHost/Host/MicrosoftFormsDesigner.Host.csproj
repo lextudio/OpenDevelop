@@ -24,6 +24,7 @@
     <!-- The protocol/model implementation is runtime-neutral. These source links deliberately
          compile it against Microsoft WindowsDesktop rather than reference LibreWinForms. -->
     <Compile Include="..\..\Host\Program.cs" Link="Program.cs" />
+    <Compile Include="..\..\Host\WinFormsHeadlessPump.cs" Link="WinFormsHeadlessPump.cs" />
     <Compile Include="..\..\Host\MultiDocumentDesignerHostService.cs" Link="MultiDocumentDesignerHostService.cs" />
     <Compile Include="..\..\Host\DesignerHostService.cs" Link="DesignerHostService.cs" />
     <Compile Include="..\..\Host\SnapshotDesignerLoader.cs" Link="SnapshotDesignerLoader.cs" />

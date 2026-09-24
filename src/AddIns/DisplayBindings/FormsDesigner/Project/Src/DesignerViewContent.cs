@@ -603,10 +603,21 @@ namespace ICSharpCode.FormsDesigner
 		FormsDesignerBackend GetProjectBackend()
 		{
 			var project = GetProjectForFile() as MSBuildBasedProject;
+			var useMicrosoftDesktopRuntime = project?.GetEvaluatedProperty("UseMicrosoftDesktopRuntime");
+			// A LibreWinForms project identifies itself through its SDK - LibreWPF.Sdk sets
+			// ProGpuWpfUseLibreWinForms, LibreWinForms.Sdk sets LibreWinFormsUseSystemWindowsForms -
+			// and is LibreWinForms even with a "-windows" TFM (src/Samples/LibreWinFormsSample), which
+			// the TFM rule alone would otherwise hand to Microsoft WinForms.
+			if (String.IsNullOrEmpty(useMicrosoftDesktopRuntime)
+			    && (IsTrue(project?.GetEvaluatedProperty("ProGpuWpfUseLibreWinForms"))
+			        || IsTrue(project?.GetEvaluatedProperty("LibreWinFormsUseSystemWindowsForms"))))
+				useMicrosoftDesktopRuntime = "false";
 			return FormsDesignerHostClient.ResolveBackend(
-				project?.GetEvaluatedProperty("UseMicrosoftDesktopRuntime"), "",
+				useMicrosoftDesktopRuntime, "",
 				project?.GetEvaluatedProperty("TargetFramework"));
 		}
+
+		static bool IsTrue(string value) => String.Equals(value?.Trim(), "true", StringComparison.OrdinalIgnoreCase);
 		
 		bool hasUnmergedChanges;
 		
@@ -670,6 +681,9 @@ namespace ICSharpCode.FormsDesigner
 				canvas = new DesignerCanvas();
 				base.UserContent = canvas;
 			}
+			// Name the backend on the toolbar before the host starts, so it is shown whether the
+			// host then loads, fails, or is not deployed/supported on this OS.
+			canvas.BackendName = FormsDesignerHostClient.GetBackendName(backend);
 			canvas.SetLoading(true, "Starting " + FormsDesignerHostClient.GetBackendName(backend) + " design host…");
 
 			var oldClient = remoteClient;
@@ -692,6 +706,16 @@ namespace ICSharpCode.FormsDesigner
 			// backend, whose child host is simply not deployed there. Say so plainly instead of
 			// silently designing with LibreWinForms (the old behavior) or surfacing the
 			// ArgumentNullException a null host path would produce from AcquireSharedAsync.
+			// Microsoft WinForms runs only on Windows. Its host may still be deployed beside the
+			// add-in on another OS, so check the OS itself rather than letting the child start and die
+			// on the missing Microsoft.WindowsDesktop.App framework.
+			if (backend == FormsDesignerBackend.MicrosoftWinForms && !OperatingSystem.IsWindows()) {
+				SD.MainThread.InvokeAsyncAndForget(() => {
+					if (generation != loadGeneration || disposing) return;
+					loadingCanvas.ShowUnavailable(DesignerCanvas.UnsupportedOnThisOSMessage("Microsoft WinForms", "LibreWinForms"));
+				});
+				return;
+			}
 			var childDll = FormsDesignerHostClient.LocateChildDll(backend);
 			if (String.IsNullOrEmpty(childDll)) {
 				var backendName = FormsDesignerHostClient.GetBackendName(backend);
@@ -780,7 +804,11 @@ namespace ICSharpCode.FormsDesigner
 		// view is not a request to rearrange the user's pad layout. The outline is still kept up to
 		// date (UpdateOutline); the user opens the pad when they want it.
 
-		readonly DocumentOutlineControl outline = new DocumentOutlineControl();
+		// WinForms rows use the WinForms Toolbox icons (Type is the full CLR name), like Visual
+		// Studio's WinForms Document Outline; a type without one (a custom control) gets the VS glyph.
+		readonly DocumentOutlineControl outline = new DocumentOutlineControl {
+			IconSelector = node => WinFormsToolboxIconProvider.GetImageSource(node.Type) ?? DocumentOutlineIcons.GetIcon(node)
+		};
 		readonly DesignerSelectionController shellSelection = new DesignerSelectionController();
 
 		public object OutlineContent {

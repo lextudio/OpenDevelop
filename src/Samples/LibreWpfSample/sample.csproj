@@ -1,0 +1,19 @@
+<Project Sdk="LibreWPF.Sdk">
+
+  <!-- LibreWPF counterpart of externals/vscode-wpf/sample/net6.0 (a Microsoft WPF project). The
+       sources are copies rather than links: the designer identifies a XAML file's runtime from the
+       project file nearest to it, so a linked file would still resolve to the Microsoft project.
+       The file keeps the "sample" project name and root namespace, so the WPF designer tests run
+       unchanged against either fixture. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RootNamespace>sample</RootNamespace>
+    <AssemblyName>sample</AssemblyName>
+  </PropertyGroup>
+
+</Project>

@@ -77,7 +77,10 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		/// </param>
 		public static FormsDesignerBackend ResolveBackend(string useMicrosoftDesktopRuntime, string runtimeOverride = null, string targetFramework = null)
 		{
-			var selectedOverride = runtimeOverride ?? Environment.GetEnvironmentVariable("OD_FORMS_RUNTIME");
+			// No process-wide override (such as an environment variable): Microsoft WinForms and
+			// LibreWinForms are fully isolated, so only the project - or an explicit caller argument,
+			// which the unit tests use - selects the backend.
+			var selectedOverride = runtimeOverride;
 			if (string.Equals(selectedOverride, "microsoft", StringComparison.OrdinalIgnoreCase))
 				return FormsDesignerBackend.MicrosoftWinForms;
 			if (string.Equals(selectedOverride, "libre", StringComparison.OrdinalIgnoreCase))

@@ -29,11 +29,11 @@ public sealed class XamlFrameworkDetectorTests
 	// "fix" it back to Uno.
 	[InlineData("<Project Sdk=\"Microsoft.NET.Sdk\"><ItemGroup><PackageReference Include=\"Microsoft.WindowsAppSDK\" /></ItemGroup></Project>", XamlFrameworkKind.WinUI, XamlRuntimeKind.MicrosoftWinUI, XamlRuntimeKind.MicrosoftWinUI)]
 	[InlineData("<Project Sdk=\"LibreWPF.Sdk\"><PropertyGroup><UseWPF>true</UseWPF></PropertyGroup></Project>", XamlFrameworkKind.Wpf, XamlRuntimeKind.LibreWpf, XamlRuntimeKind.LibreWpf)]
-	// WPF, by contrast, still switches: LibreWPF genuinely runs the same WPF markup off Windows,
-	// so a plain Microsoft.NET.Sdk WPF project is served by it there. The LibreWPF.Sdk and Uno.Sdk
-	// rows need no switch at all - those runtimes come from explicit evidence in the project file
-	// rather than from what the host platform happens to be able to run.
-	[InlineData("<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><UseWPF>true</UseWPF></PropertyGroup></Project>", XamlFrameworkKind.Wpf, XamlRuntimeKind.MicrosoftWpf, XamlRuntimeKind.LibreWpf)]
+	// WPF follows the same rule: a plain Microsoft.NET.Sdk WPF project is Microsoft WPF on every
+	// OS. It used to be re-identified as LibreWPF off Windows, which designed a Microsoft WPF
+	// project with another runtime's controls; the designer now reports the OS as unsupported
+	// instead. LibreWPF comes only from explicit evidence (LibreWPF.Sdk) in the project file.
+	[InlineData("<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><UseWPF>true</UseWPF></PropertyGroup></Project>", XamlFrameworkKind.Wpf, XamlRuntimeKind.MicrosoftWpf, XamlRuntimeKind.MicrosoftWpf)]
 	[InlineData("<Project Sdk=\"Microsoft.NET.Sdk\" />", XamlFrameworkKind.Unknown, XamlRuntimeKind.Unknown, XamlRuntimeKind.Unknown)]
 	public void DetectProjectFile_UsesOrderedFrameworkEvidence(string projectXml, XamlFrameworkKind expected, XamlRuntimeKind expectedRuntimeOnWindows, XamlRuntimeKind expectedRuntimeElsewhere)
 	{

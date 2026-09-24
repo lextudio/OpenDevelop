@@ -14,7 +14,7 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 	IWinUIXamlRuntimeHost runtime;
 
 	/// <summary>Selected runtime identity, available even if the first document render fails.</summary>
-	public string BackendName => (runtime?.WpfSurface as ICSharpCode.SharpDevelop.Widgets.DesignerCanvas)?.BackendName ?? "";
+	public string BackendName => ((runtime?.WpfSurface ?? Content) as ICSharpCode.SharpDevelop.Widgets.DesignerCanvas)?.BackendName ?? "";
 
 	/// <summary>Whether the canvas is currently showing its shared "please wait" chrome (a design
 	/// load or a VisualState switch). Exposed for DevFlow/tests, which cannot screenshot.</summary>
@@ -30,6 +30,15 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 		Framework = framework ?? throw new ArgumentNullException(nameof(framework));
 		HorizontalContentAlignment = HorizontalAlignment.Stretch;
 		VerticalContentAlignment = VerticalAlignment.Stretch;
+		// Microsoft WinUI and Uno are fully isolated: a Microsoft WinUI project is never designed by
+		// Uno, and off Windows (where Microsoft WinUI cannot run) no host is started for it at all.
+		if (!XamlFrameworkDetector.IsRuntimeSupportedOnThisOS(framework.Runtime)) {
+			var unavailable = new ICSharpCode.SharpDevelop.Widgets.DesignerCanvas();
+			unavailable.BackendName = framework.Runtime == XamlRuntimeKind.Uno ? "Uno" : "WinUI";
+			unavailable.ShowUnavailable(UnsupportedOnThisOSText);
+			Content = unavailable;
+			return;
+		}
 		runtime = WinUIXamlRuntimeHostRegistry.Create(framework, documentFileName);
 		if (runtime != null) {
 			runtime.StateChanged += OnRuntimeStateChanged;
@@ -413,7 +422,10 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 	// host isn't deployed - never for Uno, which always has ProGPU as a safety net. Name the
 	// specific missing runtime instead of "WinUI/Uno", which wrongly implies either could be at
 	// fault.
-	public string StatusText => runtime?.StatusText ?? Framework.Runtime switch {
+	static string UnsupportedOnThisOSText
+		=> ICSharpCode.SharpDevelop.Widgets.DesignerCanvas.UnsupportedOnThisOSMessage("Microsoft WinUI", "Uno Platform");
+
+	public string StatusText => runtime?.StatusText ?? (!XamlFrameworkDetector.IsRuntimeSupportedOnThisOS(Framework.Runtime) ? UnsupportedOnThisOSText : null) ?? Framework.Runtime switch {
 		XamlRuntimeKind.MicrosoftWinUI => "WinUI 3 runtime host is not installed.",
 		XamlRuntimeKind.Uno => "Uno runtime host is not installed. The WPF XamlReader compatibility renderer is disabled.",
 		_ => "No WinUI/Uno runtime host is available for this document."

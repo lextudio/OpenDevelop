@@ -496,7 +496,10 @@ public sealed class FormsDesignerHostClientTests
 		var resizedRoot = await client.SetBoundsAsync(7, "Form1", 0, 0, 420, 260, timeout.Token);
 		Assert.Contains(resizedRoot.Components, component => component.Name == "Form1"
 			&& component.Width >= 420 && component.Height >= 260);
-		Assert.Contains("Size = new System.Drawing.Size(420, 260);",
+		// SetBounds receives the root's OUTER bounds; the LibreWinForms host persists them without its
+		// simulated title bar (DesignerHostService.PortableFormTitleBarHeight = 30), or every resize
+		// would add another caption height to the form on reload.
+		Assert.Contains("Size = new System.Drawing.Size(420, 230);",
 			DesignerText(await client.FlushAsync(7, timeout.Token)), StringComparison.Ordinal);
 		var scaledRoot = await client.SetPropertyAsync(7, "Form1", "AutoScaleDimensions", "8, 16", timeout.Token);
 		Assert.True(scaledRoot.Accepted);

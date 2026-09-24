@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Xml.Linq;
 
+using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Project;
 
 namespace ICSharpCode.SharpDevelop.LanguageServices.Xaml
@@ -40,8 +41,11 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Xaml
 		public static XamlFrameworkContext Detect(string xamlFileName)
 		{
 			if (string.IsNullOrEmpty(xamlFileName)) return Unknown("No file name");
+			// The runtime is a property of the project, never of the markup: WPF, LibreWPF, WinUI and
+			// Uno XAML look alike. Only a project loaded in the open solution (the Projects pad) counts;
+			// a project file merely sitting nearby on disk may not be the one that builds this file.
 			var project = FindOwningProject(xamlFileName);
-			return project == null ? Unknown("No owning project") : DetectProjectFile(project.FileName);
+			return project == null ? Unknown("No project in the open solution contains this file") : DetectProjectFile(project.FileName);
 		}
 
 		public static XamlFrameworkContext DetectProjectFile(string projectFileName)
@@ -76,9 +80,10 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Xaml
 					return new XamlFrameworkContext(XamlFrameworkKind.Wpf, XamlRuntimeKind.LibreWpf, projectFileName, "LibreWPF SDK");
 				if (properties.TryGetValue("UseWPF", out var useWpf) && IsTrue(useWpf))
 				{
-					// On macOS/Linux, Microsoft WPF is unavailable — use LibreWPF instead.
-					var runtime = OperatingSystem.IsWindows() ? XamlRuntimeKind.MicrosoftWpf : XamlRuntimeKind.LibreWpf;
-					return new XamlFrameworkContext(XamlFrameworkKind.Wpf, runtime, projectFileName, runtime == XamlRuntimeKind.LibreWpf ? "WPF property (LibreWPF on non-Windows)" : "WPF property");
+					// A Microsoft WPF project stays Microsoft WPF on every OS. It is never
+					// re-identified as LibreWPF because Microsoft WPF cannot run here: the designer
+					// reports that this OS cannot design it instead (the same rule as WinUI above).
+					return new XamlFrameworkContext(XamlFrameworkKind.Wpf, XamlRuntimeKind.MicrosoftWpf, projectFileName, "WPF property");
 				}
 				return Unknown("Project has no recognized XAML framework marker", projectFileName);
 			} catch (Exception ex) {
@@ -86,9 +91,26 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Xaml
 			}
 		}
 
-		static IProject FindOwningProject(string fileName) => SD.ProjectService?.CurrentSolution?.Projects
-			.Where(p => p.Directory != null && fileName.StartsWith(p.Directory.ToString(), StringComparison.OrdinalIgnoreCase))
-			.OrderByDescending(p => p.Directory.ToString().Length).FirstOrDefault();
+		static IProject FindOwningProject(string fileName)
+		{
+			var projectService = SD.GetService<IProjectService>();
+			if (projectService?.CurrentSolution == null)
+				return null;
+			// The project that actually includes the file first: a linked item
+			// (<Page Include="..\other\X.xaml" Link="..."/>) lives outside its project's directory,
+			// and the directory fallback below would attribute it to whichever project sits there.
+			var containing = projectService.FindProjectContainingFile(FileName.Create(fileName));
+			if (containing != null)
+				return containing;
+			return projectService.CurrentSolution.Projects
+				.Where(p => p.Directory != null && fileName.StartsWith(p.Directory.ToString(), StringComparison.OrdinalIgnoreCase))
+				.OrderByDescending(p => p.Directory.ToString().Length).FirstOrDefault();
+		}
+		/// <summary>Whether a design host for <paramref name="runtime"/> can run on this OS: the
+		/// Microsoft WPF and WinUI runtimes exist only on Windows.</summary>
+		public static bool IsRuntimeSupportedOnThisOS(XamlRuntimeKind runtime)
+			=> OperatingSystem.IsWindows() || (runtime != XamlRuntimeKind.MicrosoftWpf && runtime != XamlRuntimeKind.MicrosoftWinUI);
+
 		static bool IsTrue(string value) => string.Equals(value?.Trim(), "true", StringComparison.OrdinalIgnoreCase);
 		static XamlFrameworkContext Unknown(string evidence, string project = null) => new(XamlFrameworkKind.Unknown, XamlRuntimeKind.Unknown, project, evidence);
 	}

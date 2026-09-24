@@ -134,6 +134,38 @@ scale. Cache hits still carry the requesting version/revision and obey the stale
 The common layer cannot assume XAML, C#, GtkBuilder XML, HWNDs or a property system. A backend
 cannot reimplement process leasing, idle shutdown, crash fan-out or stale-frame acceptance.
 
+### Runtime isolation (2026-09-23)
+
+Each designer serves a project **only with that project's own runtime**, on every OS, and never
+substitutes the other one:
+
+| Designer | Microsoft runtime (Windows only) | Portable runtime |
+|---|---|---|
+| WPF | Microsoft WPF (`Microsoft.NET.Sdk` + `UseWPF`) | LibreWPF (`LibreWPF.Sdk`) |
+| WinForms | Microsoft WinForms (`UseMicrosoftDesktopRuntime=true`, or a `-windows` TFM) | LibreWinForms (`UseMicrosoftDesktopRuntime=false`, or `LibreWPF.Sdk`/`LibreWinForms.Sdk`, which set `ProGpuWpfUseLibreWinForms`/`LibreWinFormsUseSystemWindowsForms`) |
+| WinUI | Microsoft WinUI (`UseWinUI`, Windows App SDK) | Uno Platform (`Uno.Sdk`, `Uno.WinUI`) |
+
+- The **project** decides, never the markup and never the host OS. XAML files are attributed by
+  `XamlFrameworkDetector.Detect`, which uses only projects loaded in the open solution (the
+  Projects pad): the project that actually includes the file first (`FindProjectContainingFile`,
+  so linked `<Page Include="..\other\X.xaml" Link=.../>` items resolve to the linking project),
+  then the solution project whose directory contains it. A project file merely sitting nearby on
+  disk is not evidence. A file no open project owns is `Unknown`, and the WPF designer then asks
+  for its solution instead of guessing.
+- No environment variable overrides the project: `OD_FORMS_RUNTIME` no longer selects the
+  WinForms backend, and `OD_WINUI_RUNTIME` only orders implementations *within* one runtime family.
+- Off Windows a Microsoft-runtime project starts **no design host**. The design view shows
+  `DesignerCanvas.ShowUnavailable(DesignerCanvas.UnsupportedOnThisOSMessage(...))` — "This project
+  uses Microsoft WPF, which runs only on Windows, so its design view is not supported on this OS.
+  LibreWPF projects can be designed here." — instead of launching a child that dies on the missing
+  `Microsoft.WindowsDesktop.App`. `XamlFrameworkDetector.IsRuntimeSupportedOnThisOS` is the single
+  OS rule; `od.designer-canvas.status` reports `unavailable`/`statusText` for tests.
+- Test fixtures follow the same split: `WpfSampleSolutionPath` is the Microsoft WPF sample on
+  Windows and `src/Samples/LibreWpfSample` elsewhere (`LibreWpfSampleSolutionPath` is always the
+  LibreWPF one); `src/Samples/LibreWinFormsSample` is the LibreWinForms counterpart of
+  `WinFormsSample`. A portable sample must own real copies of its XAML, not links, because the
+  file's runtime comes from the project that contains it.
+
 ### Second-stage common-library extraction (2026-08-24)
 
 The five implementations now share enough behavior that reuse must extend beyond process

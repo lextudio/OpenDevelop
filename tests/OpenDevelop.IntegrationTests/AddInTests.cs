@@ -3019,6 +3019,40 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Equal("dropPanel", selected.GetProperty("selected").GetString());
     }
 
+    [Fact]
+    public async Task LibreWinFormsDesigner_DocumentOutline_ShowsControlTreeWithToolboxIcons()
+    {
+        // The LibreWinForms counterpart of the Microsoft-backend test above, runnable on every OS:
+        // the same Form1 sources, designed by the LibreWinForms child. Rows carry the WinForms
+        // Toolbox icons read from the loaded LibreWinForms System.Windows.Forms resources.
+        var formCodePath = Path.Combine(Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!, "Form1.cs");
+        Assert.True((await _app.ReopenSolutionAsync(_app.LibreWinFormsSampleSolutionPath)).GetProperty("success").GetBoolean());
+        Assert.True((await _app.InvokeAsync("od.open-file", formCodePath)).GetProperty("opened").GetBoolean());
+
+        JsonElement status = default;
+        var loaded = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            status = await _app.InvokeAsync("od.forms-designer.outline-status");
+            return status.GetProperty("present").GetBoolean()
+                && status.TryGetProperty("nodes", out var nodes) && nodes.GetArrayLength() > 1;
+        }, TimeSpan.FromSeconds(90));
+        Assert.True(loaded, "The LibreWinForms designer never populated the Outline. Status: " + status
+            + " Canvas: " + await _app.InvokeAsync("od.designer-canvas.status"));
+        Assert.Equal("Form1", status.GetProperty("root").GetString());
+        Assert.Contains("dropPanel", status.GetProperty("nodes").EnumerateArray().Select(n => n.GetProperty("name").GetString()));
+
+        Assert.True((await _app.InvokeAsync("od.show-pad", "ICSharpCode.SharpDevelop.Gui.OutlinePad")).GetProperty("found").GetBoolean());
+        var padContent = await _app.InvokeAsync("od.outline-pad.content");
+        var padLabels = padContent.GetProperty("labels").EnumerateArray().Select(n => n.GetString()).ToList();
+        var padIcons = padContent.GetProperty("icons").EnumerateArray()
+            .Select(n => n.ValueKind == JsonValueKind.Null ? null : n.GetString()).ToList();
+        var formRow = padLabels.IndexOf("Form1");
+        Assert.True(formRow >= 0, "Expected a Form1 row; labels: " + string.Join(", ", padLabels));
+        Assert.Equal("bitmap", padIcons[formRow]);
+        Assert.All(padIcons, icon => Assert.NotNull(icon));
+
+        await _app.InvokeAsync("od.close-all-document-views");
+    }
+
     [Fact(Skip = "The Microsoft designer backends are Windows-only; see MicrosoftDesignerBackendsAvailable.", SkipUnless = nameof(MicrosoftDesignerBackendsAvailable))]
     [Trait("DesignerBackend", "Microsoft")]
     public async Task WinFormsDesigner_DoubleClickEventRow_CreatesAndBindsHandler()

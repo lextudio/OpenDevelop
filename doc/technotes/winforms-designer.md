@@ -59,6 +59,38 @@ fallback remains C#-only.
 |---|---|---|
 | WinForms Designer | `src/AddIns/DisplayBindings/FormsDesigner/` | The out-of-process LibreWinForms host is the default C# path on macOS. It owns the real `DesignSurface`, project controls and dependencies; renders to PNG or the shared deflate-BGRA frame; supports selection, nested Toolbox drops, Properties, events, move/resize/delete, Undo/Redo, resources, save, timeout/crash recovery and restart. The VB backend runs in the same child for `.vb` files. |
 
+## LibreWinForms host on macOS (2026-09-23)
+
+Until this date the LibreWinForms child could not load **any** form on macOS: every
+`FormsDesigner.Host.Tests` test that starts the child failed (28 of 38 in
+`FormsDesignerHostClientTests`). Four independent gaps had to close, in this order:
+
+1. **Platform registration.** `FormsDesigner.Host.csproj` disabled `ProGpuWpfEnablePortableBootstrap`,
+   so the LibreWPF.Sdk module initializer never ran `LibreWinForms.ProGPU.ProGpuPlatform.Register()`
+   and the first `Form` constructor threw "No LibreWinForms platform backend is registered". It is
+   now on off Windows, the same rule as `SharpDevelop.csproj`.
+2. **A pumping UI thread.** Once registered, the ProGPU backend binds every control to its
+   creating thread, and StreamJsonRpc dispatches on the thread pool, so `session/open` hung until
+   the client timeout. `Program.Main` now runs `WinFormsHeadlessPump` (moved from `MicrosoftHost/`
+   to the shared `Host/` folder) and marshals every RPC onto it off Windows — the split the
+   Microsoft host always used. LibreWinForms on Windows keeps the direct path.
+3. **LibreWinForms portable gaps** (fixed in LibreWinForms, not worked around here):
+   `FormDocumentDesigner.OnDesignerActivate/Deactivate` sent `WM_NCACTIVATE`/`RedrawWindow`
+   (`EntryPointNotFoundException: SendMessageW`), and `TabControl` still wrapped comctl32 for
+   selection, geometry and items (`TabControl.SelectedIndex` → `TCM_GETCURSEL`). `TabControl` now
+   keeps its selection in `_selectedIndex` and lays headers out managed-side
+   (`TabControl.Portable.cs`), including `GetTabRect`/`DisplayRectangle`.
+4. **ProGPU bitmap lifetime** (fixed in ProGPU `System.Drawing.Common`): a `Bitmap` texture belongs
+   to the context current when it was created — often a transient form window's. The cached default
+   form icon outlived the first session's window, and the next session's `Icon.ToBitmap()` failed
+   with "Texture readback requires the source texture and readback buffer to use the same WebGPU
+   device domain". `Bitmap` now snapshots its pixels to the CPU on `WgpuContext.Disposing` and
+   recreates the texture on demand.
+
+The whole `FormsDesigner.Host.Tests` project (84 tests) passes on macOS. A LibreWinForms project is
+one with `UseMicrosoftDesktopRuntime=false` or a LibreWPF.Sdk/LibreWinForms.Sdk project
+(`src/Samples/LibreWinFormsSample`); see designer-common.md "Runtime isolation".
+
 ## Actual State of WinForms Round-Trip and Toolbox
 
 The earlier claim that this was "not yet restored" came from an outdated exclusion comment in `FormsDesigner.csproj`, not from the current implementation. The actual pipeline is:
