@@ -18,9 +18,6 @@ namespace ICSharpCode.SharpDevelop.Startup
 	/// </summary>
 	partial class SplashScreenForm : Window
 	{
-		const int RecentLines = 4;
-		readonly Queue<string> recent = new();
-
 		public SplashScreenForm()
 		{
 			InitializeComponent();
@@ -34,10 +31,6 @@ namespace ICSharpCode.SharpDevelop.Startup
 			// visual tree directly.
 			Dispatcher.BeginInvoke(new Action(() => {
 				Status.Text = message;
-				recent.Enqueue(message);
-				while (recent.Count > RecentLines)
-					recent.Dequeue();
-				Recent.Text = string.Join("\n", recent);
 			}));
 		}
 
