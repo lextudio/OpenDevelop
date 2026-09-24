@@ -45,7 +45,6 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		internal static void Attach(DockingManager manager)
 		{
 			dockingManager = manager;
-			RegisterXceedPropertyGridIcons();
 			Apply(manager, CurrentTheme);
 			ThemeChanged?.Invoke(null, CurrentTheme);
 		}
@@ -54,8 +53,10 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		/// Provides the VS2026 icons the Xceed PropertyGrid template references
 		/// (<c>{DynamicResource Xceed.Icons.*}</c>) as real <see cref="System.Windows.Media.ImageSource"/>
 		/// objects - the template cannot load them itself, because a pack URI string pointing at a
-		/// .xaml icon is not an image format the ImageSource converter understands. The values are
-		/// theme-independent, so registering once at startup is enough.
+		/// .xaml icon is not an image format the ImageSource converter understands. WPF freezes a
+		/// Freezable stored in Application.Resources on first read, so these copies cannot repaint
+		/// in place like other VS2026 glyphs: they are re-loaded in the new theme's colors on every
+		/// <see cref="Apply"/> instead, and the template's DynamicResource picks up the new value.
 		/// </summary>
 		static void RegisterXceedPropertyGridIcons()
 		{
@@ -72,9 +73,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 
 		static void SetIcon(System.Windows.ResourceDictionary resources, string key, string iconKey)
 		{
-			if (resources.Contains(key))
-				return;
-			resources[key] = ICSharpCode.Core.Presentation.PresentationResourceService.GetImageSource(iconKey);
+			resources[key] = ICSharpCode.Core.Presentation.PresentationResourceService.LoadThemedImageSource(iconKey);
 		}
 
 		public static void SetTheme(string theme)
@@ -111,6 +110,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			// colors for their monochrome base; re-read them so already-loaded
 			// icons repaint for the new theme.
 			ICSharpCode.Core.Presentation.PresentationResourceService.RefreshThemeColors();
+			RegisterXceedPropertyGridIcons();
 		}
 
 		// "Blue" maps to the Light semantic dictionary for now - the doc only asks for Light/Dark

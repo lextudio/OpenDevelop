@@ -223,8 +223,8 @@ the default convention above always points at `Resources/VS2026`.
 
 **Theming:** VS2026 glyphs are exported with a grayscale base (`#202020`) that the host is meant to
 recolor; left as-is they vanish on the dark theme. `PresentationResourceService` maps dark grays to
-the theme's `Foreground` and mid grays to `MutedForeground`, keeps light counters and saturated
-accents, and leaves such images **unfrozen** so the shared brushes can repaint in place. After
+the theme's `Foreground` and mid grays to `MutedForeground`, keeps light counters, lightens saturated
+accents (e.g. the library's `#006CBF` blue) on the dark theme while keeping their hue, and leaves such images **unfrozen** so the shared brushes can repaint in place. After
 swapping the theme dictionary, `IdeThemeService.Apply` calls
 `PresentationResourceService.RefreshThemeColors()` to re-read those colors.
 

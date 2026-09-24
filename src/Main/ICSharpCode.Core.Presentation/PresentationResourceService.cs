@@ -52,17 +52,60 @@ namespace ICSharpCode.Core.Presentation
 		static Color themedMutedColor = Colors.Gray;
 		static bool themeColorsResolved;
 
-		// Weak so an icon that is no longer cached or displayed can be collected.
-		static readonly List<(WeakReference<SolidColorBrush> Brush, bool Muted)> themedBrushes =
-			new List<(WeakReference<SolidColorBrush>, bool)>();
+		// Weak so an icon that is no longer cached or displayed can be collected. Accent is the
+		// glyph's original saturated color for an accent brush (null for a gray one).
+		static readonly List<(WeakReference<SolidColorBrush> Brush, bool Muted, Color? Accent)> themedBrushes =
+			new List<(WeakReference<SolidColorBrush>, bool, Color?)>();
 
 		static SolidColorBrush RegisterThemedBrush(bool muted)
 		{
 			var brush = new SolidColorBrush(muted ? themedMutedColor : themedForegroundColor);
 			lock (themedBrushes)
-				themedBrushes.Add((new WeakReference<SolidColorBrush>(brush), muted));
+				themedBrushes.Add((new WeakReference<SolidColorBrush>(brush), muted, null));
 			return brush;
 		}
+
+		static SolidColorBrush RegisterAccentBrush(Color accent)
+		{
+			var brush = new SolidColorBrush(ThemedAccent(accent));
+			lock (themedBrushes)
+				themedBrushes.Add((new WeakReference<SolidColorBrush>(brush), false, accent));
+			return brush;
+		}
+
+		// The library's saturated accents (#006CBF blue above all, also its red/green/amber) are
+		// light-theme colors: on a dark background they read as too dark. VS's own dark icons keep
+		// the hue and raise the lightness, so do the same - HSL lightness floor, dark theme only.
+		const double DarkThemeAccentMinLightness = 0.65;
+
+		static bool IsDarkTheme => (themedForegroundColor.R * 299 + themedForegroundColor.G * 587 + themedForegroundColor.B * 114) / 1000 > 0x80;
+
+		static Color ThemedAccent(Color accent)
+		{
+			if (!IsDarkTheme)
+				return accent;
+			double r = accent.R / 255.0, g = accent.G / 255.0, b = accent.B / 255.0;
+			double max = Math.Max(r, Math.Max(g, b)), min = Math.Min(r, Math.Min(g, b));
+			double lightness = (max + min) / 2;
+			if (lightness >= DarkThemeAccentMinLightness)
+				return accent;
+			double delta = max - min;
+			double saturation = delta / (1 - Math.Abs(2 * lightness - 1));
+			double hue = max == r ? 60 * (((g - b) / delta) % 6)
+				: max == g ? 60 * ((b - r) / delta + 2)
+				: 60 * ((r - g) / delta + 4);
+			if (hue < 0)
+				hue += 360;
+			double chroma = (1 - Math.Abs(2 * DarkThemeAccentMinLightness - 1)) * saturation;
+			double x = chroma * (1 - Math.Abs(hue / 60 % 2 - 1));
+			double m = DarkThemeAccentMinLightness - chroma / 2;
+			(double r1, double g1, double b1) = hue < 60 ? (chroma, x, 0.0) : hue < 120 ? (x, chroma, 0.0)
+				: hue < 180 ? (0.0, chroma, x) : hue < 240 ? (0.0, x, chroma)
+				: hue < 300 ? (x, 0.0, chroma) : (chroma, 0.0, x);
+			return Color.FromArgb(accent.A, ToByte(r1 + m), ToByte(g1 + m), ToByte(b1 + m));
+		}
+
+		static byte ToByte(double channel) => (byte)Math.Round(Math.Clamp(channel, 0, 1) * 255);
 
 		/// <summary>Count of registered brushes, used to tell whether a glyph was recoloured.</summary>
 		static int ThemedBrushCount {
@@ -390,6 +433,22 @@ namespace ICSharpCode.Core.Presentation
 		}
 
 		/// <summary>
+		/// Loads a fresh, uncached copy of the named icon in the current theme's colors. For an
+		/// icon that will be frozen by its consumer - anything stored in
+		/// <c>Application.Resources</c>, which WPF freezes on first read - and therefore cannot
+		/// follow <see cref="RefreshThemeColors"/>: the consumer re-loads it after each theme
+		/// switch instead of sharing the cached instance, which freezing would take out of the
+		/// repaint for every other user too.
+		/// </summary>
+		public static ImageSource LoadThemedImageSource(string name)
+		{
+			if (resourceService == null)
+				throw new ArgumentNullException("resourceService");
+			EnsureThemeColors();
+			return TryGetXamlImageSource(name, out var imageSource) ? imageSource : null;
+		}
+
+		/// <summary>
 		/// Compatibility wrapper for old callers. New code should use <see cref="GetImageSource"/>.
 		/// </summary>
 		public static ImageSource GetBitmapSource(string name)
@@ -567,8 +626,8 @@ namespace ICSharpCode.Core.Presentation
 		/// VS2026 glyphs use a grayscale base color (dominantly #202020) as a
 		/// placeholder the host recolors from the theme. Map those grays onto the
 		/// shared theme brushes - dark to <c>Foreground</c>, mid to
-		/// <c>MutedForeground</c> - and leave light grays (counters/holes) and
-		/// saturated accent colors alone. Legacy VS2017 glyphs never reach this.
+		/// <c>MutedForeground</c> - leave light grays (counters/holes) alone, and
+		/// lighten saturated accent colors on a dark theme (see <see cref="ThemedAccent"/>). Legacy VS2017 glyphs never reach this.
 		/// </summary>
 		static Brush ThemedBrush(Brush brush)
 		{
@@ -580,6 +639,9 @@ namespace ICSharpCode.Core.Presentation
 					return RegisterThemedBrush(muted: false);
 				if (luminance <= 0xB0)
 					return RegisterThemedBrush(muted: true);
+			} else if (brush is SolidColorBrush accent) {
+				EnsureThemeColors();
+				return RegisterAccentBrush(accent.Color);
 			}
 			return brush;
 		}
@@ -611,7 +673,9 @@ namespace ICSharpCode.Core.Presentation
 						themedBrushes.RemoveAt(i);
 						continue;
 					}
-					brush.Color = themedBrushes[i].Muted ? themedMutedColor : themedForegroundColor;
+					var entry = themedBrushes[i];
+					brush.Color = entry.Accent is Color accent ? ThemedAccent(accent)
+						: entry.Muted ? themedMutedColor : themedForegroundColor;
 				}
 			}
 		}
