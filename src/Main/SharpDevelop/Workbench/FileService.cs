@@ -159,6 +159,11 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		#region BrowseForFolder
 		public string BrowseForFolder(string description, string selectedPath)
 		{
+			if (TestMode.IsActive) {
+				string folder = TestDialogAnswers.TryDequeue(TestDialogAnswers.Folder, out var queued) && queued.Length > 0 ? queued[0] : null;
+				LoggingService.Info("OD_TEST_MODE: suppressed folder dialog \"" + StringParser.Parse(description) + "\", auto-answered " + (folder ?? "null (cancel)"));
+				return folder;
+			}
 			// WinForms FolderBrowserDialog replaced with WPF's Microsoft.Win32.OpenFolderDialog.
 			var dialog = new Microsoft.Win32.OpenFolderDialog {
 				Title = StringParser.Parse(description)

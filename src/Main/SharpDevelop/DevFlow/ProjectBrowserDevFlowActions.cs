@@ -54,6 +54,45 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			}
 		}
 
+		[DevFlowAction("od.project-browser.select", Description = "Select the first Project Browser node of the given kind (Solution, Project, SolutionFolder, SolutionItem, Folder, File, ...), optionally matching its name, so a following od.menu.invoke acts on it")]
+		public static async Task<string> SelectNode(string kind, string? name = null)
+		{
+			try {
+				if (!Enum.TryParse<ProjectBrowserNodeKind>(kind, true, out var nodeKind))
+					return JsonSerializer.Serialize(new { success = false, error = "Unknown node kind '" + kind + "'." });
+				var viewModel = OpenDevelopMefHost.ExportProvider.GetExportedValue<ProjectBrowserViewModel>();
+				await viewModel.WaitForCurrentRefreshAsync();
+				var node = FindNode(viewModel.RootNodes, n => n.Kind == nodeKind
+					&& (string.IsNullOrEmpty(name) || string.Equals(n.Name, name, StringComparison.OrdinalIgnoreCase)));
+				if (node == null)
+					return JsonSerializer.Serialize(new { success = false, error = "No " + kind + " node" + (string.IsNullOrEmpty(name) ? "" : " named '" + name + "'") + "." });
+				viewModel.SelectedNode = node;
+				return JsonSerializer.Serialize(new { success = true, node = node.Name, kind = node.Kind.ToString() });
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
+			}
+		}
+
+		[DevFlowAction("od.project-browser.solution-tree", Description = "The solution level of the Project Browser tree - solution folders, projects and solution items, nested as shown - without the contents of each project")]
+		public static async Task<string> GetSolutionTree()
+		{
+			try {
+				var viewModel = OpenDevelopMefHost.ExportProvider.GetExportedValue<ProjectBrowserViewModel>();
+				await viewModel.WaitForCurrentRefreshAsync();
+				return JsonSerializer.Serialize(new { success = true, roots = viewModel.RootNodes.Select(DescribeSolutionLevel).ToArray() });
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
+			}
+		}
+
+		static object DescribeSolutionLevel(ProjectBrowserNodeModel node) => new {
+			name = node.Name,
+			kind = node.Kind.ToString(),
+			children = node.Kind is ProjectBrowserNodeKind.Solution or ProjectBrowserNodeKind.SolutionFolder
+				? node.Children.Select(DescribeSolutionLevel).ToArray()
+				: Array.Empty<object>()
+		};
+
 		static ProjectBrowserNodeModel? FindNode(IEnumerable<ProjectBrowserNodeModel> nodes, Func<ProjectBrowserNodeModel, bool> predicate)
 		{
 			foreach (var node in nodes) {

@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using ICSharpCode.SharpDevelop.Templates;
+using ICSharpCode.SharpDevelop.Services;
 
 namespace ICSharpCode.SharpDevelop.Templates
 {
@@ -112,12 +113,12 @@ namespace ICSharpCode.SharpDevelop.Templates
                 || string.IsNullOrWhiteSpace(Location))
                 return;
 
-            DialogResult = true;
+            this.CloseDialog(true);
         }
 
         void OnCancelClick(object sender, RoutedEventArgs e)
         {
-            DialogResult = false;
+            this.CloseDialog(false);
         }
 
         void UpdateCreateButton()

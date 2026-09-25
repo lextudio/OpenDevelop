@@ -124,6 +124,7 @@
 
   <Path name="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/SolutionFolderNode">
     <MenuItem id="Add" label="Add" type="Menu">
+      <MenuItem id="NewProject" label="New Project..." class="ICSharpCode.SharpDevelop.Commands.NewProjectProjectBrowserCommand" />
       <MenuItem id="ExistingProject" label="Existing Project..." class="ICSharpCode.SharpDevelop.Commands.AddExistingProjectProjectBrowserCommand" />
       <MenuItem id="NewSolutionFolder" label="New Solution Folder..." class="ICSharpCode.SharpDevelop.Commands.NewSolutionFolderProjectBrowserCommand" />
       <MenuItem id="AddSolutionItems" label="Existing Item..." class="ICSharpCode.SharpDevelop.Commands.AddSolutionItemsProjectBrowserCommand" />
@@ -151,6 +152,8 @@
       <Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/Common/Add" />
     </MenuItem>
     <MenuItem id="AddReferenceDialog" label="Add Reference..." class="ICSharpCode.SharpDevelop.Commands.AddReferenceProjectBrowserCommand" />
+    <!-- Selecting a project node makes it the current project, which is what ViewProjectOptions opens. -->
+    <MenuItem id="ProjectOptions" label="Project Options..." class="ICSharpCode.SharpDevelop.Project.Commands.ViewProjectOptions" />
     <!-- Set Startup Project comes from ContextMenu/ProjectActions in ICSharpCode.SharpDevelop.addin, which the
          main Project menu shares, so it is not repeated here. -->
     <MenuItem id="Separator2" type="Separator" />

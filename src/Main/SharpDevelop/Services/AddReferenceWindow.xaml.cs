@@ -61,15 +61,8 @@ namespace ICSharpCode.SharpDevelop.Services
 
         void OnBrowseClick(object sender, RoutedEventArgs e)
         {
-            var dialog = new Microsoft.Win32.OpenFileDialog
-            {
-                Filter = "Assemblies (*.dll;*.exe)|*.dll;*.exe|All files (*.*)|*.*",
-                Multiselect = true
-            };
-            if (dialog.ShowDialog(this) != true)
-                return;
-
-            foreach (var file in dialog.FileNames)
+            var files = FileDialogService.PickFiles("Assemblies (*.dll;*.exe)|*.dll;*.exe|All files (*.*)|*.*", this);
+            foreach (var file in files)
             {
                 if (!_assemblies.Contains(file, StringComparer.OrdinalIgnoreCase))
                     _assemblies.Add(file);
@@ -84,18 +77,9 @@ namespace ICSharpCode.SharpDevelop.Services
             UpdateState();
         }
 
-        void OnAddClick(object sender, RoutedEventArgs e) => Close(true);
+        void OnAddClick(object sender, RoutedEventArgs e) => this.CloseDialog(true);
 
-        void OnCancelClick(object sender, RoutedEventArgs e) => Close(false);
-
-        // Posted rather than set inline: on the portable WPF backend a Click handler runs inside the
-        // render loop, where closing the window throws (see WpfMessageService.CloseDialog).
-        void Close(bool result) =>
-            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, new Action(() =>
-            {
-                if (IsVisible)
-                    DialogResult = result;
-            }));
+        void OnCancelClick(object sender, RoutedEventArgs e) => this.CloseDialog(false);
 
         void UpdateState()
         {

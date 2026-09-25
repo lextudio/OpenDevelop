@@ -721,6 +721,19 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
         return await resp.Content.ReadFromJsonAsync<JsonElement>(DeepJsonOptions);
     }
 
+    // Tap by UI-tree element id. On macOS (DevFlow 0.2.7+) this is a real OS click at the element's
+    // centre - CheckBoxes toggle, Commands run, disabled buttons do nothing - so the app must be the
+    // active one first (call od.activate: OD_TEST_MODE never activates it, and an inactive app
+    // spends the first click on activating itself). On Windows it is the native tap as before.
+    public async Task TapAsync(string elementId)
+    {
+        using var content = new StringContent(JsonSerializer.Serialize(new { id = elementId }), System.Text.Encoding.UTF8, "application/json");
+        using var resp = await _http.PostAsync($"{BaseUrl}/api/v1/ui/tap", content);
+        var body = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode || !JsonDocument.Parse(body).RootElement.GetProperty("success").GetBoolean())
+            throw new InvalidOperationException($"ui/tap {elementId} failed ({(int)resp.StatusCode}): {body}");
+    }
+
     // Synthetic pointer input (real OS-level input via cliclick, per src/Libraries/AvalonDock/
     // source/DevFlowIntegrationTests/DevFlowClient.cs's identical PressAsync/DragMoveAsync/
     // ReleaseAsync) - screen coordinates, not app-relative. Callers get the coordinates from a

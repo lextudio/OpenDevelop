@@ -41,7 +41,8 @@ namespace ICSharpCode.SharpDevelop.Commands
 			
 			bool selection = textEditor.SelectionLength > 0;
 			string text = selection ? textEditor.SelectedText : textEditor.Document.Text;
-			int lines = text.Length == 0 ? 0 : text.Split('\n').Length;
+			// A trailing newline ends the last line rather than starting another one.
+			int lines = text.Length == 0 ? 0 : text.Split('\n').Length - (text.EndsWith("\n", StringComparison.Ordinal) ? 1 : 0);
 			string scope = selection ? "Selection" : System.IO.Path.GetFileName(textEditor.FileName);
 			MessageService.ShowMessage(string.Format(
 				"{0}\n\nWords: {1:N0}\nCharacters: {2:N0}\nCharacters (no whitespace): {3:N0}\nLines: {4:N0}",

@@ -18,6 +18,9 @@ namespace ICSharpCode.SharpDevelop.Project
 		// configuration/platform name is known - collected below as Configurations/Platform/
 		// SolutionConfiguration elements are read, which can appear interleaved with <Project>
 		// elements. Recorded here and expanded once the full name sets are known.
+		// .slnx lists nested folders flat, by full path ("/src/", "/src/tests/"); this maps each path
+		// to its SolutionFolder so "/src/tests/" nests under "/src/" whichever element comes first.
+		readonly Dictionary<string, SolutionFolder> foldersByPath = new Dictionary<string, SolutionFolder>(StringComparer.OrdinalIgnoreCase);
 		readonly List<(ProjectLoadInformation Project, char Kind, string SolutionPattern, string ProjectValue)> configRules
 			= new List<(ProjectLoadInformation, char, string, string)>();
 		
@@ -281,15 +284,11 @@ namespace ICSharpCode.SharpDevelop.Project
 				return;
 			}
 			
-			var folder = new SolutionFolder(solution, Guid.NewGuid());
-			folder.Name = folderName.Trim('/');
-			if (string.IsNullOrEmpty(folder.Name))
-				folder.Name = "/";
-			
-			if (parentFolder != null)
-				parentFolder.Items.Add(folder);
-			else
-				solution.Items.Add(folder);
+			// A Folder element nested inside another one names itself relative to it.
+			string path = folderName.Trim('/');
+			if (parentFolder != null && foldersByPath.FirstOrDefault(p => p.Value == parentFolder).Key is string parentPath)
+				path = parentPath + "/" + path;
+			var folder = GetOrCreateFolder(solution, path);
 			
 			if (!reader.IsEmptyElement)
 			{
@@ -345,6 +344,22 @@ namespace ICSharpCode.SharpDevelop.Project
 				// on every iteration until memory is exhausted.
 				reader.Read();
 			}
+		}
+		
+		SolutionFolder GetOrCreateFolder(Solution solution, string path)
+		{
+			if (foldersByPath.TryGetValue(path, out var existing))
+				return existing;
+			
+			int slash = path.LastIndexOf('/');
+			var folder = new SolutionFolder(solution, Guid.NewGuid());
+			folder.Name = path.Length == 0 ? "/" : path.Substring(slash + 1);
+			if (slash > 0)
+				GetOrCreateFolder(solution, path.Substring(0, slash)).Items.Add(folder);
+			else
+				solution.Items.Add(folder);
+			foldersByPath[path] = folder;
+			return folder;
 		}
 		
 		ProjectLoadInformation PopulateProject(Solution solution, XmlReader reader)

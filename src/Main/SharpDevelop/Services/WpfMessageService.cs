@@ -48,6 +48,8 @@ sealed class WpfMessageService : IMessageService
 	{
 		if (IsTestMode) {
 			var result = DefaultResult(buttons);
+			if (buttons == MessageBoxButton.YesNo && TestDialogAnswers.TryDequeue(TestDialogAnswers.Question, out var answer) && answer.Length > 0)
+				result = string.Equals(answer[0], "yes", StringComparison.OrdinalIgnoreCase) ? MessageBoxResult.Yes : MessageBoxResult.No;
 			LoggingService.Info($"OD_TEST_MODE: suppressed dialog \"{StringParser.Parse(caption)}\" ({StringParser.Parse(message)}), auto-answered {result}");
 			return result;
 		}
@@ -184,8 +186,9 @@ sealed class WpfMessageService : IMessageService
 	public string ShowInputBox(string caption, string dialogText, string defaultValue)
 	{
 		if (IsTestMode) {
-			LoggingService.Info($"OD_TEST_MODE: suppressed input box \"{StringParser.Parse(caption)}\" ({StringParser.Parse(dialogText)}), auto-answered null (cancel)");
-			return null;
+			string answer = TestDialogAnswers.TryDequeue(TestDialogAnswers.Input, out var queued) && queued.Length > 0 ? queued[0] : null;
+			LoggingService.Info($"OD_TEST_MODE: suppressed input box \"{StringParser.Parse(caption)}\" ({StringParser.Parse(dialogText)}), auto-answered {(answer == null ? "null (cancel)" : "\"" + answer + "\" (queued)")}");
+			return answer;
 		}
 		return Invoke(() => {
 		var textBox = new TextBox { Text = defaultValue ?? string.Empty, MinWidth = 360, Margin = new Thickness(0, 8, 0, 12) };

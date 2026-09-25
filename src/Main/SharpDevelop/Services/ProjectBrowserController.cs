@@ -9,16 +9,37 @@ namespace ICSharpCode.SharpDevelop.Services;
 
 internal static class FileDialogService
 {
-    public static Task<string[]> PickFilesAsync(string filter)
+    public static Task<string[]> PickFilesAsync(string filter) => Task.FromResult(PickFiles(filter));
+
+    public static Task<string?> PickFolderAsync() => Task.FromResult(PickFolder());
+
+    /// <summary>Native multi-select open-file dialog. Under OD_TEST_MODE the dialog is never shown:
+    /// the answer comes from <see cref="TestDialogAnswers"/>, and nothing queued means cancelled.</summary>
+    public static string[] PickFiles(string filter, System.Windows.Window? owner = null)
     {
+        if (TestMode.IsActive)
+        {
+            var files = TestDialogAnswers.TryDequeue(TestDialogAnswers.Files, out var queued) ? queued : Array.Empty<string>();
+            ICSharpCode.Core.LoggingService.Info("OD_TEST_MODE: suppressed open-file dialog, auto-answered [" + string.Join(", ", files) + "]");
+            return files;
+        }
+
         var dialog = new Microsoft.Win32.OpenFileDialog { Filter = filter, Multiselect = true };
-        return Task.FromResult(dialog.ShowDialog() == true ? dialog.FileNames : Array.Empty<string>());
+        var ok = owner is null ? dialog.ShowDialog() : dialog.ShowDialog(owner);
+        return ok == true ? dialog.FileNames : Array.Empty<string>();
     }
 
-    public static Task<string?> PickFolderAsync()
+    public static string? PickFolder()
     {
+        if (TestMode.IsActive)
+        {
+            var folder = TestDialogAnswers.TryDequeue(TestDialogAnswers.Folder, out var queued) && queued.Length > 0 ? queued[0] : null;
+            ICSharpCode.Core.LoggingService.Info("OD_TEST_MODE: suppressed folder dialog, auto-answered " + (folder ?? "null (cancel)"));
+            return folder;
+        }
+
         var dialog = new Microsoft.Win32.OpenFolderDialog();
-        return Task.FromResult(dialog.ShowDialog() == true ? dialog.FolderName : null);
+        return dialog.ShowDialog() == true ? dialog.FolderName : null;
     }
 }
 

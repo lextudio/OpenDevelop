@@ -1075,8 +1075,8 @@ SharpDevelop can collect this information and upload it automatically.</value>
     <value>Save as UTF-8</value>
   </data>
   <data name="BackendBindings.ExecutionManager.CantExecuteDLLError" xml:space="preserve">
-    <value>Project is configured as dll and no execution command is specified.
-You can specifiy an execution command in the project options.</value>
+    <value>This project builds a class library (.dll), which cannot be started on its own.
+To run or debug it, choose Project Options &gt; Debug and set Start Action to "Start external program", or set an executable project as the startup project.</value>
   </data>
   <data name="BackendBindings.ExecutionManager.NoSingleFileCompilation" xml:space="preserve">
     <value>Compiling single files is not supported, please create a project!</value>

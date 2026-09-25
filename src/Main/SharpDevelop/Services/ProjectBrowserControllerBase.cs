@@ -331,6 +331,7 @@ internal abstract class ProjectBrowserControllerBase : IProjectBrowserController
                     existing.Add(normalizedPath);
                 }
 
+                currentSolution.Save();
                 Host?.RefreshSolutionTree();
                 if (generatedProjectFiles.Count > 0)
                 {
@@ -1209,6 +1210,13 @@ internal abstract class ProjectBrowserControllerBase : IProjectBrowserController
         if (selected.Kind == ProjectBrowserNodeKind.Solution)
         {
             return Path.GetDirectoryName(selected.FullPath) ?? Directory.GetCurrentDirectory();
+        }
+
+        // Solution folders are virtual and a solution item's file may live anywhere; new content
+        // for either belongs beside the solution file.
+        if (selected.Kind is ProjectBrowserNodeKind.SolutionFolder or ProjectBrowserNodeKind.SolutionItem)
+        {
+            return SD.ProjectService.CurrentSolution?.Directory.ToString() ?? Directory.GetCurrentDirectory();
         }
 
         return selected.FullPath;

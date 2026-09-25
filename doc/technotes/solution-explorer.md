@@ -406,6 +406,32 @@ Manage Packages, GAC/COM/Service/Web references are not offered). `ShowAddRefere
 A `ProjectReference` is written with its `Project`/`Name` metadata removed - SDK-style projects
 resolve it by path.
 
+### Solution folders and solution items
+
+`ProjectBrowserTreeBuilder.BuildSolutionTree` walks `ISolution.Items` recursively (it used to list
+`solution.Projects` flat, so solution folders and loose files never appeared). Two node kinds were
+added: `SolutionFolder` (virtual - `FullPath` is empty, `BoundItem` is the `ISolutionFolder`) and
+`SolutionItem` (a file in a solution folder; `IsFileNode` but deliberately not `IsFileLike`, so the
+project-item commands - rename/delete on disk, include/exclude, custom tool - never apply to it).
+Their menus are `ContextMenu/SolutionFolderNode` (Add > Existing Project / New Solution Folder /
+Existing Item, Rename, Remove) and `ContextMenu/SolutionItemNode` in the new addin. Removing a
+folder takes its projects out of the solution (after a confirmation naming the count); no file is
+deleted. Items added on the solution node itself go to a "Solution Items" folder, because `.slnx`
+has no top-level `<File>`.
+
+Two `.slnx` bugs surfaced on the way, both pre-existing:
+
+- `Solution.Save()` always wrote the classic `.sln` text format, so any save of a `.slnx` solution
+  replaced the XML with `.sln` text. `SlnxSolutionWriter` now handles `.slnx`: it loads the existing
+  XML and only synchronises `Folder`/`Project`/`File` elements with the model, keeping every
+  surviving element's attributes and children (per-project BuildType/Platform rules etc., which the
+  model does not carry).
+- `SlnxSolutionLoader` turned `<Folder Name="/src/tests/">` into a top-level folder called
+  "src/tests". `.slnx` lists nested folders flat by full path; the loader now nests them by path.
+
+Also: `TryRemoveProject` only edited the in-memory model, so removing a project from a solution was
+never written to disk; `RemoveFromProject` now saves the solution afterwards.
+
 ## Non-goals for this pass
 
 - Full VS MEF composition fidelity beyond what UnoDevelop's shim already does
