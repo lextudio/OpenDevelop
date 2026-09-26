@@ -280,6 +280,55 @@ function Get-PinnedGitVersionProperties {
     )
 }
 
+function Build-MicrosoftDesignerHosts {
+    <#
+      Builds the genuine-Microsoft-framework designer backends that are NOT referenced by
+      OpenDevelop.Mvp.slnx and therefore never get built by Build-Solution:
+        - FormsDesigner\MicrosoftHost\Host (Windows Forms against the .NET Desktop Runtime)
+        - WinUIXamlDesigner.MicrosoftHost  (real WinUI 3, multi-targets net9.0/net10.0)
+
+      Each one is its own DeployToAddIns target (AfterTargets="Build") that copies straight into
+      the shared AddIns/ tree, mirroring how the solution-referenced AddIns deploy themselves - so
+      building these two projects on the side, before the AddIns copy step, is sufficient; nothing
+      else needs to know they exist.
+
+      WinUIXamlDesigner.MicrosoftHost specifically CANNOT be built by `dotnet build`: UseWinUI
+      pulls in MrtCore.PriGen.targets, whose tasks ship only with Visual Studio (MSB4062
+      otherwise) - see "Building WinUIXamlDesigner.MicrosoftHost" in CLAUDE.md. Both projects are
+      therefore built with Visual Studio's MSBuild.exe.
+
+      The Forms host is an ordinary managed child launched via "dotnet exec", so it builds RID-less.
+      The WinUI host is a real unpackaged WinUI 3 app and cannot: one platform-neutral distribution
+      must therefore carry a child per supported Windows architecture, each deployed under
+      MicrosoftHost\<CLR major>\<rid>\ and selected by MicrosoftWinUIDesignRuntimeHostBootstrap.
+
+      Windows-only - every caller must guard with $IsWindows (or equivalent) before invoking this;
+      it is what silently regressed in launch.ps1 (dotnet build ran fine for everything else, so
+      the WinUI 3 backend never got built/deployed during a normal debug launch, and every WinUI
+      document showed "WinUI 3 runtime host is not installed.").
+    #>
+    param(
+        [Parameter(Mandatory)][string]$RepoRoot,
+        [ValidateSet('Debug', 'Release')]
+        [string]$Configuration = 'Debug',
+        [string[]]$PinnedGitVersionProperties = @()
+    )
+
+    $msbuild = Find-VsMsBuild
+    Write-Host "==> Using Visual Studio MSBuild for Microsoft designer hosts: $msbuild"
+
+    $formsDesignerHost = Join-Path $RepoRoot 'src/AddIns/DisplayBindings/FormsDesigner/MicrosoftHost/Host/MicrosoftFormsDesigner.Host.csproj'
+    Write-Host '==> Building Microsoft Windows Forms design host (RID-less)...'
+    Invoke-Native $msbuild $formsDesignerHost '-restore' "-p:Configuration=$Configuration" '-p:DisableGitVersionTask=true' '-p:ProGpuWpfUseCurrentRuntimeIdentifier=false' '-v:m' @PinnedGitVersionProperties
+
+    $winUiHost = Join-Path $RepoRoot 'src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.MicrosoftHost/WinUIXamlDesigner.MicrosoftHost.csproj'
+    foreach ($rid in 'win-x64', 'win-arm64') {
+        Write-Host "==> Building Microsoft WinUI design host (RuntimeIdentifier=$rid)..."
+        $winUiArgs = @('-restore', "-p:Configuration=$Configuration", '-p:DisableGitVersionTask=true', "-p:RuntimeIdentifier=$rid", '-v:m') + $PinnedGitVersionProperties
+        Invoke-Native $msbuild $winUiHost @winUiArgs
+    }
+}
+
 function Remove-StaleMsBuildAssets {
     # Microsoft.Build.Runtime 18.0.2 copies MSBuild .targets/.props files to every
     # project's output directory via contentFiles/CopyToOutputDirectory=PreserveNewest.
@@ -305,6 +354,7 @@ Export-ModuleMember -Function @(
     'Clear-RepoAddIns',
     'Restore-Solution',
     'Build-Solution',
+    'Build-MicrosoftDesignerHosts',
     'Get-PinnedGitVersionProperties',
     'Remove-StaleMsBuildAssets'
 )

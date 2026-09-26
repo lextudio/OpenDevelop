@@ -78,6 +78,10 @@ static class AppResourceManagerProvider
     /// runtimeconfig.json that every .NET app output carries, because the rest
     /// (Microsoft.UI.pri, Microsoft.WindowsAppRuntime.pri, ...) are framework packages that the
     /// framework's own ResourceManager already serves.
+    ///
+    /// A packaged (MSIX) output's merged <c>resources.pri</c> is deliberately NOT a candidate:
+    /// serving it hangs the child before the handshake (the designer then reports "A task was
+    /// canceled").
     /// </summary>
     static string? LocateAppPri(string? appBin)
     {

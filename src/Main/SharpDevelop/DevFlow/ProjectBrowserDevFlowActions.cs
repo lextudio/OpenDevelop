@@ -108,8 +108,14 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		static List<object> Describe(IEnumerable items)
 		{
 			var result = new List<object>();
-			foreach (var item in items.OfType<MenuItem>()) {
-				if (item.Visibility != Visibility.Visible)
+			foreach (var entry in items.OfType<Control>()) {
+				if (entry.Visibility != Visibility.Visible)
+					continue;
+				if (entry is Separator) {
+					result.Add(new { separator = true });
+					continue;
+				}
+				if (entry is not MenuItem item)
 					continue;
 				var codon = FindCodon(item);
 				List<object>? children = null;

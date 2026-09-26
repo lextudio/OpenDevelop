@@ -526,8 +526,6 @@
 				<Condition name = "Ownerstate" ownerstate = "Missing"/>
 			</Not>
 			<Condition name="WriteableProject" action="Disable">
-				<MenuItem id = "OpenSeparator" type = "Separator" />
-				
 				<Condition name = "Ownerstate" ownerstate = "InProject">
 					<MenuItem id = "Add" label = "${res:ProjectComponent.ContextMenu.AddMenu}" type="Menu">
 						<Include path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/FolderNode/Add"/>
@@ -589,7 +587,6 @@
 			<!-- MVP: removed - Cut/Copy/Paste/Delete/Rename: duplicates the entry ICSharpCode.SharpDevelop.ProjectBrowser.addin adds to this node (Common/Edit).
 			<Include id="CutCopyPasteDeleteRename" path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/CutCopyPasteDeleteRename"/>
 			-->
-			<MenuItem id = "RenameSeparator" type = "Separator" />
 			<MenuItem id    = "Properties"
 			          icon  = "Icons.16x16.PropertiesIcon"
 			          label = "${res:XML.MainMenu.FormatMenu.ShowProperties}"

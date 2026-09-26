@@ -856,6 +856,19 @@ sealed class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSelectionOv
 				ReportDesigner(error);
 				return (null, null, Directory.Exists(appBin) ? appBin : null, error, null, null);
 			}
+			// A packaged (MSIX) output only works with package identity: its merged resources.pri
+			// hangs the unpackaged child before the handshake ("A task was canceled"), and its
+			// generated XAML metadata provider cannot be created there, so framework markup such as
+			// AnimatedIcon.State fails to resolve.
+			if (File.Exists(Path.Combine(appBin, "AppxManifest.xml")))
+			{
+				var active = SD.ProjectService.CurrentSolution?.ActiveConfiguration.ToString() ?? "the active configuration";
+				var error = "WinUI designer cannot preview '" + project.Name + "' because " + active
+					+ " builds a packaged (MSIX) app, which only runs with package identity. Select an unpackaged"
+					+ " configuration (for WinUI Gallery: Debug-Unpackaged|ARM64), build it, then close and reopen this document.";
+				ReportDesigner(error);
+				return (null, null, null, error, null, null);
+			}
 			if (!CanHostRunOnAppArchitecture(appBin, out var appArchitecture, out var dotnetHostPath, out var dotnetHostArchitecture))
 			{
 				var error = "WinUI designer cannot preview '" + project.Name + "' because that configuration's output is "

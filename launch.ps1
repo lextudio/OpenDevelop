@@ -127,6 +127,20 @@ if (-not $NoBuild) {
 
     Build-Solution -DotNet $dotnet -Solution $sln
 
+    # OpenDevelop.Mvp.slnx never references FormsDesigner/MicrosoftHost or
+    # WinUIXamlDesigner.MicrosoftHost - the real Microsoft-framework designer backends - so
+    # Build-Solution above never builds them. WinUIXamlDesigner.MicrosoftHost specifically CANNOT
+    # be built by `dotnet build` at all (UseWinUI pulls in MrtCore.PriGen.targets, which ships only
+    # with Visual Studio - MSB4062 otherwise), so it must go through Find-VsMsBuild here, exactly
+    # like dist.ps1's designer-hosts phase. Skipping this silently leaves AddIns/.../MicrosoftHost
+    # missing and every WinUI XAML file's Design view falls back to "WinUI 3 runtime host is not
+    # installed." - the previous behavior of this script.
+    if ($IsWindows) {
+        Write-Host '==> Building Microsoft-framework designer hosts (VS MSBuild)...'
+        Build-MicrosoftDesignerHosts -RepoRoot $repoRoot -Configuration $Configuration `
+            -PinnedGitVersionProperties (Get-PinnedGitVersionProperties -GlobalAssemblyInfoPath (Join-Path $repoRoot 'src/Main/GlobalAssemblyInfo.cs'))
+    }
+
     Remove-StaleMsBuildAssets -RepoRoot $repoRoot -Configuration $Configuration
 }
 else {
