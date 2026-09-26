@@ -72,7 +72,48 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				return errorList.Count > 0;
 			}
 		}
-		
+
+		/// <summary>
+		/// Shows an immediate, themed placeholder while a delayed view (normally an out-of-process
+		/// visual designer) is being initialized. A later <see cref="UserContent"/> assignment
+		/// replaces it automatically. This deliberately does nothing after a real view or error has
+		/// been supplied, so rebuilding split chrome never hides a live designer frame.
+		/// </summary>
+		public void ShowLoadingPlaceholder(string message)
+		{
+			if (userContent != null || errorList.Count != 0 || contentControl.Content != null)
+				return;
+
+			var panel = new Border {
+				Padding = new Thickness(24),
+				BorderThickness = new Thickness(1),
+				HorizontalAlignment = HorizontalAlignment.Center,
+				VerticalAlignment = VerticalAlignment.Center
+			};
+			panel.SetResourceReference(Border.BackgroundProperty, "ToolWindowBackground");
+			panel.SetResourceReference(Border.BorderBrushProperty, "Border");
+
+			var contents = new StackPanel { MinWidth = 180 };
+			var label = new TextBlock {
+				Text = message,
+				HorizontalAlignment = HorizontalAlignment.Center,
+				TextAlignment = TextAlignment.Center,
+				Margin = new Thickness(0, 0, 0, 12)
+			};
+			label.SetResourceReference(TextBlock.ForegroundProperty, "Foreground");
+			contents.Children.Add(label);
+			contents.Children.Add(new ProgressBar {
+				Height = 3,
+				IsIndeterminate = true,
+				Focusable = false
+			});
+			panel.Child = contents;
+
+			var placeholder = new Grid { IsHitTestVisible = false };
+			placeholder.Children.Add(panel);
+			contentControl.Content = placeholder;
+		}
+
 		class LoadError
 		{
 			internal Exception exception;

@@ -536,6 +536,15 @@ namespace ICSharpCode.FormsDesigner
 					foreach (OpenedFile f in sourceFiles.Except(this.Files).ToArray()) {
 						this.sourceCodeStorage.AddFile(f);
 						this.Files.Add(f);
+						// The remote snapshot is created immediately below. Merely registering a
+						// companion Foo.Designer.cs leaves its document empty until the normal
+						// OpenedFile load pass reaches it, so the first child-host request cannot
+						// find InitializeComponent. Populate every newly discovered source file
+						// now; OpenRead also preserves an in-memory OpenedFile payload when one
+						// exists.
+						using (var sourceStream = f.OpenRead()) {
+							this.sourceCodeStorage.LoadFile(f, sourceStream);
+						}
 					}
 					
 					this.sourceCodeStorage.DesignerCodeFile = newDesignerCodeFile;
