@@ -425,8 +425,8 @@
 		<MenuItem id = "Separator2" type = "Separator"/>
 		<!-- MVP: removed - Cut/Paste/Remove/Rename: duplicates the entry ICSharpCode.SharpDevelop.ProjectBrowser.addin adds to this node (Common/Edit).
 		<Include id="inc" path="/SharpDevelop/Pads/ProjectBrowser/ContextMenu/CutPasteRemoveRename"/>
-		-->
 		<MenuItem id = "CutCopyPasteSeparator" type = "Separator"/>
+		-->
 		<MenuItem id    = "Properties"
 		          icon  = "Icons.16x16.PropertiesIcon"
 		          label = "${res:XML.MainMenu.FormatMenu.ShowProperties}"
