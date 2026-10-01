@@ -69,7 +69,10 @@ static class MewUIRenderer
 	/// name, so a MewUI upgrade that moves one names it in a diagnostic instead of failing blind.</summary>
 	static MethodInfo? EnsureDevice(List<string> diagnostics)
 	{
-		const string backendDll = "Aprillz.MewUI.Backend.MewVG.MacOS.dll", backendType = "MewVGMacOSGraphicsFactory";
+		// GDI on Windows: a software backend, so an offscreen frame needs no GPU device or window.
+		var (backendDll, backendType) = OperatingSystem.IsWindows()
+			? ("Aprillz.MewUI.Backend.Gdi.dll", "GdiGraphicsFactory")
+			: ("Aprillz.MewUI.Backend.MewVG.MacOS.dll", "MewVGMacOSGraphicsFactory");
 		var renderFrame = typeof(Window).GetMethod("RenderFrameToSurface", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public, new[] { typeof(IRenderSurface) });
 		if (renderFrame == null) { diagnostics.Add($"MewUI {version}: Window.RenderFrameToSurface(IRenderSurface) not found; the designer needs updating for this MewUI version."); return null; }
 		if (device != null) return renderFrame;

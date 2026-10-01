@@ -5,11 +5,15 @@
     <ProjectReference Include="..\..\..\Main\Designer\Designer.Server\Designer.Server.csproj" />
     <ProjectReference Include="..\..\..\Libraries\MewUI.Xaml\LeXtudio.MewUI.Xaml.csproj" />
   </ItemGroup>
-  <!-- Real MewUI controls render the preview. Only the macOS backend is wired up so far; elsewhere
-       the host stays model-only (tree, no frame). -->
-  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))"><DefineConstants>$(DefineConstants);MEWUI_RENDER</DefineConstants></PropertyGroup>
+  <!-- Real MewUI controls render the preview: the MewVG/Metal backend on macOS, the GDI backend on
+       Windows (software, so offscreen frames need no GPU context). Elsewhere the host stays
+       model-only (tree, no frame). -->
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('OSX')) Or $([MSBuild]::IsOSPlatform('Windows'))"><DefineConstants>$(DefineConstants);MEWUI_RENDER</DefineConstants></PropertyGroup>
   <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
     <PackageReference Include="Aprillz.MewUI.MacOS" VersionOverride="0.22.0" />
+  </ItemGroup>
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <PackageReference Include="Aprillz.MewUI.Windows" VersionOverride="0.22.0" />
   </ItemGroup>
   <Target Name="DeployToAddIns" AfterTargets="Build"><ItemGroup><HostOutput Include="$(TargetDir)**" /></ItemGroup><Copy SourceFiles="@(HostOutput)" SkipUnchangedFiles="true" DestinationFiles="@(HostOutput->'$(MSBuildProjectDirectory)\..\..\..\..\AddIns\DisplayBindings\MewUIDesigner\Host\%(RecursiveDir)%(Filename)%(Extension)')" /></Target>
 </Project>

@@ -36,7 +36,7 @@ sealed class MewUIDesignerHostService : IDesignerChildService
 		state.Render = result.Frame;
 		Place(state.Tree, "0", result.Bounds, session.Bounds);
 #else
-		state.Diagnostics.Add(new DesignerDiagnostic { Severity = "Info", Message = "MewUI preview rendering is only wired up for the macOS backend; this host shows the element tree without a frame." });
+		state.Diagnostics.Add(new DesignerDiagnostic { Severity = "Info", Message = "MewUI preview rendering is only wired up for the macOS and Windows backends; this host shows the element tree without a frame." });
 #endif
 	}
 	static void Place(DesignerElementNode node, string path, Dictionary<string, (double X, double Y, double Width, double Height)> rendered, Dictionary<string, (double X, double Y, double Width, double Height)> byId)

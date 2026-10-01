@@ -288,6 +288,13 @@ described as covered by the passing integration test.
 
 ## Future runtime fidelity
 
+Preview frames today come from `MewUIDesigner.Host/MewUIRenderer.cs`, which builds the real MewUI
+controls and renders them offscreen through `Window.RenderFrameToSurface`. The backend is per OS:
+MewVG/Metal on macOS (`Aprillz.MewUI.MacOS`) and GDI on Windows (`Aprillz.MewUI.Windows`) - GDI
+because it is software-only, so an offscreen frame needs no GPU device or window. Other platforms
+build without `MEWUI_RENDER` and the host stays model-only (element tree, no frame); fit, element
+screen bounds and drag-drop onto the preview all need a frame.
+
 The current safe projection is intentionally project-code-free. A future exact-pixel renderer may
 be added as a fourth DDP child backend once MewUI exposes a supported off-screen render/bootstrap
 contract. That child must consume source snapshots and return neutral DTOs; it must never become the

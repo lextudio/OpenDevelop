@@ -189,7 +189,7 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 	[Fact]
 	public async Task MewUIDesigner_RendersRealMewUIControlsWithLayoutBounds()
 	{
-		Assert.SkipUnless(OperatingSystem.IsMacOS(), "The MewUI host only wires up the macOS render backend so far.");
+		Assert.SkipUnless(OperatingSystem.IsMacOS() || OperatingSystem.IsWindows(), "The MewUI host only wires up the macOS and Windows render backends so far.");
 		var openedProject = await app.ReopenSolutionAsync(projectPath);
 		Assert.True(openedProject.GetProperty("success").GetBoolean(), openedProject.ToString());
 		var opened = await app.InvokeAsync("od.open-file", designerPath);
