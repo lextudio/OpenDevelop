@@ -856,6 +856,38 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 
+		[DllImport("user32.dll")] static extern IntPtr WindowFromPoint(NativePoint point);
+		[DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr hwnd, System.Text.StringBuilder name, int max);
+		[StructLayout(LayoutKind.Sequential)] struct NativePoint { public int X, Y; }
+
+		[DevFlowAction("od.ui.hit-test-screen", Description = "Report what is under a screen point: the native window (class, owning process) that would receive a click there, and the WPF element chain hit-tested in every presentation source (main window and popups) containing the point. For diagnosing pointer-driven tests whose click lands somewhere unexpected.")]
+		public static string HitTestScreen(double x, double y)
+		{
+			object native = null;
+			if (OperatingSystem.IsWindows()) {
+				var hwnd = WindowFromPoint(new NativePoint { X = (int)Math.Round(x), Y = (int)Math.Round(y) });
+				var className = new System.Text.StringBuilder(256);
+				GetClassName(hwnd, className, className.Capacity);
+				GetWindowThreadProcessId(hwnd, out var processId);
+				native = new { hwnd = hwnd.ToInt64(), className = className.ToString(), processId, ownProcess = processId == Environment.ProcessId };
+			}
+			var hits = new List<object>();
+			foreach (PresentationSource source in PresentationSource.CurrentSources) {
+				if (source.RootVisual is not UIElement root || !root.IsVisible)
+					continue;
+				Point local;
+				try { local = root.PointFromScreen(new Point(x, y)); } catch (InvalidOperationException) { continue; }
+				if (local.X < 0 || local.Y < 0 || local.X > root.RenderSize.Width || local.Y > root.RenderSize.Height)
+					continue;
+				var chain = new List<string>();
+				for (DependencyObject d = root.InputHitTest(local) as DependencyObject; d != null && chain.Count < 12;
+				     d = System.Windows.Media.VisualTreeHelper.GetParent(d) ?? LogicalTreeHelper.GetParent(d))
+					chain.Add(d.GetType().Name + (d is FrameworkElement { Name: { Length: > 0 } name } ? "#" + name : ""));
+				hits.Add(new { source = root.GetType().Name, x = Math.Round(local.X), y = Math.Round(local.Y), chain });
+			}
+			return JsonSerializer.Serialize(new { success = true, native, wpf = hits });
+		}
+
 		[DevFlowAction("od.activate-secondary-view", Description = "Activate a file's secondary view by its full CLR type name. This forces the selected designer's real LoadInternal lifecycle (including any OOP host startup) rather than merely creating the secondary tab.")]
 		public static string ActivateSecondaryView(string path, string typeName)
 		{
