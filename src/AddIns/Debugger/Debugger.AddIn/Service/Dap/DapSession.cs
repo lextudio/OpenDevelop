@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection.PortableExecutable;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
@@ -73,6 +74,13 @@ namespace Debugger.AddIn.Service.Dap
 		readonly object modulesLock = new object();
 		readonly List<DapModuleInfo> modules = new List<DapModuleInfo>();
 
+		// Last few stderr lines of the adapter, quoted when it dies so the failure names its cause
+		readonly Queue<string> adapterStderrTail = new Queue<string>();
+		const int AdapterStderrTailLines = 20;
+
+		string launchTarget;
+		static readonly TimeSpan RuntimeLoadNoticeDelay = TimeSpan.FromSeconds(30);
+
 		public bool IsRunning { get { return adapterProcess != null && !adapterProcess.HasExited; } }
 		public bool IsPaused { get; private set; }
 		public int ActiveThreadId { get; private set; }
@@ -122,19 +130,30 @@ namespace Debugger.AddIn.Service.Dap
 			}
 
 			this.launchMode = launchMode;
+			launchTarget = targetPath;
 			cancellationTokenSource = new CancellationTokenSource();
-			adapterProcess = LaunchAdapter(adapterDll);
+			string debuggeeHost = ResolveDebuggeeHost(targetPath);
+			adapterProcess = LaunchAdapter(adapterDll, debuggeeHost);
 			// Surface the adapter's (and, since the debuggee inherits it, the debuggee's) stderr to
 			// the caller so it can be shown in the Debug output channel. Without this an adapter
 			// crash or a debuggee launch failure (e.g. "the specified framework was not found")
 			// was completely invisible - the session just died and the UI kept stale markers.
 			adapterProcess.ErrorDataReceived += (s, e) => {
-				if (!string.IsNullOrEmpty(e.Data))
-					OutputReceived?.Invoke(e.Data + Environment.NewLine);
+				if (string.IsNullOrEmpty(e.Data))
+					return;
+				lock (adapterStderrTail) {
+					adapterStderrTail.Enqueue(e.Data);
+					while (adapterStderrTail.Count > AdapterStderrTailLines)
+						adapterStderrTail.Dequeue();
+				}
+				OutputReceived?.Invoke(e.Data + Environment.NewLine);
 			};
 			adapterProcess.BeginErrorReadLine();
 			client = new DapClient(adapterProcess.StandardOutput.BaseStream, adapterProcess.StandardInput.BaseStream, log);
 			client.EventReceived += OnDapEvent;
+			var adapter = adapterProcess;
+			var connection = client;
+			client.Disconnected += () => connection.FailPendingRequests(DescribeAdapterExit(adapter));
 			client.Start();
 			adapterProcess.Exited += AdapterProcessExited;
 
@@ -149,7 +168,7 @@ namespace Debugger.AddIn.Service.Dap
 			Capabilities = ParseCapabilities(initializeResponse);
 
 			if (launchMode == DapLaunchMode.AttachToSuspendedProcess) {
-				debuggeeProcess = LaunchDebuggeeSuspended(targetPath, workingDirectory, argumentList, launchEnvironment);
+				debuggeeProcess = LaunchDebuggeeSuspended(debuggeeHost, targetPath, workingDirectory, argumentList, launchEnvironment);
 				await client.SendRequestAsync("attach", new JsonObject {
 					["processId"] = debuggeeProcess.Id,
 					["console"] = "internalConsole",
@@ -160,10 +179,15 @@ namespace Debugger.AddIn.Service.Dap
 				foreach (var argument in argumentList) {
 					args.Add(argument);
 				}
+				var env = new JsonObject();
+				foreach (var variable in launchEnvironment ?? Enumerable.Empty<KeyValuePair<string, string>>()) {
+					env[variable.Key] = variable.Value;
+				}
 				await client.SendRequestAsync("launch", new JsonObject {
 					["program"] = targetPath,
 					["args"] = args,
 					["cwd"] = workingDirectory ?? Path.GetDirectoryName(targetPath),
+					["env"] = env,
 					["stopAtEntry"] = breakAtBeginning,
 					["console"] = "internalConsole"
 				}, cancellationToken).ConfigureAwait(false);
@@ -179,7 +203,23 @@ namespace Debugger.AddIn.Service.Dap
 		/// </summary>
 		public async Task ConfigurationDoneAsync(CancellationToken cancellationToken = default)
 		{
-			await client.SendRequestAsync("configurationDone", null, cancellationToken).ConfigureAwait(false);
+			// In Launch mode SharpDbg answers "configurationDone" only once the debuggee's .NET runtime
+			// has started - for a native host (EXCEL.EXE loading an add-in) that can take arbitrarily
+			// long. An adapter that dies instead still fails this promptly via DapClient.Disconnected.
+			Task configurationDone = client.SendRequestAsync("configurationDone", null, cancellationToken,
+				launchMode == DapLaunchMode.Launch ? Timeout.InfiniteTimeSpan : (TimeSpan?)null);
+			// No timeout, but no silence either: say once what the session is waiting on
+			if (launchMode == DapLaunchMode.Launch) {
+				using (var noticeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)) {
+					var notice = Task.Delay(RuntimeLoadNoticeDelay, noticeCts.Token);
+					if (await Task.WhenAny(configurationDone, notice).ConfigureAwait(false) == notice && notice.Status == TaskStatus.RanToCompletion) {
+						OutputReceived?.Invoke("Still waiting for " + Path.GetFileName(launchTarget) +
+							" to load the .NET runtime. Debugging starts when it does; press Stop to cancel." + Environment.NewLine);
+					}
+					noticeCts.Cancel();
+				}
+			}
+			await configurationDone.ConfigureAwait(false);
 
 			// DapLaunchMode.AttachToSuspendedProcess left the debuggee's runtime suspended at
 			// startup precisely so breakpoints/configuration land before any of its code runs -
@@ -203,11 +243,11 @@ namespace Debugger.AddIn.Service.Dap
 			}, cancellationToken).ConfigureAwait(false);
 		}
 
-		Process LaunchDebuggeeSuspended(string targetDll, string workingDirectory, IEnumerable<string> arguments,
+		Process LaunchDebuggeeSuspended(string dotnetHost, string targetDll, string workingDirectory, IEnumerable<string> arguments,
 			IEnumerable<KeyValuePair<string, string>> launchEnvironment)
 		{
 			var processStartInfo = new ProcessStartInfo {
-				FileName = ResolveDotNetHost(),
+				FileName = dotnetHost,
 				RedirectStandardInput = false,
 				RedirectStandardOutput = true,
 				RedirectStandardError = true,
@@ -223,6 +263,7 @@ namespace Debugger.AddIn.Service.Dap
 			// can attach and land breakpoints before any debuggee code executes; resumed by
 			// ConfigurationDoneAsync above once the DAP configuration window closes.
 			processStartInfo.Environment["DOTNET_DefaultDiagnosticPortSuspend"] = "1";
+			UseDotNetHost(processStartInfo, dotnetHost);
 			// Diagnostic/telemetry env vars that can interfere with a suspended-attach session
 			// (forced tiering/GC modes, ReadyToRun disabling) if inherited from the IDE's own process.
 			foreach (string envVar in new[] {
@@ -627,10 +668,13 @@ namespace Debugger.AddIn.Service.Dap
 			debuggeeProcess = null;
 		}
 
-		static Process LaunchAdapter(string adapterDll)
+		/// <param name="debuggeeHost">The dotnet host matching the debuggee's architecture. SharpDbg loads
+		/// the dbgshim build matching its own process, and dbgshim cannot debug a process of another
+		/// architecture, so the adapter's bitness follows the debuggee, never the IDE's.</param>
+		static Process LaunchAdapter(string adapterDll, string debuggeeHost)
 		{
 			var processStartInfo = new ProcessStartInfo {
-				FileName = ResolveDotNetHost(),
+				FileName = debuggeeHost,
 				Arguments = "\"" + adapterDll + "\" --interpreter=vscode",
 				RedirectStandardInput = true,
 				RedirectStandardOutput = true,
@@ -638,12 +682,35 @@ namespace Debugger.AddIn.Service.Dap
 				UseShellExecute = false,
 				CreateNoWindow = true
 			};
+			UseDotNetHost(processStartInfo, debuggeeHost);
 			var process = new Process {
 				StartInfo = processStartInfo,
 				EnableRaisingEvents = true
 			};
 			process.Start();
 			return process;
+		}
+
+		Exception DescribeAdapterExit(Process adapter)
+		{
+			string message = "The debug adapter (SharpDbg) closed the connection";
+			try {
+				// stdout ends slightly before the process is reaped; give it a moment for the exit code.
+				// Bounded only: a debuggee that inherited the adapter's stderr pipe keeps it open, so an
+				// unbounded WaitForExit() (which waits for that stream's EOF) could never return.
+				if (adapter.WaitForExit(2000) && adapter.HasExited)
+					message += " and exited with code " + adapter.ExitCode;
+			} catch (InvalidOperationException) {
+			} catch (System.ComponentModel.Win32Exception) {
+			}
+			string[] stderr;
+			lock (adapterStderrTail) {
+				stderr = adapterStderrTail.ToArray();
+			}
+			message += stderr.Length > 0
+				? "." + Environment.NewLine + string.Join(Environment.NewLine, stderr)
+				: ". It wrote nothing to stderr.";
+			return new IOException(message);
 		}
 
 		static string ResolveDotNetHost()
@@ -662,6 +729,150 @@ namespace Debugger.AddIn.Service.Dap
 			// "different thread owns it".
 			return SD.MainThread.InvokeIfRequired(() =>
 				ICSharpCode.SharpDevelop.Project.Sdk.DotNetSdkService.ResolveEffectiveSdk().DotnetExecutablePath);
+		}
+
+		/// <summary>
+		/// Points a child process at <paramref name="host"/>'s install. Processes inherit this
+		/// environment, and a DOTNET_ROOT left pointing at the IDE's install would make a debuggee's
+		/// runtime resolve from the IDE's architecture instead of its own.
+		/// </summary>
+		static void UseDotNetHost(ProcessStartInfo startInfo, string host)
+		{
+			if (!Path.IsPathRooted(host))
+				return;
+			foreach (string name in new[] { "DOTNET_ROOT", "DOTNET_ROOT(x86)", "DOTNET_ROOT_X86", "DOTNET_ROOT_X64", "DOTNET_ROOT_ARM64" })
+				startInfo.Environment.Remove(name);
+			startInfo.Environment["DOTNET_ROOT"] = Path.GetDirectoryName(host);
+			startInfo.Environment["DOTNET_HOST_PATH"] = host;
+		}
+
+		/// <summary>
+		/// The dotnet host whose architecture matches <paramref name="target"/>: a native program's
+		/// machine, or a managed assembly's platform target. Only an AnyCPU assembly (or a target that
+		/// cannot be read) runs under the configured SDK's host.
+		/// </summary>
+		static string ResolveDebuggeeHost(string target)
+		{
+			string defaultHost = ResolveDotNetHost();
+			if (!OperatingSystem.IsWindows())
+				return defaultHost;
+			// An AnyCPU app.dll runs as whatever its app.exe launcher is - the SDK that built it picks
+			// that, not the IDE (an x64 OpenDevelop on ARM64 still sees ARM64 apphosts from CLI builds)
+			Machine? required = ReadTargetMachine(target) ?? ReadApphostMachine(target);
+			if (required == null || required == ReadMachine(defaultHost))
+				return defaultHost;
+			string archName;
+			switch (required.Value) {
+				case Machine.I386: archName = "x86"; break;
+				case Machine.Amd64: archName = "x64"; break;
+				case Machine.Arm64: archName = "arm64"; break;
+				default: return defaultHost;
+			}
+			// A program the OS cannot run at all deserves that answer, not "install a runtime".
+			// OSArchitecture is the real OS even from a WOW64 or x64-emulated IDE process.
+			var os = System.Runtime.InteropServices.RuntimeInformation.OSArchitecture;
+			if (!CanRunOn(required.Value, os)) {
+				throw new InvalidOperationException(
+					Path.GetFileName(target) + " is an " + archName + " program and cannot run on this " +
+					os + " machine. Build it for AnyCPU or this machine's architecture to debug it here.");
+			}
+			foreach (string root in CandidateDotNetRoots(archName)) {
+				string candidate = Path.Combine(root, "dotnet.exe");
+				if (ReadMachine(candidate) == required)
+					return candidate;
+			}
+			throw new InvalidOperationException(
+				Path.GetFileName(target) + " is a " + archName + " program, but no " + archName +
+				" .NET runtime is installed. Install the " + archName + " .NET runtime to debug it.");
+		}
+
+		/// <summary>x86 runs everywhere (WOW64), x64 on x64 and ARM64 (emulation), ARM64 only on ARM64.</summary>
+		static bool CanRunOn(Machine program, System.Runtime.InteropServices.Architecture os)
+		{
+			switch (program) {
+				case Machine.I386: return true;
+				case Machine.Amd64: return os == System.Runtime.InteropServices.Architecture.X64 || os == System.Runtime.InteropServices.Architecture.Arm64;
+				case Machine.Arm64: return os == System.Runtime.InteropServices.Architecture.Arm64;
+				default: return false;
+			}
+		}
+
+		static IEnumerable<string> CandidateDotNetRoots(string archName)
+		{
+			// The installer records each architecture's location in the 32-bit registry view
+			string registered = null;
+			try {
+				using (var baseKey = Microsoft.Win32.RegistryKey.OpenBaseKey(Microsoft.Win32.RegistryHive.LocalMachine, Microsoft.Win32.RegistryView.Registry32))
+				using (var key = baseKey.OpenSubKey(@"SOFTWARE\dotnet\Setup\InstalledVersions\" + archName))
+					registered = key?.GetValue("InstallLocation") as string;
+			} catch (System.Security.SecurityException) {
+			} catch (UnauthorizedAccessException) {
+			}
+			if (!string.IsNullOrEmpty(registered))
+				yield return registered;
+			string programFiles = Environment.GetEnvironmentVariable("ProgramW6432") ?? Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+			string programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+			if (archName == "x86") {
+				yield return Path.Combine(programFilesX86, "dotnet");
+			} else {
+				yield return Path.Combine(programFiles, "dotnet", archName); // emulated x64 on ARM64
+				yield return Path.Combine(programFiles, "dotnet");
+			}
+		}
+
+		/// <summary>The architecture <paramref name="path"/> must run as, or null for AnyCPU / unreadable.</summary>
+		static Machine? ReadTargetMachine(string path)
+		{
+			try {
+				if (!File.Exists(path))
+					return null;
+				using (var stream = File.OpenRead(path))
+				using (var peReader = new PEReader(stream)) {
+					var headers = peReader.PEHeaders;
+					if (headers.CorHeader == null)
+						return headers.CoffHeader.Machine;
+					var flags = headers.CorHeader.Flags;
+					if (headers.CoffHeader.Machine != Machine.I386)
+						return headers.CoffHeader.Machine; // PlatformTarget x64 / ARM64
+					// x86 sets 32BITREQUIRED; AnyCPU "Prefer 32-bit" adds 32BITPREFERRED and still
+					// runs 64-bit on a 64-bit OS, so only the former pins the bitness.
+					bool requires32Bit = (flags & CorFlags.Requires32Bit) != 0 && (flags & CorFlags.Prefers32Bit) == 0;
+					return requires32Bit ? Machine.I386 : (Machine?)null;
+				}
+			} catch (BadImageFormatException) {
+				return null;
+			} catch (IOException) {
+				return null;
+			} catch (UnauthorizedAccessException) {
+				return null;
+			}
+		}
+
+		/// <summary>The machine of the native launcher next to a managed app.dll, or null if there is none.</summary>
+		static Machine? ReadApphostMachine(string target)
+		{
+			if (!string.Equals(Path.GetExtension(target), ".dll", StringComparison.OrdinalIgnoreCase))
+				return null;
+			string apphost = Path.ChangeExtension(target, ".exe");
+			// A managed .exe (net48-style) is not an apphost and says nothing about the bitness
+			return File.Exists(apphost) && !ICSharpCode.SharpDevelop.Services.WindowsDebugger.IsManagedAssembly(apphost) ? ReadMachine(apphost) : null;
+		}
+
+		static Machine? ReadMachine(string path)
+		{
+			try {
+				if (!File.Exists(path))
+					return null;
+				using (var stream = File.OpenRead(path))
+				using (var peReader = new PEReader(stream))
+					return peReader.PEHeaders.CoffHeader.Machine;
+			} catch (BadImageFormatException) {
+				return null;
+			} catch (IOException) {
+				return null;
+			} catch (UnauthorizedAccessException) {
+				return null;
+			}
 		}
 
 		string ResolveAdapterDll()

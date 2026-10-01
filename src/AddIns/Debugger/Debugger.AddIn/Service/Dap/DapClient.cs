@@ -43,12 +43,20 @@ namespace Debugger.AddIn.Service.Dap
 		// Interlocked.Increment for the sequence number was not enough on its own once reverse
 		// requests (below) started sharing the same writer from the read loop.
 		volatile bool isDisposed;
+		volatile Exception connectionError;
 		readonly SemaphoreSlim writeLock = new SemaphoreSlim(1, 1);
 		readonly SemaphoreSlim requestLock = new SemaphoreSlim(1, 1);
 		readonly Action<string> log;
 		int sequenceNumber;
 
 		public event Action<string, JsonObject> EventReceived;
+
+		/// <summary>
+		/// Raised on the read loop once the adapter's output stream ends (the adapter exited or closed
+		/// it). A handler may call <see cref="FailPendingRequests"/> with a more specific error (exit
+		/// code, stderr); whatever is still pending afterwards fails with a generic one.
+		/// </summary>
+		public event Action Disconnected;
 
 		/// <param name="log">Optional sink for a SEND/RECV/error trace of every message - useful when
 		/// diagnosing a hung or misbehaving adapter session. No-op by default.</param>
@@ -64,21 +72,37 @@ namespace Debugger.AddIn.Service.Dap
 			_ = Task.Run(ReadLoopAsync, cancellationTokenSource.Token);
 		}
 
-		public async Task<JsonObject> SendRequestAsync(string command, JsonObject arguments = null, CancellationToken cancellationToken = default)
+		/// <param name="timeout">Overrides the default request timeout; <see cref="Timeout.InfiniteTimeSpan"/>
+		/// for a request whose response legitimately waits on the debuggee, e.g. "configurationDone"
+		/// launching a native host that loads the .NET runtime only later.</param>
+		public async Task<JsonObject> SendRequestAsync(string command, JsonObject arguments = null, CancellationToken cancellationToken = default,
+			TimeSpan? timeout = null)
 		{
 			// Report the CLIENT as disposed rather than letting a request fail from deep inside with
 			// the name of some internal primitive - a caller can act on "the debug session is gone".
 			ObjectDisposedException.ThrowIf(isDisposed, this);
 			await requestLock.WaitAsync(cancellationToken).ConfigureAwait(false);
 			try {
-				return await SendRequestCoreAsync(command, arguments, cancellationToken).ConfigureAwait(false);
+				return await SendRequestCoreAsync(command, arguments, cancellationToken, timeout ?? RequestTimeout).ConfigureAwait(false);
 			} finally {
 				requestLock.Release();
 			}
 		}
 
-		async Task<JsonObject> SendRequestCoreAsync(string command, JsonObject arguments, CancellationToken cancellationToken)
+		/// <summary>Fails every request still awaiting a response with <paramref name="error"/>.</summary>
+		public void FailPendingRequests(Exception error)
 		{
+			connectionError ??= error;
+			foreach (int sequence in pending.Keys) {
+				if (pending.TryRemove(sequence, out var completionSource))
+					completionSource.TrySetException(error);
+			}
+		}
+
+		async Task<JsonObject> SendRequestCoreAsync(string command, JsonObject arguments, CancellationToken cancellationToken, TimeSpan timeout)
+		{
+			if (connectionError != null)
+				throw connectionError;
 			int sequence = Interlocked.Increment(ref sequenceNumber);
 			var completionSource = new TaskCompletionSource<JsonObject>(TaskCreationOptions.RunContinuationsAsynchronously);
 			pending[sequence] = completionSource;
@@ -93,6 +117,9 @@ namespace Debugger.AddIn.Service.Dap
 			}
 
 			await WriteMessageAsync(message).ConfigureAwait(false);
+			// The connection may have dropped between the check above and registering in pending
+			if (connectionError != null && pending.TryRemove(sequence, out _))
+				completionSource.TrySetException(connectionError);
 
 			// Defense-in-depth: a DAP request/response is meant to be prompt, but an adapter that
 			// doesn't implement a given request simply never replies - awaiting the response then
@@ -100,7 +127,7 @@ namespace Debugger.AddIn.Service.Dap
 			// events). Cap every request so a missing/slow response surfaces as a TimeoutException
 			// instead of an unbreakable freeze.
 			using (var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)) {
-				timeoutCts.CancelAfter(RequestTimeout);
+				timeoutCts.CancelAfter(timeout);
 				using (timeoutCts.Token.Register(() => {
 					TaskCompletionSource<JsonObject> removed;
 					pending.TryRemove(sequence, out removed);
@@ -108,7 +135,7 @@ namespace Debugger.AddIn.Service.Dap
 						completionSource.TrySetCanceled(cancellationToken);
 					else
 						completionSource.TrySetException(new TimeoutException(
-							"DAP request '" + command + "' timed out after " + RequestTimeout.TotalSeconds + "s (adapter did not respond)."));
+							"DAP request '" + command + "' timed out after " + timeout.TotalSeconds + "s (adapter did not respond)."));
 				})) {
 					return await completionSource.Task.ConfigureAwait(false);
 				}
@@ -172,6 +199,17 @@ namespace Debugger.AddIn.Service.Dap
 			} catch (OperationCanceledException) {
 			} catch (Exception ex) {
 				log("READ LOOP ERROR " + ex);
+			} finally {
+				// Without this, every request awaiting a response when the adapter died sat until its
+				// timeout and then blamed an unresponsive adapter, hiding the real failure.
+				if (!isDisposed) {
+					try {
+						Disconnected?.Invoke();
+					} catch (Exception ex) {
+						log("DISCONNECTED HANDLER ERROR " + ex);
+					}
+				}
+				FailPendingRequests(new IOException("The debug adapter closed the connection."));
 			}
 		}
 
@@ -226,6 +264,7 @@ namespace Debugger.AddIn.Service.Dap
 		{
 			isDisposed = true;
 			cancellationTokenSource.Cancel();
+			FailPendingRequests(new ObjectDisposedException(nameof(DapClient), "The debug session ended."));
 			// The two SemaphoreSlims are deliberately NOT disposed. Cancelling above does not
 			// unwind requests that are already inside SendRequestAsync/WriteMessageAsync, so
 			// disposing the semaphores here raced with their WaitAsync/Release and threw
@@ -234,7 +273,13 @@ namespace Debugger.AddIn.Service.Dap
 			// out with that exception as its debug output. SemaphoreSlim only needs disposing when
 			// its AvailableWaitHandle has been used (it never is here); otherwise letting the GC
 			// collect it is both correct and the documented way out of exactly this race.
-			writer.Dispose();
+			// Disposing flushes the writer, which throws once the adapter has exited and its stdin
+			// pipe is already closed - a normal way for a session to end, not a Stop failure.
+			try {
+				writer.Dispose();
+			} catch (ObjectDisposedException) {
+			} catch (IOException) {
+			}
 			reader.Dispose();
 			cancellationTokenSource.Dispose();
 		}

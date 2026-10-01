@@ -183,7 +183,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		}
 
 		[DevFlowAction("od.project-options.configure-debug-host", Description = "Configure the active project's Debug options through its options panel and save the project")]
-		public static async Task<string> ConfigureDebugHost(string program, string workingDirectory)
+		public static async Task<string> ConfigureDebugHost(string program, string workingDirectory, string? arguments = null)
 		{
 			var project = SD.ProjectService.CurrentProject;
 			var options = SD.Workbench.ViewContentCollection.OfType<ProjectOptionsView>()
@@ -202,6 +202,8 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			panel.StartAction.Value = ICSharpCode.SharpDevelop.Project.StartAction.Program;
 			panel.StartProgram.Value = program;
 			panel.StartWorkingDirectory.Value = workingDirectory;
+			if (arguments != null)
+				panel.StartArguments.Value = arguments;
 			options.Save();
 			return JsonSerializer.Serialize(new {
 				success = true,

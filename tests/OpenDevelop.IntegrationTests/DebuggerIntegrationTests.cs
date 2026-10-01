@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Xml.Linq;
 
 using Xunit;
@@ -97,6 +98,348 @@ public sealed class DebuggerIntegrationTests
             await _app.InvokeAsync("od.open-solution", _app.DebugTestProjectPath);
             Directory.Delete(directory, recursive: true);
         }
+    }
+
+    // A managed app pinned by PlatformTarget runs, and so must be debugged, as that architecture
+    // regardless of the IDE's own: the adapter and the `dotnet` host follow the debuggee.
+    [Theory]
+    [InlineData("x86")]
+    [InlineData("x64")]
+    [InlineData("arm64")]
+    public async Task ConsoleApp_WithPlatformTarget_HitsBreakpointRegardlessOfIdeArchitecture(string platformTarget)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Per-architecture dotnet hosts are located the Windows way");
+        var architecture = ArchitectureFor(platformTarget);
+        Assert.SkipWhen(architecture == Architecture.Arm64 && RuntimeInformation.OSArchitecture != Architecture.Arm64,
+            "An ARM64 program cannot run on this machine");
+        Assert.SkipWhen(FindDotNetRoot(architecture) == null, SkipMessageForMissingRuntime(architecture));
+        var directory = Path.Combine(Path.GetTempPath(), "opendevelop-platform-debug-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var projectPath = Path.Combine(directory, "PlatformApp.csproj");
+        var source = Path.Combine(directory, "Program.cs");
+        File.WriteAllText(projectPath, $"<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><PlatformTarget>{platformTarget}</PlatformTarget><EnableDefaultCompileItems>false</EnableDefaultCompileItems></PropertyGroup><ItemGroup><Compile Include=\"Program.cs\" /></ItemGroup></Project>");
+        File.WriteAllText(source, "var bitness = System.IntPtr.Size * 8;\nSystem.Console.WriteLine(System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture + \" \" + bitness);\n");
+        try
+        {
+            await RunToolAsync("dotnet", directory, "build", projectPath, "-c", "Debug", "--nologo");
+
+            var opened = await _app.ReopenSolutionAsync(projectPath);
+            Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
+            var breakpointLine = FindLine(source, "System.Console.WriteLine");
+            await _app.InvokeAsync("od.open-file", source);
+            await _app.InvokeAsync("od.debug.clear-breakpoints");
+            var breakpoint = await _app.InvokeAsync("od.debug.set-breakpoint", source, breakpointLine);
+            Assert.True(breakpoint.GetProperty("success").GetBoolean(), breakpoint.ToString());
+            var shortcut = await _app.InvokeAsync("od.workbench.invoke-shortcut", "f5");
+            Assert.True(shortcut.GetProperty("success").GetBoolean(), shortcut.ToString());
+
+            JsonElement debug = default;
+            var deadline = DateTime.UtcNow.AddSeconds(60);
+            while (DateTime.UtcNow < deadline)
+            {
+                debug = await _app.InvokeAsync("od.debug.location");
+                if (debug.GetProperty("stopped").GetBoolean()) break;
+                await Task.Delay(200);
+            }
+            var output = await _app.InvokeAsync("od.debug.output");
+            Assert.True(debug.GetProperty("stopped").GetBoolean(), $"The breakpoint was not hit. Location: {debug}; Debug output: {output}");
+            Assert.Equal(breakpointLine, debug.GetProperty("currentLine").GetInt32());
+            Assert.EndsWith("Program.cs", Normalize(debug.GetProperty("currentFile").GetString()));
+        }
+        finally
+        {
+            await _app.InvokeAsync("od.debug.stop");
+            await _app.InvokeAsync("od.open-solution", _app.DebugTestProjectPath);
+            try { Directory.Delete(directory, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    // Issue #14: a class library whose start program is a native host (EXCEL.EXE loading an
+    // Excel-DNA add-in) was launched as `dotnet EXCEL.EXE`. NativeHost.exe stands in for Excel: it
+    // starts with no CLR, then loads the library late through hostfxr.
+    //
+    // Host architecture is a theory because it is the one dimension a user cannot choose:
+    // Excel-DNA add-ins ship for whichever bitness their Excel is, and a 32-bit Excel is still
+    // common. dbgshim cannot cross architectures, so DapSession runs the adapter under a dotnet
+    // host matching the native program; each case only needs that architecture's runtime installed.
+    [Theory]
+    [InlineData("x86")]
+    [InlineData("x64")]
+    [InlineData("arm64")]
+    public async Task ClassLibrary_NativeStartProgramLoadingRuntimeLate_HitsLibraryBreakpoint(string hostArchitecture)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The native host fixture is Windows-only");
+        var architecture = ArchitectureFor(hostArchitecture);
+        Assert.SkipWhen(architecture == Architecture.Arm64 && RuntimeInformation.OSArchitecture != Architecture.Arm64,
+            "An ARM64 native host cannot run on this machine");
+        var dotnetRoot = FindDotNetRoot(architecture);
+        Assert.SkipWhen(dotnetRoot == null, SkipMessageForMissingRuntime(architecture));
+        var directory = Path.Combine(Path.GetTempPath(), "opendevelop-native-host-debug-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        // The host resolves "NativeHostedLibrary.AddIn, NativeHostedLibrary" -> Run(int).
+        // The library itself stays AnyCPU: it is loaded into the host, so one build serves all
+        // three architectures and only the native host needs a per-architecture compile.
+        var projectPath = Path.Combine(directory, "NativeHostedLibrary.csproj");
+        var librarySource = Path.Combine(directory, "AddIn.cs");
+        File.WriteAllText(projectPath, "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Library</OutputType><EnableDynamicLoading>true</EnableDynamicLoading><GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles><EnableDefaultCompileItems>false</EnableDefaultCompileItems></PropertyGroup><ItemGroup><Compile Include=\"AddIn.cs\" /></ItemGroup></Project>");
+        File.WriteAllText(librarySource, "namespace NativeHostedLibrary;\n\npublic static class AddIn\n{\n    [System.Runtime.InteropServices.UnmanagedCallersOnly]\n    public static int Run(int input)\n    {\n        var doubled = input * 2;\n        return doubled + 1;\n    }\n}\n");
+        try
+        {
+            await RunToolAsync("dotnet", directory, "build", projectPath, "-c", "Debug", "--nologo");
+            var libraryOutput = Path.Combine(directory, "bin", "Debug", "net10.0");
+            var libraryDll = Path.Combine(libraryOutput, "NativeHostedLibrary.dll");
+            var hostExe = await BuildNativeHostAsync(directory, architecture);
+            var hostArguments = $"\"{FindHostFxr(dotnetRoot!, architecture)}\" \"{Path.ChangeExtension(libraryDll, ".runtimeconfig.json")}\" \"{libraryDll}\"";
+
+            var opened = await _app.ReopenSolutionAsync(projectPath);
+            Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
+            var selected = await _app.InvokeAsync("od.project-browser.select", "Project", "NativeHostedLibrary");
+            Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
+            var result = await _app.InvokeAsync("od.project-browser.open-selected");
+            Assert.True(result.GetProperty("projectOptionsOpen").GetBoolean(), result.ToString());
+            var configured = await _app.InvokeAsync("od.project-options.configure-debug-host", hostExe, libraryOutput, hostArguments);
+            Assert.True(configured.GetProperty("success").GetBoolean(), configured.ToString());
+            Assert.True(configured.GetProperty("startable").GetBoolean(), configured.ToString());
+
+            var breakpointLine = FindLine(librarySource, "return doubled + 1;");
+            await _app.InvokeAsync("od.open-file", librarySource);
+            await _app.InvokeAsync("od.debug.clear-breakpoints");
+            var breakpoint = await _app.InvokeAsync("od.debug.set-breakpoint", librarySource, breakpointLine);
+            Assert.True(breakpoint.GetProperty("success").GetBoolean(), breakpoint.ToString());
+            var shortcut = await _app.InvokeAsync("od.workbench.invoke-shortcut", "f5");
+            Assert.True(shortcut.GetProperty("success").GetBoolean(), shortcut.ToString());
+
+            JsonElement debug = default;
+            var deadline = DateTime.UtcNow.AddSeconds(60);
+            while (DateTime.UtcNow < deadline)
+            {
+                debug = await _app.InvokeAsync("od.debug.location");
+                if (debug.GetProperty("stopped").GetBoolean()) break;
+                await Task.Delay(200);
+            }
+            var output = await _app.InvokeAsync("od.debug.output");
+            Assert.True(debug.GetProperty("stopped").GetBoolean(), $"The library breakpoint was not hit. Location: {debug}; Debug output: {output}");
+            Assert.Equal(breakpointLine, debug.GetProperty("currentLine").GetInt32());
+            Assert.EndsWith("AddIn.cs", Normalize(debug.GetProperty("currentFile").GetString()));
+            var outputText = output.GetProperty("text").GetString() ?? string.Empty;
+            Assert.Contains("native program", outputText);
+            Assert.DoesNotContain("ERROR", outputText);
+        }
+        finally
+        {
+            await _app.InvokeAsync("od.debug.stop");
+            await _app.InvokeAsync("od.open-solution", _app.DebugTestProjectPath);
+            try { Directory.Delete(directory, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    // Stands in for EXCEL.EXE: no CLR at startup, .NET arrives later through hostfxr. Written
+    // out here rather than read from a submodule's test tree, so this regression test does not
+    // depend on another repository's source layout.
+    const string NativeHostSource = """
+        // Minimal native host that loads a .NET class library late through hostfxr, mirroring how
+        // Excel-DNA loads a .NET add-in into EXCEL.EXE. No CLR is present when the process starts.
+        // Usage: NativeHost.exe <hostfxr.dll> <library.runtimeconfig.json> <library.dll>
+        #include <windows.h>
+        #include <stdio.h>
+
+        typedef void* hostfxr_handle;
+        typedef int (__cdecl *hostfxr_initialize_for_runtime_config_fn)(const wchar_t* runtime_config_path, const void* parameters, hostfxr_handle* host_context_handle);
+        typedef int (__cdecl *hostfxr_get_runtime_delegate_fn)(const hostfxr_handle host_context_handle, int type, void** delegate);
+        typedef int (__cdecl *hostfxr_close_fn)(const hostfxr_handle host_context_handle);
+        typedef int (__stdcall *load_assembly_and_get_function_pointer_fn)(const wchar_t* assembly_path, const wchar_t* type_name, const wchar_t* method_name, const wchar_t* delegate_type_name, void* reserved, void** delegate);
+        typedef int (__stdcall *run_fn)(int input);
+
+        #define HDT_LOAD_ASSEMBLY_AND_GET_FUNCTION_POINTER 5
+        #define UNMANAGEDCALLERSONLY_METHOD ((const wchar_t*)-1)
+
+        int wmain(int argc, wchar_t** argv)
+        {
+            if (argc < 4)
+            {
+                fwprintf(stderr, L"usage: NativeHost.exe <hostfxr.dll> <runtimeconfig.json> <library.dll>\n");
+                return 2;
+            }
+
+            // Native-only startup phase, like Excel initialising before it loads any .xll
+            wprintf(L"NativeHost: native startup\n");
+            fflush(stdout);
+            Sleep(500);
+
+            HMODULE hostfxr = LoadLibraryW(argv[1]);
+            if (!hostfxr)
+            {
+                fwprintf(stderr, L"NativeHost: failed to load %s (%lu)\n", argv[1], GetLastError());
+                return 3;
+            }
+            hostfxr_initialize_for_runtime_config_fn init = (hostfxr_initialize_for_runtime_config_fn)GetProcAddress(hostfxr, "hostfxr_initialize_for_runtime_config");
+            hostfxr_get_runtime_delegate_fn get_delegate = (hostfxr_get_runtime_delegate_fn)GetProcAddress(hostfxr, "hostfxr_get_runtime_delegate");
+            hostfxr_close_fn close = (hostfxr_close_fn)GetProcAddress(hostfxr, "hostfxr_close");
+            if (!init || !get_delegate || !close)
+            {
+                fwprintf(stderr, L"NativeHost: hostfxr exports not found\n");
+                return 4;
+            }
+
+            hostfxr_handle context = NULL;
+            int rc = init(argv[2], NULL, &context);
+            if (rc < 0 || !context)
+            {
+                fwprintf(stderr, L"NativeHost: hostfxr_initialize_for_runtime_config failed 0x%08x\n", rc);
+                return 5;
+            }
+
+            load_assembly_and_get_function_pointer_fn load = NULL;
+            rc = get_delegate(context, HDT_LOAD_ASSEMBLY_AND_GET_FUNCTION_POINTER, (void**)&load);
+            close(context);
+            if (rc < 0 || !load)
+            {
+                fwprintf(stderr, L"NativeHost: hostfxr_get_runtime_delegate failed 0x%08x\n", rc);
+                return 6;
+            }
+
+            run_fn run = NULL;
+            rc = load(argv[3], L"NativeHostedLibrary.AddIn, NativeHostedLibrary", L"Run", UNMANAGEDCALLERSONLY_METHOD, NULL, (void**)&run);
+            if (rc < 0 || !run)
+            {
+                fwprintf(stderr, L"NativeHost: load_assembly_and_get_function_pointer failed 0x%08x\n", rc);
+                return 7;
+            }
+
+            int result = run(20);
+            wprintf(L"NativeHost: result %d\n", result);
+            return result == 41 ? 0 : 8;
+        }
+        """;
+
+    static Architecture ArchitectureFor(string name) => name switch
+    {
+        "x86" => Architecture.X86,
+        "x64" => Architecture.X64,
+        "arm64" => Architecture.Arm64,
+        _ => throw new ArgumentOutOfRangeException(nameof(name), name, "Unknown native host architecture")
+    };
+
+    // The vcvarsall target triple for an architecture.
+    static string NativeHostTargetTriple(Architecture architecture) => architecture switch
+    {
+        Architecture.X86 => "x86",
+        Architecture.X64 => "x64",
+        Architecture.Arm64 => "arm64",
+        _ => throw new ArgumentOutOfRangeException(nameof(architecture), architecture, "No vcvarsall target for this architecture")
+    };
+
+    // The VS component that installs the compiler for an architecture. Each one is a separate
+    // install, so the requirement has to follow the target: asking for the x64 tools on an
+    // ARM64-only install reports "no C++ tools were found" when the real problem is "the wrong
+    // C++ tools". Note x64 and x86 share one component, which is why its id says x86.x64.
+    static string NativeHostToolsComponent(Architecture architecture) => architecture switch
+    {
+        Architecture.X86 or Architecture.X64 => "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+        Architecture.Arm64 => "Microsoft.VisualStudio.Component.VC.Tools.ARM64",
+        _ => throw new ArgumentOutOfRangeException(nameof(architecture), architecture, "No Visual Studio C++ component for this architecture")
+    };
+
+    static async Task<string> BuildNativeHostAsync(string outputDirectory, Architecture architecture)
+    {
+        var source = Path.Combine(outputDirectory, "native_host.c");
+        File.WriteAllText(source, NativeHostSource);
+        var vswhere = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Microsoft Visual Studio", "Installer", "vswhere.exe");
+        Assert.True(File.Exists(vswhere), "Visual Studio with the C++ workload is required to build the native host fixture");
+        var component = NativeHostToolsComponent(architecture);
+        var vs = (await RunToolAsync(vswhere, outputDirectory, "-latest", "-products", "*", "-requires", component, "-property", "installationPath")).Trim();
+        Assert.False(string.IsNullOrEmpty(vs), $"No Visual Studio installation providing '{component}' was found");
+        var vcvars = Path.Combine(vs.Split('\n')[0].Trim(), "VC", "Auxiliary", "Build", "vcvarsall.bat");
+        // Must match the dotnet host the adapter runs under - dbgshim cannot cross architectures
+        var triple = NativeHostTargetTriple(architecture);
+        var exe = Path.Combine(outputDirectory, $"NativeHost-{triple}.exe");
+        await RunToolAsync("cmd.exe", outputDirectory, "/s", "/c", $"\"call \"{vcvars}\" {triple} >nul && cl /nologo /Zi /Fe:\"{exe}\" \"{source}\"\"");
+        Assert.True(File.Exists(exe), $"{Path.GetFileName(exe)} was not produced");
+        return exe;
+    }
+
+    // The standard install locations per architecture: an ARM64 machine keeps its emulated x64
+    // runtime under Program Files\dotnet\x64, and 32-bit always lives under Program Files (x86).
+    // Deliberately not the registry DapSession also consults, so a runtime installed elsewhere
+    // skips here while the product still finds it - SkipMessageForMissingRuntime names the folders.
+    static string[] DotNetRootCandidates(Architecture architecture)
+    {
+        var programFiles = Environment.GetEnvironmentVariable("ProgramW6432") ?? Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+        return architecture == Architecture.X86
+            ? new[] { Path.Combine(programFilesX86, "dotnet") }
+            : new[] { Path.Combine(programFiles, "dotnet", architecture == Architecture.X64 ? "x64" : "arm64"), Path.Combine(programFiles, "dotnet") };
+    }
+
+    static string? FindDotNetRoot(Architecture architecture)
+    {
+        var machine = MachineFor(architecture);
+        return DotNetRootCandidates(architecture).FirstOrDefault(root => IsPeFor(Path.Combine(root, "dotnet.exe"), machine));
+    }
+
+    static string SkipMessageForMissingRuntime(Architecture architecture) =>
+        $"No {architecture} dotnet.exe in the standard locations ({string.Join(", ", DotNetRootCandidates(architecture))}); a runtime installed elsewhere is not looked for";
+
+    static System.Reflection.PortableExecutable.Machine MachineFor(Architecture architecture) => architecture switch
+    {
+        Architecture.X86 => System.Reflection.PortableExecutable.Machine.I386,
+        Architecture.X64 => System.Reflection.PortableExecutable.Machine.Amd64,
+        Architecture.Arm64 => System.Reflection.PortableExecutable.Machine.Arm64,
+        _ => throw new ArgumentOutOfRangeException(nameof(architecture), architecture, "Unknown native host architecture")
+    };
+
+    static string FindHostFxr(string dotnetRoot, Architecture architecture)
+    {
+        // The debuggee LoadLibraryW's this, so it must match the debuggee's bitness; picking the
+        // wrong one fails at LoadLibrary with ERROR_BAD_EXE_FORMAT (193), which names no cause.
+        var fxrRoot = Path.Combine(dotnetRoot, "host", "fxr");
+        Assert.True(Directory.Exists(fxrRoot), "No host/fxr directory exists under " + dotnetRoot);
+        var candidates = Directory.GetDirectories(fxrRoot)
+            .Where(dir => Version.TryParse(Path.GetFileName(dir).Split('-')[0], out _))
+            .OrderByDescending(dir => Version.Parse(Path.GetFileName(dir).Split('-')[0]))
+            .ToArray();
+        Assert.NotEmpty(candidates);
+        // Several versions can coexist; only the one whose hostfxr matches the debuggee is
+        // loadable, so filter by the PE machine rather than trusting the newest directory.
+        var expected = MachineFor(architecture);
+        var fxr = candidates.FirstOrDefault(dir => IsPeFor(Path.Combine(dir, "hostfxr.dll"), expected));
+        Assert.True(fxr != null, $"No {architecture} hostfxr.dll exists under {fxrRoot}");
+        return Path.Combine(fxr!, "hostfxr.dll");
+    }
+
+    static bool IsPeFor(string path, System.Reflection.PortableExecutable.Machine machine)
+    {
+        if (!File.Exists(path)) return false;
+        try
+        {
+            using var stream = File.OpenRead(path);
+            using var pe = new System.Reflection.PortableExecutable.PEReader(stream);
+            return pe.PEHeaders.CoffHeader.Machine == machine;
+        }
+        catch (Exception ex) when (ex is IOException or BadImageFormatException)
+        {
+            return false;
+        }
+    }
+
+    static async Task<string> RunToolAsync(string fileName, string workingDirectory, params string[] arguments)
+    {
+        var startInfo = new ProcessStartInfo(fileName) {
+            WorkingDirectory = workingDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        // cmd.exe's /c needs its command line verbatim; ArgumentList would re-quote it
+        if (fileName == "cmd.exe") startInfo.Arguments = string.Join(" ", arguments);
+        else foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
+        using var process = Process.Start(startInfo)!;
+        var stdout = process.StandardOutput.ReadToEndAsync();
+        var stderr = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        Assert.True(process.ExitCode == 0, $"{fileName} failed ({process.ExitCode}): {await stdout}{await stderr}");
+        return await stdout;
     }
 
     [Fact]

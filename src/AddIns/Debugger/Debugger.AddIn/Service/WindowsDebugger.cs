@@ -179,10 +179,12 @@ namespace ICSharpCode.SharpDevelop.Services
 
 		async Task StartAsync(ProcessStartInfo processStartInfo)
 		{
+			DapSession session = null;
 			try {
 				PrintDebugMessage("> Starting debug adapter...\n");
 
-				CurrentSession = new DapSession();
+				session = new DapSession();
+				CurrentSession = session;
 				CurrentSession.Started += SessionStarted;
 				CurrentSession.Stopped += SessionStopped;
 				CurrentSession.Continued += SessionContinued;
@@ -211,8 +213,14 @@ namespace ICSharpCode.SharpDevelop.Services
 							|| string.Equals(variable.Key, "DOTNET_MODIFIABLE_ASSEMBLIES", StringComparison.Ordinal))
 						.Select(variable => new KeyValuePair<string, string>(variable.Key, variable.Value))
 						.ToArray();
+					// A start program that is not a managed assembly is a native host (e.g. EXCEL.EXE
+					// loading a class library add-in via Excel-DNA). `dotnet <exe>` cannot run it, so
+					// let SharpDbg launch it directly; it attaches once the host loads the .NET runtime.
+					bool nativeHost = !IsManagedAssembly(targetPath);
+					if (nativeHost)
+						PrintDebugMessage("> " + Path.GetFileName(targetPath) + " is a native program; debugging starts once it loads the .NET runtime.\n");
 					await CurrentSession.StartAsync(targetPath, processStartInfo.WorkingDirectory, breakAtBeginning, arguments,
-						DapLaunchMode.AttachToSuspendedProcess, default, hotReloadEnvironment).ConfigureAwait(false);
+						nativeHost ? DapLaunchMode.Launch : DapLaunchMode.AttachToSuspendedProcess, default, hotReloadEnvironment).ConfigureAwait(false);
 
 				// Breakpoints must be sent after "launch" but before "configurationDone" -
 				// most DAP adapters (including SharpDbg) ignore breakpoints set any later.
@@ -223,13 +231,17 @@ namespace ICSharpCode.SharpDevelop.Services
 
 				PrintDebugMessage("> Debugging: " + Path.GetFileName(targetPath) + "\n");
 			} catch (Exception ex) {
+				// The user pressed Stop while the session was still starting (e.g. waiting for a
+				// native host to load .NET) - that already tore it down; the failure is expected.
+				// Checked against an explicit Stop, not "CurrentSession changed": an adapter that dies
+				// during startup also tears the session down, and its error must still be shown.
+				if (session != null && ReferenceEquals(stopRequestedFor, session))
+					return;
 				PrintDebugMessage("ERROR: " + ex + "\n");
-				SD.MainThread.InvokeAsyncAndForget(() => {
-					RemoveCurrentLineMarker();
-					OnDebugStopped(EventArgs.Empty);
-					ActivateDebugCategory();
-				});
-				Stop();
+				// Not Stop(): once the adapter has died IsDebugging is already false, and Stop()
+				// then pops "Can not perform action because no process is debugged" on top of the error.
+				session?.Stop();
+				SessionExited();
 			}
 		}
 
@@ -258,7 +270,24 @@ namespace ICSharpCode.SharpDevelop.Services
 				? fileName.Substring(0, fileName.Length - ".exe".Length)
 				: fileName;
 			string candidate = Path.Combine(directory ?? string.Empty, baseName + ".dll");
-			return File.Exists(candidate) ? candidate : targetPath;
+			return IsManagedAssembly(candidate) ? candidate : targetPath;
+		}
+
+		internal static bool IsManagedAssembly(string path)
+		{
+			if (!File.Exists(path))
+				return false;
+			try {
+				using (var stream = File.OpenRead(path))
+				using (var peReader = new System.Reflection.PortableExecutable.PEReader(stream))
+					return peReader.HasMetadata;
+			} catch (BadImageFormatException) {
+				return false;
+			} catch (IOException) {
+				return false;
+			} catch (UnauthorizedAccessException) {
+				return false;
+			}
 		}
 
 		static IReadOnlyList<string> GetDebuggeeArguments(ProcessStartInfo processStartInfo)
@@ -395,12 +424,16 @@ namespace ICSharpCode.SharpDevelop.Services
 			Process.Start(processStartInfo);
 		}
 
+		// The session the user asked to stop, so StartAsync can tell that from the adapter dying
+		volatile DapSession stopRequestedFor;
+
 		public override void Stop()
 		{
 			if (!IsDebugging) {
 				MessageService.ShowMessage(errorNotDebugging, "${res:XML.MainMenu.DebugMenu.Stop}");
 				return;
 			}
+			stopRequestedFor = CurrentSession;
 			CurrentSession.Stop();
 			// DapSession.Stop() tears the session down via CleanupSession(), which never raises
 			// Exited (Exited only fires from the DAP "terminated"/"exited" events or the adapter
