@@ -593,7 +593,8 @@ function Test-WindowsDistributionZip {
 function Invoke-MacPayload {
     Write-Host "==> Building framework-dependent .app bundle ($config)..."
     $env:DIST_CONFIG = $config
-    & bash (Join-Path $repoRoot 'build/macos/build-application-bundle.sh')
+    # Out-Host for the same reason as Invoke-MacArchive: this function's output is its return value.
+    & bash (Join-Path $repoRoot 'build/macos/build-application-bundle.sh') | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "build-application-bundle.sh exited with code $LASTEXITCODE" }
 
     # Same as the Windows payload: out-of-process hosts resolve only from their own deps.json,
@@ -622,7 +623,10 @@ function Invoke-MacArchive {
     Write-Host '==> Building .dmg...'
     Push-Location $repoRoot
     try {
-        & bash (Join-Path $repoRoot 'build/macos/build-dmg.sh') OpenDevelop.app OpenDevelop-macos.dmg
+        # Out-Host: this function's pipeline output is its return value ($artifact), so without it
+        # the script's progress and retry lines were swallowed - a failure showed only hdiutil's
+        # final stderr line - and $artifact became those lines plus the .dmg path.
+        & bash (Join-Path $repoRoot 'build/macos/build-dmg.sh') OpenDevelop.app OpenDevelop-macos.dmg | Out-Host
         if ($LASTEXITCODE -ne 0) { throw "build-dmg.sh exited with code $LASTEXITCODE" }
     }
     finally {

@@ -107,33 +107,33 @@ if [[ -f "$background_image" ]]; then
 fi
 
 echo "Creating writable DMG: $rw_dmg"
-# hdiutil create occasionally fails with "Resource busy" when a previous run
-# left the volume mounted under the same name, or when a concurrent instance is
-# mid-build. Detach any stale mount and retry before surfacing the real error.
-create_ok=0
-for attempt in 1 2 3; do
-  if create_err="$(hdiutil create -volname "$volume_name" -srcfolder "$stage_dir" -ov -format UDRW "$rw_dmg" 2>&1 >/dev/null)"; then
-    create_ok=1
-    break
-  fi
-  echo "hdiutil create failed (attempt $attempt/3), detaching stale mounts and retrying…"
-  grep -v 'is deprecated' <<< "$create_err" | sed 's/^/  hdiutil: /' || true
-  hdiutil detach "/Volumes/$volume_name" -quiet >/dev/null 2>&1 || true
-  sleep 3
-done
-if [[ "$create_ok" -eq 0 ]]; then
-  hdiutil create -volname "$volume_name" -srcfolder "$stage_dir" -ov -format UDRW "$rw_dmg"
-fi
+# Not "hdiutil create -srcfolder": that copies the folder through a temporary volume it mounts and
+# unmounts by itself, and with a 1.5 GB app that internal unmount regularly loses a race with
+# Spotlight and fails with "Resource busy" (measured: twice in a row, then success on the third
+# try; a release run failed all three). We mount the image for the Finder layout anyway, so create
+# a blank image, mount it once, copy into it, and lay it out in that same mount.
+content_mb="$(du -sm "$stage_dir" | awk '{print $1}')"
+image_mb=$(( content_mb + content_mb / 5 + 64 ))
+hdiutil create -size "${image_mb}m" -fs HFS+ -volname "$volume_name" -type UDIF -layout SPUD -ov "$rw_dmg" >/dev/null
 
-echo "Applying Finder window layout"
+echo "Copying app into the image"
 attach_output="$(hdiutil attach -readwrite -noverify -noautoopen "$rw_dmg")"
 detach_device="$(awk '/^\/dev\// {print $1; exit}' <<< "$attach_output")"
+mount_point="$(grep -o '/Volumes/.*' <<< "$attach_output" | tail -1)"
 
-if [[ -z "$detach_device" ]]; then
-  echo "Unable to determine mounted DMG device."
+if [[ -z "$detach_device" || -z "$mount_point" ]]; then
+  echo "Unable to determine mounted DMG device: $attach_output"
   exit 1
 fi
 
+# Keep Spotlight off the image while it is being filled and laid out.
+mdutil -i off "$mount_point" >/dev/null 2>&1 || true
+ditto "$stage_dir" "$mount_point"
+# Finder addresses the disk by its mounted name, which is "OpenDevelop 1" when a volume named
+# OpenDevelop is already mounted - use what was actually mounted, not the requested name.
+finder_disk="$(basename "$mount_point")"
+
+echo "Applying Finder window layout"
 if command -v osascript >/dev/null 2>&1; then
   # Finder bounds include window chrome; add padding to avoid scroll bars.
   window_padding_w=24
@@ -143,7 +143,7 @@ if command -v osascript >/dev/null 2>&1; then
 
   applescript=$(cat <<EOF
 tell application "Finder"
-  tell disk "$volume_name"
+  tell disk "$finder_disk"
     open
     tell container window
       set current view to icon view
@@ -181,6 +181,9 @@ EOF
     echo "Warning: could not fully apply Finder layout; continuing."
   fi
 fi
+
+# A volume mounted read-write gets an FSEvents log; -srcfolder images never carried one.
+rm -rf "$mount_point/.fseventsd" >/dev/null 2>&1 || true
 
 # Finder can keep the volume busy for a few seconds after the layout script closes its window.
 for _ in {1..10}; do
