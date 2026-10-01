@@ -739,7 +739,8 @@ function Invoke-WindowsPayload {
     # the SharpDbg.Cli debug adapter beside the in-process Debugger addin: stripping its
     # ICSharpCode.Decompiler/Microsoft.CodeAnalysis/Newtonsoft.Json (all also in the host) made it
     # exit with code 1 and no output, so every debug session "stopped" as soon as it started. A
-    # *.runtimeconfig.json marks such a program; keep exactly the runtime assets its deps.json lists.
+    # *.runtimeconfig.json marks such a program; keep exactly the assets its deps.json lists, both
+    # the managed ones and the per-RID native ones it has to load for itself.
     # Project references also copy-local stray OpenDevelop/MSBuild/Roslyn.Host runtimeconfigs into
     # in-process addin folders; those programs are host files and run from the payload root, so
     # they are skipped - honouring them would duplicate the host's whole closure into each folder.
@@ -755,9 +756,22 @@ function Invoke-WindowsPayload {
         $targets = (Get-Content -LiteralPath $deps -Raw | ConvertFrom-Json).targets
         foreach ($target in $targets.PSObject.Properties.Value) {
             foreach ($library in $target.PSObject.Properties.Value) {
-                if (-not $library.runtime) { continue }
-                foreach ($asset in $library.runtime.PSObject.Properties.Name) {
-                    [void]$ownProcessDependencies.Add((Join-Path $appDir ([System.IO.Path]::GetFileName($asset))))
+                # runtime assets are copied flat into the folder, but a runtimeTargets asset keeps
+                # its runtimes\<rid>\... path - dbgshim's three per-RID dbgshim.dll are exactly that
+                # case, and they sit under a folder the filter above deliberately keeps. Record both
+                # spellings of every asset: this set is only ever read with Contains against a real
+                # file's full path, so an entry that does not exist costs nothing and neither layout
+                # can be missed. Covering runtimeTargets is what stops the adapter's natives from
+                # depending on their name not colliding with the host publish.
+                foreach ($section in @($library.runtime, $library.runtimeTargets)) {
+                    if (-not $section) { continue }
+                    foreach ($asset in $section.PSObject.Properties.Name) {
+                        if ($asset -like '#*') { continue } # "#_Imports" is a marker, not an asset
+                        [void]$ownProcessDependencies.Add((Join-Path $appDir ([System.IO.Path]::GetFileName($asset))))
+                        if ($asset -like '*/*') {
+                            [void]$ownProcessDependencies.Add((Join-Path $appDir ($asset -replace '/', '\')))
+                        }
+                    }
                 }
             }
         }
