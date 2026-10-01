@@ -1,5 +1,165 @@
 # Debugging migration plan
 
+**Status update (2026-10-01): an x86 native-host debug session intermittently
+hangs. Two SharpDbg Launch-mode bugs were found and fixed; the harness's
+"stopped never arrives" turned out to be a harness bug.** The investigation
+notes further down are kept as written, but read them with this summary:
+
+1. *Resume gave up too early* - see "Cause of the intermittent IDE failure"
+   just below.
+2. *Attach raced the debuggee.* dbgshim's `RegisterForRuntimeStartup` holds
+   the runtime only while its callback runs. `ClrDebugExtensions.OnRuntimeStartup`
+   just completed a `TaskCompletionSource` and returned, and `Initialize` /
+   `SetManagedHandler` / `DebugActiveProcess` ran afterwards on another thread
+   - by then the runtime was already running, so a host that loads its library
+   quickly could execute the breakpoint line before anything was bound (arm64
+   harness: the program printed `result 41` and exited, 1 run in 3).
+   `Automatic` now takes an `onStartup` callback, and both Launch
+   (`PerformLaunch`) and Attach (`PerformAttach`) attach inside it through
+   `ManagedDebugger.AttachAtRuntimeStartup`.
+3. *The harness* read the adapter's stdout with `BeginOutputReadLine`. DAP
+   messages carry no trailing newline, so the last message - the `stopped`
+   event - sat in the line reader forever. `Invoke-DapLaunchRaw.ps1` pumps raw
+   characters instead. With that harness and both fixes: x86 15/15, arm64
+   15/15. The "deterministic failure" and the `OnStopped2` theory below are
+   therefore void.
+
+`DebuggerIntegrationTests.ClassLibrary_NativeStartProgramLoadingRuntimeLate_HitsLibraryBreakpoint(hostArchitecture: "x86")`
+(the issue #14 regression, a native host that loads a class library late
+through hostfxr) fails intermittently. The debuggee is the *native host*, and
+the failure is not an assertion mismatch - the session never gets going. The
+debuggee's own output says it is stuck before any user code runs:
+
+```text
+> NativeHost-x86.exe is a native program; debugging starts once it loads the .NET runtime.
+NativeHost: native startup
+The runtime has been configured to pause during startup and is awaiting a
+Diagnostics IPC ResumeStartup command from a Diagnostic Port.
+DOTNET_DiagnosticPorts=""
+DOTNET_DefaultDiagnosticPortSuspend=1
+Still waiting for NativeHost-x86.exe to load the .NET runtime. ...
+```
+
+**Cause of the intermittent IDE failure (found 2026-10-01).** In Launch mode
+SharpDbg starts the debuggee with `DOTNET_DefaultDiagnosticPortSuspend=1` and
+then `ClrDebugExtensions.Automatic` calls
+`DiagnosticClientHelper.DiagnosticClientResumeRuntime`, which retried
+`ResumeRuntime` only 5 times (50+100+200+400+800 ms, ~1.5s in all) before
+giving up. A native host only opens the diagnostic port once it loads the
+runtime through hostfxr, and an x86 host under a full test-class run can take
+longer than 1.5s to get there - so the resume was never sent and the runtime
+stayed parked on "awaiting ResumeStartup", exactly the output above. The fix
+(in `externals/sharpdbg`, `DiagnosticClientHelper.cs`) keeps retrying with a
+backoff capped at 500 ms for as long as the debuggee process is alive. The
+`Automatic` 5s wait for the runtime-startup callback starts only after the
+resume succeeds, so it needs no change.
+
+`Still waiting` is the notice `DapSession.ConfigurationDoneAsync` emits after
+30s, so the runtime is still suspended when that prints. The test's 60s budget
+then expires. Measured rate: three full-class runs gave 14/14, **13/14**,
+14/14, while running that one theory in isolation gave 3/3. So roughly one run
+in three, and never alone - it is timing- or interaction-dependent, not
+deterministic. arm64 and x64 native hosts, and the managed-app theory, passed
+in every run.
+
+**Why there was no adapter evidence at all: the adapter logs nothing unless
+asked.** `SharpDbg.Cli/Arguments.cs` accepts `--engineLogging=<path>`, and
+`SharpDbg.Cli/Program.cs` only opens the writer when that argument is present
+(`if (!string.IsNullOrEmpty(logPath))`). `DapSession.LaunchAdapter` passed
+only `--interpreter=vscode`, so a session that went quiet produced no adapter
+diagnostics whatsoever - not because they were missed, but because none were
+written. `DapSession` now passes `--engineLogging` per session, writes to
+`%TEMP%\OpenDevelop-DebugAdapter\sharpdbg-<timestamp>-pid<n>.log`, quotes the
+tail in two places where a session fails or stalls (adapter death, and the
+Launch-mode 30s notice), deletes the file when the session ends without
+incident, and sweeps anything older than a day - `CleanupSession` does not run
+when the IDE is killed outright, which is exactly how a test run ends, so
+without the sweep a hard kill leaks one file per session.
+
+**A 20-second harness for this class of problem** (much faster than the
+~8 minute IDE class run) lives at
+`%TEMP%\opencode\sharpdbg-repro\Invoke-DapLaunch.ps1`. It drives
+`AddIns\Debugger\SharpDbg.Cli.dll` - the adapter the IDE actually loads, not
+the one in the submodule's own output - through the same request sequence
+`DapSession` sends (`initialize` with `adapterID: "sharpdbg"`, `launch` with
+`env`, `setBreakpoints`, `setExceptionBreakpoints` with `user-unhandled`,
+`configurationDone`; note there is no `justMyCode` on the `launch`), with
+`--engineLogging` on, and prints the full DAP trace plus the engine log. Build
+the fixture the same way the test does: `native_host.c` comes out of the test's
+own `NativeHostSource` literal, compiled per architecture, against an AnyCPU
+library so one build serves all three.
+
+That harness reproduces a **deterministic, always-happens** failure in Launch
+mode, for x86 *and* arm64, with both the debug and the release adapter build:
+
+```text
+Breakpoint bound at AddIn.cs:9 -> resolved to line 9, IL offset 5 in method 0x6000001
+Event: BreakpointCorDebugManagedCallbackEventArgs
+<nothing at all for the rest of the run>
+```
+
+The breakpoint **fires** - a bound breakpoint only fires once its IL offset has
+actually executed - and the debuggee never prints its result line, so it is
+parked on the breakpoint. `configurationDone` returns **success**, so
+`ClrDebugExtensions.Automatic` completed: `RegisterForRuntimeStartup`
+succeeded, the runtime-startup callback arrived, and its 5s wait was satisfied.
+`OnStopped2` is subscribed once from `DebugAdapter.SubscribeToDebuggerEvents`
+and `_debugger` is constructed once, so it cannot be null. The only missing
+piece is that the DAP `stopped` event never reaches the client, and the
+adapter says nothing about it.
+
+Two conclusions here are **negative findings worth keeping**, because both
+cost real time:
+
+- **A stack dump's silence is not evidence.** `AsyncStepper.TryHandleBreakpoint`
+  opens with `using (await _lock2.LockAsync())` on a non-reentrant
+  `NeoSmart.AsyncLock` that is also taken *synchronously* at
+  `AsyncStepper.cs:582` and `:594`, so a sync-over-async deadlock looked like
+  the obvious culprit. `dotnet-stack report` shows no `AsyncStepper` frame and
+  appears to refute it - but a **suspended `async Task` state machine lives on
+  the heap and is invisible to a thread-stack dump**. Use
+  `dotnet-dump collect` + `dumpasync`; it lists suspended async methods
+  (`dumpstack` is WinDbg, not SOS - SOS spells it `clrstack`, and `clrstack -a`
+  only walks the *current* thread).
+- **The diagnostic-port resume is not the trigger, at least in isolation.** Run
+  directly, the runtime starts normally every time - `System.Private.CoreLib`
+  loads, the breakpoint binds - and `awaiting ResumeStartup` never appears.
+  Repeating the harness with the adapter environment the IDE gives it
+  (`DOTNET_ROOT`/`DOTNET_HOST_PATH` set, `DOTNET_ROOT*` cleared, exactly what
+  `DapSession.UseDotNetHost` does) changes nothing. So the visible "awaiting
+  ResumeStartup" in the IDE is a *symptom* of the same wedge, not its cause.
+
+`dumpasync` on a wedged adapter shows the managed event pump **idle again**
+(`ManagedDebugger+<ProcessRuntimeEventQueue>d__77` awaiting), with no
+`AsyncStepper` async frame at all: the breakpoint handler ran to completion,
+raised nothing, and logged nothing - the `catch` in `ManagedDebugger.OnAnyEvent`
+that would log `Error handling event ...` never fired. So the remaining gap is
+between `OnStopped2.Invoke` and the client receiving the event, and pinning it
+down needs one log line inside SharpDbg's `OnStopped2` lambda around
+`Protocol.SendEvent`.
+
+**None of this is proven to be the IDE's x86 failure**, and the two are kept
+separate on purpose. What they share is: Launch mode, the debuggee stopped on a
+breakpoint that did fire, the client never told, and the adapter's event pump
+silent. Attach mode behaves correctly in both - and that is the most useful
+lead, because it is the one variable the harness and the IDE were not sharing
+before it was found.
+
+Fixing this means editing the `externals/sharpdbg` submodule, and that has a
+process cost worth stating: the pinned revision `93b25ac` is not on any remote
+branch (`origin/main` is a single squashed root commit from 2026-08-05, and
+`93b25ac` is 2026-09-15), so a fix means a new branch, a push, and a submodule
+pointer bump here.
+
+Also note that the "sharpdbg submodule and bundling" section below still says
+to build `SharpDbg.Cli` only "if `SharpDbg.Cli.dll` is missing". That gate is
+wrong and was removed: it froze each configuration at its first build, so a
+Release payload kept a two-week-old adapter that still ran native hosts like
+managed apps. The adapter is now built on every build; `dotnet build` is
+incremental, so an unchanged adapter costs a no-op.
+
+---
+
 **Status update (2026-07-27): one shared DAP session backend for both hosts.**
 UnoDevelop used to carry its own from-scratch DAP client (`DapClient.cs`) and
 session/workbench-glue class (`DebugService.cs`), independently reimplementing
