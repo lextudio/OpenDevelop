@@ -78,8 +78,16 @@ namespace Debugger.AddIn.Service.Dap
 		readonly Queue<string> adapterStderrTail = new Queue<string>();
 		const int AdapterStderrTailLines = 20;
 
+		// SharpDbg's own diagnostics, requested per session with --engineLogging. It writes nothing
+		// unless asked, which is why a session that hangs can otherwise only report "the request
+		// timed out" - the evidence is in the adapter, nobody is reading it. The file is deleted when
+		// the session ends without incident, so the steady state is no leftover.
+		string adapterLogPath;
+		bool adapterLogReported;
+
 		string launchTarget;
 		static readonly TimeSpan RuntimeLoadNoticeDelay = TimeSpan.FromSeconds(30);
+		const int AdapterLogTailLines = 30;
 
 		public bool IsRunning { get { return adapterProcess != null && !adapterProcess.HasExited; } }
 		public bool IsPaused { get; private set; }
@@ -133,7 +141,8 @@ namespace Debugger.AddIn.Service.Dap
 			launchTarget = targetPath;
 			cancellationTokenSource = new CancellationTokenSource();
 			string debuggeeHost = ResolveDebuggeeHost(targetPath);
-			adapterProcess = LaunchAdapter(adapterDll, debuggeeHost);
+			adapterLogPath = CreateAdapterLogPath();
+			adapterProcess = LaunchAdapter(adapterDll, debuggeeHost, adapterLogPath);
 			// Surface the adapter's (and, since the debuggee inherits it, the debuggee's) stderr to
 			// the caller so it can be shown in the Debug output channel. Without this an adapter
 			// crash or a debuggee launch failure (e.g. "the specified framework was not found")
@@ -215,6 +224,14 @@ namespace Debugger.AddIn.Service.Dap
 					if (await Task.WhenAny(configurationDone, notice).ConfigureAwait(false) == notice && notice.Status == TaskStatus.RanToCompletion) {
 						OutputReceived?.Invoke("Still waiting for " + Path.GetFileName(launchTarget) +
 							" to load the .NET runtime. Debugging starts when it does; press Stop to cancel." + Environment.NewLine);
+						// Nothing above says WHY it has not happened. The adapter knows - it is the one
+						// that launched the host and is waiting on its runtime - so quote it here rather
+						// than let the session sit silent until someone guesses.
+						string logTail = ReadAdapterLogTail();
+						if (logTail != null) {
+							OutputReceived?.Invoke("Adapter log (last " + AdapterLogTailLines + " lines):" + Environment.NewLine +
+								logTail + Environment.NewLine);
+						}
 					}
 					noticeCts.Cancel();
 				}
@@ -666,16 +683,28 @@ namespace Debugger.AddIn.Service.Dap
 			adapterProcess = null;
 			debuggeeProcess?.Dispose();
 			debuggeeProcess = null;
+			// A session that never surfaced its adapter log leaves nothing behind; one that did keeps
+			// the file, because that log is the only post-mortem left of a session that went quiet.
+			if (!adapterLogReported && !string.IsNullOrEmpty(adapterLogPath)) {
+				try {
+					File.Delete(adapterLogPath);
+				} catch (IOException) {
+				} catch (UnauthorizedAccessException) {
+				}
+			}
 		}
 
 		/// <param name="debuggeeHost">The dotnet host matching the debuggee's architecture. SharpDbg loads
 		/// the dbgshim build matching its own process, and dbgshim cannot debug a process of another
 		/// architecture, so the adapter's bitness follows the debuggee, never the IDE's.</param>
-		static Process LaunchAdapter(string adapterDll, string debuggeeHost)
+		/// <param name="logPath">Where to ask SharpDbg to write its own diagnostics. It logs nothing
+		/// unless told to, so this is the only record of what the adapter was doing while a session
+		/// was making no progress.</param>
+		static Process LaunchAdapter(string adapterDll, string debuggeeHost, string logPath)
 		{
 			var processStartInfo = new ProcessStartInfo {
 				FileName = debuggeeHost,
-				Arguments = "\"" + adapterDll + "\" --interpreter=vscode",
+				Arguments = "\"" + adapterDll + "\" --interpreter=vscode --engineLogging=\"" + logPath + "\"",
 				RedirectStandardInput = true,
 				RedirectStandardOutput = true,
 				RedirectStandardError = true,
@@ -689,6 +718,50 @@ namespace Debugger.AddIn.Service.Dap
 			};
 			process.Start();
 			return process;
+		}
+
+		static string CreateAdapterLogPath()
+		{
+			try {
+				string directory = Path.Combine(Path.GetTempPath(), "OpenDevelop-DebugAdapter");
+				Directory.CreateDirectory(directory);
+				// CleanupSession only runs when the session is disposed, and a hard kill of the IDE
+				// (which is how a test run ends) skips it. Sweep the stale ones so a crash cannot
+				// accumulate them; a live session's file is seconds old, so nothing in flight matches.
+				foreach (string stale in Directory.GetFiles(directory, "sharpdbg-*.log")) {
+					try {
+						if (DateTime.Now - File.GetLastWriteTime(stale) > TimeSpan.FromDays(1))
+							File.Delete(stale);
+					} catch (IOException) {
+					} catch (UnauthorizedAccessException) {
+					}
+				}
+				return Path.Combine(directory, $"sharpdbg-{DateTime.Now:yyyyMMdd-HHmmssfff}-pid{Environment.ProcessId}.log");
+			} catch (IOException) {
+				return null;
+			} catch (UnauthorizedAccessException) {
+				return null;
+			}
+		}
+
+		/// <summary>The tail of the adapter's own log, or null if it wrote none. Marks the log as
+		/// reported so it survives for post-mortem instead of being deleted with the session.</summary>
+		string ReadAdapterLogTail()
+		{
+			if (string.IsNullOrEmpty(adapterLogPath) || !File.Exists(adapterLogPath))
+				return null;
+			string[] lines;
+			try {
+				lines = File.ReadAllLines(adapterLogPath);
+			} catch (IOException) {
+				return null;
+			} catch (UnauthorizedAccessException) {
+				return null;
+			}
+			if (lines.Length == 0)
+				return null;
+			adapterLogReported = true;
+			return string.Join(Environment.NewLine, lines, Math.Max(0, lines.Length - AdapterLogTailLines), Math.Min(lines.Length, AdapterLogTailLines));
 		}
 
 		Exception DescribeAdapterExit(Process adapter)
@@ -710,6 +783,11 @@ namespace Debugger.AddIn.Service.Dap
 			message += stderr.Length > 0
 				? "." + Environment.NewLine + string.Join(Environment.NewLine, stderr)
 				: ". It wrote nothing to stderr.";
+			// The adapter's own log is the only place its internal steps are recorded, and a dead
+			// adapter's last words there are what the stderr tail above usually just truncates.
+			string logTail = ReadAdapterLogTail();
+			if (logTail != null)
+				message += Environment.NewLine + "Adapter log (last " + AdapterLogTailLines + " lines):" + Environment.NewLine + logTail;
 			return new IOException(message);
 		}
 
