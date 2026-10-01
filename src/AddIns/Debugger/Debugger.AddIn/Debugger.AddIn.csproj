@@ -97,8 +97,12 @@
     <DotNetHostPath Condition="'$(DotNetHostPath)' == ''">dotnet</DotNetHostPath>
   </PropertyGroup>
 
+  <!-- Always built (dotnet build is incremental, so an unchanged adapter costs a no-op). Gating this
+       on "the output does not exist yet" froze each configuration at its first build: Release stayed
+       at a two-week-old adapter without native-host launch, so every dist payload shipped a SharpDbg
+       that ran EXCEL.EXE-style hosts like apps and failed with "hostpolicy.dll ... not found". -->
   <Target Name="BuildSharpDbg" BeforeTargets="Build"
-          Condition="Exists('$(SharpDbgProject)') and !Exists('$(SharpDbgBinDir)SharpDbg.Cli.dll')">
+          Condition="Exists('$(SharpDbgProject)')">
     <Exec Command="&quot;$(DotNetHostPath)&quot; build &quot;$(SharpDbgProject)&quot; -c $(Configuration) -tl:off"
           ConsoleToMSBuild="true"
           IgnoreExitCode="false" />

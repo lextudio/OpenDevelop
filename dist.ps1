@@ -376,6 +376,40 @@ function Test-PackagedAppStartup {
 }
 
 
+# The payload is one download for every architecture, so every IL-only assembly in it must be
+# AnyCPU: an ARM64-only one cannot even be loaded by an x64 OpenDevelop ("The assembly architecture
+# is not compatible with the current process architecture"). Exempt are:
+#   - runtimes\ and per-RID win-x64/win-arm64/win-x86 folders, which exist precisely to carry
+#     several architectures side by side for the host to pick from;
+#   - mixed-mode C++/CLI assemblies (not ILOnly, e.g. DirectWriteForwarder.dll), architecture-
+#     specific by nature and selected through the patched deps.json.
+# A violation is almost always stale Debug output from a developer build - clean that project.
+function Test-WindowsPayloadAssemblyArchitecture {
+    param([Parameter(Mandatory)][string]$PayloadRoot)
+
+    $violations = foreach ($file in Get-ChildItem -LiteralPath $PayloadRoot -Recurse -File -Include '*.dll', '*.exe') {
+        $relative = $file.FullName.Substring($PayloadRoot.Length).TrimStart('\', '/')
+        if ($relative -match '(^|[\\/])(runtimes|win-x64|win-arm64|win-x86)[\\/]') { continue }
+        $stream = [System.IO.File]::OpenRead($file.FullName)
+        try {
+            $pe = [System.Reflection.PortableExecutable.PEReader]::new($stream)
+            $cor = $pe.PEHeaders.CorHeader
+            if ($null -eq $cor) { continue }
+            if (($cor.Flags -band [System.Reflection.PortableExecutable.CorFlags]::ILOnly) -eq 0) { continue }
+            $machine = $pe.PEHeaders.CoffHeader.Machine
+            $requires32Bit = ($cor.Flags -band [System.Reflection.PortableExecutable.CorFlags]::Requires32Bit) -ne 0 -and
+                ($cor.Flags -band [System.Reflection.PortableExecutable.CorFlags]::Prefers32Bit) -eq 0
+            if ($machine -ne [System.Reflection.PortableExecutable.Machine]::I386 -or $requires32Bit) {
+                "$relative ($machine$(if ($requires32Bit) { ', 32-bit required' }))"
+            }
+        } catch [System.BadImageFormatException] {
+        } finally { $stream.Dispose() }
+    }
+    if ($violations) {
+        throw "Distribution payload contains $(@($violations).Count) architecture-specific managed assemblies; it must be AnyCPU:`n  " + ($violations -join "`n  ")
+    }
+}
+
 function Test-WindowsDistributionPayload {
     param([Parameter(Mandatory)][string]$PayloadRoot)
 
@@ -408,6 +442,7 @@ function Test-WindowsDistributionPayload {
             }
         } finally { $stream.Dispose() }
     }
+    Test-WindowsPayloadAssemblyArchitecture -PayloadRoot $PayloadRoot
     foreach ($companionExtension in '.dll', '.deps.json', '.runtimeconfig.json') {
         $companionPath = Join-Path $PayloadRoot "OpenDevelop.Bootstrap$companionExtension"
         if (-not (Test-Path -LiteralPath $companionPath)) {
@@ -700,6 +735,34 @@ function Invoke-WindowsPayload {
         'LanguageServices\LibreWpfXamlLanguageServer'
     )
 
+    # The same holds for any other program that runs as its own process from an addin folder, e.g.
+    # the SharpDbg.Cli debug adapter beside the in-process Debugger addin: stripping its
+    # ICSharpCode.Decompiler/Microsoft.CodeAnalysis/Newtonsoft.Json (all also in the host) made it
+    # exit with code 1 and no output, so every debug session "stopped" as soon as it started. A
+    # *.runtimeconfig.json marks such a program; keep exactly the runtime assets its deps.json lists.
+    # Project references also copy-local stray OpenDevelop/MSBuild/Roslyn.Host runtimeconfigs into
+    # in-process addin folders; those programs are host files and run from the payload root, so
+    # they are skipped - honouring them would duplicate the host's whole closure into each folder.
+    $ownProcessDependencies = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($runtimeConfig in Get-ChildItem -LiteralPath $addInsSource -Recurse -File -Filter '*.runtimeconfig.json') {
+        $appDir = $runtimeConfig.DirectoryName
+        $appName = $runtimeConfig.Name -replace '\.runtimeconfig\.json$', ''
+        # A stray copy has no program beside it (FormsDesigner\ carries Host\'s runtimeconfig and would
+        # otherwise pull 119 host files into the in-process addin folder)
+        if ($hostFiles.Contains("$appName.dll") -or -not (Test-Path -LiteralPath (Join-Path $appDir "$appName.dll"))) { continue }
+        $deps = Join-Path $appDir "$appName.deps.json"
+        if (-not (Test-Path -LiteralPath $deps)) { continue }
+        $targets = (Get-Content -LiteralPath $deps -Raw | ConvertFrom-Json).targets
+        foreach ($target in $targets.PSObject.Properties.Value) {
+            foreach ($library in $target.PSObject.Properties.Value) {
+                if (-not $library.runtime) { continue }
+                foreach ($asset in $library.runtime.PSObject.Properties.Name) {
+                    [void]$ownProcessDependencies.Add((Join-Path $appDir ([System.IO.Path]::GetFileName($asset))))
+                }
+            }
+        }
+    }
+
     # Index source files once. The old filter issued one Test-Path for every XML document and a
     # nine-entry pipeline for every candidate; that became the dominant cost after copy itself was
     # incremental. An in-memory DLL index and short-circuiting loop retain the exact filter rules.
@@ -724,7 +787,7 @@ function Invoke-WindowsPayload {
                 break
             }
         }
-        if (-not $hostFiles.Contains($name) -or $isOutOfProcessHost) { $file }
+        if (-not $hostFiles.Contains($name) -or $isOutOfProcessHost -or $ownProcessDependencies.Contains($file.FullName)) { $file }
     }
 
     $expectedAddInFiles = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -918,7 +981,14 @@ function Invoke-AddInsPhase {
             "-p:OpenDevelopDistributionRidFamily=$ridFamily",
             "-p:OpenDevelopHostPublishManifest=$hostPublishManifest",
             '-p:ProGpuWpfCopyPackageRuntimeAssets=false',
-            '-p:ProGpuWpfUseCurrentRuntimeIdentifier=false'
+            '-p:ProGpuWpfUseCurrentRuntimeIdentifier=false',
+            # A solution build unsets Configuration for a ProjectReference to a project the solution
+            # does not list, so ~20 such projects (DesignerCanvas, Designer.Shell, Widgets, TreeView,
+            # SharpDevelop.EnvDTE, ...) built as Debug - reusing whatever a developer's last Debug
+            # build left in obj\Debug, which on an ARM64 machine is ARM64. That is how ARM64-only
+            # add-ins reached the AnyCPU payload. Let every reference build as the distribution's own
+            # configuration instead of keeping the solution and that list in sync by hand.
+            '-p:ShouldUnsetParentConfigurationAndPlatform=false'
         )
         if ($UseAddInStaging) {
             # Keep the experimental closure outside AddIns/. It must be cleaned once, before the
