@@ -871,26 +871,6 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new { success = true, typeName = window.ViewContents[index].GetType().FullName, viewCount = window.ViewContents.Count });
 		}
 
-		[DevFlowAction("od.editor.toggle-split", Description = "Spike: show the secondary view (designer) side by side with the primary source view (designer on top, source below) instead of as tabs. Rebuilds every open window; pass enabled=false to restore the tabs.")]
-		public static string ToggleSplit(bool enabled)
-		{
-			ICSharpCode.SharpDevelop.Workbench.AvalonWorkbenchWindow.SplitViewEnabled = enabled;
-			var windows = SD.Workbench.ViewContentCollection
-				.Select(vc => vc.WorkbenchWindow)
-				.Where(w => w != null)
-				.Distinct()
-				.OfType<ICSharpCode.SharpDevelop.Workbench.AvalonWorkbenchWindow>()
-				.ToList();
-			foreach (var window in windows)
-				window.SetSplitView(enabled);
-			return JsonSerializer.Serialize(new {
-				success = true,
-				enabled,
-				windows = windows.Count,
-				viewCounts = windows.Select(w => w.ViewContents.Count).ToArray()
-			});
-		}
-
 		[DevFlowAction("od.editor.split-status", Description = "Spike: report the side-by-side source/designer split for the active document - whether it is active, which view is focused, and the screen rectangles of the designer pane, the splitter and the source pane.")]
 		public static string SplitStatus()
 		{
@@ -921,6 +901,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				splitActive = window.SplitViewActive,
 				floating = window.SplitViewFloating,
 				horizontal = window.SplitViewHorizontal,
+				secondCollapsed = window.SplitViewSecondCollapsed,
 				activeIndex = window.SplitViewIndex,
 				viewCount = window.ViewContents.Count,
 				designerPane = Rect(window.SplitViewTopHost),
@@ -931,7 +912,38 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 
-		[DevFlowAction("od.editor.split-command", Description = "Invoke one of the split-bar buttons for the active document: 'orient' (toggle stacked/side-by-side), 'swap' (exchange the panes), 'popout' (move the source to its own window), 'close' (back to tabs). Same code path the VS-style split-bar buttons run.")]
+		[DevFlowAction("od.editor.split-bar-snapshot", Description = "Render the split bar of the active document (tabs, swap, pop-out, orientation and collapse/expand buttons) to a PNG file, to check its chrome in each state.")]
+		public static string SplitBarSnapshot(string path)
+		{
+			var window = SD.Workbench.ViewContentCollection
+				.Select(vc => vc.WorkbenchWindow)
+				.Where(w => w != null)
+				.Distinct()
+				.OfType<ICSharpCode.SharpDevelop.Workbench.AvalonWorkbenchWindow>()
+				.FirstOrDefault(w => w.SplitViewActive);
+			var bar = window?.SplitViewBar;
+			if (bar == null || bar.ActualWidth < 1 || bar.ActualHeight < 1)
+				return JsonSerializer.Serialize(new { success = false, error = "no visible split bar" });
+
+			const double scale = 2;   // enough pixels to tell the icons apart
+			var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(
+				(int)Math.Ceiling(bar.ActualWidth * scale), (int)Math.Ceiling(bar.ActualHeight * scale),
+				96 * scale, 96 * scale, System.Windows.Media.PixelFormats.Pbgra32);
+			// Render through a VisualBrush: Render(bar) would apply the bar's offset in its parent
+			// grid and draw it outside the bitmap.
+			var drawing = new System.Windows.Media.DrawingVisual();
+			using (var context = drawing.RenderOpen())
+				context.DrawRectangle(new System.Windows.Media.VisualBrush(bar), null,
+					new System.Windows.Rect(0, 0, bar.ActualWidth, bar.ActualHeight));
+			bitmap.Render(drawing);
+			var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+			encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+			using (var stream = System.IO.File.Create(path))
+				encoder.Save(stream);
+			return JsonSerializer.Serialize(new { success = true, path, width = bitmap.PixelWidth, height = bitmap.PixelHeight });
+		}
+
+		[DevFlowAction("od.editor.split-command", Description = "Invoke one of the split-bar buttons for the active document: 'orient' (toggle stacked/side-by-side), 'swap' (exchange the panes), 'popout' (move the bottom/right view to its own window), 'collapse' (fold the bottom/right view against the edge, or expand it again). Same code path the VS-style split-bar buttons run.")]
 		public static string SplitCommand(string command)
 		{
 			var window = SD.Workbench.ViewContentCollection
@@ -947,17 +959,18 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			{
 				case "orient": window.ToggleSplitOrientation(); break;
 				case "swap": window.SwapSplitPanes(); break;
-				case "popout": window.PopOutSourcePane(); break;
-				case "close": window.SetSplitView(false); break;
+				case "popout": window.PopOutSecondPane(); break;
+				case "collapse": window.ToggleSecondPaneCollapsed(); break;
 				default:
-					return JsonSerializer.Serialize(new { success = false, error = "unknown command: " + command, known = new[] { "orient", "swap", "popout", "close" } });
+					return JsonSerializer.Serialize(new { success = false, error = "unknown command: " + command, known = new[] { "orient", "swap", "popout", "collapse" } });
 			}
 			return JsonSerializer.Serialize(new {
 				success = true,
 				command,
 				splitActive = window.SplitViewActive,
 				floating = window.SplitViewFloating,
-				horizontal = window.SplitViewHorizontal
+				horizontal = window.SplitViewHorizontal,
+				secondCollapsed = window.SplitViewSecondCollapsed
 			});
 		}
 

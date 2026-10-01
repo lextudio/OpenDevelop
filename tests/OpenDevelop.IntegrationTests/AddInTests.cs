@@ -1203,6 +1203,100 @@ public sealed class AddInTests : IAsyncDisposable
     }
 
 	[Fact]
+	public async Task SplitView_CollapseFoldsTheBottomOrRightPane_AndExpandRestoresIt()
+	{
+		// Collapsing the split is not "back to tabs": the second pane (bottom when stacked,
+		// right when side by side) folds against the edge and the split bar stays, its close
+		// button turning into an expand button. A swap changes which view is there, not which
+		// pane the button acts on.
+		await _app.EnsureSolutionOpenAsync(_app.WpfSampleSolutionPath);
+		var xamlPath = Path.Combine(Path.GetDirectoryName(_app.WpfSampleSolutionPath)!, "MainWindow.xaml");
+		var opened = await _app.InvokeAsync("od.open-file", xamlPath);
+		Assert.True(opened.GetProperty("opened").GetBoolean(), $"Failed to open {xamlPath}");
+		await WaitForWpfDesignerStatusAsync(expectedRootItemType: "Window", timeoutSeconds: 30, reactivatePath: xamlPath);
+
+		async Task<JsonElement> Status()
+		{
+			await Task.Delay(300);   // let the layout pass run before reading the pane rectangles
+			var status = await _app.InvokeAsync("od.editor.split-status");
+			Assert.True(status.GetProperty("success").GetBoolean(), status.ToString());
+			return status;
+		}
+		Task<JsonElement> Command(string name) => _app.InvokeAsync("od.editor.split-command", name);
+		static bool Shown(JsonElement status, string pane) => status.GetProperty(pane).ValueKind != JsonValueKind.Null;
+		// Set OD_SPLIT_SNAPSHOT_DIR to keep a PNG of the split bar in each state for a visual check.
+		var snapshotDir = Environment.GetEnvironmentVariable("OD_SPLIT_SNAPSHOT_DIR");
+		async Task Snapshot(string name)
+		{
+			if (!string.IsNullOrEmpty(snapshotDir))
+				await _app.InvokeAsync("od.editor.split-bar-snapshot", Path.Combine(snapshotDir, name + ".png"));
+		}
+
+		var start = await Status();
+		bool startHorizontal = start.GetProperty("horizontal").GetBoolean();
+		if (!startHorizontal)
+			await Command("orient");
+		try
+		{
+			var before = await Status();
+			Assert.False(before.GetProperty("secondCollapsed").GetBoolean(), before.ToString());
+			Assert.True(Shown(before, "sourcePane"), before.ToString());
+			string bottomType = before.GetProperty("sourceType").GetString()!;
+			await Snapshot("1-stacked");
+
+			await Command("collapse");
+			var collapsed = await Status();
+			Assert.True(collapsed.GetProperty("splitActive").GetBoolean(), "collapse must keep the split, not fall back to tabs: " + collapsed);
+			Assert.True(collapsed.GetProperty("secondCollapsed").GetBoolean(), collapsed.ToString());
+			Assert.False(Shown(collapsed, "sourcePane"), "the bottom pane must be folded: " + collapsed);
+			Assert.True(Shown(collapsed, "splitter"), "the split bar must stay at the edge: " + collapsed);
+			await Snapshot("2-stacked-collapsed");
+			Assert.True(collapsed.GetProperty("designerPane").GetProperty("height").GetDouble()
+				> before.GetProperty("designerPane").GetProperty("height").GetDouble(), collapsed.ToString());
+
+			await Command("collapse");
+			var expanded = await Status();
+			Assert.False(expanded.GetProperty("secondCollapsed").GetBoolean(), expanded.ToString());
+			Assert.True(Shown(expanded, "sourcePane"), expanded.ToString());
+
+			// Swapped: the other view is at the bottom now, and the button still folds the bottom.
+			await Command("swap");
+			var swapped = await Status();
+			Assert.NotEqual(bottomType, swapped.GetProperty("sourceType").GetString());
+			await Command("collapse");
+			var swappedCollapsed = await Status();
+			Assert.False(Shown(swappedCollapsed, "sourcePane"), swappedCollapsed.ToString());
+			Assert.True(Shown(swappedCollapsed, "designerPane"), swappedCollapsed.ToString());
+			await Command("collapse");
+			await Command("swap");
+
+			// Side by side: the button folds the right pane, and the bar ends up at the right edge.
+			await Command("orient");
+			var vertical = await Status();
+			Assert.False(vertical.GetProperty("horizontal").GetBoolean(), vertical.ToString());
+			await Snapshot("3-side-by-side");
+			await Command("collapse");
+			var verticalCollapsed = await Status();
+			await Snapshot("4-side-by-side-collapsed");
+			Assert.False(Shown(verticalCollapsed, "sourcePane"), verticalCollapsed.ToString());
+			var left = verticalCollapsed.GetProperty("designerPane");
+			var bar = verticalCollapsed.GetProperty("splitter");
+			Assert.True(bar.GetProperty("x").GetDouble() >= left.GetProperty("x").GetDouble() + left.GetProperty("width").GetDouble() - 1,
+				"the bar must sit right of the remaining pane: " + verticalCollapsed);
+			await Command("collapse");
+			await Command("orient");
+		}
+		finally
+		{
+			var end = await Status();
+			if (end.GetProperty("secondCollapsed").GetBoolean())
+				await Command("collapse");
+			if (end.GetProperty("horizontal").GetBoolean() != startHorizontal)
+				await Command("orient");
+		}
+	}
+
+	[Fact]
 	public async Task OpenXamlFile_LoadsDesignerWithToolboxAndOutline()
 	{
 		await _app.EnsureSolutionOpenAsync(_app.WpfSampleSolutionPath);
