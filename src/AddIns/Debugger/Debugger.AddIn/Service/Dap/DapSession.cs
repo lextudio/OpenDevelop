@@ -832,7 +832,8 @@ namespace Debugger.AddIn.Service.Dap
 		static string ResolveDebuggeeHost(string target)
 		{
 			string defaultHost = ResolveDotNetHost();
-			if (!OperatingSystem.IsWindows())
+			// Linux keeps the configured host: no multi-architecture install layout is probed there.
+			if (!OperatingSystem.IsWindows() && !OperatingSystem.IsMacOS())
 				return defaultHost;
 			// An AnyCPU app.dll runs as whatever its app.exe launcher is - the SDK that built it picks
 			// that, not the IDE (an x64 OpenDevelop on ARM64 still sees ARM64 apphosts from CLI builds)
@@ -855,8 +856,8 @@ namespace Debugger.AddIn.Service.Dap
 					os + " machine. Build it for AnyCPU or this machine's architecture to debug it here.");
 			}
 			foreach (string root in CandidateDotNetRoots(archName)) {
-				string candidate = Path.Combine(root, "dotnet.exe");
-				if (ReadMachine(candidate) == required)
+				string candidate = Path.Combine(root, OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet");
+				if (ReadMachine(candidate) == required && HasRuntime(root))
 					return candidate;
 			}
 			throw new InvalidOperationException(
@@ -864,11 +865,29 @@ namespace Debugger.AddIn.Service.Dap
 				" .NET runtime is installed. Install the " + archName + " .NET runtime to debug it.");
 		}
 
-		/// <summary>x86 runs everywhere (WOW64), x64 on x64 and ARM64 (emulation), ARM64 only on ARM64.</summary>
+		/// <summary>
+		/// Whether <paramref name="root"/> holds a .NET runtime, not just the dotnet muxer. Measured on
+		/// macOS: /usr/local/share/dotnet/x64 can contain an x86_64 dotnet with empty host/fxr and
+		/// shared folders, and an adapter started under it dies before it can say why.
+		/// </summary>
+		static bool HasRuntime(string root)
+		{
+			try {
+				string runtimes = Path.Combine(root, "shared", "Microsoft.NETCore.App");
+				return Directory.Exists(runtimes) && Directory.EnumerateDirectories(runtimes).Any();
+			} catch (IOException) {
+				return false;
+			} catch (UnauthorizedAccessException) {
+				return false;
+			}
+		}
+
+		/// <summary>x86 runs on any Windows (WOW64) and never on macOS, x64 on x64 and ARM64 (Windows
+		/// emulation, Rosetta 2), ARM64 only on ARM64.</summary>
 		static bool CanRunOn(Machine program, System.Runtime.InteropServices.Architecture os)
 		{
 			switch (program) {
-				case Machine.I386: return true;
+				case Machine.I386: return OperatingSystem.IsWindows();
 				case Machine.Amd64: return os == System.Runtime.InteropServices.Architecture.X64 || os == System.Runtime.InteropServices.Architecture.Arm64;
 				case Machine.Arm64: return os == System.Runtime.InteropServices.Architecture.Arm64;
 				default: return false;
@@ -877,6 +896,16 @@ namespace Debugger.AddIn.Service.Dap
 
 		static IEnumerable<string> CandidateDotNetRoots(string archName)
 		{
+			if (OperatingSystem.IsMacOS()) {
+				// The installer puts the native runtime in /usr/local/share/dotnet and an x64 one on
+				// Apple Silicon in its x64 subfolder; DOTNET_ROOT_<ARCH> is the documented override.
+				string overridden = Environment.GetEnvironmentVariable("DOTNET_ROOT_" + archName.ToUpperInvariant());
+				if (!string.IsNullOrEmpty(overridden))
+					yield return overridden;
+				yield return Path.Combine("/usr/local/share/dotnet", archName);
+				yield return "/usr/local/share/dotnet";
+				yield break;
+			}
 			// The installer records each architecture's location in the 32-bit registry view
 			string registered = null;
 			try {
@@ -904,6 +933,9 @@ namespace Debugger.AddIn.Service.Dap
 			try {
 				if (!File.Exists(path))
 					return null;
+				// A native host on macOS (the counterpart of EXCEL.EXE) is a Mach-O image
+				if (ReadMachOMachine(path, out var machO))
+					return machO;
 				using (var stream = File.OpenRead(path))
 				using (var peReader = new PEReader(stream)) {
 					var headers = peReader.PEHeaders;
@@ -931,16 +963,21 @@ namespace Debugger.AddIn.Service.Dap
 		{
 			if (!string.Equals(Path.GetExtension(target), ".dll", StringComparison.OrdinalIgnoreCase))
 				return null;
-			string apphost = Path.ChangeExtension(target, ".exe");
+			// The apphost has no extension outside Windows
+			string apphost = OperatingSystem.IsWindows() ? Path.ChangeExtension(target, ".exe") : Path.ChangeExtension(target, null);
 			// A managed .exe (net48-style) is not an apphost and says nothing about the bitness
 			return File.Exists(apphost) && !ICSharpCode.SharpDevelop.Services.WindowsDebugger.IsManagedAssembly(apphost) ? ReadMachine(apphost) : null;
 		}
 
+		/// <summary>The machine of an executable: a PE image's COFF machine, or a thin Mach-O image's CPU
+		/// type (a native host or apphost on macOS). Null for a universal binary, which runs natively.</summary>
 		static Machine? ReadMachine(string path)
 		{
 			try {
 				if (!File.Exists(path))
 					return null;
+				if (ReadMachOMachine(path, out var machO))
+					return machO;
 				using (var stream = File.OpenRead(path))
 				using (var peReader = new PEReader(stream))
 					return peReader.PEHeaders.CoffHeader.Machine;
@@ -950,6 +987,31 @@ namespace Debugger.AddIn.Service.Dap
 				return null;
 			} catch (UnauthorizedAccessException) {
 				return null;
+			}
+		}
+
+		/// <summary>True when <paramref name="path"/> is a Mach-O image; <paramref name="machine"/> is then its
+		/// CPU (null for a fat/universal binary or a CPU this does not map).</summary>
+		static bool ReadMachOMachine(string path, out Machine? machine)
+		{
+			const uint MachO64 = 0xFEEDFACF, MachO32 = 0xFEEDFACE, FatMagic = 0xCAFEBABE, FatMagic64 = 0xCAFEBABF;
+			const uint CpuX86 = 7, CpuX64 = 0x01000007, CpuArm64 = 0x0100000C;
+			machine = null;
+			using (var reader = new BinaryReader(File.OpenRead(path))) {
+				if (reader.BaseStream.Length < 8)
+					return false;
+				uint magic = reader.ReadUInt32();
+				// Fat headers are big-endian, so read as little-endian their magic comes out byte-swapped
+				if (magic == FatMagic || magic == FatMagic64 || magic == 0xBEBAFECA || magic == 0xBFBAFECA)
+					return true;
+				if (magic != MachO64 && magic != MachO32)
+					return false;
+				switch (reader.ReadUInt32()) {
+					case CpuX64: machine = Machine.Amd64; break;
+					case CpuArm64: machine = Machine.Arm64; break;
+					case CpuX86: machine = Machine.I386; break;
+				}
+				return true;
 			}
 		}
 

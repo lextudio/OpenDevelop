@@ -158,6 +158,10 @@ public sealed class DebuggerIntegrationTests
     // Excel-DNA add-in) was launched as `dotnet EXCEL.EXE`. NativeHost.exe stands in for Excel: it
     // starts with no CLR, then loads the library late through hostfxr.
     //
+    // macOS runs the same journey with a Mach-O host (dlopen'ing libhostfxr.dylib). There is no
+    // 32-bit macOS; an x64 host runs under Rosetta 2 on Apple Silicon, with DapSession running the
+    // adapter under the x64 dotnet in /usr/local/share/dotnet/x64 (dbgshim cannot cross either).
+    //
     // Host architecture is a theory because it is the one dimension a user cannot choose:
     // Excel-DNA add-ins ship for whichever bitness their Excel is, and a 32-bit Excel is still
     // common. dbgshim cannot cross architectures, so DapSession runs the adapter under a dotnet
@@ -168,10 +172,16 @@ public sealed class DebuggerIntegrationTests
     [InlineData("arm64")]
     public async Task ClassLibrary_NativeStartProgramLoadingRuntimeLate_HitsLibraryBreakpoint(string hostArchitecture)
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), "The native host fixture is Windows-only");
+        Assert.SkipUnless(OperatingSystem.IsWindows() || OperatingSystem.IsMacOS(), "The native host fixture exists for Windows and macOS");
         var architecture = ArchitectureFor(hostArchitecture);
         Assert.SkipWhen(architecture == Architecture.Arm64 && RuntimeInformation.OSArchitecture != Architecture.Arm64,
             "An ARM64 native host cannot run on this machine");
+        if (OperatingSystem.IsMacOS())
+        {
+            Assert.SkipWhen(architecture == Architecture.X86, "macOS has no 32-bit processes");
+            Assert.SkipWhen(architecture == Architecture.X64 && RuntimeInformation.OSArchitecture == Architecture.Arm64 && !RosettaInstalled(),
+                "An x64 native host needs Rosetta 2 on Apple Silicon");
+        }
         var dotnetRoot = FindDotNetRoot(architecture);
         Assert.SkipWhen(dotnetRoot == null, SkipMessageForMissingRuntime(architecture));
         var directory = Path.Combine(Path.GetTempPath(), "opendevelop-native-host-debug-" + Guid.NewGuid().ToString("N"));
@@ -340,8 +350,101 @@ public sealed class DebuggerIntegrationTests
         _ => throw new ArgumentOutOfRangeException(nameof(architecture), architecture, "No Visual Studio C++ component for this architecture")
     };
 
+    // The macOS counterpart of NativeHostSource: dlopen/dlsym instead of LoadLibraryW/GetProcAddress,
+    // and char rather than wchar_t paths, which is what hostfxr takes outside Windows.
+    const string MacNativeHostSource = """
+        // Minimal native host that loads a .NET class library late through hostfxr.
+        // Usage: NativeHost <libhostfxr.dylib> <library.runtimeconfig.json> <library.dll>
+        #include <dlfcn.h>
+        #include <stdio.h>
+        #include <unistd.h>
+
+        typedef void* hostfxr_handle;
+        typedef int (*hostfxr_initialize_for_runtime_config_fn)(const char* runtime_config_path, const void* parameters, hostfxr_handle* host_context_handle);
+        typedef int (*hostfxr_get_runtime_delegate_fn)(const hostfxr_handle host_context_handle, int type, void** delegate);
+        typedef int (*hostfxr_close_fn)(const hostfxr_handle host_context_handle);
+        typedef int (*load_assembly_and_get_function_pointer_fn)(const char* assembly_path, const char* type_name, const char* method_name, const char* delegate_type_name, void* reserved, void** delegate);
+        typedef int (*run_fn)(int input);
+
+        #define HDT_LOAD_ASSEMBLY_AND_GET_FUNCTION_POINTER 5
+        #define UNMANAGEDCALLERSONLY_METHOD ((const char*)-1)
+
+        int main(int argc, char** argv)
+        {
+            if (argc < 4)
+            {
+                fprintf(stderr, "usage: NativeHost <libhostfxr.dylib> <runtimeconfig.json> <library.dll>\n");
+                return 2;
+            }
+
+            // Native-only startup phase, like Excel initialising before it loads any add-in
+            printf("NativeHost: native startup\n");
+            fflush(stdout);
+            usleep(500 * 1000);
+
+            void* hostfxr = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
+            if (!hostfxr)
+            {
+                fprintf(stderr, "NativeHost: failed to load %s (%s)\n", argv[1], dlerror());
+                return 3;
+            }
+            hostfxr_initialize_for_runtime_config_fn init = (hostfxr_initialize_for_runtime_config_fn)dlsym(hostfxr, "hostfxr_initialize_for_runtime_config");
+            hostfxr_get_runtime_delegate_fn get_delegate = (hostfxr_get_runtime_delegate_fn)dlsym(hostfxr, "hostfxr_get_runtime_delegate");
+            hostfxr_close_fn close_context = (hostfxr_close_fn)dlsym(hostfxr, "hostfxr_close");
+            if (!init || !get_delegate || !close_context)
+            {
+                fprintf(stderr, "NativeHost: hostfxr exports not found\n");
+                return 4;
+            }
+
+            hostfxr_handle context = NULL;
+            int rc = init(argv[2], NULL, &context);
+            if (rc < 0 || !context)
+            {
+                fprintf(stderr, "NativeHost: hostfxr_initialize_for_runtime_config failed 0x%08x\n", rc);
+                return 5;
+            }
+
+            load_assembly_and_get_function_pointer_fn load = NULL;
+            rc = get_delegate(context, HDT_LOAD_ASSEMBLY_AND_GET_FUNCTION_POINTER, (void**)&load);
+            close_context(context);
+            if (rc < 0 || !load)
+            {
+                fprintf(stderr, "NativeHost: hostfxr_get_runtime_delegate failed 0x%08x\n", rc);
+                return 6;
+            }
+
+            run_fn run = NULL;
+            rc = load(argv[3], "NativeHostedLibrary.AddIn, NativeHostedLibrary", "Run", UNMANAGEDCALLERSONLY_METHOD, NULL, (void**)&run);
+            if (rc < 0 || !run)
+            {
+                fprintf(stderr, "NativeHost: load_assembly_and_get_function_pointer failed 0x%08x\n", rc);
+                return 7;
+            }
+
+            int result = run(20);
+            printf("NativeHost: result %d\n", result);
+            return result == 41 ? 0 : 8;
+        }
+        """;
+
+    // xcrun picks the active Xcode's SDK. A bare cc can link against a Command Line Tools SDK
+    // newer than its own linker ("tapi error: unknown architecture arm64e.x1-macos", measured).
+    static async Task<string> BuildMacNativeHostAsync(string outputDirectory, Architecture architecture)
+    {
+        var source = Path.Combine(outputDirectory, "native_host.c");
+        File.WriteAllText(source, MacNativeHostSource);
+        var arch = architecture == Architecture.Arm64 ? "arm64" : "x86_64";
+        var exe = Path.Combine(outputDirectory, "NativeHost-" + arch);
+        await RunToolAsync("xcrun", outputDirectory, "--sdk", "macosx", "clang", "-g", "-arch", arch, "-o", exe, source);
+        Assert.True(File.Exists(exe), $"{Path.GetFileName(exe)} was not produced");
+        return exe;
+    }
+
     static async Task<string> BuildNativeHostAsync(string outputDirectory, Architecture architecture)
     {
+        if (OperatingSystem.IsMacOS())
+            return await BuildMacNativeHostAsync(outputDirectory, architecture);
         var source = Path.Combine(outputDirectory, "native_host.c");
         File.WriteAllText(source, NativeHostSource);
         var vswhere = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Microsoft Visual Studio", "Installer", "vswhere.exe");
@@ -364,6 +467,8 @@ public sealed class DebuggerIntegrationTests
     // skips here while the product still finds it - SkipMessageForMissingRuntime names the folders.
     static string[] DotNetRootCandidates(Architecture architecture)
     {
+        if (OperatingSystem.IsMacOS())
+            return MacDotNetRootCandidates();
         var programFiles = Environment.GetEnvironmentVariable("ProgramW6432") ?? Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
         var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
         return architecture == Architecture.X86
@@ -371,14 +476,32 @@ public sealed class DebuggerIntegrationTests
             : new[] { Path.Combine(programFiles, "dotnet", architecture == Architecture.X64 ? "x64" : "arm64"), Path.Combine(programFiles, "dotnet") };
     }
 
+    // DOTNET_ROOT, then the installer's default location, then Homebrew's. An x64 runtime on
+    // Apple Silicon lives in its own x64 subfolder; this test only uses the native one.
+    static string[] MacDotNetRootCandidates() => new[] {
+            Environment.GetEnvironmentVariable("DOTNET_ROOT_X64"),
+            Environment.GetEnvironmentVariable("DOTNET_ROOT_ARM64"),
+            Environment.GetEnvironmentVariable("DOTNET_ROOT"),
+            "/usr/local/share/dotnet/x64",
+            "/usr/local/share/dotnet",
+            "/opt/homebrew/opt/dotnet/libexec",
+        }.Where(root => !string.IsNullOrEmpty(root)).Cast<string>().Distinct(StringComparer.Ordinal).ToArray();
+
+    // Rosetta 2 is installed when its runtime is present; without it an x86_64 binary cannot start.
+    static bool RosettaInstalled() => File.Exists("/Library/Apple/usr/libexec/oah/libRosettaRuntime");
+
     static string? FindDotNetRoot(Architecture architecture)
     {
+        if (OperatingSystem.IsMacOS())
+            return MacDotNetRootCandidates().FirstOrDefault(root => MacHostFxrPaths(root).Any(path => IsMachOFor(path, architecture)));
         var machine = MachineFor(architecture);
         return DotNetRootCandidates(architecture).FirstOrDefault(root => IsPeFor(Path.Combine(root, "dotnet.exe"), machine));
     }
 
-    static string SkipMessageForMissingRuntime(Architecture architecture) =>
-        $"No {architecture} dotnet.exe in the standard locations ({string.Join(", ", DotNetRootCandidates(architecture))}); a runtime installed elsewhere is not looked for";
+    static string SkipMessageForMissingRuntime(Architecture architecture) => OperatingSystem.IsMacOS()
+        ? $"No {architecture} .NET runtime in {string.Join(", ", DotNetRootCandidates(architecture))}. On Apple Silicon an x64 one can be installed without sudo: " +
+          "dotnet-install.sh --runtime dotnet --channel 10.0 --architecture x64 --install-dir ~/.dotnet-x64, then set DOTNET_ROOT_X64=~/.dotnet-x64 (the IDE reads it too)"
+        : $"No {architecture} dotnet.exe in the standard locations ({string.Join(", ", DotNetRootCandidates(architecture))}); a runtime installed elsewhere is not looked for";
 
     static System.Reflection.PortableExecutable.Machine MachineFor(Architecture architecture) => architecture switch
     {
@@ -388,8 +511,42 @@ public sealed class DebuggerIntegrationTests
         _ => throw new ArgumentOutOfRangeException(nameof(architecture), architecture, "Unknown native host architecture")
     };
 
+    static IEnumerable<string> MacHostFxrPaths(string dotnetRoot)
+    {
+        var fxrRoot = Path.Combine(dotnetRoot, "host", "fxr");
+        if (!Directory.Exists(fxrRoot)) return Array.Empty<string>();
+        return Directory.GetDirectories(fxrRoot)
+            .Where(dir => Version.TryParse(Path.GetFileName(dir).Split('-')[0], out _))
+            .OrderByDescending(dir => Version.Parse(Path.GetFileName(dir).Split('-')[0]))
+            .Select(dir => Path.Combine(dir, "libhostfxr.dylib"))
+            .Where(File.Exists);
+    }
+
+    // Thin Mach-O only (a hostfxr is never fat): 64-bit magic, then the CPU type.
+    static bool IsMachOFor(string path, Architecture architecture)
+    {
+        const uint MachO64Magic = 0xFEEDFACF, CpuTypeArm64 = 0x0100000C, CpuTypeX64 = 0x01000007;
+        try
+        {
+            using var reader = new BinaryReader(File.OpenRead(path));
+            if (reader.ReadUInt32() != MachO64Magic) return false;
+            var cpu = reader.ReadUInt32();
+            return architecture == Architecture.Arm64 ? cpu == CpuTypeArm64 : architecture == Architecture.X64 && cpu == CpuTypeX64;
+        }
+        catch (Exception ex) when (ex is IOException or EndOfStreamException)
+        {
+            return false;
+        }
+    }
+
     static string FindHostFxr(string dotnetRoot, Architecture architecture)
     {
+        if (OperatingSystem.IsMacOS())
+        {
+            var dylib = MacHostFxrPaths(dotnetRoot).FirstOrDefault(path => IsMachOFor(path, architecture));
+            Assert.True(dylib != null, $"No {architecture} libhostfxr.dylib exists under {dotnetRoot}");
+            return dylib!;
+        }
         // The debuggee LoadLibraryW's this, so it must match the debuggee's bitness; picking the
         // wrong one fails at LoadLibrary with ERROR_BAD_EXE_FORMAT (193), which names no cause.
         var fxrRoot = Path.Combine(dotnetRoot, "host", "fxr");
