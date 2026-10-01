@@ -137,6 +137,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			Child = new TextBlock { Text = "Type Here", FontSize = 11, Foreground = Brushes.DimGray }
 		};
 		string? menuTypeHereHotspotMenuId;
+		double menuTypeHereHotspotContainerLeft, menuTypeHereHotspotContainerRight;
 		/// <summary>The element Type of <see cref="menuTypeHereHotspotMenuId"/>'s container - decides
 		/// which RPC a commit through this hotspot uses (see <see cref="BeginNewMenuItemEdit"/>).</summary>
 		string? menuTypeHereHotspotContainerType;
@@ -1008,19 +1009,43 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				HideMenuTypeHereHotspot();
 				return;
 			}
+			bool newContainer = menuTypeHereHotspotMenuId != container.Id || menuTypeHereHotspot.Visibility != Visibility.Visible;
 			menuTypeHereHotspotMenuId = container.Id;
 			menuTypeHereHotspotContainerType = container.Type;
 			var rightEdge = container.Children.Count > 0
 				? container.Children.Max(c => c.X + c.Width)
 				: container.X;
 			menuTypeHereHotspotDesignPoint = new Point(rightEdge, container.Y);
+			menuTypeHereHotspotContainerLeft = container.X;
+			menuTypeHereHotspotContainerRight = container.X + container.Width;
 			menuTypeHereHotspot.Visibility = Visibility.Visible;
 			PlaceMenuTypeHereHotspot();
+			// A strip docked at the bottom of the window (a StatusBar) can be below the visible
+			// canvas in a short designer pane such as the split view; selecting it must bring its
+			// Type Here hotspot into view, or the hotspot is unreachable. Only when the container
+			// changes, so ordinary refreshes do not keep scrolling the canvas.
+			if (newContainer)
+				Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() => {
+					if (menuTypeHereHotspot.IsVisible && menuTypeHereHotspot.ActualWidth > 0)
+						menuTypeHereHotspot.BringIntoView();
+				}));
 		}
 
 		void PlaceMenuTypeHereHotspot()
 		{
 			var origin = DesignToContentPoint(menuTypeHereHotspotDesignPoint.X, menuTypeHereHotspotDesignPoint.Y);
+			// Keep the hotspot inside its container. A StatusBar's last item (and a full ToolBar)
+			// stretches to the container's right edge, so "just past the last item" was outside the
+			// form - beyond the canvas extent, where it could not be scrolled to and a click landed
+			// on the scrollbar instead.
+			if (menuTypeHereHotspot.ActualWidth <= 0)
+				menuTypeHereHotspot.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+			var width = menuTypeHereHotspot.ActualWidth > 0 ? menuTypeHereHotspot.ActualWidth : menuTypeHereHotspot.DesiredSize.Width;
+			var containerRight = DesignToContentPoint(menuTypeHereHotspotContainerRight, menuTypeHereHotspotDesignPoint.Y).X;
+			var containerLeft = DesignToContentPoint(menuTypeHereHotspotContainerLeft, menuTypeHereHotspotDesignPoint.Y).X;
+			// A container narrower than the hotspot (an empty Menu) keeps the hotspot past its edge.
+			if (containerRight - containerLeft >= width && origin.X + width > containerRight)
+				origin.X = containerRight - width;
 			Canvas.SetLeft(menuTypeHereHotspot, origin.X);
 			Canvas.SetTop(menuTypeHereHotspot, origin.Y);
 		}

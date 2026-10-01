@@ -15,6 +15,7 @@ using System.Windows.Markup;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using System.Drawing.Design;
 
 using ICSharpCode.SharpDevelop.Designer.Presentation;
@@ -154,8 +155,22 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 			}
 		}
 		internal object PopupTypeHereStatus => new {
-			items = popupEditors.Select(entry => entry.Value.Status(entry.Key)).Where(item => item != null).ToArray()
+			items = popupEditors.Select(entry => entry.Value.Status(entry.Key)).Where(item => item != null).ToArray(),
+			// Overlays live inside the canvas scroller and are clipped by it: a cell's screen bounds
+			// alone do not say a click there reaches it.
+			canvasViewport = new {
+				offsetY = canvasScroller.VerticalOffset, viewportHeight = canvasScroller.ViewportHeight,
+				extentHeight = canvasScroller.ExtentHeight, scrollableHeight = canvasScroller.ScrollableHeight
+			},
+			cellsInView = popupEditors.Values.Select(editor => editor.Cell.IsVisible && IsInCanvasViewport(editor.Cell)).ToArray()
 		};
+		bool IsInCanvasViewport(FrameworkElement element)
+		{
+			if (!canvasScroller.IsVisible || element.ActualWidth <= 0) return false;
+			var bounds = element.TransformToAncestor(canvasScroller).TransformBounds(new Rect(element.RenderSize));
+			return bounds.Top >= 0 && bounds.Bottom <= canvasScroller.ViewportHeight + 0.5
+				&& bounds.Left >= 0 && bounds.Right <= canvasScroller.ViewportWidth + 0.5;
+		}
 		/// <summary>Names currently rendered in the component tray. Kept separate from the
 		/// document component list so integration tests can assert the tray ownership rule.</summary>
 		internal object ComponentTrayStatus => new {
@@ -948,6 +963,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 		void UpdatePopupOverlays(DesignerSessionState state)
 		{
 			var seen = new HashSet<string>(StringComparer.Ordinal);
+			Image opened = null;
 			foreach (var popup in state.Popups ?? []) {
 				seen.Add(popup.OwnerElementId);
 				if (!popupOverlays.TryGetValue(popup.OwnerElementId, out var image)) {
@@ -965,6 +981,7 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 					popupOverlays[popup.OwnerElementId] = image;
 					adorners.Children.Add(image);
 					Panel.SetZIndex(image, 200);
+					opened = image;   // state.Popups runs outermost first, so this ends on the deepest
 				}
 				if (!String.IsNullOrEmpty(popup.Render?.PngBase64)) {
 					using var stream = new MemoryStream(Convert.FromBase64String(popup.Render.PngBase64));
@@ -1003,6 +1020,17 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 				popupEditors.Remove(staleId);
 			}
 			PositionPopupOverlays();
+			// A dropdown opens at its real place on the form, which in a short designer pane (the
+			// split view, or a tall component tray) can be below the visible canvas - its items and
+			// Type Here cell were then unreachable, and a click there landed on the tray. Scroll the
+			// canvas to the dropdown that just opened, once layout has placed it.
+			if (opened != null) {
+				var target = opened;
+				Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() => {
+					if (adorners.Children.Contains(target) && target.ActualWidth > 0)
+						target.BringIntoView();
+				}));
+			}
 		}
 
 		/// <summary>Places every live popup overlay at its reported surface position, sized by the
