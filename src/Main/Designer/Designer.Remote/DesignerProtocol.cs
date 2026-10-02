@@ -82,6 +82,13 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public bool Accepted { get; set; }
 		public string Error { get; set; } = "";
 		public string RootType { get; set; } = "";
+		/// <summary>Whether the root of the design is a top-level window rather than a bare content
+		/// element. A host whose framework draws window decoration itself (a WM-drawn title bar, which
+		/// is not part of the widget tree) reports the frame's size through
+		/// <see cref="DesignerRenderFrame"/> but cannot include the chrome in the pixels; the client
+		/// draws it instead, so that a window reads as a window on every framework rather than only
+		/// the ones whose toolkit paints its own decorations. False means the root IS the content.</summary>
+		public bool RootIsWindow { get; set; }
 		public int ComponentCount { get; set; }
 		/// <summary>Flat component snapshot (WinForms shape).</summary>
 		public List<DesignerComponentInfo> Components { get; set; } = new List<DesignerComponentInfo>();
