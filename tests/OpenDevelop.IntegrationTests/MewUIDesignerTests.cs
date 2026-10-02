@@ -291,6 +291,58 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 		Assert.Contains("<CheckBox ", mxamlContent);
 	}
 
+	[Fact]
+	public async Task MewUIDesigner_SourceView_SharesTheDesignerToolbox_AndPlacesDroppedItems()
+	{
+		// The .mxaml Source half of a Design/Source document: the Tools pad keeps the MewUI list, and
+		// a dropped control becomes an element on its own line in the panel under the drop point.
+		var openedProject = await app.ReopenSolutionAsync(projectPath); Assert.True(openedProject.GetProperty("success").GetBoolean(), openedProject.ToString());
+		var opened = await app.InvokeAsync("od.open-file", designerPath); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitForDesignerAsync();
+		var countBefore = status.GetProperty("elementCount").GetInt32();
+
+		// On the "New" button inside the horizontal toolRow: the new control goes after it, in toolRow.
+		// The designer hands the Source view its canonical text on the switch, so plan against that.
+		var current = (await app.InvokeAsync("od.file.query-vs-text-buffer", designerPath)).GetProperty("text").GetString()!;
+		var onNewButton = current.IndexOf("Name=\"newButton\"", StringComparison.Ordinal);
+		var dropped = await app.InvokeAsync("od.file.drop-toolbox-item", designerPath, onNewButton, "CheckBox");
+		Assert.True(dropped.GetProperty("success").GetBoolean() && dropped.GetProperty("inserted").GetBoolean(), dropped.ToString());
+		var text = dropped.GetProperty("text").GetString()!;
+		Assert.True(NextLineIsSibling(text, "Name=\"newButton\"", "<CheckBox />"), "the CheckBox is not on its own line after newButton:\n" + text);
+
+		var pad = await app.InvokeAsync("od.tools-pad.status");
+		Assert.Equal("AvalonEditViewContent", pad.GetProperty("activeView").GetString());
+		Assert.True(pad.GetProperty("hostsSharedToolbox").GetBoolean(), "the Source half lost the MewUI toolbox: " + pad);
+		Assert.Equal("MewUIDesignerViewContent", pad.GetProperty("sharedToolboxOwner").GetString());
+
+		// A Label is not a container, and neither is a full content control: dropping into the
+		// QuickNotes heading's line goes to the root panel instead, never inside the Label.
+		var onHeading = text.IndexOf("Text=\"QuickNotes\"", StringComparison.Ordinal);
+		var second = await app.InvokeAsync("od.file.drop-toolbox-item", designerPath, onHeading, "Button");
+		Assert.True(second.GetProperty("inserted").GetBoolean(), second.ToString());
+		var afterSecond = second.GetProperty("text").GetString()!;
+		Assert.True(NextLineIsSibling(afterSecond, "Name=\"heading\"", "<Button />"), "the Button is not on its own line after the heading:\n" + afterSecond);
+
+		JsonElement designed = default;
+		Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+			designed = await app.InvokeAsync("od.mewui-designer.status");
+			return designed.GetProperty("elementCount").GetInt32() == countBefore + 2;
+		}, TimeSpan.FromSeconds(15)), "the designer did not pick up the two dropped controls: " + designed);
+		await app.InvokeAsync("od.file.revert-all-dirty");
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	/// <summary>Whether the line after the one holding <paramref name="marker"/> is exactly
+	/// <paramref name="markup"/>, at that line's indentation.</summary>
+	static bool NextLineIsSibling(string text, string marker, string markup)
+	{
+		var lines = text.Replace("\r\n", "\n").Split('\n');
+		var at = Array.FindIndex(lines, line => line.Contains(marker, StringComparison.Ordinal));
+		if (at < 0 || at + 1 >= lines.Length) return false;
+		var indent = lines[at][..(lines[at].Length - lines[at].TrimStart().Length)];
+		return lines[at + 1] == indent + markup;
+	}
+
 	async Task<JsonElement> WaitForHostChangeAsync(int previousPid, string windowClassName)
 	{
 		var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30); JsonElement last = default;
@@ -313,5 +365,11 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 		return last;
 	}
 
-	public ValueTask DisposeAsync() { try { Directory.Delete(workDir, true); } catch { } return ValueTask.CompletedTask; }
+	public async ValueTask DisposeAsync()
+	{
+		// Close the documents first: the app outlives this class, and a tab still open on a deleted
+		// file fails the next time the workbench initializes its views.
+		try { await app.InvokeAsync("od.close-all-document-views"); } catch { }
+		try { Directory.Delete(workDir, true); } catch { }
+	}
 }

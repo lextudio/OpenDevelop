@@ -358,6 +358,52 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 	}
 
 	[Fact]
+	public async Task GtkDesigner_SourceView_SharesTheDesignerToolbox_AndPlacesDroppedItems()
+	{
+		// A .ui shown Design and Source side by side has one toolbox. With the Source half focused the
+		// Tools pad still shows the GTK list (the plain text editor has none of its own), and a GTK
+		// control dropped onto the markup becomes a real GtkBuilder child - <child><object class id/> -
+		// in the container under the drop point, not "<GtkSwitch />" or the dragged type as plain text.
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", uiPath); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitAsync("mainWindow"); Assert.Equal(4, status.GetProperty("elementCount").GetInt32());
+
+		var original = await File.ReadAllTextAsync(uiPath, TestContext.Current.CancellationToken);
+		// On the heading's label text: the new control goes after the heading, inside contentBox.
+		var onHeading = original.IndexOf("GTK 4 Designer", StringComparison.Ordinal) + 3;
+		var dropped = await app.InvokeAsync("od.file.drop-toolbox-item", uiPath, onHeading, "GtkSwitch");
+		Assert.True(dropped.GetProperty("success").GetBoolean() && dropped.GetProperty("inserted").GetBoolean(), dropped.ToString());
+		var text = dropped.GetProperty("text").GetString()!;
+		var heading = text.IndexOf("id=\"heading\"", StringComparison.Ordinal);
+		var inserted = text.IndexOf("class=\"GtkSwitch\"", StringComparison.Ordinal);
+		var run = text.IndexOf("id=\"runButton\"", StringComparison.Ordinal);
+		Assert.True(heading < inserted && inserted < run, "the switch did not land between the heading and the button:\n" + text);
+		Assert.Contains("<child>", text[heading..run]);
+		Assert.DoesNotContain("<GtkSwitch", text);
+
+		var pad = await app.InvokeAsync("od.tools-pad.status");
+		Assert.Equal("AvalonEditViewContent", pad.GetProperty("activeView").GetString());
+		Assert.True(pad.GetProperty("hostsSharedToolbox").GetBoolean(), "the Source half lost the GTK toolbox: " + pad);
+		Assert.Equal("GtkDesignerViewContent", pad.GetProperty("sharedToolboxOwner").GetString());
+
+		// A drop with no container under it is refused, and the text is left alone.
+		var onRequires = text.IndexOf("<requires", StringComparison.Ordinal) + 2;
+		var refused = await app.InvokeAsync("od.file.drop-toolbox-item", uiPath, onRequires, "GtkSwitch");
+		Assert.False(refused.GetProperty("inserted").GetBoolean(), refused.ToString());
+		Assert.Equal(text, refused.GetProperty("text").GetString());
+
+		// Back on the design surface, the designer has the control the Source half added.
+		JsonElement designed = default;
+		Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+			designed = await app.InvokeAsync("od.gtk-designer.status");
+			return designed.GetProperty("elementIds").EnumerateArray().Any(e => e.GetString() == "switch1");
+		}, TimeSpan.FromSeconds(15)), "the designer did not pick up the dropped switch: " + designed);
+		Assert.True(designed.GetProperty("nativeFrame").GetBoolean(), designed.ToString());
+		await app.InvokeAsync("od.file.revert-all-dirty");
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	[Fact]
 	public async Task GtkDesigner_ExternalChangeOnDisk_ReloadsTheDesign()
 	{
 		// Another tool (Cambalache, git checkout, a text editor) rewrites the .ui while it is open
@@ -591,7 +637,7 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		// made an early version of this test flaky at the coordinate-resolution step, independent
 		// of the drag/drop mechanics themselves.
 		JsonElement statusAfterDrop = default;
-		var grew = false;
+		var grew = false; var pointerEvents = "";
 		for (int attempt = 1; attempt <= 4 && !grew; attempt++) {
 			await app.InvokeAsync("od.activate");
 			// Read both points after activation, and only once two samples agree: showing the Tools pad
@@ -599,7 +645,10 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 			// on a neighbouring item - the drop then inserts a CheckButton instead of the Switch.
 			var (fromX, fromY) = await StableCenterAsync("od.gtk-designer.toolbox.query-item-bounds", "GtkSwitch");
 			var (toX, toY) = await StableCenterAsync("od.gtk-designer.query-element-screen-bounds", "runButton");
+			var activated = await app.InvokeAsync("od.activate");
+			await app.InvokeAsync("od.pointer-events", true);
 			var pressed = await app.PressPointerAsync(fromX, fromY); Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
+			pointerEvents = (await app.InvokeAsync("od.pointer-events", false)).ToString() + " pressed at " + fromX + "," + fromY + " after " + activated;
 			for (int step = 1; step <= 6; step++) {
 				var t = step / 6.0;
 				var moved = await app.DragMovePointerAsync(fromX + (toX - fromX) * t, fromY + (toY - fromY) * t);
@@ -613,7 +662,7 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 				return statusAfterDrop.GetProperty("elementCount").GetInt32() > elementCountBefore;
 			}, TimeSpan.FromSeconds(8), initialDelayMs: 50, maxDelayMs: 250);
 		}
-		Assert.True(grew, "Expected elementCount to grow after the drag-drop, even after retries.\nBefore: " + elementCountBefore + "\nAfter: " + statusAfterDrop);
+		Assert.True(grew, "Expected elementCount to grow after the drag-drop, even after retries.\nBefore: " + elementCountBefore + "\nPointer: " + pointerEvents + "\nAfter: " + statusAfterDrop);
 
 		var saved = await app.InvokeAsync("od.file.save", uiPath); Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
 		var xml = await File.ReadAllTextAsync(uiPath, TestContext.Current.CancellationToken);

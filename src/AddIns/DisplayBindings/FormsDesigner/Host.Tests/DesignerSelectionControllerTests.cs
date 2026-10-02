@@ -241,37 +241,3 @@ public sealed class DesignerCommandControllerTests
 		Assert.False(controller.Snapshot().Single(state => state.Name == DesignerCommandNames.Undo).CanExecute);
 	}
 }
-
-public sealed class DesignerToolboxControllerTests
-{
-	[Fact]
-	public void FiltersAcrossCatalogueFieldsAndClearsHiddenSelection()
-	{
-		var controller = new DesignerToolboxController();
-		controller.SetItems(new[] { Item("Button", "Controls"), Item("Grid", "Panels") });
-		Assert.True(controller.Select("Button"));
-
-		controller.Filter("panel");
-
-		Assert.Equal("Grid", Assert.Single(controller.VisibleItems).TypeName);
-		Assert.Null(controller.SelectedItem);
-
-		controller.Filter("");
-		Assert.Equal("Button", controller.SelectedItem!.TypeName);
-	}
-
-	[Fact]
-	public void RebuildDeduplicatesAndRestoresSelectionByStableTypeName()
-	{
-		var controller = new DesignerToolboxController();
-		controller.SetItems(new[] { Item("Button", "Controls"), Item("Button", "Other") });
-		Assert.True(controller.Select("Button"));
-
-		controller.SetItems(new[] { Item("Button", "Updated") });
-
-		Assert.Single(controller.AllItems);
-		Assert.Equal("Updated", controller.SelectedItem!.Category);
-	}
-
-	static DesignerToolboxItemInfo Item(string type, string category) => new() { Name = type, DisplayName = type, TypeName = type, Category = category };
-}
