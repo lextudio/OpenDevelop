@@ -67,6 +67,22 @@ public sealed class GtkDesignerVisualWalkthroughTests : IAsyncLifetime, IAsyncDi
 		var path = Path.Combine(OutputDirectory, $"{++step:D2}-{name}.png");
 		var result = await app.InvokeAsync("od.gtk-designer.screenshot", path);
 		Assert.True(result.GetProperty("success").GetBoolean(), "screenshot " + name + " failed: " + result);
+
+		// The captured pixels and the frame the host declares must be the same size. They were not: the
+		// host reported the size it had asked for while encoding a much smaller texture, and the canvas
+		// stretched one across the other, which is what made the surface look distorted. Both numbers come
+		// from the one call that wrote the file, because a separate status query would race the next render
+		// and compare two different states.
+		// The PNG header is read directly rather than decoded: the size is all this is about, and
+		// System.Drawing would need an encoder the host does not have.
+		var header = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
+		Assert.True(header.Length > 24 && header[1] == (byte)'P', "the capture for " + name + " is not a PNG");
+		var pixelWidth = (header[16] << 24) | (header[17] << 16) | (header[18] << 8) | header[19];
+		var pixelHeight = (header[20] << 24) | (header[21] << 16) | (header[22] << 8) | header[23];
+		if (result.TryGetProperty("frameWidth", out var declaredWidth))
+			Assert.Equal(declaredWidth.GetInt32(), pixelWidth);
+		if (result.TryGetProperty("frameHeight", out var declaredHeight))
+			Assert.Equal(declaredHeight.GetInt32(), pixelHeight);
 	}
 
 	[Fact]
@@ -76,6 +92,22 @@ public sealed class GtkDesignerVisualWalkthroughTests : IAsyncLifetime, IAsyncDi
 		var opened = await app.InvokeAsync("od.open-file", uiPath);
 		Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
 		await app.InvokeAsync("od.gtk-designer.refresh");
+
+		// Diagnostics carry the host's own account of the render (and, with OD_GTK_DUMP_TREE=1, the realized
+		// widget tree with each allocation), which is the only way to tell a control that was never parsed
+		// apart from one that was parsed and then given no space.
+		var initial = await app.InvokeAsync("od.gtk-designer.status");
+		// Written to the output folder rather than to the test output: a passing test's output is not shown,
+		// and this log is the point of the walkthrough.
+		var log = new System.Text.StringBuilder();
+		log.AppendLine("nativeFrame " + initial.GetProperty("nativeFrameWidth").GetInt32() + "x"
+			+ initial.GetProperty("nativeFrameHeight").GetInt32() + " rootIsWindow="
+			+ initial.GetProperty("rootIsWindow").GetBoolean());
+		foreach (var diagnostic in initial.GetProperty("diagnostics").EnumerateArray())
+			log.AppendLine("DIAG: " + diagnostic.GetString());
+		log.AppendLine("HOSTLOG: " + initial.GetProperty("hostLog").GetString());
+		await File.WriteAllTextAsync(Path.Combine(OutputDirectory, "walkthrough.log"), log.ToString(), TestContext.Current.CancellationToken);
+
 		await ShootAsync("opened-fit");
 
 		// Zoom is where a mis-scaled frame would first show: the bitmap is stretched by the canvas, not

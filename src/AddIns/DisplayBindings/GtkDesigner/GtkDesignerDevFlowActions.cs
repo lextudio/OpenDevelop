@@ -55,17 +55,44 @@ public static class GtkDesignerDevFlowActions
 				success = false,
 				error = "The GTK designer has not been laid out yet (size " + visual.ActualWidth + "x" + visual.ActualHeight + ")."
 			});
+		var full = Environment.ExpandEnvironmentVariables(path);
+		// The composed canvas is what we want, but WPF's imaging stack is not available on every host
+		// this runs on - LibreWPF on macOS has no native encoder and PngBitmapEncoder throws
+		// DllNotFoundException. Falling back to the GTK host's own PNG still answers the question the
+		// capture exists for: that image is exactly what GTK rendered, so if it is undistorted, whatever
+		// looks wrong is the canvas placing it rather than GTK producing it. The source is reported so the
+		// two are never confused.
+		var fallback = view.RenderPreviewPng();
+		if (fallback != null) {
+			try {
+				var probe = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+				probe.Render(visual);
+				var composedEncoder = new PngBitmapEncoder();
+				composedEncoder.Frames.Add(BitmapFrame.Create(probe));
+				using (var composed = System.IO.File.Create(full)) composedEncoder.Save(composed);
+				return JsonSerializer.Serialize(new { success = true, source = "wpf-visual", path = full, width, height });
+			} catch (Exception ex) when (ex is DllNotFoundException or NotSupportedException or TypeInitializationException) {
+				System.IO.File.WriteAllBytes(full, fallback);
+				var declared = view.RenderPreviewPngSize;
+				return JsonSerializer.Serialize(new {
+					success = true, source = "gtk-host-frame", path = full,
+					frameWidth = declared?.Width, frameHeight = declared?.Height,
+					note = "WPF imaging unavailable on this host (" + ex.GetType().Name + "); wrote GTK's own render instead. "
+						+ "This is the design content only, without the canvas chrome, so it shows what GTK produced."
+				});
+			}
+		}
+		// No host frame to fall back on either, so the composed canvas is the only thing left to try.
 		var target = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
 		target.Render(visual);
 		var encoder = new PngBitmapEncoder();
 		encoder.Frames.Add(BitmapFrame.Create(target));
-		var full = Environment.ExpandEnvironmentVariables(path);
 		var directory = System.IO.Path.GetDirectoryName(full);
 		if (!string.IsNullOrEmpty(directory))
 			System.IO.Directory.CreateDirectory(directory);
 		using (var stream = System.IO.File.Create(full))
 			encoder.Save(stream);
-		return JsonSerializer.Serialize(new { success = true, path = full, width, height });
+		return JsonSerializer.Serialize(new { success = true, source = "wpf-visual", path = full, width, height });
 	}
 
 	[DevFlowAction("od.gtk-designer.select", Description = "Select a GtkBuilder object and populate the real Properties pad")]

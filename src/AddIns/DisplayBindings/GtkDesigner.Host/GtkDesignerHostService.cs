@@ -275,6 +275,27 @@ sealed class GtkDesignerHostService : IDesignerChildService
 				root.QueueDraw();
 				DrainMainContext();
 				var paintTarget = root is Gtk.Window mappedWindow ? mappedWindow.GetChild() ?? root : root;
+				// An unmapped window never runs a size-allocate pass on its child, so the content keeps
+				// its natural size while the frame reports the size that was asked for. The client then
+				// stretches that small bitmap across the large frame it was promised, and a label-and-
+				// button window comes out as an 800x600 frame holding an 800x60 strip of squashed text.
+				// Allocate the paint target to the size the frame will claim, and settle the context, until
+				// it agrees - otherwise the reported size and the rendered pixels disagree.
+				if (!ReferenceEquals(paintTarget, root)) {
+					for (var attempt = 0; attempt < 4; attempt++) {
+						if (paintTarget.GetWidth() == width && paintTarget.GetHeight() == height) break;
+						paintTarget.Allocate(width, height, -1, null);
+						paintTarget.QueueDraw();
+						DrainMainContext();
+					}
+					// Append rather than assign: the allocation note below must not displace the tree.
+					if (Environment.GetEnvironmentVariable("OD_GTK_DUMP_TREE") == "1")
+						session.RenderDiagnostic = DescribeWidgetTree(paintTarget, 0) + session.RenderDiagnostic;
+					if (paintTarget.GetWidth() != width || paintTarget.GetHeight() != height)
+						session.RenderDiagnostic += "GTK allocated the window content to "
+							+ paintTarget.GetWidth() + "x" + paintTarget.GetHeight() + " rather than the requested "
+							+ width + "x" + height + ", so the preview is smaller than the frame it is reported in.\n";
+				}
 				// ToNode, not FreeToNode: gtk_snapshot_free_to_node frees the GtkSnapshot, but its
 				// managed wrapper keeps a toggle reference, and releasing that later (from the GC)
 				// touched freed memory - a native 0xC0000005 in ToggleRegistration.RemoveToggleRef.
@@ -291,6 +312,11 @@ sealed class GtkDesignerHostService : IDesignerChildService
 				if (node == null) throw new InvalidOperationException("GTK produced an empty render node.");
 				renderer ??= CreateRenderer();
 				using var texture = renderer.RenderTexture(node, null);
+				// Whatever GTK produced is what the canvas has to lay out, so report the texture's size and
+				// not the size that was requested. A frame that claims more pixels than it carries is what
+				// turned a too-small render into a stretched, distorted surface.
+				width = Math.Max(1, texture.Width);
+				height = Math.Max(1, texture.Height);
 				node.Unref();
 				var pngPath = Path.Combine(Path.GetTempPath(), "OpenDevelop-GtkPreview-" + Guid.NewGuid().ToString("N") + ".png");
 				try {
@@ -305,6 +331,27 @@ sealed class GtkDesignerHostService : IDesignerChildService
 			var value = Gsk.CairoRenderer.New();
 			value.Realize(null);
 			return value;
+		}
+
+			/// <summary>Builds a .ui document the way a preview does and prints what GTK ended up allocating,
+		/// without the IDE in the loop. The render path runs inside a child process behind RPC, so a size
+		/// that disagrees with the declared default is otherwise only visible as a stretched preview;
+		/// this reproduces it in one step and says which of measure, default size or allocate is wrong.
+		/// Reached as: GtkDesigner.Host --probe &lt;file.ui&gt; [objectId]</summary>
+	/// <summary>Lists the realized widget tree with the size each was actually allocated, which is
+		/// what tells a parse problem (a control missing from the tree) apart from a layout one (the control
+		/// is there but was given no space).</summary>
+		static string DescribeWidgetTree(Gtk.Widget widget, int depth)
+		{
+			if (depth > 8) return "";
+			var line = new System.Text.StringBuilder();
+			line.Append(new string(' ', depth * 2)).Append(widget.GetType().Name)
+				.Append(" size=").Append(widget.GetWidth()).Append('x').Append(widget.GetHeight()).Append('\n');
+			// GTK4 dropped GtkContainer: children are reached through the widget's own first-child /
+			// next-sibling chain.
+			for (var child = widget.GetFirstChild(); child != null; child = child.GetNextSibling())
+				line.Append(DescribeWidgetTree(child, depth + 1));
+			return line.ToString();
 		}
 
 		static void DrainMainContext()

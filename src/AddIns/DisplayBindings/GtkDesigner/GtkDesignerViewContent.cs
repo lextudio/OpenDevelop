@@ -141,6 +141,28 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	public bool IsOutlineHosted => ReferenceEquals((SD.Services.GetService(typeof(IOutlinePadHost)) as IOutlinePadHost)?.HostedContent, outline); public int OutlineItemCount => ElementCount;
 	public int ElementCount => state.Tree == null ? 0 : Flatten(state.Tree).Count(n => n.Id != "$interface"); public string SelectedId => selected?.Id ?? ""; public int HostProcessId => host?.ProcessId ?? 0;
 	public string[] ElementIds => state.Tree == null ? Array.Empty<string>() : Flatten(state.Tree).Where(n => n.Id != "$interface").Select(n => n.Id).ToArray();
+	/// <summary>The GTK host's own PNG of the design content, straight from its render texture, for
+	/// capture on a platform where the WPF imaging stack cannot encode one. It shows what GTK produced,
+	/// which is what separates "GTK rendered it wrong" from "the canvas placed it wrong" - the two
+	/// candidate causes of a surface that looks distorted. The WPF visual capture
+	/// (od.gtk-designer.screenshot) shows the composed canvas instead, chrome and all.</summary>
+	/// <summary>The size the host reported for the frame <see cref="RenderPreviewPng"/> returns. Kept
+	/// beside the bytes so a caller can compare them without racing a render: the canvas used to be told
+	/// one size and handed another, and stretched one across the other.</summary>
+	public (int Width, int Height)? RenderPreviewPngSize =>
+		state.Render == null || string.IsNullOrEmpty(state.Render.PngBase64)
+			? null
+			: (state.Render.Width, state.Render.Height);
+
+	public byte[]? RenderPreviewPng()
+	{
+		// Already in the session state: the host encodes a PNG with every render, so this needs no
+		// round trip and cannot race a render in flight.
+		var png = state.Render?.PngBase64;
+		if (string.IsNullOrEmpty(png)) return null;
+		try { return Convert.FromBase64String(png!); } catch (FormatException) { return null; }
+	}
+
 	/// <summary>Whether the design root is a top-level window, in which case the canvas draws the
 	/// chrome the GTK host cannot: a GtkWindow's title bar belongs to the window manager.</summary>
 	public bool RootIsWindow => state.RootIsWindow;
