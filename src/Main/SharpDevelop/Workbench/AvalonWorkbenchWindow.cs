@@ -446,7 +446,17 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				foreach (int index in new[] { firstIndex, secondIndex }.Distinct()) {
 					if (index >= 0 && index < ViewContents.Count) {
 						IViewContent view = ViewContents[index];
-						view.PrimaryFile?.ForceInitializeView(view);
+						var file = view.PrimaryFile;
+						if (file == null)
+							continue;
+						// Deferred: by the time this runs the file may have been deleted from disk (another
+						// tool, a git checkout, a cleaned-up temp folder). Loading it would throw on the UI
+						// thread and surface as a crash dialog; leave the view as it is instead.
+						if (file.CurrentView != view && !file.IsUntitled && !file.IsDirty && !System.IO.File.Exists(file.FileName)) {
+							LoggingService.Warn("Not initializing split view for " + file.FileName + ": the file no longer exists.");
+							continue;
+						}
+						file.ForceInitializeView(view);
 					}
 				}
 			}));
