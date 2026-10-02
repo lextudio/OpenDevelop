@@ -4,14 +4,23 @@
     <OutputType>Exe</OutputType>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- GtkParamRanges reads GParamSpec minimum/maximum, which Gir.Core does not expose. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <OpenDevelopAddin>true</OpenDevelopAddin>
     <OpenDevelopAddinKind>OutOfProcessHost</OpenDevelopAddinKind>
   </PropertyGroup>
   <ItemGroup>
 	<PackageReference Include="GirCore.Gtk-4.0" />
+	<!-- Libadwaita widgets preview only in documents that declare <requires lib="libadwaita">;
+	     the native library is loaded on first use, never assumed. -->
+	<PackageReference Include="GirCore.Adw-1" />
     <ProjectReference Include="..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
     <ProjectReference Include="..\..\..\Main\Designer\Designer.Server\Designer.Server.csproj" />
     <Compile Include="..\GtkDesigner\GtkUiDocumentEditor.cs" Link="GtkUiDocumentEditor.cs" />
+    <Compile Include="..\GtkDesigner\GirCatalog.cs" Link="GirCatalog.cs" />
+    <Compile Include="..\GtkDesigner\GtkSignalWiring.cs" Link="GtkSignalWiring.cs" />
+    <Compile Include="..\GtkDesigner\GtkDropPlanner.cs" Link="GtkDropPlanner.cs" />
+    <Compile Include="..\GtkDesigner\GtkPreviewSanitizer.cs" Link="GtkPreviewSanitizer.cs" />
   </ItemGroup>
   <Target Name="DeployToAddIns" AfterTargets="Build">
     <ItemGroup><HostOutput Include="$(TargetDir)**" /></ItemGroup>

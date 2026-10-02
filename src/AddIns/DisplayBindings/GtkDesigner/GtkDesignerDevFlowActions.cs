@@ -27,7 +27,7 @@ public static class GtkDesignerDevFlowActions
 			toolboxItemCount = view.ToolboxItemCount, toolboxFilterText = view.ToolboxFilterText, toolboxHosted = view.IsToolboxHosted, toolboxSearchHosted = (SD.Services.GetService(typeof(IToolsPadHost)) as IToolsPadHost)?.HasToolboxSearch == true, toolboxSelectedItem = view.SelectedToolboxType, zoomComboSelectedIndex = view.ZoomComboSelectedIndex, outlineHosted = view.IsOutlineHosted, outlineItemCount = view.OutlineItemCount,
 			toolbarItemCount = view.ToolbarItemCount, toolbarItems = view.ToolbarItems, toolbarCapabilities = view.ToolbarCapabilities, zoom = view.Zoom, fitMeasured = view.FitMeasured, gridlines = view.Gridlines,
 			propertyPadSelectedType = grid?.SelectedObject?.GetType().FullName,
-			propertyPadPropertyCount = grid?.Properties?.Count ?? 0, canUndo = view.EnableUndo, canRedo = view.EnableRedo
+			propertyPadPropertyCount = grid?.Properties?.Count ?? 0, canUndo = view.EnableUndo, canRedo = view.EnableRedo, hostAlive = view.IsHostAlive, documentCanUndo = view.DocumentCanUndo, documentCanRedo = view.DocumentCanRedo, loadCount = view.LoadCount
 		});
 	}
 	[DevFlowAction("od.gtk-designer.select", Description = "Select a GtkBuilder object and populate the real Properties pad")]
@@ -39,7 +39,7 @@ public static class GtkDesignerDevFlowActions
 	[DevFlowAction("od.gtk-designer.hit-test", Description = "Select using the child GTK-native layout hit-test")]
 	public static string HitTest(double x, double y) { var view = Activate(); var ok = view?.HitTest(x, y) == true; return JsonSerializer.Serialize(new { success = ok, selectedId = view?.SelectedId }); }
 	[DevFlowAction("od.gtk-designer.toolbox.insert", Description = "Insert a GTK 4 control from the real Tools catalogue")]
-	public static string Insert(string className) { var view = Activate(); var known = GtkDesignerViewContent.ToolNames.Contains(className, StringComparer.Ordinal); return JsonSerializer.Serialize(new { success = known && view?.Add(className) == true, elementCount = view?.ElementCount ?? 0, selectedId = view?.SelectedId }); }
+	public static string Insert(string className) { var view = Activate(); var known = view.IsToolName(className); return JsonSerializer.Serialize(new { success = known && view?.Add(className) == true, elementCount = view?.ElementCount ?? 0, selectedId = view?.SelectedId }); }
 	[DevFlowAction("od.gtk-designer.toolbox.filter", Description = "Filter the GTK Toolbox using the common catalogue semantics")]
 	public static string FilterToolbox(string text) { var view = Activate(); view?.FilterToolbox(text); return DesignerDevFlowResults.ToolboxFilter(view != null, view?.ToolboxFilterText, view?.ToolboxItemCount ?? 0, view?.SelectedToolboxType); }
 	[DevFlowAction("od.gtk-designer.properties.edit", Description = "Edit through the real shared Properties pad PropertyItem")]
@@ -49,6 +49,48 @@ public static class GtkDesignerDevFlowActions
 		var item = grid.Properties?.OfType<PropertyItem>().FirstOrDefault(p => p.PropertyName == propertyName);
 		if (item == null) return JsonSerializer.Serialize(new { success = false, error = "Property not found", propertyNames = grid.Properties?.OfType<PropertyItem>().Select(p => p.PropertyName).ToArray() });
 		item.Value = value; return JsonSerializer.Serialize(new { success = true, selectedIds = view.SelectedIds, primarySelectedId = view.SelectedId, propertyName, after = item.Value?.ToString() });
+	}
+	[DevFlowAction("od.gtk-designer.properties.describe", Description = "Describe the selected object's Properties-pad items: descriptor name, display name, GTK category, .NET editor type, enum choices and whether Reset is available - the GIR-typed property contract")]
+	public static string DescribeProperties()
+	{
+		var view = Activate(); var selected = PropertyGrid?.SelectedObject;
+		if (view == null || selected == null) return DesignerDevFlowResults.Failure("GTK selection is not bound to the shared Properties pad");
+		var items = TypeDescriptor.GetProperties(selected).Cast<PropertyDescriptor>().Select(p => {
+			var converter = p.Converter; var context = new DescriptorContext(selected, p);
+			var choices = converter != null && converter.GetStandardValuesSupported(context) ? converter.GetStandardValues(context)?.Cast<object>().Select(v => v.ToString()).ToArray() : null;
+			return new { name = p.Name, displayName = p.DisplayName, category = p.Category, description = p.Description, type = p.PropertyType.Name, readOnly = p.IsReadOnly,
+				choices, exclusive = choices != null && converter!.GetStandardValuesExclusive(context), canReset = p.CanResetValue(selected), value = p.GetValue(selected)?.ToString() };
+		}).ToArray();
+		return JsonSerializer.Serialize(new { success = true, selectedId = view.SelectedId, count = items.Length, items });
+	}
+	[DevFlowAction("od.gtk-designer.properties.reset", Description = "Reset a property through the selected Properties-pad descriptor (removes it from the .ui so GTK's default applies)")]
+	public static string ResetProperty(string propertyName)
+	{
+		var view = Activate(); var selected = PropertyGrid?.SelectedObject;
+		var descriptor = selected == null ? null : TypeDescriptor.GetProperties(selected).Find(propertyName, false);
+		if (view == null || descriptor == null) return DesignerDevFlowResults.Failure("Property not found: " + propertyName);
+		if (!descriptor.CanResetValue(selected!)) return JsonSerializer.Serialize(new { success = false, error = "Property cannot be reset (not set in the file?)", propertyName });
+		descriptor.ResetValue(selected!);
+		return JsonSerializer.Serialize(new { success = true, propertyName, selectedId = view.SelectedId });
+	}
+	sealed class DescriptorContext(object instance, PropertyDescriptor descriptor) : ITypeDescriptorContext
+	{
+		public IContainer? Container => null; public object? Instance => instance; public PropertyDescriptor? PropertyDescriptor => descriptor;
+		public object? GetService(Type serviceType) => null; public bool OnComponentChanging() => true; public void OnComponentChanged() { }
+	}
+	[DevFlowAction("od.gtk-designer.drop-plan", Description = "Where a toolbox drop at this design point would go (container, box index or grid cell, and the indicator rectangle drawn while dragging) - GtkDropPlanner over GTK's measured bounds")]
+	public static string DropPlan(double x, double y)
+	{
+		var view = Activate(); var plan = view?.PlanDropAt(x, y);
+		return JsonSerializer.Serialize(new { success = plan != null, containerId = plan?.ContainerId, index = plan?.Index, column = plan?.Cell?.Column, row = plan?.Cell?.Row,
+			indicator = plan == null ? null : new { x = plan.Indicator.X, y = plan.Indicator.Y, width = plan.Indicator.Width, height = plan.Indicator.Height } });
+	}
+	[DevFlowAction("od.gtk-designer.toolbox.drop-at", Description = "Drop a GTK toolbox item at a design point through the same planned insertion a real canvas drop performs")]
+	public static string DropAt(string className, double x, double y)
+	{
+		var view = Activate(); var plan = view?.PlanDropAt(x, y);
+		var ok = view != null && plan != null && view.IsToolName(className) && view.DropAt(plan, className, x, y);
+		return JsonSerializer.Serialize(new { success = ok, containerId = plan?.ContainerId, selectedId = view?.SelectedId, elementCount = view?.ElementCount ?? 0 });
 	}
 	[DevFlowAction("od.gtk-designer.delete", Description = "Delete the selected GTK object")]
 	public static string Delete() { var view = Activate(); return JsonSerializer.Serialize(new { success = view?.DeleteSelected() == true, elementCount = view?.ElementCount ?? 0 }); }
@@ -89,7 +131,7 @@ public static class GtkDesignerDevFlowActions
 	{
 		var view = Activate();
 		if (view == null) return JsonSerializer.Serialize(new { success = false, error = "GTK designer is not loaded" });
-		if (!GtkDesignerViewContent.ToolNames.Contains(typeName, StringComparer.Ordinal))
+		if (!view.IsToolName(typeName))
 			return JsonSerializer.Serialize(new { success = false, error = "Unknown toolbox item: " + typeName });
 
 		var toolbox = view.ToolboxControl;
@@ -214,8 +256,17 @@ public static class GtkDesignerDevFlowActions
 					if (ReferenceEquals(activeWindow.ViewContents[i], active)) { activeWindow.SwitchView(i); break; }
 			return active;
 		}
-		var window = SD.Workbench.ActiveViewContent?.WorkbenchWindow; if (window == null) return null;
-		for (var i = 0; i < window.ViewContents.Count; i++) if (window.ViewContents[i] is GtkDesignerViewContent view) { window.SwitchView(i); return view; }
-		return null;
+		var window = SD.Workbench.ActiveViewContent?.WorkbenchWindow;
+		if (window != null)
+			for (var i = 0; i < window.ViewContents.Count; i++) if (window.ViewContents[i] is GtkDesignerViewContent view) { window.SwitchView(i); return view; }
+		// Another document is in front - e.g. the behavior file a signal binding just opened at
+		// the new handler. Bring the open GTK designer back, as clicking its tab would.
+		var designer = SD.Workbench.ViewContentCollection.OfType<GtkDesignerViewContent>().FirstOrDefault();
+		var designerWindow = designer?.WorkbenchWindow;
+		if (designer == null || designerWindow == null) return null;
+		designerWindow.SelectWindow();
+		for (var i = 0; i < designerWindow.ViewContents.Count; i++)
+			if (ReferenceEquals(designerWindow.ViewContents[i], designer)) { designerWindow.SwitchView(i); break; }
+		return designer;
 	}
 }

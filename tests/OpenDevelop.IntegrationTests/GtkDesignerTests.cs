@@ -100,7 +100,7 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		await app.InvokeAsync("od.gtk-designer.select", "contentBox");
 		var inserted = await app.InvokeAsync("od.gtk-designer.toolbox.insert", "GtkEntry"); Assert.True(inserted.GetProperty("success").GetBoolean(), inserted.ToString());
 		Assert.Equal("entry1", inserted.GetProperty("selectedId").GetString());
-		status = await app.InvokeAsync("od.gtk-designer.status"); Assert.True(status.GetProperty("canUndo").GetBoolean()); Assert.False(status.GetProperty("canRedo").GetBoolean());
+		status = await app.InvokeAsync("od.gtk-designer.status"); Assert.True(status.GetProperty("canUndo").GetBoolean(), status.ToString()); Assert.False(status.GetProperty("canRedo").GetBoolean(), status.ToString());
 		var undo = await app.InvokeAsync("od.gtk-designer.undo"); Assert.Equal(4, undo.GetProperty("elementCount").GetInt32());
 		Assert.True(undo.GetProperty("canRedo").GetBoolean());
 		var redo = await app.InvokeAsync("od.gtk-designer.redo"); Assert.Equal(5, redo.GetProperty("elementCount").GetInt32());
@@ -123,7 +123,7 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		var mainHostProcessId = reopenedStatus.GetProperty("hostProcessId").GetInt32();
 		var mainDocumentId = reopenedStatus.GetProperty("hostDocumentId").GetString(); Assert.False(string.IsNullOrEmpty(mainDocumentId));
 		var openedSettings = await app.InvokeAsync("od.open-file", settingsUiPath); Assert.True(openedSettings.GetProperty("opened").GetBoolean(), openedSettings.ToString());
-		var settingsStatus = await WaitAsync("settingsWindow"); Assert.Equal(mainHostProcessId, settingsStatus.GetProperty("hostProcessId").GetInt32()); Assert.Equal(4, settingsStatus.GetProperty("elementCount").GetInt32());
+		var settingsStatus = await WaitAsync("settingsWindow"); Assert.True(mainHostProcessId == settingsStatus.GetProperty("hostProcessId").GetInt32(), $"expected host {mainHostProcessId}: {settingsStatus}"); Assert.Equal(4, settingsStatus.GetProperty("elementCount").GetInt32());
 		Assert.NotEqual(mainDocumentId, settingsStatus.GetProperty("hostDocumentId").GetString()); Assert.Equal(2, settingsStatus.GetProperty("activeHostLeases").GetInt32());
 		var selectedSettings = await app.InvokeAsync("od.gtk-designer.select", "settingsHeading"); Assert.True(selectedSettings.GetProperty("success").GetBoolean(), selectedSettings.ToString()); Assert.Contains("GtkPropertyAdapter", selectedSettings.GetProperty("propertyPadSelectedType").GetString());
 		var editedSettings = await app.InvokeAsync("od.gtk-designer.properties.edit", "Label", "Advanced Preferences"); Assert.True(editedSettings.GetProperty("success").GetBoolean(), editedSettings.ToString());
@@ -137,8 +137,429 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		var reactivateMain = await app.InvokeAsync("od.open-file", uiPath); Assert.True(reactivateMain.GetProperty("opened").GetBoolean(), reactivateMain.ToString());
 		var mainAgain = await WaitAsync("mainWindow"); Assert.Equal(recoveredHostProcessId, mainAgain.GetProperty("hostProcessId").GetInt32()); Assert.True(mainAgain.GetProperty("hostRecoveryCount").GetInt32() > 0, mainAgain.ToString()); Assert.Equal(5, mainAgain.GetProperty("elementCount").GetInt32());
 			var mainSelectionAgain = await app.InvokeAsync("od.gtk-designer.select", "entry1"); Assert.True(mainSelectionAgain.GetProperty("success").GetBoolean(), mainSelectionAgain + " status=" + mainAgain);
+
+		// Binding `clicked` created a typed handler in the user's behavior class and connected it in
+		// the designer-owned companion: GtkBuilder itself cannot resolve the <signal> (it aborts).
+		var behavior = await File.ReadAllTextAsync(Path.Combine(workDir, "Windows", "MainWindow.cs"), TestContext.Current.CancellationToken);
+		Assert.Contains("void runButton_clicked(Gtk.Button sender, System.EventArgs args)", behavior);
+		var companion = await File.ReadAllTextAsync(Path.Combine(workDir, "Windows", "MainWindow.ui.cs"), TestContext.Current.CancellationToken);
+		Assert.Contains(".OnClicked += (_, args) => runButton_clicked(", companion);
 		await ValidateFixtureBuildAsync(projectPath);
+		// The mutated app must actually start: before the generated wiring, a bound signal made
+		// GtkBuilder abort with "No function named runButton_clicked".
+		await RunFixtureSmokeTestAsync(projectPath);
 	}
+
+	[Fact]
+	public async Task GtkDesigner_PropertiesPad_IsGirTyped_ValidatesEdits_AndResets()
+	{
+		// The Properties pad is driven by the installed GTK introspection data, not a hand-written
+		// list: every writable property of the class and its ancestors/interfaces, typed (enum
+		// drop-down, bool, integer, double), grouped by declaring class, validated before it is
+		// written, translatable when new user-visible text, and resettable to GTK's default.
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", uiPath); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitAsync(); Assert.True(status.GetProperty("active").GetBoolean(), status.ToString());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "runButton")).GetProperty("success").GetBoolean());
+
+		async Task<Dictionary<string, JsonElement>> Describe()
+		{
+			var described = await app.InvokeAsync("od.gtk-designer.properties.describe");
+			Assert.True(described.GetProperty("success").GetBoolean(), described.ToString());
+			return described.GetProperty("items").EnumerateArray().ToDictionary(i => i.GetProperty("name").GetString()!, i => i);
+		}
+		var items = await Describe();
+		Assert.True(items.Count > 30, "expected the GIR property set, got " + items.Count + ": " + string.Join(", ", items.Keys));
+		// Everyday properties lead in "Common" (the curated groups); the rest stay under their class.
+		Assert.Equal("Common", items["Label"].GetProperty("category").GetString());
+		Assert.Equal("GtkWidget", items["Opacity"].GetProperty("category").GetString());
+		var halign = items["Halign"];
+		Assert.Equal("Common", halign.GetProperty("category").GetString());
+		Assert.True(halign.GetProperty("exclusive").GetBoolean(), halign.ToString());
+		Assert.Contains("center", halign.GetProperty("choices").EnumerateArray().Select(c => c.GetString()));
+		Assert.Equal("fill", halign.GetProperty("value").GetString());   // GTK's default, not written in the file
+		Assert.False(halign.GetProperty("canReset").GetBoolean());
+		Assert.Equal("Boolean", items["Sensitive"].GetProperty("type").GetString());
+		Assert.Equal("Int64", items["MarginStart"].GetProperty("type").GetString());
+		Assert.Equal("Double", items["Opacity"].GetProperty("type").GetString());
+		// GTK's own limits (GParamSpec - not in GIR) are shown and enforced.
+		Assert.Contains("Range: 0 to 32767.", items["MarginStart"].GetProperty("description").GetString());
+
+		var edited = await app.InvokeAsync("od.gtk-designer.properties.edit", "Halign", "center"); Assert.True(edited.GetProperty("success").GetBoolean(), edited.ToString());
+		// Not an enum member: the host rejects it before the document changes.
+		try { await app.InvokeAsync("od.gtk-designer.properties.edit", "Halign", "middle"); } catch (InvalidOperationException) { }
+		try { await app.InvokeAsync("od.gtk-designer.properties.edit", "MarginStart", "40000"); } catch (InvalidOperationException) { }
+		var tooltip = await app.InvokeAsync("od.gtk-designer.properties.edit", "TooltipText", "Runs the task"); Assert.True(tooltip.GetProperty("success").GetBoolean(), tooltip.ToString());
+		Assert.True((await app.InvokeAsync("od.file.save", uiPath)).GetProperty("success").GetBoolean());
+		var xml = await File.ReadAllTextAsync(uiPath, TestContext.Current.CancellationToken);
+		Assert.Contains("<property name=\"halign\">center</property>", xml);
+		Assert.DoesNotContain("middle", xml);
+		Assert.DoesNotContain("40000", xml);
+		Assert.Contains("<property name=\"tooltip-text\" translatable=\"yes\">Runs the task</property>", xml);
+		await ValidateGtkBuilderAsync(uiPath);
+
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "runButton")).GetProperty("success").GetBoolean());
+		var reset = await app.InvokeAsync("od.gtk-designer.properties.reset", "Halign"); Assert.True(reset.GetProperty("success").GetBoolean(), reset.ToString());
+		Assert.True((await app.InvokeAsync("od.file.save", uiPath)).GetProperty("success").GetBoolean());
+		Assert.DoesNotContain("name=\"halign\"", await File.ReadAllTextAsync(uiPath, TestContext.Current.CancellationToken));
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "runButton")).GetProperty("success").GetBoolean());
+		var afterReset = (await Describe())["Halign"];
+		Assert.Equal("fill", afterReset.GetProperty("value").GetString());
+		Assert.False(afterReset.GetProperty("canReset").GetBoolean());
+
+		// Conditional enabling (Stetic's disabled-if): a label's wrap-mode only applies while wrap is on.
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "heading")).GetProperty("success").GetBoolean());
+		var wrapMode = (await Describe())["WrapMode"];
+		Assert.True(wrapMode.GetProperty("readOnly").GetBoolean(), wrapMode.ToString());
+		Assert.Contains("Applies when wrap is True.", wrapMode.GetProperty("description").GetString());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.properties.edit", "Wrap", "True")).GetProperty("success").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "heading")).GetProperty("success").GetBoolean());
+		Assert.False((await Describe())["WrapMode"].GetProperty("readOnly").GetBoolean());
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	[Fact]
+	public async Task GtkDesigner_GridChild_LayoutProperties_AreEditable_AndGtkAppliesThem()
+	{
+		// GTK 4 child properties live in <layout> and belong to the PARENT's layout manager. A
+		// GtkGrid child must offer column/row/spans (typed from GtkGridLayoutChild), the edit must
+		// land in <layout>, and real GTK must lay the child out accordingly - checked against the
+		// host's natively measured bounds, not just the XML.
+		var gridPath = Path.Combine(workDir, "Windows", "GridWindow.ui");
+		await File.WriteAllTextAsync(gridPath, """
+			<?xml version="1.0" encoding="UTF-8"?>
+			<interface>
+			  <requires lib="gtk" version="4.0" />
+			  <object class="GtkWindow" id="gridWindow">
+			    <property name="default-width">400</property>
+			    <property name="default-height">200</property>
+			    <child>
+			      <object class="GtkGrid" id="grid">
+			        <property name="column-spacing">8</property>
+			        <child>
+			          <object class="GtkLabel" id="first">
+			            <property name="label">First</property>
+			            <layout><property name="column">0</property><property name="row">0</property></layout>
+			          </object>
+			        </child>
+			        <child>
+			          <object class="GtkLabel" id="second">
+			            <property name="label">Second</property>
+			            <layout><property name="column">0</property><property name="row">1</property></layout>
+			          </object>
+			        </child>
+			      </object>
+			    </child>
+			  </object>
+			</interface>
+			""", TestContext.Current.CancellationToken);
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", gridPath); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitAsync("gridWindow"); Assert.True(status.GetProperty("active").GetBoolean(), status.ToString());
+
+		async Task<(double X, double Y)> Bounds(string id)
+		{
+			var b = await app.InvokeAsync("od.gtk-designer.bounds", id); Assert.True(b.GetProperty("success").GetBoolean(), id + ": " + b);
+			return (b.GetProperty("x").GetDouble(), b.GetProperty("y").GetDouble());
+		}
+		var first = await Bounds("first"); var second = await Bounds("second");
+		Assert.True(second.Y > first.Y, $"row 1 must be below row 0: {first} {second}");
+
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "second")).GetProperty("success").GetBoolean());
+		var described = await app.InvokeAsync("od.gtk-designer.properties.describe");
+		var items = described.GetProperty("items").EnumerateArray().ToDictionary(i => i.GetProperty("name").GetString()!, i => i);
+		foreach (var name in new[] { "LayoutColumn", "LayoutRow", "LayoutColumnSpan", "LayoutRowSpan" })
+			Assert.True(items.ContainsKey(name), name + " missing: " + string.Join(", ", items.Keys.Where(k => k.StartsWith("Layout", StringComparison.Ordinal))));
+		Assert.Equal("Layout (GtkGrid)", items["LayoutColumn"].GetProperty("category").GetString());
+		Assert.Equal("Int64", items["LayoutColumn"].GetProperty("type").GetString());
+		Assert.Equal("1", items["LayoutRow"].GetProperty("value").GetString());
+
+		// Move the second label to column 1, row 0: beside the first instead of below it.
+		Assert.True((await app.InvokeAsync("od.gtk-designer.properties.edit", "LayoutColumn", "1")).GetProperty("success").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "second")).GetProperty("success").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.properties.edit", "LayoutRow", "0")).GetProperty("success").GetBoolean());
+		JsonElement moved = default;
+		Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+			moved = await app.InvokeAsync("od.gtk-designer.bounds", "second");
+			return moved.GetProperty("x").GetDouble() > first.X && Math.Abs(moved.GetProperty("y").GetDouble() - first.Y) < 1;
+		}, TimeSpan.FromSeconds(10)), "GTK did not lay the child out in column 1, row 0: " + moved);
+
+		Assert.True((await app.InvokeAsync("od.file.save", gridPath)).GetProperty("success").GetBoolean());
+		var xml = (await File.ReadAllTextAsync(gridPath, TestContext.Current.CancellationToken)).Replace("\r", "");
+		Assert.Matches(@"id=""second"">[\s\S]*<layout>[\s\S]*<property name=""column"">1</property>[\s\S]*<property name=""row"">0</property>", xml);
+		await ValidateGtkBuilderAsync(gridPath);
+
+		// A toolbox drop is placed by the grid's child policy: below "second" (now at column 1,
+		// row 0) is free column 1, row 1 - the drop planner picks it from GTK's measured bounds, and
+		// GTK lays the new button out there.
+		var secondNow = await Bounds("second");
+		var below = await app.InvokeAsync("od.gtk-designer.bounds", "second");
+		var dropX = secondNow.X + below.GetProperty("width").GetDouble() / 2;
+		var dropY = secondNow.Y + below.GetProperty("height").GetDouble() + 20;
+		var plan = await app.InvokeAsync("od.gtk-designer.drop-plan", dropX, dropY);
+		Assert.True(plan.GetProperty("success").GetBoolean(), plan.ToString());
+		Assert.Equal("grid", plan.GetProperty("containerId").GetString());
+		Assert.Equal(1, plan.GetProperty("column").GetInt32()); Assert.Equal(1, plan.GetProperty("row").GetInt32());
+		var dropped = await app.InvokeAsync("od.gtk-designer.toolbox.drop-at", "GtkButton", dropX, dropY);
+		Assert.True(dropped.GetProperty("success").GetBoolean(), dropped.ToString());
+		var newId = dropped.GetProperty("selectedId").GetString()!;
+		JsonElement placed = default;
+		Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+			placed = await app.InvokeAsync("od.gtk-designer.bounds", newId);
+			return placed.GetProperty("success").GetBoolean() && Math.Abs(placed.GetProperty("x").GetDouble() - secondNow.X) < 1 && placed.GetProperty("y").GetDouble() > secondNow.Y;
+		}, TimeSpan.FromSeconds(10)), "the dropped button is not under 'second' in column 1: " + placed);
+
+		// Reset returns the child to GtkGrid's default column (0).
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "second")).GetProperty("success").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.properties.reset", "LayoutColumn")).GetProperty("success").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.file.save", gridPath)).GetProperty("success").GetBoolean());
+		Assert.DoesNotMatch(@"id=""second"">((?!</object>)[\s\S])*name=""column""", (await File.ReadAllTextAsync(gridPath, TestContext.Current.CancellationToken)).Replace("\r", ""));
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	[Fact]
+	public async Task GtkDesigner_MalformedSourceEdit_IsReported_AndTheDesignerRecovers()
+	{
+		// Editing the XML pane into an invalid document must not lose the design or crash the host:
+		// the designer reports the error, and fixing the text brings the design back.
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", uiPath); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitAsync("mainWindow"); Assert.Equal(4, status.GetProperty("elementCount").GetInt32());
+		var hostProcessId = status.GetProperty("hostProcessId").GetInt32();
+
+		// Type into the XML pane the way a user does: the source editor becomes the active view, so
+		// returning to the designer hands it the edited text.
+		await app.InvokeAsync("od.file.query-text-area-screen-bounds", uiPath);
+		var broken = await app.InvokeAsync("od.file.replace-text", uiPath, "<property name=\"label\">Run</property>", "<property name=\"label\">Run</propertyX>");
+		Assert.True(broken.GetProperty("success").GetBoolean(), broken.ToString());
+		JsonElement reported = default;
+		Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+			reported = await app.InvokeAsync("od.gtk-designer.status");
+			var text = reported.ToString();
+			return text.Contains("propertyX", StringComparison.Ordinal) || text.Contains("does not match", StringComparison.OrdinalIgnoreCase) || text.Contains("unexpected end tag", StringComparison.OrdinalIgnoreCase);
+		}, TimeSpan.FromSeconds(15)), "the malformed source was not reported: " + reported);
+
+		await app.InvokeAsync("od.file.query-text-area-screen-bounds", uiPath);
+		var fixedText = await app.InvokeAsync("od.file.replace-text", uiPath, "<property name=\"label\">Run</propertyX>", "<property name=\"label\">Run again</property>");
+		Assert.True(fixedText.GetProperty("success").GetBoolean(), fixedText.ToString());
+		JsonElement recovered = default;
+		Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+			recovered = await app.InvokeAsync("od.gtk-designer.status");
+			return recovered.GetProperty("elementCount").GetInt32() == 4 && recovered.GetProperty("nativeFrame").GetBoolean()
+				&& recovered.GetProperty("hostProcessId").GetInt32() == hostProcessId;
+		}, TimeSpan.FromSeconds(15)), "the designer did not recover on the same host after the fix: " + recovered);
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "runButton")).GetProperty("success").GetBoolean());
+		var label = (await app.InvokeAsync("od.gtk-designer.properties.describe")).GetProperty("items").EnumerateArray().First(i => i.GetProperty("name").GetString() == "Label");
+		Assert.Equal("Run again", label.GetProperty("value").GetString());
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	[Fact]
+	public async Task GtkDesigner_ExternalChangeOnDisk_ReloadsTheDesign()
+	{
+		// Another tool (Cambalache, git checkout, a text editor) rewrites the .ui while it is open
+		// and unmodified in the IDE: the file watcher reloads it, and the designer must show the
+		// new document - same host, no restart.
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", uiPath); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitAsync("mainWindow"); Assert.Equal(4, status.GetProperty("elementCount").GetInt32());
+		var hostProcessId = status.GetProperty("hostProcessId").GetInt32();
+
+		var text = await File.ReadAllTextAsync(uiPath, TestContext.Current.CancellationToken);
+		text = text.Replace("<property name=\"label\">Run</property>", "<property name=\"label\">Run externally</property>", StringComparison.Ordinal)
+			.Replace("</object>\n        </child>\n      </object>", "</object>\n        </child>\n        <child>\n          <object class=\"GtkSwitch\" id=\"externalSwitch\" />\n        </child>\n      </object>", StringComparison.Ordinal);
+		if (!text.Contains("externalSwitch", StringComparison.Ordinal))   // CRLF checkout
+			text = text.Replace("</object>\r\n        </child>\r\n      </object>", "</object>\r\n        </child>\r\n        <child>\r\n          <object class=\"GtkSwitch\" id=\"externalSwitch\" />\r\n        </child>\r\n      </object>", StringComparison.Ordinal);
+		Assert.Contains("externalSwitch", text);
+		await File.WriteAllTextAsync(uiPath, text, TestContext.Current.CancellationToken);
+
+		JsonElement reloaded = default;
+		Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+			await app.InvokeAsync("od.activate");   // the watcher reloads when the IDE window is active
+			reloaded = await app.InvokeAsync("od.gtk-designer.status");
+			return reloaded.GetProperty("elementIds").EnumerateArray().Any(e => e.GetString() == "externalSwitch");
+		}, TimeSpan.FromSeconds(20)), "the external change was not reloaded into the designer: " + reloaded);
+		Assert.Equal(hostProcessId, reloaded.GetProperty("hostProcessId").GetInt32());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "runButton")).GetProperty("success").GetBoolean());
+		var label = (await app.InvokeAsync("od.gtk-designer.properties.describe")).GetProperty("items").EnumerateArray().First(i => i.GetProperty("name").GetString() == "Label");
+		Assert.Equal("Run externally", label.GetProperty("value").GetString());
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	[Fact]
+	public async Task GtkDesigner_CustomWidget_IsKeptAndReported_RestStaysEditable()
+	{
+		// An application-defined widget class cannot be instantiated by the designer's GTK. The
+		// design must still open, say why, keep the object through edits and saves, and let the
+		// rest of the document be edited.
+		var customPath = Path.Combine(workDir, "Windows", "CustomWindow.ui");
+		await File.WriteAllTextAsync(customPath, """
+			<?xml version="1.0" encoding="UTF-8"?>
+			<interface>
+			  <requires lib="gtk" version="4.0" />
+			  <object class="GtkWindow" id="customWindow">
+			    <child>
+			      <object class="GtkBox" id="box">
+			        <property name="orientation">vertical</property>
+			        <child>
+			          <object class="MyAppStarRating" id="rating">
+			            <property name="stars">4</property>
+			          </object>
+			        </child>
+			        <child>
+			          <object class="GtkLabel" id="caption">
+			            <property name="label">Rated</property>
+			          </object>
+			        </child>
+			      </object>
+			    </child>
+			  </object>
+			</interface>
+			""", TestContext.Current.CancellationToken);
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", customPath); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		JsonElement status = default;
+		Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+			status = await app.InvokeAsync("od.gtk-designer.status");
+			return status.TryGetProperty("active", out var a) && a.GetBoolean() && status.GetProperty("elementIds").EnumerateArray().Any(e => e.GetString() == "rating");
+		}, TimeSpan.FromSeconds(30)), "the design with a custom widget did not open: " + status);
+		Assert.Contains("MyAppStarRating", status.GetProperty("diagnostics").ToString());
+
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "caption")).GetProperty("success").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.properties.edit", "Label", "Rated by you")).GetProperty("success").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "rating")).GetProperty("success").GetBoolean());
+		var rating = (await app.InvokeAsync("od.gtk-designer.properties.describe")).GetProperty("items").EnumerateArray().ToDictionary(i => i.GetProperty("name").GetString()!, i => i);
+		Assert.Equal("4", rating["Stars"].GetProperty("value").GetString());   // unknown to GIR, still editable text
+		Assert.True((await app.InvokeAsync("od.file.save", customPath)).GetProperty("success").GetBoolean());
+		var xml = await File.ReadAllTextAsync(customPath, TestContext.Current.CancellationToken);
+		Assert.Contains("<object class=\"MyAppStarRating\" id=\"rating\">", xml);
+		Assert.Contains("<property name=\"stars\">4</property>", xml);
+		Assert.Contains("Rated by you", xml);
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	[Fact]
+	public async Task GtkDesigner_CompositeTemplate_OpensRendersAndEdits()
+	{
+		// Gir.Core [Template] classes define their UI as <template class="X" parent="GtkWindow">.
+		// The designer edits it as an instance of its parent type and previews it natively, though
+		// the template's own GType exists only in the application.
+		var templatePath = Path.Combine(workDir, "Windows", "TemplateWindow.ui");
+		await File.WriteAllTextAsync(templatePath, """
+			<?xml version="1.0" encoding="UTF-8"?>
+			<interface>
+			  <requires lib="gtk" version="4.0" />
+			  <template class="TemplateWindow" parent="GtkWindow">
+			    <property name="title">Template</property>
+			    <child>
+			      <object class="GtkLabel" id="templateLabel">
+			        <property name="label">Inside a template</property>
+			      </object>
+			    </child>
+			  </template>
+			</interface>
+			""", TestContext.Current.CancellationToken);
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", templatePath); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitAsync("TemplateWindow");
+		Assert.True(status.GetProperty("nativeFrame").GetBoolean(), "the template was not previewed: " + status);
+		Assert.Equal(2, status.GetProperty("elementCount").GetInt32());
+
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "TemplateWindow")).GetProperty("success").GetBoolean());
+		var items = (await app.InvokeAsync("od.gtk-designer.properties.describe")).GetProperty("items").EnumerateArray().ToDictionary(i => i.GetProperty("name").GetString()!, i => i);
+		Assert.Equal("Template", items["Title"].GetProperty("value").GetString());   // typed as GtkWindow
+		Assert.True((await app.InvokeAsync("od.gtk-designer.properties.edit", "Title", "Edited template")).GetProperty("success").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.file.save", templatePath)).GetProperty("success").GetBoolean());
+		var xml = await File.ReadAllTextAsync(templatePath, TestContext.Current.CancellationToken);
+		Assert.Contains("<template class=\"TemplateWindow\" parent=\"GtkWindow\">", xml);
+		Assert.Contains("Edited template", xml);
+		Assert.DoesNotContain("<object class=\"GtkWindow\"", xml);
+		await ValidateGtkBuilderAsync(templatePath);
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	[Fact]
+	public async Task GtkDesigner_Libadwaita_IsUsedOnlyWhenTheDocumentRequiresIt()
+	{
+		// Libadwaita is a separate capability: a document that declares <requires lib="libadwaita">
+		// previews real Adw widgets with typed properties and gets the Libadwaita toolbox; the same
+		// widget in a GTK-only document is not silently loaded.
+		const string body = """
+			  <object class="AdwWindow" id="adwWindow">
+			    <property name="content">
+			      <object class="AdwStatusPage" id="statusPage">
+			        <property name="title">All set</property>
+			        <property name="description">Nothing to do</property>
+			      </object>
+			    </property>
+			  </object>
+			</interface>
+			""";
+		var adwPath = Path.Combine(workDir, "Windows", "AdwWindow.ui");
+		await File.WriteAllTextAsync(adwPath, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<interface>\n  <requires lib=\"gtk\" version=\"4.0\" />\n  <requires lib=\"libadwaita\" version=\"1.0\" />\n" + body, TestContext.Current.CancellationToken);
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", adwPath); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitAsync("adwWindow");
+		Assert.True(status.GetProperty("nativeFrame").GetBoolean(), status.ToString());
+		Assert.Contains("statusPage", status.GetProperty("elementIds").EnumerateArray().Select(e => e.GetString()));
+		Assert.DoesNotContain("placeholder", status.GetProperty("diagnostics").ToString());
+		Assert.True(status.GetProperty("toolboxItemCount").GetInt32() > GtkToolCount, "the Libadwaita toolbox items are missing: " + status);
+		Assert.True((await app.InvokeAsync("od.gtk-designer.select", "statusPage")).GetProperty("success").GetBoolean());
+		var items = (await app.InvokeAsync("od.gtk-designer.properties.describe")).GetProperty("items").EnumerateArray().ToDictionary(i => i.GetProperty("name").GetString()!, i => i);
+		Assert.Equal("All set", items["Title"].GetProperty("value").GetString());
+		Assert.Equal("AdwStatusPage", items["Description"].GetProperty("category").GetString());
+		await app.InvokeAsync("od.close-active-view");
+
+		var gtkOnlyPath = Path.Combine(workDir, "Windows", "GtkOnlyWindow.ui");
+		await File.WriteAllTextAsync(gtkOnlyPath, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<interface>\n  <requires lib=\"gtk\" version=\"4.0\" />\n" + body.Replace("adwWindow", "gtkOnlyWindow").Replace("AdwWindow", "GtkWindow").Replace("\"content\"", "\"child\""), TestContext.Current.CancellationToken);
+		var openedGtk = await app.InvokeAsync("od.open-file", gtkOnlyPath); Assert.True(openedGtk.GetProperty("opened").GetBoolean(), openedGtk.ToString());
+		var gtkStatus = await WaitAsync("gtkOnlyWindow");
+		Assert.Contains("does not declare", gtkStatus.GetProperty("diagnostics").ToString());
+		Assert.Equal(GtkToolCount, gtkStatus.GetProperty("toolboxItemCount").GetInt32());
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	[Fact]
+	public async Task GtkDesigner_RelativeImageFile_PreviewsFromTheUiFolder()
+	{
+		// GtkBuilder resolves a relative file against the .ui's folder; the preview must too, or every
+		// project image shows as missing. A 43x30 PNG beside the .ui must give the picture its size.
+		var repo = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(app.OpenDevelopProjectPath)!, "..", "..", ".."));
+		Directory.CreateDirectory(Path.Combine(workDir, "Windows", "images"));
+		File.Copy(Path.Combine(repo, "data", "resources", "languages", "brazil.png"), Path.Combine(workDir, "Windows", "images", "flag.png"));
+		var picturePath = Path.Combine(workDir, "Windows", "PictureWindow.ui");
+		await File.WriteAllTextAsync(picturePath, """
+			<?xml version="1.0" encoding="UTF-8"?>
+			<interface>
+			  <requires lib="gtk" version="4.0" />
+			  <object class="GtkWindow" id="pictureWindow">
+			    <child>
+			      <object class="GtkBox" id="pictures">
+			        <child>
+			          <object class="GtkPicture" id="flag">
+			            <property name="file">images/flag.png</property>
+			            <property name="can-shrink">False</property>
+			            <property name="halign">start</property>
+			            <property name="valign">start</property>
+			          </object>
+			        </child>
+			      </object>
+			    </child>
+			  </object>
+			</interface>
+			""", TestContext.Current.CancellationToken);
+		var project = await app.ReopenSolutionAsync(projectPath); Assert.True(project.GetProperty("success").GetBoolean(), project.ToString());
+		var opened = await app.InvokeAsync("od.open-file", picturePath); Assert.True(opened.GetProperty("opened").GetBoolean(), opened.ToString());
+		var status = await WaitAsync("pictureWindow");
+		Assert.DoesNotContain("not previewed", status.GetProperty("diagnostics").ToString());
+		var bounds = await app.InvokeAsync("od.gtk-designer.bounds", "flag");
+		Assert.True(bounds.GetProperty("width").GetDouble() >= 43 && bounds.GetProperty("height").GetDouble() >= 30, "the relative image was not loaded: " + bounds);
+		Assert.Contains("<property name=\"file\">images/flag.png</property>", await File.ReadAllTextAsync(picturePath, TestContext.Current.CancellationToken));
+		await app.InvokeAsync("od.close-active-view");
+	}
+
+	/// <summary>The GTK 4 toolbox size (GtkDesignerViewContent.ToolNames).</summary>
+	const int GtkToolCount = 20;
 
 	[Fact]
 	public async Task GtkDesigner_DragToolboxItemOntoNativeDesignSurface_InsertsAndPersistsControl()
@@ -234,11 +655,44 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 	}
 	static async Task ValidateGtkBuilderAsync(string path)
 	{
-		var start = new System.Diagnostics.ProcessStartInfo("gtk4-builder-tool") { RedirectStandardError = true, RedirectStandardOutput = true, UseShellExecute = false };
+		var start = new System.Diagnostics.ProcessStartInfo(GtkBuilderTool()) { RedirectStandardError = true, RedirectStandardOutput = true, UseShellExecute = false };
 		start.ArgumentList.Add("validate"); start.ArgumentList.Add(path);
 		using var process = System.Diagnostics.Process.Start(start)!; var error = await process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken); await process.WaitForExitAsync(TestContext.Current.CancellationToken);
 		Assert.True(process.ExitCode == 0, "gtk4-builder-tool rejected saved UI: " + error);
 	}
+	/// <summary>gtk4-builder-tool from PATH, or on Windows from the GTK install the IDE itself
+	/// uses (GtkRuntimeLocator: GTK4_ROOT, then the MSYS2 environment for this architecture),
+	/// which is usually not on PATH.</summary>
+	static string GtkBuilderTool()
+	{
+		if (!OperatingSystem.IsWindows()) return "gtk4-builder-tool";
+		var environment = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture == System.Runtime.InteropServices.Architecture.Arm64
+			? new[] { "clangarm64" } : new[] { "ucrt64", "mingw64", "clang64" };
+		var roots = new[] { Environment.GetEnvironmentVariable("GTK4_ROOT") }
+			.Concat(new[] { Environment.GetEnvironmentVariable("MSYS2_ROOT"), @"C:\msys64", @"C:\tools\msys64" }
+				.Where(r => !string.IsNullOrEmpty(r)).SelectMany(r => environment.Select(e => Path.Combine(r!, e))))
+			.Concat((Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator).Select(p => Path.GetDirectoryName(p.TrimEnd('\\')) ?? p));
+		foreach (var root in roots.Where(r => !string.IsNullOrEmpty(r)))
+			foreach (var candidate in new[] { Path.Combine(root!, "bin", "gtk4-builder-tool.exe"), Path.Combine(root!, "gtk4-builder-tool.exe") })
+				if (File.Exists(candidate)) return candidate;
+		return "gtk4-builder-tool";
+	}
+
+	/// <summary>Runs the built fixture with --smoke-test (load the UI, wire signals, quit), with the
+	/// GTK runtime the IDE uses on PATH.</summary>
+	static async Task RunFixtureSmokeTestAsync(string projectPath)
+	{
+		var start = new System.Diagnostics.ProcessStartInfo("dotnet") { RedirectStandardError = true, RedirectStandardOutput = true, UseShellExecute = false };
+		start.ArgumentList.Add("run"); start.ArgumentList.Add("--no-build"); start.ArgumentList.Add("--project"); start.ArgumentList.Add(projectPath); start.ArgumentList.Add("--"); start.ArgumentList.Add("--smoke-test");
+		var tool = GtkBuilderTool();
+		if (Path.IsPathRooted(tool)) start.Environment["PATH"] = Path.GetDirectoryName(tool) + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH");
+		using var process = System.Diagnostics.Process.Start(start)!;
+		var outputTask = process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken); var errorTask = process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
+		await process.WaitForExitAsync(TestContext.Current.CancellationToken);
+		var output = await outputTask; var error = await errorTask;
+		Assert.True(process.ExitCode == 0 && output.Contains("smoke test passed", StringComparison.Ordinal), "GTK fixture did not start after saved edits:\n" + output + error);
+	}
+
 	static async Task ValidateFixtureBuildAsync(string projectPath)
 	{
 		var start = new System.Diagnostics.ProcessStartInfo("dotnet") { RedirectStandardError = true, RedirectStandardOutput = true, UseShellExecute = false };

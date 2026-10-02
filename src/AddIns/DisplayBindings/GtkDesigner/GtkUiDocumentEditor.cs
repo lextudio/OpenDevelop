@@ -7,8 +7,11 @@ using System.Xml.Linq;
 
 namespace ICSharpCode.GtkDesigner;
 
+/// <summary>One GtkBuilder object. <paramref name="Layout"/> holds its &lt;layout&gt; properties - the
+/// GTK 4 replacement for GTK 2's &lt;packing&gt;, read by the PARENT's layout manager (GtkGrid's
+/// column/row/spans, GtkOverlay's measure/clip-overlay, GtkFixed's transform).</summary>
 public sealed record GtkUiNode(string Id, string ClassName, IReadOnlyDictionary<string, string> Properties,
-	IReadOnlyList<GtkUiNode> Children, bool IsRoot);
+	IReadOnlyList<GtkUiNode> Children, bool IsRoot, IReadOnlyDictionary<string, string>? Layout = null);
 
 public sealed class GtkUiDocumentEditor
 {
@@ -42,28 +45,80 @@ public sealed class GtkUiDocumentEditor
 
 	static GtkUiNode Build(XElement element, bool root, string fallback)
 	{
-		var id = (string?)element.Attribute("id") ?? "$" + fallback;
+		// A composite <template class="MyWindow" parent="GtkWindow"> is identified by its class (the
+		// user's C# type) and is, for GTK, an instance of its parent type.
+		var isTemplate = element.Name.LocalName == "template";
+		var id = isTemplate ? (string?)element.Attribute("class") ?? "$" + fallback : (string?)element.Attribute("id") ?? "$" + fallback;
+		// A property may hold an object instead of text (<property name="content"><object .../>,
+		// common in GTK 4 and libadwaita): that object is a child in the tree, not a text value.
+		static bool HoldsObject(XElement p) => p.Elements().Any(IsObject);
 		var properties = element.Elements().Where(e => e.Name.LocalName == "property")
-			.Where(e => e.Attribute("name") != null).GroupBy(e => (string)e.Attribute("name")!, StringComparer.Ordinal)
+			.Where(e => e.Attribute("name") != null && !HoldsObject(e)).GroupBy(e => (string)e.Attribute("name")!, StringComparer.Ordinal)
 			.ToDictionary(g => g.Key, g => g.Last().Value, StringComparer.Ordinal);
-		var children = element.Elements().Where(e => e.Name.LocalName == "child")
+		var children = element.Elements().Where(e => e.Name.LocalName == "child" || e.Name.LocalName == "property" && HoldsObject(e))
 			.SelectMany(c => c.Elements().Where(IsObject)).Select((e, i) => Build(e, false, id.TrimStart('$') + "_" + (i + 1))).ToArray();
-		return new(id, (string?)element.Attribute("class") ?? "GObject", properties, children, root);
+		var layout = element.Elements().Where(e => e.Name.LocalName == "layout").SelectMany(l => l.Elements()).Where(e => e.Name.LocalName == "property" && e.Attribute("name") != null)
+			.GroupBy(e => (string)e.Attribute("name")!, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Last().Value, StringComparer.Ordinal);
+		var className = isTemplate ? (string?)element.Attribute("parent") ?? "GtkWidget" : (string?)element.Attribute("class") ?? "GObject";
+		return new(id, className, properties, children, root, layout);
 	}
 
-	public bool SetProperty(string id, string name, string value)
+	/// <summary>Sets, or with a null <paramref name="value"/> resets, a property. Reset removes the
+	/// <c>&lt;property&gt;</c> so GTK's own default applies (no default value is ever written).
+	/// GtkBuilder treats '-' and '_' in property names alike, so either spelling finds an existing
+	/// entry. A NEW user-visible string gets <c>translatable="yes"</c>, as Stetic and Glade do;
+	/// an existing entry keeps its translatable/context/comments attributes.</summary>
+	public bool SetProperty(string id, string name, string? value, bool translatable = false)
 	{
 		var element = Find(id); if (element == null || string.IsNullOrWhiteSpace(name)) return false;
-		var property = element.Elements().FirstOrDefault(e => e.Name.LocalName == "property" && (string?)e.Attribute("name") == name);
-		if (property == null) { property = new XElement("property", new XAttribute("name", name), value ?? ""); element.Add(property); }
-		else property.Value = value ?? "";
+		var property = element.Elements().FirstOrDefault(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), name));
+		// An edit that changes nothing (reset of a default, same value) succeeds without an undo step.
+		if (value == null) {
+			if (property == null) return true;
+			property.Remove();
+			return Commit();
+		}
+		if (property == null) {
+			property = new XElement("property", new XAttribute("name", name), value);
+			if (translatable) property.Add(new XAttribute("translatable", "yes"));
+			element.Add(property);
+		}
+		else if (property.Value == value) return true;
+		else property.Value = value;
 		return Commit();
 	}
+
+	/// <summary>Sets, or with null resets, a property in the object's &lt;layout&gt; element, creating
+	/// the element on first use and removing it when its last property goes.</summary>
+	public bool SetLayoutProperty(string id, string name, string? value)
+	{
+		var element = Find(id); if (element == null || string.IsNullOrWhiteSpace(name)) return false;
+		var layout = element.Elements().FirstOrDefault(e => e.Name.LocalName == "layout");
+		var property = layout?.Elements().FirstOrDefault(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), name));
+		if (value == null) {
+			if (property == null) return true;
+			property.Remove();
+			if (!layout!.Elements().Any()) layout.Remove();
+			return Commit();
+		}
+		if (property != null) {
+			if (property.Value == value) return true;
+			property.Value = value;
+			return Commit();
+		}
+		if (layout == null) { layout = new XElement("layout"); element.Add(layout); }
+		layout.Add(new XElement("property", new XAttribute("name", name), value));
+		return Commit();
+	}
+
+	static bool SameName(string? a, string b) => a != null && string.Equals(a.Replace('_', '-'), b.Replace('_', '-'), StringComparison.Ordinal);
 
 	public bool Rename(string id, string newId)
 	{
 		if (id.StartsWith("$", StringComparison.Ordinal) || !IsIdentifier(newId) || Find(newId) != null) return false;
 		var element = Find(id); if (element == null) return false;
+		// A template's identity is its C# class name: renaming it is a code refactoring, not a .ui edit.
+		if (element.Name.LocalName == "template") return false;
 		element.SetAttributeValue("id", newId);
 		// Rewrite only properties that REFERENCE an object id. Rewriting every property whose
 		// value happened to equal the old id collaterally edited display text (measured: a label
@@ -73,9 +128,13 @@ public sealed class GtkUiDocumentEditor
 		return Commit();
 	}
 
-	static readonly HashSet<string> ContainerClasses = new(StringComparer.Ordinal) { "GtkBox", "GtkGrid", "GtkCenterBox", "GtkPaned", "GtkScrolledWindow", "GtkWindow", "GtkApplicationWindow", "GtkNotebook", "GtkStack", "GtkOverlay", "GtkFrame" };
+	static readonly HashSet<string> ContainerClasses = new(StringComparer.Ordinal) { "GtkBox", "GtkGrid", "GtkCenterBox", "GtkPaned", "GtkScrolledWindow", "GtkWindow", "GtkApplicationWindow", "GtkNotebook", "GtkStack", "GtkOverlay", "GtkFrame", "AdwClamp", "AdwPreferencesPage", "AdwPreferencesGroup" };
 
-	public bool Add(string parentId, string className)
+	/// <summary>Adds a new <paramref name="className"/> child. A drop resolved by GtkDropPlanner
+	/// gives an insertion <paramref name="index"/> among the existing children (a box) or a
+	/// grid <paramref name="cell"/>; with neither, the child is appended (and a grid child goes to
+	/// the first free row).</summary>
+	public bool Add(string parentId, string className, int? index = null, (int Column, int Row)? cell = null)
 	{
 		var parent = Find(parentId); if (parent == null || string.IsNullOrWhiteSpace(className)) return false;
 		// GtkBuilder <child> is only valid under container widgets; reject leaf parents instead
@@ -86,9 +145,36 @@ public sealed class GtkUiDocumentEditor
 		var id = UniqueId(baseName);
 		var child = new XElement("child", new XElement("object", new XAttribute("class", className), new XAttribute("id", id)));
 		var created = child.Element("object")!;
-		if (className is "GtkButton" or "GtkLabel") created.Add(new XElement("property", new XAttribute("name", "label"), className[3..]));
-		else if (className is "GtkEntry") created.Add(new XElement("property", new XAttribute("name", "placeholder-text"), "Entry"));
-		parent.Add(child); return Commit();
+		// Starter text is user-visible, so it is translatable from the start (the Properties pad
+		// marks new label/title/placeholder text the same way).
+		if (className is "GtkButton" or "GtkLabel") created.Add(new XElement("property", new XAttribute("name", "label"), new XAttribute("translatable", "yes"), className[3..]));
+		else if (className is "GtkEntry") created.Add(new XElement("property", new XAttribute("name", "placeholder-text"), new XAttribute("translatable", "yes"), "Entry"));
+		// A GtkGrid places a child by its <layout>; without one every new child lands on (0, 0)
+		// over whatever is there. Append it in column 0 of the first free row instead.
+		if ((string?)parent.Attribute("class") == "GtkGrid") {
+			var (column, row) = cell ?? (0, NextGridRow(parent));
+			created.Add(new XElement("layout",
+				new XElement("property", new XAttribute("name", "column"), column.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+				new XElement("property", new XAttribute("name", "row"), row.ToString(System.Globalization.CultureInfo.InvariantCulture))));
+		}
+		var siblings = parent.Elements().Where(e => e.Name.LocalName == "child" && e.Elements().Any(IsObject)).ToList();
+		if (index is { } at && at >= 0 && at < siblings.Count) siblings[at].AddBeforeSelf(child);
+		else parent.Add(child);
+		return Commit();
+	}
+
+	/// <summary>The first row below every existing child (row + row-span; GTK's defaults 0 and 1).</summary>
+	static int NextGridRow(XElement grid)
+	{
+		static int Read(XElement? layout, string name, int fallback)
+			=> int.TryParse(layout?.Elements().FirstOrDefault(e => e.Name.LocalName == "property" && SameName((string?)e.Attribute("name"), name))?.Value,
+				System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : fallback;
+		var next = 0;
+		foreach (var obj in grid.Elements().Where(e => e.Name.LocalName == "child").SelectMany(c => c.Elements().Where(IsObject))) {
+			var layout = obj.Elements().FirstOrDefault(e => e.Name.LocalName == "layout");
+			next = Math.Max(next, Read(layout, "row", 0) + Math.Max(1, Read(layout, "row-span", 1)));
+		}
+		return next;
 	}
 
 	public bool Remove(string id)
@@ -135,7 +221,8 @@ public sealed class GtkUiDocumentEditor
 	bool Commit() { undo.Add(Text); redo.Clear(); Text = Serialize(); return Parse(); }
 	string Serialize() { using var writer = new Utf8StringWriter(); document.Save(writer, SaveOptions.DisableFormatting); return writer.ToString(); }
 	XElement? Find(string id) => document.Descendants().FirstOrDefault(IsObjectWithId(id));
-	static Func<XElement, bool> IsObjectWithId(string id) => e => IsObject(e) && (string?)e.Attribute("id") == id;
+	static Func<XElement, bool> IsObjectWithId(string id) => e => e.Name.LocalName == "object" ? (string?)e.Attribute("id") == id
+		: e.Name.LocalName == "template" && (string?)e.Attribute("class") == id;
 	static bool IsObject(XElement e) => e.Name.LocalName is "object" or "template";
 	// GtkBuilder properties whose value is a reference to ANOTHER object's id (as opposed to
 	// display text that may coincidentally equal one). Extend as new referencing properties are

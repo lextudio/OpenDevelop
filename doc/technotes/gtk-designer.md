@@ -370,6 +370,178 @@ Selection synchronizes surface, Outline and Properties by GtkBuilder id/syntax i
 
 ### Properties and signals
 
+**Implemented (2026-10-01).** `GtkDesigner/GirCatalog.cs` reads the installed `Gtk-4.0.gir` and
+the repositories it includes (pure XML, no GTK; linked into the host and `GtkDesigner.Tests`
+like `GtkUiDocumentEditor.cs`). The host loads it once in the background
+(`GtkDesigner.Host/GtkPropertyMetadata.cs`; GIR is found via `GTK4_GIR_DIR`, else
+`share/gir-1.0` beside the libgtk on `PATH`, else the Homebrew/Linux locations) and reports, for
+every node, each writable non-deprecated property of the class, its ancestors and its interfaces
+(`GtkOrientable:orientation` on a `GtkBox`), plus anything the file sets that GIR does not know:
+
+- `Kind` from the GIR type - `Boolean`, `Number` (`TypeName` keeps `gint`/`guint`/`gdouble` so
+  the grid picks an integer or floating-point editor), `Enum` with the GtkBuilder nicks in
+  `AllowedValues` (`IsEnum` only for exclusive enums; bitfields combine with `|`), `Color`,
+  `Reference`, `Unsupported` (read-only, listed only when the file sets it);
+- `Category` = the declaring class (`GtkButton`, `GtkWidget`, ...), `Description` = the GIR doc's
+  first paragraph, `Value` = the file's value or GIR's `default-value` (enum C identifiers mapped
+  to nicks: `GTK_ALIGN_FILL` -> `fill`), `ShouldSerialize` = written in the file.
+
+`GtkPropertyAdapter` turns those into descriptors (`FooBar` name, "Foo bar" display name, GTK
+name in the description). `design/set-property` normalises and type-checks with
+`GirCatalog.TryNormalizeValue` and throws before mutating on a value GTK would reject; a new
+user-visible string (`label`, `title`, `tooltip-text`, ...) gets `translatable="yes"`, an existing
+entry keeps its translatable/context/comments. `design/reset-property` (the shared
+`IDesignHostPropertyReset`) removes the `<property>`. Signals come from the same catalogue. With
+no GIR installed the pad falls back to the file's own properties and says why in the session
+diagnostics. Covered by `GirCatalogTests`, `GtkUiDocumentEditorPropertyTests` and
+`GtkDesignerTests.GtkDesigner_PropertiesPad_IsGirTyped_ValidatesEdits_AndResets`.
+
+Taken from Stetic as ideas, not code (its descriptors, `ObjectWrapper` and `objects.xml` are
+GTK 2-bound; nothing linkable as-is adds value over GIR): the property-editor table of
+`libstetic/PropertyEditorCell.cs` (bool, integer and float ranges, enum vs flags), the
+translatable-string marking of `objects.xml`, and reset-to-default. **Child `<layout>` properties (2026-10-01).** A child of a layout-managed container gets the
+container's LayoutChild properties as `layout:<name>` DDP properties (descriptor `LayoutColumn`,
+category "Layout (GtkGrid)"), typed and validated from GIR. GIR does not say which widget uses
+which layout manager, so `GtkPropertyMetadata.LayoutChildren` is the override table: `GtkGrid` ->
+`GtkGridLayoutChild` (column/row/spans), `GtkOverlay` -> `GtkOverlayLayoutChild`
+(measure/clip-overlay), `GtkFixed` -> `GtkFixedLayoutChild` (transform, parsed by GtkBuilder from
+text), subclasses included. `GtkUiDocumentEditor.SetLayoutProperty` writes `<layout>` (creating
+it, removing it with its last property), and toolbox insertion into a `GtkGrid` appends the child
+in column 0 of the first free row instead of stacking it on (0, 0).
+`GtkDesigner_GridChild_LayoutProperties_AreEditable_AndGtkAppliesThem` checks the edit against
+GTK's own measured bounds.
+
+**Ranges, curated groups, colors (2026-10-01).**
+- Numeric limits come from GTK's own `GParamSpec` (`GtkDesigner.Host/GtkParamRanges.cs`: GIR does
+  not carry them; Gir.Core 0.8 does not expose `GParamSpecInt`/`Double` min/max, so the host reads
+  the native fields after the 72-byte `GParamSpec` header, 64-bit only - the approach of Stetic's
+  `ParamSpec.cs`, verified against `GtkWidget:margin-start` 0..32767, `GtkScale:digits` -1..64).
+  The range is in the property description and an out-of-range value is rejected before it is
+  written. The lookup goes through the concrete class, so interface properties resolve too.
+- `GtkPropertyMetadata.CommonProperties` is the override table standing in for Stetic's
+  `objects.xml` `<itemgroup>`s: each class's everyday properties (label, title, spacing,
+  alignment, margins, ...) lead under "Common"; the rest stay under their declaring class.
+- `Gdk.RGBA` properties edit through the grid's color picker; `GtkColorText` converts GTK color
+  text (`#rgb[a]`, `#rrggbb[aa]` - alpha last, `rgb()`/`rgba()`, CSS names) to and from it.
+
+- `GtkPropertyMetadata.Conditional` stands in for `objects.xml` `disabled-if`/`invisible-if`: a
+  property that only applies while another has a value (a label's `wrap-mode`/`lines` need
+  `wrap`, an entry's `invisible-char` needs `visibility` off, a scale's `value-pos` needs
+  `draw-value`) is listed read-only with "Applies when ..." in its description until enabled -
+  kept visible rather than hidden, and editable whenever the file already sets it.
+
+Malformed source is recoverable: editing the XML pane into invalid XML is reported by the
+designer without losing the host, and fixing the text restores the design
+(`GtkDesigner_MalformedSourceEdit_IsReported_AndTheDesignerRecovers`).
+
+### Signal handlers and the behavior class (2026-10-01)
+
+**GtkBuilder cannot connect a `<signal>` to a C# method.** Its default `GtkBuilderCScope` looks
+the handler up as a native symbol and *aborts the process*
+(`Gtk-ERROR: failed to add UI: No function named 'runButton_clicked'`), and Gir.Core 0.8.1
+offers no managed `BuilderScope` (`BuilderScopeHelper` has no name lookup). So binding a signal
+in the Properties pad used to produce a `.ui` that killed any app loading it with
+`Gtk.Builder.NewFromFile`.
+
+The `.ui` keeps standard `<signal>` entries (Glade/Cambalache-compatible); the designer owns a
+companion and the user owns the handlers:
+
+```text
+Windows/
+  MainWindow.ui      designer-owned GtkBuilder UI, with <signal> entries
+  MainWindow.ui.cs   designer-owned: partial class MainWindow { Gtk.Builder BuildUi(string path) }
+  MainWindow.cs      user-owned: partial class MainWindow { handler methods }
+```
+
+`BuildUi` loads the `.ui` without its signals and connects each one through the object's
+Gir.Core event: `var @run = (Gtk.Button)builder.GetObject("run"); @run.OnClicked += (_, args) =>
+run_clicked(@run, args);`. The expression lambda adapts to `SignalHandler<T>`,
+`SignalHandler<T, TArgs>` and `ReturningSignalHandler<...>` alike, so no delegate shape is
+guessed, and there is no reflection. Handler signatures are typed from GIR
+(`GtkSignalWiring.cs`): sender = the object's class; args = `{DeclaringType}.{Signal}SignalArgs`
+when the signal has parameters (`Gtk.Editable.InsertTextSignalArgs` for a `GtkEntry`'s
+`insert-text`), else `System.EventArgs`; return = `bool`/`int`/`uint` for returning signals,
+with an empty body returning GTK's "not handled". Detailed (`notify::label`), swapped and
+`object=` signals and other return types are listed in the companion as comments with the
+reason, never guessed. The generated code was compiled and run against Gir.Core 0.8.1: `BuildUi`
+loads a `.ui` whose signals made a plain `GtkBuilder` abort, and the handlers fire.
+
+On a signal binding the IDE (`GtkCodeBehind.cs`) creates `X.cs` (an empty partial class in the
+project's root namespace) if missing or makes an existing class partial, inserts each missing
+handler with Roslyn-located positions in the file's own indentation (an open editor's buffer is
+edited in place), rewrites `X.ui.cs` from the host's `gtk/signal-wiring` RPC, and opens `X.cs` at
+the new handler. Saving the `.ui` keeps the companion current. The fixture loads through
+`new MainWindow().BuildUi(path)`, and `GtkDesigner_RealPadsPropertyEditToolboxHistoryAndSave`
+asserts the generated handler and wiring, compiles the mutated fixture and **runs** it.
+
+### Robust preview: custom widgets, templates, libadwaita, images (2026-10-01)
+
+**Never `gtk_builder_new_from_string`.** It treats any error as fatal (`g_error`) and aborted the
+whole design host on an application-defined class ("Invalid object type 'MyAppStarRating'"), and
+would on an unknown property or bad value in a hand-edited file. The host builds with
+`Gtk.Builder.New()` + `AddFromFile` (a `GError` -> exception -> diagnostic), and so does the
+generated `BuildUi`, so a bad `.ui` throws in the user's app instead of killing it.
+
+**`GtkPreviewSanitizer.cs`** (pure) makes the copy the preview builds - the edited document is
+never changed, so nothing is lost:
+- an unknown or unavailable class becomes a labelled stand-in keeping its id (a `GtkLabel` naming
+  the class, or a vertical `GtkBox` when it has children so they still preview);
+- unknown properties, values `GirCatalog.TryNormalizeValue` rejects, references to missing ids and
+  `<layout>` under a container without a known layout manager are dropped;
+- a composite `<template class="X" parent="GtkWindow">` previews as an instance of its parent;
+- every change is a session diagnostic.
+
+**Composite templates.** `GtkUiDocumentEditor` treats a `<template>` root as its parent type (typed
+properties, children, layout), finds it by its class name, and refuses to rename it (the class is
+the user's C# type). No `BuildUi` companion is generated for template files: a Gir.Core
+`[Template]` class instantiates its own UI.
+
+**Objects held by properties** (`<property name="content"><object .../>`, common in GTK 4 and
+libadwaita) are tree children - in the outline, selectable, measured - not text values.
+
+**Libadwaita** is a separate capability, used only by a document declaring
+`<requires lib="libadwaita">`: the host loads `Adw-1.gir` with the GTK catalogue when installed,
+initialises libadwaita on its GTK thread on first use (`GtkAdwaita.cs`: `Adw.Module.Initialize` +
+`Adw.Functions.Init`; install instructions per OS when it is missing), the toolbox adds a
+"Libadwaita" category, and `AdwClamp`/`AdwPreferencesPage`/`AdwPreferencesGroup` take dropped
+children. In a GTK-only document an Adw class is a placeholder whose diagnostic names the missing
+`<requires>`.
+
+**Images and files.** GtkBuilder turns a file reference into an image only when it resolves a
+*relative* path against the file it builds from (measured on GTK 4 / Windows: an absolute path or
+`file://` URI sets `GtkPicture:file` but loads no texture, from a string or a file). The preview
+builds from a temp file in the host's own folder (`%TEMP%/OpenDevelop-GtkPreview/<pid>`, never
+beside the user's `.ui`), and `GtkPreviewSanitizer.PreviewPath` rewrites `Gio.File`/`Gdk.Paintable`/
+`Gdk.Texture` values (a new `GirValueKind.Path`) and `file`/`filename` strings - resolved against
+the `.ui`'s folder - relative to it. Resource paths and other URIs are left alone.
+
+**External edits** to an open, unmodified `.ui` (another tool, a checkout) are reloaded by the IDE's
+file watcher into the designer on the same host.
+
+Covered by `GtkPreviewSanitizerTests`, `GirCatalogTests` and the integration tests
+`GtkDesigner_CustomWidget_IsKeptAndReported_RestStaysEditable`,
+`GtkDesigner_CompositeTemplate_OpensRendersAndEdits`,
+`GtkDesigner_Libadwaita_IsUsedOnlyWhenTheDocumentRequiresIt`,
+`GtkDesigner_RelativeImageFile_PreviewsFromTheUiFolder` and
+`GtkDesigner_ExternalChangeOnDisk_ReloadsTheDesign`.
+
+Still open: application CSS and themes in the preview (a `.ui` does not reference its CSS; GTK's
+default theme is used), GResource bundles (`resource:///` paths are not compiled into the
+preview), and handler wiring for composite templates (Gir.Core `[Template]`).
+
+### Drop placement (2026-10-01)
+
+`GtkDropPlanner.cs` (pure; linked into the IDE, host and tests) resolves a toolbox drop by the
+receiving container's child policy: the deepest container under the point; a `GtkBox` gets an
+insertion index along its orientation (horizontal by default) and an insertion line midway in
+that gap; a `GtkGrid` gets the cell under the point from its tracks' measured extents (past the
+last column/row = the next one; an occupied cell moves down to the first free row) and a
+cell highlight; anything else appends and highlights the container. The IDE draws the indicator
+in the canvas's extension layer during drag-over; on drop the host re-plans from GTK's own
+measured bounds and `GtkUiDocumentEditor.Add` inserts at that index or writes that `<layout>`
+cell. `GtkDropPlannerTests` covers the geometry; the grid integration test drops into a planned
+cell and checks GTK's measured placement.
+
 Properties come from GIR plus overrides. The grid distinguishes normal, construct-only, layout,
 object-reference, translatable and CSS-related values. Reset removes the XML property so GTK's
 default applies. Values are parsed by type before source mutation; invalid text never enters the
@@ -510,8 +682,8 @@ Native render failures are
 returned as session warning diagnostics instead of silently falling back.
 
 Still-open coverage gaps are OS-level automation of the pointer gestures (the native coordinate
-mapping and resulting mutation are covered), behavior-file handler generation, malformed/external
-edit recovery, and GTK theme/resource/custom-widget variants. Those items in
+mapping and resulting mutation are covered) and GTK themes/CSS. (Behavior-file handler generation is covered as of
+2026-10-01: see "Signal handlers and the behavior class".) Those items in
 the lists above are acceptance targets, not claims about the present implementation.
 
 Fixture matrix:

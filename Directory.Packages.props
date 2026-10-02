@@ -34,6 +34,7 @@
     <PackageVersion Include="ICSharpCode.Decompiler" Version="11.0.0.9375" />
     <PackageVersion Include="ICSharpCode.ILSpyX" Version="11.0.0.9375" />
     <PackageVersion Include="GirCore.Gtk-4.0" Version="0.8.1" />
+    <PackageVersion Include="GirCore.Adw-1" Version="0.8.1" />
     <PackageVersion Include="GuiLabs.Language.Xml" Version="1.2.93" />
     <!-- Derives the assembly version from git tags; see GitVersion.yml. -->
     <PackageVersion Include="GitVersion.MsBuild" Version="6.5.1" />

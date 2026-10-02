@@ -17,7 +17,11 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	readonly AutoResetEvent gtkWorkAvailable = new(false);
 	string sessionId = "";
 
-	public GtkDesignerHostService(string expectedToken) => this.expectedToken = expectedToken;
+	public GtkDesignerHostService(string expectedToken)
+	{
+		this.expectedToken = expectedToken;
+		GtkPropertyMetadata.Preload();
+	}
 
 	[JsonRpcMethod("initialize")]
 	public HostHandshake Initialize(string token, int protocolVersion, string sessionId)
@@ -40,6 +44,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 			: Get(snapshot.DocumentId);
 		session.Version = snapshot.Version; session.FileName = snapshot.PrimaryFileName;
 		session.Editor.Reset(snapshot.Files.FirstOrDefault()?.Text ?? "");
+		if (GtkAdwaita.Requires(session.Editor.Text)) OnGtkThread(() => { GtkAdwaita.EnsureInitialized(); return true; });
 		return State(session, true);
 	}
 
@@ -48,8 +53,47 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	{
 		EnsureSession(sessionId);
 		var session = Get(documentId); EnsureVersion(session, baseVersion);
-		var changed = propertyName == "$id" ? session.Editor.Rename(elementId, value) : session.Editor.SetProperty(elementId, propertyName, value);
+		bool changed;
+		if (propertyName == "$id") changed = session.Editor.Rename(elementId, value);
+		else {
+			// Type-checked against the GIR catalogue first, so invalid text never enters the document.
+			var (node, parentClass) = Locate(session.Editor, elementId);
+			var normalized = GtkPropertyMetadata.Validate(node, propertyName, value, parentClass);
+			changed = propertyName.StartsWith(GtkPropertyMetadata.LayoutPrefix, StringComparison.Ordinal)
+				? session.Editor.SetLayoutProperty(elementId, propertyName.Substring(GtkPropertyMetadata.LayoutPrefix.Length), normalized)
+				: session.Editor.SetProperty(elementId, propertyName, normalized,
+					translatable: node != null && GtkPropertyMetadata.IsTranslatable(node.ClassName, propertyName));
+		}
 		if (!changed) throw new InvalidOperationException("GTK property mutation was rejected.");
+		session.Version++; return State(session, false);
+	}
+
+	/// <summary>The companion wiring source and typed handler signatures for the document's
+	/// &lt;signal&gt; entries (see <see cref="GtkSignalWiring"/>). Needs the GIR catalogue.</summary>
+	[JsonRpcMethod("gtk/signal-wiring")]
+	public GtkSignalWiringResult SignalWiring(string sessionId, string documentId, string uiFileName, string? namespaceName, string className)
+	{
+		EnsureSession(sessionId);
+		var session = Get(documentId);
+		var catalog = GtkPropertyMetadata.Catalog ?? throw new InvalidOperationException(GtkPropertyMetadata.Diagnostic);
+		var handlers = GtkSignalWiring.Handlers(session.Editor.Text, catalog);
+		return new GtkSignalWiringResult {
+			Source = GtkSignalWiring.GenerateCompanion(uiFileName, namespaceName, className, handlers),
+			Handlers = handlers.Select(GtkSignalHandlerInfo.From).ToList()
+		};
+	}
+
+	/// <summary>Removes the property so GTK's own default applies - the GIR catalogue is the
+	/// defaults model IDesignHostPropertyReset asks for; no default value is ever written.</summary>
+	[JsonRpcMethod("design/reset-property")]
+	public DesignerSessionState ResetProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName)
+	{
+		EnsureSession(sessionId);
+		var session = Get(documentId); EnsureVersion(session, baseVersion);
+		var reset = propertyName.StartsWith(GtkPropertyMetadata.LayoutPrefix, StringComparison.Ordinal)
+			? session.Editor.SetLayoutProperty(elementId, propertyName.Substring(GtkPropertyMetadata.LayoutPrefix.Length), null)
+			: session.Editor.SetProperty(elementId, propertyName, null);
+		if (!reset) throw new InvalidOperationException("GTK property reset was rejected.");
 		session.Version++; return State(session, false);
 	}
 
@@ -58,7 +102,14 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	{
 		EnsureSession(sessionId);
 		var session = Get(documentId); EnsureVersion(session, baseVersion);
-		if (!session.Editor.Add(parentId, string.IsNullOrEmpty(item.TypeName) ? item.Name : item.TypeName)) throw new InvalidOperationException("GTK element insertion was rejected.");
+		// A drop carries its design position (a toolbox click sends -1, -1): resolve it with the same
+		// planner the IDE drew its indicator from, against GTK's own measured bounds.
+		int? index = null; (int, int)? cell = null;
+		if (x >= 0 && y >= 0 && session.Editor.Roots.FirstOrDefault() is { } first
+			&& GtkDropPlanner.Plan(DropNode(session, first), x, y) is { } plan && plan.ContainerId == parentId) {
+			index = plan.Index; cell = plan.Cell;
+		}
+		if (!session.Editor.Add(parentId, string.IsNullOrEmpty(item.TypeName) ? item.Name : item.TypeName, index, cell)) throw new InvalidOperationException("GTK element insertion was rejected.");
 		session.Version++; return State(session, false);
 	}
 
@@ -113,17 +164,66 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		var roots = session.Editor.Roots.Select(n => Node(session, n)).ToList();
 		var tree = roots.Count == 1 ? roots[0] : new DesignerElementNode { Id = "$interface", Name = "interface", Type = "GtkInterface", Children = roots };
 		var result = new DesignerSessionState { SessionId = sessionId, DocumentId = session.DocumentId, Version = session.Version, Accepted = string.IsNullOrEmpty(session.Editor.Error), Error = session.Editor.Error, RootType = tree.Type, ComponentCount = Count(tree), Tree = tree, Render = render, CanUndo = session.Editor.CanUndo, CanRedo = session.Editor.CanRedo };
+		if (!string.IsNullOrEmpty(GtkPropertyMetadata.Diagnostic)) result.Diagnostics.Add(new DesignerDiagnostic { Severity = "Info", Message = GtkPropertyMetadata.Diagnostic });
+		if (GtkAdwaita.Requires(session.Editor.Text) && GtkAdwaita.Diagnostic.Length > 0) result.Diagnostics.Add(new DesignerDiagnostic { Severity = "Warning", Message = GtkAdwaita.Diagnostic });
+		foreach (var message in session.PreviewDiagnostics.Distinct()) result.Diagnostics.Add(new DesignerDiagnostic { Severity = "Warning", Message = message });
 		if (!string.IsNullOrEmpty(session.RenderDiagnostic)) result.Diagnostics.Add(new DesignerDiagnostic { Severity = "Warning", Message = session.RenderDiagnostic });
 		return result;
 	}
+	/// <summary>The document as the preview's GtkBuilder gets it: no &lt;signal&gt;s (handlers are C#,
+	/// not native symbols) and, with the GIR catalogue, sanitised so a custom widget or an invalid
+	/// property becomes a placeholder or is skipped instead of failing the whole document. The
+	/// edited document itself is never changed.</summary>
+	static string PreviewXml(DocumentSession session)
+	{
+		var document = XDocument.Parse(session.Editor.Text, LoadOptions.PreserveWhitespace);
+		document.Descendants().Where(e => e.Name.LocalName == "signal").Remove();
+		var xml = document.ToString(SaveOptions.DisableFormatting);
+		var diagnostics = new List<string>();
+		if (GtkPropertyMetadata.Catalog is { } catalog)
+			xml = GtkPreviewSanitizer.Sanitize(xml, catalog, diagnostics, GtkPropertyMetadata.LayoutChildClass, UnavailableReason(session),
+				string.IsNullOrEmpty(session.FileName) ? null : Path.GetDirectoryName(session.FileName), PreviewDirectory);
+		session.PreviewDiagnostics = diagnostics;
+		return xml;
+	}
+
+	/// <summary>Why a GIR class cannot be instantiated in this document's preview, or null. Adw
+	/// classes need the document to opt in to libadwaita and the library to have loaded.</summary>
+	static Func<GirClass, string?> UnavailableReason(DocumentSession session)
+	{
+		var requiresAdw = GtkAdwaita.Requires(session.Editor.Text);
+		return c => GirCatalog.NamespaceOf(c) != "Adw" ? null
+			: !requiresAdw ? "a libadwaita widget, but the document does not declare <requires lib=\"libadwaita\">."
+			: !GtkAdwaita.Available ? "libadwaita is not available in the designer."
+			: null;
+	}
+
+	/// <summary>gtk_builder_add_from_string, NOT gtk_builder_new_from_string: the latter treats any
+	/// error as fatal (g_error) and aborts the whole host; the former reports a GError, which
+	/// Gir.Core raises as an exception the caller turns into a diagnostic.</summary>
+	static Gtk.Builder BuildFrom(string xml)
+	{
+		// From a file, not a string: GtkBuilder loads an image only from a path it resolves against
+		// the file it builds from (see GtkPreviewSanitizer.PreviewPath). The file lives in the
+		// host's own temp folder, never beside the user's .ui.
+		Directory.CreateDirectory(PreviewDirectory);
+		var file = Path.Combine(PreviewDirectory, "preview-" + Guid.NewGuid().ToString("N") + ".ui");
+		File.WriteAllText(file, xml);
+		var builder = Gtk.Builder.New();
+		try { builder.AddFromFile(file); return builder; }
+		catch { builder.Dispose(); throw; }
+		finally { try { File.Delete(file); } catch { } }
+	}
+
+	/// <summary>This host's folder for preview .ui files (per process, so pooled hosts do not collide).</summary>
+	static readonly string PreviewDirectory = Path.Combine(Path.GetTempPath(), "OpenDevelop-GtkPreview", Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
 	DesignerRenderFrame? Render(DocumentSession session, string? rootId)
 	{
 		session.RenderDiagnostic = "";
 		if (string.IsNullOrEmpty(rootId) || rootId.StartsWith("$", StringComparison.Ordinal)) return null;
 		try {
-			var document = XDocument.Parse(session.Editor.Text, LoadOptions.PreserveWhitespace);
-			document.Descendants().Where(e => e.Name.LocalName == "signal").Remove();
-			var xml = document.ToString(SaveOptions.DisableFormatting);
+			var xml = PreviewXml(session);
 			var renderKey = rootId + ":" + Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(xml)));
 			if (session.CachedRenderKey == renderKey && session.CachedRender != null)
 				return new DesignerRenderFrame { Sequence = session.Version, Width = session.CachedRender.Width, Height = session.CachedRender.Height, PngBase64 = session.CachedRender.PngBase64 };
@@ -161,13 +261,20 @@ sealed class GtkDesignerHostService : IDesignerChildService
 				root.QueueDraw();
 				DrainMainContext();
 				var paintTarget = root is Gtk.Window mappedWindow ? mappedWindow.GetChild() ?? root : root;
-				var snapshot = Gtk.Snapshot.New();
-				if (!ReferenceEquals(paintTarget, root)) root.SnapshotChild(paintTarget, snapshot);
-				else {
-					using var paintable = Gtk.WidgetPaintable.New(paintTarget);
-					paintable.Snapshot(snapshot, width, height);
+				// ToNode, not FreeToNode: gtk_snapshot_free_to_node frees the GtkSnapshot, but its
+				// managed wrapper keeps a toggle reference, and releasing that later (from the GC)
+				// touched freed memory - a native 0xC0000005 in ToggleRegistration.RemoveToggleRef.
+				// ToNode leaves the snapshot alive and the wrapper disposes it normally.
+				Gsk.RenderNode? node;
+				using (var snapshot = Gtk.Snapshot.New()) {
+					if (!ReferenceEquals(paintTarget, root)) root.SnapshotChild(paintTarget, snapshot);
+					else {
+						using var paintable = Gtk.WidgetPaintable.New(paintTarget);
+						paintable.Snapshot(snapshot, width, height);
+					}
+					node = snapshot.ToNode();
 				}
-				var node = snapshot.FreeToNode() ?? throw new InvalidOperationException("GTK produced an empty render node.");
+				if (node == null) throw new InvalidOperationException("GTK produced an empty render node.");
 				renderer ??= CreateRenderer();
 				using var texture = renderer.RenderTexture(node, null);
 				node.Unref();
@@ -192,10 +299,37 @@ sealed class GtkDesignerHostService : IDesignerChildService
 			for (var iteration = 0; iteration < 8 && context.Pending(); iteration++) context.Iteration(false);
 		}
 	}
-	DesignerElementNode Node(DocumentSession session, GtkUiNode node) { session.NativeBounds.TryGetValue(node.Id, out var bounds); return new() { Id = node.Id, Name = node.Id, Type = node.ClassName, X = bounds.X, Y = bounds.Y, Width = bounds.Width, Height = bounds.Height,
-		Properties = node.Properties.Select(p => new DesignerPropertyInfo { Name = p.Key, DisplayName = p.Key, Value = p.Value, Category = "GTK" }).Prepend(new DesignerPropertyInfo { Name = "$id", DisplayName = "ID", Value = node.Id, Category = "GTK" }).ToList(),
-		Events = SignalsFor(node.ClassName).Select(name => new DesignerEventInfo { Name = name, Category = "GTK Signals", Handler = session.Editor.GetSignals(node.Id).GetValueOrDefault(name) ?? "" }).ToList(),
-		Children = node.Children.Select(n => Node(session, n)).ToList() }; }
+	DesignerElementNode Node(DocumentSession session, GtkUiNode node, string? parentClass = null) { session.NativeBounds.TryGetValue(node.Id, out var bounds); return new() { Id = node.Id, Name = node.Id, Type = node.ClassName, X = bounds.X, Y = bounds.Y, Width = bounds.Width, Height = bounds.Height,
+		Properties = GtkPropertyMetadata.PropertiesFor(node, parentClass).Prepend(new DesignerPropertyInfo { Name = "$id", DisplayName = "ID", Value = node.Id, Category = "Identity" }).ToList(),
+		Events = GtkPropertyMetadata.SignalsFor(node.ClassName, SignalsFor).Select(name => new DesignerEventInfo { Name = name, Category = "GTK Signals", Handler = session.Editor.GetSignals(node.Id).GetValueOrDefault(name) ?? "" }).ToList(),
+		Children = node.Children.Select(n => Node(session, n, node.ClassName)).ToList() }; }
+	/// <summary>The drop planner's view of a node: measured bounds, orientation and grid cell.</summary>
+	static GtkDropNode DropNode(DocumentSession session, GtkUiNode node)
+	{
+		session.NativeBounds.TryGetValue(node.Id, out var b);
+		int Layout(string name, int fallback) => node.Layout != null && node.Layout.TryGetValue(name, out var v) && int.TryParse(v, out var i) ? i : fallback;
+		return new GtkDropNode(node.Id, node.ClassName, b.X, b.Y, b.Width, b.Height,
+			node.Children.Select(c => DropNode(session, c)).ToList(),
+			node.Properties.TryGetValue("orientation", out var o) ? o : null,
+			Layout("column", 0), Layout("row", 0), Layout("column-span", 1), Layout("row-span", 1));
+	}
+
+	/// <summary>The node with <paramref name="id"/> and its parent's class (null for a root).</summary>
+	static (GtkUiNode? Node, string? ParentClass) Locate(GtkUiDocumentEditor editor, string id)
+	{
+		foreach (var root in editor.Roots) {
+			if (root.Id == id) return (root, null);
+			var stack = new Stack<GtkUiNode>(); stack.Push(root);
+			while (stack.Count > 0) {
+				var parent = stack.Pop();
+				foreach (var child in parent.Children) {
+					if (child.Id == id) return (child, parent.ClassName);
+					stack.Push(child);
+				}
+			}
+		}
+		return (null, null);
+	}
 	static IEnumerable<string> SignalsFor(string type) => type switch {
 		"GtkButton" => new[] { "clicked", "activate" },
 		"GtkEntry" or "GtkPasswordEntry" => new[] { "activate", "changed" },
@@ -207,8 +341,8 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	{
 		session.NativeBounds.Clear(); if (!string.IsNullOrEmpty(session.Editor.Error) || session.Editor.Roots.Count == 0) return;
 		try {
-			var document = XDocument.Parse(session.Editor.Text); document.Descendants().Where(e => e.Name.LocalName == "signal").Remove(); var xml = document.ToString(SaveOptions.DisableFormatting);
-			using var builder = Gtk.Builder.NewFromString(xml, -1); var rootId = session.Editor.Roots[0].Id; if (builder.GetObject(rootId) is not Gtk.Widget root) return;
+			var xml = PreviewXml(session);
+			using var builder = BuildFrom(xml); var rootId = session.Editor.Roots[0].Id; if (builder.GetObject(rootId) is not Gtk.Widget root) return;
 			root.Measure(Gtk.Orientation.Horizontal, -1, out var minWidth, out var naturalWidth, out _, out _); var width = Math.Max(1, naturalWidth);
 			root.Measure(Gtk.Orientation.Vertical, width, out var minHeight, out var naturalHeight, out _, out _); var height = Math.Max(1, naturalHeight);
 			if (root is Gtk.Window window) { window.GetDefaultSize(out var defaultWidth, out var defaultHeight); width = Math.Max(width, defaultWidth); height = Math.Max(height, defaultHeight); }
@@ -244,10 +378,22 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	}
 	public void WaitForShutdown()
 	{
-		while (!shutdown.IsSet) {
-			while (gtkWork.TryDequeue(out var action)) action();
-			while (gtkContext.Pending()) gtkContext.Iteration(false);
-			gtkWorkAvailable.WaitOne(10);
+		// Own the default main context for the host's whole life. Gir.Core releases a GObject
+		// wrapper (from the GC finalizer thread too) through MainContext.Invoke, which runs the
+		// callback INLINE on the calling thread whenever that thread can acquire the context.
+		// This loop only held it during Iteration, so the finalizer thread usually could, and
+		// called into GTK concurrently with this thread - a native 0xC0000005 in
+		// ToggleRegistration.RemoveToggleRef. Owned here, those releases are queued to the
+		// context and run on this thread in the Iteration below.
+		var acquired = gtkContext.Acquire();
+		try {
+			while (!shutdown.IsSet) {
+				while (gtkWork.TryDequeue(out var action)) action();
+				while (gtkContext.Pending()) gtkContext.Iteration(false);
+				gtkWorkAvailable.WaitOne(10);
+			}
+		} finally {
+			if (acquired) gtkContext.Release();
 		}
 	}
 	public void OnParentDisconnected() { shutdown.Set(); gtkWorkAvailable.Set(); }
@@ -258,6 +404,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		public GtkUiDocumentEditor Editor { get; } = new();
 		public Dictionary<string, (double X, double Y, double Width, double Height)> NativeBounds { get; } = new(StringComparer.Ordinal);
 		public string RenderDiagnostic = "";
+		public List<string> PreviewDiagnostics = new();
 		public string CachedRenderKey = "";
 		public DesignerRenderFrame? CachedRender;
 		public Gtk.Builder? NativeBuilder;
@@ -269,7 +416,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		public void LoadNative(string xml, string rootId)
 		{
 			DisposeNative();
-			NativeBuilder = Gtk.Builder.NewFromString(xml, -1);
+			NativeBuilder = BuildFrom(xml);
 			NativeRoot = NativeBuilder.GetObject(rootId) as Gtk.Widget;
 			NativeRootId = rootId;
 			NativeVersion = Version;

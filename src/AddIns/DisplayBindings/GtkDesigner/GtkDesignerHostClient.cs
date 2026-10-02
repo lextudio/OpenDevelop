@@ -9,7 +9,7 @@ using ICSharpCode.SharpDevelop.Designer.Remote;
 
 namespace ICSharpCode.GtkDesigner;
 
-sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDesignHostClient, IDesignHostEventBinding, IDesignHostHitTesting
+sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDesignHostClient, IDesignHostEventBinding, IDesignHostHitTesting, IDesignHostPropertyReset
 {
 	static readonly SharedDesignerHostBroker<GtkDesignerHostConnection> broker = new(
 		connection => connection.IsAlive, StartConnectionAsync);
@@ -45,11 +45,25 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 
 	static async Task<GtkDesignerHostConnection> StartConnectionAsync(CancellationToken token)
 	{
+		string? gtkBin = null;
+		if (OperatingSystem.IsWindows() && (gtkBin = GtkRuntimeLocator.FindWindowsBinDirectory()) == null)
+			throw new GtkRuntimeMissingException("The GTK 4 runtime (libgtk-4-1.dll) was not found, so the GTK designer cannot start.\n\n"
+				+ GtkRuntimeLocator.InstallInstructions());
 		var root = Path.GetDirectoryName(typeof(GtkDesignerHostClient).Assembly.Location)!;
-		var connection = new GtkDesignerHostConnection(Path.Combine(root, "Host", "GtkDesigner.Host.dll"));
-		await connection.StartConnectionAsync(token).ConfigureAwait(false);
+		var connection = new GtkDesignerHostConnection(Path.Combine(root, "Host", "GtkDesigner.Host.dll"), gtkBin);
+		try {
+			await connection.StartConnectionAsync(token).ConfigureAwait(false);
+		} catch (Exception ex) when (ex is not OperationCanceledException && IsMissingGtk(ex)) {
+			// Off Windows there is no pre-check (GTK comes from the system loader paths), so the
+			// child's own DllNotFoundException is what reveals a missing runtime.
+			throw new GtkRuntimeMissingException("The GTK 4 runtime could not be loaded, so the GTK designer cannot start.\n\n"
+				+ GtkRuntimeLocator.InstallInstructions() + "\n\nHost output:\n" + ex.Message);
+		}
 		return connection;
 	}
+
+	static bool IsMissingGtk(Exception ex) => ex.ToString().Contains("DllNotFoundException", StringComparison.Ordinal)
+		&& ex.ToString().Contains("gtk", StringComparison.OrdinalIgnoreCase);
 
 	public Task<DesignerSessionState> OpenAsync(DesignerDocumentSnapshot snapshot, CancellationToken token = default)
 	{
@@ -65,6 +79,10 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 	public Task<DesignerSessionState> SetPropertyAsync(long v, string id, string name, string value, CancellationToken token = default) => TrackMutationAsync(Document.SetPropertyAsync(v, id, name, value, token), token);
 	public Task<DesignerSessionState> AddElementAsync(long v, string parent, DesignerToolboxItemInfo item, string name, double x, double y, CancellationToken token = default) => TrackMutationAsync(Document.AddElementAsync(v, parent, item, name, x, y, token), token);
 	public Task<DesignerSessionState> DeleteElementsAsync(long v, string[] ids, CancellationToken token = default) => TrackMutationAsync(Document.DeleteElementsAsync(v, ids, token), token);
+	/// <summary>The companion wiring source and handler signatures for this document's signals.</summary>
+	public Task<GtkSignalWiringResult> SignalWiringAsync(string uiFileName, string? namespaceName, string className, CancellationToken token = default)
+		=> connection.InvokeAsync<GtkSignalWiringResult>("gtk/signal-wiring", new { sessionId = SessionId, documentId = DocumentId, uiFileName, namespaceName, className }, token);
+	public Task<DesignerSessionState> ResetPropertyAsync(long v, string id, string name, CancellationToken token = default) => TrackMutationAsync(connection.ResetPropertyAsync(DocumentId, v, id, name, token), token);
 	public Task<DesignerSessionState> RenameAsync(long v, string id, string name, CancellationToken token = default) => TrackMutationAsync(Document.RenameAsync(v, id, name, token), token);
 	public Task<DesignerSessionState> UndoAsync(long v, CancellationToken token = default) => TrackMutationAsync(connection.UndoAsync(DocumentId, v, token), token);
 	public Task<DesignerSessionState> RedoAsync(long v, CancellationToken token = default) => TrackMutationAsync(connection.RedoAsync(DocumentId, v, token), token);
@@ -124,11 +142,19 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 	sealed class GtkDesignerHostConnection : DesignerHostProcessClient
 	{
 		readonly string hostDll;
-		public GtkDesignerHostConnection(string hostDll) => this.hostDll = hostDll;
+		readonly string? gtkBin;
+		public GtkDesignerHostConnection(string hostDll, string? gtkBin) { this.hostDll = hostDll; this.gtkBin = gtkBin; }
 		public Task StartConnectionAsync(CancellationToken token) => StartAsync(token);
 		protected override string GetChildDllPath() => hostDll;
 		protected override void ConfigureChildProcess(ProcessStartInfo startInfo)
 		{
+			// Gir.Core resolves libgtk-4-1.dll and its dependencies through the normal DLL search,
+			// so the located GTK bin folder goes first on the child's PATH - without touching the
+			// user's own PATH.
+			if (OperatingSystem.IsWindows() && gtkBin != null) {
+				var existing = startInfo.Environment.TryGetValue("PATH", out var path) ? path : null;
+				startInfo.Environment["PATH"] = string.IsNullOrEmpty(existing) ? gtkBin : gtkBin + Path.PathSeparator + existing;
+			}
 			if (OperatingSystem.IsMacOS()) {
 				var homebrewLibraries = Directory.Exists("/opt/homebrew/lib") ? "/opt/homebrew/lib" : "/usr/local/lib";
 				var existing = startInfo.Environment.TryGetValue("DYLD_LIBRARY_PATH", out var value) ? value : null;
@@ -140,6 +166,7 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 		public Task<DesignerSessionState> UndoAsync(string documentId, long v, CancellationToken token) => InvokeAsync<DesignerSessionState>("design/undo", new { sessionId = SessionId, documentId, baseVersion = v }, token);
 		public Task<DesignerSessionState> RedoAsync(string documentId, long v, CancellationToken token) => InvokeAsync<DesignerSessionState>("design/redo", new { sessionId = SessionId, documentId, baseVersion = v }, token);
 		public Task<DesignerSessionState> ReorderAsync(string documentId, long v, string id, int delta, CancellationToken t) => InvokeAsync<DesignerSessionState>("design/reorder", new { sessionId = SessionId, documentId, baseVersion = v, elementId = id, delta }, t);
+		public Task<DesignerSessionState> ResetPropertyAsync(string documentId, long v, string id, string name, CancellationToken t) => InvokeAsync<DesignerSessionState>("design/reset-property", new { sessionId = SessionId, documentId, baseVersion = v, elementId = id, propertyName = name }, t);
 		public Task<DesignerSessionState> RenderAsync(string documentId, long version, CancellationToken token) => InvokeAsync<DesignerSessionState>("design/render", new { sessionId = SessionId, documentId, baseVersion = version }, token);
 	}
 }

@@ -9,5 +9,9 @@
   <ItemGroup>
     <PackageReference Include="xunit.v3" />
     <Compile Include="..\GtkDesigner\GtkUiDocumentEditor.cs" Link="GtkUiDocumentEditor.cs" />
+    <Compile Include="..\GtkDesigner\GirCatalog.cs" Link="GirCatalog.cs" />
+    <Compile Include="..\GtkDesigner\GtkSignalWiring.cs" Link="GtkSignalWiring.cs" />
+    <Compile Include="..\GtkDesigner\GtkDropPlanner.cs" Link="GtkDropPlanner.cs" />
+    <Compile Include="..\GtkDesigner\GtkPreviewSanitizer.cs" Link="GtkPreviewSanitizer.cs" />
   </ItemGroup>
 </Project>
