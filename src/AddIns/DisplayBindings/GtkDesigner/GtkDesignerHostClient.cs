@@ -50,7 +50,13 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 			throw new GtkRuntimeMissingException("The GTK 4 runtime (libgtk-4-1.dll) was not found, so the GTK designer cannot start.\n\n"
 				+ GtkRuntimeLocator.InstallInstructions());
 		var root = Path.GetDirectoryName(typeof(GtkDesignerHostClient).Assembly.Location)!;
-		var connection = new GtkDesignerHostConnection(Path.Combine(root, "Host", "GtkDesigner.Host.dll"), gtkBin);
+		var hostDll = Path.Combine(root, "Host", "GtkDesigner.Host.dll");
+		if (OperatingSystem.IsMacOS()) {
+			var warning = GtkRuntimeLocator.PrepareMacOsLibraries(Path.GetDirectoryName(hostDll)!);
+			if (warning.Length > 0)
+				throw new GtkRuntimeMissingException("The GTK 4 runtime could not be located. " + warning);
+		}
+		var connection = new GtkDesignerHostConnection(hostDll, gtkBin);
 		try {
 			await connection.StartConnectionAsync(token).ConfigureAwait(false);
 		} catch (Exception ex) when (ex is not OperationCanceledException && IsMissingGtk(ex)) {

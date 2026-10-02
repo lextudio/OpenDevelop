@@ -27,8 +27,8 @@ static class GtkAdwaita
 		} catch (Exception ex) when (ex is DllNotFoundException or TypeInitializationException or EntryPointNotFoundException) {
 			Diagnostic = "This document requires libadwaita, which could not be loaded, so Adw widgets are previewed as placeholders. "
 				+ (OperatingSystem.IsWindows() ? "Install it in MSYS2: pacman -S " + (System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture == System.Runtime.InteropServices.Architecture.Arm64 ? "mingw-w64-clang-aarch64-libadwaita" : "mingw-w64-ucrt-x86_64-libadwaita") + "."
-					: OperatingSystem.IsMacOS() ? "Install it with: brew install libadwaita (keg-only, so its libraries are in /opt/homebrew/opt/libadwaita/lib - "
-						+ "the designer host already adds that directory to DYLD_LIBRARY_PATH, and libadwaita needs gtk4 installed too)."
+					: OperatingSystem.IsMacOS() ? "Install it with: brew install libadwaita, which also needs gtk4. The designer host links both "
+						+ "libraries next to its own executable, so nothing else has to be configured."
 					
 					: "Install your distribution's libadwaita-1 package.")
 				+ " (" + ex.GetBaseException().Message + ")";
