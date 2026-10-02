@@ -1138,6 +1138,9 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				mainWindow.WindowState = System.Windows.WindowState.Normal;
 			mainWindow.Activate();
 			mainWindow.Focus();
+			// The window may already count as active, in which case Activate() raises no Activated
+			// event and a file changed on disk in the meantime is never picked up. Apply it directly.
+			ICSharpCode.SharpDevelop.Workbench.FileChangeWatcher.ApplyPendingExternalChanges();
 
 			// Window.Activate()/Focus() only set WPF-internal IsActive bookkeeping - they don't by
 			// themselves raise/focus the underlying native (GLFW-backed) OS window that cliclick's
@@ -3470,6 +3473,10 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			var textArea = editor?.GetService(typeof(ICSharpCode.AvalonEdit.Editing.TextArea)) as FrameworkElement;
 			if (textArea == null)
 				return JsonSerializer.Serialize(new { success = false, error = "No TextArea for " + path });
+			// Activating the view only queues it into the window; until the next layout pass it has no
+			// PresentationSource and PointToScreen throws. Report that as a retryable state.
+			if (PresentationSource.FromVisual(textArea) == null)
+				return JsonSerializer.Serialize(new { success = false, error = "TextArea for " + path + " is not attached to a window yet", retry = true });
 
 			var topLeft = textArea.PointToScreen(new Point(0, 0));
 			var bottomRight = textArea.PointToScreen(new Point(textArea.ActualWidth, textArea.ActualHeight));

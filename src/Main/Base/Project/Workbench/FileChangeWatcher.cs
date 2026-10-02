@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using ICSharpCode.Core;
 
 namespace ICSharpCode.SharpDevelop.Workbench
@@ -73,6 +74,19 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			foreach (FileChangeWatcher w in activeWatchers)
 				w.SetWatcher();
 			Project.ProjectChangeWatcher.OnAllChangeWatchersDisabledChanged();
+		}
+		
+		/// <summary>
+		/// Does what activating the main window does: reloads (or queues for the reload dialog) every
+		/// file that changed on disk while the IDE was not the active window. Activation only raises
+		/// <c>Activated</c> on a transition, so a window that is already active - or one that never
+		/// becomes active, as under OD_TEST_MODE - would otherwise sit on the change forever.
+		/// </summary>
+		public static void ApplyPendingExternalChanges()
+		{
+			SD.MainThread.VerifyAccess();
+			foreach (FileChangeWatcher w in activeWatchers.ToArray())
+				w.MainForm_Activated(null, EventArgs.Empty);
 		}
 		
 		FileSystemWatcher watcher;
