@@ -817,12 +817,16 @@ the supported route - yields nothing here. An unrealized `Gsk.CairoRenderer` is 
 separate trap: `gsk_renderer_render_texture` asserts `priv->is_realized` and returns
 nothing (`CreateRenderer` realizes it).
 
-The open question is why the content never produces a node at the current allocation
-in the first place. Both existing routes assume a draw has already happened at the
-size being reported. Candidates not yet tried: hosting the content in a `Gtk.Picture`
-or another non-window surface so it draws on its own; driving a real frame cycle
-before snapshotting instead of draining the main context; or avoiding the
-`Gtk.Window` root entirely for previews.
+**Resolved: the node was never stale.** Allocation is a correct 800x600 at every
+step; the probe now also prints the node's bounds, which are `(-3, 2.66) 806x62.34`.
+A render node's bounds are the extent of what it *drew*, not the allocation it drew
+into - a background-less `Box` with a label and a button only paints those two rows,
+plus the button's 3px shadow on each side. `gsk_renderer_render_texture` with a null
+viewport renders exactly the node bounds, hence 806x63. The fix is to pass an
+explicit `(0, 0, width, height)` viewport; the probe shows `800x600` that way from
+the same node. The "stale node" theory and the three candidate fixes listed earlier
+(`Gtk.Picture`, a real frame cycle, dropping the `Gtk.Window` root) are therefore
+unnecessary. `WidgetPaintable`'s empty node remains unexplained but no longer matters.
 
 ### Offline probe
 

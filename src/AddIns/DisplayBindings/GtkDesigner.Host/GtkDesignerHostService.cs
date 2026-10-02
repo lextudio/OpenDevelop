@@ -329,7 +329,13 @@ sealed class GtkDesignerHostService : IDesignerChildService
 				}
 				if (node == null) throw new InvalidOperationException("GTK produced an empty render node.");
 				renderer ??= CreateRenderer();
-				using var texture = renderer.RenderTexture(node, null);
+				// The viewport has to be explicit. A node's bounds are the extent of what it drew, not the
+				// allocation it drew into: a background-less Box with a label and a button reports 806x62 at
+				// (-3, 2.66) - the two rows plus the button's shadow - for content allocated 800x600, and a
+				// null viewport renders exactly those bounds. Clip to the allocation instead.
+				var viewport = new Graphene.Rect();
+				viewport.Init(0, 0, width, height);
+				using var texture = renderer.RenderTexture(node, viewport);
 				// Whatever GTK produced is what the canvas has to lay out, so report the texture's size and
 				// not the size that was requested. A frame that claims more pixels than it carries is what
 				// turned a too-small render into a stretched, distorted surface.
