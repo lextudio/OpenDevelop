@@ -89,8 +89,7 @@ internal sealed class ToolsPadViewModel : ToolPaneModel, IToolsPadHost
     {
         var context = e as WorkbenchContextChangedEventArgs;
         var view = context?.ActiveViewContent ?? SD.Workbench.ActiveViewContent;
-        IToolsHost th = view?.GetService<IToolsHost>();
-        hostedContent = th?.ToolsContent;
+        hostedContent = DocumentToolsContent(view);
         if (hostedContent is FrameworkElement element && element.Tag is IFilterableToolbox filterable)
             contentControl.Content = CreateSearchableToolbox(element, filterable);
         else {
@@ -98,6 +97,31 @@ internal sealed class ToolsPadViewModel : ToolPaneModel, IToolsPadHost
             contentControl.Content = hostedContent
                 ?? StringParser.Parse("${res:SharpDevelop.SideBar.NoToolsAvailableForCurrentDocument}");
         }
+    }
+
+    /// <summary>
+    /// The toolbox of the document <paramref name="view"/> belongs to. The active view's own content
+    /// comes first; when it has none - the Source half of a document shown Design and Source side by
+    /// side, whose editor knows nothing about the framework - another view in the same window
+    /// supplies it. One document has one toolbox, whichever half has focus.
+    /// </summary>
+    static object DocumentToolsContent(IViewContent view)
+    {
+        if (view == null)
+            return null;
+        var own = view.GetService<IToolsHost>()?.ToolsContent;
+        if (own != null)
+            return own;
+        var siblings = view.WorkbenchWindow?.ViewContents;
+        if (siblings == null)
+            return null;
+        foreach (var sibling in siblings) {
+            if (ReferenceEquals(sibling, view))
+                continue;
+            if (sibling.GetService<IToolsHost>()?.ToolsContent is { } content)
+                return content;
+        }
+        return null;
     }
 
     FrameworkElement CreateSearchableToolbox(FrameworkElement toolbox, IFilterableToolbox filterable)

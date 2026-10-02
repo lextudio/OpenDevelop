@@ -94,6 +94,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 		readonly CollectionViewSource itemsView = new();
 		readonly List<SharedToolboxItem> items = new();
 		HashSet<string> activeScopes;
+		bool resetSelectsFirst = true;
 		string filterText = "";
 
 		Point dragStartPoint;
@@ -112,6 +113,16 @@ namespace ICSharpCode.SharpDevelop.Gui
 		bool restoringDragSelection;
 
 		public event EventHandler<SharedToolboxItem> SelectionChanged;
+
+		/// <summary>Raised when the user double-clicks a draggable row or presses Enter on it - the
+		/// keyboard and mouse alternative to dragging it onto the design surface.</summary>
+		public event EventHandler<SharedToolboxItem> ItemInvoked;
+
+		/// <summary>Whoever last activated scopes through <see cref="SetActiveScopes(object, bool, string[])"/>
+		/// - the designer the visible list currently belongs to. Several documents of one framework
+		/// share a scope, so a designer reacting to <see cref="ItemInvoked"/> or
+		/// <see cref="SelectionChanged"/> checks this to know the event is meant for it.</summary>
+		public object ActiveOwner { get; private set; }
 
 		SharedToolbox()
 		{
@@ -141,6 +152,18 @@ namespace ICSharpCode.SharpDevelop.Gui
 			toolbox.ItemTemplate = CreateItemTemplate();
 			toolbox.GroupStyle.Add(CreateGroupStyle());
 			toolbox.SelectionChanged += OnSelectionChanged;
+			toolbox.MouseDoubleClick += (_, e) => {
+				if (ResolveItemFromEventSource(e.OriginalSource) is { IsDraggable: true } item) {
+					ItemInvoked?.Invoke(this, item);
+					e.Handled = true;
+				}
+			};
+			toolbox.KeyDown += (_, e) => {
+				if (e.Key == Key.Enter && SelectedItem is { IsDraggable: true } item) {
+					ItemInvoked?.Invoke(this, item);
+					e.Handled = true;
+				}
+			};
 			toolbox.PreviewMouseLeftButtonDown += OnPreviewMouseLeftButtonDown;
 			// Listen even when a Selector class handler has already handled the tunneled move.
 			// This instance handler runs on the ListBox before the event reaches the row under
@@ -159,6 +182,9 @@ namespace ICSharpCode.SharpDevelop.Gui
 		public int VisibleItemCount => itemsView.View.Cast<object>().Count();
 
 		public int ItemCount(string scope) => items.Count(item => item.Scope == scope);
+
+		/// <summary>Every row of one scope, whether or not it is currently shown.</summary>
+		public IEnumerable<SharedToolboxItem> Items(string scope) => items.Where(item => item.Scope == scope);
 
 		public int GroupCount {
 			get {
@@ -214,12 +240,26 @@ namespace ICSharpCode.SharpDevelop.Gui
 		/// first ("Pointer") row - call this right before handing <see cref="ToolboxControl"/> to
 		/// an <see cref="IToolsHost.ToolsContent"/> caller, so the one shared ListBox shows only
 		/// the categories relevant to whichever document is actually active.</summary>
-		public void SetActiveScopes(params string[] scopes)
+		public void SetActiveScopes(params string[] scopes) => SetActiveScopes(null, true, scopes);
+
+		/// <summary>Filters the shared list down to <paramref name="scopes"/> on behalf of
+		/// <paramref name="owner"/>. A framework whose categories start with a "Pointer" row selects it
+		/// (<paramref name="selectFirst"/>); one without that row leaves nothing selected, so a stray
+		/// Enter does not insert whatever control happens to come first.</summary>
+		public void SetActiveScopes(object owner, bool selectFirst, params string[] scopes)
 		{
+			ActiveOwner = owner;
 			activeScopes = new HashSet<string>(scopes, StringComparer.Ordinal);
 			itemsView.View.Refresh();
-			SelectFirstInActiveScope();
+			resetSelectsFirst = selectFirst;
+			if (selectFirst)
+				SelectFirstInActiveScope();
+			else if (toolbox.SelectedItem is SharedToolboxItem selected && !activeScopes.Contains(selected.Scope))
+				toolbox.SelectedItem = null;
 		}
+
+		/// <summary>True when <paramref name="scope"/> is one of the scopes currently shown.</summary>
+		public bool IsScopeActive(string scope) => activeScopes != null && activeScopes.Contains(scope);
 
 		void SelectFirstInActiveScope()
 		{
@@ -230,7 +270,13 @@ namespace ICSharpCode.SharpDevelop.Gui
 		/// <summary>Resets the selection back to whichever scope's first ("Pointer") row is
 		/// active - called by a facade after a drop completes, mirroring both predecessors'
 		/// ResetToolSelection.</summary>
-		public void ResetSelection() => SelectFirstInActiveScope();
+		public void ResetSelection()
+		{
+			if (resetSelectsFirst)
+				SelectFirstInActiveScope();
+			else
+				toolbox.SelectedItem = null;
+		}
 
 		static DataTemplate CreateItemTemplate()
 		{

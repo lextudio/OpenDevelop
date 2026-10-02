@@ -41,7 +41,7 @@ using ICSharpCode.SharpDevelop.Workbench;
 namespace ICSharpCode.AvalonEdit.AddIn
 {
 	public class AvalonEditViewContent
-		: AbstractViewContent, IMementoCapable, IToolsHost
+		: AbstractViewContent, IMementoCapable, IToolsHost, IToolboxDropTarget
 	{
 		readonly CodeEditor codeEditor = new CodeEditor();
 		IAnalyticsMonitorTrackedFeature trackedFeature;
@@ -64,8 +64,8 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				if (!IsKnownFileExtension(filetype))
 					filetype = ".?";
 				trackedFeature = SD.AnalyticsMonitor.TrackFeature(typeof(AvalonEditViewContent), "open" + filetype.ToLowerInvariant());
-				if (filetype.Equals(".xaml", StringComparison.OrdinalIgnoreCase))
-					SetupXamlDragDrop();
+				isXaml = filetype.Equals(".xaml", StringComparison.OrdinalIgnoreCase);
+				SetupToolboxDragDrop();
 			}
 			
 			this.Files.Add(file);
@@ -300,7 +300,22 @@ namespace ICSharpCode.AvalonEdit.AddIn
 		}
 		#endregion
 		
-		void SetupXamlDragDrop()
+		bool isXaml;
+
+		/// <summary>A designer in this document's window that plans toolbox drops onto this text -
+		/// the Design half of a Design/Source split. Null for a plain text document.</summary>
+		IToolboxSourceDropHandler ToolboxDropHandler(IDataObject data)
+		{
+			var siblings = WorkbenchWindow?.ViewContents;
+			if (siblings == null)
+				return null;
+			foreach (var view in siblings)
+				if (!ReferenceEquals(view, this) && view.GetService<IToolboxSourceDropHandler>() is { } handler && handler.CanAcceptToolboxDrop(data))
+					return handler;
+			return null;
+		}
+
+		void SetupToolboxDragDrop()
 		{
 			var textArea = codeEditor.PrimaryTextEditor.TextArea;
 			// Toolbox drags are OLE drags originating outside AvalonEdit.  Subscribing
@@ -315,8 +330,8 @@ namespace ICSharpCode.AvalonEdit.AddIn
 
 		void TextArea_XamlDragOver(object sender, DragEventArgs e)
 		{
-			XamlDropLog("DragOver", (TextArea)sender, e);
-			if (e.Data.GetDataPresent("ComponentTypeName")) {
+			if (ToolboxDropHandler(e.Data) != null || isXaml && e.Data.GetDataPresent("ComponentTypeName")) {
+				XamlDropLog("DragOver", (TextArea)sender, e);
 				e.Effects = e.AllowedEffects & DragDropEffects.Copy;
 				e.Handled = true;
 			}
@@ -324,6 +339,18 @@ namespace ICSharpCode.AvalonEdit.AddIn
 
 		void TextArea_Drop(object sender, DragEventArgs e)
 		{
+			if (ToolboxDropHandler(e.Data) != null) {
+				XamlDropLog("Drop", (TextArea)sender, e);
+				var dropOffset = GetDropOffset((TextArea)sender, e);
+				var dropped = ((IToolboxDropTarget)this).DropToolboxItem(e.Data, dropOffset);
+				XamlDropLog($"Dropped offset={dropOffset} inserted={dropped}", (TextArea)sender, e);
+				// Handled even when the designer refused the spot: falling through would let
+				// AvalonEdit insert the dragged type name as plain text.
+				e.Handled = true;
+				return;
+			}
+			if (!isXaml)
+				return;
 			XamlDropLog("Drop", (TextArea)sender, e);
 			string typeName = e.Data.GetData("ComponentTypeName") as string;
 			if (typeName == null)
@@ -380,6 +407,20 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			return dropPosition.HasValue
 				? codeEditor.Document.GetOffset(dropPosition.Value.Location)
 				: codeEditor.Document.TextLength;
+		}
+
+		bool IToolboxDropTarget.DropToolboxItem(IDataObject data, int offset)
+		{
+			if (ToolboxDropHandler(data) is not { } handler)
+				return false;
+			// The designer plans against this editor's text, not its own copy, so an edit typed here
+			// and not yet handed to the designer is neither lost nor overwritten.
+			var edit = handler.PlanToolboxDrop(data, codeEditor.Document.Text, Math.Max(0, Math.Min(offset, codeEditor.Document.TextLength)));
+			if (edit == null)
+				return false;
+			codeEditor.Document.Replace(edit.Offset, edit.RemovalLength, edit.Text);
+			codeEditor.PrimaryTextEditor.CaretOffset = Math.Min(edit.CaretOffset, codeEditor.Document.TextLength);
+			return true;
 		}
 
 		object IToolsHost.ToolsContent {

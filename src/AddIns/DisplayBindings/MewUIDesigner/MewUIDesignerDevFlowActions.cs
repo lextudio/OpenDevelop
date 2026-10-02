@@ -26,7 +26,7 @@ public static class MewUIDesignerDevFlowActions
 		return view == null ? JsonSerializer.Serialize(new { active = false }) : JsonSerializer.Serialize(new {
 			active = true, status = view.Status, windowClassName = view.WindowClassName, elementCount = view.ElementCount,
 			selectedName = view.SelectedName, selectedIds = view.SelectedIds, hostProcessId = view.HostProcessId, hostPoolKey = view.HostPoolKey, hostSessionId = view.HostSessionId, hostDocumentId = view.HostDocumentId, activeHostLeases = view.ActiveHostLeases, hostRecoveryCount = view.HostRecoveryCount, canUndo = view.EnableUndo, canRedo = view.EnableRedo,
-			toolboxItemCount = view.ToolboxItemCount, toolboxFilterText = view.ToolboxFilterText, toolboxSelectedItem = view.SelectedToolboxType, toolboxHosted = view.IsToolboxHosted, toolboxSearchHosted = (SD.Services.GetService(typeof(IToolsPadHost)) as IToolsPadHost)?.HasToolboxSearch == true, zoomComboSelectedIndex = view.ZoomComboSelectedIndex, outlineHosted = view.IsOutlineHosted, outlineItemCount = view.OutlineItemCount,
+			toolboxItemCount = view.ToolboxItemCount, toolboxDrag = SharedToolbox.Instance.DragDiagnostic, toolboxFilterText = view.ToolboxFilterText, toolboxSelectedItem = view.SelectedToolboxType, toolboxHosted = view.IsToolboxHosted, toolboxSearchHosted = (SD.Services.GetService(typeof(IToolsPadHost)) as IToolsPadHost)?.HasToolboxSearch == true, zoomComboSelectedIndex = view.ZoomComboSelectedIndex, outlineHosted = view.IsOutlineHosted, outlineItemCount = view.OutlineItemCount,
 			propertyPadSelectedType = grid?.SelectedObject?.GetType().FullName, propertyPadPropertyCount = grid?.Properties?.Count ?? 0,
 			hasNativeFrame = view.HasNativeFrame, nativeFrameWidth = view.NativeFrameWidth, nativeFrameHeight = view.NativeFrameHeight, nativeBoundsCount = view.NativeBoundsCount, diagnostics = view.Diagnostics, toolbarItemCount = view.ToolbarItemCount, toolbarItems = view.ToolbarItems, toolbarCapabilities = view.ToolbarCapabilities, zoom = view.Zoom, fitMeasured = view.FitMeasured, gridlines = view.Gridlines,
 			isDirty = view.IsDesignerDirty, hostLogTail = view.HostLogTail
@@ -87,64 +87,9 @@ public static class MewUIDesignerDevFlowActions
 		if (!MewUIDesignerViewContent.ToolNames.Contains(typeName, StringComparer.Ordinal))
 			return JsonSerializer.Serialize(new { success = false, error = "Unknown toolbox item: " + typeName });
 
-		var toolbox = v.ToolboxControl;
-		if (!v.SelectToolboxType(typeName)) return JsonSerializer.Serialize(new { success = false, error = "Toolbox controller rejected item: " + typeName });
-		var toolboxItem = v.SelectedToolboxItem!;
-		toolbox.ScrollIntoView(toolboxItem);
-		toolbox.UpdateLayout();
-
-		if (FindRealizedContainer(toolbox, toolboxItem) is not FrameworkElement container)
-			return JsonSerializer.Serialize(new { success = false, error = "Toolbox row has no realized container (not scrolled into view?): " + typeName });
-
-		container.BringIntoView();
-		toolbox.UpdateLayout();
-
-		if (!WaitUntilRowHitTestableAt(toolbox, container))
-			return JsonSerializer.Serialize(new { success = false, error = "Toolbox row never settled at its own layout position (scroll/render lag): " + typeName });
-
+		if (v.ToolboxRow(typeName, out var error) is not { } container)
+			return JsonSerializer.Serialize(new { success = false, error });
 		return JsonSerializer.Serialize(GetScreenBounds(container));
-	}
-
-	/// <summary>
-	/// Blocks until an input hit-test at <paramref name="container"/>'s own centre resolves back to
-	/// it, so the bounds handed out are ones a real synthetic click lands on. ScrollIntoView updates
-	/// layout synchronously, but the pointer hits the last RENDERED frame, which lags a compose.
-	/// InputHitTest deliberately: VisualTreeHelper.HitTest goes through the compositor scene on this
-	/// stack and reports stale results for layout-only elements. Mirrors the GTK designer's copy.
-	/// </summary>
-	static bool WaitUntilRowHitTestableAt(ListBox toolbox, FrameworkElement container, int timeoutMilliseconds = 4000)
-	{
-		for (var elapsed = 0; ; elapsed += 100) {
-			var centre = new Point(container.RenderSize.Width / 2, container.RenderSize.Height / 2);
-			var inToolbox = container.TranslatePoint(centre, toolbox);
-			if (toolbox.InputHitTest(inToolbox) is DependencyObject hit && ResolvesTo(hit, container))
-				return true;
-			if (elapsed >= timeoutMilliseconds)
-				return false;
-			PumpFor(100);
-			toolbox.UpdateLayout();
-		}
-
-		static bool ResolvesTo(DependencyObject hit, FrameworkElement container)
-		{
-			for (var current = hit; current != null; current = VisualTreeHelper.GetParent(current))
-				if (ReferenceEquals(current, container))
-					return true;
-			return false;
-		}
-	}
-
-	static void PumpFor(int milliseconds)
-	{
-		var frame = new System.Windows.Threading.DispatcherFrame();
-		var timer = new System.Windows.Threading.DispatcherTimer(
-			TimeSpan.FromMilliseconds(milliseconds),
-			System.Windows.Threading.DispatcherPriority.Background,
-			(_, _) => frame.Continue = false,
-			System.Windows.Threading.Dispatcher.CurrentDispatcher);
-		timer.Start();
-		try { System.Windows.Threading.Dispatcher.PushFrame(frame); }
-		finally { timer.Stop(); }
 	}
 
 	[DevFlowAction("od.mewui-designer.query-element-screen-bounds", Description = "Get the real on-screen bounds of a rendered MewUI element in the active designer's preview, for driving a synthetic mouse drag")]
@@ -156,23 +101,6 @@ public static class MewUIDesignerDevFlowActions
 		return JsonSerializer.Serialize(new { success = true, x = bounds.X, y = bounds.Y, width = bounds.Width, height = bounds.Height, centerX = bounds.X + bounds.Width / 2, centerY = bounds.Y + bounds.Height / 2 });
 	}
 
-	static ListBoxItem? FindRealizedContainer(ItemsControl itemsControl, object item)
-	{
-		return FindInVisualTree(itemsControl);
-
-		ListBoxItem? FindInVisualTree(DependencyObject node)
-		{
-			int count = VisualTreeHelper.GetChildrenCount(node);
-			for (int i = 0; i < count; i++) {
-				var child = VisualTreeHelper.GetChild(node, i);
-				if (child is ListBoxItem listBoxItem && Equals(listBoxItem.DataContext, item))
-					return listBoxItem;
-				if (FindInVisualTree(child) is ListBoxItem found)
-					return found;
-			}
-			return null;
-		}
-	}
 
 	static object GetScreenBounds(UIElement element)
 	{

@@ -13,9 +13,10 @@
     <EmbeddedResource Include="Resources\GtkUi.xshd" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Remove="GtkUiDocumentEditor.cs" />
     <!-- GirCatalog.cs and GtkSignalWiring.cs are pure and also compiled here, but the IDE only
-         uses their wiring DTOs: the GIR itself is loaded by the design host, never by the IDE. -->
+         uses their wiring DTOs: the GIR itself is loaded by the design host, never by the IDE.
+         GtkUiDocumentEditor.cs is pure too: the design host owns the document, but a toolbox drop
+         onto the source pane is planned here, synchronously, against that pane's own text. -->
     <ProjectReference Include="..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
     <ProjectReference Include="..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
     <ProjectReference Include="..\..\..\Main\ICSharpCode.SharpDevelop.Widgets\Project\ICSharpCode.SharpDevelop.Widgets.csproj" Private="false" />

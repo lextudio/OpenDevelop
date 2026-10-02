@@ -163,6 +163,20 @@ public sealed class GtkUiDocumentEditor
 		return Commit();
 	}
 
+	/// <summary>Adds a new <paramref name="className"/> child where a toolbox drop onto the source text
+	/// at <paramref name="offset"/> puts it: into the innermost container holding that point, beside the
+	/// child the point is on (see XmlToolboxDropPlanner). False when no container holds the point.</summary>
+	public bool AddAt(int offset, string className)
+	{
+		var point = ICSharpCode.SharpDevelop.Designer.Shell.XmlToolboxDropPlanner.Plan(Text, offset,
+			e => e.Name == "object" && e.Attribute("id") != null && e.Attribute("class") is { } cls && ContainerClasses.Contains(cls));
+		if (point == null) return false;
+		// The planner counts every child element; Add counts only the <child> elements that hold an
+		// object (not <property>, <layout>, <style>, ...).
+		var index = point.Container.Children.Take(point.ChildIndex).Count(c => c.Name == "child" && c.Children.Any(o => o.Name is "object" or "template"));
+		return Add(point.Container.Attribute("id")!, className, index);
+	}
+
 	/// <summary>The first row below every existing child (row + row-span; GTK's defaults 0 and 1).</summary>
 	static int NextGridRow(XElement grid)
 	{
