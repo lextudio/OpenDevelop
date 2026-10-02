@@ -132,15 +132,6 @@ static class Probe
 			node = snapshot.ToNode();
 		}
 		if (node == null) { Console.WriteLine("empty render node"); return 0; }
-		var renderer = Gsk.CairoRenderer.New();
-		// An unrealized renderer fails the render outright and hands back nothing: gsk_renderer_render_texture
-		// asserts priv->is_realized. Production realizes it in CreateRenderer.
-		renderer.Realize(null);
-		using (var texture = renderer.RenderTexture(node, null)) {
-			Console.WriteLine("texture " + texture.Width + "x" + texture.Height
-				+ " (widget content was " + paintTarget.GetWidth() + "x" + paintTarget.GetHeight()
-				+ ", frame " + width + "x" + height + ")");
-		}
 		return 0;
 	}
 

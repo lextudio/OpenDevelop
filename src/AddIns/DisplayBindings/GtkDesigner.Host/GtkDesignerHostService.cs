@@ -282,6 +282,13 @@ sealed class GtkDesignerHostService : IDesignerChildService
 				root.QueueDraw();
 				DrainMainContext();
 				var paintTarget = root is Gtk.Window mappedWindow ? mappedWindow.GetChild() ?? root : root;
+				// QueueDraw on the root is not enough. What gets snapshotted is the content, and
+				// SnapshotChild reuses the render node that content last produced - so without a draw of
+				// its own at the new allocation, the node is the one from before the resize, and the
+				// texture comes out at the old size (806x63 for a widget that is 800x600) while the frame
+				// claims the new one.
+				paintTarget.QueueDraw();
+				DrainMainContext();
 				// An unmapped window never runs a size-allocate pass on its child, so the content keeps
 				// its natural size while the frame reports the size that was asked for. The client then
 				// stretches that small bitmap across the large frame it was promised, and a label-and-
