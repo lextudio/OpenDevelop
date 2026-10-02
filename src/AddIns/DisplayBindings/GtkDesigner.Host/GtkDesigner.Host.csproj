@@ -17,6 +17,7 @@
     <ProjectReference Include="..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
     <ProjectReference Include="..\..\..\Main\Designer\Designer.Server\Designer.Server.csproj" />
     <Compile Include="..\GtkDesigner\GtkUiDocumentEditor.cs" Link="GtkUiDocumentEditor.cs" />
+    <Compile Include="..\..\..\Main\Designer\Designer.Shell\XmlToolboxDropPlanner.cs" Link="XmlToolboxDropPlanner.cs" />
     <Compile Include="..\GtkDesigner\GirCatalog.cs" Link="GirCatalog.cs" />
     <Compile Include="..\GtkDesigner\GtkSignalWiring.cs" Link="GtkSignalWiring.cs" />
     <Compile Include="..\GtkDesigner\GtkDropPlanner.cs" Link="GtkDropPlanner.cs" />
