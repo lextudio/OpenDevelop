@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Designer.Shell;
@@ -30,6 +31,43 @@ public static class GtkDesignerDevFlowActions
 			propertyPadPropertyCount = grid?.Properties?.Count ?? 0, canUndo = view.EnableUndo, canRedo = view.EnableRedo, hostAlive = view.IsHostAlive, documentCanUndo = view.DocumentCanUndo, documentCanRedo = view.DocumentCanRedo, loadCount = view.LoadCount
 		});
 	}
+	/// <summary>Renders the live designer to a PNG. The GTK host's own render frame only carries the
+	/// design content, so it cannot show how the canvas placed and scaled that content - which is where
+	/// a distorted surface shows up. Capturing the real WPF visual covers the whole designer, chrome and
+	/// all, and unlike an OS window capture it is independent of window position, occlusion and monitor
+	/// scaling, so two runs can be compared pixel for pixel.</summary>
+	[DevFlowAction("od.gtk-designer.screenshot", Description = "Render the active GTK designer to a PNG at its current size and zoom")]
+	public static string Screenshot(string path)
+	{
+		var view = Activate();
+		if (view == null)
+			return JsonSerializer.Serialize(new { success = false, error = "No GTK designer is active." });
+		var visual = view.Control as FrameworkElement;
+		if (visual == null)
+			return JsonSerializer.Serialize(new { success = false, error = "The GTK designer has no visual tree to capture." });
+		// Layout has to be flushed first: after an insert, a zoom or a rehost, ActualWidth is still the
+		// previous pass's value and the bitmap would be captured at the stale size.
+		visual.UpdateLayout();
+		var width = (int)Math.Ceiling(visual.ActualWidth);
+		var height = (int)Math.Ceiling(visual.ActualHeight);
+		if (width <= 0 || height <= 0)
+			return JsonSerializer.Serialize(new {
+				success = false,
+				error = "The GTK designer has not been laid out yet (size " + visual.ActualWidth + "x" + visual.ActualHeight + ")."
+			});
+		var target = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+		target.Render(visual);
+		var encoder = new PngBitmapEncoder();
+		encoder.Frames.Add(BitmapFrame.Create(target));
+		var full = Environment.ExpandEnvironmentVariables(path);
+		var directory = System.IO.Path.GetDirectoryName(full);
+		if (!string.IsNullOrEmpty(directory))
+			System.IO.Directory.CreateDirectory(directory);
+		using (var stream = System.IO.File.Create(full))
+			encoder.Save(stream);
+		return JsonSerializer.Serialize(new { success = true, path = full, width, height });
+	}
+
 	[DevFlowAction("od.gtk-designer.select", Description = "Select a GtkBuilder object and populate the real Properties pad")]
 	public static string Select(string id) { var view = Activate(); var ok = view?.SelectById(id) == true; return JsonSerializer.Serialize(new { success = ok, selectedId = view?.SelectedId, propertyPadSelectedType = PropertyGrid?.SelectedObject?.GetType().FullName }); }
 	[DevFlowAction("od.gtk-designer.multi-select", Description = "Replace the GTK designer selection set; first id is primary")]

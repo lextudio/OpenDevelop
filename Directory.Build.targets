@@ -87,7 +87,20 @@
                         Or '$(MSBuildProjectName)' == 'XamlToCSharpGenerator.LanguageServer'">false</UseAppHost>
   </PropertyGroup>
 
-  <Target Name="OpenDevelopDeployStagedAddin"
+  <!-- Every add-in's manifest has to reach its staged directory. A UI add-in declares its .addin as a
+     plain None item with no CopyToOutputDirectory while OutputPath points straight at AddIns/, so the
+     manifest is otherwise refreshed only when some unrelated project happens to build it. That left
+     FormsDesigner.addin stale in AddIns/ while DesignerCanvas and MewUI were current, and the stale copy
+     failed to load - silently, since a test-mode run swallows add-in error dialogs. Copy it explicitly
+     so a manifest can never lag behind the manifest it was edited from. -->
+  <Target Name="OpenDevelopCopyAddInManifest" AfterTargets="Build" Condition="'$(OpenDevelopAddin)' == 'true'">
+    <ItemGroup>
+      <_OpenDevelopAddInManifestFile Include="@(None)" Condition="'%(Extension)' == '.addin'" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_OpenDevelopAddInManifestFile)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+  </Target>
+
+<Target Name="OpenDevelopDeployStagedAddin"
           AfterTargets="OpenDevelopPruneAddinDeploymentAssets"
           Condition="'$(OpenDevelopAddinDeploymentPath)' != ''">
     <ItemGroup>
