@@ -135,6 +135,25 @@ public sealed class MxamlDocumentTests
 	}
 
 	[Fact]
+	public void ToXaml_PutsEveryElementOnItsOwnLine()
+	{
+		// Comparing two serializations with each other cannot catch a missing line break - both lose it.
+		var doc = MxamlDocument.Parse("""
+			<?xml version="1.0" encoding="utf-8"?>
+			<Window xmlns="http://schemas.lextudio.com/mewui/2026" Class="Sample.MainWindow" Name="MainWindow">
+			  <StackPanel Name="root">
+			    <Label Name="title" />
+			    <TextBox Name="input" />
+			  </StackPanel>
+			</Window>
+			""");
+		var lines = doc.ToXaml().Split('\n');
+		Assert.Contains("        <Label Name=\"title\" />", lines);
+		Assert.Contains("        <TextBox Name=\"input\" />", lines);
+		Assert.Contains("    </StackPanel>", lines);
+	}
+
+	[Fact]
 	public void ToXaml_RoundTriips()
 	{
 		var doc = NewDoc();

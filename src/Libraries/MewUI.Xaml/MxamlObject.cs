@@ -66,7 +66,10 @@ public sealed class MxamlObject
 			sb.Append(' ').Append(a.Name).Append("=\"").Append(Escape(a.Value)).Append('"');
 		}
 		if (children.Count == 0) {
-			sb.Append(" />");
+			// Every element ends its own line. Without the newline a leaf ran into the next sibling's
+			// indentation ("<Label />        <TextBox />"), and since the designer hands this text to
+			// the Source view on every switch, opening a document in the designer reformatted it so.
+			sb.Append(" />\n");
 			return;
 		}
 		sb.Append(">\n");
