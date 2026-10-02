@@ -26,6 +26,7 @@ using System.Windows.Media;
 using System.Windows.Automation;
 
 using ICSharpCode.Core.Presentation;
+using ICSharpCode.SharpDevelop.Designer.Presentation;
 
 namespace ICSharpCode.SharpDevelop.Widgets
 {
@@ -262,7 +263,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			{
 				// The object's Document Outline glyph before its name.
 				var content = new StackPanel { Orientation = Orientation.Horizontal };
-				var icon = DocumentOutlineIcons.GetIcon(item.Type, DocumentOutlineIcons.ComponentFallbackIconName);
+				var icon = DesignerTypeIcons.GetIcon(item.Type, DesignerTypeIcons.ComponentFallbackIconName);
 				if (icon != null)
 					content.Children.Add(new Image { Source = icon, Width = 16, Height = 16, Margin = new Thickness(0, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center });
 				content.Children.Add(new TextBlock { Text = string.IsNullOrEmpty(item.Name) ? item.Type : item.Name, VerticalAlignment = VerticalAlignment.Center });

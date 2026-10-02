@@ -624,6 +624,51 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		await ValidateGtkBuilderAsync(uiPath);
 	}
 
+	[Fact]
+	public async Task GtkDesigner_ToolboxAndOutlineRowsRenderGlyphs()
+	{
+		// GTK supplies no per-control icons of its own, so every row resolves through
+		// GtkControlMapper into the shared concept table. The spot check spans containers, text,
+		// input and media, and includes Entry - GTK's name for a text box, which only the
+		// framework's own mapper can resolve to the TextBox glyph.
+		Assert.True((await app.ReopenSolutionAsync(projectPath)).GetProperty("success").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.open-file", uiPath)).GetProperty("opened").GetBoolean());
+		Assert.True((await WaitAsync()).GetProperty("active").GetBoolean());
+
+		var toolbox = await WaitForRowsAsync();
+		var labels = toolbox.GetProperty("labels").EnumerateArray().Select(n => n.GetString()).ToArray();
+		var icons = toolbox.GetProperty("icons").EnumerateArray()
+			.Select(n => n.ValueKind == JsonValueKind.Null ? null : n.GetString()).ToArray();
+		Assert.NotEmpty(labels);
+		foreach (var expected in new[] { "GtkBox", "GtkLabel", "GtkEntry", "GtkButton", "GtkImage" }) {
+			var row = Array.IndexOf(labels, expected);
+			Assert.True(row >= 0, $"No Toolbox row for {expected}; labels: " + string.Join(", ", labels));
+			Assert.Equal("vector", icons[row]);
+		}
+		Assert.Equal(icons.Length, labels.Length);
+		Assert.All(icons, glyph => Assert.NotNull(glyph));
+
+		var outline = await app.InvokeAsync("od.outline-pad.content");
+		Assert.True(outline.GetProperty("available").GetBoolean(), outline.ToString());
+		var outlineIcons = outline.GetProperty("icons").EnumerateArray()
+			.Select(n => n.ValueKind == JsonValueKind.Null ? null : n.GetString()).ToArray();
+		Assert.NotEmpty(outlineIcons);
+		Assert.All(outlineIcons, glyph => Assert.Equal("vector", glyph));
+	}
+
+	async Task<JsonElement> WaitForRowsAsync()
+	{
+		var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(20);
+		JsonElement last = default;
+		while (DateTime.UtcNow < deadline) {
+			last = await app.InvokeAsync("od.toolbox-pad.content");
+			if (last.TryGetProperty("available", out var available) && available.GetBoolean()
+				&& last.TryGetProperty("labels", out var labels) && labels.GetArrayLength() > 0) return last;
+			await Task.Delay(200, TestContext.Current.CancellationToken);
+		}
+		return last;
+	}
+
 	async Task<JsonElement> WaitAsync(string? rootId = null)
 	{
 		var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(20); JsonElement last = default;

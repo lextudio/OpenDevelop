@@ -6,4 +6,11 @@
     <RootNamespace>ICSharpCode.SharpDevelop.Designer.Presentation</RootNamespace>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- DesignerTypeIcons resolves VS Image Library glyphs through PresentationResourceService,
+         and DesignerElementNode / DesignerToolboxItemInfo come from the designer protocol. -->
+    <ProjectReference Include="..\..\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" />
+    <ProjectReference Include="..\Designer.Remote\Designer.Remote.csproj" />
+  </ItemGroup>
 </Project>

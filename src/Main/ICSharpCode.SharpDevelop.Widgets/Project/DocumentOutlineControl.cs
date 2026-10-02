@@ -12,6 +12,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 
+using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 
 namespace ICSharpCode.SharpDevelop.Widgets
@@ -33,9 +34,26 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		public Func<DesignerElementNode, ContextMenu> ContextMenuFactory { get; set; }
 
 		/// <summary>Picks each row's icon. Defaults to the VS Image Library glyph for the element
-		/// type (<see cref="DocumentOutlineIcons"/>); a designer with its own icon set (WinForms'
+		/// type (<see cref="DesignerTypeIcons"/>); a designer with its own icon set (WinForms'
 		/// toolbox icons) replaces it. Set before the first <see cref="SetRoots"/>.</summary>
-		public Func<DesignerElementNode, ImageSource> IconSelector { get; set; } = DocumentOutlineIcons.GetIcon;
+		public Func<DesignerElementNode, ImageSource>? IconSelector { get; set; }
+
+		/// <summary>The framework's control mapper, consulted before the shared name table so a
+		/// type only that framework's addin knows ("GtkEntry") still resolves to its concept's glyph.
+		/// Null for a designer whose outline is fed by an IconSelector of its own.</summary>
+		public IDesignerControlMapper IconMapper { get; set; }
+
+		/// <summary>Resolves a row's glyph: the IconSelector when one is set (a designer with real
+		/// icons of its own), otherwise the shared concept table through <see cref="IconMapper"/>.
+		/// </summary>
+		public ImageSource? ResolveIcon(DesignerElementNode node)
+		{
+			if (node == null)
+				return null;
+			if (IconSelector != null)
+				return IconSelector(node);
+			return DesignerTypeIcons.GetIcon(node, IconMapper);
+		}
 
 		public DocumentOutlineControl()
 		{
@@ -113,7 +131,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			// Visual Studio's Document Outline row: the element type's glyph, then the element's name,
 			// or "[Type]" when it has none. The type itself is the tooltip.
 			var header = new StackPanel { Orientation = Orientation.Horizontal };
-			var icon = IconSelector?.Invoke(node);
+			var icon = ResolveIcon(node);
 			if (icon != null) {
 				header.Children.Add(new Image {
 					Source = icon,
@@ -142,7 +160,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		{
 			if (!string.IsNullOrEmpty(node.Name))
 				return node.Name;
-			var type = DocumentOutlineIcons.GetElementTypeName(node.Type);
+			var type = DesignerTypeIcons.GetElementTypeName(node.Type);
 			return "[" + (type.Length > 0 ? type : node.Type) + "]";
 		}
 

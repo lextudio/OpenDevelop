@@ -298,6 +298,53 @@ public sealed class MewUIDesignerTests : IAsyncLifetime, IAsyncDisposable
 		return last;
 	}
 
+	[Fact]
+	public async Task MewUIDesigner_ToolboxAndOutlineRowsRenderGlyphs()
+	{
+		// Both pads' glyphs come from the shared concept table now, so a row must never render
+		// blank. Reading the realized rows (not the bound data) is the point: an ItemTemplate that
+		// fails to bind its icon compiles clean and shows an empty row at runtime.
+		Assert.True((await app.ReopenSolutionAsync(projectPath)).GetProperty("success").GetBoolean());
+		Assert.True((await app.InvokeAsync("od.open-file", designerPath)).GetProperty("opened").GetBoolean());
+		var status = await WaitForDesignerAsync();
+		Assert.True(status.GetProperty("active").GetBoolean(), status.ToString());
+
+		var toolbox = await WaitForRowsAsync();
+		var labels = toolbox.GetProperty("labels").EnumerateArray().Select(n => n.GetString()).ToArray();
+		var icons = toolbox.GetProperty("icons").EnumerateArray()
+			.Select(n => n.ValueKind == JsonValueKind.Null ? null : n.GetString()).ToArray();
+		Assert.NotEmpty(labels);
+		// A spot check across the categories, so one framework agreeing on Button cannot hide a
+		// concept that never resolves: containers, text, input and media.
+		foreach (var expected in new[] { "StackPanel", "Button", "TextBox", "Image" }) {
+			var row = Array.IndexOf(labels, expected);
+			Assert.True(row >= 0, $"No Toolbox row for {expected}; labels: " + string.Join(", ", labels));
+			Assert.Equal("vector", icons[row]);
+		}
+
+		var outline = await app.InvokeAsync("od.outline-pad.content");
+		Assert.True(outline.GetProperty("available").GetBoolean(), outline.ToString());
+		var outlineIcons = outline.GetProperty("icons").EnumerateArray()
+			.Select(n => n.ValueKind == JsonValueKind.Null ? null : n.GetString()).ToArray();
+		Assert.NotEmpty(outlineIcons);
+		Assert.All(outlineIcons, glyph => Assert.Equal("vector", glyph));
+	}
+
+	/// <summary>The Toolbox rows only exist once the pad has laid them out, so poll rather than
+	/// reading once and mistaking "not rendered yet" for "rendered without an icon".</summary>
+	async Task<JsonElement> WaitForRowsAsync()
+	{
+		var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(20);
+		JsonElement last = default;
+		while (DateTime.UtcNow < deadline) {
+			last = await app.InvokeAsync("od.toolbox-pad.content");
+			if (last.TryGetProperty("available", out var available) && available.GetBoolean()
+				&& last.TryGetProperty("labels", out var labels) && labels.GetArrayLength() > 0) return last;
+			await Task.Delay(200, TestContext.Current.CancellationToken);
+		}
+		return last;
+	}
+
 	async Task<JsonElement> WaitForDesignerAsync(string? windowClassName = null)
 	{
 		var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(20);

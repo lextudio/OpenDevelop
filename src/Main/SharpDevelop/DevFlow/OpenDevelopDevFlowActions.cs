@@ -27,6 +27,7 @@ using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Debugging;
 using ICSharpCode.TypeSystem;
+using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Editor.Bookmarks;
@@ -4793,7 +4794,55 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 
-		[DevFlowAction("od.outline-pad.content", Description = "Report the element tree the Outline pad is actually displaying (walks the live DocumentOutlineControl, not any designer's internal model)")]
+			[DevFlowAction("od.toolbox-pad.content", Description = "Report the rows a Toolbox pad is actually rendering: label and glyph kind (\"vector\" = VS Image Library, \"bitmap\" = a real framework icon, null = none)")]
+		public static string GetToolboxPadContent()
+		{
+			// The deserializing designers (GTK, MewUI) host their own ListBox over the protocol's
+			// DesignerToolboxItemInfo; WPF, WinUI and WinForms share one ListBox over SharedToolboxItem.
+			// Both are read through DesignerToolboxRowReader, so one action covers all five.
+			var pad = SD.Workbench.GetPad(typeof(ICSharpCode.SharpDevelop.Gui.ToolsPad));
+			// ToolsPad.Control is the view model's Content, which is a ContentPresenter wrapping
+			// either the designer's toolbox element or a Grid (search box + body). Unwrap the
+			// presenter before walking, or the walk finds no ItemsControl at all.
+			var padContent = pad?.PadContent?.Control as DependencyObject;
+			var controls = new List<System.Windows.Controls.ItemsControl>();
+			if (padContent != null) {
+				if (padContent is ContentPresenter presenter && presenter.Content is DependencyObject hosted)
+					CollectItemsControls(hosted, controls);
+				CollectItemsControls(padContent, controls);
+			}
+			var labels = new List<string>();
+			var icons = new List<string?>();
+			foreach (var control in controls)
+			foreach (var row in DesignerToolboxRowReader.Read(control)) {
+				labels.Add(row.Label);
+				icons.Add(row.GlyphKind);
+			}
+			return JsonSerializer.Serialize(new {
+				available = controls.Count > 0,
+				padFound = pad != null,
+				contentType = padContent?.GetType().FullName,
+				toolboxCount = controls.Count,
+				// What each toolbox reports about its own binding, so a failure here says whether the
+				// rows are missing or the reader is.
+				itemCounts = controls.Select(control => control.Items.Count).ToArray(),
+				itemTypes = controls.Select(control => control.GetType().Name).ToArray(),
+				realizedCounts = controls.Select(control => System.Windows.Controls.VisualTreeHelper.GetChildrenCount(control)).ToArray(),
+				labels = labels.ToArray(),
+				icons = icons.ToArray()
+			});
+		}
+
+		static void CollectItemsControls(DependencyObject node, List<System.Windows.Controls.ItemsControl> found)
+		{
+			if (node is System.Windows.Controls.ItemsControl items)
+				found.Add(items);
+			var count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(node);
+			for (var i = 0; i < count; i++)
+				CollectItemsControls(System.Windows.Media.VisualTreeHelper.GetChild(node, i), found);
+		}
+
+	[DevFlowAction("od.outline-pad.content", Description = "Report the element tree the Outline pad is actually displaying (walks the live DocumentOutlineControl, not any designer's internal model)")]
 		public static string GetOutlinePadContent()
 		{
 			var pad = SD.Workbench.GetPad(typeof(ICSharpCode.SharpDevelop.Gui.OutlinePad));

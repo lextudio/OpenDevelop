@@ -3,6 +3,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Input;
 using ICSharpCode.SharpDevelop;
+using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.Gui;
 
@@ -50,6 +51,11 @@ public sealed class WinUIXamlToolbox
 				continue;
 			var category = string.IsNullOrEmpty(tool.Category) ? StandardControlsCategory : tool.Category;
 			newItems.Add(new SharedToolboxItem(category, tool.Name, Scope,
+				// WinUI has no per-control toolbox icon of its own to read, so this falls to the
+				// shared VS Image Library glyph for the control's type. tool.TypeName is the full
+				// XAML type name, which DesignerTypeIcons normalizes the same way as every other
+				// framework's.
+				icon: DesignerTypeIcons.GetIcon(tool.TypeName),
 				payload: new WinUIToolboxItem(tool.Name, category, tool.Template),
 				packDragData: data => {
 					data.SetData(DragDataFormat, tool.Name);

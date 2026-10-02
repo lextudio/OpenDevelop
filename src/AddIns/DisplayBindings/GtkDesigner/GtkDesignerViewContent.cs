@@ -10,6 +10,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using ICSharpCode.SharpDevelop;
+using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.Designer.Shell;
 using ICSharpCode.SharpDevelop.Gui;
@@ -27,10 +28,19 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	public static readonly string[] AdwToolNames = { "AdwHeaderBar", "AdwStatusPage", "AdwClamp", "AdwPreferencesPage", "AdwPreferencesGroup", "AdwActionRow", "AdwEntryRow", "AdwSwitchRow", "AdwButtonContent", "AdwAvatar", "AdwBanner", "AdwSpinner" };
 	bool documentRequiresAdw;
 	internal bool IsToolName(string name) => ToolNames.Contains(name, StringComparer.Ordinal) || documentRequiresAdw && AdwToolNames.Contains(name, StringComparer.Ordinal);
+	/// <summary>The shared category for a GTK control ("Containers", "Inputs", ...), or the
+	/// framework's own group when the control maps to no shared concept - which is how the
+	/// Libadwaita-only widgets keep their own group instead of falling into "Other".</summary>
+	static string CategoryFor(string typeName, string frameworkGroup)
+	{
+		var shared = DesignerToolboxCatalog.ResolveCategory(GtkControlMapper.Instance, typeName);
+		return shared == DesignerToolboxCatalog.OtherCategory ? frameworkGroup : shared;
+	}
+
 	void RefreshToolbox()
 	{
-		var items = ToolNames.Select(name => new DesignerToolboxItemInfo { Name = name, DisplayName = name, TypeName = name, Category = "GTK 4" });
-		if (documentRequiresAdw) items = items.Concat(AdwToolNames.Select(name => new DesignerToolboxItemInfo { Name = name, DisplayName = name, TypeName = name, Category = "Libadwaita" }));
+		var items = ToolNames.Select(name => new DesignerToolboxItemInfo { Name = name, DisplayName = name, TypeName = name, Category = CategoryFor(name, "GTK 4") });
+		if (documentRequiresAdw) items = items.Concat(AdwToolNames.Select(name => new DesignerToolboxItemInfo { Name = name, DisplayName = name, TypeName = name, Category = CategoryFor(name, "Libadwaita") }));
 		toolboxModel.SetItems(items);
 	}
 	readonly DocumentOutlineControl outline = new(); readonly ListBox toolbox = new() { DisplayMemberPath = nameof(DesignerToolboxItemInfo.DisplayName) }; readonly PropertyContainer properties = new();

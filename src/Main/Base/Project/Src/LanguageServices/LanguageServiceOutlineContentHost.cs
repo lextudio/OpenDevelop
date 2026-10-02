@@ -16,6 +16,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using ICSharpCode.Core;
+using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Gui;
@@ -44,7 +45,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
 
 			// Symbol kinds get their VS2026 symbol glyph (Class, Method, ...); a kind without one
 			// shows no icon rather than the designers' generic control glyph.
-			outline.IconSelector = node => DocumentOutlineIcons.GetIcon(node.Type, null);
+			outline.IconSelector = node => DesignerTypeIcons.GetIcon(node.Type, null);
 			outline.SelectionCommitted += OnSelectionCommitted;
 
 			editor.Document.TextChanged += OnDocumentChanged;

@@ -36,4 +36,7 @@
   <ItemGroup>
     <Compile Include="..\..\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Designer\Designer.Presentation\Designer.Presentation.csproj" />
+  </ItemGroup>
 </Project>

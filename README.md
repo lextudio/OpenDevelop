@@ -318,6 +318,10 @@ The project intentionally develops these pieces in the open so that individual c
 
 ![WinForms visual designer](images/winforms-designer.png)
 
+### MewUI visual designer
+
+![MewUI visual designer](images/mewui-designer.png)
+
 ### ILSpy integration
 
 ![ILSpy decompiler layout](images/ilspy-layout.png)

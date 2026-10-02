@@ -3264,6 +3264,19 @@ public sealed class AddInTests : IAsyncDisposable
         Assert.Equal("bitmap", padIcons[formRow]);
         Assert.All(padIcons, icon => Assert.NotNull(icon));
 
+        // The Toolbox pad too: WinForms reads real per-control icons, so every row here is a
+        // bitmap rather than a shared-table vector. Same "never blank" guarantee, other source.
+        var toolbox = default(JsonElement);
+        var rendered = await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            toolbox = await _app.InvokeAsync("od.toolbox-pad.content");
+            return toolbox.TryGetProperty("available", out var available) && available.GetBoolean()
+                && toolbox.TryGetProperty("labels", out var labels) && labels.GetArrayLength() > 0;
+        }, TimeSpan.FromSeconds(20));
+        Assert.True(rendered, "The WinForms Toolbox pad rendered no rows: " + toolbox);
+        var toolboxIcons = toolbox.GetProperty("icons").EnumerateArray()
+            .Select(n => n.ValueKind == JsonValueKind.Null ? null : n.GetString()).ToArray();
+        Assert.All(toolboxIcons, icon => Assert.NotNull(icon));
+
         await _app.InvokeAsync("od.close-all-document-views");
     }
 

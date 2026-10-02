@@ -816,7 +816,7 @@ namespace ICSharpCode.FormsDesigner
 		// WinForms rows use the WinForms Toolbox icons (Type is the full CLR name), like Visual
 		// Studio's WinForms Document Outline; a type without one (a custom control) gets the VS glyph.
 		readonly DocumentOutlineControl outline = new DocumentOutlineControl {
-			IconSelector = node => WinFormsToolboxIconProvider.GetImageSource(node.Type) ?? DocumentOutlineIcons.GetIcon(node)
+			IconSelector = node => WinFormsToolboxIconProvider.GetImageSource(node.Type) ?? DesignerTypeIcons.GetIcon(node)
 		};
 		readonly DesignerSelectionController shellSelection = new DesignerSelectionController();
 
