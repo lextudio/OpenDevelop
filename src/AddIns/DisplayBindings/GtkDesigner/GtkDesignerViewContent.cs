@@ -37,10 +37,24 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		return shared == DesignerToolboxCatalog.OtherCategory ? frameworkGroup : shared;
 	}
 
+	/// <summary>A Toolbox row for a GIR type name. The type keeps its full name - the host
+	/// resolves the widget class from it and the icon mapper normalizes it - while the row shows the
+	/// bare widget name, the way every other framework's toolbox does. GtkButton and AdwActionRow are
+	/// namespace prefixes, not part of what the control is called.</summary>
+	static DesignerToolboxItemInfo Item(string typeName, string frameworkGroup)
+	{
+		return new DesignerToolboxItemInfo {
+			Name = typeName,
+			DisplayName = DesignerTypeIcons.GetElementTypeName(typeName),
+			TypeName = typeName,
+			Category = CategoryFor(typeName, frameworkGroup)
+		};
+	}
+
 	void RefreshToolbox()
 	{
-		var items = ToolNames.Select(name => new DesignerToolboxItemInfo { Name = name, DisplayName = name, TypeName = name, Category = CategoryFor(name, "GTK 4") });
-		if (documentRequiresAdw) items = items.Concat(AdwToolNames.Select(name => new DesignerToolboxItemInfo { Name = name, DisplayName = name, TypeName = name, Category = CategoryFor(name, "Libadwaita") }));
+		var items = ToolNames.Select(name => Item(name, "GTK 4"));
+		if (documentRequiresAdw) items = items.Concat(AdwToolNames.Select(name => Item(name, "Libadwaita")));
 		toolboxModel.SetItems(items);
 	}
 	readonly DocumentOutlineControl outline = new(); readonly ListBox toolbox = new() { ItemTemplate = DesignerTypeIcons.CreateToolboxItemTemplate(mapper: GtkControlMapper.Instance) }; readonly PropertyContainer properties = new();

@@ -89,6 +89,36 @@ namespace ICSharpCode.GtkDesigner
 			{ "Dialog", "Dialog" },
 			{ "MessageDialog", "Dialog" },
 			{ "AboutDialog", "Dialog" },
+
+			// Libadwaita widgets, whose GIR names carry the same namespace prefix ("AdwHeaderBar").
+			// They are GTK's own controls wearing a different library's name, so they resolve through
+			// the same shared concepts.
+			{ "HeaderBar", "Container" },
+			{ "StatusPage", "Text" },
+			{ "Clamp", "Container" },
+			{ "PreferencesPage", "Tab" },
+			{ "PreferencesGroup", "Expander" },
+			{ "PreferencesDialog", "Dialog" },
+			{ "ActionRow", "Button" },
+			{ "EntryRow", "Text Input" },
+			{ "SwitchRow", "Toggle Button" },
+			{ "ButtonRow", "Button" },
+			{ "ButtonContent", "Button" },
+			{ "ComboRow", "Combo Box" },
+			{ "SpinRow", "Numeric" },
+			{ "ExpanderRow", "Expander" },
+			{ "Avatar", "Image" },
+			{ "Banner", "Label" },
+			{ "Spinner", "Progress" },
+			{ "ToolbarView", "Container" },
+			{ "StatusBar", "Status Bar" },
+			{ "OverlaySplitButton", "Split Button" },
+			{ "ViewStack", "Tab" },
+			{ "ViewSwitcher", "Tab" },
+			{ "ViewSwitcherBar", "Tab" },
+			{ "WindowTitle", "Text" },
+			{ "AboutDialog", "Dialog" },
+			{ "MessageDialog", "Dialog" },
 		};
 
 		public string? GetConcept(string typeName)

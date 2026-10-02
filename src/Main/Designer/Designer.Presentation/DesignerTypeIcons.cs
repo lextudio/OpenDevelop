@@ -195,8 +195,16 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 			name = name.Substring(name.LastIndexOf(':') + 1);
 			name = name.Substring(name.LastIndexOf('.') + 1);
 			name = name.Substring(name.LastIndexOf('+') + 1);
-			if (name.Length > 3 && name.StartsWith("Gtk", StringComparison.Ordinal) && char.IsUpper(name[3]))
-				name = name.Substring(3);
+			// GTK spells its widget classes with the namespace glued on ("GtkButton"), and
+			// Libadwaita does the same ("AdwHeaderBar"). Those are namespaces, not part of the
+			// control's name, so a bare name is what a row shows and what a framework mapper keys
+			// on. Anything whose fourth character is not an uppercase letter is left alone, so a
+			// genuine "Gtk-something" type is not mangled.
+			foreach (var prefix in new[] { "Gtk", "Adw" }) {
+				if (name.Length > prefix.Length && name.StartsWith(prefix, StringComparison.Ordinal)
+					&& char.IsUpper(name[prefix.Length]))
+					return name.Substring(prefix.Length);
+			}
 			return name;
 		}
 
