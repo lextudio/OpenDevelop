@@ -209,10 +209,12 @@ known.
 The Design view contributes all three standard designer pads:
 
 - Toolbox: standard MewUI controls; double-click inserts into the selected/root container.
-- Toolbox filtering uses the common `DesignerToolboxController`: control/category matching is
-  case-insensitive, a hidden selection is cleared, and the preferred selection returns when the
-  filter is cleared. The shared Tools pad supplies the visible search field and clear button;
-  Enter and double-click both insert the selected item.
+- The Toolbox is the shared Tools pad list (`SharedToolbox`, scope "mewui", through
+  `DesignerToolboxScope`): control/category filtering is case-insensitive and a hidden selection is
+  cleared. Enter and double-click both insert the selected item. With the Source half of a
+  Design/Source split focused the pad keeps this list, and a control dropped onto the `.mxaml`
+  goes on its own line in the innermost container under the drop point: a panel takes any number
+  of children, a content control (Window, Border, ScrollViewer, GroupBox, ...) only its first.
 - Outline: the parsed source hierarchy; selecting a node synchronizes the Properties pad.
 - Properties: identity, text/content, layout, appearance and enabled-state properties; edits land
   in C# source.

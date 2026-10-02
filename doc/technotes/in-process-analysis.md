@@ -153,7 +153,8 @@ baseline features turn out to be already ours.
 of every backend: `SnapGuideCalculator`, `GridlineOverlay`, `ReorderGestureCalculator`,
 `DesignSurfaceClickArbiter`, `DesignerSurfaceGeometry`, `SelectionAdornerLayer`,
 `DesignFramePresenter`, `DesignerVerbMenuPlanner`. `Designer.Shell` adds `DesignerSelectionController`,
-`DesignerPadController`, `DesignerToolboxController`, `DesignerCommandController`.
+`DesignerPadController`, `DesignerCommandController` and `XmlToolboxDropPlanner`; every designer's
+Toolbox is the shared `SharedToolbox` (see designer-common.md).
 
 Per-designer capability declarations (`DesignerCanvasCapabilities`, 9 flags: `Zoom | Fit | Gridlines |
 Theme | ShowNames | DesignSize | StatusBar | VisualStates | ComponentTray`):

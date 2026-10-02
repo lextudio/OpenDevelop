@@ -296,7 +296,7 @@ frames come from GTK's own renderer so text, theme, sizing and widget styling su
 runtime or target assembly enters OpenDevelop.
 
 The native overlay handles direct pointer selection and sibling drag-reorder, shows an insertion
-line during a drag, and accepts Toolbox string drags. A Toolbox drop selects the native widget
+line during a drag, and accepts Toolbox drags (`ToolboxDragData`). A Toolbox drop selects the native widget
 under the pointer and inserts into its nearest GtkBuilder container rather than defaulting to the
 first window-level container.
 
@@ -528,6 +528,18 @@ Covered by `GtkPreviewSanitizerTests`, `GirCatalogTests` and the integration tes
 Still open: application CSS and themes in the preview (a `.ui` does not reference its CSS; GTK's
 default theme is used), GResource bundles (`resource:///` paths are not compiled into the
 preview), and handler wiring for composite templates (Gir.Core `[Template]`).
+
+### Dropping onto the Source half (2026-10-02)
+
+The GTK toolbox is rows of the shared Tools pad list (scopes "gtk" and, for a document that
+requires libadwaita, "gtk-adw"), so the Source half of a Design/Source split keeps it. A control
+dropped onto the `.ui` text is planned by `GtkUiDocumentEditor.AddAt(offset, class)`, which is now
+compiled into the IDE as well as the host: it runs synchronously against the Source pane's own text.
+`XmlToolboxDropPlanner` finds the innermost GtkBuilder container `<object>` holding the offset, and
+the result is the same `<child><object class id/></child>` (with starter text) a designer drop
+writes, placed after the child the drop is on, or before it when the drop is on its `<object ...>`
+line. Outside every container, for example on `<requires>`, the drop is refused. See
+designer-common.md, "One toolbox per document".
 
 ### Drop placement (2026-10-01)
 

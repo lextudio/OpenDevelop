@@ -252,17 +252,50 @@ it. Backend implementations still own history storage, multi-selection semantics
 mutations and selection repair. The next extraction is the common Toolbox catalogue/filter
 controller.
 
-`DesignerToolboxController` now implements that runtime-neutral catalogue state: DTO
-deduplication, case-insensitive filtering across name/type/category, stable type-name selection
-restoration and selection clearing when a filter hides the item. WPF controls remain views over
-this state; backend/runtime catalogue production and insertion RPC remain adapter responsibilities.
+All five designers now share one Toolbox engine, `SharedToolbox` (Base): one ListBox, grouping,
+filtering, drag start, and double-click/Enter insertion (`ItemInvoked`). WPF, WinForms and WinUI
+reach it through their facades; GTK 4 and MewUI describe their controls as
+`DesignerToolboxItemInfo` and hand them to `DesignerToolboxScope` (DesignerCanvas addin), which
+registers them as rows of their own scopes ("gtk", "gtk-adw", "mewui"). The rows are shared by
+every open document of a framework, so `SharedToolbox.ActiveOwner` - set whenever a designer hands
+the list to the Tools pad - says which designer an invoked or selected row belongs to. A
+framework without a "Pointer" row activates its scopes with nothing selected
+(`SetActiveScopes(owner, selectFirst: false, ...)`), so a stray Enter inserts nothing. The former
+`DesignerToolboxController` and GTK/MewUI's private ListBoxes (each with a copy of the drag-start
+state machine and row hit-testing) are gone.
 
-All five designers expose the same case-insensitive control-name/category filtering contract.
-GTK 4 and MewUI share `DesignerToolboxController`; WPF, WinForms and WinUI share the scoped
-`SharedToolbox`. Both engines clear a selection hidden by a filter and restore the preferred item
-when that filter is cleared. `SharedToolbox.AddItems` also de-duplicates scope/category/name keys,
-so opening multiple WinUI documents cannot multiply catalogue rows. The five DevFlow endpoints are
-named `od.<designer>.toolbox.filter` and report the normalized filter plus visible item count.
+Filtering is case-insensitive over display name and category in every designer. A selection a filter
+hides is cleared. `SharedToolbox.AddItems` de-duplicates scope/category/name keys, so opening
+several documents of one framework cannot multiply rows. The DevFlow endpoints are named
+`od.<designer>.toolbox.filter` and report the normalized filter plus visible item count.
+
+### One toolbox per document: the Design/Source split
+
+A document shown as Design and Source side by side has one toolbox, whichever half has focus:
+
+- **What the Tools pad shows.** `ToolsPadViewModel` asks the active view first. When that view has
+  no toolbox content - the plain text editor of a `.ui` or `.mxaml` - another view in the same
+  window supplies it. `od.tools-pad.status` reports this without activating any view.
+- **Drag data.** Every toolbox drag carries `ToolboxDragData` (`OpenDevelop.ToolboxTypeName`, plus
+  the older `ComponentTypeName` the XAML editor and WPF designer read). Read it with
+  `ToolboxDragData.GetTypeName`; GTK and MewUI no longer drag a bare `StringFormat`, which a text
+  editor would have inserted as plain text.
+- **Dropping onto the Source half.** The text editor (`IToolboxDropTarget`) finds a designer in its
+  window that implements `IToolboxSourceDropHandler` and asks it to plan the edit against the
+  editor's own current text. The editor's text may hold edits the designer has not seen yet, so the
+  plan never comes from the designer's copy. The result (`ToolboxSourceEdit`) is applied as one
+  normal, undoable text edit. Only the designer knows its markup: GTK writes a GtkBuilder
+  `<child><object class id/></child>` with starter text through `GtkUiDocumentEditor.AddAt`;
+  MewUI writes `<Type />` on a line of its own. A drop with no container under it is refused and
+  consumed, never inserted as text. A `.xaml` document without such a designer keeps the old
+  `<Tag />` insertion.
+- **Where in the markup.** `XmlToolboxDropPlanner` (Designer.Shell, framework-neutral) parses the
+  text into elements with tag offsets and picks the innermost container the framework accepts. A drop
+  inside a child goes after that child; a drop on a start tag goes before that element, including the
+  start tag of what a `<child>` wrapper holds. A drop never lands inside a start tag, an attribute or a
+  leaf's text.
+- **Testing without a pointer.** `od.file.drop-toolbox-item path offset type` runs the same
+  `IToolboxDropTarget` path a real drop takes once it has resolved the offset under the pointer.
 
 The real Tools pad now supplies the common visual search chrome for every `IFilterableToolbox`:
 a text field, clear button, Escape-to-clear and Down-arrow navigation into the catalogue. The pad
