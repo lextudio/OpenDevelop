@@ -186,10 +186,14 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 	DesignerElementNode? NearestContainer(DesignerElementNode n) { if (state.Tree == null) return null; for (var current = n; ; ) { if (IsContainer(current)) return current; var parent = Flatten(state.Tree).FirstOrDefault(p => p.Children.Contains(current)); if (parent == null) return null; current = parent; } }
 	static string Value(DesignerElementNode n, string key, string fallback) => n.Properties.FirstOrDefault(p => p.Name == key)?.Value ?? fallback; static IEnumerable<DesignerElementNode> Flatten(DesignerElementNode n) => new[] { n }.Concat(n.Children.SelectMany(Flatten));
 	DesignerDocumentSnapshot Snapshot(string text, long version) => new() { Version = version, PrimaryFileName = PrimaryFile?.FileName.ToString() ?? "", DesignerFileName = mxamlFile.FileName.ToString(), Files = { new DesignerSourceFileSnapshot { FileName = mxamlFile.FileName.ToString(), Kind = "MewUI", Text = text } } };
-	protected override void LoadInternal(OpenedFile file, Stream stream) { using var reader = new StreamReader(stream, leaveOpen: true); loadedMxamlText = reader.ReadToEnd(); if (host == null) { host = MewUIDesignerHostClient.CreateAsync().GetAwaiter().GetResult(); host.Recovered += HostRecovered; } state = host.OpenAsync(Snapshot(loadedMxamlText, 1)).GetAwaiter().GetResult(); Rebuild();
+	// The split layout hands the file between the live source editor and this designer on every
+	// active-view switch. Re-opening the host document for text it produced itself reset its undo
+	// history (session/open zeroes UndoDepth), so only a real source change re-opens.
+	protected override void LoadInternal(OpenedFile file, Stream stream) { using var reader = new StreamReader(stream, leaveOpen: true); var text = reader.ReadToEnd(); if (host != null && host.IsAlive && state.Accepted && string.Equals(text, loadedMxamlText, StringComparison.Ordinal)) return; loadedMxamlText = text; if (host == null) { host = MewUIDesignerHostClient.CreateAsync().GetAwaiter().GetResult(); host.Recovered += HostRecovered; } state = host.OpenAsync(Snapshot(loadedMxamlText, 1)).GetAwaiter().GetResult(); Rebuild();
 		OutputChannel.Write("MewUI", $"Host started (PID {host.ProcessId}) for {mxamlFile.FileName}"); }
 	protected override void SaveInternal(OpenedFile file, Stream stream) { // Single authoritative document: the host's canonical MXAML is the only thing we persist.
-	  var text = host == null ? loadedMxamlText : host.FlushAsync(state.Version).GetAwaiter().GetResult().Files[0].Text; using var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(false), leaveOpen: true); writer.Write(text); writer.Flush(); loadedMxamlText = text; }
+	  // The host can be down here: a restart moves focus into the source pane, and that view switch saves this view first.
+		var text = host == null ? loadedMxamlText : host.CurrentTextOrRecovery(state.Version, loadedMxamlText); using var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(false), leaveOpen: true); writer.Write(text); writer.Flush(); loadedMxamlText = text; }
 	void HostRecovered(object? sender, DesignerSessionState recovered) {
 		// Recovery runs on the broker's worker thread while the initiating command may be
 		// synchronously waiting on the UI thread. OutputChannel is UI-affine, so writing before

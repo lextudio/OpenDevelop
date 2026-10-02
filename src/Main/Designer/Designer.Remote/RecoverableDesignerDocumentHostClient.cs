@@ -16,6 +16,28 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 
 		protected DesignerDocumentSnapshot? RecoverySnapshot { get; private set; }
 
+		/// <summary>The primary file's text in the last recovery snapshot - the latest source the
+		/// child accepted, refreshed after every accepted mutation. A view uses it to hand over its
+		/// content while the host is down (mid-restart, or crashed before recovery), when a flush
+		/// would throw.</summary>
+		public string? RecoveryText => RecoverySnapshot?.Files.Count > 0 ? RecoverySnapshot.Files[0].Text : null;
+
+		/// <summary>The current source: flushed from the child when it is running, otherwise the
+		/// last recovery snapshot, otherwise <paramref name="fallback"/>.</summary>
+		public string CurrentTextOrRecovery(long version, string fallback)
+		{
+			if (IsAlive) {
+				try {
+					var edit = Document.FlushAsync(version).GetAwaiter().GetResult();
+					// No files means no changed source since the last capture (see CaptureRecoverySnapshotAsync).
+					if (edit.Files.Count > 0) return edit.Files[0].Text;
+				} catch (System.IO.IOException) when (!IsAlive) {
+					// The host went down between the check and the flush: same as not running.
+				}
+			}
+			return RecoveryText ?? fallback;
+		}
+
 		/// <summary>Records the parent-owned source authority for adapters whose open/update wire
 		/// payload extends the common snapshot (for example viewport-aware markup hosts).</summary>
 		protected void SetRecoverySnapshot(DesignerDocumentSnapshot snapshot)

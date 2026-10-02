@@ -152,7 +152,11 @@ namespace ICSharpCode.AvalonEdit.AddIn
 				return;
 			isLoading = true;
 			try {
-				if (!file.IsUntitled) {
+				// The content comes from the stream; the disk is consulted only for the read-only flag.
+				// The file can be gone by now (deleted or moved while open), and this also runs on a
+				// plain view switch - in the split layout, a focus change into the source pane - so a
+				// missing file keeps the editor's current read-only state instead of failing the switch.
+				if (!file.IsUntitled && File.Exists(file.FileName)) {
 					codeEditor.PrimaryTextEditor.IsReadOnly = (File.GetAttributes(file.FileName) & FileAttributes.ReadOnly) == FileAttributes.ReadOnly;
 				}
 				
