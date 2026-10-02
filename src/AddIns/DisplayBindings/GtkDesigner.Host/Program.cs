@@ -132,6 +132,16 @@ static class Probe
 			node = snapshot.ToNode();
 		}
 		if (node == null) { Console.WriteLine("empty render node"); return 0; }
+		node.GetBounds(out var bounds);
+		Console.WriteLine($"node bounds: {bounds.GetX()},{bounds.GetY()} {bounds.GetWidth()}x{bounds.GetHeight()}");
+		var probeRenderer = Gsk.CairoRenderer.New();
+		probeRenderer.Realize(null);
+		using (var natural = probeRenderer.RenderTexture(node, null)) Console.WriteLine($"texture (node bounds): {natural.Width}x{natural.Height}");
+		var viewport = new Graphene.Rect();
+		viewport.Init(0, 0, width, height);
+		using (var framed = probeRenderer.RenderTexture(node, viewport)) Console.WriteLine($"texture (0,0,{width}x{height} viewport): {framed.Width}x{framed.Height}");
+		probeRenderer.Unrealize();
+		node.Unref();
 		return 0;
 	}
 
