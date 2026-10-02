@@ -456,6 +456,75 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public List<DesignerToolboxItemInfo> Toolbox { get; set; } = new List<DesignerToolboxItemInfo>();
 	}
 
+	/// <summary>Where a newly inserted or moved element goes inside a layout-structured container.
+	///
+	/// A free-form canvas takes a position; a layout container does not, and every framework spells
+	/// the alternative differently - GTK's Box inserts at a child index, its Grid at a column/row,
+	/// WPF's StackPanel at an index and its Grid at (Row, Column) and RowSpan/ColumnSpan, WinForms'
+	/// FlowLayoutPanel at an index and its TableLayoutPanel at a cell. All of that is the same
+	/// decision, so it is one protocol shape rather than one argument list per framework.
+	///
+	/// Exactly one of <see cref="Index"/> / <see cref="Cell"/> / a <see cref="Rect"/> is meaningful,
+	/// chosen by the container's own capability, so a backend that does not understand one of them
+	/// says so by leaving it null rather than by being handed an argument it must ignore.
+	/// </summary>
+	public sealed class DesignerDropTarget
+	{
+		/// <summary>The container the element goes into, as a tree path. Null means the surface root.</summary>
+		public string ContainerId { get; set; } = "";
+
+		/// <summary>Insertion index among the container's children (a Box, StackPanel,
+		/// FlowLayoutPanel, ItemsRepeater). Null when the container is not index-addressed, or when
+		/// the caller only knows the point and wants the backend to decide.</summary>
+		public int? Index { get; set; }
+
+		/// <summary>The grid cell to occupy: column, row and their spans (a Grid, TableLayoutPanel).
+		/// Null when the container is not grid-addressed. Spans default to 1.</summary>
+		public DesignerGridCell? Cell { get; set; }
+
+		/// <summary>A free-form position in design coordinates, for a Canvas or any container whose
+		/// children are positioned rather than ordered. Null when the container is layout-structured
+		/// and <see cref="Index"/> or <see cref="Cell"/> carries the intent instead.</summary>
+		public double[] Rect { get; set; }
+
+		/// <summary>How the container arranges its children, as reported by the host. Lets a client
+		/// pick the right drop shape without hardcoding a per-framework type list, and lets the host
+		/// say "this one is a box, ask me for an index" rather than rejecting a grid cell.</summary>
+		public string Arrangement { get; set; } = "";
+
+		/// <summary>Where a caret or highlight should be drawn to preview this drop: the gap between
+		/// two children, the outline of one grid cell, or the element's own rect. Null when the host
+		/// has nothing to draw, in which case a client should just drop without a preview.</summary>
+		public double[] Indicator { get; set; }
+	}
+
+	/// <summary>A cell in a grid-addressed container.</summary>
+	public sealed class DesignerGridCell
+	{
+		public int Column { get; set; }
+		public int Row { get; set; }
+		public int ColumnSpan { get; set; } = 1;
+		public int RowSpan { get; set; } = 1;
+	}
+
+	/// <summary>How a container arranges its children. Reported by the host rather than inferred by
+	/// the client from a type list, because the type list is per-framework and this is not.</summary>
+	public static class DesignerArrangements
+	{
+		/// <summary>Children are positioned freely: the drop needs a rect.</summary>
+		public const string Freeform = "Freeform";
+
+		/// <summary>Children are stacked along one axis: the drop needs an index.</summary>
+		public const string Stack = "Stack";
+
+		/// <summary>Children occupy grid cells: the drop needs a cell.</summary>
+		public const string Grid = "Grid";
+
+		/// <summary>Children are pages of a single selected slot (a TabControl, Notebook): the drop
+		/// needs an index and there is no position to preview between siblings.</summary>
+		public const string Pages = "Pages";
+	}
+
 	public sealed class DesignerToolboxItemInfo
 	{
 		public string Name { get; set; } = "";

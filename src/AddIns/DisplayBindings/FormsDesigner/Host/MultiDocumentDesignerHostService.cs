@@ -60,7 +60,7 @@ sealed class MultiDocumentDesignerHostService : IDesignerChildService
 	[JsonRpcMethod("design/activate-default-event")]
 	public DesignerSessionState ActivateDefaultEvent(string sessionId, string documentId, long baseVersion, string elementId) => GetChecked(sessionId, documentId).ActivateDefaultEvent(sessionId, documentId, baseVersion, elementId);
 	[JsonRpcMethod("design/add-element")]
-	public DesignerSessionState AddElement(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, string elementId, int x, int y) => GetChecked(sessionId, documentId).AddControl(sessionId, documentId, baseVersion, parentId, item, elementId, x, y);
+	public DesignerSessionState AddElement(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, string elementId, int x, int y, DesignerDropTarget dropTarget) => GetChecked(sessionId, documentId).AddControl(sessionId, documentId, baseVersion, parentId, item, elementId, x, y, dropTarget);
 	[JsonRpcMethod("design/set-bounds")]
 	public DesignerSessionState SetBounds(string sessionId, string documentId, long baseVersion, string elementId, int x, int y, int width, int height) => GetChecked(sessionId, documentId).SetBounds(sessionId, documentId, baseVersion, elementId, x, y, width, height);
 	[JsonRpcMethod("design/delete-elements")]

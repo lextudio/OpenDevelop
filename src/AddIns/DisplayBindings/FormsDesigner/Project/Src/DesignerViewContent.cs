@@ -224,7 +224,7 @@ namespace ICSharpCode.FormsDesigner
 			if (!IsRemoteDesignerLoaded)
 				throw new InvalidOperationException("The out-of-process WinForms designer is not loaded.");
 			ExecuteRemoteEdit(() => remoteClient.AddElementAsync(remoteDocumentVersion, parentName,
-				new DesignerToolboxItemInfo { TypeName = controlType }, componentName, x, y,
+				new DesignerToolboxItemInfo { TypeName = controlType }, componentName, x, y, null,
 				System.Threading.CancellationToken.None).GetAwaiter().GetResult());
 		}
 
@@ -2095,7 +2095,7 @@ namespace ICSharpCode.FormsDesigner
 							: state.Components.Any(item => item.Name == component.Parent) ? component.Parent : root;
 						latest = remoteClient.AddElementAsync(remoteDocumentVersion, parent,
 							new DesignerToolboxItemInfo { TypeName = component.Type }, nameMap[component.Name],
-							component.X + 10, component.Y + 10, System.Threading.CancellationToken.None).GetAwaiter().GetResult();
+							component.X + 10, component.Y + 10, null, System.Threading.CancellationToken.None).GetAwaiter().GetResult();
 						foreach (var property in component.Properties.Where(CanCopyRemoteProperty))
 							latest = remoteClient.SetPropertyAsync(remoteDocumentVersion, nameMap[component.Name], property.Name, property.Value,
 								System.Threading.CancellationToken.None).GetAwaiter().GetResult();

@@ -151,7 +151,8 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	/// <summary>Adds <paramref name="type"/> to the container <paramref name="parentId"/>; a drop
 	/// passes its design point so the host places it by the container's child policy (GtkDropPlanner),
 	/// a toolbox click passes (-1, -1) to append.</summary>
-	bool AddTo(string parentId, string type, double x, double y) { if (host == null || state.Tree == null) return false; var before = Flatten(state.Tree).Select(n => n.Id).ToHashSet(StringComparer.Ordinal); Mutate(() => host.AddElementAsync(state.Version, parentId, new DesignerToolboxItemInfo { Name = type, TypeName = type }, "", x, y).GetAwaiter().GetResult()); var added = state.Tree == null ? null : Flatten(state.Tree).FirstOrDefault(n => !before.Contains(n.Id)); if (added != null) Select(added); return added != null; }
+	bool AddTo(string parentId, string type, double x, double y) { if (host == null || state.Tree == null) return false; var before = Flatten(state.Tree).Select(n => n.Id).ToHashSet(StringComparer.Ordinal); Mutate(() => host.AddElementAsync(state.Version, parentId, new DesignerToolboxItemInfo { Name = type, TypeName = type }, "", x, y,
+			ToDropTarget(GtkDropPlanner.Plan(ToDropNode(state.Tree), x, y))).GetAwaiter().GetResult()); var added = state.Tree == null ? null : Flatten(state.Tree).FirstOrDefault(n => !before.Contains(n.Id)); if (added != null) Select(added); return added != null; }
 	public bool DeleteSelected() => commands.Execute("Delete");
 	bool DeleteSelectedCore() { if (selection.SelectedIds.Count == 0 || host == null) return false; var ids = selection.SelectedIds.ToArray(); Mutate(() => host.DeleteElementsAsync(state.Version, ids).GetAwaiter().GetResult()); return true; }
 	public bool SetSelectedSignal(string signal, string handler) { if (selected == null || host == null) return false; var id = selected.Id; Mutate(() => host.SetEventAsync(state.Version, id, signal, handler).GetAwaiter().GetResult()); return SelectById(id); }
@@ -327,6 +328,24 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		int Int(string name, int fallback) => int.TryParse(Prop(name), out var v) ? v : fallback;
 		return new GtkDropNode(n.Id, n.Type, n.X, n.Y, n.Width, n.Height, n.Children.Select(ToDropNode).ToList(),
 			Prop("orientation"), Int("layout:column", 0), Int("layout:row", 0), Int("layout:column-span", 1), Int("layout:row-span", 1));
+	}
+
+	/// <summary>The protocol form of a plan: the container plus whichever of index / cell the
+	/// receiving container is addressed by. GTK has no free positioning, so Rect stays null - the
+	/// point is resolved into a position in the container's own terms before it crosses.</summary>
+	static DesignerDropTarget ToDropTarget(GtkDropPlan? plan)
+	{
+		if (plan == null)
+			return new DesignerDropTarget();
+		return new DesignerDropTarget {
+			ContainerId = plan.ContainerId,
+			Index = plan.Index,
+			Cell = plan.Cell is { } cell ? new DesignerGridCell { Column = cell.Column, Row = cell.Row } : null,
+			Arrangement = plan.Cell != null ? DesignerArrangements.Grid
+				: plan.Index != null ? DesignerArrangements.Stack
+				: DesignerArrangements.Freeform,
+			Indicator = new[] { plan.Indicator.X, plan.Indicator.Y, plan.Indicator.Width, plan.Indicator.Height }
+		};
 	}
 
 	void ShowDropIndicator(GtkDropPlan? plan)

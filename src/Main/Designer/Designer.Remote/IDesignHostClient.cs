@@ -78,8 +78,29 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// <see cref="DesignerToolboxItemInfo.TypeName"/> plus <paramref name="proposedName"/>;
 		/// a markup backend (WinUI/Uno) materializes
 		/// <see cref="DesignerToolboxItemInfo.Template"/>.
+		/// <para>
+		/// <paramref name="x"/>/<paramref name="y"/> are the drop point in design coordinates.
+		/// A free-form container commits them as the element's position; a layout-structured one
+		/// (<see cref="DesignerArrangements.Stack"/>/<see cref="DesignerArrangements.Grid"/>)
+		/// must instead derive an index or a cell from the point, which is what
+		/// <paramref name="dropTarget"/> lets it report. Callers that have already decided (a
+		/// reorder gesture, a paste at a known slot) pass the decision; callers dropping from the
+		/// Toolbox pass the point and let the host decide.
+		/// </para>
 		/// </summary>
-		Task<DesignerSessionState> AddElementAsync(long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, CancellationToken cancellationToken = default);
+		Task<DesignerSessionState> AddElementAsync(long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, DesignerDropTarget dropTarget = null, CancellationToken cancellationToken = default);
+
+		/// <summary>Optional: the host resolves a drop point against a laid-out tree and reports
+		/// where the element would go, so a client can draw an insertion caret or cell highlight
+		/// before the user lets go. Implemented by hosts whose containers are layout-structured;
+		/// a host that cannot answer returns null from <see cref="DesignerDropTarget.ContainerId"/>
+		/// rather than failing, so a client can drop without a preview.
+		/// </summary>
+		public interface IDesignHostDropPlanner
+		{
+			/// <summary>Where a drop at (x, y) would land, in design coordinates.</summary>
+			Task<DesignerDropTarget> PlanDropAsync(long baseVersion, double x, double y, CancellationToken cancellationToken = default);
+		}
 
 		/// <summary>Removes elements (<c>design/delete-elements</c>).</summary>
 		Task<DesignerSessionState> DeleteElementsAsync(long baseVersion, string[] elementIds, CancellationToken cancellationToken = default);

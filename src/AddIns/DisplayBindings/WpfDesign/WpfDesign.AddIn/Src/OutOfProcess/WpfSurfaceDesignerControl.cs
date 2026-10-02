@@ -1123,7 +1123,7 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 		/// Does not change the selection. Does NOT render the result - see <see cref="Show"/>.</summary>
 		public async Task<DesignerSessionState> AddElementAsync(string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, CancellationToken cancellationToken = default)
 		{
-			state = await client.AddElementAsync(RequireVersion(), parentId, item, proposedName, x, y, cancellationToken).ConfigureAwait(false);
+			state = await client.AddElementAsync(RequireVersion(), parentId, item, proposedName, x, y, dropTarget: null, cancellationToken).ConfigureAwait(false);
 			return state;
 		}
 

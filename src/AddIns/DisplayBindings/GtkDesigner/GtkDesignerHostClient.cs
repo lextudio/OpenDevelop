@@ -77,7 +77,7 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 
 	public Task<DesignerEditSet> FlushAsync(long version, CancellationToken token = default) => Document.FlushAsync(version, token);
 	public Task<DesignerSessionState> SetPropertyAsync(long v, string id, string name, string value, CancellationToken token = default) => TrackMutationAsync(Document.SetPropertyAsync(v, id, name, value, token), token);
-	public Task<DesignerSessionState> AddElementAsync(long v, string parent, DesignerToolboxItemInfo item, string name, double x, double y, CancellationToken token = default) => TrackMutationAsync(Document.AddElementAsync(v, parent, item, name, x, y, token), token);
+	public Task<DesignerSessionState> AddElementAsync(long v, string parent, DesignerToolboxItemInfo item, string name, double x, double y, DesignerDropTarget dropTarget = null, CancellationToken token = default) => TrackMutationAsync(Document.AddElementAsync(v, parent, item, name, x, y, dropTarget, token), token);
 	public Task<DesignerSessionState> DeleteElementsAsync(long v, string[] ids, CancellationToken token = default) => TrackMutationAsync(Document.DeleteElementsAsync(v, ids, token), token);
 	/// <summary>The companion wiring source and handler signatures for this document's signals.</summary>
 	public Task<GtkSignalWiringResult> SignalWiringAsync(string uiFileName, string? namespaceName, string className, CancellationToken token = default)

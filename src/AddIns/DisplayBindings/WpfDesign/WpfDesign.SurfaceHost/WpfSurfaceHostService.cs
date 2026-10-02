@@ -1091,7 +1091,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// child and additionally hardcodes position to (0,0) - calling the primitives directly
 		/// gives real position control for free.</summary>
 		[JsonRpcMethod("design/add-element")]
-		public DesignerSessionState AddElement(long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y)
+		public DesignerSessionState AddElement(long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, DesignerDropTarget dropTarget)
 			=> dispatcher.Dispatch(() => {
 				if (RejectIfStale(baseVersion) is { } stale)
 					return stale;

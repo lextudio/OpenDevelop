@@ -424,7 +424,7 @@ sealed class DesignerHostService : IDesignerChildService
 	}
 
 	[JsonRpcMethod("design/add-element")]
-	public DesignerSessionState AddControl(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, string elementId, int x, int y)
+	public DesignerSessionState AddControl(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, string elementId, int x, int y, DesignerDropTarget dropTarget)
 	{
 		EnsureCurrentVersion(sessionId, documentId, baseVersion, "edit");
 		if (!IsValidIdentifier(elementId))

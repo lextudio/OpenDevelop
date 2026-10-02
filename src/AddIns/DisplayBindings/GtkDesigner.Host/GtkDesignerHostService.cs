@@ -98,14 +98,19 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	}
 
 	[JsonRpcMethod("design/add-element")]
-	public DesignerSessionState AddElement(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y)
+	public DesignerSessionState AddElement(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, DesignerDropTarget dropTarget)
 	{
 		EnsureSession(sessionId);
 		var session = Get(documentId); EnsureVersion(session, baseVersion);
 		// A drop carries its design position (a toolbox click sends -1, -1): resolve it with the same
 		// planner the IDE drew its indicator from, against GTK's own measured bounds.
-		int? index = null; (int, int)? cell = null;
-		if (x >= 0 && y >= 0 && session.Editor.Roots.FirstOrDefault() is { } first
+		// A dropTarget is the IDE's own resolution of this point (DesignerDropTarget, computed by
+		// the same planner against the same snapshot), so prefer it: the client already had to
+		// compute it to draw the insertion caret, and recomputing here risks the two disagreeing.
+		// A toolbox click has no point and sends none, so the host resolves it itself.
+		int? index = dropTarget?.Index; (int, int)? cell = null;
+		if (dropTarget?.Cell is { } target) cell = (target.Column, target.Row);
+		if (index == null && cell == null && x >= 0 && y >= 0 && session.Editor.Roots.FirstOrDefault() is { } first
 			&& GtkDropPlanner.Plan(DropNode(session, first), x, y) is { } plan && plan.ContainerId == parentId) {
 			index = plan.Index; cell = plan.Cell;
 		}

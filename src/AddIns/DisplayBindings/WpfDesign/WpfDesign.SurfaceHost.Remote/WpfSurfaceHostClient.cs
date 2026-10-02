@@ -166,8 +166,8 @@ public sealed class WpfSurfaceHostClient : RecoverableDesignerDocumentHostClient
 	public Task<DesignerSessionState> SetPropertyAsync(long baseVersion, string elementId, string propertyName, string value, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(Document.SetPropertyAsync(baseVersion, elementId, propertyName, value, cancellationToken), cancellationToken);
 
-	public Task<DesignerSessionState> AddElementAsync(long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, CancellationToken cancellationToken = default)
-		=> TrackMutationAsync(Document.AddElementAsync(baseVersion, parentId, item, proposedName, x, y, cancellationToken), cancellationToken);
+	public Task<DesignerSessionState> AddElementAsync(long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, DesignerDropTarget dropTarget = null, CancellationToken cancellationToken = default)
+		=> TrackMutationAsync(Document.AddElementAsync(baseVersion, parentId, item, proposedName, x, y, dropTarget, cancellationToken), cancellationToken);
 
 	public Task<DesignerSessionState> SetBoundsAsync(long baseVersion, string elementId, double x, double y, double width, double height, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(Document.SetBoundsAsync(baseVersion, elementId, x, y, width, height, cancellationToken), cancellationToken);

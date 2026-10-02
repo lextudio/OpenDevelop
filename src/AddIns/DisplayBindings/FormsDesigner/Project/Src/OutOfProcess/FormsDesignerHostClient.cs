@@ -208,8 +208,8 @@ namespace ICSharpCode.FormsDesigner.OutOfProcess
 
 		/// <summary>Inserts a control; the WinForms backend needs only the toolbox item's CLR type
 		/// name plus the proposed component name.</summary>
-		public Task<DesignerSessionState> AddElementAsync(long baseVersion, string parentId, DesignerToolboxItemInfo item, string elementId, double x, double y, CancellationToken cancellationToken)
-			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/add-element", new { sessionId = SessionId, documentId = DocumentId, baseVersion, parentId, item, elementId, x = Round(x), y = Round(y) }, cancellationToken), cancellationToken);
+		public Task<DesignerSessionState> AddElementAsync(long baseVersion, string parentId, DesignerToolboxItemInfo item, string elementId, double x, double y, DesignerDropTarget dropTarget = null, CancellationToken cancellationToken = default)
+			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/add-element", new { sessionId = SessionId, documentId = DocumentId, baseVersion, parentId, item, elementId, x = Round(x), y = Round(y), dropTarget }, cancellationToken), cancellationToken);
 
 		public Task<DesignerSessionState> SetBoundsAsync(long baseVersion, string elementId, double x, double y, double width, double height, CancellationToken cancellationToken)
 			=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/set-bounds", new { sessionId = SessionId, documentId = DocumentId, baseVersion, elementId, x = Round(x), y = Round(y), width = Round(width), height = Round(height) }, cancellationToken), cancellationToken);

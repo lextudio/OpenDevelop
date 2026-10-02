@@ -53,7 +53,7 @@ sealed class MultiDocumentWpfSurfaceHostService : IDesignerChildService
 	[JsonRpcMethod("design/set-property")]
 	public DesignerSessionState SetProperty(string sessionId, string documentId, long baseVersion, string elementId, string propertyName, string value) => Checked(sessionId, documentId).SetProperty(baseVersion, elementId, propertyName, value);
 	[JsonRpcMethod("design/add-element")]
-	public DesignerSessionState AddElement(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y) => Checked(sessionId, documentId).AddElement(baseVersion, parentId, item, proposedName, x, y);
+	public DesignerSessionState AddElement(string sessionId, string documentId, long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, DesignerDropTarget dropTarget) => Checked(sessionId, documentId).AddElement(baseVersion, parentId, item, proposedName, x, y, dropTarget);
 	[JsonRpcMethod("design/add-menu-item")]
 	public DesignerSessionState AddMenuItem(string sessionId, string documentId, long baseVersion, string parentId, string header) => Checked(sessionId, documentId).AddMenuItem(baseVersion, parentId, header);
 	[JsonRpcMethod("design/move-element")]

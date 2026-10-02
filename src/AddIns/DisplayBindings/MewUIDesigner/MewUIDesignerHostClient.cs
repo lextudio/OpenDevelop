@@ -14,7 +14,7 @@ sealed class MewUIDesignerHostClient : RecoverableDesignerDocumentHostClient, ID
 	public Task<DesignerSessionState> UpdateAsync(DesignerDocumentSnapshot s, CancellationToken t = default) => UpdateRecoverableAsync(s, t);
 	public Task<DesignerEditSet> FlushAsync(long v, CancellationToken t = default) => Document.FlushAsync(v, t);
 	public Task<DesignerSessionState> SetPropertyAsync(long v, string id, string p, string value, CancellationToken t = default) => TrackMutationAsync(Document.SetPropertyAsync(v, id, p, value, t), t);
-	public Task<DesignerSessionState> AddElementAsync(long v, string parent, DesignerToolboxItemInfo item, string name, double x, double y, CancellationToken t = default) => TrackMutationAsync(Document.AddElementAsync(v, parent, item, name, x, y, t), t);
+	public Task<DesignerSessionState> AddElementAsync(long v, string parent, DesignerToolboxItemInfo item, string name, double x, double y, DesignerDropTarget dropTarget = null, CancellationToken t = default) => TrackMutationAsync(Document.AddElementAsync(v, parent, item, name, x, y, dropTarget, t), t);
 	public Task<DesignerSessionState> DeleteElementsAsync(long v, string[] ids, CancellationToken t = default) => TrackMutationAsync(Document.DeleteElementsAsync(v, ids, t), t);
 	public Task<DesignerSessionState> RenameAsync(long v, string id, string name, CancellationToken t = default) => TrackMutationAsync(Document.RenameAsync(v, id, name, t), t);
 	public Task<DesignerSessionState> UndoAsync(long v) => TrackMutationAsync(connection.UndoAsync(DocumentId, v, default), default); public Task<DesignerSessionState> RedoAsync(long v) => TrackMutationAsync(connection.RedoAsync(DocumentId, v, default), default);

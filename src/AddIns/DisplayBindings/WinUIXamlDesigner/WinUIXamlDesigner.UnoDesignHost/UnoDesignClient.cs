@@ -228,7 +228,7 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 	/// parent element, then re-renders without re-running the full document XAML parse.
 	/// <paramref name="proposedName"/> is ignored: this markup backend derives the element name
 	/// from the parsed XAML (which already carries x:Name).</summary>
-	public Task<DesignerSessionState> AddElementAsync(long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, CancellationToken cancellationToken = default)
+	public Task<DesignerSessionState> AddElementAsync(long baseVersion, string parentId, DesignerToolboxItemInfo item, string proposedName, double x, double y, DesignerDropTarget dropTarget = null, CancellationToken cancellationToken = default)
 		=> TrackMutationAsync(connection.InvokeAsync<DesignerSessionState>("design/add-element",
 			new { sessionId = SessionId, documentId = DocumentId, baseVersion, parentId, item, x, y }, cancellationToken), cancellationToken);
 
