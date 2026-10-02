@@ -114,6 +114,13 @@ namespace ICSharpCode.Core.Presentation
 
 		static readonly IReadOnlyDictionary<string, string> xamlResourceAliases = new Dictionary<string, string> {
 			{ "Icons.16x16.Error", "BuildErrorList" },
+			// Forms designer Format menu: the VS 2026 library names these commands differently.
+			{ "Icons.16x16.FormsDesigner.AlignCenters", "AlignCenter" },
+			{ "Icons.16x16.FormsDesigner.EqualizeHorizontalSpace", "DistributeHorizontalCenter" },
+			{ "Icons.16x16.FormsDesigner.EqualizeVerticalSpace", "DistributeVerticalCenter" },
+			{ "Icons.16x16.FormsDesigner.MakeSameWidth", "AlignHorizontalStretch" },
+			{ "Icons.16x16.FormsDesigner.MakeSameSize", "AutoSizeStretch" },
+			{ "Icons.16x16.FormsDesigner.SizeToGrid", "GridGuide" },
 			{ "Icons.16x16.Warning", "StatusWarning" },
 			{ "Icons.16x16.Information", "StatusInformation" },
 			{ "Icons.16x16.Question", "HelpApplication" },
