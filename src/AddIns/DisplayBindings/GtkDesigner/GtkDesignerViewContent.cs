@@ -21,13 +21,13 @@ using ICSharpCode.SharpDevelop.Designer.Surface;
 
 namespace ICSharpCode.GtkDesigner;
 
-public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErrors, IOutlineContentHost, IToolsHost, IHasPropertyContainer, IUndoHandler, IFilterableToolbox, IDesignCanvasBackend
+public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErrors, IOutlineContentHost, IToolsHost, IHasPropertyContainer, IUndoHandler, IFilterableToolbox, IDesignCanvasBackend, IToolboxSourceDropHandler
 {
 	public static readonly string[] ToolNames = { "GtkBox", "GtkGrid", "GtkCenterBox", "GtkPaned", "GtkScrolledWindow", "GtkLabel", "GtkButton", "GtkEntry", "GtkPasswordEntry", "GtkCheckButton", "GtkSwitch", "GtkSpinButton", "GtkDropDown", "GtkListBox", "GtkListView", "GtkGridView", "GtkImage", "GtkPicture", "GtkProgressBar", "GtkSeparator" };
 	/// <summary>Libadwaita widgets, offered only for a document that declares &lt;requires lib="libadwaita"&gt;.</summary>
 	public static readonly string[] AdwToolNames = { "AdwHeaderBar", "AdwStatusPage", "AdwClamp", "AdwPreferencesPage", "AdwPreferencesGroup", "AdwActionRow", "AdwEntryRow", "AdwSwitchRow", "AdwButtonContent", "AdwAvatar", "AdwBanner", "AdwSpinner" };
 	bool documentRequiresAdw;
-	internal bool IsToolName(string name) => ToolNames.Contains(name, StringComparer.Ordinal) || documentRequiresAdw && AdwToolNames.Contains(name, StringComparer.Ordinal);
+	internal bool IsToolName(string? name) => name != null && ( ToolNames.Contains(name, StringComparer.Ordinal) || documentRequiresAdw && AdwToolNames.Contains(name, StringComparer.Ordinal));
 	/// <summary>The shared category for a GTK control ("Containers", "Inputs", ...), or the
 	/// framework's own group when the control maps to no shared concept - which is how the
 	/// Libadwaita-only widgets keep their own group instead of falling into "Other".</summary>
@@ -53,12 +53,12 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 
 	void RefreshToolbox()
 	{
-		var items = ToolNames.Select(name => Item(name, "GTK 4"));
-		if (documentRequiresAdw) items = items.Concat(AdwToolNames.Select(name => Item(name, "Libadwaita")));
-		toolboxModel.SetItems(items);
+		tools.Register("gtk", ToolNames.Select(name => Item(name, "GTK 4")));
+		tools.Register("gtk-adw", AdwToolNames.Select(name => Item(name, "Libadwaita")));
+		tools.SetScopes(documentRequiresAdw ? new[] { "gtk", "gtk-adw" } : new[] { "gtk" });
 	}
-	readonly DocumentOutlineControl outline = new() { IconMapper = GtkControlMapper.Instance }; readonly ListBox toolbox = new() { ItemTemplate = DesignerTypeIcons.CreateToolboxItemTemplate(mapper: GtkControlMapper.Instance) }; readonly PropertyContainer properties = new();
-	readonly DesignerToolboxController toolboxModel = new();
+	readonly DocumentOutlineControl outline = new() { IconMapper = GtkControlMapper.Instance }; readonly PropertyContainer properties = new();
+	readonly DesignerToolboxScope tools;
 	readonly DesignerSelectionController selection;
 	readonly DesignerPadController pads;
 	readonly DesignerCommandController commands = new();
@@ -69,18 +69,14 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	readonly DesignSurface canvas = new();
 	readonly DesignSurfaceController canvasController;
 	Dictionary<string, string> pathById = new(StringComparer.Ordinal);
-	bool draggingFromToolbox; bool syncingToolbox; string? pressedToolboxType;
 	GtkDesignerHostClient? host; DesignerSessionState state = new(); DesignerElementNode? selected; string loadedText = "";
 	CancellationTokenSource? renderCancellation; long requestedRenderRevision; long renderedRevision;
 
 	public GtkDesignerViewContent(OpenedFile file) : base(file)
 	{
+		tools = new DesignerToolboxScope(this, GtkControlMapper.Instance);
+		tools.ItemInvoked += (_, item) => Add(item.TypeName);
 		RefreshToolbox();
-		toolbox.ItemsSource = toolboxModel.VisibleItems;
-		toolbox.Tag = this;
-		toolboxModel.ItemsChanged += (_, _) => { syncingToolbox = true; toolbox.ItemsSource = toolboxModel.VisibleItems; toolbox.SelectedItem = toolboxModel.SelectedItem; syncingToolbox = false; };
-		toolboxModel.SelectionChanged += (_, _) => { syncingToolbox = true; toolbox.SelectedItem = toolboxModel.SelectedItem; syncingToolbox = false; };
-		toolbox.SelectionChanged += (_, _) => { if (!syncingToolbox) toolboxModel.Select((toolbox.SelectedItem as DesignerToolboxItemInfo)?.TypeName); };
 		selection = new DesignerSelectionController(node => Adapter(node), nodes => new DesignerMultiPropertyAdapter(nodes.Select(node => (object)Adapter(node))));
 		commands.RegisterStandard(() => host?.IsAlive == true && state.CanUndo, () => { Mutate(() => host!.UndoAsync(state.Version).GetAwaiter().GetResult()); return true; },
 			() => host?.IsAlive == true && state.CanRedo, () => { Mutate(() => host!.RedoAsync(state.Version).GetAwaiter().GetResult()); return true; },
@@ -90,37 +86,32 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		TabPageText = "Design"; ConfigureCanvas(); var grid = new Grid(); grid.RowDefinitions.Add(new RowDefinition()); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 		grid.Children.Add(canvas); Grid.SetRow(diagnostic, 1); grid.Children.Add(diagnostic); UserContent = grid;
 		outline.SelectionCommitted += (_, _) => pads.CommitOutlineSelection(outline.SelectedNode?.Id);
-		toolbox.MouseDoubleClick += (_, _) => { if (toolboxModel.SelectedItem is { } item) Add(item.TypeName); }; toolbox.KeyDown += (_, e) => { if (e.Key == Key.Enter && toolboxModel.SelectedItem is { } item) { Add(item.TypeName); e.Handled = true; } };
-		// Latch what was pressed, rather than reading toolbox.SelectedItem when the drag actually
-		// starts: leaving the list drags the pointer across neighbouring rows, and ListBox's own
-		// drag-selection retargets SelectedItem to each one it passes over. Measured: pressing
-		// GtkSwitch and dragging up to the canvas dropped a GtkCheckButton (the row above) instead.
-		toolbox.PreviewMouseDown += (_, e) => { draggingFromToolbox = false; pressedToolboxType = ToolboxTypeAt(e.GetPosition(toolbox)); };
-		// Guard against re-entrancy: WPF only supports one active DoDragDrop session at a time,
-		// so calling it again on every subsequent PreviewMouseMove while the button stays down
-		// (which fires repeatedly for a real or synthetic multi-step drag) would cancel the prior,
-		// still-in-flight session before it reaches the drop target.
-		toolbox.PreviewMouseMove += (_, e) => {
-			if (e.LeftButton != MouseButtonState.Pressed) { draggingFromToolbox = false; return; }
-			var type = pressedToolboxType ?? toolboxModel.SelectedItem?.TypeName;
-			if (draggingFromToolbox || type == null) return;
-			draggingFromToolbox = true;
-			DragDrop.DoDragDrop(toolbox, new DataObject(DataFormats.StringFormat, type), DragDropEffects.Copy);
-			draggingFromToolbox = false;
-		};
 		grid.CommandBindings.Add(new CommandBinding(ApplicationCommands.Undo, (_, _) => Undo(), (_, e) => e.CanExecute = commands.CanExecute(DesignerCommandNames.Undo)));
 		grid.CommandBindings.Add(new CommandBinding(ApplicationCommands.Redo, (_, _) => Redo(), (_, e) => e.CanExecute = commands.CanExecute(DesignerCommandNames.Redo)));
 		grid.CommandBindings.Add(new CommandBinding(ApplicationCommands.Delete, (_, _) => DeleteSelected(), (_, e) => e.CanExecute = commands.CanExecute(DesignerCommandNames.Delete)));
 	}
-	public object OutlineContent => outline; public object ToolsContent => toolbox; public ListBox ToolboxControl => toolbox; public int ZoomComboSelectedIndex => canvas.ZoomCombo.SelectedIndex; public PropertyContainer PropertyContainer => properties;
-	public string? SelectedToolboxType => toolboxModel.SelectedItem?.TypeName;
-	public DesignerToolboxItemInfo? SelectedToolboxItem => toolboxModel.SelectedItem;
-	public bool SelectToolboxType(string type) { var ok = toolboxModel.Select(type); if (ok) toolbox.SelectedItem = toolboxModel.SelectedItem; return ok; }
-	public void FilterToolbox(string text) => toolboxModel.Filter(text);
+	public object OutlineContent => outline; public object ToolsContent => tools.Activate(); public ListBox ToolboxControl => tools.Control; public int ZoomComboSelectedIndex => canvas.ZoomCombo.SelectedIndex; public PropertyContainer PropertyContainer => properties;
+	public string? SelectedToolboxType => tools.SelectedItem?.TypeName;
+	public DesignerToolboxItemInfo? SelectedToolboxItem => tools.SelectedItem;
+	public bool SelectToolboxType(string type) => tools.Select(type);
+	/// <summary>The row for <paramref name="type"/>, scrolled into view and settled - for driving a real drag.</summary>
+	public FrameworkElement? ToolboxRow(string type, out string error) => tools.SettledRow(type, out error);
+	public void FilterToolbox(string text) => tools.Filter(text);
 	void IFilterableToolbox.Filter(string text) => FilterToolbox(text);
 	int IFilterableToolbox.VisibleItemCount => ToolboxItemCount;
 	string IFilterableToolbox.FilterText => ToolboxFilterText;
-	public string ToolboxFilterText => toolboxModel.FilterText;
+	public string ToolboxFilterText => tools.FilterText;
+	bool IToolboxSourceDropHandler.CanAcceptToolboxDrop(IDataObject data) => IsToolName(ToolboxDragData.GetTypeName(data));
+	/// <summary>A toolbox item dropped onto the .ui source beside this designer: the same GtkBuilder
+	/// insertion a designer drop makes (a &lt;child&gt;&lt;object class id/&gt;, with starter text),
+	/// planned against the source pane's own text so edits typed there and not yet seen here survive.</summary>
+	ToolboxSourceEdit? IToolboxSourceDropHandler.PlanToolboxDrop(IDataObject data, string sourceText, int offset)
+	{
+		if (ToolboxDragData.GetTypeName(data) is not { } type || !IsToolName(type)) return null;
+		var editor = new GtkUiDocumentEditor();
+		if (!editor.Reset(sourceText) || !editor.AddAt(offset, type)) return null;
+		return ToolboxSourceEdit.FromDifference(sourceText, editor.Text);
+	}
 	/// <summary>A rendered object's bounds in screen coordinates, through the canvas's viewport
 	/// (null when it has none, or nothing is rendered).</summary>
 	public Rect? ScreenBoundsOf(string id)
@@ -131,13 +122,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		var bottomRight = canvas.SurfacePointToScreen(node.X + node.Width, node.Y + node.Height);
 		return new Rect(topLeft, bottomRight);
 	}
-	string? ToolboxTypeAt(Point point)
-	{
-		for (var hit = toolbox.InputHitTest(point) as DependencyObject; hit != null; hit = VisualTreeHelper.GetParent(hit))
-			if (hit is ListBoxItem row) return (row.DataContext as DesignerToolboxItemInfo)?.TypeName;
-		return null;
-	}
-	public int ToolboxItemCount => toolbox.Items.Count; public bool IsToolboxHosted => ReferenceEquals((SD.Services.GetService(typeof(IToolsPadHost)) as IToolsPadHost)?.HostedContent, toolbox);
+	public int ToolboxItemCount => tools.VisibleItemCount; public bool IsToolboxHosted => tools.IsHosted;
 	public bool IsOutlineHosted => ReferenceEquals((SD.Services.GetService(typeof(IOutlinePadHost)) as IOutlinePadHost)?.HostedContent, outline); public int OutlineItemCount => ElementCount;
 	public int ElementCount => state.Tree == null ? 0 : Flatten(state.Tree).Count(n => n.Id != "$interface"); public string SelectedId => selected?.Id ?? ""; public int HostProcessId => host?.ProcessId ?? 0;
 	public string[] ElementIds => state.Tree == null ? Array.Empty<string>() : Flatten(state.Tree).Where(n => n.Id != "$interface").Select(n => n.Id).ToArray();
@@ -330,7 +315,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		canvasController.UndoRedoRequested += (_, undo) => { if (undo) Undo(); else Redo(); };
 		canvas.AllowDrop = true;
 		canvas.DragOver += (_, e) => {
-			var isTool = e.Data.GetDataPresent(DataFormats.StringFormat);
+			var isTool = IsToolName(ToolboxDragData.GetTypeName(e.Data));
 			e.Effects = isTool ? DragDropEffects.Copy : DragDropEffects.None;
 			ShowDropIndicator(isTool ? PlanDrop(e) : null);
 			e.Handled = true;
@@ -338,7 +323,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		canvas.DragLeave += (_, _) => ShowDropIndicator(null);
 		canvas.Drop += (_, e) => {
 			ShowDropIndicator(null);
-			if (e.Data.GetData(DataFormats.StringFormat) is not string type || !IsToolName(type)) return;
+			if (ToolboxDragData.GetTypeName(e.Data) is not { } type || !IsToolName(type)) return;
 			var design = canvas.ToDesignPoint(e.GetPosition(canvas));
 			// The container and position the indicator showed; the host re-plans from GTK's own
 			// measured bounds and uses the same index/cell.

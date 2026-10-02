@@ -6,30 +6,27 @@ using ICSharpCode.SharpDevelop.Designer.Surface;
 using System.Threading.Tasks;
 namespace ICSharpCode.MewUIDesigner;
 
-public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadErrors, IOutlineContentHost, IToolsHost, IHasPropertyContainer, IUndoHandler, IFilterableToolbox, IDesignCanvasBackend
+public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadErrors, IOutlineContentHost, IToolsHost, IHasPropertyContainer, IUndoHandler, IFilterableToolbox, IDesignCanvasBackend, IToolboxSourceDropHandler
 {
 	public static readonly string[] ToolNames = { "StackPanel", "Grid", "DockPanel", "WrapPanel", "Border", "ScrollViewer", "Label", "Button", "TextBox", "CheckBox", "RadioButton", "Slider", "ProgressBar", "ComboBox", "ListBox", "Image" };
-	readonly DocumentOutlineControl outline = new() { IconMapper = MewUIControlMapper.Instance }; readonly ListBox toolbox = new() { ItemTemplate = DesignerTypeIcons.CreateToolboxItemTemplate(mapper: MewUIControlMapper.Instance) }; readonly PropertyContainer properties = new(); readonly TextBlock diagnostic = new() { Foreground = Brushes.OrangeRed, Margin = new Thickness(8), TextWrapping = TextWrapping.Wrap }; readonly OpenedFile mxamlFile;
+	readonly DocumentOutlineControl outline = new() { IconMapper = MewUIControlMapper.Instance }; readonly PropertyContainer properties = new(); readonly TextBlock diagnostic = new() { Foreground = Brushes.OrangeRed, Margin = new Thickness(8), TextWrapping = TextWrapping.Wrap }; readonly OpenedFile mxamlFile;
 	// The shared design canvas (ICSharpCode.DesignerCanvas addin) showing the host's real MewUI
 	// render, keyed by element id (the Name, or a path-based id for an unnamed element). MewUI panels lay children out, so there are no resize handles
 	// and a drag is a reorder among siblings (see CommitCanvasDrag).
 	readonly DesignSurface canvas = new();
 	readonly DesignSurfaceController canvasController;
 	Dictionary<string, string> pathById = new(StringComparer.Ordinal);
-	readonly DesignerToolboxController toolboxModel = new();
+	readonly DesignerToolboxScope tools;
 	readonly DesignerSelectionController selection;
 	readonly DesignerPadController pads;
 	readonly DesignerCommandController commands = new();
-	bool draggingFromToolbox; bool syncingToolbox; string? pressedToolboxType;
 	MewUIDesignerHostClient? host; DesignerSessionState state = new(); DesignerElementNode? selected; string loadedMxamlText = "";
 	public MewUIDesignerViewContent(OpenedFile file) : base(file)
 	{
-		toolboxModel.SetItems(ToolNames.Select(name => new DesignerToolboxItemInfo { Name = name, DisplayName = name, TypeName = name, Category = DesignerToolboxCatalog.ResolveCategory(MewUIControlMapper.Instance, name) }));
-		toolbox.ItemsSource = toolboxModel.VisibleItems;
-		toolbox.Tag = this;
-		toolboxModel.ItemsChanged += (_, _) => { syncingToolbox = true; toolbox.ItemsSource = toolboxModel.VisibleItems; toolbox.SelectedItem = toolboxModel.SelectedItem; syncingToolbox = false; };
-		toolboxModel.SelectionChanged += (_, _) => { syncingToolbox = true; toolbox.SelectedItem = toolboxModel.SelectedItem; syncingToolbox = false; };
-		toolbox.SelectionChanged += (_, _) => { if (!syncingToolbox) toolboxModel.Select((toolbox.SelectedItem as DesignerToolboxItemInfo)?.TypeName); };
+		tools = new DesignerToolboxScope(this, MewUIControlMapper.Instance);
+		tools.Register("mewui", ToolNames.Select(name => new DesignerToolboxItemInfo { Name = name, DisplayName = name, TypeName = name, Category = DesignerToolboxCatalog.ResolveCategory(MewUIControlMapper.Instance, name) }));
+		tools.SetScopes("mewui");
+		tools.ItemInvoked += (_, item) => Add(item.TypeName);
 		selection = new DesignerSelectionController(node => Adapter(node), nodes => new DesignerMultiPropertyAdapter(nodes.Select(node => (object)Adapter(node))));
 		commands.RegisterStandard(() => host?.IsAlive == true && state.CanUndo, () => { Mutate(() => host!.UndoAsync(state.Version).GetAwaiter().GetResult()); return true; },
 			() => host?.IsAlive == true && state.CanRedo, () => { Mutate(() => host!.RedoAsync(state.Version).GetAwaiter().GetResult()); return true; },
@@ -38,41 +35,39 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 		canvasController = new DesignSurfaceController(canvas, this, DesignSurfaceKeying.Id);
 		mxamlFile = file; TabPageText = "Design";
 		ConfigureCanvas(); var grid = new Grid(); grid.RowDefinitions.Add(new RowDefinition()); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); grid.Children.Add(canvas); Grid.SetRow(diagnostic, 1); grid.Children.Add(diagnostic); UserContent = grid;
-		outline.SelectionCommitted += (_, _) => pads.CommitOutlineSelection(outline.SelectedNode?.Id); toolbox.MouseDoubleClick += (_, _) => { if (toolboxModel.SelectedItem is { } item) Add(item.TypeName); }; toolbox.KeyDown += (_, e) => { if (e.Key == Key.Enter && toolboxModel.SelectedItem is { } item) { Add(item.TypeName); e.Handled = true; } };
-		// Mirrors GtkDesignerViewContent's toolbox drag source - lets a real synthetic mouse
-		// press/move/release (od.ui/actions) drive DragDrop.DoDragDrop end to end onto a
-		// container on the canvas, instead of only exercising od.mewui-designer.toolbox.insert.
-		// Guarded against re-entrancy: WPF only supports one active DoDragDrop session at a
-		// time, so calling it again on every subsequent PreviewMouseMove while the button stays
-		// down (which fires repeatedly across a real or synthetic multi-step drag) cancels the
-		// prior, still-in-flight session before it ever reaches the drop target's DragOver -
-		// found and fixed via the identical bug live in GtkDesignerViewContent (see its own
-		// comment on the same handler for the verified symptom: debugDragOverCount staying 0).
-		// Latch what was pressed rather than reading SelectedItem when the drag starts - leaving the
-		// list drags across neighbouring rows and ListBox's drag-selection retargets SelectedItem to
-		// each one passed over (measured on the GTK designer: pressing one row dropped its neighbour).
-		toolbox.PreviewMouseDown += (_, e) => { draggingFromToolbox = false; pressedToolboxType = ToolboxTypeAt(e.GetPosition(toolbox)); };
-		toolbox.PreviewMouseMove += (_, e) => {
-			if (e.LeftButton != MouseButtonState.Pressed) { draggingFromToolbox = false; return; }
-			var type = pressedToolboxType ?? toolboxModel.SelectedItem?.TypeName;
-			if (draggingFromToolbox || type == null) return;
-			draggingFromToolbox = true;
-			DragDrop.DoDragDrop(toolbox, new DataObject(DataFormats.StringFormat, type), DragDropEffects.Copy);
-			draggingFromToolbox = false;
-		};
+		outline.SelectionCommitted += (_, _) => pads.CommitOutlineSelection(outline.SelectedNode?.Id);
 		grid.CommandBindings.Add(new CommandBinding(ApplicationCommands.Undo, (_, _) => Undo(), (_, e) => e.CanExecute = commands.CanExecute(DesignerCommandNames.Undo)));
 		grid.CommandBindings.Add(new CommandBinding(ApplicationCommands.Redo, (_, _) => Redo(), (_, e) => e.CanExecute = commands.CanExecute(DesignerCommandNames.Redo)));
 		grid.CommandBindings.Add(new CommandBinding(ApplicationCommands.Delete, (_, _) => DeleteSelected(), (_, e) => e.CanExecute = commands.CanExecute(DesignerCommandNames.Delete)));
 	}
-	public object OutlineContent => outline; public object ToolsContent => toolbox; public ListBox ToolboxControl => toolbox; public int ZoomComboSelectedIndex => canvas.ZoomCombo.SelectedIndex; public PropertyContainer PropertyContainer => properties; public string Status => state.Accepted ? $"Ready: {ElementCount} elements (host {host?.ProcessId}, MewUI frame {(HasNativeFrame ? $"{NativeFrameWidth}x{NativeFrameHeight}" : "unavailable")})" : state.Error; public string WindowClassName => state.Tree?.Name ?? ""; public int ElementCount => state.Tree == null ? 0 : Flatten(state.Tree).Count(); public bool IsDesignerDirty => mxamlFile.IsDirty; public string SelectedName => selected?.Name ?? ""; public int HostProcessId => host?.ProcessId ?? 0;
-	public string? SelectedToolboxType => toolboxModel.SelectedItem?.TypeName;
-	public DesignerToolboxItemInfo? SelectedToolboxItem => toolboxModel.SelectedItem;
-	public bool SelectToolboxType(string type) { var ok = toolboxModel.Select(type); if (ok) toolbox.SelectedItem = toolboxModel.SelectedItem; return ok; }
-	public void FilterToolbox(string text) => toolboxModel.Filter(text);
+	public object OutlineContent => outline; public object ToolsContent => tools.Activate(); public ListBox ToolboxControl => tools.Control; public int ZoomComboSelectedIndex => canvas.ZoomCombo.SelectedIndex; public PropertyContainer PropertyContainer => properties; public string Status => state.Accepted ? $"Ready: {ElementCount} elements (host {host?.ProcessId}, MewUI frame {(HasNativeFrame ? $"{NativeFrameWidth}x{NativeFrameHeight}" : "unavailable")})" : state.Error; public string WindowClassName => state.Tree?.Name ?? ""; public int ElementCount => state.Tree == null ? 0 : Flatten(state.Tree).Count(); public bool IsDesignerDirty => mxamlFile.IsDirty; public string SelectedName => selected?.Name ?? ""; public int HostProcessId => host?.ProcessId ?? 0;
+	public string? SelectedToolboxType => tools.SelectedItem?.TypeName;
+	public DesignerToolboxItemInfo? SelectedToolboxItem => tools.SelectedItem;
+	public bool SelectToolboxType(string type) => tools.Select(type);
+	/// <summary>The row for <paramref name="type"/>, scrolled into view and settled - for driving a real drag.</summary>
+	public FrameworkElement? ToolboxRow(string type, out string error) => tools.SettledRow(type, out error);
+	public void FilterToolbox(string text) => tools.Filter(text);
 	void IFilterableToolbox.Filter(string text) => FilterToolbox(text);
 	int IFilterableToolbox.VisibleItemCount => ToolboxItemCount;
 	string IFilterableToolbox.FilterText => ToolboxFilterText;
-	public string ToolboxFilterText => toolboxModel.FilterText;
+	public string ToolboxFilterText => tools.FilterText;
+	bool IToolboxSourceDropHandler.CanAcceptToolboxDrop(IDataObject data) => ToolboxDragData.GetTypeName(data) is { } type && ToolNames.Contains(type, StringComparer.Ordinal);
+	/// <summary>A toolbox item dropped onto the .mxaml source beside this designer: an element on a line
+	/// of its own in the innermost container holding the drop point - a panel takes any number of
+	/// children, a content control (Border, ScrollViewer, Window, ...) only its first.</summary>
+	ToolboxSourceEdit? IToolboxSourceDropHandler.PlanToolboxDrop(IDataObject data, string sourceText, int offset)
+	{
+		if (ToolboxDragData.GetTypeName(data) is not { } type || !ToolNames.Contains(type, StringComparer.Ordinal)) return null;
+		var point = XmlToolboxDropPlanner.Plan(sourceText, offset, AcceptsSourceChild);
+		if (point == null) return null;
+		var (at, text) = XmlToolboxDropPlanner.InsertElement(sourceText, point, "<" + type + " />");
+		return new ToolboxSourceEdit(at, 0, text, at + text.Length);
+	}
+	static readonly HashSet<string> PanelTypes = new(StringComparer.Ordinal) { "StackPanel", "Grid", "DockPanel", "WrapPanel", "Canvas", "TabControl" };
+	static readonly HashSet<string> ContentTypes = new(StringComparer.Ordinal) { "Window", "Border", "ScrollViewer", "GroupBox", "TabItem", "ContentControl" };
+	/// <summary>Property elements (&lt;Grid.RowDefinitions&gt;) are not content.</summary>
+	static bool AcceptsSourceChild(XmlMarkupElement element)
+		=> !element.IsEmpty && (PanelTypes.Contains(element.Name) || ContentTypes.Contains(element.Name) && !element.Children.Any(c => !c.Name.Contains('.')));
 	/// <summary>A rendered element's bounds in screen coordinates, through the canvas's viewport
 	/// (null when it has none, or nothing is rendered).</summary>
 	public Rect? ScreenBoundsOf(string id)
@@ -81,13 +76,7 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 		if (node == null || node.Width <= 0 || node.Height <= 0 || !canvas.HasRender) return null;
 		return new Rect(canvas.SurfacePointToScreen(node.X, node.Y), canvas.SurfacePointToScreen(node.X + node.Width, node.Y + node.Height));
 	}
-	string? ToolboxTypeAt(Point point)
-	{
-		for (var hit = toolbox.InputHitTest(point) as DependencyObject; hit != null; hit = VisualTreeHelper.GetParent(hit))
-			if (hit is ListBoxItem row) return (row.DataContext as DesignerToolboxItemInfo)?.TypeName;
-		return null;
-	}
-	public int ToolboxItemCount => toolbox.Items.Count; public bool IsToolboxHosted => ReferenceEquals((SD.Services.GetService(typeof(IToolsPadHost)) as IToolsPadHost)?.HostedContent, toolbox); public bool IsOutlineHosted => ReferenceEquals((SD.Services.GetService(typeof(IOutlinePadHost)) as IOutlinePadHost)?.HostedContent, outline); public int OutlineItemCount => ElementCount;
+	public int ToolboxItemCount => tools.VisibleItemCount; public bool IsToolboxHosted => tools.IsHosted; public bool IsOutlineHosted => ReferenceEquals((SD.Services.GetService(typeof(IOutlinePadHost)) as IOutlinePadHost)?.HostedContent, outline); public int OutlineItemCount => ElementCount;
 	public int ToolbarItemCount => canvas.VisibleToolbarItems.Count; public IReadOnlyList<string> ToolbarItems => canvas.VisibleToolbarItems; public string ToolbarCapabilities => canvas.Capabilities.ToString(); public double Zoom { get => canvas.ViewportScale; set => canvas.SetViewport(Math.Clamp(value, .25, 2), 0, 0); }
 	public bool Gridlines => canvas.Gridlines; public bool FitMeasured { get; private set; } public void FitDesign() => FitView(); public void ShowGridlines(bool show) { canvas.IsGridEnabled = show; canvas.SetGridlines(show); }
 	public bool HasNativeFrame => state.Render is { Width: > 0, Height: > 0 } r && (!string.IsNullOrEmpty(r.Data) || !string.IsNullOrEmpty(r.PngBase64)); public int NativeFrameWidth => state.Render?.Width ?? 0; public int NativeFrameHeight => state.Render?.Height ?? 0; public int NativeBoundsCount => state.Tree == null ? 0 : Flatten(state.Tree).Count(n => n.Width > 0 && n.Height > 0);
@@ -170,9 +159,9 @@ public sealed class MewUIDesignerViewContent : AbstractViewContentHandlingLoadEr
 		canvasController.ContextCommandRequested += (_, command) => { if (command.Command == "delete") DeleteSelected(); };
 		canvasController.UndoRedoRequested += (_, undo) => { if (undo) Undo(); else Redo(); };
 		canvas.AllowDrop = true;
-		canvas.DragOver += (_, e) => { e.Effects = e.Data.GetDataPresent(DataFormats.StringFormat) ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; };
+		canvas.DragOver += (_, e) => { e.Effects = ToolboxDragData.GetTypeName(e.Data) is { } dragged && ToolNames.Contains(dragged, StringComparer.Ordinal) ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; };
 		canvas.Drop += (_, e) => {
-			if (e.Data.GetData(DataFormats.StringFormat) is not string type || !ToolNames.Contains(type, StringComparer.Ordinal)) return;
+			if (ToolboxDragData.GetTypeName(e.Data) is not { } type || !ToolNames.Contains(type, StringComparer.Ordinal)) return;
 			var design = canvas.ToDesignPoint(e.GetPosition(canvas));
 			var over = state.Tree == null ? null : NodeAt(state.Tree, new Point(design.X, design.Y));
 			if (over != null) Select(over);
