@@ -56,7 +56,14 @@ static class GtkRuntimeLocator
 				+ @"OpenDevelop finds C:\msys64\" + environment + @"\bin automatically. For another location, set GTK4_ROOT to the GTK installation folder or add its bin folder to PATH.";
 		}
 		if (OperatingSystem.IsMacOS())
-			return "Install GTK 4 with Homebrew: brew install gtk4";
+			// Homebrew keeps gtk4 keg-only, so the dylib is in /opt/homebrew/opt/gtk4/lib rather than on
+			// the dyld path. The designer host puts that directory on DYLD_LIBRARY_PATH itself, so
+			// installing is all that is needed - but say so, because `brew install gtk4` followed by
+			// running the app from a plain shell used to fail anyway, and the missing search path is
+			// invisible from the outside.
+			return "Install GTK 4 with Homebrew: brew install gtk4. Homebrew keeps it keg-only, so the "
+				+ "libraries land in /opt/homebrew/opt/gtk4/lib; the designer host adds that directory to "
+				+ "DYLD_LIBRARY_PATH for the render process, and there is nothing to configure by hand.";
 		return "Install GTK 4 from your distribution, e.g. apt install libgtk-4-1 or dnf install gtk4.";
 	}
 }

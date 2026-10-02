@@ -156,9 +156,29 @@ sealed class GtkDesignerHostClient : RecoverableDesignerDocumentHostClient, IDes
 				startInfo.Environment["PATH"] = string.IsNullOrEmpty(existing) ? gtkBin : gtkBin + Path.PathSeparator + existing;
 			}
 			if (OperatingSystem.IsMacOS()) {
-				var homebrewLibraries = Directory.Exists("/opt/homebrew/lib") ? "/opt/homebrew/lib" : "/usr/local/lib";
-				var existing = startInfo.Environment.TryGetValue("DYLD_LIBRARY_PATH", out var value) ? value : null;
-				startInfo.Environment["DYLD_LIBRARY_PATH"] = string.IsNullOrEmpty(existing) ? homebrewLibraries : homebrewLibraries + Path.PathSeparator + existing;
+				// Homebrew marks gtk4 and libadwaita keg-only (macOS ships GTK3), so their dylibs land in
+				// <prefix>/opt/<formula>/lib and are never linked into <prefix>/lib. Pointing dyld at
+				// <prefix>/lib alone therefore finds nothing, and the host still dies with
+				// DllNotFoundException even after a perfectly successful `brew install gtk4` - so the opt
+				// directories have to be named explicitly. DYLD_FALLBACK_LIBRARY_PATH is set alongside
+				// DYLD_LIBRARY_PATH because libadwaita loads gtk4's own dependencies, and those go
+				// through the fallback search.
+				var directories = new List<string>();
+				foreach (var prefix in new[] { "/opt/homebrew", "/usr/local" })
+					foreach (var candidate in new[] { "lib", "opt/gtk4/lib", "opt/libadwaita/lib", "opt/glib/lib", "opt/pango/lib", "opt/cairo/lib" }) {
+						var full = Path.Combine(prefix, candidate);
+						if (Directory.Exists(full) && !directories.Contains(full))
+							directories.Add(full);
+					}
+				if (directories.Count > 0) {
+					var libraries = string.Join(Path.PathSeparator, directories);
+					foreach (var name in new[] { "DYLD_LIBRARY_PATH", "DYLD_FALLBACK_LIBRARY_PATH" }) {
+						var existing = startInfo.Environment.TryGetValue(name, out var value) ? value : null;
+						startInfo.Environment[name] = string.IsNullOrEmpty(existing)
+							? libraries
+							: libraries + Path.PathSeparator + existing;
+					}
+				}
 				startInfo.Environment["LSUIElement"] = "1";
 				startInfo.Environment["LSBackgroundOnly"] = "1";
 			}
