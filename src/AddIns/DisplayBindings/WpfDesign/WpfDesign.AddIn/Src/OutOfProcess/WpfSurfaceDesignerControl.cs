@@ -1009,7 +1009,6 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 				HideMenuTypeHereHotspot();
 				return;
 			}
-			bool newContainer = menuTypeHereHotspotMenuId != container.Id || menuTypeHereHotspot.Visibility != Visibility.Visible;
 			menuTypeHereHotspotMenuId = container.Id;
 			menuTypeHereHotspotContainerType = container.Type;
 			var rightEdge = container.Children.Count > 0
@@ -1020,15 +1019,26 @@ namespace ICSharpCode.WpfDesign.AddIn.OutOfProcess
 			menuTypeHereHotspotContainerRight = container.X + container.Width;
 			menuTypeHereHotspot.Visibility = Visibility.Visible;
 			PlaceMenuTypeHereHotspot();
-			// A strip docked at the bottom of the window (a StatusBar) can be below the visible
-			// canvas in a short designer pane such as the split view; selecting it must bring its
-			// Type Here hotspot into view, or the hotspot is unreachable. Only when the container
-			// changes, so ordinary refreshes do not keep scrolling the canvas.
-			if (newContainer)
-				Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() => {
-					if (menuTypeHereHotspot.IsVisible && menuTypeHereHotspot.ActualWidth > 0)
-						menuTypeHereHotspot.BringIntoView();
-				}));
+			// A strip docked at the bottom (a StatusBar) can be below the visible canvas in a short
+			// pane such as the split view, leaving its hotspot unreachable. Scroll to it then - but
+			// ONLY then: scrolling for a hotspot that is already on screen moved the canvas between
+			// the two clicks of a double-click on a menu item.
+			Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() => {
+				if (menuTypeHereHotspot.IsVisible && menuTypeHereHotspot.ActualWidth > 0 && !IsInCanvasViewport(menuTypeHereHotspot))
+					menuTypeHereHotspot.BringIntoView();
+			}));
+		}
+
+		bool IsInCanvasViewport(FrameworkElement element)
+		{
+			DependencyObject node = element;
+			while (node != null && node is not ScrollViewer)
+				node = VisualTreeHelper.GetParent(node);
+			if (node is not ScrollViewer scroller || !scroller.IsVisible)
+				return true;   // nothing to scroll
+			var bounds = element.TransformToAncestor(scroller).TransformBounds(new Rect(element.RenderSize));
+			return bounds.Top >= 0 && bounds.Left >= 0
+				&& bounds.Bottom <= scroller.ViewportHeight + 0.5 && bounds.Right <= scroller.ViewportWidth + 0.5;
 		}
 
 		void PlaceMenuTypeHereHotspot()
