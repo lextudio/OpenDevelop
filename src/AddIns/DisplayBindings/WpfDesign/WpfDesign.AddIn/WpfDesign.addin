@@ -9,7 +9,7 @@
 	</Manifest>
 	<Runtime>
 		<Import assembly="$ICSharpCode.DesignerCanvas/ICSharpCode.DesignerCanvas.dll" />
-		<Import assembly="$ICSharpCode.DesignerCanvas/ICSharpCode.Designer.Presentation.dll" />
+		<Import assembly=":ICSharpCode.Designer.Presentation" />
 		<Import assembly="ICSharpCode.WpfDesign.AddIn.dll">
 			<ConditionEvaluator name="IsCutCopyEnabled" class="ICSharpCode.WpfDesign.AddIn.Commands.IsCutCopyEnabled" />
 			<ConditionEvaluator name="IsPasteEnabled" class="ICSharpCode.WpfDesign.AddIn.Commands.IsPasteEnabled" />

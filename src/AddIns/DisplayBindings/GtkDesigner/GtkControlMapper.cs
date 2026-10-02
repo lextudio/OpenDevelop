@@ -117,8 +117,6 @@ namespace ICSharpCode.GtkDesigner
 			{ "ViewSwitcher", "Tab" },
 			{ "ViewSwitcherBar", "Tab" },
 			{ "WindowTitle", "Text" },
-			{ "AboutDialog", "Dialog" },
-			{ "MessageDialog", "Dialog" },
 		};
 
 		public string? GetConcept(string typeName)

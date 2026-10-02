@@ -7,7 +7,7 @@
   </Manifest>
   <Runtime>
     <Import assembly="$ICSharpCode.DesignerCanvas/ICSharpCode.DesignerCanvas.dll" />
-    <Import assembly="$ICSharpCode.DesignerCanvas/ICSharpCode.Designer.Presentation.dll" />
+    <Import assembly=":ICSharpCode.Designer.Presentation" />
     <Import assembly="ICSharpCode.WinUIXamlDesigner.dll" />
     <Import assembly="ICSharpCode.WinUIXamlDesigner.ProGPUHost.dll" />
     <Import assembly="ICSharpCode.WinUIXamlDesigner.UnoDesignHost.dll" />

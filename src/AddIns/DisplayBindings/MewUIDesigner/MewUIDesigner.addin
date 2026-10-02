@@ -1,6 +1,6 @@
 <AddIn name="MewUI Designer" author="LeXtudio" description="Visual C# designer for Aprillz.MewUI applications." addInManagerHidden="preinstalled">
   <Manifest><Identity name="ICSharpCode.MewUIDesigner" /><Dependency addin="ICSharpCode.DesignerCanvas" requirePreload="true" /></Manifest>
-  <Runtime><Import assembly="$ICSharpCode.DesignerCanvas/ICSharpCode.DesignerCanvas.dll" /><Import assembly="$ICSharpCode.DesignerCanvas/ICSharpCode.Designer.Presentation.dll" /><Import assembly="ICSharpCode.MewUIDesigner.dll" /></Runtime>
+  <Runtime><Import assembly="$ICSharpCode.DesignerCanvas/ICSharpCode.DesignerCanvas.dll" /><Import assembly=":ICSharpCode.Designer.Presentation" /><Import assembly="ICSharpCode.MewUIDesigner.dll" /></Runtime>
   <Path name="/SharpDevelop/Workbench/DisplayBindings">
     <DisplayBinding id="MewUIDesigner" type="Secondary" class="ICSharpCode.MewUIDesigner.MewUIDesignerDisplayBinding" fileNamePattern="\.mxaml$" />
   </Path>

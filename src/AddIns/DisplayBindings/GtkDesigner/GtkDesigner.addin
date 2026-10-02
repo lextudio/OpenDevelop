@@ -1,6 +1,6 @@
 <AddIn name="GTK 4 Designer" author="LeXtudio" description="Source-backed GtkBuilder designer for GTK 4." addInManagerHidden="preinstalled">
   <Manifest><Identity name="ICSharpCode.GtkDesigner" /><Dependency addin="ICSharpCode.DesignerCanvas" requirePreload="true" /></Manifest>
-  <Runtime><Import assembly="$ICSharpCode.DesignerCanvas/ICSharpCode.DesignerCanvas.dll" /><Import assembly="$ICSharpCode.DesignerCanvas/ICSharpCode.Designer.Presentation.dll" /><Import assembly="ICSharpCode.GtkDesigner.dll" /></Runtime>
+  <Runtime><Import assembly="$ICSharpCode.DesignerCanvas/ICSharpCode.DesignerCanvas.dll" /><Import assembly=":ICSharpCode.Designer.Presentation" /><Import assembly="ICSharpCode.GtkDesigner.dll" /></Runtime>
   <Path name="/SharpDevelop/Workbench/DisplayBindings">
     <DisplayBinding id="GtkDesigner" type="Secondary" class="ICSharpCode.GtkDesigner.GtkDesignerDisplayBinding" fileNamePattern="\.ui$" />
   </Path>
