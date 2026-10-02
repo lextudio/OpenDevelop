@@ -43,7 +43,7 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 		if (documentRequiresAdw) items = items.Concat(AdwToolNames.Select(name => new DesignerToolboxItemInfo { Name = name, DisplayName = name, TypeName = name, Category = CategoryFor(name, "Libadwaita") }));
 		toolboxModel.SetItems(items);
 	}
-	readonly DocumentOutlineControl outline = new(); readonly ListBox toolbox = new() { DisplayMemberPath = nameof(DesignerToolboxItemInfo.DisplayName) }; readonly PropertyContainer properties = new();
+	readonly DocumentOutlineControl outline = new(); readonly ListBox toolbox = new() { ItemTemplate = DesignerTypeIcons.CreateToolboxItemTemplate(mapper: GtkControlMapper.Instance) }; readonly PropertyContainer properties = new();
 	readonly DesignerToolboxController toolboxModel = new();
 	readonly DesignerSelectionController selection;
 	readonly DesignerPadController pads;

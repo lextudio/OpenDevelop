@@ -280,8 +280,12 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 		image.SetValue(System.Windows.Controls.Image.HeightProperty, 16.0);
 		image.SetValue(System.Windows.FrameworkElement.MarginProperty, new System.Windows.Thickness(0, 0, 4, 0));
 		image.SetValue(System.Windows.FrameworkElement.VerticalAlignmentProperty, System.Windows.VerticalAlignment.Center);
+		// No path: the binding's value is the row's own data item, which the converter turns into the
+		// icon. (This was once Binding("Self") with the converter as its Source - a path to a property
+		// the converter does not have - so every row's Image.Source was null and the rows showed an
+		// empty gap where the glyph belonged.)
 		image.SetBinding(System.Windows.Controls.Image.SourceProperty,
-			new System.Windows.Data.Binding("Self") { Source = new ToolboxIconConverter(frameworkIcon, mapper), Mode = System.Windows.Data.BindingMode.OneTime });
+			new System.Windows.Data.Binding { Converter = new ToolboxIconConverter(frameworkIcon, mapper), Mode = System.Windows.Data.BindingMode.OneWay });
 
 		var text = new System.Windows.FrameworkElementFactory(typeof(System.Windows.Controls.TextBlock));
 		text.SetBinding(System.Windows.Controls.TextBlock.TextProperty,
